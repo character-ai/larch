@@ -46,6 +46,7 @@ VALIDATE_LOG_FILE="${VALIDATE_LOG_FILE:-}"
 _validator_target_file="${_validator_target_file:-}"
 PUBLISH_OK="${PUBLISH_OK:-}"
 PLAN_WRITE_OK="${PLAN_WRITE_OK:-}"
+OPERATOR_CANCEL=false
 STANDALONE_HEAVY_FAILED="${STANDALONE_HEAVY_FAILED:-}"
 
 while [ "$#" -gt 0 ]; do
@@ -65,6 +66,7 @@ while [ "$#" -gt 0 ]; do
     --validate-defect-count) VALIDATE_DEFECT_COUNT="$2"; shift 2 ;;
     --validate-unsafe-token-count) VALIDATE_UNSAFE_TOKEN_COUNT="$2"; shift 2 ;;
     --validate-skipped-count) VALIDATE_SKIPPED_COUNT="$2"; shift 2 ;;
+    --operator-cancel) OPERATOR_CANCEL=true; shift ;;
     --) shift; PUBLIC_ARGV_WORDS=("$@"); break ;;
     *) printf '%s\n' "$0: unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -92,6 +94,47 @@ design_source_env_optional() {
 
 design_source_env_optional
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+
+validator_autofix_operator_cancel_audit() {
+  local forced=${1:-}
+  if [ "$forced" != forced ]; then
+    case "${SUMMARY_OUTCOME:-}" in
+      cancelled-*) ;;
+      *) return 0 ;;
+    esac
+  fi
+  design_require_plugin_root
+  [[ -n "${DESIGN_TMPDIR:-}" && -d "$DESIGN_TMPDIR" ]] || return 0
+  local sentinel="$DESIGN_TMPDIR/design-failure-operator-action.env"
+  local chat="$DESIGN_TMPDIR/design-failure-operator-action-chat.md"
+  local detail="$DESIGN_TMPDIR/design-failure-validator-cancel-audit.log"
+  local outcome="${SUMMARY_OUTCOME:-operator-action}"
+  [ -e "$sentinel" ] && return 0
+  cat >"$sentinel" <<EOF2
+DESIGN_FAILURE_OPERATOR_ACTION=true
+REASON=validator-operator-cancel
+OUTCOME=$outcome
+EOF2
+  {
+    printf '**ℹ /design auto-report skipped:** operator action or cancellation outcome `%s`.\n\n' "$outcome"
+    printf 'No public larch bug was filed. The skip was recorded in the run log.\n'
+  } >"$chat"
+  printf 'design validator autofix operator cancel: %s\n' "$outcome" >"$detail"
+  python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" run-log append-failure \
+    --log "$DESIGN_TMPDIR/execution-issues.md" \
+    --site "design validator autofix" \
+    --tool "design-step-validator-autofix.sh" \
+    --exit-code 0 \
+    --category Warnings \
+    --output-file "$detail" \
+    --redact >/dev/null 2>&1 || true
+}
+
+if [ "$OPERATOR_CANCEL" = true ]; then
+  validator_autofix_operator_cancel_audit forced
+  exit 0
+fi
+
 case "${SITE:-}" in
   "design Step 5c"|"design Step 5c "*) _validator_target_file="${_validator_target_file:-$DESIGN_TMPDIR/composed-plan.md}" ;;
   *) _validator_target_file="${_validator_target_file:-$DESIGN_TMPDIR/plan.txt}" ;;
@@ -142,3 +185,55 @@ if [ "${_autofix_rc:-0}" -ne 0 ]; then
   _autofix_status=failed
 fi
 [ -n "${_autofix_log_file:-}" ] || _autofix_log_file="$DESIGN_TMPDIR/validate-plan-commands.log"
+
+autofix_site_token() {
+  case "${SITE:-}" in
+    *"Step 5c"*) printf '%s\n' step5c ;;
+    *"Gate B"*|*"Step 3.5"*) printf '%s\n' gate-b ;;
+    *discussion-round2*) printf '%s\n' discussion-round2 ;;
+    *"Step 2b"*) printf '%s\n' step2b ;;
+    *) printf '%s\n' validator ;;
+  esac
+}
+
+autofix_trigger_token() {
+  case "${_autofix_status:-}" in
+    exhausted|failed|unavailable|skipped-cycle-cap) printf '%s\n' "$_autofix_status" ;;
+    *) printf '%s\n' failed ;;
+  esac
+}
+
+validator_autofix_record_escalation() {
+  case "${_autofix_status:-}" in
+    exhausted|failed|unavailable|skipped-cycle-cap) ;;
+    *) return 0 ;;
+  esac
+  design_require_plugin_root
+  [[ -n "${DESIGN_TMPDIR:-}" && -d "$DESIGN_TMPDIR" ]] || return 0
+  local helper site trigger args
+  helper="$CLAUDE_PLUGIN_ROOT/skills/implement/scripts/stall-recovery-report.sh"
+  [[ -x "$helper" ]] || return 0
+  site=$(autofix_site_token)
+  trigger=$(autofix_trigger_token)
+  args=(
+    --profile generic --artifact-prefix design-failure --implement-tmpdir "$DESIGN_TMPDIR"
+    record-escalation --site "$site" --trigger "$trigger"
+    --step validator --phase validation --dispatcher design-step-validator-autofix
+    --exit-code "${_autofix_rc:-unknown}"
+  )
+  case "${_autofix_log_file:-}" in
+    "$DESIGN_TMPDIR"/*)
+      if [ -f "$_autofix_log_file" ] && [ ! -L "$_autofix_log_file" ]; then
+        args+=(--failure-detail-log "$_autofix_log_file")
+      fi
+      ;;
+  esac
+  set +e
+  "$helper" "${args[@]}" \
+    >"$DESIGN_TMPDIR/validator-autofix-record-escalation.stdout.log" \
+    2>"$DESIGN_TMPDIR/validator-autofix-record-escalation.stderr.log"
+  set -e
+}
+
+validator_autofix_record_escalation
+validator_autofix_operator_cancel_audit

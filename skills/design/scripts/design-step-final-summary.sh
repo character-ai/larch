@@ -117,3 +117,16 @@ DESIGN_TMPDIR="$DESIGN_TMPDIR" ISSUE_NUMBER="${ISSUE_NUMBER:-}" SESSION_ID="${SE
   --outcome "$SUMMARY_OUTCOME" \
   ${REPO:+--repo "$REPO"} \
   --post-publish-only
+emit_report_gate_sidecars_from_disk() {
+  local sidecar handoff="$DESIGN_TMPDIR/design-report-gate-sidecars.md"
+  : >"$handoff"
+  for sidecar in "$DESIGN_TMPDIR/design-failure-chat-print.md" "$DESIGN_TMPDIR/design-failure-operator-action-chat.md"; do
+    [ -s "$sidecar" ] || continue
+    cat "$sidecar" >>"$handoff"
+    printf '\n' >>"$handoff"
+  done
+  if [ -s "$handoff" ]; then
+    printf 'REPORT_GATE_SIDECARS_FILE=%s\n' "$handoff"
+  fi
+}
+emit_report_gate_sidecars_from_disk

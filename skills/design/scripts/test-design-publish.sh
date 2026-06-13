@@ -47,9 +47,12 @@ trap 'rm -rf "$TMP"' EXIT
 
 FAKE_PLUGIN="$TMP/plugin"
 STUB="$FAKE_PLUGIN/scripts"
-mkdir -p "$STUB" "$FAKE_PLUGIN/skills/design/scripts"
+mkdir -p "$STUB" "$FAKE_PLUGIN/skills/design/scripts" "$FAKE_PLUGIN/skills/implement/scripts"
+ln -sf "$REPO_ROOT/skills/implement/scripts/stall-recovery-report.sh" "$FAKE_PLUGIN/skills/implement/scripts/stall-recovery-report.sh"
 ln -sf "$REPO_ROOT/scripts/lib-quiet.sh" "$STUB/lib-quiet.sh"
 ln -sf "$REPO_ROOT/scripts/lib-net.sh" "$STUB/lib-net.sh" 2>/dev/null || true
+ln -sf "$REPO_ROOT/scripts/lib-design-tmpdir.sh" "$STUB/lib-design-tmpdir.sh"
+ln -sf "$REPO_ROOT/scripts/lib-larch-dev-clone.sh" "$STUB/lib-larch-dev-clone.sh"
 write_reentry_guard_wrapper() {
     cat >"$STUB/lib-design-reentry-guard.sh" <<WRAP
 # shellcheck shell=bash
@@ -68,6 +71,7 @@ WRAP
 }
 write_reentry_guard_wrapper
 ln -sf "$SCRIPT_DIR/lib-phase-driver.sh" "$FAKE_PLUGIN/skills/design/scripts/lib-phase-driver.sh"
+ln -sf "$REPO_ROOT/skills/design/scripts/design-stage-terminal-state.sh" "$FAKE_PLUGIN/skills/design/scripts/design-stage-terminal-state.sh"
 
 setup_design_tmp() {
     local d="$1"
@@ -238,6 +242,19 @@ elif cmd == ["run-log", "append-entry"]:
         with open(log_file, "a", encoding="utf-8") as fh:
             fh.write(entry_text + "\n")
     raise SystemExit(0)
+elif cmd == ["session", "read-key"]:
+    p = _parse_args(sys.argv[3:])
+    default = p.get("default", "")
+    key = p.get("key", "")
+    path = p.get("file", "")
+    if path and os.path.isfile(path):
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                if line.startswith(key + "="):
+                    print(line.split("=", 1)[1].rstrip("\n"))
+                    raise SystemExit(0)
+    print(default)
+    raise SystemExit(0)
 else:
     print(f"unexpected cli args: {sys.argv[1:]}", file=sys.stderr)
     raise SystemExit(2)
@@ -345,7 +362,7 @@ set +e
 bash "$SUBJECT" 2>/dev/null
 rc=$?
 set -e
-assert_rc "missing argv" 2 "$rc"
+assert_rc "missing argv" 5 "$rc"
 
 set +e
 bash "$SUBJECT" --help 2>/dev/null
@@ -361,7 +378,7 @@ for bad_repo in /abs bad..repo a/b/c --owner/repo 'owner\repo' ../repo; do
     bash "$SUBJECT" --design-tmpdir "$D_BAD_REPO" --issue 1 --session-id x --claude-pid 1 --repo "$bad_repo" 2>/dev/null
     rc=$?
     set -e
-    assert_rc "invalid --repo $bad_repo" 2 "$rc"
+    assert_rc "invalid --repo $bad_repo" 5 "$rc"
 done
 
 D_BAD_RESOLVED_REPO="$TMP/bad-resolved-repo"
@@ -374,7 +391,7 @@ set +e
 bash "$SUBJECT" --design-tmpdir "$D_BAD_RESOLVED_REPO" --issue 1 --session-id x --claude-pid 1 2>/dev/null
 rc=$?
 set -e
-assert_rc "invalid resolved repo" 2 "$rc"
+assert_rc "invalid resolved repo" 5 "$rc"
 if grep -q 'plan-block-write' "$PLAN_BLOCK_LOG" 2>/dev/null; then
     fail "invalid resolved repo must fail before plan-block-write"
 else
@@ -389,7 +406,7 @@ set +e
 bash "$SUBJECT" --design-tmpdir "$D_PRE" --issue 1 --session-id x --claude-pid 1 2>/dev/null
 rc=$?
 set -e
-assert_rc "missing step-5b" 2 "$rc"
+assert_rc "missing step-5b" 5 "$rc"
 
 # --- missing composed plan ---
 D_NOP="$TMP/no-plan"
@@ -399,7 +416,7 @@ set +e
 bash "$SUBJECT" --design-tmpdir "$D_NOP" --issue 1 --session-id x --claude-pid 1 2>/dev/null
 rc=$?
 set -e
-assert_rc "empty composed plan" 2 "$rc"
+assert_rc "empty composed plan" 5 "$rc"
 
 
 # --- validator defects: exit 4, no redaction or publish side effects ---
@@ -431,7 +448,7 @@ set +e
 bash "$SUBJECT" --design-tmpdir "$D_VINFRA" --issue 1 --session-id x --claude-pid 1 >/dev/null 2>/dev/null
 rc=$?
 set -e
-assert_rc "validator infra failure" 2 "$rc"
+assert_rc "validator infra failure" 5 "$rc"
 if [[ -e "$D_VINFRA/composed-plan.redacted.md" ]]; then fail "infra failure must not redact"; else pass "infra failure skipped redaction"; fi
 
 # --- validator not-run/missing status failure ---
@@ -445,7 +462,7 @@ set +e
 bash "$SUBJECT" --design-tmpdir "$D_VMISS" --issue 1 --session-id x --claude-pid 1 >/dev/null 2>/dev/null
 rc=$?
 set -e
-assert_rc "validator missing status" 2 "$rc"
+assert_rc "validator missing status" 5 "$rc"
 
 # --- skip validate publishes and marks status skipped ---
 D_SKIP="$TMP/skip-validate"
@@ -496,7 +513,7 @@ assert_rc "pause checkpoint" 0 "$rc"
 grep -q 'pause-save' "$CALL_LOG" || fail "pause save not called"
 if grep -q 'validator\|plan-block-write' "$CALL_LOG"; then fail "pause must happen before validator/publish"; else pass "pause skipped validator/publish"; fi
 
-# --- redactor nonzero exit: exit 2, no publish side effects ---
+# --- redactor nonzero exit: exit 5, no publish side effects ---
 D_REDACT_FAIL="$TMP/redact-fail"
 setup_design_tmp "$D_REDACT_FAIL"
 reset_publish_stub_env
@@ -507,10 +524,10 @@ set +e
 bash "$SUBJECT" --design-tmpdir "$D_REDACT_FAIL" --issue 42 --session-id sid-1 --claude-pid 9999 >/dev/null 2>/dev/null
 rc=$?
 set -e
-assert_rc "redactor failure exit 2" 2 "$rc"
+assert_rc "redactor failure exit 5" 5 "$rc"
 if grep -q 'plan-block-write' "$PLAN_BLOCK_LOG" 2>/dev/null; then fail "redactor failure must not publish"; else pass "redactor failure skipped plan-block-write"; fi
 
-# --- redactor produces empty output: exit 2, no publish side effects ---
+# --- redactor produces empty output: exit 5, no publish side effects ---
 D_REDACT_EMPTY="$TMP/redact-empty"
 setup_design_tmp "$D_REDACT_EMPTY"
 reset_publish_stub_env
@@ -521,7 +538,7 @@ set +e
 bash "$SUBJECT" --design-tmpdir "$D_REDACT_EMPTY" --issue 42 --session-id sid-1 --claude-pid 9999 >/dev/null 2>/dev/null
 rc=$?
 set -e
-assert_rc "redactor empty output exit 2" 2 "$rc"
+assert_rc "redactor empty output exit 5" 5 "$rc"
 if grep -q 'plan-block-write' "$PLAN_BLOCK_LOG" 2>/dev/null; then fail "empty redact must not publish"; else pass "empty redact skipped plan-block-write"; fi
 
 # --- exit-4 stdout-fallback when result-env write fails ---
@@ -552,6 +569,10 @@ set -e
 assert_rc "plan-block-write failure" 1 "$rc"
 grep -q 'PLAN_WRITE_OK=false' "$D_FAIL/.design-publish-result.env" \
   || fail "failure result env missing PLAN_WRITE_OK=false"
+[ -f "$D_FAIL/design-failure-terminal-state.env" ] \
+  || fail 'plan-block failure must stage terminal state on publish tmpdir'
+grep -Fxq 'FAILURE_OUTCOME=failed-plan-write' "$D_FAIL/design-failure-terminal-state.env" \
+  || fail 'plan-block failure terminal outcome missing on publish tmpdir'
 grep -q 'failed-plan-write' "$RENDER_LOG" \
   || fail "failed-plan-write render not logged"
 grep -q 'ISSUE_NUMBER=42' "$RENDER_LOG" \
@@ -563,6 +584,22 @@ grep -q "DESIGN_TMPDIR=${D_FAIL_CANON}" "$RENDER_LOG" \
   || fail "failed-plan-write render missing DESIGN_TMPDIR"
 if grep -q 'tracking-issue rename' "$RENAME_LOG" 2>/dev/null; then fail "failed plan write must not rename"; else pass "failed plan write skipped rename"; fi
 if grep -q 'tracking-issue rename' "$CALL_LOG" 2>/dev/null; then fail "failed plan write call log must not rename"; else pass "failed plan write call log skipped rename"; fi
+
+D_FAIL_STAGE="$TMP/plan-block-stage"
+setup_design_tmp "$D_FAIL_STAGE"
+D_FAIL_STAGE_CANON=$(cd "$D_FAIL_STAGE" && pwd -P)
+printf 'plan-block write failed\n' >"$D_FAIL_STAGE_CANON/design-plan-write.failure.log"
+env -u CLAUDE_PLUGIN_ROOT "$REPO_ROOT/skills/design/scripts/design-stage-terminal-state.sh" \
+  --design-tmpdir "$D_FAIL_STAGE_CANON" --outcome failed-plan-write --step publish \
+  --phase plan-write --site design-publish --trigger failed \
+  --bail-reason plan-write-failed --exit-code 1 --source-script design-publish \
+  --failure-detail-log "$D_FAIL_STAGE_CANON/design-plan-write.failure.log" \
+  --summary-outcome failed-plan-write >/dev/null
+[ -f "$D_FAIL_STAGE_CANON/design-failure-terminal-state.env" ] \
+  || fail 'plan-write failure path must stage terminal state'
+grep -Fxq 'FAILURE_OUTCOME=failed-plan-write' "$D_FAIL_STAGE_CANON/design-failure-terminal-state.env" \
+  || fail 'plan-write failure terminal outcome missing'
+pass 'plan-block failure stages terminal state at runtime'
 
 # --- happy path ---
 D_OK="$TMP/happy"
@@ -1180,6 +1217,28 @@ grep -q 'tracking-issue rename .*--state designed' "$RENAME_LOG" \
 assert_rename_before_publish "no architecture call-log ordering rename→publish" "$CALL_LOG"
 grep -q 'RENAMED=true' "$D_NO_ARCH/.design-publish-result.env" \
   || fail "missing diagram artifacts must record rename outcome"
+
+
+grep -Fq 'stage_design_terminal_state failed-plan-write' "$SUBJECT" || fail 'design-publish stages failed-plan-write'
+grep -Fq 'stage_design_terminal_state failed-publish' "$SUBJECT" || fail 'design-publish stages failed-publish'
+grep -Fq 'DESIGN_FAILURE_VERSION=1' "$REPO_ROOT/skills/design/scripts/design-stage-terminal-state.sh" || fail 'terminal state helper writes required version key'
+
+# --- publish-tail hard exit stages terminal state via real helper (design-step5c contract) ---
+D_TAIL="$TMP/publish-tail-hard"
+setup_design_tmp "$D_TAIL"
+ln -sf "$REPO_ROOT/skills/design/scripts/design-stage-terminal-state.sh" "$FAKE_PLUGIN/skills/design/scripts/design-stage-terminal-state.sh"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+export REDACT_STUB_RC=1
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_TAIL" --issue 42 --session-id sid-1 --claude-pid 9999 >/dev/null 2>&1
+rc=$?
+set -e
+assert_rc "redactor failure exit 5 for setup abort" 5 "$rc"
+[ -f "$D_TAIL/design-publish-setup.failure.log" ] || fail 'setup hard exit must write failure log'
+pass 'setup hard exit records failure log without duplicate render in design-publish'
+pass 'design-publish terminal-state staging static contract'
 
 if [[ "$FAIL" -gt 0 ]]; then
     echo "FAIL: $FAIL test(s) failed ($PASS passed)" >&2

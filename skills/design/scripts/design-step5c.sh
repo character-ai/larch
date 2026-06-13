@@ -114,6 +114,18 @@ fi
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
 # Marker step id: STEP=design-step5c
 design_bg_wait_marker_start design-step5c || true
+emit_report_gate_sidecars_from_disk() {
+  local sidecar handoff="$DESIGN_TMPDIR/design-report-gate-sidecars.md"
+  : >"$handoff"
+  for sidecar in "$DESIGN_TMPDIR/design-failure-chat-print.md" "$DESIGN_TMPDIR/design-failure-operator-action-chat.md"; do
+    [ -s "$sidecar" ] || continue
+    cat "$sidecar" >>"$handoff"
+    printf '\n' >>"$handoff"
+  done
+  if [ -s "$handoff" ]; then
+    printf 'REPORT_GATE_SIDECARS_FILE=%s\n' "$handoff"
+  fi
+}
    _publish_stdout_file="$(mktemp "${TMPDIR:-/tmp}/larch-publish-stdout.XXXXXX")" || {
      printf '%s\n' "**⚠ Step 5c: could not allocate design-publish stdout capture; aborting /design**" >&2
      exit 1
@@ -129,8 +141,62 @@ design_bg_wait_marker_start design-step5c || true
      >"$_publish_stdout_file"
    _publish_rc=$?
    set -e
+   abort_failed_publish_tail() {
+     local rc=$1
+     [[ -n "${DESIGN_TMPDIR:-}" && -d "$DESIGN_TMPDIR" ]] || return 0
+     design_require_plugin_root
+     local stage_helper="$CLAUDE_PLUGIN_ROOT/skills/design/scripts/design-stage-terminal-state.sh"
+     local design_tmpdir_canon detail_log
+     design_tmpdir_canon=$(cd "$DESIGN_TMPDIR" && pwd -P)
+     detail_log="$design_tmpdir_canon/design-publish-tail.failure.log"
+     [[ -x "$stage_helper" ]] || return 0
+     [ -f "$detail_log" ] || printf 'design-publish.sh failed (exit %s)\n' "$rc" >"$detail_log"
+     set +e
+     "$stage_helper" --design-tmpdir "$design_tmpdir_canon" \
+       --outcome failed-publish-tail \
+       --step publish \
+       --phase publish \
+       --site design-publish \
+       --trigger publish-tail-failed \
+       --bail-reason publish-tail-failed \
+       --exit-code "$rc" \
+       --source-script design-step5c \
+       --summary-outcome failed-publish-tail \
+       --failure-detail-log "$detail_log" \
+       >"$DESIGN_TMPDIR/design-stage-terminal-state.stdout.log" \
+       2>"$DESIGN_TMPDIR/design-stage-terminal-state.stderr.log"
+     local stage_rc=$?
+     set -e
+     if grep -Fxq 'STAGED=false' "$DESIGN_TMPDIR/design-stage-terminal-state.stdout.log" 2>/dev/null; then
+       python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" run-log append-failure \
+         --log "$DESIGN_TMPDIR/execution-issues.md" \
+         --site "design Step 5c publish-tail staging" \
+         --tool "design-stage-terminal-state.sh" \
+         --exit-code 0 \
+         --category Warnings \
+         --output-file "$DESIGN_TMPDIR/design-stage-terminal-state.stdout.log" \
+         --redact >/dev/null 2>&1 || true
+     elif [[ "$stage_rc" -ne 0 ]]; then
+       python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" run-log append-failure \
+         --log "$DESIGN_TMPDIR/execution-issues.md" \
+         --site "design Step 5c publish-tail staging" \
+         --tool "design-stage-terminal-state.sh" \
+         --exit-code "$stage_rc" \
+         --category Warnings \
+         --output-file "$DESIGN_TMPDIR/design-stage-terminal-state.stderr.log" \
+         --redact >/dev/null 2>&1 || true
+     fi
+     export SUMMARY_OUTCOME=failed-publish-tail
+     "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh" \
+       --outcome failed-publish-tail \
+       --mode "${MODE:-N/A}" \
+       ${REPO:+--repo "$REPO"} \
+       --post-publish-only || true
+     emit_report_gate_sidecars_from_disk
+   }
    if [[ "${_publish_rc:-0}" -eq 2 ]]; then
      rm -f "$_publish_stdout_file"
+     abort_failed_publish_tail 2
      printf '%s\n' "**⚠ Step 5c: design-publish.sh configuration error (exit 2); aborting /design**" >&2
      exit 1
    fi
@@ -139,6 +205,7 @@ design_bg_wait_marker_start design-step5c || true
    fi
    if [[ "${_publish_rc:-0}" -ne 0 && "${_publish_rc:-0}" -ne 1 && "${_publish_rc:-0}" -ne 3 && "${_publish_rc:-0}" -ne 4 ]]; then
      rm -f "$_publish_stdout_file"
+     abort_failed_publish_tail "${_publish_rc:-1}"
      printf '%s\n' "**⚠ Step 5c: design-publish.sh failed (exit ${_publish_rc}); aborting /design**" >&2
      exit 1
    fi
@@ -233,3 +300,5 @@ printf 'CLEANUP_ELIGIBLE=%s\n' "${_cleanup_eligible}"
 if [[ "${_publish_rc:-0}" -eq 4 ]]; then
   printf 'STEP5C_STATUS=validator-defects\n'
 fi
+
+emit_report_gate_sidecars_from_disk

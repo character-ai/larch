@@ -120,3 +120,11 @@ Different skills use different protocols for resolving review findings:
 | Negotiation | `/research` | Up to N rounds of back-and-forth with external reviewers. Claude makes the final call. |
 
 See [Voting Process](voting-process.md) for full details on the voting protocol.
+
+## /design teardown reporting
+
+During post-phase final summary, `/design` runs a one-issue report gate before final render and summary upsert. Terminal failures and escalation-success runs use the same shared reporting core as `/implement` with the `design-failure` artifact prefix.
+
+Hard-fail paths stage terminal state before abort when safe. Step 0b clarify hard halts stage `failed-clarify`. Step 3 `postplan-failed` stages state in the script, then prompt-side orchestration runs final-summary routing so KV stdout stays clean. Step 2b.5 decompose-panel retry exhaustion is terminal `failed-judge-panel` and routes through Split-path final-summary orchestration.
+
+Ordinary Step 3 panel degradation continues the run. It may become escalation-success evidence only after an approved outcome. Successful runs without escalation do not file. Operator-action skips are audited in chat and run logs but do not file.

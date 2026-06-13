@@ -29,6 +29,96 @@ DEFAULT_TIER_B_ATTEMPTS_SLICE="stall-recovery-bounded-attempts.md"
 DEFAULT_TIER_B_ESCALATION_SLICE="stall-recovery-bounded-escalation-summary.md"
 DEFAULT_TIER_B_ROOT_CAUSE_SLICE="stall-recovery-bounded-root-cause-public.md"
 
+REPORT_PROFILE="implement"
+ARTIFACT_PREFIX="stall-recovery"
+REPORT_SKILL_LABEL="/implement"
+PRIMARY_STATE_FILE=""
+FINALIZE_STATE_FILE=""
+SESSION_ENV_FILE=""
+GLOBAL_IMPLEMENT_TMPDIR=""
+
+profile_is_generic() {
+    [ "${REPORT_PROFILE:-implement}" = generic ]
+}
+
+apply_report_profile_defaults() {
+    case "${REPORT_PROFILE:-implement}" in
+        implement)
+            REPORT_SKILL_LABEL="/implement"
+            ;;
+        generic)
+            [ "${ARTIFACT_PREFIX:-stall-recovery}" != stall-recovery ] || :
+            case "${ARTIFACT_PREFIX:-}" in
+                design-failure) REPORT_SKILL_LABEL="/design" ;;
+                "") REPORT_SKILL_LABEL="/generic" ;;
+                *) REPORT_SKILL_LABEL="/${ARTIFACT_PREFIX%%-*}" ;;
+            esac
+            ;;
+        *) die_argv "--profile must be implement or generic" ;;
+    esac
+    case "${ARTIFACT_PREFIX:-}" in
+        ""|*[!A-Za-z0-9_-]*|-*|*_*) die_argv "--artifact-prefix must be a simple dash token" ;;
+    esac
+}
+
+parse_global_report_flag() {
+    case "${1:-}" in
+        --profile)
+            [ $# -ge 2 ] || die_argv "--profile requires a value"
+            REPORT_PROFILE=$2
+            apply_report_profile_defaults
+            PARSED_GLOBAL_FLAG=2
+            return 0
+            ;;
+        --artifact-prefix)
+            [ $# -ge 2 ] || die_argv "--artifact-prefix requires a value"
+            ARTIFACT_PREFIX=$2
+            apply_report_profile_defaults
+            PARSED_GLOBAL_FLAG=2
+            return 0
+            ;;
+        --implement-tmpdir)
+            [ $# -ge 2 ] || die_argv "--implement-tmpdir requires a value"
+            GLOBAL_IMPLEMENT_TMPDIR=$2
+            PARSED_GLOBAL_FLAG=2
+            return 0
+            ;;
+        --primary-state-file)
+            [ $# -ge 2 ] || die_argv "--primary-state-file requires a value"
+            PRIMARY_STATE_FILE=$2
+            PARSED_GLOBAL_FLAG=2
+            return 0
+            ;;
+        --finalize-state-file)
+            [ $# -ge 2 ] || die_argv "--finalize-state-file requires a value"
+            FINALIZE_STATE_FILE=$2
+            PARSED_GLOBAL_FLAG=2
+            return 0
+            ;;
+        --session-env-file)
+            [ $# -ge 2 ] || die_argv "--session-env-file requires a value"
+            SESSION_ENV_FILE=$2
+            PARSED_GLOBAL_FLAG=2
+            return 0
+            ;;
+        *) PARSED_GLOBAL_FLAG=0; return 0 ;;
+    esac
+}
+
+artifact_file_name() {
+    local default_name=$1
+    if [ "${ARTIFACT_PREFIX:-stall-recovery}" = stall-recovery ]; then
+        printf '%s\n' "$default_name"
+    else
+        printf '%s%s\n' "$ARTIFACT_PREFIX" "${default_name#stall-recovery}"
+    fi
+}
+
+artifact_path() {
+    local tmpdir=$1 default_name=$2
+    printf '%s/%s\n' "$tmpdir" "$(artifact_file_name "$default_name")"
+}
+
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPTS_DIR/lib-quiet.sh"
 # shellcheck source=scripts/lib-larch-dev-clone.sh
@@ -36,7 +126,7 @@ source "$SCRIPTS_DIR/lib-larch-dev-clone.sh"
 larch_quiet_init
 
 usage() {
-    larch_err "stall-recovery-report.sh: usage: $0 <init-attempts|classify|record-escalation|normalize-outcome|compose-report|dedup-tier-a-report|normalize-file-failure-report-env|normalize-issue-env|validate-tier-b-public-file|chat-print|record-attempt|retry-policy|is-larch-dev-clone|clear-stall|seed-terminal-state|lint> ..."
+    larch_err "stall-recovery-report.sh: usage: $0 [--profile implement|generic] [--artifact-prefix PREFIX] <init-attempts|classify|record-escalation|normalize-outcome|compose-report|dedup-tier-a-report|normalize-file-failure-report-env|normalize-issue-env|validate-token|validate-terminal-state|validate-tier-b-public-file|populate-sensitive-corpus|chat-print|record-attempt|retry-policy|is-larch-dev-clone|clear-stall|seed-terminal-state|lint> ..."
 }
 
 die_argv() {
@@ -65,7 +155,7 @@ atomic_write_text() {
 
 hash_text() {
     if command -v shasum >/dev/null 2>&1; then
-        shasum -a 256 | awk '{print $1}'
+        LC_ALL=C shasum -a 256 | awk '{print $1}'
     elif command -v sha256sum >/dev/null 2>&1; then
         sha256sum | awk '{print $1}'
     else
@@ -99,7 +189,13 @@ report_dedup_seed() {
         trigger=$(safe_trigger_value "$trigger")
     fi
     {
-        printf 'larch-stall-report-dedup-v1\n'
+        if profile_is_generic; then
+            printf 'larch-stall-report-dedup-generic-v1\n'
+            report_signature_field_line skill_label "$REPORT_SKILL_LABEL"
+            report_signature_field_line artifact_prefix "$ARTIFACT_PREFIX"
+        else
+            printf 'larch-stall-report-dedup-v1\n'
+        fi
         report_signature_field_line report_kind "$kind"
         report_signature_field_line failure_class "$failure_class"
         report_signature_field_line step "$step"
@@ -297,11 +393,14 @@ clear_stall_layer_path() {
 cmd_clear_stall() {
     local tmpdir=""
     while [ $# -gt 0 ]; do
+        parse_global_report_flag "$@"; rc=${PARSED_GLOBAL_FLAG:-0}
+        if [ "$rc" = 2 ]; then shift 2; continue; fi
         case "$1" in
             --implement-tmpdir) [ $# -ge 2 ] || die_argv "--implement-tmpdir requires a value"; tmpdir=$2; shift 2 ;;
             *) die_argv "unknown clear-stall option: $1" ;;
         esac
     done
+    [ -n "$tmpdir" ] || tmpdir="${GLOBAL_IMPLEMENT_TMPDIR:-}"
     [ -n "$tmpdir" ] || die_missing "--implement-tmpdir is required"
     [ -d "$tmpdir" ] || die_missing "--implement-tmpdir must exist"
 
@@ -342,6 +441,8 @@ cmd_clear_stall() {
 cmd_seed_terminal_state() {
     local tmpdir="" stall_step_arg="" phase_arg=""
     while [ $# -gt 0 ]; do
+        parse_global_report_flag "$@"; rc=${PARSED_GLOBAL_FLAG:-0}
+        if [ "$rc" = 2 ]; then shift 2; continue; fi
         case "$1" in
             --implement-tmpdir) [ $# -ge 2 ] || die_argv "--implement-tmpdir requires a value"; tmpdir=$2; shift 2 ;;
             --stall-step) [ $# -ge 2 ] || die_argv "--stall-step requires a value"; stall_step_arg=$2; shift 2 ;;
@@ -349,6 +450,7 @@ cmd_seed_terminal_state() {
             *) die_argv "unknown seed-terminal-state option: $1" ;;
         esac
     done
+    [ -n "$tmpdir" ] || tmpdir="${GLOBAL_IMPLEMENT_TMPDIR:-}"
     [ -n "$tmpdir" ] || die_missing "--implement-tmpdir is required"
     [ -d "$tmpdir" ] || die_missing "--implement-tmpdir must exist"
 
@@ -650,6 +752,14 @@ safe_bail_reason_value() {
     case "${1:-}" in
         "") printf '\n'; return 0 ;;
     esac
+    if profile_is_generic; then
+        case "$1" in
+            failed-plan-write|failed-publish|failed-postplan|failed-clarify|failed-judge-panel|failed-publish-tail|clarify-hard-halt|postplan-failed|publish-failed|publish-tail-failed|plan-write-failed|judge-panel-collapse|decompose-panel-retry-exhausted|validator-autofix-exhausted|validator-autofix-failed|validator-autofix-unavailable|validator-autofix-skipped-cycle-cap|operator-action)
+                printf '%s\n' "$1"
+                return 0
+                ;;
+        esac
+    fi
     case "$1" in
         adopted-issue-closed|adopted-issue-is-pr|all-vendors-failed|branch-create-failed|ci-fix-exhausted|design-flaw|dirty-state-after-timeout|dirty-tree|escalate|first-fixer-non-health|fix-attempts-exhausted|main-branch-post-dispatch|orchestrator-envelope-invalid|protected-path-edit-required-out-of-scope|qa-loop-exceeded|recovery-out-of-scope|review-required|run-flags-persist-failed|ship-pr-internal-lint-fix|tracking-init-failed|wrapper-validation-failure|\
         branch-changed|cap_hit|codex-runtime-failure|cursor-bailed-no-reason|cursor-modified-history|cursor-runtime-failure|detached-head-prohibited|interactive-subprocess-unsupported|main-branch-prohibited|manifest-missing|manifest-oos-materialization-failed|manifest-schema-invalid|protected-path-modified|qa-pending-missing|redactor-not-executable|resume-incompatible|submodule-dirty|submodule-edit-required-out-of-scope|\
@@ -673,6 +783,7 @@ safe_bail_reason_value() {
 safe_dispatcher_value() {
     case "${1:-}" in
         codex|cursor|claude|bash|python|ship-pr|lint-fix-loop|run-step5-review) printf '%s\n' "$1" ;;
+        split-path|design-publish|design-step3-review|design-step5c|clarify-loop|prompt-step|validator|postplan|decompose-panel) if profile_is_generic; then printf '%s\n' "$1"; else printf 'redacted\n'; fi ;;
         "") printf 'unknown\n' ;;
         *) printf 'redacted\n' ;;
     esac
@@ -681,6 +792,7 @@ safe_dispatcher_value() {
 safe_site_value() {
     case "${1:-}" in
         step3|step5|step5-self-review|step5-mav|step6|step8|step18a|review-loop|lint-fix-loop|ship-pr|ship-pr-ci-initial|ship-pr-ci-merge|ship-pr-ci-per-job|ship-pr-internal|recovery-inline) printf '%s\n' "$1" ;;
+        step2b|gate-b|step3-review|discussion-round2|step5c|design-publish|clarify-loop|judge-panel|decompose-panel) if profile_is_generic; then printf '%s\n' "$1"; else printf 'redacted\n'; fi ;;
         *) printf 'redacted\n' ;;
     esac
 }
@@ -688,6 +800,7 @@ safe_site_value() {
 safe_trigger_value() {
     case "${1:-}" in
         main-agent-required|coder-main-agent-required|main-agent-vote-required|fix-attempts-exhausted|design-flaw|escalate|all-vendors-failed|ci-fix-exhausted|first-fixer-non-health|local-unfixable|ship-pr-internal-lint-fix|lint-fix-main-agent-required|step2-impl|step8-shippr|dispatch-failed) printf '%s\n' "$1" ;;
+        main-agent-apply-required|postplan-operator-required|exhausted|failed|unavailable|skipped-cycle-cap|postplan-failed|publish-tail-failed|plan-write-failed|publish-failed|panel-failed|tally-error|degraded-empty-collector|judge-panel-collapse|decompose-panel-retry-exhausted) if profile_is_generic; then printf '%s\n' "$1"; else printf 'redacted\n'; fi ;;
         ci-local-unfixable:*)
             if printf '%s\n' "$1" | LC_ALL=C grep -Eq '^ci-local-unfixable:[A-Za-z0-9_,-]+$'; then
                 printf '%s\n' "$1"
@@ -784,8 +897,195 @@ latest_attempt_signature() {
     kv_get "$file" "attempt.${count}.signature" ""
 }
 
+
+safe_source_script_value() {
+    case "${1:-}" in
+        split-path|design-publish|design-step3-review|design-step5c|clarify-loop|prompt-step|validator|postplan|decompose-panel|bash|python)
+            if profile_is_generic; then printf '%s\n' "$1"; else safe_dispatcher_value "$1"; fi
+            ;;
+        "") printf 'unknown\n' ;;
+        *) printf 'redacted\n' ;;
+    esac
+}
+
+safe_root_cause_hint_value() {
+    case "${1:-}" in
+        larch-defect|environment|operator-action) printf '%s\n' "$1" ;;
+        "") printf '\n' ;;
+        *) printf 'redacted\n' ;;
+    esac
+}
+
+safe_outcome_value() {
+    case "${1:-}" in
+        failed-plan-write|failed-publish|failed-postplan|failed-clarify|failed-judge-panel|failed-publish-tail|approved|approved-partition|cancelled-*) printf '%s\n' "$1" ;;
+        *) printf 'redacted\n' ;;
+    esac
+}
+
+reject_rawish_value() {
+    local value=${1:-}
+    case "$value" in
+        *$'\n'*|*$'\r'*|http://*|https://*|*github.com*|/*|*'..'*|*' '*|*'`'*|*'<script'*|*'<!--'*) return 0 ;;
+    esac
+    return 1
+}
+
+cmd_validate_token() {
+    local tmpdir="" kind="" value="" safe="" rc
+    while [ $# -gt 0 ]; do
+        parse_global_report_flag "$@"; rc=${PARSED_GLOBAL_FLAG:-0}
+        if [ "$rc" = 2 ]; then shift 2; continue; fi
+        case "$1" in
+            --implement-tmpdir) [ $# -ge 2 ] || die_argv "--implement-tmpdir requires a value"; tmpdir=$2; shift 2 ;;
+            --token-kind) [ $# -ge 2 ] || die_argv "--token-kind requires a value"; kind=$2; shift 2 ;;
+            --value) [ $# -ge 2 ] || die_argv "--value requires a value"; value=$2; shift 2 ;;
+            *) die_argv "unknown validate-token option: $1" ;;
+        esac
+    done
+    apply_report_profile_defaults
+    [ -n "$tmpdir" ] || tmpdir="${GLOBAL_IMPLEMENT_TMPDIR:-}"
+    [ -n "$tmpdir" ] || die_missing "--implement-tmpdir is required"
+    [ -d "$tmpdir" ] || die_missing "--implement-tmpdir must exist"
+    [ -n "$kind" ] || die_missing "--token-kind is required"
+    [ -n "$value" ] || die_missing "--value is required"
+    reject_rawish_value "$value" && { emit_kv VALID false; exit 1; }
+    case "$kind" in
+        outcome) safe=$(safe_outcome_value "$value"); [ "$safe" = "$value" ] || { emit_kv VALID false; exit 1; } ;;
+        step) safe=$(safe_step_value "$value"); [ "$safe" != unknown ] || { emit_kv VALID false; exit 1; } ;;
+        phase) safe=$(safe_phase_value "$value"); [ "$safe" != unknown ] || { emit_kv VALID false; exit 1; } ;;
+        site) safe=$(safe_site_value "$value"); [ "$safe" != redacted ] || { emit_kv VALID false; exit 1; } ;;
+        trigger) safe=$(safe_trigger_value "$value"); [ "$safe" != redacted ] || { emit_kv VALID false; exit 1; } ;;
+        bail) safe=$(safe_bail_reason_value "$value"); [ "$safe" != redacted ] || { emit_kv VALID false; exit 1; } ;;
+        source-script) safe=$(safe_source_script_value "$value"); [ "$safe" != redacted ] && [ "$safe" != unknown ] || { emit_kv VALID false; exit 1; } ;;
+        root-cause) safe=$(safe_root_cause_hint_value "$value"); [ "$safe" != redacted ] && [ -n "$safe" ] || { emit_kv VALID false; exit 1; } ;;
+        *) die_argv "unknown --token-kind" ;;
+    esac
+    emit_kv VALID true
+}
+
+terminal_state_value_valid() {
+    local key=$1 value=$2 tmpdir=$3
+    case "$key" in
+        DESIGN_FAILURE_VERSION) [ "$value" = 1 ] ;;
+        DESIGN_FAILURE_KIND) [ "$value" = terminal ] ;;
+        FAILURE_OUTCOME|SUMMARY_OUTCOME) [ "$(safe_outcome_value "$value")" = "$value" ] ;;
+        STALL_STEP) [ "$(safe_step_value "$value")" != unknown ] ;;
+        PHASE) [ "$(safe_phase_value "$value")" != unknown ] ;;
+        SITE) [ "$(safe_site_value "$value")" != redacted ] ;;
+        TRIGGER) [ "$(safe_trigger_value "$value")" != redacted ] ;;
+        BAIL_REASON) [ "$(safe_bail_reason_value "$value")" != redacted ] ;;
+        EXIT_CODE) [ "$(safe_exit_code_value "$value")" = "$value" ] || [ "$value" = unknown ] ;;
+        FAILURE_DETAIL_LOG)
+            [ -z "$value" ] && return 0
+            validate_tmpdir_local_file "$tmpdir" "$value" "FAILURE_DETAIL_LOG" >/dev/null 2>&1
+            ;;
+        SOURCE_SCRIPT) [ "$(safe_source_script_value "$value")" != redacted ] && [ "$(safe_source_script_value "$value")" != unknown ] ;;
+        ROOT_CAUSE_HINT) [ -z "$value" ] || [ "$(safe_root_cause_hint_value "$value")" = "$value" ] ;;
+        OCCURRED_AT) [ -z "$value" ] || safe_utc_value "$value" >/dev/null ;;
+        EVIDENCE_REF) [ -z "$value" ] || ! reject_rawish_value "$value" ;;
+        *) return 1 ;;
+    esac
+}
+
+cmd_validate_terminal_state() {
+    local tmpdir="" state_file="" key value required missing=0 rc
+    while [ $# -gt 0 ]; do
+        parse_global_report_flag "$@"; rc=${PARSED_GLOBAL_FLAG:-0}
+        if [ "$rc" = 2 ]; then shift 2; continue; fi
+        case "$1" in
+            --implement-tmpdir) [ $# -ge 2 ] || die_argv "--implement-tmpdir requires a value"; tmpdir=$2; shift 2 ;;
+            --primary-state-file) [ $# -ge 2 ] || die_argv "--primary-state-file requires a value"; state_file=$2; PRIMARY_STATE_FILE=$2; shift 2 ;;
+            *) die_argv "unknown validate-terminal-state option: $1" ;;
+        esac
+    done
+    apply_report_profile_defaults
+    [ -n "$tmpdir" ] || tmpdir="${GLOBAL_IMPLEMENT_TMPDIR:-}"
+    [ -n "$tmpdir" ] || die_missing "--implement-tmpdir is required"
+    [ -d "$tmpdir" ] || die_missing "--implement-tmpdir must exist"
+    [ -n "$state_file" ] || state_file="${PRIMARY_STATE_FILE:-}"
+    [ -n "$state_file" ] || state_file="$(artifact_path "$tmpdir" stall-recovery-terminal-state.env)"
+    validate_tmpdir_local_file "$tmpdir" "$state_file" "--primary-state-file" || { emit_kv VALID false; exit 1; }
+    for required in DESIGN_FAILURE_VERSION DESIGN_FAILURE_KIND FAILURE_OUTCOME STALL_STEP PHASE SITE TRIGGER BAIL_REASON EXIT_CODE FAILURE_DETAIL_LOG SOURCE_SCRIPT; do
+        value=$(kv_get "$state_file" "$required" "")
+        if [ -z "$value" ] && [ "$required" != FAILURE_DETAIL_LOG ]; then
+            missing=1
+        fi
+    done
+    [ "$missing" = 0 ] || { emit_kv VALID false; exit 1; }
+    while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in ""|\#*) continue ;; *=*) key=${line%%=*}; value=${line#*=} ;; *) emit_kv VALID false; exit 1 ;; esac
+        if [ "$key" = FAILURE_DETAIL_LOG ]; then
+            terminal_state_value_valid "$key" "$value" "$tmpdir" || { emit_kv VALID false; exit 1; }
+            continue
+        fi
+        case "$value" in *$'\r'*|*$'\n'*|http://*|https://*|*github.com*|*'/Users/'*|*'/home/'*|*' larch '*|*'```'*) emit_kv VALID false; exit 1 ;; esac
+        terminal_state_value_valid "$key" "$value" "$tmpdir" || { emit_kv VALID false; exit 1; }
+    done <"$state_file"
+    emit_kv VALID true
+}
+
+cmd_classify_generic_from_terminal_state() {
+    local tmpdir=$1 state_file=${PRIMARY_STATE_FILE:-} attempts_file=$2 evidence="" detail_log="" detail_log_valid=false
+    local stall_step phase bail_reason exit_code source_script failure_class signature resume_hint matched_pattern classification_file classification_content failure_detail_log_value="" last_sig evidence_digest
+    [ -n "$state_file" ] || state_file="$(artifact_path "$tmpdir" stall-recovery-terminal-state.env)"
+    PRIMARY_STATE_FILE=$state_file
+    cmd_validate_terminal_state --implement-tmpdir "$tmpdir" --primary-state-file "$state_file" >/dev/null
+    stall_step=$(kv_get "$state_file" STALL_STEP "")
+    phase=$(kv_get "$state_file" PHASE "")
+    bail_reason=$(kv_get "$state_file" BAIL_REASON "")
+    exit_code=$(kv_get "$state_file" EXIT_CODE "")
+    source_script=$(kv_get "$state_file" SOURCE_SCRIPT "")
+    detail_log=$(kv_get "$state_file" FAILURE_DETAIL_LOG "")
+    if [ -n "$detail_log" ] && evidence=$(read_validated_failure_detail_log "$tmpdir" "$detail_log"); then
+        detail_log_valid=true
+        failure_detail_log_value=$detail_log
+    elif validate_optional_state_evidence_file "$state_file" "generic terminal state"; then
+        evidence=$(cat "$state_file")
+    fi
+    classify_from_evidence "$stall_step" "$phase" "$bail_reason" "$evidence" "$detail_log_valid"
+    failure_class=$CLASSIFIED_FAILURE_CLASS
+    resume_hint=none
+    evidence_digest=""
+    if [ -n "$evidence" ]; then
+        evidence_digest=$(printf '%s\n' "$evidence" | head -c 2048 | hash_text)
+        evidence_digest="${evidence_digest:0:16}"
+    fi
+    signature=$(printf '%s\n' "profile=$REPORT_PROFILE" "skill=$REPORT_SKILL_LABEL" "class=$failure_class" "hint=$resume_hint" "step=$stall_step" "phase=$phase" "bail=$bail_reason" "evidence=$evidence_digest" | hash_text)
+    if [ -n "$attempts_file" ] && [ "$failure_class" != contract-failure ] && [ "$failure_class" != unrecoverable ]; then
+        last_sig=$(latest_attempt_signature "$attempts_file")
+        if [ -n "$last_sig" ] && [ "$last_sig" = "$signature" ]; then
+            failure_class=same-cause-repeat
+            MATCHED_CLASSIFIER_PATTERN=same-cause-repeat
+        fi
+    fi
+    matched_pattern=$(safe_matched_pattern_value "${MATCHED_CLASSIFIER_PATTERN:-no-match}")
+    classification_content=$(cat <<EOF
+FAILURE_CLASS=$failure_class
+FAILURE_SIGNATURE=$signature
+RESUME_HINT=$resume_hint
+STALL_STEP=$(safe_step_value "$stall_step")
+PHASE=$(safe_phase_value "$phase")
+STALL_TRACKING=true
+BAIL_REASON=$(safe_bail_reason_value "$bail_reason")
+BAIL_REASON_RAW=$bail_reason
+FAILURE_DETAIL_LOG=$failure_detail_log_value
+EXIT_CODE=$(safe_exit_code_value "$exit_code")
+MATCHED_CLASSIFIER_PATTERN=$matched_pattern
+DISPATCHER=$(safe_source_script_value "$source_script")
+EOF
+)
+    classification_file="$(artifact_path "$tmpdir" "$DEFAULT_CLASSIFICATION_FILE")"
+    atomic_write_text "$classification_file" "$classification_content
+" || die_argv "could not write classification file"
+    printf '%s\n' "$classification_content" | while IFS= read -r line; do
+        case "$line" in *=*) emit_kv "${line%%=*}" "${line#*=}" ;; esac
+    done
+    emit_kv CLASSIFICATION_FILE "$classification_file"
+}
+
 cmd_classify() {
-    local tmpdir="" in_memory="" bail_arg="" detail_log="" attempts_file="" stall_step_arg="" phase_arg=""
+    local tmpdir="" in_memory="" bail_arg="" detail_log="" attempts_file="" stall_step_arg="" phase_arg="" rc
     local state_file finalize_file session_env evidence="" detail_log_valid=false
     local state_stall_step="" state_phase="" state_stall_tracking="" state_bail_reason="" state_exit_code=""
     local finalize_stall_step="" finalize_phase="" finalize_stall_tracking="" finalize_bail_reason="" finalize_exit_code=""
@@ -793,6 +1093,8 @@ cmd_classify() {
     local stall_step phase stall_tracking bail_reason bail_reason_raw exit_code failure_class signature resume_hint last_sig evidence_digest matched_pattern classification_file classification_content dispatcher failure_detail_log_value=""
 
     while [ $# -gt 0 ]; do
+        parse_global_report_flag "$@"; rc=${PARSED_GLOBAL_FLAG:-0}
+        if [ "$rc" = 2 ]; then shift 2; continue; fi
         case "$1" in
             --implement-tmpdir) [ $# -ge 2 ] || die_argv "--implement-tmpdir requires a value"; tmpdir=$2; shift 2 ;;
             --in-memory-stall-tracking) [ $# -ge 2 ] || die_argv "--in-memory-stall-tracking requires a value"; in_memory=$2; shift 2 ;;
@@ -804,15 +1106,20 @@ cmd_classify() {
             *) die_argv "unknown classify option: $1" ;;
         esac
     done
+    [ -n "$tmpdir" ] || tmpdir="${GLOBAL_IMPLEMENT_TMPDIR:-}"
     [ -n "$tmpdir" ] || die_missing "--implement-tmpdir is required"
     [ -d "$tmpdir" ] || die_missing "--implement-tmpdir must exist"
     if [ -n "$attempts_file" ]; then
         validate_tmpdir_local_file "$tmpdir" "$attempts_file" "--attempts-file" || exit 1
     fi
+    if profile_is_generic && [ -n "${PRIMARY_STATE_FILE:-}" ]; then
+        cmd_classify_generic_from_terminal_state "$tmpdir" "${attempts_file:-}"
+        return 0
+    fi
 
-    state_file="$tmpdir/ship-pr-state.sh"
-    finalize_file="$tmpdir/finalize-state.sh"
-    session_env="$tmpdir/session-env.sh"
+    state_file="${PRIMARY_STATE_FILE:-$tmpdir/ship-pr-state.sh}"
+    finalize_file="${FINALIZE_STATE_FILE:-$tmpdir/finalize-state.sh}"
+    session_env="${SESSION_ENV_FILE:-$tmpdir/session-env.sh}"
     if [ -L "$state_file" ]; then
         larch_err "stall-recovery-report.sh: symlinked ship-pr-state.sh"
         exit 3
@@ -925,7 +1232,7 @@ MATCHED_CLASSIFIER_PATTERN=$matched_pattern
 DISPATCHER=$dispatcher
 EOF
 )
-    classification_file="$tmpdir/$DEFAULT_CLASSIFICATION_FILE"
+    classification_file="$(artifact_path "$tmpdir" "$DEFAULT_CLASSIFICATION_FILE")"
     atomic_write_text "$classification_file" "$classification_content
 " || die_argv "could not write classification file"
 
@@ -946,6 +1253,7 @@ cmd_init_attempts() {
             *) die_argv "unknown init-attempts option: $1" ;;
         esac
     done
+    [ -n "$tmpdir" ] || tmpdir="${GLOBAL_IMPLEMENT_TMPDIR:-}"
     [ -n "$tmpdir" ] || die_missing "--implement-tmpdir is required"
     [ -d "$tmpdir" ] || die_missing "--implement-tmpdir must exist"
     [ -n "$attempts_file" ] || die_missing "--attempts-file is required"
@@ -974,6 +1282,7 @@ cmd_record_attempt() {
             *) die_argv "unknown record-attempt option: $1" ;;
         esac
     done
+    [ -n "$tmpdir" ] || tmpdir="${GLOBAL_IMPLEMENT_TMPDIR:-}"
     [ -n "$tmpdir" ] || die_missing "--implement-tmpdir is required"
     [ -d "$tmpdir" ] || die_missing "--implement-tmpdir must exist"
     [ -n "$attempts_file" ] || die_missing "--attempts-file is required"
@@ -1033,6 +1342,9 @@ cmd_is_larch_dev_clone() {
 
 safe_step_value() {
     local value=${1:-}
+    if profile_is_generic; then
+        case "$value" in validator|postplan|publish|clarify|panel|judge-panel|step2b|step3|step5c) printf '%s\n' "$value"; return 0 ;; esac
+    fi
     if [ "$value" = "bump-branch-guard" ] || [ "$value" = "merge-loop-iteration-cap" ] || [ "$value" = "rebase-failed" ]; then
         printf '%s\n' "$value"
     elif [[ "$value" =~ ^(2|3|5|6)$ ]]; then
@@ -1046,6 +1358,7 @@ safe_step_value() {
 
 safe_phase_value() {
     case "${1:-}" in
+        plan-write|publish|postplan|clarify-loop|judge-panel|validation|teardown) if profile_is_generic; then printf '%s\n' "$1"; else printf 'unknown\n'; fi ;;
         checks|review|implementation|impl|step2|step5|step8|ship|ship-pr|pr-prep|pr-create|ci-initial|ci-merge|evaluate-failure|force-push-gate|bump|merge|postmerge|rebase-failed)
             printf '%s\n' "$1"
             ;;
@@ -1171,6 +1484,7 @@ cmd_bug_body_like() {
             *) die_argv "unknown $mode option: $1" ;;
         esac
     done
+    [ -n "$tmpdir" ] || tmpdir="${GLOBAL_IMPLEMENT_TMPDIR:-}"
     [ -n "$tmpdir" ] || die_missing "--implement-tmpdir is required"
     [ -d "$tmpdir" ] || die_missing "--implement-tmpdir must exist"
     [ -n "$class_file" ] || die_missing "--classification-file is required"
@@ -1216,6 +1530,7 @@ cmd_issue_input_file() {
             *) die_argv "unknown issue-input-file option: $1" ;;
         esac
     done
+    [ -n "$tmpdir" ] || tmpdir="${GLOBAL_IMPLEMENT_TMPDIR:-}"
     [ -n "$tmpdir" ] || die_missing "--implement-tmpdir is required"
     [ -n "$class_file" ] || die_missing "--classification-file is required"
     validate_tmpdir_local_file "$tmpdir" "$class_file" "--classification-file" || exit 1
@@ -1264,6 +1579,7 @@ cmd_normalize_issue_env() {
             *) die_argv "unknown normalize-issue-env option: $1" ;;
         esac
     done
+    [ -n "$tmpdir" ] || tmpdir="${GLOBAL_IMPLEMENT_TMPDIR:-}"
     [ -n "$tmpdir" ] || die_missing "--implement-tmpdir is required"
     [ -d "$tmpdir" ] || die_missing "--implement-tmpdir must exist"
     [ -n "$issue_stdout" ] || die_missing "--issue-stdout-file is required"
@@ -1393,6 +1709,7 @@ cmd_normalize_outcome() {
             *) die_argv "unknown normalize-outcome option: $1" ;;
         esac
     done
+    [ -n "$tmpdir" ] || tmpdir="${GLOBAL_IMPLEMENT_TMPDIR:-}"
     [ -n "$tmpdir" ] || die_missing "--implement-tmpdir is required"
     [ -d "$tmpdir" ] || die_missing "--implement-tmpdir must exist"
     ship_state="$tmpdir/ship-pr-state.sh"
@@ -1511,8 +1828,10 @@ record_escalation_degraded_evidence() {
 
 cmd_record_escalation() {
     local tmpdir="" site="" trigger="" step="" phase="" dispatcher="unknown" exit_code="unknown" detail_log=""
-    local ledger fallback marker line rel_log="" ts
+    local ledger fallback marker line rel_log="" ts rc
     while [ $# -gt 0 ]; do
+        parse_global_report_flag "$@"; rc=${PARSED_GLOBAL_FLAG:-0}
+        if [ "$rc" = 2 ]; then shift 2; continue; fi
         case "$1" in
             --implement-tmpdir) [ $# -ge 2 ] || die_argv "--implement-tmpdir requires a value"; tmpdir=$2; shift 2 ;;
             --site) [ $# -ge 2 ] || die_argv "--site requires a value"; site=$2; shift 2 ;;
@@ -1525,6 +1844,7 @@ cmd_record_escalation() {
             *) die_argv "unknown record-escalation option: $1" ;;
         esac
     done
+    [ -n "$tmpdir" ] || tmpdir="${GLOBAL_IMPLEMENT_TMPDIR:-}"
     [ -n "$tmpdir" ] || die_missing "--implement-tmpdir is required"
     [ -d "$tmpdir" ] || die_missing "--implement-tmpdir must exist"
     [ -n "$site" ] || die_missing "--site is required"
@@ -1545,9 +1865,9 @@ cmd_record_escalation() {
         rel_log=${detail_log#"$tmpdir"/}
         case "$rel_log" in "$detail_log") rel_log=redacted ;; esac
     fi
-    ledger="$tmpdir/$DEFAULT_ESCALATION_LEDGER"
-    fallback="$tmpdir/$DEFAULT_ESCALATION_FALLBACK"
-    marker="$tmpdir/$DEFAULT_RECORD_FAILURE_MARKER"
+    ledger="$(artifact_path "$tmpdir" "$DEFAULT_ESCALATION_LEDGER")"
+    fallback="$(artifact_path "$tmpdir" "$DEFAULT_ESCALATION_FALLBACK")"
+    marker="$(artifact_path "$tmpdir" "$DEFAULT_RECORD_FAILURE_MARKER")"
     ts=$(now_utc)
     line=$(printf 'utc=%s\tsite=%s\ttrigger=%s\tstep=%s\tphase=%s\tdispatcher=%s\texit_code=%s\tfailure_detail_log=%s' "$ts" "$site" "$trigger" "$step" "$phase" "$dispatcher" "$exit_code" "${rel_log:-}")
     if [ -e "$ledger" ] && [ -f "$ledger" ] && [ ! -L "$ledger" ] && { [ ! -r "$ledger" ] || [ ! -w "$ledger" ]; }; then
@@ -1667,7 +1987,7 @@ sensitive_token_rejects_file() {
     while IFS= read -r token || [ -n "$token" ]; do
         case "$token" in
             ""|[A-Za-z0-9_-]) continue ;;
-            larch-defect|environment|operator-action|terminal-failure|escalation-success|merged|force-merged-externally|pr-created|pr-created-draft|forked-dry-run|main-agent-required|lint-fix-loop|ship-pr|codex|cursor|claude) continue ;;
+            larch-defect|environment|operator-action|terminal-failure|escalation-success|merged|force-merged-externally|pr-created|pr-created-draft|forked-dry-run|main-agent-required|lint-fix-loop|ship-pr|codex|cursor|claude|approved|approved-partition|failed-plan-write|failed-publish|failed-postplan|failed-clarify|failed-judge-panel|failed-publish-tail) continue ;;
         esac
         if sensitive_value_is_allowlisted "$token"; then
             continue
@@ -1791,11 +2111,19 @@ build_sensitive_corpus_from_evidence() {
     append_sensitive_evidence_from_file "$marker" "$out"
     append_sensitive_evidence_from_file "$tmpdir/ship-pr-state.sh" "$out"
     append_sensitive_evidence_from_file "$tmpdir/finalize-state.sh" "$out"
-    append_sensitive_evidence_from_file "$tmpdir/session-env.sh" "$out"
+    append_sensitive_evidence_from_file "${SESSION_ENV_FILE:-$tmpdir/session-env.sh}" "$out"
+    append_sensitive_evidence_from_file "$tmpdir/source-env.sh" "$out"
     append_sensitive_evidence_from_file "$tmpdir/execution-issues.md" "$out"
     append_sensitive_evidence_from_file "$tmpdir/run-log-pointer.txt" "$out"
     append_sensitive_evidence_from_file "$tmpdir/plan.txt" "$out"
     append_sensitive_evidence_from_file "$tmpdir/feature-description.txt" "$out"
+    append_sensitive_evidence_from_file "$tmpdir/issue-body.txt" "$out"
+    append_sensitive_evidence_from_file "$tmpdir/composed-plan.md" "$out"
+    append_sensitive_evidence_from_file "$tmpdir/final-summary.md" "$out"
+    append_sensitive_evidence_from_file "$tmpdir/validate-plan-commands.log" "$out"
+    append_sensitive_evidence_from_file "$tmpdir/design-log-publish.failure.log" "$out"
+    append_sensitive_evidence_from_file "$tmpdir/design-plan-write.failure.log" "$out"
+    append_sensitive_evidence_from_file "$tmpdir/design-publish-tail.failure.log" "$out"
     detail_log=$(kv_get "$class_file" FAILURE_DETAIL_LOG "")
     case "$detail_log" in
         "$tmpdir"/*)
@@ -1804,6 +2132,39 @@ build_sensitive_corpus_from_evidence() {
             fi
             ;;
     esac
+}
+
+cmd_populate_sensitive_corpus() {
+    local tmpdir="" sensitive_file="" class_file="" attempts_file="" ledger="" fallback="" marker="" out="" rc
+    while [ $# -gt 0 ]; do
+        parse_global_report_flag "$@"; rc=${PARSED_GLOBAL_FLAG:-0}
+        if [ "$rc" = 2 ]; then shift 2; continue; fi
+        case "$1" in
+            --implement-tmpdir) [ $# -ge 2 ] || die_argv "--implement-tmpdir requires a value"; tmpdir=$2; shift 2 ;;
+            --sensitive-corpus-file) [ $# -ge 2 ] || die_argv "--sensitive-corpus-file requires a value"; sensitive_file=$2; shift 2 ;;
+            --classification-file) [ $# -ge 2 ] || die_argv "--classification-file requires a value"; class_file=$2; shift 2 ;;
+            --attempts-file) [ $# -ge 2 ] || die_argv "--attempts-file requires a value"; attempts_file=$2; shift 2 ;;
+            --escalation-ledger-file) [ $# -ge 2 ] || die_argv "--escalation-ledger-file requires a value"; ledger=$2; shift 2 ;;
+            --escalation-fallback-file) [ $# -ge 2 ] || die_argv "--escalation-fallback-file requires a value"; fallback=$2; shift 2 ;;
+            --record-failure-marker) [ $# -ge 2 ] || die_argv "--record-failure-marker requires a value"; marker=$2; shift 2 ;;
+            *) die_argv "unknown populate-sensitive-corpus option: $1" ;;
+        esac
+    done
+    [ -n "$tmpdir" ] || tmpdir="${GLOBAL_IMPLEMENT_TMPDIR:-}"
+    [ -n "$tmpdir" ] || die_missing "--implement-tmpdir is required"
+    [ -d "$tmpdir" ] || die_missing "--implement-tmpdir must exist"
+    [ -n "$sensitive_file" ] || sensitive_file="$(artifact_path "$tmpdir" "$DEFAULT_SENSITIVE_CORPUS")"
+    [ -n "$class_file" ] || class_file="$(artifact_path "$tmpdir" "$DEFAULT_CLASSIFICATION_FILE")"
+    [ -n "$attempts_file" ] || attempts_file="$(artifact_path "$tmpdir" "$DEFAULT_ATTEMPTS_FILE")"
+    [ -n "$ledger" ] || ledger="$(artifact_path "$tmpdir" "$DEFAULT_ESCALATION_LEDGER")"
+    [ -n "$fallback" ] || fallback="$(artifact_path "$tmpdir" "$DEFAULT_ESCALATION_FALLBACK")"
+    [ -n "$marker" ] || marker="$(artifact_path "$tmpdir" "$DEFAULT_RECORD_FAILURE_MARKER")"
+    validate_tmpdir_write_file "$tmpdir" "$sensitive_file" "--sensitive-corpus-file" false || exit 1
+    out="$tmpdir/${ARTIFACT_PREFIX:-stall-recovery}-sensitive-corpus.effective.$$"
+    build_sensitive_corpus_from_evidence "$tmpdir" "$sensitive_file" "$class_file" "$attempts_file" "$ledger" "$fallback" "$marker" "$out"
+    cp "$out" "$sensitive_file"
+    rm -f "$out"
+    emit_kv SENSITIVE_CORPUS_FILE "$sensitive_file"
 }
 
 record_escalation_tool_failure_present() {
@@ -1927,7 +2288,7 @@ compose_tier_b_projection() {
     exit_code=$(safe_exit_code_value "$(kv_get "$class_file" EXIT_CODE "")")
     matched=$(safe_matched_pattern_value "$(kv_get "$class_file" MATCHED_CLASSIFIER_PATTERN "")")
     dispatcher=$(safe_dispatcher_value "$(kv_get "$class_file" DISPATCHER "")")
-    printf '## /implement %s report\n\n' "$kind"
+    printf '## %s %s report\n\n' "$REPORT_SKILL_LABEL" "$kind"
     printf '| Field | Value |\n|---|---|\n'
     printf "| Report kind | \`%s\` |\n" "$kind"
     if [ "$kind" = escalation-success ]; then
@@ -1992,9 +2353,10 @@ compose_tier_a_issue() {
 
 write_tier_a_comment_payloads() {
     local tmpdir=$1 attempts_file=$2 ledger=$3 fallback=$4 marker=$5 root_file=$6
-    local attempts_out="$tmpdir/$DEFAULT_TIER_A_ATTEMPTS_SLICE"
-    local escalation_out="$tmpdir/$DEFAULT_TIER_A_ESCALATION_SLICE"
-    local root_out="$tmpdir/$DEFAULT_TIER_A_ROOT_CAUSE_SLICE"
+    local attempts_out escalation_out root_out
+    attempts_out="$(artifact_path "$tmpdir" "$DEFAULT_TIER_A_ATTEMPTS_SLICE")"
+    escalation_out="$(artifact_path "$tmpdir" "$DEFAULT_TIER_A_ESCALATION_SLICE")"
+    root_out="$(artifact_path "$tmpdir" "$DEFAULT_TIER_A_ROOT_CAUSE_SLICE")"
     attempts_table "$attempts_file" >"$attempts_out"
     {
         append_file_if_readable "Escalation ledger" "$ledger"
@@ -2012,9 +2374,10 @@ write_tier_a_comment_payloads() {
 
 write_tier_b_comment_payloads() {
     local tmpdir=$1 attempts_file=$2 ledger=$3 fallback=$4 marker=$5 bounded_file=$6
-    local attempts_out="$tmpdir/$DEFAULT_TIER_B_ATTEMPTS_SLICE"
-    local escalation_out="$tmpdir/$DEFAULT_TIER_B_ESCALATION_SLICE"
-    local root_out="$tmpdir/$DEFAULT_TIER_B_ROOT_CAUSE_SLICE"
+    local attempts_out escalation_out root_out
+    attempts_out="$(artifact_path "$tmpdir" "$DEFAULT_TIER_B_ATTEMPTS_SLICE")"
+    escalation_out="$(artifact_path "$tmpdir" "$DEFAULT_TIER_B_ESCALATION_SLICE")"
+    root_out="$(artifact_path "$tmpdir" "$DEFAULT_TIER_B_ROOT_CAUSE_SLICE")"
     attempts_table "$attempts_file" >"$attempts_out"
     {
         append_escalation_row_summaries "$ledger" ""
@@ -2077,8 +2440,10 @@ tier_a_allowed() {
 }
 
 cmd_validate_tier_b_public_file() {
-    local tmpdir="" candidate="" sensitive_file="" effective=""
+    local tmpdir="" candidate="" sensitive_file="" effective="" rc
     while [ $# -gt 0 ]; do
+        parse_global_report_flag "$@"; rc=${PARSED_GLOBAL_FLAG:-0}
+        if [ "$rc" = 2 ]; then shift 2; continue; fi
         case "$1" in
             --implement-tmpdir) [ $# -ge 2 ] || die_argv "--implement-tmpdir requires a value"; tmpdir=$2; shift 2 ;;
             --candidate-file) [ $# -ge 2 ] || die_argv "--candidate-file requires a value"; candidate=$2; shift 2 ;;
@@ -2086,16 +2451,17 @@ cmd_validate_tier_b_public_file() {
             *) die_argv "unknown validate-tier-b-public-file option: $1" ;;
         esac
     done
+    [ -n "$tmpdir" ] || tmpdir="${GLOBAL_IMPLEMENT_TMPDIR:-}"
     [ -n "$tmpdir" ] || die_missing "--implement-tmpdir is required"
     [ -d "$tmpdir" ] || die_missing "--implement-tmpdir must exist"
     [ -n "$candidate" ] || die_missing "--candidate-file is required"
     [ -f "$candidate" ] || die_argv "--candidate-file must be regular"
     [ ! -L "$candidate" ] || die_argv "--candidate-file must not be a symlink"
     [ -r "$candidate" ] || die_argv "--candidate-file must be readable"
-    [ -n "$sensitive_file" ] || sensitive_file="$tmpdir/$DEFAULT_SENSITIVE_CORPUS"
+    [ -n "$sensitive_file" ] || sensitive_file="$(artifact_path "$tmpdir" "$DEFAULT_SENSITIVE_CORPUS")"
     validate_tmpdir_local_file "$tmpdir" "$sensitive_file" "--sensitive-corpus-file" || exit 1
-    effective="$tmpdir/stall-recovery-sensitive-corpus.public.$$"
-    build_sensitive_corpus_from_evidence "$tmpdir" "$sensitive_file" "$tmpdir/$DEFAULT_CLASSIFICATION_FILE" "$tmpdir/$DEFAULT_ATTEMPTS_FILE" "$tmpdir/$DEFAULT_ESCALATION_LEDGER" "$tmpdir/$DEFAULT_ESCALATION_FALLBACK" "$tmpdir/$DEFAULT_RECORD_FAILURE_MARKER" "$effective"
+    effective="$tmpdir/${ARTIFACT_PREFIX:-stall-recovery}-sensitive-corpus.public.$$"
+    build_sensitive_corpus_from_evidence "$tmpdir" "$sensitive_file" "$(artifact_path "$tmpdir" "$DEFAULT_CLASSIFICATION_FILE")" "$(artifact_path "$tmpdir" "$DEFAULT_ATTEMPTS_FILE")" "$(artifact_path "$tmpdir" "$DEFAULT_ESCALATION_LEDGER")" "$(artifact_path "$tmpdir" "$DEFAULT_ESCALATION_FALLBACK")" "$(artifact_path "$tmpdir" "$DEFAULT_RECORD_FAILURE_MARKER")" "$effective"
     if sensitive_token_rejects_file "$effective" "$candidate"; then
         rm -f "$effective"
         die_argv "candidate contains sensitive token"
@@ -2113,6 +2479,7 @@ cmd_normalize_file_failure_report_env() {
             *) die_argv "unknown normalize-file-failure-report-env option: $1" ;;
         esac
     done
+    [ -n "$tmpdir" ] || tmpdir="${GLOBAL_IMPLEMENT_TMPDIR:-}"
     [ -n "$tmpdir" ] || die_missing "--implement-tmpdir is required"
     [ -d "$tmpdir" ] || die_missing "--implement-tmpdir must exist"
     [ -n "$file" ] || die_missing "--file-failure-report-env is required"
@@ -2132,6 +2499,7 @@ cmd_dedup_tier_a_report() {
             *) die_argv "unknown dedup-tier-a-report option: $1" ;;
         esac
     done
+    [ -n "$tmpdir" ] || tmpdir="${GLOBAL_IMPLEMENT_TMPDIR:-}"
     [ -n "$tmpdir" ] || die_missing "--implement-tmpdir is required"
     [ -d "$tmpdir" ] || die_missing "--implement-tmpdir must exist"
     [ -n "$body_file" ] || body_file="$tmpdir/$DEFAULT_ISSUE_INPUT"
@@ -2162,8 +2530,10 @@ cmd_dedup_tier_a_report() {
 
 cmd_compose_report() {
     local tmpdir="" kind="" surface="" attempts_file="" class_file="" ledger="" fallback="" marker="" root_file="" bounded_file="" title_file="" sensitive_file="" out_file=""
-    local verdict summary title raw_file marked_file tier status="" dry_run=false sensitive_effective_file working_tree_root report_sig helper upstream_repo helper_out title_site title_trigger
+    local verdict summary title raw_file marked_file tier status="" dry_run=false sensitive_effective_file working_tree_root report_sig helper upstream_repo helper_out title_site title_trigger rc
     while [ $# -gt 0 ]; do
+        parse_global_report_flag "$@"; rc=${PARSED_GLOBAL_FLAG:-0}
+        if [ "$rc" = 2 ]; then shift 2; continue; fi
         case "$1" in
             --implement-tmpdir) [ $# -ge 2 ] || die_argv "--implement-tmpdir requires a value"; tmpdir=$2; shift 2 ;;
             --report-kind) [ $# -ge 2 ] || die_argv "--report-kind requires a value"; kind=$2; shift 2 ;;
@@ -2181,23 +2551,24 @@ cmd_compose_report() {
             *) die_argv "unknown compose-report option: $1" ;;
         esac
     done
+    [ -n "$tmpdir" ] || tmpdir="${GLOBAL_IMPLEMENT_TMPDIR:-}"
     [ -n "$tmpdir" ] || die_missing "--implement-tmpdir is required"
     [ -d "$tmpdir" ] || die_missing "--implement-tmpdir must exist"
     case "$kind" in terminal-failure|escalation-success) ;; *) die_argv "--report-kind must be terminal-failure or escalation-success" ;; esac
     case "$surface" in issue-input|chat-print) ;; *) die_argv "--surface must be issue-input or chat-print" ;; esac
-    [ -n "$class_file" ] || class_file="$tmpdir/$DEFAULT_CLASSIFICATION_FILE"
-    [ -n "$attempts_file" ] || attempts_file="$tmpdir/$DEFAULT_ATTEMPTS_FILE"
-    [ -n "$ledger" ] || ledger="$tmpdir/$DEFAULT_ESCALATION_LEDGER"
-    [ -n "$fallback" ] || fallback="$tmpdir/$DEFAULT_ESCALATION_FALLBACK"
-    [ -n "$marker" ] || marker="$tmpdir/$DEFAULT_RECORD_FAILURE_MARKER"
-    [ -n "$root_file" ] || root_file="$tmpdir/$DEFAULT_ROOT_CAUSE_FILE"
-    [ -n "$bounded_file" ] || bounded_file="$tmpdir/$DEFAULT_BOUNDED_ROOT_CAUSE_FILE"
-    [ -n "$title_file" ] || title_file="$tmpdir/$DEFAULT_TITLE_FILE"
-    [ -n "$sensitive_file" ] || sensitive_file="$tmpdir/$DEFAULT_SENSITIVE_CORPUS"
+    [ -n "$class_file" ] || class_file="$(artifact_path "$tmpdir" "$DEFAULT_CLASSIFICATION_FILE")"
+    [ -n "$attempts_file" ] || attempts_file="$(artifact_path "$tmpdir" "$DEFAULT_ATTEMPTS_FILE")"
+    [ -n "$ledger" ] || ledger="$(artifact_path "$tmpdir" "$DEFAULT_ESCALATION_LEDGER")"
+    [ -n "$fallback" ] || fallback="$(artifact_path "$tmpdir" "$DEFAULT_ESCALATION_FALLBACK")"
+    [ -n "$marker" ] || marker="$(artifact_path "$tmpdir" "$DEFAULT_RECORD_FAILURE_MARKER")"
+    [ -n "$root_file" ] || root_file="$(artifact_path "$tmpdir" "$DEFAULT_ROOT_CAUSE_FILE")"
+    [ -n "$bounded_file" ] || bounded_file="$(artifact_path "$tmpdir" "$DEFAULT_BOUNDED_ROOT_CAUSE_FILE")"
+    [ -n "$title_file" ] || title_file="$(artifact_path "$tmpdir" "$DEFAULT_TITLE_FILE")"
+    [ -n "$sensitive_file" ] || sensitive_file="$(artifact_path "$tmpdir" "$DEFAULT_SENSITIVE_CORPUS")"
     working_tree_root=$(first_nonempty \
         "${CLAUDE_PROJECT_DIR:-}" \
         "${REPO_ROOT:-}" \
-        "$(kv_get "$tmpdir/session-env.sh" REPO_ROOT "")" \
+        "$(kv_get "${SESSION_ENV_FILE:-$tmpdir/session-env.sh}" REPO_ROOT "")" \
         "$(kv_get "$tmpdir/ship-pr-state.sh" REPO_ROOT "")" \
         "$(git rev-parse --show-toplevel 2>/dev/null || true)")
     if [ "$surface" = issue-input ] && ! tier_a_allowed "$tmpdir" "$working_tree_root"; then
@@ -2205,8 +2576,8 @@ cmd_compose_report() {
     fi
     if [ -z "$out_file" ]; then
         case "$surface" in
-            issue-input) out_file="$tmpdir/$DEFAULT_ISSUE_INPUT" ;;
-            chat-print) out_file="$tmpdir/$DEFAULT_CHAT_PRINT" ;;
+            issue-input) out_file="$(artifact_path "$tmpdir" "$DEFAULT_ISSUE_INPUT")" ;;
+            chat-print) out_file="$(artifact_path "$tmpdir" "$DEFAULT_CHAT_PRINT")" ;;
         esac
     fi
     if [ "$kind" = escalation-success ] && [ ! -e "$class_file" ]; then
@@ -2250,16 +2621,16 @@ attempt_count=0
     verdict=$(parse_root_cause_file "$root_file" verdict "")
     summary=$(parse_root_cause_file "$root_file" summary "")
     if [ "$verdict" = operator-action ]; then
-        atomic_write_text "$tmpdir/$DEFAULT_OPERATOR_ACTION_RECORD" "REPORT_KIND=$kind
+        atomic_write_text "$(artifact_path "$tmpdir" "$DEFAULT_OPERATOR_ACTION_RECORD")" "REPORT_KIND=$kind
 VERDICT=operator-action
 ROOT_CAUSE_FILE=$root_file
 " || true
-        atomic_write_text "$tmpdir/$DEFAULT_OPERATOR_ACTION_SENTINEL" "STALL_RECOVERY_OPERATOR_ACTION=true
+        atomic_write_text "$(artifact_path "$tmpdir" "$DEFAULT_OPERATOR_ACTION_SENTINEL")" "STALL_RECOVERY_OPERATOR_ACTION=true
 " || true
         emit_kv STALL_RECOVERY_REPORT_KIND "$kind"
         emit_kv STALL_RECOVERY_REPORT_STATUS skipped_operator_action
         emit_kv STALL_RECOVERY_REPORT_TIER skipped
-        emit_kv STALL_RECOVERY_REPORT_ARTIFACT "$tmpdir/$DEFAULT_OPERATOR_ACTION_RECORD"
+        emit_kv STALL_RECOVERY_REPORT_ARTIFACT "$(artifact_path "$tmpdir" "$DEFAULT_OPERATOR_ACTION_RECORD")"
         emit_kv STALL_RECOVERY_REPORT_VERDICT operator-action
         return 0
     fi
@@ -2267,11 +2638,11 @@ ROOT_CAUSE_FILE=$root_file
         title=$(safe_title_summary "$summary") || die_argv "unsafe title and root-cause summary"
     fi
     case "$kind" in
-        terminal-failure) title="[Bug] /implement terminal: $title ($(safe_class_value "$(kv_get "$class_file" FAILURE_CLASS "unrecoverable")") at $(safe_step_value "$(kv_get "$class_file" STALL_STEP "")"))" ;;
+        terminal-failure) title="[Bug] $REPORT_SKILL_LABEL terminal: $title ($(safe_class_value "$(kv_get "$class_file" FAILURE_CLASS "unrecoverable")") at $(safe_step_value "$(kv_get "$class_file" STALL_STEP "")"))" ;;
         escalation-success)
             title_site=$(first_escalation_field site "$ledger" "$fallback" || true)
             title_trigger=$(first_escalation_field trigger "$ledger" "$fallback" || true)
-            title="[Bug] /implement escalation: $title ($(safe_site_value "$title_site"):$(safe_trigger_value "$title_trigger"))"
+            title="[Bug] $REPORT_SKILL_LABEL escalation: $title ($(safe_site_value "$title_site"):$(safe_trigger_value "$title_trigger"))"
             ;;
     esac
     report_sig=$(report_dedup_signature "$kind" "$class_file" "$ledger" "$fallback")
@@ -2333,16 +2704,17 @@ ROOT_CAUSE_FILE=$root_file
         emit_kv STALL_RECOVERY_REPORT_FALLBACK_REASON upstream-repo-unresolved
         return 0
     fi
-    helper_out="$tmpdir/stall-recovery-tier-b-file.env"
+    helper_out="$(artifact_path "$tmpdir" stall-recovery-tier-b-file.env)"
     if [ ! -x "$helper" ]; then
         emit_kv STALL_RECOVERY_REPORT_STATUS fallback-print-required
         emit_kv STALL_RECOVERY_REPORT_FALLBACK_REASON cross-repo-helper-missing
         return 0
     fi
     "$helper" --repo "$upstream_repo" --body-file "$out_file" --title "$title" --publication-tier tier-b \
-        --attempts-file "$tmpdir/$DEFAULT_TIER_B_ATTEMPTS_SLICE" \
-        --escalation-ledger-file "$tmpdir/$DEFAULT_TIER_B_ESCALATION_SLICE" \
-        --root-cause-file "$tmpdir/$DEFAULT_TIER_B_ROOT_CAUSE_SLICE" >"$helper_out"
+        --attempts-file "$(artifact_path "$tmpdir" "$DEFAULT_TIER_B_ATTEMPTS_SLICE")" \
+        --escalation-ledger-file "$(artifact_path "$tmpdir" "$DEFAULT_TIER_B_ESCALATION_SLICE")" \
+        --root-cause-file "$(artifact_path "$tmpdir" "$DEFAULT_TIER_B_ROOT_CAUSE_SLICE")" \
+        --sensitive-corpus-file "$sensitive_file" >"$helper_out"
     normalize_file_failure_report_env_file "$helper_out"
 }
 
@@ -2488,6 +2860,14 @@ cmd_lint() {
 
 main() {
     [ $# -gt 0 ] || { usage; exit 1; }
+    local rc
+    while [ $# -gt 0 ]; do
+        parse_global_report_flag "$@"; rc=${PARSED_GLOBAL_FLAG:-0}
+        if [ "$rc" = 2 ]; then shift 2; continue; fi
+        break
+    done
+    [ $# -gt 0 ] || { usage; exit 1; }
+    apply_report_profile_defaults
     subcommand=$1
     shift
     case "$subcommand" in
@@ -2500,7 +2880,10 @@ main() {
         compose-report) cmd_compose_report "$@" ;;
         dedup-tier-a-report) cmd_dedup_tier_a_report "$@" ;;
         normalize-file-failure-report-env) cmd_normalize_file_failure_report_env "$@" ;;
+        validate-token) cmd_validate_token "$@" ;;
+        validate-terminal-state) cmd_validate_terminal_state "$@" ;;
         validate-tier-b-public-file) cmd_validate_tier_b_public_file "$@" ;;
+        populate-sensitive-corpus) cmd_populate_sensitive_corpus "$@" ;;
         chat-print) cmd_chat_print "$@" ;;
         is-larch-dev-clone) cmd_is_larch_dev_clone "$@" ;;
         bug-body)

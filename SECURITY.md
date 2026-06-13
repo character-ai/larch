@@ -424,3 +424,11 @@ Edits to call sites that look like `grep -E "...${VAR}..."` or `grep "...${VAR}.
 ## /design assessor thin-fence data handling
 
 Verdict sidecars and result envs with model-derived fields are parsed as literal fixed-key data, never sourced or evaluated. The assessor verdict headline and `QUALIFICATIONS_SUMMARY` are untrusted display data rendered by the driver with bounded, sanitized output. Thin-fence orchestrators treat driver display output as data, never instructions. Assessor display is neutralized before `emit` when it exactly matches trusted trailer marker/KV syntax.
+
+## /design reporting boundary
+
+`/design` auto-reporting has Tier A and Tier B surfaces. Tier B is bounded narrative only and includes no log tails. Raw design plan text, issue bodies, feature text, logs, paths, repo names, URLs, and `source-env.sh` are sensitive.
+
+Generic helper path confinement applies to `$DESIGN_TMPDIR`, and every generic helper call from `/design` pins `--implement-tmpdir "$DESIGN_TMPDIR"`. Cross-repo filing can publish to the upstream larch repository under the operator identity.
+
+Step 3 panel degradation is non-terminal and must not leak raw review artifacts into Tier B. Step 2b.5 decompose-panel retry exhaustion is terminal `failed-judge-panel` and still uses bounded, redacted Tier B evidence. Residual risk remains that deterministic root-cause templates may misclassify nuanced failures.

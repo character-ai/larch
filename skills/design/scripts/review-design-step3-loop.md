@@ -46,3 +46,7 @@ After a successful revise, the loop calls `write-design-round-meta.sh --round-di
 ## Harness
 
 `skills/design/scripts/test-review-design-step3-loop.sh` covers the offline envelope, bail-out, phase-resume, postplan-routing, and dedup-restore seams. `skills/design/scripts/test-run-step3-review.sh` covers launcher argv and `--starting-round` validation.
+
+## Report-gate evidence ownership
+
+The Step 3 loop records escalation evidence for `main-agent-vote-required`, `main-agent-apply-required`, `postplan-operator-required`, `panel-failed`, `tally-error`, and `degraded-empty-collector`. `postplan-failed` stages terminal state as `failed-postplan`. Panel degradation statuses remain non-terminal and Step 2b.5 decompose-panel retry exhaustion is not handled here.

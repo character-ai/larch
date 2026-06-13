@@ -8,9 +8,25 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 source "$SCRIPT_DIR/lib-phase-driver.sh"
 larch_quiet_init
 
-fail() {
-    larch_err "design-publish.sh: $*"
+publish_tail_fail() {
+    local bail=$1 exit_code=$2 detail_log=${3:-}
+    local failure_log="$DESIGN_TMPDIR/design-publish-tail.failure.log"
+    if [[ -z "$detail_log" ]]; then
+        detail_log="$failure_log"
+    fi
+    printf '%s\n' "design-publish.sh: publish-tail failure ($bail, exit $exit_code)" >>"$failure_log"
     exit 2
+}
+
+fail() {
+    local msg="design-publish.sh: $*"
+    larch_err "$msg"
+    if [[ -n "${DESIGN_TMPDIR:-}" && -d "${DESIGN_TMPDIR:-}" ]]; then
+        printf '%s\n' "$msg" >"$DESIGN_TMPDIR/design-publish-setup.failure.log"
+    elif [[ -n "${DESIGN_TMPDIR_ARG:-}" && -d "$DESIGN_TMPDIR_ARG" ]]; then
+        printf '%s\n' "$msg" >"$DESIGN_TMPDIR_ARG/design-publish-setup.failure.log" 2>/dev/null || true
+    fi
+    exit 5
 }
 
 usage() {
@@ -178,6 +194,53 @@ VALIDATE_LOG_FILE=""
 
 add_warn() {
     WARN_LINES+=("$1")
+}
+
+
+stage_design_terminal_state() {
+    local outcome=$1 step=$2 phase=$3 site=$4 trigger=$5 bail=$6 exit_code=$7 detail_log=${8:-} root_hint=${9:-}
+    local helper="$PLUGIN_ROOT/skills/design/scripts/design-stage-terminal-state.sh"
+    [[ -x "$helper" ]] || return 0
+    local args=(
+        --design-tmpdir "$DESIGN_TMPDIR"
+        --outcome "$outcome"
+        --step "$step"
+        --phase "$phase"
+        --site "$site"
+        --trigger "$trigger"
+        --bail-reason "$bail"
+        --exit-code "$exit_code"
+        --source-script design-publish
+        --summary-outcome "$outcome"
+    )
+    [[ -z "$detail_log" ]] || args+=(--failure-detail-log "$detail_log")
+    [[ -z "$root_hint" ]] || args+=(--root-cause-hint "$root_hint")
+    local stage_out="$DESIGN_TMPDIR/design-stage-terminal-state.stdout.log"
+    set +e
+    "$helper" "${args[@]}" >"$stage_out" 2>"$DESIGN_TMPDIR/design-stage-terminal-state.stderr.log"
+    local stage_rc=$?
+    set -e
+    if grep -Fxq 'STAGED=false' "$stage_out" 2>/dev/null; then
+        python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure \
+            --log "$DESIGN_TMPDIR/execution-issues.md" \
+            --site "design terminal state staging" \
+            --tool "design-stage-terminal-state.sh" \
+            --exit-code 0 \
+            --category Warnings \
+            --output-file "$stage_out" \
+            --redact >/dev/null 2>&1 || true
+        return 1
+    fi
+    if [[ "$stage_rc" -ne 0 ]]; then
+        python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure \
+            --log "$DESIGN_TMPDIR/execution-issues.md" \
+            --site "design terminal state staging" \
+            --tool "design-stage-terminal-state.sh" \
+            --exit-code "$stage_rc" \
+            --category Warnings \
+            --output-file "$DESIGN_TMPDIR/design-stage-terminal-state.stderr.log" \
+            --redact >/dev/null 2>&1 || true
+    fi
 }
 
 publish_recovery_detail() {
@@ -386,10 +449,12 @@ _plan_block_args=(named-block write --marker plan --issue "$ISSUE" --content-fil
 [[ -n "$ISSUE_WIRE_REPO" ]] && _plan_block_args+=(--repo "$ISSUE_WIRE_REPO")
 if ! python3 "$PLUGIN_ROOT/python/cli.py" "${_plan_block_args[@]}"; then
     PLAN_WRITE_OK=false
+    printf 'plan-block write failed\n' >"$DESIGN_TMPDIR/design-plan-write.failure.log"
+    stage_design_terminal_state failed-plan-write publish plan-write design-publish failed plan-write-failed 1 "$DESIGN_TMPDIR/design-plan-write.failure.log"
     "${PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh" \
         --outcome failed-plan-write \
         ${REPO:+--repo "$REPO"} \
-        --post-publish-only || true
+        --post-publish-only >/dev/null || true
     write_result_env_and_emit || exit 1
     exit 1
 fi
@@ -537,6 +602,7 @@ if [[ -z "$SESSION_ID" ]]; then
     SUMMARY_OUTCOME=publish-skipped
 elif [[ "${PUBLISH_OK:-}" != true ]]; then
     SUMMARY_OUTCOME=failed-publish
+    stage_design_terminal_state failed-publish publish publish design-publish failed publish-failed "${_publish_rc:-1}" "$DESIGN_TMPDIR/design-log-publish.failure.log" environment
 fi
 export DESIGN_LOG_PR_NUMBER="${PR_NUMBER:-}"
 export DESIGN_LOG_PR_URL="${PR_URL:-}"
@@ -551,7 +617,7 @@ export DESIGNED_ADMISSION_READY
     --outcome "$SUMMARY_OUTCOME" \
     --mode "$MODE" \
     ${REPO:+--repo "$REPO"} \
-    --post-publish-only || true
+    --post-publish-only >/dev/null || true
 
 if [[ -n "$SESSION_ID" ]] && [[ "${PUBLISH_OK:-}" == true ]]; then
     # shellcheck source=scripts/lib-design-reentry-guard.sh

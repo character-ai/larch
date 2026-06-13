@@ -528,3 +528,9 @@ Run dirs with a `gc-slimmed` marker may be missing non-keep-set files. Audit sca
 ## Concise prune/log audit update
 
 Concise review logs now use `round-meta.json` `reviewer_signals[]` for reviewer output audit scans instead of committing raw transcripts by default. Implement rounds include `prune-decision.env` and `prune-nit.env`; design plan-review rounds default to the four-file concise contract while keeping run-root `plan.txt`.
+
+## /design failure-report artifacts
+
+`/design` auto-reporting writes `design-failure-*.env` and `design-failure-*.md` artifacts under `$DESIGN_TMPDIR`. Important artifacts include terminal state, terminal report sentinels, escalation-success sentinels, operator-action sentinels, escalation ledgers, fallback chat print, operator-action chat audit, captured helper stdout/stderr sidecars, root-cause files, bounded root-cause files, and sensitive-corpus files.
+
+`design-failure-terminal-state.env` is the terminal-state KV contract. Report helper stdout/stderr captures are retained beside `final-summary.md` so the summary body stays free of helper KVs.

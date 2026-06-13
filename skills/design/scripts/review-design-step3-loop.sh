@@ -4,6 +4,71 @@
 
 # shellcheck disable=SC2034
 
+
+step3_report_recorded_sentinel() {
+    printf '%s/.step3-report-%s.recorded\n' "$DESIGN_TMPDIR" "$1"
+}
+
+step3_record_report_evidence() {
+    local status="$1" site="step3-review" trigger="$1" step="step3" phase="postplan" sentinel helper rc
+    sentinel="$(step3_report_recorded_sentinel "$status")"
+    [[ -e "$sentinel" ]] && return 0
+    case "$status" in
+        main-agent-vote-required|main-agent-apply-required|postplan-operator-required|panel-failed|tally-error|degraded-empty-collector) ;;
+        *) return 0 ;;
+    esac
+    case "$status" in
+        panel-failed|tally-error|degraded-empty-collector) phase=validation ;;
+        main-agent-apply-required) phase=validation ;;
+        postplan-operator-required) phase=postplan ;;
+        main-agent-vote-required) phase=validation ;;
+    esac
+    helper="$PLUGIN_ROOT/skills/implement/scripts/stall-recovery-report.sh"
+    [[ -x "$helper" ]] || return 0
+    set +e
+    "$helper" --profile generic --artifact-prefix design-failure --implement-tmpdir "$DESIGN_TMPDIR" \
+        record-escalation --site "$site" --trigger "$trigger" --step "$step" --phase "$phase" --dispatcher design-step3-review \
+        >"$DESIGN_TMPDIR/step3-record-escalation-${status}.stdout.log" \
+        2>"$DESIGN_TMPDIR/step3-record-escalation-${status}.stderr.log"
+    rc=$?
+    set -e
+    if [[ "$rc" -eq 0 ]]; then
+        : >"$sentinel"
+    else
+        emit_kv WARN "Step 3: failed to record design escalation evidence for ${status}"
+    fi
+}
+
+step3_stage_postplan_failed() {
+    local sentinel="$DESIGN_TMPDIR/.step3-postplan-terminal-state.recorded" helper rc
+    [[ -e "$sentinel" ]] && return 0
+    helper="$PLUGIN_ROOT/skills/design/scripts/design-stage-terminal-state.sh"
+    [[ -x "$helper" ]] || return 0
+    set +e
+    "$helper" --design-tmpdir "$DESIGN_TMPDIR" \
+        --outcome failed-postplan \
+        --step postplan \
+        --phase postplan \
+        --site step3-review \
+        --trigger postplan-failed \
+        --bail-reason postplan-failed \
+        --exit-code "${POSTPLAN_RC:-unknown}" \
+        --source-script design-step3-review \
+        --summary-outcome failed-postplan \
+        >"$DESIGN_TMPDIR/step3-stage-terminal-state.stdout.log" \
+        2>"$DESIGN_TMPDIR/step3-stage-terminal-state.stderr.log"
+    rc=$?
+    set -e
+    if grep -Fxq 'STAGED=false' "$DESIGN_TMPDIR/step3-stage-terminal-state.stdout.log" 2>/dev/null; then
+        emit_kv WARN "Step 3: terminal state preserved with conflicting outcome/site/trigger"
+    fi
+    if [[ "$rc" -eq 0 ]]; then
+        : >"$sentinel"
+    else
+        emit_kv WARN "Step 3: failed to stage failed-postplan terminal state"
+    fi
+}
+
 step3_loop_now_s() {
     date +%s
 }
@@ -45,6 +110,11 @@ step3_loop_scope_anchor_single_line_or_empty() {
 
 step3_loop_emit_envelope() {
     local status="$1" round_num="$2" rounds_completed="$3" final_round="$4"
+    if [[ "$status" == postplan-failed ]]; then
+        step3_stage_postplan_failed
+    else
+        step3_record_report_evidence "$status"
+    fi
     local safe_plan_review_continue_reason safe_scope_anchor_file
     safe_plan_review_continue_reason="$(step3_loop_strip_crlf_value "${PLAN_REVIEW_CONTINUE_REASON:-}")"
     safe_scope_anchor_file="$(step3_loop_scope_anchor_single_line_or_empty "${SCOPE_ANCHOR_FILE:-}")"
@@ -521,7 +591,10 @@ run_design_step3_loop() {
                 done <"$DESIGN_TMPDIR/.step3-review-result.env"
             fi
             if [[ "$body_rc" -ne 0 && "${LOOP_STATUS:-}" != panel-failed ]]; then
-                LOOP_STATUS=panel-failed
+                case "${LOOP_STATUS:-}" in
+                    tally-error|degraded-empty-collector) ;;
+                    *) LOOP_STATUS=panel-failed ;;
+                esac
             fi
             round_num=$((10#${STEP3_REVIEW_ROUND_NUM:-$round_num}))
             case "${LOOP_STATUS:-}" in

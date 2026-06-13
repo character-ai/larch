@@ -75,3 +75,7 @@ Orchestrator handoff: stdout captured to a temp file (`_publish_stdout_file`); `
 - Non-zero `design-log-publish.sh` exits are fail-closed even when stdout contains `PUBLISH_OK=true`; empty `SESSION_ID` renders `publish-skipped`.
 
 Before `design-log-publish.sh`, the driver deletes stale top-level `timing-report-final.*` artifacts, renders fresh timing JSON through temporary unpublished paths, atomically moves only validated `timing-report-final.json` into `$DESIGN_TMPDIR`, and logs a warning without publishing stale siblings when render fails.
+
+## Terminal-state staging
+
+Plan-block write failure stages `failed-plan-write` before the failed summary path. Publish failure after a successful plan write stages `failed-publish` before post-phase summary rendering. Staging uses `design-stage-terminal-state.sh`; helper output is captured under `$DESIGN_TMPDIR` and failures are downgraded to warnings so the report gate can fail closed.

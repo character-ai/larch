@@ -399,3 +399,13 @@ fail closed with helper exit `2`.
 
 On non-zero helper exit, `/implement` skips OOS batch filing and surfaces:
 `**⚠ /implement: oos-issue-cap helper failed (exit <N>) — OOS batch NOT filed; review accepted-OOS Descriptions and re-run with corrected env, or have the items filed manually**`.
+
+## /design auto error reporting
+
+`/design` can publish larch bug reports for terminal failures and escalation-success runs. Tier A uses full local context in larch dev clones. Tier B files bounded public reports to the upstream larch repository and excludes design plans, issue bodies, feature descriptions, paths, repo names, URLs, logs, and `source-env.sh` content.
+
+The gate files at most one issue per run. It skips operator-action and `cancelled-*` outcomes, writes a chat-visible operator-action audit, and records the skip in the run log. Dry run writes local artifacts without calling GitHub. Fallback-print-required writes `design-failure-chat-print.md` for manual filing.
+
+Escalation-success is allowed only for `approved` and `approved-partition`. Step 3 main-agent vote/apply and postplan-operator handoffs are escalation evidence. Step 3 panel degradation is non-terminal evidence. Step 2b.5 decompose-panel retry exhaustion is terminal `failed-judge-panel`.
+
+All generic reporting calls pin `--implement-tmpdir "$DESIGN_TMPDIR"`, and path confinement applies to `$DESIGN_TMPDIR`. Cross-repo filing runs under the operator's GitHub identity.

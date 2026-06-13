@@ -23,7 +23,22 @@ The `/implement` runtime uses pinned files under `$IMPLEMENT_TMPDIR`:
 - Tier A dedup slices: `stall-recovery-tier-a-attempts.md`, `stall-recovery-tier-a-escalation.md`, `stall-recovery-tier-a-root-cause.md`
 - Tier B dedup slices: `stall-recovery-bounded-attempts.md`, `stall-recovery-bounded-escalation-summary.md`, `stall-recovery-bounded-root-cause-public.md`
 
-These names are internal constants so `/design` can later parameterize the same engine without forking it. Public generic profile flags such as `--profile generic`, `--artifact-prefix`, state-file overrides, vocabulary overrides, and generic ledger overrides are deferred to #3992.
+`/implement` defaults remain unchanged. Generic callers may opt into prefixed artifacts with `--profile generic --artifact-prefix <prefix>`. The `/design` port uses `--artifact-prefix design-failure`, so default `stall-recovery-*` filenames remain byte-compatible for `/implement` while `/design` writes `design-failure-*`.
+
+## Generic profile
+
+Generic mode is selected with `--profile generic`. Supported generic flags are `--artifact-prefix`, `--implement-tmpdir`, `--primary-state-file`, `--finalize-state-file`, and `--session-env-file`. Flags may appear before the subcommand, and state override flags are honored by `classify` and `compose-report`.
+
+The generic profile exposes two validation APIs:
+
+- `validate-token --token-kind outcome|step|phase|site|trigger|bail|source-script|root-cause --value <token>` validates safe vocab without sourcing private helper internals.
+- `validate-terminal-state --primary-state-file <file>` validates required terminal-state keys, design vocab, path confinement, symlink rejection, and redaction rules.
+
+Generic `/design` callers map `design-failure-terminal-state.env` into the classification model. Required keys include `FAILURE_OUTCOME`, `STALL_STEP`, `PHASE`, `SITE`, `TRIGGER`, `BAIL_REASON`, `EXIT_CODE`, `FAILURE_DETAIL_LOG`, and `SOURCE_SCRIPT`; optional keys include `ROOT_CAUSE_HINT`, `SUMMARY_OUTCOME`, `OCCURRED_AT`, and `EVIDENCE_REF`.
+
+Generic `/design` examples include step `judge-panel`, phase `judge-panel`, site `decompose-panel`, trigger `decompose-panel-retry-exhausted`, and source script `split-path`. These tokens live in the safe-value helpers for the generic profile, not in the Tier B field allowlist TSV unless a new public field is exposed.
+
+Escalation-success uses durable ledger evidence with `compose-report --report-kind escalation-success`; it does not run terminal `classify`. Generic public dedup uses a skill/profile-aware seed version so `/design` signatures cannot collide with `/implement` signatures.
 
 ## Subcommands
 
@@ -127,7 +142,7 @@ The canonical seed grammar is:
 - each field line encoded as `key<TAB>byte_length<TAB>value`
 - SHA-256, lowercase 64-hex output
 
-Terminal-failure seeds include only `report_kind`, `failure_class`, `step`, `phase`, and `safe_bail_token`. Escalation-success seeds include those fields plus sanitized `escalation_site` and `escalation_trigger` from the same first ledger or fallback row used in the title. The seed excludes dispatcher, matched classifier, evidence digests, paths, branches, run IDs, raw state, raw logs, and `skill=implement`. Skill-aware hashing is deferred to the `/design` port.
+Terminal-failure seeds include only `report_kind`, `failure_class`, `step`, `phase`, and `safe_bail_token`. Escalation-success seeds include those fields plus sanitized `escalation_site` and `escalation_trigger` from the same first ledger or fallback row used in the title. The seed excludes dispatcher, matched classifier, evidence digests, paths, branches, run IDs, raw state, raw logs, and `skill=implement`. Generic-profile hashing includes the skill label and artifact prefix. `/implement` keeps the original seed unchanged.
 
 Tier A places the marker immediately after the `###` title line so `/larch:issue` preserves it. Tier B places the marker near the top of `stall-recovery-chat-print.md`. The final Tier B body is validated after marker insertion and before cross-repo filing.
 

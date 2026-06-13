@@ -305,3 +305,15 @@ CI uses `ubuntu-latest` exclusively (bash 4+ as `/bin/bash`), so the macOS-shape
 - Step 2b drafter postplan fallback is once-only via `$DESIGN_TMPDIR/.step2b-postplan-inline-retry-done`; repeated postplan failures route to the existing validator-failure / abort branches rather than looping back into inline drafting again.
 
 Renderer and generator coverage now lives in `python/test_rendering.py`; the retired renderer/generator bash harness rows were removed with the sh-to-py B6 migration.
+
+## /design auto-reporting harnesses
+
+Focused harnesses cover the /design auto-reporting port:
+
+- `test-design-stage-terminal-state` validates strict terminal-state staging and shared generic-token validation (`test-harnesses-6`).
+- `test-design-failure-report` validates the teardown gate, operator-action skips, fallback chat prints, and escalation-success reports (`test-harnesses-6`).
+- `test-design-step3-review` validates Step 3 terminal and escalation evidence ownership (`test-harnesses-4`).
+- `test-file-failure-report-cross-repo` includes design-prefix Tier B corpus coverage.
+- `test-stall-recovery-report` includes generic-profile `/design` validation, prefixed artifacts, and skill-aware dedup signatures.
+
+`bash scripts/relevant-checks.sh` maps the new helper, sibling docs, render-final-summary, publish, Split-path prose, Step 3 review, cross-repo filing, and stall-report changes to these focused targets.
