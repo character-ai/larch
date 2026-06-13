@@ -115,21 +115,109 @@ _plan_review_stdout_file="$(mktemp "${TMPDIR:-/tmp}/larch-step3-review-stdout.XX
   printf '%s\n' "**⚠ Step 3: could not allocate run-step3-review stdout capture; aborting plan review**"
   exit 1
 }
+_loop_pid=""
+_step3_review_monitor_was_enabled=0
+case $- in *m*) _step3_review_monitor_was_enabled=1 ;; esac
+_step3_review_monitor_enabled_by_wrapper=0
+
+_step3_review_write_prelaunch_failure() {
+  local _result_env="$DESIGN_TMPDIR/.step3-review-result.env"
+  local _tmp=""
+  rm -f "$_result_env" 2>/dev/null || true
+  _tmp="$(mktemp "$DESIGN_TMPDIR/.step3-review-result.env.XXXXXX" 2>/dev/null || true)"
+  if [[ -n "$_tmp" ]]; then
+    if {
+      printf '%s\n' 'STEP3_REVIEW_LOOP_STATUS=panel-failed'
+      printf '%s\n' 'LOOP_STATUS=panel-failed'
+      printf '%s\n' 'REASON=monitor-mode-unavailable'
+      printf '%s\n' 'TALLY_PLAN_REVIEW_STATUS=panel-failed'
+      printf '%s\n' 'STEP3_REVIEW_CAP_REACHED=false'
+      printf '%s\n' 'STEP3_REVIEW_ROUND_NUM='
+      printf '%s\n' 'ROUND_NUM='
+      printf '%s\n' 'ROUNDS_COMPLETED=0'
+      printf '%s\n' 'REVIEW_ROUND_COUNT=0'
+    } >"$_tmp"; then
+      mv "$_tmp" "$_result_env" 2>/dev/null || {
+        rm -f "$_tmp" "$_result_env" 2>/dev/null || true
+      }
+    else
+      rm -f "$_tmp" "$_result_env" 2>/dev/null || true
+    fi
+  fi
+  printf '%s\n' 'STEP3_REVIEW_LOOP_STATUS=panel-failed'
+  printf '%s\n' 'LOOP_STATUS=panel-failed'
+  printf '%s\n' 'REASON=monitor-mode-unavailable'
+  printf '%s\n' 'TALLY_PLAN_REVIEW_STATUS=panel-failed'
+  printf '%s\n' 'STEP3_REVIEW_CAP_REACHED=false'
+  printf '%s\n' 'ROUNDS_COMPLETED=0'
+  printf '%s\n' 'REVIEW_ROUND_COUNT=0'
+  exit 0
+}
+
+_step3_review_teardown_loop_group() {
+  local _pid="${1:-}"
+  [[ -n "$_pid" ]] || return 0
+  kill -- -"$_pid" 2>/dev/null || true
+}
+
+_step3_review_cleanup() {
+  local _rc=$?
+  trap - EXIT
+  if [[ -n "${_loop_pid:-}" ]]; then
+    _step3_review_teardown_loop_group "$_loop_pid"
+    wait "$_loop_pid" 2>/dev/null || true
+  fi
+  if [[ "${_step3_review_monitor_enabled_by_wrapper:-0}" -eq 1 ]]; then
+    set +m 2>/dev/null || true
+  fi
+  exit "$_rc"
+}
+
+if [[ "$_step3_review_monitor_was_enabled" -eq 0 ]]; then
+  set +e
+  set -m 2>/dev/null
+  _step3_review_set_m_rc=$?
+  set -e
+  case $- in
+    *m*) _step3_review_monitor_enabled_by_wrapper=1 ;;
+    *) _step3_review_monitor_enabled_by_wrapper=0 ;;
+  esac
+else
+  _step3_review_set_m_rc=0
+fi
+
+case $- in
+  *m*) : ;;
+  *)
+    printf '%s\n' "**⚠ Step 3: process-group isolation is unavailable (monitor-mode-unavailable); treating plan review as panel-failed before launch**"
+    _step3_review_write_prelaunch_failure
+    ;;
+esac
+
+trap _step3_review_cleanup EXIT
 set +e
 if [ -n "$STARTING_ROUND" ]; then
   "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/run-step3-review.sh" \
     --design-tmpdir "$DESIGN_TMPDIR" \
     --mode loop \
     --starting-round "$STARTING_ROUND" \
-    >"$_plan_review_stdout_file"
+    >"$_plan_review_stdout_file" &
 else
   "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/run-step3-review.sh" \
     --design-tmpdir "$DESIGN_TMPDIR" \
     --mode loop \
-    >"$_plan_review_stdout_file"
+    >"$_plan_review_stdout_file" &
 fi
+_loop_pid=$!
+wait "$_loop_pid"
 _plan_review_rc=$?
 set -e
+_step3_review_teardown_loop_group "$_loop_pid"
+_loop_pid=""
+trap - EXIT
+if [[ "${_step3_review_monitor_enabled_by_wrapper:-0}" -eq 1 ]]; then
+  set +m 2>/dev/null || true
+fi
 _step3_primary_regular=false
 if [[ -f "$DESIGN_TMPDIR/.step3-review-result.env" && ! -L "$DESIGN_TMPDIR/.step3-review-result.env" ]]; then
   _step3_primary_regular=true
