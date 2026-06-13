@@ -211,7 +211,7 @@ fi
 case $- in
   *m*) : ;;
   *)
-    printf '%s\n' "**⚠ Step 3: process-group isolation is unavailable (monitor-mode-unavailable); treating plan review as panel-failed before launch**"
+    printf '%s\n' "**⚠ Step 3: process-group isolation is unavailable (monitor-mode-unavailable); treating plan review as panel-failed before launch**" >&2
     _step3_review_write_prelaunch_failure
     ;;
 esac
