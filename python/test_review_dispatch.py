@@ -117,7 +117,7 @@ def test_wait_validation_and_stdout_grammar(tmp_path: Path, capsys: pytest.Captu
     done.write_text("0\n", encoding="utf-8")
     empty = tmp_path / "empty.done"
     empty.write_text("\n", encoding="utf-8")
-    assert review_dispatch.wait_reviewers_main(["--timeout", "1", str(done), str(empty), str(tmp_path / "same.done.missing")]) == 0
+    assert review_dispatch.wait_reviewers_main(["--timeout", "1", str(done), str(empty), str(tmp_path / "same.done.missing")]) == 1
     out = capsys.readouterr().out
     assert "DONE 1 same: exit=0" in out
     assert "DONE 2 empty: exit=unknown" in out
@@ -147,7 +147,7 @@ def test_wait_max_polls_and_suspend_refund(monkeypatch: pytest.MonkeyPatch) -> N
         emit_fn=emitted.append,
         diagnostic_fn=lambda _msg: None,
     )
-    assert rc == 0
+    assert rc == 1
     assert len(slept) == 2
     assert emitted == ["TIMEOUT 1 missing"]
 
