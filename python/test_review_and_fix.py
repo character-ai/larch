@@ -1,5 +1,5 @@
 # pyright: reportUnusedCallResult=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false
-# ruff: noqa: ARG001, ARG005
+# ruff: noqa: ARG005
 from __future__ import annotations
 
 import os
