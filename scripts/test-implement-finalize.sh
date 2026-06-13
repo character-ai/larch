@@ -520,10 +520,10 @@ fi
 assert_contains "**⚠ 18: killed 1 stale background process(es)" "$OUT" "teardown: kill_session_background_processes emits warning"
 assert_contains "FINALIZE_WARNINGS=1" "$OUT" "teardown: kill counts as warning"
 
-# Ancestor skip regression: the first parent lookup for the teardown shell
-# returns FAKE_ANCESTOR_PID, then the per-PID map terminates that chain at 1.
-# Both processes appear in the session-scoped process list, but only the stale
-# non-ancestor should be killed.
+# Ancestor skip regression: stub a three-level parent chain (teardown shell ->
+# intermediate parent -> fake grandparent). Only the grandparent appears in the
+# session-scoped process list alongside a stale non-ancestor; parent-only skip
+# would still kill the grandparent, so survival proves collect_ancestor_pids.
 write_state "$STATE" ISSUE_NUMBER=
 STALE_SCRIPT="$SANDBOX/tmp/stale-session-process.sh"
 ANCESTOR_SCRIPT="$SANDBOX/tmp/fake-ancestor-session-process.sh"
@@ -534,10 +534,11 @@ chmod +x "$STALE_SCRIPT" "$ANCESTOR_SCRIPT"
 STALE_PID=$!
 "$ANCESTOR_SCRIPT" &
 FAKE_ANCESTOR_PID=$!
+FAKE_INTERMEDIATE_PID=424242
 OUT=$(
   STUB_PS_MODE=background \
-  STUB_PS_PPID="$FAKE_ANCESTOR_PID" \
-  STUB_PS_PARENT_MAP="$FAKE_ANCESTOR_PID=1" \
+  STUB_PS_PPID="$FAKE_INTERMEDIATE_PID" \
+  STUB_PS_PARENT_MAP="$FAKE_INTERMEDIATE_PID=$FAKE_ANCESTOR_PID $FAKE_ANCESTOR_PID=1" \
   STUB_PS_PROCESS_LIST="$STALE_PID $STALE_SCRIPT\n$FAKE_ANCESTOR_PID $ANCESTOR_SCRIPT" \
   run_subject teardown --state-file "$STATE" --implement-tmpdir "$SANDBOX/tmp"
 )
