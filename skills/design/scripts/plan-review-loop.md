@@ -11,6 +11,7 @@ does not own a separate `check-reviewers.sh` probe or timeout knob.
 
 ## Invariants
 
+- Writes per-round `reviewer-status.tsv` and root `latest-reviewer-status.tsv` only after terminal collection/degradation is known.
 Validates `$DESIGN_TMPDIR` via `larch_design_tmpdir_validate` after the required-arg check, before resolving the path with `cd ... && pwd -P`.
 
 - Writes session-root artifacts under `$DESIGN_TMPDIR/`: `ballot.txt`, `accepted-plan-findings.md`, `accepted-plan-findings-all.md`, `rejected-findings.md`, `oos.md`, `oos-accepted-design.md`, `voting-tally.md`. `ballot.txt` is created or truncated on every exit path (including `panel-failed` and zero-finding short-circuit) so consumers avoid `ENOENT`. Never revises `plan.txt`; Gate B is the only apply point.

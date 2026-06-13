@@ -10,6 +10,7 @@ Wrapper for a `/design` Bash block that keeps `skills/design/SKILL.md` free of i
 
 ## Invariants
 
+- Writes `$DESIGN_TMPDIR/.bg-wait-active` after pause-save checks and removes it on exit so hook enforcement covers the immediate-background wait.
 - Accepts `--session-env-path` from the prompt-side Bash call.
 - Accepts `--claude-pid` when the wrapped logic must refresh session state.
 - Accepts `--starting-round N` for mid-loop resumes and forwards it to `run-step3-review.sh --mode loop`.

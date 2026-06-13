@@ -707,6 +707,48 @@ set -e
 test "$rc" -eq 2 || fail 'invalid outcome must exit 2'
 pass 'invalid outcome rejected'
 
+
+BG_D="$TMP/design-bg-poll"
+mkdir -p "$BG_D"
+cat >"$BG_D/run-params.json" <<'JSON'
+JSON
+cat >"$BG_D/accepted-plan-findings.md" <<'EOF'
+### FINDING_1: Example
+- **Reviewer**: Codex-Pragmatic
+- **Focus area**: correctness
+- **Concern**: example
+EOF
+: >"$BG_D/oos-accepted-design.md"
+: >"$BG_D/execution-issues.md"
+: >"$BG_D/oos-issues-created.md"
+std_bg_none="$TMP/std-bg-none.log"
+DESIGN_TMPDIR="$BG_D" ISSUE_NUMBER="" SESSION_ID="RUN-BG-NONE" \
+    "$SUBJECT" --outcome approved --post-publish-only >"$std_bg_none" 2>/dev/null
+if grep -Fq -- '- **Blocked polling attempts**:' "$BG_D/final-summary.md"; then
+    fail 'missing denial sidecar must not render blocked-polling note'
+fi
+pass 'no denial sidecar omits blocked-polling note'
+
+printf '0\n' >"$BG_D/bg-poll-guard-denials.count"
+std_bg_zero="$TMP/std-bg-zero.log"
+DESIGN_TMPDIR="$BG_D" ISSUE_NUMBER="" SESSION_ID="RUN-BG-ZERO" \
+    "$SUBJECT" --outcome approved --post-publish-only >"$std_bg_zero" 2>/dev/null
+if grep -Fq -- '- **Blocked polling attempts**:' "$BG_D/final-summary.md"; then
+    fail 'zero denial sidecar must not render blocked-polling note'
+fi
+pass 'zero denial sidecar omits blocked-polling note'
+
+: >"$BG_D/execution-issues.md"
+printf '3\n' >"$BG_D/bg-poll-guard-denials.count"
+std_bg_positive="$TMP/std-bg-positive.log"
+DESIGN_TMPDIR="$BG_D" ISSUE_NUMBER="" SESSION_ID="RUN-BG-POSITIVE" \
+    "$SUBJECT" --outcome approved --post-publish-only >"$std_bg_positive" 2>/dev/null
+grep -Fq -- '- **Blocked polling attempts**: 3' "$BG_D/final-summary.md" || fail 'positive denial sidecar must render blocked-polling note'
+grep -Fq -- '- **Warnings**: 1' "$BG_D/final-summary.md" || fail 'positive denial sidecar must increase warning count'
+grep -Fq -- 'Blocked polling attempts: 3' "$BG_D/execution-issues.md" || fail 'positive denial sidecar must append warning evidence'
+cmp -s "$BG_D/final-summary.md" "$std_bg_positive" || fail 'blocked-polling stdout/file mismatch'
+pass 'positive denial sidecar records warning and note'
+
 RPD_D="$TMP/design-rpd"
 mkdir -p "$RPD_D/plan-review/round-1"
 cat >"$RPD_D/run-params.json" <<'JSON'

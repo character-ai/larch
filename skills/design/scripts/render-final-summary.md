@@ -134,3 +134,7 @@ When `$DESIGN_TMPDIR/oos-issues-created.md` is absent or empty but `$DESIGN_TMPD
 
 - `publish-skipped` is an accepted outcome with an explicit Outcome bullet, a skipped-publish note, no failed-publish recovery prose, and `Run logs` left as `N/A`.
 - Plan review line now counts cumulative `### FINDING_N:` / `### OOS_N:` headers directly with `- **Focus area**: <value>` buckets; `test-render-final-summary.sh` covers non-zero accepted sets, missing optional OOS artifacts, cumulative accepted sets, Gate B skipped cumulative findings, and cumulative accepted sets after `voting-tally.md` removal. Review Phase Detail wiring is covered through the compose and renderer harnesses plus plan-review-loop metadata tests.
+
+## Invariants
+
+- Reads `bg-poll-guard-denials.count`; positive counts append a warning and render a `Blocked polling attempts` note.

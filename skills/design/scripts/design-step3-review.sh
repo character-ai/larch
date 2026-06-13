@@ -109,8 +109,25 @@ design_source_env_optional() {
   fi
 }
 
+
+design_bg_wait_marker_start() {
+  local step="$1"
+  _bg_wait_marker="$DESIGN_TMPDIR/.bg-wait-active"
+  _bg_wait_tmp="${_bg_wait_marker}.tmp.$$"
+  {
+    printf 'PID=%s\n' "$$"
+    printf 'CLAUDE_PID=%s\n' "${CLAUDE_PID:-}"
+    printf 'START_EPOCH=%s\n' "$(date +%s)"
+    printf 'STEP=%s\n' "$step"
+    printf 'TIMEOUT_S=21600\n'
+  } >"$_bg_wait_tmp"
+  mv -f "$_bg_wait_tmp" "$_bg_wait_marker"
+  trap 'rm -f "${_bg_wait_marker:-}" "${_bg_wait_tmp:-}"' EXIT
+}
 design_source_env_optional
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+# Marker step id: STEP=design-step3-review
+design_bg_wait_marker_start design-step3-review
 _plan_review_stdout_file="$(mktemp "${TMPDIR:-/tmp}/larch-step3-review-stdout.XXXXXX")" || {
   printf '%s\n' "**⚠ Step 3: could not allocate run-step3-review stdout capture; aborting plan review**"
   exit 1
