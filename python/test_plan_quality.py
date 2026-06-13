@@ -117,6 +117,92 @@ def test_optional_trailer_snapshot_and_validate_values(tmp_path: Path) -> None:
     assert run_cli("plan", "optional-trailers", "validate-values", "--plan-file", str(plan), "--values-file", str(keys) + ".values").returncode == 0
 
 
+_TRAILER_AWK_PARSE_CASES = [
+    ("all-three-present", "body\ndiff_added: 100\ndiff_deleted: 50\nmechanical_churn: true\ndiff_lines: 200\n", 3, "100", "50", "true"),
+    ("none-present", "body\ndiff_lines: 1\n", 0, None, None, "false"),
+    ("octal-rejected", "body\ndiff_added: 08\ndiff_deleted: 09\ndiff_lines: 10\n", 0, None, None, "false"),
+    ("block-boundary", "body\ndiff_added: 99\nnot a trailer\ndiff_added: 5\ndiff_lines: 10\n", 1, "5", None, "false"),
+    ("blank-before-diff-lines", "body\ndiff_added: 99\n\ndiff_lines: 10\n", 0, None, None, "false"),
+    ("octal-then-valid", "body\ndiff_added: 08\ndiff_added: 5\ndiff_lines: 10\n", 1, "5", None, "false"),
+    ("mech-true", "body\ndiff_added: 1\nmechanical_churn: true\ndiff_lines: 10\n", 2, "1", None, "true"),
+    ("mech-false", "body\ndiff_added: 1\nmechanical_churn: false\ndiff_lines: 10\n", 2, "1", None, "false"),
+    ("retain-010", "body\ndiff_added: 010\ndiff_deleted: 010\ndiff_lines: 10\n", 2, "010", "010", "false"),
+    ("duplicate-diff-added", "body\ndiff_added: 1\ndiff_added: 2\ndiff_lines: 10\n", 2, "2", None, "false"),
+]
+
+_TRAILER_AWK_KEYS_CASES = [
+    ("all-three-present", "body\ndiff_added: 100\ndiff_deleted: 50\nmechanical_churn: true\ndiff_lines: 200\n", ("diff_added", "diff_deleted", "mechanical_churn")),
+    ("none-present", "body\ndiff_lines: 1\n", ()),
+    ("octal-rejected", "body\ndiff_added: 08\ndiff_deleted: 09\ndiff_lines: 10\n", ()),
+    ("octal-then-valid", "body\ndiff_added: 08\ndiff_added: 5\ndiff_lines: 10\n", ("diff_added",)),
+    ("blank-before-diff-lines", "body\ndiff_added: 99\n\ndiff_lines: 10\n", ()),
+    ("mech-true", "body\ndiff_added: 1\nmechanical_churn: true\ndiff_lines: 10\n", ("diff_added", "mechanical_churn")),
+    ("mech-false", "body\ndiff_added: 1\nmechanical_churn: false\ndiff_lines: 10\n", ("diff_added", "mechanical_churn")),
+    ("retain-010", "body\ndiff_added: 010\ndiff_deleted: 010\ndiff_lines: 10\n", ("diff_added", "diff_deleted")),
+    ("duplicate-diff-added", "body\ndiff_added: 1\ndiff_added: 2\ndiff_lines: 10\n", ("diff_added",)),
+    ("block-boundary", "body\ndiff_added: 99\nnot a trailer\ndiff_added: 5\ndiff_lines: 10\n", ("diff_added",)),
+]
+
+_TRAILER_AWK_VALUES_CASES = [
+    ("block-boundary", "body\ndiff_added: 99\nnot a trailer\ndiff_added: 5\ndiff_lines: 10\n", ("diff_added=5",)),
+    ("none-present", "body\ndiff_lines: 1\n", ()),
+    ("octal-rejected", "body\ndiff_added: 08\ndiff_deleted: 09\ndiff_lines: 10\n", ()),
+    ("octal-then-valid", "body\ndiff_added: 08\ndiff_added: 5\ndiff_lines: 10\n", ("diff_added=5",)),
+    ("blank-before-diff-lines", "body\ndiff_added: 99\n\ndiff_lines: 10\n", ()),
+    ("all-three-present", "body\ndiff_added: 100\ndiff_deleted: 50\nmechanical_churn: true\ndiff_lines: 200\n", ("diff_added=100", "diff_deleted=50", "mechanical_churn=true")),
+    ("duplicate-diff-added", "body\ndiff_added: 1\ndiff_added: 2\ndiff_lines: 10\n", ("diff_added=2",)),
+    ("mech-true", "body\ndiff_added: 1\nmechanical_churn: true\ndiff_lines: 10\n", ("diff_added=1", "mechanical_churn=true")),
+    ("mech-false", "body\ndiff_added: 1\nmechanical_churn: false\ndiff_lines: 10\n", ("diff_added=1", "mechanical_churn=false")),
+    ("retain-010", "body\ndiff_added: 010\ndiff_deleted: 010\ndiff_lines: 10\n", ("diff_added=010", "diff_deleted=010")),
+]
+
+_TRAILER_AWK_HAS_KEY_CASES = [
+    ("all-three-present", "body\ndiff_added: 100\ndiff_deleted: 50\nmechanical_churn: true\ndiff_lines: 200\n", "diff_added", 0),
+    ("all-three-present", "body\ndiff_added: 100\ndiff_deleted: 50\nmechanical_churn: true\ndiff_lines: 200\n", "diff_deleted", 0),
+    ("all-three-present", "body\ndiff_added: 100\ndiff_deleted: 50\nmechanical_churn: true\ndiff_lines: 200\n", "mechanical_churn", 0),
+    ("none-present", "body\ndiff_lines: 1\n", "diff_added", 1),
+    ("none-present", "body\ndiff_lines: 1\n", "diff_deleted", 1),
+    ("none-present", "body\ndiff_lines: 1\n", "mechanical_churn", 1),
+    ("octal-rejected", "body\ndiff_added: 08\ndiff_deleted: 09\ndiff_lines: 10\n", "diff_added", 1),
+    ("octal-rejected", "body\ndiff_added: 08\ndiff_deleted: 09\ndiff_lines: 10\n", "diff_deleted", 1),
+    ("block-boundary", "body\ndiff_added: 99\nnot a trailer\ndiff_added: 5\ndiff_lines: 10\n", "diff_added", 0),
+    ("blank-before-diff-lines", "body\ndiff_added: 99\n\ndiff_lines: 10\n", "diff_added", 1),
+    ("octal-then-valid", "body\ndiff_added: 08\ndiff_added: 5\ndiff_lines: 10\n", "diff_added", 0),
+    ("boundary-orphan-only", "body\ndiff_added: 99\nnot a trailer\ndiff_lines: 10\n", "diff_added", 1),
+    ("mech-true", "body\ndiff_added: 1\nmechanical_churn: true\ndiff_lines: 10\n", "mechanical_churn", 0),
+    ("mech-false", "body\ndiff_added: 1\nmechanical_churn: false\ndiff_lines: 10\n", "mechanical_churn", 0),
+    ("retain-010", "body\ndiff_added: 010\ndiff_deleted: 010\ndiff_lines: 10\n", "diff_added", 0),
+    ("retain-010", "body\ndiff_added: 010\ndiff_deleted: 010\ndiff_lines: 10\n", "diff_deleted", 0),
+]
+
+
+@pytest.mark.parametrize(("name", "plan_text", "count", "added", "deleted", "mech"), _TRAILER_AWK_PARSE_CASES)
+def test_optional_trailer_awk_parse_parity(name: str, plan_text: str, count: int, added: str | None, deleted: str | None, mech: str) -> None:
+    meta = plan_quality.parse_optional_metadata(plan_text)
+    assert meta.metadata_trailer_lines == count
+    assert meta.diff_added == added
+    assert meta.diff_deleted == deleted
+    assert meta.mechanical_churn == mech
+
+
+@pytest.mark.parametrize(("name", "plan_text", "keys"), _TRAILER_AWK_KEYS_CASES)
+def test_optional_trailer_awk_keys_parity(name: str, plan_text: str, keys: tuple[str, ...]) -> None:
+    assert plan_quality.parse_optional_metadata(plan_text).keys == keys
+
+
+@pytest.mark.parametrize(("name", "plan_text", "values"), _TRAILER_AWK_VALUES_CASES)
+def test_optional_trailer_awk_values_parity(name: str, plan_text: str, values: tuple[str, ...]) -> None:
+    assert plan_quality.parse_optional_metadata(plan_text).values == values
+
+
+@pytest.mark.parametrize(("name", "plan_text", "key", "want_rc"), _TRAILER_AWK_HAS_KEY_CASES)
+def test_optional_trailer_awk_has_key_parity(tmp_path: Path, name: str, plan_text: str, key: str, want_rc: int) -> None:
+    plan = tmp_path / f"{name}.txt"
+    plan.write_text(plan_text, encoding="utf-8")
+    cp = run_cli("plan", "optional-trailers", "has-key", "--plan-file", str(plan), "--key", key)
+    assert cp.returncode == want_rc
+
+
 def test_check_plan_size_log_contract_and_mechanical_churn(tmp_path: Path) -> None:
     plan = tmp_path / "plan.txt"
     plan.write_text("line\n" * 4 + "diff_added: 2500\nmechanical_churn: true\ndiff_lines: 2500\n")
@@ -365,11 +451,19 @@ PLAN
 
 
 FIXTURES_DIR = Path(__file__).resolve().parents[1] / "skills" / "design" / "scripts" / "fixtures" / "parse-plan-commands"
+def _parse_plan_fixture_tsv(plan_path: Path) -> Path:
+    return plan_path.with_name(plan_path.stem.removesuffix("-plan") + ".tsv")
+
+
 FIXTURE_PAIRS = sorted(
-    (plan, plan.with_suffix(".tsv"))
+    (plan, _parse_plan_fixture_tsv(plan))
     for plan in FIXTURES_DIR.glob("*-plan.md")
-    if plan.with_suffix(".tsv").is_file()
+    if _parse_plan_fixture_tsv(plan).is_file()
 )
+
+
+def test_parse_plan_commands_fixture_pairs_count() -> None:
+    assert len(FIXTURE_PAIRS) == 13
 
 
 @pytest.mark.parametrize(("plan_path", "tsv_path"), FIXTURE_PAIRS, ids=[p.stem for p, _ in FIXTURE_PAIRS])
@@ -752,6 +846,88 @@ fi
     assert calls == ["cursor"]
     calls1 = (tmp_path / "plan-autofix" / "attempt-1-codex" / "vendor-calls").read_text(encoding="utf-8").splitlines()
     assert calls1 == ["codex"]
+
+
+def test_auto_fix_revalidation_uses_consumer_repo_root(tmp_path: Path) -> None:
+    consumer = tmp_path / "consumer"
+    consumer.mkdir()
+    subprocess.run(["git", "init"], cwd=consumer, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    script = consumer / "scripts" / "local-fixture.sh"
+    script.parent.mkdir()
+    script.write_text("#!/usr/bin/env bash\necho 'usage: local-fixture --ok'\n")
+    script.chmod(0o755)
+    design_tmp = tmp_path / "design"
+    design_tmp.mkdir()
+    plan = design_tmp / "plan.txt"
+    plan.write_text("```bash\nscripts/local-fixture.sh --bad-flag\n```\ndiff_lines: 1\n")
+    repo_root_log = tmp_path / "repo-root.log"
+    dispatch = tmp_path / "dispatch.sh"
+    dispatch.write_text(
+        """#!/usr/bin/env bash
+plan_file=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --plan-file) plan_file="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+printf 'fixed plan\\ndiff_lines: 2\\n' >"$plan_file"
+exit 0
+"""
+    )
+    dispatch.chmod(0o755)
+    validator = tmp_path / "validate.sh"
+    validator.write_text(
+        f"""#!/usr/bin/env bash
+repo_root=""
+plan_file=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --repo-root) repo_root="$2"; shift 2 ;;
+    --plan-file) plan_file="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+printf '%s\\n' "$repo_root" >>"{repo_root_log}"
+if [ -f "$repo_root/scripts/local-fixture.sh" ] && grep -Fq 'fixed plan' "$plan_file"; then
+  printf 'VALIDATE_STATUS=ok\\n'
+else
+  printf 'VALIDATE_STATUS=defects-found\\n'
+fi
+"""
+    )
+    validator.chmod(0o755)
+    gate_b = tmp_path / "gate-b.sh"
+    gate_b.write_text("#!/usr/bin/env bash\nexit 0\n")
+    gate_b.chmod(0o755)
+    env = {
+        "LARCH_AUTOFIX_DISPATCH_SH": str(dispatch),
+        "LARCH_AUTOFIX_VALIDATE_PLAN_SH": str(validator),
+        "LARCH_AUTOFIX_GATE_B_DEDUP_PLAN_SH": str(gate_b),
+    }
+    (design_tmp / "validate-plan-commands.log").write_text("defect\n")
+    cp = run_cli(
+        "plan",
+        "auto-fix-commands",
+        "--design-tmpdir",
+        str(design_tmp),
+        "--plan-file",
+        str(plan),
+        "--repo-root",
+        str(consumer.resolve()),
+        "--codex-present",
+        "true",
+        "--cursor-present",
+        "false",
+        cwd=consumer,
+        env=env,
+    )
+    assert cp.returncode == 0, cp.stderr
+    out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
+    assert out["AUTOFIX_STATUS"] == "ok"
+    logged_roots = repo_root_log.read_text(encoding="utf-8").strip().splitlines()
+    assert logged_roots
+    assert all(Path(line).resolve() == consumer.resolve() for line in logged_roots)
 
 
 def test_auto_fix_tmpdir_mutation_guard_with_stub(tmp_path: Path) -> None:

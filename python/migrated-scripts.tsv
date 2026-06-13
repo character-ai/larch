@@ -397,7 +397,6 @@ skills/upgrade-larch/scripts/upgrade-larch.sh	#3688
 skills/design/scripts/auto-fix-plan-commands.sh	#3679
 skills/design/scripts/auto-fix-plan-commands.md	#3679
 skills/design/scripts/check-plan-size.sh	#3679
-skills/design/scripts/check-plan-size.md	#3679
 skills/design/scripts/invoke-plan-validator.sh	#3679
 skills/design/scripts/invoke-plan-validator.md	#3679
 skills/design/scripts/parse-plan-commands.awk	#3679
@@ -459,7 +458,6 @@ skills/design/scripts/test-parse-plan-commands.md	#3679
 skills/design/scripts/test-validate-plan-commands.sh	#3679
 skills/design/scripts/test-validate-plan-commands.md	#3679
 skills/design/scripts/test-check-plan-size.sh	#3679
-skills/design/scripts/test-check-plan-size.md	#3679
 scripts/test-revise-plan-with-waterfall.sh	#3679
 scripts/test-revise-plan-with-waterfall.md	#3679
 scripts/agent-model-args.md	#3673

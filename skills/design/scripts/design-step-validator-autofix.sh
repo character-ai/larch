@@ -115,7 +115,7 @@ if [ -e "$_autofix_attempted" ]; then
   _autofix_rc=0
 else
   : > "$_autofix_attempted"
-  _repo_root="$CLAUDE_PLUGIN_ROOT"
+  _repo_root="$(git -C "$PWD" rev-parse --show-toplevel 2>/dev/null || printf '%s' "$CLAUDE_PLUGIN_ROOT")"
   set +e
   _autofix_out=$(env LARCH_QUIET_DISABLE=1 python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" plan auto-fix-commands \
     --design-tmpdir "$DESIGN_TMPDIR" \
