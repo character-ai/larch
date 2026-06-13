@@ -32,6 +32,10 @@ class MergeResult:
 
 _BUMP_SUBJECT_RE = re.compile(r"^Bump version to ([0-9]+\.[0-9]+\.[0-9]+)$")
 _SEMVER_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
+_MERGE_CONFLICT_SIGNALS = (
+    "merge conflicts",
+    "cannot be cleanly created",
+)
 
 
 def redact_merge_diagnostic(text: str) -> str:
@@ -43,6 +47,11 @@ def redact_merge_diagnostic(text: str) -> str:
         return "merge diagnostic redaction unavailable"
     one_line = redacted.replace("\n", " ")
     return one_line[: config.MERGE_DIAGNOSTIC_MAX_LEN]
+
+
+def _has_merge_conflict_signal(error: str | None) -> bool:
+    lowered = (error or "").lower()
+    return any(signal in lowered for signal in _MERGE_CONFLICT_SIGNALS)
 
 
 def merge_pr(
@@ -486,6 +495,14 @@ def _maybe_review_required(
         config.MERGE_RESULT_POLICY_DENIED,
     }:
         return outcome
+    if (
+        outcome.result == config.MERGE_RESULT_ADMIN_FAILED
+        and _has_merge_conflict_signal(outcome.error)
+    ):
+        return MergeResult(
+            result=config.MERGE_RESULT_MAIN_ADVANCED,
+            error=outcome.error,
+        )
     review_decision = gh.pr_review_decision(runner, pr_num, repo=ctx.repo, cwd=cwd)
     if review_decision != "REVIEW_REQUIRED":
         return outcome
