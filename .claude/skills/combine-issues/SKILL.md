@@ -35,7 +35,7 @@ Before writing any body files, create a unique temp directory for this run:
 COMBINE_TMPDIR=$(mktemp -d)
 ```
 
-Use `$COMBINE_TMPDIR/` for all body temp files. Never write to a hardcoded `/tmp/<name>` path — those collide across runs.
+Use `$COMBINE_TMPDIR/` for all body temp files. Never write to a hardcoded `/tmp/<name>` path; those paths collide when a prior run left a file at the same location.
 
 <!-- step:1 — Fetch Eligible Issues -->
 
@@ -68,7 +68,7 @@ For each approved group, write the combined body to `$COMBINE_TMPDIR/group-<N>.m
 ```bash
 python3 "$PWD/python/cli.py" combine-issues apply \
   --title "<combined title>" \
-  --body-file "<temp-file>" \
+  --body-file "$COMBINE_TMPDIR/group-<N>.md" \
   --source-issues "<comma-separated issue numbers>"
 ```
 
@@ -194,7 +194,7 @@ For each approved group, write the combined body to `$COMBINE_TMPDIR/oos-group-<
 python3 "$PWD/python/cli.py" combine-issues apply \
   --repo "$REPO" \
   --title "<combined title>" \
-  --body-file "<temp-file>" \
+  --body-file "$COMBINE_TMPDIR/oos-group-<N>.md" \
   --source-issues "<comma-separated issue numbers to close>" \
   --defer-close
 ```
