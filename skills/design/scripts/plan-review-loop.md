@@ -81,7 +81,7 @@ Step 3 no longer runs a loop-internal post-apply pipeline, so plan-size and vali
 ## Cross-links
 
 - `scripts/lib-design-round-artifacts.md` — snapshot/publish allowlist
-- `aggregate-findings.md` — `--allow-findings-outside-tmpdir true`
+- `python/cli.py review aggregate-findings` — `--allow-findings-outside-tmpdir true`
 - `tally-plan-review.md`, `dispatch-plan-voters.md`
 
 ## Cross-entry forensics

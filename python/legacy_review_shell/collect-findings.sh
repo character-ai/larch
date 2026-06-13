@@ -4,7 +4,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd -P)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$REPO_ROOT}"
 if [[ ! -f "$PLUGIN_ROOT/scripts/lib-failed-agent-stderr-tail.sh" ]]; then
     PLUGIN_ROOT="$REPO_ROOT"

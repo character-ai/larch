@@ -8,7 +8,6 @@ from a private location while callers cut over to ``python/cli.py review ...``.
 from __future__ import annotations
 
 import os
-import sys
 from pathlib import Path
 
 import logging_util
@@ -22,7 +21,8 @@ def run_legacy(script_name: str, argv: list[str]) -> int:
     logging_util.quiet_init(argv0=f"review-{script_name}")
     script = _LEGACY_DIR / script_name
     env = os.environ.copy()
-    _ = env.setdefault("CLAUDE_PLUGIN_ROOT", str(_PLUGIN_ROOT))
+    if not env.get("CLAUDE_PLUGIN_ROOT"):
+        env["CLAUDE_PLUGIN_ROOT"] = str(_PLUGIN_ROOT)
     result = proc.run(["bash", str(script), *argv], cwd=str(_PLUGIN_ROOT), env=env)
     for line in result.stdout.splitlines():
         logging_util.emit(line)
@@ -31,8 +31,8 @@ def run_legacy(script_name: str, argv: list[str]) -> int:
         # adding a second blank line.
         pass
     if result.stderr:
-        _ = sys.stderr.write(result.stderr)
-        _ = sys.stderr.flush()
+        for line in result.stderr.splitlines():
+            logging_util.diagnostic(line)
     return result.returncode
 
 

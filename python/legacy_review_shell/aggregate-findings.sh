@@ -4,7 +4,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd -P)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$REPO_ROOT}"
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
@@ -79,7 +79,7 @@ source "$SCRIPT_DIR/aggregate-findings-phrases.inc.bash"
 source "$PLUGIN_ROOT/scripts/lib-scope-anchor-handoff.sh"
 MARKER_HELPER="$PLUGIN_ROOT/python/cli.py"
 if [[ ! -f "$MARKER_HELPER" ]]; then
-    MARKER_HELPER="$SCRIPT_DIR/../../../python/cli.py"
+    MARKER_HELPER="$SCRIPT_DIR/../../python/cli.py"
 fi
 export LARCH_AGGREGATE_INPUT_MODE="$INPUT_MODE"
 export EMPTY_MERGE_ATTESTATION

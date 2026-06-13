@@ -93,7 +93,7 @@ _scrub_submodule_paths() {
     if [[ -n "$SCRUB_SUBMODULE_PATHS_SH" && -x "$SCRUB_SUBMODULE_PATHS_SH" ]]; then
         "$SCRUB_SUBMODULE_PATHS_SH" "$@"
     else
-        python3 "$PLUGIN_ROOT/python/cli.py" redact scrub-submodule-paths "$@"
+        python3 "$PY_CLI" redact scrub-submodule-paths "$@"
     fi
 }
 
@@ -101,7 +101,7 @@ _larch_log() {
     if [[ -n "$LARCH_LOG_SH" && -x "$LARCH_LOG_SH" ]]; then
         "$LARCH_LOG_SH" "$@"
     else
-        python3 "$PLUGIN_ROOT/python/cli.py" run-log "$@"
+        python3 "$PY_CLI" run-log "$@"
     fi
 }
 IMPLEMENT_TMPDIR=""
@@ -161,8 +161,8 @@ kv_get() {
 
 session_get() {
     local key="$1" default_value="${2:-}"
-    if [[ -n "$SESSION_ENV_PATH" && -f "$SESSION_ENV_PATH" && -f "$PLUGIN_ROOT/python/cli.py" ]]; then
-        python3 "$PLUGIN_ROOT/python/cli.py" session read-key --file "$SESSION_ENV_PATH" --key "$key" --default "$default_value" || printf '%s\n' "$default_value"
+    if [[ -n "$SESSION_ENV_PATH" && -f "$SESSION_ENV_PATH" && -f "$PY_CLI" ]]; then
+        python3 "$PY_CLI" session read-key --file "$SESSION_ENV_PATH" --key "$key" --default "$default_value" || printf '%s\n' "$default_value"
     else
         printf '%s\n' "$default_value"
     fi
@@ -1307,7 +1307,7 @@ append_log_write_failure() {
             --redact
         )
         [[ -n "$verdict" ]] && helper_args+=(--verdict "$verdict")
-        python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure \
+        python3 "$PY_CLI" run-log append-failure \
             "${helper_args[@]}" >/dev/null 2>&1 || true
     else
         larch_err "review-and-fix.sh: best-effort log write failed for $tool (see $output_file)"
@@ -1625,7 +1625,7 @@ _implement_round_body() {
                     printf '\n' >> "$skipped_security_file"
                 elif [[ "$sec_rc" -eq 1 ]]; then
                     OOS_WRITE_SEQ=$((OOS_WRITE_SEQ + 1))
-                    python3 "${PLUGIN_ROOT}/python/cli.py" oos normalize-header \
+                    python3 "$PY_CLI" oos normalize-header \
                         --seq "$OOS_WRITE_SEQ" --block-file "$block_file" >> "$skipped_file"
                     printf '\n' >> "$skipped_file"
                 else
