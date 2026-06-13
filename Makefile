@@ -432,13 +432,13 @@ test-design-step2b-drafter:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-step2b-drafter.sh
 
 test-design-driver:
-	python3 python/cli.py timing harness-mark --label $@ -- pytest -q python/test_plan_quality.py -k validate_plan
+	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-driver.sh
 
 test-design-publish:
-	python3 python/cli.py timing harness-mark --label $@ -- pytest -q python/test_plan_quality.py -k validate_plan
+	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-publish.sh
 
 test-design-postplan-emit:
-	python3 python/cli.py timing harness-mark --label $@ -- pytest -q python/test_plan_quality.py -k "validate_plan or check_plan_size"
+	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-postplan-emit.sh
 
 test-read-result-env:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-read-result-env.sh
@@ -462,7 +462,7 @@ test-emit-plan:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-emit-plan.sh
 
 test-gate-b-dedup-plan:
-	python3 python/cli.py timing harness-mark --label $@ -- pytest -q python/test_plan_quality.py -k optional_trailer
+	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-gate-b-dedup-plan.sh
 
 test-gate-b-apply-mode:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-gate-b-apply-mode.sh
@@ -476,7 +476,7 @@ test-check-plan-size:
 	python3 python/cli.py timing harness-mark --label $@ -- pytest -q python/test_plan_quality.py -k check_plan_size
 
 test-auto-fix-plan-commands:
-	python3 python/cli.py timing harness-mark --label $@ -- pytest -q python/test_plan_quality.py -k auto_fix
+	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-auto-fix-plan-commands.sh
 
 
 test-parse-plan-commands:
@@ -924,7 +924,7 @@ test-compose-plan-goals-test:
 	python3 python/cli.py timing harness-mark --label $@ -- pytest -q python/test_plan_quality.py -k compose_plan_goals_test
 
 test-run-step1-plan-log:
-	python3 python/cli.py timing harness-mark --label $@ -- pytest -q python/test_plan_quality.py -k compose_plan_goals_test
+	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-run-step1-plan-log.sh
 
 test-compose-collector-failure-log:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-compose-collector-failure-log.sh

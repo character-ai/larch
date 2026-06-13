@@ -81,12 +81,72 @@ import os
 import sys
 from pathlib import Path
 
+def _append_call_log(line: str) -> None:
+    call_log = os.environ.get("CALL_LOG")
+    if call_log:
+        with open(call_log, "a", encoding="utf-8") as handle:
+            handle.write(line + "\n")
+
+def _stub_plan_validate(argv: list[str]) -> int:
+    _append_call_log("validator " + " ".join(argv))
+    stub_rc = int(os.environ.get("VALIDATOR_STUB_RC", "0"))
+    if stub_rc != 0:
+        if os.environ.get("VALIDATOR_EMIT_STATUS_ON_FAIL", "false") == "true":
+            print(f"VALIDATE_STATUS={os.environ.get('VALIDATE_STATUS_VALUE', 'defects-found')}")
+        return stub_rc
+    if os.environ.get("VALIDATOR_SILENT") == "true":
+        return 0
+    if os.environ.get("VALIDATOR_EMIT_STATUS_ON_FAIL", "false") == "true" and not os.environ.get("VALIDATE_STATUS_VALUE"):
+        return 0
+    print(f"VALIDATE_STATUS={os.environ.get('VALIDATE_STATUS_VALUE', 'ok')}")
+    print(f"VALIDATE_DEFECT_COUNT={os.environ.get('VALIDATE_DEFECT_COUNT_VALUE', '0')}")
+    print(f"VALIDATE_SKIPPED_COUNT={os.environ.get('VALIDATE_SKIPPED_COUNT_VALUE', '0')}")
+    print(f"VALIDATE_UNSAFE_TOKEN_COUNT={os.environ.get('VALIDATE_UNSAFE_TOKEN_COUNT_VALUE', '0')}")
+    design_tmpdir = ""
+    idx = 0
+    while idx < len(argv):
+        if argv[idx] == "--design-tmpdir" and idx + 1 < len(argv):
+            design_tmpdir = argv[idx + 1]
+            break
+        idx += 1
+    if design_tmpdir:
+        print(f"VALIDATE_LOG_FILE={design_tmpdir}/validate-plan-commands.log")
+    return 0
+
+def _stub_plan_check_size(argv: list[str]) -> int:
+    _append_call_log("plan check-size " + " ".join(argv))
+    design_tmpdir = ""
+    idx = 0
+    while idx < len(argv):
+        if argv[idx] == "--design-tmpdir" and idx + 1 < len(argv):
+            design_tmpdir = argv[idx + 1]
+            break
+        idx += 1
+    stub_rc = int(os.environ.get("CHECK_SIZE_STUB_RC", "0"))
+    status = os.environ.get("CHECK_SIZE_STATUS_VALUE", "under-threshold")
+    stderr = os.environ.get("CHECK_SIZE_STDERR", "")
+    if stderr and design_tmpdir:
+        log = Path(design_tmpdir) / "check-plan-size.validation.log"
+        log.write_text(stderr + "\n", encoding="utf-8")
+    print(f"PLAN_SIZE_STATUS={status}")
+    print("DRIFT_TRIGGER_FIRED=false")
+    print("SIZE_TRIGGER_FIRED=false")
+    print("SOFT_ADVISORY=false")
+    print("PLAN_LINES=2")
+    print("DIFF_LINES=12")
+    print("MECHANICAL_CHURN=false")
+    return stub_rc
+
 def main() -> None:
     root = Path(__file__).resolve().parent
     if len(sys.argv) >= 3 and sys.argv[1] == "session":
         stub = root / "stubs" / "session" / sys.argv[2]
         if stub.is_file() and os.access(stub, os.X_OK):
             os.execv(str(stub), [str(stub), *sys.argv[3:]])
+    if len(sys.argv) >= 3 and sys.argv[1] == "plan" and sys.argv[2] == "validate":
+        raise SystemExit(_stub_plan_validate(sys.argv[3:]))
+    if len(sys.argv) >= 3 and sys.argv[1] == "plan" and sys.argv[2] == "check-size":
+        raise SystemExit(_stub_plan_check_size(sys.argv[3:]))
     os.execv(sys.executable, [sys.executable, str(root / "real-cli.py"), *sys.argv[1:]])
 
 if __name__ == "__main__":
@@ -96,7 +156,6 @@ chmod +x "$FAKE_PLUGIN/python/cli.py"
 ln -sf "$REPO_ROOT/scripts/lib-quiet.sh" "$FAKE_SCRIPTS/lib-quiet.sh"
 ln -sf "$REPO_ROOT/scripts/lib-design-tmpdir.sh" "$FAKE_SCRIPTS/lib-design-tmpdir.sh"
 ln -sf "$SCRIPT_DIR/lib-phase-driver.sh" "$FAKE_DESIGN/lib-phase-driver.sh"
-ln -sf "$SCRIPT_DIR/check-plan-size.sh" "$FAKE_DESIGN/check-plan-size.sh"
 ln -sf "$SCRIPT_DIR/lib-plan-optional-trailers.sh" "$FAKE_DESIGN/lib-plan-optional-trailers.sh"
 ln -sf "$SCRIPT_DIR/lib-plan-optional-trailers.awk" "$FAKE_DESIGN/lib-plan-optional-trailers.awk"
 ln -sf "$SCRIPT_DIR/lib-drift-baseline.sh" "$FAKE_DESIGN/lib-drift-baseline.sh"
@@ -139,16 +198,8 @@ STUB
 
 cat >"$FAKE_DESIGN/invoke-plan-validator.sh" <<'STUB'
 #!/usr/bin/env bash
-echo "validator $*" >>"${CALL_LOG:?}"
-if [[ "${VALIDATOR_STUB_RC:-0}" -ne 0 ]]; then
-  [[ "${VALIDATOR_EMIT_STATUS_ON_FAIL:-false}" == true ]] && printf 'VALIDATE_STATUS=%s\n' "${VALIDATE_STATUS_VALUE:-defects-found}"
-  exit "${VALIDATOR_STUB_RC}"
-fi
-printf 'VALIDATE_STATUS=%s\n' "${VALIDATE_STATUS_VALUE:-ok}"
-printf 'VALIDATE_DEFECT_COUNT=%s\n' "${VALIDATE_DEFECT_COUNT_VALUE:-0}"
-printf 'VALIDATE_SKIPPED_COUNT=%s\n' "${VALIDATE_SKIPPED_COUNT_VALUE:-0}"
-printf 'VALIDATE_UNSAFE_TOKEN_COUNT=%s\n' "${VALIDATE_UNSAFE_TOKEN_COUNT_VALUE:-0}"
-printf 'VALIDATE_LOG_FILE=%s\n' "${DESIGN_TMPDIR:?}/validate-plan-commands.log"
+echo "legacy-validator-stub unused $*" >>"${CALL_LOG:?}"
+exit 0
 STUB
 
 cat >"$FAKE_SCRIPTS/design-pause-save.sh" <<'STUB'
@@ -163,7 +214,8 @@ export CALL_LOG="$TMP/call.log"
 reset_env() {
     : >"$CALL_LOG"
     unset EMIT_STUB_RC EMIT_STATUS_VALUE EMIT_OMIT_STATUS DIFF_LINES_VALUE \
-        SNAPSHOT_STUB_RC VALIDATOR_STUB_RC VALIDATOR_EMIT_STATUS_ON_FAIL \
+        SNAPSHOT_STUB_RC VALIDATOR_STUB_RC VALIDATOR_EMIT_STATUS_ON_FAIL VALIDATOR_SILENT \
+        CHECK_SIZE_STUB_RC CHECK_SIZE_STATUS_VALUE CHECK_SIZE_STDERR \
         VALIDATE_STATUS_VALUE VALIDATE_DEFECT_COUNT_VALUE VALIDATE_SKIPPED_COUNT_VALUE \
         VALIDATE_UNSAFE_TOKEN_COUNT_VALUE ISSUE_NUMBER REPO || true
 }
@@ -221,7 +273,7 @@ assert_file_kv "$D1/.design-postplan-emit-result.env" POSTPLAN_EMIT_STATUS ok "h
 assert_file_kv "$D1/.design-postplan-emit-result.env" SNAPSHOT_STATUS skipped-suppressed "happy snapshot suppressed"
 assert_file_kv "$D1/.design-postplan-emit-result.env" VALIDATE_STATUS ok "happy validator"
 assert_contains "$CALL_LOG" 'design-driver EMIT' "happy called EMIT"
-assert_contains "$CALL_LOG" 'validator' "happy called validator"
+assert_contains "$CALL_LOG" 'plan validate' "happy called validator"
 # 3 snapshot always suppressed
 D3="$TMP/hard-suppressed"
 setup_design_tmp "$D3" full
@@ -242,7 +294,7 @@ rc=$?
 set -e
 assert_rc "legacy quick validates" 0 "$rc"
 assert_file_kv "$D4/.design-postplan-emit-result.env" VALIDATE_STATUS ok "legacy quick validator status"
-assert_contains "$CALL_LOG" 'validator' "legacy quick called validator"
+assert_contains "$CALL_LOG" 'plan validate' "legacy quick called validator"
 
 # 5 defects-found is success
 D5="$TMP/defects"
@@ -299,36 +351,14 @@ assert_file_kv "$D8/.design-postplan-emit-result.env" POSTPLAN_EMIT_STATUS valid
 D8b="$TMP/validator-silent"
 setup_design_tmp "$D8b" full
 reset_env
-export VALIDATOR_STUB_RC=0 VALIDATE_STATUS_VALUE=""
-# Suppress VALIDATE_STATUS emission from stub
-cat >"$FAKE_DESIGN/invoke-plan-validator.sh" <<'STUB2'
-#!/usr/bin/env bash
-echo "validator $*" >>"${CALL_LOG:?}"
-# intentionally emits no VALIDATE_STATUS
-exit 0
-STUB2
-chmod +x "$FAKE_DESIGN/invoke-plan-validator.sh"
+export VALIDATOR_SILENT=true
 set +e
 bash "$SUBJECT" --design-tmpdir "$D8b" >"$D8b/stdout.txt" 2>"$D8b/stderr.txt"
 rc=$?
 set -e
 assert_rc "validator silent rc" 1 "$rc"
 assert_file_kv "$D8b/.design-postplan-emit-result.env" POSTPLAN_EMIT_STATUS validate-driver-failed "validator silent status"
-# Restore stub
-cat >"$FAKE_DESIGN/invoke-plan-validator.sh" <<'STUB'
-#!/usr/bin/env bash
-echo "validator $*" >>"${CALL_LOG:?}"
-if [[ "${VALIDATOR_STUB_RC:-0}" -ne 0 ]]; then
-  [[ "${VALIDATOR_EMIT_STATUS_ON_FAIL:-false}" == true ]] && printf 'VALIDATE_STATUS=%s\n' "${VALIDATE_STATUS_VALUE:-defects-found}"
-  exit "${VALIDATOR_STUB_RC}"
-fi
-printf 'VALIDATE_STATUS=%s\n' "${VALIDATE_STATUS_VALUE:-ok}"
-printf 'VALIDATE_DEFECT_COUNT=%s\n' "${VALIDATE_DEFECT_COUNT_VALUE:-0}"
-printf 'VALIDATE_SKIPPED_COUNT=%s\n' "${VALIDATE_SKIPPED_COUNT_VALUE:-0}"
-printf 'VALIDATE_UNSAFE_TOKEN_COUNT=%s\n' "${VALIDATE_UNSAFE_TOKEN_COUNT_VALUE:-0}"
-printf 'VALIDATE_LOG_FILE=%s\n' "${DESIGN_TMPDIR:?}/validate-plan-commands.log"
-STUB
-chmod +x "$FAKE_DESIGN/invoke-plan-validator.sh"
+unset VALIDATOR_SILENT
 
 # 9 usage/config error
 set +e
@@ -612,13 +642,9 @@ assert_contains "$D26/stdout.txt" 'result env write failed' "merged result env d
 assert_not_contains "$D26/stdout.txt" 'POSTPLAN_EMIT_STATUS=' "merged result env no stdout fallback"
 
 D27="$TMP/merged-plan-size-append-fails"
-rm -f "$FAKE_DESIGN/check-plan-size.sh" "$FAKE_SCRIPTS/run-log append-failure"
-cat >"$FAKE_DESIGN/check-plan-size.sh" <<'STUB'
-#!/usr/bin/env bash
-printf 'PLAN_SIZE_STATUS=missing-plan\n'
-printf 'stderr detail from check-plan-size\n' >&2
-exit 2
-STUB
+rm -f "$FAKE_SCRIPTS/run-log append-failure"
+export CHECK_SIZE_STUB_RC=2 CHECK_SIZE_STATUS_VALUE=missing-plan \
+  CHECK_SIZE_STDERR='stderr detail from check-plan-size'
 cat >"$FAKE_SCRIPTS/run-log append-failure" <<'STUB'
 #!/usr/bin/env bash
 printf 'APPENDED=false\nLOG=/tmp/leak\n'
@@ -635,8 +661,7 @@ assert_contains "$D27/stdout.txt" 'proceeding without threshold check' "merged a
 assert_contains "$D27/check-plan-size.validation.log" 'stderr detail from check-plan-size' "merged append failure preserves stderr"
 assert_not_contains "$D27/stdout.txt" 'APPENDED=' "merged append failure no APPENDED leak"
 assert_not_contains "$D27/stdout.txt" 'LOG=' "merged append failure no LOG leak"
-rm -f "$FAKE_DESIGN/check-plan-size.sh"
-ln -sf "$SCRIPT_DIR/check-plan-size.sh" "$FAKE_DESIGN/check-plan-size.sh"
+unset CHECK_SIZE_STUB_RC CHECK_SIZE_STATUS_VALUE CHECK_SIZE_STDERR
 
 D28="$TMP/merged-snapshot-failed-diagnostic"
 setup_design_tmp "$D28" full
@@ -780,7 +805,7 @@ assert_rc "merged invalid mechanical_churn" 1 "$rc"
 assert_file_kv "$D37/.design-postplan-emit-result.env" PLAN_SIZE_STATUS invalid-mechanical-churn "merged invalid mechanical_churn status"
 assert_contains "$D37/.design-postplan-emit-result.env" 'invalid-mechanical-churn' "merged invalid mechanical_churn WARN"
 [[ -f "$D37/check-plan-size.validation.log" ]] || fail "merged invalid mechanical_churn validation log"
-assert_contains "$D37/check-plan-size.validation.log" 'invalid-mechanical-churn: 35' "merged invalid mechanical_churn awk stderr"
+assert_contains "$D37/check-plan-size.validation.log" 'invalid-mechanical-churn' "merged invalid mechanical_churn stderr"
 
 if [[ "$FAIL" -ne 0 ]]; then
     printf 'FAIL: test-design-postplan-emit.sh (%s failed, %s passed)\n' "$FAIL" "$PASS" >&2

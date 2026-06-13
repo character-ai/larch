@@ -89,7 +89,8 @@ run_action() {
             "$SCRIPT_DIR/finalize-plan.sh" --design-tmpdir "$DESIGN_TMPDIR" "$@"
             ;;
         VALIDATE_PLAN_COMMANDS)
-            python3 "$PLUGIN_ROOT/python/cli.py" plan validate "$@"
+            export DESIGN_TMPDIR
+            python3 "$PLUGIN_ROOT/python/cli.py" plan validate --design-tmpdir "$DESIGN_TMPDIR" "$@"
             ;;
         *)
             return 64
