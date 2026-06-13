@@ -106,9 +106,12 @@ def test_wait_validation_and_stdout_grammar(tmp_path: Path, capsys: pytest.Captu
         monkeypatch.setenv("WAIT_FOR_REVIEWERS_POLL_INTERVAL", bad_poll)
         assert review_dispatch.wait_reviewers_main([str(tmp_path / "x.done")]) == 1
         assert "WAIT_FOR_REVIEWERS_POLL_INTERVAL" in capsys.readouterr().err
+    good_done = tmp_path / "good.done"
+    good_done.write_text("0\n", encoding="utf-8")
     for good_poll in (".5", "1."):
         monkeypatch.setenv("WAIT_FOR_REVIEWERS_POLL_INTERVAL", good_poll)
-        assert review_dispatch._parse_poll_interval(good_poll) == float(good_poll)
+        assert review_dispatch.wait_reviewers_main(["--timeout", "1", str(good_done)]) == 0
+        assert "DONE 1 good: exit=0" in capsys.readouterr().out
     monkeypatch.setenv("WAIT_FOR_REVIEWERS_POLL_INTERVAL", "0.01")
     done = tmp_path / "same.done"
     done.write_text("0\n", encoding="utf-8")
