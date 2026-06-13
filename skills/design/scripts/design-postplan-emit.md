@@ -2,7 +2,7 @@
 
 **Consumer**: `/design` Step 2b post-plan emit sequence and prompt-side re-emit sites.
 
-**Callers**: `skills/design/SKILL.md` initial Step 2b (`--with-plan-size --snapshot-original`), Gate A after-discussion re-emit (`--with-plan-size`), `skills/design/references/approval-gates.md` Gate B shared post-apply (`--with-plan-size`), and `skills/design/references/discussion-rounds.md` post-plan Round 2 (`--with-plan-size`). Retained callers still use standalone `check-plan-size.sh` via Step 2b.5 / `plan-review-loop.sh`.
+**Callers**: `skills/design/SKILL.md` initial Step 2b (`--with-plan-size --snapshot-original`), Gate A after-discussion re-emit (`--with-plan-size`), `skills/design/references/approval-gates.md` Gate B shared post-apply (`--with-plan-size`), and `skills/design/references/discussion-rounds.md` post-plan Round 2 (`--with-plan-size`). Retained callers still use standalone `python/cli.py plan check-size` via Step 2b.5 / `plan-review-loop.sh`.
 
 ## Argv
 
@@ -10,7 +10,7 @@
 |------|----------|-------|
 | `--design-tmpdir PATH` | yes | Canonicalized with `cd … && pwd -P` |
 | `--snapshot-original` | no | Deprecated; snapshot is always suppressed |
-| `--with-plan-size` | no | Merged mode: run `check-plan-size.sh` after successful validation; action exit codes; display-only FD 3 |
+| `--with-plan-size` | no | Merged mode: run `python/cli.py plan check-size` after successful validation; action exit codes; display-only FD 3 |
 
 The snapshot is always suppressed (`skipped-suppressed`). Validation is unconditional for all sites.
 
@@ -19,8 +19,8 @@ The snapshot is always suppressed (`skipped-suppressed`). Validation is uncondit
 1. Resolve `CLAUDE_PLUGIN_ROOT`, export `DESIGN_TMPDIR`, read `partition_requested` from `run-params.json` (`json_boolean_or_sed` for bare `true`/`false` without `jq`).
 2. Pause checkpoint before each internal step. **`--with-plan-size`**: exit **11** after writing result env (orchestrator `exec`s `design-pause-save.sh`). **Legacy**: `exec` pause-save from the driver.
 3. Pipe `ACTION=EMIT_PLAN` to `design-driver.sh`.
-5. Run `invoke-plan-validator.sh` unconditionally.
-6. **`--with-plan-size`**: after validation succeeds without defects, run `check-plan-size.sh` with `LARCH_QUIET_DISABLE=1`; parse stdout only; stderr to a sidecar on failure paths.
+5. Run `python/cli.py plan validate` unconditionally.
+6. **`--with-plan-size`**: after validation succeeds without defects, run `python/cli.py plan check-size` with `LARCH_QUIET_DISABLE=1`; parse stdout only; stderr to a sidecar on failure paths.
 
 ## Result env (`.design-postplan-emit-result.env`)
 
@@ -62,7 +62,7 @@ Allowlisted keys for orchestrator reads (never `source`):
 
 ## Plan-size nonfatal failures (merged)
 
-On `check-plan-size.sh` rc **2** or **3**: capture stdout+stderr to `check-plan-size.validation.log`, append via `run-log append-failure` (helper stdout/stderr suppressed), emit display `WARN`, exit **0** (under-threshold continuation).
+On `python/cli.py plan check-size` rc **2** or **3**: capture stdout+stderr to `check-plan-size.validation.log`, append via `run-log append-failure` (helper stdout/stderr suppressed), emit display `WARN`, exit **0** (under-threshold continuation).
 
 ## Soft advisory display
 

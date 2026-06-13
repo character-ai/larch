@@ -1,7 +1,7 @@
 # run-step1-plan-log.sh contract
 
 `scripts/run-step1-plan-log.sh` is the `/implement` Step 1 launcher for the
-`plan-goals-test` run-log batch. It wraps `compose-plan-goals-test.sh` and the
+`plan-goals-test` run-log batch. It wraps `python/cli.py plan compose-goals-test` and the
 corresponding `larch-log.sh write` call so SKILL.md only passes the tmpdir and
 the human-authored goal sentence. When `$IMPLEMENT_TMPDIR/parent-issue.md`
 exists, it also refreshes the `parent-issue` run-log batch after the plan batch
@@ -17,7 +17,7 @@ Arguments:
 
 Derived sources:
 
-- `$IMPLEMENT_TMPDIR/plan.txt`: passed to `compose-plan-goals-test.sh --plan-file` (conventional path after Preflight materialization).
+- `$IMPLEMENT_TMPDIR/plan.txt`: passed to `python/cli.py plan compose-goals-test --plan-file` (conventional path after Preflight materialization).
 - `$IMPLEMENT_TMPDIR/session-env.sh`
   - `LARCH_CLAUDE_PLUGIN_ROOT`: resolves helper paths when
     `CLAUDE_PLUGIN_ROOT` is not already set.

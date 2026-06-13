@@ -1,6 +1,6 @@
 # test-compose-plan-goals-test.sh contract
 
-Regression harness for `scripts/compose-plan-goals-test.sh`.
+Regression harness for `python/cli.py plan compose-goals-test`.
 
 Primary callers: `make test-compose-plan-goals-test`, and the
 `test-harnesses-4` shard through `make test-harnesses`.
@@ -14,4 +14,4 @@ It covers:
 - fail-closed behavior for too-short, pointer-only, empty, and missing plan
   files.
 
-Update alongside `scripts/compose-plan-goals-test.sh`.
+Update alongside `python/plan_quality.py`.

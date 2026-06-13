@@ -151,6 +151,7 @@ SESSION_ENV_PATH="$DESIGN_TMPDIR/session-env.sh"
 PLUGIN_ROOT="$(phase_driver_resolve_plugin_root "$SCRIPT_DIR" "$SESSION_ENV_PATH")"
 [[ -d "$PLUGIN_ROOT" ]] || fail "plugin root not a directory: $PLUGIN_ROOT"
 export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"
+CONSUMER_REPO_ROOT="$(phase_driver_resolve_consumer_repo_root "$PLUGIN_ROOT")"
 
 export ISSUE_NUMBER="$ISSUE"
 export SESSION_ID="$SESSION_ID"
@@ -340,7 +341,7 @@ if [[ "$SKIP_VALIDATE" == true ]]; then
     VALIDATE_STATUS=skipped
 else
     set +e
-    _validate_out=$("$PLUGIN_ROOT/skills/design/scripts/invoke-plan-validator.sh" "$DESIGN_TMPDIR/composed-plan.md" 2>&1)
+    _validate_out=$(env DESIGN_TMPDIR="$DESIGN_TMPDIR" LARCH_QUIET_DISABLE=1 python3 "$PLUGIN_ROOT/python/cli.py" plan validate --plan-file "$DESIGN_TMPDIR/composed-plan.md" --source-kind composed --design-tmpdir "$DESIGN_TMPDIR" --repo-root "$CONSUMER_REPO_ROOT" 2>&1)
     _validate_rc=$?
     set -e
     parse_kv_from_output "$_validate_out"

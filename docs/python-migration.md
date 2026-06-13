@@ -124,3 +124,14 @@ Release, audit-runs, combine-issues fetch/apply, and analyze-issues helper surfa
 - `tracking-issue read` preserves stdout failure envelopes for shell-level usage and validation failures; parser-level missing option values remain stderr-only.
 - Write-verb usage errors remain stderr-only. `tracking-issue upsert-summary` keeps non-usage failure envelopes on stderr so existing stderr capture files remain authoritative.
 - Retired shell helper paths are recorded in `python/migrated-scripts.tsv`; keep future prose on the Python CLI surface so `make lint-retired-scripts` stays path-clean.
+
+### Plan-quality domain migration
+
+- Added `python/plan_quality.py` under the existing `plan` CLI domain for command parsing, validation, plan-size checks, revision, auto-fix, optional trailers, and plan-goals composition.
+- Surviving Bash callers invoke `python3 python/cli.py plan ...` directly. No shim layer is added.
+- `lib-drift-baseline.sh` remains deferred. Plan-size inlines only the baseline env semantics it needs.
+- `plan validate` preserves `VALIDATE_LOG_FILE`: it writes `$DESIGN_TMPDIR/validate-plan-commands.log` when possible, otherwise a stable temp log.
+- `design-driver.sh` bootstraps `PLUGIN_ROOT` when `CLAUDE_PLUGIN_ROOT` is unset.
+- Step 3 keeps `RUN_STEP3_REVISE_PLAN_WITH_WATERFALL_SH` as an override while defaulting to `plan revise-waterfall`.
+- `scripts/run-step1-plan-log.sh` defaults to `plan compose-goals-test` without a retired executable guard.
+- Absorbed shell harness targets now select `python/test_plan_quality.py`; survivor harnesses remain for shell call sites.

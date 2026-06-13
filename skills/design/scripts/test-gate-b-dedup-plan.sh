@@ -4,6 +4,8 @@
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)
+REPO_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd -P)
+export CLAUDE_PLUGIN_ROOT="$REPO_ROOT"
 SUBJECT="$SCRIPT_DIR/gate-b-dedup-plan.sh"
 
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }

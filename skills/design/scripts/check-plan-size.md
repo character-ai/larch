@@ -1,6 +1,6 @@
-# skills/design/scripts/check-plan-size.sh
+# skills/design/scripts/check-plan-size.md
 
-Mechanical plan-size detector for `/design` **Step 2b.5** (issue #2670). Threshold semantics are normatively documented in [`skills/design/references/flags.md`](../references/flags.md).
+Mechanical plan-size detector for `/design` **Step 2b.5** (issue #2670). Runtime owner: `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan check-size` (implementation: [`python/plan_quality.py`](../../../python/plan_quality.py)). Threshold semantics are normatively documented in [`skills/design/references/flags.md`](../references/flags.md).
 
 ## argv
 
@@ -9,7 +9,7 @@ Mechanical plan-size detector for `/design` **Step 2b.5** (issue #2670). Thresho
 
 ## Input contract
 
-Validates `$DESIGN_TMPDIR` via `larch_design_tmpdir_validate` after the required-arg check, before reading `$DESIGN_TMPDIR/plan.txt`; failure maps to argv exit 3 (rc 2 remains reserved for `PLAN_SIZE_STATUS=missing-*`).
+Validates `$DESIGN_TMPDIR` via `validate_design_tmpdir` after the required-arg check, before reading `$DESIGN_TMPDIR/plan.txt`; failure maps to argv exit 3 (rc 2 remains reserved for `PLAN_SIZE_STATUS=missing-*`).
 
 - Plan file MUST exist (otherwise exit **2**, `PLAN_SIZE_STATUS=missing-plan` on the contract stream — see **Exit codes**).
 - The **final non-empty line** MUST match `emit-plan.sh` grammar: the literal prefix `diff_lines:` followed by **exactly one ASCII space** and then ASCII digits only to end-of-line — same rule as `skills/design/scripts/emit-plan.sh` (`case "$last_line" in diff_lines:\ *)` + digit validation). Tabs, multiple spaces after the colon, or other whitespace variants are rejected so the helper never accepts a trailer `emit-plan.sh` would refuse.
@@ -25,16 +25,16 @@ Designers MAY append these lines in the **final contiguous metadata block** imme
 | `diff_deleted: <N>` | `^diff_deleted: [0-9]+$` |
 | `mechanical_churn: true\|false` | `^mechanical_churn: (true\|false)$` |
 
-Parsing rules:
+Parsing rules (implemented in `plan_quality.parse_optional_metadata`; CLI surface: `python/cli.py plan optional-trailers`):
 
 - Scan upward from the line above `diff_lines:`; the block contains only strict trailer lines matching the regexes above.
 - Stop at the first line above `diff_lines:` that is **not** one of those regexes (including blank lines).
 - Malformed trailer-looking lines are treated as absent and stop the block.
-- `diff_added: 08` / `09` and `diff_deleted: 08` / `09` match the strict line regex but are rejected as absent metadata (same rule as `lib-plan-optional-trailers.awk` snapshot/validate); threshold logic then falls back to legacy `diff_lines` when `diff_added` is absent.
+- `diff_added: 08` / `09` and `diff_deleted: 08` / `09` match the strict line regex but are rejected as absent metadata (same rule as optional-trailer snapshot/validate); threshold logic then falls back to legacy `diff_lines` when `diff_added` is absent.
 - Duplicate keys inside the block: **last match in file order** wins (closest to `diff_lines:`).
 - `mechanical_churn: false` is explicit no-downgrade; absent mechanical values normalize to `false`.
 - Only lowercase `true` and `false` are valid `mechanical_churn` values. Any other present value (for example `mechanical_churn: 35` or `mechanical_churn: TRUE`) exits **2** with `PLAN_SIZE_STATUS=invalid-mechanical-churn` before size-gate calculations.
-- Threshold comparisons use bash `10#` decimal coercion on emitted `DIFF_ADDED` / `DIFF_LINES` values (e.g. `diff_added: 002001` trips at 2001).
+- Threshold comparisons use decimal coercion on emitted `DIFF_ADDED` / `DIFF_LINES` values (e.g. `diff_added: 002001` trips at 2001).
 
 ## Output contract (`emit_kv` on FD 3)
 
@@ -69,7 +69,7 @@ Emitted keys (exit **0** only):
 
 `$DESIGN_TMPDIR/drift-baseline.env` is write-once. When absent, the first successful parse writes `BASELINE_PLAN_LINES=<PLAN_LINES>` and `BASELINE_DIFF_LINES=<DIFF_LINES>` and emits `DRIFT_TRIGGER_FIRED=false` for that call. Later calls compare both axes and fire drift when **either** `PLAN_LINES` or `DIFF_LINES` is strictly greater than its baseline multiplied by `LARCH_DESIGN_DRIFT_MULTIPLE`.
 
-If the baseline file is a symlink, missing either key, or contains a non-integer value for either key, the helper emits a `WARN`, records an unreadable-baseline marker under `$DESIGN_TMPDIR/.drift-baseline-unreadable`, and **fails closed** with `DRIFT_TRIGGER_FIRED=true` for that call. It attempts recovery from `$DESIGN_TMPDIR/plan.txt-original` when present; on successful recovery it rewrites `drift-baseline.env` from the recovered anchor and compares drift normally. When recovery fails, `BASELINE_PLAN_LINES` and `BASELINE_DIFF_LINES` are empty and both drift ratios are `inf` so the operator prompt does not show a false 1:1 anchor. It does not partially trust one key while replacing the other with the current plan size, because that would silently disable one drift axis. A later call while the unreadable marker is set does not re-seed the anchor from the current plan size; it repeats fail-closed handling until the operator repairs or removes the marker (for example by fixing `drift-baseline.env`). Zero baselines are valid: `0 → 0` has ratio `1`; `0 → positive` has ratio `inf` and exceeds any positive multiple.
+If the baseline file is a symlink, missing either key, or contains a non-integer value for either key, the helper emits a `WARN`, records an unreadable-baseline marker under `$DESIGN_TMPDIR/.drift-baseline-unreadable`, and **fails closed** with `DRIFT_TRIGGER_FIRED=true` for that call. It attempts recovery from `$DESIGN_TMPDIR/plan.txt-original` when present; on successful recovery it rewrites `drift-baseline.env` from the recovered anchor and compares drift normally. When recovery fails, `BASELINE_PLAN_LINES` and `BASELINE_DIFF_LINES` are empty and both drift ratios are `inf`. It does not partially trust one key while replacing the other with the current plan size, because that would silently disable one drift axis. A later call while the unreadable marker is set does not re-seed the anchor from the current plan size; it repeats fail-closed handling until the operator repairs or removes the marker (for example by fixing `drift-baseline.env`). Zero baselines are valid: `0 → 0` has ratio `1`; `0 → positive` has ratio `inf` and exceeds any positive multiple. Drift is an advisory signal logged by merged drivers (`design-postplan-emit.sh`); it does not block with an operator prompt.
 
 ## Exit codes
 
@@ -90,4 +90,4 @@ Merged mode treats rc 2/3 nonfatally in the driver; `plan-review-loop.sh` uses t
 
 ## Edit in sync
 
-Update [`test-check-plan-size.sh`](test-check-plan-size.sh), [`test-check-plan-size.md`](test-check-plan-size.md), [`lib-plan-optional-trailers.sh`](lib-plan-optional-trailers.sh), [`lib-plan-optional-trailers.awk`](lib-plan-optional-trailers.awk), `Makefile` (`test-check-plan-size`), `design-postplan-emit.sh`, `design-postplan-emit.md`, `plan-review-loop.sh`, `skills/design/references/flags.md`, and `skills/design/SKILL.md` Step 2b / 2b.5 when changing thresholds or contracts.
+Update [`python/test_plan_quality.py`](../../../python/test_plan_quality.py), [`test-check-plan-size.md`](test-check-plan-size.md), [`lib-plan-optional-trailers.md`](lib-plan-optional-trailers.md), `Makefile` (`test-check-plan-size`), `design-postplan-emit.sh`, `design-postplan-emit.md`, `plan-review-loop.sh`, `skills/design/references/flags.md`, and `skills/design/SKILL.md` Step 2b / 2b.5 when changing thresholds or contracts.

@@ -378,9 +378,13 @@ step3_loop_run_apply() {
 
     step3_loop_write_phase "$round_num" awaiting-revise
     step3_loop_clear_stale_scout_manifest
-    revise_sh="${RUN_STEP3_REVISE_PLAN_WITH_WATERFALL_SH:-$PLUGIN_ROOT/skills/design/scripts/revise-plan-with-waterfall.sh}"
+    if [[ -n "${RUN_STEP3_REVISE_PLAN_WITH_WATERFALL_SH:-}" ]]; then
+        revise_cmd=("$RUN_STEP3_REVISE_PLAN_WITH_WATERFALL_SH")
+    else
+        revise_cmd=(python3 "$PLUGIN_ROOT/python/cli.py" plan revise-waterfall)
+    fi
     set +e
-    revise_out=$(LARCH_QUIET_DISABLE=1 "$revise_sh" \
+    revise_out=$(LARCH_QUIET_DISABLE=1 "${revise_cmd[@]}" \
         --design-tmpdir "$DESIGN_TMPDIR" \
         --plan-file "$DESIGN_TMPDIR/plan.txt" \
         --findings-file "$findings_file" \

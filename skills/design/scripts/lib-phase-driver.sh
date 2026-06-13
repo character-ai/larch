@@ -37,6 +37,11 @@ phase_driver_resolve_plugin_root() {
     (cd "$script_dir/../../.." && pwd -P)
 }
 
+phase_driver_resolve_consumer_repo_root() {
+    local plugin_root="$1"
+    git -C "$PWD" rev-parse --show-toplevel 2>/dev/null || printf '%s\n' "$plugin_root"
+}
+
 phase_driver_json_boolean_or_sed() {
     local file="$1" key="$2" default_value="${3:-false}" value=""
     if command -v jq >/dev/null 2>&1 && [[ -f "$file" ]]; then

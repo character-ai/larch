@@ -457,10 +457,23 @@ setup_autofix_repo() {
     (
         cd "$dir"
         git checkout -q -b autofix-change
-        mkdir -p skills/design/scripts
-        printf '%s\n' "# auto fix plan commands" > skills/design/scripts/auto-fix-plan-commands.sh
-        git add skills/design/scripts/auto-fix-plan-commands.sh
+        mkdir -p python
+        printf '%s\n' "# plan quality autofix surface" > python/plan_quality.py
+        git add python/plan_quality.py
         git commit -q -m "touch auto fix plan commands"
+    )
+}
+
+setup_plan_quality_survivor_repo() {
+    local dir="$1" rel="$2"
+    setup_git_repo "$dir"
+    (
+        cd "$dir"
+        git checkout -q -b plan-quality-survivor
+        mkdir -p "$(dirname "$rel")"
+        printf '%s\n' "# survivor harness touch" > "$rel"
+        git add "$rel"
+        git commit -q -m "touch plan quality survivor harness"
     )
 }
 
@@ -623,6 +636,56 @@ make_stub_dir "$STUB_3J1C" present absent
 run_checks "$REPO_3J1C" "$(controlled_path "$STUB_3J1C")"
 assert_exit_eq "3j1c: auto-fix change exits 0" "$RUN_EXIT" 0
 assert_stdout_contains "3j1c: routes auto-fix harness" "$RUN_OUT" "test-auto-fix-plan-commands"
+
+echo "=== Section 3j1d: plan-quality survivor harness routing ==="
+
+REPO_3J1D="$TMPROOT/repo-postplan-emit"
+STUB_3J1D="$TMPROOT/stub-postplan-emit"
+setup_plan_quality_survivor_repo "$REPO_3J1D" "skills/design/scripts/design-postplan-emit.sh"
+make_stub_dir "$STUB_3J1D" present absent
+run_checks "$REPO_3J1D" "$(controlled_path "$STUB_3J1D")"
+assert_exit_eq "3j1d: design-postplan-emit change exits 0" "$RUN_EXIT" 0
+assert_stdout_contains "3j1d: routes design-postplan-emit harness" "$RUN_OUT" "test-design-postplan-emit"
+
+REPO_3J1E="$TMPROOT/repo-design-driver"
+STUB_3J1E="$TMPROOT/stub-design-driver"
+setup_plan_quality_survivor_repo "$REPO_3J1E" "skills/design/scripts/design-driver.sh"
+make_stub_dir "$STUB_3J1E" present absent
+run_checks "$REPO_3J1E" "$(controlled_path "$STUB_3J1E")"
+assert_exit_eq "3j1e: design-driver change exits 0" "$RUN_EXIT" 0
+assert_stdout_contains "3j1e: routes design-driver harness" "$RUN_OUT" "test-design-driver"
+
+REPO_3J1F="$TMPROOT/repo-gate-b-dedup"
+STUB_3J1F="$TMPROOT/stub-gate-b-dedup"
+setup_plan_quality_survivor_repo "$REPO_3J1F" "skills/design/scripts/gate-b-dedup-plan.sh"
+make_stub_dir "$STUB_3J1F" present absent
+run_checks "$REPO_3J1F" "$(controlled_path "$STUB_3J1F")"
+assert_exit_eq "3j1f: gate-b-dedup change exits 0" "$RUN_EXIT" 0
+assert_stdout_contains "3j1f: routes gate-b-dedup harness" "$RUN_OUT" "test-gate-b-dedup-plan"
+
+REPO_3J1G="$TMPROOT/repo-design-step2b5"
+STUB_3J1G="$TMPROOT/stub-design-step2b5"
+setup_plan_quality_survivor_repo "$REPO_3J1G" "skills/design/scripts/design-step2b5.sh"
+make_stub_dir "$STUB_3J1G" present absent
+run_checks "$REPO_3J1G" "$(controlled_path "$STUB_3J1G")"
+assert_exit_eq "3j1g: design-step2b5 change exits 0" "$RUN_EXIT" 0
+assert_stdout_contains "3j1g: routes design-step2b5 harness" "$RUN_OUT" "test-check-plan-size"
+
+REPO_3J1H="$TMPROOT/repo-run-step1-plan-log"
+STUB_3J1H="$TMPROOT/stub-run-step1-plan-log"
+setup_plan_quality_survivor_repo "$REPO_3J1H" "scripts/run-step1-plan-log.sh"
+make_stub_dir "$STUB_3J1H" present absent
+run_checks "$REPO_3J1H" "$(controlled_path "$STUB_3J1H")"
+assert_exit_eq "3j1h: run-step1-plan-log change exits 0" "$RUN_EXIT" 0
+assert_stdout_contains "3j1h: routes run-step1-plan-log harness" "$RUN_OUT" "test-run-step1-plan-log"
+
+REPO_3J1I="$TMPROOT/repo-plan-quality-publish"
+STUB_3J1I="$TMPROOT/stub-plan-quality-publish"
+setup_plan_quality_survivor_repo "$REPO_3J1I" "python/plan_quality.py"
+make_stub_dir "$STUB_3J1I" present absent
+run_checks "$REPO_3J1I" "$(controlled_path "$STUB_3J1I")"
+assert_exit_eq "3j1i: plan_quality.py change exits 0" "$RUN_EXIT" 0
+assert_stdout_contains "3j1i: routes design-publish harness" "$RUN_OUT" "test-design-publish"
 
 echo "=== Section 3j2: report-tokens SKILL.md routing ==="
 

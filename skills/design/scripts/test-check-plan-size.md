@@ -1,6 +1,6 @@
-# skills/design/scripts/test-check-plan-size.sh
+# skills/design/scripts/test-check-plan-size.md
 
-Offline regression harness for [`check-plan-size.sh`](check-plan-size.sh). Captures the `emit_kv` contract stream with `LARCH_QUIET_DISABLE=1` (same pattern as [`test-emit-plan.sh`](test-emit-plan.sh)).
+Offline regression harness for `python/cli.py plan check-size` (implementation: [`python/plan_quality.py`](../../../python/plan_quality.py)). Invoked via `make test-check-plan-size` (`pytest -k check_plan_size` in [`python/test_plan_quality.py`](../../../python/test_plan_quality.py)). Captures the `emit_kv` contract stream with `LARCH_QUIET_DISABLE=1` (same pattern as [`test-emit-plan.sh`](test-emit-plan.sh)).
 
 ## Cases exercised
 
@@ -35,15 +35,5 @@ Offline regression harness for [`check-plan-size.sh`](check-plan-size.sh). Captu
 29. `diff_deleted`-only legacy fallback (no `diff_added`).
 30. 800 body + duplicate `diff_added` lines — no spurious `plan-body-lines` hard trigger.
 31. 799 body + three `diff_added` lines — full metadata line subtraction (`PLAN_LINES=799`).
-32. Leading-zero trailer digits — `10#` decimal coercion for threshold comparisons; invalid `diff_added: 08` / `09` rejected as metadata (legacy `diff_lines` path).
+32. Leading-zero trailer digits — decimal coercion for threshold comparisons; invalid `diff_added: 08` / `09` rejected as metadata (legacy `diff_lines` path).
 33. `diff_deleted`-only size trigger — high `diff_deleted` with `diff_lines > 1500` and no `diff_added` fires `SIZE_TRIGGER_FIRED=true`, `TRIGGER_REASONS=diff-lines`.
-
-Cases 14–32 call `assert_always_emitted_keys` on every `run_ok` exit 0 path.
-
-## Run
-
-```bash
-bash skills/design/scripts/test-check-plan-size.sh
-# or
-make test-check-plan-size
-```

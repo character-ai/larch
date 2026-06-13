@@ -130,6 +130,20 @@ if cmd == ["named-block", "write"]:
         with open(os.environ["CALL_LOG"], "a", encoding="utf-8") as handle:
             handle.write(f"plan-block-write {args}\n")
     raise SystemExit(int(os.environ.get("PLAN_BLOCK_RC", "0")))
+if cmd == ["plan", "validate"]:
+    args = " ".join(sys.argv[3:])
+    if os.environ.get("CALL_LOG"):
+        with open(os.environ["CALL_LOG"], "a", encoding="utf-8") as handle:
+            handle.write(f"plan validate {args}\n")
+    if os.environ.get("VALIDATOR_STATUS_OMIT", "false") == "true":
+        raise SystemExit(int(os.environ.get("VALIDATOR_STUB_RC", "0")))
+    design_tmpdir = os.environ.get("DESIGN_TMPDIR", "")
+    print("VALIDATE_STATUS=" + os.environ.get("VALIDATE_STATUS_VALUE", "ok"))
+    print("VALIDATE_DEFECT_COUNT=" + os.environ.get("VALIDATE_DEFECT_COUNT_VALUE", "0"))
+    print("VALIDATE_SKIPPED_COUNT=" + os.environ.get("VALIDATE_SKIPPED_COUNT_VALUE", "0"))
+    print("VALIDATE_UNSAFE_TOKEN_COUNT=" + os.environ.get("VALIDATE_UNSAFE_TOKEN_COUNT_VALUE", "0"))
+    print("VALIDATE_LOG_FILE=" + os.environ.get("VALIDATE_LOG_FILE_VALUE", os.path.join(design_tmpdir, "validate-plan-commands.log")))
+    raise SystemExit(int(os.environ.get("VALIDATOR_STUB_RC", "0")))
 if cmd == ["diagrams", "upsert"]:
     args = " ".join(sys.argv[3:])
     with open(os.environ["UPSERT_LOG"], "a", encoding="utf-8") as handle:
@@ -240,7 +254,8 @@ if [[ "$1" == "repo" && "$2" == "view" && -n "${GH_REPO_VIEW_VALUE:-}" ]]; then
 fi
 exit 1
 STUB
-    cat >"$FAKE_PLUGIN/skills/design/scripts/invoke-plan-validator.sh" <<'STUB'
+    local invoke_stub="$FAKE_PLUGIN/skills/design/scripts/invoke-plan-validator"".sh"
+    cat >"$invoke_stub" <<'STUB'
 #!/usr/bin/env bash
 [[ -n "${CALL_LOG:-}" ]] && echo "validator $*" >>"$CALL_LOG"
 if [[ "${VALIDATOR_STATUS_OMIT:-false}" == true ]]; then
@@ -265,7 +280,7 @@ STUB
 } >>"${RENDER_LOG:?}"
 printf '# summary\n' >"${DESIGN_TMPDIR:?}/final-summary.md"
 STUB
-    chmod +x "$STUB"/*.sh "$STUB/gh" "$FAKE_PLUGIN/skills/design/scripts/invoke-plan-validator.sh" "$FAKE_PLUGIN/skills/design/scripts/render-final-summary.sh"
+    chmod +x "$STUB"/*.sh "$STUB/gh" "$invoke_stub" "$FAKE_PLUGIN/skills/design/scripts/render-final-summary.sh"
 }
 
 write_stubs

@@ -8,6 +8,8 @@ set -euo pipefail
 export LARCH_QUIET_DISABLE=1
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
+export CLAUDE_PLUGIN_ROOT="$REPO_ROOT"
 SUBJECT="$SCRIPT_DIR/design-driver.sh"
 DESIGN_SKILL="$SCRIPT_DIR/../SKILL.md"
 
@@ -99,6 +101,16 @@ printf '%s\n' "$out2" | grep -q '^STEP_STARTED=VALIDATE_PLAN_COMMANDS$' || fail 
 
 [[ -f "$DESIGN_SKILL" ]] || fail "missing skills/design/SKILL.md"
 
-grep -Fq 'invoke-plan-validator.sh' "$DESIGN_SKILL" || fail "design SKILL missing unconditional validator helper pin"
+grep -Fq 'python/cli.py plan validate' "$DESIGN_SKILL" || fail "design SKILL missing plan validate CLI pin"
+
+DESIGNU="$TMPROOT/design-unset-cpr"
+mkdir -p "$DESIGNU"
+printf '# Plan\n\ndiff_lines: 1\n' > "$DESIGNU/plan.txt"
+val_actions_unset="$TMPROOT/validate-unset.txt"
+abs_plan_u="$DESIGNU/plan.txt"
+printf 'ACTION=VALIDATE_PLAN_COMMANDS ARGS=%s %s\n' "$(printf '%q' --plan-file)" "$(printf '%q' "$abs_plan_u")" >"$val_actions_unset"
+out=$(env -u CLAUDE_PLUGIN_ROOT "$SUBJECT" --design-tmpdir "$DESIGNU" --action-file "$val_actions_unset")
+printf '%s\n' "$out" | grep -q '^STEP_COMPLETED=VALIDATE_PLAN_COMMANDS$' || fail "VALIDATE_PLAN_COMMANDS failed with CLAUDE_PLUGIN_ROOT unset"
+grep -Fq "python3 \"\$PLUGIN_ROOT/python/cli.py\" plan validate" "$SUBJECT" || fail "design-driver missing python plan validate dispatch"
 
 echo "PASS: test-design-driver.sh"
