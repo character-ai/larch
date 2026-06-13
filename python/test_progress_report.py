@@ -1420,8 +1420,8 @@ def test_progress_chart_failure_preserves_detail(tmp_path: Path, monkeypatch) ->
 
 def test_progress_round_windows_aggregate_multiple_rows() -> None:
     rows = [
-        "v1\tround\t100\timplement\tStep 5\t1\t1000\t1060\t60\t1\t0\t0\t-\n".split("\t"),
-        "v1\tround\t101\timplement\tStep 5\t1\t1000\t1200\t200\t1\t0\t0\t-\n".split("\t"),
+        ["v1", "round", "100", "implement", "Step 5", "1", "1000", "1060", "60", "1", "0", "0", "-\n"],
+        ["v1", "round", "101", "implement", "Step 5", "1", "1000", "1200", "200", "1", "0", "0", "-\n"],
     ]
     assert progress_report._progress_round_windows(rows) == {1: (1000, 1200)}
 
@@ -1439,12 +1439,10 @@ def test_progress_multi_row_round_window_includes_vendor_and_title_span(
         encoding="utf-8",
     )
     (impl / "timing-ledger.tsv").write_text(
-        "".join(
-            [
-                "v1\tround\t100\timplement\tStep 5\t1\t1000\t1060\t60\t1\t0\t0\t-\n",
-                "v1\tround\t101\timplement\tStep 5\t1\t1000\t1200\t200\t1\t0\t0\t-\n",
-                "v1\tvendor\t102\timplement\t-\tcursor\treview\t1150\t1170\t20\tcursor-specialist-correctness-output.txt\t0\tcomplete\n",
-            ]
+        (
+            "v1\tround\t100\timplement\tStep 5\t1\t1000\t1060\t60\t1\t0\t0\t-\n"
+            "v1\tround\t101\timplement\tStep 5\t1\t1000\t1200\t200\t1\t0\t0\t-\n"
+            "v1\tvendor\t102\timplement\t-\tcursor\treview\t1150\t1170\t20\tcursor-specialist-correctness-output.txt\t0\tcomplete\n"
         ),
         encoding="utf-8",
     )
