@@ -186,7 +186,7 @@ def wait_reviewers(
         diagnostic_fn(f"⚠ {timed_out}/{total} reviewer(s) timed out after {timeout} seconds")
     else:
         diagnostic_fn(f"✓ All {total} reviewer(s) completed in {elapsed}s")
-    return 1 if timed_out else 0
+    return 0
 
 
 def wait_reviewers_main(argv: list[str] | None = None) -> int:

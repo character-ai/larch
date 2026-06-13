@@ -318,7 +318,7 @@ if [[ "$CLAUDE_COUNT" -gt 0 ]]; then
     WAIT_FOR_REVIEWERS_POLL_INTERVAL="${WAIT_FOR_REVIEWERS_POLL_INTERVAL:-1}" python3 "$PLUGIN_ROOT/python/cli.py" agent wait-reviewers --timeout "$TIMEOUT" "${sentinels[@]}" > "$wait_log" 2>&1
     wait_rc=$?
     set -e
-    if [[ "$wait_rc" -ne 0 ]]; then
+    if [[ "$wait_rc" -ne 0 ]] || ( command grep -q "^TIMEOUT " "$wait_log" ); then
         append_review_failure "review Step 3a" "agent wait-reviewers" "$wait_rc" "$wait_log"
         # Redact stderr replay; the unredacted file is already captured in
         # the verbatim execution-issues entry via --redact above.
@@ -328,7 +328,7 @@ if [[ "$CLAUDE_COUNT" -gt 0 ]]; then
         else
             while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$(printf '%s' "$line" | sanitize_diagnostic_line)"; done < "$wait_log"
         fi
-        exit "$wait_rc"
+        exit 1
     fi
 fi
 
