@@ -486,69 +486,22 @@ write_empty_coder_scout_manifest() {
 }
 
 normalize_coder_scout_manifest() {
-    local input="$1" output="$2" tmp
+    local input="$1" output="$2" wrapper wrapper_out scout_status status_count
     [[ -s "$input" ]] || return 1
-    tmp=$(mktemp "${output}.normalize.XXXXXX") || return 1
-    if ! jq -c '
-        def reserved:
-          ["generic","structure","correctness","testing","security","edge-cases","plan-fidelity",
-           "code-reviewer","reviewer-structure","reviewer-correctness","reviewer-testing",
-           "reviewer-security","reviewer-edge-cases","reviewer-plan-fidelity"];
-        def has_unsafe_wrapper_tag:
-          (ascii_downcase
-           | contains("</scout_notes>")
-             or contains("</reviewer_feature_description>")
-             or contains("</plan_review_scope_anchor>")
-             or contains("</feature>"));
-        def has_unsafe_plan_delimiter:
-          test("<implementation_plan")
-          or test("<feature_description")
-          or test("<reviewer_feature_description")
-          or test("<plan_review_scope_anchor")
-          or test("<feature[ >]");
-        def has_unsafe_rationale:
-          has_unsafe_wrapper_tag
-          or has_unsafe_plan_delimiter
-          or test("\n")
-          or test("(?m)^---$");
-        reduce .archetypes[]? as $a
-          ({seen:{}, archetypes:[]};
-           ($a.name // "") as $name
-           | if (($a | type) != "object") then .
-             elif (($name | type) != "string") or (($name | test("^[a-z][a-z0-9-]{2,40}$")) | not) then .
-             elif (reserved | index($name)) then .
-             elif (.seen[$name] // false) then .
-             elif ((["code-quality","risk-integration","correctness","architecture","security"] | index($a.focus_area)) | not) then .
-             elif (($a.weight | type) != "number") or (($a.weight % 1) != 0) or ($a.weight < 1) or ($a.weight > 8) then .
-             elif (($a.rationale | type) != "string") or (($a.rationale | length) == 0) then .
-             elif ($a.rationale | has_unsafe_rationale) then .
-             elif (($a.prompt_body | type) != "string") or (($a.prompt_body | length) == 0) then .
-             elif (($a.prompt_body | test("(?m)^---$"))
-                   or ($a.prompt_body | ascii_downcase | contains("</reviewer_"))
-                   or ($a.prompt_body | has_unsafe_wrapper_tag)
-                   or ($a.prompt_body | has_unsafe_plan_delimiter)) then .
-             else
-               .seen[$name] = true
-               | if (.archetypes | length) < 3 then
-                   (if ($a.prompt_body | test("Cite specific file paths and line ranges for any issues found, and follow the output-format rules from your outer wrapper exactly\\.?$"))
-                    then $a.prompt_body
-                    else ($a.prompt_body | rtrimstr(" ") | rtrimstr(".")) + " Cite specific file paths and line ranges for any issues found, and follow the output-format rules from your outer wrapper exactly."
-                    end) as $repaired_body
-                   | .archetypes += [{
-                     name:$name,
-                     focus_area:$a.focus_area,
-                     weight:($a.weight | floor),
-                     rationale:$a.rationale,
-                     prompt_body:$repaired_body
-                   }]
-                 else . end
-             end)
-        | {archetypes}
-    ' "$input" >"$tmp"; then
-        rm -f "$tmp"
-        return 1
-    fi
-    mv -f "$tmp" "$output"
+    wrapper="$PLUGIN_ROOT/skills/design/scripts/scout-plan-archetypes-wrapper.sh"
+    [[ -x "$wrapper" ]] || return 1
+    mkdir -p "$(dirname "$output")" || return 1
+    wrapper_out="$("$wrapper" --filter-manifest "$input" "$output" --max-archetypes 3 2>/dev/null || true)"
+    status_count=$(printf '%s\n' "$wrapper_out" | awk -F= '$1 == "SCOUT_STATUS" { count++ } END { print count + 0 }')
+    [[ "$status_count" == "1" ]] || return 1
+    scout_status=$(printf '%s\n' "$wrapper_out" | awk -F= '$1 == "SCOUT_STATUS" { print substr($0, index($0, "=") + 1) }')
+    case "$scout_status" in
+        ok|empty) ;;
+        parse-failed) return 1 ;;
+        *) return 1 ;;
+    esac
+    [[ -r "$output" ]] || return 1
+    jq -e '.archetypes | type == "array"' "$output" >/dev/null 2>&1 || return 1
 }
 
 materialize_external_coder_scout() {

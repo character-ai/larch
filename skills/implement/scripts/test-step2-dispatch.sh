@@ -71,6 +71,12 @@ PASS_COUNT=0
 FAIL_COUNT=0
 fail() { echo "FAIL [$1]: $2" >&2; FAIL_COUNT=$((FAIL_COUNT + 1)); }
 pass() { PASS_COUNT=$((PASS_COUNT + 1)); }
+no_wrapper_stdout_lines() {
+    local out="$1" prefix
+    for prefix in WARN= SCOUT_STATUS= SCOUT_MANIFEST= SCOUT_ARCHETYPE_COUNT=; do
+        [[ "$out" != "$prefix"* && "$out" != *$'\n'"$prefix"* ]] || return 1
+    done
+}
 
 # Temp scratch.
 SCRATCH=$(mktemp -d -t step2-dispatch-test.XXXXXX)
@@ -702,7 +708,13 @@ esac
 case "${STUB_SCOUT_MODE:-valid}" in
     valid)
         cat > "$STUB_EXPECT_SCOUT_PATH.tmp" <<'JSON'
-{"archetypes":[{"name":"api-contract","focus_area":"correctness","weight":1,"rationale":"API changed.","prompt_body":"Check API compatibility."}]}
+{"archetypes":[{"name":"requirements","focus_area":"correctness","weight":1,"rationale":"Reserved static reviewer.","prompt_body":"Check requirements coverage."},{"name":"api-contract","focus_area":"correctness","weight":1,"rationale":"API changed.","prompt_body":"Check API compatibility."}]}
+JSON
+        mv "$STUB_EXPECT_SCOUT_PATH.tmp" "$STUB_EXPECT_SCOUT_PATH"
+        ;;
+    all_reserved)
+        cat > "$STUB_EXPECT_SCOUT_PATH.tmp" <<'JSON'
+{"archetypes":[{"name":"requirements","focus_area":"correctness","weight":1,"rationale":"Reserved static reviewer.","prompt_body":"Check requirements coverage."}]}
 JSON
         mv "$STUB_EXPECT_SCOUT_PATH.tmp" "$STUB_EXPECT_SCOUT_PATH"
         ;;
@@ -755,10 +767,39 @@ if [[ "$OUT_13A_SCOUT" == *"STATUS=complete"* ]] \
    && [[ "$OUT_13A_SCOUT" == *"SCOUT_CODER_STATUS=ok"* ]] \
    && [[ -f "$TMP13A_SCOUT/step2-external-scout-eligible.txt" ]] \
    && [[ "$(jq -r '.archetypes | length' "$TMP13A_SCOUT/scout-coder-manifest.json")" == "1" ]] \
+   && [[ "$(jq -r '.archetypes[0].name' "$TMP13A_SCOUT/scout-coder-manifest.json")" == "api-contract" ]] \
+   && no_wrapper_stdout_lines "$OUT_13A_SCOUT" \
    && grep -Fq "$SCOUT_EXPECTED_13A" "$TMP13A_SCOUT/prompt-capture.txt"; then
     pass
 else
     fail 13a-scout "complete run should forward and materialize scout sidecar; out=$OUT_13A_SCOUT status=$(cat "$TMP13A_SCOUT/step2-scout-coder-status.env" 2>/dev/null || true)"
+fi
+
+# ---------------------------------------------------------------------------
+# Test 13a-scout-empty: all reserved scout sidecar rows normalize to an empty
+# manifest without downgrading the parseable sidecar.
+# ---------------------------------------------------------------------------
+TMP13A_SCOUT_EMPTY="$SCRATCH/test13a-scout-empty"; mkdir -p "$TMP13A_SCOUT_EMPTY"
+SCRATCH_REPO_13A_SCOUT_EMPTY="$SCRATCH/scratch-repo-13a-scout-empty"
+make_step2_git_repo "$SCRATCH_REPO_13A_SCOUT_EMPTY"
+SCOUT_EXPECTED_13A_EMPTY="$TMP13A_SCOUT_EMPTY/codex-step2-out/scout-coder-manifest.json"
+OUT_13A_SCOUT_EMPTY=$(cd "$SCRATCH_REPO_13A_SCOUT_EMPTY" && \
+    PATH="$STUB13A_SCOUT:$PATH" \
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    STEP2_MANIFEST_PATH="$TMP13A_SCOUT_EMPTY/codex-step2-out/manifest.json" \
+    STUB_EXPECT_SCOUT_PATH="$SCOUT_EXPECTED_13A_EMPTY" \
+    STUB_SCOUT_MODE=all_reserved \
+    LARCH_CODEX_MODEL=stub-codex-model \
+    "$DISPATCHER" --tmpdir "$TMP13A_SCOUT_EMPTY" --plan-file "$PLAN" --feature-file "$FEATURE" \
+        --coder codex 2>&1)
+if [[ "$OUT_13A_SCOUT_EMPTY" == *"STATUS=complete"* ]] \
+   && [[ "$OUT_13A_SCOUT_EMPTY" == *"SCOUT_CODER_STATUS=ok"* ]] \
+   && [[ -f "$TMP13A_SCOUT_EMPTY/step2-external-scout-eligible.txt" ]] \
+   && [[ "$(jq -r '.archetypes | length' "$TMP13A_SCOUT_EMPTY/scout-coder-manifest.json")" == "0" ]] \
+   && no_wrapper_stdout_lines "$OUT_13A_SCOUT_EMPTY"; then
+    pass
+else
+    fail 13a-scout-empty "all-reserved sidecar should normalize to ok empty manifest without wrapper stdout; out=$OUT_13A_SCOUT_EMPTY status=$(cat "$TMP13A_SCOUT_EMPTY/step2-scout-coder-status.env" 2>/dev/null || true)"
 fi
 
 # ---------------------------------------------------------------------------
@@ -782,7 +823,8 @@ OUT_13A_SCOUT_QA=$(cd "$SCRATCH_REPO_13A_SCOUT_QA" && \
 if [[ "$OUT_13A_SCOUT_QA" == *"STATUS=needs_qa"* ]] \
    && [[ "$OUT_13A_SCOUT_QA" == *"SCOUT_CODER_STATUS=missing-or-invalid"* ]] \
    && [[ -f "$TMP13A_SCOUT_QA/step2-external-scout-eligible.txt" ]] \
-   && [[ "$(jq -r '.archetypes | length' "$TMP13A_SCOUT_QA/scout-coder-manifest.json")" == "0" ]]; then
+   && [[ "$(jq -r '.archetypes | length' "$TMP13A_SCOUT_QA/scout-coder-manifest.json")" == "0" ]] \
+   && no_wrapper_stdout_lines "$OUT_13A_SCOUT_QA"; then
     pass
 else
     fail 13a-scout-qa "needs_qa run should canonicalize invalid scout sidecar; out=$OUT_13A_SCOUT_QA status=$(cat "$TMP13A_SCOUT_QA/step2-scout-coder-status.env" 2>/dev/null || true)"

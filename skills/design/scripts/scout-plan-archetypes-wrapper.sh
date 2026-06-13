@@ -212,7 +212,9 @@ filter_and_cap_manifest() {
         emit_kv WARN "scout-plan-archetypes-wrapper: filtered archetypes from ${before} to ${after} (reserved slugs and/or cap)"
     fi
     while IFS= read -r warning || [[ -n "$warning" ]]; do
-        [[ -n "$warning" ]] && emit_kv WARN "$warning"
+        [[ -n "$warning" ]] || continue
+        sanitized=$(printf '%s' "$warning" | sanitize_diagnostic_line)
+        [[ -n "$sanitized" ]] && emit_kv WARN "$sanitized"
     done <"$warnings_file"
     mv -f "${tmp}.manifest" "$output"
     rm -f "$tmp" "$warnings_file"
