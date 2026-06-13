@@ -116,7 +116,7 @@ if [ -e "$_autofix_attempted" ]; then
 else
   : > "$_autofix_attempted"
   set +e
-  _autofix_out=$("$CLAUDE_PLUGIN_ROOT/skills/design/scripts/auto-fix-plan-commands.sh" \
+  _autofix_out=$(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" plan auto-fix-commands \
     --design-tmpdir "$DESIGN_TMPDIR" \
     --plan-file "$_validator_target_file" \
     --repo-root "$PWD" \

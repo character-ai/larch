@@ -432,13 +432,13 @@ test-design-step2b-drafter:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-step2b-drafter.sh
 
 test-design-driver:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-driver.sh
+	python3 python/cli.py timing harness-mark --label $@ -- pytest -q python/test_plan_quality.py -k validate_plan
 
 test-design-publish:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-publish.sh
+	python3 python/cli.py timing harness-mark --label $@ -- pytest -q python/test_plan_quality.py -k validate_plan
 
 test-design-postplan-emit:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-postplan-emit.sh
+	python3 python/cli.py timing harness-mark --label $@ -- pytest -q python/test_plan_quality.py -k "validate_plan or check_plan_size"
 
 test-read-result-env:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-read-result-env.sh
@@ -448,7 +448,7 @@ test-parse-design-argv:
 
 
 test-invoke-plan-validator:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-invoke-plan-validator.sh
+	python3 python/cli.py timing harness-mark --label $@ -- pytest -q python/test_plan_quality.py -k validate_plan
 
 test-file-design-oos:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-file-design-oos.sh
@@ -462,29 +462,29 @@ test-emit-plan:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-emit-plan.sh
 
 test-gate-b-dedup-plan:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-gate-b-dedup-plan.sh
+	python3 python/cli.py timing harness-mark --label $@ -- pytest -q python/test_plan_quality.py -k optional_trailer
 
 test-gate-b-apply-mode:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-gate-b-apply-mode.sh
 
 test-trailer-helpers:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-trailer-helpers.sh
+	python3 python/cli.py timing harness-mark --label $@ -- pytest -q python/test_plan_quality.py -k optional_trailer
 
 test-emit-design-plan-preview:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-emit-design-plan-preview.sh
 test-check-plan-size:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-check-plan-size.sh
+	python3 python/cli.py timing harness-mark --label $@ -- pytest -q python/test_plan_quality.py -k check_plan_size
 
 test-auto-fix-plan-commands:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-auto-fix-plan-commands.sh
+	python3 python/cli.py timing harness-mark --label $@ -- pytest -q python/test_plan_quality.py -k auto_fix
 
 
 test-parse-plan-commands:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-parse-plan-commands.sh
+	python3 python/cli.py timing harness-mark --label $@ -- pytest -q python/test_plan_quality.py -k parse_plan_commands
 
 
 test-validate-plan-commands:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-validate-plan-commands.sh
+	python3 python/cli.py timing harness-mark --label $@ -- pytest -q python/test_plan_quality.py -k validate_plan
 
 test-tally-plan-review:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-tally-plan-review.sh
@@ -921,10 +921,10 @@ test-larch-logs-batches:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_run_logs.py
 
 test-compose-plan-goals-test:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-compose-plan-goals-test.sh
+	python3 python/cli.py timing harness-mark --label $@ -- pytest -q python/test_plan_quality.py -k compose_plan_goals_test
 
 test-run-step1-plan-log:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-run-step1-plan-log.sh
+	python3 python/cli.py timing harness-mark --label $@ -- pytest -q python/test_plan_quality.py -k compose_plan_goals_test
 
 test-compose-collector-failure-log:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-compose-collector-failure-log.sh
@@ -1002,7 +1002,7 @@ test-dispatch-with-waterfall:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-dispatch-with-waterfall.sh
 
 test-revise-plan-with-waterfall:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-revise-plan-with-waterfall.sh
+	python3 python/cli.py timing harness-mark --label $@ -- pytest -q python/test_plan_quality.py -k revise_plan_with_waterfall
 
 test-agent-model-args:
 	cd python && $(PYTHON) -m pytest test_agents.py -q

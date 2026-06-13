@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # Mechanical Gate B post-apply dedup with optional-trailer preservation (issue #3175).
-# Shared snapshot/validate helpers with plan-review-loop.sh.
 
 set -euo pipefail
 
@@ -13,8 +12,6 @@ fi
 DEDUP_PLAN_LINES_PY="${LARCH_DEDUP_PLAN_LINES_PY:-$PLUGIN_ROOT/skills/design/scripts/dedup-plan-lines.py}"
 # shellcheck source=scripts/lib-design-tmpdir.sh
 source "$PLUGIN_ROOT/scripts/lib-design-tmpdir.sh"
-# shellcheck source=skills/design/scripts/lib-plan-optional-trailers.sh
-source "$SCRIPT_DIR/lib-plan-optional-trailers.sh"
 
 DESIGN_TMPDIR=""
 MODE="dedup"
@@ -70,8 +67,13 @@ if [[ ! -f "$plan_path" ]]; then
     exit 2
 fi
 
+optional_cli() {
+    python3 "$PLUGIN_ROOT/python/cli.py" plan optional-trailers "$@"
+}
+
 if [[ "$MODE" == "snapshot" ]]; then
-    snapshot_optional_trailer_keys "$plan_path" "$TRAILER_KEYS_FILE"
+    optional_cli snapshot-keys --plan-file "$plan_path" --output "$TRAILER_KEYS_FILE"
+    optional_cli snapshot-values --plan-file "$plan_path" --output "$TRAILER_KEYS_FILE.values"
     exit 0
 fi
 
@@ -80,22 +82,49 @@ if [[ ! -f "$TRAILER_KEYS_FILE" ]]; then
     exit 3
 fi
 
-if ! validate_optional_trailer_keys_preserved "$plan_path" "$TRAILER_KEYS_FILE"; then
+if ! optional_cli validate-keys --plan-file "$plan_path" --keys-file "$TRAILER_KEYS_FILE"; then
     echo "gate-b-dedup-plan.sh: optional trailer keys lost before dedup" >&2
     exit 1
 fi
-snapshot_optional_trailer_values "$plan_path" "$(_optional_trailer_values_file "$TRAILER_KEYS_FILE")"
+optional_cli snapshot-values --plan-file "$plan_path" --output "$TRAILER_KEYS_FILE.values"
 
-dedup_rc=0
-dedup_plan_preserve_optional_trailers "$plan_path" "$TRAILER_KEYS_FILE" "$DESIGN_TMPDIR" "$DEDUP_PLAN_LINES_PY" || dedup_rc=$?
-case "$dedup_rc" in
-    0) exit 0 ;;
-    1)
-        echo "gate-b-dedup-plan.sh: optional trailer keys or values lost during dedup" >&2
-        exit 1
-        ;;
-    *)
-        echo "gate-b-dedup-plan.sh: dedup-plan-lines.py failed" >&2
-        exit 2
-        ;;
-esac
+pre_dedup_snapshot=""
+if [[ -s "$TRAILER_KEYS_FILE" ]]; then
+    pre_dedup_snapshot=$(mktemp "$DESIGN_TMPDIR/.plan-pre-dedup.XXXXXX")
+    cp -f "$plan_path" "$pre_dedup_snapshot"
+fi
+
+dedup_tmp=$(mktemp "$DESIGN_TMPDIR/.plan-dedup.XXXXXX")
+dedup_removed=""
+if ! dedup_removed=$(python3 "$DEDUP_PLAN_LINES_PY" "$plan_path" "$dedup_tmp"); then
+    rm -f "$dedup_tmp"
+    if [[ -n "$pre_dedup_snapshot" ]]; then
+        cp -f "$pre_dedup_snapshot" "$plan_path"
+    fi
+    rm -f "$pre_dedup_snapshot"
+    echo "gate-b-dedup-plan.sh: dedup-plan-lines.py failed" >&2
+    exit 2
+fi
+if [[ ! "$dedup_removed" =~ ^[0-9]+$ ]]; then
+    rm -f "$dedup_tmp"
+    if [[ -n "$pre_dedup_snapshot" ]]; then
+        cp -f "$pre_dedup_snapshot" "$plan_path"
+    fi
+    rm -f "$pre_dedup_snapshot"
+    echo "gate-b-dedup-plan.sh: dedup-plan-lines.py failed" >&2
+    exit 2
+fi
+mv -f "$dedup_tmp" "$plan_path"
+printf 'dedup-sweep: removed %s duplicate line(s) from plan.txt\n' "${dedup_removed:-0}"
+
+if ! optional_cli validate-values --plan-file "$plan_path" --values-file "$TRAILER_KEYS_FILE.values"; then
+    if [[ -n "$pre_dedup_snapshot" ]]; then
+        cp -f "$pre_dedup_snapshot" "$plan_path"
+    fi
+    rm -f "$pre_dedup_snapshot"
+    echo "gate-b-dedup-plan.sh: optional trailer keys or values lost during dedup" >&2
+    exit 1
+fi
+
+rm -f "$pre_dedup_snapshot"
+exit 0

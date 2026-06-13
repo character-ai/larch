@@ -19,7 +19,7 @@
 
 1. Preconditions: `.completed/step-5b` present; `composed-plan.md` non-empty (`exit 2` otherwise).
 2. Pre-side-effect pause checkpoint: when `.pause-requested` exists, immediately `exec design-pause-save.sh --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE" ${REPO:+--repo "$REPO"}` before validation, redaction, plan write, rename, publish, or marker side effects.
-3. Unless `--skip-validate` is passed, run `invoke-plan-validator.sh DIR/composed-plan.md` under `set +e`, parse the five `VALIDATE_*` KVs, and treat `VALIDATE_STATUS=defects-found` as `exit 4` with no redaction or publish-tail side effects. Empty, `not-run`, unexpected status (anything other than `ok` after the defects-found branch), or nonzero validator output that is not `defects-found` is validator infrastructure failure (`exit 2`).
+3. Unless `--skip-validate` is passed, run `python/cli.py plan validate DIR/composed-plan.md` under `set +e`, parse the five `VALIDATE_*` KVs, and treat `VALIDATE_STATUS=defects-found` as `exit 4` with no redaction or publish-tail side effects. Empty, `not-run`, unexpected status (anything other than `ok` after the defects-found branch), or nonzero validator output that is not `defects-found` is validator infrastructure failure (`exit 2`).
 4. Redact `composed-plan.md` through `python/cli.py redact secrets` (stdin) to `composed-plan.redacted.md`; redactor nonzero is `exit 2` with `redact secrets failed`, and an empty redacted file is also `exit 2`.
 5. Resolve `REPO` once (`resolve-repo.sh` → `gh repo view` → empty).
 6. `python/cli.py named-block write --marker plan` with `if !` guard; failure → `failed-plan-write` render, `PLAN_WRITE_OK=false`, `exit 1`.
@@ -54,7 +54,7 @@ On success `VALIDATE_STATUS=ok`; on `--skip-validate`, `VALIDATE_STATUS=skipped`
 
 ## Ordering invariants
 
-On validation defects: `invoke-plan-validator.sh` → result env best-effort / stdout KVs → `exit 4`.
+On validation defects: `python/cli.py plan validate` → result env best-effort / stdout KVs → `exit 4`.
 
 On issue-wire plan write failure: validate (unless skipped) → redact → `python/cli.py named-block write --marker plan` → `render-final-summary.sh` (`--outcome failed-plan-write`, `--post-publish-only`) → result env → `exit 1`.
 
@@ -62,7 +62,7 @@ On success: validate (unless skipped) → redact → `python/cli.py named-block 
 
 ## Edit in sync
 
-Update together: `skills/design/SKILL.md` Step 5c, `skills/design/scripts/render-final-summary.md`, `skills/design/scripts/test-design-publish.sh`, `skills/design/scripts/test-design-publish.md`, `scripts/test-design-structure.sh`, and `scripts/test-render-cost-line-callsites.sh`. This driver owns the composed-plan `invoke-plan-validator.sh`, `redact secrets`, summary admission/recovery prose, and publish-tail ordering contract.
+Update together: `skills/design/SKILL.md` Step 5c, `skills/design/scripts/render-final-summary.md`, `skills/design/scripts/test-design-publish.sh`, `skills/design/scripts/test-design-publish.md`, `scripts/test-design-structure.sh`, and `scripts/test-render-cost-line-callsites.sh`. This driver owns the composed-plan `python/cli.py plan validate`, `redact secrets`, summary admission/recovery prose, and publish-tail ordering contract.
 
 ## Harness
 

@@ -116,8 +116,12 @@ export IMPLEMENT_TMPDIR
 PLAN_FILE="$IMPLEMENT_TMPDIR/plan.txt"
 [[ -f "$PLAN_FILE" ]] || fail "plan file not found at conventional path: $PLAN_FILE"
 
-COMPOSE_SH="${RUN_STEP1_COMPOSE_SH:-$PLUGIN_ROOT/scripts/compose-plan-goals-test.sh}"
-[[ -x "$COMPOSE_SH" ]] || fail "compose-plan-goals-test.sh not executable: $COMPOSE_SH"
+if [[ -n "${RUN_STEP1_COMPOSE_CMD:-}" ]]; then
+    # shellcheck disable=SC2206 # test override intentionally supplies a command word list.
+    COMPOSE_CMD=($RUN_STEP1_COMPOSE_CMD)
+else
+    COMPOSE_CMD=(python3 "$PLUGIN_ROOT/python/cli.py" plan compose-goals-test)
+fi
 if [[ -n "${RUN_STEP1_LARCH_LOG_SH:-}" ]]; then
     LARCH_LOG_CMD=("$RUN_STEP1_LARCH_LOG_SH")
     [[ -x "${LARCH_LOG_CMD[0]}" ]] || fail "run-log override not executable: ${LARCH_LOG_CMD[0]}"
@@ -134,7 +138,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-"$COMPOSE_SH" --plan-file "$PLAN_FILE" --goal-text "$GOAL_TEXT" > "$OUTPUT_TMP"
+"${COMPOSE_CMD[@]}" --plan-file "$PLAN_FILE" --goal-text "$GOAL_TEXT" > "$OUTPUT_TMP"
 mv "$OUTPUT_TMP" "$OUTPUT_FILE"
 trap - EXIT
 

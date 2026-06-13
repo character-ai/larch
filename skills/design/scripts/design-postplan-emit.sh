@@ -300,7 +300,7 @@ _postplan_append_plan_size_warning() {
     python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure \
         --log "$DESIGN_TMPDIR/execution-issues.md" \
         --site "design Step 2b.5" \
-        --tool "check-plan-size.sh" \
+        --tool "python plan check-size" \
         --exit-code "$_plan_size_rc" \
         --category Warnings \
         --output-file "$_combined_cap" \
@@ -311,12 +311,10 @@ _postplan_append_plan_size_warning() {
 }
 
 _postplan_run_plan_size() {
-    local _check_sh="$PLUGIN_ROOT/skills/design/scripts/check-plan-size.sh"
-    [[ -x "$_check_sh" ]] || fail "check-plan-size.sh not executable: $_check_sh"
     _plan_size_stderr="$DESIGN_TMPDIR/.check-plan-size.stderr.$$"
     _plan_size_out=""
     set +e
-    _plan_size_out=$(env LARCH_QUIET_DISABLE=1 "$_check_sh" --design-tmpdir "$DESIGN_TMPDIR" 2>"$_plan_size_stderr")
+    _plan_size_out=$(env LARCH_QUIET_DISABLE=1 python3 "$PLUGIN_ROOT/python/cli.py" plan check-size --design-tmpdir "$DESIGN_TMPDIR" 2>"$_plan_size_stderr")
     _plan_size_rc=$?
     set -e
     PLAN_SIZE_STATUS=ok
@@ -347,7 +345,7 @@ _postplan_run_plan_size() {
         case "$PLAN_SIZE_STATUS" in ok|not-run|unknown|'') PLAN_SIZE_STATUS=failed ;; esac
         _postplan_exit_merged_failure
     fi
-    fail "check-plan-size.sh failed unexpectedly (exit ${_plan_size_rc})"
+    fail "plan check-size failed unexpectedly (exit ${_plan_size_rc})"
 }
 
 _postplan_finish_merged_plan_size() {
@@ -388,7 +386,7 @@ _postplan_finish_merged_plan_size() {
             python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure \
                 --log "$DESIGN_TMPDIR/execution-issues.md" \
                 --site "design Step 2b.5" \
-                --tool "check-plan-size.sh (drift)" \
+                --tool "python plan check-size (drift)" \
                 --exit-code 0 \
                 --category Warnings \
                 --output-file "$_drift_log" \
@@ -489,7 +487,7 @@ SNAPSHOT_STATUS=skipped-suppressed
 
 _postplan_pause_checkpoint
 set +e
-_val_out=$("$PLUGIN_ROOT/skills/design/scripts/invoke-plan-validator.sh" "$DESIGN_TMPDIR/plan.txt" 2>&1)
+_val_out=$(env DESIGN_TMPDIR="$DESIGN_TMPDIR" LARCH_QUIET_DISABLE=1 python3 "$PLUGIN_ROOT/python/cli.py" plan validate --plan-file "$DESIGN_TMPDIR/plan.txt" --design-tmpdir "$DESIGN_TMPDIR" 2>&1)
 _val_rc=$?
 set -e
 parse_kv_from_output "$_val_out"

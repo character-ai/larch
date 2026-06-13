@@ -39,7 +39,7 @@ The wrapper forwards to `run-step3-review.sh --mode loop --starting-round <round
 
 ## Apply pipeline
 
-The happy path uses `revise-plan-with-waterfall.sh --patch-format file-replacement`, then `gate-b-dedup-plan.sh --snapshot-trailers` and `--dedup`, then `design-postplan-emit.sh --with-plan-size`. A loop-owned `plan-pre-apply-round-N.txt` snapshot is the restore source for dedup failure. The `.gate-b-postapply-ready-N` marker is written only after dedup succeeds.
+The happy path uses `python/cli.py plan revise-waterfall --patch-format file-replacement`, then `gate-b-dedup-plan.sh --snapshot-trailers` and `--dedup`, then `design-postplan-emit.sh --with-plan-size`. A loop-owned `plan-pre-apply-round-N.txt` snapshot is the restore source for dedup failure. The `.gate-b-postapply-ready-N` marker is written only after dedup succeeds.
 
 After a successful revise, the loop calls `write-design-round-meta.sh --round-dir round-N` to refresh `round-N/round-meta.json` with `revise.status` and `revise.tier` from `round-N/revise/revise.env`. The initial write (by `plan-review-loop.sh` at round end) contains `null` for both fields because revise has not yet run; this second call populates them so the Review Phase Detail table can show which tier was used each round.
 

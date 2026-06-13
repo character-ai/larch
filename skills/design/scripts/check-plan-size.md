@@ -1,4 +1,4 @@
-# skills/design/scripts/check-plan-size.sh
+# python/cli.py plan check-size
 
 Mechanical plan-size detector for `/design` **Step 2b.5** (issue #2670). Threshold semantics are normatively documented in [`skills/design/references/flags.md`](../references/flags.md).
 
@@ -30,7 +30,7 @@ Parsing rules:
 - Scan upward from the line above `diff_lines:`; the block contains only strict trailer lines matching the regexes above.
 - Stop at the first line above `diff_lines:` that is **not** one of those regexes (including blank lines).
 - Malformed trailer-looking lines are treated as absent and stop the block.
-- `diff_added: 08` / `09` and `diff_deleted: 08` / `09` match the strict line regex but are rejected as absent metadata (same rule as `lib-plan-optional-trailers.awk` snapshot/validate); threshold logic then falls back to legacy `diff_lines` when `diff_added` is absent.
+- `diff_added: 08` / `09` and `diff_deleted: 08` / `09` match the strict line regex but are rejected as absent metadata (same rule as `python/plan_quality.py` snapshot/validate); threshold logic then falls back to legacy `diff_lines` when `diff_added` is absent.
 - Duplicate keys inside the block: **last match in file order** wins (closest to `diff_lines:`).
 - `mechanical_churn: false` is explicit no-downgrade; absent mechanical values normalize to `false`.
 - Only lowercase `true` and `false` are valid `mechanical_churn` values. Any other present value (for example `mechanical_churn: 35` or `mechanical_churn: TRUE`) exits **2** with `PLAN_SIZE_STATUS=invalid-mechanical-churn` before size-gate calculations.
@@ -90,4 +90,4 @@ Merged mode treats rc 2/3 nonfatally in the driver; `plan-review-loop.sh` uses t
 
 ## Edit in sync
 
-Update [`test-check-plan-size.sh`](test-check-plan-size.sh), [`test-check-plan-size.md`](test-check-plan-size.md), [`lib-plan-optional-trailers.sh`](lib-plan-optional-trailers.sh), [`lib-plan-optional-trailers.awk`](lib-plan-optional-trailers.awk), `Makefile` (`test-check-plan-size`), `design-postplan-emit.sh`, `design-postplan-emit.md`, `plan-review-loop.sh`, `skills/design/references/flags.md`, and `skills/design/SKILL.md` Step 2b / 2b.5 when changing thresholds or contracts.
+Update [`python/test_plan_quality.py`](python/test_plan_quality.py), [`test-check-plan-size.md`](test-check-plan-size.md), [`python/cli.py plan optional-trailers`](python/cli.py plan optional-trailers), [`python/plan_quality.py`](python/plan_quality.py), `Makefile` (`test-check-plan-size`), `design-postplan-emit.sh`, `design-postplan-emit.md`, `plan-review-loop.sh`, `skills/design/references/flags.md`, and `skills/design/SKILL.md` Step 2b / 2b.5 when changing thresholds or contracts.

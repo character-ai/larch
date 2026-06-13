@@ -13,7 +13,7 @@ paths:
   - "skills/design/scripts/test-decompose-panel-dispatch.sh"
   - "skills/design/scripts/test-decompose-aggregator.sh"
   - "skills/design/scripts/test-decompose-file-issues.sh"
-  - "skills/design/scripts/validate-plan.sh"
+  - "python/plan_quality.py"
   - "skills/implement/references/conflict-resolution.md"
   - "skills/research/references/research-phase.md"
   - "skills/research/references/validation-phase.md"

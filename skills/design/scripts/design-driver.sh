@@ -4,6 +4,11 @@
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)
+REPO_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd -P)
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$REPO_ROOT}"
+if [[ -z "${CLAUDE_PLUGIN_ROOT:-}" ]]; then
+    export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"
+fi
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/../../../scripts/lib-quiet.sh"
 larch_quiet_init
@@ -84,7 +89,7 @@ run_action() {
             "$SCRIPT_DIR/finalize-plan.sh" --design-tmpdir "$DESIGN_TMPDIR" "$@"
             ;;
         VALIDATE_PLAN_COMMANDS)
-            "$SCRIPT_DIR/validate-plan.sh" "$@"
+            python3 "$PLUGIN_ROOT/python/cli.py" plan validate "$@"
             ;;
         *)
             return 64

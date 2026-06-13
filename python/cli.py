@@ -82,6 +82,14 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("plan-block", "strip-body"): ("issue_wire", "plan_block_strip_body_main"),
     ("named-block", "write"): ("issue_wire", "named_block_write_main"),
     ("plan", "scope-paths"): ("issue_wire", "plan_scope_paths_main"),
+    ("plan", "parse-commands"): ("plan_quality", "parse_plan_commands_main"),
+    ("plan", "validate-commands"): ("plan_quality", "validate_plan_commands_main"),
+    ("plan", "validate"): ("plan_quality", "validate_plan_main"),
+    ("plan", "check-size"): ("plan_quality", "check_plan_size_main"),
+    ("plan", "revise-waterfall"): ("plan_quality", "revise_plan_with_waterfall_main"),
+    ("plan", "auto-fix-commands"): ("plan_quality", "auto_fix_plan_commands_main"),
+    ("plan", "optional-trailers"): ("plan_quality", "optional_trailers_main"),
+    ("plan", "compose-goals-test"): ("plan_quality", "compose_plan_goals_test_main"),
     ("issue", "title-eligibility"): ("issue_wire", "issue_title_eligibility_main"),
     ("issue", "title-archival-jq"): ("issue_wire", "issue_title_archival_jq_main"),
     ("issue", "insert-signal-marker"): ("issue_wire", "issue_insert_signal_marker_main"),
@@ -264,6 +272,13 @@ _MACHINE_STDOUT_KEYS: frozenset[tuple[str, str]] = frozenset({
     ("admission", "fork-env"),
     ("dirty-tree", "baseline"),
     ("dirty-tree", "checkpoint"),
+    ("plan", "validate"),
+    ("plan", "validate-commands"),
+    ("plan", "check-size"),
+    ("plan", "revise-waterfall"),
+    ("plan", "auto-fix-commands"),
+    ("plan", "optional-trailers"),
+    ("plan", "compose-goals-test"),
 })
 
 

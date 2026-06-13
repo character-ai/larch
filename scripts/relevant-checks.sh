@@ -165,7 +165,7 @@ run_direct_relevant_targets() {
                 ;;
         esac
         case "$f" in
-            skills/design/scripts/auto-fix-plan-commands.sh|skills/design/scripts/auto-fix-plan-commands.md|skills/design/scripts/test-auto-fix-plan-commands.sh)
+            python/plan_quality.py|python/test_plan_quality.py|skills/design/scripts/design-step-validator-autofix.sh|skills/design/scripts/auto-fix-plan-commands.sh|skills/design/scripts/auto-fix-plan-commands.md|skills/design/scripts/test-auto-fix-plan-commands.sh)
                 append_target_once test-auto-fix-plan-commands
                 ;;
         esac
@@ -191,7 +191,7 @@ run_direct_relevant_targets() {
                 ;;
         esac
         case "$f" in
-            skills/design/scripts/revise-plan-with-waterfall.sh|skills/design/scripts/revise-plan-with-waterfall.md|scripts/test-revise-plan-with-waterfall.sh)
+            python/plan_quality.py|python/test_plan_quality.py|skills/design/scripts/review-design-step3-loop.sh|skills/design/scripts/revise-plan-with-waterfall.sh|skills/design/scripts/revise-plan-with-waterfall.md|scripts/test-revise-plan-with-waterfall.sh)
                 append_target_once test-revise-plan-with-waterfall
                 ;;
         esac
@@ -257,7 +257,7 @@ run_direct_relevant_targets() {
                 ;;
         esac
         case "$f" in
-            python/issue_wire.py|python/test_issue_wire.py|python/redact.py|python/gh.py|python/rendering.py|python/test_rendering.py|.claude/rules/gh-body-file.md|AGENTS.md|SECURITY.md|agent-lint.toml|docs/issue-anchored-plan.md|docs/linting.md|skills/design/scripts/test-design-publish.sh|skills/design/scripts/test-plan-review-scope-anchor.sh|skills/design/scripts/test-design-pause-resume.sh|scripts/test-legacy-title-prefix-literals-scope.sh)
+            python/issue_wire.py|python/test_issue_wire.py|python/plan_quality.py|python/test_plan_quality.py|python/redact.py|python/gh.py|python/rendering.py|python/test_rendering.py|.claude/rules/gh-body-file.md|AGENTS.md|SECURITY.md|agent-lint.toml|docs/issue-anchored-plan.md|docs/linting.md|skills/design/scripts/test-design-publish.sh|skills/design/scripts/test-plan-review-scope-anchor.sh|skills/design/scripts/test-design-pause-resume.sh|scripts/test-legacy-title-prefix-literals-scope.sh)
                 maybe_append_py_lint_target
                 maybe_append_py_test_target
                 append_target_once test-design-structure
