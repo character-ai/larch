@@ -241,10 +241,10 @@ def _write_manifest(path: Path, manifest: dict[str, object]) -> None:
     tmp.replace(path)
 
 
-def filter_plan_manifest(input_path: Path, output_path: Path, *, max_archetypes: int) -> tuple[str, int]:
+def filter_manifest(input_path: Path, output_path: Path, *, max_archetypes: int, mode: str = "plan-review") -> tuple[str, int]:
     try:
         data = json.loads(input_path.read_text(encoding="utf-8"))
-        result = validate_dynamic_manifest(data, max_archetypes=max_archetypes, mode="plan-review")
+        result = validate_dynamic_manifest(data, max_archetypes=max_archetypes, mode=mode)
     except (OSError, TypeError, ValueError, json.JSONDecodeError):
         _write_empty_manifest(output_path)
         return "parse-failed", 0
@@ -257,6 +257,10 @@ def filter_plan_manifest(input_path: Path, output_path: Path, *, max_archetypes:
     _write_manifest(output_path, result.manifest)
     count = len(result.manifest["archetypes"])
     return ("empty" if count == 0 else "ok"), count
+
+
+def filter_plan_manifest(input_path: Path, output_path: Path, *, max_archetypes: int) -> tuple[str, int]:
+    return filter_manifest(input_path, output_path, max_archetypes=max_archetypes)
 
 
 def _allowed_context_roots(plugin_root: Path, session_root: Path, session_env_path: str, implement_tmpdir: str) -> list[Path]:
@@ -585,7 +589,7 @@ def scout_plan_archetypes(
         return
     inner_status = status
     filter_tmp = output.with_name(output.name + ".filter-out")
-    filter_status, count = filter_plan_manifest(output, filter_tmp, max_archetypes=max_archetypes)
+    filter_status, count = filter_manifest(output, filter_tmp, max_archetypes=max_archetypes)
     filter_tmp.replace(output)
     if filter_status == "parse-failed":
         _emit_scout_result("parse-failed", output, count, 0, manifest_key=True)
@@ -613,10 +617,13 @@ def filter_manifest_main(argv: list[str]) -> int:
     parser.add_argument("input")
     parser.add_argument("output")
     parser.add_argument("--max-archetypes", default="3")
+    parser.add_argument("--mode", default="plan-review")
     try:
         args = parser.parse_args(argv)
         cap = _parse_cap(args.max_archetypes, 3, "--max-archetypes must be 0-3 for plan scout")
-        status, count = filter_plan_manifest(Path(args.input), Path(args.output), max_archetypes=cap)
+        if args.mode not in {"review", "plan-review"}:
+            raise UsageError("--mode must be review or plan-review")
+        status, count = filter_manifest(Path(args.input), Path(args.output), max_archetypes=cap, mode=args.mode)
         _emit_kv("SCOUT_STATUS", status)
         _emit_kv("SCOUT_MANIFEST", args.output)
         _emit_kv("SCOUT_ARCHETYPE_COUNT", count)

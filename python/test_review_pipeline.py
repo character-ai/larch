@@ -471,6 +471,13 @@ def test_dispatch_panel_pre_scouted_valid_dynamic_slots(tmp_path: Path) -> None:
             {
                 "archetypes": [
                     {
+                        "name": "arch",
+                        "focus_area": "architecture",
+                        "weight": 1,
+                        "rationale": "Architecture risk is central.",
+                        "prompt_body": "Check architecture drift.",
+                    },
+                    {
                         "name": "api-contract",
                         "focus_area": "correctness",
                         "weight": 4,
@@ -562,6 +569,8 @@ printf '{"type":"result","subtype":"success","is_error":false,"result":"claude r
     assert "SCOUT_STATUS=pre-scouted" in result.stdout
     assert "DYNAMIC_SLOTS=4" in result.stdout
     assert "SLOT_COUNT=10" in result.stdout
+    normalized = json.loads((case_dir / "scout-round1-manifest.json").read_text(encoding="utf-8"))
+    assert [a["name"] for a in normalized["archetypes"]] == ["arch", "api-contract"]
 
 
 def _write_dispatch_vendor_stubs(stub_bin: Path) -> None:
