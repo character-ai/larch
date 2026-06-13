@@ -124,6 +124,14 @@ _emit_implement_round_timing_row() {
     fi
 }
 
+step5_persist_round_start_if_timing_missing() {
+    local round_num="$1" start_s="$2"
+    local guard_var="STEP5_ROUND_${round_num}_TIMING_EMITTED"
+    if [[ "${!guard_var:-}" != "true" ]]; then
+        step5_persist_round_start "$round_num" "$start_s"
+    fi
+}
+
 step5_emit_final_envelope() {
     local step5_status="$1" stall_tracking="$2" stall_reason="$3" rounds_completed="$4" final_round="$5" \
         final_irf="$6" coder_st="$7" files_hint="$8" eff_cap="$9"
@@ -362,7 +370,8 @@ run_implement_loop() {
                         ;;
                     main-agent-required)
                         step5_surface_lint_stderr_tail
-                        step5_persist_round_start "$round_num" "$round_start_s"
+                        _emit_implement_round_timing_row "$round_num" "$round_start_s" "$(step5_now_s)" "${post_accepted_count:-0}" "${post_rejected_count:-0}"
+                        step5_persist_round_start_if_timing_missing "$round_num" "$round_start_s"
                         step5_emit_final_envelope stall true lint-fix-main-agent-required "$rounds_completed" "$round_num" "$post_round_status" "$post_coder" "$last_hint" "$effective_round_cap"
                         flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$rounds_completed" 0 0 0 0 2>/dev/null || true
                         exit 2

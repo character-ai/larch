@@ -215,3 +215,188 @@ if errors:
     sys.exit(1)
 print(f'PASS: test-implement-fence-shape.sh (old={old_count} new={new_count})')
 PY
+
+python3 <<'PY'
+from pathlib import Path
+import contextlib
+import io
+import os
+import re
+import stat
+import subprocess
+import sys
+import tempfile
+
+sys.path.insert(0, str(Path("python").resolve()))
+import bootstrap  # noqa: E402
+
+
+def fail(message: str) -> None:
+    print(message, file=sys.stderr)
+    sys.exit(1)
+
+
+def run_launcher(launcher: Path, target: str, *argv: str) -> subprocess.CompletedProcess[str]:
+    env = {
+        "PATH": os.environ.get("PATH", ""),
+        "TMPDIR": os.environ.get("TMPDIR", "/tmp"),
+    }
+    return subprocess.run(
+        [str(launcher), target, *argv],
+        text=True,
+        capture_output=True,
+        check=False,
+        env=env,
+    )
+
+
+def extract_root_awk_program(text: str) -> str:
+    for match in re.finditer(r"awk '([^']+)'", text):
+        program = match.group(1)
+        if "LARCH_CLAUDE_PLUGIN_ROOT=" in program:
+            return program
+    fail("missing LARCH_CLAUDE_PLUGIN_ROOT awk program")
+    return ""
+
+
+with tempfile.TemporaryDirectory(prefix="larch-run-launcher-test.") as tmp:
+    root = Path(tmp)
+    impl = root / "impl"
+    fake_plugin = root / "plugin"
+    (fake_plugin / "scripts").mkdir(parents=True)
+    (fake_plugin / "python").mkdir(parents=True)
+    impl.mkdir()
+    (impl / "plugin-root.env").write_text(f"CLAUDE_PLUGIN_ROOT={fake_plugin}\n", encoding="utf-8")
+
+    sh_target = fake_plugin / "scripts" / "echo-argv.sh"
+    sh_target.write_text(
+        "#!/usr/bin/env bash\nprintf 'SH_ARGV=%s|%s\\n' \"$1\" \"$2\"\n",
+        encoding="utf-8",
+    )
+    sh_target.chmod(sh_target.stat().st_mode | stat.S_IXUSR)
+    py_target = fake_plugin / "python" / "echo_argv.py"
+    py_target.write_text(
+        "import sys\nprint('PY_EXECUTABLE=' + sys.executable)\nprint('PY_ARGV=' + '|'.join(sys.argv[1:]))\n",
+        encoding="utf-8",
+    )
+
+    if not bootstrap._write_larch_run_sh(str(impl)):
+        fail("failed to write larch-run.sh")
+    launcher = impl / "larch-run.sh"
+    if not launcher.exists() or not os.access(launcher, os.X_OK):
+        fail("larch-run.sh was not executable")
+
+    sh = run_launcher(launcher, "scripts/echo-argv.sh", "one", "two words")
+    if sh.returncode != 0 or "SH_ARGV=one|two words" not in sh.stdout:
+        fail(f".sh launcher argv passthrough failed: rc={sh.returncode} stdout={sh.stdout!r} stderr={sh.stderr!r}")
+
+    py = run_launcher(launcher, "python/echo_argv.py", "alpha", "beta gamma")
+    if py.returncode != 0 or "PY_ARGV=alpha|beta gamma" not in py.stdout:
+        fail(f".py launcher argv passthrough failed: rc={py.returncode} stdout={py.stdout!r} stderr={py.stderr!r}")
+    if "PY_EXECUTABLE=" not in py.stdout:
+        fail(".py launcher did not prove Python execution")
+
+    for label, target in (("absolute", "/tmp/not-allowed.sh"), ("traversal", "../not-allowed.sh"), ("unsupported", "scripts/not-supported.txt")):
+        result = run_launcher(launcher, target)
+        if result.returncode != 2:
+            fail(f"{label} target expected exit 2, got {result.returncode}")
+
+    step0_program = extract_root_awk_program(Path("skills/implement/scripts/step-0-bootstrap.sh").read_text(encoding="utf-8"))
+    generated_program = extract_root_awk_program(launcher.read_text(encoding="utf-8"))
+    if step0_program != generated_program:
+        fail("generated larch-run.sh awk fallback drifted from step-0-bootstrap.sh")
+
+
+with tempfile.TemporaryDirectory(prefix="larch-run-partial-upgrade-test.") as tmp:
+    root = Path(tmp)
+    impl = root / "impl"
+    impl.mkdir()
+    session_env = impl / "session-env.sh"
+    session_env.write_text(
+        "\n".join(
+            [
+                f"LARCH_CLAUDE_PLUGIN_ROOT={Path.cwd()}",
+                "LARCH_TOKEN_SESSION_ID=resume-session",
+                "LARCH_CLAUDE_SOURCE_FILE=",
+                f"LARCH_TIMING_LEDGER={impl / 'timing-ledger.tsv'}",
+                "REPO=owner/repo",
+                "REPO_UNAVAILABLE=false",
+                "CODEX_PRESENT=false",
+                "CURSOR_PRESENT=false",
+                "CODEX_BINARY_FOUND=false",
+                "CURSOR_BINARY_FOUND=false",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (impl / "session-id").write_text("resume-session\n", encoding="utf-8")
+    (impl / "plugin-root.env").write_text(f"CLAUDE_PLUGIN_ROOT={Path.cwd()}\n", encoding="utf-8")
+    (impl / "plan.txt").write_text("## Plan\n", encoding="utf-8")
+    (impl / "feature-description.txt").write_text("Resume launcher fixture\n", encoding="utf-8")
+    launcher = impl / "larch-run.sh"
+    if launcher.exists():
+        fail("partial-upgrade fixture unexpectedly started with larch-run.sh")
+
+    original_env = os.environ.copy()
+    original_run = bootstrap._run
+    original_cli = bootstrap._cli
+    original_checkpoint = bootstrap.dirty_tree.checkpoint
+
+    def completed(args: object, stdout: str = "") -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(args, 0, stdout, "")
+
+    def fake_run(argv: list[str], *, env: dict[str, str] | None = None, cwd: str | None = None) -> subprocess.CompletedProcess[str]:
+        joined = " ".join(argv)
+        if "create-branch.sh --check" in joined:
+            return completed(argv, "CURRENT_BRANCH=feature/resume\nIS_MAIN=false\nIS_USER_BRANCH=true\nUSER_PREFIX=user\n")
+        if "git-current-branch.sh" in joined:
+            return completed(argv, "BRANCH=feature/resume\n")
+        if "run-step1-plan-log.sh" in joined:
+            return completed(argv, "PLAN_LOG=ok\n")
+        return completed(argv, "")
+
+    def fake_cli(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+        if args[:3] == ("session", "read-key", "--file"):
+            path = Path(args[3])
+            key = args[args.index("--key") + 1]
+            default = args[args.index("--default") + 1] if "--default" in args else ""
+            value = default
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if line.startswith(key + "="):
+                    value = line.split("=", 1)[1]
+                    break
+            return completed(args, value + "\n")
+        if args[:3] == ("session", "entry-gate", "--mode"):
+            return completed(args, "ENTRY_GATE=ok\nSKIP_BRANCH_CHECK=false\n")
+        return completed(args, "")
+
+    try:
+        os.environ.clear()
+        os.environ.update(original_env)
+        os.environ["IMPLEMENT_TMPDIR"] = str(impl)
+        bootstrap._run = fake_run
+        bootstrap._cli = fake_cli
+        bootstrap.dirty_tree.checkpoint = lambda: ["STATUS=clean"]
+        opts = bootstrap.BootstrapOptions(
+            up_to_phase="plan",
+            issue_number="4104",
+            run_id="resume-session",
+            resume_plan_tail=True,
+        )
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            rc = bootstrap.run_bootstrap(opts)
+    finally:
+        bootstrap._run = original_run
+        bootstrap._cli = original_cli
+        bootstrap.dirty_tree.checkpoint = original_checkpoint
+        os.environ.clear()
+        os.environ.update(original_env)
+
+    if rc != 0:
+        fail(f"resume bootstrap partial-upgrade path failed with rc={rc}")
+    if not launcher.exists() or not os.access(launcher, os.X_OK):
+        fail("resume bootstrap partial-upgrade path did not emit executable larch-run.sh")
+
+print("PASS: test-implement-fence-shape.sh launcher sandbox")
+PY

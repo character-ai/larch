@@ -22,6 +22,7 @@ Structural harness for `/implement` prompt Bash fences. It parses `skills/implem
 - Telemetry-only fences (`python3 python/cli.py timing telemetry-mark`, token/timing ledgers, token/timing reports) are banned; wrappers own telemetry internally.
 - Inline `session read-key` calls are banned from SKILL.md fences.
 - If any post-Step-0 fence targets `python/cli.py`, the harness also pins that the emitted launcher dispatches `.py` targets through `python3`.
+- A generated `larch-run.sh` sandbox pins `.sh` and `.py` argv passthrough, invalid-target rejection, awk fallback parity with `step-0-bootstrap.sh`, and resume partial-upgrade emission when `plugin-root.env` exists but `larch-run.sh` is absent.
 
 ## Caller
 

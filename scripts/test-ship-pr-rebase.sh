@@ -121,6 +121,116 @@ CI_FIX_REBASE_PENDING=false
 EOF
 }
 
+assert_ship_pr_lint_handoff_case() {
+    local case_name=$1 phase=$2 dispatch_first=$3 ledger_mode=$4 expected_detail=$5
+    local case_dir="$TMPROOT/lint-handoff-$case_name"
+    local impl="$case_dir/impl"
+    local state_file="$case_dir/ship-pr-state.sh"
+    local out rc expected_path
+    mkdir -p "$impl"
+    write_ci_state "$state_file" "$phase"
+    printf 'initial redacted log\n' > "$impl/initial.redacted.log"
+    printf 'captured failure\n' > "$impl/captured.log"
+    printf 'ledger detail\n' > "$impl/ledger-detail.log"
+    printf 'outside detail\n' > "$case_dir/outside-detail.log"
+
+    set +e
+    out=$(
+        CASE_DIR="$case_dir" CASE_IMPL="$impl" CASE_STATE="$state_file" CASE_PHASE="$phase" \
+            CASE_DISPATCH_FIRST="$dispatch_first" CASE_LEDGER_MODE="$ledger_mode" \
+            CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash <<'EOS'
+set -uo pipefail
+# shellcheck source=scripts/ship-pr.sh
+source "$CLAUDE_PLUGIN_ROOT/scripts/ship-pr.sh"
+SCRIPT_DIR="$CLAUDE_PLUGIN_ROOT/scripts"
+PLUGIN_ROOT="$CLAUDE_PLUGIN_ROOT"
+IMPLEMENT_TMPDIR="$CASE_IMPL"
+STATE_FILE="$CASE_STATE"
+_RCC_PHASE="$CASE_PHASE"
+_RCC_RERUN_FN=case_rerun
+_RCC_SITE=ship-pr-ci-initial
+_RCC_TARGET_CMD_ARGS_FILE=""
+_RCC_MAX_ITER=3
+_RCC_DISPATCH_FIRST="$CASE_DISPATCH_FIRST"
+_RCC_INITIAL_REDACTED_LOG="$IMPLEMENT_TMPDIR/initial.redacted.log"
+
+python3() { cat; }
+larch_err() { return 0; }
+failure_capture_path() {
+    local phase=${1:-unknown}
+    printf '%s/failure-%s.log\n' "$IMPLEMENT_TMPDIR" "$phase"
+}
+case_rerun() {
+    _RCC_RAW_LOG_PATH="$IMPLEMENT_TMPDIR/captured.log"
+    _RCC_CMD_RC=1
+}
+run_lint_fix_loop_capture() {
+    local fail_file=$1 site=$2 redacted_log=$3 out_var=$4 rc_var=$5
+    local output
+    printf 'lint handoff site=%s log=%s\n' "$site" "$redacted_log" >> "$fail_file"
+    output='LINT_FIX_STATUS=main-agent-required'
+    if [ "$CASE_LEDGER_MODE" = inside ]; then
+        output="${output}"$'\n'"LINT_FIX_LEDGER_FAILURE_DETAIL_LOG=$IMPLEMENT_TMPDIR/ledger-detail.log"
+    elif [ "$CASE_LEDGER_MODE" = outside ]; then
+        output="${output}"$'\n'"LINT_FIX_LEDGER_FAILURE_DETAIL_LOG=$CASE_DIR/outside-detail.log"
+    elif [ "$CASE_LEDGER_MODE" != missing ]; then
+        exit 98
+    fi
+    printf -v "$out_var" '%s' "$output"
+    printf -v "$rc_var" '%s' 0
+}
+
+run_captured_cmd_then_fix_loop
+if [ "$_RCC_STATUS" = main-agent-required ]; then
+    detail_log=$(rcc_main_agent_required_detail_log)
+    emit_ship_pr_ledger_ready ship-pr-internal-lint-fix "$CASE_PHASE" "$detail_log"
+    exit_ship_pr_internal_lint_fix_handoff "$CASE_PHASE" "$detail_log"
+fi
+exit 97
+EOS
+    )
+    rc=$?
+    set -e
+
+    [[ "$rc" -eq 3 ]] || fail "(D1-runtime $case_name) expected exit 3, got $rc; out=$out"
+    grep -Fq 'SHIP_PR_LEDGER_READY=true' <<<"$out" || fail "(D1-runtime $case_name) missing ledger-ready"
+    grep -Fq 'SHIP_PR_LEDGER_SITE=ship-pr-internal' <<<"$out" || fail "(D1-runtime $case_name) missing ledger site"
+    grep -Fq 'SHIP_PR_LEDGER_TRIGGER=ship-pr-internal-lint-fix' <<<"$out" || fail "(D1-runtime $case_name) missing ledger trigger"
+    grep -Fq 'SHIP_PR_LEDGER_STEP=8' <<<"$out" || fail "(D1-runtime $case_name) missing ledger step"
+    grep -Fq "SHIP_PR_LEDGER_PHASE=$phase" <<<"$out" || fail "(D1-runtime $case_name) missing ledger phase"
+    grep -Fq 'SHIP_PR_LEDGER_DISPATCHER=ship-pr' <<<"$out" || fail "(D1-runtime $case_name) missing ledger dispatcher"
+    grep -Fq 'SHIP_PR_LEDGER_EXIT_CODE=3' <<<"$out" || fail "(D1-runtime $case_name) missing ledger exit code"
+
+    expected_path=""
+    case "$expected_detail" in
+        ledger) expected_path="$impl/ledger-detail.log" ;;
+        fallback) expected_path="$impl/failure-$phase.log" ;;
+        none) expected_path="" ;;
+        *) fail "(D1-runtime $case_name) unknown expected detail $expected_detail" ;;
+    esac
+    if [[ -n "$expected_path" ]]; then
+        grep -Fq "SHIP_PR_LEDGER_FAILURE_DETAIL_LOG=$expected_path" <<<"$out" \
+            || fail "(D1-runtime $case_name) missing expected detail log $expected_path in stdout: $out"
+        grep -Fq "BAIL_FAILURE_DETAIL_LOG=$expected_path" "$state_file" \
+            || fail "(D1-runtime $case_name) state missing expected detail log $expected_path"
+    else
+        ! grep -Fq 'SHIP_PR_LEDGER_FAILURE_DETAIL_LOG=' <<<"$out" \
+            || fail "(D1-runtime $case_name) outside detail log must not be exported"
+        grep -Fxq 'BAIL_FAILURE_DETAIL_LOG=' "$state_file" \
+            || fail "(D1-runtime $case_name) state must clear outside detail log"
+    fi
+    grep -Fq 'BAIL_REASON=ship-pr-internal-lint-fix' "$state_file" \
+        || fail "(D1-runtime $case_name) state missing bail reason"
+    grep -Fq 'STALL_TRACKING=false' "$state_file" \
+        || fail "(D1-runtime $case_name) state missing stall tracking false"
+    grep -Fq 'EXIT_CODE=3' "$state_file" \
+        || fail "(D1-runtime $case_name) state missing exit code"
+}
+
+assert_ship_pr_lint_handoff_case check-first ci-initial 0 inside ledger
+assert_ship_pr_lint_handoff_case dispatch-first ci-merge 1 missing fallback
+assert_ship_pr_lint_handoff_case outside-detail ci-initial 0 outside none
+
 state="$TMPROOT/ship-pr-state.sh"
 write_ci_state "$state" ci-initial
 
@@ -391,4 +501,4 @@ EOF
         || fail "(H) stage vendor ingest should run once with IMPLEMENT_TMPDIR; log=$(cat "$CALL_LOG")"
 )
 
-echo "PASS: test-ship-pr-rebase.sh — CI-fix rebase structural pins, fork postbump guard, legacy resume, sidecar ingest, and resume guard hold (A-H, D2)"
+echo "PASS: test-ship-pr-rebase.sh — CI-fix rebase structural pins, lint handoff KVs, fork postbump guard, legacy resume, sidecar ingest, and resume guard hold (A-H, D1-runtime, D2)"

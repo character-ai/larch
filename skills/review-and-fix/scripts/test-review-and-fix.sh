@@ -3401,6 +3401,8 @@ STUB
             IRF_LAST_FIX_COUNT=1
             IRF_LAST_ROUND_DIR="$IMPLEMENT_TMPDIR/round-1"
             IRF_LAST_ACCEPTED_FILE=""
+            IRF_LAST_ACCEPTED_COUNT=3
+            IRF_LAST_REJECTED_COUNT=2
             IRF_LAST_FILES_HINT=""
             mkdir -p "$IRF_LAST_ROUND_DIR"
             return 0
@@ -3414,18 +3416,20 @@ STUB
     grep -Fq 'LARCH_STEP5_LOOP_TERMINAL_STDERR_PROBE' "$err_file" \
         || fail "step5 lint-fix terminal arm must surface stderr-tail before envelope"
     step5_assert_envelope "$out_file" stall true lint-fix-main-agent-required 1
-    [[ -f "$case_dir/impl/round-1/round-start-s" ]] \
-        || fail "step5 lint-fix terminal arm must persist round-start-s for deferred orchestrator timing"
-    [[ ! -e "$case_dir/impl/timing-ledger.tsv" ]] \
-        || fail "step5 lint-fix terminal arm must defer in-loop timing row"
-    round_start_s="$(tr -d '\r\n' < "$case_dir/impl/round-1/round-start-s")"
-    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$REPO_ROOT/skills/review-and-fix/scripts/record-implement-review-round-timing.sh" \
-        --implement-tmpdir "$case_dir/impl" \
-        --round 1 \
-        --start-s "$round_start_s" \
-        --end-s "$((round_start_s + 1))"
-    awk -F '\t' '$2 == "round" && $4 == "implement" && $5 == "Step 5 — code review" && $6 == 1 { found=1 } END { exit found ? 0 : 1 }' "$case_dir/impl/timing-ledger.tsv" \
-        || fail "step5 lint-fix terminal deferred orchestrator timing row missing"
+    [[ -f "$case_dir/impl/timing-ledger.tsv" ]] \
+        || fail "step5 lint-fix terminal arm must emit timing-ledger.tsv in-loop"
+    [[ ! -e "$case_dir/impl/round-1/round-start-s" ]] \
+        || fail "step5 lint-fix terminal arm must not persist round-start-s"
+    round_rows=$(awk -F '\t' '$2 == "round" && $4 == "implement" && $5 == "Step 5 — code review" && $6 == 1 { count++ } END { print count + 0 }' "$case_dir/impl/timing-ledger.tsv")
+    [[ "$round_rows" == "1" ]] \
+        || fail "step5 lint-fix terminal arm expected one in-loop timing row, saw $round_rows"
+    awk -F '\t' '$2 == "round" && $4 == "implement" && $5 == "Step 5 — code review" && $6 == 1 && $7 ~ /^[0-9]+$/ && $10 == 3 && $11 == 2 { found=1 } END { exit found ? 0 : 1 }' "$case_dir/impl/timing-ledger.tsv" \
+        || fail "step5 lint-fix terminal in-loop timing row missing accepted/rejected counts"
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" IMPLEMENT_TMPDIR="$case_dir/impl" \
+        "$REPO_ROOT/skills/implement/scripts/step-5-resume.sh" --final-round-num 1 --record-only >/dev/null
+    round_rows_after=$(awk -F '\t' '$2 == "round" && $4 == "implement" && $5 == "Step 5 — code review" && $6 == 1 { count++ } END { print count + 0 }' "$case_dir/impl/timing-ledger.tsv")
+    [[ "$round_rows_after" == "1" ]] \
+        || fail "step5 lint-fix terminal record-only guard expected one timing row, saw $round_rows_after"
     pass "step5-loop lint-fix-terminal-tail"
 
     # Case: structural_loc uses the relocated pre-coder snapshot, not round_dir.
