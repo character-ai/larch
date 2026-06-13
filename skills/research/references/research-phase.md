@@ -190,8 +190,26 @@ Parse the structured output for each lane's `STATUS` and `REVIEWER_FILE`. Under 
 For each selected output path, set `SIDECAR="${OUTPUT}.token-record"`. If `$SIDECAR` exists and is non-empty, run both commands and preserve warnings from failed ingestion:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" token append-record --input "$SIDECAR" --tmpdir "$RESEARCH_TMPDIR"
-env -u LARCH_TOKEN_LEDGER -u LARCH_TOKEN_SESSION_ID -u IMPLEMENT_TMPDIR -u DESIGN_TMPDIR -u SESSION_ENV_PATH RESEARCH_TMPDIR="$RESEARCH_TMPDIR" python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" token record-vendor-sidecar --input "$SIDECAR"
+_append_err="$(mktemp)"
+if ! python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" token append-record --input "$SIDECAR" --tmpdir "$RESEARCH_TMPDIR" 2>"$_append_err"; then
+  _append_rc=$?
+  printf 'WARNING: token append-record failed with exit %s' "$_append_rc" >&2
+  if [[ -s "$_append_err" ]]; then printf ': %s' "$(cat "$_append_err")" >&2; fi
+  printf '\n' >&2
+elif [[ -s "$_append_err" ]]; then
+  printf 'token append-record: %s\n' "$(cat "$_append_err")" >&2
+fi
+rm -f "$_append_err"
+_active_err="$(mktemp)"
+if ! env -u LARCH_TOKEN_LEDGER -u LARCH_TOKEN_SESSION_ID -u IMPLEMENT_TMPDIR -u DESIGN_TMPDIR -u SESSION_ENV_PATH RESEARCH_TMPDIR="$RESEARCH_TMPDIR" python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" token record-vendor-sidecar --input "$SIDECAR" 2>"$_active_err"; then
+  _active_rc=$?
+  printf 'WARNING: token record-vendor-sidecar failed with exit %s' "$_active_rc" >&2
+  if [[ -s "$_active_err" ]]; then printf ': %s' "$(cat "$_active_err")" >&2; fi
+  printf '\n' >&2
+elif [[ -s "$_active_err" ]]; then
+  printf 'token record-vendor-sidecar: %s\n' "$(cat "$_active_err")" >&2
+fi
+rm -f "$_active_err"
 ```
 
 Keep append-record bound to `--tmpdir "$RESEARCH_TMPDIR"`. Keep active-ledger ingestion bound to `RESEARCH_TMPDIR`. The active-ledger command unsets inherited explicit ledger, session ID, implementation tmpdir, design tmpdir, and session-env variables so research sidecars cannot write to a leaked parent ledger or slug. Absent sidecars are no-ops. Claude fallback lanes require no ingestion unless a Codex `.token-record` sidecar exists.
