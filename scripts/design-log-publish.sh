@@ -31,11 +31,20 @@ larch_quiet_init
 source "$SCRIPT_DIR/lib-redact.sh"
 # shellcheck source=scripts/lib-design-tmpdir.sh
 source "$SCRIPT_DIR/lib-design-tmpdir.sh"
-# shellcheck source=scripts/lib-design-round-artifacts.sh
-# shellcheck disable=SC1091
-source "$SCRIPT_DIR/lib-design-round-artifacts.sh"
 # shellcheck source=scripts/lib-net.sh
 source "$SCRIPT_DIR/lib-net.sh" || { larch_err "design-log-publish: failed to source lib-net.sh"; exit 1; }
+
+design_round_artifact_included() {
+    python3 "$SCRIPT_DIR/../python/cli.py" plan-review round-artifact-included --name "${1:-}"
+}
+
+design_round_revise_artifact_included() {
+    python3 "$SCRIPT_DIR/../python/cli.py" plan-review round-revise-artifact-included --name "${1:-}"
+}
+
+design_round_revise_artifact_excluded() {
+    python3 "$SCRIPT_DIR/../python/cli.py" plan-review round-revise-artifact-excluded --name "${1:-}"
+}
 
 DESIGN_TMPDIR=""
 RUN_ID=""
@@ -808,7 +817,7 @@ if [[ -e "$DESIGN_TMPDIR/plan-review" || -L "$DESIGN_TMPDIR/plan-review" ]]; the
             elif design_round_revise_artifact_excluded "$_base"; then
                 continue
             else
-                larch_err "design-log-publish: unexpected file under plan-review (see scripts/lib-design-round-artifacts.md): $rel"
+                larch_err "design-log-publish: unexpected file under plan-review (see python/plan_review.py): $rel"
                 emit_publish_result false
                 exit 0
             fi
@@ -829,12 +838,12 @@ if [[ -e "$DESIGN_TMPDIR/plan-review" || -L "$DESIGN_TMPDIR/plan-review" ]]; the
                 # Known top-level exclusion also applies at round level; skip silently.
                 continue
             else
-                larch_err "design-log-publish: unexpected file under plan-review (see scripts/lib-design-round-artifacts.md): $rel"
+                larch_err "design-log-publish: unexpected file under plan-review (see python/plan_review.py): $rel"
                 emit_publish_result false
                 exit 0
             fi
         else
-            larch_err "design-log-publish: unexpected path under plan-review (see scripts/lib-design-round-artifacts.md): $rel"
+            larch_err "design-log-publish: unexpected path under plan-review (see python/plan_review.py): $rel"
             emit_publish_result false
             exit 0
         fi

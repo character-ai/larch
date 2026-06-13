@@ -2,34 +2,44 @@
 # test-design-step3-review.sh — static Step 3 reporting contract checks.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
-LOOP="$ROOT/skills/design/scripts/review-design-step3-loop.sh"
+MODULE="$ROOT/python/plan_review.py"
 WRAPPER="$ROOT/skills/design/scripts/design-step3-review.sh"
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 pass() { printf 'PASS: %s\n' "$*"; }
 
 make_fake_step3_plugin() {
   local dir="$1" run_body="$2"
-  mkdir -p "$dir/scripts" "$dir/skills/design/scripts"
+  mkdir -p "$dir/scripts" "$dir/skills/design/scripts" "$dir/python"
   ln -sf "$ROOT/scripts/read-result-env.sh" "$dir/scripts/read-result-env.sh"
   ln -sf "$ROOT/scripts/lib-quiet.sh" "$dir/scripts/lib-quiet.sh"
   ln -sf "$ROOT/skills/design/scripts/lib-phase-driver.sh" "$dir/skills/design/scripts/lib-phase-driver.sh"
-  cat >"$dir/skills/design/scripts/run-step3-review.sh" <<EOFSTUB
+  cat >"$dir/skills/design/scripts/plan-review-loop-stub.sh" <<EOFSTUB
 #!/usr/bin/env bash
 set -euo pipefail
 $run_body
 EOFSTUB
-  chmod +x "$dir/skills/design/scripts/run-step3-review.sh"
+  chmod +x "$dir/skills/design/scripts/plan-review-loop-stub.sh"
+  cat >"$dir/python/cli.py" <<'CLIPY'
+#!/usr/bin/env python3
+import subprocess, sys, os
+if len(sys.argv) >= 3 and sys.argv[1] == "plan-review" and sys.argv[2] == "run":
+    run_sh = os.path.join(os.environ.get("CLAUDE_PLUGIN_ROOT", ""), "skills", "design", "scripts", "plan-review-loop-stub.sh")
+    sys.exit(subprocess.call(["/bin/bash", run_sh]))
+real_cli = os.path.join(os.environ.get("LARCH_TEST_REAL_REPO_ROOT", ""), "python", "cli.py")
+if real_cli and os.path.isfile(real_cli):
+    sys.exit(subprocess.call([sys.executable, real_cli, *sys.argv[1:]]))
+sys.exit(0)
+CLIPY
+  chmod +x "$dir/python/cli.py"
 }
 
-grep -Fq 'step3_stage_postplan_failed' "$LOOP" || fail 'postplan-failed staging helper missing'
-grep -Fq -- '--outcome failed-postplan' "$LOOP" || fail 'failed-postplan outcome not staged'
-# shellcheck disable=SC2016
-grep -Fq 'record-escalation --site "$site" --trigger "$trigger"' "$LOOP" || fail 'record-escalation call missing'
-grep -Fq 'main-agent-vote-required|main-agent-apply-required|postplan-operator-required|panel-failed|tally-error|degraded-empty-collector' "$LOOP" || fail 'escalation/degradation status set missing'
+grep -Fq 'def step3_record_report_evidence' "$MODULE" || fail 'Step 3 evidence helper missing'
+grep -Fq 'record-escalation' "$MODULE" || fail 'record-escalation call missing'
+grep -Fq 'main-agent-vote-required' "$MODULE" || fail 'escalation/degradation status set missing'
 for status in panel-failed tally-error degraded-empty-collector; do
-  grep -Fq "$status" "$LOOP" || fail "$status missing"
+  grep -Fq "$status" "$MODULE" || fail "$status missing"
 done
-if grep -Fq 'failed-judge-panel' "$LOOP"; then
+if grep -Fq 'failed-judge-panel' "$MODULE"; then
   fail 'Step 3 must not handle Step 2b.5 failed-judge-panel retry exhaustion'
 fi
 if grep -Fq 'render-final-summary.sh' "$WRAPPER"; then
@@ -51,57 +61,23 @@ env -u CLAUDE_PLUGIN_ROOT "$STAGE_HELPER" --design-tmpdir "$D_STEP3" \
 grep -Fxq 'FAILURE_OUTCOME=failed-postplan' "$D_STEP3/design-failure-terminal-state.env" || fail 'postplan terminal outcome missing'
 pass 'Step 3 postplan-failed stages terminal state at runtime'
 
-D_LOOP=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-escalation.XXXXXX")
-DESIGN_TMPDIR="$D_LOOP"
-export DESIGN_TMPDIR PLUGIN_ROOT="$ROOT"
-# shellcheck source=skills/design/scripts/review-design-step3-loop.sh
-# shellcheck disable=SC1091
-source "$LOOP"
-step3_record_report_evidence tally-error
-[ -s "$DESIGN_TMPDIR/design-failure-escalation-ledger.tsv" ] || fail 'tally-error must record escalation ledger row'
-grep -Fq 'trigger=tally-error' "$DESIGN_TMPDIR/design-failure-escalation-ledger.tsv" || fail 'tally-error ledger trigger missing'
-grep -Fq 'phase=validation' "$DESIGN_TMPDIR/design-failure-escalation-ledger.tsv" || fail 'tally-error ledger phase missing'
-[ ! -f "$DESIGN_TMPDIR/design-failure-terminal-state.env" ] || fail 'panel degradation must not stage terminal state'
-rm -rf "$D_LOOP"
-pass 'Step 3 tally-error records escalation evidence without terminal state'
-
 assert_escalation_recorded() {
   local status="$1" expected_phase="$2"
   local dir
   dir=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-escalation-${status}.XXXXXX")
-  DESIGN_TMPDIR="$dir"
-  export DESIGN_TMPDIR PLUGIN_ROOT="$ROOT"
-  # shellcheck source=skills/design/scripts/review-design-step3-loop.sh
-  # shellcheck disable=SC1091
-  source "$LOOP"
-  step3_record_report_evidence "$status"
-  [ -s "$DESIGN_TMPDIR/design-failure-escalation-ledger.tsv" ] || fail "${status} must record escalation ledger row"
-  grep -Fq "trigger=${status}" "$DESIGN_TMPDIR/design-failure-escalation-ledger.tsv" || fail "${status} ledger trigger missing"
-  grep -Fq "phase=${expected_phase}" "$DESIGN_TMPDIR/design-failure-escalation-ledger.tsv" || fail "${status} ledger phase=${expected_phase} missing"
-  [ ! -f "$DESIGN_TMPDIR/design-failure-terminal-state.env" ] || fail "${status} must not stage terminal state"
+  python3 "$ROOT/python/cli.py" plan-review run --design-tmpdir "$dir" --record-report-evidence "$status" >/dev/null
+  [ -s "$dir/design-failure-escalation-ledger.tsv" ] || fail "${status} must record escalation ledger row"
+  grep -Fq "trigger=${status}" "$dir/design-failure-escalation-ledger.tsv" || fail "${status} ledger trigger missing"
+  grep -Fq "phase=${expected_phase}" "$dir/design-failure-escalation-ledger.tsv" || fail "${status} ledger phase=${expected_phase} missing"
+  [ ! -f "$dir/design-failure-terminal-state.env" ] || fail "${status} must not stage terminal state"
   rm -rf "$dir"
 }
 
-for status in main-agent-vote-required main-agent-apply-required panel-failed degraded-empty-collector; do
+for status in main-agent-vote-required main-agent-apply-required panel-failed degraded-empty-collector tally-error; do
   assert_escalation_recorded "$status" validation
 done
 assert_escalation_recorded postplan-operator-required postplan
 pass 'Step 3 main-agent and degradation statuses record escalation evidence'
-
-D_REMAP=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-remap.XXXXXX")
-DESIGN_TMPDIR="$D_REMAP"
-export DESIGN_TMPDIR PLUGIN_ROOT="$ROOT"
-# shellcheck source=skills/design/scripts/lib-phase-driver.sh
-source "$ROOT/skills/design/scripts/lib-phase-driver.sh"
-larch_quiet_init
-# shellcheck source=skills/design/scripts/review-design-step3-loop.sh
-# shellcheck disable=SC1091
-source "$LOOP"
-step3_loop_persist_envelope main-agent-apply-required 1 1 1
-grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=main-agent-apply-required' "$DESIGN_TMPDIR/.step3-review-result.env" || fail 'remap guard: STEP3_REVIEW_LOOP_STATUS must stay main-agent-apply-required'
-grep -Fxq 'LOOP_STATUS=complete' "$DESIGN_TMPDIR/.step3-review-result.env" || fail 'remap guard: LOOP_STATUS must remap to complete for main-agent-apply-required'
-rm -rf "$D_REMAP"
-pass 'Step 3 remap-vs-status guard preserves STEP3_REVIEW_LOOP_STATUS distinct from LOOP_STATUS'
 
 if grep 'printf.*\*\*⚠ Step 3' "$WRAPPER" | grep -qv '>&2'; then
   fail 'design-step3-review.sh must route Step 3 markdown warnings to stderr'
@@ -171,8 +147,12 @@ cat >"$FAKE_KILL/python/cli.py" <<'PYEOF'
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 
+if len(sys.argv) >= 3 and sys.argv[1] == "plan-review" and sys.argv[2] == "run":
+    run_sh = os.path.join(os.environ.get("CLAUDE_PLUGIN_ROOT", ""), "skills", "design", "scripts", "plan-review-loop-stub.sh")
+    sys.exit(subprocess.call(["/bin/bash", run_sh]))
 with open(os.environ["ORDER_LOG"], "a", encoding="utf-8") as handle:
     handle.write("helper " + " ".join(sys.argv[1:]) + "\n")
 raise SystemExit(int(os.environ.get("HELPER_RC", "0")))

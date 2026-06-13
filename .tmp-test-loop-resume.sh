@@ -44,7 +44,7 @@ out=$(env LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$ROOT" \
   RUN_STEP3_DEDUP_PLAN_SH="$RESTORE/dedup-ok.sh" \
   RUN_STEP3_POSTPLAN_EMIT_SH="$RESTORE/postplan-ok.sh" \
   RUN_STEP3_CONTINUATION_SH="$RESTORE/continue-stop.sh" \
-  "$ROOT/skills/design/scripts/run-step3-review.sh" --design-tmpdir "$RESTORE" --mode loop --starting-round 1 2>&1)
+  python3 "$ROOT/python/cli.py" plan-review run --design-tmpdir "$RESTORE" --mode loop --starting-round 1 2>&1)
 rc=$?
 set -e
 printf 'RC=%s\n' "$rc"

@@ -97,7 +97,7 @@ larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit 2
 DESIGN_TMPDIR="$(cd "$DESIGN_TMPDIR" && pwd -P)"
 rm -f "$DESIGN_TMPDIR/.step3-entry-plan-printed"
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-state.sh" \
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review step3-state \
   --design-tmpdir "$DESIGN_TMPDIR" \
   --auto-continuation-entry
 LARCH_TIMING_SKILL=design python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" timing mark "design Step 3 — auto-continuation entry" || true

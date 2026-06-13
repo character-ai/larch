@@ -145,7 +145,7 @@ sidecar into `larch-logs/`.
 
 `larch-logs/design/<RUN_ID>/plan-review/round-<N>/findings-classification.tsv`
 is the per-round forensic export produced by
-`skills/design/scripts/tally-plan-review.sh`. The file always uses a 21-column,
+`python/cli.py plan-review tally`. The file always uses a 21-column,
 tab-separated schema:
 
 `finding_id`, `finding_reviewers`, `voting_result`, then three repeated slot
@@ -182,12 +182,12 @@ Slot semantics:
   the full schema width. <!-- lint-literal-counts: allow fixed TSV schema --> A 0-finding or tally-error round may therefore publish a
   header-only TSV.
 
-See [skills/design/scripts/tally-plan-review.md](skills/design/scripts/tally-plan-review.md)
+See [python/plan_review.py](python/plan_review.py)
 for the authoritative producer contract and harness coverage.
 
 ### design plan-review per-round artifacts
 
-Under `larch-logs/design/<RUN_ID>/plan-review/round-<N>/`, each single-pass Step 3 review entry produces forensic artifacts. The list below is a **representative** selection grouped by producer — `scripts/lib-design-round-artifacts.md` is the **authoritative** allowlist for the complete file set, and the `SECURITY.md` design-log publish-allowlist paragraph enforces what may be committed.
+Under `larch-logs/design/<RUN_ID>/plan-review/round-<N>/`, each single-pass Step 3 review entry produces forensic artifacts. The list below is a **representative** selection grouped by producer — `python/plan_review.py` is the **authoritative** allowlist for the complete file set, and the `SECURITY.md` design-log publish-allowlist paragraph enforces what may be committed.
 
 #### Findings
 

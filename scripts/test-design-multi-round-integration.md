@@ -10,7 +10,7 @@ make test-design-multi-round-integration
 
 ## Stubs
 
-PATH-style overrides via `LARCH_PLAN_REVIEW_*_SH` env vars (see `skills/design/scripts/test-plan-review-loop.sh`).
+PATH-style overrides via `LARCH_PLAN_REVIEW_*_SH` env vars (see `python/test_plan_review.py`).
 
 ## Coverage
 
@@ -27,5 +27,5 @@ PATH-style overrides via `LARCH_PLAN_REVIEW_*_SH` env vars (see `skills/design/s
 ## Related harnesses
 
 - `scripts/test-design-log-publish.sh`
-- `skills/design/scripts/test-plan-review-loop.sh`
-- `scripts/test-lib-design-round-artifacts.sh`
+- `python/test_plan_review.py`
+- `python/test_plan_review.py`

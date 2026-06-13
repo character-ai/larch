@@ -111,7 +111,7 @@ You must vote on every item. Do NOT skip any. Do NOT modify files.
 
 ## Launching Voters
 
-**For `/design` plan review**: call `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-plan-voters.sh`. The dispatcher launches the Claude Voter 1 lane plus available Codex/Cursor lanes in parallel, waits for sentinels, and emits the voter output paths/statuses for the tally.
+**For `/design` plan review**: call `${CLAUDE_PLUGIN_ROOT}/python/cli.py plan-review voter-dispatch`. The dispatcher launches the Claude Voter 1 lane plus available Codex/Cursor lanes in parallel, waits for sentinels, and emits the voter output paths/statuses for the tally.
 
 **For code review**: `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-code-voters.sh` launches Claude (always), Codex (when available), and Cursor (when available) in parallel. An **unavailable** external is skipped (shrink-not-backfill) — no Claude or alternate-external replacement fills the slot — so the panel is Claude plus the available externals. A genuine *failure* of an available external still reduces the effective panel and is reported as degraded. The orchestrator does not invoke voters directly — `review core` calls the dispatch script.
 

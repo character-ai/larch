@@ -67,19 +67,6 @@ EOF_CLI
     cat > "$root/skills/design/references/readability-style.md" <<'STYLE'
 - Test readability style.
 STYLE
-    cat > "$root/skills/design/scripts/emit-design-plan-preview.sh" <<'PREVIEW'
-#!/usr/bin/env bash
-set -euo pipefail
-design_tmpdir=""
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --design-tmpdir) design_tmpdir="$2"; shift 2 ;;
-    *) shift ;;
-  esac
-done
-cat "$design_tmpdir/plan.txt"
-PREVIEW
-    chmod +x "$root/skills/design/scripts/emit-design-plan-preview.sh"
     cat > "$root/skills/design/scripts/design-step2b-prelude.sh" <<'PRELUDE'
 #!/usr/bin/env bash
 echo "PRELUDE_SOURCED_OR_EXECUTED" >>"${CALL_LOG:?}"

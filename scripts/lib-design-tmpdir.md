@@ -16,8 +16,8 @@ Each prefix is canonicalized with `cd && pwd -P` when the path exists (macOS `/t
 
 ## Sourced From
 
-- `scripts/dispatch-plan-voters.sh`
-- `skills/design/scripts/tally-plan-review.sh`
+- `python/cli.py plan-review voter-dispatch`
+- `python/cli.py plan-review tally`
 
 ## Function Reference
 
@@ -27,4 +27,4 @@ Returns 0 when the resolved path is under the allowlist; returns 2 with `larch_e
 
 ## Harness
 
-`scripts/test-lib-design-tmpdir.sh` covers allowed prefixes, unresolved dot-segment rejection, regular-file leaves, control-byte rejection, symlink cases, and quoted-prefix `case` behavior. Consumer wiring is pinned by `scripts/test-dispatch-plan-voters.sh` and `skills/design/scripts/test-tally-plan-review.sh`. Wired through `make test-lib-design-tmpdir`.
+`scripts/test-lib-design-tmpdir.sh` covers allowed prefixes, unresolved dot-segment rejection, regular-file leaves, control-byte rejection, symlink cases, and quoted-prefix `case` behavior. Consumer wiring is pinned by `python/test_plan_review_panel.py` and `python/test_plan_review.py`. Wired through `make test-lib-design-tmpdir`.

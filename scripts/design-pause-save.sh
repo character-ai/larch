@@ -263,7 +263,7 @@ cp "$redacted_state_tmp" "$DESIGN_TMPDIR/pause-state.txt"
 publish_cmd="${LARCH_DESIGN_LOG_PUBLISH:-$SCRIPT_DIR/design-log-publish.sh}"
 render_fresh_timing_report_for_pause_publish
 if [[ -f "$DESIGN_TMPDIR/.step3-reentry" ]]; then
-    "$REPO_ROOT/skills/design/scripts/design-step3-state.sh" \
+    python3 "$REPO_ROOT/python/cli.py" plan-review step3-state \
         --design-tmpdir "$DESIGN_TMPDIR" --direct-review-pause-hygiene >/dev/null 2>&1 || true
 fi
 publish_args=(

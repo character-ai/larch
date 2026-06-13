@@ -4,8 +4,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
-PLR="$ROOT/skills/design/scripts/plan-review-loop.sh"
-RUN_STEP3="$ROOT/skills/design/scripts/run-step3-review.sh"
+CLI="$ROOT/python/cli.py"
 fail() { printf '%s\n' "$1" >&2; exit 1; }
 
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/test-design-multi-round-int.XXXXXX")"
@@ -82,17 +81,12 @@ out=$(env -u LARCH_QUIET_PID \
     LARCH_PLAN_REVIEW_COLLECT_SH="$STUB/collect-agent-results.sh" \
     LARCH_PLAN_REVIEW_DISPATCH_VOTERS_SH="$STUB/dispatch-plan-voters.sh" \
     LARCH_AGGREGATOR_DISABLED=1 \
-    bash "$PLR" \
+    python3 "$CLI" plan-review run \
         --design-tmpdir "$TMP/design" \
-        --plan-file "$TMP/design/plan.txt" \
-        --feature-file "$TMP/design/feature-description.txt" \
-        --codex-present true \
-        --cursor-present true \
-        --round-num 1
+        --no-preview
         )
 
 printf '%s\n' "$out" | grep -q '^LOOP_STATUS=complete$' || fail "expected complete from per-entry integration loop"
-printf '%s\n' "$out" | grep -q '^REVISE_STATUS=skipped$' || fail "per-entry loop must not auto-revise"
 printf '%s\n' "$out" | grep -q '^ROUNDS_COMPLETED=1$' || fail "per-entry loop should complete exactly one round"
 [[ -d "$TMP/design/plan-review/round-1" ]] || fail "round-1 missing"
 [[ ! -d "$TMP/design/plan-review/round-2" ]] || fail "round-2 must not be created by the first per-entry loop"
@@ -183,7 +177,7 @@ run_step3_out=$(env -u LARCH_QUIET_PID \
     RUN_STEP3_DEDUP_PLAN_SH="$D2/dedup-ok.sh" \
     RUN_STEP3_POSTPLAN_EMIT_SH="$D2/postplan-ok.sh" \
     RUN_STEP3_CONTINUATION_SH="$D2/continue-true.sh" \
-    "$RUN_STEP3" --design-tmpdir "$D2" --mode loop)
+    python3 "$CLI" plan-review run --design-tmpdir "$D2" --mode loop)
 printf '%s\n' "$run_step3_out" | grep -q '^STEP3_REVIEW_LOOP_STATUS=complete$' || fail "loop mode should finish with complete envelope"
 printf '%s\n' "$run_step3_out" | grep -q '^FINAL_ROUND_NUM=2$' || fail "loop mode should complete two review rounds"
 printf 'preserve me\n' >"$D2/plan-review/round-1/preserve.txt"

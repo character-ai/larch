@@ -96,6 +96,6 @@ if [[ -f "$DESIGN_TMPDIR/.completed/step-3.5" ]]; then
   printf '%s\n' 'STEP3_STATE=skipped-step-3.5-present'
   exit 0
 fi
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-state.sh" \
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review step3-state \
   --design-tmpdir "$DESIGN_TMPDIR" \
   --gate-b-bypass

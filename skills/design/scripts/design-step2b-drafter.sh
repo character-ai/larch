@@ -294,7 +294,7 @@ fi
 if [[ "$_drafter_structural_ok" == "true" && "$_drafter_dirty_block" != "true" ]]; then
   printf '%s\n' drafter > "$DESIGN_TMPDIR/.step2b-plan-source"
   _diff_lines="$(tail -n 1 "$DESIGN_TMPDIR/plan.txt" | sed 's/^diff_lines: //')"
-  env LARCH_QUIET_DISABLE=1 "$CLAUDE_PLUGIN_ROOT/skills/design/scripts/emit-design-plan-preview.sh" \
+  env LARCH_QUIET_DISABLE=1 python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" plan-review preview \
     --design-tmpdir "$DESIGN_TMPDIR" \
     --variant step2b | sed 's/^/[plan-preview] /'
   printf '✅ 2b: drafter subprocess succeeded (vendor=%s plan_lines=%s diff_lines=%s)\n' "$_step2b_drafter_vendor" "$_plan_lines" "$_diff_lines"

@@ -271,7 +271,7 @@ fi
 # Marker step id: STEP=design-step3-review
 design_bg_wait_marker_start design-step3-review || true
 _plan_review_stdout_file="$(mktemp "${TMPDIR:-/tmp}/larch-step3-review-stdout.XXXXXX")" || {
-  printf '%s\n' "**⚠ Step 3: could not allocate run-step3-review stdout capture; aborting plan review**" >&2
+  printf '%s\n' "**⚠ Step 3: could not allocate plan-review stdout capture; aborting plan review**" >&2
   exit 1
 }
 _loop_pid=""
@@ -367,13 +367,13 @@ esac
 trap _step3_review_cleanup EXIT
 set +e
 if [ -n "$STARTING_ROUND" ]; then
-  "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/run-step3-review.sh" \
+  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review run \
     --design-tmpdir "$DESIGN_TMPDIR" \
     --mode loop \
     --starting-round "$STARTING_ROUND" \
     >"$_plan_review_stdout_file" &
 else
-  "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/run-step3-review.sh" \
+  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review run \
     --design-tmpdir "$DESIGN_TMPDIR" \
     --mode loop \
     >"$_plan_review_stdout_file" &
@@ -428,13 +428,9 @@ if [[ "${_rre_rc:-0}" -ne 0 ]]; then
   printf '%s\n' "**⚠ Step 3: could not read step3 review result env; treating plan review as panel-failed**" >&2
   STEP3_REVIEW_LOOP_STATUS=panel-failed
   LOOP_STATUS=panel-failed
-  export PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT}"
-  # shellcheck source=skills/design/scripts/lib-phase-driver.sh
-  source "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/lib-phase-driver.sh"
-  larch_quiet_init
-  # shellcheck source=skills/design/scripts/review-design-step3-loop.sh
-  source "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/review-design-step3-loop.sh"
-  step3_record_report_evidence panel-failed
+  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review run \
+    --design-tmpdir "$DESIGN_TMPDIR" \
+    --record-report-evidence panel-failed >/dev/null 2>&1 || true
 else
   # shellcheck source=/dev/null
   . "$_safe_step3_env"
@@ -454,7 +450,7 @@ while IFS= read -r _line || [[ -n "$_line" ]]; do
 done <"$_plan_review_stdout_file"
 rm -f "$_plan_review_stdout_file" "$_safe_step3_env"
 if [[ "${_plan_review_rc:-0}" -eq 2 ]]; then
-  larch_err "**⚠ Step 3: run-step3-review.sh configuration error (exit 2); aborting plan review**"
+  larch_err "**⚠ Step 3: plan-review run configuration error (exit 2); aborting plan review**"
   exit 1
 fi
 if [[ -z "${STEP3_REVIEW_LOOP_STATUS:-}" ]]; then
@@ -479,7 +475,7 @@ if [[ -z "${STEP3_REVIEW_LOOP_STATUS:-}" ]]; then
 fi
 if [[ -n "${STEP3_REVIEW_LOOP_STATUS:-}" ]]; then
   if [[ ! "${STEP3_REVIEW_LOOP_STATUS}" =~ ^(complete|cap-hit|main-agent-vote-required|main-agent-apply-required|per-round-approval-required|postplan-operator-required|postplan-failed|panel-failed|tally-error|degraded-empty-collector)$ ]]; then
-    larch_err "**⚠ Step 3: missing or invalid STEP3_REVIEW_LOOP_STATUS after run-step3-review.sh; treating plan review as panel-failed**"
+    larch_err "**⚠ Step 3: missing or invalid STEP3_REVIEW_LOOP_STATUS after plan-review run; treating plan review as panel-failed**"
     STEP3_REVIEW_LOOP_STATUS=panel-failed
   fi
   case "${STEP3_REVIEW_LOOP_STATUS}" in
@@ -487,6 +483,9 @@ if [[ -n "${STEP3_REVIEW_LOOP_STATUS:-}" ]]; then
     complete|panel-failed|tally-error|degraded-empty-collector|main-agent-vote-required|postplan-failed) LOOP_STATUS="${STEP3_REVIEW_LOOP_STATUS}" ;;
     main-agent-apply-required|per-round-approval-required|postplan-operator-required) LOOP_STATUS=complete ;;
   esac
+elif [[ -z "${LOOP_STATUS:-}" || ! "${LOOP_STATUS}" =~ ^(complete|cap-reached|zero-findings-degraded-panel|tally-error|degraded-empty-collector|panel-failed|main-agent-vote-required|main-agent-apply-required|per-round-approval-required|postplan-operator-required|postplan-failed)$ ]]; then
+  larch_err "**⚠ Step 3: missing or invalid LOOP_STATUS after plan-review run; treating plan review as panel-failed**"
+  LOOP_STATUS=panel-failed
 fi
 # Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
 [[ -n "${STEP3_REVIEW_LOOP_STATUS:-}" ]] && printf 'STEP3_REVIEW_LOOP_STATUS=%s\n' "$STEP3_REVIEW_LOOP_STATUS"

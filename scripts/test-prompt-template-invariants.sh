@@ -26,7 +26,7 @@ checks_log="$TMP/checks.log"
 
 cat > "$plan_file" <<'EOF'
 Plan:
-- Update scripts/dispatch-plan-voters.sh.
+- Update python/cli.py plan-review voter-dispatch.
 - Add regression coverage for prompt rendering and retries.
 EOF
 printf 'Harden prompt render paths.\n' > "$feature_file"
@@ -129,7 +129,7 @@ assert_contains "rendering.py unquoted focus-area enum" \
 # ── dispatch-plan-voters.sh runtime render smoke ─────────────────────────────
 
 plan_voter_tmp="$TMP/plan-voters"
-PATH="$stub_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" LARCH_QUIET_DISABLE=1 "$REPO_ROOT/scripts/dispatch-plan-voters.sh" \
+PATH="$stub_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" LARCH_QUIET_DISABLE=1 "$REPO_ROOT/python/cli.py plan-review voter-dispatch" \
     --ballot-file "$ballot_file" \
     --design-tmpdir "$plan_voter_tmp" \
     --codex-available false \

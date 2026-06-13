@@ -223,8 +223,14 @@ test-check-main-sync:
 test-check-scope-reduction-marker:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_dirty_tree.py -x -q -k 'scope_check or scope_marker'
 
+test-plan-review:
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review.py -q
+
+test-plan-review-panel:
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review_panel.py -q
+
 test-plan-review-scope-anchor:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-plan-review-scope-anchor.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review.py -q
 
 test-lib-scope-anchor-handoff:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_rendering.py -q
@@ -302,7 +308,7 @@ test-review-and-fix-step5-loop-timing:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_review_and_fix.py -q -k loop_timing
 
 test-record-plan-review-round-timing:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-record-plan-review-round-timing.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review.py -q
 
 test-step-telemetry-mark:
 	cd python && $(PYTHON) -m pytest test_timing.py -q
@@ -465,10 +471,10 @@ test-design-log-publish:
 
 
 test-emit-plan:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-emit-plan.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review.py -q
 
 test-gate-b-dedup-plan:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-gate-b-dedup-plan.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review.py -q
 
 test-gate-b-apply-mode:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-gate-b-apply-mode.sh
@@ -477,7 +483,7 @@ test-trailer-helpers:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_plan_quality.py -k optional_trailer
 
 test-emit-design-plan-preview:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-emit-design-plan-preview.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review.py -q
 test-check-plan-size:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_plan_quality.py -k check_plan_size
 
@@ -493,7 +499,7 @@ test-validate-plan-commands:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_plan_quality.py -k validate_plan
 
 test-tally-plan-review:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-tally-plan-review.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review.py -q
 
 test-findings-classification:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-findings-classification.sh
@@ -502,10 +508,10 @@ test-review-findings-classification:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_tally.py
 
 test-plan-review-loop:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-plan-review-loop.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review.py -q
 
 test-lib-design-round-artifacts:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-lib-design-round-artifacts.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review.py -q
 
 test-design-multi-round-integration:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-design-multi-round-integration.sh
@@ -514,13 +520,13 @@ test-step3-review-cap:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-step3-review-cap.sh
 
 test-persist-retally-step3-env:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-persist-retally-step3-env.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review.py -q
 
 test-run-step3-review:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-run-step3-review.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review.py -q
 
 test-review-design-step3-loop:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-review-design-step3-loop.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review.py -q
 
 test-step3-orchestrator-fence:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-step3-orchestrator-fence.sh
@@ -529,13 +535,13 @@ test-design-step3-mav:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-step3-mav.sh
 
 test-design-step3-state:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-step3-state.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review.py -q
 
 test-lib-phase-driver:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-lib-phase-driver.sh
 
 test-finalize-plan:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-finalize-plan.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review.py -q
 
 test-step0b-router-flag-recovery:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-step0b-router-flag-recovery.sh
@@ -573,7 +579,7 @@ test-scout-plan-archetypes-wrapper:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_scout.py -q
 
 test-dispatch-plan-review-panel:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-dispatch-plan-review-panel.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review_panel.py -q
 
 test-render-final-summary:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-render-final-summary.sh
@@ -824,7 +830,7 @@ test-scout-dynamic-archetypes:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_scout.py -q
 
 test-dispatch-plan-voters:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-dispatch-plan-voters.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review_panel.py -q
 
 test-prompt-template-invariants:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-prompt-template-invariants.sh

@@ -315,7 +315,7 @@ Default `120` (positive integer). When the `$DESIGN_TMPDIR/plan.txt` line count 
 
 **Chat-order note (Step 3 / Gate C):** `skills/design/SKILL.md` prints the visible step breadcrumb, then runs a `python3 python/cli.py timing mark` Bash fence, then runs a live `run-step3-review.sh --preview-only` fence (Step 3, wrapping the pure `emit-design-plan-preview.sh --variant step3` renderer) or one merged Gate C fence containing only the timing mark plus `emit-design-plan-preview.sh --variant gatec`. Manual acceptance or log audits should treat the plan preview material as belonging **after** that timing-ledger line, not immediately after the `> **🔶 /design …**` breadcrumb alone.
 
-**Mechanical contract:** large-plan preview behavior lives in `skills/design/scripts/emit-design-plan-preview.sh` as invoked from `skills/design/SKILL.md`; greps and harnesses should key off that script path rather than expecting duplicated inline fenced bodies for the same logic.
+**Mechanical contract:** large-plan preview behavior lives in `python/cli.py plan-review preview` as invoked from `skills/design/SKILL.md`; greps and harnesses should key off that script path rather than expecting duplicated inline fenced bodies for the same logic.
 
 ### `LARCH_DESIGN_DRIFT_MULTIPLE`
 

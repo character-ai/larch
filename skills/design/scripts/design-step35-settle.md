@@ -78,9 +78,9 @@ Pause output or a fresh `.pause-save-complete` breadcrumb exits `11`. Pause neve
 
 ## Test seams
 
-- `DESIGN_STEP35_DEDUP_PLAN_SH` overrides the default `skills/design/scripts/gate-b-dedup-plan.sh`.
+- `DESIGN_STEP35_DEDUP_PLAN_SH` overrides the default `python3 cli.py plan-review gate-b-dedup` call.
 - `DESIGN_STEP35_POSTPLAN_SH` overrides the default `skills/design/scripts/design-step2b-postplan.sh`.
 
 ## Harness
 
-Covered by `scripts/test-design-structure.sh`, `skills/design/scripts/test-gate-b-dedup-plan.sh`, and `skills/design/scripts/test-gate-b-apply-mode.sh`.
+Covered by `scripts/test-design-structure.sh` and `skills/design/scripts/test-gate-b-apply-mode.sh`.

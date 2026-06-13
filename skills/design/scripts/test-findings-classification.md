@@ -4,7 +4,7 @@ Offline regression harness for `findings-classification.tsv` and
 `python/cli.py voting parse-judge-vote`.
 
 Fixtures are created under a per-run `mktemp -d` directory. Each case writes a
-small ballot plus voter files and invokes `skills/design/scripts/tally-plan-review.sh`
+small ballot plus voter files and invokes `python/cli.py plan-review tally`
 with explicit `--findings-classification-out` paths so overwrite behavior and
 bad-argv no-write behavior are observable.
 

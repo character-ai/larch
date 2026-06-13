@@ -11,7 +11,7 @@ Post-apply plan-line dedup: whitespace-key collapse with section-aware Constrain
 
 ## Primary caller
 
-`skills/design/scripts/plan-review-loop.sh` function `_run_post_apply_pipeline` via `$DEDUP_PLAN_LINES_PY`.
+`python/plan_review.py` function `_run_post_apply_pipeline` via `$DEDUP_PLAN_LINES_PY`.
 
 ## Invariants
 
@@ -26,4 +26,4 @@ Post-apply plan-line dedup: whitespace-key collapse with section-aware Constrain
 
 ## Harness
 
-`skills/design/scripts/test-plan-review-loop.sh` (`make test-plan-review-loop`).
+`python/test_plan_review.py` (`make test-plan-review-loop`).

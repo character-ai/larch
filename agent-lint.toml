@@ -395,7 +395,7 @@ exclude = [
   "skills/implement/scripts/oos-issue-cap-excerpt.py",
   "skills/implement/scripts/oos-issue-cap-excerpt.md",
   # skills/design/scripts/dedup-plan-lines.py is invoked from
-  # skills/design/scripts/plan-review-loop.sh through $DEDUP_PLAN_LINES_PY;
+  # python/plan_review.py through $DEDUP_PLAN_LINES_PY;
   # agent-lint's G004/dead-script rule does not follow shell variable indirection.
   "skills/design/scripts/dedup-plan-lines.py",
   # scripts/launch-codex-implement.sh is invoked by skills/implement/scripts/
@@ -456,14 +456,14 @@ exclude = [
   # (sibling contract), matching the same Makefile-only pattern.
   "scripts/test-check-main-sync.sh",
   "scripts/test-check-main-sync.md",
-  # scripts/test-lib-design-round-artifacts.sh and
+  # python/test_plan_review.py and
   # scripts/test-design-multi-round-integration.sh are Makefile-only
   # regression harnesses for the /design plan-review round-artifact
   # allowlist. The runtime library/script surfaces are referenced from
-  # skills/design/scripts/plan-review-loop.sh and scripts/design-log-publish.sh,
+  # python/plan_review.py and scripts/design-log-publish.sh,
   # but the harnesses themselves are not invoked from skill prose.
-  "scripts/test-lib-design-round-artifacts.sh",
-  "scripts/test-lib-design-round-artifacts.md",
+  "python/test_plan_review.py",
+  "python/test_plan_review.py",
   "scripts/test-design-multi-round-integration.sh",
   "scripts/test-design-multi-round-integration.md",
   # revise-waterfall is retained as a Python CLI plan helper
@@ -702,12 +702,12 @@ exclude = [
   # python/test_agents.py (sibling contract), matching the
   # same Makefile-only pattern as the other test-* harnesses above.
   "python/test_agents.py",
-  # scripts/test-dispatch-plan-voters.sh is the offline regression harness for
-  # scripts/dispatch-plan-voters.sh. Referenced only from Makefile
-  # (test-dispatch-plan-voters target) and scripts/test-dispatch-plan-voters.md
+  # python/test_plan_review_panel.py is the offline regression harness for
+  # python/plan_review_panel.py. Referenced only from Makefile
+  # (test-dispatch-plan-voters target) and python/test_plan_review_panel.py
   # (sibling contract), matching the same Makefile-only pattern as the other
   # root test-* harnesses above.
-  "scripts/test-dispatch-plan-voters.sh",
+  "python/test_plan_review_panel.py",
   # scripts/test-python/cli.py render voter is the offline harness for
   # python/cli.py render voter (Makefile test-render-voter-prompt
   # target +  sibling contract).
@@ -853,12 +853,12 @@ exclude = [
   "skills/design/scripts/test-design-pause-resume.sh",
   # for python/cli.py session write-design-env (Makefile test-write-design-
   # current-env target). Same Makefile-only pattern as other design test-*.
-  "skills/design/scripts/test-emit-plan.sh",
-  "skills/design/scripts/test-tally-plan-review.sh",
+  "python/test_plan_review.py",
+  "python/test_plan_review.py",
   "skills/design/scripts/test-findings-classification.sh",
-  "skills/design/scripts/test-plan-review-loop.sh",
-  "skills/design/scripts/test-finalize-plan.sh",
-  "skills/design/scripts/test-dispatch-plan-review-panel.sh",
+  "python/test_plan_review.py",
+  "python/test_plan_review.py",
+  "python/test_plan_review_panel.py",
   "skills/design/scripts/decompose-prompts/decomposition-specialist.txt",
   "skills/design/scripts/decompose-prompts/dependency-analyst.txt",
   "skills/design/scripts/decompose-prompts/scope-minimalist.txt",
@@ -1163,12 +1163,12 @@ exclude = [
   "skills/design/scripts/test-design-driver.md",
   "skills/design/scripts/test-design-publish.md",
   "skills/design/scripts/test-design-pause-resume.md",
-  "skills/design/scripts/test-emit-plan.md",
-  "skills/design/scripts/test-tally-plan-review.md",
+  "python/test_plan_review.py",
+  "python/test_plan_review.py",
   "skills/design/scripts/test-findings-classification.md",
-  "skills/design/scripts/test-plan-review-loop.md",
-  "skills/design/scripts/test-finalize-plan.md",
-  "skills/design/scripts/test-dispatch-plan-review-panel.md",
+  "python/test_plan_review.py",
+  "python/test_plan_review.py",
+  "python/test_plan_review_panel.py",
   "skills/design/scripts/test-render-final-summary.md",
   "skills/pause/scripts/test-pause-skill.md",
   "scripts/test-rebase-push-keep-on-conflict.md",
@@ -1332,8 +1332,8 @@ exclude = [
   "scripts/render-review-phase-detail.md",
   # scripts/write-design-round-meta.sh synthesizes per-round round-meta.json and
   # panel-manifest.ndjson for /design plan-review. It is invoked at runtime only
-  # from skills/design/scripts/plan-review-loop.sh and
-  # skills/design/scripts/persist-retally-step3-env.sh via variable-expanded
+  # from python/plan_review.py and
+  # python/plan_review.py via variable-expanded
   # $PLUGIN_ROOT/scripts/... edges that G004 cannot discover.
   "scripts/write-design-round-meta.sh",
   "scripts/write-design-round-meta.md",

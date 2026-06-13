@@ -1163,7 +1163,7 @@ RESTORE_DIRECT_PAUSE="$TMP/restore-direct-review-pause"
 out_direct_pause_load=$(bash "$LOAD" --design-tmpdir "$RESTORE_DIRECT_PAUSE" --issue 9 --repo owner/repo)
 [[ "$out_direct_pause_load" == *"LOAD_OK=true"* && "$out_direct_pause_load" == *"STEP=3"* ]] || fail "direct-review pause load mismatch: $out_direct_pause_load"
 [[ -f "$RESTORE_DIRECT_PAUSE/.step3-reentry" ]] || fail "direct-review pause restore should keep .step3-reentry until Step 3 entry"
-STEP3_STATE="$("$REPO_ROOT/skills/design/scripts/design-step3-state.sh" --design-tmpdir "$RESTORE_DIRECT_PAUSE" --direct-review-entry)"
+STEP3_STATE="$(python3 "$REPO_ROOT/python/cli.py" plan-review step3-state --design-tmpdir "$RESTORE_DIRECT_PAUSE" --direct-review-entry)"
 [[ "$STEP3_STATE" == *"STEP3_STATE=direct-review-entry"* ]] || fail "direct-review pause resume helper state missing: $STEP3_STATE"
 [[ ! -f "$RESTORE_DIRECT_PAUSE/.step3-reentry" ]] || fail "direct-review pause resume helper did not consume marker"
 for direct_step in 2a 2b 2b.5; do
@@ -1302,7 +1302,7 @@ grep -Fq '# revised' "$RESTORE_POST_APPLY/plan.txt" || fail "awaiting-post-apply
 rm -f "$RESTORE_POST_APPLY/.pause-requested"
 printf '1\n' >"$RESTORE_POST_APPLY/review-round-count.txt"
 printf 'feature\n' >"$RESTORE_POST_APPLY/feature-description.txt"
-LAUNCHER="$REPO_ROOT/skills/design/scripts/run-step3-review.sh"
+LAUNCHER=(python3 "$REPO_ROOT/python/cli.py" plan-review run)
 cat >"$RESTORE_POST_APPLY/revise-forbidden.sh" <<'STUB'
 #!/usr/bin/env bash
 exit 99
@@ -1339,7 +1339,7 @@ loop_resume_out=$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGI
   RUN_STEP3_DEDUP_PLAN_SH="$RESTORE_POST_APPLY/dedup-ok.sh" \
   RUN_STEP3_POSTPLAN_EMIT_SH="$RESTORE_POST_APPLY/postplan-ok.sh" \
   RUN_STEP3_CONTINUATION_SH="$RESTORE_POST_APPLY/continue-stop.sh" \
-  "$LAUNCHER" --design-tmpdir "$RESTORE_POST_APPLY" --mode loop --starting-round 1)
+  "${LAUNCHER[@]}" --design-tmpdir "$RESTORE_POST_APPLY" --mode loop --starting-round 1)
 loop_resume_rc=$?
 set -e
 [[ "$loop_resume_rc" -eq 0 ]] || fail "awaiting-post-apply loop resume launcher rc=$loop_resume_rc: $loop_resume_out"

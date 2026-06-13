@@ -143,3 +143,10 @@ Release, audit-runs, combine-issues fetch/apply, and analyze-issues helper surfa
 ### C3c design decomposition and scout cutover
 
 The C3c slice moves /design decomposition helpers to `python/decompose.py`, dynamic archetype scouting to `python/plan_scout.py`, scope-anchor handoff and rendering to `python/rendering.py`, and the findings-classification TSV header to `python/voting.py`. `/review` dynamic scout dispatch and drafter `filter-manifest` callers now use direct `python/cli.py` verbs so the retired shell wrappers are not kept as shims.
+
+### C3a1 design plan-review cutover
+
+- The plan-review loop now enters through the `plan-review` CLI domain, split between `python/plan_review.py` for loop mechanics and `python/plan_review_panel.py` for panel and voter dispatch.
+- Bash wrappers call `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review ...` directly. `design-step3-review.sh` remains the process-group wrapper for Step 3.
+- `dedup-plan-lines.py` remains in place. The migration does not add a standalone `snapshot-plan-round` verb and does not migrate Step 3.6 assessor scripts.
+- `step3_record_report_evidence` moved into `python/plan_review.py`; `design-step3-review.sh` no longer sources the Step 3 loop controller on result-env read failure.

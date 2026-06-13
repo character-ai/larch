@@ -54,7 +54,7 @@ prune-nit-findings.sh --findings-file PATH [--oos-file PATH] [--input-mode code|
 - `python/cli.py review core` — after `review aggregate-findings`, before
   voter dispatch (code path, `--input-mode code`, `--oos-file` not passed).
   Override via `REVIEW_CORE_PRUNE_NITS_SH`.
-- `skills/design/scripts/plan-review-loop.sh` — after in-scope/OOS split, before
+- `python/plan_review.py` — after in-scope/OOS split, before
   `review aggregate-findings` (plan path, `--input-mode plan`).
   Override via `LARCH_PLAN_REVIEW_PRUNE_NITS_SH`.
 
