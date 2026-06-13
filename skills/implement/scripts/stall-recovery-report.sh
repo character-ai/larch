@@ -653,7 +653,7 @@ resume_hint_for() {
     local class=$1 step=$2 phase=$3
     step=$(safe_step_value "$step")
     case "$class" in
-        contract-failure|same-cause-repeat|unrecoverable) printf 'none\n'; return 0 ;;
+        contract-failure|same-cause-repeat|unrecoverable|submodule-restricted) printf 'none\n'; return 0 ;;
     esac
     case "$step" in
         3|6) printf 'none\n'; return 0 ;;
@@ -877,7 +877,8 @@ retry_cap_for() {
         transient-infra) printf '4\n' ;;
         test-failure|lint-failure|ci-fix-exhausted) printf '8\n' ;;
         dispatch-failure) printf '3\n' ;;
-        protected-path|submodule-restricted) printf '1\n' ;;
+        protected-path) printf '1\n' ;;
+        submodule-restricted) printf '0\n' ;;
         same-cause-repeat) printf '2\n' ;;
         contract-failure|unrecoverable) printf '0\n' ;;
         *) printf '0\n' ;;

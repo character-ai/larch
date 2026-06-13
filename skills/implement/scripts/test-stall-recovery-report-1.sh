@@ -211,18 +211,20 @@ dir=$(make_tmp case7k4)
 write_state "$dir" 2 implementation submodule-edit-required-out-of-scope
 run_capture "$SANDBOX/case7k4.out" "$SCRIPT" classify --implement-tmpdir "$dir"
 assert_eq submodule-restricted "$(kv FAILURE_CLASS "$SANDBOX/case7k4.out")" "7: submodule-restricted bail classifies"
-assert_eq step2-impl "$(kv RESUME_HINT "$SANDBOX/case7k4.out")" "7: submodule-restricted bail resumes implementation"
+assert_eq none "$(kv RESUME_HINT "$SANDBOX/case7k4.out")" "7: submodule-restricted bail does not resume implementation"
 assert_eq submodule-edit-required-out-of-scope "$(kv BAIL_REASON "$SANDBOX/case7k4.out")" "7: submodule-restricted bail renders allowlisted token"
 assert_eq submodule-restricted-bail-token "$(kv MATCHED_CLASSIFIER_PATTERN "$SANDBOX/case7k4.out")" "7: submodule-restricted bail pattern is explicit"
 dir=$(make_tmp case7k5)
 write_state "$dir" 2 implementation submodule-edit-required-out-of-scope "NOTE=network timeout"
 run_capture "$SANDBOX/case7k5.out" "$SCRIPT" classify --implement-tmpdir "$dir"
 assert_eq submodule-restricted "$(kv FAILURE_CLASS "$SANDBOX/case7k5.out")" "7: submodule-restricted bail is not transient"
+assert_eq none "$(kv RESUME_HINT "$SANDBOX/case7k5.out")" "7: submodule-restricted bail with stale evidence does not resume implementation"
 assert_eq submodule-restricted-bail-token "$(kv MATCHED_CLASSIFIER_PATTERN "$SANDBOX/case7k5.out")" "7: submodule-restricted bail pattern wins over stale evidence"
 dir=$(make_tmp case7k6)
 write_state "$dir" 2 implementation "" "NOTE=network timeout"
 run_capture "$SANDBOX/case7k6.out" "$SCRIPT" classify --implement-tmpdir "$dir" --bail-reason submodule-edit-required-out-of-scope
 assert_eq submodule-restricted "$(kv FAILURE_CLASS "$SANDBOX/case7k6.out")" "7: argv-only submodule-restricted bail classifies"
+assert_eq none "$(kv RESUME_HINT "$SANDBOX/case7k6.out")" "7: argv-only submodule-restricted bail does not resume implementation"
 assert_eq submodule-restricted-bail-token "$(kv MATCHED_CLASSIFIER_PATTERN "$SANDBOX/case7k6.out")" "7: argv-only submodule-restricted bail pattern wins over stale evidence"
 dir=$(make_tmp case7l)
 write_state "$dir" 2 implementation
@@ -265,7 +267,7 @@ test-failure|8|none
 lint-failure|8|none
 dispatch-failure|3|none
 protected-path|1|none
-submodule-restricted|1|none
+submodule-restricted|0|none
 same-cause-repeat|2|none
 contract-failure|0|none
 unrecoverable|0|none

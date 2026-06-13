@@ -197,13 +197,13 @@ Lint parity covers Tier B only. The committed TSV, helper code, and this table m
 | lint-failure | 8 | none |
 | dispatch-failure | 3 | none |
 | protected-path | 1 | none |
-| submodule-restricted | 1 | none |
+| submodule-restricted | 0 | none |
 | ci-fix-exhausted | 8 | none |
 | same-cause-repeat | 2 | none |
 | contract-failure | 0 | none |
 | unrecoverable | 0 | none |
 
-For `same-cause-repeat`, the orchestrator uses the alternate strategy immediately. For `transient-infra`, the emitted retry delay means `sleep-seconds.sh 5` between attempts. `protected-path` means Codex hit a permanent protected-path sandbox policy; Main Claude resumes Step 2 inline; for `protected-path-edit-required-out-of-scope`, the operator warning names `.claude-plugin/plugin.json`. `submodule-restricted` means the external implementer hit a permanent submodule-edit restriction; Main Claude resumes Step 2 inline.
+For `same-cause-repeat`, the orchestrator uses the alternate strategy immediately. For `transient-infra`, the emitted retry delay means `sleep-seconds.sh 5` between attempts. `protected-path` means Codex hit a permanent protected-path sandbox policy; Main Claude resumes Step 2 inline; for `protected-path-edit-required-out-of-scope`, the operator warning names `.claude-plugin/plugin.json`. `submodule-restricted` means the external implementer hit a permanent submodule-edit restriction. It does not route to inline Step 2 recovery because Main Claude can also be blocked by the submodule-edit guard.
 
 ## Dry run
 
