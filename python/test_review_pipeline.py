@@ -750,27 +750,22 @@ def test_collect_findings_done_sentinel_wait_success(tmp_path: Path) -> None:
 
 
 def test_collect_findings_wait_timeout_redacts_stderr(tmp_path: Path) -> None:
+    # Test that collect-findings exits non-zero when wait-for-reviewers times out.
+    # The wait is now handled by python/cli.py agent wait-reviewers (Python-native);
+    # we omit the .done sentinel to trigger an actual timeout.
     harness = tmp_path / "plugin-harness"
     scripts = harness / "scripts"
     scripts.mkdir(parents=True)
     for entry in (ROOT / "scripts").iterdir():
-        if not entry.is_file() or entry.name == "wait-for-reviewers.sh":
+        if not entry.is_file():
             continue
         _ = shutil.copy2(entry, scripts / entry.name)
     (harness / "python").symlink_to(ROOT / "python")
-    _write_executable(
-        scripts / "wait-for-reviewers.sh",
-        """#!/usr/bin/env bash
-printf '%b\\n' 'HTTP 500\\x07Bad Gateway\\x1b[31mred\\x1b[0m' >&2
-exit 1
-""",
-    )
     case = tmp_path / "collect-wait-fail"
     case.mkdir()
     outf = case / "claude-wait-output.txt"
     _ = outf.write_text("### In-Scope Findings\n- relay case finding.\n", encoding="utf-8")
-    _ = (case / "claude-wait-output.txt.done").write_text("0\n", encoding="utf-8")
-    _ = (case / "claude-wait-output.txt.dirty-tree").write_text("STATUS=clean\n", encoding="utf-8")
+    # No .done sentinel — causes the Python wait to time out after --timeout 1.
     result = run_review(
         "collect-findings",
         "--claude-output-files",
@@ -791,10 +786,7 @@ exit 1
     )
     assert result.returncode != 0
     combined = result.stdout + result.stderr
-    assert "HTTP 500" in combined
-    assert "Bad Gateway" in combined
-    assert "\x07" not in combined
-    assert "\x1b" not in combined
+    assert "TIMEOUT" in combined
 
 
 def test_review_core_oos_snapshot_restore_zero_findings(tmp_path: Path) -> None:
