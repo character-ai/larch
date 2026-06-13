@@ -188,6 +188,7 @@ outline_sentinel_line=$(grep -nF '<!-- larch:run-summary v=1 -->' "$D/final-summ
 outline_note_line=$(grep -nF -- '- **Cancel site**: Step 1d.7 outline gate' "$D/final-summary.md" | head -1 | cut -d: -f1 || true)
 [[ -n "$outline_sentinel_line" && -n "$outline_note_line" && "$outline_note_line" -gt "$outline_sentinel_line" ]] \
     || fail 'cancelled-outline note must be appended after sentinel'
+# shellcheck disable=SC2016
 grep -Fq -- '**ℹ /design auto-report skipped:** operator action or cancellation outcome `cancelled-outline`.' "$outline_std" || fail 'cancelled-outline stdout missing operator-action sidecar'
 python3 - "$D/final-summary.md" "$outline_std" <<'PY'
 import sys

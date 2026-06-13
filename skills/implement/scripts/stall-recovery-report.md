@@ -25,7 +25,6 @@ The `/implement` runtime uses pinned files under `$IMPLEMENT_TMPDIR`:
 
 `/implement` defaults remain unchanged. Generic callers may opt into prefixed artifacts with `--profile generic --artifact-prefix <prefix>`. The `/design` port uses `--artifact-prefix design-failure`, so default `stall-recovery-*` filenames remain byte-compatible for `/implement` while `/design` writes `design-failure-*`.
 
-
 ## Generic profile
 
 Generic mode is selected with `--profile generic`. Supported generic flags are `--artifact-prefix`, `--implement-tmpdir`, `--primary-state-file`, `--finalize-state-file`, and `--session-env-file`. Flags may appear before the subcommand, and state override flags are honored by `classify` and `compose-report`.

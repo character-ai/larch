@@ -155,6 +155,8 @@ The wrapper-only D3 surface uses these script contracts. Keep direct wrappers an
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/dispatch-plan-review-panel.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-review.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-review.md`
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-step3-review.sh`
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-step3-review.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-gate-b-bypass.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step35.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step35.md`
@@ -186,6 +188,13 @@ The wrapper-only D3 surface uses these script contracts. Keep direct wrappers an
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step6-prelude.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step6.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step6.md`
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-stage-terminal-state.sh`
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-stage-terminal-state.md`
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-stage-terminal-state.sh`
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-stage-terminal-state.md`
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-failure-report.md`
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-failure-report.sh`
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-failure-report.md`
 
 ## Design Mindset
 
@@ -321,7 +330,6 @@ Sentinel precedence is terminal report, escalation-success report, then operator
 `design-stage-terminal-state.sh` is the mechanical writer for prompt-owned hard halts. It writes `design-failure-terminal-state.env` after validating tokens through `stall-recovery-report.sh --profile generic --artifact-prefix design-failure --implement-tmpdir "$DESIGN_TMPDIR"`. Generic helper calls from /design always pin `--implement-tmpdir "$DESIGN_TMPDIR"` and pass state overrides for terminal classify and compose.
 
 Step 3 panel degradation statuses `panel-failed`, `tally-error`, and `degraded-empty-collector` are non-terminal Gate B bypass degradation. They record warning or escalation evidence only. Step 2b.5 decompose-panel retry exhaustion is terminal `failed-judge-panel` and is owned by Split-path, not `design-step3-review.sh`.
-
 
 ### 0c — Plan-relevant symbol breadcrumb
 

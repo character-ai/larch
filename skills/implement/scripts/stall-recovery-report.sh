@@ -2309,9 +2309,10 @@ compose_tier_a_issue() {
 
 write_tier_a_comment_payloads() {
     local tmpdir=$1 attempts_file=$2 ledger=$3 fallback=$4 marker=$5 root_file=$6
-    local attempts_out="$(artifact_path "$tmpdir" "$DEFAULT_TIER_A_ATTEMPTS_SLICE")"
-    local escalation_out="$(artifact_path "$tmpdir" "$DEFAULT_TIER_A_ESCALATION_SLICE")"
-    local root_out="$(artifact_path "$tmpdir" "$DEFAULT_TIER_A_ROOT_CAUSE_SLICE")"
+    local attempts_out escalation_out root_out
+    attempts_out="$(artifact_path "$tmpdir" "$DEFAULT_TIER_A_ATTEMPTS_SLICE")"
+    escalation_out="$(artifact_path "$tmpdir" "$DEFAULT_TIER_A_ESCALATION_SLICE")"
+    root_out="$(artifact_path "$tmpdir" "$DEFAULT_TIER_A_ROOT_CAUSE_SLICE")"
     attempts_table "$attempts_file" >"$attempts_out"
     {
         append_file_if_readable "Escalation ledger" "$ledger"
@@ -2329,9 +2330,10 @@ write_tier_a_comment_payloads() {
 
 write_tier_b_comment_payloads() {
     local tmpdir=$1 attempts_file=$2 ledger=$3 fallback=$4 marker=$5 bounded_file=$6
-    local attempts_out="$(artifact_path "$tmpdir" "$DEFAULT_TIER_B_ATTEMPTS_SLICE")"
-    local escalation_out="$(artifact_path "$tmpdir" "$DEFAULT_TIER_B_ESCALATION_SLICE")"
-    local root_out="$(artifact_path "$tmpdir" "$DEFAULT_TIER_B_ROOT_CAUSE_SLICE")"
+    local attempts_out escalation_out root_out
+    attempts_out="$(artifact_path "$tmpdir" "$DEFAULT_TIER_B_ATTEMPTS_SLICE")"
+    escalation_out="$(artifact_path "$tmpdir" "$DEFAULT_TIER_B_ESCALATION_SLICE")"
+    root_out="$(artifact_path "$tmpdir" "$DEFAULT_TIER_B_ROOT_CAUSE_SLICE")"
     attempts_table "$attempts_file" >"$attempts_out"
     {
         append_escalation_row_summaries "$ledger" ""

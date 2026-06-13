@@ -39,6 +39,7 @@ done
 
 [ -n "$DESIGN_TMPDIR_ARG" ] || fail '--design-tmpdir is required'
 [ -n "$OUTCOME" ] || fail '--outcome is required'
+: "$REPO" "$ISSUE" "$RUN_ID"
 larch_design_tmpdir_validate "$DESIGN_TMPDIR_ARG" || exit $?
 DESIGN_TMPDIR="$(cd "$DESIGN_TMPDIR_ARG" && pwd -P)"
 
@@ -78,6 +79,7 @@ REASON=$reason
 OUTCOME=$OUTCOME
 EOF2
     {
+        # shellcheck disable=SC2016
         printf '**ℹ /design auto-report skipped:** operator action or cancellation outcome `%s`.\n\n' "$OUTCOME"
         printf 'No public larch bug was filed. The skip was recorded in the run log.\n'
     } >"$OPERATOR_CHAT"
@@ -90,8 +92,11 @@ write_fallback_chat() {
         printf '### [Bug] /design report fallback required\n\n'
         printf 'The /design failure reporter could not safely file an issue.\n\n'
         printf '| Field | Value |\n|---|---|\n'
+        # shellcheck disable=SC2016
         printf '| Outcome | `%s` |\n' "$OUTCOME"
+        # shellcheck disable=SC2016
         printf '| Reason | `%s` |\n\n' "$reason"
+        # shellcheck disable=SC2016
         printf 'Use the local artifacts in `DESIGN_TMPDIR` to investigate. This fallback contains no log tail.\n'
     } >"$CHAT_PRINT"
     emit_kv DESIGN_FAILURE_REPORT_DECISION fallback-print-required

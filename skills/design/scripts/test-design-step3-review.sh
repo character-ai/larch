@@ -9,6 +9,7 @@ pass() { printf 'PASS: %s\n' "$*"; }
 
 grep -Fq 'step3_stage_postplan_failed' "$LOOP" || fail 'postplan-failed staging helper missing'
 grep -Fq -- '--outcome failed-postplan' "$LOOP" || fail 'failed-postplan outcome not staged'
+# shellcheck disable=SC2016
 grep -Fq 'record-escalation --site "$site" --trigger "$trigger"' "$LOOP" || fail 'record-escalation call missing'
 grep -Fq 'main-agent-vote-required|main-agent-apply-required|postplan-operator-required|panel-failed|tally-error|degraded-empty-collector' "$LOOP" || fail 'escalation/degradation status set missing'
 for status in panel-failed tally-error degraded-empty-collector; do
