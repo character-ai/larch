@@ -137,6 +137,126 @@ def test_dynamic_description_cursor_miss_then_claude_winner(tmp_path: Path, monk
     assert "cursor description-mode tier missed scout JSON" in stdout
 
 
+def test_dynamic_clears_stale_cap_hit_before_claude_fallback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    scope = tmp_path / "scope.txt"
+    desc = tmp_path / "desc.txt"
+    scope.write_text("python/foo.py\n", encoding="utf-8")
+    desc.write_text("review this", encoding="utf-8")
+    out = tmp_path / "manifest.json"
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    cursor = bin_dir / "launch-review.py"
+    cursor.write_text(
+        "#!/usr/bin/env python3\n"
+        "import sys\n"
+        "from pathlib import Path\n"
+        "raw = Path(sys.argv[sys.argv.index('--output') + 1])\n"
+        "raw.write_text('not json', encoding='utf-8')\n"
+        "Path(str(raw) + '.cap-hit').write_text('cap hit', encoding='utf-8')\n"
+        "print('STATUS=cap_hit')\n"
+        "print('ELAPSED=1')\n"
+        "raise SystemExit(1)\n",
+        encoding="utf-8",
+    )
+    cursor.chmod(0o755)
+    claude = bin_dir / "claude.py"
+    claude.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, sys\n"
+        "from pathlib import Path\n"
+        "raw = Path(sys.argv[sys.argv.index('--output-file') + 1])\n"
+        "raw.write_text(json.dumps({'archetypes':[{'name':'deep-risk','focus_area':'risk-integration','weight':1,'rationale':'ok','prompt_body':'Inspect seams.'}]}), encoding='utf-8')\n"
+        "print('ELAPSED=2')\n",
+        encoding="utf-8",
+    )
+    claude.chmod(0o755)
+    monkeypatch.setenv("SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH", str(cursor))
+    monkeypatch.setenv("SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH", str(claude))
+    plan_scout.scout_dynamic_archetypes(mode="description", max_archetypes=3, output=out, scope_files=str(scope), description_file=str(desc), cursor_present=True)
+    stdout = capsys.readouterr().out
+    assert "SCOUT_STATUS=ok" in stdout
+    assert json.loads(out.read_text(encoding="utf-8"))["archetypes"][0]["name"] == "deep-risk"
+    assert not Path(str(out) + ".raw.cap-hit").exists()
+
+
+def test_dynamic_diff_mode_claude_launch_uses_read_tools(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    diff = tmp_path / "review.diff"
+    diff.write_text("diff --git a/a.py b/a.py\n+print('hi')\n", encoding="utf-8")
+    out = tmp_path / "manifest.json"
+    argv_capture = tmp_path / "claude-argv.json"
+    claude = tmp_path / "claude.py"
+    claude.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, sys\n"
+        "from pathlib import Path\n"
+        f"Path({str(argv_capture)!r}).write_text(json.dumps(sys.argv[1:]), encoding='utf-8')\n"
+        "raw = Path(sys.argv[sys.argv.index('--output-file') + 1])\n"
+        "raw.write_text(json.dumps({'archetypes':[{'name':'api-contract','focus_area':'correctness','weight':1,'rationale':'ok','prompt_body':'Check API compatibility.'}]}), encoding='utf-8')\n"
+        "print('ELAPSED=1')\n",
+        encoding="utf-8",
+    )
+    claude.chmod(0o755)
+    monkeypatch.setenv("SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH", str(claude))
+    plan_scout.scout_dynamic_archetypes(mode="diff", max_archetypes=3, output=out, diff_file=str(diff), cursor_present=False)
+    argv = json.loads(argv_capture.read_text(encoding="utf-8"))
+    assert "--read-tools" in argv
+    read_tools_dir = argv[argv.index("--read-tools-add-dir") + 1]
+    assert read_tools_dir == str(out.parent / "staged-context")
+
+
+def test_dynamic_archetypes_salvages_fenced_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    scope = tmp_path / "scope.txt"
+    desc = tmp_path / "desc.txt"
+    scope.write_text("python/foo.py\n", encoding="utf-8")
+    desc.write_text("review this", encoding="utf-8")
+    out = tmp_path / "manifest.json"
+    claude = tmp_path / "claude.py"
+    claude.write_text(
+        "#!/usr/bin/env python3\n"
+        "import sys\n"
+        "from pathlib import Path\n"
+        "raw = Path(sys.argv[sys.argv.index('--output-file') + 1])\n"
+        "raw.write_text('prose\\n```json\\n{\"archetypes\":[{\"name\":\"fenced-risk\",\"focus_area\":\"risk-integration\",\"weight\":1,\"rationale\":\"ok\",\"prompt_body\":\"Inspect fenced JSON.\"}]}\\n```\\n', encoding='utf-8')\n"
+        "print('ELAPSED=1')\n",
+        encoding="utf-8",
+    )
+    claude.chmod(0o755)
+    monkeypatch.setenv("SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH", str(claude))
+    plan_scout.scout_dynamic_archetypes(mode="description", max_archetypes=3, output=out, scope_files=str(scope), description_file=str(desc), cursor_present=False)
+    stdout = capsys.readouterr().out
+    assert "SCOUT_STATUS=ok" in stdout
+    assert json.loads(out.read_text(encoding="utf-8"))["archetypes"][0]["name"] == "fenced-risk"
+
+
+def test_dynamic_archetypes_truncates_over_cap(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    scope = tmp_path / "scope.txt"
+    desc = tmp_path / "desc.txt"
+    scope.write_text("python/foo.py\n", encoding="utf-8")
+    desc.write_text("review this", encoding="utf-8")
+    out = tmp_path / "manifest.json"
+    claude = tmp_path / "claude.py"
+    claude.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, sys\n"
+        "from pathlib import Path\n"
+        "rows = [\n"
+        " {'name':'first-risk','focus_area':'risk-integration','weight':1,'rationale':'ok','prompt_body':'Inspect first risk.'},\n"
+        " {'name':'second-risk','focus_area':'correctness','weight':1,'rationale':'ok','prompt_body':'Inspect second risk.'},\n"
+        "]\n"
+        "raw = Path(sys.argv[sys.argv.index('--output-file') + 1])\n"
+        "raw.write_text(json.dumps({'archetypes': rows}), encoding='utf-8')\n"
+        "print('ELAPSED=1')\n",
+        encoding="utf-8",
+    )
+    claude.chmod(0o755)
+    monkeypatch.setenv("SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH", str(claude))
+    plan_scout.scout_dynamic_archetypes(mode="description", max_archetypes=1, output=out, scope_files=str(scope), description_file=str(desc), cursor_present=False)
+    stdout = capsys.readouterr().out
+    names = [row["name"] for row in json.loads(out.read_text(encoding="utf-8"))["archetypes"]]
+    assert names == ["first-risk"]
+    assert "validated archetypes exceed max cap: 2 > 1; truncating" in stdout
+
+
 def test_validate_accepts_integral_float_weights() -> None:
     result = plan_scout.validate_dynamic_manifest({"archetypes": [_row("deep-risk", weight=3.0)]}, max_archetypes=3, mode="review")
     assert result.manifest["archetypes"][0]["weight"] == 3

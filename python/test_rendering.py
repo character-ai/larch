@@ -492,6 +492,33 @@ def test_scope_anchor_validate_rejects_outside_design(tmp_path: Path, monkeypatc
     assert rc == 1
 
 
+def test_scope_anchor_common_shape_rejects_symlink(tmp_path: Path) -> None:
+    target = tmp_path / "anchor.txt"
+    link = tmp_path / "anchor-link.txt"
+    target.write_text("scope", encoding="utf-8")
+    link.symlink_to(target)
+    assert not rendering._scope_anchor_common_shape_ok(link)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_scope_anchor_common_shape_rejects_zero_byte_file(tmp_path: Path) -> None:
+    anchor = tmp_path / "anchor.txt"
+    anchor.write_text("", encoding="utf-8")
+    assert not rendering._scope_anchor_common_shape_ok(anchor)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_scope_anchor_common_shape_rejects_oversize_file(tmp_path: Path) -> None:
+    anchor = tmp_path / "anchor.txt"
+    anchor.write_bytes(b"x" * (rendering._SCOPE_ANCHOR_MAX_BYTES + 1))  # pyright: ignore[reportPrivateUsage]
+    assert not rendering._scope_anchor_common_shape_ok(anchor)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_scope_anchor_common_shape_rejects_crlf_path(tmp_path: Path) -> None:
+    anchor = tmp_path / "anchor.txt"
+    anchor.write_text("scope", encoding="utf-8")
+    assert not rendering._scope_anchor_common_shape_ok(Path(str(anchor) + "\n"))  # pyright: ignore[reportPrivateUsage]
+    assert not rendering._scope_anchor_common_shape_ok(Path(str(anchor) + "\r"))  # pyright: ignore[reportPrivateUsage]
+
+
 def test_scope_anchor_validate_review_accepts_tmp_allowlist(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
     _reset_quiet(monkeypatch)
     review = tmp_path / "review"
