@@ -161,8 +161,10 @@ bash_has_probe_verb() {
 
 bash_has_probe_target() {
   local cmd="$1" dir="$2" cwd_canon="$3"
+  local design_tmpdir_ref="\$DESIGN_TMPDIR"
+  local design_tmpdir_braced="\${DESIGN_TMPDIR}"
   case "$cmd" in
-    *'$DESIGN_TMPDIR'*|*'${DESIGN_TMPDIR}'*|*"$dir"*|*plan-review*|**-output.txt*|*tasks/*.output*) return 0 ;;
+    *"$design_tmpdir_ref"*|*"$design_tmpdir_braced"*|*"$dir"*|*plan-review*|**-output.txt*|*tasks/*.output*) return 0 ;;
   esac
   if [ -n "$cwd_canon" ] && [ "$cwd_canon" = "$dir" ]; then
     case "$cmd" in

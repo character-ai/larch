@@ -81,38 +81,39 @@ else
 fi
 
 rm -f "$MARKER"
-out=$(run_payload "$(payload_bash 'ls "$DESIGN_TMPDIR"')")
+design_tmpdir_ls="ls \"\$DESIGN_TMPDIR\""
+out=$(run_payload "$(payload_bash "$design_tmpdir_ls")")
 assert_allow "$out" 'no marker allows Bash probe'
 
 write_marker 999999 1 1
-out=$(run_payload "$(payload_bash 'ls "$DESIGN_TMPDIR"')")
+out=$(run_payload "$(payload_bash "$design_tmpdir_ls")")
 assert_allow "$out" 'stale marker with dead PID allows'
 
 write_marker $$ "$(date +%s)"
-out=$(LARCH_BG_POLL_GUARD_DISABLE=1 run_payload "$(payload_bash 'ls "$DESIGN_TMPDIR"')")
+out=$(LARCH_BG_POLL_GUARD_DISABLE=1 run_payload "$(payload_bash "$design_tmpdir_ls")")
 assert_allow "$out" 'disable env var allows'
 
 touch "$D/plan-review/round-1/ballot.txt"
 out=$(run_payload "$(payload_read "$D/plan-review/round-1/ballot.txt")")
 assert_deny "$out" 'live marker plus Read under DESIGN_TMPDIR denies'
 
-out=$(run_payload "$(payload_bash 'ls "$DESIGN_TMPDIR"')")
+out=$(run_payload "$(payload_bash "$design_tmpdir_ls")")
 assert_deny "$out" 'live marker plus Bash ls DESIGN_TMPDIR denies'
 
 out=$(run_payload "$(payload_bash 'cat .step3-review-result.env' "$D")")
 assert_deny "$out" 'live marker plus cat result env in tmpdir context denies'
 
-out=$(run_payload "$(payload_bash 'sleep 30 && ls "$DESIGN_TMPDIR"')")
+out=$(run_payload "$(payload_bash "sleep 30 && $design_tmpdir_ls")")
 assert_deny "$out" 'live marker plus sleep N && probe denies'
 
-watcher_cmd='while [ ! -f .step3-review-result.env ]; do sleep 5; ls "$DESIGN_TMPDIR"; done'
+watcher_cmd="while [ ! -f .step3-review-result.env ]; do sleep 5; $design_tmpdir_ls; done"
 out=$(run_payload "$(payload_bash "$watcher_cmd")")
 assert_deny "$out" 'live marker plus watcher loop denies'
 
 out=$(run_payload "$(payload_read 'tasks/foo.output')")
 assert_deny "$out" 'live marker plus Read tasks/foo.output denies'
 
-out=$(run_payload "$(payload_bash '"$HOME/.cache/larch/sessions/design-run-123.sh" design-step3-review.sh')")
+out=$(run_payload "$(payload_bash "\"\$HOME/.cache/larch/sessions/design-run-123.sh\" design-step3-review.sh")")
 assert_allow "$out" 'wrapper-routed design-run call allows'
 
 out=$(printf '{not-json' | LARCH_BG_POLL_GUARD_MARKER="$MARKER" "$HOOK")
@@ -122,7 +123,7 @@ NOJQ="$TMP/nojq-bin"
 mkdir -p "$NOJQ"
 ln -s /bin/cat "$NOJQ/cat"
 ln -s "$(command -v bash)" "$NOJQ/bash"
-out=$(printf '%s' "$(payload_bash 'ls "$DESIGN_TMPDIR"')" | PATH="$NOJQ" LARCH_BG_POLL_GUARD_MARKER="$MARKER" "$HOOK" 2>/dev/null || true)
+out=$(printf '%s' "$(payload_bash "$design_tmpdir_ls")" | PATH="$NOJQ" LARCH_BG_POLL_GUARD_MARKER="$MARKER" "$HOOK" 2>/dev/null || true)
 assert_allow "$out" 'missing jq path silently allows'
 
 out=$(run_payload "$(payload_bash 'grep foo final-summary.md' "$D")")
