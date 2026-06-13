@@ -1,8 +1,8 @@
 # emit-design-plan-preview.sh
 
-**Purpose**: Emit the Step 2b implementation-plan preview, Step 3 plan-candidate preview, or Gate C final-plan preview, with a shared large-plan summary note when `plan.txt` exceeds a size threshold.
+**Purpose**: Emit the Step 2b implementation-plan preview, Step 3 plan-candidate preview, Gate C final-plan preview, or Gate C full-plan display. The preview variants use a shared large-plan summary note when `plan.txt` exceeds a size threshold.
 
-**CLI**: `--design-tmpdir DIR --variant step3|gatec|step2b`. Reads `$design_tmpdir/plan.txt`.
+**CLI**: `--design-tmpdir DIR --variant step3|gatec|step2b|full`. Reads `$design_tmpdir/plan.txt`.
 
 **Allowlist validation**: Sources `scripts/lib-design-tmpdir.sh` and calls `larch_design_tmpdir_validate "$design_tmpdir"` inside each variant branch, after the existing `-z / ! -d / ! -s plan.txt` warning-and-exit-0 checks and before reading `plan.txt`. Validator failure routes to the variant's existing warning-and-exit-0 path (`**⚠ 2b:**`, `**⚠ 3:**`, or `**⚠ 4b:**`) so Step 2b / Step 3 / Gate C callers see a friendly diagnostic instead of a hard exit.
 
@@ -14,9 +14,12 @@
 
 **`step3` variant — pure renderer**: The `step3` case is a pure renderer. It does NOT read or write `.step3-entry-plan-printed`. Sentinel ownership belongs to `run-step3-review.sh --preview-only`, which calls this script via the `RUN_STEP3_EMIT_PREVIEW_SH` override seam and applies allowlist-gated sentinel touch rules after inspecting the renderer output.
 
+**`full` variant — Gate C full-plan display**: The `full` case is the Gate C replacement for raw `cat "$DESIGN_TMPDIR/plan.txt"`. It uses the same tmpdir allowlist validation and friendly warning exit-0 behavior as `gatec`, prints `## Final Design Plan`, and always emits the complete `plan.txt` body. It bypasses large-plan summary mode even when the threshold would summarize `gatec`.
+
 **Primary callers**:
 - `step2b` variant: `/design` SKILL.md Step 2b drafter-success display.
 - `step3` variant: `run-step3-review.sh --preview-only` (driver-owned sentinel, allowlist-gated touch).
 - `gatec` variant: `/design` SKILL.md Step 4b (Gate C approval gates).
+- `full` variant: Gate C structured `See full plan` and full-plan `Other` handling.
 
 **Harness**: `skills/design/scripts/test-emit-design-plan-preview.sh`.

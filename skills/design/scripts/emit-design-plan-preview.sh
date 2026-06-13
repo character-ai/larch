@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Emit Step 2b implementation-plan preview, Step 3 plan-candidate preview, or
-# Gate C final-plan preview (shared large-plan summary logic). See skills/design/SKILL.md.
+# Gate C final-plan preview, or Gate C full-plan display. See skills/design/SKILL.md.
 
 set -euo pipefail
 
@@ -10,7 +10,7 @@ source "$SCRIPT_DIR/../../../scripts/lib-design-tmpdir.sh"
 
 usage() {
     printf '%s\n' \
-        'usage: emit-design-plan-preview.sh --design-tmpdir DIR --variant step3|gatec|step2b' \
+        'usage: emit-design-plan-preview.sh --design-tmpdir DIR --variant step3|gatec|step2b|full' \
         >&2
 }
 
@@ -161,8 +161,25 @@ case "$variant" in
         printf '\n## Final Design Plan\n\n'
         emit_plan_body "$design_tmpdir/plan.txt" "$_large_note_gatec"
         ;;
+    full)
+        if [[ -z "${design_tmpdir:-}" || ! -d "$design_tmpdir" ]]; then
+            printf '%s\n' '**⚠ 4b: DESIGN_TMPDIR missing or invalid; cannot present final design plan**'
+            exit 0
+        fi
+        if ! larch_design_tmpdir_validate "$design_tmpdir"; then
+            printf '%s\n' '**⚠ 4b: DESIGN_TMPDIR not under allowlist; cannot present final design plan**'
+            exit 0
+        fi
+        if [[ ! -s "$design_tmpdir/plan.txt" ]]; then
+            printf '%s\n' '**⚠ 4b: plan.txt missing or empty; cannot present final design plan**'
+            exit 0
+        fi
+        printf '\n## Final Design Plan\n\n'
+        cat "$design_tmpdir/plan.txt"
+        printf '\n'
+        ;;
     *)
-        printf '%s\n' "emit-design-plan-preview.sh: invalid --variant (use step3, gatec, or step2b): $variant" >&2
+        printf '%s\n' "emit-design-plan-preview.sh: invalid --variant (use step3, gatec, step2b, or full): $variant" >&2
         exit 2
         ;;
 esac
