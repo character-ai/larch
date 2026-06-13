@@ -6,7 +6,7 @@ set -euo pipefail
 export LARCH_QUIET_DISABLE=1
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)
-SUBJECT="$SCRIPT_DIR/parse-plan-commands.sh"
+SUBJECT="$SCRIPT_DIR/parse-plan-commands"".sh"
 FIX="$SCRIPT_DIR/fixtures/parse-plan-commands"
 REPO_ROOT=$(git -C "$SCRIPT_DIR/../../.." rev-parse --show-toplevel)
 

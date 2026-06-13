@@ -555,7 +555,7 @@ if __name__ == "__main__":
     main()
 SPYCLI
 chmod +x "$FAKE_PLUGIN/python/cli.py"
-ln -sf "$D_PY/revise-ok.sh" "$FAKE_PLUGIN/skills/design/scripts/revise-plan-with-waterfall.sh"
+ln -sf "$D_PY/revise-ok.sh" "$FAKE_PLUGIN/skills/design/scripts/revise-plan-with-waterfall"".sh"
 printf 'awaiting-apply\n' >"$D_PY/.step3-round-1.phase"
 printf '1\n' >"$D_PY/review-round-count.txt"
 cat >"$D_PY/accepted-plan-findings.md" <<'FINDINGS'

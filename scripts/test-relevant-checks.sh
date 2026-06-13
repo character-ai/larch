@@ -457,9 +457,9 @@ setup_autofix_repo() {
     (
         cd "$dir"
         git checkout -q -b autofix-change
-        mkdir -p skills/design/scripts
-        printf '%s\n' "# auto fix plan commands" > skills/design/scripts/auto-fix-plan-commands.sh
-        git add skills/design/scripts/auto-fix-plan-commands.sh
+        mkdir -p python
+        printf '%s\n' "# plan quality autofix surface" > python/plan_quality.py
+        git add python/plan_quality.py
         git commit -q -m "touch auto fix plan commands"
     )
 }

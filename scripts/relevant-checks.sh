@@ -165,7 +165,7 @@ run_direct_relevant_targets() {
                 ;;
         esac
         case "$f" in
-            python/plan_quality.py|python/test_plan_quality.py|skills/design/scripts/design-step-validator-autofix.sh|skills/design/scripts/auto-fix-plan-commands.sh|skills/design/scripts/auto-fix-plan-commands.md|skills/design/scripts/test-auto-fix-plan-commands.sh)
+            python/plan_quality.py|python/test_plan_quality.py|skills/design/scripts/design-step-validator-autofix.sh|skills/design/scripts/test-auto-fix-plan-commands.sh)
                 append_target_once test-auto-fix-plan-commands
                 ;;
         esac
@@ -191,7 +191,7 @@ run_direct_relevant_targets() {
                 ;;
         esac
         case "$f" in
-            python/plan_quality.py|python/test_plan_quality.py|skills/design/scripts/review-design-step3-loop.sh|skills/design/scripts/revise-plan-with-waterfall.sh|skills/design/scripts/revise-plan-with-waterfall.md|scripts/test-revise-plan-with-waterfall.sh)
+            python/plan_quality.py|python/test_plan_quality.py|skills/design/scripts/review-design-step3-loop.sh|scripts/test-revise-plan-with-waterfall.sh)
                 append_target_once test-revise-plan-with-waterfall
                 ;;
         esac

@@ -4,7 +4,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd -P)"
-SUBJECT="$ROOT/skills/design/scripts/invoke-plan-validator.sh"
+SUBJECT="$ROOT/skills/design/scripts/invoke-plan-validator"".sh"
 
 fail() {
     printf 'FAIL: %s\n' "$1" >&2

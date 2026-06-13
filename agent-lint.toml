@@ -288,12 +288,11 @@ exclude = [
   # for scripts/lib-prune-decision.sh prune-status derivation.
   "scripts/test-lib-prune-decision.sh",
   "scripts/lib-prune-decision.md",
-  # Step 1 launcher split: compose-plan-goals-test.sh is now invoked by
+  # Step 1 launcher split: compose-goals-test is now invoked by
   # scripts/run-step1-plan-log.sh rather than directly from SKILL.md, and
   # agent-lint does not follow Bash-to-Bash launcher edges. The launcher
   # harness is Makefile-only.
-  "scripts/compose-plan-goals-test.sh",
-  "scripts/compose-plan-goals-test.md",
+  "python/cli.py plan compose-goals-test",
   "scripts/test-compose-plan-goals-test.sh",
   "scripts/test-compose-plan-goals-test.md",
   "scripts/test-run-step1-plan-log.sh",
@@ -482,11 +481,10 @@ exclude = [
   "scripts/test-lib-design-round-artifacts.md",
   "scripts/test-design-multi-round-integration.sh",
   "scripts/test-design-multi-round-integration.md",
-  # revise-plan-with-waterfall is retained as a historical/standalone helper
+  # revise-waterfall is retained as a Python CLI plan helper
   # with a Makefile-only regression harness; Step 3 single-pass no longer
   # references it from skills/design/SKILL.md.
-  "skills/design/scripts/revise-plan-with-waterfall.sh",
-  "skills/design/scripts/revise-plan-with-waterfall.md",
+  "python/cli.py plan revise-waterfall",
   # scripts/test-revise-plan-with-waterfall.sh is the Makefile-only regression
   # harness for the retained helper. Referenced only from Makefile
   # (test-revise-plan-with-waterfall target) and

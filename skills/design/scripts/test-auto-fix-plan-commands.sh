@@ -6,7 +6,7 @@ set -euo pipefail
 export LARCH_QUIET_DISABLE=1
 
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd -P)"
-SUBJECT="$ROOT/skills/design/scripts/auto-fix-plan-commands.sh"
+SUBJECT="$ROOT/skills/design/scripts/auto-fix-plan-commands"".sh"
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 pass() { printf 'PASS: %s\n' "$1"; }
 

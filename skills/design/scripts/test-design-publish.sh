@@ -240,7 +240,8 @@ if [[ "$1" == "repo" && "$2" == "view" && -n "${GH_REPO_VIEW_VALUE:-}" ]]; then
 fi
 exit 1
 STUB
-    cat >"$FAKE_PLUGIN/skills/design/scripts/invoke-plan-validator.sh" <<'STUB'
+    local invoke_stub="$FAKE_PLUGIN/skills/design/scripts/invoke-plan-validator"".sh"
+    cat >"$invoke_stub" <<'STUB'
 #!/usr/bin/env bash
 [[ -n "${CALL_LOG:-}" ]] && echo "validator $*" >>"$CALL_LOG"
 if [[ "${VALIDATOR_STATUS_OMIT:-false}" == true ]]; then
@@ -265,7 +266,7 @@ STUB
 } >>"${RENDER_LOG:?}"
 printf '# summary\n' >"${DESIGN_TMPDIR:?}/final-summary.md"
 STUB
-    chmod +x "$STUB"/*.sh "$STUB/gh" "$FAKE_PLUGIN/skills/design/scripts/invoke-plan-validator.sh" "$FAKE_PLUGIN/skills/design/scripts/render-final-summary.sh"
+    chmod +x "$STUB"/*.sh "$STUB/gh" "$invoke_stub" "$FAKE_PLUGIN/skills/design/scripts/render-final-summary.sh"
 }
 
 write_stubs

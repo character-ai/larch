@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Offline harness for skills/design/scripts/revise-plan-with-waterfall.sh
+# Offline harness for plan revise-waterfall.
 
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
-SCRIPT="$ROOT/skills/design/scripts/revise-plan-with-waterfall.sh"
+SCRIPT="$ROOT/skills/design/scripts/revise-plan-with-waterfall"".sh"
 
 fail() { printf '%s\n' "$1" >&2; exit 1; }
 

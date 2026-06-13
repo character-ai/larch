@@ -1,8 +1,8 @@
 # test-revise-plan-with-waterfall.sh
 
-Cross-tree harness for `skills/design/scripts/revise-plan-with-waterfall.sh`.
+Cross-tree harness for `python/cli.py plan revise-waterfall`.
 The primary behavior contract lives in
-`skills/design/scripts/revise-plan-with-waterfall.md`.
+`python/plan_quality.py`.
 
 Cases cover Codex win, Cursor promotion, Claude fallback, no-patch failure,
 apply failure, emit-plan failure, Codex absence, argv defects, canonical-plan

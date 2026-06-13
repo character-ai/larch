@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# test-compose-plan-goals-test.sh — regression tests for compose-plan-goals-test.sh.
+# test-compose-plan-goals-test.sh - regression tests for plan compose-goals-test.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-COMPOSER="$SCRIPT_DIR/compose-plan-goals-test.sh"
+ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
+COMPOSER=(python3 "$ROOT/python/cli.py" plan compose-goals-test)
 
-[ -x "$COMPOSER" ] || { echo "FAIL: $COMPOSER not executable" >&2; exit 1; }
+[ -f "$ROOT/python/cli.py" ] || { echo "FAIL: $ROOT/python/cli.py missing" >&2; exit 1; }
 
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/test-compose-plan-goals-test.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
@@ -68,7 +69,7 @@ pointer. Add a composer script, wire the sanitizer, and update the harnesses.
 ## Test plan
 Run scripts/test-compose-plan-goals-test.sh and python/test_run_logs.py.
 EOF
-out="$("$COMPOSER" --plan-file "$plan" --goal-text "Prevent pointer-only plans")"
+out="$("${COMPOSER[@]}" --plan-file "$plan" --goal-text "Prevent pointer-only plans")"
 assert_contains "$out" "## Goal" "goal heading present"
 assert_contains "$out" "Prevent pointer-only plans" "goal text present"
 assert_contains "$out" "## Implementation Plan" "implementation heading present"
@@ -82,7 +83,7 @@ Add a focused helper for composing the plan-goals-test batch. The helper validat
 that the plan artifact exists and is substantive, then emits the expected
 section structure for downstream larch-log validation.
 EOF
-out="$("$COMPOSER" --plan-file "$plan")"
+out="$("${COMPOSER[@]}" --plan-file "$plan")"
 assert_contains "$out" "(no test plan section in plan-file)" "fallback test plan emitted"
 
 echo "=== plan with implementation-plan header does not duplicate heading ==="
@@ -95,7 +96,7 @@ single wrapper heading emitted by the larch-log batch payload.
 ## Test plan
 Run scripts/test-compose-plan-goals-test.sh.
 EOF
-out="$("$COMPOSER" --plan-file "$plan")"
+out="$("${COMPOSER[@]}" --plan-file "$plan")"
 assert_occurrences "$out" "## Implementation Plan" 1 "implementation heading emitted once"
 
 echo "=== implementation-plan plus immediate Plan heading does not duplicate titles ==="
@@ -109,7 +110,7 @@ Add one row to the operator-facing harness table.
 ## Test plan
 Run scripts/test-compose-plan-goals-test.sh.
 EOF
-out="$("$COMPOSER" --plan-file "$plan")"
+out="$("${COMPOSER[@]}" --plan-file "$plan")"
 assert_occurrences "$out" "## Implementation Plan" 1 "single implementation heading in payload"
 assert_occurrences "$out" "## Plan" 0 "alternate Plan heading stripped after Implementation Plan"
 
@@ -125,7 +126,7 @@ Run scripts/test-compose-plan-goals-test.sh.
 ### Follow-up
 This section belongs to the implementation body, not the test-plan extraction.
 EOF
-out="$("$COMPOSER" --plan-file "$plan")"
+out="$("${COMPOSER[@]}" --plan-file "$plan")"
 assert_contains "$out" "Run scripts/test-compose-plan-goals-test.sh." "verification section extracted"
 if [[ "$out" == *"## Test plan"* && "${out##*## Test plan}" != *"This section belongs"* ]]; then
     pass "verification extraction stops at next heading"
@@ -142,7 +143,7 @@ produce a normalized larch-log payload for downstream validation.
 ## Testing
 Run make test-compose-plan-goals-test.
 EOF
-out="$("$COMPOSER" --plan-file "$plan")"
+out="$("${COMPOSER[@]}" --plan-file "$plan")"
 assert_contains "$out" "Run make test-compose-plan-goals-test." "testing section extracted"
 
 echo "=== verification without implementation heading emits one wrapper heading ==="
@@ -154,7 +155,7 @@ implementation-plan heading, because the batch payload supplies that wrapper.
 ### Verification
 Run scripts/test-compose-plan-goals-test.sh.
 EOF
-out="$("$COMPOSER" --plan-file "$plan")"
+out="$("${COMPOSER[@]}" --plan-file "$plan")"
 assert_occurrences "$out" "## Implementation Plan" 1 "wrapper heading emitted once without source heading"
 
 echo "=== test-strategy heading extracts test plan ==="
@@ -166,7 +167,7 @@ the larch-log test-plan section with concrete operator checks.
 ## Test strategy
 Run make test-compose-plan-goals-test and verify output structure.
 EOF
-out="$("$COMPOSER" --plan-file "$plan")"
+out="$("${COMPOSER[@]}" --plan-file "$plan")"
 assert_contains "$out" "Run make test-compose-plan-goals-test and verify output structure." "test strategy section extracted"
 
 echo "=== verification-strategy heading extracts test plan ==="
@@ -178,26 +179,26 @@ populate the larch-log test-plan section with concrete operator checks.
 ### Verification strategy
 Run bash scripts/test-compose-plan-goals-test.sh and confirm all assertions pass.
 EOF
-out="$("$COMPOSER" --plan-file "$plan")"
+out="$("${COMPOSER[@]}" --plan-file "$plan")"
 assert_contains "$out" "Run bash scripts/test-compose-plan-goals-test.sh and confirm all assertions pass." "verification strategy section extracted"
 
 echo "=== short plan fails ==="
 plan="$TMP/short.md"
 printf 'short plan body\n' > "$plan"
-assert_fails "short plan exits non-zero" "$COMPOSER" --plan-file "$plan"
+assert_fails "short plan exits non-zero" "${COMPOSER[@]}" --plan-file "$plan"
 
 echo "=== pointer-only plan fails ==="
 plan="$TMP/pointer.md"
 printf 'See plan.txt\n' > "$plan"
-assert_fails "pointer-only plan exits non-zero" "$COMPOSER" --plan-file "$plan"
+assert_fails "pointer-only plan exits non-zero" "${COMPOSER[@]}" --plan-file "$plan"
 
 echo "=== empty plan fails ==="
 plan="$TMP/empty.md"
 : > "$plan"
-assert_fails "empty plan exits non-zero" "$COMPOSER" --plan-file "$plan"
+assert_fails "empty plan exits non-zero" "${COMPOSER[@]}" --plan-file "$plan"
 
 echo "=== missing plan fails ==="
-assert_fails "missing plan exits non-zero" "$COMPOSER" --plan-file "$TMP/missing.md"
+assert_fails "missing plan exits non-zero" "${COMPOSER[@]}" --plan-file "$TMP/missing.md"
 
 echo
 echo "Passed: $PASS"
