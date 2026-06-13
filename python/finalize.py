@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 from contextlib import suppress
 from dataclasses import dataclass
@@ -24,6 +25,7 @@ from run_context import RunContext
 
 POSTBUMP_CHECKPOINT_MAX_BYTES = 64
 LS_REMOTE_NOT_FOUND_RC = 2
+_TITLE_PR_SUFFIX_RE = re.compile(r"\s+\(#([0-9]+)\)$")
 
 
 @dataclass(frozen=True)
@@ -46,6 +48,42 @@ class FinalizeResult:
 
 def _bool_text(value: object) -> str:
     return "true" if value else "false"
+
+
+def _title_matches(
+    actual: str,
+    expected: str,
+    pr_number: object | None = None,
+    *,
+    allow_plain_prefix: bool = False,
+    suffix_match: str = "contains",
+) -> bool:
+    raw_expected = expected
+    match = _TITLE_PR_SUFFIX_RE.search(raw_expected)
+    expected_number = match.group(1) if match else ""
+    normalized_expected = raw_expected[: match.start()].rstrip() if match else raw_expected
+    if not normalized_expected:
+        return False
+    if pr_number is not None:
+        suffix_number = str(pr_number)
+    elif allow_plain_prefix:
+        suffix_number = expected_number
+    else:
+        suffix_number = ""
+    suffix = f"(#{suffix_number})" if suffix_number else ""
+    numbered_expected = f"{normalized_expected} {suffix}" if suffix else normalized_expected
+
+    if actual == raw_expected:
+        return True
+    if allow_plain_prefix and actual.startswith(raw_expected):
+        return True
+    if numbered_expected and (actual == numbered_expected or actual.startswith(numbered_expected)):
+        return True
+    if suffix:
+        if suffix_match == "endswith":
+            return actual.endswith(suffix)
+        return suffix in actual
+    return False
 
 
 def _result_from_error(exc: Exception, *, status: str = "stalled") -> FinalizeResult:
@@ -384,19 +422,8 @@ def postmerge(
     cleanup_status = "success" if cleanup.cleanup_success else "partial"
 
     expected_title = ctx.pr_title or ""
-    expected_with_number = expected_title
-    if ctx.pr_number is not None and expected_title:
-        expected_with_number = f"{expected_title} (#{ctx.pr_number})"
     actual = git.log_subject(runner, "HEAD", cwd=cwd)
-    suffix = f"(#{ctx.pr_number})" if ctx.pr_number is not None else ""
-    title_ok = bool(
-        expected_title
-        and (
-            actual in (expected_title, expected_with_number)
-            or actual.startswith(expected_with_number)
-            or (suffix and suffix in actual)
-        )
-    )
+    title_ok = _title_matches(actual, expected_title, ctx.pr_number)
     verify_status = "verified" if title_ok else "unexpected"
     return FinalizeResult(
         Outcome.OK,

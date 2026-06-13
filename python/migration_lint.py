@@ -1,8 +1,9 @@
 """Retired-scripts manifest lint for the sh-to-py migration.
 
-Checks that no tracked file references any retired script path (full repo-relative
-path only — never bare basename matching). Exits 0 when clean, 1 on findings, 2
-on usage/manifest errors.
+Checks that no tracked file references any retired script path. Most checks use
+full repo-relative paths only; dev skill markdown also catches scoped
+same-directory bare basenames for orphaned script docs. Exits 0 when clean, 1 on
+findings, 2 on usage/manifest errors.
 
 Contract KV on stdout (fd 3 / contract_stream after quiet_init):
     LINT_STATUS=ok|findings
@@ -57,7 +58,33 @@ def _ship_pr_live_ref(line_text: str, retired_path: str) -> bool:
     return any(pattern.search(line_text) is not None for pattern in patterns)
 
 
+def _dev_skill_markdown_bare_basename_ref(
+    repo_root: Path,
+    rel: str,
+    line_text: str,
+    retired_path: str,
+    retired_dir: Path,
+) -> bool:
+    rel_path = Path(rel)
+    if rel_path.suffix != ".md":
+        return False
+    if rel_path.parts[:2] != (".claude", "skills"):
+        return False
+    if rel_path.parent != retired_dir:
+        return False
+    if "# lint-ignore" in line_text:
+        return False
+    if (repo_root / rel_path.with_suffix(".sh")).exists():
+        return False
+    basename = Path(retired_path).name
+    bare_name = re.compile(
+        rf"(?<![A-Za-z0-9_./-]){re.escape(basename)}(?![A-Za-z0-9_./-])"
+    )
+    return bare_name.search(line_text) is not None
+
+
 def _line_references_retired(
+    repo_root: Path,
     rel: str,
     rel_dir: Path,
     line_text: str,
@@ -77,9 +104,15 @@ def _line_references_retired(
         return _ship_pr_live_ref(line_text, retired_path)
     if retired_path in line_text:
         return True
-    if rel_dir == retired_dir:
-        return any(ref in line_text for ref in retired_refs)
-    return False
+    if rel_dir == retired_dir and any(ref in line_text for ref in retired_refs):
+        return True
+    return _dev_skill_markdown_bare_basename_ref(
+        repo_root,
+        rel,
+        line_text,
+        retired_path,
+        retired_dir,
+    )
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace | None:
@@ -231,6 +264,7 @@ def main(argv: list[str] | None = None) -> int:
                 continue
             for retired_path in retired_list:
                 if _line_references_retired(
+                    root_path,
                     rel,
                     rel_dir,
                     line_text,

@@ -1,3 +1,4 @@
+# pyright: reportPrivateUsage=false
 """Tests for finalize.py."""
 
 from __future__ import annotations
@@ -35,6 +36,66 @@ def _ctx(tmp_path: Path, **kwargs: object) -> RunContext:
         issue_number="1",
     )
     return base.with_(**kwargs)
+
+
+def test_title_matches_exact_title() -> None:
+    assert finalize._title_matches("Implement thing", "Implement thing", 7)
+
+
+def test_title_matches_expected_numbered_title() -> None:
+    assert finalize._title_matches("Implement thing (#7)", "Implement thing", 7)
+
+
+def test_title_matches_squash_merge_prefix() -> None:
+    assert finalize._title_matches("Implement thing (#7) follow-up", "Implement thing", 7)
+
+
+def test_title_matches_postmerge_mid_string_suffix() -> None:
+    assert finalize._title_matches("Other title (#7) follow-up", "Implement thing", 7)
+
+
+def test_title_matches_verify_main_plain_prefix() -> None:
+    assert finalize._title_matches(
+        "Feature follow-up",
+        "Feature",
+        allow_plain_prefix=True,
+        suffix_match="endswith",
+    )
+
+
+def test_title_matches_verify_main_rejects_mid_string_suffix() -> None:
+    assert not finalize._title_matches(
+        "Other title (#7) follow-up",
+        "Different title (#7)",
+        allow_plain_prefix=True,
+        suffix_match="endswith",
+    )
+
+
+def test_title_matches_verify_main_suffix_at_end() -> None:
+    assert finalize._title_matches(
+        "Other title (#7)",
+        "Different title (#7)",
+        allow_plain_prefix=True,
+        suffix_match="endswith",
+    )
+
+
+def test_title_matches_avoids_double_number_suffix() -> None:
+    assert finalize._title_matches("Title (#7)", "Title (#7)", 7)
+
+
+def test_title_matches_numbered_expected_rejects_stripped_prefix() -> None:
+    assert not finalize._title_matches(
+        "Title follow-up",
+        "Title (#7)",
+        allow_plain_prefix=True,
+        suffix_match="endswith",
+    )
+
+
+def test_title_matches_empty_expected_rejected() -> None:
+    assert not finalize._title_matches("Anything", "", 7)
 
 
 def test_postmerge_skips_draft_without_done_manifest(tmp_path: Path) -> None:

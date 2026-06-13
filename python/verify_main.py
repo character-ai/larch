@@ -5,7 +5,8 @@
 from __future__ import annotations
 
 import argparse
-import re
+
+import finalize
 import proc
 
 
@@ -26,12 +27,13 @@ def main(argv: list[str] | None = None) -> int:
             commit_hash, commit_message = line.split(" ", 1)
         else:
             commit_hash, commit_message = line, ""
-        if commit_message.startswith(expected):
+        if finalize._title_matches(  # noqa: SLF001
+            commit_message,
+            expected,
+            allow_plain_prefix=True,
+            suffix_match="endswith",
+        ):
             verified = "true"
-        else:
-            match = re.search(r"\(#[0-9]+\)$", expected)
-            if match and commit_message.endswith(match.group(0)):
-                verified = "true"
     print(f"VERIFIED={verified}")
     print(f"COMMIT_HASH={commit_hash}")
     print(f"COMMIT_MESSAGE={commit_message}")
