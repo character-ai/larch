@@ -24,6 +24,7 @@ import logging_util
 import proc
 import pr_body
 import redact
+import review_dispatch
 import session_env
 import tracking_issue
 from errors import ShipError
@@ -344,14 +345,14 @@ def _effective_diff_mode(args: argparse.Namespace) -> str:
 
 
 def _classify_diff_mode(diff_file: str) -> str:
-    classifier = REPO_ROOT / "scripts" / "classify-diff-mode.sh"
-    if not diff_file or not classifier.exists():
+    if not diff_file:
         return "generic"
-    result = subprocess.run(["bash", str(classifier), diff_file], check=False, capture_output=True, text=True)  # noqa: S607
-    if result.returncode == 0 and result.stdout.startswith("DIFF_MODE="):
-        value = result.stdout.strip().removeprefix("DIFF_MODE=")
-        if value in {"generic", "docs-only", "test-only", "generated-only"}:
-            return value
+    try:
+        value: object = review_dispatch.classify_diff(diff_file)
+    except Exception:
+        return "generic"
+    if value in {"generic", "docs-only", "test-only", "generated-only"}:
+        return str(value)
     return "generic"
 
 

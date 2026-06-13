@@ -314,12 +314,6 @@ exclude = [
   "scripts/ci-failed-jobs.md",
   "scripts/test-ci-failed-jobs.sh",
   "scripts/test-ci-failed-jobs.md",
-  # scripts/test-compose-collector-failure-log.sh is the Makefile-only
-  # regression harness for scripts/compose-collector-failure-log.sh. The
-  # helper is invoked from /design sketch collection paths; the harness is
-  # covered by the test-compose-collector-failure-log target.
-  "scripts/test-compose-collector-failure-log.sh",
-  "scripts/test-compose-collector-failure-log.md",
   "scripts/test-compose-review-findings.sh",
   "scripts/test-compose-review-findings.md",
   # Makefile-only harness for metadata summary publication. Runtime reachability
@@ -404,15 +398,6 @@ exclude = [
   # skills/design/scripts/plan-review-loop.sh through $DEDUP_PLAN_LINES_PY;
   # agent-lint's G004/dead-script rule does not follow shell variable indirection.
   "skills/design/scripts/dedup-plan-lines.py",
-  # scripts/classify-diff-mode.sh is invoked from python/cli.py render specialist
-  # via a `CLASSIFIER="$SCRIPT_DIR/classify-diff-mode.sh"` shell variable rather
-  # than a literal path — agent-lint's G004/dead-script rule does not follow shell
-  # variable indirection. python/cli.py render specialist itself IS structurally
-  # referenced from launch-review.sh --tool cursor / skills/review/SKILL.md.
-  "scripts/classify-diff-mode.sh",
-  # skills/design/scripts/tally-plan-review.sh through a plugin-root-prefixed
-  # shell variable so G004 cannot discover the runtime edge. It is covered by
-  # test-findings-classification.
   # scripts/launch-codex-implement.sh is invoked by skills/implement/scripts/
   # step2-implement.sh via a `"$LAUNCHER"` variable rather than a literal
   # `${CLAUDE_PLUGIN_ROOT}/scripts/...` path — agent-lint's G004/dead-script
@@ -717,12 +702,6 @@ exclude = [
   # Referenced only from Makefile (test-lib-cursor-auth target) and
   # scripts/test-lib-cursor-auth.md (sibling contract).
   "scripts/test-lib-cursor-auth.sh",
-  # scripts/test-wait-for-reviewers.sh is the regression harness for
-  # wait-for-reviewers.sh timeout validation and collect-agent-results.sh wait
-  # passthrough (#1186 + #1188 / #1200). Referenced only from Makefile
-  # (test-wait-for-reviewers target) and scripts/test-wait-for-reviewers.md
-  # (sibling contract).
-  "scripts/test-wait-for-reviewers.sh",
   # python/test_agents.py is the regression harness for
   # python/cli.py agent run-external-agent. Referenced only from Makefile
   # (test-run-external-agent target) and python/test_agents.py
@@ -781,17 +760,6 @@ exclude = [
   # same Makefile-only pattern as the other test-* harnesses above.
   "scripts/test-harness-shards-coverage.sh",
   "scripts/test-harness-shards-coverage.md",
-  # test-* recipe in the Makefile to emit LARCH_HARNESS_TIMING lines to CI
-  # logs. It is referenced only from Makefile (test-* recipe lines) and
-  # rule does not follow Makefile invocation refs, so both files are excluded.
-  # contract), matching the same Makefile-only pattern as the other test-*
-  # harnesses above.
-  # scripts/test-gather-branch-context.sh is the offline harness for
-  # scripts/gather-branch-context.sh larch-logs pathspec exclusion.
-  # Referenced from Makefile (test-gather-branch-context target) and
-  # scripts/test-gather-branch-context.md (sibling contract).
-  "scripts/test-gather-branch-context.sh",
-  "scripts/test-gather-branch-context.md",
   # scripts/test-render-run-summary.sh is the offline harness for
   # scripts/render-run-summary.sh. Referenced from Makefile
   # (test-render-run-summary target) and scripts/test-render-run-summary.md
@@ -1218,7 +1186,6 @@ exclude = [
   "scripts/lib-cursor-launcher-common.md",
   "scripts/lib-codex-launcher-common.md",
   "python/agents.py",
-  "scripts/test-wait-for-reviewers.md",
   "scripts/lib-validate-meta-path.md",
   "scripts/lib-failed-agent-stderr-tail.md",
   "scripts/test-lib-failed-agent-stderr-tail.md",

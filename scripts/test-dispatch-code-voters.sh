@@ -52,7 +52,6 @@ require_voter_paths_file_nonempty() {
 make_wait_barrier_plugin_root() {
     local root="$1"
     mkdir -p "$root/scripts" "$root/python" "$root/skills/shared/scripts"
-    ln -sf "$REPO_ROOT/scripts/wait-for-reviewers.sh" "$root/scripts/wait-for-reviewers.sh"
     ln -sf "$REPO_ROOT/scripts/lib-quiet.sh" "$root/scripts/lib-quiet.sh"
     cat > "$root/python/cli.py" <<STUB_RENDER
 import os
@@ -60,6 +59,11 @@ import sys
 import time
 from pathlib import Path
 REAL_CLI = '$REPO_ROOT/python/cli.py'
+if sys.argv[1:3] == ["agent", "wait-reviewers"]:
+    if os.environ.get("LARCH_FORCE_WAIT_USAGE_ERROR") == "1":
+        print("usage: forced test wait failure", file=sys.stderr)
+        raise SystemExit(1)
+    os.execv(sys.executable, [sys.executable, REAL_CLI, *sys.argv[1:]])
 if sys.argv[1:2] == ["voting"]:
     os.execv(sys.executable, [sys.executable, REAL_CLI, *sys.argv[1:]])
 if sys.argv[1:3] == ["agent", "launch-claude-review"]:
@@ -145,21 +149,12 @@ STUB_WATERFALL
 make_wait_usage_error_plugin_root() {
     local root="$1"
     make_wait_barrier_plugin_root "$root"
-    # Remove the symlink before writing so cat > does not follow it to the source.
-    rm -f "$root/scripts/wait-for-reviewers.sh"
-    cat > "$root/scripts/wait-for-reviewers.sh" <<'STUB_WAIT'
-#!/usr/bin/env bash
-printf 'usage: forced test wait failure\n' >&2
-exit 1
-STUB_WAIT
-    chmod +x "$root/scripts/wait-for-reviewers.sh"
 }
 
 make_voter1_delayed_done_plugin_root() {
     local root="$1"
     mkdir -p "$root/scripts" "$root/python" "$root/skills/shared/scripts"
     ln -sf "$REPO_ROOT/scripts/lib-quiet.sh" "$root/scripts/lib-quiet.sh"
-    ln -sf "$REPO_ROOT/scripts/wait-for-reviewers.sh" "$root/scripts/wait-for-reviewers.sh"
     ln -sf "$REPO_ROOT/scripts/dispatch-code-voters.sh" "$root/scripts/dispatch-code-voters.sh"
     cat > "$root/python/cli.py" <<STUB_RENDER
 import os
@@ -167,6 +162,8 @@ import sys
 import subprocess
 from pathlib import Path
 REAL_CLI = '$REPO_ROOT/python/cli.py'
+if sys.argv[1:3] == ["agent", "wait-reviewers"]:
+    os.execv(sys.executable, [sys.executable, REAL_CLI, *sys.argv[1:]])
 if sys.argv[1:2] == ["voting"]:
     os.execv(sys.executable, [sys.executable, REAL_CLI, *sys.argv[1:]])
 if sys.argv[1:3] == ["agent", "launch-claude-review"]:
@@ -706,6 +703,7 @@ mkdir -p "$wait_usage_tmp"
 PATH="$STUB_BIN:$PATH" \
     CLAUDE_PLUGIN_ROOT="$wait_usage_plugin" \
     LARCH_WAIT_BARRIER_MODE=immediate \
+    LARCH_FORCE_WAIT_USAGE_ERROR=1 \
     LARCH_WAIT_BARRIER_VOTER2="$wait_usage_tmp/codex-vote-output.txt" \
     LARCH_WAIT_BARRIER_VOTER3="$wait_usage_tmp/cursor-vote-output.txt" \
     "$SCRIPT" --ballot-file "$BALLOT" --review-tmpdir "$wait_usage_tmp" --codex-available true --cursor-available true \

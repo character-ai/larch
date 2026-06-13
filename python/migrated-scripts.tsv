@@ -616,3 +616,17 @@ scripts/tracking-issue-summary.sh	#3927
 scripts/tracking-issue-summary.md	#3927
 scripts/test-tracking-issue-summary.sh	#3927
 scripts/test-tracking-issue-summary.md	#3927
+scripts/wait-for-reviewers.sh	#4165
+scripts/wait-for-reviewers.md	#4165
+scripts/classify-diff-mode.sh	#4165
+scripts/classify-diff-mode.md	#4165
+scripts/gather-branch-context.sh	#4165
+scripts/gather-branch-context.md	#4165
+scripts/compose-collector-failure-log.sh	#4165
+scripts/compose-collector-failure-log.md	#4165
+scripts/test-wait-for-reviewers.sh	#4165
+scripts/test-wait-for-reviewers.md	#4165
+scripts/test-compose-collector-failure-log.sh	#4165
+scripts/test-compose-collector-failure-log.md	#4165
+scripts/test-gather-branch-context.sh	#4165
+scripts/test-gather-branch-context.md	#4165

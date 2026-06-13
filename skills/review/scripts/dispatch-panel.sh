@@ -25,7 +25,7 @@ PLAN_FILE=""
 FEATURE_FILE=""
 DESCRIPTION_TEXT=""
 DISPATCH_WATERFALL="${DISPATCH_WATERFALL:-$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh}"
-CLASSIFY_DIFF_MODE_SH="${CLASSIFY_DIFF_MODE_SH:-$PLUGIN_ROOT/scripts/classify-diff-mode.sh}"
+CLASSIFY_DIFF_MODE_SH="${CLASSIFY_DIFF_MODE_SH:-}"
 SESSION_ENV_PATH="${SESSION_ENV_PATH:-}"
 PANEL="hard"
 # Non-empty process env only: set-but-empty must fall through to default 0
@@ -106,6 +106,15 @@ static_slot_count=0
 static_cursor=0
 static_codex=0
 
+classify_diff_mode() {
+    local diff_file="$1"
+    if [[ -n "$CLASSIFY_DIFF_MODE_SH" ]]; then
+        "$CLASSIFY_DIFF_MODE_SH" "$diff_file"
+    else
+        python3 "$PLUGIN_ROOT/python/cli.py" agent classify-diff "$diff_file"
+    fi
+}
+
 queue_external_slot() {
     local tool="$1" name="$2" out="$3"
     local agent="$PLUGIN_ROOT/agents/reviewer-${name}.md"
@@ -151,7 +160,7 @@ if [[ "$CODEX_AVAILABLE" == "true" && "$CURSOR_AVAILABLE" == "true" ]] && (( ROU
 fi
 
 if [[ "$DYNAMIC_ARCHETYPES" != "0" && "$MODE" == "diff" && -n "$DIFF_FILE" && -s "$DIFF_FILE" ]]; then
-    classifier_out=$("$CLASSIFY_DIFF_MODE_SH" "$DIFF_FILE" 2>/dev/null || true)
+    classifier_out=$(classify_diff_mode "$DIFF_FILE" 2>/dev/null || true)
     DIFF_MODE="${classifier_out#DIFF_MODE=}"
     case "$DIFF_MODE" in
         docs-only|test-only|generated-only) SCOUT_STATUS="skipped-$DIFF_MODE" ;;

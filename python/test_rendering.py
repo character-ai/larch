@@ -1,3 +1,4 @@
+# pyright: reportUnusedCallResult=false
 """Tests for rendering.py ports."""
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ from typing import TYPE_CHECKING
 import config
 import logging_util
 import rendering
+import review_dispatch
 
 if TYPE_CHECKING:
     import pytest
@@ -390,3 +392,63 @@ def test_render_voter_inlines_scope_anchor(tmp_path: Path, capsys: pytest.Captur
 def test_generate_code_reviewer_agent_check_matches_committed(monkeypatch: pytest.MonkeyPatch) -> None:
     _reset_quiet(monkeypatch)
     assert rendering.generate_code_reviewer_agent_main(["--check"]) == 0
+
+
+def _specialist_agent(tmp_path: Path) -> Path:
+    agent = tmp_path / "reviewer-temp.md"
+    agent.write_text("---\nname: temp\ndescription: temp\n---\n# Body\n", encoding="utf-8")
+    return agent
+
+
+def _render_diff(tmp_path: Path, line: str) -> Path:
+    diff = tmp_path / "diff.txt"
+    diff.write_text(line, encoding="utf-8")
+    return diff
+
+
+def test_render_specialist_uses_inprocess_docs_diff_classifier(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _reset_quiet(monkeypatch)
+    def fail_run(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("rendering must not shell out to the retired diff classifier")
+
+    monkeypatch.setattr(rendering.subprocess, "run", fail_run)
+    text = rendering._render_specialist_text(  # pyright: ignore[reportPrivateUsage]
+        rendering._parse_specialist(  # pyright: ignore[reportPrivateUsage]
+            ["--agent-file", str(_specialist_agent(tmp_path)), "--mode", "diff", "--diff-file", str(_render_diff(tmp_path, "diff --git a/docs/a.md b/docs/a.md\n"))]
+        )
+    )
+    assert "Review this docs-only diff" in text
+
+
+def test_render_specialist_uses_inprocess_test_and_generated_classifiers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _reset_quiet(monkeypatch)
+    generated_tsv = tmp_path / "generators.tsv"
+    generated_tsv.write_text("gen\tagents/generated.md\n", encoding="utf-8")
+    monkeypatch.setattr(review_dispatch, "GENERATORS_TSV", generated_tsv)
+    agent = _specialist_agent(tmp_path)
+    test_text = rendering._render_specialist_text(  # pyright: ignore[reportPrivateUsage]
+        rendering._parse_specialist(  # pyright: ignore[reportPrivateUsage]
+            ["--agent-file", str(agent), "--mode", "diff", "--diff-file", str(_render_diff(tmp_path, "diff --git a/scripts/test-a.sh b/scripts/test-a.sh\n"))]
+        )
+    )
+    generated_text = rendering._render_specialist_text(  # pyright: ignore[reportPrivateUsage]
+        rendering._parse_specialist(  # pyright: ignore[reportPrivateUsage]
+            ["--agent-file", str(agent), "--mode", "diff", "--diff-file", str(_render_diff(tmp_path, "diff --git a/agents/generated.md b/agents/generated.md\n"))]
+        )
+    )
+    assert "Review this test-only diff" in test_text
+    assert "Review this generated-only diff" in generated_text
+
+
+def test_render_specialist_diff_mode_override_skips_classifier(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _reset_quiet(monkeypatch)
+    def fail_classifier(_path: str) -> str:
+        raise AssertionError("override should skip classifier")
+
+    monkeypatch.setattr(review_dispatch, "classify_diff", fail_classifier)
+    text = rendering._render_specialist_text(  # pyright: ignore[reportPrivateUsage]
+        rendering._parse_specialist(  # pyright: ignore[reportPrivateUsage]
+            ["--agent-file", str(_specialist_agent(tmp_path)), "--mode", "diff", "--diff-file", str(_render_diff(tmp_path, "diff --git a/docs/a.md b/docs/a.md\n")), "--diff-mode", "test-only"]
+        )
+    )
+    assert "Review this test-only diff" in text

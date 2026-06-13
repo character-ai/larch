@@ -40,7 +40,7 @@ validate_rel_file() {
 
 if [[ "$MODE" == "diff" ]]; then
     branch_context_env="$OUTPUT_DIR/gather-branch-context.env"
-    "$PLUGIN_ROOT/scripts/gather-branch-context.sh" --output-dir "$OUTPUT_DIR" > "$branch_context_env"
+    python3 "$PLUGIN_ROOT/python/cli.py" agent gather-branch-context --output-dir "$OUTPUT_DIR" > "$branch_context_env"
     while IFS= read -r line || [[ -n "$line" ]]; do
         emit "$line"
     done < "$branch_context_env"

@@ -168,10 +168,10 @@ Use `run_in_background: true` and `timeout: 1260000` only for skill-specific dir
 
 **Claude voter dispatch**: `/design` plan review uses `dispatch-plan-voters.sh` to launch the Claude lane; code review uses `dispatch-code-voters.sh`, which launches the Claude lane inside the dispatcher. Do not launch Claude voters directly from the orchestrator on either path.
 
-Wait for external voter sentinels using `wait-for-reviewers.sh` (use the same tmpdir as the review phase — do not create a new temp directory for voting). Only include sentinel paths for voters that were actually launched:
+Wait for external voter sentinels using `python3 python/cli.py agent wait-reviewers` (use the same tmpdir as the review phase — do not create a new temp directory for voting). Only include sentinel paths for voters that were actually launched:
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/wait-for-reviewers.sh --timeout 1260 \
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent wait-reviewers --timeout 1260 \
   "<tmpdir>/cursor-vote-output.txt.done" \
   "<tmpdir>/codex-vote-output.txt.done"
 ```

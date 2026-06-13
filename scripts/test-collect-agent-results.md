@@ -42,6 +42,6 @@ The harness unsets inherited session tempdir variables and points
 parent `/implement` run's log.
 
 **WAIT_STDERR relay sanitize case**: builds a minimal `SCRIPT_DIR` tree (real
-`collect-agent-results.sh` copy plus stub sibling `wait-for-reviewers.sh`, not
+`collect-agent-results.sh` copy plus a stubbed `python/cli.py agent wait-reviewers`, not
 PATH-only), captures merged `2>&1`, and asserts printable text preserved with
 BEL/ESC absent on the relay path.
