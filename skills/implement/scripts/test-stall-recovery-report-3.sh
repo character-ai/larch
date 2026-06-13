@@ -24,6 +24,7 @@ fail() { FAIL=$((FAIL + 1)); echo "FAIL: $1"; shift || true; [ "$#" -gt 0 ] && p
 
 GHP_TOKEN_CASE13='ghp_''123456789012345678901234567890123456'
 GHP_TOKEN_CASE16='ghp_''abcdef123456789012345678901234567890'
+: "$CONTRACT_MD" "$GHP_TOKEN_CASE16"
 
 assert_eq() {
     local expected=$1 actual=$2 label=$3
@@ -85,6 +86,7 @@ classify_fixture() {
     printf '%s\n' "$log_text" >"$log"
     run_capture "$out" "$SCRIPT" classify --implement-tmpdir "$dir" --failure-detail-log "$log"
     CLASSIFY_OUT="$out"
+    : "$CLASSIFY_OUT"
 }
 
 # New terminal-only / escalation-success reporting seams.

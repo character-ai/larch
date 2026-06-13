@@ -24,21 +24,6 @@ _MD_TABLE_SEP_RE = re.compile(r"^\|[ :\-|]+\|$")
 _MD_BOLD_RE = re.compile(r"\*\*([^*\n]+)\*\*")
 _MD_ITALIC_RE = re.compile(r"(?<![_\w])_([^_\n]+)_(?![_\w])")
 _MD_HEADING_RE = re.compile(r"^#{1,6} ")
-SHIP_PR_PHASES = frozenset({
-    "checks",
-    "ci-initial",
-    "ci-merge",
-    "pr-prep",
-    "pr-create",
-    "pr-push",
-    "merge",
-    "postmerge",
-    "rebase",
-    "rebase-failed",
-    "stalled",
-    "done",
-})
-
 
 def _strip_md_for_terminal(text: str) -> str:
     """Remove Markdown decorators for plain-text terminal display."""
@@ -627,7 +612,7 @@ def _render_implement(run: LiveRun) -> str:
     tmpdir = run.tmpdir
     step_label, start_s = _latest_timing_mark(tmpdir / "timing-ledger.tsv")
     phase = _kv_value(tmpdir / "ship-pr-state.sh", "PHASE")
-    if (tmpdir / "ship-pr-state.sh").is_file() and phase in SHIP_PR_PHASES:
+    if (tmpdir / "ship-pr-state.sh").is_file():
         return _render_ship_pr(tmpdir)
     done_marker = tmpdir / "progress" / "done"
     if not done_marker.exists():
