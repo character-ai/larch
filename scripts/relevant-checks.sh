@@ -133,6 +133,17 @@ run_direct_relevant_targets() {
                 append_target_once test-design-publish
                 append_target_once test-design-stage-terminal-state
                 append_target_once test-design-failure-report
+                append_target_once test-design-step5c
+                append_target_once test-design-structure
+                ;;
+            skills/design/scripts/design-step5c.sh|skills/design/scripts/test-design-step5c.sh|skills/design/scripts/test-design-step5c.md)
+                append_target_once test-design-step5c
+                append_target_once test-design-publish
+                append_target_once test-design-failure-report
+                ;;
+            skills/design/scripts/design-step0-clarify-hard-halt.sh|skills/design/scripts/design-step0-clarify-hard-halt.md)
+                append_target_once test-design-failure-report
+                append_target_once test-design-stage-terminal-state
                 append_target_once test-design-structure
                 ;;
         esac
@@ -167,8 +178,9 @@ run_direct_relevant_targets() {
                 ;;
         esac
         case "$f" in
-            python/plan_quality.py|python/test_plan_quality.py|skills/design/scripts/auto-fix-plan-commands.sh|skills/design/scripts/auto-fix-plan-commands.md|skills/design/scripts/test-auto-fix-plan-commands.sh|skills/design/scripts/design-step-validator-autofix.sh|skills/design/scripts/design-step-validator-autofix.md)
+            python/plan_quality.py|python/test_plan_quality.py|skills/design/scripts/auto-fix-plan-commands.sh|skills/design/scripts/auto-fix-plan-commands.md|skills/design/scripts/test-auto-fix-plan-commands.sh|skills/design/scripts/design-step-validator-autofix.sh|skills/design/scripts/design-step-validator-autofix.md|skills/design/scripts/test-design-step-validator-autofix.sh|skills/design/scripts/test-design-step-validator-autofix.md)
                 append_target_once test-auto-fix-plan-commands
+                append_target_once test-design-step-validator-autofix
                 append_target_once test-design-failure-report
                 ;;
         esac

@@ -97,36 +97,52 @@ assemble_comment() {
     } >"$out"
 }
 
-reject_tier_b_comment_if_unsafe() {
-    local body_file=$1 comment_file=$2 err=$3 validate_tmpdir=${4:-}
-    local _tier_b_profile_args=()
-    if grep -Eq '<!-- larch-stall:signature=|^### \[Bug\] /(implement|design)|^## /(implement|design) .* report$|^## Report metadata$|^## Sanitized stall report$|^## Validated failure-detail log$|^## Run-log pointer$' "$comment_file"; then
-        echo "file-failure-report-cross-repo.sh: tier-b comment contains raw report body section" >"$err"
-        return 0
-    fi
+resolve_tier_b_sensitive_corpus_file() {
+    local body_file=$1
     local body_dir
     body_dir=$(dirname "$body_file")
-    [ -n "$validate_tmpdir" ] || validate_tmpdir="$body_dir"
-    [ -n "${sensitive_corpus_file:-}" ] || sensitive_corpus_file="$body_dir/stall-recovery-sensitive-corpus.env"
-    case "$(basename "${sensitive_corpus_file:-}")" in
+    if [ -z "${sensitive_corpus_file:-}" ]; then
+        case "$(basename "${body_file:-}")" in
+            design-failure-*)
+                sensitive_corpus_file="$body_dir/design-failure-sensitive-corpus.env"
+                ;;
+            *)
+                sensitive_corpus_file="$body_dir/stall-recovery-sensitive-corpus.env"
+                ;;
+        esac
+    fi
+}
+
+tier_b_profile_args_for_files() {
+    local body_file=$1 corpus_file=$2
+    TIER_B_PROFILE_ARGS=()
+    case "$(basename "${corpus_file:-}")" in
         design-failure-*)
-            _tier_b_profile_args=(--profile generic --artifact-prefix design-failure)
+            TIER_B_PROFILE_ARGS=(--profile generic --artifact-prefix design-failure)
             ;;
     esac
     case "$(basename "${body_file:-}")" in
         design-failure-*)
-            _tier_b_profile_args=(--profile generic --artifact-prefix design-failure)
+            TIER_B_PROFILE_ARGS=(--profile generic --artifact-prefix design-failure)
             ;;
     esac
+}
+
+reject_tier_b_public_file_if_unsafe() {
+    local body_file=$1 candidate_file=$2 err=$3 validate_tmpdir=${4:-}
+    local body_dir corpus_copy
+    body_dir=$(dirname "$body_file")
+    [ -n "$validate_tmpdir" ] || validate_tmpdir="$body_dir"
+    resolve_tier_b_sensitive_corpus_file "$body_file"
+    tier_b_profile_args_for_files "$body_file" "${sensitive_corpus_file:-}"
     if [ ! -x "$STALL_REPORT_SCRIPT" ]; then
-        echo "file-failure-report-cross-repo.sh: tier-b comment validator unavailable" >"$err"
+        echo "file-failure-report-cross-repo.sh: tier-b public-file validator unavailable" >"$err"
         return 0
     fi
     if [ ! -f "$sensitive_corpus_file" ] || [ -L "$sensitive_corpus_file" ] || [ ! -r "$sensitive_corpus_file" ]; then
         echo "file-failure-report-cross-repo.sh: tier-b sensitive corpus unavailable" >"$err"
         return 0
     fi
-    local corpus_copy
     corpus_copy="$validate_tmpdir/$(basename "$sensitive_corpus_file")"
     if [ "$sensitive_corpus_file" != "$corpus_copy" ]; then
         cp "$sensitive_corpus_file" "$corpus_copy" 2>/dev/null || {
@@ -134,21 +150,30 @@ reject_tier_b_comment_if_unsafe() {
             return 0
         }
     fi
-    if [ "${#_tier_b_profile_args[@]}" -gt 0 ]; then
+    if [ "${#TIER_B_PROFILE_ARGS[@]}" -gt 0 ]; then
         if ! "$STALL_REPORT_SCRIPT" validate-tier-b-public-file \
-            "${_tier_b_profile_args[@]}" \
+            "${TIER_B_PROFILE_ARGS[@]}" \
             --implement-tmpdir "$validate_tmpdir" \
-            --candidate-file "$comment_file" \
+            --candidate-file "$candidate_file" \
             --sensitive-corpus-file "$corpus_copy" >/dev/null 2>"$err"; then
             return 0
         fi
     elif ! "$STALL_REPORT_SCRIPT" validate-tier-b-public-file \
         --implement-tmpdir "$validate_tmpdir" \
-        --candidate-file "$comment_file" \
+        --candidate-file "$candidate_file" \
         --sensitive-corpus-file "$corpus_copy" >/dev/null 2>"$err"; then
         return 0
     fi
     return 1
+}
+
+reject_tier_b_comment_if_unsafe() {
+    local body_file=$1 comment_file=$2 err=$3 validate_tmpdir=${4:-}
+    if grep -Eq '<!-- larch-stall:signature=|^### \[Bug\] /(implement|design)|^## /(implement|design) .* report$|^## Report metadata$|^## Sanitized stall report$|^## Validated failure-detail log$|^## Run-log pointer$' "$comment_file"; then
+        echo "file-failure-report-cross-repo.sh: tier-b comment contains raw report body section" >"$err"
+        return 0
+    fi
+    reject_tier_b_public_file_if_unsafe "$body_file" "$comment_file" "$err" "$validate_tmpdir"
 }
 
 repo=""
@@ -274,6 +299,15 @@ fi
 if [ "$dedup_only" = true ]; then
     emit_kv FILE_FAILURE_REPORT_STATUS no-match
     exit 0
+fi
+
+if [ "$publication_tier" = "tier-b" ]; then
+    create_validate_err="$tmpdir/create-validate.err"
+    if reject_tier_b_public_file_if_unsafe "$body_file" "$body_file" "$create_validate_err" "$(dirname "$body_file")"; then
+        redact_stderr_file "$create_validate_err"
+        status_fallback unsafe-tier-b-body
+        exit 0
+    fi
 fi
 
 create_out="$tmpdir/create.out"

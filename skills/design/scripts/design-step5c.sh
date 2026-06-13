@@ -134,11 +134,13 @@ design_bg_wait_marker_start design-step5c || true
      [[ -n "${DESIGN_TMPDIR:-}" && -d "$DESIGN_TMPDIR" ]] || return 0
      design_require_plugin_root
      local stage_helper="$CLAUDE_PLUGIN_ROOT/skills/design/scripts/design-stage-terminal-state.sh"
+     local design_tmpdir_canon detail_log
+     design_tmpdir_canon=$(cd "$DESIGN_TMPDIR" && pwd -P)
+     detail_log="$design_tmpdir_canon/design-publish-tail.failure.log"
      [[ -x "$stage_helper" ]] || return 0
-     local detail_log="$DESIGN_TMPDIR/design-publish-tail.failure.log"
      [ -f "$detail_log" ] || printf 'design-publish.sh failed (exit %s)\n' "$rc" >"$detail_log"
      set +e
-     "$stage_helper" --design-tmpdir "$DESIGN_TMPDIR" \
+     "$stage_helper" --design-tmpdir "$design_tmpdir_canon" \
        --outcome failed-publish-tail \
        --step publish \
        --phase publish \

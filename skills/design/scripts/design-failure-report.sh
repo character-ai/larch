@@ -310,11 +310,6 @@ if [ -e "$ESCALATION_SENTINEL" ]; then
     emit_skip escalation-sentinel-present
     exit 0
 fi
-if [ -e "$OPERATOR_SENTINEL" ]; then
-    [ -s "$OPERATOR_CHAT" ] || write_operator_action_audit operator-sentinel-present
-    emit_skip operator-action
-    exit 0
-fi
 
 case "$OUTCOME" in
     cancelled-*)
@@ -383,6 +378,12 @@ case "$OUTCOME" in
     approved|approved-partition) ;;
     *) emit_skip outcome-not-success-allowlist; exit 0 ;;
 esac
+
+if [ -e "$OPERATOR_SENTINEL" ]; then
+    [ -s "$OPERATOR_CHAT" ] || write_operator_action_audit operator-sentinel-present
+    emit_skip operator-action
+    exit 0
+fi
 
 if ! escalation_evidence_present; then
     emit_skip no-escalation-evidence

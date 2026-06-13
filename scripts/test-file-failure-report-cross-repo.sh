@@ -239,6 +239,13 @@ GH_STUB_CASE=tier-b-sensitive; export GH_STUB_CASE; run_script "$dir" "$dir/out-
 assert_eq fallback-print-required "$(kv FILE_FAILURE_REPORT_STATUS "$dir/out-design-missing")" "design-prefix: missing explicit corpus falls back"
 assert_eq invalid-sensitive-corpus-file "$(kv FILE_FAILURE_REPORT_FALLBACK_REASON "$dir/out-design-missing")" "design-prefix: missing explicit corpus reason"
 
+dir=$(make_case tier-b-create-sensitive)
+printf 'client-secret-token\n' >>"$dir/body.md"
+GH_STUB_CASE=create; export GH_STUB_CASE; run_script "$dir" "$dir/out-create-sensitive" --repo owner/repo --body-file "$dir/body.md" --title 'Report title' --publication-tier tier-b
+assert_eq fallback-print-required "$(kv FILE_FAILURE_REPORT_STATUS "$dir/out-create-sensitive")" "tier-b: create path rejects sensitive body"
+assert_eq unsafe-tier-b-body "$(kv FILE_FAILURE_REPORT_FALLBACK_REASON "$dir/out-create-sensitive")" "tier-b: create path reports unsafe body"
+not_contains "$dir/gh.log" 'issue create' "tier-b: sensitive create skips gh issue create"
+
 if [ "$FAIL" -ne 0 ]; then
     echo "FAILURES: $FAIL"
     exit 1

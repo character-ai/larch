@@ -619,7 +619,7 @@ assert_behavioral_harness_pins() {
 
 
 assert_design_failure_reporting_contract() {
-  contains "$SKILL_MD" 'invoke `design-stage-terminal-state.sh` before the hard exit, stage `failed-clarify`' 'Step 0b clarify hard fail must stage failed-clarify'
+  contains "$SKILL_MD" 'design-step0-clarify-hard-halt.sh' 'Step 0b clarify hard fail must stage failed-clarify'
   contains "$SKILL_MD" 'Clarify operator cancel remains `operator-action` or `cancelled-clarify`' 'Step 0b clarify cancel must remain operator action or cancelled-clarify'
   contains "$SKILL_MD" 'export `SUMMARY_OUTCOME` to one of `cancelled-already-planned` | `cancelled-clarify` | `cancelled-decompose` | `cancelled-outline` | `cancelled-plan-size` | `cancelled-sprawl` | `cancelled-title-filter` | `approved` | `approved-partition` | `failed-plan-write` | `failed-publish` | `failed-clarify` | `failed-postplan` | `failed-judge-panel` | `failed-publish-tail`' 'SUMMARY_OUTCOME enumeration must include design failure outcomes'
   contains "$SKILL_MD" 'On the second `PANEL_STATUS=panel-failed`, Split-path stages `failed-judge-panel` through `design-stage-terminal-state.sh`' 'Step 2b.5 second panel-failed must stage failed-judge-panel'
