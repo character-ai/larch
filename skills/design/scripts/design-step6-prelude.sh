@@ -86,6 +86,10 @@ design_source_env_optional() {
 }
 
 design_source_env_optional
+if [[ ! -f "$DESIGN_TMPDIR/.design-step5c-status.env" && -n "${DESIGN_TMPDIR:-}" && -f "$DESIGN_TMPDIR/.bg-wait-active" ]]; then
+  printf '%s\n' "**⚠ Step 6 prelude: design-step5c.sh appears still in-flight (.bg-wait-active present); do not proceed until <task-notification> fires.**" >&2
+  exit 1
+fi
 if [[ ! -f "$DESIGN_TMPDIR/.design-step5c-status.env" ]]; then
   printf '%s\n' "**ℹ Step 6 prelude: missing Step 5c status sidecar; skipping step-5d write.**"
   printf 'STEP6_PRELUDE_STATUS=skipped\n'

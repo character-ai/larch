@@ -90,9 +90,9 @@ test-harnesses-3: test-review-and-fix-dispatch test-check-main-sync test-lib-qui
 
 test-harnesses-4: test-check-reviewers test-step0b-router-flag-recovery test-finalize-sanity-check test-step3-orchestrator-fence test-reviewer-prune test-compose-plan-goals-test test-read-result-env test-run-step1-plan-log test-cache-key-discipline test-design-step3-state test-slack-issue-announce test-anti-improvised-wakeup
 
-test-harnesses-5: test-harness-shards-coverage test-findings-classification test-token-vendor-scrapers test-design-step5c test-larch-log test-implement-bootstrap test-post-tracking-issue test-blocker test-ci-rerun-failed test-implement-cleanup-script test-implement-anti-halt test-implement-relevant-checks-anti-halt
+test-harnesses-5: test-harness-shards-coverage test-findings-classification test-token-vendor-scrapers test-larch-log test-implement-bootstrap test-post-tracking-issue test-blocker test-ci-rerun-failed test-implement-cleanup-script test-implement-anti-halt test-implement-relevant-checks-anti-halt
 
-test-harnesses-6: test-write-final-report test-auto-fix-plan-commands test-emit-design-plan-preview test-run-negotiation-round test-review-and-fix-parsers test-scout-dynamic-archetypes test-parse-design-argv test-write-rejected-findings test-rebase-push-keep-on-conflict test-lib-phase-driver test-parse-drafter-output test-research-angle-prompts test-alias-structure
+test-harnesses-6: test-write-final-report test-auto-fix-plan-commands test-emit-design-plan-preview test-design-step5c test-design-step6 test-run-negotiation-round test-review-and-fix-parsers test-scout-dynamic-archetypes test-parse-design-argv test-write-rejected-findings test-rebase-push-keep-on-conflict test-lib-phase-driver test-parse-drafter-output test-research-angle-prompts test-alias-structure
 
 test-harnesses-7: test-design-failure-report test-dispatch-code-voters-regressions-r1-r2 test-oos-disposition-gate test-gate-b-apply-mode test-design-step3-review test-review-implement-step5-loop-timing test-flush-execution-issues test-scrub-log-secrets test-lint-bash32 test-references-headers test-rebase-push-fork-mode test-lib-prune-decision
 
@@ -1147,7 +1147,7 @@ setup:
 test-check-contains-pins:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-check-contains-pins.sh
 
-.PHONY: test-design-stage-terminal-state test-design-failure-report test-design-step3-review test-design-step5c test-design-step-validator-autofix
+.PHONY: test-design-stage-terminal-state test-design-failure-report test-design-step3-review test-design-step5c test-design-step6 test-design-step-validator-autofix
 
 test-design-stage-terminal-state:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-stage-terminal-state.sh
@@ -1160,6 +1160,9 @@ test-design-step3-review:
 
 test-design-step5c:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-step5c.sh
+
+test-design-step6:
+	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-step6.sh
 
 test-design-step-validator-autofix:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-step-validator-autofix.sh
