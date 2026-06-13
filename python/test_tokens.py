@@ -348,6 +348,52 @@ def test_record_vendor_from_sidecar_noops_for_absent_empty_malformed_and_zero(tm
     assert not ledger.exists()
 
 
+def test_record_vendor_from_sidecar_warns_for_unsupported_tool(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.delenv("IMPLEMENT_TMPDIR", raising=False)
+    monkeypatch.delenv("RESEARCH_TMPDIR", raising=False)
+    monkeypatch.delenv("LARCH_TOKEN_LEDGER", raising=False)
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
+    monkeypatch.setenv("LARCH_TOKEN_SESSION_ID", "unsupported-tool")
+    sidecar = tmp_path / "gemini.token-record"
+    _ = sidecar.write_text("TOOL=gemini\nINPUT=10\nOUTPUT=2\nTOTAL=12\nRAW=gemini_lane\n", encoding="utf-8")
+
+    tokens.record_vendor_from_sidecar(input_path=sidecar)
+
+    ledger = tokens.resolve_token_ledger_path()
+    assert ledger is not None
+    assert not ledger.exists()
+    err = capsys.readouterr().err
+    assert "unsupported TOOL=unknown" in err
+    assert "raw TOOL=gemini" in err
+    assert str(sidecar) in err
+
+
+def test_record_vendor_from_sidecar_uses_research_tmpdir_ledger(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("IMPLEMENT_TMPDIR", raising=False)
+    monkeypatch.delenv("DESIGN_TMPDIR", raising=False)
+    monkeypatch.delenv("LARCH_TOKEN_LEDGER", raising=False)
+    monkeypatch.delenv("LARCH_TOKEN_SESSION_ID", raising=False)
+    research_tmpdir = tmp_path / "research"
+    research_tmpdir.mkdir()
+    _ = (research_tmpdir / "session-id").write_text("research-session", encoding="utf-8")
+    monkeypatch.setenv("RESEARCH_TMPDIR", str(research_tmpdir))
+    sidecar = tmp_path / "codex.token-record"
+    _ = sidecar.write_text("TOOL=codex\nINPUT=10\nOUTPUT=2\nTOTAL=12\nRAW=codex_research\n", encoding="utf-8")
+
+    tokens.record_vendor_from_sidecar(input_path=sidecar)
+
+    ledger = tokens.resolve_token_ledger_path()
+    assert ledger is not None
+    assert ledger.parent == research_tmpdir
+    rows = [json.loads(line) for line in ledger.read_text(encoding="utf-8").splitlines()]
+    assert rows[0]["vendor"] == "codex"
+    assert rows[0]["raw"] == "codex_research"
+
+
 def test_record_vendor_from_sidecar_writes_active_ledger_with_model(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("IMPLEMENT_TMPDIR", raising=False)
     monkeypatch.delenv("LARCH_TOKEN_LEDGER", raising=False)

@@ -10,6 +10,7 @@ from __future__ import annotations
 import contextlib
 import os
 import re
+import sys
 import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -840,12 +841,58 @@ def _build_cursor_argv(
     ]
 
 
+_TOKEN_LEDGER_ENV_KEYS: Final = (
+    "LARCH_TOKEN_LEDGER",
+    "LARCH_TOKEN_SESSION_ID",
+    "DESIGN_TMPDIR",
+    "RESEARCH_TMPDIR",
+    "SESSION_ENV_PATH",
+)
+
+
+def _lint_fix_token_env(implement_tmpdir: Path) -> dict[str, str]:
+    env = dict(os.environ)
+    for key in _TOKEN_LEDGER_ENV_KEYS:
+        _ = env.pop(key, None)
+    env["IMPLEMENT_TMPDIR"] = str(implement_tmpdir)
+    return env
+
+
+def _emit_token_command_stderr(*, purpose: str, result: CommandResult) -> None:
+    stderr = result.stderr.rstrip()
+    if stderr:
+        print(f"{purpose}: {stderr}", file=sys.stderr)
+
+
+def _warn_token_command_failure(*, purpose: str, result: CommandResult) -> None:
+    stderr = result.stderr.strip()
+    detail = f": {stderr}" if stderr else ""
+    print(f"WARNING: {purpose} failed with exit {result.returncode}{detail}", file=sys.stderr)
+
+
+def _run_token_command(
+    runner: Runner,
+    argv: list[str],
+    *,
+    purpose: str,
+    cwd: str,
+    env: dict[str, str] | None = None,
+) -> CommandResult:
+    result = runner.run(argv, cwd=cwd, env=env)
+    if result.returncode != 0:
+        _warn_token_command_failure(purpose=purpose, result=result)
+    else:
+        _emit_token_command_stderr(purpose=purpose, result=result)
+    return result
+
+
 def _run_codex(
     runner: Runner,
     *,
     scripts_dir: Path,
     agent_cli: Path,
     run_dir: Path,
+    implement_tmpdir: Path,
     repo_root: str,
     prompt_body: str,
 ) -> int:
@@ -871,6 +918,37 @@ def _run_codex(
     launcher_exit = _parse_launcher_exit(result.stdout)
     if launcher_exit is None:
         launcher_exit = _read_done_exit(codex_log) or result.returncode
+    token_record = codex_log.with_suffix(codex_log.suffix + ".token-record")
+    if token_record.is_file() and token_record.stat().st_size > 0:
+        _ = _run_token_command(
+            runner,
+            [
+                "python3",
+                str(agent_cli),
+                "token",
+                "append-record",
+                "--input",
+                str(token_record),
+                "--tmpdir",
+                str(implement_tmpdir),
+            ],
+            purpose="token append-record",
+            cwd=repo_root,
+        )
+        _ = _run_token_command(
+            runner,
+            [
+                "python3",
+                str(agent_cli),
+                "token",
+                "record-vendor-sidecar",
+                "--input",
+                str(token_record),
+            ],
+            purpose="token record-vendor-sidecar",
+            cwd=repo_root,
+            env=_lint_fix_token_env(implement_tmpdir),
+        )
     if launcher_exit != 0 and codex_sidecar.is_file():
         _write_failed_agent_stderr_tail(
             runner,
@@ -879,25 +957,6 @@ def _run_codex(
             output=codex_log,
             cwd=repo_root,
         )
-    token_record = codex_log.with_suffix(codex_log.suffix + ".token-record")
-    if launcher_exit == 0 and token_record.is_file():
-        values = _read_token_record(token_record)
-        if values:
-            _ = runner.run(
-                [
-                    "python3",
-                    str(scripts_dir.parent / "python" / "cli.py"),
-                    "token",
-                    "record-vendor",
-                    "codex",
-                    f"input={values.get('INPUT', '0')}",
-                    f"output={values.get('OUTPUT', '0')}",
-                    f"cache_read={values.get('CACHE_READ', '0')}",
-                    f"total={values.get('TOTAL', '0')}",
-                    f"raw={values.get('RAW', 'codex_lint_fix')}",
-                ],
-                cwd=repo_root,
-            )
     return launcher_exit
 
 
@@ -915,16 +974,6 @@ def _read_done_exit(output: Path) -> int:
         return 0
     raw = done.read_text(encoding="utf-8", errors="replace").strip()
     return int(raw) if raw.isdigit() else 0
-
-
-def _read_token_record(path: Path) -> dict[str, str]:
-    values: dict[str, str] = {}
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-        if "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        values[key] = value
-    return values
 
 
 def _write_failed_agent_stderr_tail(
@@ -1127,7 +1176,7 @@ def run_lint_fix(
             coder_tool=None,
         )
     if allowed_tmpdir is not None:
-        allowed_root = Path(allowed_tmpdir)
+        allowed_root = Path(allowed_tmpdir).resolve()
         expected_loop = allowed_root / "lint-fix-loop"
         if Path(run_parent).resolve() != expected_loop.resolve():
             return FixOutcome(
@@ -1225,6 +1274,7 @@ def run_lint_fix(
             scripts_dir=scripts,
             agent_cli=agent_cli,
             run_dir=run_dir,
+            implement_tmpdir=allowed_root,
             repo_root=repo_root,
             prompt_body=prompt_body,
         )

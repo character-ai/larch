@@ -323,7 +323,7 @@ def resolve_session_id(*, env: Mapping[str, str] | None = None) -> str:
     env_map = os.environ if env is None else env
     if env_map.get("LARCH_TOKEN_SESSION_ID"):
         return str(env_map["LARCH_TOKEN_SESSION_ID"])
-    for key in ("IMPLEMENT_TMPDIR", "DESIGN_TMPDIR"):
+    for key in ("IMPLEMENT_TMPDIR", "DESIGN_TMPDIR", "RESEARCH_TMPDIR"):
         root = env_map.get(key, "")
         candidate = Path(root) / "session-id" if root else None
         if candidate and candidate.is_file():
@@ -345,7 +345,7 @@ def resolve_token_ledger_path(
         except ValueError:
             pass
     slug = _sha256_hex(resolve_session_id(env=env_map))
-    for key in ("IMPLEMENT_TMPDIR", "DESIGN_TMPDIR"):
+    for key in ("IMPLEMENT_TMPDIR", "DESIGN_TMPDIR", "RESEARCH_TMPDIR"):
         root = _canonical_dir(env_map.get(key, ""))
         if root is not None:
             return root / f"larch-tokens-{slug}.jsonl"
@@ -948,6 +948,16 @@ def append_token_record_from_sidecar(*, input_path: Path | None, tmpdir: Path) -
         _ = handle.write(json.dumps(payload, separators=(",", ":")) + "\n")
 
 
+def _raw_tool_from_sidecar(input_path: Path | None) -> str:
+    if input_path is None or not input_path.is_file():
+        return ""
+    for line in input_path.read_text(encoding="utf-8", errors="replace").splitlines():
+        key, sep, value = line.partition("=")
+        if sep and key == "TOOL":
+            return value
+    return ""
+
+
 def record_vendor_from_sidecar(*, input_path: Path | None, ledger: str | None = None) -> None:
     payload = parse_token_record_sidecar(input_path)
     if payload is None:
@@ -956,6 +966,12 @@ def record_vendor_from_sidecar(*, input_path: Path | None, ledger: str | None = 
     if vendor == "claude":
         vendor = "claude_sub"
     if vendor not in {"codex", "cursor", "claude_sub"}:
+        raw_tool = _raw_tool_from_sidecar(input_path)
+        raw_note = f" (raw TOOL={raw_tool})" if raw_tool and raw_tool != vendor else ""
+        print(
+            f"token record-vendor-sidecar: unsupported TOOL={vendor}{raw_note}; active-ledger append skipped for {input_path}",
+            file=sys.stderr,
+        )
         return
     ledger_path = resolve_token_ledger_path(ledger=ledger)
     if ledger_path is None:

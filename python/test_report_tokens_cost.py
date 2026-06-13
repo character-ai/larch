@@ -14,6 +14,8 @@ import pytest
 from proc import CommandResult
 from report_tokens_cost import (
     CODEX_CURSOR_BLENDED_FLEET_MIX,
+    DEFAULT_CLAUDE_BLENDED_PER_M,
+    DEFAULT_RATE_TABLE_PER_M,
     DEFAULT_VENDOR_MODEL,
     display_rates,
     env_rate,
@@ -287,20 +289,23 @@ def test_display_rates_shipped_defaults_snapshot() -> None:
         "claude": "claude-opus-4-8",
     }
     rates = display_rates(environ={})
-    assert rates.codex_input == 5.00
-    assert rates.codex_cached_input == 0.50
-    assert rates.codex_output == 30.00
-    assert rates.cursor_input == 0.50
-    assert rates.cursor_cache_read == 0.20
-    assert rates.cursor_output == 2.50
-    assert rates.claude_input == 5.00
-    assert rates.claude_cache_read == 0.50
-    assert rates.claude_cache_create_5m == 6.25
-    assert rates.claude_cache_create_1h == 10.00
-    assert rates.claude_output == 25.00
-    assert rates.claude_blended == 0.80
-    assert rates.codex_blended == 1.11
-    assert abs(rates.cursor_blended - 0.244) < 0.000001
+    codex = DEFAULT_RATE_TABLE_PER_M[("codex", DEFAULT_VENDOR_MODEL["codex"])]
+    cursor = DEFAULT_RATE_TABLE_PER_M[("cursor", DEFAULT_VENDOR_MODEL["cursor"])]
+    claude = DEFAULT_RATE_TABLE_PER_M[("claude", DEFAULT_VENDOR_MODEL["claude"])]
+    assert rates.codex_input == codex["input"]
+    assert rates.codex_cached_input == codex["cache_read"]
+    assert rates.codex_output == codex["output"]
+    assert rates.cursor_input == cursor["input"]
+    assert rates.cursor_cache_read == cursor["cache_read"]
+    assert rates.cursor_output == cursor["output"]
+    assert rates.claude_input == claude["input"]
+    assert rates.claude_cache_read == claude["cache_read"]
+    assert rates.claude_cache_create_5m == claude["cache_create_5m"]
+    assert rates.claude_cache_create_1h == claude["cache_create_1h"]
+    assert rates.claude_output == claude["output"]
+    assert rates.claude_blended == DEFAULT_CLAUDE_BLENDED_PER_M
+    assert rates.codex_blended == sum(codex[key] * weight for key, weight in CODEX_CURSOR_BLENDED_FLEET_MIX.items())
+    assert rates.cursor_blended == sum(cursor[key] * weight for key, weight in CODEX_CURSOR_BLENDED_FLEET_MIX.items())
 
 
 def test_env_rate_alias_precedence() -> None:

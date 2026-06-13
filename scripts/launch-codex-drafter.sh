@@ -205,7 +205,9 @@ set -e
 LAUNCHER_EXIT=$(awk -F= '$1=="LAUNCHER_EXIT"{print $2; exit}' "$_launcher_stdout" 2>/dev/null || true)
 [[ -n "$LAUNCHER_EXIT" ]] || LAUNCHER_EXIT=1
 if [[ -s "${_codex_raw}.token-record" ]]; then
-    cp -p "${_codex_raw}.token-record" "${OUTPUT_CANON}.token-record" 2>/dev/null || true
+    if ! cp -p "${_codex_raw}.token-record" "${OUTPUT_CANON}.token-record"; then
+        larch_err "launch-codex-drafter.sh: WARNING: failed to copy token record from ${_codex_raw}.token-record to ${OUTPUT_CANON}.token-record"
+    fi
 fi
 rm -f "$_launcher_stdout"
 
