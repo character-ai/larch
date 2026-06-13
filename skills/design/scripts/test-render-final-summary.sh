@@ -2,6 +2,9 @@
 # test-render-final-summary.sh — offline harness for skills/design/scripts/render-final-summary.sh
 set -euo pipefail
 export LARCH_QUIET_DISABLE=1
+unset IMPLEMENT_TMPDIR REVIEW_TMPDIR DESIGN_TMPDIR RESEARCH_TMPDIR \
+    LARCH_QUIET_BREADCRUMB_FD LARCH_QUIET_PID LARCH_QUIET_ACTIVE \
+    LARCH_QUIET_LOG_FILE LARCH_QUIET_LOG LARCH_DONE_OWNER_PID 2>/dev/null || true
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
 SUBJECT="$ROOT/skills/design/scripts/render-final-summary.sh"
