@@ -80,6 +80,47 @@ def test_gather_context_help_routes_through_review_cli() -> None:
     assert "Usage: gather-context.sh" in result.stderr
 
 
+def test_gather_context_description_mode_scope_and_stdout_cap(tmp_path: Path) -> None:
+    fixture = tmp_path / "fixture"
+    fixture.mkdir()
+    scripts_dir = fixture / "skills" / "review" / "scripts"
+    scripts_dir.mkdir(parents=True)
+    docs_dir = fixture / "docs"
+    docs_dir.mkdir()
+    _ = (fixture / "skills" / "review" / "SKILL.md").write_text("", encoding="utf-8")
+    _ = (scripts_dir / "gather-context.sh").write_text("", encoding="utf-8")
+    _ = (docs_dir / "review-agents.md").write_text("", encoding="utf-8")
+    _ = (fixture / "README.md").write_text("", encoding="utf-8")
+    _ = subprocess.run([rts.GIT, "init", "-q"], cwd=fixture, check=True)
+    _ = subprocess.run([rts.GIT, "add", "."], cwd=fixture, check=True)
+    _ = subprocess.run(
+        [rts.GIT, "-c", "user.name=test", "-c", "user.email=test@test.com", "commit", "-qm", "fixture"],
+        cwd=fixture,
+        check=True,
+    )
+    outdir = tmp_path / "gather-out"
+    outdir.mkdir()
+    result = run_review(
+        "gather-context",
+        "--mode",
+        "description",
+        "--description-text",
+        "review skill",
+        "--output-dir",
+        str(outdir),
+        env={"CLAUDE_PLUGIN_ROOT": str(ROOT)},
+        cwd=fixture,
+    )
+    assert result.returncode == 0, result.stderr
+    assert len(result.stdout) <= 2048
+    assert "MODE=description" in result.stdout
+    scope_file = rts.kv_get(result.stdout, "FILE_LIST_FILE")
+    assert scope_file is not None
+    scope_path = Path(scope_file)
+    assert scope_path.is_file() and scope_path.stat().st_size > 0
+    assert "skills/review/SKILL.md" in scope_path.read_text(encoding="utf-8")
+
+
 def test_gather_context_diff_mode_relays_branch_kvs_and_trailing_contract(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir(parents=True)

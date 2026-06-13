@@ -157,3 +157,32 @@ def test_compose_findings_redacts_token_in_prose_body(tmp_path: Path) -> None:
     raw = output.read_text(encoding="utf-8")
     assert "sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD" not in raw
     assert "<REDACTED-TOKEN>" in raw
+
+
+def test_compose_findings_body_severity_focus_area_before_prose_truncation(tmp_path: Path) -> None:
+    impl = tmp_path / "trunc-impl"
+    round_dir = impl / "round-1"
+    round_dir.mkdir(parents=True)
+    pad = "x" * 2100
+    _ = (round_dir / "accepted-findings.md").write_text(
+        f"### FINDING_TRUNC: late markers\n"
+        f"- **Concern**: {pad}\n"
+        "- **Severity**: important\n"
+        "- **Focus area**: security\n",
+        encoding="utf-8",
+    )
+    output = tmp_path / "trunc.jsonl"
+    result = run_review(
+        "compose-findings",
+        "--implement-tmpdir",
+        str(impl),
+        "--issue",
+        "2499",
+        "--output",
+        str(output),
+    )
+    assert result.returncode == 0, result.stderr
+    assert _record_field_by_id(output, "FINDING_TRUNC", "body_severity") == "important"
+    assert _record_field_by_id(output, "FINDING_TRUNC", "focus_area") == "security"
+    prose = _record_field_by_id(output, "FINDING_TRUNC", "prose_body")
+    assert len(prose) <= 2000
