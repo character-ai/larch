@@ -116,10 +116,10 @@ def _read_rows(path: Path) -> list[GanttRow]:
 
 def gantt_render_main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cli.py gantt render")
-    parser.add_argument("--window-start-s", type=int, required=True)
-    parser.add_argument("--window-end-s", type=int, required=True)
-    parser.add_argument("--rows-tsv", required=True)
-    parser.add_argument("--width", type=int, default=DEFAULT_WIDTH)
+    _ = parser.add_argument("--window-start-s", type=int, required=True)
+    _ = parser.add_argument("--window-end-s", type=int, required=True)
+    _ = parser.add_argument("--rows-tsv", required=True)
+    _ = parser.add_argument("--width", type=int, default=DEFAULT_WIDTH)
     args = parser.parse_args(argv)
     if args.width < 1:
         print("ERROR: --width must be positive", file=sys.stderr)

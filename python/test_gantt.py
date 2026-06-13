@@ -106,7 +106,7 @@ def test_labels_are_not_truncated_or_sanitized() -> None:
 
 def test_cli_matches_direct_render_and_reports_malformed_rows(tmp_path: Path) -> None:
     rows = tmp_path / "rows.tsv"
-    rows.write_text("a\t100\t120\n", encoding="utf-8")
+    _ = rows.write_text("a\t100\t120\n", encoding="utf-8")
     expected = render_gantt(100, 140, [GanttRow("a", 100, 120)], width=12) + "\n"
     result = subprocess.run(
         [
@@ -130,7 +130,7 @@ def test_cli_matches_direct_render_and_reports_malformed_rows(tmp_path: Path) ->
     assert result.returncode == 0
     assert result.stdout == expected
     bad = tmp_path / "bad.tsv"
-    bad.write_text("a\tbad\t120\n", encoding="utf-8")
+    _ = bad.write_text("a\tbad\t120\n", encoding="utf-8")
     bad_result = subprocess.run(
         [
             sys.executable,
