@@ -462,16 +462,86 @@ def test_merge_pr_review_required_after_admin_failed(
     monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", _mock_checks_pass)
     monkeypatch.setattr(git_module, "try_rev_parse", _mock_rev_abc)
     monkeypatch.setattr(merge_module, "_version_race_gate", _mock_version_gate_none)
+    review_decision_calls = {"count": 0}
+
+    def fake_review_decision(*_a: object, **_k: object) -> str:
+        review_decision_calls["count"] += 1
+        return "REVIEW_REQUIRED"
+
     monkeypatch.setattr(
         merge_module.gh,
         "pr_review_decision",
-        lambda *_a, **_k: "REVIEW_REQUIRED",
+        fake_review_decision,
     )
     monkeypatch.setattr(run_logs, "flush_logs_post", _mock_refresh_skip_ok)
     ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state))
     out = merge_module.merge_pr(runner, ctx)
     assert out.result == config.MERGE_RESULT_REVIEW_REQUIRED
     assert "requires approving review" in out.error
+    assert review_decision_calls["count"] == 1
+
+
+def test_merge_pr_conflict_signal_after_admin_failed_advances_main(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    admin_diag = "PR requires approving review; GraphQL: Pull Request has merge conflicts"
+    plain_diag = (
+        "X Pull request character-ai/larch#4247 is not mergeable: "
+        "the merge commit cannot be cleanly created."
+    )
+    runner = RecordingRunner(
+        responses=[
+            *_open_pr_responses(),
+            CommandResult(("gh", "pr", "merge"), 1, "", admin_diag, 0.01),
+            CommandResult(("gh", "pr", "merge"), 1, "", plain_diag, 0.01),
+        ],
+    )
+    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", _mock_checks_pass)
+    monkeypatch.setattr(git_module, "try_rev_parse", _mock_rev_abc)
+    monkeypatch.setattr(merge_module, "_version_race_gate", _mock_version_gate_none)
+    monkeypatch.setattr(
+        merge_module.gh,
+        "pr_review_decision",
+        lambda *_a, **_k: pytest.fail("review decision should not be read"),
+    )
+    monkeypatch.setattr(run_logs, "flush_logs_post", _mock_refresh_skip_ok)
+    ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state))
+    out = merge_module.merge_pr(runner, ctx)
+    assert out.result == config.MERGE_RESULT_MAIN_ADVANCED
+    assert "Pull Request has merge conflicts" in out.error
+    assert "not mergeable" in out.error
+    assert "cannot be cleanly created" in out.error
+
+
+def test_merge_pr_not_mergeable_admin_failed_advances_main(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    runner = RecordingRunner(
+        responses=[
+            *_open_pr_responses(),
+            CommandResult(("gh", "pr", "merge"), 1, "", "admin fail", 0.01),
+            CommandResult(("gh", "pr", "merge"), 1, "", "not mergeable", 0.01),
+        ],
+    )
+    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", _mock_checks_pass)
+    monkeypatch.setattr(git_module, "try_rev_parse", _mock_rev_abc)
+    monkeypatch.setattr(merge_module, "_version_race_gate", _mock_version_gate_none)
+    monkeypatch.setattr(
+        merge_module.gh,
+        "pr_review_decision",
+        lambda *_a, **_k: pytest.fail("review decision should not be read"),
+    )
+    monkeypatch.setattr(run_logs, "flush_logs_post", _mock_refresh_skip_ok)
+    ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state))
+    out = merge_module.merge_pr(runner, ctx)
+    assert out.result == config.MERGE_RESULT_MAIN_ADVANCED
+    assert "not mergeable" in out.error
 
 
 def test_merge_pr_runs_version_race_gate_before_admin_merge(
