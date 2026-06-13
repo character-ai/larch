@@ -5,13 +5,15 @@ import os
 import re
 import subprocess
 import sys
+from typing import TYPE_CHECKING
 from pathlib import Path
-
-import pytest
 
 import config
 import logging_util
 import review_pipeline
+
+if TYPE_CHECKING:
+    import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 CLI = ROOT / "python" / "cli.py"
@@ -409,7 +411,6 @@ printf 'PIPELINE_KV=relayed\\n'
         tmp_path,
         raising=False,
     )
-    script_in_legacy = tmp_path / "emit-kv.sh"
     captured: list[str] = []
 
     def fake_emit(line: str) -> None:
