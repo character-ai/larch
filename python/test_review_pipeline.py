@@ -715,7 +715,7 @@ def test_collect_findings_wait_timeout_redacts_stderr(tmp_path: Path) -> None:
         if not entry.is_file() or entry.name == "wait-for-reviewers.sh":
             continue
         shutil.copy2(entry, scripts / entry.name)
-    os.symlink(ROOT / "python", harness / "python")
+    (harness / "python").symlink_to(ROOT / "python")
     _write_executable(
         scripts / "wait-for-reviewers.sh",
         """#!/usr/bin/env bash
@@ -764,7 +764,6 @@ def test_review_core_oos_snapshot_restore_zero_findings(tmp_path: Path) -> None:
     parent_accum = "# accumulated parent content\n"
     _ = (parent / "oos-accepted-review.md").write_text(parent_oos, encoding="utf-8")
     _ = (parent / "accumulated-oos.md").write_text(parent_accum, encoding="utf-8")
-    outdir = tmp_path / "zero-oos"
     result = _run_review_core(
         tmp_path,
         findings=0,
