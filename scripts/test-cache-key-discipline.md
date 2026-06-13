@@ -10,7 +10,7 @@
 - `$RANDOM`
 - per-session prompt path variables in implementer launcher `PROMPT` blocks
 - per-session diff/scope paths rendered by `python/cli.py render specialist`
-- review prompt construction delegated through `skills/review/scripts/dispatch-panel.sh` and launcher/render helpers
+- review prompt construction delegated through `python/review_pipeline.py` and launcher/render helpers
 
 **Scope**: External-tool prompt construction surfaces only. Runtime timing, logging, temp-file, and process-management shell code is intentionally out of scope unless it is inside a launcher `PROMPT` block or an audited prompt-bearing Markdown file.
 

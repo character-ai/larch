@@ -95,9 +95,9 @@ printf '0\n' > "$out.done"
 STUB
 chmod +x "$run_external_stub"
 
-# ── dispatch-panel.sh static source assertions ───────────────────────────────
+# ── review dispatch-panel prompt source assertions ───────────────────────────
 
-DISPATCH_PANEL="$REPO_ROOT/skills/review/scripts/dispatch-panel.sh"
+DISPATCH_PANEL="$REPO_ROOT/python/legacy_review_shell/dispatch-panel.sh"
 panel_out="$TMP/dispatch-panel.sh"
 cp "$DISPATCH_PANEL" "$panel_out"
 

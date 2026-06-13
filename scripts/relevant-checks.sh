@@ -412,6 +412,12 @@ run_direct_relevant_targets() {
                 maybe_append_py_lint_target
                 maybe_append_py_test_target
                 ;;
+            python/review_tally.py|python/test_review_tally.py)
+                maybe_append_py_lint_target
+                maybe_append_py_test_target
+                append_target_once test-emit-tally
+                append_target_once test-tally-code-votes
+                ;;
             python/*.py)
                 maybe_append_py_lint_target
                 maybe_append_py_test_target
@@ -425,12 +431,6 @@ run_direct_relevant_targets() {
             python/migrated-scripts.tsv)
                 append_target_once lint-retired-scripts
                 maybe_append_py_test_target
-                ;;
-            skills/review/scripts/emit-tally.sh|skills/review/scripts/emit-tally.md|skills/review/scripts/test-emit-tally.sh|skills/review/scripts/test-emit-tally.md)
-                append_target_once test-emit-tally
-                ;;
-            skills/review/scripts/tally-code-votes.sh|skills/review/scripts/tally-code-votes.md|skills/review/scripts/test-tally-code-votes.sh|skills/review/scripts/test-tally-code-votes.md)
-                append_target_once test-tally-code-votes
                 ;;
             skills/review-and-fix/scripts/review-and-fix.sh|skills/review-and-fix/scripts/review-and-fix.md|skills/review-and-fix/scripts/test-review-and-fix.sh|skills/review-and-fix/scripts/test-review-and-fix.md)
                 append_target_once test-review-and-fix

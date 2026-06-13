@@ -508,7 +508,7 @@ invoke_render() {
     if [ -n "$_rounds_root" ] && [ -d "$_rounds_root" ] && [ -r "$_rounds_root" ] && [ -x "$_rounds_root" ]; then
         local _rfj="$DESIGN_TMPDIR/review-findings-full.jsonl"
         rm -f "$_rfj" 2>/dev/null || true
-        if ! "$PLUGIN_ROOT/scripts/compose-review-findings.sh" \
+        if ! python3 "$PLUGIN_ROOT/python/cli.py" review compose-findings \
             --design-artifacts-dir "$DESIGN_TMPDIR" \
             --issue "${ISSUE:-0}" \
             --output "$_rfj" >/dev/null 2>/dev/null; then

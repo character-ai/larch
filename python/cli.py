@@ -134,6 +134,20 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("scope-anchor", "validate"): ("rendering", "scope_anchor_validate_main"),
     ("scope-anchor", "retally-handoff"): ("rendering", "scope_anchor_retally_handoff_main"),
     ("scope-anchor", "design-handoff"): ("rendering", "scope_anchor_design_handoff_main"),
+    # review panel_hard topology authority: specialists per vendor, Cursor + Codex.
+    ("review", "gather-context"): ("review_pipeline", "gather_context_main"),
+    ("review", "dispatch-panel"): ("review_pipeline", "dispatch_panel_main"),
+    ("review", "collect-findings"): ("review_pipeline", "collect_findings_main"),
+    ("review", "check-reviewer-failure-threshold"): (
+        "review_pipeline",
+        "check_reviewer_failure_threshold_main",
+    ),
+    ("review", "aggregate-findings"): ("review_aggregate", "aggregate_findings_main"),
+    ("review", "tally-code-votes"): ("review_tally", "tally_code_votes_main"),
+    ("review", "emit-tally"): ("review_tally", "emit_tally_main"),
+    ("review", "log-phase"): ("review_tally", "log_phase_main"),
+    ("review", "core"): ("review_pipeline", "review_core_main"),
+    ("review", "compose-findings"): ("compose_review", "compose_findings_main"),
     ("mermaid", "sanitize"): ("rendering", "mermaid_sanitize_main"),
     ("diagrams", "upsert"): ("rendering", "diagrams_upsert_main"),
     ("generate", "code-reviewer-agent"): ("rendering", "generate_code_reviewer_agent_main"),
@@ -310,6 +324,7 @@ def _build_help_parser() -> argparse.ArgumentParser:
         prog="cli.py",
         description="larch Python runtime dispatcher",
         add_help=True,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     domains: dict[str, list[str]] = {}
     for domain, verb in _REGISTRY:

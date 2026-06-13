@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # prune-nit-findings.sh — Move in-scope nit-severity findings to the OOS track.
 #
-# Code path (--input-mode code): called after aggregate-findings.sh, before
+# Code path (--input-mode code): called after review aggregate-findings, before
 # voter dispatch. Nit findings get [OUT_OF_SCOPE] prefix added to their title
 # inside findings.md so they remain in the ballot as OOS filing proposals.
-# tally-code-votes.sh picks them up from there and routes them to oos.md.
+# review tally-code-votes picks them up from there and routes them to oos.md.
 #
 # Plan path (--input-mode plan): called after the in-scope/OOS split, before
 # aggregation. Nit FINDING_N blocks are removed from findings-in-scope.md and
@@ -65,7 +65,7 @@ findings_file = sys.argv[1]
 oos_file = sys.argv[2] if len(sys.argv) > 2 else ""
 input_mode = sys.argv[3] if len(sys.argv) > 3 else "code"
 
-# Reuse the exact severity pattern from aggregate-findings.sh:321
+# Reuse the exact severity pattern from review aggregate-findings:321
 SEVERITY_PAT = re.compile(r'(?m)^-\s*\*\*Severity\*\*:\s*(important|latent|nit)\s*$', re.IGNORECASE)
 FINDING_BLOCK_PAT = re.compile(r'(?ms)^### FINDING_[0-9]+:.*?(?=^### |\Z)')
 OOS_BLOCK_PAT = re.compile(r'(?ms)^### OOS_[0-9]+:.*?(?=^### |\Z)')
@@ -105,7 +105,7 @@ findings_dir = os.path.dirname(os.path.abspath(findings_file)) or '.'
 
 if input_mode == 'code':
     # Add [OUT_OF_SCOPE] prefix to nit block titles in-place; keep them in findings.md
-    # so tally-code-votes.sh routes them to oos.md as OOS proposals.
+    # so review tally-code-votes routes them to oos.md as OOS proposals.
     # No renumbering — finding IDs stay stable for voter reference.
     new_blocks = []
     for block in blocks:

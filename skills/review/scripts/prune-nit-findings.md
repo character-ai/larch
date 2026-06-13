@@ -6,12 +6,12 @@ Moves in-scope `nit`-severity findings to the OOS track before voting.
 Nit findings are not dropped — they become `[OUT_OF_SCOPE]` proposals that
 voters can still accept for filing. Judges never spend a vote deciding a nit.
 
-Severity match reuses the exact pattern from `aggregate-findings.sh:321`:
+Severity match reuses the exact pattern from `review aggregate-findings:321`:
 `^- \*\*Severity\*\*:\s*(important|latent|nit)\s*$` (case-insensitive).
 
-**Code path** (called after `aggregate-findings.sh`, before voter dispatch):
+**Code path** (called after `review aggregate-findings`, before voter dispatch):
 adds `[OUT_OF_SCOPE]` to nit block titles in `findings.md`. Blocks stay in
-the ballot; `tally-code-votes.sh` routes them to `oos.md` automatically.
+the ballot; `review tally-code-votes` routes them to `oos.md` automatically.
 
 **Plan path** (called after the in-scope/OOS split, before aggregation):
 removes nit `FINDING_N` blocks from `findings-in-scope.md` and appends them
@@ -51,11 +51,11 @@ prune-nit-findings.sh --findings-file PATH [--oos-file PATH] [--input-mode code|
 
 ## Callers
 
-- `skills/review/scripts/review-core.sh` — after `aggregate-findings.sh`, before
+- `python/cli.py review core` — after `review aggregate-findings`, before
   voter dispatch (code path, `--input-mode code`, `--oos-file` not passed).
   Override via `REVIEW_CORE_PRUNE_NITS_SH`.
 - `skills/design/scripts/plan-review-loop.sh` — after in-scope/OOS split, before
-  `aggregate-findings.sh` (plan path, `--input-mode plan`).
+  `review aggregate-findings` (plan path, `--input-mode plan`).
   Override via `LARCH_PLAN_REVIEW_PRUNE_NITS_SH`.
 
 ## Invariants
@@ -63,7 +63,7 @@ prune-nit-findings.sh --findings-file PATH [--oos-file PATH] [--input-mode code|
 - Never exits non-zero (fail open contract).
 - Never modifies files when `STATUS=skipped` or `STATUS=disabled`.
 - `latent` and `important` findings are intentionally untouched by this script
-  (option b: latent findings stay in-scope at vote time; `tally-code-votes.sh`
+  (option b: latent findings stay in-scope at vote time; `review tally-code-votes`
   and `tally-plan-review.sh` re-route non-accepted latent blocks to `oos.md`
   after voting, preserving the in-PR-fix path for genuine-correctness latent
   findings that do pass the in-scope gate).

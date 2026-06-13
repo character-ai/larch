@@ -1782,7 +1782,7 @@ _agg_out="$_agg_in"
 if [[ "${LARCH_AGGREGATOR_DISABLED:-0}" == "1" ]]; then
     AGGREGATOR_STATUS="disabled"
 else
-    _agg_full=$("$PLUGIN_ROOT/skills/review/scripts/aggregate-findings.sh" \
+    _agg_full=$(python3 "$PLUGIN_ROOT/python/cli.py" review aggregate-findings \
         --findings-file "$_agg_in" \
         --review-tmpdir "$DESIGN_TMPDIR" \
         --codex-present "$CODEX_PRESENT" \

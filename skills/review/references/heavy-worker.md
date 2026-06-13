@@ -25,15 +25,15 @@ Treat those values as data. Do not infer paths from conversation context when an
 
 ## Required Reads
 
-Before executing, read `${CLAUDE_PLUGIN_ROOT}/skills/review/references/domain-rules.md` (Step 3 prerequisite — always). Voting mechanics are now owned by `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-code-voters.sh` (judge launch) and `${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/tally-code-votes.sh` (vote tally) — both invoked by `review-core.sh` automatically; no prompt-level read required.
+Before executing, read `${CLAUDE_PLUGIN_ROOT}/skills/review/references/domain-rules.md` (Step 3 prerequisite — always). Voting mechanics are now owned by `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-code-voters.sh` (judge launch) and `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review tally-code-votes` (vote tally) — both invoked by `review core` automatically; no prompt-level read required.
 
 ## Work
 
 Run the same mechanics documented in `/review` Steps 1-3:
 
-1. **Step 1**: gather branch context via `gather-context.sh`.
+1. **Step 1**: gather branch context via `review gather-context`.
 2. **Step 2**: launch the full reviewer panel in parallel per the launch procedure and fallback matrix in `SKILL.md`.
-3. **Step 3**: collect, deduplicate, vote (up to five rounds), implement fixes (Step 3e), re-review (Step 3f) — same round-state machine and safety limit (5 rounds, with round 5 a full-panel re-probe) as the inline path. Pass `--dynamic-archetypes "$DYNAMIC_ARCHETYPES" --prune-ledger "$REVIEW_TMPDIR/reviewer-prune-ledger.tsv"` to each `review-core.sh` round, let rounds 3-4 mechanically prune zero-yield reviewer combos while `prune-skipped` advances to the next round instead of converging; preserve the emitted scout/artifact KVs (`SCOUT_STATUS`, `SCOUT_FAIL_REASON`, `DYNAMIC_SLOTS`, `SCOUT_MANIFEST`, `YIELD_TSV_FILE`, `FINDINGS_CLASSIFICATION_TSV_FILE`) for the parent Step 4 log batches, keep a per-round mapping for every non-empty classification TSV, read or update `$REVIEW_TMPDIR/findings-classification-round-map.env` as the stable round→path registry, return those round-scoped bindings explicitly in the final worker footer when available, and write Step 3e code edits to the git working tree directly.
+3. **Step 3**: collect, deduplicate, vote (up to five rounds), implement fixes (Step 3e), re-review (Step 3f) — same round-state machine and safety limit (5 rounds, with round 5 a full-panel re-probe) as the inline path. Pass `--dynamic-archetypes "$DYNAMIC_ARCHETYPES" --prune-ledger "$REVIEW_TMPDIR/reviewer-prune-ledger.tsv"` to each `review core` round, let rounds 3-4 mechanically prune zero-yield reviewer combos while `prune-skipped` advances to the next round instead of converging; preserve the emitted scout/artifact KVs (`SCOUT_STATUS`, `SCOUT_FAIL_REASON`, `DYNAMIC_SLOTS`, `SCOUT_MANIFEST`, `YIELD_TSV_FILE`, `FINDINGS_CLASSIFICATION_TSV_FILE`) for the parent Step 4 log batches, keep a per-round mapping for every non-empty classification TSV, read or update `$REVIEW_TMPDIR/findings-classification-round-map.env` as the stable round→path registry, return those round-scoped bindings explicitly in the final worker footer when available, and write Step 3e code edits to the git working tree directly.
 
 Stop after Step 3 (do NOT run Steps 4 or 5 — those belong to the parent).
 

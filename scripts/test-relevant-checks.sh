@@ -548,12 +548,10 @@ setup_oos_caller_repo() {
     (
         cd "$dir"
         git checkout -q -b oos-caller-change
-        mkdir -p skills/review/scripts skills/review-and-fix/scripts
-        printf '%s\n' "# emit tally" > skills/review/scripts/emit-tally.md
-        printf '%s\n' "# tally code votes" > skills/review/scripts/tally-code-votes.md
+        mkdir -p python skills/review-and-fix/scripts
+        printf '%s\n' "VALUE = 1" > python/review_tally.py
         printf '%s\n' "# review and fix" > skills/review-and-fix/scripts/review-and-fix.md
-        git add skills/review/scripts/emit-tally.md \
-            skills/review/scripts/tally-code-votes.md \
+        git add python/review_tally.py \
             skills/review-and-fix/scripts/review-and-fix.md
         git commit -q -m "touch oos caller docs"
     )

@@ -4,9 +4,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-PY_CLI="$SCRIPT_DIR/../python/cli.py"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd -P)}"
+PY_CLI="$PLUGIN_ROOT/python/cli.py"
 # shellcheck source=scripts/lib-quiet.sh
-source "$SCRIPT_DIR/lib-quiet.sh"
+source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 
 DESIGN_DIR=""

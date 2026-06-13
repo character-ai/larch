@@ -70,5 +70,5 @@ The `make_voter_prompt_file` function includes a silent-drop warning: non-matchi
 
 ## Callers and Harness
 
-- Caller: `skills/review/scripts/review-core.sh`
+- Caller: `python/cli.py review core`
 - Harness: `scripts/test-dispatch-code-voters.sh` (includes a #3704 parallel-dispatch probe: the Claude CLI stub blocks until the waterfall stub drops a marker, so serialized dispatch fails Voter 1 deterministically)

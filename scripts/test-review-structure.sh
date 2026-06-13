@@ -61,9 +61,9 @@ skill_lines=$(wc -l < "$SKILL_MD" | tr -d ' ')
 [[ "$skill_lines" -le 200 ]] \
   || fail "(1) skills/review/SKILL.md must stay <= 200 lines after script extraction (found $skill_lines)"
 
-review_scripts=(
+review_verbs=(
   gather-context
-  review-core
+  core
   dispatch-panel
   collect-findings
   tally-code-votes
@@ -71,15 +71,11 @@ review_scripts=(
   log-phase
   check-reviewer-failure-threshold
 )
-[[ "${#review_scripts[@]}" -eq 8 ]] \
-  || fail "(1) internal harness error: expected review script list must contain 8 entries"
-for script in "${review_scripts[@]}"; do
-  [[ -f "$REVIEW_SCRIPTS_DIR/${script}.sh" ]] \
-    || fail "(1) missing review script: skills/review/scripts/${script}.sh"
-  [[ -f "$REVIEW_SCRIPTS_DIR/${script}.md" ]] \
-    || fail "(1) missing review script contract: skills/review/scripts/${script}.md"
-  [[ -f "$REVIEW_SCRIPTS_DIR/test-${script}.sh" ]] \
-    || fail "(1) missing review script harness: skills/review/scripts/test-${script}.sh"
+[[ "${#review_verbs[@]}" -eq 8 ]] \
+  || fail "(1) internal harness error: expected review verb list must contain 8 entries"
+for verb in "${review_verbs[@]}"; do
+  grep -Fq -- '("review", "'"$verb"'")' "$REPO_ROOT/python/cli.py" \
+    || fail "(1) missing python/cli.py review $verb registry entry"
 done
 
 REVIEW_AND_FIX_DIR="$REPO_ROOT/skills/review-and-fix"
@@ -111,7 +107,7 @@ esac
 [[ ! -e "$REPO_ROOT/agents/orchestrator-judge.md" ]] \
   || fail "(1d) agents/orchestrator-judge.md must not exist; the 3-judge code-review panel is launched by scripts/dispatch-code-voters.sh"
 [[ ! -e "$REPO_ROOT/skills/review/references/voting.md" ]] \
-  || fail "(1d) skills/review/references/voting.md must not exist; code-review voting is now owned by scripts/dispatch-code-voters.sh + skills/review/scripts/tally-code-votes.sh"
+  || fail "(1d) skills/review/references/voting.md must not exist; code-review voting is now owned by scripts/dispatch-code-voters.sh + python/cli.py review tally-code-votes"
 
 # ---------------------------------------------------------------------------
 # (2) Each expected baseline reference file exists.
@@ -203,15 +199,15 @@ grep 'MANDATORY — READ ENTIRE FILE' "$SKILL_MD" \
   || fail "(5a) no single SKILL.md line carries 'MANDATORY — READ ENTIRE FILE', 'Step 3' (boundary-anchored), and 'references/domain-rules.md' together — Step 3 entry callsite pin for domain-rules.md is broken"
 
 # (5b/5c) voting.md callsite pins removed in #2207. Code-review voting is now
-# script-owned (scripts/dispatch-code-voters.sh + skills/review/scripts/tally-code-votes.sh)
+# script-owned (scripts/dispatch-code-voters.sh + python/cli.py review tally-code-votes)
 # rather than prompt-orchestrated — no MANDATORY-line pin is required.
 
 # (5d) dispatch-code-voters and tally-code-votes are reachable from SKILL.md so
 # the script-owned voting pipeline cannot be silently un-wired.
 grep -Fq 'dispatch-code-voters.sh' "$SKILL_MD" \
   || fail "(5d) SKILL.md must reference scripts/dispatch-code-voters.sh — code-review judge panel dispatch contract is broken"
-grep -Fq 'tally-code-votes.sh' "$SKILL_MD" \
-  || fail "(5d) SKILL.md must reference skills/review/scripts/tally-code-votes.sh — code-review vote tally contract is broken"
+grep -Fq 'review tally-code-votes' "$SKILL_MD" \
+  || fail "(5d) SKILL.md must reference python/cli.py review tally-code-votes — code-review vote tally contract is broken"
 
 # ---------------------------------------------------------------------------
 # (6) CI-parity focus-area enum check. Mirrors the agent-sync UNQUOTED_FILES
@@ -311,7 +307,7 @@ grep -Fq '**⚠ /review requires either --diff (branch diff review) or a descrip
 #      line granularity. A future edit that drops either flag, or splits the
 #      invocation across multiple lines, fails closed under `set -o pipefail`.
 # ---------------------------------------------------------------------------
-grep 'collect-agent-results.sh' "$REVIEW_SCRIPTS_DIR/collect-findings.sh" \
+grep 'collect-agent-results.sh' "$REPO_ROOT/python/legacy_review_shell/collect-findings.sh" \
   | grep -F -- '--timeout 1860' \
   | grep -F -- '--substantive-validation' \
   | grep -Fq -- '--validation-mode' \
@@ -356,7 +352,7 @@ done
 #      '### In-Scope Findings', AND '### Out-of-Scope Observations' together —
 #      pinning the parser-side mode-conditional wording in Step 3a item 2.
 # ---------------------------------------------------------------------------
-grep 'In description mode' "$REVIEW_SCRIPTS_DIR/collect-findings.sh" \
+grep 'In description mode' "$REPO_ROOT/python/legacy_review_shell/collect-findings.sh" \
   | grep -F 'dual-list output' \
   | grep -F '### In-Scope Findings' \
   | grep -Fq '### Out-of-Scope Observations' \
@@ -368,7 +364,7 @@ grep 'In description mode' "$REVIEW_SCRIPTS_DIR/collect-findings.sh" \
 #      'entire output' together — pinning Step 3a item 2's diff-mode preservation
 #      so a future blanket rewrite cannot flatten the description/diff modes.
 # ---------------------------------------------------------------------------
-grep 'In diff mode' "$REVIEW_SCRIPTS_DIR/collect-findings.sh" \
+grep 'In diff mode' "$REPO_ROOT/python/legacy_review_shell/collect-findings.sh" \
   | grep -F 'single-list output' \
   | grep -Fq 'entire output' \
   || fail "(17) no collect-findings.sh line carries 'In diff mode', 'single-list output', AND 'entire output' together — Step 3a diff-mode single-list preservation is broken"
@@ -384,8 +380,8 @@ grep -Fq "If \`RUN_ID\` is non-empty, write flat review larch-log batches" "$SKI
   || fail "(18) SKILL.md missing Step 4 larch-log batch opener — filing semantics drifted"
 grep -Fq "\`review-context\`" "$SKILL_MD" \
   || fail "(18) SKILL.md missing review-context batch token — Step 4 filing list drifted"
-grep -Fq 'log-phase.sh' "$SKILL_MD" \
-  || fail "(18) SKILL.md must reference log-phase.sh in Step 4 — filing wiring drifted"
+grep -Fq 'review log-phase' "$SKILL_MD" \
+  || fail "(18) SKILL.md must reference review log-phase in Step 4 — filing wiring drifted"
 
 # ---------------------------------------------------------------------------
 # (19) Step 4 must not reintroduce /umbrella composition (negative structural pin).

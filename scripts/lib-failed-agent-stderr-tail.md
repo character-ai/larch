@@ -34,7 +34,7 @@ Optional 4th positional argument `explicit_sink`: in default (non-capture) mode,
 - `scripts/collect-agent-results.sh` — batch dedup emit via `larch_err`; delegates tail resolution to `resolve_collector_stderr_tail_file`.
 - `python/cli.py agent launch-claude-subprocess` — pre-`.done` tail from `${OUTPUT}.stderr`; clears stale `${OUTPUT}.stderr-tail` at entry and on success.
 - `python/cli.py agent launch-claude-review` — parent fallback from subprocess stderr capture; fenced tail via `emit_failed_agent_stderr_tail_larch_err` (quiet-safe).
-- `skills/review/scripts/collect-findings.sh` — replay fallback uses `resolve_collector_stderr_tail_file`.
+- `python/cli.py review collect-findings` — replay fallback uses `resolve_collector_stderr_tail_file`.
 
 ## Emission variants
 
