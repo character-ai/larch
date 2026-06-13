@@ -857,11 +857,49 @@ write_stalled_run_sentinel() {
     return 0
 }
 
+collect_ancestor_pids() {
+    local pid=$1 depth=0 ppid seen
+    seen=" $pid "
+    while [ "$depth" -lt 32 ]; do
+        ppid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ') || break
+        case "$ppid" in
+            ""|*[!0-9]*|0|1) break ;;
+        esac
+        case "$seen" in
+            *" $ppid "*) break ;;
+        esac
+        printf '%s\n' "$ppid"
+        seen="${seen}${ppid} "
+        pid=$ppid
+        depth=$((depth + 1))
+    done
+    return 0
+}
+
+pid_in_list() {
+    local needle=$1 haystack=$2 candidate
+    while IFS= read -r candidate; do
+        [ "$candidate" = "$needle" ] && return 0
+    done <<< "$haystack"
+    return 1
+}
+
 kill_session_background_processes() {
     [ -n "$IMPLEMENT_TMPDIR" ] || return 0
     local my_pid=$$
-    local ppid
+    local ppid skip_pids ancestor_pids
     ppid=$(ps -o ppid= -p "$my_pid" 2>/dev/null | tr -d ' ') || ppid=""
+    skip_pids=$my_pid
+    case "$ppid" in
+        ""|*[!0-9]*|0|1) ;;
+        *) skip_pids="${skip_pids}
+${ppid}" ;;
+    esac
+    ancestor_pids=$(collect_ancestor_pids "$my_pid" 2>/dev/null || true)
+    if [ -n "$ancestor_pids" ]; then
+        skip_pids="${skip_pids}
+${ancestor_pids}"
+    fi
     local pid killed=0 survivors=0 pids_out canonical_tmpdir
     canonical_tmpdir=$(cd "$IMPLEMENT_TMPDIR" 2>/dev/null && pwd -P) || canonical_tmpdir=""
     # Use awk index() for fixed-string match: pgrep -f and grep -E treat the path as a regex,
@@ -873,16 +911,14 @@ kill_session_background_processes() {
     [ -n "$pids_out" ] || return 0
     while IFS= read -r pid; do
         [ -z "$pid" ] && continue
-        [ "$pid" = "$my_pid" ] && continue
-        [ -n "$ppid" ] && [ "$pid" = "$ppid" ] && continue
+        pid_in_list "$pid" "$skip_pids" && continue
         if kill -TERM "$pid" 2>/dev/null; then killed=$((killed + 1)); fi
     done <<< "$pids_out"
     if [ "$killed" -gt 0 ]; then
         sleep 1
         while IFS= read -r pid; do
             [ -z "$pid" ] && continue
-            [ "$pid" = "$my_pid" ] && continue
-            [ -n "$ppid" ] && [ "$pid" = "$ppid" ] && continue
+            pid_in_list "$pid" "$skip_pids" && continue
             if kill -0 "$pid" 2>/dev/null; then
                 if kill -KILL "$pid" 2>/dev/null; then survivors=$((survivors + 1)); fi
             fi

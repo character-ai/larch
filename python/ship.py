@@ -460,6 +460,7 @@ def _write_terminal_finalize_if_terminal(
         ),
     )
     finalize.write_finalize_state_merged(path, data)
+    _breadcrumb("finalize-state-written", f"path={path} outcome={result.value} step={step or ''}")
 
 
 def _valid_repo_slug(value: str) -> bool:

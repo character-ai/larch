@@ -676,12 +676,42 @@ def _write_finalize_text_safely(target: Path, text: str) -> None:
                 tmp.unlink()
 
 
+def _collect_ancestor_pids(runner: Runner, pid: str, max_depth: int = 32) -> set[str]:
+    if not pid.isdigit():
+        return set()
+    ancestors: set[str] = set()
+    seen = {pid}
+    current = pid
+    for _ in range(max_depth):
+        result = runner.run(["ps", "-o", "ppid=", "-p", current])
+        if result.returncode != 0:
+            break
+        parent = result.stdout.strip()
+        if not parent.isdigit() or parent in {"0", "1"} or parent in seen:
+            break
+        ancestors.add(parent)
+        seen.add(parent)
+        current = parent
+    return ancestors
+
+
 def kill_session_background_processes(runner: Runner, ctx: RunContext) -> bool:
     tmpdir = ctx.tmpdir
     if not tmpdir:
         return False
+    current_pid = str(os.getpid())
+    parent_pid = str(os.getppid())
+    skip = {pid for pid in (current_pid, parent_pid) if pid.isdigit() and pid != "0"}
+    live_ancestors = _collect_ancestor_pids(runner, current_pid)
+    skip.update(live_ancestors)
+    if parent_pid.isdigit() and parent_pid not in {"0", "1"} and parent_pid not in live_ancestors:
+        skip.update(_collect_ancestor_pids(runner, parent_pid))
     current = runner.run(["sh", "-c", "printf '%s %s' $$ ${PPID:-}"])
-    skip = {pid for pid in current.stdout.split() if pid.isdigit()}
+    probe_pids = {pid for pid in current.stdout.split() if pid.isdigit()}
+    for pid in probe_pids:
+        if pid not in skip:
+            skip.update(_collect_ancestor_pids(runner, pid))
+    skip.update(probe_pids)
     physical = ""
     try:
         physical = str(Path(tmpdir).resolve(strict=False))

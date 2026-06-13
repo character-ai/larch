@@ -373,14 +373,28 @@ esac
 STUB
     cat > "$SANDBOX/bin/ps" <<'STUB'
 #!/usr/bin/env bash
+lookup_ppid() {
+  local query=$1 pair
+  for pair in ${STUB_PS_PARENT_MAP:-}; do
+    case "$pair" in
+      "$query="*) printf '%s\n' "${pair#*=}"; return 0 ;;
+    esac
+  done
+  printf '%s\n' "${STUB_PS_PPID:-1}"
+}
+
 if [ "${STUB_PS_MODE:-}" = "background" ]; then
   case "$*" in
     "-o ppid= -p "*)
-      echo "${STUB_PS_PPID:-1}"
+      lookup_ppid "${4:-}"
       exit 0
       ;;
     "-A -o pid= -o args=")
-      printf '%s %s\n' "$STUB_PS_BG_PID" "$STUB_PS_BG_ARG"
+      if [ -n "${STUB_PS_PROCESS_LIST:-}" ]; then
+        printf '%b\n' "$STUB_PS_PROCESS_LIST"
+      else
+        printf '%s %s\n' "$STUB_PS_BG_PID" "$STUB_PS_BG_ARG"
+      fi
       exit 0
       ;;
   esac
@@ -505,6 +519,47 @@ else
 fi
 assert_contains "**⚠ 18: killed 1 stale background process(es)" "$OUT" "teardown: kill_session_background_processes emits warning"
 assert_contains "FINALIZE_WARNINGS=1" "$OUT" "teardown: kill counts as warning"
+
+# Ancestor skip regression: stub a three-level parent chain (teardown shell ->
+# intermediate parent -> fake grandparent). Only the grandparent appears in the
+# session-scoped process list alongside a stale non-ancestor; parent-only skip
+# would still kill the grandparent, so survival proves collect_ancestor_pids.
+write_state "$STATE" ISSUE_NUMBER=
+STALE_SCRIPT="$SANDBOX/tmp/stale-session-process.sh"
+ANCESTOR_SCRIPT="$SANDBOX/tmp/fake-ancestor-session-process.sh"
+printf '#!/usr/bin/env bash\nwhile true; do sleep 1; done\n' > "$STALE_SCRIPT"
+printf '#!/usr/bin/env bash\nwhile true; do sleep 1; done\n' > "$ANCESTOR_SCRIPT"
+chmod +x "$STALE_SCRIPT" "$ANCESTOR_SCRIPT"
+"$STALE_SCRIPT" &
+STALE_PID=$!
+"$ANCESTOR_SCRIPT" &
+FAKE_ANCESTOR_PID=$!
+FAKE_INTERMEDIATE_PID=424242
+OUT=$(
+  STUB_PS_MODE=background \
+  STUB_PS_PPID="$FAKE_INTERMEDIATE_PID" \
+  STUB_PS_PARENT_MAP="$FAKE_INTERMEDIATE_PID=$FAKE_ANCESTOR_PID $FAKE_ANCESTOR_PID=1" \
+  STUB_PS_PROCESS_LIST="$STALE_PID $STALE_SCRIPT\n$FAKE_ANCESTOR_PID $ANCESTOR_SCRIPT" \
+  run_subject teardown --state-file "$STATE" --implement-tmpdir "$SANDBOX/tmp"
+)
+if ! kill -0 "$STALE_PID" 2>/dev/null; then
+    PASS=$((PASS + 1))
+    echo "PASS: teardown: ancestor skip regression killed stale non-ancestor"
+else
+    kill "$STALE_PID" 2>/dev/null || true
+    FAIL=$((FAIL + 1))
+    echo "FAIL: teardown: ancestor skip regression left stale non-ancestor running"
+fi
+if kill -0 "$FAKE_ANCESTOR_PID" 2>/dev/null; then
+    kill "$FAKE_ANCESTOR_PID" 2>/dev/null || true
+    PASS=$((PASS + 1))
+    echo "PASS: teardown: ancestor skip regression preserved fake ancestor"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: teardown: ancestor skip regression killed fake ancestor"
+fi
+assert_contains "**⚠ 18: killed 1 stale background process(es)" "$OUT" "teardown: ancestor skip warning counts only stale process"
+assert_contains "FINALIZE_WARNINGS=1" "$OUT" "teardown: ancestor skip counts one warning"
 
 write_state "$STATE" STALL_TRACKING=true
 : > "$SANDBOX/rename-argv.txt"
