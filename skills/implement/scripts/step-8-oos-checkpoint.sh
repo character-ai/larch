@@ -30,9 +30,9 @@ if [ "$_oos_chk_rc" -eq 1 ]; then
     _oos_already_logged=true
   fi
 elif [ "$_oos_chk_rc" -eq 2 ]; then
-  command grep -Fq 'step-8-oos-checkpoint-validation' "$IMPLEMENT_TMPDIR/execution-issues.md" 2>/dev/null && _oos_already_logged=true
+  ( command grep -Fq 'step-8-oos-checkpoint-validation' "$IMPLEMENT_TMPDIR/execution-issues.md" 2>/dev/null ) && _oos_already_logged=true || true
 else
-  command grep -Fq 'step-8-oos-checkpoint-validation' "$IMPLEMENT_TMPDIR/execution-issues.md" 2>/dev/null && _oos_already_logged=true
+  ( command grep -Fq 'step-8-oos-checkpoint-validation' "$IMPLEMENT_TMPDIR/execution-issues.md" 2>/dev/null ) && _oos_already_logged=true || true
 fi
 if [ "$_oos_chk_rc" -ne 0 ] && [ "$_oos_already_logged" = false ]; then
   _oos_fail_site=step-8-oos-checkpoint-validation
