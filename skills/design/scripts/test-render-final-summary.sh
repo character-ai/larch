@@ -729,7 +729,7 @@ cat >"$WARN_D/execution-issues.md" <<'EOF'
 EOF
 DESIGN_TMPDIR="$WARN_D" ISSUE_NUMBER="" SESSION_ID="RUN-WARN-COUNT" \
     "$SUBJECT" --outcome approved --post-publish-only >/dev/null 2>/dev/null
-grep -Fq -- '- **Warnings**: 1' "$WARN_D/final-summary.md" || fail 'non-step warning entry must count once'
+grep -Fq -- '- **Warnings**: 2' "$WARN_D/final-summary.md" || fail 'non-step warning entry must count once'
 pass 'non-step warning entry count ignores fenced diagnostics'
 
 
@@ -769,7 +769,7 @@ std_bg_positive="$TMP/std-bg-positive.log"
 DESIGN_TMPDIR="$BG_D" ISSUE_NUMBER="" SESSION_ID="RUN-BG-POSITIVE" \
     "$SUBJECT" --outcome approved --post-publish-only >"$std_bg_positive" 2>/dev/null
 grep -Fq -- '- **Blocked polling attempts**: 3' "$BG_D/final-summary.md" || fail 'positive denial sidecar must render blocked-polling note'
-grep -Fq -- '- **Warnings**: 1' "$BG_D/final-summary.md" || fail 'positive denial sidecar must increase warning count'
+grep -Fq -- '- **Warnings**: 2' "$BG_D/final-summary.md" || fail 'positive denial sidecar must increase warning count'
 grep -Fq -- 'Blocked polling attempts: 3' "$BG_D/execution-issues.md" || fail 'positive denial sidecar must append warning evidence'
 cmp -s "$BG_D/final-summary.md" "$std_bg_positive" || fail 'blocked-polling stdout/file mismatch'
 pass 'positive denial sidecar records warning and note'
