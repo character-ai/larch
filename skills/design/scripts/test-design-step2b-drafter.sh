@@ -308,6 +308,8 @@ rc=$?
 set -e
 [[ "$rc" -eq 0 ]] || fail 'pause-save path should exit cleanly'
 assert_contains "$TMP_ROOT/call.log" 'pause-save step2a=yes' 'step-2a repair must happen before pause-save'
+assert_contains "$design_order/stdout.txt" 'POSTPLAN_RC=11' 'pre-draft pause rc11 row missing'
+assert_contains "$design_order/stdout.txt" 'POSTPLAN_STATUS=pause-save' 'pre-draft pause status row missing'
 assert_not_called "$TMP_ROOT/call.log" 'PRELUDE_SOURCED_OR_EXECUTED' 'design-step2b-prelude.sh was sourced'
 rm -f "$design_order/.pause-requested"
 set +e
