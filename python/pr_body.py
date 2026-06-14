@@ -16,6 +16,7 @@ import urllib.request
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 import config
 import gh
@@ -536,7 +537,11 @@ def _safe_int(value: object) -> int:
         return 0
 
 
-def _token_argv_from_report(data: dict[str, object]) -> list[str]:
+def _object_map(value: object) -> Mapping[str, object]:
+    return cast("Mapping[str, object]", value) if isinstance(value, dict) else {}
+
+
+def _token_argv_from_report(data: Mapping[str, object]) -> list[str]:
     argv: list[str] = []
     vendor_buckets = (
         ("claude", "BUCKETS_claude", "claude"),
@@ -545,8 +550,8 @@ def _token_argv_from_report(data: dict[str, object]) -> list[str]:
         ("claude_sub", "BUCKETS_claude_sub", "claude-sub"),
     )
     for vendor, bucket_key, flag_prefix in vendor_buckets:
-        bucket = data.get(bucket_key)
-        if isinstance(bucket, dict) and any(_safe_int(bucket.get(k)) for k in bucket):
+        bucket = _object_map(data.get(bucket_key))
+        if bucket and any(_safe_int(value) for value in bucket.values()):
             if vendor in {"claude", "claude_sub"}:
                 cache_create_5m = _safe_int(bucket.get("cache_create_5m"))
                 if cache_create_5m == 0:
@@ -571,9 +576,10 @@ def _token_argv_from_report(data: dict[str, object]) -> list[str]:
                     "--cursor-output-tokens", str(_safe_int(bucket.get("output"))),
                 ])
             continue
-        totals = data.get(vendor)
-        if isinstance(totals, dict) and isinstance(totals.get("totals"), dict):
-            total = _safe_int(totals["totals"].get("total"))
+        totals = _object_map(data.get(vendor))
+        nested_totals = _object_map(totals.get("totals"))
+        if nested_totals:
+            total = _safe_int(nested_totals.get("total"))
             if total:
                 argv.extend([f"--{flag_prefix}-tokens", str(total)])
     return argv
@@ -610,13 +616,14 @@ def _final_report_token_fields(implement_tmpdir: Path, run_id: str) -> dict[str,
     if token_json is None:
         return {"cost_unavailable": True}
     try:
-        data = json.loads(token_json.read_text(encoding="utf-8"))
+        data_obj = json.loads(token_json.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return {"cost_unavailable": True}
-    if not isinstance(data, dict):
+    if not isinstance(data_obj, dict):
         return {"cost_unavailable": True}
-    claude = data.get("claude")
-    if not isinstance(claude, dict) or not isinstance(claude.get("totals"), dict):
+    data = cast("dict[str, object]", data_obj)
+    claude = _object_map(data.get("claude"))
+    if not _object_map(claude.get("totals")):
         return {"cost_unavailable": True}
     token_argv = _token_argv_from_report(data)
     if not token_argv:
@@ -651,10 +658,11 @@ def _final_report_duration(run_dir: Path, ship: Path) -> str:
     timing = run_dir / "timing-report.json"
     if timing.is_file():
         try:
-            data = json.loads(timing.read_text(encoding="utf-8"))
+            data_obj = json.loads(timing.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
-            data = None
-        if isinstance(data, dict):
+            data_obj = None
+        if isinstance(data_obj, dict):
+            data = cast("dict[str, object]", data_obj)
             total_hms = data.get("total_hms")
             if total_hms:
                 return str(total_hms)
