@@ -164,7 +164,7 @@ def test_resolve_public_ips_maps_dns_failure_to_network_error(monkeypatch: pytes
         raise socket.gaierror(8, "dns")
 
     monkeypatch.setattr(socket, "getaddrinfo", boom)
-    ips, reason = research._resolve_public_ips("example.com", timeout=1)
+    ips, reason = research._resolve_public_ips("example.com", timeout=1)  # pyright: ignore[reportPrivateUsage]
     assert ips == []
     assert reason == "network-error"
 
@@ -203,7 +203,7 @@ def test_parallel_fetch_budget_backfill_and_subprocess_cleanup(monkeypatch: pyte
 
     monkeypatch.setattr(research, "_start_fetch_process", fake_start)
     start = time.monotonic()
-    results = research._parallel_fetch_results(
+    results = research._parallel_fetch_results(  # pyright: ignore[reportPrivateUsage]
         {"u1": "https://hang.example/a", "u2": "https://hang.example/b"},
         budget_seconds=1,
         per_fetch_timeout=10,
@@ -296,7 +296,7 @@ def test_quiet_fd3_contract_for_all_research_verbs(tmp_path: Path, args: tuple[s
     lane.write_text("RESEARCH_ARCH_STATUS=fallback_claude\n", encoding="utf-8")
     report.write_text("### Findings Summary\n\n1. One finding.\n### Risk Assessment\nLow\n### Difficulty Estimate\nLow\n### Feasibility Verdict\nFeasible\n### Key Files and Areas\n- python/research.py\n### Open Questions\n- none\n", encoding="utf-8")
     question.write_text("Question?\n", encoding="utf-8")
-    resolved = []
+    resolved: list[str] = []
     for part in args:
         resolved.append(
             {

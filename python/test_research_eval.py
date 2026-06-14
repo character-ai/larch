@@ -8,6 +8,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import TextIO, cast
 
 import pytest
 
@@ -15,6 +16,10 @@ import research_eval
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "python" / "cli.py"
+
+
+def fake_claude_path(name: str) -> str | None:
+    return "/bin/claude" if name == "claude" else None
 
 
 def write(path: Path, text: str) -> Path:
@@ -153,18 +158,19 @@ def test_eval_baseline_ref_validation_and_missing_values(tmp_path: Path) -> None
 
 
 def test_eval_id_no_match_exits_zero(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(research_eval.shutil, "which", lambda name: "/bin/claude" if name == "claude" else None)
+    monkeypatch.setattr(research_eval.shutil, "which", fake_claude_path)
     assert research_eval.eval_research(plugin_root=ROOT, id_filter="does-not-exist", work_dir=tmp_path) == 0
 
 
 def test_eval_baseline_git_show_success(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(research_eval.shutil, "which", lambda name: "/bin/claude" if name == "claude" else None)
+    monkeypatch.setattr(research_eval.shutil, "which", fake_claude_path)
     baseline_json = '{"version":2,"harness_commit":null,"model_id":null,"generated_at":null,"entries":[]}\n'
 
-    def fake_run(argv, **kwargs):  # type: ignore[no-untyped-def]
+    def fake_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         if argv[:4] == ["git", "-C", str(ROOT), "show"]:
-            if kwargs.get("stdout") is not None:
-                kwargs["stdout"].write(baseline_json)
+            stdout = cast("TextIO | None", kwargs.get("stdout"))
+            if stdout is not None:
+                stdout.write(baseline_json)
             return subprocess.CompletedProcess(argv, 0, stdout=baseline_json, stderr="")
         return subprocess.CompletedProcess(argv, 1, stdout="", stderr="missing")
 
@@ -201,8 +207,8 @@ def test_classify_url_reputability_counts(tmp_path: Path) -> None:
 def test_research_status_timeout_mapping(tmp_path: Path) -> None:
     stderr = tmp_path / "research.stderr"
     stderr.write_text("TIMED_OUT_AFTER=5\n", encoding="utf-8")
-    assert research_eval._research_status_from_run(124, stderr) == "timeout"
-    assert research_eval._research_status_from_run(1, stderr) == "timeout"
+    assert research_eval._research_status_from_run(124, stderr) == "timeout"  # pyright: ignore[reportPrivateUsage]
+    assert research_eval._research_status_from_run(1, stderr) == "timeout"  # pyright: ignore[reportPrivateUsage]
 
 
 def test_eval_set_failure_matrix(tmp_path: Path) -> None:
