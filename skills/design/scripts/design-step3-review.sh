@@ -459,7 +459,7 @@ if [[ -z "${STEP3_REVIEW_LOOP_STATUS:-}" ]]; then
     degraded-empty-collector) STEP3_REVIEW_LOOP_STATUS=degraded-empty-collector ;;
     zero-findings-degraded-panel) ;;
   esac
-  if [[ -z "${STEP3_REVIEW_LOOP_STATUS:-}" ]]; then
+  if [[ -z "${STEP3_REVIEW_LOOP_STATUS:-}" && "${LOOP_STATUS:-}" != zero-findings-degraded-panel ]]; then
     larch_err "**⚠ Step 3: result env missing or empty after loop exit; treating as panel-failed**"
     STEP3_REVIEW_LOOP_STATUS=panel-failed
     LOOP_STATUS=panel-failed

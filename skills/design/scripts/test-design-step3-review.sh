@@ -136,3 +136,18 @@ grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=panel-failed' <<<"$legacy_out" || fail 'lega
 grep -Fxq 'LOOP_STATUS=panel-failed' <<<"$legacy_out" || fail 'legacy LOOP_STATUS=panel-failed should survive normalization'
 rm -rf "$D_LEGACY"
 pass 'Step 3 wrapper back-maps legacy LOOP_STATUS=panel-failed'
+
+D_ZFDP=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-legacy-zfdp.XXXXXX")
+FAKE_ZFDP="$D_ZFDP/fake-plugin"
+make_fake_step3_plugin "$FAKE_ZFDP" 'printf "%s\n" "LOOP_STATUS=zero-findings-degraded-panel"'
+set +e
+zfdp_out=$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$FAKE_ZFDP" DESIGN_TMPDIR="$D_ZFDP" ISSUE_NUMBER=9 \
+  "$WRAPPER" 2>"$D_ZFDP/stderr.log")
+zfdp_rc=$?
+set -e
+[[ "$zfdp_rc" -eq 0 ]] || fail "legacy zero-findings wrapper rc=$zfdp_rc stdout=$zfdp_out stderr=$(cat "$D_ZFDP/stderr.log")"
+grep -Fxq 'LOOP_STATUS=zero-findings-degraded-panel' <<<"$zfdp_out" || fail 'legacy LOOP_STATUS=zero-findings-degraded-panel should survive unchanged'
+grep -Fq 'STEP3_REVIEW_LOOP_STATUS=' <<<"$zfdp_out" && fail 'legacy zero-findings-degraded-panel must not emit STEP3_REVIEW_LOOP_STATUS'
+grep -Fq '**⚠ Step 3: result env missing or empty after loop exit; treating as panel-failed**' "$D_ZFDP/stderr.log" && fail 'zero-findings-degraded-panel must not trigger missing-result warning'
+rm -rf "$D_ZFDP"
+pass 'Step 3 wrapper preserves legacy LOOP_STATUS=zero-findings-degraded-panel'
