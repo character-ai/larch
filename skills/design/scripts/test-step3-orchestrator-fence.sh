@@ -102,21 +102,21 @@ apply_step3_handoff() {
     else
         # shellcheck source=/dev/null
         . "$_safe_env"
-        while IFS= read -r _line || [[ -n "$_line" ]]; do
-            _key="${_line%%=*}"
-            _value="${_line#*=}"
-            case "$_key" in
-                STEP3_REVIEW_LOOP_STATUS|POSTPLAN_RC|DEDUP_RC|FINAL_ROUND_NUM)
-                    [[ -n "$_value" ]] && printf -v "$_key" '%s' "$_value"
-                    ;;
-                WARN)
-                    if [[ "$_primary_regular" == true ]]; then
-                        wrapper_out+="${_line}"$'\n'
-                    fi
-                    ;;
-            esac
-        done <"$_stdout_file"
     fi
+    while IFS= read -r _line || [[ -n "$_line" ]]; do
+        _key="${_line%%=*}"
+        _value="${_line#*=}"
+        case "$_key" in
+            STEP3_REVIEW_LOOP_STATUS|POSTPLAN_RC|DEDUP_RC|FINAL_ROUND_NUM)
+                [[ -n "$_value" ]] && printf -v "$_key" '%s' "$_value"
+                ;;
+            WARN)
+                if [[ "$_primary_regular" == true ]]; then
+                    wrapper_out+="${_line}"$'\n'
+                fi
+                ;;
+        esac
+    done <"$_stdout_file"
     rm -f "$_stdout_file" "$_safe_env"
     if [[ "${plan_review_rc:-0}" -eq 2 ]]; then
         return 2
@@ -373,6 +373,20 @@ if [[ "${LOOP_STATUS:-}" == complete && "${REVIEW_ROUND_COUNT:-}" == 3 ]]; then
     pass 'safe-env rc!=0 file LOOP_STATUS wins over stdout'
 else
     fail "safe-env rc!=0 expected complete/3 got ${LOOP_STATUS:-}/${REVIEW_ROUND_COUNT:-}"
+fi
+
+echo "=== env-read failure recovers STEP3_REVIEW_LOOP_STATUS from stdout ==="
+D6D="$TMP/env-read-failure-loop-envelope"
+mkdir -p "$D6D"
+ln -sf "$D6D/target.env" "$D6D/.step3-review-result.env"
+apply_step3_handoff "$D6D" 'STEP3_REVIEW_LOOP_STATUS=main-agent-vote-required
+LOOP_STATUS=main-agent-vote-required
+REVIEW_ROUND_COUNT=2
+' 0
+if [[ "${STEP3_REVIEW_LOOP_STATUS:-}" == main-agent-vote-required && "${LOOP_STATUS:-}" == main-agent-vote-required ]]; then
+    pass 'env-read failure recovers loop envelope from stdout overlay'
+else
+    fail "env-read failure expected main-agent-vote-required got STEP3=${STEP3_REVIEW_LOOP_STATUS:-} LOOP=${LOOP_STATUS:-}"
 fi
 
 echo "=== safe-env rc=2 returns 2 after shared reader ==="

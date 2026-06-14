@@ -242,21 +242,176 @@ def test_tally_error_rollback_review_round_count(tmp_path: Path) -> None:
     _ = (tmp_path / "review-round-count.txt").write_text("2\n", encoding="utf-8")
     stub = _write_loop_stub(
         tmp_path,
-        "printf 'LOOP_STATUS=complete\\nACCEPTED_COUNT=0\\nDEGRADED_PANEL=0\\nROUNDS_COMPLETED=3\\nTALLY_PLAN_REVIEW_STATUS=tally-error\\nAGGREGATOR_STATUS=ok\\nVOTING_TALLY_FILE=\\n'; exit 2",
+        (
+            "printf 'STEP3_REVIEW_LOOP_STATUS=tally-error\\n"
+            "LOOP_STATUS=tally-error\\n"
+            "ACCEPTED_COUNT=0\\nDEGRADED_PANEL=0\\n"
+            "ROUNDS_COMPLETED=3\\nTALLY_PLAN_REVIEW_STATUS=tally-error\\n"
+            "AGGREGATOR_STATUS=ok\\nVOTING_TALLY_FILE=\\n'; exit 2"
+        ),
     )
     proc = run_cli(
         "plan-review",
         "run",
         "--design-tmpdir",
         str(tmp_path),
-        "--no-preview",
+        "--mode",
+        "loop",
         env={
             "LARCH_QUIET_DISABLE": "1",
             "RUN_STEP3_PLAN_REVIEW_LOOP_SH": str(stub),
         },
     )
+    assert "STEP3_REVIEW_LOOP_STATUS=tally-error" in proc.stdout
+    assert "LOOP_STATUS=tally-error" in proc.stdout
     assert "TALLY_PLAN_REVIEW_STATUS=tally-error" in proc.stdout
     assert (tmp_path / "review-round-count.txt").read_text(encoding="utf-8") == "2\n"
+    result_env = (tmp_path / ".step3-review-result.env").read_text(encoding="utf-8")
+    assert "STEP3_REVIEW_LOOP_STATUS=tally-error" in result_env
+    assert "LOOP_STATUS=tally-error" in result_env
+
+
+def test_degraded_empty_collector_rollback_review_round_count(tmp_path: Path) -> None:
+    _write_run_params(tmp_path)
+    _ = (tmp_path / "review-round-count.txt").write_text("2\n", encoding="utf-8")
+    stub = _write_loop_stub(
+        tmp_path,
+        (
+            "printf 'STEP3_REVIEW_LOOP_STATUS=degraded-empty-collector\\n"
+            "LOOP_STATUS=degraded-empty-collector\\n"
+            "ACCEPTED_COUNT=0\\nDEGRADED_PANEL=1\\n"
+            "ROUNDS_COMPLETED=2\\nTALLY_PLAN_REVIEW_STATUS=ok\\n"
+            "AGGREGATOR_STATUS=ok\\nVOTING_TALLY_FILE=\\n'; exit 0"
+        ),
+    )
+    proc = run_cli(
+        "plan-review",
+        "run",
+        "--design-tmpdir",
+        str(tmp_path),
+        "--mode",
+        "loop",
+        env={
+            "LARCH_QUIET_DISABLE": "1",
+            "RUN_STEP3_PLAN_REVIEW_LOOP_SH": str(stub),
+        },
+    )
+    assert "STEP3_REVIEW_LOOP_STATUS=degraded-empty-collector" in proc.stdout
+    assert "LOOP_STATUS=degraded-empty-collector" in proc.stdout
+    assert (tmp_path / "review-round-count.txt").read_text(encoding="utf-8") == "2\n"
+
+
+def _write_gate_b_plan(tmp_path: Path, body: str) -> None:
+    _ = (tmp_path / "plan.txt").write_text(body, encoding="utf-8")
+
+
+def test_gate_b_dedup_snapshot_and_fail_closed_without_snapshot(tmp_path: Path) -> None:
+    _write_gate_b_plan(
+        tmp_path,
+        "body\ndiff_added: 100\ndiff_deleted: 50\nmechanical_churn: true\ndiff_lines: 200\n",
+    )
+    proc = run_cli(
+        "plan-review",
+        "gate-b-dedup",
+        "--design-tmpdir",
+        str(tmp_path),
+        "--snapshot-trailers",
+    )
+    assert proc.returncode == 0, proc.stderr
+    keys = (tmp_path / ".gate-b-optional-trailer-keys").read_text(encoding="utf-8")
+    values = (tmp_path / ".gate-b-optional-trailer-keys.values").read_text(encoding="utf-8")
+    assert "diff_added" in keys
+    assert "diff_added=100" in values
+
+    bare = tmp_path / "no-snapshot"
+    bare.mkdir()
+    _write_gate_b_plan(bare, "body\ndiff_lines: 1\n")
+    proc = run_cli("plan-review", "gate-b-dedup", "--design-tmpdir", str(bare), "--dedup")
+    assert proc.returncode == 3
+
+
+def test_gate_b_dedup_preserves_trailers_and_rejects_new_keys(tmp_path: Path) -> None:
+    _write_gate_b_plan(
+        tmp_path,
+        "body\nbody\ndiff_added: 100\ndiff_deleted: 50\nmechanical_churn: true\ndiff_lines: 200\n",
+    )
+    assert (
+        run_cli(
+            "plan-review",
+            "gate-b-dedup",
+            "--design-tmpdir",
+            str(tmp_path),
+            "--snapshot-trailers",
+        ).returncode
+        == 0
+    )
+    proc = run_cli("plan-review", "gate-b-dedup", "--design-tmpdir", str(tmp_path), "--dedup")
+    assert proc.returncode == 0, proc.stderr
+    assert "dedup-sweep: removed 1 duplicate" in proc.stdout
+    plan_text = (tmp_path / "plan.txt").read_text(encoding="utf-8")
+    assert "diff_added: 100" in plan_text
+    assert "mechanical_churn: true" in plan_text
+
+    empty_snapshot = tmp_path / "reject-new"
+    empty_snapshot.mkdir()
+    _write_gate_b_plan(empty_snapshot, "line\nline\ndiff_lines: 10\n")
+    assert (
+        run_cli(
+            "plan-review",
+            "gate-b-dedup",
+            "--design-tmpdir",
+            str(empty_snapshot),
+            "--snapshot-trailers",
+        ).returncode
+        == 0
+    )
+    _ = (empty_snapshot / "plan.txt").write_text(
+        "line\nline\nmechanical_churn: true\ndiff_lines: 10\n",
+        encoding="utf-8",
+    )
+    proc = run_cli(
+        "plan-review",
+        "gate-b-dedup",
+        "--design-tmpdir",
+        str(empty_snapshot),
+        "--dedup",
+    )
+    assert proc.returncode == 1
+
+
+def test_gate_b_dedup_allows_value_recompute_and_rejects_key_loss(tmp_path: Path) -> None:
+    _write_gate_b_plan(tmp_path, "body\ndiff_added: 100\ndiff_lines: 200\n")
+    assert (
+        run_cli(
+            "plan-review",
+            "gate-b-dedup",
+            "--design-tmpdir",
+            str(tmp_path),
+            "--snapshot-trailers",
+        ).returncode
+        == 0
+    )
+    _ = (tmp_path / "plan.txt").write_text("body\ndiff_added: 999\ndiff_lines: 200\n", encoding="utf-8")
+    proc = run_cli("plan-review", "gate-b-dedup", "--design-tmpdir", str(tmp_path), "--dedup")
+    assert proc.returncode == 0, proc.stderr
+    assert "diff_added: 999" in (tmp_path / "plan.txt").read_text(encoding="utf-8")
+
+    key_loss = tmp_path / "key-loss"
+    key_loss.mkdir()
+    _write_gate_b_plan(key_loss, "body\ndiff_added: 100\ndiff_lines: 200\n")
+    assert (
+        run_cli(
+            "plan-review",
+            "gate-b-dedup",
+            "--design-tmpdir",
+            str(key_loss),
+            "--snapshot-trailers",
+        ).returncode
+        == 0
+    )
+    _ = (key_loss / "plan.txt").write_text("body\ndiff_lines: 200\n", encoding="utf-8")
+    proc = run_cli("plan-review", "gate-b-dedup", "--design-tmpdir", str(key_loss), "--dedup")
+    assert proc.returncode == 1
 
 
 def test_persist_retally_tally_error_omits_scope_anchor(tmp_path: Path) -> None:

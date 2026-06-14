@@ -383,7 +383,8 @@ design_artifact_excluded() {
         scout-dynamic-archetypes-prompt.md|plan.txt.before-revise|\
         composed-plan.md|\
         step3-record-escalation-*.stdout.log|step3-record-escalation-*.stderr.log|\
-        design-failure-escalation-*.tsv)
+        design-failure-escalation-*.tsv|design-failure-escalation-*.env|\
+        .step3-report-*.recorded)
             return 0
             ;;
     esac

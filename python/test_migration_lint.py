@@ -429,6 +429,7 @@ def test_kv_present_on_clean(tmp_path: Path, capsys: pytest.CaptureFixture[str])
     assert "LINT_STATUS=ok" in captured.out
     assert "RETIRED_PATHS=0" in captured.out
     assert "RETIRED_REFS=0" in captured.out
+    assert "EMBEDDED_LEGACY_REFS=" in captured.out
 
 
 def test_kv_present_on_findings(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

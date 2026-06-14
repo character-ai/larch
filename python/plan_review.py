@@ -29,6 +29,10 @@ def _p(*parts: str) -> str:
     return "/".join(parts)
 
 
+# Intentional C3a1 compatibility shim: gzip-embedded retired bash bodies keyed by
+# repo-relative paths listed in python/migrated-scripts.tsv. Regenerate blobs from
+# reviewable sources before editing behavior; native in-process ports are follow-up
+# scope (docs/python-migration.md §C3a1 plan-review CLI façade).
 _LEGACY_ASSETS: dict[str, str] = {
     _p("skills", "design", "scripts", "emit-plan.sh"): (
         "H4sIALbdLWoC/7VUXW/aMBR996+4DawplQy0b6NlVTVgitQiVOhUqa0iN3HAIjFZ7EBV4L/PTkK+1mrrwyweyPW9"

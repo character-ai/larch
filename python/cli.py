@@ -450,7 +450,16 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
-    return int(target_main(rest_argv))
+    try:
+        return int(target_main(rest_argv))
+    except RuntimeError as exc:
+        plan_review_mod = sys.modules.get("plan_review")
+        if plan_review_mod is not None:
+            plan_review_error = getattr(plan_review_mod, "PlanReviewError", None)
+            if plan_review_error is not None and isinstance(exc, plan_review_error):
+                print(f"ERROR: plan-review: {exc}", file=sys.stderr)
+                return 1
+        raise
 
 
 if __name__ == "__main__":
