@@ -41,6 +41,31 @@ def _run(args: list[str], env: dict[str, str] | None = None) -> subprocess.Compl
     )
 
 
+def _codex_review_args(tmp_path: Path, out_name: str = "out.txt", **overrides: object) -> argparse.Namespace:
+    out = tmp_path / out_name
+    values: dict[str, object] = {
+        "output": str(out),
+        "timeout": "2",
+        "codex_add_dir": "",
+        "risk": "",
+        "stderr_sink": "",
+        "timing_task_kind": "codex-review",
+        "token_budget_cap": "",
+        "agent_file": "",
+        "description_text": "",
+        "mode": "",
+        "scope_files": "",
+        "competition_notice": False,
+        "competition_notice_file": "",
+        "diff_file": "",
+        "commit_count": "",
+        "plan_file": "",
+        "feature_file": "",
+    }
+    values.update(overrides)
+    return argparse.Namespace(**values)
+
+
 def _stub_bin(tmp_path: Path, name: str, body: str) -> Path:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
@@ -253,3 +278,284 @@ def test_cursor_empty_result_diag_is_redacted(tmp_path: Path) -> None:
     diag = output.with_suffix(output.suffix + ".diag").read_text(encoding="utf-8")
     assert secret_path not in diag
     assert "<OPERATOR_REPO_PATH>" in diag
+
+
+def test_codex_auth_setup_preflight_exits_zero_with_clean_dirty_tree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    args = _codex_review_args(tmp_path)
+    out = Path(args.output)
+    monkeypatch.setattr(agents, "_prepare_codex_home", lambda *_a, **_kw: (1, "codex auth setup failed"))
+    rc = agents._review_launch_codex(args, "hi")
+    assert rc == 0
+    dirty = out.with_suffix(out.suffix + ".dirty-tree").read_text(encoding="utf-8")
+    assert "STATUS=clean" in dirty
+    assert "REASON=codex-sandbox-read-only" in dirty
+    assert out.with_suffix(out.suffix + ".done").read_text(encoding="utf-8").strip() == "1"
+
+
+def test_preflight_meta_writes_stderr_sink_for_collector_retry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    sink = tmp_path / "stderr.log"
+    args = _codex_review_args(tmp_path, stderr_sink=str(sink))
+    out = Path(args.output)
+    monkeypatch.setattr(agents, "_prepare_codex_home", lambda *_a, **_kw: (1, "codex auth setup failed"))
+    assert agents._review_launch_codex(args, "hi") == 0
+    meta = out.with_suffix(out.suffix + ".meta").read_text(encoding="utf-8")
+    assert f"STDERR_SINK={sink}" in meta
+    assert "OUTER_LAUNCHER_STDERR_SINK" not in meta
+
+
+def test_codex_sentinel_replays_with_ns_retry_header_prefix(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    ns_header = "IMPORTANT: structured output required\n\n"
+    args = argparse.Namespace(
+        agent_file="agents/code-reviewer.md",
+        description_text="",
+        mode="review",
+        scope_files="a.py",
+        competition_notice=True,
+        competition_notice_file="",
+        diff_file="",
+        commit_count="2",
+        plan_file="",
+        feature_file="",
+    )
+    output = tmp_path / "out.txt"
+    prompt = "rendered specialist"
+    sidecar = agents._review_write_codex_prompt_sidecar(output, prompt, args)
+    wrapped = tmp_path / "ns-retry.prompt"
+    wrapped.write_text(ns_header + sidecar.read_text(encoding="utf-8"), encoding="utf-8")
+
+    def fake_render(*_args: object, **_kwargs: object) -> object:
+        return type("R", (), {"stdout": prompt, "returncode": 0})()
+
+    monkeypatch.setattr(agents.proc, "run", fake_render)
+    rc, replay = agents._review_read_codex_prompt_sentinel(str(wrapped)) or (99, "")
+    assert rc == 0
+    assert replay == ns_header + prompt
+
+
+def test_codex_retry_auth_only_from_stderr_sidecar(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    output = tmp_path / "out.txt"
+    events = output.with_suffix(output.suffix + ".events.jsonl")
+    sidecar = output.with_suffix(output.suffix + ".sidecar")
+    calls = {"count": 0}
+    monkeypatch.setenv("LARCH_EXTERNAL_AUTH_RETRIES", "2")
+
+    def fake_run(**_kwargs: object) -> agents.RunExternalAgentResult:
+        calls["count"] += 1
+        events.write_text('{"type":"message","text":"Error: not logged in"}\n', encoding="utf-8")
+        sidecar.write_text("", encoding="utf-8")
+        output.write_text("failed\n", encoding="utf-8")
+        return agents.RunExternalAgentResult(7, output)
+
+    monkeypatch.setattr(agents, "run_external_agent", fake_run)
+    result, auth_attempt, _transient_attempt = agents._review_run_with_retries(
+        tool="codex",
+        output=output,
+        timeout_seconds=2,
+        cmd=["codex", "exec"],
+        stdout_path=events,
+        stderr_path=sidecar,
+    )
+    assert calls["count"] == 1
+    assert auth_attempt == 1
+    assert result.exit_code == 7
+
+
+def test_codex_retry_auth_from_stderr_sidecar_retries(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    output = tmp_path / "out.txt"
+    events = output.with_suffix(output.suffix + ".events.jsonl")
+    sidecar = output.with_suffix(output.suffix + ".sidecar")
+    calls = {"count": 0}
+    monkeypatch.setenv("LARCH_EXTERNAL_AUTH_RETRIES", "2")
+
+    def fake_run(**_kwargs: object) -> agents.RunExternalAgentResult:
+        calls["count"] += 1
+        events.write_text("{}\n", encoding="utf-8")
+        sidecar.write_text("Error: not logged in\n", encoding="utf-8")
+        output.write_text("failed\n", encoding="utf-8")
+        return agents.RunExternalAgentResult(7, output)
+
+    monkeypatch.setattr(agents, "run_external_agent", fake_run)
+    _result, auth_attempt, _transient_attempt = agents._review_run_with_retries(
+        tool="codex",
+        output=output,
+        timeout_seconds=2,
+        cmd=["codex", "exec"],
+        stdout_path=events,
+        stderr_path=sidecar,
+    )
+    assert calls["count"] == 2
+    assert auth_attempt == 2
+
+
+def test_review_serial_lock_releases_before_blocking_wait(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    output = tmp_path / "out.txt"
+    order: list[str] = []
+
+    def fake_acquire(_tool: str) -> agents.SerialLockState:
+        order.append("acquire")
+        return agents.SerialLockState(None)
+
+    def fake_release(_state: agents.SerialLockState) -> None:
+        order.append("release")
+
+    def fake_run(**_kwargs: object) -> agents.RunExternalAgentResult:
+        order.append("run")
+        return agents.RunExternalAgentResult(0, output)
+
+    monkeypatch.setattr(agents, "external_serial_lock_acquire", fake_acquire)
+    monkeypatch.setattr(agents, "external_serial_lock_release_after", fake_release)
+    monkeypatch.setattr(agents, "run_external_agent", fake_run)
+    agents._review_run_wrapper_attempt(tool="cursor", output=output, timeout_seconds=1, cmd=["cursor"])
+    assert order == ["acquire", "release", "run"]
+
+
+def test_cursor_review_records_usage_via_sidecar_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    json_sidecar = tmp_path / "json.out"
+    payload = '{"result":"ok","usage":{"inputTokens":3,"outputTokens":7,"cacheReadTokens":0,"cacheWriteTokens":0}}'
+    json_sidecar.write_text(payload, encoding="utf-8")
+    calls: list[tuple[str, str]] = []
+
+    def track_run(argv: list[str], **_kwargs: object) -> object:
+        calls.append((argv[2], argv[3]))
+        return type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+
+    monkeypatch.setattr(agents.proc, "run", track_run)
+    agents._review_cursor_postprocess(json_sidecar, 1)
+    assert calls == [("token", "record-vendor-sidecar")]
+
+
+def test_codex_review_ingests_token_record_sidecar(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, str]] = []
+    real_run = agents.proc.run
+
+    def track_run(argv: list[str], **_kwargs: object) -> object:
+        if len(argv) >= 4 and argv[2] == "token":
+            calls.append((argv[2], argv[3]))
+        return real_run(argv, **_kwargs)
+
+    monkeypatch.setattr(agents.proc, "run", track_run)
+    args = _codex_review_args(tmp_path)
+    out = Path(args.output)
+    events = out.with_suffix(out.suffix + ".events.jsonl")
+    events.write_text(
+        '{"type":"message","usage":{"input_tokens":4,"cached_input_tokens":1,"output_tokens":2}}\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(agents, "_prepare_codex_home", lambda *_a, **_kw: (0, ""))
+    monkeypatch.setattr(agents, "_review_run_with_retries", lambda **_kwargs: (agents.RunExternalAgentResult(0, out), 1, 1))
+    assert agents._review_launch_codex(args, "hi") == 0
+    assert out.with_suffix(out.suffix + ".token-record").is_file()
+    assert ("token", "record-vendor-sidecar") in calls
+    assert ("token", "record-vendor") not in calls
+
+
+def test_codex_transient_retry_succeeds_on_second_attempt(tmp_path: Path) -> None:
+    state = tmp_path / "attempts"
+    state.write_text("0", encoding="utf-8")
+    bin_dir = _stub_bin(
+        tmp_path,
+        "codex",
+        f"""#!/usr/bin/env bash
+state="{state}"
+n=$(cat "$state"); echo $((n+1)) > "$state"
+out=""; last=""; for a in "$@"; do if [[ "$last" == "--output-last-message" ]]; then out="$a"; fi; last="$a"; done
+if [[ "$n" == "0" ]]; then exit 7; fi
+echo '{{"type":"message","usage":{{"input_tokens":1,"cached_input_tokens":0,"output_tokens":2}}}}'
+printf OK >"$out"
+""",
+    )
+    out = tmp_path / "out.txt"
+    proc = _run(["--tool", "codex", "--output", str(out), "--timeout", "2", "--prompt", "hi"], {"PATH": f"{bin_dir}:{os.environ['PATH']}"})
+    assert proc.returncode == 0
+    assert state.read_text(encoding="utf-8").strip() == "2"
+    assert out.read_text(encoding="utf-8") == "OK"
+
+
+def test_cursor_auth_preflight_writes_preflight_bundle(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    out = tmp_path / "out.txt"
+    monkeypatch.setattr(
+        agents,
+        "cursor_auth_preflight",
+        lambda **_kwargs: agents.AuthVerdict(False, 1, "cursor auth missing"),
+    )
+    args = argparse.Namespace(
+        output=str(out),
+        timeout="2",
+        risk="",
+        stderr_sink="",
+        timing_task_kind="cursor-review",
+        token_budget_cap="",
+    )
+    assert agents._review_launch_cursor(args, "hi") == 1
+    assert out.with_suffix(out.suffix + ".done").read_text(encoding="utf-8").strip() == "1"
+    diag = out.with_suffix(out.suffix + ".diag").read_text(encoding="utf-8")
+    assert "STATUS=FAILED" in diag
+    assert "cursor-auth-preflight" in diag
+    dirty = out.with_suffix(out.suffix + ".dirty-tree").read_text(encoding="utf-8")
+    assert "STATUS=unknown" in dirty
+    assert "preflight-short-circuit-no-agent-ran" in dirty
+
+
+def test_cursor_degraded_response_written_when_validation_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    bin_dir = _stub_bin(
+        tmp_path,
+        "cursor",
+        '#!/usr/bin/env bash\ncat <<\'JSON\'\n{"result":"short","usage":{"inputTokens":1,"outputTokens":1001,"cacheReadTokens":0,"cacheWriteTokens":0}}\nJSON\n',
+    )
+    out = tmp_path / "out.txt"
+    real_run = agents.proc.run
+
+    def selective_run(argv: list[str], **_kwargs: object) -> object:
+        if len(argv) >= 5 and argv[2:5] == ["eval", "validate-research-output"]:
+            return type("R", (), {"returncode": 1, "stdout": "", "stderr": ""})()
+        return real_run(argv, **_kwargs)
+
+    monkeypatch.setattr(agents.proc, "run", selective_run)
+    proc = _run(
+        ["--tool", "cursor", "--output", str(out), "--timeout", "2", "--prompt", "hi"],
+        {"PATH": f"{bin_dir}:{os.environ['PATH']}", "CURSOR_API_KEY": "test-key"},
+    )
+    assert proc.returncode == 0
+    assert out.read_text(encoding="utf-8") == "CURSOR_DEGRADED_RESPONSE\n"
+
+
+def test_cursor_done_promoted_after_timing_record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    order: list[str] = []
+    real_timing = agents._review_record_timing
+    real_promote = agents._promote_inner_done
+    out = tmp_path / "out.txt"
+
+    def track_timing(*args: object, **_kwargs: object) -> None:
+        order.append("timing")
+        real_timing(*args, **_kwargs)  # type: ignore[arg-type]
+
+    def track_promote(output: Path) -> None:
+        order.append("done")
+        real_promote(output)
+
+    monkeypatch.setattr(agents, "_review_record_timing", track_timing)
+    monkeypatch.setattr(agents, "_promote_inner_done", track_promote)
+    monkeypatch.setattr(agents, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(True, 0, ""))
+    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: None)
+    monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
+    monkeypatch.setattr(agents, "_review_setup_cursor_config_dir", lambda: (tmp_path / "cfg", None))
+    monkeypatch.setattr(agents, "_review_cleanup_cursor_config_dir", lambda *_args: None)
+    monkeypatch.setattr(agents, "_review_capture_cursor_dirty_baseline", lambda _output: tmp_path / "baseline")
+    monkeypatch.setattr(agents, "_review_write_cursor_dirty_tree_from_baseline", lambda *_args: None)
+    monkeypatch.setattr(agents, "_review_cursor_postprocess", lambda *_args: None)
+    monkeypatch.setattr(
+        agents,
+        "_review_run_with_retries",
+        lambda **_kwargs: (agents.RunExternalAgentResult(0, out), 1, 1),
+    )
+    monkeypatch.setattr(agents, "resolve_model_args", lambda *_args, **_kwargs: type("M", (), {"argv": []})())
+    args = argparse.Namespace(
+        output=str(out),
+        timeout="2",
+        risk="",
+        stderr_sink="",
+        timing_task_kind="cursor-review",
+        token_budget_cap="",
+    )
+    assert agents._review_launch_cursor(args, "hi") == 0
+    assert order == ["timing", "done"]

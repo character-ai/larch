@@ -2730,22 +2730,6 @@ def _record_cursor_usage_from_output(output: Path, label: str) -> None:
         f"TOOL=cursor\nINPUT={input_tokens}\nOUTPUT={output_tokens}\nCACHE_READ={cache_read}\nCACHE_CREATE={cache_create}\nTOTAL={total}\nRAW={label}\n",
     )
     proc.run(
-        [
-            sys.executable,
-            str(_PY_CLI),
-            "token",
-            "record-vendor",
-            "cursor",
-            f"input={input_tokens}",
-            f"output={output_tokens}",
-            f"cache_read={cache_read}",
-            f"cache_create={cache_create}",
-            f"total={total}",
-            f"raw={label}",
-        ],
-        check=False,
-    )
-    proc.run(
         [sys.executable, str(_PY_CLI), "token", "record-vendor-sidecar", "--input", str(token_record)],
         check=False,
     )
@@ -2968,13 +2952,19 @@ def _review_read_prompt_file(path: str) -> tuple[int, str]:
 def _review_read_codex_prompt_sentinel(path: str) -> tuple[int, str] | None:
     prompt_path = Path(path)
     try:
-        first = prompt_path.read_text(encoding="utf-8", errors="replace").splitlines()[0]
-    except (OSError, IndexError):
+        text = prompt_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
         return None
-    if first != "LARCH_PROMPT_SENTINEL=1":
+    sentinel_marker = "LARCH_PROMPT_SENTINEL=1\n"
+    sentinel_idx = text.find(sentinel_marker)
+    if sentinel_idx == -1:
+        return None
+    prefix = text[:sentinel_idx]
+    lines = text[sentinel_idx:].splitlines()
+    if not lines or lines[0] != "LARCH_PROMPT_SENTINEL=1":
         return None
     values: dict[str, str] = {}
-    for line in prompt_path.read_text(encoding="utf-8", errors="replace").splitlines()[1:]:
+    for line in lines[1:]:
         if "=" not in line:
             continue
         key, value = line.split("=", 1)
@@ -2995,6 +2985,8 @@ def _review_read_codex_prompt_sentinel(path: str) -> tuple[int, str] | None:
     if digest != values["HASH"]:
         _err(f"agent launch-review: prompt reconstruction hash mismatch (sentinel={values['HASH']} reconstructed={digest})")
         return 1, ""
+    if prefix:
+        prompt = f"{prefix}{prompt}"
     return 0, prompt
 
 
@@ -3142,7 +3134,7 @@ def _review_append_outer_meta(meta: Path, *, prompt_sidecar: Path, risk: str, st
     if risk:
         lines.append(f"OUTER_LAUNCHER_RISK={risk}")
     if stderr_sink:
-        lines.append(f"OUTER_LAUNCHER_STDERR_SINK={stderr_sink}")
+        lines.append(f"STDERR_SINK={stderr_sink}")
     _append(meta, "\n".join(lines) + "\n")
 
 
@@ -3293,6 +3285,7 @@ def _review_run_wrapper_attempt(
     old_suffix = os.environ.get("RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX")
     os.environ["RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX"] = ".inner.done"
     state = external_serial_lock_acquire(tool)
+    external_serial_lock_release_after(state)
     try:
         return run_external_agent(
             tool=tool,
@@ -3305,7 +3298,6 @@ def _review_run_wrapper_attempt(
             stderr_sink=stderr_sink,
         )
     finally:
-        external_serial_lock_release_after(state)
         if old_suffix is None:
             os.environ.pop("RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX", None)
         else:
@@ -3352,14 +3344,24 @@ def _review_run_with_retries(
         )
         if tool == "codex" and result.exit_code != 0 and stdout_path is not None and stderr_path is not None:
             _mirror_codex_quota_from_events(stdout_path, stderr_path)
-        sidecars = [
-            stderr_path or output.with_suffix(output.suffix + ".sidecar"),
-            output.with_suffix(output.suffix + ".diag"),
-            stdout_path or output,
-            output,
-        ]
-        auth_failure = external_auth_verdict(tool, *sidecars) == "auth"
-        quota_failure = any(is_quota_failure(tool, p) for p in sidecars)
+        if tool == "codex":
+            auth_sidecars = [stderr_path or output.with_suffix(output.suffix + ".sidecar")]
+            quota_sidecars = [
+                *auth_sidecars,
+                output.with_suffix(output.suffix + ".diag"),
+                stdout_path or output,
+                output,
+            ]
+        else:
+            auth_sidecars = [
+                stderr_path or output.with_suffix(output.suffix + ".sidecar"),
+                output.with_suffix(output.suffix + ".diag"),
+                stdout_path or output,
+                output,
+            ]
+            quota_sidecars = auth_sidecars
+        auth_failure = external_auth_verdict(tool, *auth_sidecars) == "auth"
+        quota_failure = any(is_quota_failure(tool, p) for p in quota_sidecars)
         transient_failure = is_transient_infra_failure(tool, result.exit_code, output)
         empty_cursor = tool == "cursor" and result.exit_code == 0 and _review_is_cursor_empty_result(output)
         retryable_response = (result.exit_code != 0 and transient_failure) or empty_cursor
@@ -3534,7 +3536,13 @@ def _review_launch_codex(args: argparse.Namespace, prompt: str) -> int:
         if value == "-m" and i + 1 < len(model_args):
             model = model_args[i + 1]
             break
-    _record_usage_from_events(events, sidecar, "codex_review", output.with_suffix(output.suffix + ".token-record"), model=model)
+    token_record_path = output.with_suffix(output.suffix + ".token-record")
+    _record_usage_from_events(events, sidecar, "codex_review", token_record_path, model=model)
+    if token_record_path.is_file():
+        proc.run(
+            [sys.executable, str(_PY_CLI), "token", "record-vendor-sidecar", "--input", str(token_record_path)],
+            check=False,
+        )
     _review_write_clean_readonly_dirty_tree(output)
     _promote_inner_done(output)
     _review_emit_launcher_result(output, "codex", result.exit_code)
@@ -3716,8 +3724,8 @@ def _review_launch_cursor(args: argparse.Namespace, original_prompt: str) -> int
     _review_run_test_trap_after_inner_done_if_enabled()
     _review_cursor_postprocess(output, transient_attempt)
     _review_write_cursor_dirty_tree_from_baseline(output, baseline)
-    _promote_inner_done(output)
     _review_record_timing("cursor", timing_kind, start, output, result.exit_code)
+    _promote_inner_done(output)
     _review_emit_launcher_result(output, "cursor", result.exit_code)
     return result.exit_code
 
