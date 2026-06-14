@@ -16,7 +16,7 @@ design-step3-mav.sh --phase pre|post --session-env-path PATH --claude-pid PID --
 
 ## Pre phase
 
-The pre phase reads `.step3-plan-review-result.env` first and `.step3-review-result.env` second through `scripts/read-result-env.sh`. Session-env values remain fallback defaults, secondary result-env values fill absent primary keys, and primary result-env values win when both files define the same key. Symlinked result-env files fail closed.
+The pre phase reads `.step3-plan-review-result.env` as the base and `.step3-review-result.env` as the authoritative source through `scripts/read-result-env.sh`. Session-env values remain fallback defaults, base (plan-review) values fill absent keys, and `.step3-review-result.env` (sourced second) wins when both files define the same key. Symlinked result-env files fail closed.
 
 When `SCOPE_ANCHOR_FILE` is present, the wrapper renders it with `python/cli.py render scope-anchor --design-tmpdir "$DESIGN_TMPDIR"`. Every rendered evidence line is prefixed with `SCOPE_ANCHOR_EVIDENCE:` so anchor content cannot spoof trusted KVs. Render failures propagate.
 
