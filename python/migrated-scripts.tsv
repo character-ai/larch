@@ -826,3 +826,16 @@ skills/design/scripts/test-emit-design-plan-preview.md	#3680
 scripts/test-dispatch-plan-voters.sh	#3680
 scripts/test-dispatch-plan-voters.md	#3680
 scripts/test-lib-design-round-artifacts.sh	#3680
+scripts/_debug-term-trap.sh	#4333
+scripts/consolidate-round-sidecars.sh	#4333
+scripts/consolidate-round-sidecars.md	#4333
+scripts/lib-dirty-tree-sidecar.sh	#4333
+scripts/lib-dirty-tree-sidecar.md	#4333
+scripts/lib-validate-meta-path.sh	#4333
+scripts/lib-validate-meta-path.md	#4333
+scripts/repro-claude-p-edit-permissions.sh	#4333
+scripts/repro-claude-p-edit-permissions.md	#4333
+scripts/retro-sweep-design-logs-phase3d.sh	#4333
+scripts/retro-sweep-design-logs-phase3d.md	#4333
+scripts/sweep-run-logs-phase3a.sh	#4333
+scripts/sweep-run-logs-phase3a.md	#4333

@@ -545,11 +545,6 @@ exclude = [
   # (issue #1502 dedup). Referenced via source directives only, which
   # agent-lint does not follow.
   "scripts/lib-external-launcher-common.sh",
-  # scripts/lib-dirty-tree-sidecar.sh is a sourced-only shell library (no
-  # shebang, not invokable directly) carrying the retained
-  # _write_dirty_tree_sidecar helper for legacy shell-side baselines. Referenced via
-  # source directives only.
-  "scripts/lib-dirty-tree-sidecar.sh",
   # by the four *-structure.sh Stage-4 (#3119) harnesses via source directives
   # only; agent-lint does not follow source directives.
   # scripts/lib-phantom-probe.sh is a sourced-only shell library (no shebang,
@@ -596,22 +591,10 @@ exclude = [
   # python3 python/cli.py generate topology-docs is invoked through the same generator
   # registry walker; agent-lint does not resolve scripts/generators.tsv rows.
   "python3 python/cli.py generate topology-docs",
-  # scripts/consolidate-round-sidecars.sh is the one-shot operator migration
-  # script for Phase 3c (issue #3716): converts committed round directories
-  # from individual sidecar files to round-meta.json and pools reviewer-dyn-*.md
-  # archetypes. It has no Skill or hook caller — operators invoke it once from
-  # the terminal after deploying the Phase 3c code changes. agent-lint's G004
-  # dead-script graph cannot discover operator-terminal invocations.
-  "scripts/consolidate-round-sidecars.sh",
-  "scripts/consolidate-round-sidecars.md",
   # scripts/measure-*.sh are opt-in human-run measurement helpers for prompt
   # and run-log cost analysis. They have no Skill or hook caller by design, so
   # agent-lint's G004/dead-script graph cannot discover a structured
   # invocation reference.
-  # scripts/lib-validate-meta-path.sh is a sourced-only shell library (no
-  # shebang, not invokable directly). It is referenced from shell consumers via
-  # source directives only, which agent-lint does not follow.
-  "scripts/lib-validate-meta-path.sh",
   # scripts/lib-failed-agent-stderr-tail.sh is a sourced-only shell library (no
   # shebang, not invokable directly). Referenced from shell consumers via source
   # directives only, which agent-lint does not follow.
@@ -668,10 +651,6 @@ exclude = [
   # dropped markdown views from review-findings-full.jsonl; no automated caller.
   "scripts/render-findings-view.sh",
   "scripts/render-findings-view.md",
-  # scripts/sweep-run-logs-phase3a.sh — one-shot retroactive sweep for Phase 3a;
-  # run manually and then decommissioned.
-  "scripts/sweep-run-logs-phase3a.sh",
-  "scripts/sweep-run-logs-phase3a.md",
   # scripts/test-check-phantom-dirty.sh is the regression harness for
   # scripts/check-phantom-dirty.sh. Referenced only from Makefile
   # (test-check-phantom-dirty target) and its sibling contract.
@@ -1022,14 +1001,6 @@ exclude = [
   # pattern as the test-* harnesses above.
   "python/cli.py eval research",
   "python/test_research_eval.py",
-  # scripts/repro-claude-p-edit-permissions.sh is the opt-in operator
-  # reproducer for the `claude -p` Edit-permission stall (closes #587;
-  # validates kernel fix #585 plus the settings audit derived from #566).
-  # Referenced only from its sibling .md contract — no Makefile target,
-  # no SKILL.md reference, no CI wiring (depends on a real authenticated
-  # `claude` binary, costs API tokens, timing-sensitive). Same opt-in
-  # operator-instrumentation shape as python/cli.py eval research.
-  "scripts/repro-claude-p-edit-permissions.sh",
   # scripts/test-collect-agent-bash32.sh is the regression harness for
   # the bash 3.2 portability hazard at scripts/collect-agent-results.sh:402
   # (closes #511). Three cases: static idiom grep (Linux-CI backstop), plus
@@ -1138,7 +1109,6 @@ exclude = [
   "scripts/lib-cursor-launcher-common.md",
   "scripts/lib-codex-launcher-common.md",
   "python/agents.py",
-  "scripts/lib-validate-meta-path.md",
   "scripts/lib-failed-agent-stderr-tail.md",
   "scripts/test-lib-failed-agent-stderr-tail.md",
   "python/test_agents.py",
@@ -1403,13 +1373,4 @@ exclude = [
   # scripts/test-prompt-template-invariants.md, not from runtime skill prose.
   "scripts/test-prompt-template-invariants.sh",
   "scripts/test-prompt-template-invariants.md",
-  # scripts/retro-sweep-design-logs-phase3d.sh is an operator-run one-time
-  # sweep script (#3721). It is not invoked from runtime skill prose or hooks;
-  # its contract lives in the sibling scripts/retro-sweep-design-logs-phase3d.md.
-  "scripts/retro-sweep-design-logs-phase3d.sh",
-  "scripts/retro-sweep-design-logs-phase3d.md",
-  # scripts/_debug-term-trap.sh is an operator-run debug reproducer for
-  # dispatch-with-waterfall TERM cleanup behavior. It is not invoked from
-  # runtime skill prose or hooks.
-  "scripts/_debug-term-trap.sh",
 ]
