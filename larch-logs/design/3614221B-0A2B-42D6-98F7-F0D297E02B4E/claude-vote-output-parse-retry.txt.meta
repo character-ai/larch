@@ -1,0 +1,4 @@
+TOOL=claude
+TIMEOUT=1200
+OUTPUT_FILE=<TMPDIR>/claude-vote-output-parse-retry.txt
+PROMPT_FILE=<TMPDIR>/claude-vote-output-parse-retry.txt.prompt
