@@ -113,6 +113,11 @@ def test_findings_cli_missing_and_empty(tmp_path: Path) -> None:
     missing = run_cli("research", "render-findings-batch", "--report", str(tmp_path / "missing"), "--output", str(out), "--research-question-file", str(q), "--branch", "b", "--commit", "c")
     assert missing.returncode == 2
     assert f"ERROR: report file not found: {tmp_path / 'missing'}" in missing.stderr
+    report_dir = tmp_path / "report_dir"
+    report_dir.mkdir()
+    dir_case = run_cli("research", "render-findings-batch", "--report", str(report_dir), "--output", str(out), "--research-question-file", str(q), "--branch", "b", "--commit", "c")
+    assert dir_case.returncode == 2
+    assert f"ERROR: report file not found: {report_dir}" in dir_case.stderr
     report = tmp_path / "report.md"
     report.write_text("### Findings Summary\n\n### Risk Assessment\nLow\n", encoding="utf-8")
     empty = run_cli("research", "render-findings-batch", "--report", str(report), "--output", str(out), "--research-question-file", str(q), "--branch", "b", "--commit", "c")
@@ -149,12 +154,15 @@ def test_fetch_url_reason_matrix_and_ssrf() -> None:
     assert research.fetch_url("https://127.0.0.1/").token() == "FAIL(ssrf-private-host)"
     assert research.fetch_url("https://100.64.0.1/").token() == "FAIL(ssrf-private-host)"
     assert research.fetch_url("https://example.com/", resolver=lambda host: ["10.0.0.1"]).token() == "FAIL(ssrf-private-resolved)"
+    assert research.fetch_url("https://example.com/", resolver=lambda host: []).token() == "UNKNOWN(network-error)"
+    assert research.fetch_url("https://example.com/", resolver=lambda host: [], connector=lambda _u, _p, _t: 200).token() == "UNKNOWN(network-error)"
 
     def connector(_url: str, pinned_ip: str | None, _timeout: int) -> int:
         assert pinned_ip == "93.184.216.34"
         return 404
 
     assert research.fetch_url("https://example.com/", resolver=lambda host: ["93.184.216.34"], connector=connector).token() == "FAIL(head-not-found)"
+    assert research.fetch_url("https://example.com/", resolver=lambda host: ["93.184.216.34"], connector=lambda _u, _p, _t: 410).token() == "FAIL(head-not-found)"
     for code, token in ((403, "UNKNOWN(head-not-supported)"), (405, "UNKNOWN(head-not-supported)"), (501, "UNKNOWN(head-not-supported)"), (302, "UNKNOWN(redirect-not-followed)")):
         assert research.fetch_url("https://example.com/", resolver=lambda host: ["93.184.216.34"], connector=lambda _u, _p, _t, status=code: status).token() == token
 
@@ -188,8 +196,21 @@ def test_fileline_failure_modes(tmp_path: Path) -> None:
     assert research.check_fileline("dir", git_root=repo).token() == "FAIL(path-is-directory)"
 
 
+def test_fileline_git_root_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail_rev_parse(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(["git", "rev-parse", "--show-toplevel"], 1, "", "")
+
+    monkeypatch.setattr(research.subprocess, "run", fail_rev_parse)
+    assert research.check_fileline("README.md:1").token() == "UNKNOWN(git-root-unavailable)"
 
 
+def test_fileline_out_of_tree_symlink(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    outside = tmp_path / "outside.txt"
+    outside.write_text("secret\n", encoding="utf-8")
+    (repo / "escape").symlink_to(outside)
+    assert research.check_fileline("escape:1", git_root=repo).token() == "UNKNOWN(out-of-tree-path-after-realpath)"
 def test_parallel_fetch_budget_backfill_and_subprocess_cleanup(monkeypatch: pytest.MonkeyPatch) -> None:
     spawned: list[subprocess.Popen[bytes]] = []
 
@@ -216,6 +237,27 @@ def test_parallel_fetch_budget_backfill_and_subprocess_cleanup(monkeypatch: pyte
     time.sleep(0.2)
     assert spawned
     assert all(proc.poll() is not None for proc in spawned)
+
+
+def test_validate_citations_max_claims_truncation(tmp_path: Path) -> None:
+    report = tmp_path / "report.md"
+    lines: list[str] = []
+    for i in range(1, 6):
+        lines.append(f"URL {i}: https://example.com/page-{i}")
+    for i in range(1, 6):
+        lines.append(f"DOI {i}: 10.1234/foo-{i}")
+    for i in range(1, 6):
+        lines.append(f"File {i}: README.md:{i}")
+    report.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    out = tmp_path / "sidecar.md"
+
+    def fake_fetch(url: str) -> research.FetchResult:
+        return research.FetchResult("PASS")
+
+    research.validate_citations(report, out, tmp_path, max_claims=6, fetcher=fake_fetch, git_root=ROOT)
+    text = out.read_text(encoding="utf-8")
+    assert text.count("| `") == 6
+    assert "claim count exceeded `--max-claims=6`" in text
 
 
 def test_validate_citations_budget_writes_timeout_rows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -341,3 +383,163 @@ def test_quiet_contract_stream_for_research_verbs(tmp_path: Path) -> None:
     got = subprocess.run([sys.executable, "-c", py, str(fd3)], cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
     assert got.returncode == 0
     assert "COUNT=2" in got.stdout
+
+
+_RENDER_FOOTER = (
+    "### Risk Assessment\nLow\n\n### Difficulty Estimate\nS\n\n"
+    "### Feasibility Verdict\nYes\n\n### Key Files and Areas\n- f.md\n\n### Open Questions\n"
+)
+
+
+def _assert_render_round_trip(batch: Path, expected_count: int, out_dir: Path) -> None:
+    cp = run_cli("issue", "parse-input", "--input-file", str(batch), "--output-dir", str(out_dir))
+    assert cp.returncode == 0
+    items_total = next(line.split("=", 1)[1] for line in cp.stdout.splitlines() if line.startswith("ITEMS_TOTAL="))
+    assert items_total == str(expected_count)
+    assert "MALFORMED=true" not in cp.stdout
+
+
+@pytest.mark.parametrize(
+    ("name", "findings_body", "expected_count", "body_contains"),
+    [
+        (
+            "numbered list",
+            "1. First finding here. With detail.\n2. Second finding text.\n3. Third finding mentioning `code`.\n",
+            3,
+            None,
+        ),
+        (
+            "bulleted list",
+            "- First bullet finding.\n- Second bullet finding with more text.\n",
+            2,
+            None,
+        ),
+        (
+            "paragraph-per-item",
+            "First finding paragraph. With multiple sentences. And more.\n\nSecond finding paragraph here.\n",
+            2,
+            None,
+        ),
+        (
+            "planner-mode nested subquestions",
+            "#### Subquestion 1: How does X work?\n\n1. Finding A about X.\n2. Finding B about X.\n\n"
+            "#### Subquestion 2: How does Y work?\n\n1. Finding C about Y.\n",
+            3,
+            None,
+        ),
+        (
+            "fenced code with ### inside",
+            "1. First finding. Has fenced code:\n\n   ```\n   ### NotAHeading\n   ## NorThis\n   ```\n"
+            "2. Second finding.\n",
+            2,
+            None,
+        ),
+        (
+            "body-line ### escape",
+            "- First finding. The body has a literal heading-shaped line below.\n### Bad Header Line\n"
+            "This line follows the heading-shaped one inside the first finding's body.\n- Second finding.\n",
+            2,
+            "\\### Bad Header Line",
+        ),
+        (
+            "empty-title fallback",
+            "- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!?\n- Normal second finding.\n",
+            2,
+            "### Finding 1",
+        ),
+        (
+            "special characters in body",
+            "1. First finding with `code` and $variable and **bold**.\n2. Second finding has \"quotes\" and 'apostrophes'.\n",
+            2,
+            None,
+        ),
+        (
+            "tab-after-### body escape",
+            "- First finding here. Body has tab-after-###:\n###\tTabbed\n- Second finding.\n",
+            2,
+            "\\###\tTabbed",
+        ),
+        (
+            "indented fence with ### inside",
+            "- First finding. Has indented fenced code:\n\n   ```\n   ### NotAHeading\n   ```\n- Second finding.\n",
+            2,
+            None,
+        ),
+        (
+            "multi-line bulleted continuation",
+            "- First finding. With multiple sentences across the item.\n  Continuation line for first finding.\n- Second finding here.\n",
+            2,
+            None,
+        ),
+        (
+            "nested-numbered sublist",
+            "1. First finding with a nested enumeration in its body:\n   1. nested step one\n   2. nested step two\n",
+            1,
+            None,
+        ),
+        (
+            "nested then top-level sibling",
+            "1. First finding with a nested enumeration in its body:\n   1. nested step one\n   2. nested step two\n"
+            "2. Second top-level finding.\n",
+            2,
+            None,
+        ),
+        (
+            "non-planner #### preserved",
+            "1. First finding with a subsection heading in its body.\n\n#### Notes on the data\n"
+            "The notes section contains additional context that should not be lost.\n",
+            1,
+            "#### Notes on the data",
+        ),
+    ],
+)
+def test_render_findings_batch_retired_harness_fixtures(
+    tmp_path: Path, name: str, findings_body: str, expected_count: int, body_contains: str | None
+) -> None:
+    report = tmp_path / "report.md"
+    question = tmp_path / "question.txt"
+    batch = tmp_path / "batch.md"
+    out_dir = tmp_path / "parsed"
+    question.write_text("Test research question\n", encoding="utf-8")
+    report.write_text(f"## Research Report\n\n### Findings Summary\n\n{findings_body}\n{_RENDER_FOOTER}", encoding="utf-8")
+    count, absent = research.render_findings_batch(report, batch, question, "test-branch", "deadbee", timestamp="2026-01-01T00:00:00Z")
+    assert absent is False
+    assert count == expected_count
+    body = batch.read_text(encoding="utf-8")
+    if body_contains is not None:
+        assert body_contains in body
+    _assert_render_round_trip(batch, expected_count, out_dir)
+
+
+def test_render_findings_batch_empty_and_missing_sections(tmp_path: Path) -> None:
+    question = tmp_path / "question.txt"
+    batch = tmp_path / "batch.md"
+    question.write_text("Test research question\n", encoding="utf-8")
+    empty_report = tmp_path / "empty.md"
+    empty_report.write_text(f"## Research Report\n\n### Findings Summary\n\n{_RENDER_FOOTER}", encoding="utf-8")
+    count, absent = research.render_findings_batch(empty_report, batch, question, "b", "c", timestamp="2026-01-01T00:00:00Z")
+    assert (count, absent) == (0, False)
+    assert batch.read_text(encoding="utf-8") == ""
+    missing_report = tmp_path / "missing-section.md"
+    missing_report.write_text("## Research Report\n\n### Risk Assessment\nN/A\n", encoding="utf-8")
+    count, absent = research.render_findings_batch(missing_report, batch, question, "b", "c", timestamp="2026-01-01T00:00:00Z")
+    assert (count, absent) == (0, True)
+
+
+def test_validate_citations_url_dedup_and_idempotent_rerun(tmp_path: Path) -> None:
+    report = tmp_path / "report.md"
+    report.write_text(
+        "See https://example.com/dup-page.\nAnd again: https://example.com/dup-page.\nAnd once more: https://example.com/dup-page.\n",
+        encoding="utf-8",
+    )
+    out1 = tmp_path / "cv1.md"
+    out2 = tmp_path / "cv2.md"
+
+    def fake_fetch(url: str) -> research.FetchResult:
+        return research.FetchResult("PASS")
+
+    research.validate_citations(report, out1, tmp_path, fetcher=fake_fetch)
+    text = out1.read_text(encoding="utf-8")
+    assert text.count("https://example.com/dup-page") == 1
+    research.validate_citations(report, out2, tmp_path, fetcher=fake_fetch)
+    assert out1.read_bytes() == out2.read_bytes()

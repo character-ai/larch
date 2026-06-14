@@ -126,15 +126,21 @@ def _resolve_public_ips(host: str, *, timeout: float, resolver: Callable[[str], 
     if resolver is not None:
         ips = resolver(host)
     else:
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        future = executor.submit(socket.getaddrinfo, host, 443, type=socket.SOCK_STREAM)
         try:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as single:
-                infos = single.submit(socket.getaddrinfo, host, 443, type=socket.SOCK_STREAM).result(timeout=timeout)
+            infos = future.result(timeout=timeout)
         except concurrent.futures.TimeoutError:
+            executor.shutdown(wait=False, cancel_futures=True)
             return [], "timeout"
         except socket.gaierror:
+            executor.shutdown(wait=False, cancel_futures=True)
             return [], "network-error"
         except OSError:
+            executor.shutdown(wait=False, cancel_futures=True)
             return [], "network-error"
+        else:
+            executor.shutdown(wait=False, cancel_futures=True)
         ips = []
         for info in infos:
             addr = info[4][0]
@@ -175,9 +181,11 @@ def fetch_url(
     ips, resolve_reason = _resolve_public_ips(host, timeout=timeout, resolver=resolver)
     if resolve_reason == "ssrf-private-resolved":
         return FetchResult("FAIL", resolve_reason)
-    if resolve_reason == "timeout":
-        return FetchResult("UNKNOWN", "timeout")
-    pinned_ip = ips[0] if ips else None
+    if resolve_reason in {"timeout", "network-error"}:
+        return FetchResult("UNKNOWN", resolve_reason)
+    if not ips:
+        return FetchResult("UNKNOWN", "network-error")
+    pinned_ip = ips[0]
     try:
         if connector is not None:
             code = connector(url, pinned_ip, timeout)
@@ -290,8 +298,15 @@ def _parallel_fetch_results(
     results = {}
     while active:
         if time.monotonic() >= deadline:
+            next_active: list[tuple[str, subprocess.Popen[bytes]]] = []
+            for key, proc in active:
+                if proc.poll() is not None:
+                    results[key] = _decode_fetch_process(proc)
+                else:
+                    next_active.append((key, proc))
+            active = next_active
             break
-        next_active: list[tuple[str, subprocess.Popen[bytes]]] = []
+        next_active = []
         for key, proc in active:
             if proc.poll() is not None:
                 results[key] = _decode_fetch_process(proc)
@@ -301,6 +316,11 @@ def _parallel_fetch_results(
         if active:
             sleep(0.05)
     for key, proc in active:
+        if key in results:
+            continue
+        if proc.poll() is not None:
+            results[key] = _decode_fetch_process(proc)
+            continue
         _terminate_fetch_process(proc)
         with contextlib.suppress(Exception):
             if proc.stdout is not None:
@@ -527,6 +547,7 @@ def validate_citations_main(argv: list[str]) -> int:
         if extra or not ns.report or not ns.output or not ns.tmpdir:
             _usage(usage)
             return 2
+        logging_util.quiet_init(argv0="validate-citations")
         try:
             budget = _positive_int(ns.budget_seconds, "--budget-seconds")
             per_fetch = _positive_int(ns.per_fetch_timeout, "--per-fetch-timeout")
@@ -539,7 +560,6 @@ def validate_citations_main(argv: list[str]) -> int:
             return 2
     except SystemExit:
         return 2
-    logging_util.quiet_init(argv0="validate-citations")
     validate_citations(Path(ns.report), Path(ns.output), Path(ns.tmpdir), budget_seconds=budget, per_fetch_timeout=per_fetch, max_claims=max_claims)
     return 0
 

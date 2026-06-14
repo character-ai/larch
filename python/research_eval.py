@@ -130,7 +130,9 @@ def _validate_structured_tsv(text: str) -> str:
         if schema != "1" or scope not in {"in_scope", "out_of_scope"} or severity not in _ALLOWED_SEVERITIES or focus not in _ALLOWED_FOCUS:
             continue
         out.append("\t".join([schema, scope, severity, focus, location, what, scenario, fix]))
-    return "\n".join(out) + ("\n" if len(out) > 1 else "")
+    if len(out) <= 1:
+        return ""
+    return "\n".join(out) + "\n"
 
 
 def validate_structured_reviewer_output(text: str, *, write_structured: Path | None = None) -> int:

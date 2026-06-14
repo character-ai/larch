@@ -256,3 +256,32 @@ def test_quiet_contract_stream_for_eval_validator(tmp_path: Path) -> None:
     got = subprocess.run([sys.executable, "-c", py, str(fd3)], cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
     assert got.returncode == 2
     assert "body too thin" in got.stdout
+
+
+def _make_words(n: int) -> str:
+    return " ".join(f"lorem{i}" for i in range(n))
+
+
+@pytest.mark.parametrize(
+    ("label", "body", "expected", "kwargs"),
+    [
+        ("https url", _make_words(250) + "\nSee https://example.com/doc for context.\n", 0, {}),
+        ("makefile line", _make_words(250) + "\nSee Makefile:42 for the target.\n", 0, {}),
+        ("extensionless path", _make_words(250) + "\nSee kernel/spin.lock for the lockfile.\n", 0, {}),
+        ("empty fence non-provenance", _make_words(250) + "\n```\n```\n", 3, {}),
+        ("spin.lock false positive", _make_words(250) + "\nIn concurrency theory the spin.lock primitive is the simplest of all locking abstractions.\n", 3, {}),
+        ("raw.txt false positive", _make_words(250) + "\nConversion pipelines often store the raw.txt format unchanged through transit.\n", 3, {}),
+        ("bare cargo.lock false positive", _make_words(250) + "\nRust projects ship a Cargo.lock that pins dependency versions.\n", 3, {}),
+        ("invalid colon ref", _make_words(250) + "\nReference: file.md:garbage — bare colon followed by non-digits.\n", 3, {}),
+        ("invalid slash ref", _make_words(250) + "\nReference: file.md/child — slash-suffix bypass attempt.\n", 3, {}),
+        ("validation-mode uncited", _make_words(40) + "\n", 3, {"validation_mode": True}),
+        ("validation-mode exonerate ballot", "FINDING_1: EXONERATE\n", 0, {"validation_mode": True}),
+        ("header-only tsv", "schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix\n", 2, {"validation_mode": True}),
+    ],
+)
+def test_validate_research_output_provenance_and_validation_matrix(
+    tmp_path: Path, label: str, body: str, expected: int, kwargs: dict[str, object]
+) -> None:
+    _ = label
+    path = write(tmp_path / "case.txt", body)
+    assert research_eval.validate_research_output(path, **kwargs) == expected  # type: ignore[arg-type]
