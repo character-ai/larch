@@ -20,6 +20,8 @@ def run_review(
     quiet_disable: bool = True,
 ) -> subprocess.CompletedProcess[str]:
     merged = os.environ.copy()
+    for key in ("IMPLEMENT_TMPDIR", "SESSION_ENV_PATH"):
+        _ = merged.pop(key, None)
     if quiet_disable:
         merged["LARCH_QUIET_DISABLE"] = "1"
     else:

@@ -651,6 +651,9 @@ test-run-step2-dispatch:
 test-step2-dispatch:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-step2-dispatch.sh
 
+# test-stall-recovery-report runs all split sections sequentially (local-dev convenience,
+# NOT a test-harnesses prerequisite, see CARVE_OUTS in scripts/test-harness-shards-coverage.sh).
+# CI shards use the three section targets below directly.
 test-stall-recovery-report: test-stall-recovery-report-1 test-stall-recovery-report-2 test-stall-recovery-report-3
 
 test-stall-recovery-report-1:
