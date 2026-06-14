@@ -3531,6 +3531,8 @@ def _review_launch_codex(args: argparse.Namespace, prompt: str) -> int:
             _review_write_preflight_bundle(output, args, reason, tool="codex", prompt_sidecar=prompt_sidecar)
             _review_write_clean_readonly_dirty_tree(output)
             _review_write_preflight_done(output, auth_rc)
+            if _review_brainstorm_failure_uses_sink(timing_kind, args.stderr_sink):
+                _review_write_failure_sink(output, args.stderr_sink, auth_rc)
             _review_emit_launcher_result(output, "codex", auth_rc)
             return 0
         try:

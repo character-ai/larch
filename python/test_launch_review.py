@@ -1323,6 +1323,146 @@ def test_codex_failure_stages_vendor_diagnostics_in_implement_tmpdir(tmp_path: P
     assert any("vendor failure body" in part.read_text(encoding="utf-8") for part in parts_dir.iterdir())
 
 
+
+def test_brainstorm_codex_auth_failure_uses_stderr_sink(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    out = tmp_path / "codex-brainstorm-output.txt"
+    sink = tmp_path / "codex-brainstorm-launch.failure.log"
+
+    def auth_setup_failed(_home_dir: Path, *, trusted_instructions_file: str = "") -> tuple[int, str]:
+        _ = trusted_instructions_file
+        return (1, "codex auth setup failed")
+
+    monkeypatch.setattr(agents, "_prepare_codex_home", auth_setup_failed)
+    args = _codex_review_args(
+        tmp_path,
+        out_name="codex-brainstorm-output.txt",
+        stderr_sink=str(sink),
+        timing_task_kind="codex-brainstorm",
+    )
+    assert agents._review_launch_codex(args, "hi") == 0
+    sink_text = sink.read_text(encoding="utf-8")
+    assert "STATUS=FAILED" in sink_text
+    assert "codex auth setup failed" in sink_text
+
+
+def test_brainstorm_cursor_failure_uses_stderr_sink_without_runlog_append(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    out = tmp_path / "cursor-brainstorm-output.txt"
+    sink = tmp_path / "cursor-brainstorm-launch.failure.log"
+    append_called = {"value": False}
+
+    def cursor_auth_ok(*, caller: str = "agent cursor-auth-preflight") -> agents.AuthVerdict:
+        _ = caller
+        return agents.AuthVerdict(ok=True, rc=0, message="")
+
+    def resolve_model_args_ok(_tool: str, *, with_effort: bool = False, default_model: str = "") -> agents.ModelArgResult:
+        _ = (with_effort, default_model)
+        return agents.ModelArgResult(())
+
+    def run_with_retries_fail(**_kwargs: object) -> tuple[agents.RunExternalAgentResult, int, int]:
+        out.with_suffix(out.suffix + ".diag").write_text("cursor brainstorm failed\n", encoding="utf-8")
+        return (agents.RunExternalAgentResult(7, out), 1, 1)
+
+    def append_launch_failure(**_kwargs: object) -> None:
+        append_called["value"] = True
+
+    monkeypatch.setattr(agents, "cursor_auth_preflight", cursor_auth_ok)
+    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: None)
+    monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
+    def setup_cursor_config_dir() -> tuple[Path, str | None]:
+        return (tmp_path / "cfg", None)
+
+    def cleanup_cursor_config_dir(_cfg: Path, _old: str | None) -> None:
+        return None
+
+    def capture_cursor_dirty_baseline(_output: Path) -> Path:
+        return tmp_path / "baseline"
+
+    def write_cursor_dirty_tree_from_baseline(_output: Path, _baseline: Path) -> None:
+        return None
+
+    def record_timing(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(agents, "resolve_model_args", resolve_model_args_ok)
+    monkeypatch.setattr(agents, "_review_setup_cursor_config_dir", setup_cursor_config_dir)
+    monkeypatch.setattr(agents, "_review_cleanup_cursor_config_dir", cleanup_cursor_config_dir)
+    monkeypatch.setattr(agents, "_review_capture_cursor_dirty_baseline", capture_cursor_dirty_baseline)
+    monkeypatch.setattr(agents, "_review_write_cursor_dirty_tree_from_baseline", write_cursor_dirty_tree_from_baseline)
+    monkeypatch.setattr(agents, "_review_run_with_retries", run_with_retries_fail)
+    monkeypatch.setattr(agents, "_review_record_timing", record_timing)
+    monkeypatch.setattr(agents, "_review_append_launch_failure", append_launch_failure)
+    args = argparse.Namespace(
+        output=str(out),
+        timeout="2",
+        risk="",
+        stderr_sink=str(sink),
+        timing_task_kind="cursor-brainstorm",
+        token_budget_cap="",
+    )
+    assert agents._review_launch_cursor(args, "hi") == 7
+    assert append_called["value"] is False
+    assert "cursor brainstorm failed" in sink.read_text(encoding="utf-8")
+
+
+def test_review_cursor_failure_still_appends_runlog(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    out = tmp_path / "cursor-review-output.txt"
+    sink = tmp_path / "cursor-review-launch.failure.log"
+    append_called = {"value": False}
+
+    def cursor_auth_ok(*, caller: str = "agent cursor-auth-preflight") -> agents.AuthVerdict:
+        _ = caller
+        return agents.AuthVerdict(ok=True, rc=0, message="")
+
+    def resolve_model_args_ok(_tool: str, *, with_effort: bool = False, default_model: str = "") -> agents.ModelArgResult:
+        _ = (with_effort, default_model)
+        return agents.ModelArgResult(())
+
+    def run_with_retries_fail(**_kwargs: object) -> tuple[agents.RunExternalAgentResult, int, int]:
+        out.with_suffix(out.suffix + ".diag").write_text("cursor review failed\n", encoding="utf-8")
+        return (agents.RunExternalAgentResult(7, out), 1, 1)
+
+    def append_launch_failure(**_kwargs: object) -> None:
+        append_called["value"] = True
+
+    monkeypatch.setattr(agents, "cursor_auth_preflight", cursor_auth_ok)
+    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: None)
+    monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
+    def setup_cursor_config_dir() -> tuple[Path, str | None]:
+        return (tmp_path / "cfg", None)
+
+    def cleanup_cursor_config_dir(_cfg: Path, _old: str | None) -> None:
+        return None
+
+    def capture_cursor_dirty_baseline(_output: Path) -> Path:
+        return tmp_path / "baseline"
+
+    def write_cursor_dirty_tree_from_baseline(_output: Path, _baseline: Path) -> None:
+        return None
+
+    def record_timing(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(agents, "resolve_model_args", resolve_model_args_ok)
+    monkeypatch.setattr(agents, "_review_setup_cursor_config_dir", setup_cursor_config_dir)
+    monkeypatch.setattr(agents, "_review_cleanup_cursor_config_dir", cleanup_cursor_config_dir)
+    monkeypatch.setattr(agents, "_review_capture_cursor_dirty_baseline", capture_cursor_dirty_baseline)
+    monkeypatch.setattr(agents, "_review_write_cursor_dirty_tree_from_baseline", write_cursor_dirty_tree_from_baseline)
+    monkeypatch.setattr(agents, "_review_run_with_retries", run_with_retries_fail)
+    monkeypatch.setattr(agents, "_review_record_timing", record_timing)
+    monkeypatch.setattr(agents, "_review_append_launch_failure", append_launch_failure)
+    args = argparse.Namespace(
+        output=str(out),
+        timeout="2",
+        risk="",
+        stderr_sink=str(sink),
+        timing_task_kind="cursor-review",
+        token_budget_cap="",
+    )
+    assert agents._review_launch_cursor(args, "hi") == 7
+    assert append_called["value"] is True
+    assert not sink.exists()
+
+
 def _launch_review_argv_reject_case(
     tmp_path: Path,
     tool: str,

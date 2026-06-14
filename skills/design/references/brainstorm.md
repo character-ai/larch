@@ -112,6 +112,21 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" dirty-tree checkpoint
 
 If dirty/unknown: write `$DESIGN_TMPDIR/dirty-tree-detected.env` with `STAGE=brainstorm-collection` and `RECOVERY_REQUIRED=true`, prompt once per boundary using `$DESIGN_TMPDIR/.dirty-tree-prompted-brainstorm-collection` as the idempotency sentinel.
 
+## Post-collection dirty-tree recovery
+
+Immediately after `design-step1d5.sh --mode collect` returns:
+
+1. Consult `${OUTPUT}.dirty-tree` sidecars for each canonical staging path you supplied to `--mode collect`.
+2. Read `$DESIGN_TMPDIR/dirty-tree-detected.env`.
+
+If the env file contains `RECOVERY_REQUIRED=true`, run the non-skippable operator recovery flow **before** synthesis or Step 1d.7:
+
+- Use `$DESIGN_TMPDIR/.dirty-tree-prompted-brainstorm-collection` as the once-per-boundary sentinel; do not fire `AskUserQuestion` when the sentinel already exists.
+- When prompting, offer exactly **Restore a clean tree and continue** and **Cancel this design run**.
+- On **Restore a clean tree and continue**: re-run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" dirty-tree checkpoint` and continue only when it reports `STATUS=clean`; then rewrite `dirty-tree-detected.env` with `RECOVERY_REQUIRED=false` and proceed to synthesis.
+- On **Cancel this design run**: preserve `$DESIGN_TMPDIR` and exit `/design`.
+- Do not proceed to synthesis, the discussion loop, or Step 1d.7 while `RECOVERY_REQUIRED=true`.
+
 ---
 
 **MANDATORY — READ ENTIRE FILE before composing the synthesis and any free-form discussion-loop response: `skills/design/references/readability-style.md`.**
