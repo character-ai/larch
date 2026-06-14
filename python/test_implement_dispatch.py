@@ -184,7 +184,7 @@ def test_run_dispatch_forwards_answers_to_step2(tmp_path: Path, monkeypatch: pyt
     answers.write_text('{"answers":[]}\n', encoding="utf-8")
     captured: dict[str, list[str]] = {}
 
-    def fake_run(argv, **kwargs):  # type: ignore[no-untyped-def]
+    def fake_run(argv, **_kwargs):  # type: ignore[no-untyped-def]
         if len(argv) >= 4 and argv[2:4] == ["implement", "step2-dispatch"]:
             captured["argv"] = list(argv)
             return subprocess.CompletedProcess(argv, 0, "STATUS=claude_fallback\nORCHESTRATOR_EDIT_AUTHORITY=allowed\n", "")
@@ -264,6 +264,7 @@ def test_step2_dispatch_malformed_manifest_recovery(repo: Path, tmp_path: Path, 
 
 
 def test_step2_dispatch_malformed_manifest_empty_delta_bails(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    _ = repo
     tmp = _session(tmp_path)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
     monkeypatch.setattr(implement_dispatch, "_run_launcher", _malformed_launcher(lambda _repo, _st: None))
@@ -299,6 +300,7 @@ def test_step2_dispatch_prelaunch_staged_index_blocks_recovery(repo: Path, tmp_p
 
 
 def test_step2_dispatch_rename_recovery_uses_destination_path(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    _ = repo
     tmp = _session(tmp_path)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
 
@@ -798,6 +800,7 @@ def test_step2_dispatch_main_branch_prohibited(repo: Path, tmp_path: Path, monke
 
 
 def test_step2_dispatch_needs_qa_repair_from_pending(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    _ = repo
     tmp = _session(tmp_path)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
 
@@ -968,6 +971,7 @@ def test_step2_dispatch_detached_head_prohibited(repo: Path, tmp_path: Path, mon
 
 
 def test_step2_dispatch_cap_hit_bails(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    _ = repo
     tmp = _session(tmp_path)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
 
@@ -990,6 +994,7 @@ def test_step2_dispatch_cap_hit_bails(repo: Path, tmp_path: Path, monkeypatch: p
 
 
 def test_step2_dispatch_wrapper_validation_failure_bails(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    _ = repo
     tmp = _session(tmp_path)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
 
