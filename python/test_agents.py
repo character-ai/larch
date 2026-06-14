@@ -1471,7 +1471,7 @@ def test_health_gate_in_process_path_under_tight_timeout(
 def test_health_gate_wall_clock_timeout_fast_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def blocking_check_reviewers(**kwargs: object) -> agents.CheckReviewersResult:
+    def blocking_check_reviewers(**_kwargs: object) -> agents.CheckReviewersResult:
         return agents.CheckReviewersResult(
             codex_binary_found=True,
             cursor_binary_found=False,
@@ -1493,10 +1493,9 @@ def test_health_gate_wall_clock_timeout_fast_fails(
     assert elapsed < 2.5
 
 
-@pytest.mark.parametrize(("tool", "present_key", "expected_rc"), [("codex", "CODEX_PRESENT", 7), ("cursor", "CURSOR_PRESENT", 8)])
+@pytest.mark.parametrize(("tool", "expected_rc"), [("codex", 7), ("cursor", 8)])
 def test_run_external_agent_health_gate_fast_fails_without_spawn(
     tool: str,
-    present_key: str,
     expected_rc: int,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
