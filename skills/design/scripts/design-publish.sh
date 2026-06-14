@@ -255,6 +255,13 @@ add_warn() {
 }
 
 
+clear_superseded_terminal_state_on_plan_recovery() {
+    local state_file="$DESIGN_TMPDIR/design-failure-terminal-state.env"
+    if [[ -f "$state_file" && ! -L "$state_file" ]]; then
+        rm -f "$state_file"
+    fi
+}
+
 stage_design_terminal_state() {
     local outcome=$1 step=$2 phase=$3 site=$4 trigger=$5 bail=$6 exit_code=$7 detail_log=${8:-} root_hint=${9:-}
     local helper="$PLUGIN_ROOT/skills/design/scripts/design-stage-terminal-state.sh"
@@ -541,6 +548,7 @@ if ! python3 "$PLUGIN_ROOT/python/cli.py" "${_plan_block_args[@]}"; then
 fi
 
 PLAN_WRITE_OK=true
+clear_superseded_terminal_state_on_plan_recovery
 
 _arch_file="$DESIGN_TMPDIR/architecture-diagram.md"
 _arch_skipped="$DESIGN_TMPDIR/architecture-diagram.skipped"
