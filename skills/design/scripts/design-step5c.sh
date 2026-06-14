@@ -126,6 +126,16 @@ emit_report_gate_sidecars_from_disk() {
     printf 'REPORT_GATE_SIDECARS_FILE=%s\n' "$handoff"
   fi
 }
+emit_final_summary_marked_from_disk() {
+  local summary_path="${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}"
+  local last_char
+  [ -s "$summary_path" ] || return 0
+  printf '%s\n' 'LARCH_FINAL_SUMMARY_BEGIN'
+  cat "$summary_path"
+  last_char="$(tail -c 1 "$summary_path" 2>/dev/null || true)"
+  [ -z "$last_char" ] || printf '\n'
+  printf '%s\n' 'LARCH_FINAL_SUMMARY_END'
+}
    _publish_stdout_file="$(mktemp "${TMPDIR:-/tmp}/larch-publish-stdout.XXXXXX")" || {
      printf '%s\n' "**⚠ Step 5c: could not allocate design-publish stdout capture; aborting /design**" >&2
      exit 1
@@ -191,7 +201,8 @@ emit_report_gate_sidecars_from_disk() {
        --outcome failed-publish-tail \
        --mode "${MODE:-N/A}" \
        ${REPO:+--repo "$REPO"} \
-       --post-publish-only || true
+       --post-publish-only >"$DESIGN_TMPDIR/render-final-summary.failed-publish-tail.stdout.log" || true
+     emit_final_summary_marked_from_disk
      emit_report_gate_sidecars_from_disk
    }
    if [[ "${_publish_rc:-0}" -eq 2 ]]; then
@@ -304,6 +315,10 @@ printf 'VALIDATE_STATUS=%s\nVALIDATE_DEFECT_COUNT=%s\nVALIDATE_SKIPPED_COUNT=%s\
 printf 'VALIDATE_UNSAFE_TOKEN_COUNT=%s\nVALIDATE_LOG_FILE=%s\n' "${VALIDATE_UNSAFE_TOKEN_COUNT:-}" "${VALIDATE_LOG_FILE:-}"
 printf 'FINAL_SUMMARY_PATH=%s\nUPSERT_STATUS=%s\nARCHITECTURE_SOURCE=%s\n' "${FINAL_SUMMARY_PATH:-}" "${UPSERT_STATUS:-}" "${ARCHITECTURE_SOURCE:-}"
 printf 'CLEANUP_ELIGIBLE=%s\n' "${_cleanup_eligible}"
+
+if [[ "${_publish_rc:-0}" -eq 0 || "${_publish_rc:-0}" -eq 1 || "${_publish_rc:-0}" -eq 3 ]]; then
+  emit_final_summary_marked_from_disk
+fi
 
 if [[ "${_publish_rc:-0}" -eq 4 ]]; then
   printf 'STEP5C_STATUS=validator-defects\n'

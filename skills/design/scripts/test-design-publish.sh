@@ -580,6 +580,10 @@ set -e
 assert_rc "plan-block-write failure" 1 "$rc"
 grep -q 'PLAN_WRITE_OK=false' "$D_FAIL/.design-publish-result.env" \
   || fail "failure result env missing PLAN_WRITE_OK=false"
+grep -Eq '^FINAL_SUMMARY_PATH=.*/final-summary[.]md$' "$D_FAIL/.design-publish-result.env" \
+  || fail "failure result env missing FINAL_SUMMARY_PATH"
+[ -s "$D_FAIL/final-summary.md" ] \
+  || fail "failed-plan-write must leave non-empty final-summary.md"
 [ -f "$D_FAIL/design-failure-terminal-state.env" ] \
   || fail 'plan-block failure must stage terminal state on publish tmpdir'
 grep -Fxq 'FAILURE_OUTCOME=failed-plan-write' "$D_FAIL/design-failure-terminal-state.env" \
@@ -625,6 +629,9 @@ assert_rc "happy path" 0 "$rc"
 grep -q 'PLAN_WRITE_OK=true' "$D_OK/.design-publish-result.env" || fail "happy PLAN_WRITE_OK"
 grep -q 'PUBLISH_OK=true' "$D_OK/.design-publish-result.env" || fail "happy PUBLISH_OK"
 grep -q 'RENAMED=true' "$D_OK/.design-publish-result.env" || fail "happy RENAMED"
+grep -Eq '^FINAL_SUMMARY_PATH=.*/final-summary[.]md$' "$D_OK/.design-publish-result.env" \
+  || fail "happy result env missing FINAL_SUMMARY_PATH"
+[ -s "$D_OK/final-summary.md" ] || fail "happy path must leave non-empty final-summary.md"
 
 plan_pos=$(grep -n 'plan-block-write' "$CALL_LOG" | head -1 | cut -d: -f1)
 upsert_pos=$(grep -n 'upsert-diagrams' "$CALL_LOG" | head -1 | cut -d: -f1)
@@ -834,6 +841,9 @@ rc=$?
 set -e
 assert_rc "PUBLISH_OK=false" 0 "$rc"
 grep -q 'post-publish-only' "$RENDER_LOG" || fail "PUBLISH_OK=false should render post-publish summary"
+grep -Eq '^FINAL_SUMMARY_PATH=.*/final-summary[.]md$' "$D_PFAIL/.design-publish-result.env" \
+  || fail "PUBLISH_OK=false result env missing FINAL_SUMMARY_PATH"
+[ -s "$D_PFAIL/final-summary.md" ] || fail "PUBLISH_OK=false must leave non-empty final-summary.md"
 grep -q -- '--outcome failed-publish' "$RENDER_LOG" || fail "PUBLISH_OK=false should render failed-publish outcome"
 grep -q 'DESIGN_LOG_PR_NUMBER=456' "$RENDER_LOG" || fail "PUBLISH_OK=false render missing DESIGN_LOG_PR_NUMBER"
 grep -q 'DESIGN_LOG_PR_URL=https://github.com/owner/repo/pull/456' "$RENDER_LOG" || fail "PUBLISH_OK=false render missing DESIGN_LOG_PR_URL"

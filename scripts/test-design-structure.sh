@@ -589,6 +589,33 @@ assert_postplan_thin_fence() {
   grep -Fq 'BASELINE_PLAN_LINES' "$emit_sh" || fail 'design-postplan-emit.sh missing drift baseline parse'
 }
 
+
+assert_step5_fold_and_summary_markers() {
+  python3 - "$SKILL_MD" <<'PY'
+import re
+import sys
+from pathlib import Path
+text = Path(sys.argv[1]).read_text()
+fences = re.findall(r'```bash\n(.*?)\n```', text, flags=re.S)
+for fence in fences:
+    if 'design-step5.sh' in fence:
+        print('FAIL: skills/design/SKILL.md must not contain a design-step5.sh Bash fence', file=sys.stderr)
+        sys.exit(1)
+PY
+  ! grep -Fq '### 5a — Update Reviewer Presence Status' "$SKILL_MD" \
+    || fail 'SKILL.md must not contain the empty Step 5a heading'
+  contains "$SCRIPT_DIR/design-step5b-prepare.sh" ': > "$DESIGN_TMPDIR/.completed/step-4b"' 'Step 5b prepare wrapper missing step-4b sentinel write'
+  contains "$SCRIPT_DIR/design-step5b-prepare.sh" 'timing mark "design Step 5 — finalize"' 'Step 5b prepare wrapper missing Step 5 timing mark'
+  contains "$SCRIPT_DIR/design-step5c.sh" 'LARCH_FINAL_SUMMARY_BEGIN' 'Step 5c wrapper missing final-summary begin marker'
+  contains "$SCRIPT_DIR/design-step5c.sh" 'LARCH_FINAL_SUMMARY_END' 'Step 5c wrapper missing final-summary end marker'
+  contains "$SCRIPT_DIR/design-step-final-summary.sh" 'LARCH_FINAL_SUMMARY_BEGIN' 'Final summary wrapper missing final-summary begin marker'
+  contains "$SCRIPT_DIR/design-step-final-summary.sh" 'LARCH_FINAL_SUMMARY_END' 'Final summary wrapper missing final-summary end marker'
+  contains "$SKILL_MD" 'using the first balanced `LARCH_FINAL_SUMMARY_BEGIN` / `LARCH_FINAL_SUMMARY_END` whole-line marker pair' 'SKILL missing final-summary marker extraction prose'
+  contains "$SKILL_MD" 'fall back to reading `${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}` when the file is non-empty' 'SKILL missing final-summary file Read fallback prose'
+  ! grep -Fq "printf '%s\\n' \"\$_issue_stdout\" > \"\$DESIGN_TMPDIR/oos-issue.stdout.txt\"" "$SKILL_MD" \
+    || fail 'SKILL Step 5b OOS bridge must not instruct shell printf for issue stdout'
+}
+
 assert_publish_fence_guards() {
   contains "$SCRIPT_DIR/design-step5c.sh" 'design-publish.sh' 'Step 5c wrapper missing design-publish call'
   contains "$SCRIPT_DIR/design-step5c.sh" 'read-result-env.sh' 'Step 5c wrapper missing read-result-env handoff'
@@ -726,6 +753,7 @@ assert_wrapper_contract_pins
 assert_reference_updates
 assert_postplan_thin_fence "$SCRIPT_DIR/design-step2b-postplan.sh" 'design-step2b-postplan.sh'
 assert_publish_fence_guards
+assert_step5_fold_and_summary_markers
 assert_step6_cleanup_wrappers
 assert_wrapper_fence_ordering
 assert_design_failure_reporting_contract

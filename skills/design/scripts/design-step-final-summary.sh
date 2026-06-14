@@ -102,8 +102,9 @@ design_bg_wait_marker_start() {
   return 0
 }
 # design-final-summary-anchor (scripts/test-design-structure.sh)
-# Immediate-background required; prompt waits for <task-notification> before reading final-summary.md.
+# Immediate-background required; prompt waits for <task-notification> before marker extraction.
 design_source_env_optional
+design_require_plugin_root
 if [ -z "${DESIGN_TMPDIR:-}" ] || [ ! -d "$DESIGN_TMPDIR" ]; then
   printf '%s\n' "/design wrapper: DESIGN_TMPDIR required" >&2
   exit 1
@@ -112,11 +113,24 @@ fi
 # Marker step id: STEP=design-step-final-summary
 design_bg_wait_marker_start design-step-final-summary || true
 export CLAUDE_PLUGIN_ROOT
+set +e
 DESIGN_TMPDIR="$DESIGN_TMPDIR" ISSUE_NUMBER="${ISSUE_NUMBER:-}" SESSION_ID="${SESSION_ID:-}" \
   "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh" \
   --outcome "$SUMMARY_OUTCOME" \
   ${REPO:+--repo "$REPO"} \
-  --post-publish-only
+  --post-publish-only >"$DESIGN_TMPDIR/render-final-summary.stdout.log"
+_render_final_summary_rc=$?
+set -e
+emit_final_summary_marked_from_disk() {
+  local summary_path="${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}"
+  local last_char
+  [ -s "$summary_path" ] || return 0
+  printf '%s\n' 'LARCH_FINAL_SUMMARY_BEGIN'
+  cat "$summary_path"
+  last_char="$(tail -c 1 "$summary_path" 2>/dev/null || true)"
+  [ -z "$last_char" ] || printf '\n'
+  printf '%s\n' 'LARCH_FINAL_SUMMARY_END'
+}
 emit_report_gate_sidecars_from_disk() {
   local sidecar handoff="$DESIGN_TMPDIR/design-report-gate-sidecars.md"
   : >"$handoff"
@@ -129,4 +143,5 @@ emit_report_gate_sidecars_from_disk() {
     printf 'REPORT_GATE_SIDECARS_FILE=%s\n' "$handoff"
   fi
 }
+emit_final_summary_marked_from_disk
 emit_report_gate_sidecars_from_disk

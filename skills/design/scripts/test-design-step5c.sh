@@ -27,11 +27,21 @@ cat >"$STUB/design-publish.sh" <<'STUB'
 #!/usr/bin/env bash
 printf 'design-publish stub rc=%s\n' "${DESIGN_PUBLISH_STUB_RC:-0}" >&2
 case "${DESIGN_PUBLISH_STUB_MODE:-}" in
+  success-summary)
+    printf 'stub success summary\n' >"${DESIGN_TMPDIR:-}/final-summary.md"
+    {
+      printf 'PLAN_WRITE_OK=true\n'
+      printf 'VALIDATE_STATUS=ok\n'
+      printf 'PUBLISH_OK=true\n'
+      printf 'FINAL_SUMMARY_PATH=%s/final-summary.md\n' "${DESIGN_TMPDIR:-}"
+    } >"${DESIGN_TMPDIR:-}/.design-publish-result.env"
+    ;;
   plan-write-failed)
     printf 'PLAN_WRITE_OK=false\n'
     printf 'VALIDATE_STATUS=ok\n'
     printf 'PUBLISH_OK=\n'
     printf 'FINAL_SUMMARY_PATH=%s/final-summary.md\n' "${DESIGN_TMPDIR:-}"
+    printf 'stub failed plan write summary\n' >"${DESIGN_TMPDIR:-}/final-summary.md"
     ;;
   validator-defects)
     printf 'PLAN_WRITE_OK=false\n'
@@ -52,7 +62,7 @@ cat >"$STUB/render-final-summary.sh" <<'STUB'
 while [ $# -gt 0 ]; do case "$1" in --outcome) shift 2 ;; *) shift ;; esac; done
 tmp="${DESIGN_TMPDIR:-}"
 [ -n "$tmp" ] || tmp="$(pwd)"
-: >"$tmp/final-summary.md"
+printf 'stub failed publish tail summary\n' >"$tmp/final-summary.md"
 exit 0
 STUB
 chmod +x "$STUB/render-final-summary.sh"
@@ -88,18 +98,46 @@ run_step5c_with_mode() {
   printf '%s\n' "$got"
 }
 
+assert_marked_summary_matches() {
+  local d=$1 label=$2
+  local begin_count end_count
+  begin_count=$(grep -xc 'LARCH_FINAL_SUMMARY_BEGIN' "$d/stdout" || true)
+  end_count=$(grep -xc 'LARCH_FINAL_SUMMARY_END' "$d/stdout" || true)
+  [[ "$begin_count" -eq 1 ]] || fail "$label must emit exactly one final-summary begin marker (got $begin_count)"
+  [[ "$end_count" -eq 1 ]] || fail "$label must emit exactly one final-summary end marker (got $end_count)"
+  python3 - "$d/stdout" "$d/final-summary.md" "$label" <<'PY'
+import re
+import sys
+from pathlib import Path
+stdout = Path(sys.argv[1]).read_text()
+summary = Path(sys.argv[2]).read_text()
+label = sys.argv[3]
+match = re.search(r'^LARCH_FINAL_SUMMARY_BEGIN\n(.*?)^LARCH_FINAL_SUMMARY_END\n?', stdout, re.M | re.S)
+if not match:
+    print(f'FAIL: {label} missing balanced final-summary markers', file=sys.stderr)
+    sys.exit(1)
+if match.group(1) != summary:
+    print(f'FAIL: {label} marked body does not match final-summary.md', file=sys.stderr)
+    sys.exit(1)
+PY
+}
+
 D=$(mktemp -d "$TMP/rc2.XXXXXX")
 D=$(cd "$D" && pwd -P)
+printf 'operator action sidecar\n' >"$D/design-failure-operator-action-chat.md"
 got=$(run_step5c "$D" 2)
 [[ "$got" -eq 1 ]] || fail "publish rc=2 must abort step5c with exit 1 (got $got)"
 [ -f "$D/design-failure-terminal-state.env" ] || fail 'rc=2 must stage failed-publish-tail terminal state'
 grep -Fxq 'FAILURE_OUTCOME=failed-publish-tail' "$D/design-failure-terminal-state.env" \
   || fail 'rc=2 terminal outcome must be failed-publish-tail'
-if [ ! -f "$D/final-summary.md" ]; then
+if [ ! -s "$D/final-summary.md" ]; then
   ls -la "$D" >&2
-  fail 'rc=2 must write final-summary via render'
+  fail 'rc=2 must write non-empty final-summary via render'
 fi
-pass 'publish-tail rc=2 stages terminal state and renders summary'
+assert_marked_summary_matches "$D" 'rc=2 publish-tail abort'
+grep -Fq 'REPORT_GATE_SIDECARS_FILE=' "$D/stdout" \
+  || fail 'rc=2 must emit sidecar file handoff when sidecars exist'
+pass 'publish-tail rc=2 stages terminal state and renders marked summary'
 
 D2=$(mktemp -d "$TMP/rc9.XXXXXX")
 D2=$(cd "$D2" && pwd -P)
@@ -108,7 +146,9 @@ got=$(run_step5c "$D2" 9)
 [ -f "$D2/design-failure-terminal-state.env" ] || fail 'unexpected rc must stage failed-publish-tail terminal state'
 grep -Fxq 'FAILURE_OUTCOME=failed-publish-tail' "$D2/design-failure-terminal-state.env" \
   || fail 'unexpected rc terminal outcome must be failed-publish-tail'
-pass 'publish-tail unexpected rc stages terminal state'
+[ -s "$D2/final-summary.md" ] || fail 'unexpected rc must write non-empty final-summary via render'
+assert_marked_summary_matches "$D2" 'unexpected publish-tail abort'
+pass 'publish-tail unexpected rc stages terminal state and renders marked summary'
 
 D3=$(mktemp -d "$TMP/rc1-stale.XXXXXX")
 D3=$(cd "$D3" && pwd -P)
@@ -146,5 +186,13 @@ grep -Fxq 'CLEANUP_ELIGIBLE=false' "$D4/.design-step5c-status.env" \
 grep -Fxq 'STEP5C_STATUS=validator-defects' "$D4/stdout" \
   || fail 'rc=4 should report validator-defects status'
 pass 'publish-tail rc=4 uses stdout authority over stale result env'
+
+
+D5=$(mktemp -d "$TMP/rc0-summary.XXXXXX")
+D5=$(cd "$D5" && pwd -P)
+got=$(run_step5c_with_mode "$D5" 0 success-summary)
+[[ "$got" -eq 0 ]] || fail "publish rc=0 should parse result env and exit 0 (got $got)"
+assert_marked_summary_matches "$D5" 'rc=0 publish success'
+pass 'publish-tail rc=0 emits marked final summary'
 
 printf 'PASS: test-design-step5c.sh\n'
