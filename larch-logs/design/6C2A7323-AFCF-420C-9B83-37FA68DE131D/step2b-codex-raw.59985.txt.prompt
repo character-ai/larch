@@ -1,0 +1,214 @@
+You are an expert engineer researching this repository and producing an implementation plan for /design Step 2b.
+
+You may use only side-effect-free repository discovery. Do not write repository files, design tmpdir files, or any other files. Return only the sentinel-delimited response requested below.
+
+Drafting requirements to follow:
+- Prefer minimum necessary change: avoid scope creep, unnecessary complexity, and additions not required for correctness.
+- Read approach-synthesis.txt: if it is exactly NO_SKETCHES, draft from direct codebase/doc inspection without fabricating planning-panel agreement.
+- Read discussion-round1.md when present for scope boundaries and strict constraints.
+- Read design-outline.md only when non-empty and .outline-approved exists; treat Goals, Non-goals, and Surfaces as binding scope.
+- Read brainstorm.md when present as additive ideation context for plan drafting.
+- Use a Files to modify/create section with per-file headings exactly one path each: ### NEW:, ### UPDATED:, or ### REWRITTEN: (at least one ASCII space after ### before the keyword).
+- Include Approach, Edge cases, Failure modes when non-trivial, Testing strategy, optional diff_added/diff_deleted/mechanical_churn trailers, and final diff_lines: <N>.
+- The final plan body must end with a whole-line diff_lines: <N> trailer.
+- Optionally include up to three dynamic plan-review archetypes in a scout block after the plan. The launcher validates, filters, caps, and materializes this block; invalid post-plan scout output is ignored.
+- Scout sentinels inside the summary or plan are fatal format errors. Never put LARCH_SCOUT_* markers in the plan body.
+
+Readability style (trusted):
+# Readability Style
+
+**Consumer**: `/design` prompt surfaces that produce user-facing text, either through an external-agent prompt token or through inline orchestration prose.
+
+**Contract**: this file is the only source of truth for the `/design` readability preamble. External prompt files embed the literal `<READABILITY_STYLE>` token, and assembly code or orchestration expands it to this full file. Inline composition sites read this file before writing user-facing text.
+
+**When to load**: load only when a `/design` step is about to compose user-facing prose or render a prompt that asks another agent to compose such prose. Do not load during setup, pure validation, or byte-stable artifact handling.
+
+---
+
+## Style Axes
+
+Write in three styles at once:
+
+- **Strunk & White**: use active voice. Omit needless words. Prefer concrete nouns and verbs.
+- **Dyslexia-friendly**: use short sentences. Prefer simple words. Break dense ideas into headings and bullets.
+- **Brevity**: shorter is better. Minimize the total artifact length while preserving meaning.
+- **No em dashes**: never use em dashes; use periods, commas, colons, or semicolons instead.
+- **Hedge vs. direct**: hedge uncertain claims ("may contain", "can fail") instead of absolutes; keep directives imperative.
+
+## Precision Contract
+
+Keep these byte-stable unless the task explicitly edits them:
+
+- fenced code blocks
+- backticked tokens
+- file paths
+- identifiers
+- flag names
+- `### NEW:` / `### UPDATED:` / `### REWRITTEN:` plan grammar
+- the trailing `diff_lines: <N>` line
+
+Do not rewrite those items for style. Explain around them instead.
+
+## Precedence
+
+When rules conflict, use this order:
+
+`code references > meaning > brevity > dyslexia-friendly chunking > Strunk & White micro-rewrites`
+
+Apply it directly:
+
+- Preserve code references first.
+- Preserve exact meaning next.
+- Cut words before adding layout.
+- Add headings or bullets only when they improve scanning.
+- Polish grammar last.
+
+## Substitution Token
+
+External-agent prompt files MUST embed this literal token:
+
+`<READABILITY_STYLE>`
+
+Before launch, replace every literal `<READABILITY_STYLE>` token with the full contents of this file.
+
+## Examples
+
+Before: "It is recommended that the implementer should consider adding a validation step."
+
+After: "Add a validation step."
+
+Before: "The plan should make sure that users are not able to continue when the file cannot be read."
+
+After: "Block the flow when the file cannot be read."
+
+Before: "In order to avoid potential future confusion, documentation can be updated."
+
+After: "Update the docs to avoid confusion."
+
+Before: "The script performs an operation that checks if the path exists."
+
+After: "The script checks that the path exists."
+
+Before: "This could possibly be out of scope depending on how the team wants to proceed."
+
+After: "This may be out of scope."
+
+Required output format:
+[optional]
+LARCH_SUMMARY_BEGIN
+A concise summary for large-plan preview. Omit this whole summary block only when no useful summary is needed.
+LARCH_SUMMARY_END
+[/optional]
+LARCH_PLAN_BEGIN
+Full implementation plan body ending with diff_lines: <N>.
+LARCH_PLAN_END
+[optional]
+LARCH_SCOUT_BEGIN
+{"archetypes":[{"name":"slug","focus_area":"code-quality|risk-integration|correctness|architecture|security","weight":1,"rationale":"single-line reason","prompt_body":"2-6 sentence focus directive ending with the required citation sentence."}]}
+LARCH_SCOUT_END
+[/optional]
+
+Optional advisory status may be included between LARCH_STATUS_BEGIN and LARCH_STATUS_END, but the summary, plan, and optional scout sentinels above are the only parsed contract.
+
+Untrusted feature description:
+<feature_description encoding="literal-redacted">
+# /design: references raw-Bash sweep plus structural lint for script-only fences
+
+**Problem.** After the per-step factoring issues land, residual raw Bash remains in references and minor SKILL.md sites: `references/brainstorm.md` collection fences carry raw `[ -f ... ] &amp;&amp; source ...` preludes plus prompt-side dirty-tree and failure-log handling; `references/plan-review.md` retains a superseded collector fence and an operator-debug voter-dispatch snippet as executable bash fences; the Step 2b.5 rc=2 path and the validator-autofix branches direct capture-then-append command pairs. Nothing durably prevents new raw fences from creeping back in.
+
+**Proposal.**
+
+- `design-step1d5.sh --mode collect` absorbs brainstorm collection, the dirty-tree checkpoint, and failure logging for launched externals; the entry guard completes the skip path itself so entry plus complete collapse to one call when brainstorm is off.
+- Demote the superseded `plan-review.md` collector fence and the voter-dispatch argv reference to `text` fences (documentation, not executable).
+- Fold the Step 2b.5 rc=2 capture-then-append pair into `design-step2b5.sh` and the validator-autofix Warnings appends into `design-step-validator-autofix.sh`.
+- Extend `scripts/test-design-structure.sh` (or agent-lint) with a check: every `bash` fence under `skills/design/` invokes a `${CLAUDE_PLUGIN_ROOT}` script or the shared session launcher as its first command. Provide a suppression comment for deliberate exceptions, mirroring `lint-bare-grep-probe.sh`.
+
+**Acceptance.**
+
+- Zero raw-Bash bash fences under `skills/design/`; the new lint fails on regression and passes on the full tree.
+- Brainstorm-off path: one Bash call; brainstorm externals collection: one call after launches.
+
+</feature_description>
+
+
+Untrusted approach synthesis:
+<approach_synthesis encoding="literal-redacted">
+NO_SKETCHES
+
+</approach_synthesis>
+
+
+Untrusted discussion round 1:
+<discussion_round1 encoding="literal-redacted">
+## Decision 1: Lint vehicle
+- **Question**: Which vehicle — `scripts/test-design-structure.sh` or agent-lint — should host the new structural lint?
+- **Resolution**: `scripts/test-design-structure.sh`. It already has a Makefile target (`test-design-structure`) and existing assertions for SKILL.md wrapper-only fences. Agent-lint covers only SKILL.md-level rules and has no custom-rule support for this check.
+- **Source**: codebase
+
+## Decision 2: Lint scope — which files to check
+- **Question**: Does "every `bash` fence under `skills/design/`" include `scripts/*.md` sibling docs or only orchestrator-facing references?
+- **Resolution**: Orchestrator-facing surfaces only — `skills/design/SKILL.md` (already covered) + `skills/design/references/*.md`. Mirrors `lint-bare-grep-probe.sh` which explicitly excludes non-orchestrator-facing documentation. The `scripts/*.md` sibling docs contain harness invocations and documentation examples that are not executed as Bash tool blocks by the orchestrator.
+- **Source**: codebase (lint-bare-grep-probe.sh precedent, brainstorm.md/decompose-panel.md survey)
+
+## Decision 3: What counts as a valid first command
+- **Question**: Does `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py"` pass the lint?
+- **Resolution**: Yes. The lint allows `python3 "${CLAUDE_PLUGIN_ROOT}/..."` because the first argument to python3 is a `${CLAUDE_PLUGIN_ROOT}`-rooted path. This already works for all `decompose-panel.md` fences. Only fences with a first command that has no `${CLAUDE_PLUGIN_ROOT}` reference AND no launcher prefix are flagged (e.g., `[ -f ... ] &amp;&amp; source ...`, `_launch_id=...`).
+- **Source**: codebase (decompose-panel.md fences all pass)
+
+## Decision 4: Failing fences — exact count
+- **Question**: What raw fences need fixing?
+- **Resolution**: Exactly 4 raw fences in `references/*.md`:
+  - `brainstorm.md` line 88: one-external collection fence (`[ -f ... ] &amp;&amp; source ...` prelude)
+  - `brainstorm.md` line 96: two-external collection fence (same pattern)
+  - `plan-review.md` line 121: collector fence (`[ -f ... ] &amp;&amp; source ...` prelude) → demote to text
+  - `plan-review.md` line 149: voter-dispatch argv reference (`_launch_id=...`) → demote to text
+- **Source**: codebase (python3 survey of references/*.md)
+
+## Decision 5: brainstorm.md --mode collect structure
+- **Question**: Should `--mode entry` absorb the skip+complete path, removing `--mode complete` from SKILL.md?
+- **Resolution**: Yes. "Brainstorm-off path: one Bash call" (acceptance criterion) requires that when `brainstorm_requested=false`, only ONE launcher call runs. `--mode entry` handles skip+sentinel-write internally. `--mode complete` moves to brainstorm.md body (called after externals + collect when brainstorm IS active). SKILL.md removes its unconditional `--mode complete` fence.
+- **Source**: issue acceptance criterion
+
+## Decision 6: Suppression comment format
+- **Question**: What suppression comment syntax should the new lint use?
+- **Resolution**: `# lint-script-only-fences: ok &lt;reason&gt;` (same-line suppression, mirrors `lint-bare-grep-probe.sh`'s `# lint-bare-grep-probe: ok &lt;reason&gt;` pattern).
+- **Source**: codebase (lint-bare-grep-probe.sh, scripts/lint-bare-grep-probe.md)
+
+</discussion_round1>
+
+
+Untrusted approved design outline:
+<design_outline encoding="literal-redacted">
+## Proposed Design Outline
+
+### Goals
+- Eliminate all raw-Bash bash fences from orchestrator-facing markdown under `skills/design/references/`
+- Reduce brainstorm-off path to one Bash call; brainstorm collection to one call after external launches
+- Add a structural lint to `scripts/test-design-structure.sh` that fails on regression and passes on the full cleaned tree
+
+### Non-goals
+- No changes to `skills/implement/` or any skill outside `skills/design/`
+- No changes to `scripts/*.md` sibling-doc files (documentation only, not orchestrator-facing)
+- No structural changes to SKILL.md bash fences (prose simplification only)
+
+### Approach sketch
+- Add `--mode collect` to `design-step1d5.sh`: absorbs two brainstorm collection fences, dirty-tree checkpoint, and failure logging; entry guard completes the skip path itself (writes step-1d.5 sentinel), so SKILL.md removes its unconditional `--mode complete` call
+- Move `--mode collect` and `--mode complete` launcher calls into `brainstorm.md` body (after launches, after synthesis), replacing the two raw collection fences
+- Demote the superseded `plan-review.md` collector fence and voter-dispatch argv snippet from `bash` to `text` fences
+- Fold the Step 2b.5 rc=2 capture-then-append pair into `design-step2b5.sh`; fold the validator-autofix Warnings appends into `design-step-validator-autofix.sh`
+- Add `assert_references_bash_fences_are_scripts` to `test-design-structure.sh`: checks every `bash` fence in `references/*.md` starts with `${CLAUDE_PLUGIN_ROOT}` or launcher on first non-comment line; supports `# lint-script-only-fences: ok &lt;reason&gt;` suppression
+
+### Surfaces in scope
+- `skills/design/references/brainstorm.md`
+- `skills/design/references/plan-review.md`
+- `skills/design/scripts/design-step1d5.sh` + `.md`
+- `skills/design/scripts/design-step-validator-autofix.sh` + `.md`
+- `skills/design/scripts/design-step2b5.sh` + `.md`
+- `skills/design/SKILL.md` (prose changes only: Step 1d.5 section, validator-autofix section, Step 2b.5 rc=2 section)
+- `scripts/test-design-structure.sh` + `.md`
+
+### Open questions
+- None.
+
+</design_outline>
+

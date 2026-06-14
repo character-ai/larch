@@ -1,0 +1,1 @@
+Plan: move brainstorm collection and warning appends into existing design wrappers, demote two plan-review examples to text, and add a references-only bash-fence structural lint in `scripts/test-design-structure.sh`.
