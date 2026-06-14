@@ -75,7 +75,11 @@ case "$EXIT_CODE" in
 esac
 
 if [ -n "$FAILURE_DETAIL_LOG" ]; then
-    case "$FAILURE_DETAIL_LOG" in "$DESIGN_TMPDIR"/*) ;;
+    # Canonicalize the log path (resolves macOS /var -> /private/var symlinks) before comparing
+    _log_dir="$(cd "$(dirname "$FAILURE_DETAIL_LOG")" 2>/dev/null && pwd -P || true)"
+    _log_base="$(basename "$FAILURE_DETAIL_LOG")"
+    _log_canonical="${_log_dir:+$_log_dir/}${_log_base}"
+    case "${_log_canonical:-$FAILURE_DETAIL_LOG}" in "$DESIGN_TMPDIR"/*) ;;
         *) fail '--failure-detail-log must be under --design-tmpdir' ;;
     esac
     [ -f "$FAILURE_DETAIL_LOG" ] || fail '--failure-detail-log must be a regular file'
