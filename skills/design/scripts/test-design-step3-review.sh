@@ -3,6 +3,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
 MODULE="$ROOT/python/plan_review.py"
+LOOP="$ROOT/skills/design/scripts/review-design-step3-loop.sh"
 WRAPPER="$ROOT/skills/design/scripts/design-step3-review.sh"
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 pass() { printf 'PASS: %s\n' "$*"; }
