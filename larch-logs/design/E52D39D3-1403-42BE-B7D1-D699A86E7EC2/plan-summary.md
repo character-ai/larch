@@ -1,0 +1,1 @@
+Fix Codex review launch by resolving `-C` to the consumer git root. Add one blind retry for unclassified empty exit-1 startup failures. Do not change `run_legacy_script`, add `--workdir`, or alter Cursor launch behavior.
