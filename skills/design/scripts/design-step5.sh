@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Generated /design wrapper. Keep in sync with skills/design/SKILL.md.
+# Deprecated compatibility wrapper. Live /design Step 5 enters through design-step5b-prepare.sh.
 # shellcheck disable=SC1090,SC1091,SC2016,SC2034,SC2086,SC2154,SC2164,SC2312,SC2317,SC2329,SC2206,SC2207
 set -euo pipefail
 
@@ -86,7 +86,8 @@ design_source_env_optional() {
 }
 
 design_source_env_optional
-mkdir -p "$DESIGN_TMPDIR/.completed"
-: > "$DESIGN_TMPDIR/.completed/step-4b"
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
-LARCH_TIMING_SKILL=design python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" timing mark "design Step 5 — finalize" || true
+design_require_plugin_root
+_delegate_args=()
+[ -z "${SESSION_ENV_PATH:-}" ] || _delegate_args+=(--session-env-path "$SESSION_ENV_PATH")
+[ -z "${CLAUDE_PID:-}" ] || _delegate_args+=(--claude-pid "$CLAUDE_PID")
+exec "$CLAUDE_PLUGIN_ROOT/skills/design/scripts/design-step5b-prepare.sh" "${_delegate_args[@]}"

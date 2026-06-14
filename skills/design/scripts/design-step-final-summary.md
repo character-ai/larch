@@ -14,7 +14,10 @@ Wrapper for a `/design` Bash block that keeps `skills/design/SKILL.md` free of i
 - Accepts `--session-env-path` from the prompt-side Bash call.
 - Accepts `--claude-pid` when the wrapped logic must refresh session state.
 - Does not derive the root Claude PID from `$PPID` internally.
-- Called from an immediate-background Bash fence; callers wait for `<task-notification>` before reading `final-summary.md`.
+- Called from an immediate-background Bash fence; callers wait for `<task-notification>` before marker extraction.
+- Captures `render-final-summary.sh` stdout before emitting marked output.
+- Emits non-empty `final-summary.md` between `LARCH_FINAL_SUMMARY_BEGIN` and `LARCH_FINAL_SUMMARY_END` markers for cancellation and terminal summary paths.
+- Does not replace `REPORT_GATE_SIDECARS_FILE`; sidecars remain a path handoff after marked summary output.
 
 ## Harness
 
