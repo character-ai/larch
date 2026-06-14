@@ -2,7 +2,6 @@
 
 # ruff: noqa: PLR2004, FBT001, FBT003, SIM108, FURB110, S108, SIM114, PIE810, PERF401
 # pyright: reportUnusedCallResult=false, reportArgumentType=false
-# pylint: disable=reimported,global-variable-undefined  # cross-module pylint false positives
 
 from __future__ import annotations
 
