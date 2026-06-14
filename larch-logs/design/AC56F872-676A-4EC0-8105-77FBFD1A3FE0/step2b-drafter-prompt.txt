@@ -1,0 +1,222 @@
+You are an expert engineer researching this repository and producing an implementation plan for /design Step 2b.
+
+You may use only side-effect-free repository discovery. Do not write repository files, design tmpdir files, or any other files. Return only the sentinel-delimited response requested below.
+
+Drafting requirements to follow:
+- Prefer minimum necessary change: avoid scope creep, unnecessary complexity, and additions not required for correctness.
+- Read approach-synthesis.txt: if it is exactly NO_SKETCHES, draft from direct codebase/doc inspection without fabricating planning-panel agreement.
+- Read discussion-round1.md when present for scope boundaries and strict constraints.
+- Read design-outline.md only when non-empty and .outline-approved exists; treat Goals, Non-goals, and Surfaces as binding scope.
+- Read brainstorm.md when present as additive ideation context for plan drafting.
+- Use a Files to modify/create section with per-file headings exactly one path each: ### NEW:, ### UPDATED:, or ### REWRITTEN: (at least one ASCII space after ### before the keyword).
+- Include Approach, Edge cases, Failure modes when non-trivial, Testing strategy, optional diff_added/diff_deleted/mechanical_churn trailers, and final diff_lines: <N>.
+- The final plan body must end with a whole-line diff_lines: <N> trailer.
+- Optionally include up to three dynamic plan-review archetypes in a scout block after the plan. The launcher validates, filters, caps, and materializes this block; invalid post-plan scout output is ignored.
+- Scout sentinels inside the summary or plan are fatal format errors. Never put LARCH_SCOUT_* markers in the plan body.
+
+Readability style (trusted):
+# Readability Style
+
+**Consumer**: `/design` prompt surfaces that produce user-facing text, either through an external-agent prompt token or through inline orchestration prose.
+
+**Contract**: this file is the only source of truth for the `/design` readability preamble. External prompt files embed the literal `<READABILITY_STYLE>` token, and assembly code or orchestration expands it to this full file. Inline composition sites read this file before writing user-facing text.
+
+**When to load**: load only when a `/design` step is about to compose user-facing prose or render a prompt that asks another agent to compose such prose. Do not load during setup, pure validation, or byte-stable artifact handling.
+
+---
+
+## Style Axes
+
+Write in three styles at once:
+
+- **Strunk & White**: use active voice. Omit needless words. Prefer concrete nouns and verbs.
+- **Dyslexia-friendly**: use short sentences. Prefer simple words. Break dense ideas into headings and bullets.
+- **Brevity**: shorter is better. Minimize the total artifact length while preserving meaning.
+- **No em dashes**: never use em dashes; use periods, commas, colons, or semicolons instead.
+- **Hedge vs. direct**: hedge uncertain claims ("may contain", "can fail") instead of absolutes; keep directives imperative.
+
+## Precision Contract
+
+Keep these byte-stable unless the task explicitly edits them:
+
+- fenced code blocks
+- backticked tokens
+- file paths
+- identifiers
+- flag names
+- `### NEW:` / `### UPDATED:` / `### REWRITTEN:` plan grammar
+- the trailing `diff_lines: <N>` line
+
+Do not rewrite those items for style. Explain around them instead.
+
+## Precedence
+
+When rules conflict, use this order:
+
+`code references > meaning > brevity > dyslexia-friendly chunking > Strunk & White micro-rewrites`
+
+Apply it directly:
+
+- Preserve code references first.
+- Preserve exact meaning next.
+- Cut words before adding layout.
+- Add headings or bullets only when they improve scanning.
+- Polish grammar last.
+
+## Substitution Token
+
+External-agent prompt files MUST embed this literal token:
+
+`<READABILITY_STYLE>`
+
+Before launch, replace every literal `<READABILITY_STYLE>` token with the full contents of this file.
+
+## Examples
+
+Before: "It is recommended that the implementer should consider adding a validation step."
+
+After: "Add a validation step."
+
+Before: "The plan should make sure that users are not able to continue when the file cannot be read."
+
+After: "Block the flow when the file cannot be read."
+
+Before: "In order to avoid potential future confusion, documentation can be updated."
+
+After: "Update the docs to avoid confusion."
+
+Before: "The script performs an operation that checks if the path exists."
+
+After: "The script checks that the path exists."
+
+Before: "This could possibly be out of scope depending on how the team wants to proceed."
+
+After: "This may be out of scope."
+
+Required output format:
+[optional]
+LARCH_SUMMARY_BEGIN
+A concise summary for large-plan preview. Omit this whole summary block only when no useful summary is needed.
+LARCH_SUMMARY_END
+[/optional]
+LARCH_PLAN_BEGIN
+Full implementation plan body ending with diff_lines: <N>.
+LARCH_PLAN_END
+[optional]
+LARCH_SCOUT_BEGIN
+{"archetypes":[{"name":"slug","focus_area":"code-quality|risk-integration|correctness|architecture|security","weight":1,"rationale":"single-line reason","prompt_body":"2-6 sentence focus directive ending with the required citation sentence."}]}
+LARCH_SCOUT_END
+[/optional]
+
+Optional advisory status may be included between LARCH_STATUS_BEGIN and LARCH_STATUS_END, but the summary, plan, and optional scout sentinels above are the only parsed contract.
+
+Untrusted feature description:
+<feature_description encoding="literal-redacted">
+# [BUG] (URGENT) /implement and /design orchestrators use Monitor for one-shot completion, creating one turn per log line
+
+## What happened
+
+During `/implement` run BC8DDA64 (issue #3678), the orchestrator spawned 6–8 concurrent `Monitor` tool calls to watch Codex and Step 3 check progress. Each `Monitor` fires **one conversation turn per matching log line**, creating ~30+ spurious turns and burning tokens on pure waiting.
+
+The same mistake can occur in `/design` whenever it needs to wait for an external process to finish.
+
+## Root cause
+
+### Primary: Monitor misused for one-shot completion
+
+`Monitor` is designed for **event streams** ("fire on every occurrence, indefinitely"). The correct tool for "tell me when this process is done" is `Bash run_in_background` with a condition-based exit — which fires **exactly one** `&lt;task-notification&gt;` when the command exits.
+
+AGENTS.md is explicit:
+&gt; "Don't spawn a Monitor or a Bash `run_in_background` polling loop (`for`/`while`/`until` + `sleep`) to watch another job finish... **Use Monitor only for logs, external polling, or event streams.**"
+
+`/implement` SKILL.md NEVER #8 is also explicit:
+&gt; "For long-running helper scripts (≥ 30s; e.g., `run-step-checks.sh`, `run-step5-review.sh`...), set `run_in_background: true` on the Bash tool call (immediate-background mode) and rely on `&lt;task-notification&gt;` for one-shot completion."
+
+Both rules were violated.
+
+### Trigger: premature background task notification
+
+`run-step2-dispatch.sh` was launched via `Bash run_in_background`. The task notification fired with empty stdout while the Codex process tree (PIDs 50005/50035/50202/50275/50952/50968) was still running. This left the orchestrator without a valid task handle.
+
+**Correct recovery:** re-launch **one** `Bash run_in_background` task with `until &lt;completion-condition&gt;; do sleep 60; done` → wait for its single completion notification.
+
+**Actual recovery:** spawned multiple `Monitor` calls watching different log files and PID-exit conditions simultaneously.
+
+### Compounding: redundant monitors
+
+At peak, 7 monitors ran simultaneously, several watching the same sources (e.g., two separate monitors on `codex-impl.log`). Each produced its own turn stream.
+
+## Suggested fix (covering both `/implement` and `/design`)
+
+### 1. Add an explicit prohibition to AGENTS.md (covers all skills)
+
+Add to the "Conventions" section, next to the existing anti-polling rule:
+
+&gt; **NEVER use the `Monitor` tool for one-shot completion tracking in any skill.** `Monitor` fires one turn per log line — it is for event streams only (indefinite watching of errors, CI events, live log tails). For "tell me when this is done," use `Bash run_in_background` with a condition-based exit (`until &lt;condition&gt;; do sleep N; done`), which fires exactly one `&lt;task-notification&gt;`. This applies even when a prior background task's notification fired prematurely with empty output — re-launch a single condition-exit task, do NOT fall back to Monitor.
+
+### 2. Add NEVER #N to `/implement` SKILL.md
+
+Add to the NEVER list (as an extension of NEVER #8):
+
+&gt; **NEVER use the `Monitor` tool anywhere within the `/implement` orchestrator.** When a background task notification fires prematurely (empty stdout, underlying process still running), re-launch exactly one `Bash run_in_background` task with `until &lt;completion-condition&gt;; do sleep 60; done`. Do NOT spawn multiple monitors watching the same condition.
+
+### 3. Add equivalent rule to `/design` SKILL.md
+
+Same prohibition, scoped to `/design`.
+
+### 4. Add structural test
+
+Add an assertion to `scripts/test-implement-anti-polling-rule.sh` (and an equivalent for design) that scans `skills/implement/SKILL.md` for any `Monitor` tool call and fails if found.
+
+## Affected files
+
+- `AGENTS.md` — Conventions section (covers all skills)
+- `skills/implement/SKILL.md` — NEVER list extension of #8
+- `skills/design/SKILL.md` — same prohibition
+- `scripts/test-implement-anti-polling-rule.sh` — structural enforcement
+
+
+</feature_description>
+
+
+Untrusted approach synthesis:
+<approach_synthesis encoding="literal-redacted">
+NO_SKETCHES
+
+</approach_synthesis>
+
+
+Untrusted approved design outline:
+<design_outline encoding="literal-redacted">
+## Proposed Design Outline
+
+### Goals
+- Add explicit NEVER rules prohibiting Monitor for one-shot completion in `/implement` and `/design` orchestrators.
+- Cover the premature-notification recovery case: re-launch one `Bash run_in_background` task, never fall back to Monitor.
+- Pin the new rules with structural test assertions.
+
+### Non-goals
+- Fix the live run that triggered the bug (BC8DDA64) — no code change to runtime scripts.
+- Renumber or restructure existing NEVER items in implement SKILL.md.
+- Fix the stale "NEVER #9" reference in AGENTS.md (pre-existing, out of scope).
+- Add rules to `skills/shared/orchestrator-never.md` (issue scopes to the two orchestrators only).
+
+### Approach sketch
+- Augment AGENTS.md Conventions bullet with one sentence on premature-notification recovery.
+- Extend `/implement` SKILL.md NEVER #8 in-place with an explicit Monitor prohibition and recovery guidance.
+- Add Anti-pattern #4 to `/design` SKILL.md Anti-patterns section.
+- Add two `check()` calls to `scripts/test-implement-anti-polling-rule.sh` pinning the new literals.
+- Update `scripts/test-implement-anti-polling-rule.md` to document the new assertions.
+
+### Surfaces in scope
+- `AGENTS.md` (Conventions section, Monitor anti-polling bullet)
+- `skills/implement/SKILL.md` (NEVER #8)
+- `skills/design/SKILL.md` (Anti-patterns section)
+- `scripts/test-implement-anti-polling-rule.sh`
+- `scripts/test-implement-anti-polling-rule.md`
+
+### Open questions
+- None.
+
+</design_outline>
+
