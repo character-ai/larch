@@ -774,16 +774,10 @@ skills/design/scripts/dispatch-plan-review-panel.sh	#3680
 skills/design/scripts/dispatch-plan-review-panel.md	#3680
 skills/design/scripts/tally-plan-review.sh	#3680
 skills/design/scripts/tally-plan-review.md	#3680
-skills/design/scripts/record-plan-review-round-timing.sh	#3680
-skills/design/scripts/record-plan-review-round-timing.md	#3680
 skills/design/scripts/persist-retally-step3-env.sh	#3680
 skills/design/scripts/persist-retally-step3-env.md	#3680
-skills/design/scripts/design-step3-state.sh	#3680
-skills/design/scripts/design-step3-state.md	#3680
 skills/design/scripts/run-step3-review.sh	#3680
 skills/design/scripts/run-step3-review.md	#3680
-skills/design/scripts/gate-b-dedup-plan.sh	#3680
-skills/design/scripts/gate-b-dedup-plan.md	#3680
 skills/design/scripts/lib-drift-baseline.sh	#3680
 skills/design/scripts/emit-plan.sh	#3680
 skills/design/scripts/emit-plan.md	#3680
