@@ -1,0 +1,195 @@
+You are an expert engineer researching this repository and producing an implementation plan for /design Step 2b.
+
+You may use only side-effect-free repository discovery. Do not write repository files, design tmpdir files, or any other files. Return only the sentinel-delimited response requested below.
+
+Drafting requirements to follow:
+- Prefer minimum necessary change: avoid scope creep, unnecessary complexity, and additions not required for correctness.
+- Read approach-synthesis.txt: if it is exactly NO_SKETCHES, draft from direct codebase/doc inspection without fabricating planning-panel agreement.
+- Read discussion-round1.md when present for scope boundaries and strict constraints.
+- Read design-outline.md only when non-empty and .outline-approved exists; treat Goals, Non-goals, and Surfaces as binding scope.
+- Read brainstorm.md when present as additive ideation context for plan drafting.
+- Use a Files to modify/create section with per-file headings exactly one path each: ### NEW:, ### UPDATED:, or ### REWRITTEN: (at least one ASCII space after ### before the keyword).
+- Include Approach, Edge cases, Failure modes when non-trivial, Testing strategy, optional diff_added/diff_deleted/mechanical_churn trailers, and final diff_lines: <N>.
+- The final plan body must end with a whole-line diff_lines: <N> trailer.
+- Optionally include up to three dynamic plan-review archetypes in a scout block after the plan. The launcher validates, filters, caps, and materializes this block; invalid post-plan scout output is ignored.
+- Scout sentinels inside the summary or plan are fatal format errors. Never put LARCH_SCOUT_* markers in the plan body.
+
+Readability style (trusted):
+# Readability Style
+
+**Consumer**: `/design` prompt surfaces that produce user-facing text, either through an external-agent prompt token or through inline orchestration prose.
+
+**Contract**: this file is the only source of truth for the `/design` readability preamble. External prompt files embed the literal `<READABILITY_STYLE>` token, and assembly code or orchestration expands it to this full file. Inline composition sites read this file before writing user-facing text.
+
+**When to load**: load only when a `/design` step is about to compose user-facing prose or render a prompt that asks another agent to compose such prose. Do not load during setup, pure validation, or byte-stable artifact handling.
+
+---
+
+## Style Axes
+
+Write in three styles at once:
+
+- **Strunk & White**: use active voice. Omit needless words. Prefer concrete nouns and verbs.
+- **Dyslexia-friendly**: use short sentences. Prefer simple words. Break dense ideas into headings and bullets.
+- **Brevity**: shorter is better. Minimize the total artifact length while preserving meaning.
+- **No em dashes**: never use em dashes; use periods, commas, colons, or semicolons instead.
+- **Hedge vs. direct**: hedge uncertain claims ("may contain", "can fail") instead of absolutes; keep directives imperative.
+
+## Precision Contract
+
+Keep these byte-stable unless the task explicitly edits them:
+
+- fenced code blocks
+- backticked tokens
+- file paths
+- identifiers
+- flag names
+- `### NEW:` / `### UPDATED:` / `### REWRITTEN:` plan grammar
+- the trailing `diff_lines: <N>` line
+
+Do not rewrite those items for style. Explain around them instead.
+
+## Precedence
+
+When rules conflict, use this order:
+
+`code references > meaning > brevity > dyslexia-friendly chunking > Strunk & White micro-rewrites`
+
+Apply it directly:
+
+- Preserve code references first.
+- Preserve exact meaning next.
+- Cut words before adding layout.
+- Add headings or bullets only when they improve scanning.
+- Polish grammar last.
+
+## Substitution Token
+
+External-agent prompt files MUST embed this literal token:
+
+`<READABILITY_STYLE>`
+
+Before launch, replace every literal `<READABILITY_STYLE>` token with the full contents of this file.
+
+## Examples
+
+Before: "It is recommended that the implementer should consider adding a validation step."
+
+After: "Add a validation step."
+
+Before: "The plan should make sure that users are not able to continue when the file cannot be read."
+
+After: "Block the flow when the file cannot be read."
+
+Before: "In order to avoid potential future confusion, documentation can be updated."
+
+After: "Update the docs to avoid confusion."
+
+Before: "The script performs an operation that checks if the path exists."
+
+After: "The script checks that the path exists."
+
+Before: "This could possibly be out of scope depending on how the team wants to proceed."
+
+After: "This may be out of scope."
+
+Required output format:
+[optional]
+LARCH_SUMMARY_BEGIN
+A concise summary for large-plan preview. Omit this whole summary block only when no useful summary is needed.
+LARCH_SUMMARY_END
+[/optional]
+LARCH_PLAN_BEGIN
+Full implementation plan body ending with diff_lines: <N>.
+LARCH_PLAN_END
+[optional]
+LARCH_SCOUT_BEGIN
+{"archetypes":[{"name":"slug","focus_area":"code-quality|risk-integration|correctness|architecture|security","weight":1,"rationale":"single-line reason","prompt_body":"2-6 sentence focus directive ending with the required citation sentence."}]}
+LARCH_SCOUT_END
+[/optional]
+
+Optional advisory status may be included between LARCH_STATUS_BEGIN and LARCH_STATUS_END, but the summary, plan, and optional scout sentinels above are the only parsed contract.
+
+Untrusted feature description:
+<feature_description encoding="literal-redacted">
+# [BUG] /design Step 5c: orchestrator skips composing composed-plan.md, causing design-publish.sh exit 5
+
+## Summary
+
+In `/design` Step 5c the orchestrator must compose `$DESIGN_TMPDIR/composed-plan.md` (SKILL.md Step 5c item 1) **before** invoking `design-step5c.sh` (item 3). When the orchestrator skips composition and calls `design-step5c.sh` directly, `design-publish.sh` detects the missing file and exits 5. Exit code 5 is outside the expected `{0,1,3,4}` contract, so `design-step5c.sh` stages `failed-publish-tail` and aborts the entire `/design` run as a terminal failure.
+
+## Root cause
+
+- SKILL.md Step 5c items 1–3 are a three-step sequence: (1) compose `composed-plan.md`, (2) optionally validate, (3) call `design-step5c.sh`.
+- The orchestrator (main agent) mistakenly called `design-step5c.sh` without first writing `composed-plan.md`, treating the fence as self-contained.
+- `design-publish.sh` emits `design-publish.sh: composed-plan.md missing or empty — orchestrator must compose the plan first` and exits 5.
+- Step 5c abort-path extracts the final-summary block and stops at `failed-publish-tail` with no recovery option.
+
+## Impact
+
+A valid `/design` run that completed plan review and Gate C approval cannot write `larch:plan` to GitHub. The operator must restart the entire design session. On the run where this was observed, ~90 minutes of review work was completed before the publish step aborted.
+
+## Reproduction
+
+1. Run `/design &lt;issue&gt;` through Gate C (Approve).
+2. In Step 5c, skip composing `composed-plan.md` and call `design-step5c.sh` directly.
+3. Observe `design-publish.sh: composed-plan.md missing or empty` and exit code 5.
+
+## Recommendation for fix
+
+**Option A (preferred):** Change `design-publish.sh` to exit 4 (the existing plan-command-validator-failure gate) when `composed-plan.md` is missing or empty, rather than exit 5 (unexpected abort). Exit 4 routes through the existing **Fix-and-retry / Override / Cancel** prompt, letting the operator compose the file and retry without restarting.
+
+**Option B:** Add an explicit pre-fence guard in `design-step5c.sh` that checks for `composed-plan.md` and prints a diagnostic before calling `design-publish.sh`, surfacing the missing-file path as a validator defect (rc=4) rather than an unexpected abort (rc=5).
+
+Either option converts a silent session-killing abort into a recoverable validator gate, consistent with the existing plan-command-validator-failure handling at the same Step 5c call site.
+
+## Observed output
+
+```
+design-publish.sh: composed-plan.md missing or empty — orchestrator must compose the plan first
+...
+**⚠ Step 5c: design-publish.sh failed (exit 5); aborting /design**
+```
+
+
+</feature_description>
+
+
+Untrusted approach synthesis:
+<approach_synthesis encoding="literal-redacted">
+NO_SKETCHES
+
+</approach_synthesis>
+
+
+Untrusted approved design outline:
+<design_outline encoding="literal-redacted">
+## Proposed Design Outline
+
+### Goals
+- Convert the `design-publish.sh` missing-`composed-plan.md` abort (exit 5) into a recoverable validator gate (exit 4).
+- Allow Fix-and-retry to compose the file and proceed without restarting the design session.
+- Update the test and sibling docs to match the new exit code.
+
+### Non-goals
+- Do not add a guard in `design-step5c.sh` (Option B not needed).
+- Do not fix the pre-existing doc discrepancy where `design-publish.md` cites exit 2 for other `fail()` cases (out of scope).
+- Do not change the `fail()` function or the step-5b sentinel exit behavior.
+
+### Approach sketch
+- In `design-publish.sh`: replace the `|| fail 'composed-plan.md missing...'` one-liner with an `if [[ ! -s ]]` block that sets `VALIDATE_STATUS=defects-found`, writes a diagnostic to `validate-plan-commands.log`, calls `write_result_env_and_emit`, then exits 4.
+- In `test-design-publish.sh`: update the "empty composed plan" test to expect exit 4, capture stdout, and assert the result env has `VALIDATE_STATUS=defects-found`.
+- In `design-publish.md`: fix Responsibility 1 to say exit 4 (not exit 2) for missing `composed-plan.md`, and update the exit code table and ordering invariants.
+- In `SKILL.md` Step 5c: add a sentence noting that a missing or empty `composed-plan.md` also exits 4.
+
+### Surfaces in scope
+- `skills/design/scripts/design-publish.sh`
+- `skills/design/scripts/test-design-publish.sh`
+- `skills/design/scripts/design-publish.md`
+- `skills/design/SKILL.md` (minimal clarification)
+
+### Open questions
+- None.
+
+</design_outline>
+
