@@ -3532,7 +3532,7 @@ def _review_launch_codex(args: argparse.Namespace, prompt: str) -> int:
             _review_write_clean_readonly_dirty_tree(output)
             _review_write_preflight_done(output, auth_rc)
             _review_emit_launcher_result(output, "codex", auth_rc)
-            return auth_rc
+            return 0
         try:
             model_args = list(resolve_model_args("codex", with_effort=True).argv)
         except ValueError as exc:
