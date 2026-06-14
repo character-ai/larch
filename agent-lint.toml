@@ -303,6 +303,7 @@ exclude = [
   "scripts/create-branch.md",
   "scripts/run-step1-plan-log.sh",
   "scripts/run-step1-plan-log.md",
+  "scripts/snapshot-untracked.sh",
   # Step 5 launcher harness is Makefile-only; runtime reachability is through
   # the SKILL.md invocation of python/cli.py review-and-fix step5.
   "python/test_review_and_fix.py",
