@@ -7,6 +7,7 @@ ROOT="$(cd "$(dirname "$0")/../../.." && pwd -P)"
 WRITE_RUN_PARAMS=(python3 "$ROOT/python/cli.py" session write-run-params)
 POSTPLAN="$ROOT/skills/design/scripts/design-postplan-emit.sh"
 GATE_B_DEDUP="$ROOT/skills/design/scripts/gate-b-dedup-plan.sh"
+SETTLE="$ROOT/skills/design/scripts/design-step35-settle.sh"
 SKILL_MD="$ROOT/skills/design/SKILL.md"
 APPROVAL_GATES="$ROOT/skills/design/references/approval-gates.md"
 
@@ -15,6 +16,7 @@ pass() { printf 'PASS: %s\n' "$1"; }
 
 bash -n "$POSTPLAN" || fail 'design-postplan-emit bash -n failed'
 bash -n "$GATE_B_DEDUP" || fail 'gate-b-dedup-plan bash -n failed'
+bash -n "$SETTLE" || fail 'design-step35-settle bash -n failed'
 
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/tgbam.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT
@@ -90,18 +92,16 @@ EOF
   printf '%s\n' 'Retry failed validator auto-fix attempts from the original plan snapshot only.'
   printf '%s\n' 'diff_lines: 9'
 } >"$D_APPLY/plan.txt"
-"$GATE_B_DEDUP" --design-tmpdir "$D_APPLY" --dedup >"$D_APPLY/dedup.out"
+DESIGN_TMPDIR="$D_APPLY" "$SETTLE" --plugin-root "$ROOT" --site gate-b --round-num 4 >"$D_APPLY/settle.out"
 grep -Fq 'Retry failed validator auto-fix attempts from the original plan snapshot only.' "$D_APPLY/plan.txt" \
   || fail 'Apply-all simulated rewrite did not preserve accepted finding edit'
-grep -Fq 'dedup-sweep: removed 1 duplicate line(s) from plan.txt' "$D_APPLY/dedup.out" \
-  || fail 'Apply-all dedup sweep did not remove duplicate line'
-set +e
-"$POSTPLAN" --design-tmpdir "$D_APPLY" --with-plan-size >"$D_APPLY/out.txt" 2>"$D_APPLY/err.txt"
-rc=$?
-set -e
-[[ "$rc" -eq 0 ]] || fail "Apply-all postplan expected rc 0, got $rc"
-grep -Fq 'POSTPLAN_EMIT_STATUS=ok' "$D_APPLY/.design-postplan-emit-result.env" \
-  || fail 'Apply-all postplan result env missing ok status'
+[[ "$(grep -Fc 'dedup-sweep: removed 1 duplicate line(s) from plan.txt' "$D_APPLY/settle.out")" -eq 1 ]] \
+  || fail 'Apply-all settle should print one dedup sweep breadcrumb'
+grep -Fq 'POSTPLAN_RC=0' "$D_APPLY/settle.out" \
+  || fail 'Apply-all settle output missing clean postplan rc'
+[[ -f "$D_APPLY/.completed/step-2b.5" ]] || fail 'Apply-all settle should preserve postplan clean marker behavior'
+[[ "$(cat "$D_APPLY/.step3-round-4.phase")" == awaiting-continuation ]] \
+  || fail 'Apply-all settle should write awaiting-continuation phase'
 
 # Gate B shared post-apply uses design-postplan-emit --with-plan-size, so safety
 # brakes still interrupt auto-apply when plan-size thresholds require it.
@@ -125,5 +125,91 @@ set -e
 [[ "$rc" -eq 0 ]] || fail "drift size brake expected rc 0, got $rc"
 grep -Fq 'PLAN_SIZE_STATUS=drift-advisory' "$D_DRIFT/.design-postplan-emit-result.env" \
   || fail 'drift size brake result env missing'
+
+
+write_apply_postplan_stub() {
+  local path="$1"
+  cat >"$path" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >"$DESIGN_TMPDIR/postplan-argv.txt"
+cat "$DESIGN_TMPDIR/postplan-output.txt"
+if [[ -f "$DESIGN_TMPDIR/postplan-write-clean-marker" ]]; then
+  mkdir -p "$DESIGN_TMPDIR/.completed"
+  : >"$DESIGN_TMPDIR/.completed/step-2b.5"
+fi
+exit 0
+STUB
+  chmod +x "$path"
+}
+
+write_apply_dedup_stub() {
+  local path="$1"
+  cat >"$path" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'dedup stub\n'
+exit 0
+STUB
+  chmod +x "$path"
+}
+
+POSTPLAN_STUB="$TMP/postplan-stub.sh"
+DEDUP_STUB="$TMP/dedup-stub.sh"
+write_apply_postplan_stub "$POSTPLAN_STUB"
+write_apply_dedup_stub "$DEDUP_STUB"
+
+run_stubbed_settle() {
+  local d="$1" round="$2"
+  DESIGN_STEP35_DEDUP_PLAN_SH="$DEDUP_STUB" \
+    DESIGN_STEP35_POSTPLAN_SH="$POSTPLAN_STUB" \
+    DESIGN_TMPDIR="$d" "$SETTLE" --plugin-root "$ROOT" --site gate-b --round-num "$round"
+}
+
+# Wrapper-mediated postplan brakes relay while preserving Gate B phase markers.
+for brake in 10 13; do
+  d="$TMP/wrapper-brake-$brake"
+  mk_design "$d" 5 5
+  printf 'POSTPLAN_RC=%s\n' "$brake" >"$d/postplan-output.txt"
+  set +e
+  run_stubbed_settle "$d" "$brake" >"$d/settle.out"
+  rc=$?
+  set -e
+  [[ "$rc" -eq "$brake" ]] || fail "stubbed postplan rc $brake should exit wrapper rc $brake, got $rc"
+  [[ "$(cat "$d/.step3-round-$brake.phase")" == awaiting-postplan-operator ]] \
+    || fail "stubbed postplan rc $brake should write awaiting-postplan-operator"
+done
+
+D_WRAP_12="$TMP/wrapper-12"
+mk_design "$D_WRAP_12" 5 5
+printf 'POSTPLAN_RC=12\n' >"$D_WRAP_12/postplan-output.txt"
+set +e
+run_stubbed_settle "$D_WRAP_12" 12 >"$D_WRAP_12/settle.out"
+rc=$?
+set -e
+[[ "$rc" -eq 12 ]] || fail "stubbed postplan rc 12 should exit wrapper rc 12, got $rc"
+[[ ! -e "$D_WRAP_12/.completed/step-2b.5" ]] \
+  || fail 'stubbed postplan rc 12 should not write clean postplan marker'
+
+D_WRAP_PAUSE="$TMP/wrapper-pause"
+mk_design "$D_WRAP_PAUSE" 5 5
+printf 'PAUSE_OK=true\n' >"$D_WRAP_PAUSE/postplan-output.txt"
+set +e
+run_stubbed_settle "$D_WRAP_PAUSE" 11 >"$D_WRAP_PAUSE/settle.out"
+rc=$?
+set -e
+[[ "$rc" -eq 11 ]] || fail "stubbed pause output should exit wrapper rc 11, got $rc"
+[[ "$(cat "$D_WRAP_PAUSE/.step3-round-11.phase")" == awaiting-post-apply ]] \
+  || fail 'stubbed pause output should not write clean continuation phase'
+
+D_WRAP_CLEAN="$TMP/wrapper-clean-stub"
+mk_design "$D_WRAP_CLEAN" 5 5
+printf 'POSTPLAN_RC=0\n' >"$D_WRAP_CLEAN/postplan-output.txt"
+: >"$D_WRAP_CLEAN/postplan-write-clean-marker"
+run_stubbed_settle "$D_WRAP_CLEAN" 14 >"$D_WRAP_CLEAN/settle.out"
+[[ -f "$D_WRAP_CLEAN/.completed/step-2b.5" ]] \
+  || fail 'stubbed clean rc should leave postplan clean marker behavior intact'
+[[ "$(cat "$D_WRAP_CLEAN/.step3-round-14.phase")" == awaiting-continuation ]] \
+  || fail 'stubbed clean rc should write awaiting-continuation'
 
 pass 'gate-b apply mode harness'
