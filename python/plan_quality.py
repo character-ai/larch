@@ -1832,6 +1832,14 @@ def auto_fix_plan_commands_main(argv: list[str]) -> int:
     except ValueError:
         diagnostic("auto-fix-commands: --plan-file must be under --design-tmpdir")
         return 2
+    if plan.stat().st_size == 0:
+        emit_kv("AUTOFIX_STATUS", "unavailable")
+        emit_kv("VENDOR_SEQUENCE", "")
+        emit_kv("ATTEMPTS", "0")
+        emit_kv("FIXED_BY", "")
+        emit_kv("FINAL_VALIDATE_STATUS", "empty-target")
+        diagnostic(f"auto-fix-commands: plan file is empty; skipping auto-fix (composition omission): {plan}")
+        return 0
     validate_repo = _repo_root_for_plan(plan, args.repo_root)
     plugin = _plugin_root(validate_repo)
     consumer_repo = _repo_root_from(Path.cwd())

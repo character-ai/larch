@@ -234,4 +234,4 @@ Step 5c missing or empty `$DESIGN_TMPDIR/composed-plan.md` is a file-preconditio
 
 For ordinary composed-plan validator defects where the file exists and is non-empty, keep ordinary recovery semantics: auto-repair, then Fix-and-retry / Override / Cancel when auto-repair does not resolve the defect.
 
-Limit `design-step5c.sh --skip-validate` to ordinary Step 5c validator defects after operator Override or successful auto-fix validation. Do not imply that `--skip-validate` can repair a missing or empty composed plan.
+Limit `design-step5c.sh --skip-validate` to ordinary Step 5c validator defects after operator Override or successful auto-fix validation. Fix-and-retry re-runs `design-step5c.sh` without `--skip-validate` so command validation reruns on the operator-edited `composed-plan.md`. Do not imply that `--skip-validate` can repair a missing or empty composed plan.
