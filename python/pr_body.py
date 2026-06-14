@@ -421,10 +421,43 @@ def render_run_summary_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--note-lines-file")
     parser.add_argument("--print-stdout", action="store_true")
     parser.add_argument("--cost-unavailable", action="store_true")
-    # Accept token/cost args without fully modeling token pricing here.
-    for name in ("claude-tokens", "codex-tokens", "cursor-tokens", "claude-sub-tokens", "claude-input-tokens", "claude-cache-read-tokens", "claude-cache-write-5m-tokens", "claude-cache-write-1h-tokens", "claude-output-tokens", "codex-input-tokens", "codex-cached-input-tokens", "codex-output-tokens", "cursor-input-tokens", "cursor-cache-read-tokens", "cursor-output-tokens", "claude-sub-input-tokens", "claude-sub-cache-read-tokens", "claude-sub-cache-write-5m-tokens", "claude-sub-cache-write-1h-tokens", "claude-sub-output-tokens"):
+    _TOKEN_COST_ARGS = ("claude-tokens", "codex-tokens", "cursor-tokens", "claude-sub-tokens", "claude-input-tokens", "claude-cache-read-tokens", "claude-cache-write-5m-tokens", "claude-cache-write-1h-tokens", "claude-output-tokens", "codex-input-tokens", "codex-cached-input-tokens", "codex-output-tokens", "cursor-input-tokens", "cursor-cache-read-tokens", "cursor-output-tokens", "claude-sub-input-tokens", "claude-sub-cache-read-tokens", "claude-sub-cache-write-5m-tokens", "claude-sub-cache-write-1h-tokens", "claude-sub-output-tokens")
+    for name in _TOKEN_COST_ARGS:
         parser.add_argument(f"--{name}", default="0")
     args = parser.parse_args(argv)
+
+    def _read_kv(text: str, key: str) -> str:
+        for line in text.splitlines():
+            k, sep, v = line.partition("=")
+            if sep and k == key:
+                return v
+        return "N/A"
+
+    cost_unavailable = args.cost_unavailable
+    total_cost = "N/A"
+    claude_cost: object = "N/A"
+    codex_cost: object = "N/A"
+    cursor_cost: object = "N/A"
+    claude_sub_cost: object = "N/A"
+    total_tokens = sum(int(getattr(args, a.replace("-", "_")) or 0) for a in ("claude-tokens", "codex-tokens", "cursor-tokens", "claude-sub-tokens"))
+    if not cost_unavailable:
+        try:
+            from report_tokens_cost import token_cost_from_args as _tc
+            token_argv = []
+            for name in _TOKEN_COST_ARGS:
+                val = getattr(args, name.replace("-", "_"), "0") or "0"
+                if val != "0":
+                    token_argv += [f"--{name}", val]
+            cost_kv = _tc(token_argv)
+            total_cost = _read_kv(cost_kv, "TOTAL_COST")
+            claude_cost = _read_kv(cost_kv, "CLAUDE_COST")
+            codex_cost = _read_kv(cost_kv, "CODEX_COST")
+            cursor_cost = _read_kv(cost_kv, "CURSOR_COST")
+            claude_sub_cost = _read_kv(cost_kv, "CLAUDE_SUB_COST")
+            total_tokens = int(_read_kv(cost_kv, "TOTAL_TOKENS") or total_tokens)
+        except Exception:
+            cost_unavailable = True
+
     note_lines = Path(args.note_lines_file).read_text(encoding="utf-8") if args.note_lines_file and Path(args.note_lines_file).is_file() else ""
     body = render_run_summary(
         skill=args.skill,
@@ -449,9 +482,13 @@ def render_run_summary_main(argv: list[str] | None = None) -> int:
         warnings=args.warnings,
         run_logs_path=args.run_logs_path,
         emergency_requested=args.emergency_requested,
-        cost_unavailable=args.cost_unavailable,
-        total_tokens=sum(int(getattr(args, attr) or 0) for attr in ("claude_tokens", "codex_tokens", "cursor_tokens", "claude_sub_tokens")),
-        total_cost="N/A",
+        cost_unavailable=cost_unavailable,
+        total_tokens=total_tokens,
+        total_cost=total_cost,
+        claude_cost=claude_cost,
+        codex_cost=codex_cost,
+        cursor_cost=cursor_cost,
+        claude_sub_cost=claude_sub_cost,
         note_lines=note_lines,
     )
     if args.output_file:
