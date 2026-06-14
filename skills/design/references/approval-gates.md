@@ -229,4 +229,8 @@ When the user picks **Approve final design**, proceed to Step 5b. The skill no l
 <!-- loop-mode review contract -->
 In loop mode, accepted findings are applied inside `python/plan_review.py` before `STEP3_REVIEW_LOOP_STATUS=complete`. Prompt-side Gate B applies only on loop bail-outs; under `--per-round-approval` it asks explicitly: Apply all / Go through each / Switch to discussion mode.
 
-Step 5c validator Override, Fix-and-retry, and autofix-success recovery re-enter through `design-step5c.sh --skip-validate` so the wrapper preserves the single-call SKILL.md invariant.
+Step 5c missing or empty `$DESIGN_TMPDIR/composed-plan.md` is a file-precondition defect. Recovery must compose Step 5c item 1 first, then re-run `design-step5c.sh`. Skip auto-repair and do not offer Override.
+
+For ordinary composed-plan validator defects where the file exists and is non-empty, keep ordinary recovery semantics: auto-repair, then Fix-and-retry / Override / Cancel when auto-repair does not resolve the defect.
+
+Limit `design-step5c.sh --skip-validate` to ordinary Step 5c validator defects after operator Override or successful auto-fix validation. Do not imply that `--skip-validate` can repair a missing or empty composed plan.

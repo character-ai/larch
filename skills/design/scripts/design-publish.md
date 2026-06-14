@@ -13,11 +13,11 @@
 | `--session-id STR` | yes | Flag required; value may be empty (newline/CR rejected only) |
 | `--claude-pid N` | yes | Positive integer; passed to `design_reentry_marker_write` |
 | `--repo OWNER/REPO` | no | Forwarded on REPO-aware helpers |
-| `--skip-validate` | no | Skips only composed-plan validation for the operator accept / proceed-anyway path; redaction still runs |
+| `--skip-validate` | no | Skips only ordinary composed-plan command validation for the operator accept / proceed-anyway path; it does not skip the missing-or-empty `composed-plan.md` precondition check. Redaction still runs after that precondition passes |
 
 ## Responsibilities
 
-1. Preconditions: `.completed/step-5b` present; `composed-plan.md` non-empty (`exit 2` otherwise).
+1. Preconditions: `.completed/step-5b` present as a hard `fail` path (`exit 5`); missing or empty `composed-plan.md` exits `4` with `VALIDATE_STATUS=defects-found` and no publish-tail side effects.
 2. Pre-side-effect pause checkpoint: when `.pause-requested` exists, immediately `exec design-pause-save.sh --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE" ${REPO:+--repo "$REPO"}` before validation, redaction, plan write, rename, publish, or marker side effects.
 3. Unless `--skip-validate` is passed, run `python/cli.py plan validate DIR/composed-plan.md` under `set +e`, parse the five `VALIDATE_*` KVs, and treat `VALIDATE_STATUS=defects-found` as `exit 4` with no redaction or publish-tail side effects. Empty, `not-run`, unexpected status (anything other than `ok` after the defects-found branch), or nonzero validator output that is not `defects-found` is validator infrastructure failure (`exit 2`).
 4. Redact `composed-plan.md` through `python/cli.py redact secrets` (stdin) to `composed-plan.redacted.md`; redactor nonzero is `exit 2` with `redact secrets failed`, and an empty redacted file is also `exit 2`.
@@ -72,12 +72,15 @@ remains authoritative.
 | `2` | Argv / precondition / validator infrastructure / redaction error |
 | `3` | `PLAN_WRITE_OK=true` but result-env write failed after publish tail |
 | `4` | Composed-plan validation found defects (`VALIDATE_STATUS=defects-found`); nothing redacted, published, renamed, or marked complete |
+| `4` | Missing or empty `composed-plan.md`; emits validator-defect KVs, writes `validate-plan-commands.log`, and stops before redaction or publish-tail side effects |
 
 ## Migration limit
 
 `--clear-architecture` updates only the stable `<!-- larch:diagrams v1 -->` tracking-issue comment. Legacy `<!-- larch:diagrams v1 runid=… -->` orphan comments from older runs are not matched; operators may still see a stale Architecture block on those orphans after a non-architectural re-design.
 
 ## Ordering invariants
+
+On missing or empty `composed-plan.md`: set validator-defect KVs → write `validate-plan-commands.log` → result env best-effort / stdout KVs → `exit 4`, with no redaction or publish-tail side effects. `--skip-validate` does not skip this precondition.
 
 On validation defects: `python/cli.py plan validate` → result env best-effort / stdout KVs → `exit 4`.
 

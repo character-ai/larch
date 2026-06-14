@@ -203,6 +203,9 @@ elif cmd == ["timing", "report"]:
     data = {"per_step":[step],"total_seconds":1,"total_hms":"00:00:01","vendor_task_averages":[]}
     with open(out, "w") as fh: fh.write(json.dumps(data) + "\n")
 elif cmd == ["redact", "secrets"]:
+    if os.environ.get("CALL_LOG"):
+        with open(os.environ["CALL_LOG"], "a", encoding="utf-8") as handle:
+            handle.write("redact secrets\n")
     rc = int(os.environ.get("REDACT_STUB_RC", "0"))
     if rc:
         raise SystemExit(rc)
@@ -428,11 +431,24 @@ assert_rc "missing step-5b" 5 "$rc"
 D_NOP="$TMP/no-plan"
 setup_design_tmp "$D_NOP"
 : >"$D_NOP/composed-plan.md"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
 set +e
-bash "$SUBJECT" --design-tmpdir "$D_NOP" --issue 1 --session-id x --claude-pid 1 2>/dev/null
+bash "$SUBJECT" --design-tmpdir "$D_NOP" --issue 1 --session-id x --claude-pid 1 >"$D_NOP/stdout.txt" 2>/dev/null
 rc=$?
 set -e
-assert_rc "empty composed plan" 5 "$rc"
+assert_rc "empty composed plan" 4 "$rc"
+grep -Fq 'VALIDATE_STATUS=defects-found' "$D_NOP/.design-publish-result.env" || fail "empty composed plan result env status"
+grep -Fq 'VALIDATE_STATUS=defects-found' "$D_NOP/stdout.txt" || fail "empty composed plan stdout status fallback"
+grep -Fq 'composed-plan.md missing or empty' "$D_NOP/validate-plan-commands.log" || fail "empty composed plan diagnostic log"
+grep -Fq 'PLAN_WRITE_OK=false' "$D_NOP/.design-publish-result.env" || fail "empty composed plan PLAN_WRITE_OK=false"
+grep -Fq 'VALIDATE_DEFECT_COUNT=1' "$D_NOP/.design-publish-result.env" || fail "empty composed plan defect count"
+if [[ -e "$D_NOP/composed-plan.redacted.md" ]]; then fail "empty composed plan must not redact"; else pass "empty composed plan skipped redaction"; fi
+if grep -Fq 'redact secrets' "$CALL_LOG" 2>/dev/null; then fail "empty composed plan must not invoke redact"; else pass "empty composed plan did not invoke redact"; fi
+if grep -Fq 'plan-block-write' "$PLAN_BLOCK_LOG" 2>/dev/null; then fail "empty composed plan must not plan-block write"; else pass "empty composed plan skipped plan-block write"; fi
+if grep -Fq 'design-log-publish' "$PUBLISH_LOG" 2>/dev/null; then fail "empty composed plan must not publish"; else pass "empty composed plan skipped publish"; fi
+if grep -Fq 'tracking-issue rename' "$RENAME_LOG" 2>/dev/null; then fail "empty composed plan must not rename"; else pass "empty composed plan skipped rename"; fi
 
 
 # --- validator defects: exit 4, no redaction or publish side effects ---
@@ -507,6 +523,29 @@ elif [[ "$skip_plan_pos" -ge "$skip_upsert_pos" || "$skip_upsert_pos" -ge "$skip
 else
     pass "skip validate call-log ordering plan→upsert→rename→publish"
 fi
+
+# --- skip validate still enforces missing composed plan precondition ---
+D_SKIP_MISSING="$TMP/skip-validate-missing-plan"
+setup_design_tmp "$D_SKIP_MISSING"
+: >"$D_SKIP_MISSING/composed-plan.md"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_SKIP_MISSING" --issue 42 --session-id sid-1 --claude-pid 9999 --skip-validate >"$D_SKIP_MISSING/stdout.txt" 2>/dev/null
+rc=$?
+set -e
+assert_rc "skip validate empty composed plan" 4 "$rc"
+grep -Fq 'VALIDATE_STATUS=defects-found' "$D_SKIP_MISSING/.design-publish-result.env" || fail "skip validate empty composed plan result env status"
+grep -Fq 'VALIDATE_STATUS=defects-found' "$D_SKIP_MISSING/stdout.txt" || fail "skip validate empty composed plan stdout status fallback"
+grep -Fq 'composed-plan.md missing or empty' "$D_SKIP_MISSING/validate-plan-commands.log" || fail "skip validate empty composed plan diagnostic log"
+grep -Fq 'PLAN_WRITE_OK=false' "$D_SKIP_MISSING/.design-publish-result.env" || fail "skip validate empty composed plan PLAN_WRITE_OK=false"
+grep -Fq 'VALIDATE_DEFECT_COUNT=1' "$D_SKIP_MISSING/.design-publish-result.env" || fail "skip validate empty composed plan defect count"
+if [[ -e "$D_SKIP_MISSING/composed-plan.redacted.md" ]]; then fail "skip validate empty composed plan must not redact"; else pass "skip validate empty composed plan skipped redaction"; fi
+if grep -Fq 'redact secrets' "$CALL_LOG" 2>/dev/null; then fail "skip validate empty composed plan must not invoke redact"; else pass "skip validate empty composed plan did not invoke redact"; fi
+if grep -Fq 'plan-block-write' "$PLAN_BLOCK_LOG" 2>/dev/null; then fail "skip validate empty composed plan must not plan-block write"; else pass "skip validate empty composed plan skipped plan-block write"; fi
+if grep -Fq 'design-log-publish' "$PUBLISH_LOG" 2>/dev/null; then fail "skip validate empty composed plan must not publish"; else pass "skip validate empty composed plan skipped publish"; fi
+if grep -Fq 'tracking-issue rename' "$RENAME_LOG" 2>/dev/null; then fail "skip validate empty composed plan must not rename"; else pass "skip validate empty composed plan skipped rename"; fi
 
 # --- pause before validator/publish ---
 D_PAUSE="$TMP/pause"
