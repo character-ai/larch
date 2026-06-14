@@ -12,8 +12,13 @@ branch by:
    `python3 python/cli.py run-log commit`'s default-branch guard — not a `main`-only string
    compare).
 3. Creating a disposable git worktree on branch `larch-log-design-<RUN_ID>`
-   from `origin/<default>` for final publishes. Final mode keeps that base even
-   when `origin/larch-log-design-<RUN_ID>` already exists. Before
+   from `origin/<default>` for final publishes. Final mode may use this first
+   worktree only to build the scrubbed desired run-tree snapshot. Immediately
+   before the final push, it fetches the resolved `origin/<default>` again,
+   recreates the disposable worktree from that fresh ref, applies the desired
+   run tree with delete semantics, and creates the pushed commit from that
+   fresh base. Final mode keeps the default-branch base even when
+   `origin/larch-log-design-<RUN_ID>` already exists. Before
    `git worktree add`, the script refuses to
    start when that branch name is already checked out in another worktree, and
    it does not ignore a failed `git branch -D` for an existing local branch with
@@ -85,10 +90,15 @@ branch by:
 6. Committing `larch-logs/design/<RUN_ID>/`. The commit subject carries no
    `[skip ci]` marker, so CI runs on the publish PR. `--reason pause` uses
    `pause design run` in the subject; the default `--reason final` uses
-   `flush design run`.
+   `flush design run`. The final-mode commit is created only after the
+   fresh-default rebuild. Pause mode does not use the rebuild helper.
 7. Pushing the disposable branch, creating a PR with `gh pr create --head`
    (not `create-pr.sh`), resolving the repository slug for the CI/merge gate,
    then running a two-phase required-check gate before `git worktree remove --force`:
+   final mode uses `git push --force-with-lease` when the remote log branch
+   already exists, replacing stale divergent re-flush branches with the rebuilt
+   commit. First-time final pushes keep the normal push path. Pause mode keeps
+   log-branch reuse and always pushes with `--force-with-lease`.
    - Registration wait: the script records the post-push commit and polls until
      required checks are reported for that pushed head. Registration requires
      both a parseable, non-empty `gh pr checks --required --json bucket` array
@@ -138,24 +148,22 @@ branch by:
 
 ## Empty Porcelain (Final)
 
-Before allocating the disposable worktree, `--reason final` best-effort fetches
-`origin/<default>` and probes the default-branch tree for
-`larch-logs/design/<RUN_ID>` when no matching remote log branch is known. If
-that tree already exists, the script emits `PUBLISH_OK=true` with empty PR fields
-and exits without creating a new PR. This check does not require the remote log
-branch to exist, so it still works after `gh pr merge --squash --delete-branch`
-deletes `larch-log-design-<RUN_ID>`.
-It uses `git ls-tree`, not `merge-base --is-ancestor`, because design-log PRs
-are squash-merged and the log branch tip is not expected to remain an ancestor
-of the default branch.
+For `--reason final`, idempotency is decided late, after the desired run tree is
+trimmed, redacted, secret-scrubbed, and overlaid onto a worktree rebuilt from a
+freshly fetched `origin/<default>`. An empty
+`git status --porcelain -- larch-logs/design/<RUN_ID>` at that point is an
+idempotent success: the script emits `PUBLISH_OK=true` with empty PR fields and
+does not create or merge a flush PR.
 
-For `--reason final`, an empty `git status --porcelain -- larch-logs/design/<RUN_ID>`
-after staging is treated as an idempotent success only when `origin/<default>`
-already contains at least one path below that run directory. In that case the
-script emits `PUBLISH_OK=true` with empty PR fields and does not create or merge
-a flush PR. If the default branch does not contain the run directory, the same
-empty-porcelain state is a fail-closed publish (`PUBLISH_OK=false`) because no
-fresh log snapshot can be proven to exist.
+If the only delta is `manifest.json` timestamp churn, final mode also treats the
+publish as idempotent. Non-manifest additions, edits, and deletions are real
+delta. A newer final snapshot for a run directory that already exists on the
+default branch publishes an incremental PR instead of being skipped. Paths absent
+from the desired final snapshot are removed from the rebuilt branch, so stale
+artifacts and stale excluded files do not survive a final re-flush.
+
+This late rebuild closes stale-base conflicts from both stale local
+`origin/<default>` refs and default-branch advances during the publish window.
 
 ## Pause Reason
 

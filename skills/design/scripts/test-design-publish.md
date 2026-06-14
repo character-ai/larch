@@ -7,3 +7,6 @@ Wired via `make test-design-publish` (see `Makefile`).
 ## Recent contract coverage
 
 - Covers non-zero publish exits that also print `PUBLISH_OK=true` and empty-`SESSION_ID` `publish-skipped` rendering with rename/reentry marker skipped.
+- Covers re-entry when `.design-publish-result.env` already has `PUBLISH_OK=true`:
+  the wrapper still invokes `design-log-publish.sh` and preserves the earlier
+  success metadata when the later publish attempt fails.

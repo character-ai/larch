@@ -239,18 +239,28 @@ wt_cleanup() {
 }
 trap wt_cleanup EXIT
 
+design_publish_refresh_default_ref() {
+    if ! git -C "$REPO_ROOT" fetch origin "$ORIGIN_DEFAULT:refs/remotes/origin/$ORIGIN_DEFAULT" >/dev/null 2>&1; then
+        larch_err "design-log-publish: failed to fetch origin/$ORIGIN_DEFAULT before final publish"
+        return 1
+    fi
+    return 0
+}
+
+design_publish_refresh_remote_branch_exists() {
+    REMOTE_BRANCH_EXISTS=false
+    if git -C "$REPO_ROOT" ls-remote --exit-code --heads origin "$WT_BRANCH" >/dev/null 2>&1; then
+        REMOTE_BRANCH_EXISTS=true
+        git -C "$REPO_ROOT" fetch origin "$WT_BRANCH:refs/remotes/origin/$WT_BRANCH" >/dev/null 2>&1 || true
+    else
+        git -C "$REPO_ROOT" update-ref -d "refs/remotes/origin/$WT_BRANCH" >/dev/null 2>&1 || true
+    fi
+}
+
 REMOTE_BRANCH_EXISTS=false
 git -C "$REPO_ROOT" fetch origin "$WT_BRANCH:refs/remotes/origin/$WT_BRANCH" >/dev/null 2>&1 || true
 if git -C "$REPO_ROOT" show-ref --verify --quiet "refs/remotes/origin/$WT_BRANCH"; then
     REMOTE_BRANCH_EXISTS=true
-fi
-
-if [[ "$REASON" == "final" ]]; then
-    git -C "$REPO_ROOT" fetch origin "$ORIGIN_DEFAULT:refs/remotes/origin/$ORIGIN_DEFAULT" >/dev/null 2>&1 || true
-    if git -C "$REPO_ROOT" ls-tree -r --name-only "origin/$ORIGIN_DEFAULT" -- "larch-logs/design/$RUN_ID" | grep -q .; then
-        emit_publish_result true "" ""
-        exit 0
-    fi
 fi
 
 if git -C "$REPO_ROOT" worktree list | grep -Fq " [$WT_BRANCH]"; then
@@ -511,7 +521,167 @@ design_publish_breadcrumbs_error() {
     larch_err "design-log-publish: $1"
 }
 
+design_publish_copy_dir_contents() {
+    local src="$1" dest="$2"
+    rm -rf "$dest" || return 1
+    mkdir -p "$dest" || return 1
+    cp -R "$src"/. "$dest"/
+}
+
+design_publish_porcelain_only_manifest() {
+    local porcelain="$1" manifest_path="$2" line path seen=false
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        [[ -z "$line" ]] && continue
+        path="${line#???}"
+        if [[ "$path" != "$manifest_path" ]]; then
+            return 1
+        fi
+        seen=true
+    done <<<"$porcelain"
+    [[ "$seen" == true ]]
+}
+
+design_publish_manifest_timestamp_churn() {
+    local rel="$1" default_mf desired_mf default_norm desired_norm rc=1
+    default_mf=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-default-mf.XXXXXX") || return 1
+    desired_mf="$WT_DIR/$rel/manifest.json"
+    default_norm=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-default-mf-norm.XXXXXX") || {
+        rm -f "$default_mf"
+        return 1
+    }
+    desired_norm=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-desired-mf-norm.XXXXXX") || {
+        rm -f "$default_mf" "$default_norm"
+        return 1
+    }
+    if git -C "$WT_DIR" show "HEAD:$rel/manifest.json" >"$default_mf" 2>/dev/null \
+        && [[ -f "$desired_mf" ]] \
+        && jq -S 'del(.started_at, .updated_at)' "$default_mf" >"$default_norm" \
+        && jq -S 'del(.started_at, .updated_at)' "$desired_mf" >"$desired_norm" \
+        && cmp -s "$default_norm" "$desired_norm"; then
+        rc=0
+    fi
+    rm -f "$default_mf" "$default_norm" "$desired_norm"
+    return "$rc"
+}
+
+design_publish_rebuild_final_commit() {
+    local rel="$1" snapshot_dir snapshot_parent porcelain manifest_path mf_tmp ts jq_expr commit_subject
+    snapshot_dir="$WT_PARENT/desired-run-snapshot"
+    snapshot_parent=$(dirname "$snapshot_dir")
+    mkdir -p "$snapshot_parent" || {
+        larch_err "design-log-publish: cannot prepare final snapshot parent"
+        return 1
+    }
+    if ! design_publish_copy_dir_contents "$RUN_DEST" "$snapshot_dir"; then
+        larch_err "design-log-publish: failed to snapshot desired final run tree"
+        return 1
+    fi
+
+    if ! design_publish_refresh_default_ref; then
+        return 1
+    fi
+
+    if ! git -C "$REPO_ROOT" worktree remove --force "$WT_DIR" >/dev/null 2>&1; then
+        larch_err "design-log-publish: failed to remove stale final worktree before rebuild"
+        return 1
+    fi
+    if git -C "$REPO_ROOT" show-ref --verify --quiet "refs/heads/$WT_BRANCH"; then
+        if ! git -C "$REPO_ROOT" branch -D "$WT_BRANCH" >/dev/null 2>&1; then
+            larch_err "design-log-publish: cannot delete local final branch before rebuild"
+            return 1
+        fi
+    fi
+    if ! mkdir -p "$WT_DIR"; then
+        larch_err "design-log-publish: cannot recreate final worktree directory"
+        return 1
+    fi
+    if ! git -C "$REPO_ROOT" worktree add -b "$WT_BRANCH" "$WT_DIR" "origin/$ORIGIN_DEFAULT" >/dev/null 2>&1; then
+        larch_err "design-log-publish: git worktree add failed during final rebuild"
+        return 1
+    fi
+
+    RUN_DEST="$WT_DIR/$rel"
+    rm -rf "$RUN_DEST" || {
+        larch_err "design-log-publish: failed to remove existing final run directory"
+        return 1
+    }
+    mkdir -p "$(dirname "$RUN_DEST")" || {
+        larch_err "design-log-publish: failed to recreate final run parent"
+        return 1
+    }
+    if ! design_publish_copy_dir_contents "$snapshot_dir" "$RUN_DEST"; then
+        larch_err "design-log-publish: failed to install desired final snapshot"
+        return 1
+    fi
+    design_publish_remove_stale_excluded "$RUN_DEST"
+
+    if ! porcelain=$(git -C "$WT_DIR" status --porcelain -uall -- "$rel" 2>&1); then
+        larch_err "design-log-publish: git status failed for rebuilt final $rel"
+        return 1
+    fi
+    if [[ -z "$porcelain" ]]; then
+        emit_publish_result true "" ""
+        exit 0
+    fi
+    manifest_path="$rel/manifest.json"
+    if design_publish_porcelain_only_manifest "$porcelain" "$manifest_path" \
+        && design_publish_manifest_timestamp_churn "$rel"; then
+        emit_publish_result true "" ""
+        exit 0
+    fi
+
+    ts=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+    mf_tmp=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-mf.XXXXXX") || {
+        larch_err "design-log-publish: manifest temp allocation failed"
+        return 1
+    }
+    # shellcheck disable=SC2016 # jq variable $ts is supplied by --arg below.
+    jq_expr='.updated_at = $ts'
+    if ! jq --arg ts "$ts" "$jq_expr" "$RUN_DEST/manifest.json" >"$mf_tmp"; then
+        rm -f "$mf_tmp"
+        larch_err "design-log-publish: manifest refresh failed"
+        return 1
+    fi
+    if ! mv -f "$mf_tmp" "$RUN_DEST/manifest.json"; then
+        rm -f "$mf_tmp"
+        larch_err "design-log-publish: manifest install failed"
+        return 1
+    fi
+
+    if ! git -C "$WT_DIR" add -A -- "$rel"; then
+        larch_err "design-log-publish: git add failed"
+        return 1
+    fi
+    commit_subject="chore(larch-logs): flush design run ${RUN_ID}"
+    if ! git -C "$WT_DIR" commit -m "$commit_subject" -- "$rel" >/dev/null; then
+        larch_err "design-log-publish: git commit failed"
+        return 1
+    fi
+    return 0
+}
+
 RUN_DEST="$WT_DIR/larch-logs/design/$RUN_ID"
+if [[ "$REASON" == "final" ]]; then
+    _seed_manifest=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-seed-mf.XXXXXX") || {
+        larch_err "design-log-publish: manifest seed temp allocation failed"
+        emit_publish_result false
+        exit 0
+    }
+    if ! cp "$RUN_DEST/manifest.json" "$_seed_manifest"; then
+        rm -f "$_seed_manifest"
+        larch_err "design-log-publish: manifest seed copy failed"
+        emit_publish_result false
+        exit 0
+    fi
+    rm -rf "$RUN_DEST"
+    mkdir -p "$RUN_DEST"
+    if ! mv -f "$_seed_manifest" "$RUN_DEST/manifest.json"; then
+        rm -f "$_seed_manifest"
+        larch_err "design-log-publish: manifest seed restore failed"
+        emit_publish_result false
+        exit 0
+    fi
+fi
 mkdir -p "$RUN_DEST/render-cache"
 if [[ "$REASON" == "pause" ]]; then
     rm -f "$RUN_DEST"/timing-report-final.json "$RUN_DEST"/timing-report-final.* 2>/dev/null || true
@@ -868,8 +1038,14 @@ if [[ "$scrub_n" -gt 0 ]]; then
 fi
 
 rel="larch-logs/design/$RUN_ID"
+if [[ "$REASON" == "final" ]]; then
+    if ! design_publish_rebuild_final_commit "$rel"; then
+        emit_publish_result false
+        exit 0
+    fi
+else
 _porcelain=""
-if ! _porcelain=$(git -C "$WT_DIR" status --porcelain -- "$rel" 2>&1); then
+if ! _porcelain=$(git -C "$WT_DIR" status --porcelain -uall -- "$rel" 2>&1); then
     larch_err "design-log-publish: git status failed for $rel"
     emit_publish_result false
     exit 0
@@ -940,6 +1116,7 @@ if ! git -C "$WT_DIR" commit -m "$commit_subject" -- "$rel" >/dev/null; then
     emit_publish_result false
     exit 0
 fi
+fi
 
 gh_repo_args=()
 if [[ -z "${REPO:-}" ]]; then
@@ -963,9 +1140,19 @@ PR_BODY_TMP=$(mktemp "${TMPDIR:-/tmp}/larch-design-log-pr-body.XXXXXX") || {
 }
 printf 'Automated design log directory for run %s. Merged once required CI checks pass.' "$RUN_ID" >"$PR_BODY_TMP"
 
+design_publish_refresh_remote_branch_exists
 push_args=(-u origin "$WT_BRANCH")
-if [[ "$REASON" == "pause" ]]; then
-    push_args=(--force-with-lease -u origin "$WT_BRANCH")
+if [[ "$REASON" == "pause" || "$REMOTE_BRANCH_EXISTS" == true ]]; then
+    if [[ "$REMOTE_BRANCH_EXISTS" == true ]]; then
+        lease_sha=$(git -C "$REPO_ROOT" rev-parse "refs/remotes/origin/$WT_BRANCH" 2>/dev/null || true)
+        if [[ -n "$lease_sha" ]]; then
+            push_args=(--force-with-lease="refs/heads/$WT_BRANCH:$lease_sha" -u origin "$WT_BRANCH")
+        else
+            push_args=(--force-with-lease -u origin "$WT_BRANCH")
+        fi
+    else
+        push_args=(--force-with-lease -u origin "$WT_BRANCH")
+    fi
 fi
 push_fail_file=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-push.XXXXXX") || {
     larch_err "design-log-publish: mktemp failed for push capture"
