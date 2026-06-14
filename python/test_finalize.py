@@ -332,8 +332,12 @@ def test_implement_finalize_teardown_emits_issue_url_and_subcommand(
         _ = (runner, issue, field, repo)
         return "https://github.com/o/r/issues/12"
 
+    def fake_kill_session_background_processes(runner: object, ctx: RunContext) -> bool:
+        _ = (runner, ctx)
+        return False
+
     monkeypatch.setattr(finalize.issue_query, "issue_info", fake_issue_info)
-    monkeypatch.setattr(finalize, "kill_session_background_processes", lambda *_a, **_k: False)
+    monkeypatch.setattr(finalize, "kill_session_background_processes", fake_kill_session_background_processes)
     rc = finalize.implement_finalize_teardown_main([
         "--state-file", str(state),
         "--implement-tmpdir", str(tmp_path),

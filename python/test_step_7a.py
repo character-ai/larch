@@ -34,7 +34,12 @@ def test_step7a_main_rejects_unknown_flags(capsys: pytest.CaptureFixture[str]) -
 
 def test_step7a_skips_diagram_for_small_non_runtime_change(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
     _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
-    monkeypatch.setattr(step_7a, "_is_small_non_runtime_change", lambda **_kwargs: True)
+
+    def fake_is_small_non_runtime_change(*, base_remote: str, base_ref: str) -> bool:
+        _ = (base_remote, base_ref)
+        return True
+
+    monkeypatch.setattr(step_7a, "_is_small_non_runtime_change", fake_is_small_non_runtime_change)
     with patch.object(step_7a, "_run_log_flush", return_value="skip"), patch.object(step_7a, "subprocess") as mock_subprocess:
         mock_subprocess.run.return_value.returncode = 0
         mock_subprocess.run.return_value.stdout = "REBASE_OUTCOME=skipped\n"

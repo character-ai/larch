@@ -168,7 +168,12 @@ def test_write_final_report_counts_warnings_and_exec(tmp_path: Path, monkeypatch
         "### Tool Failures\n- **step5**: failed\n\n### Warnings\n- **warn**: one\n",
         encoding="utf-8",
     )
-    monkeypatch.setattr(pr_body, "_final_report_token_fields", lambda *_a, **_k: {"cost_unavailable": True})
+
+    def fake_final_report_token_fields(implement_tmpdir: Path, run_id: str) -> dict[str, object]:
+        _ = (implement_tmpdir, run_id)
+        return {"cost_unavailable": True}
+
+    monkeypatch.setattr(pr_body, "_final_report_token_fields", fake_final_report_token_fields)
     rc, _url, _err = pr_body.write_final_report(tmp_path, comment_only=True)
     assert rc == 0
     body = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
@@ -181,7 +186,12 @@ def test_step18b_emits_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
     _ = (tmp_path / "session-env.sh").write_text("REPO=o/r\nMODE=N/A\n", encoding="utf-8")
     _ = (tmp_path / "ship-pr-state.sh").write_text("", encoding="utf-8")
     _ = (tmp_path / "run-flags.sh").write_text("EMERGENCY_REQUESTED=false\n", encoding="utf-8")
-    monkeypatch.setattr(pr_body, "_final_report_token_fields", lambda *_a, **_k: {"cost_unavailable": True})
+
+    def fake_final_report_token_fields(implement_tmpdir: Path, run_id: str) -> dict[str, object]:
+        _ = (implement_tmpdir, run_id)
+        return {"cost_unavailable": True}
+
+    monkeypatch.setattr(pr_body, "_final_report_token_fields", fake_final_report_token_fields)
     rc = pr_body.step18b_final_report_main(["--implement-tmpdir", str(tmp_path)])
     assert rc == 0
     out = capsys.readouterr().out
