@@ -366,11 +366,15 @@ def test_kill_session_background_processes_skips_live_python_ancestors(
     assert ["kill", "-TERM", "50"] not in runner.calls
 
 
+def _no_kill(*_args: object) -> bool:
+    pytest.fail("should not kill")
+
+
 def test_kill_background_processes_main_rejects_missing_design_tmpdir(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.setattr(finalize, "kill_session_background_processes", lambda *_args: pytest.fail("should not kill"))
+    monkeypatch.setattr(finalize, "kill_session_background_processes", _no_kill)
 
     rc = finalize.kill_background_processes_main([])
 
@@ -392,7 +396,7 @@ def test_kill_background_processes_main_rejects_bad_paths(
     value: str,
     expected: str,
 ) -> None:
-    monkeypatch.setattr(finalize, "kill_session_background_processes", lambda *_args: pytest.fail("should not kill"))
+    monkeypatch.setattr(finalize, "kill_session_background_processes", _no_kill)
 
     rc = finalize.kill_background_processes_main(["--design-tmpdir", value])
 
@@ -408,7 +412,7 @@ def test_kill_background_processes_main_rejects_allowed_root_non_design_path(
     non_design = tmp_path / "x"
     non_design.mkdir()
     monkeypatch.setenv("TMPDIR", str(tmp_path))
-    monkeypatch.setattr(finalize, "kill_session_background_processes", lambda *_args: pytest.fail("should not kill"))
+    monkeypatch.setattr(finalize, "kill_session_background_processes", _no_kill)
 
     rc = finalize.kill_background_processes_main(["--design-tmpdir", str(non_design)])
 
@@ -424,7 +428,7 @@ def test_kill_background_processes_main_rejects_design_path_without_marker(
     design_dir = tmp_path / "claude-design-no-marker"
     design_dir.mkdir()
     monkeypatch.setenv("TMPDIR", str(tmp_path))
-    monkeypatch.setattr(finalize, "kill_session_background_processes", lambda *_args: pytest.fail("should not kill"))
+    monkeypatch.setattr(finalize, "kill_session_background_processes", _no_kill)
 
     rc = finalize.kill_background_processes_main(["--design-tmpdir", str(design_dir)])
 
