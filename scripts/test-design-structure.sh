@@ -671,6 +671,7 @@ for fence in fences:
 PY
   contains "$SKILL_MD" 'Do NOT use a Bash tool call, Python script, or any other tool invocation to extract or print the final-summary body' 'SKILL missing final-summary delivery-channel prohibition'
   contains "$SKILL_MD" 'write the extracted content directly as your own orchestrator text response' 'SKILL missing final-summary orchestrator-text requirement'
+  contains "$SKILL_MD" 'cancel-title-filter` or `cancel-reentry-guard`, cancel routes expect fence exit 0: when `[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]`, use the Read tool on that file and write the Read result as plain orchestrator text' 'Step 0b cancel routes missing delivery-channel prohibition'
   ! grep -Fq "printf '%s\\n' \"\$_issue_stdout\" > \"\$DESIGN_TMPDIR/oos-issue.stdout.txt\"" "$SKILL_MD" \
     || fail 'SKILL Step 5b OOS bridge must not instruct shell printf for issue stdout'
 }
