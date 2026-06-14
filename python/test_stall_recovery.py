@@ -192,22 +192,17 @@ def test_validate_tier_b_public_file_rejects_sensitive_token(tmp_path: Path, cap
     assert "PUBLIC_FILE_VALID=false" in capsys.readouterr().out
 
 
-def test_compose_report_delegates_to_bash(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    calls: list[list[str]] = []
-
-    def fake_delegate(sub: str, rest: list[str]) -> int:
-        calls.append([sub, *rest])
-        return 0
-
-    monkeypatch.setattr(stall_recovery, "_delegate_stall_recovery_subcommand", fake_delegate)
+def test_compose_report_python_impl(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
     rc = stall_recovery.compose_report_main([
         "--implement-tmpdir", str(tmp_path),
         "--surface", "chat-print",
         "--report-kind", "terminal-failure",
     ])
     assert rc == 0
-    assert calls
-    assert calls[0][0] == "compose-report"
+    out = capsys.readouterr().out
+    assert "[Bug] /implement terminal:" in out
+    assert "STALL_RECOVERY_REPORT_STATUS=printed" in out
+    assert "REPORT_DEDUP_SIGNATURE=" in out
 
 
 def test_lint_subcommand_ok(capsys: pytest.CaptureFixture[str]) -> None:
