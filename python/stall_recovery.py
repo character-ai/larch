@@ -16,6 +16,104 @@ from pathlib import Path
 
 MAX_PUBLIC_FILE_BYTES = 256_000
 
+_OUTCOMES = frozenset({
+    "failed-plan-write", "failed-publish", "failed-postplan", "failed-clarify",
+    "failed-judge-panel", "failed-publish-tail", "approved", "approved-partition",
+})
+_GENERIC_SITES = frozenset({
+    "step2b", "gate-b", "step3-review", "discussion-round2", "step5c",
+    "design-publish", "clarify-loop", "judge-panel", "decompose-panel",
+})
+_COMMON_SITES = frozenset({
+    "step3", "step5", "step5-self-review", "step5-mav", "step6", "step8", "step18a",
+    "review-loop", "lint-fix-loop", "ship-pr", "ship-pr-ci-initial", "ship-pr-ci-merge",
+    "ship-pr-ci-per-job", "ship-pr-internal", "recovery-inline",
+})
+_GENERIC_TRIGGERS = frozenset({
+    "main-agent-apply-required", "postplan-operator-required", "exhausted", "failed",
+    "unavailable", "skipped-cycle-cap", "postplan-failed", "publish-tail-failed",
+    "plan-write-failed", "publish-failed", "panel-failed", "tally-error",
+    "degraded-empty-collector", "judge-panel-collapse", "decompose-panel-retry-exhausted",
+})
+_COMMON_TRIGGERS = frozenset({
+    "main-agent-required", "coder-main-agent-required", "main-agent-vote-required",
+    "fix-attempts-exhausted", "design-flaw", "escalate", "all-vendors-failed",
+    "ci-fix-exhausted", "first-fixer-non-health", "local-unfixable",
+    "ship-pr-internal-lint-fix", "lint-fix-main-agent-required", "step2-impl",
+    "step8-shippr", "dispatch-failed",
+})
+_GENERIC_BAILS = frozenset({
+    "failed-plan-write", "failed-publish", "failed-postplan", "failed-clarify",
+    "failed-judge-panel", "failed-publish-tail", "clarify-hard-halt", "postplan-failed",
+    "publish-failed", "publish-tail-failed", "plan-write-failed", "judge-panel-collapse",
+    "decompose-panel-retry-exhausted", "validator-autofix-exhausted",
+    "validator-autofix-failed", "validator-autofix-unavailable",
+    "validator-autofix-skipped-cycle-cap", "operator-action",
+})
+_GENERIC_STEPS = frozenset({
+    "validator", "postplan", "publish", "clarify", "panel", "judge-panel", "step2b", "step3", "step5c",
+})
+_GENERIC_PHASES = frozenset({
+    "plan-write", "publish", "postplan", "clarify-loop", "judge-panel", "validation", "teardown",
+})
+_COMMON_PHASES = frozenset({
+    "checks", "review", "implementation", "impl", "step2", "step5", "step8", "ship", "ship-pr",
+    "pr-prep", "pr-create", "ci-initial", "ci-merge", "evaluate-failure", "force-push-gate",
+    "bump", "merge", "postmerge", "rebase-failed",
+})
+_GENERIC_SOURCE_SCRIPTS = frozenset({
+    "split-path", "design-publish", "design-step3-review", "design-step5c",
+    "clarify-loop", "prompt-step", "validator", "postplan", "decompose-panel", "bash", "python",
+})
+
+
+def _safe_outcome(value: str) -> bool:
+    if value in _OUTCOMES:
+        return True
+    if value.startswith("cancelled-") and re.fullmatch(r"[A-Za-z0-9._:-]+", value):
+        return True
+    return False
+
+
+def _safe_step(value: str, generic: bool) -> bool:
+    if generic and value in _GENERIC_STEPS:
+        return True
+    if value in {"bump-branch-guard", "merge-loop-iteration-cap", "rebase-failed"}:
+        return True
+    if re.fullmatch(r"[2-9]|1[0-5]", value):
+        return True
+    if re.fullmatch(r"(8|9|10|11|12|13|14|15)([a-z][0-9]?|-[a-z0-9]+(-[a-z0-9]+)*)?", value):
+        return True
+    return False
+
+
+def _safe_token(kind: str, value: str, generic: bool) -> bool:
+    if not value:
+        return False
+    if kind == "outcome":
+        return _safe_outcome(value)
+    if kind == "step":
+        return _safe_step(value, generic)
+    if kind == "phase":
+        return value in _COMMON_PHASES or (generic and value in _GENERIC_PHASES)
+    if kind == "site":
+        return value in _COMMON_SITES or (generic and value in _GENERIC_SITES)
+    if kind == "trigger":
+        if value in _COMMON_TRIGGERS:
+            return True
+        if generic and value in _GENERIC_TRIGGERS:
+            return True
+        if re.fullmatch(r"ci-local-unfixable:[A-Za-z0-9_,-]+", value):
+            return True
+        return False
+    if kind == "bail":
+        return not value or (generic and value in _GENERIC_BAILS)
+    if kind == "source-script":
+        return generic and value in _GENERIC_SOURCE_SCRIPTS
+    if kind == "root-cause":
+        return value in {"larch-defect", "environment", "operator-action"}
+    return False
+
 
 def emit(key: str, value: object) -> None:
     print(f"{key}={value}")
@@ -229,9 +327,17 @@ def compose_report(args: argparse.Namespace) -> int:
 
 def validate_token(args: argparse.Namespace) -> int:
     token = args.token or ""
-    ok = bool(re.fullmatch(r"[A-Za-z0-9._:-]+", token)) and ".." not in token and "/" not in token
-    emit("TOKEN_VALID", str(ok).lower())
-    return 0 if ok else 1
+    kind = getattr(args, "token_kind", "") or ""
+    profile = getattr(args, "profile", "implement") or "implement"
+    generic = profile == "generic"
+    if not token or not re.fullmatch(r"[A-Za-z0-9._:-]+", token) or ".." in token or "/" in token:
+        emit("TOKEN_VALID", "false")
+        return 1
+    if kind and not _safe_token(kind, token, generic):
+        emit("TOKEN_VALID", "false")
+        return 1
+    emit("TOKEN_VALID", "true")
+    return 0
 
 
 _TERMINAL_STATE_ALLOWED_KEYS = {
@@ -370,6 +476,8 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--token", default="")
         p.add_argument("--value", default="")
         p.add_argument("--token-kind", default="")
+        p.add_argument("--profile", default="implement")
+        p.add_argument("--artifact-prefix", default="")
         ns, _ = p.parse_known_args(rest)
         ns.token = ns.token or ns.value
         return validate_token(ns)
