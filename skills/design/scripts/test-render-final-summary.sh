@@ -958,7 +958,7 @@ grep -Fq -- 'claude_sub/claude-plan-generic' "$RPD_D/final-summary.md" \
     || fail 'design final summary missing ASCII chart label'
 grep -Fq -- '50s' "$RPD_D/final-summary.md" \
     || fail 'design final summary missing bare ASCII duration'
-grep -Fq -- 'window 0:00-1:05 (65s)' "$RPD_D/final-summary.md" \
+grep -Fq -- 'window 0:00-0:50 (50s)' "$RPD_D/final-summary.md" \
     || fail 'design final summary missing m:ss chart title'
 grep -Fq -- '## Review Phase Detail' "$std_rpd" || fail 'stdout missing Review Phase Detail section'
 pass 'post-publish appends Review Phase Detail from plan-review rounds'
