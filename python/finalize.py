@@ -799,6 +799,10 @@ def kill_background_processes_main(argv: list[str]) -> int:
     ok, message = session_env.validate_design_tmpdir(design_tmpdir)
     if not ok:
         return _kill_background_processes_error(message)
+    if path.is_symlink():
+        return _kill_background_processes_error("design-tmpdir must not be a symlink")
+    if not path.is_dir():
+        return _kill_background_processes_error("design-tmpdir must be a directory")
     try:
         resolved = path.resolve(strict=False)
     except OSError:

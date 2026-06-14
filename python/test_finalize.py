@@ -436,6 +436,25 @@ def test_kill_background_processes_main_rejects_design_path_without_marker(
     assert "source-env.sh" in capsys.readouterr().err
 
 
+def test_kill_background_processes_main_rejects_symlinked_design_tmpdir(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    victim = tmp_path / "claude-design-victim"
+    victim.mkdir()
+    _ = (victim / "source-env.sh").write_text("DESIGN_TMPDIR=x\n", encoding="utf-8")
+    link = tmp_path / "claude-design-link"
+    link.symlink_to(victim)
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+    monkeypatch.setattr(finalize, "kill_session_background_processes", _no_kill)
+
+    rc = finalize.kill_background_processes_main(["--design-tmpdir", str(link)])
+
+    assert rc == 2
+    assert "symlink" in capsys.readouterr().err
+
+
 @pytest.mark.parametrize("killed", [True, False])
 def test_kill_background_processes_main_calls_killer_with_design_tmpdir_context(
     monkeypatch: pytest.MonkeyPatch,

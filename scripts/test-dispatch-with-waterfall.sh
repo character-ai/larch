@@ -53,6 +53,12 @@ printf '%s\n' "${CODEX_STUB_RESULT_CONTENT:-codex ok}" > "$out"
 STUB
 cat > "$STUB_BIN/cursor" <<'STUB'
 #!/usr/bin/env bash
+if [[ -n "${CURSOR_STUB_PID_FILE:-}" ]]; then
+    printf '%s\n' "$$" > "$CURSOR_STUB_PID_FILE"
+fi
+if [[ -n "${CURSOR_STUB_DELAY:-}" ]]; then
+    sleep "$CURSOR_STUB_DELAY"
+fi
 log="${CURSOR_STUB_LOG:-}"
 [[ -n "$log" ]] && printf '%s\n' "$*" >> "$log"
 if [[ -n "${CURSOR_STUB_FAIL_OUTPUT_CONTAINS:-}" && "$*" == *"${CURSOR_STUB_FAIL_OUTPUT_CONTAINS}"* ]]; then
@@ -880,5 +886,59 @@ grep -Fxq 'ALL_OUTPUT_TOOLS=claude' <<<"$deg_out" || { echo "FAIL: degraded-curs
 grep -Fxq 'FALLBACK_COUNT=1' <<<"$deg_out" || { echo "FAIL: degraded-cursor: expected one Claude fallback" >&2; printf '%s\n' "$deg_out" >&2; exit 1; }
 grep -Fq 'claude ok' "$TMPROOT/cursor-deg-phase3.txt" \
     || { echo "FAIL: degraded-cursor: Claude fallback output missing" >&2; printf '%s\n' "$deg_out" >&2; exit 1; }
+
+# --- behavioral TERM trap regression (not static grep-only) ---
+manifest="$TMPROOT/slots-term-trap.ndjson"
+printf '{"slot":"term-trap","tool":"cursor","output":"%s","prompt_file":"%s"}\n' \
+    "$TMPROOT/term-trap-slot.txt" "$prompt" > "$manifest"
+term_stub_pid_file="$TMPROOT/term-trap-stub.pid"
+term_dispatcher_pid=""
+term_phase_pid=""
+term_stub_pid=""
+# shellcheck disable=SC2317
+_term_trap_leftover_cleanup() {
+    if [[ -n "$term_dispatcher_pid" ]] && kill -0 "$term_dispatcher_pid" 2>/dev/null; then
+        kill -TERM "$term_dispatcher_pid" 2>/dev/null || true
+        wait "$term_dispatcher_pid" 2>/dev/null || true
+    fi
+    if [[ -n "$term_stub_pid" ]] && kill -0 "$term_stub_pid" 2>/dev/null; then
+        kill -KILL "$term_stub_pid" 2>/dev/null || true
+    fi
+}
+PATH="$STUB_BIN:$PATH" CURSOR_STUB_DELAY=30 CURSOR_STUB_PID_FILE="$term_stub_pid_file" \
+    "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
+    --slots-file "$manifest" \
+    --codex-present false \
+    --cursor-present true \
+    --mode description \
+    --timeout 60 >/dev/null 2>"$TMPROOT/term-trap.stderr" &
+term_dispatcher_pid=$!
+term_deadline=$((SECONDS + 10))
+while [[ ! -f "$term_stub_pid_file" ]]; do
+    if (( SECONDS >= term_deadline )); then
+        _term_trap_leftover_cleanup
+        echo "FAIL: term-trap stub PID file not created within 10s" >&2
+        exit 1
+    fi
+    sleep 0.05
+done
+term_stub_pid="$(tr -d '[:space:]' < "$term_stub_pid_file")"
+term_phase_pid="$(pgrep -P "$term_dispatcher_pid" 2>/dev/null | head -1 || true)"
+[[ -n "$term_phase_pid" ]] || {
+    _term_trap_leftover_cleanup
+    echo "FAIL: term-trap active phase wrapper PID not found under dispatcher" >&2
+    exit 1
+}
+sleep 0.2
+kill -TERM "$term_dispatcher_pid" 2>/dev/null || true
+wait "$term_dispatcher_pid" 2>/dev/null || true
+term_dispatcher_pid=""
+if kill -0 "$term_phase_pid" 2>/dev/null; then
+    _term_trap_leftover_cleanup
+    echo "FAIL: term-trap active phase wrapper still alive after dispatcher TERM" >&2
+    exit 1
+fi
+term_phase_pid=""
+term_stub_pid=""
 
 echo "PASS: test-dispatch-with-waterfall.sh"
