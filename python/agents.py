@@ -3459,14 +3459,10 @@ def _review_launch_codex(args: argparse.Namespace, prompt: str) -> int:
         return add_rc
     start = time.time()
     prompt_sidecar = _review_write_codex_prompt_sidecar(output, prompt, args)
-    with tempfile.TemporaryDirectory(prefix="larch-codex-review-home-") as home, tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False) as instr:
-        instr.write(_CODEX_REVIEW_STRICT_PREAMBLE)
-        instr_path = instr.name
-        try:
-            auth_rc, auth_msg = _prepare_codex_home(Path(home), trusted_instructions_file=instr_path)
-        finally:
-            with contextlib.suppress(OSError):
-                Path(instr_path).unlink()
+    with tempfile.TemporaryDirectory(prefix="larch-codex-review-home-") as home:
+        instr_path = Path(home) / "trusted-instructions.txt"
+        instr_path.write_text(_CODEX_REVIEW_STRICT_PREAMBLE, encoding="utf-8")
+        auth_rc, auth_msg = _prepare_codex_home(Path(home), trusted_instructions_file=str(instr_path))
         if auth_rc != 0:
             reason = auth_msg or f"codex auth setup failed (exit {auth_rc})"
             _review_write_preflight_bundle(output, args, reason, tool="codex", prompt_sidecar=prompt_sidecar)
@@ -3615,7 +3611,10 @@ def _review_cursor_postprocess(output: Path, transient_attempt: int) -> None:
     result = obj.get("result") or ""
     if isinstance(result, str) and result:
         result = _review_cursor_normalize_no_issues(result)
-        out_tokens = _num(_first_not_none(obj.get("usage", {}).get("outputTokens") if isinstance(obj.get("usage"), dict) else 0, 0))
+        try:
+            out_tokens = _num(_first_not_none(obj.get("usage", {}).get("outputTokens") if isinstance(obj.get("usage"), dict) else 0, 0))
+        except ValueError:
+            out_tokens = 0
         if (
             out_tokens > _CURSOR_DEGRADED_OUTPUT_TOKEN_FLOOR
             and len(result.encode()) < _CURSOR_DEGRADED_RESULT_BYTES_CEILING

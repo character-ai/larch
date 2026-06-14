@@ -600,3 +600,277 @@ def test_cursor_done_promoted_after_timing_record(tmp_path: Path, monkeypatch: p
     )
     assert agents._review_launch_cursor(args, "hi") == 0
     assert order == ["timing", "done"]
+
+
+def _init_git_repo(path: Path) -> None:
+    subprocess.run(["git", "init"], cwd=path, check=True, capture_output=True, text=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=path, check=True, capture_output=True, text=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=path, check=True, capture_output=True, text=True)
+    (path / "tracked.txt").write_text("tracked\n", encoding="utf-8")
+    subprocess.run(["git", "add", "tracked.txt"], cwd=path, check=True, capture_output=True, text=True)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=path, check=True, capture_output=True, text=True)
+
+
+def test_codex_model_args_preflight_exit_one_with_unknown_dirty_tree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    args = _codex_review_args(tmp_path)
+
+    def prepare_ok(_home_dir: Path, *, trusted_instructions_file: str = "") -> tuple[int, str]:
+        _ = trusted_instructions_file
+        return (0, "")
+
+    def model_args_fail(_tool: str, *, with_effort: bool = False, default_model: str = "") -> agents.ModelArgResult:
+        _ = (with_effort, default_model)
+        raise ValueError("bad codex model")
+
+    monkeypatch.setattr(agents, "_prepare_codex_home", prepare_ok)
+    monkeypatch.setattr(agents, "resolve_model_args", model_args_fail)
+    out = Path(args.output)
+    assert agents._review_launch_codex(args, "hi") == 1
+    dirty = out.with_suffix(out.suffix + ".dirty-tree").read_text(encoding="utf-8")
+    assert "STATUS=unknown" in dirty
+    assert "model-args-preflight-no-agent-ran" in dirty
+    assert out.with_suffix(out.suffix + ".done").read_text(encoding="utf-8").strip() == "1"
+    assert "model-args failed" in out.with_suffix(out.suffix + ".diag").read_text(encoding="utf-8")
+
+
+def test_cursor_model_args_preflight_exit_one_with_unknown_dirty_tree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    out = tmp_path / "out.txt"
+
+    def model_args_fail(_tool: str, *, with_effort: bool = False, default_model: str = "") -> agents.ModelArgResult:
+        _ = (with_effort, default_model)
+        raise ValueError("bad cursor model")
+
+    monkeypatch.setattr(agents, "resolve_model_args", model_args_fail)
+    args = argparse.Namespace(
+        output=str(out),
+        timeout="2",
+        risk="",
+        stderr_sink="",
+        timing_task_kind="cursor-review",
+        token_budget_cap="",
+    )
+    assert agents._review_launch_cursor(args, "hi") == 1
+    dirty = out.with_suffix(out.suffix + ".dirty-tree").read_text(encoding="utf-8")
+    assert "STATUS=unknown" in dirty
+    assert "model-args-preflight-no-agent-ran" in dirty
+    assert out.with_suffix(out.suffix + ".done").read_text(encoding="utf-8").strip() == "1"
+    assert "load_model_args failed" in out.with_suffix(out.suffix + ".diag").read_text(encoding="utf-8")
+
+
+def test_invalid_token_budget_cap_zero_still_runs_vendor(tmp_path: Path) -> None:
+    bin_dir = _stub_bin(
+        tmp_path,
+        "cursor",
+        '#!/usr/bin/env bash\ncat <<\'JSON\'\n{"result":"ok","usage":{"inputTokens":1,"outputTokens":2,"cacheReadTokens":0,"cacheWriteTokens":0}}\nJSON\n',
+    )
+    out = tmp_path / "out.txt"
+    proc = _run(
+        ["--tool", "cursor", "--output", str(out), "--timeout", "2", "--prompt", "hi"],
+        {"PATH": f"{bin_dir}:{os.environ['PATH']}", "CURSOR_API_KEY": "test-key", "LARCH_TOKEN_BUDGET_CAP_REVIEW": "0"},
+    )
+    assert proc.returncode == 0
+    assert out.read_text(encoding="utf-8") == "ok"
+
+
+def test_invalid_token_budget_cap_abc_still_runs_vendor(tmp_path: Path) -> None:
+    bin_dir = _stub_bin(
+        tmp_path,
+        "cursor",
+        '#!/usr/bin/env bash\ncat <<\'JSON\'\n{"result":"ok","usage":{"inputTokens":1,"outputTokens":2,"cacheReadTokens":0,"cacheWriteTokens":0}}\nJSON\n',
+    )
+    out = tmp_path / "out.txt"
+    proc = _run(
+        ["--tool", "cursor", "--output", str(out), "--timeout", "2", "--prompt", "hi"],
+        {"PATH": f"{bin_dir}:{os.environ['PATH']}", "CURSOR_API_KEY": "test-key", "LARCH_TOKEN_BUDGET_CAP_REVIEW": "abc"},
+    )
+    assert proc.returncode == 0
+    assert out.read_text(encoding="utf-8") == "ok"
+
+
+def test_cursor_preexisting_untracked_baseline_stays_clean(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_git_repo(repo)
+    (repo / "preexisting.txt").write_text("baseline\n", encoding="utf-8")
+    out = tmp_path / "out.txt"
+
+    def cursor_auth_ok(*, caller: str = "agent cursor-auth-preflight") -> agents.AuthVerdict:
+        _ = caller
+        return agents.AuthVerdict(ok=True, rc=0, message="")
+
+    def setup_cursor_config_dir() -> tuple[Path, str | None]:
+        return (tmp_path / "cfg", None)
+
+    def cleanup_cursor_config_dir(_cfg_tmp: Path, _old_cfg: str | None) -> None:
+        return None
+
+    def resolve_model_args_ok(_tool: str, *, with_effort: bool = False, default_model: str = "") -> agents.ModelArgResult:
+        _ = (with_effort, default_model)
+        return agents.ModelArgResult(())
+
+    def fake_run(**_kwargs: object) -> agents.RunExternalAgentResult:
+        out.write_text('{"result":"ok","usage":{"inputTokens":1,"outputTokens":2,"cacheReadTokens":0,"cacheWriteTokens":0}}\n', encoding="utf-8")
+        return agents.RunExternalAgentResult(0, out)
+
+    monkeypatch.chdir(repo)
+    monkeypatch.setattr(agents, "cursor_auth_preflight", cursor_auth_ok)
+    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: None)
+    monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
+    monkeypatch.setattr(agents, "_review_setup_cursor_config_dir", setup_cursor_config_dir)
+    monkeypatch.setattr(agents, "_review_cleanup_cursor_config_dir", cleanup_cursor_config_dir)
+    monkeypatch.setattr(agents, "resolve_model_args", resolve_model_args_ok)
+    monkeypatch.setattr(agents, "run_external_agent", fake_run)
+    args = argparse.Namespace(
+        output=str(out),
+        timeout="2",
+        risk="",
+        stderr_sink="",
+        timing_task_kind="cursor-review",
+        token_budget_cap="",
+    )
+    assert agents._review_launch_cursor(args, "hi") == 0
+    dirty = out.with_suffix(out.suffix + ".dirty-tree").read_text(encoding="utf-8")
+    assert "STATUS=clean" in dirty
+    assert out.with_suffix(out.suffix + ".untracked-baseline").is_file()
+
+
+def test_cursor_reviewer_untracked_yields_dirty_sidecar(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_git_repo(repo)
+    (repo / "preexisting.txt").write_text("baseline\n", encoding="utf-8")
+    out = tmp_path / "out.txt"
+    monkeypatch.chdir(repo)
+    baseline = agents._review_capture_cursor_dirty_baseline(out)
+    (repo / "reviewer-new.txt").write_text("reviewer\n", encoding="utf-8")
+    agents._review_write_cursor_dirty_tree_from_baseline(out, baseline)
+    dirty = out.with_suffix(out.suffix + ".dirty-tree").read_text(encoding="utf-8")
+    assert "STATUS=dirty" in dirty
+    new_untracked = out.with_suffix(out.suffix + ".dirty-tree.new-untracked-paths")
+    assert new_untracked.is_file()
+    assert b"reviewer-new.txt" in new_untracked.read_bytes()
+
+
+def test_cursor_empty_result_retries_with_lock_when_enabled(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    output = tmp_path / "out.txt"
+    calls = {"count": 0, "locks": 0}
+
+    def fake_acquire(_tool: str) -> agents.SerialLockState:
+        calls["locks"] += 1
+        return agents.SerialLockState(None)
+
+    def fake_run(**_kwargs: object) -> agents.RunExternalAgentResult:
+        calls["count"] += 1
+        if calls["count"] == 1:
+            output.write_text('{"result":"","usage":{"inputTokens":1,"outputTokens":0}}\n', encoding="utf-8")
+        else:
+            output.write_text('{"result":"ok","usage":{"inputTokens":1,"outputTokens":2}}\n', encoding="utf-8")
+        return agents.RunExternalAgentResult(0, output)
+
+    monkeypatch.setenv("LARCH_CURSOR_RETRY_EMPTY_RESULT", "1")
+    monkeypatch.setattr(agents, "external_serial_lock_acquire", fake_acquire)
+    monkeypatch.setattr(agents, "external_serial_lock_release_after", lambda _state: None)
+    monkeypatch.setattr(agents, "run_external_agent", fake_run)
+    _result, _auth_attempt, transient_attempt = agents._review_run_with_retries(
+        tool="cursor",
+        output=output,
+        timeout_seconds=2,
+        cmd=["cursor", "agent"],
+        capture_stdout_only=True,
+    )
+    assert calls["count"] == 2
+    assert calls["locks"] == 2
+    assert transient_attempt == 2
+
+
+def test_cursor_empty_result_skips_retry_when_disabled(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    output = tmp_path / "out.txt"
+    calls = {"count": 0, "locks": 0}
+
+    def fake_acquire(_tool: str) -> agents.SerialLockState:
+        calls["locks"] += 1
+        return agents.SerialLockState(None)
+
+    def fake_run(**_kwargs: object) -> agents.RunExternalAgentResult:
+        calls["count"] += 1
+        output.write_text('{"result":"","usage":{"inputTokens":1,"outputTokens":0}}\n', encoding="utf-8")
+        return agents.RunExternalAgentResult(0, output)
+
+    monkeypatch.setenv("LARCH_CURSOR_RETRY_EMPTY_RESULT", "0")
+    monkeypatch.setattr(agents, "external_serial_lock_acquire", fake_acquire)
+    monkeypatch.setattr(agents, "external_serial_lock_release_after", lambda _state: None)
+    monkeypatch.setattr(agents, "run_external_agent", fake_run)
+    _result, _auth_attempt, transient_attempt = agents._review_run_with_retries(
+        tool="cursor",
+        output=output,
+        timeout_seconds=2,
+        cmd=["cursor", "agent"],
+        capture_stdout_only=True,
+    )
+    assert calls["count"] == 1
+    assert calls["locks"] == 1
+    assert transient_attempt == 1
+
+
+def test_codex_quota_failure_skips_transient_retry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    output = tmp_path / "out.txt"
+    events = output.with_suffix(output.suffix + ".events.jsonl")
+    sidecar = output.with_suffix(output.suffix + ".sidecar")
+    calls = {"count": 0}
+
+    def fake_run(**_kwargs: object) -> agents.RunExternalAgentResult:
+        calls["count"] += 1
+        events.write_text('{"type":"error","message":"usage limit exceeded"}\n', encoding="utf-8")
+        sidecar.write_text("codex-quota: usage limit / quota reported\n", encoding="utf-8")
+        output.write_text("failed\n", encoding="utf-8")
+        return agents.RunExternalAgentResult(7, output)
+
+    monkeypatch.setattr(agents, "run_external_agent", fake_run)
+    _result, _auth_attempt, transient_attempt = agents._review_run_with_retries(
+        tool="codex",
+        output=output,
+        timeout_seconds=2,
+        cmd=["codex", "exec"],
+        stdout_path=events,
+        stderr_path=sidecar,
+    )
+    assert calls["count"] == 1
+    assert transient_attempt == 1
+
+
+def test_cursor_empty_result_integration_retries_stub_binary(tmp_path: Path) -> None:
+    state = tmp_path / "attempts"
+    state.write_text("0", encoding="utf-8")
+    bin_dir = _stub_bin(
+        tmp_path,
+        "cursor",
+        f"""#!/usr/bin/env bash
+state="{state}"
+n=$(cat "$state"); echo $((n+1)) > "$state"
+if [[ "$n" == "0" ]]; then
+  cat <<'JSON'
+{{"result":"","usage":{{"inputTokens":1,"outputTokens":0,"cacheReadTokens":0,"cacheWriteTokens":0}}}}
+JSON
+else
+  cat <<'JSON'
+{{"result":"ok","usage":{{"inputTokens":1,"outputTokens":2,"cacheReadTokens":0,"cacheWriteTokens":0}}}}
+JSON
+fi
+""",
+    )
+    out = tmp_path / "out.txt"
+    proc = _run(
+        ["--tool", "cursor", "--output", str(out), "--timeout", "2", "--prompt", "hi"],
+        {"PATH": f"{bin_dir}:{os.environ['PATH']}", "CURSOR_API_KEY": "test-key", "LARCH_CURSOR_RETRY_EMPTY_RESULT": "1"},
+    )
+    assert proc.returncode == 0
+    assert state.read_text(encoding="utf-8").strip() == "2"
+    assert out.read_text(encoding="utf-8") == "ok"
+
+
+def test_cursor_postprocess_tolerates_invalid_output_tokens(tmp_path: Path) -> None:
+    output = tmp_path / "out.txt"
+    payload = '{"result":"ok","usage":{"inputTokens":1,"outputTokens":"not-a-number"}}'
+    output.write_text(payload, encoding="utf-8")
+    agents._review_cursor_postprocess(output, 1)
+    assert output.read_text(encoding="utf-8") == "ok"
