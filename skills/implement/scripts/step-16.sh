@@ -60,4 +60,4 @@ if [ -z "$run_id" ]; then
     run_id=$(read_state_key "$IMPLEMENT_TMPDIR/finalize-state.sh" RUN_ID "")
 fi
 python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" timing telemetry-mark --implement-tmpdir "$IMPLEMENT_TMPDIR" --label "Step 16 — rejected findings" || true
-"$CLAUDE_PLUGIN_ROOT/skills/implement/scripts/write-rejected-findings.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" --run-id "$run_id" --log-root "$IMPLEMENT_TMPDIR/larch-logs" || true
+python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" review-and-fix write-rejected --implement-tmpdir "$IMPLEMENT_TMPDIR" --run-id "$run_id" --log-root "$IMPLEMENT_TMPDIR/larch-logs" || true

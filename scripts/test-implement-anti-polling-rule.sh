@@ -6,7 +6,7 @@
 #   (1) AGENTS.md: the Monitor / Bash-polling-loop bullet must mention BOTH
 #       Monitor and Bash run_in_background polling loops.
 #   (2) skills/implement/SKILL.md: Step 5 delegates reviewer waiting to
-#       scripts/run-step5-review.sh (no ad-hoc polling loops).
+#       python/cli.py review-and-fix step5 (no ad-hoc polling loops).
 #   (3) skills/design/SKILL.md: both Step 3 immediate-background fences carry
 #       the result-file sleep-loop ban and consequence prose.
 #   (4) skills/shared/orchestrator-never.md: the shared NEVER list carries the
@@ -69,7 +69,7 @@ check "$AGENTS_MD" \
 
 check "$IMPL_MD" \
     "SKILL.md Step 5 delegates reviewer waiting to scripts" \
-    'Step 5 invokes `${CLAUDE_PLUGIN_ROOT}/scripts/run-step5-review.sh`'
+    'Step 5 invokes `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review-and-fix step5`'
 
 step3_count=$(grep -cF -- "$STEP3_LITERAL" "$DESIGN_MD" || true)
 if [[ "$step3_count" == "2" ]]; then

@@ -17,6 +17,6 @@ Output:
 - `SHA=<head-sha-or-empty>`
 - `ERROR=<message>` on failure
 
-On unknown option or other usage error, the wrapper exits 2 with `COMMITTED=false` and emits a stderr hint: `HINT: --stage-all belongs to commit-review-fixes.sh (Step 5 review fixes); implementation commits name specific files or use --pathspec-from-file.`
+On unknown option or other usage error, the wrapper exits 2 with `COMMITTED=false` and emits a stderr hint: `HINT: --stage-all belongs to review-and-fix commit-fixes (Step 5 review fixes); implementation commits name specific files or use --pathspec-from-file.`
 
 When telemetry env keys are absent, the wrapper self-rehydrates `LARCH_TOKEN_SESSION_ID`, `LARCH_CLAUDE_SOURCE_FILE`, and `LARCH_TIMING_LEDGER` from `$IMPLEMENT_TMPDIR/session-env.sh` before marking Step 4.

@@ -445,6 +445,11 @@ run_direct_relevant_targets() {
                 append_target_once test-emit-tally
                 append_target_once test-tally-code-votes
                 ;;
+            python/review_and_fix.py|python/test_review_and_fix.py|skills/review-and-fix/SKILL.md)
+                append_target_once test-review-and-fix
+                maybe_append_py_lint_target
+                maybe_append_py_test_target
+                ;;
             python/*.py)
                 maybe_append_py_lint_target
                 maybe_append_py_test_target
@@ -458,9 +463,6 @@ run_direct_relevant_targets() {
             python/migrated-scripts.tsv)
                 append_target_once lint-retired-scripts
                 maybe_append_py_test_target
-                ;;
-            skills/review-and-fix/scripts/review-and-fix.sh|skills/review-and-fix/scripts/review-and-fix.md|skills/review-and-fix/scripts/test-review-and-fix.sh|skills/review-and-fix/scripts/test-review-and-fix.md)
-                append_target_once test-review-and-fix
                 ;;
             python/pyproject.toml|python/ruff.toml|python/pyrightconfig.json|python/.pylintrc|python/requirements-dev.txt|python/requirements-test.txt)
                 maybe_append_py_lint_target

@@ -6,7 +6,7 @@ The harness scans the four load-bearing launcher-based relevant-checks wrapper i
 
 - Step 3 first-pass checks.
 - Step 5 self-review mode checks (`--self-review` path, site `step5-self-review`).
-- Step 5 after accepted review fixes from `review-and-fix.sh`.
+- Step 5 after accepted review fixes from `review-and-fix CLI`.
 - Step 6 second-pass checks on the `FILES_CHANGED=true` branch.
 
 For each matched site, the harness requires the canonical blockquote opener `> **Continue after child returns.**` within the five physical lines immediately preceding the invocation line. The same local window must mention `REDACTED_LOG_FILE` and explicitly say not to read raw `LOG_FILE`.

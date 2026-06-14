@@ -81,18 +81,22 @@ done
 REVIEW_AND_FIX_DIR="$REPO_ROOT/skills/review-and-fix"
 [[ -f "$REVIEW_AND_FIX_DIR/SKILL.md" ]] \
   || fail "(1b) missing skills/review-and-fix/SKILL.md"
-[[ -f "$REVIEW_AND_FIX_DIR/scripts/review-and-fix.sh" ]] \
-  || fail "(1b) missing skills/review-and-fix/scripts/review-and-fix.sh"
+[[ -f "$REPO_ROOT/python/review_and_fix.py" ]] \
+  || fail "(1b) missing python/review_and_fix.py"
 [[ -f "$REPO_ROOT/python/cli.py" ]] \
   || fail "(1b) missing python/cli.py"
+grep -Fq -- '("review-and-fix", "apply-findings")' "$REPO_ROOT/python/cli.py" \
+  || fail "(1b) missing python/cli.py review-and-fix apply-findings registry entry"
+grep -Fq -- '("review-and-fix", "step5")' "$REPO_ROOT/python/cli.py" \
+  || fail "(1b) missing python/cli.py review-and-fix step5 registry entry"
 grep -Fq -- '("redact", "scrub-submodule-paths")' "$REPO_ROOT/python/cli.py" \
   || fail "(1b) missing python/cli.py redact scrub-submodule-paths registry entry"
-grep -Fq -- '--tool codex' "$REVIEW_AND_FIX_DIR/scripts/review-and-fix.sh" \
-  || fail "(1b) review-and-fix.sh must dispatch Codex coder"
-grep -Fq -- '--tool cursor' "$REVIEW_AND_FIX_DIR/scripts/review-and-fix.sh" \
-  || fail "(1b) review-and-fix.sh must dispatch Cursor coder"
-! grep -Fq -- 'launch-claude-subprocess.sh' "$REVIEW_AND_FIX_DIR/scripts/review-and-fix.sh" \
-  || fail "(1b) review-and-fix.sh must not dispatch a Claude subagent fallback"
+grep -Fq -- 'launch-codex-exec' "$REPO_ROOT/python/review_and_fix.py" \
+  || fail "(1b) review-and-fix CLI must dispatch Codex coder"
+grep -Fq -- '"--tool", "cursor"' "$REPO_ROOT/python/review_and_fix.py" \
+  || fail "(1b) review-and-fix CLI must dispatch Cursor coder"
+! grep -Fq -- 'launch-claude-subprocess' "$REPO_ROOT/python/review_and_fix.py" \
+  || fail "(1b) review-and-fix CLI must not dispatch a Claude subagent fallback"
 
 agent_file="$REPO_ROOT/agents/orchestrator-aggregator.md"
 [[ -f "$agent_file" ]] \

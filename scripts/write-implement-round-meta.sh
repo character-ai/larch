@@ -4,7 +4,7 @@
 #
 # Analogous to write-design-round-meta.sh but adapted for /implement rounds,
 # which carry findings-classification.tsv + voting-tally.md + panel-manifest.ndjson
-# instead of the old-format sidecar files. Called from review-and-fix.sh before
+# instead of the old-format sidecar files. Called from review-and-fix CLI before
 # flush_round_log_after_coder so the file is present when write-round copies it
 # to the larch-log directory (round-meta.json is included in _ROUND_ARTIFACT_ALLOW
 # in python/run_logs.py).

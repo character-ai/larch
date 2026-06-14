@@ -532,10 +532,14 @@ def _discover_submodule_paths(cwd: Path) -> set[str]:
     return paths
 
 
+def discover_submodule_paths(cwd: Path) -> set[str]:
+    return _discover_submodule_paths(cwd)
+
+
 def scrub_submodule_paths(input_path: Path, output_path: Path, log_path: Path) -> tuple[int, bool]:
     text = input_path.read_text(encoding="utf-8", errors="replace")
     repo = Path.cwd()
-    submodules = _discover_submodule_paths(repo)
+    submodules = discover_submodule_paths(repo)
     scrubbed_count = 0
     audit: list[str] = []
     blocks = re.split(r"(?=^### FINDING_)", text, flags=re.MULTILINE)

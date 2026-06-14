@@ -14,7 +14,7 @@ usage() { larch_err "Usage: commit-implementation.sh --message MSG [--pathspec-f
 
 fail_usage() {
     usage
-    larch_err "HINT: --stage-all belongs to commit-review-fixes.sh (Step 5 review fixes); implementation commits name specific files or use --pathspec-from-file."
+    larch_err "HINT: --stage-all belongs to review-and-fix commit-fixes (Step 5 review fixes); implementation commits name specific files or use --pathspec-from-file."
     emit_kv COMMITTED false
     emit_kv SHA ""
     emit_kv ERROR "$1"

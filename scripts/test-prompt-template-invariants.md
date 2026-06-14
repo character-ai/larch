@@ -8,7 +8,7 @@ Cross-cutting regression harness that asserts structural invariants in rendered 
 |---|---|
 | `python/legacy_review_shell/dispatch-panel.sh` | `### In-Scope Findings` literal; "Begin your response with the literal line" directive; acceptable-output example block; focus-directive framing; absence of removed checklist items 2 and 3 |
 | `scripts/dispatch-plan-voters.sh` | `Verify silently`; `Output ONLY vote lines`; `PLAN_VOTER_PARSE_RATE_RETRY_PREFIX`; `make_plan_voter_retry_prompt_file` |
-| `skills/review-and-fix/scripts/review-and-fix.sh` | `Output ONLY result lines`; acceptable-output example; `emit_submodule_prohibition` call |
+| `python/cli.py review-and-fix apply-findings` | `Output ONLY result lines`; acceptable-output example; `emit_submodule_prohibition` call |
 | `scripts/lint-fix-loop.sh` | `FIXED:` / `UNFIXABLE:` result-shape spec; acceptable final-line shapes example; `emit_submodule_prohibition` call |
 | `python/cli.py render plan-review` | TSV header literal; filled-in TSV example; anti-preamble directive; no-issues sentinel instruction |
 | `python/cli.py scout dynamic-archetypes` | `prompt_body` constraints block; closing-sentence requirement; closing-sentence repair code |

@@ -41,4 +41,4 @@ rehydrate_larch_triplet() {
 rehydrate_plugin_root
 rehydrate_larch_triplet
 touch "$IMPLEMENT_TMPDIR/.review-boundary-passed"
-"$CLAUDE_PLUGIN_ROOT/skills/implement/scripts/check-review-changes.sh" --baseline "$IMPLEMENT_TMPDIR/pre-review-untracked.txt" --head-baseline "$IMPLEMENT_TMPDIR/pre-review-head.txt"
+python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" review-and-fix check-changes --baseline "$IMPLEMENT_TMPDIR/pre-review-untracked.txt" --head-baseline "$IMPLEMENT_TMPDIR/pre-review-head.txt"

@@ -33,7 +33,7 @@ PRUNE_LEDGER=""
 PRE_SCOUTED_MANIFEST=""
 REVIEWER_PRUNE_SH="${REVIEWER_PRUNE_SH:-$PLUGIN_ROOT/scripts/reviewer-prune.sh}"
 # Non-empty process env only: set-but-empty must fall through to default 0
-# (matches review-and-fix.sh / test-review-and-fix.sh empty-export semantics).
+# (matches review-and-fix CLI / test-review-and-fix CLI empty-export semantics).
 if [[ -n "${LARCH_DYNAMIC_ARCHETYPES_MAX:-}" ]]; then
     DYNAMIC_ARCHETYPES="$LARCH_DYNAMIC_ARCHETYPES_MAX"
 else
@@ -842,7 +842,7 @@ recover_dirty_tree "${external_array[@]+"${external_array[@]}"}" "${claude_array
 
 # Reviewer failure threshold: hard-stop the round when >50% of the intended
 # panel slots failed. THRESHOLD_OK=false → REVIEW_CORE_STATUS=panel-failed and
-# exit 2 so review-and-fix.sh propagates the stall to /implement Step 5.
+# exit 2 so review-and-fix CLI propagates the stall to /implement Step 5.
 collector_results_file="$REVIEW_TMPDIR/collector-results.env"
 threshold_out="$REVIEW_TMPDIR/review-core-threshold.env"
 launched_slots="$static_slot_count"

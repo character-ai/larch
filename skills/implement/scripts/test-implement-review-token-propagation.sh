@@ -5,7 +5,7 @@ set -euo pipefail
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)
 cd "$REPO_ROOT"
-# review-and-fix.sh honors CLAUDE_PLUGIN_ROOT; a dev shell may point it at a
+# review-and-fix CLI honors CLAUDE_PLUGIN_ROOT; a dev shell may point it at a
 # cached plugin tree, which breaks sourcing and fails before the stub runs.
 export CLAUDE_PLUGIN_ROOT="$REPO_ROOT"
 # Inherit no half-open quiet-stream session from the operator shell (e.g. a
@@ -15,7 +15,7 @@ unset LARCH_QUIET_ACTIVE LARCH_QUIET_PID LARCH_QUIET_LOG_FILE LARCH_QUIET_LOG \
     LARCH_QUIET_BREADCRUMB_FD LARCH_QUIET_BREADCRUMBS 2>/dev/null || true
 SESSION_SETUP=(python3 "$REPO_ROOT/python/cli.py" session setup)
 READ_KEY=(python3 "$REPO_ROOT/python/cli.py" session read-key)
-REVIEW_AND_FIX="$REPO_ROOT/skills/review-and-fix/scripts/review-and-fix.sh"
+REVIEW_AND_FIX=(python3 "$REPO_ROOT/python/cli.py" review-and-fix step5)
 
 fail() { echo "FAIL: $1" >&2; exit 1; }
 
@@ -118,20 +118,24 @@ chmod +x "$CORE_STUB"
 IMPLEMENT_TMPDIR="$TMP/claude-implement-token-test"
 mkdir -p "$IMPLEMENT_TMPDIR"
 cp "$REVIEW_ENV" "$IMPLEMENT_TMPDIR/session-env.sh"
+printf 'RUN_ID=token-test-run\nCODEX_PRESENT=false\nCURSOR_PRESENT=false\n' >> "$IMPLEMENT_TMPDIR/session-env.sh"
+printf 'plan\n' > "$IMPLEMENT_TMPDIR/plan.txt"
+printf 'feature\n' > "$IMPLEMENT_TMPDIR/feature-description.txt"
 CORE_CAPTURE="$TMP/review-core-capture.env"
 export CORE_CAPTURE_FILE="$CORE_CAPTURE"
 set +e
 LARCH_TOKEN_SESSION_ID="$token_session_id" \
     LARCH_CLAUDE_SOURCE_FILE="$claude_source_file" \
     LARCH_TIMING_LEDGER="$timing_ledger" \
+    LARCH_TEST_REVIEW_CORE_OVERRIDE=1 \
     REVIEW_AND_FIX_REVIEW_CORE_SH="$CORE_STUB" \
-    "$REVIEW_AND_FIX" \
+    "${REVIEW_AND_FIX[@]}" \
         --implement-tmpdir "$IMPLEMENT_TMPDIR" \
-        --mode diff \
+        --mode single \
         --round-num 1 \
         --session-env-path "$IMPLEMENT_TMPDIR/session-env.sh" \
-        --codex-available true \
-        --cursor-available true >/dev/null 2>"$IMPLEMENT_TMPDIR/review-and-fix.err"
+        --codex-available false \
+        --cursor-available false >/dev/null 2>"$IMPLEMENT_TMPDIR/review-and-fix.err"
 rfa=$?
 set -e
 [[ "$rfa" -eq 0 ]] || {
@@ -144,8 +148,16 @@ set -e
     fail "review-and-fix exited $rfa (diagnostics above)"
 }
 
-grep -Fq "SESSION_ENV_PATH=$IMPLEMENT_TMPDIR/session-env.sh" "$CORE_CAPTURE" \
-    || fail "review-and-fix did not pass implement session-env path to review-core"
+expected_session_env="$(python3 - <<PY
+import os
+print(os.path.normpath("$IMPLEMENT_TMPDIR/session-env.sh"))
+PY
+)"
+grep -Fq "SESSION_ENV_PATH=$expected_session_env" "$CORE_CAPTURE" \
+    || {
+        cat "$CORE_CAPTURE" >&2 || true
+        fail "review-and-fix did not pass implement session-env path to review-core"
+    }
 grep -Fq "REVIEW_CORE_ARGV" "$CORE_CAPTURE" \
     || fail "review-core stub did not record argv capture header"
 argv_line=$(grep '^REVIEW_CORE_ARGV' "$CORE_CAPTURE" || true)

@@ -6,7 +6,7 @@
 #
 # On success, writes a sorted list of untracked paths to <file> via atomic rename.
 # On any OPERATION failure (git, sort, mv), removes both the temp file and <file>
-# so the downstream consumer (check-review-changes.sh) sees
+# so the downstream consumer (review-and-fix check-changes) sees
 # UNTRACKED_BASELINE=missing and degrades gracefully (issue #651).
 #
 # On argument-parsing failure (unknown flag, missing --output), logs to stderr

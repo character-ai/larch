@@ -29,7 +29,7 @@ CLASSIFY_DIFF_MODE_SH="${CLASSIFY_DIFF_MODE_SH:-}"
 SESSION_ENV_PATH="${SESSION_ENV_PATH:-}"
 PANEL="hard"
 # Non-empty process env only: set-but-empty must fall through to default 0
-# (matches review-and-fix.sh / test-review-and-fix.sh empty-export semantics).
+# (matches review-and-fix CLI / test-review-and-fix CLI empty-export semantics).
 if [[ -n "${LARCH_DYNAMIC_ARCHETYPES_MAX:-}" ]]; then
     DYNAMIC_ARCHETYPES="$LARCH_DYNAMIC_ARCHETYPES_MAX"
 else

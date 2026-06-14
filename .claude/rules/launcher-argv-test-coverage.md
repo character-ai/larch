@@ -1,5 +1,5 @@
 ---
-paths: ["scripts/launch-*.sh", "scripts/test-launch-*.sh", "scripts/run-step1-plan-log.sh", "scripts/test-run-step1-plan-log.sh", "scripts/run-step5-review.sh", "scripts/test-run-step5-review.sh", "skills/implement/scripts/run-step2-dispatch.sh", "skills/implement/scripts/step2-implement.sh", "skills/implement/scripts/test-run-step2-dispatch.sh", "skills/implement/scripts/test-step2-*.sh", "skills/implement/scripts/test-codex-implementer.sh", "skills/implement/scripts/test-cursor-implementer.sh", "skills/design/scripts/run-step3-review.sh", "skills/design/scripts/test-run-step3-review.sh"]
+paths: ["scripts/launch-*.sh", "scripts/test-launch-*.sh", "scripts/run-step1-plan-log.sh", "scripts/test-run-step1-plan-log.sh", "python/cli.py review-and-fix step5", "python/review_and_fix.py", "python/test_review_and_fix.py", "skills/implement/scripts/run-step2-dispatch.sh", "skills/implement/scripts/step2-implement.sh", "skills/implement/scripts/test-run-step2-dispatch.sh", "skills/implement/scripts/test-step2-*.sh", "skills/implement/scripts/test-codex-implementer.sh", "skills/implement/scripts/test-cursor-implementer.sh", "skills/design/scripts/run-step3-review.sh", "skills/design/scripts/test-run-step3-review.sh"]
 ---
 
 # Launcher Argv Test Coverage
@@ -14,7 +14,7 @@ Harness paths are **not** uniform:
 
 - `scripts/launch-review.sh --tool cursor|codex` → `scripts/test-launch-review.sh`
 - `scripts/run-step1-plan-log.sh` → `scripts/test-run-step1-plan-log.sh`
-- `scripts/run-step5-review.sh` → `scripts/test-run-step5-review.sh`
+- `python/cli.py review-and-fix step5` → `python/test_review_and_fix.py` via Make targets `test-review-and-fix-step5`, `test-review-and-fix-step5-starting-round`, `test-review-and-fix-dispatch`, `test-review-and-fix-convergence`, and `test-review-and-fix-parsers`
 - `scripts/launch-codex-implement.sh` / `launch-cursor-implement.sh` → `skills/implement/scripts/test-codex-implementer.sh` / `test-cursor-implementer.sh` (and `test-step2-dispatch.sh` for cross-coder dispatcher coverage)
 - `skills/implement/scripts/run-step2-dispatch.sh` → `skills/implement/scripts/test-run-step2-dispatch.sh`
 - `skills/design/scripts/run-step3-review.sh` → `skills/design/scripts/test-run-step3-review.sh`

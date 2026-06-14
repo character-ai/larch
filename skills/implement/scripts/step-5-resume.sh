@@ -72,7 +72,7 @@ if [ -f "$round_start_file" ]; then
   fi
   if [ "$needs_record" = true ] && [[ "$round_start_s" =~ ^[0-9]+$ ]]; then
     end_s="$(date +%s)"
-    "$CLAUDE_PLUGIN_ROOT/skills/review-and-fix/scripts/record-implement-review-round-timing.sh" \
+    python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" review-and-fix record-round-timing \
       --implement-tmpdir "$IMPLEMENT_TMPDIR" \
       --round "$FINAL_ROUND_NUM" \
       --start-s "$round_start_s" \
@@ -83,8 +83,8 @@ if [ "$RECORD_ONLY" = true ]; then
   exit 0
 fi
 if [ "$READY" = true ] || [ "${STEP5_HANDOFF_READY_TO_COMMIT:-false}" = true ]; then
-  "$CLAUDE_PLUGIN_ROOT/skills/implement/scripts/commit-review-fixes.sh" --stage-all || true
+  python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" review-and-fix commit-fixes --stage-all || true
 fi
 printf '%s
 ' 'progress: type p (or progress) at any time'
-"$CLAUDE_PLUGIN_ROOT/scripts/run-step5-review.sh"   --implement-tmpdir "$IMPLEMENT_TMPDIR"   --mode loop   --starting-round "$((FINAL_ROUND_NUM + 1))"
+python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" review-and-fix step5   --implement-tmpdir "$IMPLEMENT_TMPDIR"   --mode loop   --starting-round "$((FINAL_ROUND_NUM + 1))"

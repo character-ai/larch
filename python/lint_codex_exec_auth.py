@@ -14,9 +14,11 @@ GIT = shutil.which("git") or "git"
 ALLOWED_SHELL_FILES = {
     "scripts/launch-review.sh",
     "scripts/launch-codex-implement.sh",
-    "skills/review-and-fix/scripts/review-and-fix.sh",
 }
 ALLOWED_PYTHON_FILES = {"python/agents.py"}
+REVIEW_CORE_SUBPROCESS_RE = re.compile(
+    r'["\']review["\']\s*,\s*["\']core["\']|python/cli\.py review core|cli\.py review core'
+)
 TRAILING_PRAGMA_RE = re.compile(r"\s#[^\"'`]*lint-codex-exec-auth:\s*ok(\s|$)[^\"'`]*$")
 CODEX_EXEC_RE = re.compile(r"(^|[^A-Za-z0-9_])[\"'\\]?codex[\"'\\]?\s+exec")
 PY_CODEX_EXEC_RE = re.compile(r"(['\"]codex['\"]\s*,\s*['\"]exec['\"]|['\"]codex\s+exec\b)")
@@ -181,6 +183,24 @@ def scan_markdown_file(root: Path, rel: str) -> bool:
     return violation
 
 
+def scan_review_and_fix_review_core(root: Path) -> bool:
+    rel = "python/review_and_fix.py"
+    path = root / rel
+    if not path.is_file() or path.is_symlink():
+        return False
+    violation = False
+    for nr, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+        if TRAILING_PRAGMA_RE.search(line) or re.match(r"^\s*#", line):
+            continue
+        if REVIEW_CORE_SUBPROCESS_RE.search(line):
+            print(
+                f"lint-codex-exec-auth: {rel}:{nr}: Step 5 must not subprocess review core; use review_core_capture / review_pipeline.review_core",
+                file=sys.stderr,
+            )
+            violation = True
+    return violation
+
+
 def scan_python_file(root: Path, rel: str) -> bool:
     if rel in ALLOWED_PYTHON_FILES:
         return False
@@ -210,6 +230,8 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     root = root.resolve()
     violations = 0
+    if scan_review_and_fix_review_core(root):
+        violations += 1
     for rel in _shell_files(root):
         if scan_shell_file(root, rel):
             violations += 1

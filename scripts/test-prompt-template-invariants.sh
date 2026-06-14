@@ -154,13 +154,13 @@ retry_prompt=$(find "$plan_voter_tmp" -name '*plan-voter-prompt-retry.txt' -prin
 assert_contains "plan-voter retry prefix" \
     'FINDING_N: or OOS_N:' "$retry_prompt"
 
-# ── review-and-fix.sh compose_coder_prompt runtime render smoke ──────────────
+# ── review-and-fix CLI compose_coder_prompt runtime render smoke ──────────────
 
 review_tmp="$TMP/review-fix"
 mkdir -p "$review_tmp"
 PATH="$stub_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$run_external_stub" \
     LARCH_QUIET_DISABLE=1 \
-    "$REPO_ROOT/skills/review-and-fix/scripts/review-and-fix.sh" \
+    python3 "$REPO_ROOT/python/cli.py" review-and-fix apply-findings \
     --findings-file "$findings_file" \
     --review-tmpdir "$review_tmp" >/dev/null || true
 

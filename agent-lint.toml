@@ -304,9 +304,9 @@ exclude = [
   "scripts/run-step1-plan-log.sh",
   "scripts/run-step1-plan-log.md",
   # Step 5 launcher harness is Makefile-only; runtime reachability is through
-  # the SKILL.md invocation of scripts/run-step5-review.sh.
-  "scripts/test-run-step5-review.sh",
-  "scripts/test-run-step5-review.md",
+  # the SKILL.md invocation of python/cli.py review-and-fix step5.
+  "python/test_review_and_fix.py",
+  "python/test_review_and_fix.py",
   # Makefile/ship-pr-only CI recovery helpers. ci-failed-jobs.sh is invoked
   # is invoked by the Makefile's agent-sync target, which mirrors the CI job.
   # Their harnesses are Makefile-only, so G004 cannot discover the edges.
@@ -794,18 +794,18 @@ exclude = [
   # audit for legacy bracket literals (Makefile test-legacy-title-prefix-literals-scope).
   "scripts/test-legacy-title-prefix-literals-scope.sh",
   "python/forked_repo.py",
-  # skills/implement/scripts/test-check-review-changes.sh is the offline
-  # regression harness for skills/implement/scripts/check-review-changes.sh
+  # python/test_review_and_fix.py is the offline
+  # regression harness for python/cli.py review-and-fix check-changes
   # (closes #651 — fixes the false-positive where any pre-existing untracked
   # file flipped FILES_CHANGED=true; later extended for issues #695 and #1485).
   # Cases pin the regression behavior, the empty-vs-missing baseline-state
   # distinction, the dash-prefixed-filename safety, and the GIT_PROBE_FAILED /
   # --strict fail-closed mode. The harness is referenced only from Makefile
   # (test-check-review-changes target) and
-  # skills/implement/scripts/test-check-review-changes.md (sibling contract),
+  # python/test_review_and_fix.py (sibling contract),
   # matching the same Makefile-only pattern as the other test-* harnesses
   # above. Both the .sh and the .md are excluded.
-  "skills/implement/scripts/test-check-review-changes.sh",
+  "python/test_review_and_fix.py",
   # skills/implement/scripts/test-implement-relevant-checks-anti-halt.sh is
   # the offline structural guard for per-site run-relevant-checks-captured.sh continuation
   # callouts in skills/implement/SKILL.md (issue #1381). Referenced only from
@@ -1119,8 +1119,8 @@ exclude = [
   "python/admission.py",
   "scripts/test-token-vendor-scrapers.md",
   "skills/research/scripts/test-research-angle-prompts.md",
-  "skills/implement/scripts/check-review-changes.md",
-  "skills/implement/scripts/test-check-review-changes.md",
+  "python/test_review_and_fix.py",
+  "python/test_review_and_fix.py",
   "skills/implement/scripts/test-implement-relevant-checks-anti-halt.md",
   "skills/design/scripts/dedup-plan-lines.md",
   "scripts/test-external-tool-registry.md",
@@ -1358,7 +1358,7 @@ exclude = [
   "scripts/write-design-round-meta.md",
   # scripts/write-implement-round-meta.sh synthesizes per-round round-meta.json
   # for /implement code-review rounds. It is invoked at runtime only from
-  # skills/review-and-fix/scripts/review-and-fix.sh via variable-expanded
+  # python/cli.py review-and-fix apply-findings via variable-expanded
   # $PLUGIN_ROOT/scripts/... edges that G004 cannot discover (issue #4038).
   "scripts/write-implement-round-meta.sh",
   "scripts/write-implement-round-meta.md",
@@ -1388,14 +1388,14 @@ exclude = [
   # contracts, not from runtime skill prose.
   "skills/implement/scripts/test-commit-implementation.sh",
   "skills/implement/scripts/test-commit-implementation.md",
-  "skills/implement/scripts/test-commit-review-fixes.sh",
-  "skills/implement/scripts/test-commit-review-fixes.md",
+  "python/test_review_and_fix.py",
+  "python/test_review_and_fix.py",
   "skills/implement/scripts/test-generate-code-flow-diagram.sh",
   "skills/implement/scripts/test-generate-code-flow-diagram.md",
   "skills/implement/scripts/test-refresh-execution-issues.sh",
   "skills/implement/scripts/test-refresh-execution-issues.md",
-  "skills/implement/scripts/test-write-rejected-findings.sh",
-  "skills/implement/scripts/test-write-rejected-findings.md",
+  "python/test_review_and_fix.py",
+  "python/test_review_and_fix.py",
   "skills/implement/scripts/test-slack-issue-announce.sh",
   "skills/implement/scripts/test-slack-issue-announce.md",
   "skills/implement/scripts/test-write-final-report.sh",
@@ -1407,7 +1407,7 @@ exclude = [
   "skills/implement/scripts/test-cleanup.sh",
   "skills/implement/scripts/test-cleanup.md",
   # scripts/lib-submodule-prohibition.sh is a sourced-only shell library (no
-  # shebang, not invokable directly). It is referenced from review-and-fix.sh
+  # shebang, not invokable directly). It is referenced from review-and-fix CLI
   # and lint-fix-loop.sh via `source` directives only, which agent-lint does
   # not follow. scripts/test-lib-submodule-prohibition.sh is its Makefile-only
   # regression harness.
