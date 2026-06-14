@@ -406,7 +406,7 @@ def test_disposition_gate_security_only_passes_without_urls(tmp_path: Path, monk
         encoding="utf-8",
     )
     _ = (tmp_path / "empty-urls.md").write_text("", encoding="utf-8")
-    _ = monkeypatch.setattr(file_oos, "_count_inline_triage", lambda _commit_range: 0)
+    _ = monkeypatch.setattr(file_oos, "_count_inline_triage", lambda _commit_range: 0)  # type: ignore[arg-type]
     rc = file_oos.disposition_gate_main(
         [
             "--accepted-files",
@@ -424,7 +424,7 @@ def test_disposition_gate_non_security_without_disposition_fails(tmp_path: Path,
     accepted = tmp_path / "bad.md"
     _ = accepted.write_text("### OOS_1: Orphan\n- **Description**: bug\n", encoding="utf-8")
     _ = (tmp_path / "empty-urls.md").write_text("", encoding="utf-8")
-    _ = monkeypatch.setattr(file_oos, "_count_inline_triage", lambda _commit_range: 0)
+    _ = monkeypatch.setattr(file_oos, "_count_inline_triage", lambda _commit_range: 0)  # type: ignore[arg-type]
     rc = file_oos.disposition_gate_main(
         [
             "--accepted-files",

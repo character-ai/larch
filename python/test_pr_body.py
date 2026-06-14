@@ -209,7 +209,7 @@ def test_step18b_returns_write_failure_rc(tmp_path: Path, monkeypatch: pytest.Mo
     _ = (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=1\nRUN_ID=run1\n", encoding="utf-8")
     _ = (tmp_path / "session-env.sh").write_text("REPO=o/r\nMODE=N/A\n", encoding="utf-8")
 
-    monkeypatch.setattr(pr_body, "write_final_report", lambda _tmpdir: (1, "", "write failed"))
+    monkeypatch.setattr(pr_body, "write_final_report", lambda _tmpdir: (1, "", "write failed"))  # type: ignore[arg-type]
     rc = pr_body.step18b_final_report_main(["--implement-tmpdir", str(tmp_path)])
     assert rc == 1
     out = capsys.readouterr().out

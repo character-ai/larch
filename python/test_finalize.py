@@ -555,7 +555,7 @@ def test_cleanup_main_removes_implement_tmpdir(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
-    _ = monkeypatch.setattr(finalize, "_cleanup_target_ok", lambda _ctx, _tmpdir, **_kw: True)
+    _ = monkeypatch.setattr(finalize, "_cleanup_target_ok", lambda _ctx, _tmpdir, **_kw: True)  # type: ignore[arg-type]
     rc = finalize.cleanup_main(["--implement-tmpdir", str(tmp_path)])
     assert rc == 0
     assert not tmp_path.exists()

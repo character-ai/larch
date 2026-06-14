@@ -1328,7 +1328,7 @@ def run_ship(
             ):
                 if manifest and manifest.is_file():
                     with suppress(Exception):
-                        file_oos.materialize_manifest_oos(manifest, tmp_path)
+                        _ = file_oos.materialize_manifest_oos(manifest, tmp_path)
                     break
 
             if fresh_context.oos_pending and not fresh_context.forked_target and not fresh_context.repo_unavailable:
