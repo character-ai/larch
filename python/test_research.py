@@ -195,7 +195,9 @@ def test_parallel_fetch_budget_backfill_and_subprocess_cleanup(monkeypatch: pyte
 
     def fake_start(_url: str, *, timeout: int) -> subprocess.Popen[bytes]:
         _ = timeout
-        proc = subprocess.Popen(["sleep", "30"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        proc = subprocess.Popen(  # pylint: disable=consider-using-with
+            ["sleep", "30"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL
+        )
         spawned.append(proc)
         return proc
 
