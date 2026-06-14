@@ -199,7 +199,7 @@ def test_scope_anchor_relay_denied_on_tally_error() -> None:
 
 def _write_loop_stub(tmp_path: Path, body: str) -> Path:
     stub = tmp_path / "plan-review-loop-stub.sh"
-    stub.write_text(f"#!/usr/bin/env bash\nset -euo pipefail\n{body}\n", encoding="utf-8")
+    _ = stub.write_text(f"#!/usr/bin/env bash\nset -euo pipefail\n{body}\n", encoding="utf-8")
     stub.chmod(0o755)
     return stub
 
