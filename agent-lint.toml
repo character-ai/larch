@@ -980,6 +980,7 @@ exclude = [
   # scripts/implement-finalize.sh, wired into Makefile test-implement-finalize
   # target only (no SKILL.md invocation). Same Makefile-only shape as the
   # other test-* harnesses above.
+  "scripts/implement-finalize.sh",
   "scripts/test-implement-finalize.sh",
   # python/cli.py session restore-finalize-state, wired into Makefile
   # the other test-* harnesses above.
@@ -1157,6 +1158,7 @@ exclude = [
   "python/test_release.py",
   # #2714); dollar-primary summaries flow through render-run-summary.sh. G004
   # would flag it without an explicit SKILL.md literal path.
+  "scripts/render-run-summary.sh",
   # tmpdir-corruption hardening (#1339): redact-tmpdir-paths.sh is invoked
   # via shell variable indirection ($REDACT_TMPDIR_HELPER) — agent-lint's
   # G004/dead-script rule scans SKILL.md/hooks.json/settings.json for
@@ -1286,6 +1288,7 @@ exclude = [
   # PR-body summary composer. It is referenced from Makefile and from the
   # primary script's sibling contract, but NOT from SKILL.md runtime prose —
   # same Makefile-only pattern as the other test-* harnesses above.
+  "scripts/compose-pr-summary.sh",
   "scripts/test-compose-pr-summary.sh",
   "scripts/test-compose-pr-summary.md",
   # line-count helper. It is referenced from Makefile and from the primary
