@@ -357,13 +357,14 @@ exclude = [
   "python/cli.py plugin read-version",
   # python/test_implement_dispatch.py is the offline regression
   # harness for python/cli.py implement step2-dispatch (the /implement
-  # Step 2 dispatcher). Referenced only from Makefile (test-step2-dispatch
-  # target), docs/linting.md (operator-facing harness table), and the sibling
-  # contract test-step2-dispatch.md. agent-lint's S030/orphaned-skill-files
-  # rule wants test-* under skills/<name>/scripts/ to be referenced from the
-  # parent SKILL.md, but Larch's convention places test harnesses outside the
-  # skill prose surface (they are operator-invocable via `make`, not via the
-  # skill's procedural body).
+  # Step 2 dispatcher). Referenced only from Makefile (test-step2-dispatch,
+  # test-run-step2-dispatch, test-commit-implementation, test-codex-implementer,
+  # test-cursor-implementer targets), docs/linting.md (operator-facing harness
+  # table), and skills/implement/references/step2-dispatch.md. agent-lint's
+  # S030/orphaned-skill-files rule wants test-* under skills/<name>/scripts/ to
+  # be referenced from the parent SKILL.md, but Larch's convention places test
+  # harnesses outside the skill prose surface (they are operator-invocable via
+  # `make`, not via the skill's procedural body).
   "python/test_implement_dispatch.py",
   # regression harness for the dev-only /analyze-issues analyzer. It is
   # referenced from Makefile (test-analyze target) and its sibling contract,

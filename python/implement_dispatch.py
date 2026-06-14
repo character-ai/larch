@@ -612,22 +612,67 @@ def _sanitize_manifest_obj(obj: dict[str, Any]) -> dict[str, Any]:
     return sanitized
 
 
-def _materialize_oos(st: DispatchState) -> str:
+def _append_materialize_oos_failure(st: DispatchState, log: Path, exit_code: int) -> None:
+    _invoke_cli([
+        "run-log",
+        "append-failure",
+        "--log",
+        str(st.tmpdir / "execution-issues.md"),
+        "--site",
+        "step2-materialize-manifest-oos",
+        "--tool",
+        "materialize-manifest-oos.sh",
+        "--exit-code",
+        str(exit_code),
+        "--category",
+        "Tool Failures",
+        "--output-file",
+        str(log),
+        "--redact",
+    ], cwd=st.repo_root)
+
+
+def _oos_materialize_should_bail(*, count_rc: int, count_str: str, oos_nonempty: bool, materialize_failed: bool) -> bool:
+    if count_rc != 0:
+        return True
+    if count_str.isdigit() and int(count_str) > 0:
+        return True
+    return materialize_failed and oos_nonempty
+
+
+def _materialize_oos(st: DispatchState, *, oos_observations_nonempty: bool = False) -> str:
     helper = st.plugin_root / "skills" / "implement" / "scripts" / "materialize-manifest-oos.sh"
-    if not helper.exists():
-        return ""
-    count = subprocess.run(
-        [BASH_BIN, str(helper), "--count-only", "--manifest-path", str(st.manifest_path), "--implement-tmpdir", str(st.tmpdir)], capture_output=True, text=True, check=False
-    )
     log = st.tmpdir / "materialize-manifest-oos.log"
+    count = subprocess.run(
+        [BASH_BIN, str(helper), "--count-only", "--manifest-path", str(st.manifest_path), "--implement-tmpdir", str(st.tmpdir)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    count_str = count.stdout.strip()
+    helper_runnable = helper.is_file() and os.access(helper, os.X_OK)
+    if not helper_runnable:
+        log.write_text(f"materialize helper missing or not executable: {helper}\n", encoding="utf-8")
+        _append_materialize_oos_failure(st, log, 127)
+        if _oos_materialize_should_bail(count_rc=count.returncode, count_str=count_str, oos_nonempty=oos_observations_nonempty, materialize_failed=True):
+            return "manifest-oos-materialization-failed"
+        return ""
     result = subprocess.run(
         [BASH_BIN, str(helper), "--manifest-path", str(st.manifest_path), "--implement-tmpdir", str(st.tmpdir)],
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, check=False
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        check=False,
     )
     log.write_text(result.stdout, encoding="utf-8")
     if result.returncode != 0:
-        maybe_count = count.stdout.strip()
-        if count.returncode != 0 or (maybe_count.isdigit() and int(maybe_count) > 0):
+        _append_materialize_oos_failure(st, log, result.returncode)
+        if _oos_materialize_should_bail(
+            count_rc=count.returncode,
+            count_str=count_str,
+            oos_nonempty=oos_observations_nonempty,
+            materialize_failed=True,
+        ):
             return "manifest-oos-materialization-failed"
     return ""
 
@@ -940,7 +985,16 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:
         commit_msg_file = st.tmpdir / f"{st.tool_tag}-commit-message.txt"
         _write_text_atomic(commit_msg_file, commit_msg)
         commit_stderr = st.tmpdir / f"{st.tool_tag}-commit-stderr.txt"
-        subprocess.run([GIT_BIN, "-C", str(repo_root), "add", "-A"], check=False)
+        add = subprocess.run(
+            [GIT_BIN, "-C", str(repo_root), "add", "-A"], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, check=False
+        )
+        if add.returncode != 0:
+            commit_stderr.write_text(add.stderr or "git add failed", encoding="utf-8", errors="replace")
+            with contextlib.suppress(OSError):
+                st.manifest_path.unlink()
+            with contextlib.suppress(OSError):
+                st.manifest_raw_path.unlink()
+            return st.emit_bailed("commit-failed")
         commit = subprocess.run(
             [GIT_BIN, "-C", str(repo_root), "commit", "-F", str(commit_msg_file)], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, check=False
         )
@@ -958,7 +1012,9 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:
     sanitized = _sanitize_manifest_obj(raw_obj)
     _write_text_atomic(st.manifest_path, json.dumps(sanitized, indent=2, sort_keys=False) + "\n")
     if status == "complete":
-        reason = _materialize_oos(st)
+        oos_obs = raw_obj.get("oos_observations")
+        oos_nonempty = isinstance(oos_obs, list) and bool(oos_obs)
+        reason = _materialize_oos(st, oos_observations_nonempty=oos_nonempty)
         if reason:
             return st.emit_bailed(reason)
 

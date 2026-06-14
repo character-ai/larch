@@ -2173,12 +2173,17 @@ def _run_external_agent_with_auth_retries(
             )
         if result.exit_code == 0 or attempt >= _auth_retry_limit():
             return result
-        auth_paths = [
+        auth_paths: list[Path] = []
+        if stderr_path is not None:
+            auth_paths.append(Path(stderr_path))
+        if stdout_path is not None:
+            auth_paths.append(Path(stdout_path))
+        auth_paths.extend([
             output.with_suffix(output.suffix + ".sidecar"),
             output.with_suffix(output.suffix + ".diag"),
             output.with_suffix(output.suffix + ".events.jsonl"),
             output,
-        ]
+        ])
         if external_auth_verdict(tool, *auth_paths) != "auth":
             return result
     return result if result is not None else RunExternalAgentResult(99, output)
@@ -3872,7 +3877,30 @@ def _validate_implement_common(args: argparse.Namespace, *, tool: str) -> tuple[
     return True, 0
 
 
+def _path_under(base: Path, child: Path) -> bool:
+    try:
+        child.resolve().relative_to(base.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def _safe_codex_home_dir(*, prefix: str = "larch-codex-home-") -> Path:
+    cwd = Path.cwd().resolve()
+    impl_tmp = Path(os.environ["IMPLEMENT_TMPDIR"]).resolve() if os.environ.get("IMPLEMENT_TMPDIR") else None
+    system_tmp = Path(tempfile.gettempdir()).resolve()
+    for _ in range(8):
+        home = Path(tempfile.mkdtemp(prefix=prefix, dir=str(system_tmp))).resolve()
+        if _path_under(cwd, home) or (impl_tmp is not None and _path_under(impl_tmp, home)):
+            shutil.rmtree(home, ignore_errors=True)
+            continue
+        return home
+    raise OSError("failed to allocate CODEX_HOME outside repo and implement tmpdir")
+
+
 def _canonical_existing_nonsymlink_dir(path: Path) -> Path | None:
+    if _CTRL_RE.search(str(path)):
+        return None
     try:
         if not path.is_dir() or path.is_symlink() or ".." in str(path):
             return None
@@ -4085,7 +4113,8 @@ def launch_codex_implement_main(argv: list[str] | None = None) -> int:
         _write_stderr_tail(sidecar, output)
         _emit_implement_launcher_envelope(args, 127)
         return 0
-    with tempfile.TemporaryDirectory(prefix="larch-codex-home-") as home:
+    home = _safe_codex_home_dir()
+    try:
         trusted = Path(home) / "instructions.md"
         _write(trusted, body)
         auth_rc, auth_msg = _prepare_codex_home(Path(home), trusted_instructions_file=str(trusted))
@@ -4124,7 +4153,7 @@ def launch_codex_implement_main(argv: list[str] | None = None) -> int:
         ]
         start = time.time()
         old_home = os.environ.get("CODEX_HOME")
-        os.environ["CODEX_HOME"] = home
+        os.environ["CODEX_HOME"] = str(home)
         try:
             result = _run_external_agent_with_auth_retries(
                 tool="codex",
@@ -4140,6 +4169,8 @@ def launch_codex_implement_main(argv: list[str] | None = None) -> int:
                 os.environ.pop("CODEX_HOME", None)
             else:
                 os.environ["CODEX_HOME"] = old_home
+    finally:
+        shutil.rmtree(home, ignore_errors=True)
     if not events.is_file() or events.stat().st_size == 0:
         _write(events, "{}\n")
     _mirror_codex_quota_from_events(events, sidecar)
@@ -4234,7 +4265,8 @@ def launch_cursor_implement_main(argv: list[str] | None = None) -> int:
     os.environ["CURSOR_CONFIG_DIR"] = cfg_tmp
     user_cfg = Path.home() / ".cursor" / "cli-config.json"
     if user_cfg.is_file():
-        shutil.copyfile(user_cfg, Path(cfg_tmp) / "cli-config.json")
+        with contextlib.suppress(OSError):
+            shutil.copyfile(user_cfg, Path(cfg_tmp) / "cli-config.json")
     start = time.time()
     try:
         child = ["cursor", "agent", "-p", "--force", "--trust", "--output-format", "json", *model_args, "--workspace", str(Path.cwd()), wrapped_prompt]
