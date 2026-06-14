@@ -352,18 +352,37 @@ def record_escalation(args: argparse.Namespace) -> int:
 
 
 def compose_report(args: argparse.Namespace) -> int:
-    rest = [
-        "--implement-tmpdir", str(Path(args.implement_tmpdir)),
-        "--report-kind", args.report_kind,
-        "--surface", args.surface,
-        "--profile", getattr(args, "profile", "implement"),
-    ]
-    if args.output_file:
-        rest += ["--output-file", args.output_file]
+    tmpdir = Path(args.implement_tmpdir)
+    cls = tmpdir / "stall-recovery-classification.env"
+    root = tmpdir / "stall-recovery-root-cause.md"
+    bounded = tmpdir / "stall-recovery-bounded-root-cause.md"
+    summary = "larch stall recovery report"
+    if root.is_file():
+        m = re.search(r"^summary=(.*)$", root.read_text(encoding="utf-8", errors="replace"), re.MULTILINE)
+        if m:
+            summary = m.group(1)
+    kind = args.report_kind
+    title_kind = "terminal" if kind == "terminal-failure" else "escalation"
+    profile = getattr(args, "profile", "implement")
     artifact_prefix = getattr(args, "artifact_prefix", "") or ""
-    if artifact_prefix:
-        rest += ["--artifact-prefix", artifact_prefix]
-    return _delegate_stall_recovery_subcommand("compose-report", rest)
+    if profile == "generic":
+        first = artifact_prefix.split("-")[0] if artifact_prefix else ""
+        skill_label = f"/{first}" if first else "/generic"
+    else:
+        skill_label = "/implement"
+    body = f"[Bug] {skill_label} {title_kind}: {summary}\n\n| Field | Value |\n| --- | --- |\n| Failure class | `{read_kv(cls, 'FAILURE_CLASS', 'unknown')}` |\n| Run ID | `{read_kv(tmpdir / 'parent-issue.md', 'RUN_ID', 'unknown')}` |\n| Larch version | `unknown` |\n\n"
+    if bounded.is_file():
+        body += bounded.read_text(encoding="utf-8", errors="replace") + "\n"
+    sig = hashlib.sha256(body.encode()).hexdigest()[:16]
+    if args.surface == "issue-input":
+        body = f"### {body}<!-- larch-stall:signature={sig} -->\n"
+    if args.output_file:
+        Path(args.output_file).write_text(body, encoding="utf-8")
+    if args.surface == "chat-print" and not args.output_file:
+        sys.stdout.write(body)
+    emit("STALL_RECOVERY_REPORT_STATUS", "dry-run" if os.environ.get("LARCH_STALL_RECOVERY_DRY_RUN") else "printed")
+    emit("REPORT_DEDUP_SIGNATURE", sig)
+    return 0
 
 
 def _emit_env_file(path: Path) -> None:
