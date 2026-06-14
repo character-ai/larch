@@ -9,10 +9,11 @@ pass() { printf 'PASS: %s\n' "$*"; }
 
 stage_terminal() {
   local d=$1 outcome=$2 step=$3 phase=$4 site=$5 trigger=$6 bail=$7 source=$8
+  shift 8
   env -u CLAUDE_PLUGIN_ROOT "$STAGE" --design-tmpdir "$d" --outcome "$outcome" \
     --step "$step" --phase "$phase" --site "$site" --trigger "$trigger" \
     --bail-reason "$bail" --exit-code 1 --source-script "$source" \
-    --summary-outcome "$outcome" >/dev/null
+    --summary-outcome "$outcome" "$@" >/dev/null
 }
 
 run_report() {
@@ -95,6 +96,27 @@ ROW
 run_report "$D6" failed-publish "$D6/terminal-wins.out"
 grep -Fxq 'DESIGN_FAILURE_REPORT_DECISION=terminal-failure' "$D6/terminal-wins.out" || fail 'terminal failure did not win over escalation evidence'
 pass 'terminal failure wins over escalation evidence'
+
+D6b=$(mktemp -d)
+D6B_RUN_ID=design-session-run-123
+stage_terminal "$D6b" failed-publish publish publish design-publish failed publish-failed design-publish --root-cause-hint environment
+cat >"$D6b/source-env.sh" <<EOF2
+export SESSION_ID='$D6B_RUN_ID'
+EOF2
+run_report "$D6b" failed-publish "$D6b/environment.out"
+grep -Fxq 'DESIGN_FAILURE_REPORT_DECISION=terminal-failure' "$D6b/environment.out" || fail 'environment terminal decision missing'
+grep -Fxq 'verdict=environment' "$D6b/design-failure-root-cause.md" || fail 'environment verdict missing from root-cause artifact'
+D6B_ARTIFACT=""
+for candidate in "$D6b/design-failure-issue-input.md" "$D6b/design-failure-chat-print.md"; do
+  [ -s "$candidate" ] || continue
+  D6B_ARTIFACT="$candidate"
+  break
+done
+[ -n "$D6B_ARTIFACT" ] || fail 'environment report artifact missing'
+grep -Fq 'verdict=environment' "$D6B_ARTIFACT" || fail 'environment verdict missing from public report'
+grep -Fq 'Run ID' "$D6B_ARTIFACT" || fail 'environment report missing Run ID label'
+grep -Fq "$D6B_RUN_ID" "$D6B_ARTIFACT" || fail 'source-env SESSION_ID missing from Run ID metadata'
+pass 'environment root-cause hint and source-env run id reach report'
 
 D7=$(mktemp -d)
 stage_terminal "$D7" failed-clarify clarify clarify-loop clarify-loop failed clarify-hard-halt clarify-loop

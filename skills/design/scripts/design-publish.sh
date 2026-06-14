@@ -163,7 +163,11 @@ validate_session_id_flag "$SESSION_ID"
 
 DESIGN_TMPDIR="$(cd "$DESIGN_TMPDIR_ARG" && pwd -P)"
 export DESIGN_TMPDIR
-SESSION_ENV_PATH="$DESIGN_TMPDIR/session-env.sh"
+if [[ -f "$DESIGN_TMPDIR/source-env.sh" ]]; then
+    SESSION_ENV_PATH="$DESIGN_TMPDIR/source-env.sh"
+else
+    SESSION_ENV_PATH="$DESIGN_TMPDIR/session-env.sh"
+fi
 PLUGIN_ROOT="$(phase_driver_resolve_plugin_root "$SCRIPT_DIR" "$SESSION_ENV_PATH")"
 [[ -d "$PLUGIN_ROOT" ]] || fail "plugin root not a directory: $PLUGIN_ROOT"
 export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"
@@ -250,6 +254,13 @@ add_warn() {
     WARN_LINES+=("$1")
 }
 
+
+clear_superseded_terminal_state_on_plan_recovery() {
+    local state_file="$DESIGN_TMPDIR/design-failure-terminal-state.env"
+    if [[ -f "$state_file" && ! -L "$state_file" ]]; then
+        rm -f "$state_file"
+    fi
+}
 
 stage_design_terminal_state() {
     local outcome=$1 step=$2 phase=$3 site=$4 trigger=$5 bail=$6 exit_code=$7 detail_log=${8:-} root_hint=${9:-}
@@ -527,7 +538,7 @@ _plan_block_args=(named-block write --marker plan --issue "$ISSUE" --content-fil
 if ! python3 "$PLUGIN_ROOT/python/cli.py" "${_plan_block_args[@]}"; then
     PLAN_WRITE_OK=false
     printf 'plan-block write failed\n' >"$DESIGN_TMPDIR/design-plan-write.failure.log"
-    stage_design_terminal_state failed-plan-write publish plan-write design-publish failed plan-write-failed 1 "$DESIGN_TMPDIR/design-plan-write.failure.log"
+    stage_design_terminal_state failed-plan-write publish plan-write design-publish failed plan-write-failed 1 "$DESIGN_TMPDIR/design-plan-write.failure.log" || true
     "${PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh" \
         --outcome failed-plan-write \
         ${REPO:+--repo "$REPO"} \
@@ -537,6 +548,7 @@ if ! python3 "$PLUGIN_ROOT/python/cli.py" "${_plan_block_args[@]}"; then
 fi
 
 PLAN_WRITE_OK=true
+clear_superseded_terminal_state_on_plan_recovery
 
 _arch_file="$DESIGN_TMPDIR/architecture-diagram.md"
 _arch_skipped="$DESIGN_TMPDIR/architecture-diagram.skipped"
@@ -700,7 +712,7 @@ elif [[ "${PUBLISH_OK:-}" != true ]]; then
         result_env_load_success_metadata
     else
         SUMMARY_OUTCOME=failed-publish
-        stage_design_terminal_state failed-publish publish publish design-publish failed publish-failed "${_publish_rc:-1}" "$DESIGN_TMPDIR/design-log-publish.failure.log" environment
+        stage_design_terminal_state failed-publish publish publish design-publish failed publish-failed "${_publish_rc:-1}" "$DESIGN_TMPDIR/design-log-publish.failure.log" environment || true
     fi
 fi
 export DESIGN_LOG_RECOVERY_BRANCH="${RECOVERY_BRANCH:-}"

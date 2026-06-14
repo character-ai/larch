@@ -939,6 +939,103 @@ grep -q 'RENAMED=false' "$RENDER_LOG" || fail "idempotent publish failure render
 grep -q 'NEW_TITLE=\[DESIGNED\] Existing issue' "$RENDER_LOG" || fail "idempotent publish failure render missing NEW_TITLE"
 grep -q 'DESIGNED_ADMISSION_READY=true' "$RENDER_LOG" || fail "idempotent [DESIGNED] rename should be admission-ready"
 
+# --- failed publish with preserved terminal state must not abort under set -e ---
+D_PRESERVED_STAGE="$TMP/pub-fail-preserved-terminal"
+setup_design_tmp "$D_PRESERVED_STAGE"
+D_PRESERVED_STAGE_CANON=$(cd "$D_PRESERVED_STAGE" && pwd -P)
+printf 'plan-block write failed\n' >"$D_PRESERVED_STAGE_CANON/design-plan-write.failure.log"
+env -u CLAUDE_PLUGIN_ROOT "$REPO_ROOT/skills/design/scripts/design-stage-terminal-state.sh" \
+  --design-tmpdir "$D_PRESERVED_STAGE_CANON" --outcome failed-plan-write --step publish \
+  --phase plan-write --site design-publish --trigger failed \
+  --bail-reason plan-write-failed --exit-code 1 --source-script design-publish \
+  --failure-detail-log "$D_PRESERVED_STAGE_CANON/design-plan-write.failure.log" \
+  --summary-outcome failed-plan-write >/dev/null
+printf 'PLAN_WRITE_OK=true\n' >"$D_PRESERVED_STAGE/.design-publish-result.env"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+export PUBLISH_STUB_RC=2
+export PUBLISH_EMIT_OK=false
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_PRESERVED_STAGE" --issue 1 --session-id sid --claude-pid 1 >/dev/null 2>/dev/null
+rc=$?
+set -e
+assert_rc "preserved terminal state publish failure" 0 "$rc"
+grep -Fxq 'PUBLISH_OK=false' "$D_PRESERVED_STAGE/.design-publish-result.env" \
+  || fail "preserved terminal state publish failure must record PUBLISH_OK=false"
+[ -s "$D_PRESERVED_STAGE/final-summary.md" ] \
+  || fail "preserved terminal state publish failure must leave non-empty final-summary.md"
+grep -Fxq 'FAILURE_OUTCOME=failed-publish' "$D_PRESERVED_STAGE/design-failure-terminal-state.env" \
+  || fail "recovered publish failure must stage failed-publish terminal state"
+grep -Fxq 'ROOT_CAUSE_HINT=environment' "$D_PRESERVED_STAGE/design-failure-terminal-state.env" \
+  || fail "failed publish must stage ROOT_CAUSE_HINT=environment"
+pass "preserved terminal state does not abort failed publish path"
+
+# --- failed publish stages ROOT_CAUSE_HINT=environment on fresh tmpdir ---
+D_PFAIL_ENV_HINT="$TMP/pub-fail-environment-hint"
+setup_design_tmp "$D_PFAIL_ENV_HINT"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+export PUBLISH_STUB_RC=2
+export PUBLISH_EMIT_OK=false
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_PFAIL_ENV_HINT" --issue 1 --session-id sid --claude-pid 1 >/dev/null 2>/dev/null
+rc=$?
+set -e
+assert_rc "fresh publish failure environment hint" 0 "$rc"
+grep -Fxq 'ROOT_CAUSE_HINT=environment' "$D_PFAIL_ENV_HINT/design-failure-terminal-state.env" \
+  || fail "fresh publish failure must stage ROOT_CAUSE_HINT=environment"
+grep -Fxq 'FAILURE_OUTCOME=failed-publish' "$D_PFAIL_ENV_HINT/design-failure-terminal-state.env" \
+  || fail "fresh publish failure must stage failed-publish terminal state"
+D_PFAIL_ENV_HINT_RUN_ID=design-publish-environment-run
+cat >"$D_PFAIL_ENV_HINT/source-env.sh" <<EOF2
+export SESSION_ID='$D_PFAIL_ENV_HINT_RUN_ID'
+EOF2
+LARCH_STALL_RECOVERY_TEST_LEGACY_SURFACES=1 env -u CLAUDE_PLUGIN_ROOT \
+  "$REPO_ROOT/skills/design/scripts/design-failure-report.sh" \
+  --design-tmpdir "$D_PFAIL_ENV_HINT" --outcome failed-publish >"$D_PFAIL_ENV_HINT/report.out"
+grep -Fxq 'DESIGN_FAILURE_REPORT_DECISION=terminal-failure' "$D_PFAIL_ENV_HINT/report.out" \
+  || fail "publish failure report must file terminal failure"
+grep -Fxq 'verdict=environment' "$D_PFAIL_ENV_HINT/design-failure-root-cause.md" \
+  || fail "publish failure report missing environment verdict"
+D_PFAIL_ENV_HINT_ARTIFACT=""
+for candidate in "$D_PFAIL_ENV_HINT/design-failure-issue-input.md" "$D_PFAIL_ENV_HINT/design-failure-chat-print.md"; do
+  [ -s "$candidate" ] || continue
+  D_PFAIL_ENV_HINT_ARTIFACT="$candidate"
+  break
+done
+[ -n "$D_PFAIL_ENV_HINT_ARTIFACT" ] || fail "publish failure report artifact missing"
+grep -Fq 'verdict=environment' "$D_PFAIL_ENV_HINT_ARTIFACT" \
+  || fail "publish failure public artifact missing environment verdict"
+grep -Fq "$D_PFAIL_ENV_HINT_RUN_ID" "$D_PFAIL_ENV_HINT_ARTIFACT" \
+  || fail "publish failure report missing source-env SESSION_ID run id"
+pass "failed publish path stages environment hint and files terminal report"
+
+D_PRESERVED_STAGE_RUN_ID=design-publish-preserved-run
+cat >"$D_PRESERVED_STAGE/source-env.sh" <<EOF2
+export SESSION_ID='$D_PRESERVED_STAGE_RUN_ID'
+EOF2
+LARCH_STALL_RECOVERY_TEST_LEGACY_SURFACES=1 env -u CLAUDE_PLUGIN_ROOT \
+  "$REPO_ROOT/skills/design/scripts/design-failure-report.sh" \
+  --design-tmpdir "$D_PRESERVED_STAGE_CANON" --outcome failed-publish >"$D_PRESERVED_STAGE/report.out"
+grep -Fxq 'DESIGN_FAILURE_REPORT_DECISION=terminal-failure' "$D_PRESERVED_STAGE/report.out" \
+  || fail "preserved-state recovery report must file terminal failure"
+grep -Fxq 'verdict=environment' "$D_PRESERVED_STAGE/design-failure-root-cause.md" \
+  || fail "preserved-state recovery report missing environment verdict"
+D_PRESERVED_STAGE_ARTIFACT=""
+for candidate in "$D_PRESERVED_STAGE/design-failure-issue-input.md" "$D_PRESERVED_STAGE/design-failure-chat-print.md"; do
+  [ -s "$candidate" ] || continue
+  D_PRESERVED_STAGE_ARTIFACT="$candidate"
+  break
+done
+[ -n "$D_PRESERVED_STAGE_ARTIFACT" ] || fail "preserved-state recovery report artifact missing"
+grep -Fq 'verdict=environment' "$D_PRESERVED_STAGE_ARTIFACT" \
+  || fail "preserved-state recovery public artifact missing environment verdict"
+grep -Fq "$D_PRESERVED_STAGE_RUN_ID" "$D_PRESERVED_STAGE_ARTIFACT" \
+  || fail "preserved-state recovery report missing source-env SESSION_ID run id"
+pass "preserved terminal state recovery files environment terminal report"
+
 # --- unexpected publish (nonzero, no PUBLISH_OK line) ---
 D_UNEXP="$TMP/pub-unexp"
 setup_design_tmp "$D_UNEXP"

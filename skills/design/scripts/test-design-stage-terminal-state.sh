@@ -47,6 +47,7 @@ pass 'rejects outside and symlink evidence paths'
 D5=$(mktemp -d)
 env -u CLAUDE_PLUGIN_ROOT "$SUBJECT" --design-tmpdir "$D5" --outcome failed-clarify --step clarify --phase clarify-loop --site clarify-loop --trigger failed --bail-reason clarify-hard-halt --exit-code 1 --source-script clarify-loop >/dev/null
 env -u CLAUDE_PLUGIN_ROOT "$SUBJECT" --design-tmpdir "$D5" --outcome failed-publish --step publish --phase publish --site design-publish --trigger failed --bail-reason publish-failed --exit-code 1 --source-script design-publish >"$D5/preserve.out"
+grep -Fxq 'STAGED=false' "$D5/preserve.out" || fail 'preserved different terminal state did not emit STAGED=false'
 grep -Fxq 'PRESERVED=true' "$D5/preserve.out" || fail 'different terminal state was not preserved'
 grep -Fxq 'FAILURE_OUTCOME=failed-clarify' "$D5/design-failure-terminal-state.env" || fail 'different state overwritten'
 pass 'preserves existing different terminal state'
