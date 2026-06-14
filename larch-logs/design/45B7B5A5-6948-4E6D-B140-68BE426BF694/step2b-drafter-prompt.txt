@@ -1,0 +1,198 @@
+You are an expert engineer researching this repository and producing an implementation plan for /design Step 2b.
+
+You may use only side-effect-free repository discovery. Do not write repository files, design tmpdir files, or any other files. Return only the sentinel-delimited response requested below.
+
+Drafting requirements to follow:
+- Prefer minimum necessary change: avoid scope creep, unnecessary complexity, and additions not required for correctness.
+- Read approach-synthesis.txt: if it is exactly NO_SKETCHES, draft from direct codebase/doc inspection without fabricating planning-panel agreement.
+- Read discussion-round1.md when present for scope boundaries and strict constraints.
+- Read design-outline.md only when non-empty and .outline-approved exists; treat Goals, Non-goals, and Surfaces as binding scope.
+- Read brainstorm.md when present as additive ideation context for plan drafting.
+- Use a Files to modify/create section with per-file headings exactly one path each: ### NEW:, ### UPDATED:, or ### REWRITTEN: (at least one ASCII space after ### before the keyword).
+- Include Approach, Edge cases, Failure modes when non-trivial, Testing strategy, optional diff_added/diff_deleted/mechanical_churn trailers, and final diff_lines: <N>.
+- The final plan body must end with a whole-line diff_lines: <N> trailer.
+- Optionally include up to three dynamic plan-review archetypes in a scout block after the plan. The launcher validates, filters, caps, and materializes this block; invalid post-plan scout output is ignored.
+- Scout sentinels inside the summary or plan are fatal format errors. Never put LARCH_SCOUT_* markers in the plan body.
+
+Readability style (trusted):
+# Readability Style
+
+**Consumer**: `/design` prompt surfaces that produce user-facing text, either through an external-agent prompt token or through inline orchestration prose.
+
+**Contract**: this file is the only source of truth for the `/design` readability preamble. External prompt files embed the literal `<READABILITY_STYLE>` token, and assembly code or orchestration expands it to this full file. Inline composition sites read this file before writing user-facing text.
+
+**When to load**: load only when a `/design` step is about to compose user-facing prose or render a prompt that asks another agent to compose such prose. Do not load during setup, pure validation, or byte-stable artifact handling.
+
+---
+
+## Style Axes
+
+Write in three styles at once:
+
+- **Strunk & White**: use active voice. Omit needless words. Prefer concrete nouns and verbs.
+- **Dyslexia-friendly**: use short sentences. Prefer simple words. Break dense ideas into headings and bullets.
+- **Brevity**: shorter is better. Minimize the total artifact length while preserving meaning.
+- **No em dashes**: never use em dashes; use periods, commas, colons, or semicolons instead.
+- **Hedge vs. direct**: hedge uncertain claims ("may contain", "can fail") instead of absolutes; keep directives imperative.
+
+## Precision Contract
+
+Keep these byte-stable unless the task explicitly edits them:
+
+- fenced code blocks
+- backticked tokens
+- file paths
+- identifiers
+- flag names
+- `### NEW:` / `### UPDATED:` / `### REWRITTEN:` plan grammar
+- the trailing `diff_lines: <N>` line
+
+Do not rewrite those items for style. Explain around them instead.
+
+## Precedence
+
+When rules conflict, use this order:
+
+`code references > meaning > brevity > dyslexia-friendly chunking > Strunk & White micro-rewrites`
+
+Apply it directly:
+
+- Preserve code references first.
+- Preserve exact meaning next.
+- Cut words before adding layout.
+- Add headings or bullets only when they improve scanning.
+- Polish grammar last.
+
+## Substitution Token
+
+External-agent prompt files MUST embed this literal token:
+
+`<READABILITY_STYLE>`
+
+Before launch, replace every literal `<READABILITY_STYLE>` token with the full contents of this file.
+
+## Examples
+
+Before: "It is recommended that the implementer should consider adding a validation step."
+
+After: "Add a validation step."
+
+Before: "The plan should make sure that users are not able to continue when the file cannot be read."
+
+After: "Block the flow when the file cannot be read."
+
+Before: "In order to avoid potential future confusion, documentation can be updated."
+
+After: "Update the docs to avoid confusion."
+
+Before: "The script performs an operation that checks if the path exists."
+
+After: "The script checks that the path exists."
+
+Before: "This could possibly be out of scope depending on how the team wants to proceed."
+
+After: "This may be out of scope."
+
+Required output format:
+[optional]
+LARCH_SUMMARY_BEGIN
+A concise summary for large-plan preview. Omit this whole summary block only when no useful summary is needed.
+LARCH_SUMMARY_END
+[/optional]
+LARCH_PLAN_BEGIN
+Full implementation plan body ending with diff_lines: <N>.
+LARCH_PLAN_END
+[optional]
+LARCH_SCOUT_BEGIN
+{"archetypes":[{"name":"slug","focus_area":"code-quality|risk-integration|correctness|architecture|security","weight":1,"rationale":"single-line reason","prompt_body":"2-6 sentence focus directive ending with the required citation sentence."}]}
+LARCH_SCOUT_END
+[/optional]
+
+Optional advisory status may be included between LARCH_STATUS_BEGIN and LARCH_STATUS_END, but the summary, plan, and optional scout sentinels above are the only parsed contract.
+
+Untrusted feature description:
+<feature_description encoding="literal-redacted">
+# [OOS] Implement/orchestrator reference-doc drift + validation/quality fixes — 5 items
+
+Combined from #4280, #4294, #4273, #4225, #4299, #4250 by `/combine-issues --oos`. Reference-doc drift in the orchestrator/implement NEVER rules and stall-recovery doc, plus two small validation/quality fixes. Duplicate items folded: #4294 item A into Item 1; #4225 (both items) into Item 3.
+
+### Item 1 — Add premature-notification recovery carve-out to orchestrator-never.md
+- **Location**: `skills/shared/orchestrator-never.md` (NEVER #3 / #4)
+- **Source**: #4280, #4294
+- **Severity**: latent
+- **Description**: `orchestrator-never.md` NEVER #3 lists Monitor waits and backgrounded watcher loops with no carve-out for the sanctioned premature-notification recovery exception. `/implement` NEVER #8 documents the recovery, but agents that treat the shared file as the complete contract may still avoid the sanctioned single `until`-waiter recovery, or read it as conflicting with NEVER #4. Fix: add a carve-out to NEVER #3 (or a new NEVER #5) clarifying that a single re-launched `Bash run_in_background` condition-exit task (`until &lt;condition&gt;; do sleep N; done`) is the sanctioned recovery for a prematurely fired empty `&lt;task-notification&gt;` and does NOT violate NEVER #4 (which bans continuous polling loops, not a single one-shot re-launch).
+
+### Item 2 — Stale NEVER cross-reference on the AGENTS.md Monitor/polling bullet
+- **Location**: `AGENTS.md` (Conventions, Monitor/polling bullet)
+- **Source**: #4294
+- **Severity**: latent
+- **Description**: The Monitor/polling bullet ends with "See `skills/implement/SKILL.md` NEVER #9." but the referenced premature-notification recovery rule is NEVER #8. Operators debugging Monitor misuse land on the wrong rule. Fix: correct the cross-reference to NEVER #8.
+
+### Item 3 — Document submodule-restricted class in stall-recovery.md
+- **Location**: `skills/implement/references/stall-recovery.md` (Step 18a, beside the protected-path entry)
+- **Source**: #4273, #4225
+- **Severity**: latent
+- **Description**: `stall-recovery-report.sh` and `SKILL.md` add `FAILURE_CLASS=submodule-restricted` with Step 18a `step2-impl` recovery, but the Step 18a reference doc still documents only the `protected-path` operator warning. Operators following only the reference doc will not see submodule-specific routing or the distinct inline-resume message. Fix: add a `submodule-restricted` bullet alongside `protected-path`, with its own warning text `**⚠ /implement: implementer bailed on submodule-restricted path; Main Claude will implement inline.**`.
+
+### Item 4 — research_eval rejects allowed blocking severity
+- **Location**: `scripts/` or `python/` reviewer-validation (research_eval or equivalent)
+- **Source**: #4299
+- **Severity**: review-accepted (1 accept, Codex)
+- **Description**: Structured reviewer validation rejects `blocking` severity even though reviewer prompts allow it; a reviewer using an allowed `blocking` TSV or JSONL severity can be incorrectly marked NOT_SUBSTANTIVE. Fix: align allowed severities in the validation logic with the prompt contract and add JSONL and TSV test cases for `blocking` severity.
+
+### Item 5 — rebalance-test-harnesses: use post-pack spread estimate for feasibility check
+- **Location**: `.claude/skills/rebalance-test-harnesses/scripts/rebalance.py` (`_check_feasibility`)
+- **Source**: #4250
+- **Severity**: latent
+- **Description**: The post-pack estimated spread check is simpler than the `max_target &gt; ideal + threshold/2` heuristic. The heuristic can warn when estimated spread would pass, or stay silent when LPT spread fails without a dominant singleton; it is an indirect proxy for the ≤15s gate. Consider replacing the heuristic with a direct post-pack spread estimate.
+
+---
+*Combined by the larch `/combine-issues --oos` workflow. Sources: #4280, #4294, #4273, #4225, #4299, #4250. One stale item (migration_lint.py prefilter) from #4294 was discarded after actuality check.*
+
+
+</feature_description>
+
+
+Untrusted approach synthesis:
+<approach_synthesis encoding="literal-redacted">
+NO_SKETCHES
+
+</approach_synthesis>
+
+
+Untrusted approved design outline:
+<design_outline encoding="literal-redacted">
+## Proposed Design Outline
+
+### Goals
+- Add premature-notification recovery carve-out to `skills/shared/orchestrator-never.md` NEVER #3.
+- Fix stale NEVER cross-reference in `AGENTS.md` (NEVER #9 to NEVER #8).
+- Document `submodule-restricted` failure class in `skills/implement/references/stall-recovery.md` Step 18a.
+- Fix `research_eval.py` to accept `blocking` severity; add JSONL and TSV test cases.
+- Replace `_check_feasibility` heuristic in `rebalance.py` with direct post-pack spread check.
+
+### Non-goals
+- Do not modify reviewer agent prompts or `reviewer-templates.md`.
+- Do not change any runtime script behavior; these are doc and validation fixes only.
+- Do not touch `SKILL.md` NEVER rules or `stall-recovery-report.sh` logic.
+
+### Approach sketch
+- Extend NEVER #3 in `orchestrator-never.md` with a single carve-out sentence for the sanctioned one-shot until-waiter re-launch; clarify it does not conflict with NEVER #4.
+- Edit the AGENTS.md Monitor/polling bullet: change "NEVER #9" to "NEVER #8".
+- Add `submodule-restricted` entry beside the `protected-path` bullet in `stall-recovery.md` Step 18a, using the warning text from SKILL.md (RESUME_HINT=none; no inline recovery).
+- Add `"blocking"` to `_ALLOWED_SEVERITIES` in `python/research_eval.py`; add two new test cases covering JSONL and TSV `blocking` severity.
+- Move the feasibility call in `rebalance.py` to after `pack()`; replace the heuristic with a direct spread computation from packed shard totals.
+
+### Surfaces in scope
+- `skills/shared/orchestrator-never.md`
+- `AGENTS.md`
+- `skills/implement/references/stall-recovery.md`
+- `python/research_eval.py`
+- `python/test_research_eval.py`
+- `.claude/skills/rebalance-test-harnesses/scripts/rebalance.py`
+
+### Open questions
+- None.
+
+</design_outline>
+
