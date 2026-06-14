@@ -9,7 +9,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import agents
 
@@ -283,7 +283,11 @@ def test_cursor_empty_result_diag_is_redacted(tmp_path: Path) -> None:
 def test_codex_auth_setup_preflight_exits_zero_with_clean_dirty_tree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     args = _codex_review_args(tmp_path)
     out = Path(args.output)
-    monkeypatch.setattr(agents, "_prepare_codex_home", lambda *_a, **_kw: (1, "codex auth setup failed"))
+    def auth_setup_failed(_home_dir: Path, *, trusted_instructions_file: str = "") -> tuple[int, str]:
+        _ = trusted_instructions_file
+        return (1, "codex auth setup failed")
+
+    monkeypatch.setattr(agents, "_prepare_codex_home", auth_setup_failed)
     rc = agents._review_launch_codex(args, "hi")
     assert rc == 0
     dirty = out.with_suffix(out.suffix + ".dirty-tree").read_text(encoding="utf-8")
@@ -296,7 +300,11 @@ def test_preflight_meta_writes_stderr_sink_for_collector_retry(tmp_path: Path, m
     sink = tmp_path / "stderr.log"
     args = _codex_review_args(tmp_path, stderr_sink=str(sink))
     out = Path(args.output)
-    monkeypatch.setattr(agents, "_prepare_codex_home", lambda *_a, **_kw: (1, "codex auth setup failed"))
+    def auth_setup_failed(_home_dir: Path, *, trusted_instructions_file: str = "") -> tuple[int, str]:
+        _ = trusted_instructions_file
+        return (1, "codex auth setup failed")
+
+    monkeypatch.setattr(agents, "_prepare_codex_home", auth_setup_failed)
     assert agents._review_launch_codex(args, "hi") == 0
     meta = out.with_suffix(out.suffix + ".meta").read_text(encoding="utf-8")
     assert f"STDERR_SINK={sink}" in meta
@@ -428,7 +436,7 @@ def test_codex_review_ingests_token_record_sidecar(tmp_path: Path, monkeypatch: 
     calls: list[tuple[str, str]] = []
     real_run = agents.proc.run
 
-    def track_run(argv: list[str], **_kwargs: object) -> object:
+    def track_run(argv: list[str], **_kwargs: Any) -> object:
         if len(argv) >= 4 and argv[2] == "token":
             calls.append((argv[2], argv[3]))
         return real_run(argv, **_kwargs)
@@ -441,8 +449,15 @@ def test_codex_review_ingests_token_record_sidecar(tmp_path: Path, monkeypatch: 
         '{"type":"message","usage":{"input_tokens":4,"cached_input_tokens":1,"output_tokens":2}}\n',
         encoding="utf-8",
     )
-    monkeypatch.setattr(agents, "_prepare_codex_home", lambda *_a, **_kw: (0, ""))
-    monkeypatch.setattr(agents, "_review_run_with_retries", lambda **_kwargs: (agents.RunExternalAgentResult(0, out), 1, 1))
+    def auth_setup_ok(_home_dir: Path, *, trusted_instructions_file: str = "") -> tuple[int, str]:
+        _ = trusted_instructions_file
+        return (0, "")
+
+    def run_with_retries_ok(**_kwargs: object) -> tuple[agents.RunExternalAgentResult, int, int]:
+        return (agents.RunExternalAgentResult(0, out), 1, 1)
+
+    monkeypatch.setattr(agents, "_prepare_codex_home", auth_setup_ok)
+    monkeypatch.setattr(agents, "_review_run_with_retries", run_with_retries_ok)
     assert agents._review_launch_codex(args, "hi") == 0
     assert out.with_suffix(out.suffix + ".token-record").is_file()
     assert ("token", "record-vendor-sidecar") in calls
@@ -473,10 +488,14 @@ printf OK >"$out"
 
 def test_cursor_auth_preflight_writes_preflight_bundle(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     out = tmp_path / "out.txt"
+    def cursor_auth_missing(*, caller: str = "agent cursor-auth-preflight") -> agents.AuthVerdict:
+        _ = caller
+        return agents.AuthVerdict(ok=False, rc=1, message="cursor auth missing")
+
     monkeypatch.setattr(
         agents,
         "cursor_auth_preflight",
-        lambda **_kwargs: agents.AuthVerdict(ok=False, rc=1, message="cursor auth missing"),
+        cursor_auth_missing,
     )
     args = argparse.Namespace(
         output=str(out),
@@ -505,7 +524,7 @@ def test_cursor_degraded_response_written_when_validation_fails(tmp_path: Path, 
     out = tmp_path / "out.txt"
     real_run = agents.proc.run
 
-    def selective_run(argv: list[str], **_kwargs: object) -> object:
+    def selective_run(argv: list[str], **_kwargs: Any) -> object:
         if len(argv) >= 5 and argv[2:5] == ["eval", "validate-research-output"]:
             return type("R", (), {"returncode": 1, "stdout": "", "stderr": ""})()
         return real_run(argv, **_kwargs)
@@ -535,20 +554,42 @@ def test_cursor_done_promoted_after_timing_record(tmp_path: Path, monkeypatch: p
 
     monkeypatch.setattr(agents, "_review_record_timing", track_timing)
     monkeypatch.setattr(agents, "_promote_inner_done", track_promote)
-    monkeypatch.setattr(agents, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(ok=True, rc=0, message=""))
+    def cursor_auth_ok(*, caller: str = "agent cursor-auth-preflight") -> agents.AuthVerdict:
+        _ = caller
+        return agents.AuthVerdict(ok=True, rc=0, message="")
+
+    def setup_cursor_config_dir() -> tuple[Path, str | None]:
+        return (tmp_path / "cfg", None)
+
+    def cleanup_cursor_config_dir(_cfg_tmp: Path, _old_cfg: str | None) -> None:
+        return None
+
+    def capture_cursor_dirty_baseline(_output: Path) -> Path:
+        return tmp_path / "baseline"
+
+    def write_cursor_dirty_tree_from_baseline(_output: Path, _baseline: Path) -> None:
+        return None
+
+    def cursor_postprocess(_output: Path, _transient_attempt: int) -> None:
+        return None
+
+    def run_with_retries_ok(**_kwargs: object) -> tuple[agents.RunExternalAgentResult, int, int]:
+        return (agents.RunExternalAgentResult(0, out), 1, 1)
+
+    def resolve_model_args_ok(_tool: str, *, with_effort: bool = False, default_model: str = "") -> agents.ModelArgResult:
+        _ = (with_effort, default_model)
+        return agents.ModelArgResult(())
+
+    monkeypatch.setattr(agents, "cursor_auth_preflight", cursor_auth_ok)
     monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: None)
     monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
-    monkeypatch.setattr(agents, "_review_setup_cursor_config_dir", lambda: (tmp_path / "cfg", None))
-    monkeypatch.setattr(agents, "_review_cleanup_cursor_config_dir", lambda *_args: None)
-    monkeypatch.setattr(agents, "_review_capture_cursor_dirty_baseline", lambda _output: tmp_path / "baseline")
-    monkeypatch.setattr(agents, "_review_write_cursor_dirty_tree_from_baseline", lambda *_args: None)
-    monkeypatch.setattr(agents, "_review_cursor_postprocess", lambda *_args: None)
-    monkeypatch.setattr(
-        agents,
-        "_review_run_with_retries",
-        lambda **_kwargs: (agents.RunExternalAgentResult(0, out), 1, 1),
-    )
-    monkeypatch.setattr(agents, "resolve_model_args", lambda *_args, **_kwargs: type("M", (), {"argv": []})())
+    monkeypatch.setattr(agents, "_review_setup_cursor_config_dir", setup_cursor_config_dir)
+    monkeypatch.setattr(agents, "_review_cleanup_cursor_config_dir", cleanup_cursor_config_dir)
+    monkeypatch.setattr(agents, "_review_capture_cursor_dirty_baseline", capture_cursor_dirty_baseline)
+    monkeypatch.setattr(agents, "_review_write_cursor_dirty_tree_from_baseline", write_cursor_dirty_tree_from_baseline)
+    monkeypatch.setattr(agents, "_review_cursor_postprocess", cursor_postprocess)
+    monkeypatch.setattr(agents, "_review_run_with_retries", run_with_retries_ok)
+    monkeypatch.setattr(agents, "resolve_model_args", resolve_model_args_ok)
     args = argparse.Namespace(
         output=str(out),
         timeout="2",
