@@ -1288,22 +1288,22 @@ set +e
 bash "$SUBJECT" --design-tmpdir "$D_SHORT" --issue 42 --session-id sid-1 --claude-pid 9999 >/dev/null 2>/dev/null
 rc=$?
 set -e
-assert_rc "pre-publish success short-circuit" 0 "$rc"
+assert_rc "pre-publish success re-entry" 0 "$rc"
 if grep -q 'design-log-publish' "$PUBLISH_LOG" 2>/dev/null; then
-    fail "pre-publish success must skip design-log-publish"
+    pass "pre-publish success still invokes design-log-publish"
 else
-    pass "pre-publish success skips design-log-publish"
+    fail "pre-publish success must still invoke design-log-publish"
 fi
 grep -Fxq 'PR_NUMBER=77' "$D_SHORT/.design-publish-result.env" \
-  || fail "pre-publish success must preserve original PR_NUMBER"
+  || fail "pre-publish success re-entry must preserve original PR_NUMBER"
 grep -Fxq 'PR_URL=https://github.com/owner/repo/pull/77' "$D_SHORT/.design-publish-result.env" \
-  || fail "pre-publish success must preserve original PR_URL"
+  || fail "pre-publish success re-entry must preserve original PR_URL"
 grep -q -- '--outcome approved' "$RENDER_LOG" \
-  || fail "pre-publish success should render approved outcome"
+  || fail "pre-publish success re-entry should render approved outcome"
 if grep -q -- '--outcome failed-publish' "$RENDER_LOG"; then
-    fail "pre-publish success must not render failed-publish"
+    fail "pre-publish success re-entry must not render failed-publish"
 else
-    pass "pre-publish success protects final summary from failed-publish"
+    pass "pre-publish success re-entry protects final summary from failed-publish"
 fi
 
 D_DEF_STALE="$TMP/stale-success-validator-defects"

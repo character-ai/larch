@@ -761,6 +761,147 @@ out_noop=$(cd "$clone_noop" && bash "$PUBLISH" --design-tmpdir "$TMPNOOP/design"
 unset GH_STUB_LOG
 rm -rf "$TMPNOOP"
 
+echo "=== final existing default run publishes newer snapshot delta ==="
+TMPDELTA=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-final-delta.XXXXXX")
+clone_delta=$(setup_clone_with_origin_head "$TMPDELTA")
+stub_delta="$TMPDELTA/stub"
+make_gh_stub "$stub_delta"
+GH_STUB_LOG="$TMPDELTA/gh.log"
+: >"$GH_STUB_LOG"
+export PATH="$stub_delta:$PATH" GH_STUB_LOG
+export TEST_CLONE_ROOT="$clone_delta"
+export TEST_MERGE_BRANCH="larch-log-design-RUNDELTA1"
+updater_delta="$TMPDELTA/updater"
+git clone -q "$TMPDELTA/upstream.git" "$updater_delta"
+git -C "$updater_delta" config user.email "t@t"
+git -C "$updater_delta" config user.name "t"
+mkdir -p "$updater_delta/larch-logs/design/RUNDELTA1"
+printf 'early\n' >"$updater_delta/larch-logs/design/RUNDELTA1/plan.txt"
+git -C "$updater_delta" add larch-logs/design/RUNDELTA1/plan.txt
+git -C "$updater_delta" commit -q -m "seed early design log"
+git -C "$updater_delta" push -q origin main
+mkdir -p "$TMPDELTA/design"
+printf 'early\n' >"$TMPDELTA/design/plan.txt"
+printf 'final-only\n' >"$TMPDELTA/design/final-only.txt"
+out_delta=$(
+    (cd "$clone_delta" && bash "$PUBLISH" --design-tmpdir "$TMPDELTA/design" --run-id "RUNDELTA1" --issue 4 --repo owner/repo --reason final) 2>/dev/null || true
+)
+[[ "$out_delta" == *"PUBLISH_OK=true"* ]] || fail "final delta publish should succeed: $out_delta"
+grep -q 'pr create' "$GH_STUB_LOG" || fail "final delta publish should create a PR"
+git -C "$clone_delta" pull -q origin main
+[[ -f "$clone_delta/larch-logs/design/RUNDELTA1/final-only.txt" ]] || fail "final-only artifact missing after delta publish"
+unset TEST_CLONE_ROOT TEST_MERGE_BRANCH GH_STUB_LOG
+
+echo "=== final stale local origin ref rebuilds on freshly fetched default ==="
+TMPSTALEBASE=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-stale-base.XXXXXX")
+clone_stalebase=$(setup_clone_with_origin_head "$TMPSTALEBASE")
+stub_stalebase="$TMPSTALEBASE/stub"
+make_gh_stub "$stub_stalebase"
+export PATH="$stub_stalebase:$PATH"
+export TEST_CLONE_ROOT="$clone_stalebase"
+export TEST_MERGE_BRANCH="larch-log-design-RUNSTALEBASE1"
+updater_stalebase="$TMPSTALEBASE/updater"
+git clone -q "$TMPSTALEBASE/upstream.git" "$updater_stalebase"
+git -C "$updater_stalebase" config user.email "t@t"
+git -C "$updater_stalebase" config user.name "t"
+mkdir -p "$updater_stalebase/larch-logs/design/RUNSTALEBASE1"
+printf 'already flushed\n' >"$updater_stalebase/larch-logs/design/RUNSTALEBASE1/early.txt"
+git -C "$updater_stalebase" add larch-logs/design/RUNSTALEBASE1/early.txt
+git -C "$updater_stalebase" commit -q -m "advance default with early design log"
+git -C "$updater_stalebase" push -q origin main
+mkdir -p "$TMPSTALEBASE/design"
+printf 'already flushed\n' >"$TMPSTALEBASE/design/early.txt"
+printf 'new flushed content\n' >"$TMPSTALEBASE/design/final.txt"
+out_stalebase=$(
+    (cd "$clone_stalebase" && bash "$PUBLISH" --design-tmpdir "$TMPSTALEBASE/design" --run-id "RUNSTALEBASE1" --issue 4 --repo owner/repo --reason final) 2>/dev/null || true
+)
+[[ "$out_stalebase" == *"PUBLISH_OK=true"* ]] || fail "stale local origin final publish should succeed: $out_stalebase"
+git -C "$clone_stalebase" pull -q origin main
+grep -Fxq 'already flushed' "$clone_stalebase/larch-logs/design/RUNSTALEBASE1/early.txt" || fail "stale-base publish lost already-flushed content"
+grep -Fxq 'new flushed content' "$clone_stalebase/larch-logs/design/RUNSTALEBASE1/final.txt" || fail "stale-base publish missed newer snapshot content"
+unset TEST_CLONE_ROOT TEST_MERGE_BRANCH
+
+echo "=== final rebuild includes default branch advance during publish window ==="
+TMPADVANCE=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-default-advance.XXXXXX")
+clone_advance=$(setup_clone_with_origin_head "$TMPADVANCE")
+stub_advance="$TMPADVANCE/stub"
+make_gh_stub "$stub_advance"
+REAL_GIT_ADVANCE=$(command -v git)
+mkdir -p "$TMPADVANCE/gitstub"
+cat >"$TMPADVANCE/gitstub/git" <<GITS
+#!/usr/bin/env bash
+if [[ "\${ADVANCE_ON_FETCH:-}" == "1" ]]; then
+    saw_fetch=false
+    for arg in "\$@"; do
+        [[ "\$arg" == "fetch" ]] && saw_fetch=true
+        [[ "\$arg" == "larch-log-design-RUNADVANCE1:refs/remotes/origin/larch-log-design-RUNADVANCE1" ]] && saw_fetch=false
+    done
+    if [[ "\$saw_fetch" == true && ! -f "\${ADVANCE_DONE_FILE:?}" ]]; then
+        : >"\$ADVANCE_DONE_FILE"
+        "$REAL_GIT_ADVANCE" clone -q "\${ADVANCE_UPSTREAM:?}" "\${ADVANCE_TMP:?}/advance-writer"
+        "$REAL_GIT_ADVANCE" -C "\${ADVANCE_TMP:?}/advance-writer" config user.email "t@t"
+        "$REAL_GIT_ADVANCE" -C "\${ADVANCE_TMP:?}/advance-writer" config user.name "t"
+        printf 'default advanced\n' >"\${ADVANCE_TMP:?}/advance-writer/default-advanced.txt"
+        "$REAL_GIT_ADVANCE" -C "\${ADVANCE_TMP:?}/advance-writer" add default-advanced.txt
+        "$REAL_GIT_ADVANCE" -C "\${ADVANCE_TMP:?}/advance-writer" commit -q -m "advance default during publish"
+        "$REAL_GIT_ADVANCE" -C "\${ADVANCE_TMP:?}/advance-writer" push -q origin main
+    fi
+fi
+exec "$REAL_GIT_ADVANCE" "\$@"
+GITS
+chmod +x "$TMPADVANCE/gitstub/git"
+export PATH="$TMPADVANCE/gitstub:$stub_advance:$PATH"
+export TEST_CLONE_ROOT="$clone_advance"
+export TEST_MERGE_BRANCH="larch-log-design-RUNADVANCE1"
+export ADVANCE_ON_FETCH=1
+export ADVANCE_DONE_FILE="$TMPADVANCE/advanced.once"
+export ADVANCE_UPSTREAM="$TMPADVANCE/upstream.git"
+export ADVANCE_TMP="$TMPADVANCE"
+mkdir -p "$TMPADVANCE/design"
+printf 'new log\n' >"$TMPADVANCE/design/plan.txt"
+out_advance=$(
+    (cd "$clone_advance" && bash "$PUBLISH" --design-tmpdir "$TMPADVANCE/design" --run-id "RUNADVANCE1" --issue 4 --repo owner/repo --reason final) 2>/dev/null || true
+)
+[[ "$out_advance" == *"PUBLISH_OK=true"* ]] || fail "default-advance publish should succeed: $out_advance"
+git -C "$clone_advance" pull -q origin main
+[[ -f "$clone_advance/default-advanced.txt" ]] || fail "default-advance unrelated file was lost"
+[[ -f "$clone_advance/larch-logs/design/RUNADVANCE1/plan.txt" ]] || fail "default-advance design log missing"
+unset TEST_CLONE_ROOT TEST_MERGE_BRANCH ADVANCE_ON_FETCH ADVANCE_DONE_FILE ADVANCE_UPSTREAM ADVANCE_TMP
+
+echo "=== final rebuild deletes stale artifacts absent from desired snapshot ==="
+TMPDELETE=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-final-delete.XXXXXX")
+clone_delete=$(setup_clone_with_origin_head "$TMPDELETE")
+stub_delete="$TMPDELETE/stub"
+make_gh_stub "$stub_delete"
+GH_STUB_LOG="$TMPDELETE/gh.log"
+: >"$GH_STUB_LOG"
+export PATH="$stub_delete:$PATH" GH_STUB_LOG
+export TEST_CLONE_ROOT="$clone_delete"
+export TEST_MERGE_BRANCH="larch-log-design-RUNDELETE1"
+updater_delete="$TMPDELETE/updater"
+git clone -q "$TMPDELETE/upstream.git" "$updater_delete"
+git -C "$updater_delete" config user.email "t@t"
+git -C "$updater_delete" config user.name "t"
+mkdir -p "$updater_delete/larch-logs/design/RUNDELETE1"
+printf 'keep old\n' >"$updater_delete/larch-logs/design/RUNDELETE1/plan.txt"
+printf 'delete me\n' >"$updater_delete/larch-logs/design/RUNDELETE1/stale-artifact.txt"
+printf 'excluded stale\n' >"$updater_delete/larch-logs/design/RUNDELETE1/codex-primary-plan-arch-output.txt"
+git -C "$updater_delete" add larch-logs/design/RUNDELETE1
+git -C "$updater_delete" commit -q -m "seed stale design artifacts"
+git -C "$updater_delete" push -q origin main
+mkdir -p "$TMPDELETE/design"
+printf 'keep new\n' >"$TMPDELETE/design/plan.txt"
+out_delete=$(
+    (cd "$clone_delete" && bash "$PUBLISH" --design-tmpdir "$TMPDELETE/design" --run-id "RUNDELETE1" --issue 4 --repo owner/repo --reason final) 2>/dev/null || true
+)
+[[ "$out_delete" == *"PUBLISH_OK=true"* ]] || fail "delete-aware final publish should succeed: $out_delete"
+grep -q 'pr create' "$GH_STUB_LOG" || fail "delete-aware final publish should create a PR"
+git -C "$clone_delete" pull -q origin main
+[[ ! -f "$clone_delete/larch-logs/design/RUNDELETE1/stale-artifact.txt" ]] || fail "stale artifact should be deleted"
+[[ ! -f "$clone_delete/larch-logs/design/RUNDELETE1/codex-primary-plan-arch-output.txt" ]] || fail "stale excluded artifact should be deleted"
+grep -Fxq 'keep new' "$clone_delete/larch-logs/design/RUNDELETE1/plan.txt" || fail "delete-aware publish missed desired plan"
+unset TEST_CLONE_ROOT TEST_MERGE_BRANCH GH_STUB_LOG
+
 echo "=== final no-delta fails closed when main lacks run id ==="
 TMPMISS=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-final-missing.XXXXXX")
 clone_miss=$(setup_clone_with_origin_head "$TMPMISS")
@@ -791,7 +932,7 @@ printf 'missing\n' >"$TMPMISS/design/missing.txt"
 out_miss=$(
     (cd "$clone_miss" && bash "$PUBLISH" --design-tmpdir "$TMPMISS/design" --run-id "RUNEMPTYMISS1" --issue 42 --repo owner/repo) 2>/dev/null || true
 )
-[[ "$out_miss" == *"PUBLISH_OK=false"* ]] || fail "final no-delta should fail when run id is missing from main: $out_miss"
+[[ "$out_miss" == *"PUBLISH_OK=true"* ]] || fail "final no-delta should succeed when rebuilt porcelain is empty: $out_miss"
 unset GIT_STUB_EMPTY_STATUS_FOR
 rm -rf "$TMPMISS"
 
@@ -2027,7 +2168,26 @@ TMPBASE=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-final-base.XXXXXX")
 clone_base=$(setup_clone_with_origin_head "$TMPBASE")
 stub_base="$TMPBASE/stub"
 make_gh_stub "$stub_base"
-export PATH="$stub_base:$PATH"
+REAL_GIT_BASE=$(command -v git)
+mkdir -p "$TMPBASE/gitstub"
+cat >"$TMPBASE/gitstub/git" <<GITS
+#!/usr/bin/env bash
+if [[ "\${GIT_PUSH_LOG:-}" == "" ]]; then
+    exec "$REAL_GIT_BASE" "\$@"
+fi
+for arg in "\$@"; do
+    if [[ "\$arg" == "push" ]]; then
+        printf '%s\n' "\$*" >>"\$GIT_PUSH_LOG"
+        break
+    fi
+done
+exec "$REAL_GIT_BASE" "\$@"
+GITS
+chmod +x "$TMPBASE/gitstub/git"
+GIT_PUSH_LOG="$TMPBASE/git-push.log"
+: >"$GIT_PUSH_LOG"
+export GIT_PUSH_LOG
+export PATH="$TMPBASE/gitstub:$stub_base:$PATH"
 export TEST_CLONE_ROOT="$clone_base"
 export TEST_MERGE_BRANCH="larch-log-design-RUNBASE1"
 git -C "$clone_base" switch -q -c "$TEST_MERGE_BRANCH"
@@ -2042,10 +2202,12 @@ printf 'fresh body\n' >"$TMPBASE/design/plan.txt"
 out_base=$(
     (cd "$clone_base" && bash "$PUBLISH" --design-tmpdir "$TMPBASE/design" --run-id "RUNBASE1" --issue 4 --repo owner/repo --reason final) 2>/dev/null || true
 )
-[[ "$out_base" == *"PUBLISH_OK=false"* ]] || fail "final base publish should fail closed on non-fast-forward remote branch: $out_base"
+[[ "$out_base" == *"PUBLISH_OK=true"* ]] || fail "final base publish should replace existing remote branch successfully: $out_base"
+grep -Fq -- '--force-with-lease' "$GIT_PUSH_LOG" || fail "final remote branch republish must use --force-with-lease"
 git -C "$clone_base" pull -q origin main
 [[ ! -f "$clone_base/larch-logs/design/RUNBASE1/branch-only.txt" ]] || fail "final mode must not inherit branch-only sentinel"
-unset TEST_CLONE_ROOT TEST_MERGE_BRANCH
+[[ -f "$clone_base/larch-logs/design/RUNBASE1/plan.txt" ]] || fail "final mode should publish fresh snapshot"
+unset TEST_CLONE_ROOT TEST_MERGE_BRANCH GIT_PUSH_LOG
 
 echo "=== final idempotent success after squash merge and branch deletion ==="
 TMPIDEM=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-final-idem.XXXXXX")
@@ -2066,15 +2228,16 @@ git -C "$updater" commit -q -m "squash design log"
 git -C "$updater" push -q origin main
 mkdir -p "$TMPIDEM/design"
 printf 'new attempt\n' >"$TMPIDEM/design/plan.txt"
+export TEST_CLONE_ROOT="$clone_idem"
+export TEST_MERGE_BRANCH="larch-log-design-RUNIDEM1"
 out_idem=$(
     (cd "$clone_idem" && bash "$PUBLISH" --design-tmpdir "$TMPIDEM/design" --run-id "RUNIDEM1" --issue 4 --repo owner/repo --reason final) 2>/dev/null || true
 )
 [[ "$out_idem" == *"PUBLISH_OK=true"* ]] || fail "final idempotent publish should succeed: $out_idem"
-if grep -q 'pr create\|pr merge' "$GH_STUB_LOG" 2>/dev/null; then
-    fail "final idempotent success must not create or merge a PR"
-else
-    :
-fi
+grep -q 'pr create' "$GH_STUB_LOG" || fail "final differing snapshot should create a PR"
+git -C "$clone_idem" pull -q origin main
+grep -Fxq 'new attempt' "$clone_idem/larch-logs/design/RUNIDEM1/plan.txt" || fail "final differing snapshot should update plan.txt"
+unset TEST_CLONE_ROOT TEST_MERGE_BRANCH
 
 echo "=== pause does not take final default-tree idempotent success ==="
 TMPPAUSEIDEM=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-pause-idem.XXXXXX")

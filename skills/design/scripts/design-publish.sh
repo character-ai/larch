@@ -593,88 +593,83 @@ fi
 
 if [[ -n "$SESSION_ID" ]]; then
     PUBLISH_RESULT_WRITE_ONCE_ELIGIBLE=true
-    if result_env_publish_ok_is_true; then
-        PUBLISH_OK=true
-        result_env_load_success_metadata
-    else
-        render_fresh_timing_report_for_publish
-        rm -f "$FINAL_SUMMARY_PATH" 2>/dev/null || true
-        set +e
-        _publish_out=$("$PLUGIN_ROOT/scripts/design-log-publish.sh" \
-            --design-tmpdir "$DESIGN_TMPDIR" \
-            --run-id "$SESSION_ID" \
-            --issue "$ISSUE" \
-            ${REPO:+--repo "$REPO"} 2>"$DESIGN_TMPDIR/design-log-publish.failure.log")
-        _publish_rc=$?
-        set -e
-        PUBLISH_OK=""
-        PR_NUMBER=""
-        PR_URL=""
-        RECOVERY_BRANCH=""
-        parse_kv_from_output "$_publish_out"
-        _scrub_n="$(printf '%s\n' "$_publish_out" | sed -n 's/^SECRET_SCRUB_VIOLATIONS=//p' | tail -1)"
-        case "${_scrub_n:-}" in ''|*[!0-9]*) _scrub_n=0 ;; esac
-        if [[ "$_scrub_n" -gt 0 ]]; then
-            add_warn "**⚠ SECURITY: redact scrub-log-secrets redacted ${_scrub_n} secret-shaped value(s) from this /design run's logs before flush. A credential was almost certainly exposed in the session — ROTATE it now and check chat/PRs for the same value.**"
-        fi
-        if [[ "$_publish_rc" -ne 0 ]]; then
-            if result_env_publish_ok_is_true; then
-                PUBLISH_OK=true
-                result_env_load_success_metadata
-            else
-                sanitize_publish_metadata
-                PUBLISH_OK=false
-                python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure \
-                    --log "$DESIGN_TMPDIR/execution-issues.md" \
-                    --site "design Step 5c" \
-                    --tool "design-log-publish.sh" \
-                    --exit-code "$_publish_rc" \
-                    --category Warnings \
-                    --output-file "$DESIGN_TMPDIR/design-log-publish.failure.log" \
-                    --redact >/dev/null 2>&1 || true
-                add_warn "**⚠ 5c: design log publish failed; recovery metadata: $(publish_recovery_detail).**"
-            fi
-        elif [[ "${PUBLISH_OK:-}" == false ]]; then
-            if result_env_publish_ok_is_true; then
-                PUBLISH_OK=true
-                result_env_load_success_metadata
-            else
-                sanitize_publish_metadata
-                _publish_failure_rc=${_publish_rc:-1}
-                if [[ "$_publish_failure_rc" -eq 0 ]]; then
-                    _publish_failure_rc=1
-                fi
-                python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure \
-                    --log "$DESIGN_TMPDIR/execution-issues.md" \
-                    --site "design Step 5c" \
-                    --tool "design-log-publish.sh" \
-                    --exit-code "$_publish_failure_rc" \
-                    --category Warnings \
-                    --output-file "$DESIGN_TMPDIR/design-log-publish.failure.log" \
-                    --redact >/dev/null 2>&1 || true
-                add_warn "**⚠ 5c: design log publish failed; recovery metadata: $(publish_recovery_detail).**"
-            fi
-        elif [[ -z "${PUBLISH_OK:-}" ]]; then
-            if result_env_publish_ok_is_true; then
-                PUBLISH_OK=true
-                result_env_load_success_metadata
-            else
-                PUBLISH_OK=false
-                sanitize_publish_metadata
-                python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure \
-                    --log "$DESIGN_TMPDIR/execution-issues.md" \
-                    --site "design Step 5c" \
-                    --tool "design-log-publish.sh" \
-                    --exit-code "${_publish_rc:-0}" \
-                    --category Warnings \
-                    --output-file "$DESIGN_TMPDIR/design-log-publish.failure.log" \
-                    --redact >/dev/null 2>&1 || true
-                add_warn '**⚠ 5c: design-log-publish.sh returned without PUBLISH_OK=; treating publish as failed**'
-                add_warn "**⚠ 5c: design log publish failed; recovery metadata: $(publish_recovery_detail).**"
-            fi
+    render_fresh_timing_report_for_publish
+    rm -f "$FINAL_SUMMARY_PATH" 2>/dev/null || true
+    set +e
+    _publish_out=$("$PLUGIN_ROOT/scripts/design-log-publish.sh" \
+        --design-tmpdir "$DESIGN_TMPDIR" \
+        --run-id "$SESSION_ID" \
+        --issue "$ISSUE" \
+        ${REPO:+--repo "$REPO"} 2>"$DESIGN_TMPDIR/design-log-publish.failure.log")
+    _publish_rc=$?
+    set -e
+    PUBLISH_OK=""
+    PR_NUMBER=""
+    PR_URL=""
+    RECOVERY_BRANCH=""
+    parse_kv_from_output "$_publish_out"
+    _scrub_n="$(printf '%s\n' "$_publish_out" | sed -n 's/^SECRET_SCRUB_VIOLATIONS=//p' | tail -1)"
+    case "${_scrub_n:-}" in ''|*[!0-9]*) _scrub_n=0 ;; esac
+    if [[ "$_scrub_n" -gt 0 ]]; then
+        add_warn "**⚠ SECURITY: redact scrub-log-secrets redacted ${_scrub_n} secret-shaped value(s) from this /design run's logs before flush. A credential was almost certainly exposed in the session — ROTATE it now and check chat/PRs for the same value.**"
+    fi
+    if [[ "$_publish_rc" -ne 0 ]]; then
+        if result_env_publish_ok_is_true; then
+            PUBLISH_OK=true
+            result_env_load_success_metadata
         else
             sanitize_publish_metadata
+            PUBLISH_OK=false
+            python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure \
+                --log "$DESIGN_TMPDIR/execution-issues.md" \
+                --site "design Step 5c" \
+                --tool "design-log-publish.sh" \
+                --exit-code "$_publish_rc" \
+                --category Warnings \
+                --output-file "$DESIGN_TMPDIR/design-log-publish.failure.log" \
+                --redact >/dev/null 2>&1 || true
+            add_warn "**⚠ 5c: design log publish failed; recovery metadata: $(publish_recovery_detail).**"
         fi
+    elif [[ "${PUBLISH_OK:-}" == false ]]; then
+        if result_env_publish_ok_is_true; then
+            PUBLISH_OK=true
+            result_env_load_success_metadata
+        else
+            sanitize_publish_metadata
+            _publish_failure_rc=${_publish_rc:-1}
+            if [[ "$_publish_failure_rc" -eq 0 ]]; then
+                _publish_failure_rc=1
+            fi
+            python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure \
+                --log "$DESIGN_TMPDIR/execution-issues.md" \
+                --site "design Step 5c" \
+                --tool "design-log-publish.sh" \
+                --exit-code "$_publish_failure_rc" \
+                --category Warnings \
+                --output-file "$DESIGN_TMPDIR/design-log-publish.failure.log" \
+                --redact >/dev/null 2>&1 || true
+            add_warn "**⚠ 5c: design log publish failed; recovery metadata: $(publish_recovery_detail).**"
+        fi
+    elif [[ -z "${PUBLISH_OK:-}" ]]; then
+        if result_env_publish_ok_is_true; then
+            PUBLISH_OK=true
+            result_env_load_success_metadata
+        else
+            PUBLISH_OK=false
+            sanitize_publish_metadata
+            python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure \
+                --log "$DESIGN_TMPDIR/execution-issues.md" \
+                --site "design Step 5c" \
+                --tool "design-log-publish.sh" \
+                --exit-code "${_publish_rc:-0}" \
+                --category Warnings \
+                --output-file "$DESIGN_TMPDIR/design-log-publish.failure.log" \
+                --redact >/dev/null 2>&1 || true
+            add_warn '**⚠ 5c: design-log-publish.sh returned without PUBLISH_OK=; treating publish as failed**'
+            add_warn "**⚠ 5c: design log publish failed; recovery metadata: $(publish_recovery_detail).**"
+        fi
+    else
+        sanitize_publish_metadata
     fi
 else
     add_warn '**⚠ /design: SESSION_ID missing; skipping design log publish**'

@@ -37,3 +37,8 @@ Or `make test-design-log-publish`.
 - Covers quiet-capture behavior: the parent parses `PUBLISH_OK=` from captured child stdout and does not replay the child's output.
 - Covers pause publish staging for `step-*` sentinels and the four driver
   phase-sentinel basenames while rejecting arbitrary `.completed/` basenames.
+- Covers final-mode fresh-default rebuild behavior: newer snapshots for existing
+  run directories create PRs, stale local default refs are refreshed before the
+  pushed commit is built, default-branch advances during the publish window are
+  preserved, delete-aware replacements remove stale artifacts, and existing
+  remote log branches are replaced with `--force-with-lease`.
