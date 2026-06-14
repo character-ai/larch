@@ -446,9 +446,7 @@ no longer committed per-round. Each unique definition is written once to
 Entries in `panel-manifest.ndjson` for `dyn-*` slots carry an `archetype_ref`
 field (the SHA256-12 identifier). To resolve an archetype: look up
 `archetype_ref` in `panel-manifest.ndjson`, then read
-`larch-logs/shared/archetypes/<archetype_ref>.md`. The pool grows monotonically;
-retroactive migration of pre-Phase-3c directories is handled by
-`scripts/consolidate-round-sidecars.sh`.
+`larch-logs/shared/archetypes/<archetype_ref>.md`. The pool grows monotonically.
 
 ## Tracking issue comments
 
