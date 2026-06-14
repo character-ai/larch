@@ -11,8 +11,10 @@
 - Cursor review launcher assertions from the former per-tool harness: JSON
   post-processing, explicit empty `.result` marker promotion, outer retry
   metadata, prompt byte preservation, signal-trap sentinel publication,
-  auth-preflight short-circuit, exact stdin-file inheritance on the non-Codex
-  control path, and dirty-tree sidecars.
+  auth-preflight short-circuit, `/dev/null` stdin on the success path, and
+  dirty-tree sidecars.
+- Codex review launcher assertions include a matching stdin probe to verify the
+  existing `run-external-agent` stdin handling remains intact.
 - Cursor empty-result retry cases: `SL-cursor-empty-retry-success` (retry then
   valid result), `SL-cursor-empty-retry-exhausted` (all attempts empty,
   `CURSOR_EMPTY_RESPONSE` marker, `.diag` envelope fields asserted),

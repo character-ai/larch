@@ -445,6 +445,26 @@ if [[ "${_plan_review_rc:-0}" -eq 2 ]]; then
   larch_err "**⚠ Step 3: run-step3-review.sh configuration error (exit 2); aborting plan review**"
   exit 1
 fi
+if [[ -z "${STEP3_REVIEW_LOOP_STATUS:-}" ]]; then
+  case "${LOOP_STATUS:-}" in
+    complete) STEP3_REVIEW_LOOP_STATUS=complete ;;
+    cap-reached) STEP3_REVIEW_LOOP_STATUS=cap-hit ;;
+    main-agent-vote-required) STEP3_REVIEW_LOOP_STATUS=main-agent-vote-required ;;
+    main-agent-apply-required) STEP3_REVIEW_LOOP_STATUS=main-agent-apply-required ;;
+    per-round-approval-required) STEP3_REVIEW_LOOP_STATUS=per-round-approval-required ;;
+    postplan-operator-required) STEP3_REVIEW_LOOP_STATUS=postplan-operator-required ;;
+    postplan-failed) STEP3_REVIEW_LOOP_STATUS=postplan-failed ;;
+    panel-failed) STEP3_REVIEW_LOOP_STATUS=panel-failed ;;
+    tally-error) STEP3_REVIEW_LOOP_STATUS=tally-error ;;
+    degraded-empty-collector) STEP3_REVIEW_LOOP_STATUS=degraded-empty-collector ;;
+    zero-findings-degraded-panel) ;;
+  esac
+  if [[ -z "${STEP3_REVIEW_LOOP_STATUS:-}" && "${LOOP_STATUS:-}" != zero-findings-degraded-panel ]]; then
+    larch_err "**⚠ Step 3: result env missing or empty after loop exit; treating as panel-failed**"
+    STEP3_REVIEW_LOOP_STATUS=panel-failed
+    LOOP_STATUS=panel-failed
+  fi
+fi
 if [[ -n "${STEP3_REVIEW_LOOP_STATUS:-}" ]]; then
   if [[ ! "${STEP3_REVIEW_LOOP_STATUS}" =~ ^(complete|cap-hit|main-agent-vote-required|main-agent-apply-required|per-round-approval-required|postplan-operator-required|postplan-failed|panel-failed|tally-error|degraded-empty-collector)$ ]]; then
     larch_err "**⚠ Step 3: missing or invalid STEP3_REVIEW_LOOP_STATUS after run-step3-review.sh; treating plan review as panel-failed**"
@@ -455,9 +475,6 @@ if [[ -n "${STEP3_REVIEW_LOOP_STATUS:-}" ]]; then
     complete|panel-failed|tally-error|degraded-empty-collector|main-agent-vote-required|postplan-failed) LOOP_STATUS="${STEP3_REVIEW_LOOP_STATUS}" ;;
     main-agent-apply-required|per-round-approval-required|postplan-operator-required) LOOP_STATUS=complete ;;
   esac
-elif [[ -z "${LOOP_STATUS:-}" || ! "${LOOP_STATUS}" =~ ^(complete|cap-reached|zero-findings-degraded-panel|tally-error|degraded-empty-collector|panel-failed|main-agent-vote-required|main-agent-apply-required|per-round-approval-required|postplan-operator-required|postplan-failed)$ ]]; then
-  larch_err "**⚠ Step 3: missing or invalid LOOP_STATUS after run-step3-review.sh; treating plan review as panel-failed**"
-  LOOP_STATUS=panel-failed
 fi
 # Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
 [[ -n "${STEP3_REVIEW_LOOP_STATUS:-}" ]] && printf 'STEP3_REVIEW_LOOP_STATUS=%s\n' "$STEP3_REVIEW_LOOP_STATUS"

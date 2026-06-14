@@ -89,6 +89,10 @@ Codex and Cursor support generic prompts plus specialist `--agent-file` modes;
 - Cursor runs `cursor agent -p --trust --mode ask --output-format json`; `ask`
   and `plan` are both read-only Cursor modes, and the dirty-tree sidecar remains
   the post-run mutation detector.
+- Cursor review subprocesses run with stdin redirected from `/dev/null` so
+  non-interactive background tasks do not surface stdin-read noise. Codex stdin
+  handling is intentionally unchanged because `run-external-agent` already
+  starts Codex with a closed stdin.
 - Cursor JSON envelopes with an explicit empty `.result` are promoted to the
   literal `CURSOR_EMPTY_RESPONSE` in the reviewer output file after JSON
   post-processing. Missing `.result`, malformed JSON, or non-JSON prose keep the

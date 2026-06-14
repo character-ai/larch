@@ -153,6 +153,35 @@ step3_loop_read_review_round_count() {
     fi
 }
 
+step3_loop_record_result_env_write_failure() {
+    local status="$1" loop_status="$2" round_num="$3" result_env="$4"
+    local diag_file="" resolved_plugin_root=""
+    diag_file="$(mktemp "$DESIGN_TMPDIR/step3-result-env-write.failure.XXXXXX.log" 2>/dev/null || true)"
+    [[ -n "$diag_file" ]] || return 0
+    if ! {
+        printf 'attempted_result_env=%s\n' "${result_env##*/}"
+        printf 'step3_status=%s\n' "$status"
+        printf 'loop_status=%s\n' "$loop_status"
+        printf 'round=%s\n' "$round_num"
+        printf '%s\n' 'reason=phase_driver_write_result_env failed'
+    } >"$diag_file" 2>/dev/null; then
+        rm -f "$diag_file" 2>/dev/null || true
+        return 0
+    fi
+    resolved_plugin_root="${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-}}"
+    [[ -n "$resolved_plugin_root" ]] || return 0
+    command -v python3 >/dev/null 2>&1 || return 0
+    [[ -f "$resolved_plugin_root/python/cli.py" ]] || return 0
+    python3 "$resolved_plugin_root/python/cli.py" run-log append-failure \
+        --log "$DESIGN_TMPDIR/execution-issues.md" \
+        --site "design Step 3 review loop" \
+        --tool "phase_driver_write_result_env" \
+        --exit-code 1 \
+        --category "Tool Failures" \
+        --output-file "$diag_file" \
+        --redact >/dev/null 2>&1 || true
+}
+
 step3_loop_persist_envelope() {
     local status="$1" round_num="$2" rounds_completed="$3" final_round="$4"
     local safe_plan_review_continue_reason="" safe_scope_anchor_file=""
@@ -243,6 +272,7 @@ step3_loop_persist_envelope() {
         done
     fi
     if ! phase_driver_write_result_env "$result_env" "${kvs[@]}"; then
+        step3_loop_record_result_env_write_failure "$status" "$loop_status" "$round_num" "$result_env"
         emit "**⚠ step3_loop_persist_envelope: failed to write result env (${result_env##*/}); loop status may be unrecoverable**"
         emit_kv WARN "step3_loop_persist_envelope: phase_driver_write_result_env failed"
     fi

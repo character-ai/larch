@@ -157,7 +157,7 @@ EOFSTUB
 
 run_envelope_stub() {
     local dir="$1" stub="$2"
-    env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$ROOT" DESIGN_TMPDIR="$dir" "$stub"
+    env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$ROOT" PLUGIN_ROOT="$ROOT" DESIGN_TMPDIR="$dir" "$stub"
 }
 
 bash -n "$ROOT/skills/design/scripts/review-design-step3-loop.sh" || fail 'loop script bash -n failed'
@@ -613,13 +613,16 @@ case "$(cat "$D_MERGE_EMPTY/.step3-review-result.env")" in *PLAN_REVIEW_CONTINUE
 grep -q '^STEP3_REVIEW_LOOP_STATUS=complete$' "$D_MERGE_EMPTY/.step3-review-result.env" || fail 'sanitized-empty merge should persist loop status'
 
 
-echo '=== result-env write failure emits visible WARN ==='
+echo '=== result-env write failure preserves emitted loop status and logs failure ==='
 D_WARN="$TMP/write-failure-warn"
 write_common "$D_WARN"
 ln -sf "$D_WARN/nonexistent-target" "$D_WARN/.step3-review-result.env"
-envelope_stub="$(write_envelope_stub "$D_WARN" 'step3_loop_emit_envelope complete 1 1 1')"
+envelope_stub="$(write_envelope_stub "$D_WARN" 'step3_loop_emit_envelope main-agent-vote-required 1 1 1')"
 out="$(run_envelope_stub "$D_WARN" "$envelope_stub")"
 contains "$out" 'WARN=step3_loop_persist_envelope: phase_driver_write_result_env failed' 'write failure WARN kv'
+contains "$out" 'STEP3_REVIEW_LOOP_STATUS=main-agent-vote-required' 'write failure keeps operational status'
+case "$out" in *'STEP3_REVIEW_LOOP_STATUS=panel-failed'*) fail 'write failure must not emit panel-failed replacement status' ;; esac
+grep -Fq 'phase_driver_write_result_env' "$D_WARN/execution-issues.md" || fail 'write failure should append Tool Failures entry'
 
 
 echo '=== loop envelope carries REASON=ballot-items-lost ==='
