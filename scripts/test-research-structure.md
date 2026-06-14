@@ -31,6 +31,9 @@ the `/research` skill under the simplified fixed-shape topology
    `keep-sidecar`, `verbosity`. (Categories rather than literal `--foo`
    tokens to avoid tripping the unknown-flag guard the prose is documenting.)
 10. `SKILL.md` surfaces `--no-issue` (the only supported flag).
+11. `research-phase.md` pins `python/cli.py research run-planner` in §1.1.b and the §1.1.c edit loop.
+12. `citation-validation-phase.md` and `SKILL.md` pin `python/cli.py research validate-citations`.
+13. `research-phase.md` pins `python/cli.py research banner` at Step 1.5 and `SKILL.md` pins `python/cli.py research render-findings-batch` at Step 3.
 
 ## Wiring
 

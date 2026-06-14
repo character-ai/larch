@@ -74,6 +74,22 @@ else
     fail "case 1: safe-expansion idiom missing in $COLLECTOR — issue #511 may have regressed"
 fi
 
+# --- Case 7: collector §3.7 NS-retry validator cutover pin (always runs) ---
+SECTION_37_START=$(grep -n '^# --- 3\.7\. Retry NOT_SUBSTANTIVE' "$COLLECTOR" | head -1 | cut -d: -f1 || true)
+if [[ -n "$SECTION_37_START" ]]; then
+    SECTION_37=$(tail -n +"$SECTION_37_START" "$COLLECTOR")
+    if printf '%s\n' "$SECTION_37" | grep -q 'VALIDATOR_CMD=(python3 "$SCRIPT_DIR/../python/cli.py" eval validate-research-output)' \
+       && printf '%s\n' "$SECTION_37" | grep -q -- '--structured-reviewer-mode --write-structured' \
+       && printf '%s\n' "$SECTION_37" | grep -q '"${VAL_ARGS_NS\[@\]+"${VAL_ARGS_NS\[@\]}"}"' \
+       && ! printf '%s\n' "$SECTION_37" | grep -q 'validate-research-output\.sh'; then
+        ok "case 7: section 3.7 NS-retry paths pin VALIDATOR_CMD eval validate-research-output"
+    else
+        fail "case 7: section 3.7 NS-retry validator call sites missing Python CLI VALIDATOR_CMD pin"
+    fi
+else
+    fail "case 7: could not locate collector section 3.7 for NS-retry validator pin"
+fi
+
 # --- Cases 2/3: dynamic checks under vulnerable bash (< 4.4) ----------------
 #
 # Bash 4.4 fixed the empty-array nounset hazard, so the dynamic checks only

@@ -6,7 +6,7 @@
 
 **When to load**: When iterating on a `/research` prompt or harness change. The harness is the only programmatic consumer; humans read this file when authoring new evaluation questions or interpreting harness output. Not loaded by `/research` itself or by any other skill at runtime.
 
-**Source**: Anthropic's *How we built our multi-agent research system* and *Building Effective Agents* describe small-sample (~20-case) rubric-based LLM-as-judge evaluation as the substrate for prompt-side iteration. This catalog is the local instantiation.
+**Source**: Anthropic's *How we built our multi-agent research system* (`anthropic.com/engineering/built-multi-agent-research-system`) and *Building Effective Agents* describe small-sample (~20-case) rubric-based LLM-as-judge evaluation as the substrate for prompt-side iteration. This catalog is the local instantiation.
 
 ---
 

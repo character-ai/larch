@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-# ruff: noqa: UP022
+# ruff: noqa: UP022,TC002
 # pyright: reportUnusedCallResult=false
 
 import json
@@ -8,6 +8,8 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 import research_eval
 
@@ -48,9 +50,18 @@ def test_validation_mode_sentinels_and_thresholds(tmp_path: Path) -> None:
     cp = run_cli("eval", "validate-research-output", "--validation-mode", str(degraded))
     assert cp.returncode == 5
     assert "STATUS=CURSOR_EMPTY_RESPONSE" in cp.stdout
+    empty = write(tmp_path / "empty.txt", "CURSOR_EMPTY_RESPONSE\n")
+    assert research_eval.validate_research_output(empty, validation_mode=True) == 5
     short = write(tmp_path / "short.md", " ".join(["word"] * 31) + "\npython/research_eval.py:1\n")
     assert run_cli("eval", "validate-research-output", "--validation-mode", str(short)).returncode == 0
+    assert run_cli("eval", "validate-research-output", "--validation-mode", "--min-words", "10", str(short)).returncode == 0
     assert run_cli("eval", "validate-research-output", str(short)).returncode == 2
+    tsv = write(
+        tmp_path / "inline.tsv",
+        "schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix\n"
+        "1\tin_scope\timportant\tcorrectness\tpython/research_eval.py:1\twhat\tbreaks\tfix\n",
+    )
+    assert research_eval.validate_research_output(tsv, validation_mode=True) == 0
 
 
 def test_fenced_words_excluded_and_code_fence_counts_as_provenance(tmp_path: Path) -> None:
@@ -105,24 +116,124 @@ def test_eval_smoke_and_no_claude_requirement(tmp_path: Path) -> None:
 
 def test_eval_research_prompt_and_write_baseline_with_stubbed_claude(tmp_path: Path) -> None:
     stub = tmp_path / "claude"
-    stub.write_text("#!/usr/bin/env bash\ncat > /dev/null\nprintf 'Result with python/research_eval.py:1 and https://example.com plus keyword architecture.\\n'\n", encoding="utf-8")
+    stub.write_text(
+        "#!/usr/bin/env bash\n"
+        "input=$(cat)\n"
+        "if grep -q 'JUDGE_SCORE_TOTAL' <<<\"$input\"; then\n"
+        "  printf 'JUDGE_SCORE_TOTAL=80\\nJUDGE_SCORE_FACTUAL=16\\nJUDGE_SCORE_CITATION=16\\nJUDGE_SCORE_COMPLETENESS=16\\nJUDGE_SCORE_SOURCE_QUALITY=16\\nJUDGE_SCORE_TOOL_EFFICIENCY=16\\nJUDGE_RATIONALE=ok\\n'\n"
+        "else\n"
+        "  printf 'Result with python/research_eval.py:1 and https://example.com plus keyword architecture.\\n'\n"
+        "fi\n",
+        encoding="utf-8",
+    )
     stub.chmod(0o755)
     work = tmp_path / "work"
     baseline = tmp_path / "baseline.json"
     env = {"PATH": f"{tmp_path}:{os.environ.get('PATH','')}", "CLAUDE_PLUGIN_ROOT": str(ROOT)}
-    cp = run_cli("eval", "research", "--id", "where-defined-rebase-push", "--work-dir", str(work), "--write-baseline", str(baseline), "--timeout", "5", env=env)
+    cp = run_cli("eval", "research", "--id", "where-defined-rebase-push", "--work-dir", str(work), "--write-baseline", str(baseline), "--timeout", "5", "--judge-timeout", "5", env=env)
     assert cp.returncode == 0
     prompt = next(work.glob("*/prompt.txt")).read_text(encoding="utf-8")
     assert prompt.startswith("/larch:research --no-issue ")
     data = json.loads(baseline.read_text(encoding="utf-8"))
-    assert data["version"] == 1
+    assert data["version"] == 2
+    assert data["generated_at"]
     assert isinstance(data["entries"], list)
+    assert data["entries"]
+    entry = data["entries"][0]
+    assert entry["research_status"] == "ok"
+    assert "provenance" in entry
+    assert "judge_status" in entry
 
 
 def test_eval_baseline_ref_validation_and_missing_values(tmp_path: Path) -> None:
     env = {"PATH": str(tmp_path), "CLAUDE_PLUGIN_ROOT": str(ROOT)}
     assert run_cli("eval", "research", "--baseline", "bad ref", "--smoke-test", env=env).returncode == 2
     assert run_cli("eval", "research", "--timeout", "abc", "--smoke-test", env=env).returncode == 2
+    assert run_cli("eval", "validate-research-output").returncode == 1
+
+
+def test_eval_id_no_match_exits_zero(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(research_eval.shutil, "which", lambda name: "/bin/claude" if name == "claude" else None)
+    assert research_eval.eval_research(plugin_root=ROOT, id_filter="does-not-exist", work_dir=tmp_path) == 0
+
+
+def test_eval_baseline_git_show_success(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(research_eval.shutil, "which", lambda name: "/bin/claude" if name == "claude" else None)
+    baseline_json = '{"version":2,"harness_commit":null,"model_id":null,"generated_at":null,"entries":[]}\n'
+
+    def fake_run(argv, **kwargs):  # type: ignore[no-untyped-def]
+        if argv[:4] == ["git", "-C", str(ROOT), "show"]:
+            if kwargs.get("stdout") is not None:
+                kwargs["stdout"].write(baseline_json)
+            return subprocess.CompletedProcess(argv, 0, stdout=baseline_json, stderr="")
+        return subprocess.CompletedProcess(argv, 1, stdout="", stderr="missing")
+
+    monkeypatch.setattr(research_eval.subprocess, "run", fake_run)
+    assert research_eval.eval_research(plugin_root=ROOT, baseline_ref="main", work_dir=tmp_path, id_filter="missing-id") == 0
+
+
+def test_validate_research_output_unreadable_exits_four(tmp_path: Path) -> None:
+    path = tmp_path / "secret.md"
+    path.write_text("x\n", encoding="utf-8")
+    path.chmod(0o000)
+    try:
+        assert research_eval.validate_research_output(path) == 4
+    finally:
+        path.chmod(0o644)
+
+
+def test_parse_judge_output_fail_closed(tmp_path: Path) -> None:
+    judge = tmp_path / "judge.txt"
+    judge.write_text("not a judge response\n", encoding="utf-8")
+    parsed = research_eval.parse_judge_output(judge)
+    assert parsed["JUDGE_STATUS"] == "parse_failed"
+    assert parsed["JUDGE_TOTAL"] == "null"
+
+
+def test_classify_url_reputability_counts(tmp_path: Path) -> None:
+    path = write(tmp_path / "research.md", "https://anthropic.com/a https://medium.com/b https://example.com/c\n")
+    text = research_eval.classify_url_reputability(path)
+    assert "URL_HIGH=1" in text
+    assert "URL_LOW=1" in text
+    assert "URL_UNKNOWN=1" in text
+
+
+def test_research_status_timeout_mapping(tmp_path: Path) -> None:
+    stderr = tmp_path / "research.stderr"
+    stderr.write_text("TIMED_OUT_AFTER=5\n", encoding="utf-8")
+    assert research_eval._research_status_from_run(124, stderr) == "timeout"
+    assert research_eval._research_status_from_run(1, stderr) == "timeout"
+
+
+def test_eval_set_failure_matrix(tmp_path: Path) -> None:
+    bad = write(tmp_path / "bad.md", "### eval-1: ok\n- **question**: q?\n")
+    assert research_eval.validate_eval_set(bad) is False
+    missing_adv = write(
+        tmp_path / "adv.md",
+        "**Consumer**: x\n**Contract**: y\n**When to load**: z\n"
+        + "\n".join(
+            f"### eval-{i}: item-{i}\n- **question**: q?\n- **category**: lookup\n- **expected_provenance_count**: 1\n- **expected_keywords**: k\n- **notes**: n\n"
+            for i in range(1, 21)
+        )
+        + "\n",
+    )
+    assert research_eval.validate_eval_set(missing_adv) is False
+
+
+def test_quiet_contract_stream_for_eval_research_smoke(tmp_path: Path) -> None:
+    py = (
+        "import os, subprocess, sys; "
+        "fd=os.open(sys.argv[1], os.O_WRONLY|os.O_CREAT|os.O_TRUNC, 0o600); os.dup2(fd,3); os.close(fd); "
+        f"raise SystemExit(subprocess.call([{sys.executable!r}, {str(CLI)!r}, 'eval', 'research', '--smoke-test'], env={{**os.environ, 'PATH': sys.argv[2], 'CLAUDE_PLUGIN_ROOT': {str(ROOT)!r}}}))"
+    )
+    fd3 = tmp_path / "fd3.txt"
+    env = os.environ.copy()
+    env.pop("LARCH_QUIET_DISABLE", None)
+    env["IMPLEMENT_TMPDIR"] = str(tmp_path)
+    env["PATH"] = str(tmp_path)
+    got = subprocess.run([sys.executable, "-c", py, str(fd3), str(tmp_path)], cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
+    assert got.returncode == 0
+    assert "smoke test PASS" in got.stdout or "smoke test PASS" in (tmp_path / "fd3.txt").read_text(encoding="utf-8")
 
 
 def test_quiet_contract_stream_for_eval_validator(tmp_path: Path) -> None:

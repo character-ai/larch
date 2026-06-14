@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import argparse
+import datetime as _dt
 import json
 import os
 import re
@@ -194,7 +195,11 @@ def validate_research_output(
     if not input_file.is_file():
         _emit(f"file missing or not readable: {input_file}")
         return 4
-    text = input_file.read_text(encoding="utf-8", errors="replace")
+    try:
+        text = input_file.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        _emit(f"file missing or not readable: {input_file}")
+        return 4
     if structured_reviewer_mode:
         return validate_structured_reviewer_output(text, write_structured=write_structured)
     lines = _trimmed_nonblank(text)
@@ -278,9 +283,13 @@ class EvalEntry:
 
 
 def parse_eval_set(path: Path) -> list[EvalEntry]:
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return []
     entries: list[dict[str, str]] = []
     current: dict[str, str] | None = None
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+    for line in lines:
         match = re.match(r"^### eval-[0-9]+:\s*(.+)$", line)
         if match:
             if current is not None:
@@ -313,7 +322,12 @@ def validate_eval_set(path: Path) -> bool:
     if not path.is_file():
         _diag(f"eval-research: eval-set.md not found at {path}")
         return False
-    first20 = "\n".join(path.read_text(encoding="utf-8", errors="replace").splitlines()[:20])
+    try:
+        raw_text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        _diag(f"eval-research: eval-set.md not found at {path}")
+        return False
+    first20 = "\n".join(raw_text.splitlines()[:20])
     ok = True
     for marker in ("Consumer", "Contract"):
         if marker not in first20:
@@ -322,11 +336,20 @@ def validate_eval_set(path: Path) -> bool:
     if "When-to-load" not in first20 and "When to load" not in first20:
         _diag("eval-research: eval-set.md missing first-20-lines header marker: When-to-load")
         ok = False
-    text = path.read_text(encoding="utf-8", errors="replace")
-    if text.count("ADVERSARIAL") < 2 or "fictitious" not in text.lower() or "data" not in text.lower():
-        _diag("eval-research: eval-set.md missing required adversarial note shapes")
+    if ANTHROPIC_EVAL_SOURCE not in raw_text:
+        _diag(f"eval-research: eval-set.md missing Anthropic source literal: {ANTHROPIC_EVAL_SOURCE}")
         ok = False
     entries = parse_eval_set(path)
+    adv_notes = [entry.notes for entry in entries if re.search(r"adversarial", entry.notes, flags=re.IGNORECASE)]
+    if len(adv_notes) < 2:
+        _diag("eval-research: eval-set.md missing required adversarial note shapes")
+        ok = False
+    else:
+        has_fictitious = any(re.search(r"fictitious|fabricat|invent", note, flags=re.IGNORECASE) for note in adv_notes)
+        has_data_absence = any(re.search(r"data[- ]absen|no data|don.t have data", note, flags=re.IGNORECASE) for note in adv_notes)
+        if not has_fictitious or not has_data_absence:
+            _diag("eval-research: eval-set.md missing required adversarial note shapes")
+            ok = False
     if len(entries) < 20:
         _diag(f"eval-research: eval-set.md has {len(entries)} entries; need at least 20")
         ok = False
@@ -360,12 +383,28 @@ def validate_baseline_json(path: Path) -> bool:
         return False
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+    except (OSError, json.JSONDecodeError):
         _diag("eval-research: eval-baseline.json missing required keys (version, entries) or not valid JSON")
         return False
-    if not isinstance(data, dict) or "version" not in data or not isinstance(data.get("entries"), list):
+    if not isinstance(data, dict) or data.get("version") != 2 or not isinstance(data.get("entries"), list):
         _diag("eval-research: eval-baseline.json missing required keys (version, entries) or not valid JSON")
         return False
+    for entry in data["entries"]:
+        if not isinstance(entry, dict):
+            _diag("eval-research: eval-baseline.json entry is not an object")
+            return False
+        provenance = entry.get("provenance")
+        if not isinstance(provenance, dict):
+            _diag("eval-research: eval-baseline.json entry missing provenance object")
+            return False
+        for key in ("file_line", "repo_path", "url"):
+            if key not in provenance:
+                _diag(f"eval-research: eval-baseline.json entry provenance missing {key}")
+                return False
+        for key in ("id", "category", "keyword_coverage_pct", "length_lines", "judge_status", "wall_clock_seconds", "research_status"):
+            if key not in entry:
+                _diag(f"eval-research: eval-baseline.json entry missing {key}")
+                return False
     return True
 
 
@@ -412,6 +451,147 @@ def _score(path: Path, keywords: str) -> dict[str, int]:
     }
 
 
+JUDGE_RUBRIC = """You are a strict evaluator of /research outputs. Read the question, the research synthesis, and the expected_keywords list, then score the synthesis along five dimensions (each 0-20, total 0-100). Output MUST be exactly the format below — no preamble, no commentary, no markdown.
+
+If the research synthesis claims something the evidence does not support, score factual_accuracy 0-5. If it admits "we don't have data" when the question targets data that does not exist, score factual_accuracy 16-20. Do not invent intermediate scores; if uncertain, score lower.
+
+For citation_accuracy: count whether file/path citations are real (the file actually exists in the repo as cited) and whether URL citations are reputable (anthropic.com, openai.com, *.gov, *.edu, official docs > random Medium/blog posts).
+
+For tool_efficiency: did the synthesis use minimal tool calls relative to the depth of the answer?
+
+Output exactly these six lines:
+JUDGE_SCORE_FACTUAL=<0-20>
+JUDGE_SCORE_CITATION=<0-20>
+JUDGE_SCORE_COMPLETENESS=<0-20>
+JUDGE_SCORE_SOURCE_QUALITY=<0-20>
+JUDGE_SCORE_TOOL_EFFICIENCY=<0-20>
+JUDGE_SCORE_TOTAL=<0-100>
+
+Then one line: JUDGE_RATIONALE=<single-line summary, no newlines>
+"""
+
+
+def run_judge(
+    *,
+    plugin_root: Path,
+    out_dir: Path,
+    question: str,
+    research_file: Path,
+    expected_keywords: str,
+    judge_timeout: int,
+) -> int:
+    judge_prompt_file = out_dir / "judge-prompt.txt"
+    judge_out_file = out_dir / "judge.txt"
+    judge_err_file = out_dir / "judge.stderr"
+    research_text = research_file.read_text(encoding="utf-8", errors="replace") if research_file.is_file() else ""
+    judge_prompt_file.write_text(
+        f"{JUDGE_RUBRIC}\n\nQUESTION: {question}\n\nEXPECTED_KEYWORDS: {expected_keywords}\n\nRESEARCH SYNTHESIS:\n---\n{research_text}\n---\n",
+        encoding="utf-8",
+    )
+    judge_out_file.write_text("", encoding="utf-8")
+    judge_err_file.write_text("", encoding="utf-8")
+    return _run_with_timeout(
+        ["claude", "-p", "--plugin-dir", str(plugin_root)],
+        stdin_path=judge_prompt_file,
+        stdout_path=judge_out_file,
+        stderr_path=judge_err_file,
+        timeout=judge_timeout,
+        cwd=plugin_root,
+    )
+
+
+def parse_judge_output(judge_file: Path) -> dict[str, str]:
+    if not judge_file.is_file() or judge_file.stat().st_size == 0:
+        return {"JUDGE_STATUS": "parse_failed", "JUDGE_TOTAL": "null"}
+    text = judge_file.read_text(encoding="utf-8", errors="replace")
+    fields = {
+        "total": _first_match(text, r"^JUDGE_SCORE_TOTAL=([0-9]+)", 1),
+        "factual": _first_match(text, r"^JUDGE_SCORE_FACTUAL=([0-9]+)", 1),
+        "citation": _first_match(text, r"^JUDGE_SCORE_CITATION=([0-9]+)", 1),
+        "completeness": _first_match(text, r"^JUDGE_SCORE_COMPLETENESS=([0-9]+)", 1),
+        "source_quality": _first_match(text, r"^JUDGE_SCORE_SOURCE_QUALITY=([0-9]+)", 1),
+        "tool_efficiency": _first_match(text, r"^JUDGE_SCORE_TOOL_EFFICIENCY=([0-9]+)", 1),
+    }
+    if not all(fields.values()):
+        return {"JUDGE_STATUS": "parse_failed", "JUDGE_TOTAL": "null"}
+    total = fields["total"]
+    if not re.fullmatch(r"100|[1-9]?[0-9]", total or ""):
+        return {"JUDGE_STATUS": "parse_failed", "JUDGE_TOTAL": "null"}
+    for key in ("factual", "citation", "completeness", "source_quality", "tool_efficiency"):
+        if not re.fullmatch(r"20|1?[0-9]", fields[key] or ""):
+            return {"JUDGE_STATUS": "parse_failed", "JUDGE_TOTAL": "null"}
+    return {
+        "JUDGE_STATUS": "ok",
+        "JUDGE_FACTUAL": fields["factual"] or "",
+        "JUDGE_CITATION": fields["citation"] or "",
+        "JUDGE_COMPLETENESS": fields["completeness"] or "",
+        "JUDGE_SOURCE_QUALITY": fields["source_quality"] or "",
+        "JUDGE_TOOL_EFFICIENCY": fields["tool_efficiency"] or "",
+        "JUDGE_TOTAL": total or "",
+    }
+
+
+def _first_match(text: str, pattern: str, group: int) -> str | None:
+    match = re.search(pattern, text, flags=re.MULTILINE)
+    return match.group(group) if match else None
+
+
+def classify_url_reputability(out_file: Path) -> str:
+    if not out_file.is_file():
+        return "URL_HIGH=0\nURL_LOW=0\nURL_UNKNOWN=0\n"
+    text = out_file.read_text(encoding="utf-8", errors="replace")
+    high = low = unknown = 0
+    for url in sorted(set(re.findall(r"https?://[A-Za-z0-9._/?#&=%-]+", text))):
+        lowered = url.lower()
+        if any(token in lowered for token in ("anthropic.com", "openai.com", ".gov", ".edu", "deepmind.com", "microsoft.com/research", "arxiv.org", "nature.com")):
+            high += 1
+        elif any(token in lowered for token in ("medium.com", "dev.to", ".blog", "substack.com", "hashnode.dev")):
+            low += 1
+        else:
+            unknown += 1
+    return f"URL_HIGH={high}\nURL_LOW={low}\nURL_UNKNOWN={unknown}\n"
+
+
+def _research_status_from_run(rc: int, stderr_path: Path) -> str:
+    if rc == 0:
+        return "ok"
+    if rc == 124:
+        return "timeout"
+    if stderr_path.is_file():
+        try:
+            if "TIMED_OUT_AFTER=" in stderr_path.read_text(encoding="utf-8", errors="replace"):
+                return "timeout"
+        except OSError:
+            pass
+    return "research_failed"
+
+
+def _baseline_row(
+    *,
+    entry: EvalEntry,
+    score: dict[str, int],
+    research_status: str,
+    judge_kv: dict[str, str],
+    wall: int,
+) -> dict[str, object]:
+    judge_total = judge_kv.get("JUDGE_TOTAL", "null")
+    return {
+        "id": entry.id,
+        "category": entry.category,
+        "provenance": {
+            "file_line": score["prov_file_line"],
+            "repo_path": score["prov_repo_path"],
+            "url": score["prov_url"],
+        },
+        "keyword_coverage_pct": score["kw_pct"],
+        "length_lines": score["length"],
+        "judge_total": None if judge_total == "null" else int(judge_total),
+        "judge_status": judge_kv.get("JUDGE_STATUS", "unknown"),
+        "wall_clock_seconds": wall,
+        "research_status": research_status,
+    }
+
+
 def eval_research(
     *,
     plugin_root: Path = DEFAULT_ROOT,
@@ -423,7 +603,6 @@ def eval_research(
     judge_timeout: int = 600,
     smoke_test: bool = False,
 ) -> int:
-    _ = judge_timeout
     eval_set = plugin_root / EVAL_SET_REL
     baseline = plugin_root / EVAL_BASELINE_REL
     if not validate_eval_set(eval_set) or not validate_baseline_json(baseline):
@@ -450,6 +629,9 @@ def eval_research(
         _emit(f"eval-research: baseline ref {baseline_ref} cached at {target}")
         _emit(f"eval-research: --baseline: PREVIEW MODE — baseline JSON pre-fetched to {target}; inline delta columns are not yet wired in this PR (a future amendment will add them).")
     entries = [entry for entry in parse_eval_set(eval_set) if not id_filter or entry.id == id_filter]
+    if id_filter and not entries:
+        _emit(f"eval-research: no entries matched (--id {id_filter}); nothing to do.")
+        return 0
     rows: list[dict[str, object]] = []
     _emit(f"eval-research: work dir = {work_dir}")
     for entry in entries:
@@ -461,25 +643,55 @@ def eval_research(
         rc = _run_with_timeout(["claude", "-p", "--plugin-dir", str(plugin_root)], stdin_path=out_dir / "prompt.txt", stdout_path=out_dir / "research.md", stderr_path=out_dir / "research.stderr", timeout=timeout, cwd=plugin_root)
         elapsed = int(time.time() - start)
         (out_dir / "timing.txt").write_text(f"WALL_CLOCK_SECONDS={elapsed}\nEXIT_CODE={rc}\n", encoding="utf-8")
-        score = _score(out_dir / "research.md", entry.expected_keywords)
-        row = {"id": entry.id, "category": entry.category, "status": "ok" if rc == 0 else f"exit-{rc}", **score}
+        research_status = _research_status_from_run(rc, out_dir / "research.stderr")
+        research_file = out_dir / "research.md"
+        has_research = research_file.is_file() and research_file.stat().st_size > 0
+        if research_status == "ok" or has_research:
+            score = _score(research_file, entry.expected_keywords)
+        else:
+            score = {"prov_file_line": 0, "prov_repo_path": 0, "prov_url": 0, "kw_pct": 0, "length": 0}
+        if entry.category == "external-comparison":
+            (out_dir / "url-reputability.txt").write_text(classify_url_reputability(research_file), encoding="utf-8")
+        if research_status == "ok" and has_research:
+            judge_rc = run_judge(plugin_root=plugin_root, out_dir=out_dir, question=entry.question, research_file=research_file, expected_keywords=entry.expected_keywords, judge_timeout=judge_timeout)
+            judge_kv = parse_judge_output(out_dir / "judge.txt") if judge_rc == 0 else {"JUDGE_STATUS": "judge_call_failed", "JUDGE_TOTAL": "null"}
+        else:
+            judge_kv = {"JUDGE_STATUS": "skipped_no_research", "JUDGE_TOTAL": "null"}
+        row = _baseline_row(entry=entry, score=score, research_status=research_status, judge_kv=judge_kv, wall=elapsed)
         (out_dir / "row.json").write_text(json.dumps(row, sort_keys=True) + "\n", encoding="utf-8")
         rows.append(row)
-        # Keep judge layout stable even when no LLM judge is run by a stubbed environment.
-        (out_dir / "judge-prompt.txt").write_text("Judge the research output against the rubric.\n", encoding="utf-8")
-        (out_dir / "judge.txt").touch()
-        (out_dir / "judge.stderr").touch()
-        if entry.category == "external-comparison":
-            (out_dir / "url-reputability.txt").touch()
     if write_baseline:
+        harness_commit = ""
+        try:
+            got = subprocess.run(["git", "-C", str(plugin_root), "rev-parse", "HEAD"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, check=False)
+            if got.returncode == 0:
+                harness_commit = got.stdout.strip()
+        except OSError:
+            harness_commit = ""
+        payload = {
+            "version": 2,
+            "harness_commit": harness_commit or None,
+            "model_id": None,
+            "generated_at": _dt.datetime.now(tz=_dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "entries": rows,
+        }
         write_baseline.parent.mkdir(parents=True, exist_ok=True)
-        write_baseline.write_text(json.dumps({"version": 1, "entries": rows}, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        write_baseline.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         _emit(f"eval-research: baseline written to {write_baseline}")
         return 0
-    _emit("| id | category | status | provenance | keywords | lines |")
-    _emit("|---|---|---|---:|---:|---:|")
+    _emit("| id | category | prov_fl | prov_path | prov_url | kw% | len | judge | wall(s) | status |")
+    _emit("|---|---|---|---:|---:|---:|---:|---:|---:|---:|")
     for row in rows:
-        _emit(f"| {row['id']} | {row['category']} | {row['status']} | {row['prov_file_line']} | {row['kw_pct']}% | {row['length']} |")
+        prov = row["provenance"]
+        assert isinstance(prov, dict)
+        judge_total = row.get("judge_total")
+        judge_display = "?" if judge_total is None else str(judge_total)
+        judge_status = row.get("judge_status", "unknown")
+        _emit(
+            f"| {row['id']} | {row['category']} | {prov['file_line']} | {prov['repo_path']} | {prov['url']} | "
+            f"{row['keyword_coverage_pct']}% | {row['length_lines']} | {judge_display} | {row['wall_clock_seconds']} | "
+            f"{row['research_status']}/{judge_status} |"
+        )
     return 0
 
 

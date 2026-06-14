@@ -9,12 +9,15 @@ import concurrent.futures
 import contextlib
 import datetime as _dt
 import http.client
+import json
 import subprocess
 import ipaddress
 import os
 import re
 import socket
 import ssl
+import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Callable
@@ -99,11 +102,16 @@ def extract_filelines(report_text: str) -> list[str]:
     return sorted(out)
 
 
+_CGNAT_NET = ipaddress.ip_network("100.64.0.0/10")
+
+
 def _is_private_ip(value: str) -> bool:
     try:
         ip = ipaddress.ip_address(value.strip("[]"))
     except ValueError:
         return False
+    if ip in _CGNAT_NET:
+        return True
     return bool(ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_unspecified or ip.is_reserved)
 
 
@@ -118,18 +126,15 @@ def _resolve_public_ips(host: str, *, timeout: float, resolver: Callable[[str], 
     if resolver is not None:
         ips = resolver(host)
     else:
-        old_timeout = socket.getdefaulttimeout()
-        socket.setdefaulttimeout(timeout)
         try:
-            infos = socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)
-        except socket.gaierror:
-            return [], "dns-error"
-        except TimeoutError:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as single:
+                infos = single.submit(socket.getaddrinfo, host, 443, type=socket.SOCK_STREAM).result(timeout=timeout)
+        except concurrent.futures.TimeoutError:
             return [], "timeout"
+        except socket.gaierror:
+            return [], "network-error"
         except OSError:
             return [], "network-error"
-        finally:
-            socket.setdefaulttimeout(old_timeout)
         ips = []
         for info in infos:
             addr = info[4][0]
@@ -204,6 +209,104 @@ def fetch_url(
     if 500 <= code <= 599:
         return FetchResult("FAIL", f"head-server-error-{code}")
     return FetchResult("UNKNOWN", f"unrecognized-status-{code}")
+
+
+_FETCH_WORKER_CODE = """\
+import json
+import sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+import research
+result = research.fetch_url(sys.argv[2], timeout=int(sys.argv[3]))
+print(json.dumps({"status": result.status, "reason": result.reason}))
+"""
+
+
+def _decode_fetch_process(proc: subprocess.Popen[bytes]) -> FetchResult:
+    stdout = proc.stdout.read() if proc.stdout is not None else b""
+    if proc.returncode != 0 or not stdout.strip():
+        return FetchResult("UNKNOWN", "network-error")
+    try:
+        payload = json.loads(stdout.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return FetchResult("UNKNOWN", "network-error")
+    status = payload.get("status")
+    reason = payload.get("reason", "")
+    if status in {"PASS", "FAIL", "UNKNOWN"} and isinstance(reason, str):
+        return FetchResult(status, reason)
+    return FetchResult("UNKNOWN", "network-error")
+
+
+def _terminate_fetch_process(proc: subprocess.Popen[bytes]) -> None:
+    if proc.poll() is not None:
+        return
+    proc.terminate()
+    try:
+        proc.wait(timeout=1)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
+
+
+def _start_fetch_process(url: str, *, timeout: int) -> subprocess.Popen[bytes]:
+    root = str(Path(__file__).resolve().parent)
+    return subprocess.Popen(
+        [sys.executable, "-c", _FETCH_WORKER_CODE, root, url, str(timeout)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    )
+
+
+def _parallel_fetch_results(
+    fetch_targets: dict[str, str],
+    *,
+    budget_seconds: int,
+    per_fetch_timeout: int,
+    fetcher: Callable[[str], FetchResult] | None,
+    sleeper: Callable[[float], None] | None = None,
+) -> dict[str, FetchResult]:
+    sleep = sleeper or time.sleep
+    if fetcher is not None:
+        results: dict[str, FetchResult] = {}
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=min(16, len(fetch_targets)))
+        futures = {executor.submit(fetcher, target): key for key, target in fetch_targets.items()}
+        try:
+            done, pending = concurrent.futures.wait(futures, timeout=budget_seconds)
+            for future in done:
+                key = futures[future]
+                with contextlib.suppress(Exception):
+                    results[key] = future.result()
+            for future in pending:
+                future.cancel()
+                results[futures[future]] = FetchResult("UNKNOWN", "timeout")
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
+        return results
+
+    active: list[tuple[str, subprocess.Popen[bytes]]] = []
+    for key, target in fetch_targets.items():
+        active.append((key, _start_fetch_process(target, timeout=per_fetch_timeout)))
+    deadline = time.monotonic() + budget_seconds
+    results = {}
+    while active:
+        if time.monotonic() >= deadline:
+            break
+        next_active: list[tuple[str, subprocess.Popen[bytes]]] = []
+        for key, proc in active:
+            if proc.poll() is not None:
+                results[key] = _decode_fetch_process(proc)
+            else:
+                next_active.append((key, proc))
+        active = next_active
+        if active:
+            sleep(0.05)
+    for key, proc in active:
+        _terminate_fetch_process(proc)
+        with contextlib.suppress(Exception):
+            if proc.stdout is not None:
+                proc.stdout.read()
+        results[key] = FetchResult("UNKNOWN", "timeout")
+    return results
 
 
 def check_fileline(cite: str, *, git_root: Path | None = None) -> FetchResult:
@@ -321,13 +424,19 @@ def validate_citations(
     max_claims: int = 200,
     fetcher: Callable[[str], FetchResult] | None = None,
     git_root: Path | None = None,
+    sleeper: Callable[[float], None] | None = None,
 ) -> tuple[int, int, int, int]:
     if not report.is_file():
         _write_text_atomic(output, _sidecar(total=0, pass_count=0, fail_count=0, unknown_count=0, status=f"input report not readable: `{report}`"))
         _emit_summary(0, 0, 0, 0)
         return 0, 0, 0, 0
     tmpdir.mkdir(parents=True, exist_ok=True)
-    text = report.read_text(encoding="utf-8", errors="replace")
+    try:
+        text = report.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        _write_text_atomic(output, _sidecar(total=0, pass_count=0, fail_count=0, unknown_count=0, status=f"input report not readable: `{report}`"))
+        _emit_summary(0, 0, 0, 0)
+        return 0, 0, 0, 0
     urls = extract_urls(text)
     dois = extract_dois(text)
     filelines = extract_filelines(text)
@@ -343,23 +452,17 @@ def validate_citations(
         _write_text_atomic(output, _sidecar(synth_bytes=len(text.encode()), synth_lines=len(text.splitlines()), total=0, pass_count=0, fail_count=0, unknown_count=0, rows=[]))
         _emit_summary(0, 0, 0, 0)
         return 0, 0, 0, 0
-    fetcher = fetcher or (lambda value: fetch_url(value, timeout=per_fetch_timeout))
     fetch_targets: dict[str, str] = {url: url for url in urls}
     for doi in dois:
         if _VALID_DOI_RE.match(doi):
             fetch_targets[f"doi:{doi}"] = f"https://doi.org/{doi}"
-    fetch_results: dict[str, FetchResult] = {}
-    if fetch_targets:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=min(16, len(fetch_targets))) as executor:
-            futures = {executor.submit(fetcher, target): key for key, target in fetch_targets.items()}
-            done, pending = concurrent.futures.wait(futures, timeout=budget_seconds)
-            for future in done:
-                key = futures[future]
-                with contextlib.suppress(Exception):
-                    fetch_results[key] = future.result()
-            for future in pending:
-                future.cancel()
-                fetch_results[futures[future]] = FetchResult("UNKNOWN", "timeout")
+    fetch_results = _parallel_fetch_results(
+        fetch_targets,
+        budget_seconds=budget_seconds,
+        per_fetch_timeout=per_fetch_timeout,
+        fetcher=fetcher,
+        sleeper=sleeper,
+    ) if fetch_targets else {}
     rows: list[CitationLedgerRow] = []
     counts = {"PASS": 0, "FAIL": 0, "UNKNOWN": 0}
 
@@ -452,9 +555,17 @@ def render_findings_batch(
 ) -> tuple[int, bool]:
     if not report.is_file():
         raise FileNotFoundError(str(report))
+    try:
+        report_text = report.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        raise FileNotFoundError(str(report)) from exc
     question = ""
     if research_question_file.is_file():
-        for line in research_question_file.read_text(encoding="utf-8", errors="replace").splitlines():
+        try:
+            question_lines = research_question_file.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            question_lines = []
+        for line in question_lines:
             if line.strip():
                 question = line
                 break
@@ -462,7 +573,7 @@ def render_findings_batch(
         question = "(research question unavailable)"
     timestamp = timestamp or _dt.datetime.now(tz=_dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     count, payload, section_absent = rendering.render_findings_issue_batch(
-        report.read_text(encoding="utf-8", errors="replace"),
+        report_text,
         research_question=question,
         branch=branch,
         commit=commit,
@@ -514,7 +625,11 @@ def run_research_planner(raw: Path, output: Path) -> tuple[str, int]:
         return "empty_input", 1
     if not output.parent.is_dir():
         return "bad_path", 2
-    questions = [line for line in (_sanitize_planner_line(line) for line in raw.read_text(encoding="utf-8", errors="replace").splitlines()) if line and line.endswith("?")]
+    try:
+        raw_lines = raw.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return "empty_input", 1
+    questions = [line for line in (_sanitize_planner_line(line) for line in raw_lines) if line and line.endswith("?")]
     if any("||" in question for question in questions):
         return "delimiter_collision", 1
     if len(questions) < 2:
