@@ -673,7 +673,7 @@ def test_step2_dispatch_wrapper_validation_failure_bails(_repo: Path, tmp_path: 
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
 
     def fake_launcher(_st: implement_dispatch.DispatchState):
-        return implement_dispatch.WRAPPER_VALIDATION_RC, {}, ""
+        return implement_dispatch.WRAPPER_VALIDATION_RC, dict[str, str](), ""
 
     monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
     rc = implement_dispatch.step2_dispatch_main([
