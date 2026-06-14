@@ -68,6 +68,8 @@ cat >"$ROOT/round-1/panel-manifest.ndjson" <<'JSON'
 {"slot":"structure","tool":"cursor","output":"/t/round-1/cursor-specialist-structure-output.txt"}
 {"slot":"correctness","tool":"cursor","output":"/t/round-1/cursor-specialist-correctness-output.txt"}
 {"slot":"generic","tool":"codex","output":"/t/round-1/codex-generalist-output.txt"}
+{"slot":"ci.out","tool":"cursor","output":"/t/round-1/cursor-ci.out"}
+{"slot":"ci.out","tool":"claude","output":"/t/round-1/claude-ci.out"}
 JSON
 
 # round 2: 3 suggestions (all accepted), 0 OOS, reviewers via static+dynamic fallback (3+1=4), no failures.
@@ -102,6 +104,13 @@ JSON
     printf 'v1\tvendor\t1700000030\timplement\t-\tcodex\tvendor-misc\t1700000030\t1700000050\t20\tscout-plan-manifest.json.raw\t0\tcomplete\n'
     printf 'v1\tvendor\t1700000040\timplement\t-\tcodex\tcodex-plan-autofix\t1700000040\t1700000070\t30\tcodex-output.txt\t0\tcomplete\n'
     printf 'v1\tvendor\t1700000050\timplement\t-\tcursor\tcursor-plan-autofix\t1700000050\t1700000080\t30\tcursor-output.txt\t0\tcomplete\n'
+    printf 'v1\tvendor\t1700000285\timplement\t-\tcursor\tcursor-ci\t1700000285\t1700000286\t1\tcursor-ci.out\t0\tcomplete\n'
+    printf 'v1\tvendor\t1700000286\timplement\t-\tclaude\tclaude-ci\t1700000286\t1700000287\t1\tclaude-ci.out\t0\tcomplete\n'
+    printf 'v1\tvendor\t1700000287\timplement\t-\tcodex\treview\t1700000287\t1700000288\t1\tci-fix-codex.out\t0\tcomplete\n'
+    printf 'v1\tvendor\t1700000288\timplement\t-\tclaude\treview\t1700000288\t1700000289\t1\t/t/round-1/unknown/claude.out\t0\tcomplete\n'
+    printf 'v1\tvendor\t1700000289\timplement\t-\tcodex\treview\t1700000289\t1700000290\t1\t/t/round-1/probe/codex.out\t0\tcomplete\n'
+    printf 'v1\tvendor\t1700000290\timplement\t-\tcursor\tcursor-ci-test\t1700000290\t1700000291\t1\tcursor-ci-test-output.txt\t0\tcomplete\n'
+    printf 'v1\tvendor\t1700000291\timplement\t-\tcursor\treview\t1700000291\t1700000292\t1\t/t/round-1/cursor/ci.out\t0\tcomplete\n'
     printf 'v1\tvendor\t1700001010\timplement\t-\tcursor\treview\t1700001010\t1700001100\t90\tcursor-specialist-correctness-output.txt\t0\tcomplete\n'
 } >"$ROOT/timing-ledger.tsv"
 
@@ -147,19 +156,43 @@ top_line=$(grep -nF '**Top reviewers**' "$OUT" | head -1 | cut -d: -f1 || true)
 grep -Fq -- '```' "$OUT" || fail 'ASCII chart missing plain fence'
 if grep -Fq -- '```mermaid' "$OUT"; then fail 'ASCII chart must not use Mermaid fence'; fi
 if grep -Fq -- 'dateFormat X' "$OUT" || grep -Fq -- 'axisFormat %H:%M:%S' "$OUT"; then fail 'ASCII chart must not contain Mermaid directives'; fi
-grep -Fq -- 'Round 1 reviewer timing  ·  window 0:00-5:00 (300s)' "$OUT" || fail 'ASCII chart title must use m:ss span'
+grep -Fq -- 'Round 1 reviewer timing  ·  window 0:00-3:20 (200s)' "$OUT" || fail 'ASCII chart title must use filtered m:ss span'
 grep -Fq -- 'cursor/structure' "$OUT" || fail 'ASCII label must use slot_map when available'
 grep -Fq -- 'unknown/reviewer:unsafe,name' "$OUT" || fail 'ASCII fallback label must preserve punctuation'
 grep -Fq -- 'aggregator ' "$OUT" || fail 'ASCII fallback label must render aggregator'
 grep -Fq -- 'scout ' "$OUT" || fail 'ASCII fallback label must render scout-plan-manifest as scout'
 grep -Fq -- 'codex/codex-plan-autofix' "$OUT" || fail 'ASCII bare codex output must use task kind'
 grep -Fq -- 'cursor/cursor-plan-autofix' "$OUT" || fail 'ASCII bare cursor output must use task kind'
+if grep -Fq -- 'ci.out' "$OUT"; then fail 'ASCII chart must filter CI output basenames'; fi
+if grep -Fq -- 'cursor/ci.out' "$OUT"; then fail 'ASCII chart must filter cursor CI output rows'; fi
+if grep -Fq -- 'claude/ci.out' "$OUT"; then fail 'ASCII chart must filter claude CI output rows'; fi
+if grep -Fq -- 'ci-fix-codex.out' "$OUT"; then fail 'ASCII chart must filter ci-fix output rows'; fi
+if grep -Fq -- 'unknown/claude.out' "$OUT"; then fail 'ASCII chart must filter launcher probe rows'; fi
+if grep -Fq -- 'unknown/codex.out' "$OUT"; then fail 'ASCII chart must filter symmetric launcher probe rows'; fi
 grep -Fq -- 'cursor/correctness' "$OUT" || fail 'ASCII chart must render round 2 task'
 grep -Fq -- '### Round 2 reviewer timing' "$OUT" || fail 'ASCII chart must render round 2 heading'
 grep -Fq -- '120s' "$OUT" || fail 'ASCII chart must include bare duration suffix'
 if grep -Eq '\([0-9]+-[0-9]+\)' "$OUT"; then fail 'ASCII chart must not include parenthesized ranges'; fi
 assert_ascii_chart_invariants "$OUT"
 pass 'reviewer timing ASCII charts render with raw labels and invariants'
+
+CI_ONLY="$WORK/ci-only-run"
+mkdir -p "$CI_ONLY/round-1"
+cat >"$CI_ONLY/round-1/round-meta.json" <<'JSON'
+{"tally":{"ACCEPTED_COUNT":"0","REJECTED_COUNT":"0","EXONERATED_COUNT":"0","NEUTRAL_COUNT":"0","OOS_ACCEPTED_COUNT":"0","OOS_REJECTED_COUNT":"0"},"summary":{"panel":{"total_slot_count":3}}}
+JSON
+{
+    printf 'v1\tround\t1700000000\timplement\tStep 5 — code review\t1\t1700000000\t1700000060\t60\t0\t0\t0\t-\n'
+    printf 'v1\tvendor\t1700000001\timplement\t-\tcursor\tcursor-ci\t1700000001\t1700000002\t1\tcursor-ci.out\t0\tcomplete\n'
+    printf 'v1\tvendor\t1700000003\timplement\t-\tcodex\treview\t1700000003\t1700000004\t1\tci-fix-codex.out\t0\tcomplete\n'
+    printf 'v1\tvendor\t1700000005\timplement\t-\tclaude\treview\t1700000005\t1700000006\t1\t/t/probe/claude.out\t0\tcomplete\n'
+} >"$CI_ONLY/timing-ledger.tsv"
+CI_ONLY_OUT="$WORK/ci-only.md"
+"$HELPER" --rounds-root "$CI_ONLY" --timing-ledger "$CI_ONLY/timing-ledger.tsv" --skill implement --output "$CI_ONLY_OUT"
+grep -Fq -- '| 1 | 0 | 0 | 0 | 0 | 1m 00s | — | 3 |' "$CI_ONLY_OUT" || fail 'CI-only filtering must keep the round table'
+grep -Fq -- '### Round 1 reviewer timing' "$CI_ONLY_OUT" || fail 'CI-only filtering must keep the timing heading'
+grep -Fq -- 'No reviewer timing tasks overlapped this round.' "$CI_ONLY_OUT" || fail 'CI-only filtering must render no-task note'
+pass 'CI and launcher probe-only timing renders no-task note'
 
 NO_GANTT_OUT="$WORK/no-gantt.md"
 "$HELPER" --rounds-root "$ROOT" --findings-file "$ROOT/review-findings-full.jsonl" \

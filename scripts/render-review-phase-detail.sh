@@ -392,6 +392,24 @@ function base(path,    n, parts) {
     n = split(path, parts, "/")
     return parts[n]
 }
+function is_ci_task_kind(kind,    k) {
+    k = tolower(kind)
+    return (k == "codex-ci" || k == "cursor-ci" || k == "claude-ci" ||
+        k == "codex-ci-fix" || k == "cursor-ci-fix" || k == "claude-ci-fix" ||
+        k ~ /-ci$/ || k ~ /-ci-fix$/ || k ~ /-ci-test$/)
+}
+function is_ci_output_basename(out,    bn) {
+    bn = tolower(base(out))
+    return (bn == "ci.out" || bn ~ /-ci\.out$/ || bn ~ /^ci-fix-.*\.out$/)
+}
+function is_launcher_probe_basename(out,    bn) {
+    bn = tolower(base(out))
+    return (bn == "claude.out" || bn == "codex.out" || bn == "cursor.out")
+}
+function skip_gantt_row(kind, out) {
+    return (is_ci_task_kind(kind) || is_ci_output_basename(out) ||
+        is_launcher_probe_basename(out))
+}
 function label_for(out, vendor, kind,    bn, val) {
     bn = base(out)
     if (bn in m) return m[bn]
@@ -410,6 +428,7 @@ $2=="vendor" && NF >= 9 && isint($8) && isint($9) {
     cs = (vs < rstart ? rstart : vs)
     ce = (ve > rend ? rend : ve)
     if (ce <= cs) next
+    if (skip_gantt_row($7, (NF >= 11 ? $11 : ""))) next
     label = label_for((NF >= 11 ? $11 : ""), $6, $7)
     printf "%s\t%d\t%d\n", label, cs, ce
 }
@@ -434,13 +453,26 @@ AWK
         {
             printf '### Round %s reviewer timing\n\n' "$gw_rn"
             if [ -s "$tasks_file" ]; then
+                chart_range="$(awk -F'\t' '
+                    NF >= 3 {
+                        if (s=="" || ($2+0) < s) s=$2+0
+                        if (e=="" || ($3+0) > e) e=$3+0
+                    }
+                    END { if (s != "" && e != "") printf "%d %d", s, e }
+                ' "$tasks_file" 2>/dev/null || true)"
+                chart_start=""; chart_end=""
+                if [ -n "$chart_range" ]; then
+                    chart_start="${chart_range%% *}"
+                    chart_end="${chart_range##* }"
+                fi
                 chart=""
-                if chart="$(python3 "$SCRIPT_DIR/../python/cli.py" gantt render \
-                    --window-start-s "$gw_start" \
-                    --window-end-s "$gw_end" \
-                    --rows-tsv "$tasks_file" 2>/dev/null)"; then
+                if [ -n "$chart_start" ] && [ -n "$chart_end" ] && [ "$chart_end" -gt "$chart_start" ] &&
+                    chart="$(python3 "$SCRIPT_DIR/../python/cli.py" gantt render \
+                        --window-start-s "$chart_start" \
+                        --window-end-s "$chart_end" \
+                        --rows-tsv "$tasks_file" 2>/dev/null)"; then
                     if [ -n "$chart" ]; then
-                        span=$((gw_end - gw_start))
+                        span=$((chart_end - chart_start))
                         printf '```\n'
                         printf 'Round %s reviewer timing  ·  window 0:00-%s (%ss)\n' "$gw_rn" "$(fmt_mss "$span")" "$span"
                         printf '%s\n' "$chart"
