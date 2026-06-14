@@ -1081,6 +1081,7 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
             ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
             --workspace "$PWD" \
             "$WRAPPED_PROMPT" \
+            < /dev/null \
             2>>"$_STDERR_TARGET" &
     WRAPPER_PID=$!
     external_serial_lock_release_after "$_SERIAL_LOCK" "$HOLD"

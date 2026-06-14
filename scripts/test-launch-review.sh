@@ -176,6 +176,16 @@ fi
 if [[ -n "${CODEX_STUB_HOME_FILE:-}" ]]; then
     printf '%s\n' "${CODEX_HOME:-}" > "$CODEX_STUB_HOME_FILE"
 fi
+if [[ -n "${CODEX_STUB_FD0_LOG:-}" ]]; then
+    case "$(uname -s)" in
+        Linux)
+            readlink "/proc/$$/fd/0" 2>/dev/null > "$CODEX_STUB_FD0_LOG" || true ;;
+        Darwin)
+            lsof -p "$$" -a -d 0 -F n 2>/dev/null | sed -n 's/^n//p' | head -1 > "$CODEX_STUB_FD0_LOG" || true ;;
+        *)
+            : > "$CODEX_STUB_FD0_LOG" ;;
+    esac
+fi
 if [[ -n "${CODEX_STUB_CONFIG_FILE:-}" && -n "${CODEX_HOME:-}" && -f "$CODEX_HOME/config.toml" ]]; then
     cp "$CODEX_HOME/config.toml" "$CODEX_STUB_CONFIG_FILE"
 fi
@@ -222,6 +232,7 @@ ARGV="$TMPDIR/argv.txt"
 COUNT="$TMPDIR/count.txt"
 TOKEN_SESSION_FILE="$TMPDIR/token-session.txt"
 CODEX_HOME_FILE="$TMPDIR/codex-home.txt"
+CODEX_FD0_LOG="$TMPDIR/codex-fd0.txt"
 CODEX_CONFIG_FILE="$TMPDIR/codex-config.toml"
 IMPLEMENT_TMPDIR_FIXTURE="$TMPDIR/implement-tmpdir"
 mkdir -p "$IMPLEMENT_TMPDIR_FIXTURE"
@@ -232,6 +243,7 @@ PATH="$STUB_BIN:$PATH" \
     CODEX_STUB_COUNT_FILE="$COUNT" \
     CODEX_STUB_TOKEN_SESSION_FILE="$TOKEN_SESSION_FILE" \
     CODEX_STUB_HOME_FILE="$CODEX_HOME_FILE" \
+    CODEX_STUB_FD0_LOG="$CODEX_FD0_LOG" \
     CODEX_STUB_CONFIG_FILE="$CODEX_CONFIG_FILE" \
     IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR_FIXTURE" \
     LARCH_TOKEN_SESSION_ID="stale-codex-review-session" \
@@ -240,6 +252,10 @@ PATH="$STUB_BIN:$PATH" \
 
 assert_eq "stub invoked once" "1" "$(cat "$COUNT")"
 assert_eq "token session id rehydrated" "mock-codex-review-session" "$(cat "$TOKEN_SESSION_FILE")"
+case "$(cat "$CODEX_FD0_LOG" 2>/dev/null || true)" in
+    ""|/dev/null) pass ;;
+    *) fail "codex review stdin should be /dev/null when fd probing is available" ;;
+esac
 
 # DESIGN_TMPDIR/session-id fallback when IMPLEMENT_TMPDIR is unset (parity with Cursor branch).
 DESIGN_TOKEN_ONLY="$TMPDIR/design-token-only"
@@ -1810,17 +1826,18 @@ assert_equals "case A done code" "0" "$(cat "${OUT_A}.done")"
 # Case B: successful runs enrich .meta with outer-launcher replay keys and
 # persist the original unwrapped prompt byte-for-byte.
 OUT_B="$TMPDIR/cursor-b.txt"
+CURSOR_FD0_LOG="$TMPDIR/cursor-b-fd0.txt"
 PATH="$STUB_BIN:$PATH" \
+    CURSOR_STUB_FD0_LOG="$CURSOR_FD0_LOG" \
     "$LAUNCHER" --output "$OUT_B" --timeout 5 --prompt "original prompt" >/dev/null 2>"$TMPDIR/case-b.stderr"
 assert_grep "case B outer launcher" "^OUTER_LAUNCHER=$REPO_ROOT/scripts/launch-review.sh$" "${OUT_B}.meta"
 assert_grep "case B outer prompt" "^OUTER_LAUNCHER_PROMPT_FILE=${OUT_B}.prompt$" "${OUT_B}.meta"
 assert_grep "case B workdir" "^OUTER_LAUNCHER_WORKDIR=$(pwd -P)$" "${OUT_B}.meta"
 assert_grep "case B cursor success sidecar marker" "cursor-status: ok" "${OUT_B}.sidecar"
-# Background processes in non-interactive shells always receive stdin=/dev/null
-# regardless of the parent's stdin — no explicit < /dev/null redirect needed or
-# expected for cursor (unlike codex which gets an explicit one). Just confirm
-# the launcher completed successfully.
-pass
+case "$(cat "$CURSOR_FD0_LOG" 2>/dev/null || true)" in
+    ""|/dev/null) pass ;;
+    *) fail "case B cursor stdin should be /dev/null when fd probing is available" ;;
+esac
 # Issue #1529: the OUTPUT.prompt sidecar holds the user-original prompt
 # (no preamble) so collect-agent-results.sh empty-output retry can replay
 # via --prompt-file without double-prepending the STRICT CONSTRAINTS block.

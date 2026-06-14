@@ -17,7 +17,9 @@ Carry-through KVs include `ROUNDS_COMPLETED`, `FINAL_ROUND_NUM`, `ACCEPTED_COUNT
 
 ## Envelope KV safety
 
-Emitted and durable loop-envelope KV values must be single-line. `PLAN_REVIEW_CONTINUE_REASON` strips CR/LF before FD3 emission and result-env persistence. Merged `PLAN_REVIEW_CONTINUE_REASON` values from an existing `.step3-review-result.env` strip CR/LF before being preserved; sanitized-empty merged values are omitted (no `PLAN_REVIEW_CONTINUE_REASON=` line). `SCOPE_ANCHOR_FILE` is omitted when it contains CR/LF; invalid multiline scope anchors are not repaired by stripping characters. When `phase_driver_write_result_env` fails, the loop emits a visible human warning via `emit` and a `WARN=` KV via `emit_kv` instead of silently swallowing the failure with `|| true`.
+Emitted and durable loop-envelope KV values must be single-line. `PLAN_REVIEW_CONTINUE_REASON` strips CR/LF before FD3 emission and result-env persistence. Merged `PLAN_REVIEW_CONTINUE_REASON` values from an existing `.step3-review-result.env` strip CR/LF before being preserved; sanitized-empty merged values are omitted (no `PLAN_REVIEW_CONTINUE_REASON=` line). `SCOPE_ANCHOR_FILE` is omitted when it contains CR/LF; invalid multiline scope anchors are not repaired by stripping characters. When `phase_driver_write_result_env` fails, the loop emits a visible human warning via `emit` and a `WARN=` KV via `emit_kv` instead of silently swallowing the failure with `|| true`. It also records a best-effort `Tool Failures` entry in `execution-issues.md` when diagnostic allocation and `python/cli.py run-log append-failure` are available.
+
+Persist failures do not emit replacement `STEP3_REVIEW_LOOP_STATUS` or `LOOP_STATUS` KVs. `step3_loop_emit_envelope` already emitted the operational status before persistence. `design-step3-review.sh` owns the production handoff fallback when no usable Step 3 status reaches the wrapper.
 
 ## Resume phases
 

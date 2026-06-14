@@ -7,6 +7,20 @@ WRAPPER="$ROOT/skills/design/scripts/design-step3-review.sh"
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 pass() { printf 'PASS: %s\n' "$*"; }
 
+make_fake_step3_plugin() {
+  local dir="$1" run_body="$2"
+  mkdir -p "$dir/scripts" "$dir/skills/design/scripts"
+  ln -sf "$ROOT/scripts/read-result-env.sh" "$dir/scripts/read-result-env.sh"
+  ln -sf "$ROOT/scripts/lib-quiet.sh" "$dir/scripts/lib-quiet.sh"
+  ln -sf "$ROOT/skills/design/scripts/lib-phase-driver.sh" "$dir/skills/design/scripts/lib-phase-driver.sh"
+  cat >"$dir/skills/design/scripts/run-step3-review.sh" <<EOFSTUB
+#!/usr/bin/env bash
+set -euo pipefail
+$run_body
+EOFSTUB
+  chmod +x "$dir/skills/design/scripts/run-step3-review.sh"
+}
+
 grep -Fq 'step3_stage_postplan_failed' "$LOOP" || fail 'postplan-failed staging helper missing'
 grep -Fq -- '--outcome failed-postplan' "$LOOP" || fail 'failed-postplan outcome not staged'
 # shellcheck disable=SC2016
@@ -93,3 +107,32 @@ if grep 'printf.*\*\*⚠ Step 3' "$WRAPPER" | grep -qv '>&2'; then
   fail 'design-step3-review.sh must route Step 3 markdown warnings to stderr'
 fi
 pass 'Step 3 wrapper keeps stdout KV-only'
+
+D_MISSING=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-missing-result.XXXXXX")
+FAKE_MISSING="$D_MISSING/fake-plugin"
+make_fake_step3_plugin "$FAKE_MISSING" 'exit 0'
+set +e
+missing_out=$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$FAKE_MISSING" DESIGN_TMPDIR="$D_MISSING" ISSUE_NUMBER=9 \
+  "$WRAPPER" 2>"$D_MISSING/stderr.log")
+missing_rc=$?
+set -e
+[[ "$missing_rc" -eq 0 ]] || fail "missing result wrapper rc=$missing_rc stdout=$missing_out stderr=$(cat "$D_MISSING/stderr.log")"
+grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=panel-failed' <<<"$missing_out" || fail 'missing result wrapper should emit STEP3_REVIEW_LOOP_STATUS=panel-failed'
+grep -Fxq 'LOOP_STATUS=panel-failed' <<<"$missing_out" || fail 'missing result wrapper should emit LOOP_STATUS=panel-failed'
+grep -Fq '**⚠ Step 3: result env missing or empty after loop exit; treating as panel-failed**' "$D_MISSING/stderr.log" || fail 'missing result warning missing from stderr'
+rm -rf "$D_MISSING"
+pass 'Step 3 wrapper degrades missing result env to panel-failed'
+
+D_LEGACY=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-legacy-loop.XXXXXX")
+FAKE_LEGACY="$D_LEGACY/fake-plugin"
+make_fake_step3_plugin "$FAKE_LEGACY" 'printf "%s\n" "LOOP_STATUS=panel-failed"'
+set +e
+legacy_out=$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$FAKE_LEGACY" DESIGN_TMPDIR="$D_LEGACY" ISSUE_NUMBER=9 \
+  "$WRAPPER" 2>"$D_LEGACY/stderr.log")
+legacy_rc=$?
+set -e
+[[ "$legacy_rc" -eq 0 ]] || fail "legacy loop wrapper rc=$legacy_rc stdout=$legacy_out stderr=$(cat "$D_LEGACY/stderr.log")"
+grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=panel-failed' <<<"$legacy_out" || fail 'legacy LOOP_STATUS=panel-failed should back-map STEP3_REVIEW_LOOP_STATUS'
+grep -Fxq 'LOOP_STATUS=panel-failed' <<<"$legacy_out" || fail 'legacy LOOP_STATUS=panel-failed should survive normalization'
+rm -rf "$D_LEGACY"
+pass 'Step 3 wrapper back-maps legacy LOOP_STATUS=panel-failed'

@@ -22,10 +22,13 @@ Wrapper for a `/design` Bash block that keeps `skills/design/SKILL.md` free of i
 - Sites that previously wrote phase state and then launched review separately must collapse to one wrapper invocation at the resume boundary.
 - `awaiting-vote` remains an internal loop state and is not accepted as a wrapper resume phase.
 - Does not derive the root Claude PID from `$PPID` internally.
+- After merging `.step3-review-result.env` and captured child stdout, an empty `STEP3_REVIEW_LOOP_STATUS` is repaired from a valid recoverable `LOOP_STATUS` when possible.
+- The legacy `LOOP_STATUS=zero-findings-degraded-panel` token is not newly mapped to `complete`.
+- If no recoverable Step 3 loop status is available, the wrapper emits the missing-result warning to stderr and degrades to `panel-failed`.
 
 ## Harness
 
-Covered by `scripts/test-design-structure.sh` and relevant `/design` script checks.
+Covered by `scripts/test-design-structure.sh`, `skills/design/scripts/test-design-step3-review.sh`, and relevant `/design` script checks.
 
 ## KV-only postplan failure
 
