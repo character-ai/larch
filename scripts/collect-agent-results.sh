@@ -800,6 +800,13 @@ launch_outer_retry_or_mark() {
         validate_retry_stderr_sink_or_mark "$idx" "$orig_output" || return 1
         _outer_sink_args=()
         [[ -n "$META_STDERR_SINK" ]] && _outer_sink_args+=(--stderr-sink "$META_STDERR_SINK")
+        _outer_timing_kind="$META_OUTER_LAUNCHER_TIMING_KIND"
+        if [[ -z "$_outer_timing_kind" ]]; then
+            case "$META_TOOL" in
+                codex) _outer_timing_kind="${LARCH_TIMING_TASK_KIND:-codex-review}" ;;
+                cursor) _outer_timing_kind="${LARCH_TIMING_TASK_KIND:-cursor-review}" ;;
+            esac
+        fi
         (
             cd "$META_OUTER_LAUNCHER_WORKDIR" || exit 1
             env -u LARCH_ALLOW_TEST_HOOKS \
@@ -810,6 +817,7 @@ launch_outer_retry_or_mark() {
                     --output "$retry_output" \
                     --timeout "$timeout_value" \
                     --risk "$META_OUTER_LAUNCHER_RISK" \
+                    --timing-task-kind "$_outer_timing_kind" \
                     --prompt-file "$prompt_file" \
                     "${_outer_sink_args[@]+"${_outer_sink_args[@]}"}"
         ) >/dev/null 2>&1 &

@@ -15,6 +15,7 @@ paths = [
     '''^scripts/test-create-pr\.sh$''',
     '''^scripts/test-merge-pr\.sh$''',
     '''^skills/issue/scripts/test-add-blocked-by\.sh$''',
+    '''^python/test_launch_review\.py$''',
     '''^python/test_review_and_fix\.py$''',
     '''^python/test_review_pipeline\.py$''',
     '''^skills/shared/scripts/test-render-assessor-prompt\.sh$''',

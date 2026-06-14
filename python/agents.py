@@ -2842,6 +2842,13 @@ _CURSOR_REVIEW_STRICT_PREAMBLE = (
     f"{_CURSOR_SANDBOX_ENFORCEMENT_LINE}"
 )
 _REVIEW_MAX_TRANSIENT_RETRIES = 4
+_COLLECTOR_NS_STRONG_HEADER = (
+    "IMPORTANT: Your previous response was not structured correctly. "
+    "You MUST output findings in the exact format your original prompt requires, "
+    "or the literal NO_ISSUES_FOUND if no issues exist. "
+    "Do NOT write narrative, process descriptions, or reading logs. "
+    "Begin your response directly with the format your prompt demands.\n\n"
+)
 
 
 def _review_parser() -> argparse.ArgumentParser:
@@ -2949,15 +2956,23 @@ def _review_read_prompt_file(path: str) -> tuple[int, str]:
         return 1, ""
 
 
+def _review_codex_compact_sentinel_offset(text: str) -> int | None:
+    if text.startswith("LARCH_PROMPT_SENTINEL=1\n"):
+        return 0
+    header = _COLLECTOR_NS_STRONG_HEADER
+    if text.startswith(header) and text[len(header) :].startswith("LARCH_PROMPT_SENTINEL=1\n"):
+        return len(header)
+    return None
+
+
 def _review_read_codex_prompt_sentinel(path: str) -> tuple[int, str] | None:
     prompt_path = Path(path)
     try:
         text = prompt_path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return None
-    sentinel_marker = "LARCH_PROMPT_SENTINEL=1\n"
-    sentinel_idx = text.find(sentinel_marker)
-    if sentinel_idx == -1:
+    sentinel_idx = _review_codex_compact_sentinel_offset(text)
+    if sentinel_idx is None:
         return None
     prefix = text[:sentinel_idx]
     lines = text[sentinel_idx:].splitlines()
@@ -3125,7 +3140,14 @@ def _review_record_timing(vendor: str, task_kind: str, start_s: float, output: P
     )
 
 
-def _review_append_outer_meta(meta: Path, *, prompt_sidecar: Path, risk: str, stderr_sink: str) -> None:
+def _review_append_outer_meta(
+    meta: Path,
+    *,
+    prompt_sidecar: Path,
+    risk: str,
+    stderr_sink: str,
+    timing_task_kind: str = "",
+) -> None:
     lines = [
         "OUTER_LAUNCHER=agent launch-review",
         f"OUTER_LAUNCHER_PROMPT_FILE={prompt_sidecar}",
@@ -3133,6 +3155,8 @@ def _review_append_outer_meta(meta: Path, *, prompt_sidecar: Path, risk: str, st
     ]
     if risk:
         lines.append(f"OUTER_LAUNCHER_RISK={risk}")
+    if timing_task_kind:
+        lines.append(f"OUTER_LAUNCHER_TIMING_KIND={timing_task_kind}")
     if stderr_sink:
         lines.append(f"STDERR_SINK={stderr_sink}")
     _append(meta, "\n".join(lines) + "\n")
@@ -3271,6 +3295,14 @@ def _review_stream_reset(path: Path, history: Path, label: str) -> None:
         path.unlink()
 
 
+def _review_reset_retry_artifacts(output: Path, *, tool: str, label: str) -> None:
+    history = output.with_suffix(output.suffix + ".sidecar.history")
+    _review_stream_reset(output.with_suffix(output.suffix + ".sidecar"), history, label)
+    _review_stream_reset(output.with_suffix(output.suffix + ".diag"), history, f"{label} diag")
+    if tool == "codex":
+        _review_stream_reset(output.with_suffix(output.suffix + ".events.jsonl"), history, f"{label} events.jsonl")
+
+
 def _review_run_wrapper_attempt(
     *,
     tool: str,
@@ -3369,12 +3401,15 @@ def _review_run_with_retries(
         if retryable_response and retry_budget_remaining and not auth_failure and not quota_failure:
             transient_attempt += 1
             _review_retry_delay(transient_attempt)
-            _review_stream_reset(output.with_suffix(output.suffix + ".sidecar"), output.with_suffix(output.suffix + ".sidecar.history"), "attempt")
+            _review_reset_retry_artifacts(output, tool=tool, label="attempt")
             continue
         if result.exit_code != 0 and auth_failure and auth_attempt < max_auth:
             auth_attempt += 1
-            _review_stream_reset(output.with_suffix(output.suffix + ".sidecar"), output.with_suffix(output.suffix + ".sidecar.history"), "cursor auth attempt" if tool == "cursor" else "attempt")
-            _review_stream_reset(output.with_suffix(output.suffix + ".diag"), output.with_suffix(output.suffix + ".sidecar.history"), "cursor auth diag")
+            _review_reset_retry_artifacts(
+                output,
+                tool=tool,
+                label="cursor auth attempt" if tool == "cursor" else "attempt",
+            )
             continue
         return result, auth_attempt, transient_attempt
     return result, auth_attempt, transient_attempt
@@ -3435,7 +3470,13 @@ def _review_write_preflight_bundle(
         f"CAPTURE_STDOUT_ONLY={str(capture_stdout_only).lower()}\nOUTPUT_FILE={output}\nCMD_JSON=[]\n",
     )
     if prompt_sidecar is not None:
-        _review_append_outer_meta(meta, prompt_sidecar=prompt_sidecar, risk=args.risk, stderr_sink=args.stderr_sink)
+        _review_append_outer_meta(
+            meta,
+            prompt_sidecar=prompt_sidecar,
+            risk=args.risk,
+            stderr_sink=args.stderr_sink,
+            timing_task_kind=args.timing_task_kind or f"{tool}-review",
+        )
 
 
 def _review_write_preflight_done(output: Path, launcher_exit: int) -> None:
@@ -3459,7 +3500,15 @@ def _review_launch_codex(args: argparse.Namespace, prompt: str) -> int:
         return add_rc
     start = time.time()
     prompt_sidecar = _review_write_codex_prompt_sidecar(output, prompt, args)
-    with tempfile.TemporaryDirectory(prefix="larch-codex-review-home-") as home:
+    with tempfile.TemporaryDirectory(prefix="larch-codex-review-home-", dir=str(_probe_tmpdir())) as home:
+        home_path = Path(home).resolve()
+        try:
+            output_parent = output.parent.resolve(strict=True)
+            if _under(home_path, output_parent):
+                _err(f"agent launch-review: CODEX_HOME inside output tree: {home_path}")
+                return 2
+        except FileNotFoundError:
+            pass
         instr_path = Path(home) / "trusted-instructions.txt"
         instr_path.write_text(_CODEX_REVIEW_STRICT_PREAMBLE, encoding="utf-8")
         auth_rc, auth_msg = _prepare_codex_home(Path(home), trusted_instructions_file=str(instr_path))
@@ -3525,7 +3574,13 @@ def _review_launch_codex(args: argparse.Namespace, prompt: str) -> int:
         _review_append_launch_failure(output=output, tool="codex", exit_code=result.exit_code, stderr_sink=args.stderr_sink, auth_attempt=auth_attempt, transient_attempt=transient_attempt)
     elif sidecar.is_file():
         _append(sidecar, "codex-status: ok (no stderr emitted during agent run)\n")
-    _review_append_outer_meta(output.with_suffix(output.suffix + ".meta"), prompt_sidecar=prompt_sidecar, risk=args.risk, stderr_sink=args.stderr_sink)
+    _review_append_outer_meta(
+        output.with_suffix(output.suffix + ".meta"),
+        prompt_sidecar=prompt_sidecar,
+        risk=args.risk,
+        stderr_sink=args.stderr_sink,
+        timing_task_kind=timing_kind,
+    )
     _review_record_timing("codex", timing_kind, start, output, result.exit_code)
     model = ""
     for i, value in enumerate(model_args):
@@ -3719,9 +3774,16 @@ def _review_launch_cursor(args: argparse.Namespace, original_prompt: str) -> int
         _review_append_launch_failure(output=output, tool="cursor", exit_code=result.exit_code, stderr_sink=args.stderr_sink, auth_attempt=auth_attempt, transient_attempt=transient_attempt)
     else:
         _append(sidecar_path, "cursor-status: ok (no stderr emitted during agent run)\n")
-    _review_append_outer_meta(output.with_suffix(output.suffix + ".meta"), prompt_sidecar=prompt_sidecar, risk=args.risk, stderr_sink=args.stderr_sink)
+    _review_append_outer_meta(
+        output.with_suffix(output.suffix + ".meta"),
+        prompt_sidecar=prompt_sidecar,
+        risk=args.risk,
+        stderr_sink=args.stderr_sink,
+        timing_task_kind=timing_kind,
+    )
     _review_run_test_trap_after_inner_done_if_enabled()
-    _review_cursor_postprocess(output, transient_attempt)
+    if result.exit_code == 0:
+        _review_cursor_postprocess(output, transient_attempt)
     _review_write_cursor_dirty_tree_from_baseline(output, baseline)
     _review_record_timing("cursor", timing_kind, start, output, result.exit_code)
     _promote_inner_done(output)

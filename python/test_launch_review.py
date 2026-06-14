@@ -312,7 +312,7 @@ def test_preflight_meta_writes_stderr_sink_for_collector_retry(tmp_path: Path, m
 
 
 def test_codex_sentinel_replays_with_ns_retry_header_prefix(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    ns_header = "IMPORTANT: structured output required\n\n"
+    ns_header = agents._COLLECTOR_NS_STRONG_HEADER
     args = argparse.Namespace(
         agent_file="agents/code-reviewer.md",
         description_text="",
@@ -880,3 +880,335 @@ def test_cursor_postprocess_tolerates_invalid_output_tokens(tmp_path: Path) -> N
     output.write_text(payload, encoding="utf-8")
     agents._review_cursor_postprocess(output, 1)
     assert output.read_text(encoding="utf-8") == "ok"
+
+
+def test_codex_prompt_with_embedded_sentinel_reads_verbatim(tmp_path: Path) -> None:
+    prompt_file = tmp_path / "prompt.txt"
+    body = "Feature text mentions LARCH_PROMPT_SENTINEL=1 in documentation.\n"
+    prompt_file.write_text(body, encoding="utf-8")
+    assert agents._review_read_codex_prompt_sentinel(str(prompt_file)) is None
+    rc, text = agents._review_read_prompt_file(str(prompt_file))
+    assert rc == 0
+    assert text == body
+
+
+def test_transient_retry_clears_stale_diag_and_events(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    output = tmp_path / "out.txt"
+    events = output.with_suffix(output.suffix + ".events.jsonl")
+    diag = output.with_suffix(output.suffix + ".diag")
+    calls = {"count": 0}
+
+    def fake_run(**_kwargs: object) -> agents.RunExternalAgentResult:
+        calls["count"] += 1
+        if calls["count"] == 1:
+            events.write_text('{"type":"error","message":"network timeout"}\n', encoding="utf-8")
+            diag.write_text("stale diag from failed attempt\n", encoding="utf-8")
+            output.write_text("", encoding="utf-8")
+            return agents.RunExternalAgentResult(7, output)
+        assert not events.is_file()
+        assert not diag.is_file()
+        output.write_text("ok\n", encoding="utf-8")
+        return agents.RunExternalAgentResult(0, output)
+
+    monkeypatch.setattr(agents, "run_external_agent", fake_run)
+    _result, _auth_attempt, transient_attempt = agents._review_run_with_retries(
+        tool="codex",
+        output=output,
+        timeout_seconds=2,
+        cmd=["codex", "exec"],
+        stdout_path=events,
+        stderr_path=output.with_suffix(output.suffix + ".sidecar"),
+    )
+    assert calls["count"] == 2
+    assert transient_attempt == 2
+    history = output.with_suffix(output.suffix + ".sidecar.history").read_text(encoding="utf-8")
+    assert "stale diag from failed attempt" in history
+    assert "network timeout" in history
+
+
+def test_cursor_failure_skips_postprocess(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    out = tmp_path / "out.txt"
+    payload = '{"result":"partial review","usage":{"inputTokens":1,"outputTokens":2,"cacheReadTokens":0,"cacheWriteTokens":0}}'
+    postprocess_calls: list[Path] = []
+    real_postprocess = agents._review_cursor_postprocess
+
+    def track_postprocess(output: Path, transient_attempt: int) -> None:
+        postprocess_calls.append(output)
+        real_postprocess(output, transient_attempt)
+
+    def fake_run(**_kwargs: object) -> agents.RunExternalAgentResult:
+        out.write_text(payload, encoding="utf-8")
+        return agents.RunExternalAgentResult(1, out)
+
+    def cursor_auth_ok(*, caller: str = "agent cursor-auth-preflight") -> agents.AuthVerdict:
+        _ = caller
+        return agents.AuthVerdict(ok=True, rc=0, message="")
+
+    def setup_cursor_config_dir() -> tuple[Path, str | None]:
+        return (tmp_path / "cfg", None)
+
+    def cleanup_cursor_config_dir(_cfg_tmp: Path, _old_cfg: str | None) -> None:
+        return None
+
+    def capture_cursor_dirty_baseline(_output: Path) -> Path:
+        return tmp_path / "baseline"
+
+    def write_cursor_dirty_tree_from_baseline(_output: Path, _baseline: Path) -> None:
+        return None
+
+    def resolve_model_args_ok(_tool: str, *, with_effort: bool = False, default_model: str = "") -> agents.ModelArgResult:
+        _ = (with_effort, default_model)
+        return agents.ModelArgResult(())
+
+    monkeypatch.setattr(agents, "cursor_auth_preflight", cursor_auth_ok)
+    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: None)
+    monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
+    monkeypatch.setattr(agents, "_review_setup_cursor_config_dir", setup_cursor_config_dir)
+    monkeypatch.setattr(agents, "_review_cleanup_cursor_config_dir", cleanup_cursor_config_dir)
+    monkeypatch.setattr(agents, "_review_capture_cursor_dirty_baseline", capture_cursor_dirty_baseline)
+    monkeypatch.setattr(agents, "_review_write_cursor_dirty_tree_from_baseline", write_cursor_dirty_tree_from_baseline)
+    monkeypatch.setattr(agents, "_review_cursor_postprocess", track_postprocess)
+    monkeypatch.setattr(agents, "run_external_agent", fake_run)
+    monkeypatch.setattr(agents, "resolve_model_args", resolve_model_args_ok)
+    args = argparse.Namespace(
+        output=str(out),
+        timeout="2",
+        risk="",
+        stderr_sink="",
+        timing_task_kind="cursor-review",
+        token_budget_cap="",
+    )
+    assert agents._review_launch_cursor(args, "hi") == 1
+    assert postprocess_calls == []
+    assert out.read_text(encoding="utf-8") == payload
+
+
+def test_outer_meta_writes_timing_task_kind(tmp_path: Path) -> None:
+    bin_dir = _stub_bin(
+        tmp_path,
+        "codex",
+        "#!/usr/bin/env bash\nout=\"\"; last=\"\"; for a in \"$@\"; do if [[ \"$last\" == \"--output-last-message\" ]]; then out=\"$a\"; fi; last=\"$a\"; done; echo '{\"type\":\"message\",\"usage\":{\"input_tokens\":1,\"cached_input_tokens\":0,\"output_tokens\":2}}'; printf OK >\"$out\"\n",
+    )
+    out = tmp_path / "out.txt"
+    proc = _run(
+        [
+            "--tool",
+            "codex",
+            "--output",
+            str(out),
+            "--timeout",
+            "2",
+            "--prompt",
+            "hi",
+            "--timing-task-kind",
+            "codex-review-round-2-correctness",
+        ],
+        {"PATH": f"{bin_dir}:{os.environ['PATH']}"},
+    )
+    assert proc.returncode == 0
+    meta = out.with_suffix(out.suffix + ".meta").read_text(encoding="utf-8")
+    assert "OUTER_LAUNCHER_TIMING_KIND=codex-review-round-2-correctness" in meta
+
+
+def test_codex_home_is_outside_output_tree(tmp_path: Path) -> None:
+    session = tmp_path / "session"
+    session.mkdir()
+    external_tmp = tmp_path / "external-tmp"
+    external_tmp.mkdir()
+    home_log = tmp_path / "codex-home.txt"
+    bin_dir = _stub_bin(
+        tmp_path,
+        "codex",
+        f"""#!/usr/bin/env bash
+printf '%s\\n' "$CODEX_HOME" > "{home_log}"
+out=""; last=""
+for a in "$@"; do
+  if [[ "$last" == "--output-last-message" ]]; then out="$a"; fi
+  last="$a"
+done
+printf OK >"$out"
+echo '{{"type":"message","usage":{{"input_tokens":1,"cached_input_tokens":0,"output_tokens":1}}}}'
+""",
+    )
+    out = session / "out.txt"
+    proc = _run(
+        ["--tool", "codex", "--output", str(out), "--timeout", "2", "--prompt", "hi"],
+        {"PATH": f"{bin_dir}:{os.environ['PATH']}", "TMPDIR": str(external_tmp)},
+    )
+    assert proc.returncode == 0
+    codex_home = Path(home_log.read_text(encoding="utf-8").strip()).resolve()
+    assert session.resolve() not in codex_home.parents
+
+    fail_proc = _run(
+        ["--tool", "codex", "--output", str(session / "out2.txt"), "--timeout", "2", "--prompt", "hi"],
+        {"PATH": f"{bin_dir}:{os.environ['PATH']}", "TMPDIR": str(session)},
+    )
+    assert fail_proc.returncode == 2
+
+
+def test_codex_add_dir_accepts_inside_output_parent(tmp_path: Path) -> None:
+    staged = tmp_path / "staged-context"
+    staged.mkdir()
+    out = tmp_path / "out.txt"
+    marker = tmp_path / "add-dir.txt"
+    bin_dir = _stub_bin(
+        tmp_path,
+        "codex",
+        f"""#!/usr/bin/env bash
+out=""; last=""
+for a in "$@"; do
+  if [[ "$last" == "--add-dir" ]]; then printf '%s\\n' "$a" > "{marker}"; fi
+  if [[ "$last" == "--output-last-message" ]]; then out="$a"; fi
+  last="$a"
+done
+printf OK >"$out"
+echo '{{"type":"message","usage":{{"input_tokens":1,"cached_input_tokens":0,"output_tokens":1}}}}'
+""",
+    )
+    proc = _run(
+        ["--tool", "codex", "--output", str(out), "--timeout", "2", "--prompt", "hi", "--codex-add-dir", str(staged)],
+        {"PATH": f"{bin_dir}:{os.environ['PATH']}"},
+    )
+    assert proc.returncode == 0
+    assert Path(marker.read_text(encoding="utf-8").strip()).resolve() == staged.resolve()
+
+
+def test_codex_add_dir_rejects_symlink(tmp_path: Path) -> None:
+    target = tmp_path / "target"
+    target.mkdir()
+    link = tmp_path / "link"
+    link.symlink_to(target, target_is_directory=True)
+    out = tmp_path / "out.txt"
+    proc = _run(
+        ["--tool", "codex", "--output", str(out), "--timeout", "2", "--prompt", "hi", "--codex-add-dir", str(link)],
+    )
+    assert proc.returncode == 2
+    assert not out.exists()
+
+
+def test_codex_launch_does_not_leak_openai_api_key(tmp_path: Path) -> None:
+    secret = "sk-larch-review-sentinel"
+    home_log = tmp_path / "codex-home.txt"
+    bin_dir = _stub_bin(
+        tmp_path,
+        "codex",
+        f"""#!/usr/bin/env bash
+printf '%s\\n' "$CODEX_HOME" > "{home_log}"
+out=""; last=""
+for a in "$@"; do
+  if [[ "$last" == "--output-last-message" ]]; then out="$a"; fi
+  last="$a"
+done
+printf OK >"$out"
+echo '{{"type":"message","usage":{{"input_tokens":1,"cached_input_tokens":0,"output_tokens":1}}}}'
+""",
+    )
+    out = tmp_path / "out.txt"
+    proc = _run(
+        ["--tool", "codex", "--output", str(out), "--timeout", "2", "--prompt", "hi"],
+        {"PATH": f"{bin_dir}:{os.environ['PATH']}", "OPENAI_API_KEY": secret},
+    )
+    assert proc.returncode == 0
+    meta = out.with_suffix(out.suffix + ".meta").read_text(encoding="utf-8")
+    assert secret not in meta
+    assert secret not in proc.stdout
+    assert secret not in proc.stderr
+
+
+def test_cursor_parallel_launches_use_distinct_config_dirs(tmp_path: Path) -> None:
+    cfg_log = tmp_path / "cfg-dirs.txt"
+    bin_dir = _stub_bin(
+        tmp_path,
+        "cursor",
+        f"""#!/usr/bin/env bash
+printf '%s\\n' "${{CURSOR_CONFIG_DIR:-UNSET}}" >> "{cfg_log}"
+cat <<'JSON'
+{{"result":"ok","usage":{{"inputTokens":1,"outputTokens":2,"cacheReadTokens":0,"cacheWriteTokens":0}}}}
+JSON
+""",
+    )
+    env = {"PATH": f"{bin_dir}:{os.environ['PATH']}", "CURSOR_API_KEY": "test-key"}
+    out1 = tmp_path / "out1.txt"
+    out2 = tmp_path / "out2.txt"
+    proc1 = _run(["--tool", "cursor", "--output", str(out1), "--timeout", "2", "--prompt", "one"], env)
+    proc2 = _run(["--tool", "cursor", "--output", str(out2), "--timeout", "2", "--prompt", "two"], env)
+    assert proc1.returncode == 0
+    assert proc2.returncode == 0
+    dirs = [line.strip() for line in cfg_log.read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert len(dirs) == 2
+    assert dirs[0] != dirs[1]
+    assert dirs[0] != str(Path.home() / ".cursor")
+    assert dirs[1] != str(Path.home() / ".cursor")
+
+
+def test_codex_quota_failure_logs_to_design_tmpdir_only(tmp_path: Path) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    count = tmp_path / "count.txt"
+    count.write_text("0", encoding="utf-8")
+    bin_dir = _stub_bin(
+        tmp_path,
+        "codex",
+        f"""#!/usr/bin/env bash
+n=$(cat "{count}"); echo $((n+1)) > "{count}"
+printf "You've hit your usage limit.\\n" >&2
+exit 1
+""",
+    )
+    out = tmp_path / "out.txt"
+    proc = _run(
+        ["--tool", "codex", "--output", str(out), "--timeout", "2", "--prompt", "quota"],
+        {
+            "PATH": f"{bin_dir}:{os.environ['PATH']}",
+            "DESIGN_TMPDIR": str(design),
+            "IMPLEMENT_TMPDIR": "",
+            "LARCH_EXECUTION_ISSUES_LOG": "",
+        },
+    )
+    assert proc.returncode == 1
+    issues = (design / "execution-issues.md").read_text(encoding="utf-8")
+    assert "Step review Step 2 — codex-review failed" in issues
+    assert "quota" in issues
+
+
+def test_codex_transient_exhaustion_logs_to_implement_tmpdir(tmp_path: Path) -> None:
+    impl = tmp_path / "implement"
+    impl.mkdir()
+    count = tmp_path / "count.txt"
+    count.write_text("0", encoding="utf-8")
+    bin_dir = _stub_bin(
+        tmp_path,
+        "codex",
+        f"""#!/usr/bin/env bash
+n=$(cat "{count}"); echo $((n+1)) > "{count}"
+exit 7
+""",
+    )
+    out = tmp_path / "out.txt"
+    proc = _run(
+        ["--tool", "codex", "--output", str(out), "--timeout", "2", "--prompt", "transient"],
+        {"PATH": f"{bin_dir}:{os.environ['PATH']}", "IMPLEMENT_TMPDIR": str(impl)},
+    )
+    assert proc.returncode == 7
+    issues = (impl / "execution-issues.md").read_text(encoding="utf-8")
+    assert "Step review Step 2 — codex-review failed" in issues
+    assert "transient-retries=5" in issues
+
+
+def test_codex_failure_stages_vendor_diagnostics_in_implement_tmpdir(tmp_path: Path) -> None:
+    impl = tmp_path / "implement"
+    impl.mkdir()
+    bin_dir = _stub_bin(
+        tmp_path,
+        "codex",
+        "#!/usr/bin/env bash\nprintf 'vendor failure body\\n' >&2\nexit 1\n",
+    )
+    out = tmp_path / "out.txt"
+    proc = _run(
+        ["--tool", "codex", "--output", str(out), "--timeout", "2", "--prompt", "fail"],
+        {"PATH": f"{bin_dir}:{os.environ['PATH']}", "IMPLEMENT_TMPDIR": str(impl)},
+    )
+    assert proc.returncode == 1
+    parts_dir = impl / "vendor-failure-diagnostics.parts"
+    assert parts_dir.is_dir()
+    assert any("vendor failure body" in part.read_text(encoding="utf-8") for part in parts_dir.iterdir())
