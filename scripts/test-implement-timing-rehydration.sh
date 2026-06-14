@@ -92,4 +92,22 @@ teardown_line=$(awk '/implement-finalize.sh" teardown/ {print NR; exit}' "$final
 finalize_invocations=$(command grep -Fc 'step-18-finalize.sh' "$skill_file" || true)
 [ "$finalize_invocations" -eq 1 ] || fail "expected one step-18-finalize.sh invocation in SKILL.md, found $finalize_invocations"
 
+# Invariant F (#4286): round timing duplicate probe returns success when the row exists.
+step5_resume="skills/implement/scripts/step-5-resume.sh"
+python3 - "$step5_resume" <<'PY'
+from pathlib import Path
+import sys
+text = Path(sys.argv[1]).read_text()
+required = 'END { exit found ? 0 : 1 }'
+forbidden = 'END { exit found }'
+errors = []
+if required not in text:
+    errors.append(f'{sys.argv[1]} lacks {required!r}')
+if forbidden in text:
+    errors.append(f'{sys.argv[1]} still uses bare {forbidden!r}')
+if errors:
+    print('\n'.join(errors), file=sys.stderr)
+    sys.exit(1)
+PY
+
 echo "PASS: test-implement-timing-rehydration.sh (wrappers self-rehydrate; closing marks line $done_mark_line < teardown line $teardown_line)"
