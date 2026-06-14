@@ -2877,11 +2877,21 @@ def _review_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _review_coerce_risk(risk: str) -> str:
+    return "low" if risk == "low" else "high"
+
+
 def _review_validate_args(args: argparse.Namespace) -> int:
     if not _validate_meta_path("--output", args.output):
         return 1
     if args.stderr_sink and not _validate_meta_path("--stderr-sink", args.stderr_sink):
         return 1
+    if args.risk and _CTRL_RE.search(args.risk):
+        _err("agent launch-review: --risk must not contain control characters")
+        return 2
+    if args.timing_task_kind and _CTRL_RE.search(args.timing_task_kind):
+        _err("agent launch-review: --timing-task-kind must not contain control characters")
+        return 2
     if not _is_positive_int(args.timeout):
         if args.tool == "codex":
             _err(f"agent launch-review: --timeout must be a positive integer (seconds), got '{args.timeout}'")
@@ -3154,7 +3164,7 @@ def _review_append_outer_meta(
         f"OUTER_LAUNCHER_WORKDIR={Path.cwd()}",
     ]
     if risk:
-        lines.append(f"OUTER_LAUNCHER_RISK={risk}")
+        lines.append(f"OUTER_LAUNCHER_RISK={_review_coerce_risk(risk)}")
     if timing_task_kind:
         lines.append(f"OUTER_LAUNCHER_TIMING_KIND={timing_task_kind}")
     if stderr_sink:
@@ -3711,16 +3721,23 @@ def _review_launch_cursor(args: argparse.Namespace, original_prompt: str) -> int
     output = Path(args.output)
     timing_kind = args.timing_task_kind or "cursor-review"
     start = time.time()
+    prompt_sidecar = _review_write_cursor_prompt_sidecar(output, original_prompt)
     try:
         model_args = list(resolve_model_args("cursor", with_effort=True).argv)
     except ValueError as exc:
         _review_record_timing("cursor", timing_kind, start, output, 1)
-        _review_write_preflight_bundle(output, args, f"cursor_launcher_load_model_args failed (exit 1): {exc}", tool="cursor", capture_stdout_only=True)
+        _review_write_preflight_bundle(
+            output,
+            args,
+            f"cursor_launcher_load_model_args failed (exit 1): {exc}",
+            tool="cursor",
+            capture_stdout_only=True,
+            prompt_sidecar=prompt_sidecar,
+        )
         _review_write_unknown_dirty_tree(output, "model-args-preflight-no-agent-ran")
         _review_write_preflight_done(output, 1)
         _review_emit_launcher_result(output, "cursor", 1)
         return 1
-    prompt_sidecar = _review_write_cursor_prompt_sidecar(output, original_prompt)
     baseline = _review_capture_cursor_dirty_baseline(output)
     verdict = cursor_auth_preflight(caller="agent launch-review")
     if not verdict.ok:

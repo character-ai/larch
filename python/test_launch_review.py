@@ -11,6 +11,8 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import pytest
+
 import agents
 
 if TYPE_CHECKING:
@@ -655,6 +657,11 @@ def test_cursor_model_args_preflight_exit_one_with_unknown_dirty_tree(tmp_path: 
     assert "model-args-preflight-no-agent-ran" in dirty
     assert out.with_suffix(out.suffix + ".done").read_text(encoding="utf-8").strip() == "1"
     assert "load_model_args failed" in out.with_suffix(out.suffix + ".diag").read_text(encoding="utf-8")
+    assert out.with_suffix(out.suffix + ".prompt").read_text(encoding="utf-8") == "hi"
+    meta = out.with_suffix(out.suffix + ".meta").read_text(encoding="utf-8")
+    assert "OUTER_LAUNCHER=agent launch-review" in meta
+    assert f"OUTER_LAUNCHER_PROMPT_FILE={out}.prompt" in meta
+    assert "OUTER_LAUNCHER_WORKDIR=" in meta
 
 
 def test_invalid_token_budget_cap_zero_still_runs_vendor(tmp_path: Path) -> None:
@@ -1212,3 +1219,119 @@ def test_codex_failure_stages_vendor_diagnostics_in_implement_tmpdir(tmp_path: P
     parts_dir = impl / "vendor-failure-diagnostics.parts"
     assert parts_dir.is_dir()
     assert any("vendor failure body" in part.read_text(encoding="utf-8") for part in parts_dir.iterdir())
+
+
+def _launch_review_argv_reject_case(
+    tmp_path: Path,
+    tool: str,
+    extra_args: list[str],
+    env: dict[str, str] | None,
+) -> subprocess.CompletedProcess[str]:
+    out = tmp_path / "out.txt"
+    return _run(["--tool", tool, "--output", str(out), "--timeout", "2", "--prompt", "hi", *extra_args], env)
+
+
+@pytest.mark.parametrize(
+    ("tool", "extra_args", "env", "expected_rc"),
+    [
+        ("codex", ["--output", "/tmp/bad path/out.txt"], None, 1),
+        ("codex", ["--stderr-sink", "/tmp/bad sink.log"], None, 1),
+        ("codex", ["--timeout", "0"], None, 2),
+        ("codex", ["--timeout", "abc"], None, 2),
+        ("codex", ["--timing-task-kind", "--bogus"], None, 2),
+        ("codex", ["--token-budget-cap", "0"], None, 2),
+        ("codex", ["--token-budget-cap", "abc"], None, 2),
+        ("cursor", ["--codex-add-dir", "/tmp"], None, 2),
+        ("codex", ["--timing-task-kind", "ok\nOUTER_LAUNCHER_WORKDIR=/tmp"], None, 2),
+        ("codex", ["--risk", "high\nOUTER_LAUNCHER_WORKDIR=/tmp"], None, 2),
+    ],
+)
+def test_launch_review_argv_reject_paths(
+    tmp_path: Path,
+    tool: str,
+    extra_args: list[str],
+    env: dict[str, str] | None,
+    expected_rc: int,
+) -> None:
+    out = tmp_path / "out.txt"
+    if extra_args and extra_args[0] == "--output":
+        proc = _run(["--tool", tool, *extra_args, "--timeout", "2", "--prompt", "hi"], env)
+    else:
+        proc = _launch_review_argv_reject_case(tmp_path, tool, extra_args, env)
+    assert proc.returncode == expected_rc
+    assert not out.exists()
+
+
+def test_launch_review_cli_cap_hit_skips_vendor(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    out = tmp_path / "out.txt"
+    vendor_called = {"value": False}
+
+    def fake_run(argv: list[str], **_kwargs: object) -> object:
+        if len(argv) >= 4 and argv[2:4] == ["token", "check-budget"]:
+            return type("R", (), {"stdout": "STATUS=cap_hit TOTAL=42\n", "returncode": 0})()
+        vendor_called["value"] = True
+        return type("R", (), {"stdout": "", "returncode": 0})()
+
+    monkeypatch.setattr(agents.proc, "run", fake_run)
+    rc = agents.launch_review_main(
+        ["--tool", "cursor", "--output", str(out), "--timeout", "2", "--prompt", "hi", "--token-budget-cap", "10"],
+    )
+    assert rc == 0
+    assert not vendor_called["value"]
+    assert out.read_text(encoding="utf-8") == "STATUS=cap_hit\n"
+    assert out.with_suffix(out.suffix + ".cap-hit").is_file()
+    assert out.with_suffix(out.suffix + ".done").read_text(encoding="utf-8") == "0\n"
+
+
+def test_launch_review_cli_cap_hit_from_env_skips_vendor(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    out = tmp_path / "out.txt"
+    vendor_called = {"value": False}
+
+    def fake_run(argv: list[str], **_kwargs: object) -> object:
+        if len(argv) >= 4 and argv[2:4] == ["token", "check-budget"]:
+            return type("R", (), {"stdout": "STATUS=cap_hit TOTAL=42\n", "returncode": 0})()
+        vendor_called["value"] = True
+        return type("R", (), {"stdout": "", "returncode": 0})()
+
+    monkeypatch.setenv("LARCH_TOKEN_BUDGET_CAP_REVIEW", "10")
+    monkeypatch.setattr(agents.proc, "run", fake_run)
+    rc = agents.launch_review_main(
+        ["--tool", "codex", "--output", str(out), "--timeout", "2", "--prompt", "hi"],
+    )
+    assert rc == 0
+    assert not vendor_called["value"]
+    assert out.read_text(encoding="utf-8") == "STATUS=cap_hit\n"
+    assert out.with_suffix(out.suffix + ".cap-hit").is_file()
+
+
+def test_codex_description_text_writes_full_prompt_sidecar(tmp_path: Path) -> None:
+    rendered = "full rendered specialist prompt body"
+    args = argparse.Namespace(
+        agent_file="agents/code-reviewer.md",
+        description_text="review this change",
+        mode="review",
+        scope_files="",
+        competition_notice=False,
+        competition_notice_file="",
+        diff_file="",
+        commit_count="",
+        plan_file="",
+        feature_file="",
+    )
+    output = tmp_path / "out.txt"
+    sidecar = agents._review_write_codex_prompt_sidecar(output, rendered, args)
+    text = sidecar.read_text(encoding="utf-8")
+    assert text == rendered
+    assert "LARCH_PROMPT_SENTINEL=1" not in text
+
+
+def test_outer_meta_coerces_non_low_risk_to_high(tmp_path: Path) -> None:
+    meta = tmp_path / "out.txt.meta"
+    meta.write_text("", encoding="utf-8")
+    prompt_sidecar = tmp_path / "out.txt.prompt"
+    prompt_sidecar.write_text("hi", encoding="utf-8")
+    agents._review_append_outer_meta(meta, prompt_sidecar=prompt_sidecar, risk="medium", stderr_sink="")
+    assert "OUTER_LAUNCHER_RISK=high" in meta.read_text(encoding="utf-8")
+    meta.write_text("", encoding="utf-8")
+    agents._review_append_outer_meta(meta, prompt_sidecar=prompt_sidecar, risk="low", stderr_sink="")
+    assert "OUTER_LAUNCHER_RISK=low" in meta.read_text(encoding="utf-8")
