@@ -135,7 +135,7 @@ Release, audit-runs, combine-issues fetch/apply, and analyze-issues helper surfa
 
 - Added `python/plan_quality.py` under the existing `plan` CLI domain for command parsing, validation, plan-size checks, revision, auto-fix, optional trailers, and plan-goals composition.
 - Surviving Bash callers invoke `python3 python/cli.py plan ...` directly. No shim layer is added.
-- `lib-drift-baseline.sh` remains deferred. Plan-size inlines only the baseline env semantics it needs.
+- Drift baseline write-once moved to `python/cli.py plan-review drift-baseline` (sourced by `design-postplan-emit.sh`); see **C3a1 design plan-review cutover** below.
 - `plan validate` preserves `VALIDATE_LOG_FILE`: it writes `$DESIGN_TMPDIR/validate-plan-commands.log` when possible, otherwise a stable temp log.
 - `design-driver.sh` bootstraps `PLUGIN_ROOT` when `CLAUDE_PLUGIN_ROOT` is unset.
 - Step 3 keeps `RUN_STEP3_REVISE_PLAN_WITH_WATERFALL_SH` as an override while defaulting to `plan revise-waterfall`.
@@ -150,5 +150,6 @@ The C3c slice moves /design decomposition helpers to `python/decompose.py`, dyna
 
 - The plan-review loop now enters through the `plan-review` CLI domain, split between `python/plan_review.py` for loop mechanics and `python/plan_review_panel.py` for panel and voter dispatch.
 - Bash wrappers call `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review ...` directly. `design-step3-review.sh` remains the process-group wrapper for Step 3.
+- **Gzip-shim façade (interim runtime):** most `plan-review` verbs still delegate through `_run_legacy()` to gzip-embedded retired bash bodies materialized at runtime (`EMBEDDED_LEGACY_REFS` in `python/plan_review.py`). Importable Python entrypoints exist for CLI routing, allowlist validation, drift-baseline write-once, round-artifact predicates, and `step3_record_report_evidence`; loop/tally/dispatch behavior remains bash until a follow-up in-process port lands. Regenerate embedded blobs from reviewable sources when absorbed bash behavior changes; `make lint-retired-scripts` guards deleted on-disk paths only.
 - `dedup-plan-lines.py` remains in place. The migration does not add a standalone `snapshot-plan-round` verb and does not migrate Step 3.6 assessor scripts.
 - `step3_record_report_evidence` moved into `python/plan_review.py`; `design-step3-review.sh` no longer sources the Step 3 loop controller on result-env read failure.

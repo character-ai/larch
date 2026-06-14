@@ -1,6 +1,6 @@
 # test-design-multi-round-integration.sh
 
-Offline cross-script harness for one-pass `plan-review-loop.sh` output, automatic multi-round Step 3 re-entry, and `design-log-publish.sh` fail-closed rules.
+Offline cross-script harness for one-pass `python/cli.py plan-review run` output, automatic multi-round Step 3 re-entry, and `design-log-publish.sh` fail-closed rules.
 
 ## Invocation
 
@@ -14,9 +14,9 @@ PATH-style overrides via `LARCH_PLAN_REVIEW_*_SH` env vars (see `python/test_pla
 
 ## Coverage
 
-- `plan-review-loop.sh` still runs one round per entry and reaches a terminal status without revising `plan.txt`
+- `python/cli.py plan-review run` still runs one round per entry and reaches a terminal status without revising `plan.txt`
 - `round-summary.env` materialized under `plan-review/round-1/` with the per-entry terminal status
-- Automatic continuation chains `plan-review-continuation.sh`, `design-step3-state.sh --auto-continuation-entry`, and a second `run-step3-review.sh --no-preview` entry
+- Automatic continuation chains `plan-review-continuation.sh`, `python/cli.py plan-review step3-state --auto-continuation-entry`, and a second `plan-review run --no-preview` entry
 - Round 2 uses the review round cursor, consumes the shared review-round counter once, preserves round-1 artifacts, and defers Gate C while continuing
 - Raw reviewer outputs remain excluded from `round-N/` snapshots
 - `findings-classification.tsv` survives terminal round snapshots
@@ -27,5 +27,4 @@ PATH-style overrides via `LARCH_PLAN_REVIEW_*_SH` env vars (see `python/test_pla
 ## Related harnesses
 
 - `scripts/test-design-log-publish.sh`
-- `python/test_plan_review.py`
 - `python/test_plan_review.py`

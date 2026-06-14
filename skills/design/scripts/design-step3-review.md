@@ -13,11 +13,10 @@ Wrapper for a `/design` Bash block that keeps `skills/design/SKILL.md` free of i
 - Writes `$DESIGN_TMPDIR/.bg-wait-active` after pause-save checks and removes it on exit so hook enforcement covers the immediate-background wait.
 - Accepts `--session-env-path` from the prompt-side Bash call.
 - Accepts `--claude-pid` when the wrapped logic must refresh session state.
-- Accepts `--starting-round N` for mid-loop resumes and forwards it to `run-step3-review.sh --mode loop`.
+- Accepts `--starting-round N` for mid-loop resumes and forwards it to `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review run --mode loop`.
 - Validates resume-state flags and starting-round bounds before writing state.
 - Calls without `--phase`, `--findings-file`, or `--postplan-operator-continue` preserve the existing first-entry pause ordering before review launch.
 - Calls with resume-state flags write validated phase, findings env, or postplan continue state before pause-save.
-- `run-step3-review.sh` still owns Step 3 review execution.
 - Performs two cleanup passes after loop shutdown: first kill the loop process
   group, then best-effort kill any remaining process whose argv references
   `$DESIGN_TMPDIR`.
@@ -26,9 +25,7 @@ Wrapper for a `/design` Bash block that keeps `skills/design/SKILL.md` free of i
 - Sites that previously wrote phase state and then launched review separately must collapse to one wrapper invocation at the resume boundary.
 - `awaiting-vote` remains an internal loop state and is not accepted as a wrapper resume phase.
 - Does not derive the root Claude PID from `$PPID` internally.
-- After merging `.step3-review-result.env` and captured child stdout, an empty `STEP3_REVIEW_LOOP_STATUS` is repaired from a valid recoverable `LOOP_STATUS` when possible.
-- The legacy `LOOP_STATUS=zero-findings-degraded-panel` token is not newly mapped to `complete`.
-- If no recoverable Step 3 loop status is available, the wrapper emits the missing-result warning to stderr and degrades to `panel-failed`.
+- Step 3 loop contract lives in `python/plan_review.py`; this wrapper captures stdout, reads `.step3-review-result.env` through `scripts/read-result-env.sh`, overlays the full allowlisted KV envelope from captured stdout when needed, normalizes `STEP3_REVIEW_LOOP_STATUS` / `LOOP_STATUS`, and records escalation evidence only for terminal degradation statuses.
 
 ## Harness
 

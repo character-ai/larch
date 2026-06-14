@@ -8,7 +8,7 @@ After reviewers submit findings and findings are deduplicated, a voting panel vo
 
 ## Ballot Format
 
-Before sending to voters, assign each deduplicated finding a stable sequential ID. The ballot file uses `### FINDING_N:` markdown heading blocks — one block per finding. For `/design` plan review, `tally-plan-review.sh` also splits `### OOS_N:` blocks; for `/review` code review, `review tally-code-votes` accepts both `### FINDING_N:` and `### OOS_N:` headings, while legacy OOS-tagged code-review rows may still appear as `### FINDING_N:` headings with `[OUT_OF_SCOPE]` in the title:
+Before sending to voters, assign each deduplicated finding a stable sequential ID. The ballot file uses `### FINDING_N:` markdown heading blocks — one block per finding. For `/design` plan review, `python/cli.py plan-review tally` (implementation: `python/plan_review.py`) also splits `### OOS_N:` blocks; for `/review` code review, `review tally-code-votes` accepts both `### FINDING_N:` and `### OOS_N:` headings, while legacy OOS-tagged code-review rows may still appear as `### FINDING_N:` headings with `[OUT_OF_SCOPE]` in the title:
 
 ```markdown
 ### FINDING_1: <short title>
@@ -223,7 +223,7 @@ Reviewers may return a second list of **out-of-scope observations** — pre-exis
 
 The ballot format for OOS items depends on the skill:
 
-- **`/design` plan review** (`tally-plan-review.sh`): OOS items get `OOS_` prefixed IDs (e.g., `OOS_1`, `OOS_2`) and appear as `### OOS_N:` heading blocks on the ballot:
+- **`/design` plan review** (`python/cli.py plan-review tally`): OOS items get `OOS_` prefixed IDs (e.g., `OOS_1`, `OOS_2`) and appear as `### OOS_N:` heading blocks on the ballot:
 
   ```markdown
   ### OOS_1: <short title of pre-existing issue>
@@ -263,7 +263,7 @@ The scoreboard includes additional columns for OOS items:
 
 ### OOS Security Tag
 
-Accepted OOS items can be tagged as **security findings** that are held locally and never filed as public GitHub issues. The detection contract is shared between `/design` plan review (`tally-plan-review.sh`) and `/review` code review (`review tally-code-votes`) via `python/voting.py::is_security_block`:
+Accepted OOS items can be tagged as **security findings** that are held locally and never filed as public GitHub issues. The detection contract is shared between `/design` plan review (`python/cli.py plan-review tally` / `python/voting.py`) and `/review` code review (`review tally-code-votes`) via `python/voting.py::is_security_block`:
 
 - **Canonical token**: a block is security-tagged when its body contains at least one **unfenced** occurrence of `focus-area\s*=\s*security` (case-insensitive, optional whitespace around `=`).
 - **Dedicated field token**: a line-start `focus-area` field also routes as security when its value begins with `security` (including `security-hardening` style values), with optional bold/backtick markup around the label or value and either `:` or `=` as the separator.

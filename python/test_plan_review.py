@@ -506,3 +506,288 @@ def test_persist_retally_ok_persists_scope_anchor(tmp_path: Path) -> None:
     review_env = (tmp_path / ".step3-review-result.env").read_text(encoding="utf-8")
     assert expected in plan_review_env
     assert expected in review_env
+
+
+def _write_tally_ballot(path: Path) -> None:
+    _ = path.write_text(
+        """### FINDING_1: Fix parser
+- **Reviewer**: Cursor-Arch
+- focus-area = correctness
+- Concern: parser misses bad input.
+
+### FINDING_2: Optional cleanup
+- **Reviewer**: Codex-Pragmatic
+- focus-area = code-quality
+- Concern: cleanup could be smaller.
+
+### OOS_1: Follow-up docs
+- **Reviewer**: Cursor-Arch
+- focus-area = documentation
+- Concern: docs follow-up.
+
+### OOS_2: Token leak audit
+- **Reviewer**: Codex-Security
+- focus-area = security
+- Concern: security-sensitive follow-up.
+""",
+        encoding="utf-8",
+    )
+
+
+def test_tally_plan_review_mixed_votes_and_artifacts(tmp_path: Path) -> None:
+    ballot = tmp_path / "ballot.md"
+    _write_tally_ballot(ballot)
+    v1 = tmp_path / "v1.txt"
+    v2 = tmp_path / "v2.txt"
+    v3 = tmp_path / "v3.txt"
+    _ = v1.write_text("FINDING_1: YES\nFINDING_2: NO\nOOS_1: YES\nOOS_2: YES\n", encoding="utf-8")
+    _ = v2.write_text("FINDING_1: YES\nFINDING_2: YES\nOOS_1: NO\nOOS_2: YES\n", encoding="utf-8")
+    _ = v3.write_text("FINDING_1: YES\nFINDING_2: NO\nOOS_1: YES\nOOS_2: YES\n", encoding="utf-8")
+    design = tmp_path / "design"
+    design.mkdir()
+    proc = run_cli(
+        "plan-review",
+        "tally",
+        "--ballot-file",
+        str(ballot),
+        "--voter-files",
+        str(v1),
+        str(v2),
+        str(v3),
+        "--design-tmpdir",
+        str(design),
+        env={"LARCH_QUIET_DISABLE": "1"},
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "TALLY_PLAN_REVIEW_STATUS=ok" in proc.stdout
+    accepted = (design / "accepted-plan-findings.md").read_text(encoding="utf-8")
+    rejected = (design / "rejected-findings.md").read_text(encoding="utf-8")
+    tally = (design / "voting-tally.md").read_text(encoding="utf-8")
+    assert "FINDING_1" in accepted
+    assert "FINDING_2" in rejected
+    assert "OOS_1" in (design / "oos.md").read_text(encoding="utf-8")
+    assert "OOS_2" not in (design / "oos.md").read_text(encoding="utf-8")
+    assert "| Cursor-Arch | 1 | 1 | 0 | 0 | 1 | 1 | 0 | 0 | 2 |" in tally
+
+
+def test_tally_plan_review_zero_voters_requires_main_agent(tmp_path: Path) -> None:
+    ballot = tmp_path / "ballot.md"
+    _write_tally_ballot(ballot)
+    design = tmp_path / "design-zero"
+    design.mkdir()
+    proc = run_cli(
+        "plan-review",
+        "tally",
+        "--ballot-file",
+        str(ballot),
+        "--design-tmpdir",
+        str(design),
+        env={"LARCH_QUIET_DISABLE": "1"},
+    )
+    assert "TALLY_PLAN_REVIEW_STATUS=main-agent-vote-required" in proc.stdout
+    assert not (design / "accepted-plan-findings.md").read_text(encoding="utf-8").strip()
+
+
+def test_tally_plan_review_single_yes_and_single_no(tmp_path: Path) -> None:
+    ballot = tmp_path / "ballot.md"
+    _write_tally_ballot(ballot)
+    yes_voter = tmp_path / "yes.txt"
+    no_voter = tmp_path / "no.txt"
+    _ = yes_voter.write_text("FINDING_1: YES\n", encoding="utf-8")
+    _ = no_voter.write_text("FINDING_1: NO\n", encoding="utf-8")
+    design_yes = tmp_path / "design-one-yes"
+    design_yes.mkdir()
+    proc_yes = run_cli(
+        "plan-review",
+        "tally",
+        "--ballot-file",
+        str(ballot),
+        "--voter-files",
+        str(yes_voter),
+        "--design-tmpdir",
+        str(design_yes),
+        env={"LARCH_QUIET_DISABLE": "1"},
+    )
+    assert proc_yes.returncode == 0, proc_yes.stderr
+    assert "FINDING_1" in (design_yes / "accepted-plan-findings.md").read_text(encoding="utf-8")
+    design_no = tmp_path / "design-one-no"
+    design_no.mkdir()
+    proc_no = run_cli(
+        "plan-review",
+        "tally",
+        "--ballot-file",
+        str(ballot),
+        "--voter-files",
+        str(no_voter),
+        "--design-tmpdir",
+        str(design_no),
+        env={"LARCH_QUIET_DISABLE": "1"},
+    )
+    assert proc_no.returncode == 0, proc_no.stderr
+    assert "FINDING_1" in (design_no / "rejected-findings.md").read_text(encoding="utf-8")
+
+
+def test_loop_dedup_failure_restores_plan_snapshot(tmp_path: Path) -> None:
+    _write_run_params(tmp_path)
+    original = "# Plan\n\ndiff_lines: 1\n"
+    _ = (tmp_path / "plan.txt").write_text(original, encoding="utf-8")
+    dedup_stub = tmp_path / "dedup-stub.sh"
+    _ = dedup_stub.write_text(
+        """#!/usr/bin/env bash
+set -euo pipefail
+case " $* " in
+  *' --snapshot-trailers '*) exit 0 ;;
+  *' --dedup '*) exit 2 ;;
+  *) exit 0 ;;
+esac
+""",
+        encoding="utf-8",
+    )
+    dedup_stub.chmod(0o755)
+    revise_stub = tmp_path / "revise-stub.sh"
+    _ = revise_stub.write_text(
+        """#!/usr/bin/env bash
+set -euo pipefail
+plan=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in --plan-file) plan="${2:?}"; shift 2 ;; *) shift ;; esac
+done
+printf '\\n# revised\\n' >>"$plan"
+printf 'REVISE_STATUS=ok\\n'
+""",
+        encoding="utf-8",
+    )
+    revise_stub.chmod(0o755)
+    round_stub = _write_loop_stub(
+        tmp_path,
+        (
+            f"cat >\"{tmp_path}/accepted-plan-findings.md\" <<'FINDINGS'\n"
+            "### FINDING_1: Important\n- **Severity**: important\n- **Concern**: issue\n"
+            "FINDINGS\n"
+            "printf 'LOOP_STATUS=complete\\nACCEPTED_COUNT=1\\nIMPORTANT_ACCEPTED_COUNT=1\\n"
+            "DEGRADED_PANEL=0\\nROUNDS_COMPLETED=1\\nTALLY_PLAN_REVIEW_STATUS=ok\\n"
+            "AGGREGATOR_STATUS=ok\\nVOTING_TALLY_FILE=\\n'"
+        ),
+    )
+    proc = run_cli(
+        "plan-review",
+        "run",
+        "--design-tmpdir",
+        str(tmp_path),
+        "--mode",
+        "loop",
+        env={
+            "LARCH_QUIET_DISABLE": "1",
+            "RUN_STEP3_PLAN_REVIEW_LOOP_SH": str(round_stub),
+            "RUN_STEP3_REVISE_PLAN_WITH_WATERFALL_SH": str(revise_stub),
+            "RUN_STEP3_DEDUP_PLAN_SH": str(dedup_stub),
+        },
+    )
+    assert "STEP3_REVIEW_LOOP_STATUS=main-agent-apply-required" in proc.stdout
+    assert "DEDUP_RC=2" in proc.stdout
+    snapshot = tmp_path / "plan-pre-apply-round-1.txt"
+    assert snapshot.is_file()
+    assert (tmp_path / "plan.txt").read_text(encoding="utf-8") == snapshot.read_text(encoding="utf-8")
+
+
+def test_record_round_timing_idempotent_and_round_snapshot_counts(tmp_path: Path) -> None:
+    _ = (tmp_path / "accepted-plan-findings.md").write_text("### FINDING_1:\n### FINDING_2:\n", encoding="utf-8")
+    _ = (tmp_path / "rejected-findings.md").write_text("### [Plan Review] FINDING_1\n", encoding="utf-8")
+    _ = (tmp_path / "voting-tally.md").write_text(
+        "## Findings\n| Item | YES | NO | JERR | Result |\n| --- | --- | --- | --- | --- |\n"
+        "| OOS_1 | 3 | 0 | 0 | accepted |\n",
+        encoding="utf-8",
+    )
+    proc = run_cli(
+        "plan-review",
+        "record-round-timing",
+        "--design-tmpdir",
+        str(tmp_path),
+        "--round",
+        "1",
+        "--start-s",
+        "100",
+        "--end-s",
+        "110",
+        env={"LARCH_QUIET_DISABLE": "1"},
+    )
+    assert proc.returncode == 0, proc.stderr
+    ledger = (tmp_path / "timing-ledger.tsv").read_text(encoding="utf-8")
+    assert "design Step 3 — plan review" in ledger
+    proc_dup = run_cli(
+        "plan-review",
+        "record-round-timing",
+        "--design-tmpdir",
+        str(tmp_path),
+        "--round",
+        "1",
+        "--start-s",
+        "100",
+        "--end-s",
+        "110",
+        env={"LARCH_QUIET_DISABLE": "1"},
+    )
+    assert proc_dup.returncode == 0, proc_dup.stderr
+    round_rows = [line for line in ledger.splitlines() if "\tround\t" in line and "\tdesign\t" in line]
+    assert len(round_rows) >= 1
+    snap = tmp_path / "plan-review" / "round-4"
+    snap.mkdir(parents=True)
+    _ = (snap / "accepted-plan-findings.md").write_text("### FINDING_1:\n### FINDING_2:\n### FINDING_3:\n", encoding="utf-8")
+    proc_snap = run_cli(
+        "plan-review",
+        "record-round-timing",
+        "--design-tmpdir",
+        str(tmp_path),
+        "--round",
+        "4",
+        "--start-s",
+        "400",
+        "--end-s",
+        "410",
+        env={"LARCH_QUIET_DISABLE": "1"},
+    )
+    assert proc_snap.returncode == 0, proc_snap.stderr
+    assert (tmp_path / "timing-ledger.tsv").exists()
+
+
+def test_preview_gatec_header_and_invalid_threshold(tmp_path: Path) -> None:
+    body = "# Gate\n" + "\n".join(f"line {i}" for i in range(130)) + "\n"
+    _ = (tmp_path / "plan.txt").write_text(body, encoding="utf-8")
+    proc = run_cli("plan-review", "preview", "--design-tmpdir", str(tmp_path), "--variant", "gatec")
+    assert proc.returncode == 0, proc.stderr
+    assert "## Final Design Plan" in proc.stdout
+    proc_thresh = run_cli(
+        "plan-review",
+        "preview",
+        "--design-tmpdir",
+        str(tmp_path),
+        "--variant",
+        "step3",
+        env={"LARCH_DESIGN_PLAN_SUMMARY_THRESHOLD": "abc"},
+    )
+    assert proc_thresh.returncode == 0
+    assert "very large" in proc_thresh.stdout
+
+
+def test_preview_empty_and_disallowed_tmpdir_warn_exit_zero() -> None:
+    proc_empty = run_cli("plan-review", "preview", "--design-tmpdir", "", "--variant", "step3")
+    assert proc_empty.returncode == 0
+    assert "DESIGN_TMPDIR missing or invalid" in proc_empty.stdout
+    disallowed = ROOT / "python" / ".preview-disallowed-test-dir"
+    disallowed.mkdir(exist_ok=True)
+    try:
+        proc_bad = run_cli("plan-review", "preview", "--design-tmpdir", str(disallowed), "--variant", "step3")
+        assert proc_bad.returncode == 0
+        assert "DESIGN_TMPDIR not under allowlist" in proc_bad.stdout
+        assert not (disallowed / ".step3-entry-plan-printed").exists()
+    finally:
+        if disallowed.exists():
+            disallowed.rmdir()
+
+
+def test_preview_small_plan_full_body_without_large_note(tmp_path: Path) -> None:
+    _ = (tmp_path / "plan.txt").write_text("# Small\n\nHello\n\ndiff_lines: 1\n", encoding="utf-8")
+    proc = run_cli("plan-review", "preview", "--design-tmpdir", str(tmp_path), "--variant", "step3")
+    assert proc.returncode == 0
+    assert "Hello" in proc.stdout
+    assert "very large" not in proc.stdout

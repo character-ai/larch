@@ -139,6 +139,68 @@ def test_panel_dispatch_static_slot_matrix(tmp_path: Path) -> None:
     assert len([line for line in manifest_lines if line.strip()]) == 8
 
 
+def test_panel_dispatch_dynamic_scout_rows(tmp_path: Path) -> None:
+    design = tmp_path / "design-dynamic"
+    design.mkdir()
+    _ = (design / "plan.txt").write_text("Plan body.\n", encoding="utf-8")
+    _ = (design / "feature-description.txt").write_text("feat\n", encoding="utf-8")
+    _ = (design / "scout-plan-manifest.json").write_text(
+        json.dumps(
+            {
+                "archetypes": [
+                    {
+                        "name": "alpha",
+                        "focus_area": "correctness",
+                        "weight": 2,
+                        "rationale": "r1",
+                        "prompt_body": "Check contracts.",
+                    },
+                    {
+                        "name": "beta",
+                        "focus_area": "architecture",
+                        "weight": 2,
+                        "rationale": "r2",
+                        "prompt_body": "Check layering.",
+                    },
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    log = design / "wf.log"
+    _ = log.write_text("", encoding="utf-8")
+    stub = _write_waterfall_stub(tmp_path)
+    proc = run_cli(
+        "plan-review",
+        "panel-dispatch",
+        "--design-tmpdir",
+        str(design),
+        "--codex-present",
+        "true",
+        "--cursor-present",
+        "true",
+        "--plan-file",
+        str(design / "plan.txt"),
+        "--feature-file",
+        str(design / "feature-description.txt"),
+        "--timeout",
+        "60",
+        env={
+            "LARCH_QUIET_DISABLE": "1",
+            "DISPATCH_PLAN_REVIEW_WATERFALL_SH": str(stub),
+            "WATERFALL_STUB_LOG": str(log),
+            "WATERFALL_STUB_PATHS_OUT": str(design / "paths.out"),
+        },
+    )
+    assert proc.returncode == 0, proc.stderr + proc.stdout
+    assert "DYNAMIC_SLOT_COUNT=4" in proc.stdout
+    manifest_lines = (design / "plan-review-slots.ndjson").read_text(encoding="utf-8").splitlines()
+    assert len([line for line in manifest_lines if line.strip()]) == 12
+    manifest_text = (design / "plan-review-slots.ndjson").read_text(encoding="utf-8")
+    assert "dyn-cursor-plan-alpha" in manifest_text
+    assert "dyn-codex-plan-beta" in manifest_text
+
+
 def test_voter_dispatch_absent_externals_falls_back_to_claude(tmp_path: Path) -> None:
     design = tmp_path / "absent"
     design.mkdir()

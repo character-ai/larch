@@ -398,47 +398,61 @@ _safe_step3_env="$(mktemp "${TMPDIR:-/tmp}/larch-step3-review-env.XXXXXX")" || {
   printf '%s\n' "**⚠ Step 3: could not allocate safe step3 review result env; aborting plan review**" >&2
   exit 1
 }
+_step3_read_result_env() {
+  "${CLAUDE_PLUGIN_ROOT}/scripts/read-result-env.sh" \
+    --input "$1" \
+    ${2:+--fallback-input "$2"} \
+    --allow LOOP_STATUS \
+    --allow STEP3_REVIEW_LOOP_STATUS \
+    --allow POSTPLAN_RC \
+    --allow DEDUP_RC \
+    --allow PLAN_REVIEW_CONTINUE_REASON \
+    --allow FINAL_ROUND_NUM \
+    --allow ACCEPTED_COUNT \
+    --allow IMPORTANT_ACCEPTED_COUNT \
+    --allow DEGRADED_PANEL \
+    --allow ROUNDS_COMPLETED \
+    --allow TALLY_PLAN_REVIEW_STATUS \
+    --allow AGGREGATOR_STATUS \
+    --allow VOTING_TALLY_FILE \
+    --allow SCOPE_ANCHOR_FILE \
+    --allow STEP3_REVIEW_CAP_REACHED \
+    --allow STEP3_REVIEW_ROUND_NUM \
+    --allow ROUND_NUM \
+    --allow REVIEW_ROUND_COUNT \
+    --output "$3"
+}
 set +e
-"${CLAUDE_PLUGIN_ROOT}/scripts/read-result-env.sh" \
-  --input "$DESIGN_TMPDIR/.step3-review-result.env" \
-  --fallback-input "$_plan_review_stdout_file" \
-  --allow LOOP_STATUS \
-  --allow STEP3_REVIEW_LOOP_STATUS \
-  --allow POSTPLAN_RC \
-  --allow DEDUP_RC \
-  --allow PLAN_REVIEW_CONTINUE_REASON \
-  --allow FINAL_ROUND_NUM \
-  --allow ACCEPTED_COUNT \
-  --allow IMPORTANT_ACCEPTED_COUNT \
-  --allow DEGRADED_PANEL \
-  --allow ROUNDS_COMPLETED \
-  --allow TALLY_PLAN_REVIEW_STATUS \
-  --allow AGGREGATOR_STATUS \
-  --allow VOTING_TALLY_FILE \
-  --allow SCOPE_ANCHOR_FILE \
-  --allow STEP3_REVIEW_CAP_REACHED \
-  --allow STEP3_REVIEW_ROUND_NUM \
-  --allow ROUND_NUM \
-  --allow REVIEW_ROUND_COUNT \
-  --output "$_safe_step3_env"
+_step3_read_result_env \
+  "$DESIGN_TMPDIR/.step3-review-result.env" \
+  "$_plan_review_stdout_file" \
+  "$_safe_step3_env"
 _rre_rc=$?
-set -e
 if [[ "${_rre_rc:-0}" -ne 0 ]]; then
-  rm -f "$_safe_step3_env"
-  printf '%s\n' "**⚠ Step 3: could not read step3 review result env; treating plan review as panel-failed**" >&2
-  STEP3_REVIEW_LOOP_STATUS=panel-failed
-  LOOP_STATUS=panel-failed
-  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review run \
-    --design-tmpdir "$DESIGN_TMPDIR" \
-    --record-report-evidence panel-failed >/dev/null 2>&1 || true
-else
+  _safe_step3_stdout_env="$(mktemp "${TMPDIR:-/tmp}/larch-step3-review-stdout-env.XXXXXX")" || _safe_step3_stdout_env=""
+  if [[ -n "$_safe_step3_stdout_env" ]]; then
+    _step3_read_result_env "$_plan_review_stdout_file" "" "$_safe_step3_stdout_env"
+    _rre_stdout_rc=$?
+    if [[ "${_rre_stdout_rc:-0}" -eq 0 ]]; then
+      mv -f "$_safe_step3_stdout_env" "$_safe_step3_env"
+      _rre_rc=0
+    else
+      rm -f "$_safe_step3_stdout_env"
+    fi
+  fi
+fi
+set -e
+if [[ "${_rre_rc:-0}" -eq 0 ]]; then
   # shellcheck source=/dev/null
   . "$_safe_step3_env"
+else
+  rm -f "$_safe_step3_env"
+  printf '%s\n' "**⚠ Step 3: could not read step3 review result env; recovering from plan-review stdout when possible**" >&2
 fi
 while IFS= read -r _line || [[ -n "$_line" ]]; do
   _key="${_line%%=*}"; _value="${_line#*=}"
   case "$_key" in
-    STEP3_REVIEW_LOOP_STATUS|POSTPLAN_RC|DEDUP_RC|FINAL_ROUND_NUM)
+    LOOP_STATUS|STEP3_REVIEW_LOOP_STATUS|POSTPLAN_RC|DEDUP_RC|PLAN_REVIEW_CONTINUE_REASON|FINAL_ROUND_NUM|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|TALLY_PLAN_REVIEW_STATUS|AGGREGATOR_STATUS|VOTING_TALLY_FILE|SCOPE_ANCHOR_FILE|STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|ROUND_NUM|REVIEW_ROUND_COUNT)
       [[ -n "$_value" ]] && printf -v "$_key" '%s' "$_value"
       ;;
     WARN)
@@ -506,6 +520,15 @@ fi
 [[ -n "${VOTING_TALLY_FILE:-}" ]] && printf 'VOTING_TALLY_FILE=%s\n' "$VOTING_TALLY_FILE"
 [[ -n "${DEGRADED_PANEL:-}" ]] && printf 'DEGRADED_PANEL=%s\n' "$DEGRADED_PANEL"
 [[ -n "${PLAN_REVIEW_CONTINUE_REASON:-}" ]] && printf 'PLAN_REVIEW_CONTINUE_REASON=%s\n' "$PLAN_REVIEW_CONTINUE_REASON"
+case "${STEP3_REVIEW_LOOP_STATUS:-}" in
+  panel-failed|tally-error|degraded-empty-collector|main-agent-vote-required|main-agent-apply-required|postplan-operator-required)
+    if ! python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review run \
+      --design-tmpdir "$DESIGN_TMPDIR" \
+      --record-report-evidence "${STEP3_REVIEW_LOOP_STATUS}" >/dev/null 2>&1; then
+      larch_err "**⚠ Step 3: failed to record escalation evidence for ${STEP3_REVIEW_LOOP_STATUS}**"
+    fi
+    ;;
+esac
 if [[ "${STEP3_REVIEW_LOOP_STATUS:-}" == postplan-failed ]]; then
   printf '%s\n' 'SUMMARY_OUTCOME=failed-postplan'
   exit 1

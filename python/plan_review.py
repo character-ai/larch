@@ -1055,6 +1055,41 @@ def finalize_plan(argv: Sequence[str]) -> int:
 
 def emit_design_plan_preview(argv: Sequence[str]) -> int:
     """Step 3 plan-candidate preview and Gate C final-plan preview."""
+    design_tmpdir = ""
+    variant = ""
+    args = list(argv)
+    idx = 0
+    while idx < len(args):
+        token = args[idx]
+        if token == "--design-tmpdir" and idx + 1 < len(args):
+            design_tmpdir = args[idx + 1]
+            idx += 2
+            continue
+        if token == "--variant" and idx + 1 < len(args):
+            variant = args[idx + 1]
+            idx += 2
+            continue
+        idx += 1
+    missing_messages = {
+        "step2b": "**⚠ 2b:** DESIGN_TMPDIR missing or invalid; cannot present implementation plan",
+        "step3": "**⚠ 3: DESIGN_TMPDIR missing or invalid; cannot present plan candidate for review**",
+        "gatec": "**⚠ 4b: DESIGN_TMPDIR missing or invalid; cannot present final design plan**",
+    }
+    allowlist_messages = {
+        "step2b": "**⚠ 2b:** DESIGN_TMPDIR not under allowlist; cannot present implementation plan",
+        "step3": "**⚠ 3: DESIGN_TMPDIR not under allowlist; cannot present plan candidate**",
+        "gatec": "**⚠ 4b: DESIGN_TMPDIR not under allowlist; cannot present final design plan**",
+    }
+    if not design_tmpdir or not Path(design_tmpdir).is_dir():
+        print(missing_messages.get(variant, missing_messages["step3"]))
+        return 0
+    ok, message = validate_design_tmpdir(design_tmpdir)
+    if not ok:
+        if "allowlist" in message:
+            print(allowlist_messages.get(variant, allowlist_messages["step3"]))
+        else:
+            print(missing_messages.get(variant, missing_messages["step3"]))
+        return 0
     return _run_legacy(("skills", "design", "scripts", "emit-design-plan-preview.sh"), argv)
 
 
