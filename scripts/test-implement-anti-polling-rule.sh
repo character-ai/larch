@@ -14,7 +14,8 @@
 #       the result-file sleep-loop ban and consequence prose, and the
 #       Anti-patterns list bans Monitor fallback for one-shot completion.
 #   (4) skills/shared/orchestrator-never.md: the shared NEVER list carries the
-#       run_in_background result-file sleep-loop ban.
+#       run_in_background result-file sleep-loop ban and narrow single-waiter
+#       premature-notification recovery guidance.
 #
 # Wired into `make lint` via the `test-implement-anti-polling-rule` target.
 # Runtime enforcement is the model-level reading of the prose; this harness
@@ -86,6 +87,10 @@ fi
 check "$ORCH_NEVER_MD" \
     "shared orchestrator NEVER bans result-file sleep-loop polling" \
     "$ORCH_NEVER_LITERAL"
+
+check "$ORCH_NEVER_MD" \
+    "shared orchestrator NEVER pins premature-notification recovery as narrow single-waiter guidance" \
+    'only sanctioned exception to the Bash polling-loop ban is one re-launched immediate-background completion waiter'
 
 check "$AGENTS_MD" \
     "AGENTS.md covers premature-notification recovery with narrow single-waiter guidance" \

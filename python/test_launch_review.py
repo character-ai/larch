@@ -463,6 +463,46 @@ def test_codex_review_ingests_token_record_sidecar(tmp_path: Path, monkeypatch: 
     assert ("token", "record-vendor") not in calls
 
 
+def test_codex_terminal_artifacts_order_metadata_usage_dirty_tree_done(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    args = _codex_review_args(tmp_path)
+    out = Path(args.output)
+    order: list[str] = []
+
+    def auth_setup_ok(_home_dir: Path, *, trusted_instructions_file: str = "") -> tuple[int, str]:
+        _ = trusted_instructions_file
+        return (0, "")
+
+    def resolve_model_args_ok(_tool: str, *, with_effort: bool = False, default_model: str = "") -> agents.ModelArgResult:
+        _ = (with_effort, default_model)
+        return agents.ModelArgResult(())
+
+    def run_with_retries_ok(**_kwargs: object) -> tuple[agents.RunExternalAgentResult, int, int]:
+        return (agents.RunExternalAgentResult(0, out), 1, 1)
+
+    def append_outer_meta(*_args: object, **_kwargs: object) -> None:
+        order.append("metadata")
+
+    def record_usage(*_args: object, **_kwargs: object) -> None:
+        order.append("usage")
+
+    def write_clean_dirty_tree(_output: Path) -> None:
+        order.append("dirty-tree")
+
+    def promote_inner_done(_output: Path) -> None:
+        order.append("done")
+
+    monkeypatch.setattr(agents, "_prepare_codex_home", auth_setup_ok)
+    monkeypatch.setattr(agents, "resolve_model_args", resolve_model_args_ok)
+    monkeypatch.setattr(agents, "_review_run_with_retries", run_with_retries_ok)
+    monkeypatch.setattr(agents, "_review_append_outer_meta", append_outer_meta)
+    monkeypatch.setattr(agents, "_record_usage_from_events", record_usage)
+    monkeypatch.setattr(agents, "_review_write_clean_readonly_dirty_tree", write_clean_dirty_tree)
+    monkeypatch.setattr(agents, "_promote_inner_done", promote_inner_done)
+
+    assert agents._review_launch_codex(args, "hi") == 0
+    assert order == ["metadata", "usage", "dirty-tree", "done"]
+
+
 def test_codex_transient_retry_succeeds_on_second_attempt(tmp_path: Path) -> None:
     state = tmp_path / "attempts"
     state.write_text("0", encoding="utf-8")
@@ -599,6 +639,71 @@ def test_cursor_done_promoted_after_timing_record(tmp_path: Path, monkeypatch: p
     )
     assert agents._review_launch_cursor(args, "hi") == 0
     assert order == ["timing", "done"]
+
+
+def test_cursor_terminal_artifacts_order_metadata_trap_postprocess_dirty_tree_done(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    out = tmp_path / "out.txt"
+    order: list[str] = []
+
+    def cursor_auth_ok(*, caller: str = "agent cursor-auth-preflight") -> agents.AuthVerdict:
+        _ = caller
+        return agents.AuthVerdict(ok=True, rc=0, message="")
+
+    def setup_cursor_config_dir() -> tuple[Path, str | None]:
+        return (tmp_path / "cfg", None)
+
+    def cleanup_cursor_config_dir(_cfg_tmp: Path, _old_cfg: str | None) -> None:
+        return None
+
+    def capture_cursor_dirty_baseline(_output: Path) -> Path:
+        return tmp_path / "baseline"
+
+    def resolve_model_args_ok(_tool: str, *, with_effort: bool = False, default_model: str = "") -> agents.ModelArgResult:
+        _ = (with_effort, default_model)
+        return agents.ModelArgResult(())
+
+    def run_with_retries_ok(**_kwargs: object) -> tuple[agents.RunExternalAgentResult, int, int]:
+        return (agents.RunExternalAgentResult(0, out), 1, 1)
+
+    def append_outer_meta(*_args: object, **_kwargs: object) -> None:
+        order.append("metadata")
+
+    def run_trap() -> None:
+        order.append("trap")
+
+    def cursor_postprocess(_output: Path, _transient_attempt: int) -> None:
+        order.append("postprocess")
+
+    def write_cursor_dirty_tree_from_baseline(_output: Path, _baseline: Path) -> None:
+        order.append("dirty-tree")
+
+    def promote_inner_done(_output: Path) -> None:
+        order.append("done")
+
+    monkeypatch.setattr(agents, "cursor_auth_preflight", cursor_auth_ok)
+    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: None)
+    monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
+    monkeypatch.setattr(agents, "_review_setup_cursor_config_dir", setup_cursor_config_dir)
+    monkeypatch.setattr(agents, "_review_cleanup_cursor_config_dir", cleanup_cursor_config_dir)
+    monkeypatch.setattr(agents, "_review_capture_cursor_dirty_baseline", capture_cursor_dirty_baseline)
+    monkeypatch.setattr(agents, "resolve_model_args", resolve_model_args_ok)
+    monkeypatch.setattr(agents, "_review_run_with_retries", run_with_retries_ok)
+    monkeypatch.setattr(agents, "_review_append_outer_meta", append_outer_meta)
+    monkeypatch.setattr(agents, "_review_run_test_trap_after_inner_done_if_enabled", run_trap)
+    monkeypatch.setattr(agents, "_review_cursor_postprocess", cursor_postprocess)
+    monkeypatch.setattr(agents, "_review_write_cursor_dirty_tree_from_baseline", write_cursor_dirty_tree_from_baseline)
+    monkeypatch.setattr(agents, "_promote_inner_done", promote_inner_done)
+    args = argparse.Namespace(
+        output=str(out),
+        timeout="2",
+        risk="",
+        stderr_sink="",
+        timing_task_kind="cursor-review",
+        token_budget_cap="",
+    )
+
+    assert agents._review_launch_cursor(args, "hi") == 0
+    assert order == ["metadata", "trap", "postprocess", "dirty-tree", "done"]
 
 
 def _init_git_repo(path: Path) -> None:

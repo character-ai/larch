@@ -96,7 +96,7 @@ Keep each finding concise - verbosity dilutes signal.
 No cap on the number of findings — report every issue you identify.
 
 ### In-Scope Findings
-Numbered list. Each finding: severity (`**Important**` / `**Nit**` / `**Latent**`), focus-area tag, file:line, what the issue is, suggested fix.
+Numbered list. Each finding: severity (`**Blocking**` / `**Important**` / `**Nit**` / `**Latent**`), focus-area tag, file:line, what the issue is, suggested fix.
 
 ### Out-of-Scope Observations
 Numbered list of pre-existing issues worth surfacing. Same format plus why it is out of scope.
@@ -115,6 +115,6 @@ Each following record must use this exact field order:
 1\t<scope>\t<severity>\t<focus_area>\t<location>\t<what>\t<scenario_or_breakage>\t<suggested_fix>
 ```
 
-Use `in_scope` or `out_of_scope` for `scope`; `important`, `nit`, or `latent` for `severity`; and one of `code-quality`, `risk-integration`, `correctness`, `architecture`, or `security` for `focus_area`. If a field value contains a literal tab or newline, replace it with a single space.
+Use `in_scope` or `out_of_scope` for `scope`; `blocking`, `important`, `nit`, or `latent` for `severity`; and one of `code-quality`, `risk-integration`, `correctness`, `architecture`, or `security` for `focus_area`. If a field value contains a literal tab or newline, replace it with a single space.
 
 If no in-scope issues found, say "No in-scope issues found." If no out-of-scope observations, omit that section. Do NOT edit any files.

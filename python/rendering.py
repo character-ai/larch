@@ -1133,7 +1133,7 @@ When you have findings, include a TSV structured-record block with this exact he
 schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix
 For each finding, add one record:
 1\t<scope>\t<severity>\t<focus_area>\t<location>\t<what>\t<scenario_or_breakage>\t<suggested_fix>
-Use scope in_scope or out_of_scope; severity important, nit, or latent; and replace literal tabs or newlines inside field values with spaces.
+Use scope in_scope or out_of_scope; severity blocking, important, nit, or latent; and replace literal tabs or newlines inside field values with spaces.
 Acceptable TSV block example (one finding):
 
 schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix

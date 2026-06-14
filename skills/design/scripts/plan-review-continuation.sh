@@ -86,7 +86,7 @@ blocks = [
     for m in re.finditer(r"(?ms)^### FINDING_[0-9]+:.*?(?=^### |\Z)", text)
 ]
 
-valid_severities = {"important", "latent", "nit"}
+valid_severities = {"blocking", "important", "latent", "nit"}
 structured = bool(blocks)
 severities = []
 for block in blocks:
@@ -122,7 +122,7 @@ def fallback_high(block: str) -> bool:
     return any(re.search(p, c) for p in high_patterns)
 
 if structured:
-    high = sum(1 for sev in severities if sev == "important")
+    high = sum(1 for sev in severities if sev in ("blocking", "important"))
 else:
     high = sum(1 for block in blocks if fallback_high(block))
 

@@ -314,7 +314,7 @@ EMPTY_MERGE_ATTESTATION = os.environ["EMPTY_MERGE_ATTESTATION"]
 
 _STRICT_FINDING_HEADING = re.compile(r"^### FINDING_[0-9]+:")
 _SEVERITY_LINE = re.compile(
-    r"(?m)^-\s*\*\*Severity\*\*:\s*(important|latent|nit)\s*$", re.IGNORECASE
+    r"(?m)^-\s*\*\*Severity\*\*:\s*(blocking|important|latent|nit)\s*$", re.IGNORECASE
 )
 
 
@@ -663,7 +663,7 @@ def main():
             return 1
         if INPUT_MODE == "code" and not block_has_severity(b):
             print(
-                "output block missing - **Severity**: important|latent|nit line",
+                "output block missing - **Severity**: blocking|important|latent|nit line",
                 file=sys.stderr,
             )
             return 1

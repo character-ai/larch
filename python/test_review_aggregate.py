@@ -401,3 +401,67 @@ def test_aggregate_session_env_failure_log_pointer(tmp_path: Path) -> None:
     assert "validation exhausted (narrow-trigger nonconforming pseudo-heading combined with attestation)" in issues.read_text(
         encoding="utf-8"
     )
+
+
+def test_aggregate_code_mode_accepts_blocking_severity(tmp_path: Path) -> None:
+    findings = tmp_path / "in-blocking.md"
+    _ = findings.write_text(
+        """### FINDING_1: Block A
+- **Reviewer**: cursor-a-output.txt
+- **Severity**: important
+- **Concern**: same issue
+- **Suggested revision**: fix
+
+### FINDING_2: Block B
+- **Reviewer**: cursor-b-output.txt
+- **Severity**: latent
+- **Concern**: same issue other words
+- **Suggested revision**: fix
+
+""",
+        encoding="utf-8",
+    )
+    dispatch = tmp_path / "stub-dispatch.sh"
+    rts.write_executable(
+        dispatch,
+        """#!/usr/bin/env bash
+set -euo pipefail
+slots=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --slots-file) slots="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+out=$(jq -r '.output' "$slots")
+cat >"$out" <<'EOF'
+### FINDING_1: merged blocking
+- **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt
+- **Severity**: blocking
+- **Concern**: normalized concern
+- **Suggested revision**: fix
+
+EOF
+printf '%s\\n' "$out" > "${slots}.output-files"
+printf 'DISPATCH_OK=true\\nALL_OUTPUT_FILES=%s\\nALL_OUTPUT_FILES_PATH=%s\\nALL_OUTPUT_TOOLS=cursor\\n' "$out" "${slots}.output-files"
+""",
+    )
+
+    result = run_review(
+        "aggregate-findings",
+        "--findings-file",
+        str(findings),
+        "--review-tmpdir",
+        str(tmp_path),
+        "--codex-present",
+        "true",
+        "--cursor-present",
+        "true",
+        "--mode",
+        "diff",
+        env=_aggregate_env(tmp_path, AGGREGATE_DISPATCH_SH=str(dispatch)),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "AGGREGATED=true" in result.stdout
+    assert "- **Severity**: blocking" in findings.read_text(encoding="utf-8")

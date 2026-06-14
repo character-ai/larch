@@ -9,7 +9,7 @@ Issue #1011 extended the original Monitor-only rule to forbid Bash `run_in_backg
 - `AGENTS.md`: the canonical bullet covering Monitor, Bash polling loops, and narrow single-waiter recovery.
 - `skills/implement/SKILL.md`: Step 5 delegates reviewer waiting to `python/cli.py review-and-fix step5` instead of ad-hoc polling loops, and the NEVER list bans Monitor fallback.
 - `skills/design/SKILL.md`: both Step 3 immediate-background fences carry the result-file sleep-loop ban and consequence prose, and the Anti-patterns list bans Monitor fallback.
-- `skills/shared/orchestrator-never.md`: the shared NEVER list carries the `run_in_background` result-file sleep-loop ban.
+- `skills/shared/orchestrator-never.md`: the shared NEVER list carries the `run_in_background` result-file sleep-loop ban and narrow single-waiter recovery wording.
 
 Family B background+monitor pairing assertions were removed in breadcrumbs Stage 3 (#3118); Stage 4 removes the remaining skill-fence prose.
 
@@ -20,6 +20,7 @@ Family B background+monitor pairing assertions were removed in breadcrumbs Stage
 - `skills/implement/SKILL.md` Step 5 references `${CLAUDE_PLUGIN_ROOT}/python/cli.py review-and-fix step5`.
 - `/design` Step 3 carries the exact literal ``NEVER poll `.step3-review-result.env` with a sleep loop.`` exactly twice, covering the initial fence and resume `--starting-round` fence.
 - `skills/shared/orchestrator-never.md` carries the exact shared NEVER literal for `run_in_background` result-file sleep loops.
+- `skills/shared/orchestrator-never.md` carries the exact narrow recovery wording `only sanctioned exception to the Bash polling-loop ban is one re-launched immediate-background completion waiter`.
 - `AGENTS.md` carries the exact narrow recovery wording `only sanctioned exception to the Bash polling-loop ban is one re-launched immediate-background completion waiter`.
 - `skills/implement/SKILL.md` carries the exact Monitor-ban literal ``NEVER use the `Monitor` tool anywhere within the `/implement` orchestrator``.
 - `skills/implement/SKILL.md` carries the exact narrow recovery wording `only sanctioned exception to the Bash polling-loop ban is one re-launched immediate-background completion waiter`.

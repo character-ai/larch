@@ -201,7 +201,7 @@ Each finding must appear in both the prose sections below and as a structured re
 
 In addition to the prose output below, write one JSON object per finding to a sidecar JSONL file. Derive the sidecar path from the primary output path by appending `.jsonl` (for example, `cursor-plan-arch-output.txt.jsonl`). Write structured records only to the sidecar; do not append them to the prose output.
 
-Each JSONL record has these fields: `schema_version` (integer `1`), `scope` (`"in_scope"` or `"out_of_scope"`), `severity` (`"important"`, `"nit"`, or `"latent"`), `focus_area` (`"code-quality"`, `"risk-integration"`, `"correctness"`, `"architecture"`, or `"security"`), `location` (file:line or plan section, string), `what` (finding text, string), `scenario_or_breakage` (concrete failing scenario or breakage path, or empty string), and `suggested_fix` (string).
+Each JSONL record has these fields: `schema_version` (integer `1`), `scope` (`"in_scope"` or `"out_of_scope"`), `severity` (`"blocking"`, `"important"`, `"nit"`, or `"latent"`), `focus_area` (`"code-quality"`, `"risk-integration"`, `"correctness"`, `"architecture"`, or `"security"`), `location` (file:line or plan section, string), `what` (finding text, string), `scenario_or_breakage` (concrete failing scenario or breakage path, or empty string), and `suggested_fix` (string).
 
 Emit exactly one JSONL record for each prose finding or observation. If there are no findings or observations, leave the sidecar empty (0 records).
 
@@ -210,13 +210,14 @@ Return findings in two separate sections.
 ### Severity
 
 Prefix each finding with one of:
+- `**Blocking**` — must be fixed before merge; correctness, security, or contract breakage that blocks the change.
 - `**Important**` — a real bug or correctness/risk issue introduced or amplified by this PR.
 - `**Nit**` — a minor, subjective, or low-impact concern; always optional to address.
 - `**Latent**` — a real issue that predates this PR or is not caused by this change.
 
 If the PR introduced or amplified a defect, use `**Important**` even when the defect is not yet exploited; reserve `**Latent**` for issues that predate the PR or are clearly unrelated to the change under review.
 
-Severity tags (`**Important**`, `**Nit**`, `**Latent**`) are labels within a finding's content; they are unrelated to the ballot's `[OUT_OF_SCOPE]` marker used by the voting protocol. Scope is determined by section placement (In-Scope vs Out-of-Scope), not by severity.
+Severity tags (`**Blocking**`, `**Important**`, `**Nit**`, `**Latent**`) are labels within a finding's content; they are unrelated to the ballot's `[OUT_OF_SCOPE]` marker used by the voting protocol. Scope is determined by section placement (In-Scope vs Out-of-Scope), not by severity.
 
 For every `**Important**` finding, state either:
 - a **concrete failing scenario** (when reviewing code): inputs → bad output, or the specific line that panics/overflows/deadlocks; OR
@@ -236,13 +237,13 @@ No cap on finding count; the 5-Nit cap in § Severity still applies to **Nit** f
 
 ### In-Scope Findings
 A numbered list of issues that should be fixed in this PR. For each finding:
-- **Severity**: one of `**Important**` / `**Nit**` / `**Latent**` (required prefix)
+- **Severity**: one of `**Blocking**` / `**Important**` / `**Nit**` / `**Latent**` (required prefix)
 - **Focus area**: one of `code-quality` / `risk-integration` / `correctness` / `architecture` / `security` (required tag)
 - {OUTPUT_INSTRUCTION}
 
 ### Out-of-Scope Observations
 A numbered list of pre-existing issues or concerns beyond the scope of this PR that are still worth surfacing for future attention. For each observation:
-- **Severity**: same three-option tag
+- **Severity**: same four-option tag
 - **Focus area**: same five-option tag (`code-quality` / `risk-integration` / `correctness` / `architecture` / `security`)
 - {OUTPUT_INSTRUCTION}
 - Note why this is out of scope (pre-existing, unrelated to PR, etc.)
@@ -335,7 +336,7 @@ Keep each finding concise - verbosity dilutes signal.
 No cap on the number of findings - report every issue you identify.
 
 ### In-Scope Findings
-Numbered list. Each finding: severity (`**Important**` / `**Nit**` / `**Latent**`), focus-area tag, file:line or plan requirement anchor, what the issue is, concrete breakage path, suggested fix.
+Numbered list. Each finding: severity (`**Blocking**` / `**Important**` / `**Nit**` / `**Latent**`), focus-area tag, file:line or plan requirement anchor, what the issue is, concrete breakage path, suggested fix.
 
 ### Out-of-Scope Observations
 Numbered list of pre-existing issues worth surfacing. Same format plus why it is out of scope.
@@ -354,7 +355,7 @@ Each following record must use this exact field order:
 1\t<scope>\t<severity>\t<focus_area>\t<location>\t<what>\t<scenario_or_breakage>\t<suggested_fix>
 ```
 
-Use `in_scope` or `out_of_scope` for `scope`; `important`, `nit`, or `latent` for `severity`; and one of `code-quality`, `risk-integration`, `correctness`, `architecture`, or `security` for `focus_area`. If a field value contains a literal tab or newline, replace it with a single space.
+Use `in_scope` or `out_of_scope` for `scope`; `blocking`, `important`, `nit`, or `latent` for `severity`; and one of `code-quality`, `risk-integration`, `correctness`, `architecture`, or `security` for `focus_area`. If a field value contains a literal tab or newline, replace it with a single space.
 
 If no in-scope issues found, say "No in-scope issues found." If no out-of-scope observations, omit that section. Do NOT edit any files.
 ```
@@ -450,7 +451,7 @@ Keep each finding concise - verbosity dilutes signal.
 No cap on the number of findings — report every issue you identify.
 
 ### In-Scope Findings
-Numbered list. Each finding: severity (`**Important**` / `**Nit**` / `**Latent**`), focus-area tag, file:line, what the issue is, suggested fix.
+Numbered list. Each finding: severity (`**Blocking**` / `**Important**` / `**Nit**` / `**Latent**`), focus-area tag, file:line, what the issue is, suggested fix.
 
 ### Out-of-Scope Observations
 Numbered list of pre-existing issues worth surfacing. Same format plus why it is out of scope.
@@ -469,7 +470,7 @@ Each following record must use this exact field order:
 1\t<scope>\t<severity>\t<focus_area>\t<location>\t<what>\t<scenario_or_breakage>\t<suggested_fix>
 ```
 
-Use `in_scope` or `out_of_scope` for `scope`; `important`, `nit`, or `latent` for `severity`; and one of `code-quality`, `risk-integration`, `correctness`, `architecture`, or `security` for `focus_area`. If a field value contains a literal tab or newline, replace it with a single space.
+Use `in_scope` or `out_of_scope` for `scope`; `blocking`, `important`, `nit`, or `latent` for `severity`; and one of `code-quality`, `risk-integration`, `correctness`, `architecture`, or `security` for `focus_area`. If a field value contains a literal tab or newline, replace it with a single space.
 
 If no in-scope issues found, say "No in-scope issues found." If no out-of-scope observations, omit that section. Do NOT edit any files.
 ```
@@ -561,7 +562,7 @@ Keep each finding concise — verbosity dilutes signal.
 No cap on the number of findings — report every issue you identify.
 
 ### In-Scope Findings
-Numbered list. Each finding: severity (`**Important**` / `**Nit**` / `**Latent**`), focus-area tag, file:line, what the issue is, suggested fix.
+Numbered list. Each finding: severity (`**Blocking**` / `**Important**` / `**Nit**` / `**Latent**`), focus-area tag, file:line, what the issue is, suggested fix.
 
 ### Out-of-Scope Observations
 Numbered list of pre-existing issues worth surfacing. Same format plus why it is out of scope.
@@ -580,7 +581,7 @@ Each following record must use this exact field order:
 1\t<scope>\t<severity>\t<focus_area>\t<location>\t<what>\t<scenario_or_breakage>\t<suggested_fix>
 ```
 
-Use `in_scope` or `out_of_scope` for `scope`; `important`, `nit`, or `latent` for `severity`; and one of `code-quality`, `risk-integration`, `correctness`, `architecture`, or `security` for `focus_area`. If a field value contains a literal tab or newline, replace it with a single space.
+Use `in_scope` or `out_of_scope` for `scope`; `blocking`, `important`, `nit`, or `latent` for `severity`; and one of `code-quality`, `risk-integration`, `correctness`, `architecture`, or `security` for `focus_area`. If a field value contains a literal tab or newline, replace it with a single space.
 
 If no in-scope issues found, say "No in-scope issues found." If no out-of-scope observations, omit that section. Do NOT edit any files.
 ```
