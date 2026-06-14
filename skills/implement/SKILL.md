@@ -87,16 +87,16 @@ Every step MUST print breadcrumb status lines per shared/progress-reporting.md. 
 ## Extracted Script Registry
 
 Prompt-side orchestration steps delegate to these script contracts:
-`post-tracking-issue.md`; `commit-implementation.md`;
-`generate-code-flow-diagram.md`;
-`refresh-execution-issues.md`;
-`slack-issue-announce.md`; `write-final-report.md`; `skills/implement/scripts/cleanup.md`;
+`post-tracking-issue.md` (`skills/implement/scripts/post-tracking-issue.sh`); `commit-implementation.md`;
+`generate-code-flow-diagram.md` (`skills/implement/scripts/generate-code-flow-diagram.sh`);
+`refresh-execution-issues.md` (`skills/implement/scripts/refresh-execution-issues.sh`);
+`slack-issue-announce.md` (`skills/implement/scripts/slack-issue-announce.sh`); `write-final-report.md` (`skills/implement/scripts/write-final-report.sh`); `skills/implement/scripts/cleanup.md` (`skills/implement/scripts/cleanup.sh`);
 `step-0-bootstrap.md`; `step-0-degraded-gate.md` (legacy — `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-degraded-gate.sh` remains shipped for offline harnesses but is not called on the active Step 0 path); `step-2-entry.md`;
 `run-step-checks.md`; `step-5-entry.md`; `step-5-resume.md` (`python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review-and-fix commit-fixes`, via `step-5-resume.sh`);
 `step-6-entry.md` (`python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review-and-fix check-changes`, via `step-6-entry.sh`); `step-8-ship.md`;
 `step-8-oos-checkpoint.md`; `step-16.md` (`python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review-and-fix write-rejected`, via `step-16.sh`);
 `step-17.md`;
-`step-18a-gate.md`; `step-18b-final-report.md`; `step-18-finalize.md`;
+`step-18a-gate.md`; `step-18b-final-report.md` (`skills/implement/scripts/step-18b-final-report.sh`); `step-18-finalize.md`;
 `python/review_and_fix.py` (Step 5 / apply-findings / check-changes / commit-fixes / write-rejected driver).
 **Legacy / regression-only (not on the issue-anchored happy path):** `scripts/extract-closes-issue-from-pr.sh` (PR metadata helper retained for other workflows).
 **Structural harness reachability:** `${CLAUDE_PLUGIN_ROOT}/scripts/test-implement-fence-shape.sh` backs `make test-implement-fence-shape`. `${CLAUDE_PLUGIN_ROOT}/scripts/test-implement-preflight.sh` backs `make test-implement-preflight`.
@@ -109,6 +109,14 @@ export IMPLEMENT_TMPDIR
 [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ] && CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
 export CLAUDE_PLUGIN_ROOT
 "${CLAUDE_PLUGIN_ROOT}/scripts/extract-closes-issue-from-pr.sh"
+```
+
+Structured invocation pins for script factoring that is reached through active drivers or wrappers:
+
+```bash
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" scripts/compose-pr-summary.sh --plan-goals-file "$IMPLEMENT_TMPDIR/plan-goals.md"
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" scripts/render-run-summary.sh --skill implement --outcome "$IMPLEMENT_OUTCOME" --run-id "$RUN_ID" --mode "$IMPLEMENT_MODE" --duration "$IMPLEMENT_DURATION" --issue-number "$ISSUE_NUMBER" --issue-url "$ISSUE_URL"
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" scripts/implement-finalize.sh teardown --state-file "$IMPLEMENT_TMPDIR/finalize-state.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"
 ```
 
 ### Bash block prelude
@@ -322,12 +330,26 @@ Reference `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/phantom-probe.md` w
 
 **Machine reachability** — scripts whose canonical prose references live in `execution-issues-tracking.md`; listed here to satisfy `agent-lint` S030:
 - `${CLAUDE_PLUGIN_ROOT}/python/cli.py oos materialize-manifest`
+- `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/materialize-manifest-oos.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/materialize-manifest-oos.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-python/cli.py oos materialize-manifest`
+- `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-materialize-manifest-oos.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-materialize-manifest-oos.md`
 - `${CLAUDE_PLUGIN_ROOT}/python/cli.py oos file-conflict-deps`
+- `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-file-conflict-deps.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-file-conflict-deps.md`
 - `${CLAUDE_PLUGIN_ROOT}/python/cli.py oos issue-cap`
+- `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-issue-cap.sh`
+- `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-disposition-checkpoint.sh`
+- `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-disposition-gate.sh`
+- `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-oos-disposition-gate.sh`
+
+**Machine reachability** — implementation lifecycle helpers whose detailed contracts live in sibling docs or Python CLI surfaces; listed here to satisfy `agent-lint` S030:
+- `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/flush-execution-issues.sh`
+- `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-flush-execution-issues.sh`
+- `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/stall-recovery-report.sh`
+- `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-7a.sh`
+- `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-step-7a.sh`
 
 <!-- step:2 — Implement the Feature -->
 
