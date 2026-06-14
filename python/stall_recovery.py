@@ -267,9 +267,16 @@ def normalize_issue_env(args: argparse.Namespace) -> int:
     return 0
 
 
+def _artifact_path(tmpdir: Path, default_name: str, prefix: str) -> Path:
+    if not prefix or prefix == "stall-recovery":
+        return tmpdir / default_name
+    return tmpdir / (prefix + default_name.removeprefix("stall-recovery"))
+
+
 def record_escalation(args: argparse.Namespace) -> int:
     tmpdir = Path(args.implement_tmpdir)
-    ledger = tmpdir / "stall-recovery-escalation-ledger.tsv"
+    prefix = getattr(args, "artifact_prefix", "") or ""
+    ledger = _artifact_path(tmpdir, "stall-recovery-escalation-ledger.tsv", prefix)
     row = f"utc={datetime.now(UTC).isoformat()}\tsite={args.site}\ttrigger={args.trigger}\tstep={args.step}\tphase={args.phase}\tdispatcher={args.dispatcher}\texit_code={args.exit_code}\n"
     try:
         old = ledger.read_text(encoding="utf-8") if ledger.exists() else ""
@@ -456,6 +463,7 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--phase", required=True)
         p.add_argument("--dispatcher", required=True)
         p.add_argument("--exit-code", required=True)
+        p.add_argument("--artifact-prefix", default="")
         ns, _ = p.parse_known_args(rest)
         return record_escalation(ns)
     if sub in {"compose-report", "dedup-tier-a-report"}:
