@@ -68,44 +68,38 @@ _GENERIC_SOURCE_SCRIPTS = frozenset({
 
 
 def _safe_outcome(value: str) -> bool:
-    if value in _OUTCOMES:
-        return True
-    if value.startswith("cancelled-") and re.fullmatch(r"[A-Za-z0-9._:-]+", value):
-        return True
-    return False
+    return value in _OUTCOMES or (
+        value.startswith("cancelled-") and bool(re.fullmatch(r"[A-Za-z0-9._:-]+", value))
+    )
 
 
-def _safe_step(value: str, generic: bool) -> bool:
+def _safe_step(value: str, *, generic: bool) -> bool:
     if generic and value in _GENERIC_STEPS:
         return True
     if value in {"bump-branch-guard", "merge-loop-iteration-cap", "rebase-failed"}:
         return True
     if re.fullmatch(r"[2-9]|1[0-5]", value):
         return True
-    if re.fullmatch(r"(8|9|10|11|12|13|14|15)([a-z][0-9]?|-[a-z0-9]+(-[a-z0-9]+)*)?", value):
-        return True
-    return False
+    return bool(re.fullmatch(r"(8|9|10|11|12|13|14|15)([a-z][0-9]?|-[a-z0-9]+(-[a-z0-9]+)*)?", value))
 
 
-def _safe_token(kind: str, value: str, generic: bool) -> bool:
+def _safe_token(kind: str, value: str, *, generic: bool) -> bool:
     if not value:
         return False
     if kind == "outcome":
         return _safe_outcome(value)
     if kind == "step":
-        return _safe_step(value, generic)
+        return _safe_step(value, generic=generic)
     if kind == "phase":
         return value in _COMMON_PHASES or (generic and value in _GENERIC_PHASES)
     if kind == "site":
         return value in _COMMON_SITES or (generic and value in _GENERIC_SITES)
     if kind == "trigger":
-        if value in _COMMON_TRIGGERS:
-            return True
-        if generic and value in _GENERIC_TRIGGERS:
-            return True
-        if re.fullmatch(r"ci-local-unfixable:[A-Za-z0-9_,-]+", value):
-            return True
-        return False
+        return (
+            value in _COMMON_TRIGGERS
+            or (generic and value in _GENERIC_TRIGGERS)
+            or bool(re.fullmatch(r"ci-local-unfixable:[A-Za-z0-9_,-]+", value))
+        )
     if kind == "bail":
         return not value or (generic and value in _GENERIC_BAILS)
     if kind == "source-script":
@@ -333,7 +327,7 @@ def validate_token(args: argparse.Namespace) -> int:
     if not token or not re.fullmatch(r"[A-Za-z0-9._:-]+", token) or ".." in token or "/" in token:
         emit("TOKEN_VALID", "false")
         return 1
-    if kind and not _safe_token(kind, token, generic):
+    if kind and not _safe_token(kind, token, generic=generic):
         emit("TOKEN_VALID", "false")
         return 1
     emit("TOKEN_VALID", "true")
