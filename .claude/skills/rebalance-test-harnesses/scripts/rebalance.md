@@ -16,8 +16,8 @@ It samples recent baseline CI timings, repacks Makefile shard targets, opens a P
 2. Fetch `LARCH_HARNESS_TIMING` rows from recent successful baseline CI runs.
 3. Compute per-target median seconds.
 4. Select the measured workload that is also present in the shard target set.
-5. Run the warning-only feasibility preflight on that selected workload.
-6. Pass the same selected workload to `pack()` for round-robin LPT packing.
+5. Pass the selected workload to `pack()` for round-robin LPT packing.
+6. Run the warning-only feasibility check on the packed shard totals.
 7. Write the new shard lines and validate coverage.
 8. Create a branch and PR for the new Makefile layout.
 9. Trigger verification CI runs and collect median per-shard totals.
@@ -40,20 +40,22 @@ AFTER is measured from verification CI runs for that same new layout.
 
 ## Feasibility preflight
 
-The preflight checks whether the configured spread threshold can be met without splitting or speeding up the heaviest packed target.
+The preflight checks whether the estimated packed shard spread exceeds the configured threshold.
 It is warning-only.
 It never aborts the rebalance.
 
-The check uses the exact measured target set passed to `pack()`:
+The check runs after packing:
 
 ```python
 measured = _select_packed_workload(medians, all_shard_targets)
-_check_feasibility(measured, n_shards, args.balance_threshold)
 new_shards = pack(measured, n_shards, guard=_GUARD, extras=extras)
+_check_feasibility(new_shards, medians, args.balance_threshold)
 ```
 
-This means orphan timing rows from baseline CI logs are ignored unless the target is still present in the shard target set.
-The warning names the heaviest packed target, its seconds, the ideal shard time, the configured threshold, half of that threshold, and the top heaviest packed targets.
+Totals are computed from packed shard targets.
+Missing timing data contributes `0.0` seconds.
+This means orphan timing rows from baseline CI logs remain ignored because they are not present in the packed shard layout.
+The warning names the estimated packed spread, configured threshold, heaviest shard total, and lightest shard total.
 
 ## Edit in sync
 

@@ -1,0 +1,1 @@
+Complete. Manifest written with `status=complete`. Targeted tests and `bash scripts/relevant-checks.sh` passed.

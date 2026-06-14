@@ -186,6 +186,56 @@ DESIGN_STEP35_DEDUP_PLAN_SH="$DEDUP_STUB" DESIGN_STEP35_POSTPLAN_SH="$POSTPLAN_S
 [[ -f "$d/postplan-argv.txt" ]] || fail "Gate B marker resume should run postplan"
 [[ "$(cat "$d/.step3-round-8.phase")" == awaiting-continuation ]] || fail "Gate B resume should settle continuation"
 
+# --- Gate B plan-changing retry runs dedup when operator phase is set ---
+d="$TMPROOT/settle-gate-b-operator-retry"
+write_plan "$d" <<'EOF'
+body
+diff_lines: 1
+EOF
+: >"$d/.gate-b-postapply-ready-12"
+printf 'awaiting-postplan-operator\n' >"$d/.step3-round-12.phase"
+rm -f "$d/dedup.log"
+DESIGN_STEP35_DEDUP_PLAN_SH="$DEDUP_STUB" DESIGN_STEP35_POSTPLAN_SH="$POSTPLAN_STUB" run_settle "$d" gate-b 12 >/dev/null
+[[ -f "$d/dedup.log" ]] || fail "Gate B operator retry must run dedup despite apply-ready marker"
+
+# --- Gate B --force-dedup runs dedup even on idempotent marker resume ---
+d="$TMPROOT/settle-gate-b-force-dedup"
+write_plan "$d" <<'EOF'
+body
+diff_lines: 1
+EOF
+: >"$d/.gate-b-postapply-ready-13"
+rm -f "$d/dedup.log"
+DESIGN_STEP35_DEDUP_PLAN_SH="$DEDUP_STUB" DESIGN_STEP35_POSTPLAN_SH="$POSTPLAN_STUB" run_settle "$d" gate-b 13 --force-dedup >/dev/null
+[[ -f "$d/dedup.log" ]] || fail "Gate B --force-dedup must run dedup despite apply-ready marker"
+
+# --- Pre-work pause exits 11 instead of helper rc 0 ---
+d="$TMPROOT/settle-pre-pause"
+write_plan "$d" <<'EOF'
+body
+diff_lines: 1
+EOF
+PAUSE_PLUGIN="$TMPROOT/pause-plugin"
+mkdir -p "$PAUSE_PLUGIN/scripts"
+cp "$REPO_ROOT/scripts/lib-design-tmpdir.sh" "$PAUSE_PLUGIN/scripts/"
+cat >"$PAUSE_PLUGIN/scripts/design-pause-save.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'PAUSE_OK=true\n'
+exit 0
+STUB
+chmod +x "$PAUSE_PLUGIN/scripts/design-pause-save.sh"
+: >"$d/.pause-requested"
+set +e
+out=$(DESIGN_TMPDIR="$d" ISSUE_NUMBER=1 DESIGN_STEP35_DEDUP_PLAN_SH="$DEDUP_STUB" DESIGN_STEP35_POSTPLAN_SH="$POSTPLAN_STUB" \
+  "$SETTLE" --plugin-root "$PAUSE_PLUGIN" --site gate-b --round-num 14 2>&1)
+rc=$?
+set -e
+[[ "$rc" == 11 ]] || fail "pre-work pause should exit 11, got $rc (out=$out)"
+[[ "$out" == *"PAUSE_OK=true"* ]] || fail "pre-work pause should print pause-save output"
+[[ ! -e "$d/dedup.log" ]] || fail "pre-work pause must not run dedup"
+[[ ! -e "$d/.gate-b-postapply-ready-14" ]] || fail "pre-work pause must not write apply-ready marker"
+
 # --- Gate B rejects missing and non-numeric rounds ---
 d="$TMPROOT/settle-missing-round"
 write_plan "$d" <<'EOF'

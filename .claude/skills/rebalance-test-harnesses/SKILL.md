@@ -27,9 +27,9 @@ All flags are optional; defaults are sensible for normal use in this repository.
 2. Compute the per-target median wall time.
 3. Sort all shard targets slowest-to-fastest and distribute across 20 shards in
    round-robin order (LPT heuristic — guarantees the slowest tests never cluster).
-   Before packing, run a warning-only feasibility preflight on the exact measured
-   target set passed to the packer. The preflight ignores orphan timing rows
-   whose targets are not present in the shard target set.
+   Packing runs before the warning-only feasibility check. The check evaluates
+   packed shard totals against the configured threshold. Orphan timing rows
+   remain ignored because totals come from packed shard targets.
 4. Write the new `test-harnesses-N:` lines to `Makefile`.
 5. Validate the partition with `bash scripts/test-harness-shards-coverage.sh`.
 6. Commit, push a new branch, and create a PR.

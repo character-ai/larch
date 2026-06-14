@@ -28,67 +28,72 @@ rebalance = _load_rebalance()
 
 
 def _feasibility_output(
-    measured: dict[str, float],
+    shards: dict[int, list[str]],
+    medians: dict[str, float],
     *,
-    n_shards: int = 2,
     balance_threshold: float = 4.0,
 ) -> str:
     stream = io.StringIO()
     with contextlib.redirect_stdout(stream):
-        rebalance._check_feasibility(measured, n_shards, balance_threshold)
+        rebalance._check_feasibility(shards, medians, balance_threshold)
     return stream.getvalue()
 
 
-def test_infeasible_packed_workload_emits_warning() -> None:
+def test_packed_spread_over_threshold_emits_warning() -> None:
+    medians = {
+        "test-a": 10.0,
+        "test-b": 10.0,
+        "test-c": 10.0,
+        "test-d": 10.0,
+    }
+    shards = rebalance.pack(medians, 3, guard="")
     output = _feasibility_output(
-        {
-            "test-slow": 20.0,
-            "test-medium": 2.0,
-            "test-fast": 2.0,
-        }
+        shards,
+        medians,
+        balance_threshold=5.0,
     )
 
     assert "WARNING: packed workload may be infeasible" in output
-    assert "Heaviest packed target: test-slow (20.0s)" in output
-    assert "Ideal shard time: 12.0s" in output
-    assert "Balance threshold: 4.0s" in output
-    assert "Threshold half: 2.0s" in output
-    assert "Top 5 heaviest packed targets:" in output
-    assert "test-medium: 2.0s" in output
+    assert "Estimated packed spread: 10.0s" in output
+    assert "Balance threshold: 5.0s" in output
+    assert "Heaviest shard:" in output
+    assert "Lightest shard:" in output
 
 
-def test_feasible_packed_workload_emits_no_warning() -> None:
+def test_dominant_target_with_packed_spread_within_threshold_emits_no_warning() -> None:
+    medians = {
+        "test-slow": 20.0,
+        "test-medium-a": 14.0,
+        "test-medium-b": 14.0,
+    }
+    shards = rebalance.pack(medians, 3, guard="")
     output = _feasibility_output(
-        {
-            "test-a": 6.0,
-            "test-b": 6.0,
-            "test-c": 6.0,
-            "test-d": 6.0,
-        }
+        shards,
+        medians,
+        balance_threshold=6.0,
     )
 
     assert output == ""
 
 
 def test_empty_measured_workload_emits_no_warning() -> None:
-    output = _feasibility_output({})
+    output = _feasibility_output({}, {})
 
     assert output == ""
 
 
 def test_zero_shards_emits_no_warning() -> None:
-    output = _feasibility_output({"test-slow": 20.0}, n_shards=0)
+    output = _feasibility_output({}, {"test-slow": 20.0})
 
     assert output == ""
 
 
-def test_orphan_medians_are_excluded_before_feasibility() -> None:
+def test_orphan_medians_are_excluded_from_packed_shard_totals() -> None:
     medians = {
         "test-a": 6.0,
         "test-b": 6.0,
         "orphan-heavy": 100.0,
     }
-    measured = rebalance._select_packed_workload(medians, ["test-a", "test-b"])
+    shards = {1: ["test-a"], 2: ["test-b"]}
 
-    assert measured == {"test-a": 6.0, "test-b": 6.0}
-    assert _feasibility_output(measured) == ""
+    assert _feasibility_output(shards, medians) == ""

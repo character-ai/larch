@@ -8,6 +8,7 @@ CLAUDE_PID=""
 CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-}"
 SITE=""
 ARG_ROUND_NUM=""
+FORCE_DEDUP=false
 PUBLIC_ARGV_WORDS=()
 
 # Prompt-side values may be supplied only as environment variables by Claude Code.
@@ -56,6 +57,7 @@ while [ "$#" -gt 0 ]; do
     --plugin-root) CLAUDE_PLUGIN_ROOT="$2"; shift 2 ;;
     --site) SITE="$2"; shift 2 ;;
     --round-num) ARG_ROUND_NUM="$2"; shift 2 ;;
+    --force-dedup) FORCE_DEDUP=true; shift ;;
     --) shift; PUBLIC_ARGV_WORDS=("$@"); break ;;
     *) printf '%s\n' "$0: unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -129,7 +131,25 @@ fi
 larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit 2
 DESIGN_TMPDIR="$(cd "$DESIGN_TMPDIR" && pwd -P)"
 
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+if [ -f "$DESIGN_TMPDIR/.pause-requested" ]; then
+  set +e
+  pause_out=$("$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"})
+  pause_rc=$?
+  set -e
+  if [ -n "${pause_out:-}" ]; then
+    printf '%s\n' "$pause_out"
+  fi
+  pause_signal=false
+  while IFS= read -r pause_line || [ -n "$pause_line" ]; do
+    case "$pause_line" in
+      PAUSE_OK=true) pause_signal=true ;;
+    esac
+  done <<<"$pause_out"
+  if [ "$pause_signal" = true ] || [ -f "$DESIGN_TMPDIR/.pause-save-complete" ]; then
+    exit 11
+  fi
+  exit "$pause_rc"
+fi
 
 case "${SITE:-}" in
   gate-b) POSTPLAN_SITE=gate-b ;;
@@ -150,7 +170,14 @@ if [ "$SITE" = gate-b ]; then
   gate_b_phase_file="$DESIGN_TMPDIR/.step3-round-$GATE_B_ROUND.phase"
 fi
 
-if [ "$SITE" != gate-b ] || [ ! -f "$gate_b_ready_marker" ]; then
+gate_b_skip_dedup=false
+if [ "$SITE" = gate-b ] && [ -f "$gate_b_ready_marker" ] && [ "$FORCE_DEDUP" != true ]; then
+  if [ ! -f "$gate_b_phase_file" ] || [ "$(cat "$gate_b_phase_file")" != awaiting-postplan-operator ]; then
+    gate_b_skip_dedup=true
+  fi
+fi
+
+if [ "$SITE" != gate-b ] || [ "$gate_b_skip_dedup" != true ]; then
   set +e
   dedup_out=$("$DEDUP_PLAN_SH" --design-tmpdir "$DESIGN_TMPDIR" --dedup)
   dedup_rc=$?
