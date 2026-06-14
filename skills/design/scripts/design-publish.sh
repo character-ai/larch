@@ -461,8 +461,17 @@ write_result_env_and_emit() {
 
 [[ -f "$DESIGN_TMPDIR/.completed/step-5b" ]] \
     || fail 'Step 5b sentinel missing — refusing to publish before OOS filing'
-[[ -s "$DESIGN_TMPDIR/composed-plan.md" ]] \
-    || fail 'composed-plan.md missing or empty — orchestrator must compose the plan first'
+if [[ ! -s "$DESIGN_TMPDIR/composed-plan.md" ]]; then
+    PLAN_WRITE_OK=false
+    VALIDATE_STATUS=defects-found
+    VALIDATE_DEFECT_COUNT=1
+    VALIDATE_SKIPPED_COUNT=0
+    VALIDATE_UNSAFE_TOKEN_COUNT=0
+    VALIDATE_LOG_FILE="$DESIGN_TMPDIR/validate-plan-commands.log"
+    printf '%s\n' 'design-publish.sh: composed-plan.md missing or empty; orchestrator must compose the plan first' >"$VALIDATE_LOG_FILE"
+    write_result_env_and_emit || true
+    exit 4
+fi
 
 if [[ -f "$DESIGN_TMPDIR/.pause-requested" ]]; then
     exec "$PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE" ${REPO:+--repo "$REPO"}
