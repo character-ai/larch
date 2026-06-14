@@ -1306,10 +1306,44 @@ def _safe_simple_token(value: str, *, fallback: str = "redacted") -> str:
     return value if value and re.fullmatch(r"[A-Za-z0-9._:-]+", value) else fallback
 
 
+def _read_source_env_export(path: Path, key: str) -> str:
+    """Read an ``export KEY=value`` assignment from a shell source-env file.
+
+    Mirrors stall-recovery-report.sh ``source_env_export_get``: only honors a
+    line whose first token is ``export``, strips matching surrounding single or
+    double quotes, and refuses to follow symlinks.
+    """
+    if not path.is_file() or path.is_symlink():
+        return ""
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("export "):
+            continue
+        body = stripped[len("export "):].lstrip()
+        if not body.startswith(f"{key}="):
+            continue
+        value = body[len(key) + 1:]
+        quote = value[:1]
+        if quote in ("'", '"') and value[-1:] == quote:
+            value = value[1:-1]
+        return value
+    return ""
+
+
+def _read_source_env_session_id(tmpdir: Path) -> str:
+    return _read_source_env_export(tmpdir / "source-env.sh", "SESSION_ID")
+
+
 def _read_run_id(tmpdir: Path) -> str:
     value = read_kv(tmpdir / "parent-issue.md", "RUN_ID", "")
     if not value and (tmpdir / "session-id").is_file():
         value = (tmpdir / "session-id").read_text(encoding="utf-8", errors="replace").strip()
+    if not value:
+        value = _read_source_env_session_id(tmpdir)
     return _safe_simple_token(value, fallback="unknown")
 
 
