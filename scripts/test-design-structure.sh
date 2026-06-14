@@ -491,7 +491,8 @@ assert_wrapper_pause_before_work() {
     'design-step3-entry-state.sh:design-step3-state.sh' \
     'design-step3b-sanitize.sh:mermaid sanitize' \
     'design-step3b-entry.sh:architecture-diagram.skipped' \
-    'design-step3b-tail.sh:design Step 4 — rejected findings'
+    'design-step3b-tail.sh:design Step 4 — rejected findings' \
+    'design-step35-settle.sh:gate-b-dedup-plan.sh'
   do
     wrapper="${entry%%:*}"
     label="${entry#*:}"
@@ -540,6 +541,11 @@ assert_reference_updates() {
   ! grep -Fq 'with the canonical session-env / pause prelude' "$DISCUSSION_MD" \
     || fail 'discussion-rounds.md must not instruct a separate postplan pause prelude'
   contains "$SKILL_MD" '"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step35-settle.sh --site gate-a' 'SKILL.md missing launcher-form Gate A settle reference'
+  contains "$SKILL_MD" '"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step35-settle.sh --site gate-b' 'SKILL.md missing launcher-form Gate B settle reference'
+  ! grep -Fq ':-current' "$SKILL_MD" \
+    || fail 'SKILL.md must not use :-current Gate B marker fallback'
+  ! grep -Fq '.gate-b-postapply-ready-current' "$SKILL_MD" \
+    || fail 'SKILL.md must not probe .gate-b-postapply-ready-current'
   contains "$SKILL_MD" 'every post-Step-0a Bash fence invokes `"$HOME/.cache/larch/sessions/design-run-$PPID.sh" <wrapper>.sh ...`' 'Anti-pattern #3 missing launcher-owned fence wording'
   contains "$SKILL_MD" 'Wrappers own source-env and pause-check behavior internally' 'Anti-pattern #3 missing wrapper-owned source-env wording'
   contains "$SKILL_MD" 'assert_wrapper_pause_before_work' 'Anti-pattern #3 missing wrapper pause enforcement anchor'
@@ -548,6 +554,31 @@ assert_reference_updates() {
   ! grep -Fq 'assert_bash_fences_have_pause_check' "$SKILL_MD" \
     || fail 'Anti-pattern #3 must not point at obsolete fence-level pause-check assertions'
   contains "$FILE_OOS_MD" 'oos-issue.stdout.txt' 'file-design-oos.md missing issue stdout handoff contract'
+}
+
+assert_no_bare_settle_invocations() {
+  python3 - "$SKILL_MD" "$APPROVAL_MD" "$DISCUSSION_MD" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+launcher = 'design-run-$PPID.sh'
+backtick_settle = re.compile(r'`design-step35-settle\.sh[^`]*`')
+for path_str in sys.argv[1:]:
+    path = Path(path_str)
+    for lineno, line in enumerate(path.read_text().splitlines(), 1):
+        if 'design-step35-settle.sh' not in line or '--site' not in line:
+            continue
+        if launcher in line:
+            continue
+        if backtick_settle.search(line):
+            continue
+        print(
+            f"FAIL: {path.name} line {lineno} has bare design-step35-settle.sh --site invocation: {line}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+PY
 }
 
 assert_no_direct_step3b_step4_routes() {
@@ -841,6 +872,7 @@ assert_behavioral_harness_pins
 assert_route_state_sidecar_quoting
 assert_wrapper_contract_pins
 assert_reference_updates
+assert_no_bare_settle_invocations
 assert_postplan_thin_fence "$SCRIPT_DIR/design-step2b-postplan.sh" 'design-step2b-postplan.sh'
 assert_publish_fence_guards
 assert_step5_fold_and_summary_markers

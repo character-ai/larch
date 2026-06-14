@@ -287,4 +287,32 @@ rc=$?
 set -e
 [[ "$rc" == 3 ]] || fail "missing POSTPLAN_RC should exit 3, got $rc"
 
+# --- POSTPLAN_RC=11 exits 11 without writing awaiting-continuation ---
+d="$TMPROOT/settle-postplan-rc11"
+write_plan "$d" <<'EOF'
+body
+diff_lines: 1
+EOF
+printf 'POSTPLAN_RC=11\n' >"$d/postplan-output.txt"
+set +e
+DESIGN_STEP35_DEDUP_PLAN_SH="$DEDUP_STUB" DESIGN_STEP35_POSTPLAN_SH="$POSTPLAN_STUB" run_settle "$d" gate-b 11 >/dev/null
+rc=$?
+set -e
+[[ "$rc" == 11 ]] || fail "POSTPLAN_RC=11 should exit 11, got $rc"
+[[ "$(cat "$d/.step3-round-11.phase")" == awaiting-post-apply ]] || fail "POSTPLAN_RC=11 must not write awaiting-continuation"
+
+# --- Missing POSTPLAN_RC with child rc 1 must not relay dedup revise-again rc 1 ---
+d="$TMPROOT/settle-missing-postplan-rc-child1"
+write_plan "$d" <<'EOF'
+body
+diff_lines: 1
+EOF
+printf 'POSTPLAN_STATUS=ok\n' >"$d/postplan-output.txt"
+printf '1\n' >"$d/postplan-rc.txt"
+set +e
+DESIGN_STEP35_DEDUP_PLAN_SH="$DEDUP_STUB" DESIGN_STEP35_POSTPLAN_SH="$POSTPLAN_STUB" run_settle "$d" gate-a "" >/dev/null 2>/dev/null
+rc=$?
+set -e
+[[ "$rc" == 3 ]] || fail "missing POSTPLAN_RC with child rc 1 should exit 3, got $rc"
+
 echo "PASS: test-gate-b-dedup-plan.sh"

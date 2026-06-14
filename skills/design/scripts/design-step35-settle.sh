@@ -129,6 +129,8 @@ fi
 larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit 2
 DESIGN_TMPDIR="$(cd "$DESIGN_TMPDIR" && pwd -P)"
 
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+
 case "${SITE:-}" in
   gate-b) POSTPLAN_SITE=gate-b ;;
   gate-a|discussion-round2) POSTPLAN_SITE=discussion-round2 ;;
@@ -190,7 +192,7 @@ printf '%s\n' "${postplan_out:-}"
 pause_signal=false
 while IFS= read -r postplan_line || [ -n "$postplan_line" ]; do
   case "$postplan_line" in
-    PAUSE_OK=true|POSTPLAN_EMIT_STATUS=paused) pause_signal=true ;;
+    PAUSE_OK=true|POSTPLAN_EMIT_STATUS=paused|POSTPLAN_RC=11|POSTPLAN_STATUS=pause-save) pause_signal=true ;;
   esac
 done <<< "$postplan_out"
 if [ "$pause_signal" = true ] || [ -f "$DESIGN_TMPDIR/.pause-save-complete" ]; then
@@ -203,9 +205,6 @@ design_settle_parse_postplan_rc <<< "$postplan_out"
 
 if [ "$POSTPLAN_MACHINE_RC_COUNT" -eq 0 ]; then
   printf '%s\n' "design-step35-settle.sh: postplan output missing anchored POSTPLAN_RC row" >&2
-  if [ "$postplan_child_rc" -ne 0 ]; then
-    exit "$postplan_child_rc"
-  fi
   exit 3
 fi
 if [ "$POSTPLAN_MACHINE_RC_COUNT" -gt 1 ]; then
@@ -229,6 +228,9 @@ case "$POSTPLAN_MACHINE_RC" in
       design_settle_atomic_write "$gate_b_phase_file" awaiting-postplan-operator
     fi
     exit "$POSTPLAN_MACHINE_RC"
+    ;;
+  11)
+    exit 11
     ;;
   12)
     exit 12
