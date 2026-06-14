@@ -194,7 +194,7 @@ def test_dynamic_default_launch_review_uses_python_cli(tmp_path: Path, monkeypat
         ]
     }
 
-    def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+    def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
         recorded.append(list(cmd))
         if "--output" in cmd and "--output-file" not in cmd:
             Path(cmd[cmd.index("--output") + 1]).write_text("not json", encoding="utf-8")
