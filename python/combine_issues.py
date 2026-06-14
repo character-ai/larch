@@ -885,16 +885,16 @@ def close_stale_main(argv: list[str] | None = None) -> int:
         except OSError:
             print(f"ERROR=Missing or unreadable --comment-file: {args.comment_file}", file=sys.stderr)
             return 1
-    repo = _resolve_repo(args.repo)
-    if not repo:
-        print("ERROR=Could not determine repository", file=sys.stderr)
-        return 1
     if args.dry_run:
         print("DRY_RUN=true")
         print("WOULD_CLOSE=" + ",".join(str(source) for source in sources))
         print("CLOSED_ISSUES=0")
         print("PARTIAL=false")
         return 0
+    repo = _resolve_repo(args.repo)
+    if not repo:
+        print("ERROR=Could not determine repository", file=sys.stderr)
+        return 1
     closed = 0
     warnings = []
     for source in sources:

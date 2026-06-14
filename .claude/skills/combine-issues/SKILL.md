@@ -164,7 +164,17 @@ Track fully stale source issues while checking actuality. A source is fully stal
 
 Do not call raw `gh issue close` from prompt prose. Do not invoke `combine-issues close-stale` during oos-2 before approval.
 
-If no actual items remain after actuality checks, proceed to an approval prompt that shows only stale-only closures. After approval, invoke `combine-issues close-stale`, parse its output, report the stale closure tally, and stop without entering combination planning. If approval is denied, leave the stale-only sources open, report them as not closed, and stop.
+If no actual items remain after actuality checks, proceed to an approval prompt that shows only stale-only closures. After approval, close approved fully stale sources. Prefer per-issue `close-stale` calls when comments differ by issue:
+
+```bash
+python3 "$PWD/python/cli.py" combine-issues close-stale \
+  --repo "$REPO" \
+  --issues "<issue>" \
+  --reason "not planned" \
+  --comment-file "<file>"
+```
+
+The comment file must be redacted and should summarize only that issue's stale discard lines. For batch calls, use a shared comment only when it is correct for every issue in the batch. Parse `CLOSED_ISSUES` and `PARTIAL` from stdout, and parse redacted `WARNING=` records from stderr. Report the stale closure tally and stop without entering combination planning. If approval is denied, leave the stale-only sources open, report them as not closed, and stop.
 
 If actual items remain, carry the stale-only closure list forward into oos-4.
 
