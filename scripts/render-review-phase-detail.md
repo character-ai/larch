@@ -19,7 +19,7 @@ sentinel in `summary-final.md` / the tracking-issue `larch:final-summary` commen
 |------|----------|---------|
 | `--rounds-root DIR` | yes | Directory containing `round-<N>/` subdirs (live: `$IMPLEMENT_TMPDIR`; committed: the run-log dir). |
 | `--findings-file F` | no | `review-findings-full.jsonl` for top-reviewer attribution. |
-| `--timing-ledger F` | no | `timing-ledger.tsv`; per-round `type=round` rows supply the Time column through the `--skill`-filtered table window, per-round Cost attribution through the same filtered table window, and reviewer timing chart windows through the unfiltered Gantt window. |
+| `--timing-ledger F` | no | `timing-ledger.tsv`; per-round `type=round` rows supply the Time column through the `--skill`-filtered table window, per-round Cost attribution through the same filtered table window, and reviewer timing chart candidate windows through the unfiltered Gantt window. |
 | `--token-ledger F` | no | `larch-tokens-<hash>.jsonl`; vendor token records (timestamp-windowed to each round) supply the per-round vendor Cost column. |
 | `--skill implement\|design` | no | Default `implement`; `design` renders the same table from design plan-review round artifacts. |
 | `--top-n N` | no | Top-reviewers cap (default `7`). |
@@ -45,10 +45,15 @@ sentinel in `summary-final.md` / the tracking-issue `larch:final-summary` commen
   reviewer task windows. Column 8 is `start_s`; column 9 is `end_s`. Round
   windows aggregate `type=round` rows by round number only and are not filtered
   by `--skill`. Vendor rows are selected by overlap only and are not filtered by
-  `--skill`. Matching rows are clamped to absolute round bounds before TSV
-  emission. The shell sorts by absolute `start_s`, then absolute `end_s`, then
-  label with a tab-delimited sort because label is the first TSV field. It caps
-  at 25 tasks after sorting.
+  `--skill`. The chart is a filtered reviewer view: CI-fix, CI-test,
+  CI-output, and launcher probe timing rows are excluded before sorting and
+  before the 25-task cap. Excluded basenames include `ci.out`, `*-ci.out`,
+  `ci-fix-*.out`, `claude.out`, `codex.out`, and `cursor.out`. Matching rows
+  are clamped to absolute round bounds before TSV emission. The shell sorts by
+  absolute `start_s`, then absolute `end_s`, then label with a tab-delimited
+  sort because label is the first TSV field. It caps at 25 displayed tasks after
+  sorting. Chart axes use the span of those displayed rows, not the full round
+  timing row; the table Time column still uses the round timing row.
 - **Cost** — the per-round **vendor** cost (Codex + Cursor + Claude subprocess).
   Per-round Cost attribution uses the same `--skill`-filtered table window as
   Time. Vendor token records from `--token-ledger` are attributed to a round by
@@ -71,9 +76,9 @@ round windowing, row cap, sorting, label attribution, absolute clamping before
 TSV emission, and best-effort subprocess failure handling.
 
 The shell-to-CLI contract is absolute-time based: TSV `start_s` and `end_s` are
-absolute clamped overlap bounds, and `--window-start-s` / `--window-end-s` are
-absolute round bounds. Relative offsets are not accepted at this call site.
-Chart title windows use `m:ss`, not the table `fmt_hms` output.
+absolute clamped overlap bounds, and `--window-start-s` / `--window-end-s` use
+the displayed-row span after filtering. Relative offsets are not accepted at
+this call site. Chart title windows use `m:ss`, not the table `fmt_hms` output.
 
 Renderer non-zero status, an unreadable CLI path, or missing `python3` must not
 abort the report. The no-task note means no overlapping rows were extracted, or
