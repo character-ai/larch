@@ -399,9 +399,12 @@ _safe_step3_env="$(mktemp "${TMPDIR:-/tmp}/larch-step3-review-env.XXXXXX")" || {
   exit 1
 }
 _step3_read_result_env() {
+  local _input="$1"
+  local _output="$2"
+  shift 2
   "${CLAUDE_PLUGIN_ROOT}/scripts/read-result-env.sh" \
-    --input "$1" \
-    ${2:+--fallback-input "$2"} \
+    --input "$_input" \
+    "$@" \
     --allow LOOP_STATUS \
     --allow STEP3_REVIEW_LOOP_STATUS \
     --allow POSTPLAN_RC \
@@ -420,18 +423,18 @@ _step3_read_result_env() {
     --allow STEP3_REVIEW_ROUND_NUM \
     --allow ROUND_NUM \
     --allow REVIEW_ROUND_COUNT \
-    --output "$3"
+    --output "$_output"
 }
 set +e
 _step3_read_result_env \
   "$DESIGN_TMPDIR/.step3-review-result.env" \
-  "$_plan_review_stdout_file" \
-  "$_safe_step3_env"
+  "$_safe_step3_env" \
+  --fallback-input "$_plan_review_stdout_file"
 _rre_rc=$?
 if [[ "${_rre_rc:-0}" -ne 0 ]]; then
   _safe_step3_stdout_env="$(mktemp "${TMPDIR:-/tmp}/larch-step3-review-stdout-env.XXXXXX")" || _safe_step3_stdout_env=""
   if [[ -n "$_safe_step3_stdout_env" ]]; then
-    _step3_read_result_env "$_plan_review_stdout_file" "" "$_safe_step3_stdout_env"
+    _step3_read_result_env "$_plan_review_stdout_file" "$_safe_step3_stdout_env"
     _rre_stdout_rc=$?
     if [[ "${_rre_stdout_rc:-0}" -eq 0 ]]; then
       mv -f "$_safe_step3_stdout_env" "$_safe_step3_env"
