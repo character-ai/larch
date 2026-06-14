@@ -71,6 +71,14 @@ def test_dispatch_report_tokens_analyze() -> None:
     assert rc == 0
 
 
+def test_dispatch_session_kill_background_processes() -> None:
+    mock_main = MagicMock(return_value=0)
+    with patch.dict("sys.modules", {"finalize": MagicMock(kill_background_processes_main=mock_main)}):
+        rc = cli.main(["session", "kill-background-processes", "--design-tmpdir", "/tmp/claude-design-test"])
+    mock_main.assert_called_once_with(["--design-tmpdir", "/tmp/claude-design-test"])
+    assert rc == 0
+
+
 def test_dispatch_lint_retired_scripts() -> None:
     mock_main = MagicMock(return_value=0)
     with patch.dict("sys.modules", {"migration_lint": MagicMock(main=mock_main)}):

@@ -18,6 +18,10 @@ Wrapper for a `/design` Bash block that keeps `skills/design/SKILL.md` free of i
 - Calls without `--phase`, `--findings-file`, or `--postplan-operator-continue` preserve the existing first-entry pause ordering before review launch.
 - Calls with resume-state flags write validated phase, findings env, or postplan continue state before pause-save.
 - `run-step3-review.sh` still owns Step 3 review execution.
+- Performs two cleanup passes after loop shutdown: first kill the loop process
+  group, then best-effort kill any remaining process whose argv references
+  `$DESIGN_TMPDIR`.
+- The tmpdir process cleanup pass is allowed to fail silently.
 - This wrapper is not a state-only helper. A call with resume flags also resumes the Step 3 loop after pause-save.
 - Sites that previously wrote phase state and then launched review separately must collapse to one wrapper invocation at the resume boundary.
 - `awaiting-vote` remains an internal loop state and is not accepted as a wrapper resume phase.

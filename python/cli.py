@@ -309,6 +309,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("session", "persist-run-flags"): ("session_env", "persist_run_flags_main"),
     ("session", "restore-finalize-state"): ("session_env", "restore_finalize_state_main"),
     ("session", "cleanup-tmpdir"): ("session_env", "cleanup_tmpdir_main"),
+    ("session", "kill-background-processes"): ("finalize", "kill_background_processes_main"),
     ("session", "local-cleanup"): ("session_env", "local_cleanup_main"),
     ("session", "entry-gate"): ("session_env", "entry_gate_main"),
 }

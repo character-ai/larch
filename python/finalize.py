@@ -6,6 +6,8 @@ import json
 import os
 import re
 import shutil
+import sys
+from collections.abc import Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -14,6 +16,7 @@ from pathlib import Path
 import config
 import git
 import logging_util
+import proc
 import retry
 import run_logs
 import session_env
@@ -25,6 +28,7 @@ from run_context import RunContext
 
 POSTBUMP_CHECKPOINT_MAX_BYTES = 64
 LS_REMOTE_NOT_FOUND_RC = 2
+KILL_BACKGROUND_PARSE_ERROR_STATUS = 2
 _TITLE_PR_SUFFIX_RE = re.compile(r"\s+\(#([0-9]+)\)$")
 
 
@@ -731,6 +735,91 @@ def kill_session_background_processes(runner: Runner, ctx: RunContext) -> bool:
         term = runner.run(["kill", "-TERM", pid])
         killed = killed or term.returncode == 0
     return killed
+
+
+class _ProcRunner:
+    def run(
+        self,
+        argv: Sequence[str],
+        *,
+        timeout: float | None = None,
+        cwd: str | None = None,
+        env: Mapping[str, str] | None = None,
+        check: bool = False,
+        stdout: int | None = None,
+        stderr: int | None = None,
+    ) -> CommandResult:
+        return proc.run(
+            argv,
+            timeout=timeout,
+            cwd=cwd,
+            env=env,
+            check=check,
+            stdout=stdout,
+            stderr=stderr,
+        )
+
+
+def _kill_background_processes_error(message: str) -> int:
+    print(f"ERROR={message}", file=sys.stderr)
+    return 2
+
+
+def _parse_kill_background_processes_argv(argv: list[str]) -> tuple[int, str]:
+    design_tmpdir = ""
+    idx = 0
+    while idx < len(argv):
+        arg = argv[idx]
+        if arg == "--design-tmpdir":
+            if idx + 1 >= len(argv):
+                return 2, "--design-tmpdir requires a value"
+            design_tmpdir = argv[idx + 1]
+            idx += 2
+        elif arg in {"-h", "--help"}:
+            print("Usage: session kill-background-processes --design-tmpdir PATH")
+            return 0, ""
+        else:
+            return 2, f"unknown argument: {arg}"
+    return 1, design_tmpdir
+
+
+def kill_background_processes_main(argv: list[str]) -> int:
+    parse_status, design_tmpdir = _parse_kill_background_processes_argv(argv)
+    if parse_status == 0:
+        return 0
+    if parse_status == KILL_BACKGROUND_PARSE_ERROR_STATUS:
+        return _kill_background_processes_error(design_tmpdir)
+    if not design_tmpdir:
+        return _kill_background_processes_error("--design-tmpdir is required")
+    path = Path(design_tmpdir)
+    if not path.is_absolute():
+        return _kill_background_processes_error("--design-tmpdir must be an absolute path")
+    if ".." in path.parts:
+        return _kill_background_processes_error("--design-tmpdir must not contain '..' segments")
+    ok, message = session_env.validate_design_tmpdir(design_tmpdir)
+    if not ok:
+        return _kill_background_processes_error(message)
+    if path.is_symlink():
+        return _kill_background_processes_error("design-tmpdir must not be a symlink")
+    if not path.is_dir():
+        return _kill_background_processes_error("design-tmpdir must be a directory")
+    try:
+        resolved = path.resolve(strict=False)
+    except OSError:
+        return _kill_background_processes_error("design-tmpdir resolution failed")
+    if not resolved.exists() or not resolved.is_dir():
+        return _kill_background_processes_error("design-tmpdir must exist and be a directory")
+    if not resolved.name.startswith("claude-design-"):
+        return _kill_background_processes_error("design-tmpdir basename must start with claude-design-")
+    marker = resolved / "source-env.sh"
+    if marker.is_symlink() or not marker.is_file():
+        return _kill_background_processes_error("design-tmpdir missing regular source-env.sh marker")
+    env = dict(os.environ)
+    env["IMPLEMENT_TMPDIR"] = str(resolved)
+    ctx = RunContext.from_env(env=env)
+    killed = kill_session_background_processes(_ProcRunner(), ctx)
+    print(f"KILLED={_bool_text(killed)}")
+    return 0
 
 
 def _cleanup_target_ok(ctx: RunContext, tmpdir: Path, *, cwd: str | None = None) -> bool:

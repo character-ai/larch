@@ -13,6 +13,8 @@ Rows may include optional metadata such as `weight` and `focus_area`; the dispat
 
 Per-slot launcher stderr is captured to `${output}.launch-stderr` (stdout remains `/dev/null`) so launcher-level validation failures are recoverable and surfaced by `collect-agent-results.sh` via the failed-agent stderr tail path (#3202).
 
+An `EXIT` trap kills active phase launcher process groups when Bash monitor mode is available, then falls back to descendant and direct PID cleanup before reaping tracked launchers. This is only a cleanup guard. It does not change fallback semantics or timeout values.
+
 ## Phases (default)
 
 1. Launch each slot on its assigned external tool when `--<tool>-present true`.
