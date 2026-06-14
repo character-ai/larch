@@ -15,7 +15,7 @@ PYTHON ?= python3
 .PHONY: test-token-report-dedup test-token-cost-per-bucket test-render-cost-line-realism test-render-cost-line-callsites test-render-run-summary-callsites test-render-run-summary-format test-token-report-summary-format test-parse-bootstrap-routing-envelope test-step-telemetry-mark lint-retired-scripts
 .PHONY: lint-bash32 test-lint-bash32 lint-gh-body-inline lint-mermaid agent-sync test-ci-failed-jobs test-ci-behind-count test-ci-decide
 .PHONY: test-step-7a test-step-8-ship
-.PHONY: test-stall-recovery-report-1 test-stall-recovery-report-2 test-stall-recovery-report-3 test-step-18b-final-report
+.PHONY: test-stall-recovery-report test-stall-recovery-report-1 test-stall-recovery-report-2 test-stall-recovery-report-3 test-step-18b-final-report
 .PHONY: test-resolve-upstream-larch-repo test-file-failure-report-cross-repo
 .PHONY: test-design-pause-resume
 .PHONY: test-review-design-step3-loop
@@ -650,6 +650,11 @@ test-run-step2-dispatch:
 
 test-step2-dispatch:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-step2-dispatch.sh
+
+# test-stall-recovery-report runs all split sections sequentially (local-dev convenience,
+# NOT a test-harnesses prerequisite, see CARVE_OUTS in scripts/test-harness-shards-coverage.sh).
+# CI shards use the three section targets below directly.
+test-stall-recovery-report: test-stall-recovery-report-1 test-stall-recovery-report-2 test-stall-recovery-report-3
 
 test-stall-recovery-report-1:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-stall-recovery-report-1.sh

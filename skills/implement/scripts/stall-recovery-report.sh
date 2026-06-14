@@ -653,7 +653,7 @@ resume_hint_for() {
     local class=$1 step=$2 phase=$3
     step=$(safe_step_value "$step")
     case "$class" in
-        contract-failure|same-cause-repeat|unrecoverable) printf 'none\n'; return 0 ;;
+        contract-failure|same-cause-repeat|unrecoverable|submodule-restricted) printf 'none\n'; return 0 ;;
     esac
     case "$step" in
         3|6) printf 'none\n'; return 0 ;;
@@ -690,6 +690,11 @@ classify_from_evidence() {
         protected-path-edit-required-out-of-scope)
             MATCHED_CLASSIFIER_PATTERN=protected-path-bail-token
             CLASSIFIED_FAILURE_CLASS=protected-path
+            return 0
+            ;;
+        submodule-edit-required-out-of-scope)
+            MATCHED_CLASSIFIER_PATTERN=submodule-restricted-bail-token
+            CLASSIFIED_FAILURE_CLASS=submodule-restricted
             return 0
             ;;
         adopted-issue-closed|tracking-init-failed)
@@ -741,7 +746,7 @@ classify_from_evidence() {
 
 safe_matched_pattern_value() {
     case "${1:-}" in
-        no-stall|no-match|step-contract|terminal-step|rebase-transient|protected-path-bail-token|terminal-bail|recovery-out-of-scope|test-output|lint-output|dispatch-output|dispatch-bail-token|transient-output|ci-fix-exhausted-with-detail|same-cause-repeat)
+        no-stall|no-match|step-contract|terminal-step|rebase-transient|protected-path-bail-token|submodule-restricted-bail-token|terminal-bail|recovery-out-of-scope|test-output|lint-output|dispatch-output|dispatch-bail-token|transient-output|ci-fix-exhausted-with-detail|same-cause-repeat)
             printf '%s\n' "$1"
             ;;
         *) printf 'redacted\n' ;;
@@ -873,6 +878,7 @@ retry_cap_for() {
         test-failure|lint-failure|ci-fix-exhausted) printf '8\n' ;;
         dispatch-failure) printf '3\n' ;;
         protected-path) printf '1\n' ;;
+        submodule-restricted) printf '0\n' ;;
         same-cause-repeat) printf '2\n' ;;
         contract-failure|unrecoverable) printf '0\n' ;;
         *) printf '0\n' ;;
@@ -1370,7 +1376,7 @@ safe_phase_value() {
 
 safe_class_value() {
     case "${1:-}" in
-        transient-infra|test-failure|lint-failure|dispatch-failure|protected-path|ci-fix-exhausted|contract-failure|same-cause-repeat|unrecoverable)
+        transient-infra|test-failure|lint-failure|dispatch-failure|protected-path|submodule-restricted|ci-fix-exhausted|contract-failure|same-cause-repeat|unrecoverable)
             printf '%s\n' "$1"
             ;;
         *)
@@ -2781,7 +2787,7 @@ doc_retry_policy_lines() {
 
 code_retry_policy_lines() {
     local class
-    for class in transient-infra test-failure lint-failure dispatch-failure protected-path ci-fix-exhausted same-cause-repeat contract-failure unrecoverable; do
+    for class in transient-infra test-failure lint-failure dispatch-failure protected-path submodule-restricted ci-fix-exhausted same-cause-repeat contract-failure unrecoverable; do
         printf '%s\t%s\t%s\n' "$class" "$(retry_cap_for "$class")" "$(retry_delay_for "$class")"
     done
 }

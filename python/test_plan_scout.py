@@ -69,6 +69,42 @@ def test_filter_plan_manifest_statuses(tmp_path: Path, capsys) -> None:
     assert json.loads(out.read_text(encoding="utf-8")) == {"archetypes": []}
 
 
+def test_filter_manifest_main_review_mode_allows_plan_static_slug(tmp_path: Path, capsys) -> None:
+    src = tmp_path / "src.json"
+    out = tmp_path / "out.json"
+    src.write_text(json.dumps({"archetypes": [_row("arch"), _row("deep-risk")]}), encoding="utf-8")
+
+    rc = plan_scout.filter_manifest_main([str(src), str(out), "--max-archetypes", "3", "--mode", "review"])
+
+    assert rc == 0
+    stdout = capsys.readouterr().out
+    assert "SCOUT_STATUS=ok" in stdout
+    assert [a["name"] for a in json.loads(out.read_text(encoding="utf-8"))["archetypes"]] == ["arch", "deep-risk"]
+
+
+def test_filter_manifest_main_plan_review_mode_filters_plan_static_slug(tmp_path: Path, capsys) -> None:
+    src = tmp_path / "src.json"
+    out = tmp_path / "out.json"
+    src.write_text(json.dumps({"archetypes": [_row("arch"), _row("deep-risk")]}), encoding="utf-8")
+
+    rc = plan_scout.filter_manifest_main([str(src), str(out), "--max-archetypes", "3", "--mode", "plan-review"])
+
+    assert rc == 0
+    stdout = capsys.readouterr().out
+    assert "SCOUT_STATUS=ok" in stdout
+    assert [a["name"] for a in json.loads(out.read_text(encoding="utf-8"))["archetypes"]] == ["deep-risk"]
+
+
+def test_filter_manifest_main_rejects_unknown_mode(tmp_path: Path) -> None:
+    src = tmp_path / "src.json"
+    out = tmp_path / "out.json"
+    src.write_text(json.dumps({"archetypes": []}), encoding="utf-8")
+
+    rc = plan_scout.filter_manifest_main([str(src), str(out), "--mode", "bad"])
+
+    assert rc == 2
+
+
 def test_dynamic_diff_mode_stages_large_diff_and_emits_warning(tmp_path: Path, monkeypatch, capsys) -> None:
     diff = tmp_path / "review.diff"
     plan = tmp_path / "plan.md"
