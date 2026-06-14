@@ -665,10 +665,10 @@ test-implement-review-token-propagation:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-implement-review-token-propagation.sh
 
 test-run-step2-dispatch:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-run-step2-dispatch.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_implement_dispatch.py -q
 
 test-step2-dispatch:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-step2-dispatch.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_implement_dispatch.py -q
 
 # test-stall-recovery-report runs all split sections sequentially (local-dev convenience,
 # NOT a test-harnesses prerequisite, see CARVE_OUTS in scripts/test-harness-shards-coverage.sh).
@@ -694,10 +694,10 @@ test-step-18b-final-report:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_pr_body.py -q -k step18b
 
 test-cursor-implementer:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-cursor-implementer.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_implement_dispatch.py -q
 
 test-codex-implementer:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-codex-implementer.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_implement_dispatch.py -q
 
 
 test-git-commit-only:
@@ -759,7 +759,7 @@ test-post-tracking-issue:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_pr_body.py -q -k post_tracking
 
 test-commit-implementation:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-commit-implementation.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_implement_dispatch.py -q
 
 test-review-and-fix-commit-fixes:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_review_and_fix.py -q -k commit_fixes

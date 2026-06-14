@@ -56,8 +56,8 @@ below.
 | `python/cli.py run-log flush` | — | — | ✅ | **D** | Commit-tail flush. |
 | `python/cli.py run-log refresh` | — | — | ✅ | **D** | CI-retry / rebase pre-push flush. |
 | `scripts/implement-finalize.sh` (teardown) | — | — | ✅ | **D** | Safety-net flush mirroring `flush_execution_issues_safety_net` (F13). |
-| `scripts/launch-codex-implement.sh` | ✅ inherit | ✅ backstop | ✅ batch | **I/D** | Step 2 implementer routes through `python3 python/cli.py agent run-external-agent` (carrier saved); `append_launch_failure` now appends the diagnostic source to the durable batch. |
-| `scripts/launch-cursor-implement.sh` | ✅ inherit | ✅ backstop | ✅ batch | **I/D** | As codex implementer (launcher parity). |
+| `python/cli.py agent launch-codex-implement` | ✅ inherit | ✅ backstop | ✅ batch | **I/D** | Step 2 implementer routes through the Python external-agent helper (carrier saved); `append_launch_failure` now appends the diagnostic source to the durable batch. |
+| `python/cli.py agent launch-cursor-implement` | ✅ inherit | ✅ backstop | ✅ batch | **I/D** | As codex implementer (launcher parity). |
 | `python/cli.py agent launch-codex-ci` | ✅ inherit | ✅ backstop | R batch | **I/R** | CI-fix launcher routes through `python3 python/cli.py agent run-external-agent`. |
 | `python/cli.py agent launch-cursor-ci` | ✅ inherit | ✅ backstop | R batch | **I/R** | As codex CI launcher. |
 | `python/cli.py agent launch-claude-ci` | ✅ inherit | ✅ backstop | R batch | **I/R** | Direct-Claude CI lane via `python3 python/cli.py agent launch-claude-subprocess` (carrier saved). |
@@ -84,7 +84,7 @@ the carrier into its `run-log append-failure` source and (b) call
 
 1. `python3 python/cli.py agent launch-codex-ci` / `python3 python/cli.py agent launch-cursor-ci` / `python3 python/cli.py agent launch-claude-ci` give-up:
    source the carrier lib and append the diagnostic source to the durable batch
-   (the implement-side `launch-codex-implement.sh` / `launch-cursor-implement.sh`
+   (the implement-side `agent launch-codex-implement` / `agent launch-cursor-implement`
    give-up already do this).
 3. `python3 python/cli.py agent launch-codex-exec` preflight / no-wrapper branches: ordering-A carrier
    compose before exit.

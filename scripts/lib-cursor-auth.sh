@@ -2,7 +2,7 @@
 #
 # Sourced by:
 #   - python/cli.py agent launch-review --tool cursor
-#   - scripts/launch-cursor-implement.sh
+#   - python/cli.py agent launch-cursor-implement
 #   - python/cli.py agent check-reviewers
 #   - python/cli.py agent run-negotiation-round
 #   - python/cli.py agent cursor-auth-preflight (used by runtime skill markdown blocks:
@@ -96,7 +96,7 @@ cursor_preread_service_token() {
 # environment. Always returns 0 so it composes in `&&` chains. Callers expand
 # NO auth argv element — the Cursor child reads CURSOR_API_KEY from the env it
 # inherits from the launcher process (python/cli.py agent launch-review --tool cursor,
-# launch-cursor-implement.sh, launch-cursor-ci.sh, agent check-reviewers,
+# agent launch-cursor-implement, launch-cursor-ci.sh, agent check-reviewers,
 # agent run-negotiation-round, review-and-fix.sh, lint-fix-loop.sh). The
 # markdown-template path (cursor-auth-flags.sh) cannot re-export back to the
 # orchestrator, so it relies on the operator's ambient CURSOR_API_KEY export;

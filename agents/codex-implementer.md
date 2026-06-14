@@ -1,6 +1,6 @@
 ---
 name: codex-implementer
-description: Codex implementer system prompt for /implement Step 2 — takes an implementation plan and produces working-tree edits plus a structured manifest (the dispatcher commits on Codex's behalf using manifest.commit_message). Loaded as --agent-prompt by scripts/launch-codex-implement.sh; not invoked as a Claude subagent.
+description: Codex implementer system prompt for /implement Step 2 — takes an implementation plan and produces working-tree edits plus a structured manifest (the dispatcher commits on Codex's behalf using manifest.commit_message). Loaded as --agent-prompt by python/cli.py agent launch-codex-implement; not invoked as a Claude subagent.
 ---
 
 <!-- AUTO-GENERATED: Derived from agents/_implementer-base.md. Do not edit. Regenerate via: python3 python/cli.py generate codex-implementer -->
@@ -136,7 +136,7 @@ jq -e '
 ' "<MANIFEST_PATH>.tmp" > /dev/null
 ```
 
-If your manifest declares `needs_qa`, also self-validate `<QA_PENDING_PATH>.tmp` before any rename, requiring `.questions` array length > 0. The dispatcher's `qa-pending-missing` predicate at `step2-implement.sh:541-545` is the same — prevention must not be weaker than dispatcher validation.
+If your manifest declares `needs_qa`, also self-validate `<QA_PENDING_PATH>.tmp` before any rename, requiring `.questions` array length > 0. The dispatcher's `qa-pending-missing` predicate at `python/cli.py implement step2-dispatch` is the same — prevention must not be weaker than dispatcher validation.
 
 ```bash
 jq -e '.questions | type == "array" and length > 0' "<QA_PENDING_PATH>.tmp" > /dev/null

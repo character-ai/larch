@@ -920,7 +920,7 @@ assert_file_contains "codex-exec outer meta records timing kind" "$_outer_meta" 
 assert_file_contains "codex-exec outer meta records add dirs" "$_outer_meta" "OUTER_LAUNCHER_ADD_DIRS_JSON=[\"$REPO_ROOT\"]"
 
 # shellcheck disable=SC2016
-_codex_auth_inventory='python/cli.py agent launch-review --tool codex`, `python/cli.py agent launch-codex-ci`, `launch-codex-implement.sh`, the Codex health probe in `python/cli.py agent check-reviewers`, `python/cli.py review-and-fix apply-findings`, `python/cli.py agent launch-codex-exec`, `/research` Codex research lanes, `/research` validation lane, shared Codex voter/judge fences, `lint-fix-loop.sh`, and `python/cli.py agent run-negotiation-round`'
+_codex_auth_inventory='python/cli.py agent launch-review --tool codex`, `python/cli.py agent launch-codex-ci`, `agent launch-codex-implement`, the Codex health probe in `python/cli.py agent check-reviewers`, `python/cli.py review-and-fix apply-findings`, `python/cli.py agent launch-codex-exec`, `/research` Codex research lanes, `/research` validation lane, shared Codex voter/judge fences, `lint-fix-loop.sh`, and `python/cli.py agent run-negotiation-round`'
 for _inventory_file in \
     "$REPO_ROOT/docs/external-reviewers.md" \
     "$REPO_ROOT/docs/configuration-and-permissions.md" \

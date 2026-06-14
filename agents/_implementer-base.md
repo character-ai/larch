@@ -115,7 +115,7 @@ jq -e '
 ' "<MANIFEST_PATH>.tmp" > /dev/null
 ```
 
-If your manifest declares `needs_qa`, also self-validate `<QA_PENDING_PATH>.tmp` before any rename, requiring `.questions` array length > 0. The dispatcher's `qa-pending-missing` predicate at `step2-implement.sh:541-545` is the same — prevention must not be weaker than dispatcher validation.
+If your manifest declares `needs_qa`, also self-validate `<QA_PENDING_PATH>.tmp` before any rename, requiring `.questions` array length > 0. The dispatcher's `qa-pending-missing` predicate at `python/cli.py implement step2-dispatch` is the same — prevention must not be weaker than dispatcher validation.
 
 ```bash
 jq -e '.questions | type == "array" and length > 0' "<QA_PENDING_PATH>.tmp" > /dev/null

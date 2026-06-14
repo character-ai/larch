@@ -1,0 +1,177 @@
+# Step 2 dispatch Python contract
+
+**Consumer**: `/implement` Step 2 orchestrator (`skills/implement/SKILL.md` §2.1 dispatch).
+
+**Contract**: Authoritative reference for `python/cli.py implement step2-dispatch` / `implement run-dispatch` stdout grammar, envelope invariants, manifest schema, recovery paths, and commit-on-behalf semantics. Absorbs the normative contracts from the retired shell dispatcher docs.
+
+**When to load**: MANDATORY before parsing `step2-dispatch` stdout. Read before extending stdout grammar, changing envelope invariants, or modifying manifest schema. `skills/implement/SKILL.md` §2.1 is the orchestrator-side consumer.
+
+This is the surviving `/implement` Step 2 dispatch contract after the shell-to-Python migration. It absorbs the normative contract formerly split across the Step 2 dispatcher, its run-dispatch wrapper, recovery-path helper, Step 4 commit wrapper, and external implement launcher docs.
+
+## Step 2 dispatcher
+
+**Orchestrator wait contract**: the orchestrator MUST NOT call `ScheduleWakeup` while waiting on this dispatcher — `python/cli.py implement step2-dispatch` blocks foreground until the implementer returns, so no wakeup is needed, and a non-sentinel `prompt` would re-fire as a `/loop` input on wakeup. See `skills/implement/SKILL.md` NEVER #8.
+
+**Invariants**:
+- Implementer-coder set: `{claude} ∪ external_tools`. `claude` is the implementer-only fallback path, never an external tool. The `TOOL=` envelope-line contract on external implementer paths continues to mean external implementer only.
+- Cursor presence gate: `--cursor-present true|false|""` is accepted. Empty and missing values normalize to false. The gate runs after the `claude` early-return and before `REPO_ROOT` git-tree lookup, so `--coder=cursor --cursor-present false` emits `STATUS=claude_fallback` even outside a git work-tree and does not write baseline files. The orchestrator then runs the main-agent code-edit path the same way it would for `--coder=claude`.
+- `--coder` is required. `/implement` Step 0 resolves the omitted operator flag in `python/bootstrap.py phase_coder_select`, and `python/cli.py implement run-dispatch` forwards that explicit value. A direct dispatcher call without `--coder` exits 2 before git resolution.
+- Stdout is KV-only — `STATUS`, `TOOL`, `MANIFEST`, `QA_PENDING`, `REASON`, `TRANSCRIPT`, `SIDECAR_LOG`, `SCOUT_CODER_MANIFEST`, `SCOUT_CODER_STATUS`, `ORCHESTRATOR_EDIT_AUTHORITY`, plus the optional advisory `WARN_CODEX_NONZERO_EXIT=true` on the salvaged Codex complete path (see the launcher-exit salvage invariant below). The launcher's progress chatter is captured to the sidecar log; the implementer transcript is captured to disk; neither leaks to stdout. SKILL.md Step 2's parser is a fixed grammar; the `WARN_*` marker is a trailing advisory KV (like the `PHANTOM_*` probe tail) that Step 2 does not branch on.
+- Spawn-time baseline files are written ONCE on the first invocation under `$TMPDIR_ARG`: `step2-baseline.txt` (HEAD SHA), `step2-spawn-branch.txt` (branch name), `step2-plugin-json-baseline.txt` (`git hash-object` of `.claude-plugin/plugin.json`). All resume invocations reuse them. The baseline SHA anchors the launcher-retry "clean state" guard (post-failure HEAD must equal baseline). The baseline-vs-HEAD diff cross-check that previously enforced manifest path-set equality was removed when the dispatcher took over committing — there is no longer a committed Codex diff to compare against.
+- Immediately before launching the external implementer, the dispatcher writes malformed-manifest recovery baselines under `$TMPDIR_ARG`: `step2-prelaunch-porcelain.nul` (`git status --porcelain=v1 -z --untracked-files=all`), `step2-prelaunch-content-digests.txt` (SHA-256 snapshots for pre-dirty paths), and `step2-prelaunch-index.env` (`PRELAUNCH_INDEX_NONEMPTY=true|false`). If `$TMPDIR_ARG` is under the repo root, paths under that tmpdir are filtered from the recovery delta so harness scratch artifacts do not count as implementation work.
+- Per-tool files under `$TMPDIR_ARG` use `${TOOL_TAG}-...` names: `${TOOL_TAG}-resume-count.txt`, `${TOOL_TAG}-impl-transcript.txt`, `${TOOL_TAG}-impl.log`, `${TOOL_TAG}-commit-message.txt`, and `${TOOL_TAG}-commit-stderr.txt`. `TOOL_TAG=codex` preserves the historical Codex filenames byte-for-byte. For **`CODER=codex` only**, `${TOOL_TAG}-impl-transcript.txt`, `manifest.json`, and `qa-pending.json` live under `$TMPDIR_ARG/codex-step2-out/`; Cursor keeps those files directly under `$TMPDIR_ARG/`.
+- `$TMPDIR_ARG/scout-coder-manifest.json` is the normalized external-coder scout sidecar. External coder sidecars are normalized through `python/cli.py scout filter-manifest`; that wrapper is the single source of truth for reserved slugs, cap enforcement, duplicate removal, unsafe text checks, and prompt-body citation repair. `$TMPDIR_ARG/step2-external-scout-eligible.txt` is the durable Step 5 pre-scout eligibility marker. `step2-spawn-coder.txt` keeps its cross-coder tmpdir reuse guard semantics and is not the Step 5 scout marker.
+- Coder scout normalization treats `SCOUT_STATUS=ok` as success when the output manifest has `.archetypes` as an array. It treats `SCOUT_STATUS=empty` as success under the same shape check, including an empty archetype array. `SCOUT_STATUS=parse-failed`, missing status, unexpected status, missing output, and malformed output are failures.
+- Coder scout wrapper stdout is captured inside the dispatcher and must not enter the Step 2 stdout envelope.
+- External Codex and Cursor paths are the only writers of the eligibility marker. Missing or invalid scout sidecars after `STATUS=complete` or `STATUS=needs_qa` are non-fatal; the dispatcher writes canonical `{"archetypes":[]}` and records `SCOUT_CODER_STATUS=missing-or-invalid`.
+- `$TMPDIR_ARG` is canonicalized with `cd "$TMPDIR_ARG" && pwd -P` immediately after validation and before any derived path is constructed. Manifest, QA, transcript, sidecar, baseline, raw-manifest, and resume-count paths therefore use canonical bytes, which keeps Codex `--add-dir` grants aligned with sandbox path resolution even when the caller supplied a symlinked or `..`-containing tmpdir spelling. On the codex path only, Codex-written outputs (manifest, qa-pending, transcript) are placed in `$TMPDIR_ARG/codex-step2-out/` and the Codex `--add-dir` grant is narrowed to that subdir via `dirname("$MANIFEST_PATH")`; `agent launch-codex-implement` rejects symlink parents and refuses a grant rooted at `$IMPLEMENT_TMPDIR`.
+- Immediately after canonicalizing `$TMPDIR_ARG`, the dispatcher exports `IMPLEMENT_TMPDIR="$TMPDIR_ARG"`. If `$TMPDIR_ARG/session-id` exists and is non-empty, its trimmed contents overwrite any inherited `LARCH_TOKEN_SESSION_ID`; the canonical tmpdir file wins over stale environment state on external-implementer paths. If `$TMPDIR_ARG/claude-source.env` exists, `LARCH_CLAUDE_SOURCE_FILE` is exported to that snapshot path. The leaf launchers repeat the same overwrite defensively before spawning external tools.
+- After the `claude` and cursor-presence fallback gates, the dispatcher marks `Step 2 — implementation` through `python3 python/cli.py timing` on the real external-implementer path. The same step label is written to `python3 python/cli.py token` from `python/cli.py agent launch-codex-implement` / `python/cli.py agent launch-cursor-implement` **after** the Step 2 token-budget preflight (`python3 python/cli.py token check-budget`) succeeds, so a ledger `mark` row does not reset the vendor window before cap_hit can short-circuit. Both marks are best-effort and use the exported canonical `IMPLEMENT_TMPDIR` so they do not depend on prompt-side environment rehydration.
+- Resume counter is incremented ONLY when `--answers PATH` is supplied. Cap is 5; the 6th `--answers` invocation emits `STATUS=bailed REASON=qa-loop-exceeded` without spawning the implementer.
+- Launcher wrapper exit is captured separately from the implementer-reported `LAUNCHER_EXIT=` KV. Wrapper exit `2` is a validation failure and emits `STATUS=bailed REASON=wrapper-validation-failure` immediately without retrying. Wrapper exit `0` keeps the existing KV parsing behavior. Other non-zero wrapper exits enter the existing one-shot retry path only when no manifest was written and post-failure state is fully clean (`git status --porcelain` empty, no `.git/index.lock`, HEAD == `BASELINE_SHA`). Launcher stdout/stderr is captured to a temp file under the canonical `$TMPDIR_ARG`, capped to 65 KiB for bail-path parsing, and removed by an EXIT trap.
+- **Non-zero `LAUNCHER_EXIT` salvage (issue #3383)**: a non-zero implementer `LAUNCHER_EXIT` normally bails `${TOOL}-runtime-failure`. The one carve-out is **Codex-only**: when the on-disk `manifest.json` is non-empty and parses as `schema_version "1"` / `status "complete"`, the dispatcher salvages it instead of discarding it — it continues to the Step 5 schema validation and the Step 7b dispatcher commit, and appends `WARN_CODEX_NONZERO_EXIT=true` to the Step 9 complete envelope plus a `Warnings` entry to `execution-issues.md`. This rescues the case where Codex finishes the work and atomically writes the manifest, then a self-verification step exits non-zero. The `WRAPPER_EXIT != 0` (launcher script crashed) and `MANIFEST_WRITTEN != true` gates remain hard bails, and full Step 5/6/7 validation still runs on the salvaged manifest. The salvage is intentionally **not** mirrored to Cursor (unsandboxed; no offline complete-path harness in `python/test_implement_dispatch.py`) — a classified launcher-parity asymmetry per `.claude/rules/external-tool-launcher-parity.md`; Cursor keeps the conservative `cursor-runtime-failure` hard-bail.
+- The dispatcher does NOT `git reset`, NOT `git checkout`, NOT discard working-tree state. On `status=complete` it stages and commits implementer edits via `git add -A && git commit -F <commit-message-file>` — `commit_message` is taken from the manifest with no diff or subject cross-check, but IS piped through `python/cli.py redact secrets` immediately before `git commit -F` so the secrets-family scrubber that protects the canonical on-disk manifest also protects git history. After the successful dispatcher commit, it invokes `python/cli.py run-log flush` best-effort so active `/implement` log writes are flushed behind the implementer commit. On any other status, the dispatcher leaves the working tree untouched. On `commit-failed`, `git add -A` has already run and the index stays staged — operators inspect `git status` and `$IMPLEMENT_TMPDIR/${TOOL_TAG}-commit-stderr.txt` (where the failed `git commit` stderr is captured) before deciding whether to `git reset` or amend. Implementer hard guard #1 (no destructive git ops) is mirrored here as "the dispatcher never destroys operator work either."
+- Path validation rejects `..`, leading `/`, `.claude-plugin/plugin.json`, and any path under a submodule (per `git submodule status --recursive`). NUL bytes are rejected implicitly — bash variables cannot hold a NUL, so the `read -r` consuming the jq output terminates the field at any NUL upstream; an explicit `*$'\0'*` glob would expand to `**` (since `$'\0'` is empty in bash strings) and match every non-empty path, so the check must not be expressed that way. The reserved-file check is a defense-in-depth duplicate of `hooks/pre-commit-block-release-edit.sh`'s contract.
+- `manifest-schema-invalid` can recover to `STATUS=claude_fallback` only when the raw manifest parses as a JSON object, prior status is `complete` or empty with the legacy `{status, summary, checks}` fingerprint and no `schema_version`, the prelaunch index was empty, the post-launch NUL-safe delta is non-empty after tmpdir filtering and pre-dirty content-snapshot comparison, and post-implementer safety gates pass (branch unchanged, `.claude-plugin/plugin.json` unchanged, submodules clean including dirty paths under initialized submodules, Cursor HEAD unchanged). Recovery writes `step2-recovery-paths.nul`, quarantines `manifest-raw.json` to `manifest-raw.invalid.json`, and writes `recovery-metadata.json`.
+- Exit code is 0 on every documented outcome (including `STATUS=bailed`). Exit 2 is reserved for caller-error (missing flag, bad path, bad enum value) before any Codex spawn.
+
+**Stdout contract**:
+```
+STATUS=<complete|needs_qa|bailed|claude_fallback>
+MANIFEST=<path>          # set ONLY when STATUS=complete or needs_qa, or when STATUS=bailed
+                         # came from an implementer-authored manifest (status=bailed in the manifest
+                         # itself, e.g. resume-incompatible). Dispatcher mechanical bails
+                         # (commit-failed, manifest-schema-invalid, manifest-missing,
+                         # branch-changed, protected-path-modified, submodule-dirty,
+                         # qa-pending-missing, qa-loop-exceeded, redactor-not-executable,
+                         # dirty-state-after-timeout, wrapper-validation-failure,
+                         # codex-runtime-failure, cursor-runtime-failure,
+                         # coder-mismatch-tmpdir-reuse) DO NOT emit
+                         # MANIFEST= — and on commit-failed the manifest files are deleted
+                         # from $IMPLEMENT_TMPDIR before bail to avoid leaving un-sanitized
+                         # text on disk.
+QA_PENDING=<path>        # set ONLY when STATUS=needs_qa
+REASON=<token>           # set ONLY when STATUS=bailed
+TRANSCRIPT=<path>        # set when launcher actually ran
+SIDECAR_LOG=<path>       # set when launcher actually ran
+WARN_CODEX_NONZERO_EXIT=true
+                         # OPTIONAL, advisory. Codex STATUS=complete path only,
+                         # when a complete manifest was salvaged after a non-zero
+                         # implementer exit (issue #3383). Trailing advisory KV;
+                         # Step 2 does not branch on it.
+ORCHESTRATOR_EDIT_AUTHORITY=<allowed|forbidden>
+                         # ALWAYS emitted (every exit-0 outcome). `allowed` iff STATUS=claude_fallback;
+                         # `forbidden` on every external-implementer outcome (complete/needs_qa/bailed).
+                         # Mechanical gate for SKILL.md Step 2.4 main-agent Edit/Write authority.
+RECOVERY_FROM=manifest-schema-invalid
+RECOVERY_PRIOR_TOOL=<codex|cursor>
+RECOVERY_PATHS_FILE=<path-to-step2-recovery-paths.nul>
+                         # Optional all-or-none triplet emitted only with
+                         # STATUS=claude_fallback on malformed-manifest recovery.
+                         # The paths file is NUL-delimited and is the authoritative
+                         # path list for recovery commit scoping.
+```
+
+**Flags**:
+
+| Flag | Required | Purpose |
+|------|----------|---------|
+| `--tmpdir PATH` | yes | `$IMPLEMENT_TMPDIR` (where baseline / counter / manifest / transcript / sidecar log live) |
+| `--plan-file PATH` | yes | The plan to implement (passed through to Codex) |
+| `--feature-file PATH` | yes | The original feature description (passed through to Codex) |
+| `--coder VALUE` | yes | `claude`, `codex`, or `cursor`. Resolved by `/implement` Step 0 and forwarded by `python/cli.py implement run-dispatch`. |
+| `--codex-available VALUE` | optional (deprecated) | `true` (maps to `--coder codex`) or `false` (maps to `--coder claude`). Emits a stderr deprecation warning. Mutually exclusive with `--coder`. |
+| `--cursor-present VALUE` | optional | `true`, `false`, or empty. Empty/missing normalizes to false. Consulted only on `--coder=cursor`; non-`true` falls back to `STATUS=claude_fallback` before `REPO_ROOT` lookup. |
+| `--answers PATH` | optional | Operator answers to a prior `needs_qa` cycle; presence increments the resume counter |
+
+External implementer launches use a fixed 7200-second wall-clock timeout. `python/cli.py implement run-dispatch` forwards the launcher argv and `python/cli.py implement step2-dispatch` owns the fixed 7200-second timeout value.
+
+**Outcomes** (`STATUS` values):
+- `complete` — all post-Codex mechanical checks passed; the dispatcher committed Codex's working-tree edits using `manifest.commit_message` (redacted via `python/cli.py redact secrets` immediately before `git commit -F`); on **`CODER=codex`**, the sanitized manifest is emitted at `$TMPDIR/codex-step2-out/manifest.json` (i.e. `$MANIFEST_PATH` after the codex subdir retarget); on **`CODER=cursor`**, it remains at `$TMPDIR/manifest.json` under the tmpdir root.
+- `needs_qa` — Codex wrote `qa-pending.json` with operator questions; SKILL.md Step 2 collects answers and re-invokes the dispatcher with `--answers`.
+- `bailed` — Codex itself emitted `status=bailed`, OR the dispatcher overrode `complete` because mechanical validation failed. `REASON` token list is in `skills/implement/references/codex-manifest-schema.md` (Bail-reason tokens section). When the dispatcher overrides Codex, the dispatcher's reason wins.
+- `claude_fallback` with `RECOVERY_FROM=manifest-schema-invalid` — external implementer produced a malformed manifest but left a recoverable working-tree delta. This is commit-only recovery: the orchestrator must not re-implement or rewrite those files, and must commit only the NUL-delimited recovery path list after plan-scope alignment.
+- Claude fallback paths remove stale coder scout sidecars and
+  `$TMPDIR_ARG/step2-external-scout-eligible.txt` so Step 5 cannot consume stale
+  external scout state.
+- **`main-branch-prohibited`** — dispatcher-authored bail before the external launcher runs: spawn-time branch is `main` or `master`; `FORKED_TARGET` is not `true` (read from `$TMPDIR_ARG/session-env.sh` when that file exists; otherwise treated as `false`); and the run is issue-anchored — non-empty `ISSUE_NUMBER=` in `$TMPDIR_ARG/parent-issue.md` **or** `$TMPDIR_ARG/session-env.sh` exists (presence alone suffices; `ISSUE_NUMBER` may be absent in session-env). Harness runs with neither parent-issue nor session-env are not affected (external implementer may still run on `main`/`master` in those narrow harnesses — ship-time `bump-branch-guard` remains the non-negotiable backstop for mis-anchored production tmpdirs).
+- **`detached-head-prohibited`** — same pre-launcher gate as `main-branch-prohibited`, but when the spawn-time symbolic branch is missing (detached HEAD / not on a branch) or legacy `step2-spawn-branch.txt` contains the literal `HEAD` from older `rev-parse --abbrev-ref` captures. Uses the same issue-anchored + non-fork predicates; fork mode skips via `FORKED_TARGET=true`.
+
+**Bail-reason tokens emitted by the dispatcher** (set internally; full list in `codex-manifest-schema.md`):
+
+**Call sites**:
+- `skills/implement/SKILL.md` Step 2 — the only authorized caller.
+
+**Edit-in-sync**:
+- `skills/implement/references/codex-manifest-schema.md` — manifest schema and bail-reason tokens.
+- `agents/_implementer-base.md` — inline `## Manifest JSON template` and self-validation prompt copied into both generated implementer prompts.
+- `agents/codex-implementer.md` — the system prompt this dispatcher invokes.
+- `skills/implement/SKILL.md` Step 2 — the caller; any change to the KV envelope must be mirrored in Step 2's parser.
+- `python/test_implement_dispatch.py` — the offline harness; any new outcome / reason token must be exercised.
+- `python/cli.py plan scope-paths` — shared `## Files to modify/create` scope grammar used by recovery plan-scope alignment.
+- `python/cli.py dirty-tree scope-check` — fail-closed recovery scope verifier for malformed-manifest preservation.
+- `python/cli.py implement recovery-paths` — shared recovery-delta recompute helper used by the dispatcher and Step 2.4 recovery path.
+- `scripts/external-tool-registry.md` — update its "Sourced by" list when this script's source-list status changes.
+
+**Makefile wiring**: `python3 -m pytest python/test_implement_dispatch.py` (added in the same change that introduces the harness).
+
+## Run-dispatch wrapper
+
+`python/cli.py implement run-dispatch` is the `/implement` Step 2
+launcher for `python/cli.py implement step2-dispatch`. It reduces the primary SKILL.md dispatcher
+call to the implement tmpdir and selected coder while deriving the rest of the
+context from session artifacts.
+
+Caller: `skills/implement/SKILL.md` Step 2.1 and Q/A redispatch in Step 2.3.
+
+Arguments:
+
+- `--implement-tmpdir PATH` is required.
+- `--coder CODER` is required.
+- `--answers PATH` is optional and is only for Step 2.3 Q/A redispatch.
+
+Derived sources:
+
+- `$IMPLEMENT_TMPDIR/plan.txt`: always forwarded as `--plan-file` (conventional
+  path; the launcher does not read `PLAN_FILE` from `session-env.sh`).
+- No workflow flag is passed; the launcher reads only the conventional plan, feature file, coder, cursor-presence, and optional answers inputs.
+- `$IMPLEMENT_TMPDIR/session-env.sh`
+  - `CURSOR_PRESENT`: forwarded as `--cursor-present`.
+  - `LARCH_CLAUDE_PLUGIN_ROOT`: resolves the downstream script path when
+    `CLAUDE_PLUGIN_ROOT` is not already set.
+- `$IMPLEMENT_TMPDIR/feature-description.txt`: forwarded as `--feature-file`.
+- `$IMPLEMENT_TMPDIR`: forwarded as `--tmpdir`.
+
+Exception:
+
+- `--answers PATH` cannot be derived safely from tmpdir state because each Q/A
+  redispatch writes a new `$IMPLEMENT_TMPDIR/codex-answers-$RESUME_N.json`.
+  Picking "latest" would be order-sensitive and could replay stale answers, so
+  the Q/A loop passes the exact answers file for redispatch only.
+
+Harness: `python/test_implement_dispatch.py`.
+
+## Step 4 commit wrapper
+
+Thin Step 4 wrapper around `scripts/git-commit.sh`. Emits `python3 python/cli.py token` and `python3 python/cli.py timing` marks for "Step 4 — commit implementation" before the git commit, inheriting `LARCH_TIMING_LEDGER` and `LARCH_TOKEN_SESSION_ID` from the caller environment while forcing `LARCH_TIMING_SKILL=implement` for the timing mark.
+
+After Step 0 bootstrap, invoke through the session launcher so plugin-root rehydration matches `skills/implement/SKILL.md` Step 4. Bare `python3 …/python/cli.py` is only for pre-bootstrap call sites.
+
+Usage:
+
+```bash
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement commit --message "Implement feature" [files...]
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement commit --message "Recover implementation" --pathspec-from-file paths.nul --pathspec-file-nul
+```
+
+When `--pathspec-from-file` is present, positional file args are ignored and the wrapper passes `--only --pathspec-from-file <PATH>` through to `scripts/git-commit.sh`. Add `--pathspec-file-nul` for NUL-delimited path lists. This mode is used by malformed-manifest recovery so pre-existing staged content is not swept into the synthesized implementation commit.
+
+Output:
+
+- `COMMITTED=true|false`
+- `SHA=<head-sha-or-empty>`
+- `ERROR=<message>` on failure
+
+On unknown option or other usage error, the wrapper exits 2 with `COMMITTED=false` and emits a stderr hint: `HINT: --stage-all belongs to review-and-fix commit-fixes (Step 5 review fixes); implementation commits name specific files or use --pathspec-from-file.`
+
+When telemetry env keys are absent, the wrapper self-rehydrates `LARCH_TOKEN_SESSION_ID`, `LARCH_CLAUDE_SOURCE_FILE`, and `LARCH_TIMING_LEDGER` from `$IMPLEMENT_TMPDIR/session-env.sh` before marking Step 4.

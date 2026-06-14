@@ -13,7 +13,7 @@ Passing `--api-key <key>` on the `cursor agent` argv leaked the secret into `pyt
 ## Callers (parity contract)
 
 - `python/cli.py agent launch-review --tool cursor` — review reviewer panel launcher (via `cursor_launcher_setup_auth_argv`).
-- `scripts/launch-cursor-implement.sh` — Cursor implementer launcher (Step 2 of `/implement`; via `cursor_launcher_setup_auth_argv`).
+- `python/cli.py agent launch-cursor-implement` — Cursor implementer launcher (Step 2 of `/implement`; via `cursor_launcher_setup_auth_argv`).
 - `python/cli.py agent launch-cursor-ci` — Cursor CI-fix launcher (via `cursor_launcher_setup_auth_argv`).
 - `python/cli.py agent check-reviewers` — reviewer presence check (sources the lib; calls `cursor_preread_service_token` + `cursor_auth_export_env` — `cursor_auth_preflight` is invoked separately to gate the probe loop).
 - `python/cli.py agent run-negotiation-round` — negotiation runner (calls `cursor_auth_export_env` after `cursor_auth_preflight`).
@@ -23,7 +23,7 @@ Passing `--api-key <key>` on the `cursor agent` argv leaked the secret into `pyt
 
 - Never echoes the key on any path (including all error paths in `cursor_auth_preflight`).
 - `cursor_auth_export_env` mutates only `CURSOR_API_KEY` in the environment (export/unset); it builds no argv. Callers pass no auth argv element.
-- `cursor_auth_preflight` returns rather than `exit`s — keeps callers in control of exit semantics so each launcher can synthesize its tool-specific failure channel (sentinel files for `python/cli.py agent launch-review --tool cursor`, KV envelope for `launch-cursor-implement.sh`, plain `exit 3` for `agent run-negotiation-round`).
+- `cursor_auth_preflight` returns rather than `exit`s — keeps callers in control of exit semantics so each launcher can synthesize its tool-specific failure channel (sentinel files for `python/cli.py agent launch-review --tool cursor`, KV envelope for `agent launch-cursor-implement`, plain `exit 3` for `agent run-negotiation-round`).
 - Darwin-only service-specific keychain probe (`security find-generic-password -a cursor-user -s cursor-access-token`); on non-Darwin, preflight is a no-op. Darwin preflight uses three attempts with 200ms sleeps between failed attempts. Each production attempt suppresses stdout and stderr with `>/dev/null 2>&1`. Exit `2` still means Cursor auth was not confirmed by preflight. Direct callers still receive the final actionable stderr after all attempts fail.
 - Darwin-only keychain pre-read uses `security find-generic-password -a cursor-user -s cursor-access-token -w`; failures and empty reads are silent no-ops so callers retain Cursor's default auth fallback.
 - Strictly read-only: never invokes `security delete-*`, never spawns a Cursor subprocess, never performs network I/O.
@@ -37,7 +37,7 @@ In test mode, non-empty `LIB_CURSOR_AUTH_TEST_SECURITY_RC_SEQ` wins over `LIB_CU
 
 ## Verified Cursor CLI behavior
 
-`cursor agent --help` documents `--api-key <key>` with the note `can also use CURSOR_API_KEY env var`. The env path was verified locally per `.claude/rules/verify-external-tool-invocations.md` (issue #3375): a bogus key supplied **only** via the environment (no `--api-key` argv) produced `The provided API key is invalid. The API key was loaded from the CURSOR_API_KEY environment variable`, confirming Cursor consults the env var. Locked here for future maintainers — a future Cursor release that drops env-var support will be detected by `python/test_launch_review.py` and `scripts/test-cursor-implementer.sh` regression coverage (the harnesses assert no `--api-key` token appears in recorded argv and that the Cursor child inherits `CURSOR_API_KEY` in its environment when the key is set).
+`cursor agent --help` documents `--api-key <key>` with the note `can also use CURSOR_API_KEY env var`. The env path was verified locally per `.claude/rules/verify-external-tool-invocations.md` (issue #3375): a bogus key supplied **only** via the environment (no `--api-key` argv) produced `The provided API key is invalid. The API key was loaded from the CURSOR_API_KEY environment variable`, confirming Cursor consults the env var. Locked here for future maintainers — a future Cursor release that drops env-var support will be detected by `python/test_launch_review.py` and `python/test_implement_dispatch.py` regression coverage (the harnesses assert no `--api-key` token appears in recorded argv and that the Cursor child inherits `CURSOR_API_KEY` in its environment when the key is set).
 
 ## Test harness
 

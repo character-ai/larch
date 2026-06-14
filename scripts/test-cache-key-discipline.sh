@@ -175,8 +175,6 @@ check_agent_prompt_literals() {
 }
 
 check_render_specialist_prompt_paths
-check_launcher_prompt_block "scripts/launch-codex-implement.sh" "Codex"
-check_launcher_prompt_block "scripts/launch-cursor-implement.sh" "Cursor"
 check_skill_prompt_literals
 check_agent_prompt_literals
 

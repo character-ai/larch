@@ -6,7 +6,7 @@
 #   - python/cli.py agent model-args
 #   - python/cli.py agent check-reviewers
 #   - scripts/collect-agent-results.sh
-#   - skills/implement/scripts/step2-implement.sh
+#   - python/cli.py implement step2-dispatch
 #
 # Related:
 #   - python/cli.py agent run-external-agent is NOT sourced from this registry and still

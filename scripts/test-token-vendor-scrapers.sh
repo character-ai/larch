@@ -94,7 +94,7 @@ CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
 eq "cursor review prose output" "reviewer prose only" "$(cat "$OUT_FILE")"
 if jq -e '.usage.inputTokens == 5' "${OUT_FILE}.json" >/dev/null; then pass; else fail "cursor review raw JSON sidecar missing usage"; fi
 
-# launch-cursor-implement.sh + launch-codex-implement.sh record-vendor smoke
+# agent launch-cursor-implement + agent launch-codex-implement record-vendor smoke
 # (issue #1351 Gap 4 — overlaps Gap 1's per-launcher harness coverage). The
 # launcher's own scrape path already runs in tests-cursor/codex-implementer.sh;
 # this scrapers harness pins that the resulting JSONL row carries
@@ -148,13 +148,13 @@ STUB_EOF
         case "$variant" in
             cursor)
                 AGENT_PROMPT="$REPO_ROOT/agents/cursor-implementer.md"
-                LAUNCHER="$REPO_ROOT/scripts/launch-cursor-implement.sh"
+                LAUNCHER_ARGS=(python3 "$REPO_ROOT/python/cli.py" agent launch-cursor-implement)
                 EXPECTED_RAW="cursor_implement"
                 EXPECTED_TOTAL=10
                 ;;
             codex)
                 AGENT_PROMPT="$REPO_ROOT/agents/codex-implementer.md"
-                LAUNCHER="$REPO_ROOT/scripts/launch-codex-implement.sh"
+                LAUNCHER_ARGS=(python3 "$REPO_ROOT/python/cli.py" agent launch-codex-implement)
                 EXPECTED_RAW="codex_implement"
                 EXPECTED_TOTAL=7999
                 ;;
@@ -181,7 +181,7 @@ STUB_EOF
         LARCH_CODEX_MODEL="stub-codex-model" \
         STUB_MANIFEST_PATH="$MF" \
         CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
-            "$LAUNCHER" \
+            "${LAUNCHER_ARGS[@]}" \
                 --transcript-path "$TR" \
                 --sidecar-log "$SC" \
                 --manifest-path "$MF" \
@@ -194,13 +194,13 @@ STUB_EOF
         if [[ ! -s "$LCI_LEDGER" ]]; then
             case "$variant" in
                 cursor)
-                    fail "launch-cursor-implement.sh produced empty/missing ledger ($LCI_LEDGER); cursor_auth_preflight may have aborted before the launcher could record-vendor (verify CURSOR_API_KEY env, cursor stub, and PATH wiring)"
+                    fail "agent launch-cursor-implement produced empty/missing ledger ($LCI_LEDGER); cursor_auth_preflight may have aborted before the launcher could record-vendor (verify CURSOR_API_KEY env, cursor stub, and PATH wiring)"
                     ;;
                 codex)
-                    fail "launch-codex-implement.sh produced empty/missing ledger ($LCI_LEDGER); the launcher exited before record-vendor ran (verify codex stub on PATH, $LCI_SCRATCH wiring, and that the stub writes a parseable manifest.json)"
+                    fail "agent launch-codex-implement produced empty/missing ledger ($LCI_LEDGER); the launcher exited before record-vendor ran (verify codex stub on PATH, $LCI_SCRATCH wiring, and that the stub writes a parseable manifest.json)"
                     ;;
                 *)
-                    fail "launch-${variant}-implement.sh produced empty/missing ledger ($LCI_LEDGER); the launcher exited before record-vendor ran (verify ${variant} stub on PATH, scratch dir wiring, and that the stub writes a parseable manifest.json)"
+                    fail "agent launch-${variant}-implement produced empty/missing ledger ($LCI_LEDGER); the launcher exited before record-vendor ran (verify ${variant} stub on PATH, scratch dir wiring, and that the stub writes a parseable manifest.json)"
                     ;;
             esac
             rm -f "$LCI_LEDGER"
@@ -211,13 +211,13 @@ STUB_EOF
                 'select(.type=="vendor" and .raw==$raw and .vendor=="codex" and .input==777 and .cache_read==7000 and .output==222 and .total==7999)' "$LCI_LEDGER" >/dev/null 2>&1; then
                 pass
             else
-                fail "launch-${variant}-implement.sh did not record per-bucket codex usage; ledger=$LCI_LEDGER content=$(cat "$LCI_LEDGER" 2>/dev/null)"
+                fail "agent launch-${variant}-implement did not record per-bucket codex usage; ledger=$LCI_LEDGER content=$(cat "$LCI_LEDGER" 2>/dev/null)"
             fi
         elif [[ -f "$LCI_LEDGER" ]] && jq -e --arg raw "$EXPECTED_RAW" --argjson total "$EXPECTED_TOTAL" \
             'select(.type=="vendor" and .raw==$raw and .total==$total)' "$LCI_LEDGER" >/dev/null 2>&1; then
             pass
         else
-            fail "launch-${variant}-implement.sh did not record-vendor raw=$EXPECTED_RAW total=$EXPECTED_TOTAL; ledger=$LCI_LEDGER content=$(cat "$LCI_LEDGER" 2>/dev/null)"
+            fail "agent launch-${variant}-implement did not record-vendor raw=$EXPECTED_RAW total=$EXPECTED_TOTAL; ledger=$LCI_LEDGER content=$(cat "$LCI_LEDGER" 2>/dev/null)"
         fi
         rm -f "$LCI_LEDGER"
     done
