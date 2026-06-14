@@ -122,12 +122,68 @@ def _private_hostname(host: str) -> bool:
     return _is_private_ip(lowered)
 
 
-def _resolve_public_ips(host: str, *, timeout: float, resolver: Callable[[str], list[str]] | None = None) -> tuple[list[str], str | None]:
+def _credibility_tier(host: str) -> str:
+    lowered = host.lower()
+    if lowered in {"arxiv.org", "doi.org", "github.com", "anthropic.com"}:
+        return "allow"
+    allow_suffixes = (
+        ".wikipedia.org",
+        ".arxiv.org",
+        ".acm.org",
+        ".ietf.org",
+        ".python.org",
+        ".rust-lang.org",
+        ".doi.org",
+        ".github.com",
+        ".githubusercontent.com",
+        ".anthropic.com",
+    )
+    if any(lowered.endswith(suffix) for suffix in allow_suffixes):
+        return "allow"
+    return "unknown"
+
+
+def _url_host(url: str) -> str | None:
+    parsed = urlparse(url)
+    if parsed.scheme != "https":
+        return None
+    return parsed.hostname
+
+
+def _render_credibility_block(hosts: list[str]) -> str:
+    unique_hosts = sorted({host.lower() for host in hosts if host})
+    if not unique_hosts:
+        return ""
+    rows = []
+    for host in unique_hosts:
+        tier = _credibility_tier(host)
+        note = (
+            "well-known reputable origin"
+            if tier == "allow"
+            else "no allow-list entry; classification heuristic only — NOT a FAIL signal"
+        )
+        rows.append(f"| {host} | {tier} | {note} |\n")
+    return (
+        "\n\n<details><summary>Domain credibility (advisory only)</summary>\n\n"
+        "| Domain | Tier | Notes |\n"
+        "|---|---|---|\n"
+        f"{''.join(rows)}"
+        "</details>"
+    )
+
+
+def _resolve_public_ips(
+    host: str,
+    *,
+    port: int = 443,
+    timeout: float,
+    resolver: Callable[[str], list[str]] | None = None,
+) -> tuple[list[str], str | None]:
     if resolver is not None:
         ips = resolver(host)
     else:
         executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-        future = executor.submit(socket.getaddrinfo, host, 443, type=socket.SOCK_STREAM)
+        future = executor.submit(socket.getaddrinfo, host, port, type=socket.SOCK_STREAM)
         try:
             infos = future.result(timeout=timeout)
         except concurrent.futures.TimeoutError:
@@ -152,8 +208,8 @@ def _resolve_public_ips(host: str, *, timeout: float, resolver: Callable[[str], 
 
 
 class _PinnedHTTPSConnection(http.client.HTTPSConnection):
-    def __init__(self, host: str, pinned_ip: str | None, timeout: float):
-        super().__init__(host, 443, timeout=timeout, context=ssl.create_default_context())
+    def __init__(self, host: str, port: int, pinned_ip: str | None, timeout: float):
+        super().__init__(host, port, timeout=timeout, context=ssl.create_default_context())
         self._pinned_ip = pinned_ip
 
     def connect(self) -> None:  # pragma: no cover - exercised via integration seam
@@ -177,7 +233,8 @@ def fetch_url(
         return FetchResult("FAIL", "non-https")
     if _private_hostname(host):
         return FetchResult("FAIL", "ssrf-private-host")
-    ips, resolve_reason = _resolve_public_ips(host, timeout=timeout, resolver=resolver)
+    port = parsed.port or 443
+    ips, resolve_reason = _resolve_public_ips(host, port=port, timeout=timeout, resolver=resolver)
     if resolve_reason == "ssrf-private-resolved":
         return FetchResult("FAIL", resolve_reason)
     if resolve_reason in {"timeout", "network-error"}:
@@ -192,7 +249,7 @@ def fetch_url(
             path = parsed.path or "/"
             if parsed.query:
                 path += "?" + parsed.query
-            conn = _PinnedHTTPSConnection(host, pinned_ip, timeout)
+            conn = _PinnedHTTPSConnection(host, port, pinned_ip, timeout)
             try:
                 conn.request("HEAD", path, headers={"Host": parsed.netloc})
                 response = conn.getresponse()
@@ -290,31 +347,38 @@ def _parallel_fetch_results(
             executor.shutdown(wait=False, cancel_futures=True)
         return results
 
-    active: list[tuple[str, subprocess.Popen[bytes]]] = []
+    active: list[tuple[str, subprocess.Popen[bytes], float]] = []
     for key, target in fetch_targets.items():
-        active.append((key, _start_fetch_process(target, timeout=per_fetch_timeout)))
+        active.append((key, _start_fetch_process(target, timeout=per_fetch_timeout), time.monotonic()))
     deadline = time.monotonic() + budget_seconds
     results = {}
     while active:
-        if time.monotonic() >= deadline:
-            next_active: list[tuple[str, subprocess.Popen[bytes]]] = []
-            for key, proc in active:
+        now = time.monotonic()
+        if now >= deadline:
+            next_active: list[tuple[str, subprocess.Popen[bytes], float]] = []
+            for key, proc, started in active:
                 if proc.poll() is not None:
                     results[key] = _decode_fetch_process(proc)
                 else:
-                    next_active.append((key, proc))
+                    next_active.append((key, proc, started))
             active = next_active
             break
         next_active = []
-        for key, proc in active:
+        for key, proc, started in active:
             if proc.poll() is not None:
                 results[key] = _decode_fetch_process(proc)
+            elif now - started >= per_fetch_timeout:
+                _terminate_fetch_process(proc)
+                with contextlib.suppress(Exception):
+                    if proc.stdout is not None:
+                        proc.stdout.read()
+                results[key] = FetchResult("UNKNOWN", "timeout")
             else:
-                next_active.append((key, proc))
+                next_active.append((key, proc, started))
         active = next_active
         if active:
             sleep(0.05)
-    for key, proc in active:
+    for key, proc, _started in active:
         if key in results:
             continue
         if proc.poll() is not None:
@@ -399,6 +463,7 @@ def _sidecar(
     rows: list[CitationLedgerRow] | None = None,
     status: str | None = None,
     truncation: str = "",
+    credibility_hosts: list[str] | None = None,
 ) -> str:
     if status is not None:
         return (
@@ -429,7 +494,7 @@ def _sidecar(
         f"**Status counts**: {pass_count} PASS · {fail_count} FAIL · {unknown_count} UNKNOWN\n\n"
         "| Claim | Type | Status | Reason | Cited by |\n"
         "|---|---|---|---|---|\n"
-        f"{ledger}{notice}"
+        f"{ledger}{notice}{_render_credibility_block(credibility_hosts or [])}"
     )
 
 
@@ -483,6 +548,7 @@ def validate_citations(
         sleeper=sleeper,
     ) if fetch_targets else {}
     rows: list[CitationLedgerRow] = []
+    credibility_hosts: list[str] = []
     counts = {"PASS": 0, "FAIL": 0, "UNKNOWN": 0}
 
     def add_row(claim: str, claim_type: str, result: FetchResult) -> None:
@@ -490,11 +556,15 @@ def validate_citations(
         rows.append(CitationLedgerRow(claim, claim_type, result.status, result.reason))
 
     for url in urls:
+        host = _url_host(url)
+        if host:
+            credibility_hosts.append(host)
         add_row(url, "url", fetch_results.get(url, FetchResult("UNKNOWN", "timeout")))
     for doi in dois:
         if not _VALID_DOI_RE.match(doi):
             add_row(doi, "doi", FetchResult("FAIL", "doi-syntax"))
             continue
+        credibility_hosts.append("doi.org")
         raw = fetch_results.get(f"doi:{doi}", FetchResult("UNKNOWN", "timeout"))
         if raw.status == "PASS" or raw.token() == "UNKNOWN(redirect-not-followed)":
             add_row(doi, "doi", FetchResult("PASS"))
@@ -517,6 +587,7 @@ def validate_citations(
             unknown_count=counts.get("UNKNOWN", 0),
             rows=rows,
             truncation=truncation,
+            credibility_hosts=credibility_hosts,
         ),
     )
     _emit_summary(counts.get("PASS", 0), counts.get("FAIL", 0), counts.get("UNKNOWN", 0), total)

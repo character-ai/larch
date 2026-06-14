@@ -147,6 +147,60 @@ def test_citation_extraction_and_fileline_sidecar(tmp_path: Path) -> None:
     assert "| `https://example.com/doc` | url | PASS |" in text
     assert "| `10.1000/xyz` | doi | PASS |" in text
     assert "README.md:1" in text
+    assert "<details><summary>Domain credibility (advisory only)</summary>" in text
+    assert "| example.com | unknown |" in text
+    assert "| doi.org | allow |" in text
+
+
+def test_fetch_url_uses_non_default_https_port() -> None:
+    seen: dict[str, str] = {}
+
+    def connector(_url: str, pinned_ip: str | None, _timeout: int) -> int:
+        seen["pinned_ip"] = pinned_ip or ""
+        return 200
+
+    assert (
+        research.fetch_url(
+            "https://example.com:8443/doc",
+            resolver=lambda host: ["93.184.216.34"],
+            connector=connector,
+        ).token()
+        == "PASS"
+    )
+    assert seen["pinned_ip"] == "93.184.216.34"
+
+
+def test_credibility_tier_allow_list() -> None:
+    assert research._credibility_tier("en.wikipedia.org") == "allow"  # pyright: ignore[reportPrivateUsage]
+    assert research._credibility_tier("arxiv.org") == "allow"  # pyright: ignore[reportPrivateUsage]
+    assert research._credibility_tier("api.github.com") == "allow"  # pyright: ignore[reportPrivateUsage]
+    assert research._credibility_tier("example.com") == "unknown"  # pyright: ignore[reportPrivateUsage]
+
+
+def test_parallel_fetch_enforces_per_fetch_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    spawned: list[subprocess.Popen[bytes]] = []
+
+    def fake_start(_url: str, *, timeout: int) -> subprocess.Popen[bytes]:
+        _ = timeout
+        proc = subprocess.Popen(["sleep", "30"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        spawned.append(proc)
+        return proc
+
+    monkeypatch.setattr(research, "_start_fetch_process", fake_start)
+    start = time.monotonic()
+    results = research._parallel_fetch_results(  # pyright: ignore[reportPrivateUsage]
+        {"u1": "https://hang.example/a"},
+        budget_seconds=300,
+        per_fetch_timeout=1,
+        fetcher=None,
+        sleeper=time.sleep,
+    )
+    elapsed = time.monotonic() - start
+    assert elapsed < 5
+    assert results["u1"].token() == "UNKNOWN(timeout)"
+    time.sleep(0.2)
+    assert spawned
+    assert all(proc.poll() is not None for proc in spawned)
 
 
 def test_fetch_url_reason_matrix_and_ssrf() -> None:

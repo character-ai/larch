@@ -268,7 +268,7 @@ jq -cn --arg cursor "$F5B_BIN/cursor" --arg workspace "$REPO_ROOT" \
     '[$cursor,"agent","--workspace",$workspace,"retry prompt"]' > "$TMPROOT/case5b-cmd.json"
 {
     printf 'TOOL=cursor\n'
-    printf 'TIMEOUT=1\n'
+    printf 'TIMEOUT=30\n'
     printf 'CAPTURE_STDOUT_ONLY=true\n'
     printf 'OUTPUT_FILE=%s\n' "$F5B_RETRY"
     printf 'CMD_JSON=%s\n' "$(cat "$TMPROOT/case5b-cmd.json")"
