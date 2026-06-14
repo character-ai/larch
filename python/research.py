@@ -139,8 +139,7 @@ def _resolve_public_ips(host: str, *, timeout: float, resolver: Callable[[str], 
         except OSError:
             executor.shutdown(wait=False, cancel_futures=True)
             return [], "network-error"
-        else:
-            executor.shutdown(wait=False, cancel_futures=True)
+        executor.shutdown(wait=False, cancel_futures=True)
         ips = []
         for info in infos:
             addr = info[4][0]

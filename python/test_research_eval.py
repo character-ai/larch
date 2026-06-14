@@ -8,7 +8,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import TextIO, cast
+from typing import cast
 
 import pytest
 
