@@ -155,6 +155,7 @@ run_direct_relevant_targets() {
         case "$f" in
             skills/design/SKILL.md|skills/design/references/plan-review.md|skills/design/scripts/design-step3-mav.sh|skills/design/scripts/design-step3-mav.md|skills/design/scripts/test-design-step3-mav.sh|skills/design/scripts/test-design-step3-mav.md|skills/design/scripts/test-step3-orchestrator-fence.sh|skills/design/scripts/test-step3-orchestrator-fence.md)
                 append_target_once test-design-step3-mav
+                append_target_once test-step3-orchestrator-fence
                 ;;
             python/upgrade_larch.py|python/test_upgrade_larch.py)
                 append_target_once py-test

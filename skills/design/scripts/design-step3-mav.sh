@@ -109,10 +109,12 @@ trap cleanup_safe_env EXIT HUP INT TERM
 read_one_result_env() {
     local path="$1"
     local optional="$2"
-    [ -e "$path" ] || {
+    if [ -L "$path" ]; then
+        :
+    elif [ ! -e "$path" ]; then
         [ "$optional" = true ] && return 0
         return 1
-    }
+    fi
     safe_env_tmp="$(mktemp "${TMPDIR:-/tmp}/larch-step3-mav-env.XXXXXX")" || return 1
     "$CLAUDE_PLUGIN_ROOT/scripts/read-result-env.sh" \
         --input "$path" \
@@ -194,8 +196,9 @@ count_accepted_findings() {
 }
 
 append_mav_warning_once() {
-    local warning_file="$DESIGN_TMPDIR/step3-main-agent-adjudication.warning.log"
-    local sentinel="$DESIGN_TMPDIR/.step3-main-agent-adjudication-warning-appended"
+    local artifact_round="$1"
+    local warning_file="$DESIGN_TMPDIR/step3-main-agent-adjudication-r${artifact_round}.warning.log"
+    local sentinel="$DESIGN_TMPDIR/.step3-main-agent-adjudication-warning-appended-r${artifact_round}"
     [ ! -f "$sentinel" ] || return 0
     printf '%s\n' 'Step 3 — 0-judge plan-review panel: main-agent adjudication performed' >"$warning_file"
     python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" run-log append-failure \
@@ -262,6 +265,8 @@ run_post_phase() {
     mkdir -p "$DESIGN_TMPDIR/plan-review/round-${artifact_round}"
     retally_stdout="$(mktemp "${TMPDIR:-/tmp}/larch-step3-mav-retally.XXXXXX")" || exit 1
     if [ ! -r "$DESIGN_TMPDIR/voter-main-agent.txt" ]; then
+        python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" voting findings-classification-header \
+            >"$DESIGN_TMPDIR/plan-review/round-${artifact_round}/findings-classification.tsv"
         {
             printf '%s\n' 'TALLY_PLAN_REVIEW_STATUS=tally-error'
             printf 'VOTING_TALLY_FILE=%s/voting-tally.md\n' "$DESIGN_TMPDIR"
@@ -299,7 +304,7 @@ run_post_phase() {
         --loop-status complete
     )
     "$CLAUDE_PLUGIN_ROOT/skills/design/scripts/persist-retally-step3-env.sh" "${persist_args[@]}"
-    append_mav_warning_once
+    append_mav_warning_once "$artifact_round"
     accepted_count="$(count_accepted_findings)"
     if [ "$retally_status" = ok ]; then
         round_start_s=""

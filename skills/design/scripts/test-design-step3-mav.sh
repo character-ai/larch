@@ -172,6 +172,16 @@ run_subject "$D_SYM" pre >/dev/null 2>&1 || _sym_rc=$?
 set -e
 if [ "$_sym_rc" -ne 0 ]; then pass 'pre rejects symlinked primary result env'; else fail 'pre should reject symlinked primary result env'; fi
 
+D_BROKEN_SYM="$TMPROOT/broken-symlink"
+mkdir -p "$D_BROKEN_SYM"
+ln -s /tmp/larch-missing-step3-review-result.env "$D_BROKEN_SYM/.step3-review-result.env"
+printf 'ROUND_NUM=9\n' >"$D_BROKEN_SYM/.step3-plan-review-result.env"
+set +e
+_broken_sym_rc=0
+run_subject "$D_BROKEN_SYM" pre >/dev/null 2>&1 || _broken_sym_rc=$?
+set -e
+if [ "$_broken_sym_rc" -ne 0 ]; then pass 'pre rejects broken symlink primary result env'; else fail 'pre should reject broken symlink primary result env'; fi
+
 D_RENDER_FAIL="$TMPROOT/render-fail"
 mkdir -p "$D_RENDER_FAIL"
 printf 'outside\n' >"$TMPROOT/outside-anchor.txt"
@@ -213,7 +223,26 @@ if [ "$(cat "$D_ZERO/.step3-round-3.phase")" = 'awaiting-continuation' ]; then p
 
 D_ERR="$TMPROOT/post-error"
 mkdir -p "$D_ERR"
-make_result_envs "$D_ERR" main-agent-vote-required 4
+printf 'stale anchor\n' >"$D_ERR/stale-scope-anchor.txt"
+cat >"$D_ERR/.step3-plan-review-result.env" <<EOF2
+LOOP_STATUS=main-agent-vote-required
+TALLY_PLAN_REVIEW_STATUS=main-agent-vote-required
+SCOPE_ANCHOR_FILE=$D_ERR/stale-scope-anchor.txt
+ACCEPTED_COUNT=3
+IMPORTANT_ACCEPTED_COUNT=2
+EOF2
+cat >"$D_ERR/.step3-review-result.env" <<EOF2
+LOOP_STATUS=main-agent-vote-required
+STEP3_REVIEW_LOOP_STATUS=main-agent-vote-required
+TALLY_PLAN_REVIEW_STATUS=main-agent-vote-required
+ROUND_NUM=4
+SCOPE_ANCHOR_FILE=$D_ERR/stale-scope-anchor.txt
+IMPORTANT_ACCEPTED_COUNT=2
+EOF2
+cat >"$D_ERR/accepted-plan-findings.md" <<'EOF2'
+### FINDING_99: Partial failed re-tally accepted
+- **Concern**: should be cleared
+EOF2
 write_ballot "$D_ERR"
 _err_out=$(run_subject "$D_ERR" post)
 assert_contains "$_err_out" 'TALLY_PLAN_REVIEW_STATUS=tally-error' 'post handles missing voter as tally-error'
@@ -221,6 +250,12 @@ assert_contains "$_err_out" 'PHASE=unchanged' 'post does not route phase on tall
 assert_file_contains "$D_ERR/.step3-review-result.env" 'TALLY_PLAN_REVIEW_STATUS=tally-error' 'post persists tally-error to review env'
 if [ ! -e "$D_ERR/.step3-round-4.phase" ]; then pass 'post does not write phase file on tally-error'; else fail 'post should not write phase on tally-error'; fi
 assert_file_contains "$D_ERR/execution-issues.md" '0-judge plan-review panel' 'post appends warning on tally-error'
+if ( command grep -q '^SCOPE_ANCHOR_FILE=' "$D_ERR/.step3-plan-review-result.env" ); then fail 'tally-error must omit scope anchor from plan-review result env'; else pass 'tally-error omits scope anchor from plan-review result env'; fi
+if ( command grep -q '^SCOPE_ANCHOR_FILE=' "$D_ERR/.step3-review-result.env" ); then fail 'tally-error must omit scope anchor from review result env'; else pass 'tally-error omits scope anchor from review result env'; fi
+assert_file_contains "$D_ERR/.step3-plan-review-result.env" 'ACCEPTED_COUNT=0' 'tally-error zeros ACCEPTED_COUNT in plan-review env'
+assert_file_contains "$D_ERR/.step3-review-result.env" 'IMPORTANT_ACCEPTED_COUNT=0' 'tally-error zeros IMPORTANT_ACCEPTED_COUNT in review env'
+if [ ! -s "$D_ERR/accepted-plan-findings.md" ]; then pass 'tally-error clears partial accepted-plan-findings.md'; else fail 'tally-error should clear partial accepted-plan-findings.md'; fi
+if [ -s "$D_ERR/plan-review/round-4/findings-classification.tsv" ]; then pass 'tally-error writes canonical findings-classification header'; else fail 'tally-error missing findings-classification header'; fi
 
 D_MAL="$TMPROOT/post-malformed"
 mkdir -p "$D_MAL"
@@ -261,13 +296,77 @@ _round_out=$(run_subject "$D_ROUND" post)
 if [ -s "$D_ROUND/plan-review/round-8/findings-classification.tsv" ]; then pass 'ROUND_NUM takes precedence for round artifact output'; else fail 'ROUND_NUM precedence missing round-8 classification'; fi
 if [ ! -s "$D_ROUND/plan-review/round-9/findings-classification.tsv" ]; then pass 'ROUNDS_COMPLETED does not override ROUND_NUM for artifacts'; else fail 'ROUNDS_COMPLETED should not receive classification when ROUND_NUM is set'; fi
 
+echo '=== per-round warning sentinel ==='
+D_WARN2="$TMPROOT/warn-round-2"
+mkdir -p "$D_WARN2/plan-review/round-2"
+make_result_envs "$D_WARN2" main-agent-vote-required 2
+write_ballot "$D_WARN2"
+printf 'FINDING_1: YES\n' >"$D_WARN2/voter-main-agent.txt"
+run_subject "$D_WARN2" post >/dev/null
+D_WARN3="$TMPROOT/warn-round-3"
+mkdir -p "$D_WARN3/plan-review/round-3"
+make_result_envs "$D_WARN3" main-agent-vote-required 3
+write_ballot "$D_WARN3"
+printf 'FINDING_1: YES\n' >"$D_WARN3/voter-main-agent.txt"
+run_subject "$D_WARN3" post >/dev/null
+if [ -f "$D_WARN2/.step3-main-agent-adjudication-warning-appended-r2" ] && [ -f "$D_WARN3/.step3-main-agent-adjudication-warning-appended-r3" ]; then
+    pass 'warning sentinel is per artifact round'
+else
+    fail 'warning sentinel should be keyed by artifact round'
+fi
+if [ -f "$D_WARN2/step3-main-agent-adjudication-r2.warning.log" ] && [ -f "$D_WARN3/step3-main-agent-adjudication-r3.warning.log" ]; then
+    pass 'warning log is per artifact round'
+else
+    fail 'warning log should be keyed by artifact round'
+fi
+
+echo '=== loop mode invalid resume round ==='
+D_BAD_RESUME="$TMPROOT/bad-resume"
+mkdir -p "$D_BAD_RESUME"
+cat >"$D_BAD_RESUME/.step3-review-result.env" <<'EOF2'
+LOOP_STATUS=main-agent-vote-required
+STEP3_REVIEW_LOOP_STATUS=main-agent-vote-required
+TALLY_PLAN_REVIEW_STATUS=main-agent-vote-required
+EOF2
+write_ballot "$D_BAD_RESUME"
+printf 'FINDING_1: YES\n' >"$D_BAD_RESUME/voter-main-agent.txt"
+set +e
+_bad_resume_rc=0
+run_subject "$D_BAD_RESUME" post >/dev/null 2>&1 || _bad_resume_rc=$?
+set -e
+if [ "$_bad_resume_rc" -eq 1 ]; then pass 'post aborts loop mode with invalid resume round'; else fail "post should exit 1 for invalid resume round, got $_bad_resume_rc"; fi
+
+echo '=== launcher transport stub ==='
+D_LAUNCHER="$TMPROOT/launcher"
+mkdir -p "$D_LAUNCHER"
+make_result_envs "$D_LAUNCHER" main-agent-vote-required 2
+write_ballot "$D_LAUNCHER"
+_launcher_env="$(make_session_env "$D_LAUNCHER")"
+FAKE_LAUNCHER="$TMPROOT/fake-design-run.sh"
+cat >"$FAKE_LAUNCHER" <<EOF2
+#!/usr/bin/env bash
+script="\$1"
+shift
+exec "$ROOT/skills/design/scripts/\$script" "\$@"
+EOF2
+chmod +x "$FAKE_LAUNCHER"
+_launcher_out=$("$FAKE_LAUNCHER" design-step3-mav.sh \
+    --session-env-path "$_launcher_env" \
+    --claude-pid test \
+    --plugin-root "$ROOT" \
+    --phase pre)
+assert_contains "$_launcher_out" 'DESIGN_STEP3_MAV_KV_BEGIN' 'launcher stub reaches MAV pre subject'
+
 echo '=== prose regression pins ==='
 SKILL_FILE="$ROOT/skills/design/SKILL.md"
 PLAN_REVIEW_FILE="$ROOT/skills/design/references/plan-review.md"
+APPROVAL_GATES_FILE="$ROOT/skills/design/references/approval-gates.md"
 assert_file_contains "$SKILL_FILE" 'design-step3-mav.sh --phase pre' 'SKILL delegates MAV pre phase'
+assert_file_contains "$SKILL_FILE" '"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-mav.sh --phase pre' 'SKILL pins MAV pre launcher fence'
+assert_file_contains "$SKILL_FILE" '"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-mav.sh --phase post' 'SKILL pins MAV post launcher fence'
 assert_file_contains "$SKILL_FILE" 'DESIGN_STEP3_MAV_KV_BEGIN' 'SKILL parses MAV trusted sentinel'
 assert_file_contains "$PLAN_REVIEW_FILE" 'design-step3-mav.sh --phase pre' 'plan-review delegates MAV pre phase'
-if ( command grep -Fq '_RETALLY_SCOPE_ANCHOR_IN' "$SKILL_FILE" "$PLAN_REVIEW_FILE" ); then fail 'prose should not contain prompt-side retally anchor binding'; else pass 'prose removed prompt-side retally anchor binding'; fi
+if ( command grep -Fq '_RETALLY_SCOPE_ANCHOR_IN' "$SKILL_FILE" "$PLAN_REVIEW_FILE" "$APPROVAL_GATES_FILE" ); then fail 'prose should not contain prompt-side retally anchor binding'; else pass 'prose removed prompt-side retally anchor binding'; fi
 # shellcheck disable=SC2016 # Literal prose probe.
 if ( command grep -Fq 'end_s=$(date +%s)' "$SKILL_FILE" "$PLAN_REVIEW_FILE" ); then fail 'prose should not contain prompt-side raw date timing'; else pass 'prose removed prompt-side raw date timing'; fi
 

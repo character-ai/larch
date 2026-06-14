@@ -366,11 +366,12 @@ fi
 echo "=== MainAgent MAV wrapper prose pins ==="
 SKILL_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)/SKILL.md"
 PLAN_REVIEW_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)/references/plan-review.md"
+APPROVAL_GATES_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)/references/approval-gates.md"
 # shellcheck disable=SC2016 # Literal documentation probe contains backticks.
-if ( command grep -Fq 'Call `design-step3-mav.sh --phase pre` through the normal `design-run-$PPID.sh` launcher.' "$SKILL_FILE" ); then
-    pass 'SKILL pins MAV pre wrapper call'
+if ( command grep -Fq '"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-mav.sh --phase pre' "$SKILL_FILE" ); then
+    pass 'SKILL pins MAV pre launcher fence'
 else
-    fail 'SKILL missing MAV pre wrapper call'
+    fail 'SKILL missing MAV pre launcher fence'
 fi
 # shellcheck disable=SC2016 # Literal documentation probe contains backticks.
 if ( command grep -Fq 'Parse trusted scalars only from the final `DESIGN_STEP3_MAV_KV_BEGIN` / `DESIGN_STEP3_MAV_KV_END` frame.' "$SKILL_FILE" ); then
@@ -379,10 +380,16 @@ else
     fail 'SKILL missing MAV trusted KV frame parsing'
 fi
 # shellcheck disable=SC2016 # Literal documentation probe contains backticks.
-if ( command grep -Fq 'Call `design-step3-mav.sh --phase post`. Abort on post exit `2`.' "$SKILL_FILE" ); then
-    pass 'SKILL pins MAV post wrapper call'
+if ( command grep -Fq '"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-mav.sh --phase post' "$SKILL_FILE" ); then
+    pass 'SKILL pins MAV post launcher fence'
 else
-    fail 'SKILL missing MAV post wrapper call'
+    fail 'SKILL missing MAV post launcher fence'
+fi
+# shellcheck disable=SC2016 # Literal documentation probe contains backticks.
+if ( command grep -Fq 'Abort on any non-zero post exit' "$SKILL_FILE" ); then
+    pass 'SKILL pins MAV post non-zero abort'
+else
+    fail 'SKILL missing MAV post non-zero abort'
 fi
 # shellcheck disable=SC2016 # Literal documentation probe contains backticks.
 if ( command grep -Fq '`TALLY_PLAN_REVIEW_STATUS=tally-error` is handled by post with `LOOP_STATUS=complete`; route it through the Gate B bypass helper and Step 3b instead of entering Gate B.' "$PLAN_REVIEW_FILE" ); then
@@ -390,7 +397,7 @@ if ( command grep -Fq '`TALLY_PLAN_REVIEW_STATUS=tally-error` is handled by post
 else
     fail 'plan-review missing MAV tally-error routing'
 fi
-if ( command grep -Fq '_RETALLY_SCOPE_ANCHOR_IN' "$SKILL_FILE" "$PLAN_REVIEW_FILE" ); then
+if ( command grep -Fq '_RETALLY_SCOPE_ANCHOR_IN' "$SKILL_FILE" "$PLAN_REVIEW_FILE" "$APPROVAL_GATES_FILE" ); then
     fail 'MAV prose must not keep prompt-side _RETALLY_SCOPE_ANCHOR_IN binding'
 else
     pass 'MAV prose removed prompt-side retally anchor binding'
