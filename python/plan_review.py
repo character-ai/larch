@@ -1074,11 +1074,13 @@ def emit_design_plan_preview(argv: Sequence[str]) -> int:
         "step2b": "**⚠ 2b:** DESIGN_TMPDIR missing or invalid; cannot present implementation plan",
         "step3": "**⚠ 3: DESIGN_TMPDIR missing or invalid; cannot present plan candidate for review**",
         "gatec": "**⚠ 4b: DESIGN_TMPDIR missing or invalid; cannot present final design plan**",
+        "full": "**⚠ 4b: DESIGN_TMPDIR missing or invalid; cannot present final design plan**",
     }
     allowlist_messages = {
         "step2b": "**⚠ 2b:** DESIGN_TMPDIR not under allowlist; cannot present implementation plan",
         "step3": "**⚠ 3: DESIGN_TMPDIR not under allowlist; cannot present plan candidate**",
         "gatec": "**⚠ 4b: DESIGN_TMPDIR not under allowlist; cannot present final design plan**",
+        "full": "**⚠ 4b: DESIGN_TMPDIR not under allowlist; cannot present final design plan**",
     }
     if not design_tmpdir or not Path(design_tmpdir).is_dir():
         print(missing_messages.get(variant, missing_messages["step3"]))

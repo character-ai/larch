@@ -519,9 +519,9 @@ assert_reference_updates() {
   contains "$APPROVAL_MD" 'design-step5c.sh --skip-validate' 'approval-gates.md missing Step 5c skip-validate wrapper reference'
   contains "$APPROVAL_MD" 'emit-design-plan-preview.sh --design-tmpdir "$DESIGN_TMPDIR" --variant full' 'approval-gates.md missing Gate C full-plan helper reference'
   contains "$SKILL_MD" 'emit-design-plan-preview.sh --design-tmpdir "$DESIGN_TMPDIR" --variant full' 'SKILL.md missing Gate C full-plan helper reference'
-  contains "$SCRIPT_DIR/emit-design-plan-preview.sh" 'step3|gatec|step2b|full' 'emit-design-plan-preview.sh usage missing full variant'
-  contains "$SCRIPT_DIR/emit-design-plan-preview.sh" 'full)' 'emit-design-plan-preview.sh missing full case'
-  contains "$SCRIPT_DIR/emit-design-plan-preview.sh" 'cat "$design_tmpdir/plan.txt"' 'emit-design-plan-preview.sh full variant must emit complete plan'
+  contains "$RUN_STEP3_SH" '"full": "**⚠ 4b: DESIGN_TMPDIR missing or invalid; cannot present final design plan**"' 'plan_review.py preview facade missing full variant missing-dir warning'
+  contains "$RUN_STEP3_SH" '"full": "**⚠ 4b: DESIGN_TMPDIR not under allowlist; cannot present final design plan**"' 'plan_review.py preview facade missing full variant allowlist warning'
+  contains "$RUN_STEP3_SH" 'emit-design-plan-preview.sh"), argv)' 'plan_review.py preview facade missing embedded full-plan helper delegation'
   ! grep -Fq 'cat `$DESIGN_TMPDIR/plan.txt`' "$APPROVAL_MD" \
     || fail 'approval-gates.md must use full-plan helper instead of raw Gate C cat'
   ! grep -Fq 'both paths `cat` `$DESIGN_TMPDIR/plan.txt`' "$SKILL_MD" \

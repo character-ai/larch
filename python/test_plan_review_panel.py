@@ -79,6 +79,52 @@ printf 'ALL_OUTPUT_FILES_PATH=%s\\n' "${WATERFALL_STUB_PATHS_OUT:-$_outpath}"
     return stub
 
 
+def _write_python3_agent_stub(tmp_path: Path) -> Path:
+    stub_dir = tmp_path / "python3-stub-bin"
+    stub_dir.mkdir()
+    stub = stub_dir / "python3"
+    _ = stub.write_text(
+        f"""#!{sys.executable}
+import os
+import sys
+from pathlib import Path
+
+real_python = os.environ["PLAN_REVIEW_PANEL_REAL_PYTHON"]
+args = sys.argv[1:]
+if len(args) >= 3 and args[1:3] == ["agent", "launch-claude-review"]:
+    output = ""
+    idx = 3
+    while idx < len(args):
+        if args[idx] in ("--output", "--output-file") and idx + 1 < len(args):
+            output = args[idx + 1]
+            idx += 2
+        elif args[idx] in (
+            "--prompt-file",
+            "--mode",
+            "--role",
+            "--read-tools-add-dir",
+            "--timeout",
+            "--timing-task-kind",
+        ):
+            idx += 2
+        else:
+            idx += 1
+    if not output:
+        raise SystemExit(2)
+    Path(output).write_text(
+        "FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false\\n",
+        encoding="utf-8",
+    )
+    Path(output + ".done").write_text("0\\n", encoding="utf-8")
+    raise SystemExit(0)
+os.execv(real_python, [real_python, *args])
+""",
+        encoding="utf-8",
+    )
+    stub.chmod(0o755)
+    return stub_dir
+
+
 def test_panel_dispatch_usage_failure() -> None:
     proc = run_cli("plan-review", "panel-dispatch")
     assert proc.returncode == 2
@@ -217,7 +263,11 @@ def test_voter_dispatch_absent_externals_falls_back_to_claude(tmp_path: Path) ->
         "false",
         "--cursor-available",
         "false",
-        env={"LARCH_QUIET_DISABLE": "1"},
+        env={
+            "LARCH_QUIET_DISABLE": "1",
+            "PATH": f"{_write_python3_agent_stub(tmp_path)}:{os.environ.get('PATH', '')}",
+            "PLAN_REVIEW_PANEL_REAL_PYTHON": sys.executable,
+        },
     )
     assert proc.returncode == 0, proc.stderr + proc.stdout
     assert "VOTER_1_STATUS=launched" in proc.stdout
@@ -241,13 +291,18 @@ def test_voter_dispatch_stdout_key_order(tmp_path: Path) -> None:
         "--design-tmpdir",
         str(design),
         "--codex-available",
-        "true",
+        "false",
         "--cursor-available",
-        "true",
-        env={"LARCH_QUIET_DISABLE": "1"},
+        "false",
+        env={
+            "LARCH_QUIET_DISABLE": "1",
+            "PATH": f"{_write_python3_agent_stub(tmp_path)}:{os.environ.get('PATH', '')}",
+            "PLAN_REVIEW_PANEL_REAL_PYTHON": sys.executable,
+        },
     )
     assert proc.returncode == 0, proc.stderr + proc.stdout
     expected = [
+        "DEGRADED_PANEL_WARNING",
         "VOTER_1_PATH",
         "VOTER_1_TOOL",
         "VOTER_1_STATUS",
