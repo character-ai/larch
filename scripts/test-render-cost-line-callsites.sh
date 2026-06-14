@@ -37,7 +37,7 @@ grep -Fq 'python/cli.py" final-report write --implement-tmpdir "$IMPLEMENT_TMPDI
 # shellcheck disable=SC2016
 grep -Fq 'if [ -s "$IMPLEMENT_TMPDIR/summary-final.md" ]; then' "$REPO/skills/implement/scripts/step-17.sh" || fail 'Step 17 must gate touch on non-empty summary body'
 # shellcheck disable=SC2016
-step18_launcher='python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" final-report step18b --implement-tmpdir "$IMPLEMENT_TMPDIR"'
+step18_launcher='bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py final-report step18b --implement-tmpdir "$IMPLEMENT_TMPDIR"'
 # shellcheck disable=SC2016
 grep -Fq "$step18_launcher" "$REPO/skills/implement/SKILL.md" || fail 'Step 18 must invoke final-report step18b through python/cli.py'
 # shellcheck disable=SC2016
@@ -46,7 +46,7 @@ grep -Fq 'When `EMIT_BODY=true` and `WFR_RC=0` and `[ -s "$IMPLEMENT_TMPDIR/summ
 grep -Fq 'write `$IMPLEMENT_TMPDIR/.step17-emitted`' "$REPO/skills/implement/SKILL.md" || fail 'Step 17/18 must persist top-chat emission sentinel'
 # shellcheck disable=SC2016
 step18_block=$(awk '
-    /python3 "\$CLAUDE_PLUGIN_ROOT\/python\/cli\.py" final-report step18b --implement-tmpdir "\$IMPLEMENT_TMPDIR"/ { in_block=1 }
+    /bash "\$IMPLEMENT_TMPDIR\/larch-run\.sh" python\/cli\.py final-report step18b --implement-tmpdir "\$IMPLEMENT_TMPDIR"/ { in_block=1 }
     in_block { print }
     in_block && /^```$/ { exit }
 ' "$REPO/skills/implement/SKILL.md")
