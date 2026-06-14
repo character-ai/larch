@@ -918,6 +918,7 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--exit-code", default="unknown")
         p.add_argument("--failure-detail-log", default="")
         p.add_argument("--artifact-prefix", default="")
+        p.add_argument("--profile", default="implement")
         ns, _ = p.parse_known_args(rest)
         return record_escalation(ns)
     if sub == "dedup-tier-a-report":
