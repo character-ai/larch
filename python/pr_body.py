@@ -1,5 +1,7 @@
 """PR body composition and Mermaid sanitization."""
 
+# pyright: reportUnusedCallResult=false
+
 from __future__ import annotations
 
 import argparse
@@ -11,6 +13,7 @@ import subprocess
 import sys
 import urllib.parse
 import urllib.request
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -21,7 +24,7 @@ import proc
 import redact
 import tracking_issue
 from errors import ShipError
-from proc import Runner
+from proc import CommandResult, Runner
 
 
 @dataclass(frozen=True)
@@ -339,6 +342,10 @@ def _fmt_money(value: float | str) -> str:
         return "N/A"
 
 
+def _money_value(value: object) -> float | str:
+    return value if isinstance(value, (float, int, str)) else "N/A"
+
+
 def render_run_summary(**kwargs: object) -> str:
     skill = str(kwargs.get("skill") or "implement")
     outcome = str(kwargs.get("outcome") or "unknown")
@@ -349,7 +356,7 @@ def render_run_summary(**kwargs: object) -> str:
     if kwargs.get("cost_unavailable") or total_cost == "N/A":
         cost = "N/A"
     else:
-        cost = f"💰 TOTAL ~{_fmt_money(total_cost)} — Claude {_fmt_money(kwargs.get('claude_cost', 0))}, Codex {_fmt_money(kwargs.get('codex_cost', 0))}, Cursor {_fmt_money(kwargs.get('cursor_cost', 0))}, Claude (subprocess) {_fmt_money(kwargs.get('claude_sub_cost', 0))}  |  Tokens: {int((total_tokens + 500) / 1000)}k"
+        cost = f"💰 TOTAL ~{_fmt_money(_money_value(total_cost))} — Claude {_fmt_money(_money_value(kwargs.get('claude_cost', 0)))}, Codex {_fmt_money(_money_value(kwargs.get('codex_cost', 0)))}, Cursor {_fmt_money(_money_value(kwargs.get('cursor_cost', 0)))}, Claude (subprocess) {_fmt_money(_money_value(kwargs.get('claude_sub_cost', 0)))}  |  Tokens: {int((total_tokens + 500) / 1000)}k"
     issue_number = str(kwargs.get("issue_number") or "")
     issue_url = str(kwargs.get("issue_url") or "")
     issue = "N/A"
@@ -459,7 +466,17 @@ def render_run_summary_main(argv: list[str] | None = None) -> int:
 
 
 class _ProcRunner:
-    def run(self, argv, *, timeout=None, cwd=None, env=None, check=False, stdout=None, stderr=None):
+    def run(
+        self,
+        argv: Sequence[str],
+        *,
+        timeout: float | None = None,
+        cwd: str | None = None,
+        env: Mapping[str, str] | None = None,
+        check: bool = False,
+        stdout: int | None = None,
+        stderr: int | None = None,
+    ) -> CommandResult:
         return proc.run(argv, timeout=timeout, cwd=cwd, env=env, check=check, stdout=stdout, stderr=stderr)
 
 

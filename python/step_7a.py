@@ -1,5 +1,7 @@
 """Python Step 7a orchestration for /implement."""
 
+# pyright: reportUnusedCallResult=false
+
 from __future__ import annotations
 
 import argparse

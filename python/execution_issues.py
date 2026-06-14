@@ -1,5 +1,7 @@
 """Execution-issues ledger helpers for /implement."""
 
+# pyright: reportUnusedCallResult=false
+
 from __future__ import annotations
 
 import argparse

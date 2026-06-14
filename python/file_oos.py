@@ -11,6 +11,8 @@ to-file set and exposes the sentinel-based idempotency check so the
 orchestrator can avoid re-filing across same-session retries.
 """
 
+# pyright: reportUnusedCallResult=false
+
 from __future__ import annotations
 
 import argparse
@@ -23,7 +25,7 @@ import sys
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import NamedTuple
+from typing import NamedTuple, cast
 
 import config
 import run_logs
@@ -265,17 +267,19 @@ def _security_signal(description: object, focus_area: object = "") -> bool:
 
 def _load_manifest_observations(path: Path) -> list[dict[str, object]]:
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        raw_data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise ValueError(f"manifest must be readable JSON: {exc}") from exc
-    if not isinstance(data, dict):
+    if not isinstance(raw_data, dict):
         raise TypeError("manifest must be a JSON object")
+    data = cast("dict[str, object]", raw_data)
     observations = data.get("oos_observations", [])
     if observations is None:
         observations = []
     if not isinstance(observations, list):
         raise TypeError("oos_observations must be an array")
-    return [item if isinstance(item, dict) else {} for item in observations]
+    observations = cast("list[object]", observations)
+    return [cast("dict[str, object]", item) if isinstance(item, dict) else {} for item in observations]
 
 
 def _existing_oos_titles(path: Path) -> set[str]:
@@ -416,10 +420,11 @@ def _count_rejected_from_ndjson(path: Path) -> int:
         if not raw.strip():
             continue
         try:
-            item = json.loads(raw)
+            raw_item = json.loads(raw)
         except json.JSONDecodeError as exc:
             raise ValueError("jq parse failure while reading oos-issues.ndjson; refusing disposition") from exc
-        body = str(item.get("body", "")) if isinstance(item, dict) else ""
+        item = cast("dict[str, object]", raw_item) if isinstance(raw_item, dict) else {}
+        body = str(item.get("body", ""))
         lower = body.lower()
         if "rejected / out-of-scope" not in lower and "## rejected" not in lower:
             continue

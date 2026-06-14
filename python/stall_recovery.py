@@ -1,5 +1,7 @@
 """Stall recovery report helpers shared by /implement and /design."""
 
+# pyright: reportUnusedCallResult=false
+
 from __future__ import annotations
 
 import argparse
@@ -8,6 +10,7 @@ import hashlib
 import os
 import re
 import sys
+from collections.abc import Mapping
 from datetime import datetime, UTC
 from pathlib import Path
 
@@ -29,7 +32,7 @@ def read_kv(path: Path, key: str, default: str = "") -> str:
     return value
 
 
-def write_kvs(path: Path, values: dict[str, object]) -> None:
+def write_kvs(path: Path, values: Mapping[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text("".join(f"{k}={v}\n" for k, v in values.items()), encoding="utf-8")

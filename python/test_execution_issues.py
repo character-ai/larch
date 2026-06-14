@@ -5,7 +5,7 @@ import execution_issues
 
 def test_write_execution_issues_records_splits_sections(tmp_path: Path) -> None:
     issue_log = tmp_path / "execution-issues.md"
-    issue_log.write_text("### Tool Failures\n- one\n\n### Warnings\n- two\n", encoding="utf-8")
+    _ = issue_log.write_text("### Tool Failures\n- one\n\n### Warnings\n- two\n", encoding="utf-8")
     record_file = tmp_path / "records.ndjson"
 
     count = execution_issues.write_execution_issues_records(issue_log, record_file, "abc", step_label="7a")

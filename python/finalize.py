@@ -899,7 +899,17 @@ def write_finalize_state(ctx: RunContext, path: str | Path) -> None:
 
 
 class _SubprocessRunner:
-    def run(self, argv, *, timeout=None, cwd=None, env=None, check=False, stdout=None, stderr=None):
+    def run(
+        self,
+        argv: Sequence[str],
+        *,
+        timeout: float | None = None,
+        cwd: str | None = None,
+        env: Mapping[str, str] | None = None,
+        check: bool = False,
+        stdout: int | None = None,
+        stderr: int | None = None,
+    ) -> CommandResult:
         return proc.run(argv, timeout=timeout, cwd=cwd, env=env, check=check, stdout=stdout, stderr=stderr)
 
 
@@ -928,15 +938,15 @@ def _ctx_from_tmpdir(tmpdir: str) -> RunContext:
         for line in state.read_text(encoding="utf-8", errors="replace").splitlines():
             if "=" in line:
                 k, v = line.split("=", 1)
-                env.setdefault(k, v)
+                _ = env.setdefault(k, v)
     return RunContext.from_env(env=env)
 
 
 def implement_finalize_main(argv: list[str] | None = None, phase: str = "") -> int:
     parser = argparse.ArgumentParser(prog=f"cli.py implement-finalize {phase}")
-    parser.add_argument("--state-file")
-    parser.add_argument("--implement-tmpdir")
-    parser.add_argument("--final-bail-reason-file")
+    _ = parser.add_argument("--state-file")
+    _ = parser.add_argument("--implement-tmpdir")
+    _ = parser.add_argument("--final-bail-reason-file")
     args, _unknown = parser.parse_known_args(argv)
     if args.state_file:
         os.environ["SHIP_PR_STATE_FILE"] = args.state_file
@@ -961,7 +971,7 @@ def implement_finalize_main(argv: list[str] | None = None, phase: str = "") -> i
         print("FINALIZE_WARNINGS=unknown phase")
         return 2
     _emit_finalize_result(result)
-    return 0 if result.outcome.value == "ok" else 1
+    return 0 if result.outcome == Outcome.OK else 1
 
 
 def implement_finalize_postbump_main(argv: list[str] | None = None) -> int:
@@ -978,7 +988,7 @@ def implement_finalize_teardown_main(argv: list[str] | None = None) -> int:
 
 def cleanup_main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cli.py implement cleanup")
-    parser.add_argument("--implement-tmpdir", required=True)
+    _ = parser.add_argument("--implement-tmpdir", required=True)
     args = parser.parse_args(argv)
     tmpdir = Path(args.implement_tmpdir)
     ctx = _ctx_from_tmpdir(str(tmpdir))
