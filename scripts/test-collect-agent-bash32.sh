@@ -78,6 +78,7 @@ fi
 SECTION_37_START=$(grep -n '^# --- 3\.7\. Retry NOT_SUBSTANTIVE' "$COLLECTOR" | head -1 | cut -d: -f1 || true)
 if [[ -n "$SECTION_37_START" ]]; then
     SECTION_37=$(tail -n +"$SECTION_37_START" "$COLLECTOR")
+    # shellcheck disable=SC2016
     if printf '%s\n' "$SECTION_37" | grep -q 'VALIDATOR_CMD=(python3 "$SCRIPT_DIR/../python/cli.py" eval validate-research-output)' \
        && printf '%s\n' "$SECTION_37" | grep -q -- '--structured-reviewer-mode --write-structured' \
        && printf '%s\n' "$SECTION_37" | grep -q '"${VAL_ARGS_NS\[@\]+"${VAL_ARGS_NS\[@\]}"}"' \
