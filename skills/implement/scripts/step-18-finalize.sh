@@ -71,4 +71,4 @@ if [ "$_restore_finalize" = true ]; then
   fi
 fi
 python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" session clear-implement-pointer --claude-pid "${LARCH_CLAUDE_PID:-$PPID}" 2>/dev/null || true
-"$CLAUDE_PLUGIN_ROOT/scripts/implement-finalize.sh" teardown   --state-file "$IMPLEMENT_TMPDIR/finalize-state.sh"   --implement-tmpdir "$IMPLEMENT_TMPDIR"
+python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" implement-finalize teardown --state-file "$IMPLEMENT_TMPDIR/finalize-state.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"

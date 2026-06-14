@@ -18,6 +18,11 @@ die_argv() {
     exit 1
 }
 
+kv_value() {
+    local key=$1 file=$2
+    awk -F= -v key="$key" '$1==key{print substr($0, index($0, "=") + 1); exit}' "$file" 2>/dev/null
+}
+
 append_failure_best_effort() {
     local site=$1 tool=$2 rc=$3 log=$4
     [ -f "$log" ] || : >"$log" 2>/dev/null || true
@@ -91,29 +96,25 @@ main() {
     fi
 
     : >"$wfr_fail_log" 2>/dev/null || true
-    if "$SCRIPT_DIR/write-final-report.sh" --implement-tmpdir "$tmpdir" >>"$wfr_fail_log" 2>&1; then
+    step18b_out="$tmpdir/step18b-final-report.stdout"
+    if python3 "$PLUGIN_ROOT/python/cli.py" final-report step18b --implement-tmpdir "$tmpdir" >"$step18b_out" 2>>"$wfr_fail_log"; then
         wfr_rc=0
     else
         wfr_rc=$?
-        append_failure_best_effort "Step 18 — cleanup" "write-final-report.sh" "$wfr_rc" "$wfr_fail_log"
+        append_failure_best_effort "Step 18 — cleanup" "python/cli.py final-report step18b" "$wfr_rc" "$wfr_fail_log"
     fi
-
-    if [ "$wfr_rc" -eq 0 ] && [ -s "$tmpdir/summary-final.md" ]; then
-        if [ "$emit_body" = false ]; then
-            case "$snapshot_ok" in
-                absent) emit_body=true ;;
-                true)
-                    if [ -f "$tmpdir/.step18-prebody" ] && ! cmp -s "$tmpdir/.step18-prebody" "$tmpdir/summary-final.md" 2>/dev/null; then
-                        emit_body=true
-                    fi
-                    ;;
-                false) emit_body=true ;;
-            esac
-        fi
-    fi
+    wfr_rc=$(kv_value WFR_RC "$step18b_out")
+    wfr_rc=${wfr_rc:-1}
+    emit_body=$(kv_value EMIT_BODY "$step18b_out")
+    snapshot_ok=$(kv_value SNAPSHOT_OK "$step18b_out")
+    snapshot_ok=${snapshot_ok:-absent}
+    step17_present=false
+  case "$(kv_value STEP17_EMITTED_PRESENT "$step18b_out")" in
+        true) step17_present=true ;;
+    esac
 
     local emit_body_kv=false
-    if [ "$emit_body" = true ] && [ "$wfr_rc" -eq 0 ] && [ -s "$tmpdir/summary-final.md" ]; then
+    if [ "$emit_body" = true ]; then
         emit_body_kv=true
     fi
 

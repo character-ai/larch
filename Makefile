@@ -143,7 +143,7 @@ test-append-tool-failure:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_run_logs.py
 
 test-append-execution-issue:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_run_logs.py
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_execution_issues.py -k append_execution_issue
 
 test-validate-research-output:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_research_eval.py
@@ -626,7 +626,13 @@ test-implement-step8-exit3-first-fixer:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-implement-step8-exit3-first-fixer.sh
 
 test-oos-disposition-gate:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-oos-disposition-gate.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_file_oos.py -q -k 'disposition_gate'
+
+test-oos-file-conflict-deps:
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_file_oos.py -q -k 'file_conflict_deps'
+
+test-oos-issue-cap:
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_file_oos.py -q -k 'issue_cap'
 
 test-plan-adequacy-audit:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-plan-adequacy-audit.sh
@@ -670,13 +676,13 @@ test-step2-dispatch:
 test-stall-recovery-report: test-stall-recovery-report-1 test-stall-recovery-report-2 test-stall-recovery-report-3
 
 test-stall-recovery-report-1:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-stall-recovery-report-1.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_stall_recovery.py -q -k 'retry_policy or normalize_issue or classify or record_attempt'
 
 test-stall-recovery-report-2:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-stall-recovery-report-2.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_stall_recovery.py -q -k 'record_escalation or dedup or compose_report or lint or clear_stall or seed_terminal'
 
 test-stall-recovery-report-3:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-stall-recovery-report-3.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_stall_recovery.py -q -k 'validate_token or validate_terminal or validate_tier_b'
 
 test-resolve-upstream-larch-repo:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-resolve-upstream-larch-repo.sh
@@ -685,7 +691,7 @@ test-file-failure-report-cross-repo:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-file-failure-report-cross-repo.sh
 
 test-step-18b-final-report:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-step-18b-final-report.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_pr_body.py -q -k step18b
 
 test-cursor-implementer:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-cursor-implementer.sh
@@ -729,7 +735,7 @@ test-quick-mode-docs-sync:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-quick-mode-docs-sync.sh --self-test
 
 test-implement-finalize:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-implement-finalize.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_finalize.py -q -k 'teardown or finalize or write_finalize'
 
 test-implement-bootstrap:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_bootstrap.py -x -q -k 'write_base_session_env or tracking or emergency_bypass or resume_plan_tail or forked_plan or run_bootstrap or phase_coder'
@@ -741,16 +747,16 @@ test-parse-bootstrap-routing-envelope:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_bootstrap.py -x -q -k 'filtered_envelope or parse_routing or routing_parser or degraded_prompt_required or phantom_stdout or absorbed_'
 
 test-flush-execution-issues:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-flush-execution-issues.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_execution_issues.py -q -k flush
 
 test-step-7a:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-step-7a.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_step_7a.py -q
 
 test-step-8-ship:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-step-8-ship.sh
 
 test-post-tracking-issue:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-post-tracking-issue.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_pr_body.py -q -k post_tracking
 
 test-commit-implementation:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-commit-implementation.sh
@@ -759,10 +765,10 @@ test-review-and-fix-commit-fixes:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_review_and_fix.py -q -k commit_fixes
 
 test-generate-code-flow-diagram:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-generate-code-flow-diagram.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_pr_body.py -q -k generate_code_flow
 
 test-refresh-execution-issues:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-refresh-execution-issues.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_execution_issues.py -q -k refresh
 
 test-review-and-fix-write-rejected:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_review_and_fix.py -q -k write_rejected
@@ -771,10 +777,10 @@ test-slack-issue-announce:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-slack-issue-announce.sh
 
 test-write-final-report:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-write-final-report.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_pr_body.py -q -k 'write_final_report or step18b or render_run_summary or post_tracking or generate_code_flow'
 
 test-render-run-summary:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-render-run-summary.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_pr_body.py -q -k 'render_run_summary'
 
 test-render-review-phase-detail:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-render-review-phase-detail.sh
@@ -791,7 +797,7 @@ test-render-cost-line:
 	cd python && $(PYTHON) -m pytest test_report_tokens_cost.py -q
 
 test-implement-cleanup-script:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-cleanup.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_finalize.py -q -k cleanup
 
 test-harness-shards-coverage:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-harness-shards-coverage.sh
@@ -957,7 +963,7 @@ test-compose-collector-failure-log:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_dispatch.py -k compose_collector_failure_log
 
 test-compose-pr-summary:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-compose-pr-summary.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_pr_body.py -q -k 'compose_summary'
 
 test-compute-pr-line-counts:
 	cd python && $(PYTHON) -m pytest test_tokens.py -q
@@ -1067,14 +1073,8 @@ test-run-external-agent:
 
 
 
-test-oos-file-conflict-deps:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-oos-file-conflict-deps.sh
-
-test-oos-issue-cap:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-oos-issue-cap.sh
-
 test-materialize-manifest-oos:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-materialize-manifest-oos.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_file_oos.py -q -k 'materialize_manifest_oos'
 
 lint-mermaid:
 	if [ ! -f mermaid-lint/node_modules/.package-lock.json ]; then (cd mermaid-lint && npm ci); fi

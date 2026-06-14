@@ -271,6 +271,15 @@ elif cmd == ["session", "read-key"]:
                     raise SystemExit(0)
     print(default)
     raise SystemExit(0)
+elif cmd == ["stall-recovery", "validate-token"]:
+    print("TOKEN_VALID=true")
+    raise SystemExit(0)
+elif cmd == ["stall-recovery", "validate-terminal-state"]:
+    print("VALID=true")
+    raise SystemExit(0)
+elif sys.argv[1:2] == ["stall-recovery"]:
+    print("STAGED=true")
+    raise SystemExit(0)
 else:
     print(f"unexpected cli args: {sys.argv[1:]}", file=sys.stderr)
     raise SystemExit(2)

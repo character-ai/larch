@@ -2480,6 +2480,22 @@ def test_oos_pending_exits_with_filing_reason_when_accepted_oos_present(
     assert result.needs_user_reason == "oos-filing"
 
 
+def test_oos_pending_exits_with_filing_reason_when_security_sidecar_only(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _patch_fresh_path_pre_pr_create(monkeypatch)
+    _ = (tmp_path / "security-oos-observations.md").write_text(
+        "### OOS_1: Security item\n- **focus-area**: security\n",
+        encoding="utf-8",
+    )
+
+    result = ship.run_ship(_ctx(tmp_path), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.NEEDS_USER_INPUT
+    assert result.needs_user_reason == "oos-filing"
+
+
 def test_oos_pending_false_skips_oos_check_despite_accepted_files(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

@@ -12,6 +12,7 @@ ref=Path('skills/implement/references/rebase-checkpoint-routing.md').read_text()
 probe=Path('scripts/rebase-checkpoint-probe.sh').read_text()
 bootstrap=Path('python/bootstrap.py').read_text()
 step7a=Path('skills/implement/scripts/step-7a.sh').read_text()
+step7a_py=Path('python/step_7a.py').read_text()
 
 if skill.count('larch-run.sh" scripts/rebase-checkpoint-probe.sh 1.r') != 0:
     errors.append('SKILL.md must not call prompt-side 1.r probe')
@@ -46,10 +47,12 @@ for needle in [
         errors.append(f'rebase reference missing {needle}')
 if '--forked-target)' not in probe or 'base_remote=upstream' not in probe or 'base_ref=main' not in probe:
     errors.append('rebase-checkpoint-probe.sh does not implement --forked-target upstream/main mapping')
-if step7a.count('rebase-checkpoint-probe.sh" 7a.r') != 1:
-    errors.append('step-7a.sh must keep one internal 7a.r probe invocation')
-if 'BASE_ARGS=(--base-remote "$base_remote" --base-ref "$base_ref")' not in step7a:
-    errors.append('step-7a.sh must keep its internal base derivation')
+if 'implement step-7a' not in step7a or 'python/cli.py' not in step7a:
+    errors.append('step-7a.sh must delegate to python/cli.py implement step-7a')
+if 'rebase-checkpoint-probe.sh' not in step7a_py or '"7a.r"' not in step7a_py:
+    errors.append('python/step_7a.py must keep one internal 7a.r probe invocation')
+if '"--base-remote"' not in step7a_py or '"--base-ref"' not in step7a_py or 'base_remote = "upstream"' not in step7a_py:
+    errors.append('python/step_7a.py must keep its internal base derivation')
 if errors:
     print('\n'.join(errors), file=sys.stderr)
     sys.exit(1)

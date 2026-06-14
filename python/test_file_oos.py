@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest  # noqa: TC002
+import pytest
 
 import file_oos
 
@@ -223,3 +223,216 @@ def test_design_tmpdir_env_oos_path_resolution(
     monkeypatch.setenv("DESIGN_TMPDIR", str(design_dir))
     resolved = file_oos.resolve_design_oos_path(tmp_path)
     assert resolved == accepted
+
+
+def test_disposition_checkpoint_fails_on_security_sidecar(tmp_path: Path) -> None:
+    _ = (tmp_path / "security-oos-observations.md").write_text("# security observation\n", encoding="utf-8")
+
+    rc = file_oos.disposition_checkpoint_main(["--implement-tmpdir", str(tmp_path)])
+
+    assert rc == 2
+    assert "security-routed manifest OOS" in (tmp_path / "oos-disposition-checkpoint.stderr.log").read_text(encoding="utf-8")
+
+
+def test_issue_cap_rejects_malformed_batch(tmp_path: Path) -> None:
+    bad = tmp_path / "bad.md"
+    _ = bad.write_text("### Item one\n- **Description**: not oos shaped\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="OOS-shaped"):
+        file_oos.issue_cap(bad)
+
+
+def test_file_conflict_deps_emits_numeric_rows(tmp_path: Path) -> None:
+    src = tmp_path / "oos.md"
+    _ = src.write_text(
+        "### OOS_1: First\n- touches `src/a.py:1-5`\n\n"
+        "### OOS_2: Second\n- touches `src/a.py:2-6`\n",
+        encoding="utf-8",
+    )
+    deps = file_oos.file_conflict_deps(src)
+    assert deps == [(1, 2)]
+
+
+def test_disposition_gate_fails_without_disposition(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    accepted = tmp_path / "accepted.md"
+    _ = accepted.write_text("### OOS_1: Missing\n- **Phase**: implement\n", encoding="utf-8")
+    filed = tmp_path / "urls.md"
+    _ = filed.write_text("", encoding="utf-8")
+
+    def _inline_zero(_range: str) -> int:
+        return 0
+
+    _ = monkeypatch.setattr(file_oos, "_count_inline_triage", _inline_zero)
+    rc = file_oos.disposition_gate(
+        accepted_files=[accepted],
+        filed_url_files=[filed],
+        filed_url_strict_files=[],
+        commit_range="HEAD",
+    )
+    assert rc == 1
+
+
+def test_disposition_gate_passes_with_strict_filed_url(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    accepted = tmp_path / "accepted.md"
+    _ = accepted.write_text("### OOS_1: Filed\n- **Phase**: implement\n", encoding="utf-8")
+    strict = tmp_path / "strict.md"
+    _ = strict.write_text("- **Filed URL**: https://github.com/example/larch/issues/99\n", encoding="utf-8")
+
+    def _inline_zero(_range: str) -> int:
+        return 0
+
+    _ = monkeypatch.setattr(file_oos, "_count_inline_triage", _inline_zero)
+    rc = file_oos.disposition_gate(
+        accepted_files=[accepted],
+        filed_url_files=[],
+        filed_url_strict_files=[strict],
+        commit_range="HEAD",
+    )
+    assert rc == 0
+
+
+def test_disposition_gate_passes_with_inline_triage(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    accepted = tmp_path / "accepted.md"
+    _ = accepted.write_text("### OOS_1: Inline\n- **Phase**: implement\n", encoding="utf-8")
+    filed = tmp_path / "urls.md"
+    _ = filed.write_text("", encoding="utf-8")
+
+    def _inline_one(_range: str) -> int:
+        return 1
+
+    _ = monkeypatch.setattr(file_oos, "_count_inline_triage", _inline_one)
+    rc = file_oos.disposition_gate(
+        accepted_files=[accepted],
+        filed_url_files=[filed],
+        filed_url_strict_files=[],
+        commit_range="HEAD",
+    )
+    assert rc == 0
+
+
+def test_disposition_gate_bypasses_in_fork_mode(tmp_path: Path) -> None:
+    accepted = tmp_path / "accepted.md"
+    _ = accepted.write_text("### OOS_1: Forked\n- **Phase**: implement\n", encoding="utf-8")
+    filed = tmp_path / "urls.md"
+    _ = filed.write_text("", encoding="utf-8")
+    rc = file_oos.disposition_gate(
+        accepted_files=[accepted],
+        filed_url_files=[filed],
+        filed_url_strict_files=[],
+        commit_range="HEAD",
+        fork_mode=True,
+    )
+    assert rc == 0
+
+
+def test_materialize_manifest_oos_writes_main_agent_file(tmp_path: Path) -> None:
+    manifest = tmp_path / "manifest.json"
+    _ = manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": "1",
+                "status": "complete",
+                "oos_observations": [
+                    {"title": "Retain manifest OOS", "description": "Fix docs for manifest OOS.", "phase": "implement"},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    count = file_oos.materialize_manifest_oos(manifest, tmp_path)
+    assert count == 1
+    text = (tmp_path / "oos-accepted-main-agent.md").read_text(encoding="utf-8")
+    assert "### OOS_1: Retain manifest OOS" in text
+    assert "- **Reviewer**: External implementer" in text
+
+
+def test_disposition_checkpoint_uses_origin_main_when_merge_base_absent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _ = (tmp_path / "ship-pr-state.sh").write_text("FORKED_TARGET=false\nREPO_UNAVAILABLE=false\n", encoding="utf-8")
+    _ = (tmp_path / "oos-accepted-main-agent.md").write_text("### OOS_1: Missing\n- **Phase**: implement\n", encoding="utf-8")
+    _ = (tmp_path / "oos-accepted-review.md").write_text("", encoding="utf-8")
+    _ = (tmp_path / "oos-accepted-design.md").write_text("", encoding="utf-8")
+    run_dir = tmp_path / "larch-logs" / "implement" / "run-1"
+    run_dir.mkdir(parents=True)
+    _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
+    _ = (run_dir / "oos-issues.ndjson").write_text("", encoding="utf-8")
+
+    class Result:
+        def __init__(self, returncode: int, stdout: str = "") -> None:
+            self.returncode = returncode
+            self.stdout = stdout
+            self.stderr = ""
+
+    def fake_run(argv: list[str], **_kwargs: object) -> Result:
+        if argv[:3] == ["git", "merge-base", "HEAD"]:
+            return Result(1, "")
+        if argv[:4] == ["git", "rev-parse", "--verify", "origin/main"]:
+            return Result(0, "abc123\n")
+        return Result(0, "")
+
+    seen: dict[str, str] = {}
+
+    def fake_gate(**kwargs: object) -> int:
+        seen["commit_range"] = str(kwargs["commit_range"])
+        return 0
+
+    _ = monkeypatch.setattr(file_oos.subprocess, "run", fake_run)
+    _ = monkeypatch.setattr(file_oos, "disposition_gate", fake_gate)
+    rc = file_oos.disposition_checkpoint_main(["--implement-tmpdir", str(tmp_path)])
+    assert rc == 0
+    assert seen["commit_range"] == "origin/main..HEAD"
+
+
+def test_disposition_gate_orphan_ndjson_without_accepted_file(tmp_path: Path) -> None:
+    ndjson = tmp_path / "orphan.ndjson"
+    _ = ndjson.write_text('{"body":"Created https://github.com/example/larch/issues/404\\n"}\n', encoding="utf-8")
+    rc = file_oos.disposition_gate_main(
+        [
+            "--accepted-files",
+            f"{tmp_path}/missing-a.md,{tmp_path}/missing-b.md",
+            "--filed-urls-file",
+            str(tmp_path / "empty-urls.md"),
+            "--oos-issues-ndjson",
+            str(ndjson),
+            "--commit-range",
+            "HEAD",
+        ],
+    )
+    assert rc == 2
+
+
+def test_disposition_gate_security_only_passes_without_urls(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    accepted = tmp_path / "sec.md"
+    _ = accepted.write_text(
+        "### OOS_1: Secret thing\n- **focus-area**: security\n- **Phase**: implement\n",
+        encoding="utf-8",
+    )
+    _ = (tmp_path / "empty-urls.md").write_text("", encoding="utf-8")
+    _ = monkeypatch.setattr(file_oos, "_count_inline_triage", lambda _commit_range: 0)  # type: ignore[arg-type]
+    rc = file_oos.disposition_gate_main(
+        [
+            "--accepted-files",
+            str(accepted),
+            "--filed-urls-file",
+            str(tmp_path / "empty-urls.md"),
+            "--commit-range",
+            "HEAD",
+        ],
+    )
+    assert rc == 0
+
+
+def test_disposition_gate_non_security_without_disposition_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    accepted = tmp_path / "bad.md"
+    _ = accepted.write_text("### OOS_1: Orphan\n- **Description**: bug\n", encoding="utf-8")
+    _ = (tmp_path / "empty-urls.md").write_text("", encoding="utf-8")
+    _ = monkeypatch.setattr(file_oos, "_count_inline_triage", lambda _commit_range: 0)  # type: ignore[arg-type]
+    rc = file_oos.disposition_gate_main(
+        [
+            "--accepted-files",
+            str(accepted),
+            "--filed-urls-file",
+            str(tmp_path / "empty-urls.md"),
+            "--commit-range",
+            "HEAD",
+        ],
+    )
+    assert rc == 1

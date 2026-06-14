@@ -11,6 +11,21 @@ from unittest import mock
 import logging_util
 import pytest
 import review_and_fix
+from _pytest.mark.structures import Mark, MarkDecorator
+
+
+def _mark(name: str) -> MarkDecorator:
+    return MarkDecorator(Mark(name, (), {}, _ispytest=True), _ispytest=True)
+
+
+MARK_CHECK_CHANGES = _mark("check_changes")
+MARK_CONVERGENCE = _mark("convergence")
+MARK_DISPATCH = _mark("dispatch")
+MARK_LOOP_TIMING = _mark("loop_timing")
+MARK_PARSERS = _mark("parsers")
+MARK_STARTING_ROUND = _mark("starting_round")
+MARK_STEP5 = _mark("step5")
+MARK_WRITE_REJECTED = _mark("write_rejected")
 
 
 def _tmp_impl(tmp_path: Path) -> Path:
@@ -45,7 +60,7 @@ def test_review_core_capture_captures_stdout_emit_and_restores_env(tmp_path, mon
     assert os.environ["IMPLEMENT_TMPDIR"] == "old"
 
 
-@pytest.mark.parsers
+@MARK_PARSERS
 def test_step5_single_emits_round_kvs_without_review_core_leak(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
@@ -73,7 +88,7 @@ def test_step5_single_emits_round_kvs_without_review_core_leak(tmp_path, monkeyp
     assert (impl / "progress" / "done").is_file()
 
 
-@pytest.mark.loop_timing
+@MARK_LOOP_TIMING
 def test_step5_loop_emits_single_final_envelope(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
@@ -99,7 +114,7 @@ def test_step5_loop_emits_single_final_envelope(tmp_path, monkeypatch, capsys):
     assert not any(line.startswith("REVIEW_AND_FIX_STATUS=") for line in out.splitlines())
 
 
-@pytest.mark.dispatch
+@MARK_DISPATCH
 def test_apply_findings_empty_file_contract(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     findings = tmp_path / "findings.md"
@@ -111,7 +126,7 @@ def test_apply_findings_empty_file_contract(tmp_path, monkeypatch, capsys):
     assert "CODER_STATUS=skipped" in out
 
 
-@pytest.mark.check_changes
+@MARK_CHECK_CHANGES
 def test_check_changes_parse_error_stable_kvs(monkeypatch, capsys):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     rc = review_and_fix.check_changes(["--bogus"])
@@ -124,7 +139,7 @@ def test_check_changes_parse_error_stable_kvs(monkeypatch, capsys):
     ]
 
 
-@pytest.mark.write_rejected
+@MARK_WRITE_REJECTED
 def test_write_rejected_counts_and_copies(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = tmp_path / "impl"
@@ -150,7 +165,7 @@ def test_review_and_fix_source_uses_in_process_review_core():
     assert "--prune-ledger" in source
 
 
-@pytest.mark.dispatch
+@MARK_DISPATCH
 def test_compose_coder_prompt_uses_canonical_submodule_prohibition(tmp_path):
     submodules = ["vendor/foo"]
     body = review_and_fix._compose_coder_prompt(tmp_path / "prompt.md", tmp_path / "f.md", tmp_path, submodules)
@@ -158,7 +173,7 @@ def test_compose_coder_prompt_uses_canonical_submodule_prohibition(tmp_path):
     assert "Do NOT touch `.git/`" in body
 
 
-@pytest.mark.dispatch
+@MARK_DISPATCH
 def test_run_coder_codex_rejects_nonzero_launcher_exit(tmp_path, monkeypatch):
     monkeypatch.setenv("CODEX_PRESENT", "true")
     monkeypatch.setattr(review_and_fix, "_codex_available", lambda: True)
@@ -177,7 +192,7 @@ def test_run_coder_codex_rejects_nonzero_launcher_exit(tmp_path, monkeypatch):
     assert review_and_fix._run_coder_codex(tmp_path, "prompt", tmp_path / "tool.log") is False
 
 
-@pytest.mark.dispatch
+@MARK_DISPATCH
 def test_dynamic_archetypes_defaults_to_three_with_implement_tmpdir(monkeypatch, tmp_path):
     monkeypatch.delenv("LARCH_DYNAMIC_ARCHETYPES_MAX", raising=False)
     impl = _tmp_impl(tmp_path)
@@ -185,14 +200,14 @@ def test_dynamic_archetypes_defaults_to_three_with_implement_tmpdir(monkeypatch,
     assert review_and_fix._dynamic_archetypes(args, impl) == "3"
 
 
-@pytest.mark.dispatch
+@MARK_DISPATCH
 def test_dynamic_archetypes_defaults_to_zero_without_implement_tmpdir(monkeypatch, tmp_path):
     monkeypatch.delenv("LARCH_DYNAMIC_ARCHETYPES_MAX", raising=False)
     args = mock.Mock(dynamic_archetypes="", session_env_path="")
     assert review_and_fix._dynamic_archetypes(args, tmp_path / "missing") == "0"
 
 
-@pytest.mark.dispatch
+@MARK_DISPATCH
 def test_post_dispatch_submodule_revert_restores_tracked_path_with_trailing_slash(tmp_path, monkeypatch):
     sub = tmp_path / "vendor"
     sub.mkdir()
@@ -206,7 +221,7 @@ def test_post_dispatch_submodule_revert_restores_tracked_path_with_trailing_slas
     assert count == 1
 
 
-@pytest.mark.step5
+@MARK_STEP5
 def test_step5_handoff_envelope_uses_false_stall_tracking(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
@@ -232,7 +247,7 @@ def test_step5_handoff_envelope_uses_false_stall_tracking(tmp_path, monkeypatch,
     assert "STALL_TRACKING=false" in out
 
 
-@pytest.mark.starting_round
+@MARK_STARTING_ROUND
 def test_step5_starting_round_missing_prior_emits_invalid(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
@@ -245,7 +260,7 @@ def test_step5_starting_round_missing_prior_emits_invalid(tmp_path, monkeypatch,
     assert "STALL_REASON=starting-round-invalid" in out
 
 
-@pytest.mark.starting_round
+@MARK_STARTING_ROUND
 def test_step5_resume_past_cap_with_prior_artifact(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
@@ -260,7 +275,7 @@ def test_step5_resume_past_cap_with_prior_artifact(tmp_path, monkeypatch, capsys
     assert "STEP5_REVIEW_STATUS=mav-resume-past-cap" in out
 
 
-@pytest.mark.step5
+@MARK_STEP5
 def test_mav_apply_writes_relocated_pre_coder_head_only(tmp_path, monkeypatch):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
@@ -279,7 +294,7 @@ def test_mav_apply_writes_relocated_pre_coder_head_only(tmp_path, monkeypatch):
     assert not (impl / "round-1" / "pre-coder-head.txt").exists()
 
 
-@pytest.mark.write_rejected
+@MARK_WRITE_REJECTED
 def test_write_rejected_redacts_tmpdir_and_secrets(tmp_path, monkeypatch):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = tmp_path / "impl"
@@ -298,13 +313,13 @@ def test_write_rejected_redacts_tmpdir_and_secrets(tmp_path, monkeypatch):
     assert "<REDACTED-TOKEN>" in text
 
 
-@pytest.mark.parsers
+@MARK_PARSERS
 def test_step5_parse_checks_capture_requires_status_or_ok_fields():
     parsed = review_and_fix._parse_checks_capture("RELEVANT_CHECKS_OK=true\n")
     assert parsed["RELEVANT_CHECKS_OK"] == "true"
 
 
-@pytest.mark.convergence
+@MARK_CONVERGENCE
 def test_step5_post_round_substantial_at_cap_emits_cap_hit(tmp_path, monkeypatch):
     impl = _tmp_impl(tmp_path)
     round_dir = impl / "round-1"
@@ -327,7 +342,7 @@ def test_step5_post_round_substantial_at_cap_emits_cap_hit(tmp_path, monkeypatch
     assert cont is False
 
 
-@pytest.mark.dispatch
+@MARK_DISPATCH
 def test_process_skipped_findings_routes_security_vs_oos(tmp_path):
     round_dir = tmp_path / "round-1"
     round_dir.mkdir()
@@ -344,7 +359,7 @@ def test_process_skipped_findings_routes_security_vs_oos(tmp_path):
     assert not (impl / "accumulated-oos.md").exists()
 
 
-@pytest.mark.dispatch
+@MARK_DISPATCH
 def test_process_skipped_findings_mirrors_security_aggregate_across_rounds(tmp_path):
     impl = tmp_path / "impl"
     impl.mkdir()
@@ -364,7 +379,7 @@ def test_process_skipped_findings_mirrors_security_aggregate_across_rounds(tmp_p
     assert not (impl / "accumulated-oos.md").exists()
 
 
-@pytest.mark.step5
+@MARK_STEP5
 def test_step5_loop_preflight_empty_plan_emits_stall(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
@@ -376,7 +391,7 @@ def test_step5_loop_preflight_empty_plan_emits_stall(tmp_path, monkeypatch, caps
     assert "STALL_REASON=preflight-failed" in out
 
 
-@pytest.mark.step5
+@MARK_STEP5
 def test_step5_mav_apply_missing_findings_file(tmp_path, monkeypatch):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
@@ -387,7 +402,7 @@ def test_step5_mav_apply_missing_findings_file(tmp_path, monkeypatch):
     assert rc == 2
 
 
-@pytest.mark.step5
+@MARK_STEP5
 def test_step5_main_agent_vote_emits_ledger_kvs(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
@@ -413,7 +428,7 @@ def test_step5_main_agent_vote_emits_ledger_kvs(tmp_path, monkeypatch, capsys):
     assert "STEP5_REVIEW_LEDGER_TRIGGER=main-agent-vote-required" in out
 
 
-@pytest.mark.step5
+@MARK_STEP5
 def test_step5_handoff_returns_zero_when_core_rc_nonzero(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
@@ -438,7 +453,7 @@ def test_step5_handoff_returns_zero_when_core_rc_nonzero(tmp_path, monkeypatch, 
     assert "STEP5_REVIEW_LEDGER_EXIT_CODE=0" in out
 
 
-@pytest.mark.loop_timing
+@MARK_LOOP_TIMING
 def test_step5_handoff_persists_round_start_without_timing(tmp_path, monkeypatch):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
@@ -464,7 +479,7 @@ def test_step5_handoff_persists_round_start_without_timing(tmp_path, monkeypatch
     assert (impl / "round-1" / "round-start-s").is_file()
 
 
-@pytest.mark.step5
+@MARK_STEP5
 def test_step5_invalid_dynamic_archetypes_emits_stall(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     monkeypatch.setenv("LARCH_DYNAMIC_ARCHETYPES_MAX", "9")
@@ -475,7 +490,7 @@ def test_step5_invalid_dynamic_archetypes_emits_stall(tmp_path, monkeypatch, cap
     assert "STEP5_REVIEW_STATUS=stall" in out
 
 
-@pytest.mark.step5
+@MARK_STEP5
 def test_record_escalation_failure_appends_tool_failure(tmp_path, monkeypatch):
     impl = _tmp_impl(tmp_path)
     stderr_path = impl / "round-1" / "review-and-fix.stderr"
@@ -496,7 +511,7 @@ def test_record_escalation_failure_appends_tool_failure(tmp_path, monkeypatch):
     assert "Tool Failure: record-escalation" in text
 
 
-@pytest.mark.write_rejected
+@MARK_WRITE_REJECTED
 def test_write_rejected_findings_aggregate_multi_round(tmp_path):
     impl = tmp_path / "impl"
     impl.mkdir()
@@ -514,7 +529,7 @@ def test_write_rejected_findings_aggregate_multi_round(tmp_path):
     assert "FINDING_2" in text
 
 
-@pytest.mark.convergence
+@MARK_CONVERGENCE
 def test_fix_applied_not_rewritten_to_converged_before_gates(tmp_path, monkeypatch):
     impl = _tmp_impl(tmp_path)
     round_dir = impl / "round-1"
@@ -642,7 +657,7 @@ def test_commit_fixes_replaces_empty_session_backed_env(tmp_path, monkeypatch):
     assert timing_calls[0][1].get("LARCH_TIMING_LEDGER") == "/tmp/ledger.tsv"
 
 
-@pytest.mark.dispatch
+@MARK_DISPATCH
 def test_apply_findings_rehydrates_session_env_before_coder(tmp_path, monkeypatch):
     monkeypatch.delenv("LARCH_TOKEN_SESSION_ID", raising=False)
     monkeypatch.delenv("LARCH_TIMING_LEDGER", raising=False)
@@ -679,7 +694,7 @@ def test_apply_findings_rehydrates_session_env_before_coder(tmp_path, monkeypatc
     assert seen["cursor"] == "false"
 
 
-@pytest.mark.dispatch
+@MARK_DISPATCH
 def test_scrub_findings_missing_output_fails_closed(tmp_path, monkeypatch):
     input_file = tmp_path / "in.md"
     output_file = tmp_path / "out.md"
@@ -711,7 +726,7 @@ def test_review_core_capture_rejects_non_executable_override(tmp_path, monkeypat
     assert "override-not-executable" in env_path.read_text(encoding="utf-8")
 
 
-@pytest.mark.dispatch
+@MARK_DISPATCH
 def test_run_coder_cursor_acquires_external_serial_lock(tmp_path, monkeypatch):
     monkeypatch.setenv("CURSOR_PRESENT", "true")
     monkeypatch.setattr(review_and_fix, "_cursor_available", lambda: True)
@@ -735,7 +750,7 @@ def test_run_coder_cursor_acquires_external_serial_lock(tmp_path, monkeypatch):
     assert len(release_calls) == 1
 
 
-@pytest.mark.convergence
+@MARK_CONVERGENCE
 def test_important_present_matches_concern_only_marker(tmp_path):
     findings = tmp_path / "findings.md"
     findings.write_text(
@@ -745,7 +760,7 @@ def test_important_present_matches_concern_only_marker(tmp_path):
     assert review_and_fix._important_present(findings) is True
 
 
-@pytest.mark.convergence
+@MARK_CONVERGENCE
 def test_run_round_missing_findings_sets_classifier_failed(tmp_path, monkeypatch):
     impl = _tmp_impl(tmp_path)
     round_dir = impl / "round-1"
@@ -789,7 +804,7 @@ def test_run_round_missing_findings_sets_classifier_failed(tmp_path, monkeypatch
     assert result.rc == 2
 
 
-@pytest.mark.convergence
+@MARK_CONVERGENCE
 def test_prior_summary_accumulates_exonerated_and_neutral(tmp_path, monkeypatch):
     impl = _tmp_impl(tmp_path)
     (impl / "review-and-fix-summary.json").write_text(
@@ -847,7 +862,7 @@ def test_prior_summary_accumulates_exonerated_and_neutral(tmp_path, monkeypatch)
     assert summary["neutral_count"] == 5
 
 
-@pytest.mark.step5
+@MARK_STEP5
 def test_step5_loop_complete_returns_zero_despite_round_rc(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
@@ -872,7 +887,7 @@ def test_step5_loop_complete_returns_zero_despite_round_rc(tmp_path, monkeypatch
     assert "STEP5_REVIEW_STATUS=complete" in out
 
 
-@pytest.mark.step5
+@MARK_STEP5
 def test_step5_loop_preflight_failure_touches_progress_done(tmp_path, monkeypatch):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
@@ -882,7 +897,7 @@ def test_step5_loop_preflight_failure_touches_progress_done(tmp_path, monkeypatc
     assert (impl / "progress" / "done").is_file()
 
 
-@pytest.mark.check_changes
+@MARK_CHECK_CHANGES
 def _mk_git_repo(tmp_path: Path) -> Path:
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -895,7 +910,7 @@ def _mk_git_repo(tmp_path: Path) -> Path:
     return repo
 
 
-@pytest.mark.check_changes
+@MARK_CHECK_CHANGES
 def test_check_changes_clean_tree_no_baseline(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     repo = _mk_git_repo(tmp_path)
@@ -907,7 +922,7 @@ def test_check_changes_clean_tree_no_baseline(tmp_path, monkeypatch, capsys):
     assert "UNTRACKED_BASELINE=missing" in out
 
 
-@pytest.mark.check_changes
+@MARK_CHECK_CHANGES
 def test_check_changes_preexisting_untracked_with_baseline(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     repo = _mk_git_repo(tmp_path)
@@ -926,7 +941,7 @@ def test_check_changes_preexisting_untracked_with_baseline(tmp_path, monkeypatch
     assert "UNTRACKED_BASELINE=present" in out
 
 
-@pytest.mark.check_changes
+@MARK_CHECK_CHANGES
 def test_check_changes_head_baseline_detects_commit_movement(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     repo = _mk_git_repo(tmp_path)
@@ -943,7 +958,7 @@ def test_check_changes_head_baseline_detects_commit_movement(tmp_path, monkeypat
     assert "FILES_CHANGED=true" in out
 
 
-@pytest.mark.check_changes
+@MARK_CHECK_CHANGES
 def test_check_changes_strict_promotes_probe_failure(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     sandbox = tmp_path / "not-a-git-repo"
@@ -956,7 +971,7 @@ def test_check_changes_strict_promotes_probe_failure(tmp_path, monkeypatch, caps
     assert "GIT_PROBE_FAILED=true" in out
 
 
-@pytest.mark.convergence
+@MARK_CONVERGENCE
 def test_step5_post_round_gates_lint_fix_attempt_cap(tmp_path, monkeypatch):
     impl = _tmp_impl(tmp_path)
     round_dir = impl / "round-1"
@@ -987,7 +1002,7 @@ def test_step5_post_round_gates_lint_fix_attempt_cap(tmp_path, monkeypatch):
     assert cont is False
 
 
-@pytest.mark.convergence
+@MARK_CONVERGENCE
 def test_step5_post_round_gates_bulk_skip_ratio_continues(tmp_path, monkeypatch):
     impl = _tmp_impl(tmp_path)
     round_dir = impl / "round-1"
@@ -1009,7 +1024,7 @@ def test_step5_post_round_gates_bulk_skip_ratio_continues(tmp_path, monkeypatch)
     assert cont is True
 
 
-@pytest.mark.dispatch
+@MARK_DISPATCH
 def test_core_args_for_round_forwards_pre_scouted_manifest(tmp_path):
     impl = _tmp_impl(tmp_path)
     manifest = impl / "scout-coder-manifest.json"
@@ -1029,7 +1044,7 @@ def test_core_args_for_round_forwards_pre_scouted_manifest(tmp_path):
     assert core_args[idx + 1] == str(manifest)
 
 
-@pytest.mark.step5
+@MARK_STEP5
 def test_step5_preflight_missing_session_env_emits_stall(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
@@ -1041,7 +1056,7 @@ def test_step5_preflight_missing_session_env_emits_stall(tmp_path, monkeypatch, 
     assert "STALL_REASON=preflight-failed" in out
 
 
-@pytest.mark.dispatch
+@MARK_DISPATCH
 def test_preflight_auto_forwards_eligible_scout_manifest(tmp_path):
     impl = _tmp_impl(tmp_path)
     (impl / "step2-external-scout-eligible.txt").write_text("ok\n", encoding="utf-8")
@@ -1056,7 +1071,7 @@ def test_preflight_auto_forwards_eligible_scout_manifest(tmp_path):
     assert args.pre_scouted_manifest == str(manifest)
 
 
-@pytest.mark.dispatch
+@MARK_DISPATCH
 def test_preflight_skips_manifest_when_scout_ineligible(tmp_path):
     impl = _tmp_impl(tmp_path)
     args = review_and_fix._build_step5_parser().parse_args([
@@ -1067,7 +1082,7 @@ def test_preflight_skips_manifest_when_scout_ineligible(tmp_path):
     assert args.pre_scouted_manifest == ""
 
 
-@pytest.mark.dispatch
+@MARK_DISPATCH
 def test_preflight_mav_apply_clears_pre_scouted_manifest(tmp_path):
     impl = _tmp_impl(tmp_path)
     findings = impl / "accepted.md"
@@ -1083,7 +1098,7 @@ def test_preflight_mav_apply_clears_pre_scouted_manifest(tmp_path):
     assert args.pre_scouted_manifest == ""
 
 
-@pytest.mark.step5
+@MARK_STEP5
 def test_step5_preflight_missing_feature_file_emits_stall(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
@@ -1095,7 +1110,7 @@ def test_step5_preflight_missing_feature_file_emits_stall(tmp_path, monkeypatch,
     assert "STALL_REASON=preflight-failed" in out
 
 
-@pytest.mark.step5
+@MARK_STEP5
 def test_step5_preflight_invalid_codex_present_emits_stall(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
@@ -1106,7 +1121,7 @@ def test_step5_preflight_invalid_codex_present_emits_stall(tmp_path, monkeypatch
     assert "STEP5_REVIEW_STATUS=stall" in out
 
 
-@pytest.mark.step5
+@MARK_STEP5
 def test_step5_unresolved_run_id_preflight_stall(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = tmp_path / "impl"
@@ -1129,7 +1144,7 @@ def test_step5_unresolved_run_id_preflight_stall(tmp_path, monkeypatch, capsys):
     assert not core_calls
 
 
-@pytest.mark.dispatch
+@MARK_DISPATCH
 def test_flush_scout_manifest_writes_batch(tmp_path, monkeypatch):
     impl = tmp_path / "impl"
     impl.mkdir()
@@ -1165,7 +1180,7 @@ def test_flush_scout_manifest_writes_batch(tmp_path, monkeypatch):
     assert not payload_path.exists()
 
 
-@pytest.mark.dispatch
+@MARK_DISPATCH
 def test_run_coder_cursor_normalizes_api_key_before_launch(tmp_path, monkeypatch):
     monkeypatch.setenv("CURSOR_PRESENT", "true")
     monkeypatch.setenv("CURSOR_API_KEY", "  key-with-padding  ")

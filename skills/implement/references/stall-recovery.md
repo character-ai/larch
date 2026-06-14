@@ -2,7 +2,7 @@
 
 **Consumer**: `/implement` Step 18a.
 
-**Contract**: Step 18a reports only terminal failures and escalation-success events. It never files or prints at first detection. `skills/implement/scripts/stall-recovery-report.sh` owns classification, attempts, canonical escalation recording, normalized outcome reads, and report composition.
+**Contract**: Step 18a reports only terminal failures and escalation-success events. It never files or prints at first detection. `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" stall-recovery` owns classification, attempts, canonical escalation recording, normalized outcome reads, and report composition.
 
 **When to load**: MANDATORY before executing Step 18a stall recovery or Step 18a.5 escalation-success teardown. Load before changing stall recovery report composition, escalation recording, or normalized outcome handling.
 
@@ -37,14 +37,14 @@ The helper keeps internal seams for a later `/design` profile. Do not add public
 ## Step 18a procedure for active stalls
 
 1. **Resolve stall tracking.** Read in-memory state, then `ship-pr-state.sh`, `finalize-state.sh`, and `session-env.sh`. If every layer is false or empty, skip active-stall recovery and allow Step 18a.5 to run outside this gate.
-2. **Initialize attempts.** Run `stall-recovery-report.sh init-attempts --implement-tmpdir "$IMPLEMENT_TMPDIR" --attempts-file "$IMPLEMENT_TMPDIR/stall-recovery-attempts.env"`.
+2. **Initialize attempts.** Run `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" stall-recovery init-attempts --implement-tmpdir "$IMPLEMENT_TMPDIR" --attempts-file "$IMPLEMENT_TMPDIR/stall-recovery-attempts.env"`.
 3. **Classify.** Pass any validated `BAIL_FAILURE_DETAIL_LOG`. The helper writes `stall-recovery-classification.env`, including `MATCHED_CLASSIFIER_PATTERN` and dispatcher identity when known.
 4. **Do not file on first detection.** First detection only classifies, records attempts, and decides retry or terminal routing. The protected-path and submodule-restricted operator warnings are allowed first-detection text only for their matching dispatcher bail reasons:
    - `protected-path-edit-required-out-of-scope` warns on `.claude-plugin/plugin.json` and classifies as `FAILURE_CLASS=protected-path`.
    - `submodule-edit-required-out-of-scope` classifies as `FAILURE_CLASS=submodule-restricted` with `RESUME_HINT=none`, then prints `**⚠ /implement: implementer bailed on submodule-restricted path; submodule edits are blocked for Main Claude too. No automatic inline recovery will run.**`
 5. **Retry dispatch.** Respect the retry caps from `stall-recovery-report.md`. Record only branches that hand work to Main Claude. Do not record ordinary retries or reships. Dispatch by `RESUME_HINT`. Retry semantics are class-specific. For protected-path stalls with `RESUME_HINT=step2-impl`, `step2-impl` means record escalation before edits, then Main Claude reads `$IMPLEMENT_TMPDIR/plan.txt` and implements inline; for protected-path stalls, Codex cannot edit the protected path. Continue through the normal current-run checks, commit, review, and ship sequence. For `submodule-restricted`, `RESUME_HINT=none`; it does not dispatch `step2-impl`, and no inline Step 2 repair runs for `submodule-restricted`. `step8-shippr` is the only retry branch that re-invokes `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh` (same immediate-background fence: `run_in_background: true`, `timeout: 21600000`); wait for `<task-notification>` before advancing. `step5-review` resumes Step 5 review and reaches Step 8 only through the normal current-run sequence.
-6. **Record prompt-side Main Claude handoffs before edits.** Call `record-escalation` before Step 18a inline `step2-impl` repair and before inline `step8-shippr` repair when Step 18a itself owns the repair. Stable owner tokens are `step2-impl` and `step8-shippr`.
-7. **Success after recovery.** Run `stall-recovery-report.sh clear-stall --implement-tmpdir "$IMPLEMENT_TMPDIR"`. Proceed as recovery success only when it emits `CLEARED=true`. Treat prompt-side in-memory stall tracking as cleared for the next normalization call. Do not file here. Success-with-ledger reporting is owned only by Step 18a.5.
+6. **Record prompt-side Main Claude handoffs before edits.** Call `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" stall-recovery record-escalation` before Step 18a inline `step2-impl` repair and before inline `step8-shippr` repair when Step 18a itself owns the repair. Stable owner tokens are `step2-impl` and `step8-shippr`.
+7. **Success after recovery.** Run `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" stall-recovery clear-stall --implement-tmpdir "$IMPLEMENT_TMPDIR"`. Proceed as recovery success only when it emits `CLEARED=true`. Treat prompt-side in-memory stall tracking as cleared for the next normalization call. Do not file here. Success-with-ledger reporting is owned only by Step 18a.5.
 8. **Terminal failure.** Seed durable terminal stall state with `seed-terminal-state`. Main Claude must investigate before report composition and write `stall-recovery-root-cause.md`. If Tier B may be used, also write `stall-recovery-bounded-root-cause.md`, `stall-recovery-title.txt`, and `stall-recovery-sensitive-corpus.env`. Then call `compose-report --report-kind terminal-failure` exactly once. Tier A uses `--surface issue-input` as artifact composition only, then runs `dedup-tier-a-report` before `/larch:issue`. Tier B uses `--surface chat-print`; the helper resolves upstream larch, dedups, and files or comments unless dry-run is active. Write `stall-recovery-terminal-report.env` atomically after filed, commented, fallback-printed, dry-run, or operator-action skip result.
 9. **Operator action.** If the root-cause verdict is `operator-action`, compose-report writes the non-filing record and sentinel. Do not file or print a public report.
 
@@ -58,7 +58,7 @@ Skip when any predicate is true:
 
 - `stall-recovery-terminal-report.env` exists.
 - `stall-recovery-escalation-success.env` exists.
-- `stall-recovery-report.sh normalize-outcome` does not emit `IMPLEMENT_OUTCOME_SUCCEEDED=true`.
+- `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" stall-recovery normalize-outcome` does not emit `IMPLEMENT_OUTCOME_SUCCEEDED=true`.
 - Any observed `STALL_TRACKING` layer is true.
 - No escalation evidence exists.
 
@@ -108,7 +108,7 @@ Tier A keeps the current `/larch:issue` filing target. It must:
 
 1. Compose `issue-input` and treat compose output as artifact metadata only.
 2. If dry-run is active, skip dedup and `/larch:issue`, then write the terminal sentinel with `STALL_RECOVERY_REPORT_STATUS=dry-run`.
-3. Run `stall-recovery-report.sh dedup-tier-a-report`.
+3. Run `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" stall-recovery dedup-tier-a-report`.
 4. Branch only on `STALL_RECOVERY_REPORT_STATUS`.
 5. On `dedup-comment`, skip `/larch:issue`.
 6. On `no-match` or `lookup-failed-open`, call `/larch:issue --input-file ... --no-dedup`.

@@ -22,6 +22,7 @@ from typing import Any, cast
 import config
 import git
 import logging_util
+import pr_body
 import proc
 import redact
 import timing
@@ -31,9 +32,6 @@ from proc import CommandResult, Runner
 from run_context import RunContext
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
-_WRITE_FINAL_REPORT = (
-    _REPO_ROOT / "skills" / "implement" / "scripts" / "write-final-report.sh"
-)
 _RENDER_TRANSCRIPT = _REPO_ROOT / "scripts" / "render-session-transcript.py"
 _REQUIRED_FILES_TSV = _REPO_ROOT / "docs" / "run-logs-required-files.tsv"
 _MANIFEST_SCHEMA_VERSION = 2
@@ -1092,32 +1090,18 @@ def _execution_issue_record(
 
 
 def _write_final_report(runner: Runner, ctx: RunContext) -> None:
-    if not _WRITE_FINAL_REPORT.is_file():
-        return
-    result = runner.run(
-        ["bash", str(_WRITE_FINAL_REPORT), "--implement-tmpdir", ctx.tmpdir],
-        cwd=str(_REPO_ROOT),
-    )
-    if result.returncode != 0:
-        msg = "write-final-report.sh failed"
+    _ = runner
+    rc, _comment_url, error = pr_body.write_final_report(Path(ctx.tmpdir))
+    if rc != 0:
+        msg = error or "final report write failed"
         raise ShipError(msg)
 
 
 def write_final_report_comment(runner: Runner, ctx: RunContext) -> None:
-    if not _WRITE_FINAL_REPORT.is_file():
-        return
-    result = runner.run(
-        [
-            "bash",
-            str(_WRITE_FINAL_REPORT),
-            "--implement-tmpdir",
-            ctx.tmpdir,
-            "--comment-only",
-        ],
-        cwd=str(_REPO_ROOT),
-    )
-    if result.returncode != 0:
-        msg = "write-final-report.sh --comment-only failed"
+    _ = runner
+    rc, _comment_url, error = pr_body.write_final_report(Path(ctx.tmpdir), comment_only=True)
+    if rc != 0:
+        msg = error or "final report comment write failed"
         raise ShipError(msg)
 
 

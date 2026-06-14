@@ -85,7 +85,7 @@ PY
 # Invariant E (#3425): closing marks stay inside step-18-finalize.sh before teardown.
 finalizer="skills/implement/scripts/step-18-finalize.sh"
 done_mark_line=$(awk '/Step 18 — done/ {print NR; exit}' "$finalizer")
-teardown_line=$(awk '/implement-finalize.sh" teardown/ {print NR; exit}' "$finalizer")
+teardown_line=$(awk '/implement-finalize teardown/ {print NR; exit}' "$finalizer")
 [ -n "$done_mark_line" ] || fail 'step-18-finalize.sh lacks Step 18 done mark'
 [ -n "$teardown_line" ] || fail 'step-18-finalize.sh lacks implement-finalize teardown'
 [ "$done_mark_line" -lt "$teardown_line" ] || fail 'Step 18 done mark must precede teardown in step-18-finalize.sh'

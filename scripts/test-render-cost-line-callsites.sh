@@ -26,27 +26,27 @@ fi
 pass 'token report implementation has no 💰 Cost: literal'
 
 f="$REPO/skills/design/scripts/render-final-summary.sh"
-grep -Fq 'render-run-summary.sh' "$f" || fail 'render-final-summary.sh must invoke render-run-summary.sh'
+grep -Fq 'python/cli.py render run-summary' "$f" || fail 'render-final-summary.sh must invoke python/cli.py render run-summary'
 b=$(grep -cF -- '--claude-input-tokens' "$f") || b=0
 test "$b" -ge 1 || fail 'render-final-summary.sh must pass --claude-input-tokens to render-run-summary'
 pass 'render-final-summary per-bucket argv shape'
 
 # Step 17 Bash literals moved to skills/implement/scripts/step-17.sh wrapper
 # shellcheck disable=SC2016
-grep -Fq 'write-final-report.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" --print-stdout >"$_step17_wfr_log" 2>&1; then' "$REPO/skills/implement/scripts/step-17.sh" || fail 'Step 17 must gate touch on write-final-report success'
+grep -Fq 'python/cli.py" final-report write --implement-tmpdir "$IMPLEMENT_TMPDIR" --print-stdout >"$_step17_wfr_log" 2>&1; then' "$REPO/skills/implement/scripts/step-17.sh" || fail 'Step 17 must gate touch on write-final-report success'
 # shellcheck disable=SC2016
 grep -Fq 'if [ -s "$IMPLEMENT_TMPDIR/summary-final.md" ]; then' "$REPO/skills/implement/scripts/step-17.sh" || fail 'Step 17 must gate touch on non-empty summary body'
 # shellcheck disable=SC2016
-step18_launcher='bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-18b-final-report.sh --implement-tmpdir "$IMPLEMENT_TMPDIR"'
+step18_launcher='bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py final-report step18b --implement-tmpdir "$IMPLEMENT_TMPDIR"'
 # shellcheck disable=SC2016
-grep -Fq "$step18_launcher" "$REPO/skills/implement/SKILL.md" || fail 'Step 18 must invoke step-18b-final-report.sh through larch-run.sh'
+grep -Fq "$step18_launcher" "$REPO/skills/implement/SKILL.md" || fail 'Step 18 must invoke final-report step18b through python/cli.py'
 # shellcheck disable=SC2016
 grep -Fq 'When `EMIT_BODY=true` and `WFR_RC=0` and `[ -s "$IMPLEMENT_TMPDIR/summary-final.md" ]`' "$REPO/skills/implement/SKILL.md" || fail 'Step 18 orchestrator emit must key on EMIT_BODY=true with WFR_RC=0 and non-empty summary-final.md'
 # shellcheck disable=SC2016
 grep -Fq 'write `$IMPLEMENT_TMPDIR/.step17-emitted`' "$REPO/skills/implement/SKILL.md" || fail 'Step 17/18 must persist top-chat emission sentinel'
 # shellcheck disable=SC2016
 step18_block=$(awk '
-    /bash "\$IMPLEMENT_TMPDIR\/larch-run\.sh" skills\/implement\/scripts\/step-18b-final-report\.sh --implement-tmpdir "\$IMPLEMENT_TMPDIR"/ { in_block=1 }
+    /bash "\$IMPLEMENT_TMPDIR\/larch-run\.sh" python\/cli\.py final-report step18b --implement-tmpdir "\$IMPLEMENT_TMPDIR"/ { in_block=1 }
     in_block { print }
     in_block && /^```$/ { exit }
 ' "$REPO/skills/implement/SKILL.md")

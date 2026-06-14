@@ -1,26 +1,18 @@
 #!/usr/bin/env bash
-# test-render-run-summary-callsites.sh — write-final-report pins render-run-summary argv.
+# test-render-run-summary-callsites.sh — write-final-report pins render run-summary wiring.
 set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd -P)"
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 pass() { printf 'PASS: %s\n' "$1"; }
 
-f="$REPO/skills/implement/scripts/write-final-report.sh"
-# Count only actual shell invocation lines (starts with spaces then quotes+script path),
-# not string-argument references in printf/append_render_warning calls.
-c=$(grep -cE '^\s+"?\$[{(]?PLUGIN_ROOT[})]?/scripts/render-run-summary\.sh"?' "$f") || c=0
-test "$c" -ge 1 || fail "expected render-run-summary.sh invocations in write-final-report.sh"
-b=$(grep -cF -- '--claude-input-tokens' "$f") || b=0
-cu=$(grep -cF -- '--cost-unavailable' "$f") || cu=0
-test "$((b + cu))" -ge "$c" || fail "each render-run-summary invocation should pass --claude-input-tokens or --cost-unavailable (blocks=$c flags=$((b + cu)))"
-e=$(grep -cF -- '--emergency-requested' "$f") || e=0
-test "$e" -ge "$c" || fail "each write-final-report render-run-summary invocation should pass --emergency-requested (blocks=$c flags=$e)"
-cs=$(grep -cF -- '--claude-sub-' "$f") || cs=0
-test "$cs" -ge 1 || fail "write-final-report must forward --claude-sub-* args to render-run-summary (found $cs)"
-pass 'write-final-report render-run-summary per-bucket wiring'
+f="$REPO/python/pr_body.py"
+grep -Fq 'render_run_summary(' "$f" || fail "expected render_run_summary usage in pr_body.py"
+grep -Fq '_final_report_token_fields' "$f" || fail "expected token/cost forwarding in pr_body.py"
+grep -Fq 'emergency_requested' "$f" || fail "expected emergency_requested forwarding in pr_body.py"
+pass 'write-final-report render_run_summary wiring'
 
 g="$REPO/skills/design/scripts/render-final-summary.sh"
-grep -Fq 'render-run-summary.sh' "$g" || fail "expected render-run-summary.sh invocation in render-final-summary.sh"
+grep -Fq 'render run-summary' "$g" || fail "expected python/cli.py render run-summary invocation in render-final-summary.sh"
 b2=$(grep -cF -- '--claude-input-tokens' "$g") || b2=0
 test "$b2" -ge 1 || fail 'render-final-summary.sh must pass --claude-input-tokens'
 pass 'render-final-summary render-run-summary per-bucket wiring'

@@ -1096,12 +1096,12 @@ run_bump_phase() {
 
     write_postbump_state
     fail_file=$(failure_capture_path bump)
-    finalize_out=$("$SCRIPT_DIR/implement-finalize.sh" postbump --state-file "$IMPLEMENT_TMPDIR/postbump-state.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" 2>"$fail_file")
+    finalize_out=$(python3 "$SCRIPT_DIR/../python/cli.py" implement-finalize postbump --state-file "$IMPLEMENT_TMPDIR/postbump-state.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" 2>"$fail_file")
     rc=$?
     printf '%s\n' "$finalize_out" >> "$fail_file"
     status=$(kv_value STATUS "$finalize_out")
     if [ "$rc" -ne 0 ]; then
-        record_failure bump "implement-finalize.sh postbump" "$rc" "$fail_file"
+        record_failure bump "python/cli.py implement-finalize postbump" "$rc" "$fail_file"
     fi
     case "$status" in
         ok|skipped)
@@ -1159,7 +1159,7 @@ run_pr_prep_phase() {
     if [ -z "$summary" ]; then
         run_id=$(read_state RUN_ID)
         plan_goals_file="$IMPLEMENT_TMPDIR/larch-logs/implement/$run_id/plan-goals-test.md"
-        composed_summary=$("$SCRIPT_DIR/compose-pr-summary.sh" --plan-goals-file "$plan_goals_file" 2>/dev/null) || composed_summary=""
+        composed_summary=$(python3 "$SCRIPT_DIR/../python/cli.py" pr compose-summary --plan-goals-file "$plan_goals_file" 2>/dev/null) || composed_summary=""
         [ -n "$composed_summary" ] && summary="$composed_summary"
     fi
     [ -n "$summary" ] || summary="- Implemented the requested changes."
@@ -1210,20 +1210,20 @@ run_pr_create_phase() {
     # "N/A".
     fail_file=$(failure_capture_path pr-create)
     ship_pr_with_transient_retry transient_envelope_predicate_none "$fail_file" \
-        "$SCRIPT_DIR/../skills/implement/scripts/write-final-report.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"
+        python3 "$SCRIPT_DIR/../python/cli.py" final-report write --implement-tmpdir "$IMPLEMENT_TMPDIR"
     rc=$_WTR_RC
     final_report_output=$_WTR_OUT
     if [ "$rc" -ne 0 ]; then
-        record_failure pr-create "write-final-report.sh" "$rc" "$fail_file" Warnings
+        record_failure pr-create "python/cli.py final-report write" "$rc" "$fail_file" Warnings
         if run_recovery_waterfall pr-create fix "$fail_file" write-final-pre; then
             ship_pr_with_transient_retry transient_envelope_predicate_none "$fail_file" \
-                "$SCRIPT_DIR/../skills/implement/scripts/write-final-report.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"
+                python3 "$SCRIPT_DIR/../python/cli.py" final-report write --implement-tmpdir "$IMPLEMENT_TMPDIR"
             rc=$_WTR_RC
             final_report_output=$_WTR_OUT
         fi
     fi
     if [ "$rc" -ne 0 ]; then
-        record_failure pr-create "write-final-report.sh" "$rc" "$fail_file" Warnings
+        record_failure pr-create "python/cli.py final-report write" "$rc" "$fail_file" Warnings
         exit_stall 9b
     fi
     # Fold final-summary.md into the branch before the PR-create push so
@@ -1272,16 +1272,16 @@ run_pr_create_phase() {
     pr_status=$(kv_value PR_STATUS "$out")
     state_set_many PR_NUMBER "$pr_number" PR_URL "$pr_url" PR_TITLE "$title"
     larch_err "→ ship-pr: PR #${pr_number} opened"
-    # Re-run write-final-report.sh with the live PR_URL to refresh the
+    # Re-run python/cli.py final-report write with the live PR_URL to refresh the
     # tracking-issue larch:final-summary comment and tmp summary-final.md for
     # the upsert. No extra git commit or second push happens here. Best-effort:
     # a failure here must not stall since the PR was already created.
     fail_file=$(failure_capture_path pr-create)
-    final_report_output=$("$SCRIPT_DIR/../skills/implement/scripts/write-final-report.sh" \
+    final_report_output=$(python3 "$SCRIPT_DIR/../python/cli.py" final-report write \
         --implement-tmpdir "$IMPLEMENT_TMPDIR" --comment-only 2>"$fail_file")
     rc=$?
     printf '%s\n' "$final_report_output" >> "$fail_file"
-    [ "$rc" -eq 0 ] || record_failure pr-create "write-final-report.sh post" "$rc" "$fail_file" Warnings
+    [ "$rc" -eq 0 ] || record_failure pr-create "python/cli.py final-report write post" "$rc" "$fail_file" Warnings
     if [ "$pr_status" = "existing" ]; then
         fail_file=$(failure_capture_path pr-create)
         if ship_pr_with_transient_retry transient_envelope_predicate_none "$fail_file" \
@@ -2528,7 +2528,7 @@ run_recovery_waterfall() {
                 fi
                 ;;
             write-final-pre)
-                capture_command_output out "$wf_log" "$SCRIPT_DIR/../skills/implement/scripts/write-final-report.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"
+                capture_command_output out "$wf_log" python3 "$SCRIPT_DIR/../python/cli.py" final-report write --implement-tmpdir "$IMPLEMENT_TMPDIR"
                 verify_rc=$?
                 printf '%s\n' "$out" >> "$wf_log"
                 [ "$verify_rc" -eq 0 ] && printf '%s\n' "$out" | grep -q '^STATUS=ok$' && verify_rc=0 || verify_rc=1
@@ -3057,9 +3057,9 @@ run_postmerge_phase() {
     larch_err "→ ship-pr: postmerge"
     write_finalize_state
     fail_file=$(failure_capture_path postmerge)
-    "$SCRIPT_DIR/implement-finalize.sh" postmerge --state-file "$IMPLEMENT_TMPDIR/finalize-state.sh" --final-bail-reason-file "$IMPLEMENT_TMPDIR/final-bail-reason.txt" > "$fail_file" 2>&1
+    python3 "$SCRIPT_DIR/../python/cli.py" implement-finalize postmerge --state-file "$IMPLEMENT_TMPDIR/finalize-state.sh" --final-bail-reason-file "$IMPLEMENT_TMPDIR/final-bail-reason.txt" > "$fail_file" 2>&1
     rc=$?
-    [ "$rc" -eq 0 ] || record_failure postmerge "implement-finalize.sh postmerge" "$rc" "$fail_file"
+    [ "$rc" -eq 0 ] || record_failure postmerge "python/cli.py implement-finalize postmerge" "$rc" "$fail_file"
     # Finalize manifest to status=done here so the update survives if the
     # LLM session ends before prompt-side Step 18 teardown runs. The tmpdir
     # manifest and tmpdir summary-final.md are updated in place (run-log mirror
@@ -3105,7 +3105,7 @@ run_postmerge_phase() {
         fi
         if [ "$recovery_ok" = "false" ]; then
             # Manifest recovery failed; skip final manifest (status=done), final-summary re-render,
-            # and write-final-report.sh — downstream assumes a coherent manifest tree.
+            # and python/cli.py final-report write — downstream assumes a coherent manifest tree.
             :
         else
             local manifest_ok=false final_report_rc=1
@@ -3130,11 +3130,11 @@ run_postmerge_phase() {
                 # (pre-merge pass wrote bailed). NEVER #19: no post-merge git commit publishes this.
                 fail_file=$(failure_capture_path postmerge)
                 ship_pr_with_transient_retry transient_envelope_predicate_none "$fail_file" \
-                    "$SCRIPT_DIR/../skills/implement/scripts/write-final-report.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"
+                    python3 "$SCRIPT_DIR/../python/cli.py" final-report write --implement-tmpdir "$IMPLEMENT_TMPDIR"
                 final_report_rc=$_WTR_RC
                 final_report_output=$_WTR_OUT
                 if [ "$final_report_rc" -ne 0 ]; then
-                    record_failure postmerge "write-final-report.sh (postmerge)" "$final_report_rc" "$fail_file" Warnings
+                    record_failure postmerge "python/cli.py final-report write (postmerge)" "$final_report_rc" "$fail_file" Warnings
                 fi
             fi
         fi

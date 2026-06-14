@@ -717,9 +717,6 @@ def test_tracking_rename_failure_warns_and_continues(tmp_path, monkeypatch) -> N
 
     def fake_run(argv, *, env=None, cwd=None):
         _ = env, cwd
-        if "post-tracking-issue.sh" in str(argv[0]):
-            calls.append(("post",))
-            return subprocess.CompletedProcess(argv, 0, "POSTED=true\n", "")
         return subprocess.CompletedProcess(argv, 0, "", "")
 
     def fake_cli(*args: str, env=None):
@@ -727,6 +724,9 @@ def test_tracking_rename_failure_warns_and_continues(tmp_path, monkeypatch) -> N
         if args[:2] == ("tracking-issue", "rename"):
             calls.append(("rename",))
             return subprocess.CompletedProcess(["cli", *args], 1, "FAILED=true\n", "rename failed\n")
+        if args[:2] == ("tracking", "post-issue"):
+            calls.append(("post",))
+            return subprocess.CompletedProcess(["cli", *args], 0, "POSTED=true\n", "")
         calls.append(args)
         return subprocess.CompletedProcess(["cli", *args], 0, "", "")
 

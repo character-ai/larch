@@ -102,13 +102,13 @@ for script in [
     'skills/implement/scripts/step-5-resume.sh --final-round-num "$FINAL_ROUND_NUM" --ready-to-commit',
     'skills/implement/scripts/step-6-entry.sh',
     'skills/implement/scripts/run-step-checks.sh --site step6',
-    'skills/implement/scripts/step-7a.sh --implement-tmpdir "$IMPLEMENT_TMPDIR"',
+    'python/cli.py implement step-7a --implement-tmpdir "$IMPLEMENT_TMPDIR"',
     'skills/implement/scripts/step-8-ship.sh',
     'skills/implement/scripts/step-8-oos-checkpoint.sh',
     'skills/implement/scripts/step-16.sh',
     'skills/implement/scripts/step-17.sh',
     'skills/implement/scripts/step-18a-gate.sh --stall-tracking-memory "${STALL_TRACKING:-false}"',
-    'skills/implement/scripts/step-18b-final-report.sh --implement-tmpdir "$IMPLEMENT_TMPDIR"',
+    'python/cli.py final-report step18b --implement-tmpdir "$IMPLEMENT_TMPDIR"',
     'skills/implement/scripts/step-18-finalize.sh',
 ]:
     require(skill, launcher + script, f'SKILL launcher wrapper {script}')
@@ -159,7 +159,7 @@ require(skill, 'NEVER call `ScheduleWakeup`', 'NEVER #8 ScheduleWakeup pin')
 require(skill, 'Do not spawn a Monitor', 'NEVER #8 background-monitor ban')
 for script, timeout in [
     (launcher + 'python/cli.py review-and-fix step5', 'timeout: 21600000'),
-    (launcher + 'skills/implement/scripts/step-7a.sh', 'timeout: 1800000'),
+    (launcher + 'python/cli.py implement step-7a', 'timeout: 1800000'),
     (launcher + 'skills/implement/scripts/step-8-ship.sh', 'timeout: 21600000'),
 ]:
     require_near(skill, script, 'Immediate-background required', f'immediate-background pin for {script}', 1400)
@@ -280,7 +280,7 @@ require(skill, 're-invoke `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8
 for needle in [
     '_restore_finalize=false',
     'restore-finalize-state',
-    'implement-finalize.sh" teardown',
+    'implement-finalize teardown',
     'LARCH_SHIP_PR_IMPL:-python}" = "bash"',
     'DESIGN_TMPDIR=\'\' LARCH_TIMING_SKILL=implement',
 ]:

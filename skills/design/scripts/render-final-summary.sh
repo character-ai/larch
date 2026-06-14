@@ -563,7 +563,7 @@ invoke_render() {
         --output-file "$out_file"
     )
     # Bash 3.2 + nounset requires the safe-empty array idiom; see BASH_AUTHORING.md §3.
-    "$PLUGIN_ROOT/scripts/render-run-summary.sh" "${_rr_args[@]}" ${render_cost_args[@]+"${render_cost_args[@]}"} ${note_args[@]+"${note_args[@]}"}
+    python3 "$PLUGIN_ROOT/python/cli.py" render run-summary "${_rr_args[@]}" ${render_cost_args[@]+"${render_cost_args[@]}"} ${note_args[@]+"${note_args[@]}"}
 }
 
 append_render_warning() {
@@ -574,7 +574,7 @@ append_render_warning() {
     if python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure \
         --log "$DESIGN_TMPDIR/execution-issues.md" \
         --site "design final summary" \
-        --tool "render-run-summary.sh" \
+        --tool "python/cli.py render run-summary" \
         --exit-code "$rc" \
         --category Warnings \
         --redact \

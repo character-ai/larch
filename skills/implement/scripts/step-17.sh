@@ -42,7 +42,7 @@ rehydrate_plugin_root
 python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" timing telemetry-mark --implement-tmpdir "$IMPLEMENT_TMPDIR" --label "Step 17 — final report" || true
 _step17_wfr_log="$IMPLEMENT_TMPDIR/step17-write-final-report.failure.log"
 : >"$_step17_wfr_log" 2>/dev/null || true
-if "$CLAUDE_PLUGIN_ROOT/skills/implement/scripts/write-final-report.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" --print-stdout >"$_step17_wfr_log" 2>&1; then
+if python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" final-report write --implement-tmpdir "$IMPLEMENT_TMPDIR" --print-stdout >"$_step17_wfr_log" 2>&1; then
   cat "$_step17_wfr_log"
   if [ -s "$IMPLEMENT_TMPDIR/summary-final.md" ]; then
     touch "$IMPLEMENT_TMPDIR/.step17-printed"
@@ -52,7 +52,7 @@ else
   python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" run-log append-failure \
     --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
     --site "Step 17 — final report" \
-    --tool "write-final-report.sh" \
+    --tool "python/cli.py final-report write" \
     --exit-code "$_step17_wfr_rc" \
     --category "Tool Failures" \
     --output-file "$_step17_wfr_log" \

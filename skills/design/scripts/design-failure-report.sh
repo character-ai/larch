@@ -4,7 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
-REPORT_SH="$PLUGIN_ROOT/skills/implement/scripts/stall-recovery-report.sh"
+REPORT_CMD=(python3 "$PLUGIN_ROOT/python/cli.py" stall-recovery)
 
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
@@ -103,7 +103,7 @@ tier_a_eligible() {
     tier_a_forked && return 1
     working_tree_root=$(resolve_working_tree_root)
     [ -n "$working_tree_root" ] || return 1
-    "$REPORT_SH" "${helper_common[@]}" is-larch-dev-clone \
+    "${REPORT_CMD[@]}" is-larch-dev-clone "${helper_common[@]}" \
         --working-tree-root "$working_tree_root" \
         --implement-tmpdir "$DESIGN_TMPDIR" 2>/dev/null | grep -Fxq 'LARCH_DEV_CLONE=true'
 }
@@ -130,7 +130,7 @@ populate_design_sensitive_corpus() {
         : >"$class_file"
     fi
     [ -f "$attempts_file" ] || attempts_file="$ATTEMPTS_FILE"
-    "$REPORT_SH" "${helper_common[@]}" populate-sensitive-corpus \
+    "${REPORT_CMD[@]}" populate-sensitive-corpus "${helper_common[@]}" \
         --sensitive-corpus-file "$SENSITIVE_FILE" \
         --classification-file "$class_file" \
         --attempts-file "$attempts_file" \
@@ -149,7 +149,7 @@ file_tier_a_after_compose() {
     local body_file=$1
     local dedup_env="$DESIGN_TMPDIR/design-failure-tier-a-dedup.env"
     local status title repo helper_out
-    if ! "$REPORT_SH" "${helper_common[@]}" dedup-tier-a-report --body-file "$body_file" >"$dedup_env" 2>"$DESIGN_TMPDIR/design-failure-tier-a-dedup.stderr.log"; then
+    if ! "${REPORT_CMD[@]}" dedup-tier-a-report "${helper_common[@]}" --body-file "$body_file" >"$dedup_env" 2>"$DESIGN_TMPDIR/design-failure-tier-a-dedup.stderr.log"; then
         return 0
     fi
     status=$(python3 "$PLUGIN_ROOT/python/cli.py" session read-key --file "$dedup_env" --key STALL_RECOVERY_REPORT_STATUS --default '')
@@ -170,7 +170,7 @@ file_tier_a_after_compose() {
                 --publication-tier tier-a \
                 >"$helper_out" 2>"$DESIGN_TMPDIR/design-failure-tier-a-file.stderr.log"; then
                 local file_norm="$DESIGN_TMPDIR/design-failure-tier-a-file.normalized.env"
-                "$REPORT_SH" "${helper_common[@]}" normalize-file-failure-report-env --file-failure-report-env "$helper_out" >"$file_norm" 2>/dev/null || true
+                "${REPORT_CMD[@]}" normalize-file-failure-report-env "${helper_common[@]}" --file-failure-report-env "$helper_out" >"$file_norm" 2>/dev/null || true
                 cat "$file_norm" >>"$COMPOSE_ENV"
             fi
             ;;
@@ -324,7 +324,7 @@ case "$OUTCOME" in
             write_fallback_chat missing-terminal-state
             exit 0
         fi
-        if ! "$REPORT_SH" "${helper_common[@]}" validate-terminal-state --primary-state-file "$TERMINAL_STATE" >/dev/null 2>"$DESIGN_TMPDIR/design-failure-validate-terminal-state.stderr.log"; then
+        if ! "${REPORT_CMD[@]}" validate-terminal-state "${helper_common[@]}" --primary-state-file "$TERMINAL_STATE" >/dev/null 2>"$DESIGN_TMPDIR/design-failure-validate-terminal-state.stderr.log"; then
             append_run_log_audit invalid-terminal-state
             write_fallback_chat invalid-terminal-state
             exit 0
@@ -342,8 +342,8 @@ case "$OUTCOME" in
             exit 0
         fi
         prepare_root_cause terminal
-        "$REPORT_SH" "${helper_common[@]}" init-attempts --attempts-file "$ATTEMPTS_FILE" >/dev/null
-        "$REPORT_SH" "${helper_common[@]}" "${state_overrides[@]}" classify >"$DESIGN_TMPDIR/design-failure-classify.env"
+        "${REPORT_CMD[@]}" init-attempts "${helper_common[@]}" --attempts-file "$ATTEMPTS_FILE" >/dev/null
+        "${REPORT_CMD[@]}" classify "${helper_common[@]}" "${state_overrides[@]}" >"$DESIGN_TMPDIR/design-failure-classify.env"
         _report_surface=$(report_surface)
         _report_output=$(report_output_file "$_report_surface")
         if ! populate_design_sensitive_corpus "$CLASS_FILE" "$ATTEMPTS_FILE"; then
@@ -351,7 +351,7 @@ case "$OUTCOME" in
             write_fallback_chat populate-sensitive-corpus-failed
             exit 0
         fi
-        if ! "$REPORT_SH" "${helper_common[@]}" "${state_overrides[@]}" compose-report \
+        if ! "${REPORT_CMD[@]}" compose-report "${helper_common[@]}" "${state_overrides[@]}" \
             --report-kind terminal-failure \
             --surface "$_report_surface" \
             --classification-file "$CLASS_FILE" \
@@ -388,7 +388,7 @@ if ! escalation_evidence_present; then
     exit 0
 fi
 prepare_root_cause escalation
-"$REPORT_SH" "${helper_common[@]}" init-attempts --attempts-file "$ATTEMPTS_FILE" >/dev/null
+"${REPORT_CMD[@]}" init-attempts "${helper_common[@]}" --attempts-file "$ATTEMPTS_FILE" >/dev/null
 _report_surface=$(report_surface)
 _report_output=$(report_output_file "$_report_surface")
 if ! populate_design_sensitive_corpus "" "$ATTEMPTS_FILE"; then
@@ -396,7 +396,7 @@ if ! populate_design_sensitive_corpus "" "$ATTEMPTS_FILE"; then
     write_fallback_chat populate-sensitive-corpus-failed
     exit 0
 fi
-if ! "$REPORT_SH" "${helper_common[@]}" compose-report \
+if ! "${REPORT_CMD[@]}" compose-report "${helper_common[@]}" \
     --report-kind escalation-success \
     --surface "$_report_surface" \
     --attempts-file "$ATTEMPTS_FILE" \

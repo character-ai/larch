@@ -280,6 +280,10 @@ exclude = [
   # review dispatchers; agent-lint does not follow those variable-expanded edges.
   "scripts/reviewer-prune.sh",
   "scripts/reviewer-prune.md",
+  # scripts/implement-finalize.sh invokes these Step 8b / teardown helpers
+  # through Bash-to-Bash edges; agent-lint does not follow those calls.
+  "scripts/check-remote-branch.sh",
+  "scripts/flush-vendor-failure-diagnostics.sh",
   # scripts/test-reviewer-prune.sh is the Makefile-only regression harness for
   # scripts/reviewer-prune.sh conditional-spawning ledger/filter behavior.
   "scripts/test-reviewer-prune.sh",
@@ -318,8 +322,7 @@ exclude = [
   "python/test_compose_review.py",
   # Makefile-only harness for metadata summary publication. Runtime reachability
   # is through Step 0 helpers, not direct SKILL.md invocation.
-  "skills/implement/scripts/test-post-tracking-issue.sh",
-  "skills/implement/scripts/test-post-tracking-issue.md",
+  "python/test_pr_body.py",
   # python/test_agents.py is the Makefile-only regression harness
   # for python/cli.py agent degraded-tools-gate (issue #3207). The detector itself is
   # runtime-referenced from /design, /implement, /review, /research Step 0; the
@@ -563,6 +566,9 @@ exclude = [
   # (no shebang, not invokable directly). scripts/ship-pr.sh and
   # python/cli.py session restore-finalize-state source it for shared finalizer keys.
   "scripts/lib-finalize-state-keys.sh",
+  # scripts/lib-execution-issues.sh is a sourced-only shell library shared by
+  # scripts/implement-finalize.sh and skills/implement/scripts/flush-execution-issues.sh.
+  "scripts/lib-execution-issues.sh",
   # python/cli.py agent cursor-auth-preflight is a small executable that prints the
   # conditional --api-key argv elements for runtime skill markdown blocks.
   # Referenced from skills/shared/voting-protocol.md,
@@ -980,6 +986,7 @@ exclude = [
   # scripts/implement-finalize.sh, wired into Makefile test-implement-finalize
   # target only (no SKILL.md invocation). Same Makefile-only shape as the
   # other test-* harnesses above.
+  "scripts/implement-finalize.sh",
   "scripts/test-implement-finalize.sh",
   # python/cli.py session restore-finalize-state, wired into Makefile
   # the other test-* harnesses above.
@@ -1157,6 +1164,7 @@ exclude = [
   "python/test_release.py",
   # #2714); dollar-primary summaries flow through render-run-summary.sh. G004
   # would flag it without an explicit SKILL.md literal path.
+  "scripts/render-run-summary.sh",
   # tmpdir-corruption hardening (#1339): redact-tmpdir-paths.sh is invoked
   # via shell variable indirection ($REDACT_TMPDIR_HELPER) — agent-lint's
   # G004/dead-script rule scans SKILL.md/hooks.json/settings.json for
@@ -1286,6 +1294,7 @@ exclude = [
   # PR-body summary composer. It is referenced from Makefile and from the
   # primary script's sibling contract, but NOT from SKILL.md runtime prose —
   # same Makefile-only pattern as the other test-* harnesses above.
+  "scripts/compose-pr-summary.sh",
   "scripts/test-compose-pr-summary.sh",
   "scripts/test-compose-pr-summary.md",
   # line-count helper. It is referenced from Makefile and from the primary
@@ -1340,9 +1349,7 @@ exclude = [
   "skills/implement/scripts/test-commit-implementation.sh",
   "skills/implement/scripts/test-commit-implementation.md",
   "python/test_review_and_fix.py",
-  "python/test_review_and_fix.py",
-  "skills/implement/scripts/test-generate-code-flow-diagram.sh",
-  "skills/implement/scripts/test-generate-code-flow-diagram.md",
+  "python/test_pr_body.py",
   "skills/implement/scripts/test-refresh-execution-issues.sh",
   "skills/implement/scripts/test-refresh-execution-issues.md",
   "python/test_review_and_fix.py",
@@ -1353,8 +1360,7 @@ exclude = [
   "skills/implement/scripts/test-write-final-report.md",
   "skills/implement/scripts/test-stall-recovery-report.sh",
   "skills/implement/scripts/test-stall-recovery-report.md",
-  "skills/implement/scripts/test-step-18b-final-report.sh",
-  "skills/implement/scripts/test-step-18b-final-report.md",
+  "python/test_pr_body.py",
   "skills/implement/scripts/test-cleanup.sh",
   "skills/implement/scripts/test-cleanup.md",
   # scripts/lib-submodule-prohibition.sh is a sourced-only shell library (no

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import re
@@ -15,6 +16,7 @@ from pathlib import Path
 
 import config
 import git
+import issue_query
 import logging_util
 import proc
 import retry
@@ -48,6 +50,7 @@ class FinalizeResult:
     force_push_status: str = ""
     log_write_status: str = ""
     branch_deleted: bool = False
+    issue_url: str = ""
 
 
 def _bool_text(value: object) -> str:
@@ -610,6 +613,13 @@ def teardown(
     sentinel_written = False
     if run_logs.effective_run_id(ctx):
         _ = _teardown_log_flush(runner, ctx, cwd=cwd)
+    issue_url = ""
+    issue_number = ctx.issue_number or ctx.issue
+    if issue_number and not ctx.repo_unavailable:
+        url = issue_query.issue_info(runner, str(issue_number), "url", repo=ctx.repo or None)
+        if url:
+            issue_url = url
+
     if ctx.stall_tracking:
         stash_ref = auto_stash_stalled_changes(runner, ctx, cwd=cwd)
         sentinel_written = _write_stalled_sentinel(
@@ -625,6 +635,7 @@ def teardown(
             rename_status=rename_status,
             sentinel_written=sentinel_written,
             stash_ref=stash_ref,
+            issue_url=issue_url,
         )
 
     removed = False
@@ -639,6 +650,7 @@ def teardown(
         rename_branch=rename_branch,
         rename_status=rename_status,
         cleanup_removed=removed,
+        issue_url=issue_url,
     )
 
 
@@ -891,3 +903,155 @@ def write_finalize_state(ctx: RunContext, path: str | Path) -> None:
         target,
         "".join(f"{key}={value}\n" for key, value in data.items()),
     )
+
+# ---------------------------------------------------------------------------
+# C4c CLI surfaces
+# ---------------------------------------------------------------------------
+
+
+class _SubprocessRunner:
+    def run(
+        self,
+        argv: Sequence[str],
+        *,
+        timeout: float | None = None,
+        cwd: str | None = None,
+        env: Mapping[str, str] | None = None,
+        check: bool = False,
+        stdout: int | None = None,
+        stderr: int | None = None,
+    ) -> CommandResult:
+        return proc.run(argv, timeout=timeout, cwd=cwd, env=env, check=check, stdout=stdout, stderr=stderr)
+
+
+def _emit_finalize_result(result: FinalizeResult, *, subcommand: str = "") -> None:
+    print(f"STATUS={result.status}")
+    print(f"OUTCOME={result.outcome.value}")
+    print(f"FINALIZE_WARNINGS={result.detail}")
+    print(f"LOG_WRITE_STATUS={result.log_write_status}")
+    print(f"REBASE_STATUS={result.rebase_status}")
+    print(f"FORCE_PUSH_STATUS={result.force_push_status}")
+    print(f"LOCAL_CLEANUP_STATUS={result.local_cleanup_status}")
+    print(f"VERIFY_MAIN_STATUS={result.verify_main_status}")
+    print(f"RENAME_BRANCH={result.rename_branch}")
+    print(f"RENAME_STATUS={result.rename_status}")
+    print(f"ISSUE_URL={result.issue_url}")
+    print(f"STASH_REF={result.stash_ref}")
+    print(f"SENTINEL_WRITTEN={_bool_text(result.sentinel_written)}")
+    if subcommand:
+        print(f"FINALIZE_SUBCOMMAND={subcommand}")
+
+
+def _load_state_file_kv(path: Path) -> dict[str, str]:
+    out: dict[str, str] = {}
+    if not path.is_file():
+        return out
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        out[k] = v
+    return out
+
+
+def _ctx_from_tmpdir(tmpdir: str) -> RunContext:
+    env = dict(os.environ)
+    env["IMPLEMENT_TMPDIR"] = tmpdir
+    state = Path(tmpdir) / "finalize-state.sh"
+    if state.is_file():
+        env["SHIP_PR_STATE_FILE"] = str(state)
+        for line in state.read_text(encoding="utf-8", errors="replace").splitlines():
+            if "=" in line:
+                k, v = line.split("=", 1)
+                _ = env.setdefault(k, v)
+    return RunContext.from_env(env=env)
+
+
+def _ctx_from_state_file(
+    state_file: str,
+    *,
+    implement_tmpdir: str | None = None,
+    final_bail_reason_file: str | None = None,
+) -> RunContext:
+    env = dict(os.environ)
+    state_path = Path(state_file)
+    env["SHIP_PR_STATE_FILE"] = state_file
+    env.update(_load_state_file_kv(state_path))
+    tmpdir = implement_tmpdir or env.get("IMPLEMENT_TMPDIR", "")
+    if not tmpdir and state_path.parent.is_dir():
+        tmpdir = str(state_path.parent)
+    if tmpdir:
+        env["IMPLEMENT_TMPDIR"] = tmpdir
+    if final_bail_reason_file:
+        bail_path = Path(final_bail_reason_file)
+        if bail_path.is_file():
+            bail_text = bail_path.read_text(encoding="utf-8", errors="replace").strip()
+            if bail_text:
+                env["FINAL_BAIL_REASON"] = bail_text.replace("\n", " ")[:1024]
+    return RunContext.from_env(env=env)
+
+
+def implement_finalize_main(argv: list[str] | None = None, phase: str = "") -> int:
+    parser = argparse.ArgumentParser(prog=f"cli.py implement-finalize {phase}")
+    _ = parser.add_argument("--state-file")
+    _ = parser.add_argument("--implement-tmpdir")
+    _ = parser.add_argument("--final-bail-reason-file")
+    args, _unknown = parser.parse_known_args(argv)
+    if args.state_file:
+        ctx = _ctx_from_state_file(
+            args.state_file,
+            implement_tmpdir=args.implement_tmpdir,
+            final_bail_reason_file=args.final_bail_reason_file,
+        )
+    else:
+        tmpdir = args.implement_tmpdir or os.environ.get("IMPLEMENT_TMPDIR", "")
+        if not tmpdir:
+            print("STATUS=failed")
+            print("FINALIZE_WARNINGS=IMPLEMENT_TMPDIR is required")
+            return 2
+        ctx = _ctx_from_tmpdir(tmpdir)
+    runner = _SubprocessRunner()
+    cwd = str(Path.cwd())
+    if phase == "postbump":
+        result = postbump(runner, ctx, cwd=cwd)
+    elif phase == "postmerge":
+        result = postmerge(runner, ctx, cwd=cwd)
+    elif phase == "teardown":
+        result = teardown(runner, ctx, cwd=cwd)
+    else:
+        print("STATUS=failed")
+        print("FINALIZE_WARNINGS=unknown phase")
+        return 2
+    _emit_finalize_result(result, subcommand=phase)
+    return 0
+
+
+def implement_finalize_postbump_main(argv: list[str] | None = None) -> int:
+    return implement_finalize_main(argv, "postbump")
+
+
+def implement_finalize_postmerge_main(argv: list[str] | None = None) -> int:
+    return implement_finalize_main(argv, "postmerge")
+
+
+def implement_finalize_teardown_main(argv: list[str] | None = None) -> int:
+    return implement_finalize_main(argv, "teardown")
+
+
+def cleanup_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py implement cleanup")
+    _ = parser.add_argument("--implement-tmpdir", required=True)
+    args = parser.parse_args(argv)
+    tmpdir = Path(args.implement_tmpdir)
+    ctx = _ctx_from_tmpdir(str(tmpdir))
+    if tmpdir.exists() and _cleanup_target_ok(ctx, tmpdir, cwd=str(Path.cwd())):
+        shutil.rmtree(tmpdir, ignore_errors=True)
+        cleaned = not tmpdir.exists()
+        print(f"CLEANED={_bool_text(cleaned)}")
+        if not cleaned:
+            print("ERROR=cleanup-tmpdir failed")
+            return 1
+        return 0
+    print("CLEANED=false")
+    print("ERROR=cleanup target rejected")
+    return 2

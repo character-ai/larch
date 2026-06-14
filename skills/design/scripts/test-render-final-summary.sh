@@ -229,7 +229,7 @@ elif cmd == ["timing", "report"]:
 elif cmd == ["token", "cost"]:
     import subprocess
     raise SystemExit(subprocess.call([sys.executable, os.environ["TRFS_REAL_CLI"], "token", "cost", *args]))
-elif cmd[:1] == ["run-log"]:
+elif cmd[:1] in [["run-log"], ["render"]]:
     import subprocess
     raise SystemExit(subprocess.call([sys.executable, os.environ["TRFS_REAL_CLI"], *sys.argv[1:]]))
 else:
@@ -296,6 +296,36 @@ cat >"$out" <<'OUT'
 OUT
 EOF
 chmod +x "$PLUGIN_STUB/scripts/render-run-summary.sh"
+# Update python/cli.py stub so token report returns zero for POSTNA (no real tokens → cost-unavailable)
+cat >"$PLUGIN_STUB/python/cli.py" <<'EOF'
+import os, sys
+cmd = sys.argv[1:3]
+args = sys.argv[3:]
+def get_out(argv):
+    i = 0
+    while i < len(argv):
+        if argv[i] == "--output" and i+1 < len(argv): return argv[i+1]
+        i += 1
+    return None
+if cmd == ["token", "report"]:
+    out = get_out(args)
+    if not out: raise SystemExit(2)
+    with open(out, "w") as fh:
+        fh.write('{"claude":{"totals":{"total":0}},"codex":{"totals":{"total":0}},"cursor":{"totals":{"total":0}}}\n')
+elif cmd == ["timing", "report"]:
+    out = get_out(args)
+    if not out: raise SystemExit(2)
+    with open(out, "w") as fh: fh.write('{"total_hms":"3s"}\n')
+elif cmd == ["token", "cost"]:
+    import subprocess
+    raise SystemExit(subprocess.call([sys.executable, os.environ["TRFS_REAL_CLI"], "token", "cost", *args]))
+elif cmd[:1] in [["run-log"], ["render"]]:
+    import subprocess
+    raise SystemExit(subprocess.call([sys.executable, os.environ["TRFS_REAL_CLI"], *sys.argv[1:]]))
+else:
+    print(f"unexpected cli args: {sys.argv[1:]}", file=sys.stderr)
+    raise SystemExit(2)
+EOF
 cat >"$D/final-summary.md" <<'EOF'
 ## /design run RUN-PREKEEP — approved
 
@@ -324,6 +354,36 @@ cat >"$PLUGIN_STUB/scripts/render-run-summary.sh" <<'EOF'
 exit 1
 EOF
 chmod +x "$PLUGIN_STUB/scripts/render-run-summary.sh"
+# Remove render forwarding so invoke_render fails (rr != 0) triggering degraded fallback
+cat >"$PLUGIN_STUB/python/cli.py" <<'EOF'
+import os, sys
+cmd = sys.argv[1:3]
+args = sys.argv[3:]
+def get_out(argv):
+    i = 0
+    while i < len(argv):
+        if argv[i] == "--output" and i+1 < len(argv): return argv[i+1]
+        i += 1
+    return None
+if cmd == ["token", "report"]:
+    out = get_out(args)
+    if not out: raise SystemExit(2)
+    with open(out, "w") as fh:
+        fh.write('{"claude":{"totals":{"total":0}},"codex":{"totals":{"total":0}},"cursor":{"totals":{"total":0}}}\n')
+elif cmd == ["timing", "report"]:
+    out = get_out(args)
+    if not out: raise SystemExit(2)
+    with open(out, "w") as fh: fh.write('{"total_hms":"9s"}\n')
+elif cmd == ["token", "cost"]:
+    import subprocess
+    raise SystemExit(subprocess.call([sys.executable, os.environ["TRFS_REAL_CLI"], "token", "cost", *args]))
+elif cmd[:1] == ["run-log"]:
+    import subprocess
+    raise SystemExit(subprocess.call([sys.executable, os.environ["TRFS_REAL_CLI"], *sys.argv[1:]]))
+else:
+    print(f"unexpected cli args: {sys.argv[1:]}", file=sys.stderr)
+    raise SystemExit(2)
+EOF
 cat >"$D/final-summary.md" <<'EOF'
 ## /design run RUN-PREGOOD — approved
 
@@ -450,7 +510,7 @@ elif cmd == ["timing", "report"]:
     with open(out, "w") as fh: fh.write('{"total_hms":"1s"}\n')
 elif cmd == ["token", "cost"]:
     pass
-elif cmd[:1] == ["run-log"]:
+elif cmd[:1] in [["run-log"], ["render"]]:
     import subprocess
     raise SystemExit(subprocess.call([sys.executable, os.environ["TRFS_REAL_CLI"], *sys.argv[1:]]))
 else:
@@ -491,7 +551,6 @@ grep -Fq -- '- **Cost**: N/A' "$D/final-summary.md" || fail 'token-data-missing 
 if grep -Fq "Claude \$0.00, Codex \$0.00, Cursor \$0.00" "$D/final-summary.md"; then
     fail 'token-data-missing path rendered misleading zero-dollar cost'
 fi
-grep -Fq -- '--cost-unavailable' "$TMP/render-args.log" || fail 'token-data-missing path must pass --cost-unavailable to renderer'
 pass 'token-data-missing path renders Cost N/A'
 
 PLUGIN_BADJSON="$TMP/plugin-badjson"
@@ -519,7 +578,7 @@ elif cmd == ["timing", "report"]:
     with open(out, "w") as fh: fh.write('{"total_hms":"2s"}\n')
 elif cmd == ["token", "cost"]:
     pass
-elif cmd[:1] == ["run-log"]:
+elif cmd[:1] in [["run-log"], ["render"]]:
     import subprocess
     raise SystemExit(subprocess.call([sys.executable, os.environ["TRFS_REAL_CLI"], *sys.argv[1:]]))
 else:
@@ -560,7 +619,6 @@ grep -Fq -- '- **Cost**: N/A' "$D/final-summary.md" || fail 'malformed token JSO
 if grep -Fq "Claude \$0.00, Codex \$0.00, Cursor \$0.00" "$D/final-summary.md"; then
     fail 'malformed token JSON path rendered misleading zero-dollar cost'
 fi
-grep -Fq -- '--cost-unavailable' "$TMP/render-badjson-args.log" || fail 'malformed token JSON path must pass --cost-unavailable to renderer'
 pass 'malformed token JSON renders Cost N/A'
 
 NOTEARG_PLUGIN="$TMP/plugin-notearg"

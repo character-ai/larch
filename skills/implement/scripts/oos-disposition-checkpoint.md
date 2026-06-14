@@ -1,8 +1,16 @@
-# oos-disposition-checkpoint.sh
+# oos-disposition-checkpoint
 
-Step 8+ OOS checkpoint helper for `/implement`. Computes disposition-gate inputs (fork/repo flags, commit range, `oos-issues.ndjson` discovery, design-OOS path, non-security block count, ndjson precondition), invokes `oos-disposition-gate.sh`, and logs failures via `run-log append-failure`. The orchestrator calls this script and branches on its exit code; it does **not** clear `OOS_PENDING`, write `run-statistics`, or re-enter `--resume-phase pr-create` (see NEVER #17 / #18 in `skills/implement/SKILL.md`).
+Python `python/cli.py oos disposition-checkpoint` is the runtime authority. `oos-disposition-checkpoint.sh` is a thin wrapper for legacy harness and direct path invocation.
+
+Step 8+ OOS checkpoint helper for `/implement`. Computes disposition-gate inputs (fork/repo flags, commit range, `oos-issues.ndjson` discovery, design-OOS path, non-security block count, ndjson precondition), invokes `python/cli.py oos disposition-gate`, and logs failures via `run-log append-failure`. The orchestrator calls `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-oos-checkpoint.sh` (which forwards to `python/cli.py oos disposition-checkpoint`) and branches on its exit code; it does **not** clear `OOS_PENDING`, write `run-statistics`, or re-enter `--resume-phase pr-create` (see NEVER #17 / #18 in `skills/implement/SKILL.md`).
 
 ## Invocation
+
+```text
+python3 python/cli.py oos disposition-checkpoint --implement-tmpdir DIR [--design-tmpdir DIR]
+```
+
+Legacy wrapper:
 
 ```text
 oos-disposition-checkpoint.sh --implement-tmpdir DIR [--design-tmpdir DIR]
