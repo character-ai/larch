@@ -341,6 +341,27 @@ def test_process_skipped_findings_routes_security_vs_oos(tmp_path):
     assert failed is False
     assert count == 1
     assert (round_dir / "skipped-findings.security.md").stat().st_size > 0
+    assert not (impl / "accumulated-oos.md").exists()
+
+
+@pytest.mark.dispatch
+def test_process_skipped_findings_mirrors_security_aggregate_across_rounds(tmp_path):
+    impl = tmp_path / "impl"
+    impl.mkdir()
+    for round_num, finding_id in ((1, "FINDING_1"), (2, "FINDING_2")):
+        round_dir = impl / f"round-{round_num}"
+        round_dir.mkdir()
+        in_scope = round_dir / "accepted-in-scope-findings.md"
+        in_scope.write_text(f"### {finding_id}: [security] x\n- focus-area: security\n", encoding="utf-8")
+        coder_log = round_dir / "coder-output.log"
+        coder_log.write_text(f"SKIPPED: {finding_id}\n", encoding="utf-8")
+        count, failed = review_and_fix._process_skipped_findings(round_dir, in_scope, coder_log, impl)
+        assert failed is False
+        assert count == 1
+    aggregate = (impl / "skipped-security-findings.md").read_text(encoding="utf-8")
+    assert "FINDING_1" in aggregate
+    assert "FINDING_2" in aggregate
+    assert not (impl / "accumulated-oos.md").exists()
 
 
 @pytest.mark.step5
@@ -390,6 +411,31 @@ def test_step5_main_agent_vote_emits_ledger_kvs(tmp_path, monkeypatch, capsys):
     assert "STEP5_REVIEW_LEDGER_READY=true" in out
     assert "STEP5_REVIEW_LEDGER_SITE=step5-mav" in out
     assert "STEP5_REVIEW_LEDGER_TRIGGER=main-agent-vote-required" in out
+
+
+@pytest.mark.step5
+def test_step5_handoff_returns_zero_when_core_rc_nonzero(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = _tmp_impl(tmp_path)
+
+    def fake_round(args, *, suppress_emit, review_core_impl=None):
+        del args, suppress_emit, review_core_impl
+        return review_and_fix.RoundResult(
+            2, "main-agent-vote-required", "main-agent-vote-required", 1, 1, 0, 0, 0, 1, 0, 0, 0,
+            impl / "round-1" / "accepted-findings.md",
+            impl / "round-1" / "rejected-findings.md",
+            impl / "round-1",
+            impl / "review-and-fix-summary.json",
+            impl / "accumulated-oos.jsonl",
+            review_and_fix.CoderResult(0),
+        )
+
+    monkeypatch.setattr(review_and_fix, "_run_round", fake_round)
+    rc = review_and_fix.step5(["--implement-tmpdir", str(impl), "--mode", "loop", "--starting-round", "1", "--round-cap", "1"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "STEP5_REVIEW_STATUS=main-agent-vote-required" in out
+    assert "STEP5_REVIEW_LEDGER_EXIT_CODE=0" in out
 
 
 @pytest.mark.loop_timing
@@ -569,13 +615,43 @@ def test_commit_fixes_marks_token_and_timing(tmp_path, monkeypatch):
     assert timing_calls[0][1].get("LARCH_TIMING_SKILL") == "implement"
 
 
+@pytest.mark.commit_fixes
+def test_commit_fixes_replaces_empty_session_backed_env(tmp_path, monkeypatch):
+    impl = _tmp_impl(tmp_path)
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+    monkeypatch.setenv("LARCH_TOKEN_SESSION_ID", "")
+    monkeypatch.setenv("LARCH_TIMING_LEDGER", "")
+    (impl / "session-env.sh").write_text(
+        "LARCH_TOKEN_SESSION_ID=parent-session\nLARCH_TIMING_LEDGER=/tmp/ledger.tsv\n",
+        encoding="utf-8",
+    )
+    calls: list[tuple[list[str], dict[str, str]]] = []
+
+    def fake_run(argv, **kwargs):
+        env = kwargs.get("env", {})
+        calls.append((list(argv), dict(env) if env else {}))
+        return review_and_fix.proc.CommandResult(argv, 0, "", "", 0.0)
+
+    monkeypatch.setattr(review_and_fix, "_run", fake_run)
+    monkeypatch.setattr(review_and_fix, "_git_head", lambda: "deadbeef")
+    rc = review_and_fix.commit_fixes(["--message", "fix review"])
+    assert rc == 0
+    timing_calls = [(argv, env) for argv, env in calls if "timing" in argv and "mark" in argv]
+    assert timing_calls
+    assert timing_calls[0][1].get("LARCH_TIMING_LEDGER") == "/tmp/ledger.tsv"
+
+
 @pytest.mark.dispatch
 def test_apply_findings_rehydrates_session_env_before_coder(tmp_path, monkeypatch):
     monkeypatch.delenv("LARCH_TOKEN_SESSION_ID", raising=False)
     monkeypatch.delenv("LARCH_TIMING_LEDGER", raising=False)
+    monkeypatch.setenv("CODEX_PRESENT", "true")
+    monkeypatch.setenv("CURSOR_PRESENT", "true")
     session = tmp_path / "session-env.sh"
     session.write_text(
-        "LARCH_TOKEN_SESSION_ID=parent-session\nLARCH_TIMING_LEDGER=/tmp/ledger.tsv\n",
+        "LARCH_TOKEN_SESSION_ID=parent-session\nLARCH_TIMING_LEDGER=/tmp/ledger.tsv\n"
+        "CODEX_PRESENT=false\nCURSOR_PRESENT=false\n",
         encoding="utf-8",
     )
     findings = tmp_path / "findings.md"
@@ -586,6 +662,8 @@ def test_apply_findings_rehydrates_session_env_before_coder(tmp_path, monkeypatc
         del input_file, round_dir, result_file, round_num
         seen["token"] = os.environ.get("LARCH_TOKEN_SESSION_ID", "")
         seen["ledger"] = os.environ.get("LARCH_TIMING_LEDGER", "")
+        seen["codex"] = os.environ.get("CODEX_PRESENT", "")
+        seen["cursor"] = os.environ.get("CURSOR_PRESENT", "")
         return review_and_fix.CoderResult(0, status="no-changes")
 
     monkeypatch.setattr(review_and_fix, "apply_findings_with_coder", fake_coder)
@@ -597,6 +675,8 @@ def test_apply_findings_rehydrates_session_env_before_coder(tmp_path, monkeypatc
     assert rc == 0
     assert seen["token"] == "parent-session"
     assert seen["ledger"] == "/tmp/ledger.tsv"
+    assert seen["codex"] == "false"
+    assert seen["cursor"] == "false"
 
 
 @pytest.mark.dispatch
@@ -1023,3 +1103,83 @@ def test_step5_preflight_invalid_codex_present_emits_stall(tmp_path, monkeypatch
     out = capsys.readouterr().out
     assert rc == 2
     assert "STEP5_REVIEW_STATUS=stall" in out
+
+
+@pytest.mark.step5
+def test_step5_unresolved_run_id_preflight_stall(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = tmp_path / "impl"
+    impl.mkdir()
+    (impl / "session-env.sh").write_text("CODEX_PRESENT=false\nCURSOR_PRESENT=false\n", encoding="utf-8")
+    (impl / "plan.txt").write_text("plan\n", encoding="utf-8")
+    (impl / "feature-description.txt").write_text("feature\n", encoding="utf-8")
+    core_calls: list[int] = []
+
+    def fake_capture(*_args, **_kwargs):
+        core_calls.append(1)
+        return 0
+
+    monkeypatch.setattr(review_and_fix, "review_core_capture", fake_capture)
+    rc = review_and_fix.step5(["--implement-tmpdir", str(impl), "--mode", "loop", "--starting-round", "1"])
+    out = capsys.readouterr().out
+    assert rc == 2
+    assert "STEP5_REVIEW_STATUS=stall" in out
+    assert "STALL_REASON=preflight-failed" in out
+    assert not core_calls
+
+
+@pytest.mark.dispatch
+def test_flush_scout_manifest_writes_batch(tmp_path, monkeypatch):
+    impl = tmp_path / "impl"
+    impl.mkdir()
+    round_dir = impl / "round-1"
+    round_dir.mkdir()
+    calls: list[list[str]] = []
+
+    def fake_run(argv, **_kwargs):
+        calls.append(list(argv))
+        class Result:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+
+        return Result()
+
+    monkeypatch.setattr(review_and_fix, "_run", fake_run)
+    review_and_fix.flush_scout_manifest(
+        impl,
+        "run-1",
+        1,
+        round_dir,
+        {
+            "SCOUT_STATUS": "ok",
+            "DYNAMIC_SLOTS": "2",
+            "SCOUT_MANIFEST": str(round_dir / "scout-round1-manifest.json"),
+            "YIELD_TSV_FILE": str(round_dir / "scout-archetype-yield.tsv"),
+        },
+    )
+    assert calls
+    assert "review-scout-manifest" in calls[0]
+    payload_path = round_dir / ".scout-payload.json"
+    assert not payload_path.exists()
+
+
+@pytest.mark.dispatch
+def test_run_coder_cursor_normalizes_api_key_before_launch(tmp_path, monkeypatch):
+    monkeypatch.setenv("CURSOR_PRESENT", "true")
+    monkeypatch.setenv("CURSOR_API_KEY", "  key-with-padding  ")
+    monkeypatch.setattr(review_and_fix, "_cursor_available", lambda: True)
+    monkeypatch.setattr(review_and_fix.agents, "resolve_model_args", lambda *_a, **_k: review_and_fix.agents.ModelArgResult(argv=["--model", "test"]))
+    seen_env: list[str | None] = []
+    original_export = review_and_fix.agents.cursor_auth_export_env
+
+    def capture_export() -> None:
+        original_export()
+        seen_env.append(os.environ.get("CURSOR_API_KEY"))
+
+    monkeypatch.setattr(review_and_fix.agents, "cursor_auth_export_env", capture_export)
+    monkeypatch.setattr(review_and_fix, "_run", lambda argv, **_kw: review_and_fix.proc.CommandResult(
+        argv, 0, "wrapped prompt", "", 0.0,
+    ))
+    assert review_and_fix._run_coder_cursor(tmp_path, "prompt", tmp_path / "tool.log") is True
+    assert seen_env == ["key-with-padding"]

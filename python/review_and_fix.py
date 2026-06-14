@@ -153,6 +153,10 @@ def _rehydrate_session_env(session_env_path: Path) -> None:
         value = _session_get(session_env_path, key, default)
         if value:
             os.environ[key] = value
+    for key in ("CODEX_PRESENT", "CURSOR_PRESENT"):
+        value = _session_get(session_env_path, key, "")
+        if value in {"true", "false"}:
+            os.environ[key] = value
 
 
 def _prior_summary_counts(implement_tmpdir: Path, round_num: int) -> tuple[int, int, int, int]:
@@ -702,6 +706,11 @@ def _process_skipped_findings(
         skipped_count += 1
     if skipped_file.stat().st_size:
         _append_round_oos_artifact(int(round_dir.name.split("-", 1)[1]), skipped_file, oos_jsonl, oos_markdown)
+    if skipped_security_file.stat().st_size:
+        security_audit_file = implement_tmpdir / "skipped-security-findings.md"
+        if security_audit_file.is_file() and security_audit_file.stat().st_size:
+            _append_text(security_audit_file, "\n")
+        _append_text(security_audit_file, _read_text(skipped_security_file))
     return skipped_count, False
 
 
@@ -918,6 +927,78 @@ def flush_review_batches(
     return tally_result.returncode == 0
 
 
+def _append_scout_flush_warning(implement_tmpdir: Path, round_num: int, detail: str, label: str) -> None:
+    entry = (
+        f"\n## Larch-log batch — `review-scout-manifest` {label} (round {round_num})\n\n"
+        f"{detail.rstrip()}\n"
+    )
+    with contextlib.suppress(OSError):
+        run_logs.append_execution_issue(implement_tmpdir / "execution-issues.md", "Warnings", entry)
+
+
+def flush_scout_manifest(
+    implement_tmpdir: Path,
+    run_id: str,
+    round_num: int,
+    round_dir: Path,
+    core: dict[str, str],
+) -> None:
+    if not implement_tmpdir.is_dir() or not run_id:
+        return
+    scout_status = core.get("SCOUT_STATUS", "na") or "na"
+    if scout_status == "na":
+        return
+    scout_payload = round_dir / ".scout-payload.json"
+    scout_flush_err = round_dir / "review-and-fix-scout-flush.log"
+    with contextlib.suppress(FileNotFoundError):
+        scout_payload.unlink()
+        scout_flush_err.unlink()
+    manifest_basename = os.path.basename(core.get("SCOUT_MANIFEST", "")) if core.get("SCOUT_MANIFEST") else ""
+    yield_tsv_basename = os.path.basename(core.get("YIELD_TSV_FILE", "")) if core.get("YIELD_TSV_FILE") else ""
+    dynamic_slots_raw = core.get("DYNAMIC_SLOTS", "0") or "0"
+    if not dynamic_slots_raw.isdigit():
+        msg = f"invalid DYNAMIC_SLOTS for review-scout-manifest payload: {dynamic_slots_raw or '<empty>'}"
+        _write_text(scout_flush_err, msg + "\n")
+        _append_scout_flush_warning(implement_tmpdir, round_num, msg, "payload validation")
+        return
+    payload = {
+        "status": scout_status,
+        "dynamic_slots": int(dynamic_slots_raw),
+        "manifest_basename": manifest_basename,
+        "yield_tsv_basename": yield_tsv_basename,
+    }
+    try:
+        _write_text(scout_payload, json.dumps(payload, separators=(",", ":")) + "\n")
+    except OSError as exc:
+        msg = f"review-scout-manifest payload build failed: {exc}"
+        _write_text(scout_flush_err, msg + "\n")
+        _append_scout_flush_warning(implement_tmpdir, round_num, msg, "payload build")
+        return
+    if not scout_payload.is_file() or not scout_payload.stat().st_size:
+        return
+    result = _run([
+        "python3", str(_PY_CLI), "run-log", "write",
+        "--log-root", str(implement_tmpdir / "larch-logs"),
+        "--skill", "implement",
+        "--run-id", run_id,
+        "--batch", "review-scout-manifest",
+        "--input-file", str(scout_payload),
+    ])
+    with contextlib.suppress(FileNotFoundError):
+        scout_payload.unlink()
+    if result.returncode != 0:
+        _write_text(scout_flush_err, result.stderr + result.stdout)
+        _append_scout_flush_warning(
+            implement_tmpdir,
+            round_num,
+            f"run-log write review-scout-manifest failed (rc={result.returncode})",
+            "run-log write",
+        )
+    else:
+        with contextlib.suppress(FileNotFoundError):
+            scout_flush_err.unlink()
+
+
 def flush_round_log_after_coder(impl_tmpdir: Path, run_id: str, round_num: int, round_dir: Path) -> None:
     if not impl_tmpdir.is_dir() or not run_id or round_num <= 0 or not round_dir.is_dir():
         return
@@ -1118,6 +1199,14 @@ def _run_coder_cursor(round_dir: Path, prompt_body: str, tool_log: Path) -> bool
     if os.environ.get("CURSOR_PRESENT") == "false" or not _cursor_available():
         return False
     cli = _plugin_root() / "python" / "cli.py"
+    agents.cursor_preread_service_token()
+    if not agents.cursor_auth_preflight(caller="review-and-fix coder").ok:
+        return False
+    agents.cursor_auth_export_env()
+    try:
+        model_args = list(agents.resolve_model_args("cursor", with_effort=True).argv)
+    except ValueError:
+        return False
     wrapped = _run(["python3", str(cli), "agent", "cursor-wrap-prompt", prompt_body])
     if wrapped.returncode != 0:
         return False
@@ -1132,7 +1221,7 @@ def _run_coder_cursor(round_dir: Path, prompt_body: str, tool_log: Path) -> bool
         "--timeout", "1800",
         "--capture-stdout",
         "--",
-        "cursor", "agent", "-p", "--trust", "--workspace", str(Path.cwd()), wrapped.stdout,
+        "cursor", "agent", "-p", "--trust", *model_args, "--workspace", str(Path.cwd()), wrapped.stdout,
     ])
     _write_text(wrapper, result.stderr + result.stdout)
     if result.returncode == 0:
@@ -1576,6 +1665,7 @@ def _run_round(args: argparse.Namespace, *, suppress_emit: bool, review_core_imp
     run_id = getattr(args, "run_id", "")
     if run_id:
         flush_round_log_after_coder(implement_tmpdir, run_id, round_num, round_dir)
+        flush_scout_manifest(implement_tmpdir, run_id, round_num, round_dir, core)
         if exit_code == 0:
             source = composed_findings if composed_ok else None
             flush_review_batches(
@@ -1877,8 +1967,8 @@ def step5(argv: list[str] | None = None) -> int:
             if result.status in {"main-agent-vote-required", "coder-main-agent-required"}:
                 _persist_round_start(implement_tmpdir, round_num, start_s)
                 _emit_step5_envelope(result.status, False, "", rounds_completed, round_num, result.status, result.coder.status, result.coder.commit_sha, round_cap)
-                _record_escalation_if_needed(implement_tmpdir, result.status, result.rc, stderr_path)
-                return result.rc
+                _record_escalation_if_needed(implement_tmpdir, result.status, 0, stderr_path)
+                return 0
             end_s = int(time.time())
             record_round_timing([
                 "--implement-tmpdir", str(implement_tmpdir),
@@ -2090,9 +2180,9 @@ def commit_fixes(argv: list[str] | None = None) -> int:
         return 2
     session = Path(os.environ.get("IMPLEMENT_TMPDIR", "")) / "session-env.sh"
     if session.is_file():
-        os.environ.setdefault("LARCH_TOKEN_SESSION_ID", _session_get(session, "LARCH_TOKEN_SESSION_ID", ""))
-        os.environ.setdefault("LARCH_CLAUDE_SOURCE_FILE", _session_get(session, "LARCH_CLAUDE_SOURCE_FILE", ""))
-        os.environ.setdefault("LARCH_TIMING_LEDGER", _session_get(session, "LARCH_TIMING_LEDGER", ""))
+        for key in ("LARCH_TOKEN_SESSION_ID", "LARCH_CLAUDE_SOURCE_FILE", "LARCH_TIMING_LEDGER"):
+            if not os.environ.get(key):
+                os.environ[key] = _session_get(session, key, "")
     cli = _plugin_root() / "python" / "cli.py"
     _run(["python3", str(cli), "token", "mark", "Step 7 — commit review fixes"])
     _run(["python3", str(cli), "timing", "mark", "Step 7 — commit review fixes"], env={**os.environ, "LARCH_TIMING_SKILL": "implement"})
