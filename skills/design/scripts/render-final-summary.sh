@@ -618,7 +618,10 @@ compose_self_fallback() {
         printf '%s\n' '<!-- larch:run-summary v=1 -->'
         printf '%s\n' '<!-- larch:final-summary-fallback v1 -->'
         if [ "$OUTCOME" = "failed-publish" ]; then
-            append_failed_publish_notes /dev/stdout
+            local _failed_publish_notes="$DESIGN_TMPDIR/final-summary-fallback-notes.md"
+            : >"$_failed_publish_notes"
+            append_failed_publish_notes "$_failed_publish_notes"
+            cat "$_failed_publish_notes"
         elif [ "$OUTCOME" = "publish-skipped" ]; then
             printf '%s\n' '- **Publish**: skipped — no SESSION_ID / run-log; the plan was written to the issue.'
         fi
