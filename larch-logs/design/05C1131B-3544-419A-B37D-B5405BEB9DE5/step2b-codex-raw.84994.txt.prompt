@@ -1,0 +1,201 @@
+You are an expert engineer researching this repository and producing an implementation plan for /design Step 2b.
+
+You may use only side-effect-free repository discovery. Do not write repository files, design tmpdir files, or any other files. Return only the sentinel-delimited response requested below.
+
+Drafting requirements to follow:
+- Prefer minimum necessary change: avoid scope creep, unnecessary complexity, and additions not required for correctness.
+- Read approach-synthesis.txt: if it is exactly NO_SKETCHES, draft from direct codebase/doc inspection without fabricating planning-panel agreement.
+- Read discussion-round1.md when present for scope boundaries and strict constraints.
+- Read design-outline.md only when non-empty and .outline-approved exists; treat Goals, Non-goals, and Surfaces as binding scope.
+- Read brainstorm.md when present as additive ideation context for plan drafting.
+- Use a Files to modify/create section with per-file headings exactly one path each: ### NEW:, ### UPDATED:, or ### REWRITTEN: (at least one ASCII space after ### before the keyword).
+- Include Approach, Edge cases, Failure modes when non-trivial, Testing strategy, optional diff_added/diff_deleted/mechanical_churn trailers, and final diff_lines: <N>.
+- The final plan body must end with a whole-line diff_lines: <N> trailer.
+- Optionally include up to three dynamic plan-review archetypes in a scout block after the plan. The launcher validates, filters, caps, and materializes this block; invalid post-plan scout output is ignored.
+- Scout sentinels inside the summary or plan are fatal format errors. Never put LARCH_SCOUT_* markers in the plan body.
+
+Readability style (trusted):
+# Readability Style
+
+**Consumer**: `/design` prompt surfaces that produce user-facing text, either through an external-agent prompt token or through inline orchestration prose.
+
+**Contract**: this file is the only source of truth for the `/design` readability preamble. External prompt files embed the literal `<READABILITY_STYLE>` token, and assembly code or orchestration expands it to this full file. Inline composition sites read this file before writing user-facing text.
+
+**When to load**: load only when a `/design` step is about to compose user-facing prose or render a prompt that asks another agent to compose such prose. Do not load during setup, pure validation, or byte-stable artifact handling.
+
+---
+
+## Style Axes
+
+Write in three styles at once:
+
+- **Strunk & White**: use active voice. Omit needless words. Prefer concrete nouns and verbs.
+- **Dyslexia-friendly**: use short sentences. Prefer simple words. Break dense ideas into headings and bullets.
+- **Brevity**: shorter is better. Minimize the total artifact length while preserving meaning.
+- **No em dashes**: never use em dashes; use periods, commas, colons, or semicolons instead.
+- **Hedge vs. direct**: hedge uncertain claims ("may contain", "can fail") instead of absolutes; keep directives imperative.
+
+## Precision Contract
+
+Keep these byte-stable unless the task explicitly edits them:
+
+- fenced code blocks
+- backticked tokens
+- file paths
+- identifiers
+- flag names
+- `### NEW:` / `### UPDATED:` / `### REWRITTEN:` plan grammar
+- the trailing `diff_lines: <N>` line
+
+Do not rewrite those items for style. Explain around them instead.
+
+## Precedence
+
+When rules conflict, use this order:
+
+`code references > meaning > brevity > dyslexia-friendly chunking > Strunk & White micro-rewrites`
+
+Apply it directly:
+
+- Preserve code references first.
+- Preserve exact meaning next.
+- Cut words before adding layout.
+- Add headings or bullets only when they improve scanning.
+- Polish grammar last.
+
+## Substitution Token
+
+External-agent prompt files MUST embed this literal token:
+
+`<READABILITY_STYLE>`
+
+Before launch, replace every literal `<READABILITY_STYLE>` token with the full contents of this file.
+
+## Examples
+
+Before: "It is recommended that the implementer should consider adding a validation step."
+
+After: "Add a validation step."
+
+Before: "The plan should make sure that users are not able to continue when the file cannot be read."
+
+After: "Block the flow when the file cannot be read."
+
+Before: "In order to avoid potential future confusion, documentation can be updated."
+
+After: "Update the docs to avoid confusion."
+
+Before: "The script performs an operation that checks if the path exists."
+
+After: "The script checks that the path exists."
+
+Before: "This could possibly be out of scope depending on how the team wants to proceed."
+
+After: "This may be out of scope."
+
+Required output format:
+[optional]
+LARCH_SUMMARY_BEGIN
+A concise summary for large-plan preview. Omit this whole summary block only when no useful summary is needed.
+LARCH_SUMMARY_END
+[/optional]
+LARCH_PLAN_BEGIN
+Full implementation plan body ending with diff_lines: <N>.
+LARCH_PLAN_END
+[optional]
+LARCH_SCOUT_BEGIN
+{"archetypes":[{"name":"slug","focus_area":"code-quality|risk-integration|correctness|architecture|security","weight":1,"rationale":"single-line reason","prompt_body":"2-6 sentence focus directive ending with the required citation sentence."}]}
+LARCH_SCOUT_END
+[/optional]
+
+Optional advisory status may be included between LARCH_STATUS_BEGIN and LARCH_STATUS_END, but the summary, plan, and optional scout sentinels above are the only parsed contract.
+
+Untrusted feature description:
+<feature_description encoding="literal-redacted">
+[DESIGNING] External reviewer launcher
+
+Partition piece 3 of 6 split from #3676.
+
+**Scope**: Port `agent launch-review`; reuse Python auth, sandbox, serial-lock, sidecar, diagnostics, and failure-classification helpers; add launcher pytest parity; retarget all launcher callers, including bash orchestrators that remain live; retire `scripts/launch-review.sh`, its contract, and harnesses; update launcher docs/security references.
+
+**Dependencies (from panel)**: blocked-by Piece 2
+
+**Original feature context (excerpt)**:
+
+# sh-to-py C1a: review dispatch engine
+
+Part of the sh-to-py bash-to-Python migration (umbrella tracking issue links all parts).
+
+**Goal**: Port the agent-dispatch engine shared by /review, /design panels, and /implement step 5: reviewer launch, result collection with retry, waterfall dispatch, voter dispatch.
+
+**Absorbs (approx lines)**: scripts/launch-review.sh (1278; 10 .md refs)
+
+**Definition of done**: importable functions; CLI verbs in python/cli.py; direct call-site cutover (no shims); pytest replaces harness coverage; absorbed bash + harnesses deleted; stale-reference sweep; make lint + py-lint + py-test green.
+
+</feature_description>
+
+
+Untrusted approach synthesis:
+<approach_synthesis encoding="literal-redacted">
+NO_SKETCHES
+
+</approach_synthesis>
+
+
+Untrusted discussion round 1:
+<discussion_round1 encoding="literal-redacted">
+## Decision 1: collect-agent-results.sh retry retargeting
+- **Question**: Should collect-agent-results.sh's retry OUTER_LAUNCHER check be updated in this piece?
+- **Resolution**: Yes — retarget collect-agent-results.sh in this piece so retries work immediately after launch-review.sh is retired.
+- **Source**: user
+
+## Decision 2: Prompt sidecar sentinel format
+- **Question**: Should the Python port preserve the LARCH_PROMPT_SENTINEL=1 compact hash+render-args format for --agent-file launches?
+- **Resolution**: Yes — preserve exactly. collect-agent-results.sh retries via `cli.py render specialist` replay depend on this format.
+- **Source**: user
+
+## Decision 3: Dirty-tree baseline
+- **Question**: Should the Python launcher call snapshot-untracked.sh or `python3 cli.py dirty-tree checkpoint`?
+- **Resolution**: Use `python3 cli.py dirty-tree checkpoint` — pure Python path, no bash dependency in the new launcher.
+- **Source**: user
+
+</discussion_round1>
+
+
+Untrusted approved design outline:
+<design_outline encoding="literal-redacted">
+## Proposed Design Outline
+
+### Goals
+- Add `python/cli.py agent launch-review` as the Python port of `scripts/launch-review.sh` (Codex + Cursor review launcher).
+- Retarget all live callers (`dispatch-with-waterfall.sh`, `collect-agent-results.sh` retry path) to the new verb.
+- Retire `scripts/launch-review.sh`, its `.md` contract, and test harnesses; add pytest parity.
+
+### Non-goals
+- Full migration of `collect-agent-results.sh` or `dispatch-with-waterfall.sh` (only the `launch-review.sh` call sites are retargeted).
+- Changes to `dispatch-plan-voters.sh` (only a comment reference, not a direct caller).
+- New launcher features beyond bash parity.
+
+### Approach sketch
+- Implement `launch_review_main` in `python/agents.py`; register `("agent", "launch-review")` in `cli.py`.
+- Accept `--tool codex|cursor` plus all existing flags; dispatch to per-tool private helpers.
+- Preserve `LARCH_PROMPT_SENTINEL=1` compact hash sentinel for `--agent-file` retries.
+- Replace `snapshot-untracked.sh` calls with `python3 cli.py dirty-tree checkpoint`.
+- Reuse existing Python auth, serial-lock, `_run_external_agent_with_auth_retries`, timing, and token-recording helpers.
+
+### Surfaces in scope
+- `python/agents.py` (new `launch_review_main` + private helpers)
+- `python/cli.py` (registry entry)
+- `python/test_agents.py` or new `python/test_launch_review.py` (pytest)
+- `scripts/dispatch-with-waterfall.sh` (retarget codex/cursor launch calls)
+- `scripts/collect-agent-results.sh` (retarget `launch-review.sh` OUTER_LAUNCHER check)
+- `scripts/launch-review.sh`, `scripts/launch-review.md`, `scripts/test-launch-review.sh`, `scripts/test-launch-review.md` (delete)
+- `python/migrated-scripts.tsv` (append)
+- `docs/external-reviewers.md`, `docs/configuration-and-permissions.md`, `docs/linting.md` (reference updates)
+- `scripts/lib-codex-launcher-common.md`, `scripts/lib-cursor-launcher-common.md` (edit-in-sync update)
+
+### Open questions
+- None.
+
+</design_outline>
+
