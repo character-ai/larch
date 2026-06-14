@@ -60,13 +60,13 @@ for pair in "outcome:$OUTCOME" "step:$STEP" "phase:$PHASE" "site:$SITE" "trigger
     kind=${pair%%:*}
     value=${pair#*:}
     [ -n "$value" ] || fail "$kind is required"
-    python3 "$PLUGIN_ROOT/python/cli.py" stall-recovery validate-token --profile generic --artifact-prefix design-failure --implement-tmpdir "$DESIGN_TMPDIR" --token-kind "$kind" --value "$value" >/dev/null
+    python3 "$REPORT_SH" stall-recovery validate-token --profile generic --artifact-prefix design-failure --implement-tmpdir "$DESIGN_TMPDIR" --token-kind "$kind" --value "$value" >/dev/null
  done
 if [ -n "$ROOT_CAUSE_HINT" ]; then
-    python3 "$PLUGIN_ROOT/python/cli.py" stall-recovery validate-token --profile generic --artifact-prefix design-failure --implement-tmpdir "$DESIGN_TMPDIR" --token-kind root-cause --value "$ROOT_CAUSE_HINT" >/dev/null
+    python3 "$REPORT_SH" stall-recovery validate-token --profile generic --artifact-prefix design-failure --implement-tmpdir "$DESIGN_TMPDIR" --token-kind root-cause --value "$ROOT_CAUSE_HINT" >/dev/null
 fi
 if [ -n "$SUMMARY_OUTCOME" ]; then
-    python3 "$PLUGIN_ROOT/python/cli.py" stall-recovery validate-token --profile generic --artifact-prefix design-failure --implement-tmpdir "$DESIGN_TMPDIR" --token-kind outcome --value "$SUMMARY_OUTCOME" >/dev/null
+    python3 "$REPORT_SH" stall-recovery validate-token --profile generic --artifact-prefix design-failure --implement-tmpdir "$DESIGN_TMPDIR" --token-kind outcome --value "$SUMMARY_OUTCOME" >/dev/null
 fi
 case "$EXIT_CODE" in
     unknown) ;;
@@ -89,9 +89,9 @@ if [ -e "$STATE_FILE" ]; then
     if [ -L "$STATE_FILE" ] || [ ! -f "$STATE_FILE" ]; then
         fail 'existing terminal state is unsafe'
     fi
-    old_outcome=$(python3 "$PLUGIN_ROOT/python/cli.py" session read-key --file "$STATE_FILE" --key FAILURE_OUTCOME --default '')
-    old_site=$(python3 "$PLUGIN_ROOT/python/cli.py" session read-key --file "$STATE_FILE" --key SITE --default '')
-    old_trigger=$(python3 "$PLUGIN_ROOT/python/cli.py" session read-key --file "$STATE_FILE" --key TRIGGER --default '')
+    old_outcome=$(python3 "$REPORT_SH" session read-key --file "$STATE_FILE" --key FAILURE_OUTCOME --default '')
+    old_site=$(python3 "$REPORT_SH" session read-key --file "$STATE_FILE" --key SITE --default '')
+    old_trigger=$(python3 "$REPORT_SH" session read-key --file "$STATE_FILE" --key TRIGGER --default '')
     if [ "$old_outcome" != "$OUTCOME" ] || [ "$old_site" != "$SITE" ] || [ "$old_trigger" != "$TRIGGER" ]; then
         emit_kv STAGED false
         emit_kv PRESERVED true
@@ -119,7 +119,7 @@ candidate="$DESIGN_TMPDIR/design-failure-terminal-state.env.candidate.$$"
     [ -z "$EVIDENCE_REF" ] || printf 'EVIDENCE_REF=%s\n' "$EVIDENCE_REF"
 } >"$candidate"
 
-python3 "$PLUGIN_ROOT/python/cli.py" stall-recovery validate-terminal-state --profile generic --artifact-prefix design-failure --implement-tmpdir "$DESIGN_TMPDIR" --primary-state-file "$candidate" >/dev/null
+python3 "$REPORT_SH" stall-recovery validate-terminal-state --profile generic --artifact-prefix design-failure --implement-tmpdir "$DESIGN_TMPDIR" --primary-state-file "$candidate" >/dev/null
 mv -f "$candidate" "$STATE_FILE"
 emit_kv STAGED true
 emit_kv TERMINAL_STATE_FILE "$STATE_FILE"
