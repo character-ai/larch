@@ -285,6 +285,9 @@ assert_wrapper_contract_pins() {
   contains "$SCRIPT_DIR/design-step0-parse.sh" '%q' 'Step 0 parse wrapper missing shell-quoted parsed env persistence'
   contains "$SCRIPT_DIR/design-step2b-postplan.sh" 'POSTPLAN_RC=' 'Step 2b postplan wrapper missing POSTPLAN_RC emit'
   contains "$SCRIPT_DIR/design-step2b-postplan.sh" 'POSTPLAN_STATUS=' 'Step 2b postplan wrapper missing POSTPLAN_STATUS emit'
+  contains "$SCRIPT_DIR/design-step35-settle.sh" 'design-step2b-postplan.sh' 'Step 3.5 settle wrapper missing postplan delegation'
+  contains "$SCRIPT_DIR/design-step35-settle.md" '| `gate-a` | `design-step2b-postplan.sh --site discussion-round2` |' 'Step 3.5 settle docs missing Gate A mapping'
+  contains "$SCRIPT_DIR/design-step35-settle.md" '| `discussion-round2` | `design-step2b-postplan.sh --site discussion-round2` |' 'Step 3.5 settle docs missing discussion mapping'
   contains "$SCRIPT_DIR/design-step3-review.sh" 'SCOPE_ANCHOR_FILE=' 'Step 3 review wrapper missing scope anchor emit'
   contains "$SCRIPT_DIR/design-step3-review.sh" 'TALLY_PLAN_REVIEW_STATUS=' 'Step 3 review wrapper missing tally status emit'
   contains "$SCRIPT_DIR/design-step3-review.sh" 'STARTING_ROUND_SEEN=true' 'Step 3 review wrapper missing starting-round seen guard'
@@ -506,8 +509,8 @@ assert_wrapper_pause_before_work() {
 
 assert_reference_updates() {
   contains "$PLAN_REVIEW_MD" 'Deferred main-agent adjudication' 'plan-review.md missing deferred adjudication section'
-  contains "$APPROVAL_MD" '"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step2b-postplan.sh --site gate-b' 'approval-gates.md missing launcher-form Gate B postplan reference'
-  contains "$APPROVAL_MD" 'The launcher supplies `--session-env-path` and `--claude-pid`; the wrapper owns rehydration and pause checks' 'approval-gates.md missing launcher-owned rehydration wording'
+  contains "$APPROVAL_MD" '"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step35-settle.sh --site gate-b' 'approval-gates.md missing launcher-form Gate B settle reference'
+  contains "$APPROVAL_MD" 'design-step35-settle.sh` calls `design-step2b-postplan.sh --site gate-b` internally' 'approval-gates.md missing Gate B internal postplan mapping'
   ! grep -Fq '"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2b-postplan.sh" --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" --claude-pid "$PPID" --site gate-b' "$APPROVAL_MD" \
     || fail 'approval-gates.md must not keep inline Gate B transport args'
   ! grep -Fq 'with the canonical session-env / pause prelude' "$APPROVAL_MD" \
@@ -522,8 +525,8 @@ assert_reference_updates() {
     || fail 'approval-gates.md must use full-plan helper instead of raw Gate C cat'
   ! grep -Fq 'both paths `cat` `$DESIGN_TMPDIR/plan.txt`' "$SKILL_MD" \
     || fail 'SKILL.md must use full-plan helper instead of raw Gate C cat prose'
-  contains "$DISCUSSION_MD" '"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step2b-postplan.sh --site discussion-round2' 'discussion-rounds.md missing launcher-form discussion-round2 postplan reference'
-  contains "$DISCUSSION_MD" 'The launcher supplies `--session-env-path` and `--claude-pid`; the wrapper owns rehydration and pause checks' 'discussion-rounds.md missing launcher-owned rehydration wording'
+  contains "$DISCUSSION_MD" '"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step35-settle.sh --site discussion-round2' 'discussion-rounds.md missing launcher-form discussion-round2 settle reference'
+  contains "$DISCUSSION_MD" '`gate-a` and `discussion-round2` both map to `design-step2b-postplan.sh --site discussion-round2` internally' 'discussion-rounds.md missing discussion internal postplan mapping'
   contains "$SKILL_MD" 'No migrated mid-loop resume uses `--starting-round` alone' 'SKILL missing no-bare migrated resume invariant'
   contains "$SKILL_MD" 'design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --phase awaiting-apply' 'SKILL missing MAV accepted-findings apply resume'
   contains "$SKILL_MD" 'design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --phase awaiting-continuation' 'SKILL missing zero-findings continuation resume'
@@ -536,6 +539,7 @@ assert_reference_updates() {
     || fail 'discussion-rounds.md must not keep inline discussion-round2 transport args'
   ! grep -Fq 'with the canonical session-env / pause prelude' "$DISCUSSION_MD" \
     || fail 'discussion-rounds.md must not instruct a separate postplan pause prelude'
+  contains "$SKILL_MD" '"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step35-settle.sh --site gate-a' 'SKILL.md missing launcher-form Gate A settle reference'
   contains "$SKILL_MD" 'every post-Step-0a Bash fence invokes `"$HOME/.cache/larch/sessions/design-run-$PPID.sh" <wrapper>.sh ...`' 'Anti-pattern #3 missing launcher-owned fence wording'
   contains "$SKILL_MD" 'Wrappers own source-env and pause-check behavior internally' 'Anti-pattern #3 missing wrapper-owned source-env wording'
   contains "$SKILL_MD" 'assert_wrapper_pause_before_work' 'Anti-pattern #3 missing wrapper pause enforcement anchor'
