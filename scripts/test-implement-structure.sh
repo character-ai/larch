@@ -191,6 +191,27 @@ require('Makefile', 'test-implement-fence-shape:', 'Makefile fence-shape target'
 require('docs/linting.md', 'make test-implement-fence-shape', 'linting docs fence-shape target')
 
 skill_text = Path(skill).read_text()
+# LARCH_FINAL_SUMMARY_BEGIN/END must not appear inside bash fences in implement SKILL.md
+text_impl = Path(skill).read_text()
+in_fence = False
+fence_has_marker = False
+for line in text_impl.splitlines():
+    stripped = line.strip()
+    if stripped == '```bash':
+        in_fence = True
+    elif stripped == '```':
+        in_fence = False
+    elif in_fence and ('LARCH_FINAL_SUMMARY_BEGIN' in line or 'LARCH_FINAL_SUMMARY_END' in line):
+        fence_has_marker = True
+        break
+if fence_has_marker:
+    checks.append('SKILL.md bash fence must not reference LARCH_FINAL_SUMMARY_BEGIN or LARCH_FINAL_SUMMARY_END')
+
+# Step 17 delivery-channel prohibition must exist
+require(skill, 'Do NOT use a Bash `cat` or Python tool call to print the summary body', 'SKILL missing Step 17 delivery-channel prohibition')
+# Old Bash-cat mechanism text must be gone
+forbid(skill, 'via Bash `cat` whose output is then re-emitted as orchestrator text', 'SKILL must not sanction Bash cat for summary emit')
+
 if skill_text.count('timeout: 10800000') < 4:
     checks.append('SKILL.md must use the 10800000 timeout tier for all run-step-checks fences')
 if not re.search(r'timeout: 21600000`\.\*\*\s+```bash\s+bash "\$IMPLEMENT_TMPDIR/larch-run\.sh" skills/implement/scripts/step-5-resume\.sh --final-round-num "\$FINAL_ROUND_NUM" --ready-to-commit', skill_text):

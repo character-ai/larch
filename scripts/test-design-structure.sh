@@ -655,6 +655,23 @@ PY
   contains "$SCRIPT_DIR/design-step-final-summary.sh" 'LARCH_FINAL_SUMMARY_END' 'Final summary wrapper missing final-summary end marker'
   contains "$SKILL_MD" 'using the first balanced `LARCH_FINAL_SUMMARY_BEGIN` / `LARCH_FINAL_SUMMARY_END` whole-line marker pair' 'SKILL missing final-summary marker extraction prose'
   contains "$SKILL_MD" 'fall back to reading `${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}` when the file is non-empty' 'SKILL missing final-summary file Read fallback prose'
+  # LARCH_FINAL_SUMMARY_BEGIN/END must not appear inside bash fences in SKILL.md
+  python3 - "$SKILL_MD" <<'PY'
+import re, sys
+from pathlib import Path
+text = Path(sys.argv[1]).read_text()
+fences = re.findall(r'```bash\n(.*?)\n```', text, flags=re.S)
+for fence in fences:
+    if 'LARCH_FINAL_SUMMARY_BEGIN' in fence:
+        print('FAIL: skills/design/SKILL.md bash fence must not reference LARCH_FINAL_SUMMARY_BEGIN', file=sys.stderr)
+        sys.exit(1)
+    if 'LARCH_FINAL_SUMMARY_END' in fence:
+        print('FAIL: skills/design/SKILL.md bash fence must not reference LARCH_FINAL_SUMMARY_END', file=sys.stderr)
+        sys.exit(1)
+PY
+  contains "$SKILL_MD" 'Do NOT use a Bash tool call, Python script, or any other tool invocation to extract or print the final-summary body' 'SKILL missing final-summary delivery-channel prohibition'
+  contains "$SKILL_MD" 'write the extracted content directly as your own orchestrator text response' 'SKILL missing final-summary orchestrator-text requirement'
+  contains "$SKILL_MD" 'cancel-title-filter` or `cancel-reentry-guard`, cancel routes expect fence exit 0: when `[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]`, use the Read tool on that file and write the Read result as plain orchestrator text' 'Step 0b cancel routes missing delivery-channel prohibition'
   ! grep -Fq "printf '%s\\n' \"\$_issue_stdout\" > \"\$DESIGN_TMPDIR/oos-issue.stdout.txt\"" "$SKILL_MD" \
     || fail 'SKILL Step 5b OOS bridge must not instruct shell printf for issue stdout'
 }
