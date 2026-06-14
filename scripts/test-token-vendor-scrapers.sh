@@ -89,7 +89,7 @@ RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
 PATH="$STUB_BIN:$PATH" \
 LARCH_CURSOR_MODEL=stub-model \
 CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
-    "$REPO_ROOT/scripts/launch-review.sh" --tool cursor --output "$OUT_FILE" --timeout 30 --prompt "review" >/dev/null
+    python3 "$REPO_ROOT/python/cli.py" agent launch-review --tool cursor --output "$OUT_FILE" --timeout 30 --prompt "review" >/dev/null
 
 eq "cursor review prose output" "reviewer prose only" "$(cat "$OUT_FILE")"
 if jq -e '.usage.inputTokens == 5' "${OUT_FILE}.json" >/dev/null; then pass; else fail "cursor review raw JSON sidecar missing usage"; fi

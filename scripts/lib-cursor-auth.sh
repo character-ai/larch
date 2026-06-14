@@ -1,7 +1,7 @@
 # lib-cursor-auth.sh — Cursor CLI auth-argv builder + Darwin-gated keychain helpers.
 #
 # Sourced by:
-#   - scripts/launch-review.sh --tool cursor
+#   - python/cli.py agent launch-review --tool cursor
 #   - scripts/launch-cursor-implement.sh
 #   - python/cli.py agent check-reviewers
 #   - python/cli.py agent run-negotiation-round
@@ -95,7 +95,7 @@ cursor_preread_service_token() {
 # The helper NEVER echoes the key; it only mutates CURSOR_API_KEY in the
 # environment. Always returns 0 so it composes in `&&` chains. Callers expand
 # NO auth argv element — the Cursor child reads CURSOR_API_KEY from the env it
-# inherits from the launcher process (launch-review.sh --tool cursor,
+# inherits from the launcher process (python/cli.py agent launch-review --tool cursor,
 # launch-cursor-implement.sh, launch-cursor-ci.sh, agent check-reviewers,
 # agent run-negotiation-round, review-and-fix.sh, lint-fix-loop.sh). The
 # markdown-template path (cursor-auth-flags.sh) cannot re-export back to the

@@ -15,6 +15,6 @@
 **Call sites**:
 - `skills/implement/SKILL.md` **Step 0** session-wide phantom baseline
 - `skills/implement/SKILL.md` Step 5 pre-review snapshot
-- `scripts/launch-review.sh --tool cursor` and `scripts/launch-review.sh --tool codex` pre-launch dirty-tree baselines
+- `python/cli.py agent launch-review --tool cursor` pre-launch dirty-tree baselines
 
 **Edit-in-sync**: `python/cli.py review-and-fix check-changes` (newline-delimited consumer), `python/cli.py dirty-tree` (NUL-delimited consumer), and the review launchers.

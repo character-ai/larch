@@ -77,7 +77,7 @@ Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/
 ## Conventions
 
 - Follow recent commit history style.
-- Single-runner invariant: Run only one `/implement` per repository at a time. The dirty-tree guards in `launch-review.sh --tool cursor` and `launch-review.sh --tool codex` detect mid-run pollution but do not serialize concurrent runners.
+- Single-runner invariant: Run only one `/implement` per repository at a time. The dirty-tree guards in `python/cli.py agent launch-review --tool cursor` and `python/cli.py agent launch-review --tool codex` detect mid-run pollution but do not serialize concurrent runners.
 - Single-`/design` invariant: One `/design` per repo at a time for workflow/`gh` hygiene. PID-keyed symlinks isolate per Claude PID, not per repo.
 - Session rehydration refreshes `~/.cache/larch/sessions/current-design-env-$PPID.sh` via `python/cli.py session write-design-env --claude-pid "$PPID"` in Step 0 so distinct Claude processes do not share one global `current-design-env.sh` name.
 - Run `gh pr create` through the skill, not manually.

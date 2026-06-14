@@ -1,0 +1,182 @@
+# pyright: reportPrivateUsage=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnusedCallResult=false
+"""Tests for the Python review launcher."""
+
+from __future__ import annotations
+
+import argparse
+import os
+import subprocess
+import sys
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+import agents
+
+if TYPE_CHECKING:
+    import pytest
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+CLI = REPO_ROOT / "python" / "cli.py"
+
+
+def _run(args: list[str], env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    merged = os.environ.copy()
+    merged.update({
+        "LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT": "0",
+        "RUN_EXTERNAL_AGENT_POLL_INTERVAL": "0.05",
+        "LARCH_TRANSIENT_RETRY_DELAY": "0",
+        "LARCH_CURSOR_LAUNCH_JITTER_MS": "0",
+    })
+    if env:
+        merged.update(env)
+    return subprocess.run(
+        [sys.executable, str(CLI), "agent", "launch-review", *args],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        env=merged,
+        timeout=10,
+        check=False,
+    )
+
+
+def _stub_bin(tmp_path: Path, name: str, body: str) -> Path:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    path = bin_dir / name
+    path.write_text(body, encoding="utf-8")
+    path.chmod(0o755)
+    return bin_dir
+
+
+def test_parser_rejects_invalid_timeout(tmp_path: Path) -> None:
+    out = tmp_path / "out.txt"
+    proc = _run(["--tool", "codex", "--output", str(out), "--timeout", "0", "--prompt", "hi"])
+    assert proc.returncode == 2
+    assert not out.exists()
+
+
+def test_parser_rejects_mutually_exclusive_prompts(tmp_path: Path) -> None:
+    out = tmp_path / "out.txt"
+    prompt_file = tmp_path / "prompt.txt"
+    prompt_file.write_text("prompt", encoding="utf-8")
+    proc = _run(["--tool", "cursor", "--output", str(out), "--timeout", "1", "--prompt", "hi", "--prompt-file", str(prompt_file)])
+    assert proc.returncode == 2
+    assert not out.exists()
+
+
+def test_codex_agent_file_writes_and_replays_compact_sentinel(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    args = argparse.Namespace(
+        agent_file="agents/code-reviewer.md",
+        description_text="",
+        mode="review",
+        scope_files="a.py",
+        competition_notice=True,
+        competition_notice_file="",
+        diff_file="",
+        commit_count="2",
+        plan_file="",
+        feature_file="",
+    )
+    output = tmp_path / "out.txt"
+    prompt = "rendered specialist"
+    sidecar = agents._review_write_codex_prompt_sidecar(output, prompt, args)
+    text = sidecar.read_text(encoding="utf-8")
+    assert "LARCH_PROMPT_SENTINEL=1" in text
+    assert "KIND=specialist" in text
+    assert "HASH=" in text
+    def fake_render(*_args: object, **_kwargs: object) -> object:
+        return type("R", (), {"stdout": prompt})()
+
+    monkeypatch.setattr(agents.proc, "run", fake_render)
+    rc, replay = agents._review_read_codex_prompt_sentinel(str(sidecar)) or (99, "")
+    assert rc == 0
+    assert replay == prompt
+
+
+def test_codex_sentinel_hash_mismatch_fails_closed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    sidecar = tmp_path / "out.txt.prompt"
+    sidecar.write_text(
+        "LARCH_PROMPT_SENTINEL=1\nKIND=specialist\nHASH=bad\nAGENT_FILE=a\nMODE=m\n",
+        encoding="utf-8",
+    )
+    def fake_mismatch_render(*_args: object, **_kwargs: object) -> object:
+        return type("R", (), {"stdout": "different"})()
+
+    monkeypatch.setattr(agents.proc, "run", fake_mismatch_render)
+    rc, replay = agents._review_read_codex_prompt_sentinel(str(sidecar)) or (99, "")
+    assert rc == 1
+    assert replay == ""
+
+
+def test_token_budget_cap_from_env_writes_done_and_skips_vendor(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    output = tmp_path / "out.txt"
+
+    def fake_run(argv: list[str], **_kwargs: object) -> object:
+        assert argv[2:4] == ["token", "check-budget"]
+        return type("R", (), {"stdout": "STATUS=cap_hit TOTAL=42\n", "returncode": 0})()
+
+    monkeypatch.setenv("LARCH_TOKEN_BUDGET_CAP_REVIEW", "10")
+    monkeypatch.setattr(agents.proc, "run", fake_run)
+    args = argparse.Namespace(token_budget_cap="")
+    assert agents._review_effective_token_cap(args) == 10
+    assert agents._review_check_budget_or_write_cap_hit(output, 10, "codex-review")
+    assert output.read_text(encoding="utf-8") == "STATUS=cap_hit\n"
+    assert output.with_suffix(output.suffix + ".done").read_text(encoding="utf-8") == "0\n"
+
+
+def test_session_id_precedence(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    impl = tmp_path / "impl"
+    design = tmp_path / "design"
+    impl.mkdir()
+    design.mkdir()
+    (impl / "session-id").write_text("impl-session\n", encoding="utf-8")
+    (design / "session-id").write_text("design-session\n", encoding="utf-8")
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+    monkeypatch.setenv("DESIGN_TMPDIR", str(design))
+    monkeypatch.setenv("LARCH_TOKEN_SESSION_ID", "preexisting")
+    agents._review_apply_session_token_env()
+    assert os.environ["LARCH_TOKEN_SESSION_ID"] == "impl-session"
+
+
+def test_codex_launch_uses_python_wrapper_and_read_only_argv(tmp_path: Path) -> None:
+    bin_dir = _stub_bin(
+        tmp_path,
+        "codex",
+        "#!/usr/bin/env bash\nout=\"\"; last=\"\"; for a in \"$@\"; do if [[ \"$last\" == \"--output-last-message\" ]]; then out=\"$a\"; fi; last=\"$a\"; done; echo '{\"type\":\"message\",\"usage\":{\"input_tokens\":1,\"cached_input_tokens\":0,\"output_tokens\":2}}'; printf OK >\"$out\"\n",
+    )
+    out = tmp_path / "out.txt"
+    proc = _run(["--tool", "codex", "--output", str(out), "--timeout", "2", "--prompt", "hi"], {"PATH": f"{bin_dir}:{os.environ['PATH']}"})
+    assert proc.returncode == 0
+    meta = out.with_suffix(out.suffix + ".meta").read_text(encoding="utf-8")
+    assert "CMD_JSON=[" in meta
+    assert '"codex","exec","--sandbox","read-only"' in meta
+    assert "OUTER_LAUNCHER=agent launch-review" in meta
+    assert out.with_suffix(out.suffix + ".inner.done").exists() is False
+    assert out.with_suffix(out.suffix + ".done").read_text(encoding="utf-8") == "0\n"
+    assert "REASON=codex-sandbox-read-only" in out.with_suffix(out.suffix + ".dirty-tree").read_text(encoding="utf-8")
+
+
+def test_cursor_launch_extracts_result_and_writes_original_prompt_sidecar(tmp_path: Path) -> None:
+    bin_dir = _stub_bin(
+        tmp_path,
+        "cursor",
+        "#!/usr/bin/env bash\ncat <<'JSON'\n{\"result\":\"Reviewing... {\\\"no_issues_found\\\": true}\",\"usage\":{\"inputTokens\":1,\"outputTokens\":2,\"cacheReadTokens\":0,\"cacheWriteTokens\":0}}\nJSON\n",
+    )
+    out = tmp_path / "out.txt"
+    proc = _run(["--tool", "cursor", "--output", str(out), "--timeout", "2", "--prompt", "hi"], {"PATH": f"{bin_dir}:{os.environ['PATH']}", "CURSOR_API_KEY": "test-key"})
+    assert proc.returncode == 0
+    assert out.read_text(encoding="utf-8") == '{"no_issues_found": true}\n'
+    assert out.with_suffix(out.suffix + ".prompt").read_text(encoding="utf-8") == "hi"
+    meta = out.with_suffix(out.suffix + ".meta").read_text(encoding="utf-8")
+    assert '"cursor","agent","-p","--trust","--mode","ask"' in meta
+    assert "--api-key" not in meta
+    assert "OUTER_LAUNCHER=agent launch-review" in meta
+
+
+def test_codex_add_dir_rejects_outside_output(tmp_path: Path) -> None:
+    out = tmp_path / "out.txt"
+    outside = tmp_path.parent
+    proc = _run(["--tool", "codex", "--output", str(out), "--timeout", "2", "--prompt", "hi", "--codex-add-dir", str(outside)])
+    assert proc.returncode == 2
+    assert not out.exists()

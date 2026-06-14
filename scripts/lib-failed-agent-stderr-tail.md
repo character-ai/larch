@@ -78,7 +78,7 @@ health-gate fast-fail vs mid-run crash vs timeout (124) vs auth vs quota.
 Tunables: `LARCH_VENDOR_FAILURE_DIAG_SECTION_LINES` (default **120**) per-section
 tail lines; `vendor_failure_diag_byte_cap` returns **16384**. Producers:
 `python/cli.py agent run-external-agent` (central carrier in the EXIT trap),
-`scripts/launch-review.sh`, `python/cli.py agent launch-claude-subprocess`, the implement
+`python/cli.py agent launch-review`, `python/cli.py agent launch-claude-subprocess`, the implement
 launchers. See `docs/vendor-agent-diagnostics-audit.md` for the per-site audit.
 
 ## Harness

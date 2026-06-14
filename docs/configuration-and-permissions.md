@@ -219,7 +219,7 @@ Clean launcher, content, status, or delimiter failures fall back to inline Step 
 
 ### `OPENAI_API_KEY`
 
-When non-whitespace, the covered Codex paths (`launch-review.sh --tool codex`, `python/cli.py agent launch-codex-ci`, `launch-codex-implement.sh`, the Codex health probe in `python/cli.py agent check-reviewers`, `python/cli.py review-and-fix apply-findings`, `python/cli.py agent launch-codex-exec`, `/research` Codex research lanes, `/research` validation lane, shared Codex voter/judge fences, `lint-fix-loop.sh`, and `python/cli.py agent run-negotiation-round`) authenticate with API-key billing via per-invocation `-c` provider overrides. Only the variable name `OPENAI_API_KEY` appears in argv or non-secret config references; the key value is read live by Codex from the child process environment, which can be visible to same-UID or host-level process inspection while Codex is running.
+When non-whitespace, the covered Codex paths (`python/cli.py agent launch-review --tool codex`, `python/cli.py agent launch-codex-ci`, `launch-codex-implement.sh`, the Codex health probe in `python/cli.py agent check-reviewers`, `python/cli.py review-and-fix apply-findings`, `python/cli.py agent launch-codex-exec`, `/research` Codex research lanes, `/research` validation lane, shared Codex voter/judge fences, `lint-fix-loop.sh`, and `python/cli.py agent run-negotiation-round`) authenticate with API-key billing via per-invocation `-c` provider overrides. Only the variable name `OPENAI_API_KEY` appears in argv or non-secret config references; the key value is read live by Codex from the child process environment, which can be visible to same-UID or host-level process inspection while Codex is running.
 
 Bad or expired keys stay on the env-key path and fail loud / waterfall rather than silently reverting to ChatGPT login. When `OPENAI_API_KEY` is unset, empty, or whitespace-only, covered paths fall back to `codex login` / `~/.codex/auth.json`. The legacy top-level `env_key = "OPENAI_API_KEY"` config line is no longer the recommended setup path and is removed from copied larch temp configs; literal `api_key` / `openai_api_key` assignments are also stripped from those temp configs.
 
@@ -262,13 +262,13 @@ Controls per-run conditional reviewer spawning in `/design`, `/implement` Step 5
 
 ### `LARCH_CURSOR_RETRY_EMPTY_RESULT`
 
-When set to `0`, disables the cursor launcher's exit-0 empty-`.result` transient retry inside `scripts/launch-review.sh` (the branch that re-invokes `cursor agent` when the JSON envelope has an empty, null, or absent `.result` while still exiting 0). Any other value (including unset) leaves retry enabled. Empty-result retries share the exit-code `TRANSIENT_ATTEMPT` counter (bounded by `MAX_TRANSIENT_RETRIES=2`), so per auth pass the worst case is at most three total `cursor agent` backend calls across mixed exit-code transients and empty-`.result` responses.
+When set to `0`, disables the cursor launcher's exit-0 empty-`.result` transient retry inside `python/cli.py agent launch-review` (the branch that re-invokes `cursor agent` when the JSON envelope has an empty, null, or absent `.result` while still exiting 0). Any other value (including unset) leaves retry enabled. Empty-result retries share the exit-code `TRANSIENT_ATTEMPT` counter (bounded by `MAX_TRANSIENT_RETRIES=4`), so per auth pass the worst case is at most five total `cursor agent` backend calls across mixed exit-code transients and empty-`.result` responses.
 
 **Diagnostic capture is independent:** even with retry disabled, a terminal empty `.result` still writes `${OUTPUT}.diag` and promotes `CURSOR_EMPTY_RESPONSE`.
 
 ### `LARCH_CURSOR_LAUNCH_JITTER_MS`
 
-Per-process random delay (milliseconds) applied once before the cursor auth/retry loop in `scripts/launch-review.sh`, in the range `0..N`, to de-synchronize parallel cursor reviewer launches. Default `250`. Non-numeric or empty values fall back to `250`. Set to `0` to disable jitter entirely.
+Per-process random delay (milliseconds) applied once before the cursor auth/retry loop in `python/cli.py agent launch-review`, in the range `0..N`, to de-synchronize parallel cursor reviewer launches. Default `250`. Non-numeric or empty values fall back to `250`. Set to `0` to disable jitter entirely.
 
 ### `LARCH_CODEX_EFFORT`
 

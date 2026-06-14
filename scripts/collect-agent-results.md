@@ -41,7 +41,7 @@ sentinel-first outputs with trailing prose.
 
 When `--substantive-validation` or `--structured-reviewer-validation` is passed and any entry is downgraded to `STATUS=NOT_SUBSTANTIVE` in sections 3.5 or 3.6, the collector attempts a one-shot retry with a stronger structured-output demand prepended to the reviewer prompt.
 
-**Retry eligibility**: the entry must have a `.meta` sidecar at `<REVIEWER_FILE>.meta` with valid `OUTER_LAUNCHER`, `OUTER_LAUNCHER_PROMPT_FILE`, `OUTER_LAUNCHER_WORKDIR`, `TOOL`, and `TIMEOUT` fields. Only reviewer types that record an OUTER_LAUNCHER (cursor/codex specialist reviewers launched via `launch-review.sh`) are retried; entries without a `.meta` or without the OUTER_LAUNCHER field are skipped silently.
+**Retry eligibility**: the entry must have a `.meta` sidecar at `<REVIEWER_FILE>.meta` with valid `OUTER_LAUNCHER`, `OUTER_LAUNCHER_PROMPT_FILE`, `OUTER_LAUNCHER_WORKDIR`, `TOOL`, and `TIMEOUT` fields. Only reviewer types that record an OUTER_LAUNCHER (cursor/codex specialist reviewers launched via `agent launch-review`) are retried; entries without a `.meta` or without the OUTER_LAUNCHER field are skipped silently.
 
 **Stronger prompt**: a structured-output demand header is prepended to a temp copy of the original prompt file. The header explicitly refuses narrative output and demands either structured `### FINDING_N:` blocks or `NO_ISSUES_FOUND`.
 

@@ -21,7 +21,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent compose-collector-failure-lo
 
 Then invoke `run-log append-failure` with `--output-file "$DESIGN_TMPDIR/<slot>-collector.failure.log"` and the documented `--site / --tool / --exit-code / --category / --redact` flags.
 
-Launch failures (non-zero `launch-review.sh` exit before the collector runs) continue to capture launcher stdout+stderr directly to `$DESIGN_TMPDIR/<slot>-launch.failure.log` and append via `run-log append-failure` as today; that path does not use the new helper because there is no collector record yet.
+Launch failures (non-zero `agent launch-review` exit before the collector runs) continue to capture launcher stdout+stderr directly to `$DESIGN_TMPDIR/<slot>-launch.failure.log` and append via `run-log append-failure` as today; that path does not use the new helper because there is no collector record yet.
 
 ---
 

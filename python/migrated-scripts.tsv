@@ -764,3 +764,7 @@ scripts/test-eval-set-structure.sh	#3686
 scripts/test-eval-set-structure.md	#3686
 scripts/test-eval-research-baseline-flag.sh	#3686
 scripts/test-eval-research-baseline-flag.md	#3686
+scripts/launch-review.sh	#4167
+scripts/launch-review.md	#4167
+scripts/test-launch-review.sh	#4167
+scripts/test-launch-review.md	#4167

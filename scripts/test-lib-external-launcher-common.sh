@@ -637,7 +637,7 @@ fi
 # external_launcher_append_outer_meta: optional STDERR_SINK= line.
 APPEND_META="$TMPDIR_ROOT/append-outer.meta"
 printf 'TOOL=cursor\nTIMEOUT=5\n' > "$APPEND_META"
-external_launcher_append_outer_meta "$APPEND_META" "/repo/scripts/launch-review.sh" "/tmp/out.prompt" "/tmp/work" "" "/tmp/custom.stderr.log"
+external_launcher_append_outer_meta "$APPEND_META" "/repo/python/cli.py agent launch-review" "/tmp/out.prompt" "/tmp/work" "" "/tmp/custom.stderr.log"
 if grep -Fxq 'STDERR_SINK=/tmp/custom.stderr.log' "$APPEND_META"; then
     pass
 else
@@ -651,7 +651,7 @@ fi
 
 APPEND_META_NO_SINK="$TMPDIR_ROOT/append-outer-no-sink.meta"
 printf 'TOOL=cursor\nTIMEOUT=5\n' > "$APPEND_META_NO_SINK"
-external_launcher_append_outer_meta "$APPEND_META_NO_SINK" "/repo/scripts/launch-review.sh" "/tmp/out.prompt" "/tmp/work"
+external_launcher_append_outer_meta "$APPEND_META_NO_SINK" "/repo/python/cli.py agent launch-review" "/tmp/out.prompt" "/tmp/work"
 if grep -q '^STDERR_SINK=' "$APPEND_META_NO_SINK" 2>/dev/null; then
     fail "append_outer_meta without stderr_sink must omit STDERR_SINK= line"
 else
@@ -920,7 +920,7 @@ assert_file_contains "codex-exec outer meta records timing kind" "$_outer_meta" 
 assert_file_contains "codex-exec outer meta records add dirs" "$_outer_meta" "OUTER_LAUNCHER_ADD_DIRS_JSON=[\"$REPO_ROOT\"]"
 
 # shellcheck disable=SC2016
-_codex_auth_inventory='launch-review.sh --tool codex`, `python/cli.py agent launch-codex-ci`, `launch-codex-implement.sh`, the Codex health probe in `python/cli.py agent check-reviewers`, `python/cli.py review-and-fix apply-findings`, `python/cli.py agent launch-codex-exec`, `/research` Codex research lanes, `/research` validation lane, shared Codex voter/judge fences, `lint-fix-loop.sh`, and `python/cli.py agent run-negotiation-round`'
+_codex_auth_inventory='python/cli.py agent launch-review --tool codex`, `python/cli.py agent launch-codex-ci`, `launch-codex-implement.sh`, the Codex health probe in `python/cli.py agent check-reviewers`, `python/cli.py review-and-fix apply-findings`, `python/cli.py agent launch-codex-exec`, `/research` Codex research lanes, `/research` validation lane, shared Codex voter/judge fences, `lint-fix-loop.sh`, and `python/cli.py agent run-negotiation-round`'
 for _inventory_file in \
     "$REPO_ROOT/docs/external-reviewers.md" \
     "$REPO_ROOT/docs/configuration-and-permissions.md" \

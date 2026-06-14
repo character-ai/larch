@@ -272,7 +272,7 @@ effective_judges=$(python3 "$CLI" voting effective-judges \
 # When the panel is degraded, attribute a usage-limit/quota cause if a failed
 # external voter (codex/cursor) left a quota signature in its sidecar/diag, so
 # the banner names the reason instead of leaving it silent (#3378). The matching
-# per-tool failure is also recorded to execution-issues.md by launch-review.sh.
+# per-tool failure is also recorded to execution-issues.md by agent launch-review.
 # Path invariant: the waterfall above runs with --no-fallback, so a FAILED
 # external slot is dropped (never reassigned to a Claude fallback path) and
 # VOTER_{2,3}_PATH stays at its default — the same base the phase-1 launch wrote

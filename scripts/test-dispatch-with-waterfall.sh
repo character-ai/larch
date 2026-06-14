@@ -12,10 +12,11 @@ export RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05
 export LARCH_EXTERNAL_SERIAL_LOCK_FORCE_UNAME=Linux
 export LARCH_LIB_CURSOR_AUTH_TEST_MODE=1
 export LIB_CURSOR_AUTH_TEST_UNAME=Linux
-# Suppress launch-review.sh transient-retry backoffs (#2357 added 2/4/8s
+# Suppress agent launch-review transient-retry backoffs (#2357 added 2/4/8s
 # default jittered backoff). Tests not exercising retry timing set this to
 # 0 to skip the sleep and avoid gating the harness on backoff wall time.
 export LARCH_TRANSIENT_RETRY_DELAY=0
+export LARCH_CURSOR_LAUNCH_JITTER_MS=0
 export LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT=0
 
 STUB_BIN="$TMPROOT/bin"
@@ -71,7 +72,7 @@ fi
 # CURSOR_STUB_RESULT_CONTENT are safely escaped. Default preserves the
 # prior `cursor ok` .result value byte-identically.
 # CURSOR_STUB_OUTPUT_TOKENS: override outputTokens (default 1); use >1000
-# to exercise launch-review.sh's CURSOR_DEGRADED_RESPONSE heuristic.
+# to exercise agent launch-review's CURSOR_DEGRADED_RESPONSE heuristic.
 jq -nc --arg r "${CURSOR_STUB_RESULT_CONTENT:-cursor ok}" \
     --argjson ot "${CURSOR_STUB_OUTPUT_TOKENS:-1}" \
     '{result:$r,usage:{inputTokens:1,outputTokens:$ot,cacheReadTokens:0,cacheWriteTokens:0}}'
@@ -268,7 +269,7 @@ out=$(PATH="$STUB_BIN:$PATH" CODEX_STUB_LOG="$codex_log" "$REPO_ROOT/scripts/dis
     --competition-notice-file "$notice" \
     --timeout 5)
 assert_line "DISPATCH_OK=true" "$out"
-# launch-review.sh expands --agent-file before invoking Codex, so this harness
+# agent launch-review expands --agent-file before invoking Codex, so this harness
 # validates the prompt sidecar plus rendered prompt body instead of a literal
 # --agent-file argv token in CODEX_STUB_LOG.
 grep -Fq 'AGENT_FILE=' "$TMPROOT/competition-slot.txt.prompt" || { echo "FAIL: competition-notice prompt sidecar missing AGENT_FILE (launch-review --agent-file)" >&2; exit 1; }
@@ -865,7 +866,7 @@ assert_line "DISPATCH_OK=true" "$out"
 
 # --- Degraded Cursor output integration: high-token narration triggers fallback ---
 # Cursor stub returns outputTokens=5000 with a short narration result (<500 bytes).
-# launch-review.sh writes CURSOR_DEGRADED_RESPONSE; collect-agent-results.sh maps
+# agent launch-review writes CURSOR_DEGRADED_RESPONSE; collect-agent-results.sh maps
 # it to STATUS=CURSOR_EMPTY_RESPONSE; dispatch-with-waterfall.sh falls back to Claude.
 manifest_deg="$TMPROOT/slots-degraded.ndjson"
 printf '{"slot":"s1","tool":"cursor","output":"%s","prompt_file":"%s"}\n' \

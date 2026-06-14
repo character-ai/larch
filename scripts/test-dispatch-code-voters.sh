@@ -550,7 +550,7 @@ out=$(PATH="$STUB_BIN:$PATH" \
 hook_end=$(date +%s)
 grep -Fq 'VOTER_3_STATUS=launched' <<< "$out" \
     || { echo "FAIL: launch-review hook path should still publish voter3 done/output before dispatch tallies" >&2; exit 1; }
-# After the 1-second sleep, launch-review.sh resumes and promotes outer.done.
+# After the 1-second sleep, agent launch-review resumes and promotes outer.done.
 # The dispatcher waited and found the sentinel — voter 3 parse rate should be OK
 # (jq extraction runs normally after the sleep hook returns).
 grep -Fq 'VOTER_3_PARSE_RATE_STATUS=OK' <<< "$out" \
@@ -581,7 +581,7 @@ grep -Fq 'VOTER_3_PARSE_RATE_STATUS=OK' <<< "$out" \
 grep -Fq 'FINDING_1: NO -- cursor delayed' "$prod_delay_tmp/cursor-vote-output.txt" \
     || { echo "FAIL: production delayed .done path should preserve the extracted cursor result after post-processing" >&2; exit 1; }
 if (( prod_delay_end - prod_delay_start < 1 )); then
-    echo "FAIL: production delayed .done path returned before launch-review.sh could promote the delayed cursor sentinel" >&2
+    echo "FAIL: production delayed .done path returned before agent launch-review could promote the delayed cursor sentinel" >&2
     exit 1
 fi
 require_voter_paths_file_nonempty "happy-cursor-prod-delay" "$out"
@@ -603,7 +603,7 @@ grep -Fq 'VOTER_2_PARSE_RATE_STATUS=OK' <<< "$out" \
 grep -Fq 'FINDING_1: YES -- codex delayed' "$prod_codex_delay_tmp/codex-vote-output.txt" \
     || { echo "FAIL: production delayed .done path should preserve the codex output after promotion" >&2; exit 1; }
 if (( prod_codex_delay_end - prod_codex_delay_start < 1 )); then
-    echo "FAIL: production delayed .done path returned before launch-review.sh could promote the delayed codex sentinel" >&2
+    echo "FAIL: production delayed .done path returned before agent launch-review could promote the delayed codex sentinel" >&2
     exit 1
 fi
 require_voter_paths_file_nonempty "happy-codex-prod-delay" "$out"
@@ -1085,7 +1085,7 @@ if section_runs regressions-r3-codex; then
         || { echo "FAIL: regression3 prod-shape codex — local codex diag file not written" >&2; exit 1; }
     grep -Fq 'dispatch-code-voters.sh codex' "$prod_codex_issues" \
         || { echo "FAIL: regression3 prod-shape codex — issues-log entry missing" >&2; exit 1; }
-    grep -Fq 'launch-review.sh --tool codex (voter parse-rate check)' "$prod_codex_issues" \
+    grep -Fq 'agent launch-review --tool codex (voter parse-rate check)' "$prod_codex_issues" \
         || { echo "FAIL: regression3 prod-shape codex — codex tool label missing from issues-log" >&2; exit 1; }
     require_voter_paths_file_nonempty "regression3-prod-codex" "$out"
 )

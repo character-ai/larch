@@ -12,7 +12,6 @@ from pathlib import Path
 GIT = shutil.which("git") or "git"
 
 ALLOWED_SHELL_FILES = {
-    "scripts/launch-review.sh",
     "scripts/launch-codex-implement.sh",
 }
 ALLOWED_PYTHON_FILES = {"python/agents.py"}

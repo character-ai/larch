@@ -545,10 +545,9 @@ exclude = [
   # agent-lint does not follow.
   "scripts/lib-external-launcher-common.sh",
   # scripts/lib-dirty-tree-sidecar.sh is a sourced-only shell library (no
-  # shebang, not invokable directly) carrying the canonical
-  # _write_dirty_tree_sidecar shared between launch-review.sh --tool codex and
-  # launch-review.sh --tool cursor (issue #1502 dedup). Referenced via source
-  # directives only.
+  # shebang, not invokable directly) carrying the retained
+  # _write_dirty_tree_sidecar helper for legacy shell-side baselines. Referenced via
+  # source directives only.
   "scripts/lib-dirty-tree-sidecar.sh",
   # by the four *-structure.sh Stage-4 (#3119) harnesses via source directives
   # only; agent-lint does not follow source directives.
@@ -642,11 +641,10 @@ exclude = [
   # (test-generate-topology-docs target) and
   # (sibling contract).
   "scripts/test-python/cli.py generate topology-docs",
-  # scripts/test-launch-review.sh is the unified regression harness for the
+  # python/test_launch_review.py is the unified regression harness for the
   # Codex and Cursor review launcher paths. Referenced only from
-  # Makefile (test-launch-review target) and scripts/test-launch-review.md
-  # (sibling contract).
-  "scripts/test-launch-review.sh",
+  # Makefile (test-launch-review target).
+  "python/test_launch_review.py",
   # scripts/test-lib-external-launcher-common.sh is the unit-test harness for
   # scripts/lib-external-launcher-common.sh. Referenced only from
   # Makefile (test-lib-external-launcher-common target) and
@@ -1111,7 +1109,6 @@ exclude = [
   # agents/_implementer-base.md is a source-of-truth prompt fragment consumed
   # by generated implementer prompts, not an invokable agent with frontmatter.
   "agents/_implementer-base.md",
-  "scripts/test-launch-review.md",
   "python/dirty_tree.py",
   "python/test_dirty_tree.py",
   "scripts/check-phantom-dirty.md",

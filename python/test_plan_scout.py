@@ -158,7 +158,7 @@ def test_dynamic_description_cursor_miss_then_claude_winner(tmp_path: Path, monk
     out = tmp_path / "manifest.json"
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
-    cursor = bin_dir / "launch-review.sh"
+    cursor = bin_dir / "agent launch-review"
     cursor.write_text("#!/usr/bin/env bash\nwhile [[ $# -gt 0 ]]; do if [[ $1 == --output ]]; then out=$2; shift 2; else shift; fi; done\nprintf 'no json' >\"$out\"\nprintf 'ELAPSED=1\\n'\n", encoding="utf-8")
     cursor.chmod(0o755)
     claude = bin_dir / "claude.sh"

@@ -4,7 +4,7 @@ title = "larch gitleaks config"
 useDefault = true
 
 [allowlist]
-description = "Test fixtures (scripts/test-redact secrets, scripts/test-create-pr.sh, scripts/test-merge-pr.sh, scripts/test-relevant-checks-helper-failure.sh, scripts/test-launch-review.sh, python/test_issue_block.py, python/test_review_and_fix.py, python/test_review_pipeline.py, skills/shared/scripts/test-render-assessor-prompt.sh, python/test_redact.py, python/test_checks.py, python/test_run_logs.py), redaction/scrubber source (python/cli.py redact secrets, python/cli.py redact scrub-log-secrets, scripts/test-redact scrub-log-secrets), ignored Python development artifacts (python/.venv/**, python/.pytest_cache/**, python/__pycache__/**), and the .gitleaks.toml self-allowlist — these paths legitimately contain token-shaped strings throughout. Committed run-logs (larch-logs/**) are intentionally NOT allowlisted: gitleaks scans them in pre-commit/CI, and python/cli.py redact scrub-log-secrets redacts secret-shaped values (including Cursor keys, which gitleaks does not cover) from every skill's run logs before each flush. Documentation files (README.md, CHANGELOG.md, SECURITY.md, skills/issue/SKILL.md, and the issue creation CLI surface) are also intentionally NOT allowlisted — see SECURITY.md 'Layered secret scanning' (#375)."
+description = "Test fixtures (scripts/test-redact secrets, scripts/test-create-pr.sh, scripts/test-merge-pr.sh, scripts/test-relevant-checks-helper-failure.sh, python/test_launch_review.py, python/test_issue_block.py, python/test_review_and_fix.py, python/test_review_pipeline.py, skills/shared/scripts/test-render-assessor-prompt.sh, python/test_redact.py, python/test_checks.py, python/test_run_logs.py), redaction/scrubber source (python/cli.py redact secrets, python/cli.py redact scrub-log-secrets, scripts/test-redact scrub-log-secrets), ignored Python development artifacts (python/.venv/**, python/.pytest_cache/**, python/__pycache__/**), and the .gitleaks.toml self-allowlist — these paths legitimately contain token-shaped strings throughout. Committed run-logs (larch-logs/**) are intentionally NOT allowlisted: gitleaks scans them in pre-commit/CI, and python/cli.py redact scrub-log-secrets redacts secret-shaped values (including Cursor keys, which gitleaks does not cover) from every skill's run logs before each flush. Documentation files (README.md, CHANGELOG.md, SECURITY.md, skills/issue/SKILL.md, and the issue creation CLI surface) are also intentionally NOT allowlisted — see SECURITY.md 'Layered secret scanning' (#375)."
 paths = [
     '''^\.gitleaks\.toml$''',
     '''^scripts/redact-secrets\.sh$''',
@@ -12,7 +12,6 @@ paths = [
     '''^scripts/test-redact-secrets\.sh$''',
     '''^scripts/test-scrub-log-secrets\.sh$''',
     '''^scripts/test-relevant-checks-helper-failure\.sh$''',
-    '''^scripts/test-launch-review\.sh$''',
     '''^scripts/test-create-pr\.sh$''',
     '''^scripts/test-merge-pr\.sh$''',
     '''^skills/issue/scripts/test-add-blocked-by\.sh$''',
