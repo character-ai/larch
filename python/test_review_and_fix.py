@@ -805,12 +805,12 @@ def test_step5_loop_preflight_failure_touches_progress_done(tmp_path, monkeypatc
 def _mk_git_repo(tmp_path: Path) -> Path:
     repo = tmp_path / "repo"
     repo.mkdir()
-    review_and_fix._run(["git", "init", "--quiet"], cwd=str(repo))
-    review_and_fix._run(["git", "config", "user.email", "test@example.com"], cwd=str(repo))
-    review_and_fix._run(["git", "config", "user.name", "Test"], cwd=str(repo))
+    review_and_fix._run(["git", "init", "--quiet"], cwd=repo)
+    review_and_fix._run(["git", "config", "user.email", "test@example.com"], cwd=repo)
+    review_and_fix._run(["git", "config", "user.name", "Test"], cwd=repo)
     (repo / "tracked.txt").write_text("initial\n", encoding="utf-8")
-    review_and_fix._run(["git", "add", "tracked.txt"], cwd=str(repo))
-    review_and_fix._run(["git", "commit", "--quiet", "-m", "initial"], cwd=str(repo))
+    review_and_fix._run(["git", "add", "tracked.txt"], cwd=repo)
+    review_and_fix._run(["git", "commit", "--quiet", "-m", "initial"], cwd=repo)
     return repo
 
 
@@ -833,7 +833,7 @@ def test_check_changes_preexisting_untracked_with_baseline(tmp_path, monkeypatch
     (repo / "stray.txt").write_text("x\n", encoding="utf-8")
     ls = review_and_fix._run(
         ["git", "ls-files", "--others", "--exclude-standard"],
-        cwd=str(repo),
+        cwd=repo,
     )
     baseline = tmp_path / "baseline.txt"
     baseline.write_text(ls.stdout, encoding="utf-8")
@@ -850,11 +850,11 @@ def test_check_changes_head_baseline_detects_commit_movement(tmp_path, monkeypat
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     repo = _mk_git_repo(tmp_path)
     head_bl = repo / "pre-review-head.txt"
-    review_and_fix._run(["git", "rev-parse", "HEAD"], cwd=str(repo))
-    head_bl.write_text(review_and_fix._run(["git", "rev-parse", "HEAD"], cwd=str(repo)).stdout, encoding="utf-8")
+    review_and_fix._run(["git", "rev-parse", "HEAD"], cwd=repo)
+    head_bl.write_text(review_and_fix._run(["git", "rev-parse", "HEAD"], cwd=repo).stdout, encoding="utf-8")
     (repo / "tracked.txt").write_text("initial\nreview-fix\n", encoding="utf-8")
-    review_and_fix._run(["git", "add", "tracked.txt"], cwd=str(repo))
-    review_and_fix._run(["git", "commit", "--quiet", "-m", "Address code review feedback (round 1)"], cwd=str(repo))
+    review_and_fix._run(["git", "add", "tracked.txt"], cwd=repo)
+    review_and_fix._run(["git", "commit", "--quiet", "-m", "Address code review feedback (round 1)"], cwd=repo)
     monkeypatch.chdir(repo)
     rc = review_and_fix.check_changes(["--head-baseline", str(head_bl)])
     out = capsys.readouterr().out
