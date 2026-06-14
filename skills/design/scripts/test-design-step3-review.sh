@@ -154,6 +154,7 @@ pass 'Step 3 wrapper preserves legacy LOOP_STATUS=zero-findings-degraded-panel'
 
 D_KILL=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-kill-helper.XXXXXX")
 FAKE_KILL="$D_KILL/fake-plugin"
+# shellcheck disable=SC2016
 make_fake_step3_plugin "$FAKE_KILL" '{
   printf "%s\n" "loop" >> "$ORDER_LOG"
   cat > "$DESIGN_TMPDIR/.step3-review-result.env" <<RESULT
