@@ -280,6 +280,10 @@ exclude = [
   # review dispatchers; agent-lint does not follow those variable-expanded edges.
   "scripts/reviewer-prune.sh",
   "scripts/reviewer-prune.md",
+  # scripts/implement-finalize.sh invokes these Step 8b / teardown helpers
+  # through Bash-to-Bash edges; agent-lint does not follow those calls.
+  "scripts/check-remote-branch.sh",
+  "scripts/flush-vendor-failure-diagnostics.sh",
   # scripts/test-reviewer-prune.sh is the Makefile-only regression harness for
   # scripts/reviewer-prune.sh conditional-spawning ledger/filter behavior.
   "scripts/test-reviewer-prune.sh",
@@ -563,6 +567,9 @@ exclude = [
   # (no shebang, not invokable directly). scripts/ship-pr.sh and
   # python/cli.py session restore-finalize-state source it for shared finalizer keys.
   "scripts/lib-finalize-state-keys.sh",
+  # scripts/lib-execution-issues.sh is a sourced-only shell library shared by
+  # scripts/implement-finalize.sh and skills/implement/scripts/flush-execution-issues.sh.
+  "scripts/lib-execution-issues.sh",
   # python/cli.py agent cursor-auth-preflight is a small executable that prints the
   # conditional --api-key argv elements for runtime skill markdown blocks.
   # Referenced from skills/shared/voting-protocol.md,
