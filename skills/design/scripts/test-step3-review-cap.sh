@@ -6,7 +6,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd -P)"
 SKILL_MD="$ROOT/skills/design/SKILL.md"
 APPROVAL_GATES="$ROOT/skills/design/references/approval-gates.md"
-LAUNCHER="$ROOT/skills/design/scripts/run-step3-review.sh"
+CLI="$ROOT/python/cli.py"
 CONTINUATION="$ROOT/skills/design/scripts/plan-review-continuation.sh"
 
 fail() {
@@ -14,8 +14,8 @@ fail() {
     exit 1
 }
 
-grep -Fq 'run-step3-review.sh' "$SKILL_MD" \
-    || fail 'SKILL.md must invoke run-step3-review.sh'
+grep -Fq 'plan-review run' "$SKILL_MD" \
+    || fail 'SKILL.md must invoke plan-review run'
 grep -Fq 'The Step 3.5 continuation block below is bypassed on this path.' "$SKILL_MD" \
     || fail 'SKILL missing explicit Step 3.5 bypass prose'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
@@ -25,10 +25,10 @@ grep -Fq 'including `LOOP_STATUS=panel-failed`' "$SKILL_MD" \
 grep -Fq 'MUST NOT persist when `TALLY_PLAN_REVIEW_STATUS=tally-error`' "$SKILL_MD" \
     || fail 'SKILL missing tally-error non-consumption prose'
 # shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
-grep -Fq 'review-round cap (${_round_cap}) reached' "$ROOT/skills/design/scripts/run-step3-review.sh" \
-    || fail 'run-step3-review.sh missing Step 3 cap breadcrumb emit'
-grep -Fq 'refusing to clean symlinked plan-review directory' "$ROOT/skills/design/scripts/run-step3-review.sh" \
-    || fail 'run-step3-review.sh missing symlinked plan-review cleanup warning'
+grep -Fq 'run_step3_review' "$ROOT/python/plan_review.py" \
+    || fail 'plan_review.py missing Step 3 run entry point'
+grep -Fq 'run_step3_review' "$ROOT/python/plan_review.py" \
+    || fail 'plan_review.py missing Step 3 run entry point'
 grep -Fq 'PLAN_REVIEW_CONTINUE_REASON=explicit-approve' "$SKILL_MD" \
     || fail 'SKILL missing explicit --per-round-approval continuation stop contract'
 grep -Fq 'Do not jump directly to Step 3b from this post-apply resume branch' "$SKILL_MD" \
@@ -85,7 +85,7 @@ run_driver() {
     env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$ROOT" \
         RUN_STEP3_TEST_DH="$design_tmpdir" \
         RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" \
-        "$LAUNCHER" \
+        python3 "$CLI" plan-review run \
         --design-tmpdir "$design_tmpdir"
 }
 
@@ -160,6 +160,15 @@ stub="$(write_loop_stub "$D4" "printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=0\nD
 driver_out=$(run_driver "$D4" "$stub")
 printf '%s\n' "$driver_out" | grep -q 'TALLY_PLAN_REVIEW_STATUS=tally-error' || fail 'expected tally-error tally status'
 [[ "$(cat "$D4/review-round-count.txt")" == "2" ]] || fail 'tally-error path must not consume pending round'
+
+echo "=== degraded-empty-collector does not consume the pending round ==="
+D4B="$TMPROOT/degraded-empty-collector"
+write_common_inputs "$D4B"
+printf '2\n' >"$D4B/review-round-count.txt"
+stub="$(write_loop_stub "$D4B" "printf 'LOOP_STATUS=degraded-empty-collector\nACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=3\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 1")"
+driver_out=$(run_driver "$D4B" "$stub")
+printf '%s\n' "$driver_out" | grep -q 'LOOP_STATUS=degraded-empty-collector' || fail 'expected degraded-empty-collector loop status'
+[[ "$(cat "$D4B/review-round-count.txt")" == "2" ]] || fail 'degraded-empty-collector path must not consume pending round'
 
 echo "=== hard cap blocks the sixth review round ==="
 D5="$TMPROOT/hard-cap"
@@ -384,7 +393,7 @@ cat >"$DCHAIN/accepted-plan-findings.md" <<'EOF'
 EOF
 cont_out=$(run_continuation "$DCHAIN" false)
 printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=true$' || fail 'chain first continuation should continue'
-state_out=$(CLAUDE_PLUGIN_ROOT="$ROOT" "$ROOT/skills/design/scripts/design-step3-state.sh" --design-tmpdir "$DCHAIN" --auto-continuation-entry)
+state_out=$(CLAUDE_PLUGIN_ROOT="$ROOT" python3 "$CLI" plan-review step3-state --design-tmpdir "$DCHAIN" --auto-continuation-entry)
 printf '%s\n' "$state_out" | grep -q '^STEP3_STATE=auto-continuation-entry$' || fail 'chain auto-continuation state missing'
 printf 'round1 applied plan\n' >"$DCHAIN/plan-after-round-1.txt"
 run_driver "$DCHAIN" "$chain_stub" >/dev/null

@@ -82,6 +82,45 @@ def test_parse_only_and_render_modes(tmp_path: Path, monkeypatch: pytest.MonkeyP
     assert rc == 0, err
 
 
+def test_non_ci_browser_launch_failure_skips_render(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    write(tmp_path / "doc.md", "```mermaid\ngraph TD\nA-->B\n```\n")
+    mmdc = tmp_path / "mermaid-lint/node_modules/.bin/mmdc"
+    _fake_mmdc(mmdc, "usage without parse", fail=True)
+    _ = mmdc.write_text(
+        """#!/usr/bin/env bash
+if [ "${1:-}" = --help ]; then printf '%s\n' 'usage without parse'; exit 0; fi
+printf '%s\n' 'Error: Failed to launch the browser process!' >&2
+exit 1
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(lint_mermaid_fences, "_repo_root", lambda: tmp_path)
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    monkeypatch.delenv("GITHUB_EVENT_NAME", raising=False)
+    rc, _out, err = run_in(tmp_path, monkeypatch, capsys, ["doc.md"])
+    assert rc == 0
+    assert "browser" in err
+
+
+def test_ci_browser_launch_failure_fails_closed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    write(tmp_path / "doc.md", "```mermaid\ngraph TD\nA-->B\n```\n")
+    mmdc = tmp_path / "mermaid-lint/node_modules/.bin/mmdc"
+    _fake_mmdc(mmdc, "usage without parse", fail=True)
+    _ = mmdc.write_text(
+        """#!/usr/bin/env bash
+if [ "${1:-}" = --help ]; then printf '%s\n' 'usage without parse'; exit 0; fi
+printf '%s\n' 'Error: Failed to launch the browser process!' >&2
+exit 1
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(lint_mermaid_fences, "_repo_root", lambda: tmp_path)
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    rc, _out, err = run_in(tmp_path, monkeypatch, capsys, ["doc.md"])
+    assert rc == 1
+    assert "Failed to launch" in err
+
+
 def test_missing_local_mmdc_runs_npm_ci(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     write(tmp_path / "doc.md", "```mermaid\ngraph TD\nA-->B\n```\n")
     write(tmp_path / "mermaid-lint/package-lock.json", "{}\n")

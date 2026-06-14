@@ -8,8 +8,8 @@ export LARCH_QUIET_DISABLE=1
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)
 CLAUDE_PLUGIN_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd -P)
 export CLAUDE_PLUGIN_ROOT
-TALLY="$SCRIPT_DIR/tally-plan-review.sh"
 CLI="$CLAUDE_PLUGIN_ROOT/python/cli.py"
+TALLY=(python3 "$CLI" plan-review tally)
 run_parser() { python3 "$CLI" voting parse-judge-vote "$@"; }
 HEADER='finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool	body_severity'
 
@@ -128,7 +128,7 @@ OOS_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=f
 EOF
 done
 OUT="$W1/findings-classification.tsv"
-"$TALLY" --ballot-file "$BALLOT" --design-tmpdir "$W1/design" --findings-classification-out "$OUT" --voter "Claude:$CLAUDE" --voter "Codex:$CODEX" --voter "Cursor:$CURSOR" >/dev/null
+"${TALLY[@]}" --ballot-file "$BALLOT" --design-tmpdir "$W1/design" --findings-classification-out "$OUT" --voter "Claude:$CLAUDE" --voter "Codex:$CODEX" --voter "Cursor:$CURSOR" >/dev/null
 assert_cell "$OUT" FINDING_1 v1_tool Claude
 assert_cell "$OUT" FINDING_1 v2_tool Codex
 assert_cell "$OUT" FINDING_1 v3_tool Cursor
@@ -171,7 +171,7 @@ mkdir -p "$W2"
 write_ballot "$W2/ballot.md"
 cp "$CLAUDE" "$W2/slot-2-looking-path.txt"
 cp "$CURSOR" "$W2/slot-3-looking-path.txt"
-"$TALLY" --ballot-file "$W2/ballot.md" --design-tmpdir "$W2/design" --findings-classification-out "$W2/out.tsv" --voter "Claude:$W2/slot-2-looking-path.txt" --voter "Cursor:$W2/slot-3-looking-path.txt" >/dev/null
+"${TALLY[@]}" --ballot-file "$W2/ballot.md" --design-tmpdir "$W2/design" --findings-classification-out "$W2/out.tsv" --voter "Claude:$W2/slot-2-looking-path.txt" --voter "Cursor:$W2/slot-3-looking-path.txt" >/dev/null
 assert_cell "$W2/out.tsv" FINDING_1 v1_tool Claude
 assert_cell "$W2/out.tsv" FINDING_1 v2_tool ""
 assert_cell "$W2/out.tsv" FINDING_1 v3_tool Cursor
@@ -184,7 +184,7 @@ write_ballot "$W2W/ballot.md"
 cp "$CLAUDE" "$W2W/voter-1-claude.txt"
 cp "$CLAUDE" "$W2W/voter-2-claude-fallback.txt"
 cp "$CURSOR" "$W2W/voter-3-cursor.txt"
-"$TALLY" --ballot-file "$W2W/ballot.md" --design-tmpdir "$W2W/design" --findings-classification-out "$W2W/out.tsv" --voter "1:Claude:$W2W/voter-1-claude.txt" --voter "2:Claude:$W2W/voter-2-claude-fallback.txt" --voter "3:Cursor:$W2W/voter-3-cursor.txt" >/dev/null
+"${TALLY[@]}" --ballot-file "$W2W/ballot.md" --design-tmpdir "$W2W/design" --findings-classification-out "$W2W/out.tsv" --voter "1:Claude:$W2W/voter-1-claude.txt" --voter "2:Claude:$W2W/voter-2-claude-fallback.txt" --voter "3:Cursor:$W2W/voter-3-cursor.txt" >/dev/null
 assert_cell "$W2W/out.tsv" FINDING_1 v1_tool Claude
 assert_cell "$W2W/out.tsv" FINDING_1 v2_tool Claude
 assert_cell "$W2W/out.tsv" FINDING_1 v3_tool Cursor
@@ -197,7 +197,7 @@ W2E="$TMPROOT/case2-explicit"
 mkdir -p "$W2E"
 write_ballot "$W2E/ballot.md"
 cp "$CLAUDE" "$W2E/codex-vote-output.txt"
-"$TALLY" --ballot-file "$W2E/ballot.md" --design-tmpdir "$W2E/design" --findings-classification-out "$W2E/out.tsv" --voter "Claude:$W2E/codex-vote-output.txt" >/dev/null
+"${TALLY[@]}" --ballot-file "$W2E/ballot.md" --design-tmpdir "$W2E/design" --findings-classification-out "$W2E/out.tsv" --voter "Claude:$W2E/codex-vote-output.txt" >/dev/null
 assert_cell "$W2E/out.tsv" FINDING_1 v1_tool Claude
 assert_cell "$W2E/out.tsv" FINDING_1 v2_tool ""
 
@@ -207,7 +207,7 @@ mkdir -p "$W2L/design/plan-review"
 write_ballot "$W2L/ballot.md"
 cp "$CLAUDE" "$W2L/claude-vote-output-phase2.txt"
 cp "$CURSOR" "$W2L/cursor-vote-output-phase3.txt"
-"$TALLY" --ballot-file "$W2L/ballot.md" --design-tmpdir "$W2L/design" --findings-classification-out "$W2L/out.tsv" --voter-files "$W2L/claude-vote-output-phase2.txt" "$W2L/cursor-vote-output-phase3.txt" >/dev/null 2>"$W2L/legacy.err"
+"${TALLY[@]}" --ballot-file "$W2L/ballot.md" --design-tmpdir "$W2L/design" --findings-classification-out "$W2L/out.tsv" --voter-files "$W2L/claude-vote-output-phase2.txt" "$W2L/cursor-vote-output-phase3.txt" >/dev/null 2>"$W2L/legacy.err"
 assert_cell "$W2L/out.tsv" FINDING_1 v1_tool Claude
 assert_cell "$W2L/out.tsv" FINDING_1 v2_tool ""
 assert_cell "$W2L/out.tsv" FINDING_1 v3_tool Cursor
@@ -224,7 +224,7 @@ quiet_out=$(env -u LARCH_QUIET_DISABLE DESIGN_TMPDIR="$W2Q/design" python3 "$CLI
 [[ "$(parser_value "$quiet_out" PARSED_VOTE)" == "YES" ]] || fail "quiet parser vote capture failed"
 [[ "$(parser_value "$quiet_out" PARSED_QUALITY)" == "" ]] || fail "quiet parser missing-quality capture failed"
 [[ "$(parser_value "$quiet_out" PARSED_UNCERTAIN)" == "true" ]] || fail "quiet parser missing-quality uncertain fallback failed"
-"$TALLY" --ballot-file "$BALLOT" --design-tmpdir "$W2Q/design" --findings-classification-out "$W2Q/out.tsv" --voter "Claude:$quiet_votes" >/dev/null
+"${TALLY[@]}" --ballot-file "$BALLOT" --design-tmpdir "$W2Q/design" --findings-classification-out "$W2Q/out.tsv" --voter "Claude:$quiet_votes" >/dev/null
 assert_cell "$W2Q/out.tsv" FINDING_2 v1_vote YES
 assert_cell "$W2Q/out.tsv" FINDING_2 v1_quality ""
 assert_cell "$W2Q/out.tsv" FINDING_2 v1_uncertain true
@@ -234,17 +234,17 @@ W3="$TMPROOT/case3"
 mkdir -p "$W3"
 write_ballot "$W3/ballot.md"
 printf 'FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n' > "$W3/voter-main-agent.txt"
-"$TALLY" --ballot-file "$W3/ballot.md" --design-tmpdir "$W3/design" --findings-classification-out "$W3/out.tsv" --voter "MainAgent:$W3/voter-main-agent.txt" >/dev/null
+"${TALLY[@]}" --ballot-file "$W3/ballot.md" --design-tmpdir "$W3/design" --findings-classification-out "$W3/out.tsv" --voter "MainAgent:$W3/voter-main-agent.txt" >/dev/null
 assert_cell "$W3/out.tsv" FINDING_1 voting_result rejected
 assert_cell "$W3/out.tsv" FINDING_1 v1_tool ""
 assert_all_rows_21_fields "$W3/out.tsv"
 : > "$W3/empty-ballot.md"
-"$TALLY" --ballot-file "$W3/empty-ballot.md" --design-tmpdir "$W3/empty-design" --findings-classification-out "$W3/empty.tsv" --voter "Claude:$CLAUDE" >/dev/null
+"${TALLY[@]}" --ballot-file "$W3/empty-ballot.md" --design-tmpdir "$W3/empty-design" --findings-classification-out "$W3/empty.tsv" --voter "Claude:$CLAUDE" >/dev/null
 [[ "$(wc -l < "$W3/empty.tsv" | tr -d ' ')" == "1" ]] || fail "empty ballot should write header only"
 
 echo "=== rerun overwrite and sorted row order ==="
 printf 'stale\n' > "$W3/out.tsv"
-"$TALLY" --ballot-file "$W3/ballot.md" --design-tmpdir "$W3/design2" --findings-classification-out "$W3/out.tsv" --voter "Claude:$CLAUDE" >/dev/null
+"${TALLY[@]}" --ballot-file "$W3/ballot.md" --design-tmpdir "$W3/design2" --findings-classification-out "$W3/out.tsv" --voter "Claude:$CLAUDE" >/dev/null
 ! grep -q stale "$W3/out.tsv" || fail "classification TSV was not overwritten"
 order=$(awk -F '\t' 'NR > 1 { print $1 }' "$W3/out.tsv" | paste -sd ' ' -)
 [[ "$order" == "FINDING_1 FINDING_2 FINDING_10 OOS_1 OOS_2 OOS_3" ]] || fail "unexpected row order: $order"
@@ -252,7 +252,7 @@ order=$(awk -F '\t' 'NR > 1 { print $1 }' "$W3/out.tsv" | paste -sd ' ' -)
 echo "=== default output path and shared header ==="
 W3D="$TMPROOT/case3-default"
 mkdir -p "$W3D/design"
-"$TALLY" --ballot-file "$W3/ballot.md" --design-tmpdir "$W3D/design" --voter "Claude:$CLAUDE" >/dev/null
+"${TALLY[@]}" --ballot-file "$W3/ballot.md" --design-tmpdir "$W3D/design" --voter "Claude:$CLAUDE" >/dev/null
 [[ -f "$W3D/design/plan-review/round-1/findings-classification.tsv" ]] || fail "default findings-classification path missing"
 read -r default_header < "$W3D/design/plan-review/round-1/findings-classification.tsv"
 [[ "$default_header" == "$HEADER" ]] || fail "default findings-classification header drifted"
@@ -325,7 +325,7 @@ W4S="$TMPROOT/case4-sanitize"
 mkdir -p "$W4S/design"
 write_ballot "$W4S/ballot.md"
 cp "$CLAUDE" "$W4S/claude-vote-output.txt"
-LARCH_REAL_CLI="$CLI" CLAUDE_PLUGIN_ROOT="$STUB_ROOT" "$TALLY" --ballot-file "$W4S/ballot.md" --design-tmpdir "$W4S/design" --findings-classification-out "$W4S/out.tsv" --voter "Claude:$W4S/claude-vote-output.txt" >/dev/null
+LARCH_PLAN_REVIEW_LEGACY_PYTHON_DIR="$STUB_ROOT/python" LARCH_REAL_CLI="$CLI" CLAUDE_PLUGIN_ROOT="$STUB_ROOT" "${TALLY[@]}" --ballot-file "$W4S/ballot.md" --design-tmpdir "$W4S/design" --findings-classification-out "$W4S/out.tsv" --voter "Claude:$W4S/claude-vote-output.txt" >/dev/null
 assert_cell "$W4S/out.tsv" FINDING_1 v1_quality "good with tab"
 assert_all_rows_21_fields "$W4S/out.tsv"
 
@@ -337,12 +337,12 @@ cp "$CLAUDE" "$W4/claude-vote-output.txt"
 cp "$CODEX" "$W4/codex-vote-output.txt"
 cp "$CURSOR" "$W4/cursor-vote-output.txt"
 set +e
-"$TALLY" --ballot-file "$W4/ballot.md" --design-tmpdir "$W4/design" --findings-classification-out "$W4/out.tsv" --voter "Claude:$W4/claude-vote-output.txt" --voter "Claude:$W4/claude-vote-output.txt" --voter "Cursor:$W4/cursor-vote-output.txt" >/dev/null 2>"$W4/dup.err"
+"${TALLY[@]}" --ballot-file "$W4/ballot.md" --design-tmpdir "$W4/design" --findings-classification-out "$W4/out.tsv" --voter "Claude:$W4/claude-vote-output.txt" --voter "Claude:$W4/claude-vote-output.txt" --voter "Cursor:$W4/cursor-vote-output.txt" >/dev/null 2>"$W4/dup.err"
 rc=$?
 set -e
 [[ "$rc" -ne 0 ]] || fail "duplicate canonical slot should fail"
 grep -Fq 'error: duplicate voter position 1' "$W4/dup.err" || fail "duplicate canonical slot diagnostic missing"
-"$TALLY" --ballot-file "$W4/ballot.md" --design-tmpdir "$W4/legacy-design2" --findings-classification-out "$W4/legacy2.tsv" --voter-files "$W4/claude-vote-output.txt" "$W4/codex-vote-output.txt" "$W4/cursor-vote-output.txt" >/dev/null 2>"$W4/legacy2.err"
+"${TALLY[@]}" --ballot-file "$W4/ballot.md" --design-tmpdir "$W4/legacy-design2" --findings-classification-out "$W4/legacy2.tsv" --voter-files "$W4/claude-vote-output.txt" "$W4/codex-vote-output.txt" "$W4/cursor-vote-output.txt" >/dev/null 2>"$W4/legacy2.err"
 assert_cell "$W4/legacy2.tsv" FINDING_1 v2_tool Codex
 assert_cell "$W4/legacy2.tsv" FINDING_1 v3_tool Cursor
 
@@ -352,14 +352,14 @@ mkdir -p "$W4M"
 write_ballot "$W4M/ballot.md"
 cp "$CLAUDE" "$W4M/claude-vote-output.txt"
 cp "$CURSOR" "$W4M/cursor-vote-output.txt"
-"$TALLY" --ballot-file "$W4M/ballot.md" --design-tmpdir "$W4M/design" --findings-classification-out "$W4M/out.tsv" --voter "Claude:$W4M/claude-vote-output.txt" --voter "Cursor:$W4M/cursor-vote-output.txt" >/dev/null
+"${TALLY[@]}" --ballot-file "$W4M/ballot.md" --design-tmpdir "$W4M/design" --findings-classification-out "$W4M/out.tsv" --voter "Claude:$W4M/claude-vote-output.txt" --voter "Cursor:$W4M/cursor-vote-output.txt" >/dev/null
 assert_cell "$W4M/out.tsv" FINDING_1 v1_tool Claude
 assert_cell "$W4M/out.tsv" FINDING_1 v2_tool ""
 assert_cell "$W4M/out.tsv" FINDING_1 v3_tool Cursor
 
 echo "=== argv diagnostics ==="
 set +e
-"$TALLY" --ballot-file "$W4/ballot.md" --design-tmpdir "$W4/bad1" --findings-classification-out "$W4/bad1.tsv" --voter "MainAgent:$W3/voter-main-agent.txt" --voter "Claude:$CLAUDE" 2>"$W4/bad1.err" >/dev/null
+"${TALLY[@]}" --ballot-file "$W4/ballot.md" --design-tmpdir "$W4/bad1" --findings-classification-out "$W4/bad1.tsv" --voter "MainAgent:$W3/voter-main-agent.txt" --voter "Claude:$CLAUDE" 2>"$W4/bad1.err" >/dev/null
 rc=$?
 set -e
 [[ "$rc" -ne 0 ]] || fail "MainAgent mixed with other voters should fail"
@@ -369,7 +369,7 @@ read -r bad1_header < "$W4/bad1.tsv"
 [[ "$(wc -l < "$W4/bad1.tsv" | tr -d ' ')" == "1" ]] || fail "bad MainAgent invocation TSV should contain header only"
 
 set +e
-"$TALLY" --ballot-file "$W4/ballot.md" --design-tmpdir "$W4/bad2" --findings-classification-out "$W4/bad2.tsv" --voter "Claude:$CLAUDE" --voter-files "$CODEX" 2>"$W4/bad2.err" >/dev/null
+"${TALLY[@]}" --ballot-file "$W4/ballot.md" --design-tmpdir "$W4/bad2" --findings-classification-out "$W4/bad2.tsv" --voter "Claude:$CLAUDE" --voter-files "$CODEX" 2>"$W4/bad2.err" >/dev/null
 rc=$?
 set -e
 [[ "$rc" -ne 0 ]] || fail "mixed --voter/--voter-files should fail"
@@ -377,7 +377,7 @@ grep -Fq 'error: --voter and --voter-files are mutually exclusive' "$W4/bad2.err
 [[ ! -e "$W4/bad2.tsv" ]] || fail "mutual exclusion invocation wrote TSV"
 
 set +e
-"$TALLY" --ballot-file "$W4/ballot.md" --design-tmpdir "$W4/bad3" --findings-classification-out "$W4/bad3.tsv" --voter "Robot:$CLAUDE" 2>"$W4/bad3.err" >/dev/null
+"${TALLY[@]}" --ballot-file "$W4/ballot.md" --design-tmpdir "$W4/bad3" --findings-classification-out "$W4/bad3.tsv" --voter "Robot:$CLAUDE" 2>"$W4/bad3.err" >/dev/null
 rc=$?
 set -e
 [[ "$rc" -ne 0 ]] || fail "invalid voter slot should fail"
@@ -385,21 +385,21 @@ grep -Fq 'error: invalid voter slot: Robot (must be 1|2|3|Claude|Codex|Cursor|Ma
 [[ ! -e "$W4/bad3.tsv" ]] || fail "invalid slot invocation wrote TSV"
 
 set +e
-"$TALLY" --ballot-file "$W4/ballot.md" --design-tmpdir "$W4/bad4" --findings-classification-out "$W4/bad4.tsv" --voter-files "$W4/claude-vote-output.txt" "$W4/claude-vote-output.txt" 2>"$W4/bad4.err" >/dev/null
+"${TALLY[@]}" --ballot-file "$W4/ballot.md" --design-tmpdir "$W4/bad4" --findings-classification-out "$W4/bad4.tsv" --voter-files "$W4/claude-vote-output.txt" "$W4/claude-vote-output.txt" 2>"$W4/bad4.err" >/dev/null
 rc=$?
 set -e
 [[ "$rc" -ne 0 ]] || fail "duplicate legacy slot should fail"
 grep -Fq 'error: duplicate voter position 1' "$W4/bad4.err" || fail "duplicate position diagnostic missing"
 
 echo "=== legacy deprecation path ==="
-"$TALLY" --ballot-file "$W4/ballot.md" --design-tmpdir "$W4/legacy-design" --findings-classification-out "$W4/legacy.tsv" --voter-files "$CLAUDE" "$CODEX" "$CURSOR" 2>"$W4/legacy.err" >/dev/null
+"${TALLY[@]}" --ballot-file "$W4/ballot.md" --design-tmpdir "$W4/legacy-design" --findings-classification-out "$W4/legacy.tsv" --voter-files "$CLAUDE" "$CODEX" "$CURSOR" 2>"$W4/legacy.err" >/dev/null
 grep -Fq 'deprecated: --voter-files; use --voter <SLOT>:<PATH>' "$W4/legacy.err" || fail "legacy deprecation warning missing"
 [[ -s "$W4/legacy.tsv" ]] || fail "legacy classification TSV missing"
 assert_all_rows_21_fields "$W4/legacy.tsv"
 
 echo "=== reverse-order main-agent misuse and legacy header ==="
 set +e
-"$TALLY" --ballot-file "$W4/ballot.md" --design-tmpdir "$W4/bad5" --findings-classification-out "$W4/bad5.tsv" --voter "Claude:$CLAUDE" --voter "MainAgent:$W3/voter-main-agent.txt" 2>"$W4/bad5.err" >/dev/null
+"${TALLY[@]}" --ballot-file "$W4/ballot.md" --design-tmpdir "$W4/bad5" --findings-classification-out "$W4/bad5.tsv" --voter "Claude:$CLAUDE" --voter "MainAgent:$W3/voter-main-agent.txt" 2>"$W4/bad5.err" >/dev/null
 rc=$?
 set -e
 [[ "$rc" -ne 0 ]] || fail "reverse-order MainAgent mix should fail"
@@ -416,7 +416,7 @@ mkdir -p "$W5"
 write_ballot "$W5/ballot.md"
 printf 'stale\nrow\n' > "$W5/out.tsv"
 set +e
-"$TALLY" --ballot-file "$W5/ballot.md" --design-tmpdir "$W5/design" --findings-classification-out "$W5/out.tsv" --voter "Claude:$W5/missing.txt" >/dev/null 2>"$W5/missing.err"
+"${TALLY[@]}" --ballot-file "$W5/ballot.md" --design-tmpdir "$W5/design" --findings-classification-out "$W5/out.tsv" --voter "Claude:$W5/missing.txt" >/dev/null 2>"$W5/missing.err"
 rc=$?
 set -e
 [[ "$rc" -ne 0 ]] || fail "missing voter should fail"
@@ -436,7 +436,7 @@ cat > "$W6/ballot.md" <<'EOF'
 - **Concern**: formula reviewer.
 EOF
 cp "$CLAUDE" "$W6/claude-vote-output.txt"
-"$TALLY" --ballot-file "$W6/ballot.md" --design-tmpdir "$W6/design" --findings-classification-out "$W6/out.tsv" --voter "Claude:$W6/claude-vote-output.txt" >/dev/null
+"${TALLY[@]}" --ballot-file "$W6/ballot.md" --design-tmpdir "$W6/design" --findings-classification-out "$W6/out.tsv" --voter "Claude:$W6/claude-vote-output.txt" >/dev/null
 reviewer_cell=$(cell "$W6/out.tsv" FINDING_1 finding_reviewers) || fail "missing formula reviewer row"
 [[ "$reviewer_cell" == "'="* ]] || fail "formula-prefixed reviewer cell was not escaped"
 

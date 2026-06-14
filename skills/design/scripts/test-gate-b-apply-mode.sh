@@ -6,7 +6,7 @@ export LARCH_QUIET_DISABLE=1
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd -P)"
 WRITE_RUN_PARAMS=(python3 "$ROOT/python/cli.py" session write-run-params)
 POSTPLAN="$ROOT/skills/design/scripts/design-postplan-emit.sh"
-GATE_B_DEDUP="$ROOT/skills/design/scripts/gate-b-dedup-plan.sh"
+CLI="$ROOT/python/cli.py"
 SETTLE="$ROOT/skills/design/scripts/design-step35-settle.sh"
 SKILL_MD="$ROOT/skills/design/SKILL.md"
 APPROVAL_GATES="$ROOT/skills/design/references/approval-gates.md"
@@ -15,7 +15,7 @@ fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 pass() { printf 'PASS: %s\n' "$1"; }
 
 bash -n "$POSTPLAN" || fail 'design-postplan-emit bash -n failed'
-bash -n "$GATE_B_DEDUP" || fail 'gate-b-dedup-plan bash -n failed'
+python3 -m py_compile "$ROOT/python/plan_review.py" || fail 'plan_review.py py_compile failed'
 bash -n "$SETTLE" || fail 'design-step35-settle bash -n failed'
 
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/tgbam.XXXXXX")
@@ -84,7 +84,7 @@ cat >"$D_APPLY/accepted-plan-findings.md" <<'EOF'
 - **Severity**: important
 - **Concern**: Plan needs an explicit retry constraint.
 EOF
-"$GATE_B_DEDUP" --design-tmpdir "$D_APPLY" --snapshot-trailers >/dev/null
+python3 "$CLI" plan-review gate-b-dedup --design-tmpdir "$D_APPLY" --snapshot-trailers >/dev/null
 {
   printf '%s\n' '# Plan'
   printf '%s\n' 'line 1'

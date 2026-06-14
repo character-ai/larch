@@ -157,7 +157,6 @@ case "${SITE:-}" in
   *) printf '%s\n' "design-step35-settle.sh: --site must be gate-b, gate-a, or discussion-round2" >&2; exit 2 ;;
 esac
 
-DEDUP_PLAN_SH="${DESIGN_STEP35_DEDUP_PLAN_SH:-$CLAUDE_PLUGIN_ROOT/skills/design/scripts/gate-b-dedup-plan.sh}"
 POSTPLAN_SH="${DESIGN_STEP35_POSTPLAN_SH:-$CLAUDE_PLUGIN_ROOT/skills/design/scripts/design-step2b-postplan.sh}"
 GATE_B_ROUND=""
 
@@ -179,7 +178,11 @@ fi
 
 if [ "$SITE" != gate-b ] || [ "$gate_b_skip_dedup" != true ]; then
   set +e
-  dedup_out=$("$DEDUP_PLAN_SH" --design-tmpdir "$DESIGN_TMPDIR" --dedup)
+  if [ -n "${DESIGN_STEP35_DEDUP_PLAN_SH:-}" ]; then
+    dedup_out=$("$DESIGN_STEP35_DEDUP_PLAN_SH" --design-tmpdir "$DESIGN_TMPDIR" --dedup)
+  else
+    dedup_out=$(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" plan-review gate-b-dedup --design-tmpdir "$DESIGN_TMPDIR" --dedup)
+  fi
   dedup_rc=$?
   set -e
   if [ -n "${dedup_out:-}" ]; then

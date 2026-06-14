@@ -16,6 +16,8 @@ this recipe.
 
 - **C1b review CLI façade (#3677)**: `python/review_pipeline.py`, `python/review_aggregate.py`, `python/review_tally.py`, and `python/compose_review.py` register the shipped `review` verbs but delegate runtime behavior to `python/legacy_review_shell/*.sh` via `run_legacy()`. Treat those Python modules as CLI entrypoints and contract relays, not as the implementation authority for scout framing, aggregation, tally, or JSONL redaction. Security and operator docs name the legacy shell scripts (or `python/cli.py review <verb>` with an explicit delegation note) until a follow-up issue ports the bodies in-process.
 
+- **C3a1 plan-review CLI façade (#3680)**: `python/plan_review.py` and `python/plan_review_panel.py` register the shipped `plan-review` verbs but delegate loop, tally, emit/finalize/preview, state, timing, Gate B dedup, panel dispatch, and voter dispatch to gzip-embedded retired bash via `_run_legacy()` / `_materialize_legacy_root()`. Treat those Python modules as CLI entrypoints and contract relays, not as the implementation authority for Step 3 loop bodies, panel dispatch, or voter dispatch until a follow-up issue ports them in-process. Operator docs should name `python/cli.py plan-review <verb>` (with an explicit delegation note where relevant) rather than deleted script paths.
+
 - **F2 session/state scope (#3668)**: invoke-style session/state helpers are now `python/session_env.py` under the `session` domain. Four sourced-only bash libraries are intentionally deferred because surviving bash still sources them: `scripts/lib-design-tmpdir.sh`, `scripts/lib-validate-meta-path.sh`, `skills/implement/scripts/lib-resolve-implement-tmpdir.sh`, and `scripts/lib-finalize-state-keys.sh` (follow-up tracked in #3780, blocked by the consumer-owning migration phases). `session_env.py` preserves per-verb emitter routing instead of applying a global fd-3 policy, keeps the cleanup tempdir predicate separate from the session-writer target validator and finalize cleanup gate, uses a dedicated hardcoded-home design-env symlink validator, and keeps `restore-finalize-state` on the 20-key bash allowlist until the final ship-pr bash sourcer is retired.
 
 ## Per-domain migration recipe
@@ -133,7 +135,7 @@ Release, audit-runs, combine-issues fetch/apply, and analyze-issues helper surfa
 
 - Added `python/plan_quality.py` under the existing `plan` CLI domain for command parsing, validation, plan-size checks, revision, auto-fix, optional trailers, and plan-goals composition.
 - Surviving Bash callers invoke `python3 python/cli.py plan ...` directly. No shim layer is added.
-- `lib-drift-baseline.sh` remains deferred. Plan-size inlines only the baseline env semantics it needs.
+- Drift baseline write-once moved to `python/cli.py plan-review drift-baseline` (sourced by `design-postplan-emit.sh`); see **C3a1 design plan-review cutover** below.
 - `plan validate` preserves `VALIDATE_LOG_FILE`: it writes `$DESIGN_TMPDIR/validate-plan-commands.log` when possible, otherwise a stable temp log.
 - `design-driver.sh` bootstraps `PLUGIN_ROOT` when `CLAUDE_PLUGIN_ROOT` is unset.
 - Step 3 keeps `RUN_STEP3_REVISE_PLAN_WITH_WATERFALL_SH` as an override while defaulting to `plan revise-waterfall`.
@@ -143,3 +145,11 @@ Release, audit-runs, combine-issues fetch/apply, and analyze-issues helper surfa
 ### C3c design decomposition and scout cutover
 
 The C3c slice moves /design decomposition helpers to `python/decompose.py`, dynamic archetype scouting to `python/plan_scout.py`, scope-anchor handoff and rendering to `python/rendering.py`, and the findings-classification TSV header to `python/voting.py`. `/review` dynamic scout dispatch and drafter `filter-manifest` callers now use direct `python/cli.py` verbs so the retired shell wrappers are not kept as shims.
+
+### C3a1 design plan-review cutover
+
+- The plan-review loop now enters through the `plan-review` CLI domain, split between `python/plan_review.py` for loop mechanics and `python/plan_review_panel.py` for panel and voter dispatch.
+- Bash wrappers call `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review ...` directly. `design-step3-review.sh` remains the process-group wrapper for Step 3.
+- **Gzip-shim façade (interim runtime):** most `plan-review` verbs still delegate through `_run_legacy()` to gzip-embedded retired bash bodies materialized at runtime (`EMBEDDED_LEGACY_REFS` in `python/plan_review.py`). Importable Python entrypoints exist for CLI routing, allowlist validation, drift-baseline write-once, round-artifact predicates, and `step3_record_report_evidence`; loop/tally/dispatch behavior remains bash until a follow-up in-process port lands. Regenerate embedded blobs from reviewable sources when absorbed bash behavior changes; `make lint-retired-scripts` guards deleted on-disk paths only.
+- `dedup-plan-lines.py` remains in place. The migration does not add a standalone `snapshot-plan-round` verb and does not migrate Step 3.6 assessor scripts.
+- `step3_record_report_evidence` moved into `python/plan_review.py`; `design-step3-review.sh` no longer sources the Step 3 loop controller on result-env read failure.

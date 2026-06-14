@@ -116,7 +116,7 @@ printf '%s\n' '---LARCH-REJECTED-END---'
 
 design_pause_check
 LARCH_TIMING_SKILL=design python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" timing mark "design Step 4b — gate C" || true
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-design-plan-preview.sh" \
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review preview \
   --design-tmpdir "$DESIGN_TMPDIR" \
   --variant gatec
 [ -f "$DESIGN_TMPDIR/.pause-save-complete" ] && exit 0

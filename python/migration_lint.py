@@ -9,11 +9,13 @@ Contract KV on stdout (fd 3 / contract_stream after quiet_init):
     LINT_STATUS=ok|findings
     RETIRED_PATHS=<count>
     RETIRED_REFS=<count of reference occurrences>
+    EMBEDDED_LEGACY_REFS=<count of gzip-embedded retired script identities>
 """
 
 from __future__ import annotations
 
 import argparse
+import ast
 import re
 import sys
 from pathlib import Path
@@ -26,6 +28,10 @@ _MANIFEST_DEFAULT = "python/migrated-scripts.tsv"
 _EXCLUSION_SEGMENTS = frozenset({"larch-logs"})
 _EXCLUSION_FILES = frozenset({"CHANGELOG.md"})
 _EXCLUSION_PATHS = frozenset({".claude-plugin/plugin.json"})
+_EMBEDDED_LEGACY_MODULES = (
+    "python/plan_review.py",
+    "python/plan_review_panel.py",
+)
 
 
 def _script_dir_refs(retired_path: str) -> tuple[str, ...]:
@@ -188,6 +194,51 @@ def _is_binary(path: Path) -> bool:
         return False
 
 
+def _tuple_literal_to_path(node: ast.AST) -> str | None:
+    if not isinstance(node, ast.Tuple):
+        return None
+    parts: list[str] = []
+    for elt in node.elts:
+        if not isinstance(elt, ast.Constant) or not isinstance(elt.value, str):
+            return None
+        parts.append(elt.value)
+    if not parts or not parts[-1].endswith(".sh"):
+        return None
+    return "/".join(parts)
+
+
+def _embedded_legacy_paths(root_path: Path) -> list[tuple[str, int, str]]:
+    """Return (rel_file, lineno, retired_path) for embedded legacy shim call sites."""
+    findings: list[tuple[str, int, str]] = []
+    seen: set[tuple[str, int, str]] = set()
+    for rel in _EMBEDDED_LEGACY_MODULES:
+        abs_path = root_path / rel
+        if not abs_path.is_file():
+            continue
+        text = abs_path.read_text(encoding="utf-8", errors="replace")
+        try:
+            tree = ast.parse(text, filename=str(abs_path))
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func_name = node.func.id if isinstance(node.func, ast.Name) else None
+            retired_path: str | None = None
+            if func_name in {"_run_legacy", "run_legacy_script"} and node.args:
+                retired_path = _tuple_literal_to_path(node.args[0])
+            elif func_name == "_p" and len(node.args) >= 2:  # noqa: PLR2004
+                retired_path = _tuple_literal_to_path(ast.Tuple(elts=node.args))
+            if retired_path is None:
+                continue
+            item = (rel, node.lineno, retired_path)
+            if item in seen:
+                continue
+            seen.add(item)
+            findings.append(item)
+    return findings
+
+
 def main(argv: list[str] | None = None) -> int:
     args_list = argv if argv is not None else sys.argv[1:]
     # Parse args BEFORE quiet_init so usage errors reach caller stdout/stderr.
@@ -213,6 +264,7 @@ def main(argv: list[str] | None = None) -> int:
         logging_util.emit_kv("LINT_STATUS", "ok")
         logging_util.emit_kv("RETIRED_PATHS", "0")
         logging_util.emit_kv("RETIRED_REFS", "0")
+        logging_util.emit_kv("EMBEDDED_LEGACY_REFS", "0")
         return 0
 
     manifest_rel = (
@@ -231,6 +283,7 @@ def main(argv: list[str] | None = None) -> int:
         logging_util.emit_kv("LINT_STATUS", "findings")
         logging_util.emit_kv("RETIRED_PATHS", str(len(retired)))
         logging_util.emit_kv("RETIRED_REFS", "0")
+        logging_util.emit_kv("EMBEDDED_LEGACY_REFS", "0")
         return 1
 
     result = proc.run(["git", "ls-files", "-z", "--", ".", ":(exclude)larch-logs/**"], cwd=str(root_path))
@@ -296,13 +349,26 @@ def main(argv: list[str] | None = None) -> int:
                     writer.emit(f"{rel}:{lineno}: references retired path {retired_path!r}")
                     ref_count += 1
 
+    embedded_findings = [
+        (rel, lineno, path)
+        for rel, lineno, path in _embedded_legacy_paths(root_path)
+        if path in retired_set
+    ]
+    for rel, lineno, retired_path in embedded_findings:
+        writer.emit(
+            f"{rel}:{lineno}: embedded legacy asset for retired path {retired_path!r}"
+        )
+    embedded_count = len(embedded_findings)
+
     if ref_count > 0:
         logging_util.emit_kv("LINT_STATUS", "findings")
         logging_util.emit_kv("RETIRED_PATHS", str(len(retired_set)))
         logging_util.emit_kv("RETIRED_REFS", str(ref_count))
+        logging_util.emit_kv("EMBEDDED_LEGACY_REFS", str(embedded_count))
         return 1
 
     logging_util.emit_kv("LINT_STATUS", "ok")
     logging_util.emit_kv("RETIRED_PATHS", str(len(retired_set)))
     logging_util.emit_kv("RETIRED_REFS", "0")
+    logging_util.emit_kv("EMBEDDED_LEGACY_REFS", str(embedded_count))
     return 0

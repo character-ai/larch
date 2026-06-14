@@ -167,13 +167,19 @@ run_direct_relevant_targets() {
                 ;;
         esac
         case "$f" in
-            skills/design/scripts/persist-retally-step3-env.sh|skills/design/scripts/persist-retally-step3-env.md|skills/design/scripts/test-persist-retally-step3-env.sh|skills/design/scripts/test-persist-retally-step3-env.md)
-                append_target_once test-persist-retally-step3-env
+            python/plan_review.py|python/test_plan_review.py)
+                append_target_once test-plan-review
                 ;;
         esac
         case "$f" in
-            skills/design/scripts/design-step3-state.sh|skills/design/scripts/design-step3-state.md|skills/design/scripts/test-design-step3-state.sh|skills/design/scripts/test-design-step3-state.md)
-                append_target_once test-design-step3-state
+            python/plan_review_panel.py|python/test_plan_review_panel.py)
+                append_target_once test-plan-review-panel
+                append_target_once test-dispatch-plan-voters
+                ;;
+        esac
+        case "$f" in
+            python/plan_review.py|python/test_plan_review.py)
+                append_target_once test-plan-review
                 ;;
         esac
         case "$f" in
@@ -201,8 +207,8 @@ run_direct_relevant_targets() {
                 ;;
         esac
         case "$f" in
-            python/plan_quality.py|python/test_plan_quality.py|skills/design/scripts/gate-b-dedup-plan.sh|skills/design/scripts/gate-b-dedup-plan.md|skills/design/scripts/test-gate-b-dedup-plan.sh|skills/design/scripts/test-gate-b-dedup-plan.md)
-                append_target_once test-gate-b-dedup-plan
+            python/plan_quality.py|python/test_plan_quality.py|python/plan_review.py|python/test_plan_review.py)
+                append_target_once test-plan-review
                 ;;
         esac
         case "$f" in
@@ -234,9 +240,9 @@ run_direct_relevant_targets() {
                 append_target_once test-stall-recovery-report
                 append_target_once test-file-failure-report-cross-repo
                 ;;
-            skills/design/scripts/review-design-step3-loop.sh|skills/design/scripts/review-design-step3-loop.md|skills/design/scripts/design-step3-review.sh|skills/design/scripts/design-step3-review.md|skills/design/scripts/test-design-step3-review.sh|skills/design/scripts/test-design-step3-review.md)
+            python/plan_review.py|skills/design/scripts/design-step3-review.sh|skills/design/scripts/design-step3-review.md|skills/design/scripts/test-design-step3-review.sh|skills/design/scripts/test-design-step3-review.md)
                 append_target_once test-design-step3-review
-                append_target_once test-run-step3-review
+                append_target_once test-plan-review
                 ;;
         esac
         case "$f" in
@@ -247,14 +253,14 @@ run_direct_relevant_targets() {
                 ;;
         esac
         case "$f" in
-            skills/design/scripts/plan-review-loop.sh|skills/design/scripts/plan-review-loop.md|skills/design/scripts/test-plan-review-loop.sh|skills/design/scripts/dedup-plan-lines.py|skills/design/scripts/dedup-plan-lines.md)
-                append_target_once test-plan-review-loop
+            python/plan_review.py|skills/design/references/plan-review.md|python/test_plan_review.py|skills/design/scripts/dedup-plan-lines.py|skills/design/scripts/dedup-plan-lines.md)
+                append_target_once test-plan-review
                 append_target_once test-design-step3-review
                 append_target_once test-design-multi-round-integration
                 ;;
         esac
         case "$f" in
-            python/plan_quality.py|python/test_plan_quality.py|skills/design/scripts/review-design-step3-loop.sh)
+            python/plan_quality.py|python/test_plan_quality.py|python/plan_review.py)
                 append_target_once test-revise-plan-with-waterfall
                 ;;
         esac
@@ -270,8 +276,8 @@ run_direct_relevant_targets() {
                 ;;
         esac
         case "$f" in
-            scripts/lib-design-round-artifacts.sh|scripts/lib-design-round-artifacts.md|scripts/test-lib-design-round-artifacts.sh)
-                append_target_once test-lib-design-round-artifacts
+            python/plan_review.py|python/test_plan_review.py)
+                append_target_once test-plan-review
                 append_target_once test-design-multi-round-integration
                 append_target_once test-design-log-publish
                 ;;
@@ -313,11 +319,11 @@ run_direct_relevant_targets() {
         esac
         case "$f" in
             python/rendering.py|python/test_rendering.py)
-                append_target_once test-plan-review-loop
-                append_target_once test-run-step3-review
+                append_target_once test-plan-review
+                append_target_once test-plan-review
                 append_target_once test-launch-claude-subprocess
                 append_target_once test-lib-scope-anchor-handoff
-                append_target_once test-dispatch-plan-voters
+                append_target_once test-plan-review-panel
                 append_target_once test-aggregate-findings
                 ;;
         esac
@@ -341,7 +347,7 @@ run_direct_relevant_targets() {
                 ;;
         esac
         case "$f" in
-            python/issue_wire.py|python/test_issue_wire.py|python/plan_quality.py|python/test_plan_quality.py|python/redact.py|python/gh.py|python/rendering.py|python/test_rendering.py|.claude/rules/gh-body-file.md|AGENTS.md|SECURITY.md|agent-lint.toml|docs/issue-anchored-plan.md|docs/linting.md|skills/design/scripts/test-design-publish.sh|skills/design/scripts/test-plan-review-scope-anchor.sh|skills/design/scripts/test-design-pause-resume.sh|scripts/test-legacy-title-prefix-literals-scope.sh)
+            python/issue_wire.py|python/test_issue_wire.py|python/plan_quality.py|python/test_plan_quality.py|python/redact.py|python/gh.py|python/rendering.py|python/test_rendering.py|.claude/rules/gh-body-file.md|AGENTS.md|SECURITY.md|agent-lint.toml|docs/issue-anchored-plan.md|docs/linting.md|skills/design/scripts/test-design-publish.sh|python/test_plan_review.py|skills/design/scripts/test-design-pause-resume.sh|scripts/test-legacy-title-prefix-literals-scope.sh)
                 maybe_append_py_lint_target
                 maybe_append_py_test_target
                 append_target_once test-design-structure

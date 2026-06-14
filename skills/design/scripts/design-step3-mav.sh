@@ -278,7 +278,7 @@ run_post_phase() {
         retally_rc=0
     else
         set +e
-        "$CLAUDE_PLUGIN_ROOT/skills/design/scripts/tally-plan-review.sh" \
+        python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" plan-review tally \
             --ballot-file "$DESIGN_TMPDIR/ballot.txt" \
             --design-tmpdir "$DESIGN_TMPDIR" \
             --voter "MainAgent:$DESIGN_TMPDIR/voter-main-agent.txt" \
@@ -303,7 +303,7 @@ run_post_phase() {
         --tally-plan-review-status "$retally_status"
         --loop-status complete
     )
-    "$CLAUDE_PLUGIN_ROOT/skills/design/scripts/persist-retally-step3-env.sh" "${persist_args[@]}"
+    python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" plan-review persist-retally-env "${persist_args[@]}"
     append_mav_warning_once "$artifact_round"
     accepted_count="$(count_accepted_findings)"
     if [ "$retally_status" = ok ]; then
@@ -313,7 +313,7 @@ run_post_phase() {
         fi
         if is_positive_int "$round_start_s"; then
             end_s="$(date +%s)"
-            "$CLAUDE_PLUGIN_ROOT/skills/design/scripts/record-plan-review-round-timing.sh" \
+            python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" plan-review record-round-timing \
                 --design-tmpdir "$DESIGN_TMPDIR" \
                 --round "$artifact_round" \
                 --start-s "$round_start_s" \

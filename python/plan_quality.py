@@ -21,6 +21,7 @@ from pathlib import Path
 from collections.abc import Iterable
 
 import agents
+import plan_review
 from issue_wire import emit_untrusted_file_block
 from logging_util import diagnostic, emit, emit_kv, quiet_init
 from redact import redact_secrets_only
@@ -1040,14 +1041,9 @@ def _unreadable_marker(design_tmpdir: Path) -> Path:
 
 
 def _drift_baseline_write_once(design_tmpdir: Path, plan_lines: int, diff_lines: int) -> bool:
-    baseline_path = _drift_baseline_path(design_tmpdir)
-    if baseline_path.exists():
-        return True
-    try:
-        _atomic_write(baseline_path, f"BASELINE_PLAN_LINES={plan_lines}\nBASELINE_DIFF_LINES={diff_lines}\n")
-    except OSError:
-        return False
-    return True
+    return (
+        plan_review.drift_baseline_write_once(design_tmpdir, str(plan_lines), str(diff_lines)) == 0
+    )
 
 
 def _ratio_token(current: int, baseline: int) -> str:
@@ -1866,7 +1862,12 @@ def auto_fix_plan_commands_main(argv: list[str]) -> int:
     fixed_by = ""
     final_status = "defects-found"
     dispatch_override = os.environ.get("LARCH_AUTOFIX_DISPATCH_SH")
-    gate_b = os.environ.get("LARCH_AUTOFIX_GATE_B_DEDUP_PLAN_SH", str(plugin / "skills" / "design" / "scripts" / "gate-b-dedup-plan.sh"))
+    gate_b_override = os.environ.get("LARCH_AUTOFIX_GATE_B_DEDUP_PLAN_SH")
+    gate_b_cmd = (
+        [gate_b_override]
+        if gate_b_override
+        else [sys.executable, str(plugin / "python" / "cli.py"), "plan-review", "gate-b-dedup"]
+    )
     validate_sh = os.environ.get("LARCH_AUTOFIX_VALIDATE_PLAN_SH")
     validator_cli = (
         [validate_sh, "--plan-file", str(plan), "--repo-root", str(validate_repo)]
@@ -1890,7 +1891,7 @@ def auto_fix_plan_commands_main(argv: list[str]) -> int:
         repo_before = run_dir / "repo-before.status-z"
         repo_after = run_dir / "repo-after.status-z"
         if plan.name == "plan.txt":
-            snapshot = subprocess.run([gate_b, "--design-tmpdir", str(design_tmpdir), "--snapshot-trailers"], capture_output=True, text=True, check=False)
+            snapshot = subprocess.run([*gate_b_cmd, "--design-tmpdir", str(design_tmpdir), "--snapshot-trailers"], capture_output=True, text=True, check=False)
             (run_dir / "trailer-snapshot.log").write_text(snapshot.stdout + snapshot.stderr, encoding="utf-8")
             if snapshot.returncode != 0:
                 shutil.copy2(backup, plan)
@@ -1936,7 +1937,7 @@ def auto_fix_plan_commands_main(argv: list[str]) -> int:
             final_status = "dispatch-failed"
             continue
         if plan.name == "plan.txt":
-            dedup = subprocess.run([gate_b, "--design-tmpdir", str(design_tmpdir), "--dedup"], check=False, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            dedup = subprocess.run([*gate_b_cmd, "--design-tmpdir", str(design_tmpdir), "--dedup"], check=False, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
             _atomic_write(run_dir / "dedup.log", dedup.stdout)
             if dedup.returncode != 0:
                 shutil.copy2(backup, plan)

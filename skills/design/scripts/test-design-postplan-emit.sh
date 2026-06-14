@@ -165,7 +165,6 @@ ln -sf "$REPO_ROOT/scripts/lib-design-tmpdir.sh" "$FAKE_SCRIPTS/lib-design-tmpdi
 ln -sf "$SCRIPT_DIR/lib-phase-driver.sh" "$FAKE_DESIGN/lib-phase-driver.sh"
 ln -sf "$SCRIPT_DIR/lib-plan-optional-trailers.sh" "$FAKE_DESIGN/lib-plan-optional-trailers.sh"
 ln -sf "$SCRIPT_DIR/lib-plan-optional-trailers.awk" "$FAKE_DESIGN/lib-plan-optional-trailers.awk"
-ln -sf "$SCRIPT_DIR/lib-drift-baseline.sh" "$FAKE_DESIGN/lib-drift-baseline.sh"
 
 cat >"$FAKE_DESIGN/design-driver.sh" <<'STUB'
 #!/usr/bin/env bash

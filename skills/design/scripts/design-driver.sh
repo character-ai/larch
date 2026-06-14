@@ -81,13 +81,13 @@ run_action() {
     shift
     case "$action" in
         EMIT_PLAN)
-            "$SCRIPT_DIR/emit-plan.sh" --design-tmpdir "$DESIGN_TMPDIR" "$@"
+            python3 "$PLUGIN_ROOT/python/cli.py" plan-review emit --design-tmpdir "$DESIGN_TMPDIR" "$@"
             ;;
         TALLY)
-            "$SCRIPT_DIR/tally-plan-review.sh" --design-tmpdir "$DESIGN_TMPDIR" "$@"
+            python3 "$PLUGIN_ROOT/python/cli.py" plan-review tally --design-tmpdir "$DESIGN_TMPDIR" "$@"
             ;;
         FINALIZE)
-            "$SCRIPT_DIR/finalize-plan.sh" --design-tmpdir "$DESIGN_TMPDIR" "$@"
+            python3 "$PLUGIN_ROOT/python/cli.py" plan-review finalize --design-tmpdir "$DESIGN_TMPDIR" "$@"
             ;;
         VALIDATE_PLAN_COMMANDS)
             export DESIGN_TMPDIR

@@ -18,7 +18,8 @@ paths:
   - "skills/research/references/validation-phase.md"
   - "python/review_pipeline.py"
   - "python/legacy_review_shell/dispatch-panel.sh"
-  - "skills/design/scripts/emit-design-plan-preview.sh"
+  - "python/plan_review.py"
+  - "python/plan_review_panel.py"
 ---
 
 # Topology Generation

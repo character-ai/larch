@@ -48,14 +48,14 @@ Only lowercase `true` and `false` are valid boolean values. When `mechanical_chu
 
 ## Callers
 
-- `check-plan-size.sh` — Step 2b.5 thresholds (`parse_plan_optional_metadata`).
-- `revise-plan-with-waterfall.sh` — revision preservation.
-- `plan-review-loop.sh` — review-loop snapshot/validate.
-- `gate-b-dedup-plan.sh` — `--snapshot-trailers` / `--dedup` (see `references/approval-gates.md`).
+- `python/cli.py plan check-size` — Step 2b.5 thresholds (`parse_plan_optional_metadata`).
+- `python/cli.py plan revise-waterfall` — revision preservation.
+- `python/plan_review.py` — review-loop snapshot/validate.
+- `python/cli.py plan-review gate-b-dedup` — `--snapshot-trailers` / `--dedup` (see `references/approval-gates.md`).
 
 ## Harnesses
 
 - `test-trailer-awk.sh` — direct awk unit coverage (contract: `test-trailer-awk.md`).
 - `test-trailer-helpers.sh` — combined harness (`test-trailer-dedup.sh`, `test-trailer-has-any.sh`, `test-trailer-validate.sh`, `test-trailer-awk.sh`).
-- `test-gate-b-dedup-plan.sh` — integration coverage for `gate-b-dedup-plan.sh`.
-- `test-check-plan-size.sh` — plan-size integration.
+- `python/test_plan_review.py` — integration coverage for `plan-review gate-b-dedup`.
+- `python/test_plan_quality.py` — plan-size integration.

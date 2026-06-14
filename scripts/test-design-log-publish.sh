@@ -591,6 +591,9 @@ printf 'round 1\n2\n' >"$TMP/design/timing-ledger.tsv"
 printf 'scout dynamic prompt\n' >"$TMP/design/scout-dynamic-archetypes-prompt.md"
 printf 'before-revise plan\n' >"$TMP/design/plan.txt.before-revise"
 printf 'composed plan body\n' >"$TMP/design/composed-plan.md"
+printf 'REASON=operator-facing escalation text\n' >"$TMP/design/design-failure-escalation-record-failure.env"
+printf 'ok\n' >"$TMP/design/design-failure-escalation-success.env"
+: >"$TMP/design/.step3-report-tally-error.recorded"
 # aggregator-output same as findings.md → should be skipped
 printf '### FINDING_1:\nbody\n' >"$TMP/design/findings.md"
 printf '### FINDING_1:\nbody\n' >"$TMP/design/aggregator-output.txt"
@@ -709,6 +712,9 @@ for denied in \
     "scout-dynamic-archetypes-prompt.md" \
     "plan.txt.before-revise" \
     "composed-plan.md" \
+    "design-failure-escalation-record-failure.env" \
+    "design-failure-escalation-success.env" \
+    ".step3-report-tally-error.recorded" \
     "aggregator-output.txt" \
     "issue-body.txt" \
     "issue.json" \

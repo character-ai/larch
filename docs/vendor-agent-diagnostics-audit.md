@@ -51,7 +51,7 @@ below.
 | `scripts/design-log-publish.sh` | — | — | ✅ design | **D** | Stages `*.failure-diag` (redacted); denies raw `*.sidecar.history` / `*.raw.cursor` / `*.raw.claude` / `scout-plan-manifest.json.raw.*`. |
 | `python/run_logs.py` | — | — | ✅ implement | **D** | `vendor-failure-diagnostics .txt replace none` slug. |
 | `python/cli.py run-log` | — | — | ✅ implement | **D** | Keeps `*.failure-diag` / `*.sidecar.history` / `*.events.history` denied in `round_artifact_included` (batch is the sole durable path; F14). |
-| `scripts/lib-design-round-artifacts.sh` | ✅ | — | ✅ design | **D** | Preserves `*.failure-diag` in plan-review round snapshots. |
+| `python/plan_review.py` | ✅ | — | ✅ design | **D** | Preserves `*.failure-diag` in plan-review round snapshots. |
 | `skills/implement/scripts/step-7a.sh` | — | — | ✅ | **D** | Pre-ship flush of the vendor-failure batch. |
 | `python/cli.py run-log flush` | — | — | ✅ | **D** | Commit-tail flush. |
 | `python/cli.py run-log refresh` | — | — | ✅ | **D** | CI-retry / rebase pre-push flush. |
@@ -62,7 +62,7 @@ below.
 | `python/cli.py agent launch-cursor-ci` | ✅ inherit | ✅ backstop | R batch | **I/R** | As codex CI launcher. |
 | `python/cli.py agent launch-claude-ci` | ✅ inherit | ✅ backstop | R batch | **I/R** | Direct-Claude CI lane via `python3 python/cli.py agent launch-claude-subprocess` (carrier saved). |
 | `python/cli.py agent launch-codex-exec` | ✅ inherit | ✅ backstop | R batch | **I/R** | Wrapper path inherits; preflight/no-wrapper exits are a residual carrier gap. |
-| `scripts/dispatch-plan-voters.sh` | ✅ inherit | ✅ backstop | R batch | **I/R** | Voter launches inherit the carrier; dropped-slot give-up batch append is residual. |
+| `python/cli.py plan-review voter-dispatch` | ✅ inherit | ✅ backstop | R batch | **I/R** | Voter launches inherit the carrier; dropped-slot give-up batch append is residual. |
 | `scripts/dispatch-code-voters.sh` | ✅ inherit | ✅ backstop | R batch | **I/R** | As plan voters. |
 | `scripts/dispatch-with-waterfall.sh` | ✅ inherit | ✅ backstop | R batch | **I/R** | Waterfall dropped-slot output-path exposure is residual. |
 | `python/cli.py review-and-fix apply-findings` | ✅ inherit | ✅ backstop | R batch | **I/R** | `run_coder_dispatch_*` give-up inherits; per-tool sink + batch append is residual. |

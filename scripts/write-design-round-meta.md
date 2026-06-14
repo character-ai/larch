@@ -48,8 +48,8 @@ Usage errors exit `2`; missing or malformed best-effort inputs exit `0` after
 writing the best metadata possible (no exit `1` for absent `plan-review-slots.ndjson`
 — the helper writes `total_slot_count: 0` and proceeds). JSON emission uses `jq`
 when available and falls back to Python stdlib JSON. Harness coverage is indirect
-through `skills/design/scripts/test-plan-review-loop.sh`,
-`skills/design/scripts/test-persist-retally-step3-env.sh`, and
+through `python/test_plan_review.py`,
+`python/test_plan_review.py`, and
 `scripts/test-render-review-phase-detail.sh`.
 
 ## Security OOS holdback semantics

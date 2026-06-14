@@ -265,7 +265,7 @@ printf 'Could not resolve host: example.invalid\n' > "${OUT_T1_CODEX}.diag"
 printf 'Review prompt\n' > "${OUT_T1_CODEX}.prompt"
 {
     printf 'TOOL=codex\n'
-    printf 'TIMEOUT=2\n'
+    printf 'TIMEOUT=10\n'
     printf 'CAPTURE_STDOUT=false\n'
     printf 'CAPTURE_STDOUT_ONLY=false\n'
     printf 'OUTPUT_FILE=%s\n' "$OUT_T1_CODEX"

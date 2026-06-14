@@ -145,14 +145,25 @@ replay_warn_error "$SOURCE_PATH"
 
 # Delegate KV parsing to phase_driver_read_result_env, then quote_single-encode
 # each value to produce sourceable output.
-: >"$output_tmp" || exit 1
-while IFS= read -r _rre_pair || [ -n "$_rre_pair" ]; do
-    _rre_key="${_rre_pair%%=*}"
-    _rre_value="${_rre_pair#*=}"
-    printf '%s=' "$_rre_key" >>"$output_tmp" || exit 1
-    quote_single "$_rre_value" >>"$output_tmp" || exit 1
-    printf '\n' >>"$output_tmp" || exit 1
-done < <(phase_driver_read_result_env "$SOURCE_PATH" "${ALLOW_KEYS_ARRAY[@]}")
+_rre_write_allowlisted_pairs() {
+    local _source="$1"
+    : >"$output_tmp" || return 1
+    while IFS= read -r _rre_pair || [ -n "$_rre_pair" ]; do
+        _rre_key="${_rre_pair%%=*}"
+        _rre_value="${_rre_pair#*=}"
+        printf '%s=' "$_rre_key" >>"$output_tmp" || return 1
+        quote_single "$_rre_value" >>"$output_tmp" || return 1
+        printf '\n' >>"$output_tmp" || return 1
+    done < <(phase_driver_read_result_env "$_source" "${ALLOW_KEYS_ARRAY[@]}")
+    return 0
+}
+
+_rre_write_allowlisted_pairs "$SOURCE_PATH" || exit 1
+if [ ! -s "$output_tmp" ] && [ "$PRIMARY_KIND" = "regular" ] && [ -n "$FALLBACK_INPUT" ] && [ -f "$FALLBACK_INPUT" ] && [ ! -L "$FALLBACK_INPUT" ]; then
+    SOURCE_PATH="$FALLBACK_INPUT"
+    replay_warn_error "$SOURCE_PATH"
+    _rre_write_allowlisted_pairs "$SOURCE_PATH" || exit 1
+fi
 
 if ! mv "$output_tmp" "$OUTPUT_PATH"; then
     exit 1

@@ -6,8 +6,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=skills/design/scripts/lib-phase-driver.sh
 source "$SCRIPT_DIR/lib-phase-driver.sh"
-# shellcheck source=skills/design/scripts/lib-drift-baseline.sh
-source "$SCRIPT_DIR/lib-drift-baseline.sh"
 larch_quiet_init
 
 fail() {
@@ -275,7 +273,9 @@ _postplan_emit_size_trigger_section() {
 _postplan_snapshot_drift_baseline() {
     [[ "$SNAPSHOT_ORIGINAL" == true ]] || return 0
     [[ -n "${PLAN_LINES:-}" && -n "${DIFF_LINES:-}" ]] || return 0
-    larch_drift_baseline_write_once "$DESIGN_TMPDIR" "$PLAN_LINES" "$DIFF_LINES" || true
+    if ! python3 "$PLUGIN_ROOT/python/cli.py" plan-review drift-baseline write-once --design-tmpdir "$DESIGN_TMPDIR" --plan-lines "$PLAN_LINES" --diff-lines "$DIFF_LINES"; then
+        WARN_LINES+=("**⚠ design-postplan-emit: drift-baseline snapshot failed; proceeding without baseline.**")
+    fi
 }
 
 _postplan_emit_partition_section() {

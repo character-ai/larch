@@ -87,6 +87,19 @@ design_source_env_optional() {
 
 design_source_env_optional
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/run-step3-review.sh" \
+_step3_entry_tmpdir_allowed=0
+if python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); from session_env import validate_design_tmpdir; ok, _ = validate_design_tmpdir(sys.argv[2]); sys.exit(0 if ok else 1)' \
+    "${CLAUDE_PLUGIN_ROOT}/python" "$DESIGN_TMPDIR" 2>/dev/null; then
+  _step3_entry_tmpdir_allowed=1
+fi
+if [[ "$_step3_entry_tmpdir_allowed" -eq 1 && -d "$DESIGN_TMPDIR" && -e "$DESIGN_TMPDIR/.step3-entry-plan-printed" ]]; then
+  exit 0
+fi
+_preview_out="$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review preview \
   --design-tmpdir "$DESIGN_TMPDIR" \
-  --preview-only
+  --variant step3)"
+printf '%s
+' "$_preview_out"
+if [[ -d "$DESIGN_TMPDIR" && "$_preview_out" == *'## Plan Candidate for Review'* ]]; then
+  touch "$DESIGN_TMPDIR/.step3-entry-plan-printed" || true
+fi

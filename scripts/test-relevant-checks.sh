@@ -694,11 +694,11 @@ assert_stdout_contains "3j1e: routes design-driver harness" "$RUN_OUT" "test-des
 
 REPO_3J1F="$TMPROOT/repo-gate-b-dedup"
 STUB_3J1F="$TMPROOT/stub-gate-b-dedup"
-setup_plan_quality_survivor_repo "$REPO_3J1F" "skills/design/scripts/gate-b-dedup-plan.sh"
+setup_plan_quality_survivor_repo "$REPO_3J1F" "python/plan_review.py"
 make_stub_dir "$STUB_3J1F" present absent
 run_checks "$REPO_3J1F" "$(controlled_path "$STUB_3J1F")"
 assert_exit_eq "3j1f: gate-b-dedup change exits 0" "$RUN_EXIT" 0
-assert_stdout_contains "3j1f: routes gate-b-dedup harness" "$RUN_OUT" "test-gate-b-dedup-plan"
+assert_stdout_contains "3j1f: routes plan-review harness" "$RUN_OUT" "test-plan-review"
 
 REPO_3J1G="$TMPROOT/repo-design-step2b5"
 STUB_3J1G="$TMPROOT/stub-design-step2b5"

@@ -10,7 +10,8 @@ PLAN_REVIEW_MD="$REPO_ROOT/skills/design/references/plan-review.md"
 APPROVAL_MD="$REPO_ROOT/skills/design/references/approval-gates.md"
 DISCUSSION_MD="$REPO_ROOT/skills/design/references/discussion-rounds.md"
 FILE_OOS_MD="$REPO_ROOT/skills/design/scripts/file-design-oos.md"
-RUN_STEP3_SH="$REPO_ROOT/skills/design/scripts/run-step3-review.sh"
+RUN_STEP3_SH="$REPO_ROOT/python/plan_review.py"
+CLI_PY="$REPO_ROOT/python/cli.py"
 FLAGS_MD="$REPO_ROOT/skills/design/references/flags.md"
 BRAINSTORM_MD="$REPO_ROOT/skills/design/references/brainstorm.md"
 DECOMPOSE_PANEL_MD="$REPO_ROOT/skills/design/references/decompose-panel.md"
@@ -267,7 +268,7 @@ assert_wrapper_contract_pins() {
   contains "$SCRIPT_DIR/design-step5c.sh" 'STEP5C_STATUS=validator-defects' 'Step 5c wrapper missing validator-defect handoff'
   contains "$SCRIPT_DIR/design-step5c.sh" 'CLEANUP_ELIGIBLE=' 'Step 5c wrapper missing cleanup eligibility sidecar field'
   contains "$SCRIPT_DIR/design-step3-review.sh" 'STEP3_REVIEW_LOOP_STATUS=' 'Step 3 review wrapper missing loop status emit'
-  contains "$SCRIPT_DIR/design-step3-gate-b-bypass.sh" 'design-step3-state.sh' 'Gate B bypass wrapper missing state helper delegation'
+  contains "$SCRIPT_DIR/design-step3-gate-b-bypass.sh" 'plan-review step3-state' 'Gate B bypass wrapper missing state helper delegation'
   contains "$SCRIPT_DIR/design-step3-continuation-entry.sh" 'auto-continuation-entry' 'Step 3 continuation wrapper missing auto-continuation entry'
   contains "$SCRIPT_DIR/design-step0-abort-cleanup.sh" 'session cleanup-tmpdir' 'Step 0 abort-cleanup wrapper missing tmpdir cleanup'
   contains "$SCRIPT_DIR/design-step0-parse.sh" 'step0-parsed-' 'Step 0 parse wrapper missing parsed env persistence'
@@ -339,8 +340,8 @@ assert_wrapper_contract_pins() {
   contains "$SCRIPT_DIR/design-step5c.sh" 'STEP=design-step5c' 'Step 5c wrapper missing marker step id'
   contains "$SCRIPT_DIR/design-step5c.sh" 'design_bg_wait_marker_start design-step5c || true' 'Step 5c wrapper missing fail-soft bg wait marker call'
   contains "$SCRIPT_DIR/design-step-final-summary.sh" 'pause-requested' 'Final summary wrapper missing pause-check before bg wait marker'
-  contains "$SCRIPT_DIR/plan-review-loop.sh" '$DESIGN_TMPDIR/plan-review/round-${round_num}/reviewer-status.tsv' 'plan-review-loop missing round reviewer status artifact'
-  contains "$SCRIPT_DIR/plan-review-loop.sh" '$DESIGN_TMPDIR/latest-reviewer-status.tsv' 'plan-review-loop missing latest reviewer status artifact'
+  contains "$REPO_ROOT/python/plan_review.py" 'reviewer-status.tsv' 'plan_review missing round reviewer status artifact'
+  contains "$REPO_ROOT/python/plan_review.py" 'latest-reviewer-status.tsv' 'plan_review missing latest reviewer status artifact'
 }
 
 assert_no_consecutive_executable_script_call_fences() {
@@ -460,7 +461,7 @@ assert_degraded_tools_gate_fence() {
   contains "$SCRIPT_DIR/design-step0-route.sh" '--issue-number' 'Step 0 route wrapper missing verbal issue-number handoff arg'
   contains "$SCRIPT_DIR/design-step0-init.sh" '.design-step0-route-state.env' 'Step 0 init wrapper missing route state sidecar read'
   contains "$SCRIPT_DIR/design-step0-init.sh" 'read-result-env.sh' 'Step 0 init wrapper missing safe route state sidecar read'
-  contains "$SCRIPT_DIR/design-step3-entry-state.sh" 'design-step3-state.sh' 'Step 3 entry-state wrapper missing state helper call'
+  contains "$SCRIPT_DIR/design-step3-entry-state.sh" 'plan-review step3-state' 'Step 3 entry-state wrapper missing state helper call'
   contains "$SCRIPT_DIR/design-step5b-prepare.sh" 'STEP5B_NEEDS_ANNOTATE=true' 'Step 5b prepare wrapper missing annotate recovery handoff'
   contains "$SKILL_MD" 'STEP0_STATUS' 'SKILL missing STEP0_STATUS consume prose'
   contains "$SCRIPT_DIR/design-step3-entry.sh" '.pause-save-complete' 'Step 3 combined entry wrapper missing pause-save stop guard'
@@ -488,11 +489,11 @@ assert_wrapper_pause_before_work() {
   for entry in \
     'design-step0-route.sh:gh issue view' \
     'design-step0-init.sh:design-init-runparams.sh' \
-    'design-step3-entry-state.sh:design-step3-state.sh' \
+    'design-step3-entry-state.sh:plan-review step3-state' \
     'design-step3b-sanitize.sh:mermaid sanitize' \
     'design-step3b-entry.sh:architecture-diagram.skipped' \
     'design-step3b-tail.sh:design Step 4 — rejected findings' \
-    'design-step35-settle.sh:gate-b-dedup-plan.sh'
+    'design-step35-settle.sh:plan-review gate-b-dedup'
   do
     wrapper="${entry%%:*}"
     label="${entry#*:}"
@@ -517,11 +518,12 @@ assert_reference_updates() {
   ! grep -Fq 'with the canonical session-env / pause prelude' "$APPROVAL_MD" \
     || fail 'approval-gates.md must not instruct a separate postplan pause prelude'
   contains "$APPROVAL_MD" 'design-step5c.sh --skip-validate' 'approval-gates.md missing Step 5c skip-validate wrapper reference'
-  contains "$APPROVAL_MD" 'emit-design-plan-preview.sh --design-tmpdir "$DESIGN_TMPDIR" --variant full' 'approval-gates.md missing Gate C full-plan helper reference'
-  contains "$SKILL_MD" 'emit-design-plan-preview.sh --design-tmpdir "$DESIGN_TMPDIR" --variant full' 'SKILL.md missing Gate C full-plan helper reference'
-  contains "$SCRIPT_DIR/emit-design-plan-preview.sh" 'step3|gatec|step2b|full' 'emit-design-plan-preview.sh usage missing full variant'
-  contains "$SCRIPT_DIR/emit-design-plan-preview.sh" 'full)' 'emit-design-plan-preview.sh missing full case'
-  contains "$SCRIPT_DIR/emit-design-plan-preview.sh" 'cat "$design_tmpdir/plan.txt"' 'emit-design-plan-preview.sh full variant must emit complete plan'
+  contains "$APPROVAL_MD" 'python/cli.py plan-review preview --design-tmpdir "$DESIGN_TMPDIR" --variant full' 'approval-gates.md missing Gate C full-plan helper reference'
+  contains "$SKILL_MD" 'python/cli.py plan-review preview --design-tmpdir "$DESIGN_TMPDIR" --variant full' 'SKILL.md missing Gate C full-plan helper reference'
+  contains "$CLI_PY" '("plan-review", "preview")' 'cli.py missing plan-review preview registry'
+  contains "$RUN_STEP3_SH" '"full": "**⚠ 4b: DESIGN_TMPDIR missing or invalid; cannot present final design plan**"' 'plan_review.py preview facade missing full variant missing-dir warning'
+  contains "$RUN_STEP3_SH" '"full": "**⚠ 4b: DESIGN_TMPDIR not under allowlist; cannot present final design plan**"' 'plan_review.py preview facade missing full variant allowlist warning'
+  contains "$RUN_STEP3_SH" 'emit-design-plan-preview.sh"), argv)' 'plan_review.py preview facade missing embedded full-plan helper delegation'
   ! grep -Fq 'cat `$DESIGN_TMPDIR/plan.txt`' "$APPROVAL_MD" \
     || fail 'approval-gates.md must use full-plan helper instead of raw Gate C cat'
   ! grep -Fq 'both paths `cat` `$DESIGN_TMPDIR/plan.txt`' "$SKILL_MD" \
@@ -757,7 +759,7 @@ assert_wrapper_fence_ordering() {
   local wrapper first_line second_line
   wrapper='design-step3-entry-state.sh'
   first_line=$(grep -nF 'design-pause-save.sh' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)
-  second_line=$(grep -nF 'design-step3-state.sh' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)
+  second_line=$(grep -nF 'plan-review step3-state' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)
   (( first_line < second_line )) || fail "$wrapper must pause-check before direct-review state mutation"
 
   wrapper='design-step3b-tail.sh'
@@ -883,7 +885,7 @@ assert_design_failure_reporting_contract
 assert_no_direct_step3b_step4_routes 'SKILL Step 3b slice' "$SKILL_MD" '<!-- step:3b' '<!-- step:4 —'
 assert_no_direct_step3b_step4_routes 'SKILL Step 3/Gate-B-bypass slice' "$SKILL_MD" '<!-- step:3 —' '<!-- step:3.5'
 assert_no_direct_step3b_step4_routes 'approval-gates.md' "$APPROVAL_MD"
-assert_no_direct_step3b_step4_routes 'run-step3-review.sh' "$RUN_STEP3_SH"
+assert_no_direct_step3b_step4_routes 'plan_review.py' "$RUN_STEP3_SH"
 assert_no_direct_step3b_step4_routes 'plan-review.md' "$PLAN_REVIEW_MD"
 assert_no_direct_step3b_step4_routes 'flags.md' "$FLAGS_MD"
 assert_compact_reviewer_table_step3_scoped

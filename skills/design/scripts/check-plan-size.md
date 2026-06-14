@@ -12,7 +12,7 @@ Mechanical plan-size detector for `/design` **Step 2b.5** (issue #2670). Runtime
 Validates `$DESIGN_TMPDIR` via `validate_design_tmpdir` after the required-arg check, before reading `$DESIGN_TMPDIR/plan.txt`; failure maps to argv exit 3 (rc 2 remains reserved for `PLAN_SIZE_STATUS=missing-*`).
 
 - Plan file MUST exist (otherwise exit **2**, `PLAN_SIZE_STATUS=missing-plan` on the contract stream — see **Exit codes**).
-- The **final non-empty line** MUST match `emit-plan.sh` grammar: the literal prefix `diff_lines:` followed by **exactly one ASCII space** and then ASCII digits only to end-of-line — same rule as `skills/design/scripts/emit-plan.sh` (`case "$last_line" in diff_lines:\ *)` + digit validation). Tabs, multiple spaces after the colon, or other whitespace variants are rejected so the helper never accepts a trailer `emit-plan.sh` would refuse.
+- The **final non-empty line** MUST match `python/cli.py plan-review emit` grammar: the literal prefix `diff_lines:` followed by **exactly one ASCII space** and then ASCII digits only to end-of-line — same rule as `python/cli.py plan-review emit` (`case "$last_line" in diff_lines:\ *)` + digit validation). Tabs, multiple spaces after the colon, or other whitespace variants are rejected so the helper never accepts a trailer `plan-review emit` would refuse.
 - **Plan body line count (`PLAN_LINES`)** is the number of physical lines **before** that final non-empty trailer line (blank lines count; the trailer line itself is excluded), **minus** any recognized optional metadata trailer lines in the final contiguous metadata block immediately above `diff_lines:` (see below). Legacy plans without optional trailers keep the same `PLAN_LINES` as before.
 
 ### Optional metadata trailers (final block only)
@@ -38,7 +38,7 @@ Parsing rules (implemented in `plan_quality.parse_optional_metadata`; CLI surfac
 
 ## Output contract (`emit_kv` on FD 3)
 
-After `larch_quiet_init` from [`scripts/lib-quiet.sh`](../../../scripts/lib-quiet.md), machine-readable lines use `emit_kv` on **FD 3** (quiet session) or **stdout** when `LARCH_QUIET_DISABLE=1` — same capture pattern as `emit-plan.sh` / `test-emit-plan.sh`.
+After `larch_quiet_init` from [`scripts/lib-quiet.sh`](../../../scripts/lib-quiet.md), machine-readable lines use `emit_kv` on **FD 3** (quiet session) or **stdout** when `LARCH_QUIET_DISABLE=1` — same capture pattern as `python/cli.py plan-review emit` / `python/test_plan_review.py`.
 
 Emitted keys (exit **0** only):
 
@@ -86,8 +86,8 @@ If the baseline file is a symlink, missing either key, or contains a non-integer
 
 **Site-aware retained hard prompts**: initial/discussion Step 2b.5 uses Split/Cancel only; Gate B, use Split/Override/Cancel.
 
-Merged mode treats rc 2/3 nonfatally in the driver; `plan-review-loop.sh` uses the same warn-and-continue contract and gates `partition_requested` handoff on plan-size rc=0.
+Merged mode treats rc 2/3 nonfatally in the driver; `python/plan_review.py` uses the same warn-and-continue contract and gates `partition_requested` handoff on plan-size rc=0.
 
 ## Edit in sync
 
-Update [`python/test_plan_quality.py`](../../../python/test_plan_quality.py), [`test-check-plan-size.md`](test-check-plan-size.md), [`lib-plan-optional-trailers.md`](lib-plan-optional-trailers.md), `Makefile` (`test-check-plan-size`), `design-postplan-emit.sh`, `design-postplan-emit.md`, `plan-review-loop.sh`, `skills/design/references/flags.md`, and `skills/design/SKILL.md` Step 2b / 2b.5 when changing thresholds or contracts.
+Update [`python/test_plan_quality.py`](../../../python/test_plan_quality.py), [`test-check-plan-size.md`](test-check-plan-size.md), [`lib-plan-optional-trailers.md`](lib-plan-optional-trailers.md), `Makefile` (`test-check-plan-size`), `design-postplan-emit.sh`, `design-postplan-emit.md`, `python/plan_review.py`, `skills/design/references/flags.md`, and `skills/design/SKILL.md` Step 2b / 2b.5 when changing thresholds or contracts.

@@ -19,7 +19,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Timer
@@ -1543,6 +1543,7 @@ def run_external_agent(
     output: str,
     timeout_seconds: int,
     cmd: Sequence[str],
+    env: Mapping[str, str] | None = None,
     capture_stdout: bool = False,
     capture_stdout_only: bool = False,
     stderr_sink: str = "",
@@ -1631,6 +1632,7 @@ def run_external_agent(
             proc_obj = subprocess.Popen(  # pylint: disable=consider-using-with
                 list(cmd),
                 cwd=cwd,
+                env=env,
                 stdin=stdin,
                 stdout=stdout_target,
                 stderr=stderr_target,
@@ -2143,6 +2145,7 @@ def _run_external_agent_with_auth_retries(
     output: Path,
     timeout_seconds: int,
     cmd: Sequence[str],
+    env: Mapping[str, str] | None = None,
     cwd: str | None = None,
     capture_stdout_only: bool = False,
     stdout_path: Path | None = None,
@@ -2160,6 +2163,7 @@ def _run_external_agent_with_auth_retries(
                 output=str(output),
                 timeout_seconds=timeout_seconds,
                 cmd=cmd,
+                env=env,
                 cwd=cwd,
                 capture_stdout_only=capture_stdout_only,
                 stdout_path=stdout_path,
@@ -2392,27 +2396,22 @@ def launch_codex_exec_main(argv: list[str] | None = None) -> int:
             "--",
             prompt,
         ]
-        env_old = os.environ.get("CODEX_HOME")
-        os.environ["CODEX_HOME"] = home
+        env = dict(os.environ)
+        env["CODEX_HOME"] = home
         start = time.time()
-        try:
-            events = output.with_suffix(output.suffix + ".events.jsonl")
-            sidecar = output.with_suffix(output.suffix + ".sidecar")
-            result = _run_external_agent_with_auth_retries(
-                tool="codex",
-                output=output,
-                timeout_seconds=int(args.timeout, 10),
-                cmd=child,
-                cwd=str(workdir),
-                stdout_path=events,
-                stderr_path=sidecar,
-            )
-            launcher_exit = result.exit_code
-        finally:
-            if env_old is None:
-                os.environ.pop("CODEX_HOME", None)
-            else:
-                os.environ["CODEX_HOME"] = env_old
+        events = output.with_suffix(output.suffix + ".events.jsonl")
+        sidecar = output.with_suffix(output.suffix + ".sidecar")
+        result = _run_external_agent_with_auth_retries(
+            tool="codex",
+            output=output,
+            timeout_seconds=int(args.timeout, 10),
+            cmd=child,
+            env=env,
+            cwd=str(workdir),
+            stdout_path=events,
+            stderr_path=sidecar,
+        )
+        launcher_exit = result.exit_code
         end = time.time()
         events = output.with_suffix(output.suffix + ".events.jsonl")
         if not events.is_file() or events.stat().st_size == 0:

@@ -277,7 +277,7 @@ it is fail-closed:
   parent-directory TOCTOU the leaf recheck left open). The guard runs in all
   three subtree staging loops (`plan-review/`, `render-cache/`, `.completed/`).
 - Top-level round files must match `^round-[1-9][0-9]*/[A-Za-z0-9._+-]+$` and pass
-  `design_round_artifact_included(basename)` from `scripts/lib-design-round-artifacts.sh`,
+  `design_round_artifact_included(basename)` from `python/plan_review.py`,
   OR be known-excluded per `design_artifact_excluded(basename)` (silently skipped).
   `plan.txt` for round ≥ 2 is skipped before the inclusion check; `plan.diff` is
   generated and staged by the publisher after the main round-file loop.
@@ -287,9 +287,9 @@ it is fail-closed:
 - Any other path under `plan-review/` emits `larch_err` and `PUBLISH_OK=false`.
 - Round numbers are positive integers with no leading zero; `round-0` and `round-01` are rejected.
 
-Edit-in-sync: any allowlist change updates `lib-design-round-artifacts.sh`, this doc,
-`plan-review-loop.md`, `scripts/lib-design-round-artifacts.md`, and
-`scripts/test-lib-design-round-artifacts.sh` in the same change. The current
+Edit-in-sync: any allowlist change updates `python/plan_review.py`, this doc,
+`scripts/design-log-publish.sh`, and
+`python/test_plan_review.py` in the same change. The current
 `round-N/revise/` has an empty include set.
 
 Allowed files are staged through the same trim/redact pipeline as other design
