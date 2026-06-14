@@ -9,14 +9,11 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import pytest
 
 import agents
-
-if TYPE_CHECKING:
-    import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CLI = REPO_ROOT / "python" / "cli.py"
