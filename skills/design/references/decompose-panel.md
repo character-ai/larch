@@ -207,7 +207,7 @@ On `gh` or redactor failure, the helper appends via `python/cli.py run-log appen
 - **Cancel paths** — already covered in §4 / §6.
 - **Retry exhaustion**: §2 second `panel-failed` stages `failed-judge-panel` via `design-stage-terminal-state.sh`, exports `SUMMARY_OUTCOME=failed-judge-panel`, runs the **Final summary block**, exits **1**, and preserves tmpdir.
 
-**Non-exiting Split returns** (Refine, no-split Continue, and retained decomposition paths): merged `--with-plan-size` callers and retained decomposition callers MUST `mkdir -p "$DESIGN_TMPDIR/.completed"` and write/update `: > "$DESIGN_TMPDIR/.completed/step-2b.5"` before returning to Gate A or continuing. Initial-site merged Split entry and non-exiting return also write `: > "$DESIGN_TMPDIR/.completed/step-2b"`. Retained **Refine** returns route to Gate A or an explicit pause/refine re-entry — do not silently short-circuit to Step 3b when refinement re-entry is required.
+**Non-exiting Split returns** (Refine, no-split Continue, and retained decomposition paths): merged `--with-plan-size` callers and retained decomposition callers MUST run `design-step2b-postplan.sh --write-completion-only` before returning to Gate A or continuing. Initial-site merged Split entry and non-exiting return add `--include-step2b` when both Step 2b and Step 2b.5 are complete. Retained **Refine** returns route to Gate A or an explicit pause/refine re-entry — do not silently short-circuit to Step 3b when refinement re-entry is required.
 
 ---
 

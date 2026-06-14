@@ -711,4 +711,69 @@ grep -q -- '--design-tmpdir' "$D_PY/revise-waterfall-spy.log" || fail 'default p
 grep -q -- '--round-num' "$D_PY/revise-waterfall-spy.log" || fail 'default path should pass round-num to revise-waterfall'
 
 
+
+
+echo '=== design-step3-review wrapper rejects invalid resume state before writes ==='
+WRAPPER="$ROOT/skills/design/scripts/design-step3-review.sh"
+D_WRAP="$TMP/wrapper-invalid"
+write_common "$D_WRAP"
+printf '1\n' >"$D_WRAP/review-round-count.txt"
+set +e
+out=$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$ROOT" DESIGN_TMPDIR="$D_WRAP" ISSUE_NUMBER=9 \
+  "$WRAPPER" --starting-round 3 --phase awaiting-continuation 2>&1)
+rc=$?
+set -e
+[[ "$rc" -eq 2 ]] || fail "wrapper impossible starting round rc=$rc: $out"
+contains "$out" 'cannot exceed last consumed review round + 1' 'wrapper rejects impossible starting round'
+[[ ! -e "$D_WRAP/.step3-round-3.phase" ]] || fail 'impossible starting round wrote phase state'
+
+set +e
+out=$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$ROOT" DESIGN_TMPDIR="$D_WRAP" ISSUE_NUMBER=9 \
+  "$WRAPPER" --starting-round 1 --phase awaiting-vote 2>&1)
+rc=$?
+set -e
+[[ "$rc" -eq 2 ]] || fail "wrapper awaiting-vote rc=$rc: $out"
+contains "$out" 'awaiting-vote is internal' 'wrapper rejects awaiting-vote'
+[[ ! -e "$D_WRAP/.step3-round-1.phase" ]] || fail 'awaiting-vote wrote phase state'
+
+set +e
+out=$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$ROOT" DESIGN_TMPDIR="$D_WRAP" ISSUE_NUMBER=9 \
+  "$WRAPPER" --phase awaiting-continuation 2>&1)
+rc=$?
+set -e
+[[ "$rc" -eq 2 ]] || fail "wrapper missing starting-round rc=$rc: $out"
+contains "$out" 'resume-state flags require --starting-round' 'wrapper requires starting round for resume flags'
+
+OUTSIDE="$TMP/outside-findings.md"
+printf 'outside\n' >"$OUTSIDE"
+set +e
+out=$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$ROOT" DESIGN_TMPDIR="$D_WRAP" ISSUE_NUMBER=9 \
+  "$WRAPPER" --starting-round 1 --findings-file "$OUTSIDE" 2>&1)
+rc=$?
+set -e
+[[ "$rc" -eq 2 ]] || fail "wrapper outside findings rc=$rc: $out"
+contains "$out" 'must resolve under DESIGN_TMPDIR' 'wrapper rejects outside findings file'
+[[ ! -e "$D_WRAP/.gate-b-per-round-approval-round-1.env" ]] || fail 'outside findings wrote env state'
+
+mkdir -p "$D_WRAP/subdir"
+printf 'inside\n' >"$D_WRAP/subdir/inside-findings.md"
+ln -s "$D_WRAP/subdir/inside-findings.md" "$D_WRAP/symlink-findings.md"
+set +e
+out=$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$ROOT" DESIGN_TMPDIR="$D_WRAP" ISSUE_NUMBER=9 \
+  "$WRAPPER" --starting-round 1 --findings-file "$D_WRAP/symlink-findings.md" 2>&1)
+rc=$?
+set -e
+[[ "$rc" -eq 2 ]] || fail "wrapper symlink findings rc=$rc: $out"
+contains "$out" 'must not be a symlink' 'wrapper rejects symlink findings file'
+[[ ! -e "$D_WRAP/.gate-b-per-round-approval-round-1.env" ]] || fail 'symlink findings wrote env state'
+
+mkdir -p "$D_WRAP/findings-dir"
+set +e
+out=$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$ROOT" DESIGN_TMPDIR="$D_WRAP" ISSUE_NUMBER=9 \
+  "$WRAPPER" --starting-round 1 --findings-file "$D_WRAP/findings-dir" 2>&1)
+rc=$?
+set -e
+[[ "$rc" -eq 2 ]] || fail "wrapper nonregular findings rc=$rc: $out"
+contains "$out" 'must be a regular file' 'wrapper rejects non-regular findings file'
+[[ ! -e "$D_WRAP/.gate-b-per-round-approval-round-1.env" ]] || fail 'nonregular findings wrote env state'
 printf 'PASS: test-review-design-step3-loop.sh\n'

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Wrapper for a `/design` Bash block that keeps `skills/design/SKILL.md` free of inline Bash.
+Wrapper for the legacy heuristic Step 3 continuation entry path.
 
 ## Primary callers
 
@@ -11,7 +11,9 @@ Wrapper for a `/design` Bash block that keeps `skills/design/SKILL.md` free of i
 ## Invariants
 
 - Accepts `--session-env-path` from the prompt-side Bash call.
-- Accepts `--claude-pid` when the wrapped logic must refresh session state.
+- Validates `DESIGN_TMPDIR` after sourcing env.
+- Clears `$DESIGN_TMPDIR/.step3-entry-plan-printed` before pause-save so legacy heuristic continuation owns preview cleanup.
+- Delegates state hygiene to `design-step3-state.sh --auto-continuation-entry` after pause-save.
 - Does not derive the root Claude PID from `$PPID` internally.
 
 ## Harness

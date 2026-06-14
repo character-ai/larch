@@ -26,16 +26,20 @@ For round `N`, `$DESIGN_TMPDIR/.step3-round-N.phase` records one of:
 - `awaiting-apply` — review/tally has completed; accepted findings have not been applied.
 - `awaiting-revise` — the reviser is running or was interrupted before a confirmed apply.
 - `awaiting-post-apply` — the reviser applied findings; mechanical dedup/postplan must settle.
-- `awaiting-postplan-operator` — in-loop postplan returned rc 10/13/14; prompt-side operator handling is required. Non-plan-changing Override/Continue writes `$DESIGN_TMPDIR/.postplan-operator-continue-N` before resume; the loop consumes the marker, promotes to `awaiting-continuation`. **rc=12 (plan-size trigger) is now handled inline as warn-and-continue**, promoting directly to `awaiting-continuation` without surfacing `postplan-operator-required`.
+- `awaiting-postplan-operator` — in-loop postplan returned rc 10/13/14; prompt-side operator handling is required. Non-plan-changing Override/Continue resumes through `design-step3-review.sh --starting-round N --postplan-operator-continue`; the wrapper writes the marker before pause-save, and the loop consumes it once, promoting to `awaiting-continuation`. **rc=12 (plan-size trigger) is now handled inline as warn-and-continue**, promoting directly to `awaiting-continuation` without surfacing `postplan-operator-required`.
 - `awaiting-continuation` — apply/postplan is settled; only `plan-review-continuation.sh` runs.
 
-Prompt-side bail-outs resume through the wrapper fence:
+Prompt-side bail-outs resume through the launcher-owned wrapper that writes validated resume state before pause-save when a state flag is present:
 
 ```bash
-design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND"
+design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --phase awaiting-continuation
+design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --phase awaiting-apply
+design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --phase awaiting-post-apply
+design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --findings-file "<path>"
+design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --postplan-operator-continue
 ```
 
-The wrapper forwards to `run-step3-review.sh --mode loop --starting-round <round>`. `run-step3-review.sh` validates that a resume for an already consumed round has phase evidence and rejects starts beyond the next unconsumed round.
+Calls without resume-state flags preserve first-entry pause behavior. Calls with resume-state flags also resume the review loop after state write and pause-save. Callers must not split a migrated phase, findings env, or postplan continue write and the following review resume into two wrapper calls. The wrapper forwards to `run-step3-review.sh --mode loop --starting-round <round>`. `run-step3-review.sh` validates that a resume for an already consumed round has phase evidence and rejects starts beyond the next unconsumed round.
 
 ## Apply pipeline
 
