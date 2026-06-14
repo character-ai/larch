@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import html
 import contextlib
+import concurrent.futures
 import json
 import os
 import platform
@@ -1332,6 +1333,25 @@ def _nonnegative_float_env(name: str, default: float) -> float:
     return value if value >= 0 else default
 
 
+def _check_reviewers_under_wall_clock_deadline(
+    deadline_seconds: int,
+    **kwargs: object,
+) -> tuple[CheckReviewersResult | None, bool]:
+    def _run() -> CheckReviewersResult:
+        mod = sys.modules[__name__]
+        return mod.check_reviewers(**kwargs)
+
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    future = pool.submit(_run)
+    try:
+        result = future.result(timeout=deadline_seconds)
+        pool.shutdown(wait=False, cancel_futures=True)
+        return result, False
+    except concurrent.futures.TimeoutError:
+        pool.shutdown(wait=False, cancel_futures=True)
+        return None, True
+
+
 def _external_health_gate(tool: str) -> tuple[bool, str]:
     if tool not in {"codex", "cursor"}:
         return True, ""
@@ -1353,12 +1373,15 @@ def _external_health_gate(tool: str) -> tuple[bool, str]:
         if attempt:
             gate_env["LARCH_PROBE_TTL_SECONDS"] = "0"
         try:
-            result = check_reviewers(
+            result, wall_timed_out = _check_reviewers_under_wall_clock_deadline(
+                timeout,
                 skip_codex_probe=tool == "cursor",
                 skip_cursor_probe=tool == "codex",
                 probe_timeout_seconds=timeout,
-                env=gate_env,
+                env={**os.environ, **gate_env},
             )
+            if wall_timed_out or result is None:
+                return False, f"health-probe timed out after {timeout}s"
             stdout = "\n".join(result.kv_lines())
             stderr = ""
         except Exception as exc:
