@@ -255,6 +255,11 @@ assert_wrapper_contract_pins() {
   contains "$SCRIPT_DIR/design-step3b-tail.sh" '.completed/step-4' 'Step 3b tail wrapper missing step-4 sentinel write'
   contains "$SCRIPT_DIR/design-step5c.sh" '${SKIP_VALIDATE:+--skip-validate}' 'Step 5c wrapper missing skip-validate reentry flag'
   contains "$SCRIPT_DIR/design-step5c.sh" '.design-step5c-status.env' 'Step 5c wrapper missing status sidecar write'
+  contains "$SCRIPT_DIR/design-clarify.sh" '--phase fetch|publish' 'Clarify wrapper missing two-phase usage'
+  contains "$SCRIPT_DIR/design-clarify.sh" 'clarify comment-fetch' 'Clarify wrapper missing comment-fetch helper call'
+  contains "$SCRIPT_DIR/design-clarify.sh" '.design-step0-route-state.env' 'Clarify wrapper missing route-state repo fallback'
+  contains "$SCRIPT_DIR/design-clarify.sh" 'PUBLISH_OK=false' 'Clarify wrapper missing fail-closed publish status'
+  contains "$SCRIPT_DIR/design-clarify.sh" '--state designing' 'Clarify wrapper missing designing rename'
   contains "$SCRIPT_DIR/design-step6-cleanup.sh" '.design-step5c-status.env' 'Step 6 cleanup wrapper missing Step 5c status sidecar read'
   contains "$SCRIPT_DIR/design-step5b-prepare.sh" 'STEP5B_STATUS=' 'Step 5b prepare wrapper missing STEP5B_STATUS handoff'
   contains "$SCRIPT_DIR/design-step5b-annotate.sh" 'step-5b' 'Step 5b annotate wrapper missing step-5b sentinel write'
@@ -693,7 +698,11 @@ assert_behavioral_harness_pins() {
 
 
 assert_design_failure_reporting_contract() {
-  contains "$SKILL_MD" 'design-step0-clarify-hard-halt.sh' 'Step 0b clarify hard fail must stage failed-clarify'
+  contains "$SKILL_MD" 'design-clarify.sh --phase fetch --issue "$ISSUE_NUMBER"' 'Step 0b clarify fetch must use launcher wrapper'
+  contains "$SKILL_MD" 'design-clarify.sh --phase publish --issue "$ISSUE_NUMBER"' 'Step 0b clarify publish must use launcher wrapper'
+  contains "$SKILL_MD" 'stages `failed-clarify`' 'Step 0b clarify fetch failure must stage failed-clarify'
+  contains "$SKILL_MD" '$DESIGN_TMPDIR/clarify-plan.md' 'Step 0b clarify must use separate plan artifact'
+  contains "$SKILL_MD" '$DESIGN_TMPDIR/clarify-response.md' 'Step 0b clarify must use separate response artifact'
   contains "$SKILL_MD" 'Clarify operator cancel remains `operator-action` or `cancelled-clarify`' 'Step 0b clarify cancel must remain operator action or cancelled-clarify'
   contains "$SKILL_MD" 'export `SUMMARY_OUTCOME` to one of `cancelled-already-planned` | `cancelled-clarify` | `cancelled-decompose` | `cancelled-outline` | `cancelled-plan-size` | `cancelled-sprawl` | `cancelled-title-filter` | `approved` | `approved-partition` | `failed-plan-write` | `failed-publish` | `failed-clarify` | `failed-postplan` | `failed-judge-panel` | `failed-publish-tail`' 'SUMMARY_OUTCOME enumeration must include design failure outcomes'
   contains "$SKILL_MD" 'On the second `PANEL_STATUS=panel-failed`, Split-path stages `failed-judge-panel` through `design-stage-terminal-state.sh`' 'Step 2b.5 second panel-failed must stage failed-judge-panel'

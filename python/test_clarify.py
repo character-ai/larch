@@ -152,6 +152,65 @@ def test_missing_repo_resolves_with_gh_repo_view() -> None:
     assert runner.calls[0] == ["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"]
 
 
+def test_comment_fetch_writes_request_body_without_stdout_body(tmp_path: Path) -> None:
+    out_file = tmp_path / "request.md"
+    payload = _comments(
+        "<!-- larch:clarify-request id=1 -->\nsecret question\nline two",
+        "<!-- larch:clarify-response id=1 -->\nold response",
+        "<!-- larch:clarify-request id=2 -->\nlatest question",
+    )
+    runner = RecordingRunner(responses=[_result(stdout=payload)])
+    result = clarify.clarify_comment_fetch(runner, "7", "2", str(out_file), repo="o/r")
+    assert result == clarify.ClarifyCommentFetchResult(
+        fetched=True,
+        comment_id="3",
+        body_file=str(out_file),
+    )
+    assert out_file.read_text(encoding="utf-8") == "latest question"
+
+
+def test_comment_fetch_cli_emits_file_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    out_file = tmp_path / "request.md"
+    runner = RecordingRunner(
+        responses=[_result(stdout=_comments("<!-- larch:clarify-request id=1 -->\nquestion body"))]
+    )
+    monkeypatch.setattr(clarify, "proc", runner)
+    monkeypatch.setattr(clarify.logging_util, "quiet_init", lambda **_: None)
+    rc = clarify.clarify_comment_fetch_main(
+        ["--issue", "7", "--id", "1", "--out", str(out_file), "--repo", "o/r"]
+    )
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "FETCHED=true" in out
+    assert "BODY_FILE=" in out
+    assert "question body" not in out
+    assert out_file.read_text(encoding="utf-8") == "question body"
+
+
+def test_comment_fetch_missing_request_cli_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    out_file = tmp_path / "request.md"
+    runner = RecordingRunner(
+        responses=[_result(stdout=_comments("<!-- larch:clarify-request id=1 -->\nquestion body"))]
+    )
+    monkeypatch.setattr(clarify, "proc", runner)
+    monkeypatch.setattr(clarify.logging_util, "quiet_init", lambda **_: None)
+    rc = clarify.clarify_comment_fetch_main(
+        ["--issue", "7", "--id", "2", "--out", str(out_file), "--repo", "o/r"]
+    )
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "FAILED=true" in out
+    assert not out_file.exists()
+
+
 def test_empty_repo_resolution_cli_fails(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     runner = RecordingRunner(responses=[_result(rc=1, stderr="no repo")])
     monkeypatch.setattr(clarify, "proc", runner)

@@ -177,6 +177,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("ship", "design-log"): ("design_log_ship", "main"),
     ("ship", "pr"): ("ship", "main"),
     ("clarify", "state"): ("clarify", "clarify_state_main"),
+    ("clarify", "comment-fetch"): ("clarify", "clarify_comment_fetch_main"),
     ("clarify", "comment-post"): ("clarify", "clarify_comment_post_main"),
     ("clarify", "label"): ("clarify", "clarify_label_main"),
     ("progress", "report"): ("progress_report", "report_main"),
