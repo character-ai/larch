@@ -439,6 +439,7 @@ def test_step2_dispatch_git_add_failure_bails(repo: Path, tmp_path: Path, monkey
     def fake_run(argv, **kwargs):  # type: ignore[no-untyped-def]
         if len(argv) >= 4 and argv[0:3] == [implement_dispatch.GIT_BIN, "-C", str(repo)] and argv[3] == "add":
             return subprocess.CompletedProcess(argv, 1, "", "index.lock")
+        kwargs.setdefault("check", False)
         return real_run(argv, **kwargs)
 
     monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
