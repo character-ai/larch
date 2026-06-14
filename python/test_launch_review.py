@@ -767,9 +767,12 @@ def test_cursor_empty_result_retries_with_lock_when_enabled(tmp_path: Path, monk
             output.write_text('{"result":"ok","usage":{"inputTokens":1,"outputTokens":2}}\n', encoding="utf-8")
         return agents.RunExternalAgentResult(0, output)
 
+    def fake_release(_state: agents.SerialLockState) -> None:
+        return None
+
     monkeypatch.setenv("LARCH_CURSOR_RETRY_EMPTY_RESULT", "1")
     monkeypatch.setattr(agents, "external_serial_lock_acquire", fake_acquire)
-    monkeypatch.setattr(agents, "external_serial_lock_release_after", lambda _state: None)
+    monkeypatch.setattr(agents, "external_serial_lock_release_after", fake_release)
     monkeypatch.setattr(agents, "run_external_agent", fake_run)
     _result, _auth_attempt, transient_attempt = agents._review_run_with_retries(
         tool="cursor",
@@ -796,9 +799,12 @@ def test_cursor_empty_result_skips_retry_when_disabled(tmp_path: Path, monkeypat
         output.write_text('{"result":"","usage":{"inputTokens":1,"outputTokens":0}}\n', encoding="utf-8")
         return agents.RunExternalAgentResult(0, output)
 
+    def fake_release(_state: agents.SerialLockState) -> None:
+        return None
+
     monkeypatch.setenv("LARCH_CURSOR_RETRY_EMPTY_RESULT", "0")
     monkeypatch.setattr(agents, "external_serial_lock_acquire", fake_acquire)
-    monkeypatch.setattr(agents, "external_serial_lock_release_after", lambda _state: None)
+    monkeypatch.setattr(agents, "external_serial_lock_release_after", fake_release)
     monkeypatch.setattr(agents, "run_external_agent", fake_run)
     _result, _auth_attempt, transient_attempt = agents._review_run_with_retries(
         tool="cursor",
