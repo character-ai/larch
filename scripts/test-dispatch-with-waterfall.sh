@@ -939,6 +939,13 @@ if kill -0 "$term_phase_pid" 2>/dev/null; then
     exit 1
 fi
 term_phase_pid=""
+if kill -0 "$term_stub_pid" 2>/dev/null; then
+    _term_trap_leftover_cleanup
+    echo "FAIL: term-trap cursor stub launcher still alive after dispatcher TERM" >&2
+    exit 1
+fi
+kill -KILL "$term_stub_pid" 2>/dev/null || true
+wait "$term_stub_pid" 2>/dev/null || true
 term_stub_pid=""
 
 echo "PASS: test-dispatch-with-waterfall.sh"
