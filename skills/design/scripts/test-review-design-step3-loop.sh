@@ -94,6 +94,51 @@ run_loop() {
 
 contains() { case "$1" in *"$2"*) ;; *) fail "$3 (missing $2; got ${1:0:400})" ;; esac; }
 
+write_record_timing_stub() {
+    local dir="$1" log="$2" stub
+    stub="$dir/record-timing-stub.sh"
+    cat >"$stub" <<EOFSTUB
+#!/usr/bin/env bash
+set -euo pipefail
+round=""; start_s=""; end_s=""
+while [[ \$# -gt 0 ]]; do
+  case "\$1" in
+    --round) round="\${2:?}"; shift 2 ;;
+    --start-s) start_s="\${2:?}"; shift 2 ;;
+    --end-s) end_s="\${2:?}"; shift 2 ;;
+    --design-tmpdir) shift 2 ;;
+    *) shift ;;
+  esac
+done
+printf '%s\t%s\t%s\n' "\$round" "\$start_s" "\$end_s" >>"$log"
+EOFSTUB
+    chmod +x "$stub"
+    printf '%s\n' "$stub"
+}
+
+run_loop_recording() {
+    local dir="$1" round_stub="$2" record_stub="$3"
+    env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$ROOT" \
+      RUN_STEP3_PLAN_REVIEW_LOOP_SH="$round_stub" \
+      RUN_STEP3_REVISE_PLAN_WITH_WATERFALL_SH="$dir/revise-ok.sh" \
+      RUN_STEP3_DEDUP_PLAN_SH="$dir/dedup-ok.sh" \
+      RUN_STEP3_POSTPLAN_EMIT_SH="$dir/postplan-ok.sh" \
+      RUN_STEP3_CONTINUATION_SH="$dir/continue-stop.sh" \
+      RUN_STEP3_RECORD_TIMING_SH="$record_stub" \
+      "$LAUNCHER" --design-tmpdir "$dir" --mode loop --starting-round 1
+}
+
+assert_timing_record() {
+    local log="$1" expected_start="$2" label="$3" round start_s end_s
+    [[ -s "$log" ]] || fail "$label should record timing"
+    [[ "$(wc -l <"$log" | tr -d ' ')" == 1 ]] || fail "$label should write exactly one timing record"
+    IFS=$'\t' read -r round start_s end_s <"$log"
+    [[ "$round" == 1 ]] || fail "$label timing round should be 1"
+    [[ "$start_s" == "$expected_start" ]] || fail "$label timing start should use persisted round-start-s"
+    case "$end_s" in ''|*[!0-9]*) fail "$label timing end should be numeric" ;; esac
+    (( 10#$end_s >= 10#$expected_start )) || fail "$label timing end should be >= start"
+}
+
 write_envelope_stub() {
     local dir="$1" body="$2" stub
     stub="$dir/envelope-stub.sh"
@@ -296,6 +341,29 @@ contains "$out" 'STEP3_REVIEW_LOOP_STATUS=postplan-failed' 'postplan hard failur
 contains "$out" 'POSTPLAN_RC=1' 'postplan hard failure rc'
 
 
+echo '=== post-apply postplan-failed records persisted round-start timing ==='
+D_POST_FAIL_TIMING="$TMP/postplan-hard-fail-timing"
+write_common "$D_POST_FAIL_TIMING"
+write_ok_stubs "$D_POST_FAIL_TIMING"
+mkdir -p "$D_POST_FAIL_TIMING/plan-review/round-1"
+printf '123\n' >"$D_POST_FAIL_TIMING/plan-review/round-1/round-start-s"
+cat >"$D_POST_FAIL_TIMING/postplan-ok.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+exit 1
+STUB
+chmod +x "$D_POST_FAIL_TIMING/postplan-ok.sh"
+printf 'awaiting-post-apply\n' >"$D_POST_FAIL_TIMING/.step3-round-1.phase"
+: >"$D_POST_FAIL_TIMING/.gate-b-postapply-ready-1"
+printf '1\n' >"$D_POST_FAIL_TIMING/review-round-count.txt"
+timing_log="$D_POST_FAIL_TIMING/timing-records.tsv"
+record_stub="$(write_record_timing_stub "$D_POST_FAIL_TIMING" "$timing_log")"
+round_stub="$(write_round_stub "$D_POST_FAIL_TIMING" 'exit 99')"
+out="$(run_loop_recording "$D_POST_FAIL_TIMING" "$round_stub" "$record_stub")"
+contains "$out" 'STEP3_REVIEW_LOOP_STATUS=postplan-failed' 'postplan hard failure timing envelope'
+assert_timing_record "$timing_log" 123 'postplan hard failure'
+
+
 echo '=== postplan-operator continue marker resumes at continuation ==='
 D_OP_CONT="$TMP/postplan-operator-continue"
 write_common "$D_OP_CONT"
@@ -315,6 +383,43 @@ out="$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$RO
 contains "$out" 'STEP3_REVIEW_LOOP_STATUS=complete' 'postplan-operator continue completes'
 [[ ! -f "$D_OP_CONT/.postplan-operator-continue-1" ]] || fail 'continue marker should be consumed'
 [[ "$(cat "$D_OP_CONT/.step3-round-1.phase")" == awaiting-continuation ]] || fail 'continue marker should advance phase'
+
+
+echo '=== postplan-operator continue marker failure records persisted round-start timing ==='
+D_OP_FAIL="$TMP/postplan-operator-continue-fail"
+write_common "$D_OP_FAIL"
+write_ok_stubs "$D_OP_FAIL"
+mkdir -p "$D_OP_FAIL/plan-review/round-1"
+printf '456\n' >"$D_OP_FAIL/plan-review/round-1/round-start-s"
+printf 'awaiting-postplan-operator\n' >"$D_OP_FAIL/.step3-round-1.phase"
+: >"$D_OP_FAIL/.gate-b-postapply-ready-1"
+: >"$D_OP_FAIL/.postplan-operator-continue-1"
+printf '1\n' >"$D_OP_FAIL/review-round-count.txt"
+timing_log="$D_OP_FAIL/timing-records.tsv"
+record_stub="$(write_record_timing_stub "$D_OP_FAIL" "$timing_log")"
+fake_bin="$D_OP_FAIL/fake-bin"
+mkdir -p "$fake_bin"
+cat >"$fake_bin/rm" <<'STUB'
+#!/usr/bin/env bash
+for arg in "$@"; do
+  case "$arg" in
+    *.postplan-operator-continue-1) exit 1 ;;
+  esac
+done
+exec /bin/rm "$@"
+STUB
+chmod +x "$fake_bin/rm"
+round_stub="$(write_round_stub "$D_OP_FAIL" 'exit 99')"
+out="$(PATH="$fake_bin:$PATH" env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$ROOT" \
+  RUN_STEP3_PLAN_REVIEW_LOOP_SH="$round_stub" \
+  RUN_STEP3_REVISE_PLAN_WITH_WATERFALL_SH="$D_OP_FAIL/revise-ok.sh" \
+  RUN_STEP3_DEDUP_PLAN_SH="$D_OP_FAIL/dedup-ok.sh" \
+  RUN_STEP3_POSTPLAN_EMIT_SH="$D_OP_FAIL/postplan-ok.sh" \
+  RUN_STEP3_CONTINUATION_SH="$D_OP_FAIL/continue-stop.sh" \
+  RUN_STEP3_RECORD_TIMING_SH="$record_stub" \
+  "$LAUNCHER" --design-tmpdir "$D_OP_FAIL" --mode loop --starting-round 1)"
+contains "$out" 'STEP3_REVIEW_LOOP_STATUS=postplan-failed' 'continue marker failure envelope'
+assert_timing_record "$timing_log" 456 'continue marker failure'
 
 
 D5="$TMP/dedup"
@@ -391,6 +496,28 @@ out="$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$RO
   RUN_STEP3_CONTINUATION_SH="$D7/continue-stop.sh" \
   "$LAUNCHER" --design-tmpdir "$D7" --mode loop --starting-round 1)"
 contains "$out" 'STEP3_REVIEW_LOOP_STATUS=postplan-failed' 'continuation failure envelope'
+
+
+echo '=== continuation failure records persisted round-start timing ==='
+D7_TIMING="$TMP/continuation-fail-timing"
+write_common "$D7_TIMING"
+write_ok_stubs "$D7_TIMING"
+mkdir -p "$D7_TIMING/plan-review/round-1"
+printf '789\n' >"$D7_TIMING/plan-review/round-1/round-start-s"
+cat >"$D7_TIMING/continue-stop.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+exit 2
+STUB
+chmod +x "$D7_TIMING/continue-stop.sh"
+printf 'awaiting-continuation\n' >"$D7_TIMING/.step3-round-1.phase"
+printf '1\n' >"$D7_TIMING/review-round-count.txt"
+timing_log="$D7_TIMING/timing-records.tsv"
+record_stub="$(write_record_timing_stub "$D7_TIMING" "$timing_log")"
+round_stub="$(write_round_stub "$D7_TIMING" 'exit 99')"
+out="$(run_loop_recording "$D7_TIMING" "$round_stub" "$record_stub")"
+contains "$out" 'STEP3_REVIEW_LOOP_STATUS=postplan-failed' 'continuation failure timing envelope'
+assert_timing_record "$timing_log" 789 'continuation failure'
 
 
 echo '=== per-round approval bail-out in awaiting-apply ==='

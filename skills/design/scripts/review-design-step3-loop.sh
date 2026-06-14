@@ -362,6 +362,22 @@ step3_loop_record_timing() {
     LARCH_TIMING_SKILL=design "$timing_sh" --design-tmpdir "$DESIGN_TMPDIR" --round "$round_num" --start-s "$start_s" --end-s "$end_s" || true
 }
 
+step3_loop_read_round_start_s() {
+    local round_num="$1" fallback_start_s="$2" start_file raw=""
+    start_file="$DESIGN_TMPDIR/plan-review/round-${round_num}/round-start-s"
+    if [[ -f "$start_file" && ! -L "$start_file" ]]; then
+        raw="$(tr -d '[:space:]' <"$start_file" 2>/dev/null || true)"
+        case "$raw" in
+            ''|*[!0-9]*) ;;
+            *) printf '%s\n' "$raw"; return 0 ;;
+        esac
+    fi
+    case "$fallback_start_s" in
+        ''|*[!0-9]*) printf '\n' ;;
+        *) printf '%s\n' "$fallback_start_s" ;;
+    esac
+}
+
 step3_loop_honor_pause() {
     local pause_sh
     step3_loop_refresh_issue_from_source_env
@@ -683,11 +699,12 @@ run_design_step3_loop() {
             awaiting-post-apply|awaiting-postplan-operator)
                 if [[ "$phase" == awaiting-postplan-operator ]]; then
                     if [[ -f "$DESIGN_TMPDIR/.postplan-operator-continue-${round_num}" ]]; then
-                        rm -f "$DESIGN_TMPDIR/.postplan-operator-continue-${round_num}"
                         set +e
+                        rm -f "$DESIGN_TMPDIR/.postplan-operator-continue-${round_num}"
                         post_rc=$?
                         set -e
                         if [[ "$post_rc" -ne 0 ]]; then
+                            step3_loop_record_timing "$round_num" "$(step3_loop_read_round_start_s "$round_num" "$round_start_s")" "$(step3_loop_now_s)"
                             step3_loop_emit_envelope postplan-failed "$round_num" "$round_num" "$round_num"
                             exit 0
                         fi
@@ -720,6 +737,7 @@ run_design_step3_loop() {
                         exit 0
                         ;;
                     *)
+                        step3_loop_record_timing "$round_num" "$(step3_loop_read_round_start_s "$round_num" "$round_start_s")" "$(step3_loop_now_s)"
                         step3_loop_emit_envelope postplan-failed "$round_num" "$round_num" "$round_num"
                         exit 0
                         ;;
@@ -732,6 +750,7 @@ run_design_step3_loop() {
                 post_rc=$?
                 set -e
                 if [[ "$post_rc" -ne 0 ]]; then
+                    step3_loop_record_timing "$round_num" "$(step3_loop_read_round_start_s "$round_num" "$round_start_s")" "$(step3_loop_now_s)"
                     step3_loop_emit_envelope postplan-failed "$round_num" "$round_num" "$round_num"
                     exit 0
                 fi

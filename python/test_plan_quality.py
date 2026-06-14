@@ -1264,6 +1264,65 @@ def test_revise_waterfall_prompt_uses_untrusted_blocks(tmp_path: Path) -> None:
     assert "<<<INJECT" not in prompt.split("literal-redacted")[-1]
 
 
+def test_revise_waterfall_external_autofix_timing_task_kinds(tmp_path: Path) -> None:
+    plan, findings, feature = _revise_base(tmp_path)
+    codex_argv = tmp_path / "codex.argv"
+    cursor_argv = tmp_path / "cursor.argv"
+    claude_argv = tmp_path / "claude.argv"
+    codex = _write_executable(
+        tmp_path / "codex.sh",
+        f"""#!/usr/bin/env bash
+printf '%s\\n' "$*" >>"{codex_argv}"
+exit 0
+""",
+    )
+    cursor = _write_executable(
+        tmp_path / "cursor.sh",
+        f"""#!/usr/bin/env bash
+printf '%s\\n' "$*" >>"{cursor_argv}"
+exit 0
+""",
+    )
+    claude = _write_executable(
+        tmp_path / "claude.sh",
+        f"""#!/usr/bin/env bash
+printf '%s\\n' "$*" >>"{claude_argv}"
+exit 0
+""",
+    )
+    env = {
+        "LARCH_TEST_LAUNCH_CODEX_REVIEW": str(codex),
+        "LARCH_TEST_LAUNCH_CURSOR_REVIEW": str(cursor),
+        "LARCH_TEST_LAUNCH_CLAUDE_REVIEW": str(claude),
+    }
+
+    cp = run_cli(
+        "plan",
+        "revise-waterfall",
+        "--design-tmpdir",
+        str(tmp_path),
+        "--plan-file",
+        str(plan),
+        "--findings-file",
+        str(findings),
+        "--feature-file",
+        str(feature),
+        "--round-num",
+        "1",
+        "--codex-present",
+        "true",
+        "--cursor-present",
+        "true",
+        "--patch-format",
+        "file-replacement",
+        env=env,
+    )
+
+    assert cp.returncode == 0, cp.stderr
+    assert "--timing-task-kind codex-plan-autofix" in codex_argv.read_text(encoding="utf-8")
+    assert "--timing-task-kind cursor-plan-autofix" in cursor_argv.read_text(encoding="utf-8")
+
+
 def test_allow_flag_accepts_dot_slash_prefixed_script(tmp_path: Path) -> None:
     script = REPO_ROOT / "skills" / "design" / "scripts" / "fixtures" / "validate-plan-commands" / "demo-stdout-help.sh"
     plan = f"""### UPDATED: {script.relative_to(REPO_ROOT)}

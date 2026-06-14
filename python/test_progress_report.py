@@ -64,6 +64,25 @@ def _write_output(path: Path, ts: int, text: str = "done\n") -> Path:
     return path
 
 
+def _write_vendor_timing(
+    ledger: Path,
+    output: str,
+    start_s: int,
+    end_s: int,
+    *,
+    vendor: str = "codex",
+    kind: str = "codex-review",
+    status: str = "complete",
+) -> None:
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+    duration = max(0, end_s - start_s)
+    with ledger.open("a", encoding="utf-8") as handle:
+        handle.write(
+            f"v1\tvendor\t{end_s}\timplement\t-\t{vendor}\t{kind}\t{start_s}\t{end_s}\t"
+            f"{duration}\t{output}\t0\t{status}\n"
+        )
+
+
 _MINIMAL_ROUND_META = (
     '{"tally":{"ACCEPTED_COUNT":"0","REJECTED_COUNT":"0","EXONERATED_COUNT":"0",'
     '"NEUTRAL_COUNT":"0","OOS_ACCEPTED_COUNT":"0","OOS_REJECTED_COUNT":"0"},'
@@ -162,9 +181,10 @@ def test_implement_step5_renderer(tmp_path: Path, monkeypatch) -> None:  # type:
     _write_mark(impl, "Step 5 — code review")
     called: list[Path] = []
 
-    def fake_step5(implement_tmpdir: Path, run_id: str) -> str:
+    def fake_step5(implement_tmpdir: Path, run_id: str, start_s: int | None = None) -> str:
         called.append(implement_tmpdir)
         assert run_id == ""
+        assert start_s == 100
         return "step5 report"
 
     monkeypatch.setattr(progress_report, "_render_step5", fake_step5)
@@ -454,6 +474,50 @@ def test_all_round_dirs_inflight_one_completed(tmp_path: Path) -> None:
     assert progress_report._all_round_dirs_inflight(root) is False
 
 
+def test_progress_label_fallbacks_and_manifest_precedence(tmp_path: Path) -> None:
+    assert progress_report._derive_progress_label("aggregator-output.txt") == "aggregator"
+    assert progress_report._derive_progress_label("scout-plan-manifest.json.raw") == "scout"
+    assert (
+        progress_report._derive_progress_label(
+            "codex-output.txt",
+            "codex",
+            "codex-plan-autofix",
+        )
+        == "codex/codex-plan-autofix"
+    )
+    assert (
+        progress_report._derive_progress_label(
+            "cursor-output.txt",
+            "cursor",
+            "cursor-plan-autofix",
+        )
+        == "cursor/cursor-plan-autofix"
+    )
+
+    output = tmp_path / "codex-output.txt"
+    manifest = tmp_path / "panel-manifest.ndjson"
+    manifest.write_text(f'{{"slot":"mapped","tool":"tool","output":"{output}"}}\n', encoding="utf-8")
+    label_map = progress_report._progress_label_map_from_manifests([manifest])
+    assert progress_report._derive_progress_label(str(output), "codex", "codex-plan-autofix", label_map) == "tool/mapped"
+
+
+def test_progress_vendor_rows_use_bare_vendor_task_kind_priority(tmp_path: Path) -> None:
+    ledger = tmp_path / "timing-ledger.tsv"
+    _write_vendor_timing(
+        ledger,
+        "codex-output.txt",
+        110,
+        140,
+        vendor="codex",
+        kind="codex-plan-autofix",
+    )
+
+    rows = progress_report._progress_vendor_rows(ledger, 100, 200, {})
+
+    assert len(rows) == 1
+    assert rows[0].label == "codex/codex-plan-autofix"
+
+
 def test_render_step5_inflight_only_skips_detail(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     impl = tmp_path / "impl"
     round_dir = impl / "round-1"
@@ -472,6 +536,53 @@ def test_render_step5_inflight_only_skips_detail(tmp_path: Path, monkeypatch) ->
     assert "No review rounds completed." not in report
 
 
+def test_render_step5_first_round_inflight_gantt(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(progress_report.time, "time", lambda: 200)
+    impl = tmp_path / "impl"
+    round_dir = impl / "round-1"
+    output = round_dir / "codex-output.txt"
+    round_dir.mkdir(parents=True)
+    (round_dir / "round-start-s").write_text("100\n", encoding="utf-8")
+    (round_dir / "panel-manifest.ndjson").write_text(
+        f'{{"slot":"slot","tool":"tool","output":"{output}"}}\n',
+        encoding="utf-8",
+    )
+    _write_vendor_timing(impl / "timing-ledger.tsv", str(output), 120, 170)
+
+    def fail_detail(_tmpdir: Path, _run_id: str) -> str:
+        raise AssertionError("_render_review_detail must not run without completed metadata")
+
+    monkeypatch.setattr(progress_report, "_render_review_detail", fail_detail)
+
+    report = progress_report._render_step5(impl, "run-1")
+
+    assert "Step 5 code review — round 1 in progress" in report
+    assert "Round 1 reviewer timing" in report
+    assert "tool/slot" in report
+
+
+def test_render_step5_inflight_gantt_uses_step_mark_start_fallback(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(progress_report.time, "time", lambda: 200)
+    impl = tmp_path / "impl"
+    round_dir = impl / "round-1"
+    output = round_dir / "codex-output.txt"
+    round_dir.mkdir(parents=True)
+    _set_mtime(round_dir, 150)
+    (round_dir / "panel-manifest.ndjson").write_text(
+        f'{{"slot":"slot","tool":"tool","output":"{output}"}}\n',
+        encoding="utf-8",
+    )
+    _write_vendor_timing(impl / "timing-ledger.tsv", str(output), 120, 140)
+
+    report = progress_report._render_step5(impl, "run-1", 100)
+
+    assert "Round 1 reviewer timing" in report
+    assert "tool/slot" in report
+
+
 def test_render_step5_mixed_state_still_renders_detail(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     impl = tmp_path / "impl"
     completed = impl / "round-1"
@@ -486,6 +597,37 @@ def test_render_step5_mixed_state_still_renders_detail(tmp_path: Path, monkeypat
     report = progress_report._render_step5(impl, "run-1")
 
     assert "sentinel-detail" in report
+
+
+def test_render_step5_mixed_state_appends_inflight_gantt(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(progress_report.time, "time", lambda: 220)
+    impl = tmp_path / "impl"
+    completed = impl / "round-1"
+    inflight = impl / "round-2"
+    output = inflight / "cursor-output.txt"
+    completed.mkdir(parents=True)
+    inflight.mkdir(parents=True)
+    (completed / "round-meta.json").write_text(_MINIMAL_ROUND_META, encoding="utf-8")
+    (inflight / "round-start-s").write_text("100\n", encoding="utf-8")
+    (inflight / "panel-manifest.ndjson").write_text(
+        f'{{"slot":"slot","tool":"cursor","output":"{output}"}}\n',
+        encoding="utf-8",
+    )
+    _write_vendor_timing(
+        impl / "timing-ledger.tsv",
+        str(output),
+        130,
+        180,
+        vendor="cursor",
+        kind="cursor-review",
+    )
+    monkeypatch.setattr(progress_report, "_render_review_detail", lambda _t, _r: "completed-detail")
+
+    report = progress_report._render_step5(impl, "run-1")
+
+    assert "completed-detail" in report
+    assert "Round 2 reviewer timing" in report
+    assert "cursor/slot" in report
 
 
 def test_render_design_plan_review_inflight_only_skips_detail(
@@ -512,6 +654,28 @@ def test_render_design_plan_review_inflight_only_skips_detail(
     assert "No review rounds completed." not in report
 
 
+def test_render_design_plan_review_inflight_gantt_uses_root_manifest(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(progress_report.time, "time", lambda: 220)
+    design = tmp_path / "design"
+    round_dir = design / "plan-review" / "round-1"
+    output = design / "codex-output.txt"
+    round_dir.mkdir(parents=True)
+    (round_dir / "round-start-s").write_text("100\n", encoding="utf-8")
+    _write_output(output, 130)
+    _write_slot_manifest(design / "plan-review-slots.ndjson", [output])
+    _set_mtime(design / "plan-review-slots.ndjson", 120)
+    _write_vendor_timing(design / "timing-ledger.tsv", str(output), 125, 180)
+
+    report = progress_report._render_design_plan_review(design, 90)
+
+    assert "Step 3 plan review — round 1 in progress" in report
+    assert "Round 1 reviewer timing" in report
+    assert "codex/slot-1" in report
+
+
 def test_render_design_plan_review_mixed_state_still_renders_detail(
     tmp_path: Path,
     monkeypatch,
@@ -536,6 +700,57 @@ def test_render_design_plan_review_mixed_state_still_renders_detail(
     report = progress_report._render_design_plan_review(design, 90)
 
     assert "sentinel-design-detail" in report
+
+
+def test_render_design_plan_review_mixed_state_appends_inflight_gantt(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(progress_report.time, "time", lambda: 220)
+    design = tmp_path / "design"
+    completed = design / "plan-review" / "round-1"
+    inflight = design / "plan-review" / "round-2"
+    output = design / "cursor-output.txt"
+    completed.mkdir(parents=True)
+    inflight.mkdir(parents=True)
+    (completed / "round-meta.json").write_text(_MINIMAL_ROUND_META, encoding="utf-8")
+    (inflight / "round-start-s").write_text("100\n", encoding="utf-8")
+    _write_output(output, 130)
+    _write_slot_manifest(inflight / "panel-manifest.ndjson", [output])
+    _set_mtime(inflight / "panel-manifest.ndjson", 120)
+    _write_vendor_timing(
+        design / "timing-ledger.tsv",
+        str(output),
+        125,
+        180,
+        vendor="cursor",
+        kind="cursor-review",
+    )
+    monkeypatch.setattr(progress_report, "_render_design_review_detail", lambda _tmpdir: "completed-design-detail")
+
+    report = progress_report._render_design_plan_review(design, 90)
+
+    assert "completed-design-detail" in report
+    assert "Round 2 reviewer timing" in report
+    assert "codex/slot-1" in report
+
+
+def test_render_inflight_gantt_absent_without_completed_vendor_rows(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(progress_report.time, "time", lambda: 200)
+    impl = tmp_path / "impl"
+    round_dir = impl / "round-1"
+    round_dir.mkdir(parents=True)
+    (round_dir / "round-start-s").write_text("100\n", encoding="utf-8")
+    (round_dir / "panel-manifest.ndjson").write_text("{}\n", encoding="utf-8")
+    _write_vendor_timing(impl / "timing-ledger.tsv", "codex-output.txt", 120, 150, status="signal")
+
+    report = progress_report._render_step5(impl, "run-1")
+
+    assert "Step 5 code review — round 1 in progress" in report
+    assert "Round 1 reviewer timing" not in report
 
 
 def test_design_step3_no_round_dirs_falls_through_to_generic(tmp_path: Path) -> None:
@@ -1056,7 +1271,7 @@ def test_implement_stale_label_with_fresh_round_dir_triggers_step5(
 
     reported: list[str] = []
 
-    def fake_step5(implement_tmpdir: Path, _run_id: str) -> str:
+    def fake_step5(implement_tmpdir: Path, _run_id: str, _start_s: int | None = None) -> str:
         reported.append(str(implement_tmpdir))
         return "step5 detail"
 
@@ -1080,7 +1295,7 @@ def test_implement_stale_label_no_fresh_round_dir_falls_through(
     impl.mkdir()
     _write_mark(impl, "Step 4 — commit implementation", ts=100)
 
-    def fail_step5(_tmpdir: Path, _run_id: str) -> str:
+    def fail_step5(_tmpdir: Path, _run_id: str, _start_s: int | None = None) -> str:
         raise AssertionError("_render_step5 should not run without a round dir")
 
     monkeypatch.setattr(progress_report, "_render_step5", fail_step5)
