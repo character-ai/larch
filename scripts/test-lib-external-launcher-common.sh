@@ -660,10 +660,11 @@ fi
 
 run_health_gate_case() {
     local label="$1" tool="$2" env_timeout="$3" session_timeout="$4" implement_timeout="$5" present_line="$6" checker_rc="$7" timeout_rc="$8"
-    local max_attempts sleep_seconds calls_before_true
+    local max_attempts sleep_seconds calls_before_true first_present_line
     max_attempts="${9:-}"
     sleep_seconds="${10:-}"
     calls_before_true="${11:-}"
+    first_present_line="${12:-}"
     local case_dir="$TMPDIR_ROOT/health-$label"
     local rc_file="$case_dir/rc"
     local call_file="$case_dir/checker-call"
@@ -711,17 +712,27 @@ EOF
     cat > "$case_dir/python/stubs/agent/check-reviewers" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+if [[ -f "${LARCH_TEST_CHECKER_CALL}" ]]; then
+    line_count=$(wc -l < "${LARCH_TEST_CHECKER_CALL}" | tr -d ' \t')
+else
+    line_count=0
+fi
+call_num=$(( line_count / 4 + 1 ))
 {
     printf 'ARGS=%s\n' "$*"
     printf 'AUTH_RETRIES=%s\n' "${LARCH_EXTERNAL_AUTH_RETRIES:-}"
+    printf 'PROBE_TIMEOUT=%s\n' "${LARCH_PROBE_TIMEOUT_SECONDS:-}"
+    printf 'PROBE_TTL=%s\n' "${LARCH_PROBE_TTL_SECONDS:-}"
 } >> "${LARCH_TEST_CHECKER_CALL:?}"
 # When LARCH_TEST_CHECKER_CALLS_BEFORE_TRUE > 0, suppress PRESENT_LINE output
 # for the first N calls so retry-recovery tests can simulate transient failures.
-# Each call appends 2 lines (ARGS + AUTH_RETRIES), so call number = lines / 2.
+# Each call appends 4 lines (ARGS + AUTH_RETRIES + PROBE_TIMEOUT + PROBE_TTL).
+if [[ -n "${LARCH_TEST_FIRST_PRESENT_LINE:-}" && "$call_num" -eq 1 ]]; then
+    printf '%s\n' "$LARCH_TEST_FIRST_PRESENT_LINE"
+    exit "${LARCH_TEST_CHECKER_RC:-0}"
+fi
 calls_before_true="${LARCH_TEST_CHECKER_CALLS_BEFORE_TRUE:-0}"
 if [[ "$calls_before_true" -gt 0 ]]; then
-    line_count=$(wc -l < "${LARCH_TEST_CHECKER_CALL}" | tr -d ' \t')
-    call_num=$(( line_count / 2 ))
     if [[ "$call_num" -le "$calls_before_true" ]]; then
         exit "${LARCH_TEST_CHECKER_RC:-0}"
     fi
@@ -756,6 +767,7 @@ EOF
         LARCH_EXTERNAL_HEALTH_GATE_MAX_ATTEMPTS="$max_attempts" \
         LARCH_EXTERNAL_HEALTH_GATE_SLEEP_SECONDS="$sleep_seconds" \
         LARCH_TEST_CHECKER_CALLS_BEFORE_TRUE="$calls_before_true" \
+        LARCH_TEST_FIRST_PRESENT_LINE="$first_present_line" \
         LARCH_TEST_PRESENT_LINE="$present_line" \
         LARCH_TEST_CHECKER_RC="$checker_rc" \
         LARCH_TEST_TIMEOUT_RC="$timeout_rc" \
@@ -785,10 +797,10 @@ assert_health_gate_rc() {
 }
 
 _hg_case=$(assert_health_gate_rc "health gate codex healthy" 0 codex 5 "" "" "CODEX_PRESENT=true" 0 "")
-if grep -Fq 'ARGS=--skip-cursor-probe' "$_hg_case/checker-call" && grep -Fq 'AUTH_RETRIES=1' "$_hg_case/checker-call"; then
+if grep -Fq 'ARGS=--skip-cursor-probe' "$_hg_case/checker-call" && grep -Fq 'AUTH_RETRIES=1' "$_hg_case/checker-call" && grep -Fq 'PROBE_TIMEOUT=5' "$_hg_case/checker-call" && ! grep -Fq 'PROBE_TTL=0' "$_hg_case/checker-call"; then
     pass
 else
-    fail "health gate codex healthy should call check-reviewers with skip-cursor and one auth retry"
+    fail "health gate codex healthy should call check-reviewers with skip-cursor, one auth retry, and probe timeout without TTL bypass"
 fi
 
 assert_health_gate_rc "health gate cursor unhealthy false" 1 cursor 5 "" "" "CURSOR_PRESENT=false" 0 "" 2 0 >/dev/null
@@ -819,14 +831,24 @@ else
     fail "health gate non-tool must not call check-reviewers"
 fi
 
-# Missing presence key in non-empty stdout → retry, then fail closed after budget.
-assert_health_gate_rc "health gate retries on missing presence key" 1 codex 5 "" "" "" 2 "" 2 0 >/dev/null
+# Missing presence key in non-empty stdout → fail-open immediately.
+assert_health_gate_rc "health gate fail-open on missing presence key" 0 codex 5 "" "" "" 2 "" 2 0 >/dev/null
 # Presence key present but unrecognized value → fail-open immediately.
 assert_health_gate_rc "health gate fail-open on present-but-unrecognized value" 0 codex 5 "" "" "CODEX_PRESENT=garbage" 0 "" >/dev/null
 
 # Retry recovery: first probe returns false (transient), second returns true → rc=0.
-# Uses max_attempts=2, sleep_seconds=0, calls_before_true=1.
-assert_health_gate_rc "health gate retry recovers on second attempt" 0 codex 5 "" "" "CODEX_PRESENT=true" 0 "" 2 0 1 >/dev/null
+# Uses max_attempts=2, sleep_seconds=0, first_present_line=CODEX_PRESENT=false.
+assert_health_gate_rc "health gate retry recovers on second attempt" 0 codex 5 "" "" "CODEX_PRESENT=true" 0 "" 2 0 "" "CODEX_PRESENT=false" >/dev/null
+
+_hg_retry=$(assert_health_gate_rc "health gate retry sets probe env knobs" 0 codex 5 "" "" "CODEX_PRESENT=true" 0 "" 2 0 "" "CODEX_PRESENT=false")
+if [[ "$(wc -l < "$_hg_retry/checker-call" | tr -d ' ')" -ge 8 ]] && \
+   grep -Fq 'PROBE_TIMEOUT=5' "$_hg_retry/checker-call" && \
+   grep -Fq 'PROBE_TTL=0' "$_hg_retry/checker-call" && \
+   ! head -4 "$_hg_retry/checker-call" | grep -Fq 'PROBE_TTL=0'; then
+    pass
+else
+    fail "health gate retry must forward probe timeout on every call and set TTL bypass only on attempts 2+"
+fi
 
 assert_resolver_timeout() {
     local label="$1" env_val="$2" session_val="$3" implement_val="$4" want="$5"

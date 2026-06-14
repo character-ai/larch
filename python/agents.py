@@ -706,7 +706,9 @@ def _run_probe_command(cmd: Sequence[str], *, timeout: int, env: dict[str, str],
                 check=False,
             )
         return result.returncode
-    except (FileNotFoundError, subprocess.TimeoutExpired):
+    except FileNotFoundError:
+        return 127
+    except subprocess.TimeoutExpired:
         return config.EXIT_TIMEOUT
 
 
@@ -1330,55 +1332,6 @@ def _nonnegative_float_env(name: str, default: float) -> float:
     return value if value >= 0 else default
 
 
-def _health_gate_cli_path() -> Path:
-    return Path(__file__).resolve().parent / "cli.py"
-
-
-def _parse_check_reviewers_kv(stdout: str) -> CheckReviewersResult | None:
-    kv: dict[str, str] = {}
-    for line in stdout.splitlines():
-        if "=" not in line:
-            continue
-        key, _, value = line.partition("=")
-        kv[key.strip()] = value.strip()
-    if "CODEX_PRESENT" not in kv and "CURSOR_PRESENT" not in kv:
-        return None
-
-    def _as_bool(key: str, *, default: bool = False) -> bool:
-        return kv.get(key, str(default).lower()).lower() == "true"
-
-    return CheckReviewersResult(
-        codex_binary_found=_as_bool("CODEX_BINARY_FOUND"),
-        cursor_binary_found=_as_bool("CURSOR_BINARY_FOUND"),
-        codex_present=_as_bool("CODEX_PRESENT"),
-        cursor_present=_as_bool("CURSOR_PRESENT"),
-        codex_probe_timed_out=_as_bool("CODEX_PROBE_TIMED_OUT"),
-        cursor_probe_timed_out=_as_bool("CURSOR_PROBE_TIMED_OUT"),
-    )
-
-
-def _invoke_health_gate_check_reviewers(
-    *,
-    tool: str,
-    probe_timeout_seconds: int,
-    env: dict[str, str],
-) -> tuple[CheckReviewersResult | None, str, str]:
-    cmd = [sys.executable, str(_health_gate_cli_path()), "agent", "check-reviewers"]
-    if tool == "cursor":
-        cmd.append("--skip-codex-probe")
-    else:
-        cmd.append("--skip-cursor-probe")
-    completed = subprocess.run(
-        cmd,
-        capture_output=True,
-        text=True,
-        env={**os.environ, **env},
-        timeout=probe_timeout_seconds,
-        check=False,
-    )
-    return _parse_check_reviewers_kv(completed.stdout), completed.stdout, completed.stderr
-
-
 def _external_health_gate(tool: str) -> tuple[bool, str]:
     if tool not in {"codex", "cursor"}:
         return True, ""
@@ -1400,29 +1353,28 @@ def _external_health_gate(tool: str) -> tuple[bool, str]:
         if attempt:
             gate_env["LARCH_PROBE_TTL_SECONDS"] = "0"
         try:
-            result, stdout, stderr = _invoke_health_gate_check_reviewers(
-                tool=tool,
+            result = check_reviewers(
+                skip_codex_probe=tool == "cursor",
+                skip_cursor_probe=tool == "codex",
                 probe_timeout_seconds=timeout,
                 env=gate_env,
             )
-        except subprocess.TimeoutExpired:
-            return False, f"health-probe timed out after {timeout}s"
+            stdout = "\n".join(result.kv_lines())
+            stderr = ""
         except Exception as exc:
             last_stderr = str(exc)
             continue
         probe_timed_out = (
             result.codex_probe_timed_out
-            if result is not None and tool == "codex"
+            if tool == "codex"
             else result.cursor_probe_timed_out
-            if result is not None
-            else False
         )
         if probe_timed_out:
             return False, f"health-probe timed out after {timeout}s"
         last_stdout = stdout
         last_stderr = stderr
         if not stdout.strip():
-            continue
+            return True, ""
         found: str | None = None
         for line in stdout.splitlines():
             if line.startswith(f"{present_key}="):
@@ -1433,7 +1385,9 @@ def _external_health_gate(tool: str) -> tuple[bool, str]:
         if found is not None and found not in ("true", "false"):
             # Key present but value unrecognized → fail-open per original contract.
             return True, ""
-        # found is None (key missing) or "false" → loop to next attempt.
+        if found is None:
+            return True, ""
+        # found == "false" → loop to next attempt.
     return False, f"probe output: {last_stdout[:500]}; probe stderr: {last_stderr[:300]}"
 
 

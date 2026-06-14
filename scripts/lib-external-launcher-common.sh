@@ -256,12 +256,9 @@ external_launch_health_gate() {
                 : # Continue to next attempt.
                 ;;
             *)
-                # Presence key present but value unrecognized — fail open.
-                # Empty _probe_present means the key was missing → retry.
-                if [[ -n "$_probe_present" ]]; then
-                    [[ -n "$_probe_stderr_tmp" ]] && rm -f "$_probe_stderr_tmp"
-                    return 0
-                fi
+                # Missing or unrecognized presence key — fail open.
+                [[ -n "$_probe_stderr_tmp" ]] && rm -f "$_probe_stderr_tmp"
+                return 0
                 ;;
         esac
     done

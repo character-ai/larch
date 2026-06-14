@@ -1152,6 +1152,7 @@ def test_check_reviewers_codex_argv_no_secrets_in_cmd(
 def test_run_negotiation_round_cursor_probe_failure_exit_2(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     prompt = tmp_path / "prompt.txt"
     output = tmp_path / "reply.txt"
@@ -1163,17 +1164,20 @@ def test_run_negotiation_round_cursor_probe_failure_exit_2(
         lambda *_args, **_kwargs: agents.subprocess.CompletedProcess([], 1),
     )
     assert agents.run_negotiation_round("cursor", prompt, output, tmp_path) == 2
+    assert capsys.readouterr().out == f"RESPONSE_FILE={output}\n"
 
 
 def test_run_negotiation_round_codex_auth_setup_failure_exit_2(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     prompt = tmp_path / "prompt.txt"
     output = tmp_path / "reply.txt"
     _ = prompt.write_text("prompt body", encoding="utf-8")
     monkeypatch.setattr(agents, "_prepare_codex_home", lambda _home: (1, "codex auth setup failed"))
     assert agents.run_negotiation_round("codex", prompt, output, tmp_path) == 2
+    assert capsys.readouterr().out == f"RESPONSE_FILE={output}\n"
 
 
 def test_run_negotiation_round_usage_and_missing_prompt(tmp_path: Path) -> None:
@@ -1339,16 +1343,14 @@ def test_health_gate_invalid_retry_env_falls_back(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setenv("LARCH_EXTERNAL_HEALTH_GATE_SLEEP_SECONDS", "bad")
     monkeypatch.setattr(
         agents,
-        "_invoke_health_gate_check_reviewers",
+        "check_reviewers",
         lambda **_kwargs: (
             agents.CheckReviewersResult(
                 codex_binary_found=False,
                 cursor_binary_found=True,
                 codex_present=False,
                 cursor_present=True,
-            ),
-            "CURSOR_PRESENT=true\n",
-            "",
+            )
         ),
     )
     assert agents._external_health_gate("cursor") == (True, "")  # pylint: disable=protected-access
@@ -1382,51 +1384,46 @@ def test_serial_lock_invalid_env_falls_back(monkeypatch: pytest.MonkeyPatch) -> 
 
 def test_health_gate_fail_open_on_present_but_unparseable_value(monkeypatch: pytest.MonkeyPatch) -> None:
     # Key IS present but value is not "true"/"false" → fail-open (not retry).
-    result = agents.CheckReviewersResult(
-        codex_binary_found=True,
-        cursor_binary_found=True,
-        codex_present=False,
-        cursor_present=False,
-    )
-    monkeypatch.setattr(
-        agents,
-        "_invoke_health_gate_check_reviewers",
-        lambda **_kwargs: (result, "CURSOR_PRESENT=garbage\n", ""),
-    )
+    class FakeResult:
+        codex_probe_timed_out = False
+        cursor_probe_timed_out = False
+
+        def kv_lines(self) -> tuple[str, ...]:
+            return ("CURSOR_PRESENT=garbage",)
+
+    monkeypatch.setattr(agents, "check_reviewers", lambda **_kwargs: FakeResult())
     monkeypatch.setenv("LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT", "1")
     assert agents._external_health_gate("cursor") == (True, "")  # pylint: disable=protected-access
 
 
-def test_health_gate_retries_on_missing_presence_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Stdout is non-empty but the presence key is absent → retry, not fail-open.
-    monkeypatch.setattr(
-        agents,
-        "_invoke_health_gate_check_reviewers",
-        lambda **_kwargs: (None, "unexpected\n", ""),
-    )
+def test_health_gate_fail_open_on_missing_presence_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeResult:
+        codex_probe_timed_out = False
+        cursor_probe_timed_out = False
+
+        def kv_lines(self) -> tuple[str, ...]:
+            return ("unexpected=line",)
+
+    monkeypatch.setattr(agents, "check_reviewers", lambda **_kwargs: FakeResult())
     monkeypatch.setenv("LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT", "1")
-    monkeypatch.setenv("LARCH_EXTERNAL_HEALTH_GATE_MAX_ATTEMPTS", "2")
-    monkeypatch.setenv("LARCH_EXTERNAL_HEALTH_GATE_SLEEP_SECONDS", "0")
-    healthy, _diag = agents._external_health_gate("cursor")  # pylint: disable=protected-access
-    assert healthy is False
+    assert agents._external_health_gate("cursor") == (True, "")  # pylint: disable=protected-access
 
 
 def test_health_gate_retry_recovers_with_ttl_bypass(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[dict[str, str]] = []
 
-    def fake_invoke(**kwargs: object) -> tuple[agents.CheckReviewersResult | None, str, str]:
+    def fake_check_reviewers(**kwargs: object) -> agents.CheckReviewersResult:
         env = dict(kwargs.get("env") or {})  # type: ignore[arg-type]
         calls.append(env)
         present = len(calls) > 1
-        result = agents.CheckReviewersResult(
+        return agents.CheckReviewersResult(
             codex_binary_found=True,
             cursor_binary_found=False,
             codex_present=present,
             cursor_present=False,
         )
-        return result, f"CODEX_PRESENT={'true' if present else 'false'}\n", ""
 
-    monkeypatch.setattr(agents, "_invoke_health_gate_check_reviewers", fake_invoke)
+    monkeypatch.setattr(agents, "check_reviewers", fake_check_reviewers)
     monkeypatch.setenv("LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT", "1")
     monkeypatch.setenv("LARCH_EXTERNAL_HEALTH_GATE_MAX_ATTEMPTS", "2")
     monkeypatch.setenv("LARCH_EXTERNAL_HEALTH_GATE_SLEEP_SECONDS", "0")
@@ -1441,22 +1438,18 @@ def test_health_gate_probe_timeout_fast_fails_without_retry(
 ) -> None:
     gate_attempts = 0
 
-    def fake_invoke(**_kwargs: object) -> tuple[agents.CheckReviewersResult | None, str, str]:
+    def fake_check_reviewers(**_kwargs: object) -> agents.CheckReviewersResult:
         nonlocal gate_attempts
         gate_attempts += 1
-        return (
-            agents.CheckReviewersResult(
-                codex_binary_found=True,
-                cursor_binary_found=False,
-                codex_present=False,
-                cursor_present=False,
-                codex_probe_timed_out=True,
-            ),
-            "CODEX_PRESENT=false\nCODEX_PROBE_TIMED_OUT=true\n",
-            "",
+        return agents.CheckReviewersResult(
+            codex_binary_found=True,
+            cursor_binary_found=False,
+            codex_present=False,
+            cursor_present=False,
+            codex_probe_timed_out=True,
         )
 
-    monkeypatch.setattr(agents, "_invoke_health_gate_check_reviewers", fake_invoke)
+    monkeypatch.setattr(agents, "check_reviewers", fake_check_reviewers)
     monkeypatch.setenv("LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT", "1")
     monkeypatch.setenv("LARCH_EXTERNAL_HEALTH_GATE_MAX_ATTEMPTS", "8")
     monkeypatch.setenv("LARCH_EXTERNAL_HEALTH_GATE_SLEEP_SECONDS", "0")
@@ -1464,13 +1457,30 @@ def test_health_gate_probe_timeout_fast_fails_without_retry(
     assert gate_attempts == 1
 
 
+def test_health_gate_in_process_path_under_tight_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(agents.shutil, "which", lambda name: "/usr/bin/false" if name == "codex" else None)
+    monkeypatch.setattr(agents, "_run_codex_probes", lambda *_args: (False, True))
+    monkeypatch.setenv("LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT", "1")
+    monkeypatch.setenv("LARCH_EXTERNAL_HEALTH_GATE_MAX_ATTEMPTS", "8")
+    monkeypatch.setenv("LARCH_EXTERNAL_HEALTH_GATE_SLEEP_SECONDS", "0")
+    assert agents._external_health_gate("codex") == (False, "health-probe timed out after 1s")  # pylint: disable=protected-access
+
+
 def test_health_gate_wall_clock_timeout_fast_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def blocking_invoke(**kwargs: object) -> tuple[agents.CheckReviewersResult | None, str, str]:
-        raise subprocess.TimeoutExpired(cmd=["check-reviewers"], timeout=int(kwargs["probe_timeout_seconds"]))  # type: ignore[arg-type]
+    def blocking_check_reviewers(**kwargs: object) -> agents.CheckReviewersResult:
+        return agents.CheckReviewersResult(
+            codex_binary_found=True,
+            cursor_binary_found=False,
+            codex_present=False,
+            cursor_present=False,
+            codex_probe_timed_out=True,
+        )
 
-    monkeypatch.setattr(agents, "_invoke_health_gate_check_reviewers", blocking_invoke)
+    monkeypatch.setattr(agents, "check_reviewers", blocking_check_reviewers)
     monkeypatch.delenv("SESSION_ENV_PATH", raising=False)
     monkeypatch.delenv("IMPLEMENT_TMPDIR", raising=False)
     monkeypatch.setenv("LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT", "1")
@@ -1495,16 +1505,12 @@ def test_run_external_agent_health_gate_fast_fails_without_spawn(
     output = tmp_path / f"{tool}.out"
     monkeypatch.setattr(
         agents,
-        "_invoke_health_gate_check_reviewers",
-        lambda **_kwargs: (
-            agents.CheckReviewersResult(
-                codex_binary_found=tool == "codex",
-                cursor_binary_found=tool == "cursor",
-                codex_present=False,
-                cursor_present=False,
-            ),
-            f"{present_key}=false\n",
-            "",
+        "check_reviewers",
+        lambda **_kwargs: agents.CheckReviewersResult(
+            codex_binary_found=tool == "codex",
+            cursor_binary_found=tool == "cursor",
+            codex_present=False,
+            cursor_present=False,
         ),
     )
     monkeypatch.setenv("LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT", "1")
@@ -1532,16 +1538,12 @@ def test_run_external_agent_health_gate_clears_supplied_sidecars(
     _ = stderr_path.write_text("stale auth error\n", encoding="utf-8")
     monkeypatch.setattr(
         agents,
-        "_invoke_health_gate_check_reviewers",
-        lambda **_kwargs: (
-            agents.CheckReviewersResult(
-                codex_binary_found=True,
-                cursor_binary_found=False,
-                codex_present=False,
-                cursor_present=False,
-            ),
-            "CODEX_PRESENT=false\n",
-            "",
+        "check_reviewers",
+        lambda **_kwargs: agents.CheckReviewersResult(
+            codex_binary_found=True,
+            cursor_binary_found=False,
+            codex_present=False,
+            cursor_present=False,
         ),
     )
     monkeypatch.setenv("LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT", "1")
