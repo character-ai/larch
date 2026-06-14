@@ -28,6 +28,7 @@ from run_context import RunContext
 
 POSTBUMP_CHECKPOINT_MAX_BYTES = 64
 LS_REMOTE_NOT_FOUND_RC = 2
+KILL_BACKGROUND_PARSE_ERROR_STATUS = 2
 _TITLE_PR_SUFFIX_RE = re.compile(r"\s+\(#([0-9]+)\)$")
 
 
@@ -786,7 +787,7 @@ def kill_background_processes_main(argv: list[str]) -> int:
     parse_status, design_tmpdir = _parse_kill_background_processes_argv(argv)
     if parse_status == 0:
         return 0
-    if parse_status == 2:
+    if parse_status == KILL_BACKGROUND_PARSE_ERROR_STATUS:
         return _kill_background_processes_error(design_tmpdir)
     if not design_tmpdir:
         return _kill_background_processes_error("--design-tmpdir is required")
