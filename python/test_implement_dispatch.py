@@ -1077,6 +1077,62 @@ def test_step2_dispatch_codex_nonzero_exit_salvages_complete(repo: Path, tmp_pat
     assert "WARN_CODEX_NONZERO_EXIT=true" in issues
 
 
+@pytest.mark.parametrize(
+    "manifest_payload",
+    [
+        pytest.param(
+            {
+                "schema_version": "1",
+                "status": "needs_qa",
+                "needs_qa": {"questions": [{"id": "q1", "text": "stub question?"}]},
+            },
+            id="needs_qa",
+        ),
+        pytest.param(
+            {
+                "schema_version": "1",
+                "status": "bailed",
+                "bail_reason": "stub-self-bail",
+            },
+            id="bailed",
+        ),
+    ],
+)
+def test_step2_dispatch_codex_nonzero_exit_does_not_salvage_non_complete(
+    repo: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    manifest_payload: dict[str, object],
+) -> None:
+    _ = repo
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+
+    def fake_launcher(st: implement_dispatch.DispatchState):
+        st.manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        st.manifest_path.write_text(json.dumps(manifest_payload), encoding="utf-8")
+        return 0, {"LAUNCHER_EXIT": "1", "MANIFEST_WRITTEN": "true"}, ""
+
+    monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    rc = implement_dispatch.step2_dispatch_main([
+        "--tmpdir", str(tmp),
+        "--plan-file", str(tmp / "plan.txt"),
+        "--feature-file", str(tmp / "feature-description.txt"),
+        "--coder", "codex",
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert _auth_lines(out) == 1
+    assert "STATUS=bailed" in out
+    assert "REASON=codex-runtime-failure" in out
+    assert "WARN_CODEX_NONZERO_EXIT=true" not in out
+    assert "STATUS=complete" not in out
+    assert "ORCHESTRATOR_EDIT_AUTHORITY=forbidden" in out
+    if manifest_payload.get("status") == "bailed":
+        assert "REASON=stub-self-bail" not in out
+
+
 def test_step2_dispatch_complete_emits_scout_kv(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     tmp = _session(tmp_path)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
