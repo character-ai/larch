@@ -439,8 +439,7 @@ def test_step2_dispatch_git_add_failure_bails(repo: Path, tmp_path: Path, monkey
     def fake_run(argv, **kwargs):  # type: ignore[no-untyped-def]
         if len(argv) >= 4 and argv[0:3] == [implement_dispatch.GIT_BIN, "-C", str(repo)] and argv[3] == "add":
             return subprocess.CompletedProcess(argv, 1, "", "index.lock")
-        kwargs.setdefault("check", False)
-        return real_run(argv, **kwargs)
+        return real_run(argv, check=kwargs.pop("check", False), **kwargs)
 
     monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
     monkeypatch.setattr(implement_dispatch, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
@@ -477,7 +476,7 @@ def test_step2_dispatch_main_branch_prohibited(repo: Path, tmp_path: Path, monke
     assert "REASON=main-branch-prohibited" in out
 
 
-def test_step2_dispatch_needs_qa_repair_from_pending(_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_step2_dispatch_needs_qa_repair_from_pending(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     tmp = _session(tmp_path)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
 
