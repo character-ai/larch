@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -31,10 +32,9 @@ def run_step7a(implement_tmpdir: Path, *, base_remote: str = "origin", base_ref:
     diagram_rc, diagram_status, diagram_path, _reason = pr_body.generate_code_flow_diagram(implement_tmpdir, base_remote=base_remote, base_ref=base_ref)
     comment_url = ""
     if diagram_status == "ok" and diagram_path:
-        upsert = subprocess.run([sys.executable, str(Path(__file__).resolve().parent / "cli.py"), "diagrams", "upsert", "--diagram-file", diagram_path], text=True, capture_output=True)
+        upsert = subprocess.run([sys.executable, str(Path(__file__).resolve().parent / "cli.py"), "diagrams", "upsert", "--diagram-file", diagram_path], text=True, capture_output=True, check=False)
         m = None
         if upsert.returncode == 0:
-            import re
             m = re.search(r"^COMMENT_URL=(.*)$", upsert.stdout, re.MULTILINE)
         comment_url = m.group(1) if m else ""
     run_id = _read_kv(implement_tmpdir / "ship-pr-state.sh", "RUN_ID") or ((implement_tmpdir / "session-id").read_text(encoding="utf-8").strip() if (implement_tmpdir / "session-id").is_file() else "")

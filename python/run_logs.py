@@ -22,6 +22,7 @@ from typing import Any, cast
 import config
 import git
 import logging_util
+import pr_body
 import proc
 import redact
 import timing
@@ -1090,7 +1091,6 @@ def _execution_issue_record(
 
 def _write_final_report(runner: Runner, ctx: RunContext) -> None:
     _ = runner
-    import pr_body
     rc, _comment_url, error = pr_body.write_final_report(Path(ctx.tmpdir))
     if rc != 0:
         msg = error or "final report write failed"
@@ -1099,7 +1099,6 @@ def _write_final_report(runner: Runner, ctx: RunContext) -> None:
 
 def write_final_report_comment(runner: Runner, ctx: RunContext) -> None:
     _ = runner
-    import pr_body
     rc, _comment_url, error = pr_body.write_final_report(Path(ctx.tmpdir), comment_only=True)
     if rc != 0:
         msg = error or "final report comment write failed"

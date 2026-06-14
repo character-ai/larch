@@ -10,7 +10,10 @@ import re
 import subprocess
 import sys
 import tempfile
+from contextlib import suppress
 from pathlib import Path
+
+VALIDATION_FAILED_RC = 2
 
 
 def emit_kv(key: str, value: object) -> None:
@@ -126,7 +129,7 @@ def flush_execution_issues(*, log_root: Path, run_id: str, issue_log: Path, batc
             return 0, "no-records", 0, str(append_log)
         plugin_root = Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[1]))
         cmd = [sys.executable, str(plugin_root / "python" / "cli.py"), "run-log", "append", "--log-root", str(log_root), "--skill", "implement", "--run-id", run_id, "--batch", "execution-issues", "--record-file", str(record_path)]
-        proc = subprocess.run(cmd, text=True, capture_output=True)
+        proc = subprocess.run(cmd, text=True, capture_output=True, check=False)
         append_log.write_text(proc.stdout + proc.stderr, encoding="utf-8")
         if proc.returncode == 0:
             sentinel.write_text(sha + "\n", encoding="utf-8")
@@ -135,10 +138,8 @@ def flush_execution_issues(*, log_root: Path, run_id: str, issue_log: Path, batc
         _append_failure(issue_log, "flush-execution-issues", f"run-log exited {proc.returncode}")
         return 1, "failed", 0, str(append_log)
     finally:
-        try:
+        with suppress(OSError):
             record_path.unlink()
-        except OSError:
-            pass
 
 
 def flush_execution_issues_main(argv: list[str] | None = None) -> int:
@@ -152,14 +153,17 @@ def flush_execution_issues_main(argv: list[str] | None = None) -> int:
     try:
         args = parser.parse_args(argv)
     except SystemExit:
-        emit_kv("FLUSH_STATUS", "failed"); emit_kv("RECORDS", 0); emit_kv("ERROR", "usage")
-        return 2
+        emit_kv("FLUSH_STATUS", "failed")
+        emit_kv("RECORDS", 0)
+        emit_kv("ERROR", "usage")
+        return VALIDATION_FAILED_RC
     issue_log = Path(args.issue_log) if args.issue_log else Path(os.environ.get("IMPLEMENT_TMPDIR", ".")) / "execution-issues.md"
     rc, status, records, append_log = flush_execution_issues(log_root=Path(args.log_root), run_id=args.run_id, issue_log=issue_log, batch=args.batch, step_label=args.step_label, source_label=args.source_label)
-    emit_kv("FLUSH_STATUS", status); emit_kv("RECORDS", records)
+    emit_kv("FLUSH_STATUS", status)
+    emit_kv("RECORDS", records)
     if append_log:
         emit_kv("APPEND_LOG_FILE", append_log)
-    if rc == 2:
+    if rc == VALIDATION_FAILED_RC:
         emit_kv("ERROR", append_log or "validation failed")
     return rc
 
@@ -218,7 +222,7 @@ def refresh_execution_issues(implement_tmpdir: Path, *, best_effort: bool = Fals
     cmd = [sys.executable, str(plugin_root / "python" / "cli.py"), "tracking-issue", "upsert-summary", "--issue", issue, "--marker", f"<!-- larch:metadata v1 runid={run_id} -->", "--content-file", str(summary)]
     if repo:
         cmd += ["--repo", repo]
-    proc = subprocess.run(cmd, text=True, capture_output=True)
+    proc = subprocess.run(cmd, text=True, capture_output=True, check=False)
     (implement_tmpdir / "refresh-execution-issues.out").write_text(proc.stdout, encoding="utf-8")
     (implement_tmpdir / "refresh-execution-issues.err").write_text(proc.stderr, encoding="utf-8")
     if proc.returncode == 0:
@@ -233,8 +237,9 @@ def refresh_execution_issues_main(argv: list[str] | None = None) -> int:
     try:
         args = parser.parse_args(argv)
     except SystemExit:
-        emit_kv("REFRESHED", "false"); emit_kv("ERROR", "usage")
-        return 2
+        emit_kv("REFRESHED", "false")
+        emit_kv("ERROR", "usage")
+        return VALIDATION_FAILED_RC
     rc, refreshed, reason = refresh_execution_issues(Path(args.implement_tmpdir), best_effort=args.best_effort)
     emit_kv("REFRESHED", str(refreshed).lower())
     if reason:

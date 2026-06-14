@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import re
@@ -896,14 +897,10 @@ def write_finalize_state(ctx: RunContext, path: str | Path) -> None:
 # C4c CLI surfaces
 # ---------------------------------------------------------------------------
 
-import argparse
-
 
 class _SubprocessRunner:
     def run(self, argv, *, timeout=None, cwd=None, env=None, check=False, stdout=None, stderr=None):
-        import proc as _proc
-
-        return _proc.run(argv, timeout=timeout, cwd=cwd, env=env, check=check, stdout=stdout, stderr=stderr)
+        return proc.run(argv, timeout=timeout, cwd=cwd, env=env, check=check, stdout=stdout, stderr=stderr)
 
 
 def _emit_finalize_result(result: FinalizeResult) -> None:
@@ -947,18 +944,21 @@ def implement_finalize_main(argv: list[str] | None = None, phase: str = "") -> i
     else:
         tmpdir = args.implement_tmpdir or os.environ.get("IMPLEMENT_TMPDIR", "")
         if not tmpdir:
-            print("STATUS=failed"); print("FINALIZE_WARNINGS=IMPLEMENT_TMPDIR is required")
+            print("STATUS=failed")
+            print("FINALIZE_WARNINGS=IMPLEMENT_TMPDIR is required")
             return 2
         ctx = _ctx_from_tmpdir(tmpdir)
     runner = _SubprocessRunner()
+    cwd = str(Path.cwd())
     if phase == "postbump":
-        result = postbump(runner, ctx, cwd=os.getcwd())
+        result = postbump(runner, ctx, cwd=cwd)
     elif phase == "postmerge":
-        result = postmerge(runner, ctx, cwd=os.getcwd())
+        result = postmerge(runner, ctx, cwd=cwd)
     elif phase == "teardown":
-        result = teardown(runner, ctx, cwd=os.getcwd())
+        result = teardown(runner, ctx, cwd=cwd)
     else:
-        print("STATUS=failed"); print("FINALIZE_WARNINGS=unknown phase")
+        print("STATUS=failed")
+        print("FINALIZE_WARNINGS=unknown phase")
         return 2
     _emit_finalize_result(result)
     return 0 if result.outcome.value == "ok" else 1
@@ -982,7 +982,7 @@ def cleanup_main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     tmpdir = Path(args.implement_tmpdir)
     ctx = _ctx_from_tmpdir(str(tmpdir))
-    if tmpdir.exists() and _cleanup_target_ok(ctx, tmpdir, cwd=os.getcwd()):
+    if tmpdir.exists() and _cleanup_target_ok(ctx, tmpdir, cwd=str(Path.cwd())):
         shutil.rmtree(tmpdir, ignore_errors=True)
         cleaned = not tmpdir.exists()
         print(f"CLEANED={_bool_text(cleaned)}")

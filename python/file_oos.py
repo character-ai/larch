@@ -14,17 +14,20 @@ orchestrator can avoid re-filing across same-session retries.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import re
 import subprocess
 import sys
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from collections.abc import Iterable
 from typing import NamedTuple
 
 import config
+import run_logs
+from redact import redact
 
 
 # ---------------------------------------------------------------------------
@@ -32,6 +35,7 @@ import config
 # ---------------------------------------------------------------------------
 INLINE_TRIAGE_MARKER: str = config.INLINE_TRIAGE_MARKER
 OOS_FILED_URL_FIELD: str = config.OOS_FILED_URL_FIELD
+OOS_EXCERPT_MAX_CHARS = 800
 
 # ---------------------------------------------------------------------------
 # Regexes (ported from oos.py)
@@ -226,18 +230,13 @@ def _strip_md_emphasis(text: str) -> str:
 
 
 def _sanitize_public_text(text: str) -> str:
-    try:
-        from redact import redact as _redact
-
-        text = _redact(text)
-    except Exception:
-        pass
+    with contextlib.suppress(Exception):
+        text = redact(text)
     text = _INTERNAL_URL_RE.sub("<INTERNAL-URL>", text)
     text = _EMAIL_RE.sub("<REDACTED-PII>", text)
     text = _SSN_RE.sub("<REDACTED-PII>", text)
     text = _PHONE_RE.sub("<REDACTED-PII>", text)
-    text = _ACCOUNT_RE.sub("<REDACTED-PII>", text)
-    return text
+    return _ACCOUNT_RE.sub("<REDACTED-PII>", text)
 
 
 def _normalize_title(text: object) -> str:
@@ -270,12 +269,12 @@ def _load_manifest_observations(path: Path) -> list[dict[str, object]]:
     except (OSError, json.JSONDecodeError) as exc:
         raise ValueError(f"manifest must be readable JSON: {exc}") from exc
     if not isinstance(data, dict):
-        raise ValueError("manifest must be a JSON object")
+        raise TypeError("manifest must be a JSON object")
     observations = data.get("oos_observations", [])
     if observations is None:
         observations = []
     if not isinstance(observations, list):
-        raise ValueError("oos_observations must be an array")
+        raise TypeError("oos_observations must be an array")
     return [item if isinstance(item, dict) else {} for item in observations]
 
 
@@ -300,12 +299,10 @@ def _next_oos_number(path: Path) -> int:
 def _append_run_log_warning(tmpdir: Path, entry: str) -> None:
     log = tmpdir / "execution-issues.md"
     try:
-        from run_logs import append_entry_to_log
-
-        append_entry_to_log(log, "Warnings", entry)
+        run_logs.append_entry_to_log(log, "Warnings", entry)
         return
-    except Exception:
-        pass
+    except Exception as exc:
+        _ = exc
     text = log.read_text(encoding="utf-8") if log.exists() else ""
     if entry in text:
         return
@@ -443,14 +440,14 @@ def _count_rejected_from_ndjson(path: Path) -> int:
 
 
 def _count_inline_triage(commit_range: str) -> int:
-    repo = subprocess.run(["git", "rev-parse", "--show-toplevel"], text=True, capture_output=True)
+    repo = subprocess.run(["git", "rev-parse", "--show-toplevel"], text=True, capture_output=True, check=False)  # noqa: S607
     if repo.returncode != 0:
         raise ValueError("not inside a git work tree (need commit-range scan)")
     root = repo.stdout.strip()
-    ok = subprocess.run(["git", "-C", root, "rev-list", "-1", commit_range], text=True, capture_output=True)
+    ok = subprocess.run(["git", "-C", root, "rev-list", "-1", commit_range], text=True, capture_output=True, check=False)  # noqa: S607
     if ok.returncode != 0:
         raise ValueError(f"invalid commit-range: {commit_range}")
-    log = subprocess.run(["git", "-C", root, "log", "--format=%B", commit_range], text=True, capture_output=True)
+    log = subprocess.run(["git", "-C", root, "log", "--format=%B", commit_range], text=True, capture_output=True, check=False)  # noqa: S607
     if log.returncode != 0:
         raise ValueError(f"invalid commit-range: {commit_range}")
     return len(_INLINE_TRIAGE_RE.findall(log.stdout))
@@ -462,9 +459,14 @@ def disposition_gate(*, accepted_files: list[Path], filed_url_files: list[Path],
     for path in accepted_files:
         if path.exists() and (not path.is_file() or not os.access(path, os.R_OK)):
             raise ValueError(f"accepted file path is not a readable regular file: {path}")
-    if oos_issues_ndjson and oos_issues_ndjson.is_file() and oos_issues_ndjson.stat().st_size > 0 and not any(p.is_file() for p in accepted_files):
-        if _count_urls_in_files([oos_issues_ndjson]) > 0:
-            raise ValueError("oos-issues.ndjson lists filed GitHub issue URLs but no --accepted-files paths exist as regular files (check CSV path list)")
+    if (
+        oos_issues_ndjson
+        and oos_issues_ndjson.is_file()
+        and oos_issues_ndjson.stat().st_size > 0
+        and not any(p.is_file() for p in accepted_files)
+        and _count_urls_in_files([oos_issues_ndjson]) > 0
+    ):
+        raise ValueError("oos-issues.ndjson lists filed GitHub issue URLs but no --accepted-files paths exist as regular files (check CSV path list)")
     non_sec = count_non_security(tuple(str(p) for p in accepted_files))
     filed = _count_urls_in_files(filed_url_files + ([oos_issues_ndjson] if oos_issues_ndjson else [])) + _count_urls_in_files(filed_url_strict_files, strict=True)
     rejected = _count_rejected_from_ndjson(oos_issues_ndjson) if oos_issues_ndjson else 0
@@ -539,7 +541,7 @@ def disposition_checkpoint_main(argv: list[str] | None = None) -> int:
     state = _read_kv_file(tmpdir / "ship-pr-state.sh") | _read_kv_file(tmpdir / "finalize-state.sh")
     forked = state.get("FORKED_TARGET", "false") == "true"
     repo_unavailable = state.get("REPO_UNAVAILABLE", "false") == "true"
-    merge_base = subprocess.run(["git", "merge-base", "HEAD", "origin/main"], text=True, capture_output=True)
+    merge_base = subprocess.run(["git", "merge-base", "HEAD", "origin/main"], text=True, capture_output=True, check=False)  # noqa: S607
     commit_range = f"{merge_base.stdout.strip()}..HEAD" if merge_base.returncode == 0 and merge_base.stdout.strip() else "HEAD"
     run_id = state.get("RUN_ID", "")
     if not run_id and (tmpdir / "session-id").is_file():
@@ -587,11 +589,8 @@ class OosItem:
 
 
 def _parse_oos_blocks(text: str) -> list[OosItem]:
-    items: list[OosItem] = []
     matches = list(_OOS_BLOCK_RE.finditer(text))
-    for match in matches:
-        items.append(OosItem(int(match.group(1)), match.group(2).strip(), match.group(0).rstrip()))
-    return items
+    return [OosItem(int(match.group(1)), match.group(2).strip(), match.group(0).rstrip()) for match in matches]
 
 
 def _aggregate_block(seq: int, items: list[OosItem]) -> str:
@@ -599,8 +598,8 @@ def _aggregate_block(seq: int, items: list[OosItem]) -> str:
     lines = [f"### OOS_{seq}: {title}", "- **Description**: Multiple OOS items were grouped because this run exceeded the per-run filing cap.", "", "  Rolled-up items:"]
     for item in items:
         excerpt = re.sub(r"\s+", " ", item.body).strip()
-        if len(excerpt) > 800:
-            excerpt = excerpt[:797] + "..."
+        if len(excerpt) > OOS_EXCERPT_MAX_CHARS:
+            excerpt = excerpt[: OOS_EXCERPT_MAX_CHARS - 3] + "..."
         lines.append(f"  - OOS_{item.number}: {item.title} — {excerpt}")
     lines.extend(["- **Reviewer**: Combined: capped per-run rollup", "- **Vote tally**: N/A — capped per-run rollup", "- **Phase**: implement"])
     return "\n".join(lines)

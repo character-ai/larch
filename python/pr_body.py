@@ -2,13 +2,22 @@
 
 from __future__ import annotations
 
+import argparse
+import contextlib
+import json
+import os
 import re
+import subprocess
+import sys
+import urllib.parse
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
 import config
 import gh
 import git
+import proc
 import redact
 import run_logs
 import tracking_issue
@@ -298,13 +307,6 @@ def update_pr_body(
 # C4c report helper ports
 # ---------------------------------------------------------------------------
 
-import argparse
-import json
-import os
-import subprocess
-import sys
-import urllib.request
-
 
 def _emit_kv(key: str, value: object) -> None:
     print(f"{key}={value}")
@@ -448,8 +450,7 @@ def render_run_summary_main(argv: list[str] | None = None) -> int:
 
 class _ProcRunner:
     def run(self, argv, *, timeout=None, cwd=None, env=None, check=False, stdout=None, stderr=None):
-        import proc as _proc
-        return _proc.run(argv, timeout=timeout, cwd=cwd, env=env, check=check, stdout=stdout, stderr=stderr)
+        return proc.run(argv, timeout=timeout, cwd=cwd, env=env, check=check, stdout=stdout, stderr=stderr)
 
 
 def compose_pr_summary_main(argv: list[str] | None = None) -> int:
@@ -457,7 +458,7 @@ def compose_pr_summary_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--plan-goals-file", required=True)
     args = parser.parse_args(argv)
     try:
-        sys.stdout.write(compose_summary_bullets(_ProcRunner(), plan_goals_file=args.plan_goals_file, cwd=os.getcwd()))
+        sys.stdout.write(compose_summary_bullets(_ProcRunner(), plan_goals_file=args.plan_goals_file, cwd=str(Path.cwd())))
     except Exception as exc:
         print(f"ERROR={exc}", file=sys.stderr)
         return 2
@@ -531,9 +532,9 @@ def write_final_report(implement_tmpdir: Path, *, comment_only: bool = False, pr
         cmd = [sys.executable, str(Path(__file__).resolve().parent / "cli.py"), "tracking-issue", "upsert-summary", "--issue", issue, "--marker", marker, "--content-file", str(content)]
         if repo:
             cmd += ["--repo", repo]
-        proc = subprocess.run(cmd, text=True, capture_output=True)
-        if proc.returncode == 0:
-            m = re.search(r"^COMMENT_URL=(.*)$", proc.stdout, re.MULTILINE)
+        completed = subprocess.run(cmd, text=True, capture_output=True, check=False)
+        if completed.returncode == 0:
+            m = re.search(r"^COMMENT_URL=(.*)$", completed.stdout, re.MULTILINE)
             comment_url = m.group(1) if m else ""
     if print_stdout:
         sys.stdout.write(body)
@@ -548,7 +549,9 @@ def write_final_report_main(argv: list[str] | None = None) -> int:
     try:
         args = parser.parse_args(argv)
     except SystemExit:
-        _emit_kv("COMMENT_URL", ""); _emit_kv("STATUS", "failed"); _emit_kv("ERROR", "usage")
+        _emit_kv("COMMENT_URL", "")
+        _emit_kv("STATUS", "failed")
+        _emit_kv("ERROR", "usage")
         return 2
     rc, url, err = write_final_report(Path(args.implement_tmpdir), comment_only=args.comment_only, print_stdout=args.print_stdout)
     _emit_kv("COMMENT_URL", url)
@@ -570,12 +573,17 @@ def step18b_final_report(implement_tmpdir: Path) -> tuple[bool, int, bool, str]:
             snapshot_ok = "true"
         except OSError:
             snapshot_ok = "false"
-            try: pre.unlink()
-            except OSError: pass
+            with contextlib.suppress(OSError):
+                pre.unlink()
     wfr_rc, _url, _err = write_final_report(implement_tmpdir)
-    if wfr_rc == 0 and summary.is_file() and summary.stat().st_size > 0 and not emit_body:
-        if snapshot_ok in {"absent", "false"} or (pre.is_file() and pre.read_bytes() != summary.read_bytes()):
-            emit_body = True
+    if (
+        wfr_rc == 0
+        and summary.is_file()
+        and summary.stat().st_size > 0
+        and not emit_body
+        and (snapshot_ok in {"absent", "false"} or (pre.is_file() and pre.read_bytes() != summary.read_bytes()))
+    ):
+        emit_body = True
     return (emit_body and wfr_rc == 0 and summary.is_file() and summary.stat().st_size > 0), wfr_rc, step17_present, snapshot_ok
 
 
@@ -596,7 +604,9 @@ def post_tracking_issue(implement_tmpdir: Path, *, issue_number: str = "", run_i
         return 2, False, "", "--adopted must be true or false"
     if emergency_requested not in {"true", "false"}:
         return 2, False, "", "--emergency-requested must be true or false"
-    parent = implement_tmpdir / "parent-issue.md"; session = implement_tmpdir / "session-env.sh"; flags = implement_tmpdir / "run-flags.sh"
+    parent = implement_tmpdir / "parent-issue.md"
+    session = implement_tmpdir / "session-env.sh"
+    flags = implement_tmpdir / "run-flags.sh"
     issue = issue_number or _read_kv(parent, "ISSUE_NUMBER")
     run = run_id or _read_kv(parent, "RUN_ID") or ((implement_tmpdir / "session-id").read_text(encoding="utf-8").strip() if (implement_tmpdir / "session-id").is_file() else "") or _read_kv(session, "LARCH_TOKEN_SESSION_ID")
     if emergency_requested == "false" and _read_kv(flags, "EMERGENCY_REQUESTED") == "true":
@@ -609,8 +619,8 @@ def post_tracking_issue(implement_tmpdir: Path, *, issue_number: str = "", run_i
         return 1, False, "", "RUN_ID must match ^[A-Za-z0-9._-]+$"
     version = "unknown"
     try:
-        proc = subprocess.run([sys.executable, str(Path(__file__).resolve().parent / "cli.py"), "plugin", "read-version"], text=True, capture_output=True)
-        m = re.search(r"^LARCH_PLUGIN_VERSION=(.*)$", proc.stdout, re.MULTILINE)
+        completed = subprocess.run([sys.executable, str(Path(__file__).resolve().parent / "cli.py"), "plugin", "read-version"], text=True, capture_output=True, check=False)
+        m = re.search(r"^LARCH_PLUGIN_VERSION=(.*)$", completed.stdout, re.MULTILINE)
         if m:
             version = m.group(1)
     except OSError:
@@ -625,13 +635,13 @@ def post_tracking_issue(implement_tmpdir: Path, *, issue_number: str = "", run_i
     cmd = [sys.executable, str(Path(__file__).resolve().parent / "cli.py"), "tracking-issue", "upsert-summary", "--issue", issue, "--marker", f"<!-- larch:metadata v1 runid={run} -->", "--content-file", str(summary)]
     if repo:
         cmd += ["--repo", repo]
-    proc = subprocess.run(cmd, text=True, capture_output=True)
-    if proc.returncode == 0:
+    completed = subprocess.run(cmd, text=True, capture_output=True, check=False)
+    if completed.returncode == 0:
         if issue_number:
             parent.write_text(f"ISSUE_NUMBER={issue}\nRUN_ID={run}\nADOPTED={adopted}\n", encoding="utf-8")
-        m = re.search(r"^COMMENT_URL=(.*)$", proc.stdout, re.MULTILINE)
+        m = re.search(r"^COMMENT_URL=(.*)$", completed.stdout, re.MULTILINE)
         return 0, True, m.group(1) if m else "", ""
-    return 1, False, "", " ".join(proc.stderr.split())[:500]
+    return 1, False, "", " ".join(completed.stderr.split())[:500]
 
 
 def post_tracking_issue_main(argv: list[str] | None = None) -> int:
@@ -643,13 +653,16 @@ def post_tracking_issue_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--emergency-requested", default="false")
     args = parser.parse_args(argv)
     rc, posted, url, err = post_tracking_issue(Path(args.implement_tmpdir), issue_number=args.issue_number, run_id=args.run_id, adopted=args.adopted, emergency_requested=args.emergency_requested)
-    _emit_kv("POSTED", str(posted).lower()); _emit_kv("COMMENT_URL", url)
-    if err: _emit_kv("ERROR", err)
+    _emit_kv("POSTED", str(posted).lower())
+    _emit_kv("COMMENT_URL", url)
+    if err:
+        _emit_kv("ERROR", err)
     return rc
 
 
 def slack_issue_announce(implement_tmpdir: Path, *, best_effort: bool = False) -> tuple[int, str, str]:
-    parent = implement_tmpdir / "parent-issue.md"; ship = implement_tmpdir / "ship-pr-state.sh"
+    parent = implement_tmpdir / "parent-issue.md"
+    ship = implement_tmpdir / "ship-pr-state.sh"
     issue = _read_kv(parent, "ISSUE_NUMBER", "0") or "0"
     if not issue.isdigit():
         return (0 if best_effort else 1), "failed", "ISSUE_NUMBER must be numeric"
@@ -658,6 +671,8 @@ def slack_issue_announce(implement_tmpdir: Path, *, best_effort: bool = False) -
     webhook = os.environ.get("LARCH_SLACK_WEBHOOK_URL", "")
     if not webhook:
         return 0, "skipped", "webhook-not-set"
+    if urllib.parse.urlparse(webhook).scheme not in {"http", "https"}:
+        return (0 if best_effort else 1), "failed", "webhook scheme must be http or https"
     run_id = _read_kv(parent, "RUN_ID") or ((implement_tmpdir / "session-id").read_text(encoding="utf-8").strip() if (implement_tmpdir / "session-id").is_file() else "")
     text = f"Implement run {run_id} opened PR {_read_kv(ship, 'PR_URL', 'N/A')} for tracking issue #{issue}"
     if _read_kv(ship, "PR_TITLE"):
@@ -666,12 +681,12 @@ def slack_issue_announce(implement_tmpdir: Path, *, best_effort: bool = False) -
     fake_curl = os.environ.get("__LARCH_FAKE_CURL")
     try:
         if fake_curl:
-            proc = subprocess.run([fake_curl, "-sS", "-X", "POST", "-H", "Content-Type: application/json", "--data", payload.decode(), webhook], text=True, capture_output=True)
-            if proc.returncode != 0:
-                return (0 if best_effort else 1), "failed", " ".join(proc.stderr.split())[:500]
+            completed = subprocess.run([fake_curl, "-sS", "-X", "POST", "-H", "Content-Type: application/json", "--data", payload.decode(), webhook], text=True, capture_output=True, check=False)
+            if completed.returncode != 0:
+                return (0 if best_effort else 1), "failed", " ".join(completed.stderr.split())[:500]
         else:
-            req = urllib.request.Request(webhook, data=payload, headers={"Content-Type": "application/json"}, method="POST")
-            with urllib.request.urlopen(req, timeout=10):
+            req = urllib.request.Request(webhook, data=payload, headers={"Content-Type": "application/json"}, method="POST")  # noqa: S310
+            with urllib.request.urlopen(req, timeout=10):  # noqa: S310
                 pass
     except Exception as exc:
         return (0 if best_effort else 1), "failed", str(exc)[:500]
@@ -691,14 +706,15 @@ def slack_issue_announce_main(argv: list[str] | None = None) -> int:
 
 
 def generate_code_flow_diagram(implement_tmpdir: Path, *, model: str = "claude-sonnet-4-6", base_remote: str = "origin", base_ref: str = "main") -> tuple[int, str, str, str]:
+    _ = (base_remote, base_ref)
     implement_tmpdir.mkdir(parents=True, exist_ok=True)
     raw = implement_tmpdir / "code-flow-diagram.raw.md"
     candidate = implement_tmpdir / "code-flow-diagram.candidate.md"
     diagram = implement_tmpdir / "code-flow-diagram.md"
     launcher = os.environ.get("LARCH_TEST_LAUNCH_CLAUDE_SUBPROCESS")
     if launcher:
-        proc = subprocess.run([launcher, "--model", model, "--prompt-file", str(implement_tmpdir / "code-flow-prompt.md"), "--output-file", str(raw), "--timeout", "600", "--allow-root", os.getcwd(), "--timing-task-kind", "implement-code-flow"], text=True, capture_output=True)
-        if proc.returncode != 0:
+        completed = subprocess.run([launcher, "--model", model, "--prompt-file", str(implement_tmpdir / "code-flow-prompt.md"), "--output-file", str(raw), "--timeout", "600", "--allow-root", str(Path.cwd()), "--timing-task-kind", "implement-code-flow"], text=True, capture_output=True, check=False)
+        if completed.returncode != 0:
             return 1, "failed", "", "generation-failed"
     else:
         raw.write_text("## Code Flow Diagram\n\n```mermaid\nflowchart TD\n  A[Implementation] --> B[Runtime]\n```\n", encoding="utf-8")
@@ -721,5 +737,7 @@ def generate_code_flow_diagram_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--base-ref", default="main")
     args = parser.parse_args(argv)
     rc, status, diagram, reason = generate_code_flow_diagram(Path(args.implement_tmpdir), model=args.model, base_remote=args.base_remote, base_ref=args.base_ref)
-    _emit_kv("STATUS", status); _emit_kv("DIAGRAM_FILE", diagram); _emit_kv("SKIP_REASON", reason)
+    _emit_kv("STATUS", status)
+    _emit_kv("DIAGRAM_FILE", diagram)
+    _emit_kv("SKIP_REASON", reason)
     return rc

@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import os
 import re
 import sys
 from datetime import datetime, UTC
 from pathlib import Path
+
+MAX_PUBLIC_FILE_BYTES = 256_000
 
 
 def emit(key: str, value: object) -> None:
@@ -45,6 +48,7 @@ def _state(tmpdir: Path) -> dict[str, str]:
 
 
 def _classify_text(text: str, bail: str, step: str, phase: str) -> tuple[str, str, str]:
+    _ = phase
     lower = f"{bail}\n{text}".lower()
     if "submodule-edit-required-out-of-scope" in lower:
         return "submodule-restricted", "none", "submodule-restricted-bail-token"
@@ -78,7 +82,8 @@ def classify(args: argparse.Namespace) -> int:
     signature = hashlib.sha256(f"{klass}\n{bail}\n{detail}".encode()).hexdigest()[:16]
     attempts = Path(args.attempts_file) if args.attempts_file else tmpdir / "stall-recovery-attempts.env"
     if attempts.is_file() and read_kv(attempts, "last_signature") == signature and read_kv(attempts, "last_outcome") == "failed":
-        klass = "same-cause-repeat"; hint = "none"
+        klass = "same-cause-repeat"
+        hint = "none"
     values = {
         "FAILURE_CLASS": klass,
         "FAILURE_SIGNATURE": signature,
@@ -90,7 +95,8 @@ def classify(args: argparse.Namespace) -> int:
         "MATCHED_CLASSIFIER_PATTERN": pattern,
         "DISPATCHER": args.dispatcher or st.get("DISPATCHER", ""),
     }
-    for k, v in values.items(): emit(k, v)
+    for k, v in values.items():
+        emit(k, v)
     write_kvs(tmpdir / "stall-recovery-classification.env", values)
     return 0
 
@@ -114,29 +120,38 @@ def retry_policy(args: argparse.Namespace) -> int:
     klass = args.failure_class
     caps = {"transient-infra": (4, "sleep-seconds.sh 5"), "same-cause-repeat": (2, "none"), "lint-failure": (2, "none"), "test-failure": (2, "none")}
     max_attempts, delay = caps.get(klass, (1, "none"))
-    emit("FAILURE_CLASS", klass); emit("MAX_ATTEMPTS", max_attempts); emit("RETRY_DELAY", delay)
+    emit("FAILURE_CLASS", klass)
+    emit("MAX_ATTEMPTS", max_attempts)
+    emit("RETRY_DELAY", delay)
     return 0
 
 
 def normalize_outcome(args: argparse.Namespace) -> int:
     st = _state(Path(args.implement_tmpdir))
     if st.get("STALL_TRACKING") == "true":
-        outcome = "stalled"; success = "false"
+        outcome = "stalled"
+        success = "false"
     elif st.get("MERGE_RESULT") == "already_merged":
-        outcome = "force-merged-externally"; success = "true"
+        outcome = "force-merged-externally"
+        success = "true"
     else:
-        outcome = "completed"; success = "true"
-    emit("IMPLEMENT_NORMALIZED_OUTCOME", outcome); emit("IMPLEMENT_OUTCOME_SUCCEEDED", success)
+        outcome = "completed"
+        success = "true"
+    emit("IMPLEMENT_NORMALIZED_OUTCOME", outcome)
+    emit("IMPLEMENT_OUTCOME_SUCCEEDED", success)
     return 0
 
 
 def normalize_issue_env(args: argparse.Namespace) -> int:
-    tmpdir = Path(args.implement_tmpdir); out = Path(args.issue_stdout_file)
+    tmpdir = Path(args.implement_tmpdir)
+    out = Path(args.issue_stdout_file)
     env = tmpdir / "stall-recovery-issue.env"
     def fail(reason: str) -> int:
-        try: env.unlink()
-        except OSError: pass
-        emit("NORMALIZED", "false"); emit("REASON", reason); return 0
+        with contextlib.suppress(OSError):
+            env.unlink()
+        emit("NORMALIZED", "false")
+        emit("REASON", reason)
+        return 0
     if args.issue_exit_code is None:
         return fail("issue-exit-code-missing")
     if str(args.issue_exit_code) != "0":
@@ -151,12 +166,15 @@ def normalize_issue_env(args: argparse.Namespace) -> int:
     if not re.match(r"https://github\.com/.+/.+/issues/\d+$", url or ""):
         return fail("issue-url-missing")
     write_kvs(env, {"ISSUE_NUMBER": num, "ISSUE_URL": url})
-    emit("NORMALIZED", "true"); emit("ISSUE_NUMBER", num); emit("ISSUE_URL", url)
+    emit("NORMALIZED", "true")
+    emit("ISSUE_NUMBER", num)
+    emit("ISSUE_URL", url)
     return 0
 
 
 def record_escalation(args: argparse.Namespace) -> int:
-    tmpdir = Path(args.implement_tmpdir); ledger = tmpdir / "stall-recovery-escalation-ledger.tsv"
+    tmpdir = Path(args.implement_tmpdir)
+    ledger = tmpdir / "stall-recovery-escalation-ledger.tsv"
     row = f"utc={datetime.now(UTC).isoformat()}\tsite={args.site}\ttrigger={args.trigger}\tstep={args.step}\tphase={args.phase}\tdispatcher={args.dispatcher}\texit_code={args.exit_code}\n"
     try:
         old = ledger.read_text(encoding="utf-8") if ledger.exists() else ""
@@ -167,7 +185,8 @@ def record_escalation(args: argparse.Namespace) -> int:
     except OSError:
         (tmpdir / "stall-recovery-escalation-record-failure.env").write_text("RECORD_ESCALATION_FAILED=true\nREASON=canonical-ledger-not-writable\n", encoding="utf-8")
         (tmpdir / "stall-recovery-escalation-ledger.fallback.tsv").write_text(row, encoding="utf-8")
-        emit("ESCALATION_RECORDED", "false"); emit("ESCALATION_FALLBACK_WRITTEN", "true")
+        emit("ESCALATION_RECORDED", "false")
+        emit("ESCALATION_FALLBACK_WRITTEN", "true")
     return 0
 
 
@@ -179,7 +198,8 @@ def compose_report(args: argparse.Namespace) -> int:
     summary = "larch stall recovery report"
     if root.is_file():
         m = re.search(r"^summary=(.*)$", root.read_text(encoding="utf-8", errors="replace"), re.MULTILINE)
-        if m: summary = m.group(1)
+        if m:
+            summary = m.group(1)
     kind = args.report_kind
     title_kind = "terminal" if kind == "terminal-failure" else "escalation"
     body = f"[Bug] /implement {title_kind}: {summary}\n\n| Field | Value |\n| --- | --- |\n| Failure class | `{read_kv(cls, 'FAILURE_CLASS', 'unknown')}` |\n| Run ID | `{read_kv(tmpdir / 'parent-issue.md', 'RUN_ID', 'unknown')}` |\n| Larch version | `unknown` |\n\n"
@@ -213,7 +233,7 @@ def validate_terminal_state(args: argparse.Namespace) -> int:
 def validate_tier_b_public_file(args: argparse.Namespace) -> int:
     path = Path(args.public_file)
     tmpdir = Path(args.tmpdir) if args.tmpdir else Path(args.implement_tmpdir)
-    ok = path.is_absolute() and not path.is_symlink() and (path == tmpdir or tmpdir in path.parents) and path.is_file() and path.stat().st_size <= 256_000
+    ok = path.is_absolute() and not path.is_symlink() and (path == tmpdir or tmpdir in path.parents) and path.is_file() and path.stat().st_size <= MAX_PUBLIC_FILE_BYTES
     emit("PUBLIC_FILE_VALID", str(ok).lower())
     return 0 if ok else 1
 
@@ -221,14 +241,15 @@ def validate_tier_b_public_file(args: argparse.Namespace) -> int:
 def clear_stall(args: argparse.Namespace) -> int:
     tmpdir = Path(args.implement_tmpdir)
     for name in ("stall-recovery-classification.env", "stall-recovery-issue.env"):
-        try: (tmpdir / name).unlink()
-        except OSError: pass
+        with contextlib.suppress(OSError):
+            (tmpdir / name).unlink()
     emit("CLEARED", "true")
     return 0
 
 
 def seed_terminal_state(args: argparse.Namespace) -> int:
-    tmpdir = Path(args.implement_tmpdir); tmpdir.mkdir(parents=True, exist_ok=True)
+    tmpdir = Path(args.implement_tmpdir)
+    tmpdir.mkdir(parents=True, exist_ok=True)
     write_kvs(tmpdir / "ship-pr-state.sh", {"STALL_TRACKING": "true", "STALL_STEP": args.step or "unknown", "PHASE": args.phase or "unknown"})
     emit("SEEDED", "true")
     return 0
@@ -243,34 +264,91 @@ def chat_print(args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
     argv = argv if argv is not None else sys.argv[1:]
     if not argv:
-        print("stall-recovery: missing subcommand", file=sys.stderr); return 2
+        print("stall-recovery: missing subcommand", file=sys.stderr)
+        return 2
     sub, rest = argv[0], argv[1:]
     p = argparse.ArgumentParser(prog=f"cli.py stall-recovery {sub}")
     p.add_argument("--implement-tmpdir", default=os.environ.get("IMPLEMENT_TMPDIR", "."))
     if sub == "classify":
-        p.add_argument("--failure-detail-log"); p.add_argument("--attempts-file"); p.add_argument("--bail-reason", default=""); p.add_argument("--in-memory-stall-tracking"); p.add_argument("--stall-step", default=""); p.add_argument("--phase", default=""); p.add_argument("--exit-code", default=""); p.add_argument("--dispatcher", default="")
-        ns, _ = p.parse_known_args(rest); return classify(ns)
+        p.add_argument("--failure-detail-log")
+        p.add_argument("--attempts-file")
+        p.add_argument("--bail-reason", default="")
+        p.add_argument("--in-memory-stall-tracking")
+        p.add_argument("--stall-step", default="")
+        p.add_argument("--phase", default="")
+        p.add_argument("--exit-code", default="")
+        p.add_argument("--dispatcher", default="")
+        ns, _ = p.parse_known_args(rest)
+        return classify(ns)
     if sub == "init-attempts":
-        p.add_argument("--attempts-file"); ns, _ = p.parse_known_args(rest); return init_attempts(ns)
+        p.add_argument("--attempts-file")
+        ns, _ = p.parse_known_args(rest)
+        return init_attempts(ns)
     if sub == "record-attempt":
-        p.add_argument("--attempts-file"); p.add_argument("--class", dest="failure_class", required=True); p.add_argument("--signature", required=True); p.add_argument("--resume-hint", default="none"); p.add_argument("--outcome", default="failed"); ns, _ = p.parse_known_args(rest); return record_attempt(ns)
+        p.add_argument("--attempts-file")
+        p.add_argument("--class", dest="failure_class", required=True)
+        p.add_argument("--signature", required=True)
+        p.add_argument("--resume-hint", default="none")
+        p.add_argument("--outcome", default="failed")
+        ns, _ = p.parse_known_args(rest)
+        return record_attempt(ns)
     if sub == "retry-policy":
-        p.add_argument("--class", dest="failure_class", required=True); ns, _ = p.parse_known_args(rest); return retry_policy(ns)
-    if sub == "normalize-outcome": ns, _ = p.parse_known_args(rest); return normalize_outcome(ns)
+        p.add_argument("--class", dest="failure_class", required=True)
+        ns, _ = p.parse_known_args(rest)
+        return retry_policy(ns)
+    if sub == "normalize-outcome":
+        ns, _ = p.parse_known_args(rest)
+        return normalize_outcome(ns)
     if sub == "normalize-issue-env":
-        p.add_argument("--issue-stdout-file", required=True); p.add_argument("--issue-exit-code"); ns, _ = p.parse_known_args(rest); return normalize_issue_env(ns)
+        p.add_argument("--issue-stdout-file", required=True)
+        p.add_argument("--issue-exit-code")
+        ns, _ = p.parse_known_args(rest)
+        return normalize_issue_env(ns)
     if sub == "record-escalation":
-        p.add_argument("--site", required=True); p.add_argument("--trigger", required=True); p.add_argument("--step", required=True); p.add_argument("--phase", required=True); p.add_argument("--dispatcher", required=True); p.add_argument("--exit-code", required=True); ns, _ = p.parse_known_args(rest); return record_escalation(ns)
+        p.add_argument("--site", required=True)
+        p.add_argument("--trigger", required=True)
+        p.add_argument("--step", required=True)
+        p.add_argument("--phase", required=True)
+        p.add_argument("--dispatcher", required=True)
+        p.add_argument("--exit-code", required=True)
+        ns, _ = p.parse_known_args(rest)
+        return record_escalation(ns)
     if sub in {"compose-report", "dedup-tier-a-report"}:
-        p.add_argument("--report-kind", default="terminal-failure"); p.add_argument("--surface", default="chat-print"); p.add_argument("--output-file"); ns, _ = p.parse_known_args(rest); return compose_report(ns)
-    if sub == "validate-token": p.add_argument("--token", default=""); p.add_argument("--value", default=""); p.add_argument("--token-kind", default=""); ns, _ = p.parse_known_args(rest); ns.token = ns.token or ns.value; return validate_token(ns)
-    if sub == "validate-terminal-state": ns, _ = p.parse_known_args(rest); return validate_terminal_state(ns)
-    if sub == "validate-tier-b-public-file": p.add_argument("--public-file", required=True); p.add_argument("--tmpdir"); ns, _ = p.parse_known_args(rest); return validate_tier_b_public_file(ns)
-    if sub == "clear-stall": ns, _ = p.parse_known_args(rest); return clear_stall(ns)
-    if sub == "seed-terminal-state": p.add_argument("--step"); p.add_argument("--phase"); ns, _ = p.parse_known_args(rest); return seed_terminal_state(ns)
-    if sub == "chat-print": p.add_argument("--input-file"); ns, _ = p.parse_known_args(rest); return chat_print(ns)
+        p.add_argument("--report-kind", default="terminal-failure")
+        p.add_argument("--surface", default="chat-print")
+        p.add_argument("--output-file")
+        ns, _ = p.parse_known_args(rest)
+        return compose_report(ns)
+    if sub == "validate-token":
+        p.add_argument("--token", default="")
+        p.add_argument("--value", default="")
+        p.add_argument("--token-kind", default="")
+        ns, _ = p.parse_known_args(rest)
+        ns.token = ns.token or ns.value
+        return validate_token(ns)
+    if sub == "validate-terminal-state":
+        ns, _ = p.parse_known_args(rest)
+        return validate_terminal_state(ns)
+    if sub == "validate-tier-b-public-file":
+        p.add_argument("--public-file", required=True)
+        p.add_argument("--tmpdir")
+        ns, _ = p.parse_known_args(rest)
+        return validate_tier_b_public_file(ns)
+    if sub == "clear-stall":
+        ns, _ = p.parse_known_args(rest)
+        return clear_stall(ns)
+    if sub == "seed-terminal-state":
+        p.add_argument("--step")
+        p.add_argument("--phase")
+        ns, _ = p.parse_known_args(rest)
+        return seed_terminal_state(ns)
+    if sub == "chat-print":
+        p.add_argument("--input-file")
+        ns, _ = p.parse_known_args(rest)
+        return chat_print(ns)
     if sub in {"populate-sensitive-corpus", "normalize-file-failure-report-env", "is-larch-dev-clone", "lint"}:
-        emit("STATUS", "ok"); return 0
+        emit("STATUS", "ok")
+        return 0
     print(f"stall-recovery: unknown subcommand: {sub}", file=sys.stderr)
     return 2
 
