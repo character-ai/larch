@@ -205,7 +205,14 @@ def compose_report(args: argparse.Namespace) -> int:
             summary = m.group(1)
     kind = args.report_kind
     title_kind = "terminal" if kind == "terminal-failure" else "escalation"
-    body = f"[Bug] /implement {title_kind}: {summary}\n\n| Field | Value |\n| --- | --- |\n| Failure class | `{read_kv(cls, 'FAILURE_CLASS', 'unknown')}` |\n| Run ID | `{read_kv(tmpdir / 'parent-issue.md', 'RUN_ID', 'unknown')}` |\n| Larch version | `unknown` |\n\n"
+    profile = getattr(args, "profile", "implement")
+    artifact_prefix = getattr(args, "artifact_prefix", "") or ""
+    if profile == "generic":
+        first = artifact_prefix.split("-")[0] if artifact_prefix else ""
+        skill_label = f"/{first}" if first else "/generic"
+    else:
+        skill_label = "/implement"
+    body = f"[Bug] {skill_label} {title_kind}: {summary}\n\n| Field | Value |\n| --- | --- |\n| Failure class | `{read_kv(cls, 'FAILURE_CLASS', 'unknown')}` |\n| Run ID | `{read_kv(tmpdir / 'parent-issue.md', 'RUN_ID', 'unknown')}` |\n| Larch version | `unknown` |\n\n"
     if bounded.is_file():
         body += bounded.read_text(encoding="utf-8", errors="replace") + "\n"
     sig = hashlib.sha256(body.encode()).hexdigest()[:16]
@@ -227,10 +234,45 @@ def validate_token(args: argparse.Namespace) -> int:
     return 0 if ok else 1
 
 
+_TERMINAL_STATE_ALLOWED_KEYS = {
+    "DESIGN_FAILURE_VERSION", "DESIGN_FAILURE_KIND", "FAILURE_OUTCOME", "SUMMARY_OUTCOME",
+    "STALL_STEP", "PHASE", "SITE", "TRIGGER", "BAIL_REASON", "EXIT_CODE",
+    "FAILURE_DETAIL_LOG", "SOURCE_SCRIPT", "ROOT_CAUSE_HINT", "OCCURRED_AT", "EVIDENCE_REF",
+}
+_TERMINAL_STATE_REQUIRED_KEYS = {
+    "DESIGN_FAILURE_VERSION", "DESIGN_FAILURE_KIND", "FAILURE_OUTCOME",
+    "STALL_STEP", "PHASE", "SITE", "TRIGGER", "BAIL_REASON", "EXIT_CODE", "SOURCE_SCRIPT",
+}
+
+
 def validate_terminal_state(args: argparse.Namespace) -> int:
-    ok = Path(args.implement_tmpdir).is_dir()
-    emit("TERMINAL_STATE_VALID", str(ok).lower())
-    return 0 if ok else 1
+    tmpdir = Path(args.implement_tmpdir)
+    if not tmpdir.is_dir():
+        emit("TERMINAL_STATE_VALID", "false")
+        return 1
+    state_file = Path(getattr(args, "primary_state_file", None) or tmpdir / "design-failure-terminal-state.env")
+    if not state_file.is_file():
+        emit("TERMINAL_STATE_VALID", "false")
+        return 1
+    found: dict[str, str] = {}
+    for raw in state_file.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" not in line:
+            emit("TERMINAL_STATE_VALID", "false")
+            return 1
+        k, v = line.split("=", 1)
+        if k not in _TERMINAL_STATE_ALLOWED_KEYS:
+            emit("TERMINAL_STATE_VALID", "false")
+            return 1
+        found[k] = v
+    missing = _TERMINAL_STATE_REQUIRED_KEYS - set(found)
+    if missing:
+        emit("TERMINAL_STATE_VALID", "false")
+        return 1
+    emit("TERMINAL_STATE_VALID", "true")
+    return 0
 
 
 def validate_tier_b_public_file(args: argparse.Namespace) -> int:
@@ -320,6 +362,8 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--report-kind", default="terminal-failure")
         p.add_argument("--surface", default="chat-print")
         p.add_argument("--output-file")
+        p.add_argument("--profile", default="implement")
+        p.add_argument("--artifact-prefix", default="")
         ns, _ = p.parse_known_args(rest)
         return compose_report(ns)
     if sub == "validate-token":
@@ -330,6 +374,7 @@ def main(argv: list[str] | None = None) -> int:
         ns.token = ns.token or ns.value
         return validate_token(ns)
     if sub == "validate-terminal-state":
+        p.add_argument("--primary-state-file", default="")
         ns, _ = p.parse_known_args(rest)
         return validate_terminal_state(ns)
     if sub == "validate-tier-b-public-file":
