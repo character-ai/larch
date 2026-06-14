@@ -84,7 +84,6 @@ def _dev_skill_markdown_bare_basename_ref(
 
 
 def _implement_skill_markdown_bare_basename_ref(
-    repo_root: Path,
     rel: str,
     line_text: str,
     retired_path: str,
@@ -123,7 +122,7 @@ def _line_references_retired(
         return True
     if rel_dir == retired_dir and any(ref in line_text for ref in retired_refs):
         return True
-    if _implement_skill_markdown_bare_basename_ref(repo_root, rel, line_text, retired_path):
+    if _implement_skill_markdown_bare_basename_ref(rel, line_text, retired_path):
         return True
     return _dev_skill_markdown_bare_basename_ref(
         repo_root,
