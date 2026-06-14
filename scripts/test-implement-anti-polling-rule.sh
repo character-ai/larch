@@ -1,14 +1,18 @@
 #!/usr/bin/env bash
 # test-implement-anti-polling-rule.sh — Regression harness for issue #1011 /
-# issue #2749 (FINDING_24 inversion).
+# issue #2749 (FINDING_24 inversion), and issue #4268.
 #
-# Pins the anti-polling-loop literals in four files:
+# Pins the anti-polling-loop, Monitor-ban, and recovery-contract literals
+# in four files:
 #   (1) AGENTS.md: the Monitor / Bash-polling-loop bullet must mention BOTH
-#       Monitor and Bash run_in_background polling loops.
+#       Monitor and Bash run_in_background polling loops, plus the narrow
+#       single-waiter premature-notification recovery guidance.
 #   (2) skills/implement/SKILL.md: Step 5 delegates reviewer waiting to
-#       python/cli.py review-and-fix step5 (no ad-hoc polling loops).
+#       python/cli.py review-and-fix step5 (no ad-hoc polling loops), and
+#       the NEVER list bans Monitor fallback for one-shot completion.
 #   (3) skills/design/SKILL.md: both Step 3 immediate-background fences carry
-#       the result-file sleep-loop ban and consequence prose.
+#       the result-file sleep-loop ban and consequence prose, and the
+#       Anti-patterns list bans Monitor fallback for one-shot completion.
 #   (4) skills/shared/orchestrator-never.md: the shared NEVER list carries the
 #       run_in_background result-file sleep-loop ban.
 #
@@ -82,6 +86,34 @@ fi
 check "$ORCH_NEVER_MD" \
     "shared orchestrator NEVER bans result-file sleep-loop polling" \
     "$ORCH_NEVER_LITERAL"
+
+check "$AGENTS_MD" \
+    "AGENTS.md covers premature-notification recovery with narrow single-waiter guidance" \
+    'only sanctioned exception to the Bash polling-loop ban is one re-launched immediate-background completion waiter'
+
+check "$IMPL_MD" \
+    "SKILL.md NEVER list explicitly bans Monitor tool in /implement orchestrator" \
+    'NEVER use the `Monitor` tool anywhere within the `/implement` orchestrator'
+
+check "$IMPL_MD" \
+    "SKILL.md NEVER list pins /implement premature-notification recovery as narrow single-waiter guidance" \
+    'only sanctioned exception to the Bash polling-loop ban is one re-launched immediate-background completion waiter'
+
+check "$IMPL_MD" \
+    "SKILL.md NEVER list tells /implement not to fall back to Monitor" \
+    'Do NOT fall back to Monitor'
+
+check "$DESIGN_MD" \
+    "/design Anti-patterns explicitly bans Monitor tool" \
+    'NEVER use the `Monitor` tool anywhere within the `/design` orchestrator'
+
+check "$DESIGN_MD" \
+    "/design Anti-patterns pins premature-notification recovery as narrow single-waiter guidance" \
+    'only sanctioned exception to the Bash polling-loop ban is one re-launched immediate-background completion waiter'
+
+check "$DESIGN_MD" \
+    "/design Anti-patterns tells orchestrator not to fall back to Monitor" \
+    'Do NOT fall back to Monitor'
 
 echo ""
 echo "All $PASS assertions passed."

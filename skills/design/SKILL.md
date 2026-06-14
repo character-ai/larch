@@ -222,6 +222,8 @@ Read `skills/design/references/readability-style.md` as the single source of sty
 
 3. **NEVER bypass launcher-owned rehydration and pause checks after Step 0a.** **Why:** pause/resume relies on wrappers self-terminating at the next Bash boundary; bypassing the launcher can silently drop a pause request or lose the baked current-env path. **How to apply:** every post-Step-0a Bash fence invokes `"$HOME/.cache/larch/sessions/design-run-$PPID.sh" <wrapper>.sh ...`. The launcher supplies the source-env path and Claude PID. Wrappers own source-env and pause-check behavior internally, including folded sentinel ordering before real work and the Step 6 cleanup exception. The `scripts/test-design-structure.sh` harness enforces wrapper-internal ordering with `assert_wrapper_pause_before_work`.
 
+4. **NEVER use the `Monitor` tool anywhere within the `/design` orchestrator.** **Why:** Monitor fires one turn per log line; it is for event streams only. Using it to wait for a background task to complete burns tokens on spurious turns. **How to apply:** use `Bash run_in_background` with `run_in_background: true` and wait for `<task-notification>` for one-shot completion on all Step 3 and Step 5c fences. When a `<task-notification>` fires prematurely with empty output and the underlying process is still running, the only sanctioned exception to the Bash polling-loop ban is one re-launched immediate-background completion waiter: exactly one `Bash run_in_background` task with `until <completion-condition>; do sleep N; done`. Do NOT fall back to Monitor.
+
 <!-- step:0 — Session Setup -->
 ## Step 0 — Session Setup
 
