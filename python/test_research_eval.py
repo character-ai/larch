@@ -87,12 +87,17 @@ def test_structured_jsonl_tsv_and_sentinel(tmp_path: Path) -> None:
         "scenario_or_breakage": "breaks",
         "suggested_fix": "fix",
     }
-    path = write(tmp_path / "jsonl.txt", json.dumps(record) + "\n")
+    blocking_record = {**record, "severity": "Blocking", "focus_area": "architecture"}
+    path = write(tmp_path / "jsonl.txt", json.dumps(record) + "\n" + json.dumps(blocking_record) + "\n")
     assert research_eval.validate_research_output(path, structured_reviewer_mode=True, write_structured=out) == 0
-    assert '"severity":"important"' in out.read_text(encoding="utf-8")
-    tsv = write(tmp_path / "records.tsv", "schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix\n1\tout_of_scope\tnit\tsecurity\tloc\twhat\tscenario\tfix\textra\n")
+    normalized_jsonl = out.read_text(encoding="utf-8")
+    assert '"severity":"important"' in normalized_jsonl
+    assert '"severity":"blocking"' in normalized_jsonl
+    tsv = write(tmp_path / "records.tsv", "schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix\n1\tout_of_scope\tBlocking\tsecurity\tloc\twhat\tscenario\tfix\textra\n")
     assert research_eval.validate_research_output(tsv, structured_reviewer_mode=True, write_structured=out) == 0
-    assert "fix extra" in out.read_text(encoding="utf-8")
+    normalized_tsv = out.read_text(encoding="utf-8")
+    assert "\tblocking\tsecurity\t" in normalized_tsv
+    assert "fix extra" in normalized_tsv
     no = write(tmp_path / "no.txt", '{"no_issues_found": true}\n')
     assert research_eval.validate_research_output(no, structured_reviewer_mode=True, write_structured=out) == 0
     assert out.read_text(encoding="utf-8") == ""

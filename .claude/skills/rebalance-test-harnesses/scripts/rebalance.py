@@ -265,37 +265,34 @@ def _select_packed_workload(
 
 
 def _check_feasibility(
-    measured: dict[str, float],
-    n_shards: int,
+    new_shards: dict[int, list[str]],
+    medians: dict[str, float],
     balance_threshold: float,
 ) -> None:
-    """Warn when one packed target makes the configured spread impossible."""
-    if n_shards == 0:
-        return
-    if not measured:
+    """Warn when the packed shard spread exceeds the configured threshold."""
+    if not new_shards:
         return
 
-    max_target_time = max(measured.values(), default=0.0)
-    heaviest_target = max(measured, key=lambda target: measured[target])
-    ideal_shard = sum(measured.values()) / n_shards
-    threshold_half = balance_threshold / 2
-    if max_target_time <= ideal_shard + threshold_half:
+    rows = [
+        (shard_n, sum(medians.get(target, 0.0) for target in targets))
+        for shard_n, targets in new_shards.items()
+    ]
+    totals = [total for _, total in rows]
+    if not totals:
         return
 
-    top_targets = sorted(
-        measured.items(),
-        key=lambda item: item[1],
-        reverse=True,
-    )[:5]
+    spread = max(totals) - min(totals)
+    if spread <= balance_threshold:
+        return
+
+    heaviest_shard, heaviest_total = max(rows, key=lambda row: row[1])
+    lightest_shard, lightest_total = min(rows, key=lambda row: row[1])
 
     print("\nWARNING: packed workload may be infeasible for the configured balance threshold.")
-    print(f"  Heaviest packed target: {heaviest_target} ({max_target_time:.1f}s)")
-    print(f"  Ideal shard time: {ideal_shard:.1f}s")
+    print(f"  Estimated packed spread: {spread:.1f}s")
     print(f"  Balance threshold: {balance_threshold:.1f}s")
-    print(f"  Threshold half: {threshold_half:.1f}s")
-    print("  Top 5 heaviest packed targets:")
-    for target, seconds in top_targets:
-        print(f"    - {target}: {seconds:.1f}s")
+    print(f"  Heaviest shard: {heaviest_shard} ({heaviest_total:.1f}s)")
+    print(f"  Lightest shard: {lightest_shard} ({lightest_total:.1f}s)")
     print("  Continuing anyway; rebalancing may still improve spread.")
 
 
@@ -384,8 +381,8 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
     # ------------------------------------------------------------------
     print(f"\n[3/9] Packing {n_shards} shards with round-robin LPT …")
     measured = _select_packed_workload(medians, all_shard_targets)
-    _check_feasibility(measured, n_shards, args.balance_threshold)
     new_shards = pack(measured, n_shards, guard=_GUARD, extras=extras)
+    _check_feasibility(new_shards, medians, args.balance_threshold)
 
     # ------------------------------------------------------------------
     # Step 4: Write Makefile
