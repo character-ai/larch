@@ -1,5 +1,11 @@
 # Step 2 dispatch Python contract
 
+**Consumer**: `/implement` Step 2 orchestrator (`skills/implement/SKILL.md` §2.1 dispatch).
+
+**Contract**: Authoritative reference for `python/cli.py implement step2-dispatch` / `implement run-dispatch` stdout grammar, envelope invariants, manifest schema, recovery paths, and commit-on-behalf semantics. Absorbs the normative contracts from the retired shell dispatcher docs.
+
+**When to load**: MANDATORY before parsing `step2-dispatch` stdout. Read before extending stdout grammar, changing envelope invariants, or modifying manifest schema. `skills/implement/SKILL.md` §2.1 is the orchestrator-side consumer.
+
 This is the surviving `/implement` Step 2 dispatch contract after the shell-to-Python migration. It absorbs the normative contract formerly split across the Step 2 dispatcher, its run-dispatch wrapper, recovery-path helper, Step 4 commit wrapper, and external implement launcher docs.
 
 ## Step 2 dispatcher
