@@ -39,6 +39,11 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return root
 
 
+@pytest.fixture
+def _repo(repo: Path) -> Path:
+    return repo
+
+
 def _session(tmp_path: Path) -> Path:
     tmp = tmp_path / "impl"
     tmp.mkdir()
