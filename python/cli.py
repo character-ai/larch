@@ -69,6 +69,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("combine-issues", "plan-audit"): ("combine_issues", "plan_audit_main"),
     ("combine-issues", "apply"): ("combine_issues", "apply_main"),
     ("combine-issues", "close-sources"): ("combine_issues", "close_sources_main"),
+    ("combine-issues", "close-stale"): ("combine_issues", "close_stale_main"),
     ("analyze-issues", "fetch"): ("analyze_issues", "fetch_main"),
     ("analyze-issues", "run"): ("analyze_issues", "run_main"),
     ("analyze-issues", "analyze"): ("analyze_issues", "analyze_main"),

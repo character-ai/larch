@@ -122,6 +122,21 @@ def _parse_source_to_combined(data: Any) -> dict[int, list[int]]:
     return out
 
 
+def _source_mapping_wire_value(values: list[int]) -> int | list[int]:
+    return values[0] if len(values) == 1 else values
+
+
+def _merge_source_to_combined_fragment(accumulated: Any, fragment: Any) -> dict[str, int | list[int]]:
+    merged = _parse_source_to_combined(accumulated)
+    incoming = _parse_source_to_combined(fragment)
+    for source, combined_values in incoming.items():
+        merged[source] = sorted(set(merged.get(source, []) + combined_values))
+    return {
+        str(source): _source_mapping_wire_value(values)
+        for source, values in sorted(merged.items())
+    }
+
+
 def _remap_issue_hosts(issue: int, source_to_combined: dict[int, list[int]]) -> list[int]:
     return source_to_combined.get(issue, [issue])
 
@@ -319,6 +334,39 @@ def _metadata(open_rows: list[dict[str, Any]], combined_rows: list[dict[str, Any
     return meta
 
 
+def _blocker_state_warning(issue: int, message: str) -> dict[str, Any]:
+    redacted = redact.redact((message or "blocker state read failed")[:500]).strip()
+    return {"issue": issue, "code": "blocker_state_read_failed", "message": redacted}
+
+
+def _enrich_missing_blockers(meta: dict[int, dict[str, Any]], edges: Any, repo: str, warnings: list[Any]) -> None:
+    missing_blockers = sorted({edge[1] for edge in edges if edge[1] not in meta})
+    for blocker_issue_number in missing_blockers:
+        result = gh.issue_view_field_read(proc, str(blocker_issue_number), "number,state,title", repo=repo)
+        if result.returncode != 0:
+            warnings.append(_blocker_state_warning(blocker_issue_number, result.stderr or result.stdout))
+            continue
+        try:
+            data = json.loads(result.stdout or "{}")
+        except json.JSONDecodeError as exc:
+            warnings.append(_blocker_state_warning(blocker_issue_number, str(exc)))
+            continue
+        if not isinstance(data, dict):
+            warnings.append(_blocker_state_warning(blocker_issue_number, "blocker state response was not an object"))
+            continue
+        number = _positive_int_value(data.get("number"))
+        if number is None:
+            warnings.append(_blocker_state_warning(blocker_issue_number, "blocker state response missing positive number"))
+            continue
+        meta[blocker_issue_number] = {
+            "number": number,
+            "title": str(data.get("title") or ""),
+            "state": str(data.get("state") or ""),
+            "labels": [],
+            "body": "",
+        }
+
+
 def _combined_oos_numbers(combined_rows: list[dict[str, Any]], meta: dict[int, dict[str, Any]]) -> set[int]:
     out: set[int] = set()
     for row in combined_rows:
@@ -343,7 +391,10 @@ def _classify_edge(edge: tuple[int, int], meta: dict[int, dict[str, Any]], combi
         return "unknown", "missing issue metadata"
     if str(client_meta.get("state") or "").lower() != "open":
         return "unknown", "client issue is not known open"
-    if str(blocker_meta.get("state") or "").lower() != "open":
+    blocker_state = str(blocker_meta.get("state") or "").lower()
+    if blocker_state == "closed":
+        return "satisfied", "blocker issue already closed (dependency satisfied)"
+    if blocker_state != "open":
         return "unknown", "blocker issue is not known open"
     client_title = str(client_meta.get("title") or "")
     if blocker_issue in combined_oos and not _is_oos_title(client_title):
@@ -369,6 +420,7 @@ def plan_inherited_main(argv: list[str] | None = None) -> int:
     p.add_argument("--source-to-combined-file", required=True)
     p.add_argument("--open-issues-file", required=True)
     p.add_argument("--combined-issues-file", required=True)
+    p.add_argument("--repo", default="")
     args = p.parse_args(argv)
     try:
         deps = _load_json_file(args.deps_file, desc="deps-file")
@@ -418,8 +470,16 @@ def plan_inherited_main(argv: list[str] | None = None) -> int:
                         duplicate_edges_skipped += 1
                     edge_sources[edge].add(source)
 
+    if args.repo:
+        repo = _resolve_repo(args.repo)
+        if repo:
+            _enrich_missing_blockers(meta, edge_sources, repo, warnings)
+        else:
+            warnings.append({"code": "repo_resolve_failed", "message": "Could not determine repository for blocker enrichment"})
+
     safe: list[dict[str, Any]] = []
     exception: list[dict[str, Any]] = []
+    satisfied: list[dict[str, Any]] = []
     unknown: list[dict[str, Any]] = []
     edge_provenance: dict[str, list[int]] = {}
     for edge in sorted(edge_sources):
@@ -431,6 +491,8 @@ def plan_inherited_main(argv: list[str] | None = None) -> int:
             safe.append(record)
         elif bucket == "exception":
             exception.append(record)
+        elif bucket == "satisfied":
+            satisfied.append(record)
         else:
             unknown.append(record)
             for source in sources:
@@ -445,6 +507,7 @@ def plan_inherited_main(argv: list[str] | None = None) -> int:
         "status": "ok",
         "safe_edges": safe,
         "exception_edges": exception,
+        "satisfied_edges": satisfied,
         "unknown_edges": unknown,
         "edge_provenance": edge_provenance,
         "per_source_initial_eligibility": per_source,
@@ -673,6 +736,13 @@ def _close_issue_with_retry(issue: str, repo: str, combined: str, *, attempts: i
     return result
 
 
+def _close_stale_issue(issue: str, repo: str, reason: str, comment: str | None) -> proc.CommandResult:
+    argv = ["gh", "issue", "close", issue, "--repo", repo, "--reason", reason]
+    if comment is not None:
+        argv.extend(["--comment", comment])
+    return proc.run(argv)
+
+
 def apply_main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="cli.py combine-issues apply")
     p.add_argument("--title", required=True)
@@ -720,9 +790,15 @@ def apply_main(argv: list[str] | None = None) -> int:
             print("ERROR=Could not parse issue number from gh issue create output (output withheld)", file=sys.stderr)
             return 1
         if args.defer_close:
+            combined_issue = _positive_int_value(combined)
+            if combined_issue is None:
+                print("ERROR=Could not parse issue number from gh issue create output (output withheld)", file=sys.stderr)
+                return 1
+            source_to_combined_fragment = dict.fromkeys(issues, combined_issue)
             print("DRY_RUN=false")
             print(f"COMBINED_ISSUE={combined}")
             print(f"SOURCE_ISSUES={','.join(issues)}")
+            print("SOURCE_TO_COMBINED_JSON_FRAGMENT=" + json.dumps(source_to_combined_fragment, sort_keys=True, separators=(",", ":")))
             print("CLOSING_DEFERRED=true")
             print("CLOSED_ISSUES=0")
             return 0
@@ -771,6 +847,62 @@ def close_sources_main(argv: list[str] | None = None) -> int:
             warnings.append(f"Skipped #{source}: {skip_reason}")
             continue
         res = _close_issue_with_retry(str(source), repo, str(combined))
+        if res.returncode == 0:
+            closed += 1
+        else:
+            warnings.append(f"Failed to close #{source}: {redact.redact((res.stderr or res.stdout)[:500]).strip()}")
+    if warnings:
+        print(f"WARNING={'; '.join(warnings)}", file=sys.stderr)
+    print(f"CLOSED_ISSUES={closed}")
+    print(f"PARTIAL={str(bool(warnings)).lower()}")
+    return 0
+
+
+def close_stale_main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser(prog="cli.py combine-issues close-stale")
+    p.add_argument("--issues", required=True)
+    p.add_argument("--repo", default="")
+    p.add_argument("--reason", required=True)
+    p.add_argument("--comment-file", default="")
+    p.add_argument("--dry-run", action="store_true")
+    args = p.parse_args(argv)
+    if args.reason not in {"completed", "not planned"}:
+        print("ERROR=--reason must be one of: completed, not planned", file=sys.stderr)
+        return 1
+    try:
+        sources = _parse_issue_csv(args.issues)
+    except ValueError as exc:
+        print(f"ERROR={exc}", file=sys.stderr)
+        return 1
+    comment: str | None = None
+    if args.comment_file:
+        comment_path = Path(args.comment_file)
+        if not comment_path.is_file():
+            print(f"ERROR=Missing or unreadable --comment-file: {args.comment_file}", file=sys.stderr)
+            return 1
+        try:
+            comment = comment_path.read_text(encoding="utf-8")
+        except OSError:
+            print(f"ERROR=Missing or unreadable --comment-file: {args.comment_file}", file=sys.stderr)
+            return 1
+    repo = _resolve_repo(args.repo)
+    if not repo:
+        print("ERROR=Could not determine repository", file=sys.stderr)
+        return 1
+    if args.dry_run:
+        print("DRY_RUN=true")
+        print("WOULD_CLOSE=" + ",".join(str(source) for source in sources))
+        print("CLOSED_ISSUES=0")
+        print("PARTIAL=false")
+        return 0
+    closed = 0
+    warnings = []
+    for source in sources:
+        skip_reason = _source_close_skip_reason(repo, source)
+        if skip_reason is not None:
+            warnings.append(f"Skipped #{source}: {redact.redact(skip_reason).strip()}")
+            continue
+        res = _close_stale_issue(str(source), repo, args.reason, comment)
         if res.returncode == 0:
             closed += 1
         else:

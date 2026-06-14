@@ -160,7 +160,13 @@ For each issue, parse its body and extract the individual items. Then for each i
    - If uncertain, default to **actual** (keep the item).
 4. Collect all **actual** items that are **not blocked** across all OOS issues into a flat list for oos-3/oos-4. **Blocked** items stay on their source issues — do not include them in deduplication or combination, and never close a source issue solely because its remaining items are blocked.
 
-If all items from all issues are stale, print `All [OOS] items are stale — nothing to combine.` and stop.
+Track fully stale source issues while checking actuality. A source is fully stale only when every item in that source is stale and no combined host owns actionable content from it. Keep blocked or still-actionable items open. Build a stale-only closure list with the source issue number, a redacted stale discard summary, proposed close reason `not planned`, and whether a comment file will be used.
+
+Do not call raw `gh issue close` from prompt prose. Do not invoke `combine-issues close-stale` during oos-2 before approval.
+
+If no actual items remain after actuality checks, proceed to an approval prompt that shows only stale-only closures. After approval, invoke `combine-issues close-stale`, parse its output, report the stale closure tally, and stop without entering combination planning. If approval is denied, leave the stale-only sources open, report them as not closed, and stop.
+
+If actual items remain, carry the stale-only closure list forward into oos-4.
 
 Emit a summary: `Actuality check: <K> items kept, <M> discarded across <N> OOS issues.` When any blocked items were found, append: `(<B> item(s) kept as blocked by in-flight implementing issues.)`
 
@@ -184,7 +190,21 @@ For each proposed combined issue:
 2. Draft a combined title (e.g., `[OOS] <brief theme> — <N> items`) and a combined body that uses `### Item N — <title>` format, preserving all actionable content.
 3. Note which source issues will be closed (all source issues whose items are fully consumed).
 
-Present the proposed scheme to the user. Ask: "Apply all groups (yes), apply specific groups (list), or cancel (no)?"
+Include fully stale source closures in the operator proposal. Show each stale-only source issue number, close reason `not planned`, the stale discard summary, and whether the close will use a comment file.
+
+Present the proposed scheme to the user. State that approval covers both creating combined issues for actual items and closing fully stale source issues. Ask: "Apply all groups and stale closures (yes), apply specific groups or stale closures (list), or cancel (no)?"
+
+After approval and before dependency phases, close approved fully stale sources. Prefer per-issue `close-stale` calls when comments differ by issue:
+
+```bash
+python3 "$PWD/python/cli.py" combine-issues close-stale \
+  --repo "$REPO" \
+  --issues "<issue>" \
+  --reason "not planned" \
+  --comment-file "<file>"
+```
+
+The comment file must be redacted and should summarize only that issue's stale discard lines. For batch calls, use a shared comment only when it is correct for every issue in the batch. Parse `CLOSED_ISSUES` and `PARTIAL` from stdout, and parse redacted `WARNING=` records from stderr. Include partial stale closes in final left-open tallies. Do not let a stale-close partial failure hide later combine results.
 
 <!-- step:oos-5 — Apply with Deferred Closure -->
 
@@ -201,11 +221,11 @@ python3 "$PWD/python/cli.py" combine-issues apply \
 
 Only list a source issue in `--source-issues` when all of its items were consumed by this run: no item survived actuality check in a different group, no item remains blocked on the source issue, and no item remains uncombined. If a source issue had stale items discarded and every remaining item was consumed into combined issues, it can be deferred for closure. If a source issue contributed items to multiple groups, defer closure until all groups are applied. Never close a source issue that still has blocked items.
 
-Parse `COMBINED_ISSUE`, `SOURCE_ISSUES`, and `CLOSING_DEFERRED` from stdout. Stop using `CLOSED_ISSUES` from apply output as either a per-group tally or the final source-closure tally. Print: `Combined <source refs> → #<new> (source closure deferred).`
+Parse `COMBINED_ISSUE`, `SOURCE_ISSUES`, `SOURCE_TO_COMBINED_JSON_FRAGMENT`, and `CLOSING_DEFERRED` from stdout. Stop using `CLOSED_ISSUES` from apply output as either a per-group tally or the final source-closure tally. Print: `Combined <source refs> → #<new> (source closure deferred).`
 
 Record these state files for the dependency phases:
 
-- `source_to_combined.json`: JSON object mapping consumed source issue numbers to their combined issue number. If one source contributes to multiple combined issues, map that source to a JSON array of every combined issue number.
+- `source_to_combined.json`: JSON object accumulated from `SOURCE_TO_COMBINED_JSON_FRAGMENT` values. The first fragment for a source stores a scalar combined issue number. A later fragment for the same source promotes the value to a sorted unique array. An existing array stays an array and receives the sorted unique union. Duplicate combined issue numbers are deduplicated. Preserve scalar values for sources that map to exactly one combined host. Keep the accumulated shape accepted by `_parse_source_to_combined`.
 - `combined_issues.json`: JSON list of objects with `number`, `title`, and `source_issues`.
 - `blocked_sources.json`: JSON object with `blocked_sources`, one object per source that remains blocked or unconsumed. Each object has `source_issue`, `reason`, and optional `blocked_items`.
 
@@ -228,6 +248,7 @@ python3 "$PWD/python/cli.py" combine-issues fetch-deps \
   --issues "<all source issues>" > "$DEPS_JSON"
 python3 "$PWD/python/cli.py" combine-issues list-open --repo "$REPO" > "$OPEN_ISSUES_JSON"
 python3 "$PWD/python/cli.py" combine-issues plan-inherited \
+  --repo "$REPO" \
   --deps-file "$DEPS_JSON" \
   --source-to-combined-file "$SOURCE_TO_COMBINED_JSON" \
   --open-issues-file "$OPEN_ISSUES_JSON" \
@@ -241,6 +262,7 @@ Use `plan-inherited` as the only source of remapped inherited edge classificatio
 - Mark sources with dependency read failures as not close-eligible.
 - Mark sources tied to unknown inherited classifications as not close-eligible.
 - Write `safe_edges` with `python3 "$PWD/python/cli.py" issue add-blocked-by --client-issue <client> --blocker-issue <blocker> --repo "$REPO"`.
+- Treat `satisfied_edges` as closed-blocker dependencies. Do not write them and do not treat them as close-blocking.
 - Record safe-edge write success, idempotent already-present success, write failures, and unresolved writes in one write-results JSON file.
 
 Write-results JSON is a top-level object with `write_results`. Each entry has `edge`, `client_issue`, `blocker_issue`, `phase`, `status`, `source_issues`, and optional `error`. Use phases `inherited_safe`, `inherited_exception`, `inherited_reclassified_safe`, `inherited_reclassified_exception`, `audit_tier1_safe`, or `audit_approved`. Use statuses `written`, `already_present`, `failed`, or `unresolved`. Only `written` and `already_present` count as successful writes for source closure.
@@ -267,6 +289,7 @@ Refresh metadata before source closure, then rerun the inherited planner.
 ```bash
 python3 "$PWD/python/cli.py" combine-issues list-open --repo "$REPO" > "$REFRESHED_OPEN_ISSUES_JSON"
 python3 "$PWD/python/cli.py" combine-issues plan-inherited \
+  --repo "$REPO" \
   --deps-file "$DEPS_JSON" \
   --source-to-combined-file "$SOURCE_TO_COMBINED_JSON" \
   --open-issues-file "$REFRESHED_OPEN_ISSUES_JSON" \
@@ -275,7 +298,7 @@ python3 "$PWD/python/cli.py" combine-issues plan-inherited \
 
 Hard-stop if refreshed `list-open` or `plan-inherited` exits non-zero, or if any emitted JSON status is not `ok`.
 
-Compare the refreshed plan with the initial plan by edge tuple. Write newly safe inherited edges that were previously unknown. Record those writes in the shared write-results file with phase `inherited_reclassified_safe`. Surface newly classified exception edges through the same approval gate schema as `oos-6b`; record approved, rejected, and cancellation or missing-answer outcomes in the shared exception-decisions file with phase `inherited_reclassified_exception`. Write approved reclassified exception edges only after approval, and record those writes in the shared write-results file with phase `inherited_reclassified_exception`. Treat cancellation or missing answers as `unresolved`. Keep unresolved and still-unknown inherited edges close-blocking. Do not put unresolved or still-unknown inherited edges in `existing_edges.json`.
+Compare the refreshed plan with the initial plan by edge tuple. The refresh resolves metadata races for newly created combined hosts or open blockers that become visible. Closed blockers classify as terminal `satisfied`, not unknown. Write newly safe inherited edges that were previously unknown. Record those writes in the shared write-results file with phase `inherited_reclassified_safe`. Surface newly classified exception edges through the same approval gate schema as `oos-6b`; record approved, rejected, and cancellation or missing-answer outcomes in the shared exception-decisions file with phase `inherited_reclassified_exception`. Write approved reclassified exception edges only after approval, and record those writes in the shared write-results file with phase `inherited_reclassified_exception`. Treat cancellation or missing answers as `unresolved`. Keep unresolved and still-unknown inherited edges close-blocking. Do not put unresolved or still-unknown inherited edges in `existing_edges.json`.
 
 <!-- step:oos-7 — Close Consumed Source Issues -->
 
@@ -291,6 +314,8 @@ python3 "$PWD/python/cli.py" combine-issues close-eligible \
 ```
 
 Close only sources emitted in `eligible_by_combined`. Sources mapped to multiple combined hosts remain ineligible until a canonical closure host is chosen. Partition eligible sources by their `source_to_combined` host. Invoke `close-sources` once per combined issue with only that combined issue's eligible source issues.
+
+`close-eligible` ignores `satisfied_edges`; closed-blocker dependencies do not require writes and do not block source closure.
 
 ```bash
 python3 "$PWD/python/cli.py" combine-issues close-sources \
@@ -379,9 +404,10 @@ Print dependency summary counts:
 - Total audit edges written.
 - Duplicate edges skipped and self-edges skipped.
 - Sources closed and sources left open.
+- Stale-only sources closed and stale-only sources left open.
 - Dependency read failures and dependency write failures.
 
-Use only `close-sources` output for source-closed tallies. List sources left open with reasons.
+Count `close-stale CLOSED_ISSUES` separately from `close-sources CLOSED_ISSUES`, then include both in the total closed-source count. If any `close-stale` call returns `PARTIAL=true`, list the affected source issue as left open unless a later successful close is observed. Include redacted stale-close warnings in the run summary. List sources left open with reasons.
 
 ## Anti-patterns
 
