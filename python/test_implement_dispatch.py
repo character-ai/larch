@@ -476,7 +476,7 @@ def test_step2_dispatch_main_branch_prohibited(repo: Path, tmp_path: Path, monke
     assert "REASON=main-branch-prohibited" in out
 
 
-def test_step2_dispatch_needs_qa_repair_from_pending(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_step2_dispatch_needs_qa_repair_from_pending(_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     tmp = _session(tmp_path)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
 
@@ -646,7 +646,7 @@ def test_step2_dispatch_detached_head_prohibited(repo: Path, tmp_path: Path, mon
     assert "ORCHESTRATOR_EDIT_AUTHORITY=forbidden" in out
 
 
-def test_step2_dispatch_cap_hit_bails(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_step2_dispatch_cap_hit_bails(_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     tmp = _session(tmp_path)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
 
@@ -668,7 +668,7 @@ def test_step2_dispatch_cap_hit_bails(repo: Path, tmp_path: Path, monkeypatch: p
     assert "ORCHESTRATOR_EDIT_AUTHORITY=forbidden" in out
 
 
-def test_step2_dispatch_wrapper_validation_failure_bails(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_step2_dispatch_wrapper_validation_failure_bails(_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     tmp = _session(tmp_path)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
 
@@ -694,7 +694,7 @@ def test_step2_dispatch_dirty_state_after_timeout_bails(repo: Path, tmp_path: Pa
     tmp = _session(tmp_path)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
 
-    def fake_launcher(st: implement_dispatch.DispatchState):
+    def fake_launcher(_st: implement_dispatch.DispatchState):
         (repo / "dirty-after-timeout.txt").write_text("x\n", encoding="utf-8")
         return 1, {"LAUNCHER_EXIT": "1", "MANIFEST_WRITTEN": "false"}, ""
 
