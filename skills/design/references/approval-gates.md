@@ -61,13 +61,14 @@ When the user picks **Ready for review**:
 
 ### Severity classification rubric
 
-**All-or-nothing precedence**: inspect every accepted in-scope `### FINDING_N:` block in `$DESIGN_TMPDIR/accepted-plan-findings.md`. When **every** block carries a `- **Severity**:` line whose value is `important`, `latent`, or `nit`, Gate B presentation uses the structured mapping below for the **entire** findings set (no per-finding hybrid):
+**All-or-nothing precedence**: inspect every accepted in-scope `### FINDING_N:` block in `$DESIGN_TMPDIR/accepted-plan-findings.md`. When **every** block carries a `- **Severity**:` line whose value is `blocking`, `important`, `latent`, or `nit`, Gate B presentation uses the structured mapping below for the **entire** findings set (no per-finding hybrid):
 
+- `blocking → High`
 - `important → High`
 - `latent → Medium`
 - `nit → Low`
 
-When **any** accepted finding lacks that structured `- **Severity**:` line (or the value is not one of `important|latent|nit`), fall back to the Concern-text rubric below for **all** findings in the set.
+When **any** accepted finding lacks that structured `- **Severity**:` line (or the value is not one of `blocking|important|latent|nit`), fall back to the Concern-text rubric below for **all** findings in the set.
 
 **Concern-text rubric** (legacy fallback — applies to the whole set when the structured field is absent on any accepted finding): for each finding, assign one bucket based on the finding's `**Concern**:` text:
 
@@ -127,7 +128,7 @@ Print a compact findings list under `## Plan Review Findings — Review`: one ro
 
 Question text depends on which rubric applies (see **Severity classification rubric**):
 
-- **Structured severity on every accepted finding** — `"Plan review returned N findings (H high / M medium / L low). How would you like to handle them?"` (counts map from `important`/`latent`/`nit`; there is no structured Critical bucket).
+- **Structured severity on every accepted finding** — `"Plan review returned N findings (H high / M medium / L low). How would you like to handle them?"` (counts map from `blocking`/`important`/`latent`/`nit`; `blocking` and `important` both count as high; there is no structured Critical bucket).
 - **Concern-text fallback** (any accepted finding lacks structured `- **Severity**:`) — `"Plan review returned N findings (C critical / H high / M medium / L low). How would you like to handle them?"`
 
 Header: `"Plan findings"`. Substitute the actual counts before asking.

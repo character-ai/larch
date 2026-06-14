@@ -251,6 +251,20 @@ cont_out=$(run_continuation "$DIMP" false)
 printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=true$' || fail 'structured important should continue'
 printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=high-accepted$' || fail 'structured important reason missing'
 
+echo "=== continuation helper recognizes structured blocking severity ==="
+DBLOCK="$TMPROOT/continuation-structured-blocking"
+write_common_inputs "$DBLOCK"
+printf '1\n' >"$DBLOCK/review-round-count.txt"
+cat >"$DBLOCK/accepted-plan-findings.md" <<'EOF'
+### FINDING_1: Blocking structured
+- **Severity**: blocking
+- **Concern**: neutral wording with no high fallback keywords
+EOF
+cont_out=$(run_continuation "$DBLOCK" false)
+printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=true$' || fail 'structured blocking should continue'
+printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=high-accepted$' || fail 'structured blocking reason missing'
+printf '%s\n' "$cont_out" | grep -q '^HIGH_ACCEPTED_COUNT=1$' || fail 'structured blocking should count as high'
+
 echo "=== continuation helper stops on small clean round ==="
 DSMALL="$TMPROOT/continuation-small-clean"
 write_common_inputs "$DSMALL"

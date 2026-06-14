@@ -27,14 +27,14 @@ Primary output is the structured finding list. For each finding include:
 ```text
 ### FINDING_N: <short title>
 - **Reviewer(s)**: <comma-separated source slots>
-- **Severity**: important|latent|nit
+- **Severity**: blocking|important|latent|nit
 - **Concern**: <normalized concern>
 - **Suggested revisions (informational for voters; coder decides)**:
   - From <slot-A>: <revision A, verbatim>
   - From <slot-B>: <revision B, verbatim>
 ```
 
-**Severity merge rule**: when merging multiple source findings into one `### FINDING_N:` block, set **Severity** to the maximum across sources using the order **important** > **latent** > **nit** (e.g. `important` + `latent` → `important`). Every merged in-scope and `[OUT_OF_SCOPE]` finding block MUST include exactly one `- **Severity**: …` line in this form; omitting it fails machine validation.
+**Severity merge rule**: when merging multiple source findings into one `### FINDING_N:` block, set **Severity** to the maximum across sources using the order **blocking** > **important** > **latent** > **nit** (e.g. `blocking` + `important` → `blocking`, `important` + `latent` → `important`). Every merged in-scope and `[OUT_OF_SCOPE]` finding block MUST include exactly one `- **Severity**: …` line in this form; omitting it fails machine validation.
 
 For `### OOS_N:` blocks when the caller surfaces them through the OOS round-trip (Piece 2), apply the same **Severity** line requirement and merge rule.
 
