@@ -444,9 +444,33 @@ def validate_terminal_state(args: argparse.Namespace) -> int:
 def validate_tier_b_public_file(args: argparse.Namespace) -> int:
     path = Path(args.public_file)
     tmpdir = Path(args.tmpdir) if args.tmpdir else Path(args.implement_tmpdir)
-    ok = path.is_absolute() and not path.is_symlink() and (path == tmpdir or tmpdir in path.parents) and path.is_file() and path.stat().st_size <= MAX_PUBLIC_FILE_BYTES
-    emit("PUBLIC_FILE_VALID", str(ok).lower())
-    return 0 if ok else 1
+    # Public file: absolute, regular, not symlink, under size cap.
+    # (The old bash only required the sensitive corpus to be under tmpdir, not the public file itself.)
+    if not (path.is_absolute() and not path.is_symlink() and path.is_file()):
+        emit("PUBLIC_FILE_VALID", "false")
+        return 1
+    if path.stat().st_size > MAX_PUBLIC_FILE_BYTES:
+        emit("PUBLIC_FILE_VALID", "false")
+        return 1
+    corpus_path_str = getattr(args, "sensitive_corpus_file", None)
+    if corpus_path_str:
+        cp = Path(corpus_path_str)
+        if not (cp.is_absolute() and not cp.is_symlink() and (cp == tmpdir or tmpdir in cp.parents) and cp.is_file()):
+            emit("PUBLIC_FILE_VALID", "false")
+            return 1
+        # Content check: reject if any corpus token appears in the public file
+        try:
+            corpus_text = cp.read_text(encoding="utf-8", errors="replace")
+            file_text = path.read_text(encoding="utf-8", errors="replace")
+            for token in corpus_text.splitlines():
+                token = token.strip()
+                if token and token in file_text:
+                    emit("PUBLIC_FILE_VALID", "false")
+                    return 1
+        except OSError:
+            pass
+    emit("PUBLIC_FILE_VALID", "true")
+    return 0
 
 
 def clear_stall(args: argparse.Namespace) -> int:
@@ -557,6 +581,9 @@ def main(argv: list[str] | None = None) -> int:
     if sub == "validate-tier-b-public-file":
         p.add_argument("--public-file", required=True)
         p.add_argument("--tmpdir")
+        p.add_argument("--sensitive-corpus-file", default="")
+        p.add_argument("--profile", default="implement")
+        p.add_argument("--artifact-prefix", default="")
         ns, _ = p.parse_known_args(rest)
         return validate_tier_b_public_file(ns)
     if sub == "clear-stall":
