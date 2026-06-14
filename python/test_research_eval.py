@@ -8,7 +8,6 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import TextIO, cast
 
 import pytest
 
@@ -168,9 +167,9 @@ def test_eval_baseline_git_show_success(tmp_path: Path, monkeypatch: pytest.Monk
 
     def fake_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         if argv[:4] == ["git", "-C", str(ROOT), "show"]:
-            stdout = cast("TextIO | None", kwargs.get("stdout"))
+            stdout = kwargs.get("stdout")
             if stdout is not None:
-                stdout.write(baseline_json)
+                stdout.write(baseline_json)  # type: ignore[union-attr]
             return subprocess.CompletedProcess(argv, 0, stdout=baseline_json, stderr="")
         return subprocess.CompletedProcess(argv, 1, stdout="", stderr="missing")
 
