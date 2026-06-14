@@ -1169,7 +1169,11 @@ def test_run_coder_cursor_normalizes_api_key_before_launch(tmp_path, monkeypatch
     monkeypatch.setenv("CURSOR_PRESENT", "true")
     monkeypatch.setenv("CURSOR_API_KEY", "  key-with-padding  ")
     monkeypatch.setattr(review_and_fix, "_cursor_available", lambda: True)
-    monkeypatch.setattr(review_and_fix.agents, "resolve_model_args", lambda *_a, **_k: review_and_fix.agents.ModelArgResult(argv=["--model", "test"]))
+    monkeypatch.setattr(
+        review_and_fix.agents,
+        "resolve_model_args",
+        lambda *_a, **_k: review_and_fix.agents.ModelArgResult(argv=("--model", "test")),
+    )
     seen_env: list[str | None] = []
     original_export = review_and_fix.agents.cursor_auth_export_env
 
