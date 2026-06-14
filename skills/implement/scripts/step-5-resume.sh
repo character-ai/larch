@@ -65,7 +65,7 @@ if [ -f "$round_start_file" ]; then
   needs_record=true
   if [[ "$round_start_s" =~ ^[0-9]+$ ]] && [ -f "$ledger" ]; then
     if awk -F '\t' -v r="$round_decimal" -v s="$round_start_s" \
-      '$2 == "round" && $4 == "implement" && $5 == "Step 5 — code review" && $6 == r && $7 == s { found=1 } END { exit found }' \
+      '$2 == "round" && $4 == "implement" && $5 == "Step 5 — code review" && $6 == r && $7 == s { found=1 } END { exit found ? 0 : 1 }' \
       "$ledger" 2>/dev/null; then
       needs_record=false
     fi
