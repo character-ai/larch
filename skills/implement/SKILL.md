@@ -113,10 +113,10 @@ export CLAUDE_PLUGIN_ROOT
 
 Structured invocation pins for script factoring that is reached through active drivers or wrappers:
 
-```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" pr compose-summary --plan-goals-file "$IMPLEMENT_TMPDIR/plan-goals.md"
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" render run-summary --skill implement --outcome "$IMPLEMENT_OUTCOME" --run-id "$RUN_ID" --mode "$IMPLEMENT_MODE" --duration "$IMPLEMENT_DURATION" --issue-number "$ISSUE_NUMBER" --issue-url "$ISSUE_URL"
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement-finalize teardown --state-file "$IMPLEMENT_TMPDIR/finalize-state.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"
+```text
+"${CLAUDE_PLUGIN_ROOT}/python/cli.py" pr compose-summary --plan-goals-file "$IMPLEMENT_TMPDIR/plan-goals.md"
+"${CLAUDE_PLUGIN_ROOT}/python/cli.py" render run-summary --skill implement --outcome "$IMPLEMENT_OUTCOME" ...
+"${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement-finalize teardown --state-file "$IMPLEMENT_TMPDIR/finalize-state.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"
 ```
 
 ### Bash block prelude
@@ -478,7 +478,7 @@ After each `AskUserQuestion` return (Codex Q/A loop in 2.3, Claude-fallback oppo
 1. Compose an NDJSON record with `phase="implement"`, `step="2"`, `category="Q/A"`, and a sanitized markdown `body`.
 2. Append it with:
    ```bash
-   python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" run-log append --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch execution-issues --record-file "$IMPLEMENT_TMPDIR/execution-issue-record.ndjson"
+   bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py run-log append --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch execution-issues --record-file "$IMPLEMENT_TMPDIR/execution-issue-record.ndjson"
    ```
 3. On `LOG_WRITTEN=false` with `ERROR=`, log `Step 2 — Q/A larch-log append failed: $ERROR` to `Warnings` and continue. Non-fatal.
 
@@ -565,7 +565,7 @@ On `STATUS=fail`, pass `REDACTED_LOG_FILE` into the prompt-side lint-fix repair 
 7. If any fixes were applied, stage and commit them:
 
 ```bash
-python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" review-and-fix commit-fixes --stage-all
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py review-and-fix commit-fixes --stage-all
 ```
 
 8. Log `Step 5 — self-review mode: main-agent inline review complete` to `Warnings` in `$IMPLEMENT_TMPDIR/execution-issues.md`.
@@ -589,7 +589,7 @@ Print once before the `review-and-fix step5` invocation:
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 21600000`.**
 
 ```bash
-python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" review-and-fix step5 --implement-tmpdir "$IMPLEMENT_TMPDIR" --mode loop --starting-round 1
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py review-and-fix step5 --implement-tmpdir "$IMPLEMENT_TMPDIR" --mode loop --starting-round 1
 ```
 
 Wait for `<task-notification>` before parsing the loop stdout or reading Step 5 result files.
@@ -683,7 +683,7 @@ Print: `> **🔶 /implement 7: commit (review)**`
 If any files changed during review / checks (Steps 5–6):
 
 ```bash
-python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" review-and-fix commit-fixes <specific-files>
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py review-and-fix commit-fixes <specific-files>
 ```
 
 If no files changed, skip. Note: `review-and-fix CLI` commits each round's accepted-fixes inline (commit message `Address code review feedback (round N)`), so on the common path the working tree is already clean here and Step 7's commit is a no-op. Step 7's commit still fires when the main agent landed manual edits — typically after the `main-agent-vote-required` adjudication branch of `review-and-fix CLI`, where the coder dispatch did not run.
@@ -796,7 +796,7 @@ The OOS cap helper contract remains `${CLAUDE_PLUGIN_ROOT}/skills/implement/scri
 Refresh the tracking metadata projection after execution-issues changes when a tracking issue exists. If `ISSUE_NUMBER` is empty or `0`, skip this helper entirely; do not call GitHub for issue `#0`.
 
 ```bash
-python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" execution-issues refresh --implement-tmpdir "$IMPLEMENT_TMPDIR" --best-effort
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py execution-issues refresh --implement-tmpdir "$IMPLEMENT_TMPDIR" --best-effort
 ```
 
 The active Step 8+ driver writes `finalize-state.sh` for terminal outcomes, records `CI_PASSED=true` internally when Step 10 sees `ACTION=merge` and advances from `ci-initial` to `ci-merge` in the same `ship-pr.sh` invocation, and treats Step 12 `ACTION=merge` as permission to call `merge-pr.sh`. CI-fix rebase + force-push lives inside the active Step 8+ driver (`run_rebase_rebump`); the orchestrator does not invoke `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/conflict-resolution.md` (retirement stub; #3364 Phase 1). If CI failure metadata lacks a failed run id, use `${CLAUDE_PLUGIN_ROOT}/scripts/gh-pr-checks.sh` as the fallback diagnostic path before deciding whether to stall. Within `PHASE=ci-merge`, after merge succeeds ship-pr.sh delegates local cleanup (Step 14 equivalent) to `python/cli.py implement-finalize postmerge`; after that returns, **Continue to Step 15.** (main verification, also inside postmerge). Do NOT end the turn between the merge output and the postmerge delegation.
@@ -822,7 +822,7 @@ If `STATUS=ok`, `review-and-fix write-rejected` found non-empty rejected finding
 Print: `> **🔶 /implement 16a: notify**`
 
 ```bash
-python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" slack issue-announce --implement-tmpdir "$IMPLEMENT_TMPDIR" --best-effort
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py slack issue-announce --implement-tmpdir "$IMPLEMENT_TMPDIR" --best-effort
 ```
 
 On `STATUS=skipped`, continue silently. On `STATUS=failed`, log the helper output to `Warnings` and continue.
@@ -888,7 +888,7 @@ Repeat any external reviewer warnings from earlier (from Step 5 review or runtim
 Before teardown, refresh the token report artifact and decide whether the orchestrator must emit `summary-final.md` (the log batches and flush commit were already written at the Step 7a pre-ship log flush):
 
 ```bash
-python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" final-report step18b --implement-tmpdir "$IMPLEMENT_TMPDIR"
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py final-report step18b --implement-tmpdir "$IMPLEMENT_TMPDIR"
 ```
 
 `STEP17_EMITTED_PRESENT` is informational-only (diagnostic parity with the wrapper contract); the orchestrator emit gate is `EMIT_BODY`, not this KV.

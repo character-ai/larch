@@ -108,7 +108,7 @@ for script in [
     'skills/implement/scripts/step-16.sh',
     'skills/implement/scripts/step-17.sh',
     'skills/implement/scripts/step-18a-gate.sh --stall-tracking-memory "${STALL_TRACKING:-false}"',
-    'skills/implement/scripts/step-18b-final-report.sh --implement-tmpdir "$IMPLEMENT_TMPDIR"',
+    'python/cli.py final-report step18b --implement-tmpdir "$IMPLEMENT_TMPDIR"',
     'skills/implement/scripts/step-18-finalize.sh',
 ]:
     require(skill, launcher + script, f'SKILL launcher wrapper {script}')
