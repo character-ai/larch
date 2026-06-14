@@ -929,6 +929,18 @@ def _emit_finalize_result(result: FinalizeResult) -> None:
     print(f"SENTINEL_WRITTEN={_bool_text(result.sentinel_written)}")
 
 
+def _load_state_file_kv(path: Path) -> dict[str, str]:
+    out: dict[str, str] = {}
+    if not path.is_file():
+        return out
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        out[k] = v
+    return out
+
+
 def _ctx_from_tmpdir(tmpdir: str) -> RunContext:
     env = dict(os.environ)
     env["IMPLEMENT_TMPDIR"] = tmpdir
@@ -942,6 +954,30 @@ def _ctx_from_tmpdir(tmpdir: str) -> RunContext:
     return RunContext.from_env(env=env)
 
 
+def _ctx_from_state_file(
+    state_file: str,
+    *,
+    implement_tmpdir: str | None = None,
+    final_bail_reason_file: str | None = None,
+) -> RunContext:
+    env = dict(os.environ)
+    state_path = Path(state_file)
+    env["SHIP_PR_STATE_FILE"] = state_file
+    env.update(_load_state_file_kv(state_path))
+    tmpdir = implement_tmpdir or env.get("IMPLEMENT_TMPDIR", "")
+    if not tmpdir and state_path.parent.is_dir():
+        tmpdir = str(state_path.parent)
+    if tmpdir:
+        env["IMPLEMENT_TMPDIR"] = tmpdir
+    if final_bail_reason_file:
+        bail_path = Path(final_bail_reason_file)
+        if bail_path.is_file():
+            bail_text = bail_path.read_text(encoding="utf-8", errors="replace").strip()
+            if bail_text:
+                env["FINAL_BAIL_REASON"] = bail_text.replace("\n", " ")[:1024]
+    return RunContext.from_env(env=env)
+
+
 def implement_finalize_main(argv: list[str] | None = None, phase: str = "") -> int:
     parser = argparse.ArgumentParser(prog=f"cli.py implement-finalize {phase}")
     _ = parser.add_argument("--state-file")
@@ -949,8 +985,11 @@ def implement_finalize_main(argv: list[str] | None = None, phase: str = "") -> i
     _ = parser.add_argument("--final-bail-reason-file")
     args, _unknown = parser.parse_known_args(argv)
     if args.state_file:
-        os.environ["SHIP_PR_STATE_FILE"] = args.state_file
-        ctx = RunContext.from_env()
+        ctx = _ctx_from_state_file(
+            args.state_file,
+            implement_tmpdir=args.implement_tmpdir,
+            final_bail_reason_file=args.final_bail_reason_file,
+        )
     else:
         tmpdir = args.implement_tmpdir or os.environ.get("IMPLEMENT_TMPDIR", "")
         if not tmpdir:

@@ -529,6 +529,141 @@ def compose_pr_summary_main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def _safe_int(value: object) -> int:
+    try:
+        return int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 0
+
+
+def _token_argv_from_report(data: dict[str, object]) -> list[str]:
+    argv: list[str] = []
+    vendor_buckets = (
+        ("claude", "BUCKETS_claude", "claude"),
+        ("codex", "BUCKETS_codex", "codex"),
+        ("cursor", "BUCKETS_cursor", "cursor"),
+        ("claude_sub", "BUCKETS_claude_sub", "claude-sub"),
+    )
+    for vendor, bucket_key, flag_prefix in vendor_buckets:
+        bucket = data.get(bucket_key)
+        if isinstance(bucket, dict) and any(_safe_int(bucket.get(k)) for k in bucket):
+            if vendor in {"claude", "claude_sub"}:
+                cache_create_5m = _safe_int(bucket.get("cache_create_5m"))
+                if cache_create_5m == 0:
+                    cache_create_5m = _safe_int(bucket.get("cache_create"))
+                argv.extend([
+                    f"--{flag_prefix}-input-tokens", str(_safe_int(bucket.get("input"))),
+                    f"--{flag_prefix}-cache-read-tokens", str(_safe_int(bucket.get("cache_read"))),
+                    f"--{flag_prefix}-cache-write-5m-tokens", str(cache_create_5m),
+                    f"--{flag_prefix}-cache-write-1h-tokens", str(_safe_int(bucket.get("cache_create_1h"))),
+                    f"--{flag_prefix}-output-tokens", str(_safe_int(bucket.get("output"))),
+                ])
+            elif vendor == "codex":
+                argv.extend([
+                    "--codex-input-tokens", str(_safe_int(bucket.get("input"))),
+                    "--codex-cached-input-tokens", str(_safe_int(bucket.get("cached_input"))),
+                    "--codex-output-tokens", str(_safe_int(bucket.get("output"))),
+                ])
+            else:
+                argv.extend([
+                    "--cursor-input-tokens", str(_safe_int(bucket.get("input"))),
+                    "--cursor-cache-read-tokens", str(_safe_int(bucket.get("cache_read"))),
+                    "--cursor-output-tokens", str(_safe_int(bucket.get("output"))),
+                ])
+            continue
+        totals = data.get(vendor)
+        if isinstance(totals, dict) and isinstance(totals.get("totals"), dict):
+            total = _safe_int(totals["totals"].get("total"))
+            if total:
+                argv.extend([f"--{flag_prefix}-tokens", str(total)])
+    return argv
+
+
+def _final_report_token_fields(implement_tmpdir: Path, run_id: str) -> dict[str, object]:
+    run_dir = implement_tmpdir / "larch-logs" / "implement" / run_id
+    token_json: Path | None = None
+    for cand in (run_dir / "token-report.json", implement_tmpdir / "token-report-rendered.json"):
+        if cand.is_file() and not cand.is_symlink():
+            token_json = cand
+            break
+    if token_json is None:
+        tr_json = implement_tmpdir / "token-report-truth.json"
+        env = {**os.environ, "IMPLEMENT_TMPDIR": str(implement_tmpdir)}
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(Path(__file__).resolve().parent / "cli.py"),
+                "token",
+                "report",
+                "--full",
+                "--format",
+                "json",
+                "--output",
+                str(tr_json),
+            ],
+            env=env,
+            capture_output=True,
+            check=False,
+        )
+        if completed.returncode == 0 and tr_json.is_file():
+            token_json = tr_json
+    if token_json is None:
+        return {"cost_unavailable": True}
+    try:
+        data = json.loads(token_json.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"cost_unavailable": True}
+    if not isinstance(data, dict):
+        return {"cost_unavailable": True}
+    claude = data.get("claude")
+    if not isinstance(claude, dict) or not isinstance(claude.get("totals"), dict):
+        return {"cost_unavailable": True}
+    token_argv = _token_argv_from_report(data)
+    if not token_argv:
+        return {"cost_unavailable": True}
+    try:
+        cost_kv = report_tokens_cost.token_cost_from_args(token_argv)
+    except Exception:
+        return {"cost_unavailable": True}
+
+    def _kv(text: str, key: str) -> str:
+        for line in text.splitlines():
+            k, sep, v = line.partition("=")
+            if sep and k == key:
+                return v
+        return "N/A"
+
+    total_cost = _kv(cost_kv, "TOTAL_COST")
+    if total_cost == "N/A":
+        return {"cost_unavailable": True}
+    return {
+        "cost_unavailable": False,
+        "total_cost": total_cost,
+        "claude_cost": _kv(cost_kv, "CLAUDE_COST"),
+        "codex_cost": _kv(cost_kv, "CODEX_COST"),
+        "cursor_cost": _kv(cost_kv, "CURSOR_COST"),
+        "claude_sub_cost": _kv(cost_kv, "CLAUDE_SUB_COST"),
+        "total_tokens": int(_kv(cost_kv, "TOTAL_TOKENS") or 0),
+    }
+
+
+def _final_report_duration(run_dir: Path, ship: Path) -> str:
+    timing = run_dir / "timing-report.json"
+    if timing.is_file():
+        try:
+            data = json.loads(timing.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            data = None
+        if isinstance(data, dict):
+            total_hms = data.get("total_hms")
+            if total_hms:
+                return str(total_hms)
+            total_seconds = data.get("total_seconds")
+            if total_seconds is not None:
+                return f"{total_seconds}s"
+    return _read_kv(ship, "DURATION", "N/A")
+
+
 def _normalized_outcome(tmpdir: Path) -> str:
     ship = tmpdir / "ship-pr-state.sh"
     fin = tmpdir / "finalize-state.sh"
@@ -562,13 +697,15 @@ def write_final_report(implement_tmpdir: Path, *, comment_only: bool = False, pr
     issue_log = implement_tmpdir / "execution-issues.md"
     if issue_log.is_file():
         exec_count = sum(1 for line in issue_log.read_text(encoding="utf-8", errors="replace").splitlines() if line.startswith("- "))
+    run_dir = implement_tmpdir / "larch-logs" / "implement" / run_id
+    cost_fields = _final_report_token_fields(implement_tmpdir, run_id)
     body = render_run_summary(
         skill="implement",
         outcome=_normalized_outcome(implement_tmpdir),
         run_id=run_id or "unknown",
         mode=_read_kv(session, "MODE", "N/A"),
         workflow_path=_read_kv(session, "WORKFLOW_PATH"),
-        duration=_read_kv(ship, "DURATION", "N/A"),
+        duration=_final_report_duration(run_dir, ship),
         issue_number=issue,
         issue_url=issue_url,
         pr_number=pr_number,
@@ -585,21 +722,40 @@ def write_final_report(implement_tmpdir: Path, *, comment_only: bool = False, pr
         warnings=0,
         run_logs_path=f"larch-logs/implement/{run_id}/" if run_id else "N/A",
         emergency_requested=_read_kv(run_flags, "EMERGENCY_REQUESTED", "false"),
-        cost_unavailable=True,
+        **cost_fields,
     )
-    (implement_tmpdir / "summary-final.md").write_text(body, encoding="utf-8")
+    summary = implement_tmpdir / "summary-final.md"
+    summary.write_text(body, encoding="utf-8")
+    if not comment_only:
+        run_dir.mkdir(parents=True, exist_ok=True)
+        with contextlib.suppress(OSError):
+            (run_dir / "final-summary.md").write_text(body, encoding="utf-8")
     comment_url = ""
-    if issue and issue != "0" and not comment_only:
-        # The historical helper upserted a run summary comment. Keep failures non-fatal for API callers.
-        content = implement_tmpdir / "summary-final.md"
-        marker = f"<!-- larch:run-summary v=1 runid={run_id} -->"
-        cmd = [sys.executable, str(Path(__file__).resolve().parent / "cli.py"), "tracking-issue", "upsert-summary", "--issue", issue, "--marker", marker, "--content-file", str(content)]
+    repo_unav = _read_kv(session, "REPO_UNAVAILABLE", "false") == "true"
+    if issue and issue != "0" and not repo_unav:
+        marker = f"<!-- larch:final-summary v1 runid={run_id} -->"
+        cmd = [
+            sys.executable,
+            str(Path(__file__).resolve().parent / "cli.py"),
+            "tracking-issue",
+            "upsert-summary",
+            "--issue",
+            issue,
+            "--marker",
+            marker,
+            "--content-file",
+            str(summary),
+        ]
         if repo:
             cmd += ["--repo", repo]
         completed = subprocess.run(cmd, text=True, capture_output=True, check=False)
-        if completed.returncode == 0:
-            m = re.search(r"^COMMENT_URL=(.*)$", completed.stdout, re.MULTILINE)
-            comment_url = m.group(1) if m else ""
+        if completed.returncode != 0:
+            err = (completed.stderr or completed.stdout or "tracking-issue upsert failed").strip()
+            if print_stdout:
+                sys.stdout.write(body)
+            return 1, "", err[:500]
+        m = re.search(r"^COMMENT_URL=(.*)$", completed.stdout, re.MULTILINE)
+        comment_url = m.group(1) if m else ""
     if print_stdout:
         sys.stdout.write(body)
     return 0, comment_url, ""

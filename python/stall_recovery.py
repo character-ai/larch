@@ -17,6 +17,9 @@ from pathlib import Path
 
 MAX_PUBLIC_FILE_BYTES = 256_000
 
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_STALL_RECOVERY_SH = _REPO_ROOT / "skills" / "implement" / "scripts" / "stall-recovery-report.sh"
+
 _OUTCOMES = frozenset({
     "failed-plan-write", "failed-publish", "failed-postplan", "failed-clarify",
     "failed-judge-panel", "failed-publish-tail", "approved", "approved-partition",
@@ -490,6 +493,86 @@ def seed_terminal_state(args: argparse.Namespace) -> int:
     return 0
 
 
+def _truthy(value: str) -> bool:
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _issue_url_number(url: str) -> str | None:
+    match = re.fullmatch(r"https://github.com/[^/#]+/[^/#]+/issues/(\d+)", url)
+    return match.group(1) if match else None
+
+
+def _validate_tmpdir_local_file(tmpdir: Path, file_path: Path) -> bool:
+    if not file_path.is_absolute() or file_path.is_symlink() or not file_path.is_file():
+        return False
+    try:
+        _ = file_path.resolve().relative_to(tmpdir.resolve())
+    except ValueError:
+        return False
+    return True
+
+
+def _delegate_stall_recovery_subcommand(sub: str, rest: list[str]) -> int:
+    if not _STALL_RECOVERY_SH.is_file():
+        print(f"stall-recovery: missing script: {_STALL_RECOVERY_SH}", file=sys.stderr)
+        return 1
+    completed = subprocess.run(["bash", str(_STALL_RECOVERY_SH), sub, *rest], check=False)
+    return completed.returncode
+
+
+def is_larch_dev_clone(args: argparse.Namespace) -> int:
+    tmpdir = Path(args.implement_tmpdir)
+    forked = read_kv(tmpdir / "ship-pr-state.sh", "FORKED_TARGET") or read_kv(tmpdir / "session-env.sh", "FORKED_TARGET")
+    if forked and _truthy(forked):
+        emit("LARCH_DEV_CLONE", "false")
+        return 0
+    root = getattr(args, "working_tree_root", "") or ""
+    if not root:
+        completed = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False)
+        root = completed.stdout.strip() if completed.returncode == 0 else ""
+    dev_clone = bool(root) and (Path(root) / "skills" / "implement" / "SKILL.md").is_file()
+    emit("LARCH_DEV_CLONE", "true" if dev_clone else "false")
+    return 0
+
+
+def normalize_file_failure_report_env(args: argparse.Namespace) -> int:
+    tmpdir = Path(args.implement_tmpdir)
+    if not tmpdir.is_dir():
+        print("stall-recovery: --implement-tmpdir must exist", file=sys.stderr)
+        return 1
+    env_file = Path(args.file_failure_report_env)
+    if not _validate_tmpdir_local_file(tmpdir, env_file):
+        print("stall-recovery: --file-failure-report-env invalid", file=sys.stderr)
+        return 1
+    status = read_kv(env_file, "FILE_FAILURE_REPORT_STATUS")
+    url = read_kv(env_file, "FILE_FAILURE_REPORT_URL")
+    reason = read_kv(env_file, "FILE_FAILURE_REPORT_FALLBACK_REASON")
+    allowed = {"filed", "dry-run", "dedup-comment", "no-match", "fallback-print-required", "lookup-failed-open"}
+    if status not in allowed:
+        status = "fallback-print-required"
+        reason = reason or "helper-status-missing"
+    emit("STALL_RECOVERY_REPORT_STATUS", status)
+    if url:
+        emit("STALL_RECOVERY_REPORT_URL", url)
+        number = _issue_url_number(url)
+        if number:
+            emit("STALL_RECOVERY_REPORT_ISSUE_URL", url)
+            emit("STALL_RECOVERY_REPORT_ISSUE_NUMBER", number)
+    if reason:
+        emit("STALL_RECOVERY_REPORT_FALLBACK_REASON", reason)
+    return 0
+
+
+def populate_sensitive_corpus(rest: list[str], *, implement_tmpdir: str) -> int:
+    if not any(arg == "--implement-tmpdir" for arg in rest):
+        rest = ["--implement-tmpdir", implement_tmpdir, *rest]
+    return _delegate_stall_recovery_subcommand("populate-sensitive-corpus", rest)
+
+
+def lint_subcommand(rest: list[str]) -> int:
+    return _delegate_stall_recovery_subcommand("lint", rest)
+
+
 def chat_print(args: argparse.Namespace) -> int:
     if args.input_file and Path(args.input_file).is_file():
         sys.stdout.write(Path(args.input_file).read_text(encoding="utf-8"))
@@ -598,9 +681,19 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--input-file")
         ns, _ = p.parse_known_args(rest)
         return chat_print(ns)
-    if sub in {"populate-sensitive-corpus", "normalize-file-failure-report-env", "is-larch-dev-clone", "lint"}:
-        emit("STATUS", "ok")
-        return 0
+    if sub == "is-larch-dev-clone":
+        p.add_argument("--working-tree-root", default="")
+        ns, _ = p.parse_known_args(rest)
+        return is_larch_dev_clone(ns)
+    if sub == "normalize-file-failure-report-env":
+        p.add_argument("--file-failure-report-env", required=True)
+        ns, _ = p.parse_known_args(rest)
+        return normalize_file_failure_report_env(ns)
+    if sub == "populate-sensitive-corpus":
+        ns, _ = p.parse_known_args(rest)
+        return populate_sensitive_corpus(rest, implement_tmpdir=str(ns.implement_tmpdir))
+    if sub == "lint":
+        return lint_subcommand(rest)
     print(f"stall-recovery: unknown subcommand: {sub}", file=sys.stderr)
     return 2
 
