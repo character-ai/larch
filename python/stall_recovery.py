@@ -18,6 +18,8 @@ from pathlib import Path
 import config
 
 MAX_PUBLIC_FILE_BYTES = 256_000
+ALLOWLIST_TABLE_COLUMNS = 4
+RETRY_POLICY_TABLE_COLUMNS = 3
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _STALL_RECOVERY_SH = _REPO_ROOT / "skills" / "implement" / "scripts" / "stall-recovery-report.sh"
@@ -600,9 +602,7 @@ def _sensitive_token_rejects_file(corpus_path: Path, candidate_path: Path) -> bo
             return True
     if re.search(r"https?://|git@github\.com:|github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", candidate_text):
         return True
-    if re.search(r"(^|[\s`(])/(Users|home|private|tmp|var|Volumes)/[^\s`)]+", candidate_text):
-        return True
-    return False
+    return bool(re.search(r"(^|[\s`(])/(Users|home|private|tmp|var|Volumes)/[^\s`)]+", candidate_text))
 
 
 def validate_tier_b_public_file(args: argparse.Namespace) -> int:
@@ -781,8 +781,8 @@ def _doc_allowlist_lines() -> list[str]:
         if not in_block or "|" not in raw or raw.lstrip().startswith("surface"):
             continue
         parts = [part.strip() for part in raw.strip().strip("|").split("|")]
-        if len(parts) >= 4 and parts[0] not in {"---", "surface"}:
-            lines.append("\t".join(parts[:4]))
+        if len(parts) >= ALLOWLIST_TABLE_COLUMNS and parts[0] not in {"---", "surface"}:
+            lines.append("\t".join(parts[:ALLOWLIST_TABLE_COLUMNS]))
     return lines
 
 
@@ -800,7 +800,7 @@ def _doc_retry_policy_lines() -> list[str]:
             continue
         if in_table and raw.strip().startswith("| "):
             parts = [part.strip().strip("`") for part in raw.strip().strip("|").split("|")]
-            if len(parts) >= 3:
+            if len(parts) >= RETRY_POLICY_TABLE_COLUMNS:
                 lines.append(f"{parts[0]}\t{parts[1]}\t{parts[2]}")
             continue
         if in_table:

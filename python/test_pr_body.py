@@ -211,7 +211,7 @@ def test_post_tracking_issue_writes_metadata(tmp_path: Path, monkeypatch: pytest
     _ = (tmp_path / "session-env.sh").write_text("REPO=o/r\nAGENT=claude\nCODER=claude\n", encoding="utf-8")
     _ = (tmp_path / "run-flags.sh").write_text("EMERGENCY_REQUESTED=false\n", encoding="utf-8")
 
-    def fake_run(cmd: list[str], **kwargs: object) -> object:
+    def fake_run(_cmd: list[str], **kwargs: object) -> object:
         _ = kwargs
         class Result:
             returncode = 0
@@ -233,7 +233,11 @@ def test_generate_code_flow_diagram_uses_launcher_not_stub(tmp_path: Path, monke
     _ = launcher.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
     launcher.chmod(0o755)
     monkeypatch.setenv("LARCH_TEST_LAUNCH_CLAUDE_SUBPROCESS", str(launcher))
-    monkeypatch.setattr(pr_body.subprocess, "run", lambda *a, **k: type("R", (), {"returncode": 1, "stdout": "", "stderr": ""})())
+
+    def fake_run(*_args: object, **_kwargs: object) -> object:
+        return type("R", (), {"returncode": 1, "stdout": "", "stderr": ""})()
+
+    monkeypatch.setattr(pr_body.subprocess, "run", fake_run)
     rc, status, _diagram, reason = pr_body.generate_code_flow_diagram(tmp_path)
     assert rc == 1
     assert status == "failed"

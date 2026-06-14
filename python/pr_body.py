@@ -40,6 +40,10 @@ _FENCE_RE = re.compile(r"^(\s{0,3})(`{3,})([^`]*)$")
 _FLOWCHART_START = re.compile(r"^(flowchart|graph)(\s|$)")
 _OPEN_BRACKET = frozenset("[{(")
 _CLOSE_BRACKET = frozenset("]})")
+_ISSUE_SECTION_NONE = 0
+_ISSUE_SECTION_EXEC = 1
+_ISSUE_SECTION_WARN = 2
+_EXEC_ISSUE_HEADINGS = frozenset({"### Tool Failures", "### External Reviewer Issues"})
 
 
 def _path_under_repo(repo_root: Path, rel_path: str) -> bool:
@@ -694,18 +698,18 @@ def _refresh_issue_counts(implement_tmpdir: Path, run_id: str) -> tuple[int, int
     warn_n = 0
     bullet_re = re.compile(r"^- \*\*[^*].*\*\*:?([ \t].*)?$")
     if issue_log.is_file() and issue_log.stat().st_size > 0:
-        section = 0
+        section = _ISSUE_SECTION_NONE
         for line in issue_log.read_text(encoding="utf-8", errors="replace").splitlines():
-            if line == "### Tool Failures" or line == "### External Reviewer Issues":
-                section = 1
+            if line in _EXEC_ISSUE_HEADINGS:
+                section = _ISSUE_SECTION_EXEC
             elif line == "### Warnings":
-                section = 2
+                section = _ISSUE_SECTION_WARN
             elif line.startswith("### "):
-                section = 0
+                section = _ISSUE_SECTION_NONE
             elif bullet_re.match(line):
-                if section == 1:
+                if section == _ISSUE_SECTION_EXEC:
                     exec_n += 1
-                elif section == 2:
+                elif section == _ISSUE_SECTION_WARN:
                     warn_n += 1
         return exec_n, warn_n
     run_dir = implement_tmpdir / "larch-logs" / "implement" / run_id
@@ -734,18 +738,18 @@ def _refresh_issue_counts(implement_tmpdir: Path, run_id: str) -> tuple[int, int
         if isinstance(item, dict):
             body_text += str(cast("dict[str, object]", item).get("body", "")) + "\n"
     if re.search(r"^### (Tool Failures|External Reviewer Issues|Warnings)$", body_text, re.MULTILINE):
-        section = 0
+        section = _ISSUE_SECTION_NONE
         for line in body_text.splitlines():
-            if line == "### Tool Failures" or line == "### External Reviewer Issues":
-                section = 1
+            if line in _EXEC_ISSUE_HEADINGS:
+                section = _ISSUE_SECTION_EXEC
             elif line == "### Warnings":
-                section = 2
+                section = _ISSUE_SECTION_WARN
             elif line.startswith("### "):
-                section = 0
+                section = _ISSUE_SECTION_NONE
             elif bullet_re.match(line):
-                if section == 1:
+                if section == _ISSUE_SECTION_EXEC:
                     exec_n += 1
-                elif section == 2:
+                elif section == _ISSUE_SECTION_WARN:
                     warn_n += 1
     else:
         exec_n = body_text.count('"category":"Tool Failures"') + body_text.count('"category":"External Reviewer Issues"')

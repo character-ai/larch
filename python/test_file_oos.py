@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest  # noqa: TC002
+import pytest
 
 import file_oos
 

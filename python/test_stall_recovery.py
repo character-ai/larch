@@ -167,7 +167,7 @@ def test_retry_policy_lint_failure_cap(capsys: pytest.CaptureFixture[str]) -> No
     assert "MAX_ATTEMPTS=8" in capsys.readouterr().out
 
 
-def test_record_attempt_writes_count(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_record_attempt_writes_count(tmp_path: Path) -> None:
     rc = stall_recovery.record_attempt_main([
         "--implement-tmpdir", str(tmp_path),
         "--class", "transient-infra",
@@ -206,7 +206,8 @@ def test_compose_report_delegates_to_bash(monkeypatch: pytest.MonkeyPatch, tmp_p
         "--report-kind", "terminal-failure",
     ])
     assert rc == 0
-    assert calls and calls[0][0] == "compose-report"
+    assert calls
+    assert calls[0][0] == "compose-report"
 
 
 def test_lint_subcommand_ok(capsys: pytest.CaptureFixture[str]) -> None:
