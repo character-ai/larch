@@ -3527,7 +3527,7 @@ def _review_launch_codex(args: argparse.Namespace, prompt: str) -> int:
             _review_write_clean_readonly_dirty_tree(output)
             _review_write_preflight_done(output, auth_rc)
             _review_emit_launcher_result(output, "codex", auth_rc)
-            return 0
+            return auth_rc
         try:
             model_args = list(resolve_model_args("codex", with_effort=True).argv)
         except ValueError as exc:
@@ -3832,6 +3832,436 @@ def launch_review_main(argv: list[str] | None = None) -> int:
     if args.tool == "codex":
         return _review_launch_codex(args, prompt)
     return _review_launch_cursor(args, prompt)
+
+
+def _implement_parser(prog: str) -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog=prog)
+    parser.add_argument("--transcript-path", required=True)
+    parser.add_argument("--sidecar-log", required=True)
+    parser.add_argument("--manifest-path", required=True)
+    parser.add_argument("--qa-pending-path", required=True)
+    parser.add_argument("--scout-manifest-path", required=True)
+    parser.add_argument("--plan-file", required=True)
+    parser.add_argument("--feature-file", required=True)
+    parser.add_argument("--agent-prompt", required=True)
+    parser.add_argument("--timeout", required=True)
+    parser.add_argument("--answers-file", default="")
+    parser.add_argument("--timing-task-kind", default="")
+    parser.add_argument("--token-budget-cap", default="")
+    return parser
+
+
+def _validate_implement_common(args: argparse.Namespace, *, tool: str) -> tuple[bool, int]:
+    prefix = f"agent launch-{tool}-implement"
+    for name in ("plan_file", "feature_file", "agent_prompt"):
+        if not Path(getattr(args, name)).is_file():
+            _err(f"{prefix}: {name.replace('_', '-')} not found: {getattr(args, name)}")
+            return False, 2
+    if args.answers_file and not Path(args.answers_file).is_file():
+        _err(f"{prefix}: --answers-file given but path does not exist: {args.answers_file}")
+        return False, 2
+    if not _is_positive_int(args.timeout):
+        _err(f"{prefix}: --timeout must be a positive integer (seconds), got '{args.timeout}'")
+        return False, 2
+    if args.timing_task_kind and args.timing_task_kind.startswith("--"):
+        _err(f"{prefix}: --timing-task-kind requires a non-empty, non-flag-like value")
+        return False, 2
+    if args.token_budget_cap and not _is_positive_int(args.token_budget_cap):
+        _err(f"{prefix}: --token-budget-cap requires a positive integer")
+        return False, 2
+    return True, 0
+
+
+def _canonical_existing_nonsymlink_dir(path: Path) -> Path | None:
+    try:
+        if not path.is_dir() or path.is_symlink() or ".." in str(path):
+            return None
+        return path.resolve(strict=True)
+    except OSError:
+        return None
+
+
+def _validate_codex_implement_paths(args: argparse.Namespace) -> tuple[Path | None, int]:
+    dirs = {
+        "--manifest-path": Path(args.manifest_path).parent,
+        "--qa-pending-path": Path(args.qa_pending_path).parent,
+        "--scout-manifest-path": Path(args.scout_manifest_path).parent,
+        "--transcript-path": Path(args.transcript_path).parent,
+    }
+    resolved: dict[str, Path] = {}
+    for flag, parent in dirs.items():
+        canon = _canonical_existing_nonsymlink_dir(parent)
+        if canon is None:
+            _err(f"agent launch-codex-implement: {flag} parent is not a directory: {parent}")
+            return None, 2
+        resolved[flag] = canon
+    session = resolved["--manifest-path"]
+    for flag in ("--qa-pending-path", "--scout-manifest-path", "--transcript-path"):
+        if resolved[flag] != session:
+            _err(f"agent launch-codex-implement: {flag} must share the parent directory with --manifest-path")
+            return None, 2
+    impl_tmp = os.environ.get("IMPLEMENT_TMPDIR", "")
+    if impl_tmp:
+        impl = _canonical_existing_nonsymlink_dir(Path(impl_tmp))
+        if impl is None:
+            _err(f"agent launch-codex-implement: IMPLEMENT_TMPDIR is not a directory: {impl_tmp}")
+            return None, 2
+        if impl == session:
+            _err("agent launch-codex-implement: --manifest-path parent must not be the implement session tmpdir root (Codex --add-dir grant would cover orchestrator-owned artifacts)")
+            return None, 2
+    return session, 0
+
+
+def _hydrate_implement_session_env() -> None:
+    root = os.environ.get("IMPLEMENT_TMPDIR", "")
+    if not root:
+        return
+    session_id = Path(root) / "session-id"
+    if session_id.is_file():
+        text = session_id.read_text(encoding="utf-8", errors="replace").strip()
+        if text:
+            os.environ["LARCH_TOKEN_SESSION_ID"] = text
+    source = Path(root) / "claude-source.env"
+    if source.is_file():
+        os.environ["LARCH_CLAUDE_SOURCE_FILE"] = str(source)
+
+
+def _implement_resume_block(tool: str, answers_file: str) -> str:
+    if not answers_file:
+        return ""
+    return f"""
+
+## Resume invocation
+
+This is a RESUME of a prior /implement Step 2 attempt that ended in needs_qa.
+Operator answers to your prior questions are in: {answers_file}
+
+Per agents/{tool}-implementer.md "Resume protocol":
+1. Inspect git log main..HEAD and git status FIRST.
+2. Read the answers file.
+3. If the answers are consistent with prior partial work, continue from there.
+4. If not, set status=bailed bail_reason=resume-incompatible — DO NOT git reset.
+"""
+
+
+def _strip_frontmatter_body(path: Path) -> str:
+    text = path.read_text(encoding="utf-8", errors="replace")
+    lines = text.splitlines()
+    if lines and lines[0].strip() == "---":
+        for idx in range(1, len(lines)):
+            if lines[idx].strip() == "---":
+                return "\n".join(lines[idx + 1 :]).strip() + "\n"
+    return text
+
+
+def _implement_prompt(tool: str, args: argparse.Namespace, *, codex_session: Path | None = None) -> str:
+    manifest = Path(args.manifest_path)
+    qa = Path(args.qa_pending_path)
+    scout = Path(args.scout_manifest_path)
+    if codex_session is not None:
+        manifest_text = str(codex_session / manifest.name)
+        qa_text = str(codex_session / qa.name)
+        scout_text = str(codex_session / scout.name)
+        static = ""
+    else:
+        static = Path(args.agent_prompt).read_text(encoding="utf-8", errors="replace") + "\n"
+        manifest_text = str(manifest)
+        qa_text = str(qa)
+        scout_text = str(scout)
+    return (
+        static
+        + "## This invocation's parameters\n\n"
+        + f"- Plan to implement: {args.plan_file}\n"
+        + f"- Original feature description: {args.feature_file}\n"
+        + f"- Write manifest.json (atomically) at: {manifest_text}\n"
+        + f"- Write qa-pending.json (atomically, only if status=needs_qa) at: {qa_text}\n"
+        + f"- Optionally write best-effort scout JSON at: {scout_text}\n"
+        + f"- Working directory: {Path.cwd()} (this is the repo root for git operations)\n"
+        + _implement_resume_block(tool, args.answers_file)
+        + "\nBegin by inspecting the current branch state, then proceed per the system prompt above."
+    )
+
+
+def _emit_implement_launcher_envelope(args: argparse.Namespace, launcher_exit: int, *, status: str = "") -> None:
+    _emit_kv("LAUNCHER_EXIT", launcher_exit)
+    _emit_kv("MANIFEST_WRITTEN", str(Path(args.manifest_path).is_file() and Path(args.manifest_path).stat().st_size > 0).lower())
+    _emit_kv("QA_PENDING_WRITTEN", str(Path(args.qa_pending_path).is_file() and Path(args.qa_pending_path).stat().st_size > 0).lower())
+    _emit_kv("SCOUT_MANIFEST_WRITTEN", str(Path(args.scout_manifest_path).is_file() and Path(args.scout_manifest_path).stat().st_size > 0).lower())
+    if status:
+        _emit_kv("STATUS", status)
+    _emit_kv("TRANSCRIPT", args.transcript_path)
+    _emit_kv("SIDECAR_LOG", args.sidecar_log)
+
+
+def _implement_token_budget_hit(args: argparse.Namespace, tool: str, default_kind: str) -> bool:
+    cap = args.token_budget_cap or os.environ.get("LARCH_TOKEN_BUDGET_CAP_IMPLEMENT", "")
+    if cap and _is_positive_int(cap):
+        result = proc.run([sys.executable, str(_PY_CLI), "token", "check-budget", "--cap", cap, "--step", args.timing_task_kind or default_kind], check=False)
+        status = ""
+        total = ""
+        for token in result.stdout.split():
+            if token.startswith("STATUS="):
+                status = token.split("=", 1)[1]
+            elif token.startswith("TOTAL="):
+                total = token.split("=", 1)[1]
+        if status == "cap_hit":
+            _err(f"⚠ agent launch-{tool}-implement: step token budget cap of {cap} tokens exceeded ({total} combined vendor tokens); external implementer fan-out skipped")
+            _write(args.transcript_path, "STATUS=cap_hit\n")
+            _write(str(args.transcript_path) + ".cap-hit", "STATUS=cap_hit\n" + result.stdout)
+            if os.environ.get("IMPLEMENT_TMPDIR"):
+                _write(Path(os.environ["IMPLEMENT_TMPDIR"]) / "step-budget-cap-hit.env", "STATUS=cap_hit\n" + result.stdout)
+            _emit_implement_launcher_envelope(args, 0, status="cap_hit")
+            return True
+    return False
+
+
+def _append_implement_launch_failure(tool: str, output: Path, sidecar: Path, launcher_exit: int, *, verdict: str = "", retry_count: int = 0) -> None:
+    if launcher_exit == 0:
+        return
+    source = output.with_suffix(output.suffix + ".diag") if output.with_suffix(output.suffix + ".diag").is_file() and output.with_suffix(output.suffix + ".diag").stat().st_size > 0 else sidecar
+    args = [sys.executable, str(_PY_CLI), "run-log", "append-failure", "--log", str(Path(os.environ.get("IMPLEMENT_TMPDIR", ".")) / "execution-issues.md"), "--site", "2", "--tool", f"{tool}-implement", "--exit-code", str(launcher_exit), "--category", "Tool Failures", "--output-file", str(source), "--redact"]
+    if verdict:
+        args.extend(["--verdict", verdict])
+    if retry_count:
+        args.extend(["--retry-count", str(retry_count)])
+    if os.environ.get("IMPLEMENT_TMPDIR"):
+        subprocess.run(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+        _append_vendor_failure_diagnostics(source, site=f"2 {tool}-implement", exit_code=launcher_exit)
+    if not output.with_suffix(output.suffix + ".stderr-tail").is_file() and source.is_file() and source.stat().st_size > 0:
+        _write_stderr_tail(source, output)
+
+
+def _record_implement_timing(tool: str, task_kind: str, start: float, output: Path, exit_code: int) -> None:
+    proc.run([
+        sys.executable,
+        str(_PY_CLI),
+        "timing",
+        "record-vendor-task",
+        "--vendor",
+        tool,
+        "--task-kind",
+        task_kind,
+        "--start-s",
+        str(int(start)),
+        "--end-s",
+        str(int(time.time())),
+        "--output",
+        str(output),
+        "--exit-code",
+        str(exit_code),
+        "--status",
+        "complete" if exit_code == 0 else "signal",
+    ], check=False)
+
+
+def launch_codex_implement_main(argv: list[str] | None = None) -> int:
+    logging_util.quiet_init(argv0="cli.py")
+    parser = _implement_parser("cli.py agent launch-codex-implement")
+    args = parser.parse_args(argv)
+    ok, rc = _validate_implement_common(args, tool="codex")
+    if not ok:
+        return rc
+    session_tmpdir, rc = _validate_codex_implement_paths(args)
+    if session_tmpdir is None:
+        return rc
+    _hydrate_implement_session_env()
+    if _implement_token_budget_hit(args, "codex", args.timing_task_kind or "codex-implement"):
+        return 0
+    proc.run([sys.executable, str(_PY_CLI), "token", "mark", "Step 2 — implementation"], check=False)
+    task_kind = args.timing_task_kind if args.timing_task_kind and not args.timing_task_kind.startswith("--") else "codex-implement"
+    output = Path(args.transcript_path)
+    sidecar = Path(args.sidecar_log)
+    prompt = _implement_prompt("codex", args, codex_session=session_tmpdir)
+    _write(output.with_suffix(output.suffix + ".prompt"), prompt)
+    body = _strip_frontmatter_body(Path(args.agent_prompt))
+    if not body.strip():
+        _err(f"agent launch-codex-implement: agent prompt body is empty after frontmatter stripping: {args.agent_prompt}")
+        return 2
+    if "'''" in body:
+        _err("agent launch-codex-implement: agent prompt body contains TOML triple-single-quote delimiter")
+        return 2
+    if shutil.which("codex") is None:
+        _write(sidecar, "codex binary missing\n")
+        _write_stderr_tail(sidecar, output)
+        _emit_implement_launcher_envelope(args, 127)
+        return 0
+    with tempfile.TemporaryDirectory(prefix="larch-codex-home-") as home:
+        trusted = Path(home) / "instructions.md"
+        _write(trusted, body)
+        auth_rc, auth_msg = _prepare_codex_home(Path(home), trusted_instructions_file=str(trusted))
+        if auth_rc != 0:
+            _write(sidecar, (auth_msg or f"codex auth setup failed (exit {auth_rc})") + "\n")
+            _write_stderr_tail(sidecar, output)
+            _emit_implement_launcher_envelope(args, auth_rc)
+            return 0
+        try:
+            model_args = list(resolve_model_args("codex", with_effort=True).argv)
+        except ValueError as exc:
+            _write(sidecar, f"agent model-args: {exc}\n")
+            _write_stderr_tail(sidecar, output)
+            _emit_implement_launcher_envelope(args, 1)
+            return 0
+        events = output.with_suffix(output.suffix + ".events.jsonl")
+        child = [
+            "codex",
+            "exec",
+            "--full-auto",
+            "-C",
+            str(Path.cwd()),
+            "--add-dir",
+            str(session_tmpdir),
+            "--add-dir",
+            str(Path.cwd()),
+            *model_args,
+            "-c",
+            _trust_config_arg(str(Path.cwd())),
+            *_codex_auth_args(),
+            "--output-last-message",
+            str(output),
+            "--json",
+            "--",
+            prompt,
+        ]
+        start = time.time()
+        old_home = os.environ.get("CODEX_HOME")
+        os.environ["CODEX_HOME"] = home
+        try:
+            result = _run_external_agent_with_auth_retries(
+                tool="codex",
+                output=output,
+                timeout_seconds=int(args.timeout, 10),
+                cmd=child,
+                cwd=str(Path.cwd()),
+                stdout_path=events,
+                stderr_path=sidecar,
+            )
+        finally:
+            if old_home is None:
+                os.environ.pop("CODEX_HOME", None)
+            else:
+                os.environ["CODEX_HOME"] = old_home
+    if not events.is_file() or events.stat().st_size == 0:
+        _write(events, "{}\n")
+    _mirror_codex_quota_from_events(events, sidecar)
+    _record_implement_timing("codex", task_kind, start, output, result.exit_code)
+    _record_usage_from_events(events, sidecar, "codex_implement")
+    _append(output.with_suffix(output.suffix + ".meta"), f"OUTER_LAUNCHER=agent launch-codex-implement\nOUTER_LAUNCHER_PROMPT_FILE={output}.prompt\nOUTER_LAUNCHER_WORKDIR={Path.cwd()}\nOUTER_LAUNCHER_KIND=codex-implement\nOUTER_LAUNCHER_ADD_DIRS_JSON={_json_array([str(session_tmpdir), str(Path.cwd())])}\n")
+    if result.exit_code != 0:
+        verdict = external_auth_verdict("codex", sidecar, events, output)
+        if verdict == "auth":
+            verdict = "auth-retries-exhausted"
+        _append_implement_launch_failure("codex", output, sidecar, result.exit_code, verdict=verdict)
+    _promote_inner_done(output)
+    _emit_implement_launcher_envelope(args, result.exit_code)
+    return 0
+
+
+def _record_cursor_implement_usage(output: Path) -> None:
+    try:
+        obj = json.loads(_read_text(output))
+    except json.JSONDecodeError:
+        return
+    usage = obj.get("usage") if isinstance(obj, dict) else None
+    if not isinstance(usage, dict):
+        return
+    try:
+        input_tokens = _num(_first_not_none(usage.get("inputTokens"), usage.get("input_tokens"), 0))
+        output_tokens = _num(_first_not_none(usage.get("outputTokens"), usage.get("output_tokens"), 0))
+        cache_read = _num(_first_not_none(usage.get("cacheReadTokens"), usage.get("cache_read_input_tokens"), 0))
+        cache_create = _num(_first_not_none(usage.get("cacheWriteTokens"), usage.get("cache_creation_input_tokens"), 0))
+    except ValueError as exc:
+        _append(output.with_suffix(output.suffix + ".sidecar"), f"agent parse-cursor-usage: {exc}\n")
+        return
+    total = input_tokens + output_tokens + cache_read + cache_create
+    proc.run([
+        sys.executable,
+        str(_PY_CLI),
+        "token",
+        "record-vendor",
+        "cursor",
+        f"input={input_tokens}",
+        f"output={output_tokens}",
+        f"cache_read={cache_read}",
+        f"cache_create={cache_create}",
+        f"total={total}",
+        "raw=cursor_implement",
+    ], check=False)
+
+def launch_cursor_implement_main(argv: list[str] | None = None) -> int:
+    logging_util.quiet_init(argv0="cli.py")
+    parser = _implement_parser("cli.py agent launch-cursor-implement")
+    args = parser.parse_args(argv)
+    ok, rc = _validate_implement_common(args, tool="cursor")
+    if not ok:
+        return rc
+    manifest_parent = _canonical_existing_nonsymlink_dir(Path(args.manifest_path).parent)
+    scout_parent = _canonical_existing_nonsymlink_dir(Path(args.scout_manifest_path).parent)
+    if manifest_parent is None or scout_parent is None or manifest_parent != scout_parent:
+        _err("agent launch-cursor-implement: --scout-manifest-path must share the parent directory with --manifest-path")
+        return 2
+    _hydrate_implement_session_env()
+    if _implement_token_budget_hit(args, "cursor", args.timing_task_kind or "cursor-implement"):
+        return 0
+    proc.run([sys.executable, str(_PY_CLI), "token", "mark", "Step 2 — implementation"], check=False)
+    task_kind = args.timing_task_kind if args.timing_task_kind and not args.timing_task_kind.startswith("--") else "cursor-implement"
+    output = Path(args.transcript_path)
+    sidecar = Path(args.sidecar_log)
+    prompt = _implement_prompt("cursor", args)
+    wrapped_prompt = f" /max-mode on. Prompt: {prompt}"
+    _write(output.with_suffix(output.suffix + ".prompt"), prompt)
+    if shutil.which("cursor") is None:
+        _write(sidecar, "cursor binary missing\n")
+        _write_stderr_tail(sidecar, output)
+        _emit_implement_launcher_envelope(args, 127)
+        return 0
+    verdict = cursor_auth_preflight(caller="agent launch-cursor-implement")
+    if not verdict.ok:
+        _write(sidecar, verdict.message + "\n")
+        _write_stderr_tail(sidecar, output)
+        _emit_implement_launcher_envelope(args, verdict.rc)
+        return 0
+    cursor_preread_service_token()
+    cursor_auth_export_env()
+    try:
+        model_args = list(resolve_model_args("cursor", with_effort=True).argv)
+    except ValueError as exc:
+        _write(sidecar, f"agent model-args: {exc}\n")
+        _write_stderr_tail(sidecar, output)
+        _emit_implement_launcher_envelope(args, 1)
+        return 0
+    cfg_tmp = tempfile.mkdtemp(prefix="larch-cursor-cfg-")
+    old_cfg = os.environ.get("CURSOR_CONFIG_DIR")
+    os.environ["CURSOR_CONFIG_DIR"] = cfg_tmp
+    user_cfg = Path.home() / ".cursor" / "cli-config.json"
+    if user_cfg.is_file():
+        shutil.copyfile(user_cfg, Path(cfg_tmp) / "cli-config.json")
+    start = time.time()
+    try:
+        child = ["cursor", "agent", "-p", "--force", "--trust", "--output-format", "json", *model_args, "--workspace", str(Path.cwd()), wrapped_prompt]
+        result = _run_external_agent_with_auth_retries(
+            tool="cursor",
+            output=output,
+            timeout_seconds=int(args.timeout, 10),
+            cmd=child,
+            capture_stdout_only=True,
+        )
+    finally:
+        shutil.rmtree(cfg_tmp, ignore_errors=True)
+        if old_cfg is None:
+            os.environ.pop("CURSOR_CONFIG_DIR", None)
+        else:
+            os.environ["CURSOR_CONFIG_DIR"] = old_cfg
+    _append(output.with_suffix(output.suffix + ".meta"), f"OUTER_LAUNCHER=agent launch-cursor-implement\nOUTER_LAUNCHER_PROMPT_FILE={output}.prompt\nOUTER_LAUNCHER_WORKDIR={Path.cwd()}\n")
+    _record_implement_timing("cursor", task_kind, start, output, result.exit_code)
+    _record_cursor_implement_usage(output)
+    if result.exit_code != 0:
+        verdict_text = external_auth_verdict("cursor", sidecar, output.with_suffix(output.suffix + ".diag"), output)
+        if verdict_text == "auth":
+            verdict_text = "auth-retries-exhausted"
+        _append_implement_launch_failure("cursor", output, sidecar, result.exit_code, verdict=verdict_text)
+    _promote_inner_done(output)
+    _emit_implement_launcher_envelope(args, result.exit_code)
+    return 0
 
 def launch_claude_ci_main(argv: list[str] | None = None) -> int:
     logging_util.quiet_init(argv0="cli.py")

@@ -134,7 +134,7 @@ for name in wrappers:
 # Existing wrappers that gained behavior.
 require('python/review_and_fix.py', '--stage-all', 'commit-fixes --stage-all')
 require('python/review_and_fix.py', '"git", "add", "-A"', 'commit-fixes stage all implementation')
-require('skills/implement/scripts/commit-implementation.sh', 'LARCH_TIMING_LEDGER', 'commit-implementation telemetry self-rehydration')
+require('python/cli.py implement commit', 'LARCH_TIMING_LEDGER', 'commit-implementation telemetry self-rehydration')
 require('skills/implement/scripts/step-18b-final-report.sh', 'cleanup.sh" --help', 'step-18b cleanup smoke')
 require('skills/implement/scripts/step-18b-final-report.sh', 'Step 18 — cleanup', 'step-18b telemetry mark')
 require('skills/implement/scripts/step-0-bootstrap.sh', 'CALLER_ENV_PATH=*) CALLER_ENV_PATH=', 'step-0 fork metadata caller-env parse')
@@ -325,8 +325,8 @@ for retired in [
 require('skills/implement/scripts/step-8-oos-checkpoint.sh', 'command grep', 'step-8-oos-checkpoint command grep probes')
 require('skills/implement/scripts/step-8-oos-checkpoint.sh', 'OOS_CHECKPOINT_RC', 'step-8-oos-checkpoint rc relay')
 
-# Step 4 skip prose must reference commit-implementation.sh, not git-commit.sh.
-require(skill, 'Skip the `commit-implementation.sh` invocation.', 'Step 4 skip prose references commit-implementation.sh')
+# Step 4 skip prose must reference implement commit, not git-commit.sh.
+require(skill, 'Skip the `implement commit` invocation.', 'Step 4 skip prose references implement commit')
 forbid(skill, 'Skip the `git-commit.sh` invocation.', 'Step 4 skip prose must not reference git-commit.sh')
 # The fabricated path skills/implement/scripts/git-commit.sh must not appear under skills/implement/.
 import subprocess

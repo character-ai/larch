@@ -11,9 +11,7 @@ from pathlib import Path
 
 GIT = shutil.which("git") or "git"
 
-ALLOWED_SHELL_FILES = {
-    "scripts/launch-codex-implement.sh",
-}
+ALLOWED_SHELL_FILES: set[str] = set()
 ALLOWED_PYTHON_FILES = {"python/agents.py"}
 REVIEW_CORE_SUBPROCESS_RE = re.compile(
     r'["\']review["\']\s*,\s*["\']core["\']|python/cli\.py review core|cli\.py review core'

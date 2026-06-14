@@ -1,12 +1,12 @@
 ---
-paths: ["python/agents.py", "python/test_launch_review.py", "python/cli.py", "scripts/launch-*.sh", "scripts/test-launch-*.sh", "scripts/run-step1-plan-log.sh", "scripts/test-run-step1-plan-log.sh", "python/review_and_fix.py", "python/test_review_and_fix.py", "skills/implement/scripts/run-step2-dispatch.sh", "skills/implement/scripts/step2-implement.sh", "skills/implement/scripts/test-run-step2-dispatch.sh", "skills/implement/scripts/test-step2-*.sh", "skills/implement/scripts/test-codex-implementer.sh", "skills/implement/scripts/test-cursor-implementer.sh", "skills/design/scripts/design-step3-review.sh", "skills/design/scripts/test-design-step3-review.sh"]
+paths: ["python/agents.py", "python/test_launch_review.py", "python/cli.py", "scripts/launch-*.sh", "scripts/test-launch-*.sh", "scripts/run-step1-plan-log.sh", "scripts/test-run-step1-plan-log.sh", "python/review_and_fix.py", "python/test_review_and_fix.py", "python/cli.py implement run-dispatch", "python/cli.py implement step2-dispatch", "python/test_implement_dispatch.py", "skills/implement/scripts/test-step2-*.sh", "skills/design/scripts/run-step3-review.sh", "skills/design/scripts/test-run-step3-review.sh"]
 ---
 
 # Launcher Argv Test Coverage
 
 Changing argv validation, output grammar, or rejection messages in
 `scripts/launch-*.sh`, the Step 1/5 launchers, or the Step 2 dispatcher
-stack (`run-step2-dispatch.sh` / `step2-implement.sh`) requires a
+stack (`implement run-dispatch` / `implement step2-dispatch`) requires a
 same-PR regression harness update. "Ship launcher change → file OOS for
 harness gap → fix later" is the bug.
 
@@ -15,9 +15,9 @@ Harness paths are **not** uniform:
 - `python/cli.py agent launch-review --tool cursor|codex` → `python/test_launch_review.py`
 - `scripts/run-step1-plan-log.sh` → `scripts/test-run-step1-plan-log.sh`
 - `python/cli.py review-and-fix step5` → `python/test_review_and_fix.py` via Make targets `test-review-and-fix-step5`, `test-review-and-fix-step5-starting-round`, `test-review-and-fix-dispatch`, `test-review-and-fix-convergence`, and `test-review-and-fix-parsers`
-- `scripts/launch-codex-implement.sh` / `launch-cursor-implement.sh` → `skills/implement/scripts/test-codex-implementer.sh` / `test-cursor-implementer.sh` (and `test-step2-dispatch.sh` for cross-coder dispatcher coverage)
-- `skills/implement/scripts/run-step2-dispatch.sh` → `skills/implement/scripts/test-run-step2-dispatch.sh`
-- `python/cli.py plan-review run` → `skills/design/scripts/test-design-step3-review.sh`
+- `python/cli.py agent launch-codex-implement` / `agent launch-cursor-implement` → `python/test_implement_dispatch.py` (and `python/test_implement_dispatch.py` for cross-coder dispatcher coverage)
+- `python/cli.py implement run-dispatch` → `python/test_implement_dispatch.py`
+- `skills/design/scripts/run-step3-review.sh` → `skills/design/scripts/test-run-step3-review.sh`
 
 The sibling `<basename>.md` (per `.claude/rules/script-md-siblings.md`)
 names the current harness; read it before assuming a path. `docs/linting.md`
