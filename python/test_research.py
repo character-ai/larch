@@ -251,7 +251,7 @@ def test_validate_citations_max_claims_truncation(tmp_path: Path) -> None:
     report.write_text("\n".join(lines) + "\n", encoding="utf-8")
     out = tmp_path / "sidecar.md"
 
-    def fake_fetch(url: str) -> research.FetchResult:
+    def fake_fetch(_url: str) -> research.FetchResult:
         return research.FetchResult("PASS")
 
     research.validate_citations(report, out, tmp_path, max_claims=6, fetcher=fake_fetch, git_root=ROOT)
@@ -496,6 +496,7 @@ def _assert_render_round_trip(batch: Path, expected_count: int, out_dir: Path) -
 def test_render_findings_batch_retired_harness_fixtures(
     tmp_path: Path, name: str, findings_body: str, expected_count: int, body_contains: str | None
 ) -> None:
+    assert name
     report = tmp_path / "report.md"
     question = tmp_path / "question.txt"
     batch = tmp_path / "batch.md"
@@ -535,7 +536,7 @@ def test_validate_citations_url_dedup_and_idempotent_rerun(tmp_path: Path) -> No
     out1 = tmp_path / "cv1.md"
     out2 = tmp_path / "cv2.md"
 
-    def fake_fetch(url: str) -> research.FetchResult:
+    def fake_fetch(_url: str) -> research.FetchResult:
         return research.FetchResult("PASS")
 
     research.validate_citations(report, out1, tmp_path, fetcher=fake_fetch)

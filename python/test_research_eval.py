@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-# ruff: noqa: UP022,TC002
+# ruff: noqa: UP022
 # pyright: reportUnusedCallResult=false
 
 import json
