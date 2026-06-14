@@ -409,6 +409,7 @@ boundary_markers = (
     'terminal postplan fence',
     '> **🔶 /design 3b: arch diagram**',
     'Step 3 resume fence (all mid-loop returns)',
+    '**MainAgent vote boundary**',
     '**Gate A "Ready for review" / Gate C "Re-run review panel" re-entry only**',
     '--mode skip',
     '--mode architectural',
