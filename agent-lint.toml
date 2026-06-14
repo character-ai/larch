@@ -1410,4 +1410,8 @@ exclude = [
   # its contract lives in the sibling scripts/retro-sweep-design-logs-phase3d.md.
   "scripts/retro-sweep-design-logs-phase3d.sh",
   "scripts/retro-sweep-design-logs-phase3d.md",
+  # scripts/_debug-term-trap.sh is an operator-run debug reproducer for
+  # dispatch-with-waterfall TERM cleanup behavior. It is not invoked from
+  # runtime skill prose or hooks.
+  "scripts/_debug-term-trap.sh",
 ]
