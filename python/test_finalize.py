@@ -154,6 +154,7 @@ def test_teardown_stall_preserves_tmpdir_and_writes_manifest(tmp_path: Path) -> 
         responses=[
             CommandResult(("gh", "issue", "view"), 0, '{"title":"Existing title","state":"OPEN"}\n', "", 0.01),
             CommandResult(("gh", "issue", "edit"), 0, "", "", 0.01),
+            CommandResult(("gh", "issue", "view"), 0, '{"url":"https://github.com/o/r/issues/1"}\n', "", 0.01),
             CommandResult(("git", "status"), 0, " M file\n", "", 0.01),
             CommandResult(("git", "stash"), 0, "", "", 0.01),
             CommandResult(("git", "stash", "list"), 0, "stash@{0} larch-stalled-1-12\n", "", 0.01),
@@ -313,6 +314,34 @@ def test_write_finalize_state_contains_teardown_keys(tmp_path: Path) -> None:
     text = target.read_text(encoding="utf-8")
     assert "PR_CLOSED=true\n" in text
     assert "NO_LOGS_COMMIT=false\n" in text
+
+
+def test_implement_finalize_teardown_emits_issue_url_and_subcommand(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    state = tmp_path / "finalize-state.sh"
+    finalize.write_finalize_state(
+        _ctx(tmp_path, issue_number="12", repo="o/r", repo_unavailable=False, no_logs_commit=True),
+        state,
+    )
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+
+    def fake_issue_info(runner: object, issue: str, field: str, *, repo: str | None) -> str:
+        _ = (runner, issue, field, repo)
+        return "https://github.com/o/r/issues/12"
+
+    monkeypatch.setattr(finalize.issue_query, "issue_info", fake_issue_info)
+    monkeypatch.setattr(finalize, "kill_session_background_processes", lambda *_a, **_k: False)
+    rc = finalize.implement_finalize_teardown_main([
+        "--state-file", str(state),
+        "--implement-tmpdir", str(tmp_path),
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "ISSUE_URL=https://github.com/o/r/issues/12" in out
+    assert "FINALIZE_SUBCOMMAND=teardown" in out
 
 
 def test_cache_sessions_root_honors_absolute_xdg(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

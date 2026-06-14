@@ -16,6 +16,7 @@ from pathlib import Path
 
 import config
 import git
+import issue_query
 import logging_util
 import proc
 import retry
@@ -49,6 +50,7 @@ class FinalizeResult:
     force_push_status: str = ""
     log_write_status: str = ""
     branch_deleted: bool = False
+    issue_url: str = ""
 
 
 def _bool_text(value: object) -> str:
@@ -611,6 +613,13 @@ def teardown(
     sentinel_written = False
     if run_logs.effective_run_id(ctx):
         _ = _teardown_log_flush(runner, ctx, cwd=cwd)
+    issue_url = ""
+    issue_number = ctx.issue_number or ctx.issue
+    if issue_number and not ctx.repo_unavailable:
+        url = issue_query.issue_info(runner, str(issue_number), "url", repo=ctx.repo or None)
+        if url:
+            issue_url = url
+
     if ctx.stall_tracking:
         stash_ref = auto_stash_stalled_changes(runner, ctx, cwd=cwd)
         sentinel_written = _write_stalled_sentinel(
@@ -626,6 +635,7 @@ def teardown(
             rename_status=rename_status,
             sentinel_written=sentinel_written,
             stash_ref=stash_ref,
+            issue_url=issue_url,
         )
 
     removed = False
@@ -640,6 +650,7 @@ def teardown(
         rename_branch=rename_branch,
         rename_status=rename_status,
         cleanup_removed=removed,
+        issue_url=issue_url,
     )
 
 
@@ -913,7 +924,7 @@ class _SubprocessRunner:
         return proc.run(argv, timeout=timeout, cwd=cwd, env=env, check=check, stdout=stdout, stderr=stderr)
 
 
-def _emit_finalize_result(result: FinalizeResult) -> None:
+def _emit_finalize_result(result: FinalizeResult, *, subcommand: str = "") -> None:
     print(f"STATUS={result.status}")
     print(f"OUTCOME={result.outcome.value}")
     print(f"FINALIZE_WARNINGS={result.detail}")
@@ -924,9 +935,11 @@ def _emit_finalize_result(result: FinalizeResult) -> None:
     print(f"VERIFY_MAIN_STATUS={result.verify_main_status}")
     print(f"RENAME_BRANCH={result.rename_branch}")
     print(f"RENAME_STATUS={result.rename_status}")
-    print("ISSUE_URL=")
+    print(f"ISSUE_URL={result.issue_url}")
     print(f"STASH_REF={result.stash_ref}")
     print(f"SENTINEL_WRITTEN={_bool_text(result.sentinel_written)}")
+    if subcommand:
+        print(f"FINALIZE_SUBCOMMAND={subcommand}")
 
 
 def _load_state_file_kv(path: Path) -> dict[str, str]:
@@ -1009,7 +1022,7 @@ def implement_finalize_main(argv: list[str] | None = None, phase: str = "") -> i
         print("STATUS=failed")
         print("FINALIZE_WARNINGS=unknown phase")
         return 2
-    _emit_finalize_result(result)
+    _emit_finalize_result(result, subcommand=phase)
     return 0 if result.outcome == Outcome.OK else 1
 
 

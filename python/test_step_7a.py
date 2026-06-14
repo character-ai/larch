@@ -32,6 +32,19 @@ def test_step7a_main_rejects_unknown_flags(capsys: pytest.CaptureFixture[str]) -
     assert "STEP_7A_BAIL_REASON=argv" in out
 
 
+def test_step7a_skips_diagram_for_small_non_runtime_change(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
+    _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
+    monkeypatch.setattr(step_7a, "_is_small_non_runtime_change", lambda **_kwargs: True)
+    with patch.object(step_7a, "_run_log_flush", return_value="skip"), patch.object(step_7a, "subprocess") as mock_subprocess:
+        mock_subprocess.run.return_value.returncode = 0
+        mock_subprocess.run.return_value.stdout = "REBASE_OUTCOME=skipped\n"
+        rc = step_7a.run_step7a(tmp_path)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "DIAGRAM_STATUS=skip" in out
+    assert "reason=small-non-runtime-change" in out
+
+
 def test_step7a_honors_issue_number_and_run_id(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     _ = (tmp_path / "session-env.sh").write_text(
         "LARCH_ISSUE_NUMBER=99\nLARCH_RUN_ID=run-99\n",

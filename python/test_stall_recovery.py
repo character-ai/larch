@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import argparse
 import pytest
 
 import stall_recovery
@@ -99,25 +100,27 @@ def test_validate_terminal_state_accepts_design_state(tmp_path: Path, capsys: py
         "DESIGN_FAILURE_VERSION=1\n"
         "DESIGN_FAILURE_KIND=terminal\n"
         "FAILURE_OUTCOME=failed-judge-panel\n"
-        "STALL_STEP=3\n"
-        "PHASE=review\n"
-        "SITE=step3\n"
-        "TRIGGER=judge-panel\n"
-        "BAIL_REASON=panel-failed\n"
-        "EXIT_CODE=2\n"
-        "SOURCE_SCRIPT=review-design-step3-loop.sh\n",
+        "STALL_STEP=judge-panel\n"
+        "PHASE=judge-panel\n"
+        "SITE=decompose-panel\n"
+        "TRIGGER=decompose-panel-retry-exhausted\n"
+        "BAIL_REASON=decompose-panel-retry-exhausted\n"
+        "EXIT_CODE=1\n"
+        "FAILURE_DETAIL_LOG=\n"
+        "SOURCE_SCRIPT=split-path\n",
         encoding="utf-8",
     )
 
-    rc = stall_recovery.validate_terminal_state_main([
-        "--profile", "generic",
-        "--artifact-prefix", "design-failure",
-        "--implement-tmpdir", str(tmp_path),
-        "--primary-state-file", str(state),
-    ])
+    ns = argparse.Namespace(
+        implement_tmpdir=str(tmp_path),
+        primary_state_file=str(state),
+        profile="generic",
+        artifact_prefix="design-failure",
+    )
+    rc = stall_recovery.validate_terminal_state(ns)
 
     assert rc == 0
-    assert "TERMINAL_STATE_VALID=true" in capsys.readouterr().out
+    assert "VALID=true" in capsys.readouterr().out
 
 
 def test_dedup_tier_a_report_dry_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -127,3 +130,86 @@ def test_dedup_tier_a_report_dry_run(monkeypatch: pytest.MonkeyPatch, tmp_path: 
 
     assert rc == 0
     assert "STALL_RECOVERY_REPORT_STATUS=dry-run" in capsys.readouterr().out
+
+
+def test_classify_rebase_failed_step(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _ = (tmp_path / "ship-pr-state.sh").write_text(
+        "STALL_STEP=rebase-failed\nPHASE=rebase-failed\nBAIL_REASON=\nEXIT_CODE=1\n",
+        encoding="utf-8",
+    )
+    rc = stall_recovery.classify_main(["--implement-tmpdir", str(tmp_path), "--stall-step", "rebase-failed"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "FAILURE_CLASS=transient-infra" in out
+    assert "RESUME_HINT=step8-shippr" in out
+
+
+def test_classify_ci_fix_exhausted_with_detail_log(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _ = (tmp_path / "ship-pr-state.sh").write_text(
+        "STALL_STEP=8\nPHASE=ci-merge\nBAIL_REASON=ci-fix-exhausted\nEXIT_CODE=2\n",
+        encoding="utf-8",
+    )
+    detail = tmp_path / "failure.log"
+    _ = detail.write_text("ci fix loop exhausted\n", encoding="utf-8")
+    rc = stall_recovery.classify_main([
+        "--implement-tmpdir", str(tmp_path),
+        "--failure-detail-log", str(detail),
+        "--bail-reason", "ci-fix-exhausted",
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "FAILURE_CLASS=ci-fix-exhausted" in out
+
+
+def test_retry_policy_lint_failure_cap(capsys: pytest.CaptureFixture[str]) -> None:
+    rc = stall_recovery.retry_policy_main(["--class", "lint-failure"])
+    assert rc == 0
+    assert "MAX_ATTEMPTS=8" in capsys.readouterr().out
+
+
+def test_record_attempt_writes_count(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    rc = stall_recovery.record_attempt_main([
+        "--implement-tmpdir", str(tmp_path),
+        "--class", "transient-infra",
+        "--signature", "abc",
+        "--outcome", "failed",
+    ])
+    assert rc == 0
+    assert "attempt_count=1" in (tmp_path / "stall-recovery-attempts.env").read_text(encoding="utf-8")
+
+
+def test_validate_tier_b_public_file_rejects_sensitive_token(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    corpus = tmp_path / "stall-recovery-sensitive-corpus.txt"
+    public = tmp_path / "public.md"
+    _ = corpus.write_text("super-secret-token\n", encoding="utf-8")
+    _ = public.write_text("contains super-secret-token\n", encoding="utf-8")
+    rc = stall_recovery.validate_tier_b_public_file_main([
+        "--implement-tmpdir", str(tmp_path),
+        "--public-file", str(public.resolve()),
+        "--sensitive-corpus-file", str(corpus.resolve()),
+    ])
+    assert rc == 1
+    assert "PUBLIC_FILE_VALID=false" in capsys.readouterr().out
+
+
+def test_compose_report_delegates_to_bash(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    calls: list[list[str]] = []
+
+    def fake_delegate(sub: str, rest: list[str]) -> int:
+        calls.append([sub, *rest])
+        return 0
+
+    monkeypatch.setattr(stall_recovery, "_delegate_stall_recovery_subcommand", fake_delegate)
+    rc = stall_recovery.compose_report_main([
+        "--implement-tmpdir", str(tmp_path),
+        "--surface", "chat-print",
+        "--report-kind", "terminal-failure",
+    ])
+    assert rc == 0
+    assert calls and calls[0][0] == "compose-report"
+
+
+def test_lint_subcommand_ok(capsys: pytest.CaptureFixture[str]) -> None:
+    rc = stall_recovery.lint_main([])
+    assert rc == 0
+    assert "LINT_OK=true" in capsys.readouterr().out

@@ -157,3 +157,85 @@ def test_update_pr_body_invokes_gh() -> None:
     pr_body.update_pr_body(runner, 3, "body", repo="o/r")  # type: ignore[arg-type]
     assert runner.calls
     assert runner.calls[0][1] == "pr"
+
+
+def test_write_final_report_counts_warnings_and_exec(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _ = (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=0\nRUN_ID=run1\n", encoding="utf-8")
+    _ = (tmp_path / "session-env.sh").write_text("REPO=o/r\nMODE=N/A\n", encoding="utf-8")
+    _ = (tmp_path / "ship-pr-state.sh").write_text("PR_NUMBER=1\nPR_URL=https://github.com/o/r/pull/1\n", encoding="utf-8")
+    _ = (tmp_path / "run-flags.sh").write_text("EMERGENCY_REQUESTED=false\n", encoding="utf-8")
+    _ = (tmp_path / "execution-issues.md").write_text(
+        "### Tool Failures\n- **step5**: failed\n\n### Warnings\n- **warn**: one\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(pr_body, "_final_report_token_fields", lambda *_a, **_k: {"cost_unavailable": True})
+    rc, _url, _err = pr_body.write_final_report(tmp_path, comment_only=True)
+    assert rc == 0
+    body = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
+    assert "**Exec issues**: 1" in body
+    assert "**Warnings**: 1" in body
+
+
+def test_step18b_emits_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    _ = (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=1\nRUN_ID=run1\n", encoding="utf-8")
+    _ = (tmp_path / "session-env.sh").write_text("REPO=o/r\nMODE=N/A\n", encoding="utf-8")
+    _ = (tmp_path / "ship-pr-state.sh").write_text("", encoding="utf-8")
+    _ = (tmp_path / "run-flags.sh").write_text("EMERGENCY_REQUESTED=false\n", encoding="utf-8")
+    monkeypatch.setattr(pr_body, "_final_report_token_fields", lambda *_a, **_k: {"cost_unavailable": True})
+    rc = pr_body.step18b_final_report_main(["--implement-tmpdir", str(tmp_path)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "EMIT_BODY=" in out
+    assert "WFR_RC=" in out
+
+
+def test_render_run_summary_includes_cost_line() -> None:
+    body = pr_body.render_run_summary(
+        skill="implement",
+        outcome="completed",
+        run_id="run1",
+        total_cost="1.00",
+        claude_cost="0.50",
+        codex_cost="0.25",
+        cursor_cost="0.10",
+        claude_sub_cost="0.15",
+        total_tokens=1000,
+        cost_unavailable=False,
+    )
+    assert "💰 TOTAL" in body
+    assert "**Cost**:" in body
+
+
+def test_post_tracking_issue_writes_metadata(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _ = (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=42\nRUN_ID=run-z\n", encoding="utf-8")
+    _ = (tmp_path / "session-env.sh").write_text("REPO=o/r\nAGENT=claude\nCODER=claude\n", encoding="utf-8")
+    _ = (tmp_path / "run-flags.sh").write_text("EMERGENCY_REQUESTED=false\n", encoding="utf-8")
+
+    def fake_run(cmd: list[str], **kwargs: object) -> object:
+        _ = kwargs
+        class Result:
+            returncode = 0
+            stdout = "COMMENT_URL=https://github.com/o/r/issues/42#issuecomment-1\n"
+            stderr = ""
+        return Result()
+
+    monkeypatch.setattr(pr_body.subprocess, "run", fake_run)
+    rc, posted, url, err = pr_body.post_tracking_issue(tmp_path)
+    assert rc == 0
+    assert posted is True
+    assert "issues/42" in url
+    assert (tmp_path / "summary-metadata.md").is_file()
+    assert err == ""
+
+
+def test_generate_code_flow_diagram_uses_launcher_not_stub(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    launcher = tmp_path / "fake-launcher.sh"
+    _ = launcher.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+    launcher.chmod(0o755)
+    monkeypatch.setenv("LARCH_TEST_LAUNCH_CLAUDE_SUBPROCESS", str(launcher))
+    monkeypatch.setattr(pr_body.subprocess, "run", lambda *a, **k: type("R", (), {"returncode": 1, "stdout": "", "stderr": ""})())
+    rc, status, _diagram, reason = pr_body.generate_code_flow_diagram(tmp_path)
+    assert rc == 1
+    assert status == "failed"
+    assert reason == "generation-failed"
+    assert (tmp_path / "code-flow-prompt.md").is_file()

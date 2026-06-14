@@ -687,6 +687,72 @@ def _normalized_outcome(tmpdir: Path) -> str:
     return "completed"
 
 
+def _refresh_issue_counts(implement_tmpdir: Path, run_id: str) -> tuple[int, int]:
+    """Port write-final-report.sh refresh_issue_counts category split and ndjson fallback."""
+    issue_log = implement_tmpdir / "execution-issues.md"
+    exec_n = 0
+    warn_n = 0
+    bullet_re = re.compile(r"^- \*\*[^*].*\*\*:?([ \t].*)?$")
+    if issue_log.is_file() and issue_log.stat().st_size > 0:
+        section = 0
+        for line in issue_log.read_text(encoding="utf-8", errors="replace").splitlines():
+            if line == "### Tool Failures" or line == "### External Reviewer Issues":
+                section = 1
+            elif line == "### Warnings":
+                section = 2
+            elif line.startswith("### "):
+                section = 0
+            elif bullet_re.match(line):
+                if section == 1:
+                    exec_n += 1
+                elif section == 2:
+                    warn_n += 1
+        return exec_n, warn_n
+    run_dir = implement_tmpdir / "larch-logs" / "implement" / run_id
+    ndjson = run_dir / "execution-issues.ndjson"
+    if not ndjson.is_file():
+        return exec_n, warn_n
+    try:
+        rows = [json.loads(raw) for raw in ndjson.read_text(encoding="utf-8", errors="replace").splitlines() if raw.strip()]
+    except json.JSONDecodeError:
+        rows = []
+    if rows and all(isinstance(row, dict) for row in rows):
+        exec_n = sum(
+            1 for row in rows
+            if str(cast("dict[str, object]", row).get("category", "")) in {"Tool Failures", "External Reviewer Issues"}
+        )
+        warn_n = sum(1 for row in rows if str(cast("dict[str, object]", row).get("category", "")) == "Warnings")
+        return exec_n, warn_n
+    body_text = ""
+    for raw in ndjson.read_text(encoding="utf-8", errors="replace").splitlines():
+        if not raw.strip():
+            continue
+        try:
+            item = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(item, dict):
+            body_text += str(cast("dict[str, object]", item).get("body", "")) + "\n"
+    if re.search(r"^### (Tool Failures|External Reviewer Issues|Warnings)$", body_text, re.MULTILINE):
+        section = 0
+        for line in body_text.splitlines():
+            if line == "### Tool Failures" or line == "### External Reviewer Issues":
+                section = 1
+            elif line == "### Warnings":
+                section = 2
+            elif line.startswith("### "):
+                section = 0
+            elif bullet_re.match(line):
+                if section == 1:
+                    exec_n += 1
+                elif section == 2:
+                    warn_n += 1
+    else:
+        exec_n = body_text.count('"category":"Tool Failures"') + body_text.count('"category":"External Reviewer Issues"')
+        warn_n = body_text.count('"category":"Warnings"')
+    return exec_n, warn_n
+
+
 def write_final_report(implement_tmpdir: Path, *, comment_only: bool = False, print_stdout: bool = False) -> tuple[int, str, str]:
     parent = implement_tmpdir / "parent-issue.md"
     session = implement_tmpdir / "session-env.sh"
@@ -701,10 +767,7 @@ def write_final_report(implement_tmpdir: Path, *, comment_only: bool = False, pr
     pr_number = _read_kv(ship, "PR_NUMBER") or _read_kv(final, "PR_NUMBER")
     pr_url = _read_kv(ship, "PR_URL", "N/A") or _read_kv(final, "PR_URL", "N/A")
     issue_url = f"https://github.com/{repo}/issues/{issue}" if repo and issue and issue != "0" else ""
-    exec_count = 0
-    issue_log = implement_tmpdir / "execution-issues.md"
-    if issue_log.is_file():
-        exec_count = sum(1 for line in issue_log.read_text(encoding="utf-8", errors="replace").splitlines() if line.startswith("- "))
+    exec_count, warn_count = _refresh_issue_counts(implement_tmpdir, run_id)
     run_dir = implement_tmpdir / "larch-logs" / "implement" / run_id
     cost_fields = _final_report_token_fields(implement_tmpdir, run_id)
     body = render_run_summary(
@@ -727,7 +790,7 @@ def write_final_report(implement_tmpdir: Path, *, comment_only: bool = False, pr
         oos_count=_read_kv(ship, "OOS_COUNT", "0"),
         oos_urls=_read_kv(ship, "OOS_URLS"),
         exec_issues=exec_count,
-        warnings=0,
+        warnings=warn_count,
         run_logs_path=f"larch-logs/implement/{run_id}/" if run_id else "N/A",
         emergency_requested=_read_kv(run_flags, "EMERGENCY_REQUESTED", "false"),
         **cost_fields,
@@ -937,18 +1000,52 @@ def slack_issue_announce_main(argv: list[str] | None = None) -> int:
 
 
 def generate_code_flow_diagram(implement_tmpdir: Path, *, model: str = "claude-sonnet-4-6", base_remote: str = "origin", base_ref: str = "main") -> tuple[int, str, str, str]:
-    _ = (base_remote, base_ref)
     implement_tmpdir.mkdir(parents=True, exist_ok=True)
     raw = implement_tmpdir / "code-flow-diagram.raw.md"
     candidate = implement_tmpdir / "code-flow-diagram.candidate.md"
     diagram = implement_tmpdir / "code-flow-diagram.md"
+    prompt_path = implement_tmpdir / "code-flow-prompt.md"
+    base_target = f"{base_remote}/{base_ref}"
+    merge_base = subprocess.run(["git", "merge-base", "HEAD", base_target], text=True, capture_output=True, check=False)  # noqa: S607
+    if merge_base.returncode != 0 or not merge_base.stdout.strip():
+        fallback = subprocess.run(["git", "rev-parse", "HEAD~1"], text=True, capture_output=True, check=False)  # noqa: S607
+        merge_ref = fallback.stdout.strip() if fallback.returncode == 0 and fallback.stdout.strip() else "HEAD"
+    else:
+        merge_ref = merge_base.stdout.strip()
+    changed = subprocess.run(["git", "diff", "--name-only", f"{merge_ref}..HEAD"], text=True, capture_output=True, check=False)  # noqa: S607
+    changed_lines = changed.stdout.strip().splitlines() if changed.returncode == 0 else []
+    prompt_lines = [
+        "Generate a concise Mermaid code-flow diagram for the committed implementation diff.",
+        "Return markdown containing exactly one `## Code Flow Diagram` heading and one mermaid fence.",
+        "Focus on runtime calls, data flow, and control flow. Avoid structural architecture duplication.",
+        "",
+        "Changed files:",
+        *changed_lines,
+        "",
+    ]
+    prompt_path.write_text("\n".join(prompt_lines), encoding="utf-8")
+    plugin_root = Path(__file__).resolve().parent
     launcher = os.environ.get("LARCH_TEST_LAUNCH_CLAUDE_SUBPROCESS")
     if launcher:
-        completed = subprocess.run([launcher, "--model", model, "--prompt-file", str(implement_tmpdir / "code-flow-prompt.md"), "--output-file", str(raw), "--timeout", "600", "--allow-root", str(Path.cwd()), "--timing-task-kind", "implement-code-flow"], text=True, capture_output=True, check=False)
-        if completed.returncode != 0:
-            return 1, "failed", "", "generation-failed"
+        launch_cmd = [launcher]
     else:
-        raw.write_text("## Code Flow Diagram\n\n```mermaid\nflowchart TD\n  A[Implementation] --> B[Runtime]\n```\n", encoding="utf-8")
+        launch_cmd = [sys.executable, str(plugin_root / "cli.py"), "agent", "launch-claude-subprocess"]
+    completed = subprocess.run(
+        [
+            *launch_cmd,
+            "--model", model,
+            "--prompt-file", str(prompt_path),
+            "--output-file", str(raw),
+            "--timeout", "600",
+            "--allow-root", str(Path.cwd()),
+            "--timing-task-kind", "implement-code-flow",
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        return 1, "failed", "", "generation-failed"
     if not raw.is_file() or raw.stat().st_size == 0:
         return 1, "failed", "", "empty-generation"
     candidate.write_bytes(raw.read_bytes())

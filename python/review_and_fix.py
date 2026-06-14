@@ -1849,9 +1849,19 @@ def _append_record_escalation_tool_failure(implement_tmpdir: Path, reason: str) 
         run_logs.append_execution_issue(execution, "Tool Failures", entry)
 
 
+def _tmpdir_local_file(tmpdir: Path, file_path: Path) -> bool:
+    if not file_path.is_absolute() or file_path.is_symlink() or not file_path.is_file():
+        return False
+    try:
+        _ = file_path.resolve().relative_to(tmpdir.resolve())
+    except ValueError:
+        return False
+    return True
+
+
 def _record_escalation_if_needed(implement_tmpdir: Path, review_status: str, review_rc: int, stderr_path: Path) -> None:
     if review_status == "coder-main-agent-required":
-        result = _run([
+        cmd = [
             sys.executable, str(_plugin_root() / "python" / "cli.py"), "stall-recovery", "record-escalation",
             "--implement-tmpdir", str(implement_tmpdir),
             "--site", "step5",
@@ -1860,7 +1870,10 @@ def _record_escalation_if_needed(implement_tmpdir: Path, review_status: str, rev
             "--phase", "review",
             "--dispatcher", "run-step5-review",
             "--exit-code", str(review_rc),
-        ])
+        ]
+        if stderr_path.is_file() and stderr_path.stat().st_size and _tmpdir_local_file(implement_tmpdir, stderr_path):
+            cmd += ["--failure-detail-log", str(stderr_path)]
+        result = _run(cmd)
         if result.returncode == 0:
             return
         if result.stderr:

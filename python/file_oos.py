@@ -29,6 +29,7 @@ from typing import NamedTuple, cast
 
 import config
 import run_logs
+from issue_create import parse_issue_input
 from redact import redact
 
 
@@ -343,7 +344,7 @@ def materialize_manifest_oos(manifest_path: Path, implement_tmpdir: Path, *, cou
         title = _normalize_title(item.get("title", ""))
         description = item.get("description", "")
         phase = _normalize_title(item.get("phase", "implement")) or "implement"
-        focus_area = item.get("focus-area", item.get("focus_area", ""))
+        focus_area = item.get("Focus area", item.get("focus-area", item.get("focus_area", "")))
         focus_area_s = _normalize_title(focus_area)
         if not title:
             title = f"Untitled external implementer OOS {index}"
@@ -623,6 +624,19 @@ def _aggregate_block(seq: int, items: list[OosItem]) -> str:
     return "\n".join(lines)
 
 
+def _validate_issue_cap_input(text: str) -> None:
+    if not text.strip():
+        return
+    items, _mode = parse_issue_input(text)
+    if items and not re.search(r"^### OOS_\d+:", text, re.MULTILINE):
+        msg = "input is not OOS-shaped (no '### OOS_<N>:' headings)"
+        raise ValueError(msg)
+    heading_count = len(re.findall(r"^### OOS_\d+:", text, re.MULTILINE))
+    if items and len(items) != heading_count:
+        msg = f"parsed item count ({len(items)}) != raw '### OOS_<N>:' heading count ({heading_count})"
+        raise ValueError(msg)
+
+
 def issue_cap(input_file: Path, output: Path | None = None, *, cap: int | None = None) -> None:
     if cap is None:
         raw = os.environ.get("OOS_ISSUES_PER_RUN_CAP", "1")
@@ -630,6 +644,7 @@ def issue_cap(input_file: Path, output: Path | None = None, *, cap: int | None =
             raise ValueError("OOS_ISSUES_PER_RUN_CAP must be a positive integer")
         cap = int(raw)
     text = input_file.read_text(encoding="utf-8") if input_file.exists() else ""
+    _validate_issue_cap_input(text)
     items = _parse_oos_blocks(text)
     target = output or input_file
     if not items or len(items) <= cap:
@@ -705,7 +720,7 @@ def file_conflict_deps_main(argv: list[str] | None = None) -> int:
     try:
         args = parser.parse_args(argv)
         deps = file_conflict_deps(Path(args.input_file))
-        text = "".join(f"OOS_{a}\tOOS_{b}\n" for a, b in deps)
+        text = "".join(f"{a}\t{b}\n" for a, b in deps)
         if args.output:
             Path(args.output).write_text(text, encoding="utf-8")
         else:

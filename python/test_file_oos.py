@@ -232,3 +232,21 @@ def test_disposition_checkpoint_fails_on_security_sidecar(tmp_path: Path) -> Non
 
     assert rc == 2
     assert "security-routed manifest OOS" in (tmp_path / "oos-disposition-checkpoint.stderr.log").read_text(encoding="utf-8")
+
+
+def test_issue_cap_rejects_malformed_batch(tmp_path: Path) -> None:
+    bad = tmp_path / "bad.md"
+    _ = bad.write_text("### Item one\n- **Description**: not oos shaped\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="OOS-shaped"):
+        file_oos.issue_cap(bad)
+
+
+def test_file_conflict_deps_emits_numeric_rows(tmp_path: Path) -> None:
+    src = tmp_path / "oos.md"
+    _ = src.write_text(
+        "### OOS_1: First\n- touches `src/a.py:1-5`\n\n"
+        "### OOS_2: Second\n- touches `src/a.py:2-6`\n",
+        encoding="utf-8",
+    )
+    deps = file_oos.file_conflict_deps(src)
+    assert deps == [(1, 2)]

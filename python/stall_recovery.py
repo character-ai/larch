@@ -15,6 +15,8 @@ from collections.abc import Mapping
 from datetime import datetime, UTC
 from pathlib import Path
 
+import config
+
 MAX_PUBLIC_FILE_BYTES = 256_000
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -146,8 +148,10 @@ def _state(tmpdir: Path) -> dict[str, str]:
     return out
 
 
-def _classify_text(text: str, bail: str, step: str, phase: str) -> tuple[str, str, str]:
+def _classify_text(text: str, bail: str, step: str, phase: str, *, detail_log_valid: bool = False) -> tuple[str, str, str]:
     _ = phase
+    if step == "rebase-failed":
+        return "transient-infra", "step8-shippr", "rebase-transient"
     lower = f"{bail}\n{text}".lower()
     if "submodule-edit-required-out-of-scope" in lower:
         return "submodule-restricted", "none", "submodule-restricted-bail-token"
@@ -163,7 +167,11 @@ def _classify_text(text: str, bail: str, step: str, phase: str) -> tuple[str, st
         return "lint-failure", "step5-review", "lint-output"
     if step in {"3", "6"}:
         return "contract-failure", "none", "step-contract"
-    if bail in {"adopted-issue-closed", "tracking-init-failed", "recovery-out-of-scope", "ci-fix-exhausted"}:
+    if detail_log_valid and bail == "ci-fix-exhausted":
+        return "ci-fix-exhausted", "step8-shippr", "ci-fix-exhausted-with-detail"
+    if bail in {"adopted-issue-closed", "tracking-init-failed", "recovery-out-of-scope"}:
+        return "unrecoverable", "none", "bail-token"
+    if bail == "ci-fix-exhausted":
         return "unrecoverable", "none", "bail-token"
     return "unrecoverable", "none", "fallback"
 
@@ -175,9 +183,13 @@ def classify(args: argparse.Namespace) -> int:
     phase = args.phase or st.get("PHASE", "")
     bail = args.bail_reason or st.get("BAIL_REASON", "")
     detail = ""
-    if args.failure_detail_log and Path(args.failure_detail_log).is_file():
-        detail = Path(args.failure_detail_log).read_text(encoding="utf-8", errors="replace")[:8192]
-    klass, hint, pattern = _classify_text(detail, bail, step, phase)
+    detail_log_valid = False
+    if args.failure_detail_log:
+        detail_path = Path(args.failure_detail_log)
+        if detail_path.is_file() and _validate_tmpdir_local_file(tmpdir, detail_path):
+            detail = detail_path.read_text(encoding="utf-8", errors="replace")[:8192]
+            detail_log_valid = True
+    klass, hint, pattern = _classify_text(detail, bail, step, phase, detail_log_valid=detail_log_valid)
     signature = hashlib.sha256(f"{klass}\n{bail}\n{detail}".encode()).hexdigest()[:16]
     attempts = Path(args.attempts_file) if args.attempts_file else tmpdir / "stall-recovery-attempts.env"
     if attempts.is_file() and read_kv(attempts, "last_signature") == signature and read_kv(attempts, "last_outcome") == "failed":
@@ -217,8 +229,19 @@ def record_attempt(args: argparse.Namespace) -> int:
 
 def retry_policy(args: argparse.Namespace) -> int:
     klass = args.failure_class
-    caps = {"transient-infra": (4, "sleep-seconds.sh 5"), "same-cause-repeat": (2, "none"), "lint-failure": (2, "none"), "test-failure": (2, "none")}
-    max_attempts, delay = caps.get(klass, (1, "none"))
+    caps: dict[str, tuple[int, str]] = {
+        "transient-infra": (4, "sleep-seconds.sh 5"),
+        "test-failure": (8, "none"),
+        "lint-failure": (8, "none"),
+        "ci-fix-exhausted": (8, "none"),
+        "dispatch-failure": (3, "none"),
+        "protected-path": (1, "none"),
+        "submodule-restricted": (0, "none"),
+        "same-cause-repeat": (2, "none"),
+        "contract-failure": (0, "none"),
+        "unrecoverable": (0, "none"),
+    }
+    max_attempts, delay = caps.get(klass, (0, "none"))
     emit("FAILURE_CLASS", klass)
     emit("MAX_ATTEMPTS", max_attempts)
     emit("RETRY_DELAY", delay)
@@ -280,14 +303,44 @@ def _artifact_path(tmpdir: Path, default_name: str, prefix: str) -> Path:
 def record_escalation(args: argparse.Namespace) -> int:
     tmpdir = Path(args.implement_tmpdir)
     prefix = getattr(args, "artifact_prefix", "") or ""
+    profile = getattr(args, "profile", "implement") or "implement"
+    generic = profile == "generic"
+    site = args.site
+    trigger = args.trigger
+    step = args.step
+    phase = args.phase
+    dispatcher = args.dispatcher
+    exit_code = args.exit_code
+    if not _safe_token("site", site, generic=generic) or not _safe_token("trigger", trigger, generic=generic):
+        print("stall-recovery: record-escalation token validation failed", file=sys.stderr)
+        return 1
+    if not _safe_token("step", step, generic=generic) or not _safe_token("phase", phase, generic=generic):
+        print("stall-recovery: record-escalation token validation failed", file=sys.stderr)
+        return 1
+    rel_log = ""
+    detail_log = getattr(args, "failure_detail_log", "") or ""
+    if detail_log:
+        detail_path = Path(detail_log)
+        if not _validate_tmpdir_local_file(tmpdir, detail_path):
+            print("stall-recovery: --failure-detail-log invalid", file=sys.stderr)
+            return 1
+        try:
+            rel = detail_path.resolve().relative_to(tmpdir.resolve())
+            rel_log = str(rel)
+        except ValueError:
+            rel_log = "redacted"
     ledger = _artifact_path(tmpdir, "stall-recovery-escalation-ledger.tsv", prefix)
-    row = f"utc={datetime.now(UTC).isoformat()}\tsite={args.site}\ttrigger={args.trigger}\tstep={args.step}\tphase={args.phase}\tdispatcher={args.dispatcher}\texit_code={args.exit_code}\n"
+    row = (
+        f"utc={datetime.now(UTC).isoformat()}\tsite={site}\ttrigger={trigger}\tstep={step}\tphase={phase}"
+        f"\tdispatcher={dispatcher}\texit_code={exit_code}\tfailure_detail_log={rel_log}\n"
+    )
     try:
         old = ledger.read_text(encoding="utf-8") if ledger.exists() else ""
         if old and not old.endswith("\n"):
             old += "\n"
         ledger.write_text(old + row, encoding="utf-8")
         emit("ESCALATION_RECORDED", "true")
+        emit("ESCALATION_LEDGER_FILE", ledger)
     except OSError:
         (tmpdir / "stall-recovery-escalation-record-failure.env").write_text("RECORD_ESCALATION_FAILED=true\nREASON=canonical-ledger-not-writable\n", encoding="utf-8")
         (tmpdir / "stall-recovery-escalation-ledger.fallback.tsv").write_text(row, encoding="utf-8")
@@ -297,37 +350,18 @@ def record_escalation(args: argparse.Namespace) -> int:
 
 
 def compose_report(args: argparse.Namespace) -> int:
-    tmpdir = Path(args.implement_tmpdir)
-    cls = tmpdir / "stall-recovery-classification.env"
-    root = tmpdir / "stall-recovery-root-cause.md"
-    bounded = tmpdir / "stall-recovery-bounded-root-cause.md"
-    summary = "larch stall recovery report"
-    if root.is_file():
-        m = re.search(r"^summary=(.*)$", root.read_text(encoding="utf-8", errors="replace"), re.MULTILINE)
-        if m:
-            summary = m.group(1)
-    kind = args.report_kind
-    title_kind = "terminal" if kind == "terminal-failure" else "escalation"
-    profile = getattr(args, "profile", "implement")
-    artifact_prefix = getattr(args, "artifact_prefix", "") or ""
-    if profile == "generic":
-        first = artifact_prefix.split("-")[0] if artifact_prefix else ""
-        skill_label = f"/{first}" if first else "/generic"
-    else:
-        skill_label = "/implement"
-    body = f"[Bug] {skill_label} {title_kind}: {summary}\n\n| Field | Value |\n| --- | --- |\n| Failure class | `{read_kv(cls, 'FAILURE_CLASS', 'unknown')}` |\n| Run ID | `{read_kv(tmpdir / 'parent-issue.md', 'RUN_ID', 'unknown')}` |\n| Larch version | `unknown` |\n\n"
-    if bounded.is_file():
-        body += bounded.read_text(encoding="utf-8", errors="replace") + "\n"
-    sig = hashlib.sha256(body.encode()).hexdigest()[:16]
-    if args.surface == "issue-input":
-        body = f"### {body}<!-- larch-stall:signature={sig} -->\n"
+    rest = [
+        "--implement-tmpdir", str(Path(args.implement_tmpdir)),
+        "--report-kind", args.report_kind,
+        "--surface", args.surface,
+        "--profile", getattr(args, "profile", "implement"),
+    ]
     if args.output_file:
-        Path(args.output_file).write_text(body, encoding="utf-8")
-    if args.surface == "chat-print" and not args.output_file:
-        sys.stdout.write(body)
-    emit("STALL_RECOVERY_REPORT_STATUS", "dry-run" if os.environ.get("LARCH_STALL_RECOVERY_DRY_RUN") else "printed")
-    emit("REPORT_DEDUP_SIGNATURE", sig)
-    return 0
+        rest += ["--output-file", args.output_file]
+    artifact_prefix = getattr(args, "artifact_prefix", "") or ""
+    if artifact_prefix:
+        rest += ["--artifact-prefix", artifact_prefix]
+    return _delegate_stall_recovery_subcommand("compose-report", rest)
 
 
 def _emit_env_file(path: Path) -> None:
@@ -410,18 +444,92 @@ _TERMINAL_STATE_ALLOWED_KEYS = {
 }
 _TERMINAL_STATE_REQUIRED_KEYS = {
     "DESIGN_FAILURE_VERSION", "DESIGN_FAILURE_KIND", "FAILURE_OUTCOME",
-    "STALL_STEP", "PHASE", "SITE", "TRIGGER", "BAIL_REASON", "EXIT_CODE", "SOURCE_SCRIPT",
+    "STALL_STEP", "PHASE", "SITE", "TRIGGER", "BAIL_REASON", "EXIT_CODE",
+    "FAILURE_DETAIL_LOG", "SOURCE_SCRIPT",
 }
+
+
+def _reject_rawish_terminal_value(value: str) -> bool:
+    if any(ch in value for ch in "\n\r"):
+        return True
+    lower = value.lower()
+    return any(token in lower for token in ("http://", "https://", "github.com", "/users/", "/home/", " larch ", "```"))
+
+
+def _safe_bail_reason_value(value: str, *, generic: bool) -> bool:
+    if not value:
+        return True
+    if generic and value in _GENERIC_BAILS:
+        return True
+    if value in config.STALL_RECOVERY_BAIL_REASON_TOKENS:
+        return True
+    if re.fullmatch(r"ci-local-unfixable:[A-Za-z0-9_,-]+", value):
+        return True
+    expanded = {
+        "adopted-issue-closed", "adopted-issue-is-pr", "branch-create-failed", "ci-fix-exhausted",
+        "dirty-state-after-timeout", "dirty-tree", "fix-attempts-exhausted", "main-branch-post-dispatch",
+        "orchestrator-envelope-invalid", "protected-path-edit-required-out-of-scope", "qa-loop-exceeded",
+        "recovery-out-of-scope", "review-required", "run-flags-persist-failed", "ship-pr-internal-lint-fix",
+        "tracking-init-failed", "wrapper-validation-failure", "branch-changed", "cap_hit",
+        "codex-runtime-failure", "cursor-bailed-no-reason", "cursor-modified-history", "cursor-runtime-failure",
+        "detached-head-prohibited", "interactive-subprocess-unsupported", "main-branch-prohibited",
+        "manifest-missing", "manifest-oos-materialization-failed", "manifest-schema-invalid",
+        "protected-path-modified", "qa-pending-missing", "redactor-not-executable", "resume-incompatible",
+        "submodule-dirty", "submodule-edit-required-out-of-scope", "local-unfixable", "checks-failed",
+        "checks-timeout", "ci-health-failed", "ci-timeout", "ci-status-error", "ci-too-many-rebases",
+        "no-fix-path", "main-agent-required", "coder-main-agent-required", "main-agent-vote-required",
+    }
+    return value in expanded
+
+
+def _safe_source_script_value(value: str, *, generic: bool) -> bool:
+    if value in {"codex", "cursor", "claude", "bash", "python", "ship-pr", "lint-fix-loop", "run-step5-review"}:
+        return True
+    return generic and value in _GENERIC_SOURCE_SCRIPTS
+
+
+def _terminal_state_value_valid(key: str, value: str, tmpdir: Path, *, generic: bool) -> bool:
+    if key == "DESIGN_FAILURE_VERSION":
+        return value == "1"
+    if key == "DESIGN_FAILURE_KIND":
+        return value == "terminal"
+    if key in {"FAILURE_OUTCOME", "SUMMARY_OUTCOME"}:
+        return _safe_outcome(value)
+    if key == "STALL_STEP":
+        return _safe_step(value, generic=generic)
+    if key == "PHASE":
+        return value in _COMMON_PHASES or (generic and value in _GENERIC_PHASES)
+    if key == "SITE":
+        return _safe_token("site", value, generic=generic)
+    if key == "TRIGGER":
+        return _safe_token("trigger", value, generic=generic)
+    if key == "BAIL_REASON":
+        return _safe_bail_reason_value(value, generic=generic)
+    if key == "EXIT_CODE":
+        return value == "unknown" or (value.isdigit() and re.fullmatch(r"[0-9]+", value) is not None)
+    if key == "FAILURE_DETAIL_LOG":
+        if not value:
+            return True
+        return _validate_tmpdir_local_file(tmpdir, Path(value))
+    if key == "SOURCE_SCRIPT":
+        return _safe_source_script_value(value, generic=generic)
+    if key == "ROOT_CAUSE_HINT":
+        return not value or value in {"larch-defect", "environment", "operator-action"}
+    if key in {"OCCURRED_AT", "EVIDENCE_REF"}:
+        return not value or not _reject_rawish_terminal_value(value)
+    return False
 
 
 def validate_terminal_state(args: argparse.Namespace) -> int:
     tmpdir = Path(args.implement_tmpdir)
+    profile = getattr(args, "profile", "implement") or "implement"
+    generic = profile == "generic"
     if not tmpdir.is_dir():
-        emit("TERMINAL_STATE_VALID", "false")
+        emit("VALID", "false")
         return 1
     state_file = Path(getattr(args, "primary_state_file", None) or tmpdir / "design-failure-terminal-state.env")
     if not state_file.is_file():
-        emit("TERMINAL_STATE_VALID", "false")
+        emit("VALID", "false")
         return 1
     found: dict[str, str] = {}
     for raw in state_file.read_text(encoding="utf-8", errors="replace").splitlines():
@@ -429,26 +537,77 @@ def validate_terminal_state(args: argparse.Namespace) -> int:
         if not line or line.startswith("#"):
             continue
         if "=" not in line:
-            emit("TERMINAL_STATE_VALID", "false")
+            emit("VALID", "false")
             return 1
         k, v = line.split("=", 1)
         if k not in _TERMINAL_STATE_ALLOWED_KEYS:
-            emit("TERMINAL_STATE_VALID", "false")
+            emit("VALID", "false")
             return 1
         found[k] = v
-    missing = _TERMINAL_STATE_REQUIRED_KEYS - set(found)
-    if missing:
-        emit("TERMINAL_STATE_VALID", "false")
-        return 1
-    emit("TERMINAL_STATE_VALID", "true")
+    for required in _TERMINAL_STATE_REQUIRED_KEYS:
+        if required not in found:
+            emit("VALID", "false")
+            return 1
+        if required != "FAILURE_DETAIL_LOG" and not found[required]:
+            emit("VALID", "false")
+            return 1
+    for key, value in found.items():
+        if key == "FAILURE_DETAIL_LOG":
+            if not _terminal_state_value_valid(key, value, tmpdir, generic=generic):
+                emit("VALID", "false")
+                return 1
+            continue
+        if _reject_rawish_terminal_value(value):
+            emit("VALID", "false")
+            return 1
+        if not _terminal_state_value_valid(key, value, tmpdir, generic=generic):
+            emit("VALID", "false")
+            return 1
+    emit("VALID", "true")
     return 0
+
+
+_SENSITIVE_TOKEN_ALLOWLIST = frozenset({
+    "larch-defect", "environment", "operator-action", "terminal-failure", "escalation-success",
+    "merged", "force-merged-externally", "pr-created", "pr-created-draft", "forked-dry-run",
+    "main-agent-required", "lint-fix-loop", "ship-pr", "codex", "cursor", "claude", "approved",
+    "approved-partition", "failed-plan-write", "failed-publish", "failed-postplan", "failed-clarify",
+    "failed-judge-panel", "failed-publish-tail",
+})
+
+
+def _sensitive_token_rejects_file(corpus_path: Path, candidate_path: Path) -> bool:
+    if not corpus_path.is_file():
+        return False
+    try:
+        corpus_text = corpus_path.read_text(encoding="utf-8", errors="replace")
+        candidate_text = candidate_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return True
+    for token in corpus_text.splitlines():
+        stripped = token.strip()
+        if not stripped or re.fullmatch(r"[A-Za-z0-9_-]", stripped):
+            continue
+        if stripped in _SENSITIVE_TOKEN_ALLOWLIST:
+            continue
+        if "=" in stripped:
+            _key, _, value = stripped.partition("=")
+            if value in _SENSITIVE_TOKEN_ALLOWLIST:
+                continue
+            if value and value not in {"", stripped} and value in candidate_text:
+                return True
+        if stripped in candidate_text:
+            return True
+    if re.search(r"https?://|git@github\.com:|github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", candidate_text):
+        return True
+    if re.search(r"(^|[\s`(])/(Users|home|private|tmp|var|Volumes)/[^\s`)]+", candidate_text):
+        return True
+    return False
 
 
 def validate_tier_b_public_file(args: argparse.Namespace) -> int:
     path = Path(args.public_file)
     tmpdir = Path(args.tmpdir) if args.tmpdir else Path(args.implement_tmpdir)
-    # Public file: absolute, regular, not symlink, under size cap.
-    # (The old bash only required the sensitive corpus to be under tmpdir, not the public file itself.)
     if not (path.is_absolute() and not path.is_symlink() and path.is_file()):
         emit("PUBLIC_FILE_VALID", "false")
         return 1
@@ -456,22 +615,20 @@ def validate_tier_b_public_file(args: argparse.Namespace) -> int:
         emit("PUBLIC_FILE_VALID", "false")
         return 1
     corpus_path_str = getattr(args, "sensitive_corpus_file", None)
-    if corpus_path_str:
-        cp = Path(corpus_path_str)
-        if not (cp.is_absolute() and not cp.is_symlink() and (cp == tmpdir or tmpdir in cp.parents) and cp.is_file()):
+    if not corpus_path_str:
+        emit("PUBLIC_FILE_VALID", "false")
+        return 1
+    cp = Path(corpus_path_str)
+    if not (cp.is_absolute() and not cp.is_symlink() and (cp == tmpdir or tmpdir in cp.parents) and cp.is_file()):
+        emit("PUBLIC_FILE_VALID", "false")
+        return 1
+    try:
+        if _sensitive_token_rejects_file(cp, path):
             emit("PUBLIC_FILE_VALID", "false")
             return 1
-        # Content check: reject if any corpus token appears in the public file
-        try:
-            corpus_text = cp.read_text(encoding="utf-8", errors="replace")
-            file_text = path.read_text(encoding="utf-8", errors="replace")
-            for corpus_token in corpus_text.splitlines():
-                stripped_token = corpus_token.strip()
-                if stripped_token and stripped_token in file_text:
-                    emit("PUBLIC_FILE_VALID", "false")
-                    return 1
-        except OSError:
-            pass
+    except OSError:
+        emit("PUBLIC_FILE_VALID", "false")
+        return 1
     emit("PUBLIC_FILE_VALID", "true")
     return 0
 
@@ -569,8 +726,119 @@ def populate_sensitive_corpus(rest: list[str], *, implement_tmpdir: str) -> int:
     return _delegate_stall_recovery_subcommand("populate-sensitive-corpus", rest)
 
 
+_CODE_ALLOWLIST_LINES = """chat-print	report_kind	REPORT_KIND	enum
+chat-print	failing_step	STALL_STEP	enum
+chat-print	failing_phase	PHASE	enum
+chat-print	failure_class	FAILURE_CLASS	enum
+chat-print	bail_reason	BAIL_REASON	expanded-bail-token-union
+chat-print	exit_code	EXIT_CODE	integer-or-unknown
+chat-print	dispatcher	DISPATCHER	enum
+chat-print	matched_classifier_pattern	MATCHED_CLASSIFIER_PATTERN	enum
+chat-print	larch_version	larch-version	token
+chat-print	run_id	RUN_ID	token-or-unknown
+chat-print	attempt_table	attempts-file	allowlisted-attempt-fields
+chat-print	escalation_site	escalation-ledger	enum
+chat-print	escalation_trigger	escalation-ledger	enum
+chat-print	fallback_escalation_marker	escalation-fallback	present-marker
+chat-print	record_failure_marker	record-failure-marker	present-marker
+chat-print	record_escalation_tool_failure	execution-issues	present-marker
+chat-print	bounded_root_cause	bounded-root-cause-file	validated-larch-internal-prose
+""".strip().splitlines()
+
+
+def _retry_policy_lines() -> list[str]:
+    classes = (
+        "transient-infra", "test-failure", "lint-failure", "dispatch-failure", "protected-path",
+        "submodule-restricted", "ci-fix-exhausted", "same-cause-repeat", "contract-failure", "unrecoverable",
+    )
+    caps = {
+        "transient-infra": (4, "sleep-seconds.sh 5"),
+        "test-failure": (8, "none"),
+        "lint-failure": (8, "none"),
+        "ci-fix-exhausted": (8, "none"),
+        "dispatch-failure": (3, "none"),
+        "protected-path": (1, "none"),
+        "submodule-restricted": (0, "none"),
+        "same-cause-repeat": (2, "none"),
+        "contract-failure": (0, "none"),
+        "unrecoverable": (0, "none"),
+    }
+    return [f"{klass}\t{max_attempts}\t{delay}" for klass in classes for max_attempts, delay in [caps[klass]]]
+
+
+def _doc_allowlist_lines() -> list[str]:
+    contract = _REPO_ROOT / "skills" / "implement" / "scripts" / "stall-recovery-report.md"
+    if not contract.is_file():
+        return []
+    lines: list[str] = []
+    in_block = False
+    for raw in contract.read_text(encoding="utf-8", errors="replace").splitlines():
+        if raw.strip() == "<!-- stall-recovery-allowlist:begin -->":
+            in_block = True
+            continue
+        if raw.strip() == "<!-- stall-recovery-allowlist:end -->":
+            break
+        if not in_block or "|" not in raw or raw.lstrip().startswith("surface"):
+            continue
+        parts = [part.strip() for part in raw.strip().strip("|").split("|")]
+        if len(parts) >= 4 and parts[0] not in {"---", "surface"}:
+            lines.append("\t".join(parts[:4]))
+    return lines
+
+
+def _doc_retry_policy_lines() -> list[str]:
+    contract = _REPO_ROOT / "skills" / "implement" / "scripts" / "stall-recovery-report.md"
+    if not contract.is_file():
+        return []
+    lines: list[str] = []
+    in_table = False
+    for raw in contract.read_text(encoding="utf-8", errors="replace").splitlines():
+        if raw.strip() == "| failure_class | attempts | delay |":
+            in_table = True
+            continue
+        if in_table and raw.strip().startswith("|---"):
+            continue
+        if in_table and raw.strip().startswith("| "):
+            parts = [part.strip().strip("`") for part in raw.strip().strip("|").split("|")]
+            if len(parts) >= 3:
+                lines.append(f"{parts[0]}\t{parts[1]}\t{parts[2]}")
+            continue
+        if in_table:
+            break
+    return lines
+
+
 def lint_subcommand(rest: list[str]) -> int:
-    return _delegate_stall_recovery_subcommand("lint", rest)
+    _ = rest
+    tsv_path = _REPO_ROOT / "skills" / "implement" / "scripts" / "stall-recovery-report-allowlists.tsv"
+    if not tsv_path.is_file():
+        print(f"stall-recovery: missing allowlist TSV: {tsv_path}", file=sys.stderr)
+        return 1
+    tsv_lines = [line for line in tsv_path.read_text(encoding="utf-8").splitlines()[1:] if line.strip()]
+    code_lines = sorted(_CODE_ALLOWLIST_LINES)
+    doc_lines = sorted(_doc_allowlist_lines())
+    if sorted(tsv_lines) != code_lines:
+        print("stall-recovery: allowlist drift between TSV and code", file=sys.stderr)
+        return 1
+    if doc_lines and sorted(tsv_lines) != doc_lines:
+        print("stall-recovery: allowlist drift between TSV and doc", file=sys.stderr)
+        return 1
+    retry_doc = sorted(_doc_retry_policy_lines())
+    retry_code = sorted(_retry_policy_lines())
+    if retry_doc and retry_doc != retry_code:
+        print("stall-recovery: retry-policy drift between code and doc", file=sys.stderr)
+        return 1
+    compound_safe = _safe_token("trigger", "ci-local-unfixable:job_1,job-2", generic=False)
+    compound_bad = _safe_token("trigger", "ci-local-unfixable:../../secret", generic=False)
+    if not compound_safe or compound_bad:
+        print("stall-recovery: ci-local-unfixable compound grammar drift", file=sys.stderr)
+        return 1
+    for token in config.STALL_RECOVERY_BAIL_REASON_TOKENS:
+        if not _safe_bail_reason_value(token, generic=False):
+            print(f"stall-recovery: runtime bail token not render-safe: {token}", file=sys.stderr)
+            return 1
+    emit("LINT_OK", "true")
+    return 0
 
 
 def chat_print(args: argparse.Namespace) -> int:
@@ -659,6 +927,8 @@ def main(argv: list[str] | None = None) -> int:
         return validate_token(ns)
     if sub == "validate-terminal-state":
         p.add_argument("--primary-state-file", default="")
+        p.add_argument("--profile", default="implement")
+        p.add_argument("--artifact-prefix", default="")
         ns, _ = p.parse_known_args(rest)
         return validate_terminal_state(ns)
     if sub == "validate-tier-b-public-file":
