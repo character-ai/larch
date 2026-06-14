@@ -514,6 +514,303 @@ def test_step2_dispatch_needs_qa_repair_from_pending(repo: Path, tmp_path: Path,
     assert qa["questions"][0]["text"].startswith("Area: auth")
 
 
+def _seed_external_dispatch_state(
+    repo: Path,
+    tmp: Path,
+    *,
+    resume_count: str | None = None,
+    spawn_coder: str | None = None,
+) -> None:
+    (tmp / "step2-baseline.txt").write_text(_git(repo, "rev-parse", "HEAD").stdout, encoding="utf-8")
+    (tmp / "step2-spawn-branch.txt").write_text(_git(repo, "rev-parse", "--abbrev-ref", "HEAD").stdout, encoding="utf-8")
+    plugin_json = repo / ".claude-plugin" / "plugin.json"
+    baseline = _git(repo, "hash-object", str(plugin_json)).stdout if plugin_json.is_file() else ""
+    (tmp / "step2-plugin-json-baseline.txt").write_text(baseline + ("\n" if baseline else ""), encoding="utf-8")
+    if resume_count is not None:
+        (tmp / "codex-resume-count.txt").write_text(resume_count + "\n", encoding="utf-8")
+    if spawn_coder is not None:
+        (tmp / "step2-spawn-coder.txt").write_text(spawn_coder + "\n", encoding="utf-8")
+
+
+def _complete_manifest_payload(*, path: str = "implemented.txt", commit_message: str = "Implement via fake launcher") -> dict[str, object]:
+    return {
+        "schema_version": "1",
+        "status": "complete",
+        "files_touched": [{"path": path, "lines_added": 1, "lines_removed": 0}],
+        "tests_added_or_modified": [],
+        "summary_bullets": ["Implement the feature"],
+        "commit_message": commit_message,
+        "todos_left": [],
+        "oos_observations": [],
+    }
+
+
+def test_step2_dispatch_qa_loop_exceeded(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    tmp = _session(tmp_path)
+    _seed_external_dispatch_state(repo, tmp, resume_count="5")
+    answers = tmp_path / "answers.json"
+    answers.write_text('{"answers":[{"id":"q1","text":"x"}]}\n', encoding="utf-8")
+    launcher_calls = 0
+
+    def fake_launcher(_st: implement_dispatch.DispatchState):
+        nonlocal launcher_calls
+        launcher_calls += 1
+        return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
+
+    monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    rc = implement_dispatch.step2_dispatch_main([
+        "--tmpdir", str(tmp),
+        "--plan-file", str(tmp / "plan.txt"),
+        "--feature-file", str(tmp / "feature-description.txt"),
+        "--coder", "codex",
+        "--answers", str(answers),
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert launcher_calls == 0
+    assert _auth_lines(out) == 1
+    assert "STATUS=bailed" in out
+    assert "REASON=qa-loop-exceeded" in out
+    assert "ORCHESTRATOR_EDIT_AUTHORITY=forbidden" in out
+    assert (tmp / "codex-resume-count.txt").is_file()
+
+
+def test_step2_dispatch_corrupt_resume_counter_bails(repo: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    tmp = _session(tmp_path)
+    _seed_external_dispatch_state(repo, tmp, resume_count="garbage")
+    answers = tmp_path / "answers.json"
+    answers.write_text('{"answers":[{"id":"q1","text":"x"}]}\n', encoding="utf-8")
+    rc = implement_dispatch.step2_dispatch_main([
+        "--tmpdir", str(tmp),
+        "--plan-file", str(tmp / "plan.txt"),
+        "--feature-file", str(tmp / "feature-description.txt"),
+        "--coder", "codex",
+        "--answers", str(answers),
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert _auth_lines(out) == 1
+    assert "STATUS=bailed" in out
+    assert "REASON=manifest-schema-invalid" in out
+    assert "ORCHESTRATOR_EDIT_AUTHORITY=forbidden" in out
+
+
+def test_step2_dispatch_coder_mismatch_tmpdir_reuse(repo: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    tmp = _session(tmp_path)
+    _seed_external_dispatch_state(repo, tmp, spawn_coder="codex")
+    rc = implement_dispatch.step2_dispatch_main([
+        "--tmpdir", str(tmp),
+        "--plan-file", str(tmp / "plan.txt"),
+        "--feature-file", str(tmp / "feature-description.txt"),
+        "--coder", "cursor",
+        "--cursor-present", "true",
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert _auth_lines(out) == 1
+    assert "STATUS=bailed" in out
+    assert "REASON=coder-mismatch-tmpdir-reuse" in out
+    assert "TOOL=cursor" in out
+    assert "ORCHESTRATOR_EDIT_AUTHORITY=forbidden" in out
+    assert (tmp / "step2-spawn-coder.txt").read_text(encoding="utf-8").strip() == "codex"
+    assert not (tmp / "cursor-resume-count.txt").exists()
+
+
+def test_step2_dispatch_detached_head_prohibited(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    subprocess.run(["git", "-C", str(repo), "checkout", "--detach"], check=True, stdout=subprocess.DEVNULL)
+    tmp = _session(tmp_path)
+    (tmp / "session-env.sh").write_text("ISSUE_NUMBER=2486\nFORKED_TARGET=false\n", encoding="utf-8")
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+    launcher_calls = 0
+
+    def fake_launcher(_st: implement_dispatch.DispatchState):
+        nonlocal launcher_calls
+        launcher_calls += 1
+        return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
+
+    monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    rc = implement_dispatch.step2_dispatch_main([
+        "--tmpdir", str(tmp),
+        "--plan-file", str(tmp / "plan.txt"),
+        "--feature-file", str(tmp / "feature-description.txt"),
+        "--coder", "cursor",
+        "--cursor-present", "true",
+    ])
+    assert rc == 0
+    assert launcher_calls == 0
+    out = capsys.readouterr().out
+    assert _auth_lines(out) == 1
+    assert "STATUS=bailed" in out
+    assert "REASON=detached-head-prohibited" in out
+    assert "TOOL=cursor" in out
+    assert "ORCHESTRATOR_EDIT_AUTHORITY=forbidden" in out
+
+
+def test_step2_dispatch_cap_hit_bails(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+
+    def fake_launcher(_st: implement_dispatch.DispatchState):
+        return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "false", "STATUS": "cap_hit"}, ""
+
+    monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    rc = implement_dispatch.step2_dispatch_main([
+        "--tmpdir", str(tmp),
+        "--plan-file", str(tmp / "plan.txt"),
+        "--feature-file", str(tmp / "feature-description.txt"),
+        "--coder", "codex",
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert _auth_lines(out) == 1
+    assert "STATUS=bailed" in out
+    assert "REASON=cap_hit" in out
+    assert "ORCHESTRATOR_EDIT_AUTHORITY=forbidden" in out
+
+
+def test_step2_dispatch_wrapper_validation_failure_bails(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+
+    def fake_launcher(_st: implement_dispatch.DispatchState):
+        return implement_dispatch.WRAPPER_VALIDATION_RC, {}, ""
+
+    monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    rc = implement_dispatch.step2_dispatch_main([
+        "--tmpdir", str(tmp),
+        "--plan-file", str(tmp / "plan.txt"),
+        "--feature-file", str(tmp / "feature-description.txt"),
+        "--coder", "codex",
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert _auth_lines(out) == 1
+    assert "STATUS=bailed" in out
+    assert "REASON=wrapper-validation-failure" in out
+    assert "ORCHESTRATOR_EDIT_AUTHORITY=forbidden" in out
+
+
+def test_step2_dispatch_dirty_state_after_timeout_bails(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+
+    def fake_launcher(st: implement_dispatch.DispatchState):
+        (repo / "dirty-after-timeout.txt").write_text("x\n", encoding="utf-8")
+        return 1, {"LAUNCHER_EXIT": "1", "MANIFEST_WRITTEN": "false"}, ""
+
+    monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    rc = implement_dispatch.step2_dispatch_main([
+        "--tmpdir", str(tmp),
+        "--plan-file", str(tmp / "plan.txt"),
+        "--feature-file", str(tmp / "feature-description.txt"),
+        "--coder", "codex",
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert _auth_lines(out) == 1
+    assert "STATUS=bailed" in out
+    assert "REASON=dirty-state-after-timeout" in out
+    assert "ORCHESTRATOR_EDIT_AUTHORITY=forbidden" in out
+
+
+def test_step2_dispatch_codex_nonzero_exit_salvages_complete(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+
+    def fake_launcher(st: implement_dispatch.DispatchState):
+        (repo / "README.md").write_text("edited by stub\n", encoding="utf-8")
+        st.manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        st.manifest_path.write_text(
+            json.dumps(_complete_manifest_payload(path="README.md", commit_message="stub: edit README after self-verify failure")),
+            encoding="utf-8",
+        )
+        return 0, {"LAUNCHER_EXIT": "1", "MANIFEST_WRITTEN": "true"}, ""
+
+    monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(implement_dispatch, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
+    monkeypatch.setattr(implement_dispatch, "_materialize_oos", lambda *_a, **_k: "")
+    rc = implement_dispatch.step2_dispatch_main([
+        "--tmpdir", str(tmp),
+        "--plan-file", str(tmp / "plan.txt"),
+        "--feature-file", str(tmp / "feature-description.txt"),
+        "--coder", "codex",
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert _auth_lines(out) == 1
+    assert "STATUS=complete" in out
+    assert "WARN_CODEX_NONZERO_EXIT=true" in out
+    assert "REASON=codex-runtime-failure" not in out
+    assert "ORCHESTRATOR_EDIT_AUTHORITY=forbidden" in out
+    assert _git(repo, "log", "-1", "--pretty=%s").stdout.strip() == "stub: edit README after self-verify failure"
+    issues = (tmp / "execution-issues.md").read_text(encoding="utf-8")
+    assert "WARN_CODEX_NONZERO_EXIT=true" in issues
+
+
+def test_step2_dispatch_complete_emits_scout_kv(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+
+    def fake_launcher(st: implement_dispatch.DispatchState):
+        (repo / "implemented.txt").write_text("done\n", encoding="utf-8")
+        st.manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        st.manifest_path.write_text(json.dumps(_complete_manifest_payload()), encoding="utf-8")
+        return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
+
+    def fake_normalize_scout(st: implement_dispatch.DispatchState) -> None:
+        st.scout_status = "ok"
+        st.scout_coder_manifest.parent.mkdir(parents=True, exist_ok=True)
+        st.scout_coder_manifest.write_text('{"archetypes":[{"name":"api-contract"}]}\n', encoding="utf-8")
+        st.external_scout_marker.write_text("eligible\n", encoding="utf-8")
+
+    monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(implement_dispatch, "_normalize_scout", fake_normalize_scout)
+    monkeypatch.setattr(implement_dispatch, "_materialize_oos", lambda *_a, **_k: "")
+    rc = implement_dispatch.step2_dispatch_main([
+        "--tmpdir", str(tmp),
+        "--plan-file", str(tmp / "plan.txt"),
+        "--feature-file", str(tmp / "feature-description.txt"),
+        "--coder", "codex",
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "STATUS=complete" in out
+    assert f"SCOUT_CODER_MANIFEST={tmp / 'scout-coder-manifest.json'}" in out
+    assert "SCOUT_CODER_STATUS=ok" in out
+
+
+def test_step2_dispatch_undeclared_path_warning(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+
+    def fake_launcher(st: implement_dispatch.DispatchState):
+        (repo / "README.md").write_text("declared edit\n", encoding="utf-8")
+        (repo / "undeclared.txt").write_text("undeclared edit\n", encoding="utf-8")
+        st.manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        st.manifest_path.write_text(
+            json.dumps(_complete_manifest_payload(path="README.md", commit_message="stub: edit README with undeclared side file")),
+            encoding="utf-8",
+        )
+        return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
+
+    monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(implement_dispatch, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
+    monkeypatch.setattr(implement_dispatch, "_materialize_oos", lambda *_a, **_k: "")
+    rc = implement_dispatch.step2_dispatch_main([
+        "--tmpdir", str(tmp),
+        "--plan-file", str(tmp / "plan.txt"),
+        "--feature-file", str(tmp / "feature-description.txt"),
+        "--coder", "codex",
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "STATUS=complete" in out
+    issues = (tmp / "execution-issues.md").read_text(encoding="utf-8")
+    assert "not declared in manifest files_touched/tests_added_or_modified" in issues
+    assert "- undeclared.txt" in issues
+    assert "- README.md" not in issues
+
+
 def test_materialize_oos_missing_helper_with_observations_bails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     plugin = tmp_path / "plugin"
     plugin.mkdir()
