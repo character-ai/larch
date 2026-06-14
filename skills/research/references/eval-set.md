@@ -1,12 +1,12 @@
 # /research Evaluation Set
 
-**Consumer**: `scripts/eval-research.sh` — the offline harness reads this catalog, parses each entry's fields, runs `/research` once per entry, and scores the output against the entry's expectations.
+**Consumer**: `python/cli.py eval research` — the offline harness reads this catalog, parses each entry's fields, runs `/research` once per entry, and scores the output against the entry's expectations.
 
-**Contract**: Frozen registry of representative `/research` evaluation questions. Twenty entries balanced across five categories (`lookup`, `architecture`, `external-comparison`, `risk-assessment`, `feasibility`). Each entry declares an `id` (kebab-case, unique), a verbatim `question` string, a `category` from the enum above, an `expected_provenance_count` integer (minimum file/path/URL citations a passing answer should contain), an `expected_keywords` comma-separated list (case-insensitive substrings a good synthesis should mention), and a `notes` line for human grading guidance. Two entries are flagged adversarial in their notes — one targets a fictitious mechanism, one targets a data-absence question — to test over-claiming. The catalog is human-edited; mechanical schema validation is performed by `scripts/eval-research.sh --smoke-test` and `scripts/test-eval-set-structure.sh`. Authors editing this file must follow the global reference rules enforced by `scripts/test-references-headers.sh` (see its sibling contract for details on the Contract-paragraph and header-triplet checks).
+**Contract**: Frozen registry of representative `/research` evaluation questions. Twenty entries balanced across five categories (`lookup`, `architecture`, `external-comparison`, `risk-assessment`, `feasibility`). Each entry declares an `id` (kebab-case, unique), a verbatim `question` string, a `category` from the enum above, an `expected_provenance_count` integer (minimum file/path/URL citations a passing answer should contain), an `expected_keywords` comma-separated list (case-insensitive substrings a good synthesis should mention), and a `notes` line for human grading guidance. Two entries are flagged adversarial in their notes — one targets a fictitious mechanism, one targets a data-absence question — to test over-claiming. The catalog is human-edited; mechanical schema validation is performed by `python/cli.py eval research --smoke-test` and `python/test_research_eval.py`. Authors editing this file must follow the global reference rules enforced by `scripts/test-references-headers.sh` (see its sibling contract for details on the Contract-paragraph and header-triplet checks).
 
 **When to load**: When iterating on a `/research` prompt or harness change. The harness is the only programmatic consumer; humans read this file when authoring new evaluation questions or interpreting harness output. Not loaded by `/research` itself or by any other skill at runtime.
 
-**Source**: Anthropic's *How we built our multi-agent research system* and *Building Effective Agents* describe small-sample (~20-case) rubric-based LLM-as-judge evaluation as the substrate for prompt-side iteration. This catalog is the local instantiation.
+**Source**: Anthropic's *How we built our multi-agent research system* (`anthropic.com/engineering/built-multi-agent-research-system`) and *Building Effective Agents* describe small-sample (~20-case) rubric-based LLM-as-judge evaluation as the substrate for prompt-side iteration. This catalog is the local instantiation.
 
 ---
 
@@ -149,5 +149,5 @@
 - **question**: How feasible is extending the `/research` evaluation harness to support a blinded pairwise comparison mode for the `--baseline` workflow, where the judge sees two anonymized syntheses and ranks them, and what published evidence supports preferring relative over absolute judgments?
 - **category**: feasibility
 - **expected_provenance_count**: 2
-- **expected_keywords**: blinded, pairwise, --baseline, eval-research.sh, judge
+- **expected_keywords**: blinded, pairwise, --baseline, python/cli.py eval research, judge
 - **notes**: Feasibility; should describe the harness change shape (a second judge prompt that swaps left/right, paired with a counterbalanced second call), and cite at least one external source on pairwise vs absolute evaluation stability.

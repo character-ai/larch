@@ -441,12 +441,7 @@ printf '1\tin_scope\tnit\tcorrectness\tloc\twhat\tscenario\tfix\n' >>"${OUTPUT}.
 printf 'schema_version\tin_scope\tnit\tcorrectness\tloc\twhat\tscenario\tfix\n' >"$OUTPUT"
 printf '0\n' >"${OUTPUT}.done"
 CLAUDE_STUB
-cat >"$PLUGIN_STUB/scripts/validate-research-output.sh" <<'VALIDATE_STUB'
-#!/usr/bin/env bash
-exit 0
-VALIDATE_STUB
 chmod +x "$CLAUDE_REVIEW_STUB_GOOD"
-chmod +x "$PLUGIN_STUB/scripts/validate-research-output.sh"
 D10="$TMP/s10"
 prep "$D10"
 printf '{"archetypes":[]}\n' >"$D10/scout-plan-manifest.json"
@@ -588,12 +583,7 @@ printf '{"schema_version":1,"scope":"in_scope","severity":"nit","focus_area":"co
 printf '{"schema_version":1,"scope":"in_scope","severity":"nit","focus_area":"correctness","location":"loc","what":"w","scenario_or_breakage":"s","suggested_fix":"f"}\n' >"$OUTPUT"
 printf '0\n' >"${OUTPUT}.done"
 JSONL_STUB
-cat >"$PLUGIN_JSONL/scripts/validate-research-output.sh" <<'VALIDATE_STUB'
-#!/usr/bin/env bash
-exit 0
-VALIDATE_STUB
 chmod +x "$CLAUDE_REVIEW_STUB_JSONL"
-chmod +x "$PLUGIN_JSONL/scripts/validate-research-output.sh"
 DISPATCH_PLAN_REVIEW_WATERFALL_SH="$STUB" \
     LARCH_TEST_LAUNCH_CLAUDE_REVIEW="$CLAUDE_REVIEW_STUB_JSONL" \
     CLAUDE_PLUGIN_ROOT="$PLUGIN_JSONL" \

@@ -84,7 +84,7 @@ pass). Routed sites:
   `scripts/collect-agent-results.sh` (`$WAIT_STDERR` relay),
   `python/cli.py review core` (`$aggregate_stderr` relay).
 
-Reviewed and intentionally **not** routed (LOW): `scripts/eval-research.sh` git
-stderr (dev/eval harness), `scripts/validate-citations.sh` `__VC_DRY_RUN` test
+Reviewed and intentionally **not** routed (LOW): `python/cli.py eval research` git
+stderr (dev/eval harness), `python/cli.py research validate-citations` `__VC_DRY_RUN` test
 seam, `python3 python/cli.py generate topology-docs` awk stderr over committed TSV, and
 ~40 static `print_usage` heredoc relays.

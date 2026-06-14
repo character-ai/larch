@@ -8,7 +8,7 @@ Isolated reproducer for the `claude -p` Edit-permission stall first observed in 
 
 The script invokes a single `claude -p --plugin-dir "$REPO_ROOT"` subprocess against the project's permission stack (`.claude/settings.json` + `.claude/settings.local.json` + `hooks/hooks.json` PreToolUse hooks), asks the model to perform a trivial edit on a tracked file under `skills/**`, and classifies the outcome by combining a pinned stall-regex grep on combined stdout+stderr with a `git diff` ground-truth check on the edit target.
 
-Opt-in operator instrumentation. NOT a CI gate. Depends on a real authenticated `claude` binary, costs API tokens, and is timing-sensitive. Same shape as `scripts/eval-research.sh`.
+Opt-in operator instrumentation. NOT a CI gate. Depends on a real authenticated `claude` binary, costs API tokens, and is timing-sensitive. Same shape as `python/cli.py eval research`.
 
 ## Invariants
 
@@ -119,7 +119,7 @@ rm -f .claude/settings.json.repro.new
 
 ## Test harness
 
-This script's structural correctness is exercised by its own `--smoke-test` mode. There is no separate `test-repro-claude-p-edit-permissions.sh` harness — the smoke-test IS the offline regression harness. `make lint` is unaffected (the script is excluded from `agent-lint --pedantic` via `agent-lint.toml` — same Makefile-only / opt-in pattern as `eval-research.sh`).
+This script's structural correctness is exercised by its own `--smoke-test` mode. There is no separate `test-repro-claude-p-edit-permissions.sh` harness — the smoke-test IS the offline regression harness. `make lint` is unaffected (the script is excluded from `agent-lint --pedantic` via `agent-lint.toml` — same Makefile-only / opt-in pattern as `python/cli.py eval research`).
 
 ## Edit-in-sync rules
 
@@ -135,5 +135,5 @@ When changing this script:
 - #566 — original stall incident.
 - #585 — kernel fix that this reproducer validates.
 - #587 — this reproducer.
-- `scripts/eval-research.sh` — pattern template for opt-in `claude -p` operator harnesses.
+- `python/cli.py eval research` — pattern template for opt-in `claude -p` operator harnesses.
 - `.claude/rules/script-md-siblings.md` — the rule that mandates this `.md` exist beside the script.

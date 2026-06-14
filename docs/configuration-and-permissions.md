@@ -39,7 +39,7 @@ Note the ordering: because `Skill(larch:...)` begins with `l` followed by `a`, a
 
 ## `claude -p` permission propagation
 
-Larch's loop drivers spawn `claude -p --plugin-dir "$CLAUDE_PLUGIN_ROOT"` subprocesses (after `cd "$REPO_ROOT"`). **Direct `claude -p` callers**: `scripts/eval-research.sh`. This section documents how the project-level `.claude/settings.json` propagates to all `claude -p` children regardless of which layer launched them. Audit issue: [#586](https://github.com/character-ai/larch/issues/586). Tested against Claude Code CLI version `2.1.119`.
+Larch's loop drivers spawn `claude -p --plugin-dir "$CLAUDE_PLUGIN_ROOT"` subprocesses (after `cd "$REPO_ROOT"`). **Direct `claude -p` callers**: `python/cli.py eval research`. This section documents how the project-level `.claude/settings.json` propagates to all `claude -p` children regardless of which layer launched them. Audit issue: [#586](https://github.com/character-ai/larch/issues/586). Tested against Claude Code CLI version `2.1.119`.
 
 ### Empirical findings
 

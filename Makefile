@@ -145,13 +145,13 @@ test-append-execution-issue:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_run_logs.py
 
 test-validate-research-output:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-validate-research-output.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_research_eval.py
 
 test-validate-citations:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/research/scripts/test-validate-citations.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_research.py
 
 test-validate-citations-budget:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/research/scripts/test-validate-citations-budget.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_research.py
 
 test-collect-agent-bash32:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-collect-agent-bash32.sh
@@ -902,13 +902,13 @@ test-scrub-submodule-paths:
 
 
 test-run-research-planner:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/research/scripts/test-run-research-planner.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_research.py
 
 test-render-findings-batch:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/research/scripts/test-render-findings-batch.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_research.py
 
 test-research-banner:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/research/scripts/test-research-banner.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_research.py
 
 test-synthesis-subagent:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/research/scripts/test-synthesis-subagent.sh
@@ -1090,28 +1090,28 @@ agent-sync:
 # Operator instrumentation for prompt-side iteration on /research. See
 # docs/linting.md "/research evaluation harness". Pass flags via ARGS=,
 # e.g.: `make eval-research ARGS="--id eval-1 --timeout 4200"`. Direct
-# `bash scripts/eval-research.sh ...` is the documented primary path.
+# `python3 python/cli.py eval research ...` is the documented primary path.
 eval-research:
-	bash scripts/eval-research.sh $(ARGS)
+	python3 python/cli.py eval research $(ARGS)
 
 # Standalone offline structural test for the /research eval set + harness
 # (closes #419). NOT a `test-harnesses` prerequisite by design — the runtime
 # harness it tests is opt-in operator instrumentation explicitly carved out
 # from CI. The structural test is itself cheap (no API cost) but kept
-# standalone for symmetry. See scripts/test-eval-set-structure.md.
+# standalone for symmetry. See python/test_research_eval.py.
 test-eval-set-structure:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-eval-set-structure.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_research_eval.py
 
 # Standalone offline regression harness for the `--baseline` flag handling
-# in scripts/eval-research.sh (closes #441). NOT a `test-harnesses`
+# in python/cli.py eval research (closes #441). NOT a `test-harnesses`
 # prerequisite — the eval-research surface is opt-in operator
 # instrumentation explicitly carved out from CI by repo contract
 # (see the `test-eval-set-structure` target above, docs/linting.md,
-# scripts/eval-research.md). Runs offline by PATH-stubbing claude + jq
+# python/research_eval.py). Runs offline by PATH-stubbing claude
 # so it works on machines without the real binaries.
-# See scripts/test-eval-research-baseline-flag.md.
+# See python/test_research_eval.py.
 test-eval-research-baseline-flag:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-eval-research-baseline-flag.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_research_eval.py
 
 shellcheck:
 	pre-commit run shellcheck --all-files

@@ -249,6 +249,15 @@ contains "$VALIDATION_MD" '-retry.txt' '[validation sidecar] candidate expansion
 contains "$VALIDATION_MD" '-ns-retry.txt' '[validation sidecar] candidate expansion must include -ns-retry.txt'
 contains "$VALIDATION_MD" 'Deduplicate candidate paths before ingestion.' '[validation sidecar] candidate expansion must dedupe paths'
 
+# ---------- Check 13: Python CLI call-site pins ----------
+
+contains "$RESEARCH_MD" 'python/cli.py" research run-planner' '[python cli] research-phase.md must pin research run-planner in §1.1.b'
+contains "$RESEARCH_MD" 'python/cli.py research run-planner' '[python cli] research-phase.md must pin research run-planner in §1.1.c edit loop'
+contains "$CITATION_MD" 'python/cli.py" research validate-citations' '[python cli] citation-validation-phase.md must pin research validate-citations'
+contains "$SKILL_MD" 'python/cli.py" research validate-citations' '[python cli] SKILL.md must pin research validate-citations at Step 2.5'
+contains "$RESEARCH_MD" 'python/cli.py" research banner' '[python cli] research-phase.md must pin research banner at Step 1.5'
+contains "$SKILL_MD" 'python/cli.py research render-findings-batch' '[python cli] SKILL.md must pin research render-findings-batch at Step 3'
+
 # ---------- Summary ----------
 
 if (( FAIL > 0 )); then

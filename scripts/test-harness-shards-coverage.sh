@@ -325,11 +325,11 @@ test-zeta:
 test-harness-shards-coverage:
 	bash scripts/test-harness-shards-coverage.sh
 test-eval-set-structure:
-	bash scripts/test-eval-set-structure.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_research_eval.py
 test-eval-research-baseline-flag:
-	bash scripts/test-eval-research-baseline-flag.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_research_eval.py
 eval-research:
-	bash scripts/eval-research.sh
+	python3 python/cli.py eval research
 EOF
 }
 

@@ -21,11 +21,11 @@ result file's first non-blank line with `_classify_sentinel_status`. The helper
 recognizes `CURSOR_EMPTY_RESPONSE` and `CURSOR_DEGRADED_RESPONSE`, rewrites the
 row to `STATUS=CURSOR_EMPTY_RESPONSE`, and records a degraded-backend failure
 reason. This classification is not gated by `--validation-mode`; validation mode
-still maps the same literals through `validate-research-output.sh` for callers
+still maps the same literals through `python/cli.py eval validate-research-output` for callers
 that opt into substantive validation.
 
 **Intentional first-line-only semantics.** `_classify_sentinel_status` checks
-only the first non-blank line of the result file. `validate-research-output.sh`
+only the first non-blank line of the result file. `python/cli.py eval validate-research-output`
 uses the full trimmed body for literal matching, so a sentinel literal followed
 by trailing prose is always a classification failure in the collector (sentinel
 first line present) but not necessarily a validator exit 5 (the validator checks
@@ -45,11 +45,11 @@ When `--substantive-validation` or `--structured-reviewer-validation` is passed 
 
 **Stronger prompt**: a structured-output demand header is prepended to a temp copy of the original prompt file. The header explicitly refuses narrative output and demands either structured `### FINDING_N:` blocks or `NO_ISSUES_FOUND`.
 
-**Retry outcome**: the retry output is validated with `validate-research-output.sh` (same flags as section 3.5). If validation passes, the collector first attempts to copy the first-pass content of `<base>.txt` to `<base>-first-pass.txt` for observability. If that copy fails, the collector logs a stderr error and leaves the entry at `STATUS=NOT_SUBSTANTIVE` rather than overwriting the first-pass output. After a successful first-pass copy, the collector copies the validated retry body onto `<base>.txt` and keeps the original `<base>-ns-retry.txt` artifact on disk so committed round logs can recover both first-pass and retry transcripts. Both success breadcrumbs (`ns-retry: first-pass content preserved ...` and `ns-retry: published retry content ...`) are emitted via `larch_err` on operator-visible stderr, mirrored into the quiet log, and not through a separate breadcrumb stream or stdout. If publishing the validated retry body back to `<base>.txt` fails, the collector logs a stderr error, removes `<base>-first-pass.txt`, and leaves the entry at `STATUS=NOT_SUBSTANTIVE` so the tree does not imply a successful publish. For structured retries the sidecar (`.tsv` or `.jsonl`) is validated at the retry path first; after the prose publish succeeds, the collector best-effort copies that sidecar to the final `<base>.txt.{tsv,jsonl}` path. If the sidecar copy fails, stderr records the warning and `STRUCTURED_SIDECAR=` keeps pointing at the validated retry-path sidecar instead of naming a missing final-path file. If validation fails again, the entry keeps `STATUS=NOT_SUBSTANTIVE` and no sidecar is created.
+**Retry outcome**: the retry output is validated with `python/cli.py eval validate-research-output` (same flags as section 3.5). If validation passes, the collector first attempts to copy the first-pass content of `<base>.txt` to `<base>-first-pass.txt` for observability. If that copy fails, the collector logs a stderr error and leaves the entry at `STATUS=NOT_SUBSTANTIVE` rather than overwriting the first-pass output. After a successful first-pass copy, the collector copies the validated retry body onto `<base>.txt` and keeps the original `<base>-ns-retry.txt` artifact on disk so committed round logs can recover both first-pass and retry transcripts. Both success breadcrumbs (`ns-retry: first-pass content preserved ...` and `ns-retry: published retry content ...`) are emitted via `larch_err` on operator-visible stderr, mirrored into the quiet log, and not through a separate breadcrumb stream or stdout. If publishing the validated retry body back to `<base>.txt` fails, the collector logs a stderr error, removes `<base>-first-pass.txt`, and leaves the entry at `STATUS=NOT_SUBSTANTIVE` so the tree does not imply a successful publish. For structured retries the sidecar (`.tsv` or `.jsonl`) is validated at the retry path first; after the prose publish succeeds, the collector best-effort copies that sidecar to the final `<base>.txt.{tsv,jsonl}` path. If the sidecar copy fails, stderr records the warning and `STRUCTURED_SIDECAR=` keeps pointing at the validated retry-path sidecar instead of naming a missing final-path file. If validation fails again, the entry keeps `STATUS=NOT_SUBSTANTIVE` and no sidecar is created.
 
 **Temp prompt cleanup**: the temp prompt file is removed via a background wait-and-cleanup child after the retry process exits.
 
-**NS_RETRY_REASON annotation**: at the moment of NOT_SUBSTANTIVE classification in sections 3.5 and 3.6, the collector derives an `NS_RETRY_REASON` token from the `validate-research-output.sh` exit code and records it in the pipe-delimited RESULTS entry. After waiting for the retry, the token is appended as `NS_RETRY_REASON=<token>` to `<base>-ns-retry.txt.meta` (best-effort, skipped when the meta file is absent or is a symlink). Token vocabulary: `NO_ISSUES_FOUND_TOO_THIN` (exit 2 or 3 from substantive mode — body too thin or no provenance marker); `OUTPUT_EMPTY` (exit 4 — file missing or unreadable); `JSON_PARSE_FAIL` (exit 5 in structured mode — structured records not found); `UNKNOWN` (fallback for unmapped exits).
+**NS_RETRY_REASON annotation**: at the moment of NOT_SUBSTANTIVE classification in sections 3.5 and 3.6, the collector derives an `NS_RETRY_REASON` token from the `python/cli.py eval validate-research-output` exit code and records it in the pipe-delimited RESULTS entry. After waiting for the retry, the token is appended as `NS_RETRY_REASON=<token>` to `<base>-ns-retry.txt.meta` (best-effort, skipped when the meta file is absent or is a symlink). Token vocabulary: `NO_ISSUES_FOUND_TOO_THIN` (exit 2 or 3 from substantive mode — body too thin or no provenance marker); `OUTPUT_EMPTY` (exit 4 — file missing or unreadable); `JSON_PARSE_FAIL` (exit 5 in structured mode — structured records not found); `UNKNOWN` (fallback for unmapped exits).
 
 ## Structured reviewer validation (`--structured-reviewer-validation`)
 
@@ -57,7 +57,7 @@ When `--structured-reviewer-validation` is passed, the collector adds a Section 
 
 **Section 3.6 — structured sidecar validation**:
 1. Derive the sidecar path: `<REVIEWER_FILE>.jsonl` for Claude-path outputs, `<REVIEWER_FILE>.tsv` for specialist (Cursor/Codex external) outputs.
-2. Invoke `validate-research-output.sh --structured-reviewer-mode --write-structured <sidecar-path>` on the REVIEWER_FILE.
+2. Invoke `python/cli.py eval validate-research-output --structured-reviewer-mode --write-structured <sidecar-path>` on the REVIEWER_FILE.
 3. On exit 0: emit `STRUCTURED_SIDECAR=<sidecar-path>` as a new field appended before `FAILURE_REASON`. The output grammar is `REVIEWER_FILE|TOOL|STATUS|EXIT_CODE|STRUCTURED_SIDECAR|FAILURE_REASON`. Consumers should parse by KEY=value.
 4. On exit 5 or non-zero: rewrite the entry to `STATUS=NOT_SUBSTANTIVE` with a diagnostic in `FAILURE_REASON`.
 

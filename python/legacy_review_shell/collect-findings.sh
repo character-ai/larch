@@ -394,7 +394,7 @@ parse_output_tsv() {
     [[ -s "$file" ]] || return 0
     tsv_tmp=$(mktemp "${TMPDIR:-/tmp}/collect-tsv.XXXXXX") || return 1
     set +e
-    "$PLUGIN_ROOT/scripts/validate-research-output.sh" \
+    python3 "$PLUGIN_ROOT/python/cli.py" eval validate-research-output \
         --structured-reviewer-mode --write-structured "$tsv_tmp" "$file" \
         >/dev/null 2>&1
     vrc=$?

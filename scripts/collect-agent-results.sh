@@ -27,7 +27,7 @@
 # Options:
 #   --timeout <seconds>            Timeout for python/cli.py agent wait-reviewers (e.g., 1860)
 #   --substantive-validation       After the existing non-empty + retry path settles,
-#                                  invoke scripts/validate-research-output.sh on each
+#                                  invoke python/cli.py eval validate-research-output on each
 #                                  STATUS=OK entry. On validator failure, rewrite the
 #                                  entry as STATUS=NOT_SUBSTANTIVE |
 #                                  FAILURE_REASON=<sanitized validator diagnostic>
@@ -38,7 +38,7 @@
 #                                  review, /design Step 3 plan-review.
 #                                  Closes #416 (Phase 3 of umbrella #413), #661.
 #   --validation-mode              Modifier for --substantive-validation: forwards
-#                                  --validation-mode to validate-research-output.sh
+#                                  --validation-mode to python/cli.py eval validate-research-output
 #                                  so its preset (JSON no-findings sentinel and
 #                                  legacy NO_ISSUES_FOUND short-circuit, explicit
 #                                  CURSOR_EMPTY_RESPONSE mapping, and 30-word floor)
@@ -53,7 +53,7 @@
 #                                  for the per-skill opt-in matrix.
 #   --structured-reviewer-validation
 #                                  After retry and substantive validation settle,
-#                                  invoke scripts/validate-research-output.sh
+#                                  invoke python/cli.py eval validate-research-output
 #                                  --structured-reviewer-mode on each STATUS=OK
 #                                  entry. Valid records are written to a derived
 #                                  sidecar path and emitted as STRUCTURED_SIDECAR.
@@ -396,7 +396,7 @@ result_field_value() {
 }
 
 # --- Helper: map NOT_SUBSTANTIVE classification to NS_RETRY_REASON token ---
-# args: val_exit (validate-research-output.sh exit code), ns_mode (substantive|structured)
+# args: val_exit (python/cli.py eval validate-research-output exit code), ns_mode (substantive|structured)
 # output: one of NO_ISSUES_FOUND_TOO_THIN OUTPUT_EMPTY JSON_PARSE_FAIL UNKNOWN
 derive_ns_retry_reason() {
     local val_exit="$1"
@@ -1178,12 +1178,12 @@ fi
 
 # --- 3.5. Substantive-content validation (opt-in via --substantive-validation) ---
 # After section 3 (retry) every entry in RESULTS reflects its final status. For
-# each entry whose STATUS=OK, invoke validate-research-output.sh on its file
+# each entry whose STATUS=OK, invoke python/cli.py eval validate-research-output on its file
 # (REVIEWER_FILE — the retry path may have set it to a *-retry.txt). On
 # validator failure, rewrite the entry to STATUS=NOT_SUBSTANTIVE with the
 # sanitized diagnostic in FAILURE_REASON. Closes #416.
 if [[ "$SUBSTANTIVE_VALIDATION" == "true" ]]; then
-    VALIDATOR="$SCRIPT_DIR/validate-research-output.sh"
+    VALIDATOR_CMD=(python3 "$SCRIPT_DIR/../python/cli.py" eval validate-research-output)
     VAL_ARGS=()
     if [[ "$VALIDATION_MODE" == "true" ]]; then
         VAL_ARGS+=(--validation-mode)
@@ -1216,7 +1216,7 @@ if [[ "$SUBSTANTIVE_VALIDATION" == "true" ]]; then
         # bash 3.2 portability: `"${VAL_ARGS[@]}"` on an empty array fires
         # `unbound variable` under `set -u` on macOS /bin/bash (3.2.57); the
         # `${arr[@]+"${arr[@]}"}` guard expands to nothing when empty. #511.
-        DIAG=$("$VALIDATOR" "${VAL_ARGS[@]+"${VAL_ARGS[@]}"}" "$REVIEWER_FILE" 2>&1)
+        DIAG=$("${VALIDATOR_CMD[@]}" "${VAL_ARGS[@]+"${VAL_ARGS[@]}"}" "$REVIEWER_FILE" 2>&1)
         VAL_EXIT=$?
         if [[ "$VAL_EXIT" -ne 0 ]]; then
             # Sanitize: strip '|' (would corrupt pipe-delimited RESULTS), replace
@@ -1233,7 +1233,7 @@ fi
 
 # --- 3.6. Structured reviewer validation (opt-in) ---
 if [[ "$STRUCTURED_REVIEWER_VALIDATION" == "true" ]]; then
-    VALIDATOR="$SCRIPT_DIR/validate-research-output.sh"
+    VALIDATOR_CMD=(python3 "$SCRIPT_DIR/../python/cli.py" eval validate-research-output)
     for j in "${!RESULTS[@]}"; do
         entry="${RESULTS[$j]}"
         rf_field="${entry%%|*}"
@@ -1255,7 +1255,7 @@ if [[ "$STRUCTURED_REVIEWER_VALIDATION" == "true" ]]; then
             *) STRUCTURED_SIDECAR="${REVIEWER_FILE}.jsonl" ;;
         esac
 
-        DIAG=$("$VALIDATOR" --structured-reviewer-mode --write-structured "$STRUCTURED_SIDECAR" "$REVIEWER_FILE" 2>&1)
+        DIAG=$("${VALIDATOR_CMD[@]}" --structured-reviewer-mode --write-structured "$STRUCTURED_SIDECAR" "$REVIEWER_FILE" 2>&1)
         VAL_EXIT=$?
         if [[ "$VAL_EXIT" -eq 0 ]]; then
             RESULTS[j]=$(with_structured_sidecar_field "$entry" "$STRUCTURED_SIDECAR")
@@ -1373,7 +1373,8 @@ if [[ "$SUBSTANTIVE_VALIDATION" == "true" || "$STRUCTURED_REVIEWER_VALIDATION" =
                                 cursor|codex) STRUCTURED_SIDECAR="${NS_RETRY_OUTPUT}.tsv" ;;
                                 *) STRUCTURED_SIDECAR="${NS_RETRY_OUTPUT}.jsonl" ;;
                             esac
-                            "$SCRIPT_DIR/validate-research-output.sh" \
+                            VALIDATOR_CMD=(python3 "$SCRIPT_DIR/../python/cli.py" eval validate-research-output)
+                            "${VALIDATOR_CMD[@]}" \
                                 --structured-reviewer-mode --write-structured "$STRUCTURED_SIDECAR" "$NS_RETRY_OUTPUT" >/dev/null 2>&1
                             NS_VAL_EXIT=$?
                             if [[ "$NS_VAL_EXIT" -eq 0 ]]; then
@@ -1400,7 +1401,8 @@ if [[ "$SUBSTANTIVE_VALIDATION" == "true" || "$STRUCTURED_REVIEWER_VALIDATION" =
                                 fi
                             fi
                         else
-                            "$SCRIPT_DIR/validate-research-output.sh" \
+                            VALIDATOR_CMD=(python3 "$SCRIPT_DIR/../python/cli.py" eval validate-research-output)
+                            "${VALIDATOR_CMD[@]}" \
                                 "${VAL_ARGS_NS[@]+"${VAL_ARGS_NS[@]}"}" "$NS_RETRY_OUTPUT" >/dev/null 2>&1
                             NS_VAL_EXIT=$?
                             if [[ "$NS_VAL_EXIT" -eq 0 ]]; then

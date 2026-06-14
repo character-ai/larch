@@ -62,15 +62,33 @@ skipm() { SKIP=$((SKIP + 1)); echo "  SKIPPED: $1"; }
 # --- Case 1: static idiom check (always runs) -------------------------------
 #
 # Pin the safe-expansion idiom on the validator-invocation line. The pattern
-# requires both the `${arr[@]+...}` guard form AND the surrounding `$VALIDATOR`
-# call so a future refactor that splits the call site or renames VAL_ARGS will
+# requires both the `${arr[@]+...}` guard form AND the surrounding `VALIDATOR_CMD`
+# argv-array call so a future refactor that splits the call site or renames VAL_ARGS will
 # fail this check until the regex and this contract are updated together.
 # shellcheck disable=SC2016 # Literal regex; outer-shell expansion is intentionally suppressed.
 if grep -q '"\${VAL_ARGS\[@\]+"\${VAL_ARGS\[@\]}"}"' "$COLLECTOR" \
-   && grep -q '\$VALIDATOR.*VAL_ARGS\[@\]+' "$COLLECTOR"; then
+   && grep -q 'VALIDATOR_CMD.*eval validate-research-output' "$COLLECTOR" \
+   && grep -q 'VAL_ARGS\[@\]+' "$COLLECTOR"; then
     ok "case 1: safe-expansion idiom present at validator call site"
 else
     fail "case 1: safe-expansion idiom missing in $COLLECTOR — issue #511 may have regressed"
+fi
+
+# --- Case 7: collector §3.7 NS-retry validator cutover pin (always runs) ---
+SECTION_37_START=$(grep -n '^# --- 3\.7\. Retry NOT_SUBSTANTIVE' "$COLLECTOR" | head -1 | cut -d: -f1 || true)
+if [[ -n "$SECTION_37_START" ]]; then
+    SECTION_37=$(tail -n +"$SECTION_37_START" "$COLLECTOR")
+    # shellcheck disable=SC2016
+    if printf '%s\n' "$SECTION_37" | grep -q 'VALIDATOR_CMD=(python3 "$SCRIPT_DIR/../python/cli.py" eval validate-research-output)' \
+       && printf '%s\n' "$SECTION_37" | grep -q -- '--structured-reviewer-mode --write-structured' \
+       && printf '%s\n' "$SECTION_37" | grep -q '"${VAL_ARGS_NS\[@\]+"${VAL_ARGS_NS\[@\]}"}"' \
+       && ! printf '%s\n' "$SECTION_37" | grep -q 'validate-research-output\.sh'; then
+        ok "case 7: section 3.7 NS-retry paths pin VALIDATOR_CMD eval validate-research-output"
+    else
+        fail "case 7: section 3.7 NS-retry validator call sites missing Python CLI VALIDATOR_CMD pin"
+    fi
+else
+    fail "case 7: could not locate collector section 3.7 for NS-retry validator pin"
 fi
 
 # --- Cases 2/3: dynamic checks under vulnerable bash (< 4.4) ----------------
@@ -105,7 +123,7 @@ if [[ "$DYNAMIC_VULNERABLE" != "true" ]]; then
 else
     # --- Fixture for Case 2: ≥200 words substantive prose with file:line citation
     #
-    # Matches `validate-research-output.sh` defaults (--min-words 200) so the
+    # Matches `python/cli.py eval validate-research-output` defaults (--min-words 200) so the
     # validator returns exit 0 (STATUS=OK). Basename contains `cursor` so
     # `derive_tool` in the collector attributes correctly. Pre-create the
     # .done sentinel containing 0 BEFORE invoking the collector so
@@ -136,7 +154,7 @@ else
 
     # --- Fixture for Case 3: literal NO_ISSUES_FOUND
     #
-    # Fails default `validate-research-output.sh` (200-word floor) but passes
+    # Fails default `python/cli.py eval validate-research-output` (200-word floor) but passes
     # under --validation-mode (which short-circuits on the literal token).
     # Pinning STATUS=OK with --validation-mode AND STATUS=NOT_SUBSTANTIVE
     # without proves the flag is actually being forwarded through the safe
@@ -250,7 +268,7 @@ jq -cn --arg cursor "$F5B_BIN/cursor" --arg workspace "$REPO_ROOT" \
     '[$cursor,"agent","--workspace",$workspace,"retry prompt"]' > "$TMPROOT/case5b-cmd.json"
 {
     printf 'TOOL=cursor\n'
-    printf 'TIMEOUT=1\n'
+    printf 'TIMEOUT=30\n'
     printf 'CAPTURE_STDOUT_ONLY=true\n'
     printf 'OUTPUT_FILE=%s\n' "$F5B_RETRY"
     printf 'CMD_JSON=%s\n' "$(cat "$TMPROOT/case5b-cmd.json")"

@@ -217,11 +217,10 @@ if [[ "$CODEX_PRESENT" == "false" && "$CURSOR_PRESENT" == "false" ]]; then
             awk 'NF { print; exit }' "$_generic_output" 2>/dev/null || true
         )
         if [[ -n "$_generic_first" ]] && printf '%s\n' "$_generic_first" | grep -Eq -- "$_generic_first_line_ere"; then
-            if [[ -x "$PLUGIN_ROOT/scripts/validate-research-output.sh" ]] && \
-                "$PLUGIN_ROOT/scripts/validate-research-output.sh" \
-                    --structured-reviewer-mode \
-                    --write-structured "${_generic_output}.tsv" \
-                    "$_generic_output" >/dev/null 2>&1; then
+            if python3 "$PLUGIN_ROOT/python/cli.py" eval validate-research-output \
+                --structured-reviewer-mode \
+                --write-structured "${_generic_output}.tsv" \
+                "$_generic_output" >/dev/null 2>&1; then
                 _generic_dispatch_ok=true
                 _generic_degraded=false
             else
