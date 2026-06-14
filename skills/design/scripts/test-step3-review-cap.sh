@@ -161,6 +161,15 @@ driver_out=$(run_driver "$D4" "$stub")
 printf '%s\n' "$driver_out" | grep -q 'TALLY_PLAN_REVIEW_STATUS=tally-error' || fail 'expected tally-error tally status'
 [[ "$(cat "$D4/review-round-count.txt")" == "2" ]] || fail 'tally-error path must not consume pending round'
 
+echo "=== degraded-empty-collector does not consume the pending round ==="
+D4B="$TMPROOT/degraded-empty-collector"
+write_common_inputs "$D4B"
+printf '2\n' >"$D4B/review-round-count.txt"
+stub="$(write_loop_stub "$D4B" "printf 'LOOP_STATUS=degraded-empty-collector\nACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=3\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 1")"
+driver_out=$(run_driver "$D4B" "$stub")
+printf '%s\n' "$driver_out" | grep -q 'LOOP_STATUS=degraded-empty-collector' || fail 'expected degraded-empty-collector loop status'
+[[ "$(cat "$D4B/review-round-count.txt")" == "2" ]] || fail 'degraded-empty-collector path must not consume pending round'
+
 echo "=== hard cap blocks the sixth review round ==="
 D5="$TMPROOT/hard-cap"
 write_common_inputs "$D5"

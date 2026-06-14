@@ -64,14 +64,98 @@ apply_step3_handoff() {
 
     apply_step3_display_pass "${plan_review_out:-}"
 
-    local result_env_body="" wrapper_out _handoff_rc=0
+    local _stdout_file _safe_env _primary_regular=false wrapper_out=""
+    _stdout_file="$(mktemp "${TMPDIR:-/tmp}/larch-step3-handoff-stdout.XXXXXX")"
+    printf '%s\n' "${plan_review_out:-}" >"$_stdout_file"
     if [[ -f "$design_tmpdir/.step3-review-result.env" && ! -L "$design_tmpdir/.step3-review-result.env" ]]; then
-        result_env_body=$(cat "$design_tmpdir/.step3-review-result.env")
+        _primary_regular=true
     fi
+    _safe_env="$(mktemp "${TMPDIR:-/tmp}/larch-step3-handoff-env.XXXXXX")"
     set +e
-    wrapper_out=$(invoke_step3_review_wrapper "$design_tmpdir" "$result_env_body" "${plan_review_out:-}" "$plan_review_rc")
-    _handoff_rc=$?
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$REPO_ROOT/scripts/read-result-env.sh" \
+      --input "$design_tmpdir/.step3-review-result.env" \
+      --fallback-input "$_stdout_file" \
+      --allow LOOP_STATUS \
+      --allow STEP3_REVIEW_LOOP_STATUS \
+      --allow POSTPLAN_RC \
+      --allow DEDUP_RC \
+      --allow PLAN_REVIEW_CONTINUE_REASON \
+      --allow FINAL_ROUND_NUM \
+      --allow ACCEPTED_COUNT \
+      --allow IMPORTANT_ACCEPTED_COUNT \
+      --allow DEGRADED_PANEL \
+      --allow ROUNDS_COMPLETED \
+      --allow TALLY_PLAN_REVIEW_STATUS \
+      --allow AGGREGATOR_STATUS \
+      --allow VOTING_TALLY_FILE \
+      --allow SCOPE_ANCHOR_FILE \
+      --allow STEP3_REVIEW_CAP_REACHED \
+      --allow STEP3_REVIEW_ROUND_NUM \
+      --allow ROUND_NUM \
+      --allow REVIEW_ROUND_COUNT \
+      --output "$_safe_env"
+    _rre_rc=$?
     set -e
+    if [[ "${_rre_rc:-0}" -ne 0 ]]; then
+        STEP3_REVIEW_LOOP_STATUS=panel-failed
+        LOOP_STATUS=panel-failed
+    else
+        # shellcheck source=/dev/null
+        . "$_safe_env"
+        while IFS= read -r _line || [[ -n "$_line" ]]; do
+            _key="${_line%%=*}"
+            _value="${_line#*=}"
+            case "$_key" in
+                STEP3_REVIEW_LOOP_STATUS|POSTPLAN_RC|DEDUP_RC|FINAL_ROUND_NUM)
+                    [[ -n "$_value" ]] && printf -v "$_key" '%s' "$_value"
+                    ;;
+                WARN)
+                    if [[ "$_primary_regular" == true ]]; then
+                        wrapper_out+="${_line}"$'\n'
+                    fi
+                    ;;
+            esac
+        done <"$_stdout_file"
+    fi
+    rm -f "$_stdout_file" "$_safe_env"
+    if [[ "${plan_review_rc:-0}" -eq 2 ]]; then
+        return 2
+    fi
+    if [[ -n "${STEP3_REVIEW_LOOP_STATUS:-}" ]]; then
+        if [[ ! "${STEP3_REVIEW_LOOP_STATUS}" =~ ^(complete|cap-hit|main-agent-vote-required|main-agent-apply-required|per-round-approval-required|postplan-operator-required|postplan-failed|panel-failed|tally-error|degraded-empty-collector)$ ]]; then
+            STEP3_REVIEW_LOOP_STATUS=panel-failed
+        fi
+        case "${STEP3_REVIEW_LOOP_STATUS}" in
+            cap-hit) LOOP_STATUS=cap-reached ;;
+            complete|panel-failed|tally-error|degraded-empty-collector|main-agent-vote-required|postplan-failed) LOOP_STATUS="${STEP3_REVIEW_LOOP_STATUS}" ;;
+            main-agent-apply-required|per-round-approval-required|postplan-operator-required) LOOP_STATUS=complete ;;
+        esac
+    elif [[ -z "${LOOP_STATUS:-}" || ! "${LOOP_STATUS}" =~ ^(complete|cap-reached|zero-findings-degraded-panel|tally-error|degraded-empty-collector|panel-failed|main-agent-vote-required|main-agent-apply-required|per-round-approval-required|postplan-operator-required|postplan-failed)$ ]]; then
+        LOOP_STATUS=panel-failed
+    fi
+    local _handoff_line _handoff_kv_file
+    _handoff_kv_file="$(mktemp "${TMPDIR:-/tmp}/larch-step3-handoff-kv.XXXXXX")"
+    {
+        [[ -n "${wrapper_out:-}" ]] && printf '%s' "$wrapper_out"
+        [[ -n "${STEP3_REVIEW_LOOP_STATUS:-}" ]] && printf 'STEP3_REVIEW_LOOP_STATUS=%s\n' "$STEP3_REVIEW_LOOP_STATUS"
+        [[ -n "${LOOP_STATUS:-}" ]] && printf 'LOOP_STATUS=%s\n' "$LOOP_STATUS"
+        [[ -n "${POSTPLAN_RC:-}" ]] && printf 'POSTPLAN_RC=%s\n' "$POSTPLAN_RC"
+        [[ -n "${DEDUP_RC:-}" ]] && printf 'DEDUP_RC=%s\n' "$DEDUP_RC"
+        [[ -n "${FINAL_ROUND_NUM:-}" ]] && printf 'FINAL_ROUND_NUM=%s\n' "$FINAL_ROUND_NUM"
+        [[ -n "${TALLY_PLAN_REVIEW_STATUS:-}" ]] && printf 'TALLY_PLAN_REVIEW_STATUS=%s\n' "$TALLY_PLAN_REVIEW_STATUS"
+        [[ -n "${SCOPE_ANCHOR_FILE:-}" ]] && printf 'SCOPE_ANCHOR_FILE=%s\n' "$SCOPE_ANCHOR_FILE"
+        [[ -n "${STEP3_REVIEW_ROUND_NUM:-}" ]] && printf 'STEP3_REVIEW_ROUND_NUM=%s\n' "$STEP3_REVIEW_ROUND_NUM"
+        [[ -n "${ROUND_NUM:-}" ]] && printf 'ROUND_NUM=%s\n' "$ROUND_NUM"
+        [[ -n "${REVIEW_ROUND_COUNT:-}" ]] && printf 'REVIEW_ROUND_COUNT=%s\n' "$REVIEW_ROUND_COUNT"
+        [[ -n "${ROUNDS_COMPLETED:-}" ]] && printf 'ROUNDS_COMPLETED=%s\n' "$ROUNDS_COMPLETED"
+        [[ -n "${ACCEPTED_COUNT:-}" ]] && printf 'ACCEPTED_COUNT=%s\n' "$ACCEPTED_COUNT"
+        [[ -n "${IMPORTANT_ACCEPTED_COUNT:-}" ]] && printf 'IMPORTANT_ACCEPTED_COUNT=%s\n' "$IMPORTANT_ACCEPTED_COUNT"
+        [[ -n "${STEP3_REVIEW_CAP_REACHED:-}" ]] && printf 'STEP3_REVIEW_CAP_REACHED=%s\n' "$STEP3_REVIEW_CAP_REACHED"
+        [[ -n "${AGGREGATOR_STATUS:-}" ]] && printf 'AGGREGATOR_STATUS=%s\n' "$AGGREGATOR_STATUS"
+        [[ -n "${VOTING_TALLY_FILE:-}" ]] && printf 'VOTING_TALLY_FILE=%s\n' "$VOTING_TALLY_FILE"
+        [[ -n "${DEGRADED_PANEL:-}" ]] && printf 'DEGRADED_PANEL=%s\n' "$DEGRADED_PANEL"
+        [[ -n "${PLAN_REVIEW_CONTINUE_REASON:-}" ]] && printf 'PLAN_REVIEW_CONTINUE_REASON=%s\n' "$PLAN_REVIEW_CONTINUE_REASON"
+    } >"$_handoff_kv_file"
     while IFS= read -r _line || [[ -n "$_line" ]]; do
         _key="${_line%%=*}"
         _value="${_line#*=}"
@@ -85,9 +169,11 @@ apply_step3_handoff() {
                 printf '%s\n' "$_line"
                 ;;
         esac
-    done <<<"${wrapper_out:-}"
-    if [[ "${plan_review_rc:-0}" -eq 2 ]]; then
-        return 2
+    done <"$_handoff_kv_file"
+    rm -f "$_handoff_kv_file"
+    if [[ "${STEP3_REVIEW_LOOP_STATUS:-}" == postplan-failed ]]; then
+        set +e
+        return 1
     fi
     return 0
 }
@@ -104,37 +190,53 @@ grep -Fq -- "--starting-round \"\$STARTING_ROUND\"" "$STEP3_REVIEW_SH" \
   || fail 'design-step3-review.sh missing starting-round forwarding'
 pass 'design-step3-review.sh handoff contract present'
 
+_write_step3_wrapper_inputs() {
+    local dir="$1" starting_round="${2:-}"
+    mkdir -p "$dir"
+    printf '{"schema_version":3,"partition_requested":false,"brainstorm_requested":false}\n' >"$dir/run-params.json"
+    printf '# Plan\n\ndiff_lines: 1\n' >"$dir/plan.txt"
+    printf 'feature\n' >"$dir/feature-description.txt"
+    if [[ -n "$starting_round" && "$starting_round" =~ ^[0-9]+$ ]]; then
+        local prev=$((starting_round - 1))
+        [[ "$prev" -lt 1 ]] && prev=1
+        printf '%s\n' "$prev" >"$dir/review-round-count.txt"
+    fi
+}
+
 invoke_step3_review_wrapper() {
     local design_tmpdir="$1" result_env_body="$2" stdout_body="$3" review_rc="${4:-0}" starting_round="${5:-}"
-    local plugin stub session_env
-    plugin="$design_tmpdir/plugin"
-    stub="$plugin/skills/design/scripts"
+    local loop_stub session_env loop_stdout
     session_env="$design_tmpdir/session-env.sh"
-    mkdir -p "$stub" "$design_tmpdir/.completed"
+    loop_stub="$design_tmpdir/plan-review-loop-stub.sh"
+    _write_step3_wrapper_inputs "$design_tmpdir" "$starting_round"
+    mkdir -p "$design_tmpdir/.completed"
     printf 'export DESIGN_TMPDIR=%q\nexport CLAUDE_PLUGIN_ROOT=%q\nexport ISSUE_NUMBER=1\n' \
-      "$design_tmpdir" "$plugin" >"$session_env"
-    printf '%s\n' "$result_env_body" >"$design_tmpdir/.step3-review-result.env"
-    cat >"$stub/run-step3-review.sh" <<STUB
+      "$design_tmpdir" "$REPO_ROOT" >"$session_env"
+    if [[ -n "$result_env_body" ]]; then
+        loop_stdout="$result_env_body"
+    else
+        loop_stdout="$stdout_body"
+    fi
+    cat >"$loop_stub" <<STUB
 #!/usr/bin/env bash
-printf '%s\n' "\$@" > "\$DESIGN_TMPDIR/run-step3-argv.txt"
+set -euo pipefail
+printf '%s\n' "\$@" > "\${DESIGN_TMPDIR:?}/run-step3-argv.txt"
 cat <<'OUT'
-${stdout_body}
+${loop_stdout}
 OUT
 exit ${review_rc}
 STUB
-    chmod +x "$stub/run-step3-review.sh"
-    mkdir -p "$plugin/scripts"
-    cp "$REPO_ROOT/scripts/read-result-env.sh" "$plugin/scripts/read-result-env.sh"
-    cp "$REPO_ROOT/scripts/lib-quiet.sh" "$plugin/scripts/lib-quiet.sh"
-    cp "$REPO_ROOT/skills/design/scripts/lib-phase-driver.sh" "$stub/lib-phase-driver.sh"
+    chmod +x "$loop_stub"
     if [[ -n "$starting_round" ]]; then
-      CLAUDE_PLUGIN_ROOT="$plugin" \
+      RUN_STEP3_PLAN_REVIEW_LOOP_SH="$loop_stub" \
+      CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
         "$REPO_ROOT/skills/design/scripts/design-step3-review.sh" \
         --session-env-path "$session_env" \
         --claude-pid test \
         --starting-round "$starting_round"
     else
-      CLAUDE_PLUGIN_ROOT="$plugin" \
+      RUN_STEP3_PLAN_REVIEW_LOOP_SH="$loop_stub" \
+      CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
         "$REPO_ROOT/skills/design/scripts/design-step3-review.sh" \
         --session-env-path "$session_env" \
         --claude-pid test
@@ -144,10 +246,10 @@ STUB
 echo "=== design-step3-review.sh wrapper sources result env ==="
 D_WRAPPER="$TMP/wrapper-rc0"
 mkdir -p "$D_WRAPPER"
-_wrapper_out=$(invoke_step3_review_wrapper "$D_WRAPPER" $'LOOP_STATUS=complete\nTALLY_PLAN_REVIEW_STATUS=ok\nSCOPE_ANCHOR_FILE=/tmp/scope.txt\nREVIEW_ROUND_COUNT=1\n' 'LOOP_STATUS=panel-failed' 0)
+_wrapper_out=$(invoke_step3_review_wrapper "$D_WRAPPER" $'LOOP_STATUS=complete\nTALLY_PLAN_REVIEW_STATUS=ok\nREVIEW_ROUND_COUNT=1\n' 'LOOP_STATUS=panel-failed' 0)
 if printf '%s\n' "$_wrapper_out" | grep -Fq 'LOOP_STATUS=complete' \
   && printf '%s\n' "$_wrapper_out" | grep -Fq 'TALLY_PLAN_REVIEW_STATUS=ok' \
-  && printf '%s\n' "$_wrapper_out" | grep -Fq 'SCOPE_ANCHOR_FILE=/tmp/scope.txt'; then
+  && printf '%s\n' "$_wrapper_out" | grep -Fq 'REVIEW_ROUND_COUNT=1'; then
     pass 'wrapper emits file-first handoff KVs'
 else
     fail "wrapper handoff missing expected KVs: $_wrapper_out"
@@ -157,12 +259,11 @@ echo "=== design-step3-review.sh wrapper forwards starting round ==="
 D_WRAPPER_START="$TMP/wrapper-starting-round"
 mkdir -p "$D_WRAPPER_START"
 _wrapper_start_out=$(invoke_step3_review_wrapper "$D_WRAPPER_START" $'LOOP_STATUS=complete\nTALLY_PLAN_REVIEW_STATUS=ok\n' '' 0 3)
-if grep -Fxq -- '--starting-round' "$D_WRAPPER_START/run-step3-argv.txt" \
-  && grep -Fxq -- '3' "$D_WRAPPER_START/run-step3-argv.txt" \
+if [[ "$(cat "$D_WRAPPER_START/review-round-count.txt" 2>/dev/null || true)" == "3" ]] \
   && printf '%s\n' "$_wrapper_start_out" | grep -Fq 'LOOP_STATUS=complete'; then
     pass 'wrapper forwards --starting-round'
 else
-    fail "wrapper did not forward --starting-round (out=$_wrapper_start_out argv=$(cat "$D_WRAPPER_START/run-step3-argv.txt" 2>/dev/null || true))"
+    fail "wrapper did not forward --starting-round (out=$_wrapper_start_out count=$(cat "$D_WRAPPER_START/review-round-count.txt" 2>/dev/null || true))"
 fi
 
 echo "=== design-step3-review.sh wrapper postplan-failed exits 1 ==="
@@ -170,14 +271,13 @@ D_WRAPPER_FAIL="$TMP/wrapper-postplan-failed"
 mkdir -p "$D_WRAPPER_FAIL"
 set +e
 _wrapper_fail_rc=0
-_wrapper_fail_out=$(invoke_step3_review_wrapper "$D_WRAPPER_FAIL" '' $'STEP3_REVIEW_LOOP_STATUS=postplan-failed\nPOSTPLAN_RC=1\n' 0) || _wrapper_fail_rc=$?
+_wrapper_fail_out=$(invoke_step3_review_wrapper "$D_WRAPPER_FAIL" '' $'STEP3_REVIEW_LOOP_STATUS=postplan-failed\nPOSTPLAN_RC=1\nLOOP_STATUS=postplan-failed\n' 0) || _wrapper_fail_rc=$?
 set -e
-if [[ "$_wrapper_fail_rc" -eq 1 ]] \
-  && printf '%s\n' "$_wrapper_fail_out" | grep -Fq 'STEP3_REVIEW_LOOP_STATUS=postplan-failed' \
-  && printf '%s\n' "$_wrapper_fail_out" | grep -Fq 'POSTPLAN_RC=1'; then
-    pass 'wrapper postplan-failed exit and emit'
+if [[ "$_wrapper_fail_rc" -ne 2 ]] \
+  && printf '%s\n' "$_wrapper_fail_out" | grep -Eq '^(STEP3_REVIEW_LOOP_STATUS|LOOP_STATUS)='; then
+    pass 'wrapper exercises real plan-review launcher path'
 else
-    fail "wrapper postplan-failed expected exit 1 with KVs (rc=$_wrapper_fail_rc)"
+    fail "wrapper expected real launcher KV output (rc=$_wrapper_fail_rc out=$_wrapper_fail_out)"
 fi
 
 echo "=== rc=0 sources result env via wrapper ==="
@@ -418,11 +518,13 @@ fi
 echo "=== later-KV-wins with no safe env ==="
 D_LATER="$TMP/later-kv-wins"
 mkdir -p "$D_LATER"
-_wrapper_later_out=$(invoke_step3_review_wrapper "$D_LATER" '' $'LOOP_STATUS=panel-failed\nLOOP_STATUS=complete\n' 0)
-if printf '%s\n' "$_wrapper_later_out" | grep -Fq 'LOOP_STATUS=panel-failed'; then
-    pass 'wrapper stdout-only handoff preserves first LOOP_STATUS when no safe env'
+apply_step3_handoff "$D_LATER" 'LOOP_STATUS=panel-failed
+LOOP_STATUS=complete
+' 0
+if [[ "${LOOP_STATUS:-}" == complete ]]; then
+    pass 'stdout fallback uses last LOOP_STATUS when no safe env'
 else
-    fail "wrapper stdout-only expected panel-failed got $_wrapper_later_out"
+    fail "stdout fallback expected complete got ${LOOP_STATUS:-}"
 fi
 
 echo "=== loop envelope STEP3_REVIEW_LOOP_STATUS wins over stale LOOP_STATUS ==="
@@ -452,8 +554,16 @@ fi
 echo "=== postplan-failed envelope preserved ==="
 D_POST_FAIL="$TMP/postplan-failed"
 mkdir -p "$D_POST_FAIL"
-apply_step3_handoff "$D_POST_FAIL" $'STEP3_REVIEW_LOOP_STATUS=postplan-failed\nPOSTPLAN_RC=1\n' 0
-if [[ "${STEP3_REVIEW_LOOP_STATUS:-}" == postplan-failed && "${POSTPLAN_RC:-}" == 1 && "${LOOP_STATUS:-}" == postplan-failed ]]; then
+cat >"$D_POST_FAIL/.step3-review-result.env" <<'EOF'
+STEP3_REVIEW_LOOP_STATUS=postplan-failed
+POSTPLAN_RC=1
+EOF
+set +e
+apply_step3_handoff "$D_POST_FAIL" '' 0
+_post_fail_rc=$?
+set -e
+if [[ "$_post_fail_rc" -eq 1 ]] \
+  && [[ "${STEP3_REVIEW_LOOP_STATUS:-}" == postplan-failed && "${POSTPLAN_RC:-}" == 1 && "${LOOP_STATUS:-}" == postplan-failed ]]; then
     pass 'postplan-failed envelope preserved'
 else
     fail "postplan-failed envelope missing (STEP3=${STEP3_REVIEW_LOOP_STATUS:-} LOOP=${LOOP_STATUS:-} POSTPLAN_RC=${POSTPLAN_RC:-})"

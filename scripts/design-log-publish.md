@@ -287,8 +287,8 @@ it is fail-closed:
 - Any other path under `plan-review/` emits `larch_err` and `PUBLISH_OK=false`.
 - Round numbers are positive integers with no leading zero; `round-0` and `round-01` are rejected.
 
-Edit-in-sync: any allowlist change updates `lib-design-round-artifacts.sh`, this doc,
-`plan-review-loop.md`, `python/plan_review.py`, and
+Edit-in-sync: any allowlist change updates `python/plan_review.py`, this doc,
+`scripts/design-log-publish.sh`, and
 `python/test_plan_review.py` in the same change. The current
 `round-N/revise/` has an empty include set.
 

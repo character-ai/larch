@@ -600,7 +600,7 @@ Each reviewer walks five focus areas: code-quality / risk-integration / correctn
 
 Step 3 invokes `design-step3-review.sh` with `run_in_background: true` (immediate-background mode) and relies on `<task-notification>` for one-shot completion; the wrapper internally runs `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review run --mode loop`. The script-internal controller `${CLAUDE_PLUGIN_ROOT}/python/plan_review.py` runs every review round, applies accepted findings through `python/cli.py plan revise-waterfall --patch-format file-replacement`, runs the mechanical Gate B post-apply pipeline, and returns to the main agent only through the `STEP3_REVIEW_LOOP_STATUS` envelope. Harness coverage lives at `${CLAUDE_PLUGIN_ROOT}/python/test_plan_review.py`. Every mid-loop return resumes through `design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND"` at the recorded `.step3-round-N.phase`; do not re-run the already completed review pass for that round.
 
-**Scout, panel dispatch, collection, aggregation, voting, and tally** still run inside `${CLAUDE_PLUGIN_ROOT}/python/plan_review.py` (see `plan-review-loop.md`). Step 3 invokes `${CLAUDE_PLUGIN_ROOT}/python/cli.py plan-review run` for the cap guard, round-cursor advance, loop launch, result normalization, and `review-round-count.txt` persist/rollback (contracts: `run-step3-review.md`, `lib-phase-driver.sh` / `lib-phase-driver.md`; harnesses: `test-run-step3-review.sh` / `test-run-step3-review.md`, `test-lib-phase-driver.sh` / `test-lib-phase-driver.md`, `test-step3-orchestrator-fence.sh` / `test-step3-orchestrator-fence.md`, `test-design-step3-state.sh`). Step 3 sentinel helper: `${CLAUDE_PLUGIN_ROOT}/python/cli.py plan-review step3-state` (`${CLAUDE_PLUGIN_ROOT}/python/plan_review.py`; `--direct-review-entry`, `--gate-b-bypass`, `--auto-continuation-entry`).
+**Scout, panel dispatch, collection, aggregation, voting, and tally** still run inside `${CLAUDE_PLUGIN_ROOT}/python/plan_review.py`. Step 3 invokes `${CLAUDE_PLUGIN_ROOT}/python/cli.py plan-review run` for the cap guard, round-cursor advance, loop launch, result normalization, and `review-round-count.txt` persist/rollback (contracts: `python/plan_review.py`, `lib-phase-driver.sh` / `lib-phase-driver.md`; harnesses: `python/test_plan_review.py`, `test-lib-phase-driver.sh` / `test-lib-phase-driver.md`, `test-step3-orchestrator-fence.sh` / `test-step3-orchestrator-fence.md`, `test-design-step3-state.sh`). Step 3 sentinel helper: `${CLAUDE_PLUGIN_ROOT}/python/cli.py plan-review step3-state` (`${CLAUDE_PLUGIN_ROOT}/python/plan_review.py`; `--direct-review-entry`, `--gate-b-bypass`, `--auto-continuation-entry`).
 
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 21600000`.**
 
@@ -765,7 +765,7 @@ Print: `> **🔶 /design 4b: gate C**`
 
 Execute the Gate C body in `approval-gates.md` — `approval-gates.md` is the single normative source for Gate C behavior (Presentation, Prompt, Other-handling, large-plan summary mode).
 
-**Mechanical Gate C plan emit** (mirrors Step 3 entry; no sentinel): implemented by `design-step3b-tail.sh`, which calls `emit-design-plan-preview.sh --variant gatec` with the same threshold/outline/bold-note rules as Step 3.
+**Mechanical Gate C plan emit** (mirrors Step 3 entry; no sentinel): implemented by `design-step4b-preview.sh` → `python/cli.py plan-review preview --variant gatec` (same threshold/outline/bold-note rules as Step 3).
 
 Before the Gate C `AskUserQuestion`, parse `SKIP_APPROVE_REQUESTED_GATEC=true|false` from the tail wrapper output.
 

@@ -1040,14 +1040,11 @@ def _unreadable_marker(design_tmpdir: Path) -> Path:
 
 
 def _drift_baseline_write_once(design_tmpdir: Path, plan_lines: int, diff_lines: int) -> bool:
-    baseline_path = _drift_baseline_path(design_tmpdir)
-    if baseline_path.exists():
-        return True
-    try:
-        _atomic_write(baseline_path, f"BASELINE_PLAN_LINES={plan_lines}\nBASELINE_DIFF_LINES={diff_lines}\n")
-    except OSError:
-        return False
-    return True
+    import plan_review
+
+    return (
+        plan_review.drift_baseline_write_once(design_tmpdir, str(plan_lines), str(diff_lines)) == 0
+    )
 
 
 def _ratio_token(current: int, baseline: int) -> str:

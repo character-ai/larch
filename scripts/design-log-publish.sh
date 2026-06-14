@@ -381,7 +381,9 @@ design_artifact_excluded() {
     case "$name" in
         timing-ledger.tsv|timing-ledger.tsv.lock|\
         scout-dynamic-archetypes-prompt.md|plan.txt.before-revise|\
-        composed-plan.md)
+        composed-plan.md|\
+        step3-record-escalation-*.stdout.log|step3-record-escalation-*.stderr.log|\
+        design-failure-escalation-*.tsv)
             return 0
             ;;
     esac
