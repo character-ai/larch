@@ -283,10 +283,14 @@ def test_step2_dispatch_prelaunch_staged_index_blocks_recovery(repo: Path, tmp_p
     (repo / "staged.txt").write_text("prelaunch staged\n", encoding="utf-8")
     _git(repo, "add", "staged.txt")
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+
+    def edit_readme(repo_root: Path, _st: implement_dispatch.DispatchState) -> None:
+        (repo_root / "README.md").write_text("recovered edit\n", encoding="utf-8")
+
     monkeypatch.setattr(
         implement_dispatch,
         "_run_launcher",
-        _malformed_launcher(lambda repo_root, _st: (repo_root / "README.md").write_text("recovered edit\n", encoding="utf-8")),
+        _malformed_launcher(edit_readme),
     )
     rc = implement_dispatch.step2_dispatch_main([
         "--tmpdir", str(tmp),
