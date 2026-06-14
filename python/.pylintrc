@@ -451,7 +451,9 @@ disable=bad-inline-option,
         unspecified-encoding,
         use-symbolic-message-instead,
         useless-suppression,
-        wrong-import-position
+        wrong-import-position,
+        reimported,
+        global-variable-undefined
 
 
 # Enable the message, report, category or checker with the given id(s). You can
