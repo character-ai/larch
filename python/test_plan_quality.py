@@ -1338,7 +1338,8 @@ def test_revise_waterfall_default_launchers_use_python_cli(tmp_path: Path, monke
             out_path = cmd[cmd.index("--output") + 1]
             Path(out_path).write_text("", encoding="utf-8")
             return subprocess.CompletedProcess(cmd, 0, "", "")
-        return real_run(cmd, **kwargs)  # type: ignore[arg-type,call-overload]
+        check = kwargs.pop("check", False)
+        return real_run(cmd, check=check, **kwargs)  # type: ignore[arg-type,call-overload]
 
     monkeypatch.setattr(plan_quality.subprocess, "run", fake_run)
     for key in ("LARCH_TEST_LAUNCH_CODEX_REVIEW", "LARCH_TEST_LAUNCH_CURSOR_REVIEW", "LARCH_TEST_LAUNCH_CLAUDE_REVIEW"):
