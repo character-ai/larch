@@ -3,12 +3,12 @@
 - **Outcome**: stalled
 - **Mode**: N/A
 - **Duration**: 12:33:12
-- **Cost**: 💰 TOTAL ~$134.86 — Claude $44.25, Codex $56.05, Cursor $25.13, Claude (subprocess) $9.43  |  Tokens: 239998k
+- **Cost**: 💰 TOTAL ~$157.03 — Claude $46.65, Codex $74.22, Cursor $25.13, Claude (subprocess) $11.03  |  Tokens: 275644k
 - **Issue**: #3680 — https://github.com/character-ai/larch/issues/3680
 - **PR**: #4322 — https://github.com/character-ai/larch/pull/4322
 - **Plan review**: N/A
 - **Code review**: 53/65 accepted
-- **Lines (PR diff)**: code +3416/-14328, larch-logs +6471/-0
+- **Lines (PR diff)**: code +3420/-14420, larch-logs +6497/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 0
