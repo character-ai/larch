@@ -46,6 +46,7 @@ assert_order() {
 
 make_fake_plugin() {
     local root="$1"
+    local postplan_mode="${2:-stub}"
     mkdir -p "$root/scripts" "$root/skills/design/scripts" "$root/skills/design/references" "$root/python"
     cat > "$root/skills/design/references/readability-style.md" <<'STYLE'
 - Test readability style.
@@ -59,6 +60,12 @@ import sys
 REAL_CLI = os.path.join(os.environ.get("LARCH_TEST_REAL_REPO_ROOT", ""), "python", "cli.py")
 
 if __name__ == "__main__":
+    if len(sys.argv) >= 4 and sys.argv[1] == "timing" and sys.argv[2] == "mark":
+        call_log = os.environ.get("CALL_LOG")
+        if call_log:
+            with open(call_log, "a", encoding="utf-8") as fh:
+                fh.write(f"timing {sys.argv[3]}\n")
+        raise SystemExit(0)
     if len(sys.argv) >= 3 and sys.argv[1] == "plan-review" and sys.argv[2] == "preview":
         raise SystemExit(0)
     if REAL_CLI and os.path.isfile(REAL_CLI):
@@ -66,6 +73,58 @@ if __name__ == "__main__":
     raise SystemExit(2)
 CLI
     chmod +x "$root/python/cli.py"
+    cat > "$root/scripts/design-pause-save.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+step2a=no
+if [[ -n "${DESIGN_TMPDIR:-}" && -f "$DESIGN_TMPDIR/.completed/step-2a" ]]; then
+  step2a=yes
+fi
+echo "pause-save step2a=$step2a $*" >>"${CALL_LOG:?}"
+printf 'PAUSE_OK=true\n'
+STUB
+    chmod +x "$root/scripts/design-pause-save.sh"
+    if [[ "$postplan_mode" == "real" ]]; then
+        cp "$REPO_ROOT/skills/design/scripts/design-step2b-postplan.sh" "$root/skills/design/scripts/design-step2b-postplan.sh"
+        cp "$REPO_ROOT/scripts/lib-design-tmpdir.sh" "$root/scripts/lib-design-tmpdir.sh"
+        cat > "$root/skills/design/scripts/design-postplan-emit.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+rc="${FAKE_POSTPLAN_EMIT_RC:-0}"
+printf 'postplan-emit rc=%s\n' "$rc"
+if [[ "$rc" == "10" && -n "${DESIGN_TMPDIR:-}" ]]; then
+  printf 'VALIDATE_STATUS=defects-found\nVALIDATE_DEFECT_COUNT=1\nVALIDATE_SKIPPED_COUNT=0\nVALIDATE_UNSAFE_TOKEN_COUNT=0\nVALIDATE_LOG_FILE=%s/validate.log\n' "$DESIGN_TMPDIR" >"$DESIGN_TMPDIR/.design-postplan-emit-result.env"
+fi
+exit "$rc"
+STUB
+        chmod +x "$root/skills/design/scripts/design-step2b-postplan.sh" "$root/skills/design/scripts/design-postplan-emit.sh"
+    else
+        cat > "$root/skills/design/scripts/design-step2b-postplan.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "postplan $*" >>"${CALL_LOG:?}"
+if [[ -n "${POSTPLAN_ARGV_FILE:-}" ]]; then
+  printf '%s\n' "$*" >"$POSTPLAN_ARGV_FILE"
+fi
+case "${POSTPLAN_STUB_MODE:-ok}" in
+  ok)
+    mkdir -p "${DESIGN_TMPDIR:?}/.completed"
+    : >"$DESIGN_TMPDIR/.completed/step-2b"
+    : >"$DESIGN_TMPDIR/.completed/step-2b.5"
+    printf 'POSTPLAN_RC=0\nPOSTPLAN_STATUS=ok\n'
+    ;;
+  rc13)
+    mkdir -p "${DESIGN_TMPDIR:?}/.completed"
+    : >"$DESIGN_TMPDIR/.completed/step-2b"
+    printf 'POSTPLAN_RC=13\nPOSTPLAN_STATUS=partition-requested\n'
+    ;;
+  incomplete)
+    printf 'POSTPLAN_RC=0\n'
+    ;;
+esac
+STUB
+        chmod +x "$root/skills/design/scripts/design-step2b-postplan.sh"
+    fi
 }
 
 write_session_env() {

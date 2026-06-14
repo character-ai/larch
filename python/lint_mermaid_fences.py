@@ -226,7 +226,28 @@ class MermaidRunner:
             cmd = [self.mmdc, "--parseOnly", "-i", str(input_path)]
         else:
             cmd = [self.mmdc, *self.render_args, "-i", str(input_path), "-o", str(output_path)]
-        return subprocess.run(cmd, check=False, stdout=subprocess.DEVNULL).returncode == 0
+        proc = subprocess.run(
+            cmd,
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        if proc.returncode == 0:
+            return True
+        if (
+            not self.supports_parse_only
+            and "Failed to launch the browser process" in proc.stderr
+            and not _in_ci(dict(os.environ))
+        ):
+            print(
+                "WARN: Mermaid render skipped because Puppeteer could not launch a browser",
+                file=sys.stderr,
+            )
+            return True
+        if proc.stderr:
+            print(proc.stderr, file=sys.stderr, end="" if proc.stderr.endswith("\n") else "\n")
+        return False
 
 
 def main(argv: list[str] | None = None) -> int:
