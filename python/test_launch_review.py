@@ -979,7 +979,7 @@ def test_cursor_failure_skips_postprocess(tmp_path: Path, monkeypatch: pytest.Mo
         token_budget_cap="",
     )
     assert agents._review_launch_cursor(args, "hi") == 1
-    assert postprocess_calls == []
+    assert not postprocess_calls
     assert out.read_text(encoding="utf-8") == payload
 
 
