@@ -34,7 +34,7 @@ step3_record_report_evidence() {
     if [[ "$rc" -eq 0 ]]; then
         : >"$sentinel"
     else
-        emit_kv WARN "Step 3: failed to record design escalation evidence for ${status}"
+        printf 'WARN=Step 3: failed to record design escalation evidence for %s\n' "${status}" >&2 || true
     fi
 }
 

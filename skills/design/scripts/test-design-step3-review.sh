@@ -33,9 +33,15 @@ CLIPY
   chmod +x "$dir/python/cli.py"
 }
 
-grep -Fq 'def step3_record_report_evidence' "$MODULE" || fail 'Step 3 evidence helper missing'
-grep -Fq 'record-escalation' "$MODULE" || fail 'record-escalation call missing'
-grep -Fq 'main-agent-vote-required' "$MODULE" || fail 'escalation/degradation status set missing'
+grep -Fq 'step3_stage_postplan_failed' "$LOOP" || fail 'postplan-failed staging helper missing'
+grep -Fq -- '--outcome failed-postplan' "$LOOP" || fail 'failed-postplan outcome not staged'
+# shellcheck disable=SC2016
+( command grep -Fq 'record-escalation' "$LOOP" ) || fail 'record-escalation call missing'
+# shellcheck disable=SC2016
+( command grep -Fq -- '--site "$site"' "$LOOP" ) || fail 'record-escalation --site missing'
+# shellcheck disable=SC2016
+( command grep -Fq -- '--trigger "$trigger"' "$LOOP" ) || fail 'record-escalation --trigger missing'
+grep -Fq 'main-agent-vote-required|main-agent-apply-required|postplan-operator-required|panel-failed|tally-error|degraded-empty-collector' "$LOOP" || fail 'escalation/degradation status set missing'
 for status in panel-failed tally-error degraded-empty-collector; do
   grep -Fq "$status" "$MODULE" || fail "$status missing"
 done
