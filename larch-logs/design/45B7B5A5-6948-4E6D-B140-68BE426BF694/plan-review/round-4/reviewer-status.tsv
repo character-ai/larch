@@ -1,0 +1,3 @@
+slot	tool	status	elapsed_s	output
+cursor-plan-innovation	cursor	done	265	<TMPDIR>/cursor-plan-innovation-output.txt
+cursor-plan-pragmatic	cursor	done	265	<TMPDIR>/cursor-plan-pragmatic-output.txt
