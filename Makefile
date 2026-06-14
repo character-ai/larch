@@ -679,7 +679,7 @@ test-stall-recovery-report-1:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_stall_recovery.py -q -k 'retry_policy or normalize_issue or classify or record_attempt'
 
 test-stall-recovery-report-2:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_stall_recovery.py -q -k 'record_escalation or dedup or compose_report or lint'
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_stall_recovery.py -q -k 'record_escalation or dedup or compose_report or lint or clear_stall or seed_terminal'
 
 test-stall-recovery-report-3:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_stall_recovery.py -q -k 'validate_token or validate_terminal or validate_tier_b'
@@ -691,7 +691,7 @@ test-file-failure-report-cross-repo:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-file-failure-report-cross-repo.sh
 
 test-step-18b-final-report:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-step-18b-final-report.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_pr_body.py -q -k step18b
 
 test-cursor-implementer:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-cursor-implementer.sh
@@ -756,7 +756,7 @@ test-step-8-ship:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-step-8-ship.sh
 
 test-post-tracking-issue:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-post-tracking-issue.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_pr_body.py -q -k post_tracking
 
 test-commit-implementation:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-commit-implementation.sh
@@ -765,7 +765,7 @@ test-review-and-fix-commit-fixes:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_review_and_fix.py -q -k commit_fixes
 
 test-generate-code-flow-diagram:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-generate-code-flow-diagram.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_pr_body.py -q -k generate_code_flow
 
 test-refresh-execution-issues:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_execution_issues.py -q -k refresh
@@ -797,7 +797,7 @@ test-render-cost-line:
 	cd python && $(PYTHON) -m pytest test_report_tokens_cost.py -q
 
 test-implement-cleanup-script:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-cleanup.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_finalize.py -q -k cleanup
 
 test-harness-shards-coverage:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-harness-shards-coverage.sh

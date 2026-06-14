@@ -1320,8 +1320,18 @@ def run_ship(
                 )
                 return ShipResult(postbump.outcome, detail=postbump.detail or postbump.status)
 
+            tmp_path = Path(fresh_context.tmpdir)
+            for manifest in (
+                tmp_path / "manifest-raw.json",
+                tmp_path / "manifest.json",
+                Path(fresh_context.manifest_path) if fresh_context.manifest_path else None,
+            ):
+                if manifest and manifest.is_file():
+                    with suppress(Exception):
+                        file_oos.materialize_manifest_oos(manifest, tmp_path)
+                    break
+
             if fresh_context.oos_pending and not fresh_context.forked_target and not fresh_context.repo_unavailable:
-                tmp_path = Path(fresh_context.tmpdir)
                 oos_count = file_oos.count_non_security(
                     file_oos.accepted_oos_paths(tmp_path)
                 )

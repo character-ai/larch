@@ -1,5 +1,6 @@
 from pathlib import Path
 from unittest.mock import patch
+import subprocess
 
 import pytest
 
@@ -82,3 +83,69 @@ def test_step7a_honors_issue_number_and_run_id(tmp_path: Path, capsys: pytest.Ca
 
     assert rc == 0
     assert "reason=small-non-runtime-change" in capsys.readouterr().out
+
+
+def test_step7a_diagram_failure_exits_zero_and_clears_stale_artifacts(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
+    _ = (tmp_path / "code-flow-diagram.md").write_text("stale\n", encoding="utf-8")
+
+    with patch.object(step_7a, "_is_small_non_runtime_change", return_value=False), patch.object(
+        step_7a.pr_body,
+        "generate_code_flow_diagram",
+        return_value=(1, "failed", "", "generation-failed"),
+    ), patch.object(step_7a, "_run_log_flush", return_value="ok"), patch.object(step_7a, "subprocess") as mock_subprocess:
+        mock_subprocess.run.return_value.returncode = 0
+        mock_subprocess.run.return_value.stdout = "REBASE_OUTCOME=skipped\n"
+        rc = step_7a.run_step7a(tmp_path)
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "DIAGRAM_STATUS=failed" in out
+    assert "STEP_7A_BAIL_REASON=\n" in out or out.endswith("STEP_7A_BAIL_REASON=\n") or "STEP_7A_BAIL_REASON=" in out
+    assert not (tmp_path / "code-flow-diagram.md").exists()
+    assert "### Warnings" in (tmp_path / "execution-issues.md").read_text(encoding="utf-8")
+
+
+def test_step7a_no_logs_commit_emits_skipped_status(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
+
+    with patch.object(step_7a, "_is_small_non_runtime_change", return_value=True), patch.object(
+        step_7a,
+        "_run_log_flush",
+        return_value="skipped-no-logs-commit",
+    ) as mock_flush, patch.object(step_7a, "subprocess") as mock_subprocess:
+        mock_subprocess.run.return_value.returncode = 0
+        mock_subprocess.run.return_value.stdout = "REBASE_OUTCOME=skipped\n"
+        rc = step_7a.run_step7a(tmp_path, no_logs_commit=True)
+
+    assert rc == 0
+    assert "LOG_FLUSH_STATUS=skipped-no-logs-commit" in capsys.readouterr().out
+    mock_flush.assert_called_once()
+
+
+def test_step7a_relays_session_transcript_status(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
+    _ = (tmp_path / "session-env.sh").write_text("LARCH_CLAUDE_SOURCE_FILE=/tmp/source.jsonl\n", encoding="utf-8")
+
+    def fake_run_cli(*args: str) -> subprocess.CompletedProcess[str]:
+        if len(args) >= 2 and args[0] == "run-log" and args[1] == "capture-transcript":
+            return subprocess.CompletedProcess(args, 0, "SESSION_TRANSCRIPT_STATUS=captured\n", "")
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    with patch.object(step_7a, "_is_small_non_runtime_change", return_value=True), patch.object(
+        step_7a,
+        "_run_cli",
+        side_effect=fake_run_cli,
+    ), patch.object(step_7a.execution_issues, "flush_execution_issues", return_value=(0, "ok", 0, "")), patch.object(
+        step_7a.run_logs,
+        "_render_token_timing_batches",
+    ), patch.object(
+        step_7a.run_logs,
+        "_stage_vendor_failure_diagnostics",
+    ), patch.object(step_7a, "subprocess") as mock_subprocess:
+        mock_subprocess.run.return_value.returncode = 0
+        mock_subprocess.run.return_value.stdout = "REBASE_OUTCOME=skipped\n"
+        rc = step_7a.run_step7a(tmp_path)
+
+    assert rc == 0
+    assert "SESSION_TRANSCRIPT_STATUS=captured" in capsys.readouterr().out

@@ -379,3 +379,60 @@ def test_disposition_checkpoint_uses_origin_main_when_merge_base_absent(tmp_path
     rc = file_oos.disposition_checkpoint_main(["--implement-tmpdir", str(tmp_path)])
     assert rc == 0
     assert seen["commit_range"] == "origin/main..HEAD"
+
+
+def test_disposition_gate_orphan_ndjson_without_accepted_file(tmp_path: Path) -> None:
+    ndjson = tmp_path / "orphan.ndjson"
+    _ = ndjson.write_text('{"body":"Created https://github.com/example/larch/issues/404\\n"}\n', encoding="utf-8")
+    rc = file_oos.disposition_gate_main(
+        [
+            "--accepted-files",
+            f"{tmp_path}/missing-a.md,{tmp_path}/missing-b.md",
+            "--filed-urls-file",
+            str(tmp_path / "empty-urls.md"),
+            "--oos-issues-ndjson",
+            str(ndjson),
+            "--commit-range",
+            "HEAD",
+        ],
+    )
+    assert rc == 2
+
+
+def test_disposition_gate_security_only_passes_without_urls(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    accepted = tmp_path / "sec.md"
+    _ = accepted.write_text(
+        "### OOS_1: Secret thing\n- **focus-area**: security\n- **Phase**: implement\n",
+        encoding="utf-8",
+    )
+    _ = (tmp_path / "empty-urls.md").write_text("", encoding="utf-8")
+    _ = monkeypatch.setattr(file_oos, "_count_inline_triage", lambda _commit_range: 0)
+    rc = file_oos.disposition_gate_main(
+        [
+            "--accepted-files",
+            str(accepted),
+            "--filed-urls-file",
+            str(tmp_path / "empty-urls.md"),
+            "--commit-range",
+            "HEAD",
+        ],
+    )
+    assert rc == 0
+
+
+def test_disposition_gate_non_security_without_disposition_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    accepted = tmp_path / "bad.md"
+    _ = accepted.write_text("### OOS_1: Orphan\n- **Description**: bug\n", encoding="utf-8")
+    _ = (tmp_path / "empty-urls.md").write_text("", encoding="utf-8")
+    _ = monkeypatch.setattr(file_oos, "_count_inline_triage", lambda _commit_range: 0)
+    rc = file_oos.disposition_gate_main(
+        [
+            "--accepted-files",
+            str(accepted),
+            "--filed-urls-file",
+            str(tmp_path / "empty-urls.md"),
+            "--commit-range",
+            "HEAD",
+        ],
+    )
+    assert rc == 1

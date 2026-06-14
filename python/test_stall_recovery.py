@@ -454,3 +454,56 @@ def test_compose_report_rejects_sensitive_plan_evidence(tmp_path: Path) -> None:
         ],
     )
     assert rc == 1
+
+
+def test_clear_stall_clears_tracking_and_preserves_keys(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    state = tmp_path / "ship-pr-state.sh"
+    _ = state.write_text(
+        "PHASE=ci-initial\nSTALL_TRACKING=true\nSTALL_STEP=5\nEXIT_CODE=4\n"
+        "BAIL_REASON=adopted-issue-closed\nBAIL_FAILURE_DETAIL_LOG=/tmp/failure.log\n",
+        encoding="utf-8",
+    )
+    rc = stall_recovery.clear_stall_main(["--implement-tmpdir", str(tmp_path)])
+    assert rc == 0
+    text = state.read_text(encoding="utf-8")
+    assert "STALL_TRACKING=false" in text
+    assert "STALL_STEP=" in text
+    assert "PHASE=ci-initial" in text
+    assert "EXIT_CODE=4" in text
+    assert "BAIL_REASON=adopted-issue-closed" in text
+    assert "CLEARED=true" in capsys.readouterr().out
+
+
+def test_seed_terminal_state_rewrite_honors_stall_step(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    state = tmp_path / "ship-pr-state.sh"
+    _ = state.write_text(
+        "PHASE=ci-initial\nSTALL_TRACKING=true\nSTALL_STEP=3\nEXIT_CODE=4\n"
+        "BAIL_REASON=first-fixer-non-health\nBAIL_FAILURE_DETAIL_LOG=/tmp/failure.log\n",
+        encoding="utf-8",
+    )
+    rc = stall_recovery.seed_terminal_state_main(
+        ["--implement-tmpdir", str(tmp_path), "--stall-step", "5", "--phase", "review"],
+    )
+    assert rc == 0
+    text = state.read_text(encoding="utf-8")
+    assert "STALL_TRACKING=true" in text
+    assert "STALL_STEP=5" in text
+    assert "PHASE=review" in text
+    assert "EXIT_CODE=4" in text
+    out = capsys.readouterr().out
+    assert "SEEDED=true" in out
+    assert "SEED_MODE=rewrite" in out
+
+
+def test_seed_terminal_state_fresh_seeds_defaults(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    rc = stall_recovery.seed_terminal_state_main(["--implement-tmpdir", str(tmp_path)])
+    assert rc == 0
+    state = tmp_path / "ship-pr-state.sh"
+    text = state.read_text(encoding="utf-8")
+    assert "STALL_TRACKING=true" in text
+    assert "STALL_STEP=8" in text
+    assert "PHASE=ci-initial" in text
+    assert "EXIT_CODE=4" in text
+    out = capsys.readouterr().out
+    assert "SEEDED=true" in out
+    assert "SEED_MODE=seed" in out

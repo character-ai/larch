@@ -191,12 +191,29 @@ def test_step18b_emits_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
         _ = (implement_tmpdir, run_id)
         return {"cost_unavailable": True}
 
+    def fake_write_final_report(implement_tmpdir: Path) -> tuple[int, str, str]:
+        _ = implement_tmpdir
+        _ = (tmp_path / "summary-final.md").write_text("# Summary\n", encoding="utf-8")
+        return 0, "", ""
+
     monkeypatch.setattr(pr_body, "_final_report_token_fields", fake_final_report_token_fields)
+    monkeypatch.setattr(pr_body, "write_final_report", fake_write_final_report)
     rc = pr_body.step18b_final_report_main(["--implement-tmpdir", str(tmp_path)])
     assert rc == 0
     out = capsys.readouterr().out
     assert "EMIT_BODY=" in out
     assert "WFR_RC=" in out
+
+
+def test_step18b_returns_write_failure_rc(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    _ = (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=1\nRUN_ID=run1\n", encoding="utf-8")
+    _ = (tmp_path / "session-env.sh").write_text("REPO=o/r\nMODE=N/A\n", encoding="utf-8")
+
+    monkeypatch.setattr(pr_body, "write_final_report", lambda _tmpdir: (1, "", "write failed"))
+    rc = pr_body.step18b_final_report_main(["--implement-tmpdir", str(tmp_path)])
+    assert rc == 1
+    out = capsys.readouterr().out
+    assert "WFR_RC=1" in out
 
 
 def test_render_run_summary_includes_cost_line() -> None:

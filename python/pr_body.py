@@ -25,6 +25,7 @@ import proc
 import redact
 import report_tokens_cost
 import stall_recovery
+import tokens
 import tracking_issue
 from errors import ShipError
 from proc import CommandResult, Runner
@@ -750,6 +751,106 @@ def _refresh_issue_counts(implement_tmpdir: Path, run_id: str) -> tuple[int, int
     return exec_n, warn_n
 
 
+def _merge_line_count_state(ship: Path, pr_number: str, lines: Mapping[str, object]) -> None:
+    if not ship.is_file() or ship.is_symlink() or not os.access(ship, os.W_OK):
+        return
+    preserved: list[str] = []
+    for line in ship.read_text(encoding="utf-8", errors="replace").splitlines():
+        key = line.split("=", 1)[0] if "=" in line else ""
+        if key and key not in {"LINES_PR_NUMBER", "LINES_STATUS", "CODE_ADDED", "CODE_DELETED", "LOGS_ADDED", "LOGS_DELETED"}:
+            preserved.append(line)
+    tmp = ship.with_suffix(ship.suffix + ".tmp")
+    tmp.write_text(
+        "".join(f"{line}\n" for line in preserved)
+        + f"LINES_PR_NUMBER={pr_number or '0'}\n"
+        + "".join(f"{key}={lines[key]}\n" for key in ("LINES_STATUS", "CODE_ADDED", "CODE_DELETED", "LOGS_ADDED", "LOGS_DELETED") if key in lines),
+        encoding="utf-8",
+    )
+    tmp.replace(ship)
+
+
+def _derive_pr_line_counts(*, repo: str, repo_unavailable: bool, pr_number: str, ship: Path) -> tuple[str, str, str, str]:
+    if repo_unavailable or not pr_number or pr_number == "0":
+        return "", "", "", ""
+    cached_pr = _read_kv(ship, "LINES_PR_NUMBER")
+    if cached_pr == pr_number and _read_kv(ship, "LINES_STATUS") == "ok":
+        ca, cd, la, ld = (_read_kv(ship, key) for key in ("CODE_ADDED", "CODE_DELETED", "LOGS_ADDED", "LOGS_DELETED"))
+        if all(value.isdigit() for value in (ca, cd, la, ld)):
+            return ca, cd, la, ld
+    result = tokens.compute_pr_line_counts(pr_number=int(pr_number), repo=repo or None)
+    if result.get("LINES_STATUS") == "ok":
+        with contextlib.suppress(OSError):
+            _merge_line_count_state(ship, pr_number, result)
+        return (
+            str(result.get("CODE_ADDED", "")),
+            str(result.get("CODE_DELETED", "")),
+            str(result.get("LOGS_ADDED", "")),
+            str(result.get("LOGS_DELETED", "")),
+        )
+    return "", "", "", ""
+
+
+def _derive_review_line(run_dir: Path, filename: str) -> str:
+    tally = run_dir / filename
+    if not tally.is_file():
+        return "N/A"
+    try:
+        data_obj = json.loads(tally.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return "N/A"
+    if not isinstance(data_obj, dict):
+        return "N/A"
+    data = cast("dict[str, object]", data_obj)
+    accepted = int(str(data.get("accepted_count") or 0))
+    rejected = int(str(data.get("rejected_count") or 0))
+    total = accepted + rejected
+    if total <= 0:
+        return "N/A"
+    return f"{accepted}/{total} accepted"
+
+
+def _derive_oos_fields(run_dir: Path) -> tuple[str, str]:
+    ndjson = run_dir / "oos-issues.ndjson"
+    if not ndjson.is_file():
+        return "0", ""
+    text = ndjson.read_text(encoding="utf-8", errors="replace")
+    lines = [line for line in text.splitlines() if line.strip()]
+    urls = sorted(set(re.findall(r"https://github\.com[^\"\\s>)]+", text)))
+    return str(len(lines)), ",".join(urls)
+
+
+def _derive_final_report_fields(
+    implement_tmpdir: Path,
+    *,
+    run_id: str,
+    repo: str,
+    repo_unavailable: bool,
+    pr_number: str,
+    ship: Path,
+) -> dict[str, str]:
+    run_dir = implement_tmpdir / "larch-logs" / "implement" / run_id
+    code_added, code_deleted, logs_added, logs_deleted = _derive_pr_line_counts(
+        repo=repo,
+        repo_unavailable=repo_unavailable,
+        pr_number=pr_number,
+        ship=ship,
+    )
+    plan_line = _read_kv(ship, "PLAN_REVIEW_LINE") or _derive_review_line(run_dir, "plan-review-tally.json")
+    code_line = _read_kv(ship, "CODE_REVIEW_LINE") or _derive_review_line(run_dir, "code-review-tally.json")
+    oos_count = _read_kv(ship, "OOS_COUNT") or _derive_oos_fields(run_dir)[0]
+    oos_urls = _read_kv(ship, "OOS_URLS") or _derive_oos_fields(run_dir)[1]
+    return {
+        "plan_review_line": plan_line or "N/A",
+        "code_review_line": code_line or "N/A",
+        "code_added": code_added or _read_kv(ship, "CODE_ADDED"),
+        "code_deleted": code_deleted or _read_kv(ship, "CODE_DELETED"),
+        "logs_added": logs_added or _read_kv(ship, "LOGS_ADDED"),
+        "logs_deleted": logs_deleted or _read_kv(ship, "LOGS_DELETED"),
+        "oos_count": oos_count or "0",
+        "oos_urls": oos_urls,
+    }
+
+
 def write_final_report(implement_tmpdir: Path, *, comment_only: bool = False, print_stdout: bool = False) -> tuple[int, str, str]:
     parent = implement_tmpdir / "parent-issue.md"
     session = implement_tmpdir / "session-env.sh"
@@ -766,6 +867,14 @@ def write_final_report(implement_tmpdir: Path, *, comment_only: bool = False, pr
     issue_url = f"https://github.com/{repo}/issues/{issue}" if repo and issue and issue != "0" else ""
     exec_count, warn_count = _refresh_issue_counts(implement_tmpdir, run_id)
     run_dir = implement_tmpdir / "larch-logs" / "implement" / run_id
+    derived = _derive_final_report_fields(
+        implement_tmpdir,
+        run_id=run_id or "unknown",
+        repo=repo,
+        repo_unavailable=_read_kv(session, "REPO_UNAVAILABLE", "false") == "true",
+        pr_number=pr_number,
+        ship=ship,
+    )
     cost_fields = _final_report_token_fields(implement_tmpdir, run_id)
     body = render_run_summary(
         skill="implement",
@@ -778,14 +887,14 @@ def write_final_report(implement_tmpdir: Path, *, comment_only: bool = False, pr
         issue_url=issue_url,
         pr_number=pr_number,
         pr_url=pr_url,
-        plan_review_line=_read_kv(ship, "PLAN_REVIEW_LINE", "N/A"),
-        code_review_line=_read_kv(ship, "CODE_REVIEW_LINE", "N/A"),
-        code_added=_read_kv(ship, "CODE_ADDED"),
-        code_deleted=_read_kv(ship, "CODE_DELETED"),
-        logs_added=_read_kv(ship, "LOGS_ADDED"),
-        logs_deleted=_read_kv(ship, "LOGS_DELETED"),
-        oos_count=_read_kv(ship, "OOS_COUNT", "0"),
-        oos_urls=_read_kv(ship, "OOS_URLS"),
+        plan_review_line=derived["plan_review_line"],
+        code_review_line=derived["code_review_line"],
+        code_added=derived["code_added"],
+        code_deleted=derived["code_deleted"],
+        logs_added=derived["logs_added"],
+        logs_deleted=derived["logs_deleted"],
+        oos_count=derived["oos_count"],
+        oos_urls=derived["oos_urls"],
         exec_issues=exec_count,
         warnings=warn_count,
         run_logs_path=f"larch-logs/implement/{run_id}/" if run_id else "N/A",
@@ -887,7 +996,7 @@ def step18b_final_report_main(argv: list[str] | None = None) -> int:
     _emit_kv("WFR_RC", wfr_rc)
     _emit_kv("STEP17_EMITTED_PRESENT", str(present).lower())
     _emit_kv("SNAPSHOT_OK", snapshot)
-    return 0
+    return wfr_rc
 
 
 def post_tracking_issue(implement_tmpdir: Path, *, issue_number: str = "", run_id: str = "", adopted: str = "true", emergency_requested: str = "false") -> tuple[int, bool, str, str]:

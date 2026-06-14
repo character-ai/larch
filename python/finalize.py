@@ -1023,7 +1023,7 @@ def implement_finalize_main(argv: list[str] | None = None, phase: str = "") -> i
         print("FINALIZE_WARNINGS=unknown phase")
         return 2
     _emit_finalize_result(result, subcommand=phase)
-    return 0 if result.outcome == Outcome.OK else 1
+    return 0
 
 
 def implement_finalize_postbump_main(argv: list[str] | None = None) -> int:

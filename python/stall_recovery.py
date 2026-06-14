@@ -984,20 +984,122 @@ def validate_tier_b_public_file(args: argparse.Namespace) -> int:
     return 0
 
 
+def _state_layer_paths(tmpdir: Path) -> list[Path]:
+    return [tmpdir / name for name in ("ship-pr-state.sh", "finalize-state.sh", "session-env.sh")]
+
+
+def _state_file_syntax_ok(path: Path) -> bool:
+    if not path.is_file():
+        return False
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if not line or line.startswith("#"):
+            continue
+        if "=" not in line:
+            return False
+    return True
+
+
+def _rewrite_state_keys(path: Path, updates: Mapping[str, str]) -> bool:
+    if path.is_symlink() or not path.is_file() or not os.access(path, os.W_OK):
+        return False
+    existing: dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if "=" in line and not line.startswith("#"):
+            key, value = line.split("=", 1)
+            existing[key] = value
+    existing.update(updates)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    try:
+        tmp.write_text("".join(f"{key}={value}\n" for key, value in existing.items()), encoding="utf-8")
+        tmp.replace(path)
+    except OSError:
+        with contextlib.suppress(OSError):
+            tmp.unlink()
+        return False
+    return True
+
+
 def clear_stall(args: argparse.Namespace) -> int:
     tmpdir = Path(args.implement_tmpdir)
     for name in ("stall-recovery-classification.env", "stall-recovery-issue.env"):
         with contextlib.suppress(OSError):
             (tmpdir / name).unlink()
+    present = False
+    for path in _state_layer_paths(tmpdir):
+        if path.is_symlink() and not path.exists():
+            emit("CLEARED", "false")
+            return 3
+        if not path.exists():
+            continue
+        present = True
+        if path.is_symlink() or not path.is_file() or not os.access(path, os.R_OK | os.W_OK):
+            emit("CLEARED", "false")
+            return 3
+        if not _state_file_syntax_ok(path):
+            emit("CLEARED", "false")
+            return 3
+    if not present:
+        emit("CLEARED", "true")
+        return 0
+    for path in _state_layer_paths(tmpdir):
+        if not path.is_file():
+            continue
+        if not _rewrite_state_keys(path, {"STALL_TRACKING": "false", "STALL_STEP": ""}):
+            emit("CLEARED", "false")
+            return 1
+        if read_kv(path, "STALL_TRACKING") != "false" or read_kv(path, "STALL_STEP") != "":
+            emit("CLEARED", "false")
+            return 1
     emit("CLEARED", "true")
     return 0
 
 
 def seed_terminal_state(args: argparse.Namespace) -> int:
     tmpdir = Path(args.implement_tmpdir)
-    tmpdir.mkdir(parents=True, exist_ok=True)
-    write_kvs(tmpdir / "ship-pr-state.sh", {"STALL_TRACKING": "true", "STALL_STEP": args.step or "unknown", "PHASE": args.phase or "unknown"})
+    state = tmpdir / "ship-pr-state.sh"
+    stall_step_arg = getattr(args, "stall_step", "") or getattr(args, "step", "") or ""
+    phase_arg = getattr(args, "phase", "") or ""
+    if state.is_symlink() and not state.exists():
+        emit("SEEDED", "false")
+        return 3
+    if state.is_file() and not state.is_symlink() and not _state_file_syntax_ok(state):
+        emit("SEEDED", "false")
+        return 3
+    seed_mode = ""
+    step = _safe_step_value(stall_step_arg or read_kv(state, "STALL_STEP", "8") or "8")
+    phase = _safe_phase_value(phase_arg or read_kv(state, "PHASE", "ci-initial") or "ci-initial")
+    if stall_step_arg:
+        step = _safe_step_value(stall_step_arg)
+    if phase_arg:
+        phase = _safe_phase_value(phase_arg)
+    if state.is_file() and state.stat().st_size > 0 and any("=" in line for line in state.read_text(encoding="utf-8", errors="replace").splitlines()):
+        seed_mode = "rewrite"
+        if not _rewrite_state_keys(state, {"STALL_TRACKING": "true", "STALL_STEP": step, "PHASE": phase}):
+            emit("SEEDED", "false")
+            return 1
+    else:
+        seed_mode = "seed"
+        tmpdir.mkdir(parents=True, exist_ok=True)
+        content = {
+            "PHASE": phase,
+            "STALL_TRACKING": "true",
+            "STALL_STEP": step,
+            "BAIL_REASON": "",
+            "BAIL_FAILURE_DETAIL_LOG": "",
+            "EXIT_CODE": "4",
+        }
+        tmp = state.with_suffix(state.suffix + ".tmp")
+        try:
+            tmp.write_text("".join(f"{key}={value}\n" for key, value in content.items()), encoding="utf-8")
+            tmp.replace(state)
+        except OSError:
+            emit("SEEDED", "false")
+            return 1
+    if read_kv(state, "STALL_TRACKING") != "true":
+        emit("SEEDED", "false")
+        return 1
     emit("SEEDED", "true")
+    emit("SEED_MODE", seed_mode)
     return 0
 
 
@@ -1740,7 +1842,7 @@ def main(argv: list[str] | None = None) -> int:
         ns, _ = p.parse_known_args(rest)
         return clear_stall(ns)
     if sub == "seed-terminal-state":
-        p.add_argument("--step")
+        p.add_argument("--stall-step")
         p.add_argument("--phase")
         ns, _ = p.parse_known_args(rest)
         return seed_terminal_state(ns)

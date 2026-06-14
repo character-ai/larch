@@ -60,7 +60,7 @@ Intentional delta vs the retired inline block: the wrapper does not pass `--prin
 
 ## Harness
 
-`skills/implement/scripts/test-step-18b-final-report.sh` (contract: `test-step-18b-final-report.md`).
+`python/test_pr_body.py` (`-k step18b`).
 
 ## Edit in sync
 

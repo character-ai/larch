@@ -38,7 +38,7 @@ from redact import redact
 # ---------------------------------------------------------------------------
 INLINE_TRIAGE_MARKER: str = config.INLINE_TRIAGE_MARKER
 OOS_FILED_URL_FIELD: str = config.OOS_FILED_URL_FIELD
-OOS_EXCERPT_MAX_CHARS = 800
+_DEFAULT_EXCERPT_MAX = 200
 
 # ---------------------------------------------------------------------------
 # Regexes (ported from oos.py)
@@ -620,15 +620,74 @@ def _parse_oos_blocks(text: str) -> list[OosItem]:
     return [OosItem(int(match.group(1)), match.group(2).strip(), match.group(0).rstrip()) for match in matches]
 
 
-def _aggregate_block(seq: int, items: list[OosItem]) -> str:
-    title = f"Aggregated rollup of {len(items)} capped OOS items"
-    lines = [f"### OOS_{seq}: {title}", "- **Description**: Multiple OOS items were grouped because this run exceeded the per-run filing cap.", "", "  Rolled-up items:"]
+def _excerpt_max_chars() -> int:
+    raw = os.environ.get("OOS_ISSUE_CAP_EXCERPT_MAX", str(_DEFAULT_EXCERPT_MAX))
+    if not raw.isdigit() or int(raw) <= 0:
+        msg = "OOS_ISSUE_CAP_EXCERPT_MAX must be a positive integer"
+        raise ValueError(msg)
+    return int(raw)
+
+
+def _normalize_rollup_text(text: str) -> str:
+    cleaned = re.sub(r"[\000-\010\013\014\016-\037\177]", "", text)
+    cleaned = re.sub(r"[\r\n\t]+", " ", cleaned)
+    cleaned = re.sub(r"^[ *_#`]+", "", cleaned)
+    cleaned = re.sub(r"[*`]+", "", cleaned)
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+
+def _excerpt_from_body(body: str, *, max_chars: int) -> str:
+    excerpt = _normalize_rollup_text(body)
+    if len(excerpt) > max_chars:
+        excerpt = excerpt[: max_chars - 1] + "…"
+    return excerpt
+
+
+def _file_refs_from_body(body: str) -> str:
+    refs: list[str] = []
+    seen: set[str] = set()
+    for match in _FILE_REF_RE.finditer(body):
+        candidate = match.group(0).lstrip("*_#` ").rstrip("*_#` ")
+        if candidate and candidate not in seen:
+            seen.add(candidate)
+            refs.append(candidate)
+    return " ".join(refs)
+
+
+def _renumber_oos_headings(text: str) -> str:
+    idx = 0
+    out: list[str] = []
+    for line in text.splitlines():
+        if re.match(r"^### OOS_\d+:", line):
+            idx += 1
+            out.append(re.sub(r"^### OOS_\d+:", f"### OOS_{idx}:", line))
+        else:
+            out.append(line)
+    rendered = "\n".join(out)
+    return rendered + ("\n" if text.endswith("\n") else "")
+
+
+def _aggregate_block(seq: int, items: list[OosItem], *, cap: int, excerpt_max: int) -> str:
+    surplus = len(items)
+    lines = [
+        f"### OOS_{seq}: Aggregated rollup of {surplus} capped OOS items",
+        f"- **Description**: Cap {cap} (OOS_ISSUES_PER_RUN_CAP) exceeded; the following {surplus} items were rolled up by skills/implement/scripts/oos-issue-cap.sh:",
+    ]
     for item in items:
-        excerpt = re.sub(r"\s+", " ", item.body).strip()
-        if len(excerpt) > OOS_EXCERPT_MAX_CHARS:
-            excerpt = excerpt[: OOS_EXCERPT_MAX_CHARS - 3] + "..."
-        lines.append(f"  - OOS_{item.number}: {item.title} — {excerpt}")
-    lines.extend(["- **Reviewer**: Combined: capped per-run rollup", "- **Vote tally**: N/A — capped per-run rollup", "- **Phase**: implement"])
+        excerpt = _excerpt_from_body(item.body, max_chars=excerpt_max)
+        file_refs = _file_refs_from_body(item.body)
+        if file_refs:
+            lines.append(f"  - **{item.title}**: {excerpt} [Files: {file_refs}]")
+        else:
+            lines.append(f"  - **{item.title}**: {excerpt}")
+    lines.extend(
+        [
+            "- **Reviewer**: Combined: capped per-run rollup",
+            f"- **Vote tally**: N/A — capped rollup of {surplus} entries",
+            "- **Phase**: implement",
+            "",
+        ]
+    )
     return "\n".join(lines)
 
 
@@ -646,6 +705,7 @@ def _validate_issue_cap_input(text: str) -> None:
 
 
 def issue_cap(input_file: Path, output: Path | None = None, *, cap: int | None = None) -> None:
+    excerpt_max = _excerpt_max_chars()
     if cap is None:
         raw = os.environ.get("OOS_ISSUES_PER_RUN_CAP", "1")
         if not raw.isdigit() or int(raw) <= 0:
@@ -660,10 +720,10 @@ def issue_cap(input_file: Path, output: Path | None = None, *, cap: int | None =
             target.write_text(text, encoding="utf-8")
         return
     keep = items[: max(cap - 1, 0)]
-    roll = items[max(cap - 1, 0):]
+    roll = items[max(cap - 1, 0) :]
     blocks = [item.body for item in keep]
-    blocks.append(_aggregate_block(len(blocks) + 1, roll))
-    rendered = "\n\n".join(blocks).rstrip() + "\n"
+    blocks.append(_aggregate_block(len(blocks) + 1, roll, cap=cap, excerpt_max=excerpt_max))
+    rendered = _renumber_oos_headings("\n\n".join(blocks).rstrip() + "\n")
     tmp = target.with_suffix(target.suffix + ".tmp")
     tmp.write_text(rendered, encoding="utf-8")
     tmp.replace(target)

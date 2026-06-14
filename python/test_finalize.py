@@ -547,3 +547,16 @@ def test_write_finalize_state_merged_rejects_newline_values(tmp_path: Path) -> N
         finalize.write_finalize_state_merged(target, {"BAD": "x\ny"})
     with pytest.raises(Exception, match="newline"):
         finalize.write_finalize_state_merged(target, {"BAD": "x\ry"})
+
+
+def test_cleanup_main_removes_implement_tmpdir(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
+    _ = monkeypatch.setattr(finalize, "_cleanup_target_ok", lambda _ctx, _tmpdir, **_kw: True)
+    rc = finalize.cleanup_main(["--implement-tmpdir", str(tmp_path)])
+    assert rc == 0
+    assert not tmp_path.exists()
+    assert "CLEANED=true" in capsys.readouterr().out

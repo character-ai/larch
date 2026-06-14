@@ -322,8 +322,7 @@ exclude = [
   "python/test_compose_review.py",
   # Makefile-only harness for metadata summary publication. Runtime reachability
   # is through Step 0 helpers, not direct SKILL.md invocation.
-  "skills/implement/scripts/test-post-tracking-issue.sh",
-  "skills/implement/scripts/test-post-tracking-issue.md",
+  "python/test_pr_body.py",
   # python/test_agents.py is the Makefile-only regression harness
   # for python/cli.py agent degraded-tools-gate (issue #3207). The detector itself is
   # runtime-referenced from /design, /implement, /review, /research Step 0; the
@@ -1350,9 +1349,7 @@ exclude = [
   "skills/implement/scripts/test-commit-implementation.sh",
   "skills/implement/scripts/test-commit-implementation.md",
   "python/test_review_and_fix.py",
-  "python/test_review_and_fix.py",
-  "skills/implement/scripts/test-generate-code-flow-diagram.sh",
-  "skills/implement/scripts/test-generate-code-flow-diagram.md",
+  "python/test_pr_body.py",
   "skills/implement/scripts/test-refresh-execution-issues.sh",
   "skills/implement/scripts/test-refresh-execution-issues.md",
   "python/test_review_and_fix.py",
@@ -1363,8 +1360,7 @@ exclude = [
   "skills/implement/scripts/test-write-final-report.md",
   "skills/implement/scripts/test-stall-recovery-report.sh",
   "skills/implement/scripts/test-stall-recovery-report.md",
-  "skills/implement/scripts/test-step-18b-final-report.sh",
-  "skills/implement/scripts/test-step-18b-final-report.md",
+  "python/test_pr_body.py",
   "skills/implement/scripts/test-cleanup.sh",
   "skills/implement/scripts/test-cleanup.md",
   # scripts/lib-submodule-prohibition.sh is a sourced-only shell library (no

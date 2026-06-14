@@ -839,3 +839,10 @@ scripts/retro-sweep-design-logs-phase3d.sh	#4333
 scripts/retro-sweep-design-logs-phase3d.md	#4333
 scripts/sweep-run-logs-phase3a.sh	#4333
 scripts/sweep-run-logs-phase3a.md	#4333
+scripts/test-lib-design-round-artifacts.md	#3680
+skills/implement/scripts/test-post-tracking-issue.sh	#3685
+skills/implement/scripts/test-post-tracking-issue.md	#3685
+skills/implement/scripts/test-generate-code-flow-diagram.sh	#3685
+skills/implement/scripts/test-generate-code-flow-diagram.md	#3685
+skills/implement/scripts/test-step-18b-final-report.sh	#3685
+skills/implement/scripts/test-step-18b-final-report.md	#3685

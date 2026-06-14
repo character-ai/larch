@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import os
 import re
 import subprocess
@@ -72,6 +73,24 @@ def _run_cli(*args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
+def _cleanup_diagram_artifacts(implement_tmpdir: Path, *, keep_diagram: bool) -> None:
+    section = implement_tmpdir / "code-flow-section.md"
+    diagram = implement_tmpdir / "code-flow-diagram.md"
+    with contextlib.suppress(OSError):
+        section.unlink()
+    if not keep_diagram:
+        with contextlib.suppress(OSError):
+            diagram.unlink()
+
+
+def _append_diagram_warning(implement_tmpdir: Path, message: str) -> None:
+    run_logs.append_execution_issue(
+        implement_tmpdir / "execution-issues.md",
+        "Warnings",
+        f"- **Step 7a — code flow diagram**: {message}",
+    )
+
+
 def _run_log_flush(
     implement_tmpdir: Path,
     *,
@@ -89,26 +108,37 @@ def _run_log_flush(
     )
     log_root = implement_tmpdir / "larch-logs"
     issue_log = implement_tmpdir / "execution-issues.md"
-    if run_id:
-        rc, status, _records, _append_log = execution_issues.flush_execution_issues(
-            log_root=log_root,
-            run_id=run_id,
-            issue_log=issue_log,
-        )
-        if rc != 0 or status not in {"ok", "skip", "already-flushed", "no-records"}:
-            log_flush_status = "degraded"
-        rc2, status2, _, _ = execution_issues.flush_execution_issues(
-            log_root=log_root,
-            run_id=run_id,
-            issue_log=issue_log,
-            step_label="7a-post-transcript",
-            source_label="execution-issues.md post-transcript refresh",
-        )
-        if rc2 != 0 or status2 not in {"ok", "skip", "already-flushed", "no-records"}:
-            log_flush_status = "degraded"
-    else:
-        log_flush_status = "skip"
-    if run_id and claude_source_file:
+    if not run_id:
+        return "skip"
+    rc, status, _records, _append_log = execution_issues.flush_execution_issues(
+        log_root=log_root,
+        run_id=run_id,
+        issue_log=issue_log,
+    )
+    if rc != 0 or status not in {"ok", "skip", "already-flushed", "no-records"}:
+        log_flush_status = "degraded"
+    ctx = run_context.RunContext(
+        branch="",
+        issue="",
+        repo="",
+        run_id=run_id,
+        tmpdir=str(implement_tmpdir),
+        merge=False,
+        draft=False,
+        forked=False,
+        manifest_path=str(log_root / "implement" / run_id / "manifest.json"),
+        tool_label="",
+        no_admin_fallback=False,
+        repo_unavailable=False,
+        no_logs_commit=no_logs_commit,
+    )
+    with_context = ctx.with_(state_file=None)
+    try:
+        run_logs._render_token_timing_batches(with_context, log_root)  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+        run_logs._stage_vendor_failure_diagnostics(with_context, log_root)  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+    except Exception:
+        log_flush_status = "degraded"
+    if claude_source_file:
         capture = _run_cli(
             "run-log",
             "capture-transcript",
@@ -129,27 +159,22 @@ def _run_log_flush(
         )
         if capture.returncode != 0:
             log_flush_status = "degraded"
-    if run_id:
-        ctx = run_context.RunContext(
-            branch="",
-            issue="",
-            repo="",
-            run_id=run_id,
-            tmpdir=str(implement_tmpdir),
-            merge=False,
-            draft=False,
-            forked=False,
-            manifest_path=str(log_root / "implement" / run_id / "manifest.json"),
-            tool_label="",
-            no_admin_fallback=False,
-            repo_unavailable=False,
-            no_logs_commit=no_logs_commit,
-        )
-        with_context = ctx.with_(state_file=None)
-        refresh = run_logs.flush_logs_pre(run_logs.proc, with_context, cwd=None)
-        if refresh.skipped and refresh.reason not in {"no-repo-cwd", "no-logs-commit"}:
+        for line in capture.stdout.splitlines():
+            if line.startswith("SESSION_TRANSCRIPT_STATUS="):
+                print(line)
+    rc2, status2, _, _ = execution_issues.flush_execution_issues(
+        log_root=log_root,
+        run_id=run_id,
+        issue_log=issue_log,
+        step_label="7a-post-transcript",
+        source_label="execution-issues.md post-transcript refresh",
+    )
+    if rc2 != 0 or status2 not in {"ok", "skip", "already-flushed", "no-records"}:
+        log_flush_status = "degraded"
+    if not no_logs_commit:
+        refresh = run_logs.flush_logs_pre(run_logs.proc, with_context, cwd=str(Path.cwd()))
+        if refresh.skipped and refresh.reason not in {"no-repo-cwd", "no-logs-commit", "volatile-only"}:
             log_flush_status = "degraded"
-    if not no_logs_commit and run_id:
         commit = _run_cli(
             "run-log",
             "commit",
@@ -212,18 +237,24 @@ def run_step7a(
     bail = ""
     if _is_small_non_runtime_change(base_remote=base_remote, base_ref=base_ref):
         diagram_status = "skip"
+        _cleanup_diagram_artifacts(implement_tmpdir, keep_diagram=False)
         print("⏩ 7a: diagrams status=skip reason=small-non-runtime-change elapsed=0s")
     else:
-        diagram_rc, diagram_status, diagram_path, _reason = pr_body.generate_code_flow_diagram(
+        diagram_rc, diagram_status, diagram_path, reason = pr_body.generate_code_flow_diagram(
             implement_tmpdir,
             base_remote=base_remote,
             base_ref=base_ref,
         )
-        if diagram_status == "ok" and diagram_path:
+        keep_diagram = diagram_status == "ok" and bool(diagram_path)
+        if keep_diagram:
             section = implement_tmpdir / "code-flow-section.md"
             section.write_text((implement_tmpdir / "code-flow-diagram.md").read_text(encoding="utf-8"), encoding="utf-8")
-        if diagram_rc != 0:
-            bail = "diagram-failed"
+        else:
+            _cleanup_diagram_artifacts(implement_tmpdir, keep_diagram=False)
+        if diagram_rc != 0 or diagram_status == "failed":
+            diagram_status = "failed"
+            diagram_path = ""
+            _append_diagram_warning(implement_tmpdir, reason or "generation failed")
 
     if issue_number and (implement_tmpdir / "code-flow-section.md").is_file() and (implement_tmpdir / "code-flow-section.md").stat().st_size > 0:
         upsert_args = ["diagrams", "upsert", "--issue", issue_number, "--code-flow-file", str(implement_tmpdir / "code-flow-section.md")]
@@ -280,7 +311,7 @@ def run_step7a(
     emit("LOG_FLUSH_STATUS", log_flush_status)
     emit("STEP_7A_BAIL_REASON", bail)
     emit("REBASE_OUTCOME", rebase_outcome)
-    return 0 if not bail else 1
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
