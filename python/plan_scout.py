@@ -9,6 +9,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -461,10 +462,12 @@ def scout_dynamic_archetypes(
         raw.unlink(missing_ok=True)
         cap_hit.unlink(missing_ok=True)
         launch_env = Path(str(output) + ".cursor.launch.env")
-        launch_review = os.environ.get("SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH", str(PLUGIN_ROOT / "scripts" / "launch-review.sh"))
+        launch_review = [sys.executable, str(PLUGIN_ROOT / "python" / "cli.py"), "agent", "launch-review", "--tool", "cursor"]
+        if os.environ.get("SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH"):
+            launch_review = [os.environ["SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH"], "--tool", "cursor"]
         with launch_env.open("w", encoding="utf-8") as handle:
             result = subprocess.run(
-                [launch_review, "--tool", "cursor", "--output", str(raw), "--prompt-file", str(prompt_file), "--mode", mode, "--timeout", str(timeout), "--timing-task-kind", "scout-dynamic-archetypes"],
+                [*launch_review, "--output", str(raw), "--prompt-file", str(prompt_file), "--mode", mode, "--timeout", str(timeout), "--timing-task-kind", "scout-dynamic-archetypes"],
                 check=False,
                 stdout=handle,
             )

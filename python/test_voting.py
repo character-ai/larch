@@ -174,21 +174,28 @@ def test_compose_tally_record_omits_code_review_body(tmp_path: Path) -> None:
 
 
 def _write_retry_launcher(root: Path, *, retry_output: str) -> None:
-    scripts = root / "scripts"
-    scripts.mkdir(parents=True)
-    launcher = scripts / "launch-review.sh"
+    py_dir = root / "python"
+    py_dir.mkdir(parents=True)
+    launcher = py_dir / "cli.py"
     launcher.write_text(
-        "#!/usr/bin/env bash\n"
-        "set -euo pipefail\n"
-        "out=''\n"
-        "while [ $# -gt 0 ]; do\n"
-        '  case "$1" in --output) out="$2"; shift 2 ;; *) shift ;; esac\n'
-        "done\n"
-        f"printf '%s\\n' {retry_output!r} >\"$out\"\n"
-        "printf '0\\n' >\"$out.done\"\n",
+        "import sys\n"
+        "from pathlib import Path\n"
+        "out = ''\n"
+        "args = sys.argv[1:]\n"
+        "i = 0\n"
+        "while i < len(args):\n"
+        "    if args[i] == '--output' and i + 1 < len(args):\n"
+        "        out = args[i + 1]\n"
+        "        i += 2\n"
+        "    else:\n"
+        "        i += 1\n"
+        "Path(out).write_text(" + repr(retry_output + "\n") + ", encoding='utf-8')\n"
+        "Path(out + '.done').write_text('0\\n', encoding='utf-8')\n",
         encoding="utf-8",
     )
     launcher.chmod(0o755)
+    scripts = root / "scripts"
+    scripts.mkdir(parents=True)
     append = scripts / "append-tool-failure.sh"
     append.write_text("#!/usr/bin/env bash\nprintf 'append called\\n' >>\"$1\"\n", encoding="utf-8")
     append.chmod(0o755)
@@ -313,7 +320,7 @@ def test_parse_rate_failure_is_not_substantive_and_suppressed(tmp_path: Path) ->
     root = tmp_path / "root"
     scripts = root / "scripts"
     scripts.mkdir(parents=True)
-    launcher = scripts / "launch-review.sh"
+    launcher = scripts / "agent launch-review"
     launcher.write_text("#!/usr/bin/env bash\nexit 17\n", encoding="utf-8")
     launcher.chmod(0o755)
     append_log = tmp_path / "append.log"
@@ -516,7 +523,7 @@ def test_parse_rate_retry_empty_retry_output_stays_not_substantive(tmp_path: Pat
     root = tmp_path / "root"
     scripts = root / "scripts"
     scripts.mkdir(parents=True)
-    launcher = scripts / "launch-review.sh"
+    launcher = scripts / "agent launch-review"
     launcher.write_text(
         "#!/usr/bin/env bash\n"
         "set -euo pipefail\n"

@@ -60,13 +60,13 @@ After the acceptance threshold, each finding is classified into one of three ope
 
 **For plan review** (`/design` Step 3):
 - **Voter 1**: Claude — via `dispatch-plan-voters.sh` → `launch-claude-review.sh --role voter` (always launched; model resolved from `LARCH_VOTER_MODEL`, default `claude-sonnet-4-6`)
-- **Voter 2**: Codex — via `dispatch-plan-voters.sh` → `dispatch-with-waterfall.sh` → `launch-review.sh`
-- **Voter 3**: Cursor — via `dispatch-plan-voters.sh` → `dispatch-with-waterfall.sh` → `launch-review.sh`
+- **Voter 2**: Codex — via `dispatch-plan-voters.sh` → `dispatch-with-waterfall.sh` → `agent launch-review`
+- **Voter 3**: Cursor — via `dispatch-plan-voters.sh` → `dispatch-with-waterfall.sh` → `agent launch-review`
 
 **For code review** (`/review` Step 3) — `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-code-voters.sh` launches Claude (always) plus each **available** external every round. Code review uses **shrink-not-backfill**: an unavailable external is dropped, never replaced by a duplicate judge (the alternate external or an extra Claude):
 - **Voter 1**: Claude — via `dispatch-code-voters.sh` → `launch-claude-review.sh --role voter` (always launched; model resolved from `LARCH_VOTER_MODEL`, default `claude-sonnet-4-6`)
-- **Voter 2**: Codex — via `dispatch-with-waterfall.sh --no-fallback` → `launch-review.sh`. When `codex-available=false`, the slot is **skipped** (`VOTER_2_STATUS=skipped`, `VOTER_2_TOOL=codex`), not back-filled; the panel shrinks by one.
-- **Voter 3**: Cursor — via `dispatch-with-waterfall.sh --no-fallback` → `launch-review.sh`. When `cursor-available=false`, the slot is **skipped** (`VOTER_3_STATUS=skipped`, `VOTER_3_TOOL=cursor`), not back-filled; the panel shrinks by one.
+- **Voter 2**: Codex — via `dispatch-with-waterfall.sh --no-fallback` → `agent launch-review`. When `codex-available=false`, the slot is **skipped** (`VOTER_2_STATUS=skipped`, `VOTER_2_TOOL=codex`), not back-filled; the panel shrinks by one.
+- **Voter 3**: Cursor — via `dispatch-with-waterfall.sh --no-fallback` → `agent launch-review`. When `cursor-available=false`, the slot is **skipped** (`VOTER_3_STATUS=skipped`, `VOTER_3_TOOL=cursor`), not back-filled; the panel shrinks by one.
 
 The eligible code-review panel size is therefore Claude plus the number of available externals: full tier when both vendors are up, the unanimous tier when exactly one is up, and the binding single-judge tier when both are down. The acceptance-threshold table above adapts to that count, and a panel that shrank solely because a vendor was unavailable is **not** reported as a degraded panel (only a genuine *failure* of an available judge degrades it). This differs from `/design` plan review, which still back-fills to keep three voters (Voter 1/2/3 above).
 

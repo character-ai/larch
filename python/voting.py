@@ -459,7 +459,7 @@ def parse_rate_check_tool_label(voter_tool: str) -> str:
     if voter_tool == "claude":
         return "agent launch-claude-review (voter parse-rate check)"
     if voter_tool in {"codex", "cursor"}:
-        return f"launch-review.sh --tool {voter_tool} (voter parse-rate check)"
+        return f"agent launch-review --tool {voter_tool} (voter parse-rate check)"
     return f"voter parse-rate check ({voter_tool})"
 
 
@@ -686,7 +686,10 @@ def launch_voter_retry(
         ]
     elif voter_tool in {"codex", "cursor"}:
         argv = [
-            str(root / "scripts" / "launch-review.sh"),
+            sys.executable,
+            str(root / "python" / "cli.py"),
+            "agent",
+            "launch-review",
             "--tool",
             voter_tool,
             "--output",

@@ -1323,6 +1323,59 @@ exit 0
     assert "--timing-task-kind cursor-plan-autofix" in cursor_argv.read_text(encoding="utf-8")
 
 
+def test_revise_waterfall_default_launchers_use_python_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    plan, findings, feature = _revise_base(tmp_path)
+    recorded: list[list[str]] = []
+    real_run = subprocess.run
+
+    def fake_run(cmd: list[str] | str, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if isinstance(cmd, list) and "launch-review" in cmd:
+            recorded.append(list(cmd))
+            out_path = cmd[cmd.index("--output") + 1]
+            Path(out_path).write_text("", encoding="utf-8")
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+        if isinstance(cmd, list) and "launch-claude-review" in cmd:
+            out_path = cmd[cmd.index("--output") + 1]
+            Path(out_path).write_text("", encoding="utf-8")
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+        check = kwargs.pop("check", False)
+        return real_run(cmd, check=check, **kwargs)  # type: ignore[arg-type,call-overload]
+
+    monkeypatch.setattr(plan_quality.subprocess, "run", fake_run)
+    for key in ("LARCH_TEST_LAUNCH_CODEX_REVIEW", "LARCH_TEST_LAUNCH_CURSOR_REVIEW", "LARCH_TEST_LAUNCH_CLAUDE_REVIEW"):
+        monkeypatch.delenv(key, raising=False)
+
+    rc = plan_quality.revise_plan_with_waterfall_main(
+        [
+            "--design-tmpdir",
+            str(tmp_path),
+            "--plan-file",
+            str(plan),
+            "--findings-file",
+            str(findings),
+            "--feature-file",
+            str(feature),
+            "--round-num",
+            "1",
+            "--codex-present",
+            "true",
+            "--cursor-present",
+            "true",
+            "--patch-format",
+            "file-replacement",
+        ]
+    )
+    assert rc == 0
+    codex_cmds = [cmd for cmd in recorded if "--tool" in cmd and cmd[cmd.index("--tool") + 1] == "codex"]
+    cursor_cmds = [cmd for cmd in recorded if "--tool" in cmd and cmd[cmd.index("--tool") + 1] == "cursor"]
+    assert codex_cmds
+    assert cursor_cmds
+    for cmd in codex_cmds + cursor_cmds:
+        assert cmd[0] == sys.executable
+        assert cmd[1].endswith("python/cli.py")
+        assert cmd[2:4] == ["agent", "launch-review"]
+
+
 def test_allow_flag_accepts_dot_slash_prefixed_script(tmp_path: Path) -> None:
     script = REPO_ROOT / "skills" / "design" / "scripts" / "fixtures" / "validate-plan-commands" / "demo-stdout-help.sh"
     plan = f"""### UPDATED: {script.relative_to(REPO_ROOT)}

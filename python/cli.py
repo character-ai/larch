@@ -23,6 +23,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("agent", "degraded-tools-gate"): ("agents", "degraded_tools_gate_main"),
     ("agent", "parse-codex-usage"): ("agents", "parse_codex_usage_main"),
     ("agent", "run-external-agent"): ("agents", "run_external_agent_main"),
+    ("agent", "launch-review"): ("agents", "launch_review_main"),
     ("agent", "wait-reviewers"): ("review_dispatch", "wait_reviewers_main"),
     ("agent", "classify-diff"): ("review_dispatch", "classify_diff_main"),
     ("agent", "gather-branch-context"): ("review_dispatch", "gather_branch_context_main"),

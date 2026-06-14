@@ -66,13 +66,13 @@ Use `run_in_background: true` + `timeout: 1260000` on Bash tool calls for extern
 **Cursor framing** (when `cursor_available`):
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool cursor --output "$DESIGN_TMPDIR/cursor-brainstorm-output.txt" --timeout 1200 --timing-task-kind cursor-brainstorm --prompt "<CURSOR_BRAINSTORM_ASSEMBLED_PROMPT>"
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent launch-review --tool cursor --output "$DESIGN_TMPDIR/cursor-brainstorm-output.txt" --timeout 1200 --timing-task-kind cursor-brainstorm --prompt "<CURSOR_BRAINSTORM_ASSEMBLED_PROMPT>"
 ```
 
 **Codex scope** (when `codex_available`):
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool codex --output "$DESIGN_TMPDIR/codex-brainstorm-output.txt" --timeout 1200 --timing-task-kind codex-brainstorm --prompt "<CODEX_BRAINSTORM_ASSEMBLED_PROMPT>"
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent launch-review --tool codex --output "$DESIGN_TMPDIR/codex-brainstorm-output.txt" --timeout 1200 --timing-task-kind codex-brainstorm --prompt "<CODEX_BRAINSTORM_ASSEMBLED_PROMPT>"
 ```
 
 **Always-Claude pragmatic**: run in the parent session (Agent or inline) using `<BRAINSTORM_PRAGMATIC_PROMPT>` embedded in `<CLAUDE_BRAINSTORM_ASSEMBLED_PROMPT>`; merge result into synthesis input (no `collect-agent-results.sh` row required for a purely in-session path).

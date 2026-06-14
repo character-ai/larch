@@ -1390,10 +1390,14 @@ def revise_plan_with_waterfall_main(argv: list[str]) -> int:
     patch_format = args.patch_format
     fallback = False
     launchers = {
-        "codex": [os.environ.get("LARCH_TEST_LAUNCH_CODEX_REVIEW", str(plugin / "scripts" / "launch-review.sh")), "--tool", "codex"],
-        "cursor": [os.environ.get("LARCH_TEST_LAUNCH_CURSOR_REVIEW", str(plugin / "scripts" / "launch-review.sh")), "--tool", "cursor"],
+        "codex": [sys.executable, os.environ.get("LARCH_TEST_PY_CLI", str(plugin / "python" / "cli.py")), "agent", "launch-review", "--tool", "codex"],
+        "cursor": [sys.executable, os.environ.get("LARCH_TEST_PY_CLI", str(plugin / "python" / "cli.py")), "agent", "launch-review", "--tool", "cursor"],
         "claude": [sys.executable, os.environ.get("LARCH_TEST_PY_CLI", str(plugin / "python" / "cli.py")), "agent", "launch-claude-review"],
     }
+    if os.environ.get("LARCH_TEST_LAUNCH_CODEX_REVIEW"):
+        launchers["codex"] = [os.environ["LARCH_TEST_LAUNCH_CODEX_REVIEW"], "--tool", "codex"]
+    if os.environ.get("LARCH_TEST_LAUNCH_CURSOR_REVIEW"):
+        launchers["cursor"] = [os.environ["LARCH_TEST_LAUNCH_CURSOR_REVIEW"], "--tool", "cursor"]
     if os.environ.get("LARCH_TEST_LAUNCH_CLAUDE_REVIEW"):
         launchers["claude"] = [os.environ["LARCH_TEST_LAUNCH_CLAUDE_REVIEW"]]
     design_driver = os.environ.get("LARCH_TEST_DESIGN_DRIVER", str(plugin / "skills" / "design" / "scripts" / "design-driver.sh"))

@@ -504,6 +504,54 @@ cmd_json_shape_valid_for_tool() {
     return 0
 }
 
+cmd_json_requires_outer_launcher() {
+    local orig_output="$1"
+    local tool="$2"
+    shift 2
+    if [[ -f "${orig_output}.prompt" ]]; then
+        return 0
+    fi
+    case "$tool" in
+        cursor)
+            [[ $# -ge 2 ]] || return 1
+            [[ "$(basename "$1")" == "cursor" ]] || return 1
+            [[ "$2" == "agent" ]] || return 1
+            local arg mode="" expect_mode=0
+            for arg in "$@"; do
+                if [[ "$expect_mode" == "1" ]]; then
+                    mode="$arg"
+                    expect_mode=0
+                    continue
+                fi
+                if [[ "$arg" == "--mode" ]]; then
+                    expect_mode=1
+                fi
+            done
+            [[ "$mode" == "ask" ]]
+            ;;
+        codex)
+            [[ $# -ge 2 ]] || return 1
+            [[ "$(basename "$1")" == "codex" ]] || return 1
+            [[ "$2" == "exec" ]] || return 1
+            local arg sandbox="" expect_sandbox=0
+            for arg in "$@"; do
+                if [[ "$expect_sandbox" == "1" ]]; then
+                    sandbox="$arg"
+                    expect_sandbox=0
+                    continue
+                fi
+                if [[ "$arg" == "--sandbox" ]]; then
+                    expect_sandbox=1
+                fi
+            done
+            [[ "$sandbox" == "read-only" ]]
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 parse_retry_meta() {
     local meta_path="$1"
     META_TOOL=""
@@ -713,36 +761,16 @@ launch_outer_retry_or_mark() {
         *..*) mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: OUTER_LAUNCHER contains .."; return 1 ;;
     esac
     _outer_launcher_kind=""
-    _expected_launcher=""
     case "$META_OUTER_LAUNCHER" in
+        "agent launch-review") _outer_launcher_kind="review" ;;
         "agent launch-codex-exec") _outer_launcher_kind="codex-exec" ;;
+        */launch-review"."sh|launch-review"."sh)
+            mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: retired review OUTER_LAUNCHER metadata is no longer accepted"
+            return 1
+            ;;
         *)
-            _launcher_base=$(basename "$META_OUTER_LAUNCHER")
-            case "$_launcher_base" in
-                launch-review.sh) _expected_launcher="$SCRIPT_DIR/launch-review.sh"; _outer_launcher_kind="review" ;;
-                launch-codex-exec.sh) _outer_launcher_kind="codex-exec" ;;
-                *) mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: OUTER_LAUNCHER not canonical launch-review.sh or agent launch-codex-exec"; return 1 ;;
-            esac
-            if [[ "$_outer_launcher_kind" != "codex-exec" ]]; then
-            if ! _expected_launcher_dir=$(cd "$(dirname "$_expected_launcher")" 2>/dev/null && pwd -P 2>/dev/null); then
-                mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: OUTER_LAUNCHER not canonical $(basename "$_expected_launcher")"
-                return 1
-            fi
-            if ! _candidate_launcher_dir=$(cd "$(dirname "$META_OUTER_LAUNCHER")" 2>/dev/null && pwd -P 2>/dev/null); then
-                mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: OUTER_LAUNCHER not canonical $(basename "$_expected_launcher")"
-                return 1
-            fi
-            _expected_launcher_canonical="$_expected_launcher_dir/$(basename "$_expected_launcher")"
-            _candidate_canonical="$_candidate_launcher_dir/$(basename "$META_OUTER_LAUNCHER")"
-            if [[ "$_candidate_canonical" != "$_expected_launcher_canonical" ]]; then
-                mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: OUTER_LAUNCHER not canonical $(basename "$_expected_launcher")"
-                return 1
-            fi
-            if [[ ! -f "$META_OUTER_LAUNCHER" || -L "$META_OUTER_LAUNCHER" || ! -x "$META_OUTER_LAUNCHER" ]]; then
-                mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: OUTER_LAUNCHER not a regular non-symlink executable file"
-                return 1
-            fi
-            fi
+            mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: OUTER_LAUNCHER not canonical agent launch-review or agent launch-codex-exec"
+            return 1
             ;;
     esac
     _expected_prompt="${orig_output}.prompt"
@@ -772,16 +800,24 @@ launch_outer_retry_or_mark() {
         validate_retry_stderr_sink_or_mark "$idx" "$orig_output" || return 1
         _outer_sink_args=()
         [[ -n "$META_STDERR_SINK" ]] && _outer_sink_args+=(--stderr-sink "$META_STDERR_SINK")
+        _outer_timing_kind="$META_OUTER_LAUNCHER_TIMING_KIND"
+        if [[ -z "$_outer_timing_kind" ]]; then
+            case "$META_TOOL" in
+                codex) _outer_timing_kind="${LARCH_TIMING_TASK_KIND:-codex-review}" ;;
+                cursor) _outer_timing_kind="${LARCH_TIMING_TASK_KIND:-cursor-review}" ;;
+            esac
+        fi
         (
             cd "$META_OUTER_LAUNCHER_WORKDIR" || exit 1
             env -u LARCH_ALLOW_TEST_HOOKS \
                 -u LARCH_TEST_TRAP_AFTER_INNER_DONE_FILE \
                 -u LARCH_TEST_TRAP_AFTER_INNER_DONE \
-                -- "$META_OUTER_LAUNCHER" \
+                -- python3 "$SCRIPT_DIR/../python/cli.py" agent launch-review \
                     --tool "$META_TOOL" \
                     --output "$retry_output" \
                     --timeout "$timeout_value" \
                     --risk "$META_OUTER_LAUNCHER_RISK" \
+                    --timing-task-kind "$_outer_timing_kind" \
                     --prompt-file "$prompt_file" \
                     "${_outer_sink_args[@]+"${_outer_sink_args[@]}"}"
         ) >/dev/null 2>&1 &
@@ -876,6 +912,11 @@ launch_cmd_json_retry_or_mark() {
     fi
     if [[ "$_shape_rc" != "0" ]]; then
         mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: CMD_JSON argv shape rejected for $META_TOOL"
+        return 1
+    fi
+
+    if cmd_json_requires_outer_launcher "$orig_output" "$META_TOOL" "${CMD_ARR[@]}"; then
+        mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: review-shaped CMD_JSON requires outer launcher metadata"
         return 1
     fi
 
@@ -1120,6 +1161,12 @@ if [[ ${#RETRY_FILES[@]} -gt 0 ]]; then
         if [[ "$_shape_rc" != "0" ]]; then
             IDX="${RETRY_INDICES[$j]}"
             mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: CMD_JSON argv shape rejected for $META_TOOL"
+            continue
+        fi
+
+        if cmd_json_requires_outer_launcher "$ORIG_OUTPUT" "$META_TOOL" "${CMD_ARR[@]}"; then
+            IDX="${RETRY_INDICES[$j]}"
+            mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: review-shaped CMD_JSON requires outer launcher metadata"
             continue
         fi
 

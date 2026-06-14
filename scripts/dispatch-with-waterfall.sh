@@ -292,9 +292,9 @@ launch_slot() {
             [[ "$COMPETITION_NOTICE" == "true" ]] && competition_args+=(--competition-notice)
             [[ -n "$COMPETITION_NOTICE_FILE" ]] && competition_args+=(--competition-notice-file "$COMPETITION_NOTICE_FILE")
             if [[ -n "$prompt_file" ]]; then
-                "$SCRIPT_DIR/launch-review.sh" --tool "$tool" --output "$output" --prompt-file "$prompt_file" --mode "$MODE" --timeout "$TIMEOUT" --timing-task-kind "$timing" "${common_args[@]+"${common_args[@]}"}" "${competition_args[@]+"${competition_args[@]}"}"
+                python3 "$SCRIPT_DIR/../python/cli.py" agent launch-review --tool "$tool" --output "$output" --prompt-file "$prompt_file" --mode "$MODE" --timeout "$TIMEOUT" --timing-task-kind "$timing" "${common_args[@]+"${common_args[@]}"}" "${competition_args[@]+"${competition_args[@]}"}"
             else
-                "$SCRIPT_DIR/launch-review.sh" --tool "$tool" --output "$output" --agent-file "$agent" --mode "$MODE" --timeout "$TIMEOUT" --timing-task-kind "$timing" "${common_args[@]+"${common_args[@]}"}" "${competition_args[@]+"${competition_args[@]}"}"
+                python3 "$SCRIPT_DIR/../python/cli.py" agent launch-review --tool "$tool" --output "$output" --agent-file "$agent" --mode "$MODE" --timeout "$TIMEOUT" --timing-task-kind "$timing" "${common_args[@]+"${common_args[@]}"}" "${competition_args[@]+"${competition_args[@]}"}"
             fi
             rc=$?
             [[ -f "${output}.done" ]] || printf '%s\n' "$rc" > "${output}.done"
