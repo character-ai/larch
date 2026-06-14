@@ -213,6 +213,20 @@ phase_indices=()
 phase_outputs=()
 phase_tools=()
 
+_waterfall_kill_active_pids() {
+    local _pid
+    local _active_pids=("${pids[@]+"${pids[@]}"}")
+    for _pid in "${_active_pids[@]+"${_active_pids[@]}"}"; do
+        kill -TERM "$_pid" 2>/dev/null || true
+    done
+    for _pid in "${_active_pids[@]+"${_active_pids[@]}"}"; do
+        wait "$_pid" 2>/dev/null || true
+    done
+    pids=()
+}
+trap _waterfall_kill_active_pids EXIT
+trap '_waterfall_kill_active_pids; exit 143' TERM
+
 reset_phase() {
     pids=()
     phase_indices=()
@@ -278,6 +292,7 @@ collect_phase() {
     for pid in "${pids[@]+"${pids[@]}"}"; do
         wait "$pid" || true
     done
+    pids=()
 
     # Split summary into per-slot blocks by position (same order as argv to
     # collect-agent-results.sh). This avoids the retry-path mismatch where

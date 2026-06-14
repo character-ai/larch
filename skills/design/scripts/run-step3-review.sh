@@ -470,8 +470,15 @@ if [[ "$STEP3_MODE" == loop ]]; then
     [[ -d "$PLUGIN_ROOT" ]] || fail "plugin root not a directory: $PLUGIN_ROOT"
     export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"
     validate_step3_loop_starting_round
+    _review_loop_sh="${RUN_STEP3_REVIEW_LOOP_SH:-$PLUGIN_ROOT/skills/design/scripts/review-design-step3-loop.sh}"
+    [[ -r "$_review_loop_sh" ]] || fail "review-design-step3-loop.sh not readable: $_review_loop_sh"
+    # design-step3-review.sh enables monitor mode so the loop process gets its
+    # own process group. Disable monitor mode inside the loop process so
+    # background descendants stay in that group and the wrapper's
+    # `kill -- -$_loop_pid` reaches them.
+    set +m 2>/dev/null || true
     # shellcheck source=skills/design/scripts/review-design-step3-loop.sh
-    source "$PLUGIN_ROOT/skills/design/scripts/review-design-step3-loop.sh"
+    source "$_review_loop_sh"
     run_design_step3_loop
 else
     run_step3_round_body

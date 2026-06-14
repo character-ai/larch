@@ -109,6 +109,13 @@ assert_line() {
     grep -Fxq "$expected" <<< "$output" || { echo "FAIL: missing $expected" >&2; printf '%s\n' "$output" >&2; exit 1; }
 }
 
+grep -Fq '_waterfall_kill_active_pids()' "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
+    || { echo "FAIL: missing waterfall cleanup helper" >&2; exit 1; }
+grep -Fq 'trap _waterfall_kill_active_pids EXIT' "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
+    || { echo "FAIL: missing waterfall EXIT trap" >&2; exit 1; }
+grep -Fq 'kill -TERM "$_pid"' "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
+    || { echo "FAIL: cleanup helper must TERM active phase wrapper PIDs" >&2; exit 1; }
+
 manifest="$TMPROOT/slots.ndjson"
 printf '{"slot":"s1","tool":"codex","output":"%s","prompt_file":"%s"}\n' "$TMPROOT/codex-slot.txt" "$prompt" > "$manifest"
 out=$(PATH="$STUB_BIN:$PATH" CODEX_STUB_FAIL=true "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \

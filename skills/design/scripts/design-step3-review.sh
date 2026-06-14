@@ -319,11 +319,22 @@ _step3_review_teardown_loop_group() {
   kill -- -"$_pid" 2>/dev/null || true
 }
 
+_step3_review_kill_tmpdir_processes() {
+  local _cli=""
+  [[ -n "${CLAUDE_PLUGIN_ROOT:-}" ]] || return 0
+  [[ -n "${DESIGN_TMPDIR:-}" ]] || return 0
+  command -v python3 >/dev/null 2>&1 || return 0
+  _cli="${CLAUDE_PLUGIN_ROOT}/python/cli.py"
+  [[ -f "$_cli" ]] || return 0
+  python3 "$_cli" session kill-background-processes --design-tmpdir "$DESIGN_TMPDIR" >/dev/null 2>&1 || true
+}
+
 _step3_review_cleanup() {
   local _rc=$?
   trap - EXIT
   if [[ -n "${_loop_pid:-}" ]]; then
     _step3_review_teardown_loop_group "$_loop_pid"
+    _step3_review_kill_tmpdir_processes
     wait "$_loop_pid" 2>/dev/null || true
   fi
   if [[ "${_step3_review_monitor_enabled_by_wrapper:-0}" -eq 1 ]]; then
@@ -372,6 +383,7 @@ wait "$_loop_pid"
 _plan_review_rc=$?
 set -e
 _step3_review_teardown_loop_group "$_loop_pid"
+_step3_review_kill_tmpdir_processes
 _loop_pid=""
 trap - EXIT
 if [[ "${_step3_review_monitor_enabled_by_wrapper:-0}" -eq 1 ]]; then

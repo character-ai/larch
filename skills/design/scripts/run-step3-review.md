@@ -18,7 +18,9 @@
 
 ## Loop mode
 
-`--mode loop` sources `review-design-step3-loop.sh` and calls `run_design_step3_loop()`. The loop invokes the same shared round body used by single-round mode, so `run-step3-review.sh` remains the sole writer of `review-round-count.txt`.
+`--mode loop` disables monitor mode before sourcing `review-design-step3-loop.sh` and calling `run_design_step3_loop()`. `design-step3-review.sh` launches the loop in a wrapper-owned process group; disabling monitor mode inside the loop keeps `plan-review-loop.sh` descendants in that group so wrapper cleanup can reach them. `RUN_STEP3_REVIEW_LOOP_SH` is a test seam for the sourced loop driver.
+
+The loop invokes the same shared round body used by single-round mode, so `run-step3-review.sh` remains the sole writer of `review-round-count.txt`.
 
 Resume validation follows the last-consumed-round contract:
 
@@ -35,7 +37,7 @@ The loop emits `STEP3_REVIEW_LOOP_STATUS` with values `complete`, `cap-hit`, `ma
 1. Review-round cap entry guard → `.step3-review-cap.env`.
 2. Symlink-safe cleanup of only the active `plan-review/round-<ROUND_NUM>` slot before launch.
 4. Pending round persist to `review-round-count.txt` before launch.
-5. Foreground `plan-review-loop.sh` (`RUN_STEP3_PLAN_REVIEW_LOOP_SH` override for tests), passing both `--round-num "$ROUND_NUM"` and `--prune-round-num "$STEP3_REVIEW_ROUND_NUM"`.
+5. Foreground `plan-review-loop.sh` (`RUN_STEP3_PLAN_REVIEW_LOOP_SH` override for the nested plan-review subprocess), passing both `--round-num "$ROUND_NUM"` and `--prune-round-num "$STEP3_REVIEW_ROUND_NUM"`.
 6. Parse `.step3-plan-review-result.env` + stdout fallback; normalize `LOOP_STATUS`.
 7. Persist vs rollback `review-round-count.txt` on `tally-error` / `degraded-empty-collector`.
 8. Atomic write `$DESIGN_TMPDIR/.step3-review-result.env` + `emit_kv` breadcrumbs.

@@ -46,6 +46,8 @@ Robust alternatives (pick whichever fits the task):
 2. **Use a heredoc with a quoted delimiter.** `python3 <<'PY' ... PY` or `bash <<'EOF' ... EOF` lets you put arbitrary content in the body without escaping (since the quoted delimiter disables variable expansion and unquoting).
 3. **Pipe stdin.** `printf '<script>' | python3 -` accepts the script as stdin and avoids quoting the body as a shell argument.
 
+Avoid `cat > file << EOF` with `${LARGE_VAR}` expansion inside `run_in_background` tool calls. Prefer the Write tool for large generated content or a file-backed handoff. Quoted heredocs remain fine for literal scripts, but not for expanding large runtime variables into the heredoc body.
+
 When you encounter a shell parse error (`unexpected EOF while looking for matching` …), do NOT iteratively patch escapes. Switch to one of the robust alternatives.
 
 ## 3. Bash 3.2 Portability

@@ -98,7 +98,7 @@ for case_dir in \
     degraded panel weird revision-failed-rc main-agent-rc stale file-precedence \
     invalid-cap-real integration-seam breadcrumb-rounds scope-preference stale-implement \
     scope-ok scope-desync scope-stale-tally-error scope-bad scope-outside scope-empty \
-    scope-recover symlink-inner symlink-outer symlink-outer-cap mark-skipped-entry \
+    scope-recover symlink-inner symlink-outer symlink-outer-cap monitor-mode mark-skipped-entry \
     mark-no-duplicate; do
     mkdir -p "$TMP/$case_dir"
 done
@@ -180,6 +180,43 @@ printf 'awaiting-continuation\n' >"$D_LOOP_VAL/.step3-round-2.phase"
 cont_stub="$(write_loop_stub "$D_LOOP_VAL" "printf 'PLAN_REVIEW_CONTINUE=false\nPLAN_REVIEW_CONTINUE_REASON=small-clean\nACCEPTED_COUNT=0\nDEGRADED_PANEL=0\n'")"
 out=$("${launcher_env[@]}" RUN_STEP3_CONTINUATION_SH="$cont_stub" "$LAUNCHER" --design-tmpdir "$D_LOOP_VAL" --mode loop --starting-round 2)
 assert_contains "$out" 'STEP3_REVIEW_LOOP_STATUS=complete' '--mode loop resumes with phase evidence'
+
+echo "=== --mode loop disables monitor mode before sourcing loop driver ==="
+D_MON="$TMP/monitor-mode"
+if bash -m -c 'case $- in *m*) exit 0;; *) exit 97;; esac' >/dev/null 2>&1; then
+    monitor_state_file="$D_MON/monitor-state.txt"
+    review_loop_stub="$D_MON/review-loop-stub.sh"
+    cat >"$review_loop_stub" <<'STUBEOF'
+case $- in
+    *m*) printf 'on\n' >"$MONITOR_STATE_FILE" ;;
+    *) printf 'off\n' >"$MONITOR_STATE_FILE" ;;
+esac
+
+run_design_step3_loop() {
+    printf '%s\n' \
+        'STEP3_REVIEW_LOOP_STATUS=complete' \
+        'LOOP_STATUS=complete' \
+        'TALLY_PLAN_REVIEW_STATUS=ok' \
+        'STEP3_REVIEW_CAP_REACHED=false' \
+        'ROUNDS_COMPLETED=1' \
+        'REVIEW_ROUND_COUNT=1'
+}
+STUBEOF
+    set +e
+    out=$(MONITOR_STATE_FILE="$monitor_state_file" "${launcher_env[@]}" RUN_STEP3_REVIEW_LOOP_SH="$review_loop_stub" \
+        bash -m "$LAUNCHER" --design-tmpdir "$D_MON" --mode loop 2>&1)
+    rc=$?
+    set -e
+    if [[ "$rc" -eq 0 ]]; then
+        pass 'bash -m loop seam exits 0'
+    else
+        fail "bash -m loop seam rc=$rc output=${out:0:300}"
+    fi
+    assert_file_equals "$monitor_state_file" 'off' 'loop source sees monitor mode disabled'
+    assert_contains "$out" 'STEP3_REVIEW_LOOP_STATUS=complete' 'loop source seam returns complete envelope'
+else
+    pass 'bash -m monitor preflight unavailable; skipping monitor-mode assertion'
+fi
 
 echo "=== --mode loop rejects --round-num misuse ==="
 set +e

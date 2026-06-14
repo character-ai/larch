@@ -151,3 +151,45 @@ grep -Fq 'STEP3_REVIEW_LOOP_STATUS=' <<<"$zfdp_out" && fail 'legacy zero-finding
 grep -Fq '**⚠ Step 3: result env missing or empty after loop exit; treating as panel-failed**' "$D_ZFDP/stderr.log" && fail 'zero-findings-degraded-panel must not trigger missing-result warning'
 rm -rf "$D_ZFDP"
 pass 'Step 3 wrapper preserves legacy LOOP_STATUS=zero-findings-degraded-panel'
+
+D_KILL=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-kill-helper.XXXXXX")
+FAKE_KILL="$D_KILL/fake-plugin"
+make_fake_step3_plugin "$FAKE_KILL" '{
+  printf "%s\n" "loop" >> "$ORDER_LOG"
+  cat > "$DESIGN_TMPDIR/.step3-review-result.env" <<RESULT
+STEP3_REVIEW_LOOP_STATUS=complete
+LOOP_STATUS=complete
+TALLY_PLAN_REVIEW_STATUS=ok
+STEP3_REVIEW_CAP_REACHED=false
+ROUNDS_COMPLETED=1
+REVIEW_ROUND_COUNT=1
+RESULT
+}'
+mkdir -p "$FAKE_KILL/python"
+cat >"$FAKE_KILL/python/cli.py" <<'PYEOF'
+from __future__ import annotations
+
+import os
+import sys
+
+with open(os.environ["ORDER_LOG"], "a", encoding="utf-8") as handle:
+    handle.write("helper " + " ".join(sys.argv[1:]) + "\n")
+raise SystemExit(int(os.environ.get("HELPER_RC", "0")))
+PYEOF
+order_log="$D_KILL/order.log"
+set +e
+kill_out=$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$FAKE_KILL" DESIGN_TMPDIR="$D_KILL" ISSUE_NUMBER=9 \
+  ORDER_LOG="$order_log" HELPER_RC=73 "$WRAPPER" 2>"$D_KILL/stderr.log")
+kill_rc=$?
+set -e
+[[ "$kill_rc" -eq 0 ]] || fail "kill helper wrapper rc=$kill_rc stdout=$kill_out stderr=$(cat "$D_KILL/stderr.log")"
+grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=complete' <<<"$kill_out" || fail 'kill helper failure should preserve complete envelope'
+grep -Fxq 'loop' "$order_log" || fail 'loop marker missing before kill helper'
+grep -Fq 'helper session kill-background-processes --design-tmpdir' "$order_log" || fail 'kill helper argv missing'
+if ! awk 'BEGIN { loop=0; helper=0 } $0=="loop" { loop=NR } /^helper / { helper=NR } END { exit !(loop > 0 && helper > loop) }' "$order_log"; then
+  fail 'kill helper must run after loop marker'
+fi
+rm -rf "$D_KILL"
+pass 'Step 3 wrapper invokes tmpdir kill helper after loop and ignores helper failure'
+
+pass 'design-step3-review.sh checks passed'
