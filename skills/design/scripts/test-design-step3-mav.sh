@@ -362,8 +362,8 @@ SKILL_FILE="$ROOT/skills/design/SKILL.md"
 PLAN_REVIEW_FILE="$ROOT/skills/design/references/plan-review.md"
 APPROVAL_GATES_FILE="$ROOT/skills/design/references/approval-gates.md"
 assert_file_contains "$SKILL_FILE" 'design-step3-mav.sh --phase pre' 'SKILL delegates MAV pre phase'
-assert_file_contains "$SKILL_FILE" '"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-mav.sh --phase pre' 'SKILL pins MAV pre launcher fence'
-assert_file_contains "$SKILL_FILE" '"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-mav.sh --phase post' 'SKILL pins MAV post launcher fence'
+assert_file_contains "$SKILL_FILE" "\"\$HOME/.cache/larch/sessions/design-run-\$PPID.sh\" design-step3-mav.sh --phase pre" 'SKILL pins MAV pre launcher fence'
+assert_file_contains "$SKILL_FILE" "\"\$HOME/.cache/larch/sessions/design-run-\$PPID.sh\" design-step3-mav.sh --phase post" 'SKILL pins MAV post launcher fence'
 assert_file_contains "$SKILL_FILE" 'DESIGN_STEP3_MAV_KV_BEGIN' 'SKILL parses MAV trusted sentinel'
 assert_file_contains "$PLAN_REVIEW_FILE" 'design-step3-mav.sh --phase pre' 'plan-review delegates MAV pre phase'
 if ( command grep -Fq '_RETALLY_SCOPE_ANCHOR_IN' "$SKILL_FILE" "$PLAN_REVIEW_FILE" "$APPROVAL_GATES_FILE" ); then fail 'prose should not contain prompt-side retally anchor binding'; else pass 'prose removed prompt-side retally anchor binding'; fi
