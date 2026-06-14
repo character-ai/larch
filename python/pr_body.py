@@ -22,6 +22,7 @@ import gh
 import git
 import proc
 import redact
+import report_tokens_cost
 import tracking_issue
 from errors import ShipError
 from proc import CommandResult, Runner
@@ -442,13 +443,12 @@ def render_run_summary_main(argv: list[str] | None = None) -> int:
     total_tokens = sum(int(getattr(args, a.replace("-", "_")) or 0) for a in ("claude-tokens", "codex-tokens", "cursor-tokens", "claude-sub-tokens"))
     if not cost_unavailable:
         try:
-            from report_tokens_cost import token_cost_from_args as _tc
             token_argv = []
             for name in _TOKEN_COST_ARGS:
                 val = getattr(args, name.replace("-", "_"), "0") or "0"
                 if val != "0":
                     token_argv += [f"--{name}", val]
-            cost_kv = _tc(token_argv)
+            cost_kv = report_tokens_cost.token_cost_from_args(token_argv)
             total_cost = _read_kv(cost_kv, "TOTAL_COST")
             claude_cost = _read_kv(cost_kv, "CLAUDE_COST")
             codex_cost = _read_kv(cost_kv, "CODEX_COST")
