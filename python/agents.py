@@ -3219,6 +3219,18 @@ def _review_failure_source(output: Path, *, sink: str = "") -> Path:
     return output.with_suffix(output.suffix + ".diag")
 
 
+def _review_brainstorm_failure_uses_sink(timing_kind: str, stderr_sink: str) -> bool:
+    return bool(stderr_sink) and timing_kind in ("codex-brainstorm", "cursor-brainstorm")
+
+
+def _review_write_failure_sink(output: Path, stderr_sink: str, launcher_exit: int) -> None:
+    diag = output.with_suffix(output.suffix + ".diag")
+    content = diag.read_text(encoding="utf-8", errors="replace") if diag.is_file() else f"STATUS=FAILED\nLAUNCHER_EXIT={launcher_exit}\n"
+    if "LAUNCHER_EXIT=" not in content:
+        content += f"LAUNCHER_EXIT={launcher_exit}\n"
+    _write(Path(stderr_sink), content)
+
+
 def _review_append_launch_failure(
     *,
     output: Path,
@@ -3794,7 +3806,10 @@ def _review_launch_cursor(args: argparse.Namespace, original_prompt: str) -> int
     finally:
         _review_cleanup_cursor_config_dir(cfg_tmp, old_cfg)
     if result.exit_code != 0:
-        _review_append_launch_failure(output=output, tool="cursor", exit_code=result.exit_code, stderr_sink=args.stderr_sink, auth_attempt=auth_attempt, transient_attempt=transient_attempt)
+        if _review_brainstorm_failure_uses_sink(timing_kind, args.stderr_sink):
+            _review_write_failure_sink(output, args.stderr_sink, result.exit_code)
+        else:
+            _review_append_launch_failure(output=output, tool="cursor", exit_code=result.exit_code, stderr_sink=args.stderr_sink, auth_attempt=auth_attempt, transient_attempt=transient_attempt)
     else:
         _append(sidecar_path, "cursor-status: ok (no stderr emitted during agent run)\n")
     _review_append_outer_meta(
