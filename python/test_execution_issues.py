@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 import execution_issues
 
 
@@ -59,7 +61,10 @@ def test_flush_execution_issues_idempotent_when_sentinel_matches(tmp_path: Path)
     assert issue_log.read_text(encoding="utf-8") == ""
 
 
-def test_refresh_execution_issues_skips_when_issue_not_set(tmp_path: Path, capsys) -> None:  # type: ignore[no-untyped-def]
+def test_refresh_execution_issues_skips_when_issue_not_set(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     _ = (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=0\nRUN_ID=run-2\n", encoding="utf-8")
     _ = (tmp_path / "session-env.sh").write_text("REPO=owner/repo\n", encoding="utf-8")
 
@@ -71,7 +76,10 @@ def test_refresh_execution_issues_skips_when_issue_not_set(tmp_path: Path, capsy
     assert "REASON=issue-not-set" in out
 
 
-def test_flush_execution_issues_main_emits_kv_contract(tmp_path: Path, capsys) -> None:  # type: ignore[no-untyped-def]
+def test_flush_execution_issues_main_emits_kv_contract(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     issue_log = tmp_path / "execution-issues.md"
     _ = issue_log.write_text("### Warnings\n- one\n", encoding="utf-8")
     log_root = tmp_path / "larch-logs"
