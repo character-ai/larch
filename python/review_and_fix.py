@@ -32,8 +32,10 @@ _PY_CLI = _PLUGIN_ROOT / "python" / "cli.py"
 _FINDING_RE = re.compile(r"^### FINDING_[0-9]+:")
 _SKIPPED_RE = re.compile(r"^SKIPPED:\s*(FINDING_\d+)")
 _HIGH_RE = re.compile(
-    r"(^### FINDING_[0-9]+:[^\n]*(\*\*Important\*\*|\*\*Critical\*\*|\*\*High\*\*)"
+    r"(^### FINDING_[0-9]+:[^\n]*(\*\*Blocking\*\*|\*\*Important\*\*|\*\*Critical\*\*|\*\*High\*\*)"
+    r"|\*\*[Bb]locking\*\*"
     r"|\*\*[Ii]mportant\*\*"
+    r"|^- \*\*Concern\*\*:\s*\[[Bb]locking\](?:[\s,:;.\)]|$)"
     r"|^- \*\*Concern\*\*:\s*\[[Ii]mportant\](?:[\s,:;.\)]|$))"
 )
 _OOS_HEADING_RE = re.compile(r"^### FINDING_[0-9]+:.*\[(?:OUT_OF_SCOPE|OOS)\]")

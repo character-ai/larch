@@ -327,6 +327,71 @@ def test_cache_sessions_root_ignores_empty_or_relative_xdg(monkeypatch: pytest.M
     assert finalize.cache_sessions_root() == Path.home() / ".cache" / "larch" / "sessions"
 
 
+def test_kill_session_background_processes_returns_false_without_tmpdir(tmp_path: Path) -> None:
+    runner = RecordingRunner(strict=True)
+
+    assert finalize.kill_session_background_processes(runner, _ctx(tmp_path, tmpdir="")) is False
+    assert not runner.calls
+
+
+def test_kill_session_background_processes_returns_false_when_no_processes_match(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(finalize.os, "getpid", lambda: 200)
+    monkeypatch.setattr(finalize.os, "getppid", lambda: 100)
+    runner = RecordingRunner(
+        strict=True,
+        responses=[
+            CommandResult(("ps", "-o", "ppid=", "-p", "200"), 0, "100\n", "", 0.01),
+            CommandResult(("ps", "-o", "ppid=", "-p", "100"), 0, "50\n", "", 0.01),
+            CommandResult(("ps", "-o", "ppid=", "-p", "50"), 0, "1\n", "", 0.01),
+            CommandResult(("sh", "-c", "printf '%s %s' $$ ${PPID:-}"), 0, "300 100", "", 0.01),
+            CommandResult(("ps", "-o", "ppid=", "-p", "300"), 0, "\n", "", 0.01),
+            CommandResult(("sh", "-c", "process-list"), 0, "", "", 0.01),
+        ],
+    )
+
+    assert finalize.kill_session_background_processes(runner, _ctx(tmp_path)) is False
+
+    assert not any(call[:2] == ["kill", "-TERM"] for call in runner.calls)
+
+
+def test_kill_session_background_processes_tolerates_tmpdir_resolve_oserror(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(finalize.os, "getpid", lambda: 200)
+    monkeypatch.setattr(finalize.os, "getppid", lambda: 100)
+
+    class FailingPath:
+        def __init__(self, _value: str) -> None:
+            pass
+
+        def resolve(self, *, strict: bool = False) -> object:
+            _ = strict
+            raise OSError("resolve failed")
+
+    monkeypatch.setattr(finalize, "Path", FailingPath)
+    runner = RecordingRunner(
+        strict=True,
+        responses=[
+            CommandResult(("ps", "-o", "ppid=", "-p", "200"), 0, "100\n", "", 0.01),
+            CommandResult(("ps", "-o", "ppid=", "-p", "100"), 0, "50\n", "", 0.01),
+            CommandResult(("ps", "-o", "ppid=", "-p", "50"), 0, "1\n", "", 0.01),
+            CommandResult(("sh", "-c", "printf '%s %s' $$ ${PPID:-}"), 0, "300 100", "", 0.01),
+            CommandResult(("ps", "-o", "ppid=", "-p", "300"), 0, "\n", "", 0.01),
+            CommandResult(("sh", "-c", "process-list"), 0, "999\n", "", 0.01),
+            CommandResult(("kill", "-TERM", "999"), 0, "", "", 0.01),
+        ],
+    )
+
+    assert finalize.kill_session_background_processes(runner, _ctx(tmp_path)) is True
+
+    kill_calls = [call for call in runner.calls if call[:2] == ["kill", "-TERM"]]
+    assert kill_calls == [["kill", "-TERM", "999"]]
+
+
 def test_kill_session_background_processes_skips_live_python_ancestors(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
