@@ -353,22 +353,77 @@ def main(argv: list[str] | None = None) -> int:
     return 2
 
 
-def init_attempts_main(argv: list[str] | None = None) -> int: return main(["init-attempts", *(argv or [])])
-def classify_main(argv: list[str] | None = None) -> int: return main(["classify", *(argv or [])])
-def record_escalation_main(argv: list[str] | None = None) -> int: return main(["record-escalation", *(argv or [])])
-def normalize_outcome_main(argv: list[str] | None = None) -> int: return main(["normalize-outcome", *(argv or [])])
-def compose_report_main(argv: list[str] | None = None) -> int: return main(["compose-report", *(argv or [])])
-def dedup_tier_a_report_main(argv: list[str] | None = None) -> int: return main(["dedup-tier-a-report", *(argv or [])])
-def normalize_file_failure_report_env_main(argv: list[str] | None = None) -> int: return main(["normalize-file-failure-report-env", *(argv or [])])
-def normalize_issue_env_main(argv: list[str] | None = None) -> int: return main(["normalize-issue-env", *(argv or [])])
-def validate_token_main(argv: list[str] | None = None) -> int: return main(["validate-token", *(argv or [])])
-def validate_terminal_state_main(argv: list[str] | None = None) -> int: return main(["validate-terminal-state", *(argv or [])])
-def validate_tier_b_public_file_main(argv: list[str] | None = None) -> int: return main(["validate-tier-b-public-file", *(argv or [])])
-def populate_sensitive_corpus_main(argv: list[str] | None = None) -> int: return main(["populate-sensitive-corpus", *(argv or [])])
-def chat_print_main(argv: list[str] | None = None) -> int: return main(["chat-print", *(argv or [])])
-def record_attempt_main(argv: list[str] | None = None) -> int: return main(["record-attempt", *(argv or [])])
-def retry_policy_main(argv: list[str] | None = None) -> int: return main(["retry-policy", *(argv or [])])
-def is_larch_dev_clone_main(argv: list[str] | None = None) -> int: return main(["is-larch-dev-clone", *(argv or [])])
-def clear_stall_main(argv: list[str] | None = None) -> int: return main(["clear-stall", *(argv or [])])
-def seed_terminal_state_main(argv: list[str] | None = None) -> int: return main(["seed-terminal-state", *(argv or [])])
-def lint_main(argv: list[str] | None = None) -> int: return main(["lint", *(argv or [])])
+def init_attempts_main(argv: list[str] | None = None) -> int:
+    return main(["init-attempts", *(argv or [])])
+
+
+def classify_main(argv: list[str] | None = None) -> int:
+    return main(["classify", *(argv or [])])
+
+
+def record_escalation_main(argv: list[str] | None = None) -> int:
+    return main(["record-escalation", *(argv or [])])
+
+
+def normalize_outcome_main(argv: list[str] | None = None) -> int:
+    return main(["normalize-outcome", *(argv or [])])
+
+
+def compose_report_main(argv: list[str] | None = None) -> int:
+    return main(["compose-report", *(argv or [])])
+
+
+def dedup_tier_a_report_main(argv: list[str] | None = None) -> int:
+    return main(["dedup-tier-a-report", *(argv or [])])
+
+
+def normalize_file_failure_report_env_main(argv: list[str] | None = None) -> int:
+    return main(["normalize-file-failure-report-env", *(argv or [])])
+
+
+def normalize_issue_env_main(argv: list[str] | None = None) -> int:
+    return main(["normalize-issue-env", *(argv or [])])
+
+
+def validate_token_main(argv: list[str] | None = None) -> int:
+    return main(["validate-token", *(argv or [])])
+
+
+def validate_terminal_state_main(argv: list[str] | None = None) -> int:
+    return main(["validate-terminal-state", *(argv or [])])
+
+
+def validate_tier_b_public_file_main(argv: list[str] | None = None) -> int:
+    return main(["validate-tier-b-public-file", *(argv or [])])
+
+
+def populate_sensitive_corpus_main(argv: list[str] | None = None) -> int:
+    return main(["populate-sensitive-corpus", *(argv or [])])
+
+
+def chat_print_main(argv: list[str] | None = None) -> int:
+    return main(["chat-print", *(argv or [])])
+
+
+def record_attempt_main(argv: list[str] | None = None) -> int:
+    return main(["record-attempt", *(argv or [])])
+
+
+def retry_policy_main(argv: list[str] | None = None) -> int:
+    return main(["retry-policy", *(argv or [])])
+
+
+def is_larch_dev_clone_main(argv: list[str] | None = None) -> int:
+    return main(["is-larch-dev-clone", *(argv or [])])
+
+
+def clear_stall_main(argv: list[str] | None = None) -> int:
+    return main(["clear-stall", *(argv or [])])
+
+
+def seed_terminal_state_main(argv: list[str] | None = None) -> int:
+    return main(["seed-terminal-state", *(argv or [])])
+
+
+def lint_main(argv: list[str] | None = None) -> int:
+    return main(["lint", *(argv or [])])

@@ -19,7 +19,6 @@ import gh
 import git
 import proc
 import redact
-import run_logs
 import tracking_issue
 from errors import ShipError
 from proc import Runner
@@ -36,6 +35,17 @@ _FENCE_RE = re.compile(r"^(\s{0,3})(`{3,})([^`]*)$")
 _FLOWCHART_START = re.compile(r"^(flowchart|graph)(\s|$)")
 _OPEN_BRACKET = frozenset("[{(")
 _CLOSE_BRACKET = frozenset("]})")
+
+
+def _path_under_repo(repo_root: Path, rel_path: str) -> bool:
+    if "\x00" in rel_path or rel_path.startswith("/") or ".." in rel_path.split("/"):
+        return False
+    try:
+        resolved = (repo_root / rel_path).resolve()
+        _ = resolved.relative_to(repo_root.resolve())
+    except ValueError:
+        return False
+    return True
 
 
 def flowchart_rejects_pipe(line: str) -> bool:
@@ -101,7 +111,7 @@ def compose_summary_bullets(
     except ValueError as exc:
         msg = f"plan-goals path escapes repo root: {plan_goals_file}"
         raise ShipError(msg) from exc
-    if not run_logs.path_under_repo(repo_root, str(rel)):
+    if not _path_under_repo(repo_root, str(rel)):
         msg = f"plan-goals path escapes repo root: {plan_goals_file}"
         raise ShipError(msg)
     if not goals_file.is_file() or goals_file.stat().st_size == 0:
@@ -576,15 +586,18 @@ def step18b_final_report(implement_tmpdir: Path) -> tuple[bool, int, bool, str]:
             with contextlib.suppress(OSError):
                 pre.unlink()
     wfr_rc, _url, _err = write_final_report(implement_tmpdir)
-    if (
+    summary_present = summary.is_file() and summary.stat().st_size > 0
+    snapshot_changed = pre.is_file() and pre.read_bytes() != summary.read_bytes()
+    snapshot_unavailable = snapshot_ok in {"absent", "false"}
+    should_emit_updated_body = (
         wfr_rc == 0
-        and summary.is_file()
-        and summary.stat().st_size > 0
+        and summary_present
         and not emit_body
-        and (snapshot_ok in {"absent", "false"} or (pre.is_file() and pre.read_bytes() != summary.read_bytes()))
-    ):
+        and (snapshot_unavailable or snapshot_changed)
+    )
+    if should_emit_updated_body:
         emit_body = True
-    return (emit_body and wfr_rc == 0 and summary.is_file() and summary.stat().st_size > 0), wfr_rc, step17_present, snapshot_ok
+    return (emit_body and wfr_rc == 0 and summary_present), wfr_rc, step17_present, snapshot_ok
 
 
 def step18b_final_report_main(argv: list[str] | None = None) -> int:

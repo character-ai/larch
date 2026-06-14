@@ -299,7 +299,7 @@ def _next_oos_number(path: Path) -> int:
 def _append_run_log_warning(tmpdir: Path, entry: str) -> None:
     log = tmpdir / "execution-issues.md"
     try:
-        run_logs.append_entry_to_log(log, "Warnings", entry)
+        run_logs.append_execution_issue(log, "Warnings", entry)
         return
     except Exception as exc:
         _ = exc
