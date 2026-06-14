@@ -782,8 +782,6 @@ skills/design/scripts/design-step3-state.sh	#3680
 skills/design/scripts/design-step3-state.md	#3680
 skills/design/scripts/run-step3-review.sh	#3680
 skills/design/scripts/run-step3-review.md	#3680
-skills/design/scripts/review-design-step3-loop.sh	#3680
-skills/design/scripts/review-design-step3-loop.md	#3680
 skills/design/scripts/gate-b-dedup-plan.sh	#3680
 skills/design/scripts/gate-b-dedup-plan.md	#3680
 skills/design/scripts/lib-drift-baseline.sh	#3680
