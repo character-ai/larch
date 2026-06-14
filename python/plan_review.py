@@ -1240,6 +1240,8 @@ def round_revise_artifact_excluded(name: str) -> bool:
         ".failure-diag",
         ".json",
         ".stderr",
+        ".token-record",  # cursor/codex autofix token-usage sidecar
+        ".stderr-tail",  # codex autofix failure stderr tail
     )
     return name in {"revise.env", "prompt.txt"} or any(name.endswith(suffix) for suffix in suffixes)
 

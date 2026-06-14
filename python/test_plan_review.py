@@ -92,6 +92,8 @@ def test_round_artifact_allowlist_and_drift_baseline(tmp_path: Path) -> None:
     assert plan_review.round_artifact_included("round-summary.env")
     assert not plan_review.round_artifact_included("debug.txt")
     assert plan_review.round_revise_artifact_excluded("codex-output.txt")
+    assert plan_review.round_revise_artifact_excluded("cursor-output.txt.token-record")
+    assert plan_review.round_revise_artifact_excluded("codex-output.txt.stderr-tail")
     assert plan_review.drift_baseline_write_once(tmp_path, "10", "20") == 0
     assert (tmp_path / "drift-baseline.env").read_text(encoding="utf-8") == (
         "BASELINE_PLAN_LINES=10\nBASELINE_DIFF_LINES=20\n"

@@ -2,7 +2,7 @@
   "attempt": 1,
   "effort": "max",
   "flags": {},
-  "issue_number": null,
+  "issue_number": 4352,
   "larch_version": "50.0.10",
   "model_roster": {
     "main": "unknown"
@@ -10,14 +10,16 @@
   "operator_cwd": "<OPERATOR_CWD>",
   "operator_repo_root": "<REPO_ROOT>",
   "parent_skill": null,
-  "recovery_reason": "manifest_lost_mid_run",
-  "run_id": "run-1",
+  "run_id": "320BBED3-CEC2-4692-97B4-234965DE8B46",
   "schema_version": 2,
   "skill": "implement",
   "stalled_at_step": null,
-  "started_at": "2026-06-14T22:14:33Z",
+  "started_at": "2026-06-14T21:19:50Z",
   "status": "partial",
-  "steps_ran": {},
+  "steps_ran": {
+    "step8": false,
+    "step9a1": false
+  },
   "superseded_by": null,
-  "updated_at": "2026-06-14T22:14:33Z"
+  "updated_at": "2026-06-14T22:21:35Z"
 }
