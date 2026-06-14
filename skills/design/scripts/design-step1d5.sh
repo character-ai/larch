@@ -115,7 +115,7 @@ design_append_brainstorm_failure() {
     --exit-code "$_bf_exit_code" \
     --category "External Reviewer Issues" \
     --output-file "$_bf_output_file" \
-    --redact >/dev/null 2>&1 || true
+    --redact >/dev/null 2>&1
 }
 
 design_collect_launch_failure_once() {
@@ -125,25 +125,42 @@ design_collect_launch_failure_once() {
   _bc_sentinel="$DESIGN_TMPDIR/.brainstorm-$(basename "$_bc_log").runlog-appended"
   [ -e "$_bc_sentinel" ] && return 0
   _bc_exit_code=$(awk -F= '$1=="LAUNCHER_EXIT" && $2 ~ /^[0-9]+$/ { print $2; found=1; exit } END { if (!found) print "1" }' "$_bc_log" 2>/dev/null)
-  design_append_brainstorm_failure "$_bc_tool" "$_bc_log" "${_bc_exit_code:-1}"
-  : > "$_bc_sentinel"
+  if design_append_brainstorm_failure "$_bc_tool" "$_bc_log" "${_bc_exit_code:-1}"; then
+    : > "$_bc_sentinel"
+  fi
+}
+
+design_brainstorm_stderr_sink_for_output() {
+  _bc_out="$1"
+  _bc_meta="${_bc_out}.meta"
+  if [ -r "$_bc_meta" ]; then
+    _bc_sink=$(awk -F= '$1=="STDERR_SINK" { print $2; exit }' "$_bc_meta" 2>/dev/null)
+    if [ -n "${_bc_sink:-}" ]; then
+      printf '%s\n' "$_bc_sink"
+      return 0
+    fi
+  fi
+  case "$(basename "$_bc_out")" in
+    cursor-brainstorm-output.txt) printf '%s\n' "$DESIGN_TMPDIR/cursor-brainstorm-launch.failure.log" ;;
+    codex-brainstorm-output.txt) printf '%s\n' "$DESIGN_TMPDIR/codex-brainstorm-launch.failure.log" ;;
+  esac
+}
+
+design_brainstorm_launch_tool_for_sink() {
+  _bc_sink="$1"
+  case "$(basename "$_bc_sink")" in
+    *.failure.log) printf '%s\n' "$(basename "$_bc_sink" .failure.log)" ;;
+    *) printf '%s\n' "$(basename "$_bc_sink")" ;;
+  esac
 }
 
 design_collect_launch_failures() {
-  _bc_seen_cursor=false
-  _bc_seen_codex=false
   for _bc_path in "$@"; do
-    case "$(basename "$_bc_path")" in
-      cursor-brainstorm-output.txt) _bc_seen_cursor=true ;;
-      codex-brainstorm-output.txt) _bc_seen_codex=true ;;
-    esac
+    _bc_sink=$(design_brainstorm_stderr_sink_for_output "$_bc_path")
+    [ -n "${_bc_sink:-}" ] || continue
+    _bc_tool=$(design_brainstorm_launch_tool_for_sink "$_bc_sink")
+    design_collect_launch_failure_once "$_bc_sink" "$_bc_tool"
   done
-  if [ "$_bc_seen_cursor" = true ]; then
-    design_collect_launch_failure_once "$DESIGN_TMPDIR/cursor-brainstorm-launch.failure.log" "cursor-brainstorm-launch"
-  fi
-  if [ "$_bc_seen_codex" = true ]; then
-    design_collect_launch_failure_once "$DESIGN_TMPDIR/codex-brainstorm-launch.failure.log" "codex-brainstorm-launch"
-  fi
 }
 
 design_brainstorm_dirty_checkpoint() {
@@ -188,6 +205,11 @@ design_brainstorm_dirty_checkpoint() {
       fi
     } >"$DESIGN_TMPDIR/dirty-tree-detected.env"
     printf 'WARN=brainstorm-collection dirty-tree recovery required (status=%s)\n' "${_bc_reason_status:-unknown}"
+  else
+    {
+      printf 'STAGE=brainstorm-collection\n'
+      printf 'RECOVERY_REQUIRED=false\n'
+    } >"$DESIGN_TMPDIR/dirty-tree-detected.env"
   fi
 }
 
@@ -217,7 +239,7 @@ case "${MODE:-}" in
         cat "$_collect_stdout"
         cat "$_collect_stderr"
       } >"$DESIGN_TMPDIR/brainstorm-collect.failure.log"
-      design_append_brainstorm_failure "collect-agent-results.sh" "$DESIGN_TMPDIR/brainstorm-collect.failure.log" "$_collect_rc"
+      design_append_brainstorm_failure "collect-agent-results.sh" "$DESIGN_TMPDIR/brainstorm-collect.failure.log" "$_collect_rc" || true
     fi
     design_collect_launch_failures "${PUBLIC_ARGV_WORDS[@]}"
     design_brainstorm_dirty_checkpoint "${PUBLIC_ARGV_WORDS[@]}"
