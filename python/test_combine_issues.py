@@ -328,6 +328,120 @@ def test_plan_inherited_unknown_metadata_blocks_source_until_refresh(tmp_path: P
     assert payload["per_source_initial_eligibility"]["1"]["eligible"] is False
 
 
+def test_plan_inherited_closed_blocker_with_repo_is_satisfied(monkeypatch, tmp_path: Path, capsys):
+    deps = _write_json(tmp_path / "deps.json", {
+        "status": "ok",
+        "issues": {"1": {"blocked_by": [9], "blocking": [], "read_ok": True}},
+    })
+    source_map = _write_json(tmp_path / "source-map.json", {"1": 100})
+    open_issues = _write_json(tmp_path / "open.json", {"status": "ok", "issues": []})
+    combined = _write_json(tmp_path / "combined.json", [{"number": 100, "title": "[OOS] one", "source_issues": [1]}])
+    calls = []
+
+    def view(_runner, issue, field, *, repo, cwd=None):
+        calls.append((issue, field, repo, cwd))
+        return CommandResult(("gh",), 0, json.dumps({"number": 9, "state": "CLOSED", "title": "[DONE] done"}), "", 0.01)
+
+    monkeypatch.setattr(combine_issues.gh, "issue_view_field_read", view)
+    assert combine_issues.plan_inherited_main([
+        "--repo", "o/r",
+        "--deps-file", deps,
+        "--source-to-combined-file", source_map,
+        "--open-issues-file", open_issues,
+        "--combined-issues-file", combined,
+    ]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert calls == [("9", "number,state,title", "o/r", None)]
+    assert [row["edge"] for row in payload["satisfied_edges"]] == [[100, 9]]
+    assert payload["satisfied_edges"][0]["blocker_title"] == "[DONE] done"
+    assert payload["safe_edges"] == []
+    assert payload["exception_edges"] == []
+    assert payload["unknown_edges"] == []
+    assert payload["per_source_initial_eligibility"]["1"]["eligible"] is True
+
+
+def test_plan_inherited_closed_blocker_metadata_is_not_unknown():
+    meta = {
+        100: {"number": 100, "title": "[OOS] combined", "state": "OPEN"},
+        9: {"number": 9, "title": "[DONE] done", "state": "CLOSED"},
+    }
+    assert combine_issues._classify_edge((100, 9), meta, {100}) == (
+        "satisfied",
+        "blocker issue already closed (dependency satisfied)",
+    )
+
+
+def test_plan_inherited_without_repo_does_not_enrich_missing_blocker(monkeypatch, tmp_path: Path, capsys):
+    deps = _write_json(tmp_path / "deps.json", {"issues": {"1": {"blocked_by": [9], "blocking": [], "read_ok": True}}})
+    source_map = _write_json(tmp_path / "source-map.json", {"1": 100})
+    open_issues = _write_json(tmp_path / "open.json", {"issues": []})
+    combined = _write_json(tmp_path / "combined.json", [{"number": 100, "title": "[OOS] one", "source_issues": [1]}])
+
+    def view(*_args, **_kwargs):
+        raise AssertionError("blocker enrichment should require --repo")
+
+    monkeypatch.setattr(combine_issues.gh, "issue_view_field_read", view)
+    assert combine_issues.plan_inherited_main([
+        "--deps-file", deps,
+        "--source-to-combined-file", source_map,
+        "--open-issues-file", open_issues,
+        "--combined-issues-file", combined,
+    ]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert [row["edge"] for row in payload["unknown_edges"]] == [[100, 9]]
+    assert payload["satisfied_edges"] == []
+    assert payload["per_source_initial_eligibility"]["1"]["eligible"] is False
+
+
+def test_plan_inherited_failed_blocker_lookup_stays_unknown_and_warns(monkeypatch, tmp_path: Path, capsys):
+    deps = _write_json(tmp_path / "deps.json", {"issues": {"1": {"blocked_by": [9], "blocking": [], "read_ok": True}}})
+    source_map = _write_json(tmp_path / "source-map.json", {"1": 100})
+    open_issues = _write_json(tmp_path / "open.json", {"issues": []})
+    combined = _write_json(tmp_path / "combined.json", [{"number": 100, "title": "[OOS] one", "source_issues": [1]}])
+
+    def view(_runner, issue, field, *, repo, cwd=None):
+        assert (issue, field, repo, cwd) == ("9", "number,state,title", "o/r", None)
+        return CommandResult(("gh",), 1, "", "failed with ghp_abcdefghijklmnopqrstuvwxyz0123456789", 0.01)
+
+    monkeypatch.setattr(combine_issues.gh, "issue_view_field_read", view)
+    assert combine_issues.plan_inherited_main([
+        "--repo", "o/r",
+        "--deps-file", deps,
+        "--source-to-combined-file", source_map,
+        "--open-issues-file", open_issues,
+        "--combined-issues-file", combined,
+    ]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert [row["edge"] for row in payload["unknown_edges"]] == [[100, 9]]
+    assert payload["per_source_initial_eligibility"]["1"]["eligible"] is False
+    assert payload["warnings"][0]["code"] == "blocker_state_read_failed"
+    assert "ghp_abcdefghijklmnopqrstuvwxyz0123456789" not in json.dumps(payload["warnings"])
+
+
+def test_plan_inherited_open_blocker_enriched_with_repo_classifies_safe(monkeypatch, tmp_path: Path, capsys):
+    deps = _write_json(tmp_path / "deps.json", {"issues": {"1": {"blocked_by": [9], "blocking": [], "read_ok": True}}})
+    source_map = _write_json(tmp_path / "source-map.json", {"1": 100})
+    open_issues = _write_json(tmp_path / "open.json", {"issues": []})
+    combined = _write_json(tmp_path / "combined.json", [{"number": 100, "title": "[OOS] one", "source_issues": [1]}])
+
+    def view(_runner, issue, field, *, repo, cwd=None):
+        assert (issue, field, repo, cwd) == ("9", "number,state,title", "o/r", None)
+        return CommandResult(("gh",), 0, json.dumps({"number": 9, "state": "OPEN", "title": "ready blocker"}), "", 0.01)
+
+    monkeypatch.setattr(combine_issues.gh, "issue_view_field_read", view)
+    assert combine_issues.plan_inherited_main([
+        "--repo", "o/r",
+        "--deps-file", deps,
+        "--source-to-combined-file", source_map,
+        "--open-issues-file", open_issues,
+        "--combined-issues-file", combined,
+    ]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert [row["edge"] for row in payload["safe_edges"]] == [[100, 9]]
+    assert payload["unknown_edges"] == []
+    assert payload["satisfied_edges"] == []
+
+
 def test_plan_inherited_refresh_reclassifies_unknown_edge_and_allows_close(tmp_path: Path, capsys):
     deps = _write_json(tmp_path / "deps.json", {"issues": {"1": {"blocked_by": [9], "blocking": [], "read_ok": True}}})
     source_map = _write_json(tmp_path / "source-map.json", {"1": 100})
@@ -403,6 +517,32 @@ def test_close_eligible_uses_write_decision_and_blocked_source_schemas(tmp_path:
     assert payload["eligible_by_combined"] == {"100": [1]}
     assert payload["ineligible_sources"] == [2, 3]
     assert "blocked item remains" in payload["reasons"]["3"]
+
+
+def test_close_eligible_ignores_satisfied_edges(tmp_path: Path, capsys):
+    plan = _write_json(tmp_path / "plan.json", {
+        "status": "ok",
+        "safe_edges": [],
+        "exception_edges": [],
+        "satisfied_edges": [{"edge": [100, 9], "source_issues": [1]}],
+        "unknown_edges": [],
+        "per_source_initial_eligibility": {"1": {"eligible": True, "reasons": []}},
+    })
+    writes = _write_json(tmp_path / "writes.json", {"write_results": []})
+    decisions = _write_json(tmp_path / "decisions.json", {"decisions": []})
+    source_map = _write_json(tmp_path / "source-map.json", {"1": 100})
+    blocked = _write_json(tmp_path / "blocked.json", {"blocked_sources": []})
+    assert combine_issues.close_eligible_main([
+        "--inherited-plan-file", plan,
+        "--write-results-file", writes,
+        "--exception-decisions-file", decisions,
+        "--source-to-combined-file", source_map,
+        "--blocked-sources-file", blocked,
+    ]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["eligible_by_combined"] == {"100": [1]}
+    assert payload["ineligible_sources"] == []
+    assert payload["reasons"]["1"] == []
 
 
 def test_close_eligible_ignores_retried_safe_write_failure(tmp_path: Path, capsys):
@@ -636,9 +776,19 @@ def test_apply_defer_close_creates_without_closing(monkeypatch, tmp_path: Path, 
     out = dict(line.split("=", 1) for line in capsys.readouterr().out.splitlines())
     assert out["COMBINED_ISSUE"] == "99"
     assert out["SOURCE_ISSUES"] == "1,2"
+    assert out["SOURCE_TO_COMBINED_JSON_FRAGMENT"] == '{"1":99,"2":99}'
     assert out["CLOSING_DEFERRED"] == "true"
     assert out["CLOSED_ISSUES"] == "0"
     assert not any(call[:3] == ["gh", "issue", "close"] for call in runner.calls)
+
+
+def test_merge_source_to_combined_fragments_promotes_sorted_unique_arrays():
+    merged = combine_issues._merge_source_to_combined_fragment({}, {"1": 99, "2": 101})
+    assert merged == {"1": 99, "2": 101}
+    merged = combine_issues._merge_source_to_combined_fragment(merged, {"1": 100})
+    assert merged == {"1": [99, 100], "2": 101}
+    merged = combine_issues._merge_source_to_combined_fragment(merged, {"1": [100, 99], "2": 101})
+    assert merged == {"1": [99, 100], "2": 101}
 
 
 def test_close_sources_reuses_close_comment_and_counts(monkeypatch, capsys):
@@ -692,6 +842,119 @@ def test_close_sources_warning_redacts_failed_close_stderr(monkeypatch, capsys):
     monkeypatch.setattr(combine_issues, "_source_close_skip_reason", lambda _repo, _source: None)
     monkeypatch.setattr(combine_issues.time, "sleep", lambda _seconds: None)
     assert combine_issues.close_sources_main(["--repo", "o/r", "--combined-issue", "99", "--source-issues", "1"]) == 0
+    captured = capsys.readouterr()
+    assert "WARNING=Failed to close #1:" in captured.err
+    assert "ghp_abcdefghijklmnopqrstuvwxyz0123456789" not in captured.err
+    assert "CLOSED_ISSUES=0" in captured.out
+    assert "PARTIAL=true" in captured.out
+
+
+def test_close_stale_rejects_invalid_reason_before_close(monkeypatch, capsys):
+    calls = []
+
+    def run(argv, **_kwargs):
+        calls.append(list(argv))
+        return CommandResult(tuple(argv), 0, "", "", 0.01)
+
+    monkeypatch.setattr(combine_issues.proc, "run", run)
+    assert combine_issues.close_stale_main(["--repo", "o/r", "--issues", "1", "--reason", "stale"]) == 1
+    assert "ERROR=--reason must be one of: completed, not planned" in capsys.readouterr().err
+    assert not any(call[:3] == ["gh", "issue", "close"] for call in calls)
+
+
+def test_close_stale_rejects_missing_comment_file_before_close(monkeypatch, tmp_path: Path, capsys):
+    calls = []
+
+    def run(argv, **_kwargs):
+        calls.append(list(argv))
+        return CommandResult(tuple(argv), 0, "", "", 0.01)
+
+    monkeypatch.setattr(combine_issues.proc, "run", run)
+    missing = tmp_path / "missing.md"
+    assert combine_issues.close_stale_main([
+        "--repo", "o/r",
+        "--issues", "1",
+        "--reason", "not planned",
+        "--comment-file", str(missing),
+    ]) == 1
+    assert "ERROR=Missing or unreadable --comment-file" in capsys.readouterr().err
+    assert not any(call[:3] == ["gh", "issue", "close"] for call in calls)
+
+
+def test_close_stale_dry_run_does_not_close(monkeypatch, capsys):
+    calls = []
+
+    def run(argv, **_kwargs):
+        calls.append(list(argv))
+        return CommandResult(tuple(argv), 0, "", "", 0.01)
+
+    monkeypatch.setattr(combine_issues.proc, "run", run)
+    assert combine_issues.close_stale_main([
+        "--repo", "o/r",
+        "--issues", "1,2",
+        "--reason", "not planned",
+        "--dry-run",
+    ]) == 0
+    out = capsys.readouterr().out.splitlines()
+    assert out == ["DRY_RUN=true", "WOULD_CLOSE=1,2", "CLOSED_ISSUES=0", "PARTIAL=false"]
+    assert not any(call[:3] == ["gh", "issue", "close"] for call in calls)
+
+
+def test_close_stale_live_success_with_comment(monkeypatch, tmp_path: Path, capsys):
+    calls = []
+
+    def run(argv, **_kwargs):
+        calls.append(list(argv))
+        if argv[:3] == ["gh", "issue", "close"]:
+            return CommandResult(tuple(argv), 0, "", "", 0.01)
+        return CommandResult(tuple(argv), 0, '{"nameWithOwner":"o/r"}', "", 0.01)
+
+    comment = tmp_path / "comment.md"
+    comment.write_text("Stale discard summary\n", encoding="utf-8")
+    monkeypatch.setattr(combine_issues.proc, "run", run)
+    monkeypatch.setattr(combine_issues, "_source_close_skip_reason", lambda _repo, _source: None)
+    assert combine_issues.close_stale_main([
+        "--repo", "o/r",
+        "--issues", "1",
+        "--reason", "not planned",
+        "--comment-file", str(comment),
+    ]) == 0
+    captured = capsys.readouterr()
+    assert "CLOSED_ISSUES=1" in captured.out
+    assert "PARTIAL=false" in captured.out
+    assert calls == [["gh", "issue", "close", "1", "--repo", "o/r", "--reason", "not planned", "--comment", "Stale discard summary\n"]]
+
+
+def test_close_stale_skip_path_sets_partial(monkeypatch, capsys):
+    calls = []
+
+    def run(argv, **_kwargs):
+        calls.append(list(argv))
+        return CommandResult(tuple(argv), 0, "", "", 0.01)
+
+    def skip(_repo, source):
+        return "source issue is not open (CLOSED)" if source == 1 else None
+
+    monkeypatch.setattr(combine_issues.proc, "run", run)
+    monkeypatch.setattr(combine_issues, "_source_close_skip_reason", skip)
+    assert combine_issues.close_stale_main(["--repo", "o/r", "--issues", "1,2", "--reason", "completed"]) == 0
+    captured = capsys.readouterr()
+    assert "CLOSED_ISSUES=1" in captured.out
+    assert "PARTIAL=true" in captured.out
+    assert "WARNING=Skipped #1: source issue is not open (CLOSED)" in captured.err
+    assert calls == [["gh", "issue", "close", "2", "--repo", "o/r", "--reason", "completed"]]
+
+
+def test_close_stale_warning_redacts_failed_close_stderr(monkeypatch, capsys):
+    class CloseStaleFailRunner:
+        def run(self, argv, **_kwargs):
+            if argv[:3] == ["gh", "issue", "close"]:
+                return CommandResult(tuple(argv), 1, "", "failed with ghp_abcdefghijklmnopqrstuvwxyz0123456789", 0.01)
+            return CommandResult(tuple(argv), 0, '{"nameWithOwner":"o/r"}', "", 0.01)
+
+    monkeypatch.setattr(combine_issues.proc, "run", CloseStaleFailRunner().run)
+    monkeypatch.setattr(combine_issues, "_source_close_skip_reason", lambda _repo, _source: None)
+    assert combine_issues.close_stale_main(["--repo", "o/r", "--issues", "1", "--reason", "not planned"]) == 0
     captured = capsys.readouterr()
     assert "WARNING=Failed to close #1:" in captured.err
     assert "ghp_abcdefghijklmnopqrstuvwxyz0123456789" not in captured.err
