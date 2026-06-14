@@ -1325,7 +1325,6 @@ def test_codex_failure_stages_vendor_diagnostics_in_implement_tmpdir(tmp_path: P
 
 
 def test_brainstorm_codex_auth_failure_uses_stderr_sink(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    out = tmp_path / "codex-brainstorm-output.txt"
     sink = tmp_path / "codex-brainstorm-launch.failure.log"
 
     def auth_setup_failed(_home_dir: Path, *, trusted_instructions_file: str = "") -> tuple[int, str]:
