@@ -89,7 +89,7 @@ load_route_state_repo_fallback() {
     set -e
     if [[ "$route_state_rc" -ne 0 ]]; then
         rm -f "$safe_route_state"
-        fail 'could not read route state sidecar'
+        return 1
     fi
     # shellcheck source=/dev/null
     . "$safe_route_state"
@@ -120,9 +120,9 @@ stage_failed_clarify() {
         --phase clarify-loop \
         --site clarify-loop \
         --trigger failed \
-        --bail-reason clarify-fetch-failed \
+        --bail-reason clarify-hard-halt \
         --exit-code "$exit_code" \
-        --source-script design-clarify \
+        --source-script clarify-loop \
         --summary-outcome failed-clarify \
         --failure-detail-log "$detail_log" \
         >"$DESIGN_TMPDIR/design-clarify-stage.stdout.log" \
@@ -183,16 +183,27 @@ DESIGN_TMPDIR="$(cd "$DESIGN_TMPDIR" && pwd -P)"
 export DESIGN_TMPDIR
 ISSUE_NUMBER="$ISSUE"
 export ISSUE_NUMBER
-load_route_state_repo_fallback
+FETCH_RESULT_ENV="$DESIGN_TMPDIR/.design-clarify-fetch-result.env"
+PUBLISH_RESULT_ENV="$DESIGN_TMPDIR/.design-clarify-publish-result.env"
+REQUEST_STATE_ENV="$DESIGN_TMPDIR/.design-clarify-request.env"
+if ! load_route_state_repo_fallback; then
+    route_state_log="$DESIGN_TMPDIR/clarify-route-state.failure.log"
+    printf 'could not read route state sidecar\n' >"$route_state_log"
+    if [[ "$PHASE" == fetch ]]; then
+        write_result_env "$FETCH_RESULT_ENV" "CLARIFY_FETCH_STATUS=route-state-read-failed" "SUMMARY_OUTCOME=failed-clarify"
+        stage_failed_clarify 1 "$route_state_log"
+        emit_kvs "CLARIFY_FETCH_STATUS=route-state-read-failed" "SUMMARY_OUTCOME=failed-clarify"
+        exit 1
+    fi
+    write_result_env "$PUBLISH_RESULT_ENV" "CLARIFY_PUBLISH_STATUS=route-state-read-failed" "SUMMARY_OUTCOME=failed-clarify"
+    emit_kvs "CLARIFY_PUBLISH_STATUS=route-state-read-failed" "SUMMARY_OUTCOME=failed-clarify"
+    exit 1
+fi
 [[ -z "${REPO:-}" ]] || validate_repo "$REPO"
 
 if [[ -f "$DESIGN_TMPDIR/.pause-requested" ]]; then
     exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE" ${REPO:+--repo "$REPO"}
 fi
-
-FETCH_RESULT_ENV="$DESIGN_TMPDIR/.design-clarify-fetch-result.env"
-PUBLISH_RESULT_ENV="$DESIGN_TMPDIR/.design-clarify-publish-result.env"
-REQUEST_STATE_ENV="$DESIGN_TMPDIR/.design-clarify-request.env"
 REQUEST_BODY_FILE="$DESIGN_TMPDIR/clarify-request.md"
 PLAN_FILE="$DESIGN_TMPDIR/clarify-plan.md"
 RESPONSE_FILE="$DESIGN_TMPDIR/clarify-response.md"
@@ -291,7 +302,12 @@ fi
 # shellcheck source=/dev/null
 . "$safe_request"
 rm -f "$safe_request"
-ISSUE_NUMBER="$ISSUE"
+if [[ "${ISSUE_NUMBER:-}" != "$ISSUE" ]]; then
+    write_result_env "$PUBLISH_RESULT_ENV" "CLARIFY_PUBLISH_STATUS=issue-mismatch" "SUMMARY_OUTCOME=failed-clarify"
+    emit_kvs "CLARIFY_PUBLISH_STATUS=issue-mismatch" "SUMMARY_OUTCOME=failed-clarify"
+    exit 1
+fi
+ISSUE="$ISSUE_NUMBER"
 validate_positive_int REQUEST_ID "${REQUEST_ID:-}"
 [[ -z "${REPO:-}" ]] || validate_repo "$REPO"
 
