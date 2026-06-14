@@ -213,11 +213,20 @@ phase_indices=()
 phase_outputs=()
 phase_tools=()
 
+_kill_subtree() {
+    local _root="$1" _child _children
+    _children=$(pgrep -P "$_root" 2>/dev/null) || true
+    for _child in $_children; do
+        _kill_subtree "$_child"
+    done
+    kill -TERM "$_root" 2>/dev/null || true
+}
+
 _waterfall_kill_active_pids() {
     local _pid
     local _active_pids=("${pids[@]+"${pids[@]}"}")
     for _pid in "${_active_pids[@]+"${_active_pids[@]}"}"; do
-        kill -TERM "$_pid" 2>/dev/null || true
+        _kill_subtree "$_pid"
     done
     for _pid in "${_active_pids[@]+"${_active_pids[@]}"}"; do
         wait "$_pid" 2>/dev/null || true
