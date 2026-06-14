@@ -23,7 +23,7 @@ PYTHON ?= python3
 .PHONY: lint-readability-preamble test-lint-readability-preamble
 .PHONY: lint-renderer-substitution-safety lint-skill-md-flag-signature test-lint-renderer-substitution-safety test-lint-skill-md-flag-signature
 .PHONY: lint-bare-grep-probe test-lint-bare-grep-probe lint-codex-exec-auth test-lint-codex-exec-auth test-launch-codex-exec lint-awk-multibyte-regex test-lint-awk-multibyte-regex
-.PHONY: test-design-multi-round-integration test-lib-design-round-artifacts test-step3-orchestrator-fence test-design-step3-state
+.PHONY: test-design-multi-round-integration test-lib-design-round-artifacts test-step3-orchestrator-fence test-design-step3-state test-design-step3-mav
 .PHONY: test-no-grouped-reuse-guard test-record-implement-review-round-timing test-review-implement-step5-loop-timing test-record-plan-review-round-timing test-reviewer-prune test-lib-prune-decision test-fluff-analysis-corpus
 # CI splits `lint` into `lint-only` (pre-commit) and `test-harnesses`
 # (regression harnesses). `lint` remains the local-dev convenience target
@@ -94,7 +94,7 @@ test-harnesses-5: test-harness-shards-coverage test-findings-classification test
 
 test-harnesses-6: test-write-final-report test-auto-fix-plan-commands test-emit-design-plan-preview test-design-step5c test-design-step6 test-run-negotiation-round test-review-and-fix-parsers test-scout-dynamic-archetypes test-parse-design-argv test-write-rejected-findings test-rebase-push-keep-on-conflict test-lib-phase-driver test-parse-drafter-output test-research-angle-prompts test-alias-structure
 
-test-harnesses-7: test-design-failure-report test-dispatch-code-voters-regressions-r1-r2 test-oos-disposition-gate test-gate-b-apply-mode test-design-step3-review test-review-implement-step5-loop-timing test-flush-execution-issues test-scrub-log-secrets test-lint-bash32 test-references-headers test-rebase-push-fork-mode test-lib-prune-decision
+test-harnesses-7: test-design-step3-mav test-design-failure-report test-dispatch-code-voters-regressions-r1-r2 test-oos-disposition-gate test-gate-b-apply-mode test-design-step3-review test-review-implement-step5-loop-timing test-flush-execution-issues test-scrub-log-secrets test-lint-bash32 test-references-headers test-rebase-push-fork-mode test-lib-prune-decision
 
 test-harnesses-8: test-stall-recovery-report-2 test-dispatch-panel-core-dynamic test-file-design-oos test-implement-bootstrap-invoke test-render-findings-batch test-check-topology-rule-paths test-classify-bump test-capture-session-transcript test-refresh-run-logs test-record-plan-review-round-timing test-redact test-verify-skill-called test-emit-plan test-pause-skill test-implement-step2-routing
 
@@ -521,6 +521,9 @@ test-review-design-step3-loop:
 
 test-step3-orchestrator-fence:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-step3-orchestrator-fence.sh
+
+test-design-step3-mav:
+	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-step3-mav.sh
 
 test-design-step3-state:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-step3-state.sh

@@ -363,44 +363,56 @@ else
     fail "SCOPE_ANCHOR_FILE expected $D_SCOPE/plan-review-scope-anchor.txt got ${SCOPE_ANCHOR_FILE:-}"
 fi
 
-echo "=== scope-anchor re-tally prose pins ==="
+echo "=== MainAgent MAV wrapper prose pins ==="
 SKILL_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)/SKILL.md"
+PLAN_REVIEW_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)/references/plan-review.md"
 APPROVAL_GATES_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)/references/approval-gates.md"
-# shellcheck disable=SC2016 # Literal documentation probe contains backticks and shell syntax.
-if command grep -Fq 'preserve `SCOPE_ANCHOR_FILE` from the Step 3 result state as `_RETALLY_SCOPE_ANCHOR_IN="$SCOPE_ANCHOR_FILE"`' "$SKILL_FILE"; then
-    pass 'SKILL pins re-tally input/output separation'
+# shellcheck disable=SC2016 # Literal documentation probe contains backticks.
+if ( command grep -Fq '"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-mav.sh --phase pre' "$SKILL_FILE" ); then
+    pass 'SKILL pins MAV pre launcher fence'
 else
-    fail 'SKILL missing re-tally input/output separation prose'
+    fail 'SKILL missing MAV pre launcher fence'
 fi
 # shellcheck disable=SC2016 # Literal documentation probe contains backticks.
-if command grep -Fq 'without `--scope-anchor-file`' "$SKILL_FILE"; then
-    pass 'SKILL pins no re-tally scope-anchor argv'
+if ( command grep -Fq 'Parse trusted scalars only from the final `DESIGN_STEP3_MAV_KV_BEGIN` / `DESIGN_STEP3_MAV_KV_END` frame.' "$SKILL_FILE" ); then
+    pass 'SKILL pins MAV trusted KV frame parsing'
 else
-    fail 'SKILL missing no re-tally scope-anchor argv prose'
+    fail 'SKILL missing MAV trusted KV frame parsing'
 fi
 # shellcheck disable=SC2016 # Literal documentation probe contains backticks.
-if command grep -Fq 'fall back to `_RETALLY_SCOPE_ANCHOR_IN` if non-empty and CR/LF-clean' "$SKILL_FILE"; then
-    pass 'SKILL pins re-tally ok fallback'
+if ( command grep -Fq '"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-mav.sh --phase post' "$SKILL_FILE" ); then
+    pass 'SKILL pins MAV post launcher fence'
 else
-    fail 'SKILL missing re-tally ok fallback prose'
-fi
-# shellcheck disable=SC2016 # Literal documentation probe contains backticks and shell syntax.
-if command grep -Fq 'bind `_RETALLY_SCOPE_ANCHOR_IN="$SCOPE_ANCHOR_FILE"` before launch, unset `_RETALLY_PARSED_SCOPE_ANCHOR_FILE` before parsing stdout' "$APPROVAL_GATES_FILE"; then
-    pass 'approval gates mirror re-tally input/output separation'
-else
-    fail 'approval gates missing re-tally input/output separation'
+    fail 'SKILL missing MAV post launcher fence'
 fi
 # shellcheck disable=SC2016 # Literal documentation probe contains backticks.
-if command grep -Fq 'Do not persist stale exported `SCOPE_ANCHOR_FILE` on `tally-error`.' "$SKILL_FILE"; then
-    pass 'SKILL pins stale scope anchor error omission'
+if ( command grep -Fq 'Abort on any non-zero post exit' "$SKILL_FILE" ); then
+    pass 'SKILL pins MAV post non-zero abort'
 else
-    fail 'SKILL missing stale scope anchor error omission prose'
+    fail 'SKILL missing MAV post non-zero abort'
 fi
 # shellcheck disable=SC2016 # Literal documentation probe contains backticks.
-if command grep -Fq 'Raw tally stdout `SCOPE_ANCHOR_FILE=` lines are stripped before relay' "$APPROVAL_GATES_FILE" "$SKILL_FILE" "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)/references/plan-review.md" >/dev/null; then
-    pass 'scope anchor raw tally strip documented'
+if ( command grep -Fq '`TALLY_PLAN_REVIEW_STATUS=tally-error` is handled by post with `LOOP_STATUS=complete`; route it through the Gate B bypass helper and Step 3b instead of entering Gate B.' "$PLAN_REVIEW_FILE" ); then
+    pass 'plan-review pins MAV tally-error routing'
 else
-    fail 'missing raw tally strip documentation'
+    fail 'plan-review missing MAV tally-error routing'
+fi
+if ( command grep -Fq '_RETALLY_SCOPE_ANCHOR_IN' "$SKILL_FILE" "$PLAN_REVIEW_FILE" "$APPROVAL_GATES_FILE" ); then
+    fail 'MAV prose must not keep prompt-side _RETALLY_SCOPE_ANCHOR_IN binding'
+else
+    pass 'MAV prose removed prompt-side retally anchor binding'
+fi
+# shellcheck disable=SC2016 # Literal prose probe.
+if ( command grep -Fq 'end_s=$(date +%s)' "$SKILL_FILE" "$PLAN_REVIEW_FILE" ); then
+    fail 'MAV prose must not keep prompt-side raw date timing'
+else
+    pass 'MAV prose removed prompt-side raw date timing'
+fi
+# shellcheck disable=SC2016 # Literal prose probe.
+if ( command grep -Fq 'persist-retally-step3-env.sh --design-tmpdir "$DESIGN_TMPDIR" --retally-stdout-file' "$SKILL_FILE" "$PLAN_REVIEW_FILE" ); then
+    fail 'MAV prose must not keep prompt-composed persist-retally argv'
+else
+    pass 'MAV prose removed prompt-composed persist-retally argv'
 fi
 
 echo "=== later-KV-wins with no safe env ==="
