@@ -1,0 +1,220 @@
+You are an expert engineer researching this repository and producing an implementation plan for /design Step 2b.
+
+You may use only side-effect-free repository discovery. Do not write repository files, design tmpdir files, or any other files. Return only the sentinel-delimited response requested below.
+
+Drafting requirements to follow:
+- Prefer minimum necessary change: avoid scope creep, unnecessary complexity, and additions not required for correctness.
+- Read approach-synthesis.txt: if it is exactly NO_SKETCHES, draft from direct codebase/doc inspection without fabricating planning-panel agreement.
+- Read discussion-round1.md when present for scope boundaries and strict constraints.
+- Read design-outline.md only when non-empty and .outline-approved exists; treat Goals, Non-goals, and Surfaces as binding scope.
+- Read brainstorm.md when present as additive ideation context for plan drafting.
+- Use a Files to modify/create section with per-file headings exactly one path each: ### NEW:, ### UPDATED:, or ### REWRITTEN: (at least one ASCII space after ### before the keyword).
+- Include Approach, Edge cases, Failure modes when non-trivial, Testing strategy, optional diff_added/diff_deleted/mechanical_churn trailers, and final diff_lines: <N>.
+- The final plan body must end with a whole-line diff_lines: <N> trailer.
+- Optionally include up to three dynamic plan-review archetypes in a scout block after the plan. The launcher validates, filters, caps, and materializes this block; invalid post-plan scout output is ignored.
+- Scout sentinels inside the summary or plan are fatal format errors. Never put LARCH_SCOUT_* markers in the plan body.
+
+Readability style (trusted):
+# Readability Style
+
+**Consumer**: `/design` prompt surfaces that produce user-facing text, either through an external-agent prompt token or through inline orchestration prose.
+
+**Contract**: this file is the only source of truth for the `/design` readability preamble. External prompt files embed the literal `<READABILITY_STYLE>` token, and assembly code or orchestration expands it to this full file. Inline composition sites read this file before writing user-facing text.
+
+**When to load**: load only when a `/design` step is about to compose user-facing prose or render a prompt that asks another agent to compose such prose. Do not load during setup, pure validation, or byte-stable artifact handling.
+
+---
+
+## Style Axes
+
+Write in three styles at once:
+
+- **Strunk & White**: use active voice. Omit needless words. Prefer concrete nouns and verbs.
+- **Dyslexia-friendly**: use short sentences. Prefer simple words. Break dense ideas into headings and bullets.
+- **Brevity**: shorter is better. Minimize the total artifact length while preserving meaning.
+- **No em dashes**: never use em dashes; use periods, commas, colons, or semicolons instead.
+- **Hedge vs. direct**: hedge uncertain claims ("may contain", "can fail") instead of absolutes; keep directives imperative.
+
+## Precision Contract
+
+Keep these byte-stable unless the task explicitly edits them:
+
+- fenced code blocks
+- backticked tokens
+- file paths
+- identifiers
+- flag names
+- `### NEW:` / `### UPDATED:` / `### REWRITTEN:` plan grammar
+- the trailing `diff_lines: <N>` line
+
+Do not rewrite those items for style. Explain around them instead.
+
+## Precedence
+
+When rules conflict, use this order:
+
+`code references > meaning > brevity > dyslexia-friendly chunking > Strunk & White micro-rewrites`
+
+Apply it directly:
+
+- Preserve code references first.
+- Preserve exact meaning next.
+- Cut words before adding layout.
+- Add headings or bullets only when they improve scanning.
+- Polish grammar last.
+
+## Substitution Token
+
+External-agent prompt files MUST embed this literal token:
+
+`<READABILITY_STYLE>`
+
+Before launch, replace every literal `<READABILITY_STYLE>` token with the full contents of this file.
+
+## Examples
+
+Before: "It is recommended that the implementer should consider adding a validation step."
+
+After: "Add a validation step."
+
+Before: "The plan should make sure that users are not able to continue when the file cannot be read."
+
+After: "Block the flow when the file cannot be read."
+
+Before: "In order to avoid potential future confusion, documentation can be updated."
+
+After: "Update the docs to avoid confusion."
+
+Before: "The script performs an operation that checks if the path exists."
+
+After: "The script checks that the path exists."
+
+Before: "This could possibly be out of scope depending on how the team wants to proceed."
+
+After: "This may be out of scope."
+
+Required output format:
+[optional]
+LARCH_SUMMARY_BEGIN
+A concise summary for large-plan preview. Omit this whole summary block only when no useful summary is needed.
+LARCH_SUMMARY_END
+[/optional]
+LARCH_PLAN_BEGIN
+Full implementation plan body ending with diff_lines: <N>.
+LARCH_PLAN_END
+[optional]
+LARCH_SCOUT_BEGIN
+{"archetypes":[{"name":"slug","focus_area":"code-quality|risk-integration|correctness|architecture|security","weight":1,"rationale":"single-line reason","prompt_body":"2-6 sentence focus directive ending with the required citation sentence."}]}
+LARCH_SCOUT_END
+[/optional]
+
+Optional advisory status may be included between LARCH_STATUS_BEGIN and LARCH_STATUS_END, but the summary, plan, and optional scout sentinels above are the only parsed contract.
+
+Untrusted feature description:
+<feature_description encoding="literal-redacted">
+# [BUG] design-step3-review.sh exits silently when phase_driver_write_result_env fails: STEP3_REVIEW_LOOP_STATUS never surfaced to orchestrator
+
+## Summary
+
+During a `/design` run on issue #4277, the `design-step3-review.sh` background task returned exit code 0 with only one line of output (`Reading additional input from stdin...`) and no result KV lines (`STEP3_REVIEW_LOOP_STATUS`, `LOOP_STATUS`, etc.). All external reviewer and voter subprocesses completed normally and their output files are present. The `.step3-review-result.env` file was never written. The orchestrator received no loop status and could not continue automatically, requiring manual tally + plan-revision recovery.
+
+## Observable state after failure
+
+- All cursor plan reviewer outputs present (`cursor-plan-{arch,innovation,pragmatic,requirements}-output.txt`)
+- All external voter outputs present (`codex-vote-output.txt`, `cursor-vote-output.txt`, `claude-vote-output.txt`)
+- `voting-tally.md` present but empty (0 bytes)
+- `.step3-review-result.env` absent
+- `.step3-round-1.phase` absent
+- `plan-review/round-1/round-meta.json` absent
+- `.completed/step-3` sentinel absent
+- Background task output: exactly one line — `Reading additional input from stdin...`
+- Task exit code: 0
+
+## Root cause
+
+`step3_loop_emit_envelope` in `review-design-step3-loop.sh` is called when the round body returns `LOOP_STATUS=main-agent-vote-required`. It calls `step3_loop_persist_envelope`, which calls `phase_driver_write_result_env` to write `.step3-review-result.env`. If `phase_driver_write_result_env` fails (symlink guard fires, `mktemp` fails, or a KV value contains `\n`/`\r`), it:
+
+1. Calls `larch_err` — which goes to **FD 3** (the larch quiet channel), not to task stdout or stderr.
+2. Returns 1.
+
+`step3_loop_persist_envelope` catches the failure with `emit` (also FD 3 only) and returns without writing the file. This failure is completely invisible in the task output.
+
+`design-step3-review.sh` then reads `.step3-review-result.env` via `read-result-env.sh`, finds nothing, and falls back to `_plan_review_stdout_file`. That file is also effectively empty for result KVs because `run-step3-review.sh` uses `emit_kv` (FD 3) not `printf` for its envelope output. All `[[ -n "${VAR:-}" ]]` guards in `design-step3-review.sh` lines 331-348 skip, producing no stdout. Task exits 0 with empty output.
+
+The orchestrator receives no `STEP3_REVIEW_LOOP_STATUS` and cannot continue.
+
+## Secondary observation
+
+The aggregator (Cursor with `-p` flag) and other external CLI subprocesses are invoked without `&lt;/dev/null` stdin redirection. In a non-interactive background-task context they print `Reading additional input from stdin...` to stderr, which surfaces in the background task output. This is observable in many committed design run logs (e.g., `aggregator-output.txt.stderr-tail` in `larch-logs/design/*/`). While not the direct cause of the failure, it creates misleading noise in the task output that can mask the actual empty-envelope exit.
+
+## Suggested fixes
+
+**Primary (silent-failure surface):** In `step3_loop_persist_envelope`, if `phase_driver_write_result_env` fails, write the failure to `execution-issues.md` via `python3 python/cli.py run-log append-failure` (or at minimum `larch_err` with a message that reaches FD 2 / stderr, not only FD 3). Also emit `STEP3_REVIEW_LOOP_STATUS=panel-failed` to stdout when the result env write fails so `design-step3-review.sh` gets a fallback status via `_plan_review_stdout_file`.
+
+**Secondary (stdin noise):** Add `&lt;/dev/null` to all external CLI invocations that don't need stdin — specifically `cursor agent`, `codex exec`, and `claude` subprocess calls in `launch-review.sh` and `dispatch-plan-voters.sh`. Prevents "Reading additional input from stdin..." from appearing in background task output.
+
+**Observability guard:** In `design-step3-review.sh`, after `read-result-env.sh` and sourcing `_safe_step3_env`, if both `STEP3_REVIEW_LOOP_STATUS` and `LOOP_STATUS` are still empty, emit `**⚠ Step 3: result env missing or empty after loop exit; treating as panel-failed**` to stderr and set `STEP3_REVIEW_LOOP_STATUS=panel-failed` before the printf block. This prevents a silent no-op exit from masking the failure.
+
+## Run context
+
+- Design run: `FF7137A9-B925-47CB-8629-1DA0A4F04CDB`
+- Issue: #4277
+- Session dir preserved: `~&lt;TMPDIR&gt;`
+
+
+</feature_description>
+
+
+Untrusted approach synthesis:
+<approach_synthesis encoding="literal-redacted">
+NO_SKETCHES
+
+</approach_synthesis>
+
+
+Untrusted discussion round 1:
+<discussion_round1 encoding="literal-redacted">
+## Decision 1: Secondary stdin fix scope
+- **Question**: Should `&lt;/dev/null` stdin redirection be in this PR?
+- **Resolution**: Yes, include in this PR.
+- **Source**: user
+
+## Decision 2: Files in scope
+- **Question**: Which files need changes?
+- **Resolution**: `review-design-step3-loop.sh` (primary), `design-step3-review.sh` (observability), `launch-review.sh` (stdin). Sibling `.md` files updated in same PR.
+- **Source**: codebase
+
+</discussion_round1>
+
+
+Untrusted approved design outline:
+<design_outline encoding="literal-redacted">
+## Proposed Design Outline
+
+### Goals
+- Surface `phase_driver_write_result_env` failures in `step3_loop_persist_envelope` so the orchestrator always receives a usable `STEP3_REVIEW_LOOP_STATUS`.
+- Add a final-resort observability guard in `design-step3-review.sh` that degrades gracefully to `panel-failed` when both statuses are empty.
+- Eliminate "Reading additional input from stdin..." noise from external CLI subprocesses by adding `&lt;/dev/null` to cursor and codex invocations in `launch-review.sh`.
+
+### Non-goals
+- Fixing or retrying `phase_driver_write_result_env` itself.
+- Changing the plan-review panel flow or voting logic.
+- Touching any launcher other than `launch-review.sh` for the stdin fix.
+
+### Approach sketch
+- In `review-design-step3-loop.sh` `step3_loop_persist_envelope`: on failure, `emit_kv STEP3_REVIEW_LOOP_STATUS panel-failed` and write a Tool Failures entry to `execution-issues.md`.
+- In `design-step3-review.sh`: when both statuses are empty/invalid after sourcing result env, also set `STEP3_REVIEW_LOOP_STATUS=panel-failed` and emit warning to stderr.
+- In `launch-review.sh`: add `&lt;/dev/null` to the `cursor agent -p` call and both `codex exec` call sites.
+- Update sibling `.md` files for touched scripts in the same PR.
+
+### Surfaces in scope
+- `skills/design/scripts/review-design-step3-loop.sh`
+- `skills/design/scripts/design-step3-review.sh`
+- `scripts/launch-review.sh`
+- `.md` siblings: `review-design-step3-loop.md`, `design-step3-review.md`, `launch-review.md`
+
+### Open questions
+- None.
+
+</design_outline>
+
