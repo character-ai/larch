@@ -1465,7 +1465,8 @@ for mode in step2b step2b5 both; do
   esac
   out_completion_pause=$(env CLAUDE_PLUGIN_ROOT="$REPO_ROOT" DESIGN_TMPDIR="$DESIGN_PAUSED" ISSUE_NUMBER=9 REPO=owner/repo \
     bash "$REPO_ROOT/skills/design/scripts/design-step2b-postplan.sh" "${args[@]}" 2>&1)
-  [[ "$out_completion_pause" == *"PAUSE_OK=true"* ]] || fail "completion pause $mode mismatch: $out_completion_pause"
+  [[ "$out_completion_pause" == *"POSTPLAN_RC=11"* && "$out_completion_pause" == *"POSTPLAN_STATUS=pause-save"* && "$out_completion_pause" == *"PAUSE_OK=true"* ]] \
+    || fail "completion pause $mode mismatch: $out_completion_pause"
   case "$mode" in
     step2b)
       [[ -f "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1/.completed/step-2b" ]] || fail "paused step2b marker missing"
@@ -1489,7 +1490,8 @@ printf 'issue body normal postplan pause\n' >"$BODY_FILE"
 rm -rf "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1"
 out_normal_pause=$(env CLAUDE_PLUGIN_ROOT="$REPO_ROOT" DESIGN_TMPDIR="$DESIGN_NORMAL_PAUSE" ISSUE_NUMBER=9 REPO=owner/repo \
   bash "$REPO_ROOT/skills/design/scripts/design-step2b-postplan.sh" --site gate-b 2>&1)
-[[ "$out_normal_pause" == *"PAUSE_OK=true"* ]] || fail "normal postplan pause mismatch: $out_normal_pause"
+[[ "$out_normal_pause" == *"POSTPLAN_RC=11"* && "$out_normal_pause" == *"POSTPLAN_STATUS=pause-save"* && "$out_normal_pause" == *"PAUSE_OK=true"* ]] \
+  || fail "normal postplan pause mismatch: $out_normal_pause"
 [[ ! -f "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1/.completed/step-2b.5" ]] \
   || fail "normal postplan pause should happen before completion marker"
 

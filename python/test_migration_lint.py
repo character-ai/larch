@@ -405,6 +405,18 @@ def test_still_present_manifest_path_errors(tmp_path: Path) -> None:
     assert rc == 1
 
 
+def test_retired_non_sh_path_reference(tmp_path: Path) -> None:
+    repo = _make_git_repo(tmp_path)
+    retired = "python/old_ci_helper.py"
+    _ = _add_file(repo, "docs/consumer.md", f"Import {retired} for CI helpers.\n")
+    manifest = _make_manifest(repo, [(retired, "#test")])
+    rc = migration_lint.main([
+        "--manifest", str(manifest),
+        "--root", str(repo),
+    ])
+    assert rc == 1
+
+
 def test_kv_present_on_clean(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     repo = _make_git_repo(tmp_path)
     manifest = _make_manifest(repo, [])

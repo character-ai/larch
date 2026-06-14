@@ -177,6 +177,31 @@ def test_citation_extraction_and_fileline_sidecar(tmp_path: Path) -> None:
     assert "| doi.org | allow |" in text
 
 
+def test_fetch_url_rejects_malformed_port() -> None:
+    assert research.fetch_url("https://example.com:bad/").token() == "FAIL(invalid-url)"
+
+
+def test_validate_citations_malformed_url_port_with_valid_url(tmp_path: Path) -> None:
+    report = tmp_path / "report.md"
+    out = tmp_path / "sidecar.md"
+    report.write_text(
+        "See https://example.com:bad/ and https://example.com/valid.\n",
+        encoding="utf-8",
+    )
+
+    def fake_fetch(url: str) -> research.FetchResult:
+        if url == "https://example.com/valid":
+            return research.FetchResult("PASS")
+        return research.FetchResult("FAIL", "invalid-url")
+
+    counts = research.validate_citations(report, out, tmp_path, fetcher=fake_fetch)
+    assert counts == (1, 1, 0, 2)
+    text = out.read_text(encoding="utf-8")
+    assert "| `https://example.com:bad/` | url | FAIL | invalid-url |" in text
+    assert "| `https://example.com/valid` | url | PASS |" in text
+    assert "validation interrupted: unexpected error" not in text
+
+
 def test_fetch_url_uses_non_default_https_port() -> None:
     seen: dict[str, str] = {}
 

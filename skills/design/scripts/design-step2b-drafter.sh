@@ -86,7 +86,34 @@ design_source_env_optional() {
 }
 
 design_source_env_optional
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+step2b_exact_line_file() {
+  _s2b_file="$1"
+  _s2b_expected="$2"
+  awk -v expected="$_s2b_expected" '
+    NR == 1 { ok = ($0 == expected) }
+    NR > 1 { ok = 0 }
+    END { exit (NR == 1 && ok) ? 0 : 1 }
+  ' "$_s2b_file" 2>/dev/null
+}
+
+if [ -z "${DESIGN_TMPDIR:-}" ] \
+  || [ ! -d "$DESIGN_TMPDIR" ] \
+  || ! step2b_exact_line_file "$DESIGN_TMPDIR/approach-synthesis.txt" "NO_SKETCHES" \
+  || ! step2b_exact_line_file "$DESIGN_TMPDIR/contested-decisions.md" "NO_CONTESTED_DECISIONS" \
+  || [ ! -f "$DESIGN_TMPDIR/dialectic-resolutions.md" ] \
+  || [ -s "$DESIGN_TMPDIR/dialectic-resolutions.md" ]; then
+  printf '%s\n' '**⚠ Step 2b: Step 2a sentinel artifacts are missing or invalid. Re-run Step 2a before drafting.**' >&2
+  exit 1
+fi
+mkdir -p "$DESIGN_TMPDIR/.completed"
+[ -f "$DESIGN_TMPDIR/.completed/step-2a" ] || : > "$DESIGN_TMPDIR/.completed/step-2a"
+design_require_plugin_root
+if [ -f "$DESIGN_TMPDIR/.pause-requested" ]; then
+  printf 'POSTPLAN_RC=11\n'
+  printf 'POSTPLAN_STATUS=pause-save\n'
+  exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+fi
+LARCH_TIMING_SKILL=design python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" timing mark "design Step 2b — plan" || true
 _drafter_postplan_fallback_used=false
 if [ -f "$DESIGN_TMPDIR/.step2b-postplan-inline-retry-done" ]; then
   _drafter_postplan_fallback_used=true
@@ -269,11 +296,22 @@ if [[ "$_drafter_structural_ok" == "true" && "$_drafter_dirty_block" != "true" ]
   _diff_lines="$(tail -n 1 "$DESIGN_TMPDIR/plan.txt" | sed 's/^diff_lines: //')"
   env LARCH_QUIET_DISABLE=1 "$CLAUDE_PLUGIN_ROOT/skills/design/scripts/emit-design-plan-preview.sh" \
     --design-tmpdir "$DESIGN_TMPDIR" \
-    --variant step2b
+    --variant step2b | sed 's/^/[plan-preview] /'
   printf '✅ 2b: drafter subprocess succeeded (vendor=%s plan_lines=%s diff_lines=%s)\n' "$_step2b_drafter_vendor" "$_plan_lines" "$_diff_lines"
+  printf 'STEP2B_DRAFTER_WRAPPER_ROWS_BEGIN=1\n'
+  printf 'DRAFTER_STATUS=succeeded\n'
+  printf 'DRAFTER_VENDOR=%s\n' "$_step2b_drafter_vendor"
+  exec "$CLAUDE_PLUGIN_ROOT/skills/design/scripts/design-step2b-postplan.sh" \
+    --site step2b \
+    --snapshot-original \
+    --session-env-path "$SESSION_ENV_PATH" \
+    --claude-pid "$CLAUDE_PID" \
+    --plugin-root "$CLAUDE_PLUGIN_ROOT"
 elif [[ "$_drafter_dirty_block" == "true" ]]; then
   printf 'STATUS=%s\nSTAGE=step-2b-drafter\nRECOVERY_REQUIRED=true\nREASON=%s\n' "dirty" "$_drafter_dirty_reason" > "$DESIGN_TMPDIR/dirty-tree-detected.env"
   printf '%s\n' "**⚠ 2b: drafter subprocess may have introduced working-tree mutations; dirty-tree recovery is required before fallback.**"
+  printf 'DRAFTER_STATUS=dirty-tree\n'
+  printf 'DRAFTER_VENDOR=%s\n' "$_step2b_drafter_vendor"
 else
   rm -f "$DESIGN_TMPDIR/plan-summary.md"
   rm -f "$DESIGN_TMPDIR/scout-plan-manifest.json" \
@@ -281,6 +319,8 @@ else
         "$DESIGN_TMPDIR"/scout-plan-manifest.json.filtered.*
   printf '%s\n' inline > "$DESIGN_TMPDIR/.step2b-plan-source"
   printf '%s\n' "**⚠ 2b: drafter subprocess failed — falling back to inline drafting (vendor=$_step2b_drafter_vendor)**"
+  printf 'DRAFTER_STATUS=fallback\n'
+  printf 'DRAFTER_VENDOR=%s\n' "$_step2b_drafter_vendor"
   if [[ -n "${DESIGN_TMPDIR:-}" ]]; then
     printf '%s\n' "Step 2b drafter fallback: ${_step2b_drafter_skip_reason:-rc-${_drafter_rc}}" > "$DESIGN_TMPDIR/step2b-drafter-fallback.log"
     python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" run-log append-failure \

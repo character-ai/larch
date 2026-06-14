@@ -233,7 +233,10 @@ def fetch_url(
         return FetchResult("FAIL", "non-https")
     if _private_hostname(host):
         return FetchResult("FAIL", "ssrf-private-host")
-    port = parsed.port or 443
+    try:
+        port = parsed.port or 443
+    except ValueError:
+        return FetchResult("FAIL", "invalid-url")
     ips, resolve_reason = _resolve_public_ips(host, port=port, timeout=timeout, resolver=resolver)
     if resolve_reason == "ssrf-private-resolved":
         return FetchResult("FAIL", resolve_reason)

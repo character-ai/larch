@@ -277,10 +277,6 @@ def main(argv: list[str] | None = None) -> int:
             continue
         rel_dir = Path(rel).parent
         for lineno, line_text in enumerate(lines, 1):
-            # All currently retired script paths are .sh/.md siblings; skip
-            # ordinary lines before checking basename membership.
-            if ".sh" not in line_text and ".md" not in line_text:
-                continue
             candidate_paths: set[str] = set()
             for basename, paths_for_basename in retired_by_basename.items():
                 if basename in line_text:
