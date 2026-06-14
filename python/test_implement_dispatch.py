@@ -39,11 +39,6 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return root
 
 
-@pytest.fixture
-def _repo(repo: Path) -> Path:
-    return repo
-
-
 def _session(tmp_path: Path) -> Path:
     tmp = tmp_path / "impl"
     tmp.mkdir()
@@ -481,7 +476,7 @@ def test_step2_dispatch_main_branch_prohibited(repo: Path, tmp_path: Path, monke
     assert "REASON=main-branch-prohibited" in out
 
 
-def test_step2_dispatch_needs_qa_repair_from_pending(_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_step2_dispatch_needs_qa_repair_from_pending(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     tmp = _session(tmp_path)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
 
@@ -651,7 +646,7 @@ def test_step2_dispatch_detached_head_prohibited(repo: Path, tmp_path: Path, mon
     assert "ORCHESTRATOR_EDIT_AUTHORITY=forbidden" in out
 
 
-def test_step2_dispatch_cap_hit_bails(_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_step2_dispatch_cap_hit_bails(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     tmp = _session(tmp_path)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
 
@@ -673,7 +668,7 @@ def test_step2_dispatch_cap_hit_bails(_repo: Path, tmp_path: Path, monkeypatch: 
     assert "ORCHESTRATOR_EDIT_AUTHORITY=forbidden" in out
 
 
-def test_step2_dispatch_wrapper_validation_failure_bails(_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_step2_dispatch_wrapper_validation_failure_bails(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     tmp = _session(tmp_path)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
 
