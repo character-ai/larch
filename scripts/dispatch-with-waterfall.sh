@@ -212,6 +212,11 @@ pids=()
 phase_indices=()
 phase_outputs=()
 phase_tools=()
+_waterfall_monitor_was_enabled=0
+_waterfall_monitor_enabled_by_wrapper=0
+case $- in
+    *m*) _waterfall_monitor_was_enabled=1 ;;
+esac
 
 _kill_subtree() {
     local _root="$1" _child _children
@@ -226,15 +231,29 @@ _waterfall_kill_active_pids() {
     local _pid
     local _active_pids=("${pids[@]+"${pids[@]}"}")
     for _pid in "${_active_pids[@]+"${_active_pids[@]}"}"; do
+        kill -- -"$_pid" 2>/dev/null || true
         _kill_subtree "$_pid"
+        kill -TERM "$_pid" 2>/dev/null || true
     done
     for _pid in "${_active_pids[@]+"${_active_pids[@]}"}"; do
         wait "$_pid" 2>/dev/null || true
     done
     pids=()
+    if [[ "${_waterfall_monitor_enabled_by_wrapper:-0}" -eq 1 ]]; then
+        set +m 2>/dev/null || true
+        _waterfall_monitor_enabled_by_wrapper=0
+    fi
 }
 trap _waterfall_kill_active_pids EXIT
 trap '_waterfall_kill_active_pids; exit 143' TERM
+if [[ "$_waterfall_monitor_was_enabled" -eq 0 ]]; then
+    set +e
+    set -m 2>/dev/null
+    set -e
+    case $- in
+        *m*) _waterfall_monitor_enabled_by_wrapper=1 ;;
+    esac
+fi
 
 reset_phase() {
     pids=()

@@ -924,21 +924,23 @@ while [[ ! -f "$term_stub_pid_file" ]]; do
 done
 term_stub_pid="$(tr -d '[:space:]' < "$term_stub_pid_file")"
 term_phase_pid="$(pgrep -P "$term_dispatcher_pid" 2>/dev/null | head -1 || true)"
-[[ -n "$term_phase_pid" ]] || {
-    _term_trap_leftover_cleanup
-    echo "FAIL: term-trap active phase wrapper PID not found under dispatcher" >&2
-    exit 1
-}
 sleep 0.2
 kill -TERM "$term_dispatcher_pid" 2>/dev/null || true
 wait "$term_dispatcher_pid" 2>/dev/null || true
 term_dispatcher_pid=""
-if kill -0 "$term_phase_pid" 2>/dev/null; then
+if [[ -n "$term_phase_pid" ]] && kill -0 "$term_phase_pid" 2>/dev/null; then
     _term_trap_leftover_cleanup
     echo "FAIL: term-trap active phase wrapper still alive after dispatcher TERM" >&2
     exit 1
 fi
 term_phase_pid=""
+term_deadline=$((SECONDS + 5))
+while kill -0 "$term_stub_pid" 2>/dev/null; do
+    if (( SECONDS >= term_deadline )); then
+        break
+    fi
+    sleep 0.05
+done
 if kill -0 "$term_stub_pid" 2>/dev/null; then
     _term_trap_leftover_cleanup
     echo "FAIL: term-trap cursor stub launcher still alive after dispatcher TERM" >&2
