@@ -198,9 +198,23 @@ def render_size_report(repo_root: Path, tracked_paths: list[str]) -> str:
     )
 
 
+def _git_toplevel() -> Path:
+    """Return the repo root from git, exiting on failure."""
+    result = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if result.returncode != 0:
+        sys.stderr.buffer.write(result.stderr)
+        sys.exit(result.returncode)
+    return Path(result.stdout.decode().strip())
+
+
 def main() -> int:
     """CLI entrypoint."""
-    repo_root = Path.cwd()
+    repo_root = _git_toplevel()
     tracked_paths = git_ls_files(repo_root)
     print(render_line_counts(collect_line_counts(repo_root, tracked_paths)))
     print()
