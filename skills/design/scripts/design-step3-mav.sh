@@ -226,7 +226,7 @@ run_pre_phase() {
         _scope_render_rc=$?
         set -e
         if [ "${_scope_render_rc:-0}" -ne 0 ]; then
-            cat "$DESIGN_TMPDIR/step3-mav-scope-anchor.err" >&2 2>/dev/null || true
+            while IFS= read -r _err_line || [ -n "$_err_line" ]; do larch_err "$(printf '%s' "$_err_line" | sanitize_diagnostic_line)"; done < "$DESIGN_TMPDIR/step3-mav-scope-anchor.err" 2>/dev/null || true
             exit "$_scope_render_rc"
         fi
         while IFS= read -r _scope_line || [ -n "$_scope_line" ]; do
