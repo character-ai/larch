@@ -814,6 +814,61 @@ assert_contains "$D37/.design-postplan-emit-result.env" 'invalid-mechanical-chur
 [[ -f "$D37/check-plan-size.validation.log" ]] || fail "merged invalid mechanical_churn validation log"
 assert_contains "$D37/check-plan-size.validation.log" 'invalid-mechanical-churn' "merged invalid mechanical_churn stderr"
 
+# Wrapper-consumed rc contract pins. These are intentionally narrow and
+# duplicate only the rc values consumed by design-step2b-postplan.sh and the
+# Step 2b prompt router.
+D38="$TMP/wrapper-rc10-defects"
+setup_design_tmp "$D38" full
+reset_env
+export VALIDATE_STATUS_VALUE=defects-found VALIDATE_DEFECT_COUNT_VALUE=2
+set +e
+bash "$SUBJECT" --design-tmpdir "$D38" --with-plan-size >"$D38/stdout.txt" 2>"$D38/stderr.txt"
+rc=$?
+set -e
+assert_rc "wrapper contract rc10 defects-found" 10 "$rc"
+assert_file_kv "$D38/.design-postplan-emit-result.env" VALIDATE_STATUS defects-found "wrapper contract rc10 status"
+
+D39="$TMP/wrapper-rc12-hard"
+setup_design_tmp "$D39" full
+{
+    printf '# Plan\n'
+    for _ in $(seq 1 5); do printf "### NEW: \`hard%s.md\`\n" "$_"; done
+    fill_plan_lines /dev/stdout 796 b
+    printf 'diff_lines: 400\n'
+} >"$D39/plan.txt"
+set +e
+run_subject "$D39" --with-plan-size
+rc=$?
+set -e
+assert_rc "wrapper contract rc12 hard trigger" 12 "$rc"
+assert_file_kv "$D39/.design-postplan-emit-result.env" PLAN_SIZE_STATUS plan-size-trigger "wrapper contract rc12 status"
+
+D40="$TMP/wrapper-rc13-partition"
+setup_design_tmp "$D40" full
+printf '{"review_budget":"full","partition_requested":true}\n' >"$D40/run-params.json"
+write_small_plan "$D40"
+set +e
+run_subject "$D40" --with-plan-size
+rc=$?
+set -e
+assert_rc "wrapper contract rc13 partition" 13 "$rc"
+assert_file_kv "$D40/.design-postplan-emit-result.env" PLAN_SIZE_STATUS partition-requested "wrapper contract rc13 status"
+
+D41="$TMP/wrapper-rc0-drift"
+setup_design_tmp "$D41" full
+printf 'BASELINE_PLAN_LINES=3\nBASELINE_DIFF_LINES=12\n' >"$D41/drift-baseline.env"
+{
+    printf '# Plan\n'
+    fill_plan_lines /dev/stdout 7 b
+    printf 'diff_lines: 25\n'
+} >"$D41/plan.txt"
+set +e
+run_subject "$D41" --with-plan-size --snapshot-original
+rc=$?
+set -e
+assert_rc "wrapper contract rc0 drift advisory" 0 "$rc"
+assert_file_kv "$D41/.design-postplan-emit-result.env" PLAN_SIZE_STATUS drift-advisory "wrapper contract rc0 drift status"
+
 if [[ "$FAIL" -ne 0 ]]; then
     printf 'FAIL: test-design-postplan-emit.sh (%s failed, %s passed)\n' "$FAIL" "$PASS" >&2
     exit 1

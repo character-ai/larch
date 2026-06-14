@@ -112,7 +112,11 @@ fi
 if [ "$WRITE_STEP2B_COMPLETION_ONLY" = true ]; then
   mkdir -p "$DESIGN_TMPDIR/.completed"
   : > "$DESIGN_TMPDIR/.completed/step-2b"
-  [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+  if [ -f "$DESIGN_TMPDIR/.pause-requested" ]; then
+    printf 'POSTPLAN_RC=11\n'
+    printf 'POSTPLAN_STATUS=pause-save\n'
+    exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+  fi
   exit 0
 fi
 if [ "$WRITE_COMPLETION_ONLY" = true ]; then
@@ -121,10 +125,18 @@ if [ "$WRITE_COMPLETION_ONLY" = true ]; then
   if [ "$INCLUDE_STEP2B" = true ]; then
     : > "$DESIGN_TMPDIR/.completed/step-2b"
   fi
-  [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+  if [ -f "$DESIGN_TMPDIR/.pause-requested" ]; then
+    printf 'POSTPLAN_RC=11\n'
+    printf 'POSTPLAN_STATUS=pause-save\n'
+    exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+  fi
   exit 0
 fi
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+if [ -f "$DESIGN_TMPDIR/.pause-requested" ]; then
+  printf 'POSTPLAN_RC=11\n'
+  printf 'POSTPLAN_STATUS=pause-save\n'
+  exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+fi
 _postplan_site="${SITE:-step2b}"
 if [[ "$_postplan_site" != "step2b" ]]; then
   rm -f "$DESIGN_TMPDIR/scout-plan-manifest.json" \
@@ -205,6 +217,8 @@ case "${_postplan_rc:-1}" in
     [[ -n "${VALIDATE_LOG_FILE:-}" ]] && printf 'VALIDATE_LOG_FILE=%s\n' "$VALIDATE_LOG_FILE"
     ;;
   11)
+    printf 'POSTPLAN_RC=11\n'
+    printf 'POSTPLAN_STATUS=pause-save\n'
     exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
     ;;
   12)

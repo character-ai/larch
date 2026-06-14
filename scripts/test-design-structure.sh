@@ -739,6 +739,82 @@ assert_compact_reviewer_table_step3_scoped() {
     || fail 'SKILL must not reference deprecated "permitted breadcrumb/status table" phrasing'
 }
 
+assert_step2b_drafter_folded_postplan_contract() {
+  contains "$SKILL_MD" 'design-step2b-drafter.sh` now owns Step 2a exact sentinel validation' 'SKILL missing folded prelude ownership'
+  contains "$SKILL_MD" 'design-step2b-postplan.sh --site step2b --snapshot-original --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" --plugin-root "$CLAUDE_PLUGIN_ROOT"' 'SKILL missing delegated postplan transport argv'
+  contains "$SKILL_MD" 'Use `timeout: 2100000` on the Bash tool call for this drafter subprocess fence.' 'SKILL missing increased Step 2b drafter timeout'
+  contains "$SKILL_MD" 'Parse `POSTPLAN_RC=` and `POSTPLAN_STATUS=` from wrapper-owned rows after `STEP2B_DRAFTER_WRAPPER_ROWS_BEGIN=1`.' 'SKILL missing wrapper-owned postplan row parser'
+  contains "$SKILL_MD" 'Require a subsequent whole-line `DRAFTER_STATUS=succeeded` marker before binding postplan rows.' 'SKILL missing DRAFTER_STATUS succeeded parser gate'
+  contains "$SKILL_MD" 'Do not use the Bash tool exit code alone for drafter-success postplan routing.' 'SKILL missing no-exit-code-alone routing guard'
+  contains "$SKILL_MD" 'Ignore `POSTPLAN_*` and `DRAFTER_STATUS=*` text in plan preview output.' 'SKILL missing preview machine-row ignore guard'
+  contains "$SKILL_MD" '`_postplan_out` for internal postplan routing is sliced to the delegated postplan segment after `DRAFTER_STATUS=succeeded`, excluding the plan preview.' 'SKILL missing sliced internal postplan output binding'
+  contains "$SKILL_MD" 'Fail closed when drafter success has missing postplan rows.' 'SKILL missing incomplete internal postplan fail-closed branch'
+  contains "$SKILL_MD" 'The missing-row fail-safe may run the retained terminal postplan fence at most once when the drafter fence exited zero.' 'SKILL missing one-shot missing-row fail-safe'
+  contains "$SKILL_MD" 'skip the retained terminal postplan fence for all complete internal-postplan outcomes when inline retry is not pending' 'SKILL missing normal-success skip retained postplan wording'
+  contains "$SKILL_MD" 'The inline-retry gate can be triggered by either the drafter fence or terminal postplan fence.' 'SKILL missing dual-source inline retry gate'
+  contains "$SKILL_MD" 'run the retained terminal postplan fence exactly once after the inline rewrite' 'SKILL missing exact one terminal postplan after inline retry'
+  ! grep -Fq 'proceed directly to the retained terminal postplan fence' "$SKILL_MD" \
+    || fail 'SKILL must not keep stale drafter-success retained-postplan wording'
+  ! grep -Fq 'continue at the terminal postplan fence' "$SKILL_MD" \
+    || fail 'SKILL must not keep stale continue-at-terminal-postplan wording'
+  python3 - "$SKILL_MD" <<'PY'
+import re
+import sys
+from pathlib import Path
+text = Path(sys.argv[1]).read_text()
+start = text.index('<!-- step:2b')
+end = text.index('### Step 2b.5', start)
+section = text[start:end]
+if 'design-step2b-prelude.sh' in section:
+    print('Step 2b section must not call the standalone prelude wrapper', file=sys.stderr)
+    sys.exit(1)
+fences = re.findall(r'```bash\n(.*?)\n```', section, flags=re.S)
+terminal = [f for f in fences if 'design-step2b-postplan.sh --site step2b --snapshot-original' in f]
+if len(terminal) != 1:
+    print(f'expected one retained terminal postplan fence, found {len(terminal)}', file=sys.stderr)
+    sys.exit(1)
+PY
+  contains "$SCRIPT_DIR/design-step2b-drafter.sh" 'step2b_exact_line_file()' 'drafter wrapper missing exact sentinel helper'
+  contains "$SCRIPT_DIR/design-step2b-drafter.sh" 'approach-synthesis.txt" "NO_SKETCHES"' 'drafter wrapper missing approach sentinel check'
+  contains "$SCRIPT_DIR/design-step2b-drafter.sh" 'contested-decisions.md" "NO_CONTESTED_DECISIONS"' 'drafter wrapper missing contested sentinel check'
+  contains "$SCRIPT_DIR/design-step2b-drafter.sh" 'dialectic-resolutions.md' 'drafter wrapper missing dialectic sentinel check'
+  ! grep -Fq 'design-step2b-prelude.sh' "$SCRIPT_DIR/design-step2b-drafter.sh" \
+    || fail 'drafter wrapper must not source design-step2b-prelude.sh'
+  contains "$SCRIPT_DIR/design-step2b-drafter.sh" ': > "$DESIGN_TMPDIR/.completed/step-2a"' 'drafter wrapper missing step-2a repair'
+  python3 - "$SCRIPT_DIR/design-step2b-drafter.sh" <<'PY'
+import sys
+from pathlib import Path
+text = Path(sys.argv[1]).read_text()
+repair = text.index(': > "$DESIGN_TMPDIR/.completed/step-2a"')
+pause = text.index('design-pause-save.sh')
+timing = text.index('timing mark "design Step 2b')
+launch = text.index('launch-codex-drafter.sh')
+if not (repair < pause < timing < launch):
+    print('drafter wrapper order must be repair, pause, timing, launch', file=sys.stderr)
+    sys.exit(1)
+prelaunch = text[:launch]
+if prelaunch.count('design-pause-save.sh') != 1:
+    print('drafter wrapper must contain one active pause-save boundary before launch', file=sys.stderr)
+    sys.exit(1)
+PY
+  contains "$SCRIPT_DIR/design-step2b-drafter.sh" 'design-step2b-postplan.sh"' 'drafter wrapper missing delegated postplan exec'
+  contains "$SCRIPT_DIR/design-step2b-drafter.sh" '--site step2b' 'drafter wrapper missing delegated --site step2b'
+  contains "$SCRIPT_DIR/design-step2b-drafter.sh" '--snapshot-original' 'drafter wrapper missing delegated --snapshot-original'
+  contains "$SCRIPT_DIR/design-step2b-drafter.sh" '--session-env-path "$SESSION_ENV_PATH"' 'drafter wrapper missing delegated --session-env-path'
+  contains "$SCRIPT_DIR/design-step2b-drafter.sh" '--claude-pid "$CLAUDE_PID"' 'drafter wrapper missing delegated --claude-pid'
+  contains "$SCRIPT_DIR/design-step2b-drafter.sh" '--plugin-root "$CLAUDE_PLUGIN_ROOT"' 'drafter wrapper missing delegated --plugin-root'
+  ! grep -Fq 'design-postplan-emit.sh' "$SCRIPT_DIR/design-step2b-drafter.sh" \
+    || fail 'drafter wrapper must not call design-postplan-emit.sh directly'
+  contains "$SCRIPT_DIR/design-step2b-drafter.sh" 'STEP2B_DRAFTER_WRAPPER_ROWS_BEGIN=1' 'drafter wrapper missing wrapper row delimiter'
+  contains "$SCRIPT_DIR/design-step2b-drafter.sh" 'DRAFTER_STATUS=' 'drafter wrapper missing DRAFTER_STATUS row'
+  contains "$SCRIPT_DIR/design-step2b-drafter.sh" 'DRAFTER_VENDOR=' 'drafter wrapper missing DRAFTER_VENDOR row'
+  contains "$SCRIPT_DIR/design-step2b-drafter.sh" "sed 's/^/[plan-preview] /'" 'drafter wrapper missing machine-safe preview prefix'
+  contains "$SCRIPT_DIR/design-step2b-postplan.sh" 'case "${_postplan_rc:-1}" in' 'postplan wrapper missing retained rc matrix'
+  contains "$SCRIPT_DIR/design-step2b-postplan.sh" '  11)' 'postplan wrapper missing rc 11 arm'
+  contains "$SCRIPT_DIR/design-step2b-postplan.sh" 'POSTPLAN_RC=11' 'postplan wrapper missing rc11 row'
+  contains "$SCRIPT_DIR/design-step2b-postplan.sh" 'POSTPLAN_STATUS=pause-save' 'postplan wrapper missing pause-save status row'
+}
+
 assert_design_skill_bash_fences_are_wrappers
 assert_no_consecutive_executable_script_call_fences
 assert_no_inline_bash_tokens_in_skill_fences
@@ -757,6 +833,7 @@ assert_publish_fence_guards
 assert_step5_fold_and_summary_markers
 assert_step6_cleanup_wrappers
 assert_wrapper_fence_ordering
+assert_step2b_drafter_folded_postplan_contract
 assert_design_failure_reporting_contract
 assert_no_direct_step3b_step4_routes 'SKILL Step 3b slice' "$SKILL_MD" '<!-- step:3b' '<!-- step:4 —'
 assert_no_direct_step3b_step4_routes 'SKILL Step 3/Gate-B-bypass slice' "$SKILL_MD" '<!-- step:3 —' '<!-- step:3.5'
