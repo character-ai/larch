@@ -953,8 +953,8 @@ def flush_scout_manifest(
     with contextlib.suppress(FileNotFoundError):
         scout_payload.unlink()
         scout_flush_err.unlink()
-    manifest_basename = os.path.basename(core.get("SCOUT_MANIFEST", "")) if core.get("SCOUT_MANIFEST") else ""
-    yield_tsv_basename = os.path.basename(core.get("YIELD_TSV_FILE", "")) if core.get("YIELD_TSV_FILE") else ""
+    manifest_basename = Path(core["SCOUT_MANIFEST"]).name if core.get("SCOUT_MANIFEST") else ""
+    yield_tsv_basename = Path(core["YIELD_TSV_FILE"]).name if core.get("YIELD_TSV_FILE") else ""
     dynamic_slots_raw = core.get("DYNAMIC_SLOTS", "0") or "0"
     if not dynamic_slots_raw.isdigit():
         msg = f"invalid DYNAMIC_SLOTS for review-scout-manifest payload: {dynamic_slots_raw or '<empty>'}"
