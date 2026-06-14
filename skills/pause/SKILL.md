@@ -41,7 +41,7 @@ fi
 printf '%s\n' "🛑 /larch:pause: saving state for issue #${ISSUE_NUMBER}..."
 mkdir -p "$DESIGN_TMPDIR"
 pause_args=(
-  "${CLAUDE_PLUGIN_ROOT}/scripts/design-pause-save.sh"
+  python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design pause-save
   --design-tmpdir "$DESIGN_TMPDIR"
   --issue "$ISSUE_NUMBER"
 )

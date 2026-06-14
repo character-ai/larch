@@ -13,7 +13,6 @@ make_fake_step3_plugin() {
   mkdir -p "$dir/scripts" "$dir/skills/design/scripts" "$dir/python"
   ln -sf "$ROOT/scripts/read-result-env.sh" "$dir/scripts/read-result-env.sh"
   ln -sf "$ROOT/scripts/lib-quiet.sh" "$dir/scripts/lib-quiet.sh"
-  ln -sf "$ROOT/skills/design/scripts/lib-phase-driver.sh" "$dir/skills/design/scripts/lib-phase-driver.sh"
   cat >"$dir/skills/design/scripts/plan-review-loop-stub.sh" <<EOFSTUB
 #!/usr/bin/env bash
 set -euo pipefail
@@ -160,6 +159,12 @@ import sys
 if len(sys.argv) >= 3 and sys.argv[1] == "plan-review" and sys.argv[2] == "run":
     run_sh = os.path.join(os.environ.get("CLAUDE_PLUGIN_ROOT", ""), "skills", "design", "scripts", "plan-review-loop-stub.sh")
     sys.exit(subprocess.call(["/bin/bash", run_sh]))
+# design read-result-env must delegate to the real CLI so result-env reads work
+if len(sys.argv) >= 3 and sys.argv[1] == "design" and sys.argv[2] == "read-result-env":
+    real_cli = os.path.join(os.environ.get("LARCH_TEST_REAL_REPO_ROOT", ""), "python", "cli.py")
+    if real_cli and os.path.isfile(real_cli):
+        sys.exit(subprocess.call([sys.executable, real_cli, *sys.argv[1:]]))
+    sys.exit(0)
 with open(os.environ["ORDER_LOG"], "a", encoding="utf-8") as handle:
     handle.write("helper " + " ".join(sys.argv[1:]) + "\n")
 raise SystemExit(int(os.environ.get("HELPER_RC", "0")))
@@ -167,7 +172,7 @@ PYEOF
 order_log="$D_KILL/order.log"
 set +e
 kill_out=$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$FAKE_KILL" DESIGN_TMPDIR="$D_KILL" ISSUE_NUMBER=9 \
-  ORDER_LOG="$order_log" HELPER_RC=73 "$WRAPPER" 2>"$D_KILL/stderr.log")
+  LARCH_TEST_REAL_REPO_ROOT="$ROOT" ORDER_LOG="$order_log" HELPER_RC=73 "$WRAPPER" 2>"$D_KILL/stderr.log")
 kill_rc=$?
 set -e
 [[ "$kill_rc" -eq 0 ]] || fail "kill helper wrapper rc=$kill_rc stdout=$kill_out stderr=$(cat "$D_KILL/stderr.log")"

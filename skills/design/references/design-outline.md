@@ -109,7 +109,7 @@ Loop until the operator explicitly chooses **Approve outline** or **Cancel** on 
 On **Cancel**:
 
 1. Export `SUMMARY_OUTCOME=cancelled-outline`.
-2. Execute the `### Final summary block` fenced bash block from `SKILL.md` Step 0b. Do **not** call `render-final-summary.sh` directly from prompt-side orchestration.
+2. Execute the `### Final summary block` fenced bash block from `SKILL.md` Step 0b. Do **not** call `python/cli.py design render-final-summary` directly from prompt-side orchestration.
 3. Print `**ℹ /design cancelled by operator (outline gate).**`.
 4. Exit 0. `$DESIGN_TMPDIR` is preserved because `PLAN_WRITE_OK=true` is not set on this path. **Cancel** does **not** write `$DESIGN_TMPDIR/.outline-approved`.
 

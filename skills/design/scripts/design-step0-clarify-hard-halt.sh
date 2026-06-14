@@ -94,7 +94,7 @@ if [ -z "${DESIGN_TMPDIR:-}" ]; then
   exit 1
 fi
 design_tmpdir_canon=$(cd "$DESIGN_TMPDIR" && pwd -P)
-[ -f "$design_tmpdir_canon/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$design_tmpdir_canon" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+[ -f "$design_tmpdir_canon/.pause-requested" ] && exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design pause-save --design-tmpdir "$design_tmpdir_canon" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
 
 detail_log="${CLARIFY_FAILURE_LOG:-$design_tmpdir_canon/clarify-loop.failure.log}"
 case "$detail_log" in

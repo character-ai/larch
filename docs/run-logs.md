@@ -15,7 +15,7 @@ larch-logs/
   design/
     <RUN_ID>/
       manifest.json
-      (design session artifacts: depth-1 files from `$DESIGN_TMPDIR` plus `render-cache/` subtree, trimmed and redacted per `scripts/design-log-publish.md`; `composed-plan.diff` is a unified diff of `composed-plan.md` vs final `plan.txt` — reconstruct with `patch plan.txt composed-plan.diff -o composed-plan.md`)
+      (design session artifacts: depth-1 files from `$DESIGN_TMPDIR` plus `render-cache/` subtree, trimmed and redacted per `python/design_log_publish_flow.py`; `composed-plan.diff` is a unified diff of `composed-plan.md` vs final `plan.txt` — reconstruct with `patch plan.txt composed-plan.diff -o composed-plan.md`)
       plan-review/
         round-<N>/
           findings-classification.tsv
@@ -87,11 +87,11 @@ example. The committed path shape is shared across publishing skill roots, so
 the same directory artifact may exist as `design/<RUN_ID>/breadcrumbs/`,
 `review/<RUN_ID>/breadcrumbs/`, or `research/<RUN_ID>/breadcrumbs/` when a
 publisher wires that helper for that skill. Today the landed callers are
-`python/cli.py run-log commit` (`/implement`) and `scripts/design-log-publish.sh`
+`python/cli.py run-log commit` (`/implement`) and `scripts/python/cli.py design log-publish`
 (`design` publish).
 
 `breadcrumbs/` is a commit-only directory artifact, not a larch-log batch.
-`python/cli.py run-log commit` and `scripts/design-log-publish.sh` invoke the
+`python/cli.py run-log commit` and `scripts/python/cli.py design log-publish` invoke the
 shared `larch_log_publish_breadcrumbs_shared` helper. Session-tmpdir
 `breadcrumbs/` paths (`$IMPLEMENT_TMPDIR/breadcrumbs/`, `$DESIGN_TMPDIR/breadcrumbs/`,
 `$REVIEW_TMPDIR/breadcrumbs/`, or `$RESEARCH_TMPDIR/breadcrumbs/`) are publication
@@ -348,7 +348,7 @@ Markdown explanation of the version bump classification: which bump type was cho
 
 ### final-summary.md
 
-**Mode**: replace. **Written**: the committed body is rendered by [`scripts/python/cli.py render run-summary`](../scripts/python/cli.py render run-summary); [`python/cli.py final-report write`](../skills/implement/scripts/write-final-report.md) writes `larch-logs/implement/<RUN_ID>/final-summary.md` and upserts the tracking-issue `larch:final-summary` comment for `/implement`, while [`skills/design/scripts/render-final-summary.sh`](../skills/design/scripts/render-final-summary.sh) does the same for `/design` under `larch-logs/design/<RUN_ID>/` during the post-outcome Step 5c render after plan write, diagram upsert, rename, and design-log publish have settled.
+**Mode**: replace. **Written**: the committed body is rendered by [`scripts/python/cli.py render run-summary`](../scripts/python/cli.py render run-summary); [`python/cli.py final-report write`](../skills/implement/scripts/write-final-report.md) writes `larch-logs/implement/<RUN_ID>/final-summary.md` and upserts the tracking-issue `larch:final-summary` comment for `/implement`, while [`skills/design/scripts/python/cli.py design render-final-summary`](../skills/design/scripts/python/cli.py design render-final-summary) does the same for `/design` under `larch-logs/design/<RUN_ID>/` during the post-outcome Step 5c render after plan write, diagram upsert, rename, and design-log publish have settled.
 
 Committed **rich markdown** projection of the run: outcome, mode flags, token totals (Claude / Codex / Cursor / Claude (subprocess) — the spawned-process Claude reviewer/voter/CI/scout lane, machine name `claude_sub`, priced at Claude rates and summed into the total), optional per-lane USD estimates when [`python/report_tokens_cost.py`](../python/report_tokens_cost.py) rates are configured, duration, plan/code review tallies, OOS and execution-issue counts, log directory pointer, and operator-facing notes (fork dry-run, draft, no-merge, upstream issue, fork OOS stubs). The body is produced by [`scripts/python/cli.py render run-summary`](../scripts/python/cli.py render run-summary): it begins with a `## /<skill> run <run-id> — <outcome>` heading and a normalized markdown bullet list (including `**PR**:` when a PR is known; `- **Outcome**:` for outcomes matching `bailed*`, `stalled`, `cancelled-*`, `failed-*`, or `publish-skipped`; the other fields follow the renderer contract). A versioned HTML sentinel (`<!-- larch:run-summary v=1 -->`) appears on its own line after that bullet block (and before any optional trailing note lines) so consumers can detect the standardized block while the opening line stays human-readable. The `- **PR**:` bullet is omitted when no PR number is known; otherwise `#<number> — <url>` or `#<number>` when the URL is unknown. When `RUN_LOGS_PATH=N/A`, the renderer must not synthesize a fallback log path for `RUN_ID=unknown`, `failed-publish`, or `publish-skipped` outcomes. The tracking-issue `larch:final-summary` comment is the canonical live projection once upserted.
 
@@ -466,7 +466,7 @@ Content: current plan-review tally status (voting outcome when present, or a poi
 
 ### `larch:diagrams`
 
-Architecture is written by `/design` Step 5c via `skills/design/scripts/design-publish.sh` (diagrams upsert) after the `larch:plan` block is successfully written. Code Flow is written by `/implement` Step 7a only when code-flow generation succeeds.
+Architecture is written by `/design` Step 5c via `skills/design/scripts/python/cli.py design publish` (diagrams upsert) after the `larch:plan` block is successfully written. Code Flow is written by `/implement` Step 7a only when code-flow generation succeeds.
 
 Content: the Architecture Diagram (from `/design`) and Code Flow Diagram (generated at Step 7a from the committed implementation diff), both embedded as Mermaid fences. The stable marker is `<!-- larch:diagrams v1 -->` with no `runid=` segment. Diagrams are embedded directly in this comment rather than written as a larch-log batch.
 
@@ -479,7 +479,7 @@ refreshed during Step 18 terminal cleanup. The tracking-issue comment may also
 be refreshed immediately after PR creation with the live URL, without a second
 log commit. Runs that never reach PR creation still run terminal cleanup and may refresh the tracking summary with `PR: N/A` when no PR exists.
 
-For `/design`, `skills/design/scripts/render-final-summary.sh` writes `larch-logs/design/<RUN_ID>/final-summary.md` and upserts the same marker-keyed comment when an issue number is configured, during pre/post publish finalization. `failed-publish` summaries keep `Run logs: N/A` and append recovery metadata when available. `publish-skipped` summaries also keep `Run logs: N/A` and append the skipped-publish note instead of recovery prose.
+For `/design`, `skills/design/scripts/python/cli.py design render-final-summary` writes `larch-logs/design/<RUN_ID>/final-summary.md` and upserts the same marker-keyed comment when an issue number is configured, during pre/post publish finalization. `failed-publish` summaries keep `Run logs: N/A` and append recovery metadata when available. `publish-skipped` summaries also keep `Run logs: N/A` and append the skipped-publish note instead of recovery prose.
 
 Content: final run status (`STALL_TRACKING` value), PR URL, and log directory path. The committed `final-summary.md` in the PR tree may carry placeholder `PR: N/A`; the tracking-issue comment is the canonical live source for the PR URL.
 

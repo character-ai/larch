@@ -135,11 +135,11 @@ Release, audit-runs, combine-issues fetch/apply, and analyze-issues helper surfa
 
 - Added `python/plan_quality.py` under the existing `plan` CLI domain for command parsing, validation, plan-size checks, revision, auto-fix, optional trailers, and plan-goals composition.
 - Surviving Bash callers invoke `python3 python/cli.py plan ...` directly. No shim layer is added.
-- Drift baseline write-once moved to `python/cli.py plan-review drift-baseline` (sourced by `design-postplan-emit.sh`); see **C3a1 design plan-review cutover** below.
+- Drift baseline write-once moved to `python/cli.py plan-review drift-baseline` (sourced by `python/cli.py design postplan-emit`); see **C3a1 design plan-review cutover** below.
 - `plan validate` preserves `VALIDATE_LOG_FILE`: it writes `$DESIGN_TMPDIR/validate-plan-commands.log` when possible, otherwise a stable temp log.
-- `design-driver.sh` bootstraps `PLUGIN_ROOT` when `CLAUDE_PLUGIN_ROOT` is unset.
+- `python/cli.py design driver` bootstraps `PLUGIN_ROOT` when `CLAUDE_PLUGIN_ROOT` is unset.
 - Step 3 keeps `RUN_STEP3_REVISE_PLAN_WITH_WATERFALL_SH` as an override while defaulting to `plan revise-waterfall`.
-- `scripts/run-step1-plan-log.sh` defaults to `plan compose-goals-test` without a retired executable guard.
+- `scripts/python/cli.py plan step1-log` defaults to `plan compose-goals-test` without a retired executable guard.
 - Absorbed shell harness targets now select `python/test_plan_quality.py`; survivor harnesses remain for shell call sites.
 
 ### C3c design decomposition and scout cutover
@@ -153,3 +153,9 @@ The C3c slice moves /design decomposition helpers to `python/decompose.py`, dyna
 - **Gzip-shim façade (interim runtime):** most `plan-review` verbs still delegate through `_run_legacy()` to gzip-embedded retired bash bodies materialized at runtime (`EMBEDDED_LEGACY_REFS` in `python/plan_review.py`). Importable Python entrypoints exist for CLI routing, allowlist validation, drift-baseline write-once, round-artifact predicates, and `step3_record_report_evidence`; loop/tally/dispatch behavior remains bash until a follow-up in-process port lands. Regenerate embedded blobs from reviewable sources when absorbed bash behavior changes; `make lint-retired-scripts` guards deleted on-disk paths only.
 - `dedup-plan-lines.py` remains in place. The migration does not add a standalone `snapshot-plan-round` verb and does not migrate Step 3.6 assessor scripts.
 - `step3_record_report_evidence` moved into `python/plan_review.py`; `design-step3-review.sh` no longer sources the Step 3 loop controller on result-env read failure.
+
+### C3b design lifecycle direct CLI
+
+- `/design` lifecycle wrappers now call `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design <verb>` for argv parsing, routing, run-params init, postplan emission, publish, pause/resume, log publish, final summary, and OOS filing.
+- Pause/resume marker bytes and `docs/issue-anchored-plan.md` payload fields remain compatible with in-progress sessions.
+- `scripts/read-result-env.sh` now delegates allowlisted sourceable output generation to `python/design_lifecycle.py`.

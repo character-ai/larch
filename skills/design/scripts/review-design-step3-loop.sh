@@ -411,11 +411,17 @@ step3_loop_honor_pause() {
     local pause_sh
     step3_loop_refresh_issue_from_source_env
     [[ -f "$DESIGN_TMPDIR/.pause-requested" ]] || return 0
-    pause_sh="${RUN_STEP3_DESIGN_PAUSE_SAVE_SH:-$PLUGIN_ROOT/scripts/design-pause-save.sh}"
-    if [[ -n "${ISSUE_NUMBER:-}" ]]; then
-        exec "$pause_sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
+    pause_sh="${RUN_STEP3_DESIGN_PAUSE_SAVE_SH:-}"
+    if [[ -n "$pause_sh" ]]; then
+        if [[ -n "${ISSUE_NUMBER:-}" ]]; then
+            exec "$pause_sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
+        else
+            exec "$pause_sh" --design-tmpdir "$DESIGN_TMPDIR"
+        fi
+    elif [[ -n "${ISSUE_NUMBER:-}" ]]; then
+        exec python3 "$PLUGIN_ROOT/python/cli.py" design pause-save --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
     else
-        exec "$pause_sh" --design-tmpdir "$DESIGN_TMPDIR"
+        exec python3 "$PLUGIN_ROOT/python/cli.py" design pause-save --design-tmpdir "$DESIGN_TMPDIR"
     fi
 }
 
@@ -534,9 +540,13 @@ step3_loop_run_apply() {
 
 step3_loop_run_post_apply() {
     local round_num="$1" postplan_sh postplan_rc snap_sh next_round pause_sh
-    postplan_sh="${RUN_STEP3_POSTPLAN_EMIT_SH:-$PLUGIN_ROOT/skills/design/scripts/design-postplan-emit.sh}"
+    postplan_sh="${RUN_STEP3_POSTPLAN_EMIT_SH:-}"
     set +e
-    "$postplan_sh" --design-tmpdir "$DESIGN_TMPDIR" --with-plan-size
+    if [[ -n "$postplan_sh" ]]; then
+        "$postplan_sh" --design-tmpdir "$DESIGN_TMPDIR" --with-plan-size
+    else
+        python3 "$PLUGIN_ROOT/python/cli.py" design postplan-emit --design-tmpdir "$DESIGN_TMPDIR" --with-plan-size
+    fi
     postplan_rc=$?
     case "$postplan_rc" in
         0)
@@ -551,11 +561,17 @@ step3_loop_run_post_apply() {
             ;;
         11)
             step3_loop_refresh_issue_from_source_env
-            pause_sh="${RUN_STEP3_DESIGN_PAUSE_SAVE_SH:-$PLUGIN_ROOT/scripts/design-pause-save.sh}"
-            if [[ -n "${ISSUE_NUMBER:-}" ]]; then
-                exec "$pause_sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
+            pause_sh="${RUN_STEP3_DESIGN_PAUSE_SAVE_SH:-}"
+            if [[ -n "$pause_sh" ]]; then
+                if [[ -n "${ISSUE_NUMBER:-}" ]]; then
+                    exec "$pause_sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
+                else
+                    exec "$pause_sh" --design-tmpdir "$DESIGN_TMPDIR"
+                fi
+            elif [[ -n "${ISSUE_NUMBER:-}" ]]; then
+                exec python3 "$PLUGIN_ROOT/python/cli.py" design pause-save --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
             else
-                exec "$pause_sh" --design-tmpdir "$DESIGN_TMPDIR"
+                exec python3 "$PLUGIN_ROOT/python/cli.py" design pause-save --design-tmpdir "$DESIGN_TMPDIR"
             fi
             ;;
         12)

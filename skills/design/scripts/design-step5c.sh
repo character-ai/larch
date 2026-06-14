@@ -111,7 +111,7 @@ if [[ ! -f "$DESIGN_TMPDIR/.completed/step-5b" ]]; then
   printf '%s\n' "**⚠ Step 5c: missing .completed/step-5b — OOS filing incomplete; repair Step 5b before publish**" >&2
   exit 1
 fi
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design pause-save --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
 # Marker step id: STEP=design-step5c
 design_bg_wait_marker_start design-step5c || true
 emit_report_gate_sidecars_from_disk() {
@@ -141,7 +141,7 @@ emit_final_summary_marked_from_disk() {
      exit 1
    }
    set +e
-   "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-publish.sh" \
+   python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design publish \
      --design-tmpdir "$DESIGN_TMPDIR" \
      --issue "$ISSUE_NUMBER" \
      --session-id "$SESSION_ID" \
@@ -197,7 +197,7 @@ emit_final_summary_marked_from_disk() {
          --redact >/dev/null 2>&1 || true
      fi
      export SUMMARY_OUTCOME=failed-publish-tail
-     "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh" \
+     python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design render-final-summary \
        --outcome failed-publish-tail \
        --mode "${MODE:-N/A}" \
        ${REPO:+--repo "$REPO"} \

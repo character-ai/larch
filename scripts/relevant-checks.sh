@@ -104,32 +104,24 @@ run_direct_relevant_targets() {
     PY_TEST_SKIP_WARNED=0
     while IFS= read -r f; do
         case "$f" in
-            scripts/read-result-env.sh|scripts/read-result-env.md)
+            scripts/read-result-env.sh|scripts/read-result-env.md|python/design_lifecycle.py|python/test_design_lifecycle.py)
                 append_target_once test-read-result-env
                 append_target_once test-design-structure
                 ;;
             scripts/test-read-result-env.sh|scripts/test-read-result-env.md)
                 append_target_once test-read-result-env
                 ;;
-            skills/design/scripts/parse-design-argv.sh|skills/design/scripts/parse-design-argv.md)
+            python/design_argv.py|python/test_design_argv.py)
                 append_target_once test-parse-design-argv
-                append_target_once test-design-structure
-                ;;
-            skills/design/scripts/test-parse-design-argv.sh)
-                append_target_once test-parse-design-argv
-                ;;
-            skills/design/scripts/design-init-runparams.md)
                 append_target_once test-design-structure
                 ;;
         esac
         case "$f" in
-            scripts/test-step0b-router-flag-recovery.sh|scripts/test-step0b-router-flag-recovery.md|python/session_env.py|skills/design/scripts/design-init-runparams.sh|skills/design/scripts/design-init-runparams.md)
+            python/session_env.py|python/design_lifecycle.py|python/test_design_lifecycle.py)
                 append_target_once test-step0b-router-flag-recovery
-                ;;
-            skills/design/scripts/design-route.sh|skills/design/scripts/design-route.md)
                 append_target_once test-design-structure
                 ;;
-            skills/design/scripts/design-publish.sh|skills/design/scripts/design-publish.md|skills/design/scripts/test-design-publish.sh|skills/design/scripts/test-design-publish.md|python/plan_quality.py|python/test_plan_quality.py)
+            python/design_publish.py|python/test_design_publish.py|python/plan_quality.py|python/test_plan_quality.py)
                 append_target_once test-design-publish
                 append_target_once test-design-stage-terminal-state
                 append_target_once test-design-failure-report
@@ -197,12 +189,12 @@ run_direct_relevant_targets() {
                 ;;
         esac
         case "$f" in
-            python/plan_quality.py|python/test_plan_quality.py|skills/design/scripts/design-postplan-emit.sh|skills/design/scripts/design-postplan-emit.md|skills/design/scripts/test-design-postplan-emit.sh|skills/design/scripts/test-design-postplan-emit.md)
+            python/plan_quality.py|python/test_plan_quality.py|python/design_postplan.py|python/test_design_postplan.py)
                 append_target_once test-design-postplan-emit
                 ;;
         esac
         case "$f" in
-            python/plan_quality.py|python/test_plan_quality.py|skills/design/scripts/design-driver.sh|skills/design/scripts/design-driver.md|skills/design/scripts/test-design-driver.sh|skills/design/scripts/test-design-driver.md)
+            python/plan_quality.py|python/test_plan_quality.py|python/design_lifecycle.py|python/test_design_lifecycle.py)
                 append_target_once test-design-driver
                 ;;
         esac
@@ -217,7 +209,7 @@ run_direct_relevant_targets() {
                 ;;
         esac
         case "$f" in
-            python/plan_quality.py|python/test_plan_quality.py|scripts/run-step1-plan-log.sh|scripts/run-step1-plan-log.md|scripts/test-run-step1-plan-log.sh|scripts/test-run-step1-plan-log.md)
+            python/plan_quality.py|python/test_plan_quality.py|python/design_step_log.py|python/test_design_step_log.py)
                 append_target_once test-run-step1-plan-log
                 ;;
         esac
@@ -246,10 +238,9 @@ run_direct_relevant_targets() {
                 ;;
         esac
         case "$f" in
-            skills/design/scripts/render-final-summary.sh|skills/design/scripts/render-final-summary.md|skills/design/scripts/test-render-final-summary.sh|skills/design/scripts/test-render-final-summary.md|scripts/test-render-final-summary-bash32.sh|scripts/test-render-final-summary-bash32.md)
+            python/design_summary.py|python/test_design_summary.py)
                 append_target_once test-render-final-summary
                 append_target_once test-design-failure-report
-                append_target_once test-render-final-summary-bash32
                 ;;
         esac
         case "$f" in
@@ -270,7 +261,7 @@ run_direct_relevant_targets() {
                 ;;
         esac
         case "$f" in
-            scripts/design-log-publish.sh|scripts/test-design-log-publish.sh|scripts/test-design-multi-round-integration.sh|scripts/test-design-multi-round-integration.md)
+            python/design_log_publish_flow.py|python/test_design_log_publish_flow.py|scripts/test-design-multi-round-integration.sh|scripts/test-design-multi-round-integration.md)
                 append_target_once test-design-log-publish
                 append_target_once test-design-multi-round-integration
                 ;;
@@ -347,7 +338,7 @@ run_direct_relevant_targets() {
                 ;;
         esac
         case "$f" in
-            python/issue_wire.py|python/test_issue_wire.py|python/plan_quality.py|python/test_plan_quality.py|python/redact.py|python/gh.py|python/rendering.py|python/test_rendering.py|.claude/rules/gh-body-file.md|AGENTS.md|SECURITY.md|agent-lint.toml|docs/issue-anchored-plan.md|docs/linting.md|skills/design/scripts/test-design-publish.sh|python/test_plan_review.py|skills/design/scripts/test-design-pause-resume.sh|scripts/test-legacy-title-prefix-literals-scope.sh)
+            python/issue_wire.py|python/test_issue_wire.py|python/plan_quality.py|python/test_plan_quality.py|python/redact.py|python/gh.py|python/rendering.py|python/test_rendering.py|.claude/rules/gh-body-file.md|AGENTS.md|SECURITY.md|agent-lint.toml|docs/issue-anchored-plan.md|docs/linting.md|python/test_design_publish.py|python/test_plan_review.py|python/test_design_pause.py|scripts/test-legacy-title-prefix-literals-scope.sh)
                 maybe_append_py_lint_target
                 maybe_append_py_test_target
                 append_target_once test-design-structure
@@ -410,6 +401,7 @@ run_direct_relevant_targets() {
             python/bootstrap.py|python/test_bootstrap.py)
                 append_target_once test-implement-bootstrap
                 append_target_once test-implement-bootstrap-invoke
+                append_target_once test-implement-fence-shape
                 append_target_once test-parse-bootstrap-routing-envelope
                 ;;
             scripts/implement-preflight.sh|scripts/implement-preflight.md|scripts/test-implement-preflight.sh|scripts/test-implement-preflight.md)

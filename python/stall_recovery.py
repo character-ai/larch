@@ -491,6 +491,7 @@ def compose_report(args: argparse.Namespace) -> int:
     bounded_file = _compose_path(args, "bounded_root_cause_file", tmpdir, _DEFAULT_BOUNDED_ROOT_CAUSE_FILE, prefix)
     title_file = _compose_path(args, "title_file", tmpdir, _DEFAULT_TITLE_FILE, prefix)
     sensitive_file = _compose_path(args, "sensitive_corpus_file", tmpdir, _DEFAULT_SENSITIVE_CORPUS, prefix)
+    session_env_file = Path(getattr(args, "session_env_file", "") or tmpdir / "session-env.sh")
     default_output = _DEFAULT_ISSUE_INPUT if surface == "issue-input" else _DEFAULT_CHAT_PRINT
     out_file = _compose_path(args, "output_file", tmpdir, default_output, prefix)
 
@@ -565,7 +566,7 @@ def compose_report(args: argparse.Namespace) -> int:
 
     if surface == "issue-input":
         tier = "A"
-        body = _report_marker(report_sig) + "\n" + _compose_tier_a_issue(kind, class_file, attempts_file, ledger, fallback, marker, root_file, title, tmpdir)
+        body = _report_marker(report_sig) + "\n" + _compose_tier_a_issue(kind, class_file, attempts_file, ledger, fallback, marker, root_file, title, tmpdir, session_env_file)
         _write_tier_a_comment_payloads(tmpdir, attempts_file, ledger, fallback, marker, root_file, prefix)
     else:
         tier = "B"
@@ -588,7 +589,7 @@ def compose_report(args: argparse.Namespace) -> int:
             with contextlib.suppress(OSError):
                 effective.unlink()
             return _compose_error("bounded root-cause contains sensitive token")
-        body = f"### {title}\n\n{_report_marker(report_sig)}\n" + _compose_tier_b_projection(kind, class_file, attempts_file, ledger, fallback, marker, root_file, bounded_file, skill_label)
+        body = f"### {title}\n\n{_report_marker(report_sig)}\n" + _compose_tier_b_projection(kind, class_file, attempts_file, ledger, fallback, marker, root_file, bounded_file, skill_label, session_env_file)
         raw_candidate = out_file.with_suffix(out_file.suffix + ".raw-check")
         raw_candidate.write_text(body, encoding="utf-8")
         if _sensitive_token_rejects_file(effective, raw_candidate):
@@ -1306,6 +1307,7 @@ def _safe_simple_token(value: str, *, fallback: str = "redacted") -> str:
     return value if value and re.fullmatch(r"[A-Za-z0-9._:-]+", value) else fallback
 
 
+<<<<<<< HEAD
 def _read_source_env_export(path: Path, key: str) -> str:
     """Read an ``export KEY=value`` assignment from a shell source-env file.
 
@@ -1329,11 +1331,25 @@ def _read_source_env_export(path: Path, key: str) -> str:
         value = body[len(key) + 1:]
         quote = value[:1]
         if quote in ("'", '"') and value[-1:] == quote:
+=======
+def _read_shell_kv(path: Path, key: str) -> str:
+    if not path.is_file() or path.is_symlink():
+        return ""
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        text = line.strip()
+        text = text.removeprefix("export ")
+        if not text.startswith(f"{key}="):
+            continue
+        value = text[len(key) + 1 :].strip("\r")
+        _MIN_QUOTED = 2
+        if len(value) >= _MIN_QUOTED and value[0] == value[-1] and value[0] in {"'", '"'}:
+>>>>>>> beaeb990a (sh-to-py C3b: port /design lifecycle, argv, postplan, publish, log-publish, final-summary, OOS, pause, step-log to Python CLI)
             value = value[1:-1]
         return value
     return ""
 
 
+<<<<<<< HEAD
 def _read_source_env_session_id(tmpdir: Path) -> str:
     return _read_source_env_export(tmpdir / "source-env.sh", "SESSION_ID")
 
@@ -1344,6 +1360,14 @@ def _read_run_id(tmpdir: Path) -> str:
         value = (tmpdir / "session-id").read_text(encoding="utf-8", errors="replace").strip()
     if not value:
         value = _read_source_env_session_id(tmpdir)
+=======
+def _read_run_id(tmpdir: Path, session_env_file: Path | None = None) -> str:
+    value = read_kv(tmpdir / "parent-issue.md", "RUN_ID", "")
+    if not value and (tmpdir / "session-id").is_file():
+        value = (tmpdir / "session-id").read_text(encoding="utf-8", errors="replace").strip()
+    if not value and session_env_file is not None:
+        value = _read_shell_kv(session_env_file, "SESSION_ID")
+>>>>>>> beaeb990a (sh-to-py C3b: port /design lifecycle, argv, postplan, publish, log-publish, final-summary, OOS, pause, step-log to Python CLI)
     return _safe_simple_token(value, fallback="unknown")
 
 
@@ -1458,6 +1482,7 @@ def _compose_tier_a_issue(
     root_file: Path,
     title: str,
     tmpdir: Path,
+    session_env_file: Path,
 ) -> str:
     bail = read_kv(class_file, "BAIL_REASON_RAW", "") or read_kv(class_file, "BAIL_REASON", "") or "none"
     body = [
@@ -1469,7 +1494,7 @@ def _compose_tier_a_issue(
         f"- **Failure class**: `{_safe_class_value(read_kv(class_file, 'FAILURE_CLASS', 'unrecoverable'))}`",
         f"- **Step**: `{_safe_step_value(read_kv(class_file, 'STALL_STEP', ''))}`",
         f"- **Bail reason**: `{_safe_bail_value(bail)}`",
-        f"- **Run ID**: `{_read_run_id(tmpdir)}`",
+        f"- **Run ID**: `{_read_run_id(tmpdir, session_env_file)}`",
         f"- **Branch**: `{_safe_simple_token(read_kv(tmpdir / 'session-env.sh', 'BRANCH_NAME', '') or read_kv(tmpdir / 'ship-pr-state.sh', 'BRANCH_NAME', '') or read_kv(tmpdir / 'session-env.sh', 'BRANCH', '') or read_kv(tmpdir / 'ship-pr-state.sh', 'BRANCH', ''), fallback='unknown')}`",
         f"- **PR URL**: `{read_kv(tmpdir / 'ship-pr-state.sh', 'PR_URL', '') or read_kv(tmpdir / 'finalize-state.sh', 'PR_URL', '') or 'unknown'}`",
         _append_file_section("Root-cause finding", root_file),
@@ -1497,6 +1522,7 @@ def _compose_tier_b_projection(
     root_file: Path,
     bounded_file: Path,
     skill_label: str,
+    session_env_file: Path,
 ) -> str:
     tmpdir = class_file.parent
     bail = _safe_bail_value(read_kv(class_file, "BAIL_REASON", ""))
@@ -1520,7 +1546,7 @@ def _compose_tier_b_projection(
         f"| Dispatcher | `{_safe_simple_token(read_kv(class_file, 'DISPATCHER', ''), fallback='unknown')}` |",
         f"| Matched classifier pattern | `{_safe_simple_token(read_kv(class_file, 'MATCHED_CLASSIFIER_PATTERN', ''), fallback='redacted')}` |",
         f"| Larch version | `{_read_larch_version()}` |",
-        f"| Run ID | `{_read_run_id(tmpdir)}` |",
+        f"| Run ID | `{_read_run_id(tmpdir, session_env_file)}` |",
         f"| Root-cause verdict | `{_parse_root_cause_file(root_file, 'verdict', '')}` |",
         f"| Root-cause confidence | `{_parse_root_cause_file(root_file, 'confidence', '')}` |",
         "",

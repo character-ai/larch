@@ -421,10 +421,10 @@ test-design-structure:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-design-structure.sh
 
 test-design-reentry-guard:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-design-reentry-guard.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_design_lifecycle.py
 
 test-design-pause-resume:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-pause-resume.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_design_pause.py
 
 test-pause-skill:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/pause/scripts/test-pause-skill.sh
@@ -442,32 +442,32 @@ test-design-step2b-drafter:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-step2b-drafter.sh
 
 test-design-driver:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-driver.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_design_lifecycle.py
 
 test-design-clarify:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-clarify.sh
 
 test-design-publish:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-publish.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_design_publish.py
 
 test-design-postplan-emit:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-postplan-emit.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_design_postplan.py
 
 test-read-result-env:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-read-result-env.sh
 
 test-parse-design-argv:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-parse-design-argv.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_design_argv.py
 
 
 test-invoke-plan-validator:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_plan_quality.py -k validate_plan
 
 test-file-design-oos:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-file-design-oos.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_design_oos.py
 
 test-design-log-publish:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-design-log-publish.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_design_log_publish_flow.py
 
 
 
@@ -539,13 +539,13 @@ test-design-step3-state:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review.py -q
 
 test-lib-phase-driver:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-lib-phase-driver.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_design_lifecycle.py
 
 test-finalize-plan:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review.py -q
 
 test-step0b-router-flag-recovery:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-step0b-router-flag-recovery.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_design_lifecycle.py
 
 test-brainstorm-prompts:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-brainstorm-prompts.sh
@@ -583,10 +583,10 @@ test-dispatch-plan-review-panel:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review_panel.py -q
 
 test-render-final-summary:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-render-final-summary.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_design_summary.py
 
 test-render-final-summary-bash32:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-render-final-summary-bash32.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_design_summary.py
 
 test-implement-rebase-macro:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-implement-rebase-macro.sh
@@ -957,7 +957,7 @@ test-compose-plan-goals-test:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_plan_quality.py -k compose_plan_goals_test
 
 test-run-step1-plan-log:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-run-step1-plan-log.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_design_step_log.py
 
 test-compose-collector-failure-log:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_dispatch.py -k compose_collector_failure_log

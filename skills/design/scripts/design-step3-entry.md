@@ -18,4 +18,4 @@ Combines adjacent `/design` script-call blocks so `skills/design/SKILL.md` keeps
 
 ## Harness
 
-Covered by `scripts/test-design-structure.sh` and `skills/design/scripts/test-design-pause-resume.sh`.
+Covered by `scripts/test-design-structure.sh` and `python/test_design_pause.py`.

@@ -87,14 +87,14 @@ design_source_env_optional() {
 
 design_pause_check() {
   if [ -f "$DESIGN_TMPDIR/.pause-requested" ]; then
-    exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+    exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design pause-save --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
   fi
 }
 
 run_step3b_finalize() {
   set +e
   printf '%s\n' 'ACTION=FINALIZE' \
-    | "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-driver.sh" --design-tmpdir "$DESIGN_TMPDIR"
+    | python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design driver --design-tmpdir "$DESIGN_TMPDIR"
   _finalize_rc=$?
   set -e
   if [ "$_finalize_rc" -ne 0 ]; then

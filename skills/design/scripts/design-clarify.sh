@@ -202,7 +202,7 @@ fi
 [[ -z "${REPO:-}" ]] || validate_repo "$REPO"
 
 if [[ -f "$DESIGN_TMPDIR/.pause-requested" ]]; then
-    exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE" ${REPO:+--repo "$REPO"}
+    exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design pause-save --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE" ${REPO:+--repo "$REPO"}
 fi
 REQUEST_BODY_FILE="$DESIGN_TMPDIR/clarify-request.md"
 PLAN_FILE="$DESIGN_TMPDIR/clarify-plan.md"
@@ -352,7 +352,7 @@ PUBLISH_OK=false
 publish_rc=0
 if [[ -n "${SESSION_ID:-}" ]]; then
     set +e
-    publish_out=$("$CLAUDE_PLUGIN_ROOT/scripts/design-log-publish.sh" \
+    publish_out=$(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design log-publish \
         --design-tmpdir "$DESIGN_TMPDIR" \
         --run-id "$SESSION_ID" \
         --issue "$ISSUE" \

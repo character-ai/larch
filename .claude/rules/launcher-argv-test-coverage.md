@@ -1,5 +1,9 @@
 ---
+<<<<<<< HEAD
 paths: ["python/agents.py", "python/test_launch_review.py", "python/cli.py", "scripts/launch-*.sh", "scripts/test-launch-*.sh", "scripts/run-step1-plan-log.sh", "scripts/test-run-step1-plan-log.sh", "python/review_and_fix.py", "python/test_review_and_fix.py", "python/cli.py implement run-dispatch", "python/cli.py implement step2-dispatch", "python/test_implement_dispatch.py", "skills/implement/scripts/test-step2-*.sh", "python/plan_review.py", "python/test_plan_review.py"]
+=======
+paths: ["python/agents.py", "python/test_launch_review.py", "python/cli.py", "scripts/launch-*.sh", "scripts/test-launch-*.sh", "python/design_step_log.py", "python/test_design_step_log.py", "python/review_and_fix.py", "python/test_review_and_fix.py", "skills/implement/scripts/run-step2-dispatch.sh", "skills/implement/scripts/step2-implement.sh", "skills/implement/scripts/test-run-step2-dispatch.sh", "skills/implement/scripts/test-step2-*.sh", "skills/implement/scripts/test-codex-implementer.sh", "skills/implement/scripts/test-cursor-implementer.sh", "skills/design/scripts/design-step3-review.sh", "skills/design/scripts/test-design-step3-review.sh"]
+>>>>>>> beaeb990a (sh-to-py C3b: port /design lifecycle, argv, postplan, publish, log-publish, final-summary, OOS, pause, step-log to Python CLI)
 ---
 
 # Launcher Argv Test Coverage
@@ -13,7 +17,7 @@ harness gap → fix later" is the bug.
 Harness paths are **not** uniform:
 
 - `python/cli.py agent launch-review --tool cursor|codex` → `python/test_launch_review.py`
-- `scripts/run-step1-plan-log.sh` → `scripts/test-run-step1-plan-log.sh`
+- `python/cli.py plan step1-log` → `python/test_design_step_log.py`
 - `python/cli.py review-and-fix step5` → `python/test_review_and_fix.py` via Make targets `test-review-and-fix-step5`, `test-review-and-fix-step5-starting-round`, `test-review-and-fix-dispatch`, `test-review-and-fix-convergence`, and `test-review-and-fix-parsers`
 - `python/cli.py agent launch-codex-implement` / `agent launch-cursor-implement` → `python/test_implement_dispatch.py` (and `python/test_implement_dispatch.py` for cross-coder dispatcher coverage)
 - `python/cli.py implement run-dispatch` → `python/test_implement_dispatch.py`

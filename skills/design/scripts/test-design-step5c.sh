@@ -15,7 +15,7 @@ FAKE_PLUGIN="$TMP/plugin"
 STUB="$FAKE_PLUGIN/skills/design/scripts"
 mkdir -p "$STUB" "$FAKE_PLUGIN/scripts" "$FAKE_PLUGIN/skills/implement/scripts"
 ln -sf "$ROOT/python" "$FAKE_PLUGIN/python"
-ln -sf "$ROOT/skills/design/scripts/lib-phase-driver.sh" "$STUB/lib-phase-driver.sh"
+# lib-phase-driver.sh ported to python/design_lifecycle.py; python/ symlink provides it
 ln -sf "$ROOT/skills/design/scripts/design-stage-terminal-state.sh" "$STUB/design-stage-terminal-state.sh"
 ln -sf "$ROOT/skills/implement/scripts/stall-recovery-report.sh" "$FAKE_PLUGIN/skills/implement/scripts/stall-recovery-report.sh"
 ln -sf "$ROOT/scripts/lib-design-tmpdir.sh" "$FAKE_PLUGIN/scripts/lib-design-tmpdir.sh"

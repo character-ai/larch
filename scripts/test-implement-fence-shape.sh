@@ -352,7 +352,7 @@ with tempfile.TemporaryDirectory(prefix="larch-run-partial-upgrade-test.") as tm
             return completed(argv, "CURRENT_BRANCH=feature/resume\nIS_MAIN=false\nIS_USER_BRANCH=true\nUSER_PREFIX=user\n")
         if "git-current-branch.sh" in joined:
             return completed(argv, "BRANCH=feature/resume\n")
-        if "run-step1-plan-log.sh" in joined:
+        if "python/cli.py plan step1-log" in joined:
             return completed(argv, "PLAN_LOG=ok\n")
         return completed(argv, "")
 

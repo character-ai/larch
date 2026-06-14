@@ -9,7 +9,7 @@ SCRIPT_DIR="$REPO_ROOT/skills/design/scripts"
 PLAN_REVIEW_MD="$REPO_ROOT/skills/design/references/plan-review.md"
 APPROVAL_MD="$REPO_ROOT/skills/design/references/approval-gates.md"
 DISCUSSION_MD="$REPO_ROOT/skills/design/references/discussion-rounds.md"
-FILE_OOS_MD="$REPO_ROOT/skills/design/scripts/file-design-oos.md"
+FILE_OOS_PY="$REPO_ROOT/python/design_oos.py"
 RUN_STEP3_SH="$REPO_ROOT/python/plan_review.py"
 CLI_PY="$REPO_ROOT/python/cli.py"
 FLAGS_MD="$REPO_ROOT/skills/design/references/flags.md"
@@ -213,14 +213,14 @@ assert_no_direct_state_helper_in_skill_fences() {
 }
 
 assert_wrapper_contract_pins() {
-  contains "$SCRIPT_DIR/design-step0-parse.sh" 'parse-design-argv.sh' 'Step 0 parse wrapper missing parser call'
+  contains "$SCRIPT_DIR/design-step0-parse.sh" 'design parse-argv' 'Step 0 parse wrapper missing parser call'
   contains "$SCRIPT_DIR/design-step0-session.sh" 'session setup' 'Step 0 session wrapper missing session setup call'
   contains "$SCRIPT_DIR/design-step0-session.sh" '--claude-pid "$CLAUDE_PID"' 'Step 0 session wrapper must use explicit --claude-pid argument'
   contains "$SCRIPT_DIR/design-step0-session.sh" 'agent degraded-tools-gate --skill design' 'Step 0 session wrapper missing gate call'
   contains "$SCRIPT_DIR/design-step0-route.sh" '.design-route-result.env' 'Step 0 route wrapper missing route result env read'
   contains "$SCRIPT_DIR/design-step0-init.sh" '.design-init-runparams-result.env' 'Step 0 init wrapper missing init result env read'
   contains "$SCRIPT_DIR/design-step2a.sh" 'NO_SKETCHES' 'Step 2a wrapper missing NO_SKETCHES sentinel write'
-  contains "$SCRIPT_DIR/design-step2b-postplan.sh" 'design-postplan-emit.sh' 'Step 2b postplan wrapper missing postplan driver'
+  contains "$SCRIPT_DIR/design-step2b-postplan.sh" 'design postplan-emit' 'Step 2b postplan wrapper missing postplan driver'
   contains "$SCRIPT_DIR/design-step3-review.sh" '--fallback-input "$_plan_review_stdout_file"' 'Step 3 review wrapper missing stdout fallback'
   contains "$SCRIPT_DIR/design-step3-review.sh" '--starting-round "$STARTING_ROUND"' 'Step 3 review wrapper missing starting-round forwarding'
   contains "$SCRIPT_DIR/design-step3-review.sh" '_loop_pid=""' 'Step 3 review wrapper missing loop pid capture'
@@ -454,8 +454,8 @@ assert_degraded_tools_gate_fence() {
   contains "$SCRIPT_DIR/design-step0-init.sh" 'feature-description.txt' 'Step 0 init wrapper missing feature-description write'
   contains "$SCRIPT_DIR/design-step0-route.sh" "printf 'ROUTE=%s" 'Step 0 route wrapper missing ROUTE stdout emit'
   contains "$SCRIPT_DIR/design-step2b-postplan.sh" 'VALIDATE_STATUS=' 'Step 2b postplan wrapper missing VALIDATE_STATUS emit on rc 10'
-  contains "$SCRIPT_DIR/design-step0-route.sh" 'design-pause-save.sh' 'Step 0 route wrapper missing pause-check'
-  contains "$SCRIPT_DIR/design-step0-init.sh" 'design-pause-save.sh' 'Step 0 init wrapper missing pause-check'
+  contains "$SCRIPT_DIR/design-step0-route.sh" 'design pause-save' 'Step 0 route wrapper missing pause-check'
+  contains "$SCRIPT_DIR/design-step0-init.sh" 'design pause-save' 'Step 0 init wrapper missing pause-check'
   contains "$SCRIPT_DIR/design-step0-route.sh" '.design-step0-route-state.env' 'Step 0 route wrapper missing route state sidecar write'
   contains "$SCRIPT_DIR/design-step0-route.sh" 'ISSUE_TITLE=%s' 'Step 0 route wrapper missing route state ISSUE_TITLE sidecar write'
   contains "$SCRIPT_DIR/design-step0-route.sh" '--issue-number' 'Step 0 route wrapper missing verbal issue-number handoff arg'
@@ -488,7 +488,7 @@ assert_wrapper_pause_before_work() {
   local wrapper label
   for entry in \
     'design-step0-route.sh:gh issue view' \
-    'design-step0-init.sh:design-init-runparams.sh' \
+    'design-step0-init.sh:design init-runparams' \
     'design-step3-entry-state.sh:plan-review step3-state' \
     'design-step3b-sanitize.sh:mermaid sanitize' \
     'design-step3b-entry.sh:architecture-diagram.skipped' \
@@ -497,11 +497,11 @@ assert_wrapper_pause_before_work() {
   do
     wrapper="${entry%%:*}"
     label="${entry#*:}"
-    grep -Fq 'design-pause-save.sh' "$SCRIPT_DIR/$wrapper" \
+    grep -Fq 'design pause-save' "$SCRIPT_DIR/$wrapper" \
       || fail "$wrapper missing pause-check before work"
     grep -Fq "$label" "$SCRIPT_DIR/$wrapper" \
       || fail "$wrapper missing expected work marker: $label"
-    _pause_line=$(grep -m 1 -nF 'design-pause-save.sh' "$SCRIPT_DIR/$wrapper" | cut -d: -f1)
+    _pause_line=$(grep -m 1 -nF 'design pause-save' "$SCRIPT_DIR/$wrapper" | cut -d: -f1)
     _work_line=$(grep -m 1 -nF "$label" "$SCRIPT_DIR/$wrapper" | cut -d: -f1)
     [ -n "$_pause_line" ] && [ -n "$_work_line" ] || fail "$wrapper missing pause/work lines for ordering check"
     [ "$_pause_line" -lt "$_work_line" ] \
@@ -555,7 +555,7 @@ assert_reference_updates() {
     || fail 'Anti-pattern #3 must not preserve direct source-env fence wording'
   ! grep -Fq 'assert_bash_fences_have_pause_check' "$SKILL_MD" \
     || fail 'Anti-pattern #3 must not point at obsolete fence-level pause-check assertions'
-  contains "$FILE_OOS_MD" 'oos-issue.stdout.txt' 'file-design-oos.md missing issue stdout handoff contract'
+  contains "$FILE_OOS_PY" 'oos-issue.stdout.txt' 'design_oos.py missing issue stdout handoff contract'
 }
 
 assert_no_bare_settle_invocations() {
@@ -613,7 +613,7 @@ assert_no_direct_step3b_step4_routes() {
 
 assert_postplan_thin_fence() {
   local file="$1" label="$2"
-  local emit_sh="$SCRIPT_DIR/design-postplan-emit.sh"
+  local emit_sh="$REPO_ROOT/python/design_postplan.py"
   grep -Fq 'set +e' "$file" || fail "$label missing set +e child capture"
   grep -Fq '$?' "$file" || fail "$label missing explicit rc capture"
   grep -Fq -- '--with-plan-size' "$file" || fail "$label missing --with-plan-size"
@@ -627,7 +627,7 @@ assert_postplan_thin_fence() {
   done
   grep -Fq '  *)' "$file" || fail "$label missing default-abort *) arm"
   grep -Fq '${REPO:+--repo "$REPO"}' "$file" || fail "$label pause-save must thread REPO"
-  grep -Fq 'design-postplan-emit.sh' "$file" || fail "$label missing postplan driver delegation"
+  grep -Fq 'design postplan-emit' "$file" || fail "$label missing postplan driver delegation"
   grep -Fq 'DRIFT_TRIGGER_FIRED' "$emit_sh" || fail 'design-postplan-emit.sh missing drift trigger parse'
   grep -Fq 'BASELINE_PLAN_LINES' "$emit_sh" || fail 'design-postplan-emit.sh missing drift baseline parse'
 }
@@ -677,7 +677,7 @@ PY
 }
 
 assert_publish_fence_guards() {
-  contains "$SCRIPT_DIR/design-step5c.sh" 'design-publish.sh' 'Step 5c wrapper missing design-publish call'
+  contains "$SCRIPT_DIR/design-step5c.sh" 'design publish' 'Step 5c wrapper missing design-publish call'
   contains "$SCRIPT_DIR/design-step5c.sh" 'read-result-env.sh' 'Step 5c wrapper missing read-result-env handoff'
   contains "$SCRIPT_DIR/design-step5c.sh" '.design-publish-result.env.rc3-primary-missing' 'Step 5c wrapper missing rc 3 stdout fallback path'
   contains "$SCRIPT_DIR/design-step5c.sh" 'STEP5C_STATUS=validator-defects' 'Step 5c wrapper missing rc 4 validator handoff'
@@ -775,7 +775,7 @@ assert_design_failure_reporting_contract() {
 assert_wrapper_fence_ordering() {
   local wrapper first_line second_line
   wrapper='design-step3-entry-state.sh'
-  first_line=$(grep -nF 'design-pause-save.sh' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)
+  first_line=$(grep -nF 'design pause-save' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)
   second_line=$(grep -nF 'plan-review step3-state' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)
   (( first_line < second_line )) || fail "$wrapper must pause-check before direct-review state mutation"
 
@@ -784,11 +784,11 @@ assert_wrapper_fence_ordering() {
   second_line=$(grep -nF '.completed/step-4' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)
   (( first_line < second_line )) || fail "$wrapper must write step-4 only after Gate C skip read"
   wrapper='design-step5c.sh'
-  first_line=$(grep -nF 'design-pause-save.sh' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)
-  second_line=$(grep -nF 'design-publish.sh' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)
+  first_line=$(grep -nF 'design pause-save' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)
+  second_line=$(grep -nF 'design publish' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)
   (( first_line < second_line )) || fail "$wrapper must pause-check before publish"
   wrapper='design-step6-cleanup.sh'
-  first_line=$(grep -nF 'design-pause-save.sh' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)
+  first_line=$(grep -nF 'design pause-save' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)
   second_line=$(grep -nF 'session cleanup-tmpdir' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)
   (( first_line < second_line )) || fail "$wrapper must pause-check before cleanup"
 }
@@ -849,14 +849,14 @@ import sys
 from pathlib import Path
 text = Path(sys.argv[1]).read_text()
 repair = text.index(': > "$DESIGN_TMPDIR/.completed/step-2a"')
-pause = text.index('design-pause-save.sh')
+pause = text.index('design pause-save')
 timing = text.index('timing mark "design Step 2b')
 launch = text.index('launch-codex-drafter.sh')
 if not (repair < pause < timing < launch):
     print('drafter wrapper order must be repair, pause, timing, launch', file=sys.stderr)
     sys.exit(1)
 prelaunch = text[:launch]
-if prelaunch.count('design-pause-save.sh') != 1:
+if prelaunch.count('design pause-save') != 1:
     print('drafter wrapper must contain one active pause-save boundary before launch', file=sys.stderr)
     sys.exit(1)
 PY
@@ -866,7 +866,7 @@ PY
   contains "$SCRIPT_DIR/design-step2b-drafter.sh" '--session-env-path "$SESSION_ENV_PATH"' 'drafter wrapper missing delegated --session-env-path'
   contains "$SCRIPT_DIR/design-step2b-drafter.sh" '--claude-pid "$CLAUDE_PID"' 'drafter wrapper missing delegated --claude-pid'
   contains "$SCRIPT_DIR/design-step2b-drafter.sh" '--plugin-root "$CLAUDE_PLUGIN_ROOT"' 'drafter wrapper missing delegated --plugin-root'
-  ! grep -Fq 'design-postplan-emit.sh' "$SCRIPT_DIR/design-step2b-drafter.sh" \
+  ! grep -Fq 'design postplan-emit' "$SCRIPT_DIR/design-step2b-drafter.sh" \
     || fail 'drafter wrapper must not call design-postplan-emit.sh directly'
   contains "$SCRIPT_DIR/design-step2b-drafter.sh" 'STEP2B_DRAFTER_WRAPPER_ROWS_BEGIN=1' 'drafter wrapper missing wrapper row delimiter'
   contains "$SCRIPT_DIR/design-step2b-drafter.sh" 'DRAFTER_STATUS=' 'drafter wrapper missing DRAFTER_STATUS row'

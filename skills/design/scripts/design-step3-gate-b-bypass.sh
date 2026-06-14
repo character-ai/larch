@@ -91,7 +91,7 @@ if [ -z "${DESIGN_TMPDIR:-}" ]; then
   printf '%s\n' "/design Step 3 gate-b-bypass: DESIGN_TMPDIR required" >&2
   exit 1
 fi
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design pause-save --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
 if [[ -f "$DESIGN_TMPDIR/.completed/step-3.5" ]]; then
   printf '%s\n' 'STEP3_STATE=skipped-step-3.5-present'
   exit 0

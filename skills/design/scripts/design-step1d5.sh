@@ -219,7 +219,7 @@ case "${MODE:-}" in
     mkdir -p "$DESIGN_TMPDIR/.completed"
     : > "$DESIGN_TMPDIR/.completed/step-1c"
     : > "$DESIGN_TMPDIR/.completed/step-1d"
-    [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+    [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design pause-save --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
     LARCH_TIMING_SKILL=design python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" timing mark "design Step 1d.5 — brainstorm" || true
     ;;
   collect)
@@ -248,7 +248,7 @@ case "${MODE:-}" in
     design_source_env_optional
     mkdir -p "$DESIGN_TMPDIR/.completed"
     : > "$DESIGN_TMPDIR/.completed/step-1d.5"
-    [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+    [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design pause-save --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
     ;;
   *) printf '%s\n' "$0: --mode required" >&2; exit 2 ;;
 esac

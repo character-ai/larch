@@ -68,36 +68,37 @@ if __name__ == "__main__":
         raise SystemExit(0)
     if len(sys.argv) >= 3 and sys.argv[1] == "plan-review" and sys.argv[2] == "preview":
         raise SystemExit(0)
+    if len(sys.argv) >= 3 and sys.argv[1] == "design" and sys.argv[2] == "pause-save":
+        design_tmpdir = os.environ.get("DESIGN_TMPDIR", "")
+        step2a = "yes" if (design_tmpdir and os.path.isfile(os.path.join(design_tmpdir, ".completed", "step-2a"))) else "no"
+        call_log = os.environ.get("CALL_LOG")
+        if call_log:
+            with open(call_log, "a", encoding="utf-8") as fh:
+                fh.write(f"pause-save step2a={step2a} " + " ".join(sys.argv[3:]) + "\n")
+        print("PAUSE_OK=true")
+        raise SystemExit(0)
+    if len(sys.argv) >= 3 and sys.argv[1] == "design" and sys.argv[2] == "postplan-emit":
+        rc_str = os.environ.get("FAKE_POSTPLAN_EMIT_RC", "0")
+        try:
+            rc = int(rc_str)
+        except ValueError:
+            rc = 0
+        print(f"postplan-emit rc={rc}")
+        design_tmpdir = os.environ.get("DESIGN_TMPDIR", "")
+        if rc == 10 and design_tmpdir:
+            env_path = os.path.join(design_tmpdir, ".design-postplan-emit-result.env")
+            with open(env_path, "w", encoding="utf-8") as fh:
+                fh.write(f"VALIDATE_STATUS=defects-found\nVALIDATE_DEFECT_COUNT=1\nVALIDATE_SKIPPED_COUNT=0\nVALIDATE_UNSAFE_TOKEN_COUNT=0\nVALIDATE_LOG_FILE={design_tmpdir}/validate.log\n")
+        raise SystemExit(rc)
     if REAL_CLI and os.path.isfile(REAL_CLI):
         raise SystemExit(subprocess.call([sys.executable, REAL_CLI, *sys.argv[1:]]))
     raise SystemExit(2)
 CLI
     chmod +x "$root/python/cli.py"
-    cat > "$root/scripts/design-pause-save.sh" <<'STUB'
-#!/usr/bin/env bash
-set -euo pipefail
-step2a=no
-if [[ -n "${DESIGN_TMPDIR:-}" && -f "$DESIGN_TMPDIR/.completed/step-2a" ]]; then
-  step2a=yes
-fi
-echo "pause-save step2a=$step2a $*" >>"${CALL_LOG:?}"
-printf 'PAUSE_OK=true\n'
-STUB
-    chmod +x "$root/scripts/design-pause-save.sh"
     if [[ "$postplan_mode" == "real" ]]; then
         cp "$REPO_ROOT/skills/design/scripts/design-step2b-postplan.sh" "$root/skills/design/scripts/design-step2b-postplan.sh"
         cp "$REPO_ROOT/scripts/lib-design-tmpdir.sh" "$root/scripts/lib-design-tmpdir.sh"
-        cat > "$root/skills/design/scripts/design-postplan-emit.sh" <<'STUB'
-#!/usr/bin/env bash
-set -euo pipefail
-rc="${FAKE_POSTPLAN_EMIT_RC:-0}"
-printf 'postplan-emit rc=%s\n' "$rc"
-if [[ "$rc" == "10" && -n "${DESIGN_TMPDIR:-}" ]]; then
-  printf 'VALIDATE_STATUS=defects-found\nVALIDATE_DEFECT_COUNT=1\nVALIDATE_SKIPPED_COUNT=0\nVALIDATE_UNSAFE_TOKEN_COUNT=0\nVALIDATE_LOG_FILE=%s/validate.log\n' "$DESIGN_TMPDIR" >"$DESIGN_TMPDIR/.design-postplan-emit-result.env"
-fi
-exit "$rc"
-STUB
-        chmod +x "$root/skills/design/scripts/design-step2b-postplan.sh" "$root/skills/design/scripts/design-postplan-emit.sh"
+        chmod +x "$root/skills/design/scripts/design-step2b-postplan.sh"
     else
         cat > "$root/skills/design/scripts/design-step2b-postplan.sh" <<'STUB'
 #!/usr/bin/env bash

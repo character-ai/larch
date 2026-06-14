@@ -86,7 +86,7 @@ design_source_env_optional() {
 }
 
 design_source_env_optional
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design pause-save --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
 if [[ ! -f "$DESIGN_TMPDIR/.design-step5c-status.env" && -n "${DESIGN_TMPDIR:-}" && -f "$DESIGN_TMPDIR/.bg-wait-active" ]]; then
   printf '%s\n' "**⚠ Step 6 prelude: design-step5c.sh appears still in-flight (.bg-wait-active present); do not proceed until <task-notification> fires.**" >&2
   exit 1
@@ -115,5 +115,5 @@ if [[ "${CLEANUP_ELIGIBLE:-}" == false ]]; then
 fi
 mkdir -p "$DESIGN_TMPDIR/.completed"
 : > "$DESIGN_TMPDIR/.completed/step-5d"
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design pause-save --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
 LARCH_TIMING_SKILL=design python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" timing mark "design Step 6 — cleanup" || true

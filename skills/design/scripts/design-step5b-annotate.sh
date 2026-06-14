@@ -91,10 +91,10 @@ if [ -z "${DESIGN_TMPDIR:-}" ]; then
   printf '%s\n' "/design Step 5b annotate: DESIGN_TMPDIR required" >&2
   exit 1
 fi
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design pause-save --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
 _oos_issue_stdout="$DESIGN_TMPDIR/oos-issue.stdout.txt"
 set +e
-_oos_ann_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/file-design-oos.sh" annotate --design-tmpdir "$DESIGN_TMPDIR" --issue-stdout-file "$_oos_issue_stdout" 2>"$DESIGN_TMPDIR/oos-filing-annotate.stderr.log")
+_oos_ann_out=$(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design file-oos-annotate --design-tmpdir "$DESIGN_TMPDIR" --issue-stdout-file "$_oos_issue_stdout" 2>"$DESIGN_TMPDIR/oos-filing-annotate.stderr.log")
 _oos_ann_rc=$?
 printf '%s\n' "$_oos_ann_out" > "$DESIGN_TMPDIR/oos-filing-annotate.stdout.txt"
 set -e

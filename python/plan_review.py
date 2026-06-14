@@ -1013,6 +1013,68 @@ def _materialize_legacy_root() -> tempfile.TemporaryDirectory[str]:
             _ = path.write_bytes(_decode_asset(data))
             if path.suffix == ".sh":
                 path.chmod(0o755)
+        # Provide a compatibility stub for lib-phase-driver.sh which was ported
+        # to python/design_lifecycle.py (C3b); embedded scripts that source it
+        # still need the file present in the materialized root.
+        _stub = design_scripts / "lib-phase-driver.sh"
+        if not _stub.exists():
+            _lib_quiet = root / "scripts" / "lib-quiet.sh"
+            _quiet_source = f'source "{_lib_quiet}"\n' if _lib_quiet.exists() else ""
+            _stub.write_text(
+                "# shellcheck shell=bash\n"
+                "# Ported to python/design_lifecycle.py (C3b) — backward-compat stub\n"
+                'if [[ "${LARCH_LIB_PHASE_DRIVER_LOADED:-}" == "1" ]]; then\n'
+                "    return 0 2>/dev/null || exit 0\nfi\n"
+                "LARCH_LIB_PHASE_DRIVER_LOADED=1\n"
+                + _quiet_source
+                + """
+phase_driver_session_get() {
+    local file="$1" key="$2" default_value="${3-}" value
+    value=$(awk -v k="$key" 'BEGIN{kl=length(k)} substr($0,1,kl)==k && substr($0,kl+1,1)=="=" {print substr($0,kl+2); exit}' "$file" 2>/dev/null || true)
+    if [[ -z "$value" ]]; then printf '%s\\n' "$default_value"; else printf '%s\\n' "$value"; fi
+}
+phase_driver_resolve_plugin_root() {
+    if [[ -n "${CLAUDE_PLUGIN_ROOT:-}" ]]; then printf '%s\\n' "$CLAUDE_PLUGIN_ROOT"; return 0; fi
+    printf '%s\\n' "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
+}
+phase_driver_resolve_consumer_repo_root() {
+    git -C "$PWD" rev-parse --show-toplevel 2>/dev/null || printf '%s\\n' "$1"
+}
+phase_driver_json_boolean_or_sed() {
+    local file="$1" key="$2" default_value="${3:-false}" value=""
+    case "$value" in true|false) printf '%s\\n' "$value" ;; *) printf '%s\\n' "$default_value" ;; esac
+}
+phase_driver_write_result_env() {
+    local path="$1"; shift
+    if [[ -L "$path" ]]; then
+        larch_err "lib-phase-driver: refusing to write symlink result env: $path"
+        return 1
+    fi
+    local tmp parent="${path%/*}"
+    [[ -n "$parent" && "$parent" != "$path" ]] && mkdir -p "$parent"
+    tmp="$(mktemp "${path}.XXXXXX")" || return 1
+    : >"$tmp"
+    for kv in "$@"; do printf '%s\\n' "$kv" >>"$tmp"; done
+    mv "$tmp" "$path"
+}
+phase_driver_read_result_env() {
+    local path="$1"; shift
+    local -a allowlist=("$@")
+    local line key value allowed
+    if [[ ! -f "$path" ]] || [[ -L "$path" ]]; then return 1; fi
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        case "$line" in *=*) ;; *) continue ;; esac
+        key="${line%%=*}"; value="${line#*=}"
+        for allowed in "${allowlist[@]}"; do
+            if [[ "$key" == "$allowed" ]]; then printf '%s=%s\\n' "$key" "$value"; break; fi
+        done
+    done <"$path"
+    return 0
+}
+""",
+                encoding="utf-8",
+            )  # pyright: ignore[reportUnusedCallResult]
+            _stub.chmod(0o644)
         return tmp
     except Exception as exc:  # pragma: no cover - catastrophic setup failure
         tmp.cleanup()

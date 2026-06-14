@@ -25,11 +25,11 @@ if grep -Fq '💰 Cost:' "$REPO/python/tokens.py"; then
 fi
 pass 'token report implementation has no 💰 Cost: literal'
 
-f="$REPO/skills/design/scripts/render-final-summary.sh"
-grep -Fq 'python/cli.py render run-summary' "$f" || fail 'render-final-summary.sh must invoke python/cli.py render run-summary'
-b=$(grep -cF -- '--claude-input-tokens' "$f") || b=0
-test "$b" -ge 1 || fail 'render-final-summary.sh must pass --claude-input-tokens to render-run-summary'
-pass 'render-final-summary per-bucket argv shape'
+f="$REPO/python/design_summary.py"
+grep -Fq 'render run-summary' "$f" || fail 'design_summary.py must invoke python/cli.py render run-summary'
+b=$(grep -cF -- 'claude-input-tokens' "$f") || b=0
+test "$b" -ge 1 || fail 'design_summary.py must pass --claude-input-tokens to render-run-summary'
+pass 'design_summary.py render-run-summary per-bucket argv shape'
 
 # Step 17 Bash literals moved to skills/implement/scripts/step-17.sh wrapper
 # shellcheck disable=SC2016
@@ -65,7 +65,7 @@ grep -Fq -- '--post-publish-only' "$REPO/skills/design/SKILL.md" || fail 'design
 # shellcheck disable=SC2016
 grep -Fq 'emit its full body verbatim as plain chat markdown' "$REPO/skills/design/SKILL.md" || fail 'design SKILL must pin post-publish full-body emit prose'
 # shellcheck disable=SC2016
-grep -Fq 'Step 5c `design-publish.sh` returns with the latest `_publish_rc` 0, 1, or 3' "$REPO/skills/design/SKILL.md" || fail 'design SKILL must pin post-driver full-body emit gate with rc 4 carve-out'
+grep -Fq 'Step 5c `python/cli.py design publish` returns with the latest `_publish_rc` 0, 1, or 3' "$REPO/skills/design/SKILL.md" || fail 'design SKILL must pin post-driver full-body emit gate with rc 4 carve-out'
 # shellcheck disable=SC2016
 grep -Fq 'when `[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]`' "$REPO/skills/design/SKILL.md" || fail 'design SKILL must pin non-empty FINAL_SUMMARY_PATH emit gate'
 # shellcheck disable=SC2016

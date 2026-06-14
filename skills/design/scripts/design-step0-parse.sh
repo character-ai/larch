@@ -95,11 +95,6 @@ if [ "${CLAUDE_PLUGIN_ROOT:-}" = "$_cpr_literal" ]; then
   printf '%s\n' "/design Step 0-pre: CLAUDE_PLUGIN_ROOT is the unexpanded template literal ${_cpr_literal} — skill loader must expand it before Bash runs; abort" >&2
   exit 1
 fi
-if [ ! -x "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/parse-design-argv.sh" ]; then
-  printf '%s\n' "/design Step 0-pre: parse-design-argv.sh not executable at ${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/parse-design-argv.sh; abort" >&2
-  exit 1
-fi
-
 _argv_env="$(mktemp "${TMPDIR:-/tmp}/larch-argv.XXXXXX")" || {
   printf '%s\n' "**⚠ /design: could not allocate argv parser env capture; aborting before session setup.**" >&2
   exit 1
@@ -110,9 +105,9 @@ _argv_err_file="$(mktemp "${TMPDIR:-/tmp}/larch-argv-err.XXXXXX")" || {
   exit 1
 }
 
-# Contract pin for CI (scripts/test-design-structure.sh): parse-design-argv.sh
+# Contract pin for CI (scripts/test-design-structure.sh): design parse-argv
 set +e
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/parse-design-argv.sh" \
+python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design parse-argv \
   --output "$_argv_env" \
   2>"$_argv_err_file" \
   "${PUBLIC_ARGV_WORDS[@]}" \
@@ -137,7 +132,7 @@ case "${_argv_rc:-0}" in
     . "$_argv_env"
     rm -f "$_argv_env"
     if [ -n "${VALIDATION_ERROR:-}" ]; then
-      printf '%s\n' "**⚠ /design: parse-design-argv.sh reported VALIDATION_ERROR but exited ${_argv_rc}; aborting before session setup.**" >&2
+      printf '%s\n' "**⚠ /design: design parse-argv reported VALIDATION_ERROR but exited ${_argv_rc}; aborting before session setup.**" >&2
       exit 1
     fi
     ;;
@@ -154,14 +149,14 @@ case "${_argv_rc:-0}" in
     ;;
   *)
     rm -f "$_argv_env"
-    printf '%s\n' "**⚠ /design: parse-design-argv.sh failed (exit ${_argv_rc}); aborting before session setup.**" >&2
+    printf '%s\n' "**⚠ /design: design parse-argv failed (exit ${_argv_rc}); aborting before session setup.**" >&2
     exit 1
     ;;
 esac
 case "$POSITIONAL_KIND" in
   issue | verbal | none) ;;
   *)
-    printf '%s\n' "**⚠ /design: parse-design-argv.sh emitted invalid POSITIONAL_KIND; aborting before session setup.**" >&2
+    printf '%s\n' "**⚠ /design: design parse-argv emitted invalid POSITIONAL_KIND; aborting before session setup.**" >&2
     exit 1
     ;;
 esac

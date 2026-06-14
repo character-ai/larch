@@ -24,7 +24,7 @@ standardized block, not the first line of the file).
 `/implement` and `/design` share the same `larch:final-summary` marker family; the
 `runid=` segment disambiguates concurrent runs on one tracking issue.
 `/implement` uses this renderer for the committed
-`final-summary.md` projection and the GitHub upsert payload (`summary-final.md` for implement; `skills/design/scripts/render-final-summary.sh` owns the `/design` gather + upsert path).
+`final-summary.md` projection and the GitHub upsert payload (`summary-final.md` for implement; `python/cli.py design render-final-summary` owns the `/design` gather + upsert path).
 
 Large runtime payloads are not embedded in these comments. They are written to
 `larch-logs/<skill>/<run-id>/` by `python/cli.py run-log` and committed at the

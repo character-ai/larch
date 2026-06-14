@@ -12,7 +12,7 @@
 
 ## Public `/design` flags
 
-Step 0-pre validation and positional classification are implemented by `skills/design/scripts/parse-design-argv.sh`; this file remains the normative allowlist source.
+Step 0-pre validation and positional classification are implemented by `skills/design/scripts/python/cli.py design parse-argv`; this file remains the normative allowlist source.
 
 - `--no-dedup`: forward to `/larch:issue` on the verbal-create path. Default `false`.
 - `--run-id <ID>`: optional stable run id. Default empty.
@@ -25,19 +25,19 @@ Step 0-pre validation and positional classification are implemented by `skills/d
 
 `python/cli.py session write-run-params` writes schema v3 `run-params.json` with `partition_requested`, `brainstorm_requested`, `approve_requested`, and `skip_approve_requested` booleans. `skip_approve_requested` defaults to `false` and is read at Step 1d.7 and Step 4b Gate C.
 
-**Positional tail**: after flags, either `^[0-9]+$` (existing issue) or verbal feature text (create issue via `/larch:issue` first). When the first positional token is all digits, only that token becomes `POSITIONAL_VALUE`; any later tokens are ignored (see `parse-design-argv.md`).
+**Positional tail**: after flags, either `^[0-9]+$` (existing issue) or verbal feature text (create issue via `/larch:issue` first). When the first positional token is all digits, only that token becomes `POSITIONAL_VALUE`; any later tokens are ignored (see `python/design_argv.py`).
 
 ## Plan-size thresholds (Step 2b.5)
 
-**Merged post-plan sites** (initial Step 2b, Gate B shared post-apply, discussion-round2 / Gate A after-discussion re-emit) call `design-postplan-emit.sh --with-plan-size`, which runs `python/cli.py plan check-size` internally and maps verdicts to thin-fence exit codes (`0`, `10`, `11`, `12`, `13`, `14`, `1`, `2`). **`python/cli.py plan check-size` remains standalone** for retained Step 2b.5 callers such as Override-after-defects and recovery paths.
+**Merged post-plan sites** (initial Step 2b, Gate B shared post-apply, discussion-round2 / Gate A after-discussion re-emit) call `python/cli.py design postplan-emit --with-plan-size`, which runs `python/cli.py plan check-size` internally and maps verdicts to thin-fence exit codes (`0`, `10`, `11`, `12`, `13`, `14`, `1`, `2`). **`python/cli.py plan check-size` remains standalone** for retained Step 2b.5 callers such as Override-after-defects and recovery paths.
 
 **Site-aware hard prompts**: initial Step 2b and discussion paths use Split/Cancel only; retained Gate B paths use Split/Override/Cancel.
 
 ### `LARCH_DESIGN_DRIFT_MULTIPLE`
 
-Default `2` (positive integer; invalid values fall back to `2`). `python/cli.py plan check-size` compares current plan lines and diff lines against `drift-baseline.env`; drift fires when the plan ratio **or** diff ratio exceeds the multiple. Merged `design-postplan-emit.sh --with-plan-size` records a logged advisory in `execution-issues.md` and exits `0` after hard-size and partition checks — drift no longer prompts or halts execution.
+Default `2` (positive integer; invalid values fall back to `2`). `python/cli.py plan check-size` compares current plan lines and diff lines against `drift-baseline.env`; drift fires when the plan ratio **or** diff ratio exceeds the multiple. Merged `python/cli.py design postplan-emit --with-plan-size` records a logged advisory in `execution-issues.md` and exits `0` after hard-size and partition checks — drift no longer prompts or halts execution.
 
-Merged fence pause-save preludes and `_postplan_rc=11` `exec` arms thread `${REPO:+--repo "$REPO"}`; `design-postplan-emit.sh` itself is not passed `--repo`.
+Merged fence pause-save preludes and `_postplan_rc=11` `exec` arms thread `${REPO:+--repo "$REPO"}`; `python/cli.py design postplan-emit` itself is not passed `--repo`.
 
 Mechanical evaluation lives in `python/cli.py plan check-size` (sibling `check-plan-size.md`). Thresholds use **strict `>`** (800 lines does **not** trip the hard plan-body trigger; 801 does).
 
@@ -70,7 +70,11 @@ The helper emits comma-separated reason tokens in **fixed priority order** `plan
 
 ## Plan-command validator
 
+<<<<<<< HEAD
 Post-plan validation for `plan.txt` is owned by `design-postplan-emit.sh` after each successful plan emit (initial Step 2b, Gate A re-entry, Gate B, and discussion-round2). Validation is unconditional: there is no quick-skip path and no force flag. Step 5c validates `composed-plan.md` inside `design-publish.sh` before redaction unless the operator has accepted the proceed-anyway path; that path skips only the plan-command validator, and the missing-or-empty guard (`[[ -s composed-plan.md ]]`) at the start of `design-publish.sh` is unconditional.
+=======
+Post-plan validation for `plan.txt` is owned by `python/cli.py design postplan-emit` after each successful plan emit (initial Step 2b, Gate A re-entry, Gate B, and discussion-round2). Validation is unconditional: there is no quick-skip path and no force flag. Step 5c validates `composed-plan.md` inside `python/cli.py design publish` before redaction unless the operator has accepted the proceed-anyway path.
+>>>>>>> beaeb990a (sh-to-py C3b: port /design lifecycle, argv, postplan, publish, log-publish, final-summary, OOS, pause, step-log to Python CLI)
 
 **Defect handling**: when machine output reports `VALIDATE_STATUS=defects-found`, use the shared auto-repair-then-escalate body in `SKILL.md` (**### Plan command validator failure (shared)**).
 

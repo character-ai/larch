@@ -115,7 +115,7 @@ if [ "$WRITE_STEP2B_COMPLETION_ONLY" = true ]; then
   if [ -f "$DESIGN_TMPDIR/.pause-requested" ]; then
     printf 'POSTPLAN_RC=11\n'
     printf 'POSTPLAN_STATUS=pause-save\n'
-    exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+    exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design pause-save --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
   fi
   exit 0
 fi
@@ -128,14 +128,14 @@ if [ "$WRITE_COMPLETION_ONLY" = true ]; then
   if [ -f "$DESIGN_TMPDIR/.pause-requested" ]; then
     printf 'POSTPLAN_RC=11\n'
     printf 'POSTPLAN_STATUS=pause-save\n'
-    exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+    exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design pause-save --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
   fi
   exit 0
 fi
 if [ -f "$DESIGN_TMPDIR/.pause-requested" ]; then
   printf 'POSTPLAN_RC=11\n'
   printf 'POSTPLAN_STATUS=pause-save\n'
-  exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+  exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design pause-save --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
 fi
 _postplan_site="${SITE:-step2b}"
 if [[ "$_postplan_site" != "step2b" ]]; then
@@ -148,7 +148,7 @@ case "$_postplan_site" in
   step2b|"") _postplan_args+=(--snapshot-original) ;;
 esac
 set +e
-_postplan_out=$(env LARCH_QUIET_DISABLE=1 "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-postplan-emit.sh" \
+_postplan_out=$(env LARCH_QUIET_DISABLE=1 python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design postplan-emit \
   "${_postplan_args[@]}")
 _postplan_rc=$?
 set -e
@@ -219,7 +219,7 @@ case "${_postplan_rc:-1}" in
   11)
     printf 'POSTPLAN_RC=11\n'
     printf 'POSTPLAN_STATUS=pause-save\n'
-    exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+    exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design pause-save --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
     ;;
   12)
     printf 'POSTPLAN_RC=%s\n' "${_postplan_rc}"
