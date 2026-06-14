@@ -39,7 +39,7 @@ Every decision selected by Step 2a.5 gets exactly one resolution entry with one 
 
 When either side fails the **debate quorum gate** (including `no_output` from a failed collector `STATUS` for that side), that side alone enters a **per-side waterfall** before the orchestrator finalizes `Disposition: fallback-to-synthesis` for the whole decision:
 
-1. **1st retry** targets the **other** external relative to that side's original launch tool, **unless** the pre-retry-wave `check-reviewers.sh` refresh shows that tool is unavailable — then skip directly to tier 2.
+1. **1st retry** targets the **other** external relative to that side's original launch tool, **unless** the pre-retry-wave `agent check-reviewers` refresh shows that tool is unavailable — then skip directly to tier 2.
 2. **2nd retry** targets **Claude** (Agent-tool inline debater) with a corrective prompt from `python/cli.py render debate-retry`. This is the **only** permitted Claude debater slot (final retry). GitHub issue #98 still forbids Claude as the **primary** debater or **1st-retry** debater.
 3. **Parallelism**: thesis and antithesis 1st retries launch together when both need them; same for coordinated 2nd-retry waves. **Serialism within a side**: never launch retry2 for a side before retry1 for that side has been collected and re-evaluated.
 4. **Presence re-check**: refresh **only** `dialectic_codex_available` / `dialectic_cursor_available` before each retry wave; never mutate orchestrator-wide `codex_available` / `cursor_available`.
@@ -146,7 +146,7 @@ The user's "no Claude in dialectic" rule is **debater-specific** for the **prima
 
 ## Dialectic-Local Presence Check
 
-Before launching judges, run `${CLAUDE_PLUGIN_ROOT}/scripts/check-reviewers.sh` synchronously. This provides a **fresh** snapshot of tool presence immediately before the judge wave — a tool absent from PATH at the start of the session may be available now, and vice versa.
+Before launching judges, run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent check-reviewers` synchronously. This provides a **fresh** snapshot of tool presence immediately before the judge wave — a tool absent from PATH at the start of the session may be available now, and vice versa.
 
 Parse the output and derive judge-local flags using the **same two-key rule** that `session-setup.sh` applies at session startup (see `skills/shared/external-reviewers.md:19-23`):
 

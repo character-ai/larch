@@ -4,7 +4,7 @@
 #
 # Sourced by:
 #   - python/cli.py agent model-args
-#   - scripts/check-reviewers.sh
+#   - python/cli.py agent check-reviewers
 #   - scripts/collect-agent-results.sh
 #   - skills/implement/scripts/step2-implement.sh
 #

@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import html
 import contextlib
+import concurrent.futures
 import json
 import os
 import platform
@@ -63,6 +64,8 @@ _MAX_CONTEXT_FILES = 20
 _MAX_CLAUDE_TIMEOUT = 1800
 _DEFAULT_CURSOR_CI_STALL_THRESHOLD = 180
 _TOML_CLOSED_STRING_DELIMITER_COUNT = 2
+_AUTH_RETRY_RC = 2
+_CURSOR_PREFLIGHT_AUTH_RC = 2
 _CLAUDE_REVIEW_READ_ONLY_PREAMBLE = (
     "HARD CONSTRAINTS — your role is read-only review. "
     "Do not create, edit, delete, or overwrite files. "
@@ -146,6 +149,43 @@ class LaunchResult:
 @dataclass(frozen=True)
 class SerialLockState:
     lock_path: Path | None
+
+
+@dataclass(frozen=True)
+class CheckReviewersResult:
+    codex_binary_found: bool
+    cursor_binary_found: bool
+    codex_present: bool
+    cursor_present: bool
+    codex_probe_timed_out: bool = False
+    cursor_probe_timed_out: bool = False
+
+    def kv(self) -> dict[str, str]:
+        codex_present = str(self.codex_present).lower()
+        cursor_present = str(self.cursor_present).lower()
+        return {
+            "CODEX_BINARY_FOUND": str(self.codex_binary_found).lower(),
+            "CURSOR_BINARY_FOUND": str(self.cursor_binary_found).lower(),
+            "CODEX_PRESENT": codex_present,
+            "CURSOR_PRESENT": cursor_present,
+            "CODEX_AVAILABLE": codex_present,
+            "CURSOR_AVAILABLE": cursor_present,
+            "CODEX_PROBE_TIMED_OUT": str(self.codex_probe_timed_out).lower(),
+            "CURSOR_PROBE_TIMED_OUT": str(self.cursor_probe_timed_out).lower(),
+        }
+
+    def kv_lines(self) -> tuple[str, ...]:
+        data = self.kv()
+        return tuple(f"{key}={data[key]}" for key in (
+            "CODEX_BINARY_FOUND",
+            "CURSOR_BINARY_FOUND",
+            "CODEX_PRESENT",
+            "CURSOR_PRESENT",
+            "CODEX_AVAILABLE",
+            "CURSOR_AVAILABLE",
+            "CODEX_PROBE_TIMED_OUT",
+            "CURSOR_PROBE_TIMED_OUT",
+        ))
 
 
 def _err(message: str) -> None:
@@ -563,6 +603,336 @@ def cursor_wrap_prompt_main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def _env_int(name: str, default: int, *, zero_allowed: bool = True) -> int:
+    raw = os.environ.get(name, str(default))
+    parsed = _parse_positive_or_zero_int(raw)
+    if parsed is None:
+        return default
+    if parsed == 0 and not zero_allowed:
+        return default
+    return parsed
+
+
+def _probe_tmpdir() -> Path:
+    return Path(os.environ.get("TMPDIR") or "/tmp")  # noqa: S108 - parity with Bash TMPDIR fallback.
+
+
+def _probe_user() -> str:
+    sanitized = re.sub(r"[^A-Za-z0-9._-]", "", os.environ.get("USER", ""))
+    return sanitized or "larch"
+
+
+def _probe_stamp_path(kind: str) -> Path:
+    return _probe_tmpdir() / f"larch-{kind}-present-{_probe_user()}.stamp"
+
+
+def _codex_probe_stamp_kind() -> str:
+    return "codex-env-key" if _codex_env_key_enabled() else "codex-login"
+
+
+def _read_fresh_probe_stamp(stamp: Path, ttl: int, negative_ttl: int) -> bool | None:
+    if ttl <= 0:
+        return None
+    try:
+        stat = stamp.stat()
+    except OSError:
+        return None
+    now = time.time()
+    age = now - stat.st_mtime
+    if age < 0 or age > ttl:
+        return None
+    try:
+        line = stamp.read_text(encoding="utf-8", errors="replace").splitlines()[0]
+    except (OSError, IndexError):
+        return None
+    value = line.replace("\r", "")
+    if value == "true":
+        return True
+    if value == "false" and negative_ttl > 0 and age <= negative_ttl:
+        return False
+    return None
+
+
+def _write_probe_stamp(stamp: Path, value: bool) -> None:  # noqa: FBT001 - boolean stamp payload.
+    try:
+        stamp.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            delete=False,
+            dir=str(stamp.parent),
+            prefix="larch-probe-stamp.",
+        ) as handle:
+            handle.write(f"{str(value).lower()}\n")
+            tmp = Path(handle.name)
+        tmp.replace(stamp)
+    except OSError:
+        with contextlib.suppress(NameError, OSError):
+            tmp.unlink()  # type: ignore[name-defined]
+
+
+@contextlib.contextmanager
+def _temporary_environ(updates: dict[str, str] | None = None):
+    old = os.environ.copy()
+    if updates:
+        os.environ.clear()
+        os.environ.update(updates)
+    try:
+        yield
+    finally:
+        os.environ.clear()
+        os.environ.update(old)
+
+
+def _run_probe_command(cmd: Sequence[str], *, timeout: int, env: dict[str, str], stdout: Path | None = None, stderr: Path | None = None, input_text: str | None = None) -> int:
+    try:
+        with contextlib.ExitStack() as stack:
+            stdout_target: object = subprocess.DEVNULL
+            stderr_target: object = subprocess.DEVNULL
+            if stdout is not None:
+                stdout_target = stack.enter_context(stdout.open("wb"))
+            if stderr is not None:
+                if stdout is not None and stderr == stdout:
+                    stderr_target = subprocess.STDOUT
+                else:
+                    stderr_target = stack.enter_context(stderr.open("wb"))
+            result = subprocess.run(
+                list(cmd),
+                input=input_text,
+                stdout=stdout_target,
+                stderr=stderr_target,
+                timeout=timeout,
+                env=env,
+                text=input_text is not None,
+                check=False,
+            )
+        return result.returncode
+    except FileNotFoundError:
+        return 127
+    except subprocess.TimeoutExpired:
+        return config.EXIT_TIMEOUT
+
+
+@dataclass(frozen=True)
+class _CursorProbeSetup:
+    cfg_tmp: Path
+    old_cfg: str | None
+
+
+def _cursor_probe_setup_chain() -> _CursorProbeSetup | None:
+    try:
+        cursor_preread_service_token()
+        cursor_auth_export_env()
+        cfg_tmp = Path(tempfile.mkdtemp(prefix="larch-cursor-cfg-", dir=str(_probe_tmpdir())))
+    except OSError:
+        return None
+    old_cfg = os.environ.get("CURSOR_CONFIG_DIR")
+    os.environ["CURSOR_CONFIG_DIR"] = str(cfg_tmp)
+    user_cfg = Path.home() / ".cursor" / "cli-config.json"
+    if user_cfg.is_file():
+        with contextlib.suppress(OSError):
+            shutil.copyfile(user_cfg, cfg_tmp / "cli-config.json")
+    return _CursorProbeSetup(cfg_tmp=cfg_tmp, old_cfg=old_cfg)
+
+
+def _cursor_probe_cleanup_private_config_dir(setup: _CursorProbeSetup | None) -> None:
+    if setup is None:
+        return
+    shutil.rmtree(setup.cfg_tmp, ignore_errors=True)
+    if setup.old_cfg is None:
+        os.environ.pop("CURSOR_CONFIG_DIR", None)
+    else:
+        os.environ["CURSOR_CONFIG_DIR"] = setup.old_cfg
+
+
+def _run_one_cursor_probe(timeout: int) -> int:
+    probe_out: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, dir=str(_probe_tmpdir()), prefix="larch-cursor-probe.") as handle:
+            probe_out = Path(handle.name)
+        try:
+            model_args = list(resolve_model_args("cursor").argv)
+        except ValueError:
+            model_args = []
+        prompt = " /max-mode on. Prompt: Respond with OK"
+        state = external_serial_lock_acquire("cursor")
+        external_serial_lock_release_after(state)
+        rc = _run_probe_command(
+            ["cursor", "agent", "-p", prompt, "--trust", "--workspace", str(Path.cwd()), *model_args],
+            timeout=timeout,
+            env=dict(os.environ),
+            stdout=probe_out,
+            stderr=probe_out,
+        )
+        if rc == config.EXIT_TIMEOUT:
+            return config.EXIT_TIMEOUT
+        if rc == 0:
+            return 0
+        if external_auth_verdict("cursor", probe_out) == "auth":
+            return 2
+        return 1
+    finally:
+        if probe_out is not None:
+            with contextlib.suppress(OSError):
+                probe_out.unlink()
+
+
+def _run_one_codex_probe(timeout: int) -> int:
+    probe_out: Path | None = None
+    probe_side: Path | None = None
+    codex_home: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, dir=str(_probe_tmpdir()), prefix="larch-codex-probe.") as handle:
+            probe_out = Path(handle.name)
+        probe_side = Path(str(probe_out) + ".sidecar")
+        _write(probe_side, "")
+        codex_home = Path(tempfile.mkdtemp(prefix="larch-codex-probe-home-", dir=str(_probe_tmpdir())))
+        prep_rc, prep_msg = _prepare_codex_home(codex_home)
+        if prep_rc != 0:
+            if prep_msg:
+                _append(probe_side, prep_msg + "\n")
+            if _codex_env_key_enabled():
+                _err("agent check-reviewers: Codex OPENAI_API_KEY auth setup failed")
+            return 1
+        try:
+            model_args = list(resolve_model_args("codex", with_effort=True).argv)
+        except ValueError:
+            model_args = []
+        cmd = [
+            "codex",
+            "exec",
+            "--sandbox",
+            "read-only",
+            "-C",
+            str(Path.cwd()),
+            *model_args,
+            "-c",
+            _trust_config_arg(str(Path.cwd())),
+            *_codex_auth_args(),
+            "--output-last-message",
+            str(probe_out),
+            "--",
+            "Respond with OK",
+        ]
+        env = dict(os.environ)
+        env["CODEX_HOME"] = str(codex_home)
+        state = external_serial_lock_acquire("codex")
+        external_serial_lock_release_after(state)
+        rc = _run_probe_command(cmd, timeout=timeout, env=env, stderr=probe_side)
+        if rc == config.EXIT_TIMEOUT:
+            return config.EXIT_TIMEOUT
+        if rc == 0:
+            return 0
+        if external_auth_verdict("codex", probe_out, probe_side) == "auth":
+            return 2
+        return 1
+    finally:
+        if codex_home is not None:
+            shutil.rmtree(codex_home, ignore_errors=True)
+        for path in (probe_out, probe_side):
+            if path is not None:
+                with contextlib.suppress(OSError):
+                    path.unlink()
+
+
+def _run_codex_probes(max_retries: int, timeout: int) -> tuple[bool, bool]:
+    for attempt in range(1, max(max_retries, 1) + 1):
+        rc = _run_one_codex_probe(timeout)
+        if rc == config.EXIT_TIMEOUT:
+            return False, True
+        if rc == 0:
+            return True, False
+        if rc == _AUTH_RETRY_RC and attempt < max(max_retries, 1):
+            continue
+        return False, False
+    return False, False
+
+
+def _run_cursor_probes(max_retries: int, timeout: int) -> tuple[bool, bool]:
+    setup = _cursor_probe_setup_chain()
+    if setup is None:
+        return False, False
+    try:
+        for attempt in range(1, max(max_retries, 1) + 1):
+            rc = _run_one_cursor_probe(timeout)
+            if rc == config.EXIT_TIMEOUT:
+                return False, True
+            if rc == 0:
+                return True, False
+            if rc == _AUTH_RETRY_RC and attempt < max(max_retries, 1):
+                continue
+            return False, False
+        return False, False
+    finally:
+        _cursor_probe_cleanup_private_config_dir(setup)
+
+
+def check_reviewers(
+    skip_codex_probe: bool = False,  # noqa: FBT001 - CLI-style API mirrors skip flags.
+    skip_cursor_probe: bool = False,  # noqa: FBT001 - CLI-style API mirrors skip flags.
+    probe_timeout_seconds: int | None = None,
+    env: dict[str, str] | None = None,
+) -> CheckReviewersResult:
+    with _temporary_environ(env):
+        ttl = _env_int("LARCH_PROBE_TTL_SECONDS", 60)
+        negative_ttl = _env_int("LARCH_PROBE_NEGATIVE_TTL_SECONDS", 0)
+        timeout = probe_timeout_seconds or _env_int("LARCH_PROBE_TIMEOUT_SECONDS", 30, zero_allowed=False)
+        max_auth_retries = _env_int("LARCH_EXTERNAL_AUTH_RETRIES", 5, zero_allowed=False)
+
+        codex_binary_found = shutil.which("codex") is not None
+        cursor_binary_found = shutil.which("cursor") is not None
+        codex_present = False
+        cursor_present = False
+        codex_probe_timed_out = False
+        cursor_probe_timed_out = False
+
+        if cursor_binary_found and not skip_cursor_probe:
+            cached = _read_fresh_probe_stamp(_probe_stamp_path("cursor"), ttl, negative_ttl)
+            if cached is not None:
+                cursor_present = cached
+            else:
+                preflight = cursor_auth_preflight(caller="agent check-reviewers")
+                max_retries = 1 if preflight.rc == _CURSOR_PREFLIGHT_AUTH_RC else max_auth_retries
+                cursor_present, cursor_probe_timed_out = _run_cursor_probes(max_retries, timeout)
+                _write_probe_stamp(_probe_stamp_path("cursor"), cursor_present)
+
+        if codex_binary_found and not skip_codex_probe:
+            stamp = _probe_stamp_path(_codex_probe_stamp_kind())
+            cached = _read_fresh_probe_stamp(stamp, ttl, negative_ttl)
+            if cached is not None:
+                codex_present = cached
+            else:
+                codex_present, codex_probe_timed_out = _run_codex_probes(max_auth_retries, timeout)
+                _write_probe_stamp(stamp, codex_present)
+
+        return CheckReviewersResult(
+            codex_binary_found=codex_binary_found,
+            cursor_binary_found=cursor_binary_found,
+            codex_present=codex_present,
+            cursor_present=cursor_present,
+            codex_probe_timed_out=codex_probe_timed_out,
+            cursor_probe_timed_out=cursor_probe_timed_out,
+        )
+
+
+def check_reviewers_main(argv: list[str] | None = None) -> int:
+    logging_util.quiet_init(argv0="cli.py")
+    parser = argparse.ArgumentParser(prog="cli.py agent check-reviewers")
+    parser.add_argument("--skip-codex-probe", action="store_true")
+    parser.add_argument("--skip-cursor-probe", action="store_true")
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as exc:
+        return 0 if exc.code == 0 else 1
+    result = check_reviewers(
+        skip_codex_probe=args.skip_codex_probe,
+        skip_cursor_probe=args.skip_cursor_probe,
+    )
+    for line in result.kv_lines():
+        _emit(line)
+    return 0
+
+
 def external_tool_registry_main(argv: list[str] | None = None) -> int:
     logging_util.quiet_init(argv0="cli.py")
     parser = argparse.ArgumentParser(prog="cli.py agent external-tool-registry")
@@ -963,16 +1333,31 @@ def _nonnegative_float_env(name: str, default: float) -> float:
     return value if value >= 0 else default
 
 
+def _check_reviewers_under_wall_clock_deadline(
+    deadline_seconds: int,
+    **kwargs: object,
+) -> tuple[CheckReviewersResult | None, bool]:
+    def _run() -> CheckReviewersResult:
+        mod = sys.modules[__name__]
+        return mod.check_reviewers(**kwargs)
+
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    future = pool.submit(_run)
+    try:
+        result = future.result(timeout=deadline_seconds)
+        pool.shutdown(wait=False, cancel_futures=True)
+        return result, False
+    except concurrent.futures.TimeoutError:
+        pool.shutdown(wait=False, cancel_futures=True)
+        return None, True
+
+
 def _external_health_gate(tool: str) -> tuple[bool, str]:
     if tool not in {"codex", "cursor"}:
         return True, ""
     timeout = _health_gate_timeout()
     if timeout is None:
         return True, ""
-    helper = _plugin_root() / "scripts" / "check-reviewers.sh"
-    if not helper.is_file():
-        return True, ""
-    skip_arg = "--skip-cursor-probe" if tool == "codex" else "--skip-codex-probe"
     present_key = "CODEX_PRESENT" if tool == "codex" else "CURSOR_PRESENT"
     attempts = _positive_int_env("LARCH_EXTERNAL_HEALTH_GATE_MAX_ATTEMPTS", 8)
     sleep_seconds = _nonnegative_float_env("LARCH_EXTERNAL_HEALTH_GATE_SLEEP_SECONDS", 15.0)
@@ -981,32 +1366,51 @@ def _external_health_gate(tool: str) -> tuple[bool, str]:
     for attempt in range(max(attempts, 1)):
         if attempt:
             time.sleep(sleep_seconds)
-        env = dict(os.environ)
-        env["LARCH_EXTERNAL_AUTH_RETRIES"] = "1"
+        gate_env = {
+            "LARCH_EXTERNAL_AUTH_RETRIES": "1",
+            "LARCH_PROBE_TIMEOUT_SECONDS": str(timeout),
+        }
         if attempt:
-            env["LARCH_PROBE_TTL_SECONDS"] = "0"
+            gate_env["LARCH_PROBE_TTL_SECONDS"] = "0"
         try:
-            result = subprocess.run(
-                [str(helper), skip_arg],
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                env=env,
-                check=False,
+            result, wall_timed_out = _check_reviewers_under_wall_clock_deadline(
+                timeout,
+                skip_codex_probe=tool == "cursor",
+                skip_cursor_probe=tool == "codex",
+                probe_timeout_seconds=timeout,
+                env={**os.environ, **gate_env},
             )
-        except subprocess.TimeoutExpired:
+            if wall_timed_out or result is None:
+                return False, f"health-probe timed out after {timeout}s"
+            stdout = "\n".join(result.kv_lines())
+            stderr = ""
+        except Exception as exc:
+            last_stderr = str(exc)
+            continue
+        probe_timed_out = (
+            result.codex_probe_timed_out
+            if tool == "codex"
+            else result.cursor_probe_timed_out
+        )
+        if probe_timed_out:
             return False, f"health-probe timed out after {timeout}s"
-        last_stdout = result.stdout
-        last_stderr = result.stderr
-        found = None
-        for line in result.stdout.splitlines():
+        last_stdout = stdout
+        last_stderr = stderr
+        if not stdout.strip():
+            return True, ""
+        found: str | None = None
+        for line in stdout.splitlines():
             if line.startswith(f"{present_key}="):
                 found = line.split("=", 1)[1]
                 break
         if found == "true":
             return True, ""
-        if found != "false":
+        if found is not None and found not in ("true", "false"):
+            # Key present but value unrecognized → fail-open per original contract.
             return True, ""
+        if found is None:
+            return True, ""
+        # found == "false" → loop to next attempt.
     return False, f"probe output: {last_stdout[:500]}; probe stderr: {last_stderr[:300]}"
 
 
@@ -1550,9 +1954,15 @@ def _strip_codex_config(text: str, *, strip_instructions: bool = False) -> str:
 
 
 def _prepare_codex_home(home_dir: Path, *, trusted_instructions_file: str = "") -> tuple[int, str]:
-    home_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        home_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        return 1, f"codex auth setup failed: {exc}"
     user_config = Path.home() / ".codex" / "config.toml"
-    config_text = user_config.read_text(encoding="utf-8", errors="replace") if user_config.is_file() else ""
+    try:
+        config_text = user_config.read_text(encoding="utf-8", errors="replace") if user_config.is_file() else ""
+    except OSError as exc:
+        return 1, f"codex auth setup failed: {exc}"
     if trusted_instructions_file:
         trusted = Path(trusted_instructions_file)
         if not trusted.is_file():
@@ -1763,6 +2173,158 @@ def _run_external_agent_with_auth_retries(
         if external_auth_verdict(tool, *auth_paths) != "auth":
             return result
     return result if result is not None else RunExternalAgentResult(99, output)
+
+
+def _negotiation_base(output: Path) -> Path:
+    text = str(output)
+    if text.endswith(".txt"):
+        return Path(text[:-4])
+    return output
+
+
+def run_negotiation_round(tool: str, prompt_file: str | Path, output: str | Path, workspace: str | Path) -> int:
+    if tool not in {"codex", "cursor"}:
+        _err(f"agent run-negotiation-round: ERROR: --tool must be 'codex' or 'cursor' (got: {tool})")
+        return 1
+    prompt = Path(prompt_file)
+    output_path = Path(output)
+    workdir = Path(workspace)
+    if not prompt.is_file():
+        _err(f"agent run-negotiation-round: ERROR: prompt file not found: {prompt}")
+        return 1
+
+    with contextlib.suppress(FileNotFoundError):
+        output_path.unlink()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if tool == "codex":
+        base = _negotiation_base(output_path)
+        events = Path(str(base) + ".events.jsonl")
+        sidecar = Path(str(base) + ".sidecar")
+        with contextlib.suppress(FileNotFoundError):
+            events.unlink()
+        with contextlib.suppress(FileNotFoundError):
+            sidecar.unlink()
+        codex_home = Path(tempfile.mkdtemp(prefix="larch-codex-negotiation-home-", dir=str(_probe_tmpdir())))
+        try:
+            prep_rc, prep_msg = _prepare_codex_home(codex_home)
+            if prep_rc != 0:
+                if prep_msg:
+                    _write(sidecar, prep_msg + "\n")
+                _emit_kv("RESPONSE_FILE", str(output_path))
+                return 2
+            try:
+                model_args = list(resolve_model_args("codex").argv)
+            except ValueError as exc:
+                _err(f"agent run-negotiation-round: model args failed: {exc}")
+                return 1
+            cmd = [
+                "codex",
+                "exec",
+                "--full-auto",
+                "-C",
+                str(workdir),
+                *model_args,
+                "-c",
+                _trust_config_arg(str(workdir)),
+                *_codex_auth_args(),
+                "--output-last-message",
+                str(output_path),
+                "--json",
+                "--",
+                "-",
+            ]
+            env = dict(os.environ)
+            env["CODEX_HOME"] = str(codex_home)
+            state = external_serial_lock_acquire("codex")
+            external_serial_lock_release_after(state)
+            with prompt.open("r", encoding="utf-8", errors="replace") as input_handle:
+                try:
+                    with events.open("w", encoding="utf-8") as out_handle, sidecar.open("w", encoding="utf-8") as err_handle:
+                        proc_obj = subprocess.run(
+                            cmd,
+                            stdin=input_handle,
+                            stdout=out_handle,
+                            stderr=err_handle,
+                            cwd=str(workdir),
+                            env=env,
+                            text=True,
+                            check=False,
+                        )
+                    codex_rc = proc_obj.returncode
+                except FileNotFoundError:
+                    codex_rc = 127
+                    _append(sidecar, "Failed to launch child: codex\n")
+            if codex_rc != 0:
+                _mirror_codex_quota_from_events(events, sidecar)
+            _record_usage_from_events(events, sidecar, "codex_negotiation")
+            if codex_rc != 0:
+                _emit_kv("RESPONSE_FILE", str(output_path))
+                return 2
+        finally:
+            shutil.rmtree(codex_home, ignore_errors=True)
+        _emit_kv("RESPONSE_FILE", str(output_path))
+        return 0
+
+    try:
+        model_args = list(resolve_model_args("cursor").argv)
+    except ValueError as exc:
+        _err(f"agent run-negotiation-round: model args failed: {exc}")
+        return 1
+    verdict = cursor_auth_preflight(caller="agent run-negotiation-round")
+    if not verdict.ok:
+        _err(verdict.message)
+        _emit_kv("RESPONSE_FILE", str(output_path))
+        return 3
+    cursor_auth_export_env()
+    wrapped = f" /max-mode on. Prompt: Read the negotiation prompt from {prompt} and respond to it."
+    state = external_serial_lock_acquire("cursor")
+    external_serial_lock_release_after(state)
+    cmd = [
+        "cursor",
+        "agent",
+        "-p",
+        "--force",
+        "--trust",
+        *model_args,
+        "--workspace",
+        str(workdir),
+        wrapped,
+    ]
+    try:
+        with output_path.open("w", encoding="utf-8") as handle:
+            result = subprocess.run(
+                cmd,
+                stdout=handle,
+                stderr=subprocess.STDOUT,
+                cwd=str(workdir),
+                env=dict(os.environ),
+                text=True,
+                check=False,
+            )
+        cursor_rc = result.returncode
+    except FileNotFoundError:
+        _write(output_path, "Failed to launch child: cursor\n")
+        cursor_rc = 127
+    if cursor_rc != 0:
+        _emit_kv("RESPONSE_FILE", str(output_path))
+        return 2
+    _emit_kv("RESPONSE_FILE", str(output_path))
+    return 0
+
+
+def run_negotiation_round_main(argv: list[str] | None = None) -> int:
+    logging_util.quiet_init(argv0="cli.py")
+    parser = argparse.ArgumentParser(prog="cli.py agent run-negotiation-round")
+    parser.add_argument("--tool", choices=("codex", "cursor"), required=True)
+    parser.add_argument("--prompt-file", required=True)
+    parser.add_argument("--output", required=True)
+    parser.add_argument("--workspace", required=True)
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as exc:
+        return 0 if exc.code == 0 else 1
+    return run_negotiation_round(args.tool, args.prompt_file, args.output, args.workspace)
 
 
 def launch_codex_exec_main(argv: list[str] | None = None) -> int:

@@ -116,6 +116,7 @@ external_launch_health_gate() {
     local timeout_seconds="" script_dir="" skip_arg="" present_key=""
     local probe_out="" probe_rc=0 timeout_bin=""
     local _probe_stderr_tmp="" _probe_present=""
+    local _probe_timed_out_key="" _probe_timed_out=""
     local _attempt _max_attempts _sleep_seconds
 
     if [[ -n "$_probe_diag_var" ]]; then
@@ -168,15 +169,15 @@ external_launch_health_gate() {
             # Initial probe: capture stderr for diagnostics; no stamp-cache bypass.
             if [[ -n "$timeout_bin" ]]; then
                 if [[ -n "$_probe_stderr_tmp" ]]; then
-                    if probe_out=$(LARCH_EXTERNAL_AUTH_RETRIES=1 "$timeout_bin" "$timeout_seconds" \
-                        "$script_dir/check-reviewers.sh" "$skip_arg" 2>"$_probe_stderr_tmp"); then
+                    if probe_out=$(LARCH_EXTERNAL_AUTH_RETRIES=1 LARCH_PROBE_TIMEOUT_SECONDS="$timeout_seconds" "$timeout_bin" "$timeout_seconds" \
+                        python3 "$script_dir/../python/cli.py" agent check-reviewers "$skip_arg" 2>"$_probe_stderr_tmp"); then
                         probe_rc=0
                     else
                         probe_rc=$?
                     fi
                 else
-                    if probe_out=$(LARCH_EXTERNAL_AUTH_RETRIES=1 "$timeout_bin" "$timeout_seconds" \
-                        "$script_dir/check-reviewers.sh" "$skip_arg" 2>/dev/null); then
+                    if probe_out=$(LARCH_EXTERNAL_AUTH_RETRIES=1 LARCH_PROBE_TIMEOUT_SECONDS="$timeout_seconds" "$timeout_bin" "$timeout_seconds" \
+                        python3 "$script_dir/../python/cli.py" agent check-reviewers "$skip_arg" 2>/dev/null); then
                         probe_rc=0
                     else
                         probe_rc=$?
@@ -184,15 +185,15 @@ external_launch_health_gate() {
                 fi
             else
                 if [[ -n "$_probe_stderr_tmp" ]]; then
-                    if probe_out=$(LARCH_EXTERNAL_AUTH_RETRIES=1 \
-                        "$script_dir/check-reviewers.sh" "$skip_arg" 2>"$_probe_stderr_tmp"); then
+                    if probe_out=$(LARCH_EXTERNAL_AUTH_RETRIES=1 LARCH_PROBE_TIMEOUT_SECONDS="$timeout_seconds" \
+                        python3 "$script_dir/../python/cli.py" agent check-reviewers "$skip_arg" 2>"$_probe_stderr_tmp"); then
                         probe_rc=0
                     else
                         probe_rc=$?
                     fi
                 else
-                    if probe_out=$(LARCH_EXTERNAL_AUTH_RETRIES=1 \
-                        "$script_dir/check-reviewers.sh" "$skip_arg" 2>/dev/null); then
+                    if probe_out=$(LARCH_EXTERNAL_AUTH_RETRIES=1 LARCH_PROBE_TIMEOUT_SECONDS="$timeout_seconds" \
+                        python3 "$script_dir/../python/cli.py" agent check-reviewers "$skip_arg" 2>/dev/null); then
                         probe_rc=0
                     else
                         probe_rc=$?
@@ -203,16 +204,16 @@ external_launch_health_gate() {
             # Subsequent probes: bypass stamp cache so a stale cached-false stamp
             # never blocks recovery from transient unavailability.
             if [[ -n "$timeout_bin" ]]; then
-                if probe_out=$(LARCH_EXTERNAL_AUTH_RETRIES=1 LARCH_PROBE_TTL_SECONDS=0 \
+                if probe_out=$(LARCH_EXTERNAL_AUTH_RETRIES=1 LARCH_PROBE_TTL_SECONDS=0 LARCH_PROBE_TIMEOUT_SECONDS="$timeout_seconds" \
                     "$timeout_bin" "$timeout_seconds" \
-                    "$script_dir/check-reviewers.sh" "$skip_arg" 2>/dev/null); then
+                    python3 "$script_dir/../python/cli.py" agent check-reviewers "$skip_arg" 2>/dev/null); then
                     probe_rc=0
                 else
                     probe_rc=$?
                 fi
             else
-                if probe_out=$(LARCH_EXTERNAL_AUTH_RETRIES=1 LARCH_PROBE_TTL_SECONDS=0 \
-                    "$script_dir/check-reviewers.sh" "$skip_arg" 2>/dev/null); then
+                if probe_out=$(LARCH_EXTERNAL_AUTH_RETRIES=1 LARCH_PROBE_TTL_SECONDS=0 LARCH_PROBE_TIMEOUT_SECONDS="$timeout_seconds" \
+                    python3 "$script_dir/../python/cli.py" agent check-reviewers "$skip_arg" 2>/dev/null); then
                     probe_rc=0
                 else
                     probe_rc=$?
@@ -222,6 +223,21 @@ external_launch_health_gate() {
 
         case "$probe_rc" in
             124|143)
+                [[ -n "$_probe_stderr_tmp" ]] && rm -f "$_probe_stderr_tmp"
+                if [[ -n "$_probe_diag_var" ]]; then
+                    printf -v "$_probe_diag_var" '%s' "health-probe timed out after ${timeout_seconds}s"
+                fi
+                return 1
+                ;;
+        esac
+
+        case "$tool" in
+            codex) _probe_timed_out_key="CODEX_PROBE_TIMED_OUT" ;;
+            cursor) _probe_timed_out_key="CURSOR_PROBE_TIMED_OUT" ;;
+        esac
+        _probe_timed_out=$(printf '%s\n' "$probe_out" | awk -F= -v key="$_probe_timed_out_key" '$1 == key {print $2; exit}')
+        case "$_probe_timed_out" in
+            true)
                 [[ -n "$_probe_stderr_tmp" ]] && rm -f "$_probe_stderr_tmp"
                 if [[ -n "$_probe_diag_var" ]]; then
                     printf -v "$_probe_diag_var" '%s' "health-probe timed out after ${timeout_seconds}s"
@@ -240,7 +256,7 @@ external_launch_health_gate() {
                 : # Continue to next attempt.
                 ;;
             *)
-                # No parseable presence line — fail open.
+                # Missing or unrecognized presence key — fail open.
                 [[ -n "$_probe_stderr_tmp" ]] && rm -f "$_probe_stderr_tmp"
                 return 0
                 ;;

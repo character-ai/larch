@@ -17,6 +17,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from collections.abc import Iterable
 
+import agents
 import config
 import logging_util
 import proc
@@ -1221,7 +1222,6 @@ def setup_main(argv: list[str]) -> int:
         _err("session-setup.sh: --prefix is required")
         return 4
     caller = _parse_key_value_file(args.caller_env)
-    scripts = _scripts_dir()
     if not args.skip_preflight:
         cmd = [sys.executable, str(Path(__file__).with_name("cli.py")), "admission", "preflight"]
         if args.skip_branch_check:
@@ -1230,7 +1230,7 @@ def setup_main(argv: list[str]) -> int:
         if preflight.returncode != 0:
             _emit(preflight.stdout + preflight.stderr)
             return preflight.returncode
-        stale = runner.run([str(scripts / "check-stale-plugin.sh")])
+        stale = runner.run([str(_scripts_dir() / "check-stale-plugin.sh")])
         if stale.returncode != 0:
             _err(f"session-setup.sh: warning: stale plugin check failed (rc={stale.returncode}): {stale.stdout}{stale.stderr}")
         elif "STALE_PLUGIN_CHECK=working-tree-ahead" in stale.stdout:
@@ -1266,13 +1266,11 @@ def setup_main(argv: list[str]) -> int:
     final_codex_bin = caller.get("CODEX_BINARY_FOUND", "")
     final_cursor_bin = caller.get("CURSOR_BINARY_FOUND", "")
     if args.check_reviewers:
-        cr_args: list[str] = []
-        if args.skip_codex_probe or final_codex:
-            cr_args.append("--skip-codex-probe")
-        if args.skip_cursor_probe or final_cursor:
-            cr_args.append("--skip-cursor-probe")
-        reviewer = runner.run([str(scripts / "check-reviewers.sh"), *cr_args])
-        probed = _parse_text_kv(reviewer.stdout + reviewer.stderr)
+        reviewer = agents.check_reviewers(
+            skip_codex_probe=args.skip_codex_probe or bool(final_codex),
+            skip_cursor_probe=args.skip_cursor_probe or bool(final_cursor),
+        )
+        probed = reviewer.kv()
         if final_codex:
             probed["CODEX_PRESENT"] = final_codex
             probed["CODEX_AVAILABLE"] = final_codex

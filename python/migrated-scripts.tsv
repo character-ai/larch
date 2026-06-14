@@ -700,3 +700,11 @@ skills/review/scripts/test-findings-classification.sh	#3677
 skills/review/scripts/test-findings-classification.md	#3677
 scripts/test-compose-review-findings.sh	#3677
 scripts/test-compose-review-findings.md	#3677
+scripts/check-reviewers.sh	#3676
+scripts/check-reviewers.md	#3676
+scripts/test-check-reviewers.sh	#3676
+scripts/test-check-reviewers.md	#3676
+scripts/run-negotiation-round.sh	#3676
+scripts/run-negotiation-round.md	#3676
+scripts/test-run-negotiation-round.sh	#3676
+scripts/test-run-negotiation-round.md	#3676

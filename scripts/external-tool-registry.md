@@ -7,7 +7,7 @@ Single canonical source for external-tool name taxonomy and implementer-coder ta
 ## Sourced by
 
 - `python/cli.py agent model-args`
-- `scripts/check-reviewers.sh`
+- `python/cli.py agent check-reviewers`
 - `scripts/collect-agent-results.sh`
 - `skills/implement/scripts/step2-implement.sh`
 
@@ -43,7 +43,7 @@ Update this list whenever a new consumer sources the registry.
 
 1. Append the new id to `LARCH_EXTERNAL_TOOLS` and to `LARCH_IMPLEMENTER_CODERS` if it is also an implementer.
 2. Add the per-tool branch in `python3 python/cli.py agent model-args`.
-3. Add the per-tool branch in `check-reviewers.sh` presence detection and in any dispatcher fallback helpers; decide opt-in vs. default and update `--include-*` policy accordingly.
+3. Add the per-tool branch in `agent check-reviewers` presence detection and in any dispatcher fallback helpers; decide opt-in vs. default and update `--include-*` policy accordingly.
 4. If the new tool is also an implementer, add the launcher branch in `step2-implement.sh`.
 5. No change is required in `run-external-agent.sh`: it sanitizes `.meta` `TOOL=` for any input. Prefer a label-safe id (alphanumerics, `.`, `_`, `-`) so `.meta` `TOOL=` matches the registry id verbatim; non-label-safe ids may still collide after sanitization (e.g. `tool/a` and `tool?a` both become `tool_a`), so `.meta` `TOOL=` is not a bijection from arbitrary labels. Only widen the wrapper's allowlist if you intentionally change that contract.
 6. If the new tool produces output collected by `scripts/collect-agent-results.sh`, ensure `derive_tool` can classify the new id from metadata and filenames so dispatcher fallback can attribute results.

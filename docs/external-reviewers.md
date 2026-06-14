@@ -2,14 +2,14 @@
 
 ## Availability Checks
 
-At the start of each skill, a binary check plus runtime probe (`scripts/check-reviewers.sh` via `session-setup.sh --check-reviewers`) determines which external tools are usable:
+At the start of each skill, a binary check plus runtime probe (`python/cli.py agent check-reviewers` via `session-setup.sh --check-reviewers`) determines which external tools are usable:
 
 - If **Codex** is unavailable (binary not on `PATH`, or its runtime auth/quota probe fails), a warning is printed
 - If **Cursor** is unavailable (same two failure modes), a warning is printed
 
 **Degraded-tools gate (issue #3207).** Beyond the warning, every skill that uses external tools (`/design`, `/implement`, `/review`, `/research`) runs the **Degraded-tools gate** in Step 0 (`python3 python/cli.py agent degraded-tools-gate`; procedure in `skills/shared/external-reviewers.md`). When either tool is unavailable, the gate presents an explanation (what is down, why — binary-missing vs runtime-probe-failed — and the degradation to expect). On an **interactive** run, `AskUserQuestion` fires only when **both** tools are down (`BOTH_DOWN` is not exactly `false`); when exactly one tool is down (`BOTH_DOWN=false`), the explanation is printed as a notice and the run proceeds automatically without prompting. Non-interactive / autonomous runs (cron, `claude -p`, eval) auto-proceed degraded with the explanation logged, so automation is never blocked.
 
-**Codex auth scope.** Covered Codex paths prefer a live non-whitespace `OPENAI_API_KEY` through per-invocation `-c` provider overrides; unset, empty, or whitespace-only falls back to `codex login` / `~/.codex/auth.json`. The merged inventory is: `launch-review.sh --tool codex`, `python/cli.py agent launch-codex-ci`, `launch-codex-implement.sh`, the Codex health probe in `check-reviewers.sh`, `skills/review-and-fix/scripts/review-and-fix.sh`, `python/cli.py agent launch-codex-exec`, `/research` Codex research lanes, `/research` validation lane, shared Codex voter/judge fences, `lint-fix-loop.sh`, and `run-negotiation-round.sh`.
+**Codex auth scope.** Covered Codex paths prefer a live non-whitespace `OPENAI_API_KEY` through per-invocation `-c` provider overrides; unset, empty, or whitespace-only falls back to `codex login` / `~/.codex/auth.json`. The merged inventory is: `launch-review.sh --tool codex`, `python/cli.py agent launch-codex-ci`, `launch-codex-implement.sh`, the Codex health probe in `python/cli.py agent check-reviewers`, `skills/review-and-fix/scripts/review-and-fix.sh`, `python/cli.py agent launch-codex-exec`, `/research` Codex research lanes, `/research` validation lane, shared Codex voter/judge fences, `lint-fix-loop.sh`, and `python/cli.py agent run-negotiation-round`.
 
 ## Trust boundary (filesystem access)
 

@@ -41,6 +41,14 @@ def test_shell_raw_exec_fails(tmp_path: Path, capsys: pytest.CaptureFixture[str]
     assert "scripts/bad.sh:2:" in err
 
 
+@pytest.mark.parametrize("rel", ["scripts/" + "check-reviewers" + ".sh", "scripts/" + "run-negotiation-round" + ".sh"])
+def test_retired_script_names_are_not_allowlisted(tmp_path: Path, capsys: pytest.CaptureFixture[str], rel: str) -> None:
+    write(tmp_path / rel, "#!/bin/bash", "codex exec --full-auto -C . hi")
+    rc, err = run(tmp_path, capsys)
+    assert rc == 1
+    assert f"{rel}:2:" in err
+
+
 def test_pragma_comments_and_continuation(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     write(tmp_path / "scripts/pragma.sh", "codex exec hi # lint-codex-exec-auth: ok fixture")
     write(tmp_path / "scripts/comment.sh", "# codex exec hi")

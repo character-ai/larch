@@ -215,7 +215,7 @@ def main(argv: list[str] | None = None) -> int:
         logging_util.emit_kv("RETIRED_REFS", "0")
         return 1
 
-    result = proc.run(["git", "ls-files", "-z"], cwd=str(root_path))
+    result = proc.run(["git", "ls-files", "-z", "--", ".", ":(exclude)larch-logs/**"], cwd=str(root_path))
     if result.returncode != 0:
         print(
             f"ERROR: git ls-files failed: {result.stderr.strip()}", file=sys.stderr
@@ -230,14 +230,10 @@ def main(argv: list[str] | None = None) -> int:
     retired_list = sorted(retired_set)
     retired_dirs = {r: Path(r).parent for r in retired_list}
     retired_refs = {r: _script_dir_refs(r) for r in retired_list}
-    # Cheap prefilter: a line can reference a retired path only if it contains
-    # that path's full text or its basename ($SCRIPT_DIR refs and ship-pr
-    # `source` forms always carry the basename). One regex search per line
-    # skips the ~85x inner loop for the overwhelming majority of lines.
-    gate_tokens = sorted(
-        set(retired_list) | {Path(r).name for r in retired_list}
-    )
-    gate_re = re.compile("|".join(re.escape(t) for t in gate_tokens))
+    # Cheap prefilter: every supported retired-path reference form carries the
+    # script basename. One regex search per line skips the inner loop for the
+    # overwhelming majority of lines.
+    gate_re = re.compile("|".join(re.escape(Path(r).name) for r in retired_list))
     writer = logging_util.BreadcrumbWriter()
     ref_count = 0
 

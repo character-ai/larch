@@ -18,6 +18,8 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("agent", "cursor-auth-preflight"): ("agents", "cursor_auth_preflight_main"),
     ("agent", "cursor-wrap-prompt"): ("agents", "cursor_wrap_prompt_main"),
     ("agent", "external-tool-registry"): ("agents", "external_tool_registry_main"),
+    ("agent", "check-reviewers"): ("agents", "check_reviewers_main"),
+    ("agent", "run-negotiation-round"): ("agents", "run_negotiation_round_main"),
     ("agent", "degraded-tools-gate"): ("agents", "degraded_tools_gate_main"),
     ("agent", "parse-codex-usage"): ("agents", "parse_codex_usage_main"),
     ("agent", "run-external-agent"): ("agents", "run_external_agent_main"),
