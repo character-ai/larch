@@ -300,6 +300,12 @@ def review_core_capture(
     output = Path(env_path)
     output.parent.mkdir(parents=True, exist_ok=True)
     override = os.environ.get("REVIEW_AND_FIX_REVIEW_CORE_SH", "")
+    if review_core_impl is None and override and os.environ.get("LARCH_TEST_REVIEW_CORE_OVERRIDE") != "1":
+        _err(
+            f"review-and-fix: ignoring REVIEW_AND_FIX_REVIEW_CORE_SH={override} "
+            "(set LARCH_TEST_REVIEW_CORE_OVERRIDE=1 for harness stubs)"
+        )
+        override = ""
     if review_core_impl is None and override:
         override_path = Path(override)
         if not override_path.is_file() or not os.access(override_path, os.X_OK):
@@ -593,6 +599,21 @@ def _skip_ratio_threshold() -> float:
     return 0.5
 
 
+def _lint_fix_max_attempts() -> int:
+    raw = os.environ.get("LARCH_STEP5_LINT_FIX_MAX_ATTEMPTS", "")
+    if not raw:
+        return 3
+    try:
+        value = int(raw)
+    except ValueError:
+        _err(f"⚠ review-and-fix: invalid LARCH_STEP5_LINT_FIX_MAX_ATTEMPTS={raw}; using 3")
+        return 3
+    if value > 0:
+        return value
+    _err(f"⚠ review-and-fix: invalid LARCH_STEP5_LINT_FIX_MAX_ATTEMPTS={raw}; using 3")
+    return 3
+
+
 def _reviewer_prune_status_records(core_status: str) -> bool:
     return core_status in _SETTLING_CORE_STATUSES
 
@@ -667,7 +688,7 @@ def _process_skipped_findings(
     if not coder_log.is_file() or not in_scope_file.is_file():
         return 0, False
     text = _read_text(coder_log)
-    skip_ids = _SKIPPED_RE.findall(text)
+    skip_ids = list(dict.fromkeys(_SKIPPED_RE.findall(text)))
     if not skip_ids:
         return 0, False
     skipped_file = round_dir / "skipped-findings.md"
@@ -1108,7 +1129,7 @@ def _step5_post_round_gates(
     if checks.get("STATUS") == "fail":
         if not checks.get("REDACTED_LOG_FILE"):
             return "stall", f"relevant-checks-{checks.get('FAILURE_REASON', 'unknown')}", False
-        lint_max = int(os.environ.get("LARCH_STEP5_LINT_FIX_MAX_ATTEMPTS", "3") or "3")
+        lint_max = _lint_fix_max_attempts()
         lint_attempts = 0
         while True:
             lint = _run_lint_fix_loop(implement_tmpdir, checks["REDACTED_LOG_FILE"])
@@ -2033,6 +2054,11 @@ def step5(argv: list[str] | None = None) -> int:
                 return 0
             _emit_step5_envelope("complete", False, "", rounds_completed, round_num, result.status, result.coder.status, result.coder.commit_sha, round_cap)
             return 0
+    except Exception as exc:
+        _err(f"review-and-fix step5: {exc}")
+        if loop_mode:
+            _emit_step5_envelope("stall", False, "internal-error", 0, 0, "unknown", "", "", default_cap)
+        return 2
     finally:
         if progress_done is not None:
             progress_done.parent.mkdir(parents=True, exist_ok=True)

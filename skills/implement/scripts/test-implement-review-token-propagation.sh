@@ -127,6 +127,7 @@ set +e
 LARCH_TOKEN_SESSION_ID="$token_session_id" \
     LARCH_CLAUDE_SOURCE_FILE="$claude_source_file" \
     LARCH_TIMING_LEDGER="$timing_ledger" \
+    LARCH_TEST_REVIEW_CORE_OVERRIDE=1 \
     REVIEW_AND_FIX_REVIEW_CORE_SH="$CORE_STUB" \
     "${REVIEW_AND_FIX[@]}" \
         --implement-tmpdir "$IMPLEMENT_TMPDIR" \

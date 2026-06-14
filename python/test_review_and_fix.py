@@ -703,6 +703,7 @@ def test_scrub_findings_missing_output_fails_closed(tmp_path, monkeypatch):
 def test_review_core_capture_rejects_non_executable_override(tmp_path, monkeypatch):
     override = tmp_path / "fake-core.sh"
     override.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    monkeypatch.setenv("LARCH_TEST_REVIEW_CORE_OVERRIDE", "1")
     monkeypatch.setenv("REVIEW_AND_FIX_REVIEW_CORE_SH", str(override))
     env_path = tmp_path / "review-core.env"
     rc = review_and_fix.review_core_capture(["--round-num", "1"], env_path, implement_tmpdir=tmp_path)
