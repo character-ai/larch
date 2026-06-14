@@ -87,9 +87,9 @@ Pause/resume helper coverage lives in
 |----------|---------------|----------|
 | `step-1c`, `step-1d` | Step 1d.5 prelude; Step 2a entry (idempotent repair) | before pause-check |
 | `step-1d.5` | Step 1d.5 boundary-local success; Step 2a entry when `brainstorm_requested` false | boundary-local or before pause-check |
-| `step-1d.7`, `step-1e` | Step 2a entry; Step 3 writes `step-1e` only when `design-step3-state.sh --direct-review-entry` runs with `.step3-reentry` present | before pause-check |
+| `step-1d.7`, `step-1e` | Step 2a entry; Step 3 writes `step-1e` only when `python/cli.py plan-review step3-state --direct-review-entry` runs with `.step3-reentry` present | before pause-check |
 | `step-2a` | Step 2a entry sentinel prep | before pause-check |
-| `step-3` | Step 3.5 prelude; `design-step3-state.sh --gate-b-bypass` on bypass paths; cleared by `design-step3-state.sh --auto-continuation-entry` before automatic follow-up rounds | before pause-check / before Step 3b / before auto-continuation Step 3 re-entry |
+| `step-3` | Step 3.5 prelude; `python/cli.py plan-review step3-state --gate-b-bypass` on bypass paths; cleared by `python/cli.py plan-review step3-state --auto-continuation-entry` before automatic follow-up rounds | before pause-check / before Step 3b / before auto-continuation Step 3 re-entry |
 | `step-3.5` | Step 3b entry | before pause-check |
 | `step-4` | Step 4 success boundary | boundary-local |
 | `step-4b` | Step 5b prepare prelude | before pause-check |
@@ -98,7 +98,7 @@ Pause/resume helper coverage lives in
 | `step-5d` | Step 6 prelude | before pause-check |
 | `step-6` | Step 6 cleanup fence | **after** pause-check |
 | Step 1e re-entry clears | Gate B(c)/Gate C(b) re-entry fence | `rm` stale `step-1e`…`step-4b` before pause-check |
-| Step 3 direct-review restore | Step 3 entry via `design-step3-state.sh --direct-review-entry` | clear stale downstream state, restore `step-2a`/`step-2b`/`step-2b.5`, and consume `.step3-reentry` before pause-check |
+| Step 3 direct-review restore | Step 3 entry via `python/cli.py plan-review step3-state --direct-review-entry` | clear stale downstream state, restore `step-2a`/`step-2b`/`step-2b.5`, and consume `.step3-reentry` before pause-check |
 | Q&A-only terminal prefix | Step 0b ad-hoc Q&A-only branch | contiguous through `step-1d.5` before Final summary |
 | Diagram branch cleanup | Step 3b skip vs architectural entry fences | `rm -f` stale diagram files per branch |
 | Kept preludes | Step 1d.5 (brainstorm externals); Step 0c folded discussion block; Step 1d.7 (`SKIP_APPROVE_REQUESTED` read fence) | pause-check retained |
@@ -432,7 +432,7 @@ Step 1e Gate A is **reached only via re-entry** from Gate B(c) or Gate C(b) (the
 
 Execute the Gate A body in `approval-gates.md`. When entered from Gate B(c) or Gate C(b) (post-plan), Gate A presents three options (See full plan / Ready for review / Discuss more); selecting **See full plan** re-displays `$DESIGN_TMPDIR/plan.txt` under a `## Latest Design Plan` header and re-fires the same prompt **minus the `See full plan` option** (leaving Ready for review / Discuss more), while **Ready for review** routes to the single Step 3 entry fence with `design-step3-entry.sh --reentry` and proceeds directly to Step 3 with the current `$DESIGN_TMPDIR/plan.txt` — do NOT re-run Step 2a or add a separate Gate A wrapper invocation.
 
-`.completed/step-1e` is batch-written by the Step 2a entry fence and, on Gate A direct-review re-entry only, by `design-step3-state.sh --direct-review-entry` when `.step3-reentry` is present — not on first-time Step 3 entry.
+`.completed/step-1e` is batch-written by the Step 2a entry fence and, on Gate A direct-review re-entry only, by `python/cli.py plan-review step3-state --direct-review-entry` when `.step3-reentry` is present — not on first-time Step 3 entry.
 
 <!-- step:2a — Sentinel Artifact Prep -->
 ## Step 2a — Sentinel Artifact Prep
@@ -523,7 +523,7 @@ On `_postplan_rc=12`, the driver already printed the plan-size-trigger section. 
 **Callable from**: retained paths above and Gate B after Override on validator defects (see `references/approval-gates.md`). **Gate B** and **post-plan discussion** merged re-emits use `--with-plan-size` instead of a standalone Step 2b.5 call on success.
 
 1. Read `partition_requested` from `$DESIGN_TMPDIR/run-params.json` (boolean; default `false` when absent). Bind mental `PARTITION_REQUESTED` from that field — Step 2b.5 does **not** re-parse argv.
-2. Run `python/cli.py plan check-size` in a Bash subshell with `export LARCH_QUIET_DISABLE=1`, capture **stdout only** into a variable `_plan_size_out` (the `emit_kv` / `emit` contract stream matches `emit-plan.sh` consumers; do not merge stderr into `_plan_size_out` or KV parsing may ingest `larch_err` lines). Example:
+2. Run `python/cli.py plan check-size` in a Bash subshell with `export LARCH_QUIET_DISABLE=1`, capture **stdout only** into a variable `_plan_size_out` (the `emit_kv` / `emit` contract stream matches `python/cli.py plan-review emit` consumers; do not merge stderr into `_plan_size_out` or KV parsing may ingest `larch_err` lines). Example:
 ```bash
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step2b5.sh
 ```
@@ -600,7 +600,7 @@ Each reviewer walks five focus areas: code-quality / risk-integration / correctn
 
 Step 3 invokes `design-step3-review.sh` with `run_in_background: true` (immediate-background mode) and relies on `<task-notification>` for one-shot completion; the wrapper internally runs `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review run --mode loop`. The script-internal controller `${CLAUDE_PLUGIN_ROOT}/python/plan_review.py` runs every review round, applies accepted findings through `python/cli.py plan revise-waterfall --patch-format file-replacement`, runs the mechanical Gate B post-apply pipeline, and returns to the main agent only through the `STEP3_REVIEW_LOOP_STATUS` envelope. Harness coverage lives at `${CLAUDE_PLUGIN_ROOT}/python/test_plan_review.py`. Every mid-loop return resumes through `design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND"` at the recorded `.step3-round-N.phase`; do not re-run the already completed review pass for that round.
 
-**Scout, panel dispatch, collection, aggregation, voting, and tally** still run inside `${CLAUDE_PLUGIN_ROOT}/python/plan_review.py`. Step 3 invokes `${CLAUDE_PLUGIN_ROOT}/python/cli.py plan-review run` for the cap guard, round-cursor advance, loop launch, result normalization, and `review-round-count.txt` persist/rollback (contracts: `python/plan_review.py`, `lib-phase-driver.sh` / `lib-phase-driver.md`; harnesses: `python/test_plan_review.py`, `test-lib-phase-driver.sh` / `test-lib-phase-driver.md`, `test-step3-orchestrator-fence.sh` / `test-step3-orchestrator-fence.md`, `test-design-step3-state.sh`). Step 3 sentinel helper: `${CLAUDE_PLUGIN_ROOT}/python/cli.py plan-review step3-state` (`${CLAUDE_PLUGIN_ROOT}/python/plan_review.py`; `--direct-review-entry`, `--gate-b-bypass`, `--auto-continuation-entry`).
+**Scout, panel dispatch, collection, aggregation, voting, and tally** still run inside `${CLAUDE_PLUGIN_ROOT}/python/plan_review.py`. Step 3 invokes `${CLAUDE_PLUGIN_ROOT}/python/cli.py plan-review run` for the cap guard, round-cursor advance, loop launch, result normalization, and `review-round-count.txt` persist/rollback (contracts: `python/plan_review.py`, `lib-phase-driver.sh` / `lib-phase-driver.md`; harnesses: `python/test_plan_review.py`, `test-lib-phase-driver.sh` / `test-lib-phase-driver.md`, `test-step3-orchestrator-fence.sh` / `test-step3-orchestrator-fence.md`, `skills/design/scripts/test-design-step3-review.sh`). Step 3 sentinel helper: `${CLAUDE_PLUGIN_ROOT}/python/cli.py plan-review step3-state` (`${CLAUDE_PLUGIN_ROOT}/python/plan_review.py`; `--direct-review-entry`, `--gate-b-bypass`, `--auto-continuation-entry`).
 
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 21600000`.**
 

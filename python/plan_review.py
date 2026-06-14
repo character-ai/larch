@@ -1213,8 +1213,10 @@ def drift_baseline_write_once(design_tmpdir: str | Path, plan_lines: str, diff_l
     if not re.fullmatch(r"[0-9]+", plan_lines) or not re.fullmatch(r"[0-9]+", diff_lines):
         return 1
     path = tmpdir / "drift-baseline.env"
-    if path.exists() or path.is_symlink():
+    if path.is_file():
         return 0
+    if path.is_symlink():
+        path.unlink()
     try:
         _write_atomic(path, f"BASELINE_PLAN_LINES={plan_lines}\nBASELINE_DIFF_LINES={diff_lines}\n")
     except OSError:

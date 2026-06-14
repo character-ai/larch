@@ -172,6 +172,12 @@ run_direct_relevant_targets() {
                 ;;
         esac
         case "$f" in
+            python/plan_review_panel.py|python/test_plan_review_panel.py)
+                append_target_once test-plan-review-panel
+                append_target_once test-dispatch-plan-voters
+                ;;
+        esac
+        case "$f" in
             python/plan_review.py|python/test_plan_review.py)
                 append_target_once test-plan-review
                 ;;
