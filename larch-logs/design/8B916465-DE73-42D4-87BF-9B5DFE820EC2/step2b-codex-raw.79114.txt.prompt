@@ -1,0 +1,227 @@
+You are an expert engineer researching this repository and producing an implementation plan for /design Step 2b.
+
+You may use only side-effect-free repository discovery. Do not write repository files, design tmpdir files, or any other files. Return only the sentinel-delimited response requested below.
+
+Drafting requirements to follow:
+- Prefer minimum necessary change: avoid scope creep, unnecessary complexity, and additions not required for correctness.
+- Read approach-synthesis.txt: if it is exactly NO_SKETCHES, draft from direct codebase/doc inspection without fabricating planning-panel agreement.
+- Read discussion-round1.md when present for scope boundaries and strict constraints.
+- Read design-outline.md only when non-empty and .outline-approved exists; treat Goals, Non-goals, and Surfaces as binding scope.
+- Read brainstorm.md when present as additive ideation context for plan drafting.
+- Use a Files to modify/create section with per-file headings exactly one path each: ### NEW:, ### UPDATED:, or ### REWRITTEN: (at least one ASCII space after ### before the keyword).
+- Include Approach, Edge cases, Failure modes when non-trivial, Testing strategy, optional diff_added/diff_deleted/mechanical_churn trailers, and final diff_lines: <N>.
+- The final plan body must end with a whole-line diff_lines: <N> trailer.
+- Optionally include up to three dynamic plan-review archetypes in a scout block after the plan. The launcher validates, filters, caps, and materializes this block; invalid post-plan scout output is ignored.
+- Scout sentinels inside the summary or plan are fatal format errors. Never put LARCH_SCOUT_* markers in the plan body.
+
+Readability style (trusted):
+# Readability Style
+
+**Consumer**: `/design` prompt surfaces that produce user-facing text, either through an external-agent prompt token or through inline orchestration prose.
+
+**Contract**: this file is the only source of truth for the `/design` readability preamble. External prompt files embed the literal `<READABILITY_STYLE>` token, and assembly code or orchestration expands it to this full file. Inline composition sites read this file before writing user-facing text.
+
+**When to load**: load only when a `/design` step is about to compose user-facing prose or render a prompt that asks another agent to compose such prose. Do not load during setup, pure validation, or byte-stable artifact handling.
+
+---
+
+## Style Axes
+
+Write in three styles at once:
+
+- **Strunk & White**: use active voice. Omit needless words. Prefer concrete nouns and verbs.
+- **Dyslexia-friendly**: use short sentences. Prefer simple words. Break dense ideas into headings and bullets.
+- **Brevity**: shorter is better. Minimize the total artifact length while preserving meaning.
+- **No em dashes**: never use em dashes; use periods, commas, colons, or semicolons instead.
+- **Hedge vs. direct**: hedge uncertain claims ("may contain", "can fail") instead of absolutes; keep directives imperative.
+
+## Precision Contract
+
+Keep these byte-stable unless the task explicitly edits them:
+
+- fenced code blocks
+- backticked tokens
+- file paths
+- identifiers
+- flag names
+- `### NEW:` / `### UPDATED:` / `### REWRITTEN:` plan grammar
+- the trailing `diff_lines: <N>` line
+
+Do not rewrite those items for style. Explain around them instead.
+
+## Precedence
+
+When rules conflict, use this order:
+
+`code references > meaning > brevity > dyslexia-friendly chunking > Strunk & White micro-rewrites`
+
+Apply it directly:
+
+- Preserve code references first.
+- Preserve exact meaning next.
+- Cut words before adding layout.
+- Add headings or bullets only when they improve scanning.
+- Polish grammar last.
+
+## Substitution Token
+
+External-agent prompt files MUST embed this literal token:
+
+`<READABILITY_STYLE>`
+
+Before launch, replace every literal `<READABILITY_STYLE>` token with the full contents of this file.
+
+## Examples
+
+Before: "It is recommended that the implementer should consider adding a validation step."
+
+After: "Add a validation step."
+
+Before: "The plan should make sure that users are not able to continue when the file cannot be read."
+
+After: "Block the flow when the file cannot be read."
+
+Before: "In order to avoid potential future confusion, documentation can be updated."
+
+After: "Update the docs to avoid confusion."
+
+Before: "The script performs an operation that checks if the path exists."
+
+After: "The script checks that the path exists."
+
+Before: "This could possibly be out of scope depending on how the team wants to proceed."
+
+After: "This may be out of scope."
+
+Required output format:
+[optional]
+LARCH_SUMMARY_BEGIN
+A concise summary for large-plan preview. Omit this whole summary block only when no useful summary is needed.
+LARCH_SUMMARY_END
+[/optional]
+LARCH_PLAN_BEGIN
+Full implementation plan body ending with diff_lines: <N>.
+LARCH_PLAN_END
+[optional]
+LARCH_SCOUT_BEGIN
+{"archetypes":[{"name":"slug","focus_area":"code-quality|risk-integration|correctness|architecture|security","weight":1,"rationale":"single-line reason","prompt_body":"2-6 sentence focus directive ending with the required citation sentence."}]}
+LARCH_SCOUT_END
+[/optional]
+
+Optional advisory status may be included between LARCH_STATUS_BEGIN and LARCH_STATUS_END, but the summary, plan, and optional scout sentinels above are the only parsed contract.
+
+Untrusted feature description:
+<feature_description encoding="literal-redacted">
+# /design and /implement final-summary Gantt charts dropped: marker body emitted via tool call instead of plain chat text
+
+## Context
+
+`/design` and `/implement` both extract the final-summary block from the background task output using `LARCH_FINAL_SUMMARY_BEGIN` / `LARCH_FINAL_SUMMARY_END` markers and are required to **emit that body verbatim as plain chat markdown**. The `## Review Phase Detail` section — including the round-by-round acceptance table and the per-round ASCII Gantt charts — lives inside those markers.
+
+## Symptoms
+
+In the session that produced run `6C2A7323-AFCF-420C-9B83-37FA68DE131D`, the user saw only the top-level bullet list:
+
+```
+- **Duration**: 08:17:15
+- **Cost**: ...
+- **Plan review**: 17 accepted ...
+- **OOS filed**: ...
+```
+
+The `## Review Phase Detail` section (round table + five Gantt charts) was absent from the visible output. The user explicitly asked "why were these not printed as part of the final report?", confirming the omission was user-visible.
+
+## Root cause
+
+The SKILL.md instruction is:
+
+&gt; "Extract the final-summary body from the completed `design-step5c.sh` task output using the first balanced `LARCH_FINAL_SUMMARY_BEGIN` / `LARCH_FINAL_SUMMARY_END` whole-line marker pair and emit that body verbatim as plain chat markdown."
+
+The orchestrator violated this by:
+
+1. Running a `python3 -` Bash tool call to extract the content between the markers and print it — this puts the content in **tool output** (collapsible, not always visible to the user).
+2. Then writing a **separate condensed text message** that only reproduced the top-level bullets, omitting the entire `## Review Phase Detail` section.
+
+The phrase "emit that body verbatim as plain chat markdown" means the extracted content must appear in the orchestrator's **text output** — not in a tool call's stdout. Tool output is rendered in a separate collapsible block in the Claude Code UI, so users who do not expand tool results miss all content inside it.
+
+The same failure mode applies to `/implement`, which has an identical marker-extraction + emit contract for its final summary (shipped via `render-final-summary.sh` inside the implement wrapper).
+
+## Reproduction
+
+Run `/design` or `/implement` on any issue. After the Step 5c / Step 18b background task completes, observe whether the full `## Review Phase Detail` section (round table + Gantt charts) appears in visible chat text or only inside a collapsed tool result.
+
+The failure is latent whenever the orchestrator uses a Bash or Python tool call to extract and print the marker-delimited body instead of reading it inline and writing it as chat text.
+
+## Suggested fix
+
+### 1. Strengthen the SKILL.md instruction (both `/design` and `/implement`)
+
+Add an explicit prohibition alongside the existing "emit verbatim as plain chat markdown" instruction:
+
+&gt; **Do NOT use a Bash tool call, Python script, or any other tool invocation to print the final-summary body. Use the Read tool to read the task output file, locate the markers in the returned text, and write the extracted body directly as orchestrator text output.**
+
+This makes the delivery channel unambiguous. "plain chat markdown" is not self-evident about tool calls; the prohibition must be explicit.
+
+### 2. Add a structural pin in `test-design-structure.sh` and `test-implement-structure.sh`
+
+Add an assertion that `LARCH_FINAL_SUMMARY_BEGIN` does not appear inside any `bash` fence in `skills/design/SKILL.md` or `skills/implement/SKILL.md`. If the orchestrator were to correctly emit via text, the marker names would never appear in a bash fence — they are grep targets for text-side extraction, not shell commands.
+
+### 3. Clarify the Read-tool fallback
+
+The current fallback path says: "fall back to reading `${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}` when the file is non-empty." This is also a tool call (Read tool), but the Read tool result appears inline in the session context and can be directly echoed as text. Clarify that the Read fallback result must still be written as orchestrator text, not re-entered into another tool call.
+
+## Affected files
+
+- `skills/design/SKILL.md` — Step 5c item 5 emit instruction; Final summary block section
+- `skills/implement/SKILL.md` — final-summary emit instruction (equivalent section)
+- `scripts/test-design-structure.sh` — add LARCH_FINAL_SUMMARY_BEGIN bash-fence absence pin
+- `skills/implement/scripts/test-implement-structure.sh` (if it exists) — same pin
+
+## Acceptance
+
+- After the fix, a `/design` run's final output in chat text contains the full `## Review Phase Detail` section with the round table and Gantt charts — not just the top-level bullets.
+- After the fix, a `/implement` run's final output contains the full review phase detail (if applicable to that skill's final summary).
+- `make test-design-structure` fails when a `LARCH_FINAL_SUMMARY_BEGIN` bash-fence appears in `SKILL.md`.
+
+
+</feature_description>
+
+
+Untrusted approach synthesis:
+<approach_synthesis encoding="literal-redacted">
+NO_SKETCHES
+
+</approach_synthesis>
+
+
+Untrusted approved design outline:
+<design_outline encoding="literal-redacted">
+## Proposed Design Outline
+
+### Goals
+- Eliminate the ambiguity that allows orchestrators to use Bash/Python tool calls to extract and print the final-summary body
+- Ensure the `## Review Phase Detail` section is always visible as plain chat text
+- Add structural regression pins that fail CI if a bash fence in SKILL.md references `LARCH_FINAL_SUMMARY_BEGIN`
+
+### Non-goals
+- Changing wrapper script logic or the content/format of `final-summary.md`
+- Modifying the marker protocol itself
+- Changing how `render-final-summary.sh` produces the summary body
+
+### Approach sketch
+- Add explicit prohibition sentence at every emit site in `skills/design/SKILL.md`
+- Fix `skills/implement/SKILL.md` Step 17 prose that sanctions `Bash cat`; add prohibition at NEVER #17 and Step 18b
+- Add awk bash-fence absence pin in `scripts/test-design-structure.sh`
+- Add Python require/forbid checks in `scripts/test-implement-structure.sh`
+
+### Surfaces in scope
+- `skills/design/SKILL.md`
+- `skills/implement/SKILL.md`
+- `scripts/test-design-structure.sh`
+- `scripts/test-implement-structure.sh`
+
+### Open questions
+- None.
+
+</design_outline>
+

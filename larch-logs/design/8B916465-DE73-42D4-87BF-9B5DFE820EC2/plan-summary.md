@@ -1,0 +1,1 @@
+Clarify `/design` and `/implement` final-summary emit instructions so the summary body must be read into context and written as orchestrator chat text, never printed through Bash/Python/tool stdout. Add structure tests that reject final-summary markers inside `bash` fences.
