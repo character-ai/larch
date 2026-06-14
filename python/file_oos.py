@@ -574,6 +574,19 @@ def disposition_checkpoint_main(argv: list[str] | None = None) -> int:
     accepted = [tmpdir / "oos-accepted-main-agent.md", design_path, tmpdir / "oos-accepted-review.md"]
     filed = [tmpdir / "oos-issues-created.md"]
     strict = [tmpdir / "oos-accepted-main-agent.md", design_path, tmpdir / "oos-accepted-review.md"]
+    if not forked and not repo_unavailable:
+        security_sidecar = tmpdir / "security-oos-observations.md"
+        if security_sidecar.is_file() and security_sidecar.stat().st_size > 0:
+            msg = "implement: security-routed manifest OOS requires private SECURITY.md disposition; refusing all-clear checkpoint"
+            (tmpdir / "oos-disposition-checkpoint.stderr.log").write_text(msg + "\n", encoding="utf-8")
+            _append_failure_log(tmpdir / "execution-issues.md", "step-8-oos-checkpoint-validation", "oos-disposition-checkpoint", 2, msg)
+            return 2
+        non_sec = count_non_security(tuple(str(p) for p in accepted if p.is_file()))
+        if non_sec > 0 and (ndjson is None or not ndjson.is_file()):
+            msg = "implement: non-security accepted OOS requires a resolved oos-issues.ndjson path for disposition gate (--oos-issues-ndjson); batch missing or undiscoverable"
+            (tmpdir / "oos-disposition-checkpoint.stderr.log").write_text(msg + "\n", encoding="utf-8")
+            _append_failure_log(tmpdir / "execution-issues.md", "step-8-oos-checkpoint-validation", "oos-disposition-checkpoint", 2, msg)
+            return 2
     try:
         rc = disposition_gate(accepted_files=accepted, filed_url_files=filed, filed_url_strict_files=strict, oos_issues_ndjson=ndjson, commit_range=commit_range, fork_mode=forked, repo_unavailable=repo_unavailable)
     except ValueError as exc:

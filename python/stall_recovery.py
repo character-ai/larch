@@ -9,6 +9,7 @@ import contextlib
 import hashlib
 import os
 import re
+import subprocess
 import sys
 from collections.abc import Mapping
 from datetime import datetime, UTC
@@ -326,6 +327,64 @@ def compose_report(args: argparse.Namespace) -> int:
     return 0
 
 
+def _emit_env_file(path: Path) -> None:
+    if not path.is_file():
+        return
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if "=" in line and not line.lstrip().startswith("#"):
+            print(line)
+
+
+def dedup_tier_a_report(args: argparse.Namespace) -> int:
+    tmpdir = Path(args.implement_tmpdir)
+    if os.environ.get("LARCH_STALL_RECOVERY_DRY_RUN"):
+        emit("STALL_RECOVERY_REPORT_STATUS", "dry-run")
+        return 0
+    body_file = Path(args.body_file) if args.body_file else tmpdir / "stall-recovery-issue-input.md"
+    attempts_file = Path(args.attempts_file) if args.attempts_file else tmpdir / "stall-recovery-tier-a-attempts.md"
+    escalation_file = Path(args.escalation_ledger_file) if args.escalation_ledger_file else tmpdir / "stall-recovery-tier-a-escalation.md"
+    root_file = Path(args.root_cause_file) if args.root_cause_file else tmpdir / "stall-recovery-tier-a-root-cause.md"
+    for slice_file in (attempts_file, escalation_file, root_file):
+        if not slice_file.is_file():
+            slice_file.write_text("", encoding="utf-8")
+    plugin_root = Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[1]))
+    helper = plugin_root / "scripts" / "file-failure-report-cross-repo.sh"
+    if not helper.is_file():
+        emit("STALL_RECOVERY_REPORT_STATUS", "lookup-failed-open")
+        emit("STALL_RECOVERY_REPORT_FALLBACK_REASON", "helper-missing")
+        return 0
+    repo_proc = subprocess.run(["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"], text=True, capture_output=True, check=False)  # noqa: S607
+    repo = repo_proc.stdout.strip()
+    if not repo:
+        emit("STALL_RECOVERY_REPORT_STATUS", "lookup-failed-open")
+        emit("STALL_RECOVERY_REPORT_FALLBACK_REASON", "current-repo-unresolved")
+        return 0
+    out = tmpdir / "stall-recovery-tier-a-dedup.env"
+    with out.open("w", encoding="utf-8") as handle:
+        subprocess.run(
+            [
+                str(helper),
+                "--repo",
+                repo,
+                "--body-file",
+                str(body_file),
+                "--dedup-only",
+                "--publication-tier",
+                "tier-a",
+                "--attempts-file",
+                str(attempts_file),
+                "--escalation-ledger-file",
+                str(escalation_file),
+                "--root-cause-file",
+                str(root_file),
+            ],
+            stdout=handle,
+            check=False,
+        )
+    _emit_env_file(out)
+    return 0
+
+
 def validate_token(args: argparse.Namespace) -> int:
     token = args.token or ""
     kind = getattr(args, "token_kind", "") or ""
@@ -467,7 +526,14 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--artifact-prefix", default="")
         ns, _ = p.parse_known_args(rest)
         return record_escalation(ns)
-    if sub in {"compose-report", "dedup-tier-a-report"}:
+    if sub == "dedup-tier-a-report":
+        p.add_argument("--body-file")
+        p.add_argument("--attempts-file")
+        p.add_argument("--escalation-ledger-file")
+        p.add_argument("--root-cause-file")
+        ns, _ = p.parse_known_args(rest)
+        return dedup_tier_a_report(ns)
+    if sub == "compose-report":
         p.add_argument("--report-kind", default="terminal-failure")
         p.add_argument("--surface", default="chat-print")
         p.add_argument("--output-file")

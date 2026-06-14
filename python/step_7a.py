@@ -14,9 +14,17 @@ from pathlib import Path
 import execution_issues
 import pr_body
 
+_NON_RUNTIME_NAMES = frozenset({"README.md"})
+_NON_RUNTIME_EXTS = frozenset({"txt", "tsv"})
+_MAX_SMALL_CHANGE_FILES = 2
+
 
 def emit(key: str, value: object) -> None:
     print(f"{key}={value}")
+
+
+def _plugin_root() -> Path:
+    return Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[1]))
 
 
 def _read_kv(path: Path, key: str, default: str = "") -> str:
@@ -29,28 +37,221 @@ def _read_kv(path: Path, key: str, default: str = "") -> str:
     return default
 
 
-def run_step7a(implement_tmpdir: Path, *, base_remote: str = "origin", base_ref: str = "main") -> int:
+def _is_non_runtime_path(path: str) -> bool:
+    if path.startswith("docs/"):
+        return True
+    base = Path(path).name
+    if base in _NON_RUNTIME_NAMES:
+        return True
+    if "." not in path:
+        return False
+    return path.rsplit(".", 1)[-1] in _NON_RUNTIME_EXTS
+
+
+def _is_small_non_runtime_change(*, base_remote: str, base_ref: str) -> bool:
+    merge_base = subprocess.run(["git", "merge-base", "HEAD", f"{base_remote}/{base_ref}"], text=True, capture_output=True, check=False)  # noqa: S607
+    if merge_base.returncode != 0 or not merge_base.stdout.strip():
+        return False
+    changed = subprocess.run(["git", "diff", "--name-only", f"{merge_base.stdout.strip()}..HEAD"], text=True, capture_output=True, check=False)  # noqa: S607
+    if changed.returncode != 0:
+        return False
+    paths = [line for line in changed.stdout.splitlines() if line.strip()]
+    if not paths or len(paths) > _MAX_SMALL_CHANGE_FILES:
+        return False
+    return all(_is_non_runtime_path(path) for path in paths)
+
+
+def _run_cli(*args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, str(_plugin_root() / "python" / "cli.py"), *args],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+
+def _run_log_flush(
+    implement_tmpdir: Path,
+    *,
+    run_id: str,
+    no_logs_commit: bool,
+    claude_source_file: str,
+) -> str:
+    log_flush_status = "ok"
+    _run_cli("token", "mark", "Step 8 — version bump")
+    env = {**os.environ, "LARCH_TIMING_SKILL": "implement"}
+    subprocess.run(
+        [sys.executable, str(_plugin_root() / "python" / "cli.py"), "timing", "mark", "Step 8 — version bump"],
+        env=env,
+        check=False,
+    )
+    log_root = implement_tmpdir / "larch-logs"
+    issue_log = implement_tmpdir / "execution-issues.md"
+    if run_id:
+        rc, status, _records, _append_log = execution_issues.flush_execution_issues(
+            log_root=log_root,
+            run_id=run_id,
+            issue_log=issue_log,
+        )
+        if rc != 0 or status not in {"ok", "skip", "already-flushed", "no-records"}:
+            log_flush_status = "degraded"
+        rc2, status2, _, _ = execution_issues.flush_execution_issues(
+            log_root=log_root,
+            run_id=run_id,
+            issue_log=issue_log,
+            step_label="7a-post-transcript",
+            source_label="execution-issues.md post-transcript refresh",
+        )
+        if rc2 != 0 or status2 not in {"ok", "skip", "already-flushed", "no-records"}:
+            log_flush_status = "degraded"
+    else:
+        log_flush_status = "skip"
+    if run_id and claude_source_file:
+        capture = _run_cli(
+            "run-log",
+            "capture-transcript",
+            "--source-file",
+            claude_source_file,
+            "--log-root",
+            str(log_root),
+            "--skill",
+            "implement",
+            "--run-id",
+            run_id,
+            "--no-logs-commit",
+            str(no_logs_commit).lower(),
+            "--defer-commit",
+            "true",
+            "--execution-issues-log",
+            str(issue_log),
+        )
+        if capture.returncode != 0:
+            log_flush_status = "degraded"
+    if not no_logs_commit and run_id:
+        commit = _run_cli(
+            "run-log",
+            "commit",
+            "--log-root",
+            str(log_root),
+            "--skill",
+            "implement",
+            "--run-id",
+            run_id,
+        )
+        if commit.returncode != 0:
+            log_flush_status = "degraded"
+    elif log_flush_status == "ok":
+        log_flush_status = "skipped-no-logs-commit"
+    return log_flush_status
+
+
+def run_step7a(
+    implement_tmpdir: Path,
+    *,
+    issue_number: str = "",
+    run_id: str = "",
+    no_logs_commit: bool = False,
+    forked_target: bool = False,
+    base_remote: str = "origin",
+    base_ref: str = "main",
+) -> int:
     implement_tmpdir.mkdir(parents=True, exist_ok=True)
-    diagram_rc, diagram_status, diagram_path, _reason = pr_body.generate_code_flow_diagram(implement_tmpdir, base_remote=base_remote, base_ref=base_ref)
+    session_env = implement_tmpdir / "session-env.sh"
+    if not issue_number:
+        issue_number = _read_kv(session_env, "LARCH_ISSUE_NUMBER")
+    if not run_id:
+        run_id = _read_kv(session_env, "LARCH_RUN_ID") or (
+            implement_tmpdir / "session-id"
+        ).read_text(encoding="utf-8").strip() if (implement_tmpdir / "session-id").is_file() else ""
+    if session_env.is_file() and not forked_target:
+        forked_target = _read_kv(session_env, "LARCH_FORKED_TARGET", "false") == "true"
+    if forked_target:
+        base_remote = "upstream"
+    repo = ""
+    if session_env.is_file():
+        if forked_target:
+            repo = _read_kv(session_env, "UPSTREAM_REPO")
+        if not repo:
+            repo = _read_kv(session_env, "REPO")
+        if not repo:
+            repo = _read_kv(session_env, "UPSTREAM_REPO")
+    claude_source = _read_kv(session_env, "LARCH_CLAUDE_SOURCE_FILE")
+
+    _run_cli("token", "mark", "Step 7a — code flow diagram")
+    subprocess.run(
+        [sys.executable, str(_plugin_root() / "python" / "cli.py"), "timing", "mark", "Step 7a — code flow diagram"],
+        env={**os.environ, "LARCH_TIMING_SKILL": "implement"},
+        check=False,
+    )
+
+    diagram_status = "skipped"
+    diagram_path = ""
     comment_url = ""
-    if diagram_status == "ok" and diagram_path:
-        upsert = subprocess.run([sys.executable, str(Path(__file__).resolve().parent / "cli.py"), "diagrams", "upsert", "--diagram-file", diagram_path], text=True, capture_output=True, check=False)
-        m = None
+    bail = ""
+    if _is_small_non_runtime_change(base_remote=base_remote, base_ref=base_ref):
+        diagram_status = "skip"
+        print("⏩ 7a: diagrams status=skip reason=small-non-runtime-change elapsed=0s")
+    else:
+        diagram_rc, diagram_status, diagram_path, _reason = pr_body.generate_code_flow_diagram(
+            implement_tmpdir,
+            base_remote=base_remote,
+            base_ref=base_ref,
+        )
+        if diagram_status == "ok" and diagram_path:
+            section = implement_tmpdir / "code-flow-section.md"
+            section.write_text((implement_tmpdir / "code-flow-diagram.md").read_text(encoding="utf-8"), encoding="utf-8")
+        if diagram_rc != 0:
+            bail = "diagram-failed"
+
+    if issue_number and (implement_tmpdir / "code-flow-section.md").is_file() and (implement_tmpdir / "code-flow-section.md").stat().st_size > 0:
+        upsert_args = ["diagrams", "upsert", "--issue", issue_number, "--code-flow-file", str(implement_tmpdir / "code-flow-section.md")]
+        if repo:
+            upsert_args.extend(["--repo", repo])
+        upsert = _run_cli(*upsert_args)
         if upsert.returncode == 0:
             m = re.search(r"^COMMENT_URL=(.*)$", upsert.stdout, re.MULTILINE)
-        comment_url = m.group(1) if m else ""
-    run_id = _read_kv(implement_tmpdir / "ship-pr-state.sh", "RUN_ID") or ((implement_tmpdir / "session-id").read_text(encoding="utf-8").strip() if (implement_tmpdir / "session-id").is_file() else "")
-    log_flush_status = "skip"
-    if run_id:
-        log_root = implement_tmpdir / "larch-logs"
-        rc, log_flush_status, _records, _append_log = execution_issues.flush_execution_issues(log_root=log_root, run_id=run_id, issue_log=implement_tmpdir / "execution-issues.md")
-        if rc not in {0, 1, 2}:
-            log_flush_status = "failed"
+            upsert_status = re.search(r"^UPSERT_STATUS=(.*)$", upsert.stdout, re.MULTILINE)
+            if upsert_status and upsert_status.group(1) != "failed" and m:
+                comment_url = m.group(1)
+
+    rebase_out = implement_tmpdir / "rebase-checkpoint-probe.stdout"
+    probe = subprocess.run(
+        [
+            str(_plugin_root() / "scripts" / "rebase-checkpoint-probe.sh"),
+            "7a.r",
+            "diagrams",
+            "--base-remote",
+            base_remote,
+            "--base-ref",
+            base_ref,
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    rebase_out.write_text(probe.stdout, encoding="utf-8")
+    for line in probe.stdout.splitlines():
+        if line.strip():
+            print(line)
+    if probe.returncode != 0:
+        emit("DIAGRAM_STATUS", diagram_status)
+        emit("DIAGRAM_PATH", diagram_path)
+        emit("COMMENT_URL", comment_url)
+        emit("LOG_FLUSH_STATUS", "skipped-rebase-checkpoint")
+        emit("STEP_7A_BAIL_REASON", bail)
+        emit("REBASE_OUTCOME", "conflict" if probe.returncode == 1 else "failed")
+        return probe.returncode
+
+    log_flush_status = _run_log_flush(
+        implement_tmpdir,
+        run_id=run_id,
+        no_logs_commit=no_logs_commit,
+        claude_source_file=claude_source,
+    )
     rebase_outcome = "skipped"
     relay = implement_tmpdir / "7a.r"
     if relay.is_file():
         rebase_outcome = relay.read_text(encoding="utf-8", errors="replace").strip() or "requested"
-    bail = "" if diagram_rc == 0 else "diagram-failed"
     emit("DIAGRAM_STATUS", diagram_status)
     emit("DIAGRAM_PATH", diagram_path)
     emit("COMMENT_URL", comment_url)
@@ -63,9 +264,22 @@ def run_step7a(implement_tmpdir: Path, *, base_remote: str = "origin", base_ref:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cli.py implement step-7a")
     parser.add_argument("--implement-tmpdir", default=os.environ.get("IMPLEMENT_TMPDIR", ""))
+    parser.add_argument("--issue-number", default="")
+    parser.add_argument("--run-id", default="")
+    parser.add_argument("--no-logs-commit", choices=("true", "false"), default="false")
+    parser.add_argument("--forked-target", choices=("true", "false"), default="false")
     parser.add_argument("--base-remote", default="origin")
     parser.add_argument("--base-ref", default="main")
-    args, _unknown = parser.parse_known_args(argv)
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit:
+        emit("DIAGRAM_STATUS", "failed")
+        emit("DIAGRAM_PATH", "")
+        emit("COMMENT_URL", "")
+        emit("LOG_FLUSH_STATUS", "skip")
+        emit("STEP_7A_BAIL_REASON", "argv")
+        emit("REBASE_OUTCOME", "skipped")
+        return 2
     if not args.implement_tmpdir:
         emit("DIAGRAM_STATUS", "failed")
         emit("DIAGRAM_PATH", "")
@@ -74,4 +288,12 @@ def main(argv: list[str] | None = None) -> int:
         emit("STEP_7A_BAIL_REASON", "missing-implement-tmpdir")
         emit("REBASE_OUTCOME", "skipped")
         return 2
-    return run_step7a(Path(args.implement_tmpdir), base_remote=args.base_remote, base_ref=args.base_ref)
+    return run_step7a(
+        Path(args.implement_tmpdir),
+        issue_number=args.issue_number,
+        run_id=args.run_id,
+        no_logs_commit=args.no_logs_commit == "true",
+        forked_target=args.forked_target == "true",
+        base_remote=args.base_remote,
+        base_ref=args.base_ref,
+    )

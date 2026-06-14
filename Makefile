@@ -670,13 +670,13 @@ test-step2-dispatch:
 test-stall-recovery-report: test-stall-recovery-report-1 test-stall-recovery-report-2 test-stall-recovery-report-3
 
 test-stall-recovery-report-1:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-stall-recovery-report-1.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_stall_recovery.py -q -k 'retry_policy or normalize_issue or classify'
 
 test-stall-recovery-report-2:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-stall-recovery-report-2.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_stall_recovery.py -q -k 'record_escalation or dedup'
 
 test-stall-recovery-report-3:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-stall-recovery-report-3.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_stall_recovery.py -q -k 'validate_token or validate_terminal'
 
 test-resolve-upstream-larch-repo:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-resolve-upstream-larch-repo.sh
@@ -741,10 +741,10 @@ test-parse-bootstrap-routing-envelope:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_bootstrap.py -x -q -k 'filtered_envelope or parse_routing or routing_parser or degraded_prompt_required or phantom_stdout or absorbed_'
 
 test-flush-execution-issues:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-flush-execution-issues.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_execution_issues.py -q -k flush
 
 test-step-7a:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-step-7a.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_step_7a.py -q
 
 test-step-8-ship:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-step-8-ship.sh
@@ -762,7 +762,7 @@ test-generate-code-flow-diagram:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-generate-code-flow-diagram.sh
 
 test-refresh-execution-issues:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-refresh-execution-issues.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_execution_issues.py -q -k refresh
 
 test-review-and-fix-write-rejected:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_review_and_fix.py -q -k write_rejected

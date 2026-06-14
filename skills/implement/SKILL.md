@@ -114,9 +114,9 @@ export CLAUDE_PLUGIN_ROOT
 Structured invocation pins for script factoring that is reached through active drivers or wrappers:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/compose-pr-summary.sh" --plan-goals-file "$IMPLEMENT_TMPDIR/plan-goals.md"
-"${CLAUDE_PLUGIN_ROOT}/scripts/render-run-summary.sh" --skill implement --outcome "$IMPLEMENT_OUTCOME" --run-id "$RUN_ID" --mode "$IMPLEMENT_MODE" --duration "$IMPLEMENT_DURATION" --issue-number "$ISSUE_NUMBER" --issue-url "$ISSUE_URL"
-"${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.sh" teardown --state-file "$IMPLEMENT_TMPDIR/finalize-state.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" pr compose-summary --plan-goals-file "$IMPLEMENT_TMPDIR/plan-goals.md"
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" render run-summary --skill implement --outcome "$IMPLEMENT_OUTCOME" --run-id "$RUN_ID" --mode "$IMPLEMENT_MODE" --duration "$IMPLEMENT_DURATION" --issue-number "$ISSUE_NUMBER" --issue-url "$ISSUE_URL"
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement-finalize teardown --state-file "$IMPLEMENT_TMPDIR/finalize-state.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"
 ```
 
 ### Bash block prelude
@@ -706,7 +706,7 @@ The helper upserts the stable issue-scoped `<!-- larch:diagrams v1 -->` comment 
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 1800000`.**
 
 ```bash
-python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" implement step-7a --implement-tmpdir "$IMPLEMENT_TMPDIR" --issue-number "${ISSUE_NUMBER:-}" --run-id "$RUN_ID" --no-logs-commit "${no_logs_commit:-false}" --forked-target "${forked_target:-false}"
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement step-7a --implement-tmpdir "$IMPLEMENT_TMPDIR" --issue-number "${ISSUE_NUMBER:-}" --run-id "$RUN_ID" --no-logs-commit "${no_logs_commit:-false}" --forked-target "${forked_target:-false}"
 ```
 
 Treat `python/cli.py implement step-7a` relay stdout as part of the same KV stream. Scan `REBASE_OUTCOME` first for stream ordering only, then read `ROUTE=continue|conflict|bail` and the final KV tail for `DIAGRAM_STATUS`, `DIAGRAM_PATH`, `COMMENT_URL`, `LOG_FLUSH_STATUS`, and `STEP_7A_BAIL_REASON` if needed; this scan ordering does not bypass the process rc plus `ROUTE=continue` skip predicate. Apply the **Rebase Checkpoint Macro** orchestrator routing from the `## Rebase Checkpoint Macro` section using `<step-prefix>=7a.r` and `<short-name>=diagrams` after `python/cli.py implement step-7a` returns; `python/cli.py implement step-7a` preserves the probe exit code and only runs the pre-ship flush after `REBASE_OUTCOME=ok|skipped` (phantom probe for `7a.r-post-rebase` is already inside the wrapper).

@@ -223,3 +223,12 @@ def test_design_tmpdir_env_oos_path_resolution(
     monkeypatch.setenv("DESIGN_TMPDIR", str(design_dir))
     resolved = file_oos.resolve_design_oos_path(tmp_path)
     assert resolved == accepted
+
+
+def test_disposition_checkpoint_fails_on_security_sidecar(tmp_path: Path) -> None:
+    _ = (tmp_path / "security-oos-observations.md").write_text("# security observation\n", encoding="utf-8")
+
+    rc = file_oos.disposition_checkpoint_main(["--implement-tmpdir", str(tmp_path)])
+
+    assert rc == 2
+    assert "security-routed manifest OOS" in (tmp_path / "oos-disposition-checkpoint.stderr.log").read_text(encoding="utf-8")
