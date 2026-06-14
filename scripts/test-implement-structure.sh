@@ -134,7 +134,7 @@ for name in wrappers:
 # Existing wrappers that gained behavior.
 require('python/review_and_fix.py', '--stage-all', 'commit-fixes --stage-all')
 require('python/review_and_fix.py', '"git", "add", "-A"', 'commit-fixes stage all implementation')
-require('python/cli.py implement commit', 'LARCH_TIMING_LEDGER', 'commit-implementation telemetry self-rehydration')
+require('python/implement_dispatch.py', 'LARCH_TIMING_LEDGER', 'commit-implementation telemetry self-rehydration')
 require('skills/implement/scripts/step-18b-final-report.sh', 'cleanup.sh" --help', 'step-18b cleanup smoke')
 require('skills/implement/scripts/step-18b-final-report.sh', 'Step 18 — cleanup', 'step-18b telemetry mark')
 require('skills/implement/scripts/step-0-bootstrap.sh', 'CALLER_ENV_PATH=*) CALLER_ENV_PATH=', 'step-0 fork metadata caller-env parse')

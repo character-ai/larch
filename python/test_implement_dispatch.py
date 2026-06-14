@@ -104,11 +104,102 @@ def test_step2_dispatch_claude_fallback(tmp_path: Path, capsys: pytest.CaptureFi
     assert "ORCHESTRATOR_EDIT_AUTHORITY=allowed" in out
 
 
+def _legacy_malformed_manifest() -> str:
+    return '{"status":"complete","summary":"done","checks":"ok"}\n'
+
+
+def _assert_bailed_no_recovery(out: str, *, reason: str = "manifest-schema-invalid") -> None:
+    assert "STATUS=bailed" in out
+    assert f"REASON={reason}" in out
+    assert "RECOVERY_FROM=" not in out
+
+
+def _assert_recovery_envelope(out: str, tool: str) -> None:
+    assert "STATUS=claude_fallback" in out
+    assert "ORCHESTRATOR_EDIT_AUTHORITY=allowed" in out
+    assert "RECOVERY_FROM=manifest-schema-invalid" in out
+    assert f"RECOVERY_PRIOR_TOOL={tool}" in out
+    assert "RECOVERY_PATHS_FILE=" in out
+    assert _auth_lines(out) == 1
+
+
+def _recovery_paths_from_file(path: Path) -> list[str]:
+    return [p.decode() for p in path.read_bytes().split(b"\0") if p]
+
+
+def _kv_value(out: str, key: str) -> str:
+    prefix = f"{key}="
+    for line in out.splitlines():
+        if line.startswith(prefix):
+            return line[len(prefix):]
+    raise AssertionError(f"missing {key}= in output")
+
+
+def _malformed_launcher(edit: Callable[[Path, implement_dispatch.DispatchState], None]):
+    def fake_launcher(st: implement_dispatch.DispatchState):
+        edit(st.repo_root, st)
+        st.manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        st.manifest_path.write_text(_legacy_malformed_manifest(), encoding="utf-8")
+        return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
+
+    return fake_launcher
+
+
 def test_run_dispatch_fails_closed_on_cursor_drift(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     tmp = _session(tmp_path)
     rc = implement_dispatch.run_dispatch_main(["--implement-tmpdir", str(tmp), "--coder", "cursor"])
     assert rc == 2
     assert "CURSOR_PRESENT=false" in capsys.readouterr().err
+
+
+def test_run_dispatch_missing_tmpdir_exits_2(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as exc:
+        implement_dispatch.run_dispatch_main(["--coder", "codex"])
+    assert exc.value.code == 2
+    assert "--implement-tmpdir" in capsys.readouterr().err
+
+
+def test_run_dispatch_missing_answers_path_exits_2(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    tmp = _session(tmp_path)
+    rc = implement_dispatch.run_dispatch_main([
+        "--implement-tmpdir", str(tmp),
+        "--coder", "codex",
+        "--answers", str(tmp / "missing.json"),
+    ])
+    assert rc == 2
+    assert "--answers path does not exist" in capsys.readouterr().err
+
+
+def test_run_dispatch_invalid_cursor_present_exits_2(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    tmp = _session(tmp_path)
+    (tmp / "session-env.sh").write_text("CURSOR_PRESENT=maybe\n", encoding="utf-8")
+    rc = implement_dispatch.run_dispatch_main(["--implement-tmpdir", str(tmp), "--coder", "codex"])
+    assert rc == 2
+    assert "CURSOR_PRESENT must be true or false" in capsys.readouterr().err
+
+
+def test_run_dispatch_forwards_answers_to_step2(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    tmp = _session(tmp_path)
+    answers = tmp / "answers.json"
+    answers.write_text('{"answers":[]}\n', encoding="utf-8")
+    captured: dict[str, list[str]] = {}
+
+    def fake_run(argv, **kwargs):  # type: ignore[no-untyped-def]
+        if len(argv) >= 4 and argv[2:4] == ["implement", "step2-dispatch"]:
+            captured["argv"] = list(argv)
+            return subprocess.CompletedProcess(argv, 0, "STATUS=claude_fallback\nORCHESTRATOR_EDIT_AUTHORITY=allowed\n", "")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(implement_dispatch.subprocess, "run", fake_run)
+    rc = implement_dispatch.run_dispatch_main([
+        "--implement-tmpdir", str(tmp),
+        "--coder", "codex",
+        "--answers", str(answers),
+    ])
+    assert rc == 0
+    argv = captured["argv"]
+    assert "--answers" in argv
+    assert str(answers) in argv
 
 
 def test_step2_dispatch_complete_commits_manifest_message(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
@@ -172,6 +263,201 @@ def test_step2_dispatch_malformed_manifest_recovery(repo: Path, tmp_path: Path, 
     assert (tmp / "step2-recovery-paths.nul").read_bytes() == b"recovered.txt\0"
 
 
+def test_step2_dispatch_malformed_manifest_empty_delta_bails(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+    monkeypatch.setattr(implement_dispatch, "_run_launcher", _malformed_launcher(lambda _repo, _st: None))
+    rc = implement_dispatch.step2_dispatch_main([
+        "--tmpdir", str(tmp),
+        "--plan-file", str(tmp / "plan.txt"),
+        "--feature-file", str(tmp / "feature-description.txt"),
+        "--coder", "codex",
+    ])
+    assert rc == 0
+    _assert_bailed_no_recovery(capsys.readouterr().out)
+
+
+def test_step2_dispatch_prelaunch_staged_index_blocks_recovery(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    tmp = _session(tmp_path)
+    (repo / "staged.txt").write_text("prelaunch staged\n", encoding="utf-8")
+    _git(repo, "add", "staged.txt")
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+    monkeypatch.setattr(
+        implement_dispatch,
+        "_run_launcher",
+        _malformed_launcher(lambda repo_root, _st: (repo_root / "README.md").write_text("recovered edit\n", encoding="utf-8")),
+    )
+    rc = implement_dispatch.step2_dispatch_main([
+        "--tmpdir", str(tmp),
+        "--plan-file", str(tmp / "plan.txt"),
+        "--feature-file", str(tmp / "feature-description.txt"),
+        "--coder", "codex",
+    ])
+    assert rc == 0
+    _assert_bailed_no_recovery(capsys.readouterr().out)
+    assert "PRELAUNCH_INDEX_NONEMPTY=true" in (tmp / "step2-prelaunch-index.env").read_text(encoding="utf-8")
+
+
+def test_step2_dispatch_rename_recovery_uses_destination_path(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+
+    def edit(repo_root: Path, _st: implement_dispatch.DispatchState) -> None:
+        _git(repo_root, "mv", "README.md", "RENAMED.md")
+
+    monkeypatch.setattr(implement_dispatch, "_run_launcher", _malformed_launcher(edit))
+    rc = implement_dispatch.step2_dispatch_main([
+        "--tmpdir", str(tmp),
+        "--plan-file", str(tmp / "plan.txt"),
+        "--feature-file", str(tmp / "feature-description.txt"),
+        "--coder", "codex",
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    _assert_recovery_envelope(out, "codex")
+    recovery_file = Path(_kv_value(out, "RECOVERY_PATHS_FILE"))
+    assert _recovery_paths_from_file(recovery_file) == ["RENAMED.md"]
+
+
+def test_step2_dispatch_baseline_persists_across_answers_resume(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+    state = {"round": 0}
+
+    def fake_launcher(st: implement_dispatch.DispatchState):
+        state["round"] += 1
+        if state["round"] == 1:
+            (repo / "A.txt").write_text("round1\n", encoding="utf-8")
+            st.manifest_path.parent.mkdir(parents=True, exist_ok=True)
+            st.manifest_path.write_text(json.dumps({
+                "schema_version": "1",
+                "status": "needs_qa",
+                "needs_qa": {"questions": [{"id": "q1", "text": "continue?"}]},
+            }), encoding="utf-8")
+            st.qa_pending_path.write_text(json.dumps({
+                "questions": [{"id": "q1", "text": "continue?"}],
+            }), encoding="utf-8")
+            return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
+        (repo / "B.txt").write_text("round2\n", encoding="utf-8")
+        st.manifest_path.write_text(_legacy_malformed_manifest(), encoding="utf-8")
+        return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
+
+    monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(implement_dispatch, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
+    rc_qa = implement_dispatch.step2_dispatch_main([
+        "--tmpdir", str(tmp),
+        "--plan-file", str(tmp / "plan.txt"),
+        "--feature-file", str(tmp / "feature-description.txt"),
+        "--coder", "codex",
+    ])
+    assert rc_qa == 0
+    assert "STATUS=needs_qa" in capsys.readouterr().out
+    answers = tmp / "answers.json"
+    answers.write_text('{"answers":[{"id":"q1","text":"yes"}]}\n', encoding="utf-8")
+    rc_recovery = implement_dispatch.step2_dispatch_main([
+        "--tmpdir", str(tmp),
+        "--plan-file", str(tmp / "plan.txt"),
+        "--feature-file", str(tmp / "feature-description.txt"),
+        "--coder", "codex",
+        "--answers", str(answers),
+    ])
+    assert rc_recovery == 0
+    out = capsys.readouterr().out
+    _assert_recovery_envelope(out, "codex")
+    recovery_file = Path(_kv_value(out, "RECOVERY_PATHS_FILE"))
+    assert _recovery_paths_from_file(recovery_file) == ["A.txt", "B.txt"]
+
+
+def test_step2_dispatch_non_v1_schema_version_hard_bails(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+
+    def fake_launcher(st: implement_dispatch.DispatchState):
+        readme = repo / "README.md"
+        readme.write_text(readme.read_text(encoding="utf-8") + "edit\n", encoding="utf-8")
+        st.manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        st.manifest_path.write_text(
+            '{"schema_version":2,"status":"complete","summary":"done","checks":"ok"}\n',
+            encoding="utf-8",
+        )
+        return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
+
+    monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    rc = implement_dispatch.step2_dispatch_main([
+        "--tmpdir", str(tmp),
+        "--plan-file", str(tmp / "plan.txt"),
+        "--feature-file", str(tmp / "feature-description.txt"),
+        "--coder", "codex",
+    ])
+    assert rc == 0
+    _assert_bailed_no_recovery(capsys.readouterr().out)
+
+
+def test_step2_dispatch_launcher_retries_on_clean_post_failure(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+    launcher_calls = 0
+
+    def fake_launcher(st: implement_dispatch.DispatchState):
+        nonlocal launcher_calls
+        launcher_calls += 1
+        if launcher_calls == 1:
+            return 1, {"LAUNCHER_EXIT": "1", "MANIFEST_WRITTEN": "false"}, ""
+        (repo / "implemented.txt").write_text("done\n", encoding="utf-8")
+        st.manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        st.manifest_path.write_text(json.dumps(_complete_manifest_payload()), encoding="utf-8")
+        return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
+
+    monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(implement_dispatch, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
+    monkeypatch.setattr(implement_dispatch, "_materialize_oos", lambda *_a, **_k: "")
+    rc = implement_dispatch.step2_dispatch_main([
+        "--tmpdir", str(tmp),
+        "--plan-file", str(tmp / "plan.txt"),
+        "--feature-file", str(tmp / "feature-description.txt"),
+        "--coder", "codex",
+    ])
+    assert rc == 0
+    assert launcher_calls == 2
+    out = capsys.readouterr().out
+    assert "STATUS=complete" in out
+
+
+def test_step2_dispatch_oos_materialize_failure_bails(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    tmp = _session(tmp_path)
+    plugin_root = Path(__file__).resolve().parents[1]
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
+    monkeypatch.setenv("LARCH_TEST_MATERIALIZE_FORCE_FAIL", "true")
+
+    def fake_launcher(st: implement_dispatch.DispatchState):
+        (repo / "README.md").write_text("edited by stub\n", encoding="utf-8")
+        st.manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        st.manifest_path.write_text(json.dumps({
+            "schema_version": "1",
+            "status": "complete",
+            "files_touched": [{"path": "README.md"}],
+            "commit_message": "stub: edit README",
+            "summary_bullets": ["edited README"],
+            "tests_added_or_modified": [],
+            "todos_left": [],
+            "oos_observations": [{"title": "OOS", "description": "manifest OOS", "phase": "implement"}],
+        }), encoding="utf-8")
+        return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
+
+    monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(implement_dispatch, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
+    rc = implement_dispatch.step2_dispatch_main([
+        "--tmpdir", str(tmp),
+        "--plan-file", str(tmp / "plan.txt"),
+        "--feature-file", str(tmp / "feature-description.txt"),
+        "--coder", "codex",
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "STATUS=bailed" in out
+    assert "REASON=manifest-oos-materialization-failed" in out
+
+
 def test_commit_main_commits_named_file(repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
     (repo / "commit-me.txt").write_text("x\n", encoding="utf-8")
     rc = implement_dispatch.commit_main(["--message", "Commit helper", "commit-me.txt"])
@@ -199,6 +485,41 @@ def test_commit_main_passes_named_files_once(monkeypatch: pytest.MonkeyPatch, ca
     assert calls[0].count("one.txt") == 1
     assert calls[0].count("two.txt") == 1
     assert "SHA=abc123" in capsys.readouterr().out
+
+
+def test_commit_main_missing_message_emits_envelope(capsys: pytest.CaptureFixture[str]) -> None:
+    rc = implement_dispatch.commit_main(["file.txt"])
+    assert rc == 2
+    captured = capsys.readouterr()
+    assert "COMMITTED=false" in captured.out
+    assert "ERROR=--message is required" in captured.out
+    assert "review-and-fix commit-fixes" in captured.err
+
+
+def test_commit_main_stage_all_unknown_option_emits_envelope(capsys: pytest.CaptureFixture[str]) -> None:
+    rc = implement_dispatch.commit_main(["--stage-all"])
+    assert rc == 2
+    captured = capsys.readouterr()
+    assert "COMMITTED=false" in captured.out
+    assert "ERROR=unknown option: --stage-all" in captured.out
+    assert "review-and-fix commit-fixes" in captured.err
+
+
+def test_commit_main_git_commit_failure_preserves_exit_code(repo: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    (repo / "file.txt").write_text("x\n", encoding="utf-8")
+
+    def fake_run(argv, **_kwargs):  # type: ignore[no-untyped-def]
+        if str(argv[0]).endswith("git-commit.sh"):
+            return subprocess.CompletedProcess(argv, 7, "", "hook rejected commit")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(implement_dispatch, "_invoke_cli", lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0, "", ""))
+    monkeypatch.setattr(implement_dispatch, "_run", fake_run)
+    rc = implement_dispatch.commit_main(["--message", "Implement thing", "file.txt"])
+    assert rc == 7
+    captured = capsys.readouterr()
+    assert "COMMITTED=false" in captured.out
+    assert "ERROR=hook rejected commit" in captured.out
 
 
 def _launcher_args(tmp: Path) -> list[str]:

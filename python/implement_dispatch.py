@@ -222,21 +222,44 @@ def recovery_paths_main(argv: list[str] | None = None) -> int:
     return 0 if ok else 1
 
 
+def _commit_usage_fail(error: str) -> int:
+    _err("Usage: implement commit --message MSG [--pathspec-from-file PATH [--pathspec-file-nul]] [files...]")
+    _err("HINT: --stage-all belongs to review-and-fix commit-fixes (Step 5 review fixes); implementation commits name specific files or use --pathspec-from-file.")
+    _emit_kv("COMMITTED", "false")
+    _emit_kv("SHA", "")
+    _emit_kv("ERROR", error)
+    return 2
+
+
 def commit_main(argv: list[str] | None = None) -> int:
     logging_util.quiet_init(argv0="cli.py")
+    argv_list = list(argv if argv is not None else sys.argv[1:])
+    known_flags = {"--message", "-m", "--pathspec-from-file", "--pathspec-file-nul", "--help", "-h"}
+    idx = 0
+    while idx < len(argv_list):
+        arg = argv_list[idx]
+        if arg in ("--help", "-h"):
+            argparse.ArgumentParser(prog="cli.py implement commit").print_help()
+            return 0
+        if arg.startswith("-") and arg not in known_flags:
+            return _commit_usage_fail(f"unknown option: {arg}")
+        if arg in ("--message", "-m", "--pathspec-from-file"):
+            if idx + 1 >= len(argv_list) or argv_list[idx + 1].startswith("-"):
+                return _commit_usage_fail(f"{arg} requires a value")
+            idx += 2
+            continue
+        if arg == "--pathspec-file-nul":
+            idx += 1
+            continue
+        idx += 1
     parser = argparse.ArgumentParser(prog="cli.py implement commit", add_help=True)
     parser.add_argument("--message", "-m", default="")
     parser.add_argument("--pathspec-from-file", default="")
     parser.add_argument("--pathspec-file-nul", action="store_true")
     parser.add_argument("files", nargs="*")
-    args = parser.parse_args(argv)
+    args = parser.parse_args(argv_list)
     if not args.message.strip():
-        _err("Usage: implement commit --message MSG [--pathspec-from-file PATH [--pathspec-file-nul]] [files...]")
-        _err("HINT: --stage-all belongs to review-and-fix commit-fixes (Step 5 review fixes); implementation commits name specific files or use --pathspec-from-file.")
-        _emit_kv("COMMITTED", "false")
-        _emit_kv("SHA", "")
-        _emit_kv("ERROR", "--message is required")
-        return 2
+        return _commit_usage_fail("--message is required")
 
     env_file = Path(os.environ.get("IMPLEMENT_TMPDIR", "")) / "session-env.sh" if os.environ.get("IMPLEMENT_TMPDIR") else None
     if env_file and env_file.is_file():
