@@ -443,7 +443,7 @@ def render_run_summary_main(argv: list[str] | None = None) -> int:
     total_tokens = sum(int(getattr(args, a.replace("-", "_")) or 0) for a in ("claude-tokens", "codex-tokens", "cursor-tokens", "claude-sub-tokens"))
     if not cost_unavailable:
         try:
-            token_argv = []
+            token_argv: list[str] = []
             for name in _TOKEN_COST_ARGS:
                 val = getattr(args, name.replace("-", "_"), "0") or "0"
                 if val != "0":
