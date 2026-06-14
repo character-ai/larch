@@ -8,6 +8,7 @@ import json
 import os
 import re
 import sys
+import tempfile
 from pathlib import Path
 from typing import NamedTuple, NoReturn, cast
 
@@ -40,6 +41,12 @@ class ClarifyCommentResult(NamedTuple):
     comment_id: str
     comment_url: str
     marker: str
+
+
+class ClarifyCommentFetchResult(NamedTuple):
+    fetched: bool
+    comment_id: str
+    body_file: str
 
 
 class ClarifyLabelResult(NamedTuple):
@@ -146,6 +153,12 @@ def _emit_comment(result: ClarifyCommentResult) -> None:
     logging_util.emit_kv("COMMENT_ID", result.comment_id)
     logging_util.emit_kv("COMMENT_URL", result.comment_url)
     logging_util.emit_kv("MARKER", result.marker)
+
+
+def _emit_comment_fetch(result: ClarifyCommentFetchResult) -> None:
+    logging_util.emit_kv("FETCHED", _bool_text(result.fetched))
+    logging_util.emit_kv("COMMENT_ID", result.comment_id)
+    logging_util.emit_kv("BODY_FILE", result.body_file)
 
 
 def _emit_label(result: ClarifyLabelResult) -> None:
@@ -290,6 +303,63 @@ def clarify_state(
     if result.returncode != 0:
         raise ShipError(_combined(result) or f"gh api comments fetch failed ({result.returncode})")
     return _evaluate_events(_events_from_comments(_comment_rows_from_stdout(result.stdout)))
+
+
+def _write_text_file(path_text: str, content: str) -> None:
+    path = Path(path_text)
+    if path.is_dir() or path.is_symlink():
+        raise _ClarifyValidationError(f"invalid output file: {path_text}")
+    tmp_name = ""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            delete=False,
+            dir=path.parent,
+            prefix=f".{path.name}.",
+        ) as tmp:
+            tmp_name = tmp.name
+            _ = tmp.write(content)
+        Path(tmp_name).replace(path)
+    except OSError as exc:
+        if tmp_name:
+            Path(tmp_name).unlink(missing_ok=True)
+        raise _ClarifyValidationError(f"could not write output file: {path_text}") from exc
+
+
+def clarify_comment_fetch(
+    runner: Runner,
+    issue: str,
+    comment_id: str,
+    out_file: str,
+    *,
+    repo: str | None,
+    cwd: str | None = None,
+) -> ClarifyCommentFetchResult:
+    issue_text = _ensure_positive_text(issue, validation_error="invalid-issue")
+    comment_id_text = _ensure_positive_text(comment_id, validation_error="invalid-id")
+    resolved_repo = _resolve_repo_for_clarify(runner, repo, cwd=cwd)
+    result = gh.issue_comments_list_read(runner, issue_text, repo=resolved_repo, cwd=cwd)
+    if result.returncode != 0:
+        raise ShipError(_combined(result) or f"gh api comments fetch failed ({result.returncode})")
+    marker_line = f"<!-- larch:clarify-request id={comment_id_text} -->"
+    for row in _comment_rows_from_stdout(result.stdout):
+        body_obj = row.get("body")
+        body = body_obj if isinstance(body_obj, str) else str(body_obj or "")
+        first_line, sep, remainder = body.partition("\n")
+        normalized = first_line.removeprefix("\ufeff").rstrip("\r")
+        match = _MARKER_RE.fullmatch(normalized)
+        if match is None or match.group(1) != "request" or match.group(2) != comment_id_text:
+            continue
+        row_id = row.get("id", "")
+        _write_text_file(out_file, remainder if sep else "")
+        return ClarifyCommentFetchResult(
+            fetched=True,
+            comment_id=str(row_id or ""),
+            body_file=out_file,
+        )
+    raise _ClarifyValidationError(f"request comment not found: {marker_line}")
 
 
 def _read_content_file(content_file: str) -> str:
@@ -451,6 +521,54 @@ def _parse_comment_args(argv: list[str]) -> argparse.Namespace | None:
         parser.print_usage(sys.stderr)
         raise SystemExit(1)
     return args
+
+
+def _parse_comment_fetch_args(argv: list[str]) -> argparse.Namespace | None:
+    parser = _parser(
+        "clarify comment-fetch",
+        "clarify comment-fetch --issue <N> --id <N> --out <path> [--repo OWNER/REPO]",
+    )
+    parser.add_argument("--issue")
+    parser.add_argument("--id")
+    parser.add_argument("--out")
+    parser.add_argument("--repo")
+    try:
+        args = parser.parse_args(argv)
+    except _ArgparseExit as exc:
+        raise SystemExit(exc.status) from None
+    if not args.issue or not args.id or not args.out:
+        parser.print_usage(sys.stderr)
+        raise SystemExit(1)
+    return args
+
+
+def clarify_comment_fetch_main(argv: list[str]) -> int:
+    try:
+        args = _parse_comment_fetch_args(argv)
+    except SystemExit as exc:
+        return int(exc.code or 0)
+    logging_util.quiet_init(argv0="clarify-comment-fetch.sh")
+    if args is None or not _validate_positive_issue_for_cli(args.issue, verb="comment-fetch"):
+        return 1
+    try:
+        result = clarify_comment_fetch(
+            proc,
+            args.issue,
+            args.id,
+            args.out,
+            repo=args.repo,
+        )
+    except _ClarifyValidationError as exc:
+        _emit_failed(exc.token)
+        return 1
+    except _ClarifyRepoResolutionError:
+        _emit_failed("could not determine repo")
+        return 2
+    except ShipError as exc:
+        _emit_failed(_runtime_error_text(exc))
+        return 2
+    _emit_comment_fetch(result)
+    return 0
 
 
 def clarify_comment_post_main(argv: list[str]) -> int:

@@ -2,11 +2,15 @@
 
 ## Purpose
 
-Mechanical Step 0b helper for clarify-loop exhaustion or unrecovered clarify helper failure. Stages `failed-clarify` terminal state before the Final summary block.
+Compatibility helper for clarify-loop exhaustion or unrecovered clarify helper
+failure. Current Step 0b clarify routing uses `design-clarify.sh`; this helper is
+retained for older in-flight runs and stages `failed-clarify` terminal state
+before the Final summary block.
 
 ## Primary callers
 
-- `skills/design/SKILL.md` Step 0b clarify hard-halt branch
+- Older in-flight `/design` runs that still reference the former Step 0b
+  clarify hard-halt branch
 
 ## Invariants
 
