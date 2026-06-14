@@ -7,7 +7,6 @@ import argparse
 import html
 import contextlib
 import json
-import multiprocessing
 import os
 import platform
 import re
@@ -21,7 +20,6 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Timer
-from typing import Any
 
 import config
 import git
@@ -171,6 +169,8 @@ class CheckReviewersResult:
             "CURSOR_PRESENT": cursor_present,
             "CODEX_AVAILABLE": codex_present,
             "CURSOR_AVAILABLE": cursor_present,
+            "CODEX_PROBE_TIMED_OUT": str(self.codex_probe_timed_out).lower(),
+            "CURSOR_PROBE_TIMED_OUT": str(self.cursor_probe_timed_out).lower(),
         }
 
     def kv_lines(self) -> tuple[str, ...]:
@@ -182,6 +182,8 @@ class CheckReviewersResult:
             "CURSOR_PRESENT",
             "CODEX_AVAILABLE",
             "CURSOR_AVAILABLE",
+            "CODEX_PROBE_TIMED_OUT",
+            "CURSOR_PROBE_TIMED_OUT",
         ))
 
 
@@ -719,14 +721,15 @@ def _cursor_probe_setup_chain() -> _CursorProbeSetup | None:
         cursor_preread_service_token()
         cursor_auth_export_env()
         cfg_tmp = Path(tempfile.mkdtemp(prefix="larch-cursor-cfg-", dir=str(_probe_tmpdir())))
-        old_cfg = os.environ.get("CURSOR_CONFIG_DIR")
-        os.environ["CURSOR_CONFIG_DIR"] = str(cfg_tmp)
-        user_cfg = Path.home() / ".cursor" / "cli-config.json"
-        if user_cfg.is_file():
-            shutil.copyfile(user_cfg, cfg_tmp / "cli-config.json")
-        return _CursorProbeSetup(cfg_tmp=cfg_tmp, old_cfg=old_cfg)
     except OSError:
         return None
+    old_cfg = os.environ.get("CURSOR_CONFIG_DIR")
+    os.environ["CURSOR_CONFIG_DIR"] = str(cfg_tmp)
+    user_cfg = Path.home() / ".cursor" / "cli-config.json"
+    if user_cfg.is_file():
+        with contextlib.suppress(OSError):
+            shutil.copyfile(user_cfg, cfg_tmp / "cli-config.json")
+    return _CursorProbeSetup(cfg_tmp=cfg_tmp, old_cfg=old_cfg)
 
 
 def _cursor_probe_cleanup_private_config_dir(setup: _CursorProbeSetup | None) -> None:
@@ -1327,24 +1330,53 @@ def _nonnegative_float_env(name: str, default: float) -> float:
     return value if value >= 0 else default
 
 
-def _check_reviewers_child(conn: object, **kwargs: object) -> None:
-    try:
-        result = check_reviewers(**kwargs)  # type: ignore[arg-type]
-        with contextlib.suppress(Exception):
-            conn.send(("result", result))  # type: ignore[attr-defined]
-    except BaseException as exc:  # defensive child boundary; parent fail-opens.
-        with contextlib.suppress(Exception):
-            conn.send(("error", f"{type(exc).__name__}: {exc}"))  # type: ignore[attr-defined]
-    finally:
-        with contextlib.suppress(Exception):
-            conn.close()  # type: ignore[attr-defined]
+def _health_gate_cli_path() -> Path:
+    return Path(__file__).resolve().parent / "cli.py"
 
 
-def _check_reviewers_process_context() -> Any:
-    try:
-        return multiprocessing.get_context("fork")
-    except ValueError:
-        return multiprocessing.get_context()
+def _parse_check_reviewers_kv(stdout: str) -> CheckReviewersResult | None:
+    kv: dict[str, str] = {}
+    for line in stdout.splitlines():
+        if "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        kv[key.strip()] = value.strip()
+    if "CODEX_PRESENT" not in kv and "CURSOR_PRESENT" not in kv:
+        return None
+
+    def _as_bool(key: str, *, default: bool = False) -> bool:
+        return kv.get(key, str(default).lower()).lower() == "true"
+
+    return CheckReviewersResult(
+        codex_binary_found=_as_bool("CODEX_BINARY_FOUND"),
+        cursor_binary_found=_as_bool("CURSOR_BINARY_FOUND"),
+        codex_present=_as_bool("CODEX_PRESENT"),
+        cursor_present=_as_bool("CURSOR_PRESENT"),
+        codex_probe_timed_out=_as_bool("CODEX_PROBE_TIMED_OUT"),
+        cursor_probe_timed_out=_as_bool("CURSOR_PROBE_TIMED_OUT"),
+    )
+
+
+def _invoke_health_gate_check_reviewers(
+    *,
+    tool: str,
+    probe_timeout_seconds: int,
+    env: dict[str, str],
+) -> tuple[CheckReviewersResult | None, str, str]:
+    cmd = [sys.executable, str(_health_gate_cli_path()), "agent", "check-reviewers"]
+    if tool == "cursor":
+        cmd.append("--skip-codex-probe")
+    else:
+        cmd.append("--skip-cursor-probe")
+    completed = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        env={**os.environ, **env},
+        timeout=probe_timeout_seconds,
+        check=False,
+    )
+    return _parse_check_reviewers_kv(completed.stdout), completed.stdout, completed.stderr
 
 
 def _external_health_gate(tool: str) -> tuple[bool, str]:
@@ -1361,66 +1393,47 @@ def _external_health_gate(tool: str) -> tuple[bool, str]:
     for attempt in range(max(attempts, 1)):
         if attempt:
             time.sleep(sleep_seconds)
-        env = dict(os.environ)
-        env["LARCH_EXTERNAL_AUTH_RETRIES"] = "1"
+        gate_env = {
+            "LARCH_EXTERNAL_AUTH_RETRIES": "1",
+            "LARCH_PROBE_TIMEOUT_SECONDS": str(timeout),
+        }
         if attempt:
-            env["LARCH_PROBE_TTL_SECONDS"] = "0"
-        ctx = _check_reviewers_process_context()
-        parent_conn, child_conn = ctx.Pipe(duplex=False)
-        process = ctx.Process(
-            target=_check_reviewers_child,
-            kwargs={
-                "conn": child_conn,
-                "skip_codex_probe": tool == "cursor",
-                "skip_cursor_probe": tool == "codex",
-                "probe_timeout_seconds": timeout,
-                "env": env,
-            },
-        )
+            gate_env["LARCH_PROBE_TTL_SECONDS"] = "0"
         try:
-            process.start()
-            child_conn.close()
-            process.join(timeout)
-            if process.is_alive():
-                process.terminate()
-                process.join(1)
-                if process.is_alive() and hasattr(process, "kill"):
-                    process.kill()
-                    process.join(1)
-                return False, f"health-probe timed out after {timeout}s"
-            if not parent_conn.poll():
-                return True, ""
-            kind, payload = parent_conn.recv()
-        except TimeoutError:
-            process.terminate()
-            process.join(1)
+            result, stdout, stderr = _invoke_health_gate_check_reviewers(
+                tool=tool,
+                probe_timeout_seconds=timeout,
+                env=gate_env,
+            )
+        except subprocess.TimeoutExpired:
             return False, f"health-probe timed out after {timeout}s"
-        except Exception as exc:  # defensive fail-open parity for helper crashes.
+        except Exception as exc:
             last_stderr = str(exc)
-            return True, ""
-        finally:
-            parent_conn.close()
-        if kind == "error":
-            last_stderr = str(payload)
-            return True, ""
-        result = payload
+            continue
         probe_timed_out = (
-            getattr(result, "codex_probe_timed_out", False)
-            if tool == "codex"
-            else getattr(result, "cursor_probe_timed_out", False)
+            result.codex_probe_timed_out
+            if result is not None and tool == "codex"
+            else result.cursor_probe_timed_out
+            if result is not None
+            else False
         )
         if probe_timed_out:
             return False, f"health-probe timed out after {timeout}s"
-        last_stdout = "\n".join(result.kv_lines()) if hasattr(result, "kv_lines") else ""
-        found = None
-        for line in last_stdout.splitlines():
+        last_stdout = stdout
+        last_stderr = stderr
+        if not stdout.strip():
+            continue
+        found: str | None = None
+        for line in stdout.splitlines():
             if line.startswith(f"{present_key}="):
                 found = line.split("=", 1)[1]
                 break
         if found == "true":
             return True, ""
-        if found != "false":
+        if found is not None and found not in ("true", "false"):
+            # Key present but value unrecognized → fail-open per original contract.
             return True, ""
+        # found is None (key missing) or "false" → loop to next attempt.
     return False, f"probe output: {last_stdout[:500]}; probe stderr: {last_stderr[:300]}"
 
 
@@ -1964,9 +1977,15 @@ def _strip_codex_config(text: str, *, strip_instructions: bool = False) -> str:
 
 
 def _prepare_codex_home(home_dir: Path, *, trusted_instructions_file: str = "") -> tuple[int, str]:
-    home_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        home_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        return 1, f"codex auth setup failed: {exc}"
     user_config = Path.home() / ".codex" / "config.toml"
-    config_text = user_config.read_text(encoding="utf-8", errors="replace") if user_config.is_file() else ""
+    try:
+        config_text = user_config.read_text(encoding="utf-8", errors="replace") if user_config.is_file() else ""
+    except OSError as exc:
+        return 1, f"codex auth setup failed: {exc}"
     if trusted_instructions_file:
         trusted = Path(trusted_instructions_file)
         if not trusted.is_file():

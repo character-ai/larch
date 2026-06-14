@@ -819,7 +819,10 @@ else
     fail "health gate non-tool must not call check-reviewers"
 fi
 
-assert_health_gate_rc "health gate fail-open on unparsable non-timeout result" 0 codex 5 "" "" "" 2 "" >/dev/null
+# Missing presence key in non-empty stdout → retry, then fail closed after budget.
+assert_health_gate_rc "health gate retries on missing presence key" 1 codex 5 "" "" "" 2 "" 2 0 >/dev/null
+# Presence key present but unrecognized value → fail-open immediately.
+assert_health_gate_rc "health gate fail-open on present-but-unrecognized value" 0 codex 5 "" "" "CODEX_PRESENT=garbage" 0 "" >/dev/null
 
 # Retry recovery: first probe returns false (transient), second returns true → rc=0.
 # Uses max_attempts=2, sleep_seconds=0, calls_before_true=1.
