@@ -11,6 +11,7 @@ APPROVAL_MD="$REPO_ROOT/skills/design/references/approval-gates.md"
 DISCUSSION_MD="$REPO_ROOT/skills/design/references/discussion-rounds.md"
 FILE_OOS_MD="$REPO_ROOT/skills/design/scripts/file-design-oos.md"
 RUN_STEP3_SH="$REPO_ROOT/python/plan_review.py"
+CLI_PY="$REPO_ROOT/python/cli.py"
 FLAGS_MD="$REPO_ROOT/skills/design/references/flags.md"
 BRAINSTORM_MD="$REPO_ROOT/skills/design/references/brainstorm.md"
 DECOMPOSE_PANEL_MD="$REPO_ROOT/skills/design/references/decompose-panel.md"
@@ -517,8 +518,9 @@ assert_reference_updates() {
   ! grep -Fq 'with the canonical session-env / pause prelude' "$APPROVAL_MD" \
     || fail 'approval-gates.md must not instruct a separate postplan pause prelude'
   contains "$APPROVAL_MD" 'design-step5c.sh --skip-validate' 'approval-gates.md missing Step 5c skip-validate wrapper reference'
-  contains "$APPROVAL_MD" 'emit-design-plan-preview.sh --design-tmpdir "$DESIGN_TMPDIR" --variant full' 'approval-gates.md missing Gate C full-plan helper reference'
-  contains "$SKILL_MD" 'emit-design-plan-preview.sh --design-tmpdir "$DESIGN_TMPDIR" --variant full' 'SKILL.md missing Gate C full-plan helper reference'
+  contains "$APPROVAL_MD" 'python/cli.py plan-review preview --design-tmpdir "$DESIGN_TMPDIR" --variant full' 'approval-gates.md missing Gate C full-plan helper reference'
+  contains "$SKILL_MD" 'python/cli.py plan-review preview --design-tmpdir "$DESIGN_TMPDIR" --variant full' 'SKILL.md missing Gate C full-plan helper reference'
+  contains "$CLI_PY" '("plan-review", "preview")' 'cli.py missing plan-review preview registry'
   contains "$RUN_STEP3_SH" '"full": "**⚠ 4b: DESIGN_TMPDIR missing or invalid; cannot present final design plan**"' 'plan_review.py preview facade missing full variant missing-dir warning'
   contains "$RUN_STEP3_SH" '"full": "**⚠ 4b: DESIGN_TMPDIR not under allowlist; cannot present final design plan**"' 'plan_review.py preview facade missing full variant allowlist warning'
   contains "$RUN_STEP3_SH" 'emit-design-plan-preview.sh"), argv)' 'plan_review.py preview facade missing embedded full-plan helper delegation'
