@@ -465,9 +465,9 @@ def validate_tier_b_public_file(args: argparse.Namespace) -> int:
         try:
             corpus_text = cp.read_text(encoding="utf-8", errors="replace")
             file_text = path.read_text(encoding="utf-8", errors="replace")
-            for token in corpus_text.splitlines():
-                token = token.strip()
-                if token and token in file_text:
+            for corpus_token in corpus_text.splitlines():
+                stripped_token = corpus_token.strip()
+                if stripped_token and stripped_token in file_text:
                     emit("PUBLIC_FILE_VALID", "false")
                     return 1
         except OSError:
@@ -516,7 +516,7 @@ def _delegate_stall_recovery_subcommand(sub: str, rest: list[str]) -> int:
     if not _STALL_RECOVERY_SH.is_file():
         print(f"stall-recovery: missing script: {_STALL_RECOVERY_SH}", file=sys.stderr)
         return 1
-    completed = subprocess.run(["bash", str(_STALL_RECOVERY_SH), sub, *rest], check=False)
+    completed = subprocess.run(["/bin/bash", str(_STALL_RECOVERY_SH), sub, *rest], check=False)
     return completed.returncode
 
 
@@ -528,7 +528,7 @@ def is_larch_dev_clone(args: argparse.Namespace) -> int:
         return 0
     root = getattr(args, "working_tree_root", "") or ""
     if not root:
-        completed = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False)
+        completed = subprocess.run(["/usr/bin/git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False)
         root = completed.stdout.strip() if completed.returncode == 0 else ""
     dev_clone = bool(root) and (Path(root) / "skills" / "implement" / "SKILL.md").is_file()
     emit("LARCH_DEV_CLONE", "true" if dev_clone else "false")
