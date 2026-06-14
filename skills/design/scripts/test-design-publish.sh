@@ -939,6 +939,36 @@ grep -q 'RENAMED=false' "$RENDER_LOG" || fail "idempotent publish failure render
 grep -q 'NEW_TITLE=\[DESIGNED\] Existing issue' "$RENDER_LOG" || fail "idempotent publish failure render missing NEW_TITLE"
 grep -q 'DESIGNED_ADMISSION_READY=true' "$RENDER_LOG" || fail "idempotent [DESIGNED] rename should be admission-ready"
 
+# --- failed publish with preserved terminal state must not abort under set -e ---
+D_PRESERVED_STAGE="$TMP/pub-fail-preserved-terminal"
+setup_design_tmp "$D_PRESERVED_STAGE"
+D_PRESERVED_STAGE_CANON=$(cd "$D_PRESERVED_STAGE" && pwd -P)
+printf 'plan-block write failed\n' >"$D_PRESERVED_STAGE_CANON/design-plan-write.failure.log"
+env -u CLAUDE_PLUGIN_ROOT "$REPO_ROOT/skills/design/scripts/design-stage-terminal-state.sh" \
+  --design-tmpdir "$D_PRESERVED_STAGE_CANON" --outcome failed-plan-write --step publish \
+  --phase plan-write --site design-publish --trigger failed \
+  --bail-reason plan-write-failed --exit-code 1 --source-script design-publish \
+  --failure-detail-log "$D_PRESERVED_STAGE_CANON/design-plan-write.failure.log" \
+  --summary-outcome failed-plan-write >/dev/null
+printf 'PLAN_WRITE_OK=true\n' >"$D_PRESERVED_STAGE/.design-publish-result.env"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+export PUBLISH_STUB_RC=2
+export PUBLISH_EMIT_OK=false
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_PRESERVED_STAGE" --issue 1 --session-id sid --claude-pid 1 >/dev/null 2>/dev/null
+rc=$?
+set -e
+assert_rc "preserved terminal state publish failure" 0 "$rc"
+grep -Fxq 'PUBLISH_OK=false' "$D_PRESERVED_STAGE/.design-publish-result.env" \
+  || fail "preserved terminal state publish failure must record PUBLISH_OK=false"
+[ -s "$D_PRESERVED_STAGE/final-summary.md" ] \
+  || fail "preserved terminal state publish failure must leave non-empty final-summary.md"
+grep -Fxq 'FAILURE_OUTCOME=failed-plan-write' "$D_PRESERVED_STAGE/design-failure-terminal-state.env" \
+  || fail "preserved terminal state must remain failed-plan-write"
+pass "preserved terminal state does not abort failed publish path"
+
 # --- unexpected publish (nonzero, no PUBLISH_OK line) ---
 D_UNEXP="$TMP/pub-unexp"
 setup_design_tmp "$D_UNEXP"

@@ -221,6 +221,26 @@ kv_get() {
     python3 "$PLUGIN_ROOT/python/cli.py" session read-key --file "$file" --key "$key" --default "$default"
 }
 
+source_env_export_get() {
+    local file=$1 key=$2
+    [ -f "$file" ] && [ ! -L "$file" ] && [ -r "$file" ] || return 0
+    awk -v k="$key" '
+        BEGIN { q=sprintf("%c", 39) }
+        $1 == "export" {
+            v=$0
+            sub(/^[[:space:]]*export[[:space:]]+/, "", v)
+            if (index(v, k "=") != 1) next
+            sub("^[^=]*=", "", v)
+            if ((substr(v, 1, 1) == q && substr(v, length(v), 1) == q) ||
+                (substr(v, 1, 1) == "\"" && substr(v, length(v), 1) == "\"")) {
+                v=substr(v, 2, length(v)-2)
+            }
+            print v
+            exit
+        }
+    ' "$file" 2>/dev/null || true
+}
+
 truthy() {
     case "${1:-}" in
         1|true|TRUE|True|yes|YES|Yes|on|ON|On) return 0 ;;
@@ -861,6 +881,12 @@ safe_run_id_value() {
     esac
 }
 
+read_source_env_session_id() {
+    local tmpdir=$1 source_env
+    source_env="${SESSION_ENV_FILE:-$tmpdir/source-env.sh}"
+    source_env_export_get "$source_env" SESSION_ID
+}
+
 read_run_id() {
     local tmpdir=$1 value
     value=$(first_nonempty \
@@ -868,6 +894,7 @@ read_run_id() {
         "$(kv_get "$tmpdir/session-env.sh" RUN_ID "")" \
         "$(kv_get "$tmpdir/ship-pr-state.sh" RUN_ID "")" \
         "$(kv_get "$tmpdir/finalize-state.sh" RUN_ID "")" \
+        "$(read_source_env_session_id "$tmpdir")" \
         "unknown")
     safe_run_id_value "$value"
 }
@@ -2339,7 +2366,7 @@ compose_tier_a_issue() {
     printf -- "- **Failure class**: \`%s\`\n" "$class"
     printf -- "- **Step**: \`%s\`\n" "$step"
     printf -- "- **Bail reason**: \`%s\`\n" "$bail"
-    printf -- "- **Run ID**: \`%s\`\n" "$(first_nonempty "$(kv_get "$tmpdir/parent-issue.md" RUN_ID "")" "unknown")"
+    printf -- "- **Run ID**: \`%s\`\n" "$(read_run_id "$tmpdir")"
     printf -- "- **Branch**: \`%s\`\n" "$(first_nonempty "$(kv_get "$tmpdir/session-env.sh" BRANCH_NAME "")" "$(kv_get "$tmpdir/ship-pr-state.sh" BRANCH_NAME "")" "$(kv_get "$tmpdir/session-env.sh" BRANCH "")" "$(kv_get "$tmpdir/ship-pr-state.sh" BRANCH "")" "unknown")"
     printf -- "- **PR URL**: \`%s\`\n\n" "$(first_nonempty "$(kv_get "$tmpdir/ship-pr-state.sh" PR_URL "")" "$(kv_get "$tmpdir/finalize-state.sh" PR_URL "")" "unknown")"
     append_file_if_readable "Root-cause finding" "$root_file"

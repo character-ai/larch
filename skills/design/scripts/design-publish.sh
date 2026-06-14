@@ -163,7 +163,11 @@ validate_session_id_flag "$SESSION_ID"
 
 DESIGN_TMPDIR="$(cd "$DESIGN_TMPDIR_ARG" && pwd -P)"
 export DESIGN_TMPDIR
-SESSION_ENV_PATH="$DESIGN_TMPDIR/session-env.sh"
+if [[ -f "$DESIGN_TMPDIR/source-env.sh" ]]; then
+    SESSION_ENV_PATH="$DESIGN_TMPDIR/source-env.sh"
+else
+    SESSION_ENV_PATH="$DESIGN_TMPDIR/session-env.sh"
+fi
 PLUGIN_ROOT="$(phase_driver_resolve_plugin_root "$SCRIPT_DIR" "$SESSION_ENV_PATH")"
 [[ -d "$PLUGIN_ROOT" ]] || fail "plugin root not a directory: $PLUGIN_ROOT"
 export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"
@@ -527,7 +531,7 @@ _plan_block_args=(named-block write --marker plan --issue "$ISSUE" --content-fil
 if ! python3 "$PLUGIN_ROOT/python/cli.py" "${_plan_block_args[@]}"; then
     PLAN_WRITE_OK=false
     printf 'plan-block write failed\n' >"$DESIGN_TMPDIR/design-plan-write.failure.log"
-    stage_design_terminal_state failed-plan-write publish plan-write design-publish failed plan-write-failed 1 "$DESIGN_TMPDIR/design-plan-write.failure.log"
+    stage_design_terminal_state failed-plan-write publish plan-write design-publish failed plan-write-failed 1 "$DESIGN_TMPDIR/design-plan-write.failure.log" || true
     "${PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh" \
         --outcome failed-plan-write \
         ${REPO:+--repo "$REPO"} \
@@ -700,7 +704,7 @@ elif [[ "${PUBLISH_OK:-}" != true ]]; then
         result_env_load_success_metadata
     else
         SUMMARY_OUTCOME=failed-publish
-        stage_design_terminal_state failed-publish publish publish design-publish failed publish-failed "${_publish_rc:-1}" "$DESIGN_TMPDIR/design-log-publish.failure.log" environment
+        stage_design_terminal_state failed-publish publish publish design-publish failed publish-failed "${_publish_rc:-1}" "$DESIGN_TMPDIR/design-log-publish.failure.log" environment || true
     fi
 fi
 export DESIGN_LOG_RECOVERY_BRANCH="${RECOVERY_BRANCH:-}"
