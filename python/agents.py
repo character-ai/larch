@@ -14,6 +14,7 @@ import platform
 import random
 import re
 import shutil
+import shlex
 import signal
 import subprocess
 import sys
@@ -2114,9 +2115,97 @@ def _trust_config_arg(workdir: str) -> str:
     return f'projects."{key}".trust_level="trusted"'
 
 
+def _git_toplevel(path: str) -> str | None:
+    try:
+        result = proc.run(
+            ["git", "-C", path, "rev-parse", "--show-toplevel"],
+            timeout=2,
+            check=False,
+        )
+    except (OSError, ValueError):
+        return None
+    if result.returncode != 0:
+        return None
+    for line in result.stdout.splitlines():
+        value = line.strip()
+        if value:
+            return value
+    return None
+
+
+def _read_keepalive_clone_path(keepalive: Path) -> str | None:
+    try:
+        text = keepalive.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        if stripped.startswith("export "):
+            stripped = stripped[len("export ") :].strip()
+        key, value = stripped.split("=", 1)
+        if not re.fullmatch(r"[A-Z_][A-Z0-9_]*", key):
+            continue
+        if key != "CLONE_PATH":
+            continue
+        try:
+            parsed = shlex.split(value, posix=True)
+        except ValueError:
+            parsed = [value]
+        clone_path = parsed[0] if len(parsed) == 1 else value
+        if clone_path.strip():
+            return clone_path.strip()
+    return None
+
+
+def _clone_path_from_session_tmpdir() -> str | None:
+    for name in ("DESIGN_TMPDIR", "SESSION_TMPDIR"):
+        tmpdir = os.environ.get(name)
+        if not tmpdir:
+            continue
+        clone = _read_keepalive_clone_path(Path(tmpdir) / ".larch-keepalive")
+        if clone:
+            return clone
+    return None
+
+
+def _clone_path_from_parent_walk(start: Path) -> str | None:
+    current = start
+    while True:
+        clone = _read_keepalive_clone_path(current / ".larch-keepalive")
+        if clone:
+            return clone
+        if current.parent == current:
+            return None
+        current = current.parent
+
+
+def _resolve_review_codex_workdir(cwd: str) -> str:
+    start = Path(cwd)
+    project_dir = os.environ.get("CLAUDE_PROJECT_DIR")
+    if project_dir:
+        toplevel = _git_toplevel(project_dir)
+        if toplevel:
+            return toplevel
+    toplevel = _git_toplevel(str(start))
+    if toplevel:
+        return toplevel
+    clone = _clone_path_from_session_tmpdir() or _clone_path_from_parent_walk(start)
+    if clone:
+        toplevel = _git_toplevel(clone)
+        if toplevel:
+            return toplevel
+    return cwd
+
+
 def _auth_retry_limit() -> int:
     raw = os.environ.get("LARCH_EXTERNAL_AUTH_RETRIES", "5")
     return int(raw) if raw.isdigit() and int(raw) > 0 else 5
+
+
+def _is_unclassified_empty_startup_failure(exit_code: int, verdict: str) -> bool:
+    return exit_code == 1 and verdict == "unclassified"
 
 
 @contextlib.contextmanager
@@ -2154,7 +2243,10 @@ def _run_external_agent_with_auth_retries(
     stall_threshold_seconds: int = 0,
 ) -> RunExternalAgentResult:
     result: RunExternalAgentResult | None = None
-    for attempt in range(1, _auth_retry_limit() + 1):
+    max_auth = _auth_retry_limit()
+    auth_attempt = 1
+    unclassified_empty_retried = False
+    while True:
         with _temporary_env("RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX", ".inner.done"):
             state = external_serial_lock_acquire(tool)
             external_serial_lock_release_after(state)
@@ -2171,7 +2263,7 @@ def _run_external_agent_with_auth_retries(
                 stall_channel=stall_channel,
                 stall_threshold_seconds=stall_threshold_seconds,
             )
-        if result.exit_code == 0 or attempt >= _auth_retry_limit():
+        if result.exit_code == 0:
             return result
         auth_paths: list[Path] = []
         if stderr_path is not None:
@@ -2184,9 +2276,14 @@ def _run_external_agent_with_auth_retries(
             output.with_suffix(output.suffix + ".events.jsonl"),
             output,
         ])
-        if external_auth_verdict(tool, *auth_paths) != "auth":
-            return result
-    return result if result is not None else RunExternalAgentResult(99, output)
+        verdict = external_auth_verdict(tool, *auth_paths)
+        if not unclassified_empty_retried and _is_unclassified_empty_startup_failure(result.exit_code, verdict):
+            unclassified_empty_retried = True
+            continue
+        if verdict == "auth" and auth_attempt < max_auth:
+            auth_attempt += 1
+            continue
+        return result
 
 
 def _negotiation_base(output: Path) -> Path:
@@ -3389,7 +3486,8 @@ def _review_run_with_retries(
     auth_attempt = 1
     transient_attempt = 1
     result = RunExternalAgentResult(99, output)
-    while auth_attempt <= max_auth:
+    unclassified_empty_retried = False
+    while True:
         result = _review_run_wrapper_attempt(
             tool=tool,
             output=output,
@@ -3418,7 +3516,8 @@ def _review_run_with_retries(
                 output,
             ]
             quota_sidecars = auth_sidecars
-        auth_failure = external_auth_verdict(tool, *auth_sidecars) == "auth"
+        verdict = external_auth_verdict(tool, *auth_sidecars)
+        auth_failure = verdict == "auth"
         quota_failure = any(is_quota_failure(tool, p) for p in quota_sidecars)
         transient_failure = is_transient_infra_failure(tool, result.exit_code, output)
         empty_cursor = tool == "cursor" and result.exit_code == 0 and _review_is_cursor_empty_result(output)
@@ -3429,6 +3528,21 @@ def _review_run_with_retries(
             _review_retry_delay(transient_attempt)
             _review_reset_retry_artifacts(output, tool=tool, label="attempt")
             continue
+        if (
+            result.exit_code != 0
+            and not unclassified_empty_retried
+            and _is_unclassified_empty_startup_failure(result.exit_code, verdict)
+            and not auth_failure
+            and not quota_failure
+        ):
+            unclassified_empty_retried = True
+            auth_attempt += 1
+            _review_reset_retry_artifacts(
+                output,
+                tool=tool,
+                label="cursor auth attempt" if tool == "cursor" else "attempt",
+            )
+            continue
         if result.exit_code != 0 and auth_failure and auth_attempt < max_auth:
             auth_attempt += 1
             _review_reset_retry_artifacts(
@@ -3438,7 +3552,6 @@ def _review_run_with_retries(
             )
             continue
         return result, auth_attempt, transient_attempt
-    return result, auth_attempt, transient_attempt
 
 
 def _review_emit_launcher_result(output: Path, tool: str, launcher_exit: int) -> None:
@@ -3556,7 +3669,7 @@ def _review_launch_codex(args: argparse.Namespace, prompt: str) -> int:
             _review_write_preflight_done(output, 1)
             _review_emit_launcher_result(output, "codex", 1)
             return 1
-        workdir = str(Path.cwd())
+        workdir = _resolve_review_codex_workdir(str(Path.cwd()))
         cmd = [
             "codex",
             "exec",
