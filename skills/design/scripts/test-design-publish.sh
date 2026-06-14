@@ -1317,6 +1317,44 @@ else
     pass "pre-publish success re-entry protects final summary from failed-publish"
 fi
 
+D_IDEMPOTENT_OK="$TMP/idempotent-publish-success-empty-pr-stdout"
+setup_design_tmp "$D_IDEMPOTENT_OK"
+cat >"$D_IDEMPOTENT_OK/.design-publish-result.env" <<'EOF_RESULT'
+PLAN_WRITE_OK=true
+PUBLISH_OK=true
+PR_NUMBER=77
+PR_URL=https://github.com/owner/repo/pull/77
+EOF_RESULT
+printf 'approved content\n' >"$D_IDEMPOTENT_OK/final-summary.md"
+printf 'final-only delta\n' >"$D_IDEMPOTENT_OK/final-only.txt"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+export PUBLISH_INVOCATION_LOG="$TMP/publish-invocation-idempotent-ok.log"
+: >"$PUBLISH_INVOCATION_LOG"
+export PUBLISH_OK_VALUE=true
+unset PUBLISH_PR_NUMBER PUBLISH_PR_URL
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_IDEMPOTENT_OK" --issue 42 --session-id sid-1 --claude-pid 9999 >/dev/null 2>/dev/null
+rc=$?
+set -e
+assert_rc "idempotent publish success with empty PR stdout" 0 "$rc"
+if grep -q 'design-log-publish' "$PUBLISH_LOG" 2>/dev/null; then
+    pass "idempotent publish success still invokes design-log-publish"
+else
+    fail "idempotent publish success must still invoke design-log-publish"
+fi
+grep -Fxq 'PR_NUMBER=77' "$D_IDEMPOTENT_OK/.design-publish-result.env" \
+  || fail "idempotent publish success must preserve original PR_NUMBER"
+grep -Fxq 'PR_URL=https://github.com/owner/repo/pull/77' "$D_IDEMPOTENT_OK/.design-publish-result.env" \
+  || fail "idempotent publish success must preserve original PR_URL"
+grep -q -- '--outcome approved' "$RENDER_LOG" \
+  || fail "idempotent publish success should render approved outcome"
+grep -q 'DESIGN_LOG_PR_NUMBER=77' "$RENDER_LOG" \
+  || fail "idempotent publish success render must keep DESIGN_LOG_PR_NUMBER=77"
+grep -q 'DESIGN_LOG_PR_URL=https://github.com/owner/repo/pull/77' "$RENDER_LOG" \
+  || fail "idempotent publish success render must keep DESIGN_LOG_PR_URL"
+
 D_REENTRY_NEW_PR="$TMP/pre-publish-success-second-pr"
 setup_design_tmp "$D_REENTRY_NEW_PR"
 cat >"$D_REENTRY_NEW_PR/.design-publish-result.env" <<'EOF_RESULT'

@@ -615,7 +615,7 @@ design_publish_rebuild_final_commit() {
     fi
     design_publish_remove_stale_excluded "$RUN_DEST"
 
-    if ! porcelain=$(git -C "$WT_DIR" status --porcelain -- "$rel" 2>&1); then
+    if ! porcelain=$(git -C "$WT_DIR" status --porcelain -uall -- "$rel" 2>&1); then
         larch_err "design-log-publish: git status failed for rebuilt final $rel"
         return 1
     fi
@@ -1045,7 +1045,7 @@ if [[ "$REASON" == "final" ]]; then
     fi
 else
 _porcelain=""
-if ! _porcelain=$(git -C "$WT_DIR" status --porcelain -- "$rel" 2>&1); then
+if ! _porcelain=$(git -C "$WT_DIR" status --porcelain -uall -- "$rel" 2>&1); then
     larch_err "design-log-publish: git status failed for $rel"
     emit_publish_result false
     exit 0

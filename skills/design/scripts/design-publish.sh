@@ -694,8 +694,6 @@ elif [[ "${PUBLISH_OK:-}" != true ]]; then
         stage_design_terminal_state failed-publish publish publish design-publish failed publish-failed "${_publish_rc:-1}" "$DESIGN_TMPDIR/design-log-publish.failure.log" environment
     fi
 fi
-export DESIGN_LOG_PR_NUMBER="${PR_NUMBER:-}"
-export DESIGN_LOG_PR_URL="${PR_URL:-}"
 export DESIGN_LOG_RECOVERY_BRANCH="${RECOVERY_BRANCH:-}"
 export RENAMED="${RENAMED:-}"
 export NEW_TITLE="${NEW_TITLE:-}"
@@ -710,6 +708,8 @@ if result_env_publish_ok_is_true; then
         result_env_load_success_metadata
     fi
 fi
+export DESIGN_LOG_PR_NUMBER="${PR_NUMBER:-}"
+export DESIGN_LOG_PR_URL="${PR_URL:-}"
 "${PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh" \
     --outcome "$SUMMARY_OUTCOME" \
     --mode "$MODE" \
