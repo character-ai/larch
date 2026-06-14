@@ -1,0 +1,5 @@
+TOOL=cursor
+TIMEOUT=1800
+CAPTURE_STDOUT=false
+CAPTURE_STDOUT_ONLY=true
+OUTPUT_FILE=<TMPDIR>/aggregator-output.txt
