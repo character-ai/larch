@@ -738,6 +738,19 @@ chmod +x "$WRONG_LAUNCHER"
 write_outer_meta "$OUT_S2" "$WRONG_LAUNCHER" "${OUT_S2}.prompt" "$WORKDIR_Q"
 assert_fail_closed "case-s2" "$OUT_S2" "Retry metadata invalid: OUTER_LAUNCHER not canonical agent launch-review or agent launch-codex-exec"
 
+OUT_S3="$TMPROOT/cursor-s3.txt"
+prepare_outer_candidate "$OUT_S3"
+_scripts_dir="$REPO_ROOT/scripts"
+_launcher_name="launch-review.sh"
+RETIRED_LAUNCHER="${_scripts_dir}/${_launcher_name}"
+write_outer_meta "$OUT_S3" "$RETIRED_LAUNCHER" "${OUT_S3}.prompt" "$WORKDIR_Q"
+assert_fail_closed "case-s3" "$OUT_S3" "Retry metadata invalid: retired review OUTER_LAUNCHER metadata is no longer accepted"
+if [[ -e "${OUT_S3%.txt}-retry.txt" ]]; then
+    fail "case S3 should reject before creating retry output"
+else
+    ok "case S3 no retry output"
+fi
+
 OUT_U1="$TMPROOT/cursor-u1.txt"
 prepare_outer_candidate "$OUT_U1"
 EVIL_PROMPT="$TMPROOT/evil-prompt.txt"

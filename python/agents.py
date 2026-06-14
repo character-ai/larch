@@ -2724,9 +2724,30 @@ def _record_cursor_usage_from_output(output: Path, label: str) -> None:
         _append(output.with_suffix(output.suffix + ".sidecar"), f"agent parse-cursor-usage: {exc}\n")
         return
     total = input_tokens + output_tokens + cache_read + cache_create
+    token_record = output.with_suffix(output.suffix + ".token-record")
     _write(
-        output.with_suffix(output.suffix + ".token-record"),
+        token_record,
         f"TOOL=cursor\nINPUT={input_tokens}\nOUTPUT={output_tokens}\nCACHE_READ={cache_read}\nCACHE_CREATE={cache_create}\nTOTAL={total}\nRAW={label}\n",
+    )
+    proc.run(
+        [
+            sys.executable,
+            str(_PY_CLI),
+            "token",
+            "record-vendor",
+            "cursor",
+            f"input={input_tokens}",
+            f"output={output_tokens}",
+            f"cache_read={cache_read}",
+            f"cache_create={cache_create}",
+            f"total={total}",
+            f"raw={label}",
+        ],
+        check=False,
+    )
+    proc.run(
+        [sys.executable, str(_PY_CLI), "token", "record-vendor-sidecar", "--input", str(token_record)],
+        check=False,
     )
 
 
@@ -2925,12 +2946,15 @@ def _review_specialist_render_args(args: argparse.Namespace, *, sentinel: dict[s
     return render_args
 
 
-def _review_render_specialist_prompt(args: argparse.Namespace) -> str:
+def _review_render_specialist_prompt(args: argparse.Namespace) -> tuple[int, str]:
     result = proc.run(
         [sys.executable, str(_PY_CLI), "render", "specialist", *_review_specialist_render_args(args)],
         check=False,
     )
-    return result.stdout
+    if result.returncode != 0:
+        _err(result.stderr or result.stdout or "agent launch-review: render specialist failed")
+        return result.returncode if result.returncode != 0 else 1, ""
+    return 0, result.stdout
 
 
 def _review_read_prompt_file(path: str) -> tuple[int, str]:
@@ -2963,6 +2987,9 @@ def _review_read_codex_prompt_sentinel(path: str) -> tuple[int, str] | None:
         [sys.executable, str(_PY_CLI), "render", "specialist", *_review_specialist_render_args(fake_args, sentinel=values)],
         check=False,
     )
+    if result.returncode != 0:
+        _err(result.stderr or result.stdout or "agent launch-review: render specialist failed")
+        return 1, ""
     prompt = result.stdout
     digest = hashlib.sha256(prompt.encode()).hexdigest()
     if digest != values["HASH"]:
@@ -2981,7 +3008,7 @@ def _review_resolve_prompt(args: argparse.Namespace) -> tuple[int, str]:
                 return sentinel
         return _review_read_prompt_file(args.prompt_file)
     if args.agent_file:
-        return 0, _review_render_specialist_prompt(args)
+        return _review_render_specialist_prompt(args)
     return 2, ""
 
 
@@ -3367,7 +3394,11 @@ def _review_emit_launcher_result(output: Path, tool: str, launcher_exit: int) ->
 
 
 def _review_validate_codex_add_dir(output: Path, add_dir: str) -> tuple[int, Path | None]:
-    output_dir = output.parent.resolve(strict=True)
+    try:
+        output_dir = output.parent.resolve(strict=True)
+    except FileNotFoundError:
+        _err(f"agent launch-review: output parent directory does not exist: {output.parent}")
+        return 2, None
     if not add_dir:
         return 0, output_dir
     if _CTRL_RE.search(add_dir) or ".." in Path(add_dir).parts:
@@ -3384,15 +3415,35 @@ def _review_validate_codex_add_dir(output: Path, add_dir: str) -> tuple[int, Pat
     return 0, resolved
 
 
-def _review_write_preflight_bundle(output: Path, args: argparse.Namespace, launcher_exit: int, failure_reason: str, *, tool: str, capture_stdout_only: bool = False) -> None:
+def _review_write_preflight_bundle(
+    output: Path,
+    args: argparse.Namespace,
+    failure_reason: str,
+    *,
+    tool: str,
+    capture_stdout_only: bool = False,
+    prompt_sidecar: Path | None = None,
+) -> None:
     _write(output, "")
     _write(output.with_suffix(output.suffix + ".diag"), f"STATUS=FAILED\nFAILURE_REASON={failure_reason}\n")
+    meta = output.with_suffix(output.suffix + ".meta")
     _write(
-        output.with_suffix(output.suffix + ".meta"),
+        meta,
         f"TOOL={tool}\nTIMEOUT={args.timeout}\nCAPTURE_STDOUT=false\n"
         f"CAPTURE_STDOUT_ONLY={str(capture_stdout_only).lower()}\nOUTPUT_FILE={output}\nCMD_JSON=[]\n",
     )
+    if prompt_sidecar is not None:
+        _review_append_outer_meta(meta, prompt_sidecar=prompt_sidecar, risk=args.risk, stderr_sink=args.stderr_sink)
+
+
+def _review_write_preflight_done(output: Path, launcher_exit: int) -> None:
     _write(output.with_suffix(output.suffix + ".done"), f"{launcher_exit}\n")
+
+
+def _review_atomic_write_text(path: Path, text: str) -> None:
+    tmp = path.with_suffix(path.suffix + ".atomic.tmp")
+    _write(tmp, text)
+    tmp.replace(path)
 
 
 def _review_launch_codex(args: argparse.Namespace, prompt: str) -> int:
@@ -3416,16 +3467,18 @@ def _review_launch_codex(args: argparse.Namespace, prompt: str) -> int:
                 Path(instr_path).unlink()
         if auth_rc != 0:
             reason = auth_msg or f"codex auth setup failed (exit {auth_rc})"
-            _review_write_preflight_bundle(output, args, auth_rc, reason, tool="codex")
+            _review_write_preflight_bundle(output, args, reason, tool="codex", prompt_sidecar=prompt_sidecar)
             _review_write_clean_readonly_dirty_tree(output)
+            _review_write_preflight_done(output, auth_rc)
             _review_emit_launcher_result(output, "codex", auth_rc)
             return 0
         try:
             model_args = list(resolve_model_args("codex", with_effort=True).argv)
         except ValueError as exc:
             _review_record_timing("codex", timing_kind, start, output, 1)
-            _review_write_preflight_bundle(output, args, 1, f"agent model-args failed (exit 1): {exc}", tool="codex")
+            _review_write_preflight_bundle(output, args, f"agent model-args failed (exit 1): {exc}", tool="codex", prompt_sidecar=prompt_sidecar)
             _review_write_unknown_dirty_tree(output, "model-args-preflight-no-agent-ran")
+            _review_write_preflight_done(output, 1)
             _review_emit_launcher_result(output, "codex", 1)
             return 1
         workdir = str(Path.cwd())
@@ -3565,17 +3618,17 @@ def _review_cursor_postprocess(output: Path, transient_attempt: int) -> None:
             with contextlib.suppress(FileNotFoundError):
                 tmp.unlink()
             if not ok:
-                _write(output, "CURSOR_DEGRADED_RESPONSE\n")
+                _review_atomic_write_text(output, "CURSOR_DEGRADED_RESPONSE\n")
             else:
-                _write(output, result)
+                _review_atomic_write_text(output, result)
         else:
-            _write(output, result)
+            _review_atomic_write_text(output, result)
     _record_cursor_usage_from_output(json_sidecar, "cursor_review")
     token_record = json_sidecar.with_suffix(json_sidecar.suffix + ".token-record")
     if token_record.is_file():
         token_record.replace(output.with_suffix(output.suffix + ".token-record"))
     if not result:
-        _write(output, "CURSOR_EMPTY_RESPONSE\n")
+        _review_atomic_write_text(output, "CURSOR_EMPTY_RESPONSE\n")
         usage = obj.get("usage") if isinstance(obj.get("usage"), dict) else {}
         fields = [
             "TOOL=cursor",
@@ -3588,7 +3641,8 @@ def _review_cursor_postprocess(output: Path, transient_attempt: int) -> None:
             for key in ("inputTokens", "outputTokens"):
                 if key in usage:
                     fields[-1] += f" usage.{key}={usage[key]}"
-        _write(output.with_suffix(output.suffix + ".diag"), "\n".join(fields) + "\n")
+        diag_text = redact.redact_secrets_only(redact.redact_tmpdir_paths("\n".join(fields) + "\n"))
+        _write(output.with_suffix(output.suffix + ".diag"), diag_text)
 
 
 def _review_launch_cursor(args: argparse.Namespace, original_prompt: str) -> int:
@@ -3599,8 +3653,9 @@ def _review_launch_cursor(args: argparse.Namespace, original_prompt: str) -> int
         model_args = list(resolve_model_args("cursor", with_effort=True).argv)
     except ValueError as exc:
         _review_record_timing("cursor", timing_kind, start, output, 1)
-        _review_write_preflight_bundle(output, args, 1, f"cursor_launcher_load_model_args failed (exit 1): {exc}", tool="cursor", capture_stdout_only=True)
+        _review_write_preflight_bundle(output, args, f"cursor_launcher_load_model_args failed (exit 1): {exc}", tool="cursor", capture_stdout_only=True)
         _review_write_unknown_dirty_tree(output, "model-args-preflight-no-agent-ran")
+        _review_write_preflight_done(output, 1)
         _review_emit_launcher_result(output, "cursor", 1)
         return 1
     prompt_sidecar = _review_write_cursor_prompt_sidecar(output, original_prompt)
@@ -3611,12 +3666,13 @@ def _review_launch_cursor(args: argparse.Namespace, original_prompt: str) -> int
         _review_write_preflight_bundle(
             output,
             args,
-            verdict.rc,
             "cursor-auth-preflight: CURSOR_API_KEY unset/empty and cursor-user keychain entry missing on Darwin; see docs/installation-and-setup.md (Cursor section)",
             tool="cursor",
             capture_stdout_only=True,
+            prompt_sidecar=prompt_sidecar,
         )
         _review_write_unknown_dirty_tree(output, "preflight-short-circuit-no-agent-ran")
+        _review_write_preflight_done(output, verdict.rc)
         _review_emit_launcher_result(output, "cursor", verdict.rc)
         return verdict.rc
     cursor_preread_service_token()
@@ -3625,6 +3681,8 @@ def _review_launch_cursor(args: argparse.Namespace, original_prompt: str) -> int
     wrapped = f" /max-mode on. Prompt: {prompt}"
     cfg_tmp, old_cfg = _review_setup_cursor_config_dir()
     _review_cursor_jitter()
+    sidecar_path = output.with_suffix(output.suffix + ".sidecar")
+    _write(sidecar_path, "")
     try:
         cmd = [
             "cursor",
@@ -3652,8 +3710,8 @@ def _review_launch_cursor(args: argparse.Namespace, original_prompt: str) -> int
         _review_cleanup_cursor_config_dir(cfg_tmp, old_cfg)
     if result.exit_code != 0:
         _review_append_launch_failure(output=output, tool="cursor", exit_code=result.exit_code, stderr_sink=args.stderr_sink, auth_attempt=auth_attempt, transient_attempt=transient_attempt)
-    elif output.with_suffix(output.suffix + ".sidecar").is_file():
-        _append(output.with_suffix(output.suffix + ".sidecar"), "cursor-status: ok (no stderr emitted during agent run)\n")
+    else:
+        _append(sidecar_path, "cursor-status: ok (no stderr emitted during agent run)\n")
     _review_append_outer_meta(output.with_suffix(output.suffix + ".meta"), prompt_sidecar=prompt_sidecar, risk=args.risk, stderr_sink=args.stderr_sink)
     _review_run_test_trap_after_inner_done_if_enabled()
     _review_cursor_postprocess(output, transient_attempt)

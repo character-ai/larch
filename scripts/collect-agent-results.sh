@@ -504,6 +504,54 @@ cmd_json_shape_valid_for_tool() {
     return 0
 }
 
+cmd_json_requires_outer_launcher() {
+    local orig_output="$1"
+    local tool="$2"
+    shift 2
+    if [[ -f "${orig_output}.prompt" ]]; then
+        return 0
+    fi
+    case "$tool" in
+        cursor)
+            [[ $# -ge 2 ]] || return 1
+            [[ "$(basename "$1")" == "cursor" ]] || return 1
+            [[ "$2" == "agent" ]] || return 1
+            local arg mode="" expect_mode=0
+            for arg in "$@"; do
+                if [[ "$expect_mode" == "1" ]]; then
+                    mode="$arg"
+                    expect_mode=0
+                    continue
+                fi
+                if [[ "$arg" == "--mode" ]]; then
+                    expect_mode=1
+                fi
+            done
+            [[ "$mode" == "ask" ]]
+            ;;
+        codex)
+            [[ $# -ge 2 ]] || return 1
+            [[ "$(basename "$1")" == "codex" ]] || return 1
+            [[ "$2" == "exec" ]] || return 1
+            local arg sandbox="" expect_sandbox=0
+            for arg in "$@"; do
+                if [[ "$expect_sandbox" == "1" ]]; then
+                    sandbox="$arg"
+                    expect_sandbox=0
+                    continue
+                fi
+                if [[ "$arg" == "--sandbox" ]]; then
+                    expect_sandbox=1
+                fi
+            done
+            [[ "$sandbox" == "read-only" ]]
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 parse_retry_meta() {
     local meta_path="$1"
     META_TOOL=""
@@ -859,6 +907,11 @@ launch_cmd_json_retry_or_mark() {
         return 1
     fi
 
+    if cmd_json_requires_outer_launcher "$orig_output" "$META_TOOL" "${CMD_ARR[@]}"; then
+        mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: review-shaped CMD_JSON requires outer launcher metadata"
+        return 1
+    fi
+
     _last_idx=$((${#CMD_ARR[@]} - 1))
     CMD_ARR[_last_idx]="${NS_STRONG_HEADER}${CMD_ARR[_last_idx]}"
 
@@ -1100,6 +1153,12 @@ if [[ ${#RETRY_FILES[@]} -gt 0 ]]; then
         if [[ "$_shape_rc" != "0" ]]; then
             IDX="${RETRY_INDICES[$j]}"
             mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: CMD_JSON argv shape rejected for $META_TOOL"
+            continue
+        fi
+
+        if cmd_json_requires_outer_launcher "$ORIG_OUTPUT" "$META_TOOL" "${CMD_ARR[@]}"; then
+            IDX="${RETRY_INDICES[$j]}"
+            mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: review-shaped CMD_JSON requires outer launcher metadata"
             continue
         fi
 

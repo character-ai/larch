@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 import plan_scout
@@ -171,6 +173,47 @@ def test_dynamic_description_cursor_miss_then_claude_winner(tmp_path: Path, monk
     stdout = capsys.readouterr().out
     assert "SCOUT_STATUS=ok" in stdout
     assert "cursor description-mode tier missed scout JSON" in stdout
+
+
+def test_dynamic_default_launch_review_uses_python_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    scope = tmp_path / "scope.txt"
+    desc = tmp_path / "desc.txt"
+    scope.write_text("python/foo.py\n", encoding="utf-8")
+    desc.write_text("review this", encoding="utf-8")
+    out = tmp_path / "manifest.json"
+    recorded: list[list[str]] = []
+    archetype = {
+        "archetypes": [
+            {
+                "name": "deep-risk",
+                "focus_area": "risk-integration",
+                "weight": 1,
+                "rationale": "ok",
+                "prompt_body": "Inspect seams.",
+            }
+        ]
+    }
+
+    def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        recorded.append(list(cmd))
+        if "--output" in cmd and "--output-file" not in cmd:
+            Path(cmd[cmd.index("--output") + 1]).write_text("not json", encoding="utf-8")
+            return subprocess.CompletedProcess(cmd, 0, "ELAPSED=1\n", "")
+        if "--output-file" in cmd:
+            Path(cmd[cmd.index("--output-file") + 1]).write_text(json.dumps(archetype), encoding="utf-8")
+            return subprocess.CompletedProcess(cmd, 0, "ELAPSED=2\n", "")
+        return subprocess.CompletedProcess(cmd, 1, "", "missing launcher")
+
+    monkeypatch.delenv("SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH", raising=False)
+    monkeypatch.setattr(plan_scout.subprocess, "run", fake_run)
+    plan_scout.scout_dynamic_archetypes(mode="description", max_archetypes=3, output=out, scope_files=str(scope), description_file=str(desc), cursor_present=True)
+    launch_cmds = [cmd for cmd in recorded if "launch-review" in cmd]
+    assert launch_cmds
+    cmd = launch_cmds[0]
+    assert cmd[0] == sys.executable
+    assert cmd[1].endswith("/python/cli.py")
+    assert cmd[2:4] == ["agent", "launch-review"]
+    assert "SCOUT_STATUS=ok" in capsys.readouterr().out
 
 
 def test_dynamic_clears_stale_cap_hit_before_claude_fallback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:

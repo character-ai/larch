@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -86,7 +87,7 @@ def test_codex_agent_file_writes_and_replays_compact_sentinel(tmp_path: Path, mo
     assert "KIND=specialist" in text
     assert "HASH=" in text
     def fake_render(*_args: object, **_kwargs: object) -> object:
-        return type("R", (), {"stdout": prompt})()
+        return type("R", (), {"stdout": prompt, "returncode": 0})()
 
     monkeypatch.setattr(agents.proc, "run", fake_render)
     rc, replay = agents._review_read_codex_prompt_sentinel(str(sidecar)) or (99, "")
@@ -101,7 +102,7 @@ def test_codex_sentinel_hash_mismatch_fails_closed(tmp_path: Path, monkeypatch: 
         encoding="utf-8",
     )
     def fake_mismatch_render(*_args: object, **_kwargs: object) -> object:
-        return type("R", (), {"stdout": "different"})()
+        return type("R", (), {"stdout": "different", "returncode": 0})()
 
     monkeypatch.setattr(agents.proc, "run", fake_mismatch_render)
     rc, replay = agents._review_read_codex_prompt_sentinel(str(sidecar)) or (99, "")
@@ -180,3 +181,75 @@ def test_codex_add_dir_rejects_outside_output(tmp_path: Path) -> None:
     proc = _run(["--tool", "codex", "--output", str(out), "--timeout", "2", "--prompt", "hi", "--codex-add-dir", str(outside)])
     assert proc.returncode == 2
     assert not out.exists()
+
+
+def test_codex_add_dir_rejects_missing_output_parent(tmp_path: Path) -> None:
+    out = tmp_path / "missing" / "out.txt"
+    proc = _run(["--tool", "codex", "--output", str(out), "--timeout", "2", "--prompt", "hi"])
+    assert proc.returncode == 2
+    assert not out.exists()
+
+
+def test_render_specialist_failure_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail_render(*_args: object, **_kwargs: object) -> object:
+        return type("R", (), {"stdout": "", "stderr": "render failed", "returncode": 1})()
+
+    monkeypatch.setattr(agents.proc, "run", fail_render)
+    args = argparse.Namespace(
+        agent_file="agents/missing.md",
+        mode="review",
+        description_text="",
+        scope_files="",
+        competition_notice_file="",
+        diff_file="",
+        commit_count="",
+        plan_file="",
+        feature_file="",
+        competition_notice=False,
+    )
+    rc, prompt = agents._review_render_specialist_prompt(args)
+    assert rc == 1
+    assert prompt == ""
+
+
+def test_cursor_launch_writes_sidecar_ok_status(tmp_path: Path) -> None:
+    bin_dir = _stub_bin(
+        tmp_path,
+        "cursor",
+        "#!/usr/bin/env bash\ncat <<'JSON'\n{\"result\":\"ok\",\"usage\":{\"inputTokens\":1,\"outputTokens\":2,\"cacheReadTokens\":0,\"cacheWriteTokens\":0}}\nJSON\n",
+    )
+    out = tmp_path / "out.txt"
+    proc = _run(["--tool", "cursor", "--output", str(out), "--timeout", "2", "--prompt", "hi"], {"PATH": f"{bin_dir}:{os.environ['PATH']}", "CURSOR_API_KEY": "test-key"})
+    assert proc.returncode == 0
+    sidecar = out.with_suffix(out.suffix + ".sidecar")
+    assert sidecar.is_file()
+    assert "cursor-status: ok (no stderr emitted during agent run)" in sidecar.read_text(encoding="utf-8")
+
+
+def test_cursor_postprocess_writes_atomically(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    output = tmp_path / "out.txt"
+    payload = '{"result":"atomic-result","usage":{"inputTokens":1,"outputTokens":2}}'
+    output.write_text(payload, encoding="utf-8")
+    writes: list[tuple[Path, str]] = []
+    real_write = agents._write
+
+    def track_write(path: Path, text: str) -> None:
+        if str(path).endswith(".atomic.tmp"):
+            writes.append((path, text))
+        real_write(path, text)
+
+    monkeypatch.setattr(agents, "_write", track_write)
+    agents._review_cursor_postprocess(output, 1)
+    assert output.read_text(encoding="utf-8") == "atomic-result"
+    assert any(text == "atomic-result" for _path, text in writes)
+
+
+def test_cursor_empty_result_diag_is_redacted(tmp_path: Path) -> None:
+    secret_path = f"/Users/testuser/larch3/session-{os.getpid()}"
+    payload = json.dumps({"result": "", "usage": {"inputTokens": 1, "outputTokens": 0}, "request_id": secret_path})
+    output = tmp_path / "out.txt"
+    output.write_text(payload, encoding="utf-8")
+    agents._review_cursor_postprocess(output, 1)
+    diag = output.with_suffix(output.suffix + ".diag").read_text(encoding="utf-8")
+    assert secret_path not in diag
+    assert "<OPERATOR_REPO_PATH>" in diag
