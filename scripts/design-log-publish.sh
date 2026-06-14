@@ -247,6 +247,16 @@ design_publish_refresh_default_ref() {
     return 0
 }
 
+design_publish_refresh_remote_branch_exists() {
+    REMOTE_BRANCH_EXISTS=false
+    if git -C "$REPO_ROOT" ls-remote --exit-code --heads origin "$WT_BRANCH" >/dev/null 2>&1; then
+        REMOTE_BRANCH_EXISTS=true
+        git -C "$REPO_ROOT" fetch origin "$WT_BRANCH:refs/remotes/origin/$WT_BRANCH" >/dev/null 2>&1 || true
+    else
+        git -C "$REPO_ROOT" update-ref -d "refs/remotes/origin/$WT_BRANCH" >/dev/null 2>&1 || true
+    fi
+}
+
 REMOTE_BRANCH_EXISTS=false
 git -C "$REPO_ROOT" fetch origin "$WT_BRANCH:refs/remotes/origin/$WT_BRANCH" >/dev/null 2>&1 || true
 if git -C "$REPO_ROOT" show-ref --verify --quiet "refs/remotes/origin/$WT_BRANCH"; then
@@ -1130,9 +1140,19 @@ PR_BODY_TMP=$(mktemp "${TMPDIR:-/tmp}/larch-design-log-pr-body.XXXXXX") || {
 }
 printf 'Automated design log directory for run %s. Merged once required CI checks pass.' "$RUN_ID" >"$PR_BODY_TMP"
 
+design_publish_refresh_remote_branch_exists
 push_args=(-u origin "$WT_BRANCH")
 if [[ "$REASON" == "pause" || "$REMOTE_BRANCH_EXISTS" == true ]]; then
-    push_args=(--force-with-lease -u origin "$WT_BRANCH")
+    if [[ "$REMOTE_BRANCH_EXISTS" == true ]]; then
+        lease_sha=$(git -C "$REPO_ROOT" rev-parse "refs/remotes/origin/$WT_BRANCH" 2>/dev/null || true)
+        if [[ -n "$lease_sha" ]]; then
+            push_args=(--force-with-lease="refs/heads/$WT_BRANCH:$lease_sha" -u origin "$WT_BRANCH")
+        else
+            push_args=(--force-with-lease -u origin "$WT_BRANCH")
+        fi
+    else
+        push_args=(--force-with-lease -u origin "$WT_BRANCH")
+    fi
 fi
 push_fail_file=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-push.XXXXXX") || {
     larch_err "design-log-publish: mktemp failed for push capture"

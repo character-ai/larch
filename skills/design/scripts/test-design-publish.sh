@@ -95,6 +95,10 @@ while [[ $# -gt 0 ]]; do
     *) shift ;;
   esac
 done
+if [[ -n "$design_tmpdir" && -f "$design_tmpdir/final-only.txt" ]]; then
+  echo "FINAL_ONLY_PRESENT=true" >>"${PUBLISH_LOG:?}"
+  [[ -n "${CALL_LOG:-}" ]] && echo "FINAL_ONLY_PRESENT=true" >>"$CALL_LOG"
+fi
 if [[ "${PUBLISH_EMIT_OK:-true}" == true ]]; then
   echo "PUBLISH_OK=${PUBLISH_OK_VALUE:-true}"
 fi
@@ -317,6 +321,7 @@ export PATH="$STUB:$PATH"
 reset_publish_stub_env() {
     unset PLAN_BLOCK_RC PUBLISH_STUB_RC PUBLISH_EMIT_OK PUBLISH_OK_VALUE \
         PUBLISH_PR_NUMBER PUBLISH_PR_URL PUBLISH_RECOVERY_BRANCH \
+        PUBLISH_INVOCATION_LOG \
         PUBLISH_SEED_RESULT_BEFORE_RETURN PUBLISH_SEED_PR_NUMBER PUBLISH_SEED_PR_URL \
         PUBLISH_SEED_RECOVERY_BRANCH \
         UPSERT_STUB_RC UPSERT_STATUS_VALUE ARCH_SOURCE_VALUE \
@@ -1280,10 +1285,14 @@ PR_NUMBER=77
 PR_URL=https://github.com/owner/repo/pull/77
 EOF_RESULT
 printf 'approved content\n' >"$D_SHORT/final-summary.md"
+printf 'final-only delta\n' >"$D_SHORT/final-only.txt"
 reset_publish_stub_env
 init_publish_logs
 apply_publish_stub_defaults
+export PUBLISH_INVOCATION_LOG="$TMP/publish-invocation.log"
+: >"$PUBLISH_INVOCATION_LOG"
 export PUBLISH_OK_VALUE=false
+export PUBLISH_STUB_RC=1
 set +e
 bash "$SUBJECT" --design-tmpdir "$D_SHORT" --issue 42 --session-id sid-1 --claude-pid 9999 >/dev/null 2>/dev/null
 rc=$?
@@ -1294,6 +1303,8 @@ if grep -q 'design-log-publish' "$PUBLISH_LOG" 2>/dev/null; then
 else
     fail "pre-publish success must still invoke design-log-publish"
 fi
+grep -q 'FINAL_ONLY_PRESENT=true' "$PUBLISH_LOG" \
+  || fail "re-entry publish must observe final-only delta in design tmpdir"
 grep -Fxq 'PR_NUMBER=77' "$D_SHORT/.design-publish-result.env" \
   || fail "pre-publish success re-entry must preserve original PR_NUMBER"
 grep -Fxq 'PR_URL=https://github.com/owner/repo/pull/77' "$D_SHORT/.design-publish-result.env" \
@@ -1305,6 +1316,39 @@ if grep -q -- '--outcome failed-publish' "$RENDER_LOG"; then
 else
     pass "pre-publish success re-entry protects final summary from failed-publish"
 fi
+
+D_REENTRY_NEW_PR="$TMP/pre-publish-success-second-pr"
+setup_design_tmp "$D_REENTRY_NEW_PR"
+cat >"$D_REENTRY_NEW_PR/.design-publish-result.env" <<'EOF_RESULT'
+PLAN_WRITE_OK=true
+PUBLISH_OK=true
+PR_NUMBER=50
+PR_URL=https://github.com/owner/repo/pull/50
+EOF_RESULT
+printf 'approved content\n' >"$D_REENTRY_NEW_PR/final-summary.md"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+export PUBLISH_INVOCATION_LOG="$TMP/publish-invocation-new-pr.log"
+: >"$PUBLISH_INVOCATION_LOG"
+export PUBLISH_PR_NUMBER=51
+export PUBLISH_PR_URL=https://github.com/owner/repo/pull/51
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_REENTRY_NEW_PR" --issue 42 --session-id sid-1 --claude-pid 9999 >/dev/null 2>/dev/null
+rc=$?
+set -e
+assert_rc "pre-publish success second successful publish" 0 "$rc"
+grep -Fxq 'PR_NUMBER=51' "$D_REENTRY_NEW_PR/.design-publish-result.env" \
+  || fail "second successful publish must update PR_NUMBER"
+grep -Fxq 'PR_URL=https://github.com/owner/repo/pull/51' "$D_REENTRY_NEW_PR/.design-publish-result.env" \
+  || fail "second successful publish must update PR_URL"
+if grep -q 'PR_NUMBER=50' "$D_REENTRY_NEW_PR/.design-publish-result.env"; then
+    fail "second successful publish must not keep stale PR_NUMBER"
+else
+    pass "second successful publish replaces stale PR metadata"
+fi
+grep -q 'design-log-publish' "$PUBLISH_LOG" \
+  || fail "second successful publish must invoke design-log-publish"
 
 D_DEF_STALE="$TMP/stale-success-validator-defects"
 setup_design_tmp "$D_DEF_STALE"

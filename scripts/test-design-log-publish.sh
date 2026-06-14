@@ -761,6 +761,86 @@ out_noop=$(cd "$clone_noop" && bash "$PUBLISH" --design-tmpdir "$TMPNOOP/design"
 unset GH_STUB_LOG
 rm -rf "$TMPNOOP"
 
+echo "=== final manifest-only timestamp churn is idempotent ==="
+TMPMFCHURN=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-final-mf-churn.XXXXXX")
+clone_mfchurn=$(setup_clone_with_origin_head "$TMPMFCHURN")
+stub_mfchurn="$TMPMFCHURN/stub"
+make_gh_stub "$stub_mfchurn"
+date_mfchurn="$TMPMFCHURN/date-stub"
+mkdir -p "$date_mfchurn"
+cat >"$date_mfchurn/date" <<'EOF'
+#!/usr/bin/env bash
+if [[ "${1:-}" == "-u" && "${2:-}" == "+%Y-%m-%dT%H:%M:%SZ" ]]; then
+    printf '%s\n' "${MFCHURN_DATE:-2026-01-01T00:00:00Z}"
+    exit 0
+fi
+exec /bin/date "$@"
+EOF
+chmod +x "$date_mfchurn/date"
+GH_STUB_LOG="$TMPMFCHURN/gh.log"
+: >"$GH_STUB_LOG"
+export GH_STUB_LOG
+_MFCHURN_SAVED_PATH="$PATH"
+export PATH="$date_mfchurn:$stub_mfchurn:$PATH"
+export TEST_CLONE_ROOT="$clone_mfchurn"
+export TEST_MERGE_BRANCH="larch-log-design-RUNMFCHURN1"
+mkdir -p "$TMPMFCHURN/design"
+printf 'stable\n' >"$TMPMFCHURN/design/stable.txt"
+export MFCHURN_DATE=2026-01-01T00:00:00Z
+(
+    cd "$clone_mfchurn" || exit 1
+    seed_mfchurn=$(bash "$PUBLISH" --design-tmpdir "$TMPMFCHURN/design" --run-id "RUNMFCHURN1" --issue 42 --repo owner/repo)
+    [[ "$seed_mfchurn" == *"PUBLISH_OK=true"* ]] || fail "manifest churn seed failed: $seed_mfchurn"
+)
+git -C "$clone_mfchurn" pull -q origin main
+: >"$GH_STUB_LOG"
+export MFCHURN_DATE=2026-06-13T12:00:00Z
+out_mfchurn=$(cd "$clone_mfchurn" && bash "$PUBLISH" --design-tmpdir "$TMPMFCHURN/design" --run-id "RUNMFCHURN1" --issue 42 --repo owner/repo)
+[[ "$out_mfchurn" == *"PUBLISH_OK=true"* ]] || fail "manifest-only timestamp churn should succeed: $out_mfchurn"
+! grep -q 'pr create' "$GH_STUB_LOG" || fail "manifest-only timestamp churn must not create a PR"
+export PATH="$_MFCHURN_SAVED_PATH"
+unset GH_STUB_LOG MFCHURN_DATE TEST_CLONE_ROOT TEST_MERGE_BRANCH _MFCHURN_SAVED_PATH
+rm -rf "$TMPMFCHURN"
+
+echo "=== final rebuild fails closed when mandatory default fetch fails ==="
+TMPFETCHFAIL=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-final-fetch-fail.XXXXXX")
+clone_fetchfail=$(setup_clone_with_origin_head "$TMPFETCHFAIL")
+stub_fetchfail="$TMPFETCHFAIL/stub"
+make_gh_stub "$stub_fetchfail"
+REAL_GIT_FETCH=$(command -v git)
+mkdir -p "$TMPFETCHFAIL/gitstub"
+cat >"$TMPFETCHFAIL/gitstub/git" <<GITS
+#!/usr/bin/env bash
+if [[ "\${GIT_STUB_FAIL_DEFAULT_FETCH:-}" == "1" ]]; then
+    for arg in "\$@"; do
+        if [[ "\$arg" == *"main:refs/remotes/origin/main"* ]]; then
+            echo "stub: refusing mandatory default fetch" >&2
+            exit 1
+        fi
+    done
+fi
+exec "$REAL_GIT_FETCH" "\$@"
+GITS
+chmod +x "$TMPFETCHFAIL/gitstub/git"
+_FETCHFAIL_SAVED_PATH="$PATH"
+export PATH="$TMPFETCHFAIL/gitstub:$stub_fetchfail:$PATH"
+export TEST_CLONE_ROOT="$clone_fetchfail"
+export TEST_MERGE_BRANCH="larch-log-design-RUNFETCHFAIL1"
+export GIT_STUB_FAIL_DEFAULT_FETCH=1
+GH_STUB_LOG="$TMPFETCHFAIL/gh.log"
+: >"$GH_STUB_LOG"
+export GH_STUB_LOG
+mkdir -p "$TMPFETCHFAIL/design"
+printf 'delta\n' >"$TMPFETCHFAIL/design/plan.txt"
+out_fetchfail=$(
+    (cd "$clone_fetchfail" && bash "$PUBLISH" --design-tmpdir "$TMPFETCHFAIL/design" --run-id "RUNFETCHFAIL1" --issue 4 --repo owner/repo --reason final) 2>/dev/null || true
+)
+[[ "$out_fetchfail" == *"PUBLISH_OK=false"* ]] || fail "mandatory default fetch failure should fail closed: $out_fetchfail"
+! grep -q 'pr create' "$GH_STUB_LOG" || fail "mandatory default fetch failure must not create a PR"
+export PATH="$_FETCHFAIL_SAVED_PATH"
+unset GIT_STUB_FAIL_DEFAULT_FETCH GH_STUB_LOG TEST_CLONE_ROOT TEST_MERGE_BRANCH _FETCHFAIL_SAVED_PATH
+rm -rf "$TMPFETCHFAIL"
+
 echo "=== final existing default run publishes newer snapshot delta ==="
 TMPDELTA=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-final-delta.XXXXXX")
 clone_delta=$(setup_clone_with_origin_head "$TMPDELTA")
@@ -902,8 +982,8 @@ git -C "$clone_delete" pull -q origin main
 grep -Fxq 'keep new' "$clone_delete/larch-logs/design/RUNDELETE1/plan.txt" || fail "delete-aware publish missed desired plan"
 unset TEST_CLONE_ROOT TEST_MERGE_BRANCH GH_STUB_LOG
 
-echo "=== final no-delta fails closed when main lacks run id ==="
-TMPMISS=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-final-missing.XXXXXX")
+echo "=== final idempotent success when rebuilt porcelain is empty (stubbed) ==="
+TMPMISS=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-final-empty-porcelain.XXXXXX")
 clone_miss=$(setup_clone_with_origin_head "$TMPMISS")
 stub_miss="$TMPMISS/stub"
 make_gh_stub "$stub_miss"
@@ -925,15 +1005,37 @@ fi
 exec "$REAL_GIT" "\$@"
 GITS
 chmod +x "$TMPMISS/gitstub/git"
+_MISS_SAVED_PATH="$PATH"
 export PATH="$TMPMISS/gitstub:$stub_miss:$PATH"
+export TEST_CLONE_ROOT="$clone_miss"
+export TEST_MERGE_BRANCH="larch-log-design-RUNEMPTYMISS1"
+updater_miss="$TMPMISS/updater"
+git clone -q "$TMPMISS/upstream.git" "$updater_miss"
+git -C "$updater_miss" config user.email "t@t"
+git -C "$updater_miss" config user.name "t"
+mkdir -p "$updater_miss/larch-logs/design/RUNEMPTYMISS1"
+printf 'seeded\n' >"$updater_miss/larch-logs/design/RUNEMPTYMISS1/stable.txt"
+git -C "$updater_miss" add larch-logs/design/RUNEMPTYMISS1/stable.txt
+git -C "$updater_miss" commit -q -m "seed byte-identical design log on main"
+git -C "$updater_miss" push -q origin main
+GH_STUB_LOG="$TMPMISS/gh.log"
+: >"$GH_STUB_LOG"
+export GH_STUB_LOG
 export GIT_STUB_EMPTY_STATUS_FOR="larch-logs/design/RUNEMPTYMISS1"
 mkdir -p "$TMPMISS/design"
-printf 'missing\n' >"$TMPMISS/design/missing.txt"
+printf 'seeded\n' >"$TMPMISS/design/stable.txt"
+printf 'local-only\n' >"$TMPMISS/design/missing.txt"
+git -C "$clone_miss" fetch -q origin main
+main_before=$(git -C "$clone_miss" rev-parse "origin/main^{tree}")
 out_miss=$(
     (cd "$clone_miss" && bash "$PUBLISH" --design-tmpdir "$TMPMISS/design" --run-id "RUNEMPTYMISS1" --issue 42 --repo owner/repo) 2>/dev/null || true
 )
-[[ "$out_miss" == *"PUBLISH_OK=true"* ]] || fail "final no-delta should succeed when rebuilt porcelain is empty: $out_miss"
-unset GIT_STUB_EMPTY_STATUS_FOR
+[[ "$out_miss" == *"PUBLISH_OK=true"* ]] || fail "stubbed empty-porcelain final publish should succeed: $out_miss"
+! grep -q 'pr create' "$GH_STUB_LOG" || fail "stubbed empty-porcelain final publish must not create a PR"
+main_after=$(git -C "$clone_miss" rev-parse "origin/main^{tree}")
+[[ "$main_before" == "$main_after" ]] || fail "stubbed empty-porcelain final publish must not change main"
+export PATH="$_MISS_SAVED_PATH"
+unset GIT_STUB_EMPTY_STATUS_FOR GH_STUB_LOG TEST_CLONE_ROOT TEST_MERGE_BRANCH _MISS_SAVED_PATH
 rm -rf "$TMPMISS"
 
 echo "=== revise artifacts are no longer published ==="

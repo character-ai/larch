@@ -240,6 +240,12 @@ result_env_write_once_current_eligible() {
     [[ "${PUBLISH_OK:-}" == true || "${PUBLISH_OK:-}" == false ]]
 }
 
+result_env_should_preserve_prior_success() {
+    result_env_write_once_current_eligible || return 1
+    result_env_publish_ok_is_true || return 1
+    [[ "${PUBLISH_OK:-}" == false ]]
+}
+
 add_warn() {
     WARN_LINES+=("$1")
 }
@@ -438,13 +444,13 @@ write_result_env_and_emit() {
     done
 
     if ! result_env_lock_acquire; then
-        if result_env_write_once_current_eligible && result_env_publish_ok_is_true; then
+        if result_env_should_preserve_prior_success; then
             return 0
         fi
         return 1
     fi
     local _write_rc=0
-    if result_env_write_once_current_eligible && result_env_publish_ok_is_true; then
+    if result_env_should_preserve_prior_success; then
         _write_rc=0
     else
         phase_driver_write_result_env "$RESULT_ENV" "${_kvs[@]}" || _write_rc=$?
@@ -698,9 +704,11 @@ export UPSERT_STATUS="${UPSERT_STATUS:-}"
 refresh_designed_admission_ready
 export DESIGNED_ADMISSION_READY
 if result_env_publish_ok_is_true; then
-    PUBLISH_OK=true
-    SUMMARY_OUTCOME=approved
-    result_env_load_success_metadata
+    if [[ "${PUBLISH_OK:-}" != true ]] || { [[ -z "${PR_NUMBER:-}" ]] && [[ -z "${PR_URL:-}" ]]; }; then
+        PUBLISH_OK=true
+        SUMMARY_OUTCOME=approved
+        result_env_load_success_metadata
+    fi
 fi
 "${PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh" \
     --outcome "$SUMMARY_OUTCOME" \
