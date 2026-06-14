@@ -56,6 +56,14 @@ def test_planner_cli_exit_codes(tmp_path: Path) -> None:
     bad = run_cli("research", "run-planner", "--raw", str(raw), "--output", str(tmp_path / "x" / "out"))
     assert bad.returncode == 2
     assert bad.stdout.strip() == "REASON=bad_path"
+    for args in (
+        ("research", "run-planner", "--output", str(out)),
+        ("research", "run-planner", "--raw", str(raw)),
+        ("research", "run-planner"),
+    ):
+        missing = run_cli(*args)
+        assert missing.returncode == 2
+        assert missing.stdout.strip() == "REASON=missing_arg"
 
 
 def test_banner_matches_only_research_status(tmp_path: Path) -> None:
@@ -125,6 +133,22 @@ def test_findings_cli_missing_and_empty(tmp_path: Path) -> None:
     assert empty.returncode == 3
     assert empty.stdout.strip() == "COUNT=0"
     assert out.read_text(encoding="utf-8") == ""
+
+
+def test_validate_citations_no_claims_prose_sidecar(tmp_path: Path) -> None:
+    report = tmp_path / "report.md"
+    out = tmp_path / "sidecar.md"
+    report.write_text(
+        "### Findings Summary\n\n1. Pure prose synthesis with no URLs, DOIs, or file-line claims.\n",
+        encoding="utf-8",
+    )
+    assert research.validate_citations(report, out, tmp_path, git_root=ROOT) == (0, 0, 0, 0)
+    text = out.read_text(encoding="utf-8")
+    assert "_No citable provenance (URLs, DOIs, file:line) found in the synthesis." in text
+    assert "**Claims extracted**: 0" in text
+    cp = run_cli("research", "validate-citations", "--report", str(report), "--output", str(out), "--tmpdir", str(tmp_path))
+    assert cp.returncode == 0
+    assert cp.stdout.strip() == "SUMMARY=PASS=0 FAIL=0 UNKNOWN=0 TOTAL=0"
 
 
 def test_citation_extraction_and_fileline_sidecar(tmp_path: Path) -> None:

@@ -216,6 +216,14 @@ def test_research_status_timeout_mapping(tmp_path: Path) -> None:
 def test_eval_set_failure_matrix(tmp_path: Path) -> None:
     bad = write(tmp_path / "bad.md", "### eval-1: ok\n- **question**: q?\n")
     assert research_eval.validate_eval_set(bad) is False
+    dup = write(
+        tmp_path / "dup.md",
+        "**Consumer**: x\n**Contract**: y\n**When to load**: z\n"
+        f"{research_eval.ANTHROPIC_EVAL_SOURCE}\n\n"
+        "### eval-1: dup-id\n- **question**: q?\n- **category**: lookup\n- **expected_provenance_count**: 1\n- **expected_keywords**: k\n- **notes**: n\n"
+        "### eval-2: dup-id\n- **question**: q2?\n- **category**: lookup\n- **expected_provenance_count**: 1\n- **expected_keywords**: k\n- **notes**: n\n",
+    )
+    assert research_eval.validate_eval_set(dup) is False
     missing_adv = write(
         tmp_path / "adv.md",
         "**Consumer**: x\n**Contract**: y\n**When to load**: z\n"
