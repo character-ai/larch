@@ -476,7 +476,7 @@ def test_step2_dispatch_main_branch_prohibited(repo: Path, tmp_path: Path, monke
     assert "REASON=main-branch-prohibited" in out
 
 
-def test_step2_dispatch_needs_qa_repair_from_pending(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_step2_dispatch_needs_qa_repair_from_pending(_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     tmp = _session(tmp_path)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
 
@@ -549,8 +549,8 @@ def test_materialize_oos_missing_helper_with_observations_bails(tmp_path: Path, 
         spawn_branch_file=tmp / "branch.txt",
         plugin_json_baseline_file=tmp / "plugin.txt",
         spawn_coder_file=tmp / "coder.txt",
-        runtime_failure_token="codex-runtime-failure",
-        bailed_no_reason_token="codex-bailed-no-reason",
+        runtime_failure_token="codex-runtime-failure",  # noqa: S106
+        bailed_no_reason_token="codex-bailed-no-reason",  # noqa: S106
         requires_head_unchanged=False,
         nonzero_exit_warn_token="",
     )
@@ -730,11 +730,11 @@ def test_auth_retry_includes_stderr_path(tmp_path: Path, monkeypatch: pytest.Mon
     stderr_path.write_text("auth error\n", encoding="utf-8")
     seen: list[Path] = []
 
-    def fake_verdict(tool: str, *paths: Path) -> str:
+    def fake_verdict(_tool: str, *paths: Path) -> str:
         seen.extend(paths)
         return "auth" if stderr_path in paths else ""
 
-    def fake_run_external_agent(**kwargs):  # type: ignore[no-untyped-def]
+    def fake_run_external_agent(**_kwargs):  # type: ignore[no-untyped-def]
         return agents.RunExternalAgentResult(2, output)
 
     monkeypatch.setattr(agents, "external_auth_verdict", fake_verdict)
