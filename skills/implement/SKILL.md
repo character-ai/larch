@@ -114,9 +114,9 @@ export CLAUDE_PLUGIN_ROOT
 Structured invocation pins for script factoring that is reached through active drivers or wrappers:
 
 ```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" scripts/compose-pr-summary.sh --plan-goals-file "$IMPLEMENT_TMPDIR/plan-goals.md"
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" scripts/render-run-summary.sh --skill implement --outcome "$IMPLEMENT_OUTCOME" --run-id "$RUN_ID" --mode "$IMPLEMENT_MODE" --duration "$IMPLEMENT_DURATION" --issue-number "$ISSUE_NUMBER" --issue-url "$ISSUE_URL"
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" scripts/implement-finalize.sh teardown --state-file "$IMPLEMENT_TMPDIR/finalize-state.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"
+"${CLAUDE_PLUGIN_ROOT}/scripts/compose-pr-summary.sh" --plan-goals-file "$IMPLEMENT_TMPDIR/plan-goals.md"
+"${CLAUDE_PLUGIN_ROOT}/scripts/render-run-summary.sh" --skill implement --outcome "$IMPLEMENT_OUTCOME" --run-id "$RUN_ID" --mode "$IMPLEMENT_MODE" --duration "$IMPLEMENT_DURATION" --issue-number "$ISSUE_NUMBER" --issue-url "$ISSUE_URL"
+"${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.sh" teardown --state-file "$IMPLEMENT_TMPDIR/finalize-state.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"
 ```
 
 ### Bash block prelude
