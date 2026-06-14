@@ -513,10 +513,10 @@ def _perform_tracking_side_effects(st: BootstrapState, *, write_sentinel: bool) 
         return False
     if not _persist_run_flags(st):
         return False
-    post_args = [str(_REPO_ROOT / "skills" / "implement" / "scripts" / "post-tracking-issue.sh"), "--implement-tmpdir", st.implement_tmpdir, "--run-id", st.run_id, "--adopted", "true", "--emergency-requested", st.opts.emergency_requested]
+    post_args = ["tracking", "post-issue", "--implement-tmpdir", st.implement_tmpdir, "--run-id", st.run_id, "--adopted", "true", "--emergency-requested", st.opts.emergency_requested]
     if write_sentinel:
         post_args.extend(["--issue-number", st.issue_number_resolved])
-    post = _run(post_args)
+    post = _cli(*post_args)
     pkv = _parse_kv(post.stdout)
     if post.returncode != 0:
         st.deferred = "true"

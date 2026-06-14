@@ -1321,10 +1321,12 @@ def run_ship(
                 return ShipResult(postbump.outcome, detail=postbump.detail or postbump.status)
 
             if fresh_context.oos_pending and not fresh_context.forked_target and not fresh_context.repo_unavailable:
+                tmp_path = Path(fresh_context.tmpdir)
                 oos_count = file_oos.count_non_security(
-                    file_oos.accepted_oos_paths(Path(fresh_context.tmpdir))
+                    file_oos.accepted_oos_paths(tmp_path)
                 )
-                if oos_count > 0:
+                security_sidecar = tmp_path / "security-oos-observations.md"
+                if oos_count > 0 or (security_sidecar.is_file() and security_sidecar.stat().st_size > 0):
                     return ShipResult(
                         Outcome.NEEDS_USER_INPUT, needs_user_reason="oos-filing"
                     )

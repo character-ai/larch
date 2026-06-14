@@ -17,7 +17,7 @@ _oos_chk_err="$IMPLEMENT_TMPDIR/oos-disposition-checkpoint.stderr.log"
 _oos_chk_args=(--implement-tmpdir "$IMPLEMENT_TMPDIR")
 [ -n "${DESIGN_TMPDIR:-}" ] && _oos_chk_args+=(--design-tmpdir "$DESIGN_TMPDIR")
 set +e
-bash "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-disposition-checkpoint.sh" \
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" oos disposition-checkpoint \
   "${_oos_chk_args[@]}" \
   2>"$_oos_chk_err"
 _oos_chk_rc=$?
@@ -40,7 +40,7 @@ if [ "$_oos_chk_rc" -ne 0 ] && [ "$_oos_already_logged" = false ]; then
   python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" run-log append-failure \
     --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
     --site "$_oos_fail_site" \
-    --tool oos-disposition-checkpoint.sh \
+    --tool python/cli.py oos disposition-checkpoint \
     --exit-code "$_oos_chk_rc" \
     --category "Tool Failures" \
     --output-file "$_oos_chk_err" \

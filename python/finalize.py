@@ -891,3 +891,105 @@ def write_finalize_state(ctx: RunContext, path: str | Path) -> None:
         target,
         "".join(f"{key}={value}\n" for key, value in data.items()),
     )
+
+# ---------------------------------------------------------------------------
+# C4c CLI surfaces
+# ---------------------------------------------------------------------------
+
+import argparse
+
+
+class _SubprocessRunner:
+    def run(self, argv, *, timeout=None, cwd=None, env=None, check=False, stdout=None, stderr=None):
+        import proc as _proc
+
+        return _proc.run(argv, timeout=timeout, cwd=cwd, env=env, check=check, stdout=stdout, stderr=stderr)
+
+
+def _emit_finalize_result(result: FinalizeResult) -> None:
+    print(f"STATUS={result.status}")
+    print(f"OUTCOME={result.outcome.value}")
+    print(f"FINALIZE_WARNINGS={result.detail}")
+    print(f"LOG_WRITE_STATUS={result.log_write_status}")
+    print(f"REBASE_STATUS={result.rebase_status}")
+    print(f"FORCE_PUSH_STATUS={result.force_push_status}")
+    print(f"LOCAL_CLEANUP_STATUS={result.local_cleanup_status}")
+    print(f"VERIFY_MAIN_STATUS={result.verify_main_status}")
+    print(f"RENAME_BRANCH={result.rename_branch}")
+    print(f"RENAME_STATUS={result.rename_status}")
+    print("ISSUE_URL=")
+    print(f"STASH_REF={result.stash_ref}")
+    print(f"SENTINEL_WRITTEN={_bool_text(result.sentinel_written)}")
+
+
+def _ctx_from_tmpdir(tmpdir: str) -> RunContext:
+    env = dict(os.environ)
+    env["IMPLEMENT_TMPDIR"] = tmpdir
+    state = Path(tmpdir) / "finalize-state.sh"
+    if state.is_file():
+        env["SHIP_PR_STATE_FILE"] = str(state)
+        for line in state.read_text(encoding="utf-8", errors="replace").splitlines():
+            if "=" in line:
+                k, v = line.split("=", 1)
+                env.setdefault(k, v)
+    return RunContext.from_env(env=env)
+
+
+def implement_finalize_main(argv: list[str] | None = None, phase: str = "") -> int:
+    parser = argparse.ArgumentParser(prog=f"cli.py implement-finalize {phase}")
+    parser.add_argument("--state-file")
+    parser.add_argument("--implement-tmpdir")
+    parser.add_argument("--final-bail-reason-file")
+    args, _unknown = parser.parse_known_args(argv)
+    if args.state_file:
+        os.environ["SHIP_PR_STATE_FILE"] = args.state_file
+        ctx = RunContext.from_env()
+    else:
+        tmpdir = args.implement_tmpdir or os.environ.get("IMPLEMENT_TMPDIR", "")
+        if not tmpdir:
+            print("STATUS=failed"); print("FINALIZE_WARNINGS=IMPLEMENT_TMPDIR is required")
+            return 2
+        ctx = _ctx_from_tmpdir(tmpdir)
+    runner = _SubprocessRunner()
+    if phase == "postbump":
+        result = postbump(runner, ctx, cwd=os.getcwd())
+    elif phase == "postmerge":
+        result = postmerge(runner, ctx, cwd=os.getcwd())
+    elif phase == "teardown":
+        result = teardown(runner, ctx, cwd=os.getcwd())
+    else:
+        print("STATUS=failed"); print("FINALIZE_WARNINGS=unknown phase")
+        return 2
+    _emit_finalize_result(result)
+    return 0 if result.outcome.value == "ok" else 1
+
+
+def implement_finalize_postbump_main(argv: list[str] | None = None) -> int:
+    return implement_finalize_main(argv, "postbump")
+
+
+def implement_finalize_postmerge_main(argv: list[str] | None = None) -> int:
+    return implement_finalize_main(argv, "postmerge")
+
+
+def implement_finalize_teardown_main(argv: list[str] | None = None) -> int:
+    return implement_finalize_main(argv, "teardown")
+
+
+def cleanup_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py implement cleanup")
+    parser.add_argument("--implement-tmpdir", required=True)
+    args = parser.parse_args(argv)
+    tmpdir = Path(args.implement_tmpdir)
+    ctx = _ctx_from_tmpdir(str(tmpdir))
+    if tmpdir.exists() and _cleanup_target_ok(ctx, tmpdir, cwd=os.getcwd()):
+        shutil.rmtree(tmpdir, ignore_errors=True)
+        cleaned = not tmpdir.exists()
+        print(f"CLEANED={_bool_text(cleaned)}")
+        if not cleaned:
+            print("ERROR=cleanup-tmpdir failed")
+            return 1
+        return 0
+    print("CLEANED=false")
+    print("ERROR=cleanup target rejected")
+    return 2

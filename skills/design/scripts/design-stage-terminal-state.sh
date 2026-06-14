@@ -4,7 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
-REPORT_SH="$PLUGIN_ROOT/skills/implement/scripts/stall-recovery-report.sh"
+REPORT_SH="$PLUGIN_ROOT/python/cli.py"
 
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
@@ -60,16 +60,13 @@ for pair in "outcome:$OUTCOME" "step:$STEP" "phase:$PHASE" "site:$SITE" "trigger
     kind=${pair%%:*}
     value=${pair#*:}
     [ -n "$value" ] || fail "$kind is required"
-    "$REPORT_SH" --profile generic --artifact-prefix design-failure --implement-tmpdir "$DESIGN_TMPDIR" \
-        validate-token --token-kind "$kind" --value "$value" >/dev/null
+    python3 "$PLUGIN_ROOT/python/cli.py" stall-recovery validate-token --profile generic --artifact-prefix design-failure --implement-tmpdir "$DESIGN_TMPDIR" --token-kind "$kind" --value "$value" >/dev/null
  done
 if [ -n "$ROOT_CAUSE_HINT" ]; then
-    "$REPORT_SH" --profile generic --artifact-prefix design-failure --implement-tmpdir "$DESIGN_TMPDIR" \
-        validate-token --token-kind root-cause --value "$ROOT_CAUSE_HINT" >/dev/null
+    python3 "$PLUGIN_ROOT/python/cli.py" stall-recovery validate-token --profile generic --artifact-prefix design-failure --implement-tmpdir "$DESIGN_TMPDIR" --token-kind root-cause --value "$ROOT_CAUSE_HINT" >/dev/null
 fi
 if [ -n "$SUMMARY_OUTCOME" ]; then
-    "$REPORT_SH" --profile generic --artifact-prefix design-failure --implement-tmpdir "$DESIGN_TMPDIR" \
-        validate-token --token-kind outcome --value "$SUMMARY_OUTCOME" >/dev/null
+    python3 "$PLUGIN_ROOT/python/cli.py" stall-recovery validate-token --profile generic --artifact-prefix design-failure --implement-tmpdir "$DESIGN_TMPDIR" --token-kind outcome --value "$SUMMARY_OUTCOME" >/dev/null
 fi
 case "$EXIT_CODE" in
     unknown) ;;
@@ -122,8 +119,7 @@ candidate="$DESIGN_TMPDIR/design-failure-terminal-state.env.candidate.$$"
     [ -z "$EVIDENCE_REF" ] || printf 'EVIDENCE_REF=%s\n' "$EVIDENCE_REF"
 } >"$candidate"
 
-"$REPORT_SH" --profile generic --artifact-prefix design-failure --implement-tmpdir "$DESIGN_TMPDIR" \
-    validate-terminal-state --primary-state-file "$candidate" >/dev/null
+python3 "$PLUGIN_ROOT/python/cli.py" stall-recovery validate-terminal-state --profile generic --artifact-prefix design-failure --implement-tmpdir "$DESIGN_TMPDIR" --primary-state-file "$candidate" >/dev/null
 mv -f "$candidate" "$STATE_FILE"
 emit_kv STAGED true
 emit_kv TERMINAL_STATE_FILE "$STATE_FILE"

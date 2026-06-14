@@ -11,8 +11,8 @@ larch_quiet_init
 source "$SCRIPT_DIR/../../../scripts/lib-design-tmpdir.sh"
 
 PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
-CAP_SH="$PLUGIN_ROOT/skills/implement/scripts/oos-issue-cap.sh"
-DEPS_SH="$PLUGIN_ROOT/skills/implement/scripts/oos-file-conflict-deps.sh"
+CAP_SH="$PLUGIN_ROOT/skills/implement/scripts/python/cli.py oos issue-cap"
+DEPS_SH="$PLUGIN_ROOT/skills/implement/scripts/python/cli.py oos file-conflict-deps"
 COUNT_AWK="$PLUGIN_ROOT/skills/implement/scripts/oos-non-security-block-count.awk"
 append_fail_sh() { python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure "$@"; }
 
@@ -305,7 +305,7 @@ cmd_prepare() {
   grep -E '^###[[:space:]]+OOS_' "$comb" | sed -E 's/^###[[:space:]]+OOS_([0-9]+):.*/\1/' >"$order"
 
   if ! bash "$CAP_SH" --input-file "$comb" --output "$comb.capped.tmp"; then
-    larch_err "file-design-oos: oos-issue-cap.sh failed"
+    larch_err "file-design-oos: python/cli.py oos issue-cap failed"
     rm -f "$comb.capped.tmp"
     exit 2
   fi
@@ -320,7 +320,7 @@ cmd_prepare() {
     deps_avail=true
   else
     rm -f "$deps_out"
-    larch_err "file-design-oos: oos-file-conflict-deps.sh exit $deps_rc — graceful-degrade (no caller TSV)"
+    larch_err "file-design-oos: python/cli.py oos file-conflict-deps exit $deps_rc — graceful-degrade (no caller TSV)"
   fi
 
   if [[ "$deps_avail" == true ]]; then

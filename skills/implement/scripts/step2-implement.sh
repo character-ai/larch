@@ -1150,21 +1150,21 @@ fi
 # artifacts. Fail closed when the manifest contains observations; fail open
 # with a Tool Failures breadcrumb when there is no OOS to lose.
 if [[ "$STATUS" == "complete" ]]; then
-    MATERIALIZE_OOS="$PLUGIN_ROOT/skills/implement/scripts/materialize-manifest-oos.sh"
+    MATERIALIZE_OOS=(python3 "$PLUGIN_ROOT/python/cli.py" oos materialize-manifest)
     MAT_OOS_COUNT=""
     MAT_OOS_COUNT_RC=0
-    MAT_OOS_COUNT=$(bash "$MATERIALIZE_OOS" --count-only --manifest-path "$MANIFEST_PATH" --implement-tmpdir "$TMPDIR_ARG" 2>/dev/null) || MAT_OOS_COUNT_RC=$?
+    MAT_OOS_COUNT=$("${MATERIALIZE_OOS[@]}" --count-only --manifest-path "$MANIFEST_PATH" --implement-tmpdir "$TMPDIR_ARG" 2>/dev/null) || MAT_OOS_COUNT_RC=$?
     MAT_OOS_LOG="$TMPDIR_ARG/materialize-manifest-oos.log"
-    if [[ -x "$MATERIALIZE_OOS" ]]; then
+    if command -v python3 >/dev/null 2>&1 && [[ -f "$PLUGIN_ROOT/python/cli.py" ]]; then
         MAT_RC=0
-        bash "$MATERIALIZE_OOS" --manifest-path "$MANIFEST_PATH" --implement-tmpdir "$TMPDIR_ARG" >"$MAT_OOS_LOG" 2>&1 || MAT_RC=$?
+        "${MATERIALIZE_OOS[@]}" --manifest-path "$MANIFEST_PATH" --implement-tmpdir "$TMPDIR_ARG" >"$MAT_OOS_LOG" 2>&1 || MAT_RC=$?
         if [[ "$MAT_RC" -ne 0 ]]; then
             APPEND_TOOL=(python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure)
             if command -v python3 >/dev/null 2>&1; then
                 "${APPEND_TOOL[@]}" \
                     --log "$TMPDIR_ARG/execution-issues.md" \
                     --site "step2-materialize-manifest-oos" \
-                    --tool "materialize-manifest-oos.sh" \
+                    --tool "python/cli.py oos materialize-manifest" \
                     --exit-code "$MAT_RC" \
                     --category "Tool Failures" \
                     --output-file "$MAT_OOS_LOG" \
@@ -1175,13 +1175,13 @@ if [[ "$STATUS" == "complete" ]]; then
             fi
         fi
     else
-        printf 'materialize helper missing or not executable: %s\n' "$MATERIALIZE_OOS" >"$MAT_OOS_LOG"
+        printf 'materialize helper missing or not executable: %s\n' "$PLUGIN_ROOT/python/cli.py" >"$MAT_OOS_LOG"
         APPEND_TOOL=(python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure)
         if command -v python3 >/dev/null 2>&1; then
             "${APPEND_TOOL[@]}" \
                 --log "$TMPDIR_ARG/execution-issues.md" \
                 --site "step2-materialize-manifest-oos" \
-                --tool "materialize-manifest-oos.sh" \
+                --tool "python/cli.py oos materialize-manifest" \
                 --exit-code "127" \
                 --category "Tool Failures" \
                 --output-file "$MAT_OOS_LOG" \

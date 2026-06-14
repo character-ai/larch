@@ -211,13 +211,13 @@ validator_autofix_record_escalation() {
   design_require_plugin_root
   [[ -n "${DESIGN_TMPDIR:-}" && -d "$DESIGN_TMPDIR" ]] || return 0
   local helper site trigger args
-  helper="$CLAUDE_PLUGIN_ROOT/skills/implement/scripts/stall-recovery-report.sh"
-  [[ -x "$helper" ]] || return 0
+  helper_cmd=(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" stall-recovery)
+  command -v python3 >/dev/null 2>&1 || return 0
   site=$(autofix_site_token)
   trigger=$(autofix_trigger_token)
   args=(
-    --profile generic --artifact-prefix design-failure --implement-tmpdir "$DESIGN_TMPDIR"
-    record-escalation --site "$site" --trigger "$trigger"
+    record-escalation --profile generic --artifact-prefix design-failure --implement-tmpdir "$DESIGN_TMPDIR"
+    --site "$site" --trigger "$trigger"
     --step validator --phase validation --dispatcher design-step-validator-autofix
     --exit-code "${_autofix_rc:-unknown}"
   )
@@ -229,7 +229,7 @@ validator_autofix_record_escalation() {
       ;;
   esac
   set +e
-  "$helper" "${args[@]}" \
+  "${helper_cmd[@]}" "${args[@]}" \
     >"$DESIGN_TMPDIR/validator-autofix-record-escalation.stdout.log" \
     2>"$DESIGN_TMPDIR/validator-autofix-record-escalation.stderr.log"
   set -e

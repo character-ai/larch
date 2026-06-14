@@ -17,8 +17,11 @@ import argparse
 import json
 import os
 import re
+import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
+from collections.abc import Iterable
 from typing import NamedTuple
 
 import config
@@ -37,11 +40,12 @@ _OOS_HEADER_RE = re.compile(
     r"^###\s+(?:OOS_|FINDING_\d+:.*\[(?:OUT_OF_SCOPE|OOS)\])",
     re.MULTILINE,
 )
-_SECURITY_FOCUS_RE = re.compile(
-    r"^[ \t-]*focus-area[ \t]*[:=][ \t]*"
+_FOCUS_AREA_LINE_RE = re.compile(
+    r"^[ \t-]*(?:[-*][ \t]*)?(?:\*\*)?focus[- \t]*area(?:\*\*)?[ \t]*[:=][ \t]*"
     r"security([-a-zA-Z0-9 _]*)(\s|$|\(|#|\.|,)",
     re.IGNORECASE | re.MULTILINE,
 )
+_SECURITY_FOCUS_RE = _FOCUS_AREA_LINE_RE
 _SECURITY_HEADER_RE = re.compile(
     r"^###\s+(?:OOS_\d+:|FINDING_\d+:)\s*"
     r"(?:\[(?:OUT_OF_SCOPE|OOS)\]\s*)?"
@@ -188,6 +192,511 @@ def detect(
         security_present=security_present,
     )
 
+
+
+# ---------------------------------------------------------------------------
+# C4c OOS helper ports
+# ---------------------------------------------------------------------------
+
+_INTERNAL_URL_RE = re.compile(
+    r"https?://(?:localhost|127\.0\.0\.1|10\.[0-9.]+|192\.168\.[0-9.]+|"
+    r"172\.(?:1[6-9]|2[0-9]|3[0-1])\.[0-9.]+|169\.254\.[0-9.]+|"
+    r"[^\s/]+\.(?:internal|local|corp|lan|intranet|test|example|invalid))[^\s]*"
+    r"|\b(?:localhost|127\.0\.0\.1|10\.[0-9.]+|192\.168\.[0-9.]+|"
+    r"172\.(?:1[6-9]|2[0-9]|3[0-1])\.[0-9.]+|169\.254\.[0-9.]+|"
+    r"[^\s/]+\.(?:internal|local|corp|lan|intranet))\b",
+    re.IGNORECASE,
+)
+_EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+_PHONE_RE = re.compile(r"(?:\+?1[ .-]?)?\(?[0-9]{3}\)?[ .-]?[0-9]{3}[ .-]?[0-9]{4}")
+_SSN_RE = re.compile(r"[0-9]{3}-[0-9]{2}-[0-9]{4}")
+_ACCOUNT_RE = re.compile(r"\b(?:account|user|customer|employee|tenant|org)[_-]?[A-Za-z0-9]{8,}\b", re.IGNORECASE)
+_OOS_BLOCK_RE = re.compile(r"(?ms)^###\s+OOS_(\d+):\s*(.*?)$(.*?)(?=^###\s+OOS_\d+:|\Z)")
+_STRICT_FILED_RE = re.compile(r"^[ \t]*-[ \t]+\*\*Filed[ \t]URL\*\*[ \t]*:[ \t]+(https://[^\s]+/issues/\d+)(?:[ \t].*)?$", re.MULTILINE)
+_REJECTED_MARKER_RE = re.compile(r"OOS_\d+")
+_INLINE_TRIAGE_RE = re.compile(r"Inline-triage rule")
+_FILE_REF_RE = re.compile(
+    r"(?P<path>(?:[A-Za-z0-9_.-]+/)+[A-Za-z0-9_.-]+(?:\.[A-Za-z0-9_.-]+)?)"
+    r"(?::(?P<start>\d+)(?:-(?P<end>\d+))?)?"
+)
+
+
+def _strip_md_emphasis(text: str) -> str:
+    return text.replace("`", "").replace("*", "")
+
+
+def _sanitize_public_text(text: str) -> str:
+    try:
+        from redact import redact as _redact
+
+        text = _redact(text)
+    except Exception:
+        pass
+    text = _INTERNAL_URL_RE.sub("<INTERNAL-URL>", text)
+    text = _EMAIL_RE.sub("<REDACTED-PII>", text)
+    text = _SSN_RE.sub("<REDACTED-PII>", text)
+    text = _PHONE_RE.sub("<REDACTED-PII>", text)
+    text = _ACCOUNT_RE.sub("<REDACTED-PII>", text)
+    return text
+
+
+def _normalize_title(text: object) -> str:
+    cleaned = _sanitize_public_text(str(text or ""))
+    cleaned = re.sub(r"[\x00-\x1f\x7f]", " ", cleaned)
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+
+def _write_description_lines(description: object) -> list[str]:
+    sanitized = _sanitize_public_text(str(description or ""))
+    lines = sanitized.splitlines() or [""]
+    out: list[str] = []
+    for index, line in enumerate(lines):
+        if index == 0:
+            out.append(f"- **Description**: {line}")
+        else:
+            out.append(f"  {line}")
+    return out
+
+
+def _security_signal(description: object, focus_area: object = "") -> bool:
+    if focus_area and _FOCUS_AREA_LINE_RE.search(f"- **focus-area**: {focus_area}\n"):
+        return True
+    return bool(_FOCUS_AREA_LINE_RE.search(_strip_md_emphasis(str(description or ""))))
+
+
+def _load_manifest_observations(path: Path) -> list[dict[str, object]]:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"manifest must be readable JSON: {exc}") from exc
+    if not isinstance(data, dict):
+        raise ValueError("manifest must be a JSON object")
+    observations = data.get("oos_observations", [])
+    if observations is None:
+        observations = []
+    if not isinstance(observations, list):
+        raise ValueError("oos_observations must be an array")
+    return [item if isinstance(item, dict) else {} for item in observations]
+
+
+def _existing_oos_titles(path: Path) -> set[str]:
+    if not path.is_file():
+        return set()
+    titles: set[str] = set()
+    for match in re.finditer(r"^### OOS_\d+:[ \t]*(.*?)\s*$", path.read_text(encoding="utf-8"), re.MULTILINE):
+        titles.add(_normalize_title(match.group(1)).lower())
+    return titles
+
+
+def _next_oos_number(path: Path) -> int:
+    if not path.is_file():
+        return 1
+    max_n = 0
+    for match in re.finditer(r"^### OOS_(\d+):", path.read_text(encoding="utf-8"), re.MULTILINE):
+        max_n = max(max_n, int(match.group(1)))
+    return max_n + 1
+
+
+def _append_run_log_warning(tmpdir: Path, entry: str) -> None:
+    log = tmpdir / "execution-issues.md"
+    try:
+        from run_logs import append_entry_to_log
+
+        append_entry_to_log(log, "Warnings", entry)
+        return
+    except Exception:
+        pass
+    text = log.read_text(encoding="utf-8") if log.exists() else ""
+    if entry in text:
+        return
+    if "### Warnings" not in text:
+        text = text.rstrip() + ("\n\n" if text.strip() else "") + "### Warnings\n"
+    text = text.rstrip() + f"\n{entry}\n"
+    log.write_text(text, encoding="utf-8")
+
+
+def _security_audit_has_title(path: Path, title: str) -> bool:
+    return path.is_file() and f"### Security OOS: {title}" in path.read_text(encoding="utf-8")
+
+
+def materialize_manifest_oos(manifest_path: Path, implement_tmpdir: Path, *, count_only: bool = False) -> int:
+    observations = _load_manifest_observations(manifest_path)
+    if count_only:
+        return len(observations)
+    if not observations:
+        return 0
+    if os.environ.get("LARCH_TEST_MATERIALIZE_FORCE_FAIL") == "true":
+        raise RuntimeError("LARCH_TEST_MATERIALIZE_FORCE_FAIL")
+    plugin_root = Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[1]))
+    cli_path = plugin_root / "python" / "cli.py"
+    if not cli_path.is_file():
+        raise RuntimeError(f"redact secrets missing or not executable: {cli_path}")
+    out = implement_tmpdir / "oos-accepted-main-agent.md"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.touch(exist_ok=True)
+    titles = _existing_oos_titles(out)
+    next_n = _next_oos_number(out)
+    blocks: list[str] = []
+    audit = implement_tmpdir / "security-oos-observations.md"
+    for index, item in enumerate(observations, start=1):
+        title = _normalize_title(item.get("title", ""))
+        description = item.get("description", "")
+        phase = _normalize_title(item.get("phase", "implement")) or "implement"
+        focus_area = item.get("focus-area", item.get("focus_area", ""))
+        focus_area_s = _normalize_title(focus_area)
+        if not title:
+            title = f"Untitled external implementer OOS {index}"
+        if _security_signal(description, focus_area_s):
+            if not _security_audit_has_title(audit, title):
+                had = audit.exists() and audit.stat().st_size > 0
+                lines = ([""] if had else []) + [f"### Security OOS: {title}"]
+                lines.extend(_write_description_lines(description))
+                lines.append(f"- **Phase**: {phase}")
+                if focus_area_s:
+                    lines.append(f"- **focus-area**: {focus_area_s}")
+                lines.append("- **Disposition**: security-routed; not materialized for public OOS filing")
+                audit.write_text((audit.read_text(encoding="utf-8") if audit.exists() else "") + "\n".join(lines) + "\n", encoding="utf-8")
+                _append_run_log_warning(implement_tmpdir, "- **materialize-manifest-oos.sh**: security-routed manifest OOS retained in security-oos-observations.md")
+            continue
+        key = title.lower()
+        if key in titles:
+            continue
+        lines = [f"### OOS_{next_n}: {title}"]
+        lines.extend(_write_description_lines(description))
+        lines.append("- **Reviewer**: External implementer")
+        lines.append("- **Vote tally**: N/A — auto-filed per policy")
+        lines.append(f"- **Phase**: {phase}")
+        if focus_area_s:
+            lines.append(f"- **focus-area**: {focus_area_s}")
+        blocks.append("\n".join(lines))
+        titles.add(key)
+        next_n += 1
+    if blocks:
+        existing = out.read_text(encoding="utf-8")
+        sep = "\n\n" if existing.strip() else ""
+        out.write_text(existing.rstrip() + sep + "\n\n".join(blocks) + "\n", encoding="utf-8")
+    return len(observations)
+
+
+def materialize_manifest_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py oos materialize-manifest")
+    parser.add_argument("--count-only", action="store_true")
+    parser.add_argument("--manifest-path", required=True)
+    parser.add_argument("--implement-tmpdir", required=True)
+    try:
+        args = parser.parse_args(argv)
+        count = materialize_manifest_oos(Path(args.manifest_path), Path(args.implement_tmpdir), count_only=args.count_only)
+    except (ValueError, RuntimeError, OSError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    if args.count_only:
+        print(count)
+    return 0
+
+
+def _github_urls(text: str) -> set[str]:
+    return set(_github_issue_url_pattern().findall(text))
+
+
+def _count_urls_in_files(paths: Iterable[Path], *, strict: bool = False) -> int:
+    urls: set[str] = set()
+    for path in paths:
+        if not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if strict:
+            urls.update(match.group(1) for match in _STRICT_FILED_RE.finditer(text))
+        else:
+            urls.update(_github_urls(text))
+    return len(urls)
+
+
+def _count_rejected_from_ndjson(path: Path) -> int:
+    if not path.is_file() or path.stat().st_size == 0:
+        return 0
+    markers: set[str] = set()
+    for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if not raw.strip():
+            continue
+        try:
+            item = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise ValueError("jq parse failure while reading oos-issues.ndjson; refusing disposition") from exc
+        body = str(item.get("body", "")) if isinstance(item, dict) else ""
+        lower = body.lower()
+        if "rejected / out-of-scope" not in lower and "## rejected" not in lower:
+            continue
+        in_rejected = False
+        tail: list[str] = []
+        for line in body.splitlines():
+            l = line.lower()
+            is_rej = bool(re.match(r"^##\s*rejected", l) or "rejected / out-of-scope" in l)
+            if is_rej:
+                in_rejected = True
+                continue
+            if in_rejected and line.startswith("##") and not is_rej:
+                break
+            if in_rejected:
+                tail.append(line)
+        markers.update(_REJECTED_MARKER_RE.findall("\n".join(tail)))
+    return len(markers)
+
+
+def _count_inline_triage(commit_range: str) -> int:
+    repo = subprocess.run(["git", "rev-parse", "--show-toplevel"], text=True, capture_output=True)
+    if repo.returncode != 0:
+        raise ValueError("not inside a git work tree (need commit-range scan)")
+    root = repo.stdout.strip()
+    ok = subprocess.run(["git", "-C", root, "rev-list", "-1", commit_range], text=True, capture_output=True)
+    if ok.returncode != 0:
+        raise ValueError(f"invalid commit-range: {commit_range}")
+    log = subprocess.run(["git", "-C", root, "log", "--format=%B", commit_range], text=True, capture_output=True)
+    if log.returncode != 0:
+        raise ValueError(f"invalid commit-range: {commit_range}")
+    return len(_INLINE_TRIAGE_RE.findall(log.stdout))
+
+
+def disposition_gate(*, accepted_files: list[Path], filed_url_files: list[Path], filed_url_strict_files: list[Path], commit_range: str, oos_issues_ndjson: Path | None = None, fork_mode: bool = False, repo_unavailable: bool = False) -> int:
+    if fork_mode or repo_unavailable:
+        return 0
+    for path in accepted_files:
+        if path.exists() and (not path.is_file() or not os.access(path, os.R_OK)):
+            raise ValueError(f"accepted file path is not a readable regular file: {path}")
+    if oos_issues_ndjson and oos_issues_ndjson.is_file() and oos_issues_ndjson.stat().st_size > 0 and not any(p.is_file() for p in accepted_files):
+        if _count_urls_in_files([oos_issues_ndjson]) > 0:
+            raise ValueError("oos-issues.ndjson lists filed GitHub issue URLs but no --accepted-files paths exist as regular files (check CSV path list)")
+    non_sec = count_non_security(tuple(str(p) for p in accepted_files))
+    filed = _count_urls_in_files(filed_url_files + ([oos_issues_ndjson] if oos_issues_ndjson else [])) + _count_urls_in_files(filed_url_strict_files, strict=True)
+    rejected = _count_rejected_from_ndjson(oos_issues_ndjson) if oos_issues_ndjson else 0
+    inline = _count_inline_triage(commit_range)
+    if non_sec == 0 or filed > 0 or inline >= non_sec or rejected >= non_sec:
+        return 0
+    print(f"oos-disposition-gate: FAIL non_security_oos={non_sec} filed_urls={filed} inline_triage_lines={inline} rejected_oos_markers={rejected} (commit-range {commit_range})", file=sys.stderr)
+    return 1
+
+
+def disposition_gate_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py oos disposition-gate")
+    parser.add_argument("--fork-mode", action="store_true")
+    parser.add_argument("--repo-unavailable", action="store_true")
+    parser.add_argument("--accepted-files")
+    parser.add_argument("--filed-urls-file", action="append", default=[])
+    parser.add_argument("--filed-urls-strict-file", action="append", default=[])
+    parser.add_argument("--oos-issues-ndjson")
+    parser.add_argument("--commit-range")
+    try:
+        args = parser.parse_args(argv)
+        if args.fork_mode or args.repo_unavailable:
+            return 0
+        if not args.accepted_files or not args.commit_range or (not args.filed_urls_file and not args.filed_urls_strict_file):
+            parser.print_usage(sys.stderr)
+            return 2
+        return disposition_gate(
+            accepted_files=[Path(p) for p in args.accepted_files.split(",") if p],
+            filed_url_files=[Path(p) for p in args.filed_urls_file],
+            filed_url_strict_files=[Path(p) for p in args.filed_urls_strict_file],
+            oos_issues_ndjson=Path(args.oos_issues_ndjson) if args.oos_issues_ndjson else None,
+            commit_range=args.commit_range,
+            fork_mode=args.fork_mode,
+            repo_unavailable=args.repo_unavailable,
+        )
+    except ValueError as exc:
+        print(f"oos-disposition-gate: {exc}", file=sys.stderr)
+        return 2
+
+
+def _read_kv_file(path: Path) -> dict[str, str]:
+    out: dict[str, str] = {}
+    if not path.is_file():
+        return out
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if "=" in line:
+            key, value = line.split("=", 1)
+            out[key] = value.strip("\r")
+    return out
+
+
+def _append_failure_log(log: Path, site: str, tool: str, rc: int, output: str) -> None:
+    log.parent.mkdir(parents=True, exist_ok=True)
+    with log.open("a", encoding="utf-8") as handle:
+        handle.write(f"\n### Tool Failures\n- **{site}**: {tool} exited {rc}\n")
+        if output:
+            handle.write(output.rstrip() + "\n")
+
+
+def disposition_checkpoint_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py oos disposition-checkpoint")
+    parser.add_argument("--implement-tmpdir", required=True)
+    parser.add_argument("--design-tmpdir")
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit:
+        return 2
+    tmpdir = Path(args.implement_tmpdir)
+    if not tmpdir.exists():
+        print("oos-disposition-checkpoint: --implement-tmpdir not found", file=sys.stderr)
+        return 2
+    state = _read_kv_file(tmpdir / "ship-pr-state.sh") | _read_kv_file(tmpdir / "finalize-state.sh")
+    forked = state.get("FORKED_TARGET", "false") == "true"
+    repo_unavailable = state.get("REPO_UNAVAILABLE", "false") == "true"
+    merge_base = subprocess.run(["git", "merge-base", "HEAD", "origin/main"], text=True, capture_output=True)
+    commit_range = f"{merge_base.stdout.strip()}..HEAD" if merge_base.returncode == 0 and merge_base.stdout.strip() else "HEAD"
+    run_id = state.get("RUN_ID", "")
+    if not run_id and (tmpdir / "session-id").is_file():
+        run_id = (tmpdir / "session-id").read_text(encoding="utf-8").strip()
+    ndjson: Path | None = None
+    if run_id:
+        candidate = tmpdir / "larch-logs" / "implement" / run_id / "oos-issues.ndjson"
+        if candidate.is_file():
+            ndjson = candidate
+    else:
+        matches = sorted((tmpdir / "larch-logs" / "implement").glob("*/oos-issues.ndjson"))
+        if len(matches) == 1:
+            ndjson = matches[0]
+        elif len(matches) > 1:
+            msg = "implement: ambiguous oos-issues.ndjson without session-id; cannot pass --oos-issues-ndjson"
+            (tmpdir / "oos-disposition-checkpoint.stderr.log").write_text(msg + "\n", encoding="utf-8")
+            _append_failure_log(tmpdir / "execution-issues.md", "step-8-oos-checkpoint-validation", "oos-disposition-checkpoint", 2, msg)
+            return 2
+    design = Path(args.design_tmpdir) if args.design_tmpdir else Path(os.environ.get("DESIGN_TMPDIR", "")) if os.environ.get("DESIGN_TMPDIR") else None
+    design_path = tmpdir / "oos-accepted-design.md"
+    if design and (design / "oos-accepted-design.md").is_file():
+        design_path = design / "oos-accepted-design.md"
+    elif (tmpdir / "design-export" / "oos-accepted-design.md").is_file():
+        design_path = tmpdir / "design-export" / "oos-accepted-design.md"
+    accepted = [tmpdir / "oos-accepted-main-agent.md", design_path, tmpdir / "oos-accepted-review.md"]
+    filed = [tmpdir / "oos-issues-created.md"]
+    strict = [tmpdir / "oos-accepted-main-agent.md", design_path, tmpdir / "oos-accepted-review.md"]
+    try:
+        rc = disposition_gate(accepted_files=accepted, filed_url_files=filed, filed_url_strict_files=strict, oos_issues_ndjson=ndjson, commit_range=commit_range, fork_mode=forked, repo_unavailable=repo_unavailable)
+    except ValueError as exc:
+        msg = str(exc)
+        (tmpdir / "oos-disposition-checkpoint.stderr.log").write_text(msg + "\n", encoding="utf-8")
+        _append_failure_log(tmpdir / "execution-issues.md", "step-8-oos-checkpoint-validation", "oos-disposition-checkpoint", 2, msg)
+        return 2
+    if rc != 0:
+        _append_failure_log(tmpdir / "execution-issues.md", "step-8-oos-checkpoint", "oos-disposition-gate", rc, "")
+    return rc
+
+
+@dataclass(frozen=True)
+class OosItem:
+    number: int
+    title: str
+    body: str
+
+
+def _parse_oos_blocks(text: str) -> list[OosItem]:
+    items: list[OosItem] = []
+    matches = list(_OOS_BLOCK_RE.finditer(text))
+    for match in matches:
+        items.append(OosItem(int(match.group(1)), match.group(2).strip(), match.group(0).rstrip()))
+    return items
+
+
+def _aggregate_block(seq: int, items: list[OosItem]) -> str:
+    title = f"Aggregated rollup of {len(items)} capped OOS items"
+    lines = [f"### OOS_{seq}: {title}", "- **Description**: Multiple OOS items were grouped because this run exceeded the per-run filing cap.", "", "  Rolled-up items:"]
+    for item in items:
+        excerpt = re.sub(r"\s+", " ", item.body).strip()
+        if len(excerpt) > 800:
+            excerpt = excerpt[:797] + "..."
+        lines.append(f"  - OOS_{item.number}: {item.title} — {excerpt}")
+    lines.extend(["- **Reviewer**: Combined: capped per-run rollup", "- **Vote tally**: N/A — capped per-run rollup", "- **Phase**: implement"])
+    return "\n".join(lines)
+
+
+def issue_cap(input_file: Path, output: Path | None = None, *, cap: int | None = None) -> None:
+    if cap is None:
+        raw = os.environ.get("OOS_ISSUES_PER_RUN_CAP", "1")
+        if not raw.isdigit() or int(raw) <= 0:
+            raise ValueError("OOS_ISSUES_PER_RUN_CAP must be a positive integer")
+        cap = int(raw)
+    text = input_file.read_text(encoding="utf-8") if input_file.exists() else ""
+    items = _parse_oos_blocks(text)
+    target = output or input_file
+    if not items or len(items) <= cap:
+        if output:
+            target.write_text(text, encoding="utf-8")
+        return
+    keep = items[: max(cap - 1, 0)]
+    roll = items[max(cap - 1, 0):]
+    blocks = [item.body for item in keep]
+    blocks.append(_aggregate_block(len(blocks) + 1, roll))
+    rendered = "\n\n".join(blocks).rstrip() + "\n"
+    tmp = target.with_suffix(target.suffix + ".tmp")
+    tmp.write_text(rendered, encoding="utf-8")
+    tmp.replace(target)
+
+
+def issue_cap_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py oos issue-cap")
+    parser.add_argument("--input-file", required=True)
+    parser.add_argument("--output")
+    try:
+        args = parser.parse_args(argv)
+        issue_cap(Path(args.input_file), Path(args.output) if args.output else None)
+    except (ValueError, OSError) as exc:
+        print(f"oos-issue-cap: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
+def _item_file_records(item: OosItem) -> list[tuple[str, int, int, bool]]:
+    records: list[tuple[str, int, int, bool]] = []
+    for match in _FILE_REF_RE.finditer(item.body):
+        path = match.group("path")
+        if path.startswith(("http/", "https/")):
+            continue
+        start_s = match.group("start")
+        end_s = match.group("end")
+        if start_s:
+            start = int(start_s)
+            end = int(end_s or start_s)
+            whole = False
+        else:
+            start = 1
+            end = 10**9
+            whole = True
+        records.append((path, start, end, whole))
+    return records
+
+
+def _ranges_conflict(left: tuple[str, int, int, bool], right: tuple[str, int, int, bool]) -> bool:
+    if left[0] != right[0]:
+        return False
+    if left[3] or right[3]:
+        return True
+    return not (left[1] > right[2] or right[1] > left[2])
+
+
+def file_conflict_deps(input_file: Path) -> list[tuple[int, int]]:
+    items = _parse_oos_blocks(input_file.read_text(encoding="utf-8") if input_file.exists() else "")
+    records = {item.number: _item_file_records(item) for item in items}
+    deps: set[tuple[int, int]] = set()
+    for i, left in enumerate(items):
+        for right in items[i + 1:]:
+            if any(_ranges_conflict(a, b) for a in records[left.number] for b in records[right.number]):
+                deps.add((left.number, right.number))
+    return sorted(deps)
+
+
+def file_conflict_deps_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py oos file-conflict-deps")
+    parser.add_argument("--input-file", required=True)
+    parser.add_argument("--output")
+    try:
+        args = parser.parse_args(argv)
+        deps = file_conflict_deps(Path(args.input_file))
+        text = "".join(f"OOS_{a}\tOOS_{b}\n" for a, b in deps)
+        if args.output:
+            Path(args.output).write_text(text, encoding="utf-8")
+        else:
+            sys.stdout.write(text)
+    except OSError as exc:
+        print(f"oos-file-conflict-deps: {exc}", file=sys.stderr)
+        return 1
+    return 0
 
 # ---------------------------------------------------------------------------
 # CLI entry point
