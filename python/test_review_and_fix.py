@@ -2,6 +2,7 @@
 # ruff: noqa: ARG005
 from __future__ import annotations
 
+import json
 import os
 import shutil
 from pathlib import Path
@@ -537,3 +538,488 @@ def test_commit_fixes_emits_committed_kv(tmp_path, monkeypatch, capsys):
     assert rc == 0
     assert "COMMITTED=true" in out
     assert "SHA=deadbeef" in out
+
+
+@pytest.mark.commit_fixes
+def test_commit_fixes_marks_token_and_timing(tmp_path, monkeypatch):
+    impl = _tmp_impl(tmp_path)
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+    (impl / "session-env.sh").write_text(
+        "LARCH_TOKEN_SESSION_ID=parent-session\nLARCH_TIMING_LEDGER=/tmp/ledger.tsv\n",
+        encoding="utf-8",
+    )
+    calls: list[tuple[list[str], dict[str, str]]] = []
+
+    def fake_run(argv, **kwargs):
+        env = kwargs.get("env", {})
+        calls.append((list(argv), dict(env) if env else {}))
+        return review_and_fix.proc.CommandResult(argv, 0, "", "", 0.0)
+
+    monkeypatch.setattr(review_and_fix, "_run", fake_run)
+    monkeypatch.setattr(review_and_fix, "_git_head", lambda: "deadbeef")
+    rc = review_and_fix.commit_fixes(["--message", "fix review"])
+    assert rc == 0
+    token_calls = [argv for argv, _env in calls if "token" in argv and "mark" in argv]
+    timing_calls = [(argv, env) for argv, env in calls if "timing" in argv and "mark" in argv]
+    assert token_calls
+    assert timing_calls
+    assert "Step 7 — commit review fixes" in token_calls[0]
+    assert "Step 7 — commit review fixes" in timing_calls[0][0]
+    assert timing_calls[0][1].get("LARCH_TIMING_SKILL") == "implement"
+
+
+@pytest.mark.dispatch
+def test_apply_findings_rehydrates_session_env_before_coder(tmp_path, monkeypatch):
+    monkeypatch.delenv("LARCH_TOKEN_SESSION_ID", raising=False)
+    monkeypatch.delenv("LARCH_TIMING_LEDGER", raising=False)
+    session = tmp_path / "session-env.sh"
+    session.write_text(
+        "LARCH_TOKEN_SESSION_ID=parent-session\nLARCH_TIMING_LEDGER=/tmp/ledger.tsv\n",
+        encoding="utf-8",
+    )
+    findings = tmp_path / "findings.md"
+    findings.write_text("### FINDING_1: x\n- **Severity**: nit\n", encoding="utf-8")
+    seen: dict[str, str] = {}
+
+    def fake_coder(input_file, round_dir, result_file, round_num=None):
+        del input_file, round_dir, result_file, round_num
+        seen["token"] = os.environ.get("LARCH_TOKEN_SESSION_ID", "")
+        seen["ledger"] = os.environ.get("LARCH_TIMING_LEDGER", "")
+        return review_and_fix.CoderResult(0, status="no-changes")
+
+    monkeypatch.setattr(review_and_fix, "apply_findings_with_coder", fake_coder)
+    rc = review_and_fix.apply_findings([
+        "--findings-file", str(findings),
+        "--review-tmpdir", str(tmp_path / "review"),
+        "--session-env-path", str(session),
+    ])
+    assert rc == 0
+    assert seen["token"] == "parent-session"
+    assert seen["ledger"] == "/tmp/ledger.tsv"
+
+
+@pytest.mark.dispatch
+def test_scrub_findings_missing_output_fails_closed(tmp_path, monkeypatch):
+    input_file = tmp_path / "in.md"
+    output_file = tmp_path / "out.md"
+    input_file.write_text("### FINDING_1: x\n", encoding="utf-8")
+
+    def fake_run(_argv, **_kwargs):
+        class Result:
+            returncode = 0
+            stdout = "SCRUB_OK=true\nSCRUB_COUNT=0\n"
+            stderr = ""
+
+        return Result()
+
+    monkeypatch.setattr(review_and_fix, "_run", fake_run)
+    ok, count = review_and_fix._scrub_findings(input_file, output_file, tmp_path / "scrub.log")
+    assert ok is False
+    assert count == 0
+    assert not output_file.exists()
+
+
+def test_review_core_capture_rejects_non_executable_override(tmp_path, monkeypatch):
+    override = tmp_path / "fake-core.sh"
+    override.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    monkeypatch.setenv("REVIEW_AND_FIX_REVIEW_CORE_SH", str(override))
+    env_path = tmp_path / "review-core.env"
+    rc = review_and_fix.review_core_capture(["--round-num", "1"], env_path, implement_tmpdir=tmp_path)
+    assert rc == 2
+    assert "override-not-executable" in env_path.read_text(encoding="utf-8")
+
+
+@pytest.mark.dispatch
+def test_run_coder_cursor_acquires_external_serial_lock(tmp_path, monkeypatch):
+    monkeypatch.setenv("CURSOR_PRESENT", "true")
+    monkeypatch.setattr(review_and_fix, "_cursor_available", lambda: True)
+    lock_calls: list[str] = []
+    release_calls: list[review_and_fix.agents.SerialLockState] = []
+
+    def fake_acquire(tool):
+        lock_calls.append(tool)
+        return review_and_fix.agents.SerialLockState(None)
+
+    def fake_release(state):
+        release_calls.append(state)
+
+    monkeypatch.setattr(review_and_fix.agents, "external_serial_lock_acquire", fake_acquire)
+    monkeypatch.setattr(review_and_fix.agents, "external_serial_lock_release_after", fake_release)
+    monkeypatch.setattr(review_and_fix, "_run", lambda argv, **_kw: review_and_fix.proc.CommandResult(
+        argv, 0, "wrapped prompt", "", 0.0,
+    ))
+    assert review_and_fix._run_coder_cursor(tmp_path, "prompt", tmp_path / "tool.log") is True
+    assert lock_calls == ["cursor"]
+    assert len(release_calls) == 1
+
+
+@pytest.mark.convergence
+def test_important_present_matches_concern_only_marker(tmp_path):
+    findings = tmp_path / "findings.md"
+    findings.write_text(
+        "### FINDING_1: title without heading tag\n- **Concern**: [Important] real issue\n",
+        encoding="utf-8",
+    )
+    assert review_and_fix._important_present(findings) is True
+
+
+@pytest.mark.convergence
+def test_run_round_missing_findings_sets_classifier_failed(tmp_path, monkeypatch):
+    impl = _tmp_impl(tmp_path)
+    round_dir = impl / "round-1"
+    round_dir.mkdir(parents=True)
+    accepted = round_dir / "accepted-findings.md"
+    accepted.write_text("### FINDING_1: [OUT_OF_SCOPE] real issue\n- **Severity**: important\n", encoding="utf-8")
+
+    def fake_capture(core_args, core_out, **_kwargs):
+        out_dir = Path(core_args[core_args.index("--output-dir") + 1])
+        dest = out_dir / "accepted-findings.md"
+        if accepted.resolve() != dest.resolve():
+            shutil.copyfile(accepted, dest)
+        core_out.write_text(
+            "\n".join([
+                "REVIEW_CORE_STATUS=ok",
+                "ACCEPTED_COUNT=1",
+                "REJECTED_COUNT=0",
+                f"ACCEPTED_FINDINGS_FILE={out_dir / 'accepted-findings.md'}",
+                f"REJECTED_FINDINGS_FILE={out_dir / 'rejected-findings.md'}",
+            ]) + "\n",
+            encoding="utf-8",
+        )
+        return 0
+
+    monkeypatch.setattr(review_and_fix, "review_core_capture", fake_capture)
+    monkeypatch.setattr(review_and_fix, "_compose_review_findings_output", lambda *_a, **_k: False)
+    monkeypatch.setattr(review_and_fix, "flush_review_batches", lambda *_a, **_k: True)
+    monkeypatch.setattr(review_and_fix, "flush_round_log_after_coder", lambda *_a, **_k: None)
+    monkeypatch.setattr(review_and_fix, "_run", lambda argv, **_kw: review_and_fix.proc.CommandResult(argv, 0, "", "", 0.0))
+    args = review_and_fix._build_step5_parser().parse_args([
+        "--implement-tmpdir", str(impl), "--round-num", "1", "--mode", "single",
+        "--session-env-path", str(impl / "session-env.sh"),
+        "--plan-file", str(impl / "plan.txt"),
+        "--feature-file", str(impl / "feature-description.txt"),
+        "--run-id", "run-1",
+        "--codex-available", "false",
+        "--cursor-available", "false",
+    ])
+    result = review_and_fix._run_round(args, suppress_emit=True)
+    assert result.status == "classifier-failed"
+    assert result.rc == 2
+
+
+@pytest.mark.convergence
+def test_prior_summary_accumulates_exonerated_and_neutral(tmp_path, monkeypatch):
+    impl = _tmp_impl(tmp_path)
+    (impl / "review-and-fix-summary.json").write_text(
+        json.dumps({
+            "schema_version": 3,
+            "rounds_completed": 1,
+            "accepted_count": 1,
+            "rejected_count": 2,
+            "exonerated_count": 3,
+            "neutral_count": 4,
+        }),
+        encoding="utf-8",
+    )
+    round_dir = impl / "round-2"
+    round_dir.mkdir(parents=True)
+    accepted = round_dir / "accepted-findings.md"
+    accepted.write_text("", encoding="utf-8")
+
+    def fake_capture(core_args, core_out, **_kwargs):
+        out_dir = Path(core_args[core_args.index("--output-dir") + 1])
+        (out_dir / "accepted-findings.md").write_text("", encoding="utf-8")
+        core_out.write_text(
+            "\n".join([
+                "REVIEW_CORE_STATUS=ok",
+                "ACCEPTED_COUNT=0",
+                "REJECTED_COUNT=0",
+                "EXONERATED_COUNT=2",
+                "NEUTRAL_COUNT=1",
+                f"ACCEPTED_FINDINGS_FILE={out_dir / 'accepted-findings.md'}",
+                f"REJECTED_FINDINGS_FILE={out_dir / 'rejected-findings.md'}",
+            ]) + "\n",
+            encoding="utf-8",
+        )
+        return 0
+
+    monkeypatch.setattr(review_and_fix, "review_core_capture", fake_capture)
+    monkeypatch.setattr(review_and_fix, "_compose_review_findings_output", lambda *_a, **_k: False)
+    monkeypatch.setattr(review_and_fix, "flush_review_batches", lambda *_a, **_k: True)
+    monkeypatch.setattr(review_and_fix, "flush_round_log_after_coder", lambda *_a, **_k: None)
+    monkeypatch.setattr(review_and_fix, "_run", lambda argv, **_kw: review_and_fix.proc.CommandResult(argv, 0, "", "", 0.0))
+    args = review_and_fix._build_step5_parser().parse_args([
+        "--implement-tmpdir", str(impl), "--round-num", "2", "--mode", "single",
+        "--session-env-path", str(impl / "session-env.sh"),
+        "--plan-file", str(impl / "plan.txt"),
+        "--feature-file", str(impl / "feature-description.txt"),
+        "--run-id", "run-1",
+        "--codex-available", "false",
+        "--cursor-available", "false",
+    ])
+    result = review_and_fix._run_round(args, suppress_emit=True)
+    assert result.total_exonerated_count == 5
+    assert result.total_neutral_count == 5
+    summary = json.loads((impl / "review-and-fix-summary.json").read_text(encoding="utf-8"))
+    assert summary["exonerated_count"] == 5
+    assert summary["neutral_count"] == 5
+
+
+@pytest.mark.step5
+def test_step5_loop_complete_returns_zero_despite_round_rc(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = _tmp_impl(tmp_path)
+
+    def fake_round(args, *, suppress_emit, review_core_impl=None):
+        del args, suppress_emit, review_core_impl
+        return review_and_fix.RoundResult(
+            2, "complete", "ok", 1, 0, 0, 0, 0, 0, 0, 0, 0,
+            impl / "round-1" / "accepted-findings.md",
+            impl / "round-1" / "rejected-findings.md",
+            impl / "round-1",
+            impl / "review-and-fix-summary.json",
+            impl / "accumulated-oos.jsonl",
+            review_and_fix.CoderResult(0),
+        )
+
+    monkeypatch.setattr(review_and_fix, "_run_round", fake_round)
+    monkeypatch.setattr(review_and_fix, "record_round_timing", lambda _argv: 0)
+    rc = review_and_fix.step5(["--implement-tmpdir", str(impl), "--mode", "loop", "--starting-round", "1", "--round-cap", "1"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "STEP5_REVIEW_STATUS=complete" in out
+
+
+@pytest.mark.step5
+def test_step5_loop_preflight_failure_touches_progress_done(tmp_path, monkeypatch):
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = _tmp_impl(tmp_path)
+    (impl / "plan.txt").write_text("", encoding="utf-8")
+    rc = review_and_fix.step5(["--implement-tmpdir", str(impl), "--mode", "loop", "--starting-round", "1"])
+    assert rc == 2
+    assert (impl / "progress" / "done").is_file()
+
+
+@pytest.mark.check_changes
+def _mk_git_repo(tmp_path: Path) -> Path:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    review_and_fix._run(["git", "init", "--quiet"], cwd=str(repo))
+    review_and_fix._run(["git", "config", "user.email", "test@example.com"], cwd=str(repo))
+    review_and_fix._run(["git", "config", "user.name", "Test"], cwd=str(repo))
+    (repo / "tracked.txt").write_text("initial\n", encoding="utf-8")
+    review_and_fix._run(["git", "add", "tracked.txt"], cwd=str(repo))
+    review_and_fix._run(["git", "commit", "--quiet", "-m", "initial"], cwd=str(repo))
+    return repo
+
+
+@pytest.mark.check_changes
+def test_check_changes_clean_tree_no_baseline(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    repo = _mk_git_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    rc = review_and_fix.check_changes([])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "FILES_CHANGED=false" in out
+    assert "UNTRACKED_BASELINE=missing" in out
+
+
+@pytest.mark.check_changes
+def test_check_changes_preexisting_untracked_with_baseline(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    repo = _mk_git_repo(tmp_path)
+    (repo / "stray.txt").write_text("x\n", encoding="utf-8")
+    ls = review_and_fix._run(
+        ["git", "ls-files", "--others", "--exclude-standard"],
+        cwd=str(repo),
+    )
+    baseline = tmp_path / "baseline.txt"
+    baseline.write_text(ls.stdout, encoding="utf-8")
+    monkeypatch.chdir(repo)
+    rc = review_and_fix.check_changes(["--baseline", str(baseline)])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "FILES_CHANGED=false" in out
+    assert "UNTRACKED_BASELINE=present" in out
+
+
+@pytest.mark.check_changes
+def test_check_changes_head_baseline_detects_commit_movement(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    repo = _mk_git_repo(tmp_path)
+    head_bl = repo / "pre-review-head.txt"
+    review_and_fix._run(["git", "rev-parse", "HEAD"], cwd=str(repo))
+    head_bl.write_text(review_and_fix._run(["git", "rev-parse", "HEAD"], cwd=str(repo)).stdout, encoding="utf-8")
+    (repo / "tracked.txt").write_text("initial\nreview-fix\n", encoding="utf-8")
+    review_and_fix._run(["git", "add", "tracked.txt"], cwd=str(repo))
+    review_and_fix._run(["git", "commit", "--quiet", "-m", "Address code review feedback (round 1)"], cwd=str(repo))
+    monkeypatch.chdir(repo)
+    rc = review_and_fix.check_changes(["--head-baseline", str(head_bl)])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "FILES_CHANGED=true" in out
+
+
+@pytest.mark.check_changes
+def test_check_changes_strict_promotes_probe_failure(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    sandbox = tmp_path / "not-a-git-repo"
+    sandbox.mkdir()
+    monkeypatch.chdir(sandbox)
+    rc = review_and_fix.check_changes(["--strict"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "FILES_CHANGED=true" in out
+    assert "GIT_PROBE_FAILED=true" in out
+
+
+@pytest.mark.convergence
+def test_step5_post_round_gates_lint_fix_attempt_cap(tmp_path, monkeypatch):
+    impl = _tmp_impl(tmp_path)
+    round_dir = impl / "round-1"
+    round_dir.mkdir(parents=True)
+    accepted = round_dir / "accepted-findings.md"
+    accepted.write_text("### FINDING_1: a\n", encoding="utf-8")
+    result = review_and_fix.RoundResult(
+        0, "fix-applied", "fix-required", 1, 1, 0, 0, 0, 1, 0, 0, 0,
+        accepted, round_dir / "rejected-findings.md", round_dir,
+        impl / "review-and-fix-summary.json", impl / "accumulated-oos.jsonl",
+        review_and_fix.CoderResult(0, input_count=1, status="applied"),
+    )
+    monkeypatch.setenv("LARCH_STEP5_LINT_FIX_MAX_ATTEMPTS", "1")
+    checks_calls = {"n": 0}
+
+    def fake_checks(_impl):
+        checks_calls["n"] += 1
+        return {"STATUS": "fail", "REDACTED_LOG_FILE": str(impl / "checks.log")}
+
+    def fake_lint(_impl, _log):
+        return {"LINT_FIX_STATUS": "applied"}
+
+    monkeypatch.setattr(review_and_fix, "_run_relevant_checks_captured", fake_checks)
+    monkeypatch.setattr(review_and_fix, "_run_lint_fix_loop", fake_lint)
+    status, reason, cont = review_and_fix._step5_post_round_gates(result, 1, 5, impl)
+    assert status == "stall"
+    assert reason == "lint-fix-attempt-cap"
+    assert cont is False
+
+
+@pytest.mark.convergence
+def test_step5_post_round_gates_bulk_skip_ratio_continues(tmp_path, monkeypatch):
+    impl = _tmp_impl(tmp_path)
+    round_dir = impl / "round-1"
+    round_dir.mkdir(parents=True)
+    accepted = round_dir / "accepted-findings.md"
+    accepted.write_text("### FINDING_1: a\n", encoding="utf-8")
+    result = review_and_fix.RoundResult(
+        0, "fix-applied", "fix-required", 1, 4, 0, 0, 0, 4, 0, 0, 0,
+        accepted, round_dir / "rejected-findings.md", round_dir,
+        impl / "review-and-fix-summary.json", impl / "accumulated-oos.jsonl",
+        review_and_fix.CoderResult(0, input_count=4, status="applied"),
+        skipped_finding_count=3,
+    )
+    monkeypatch.setattr(review_and_fix, "_run_relevant_checks_captured", lambda _impl: {"STATUS": "pass", "RELEVANT_CHECKS_OK": "true"})
+    monkeypatch.setattr(review_and_fix, "_skip_ratio_threshold", lambda: 0.5)
+    status, reason, cont = review_and_fix._step5_post_round_gates(result, 1, 5, impl)
+    assert status is None
+    assert reason is None
+    assert cont is True
+
+
+@pytest.mark.dispatch
+def test_core_args_for_round_forwards_pre_scouted_manifest(tmp_path):
+    impl = _tmp_impl(tmp_path)
+    manifest = impl / "scout-coder-manifest.json"
+    manifest.write_text("{}\n", encoding="utf-8")
+    args = review_and_fix._build_step5_parser().parse_args([
+        "--implement-tmpdir", str(impl),
+        "--round-num", "1",
+        "--session-env-path", str(impl / "session-env.sh"),
+        "--plan-file", str(impl / "plan.txt"),
+        "--feature-file", str(impl / "feature-description.txt"),
+        "--pre-scouted-manifest", str(manifest),
+        "--codex-available", "false",
+        "--cursor-available", "false",
+    ])
+    core_args = review_and_fix._core_args_for_round(args, impl / "round-1", "0", impl / "ledger.tsv")
+    idx = core_args.index("--pre-scouted-manifest")
+    assert core_args[idx + 1] == str(manifest)
+
+
+@pytest.mark.step5
+def test_step5_preflight_missing_session_env_emits_stall(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = _tmp_impl(tmp_path)
+    (impl / "session-env.sh").unlink()
+    rc = review_and_fix.step5(["--implement-tmpdir", str(impl), "--mode", "loop", "--starting-round", "1"])
+    out = capsys.readouterr().out
+    assert rc == 2
+    assert "STEP5_REVIEW_STATUS=stall" in out
+    assert "STALL_REASON=preflight-failed" in out
+
+
+@pytest.mark.dispatch
+def test_preflight_auto_forwards_eligible_scout_manifest(tmp_path):
+    impl = _tmp_impl(tmp_path)
+    (impl / "step2-external-scout-eligible.txt").write_text("ok\n", encoding="utf-8")
+    (impl / "step2-scout-coder-status.env").write_text("SCOUT_CODER_STATUS=ok\n", encoding="utf-8")
+    manifest = impl / "scout-coder-manifest.json"
+    manifest.write_text("{}\n", encoding="utf-8")
+    args = review_and_fix._build_step5_parser().parse_args([
+        "--implement-tmpdir", str(impl),
+        "--mode", "loop",
+    ])
+    _, _ = review_and_fix._preflight_step5(args)
+    assert args.pre_scouted_manifest == str(manifest)
+
+
+@pytest.mark.dispatch
+def test_preflight_skips_manifest_when_scout_ineligible(tmp_path):
+    impl = _tmp_impl(tmp_path)
+    args = review_and_fix._build_step5_parser().parse_args([
+        "--implement-tmpdir", str(impl),
+        "--mode", "loop",
+    ])
+    _, _ = review_and_fix._preflight_step5(args)
+    assert args.pre_scouted_manifest == ""
+
+
+@pytest.mark.dispatch
+def test_preflight_mav_apply_clears_pre_scouted_manifest(tmp_path):
+    impl = _tmp_impl(tmp_path)
+    findings = impl / "accepted.md"
+    findings.write_text("### FINDING_1: x\n", encoding="utf-8")
+    args = review_and_fix._build_step5_parser().parse_args([
+        "--implement-tmpdir", str(impl),
+        "--mode", "mav-apply",
+        "--round-num", "1",
+        "--findings-file", str(findings),
+        "--pre-scouted-manifest", str(impl / "scout-coder-manifest.json"),
+    ])
+    _, _ = review_and_fix._preflight_step5(args)
+    assert args.pre_scouted_manifest == ""
+
+
+@pytest.mark.step5
+def test_step5_preflight_missing_feature_file_emits_stall(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = _tmp_impl(tmp_path)
+    (impl / "feature-description.txt").unlink()
+    rc = review_and_fix.step5(["--implement-tmpdir", str(impl), "--mode", "loop", "--starting-round", "1"])
+    out = capsys.readouterr().out
+    assert rc == 2
+    assert "STEP5_REVIEW_STATUS=stall" in out
+    assert "STALL_REASON=preflight-failed" in out
+
+
+@pytest.mark.step5
+def test_step5_preflight_invalid_codex_present_emits_stall(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = _tmp_impl(tmp_path)
+    (impl / "session-env.sh").write_text("CODEX_PRESENT=maybe\nCURSOR_PRESENT=false\n", encoding="utf-8")
+    rc = review_and_fix.step5(["--implement-tmpdir", str(impl), "--mode", "loop", "--starting-round", "1"])
+    out = capsys.readouterr().out
+    assert rc == 2
+    assert "STEP5_REVIEW_STATUS=stall" in out

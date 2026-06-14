@@ -31,7 +31,11 @@ _PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 _PY_CLI = _PLUGIN_ROOT / "python" / "cli.py"
 _FINDING_RE = re.compile(r"^### FINDING_[0-9]+:")
 _SKIPPED_RE = re.compile(r"^SKIPPED:\s*(FINDING_\d+)")
-_HIGH_RE = re.compile(r"(^### FINDING_[0-9]+:.*(\*\*Important\*\*|\*\*Critical\*\*|\*\*High\*\*)|\*\*[Ii]mportant\*\*)")
+_HIGH_RE = re.compile(
+    r"(^### FINDING_[0-9]+:[^\n]*(\*\*Important\*\*|\*\*Critical\*\*|\*\*High\*\*)"
+    r"|\*\*[Ii]mportant\*\*"
+    r"|^- \*\*Concern\*\*:\s*\[[Ii]mportant\](?:[\s,:;.\)]|$))"
+)
 _OOS_HEADING_RE = re.compile(r"^### FINDING_[0-9]+:.*\[(?:OUT_OF_SCOPE|OOS)\]")
 _SETTLING_CORE_STATUSES = frozenset({"ok", "fix-required", "cap-reached", "zero-findings"})
 
@@ -136,6 +140,40 @@ def _session_get(session_env_path: Path, key: str, default: str = "") -> str:
         if raw.startswith(f"{key}="):
             return raw.split("=", 1)[1]
     return default
+
+
+def _rehydrate_session_env(session_env_path: Path) -> None:
+    if not session_env_path.is_file():
+        return
+    for key, default in (
+        ("LARCH_TOKEN_SESSION_ID", ""),
+        ("LARCH_CLAUDE_SOURCE_FILE", os.environ.get("LARCH_CLAUDE_SOURCE_FILE", "")),
+        ("LARCH_TIMING_LEDGER", os.environ.get("LARCH_TIMING_LEDGER", "")),
+    ):
+        value = _session_get(session_env_path, key, default)
+        if value:
+            os.environ[key] = value
+
+
+def _prior_summary_counts(implement_tmpdir: Path, round_num: int) -> tuple[int, int, int, int]:
+    prior_summary = implement_tmpdir / "review-and-fix-summary.json"
+    if not prior_summary.is_file():
+        return 0, 0, 0, 0
+    try:
+        data = json.loads(_read_text(prior_summary))
+    except json.JSONDecodeError:
+        return 0, 0, 0, 0
+    if data.get("schema_version") not in {2, 3}:
+        return 0, 0, 0, 0
+    prior_rounds = int(data.get("rounds_completed", 0) or 0)
+    if prior_rounds >= round_num:
+        return 0, 0, 0, 0
+    return (
+        int(data.get("accepted_count", 0) or 0),
+        int(data.get("rejected_count", 0) or 0),
+        int(data.get("exonerated_count", 0) or 0),
+        int(data.get("neutral_count", 0) or 0),
+    )
 
 
 def _positive_int(value: str, label: str) -> int:
@@ -259,6 +297,11 @@ def review_core_capture(
     output.parent.mkdir(parents=True, exist_ok=True)
     override = os.environ.get("REVIEW_AND_FIX_REVIEW_CORE_SH", "")
     if review_core_impl is None and override:
+        override_path = Path(override)
+        if not override_path.is_file() or not os.access(override_path, os.X_OK):
+            _err(f"review-and-fix: REVIEW_AND_FIX_REVIEW_CORE_SH is not executable: {override}")
+            _write_text(output, "REVIEW_CORE_STATUS=error\nREVIEW_CORE_ERROR=override-not-executable\n")
+            return 2
         env = os.environ.copy()
         if implement_tmpdir is not None:
             env["IMPLEMENT_TMPDIR"] = str(implement_tmpdir)
@@ -295,10 +338,8 @@ def _scrub_findings(input_file: Path, output_file: Path, log_file: Path) -> tupl
         str(log_file),
     ])
     values = _parse_env_lines(result.stdout)
-    ok = values.get("SCRUB_OK", "true") != "false" and result.returncode == 0
+    ok = values.get("SCRUB_OK", "true") != "false" and result.returncode == 0 and output_file.is_file()
     count = int(values.get("SCRUB_COUNT", "0") or "0") if values.get("SCRUB_COUNT", "0").isdigit() else 0
-    if not output_file.exists() and input_file.exists():
-        shutil.copyfile(input_file, output_file)
     return ok, count
 
 
@@ -1082,6 +1123,8 @@ def _run_coder_cursor(round_dir: Path, prompt_body: str, tool_log: Path) -> bool
         return False
     output = round_dir / "coder-cursor.log"
     wrapper = round_dir / "coder-cursor.wrapper.log"
+    lock_state = agents.external_serial_lock_acquire("cursor")
+    agents.external_serial_lock_release_after(lock_state)
     result = _run([
         "python3", str(cli), "agent", "run-external-agent",
         "--tool", "cursor",
@@ -1454,17 +1497,22 @@ def _run_round(args: argparse.Namespace, *, suppress_emit: bool, review_core_imp
         status = "complete"
     else:
         status = core_status
-    if classifier_failed:
-        status = "classifier-failed"
-        exit_code = 2
     if core_rc != 0 and exit_code == 0:
         exit_code = core_rc
-    if status in {"complete", "no-changes"} and accepted_count > 0:
+    if status in {"complete", "no-changes"} and accepted_count > 0 and not degraded_this_round:
         nit = min(_nit_count(accepted_file), accepted_count)
         non_nit = accepted_count - nit
         findings_path = round_dir / "findings.md"
-        if non_nit <= 5 and findings_path.is_file() and not _important_present(findings_path):
-            status = "converged-small-changes"
+        if non_nit <= 5:
+            if findings_path.is_file() and os.access(findings_path, os.R_OK):
+                if not _important_present(findings_path):
+                    status = "converged-small-changes"
+            elif non_nit > 0:
+                _err(f"review-and-fix: findings file not readable for Important check: {findings_path}")
+                classifier_failed = True
+    if classifier_failed:
+        status = "classifier-failed"
+        exit_code = 2
     if status == "fix-applied":
         with contextlib.suppress(FileNotFoundError):
             (round_dir / "post-coder-head.txt").unlink()
@@ -1473,11 +1521,11 @@ def _run_round(args: argparse.Namespace, *, suppress_emit: bool, review_core_imp
             post = round_dir / "post-coder-head.txt"
             _write_text(post, head + "\n")
             post.chmod(0o444)
-    prior = _parse_env_file(implement_tmpdir / "review-and-fix-summary.env")
-    total_accepted = accepted_count + int(prior.get("TOTAL_ACCEPTED_COUNT", "0") or "0") if prior.get("TOTAL_ACCEPTED_COUNT", "0").isdigit() else accepted_count
-    total_rejected = rejected_count + int(prior.get("TOTAL_REJECTED_COUNT", "0") or "0") if prior.get("TOTAL_REJECTED_COUNT", "0").isdigit() else rejected_count
-    total_exonerated = exonerated_count
-    total_neutral = neutral_count
+    prior_accepted, prior_rejected, prior_exonerated, prior_neutral = _prior_summary_counts(implement_tmpdir, round_num)
+    total_accepted = prior_accepted + accepted_count
+    total_rejected = prior_rejected + rejected_count
+    total_exonerated = prior_exonerated + exonerated_count
+    total_neutral = prior_neutral + neutral_count
     summary_file = implement_tmpdir / "review-and-fix-summary.json"
     accumulated_oos = implement_tmpdir / "accumulated-oos.jsonl"
     composed_findings = round_dir / "review-findings-full.composed.jsonl"
@@ -1738,27 +1786,30 @@ def step5(argv: list[str] | None = None) -> int:
         return int(exc.code)
     loop_mode = args.mode == "loop" or (not args.mode and not args.round_num)
     default_cap = _positive_int(str(args.round_cap), "--round-cap") if str(args.round_cap).isdigit() else 5
-    try:
-        implement_tmpdir, starting_round = _preflight_step5(args)
-        round_cap = _positive_int(str(args.round_cap), "--round-cap")
-    except ValueError as exc:
-        _err(f"review-and-fix step5: {exc}")
-        if loop_mode:
-            _emit_step5_envelope("stall", False, "preflight-failed", 0, 0, "unknown", "", "", default_cap)
-        return 2
-    os.environ["IMPLEMENT_TMPDIR"] = str(implement_tmpdir)
-    os.environ["CODEX_PRESENT"] = args.codex_available
-    os.environ["CURSOR_PRESENT"] = args.cursor_available
-    os.environ.setdefault("CLAUDE_PLUGIN_ROOT", str(_plugin_root()))
-    os.environ["LARCH_TOKEN_SESSION_ID"] = _session_get(Path(args.session_env_path), "LARCH_TOKEN_SESSION_ID", args.run_id)
-    os.environ["LARCH_CLAUDE_SOURCE_FILE"] = _session_get(Path(args.session_env_path), "LARCH_CLAUDE_SOURCE_FILE", os.environ.get("LARCH_CLAUDE_SOURCE_FILE", ""))
-    os.environ["LARCH_TIMING_LEDGER"] = _session_get(Path(args.session_env_path), "LARCH_TIMING_LEDGER", os.environ.get("LARCH_TIMING_LEDGER", ""))
-    _run(["python3", str(_plugin_root() / "python" / "cli.py"), "timing", "mark", "--if-latest-differs", "Step 5 — code review"], env={**os.environ, "LARCH_TIMING_SKILL": "implement"})
-    progress_done = implement_tmpdir / "progress" / "done"
-    if args.mode == "loop":
+    progress_done: Path | None = None
+    if loop_mode and args.implement_tmpdir:
+        progress_done = Path(args.implement_tmpdir).resolve() / "progress" / "done"
         with contextlib.suppress(FileNotFoundError):
             progress_done.unlink()
     try:
+        try:
+            implement_tmpdir, starting_round = _preflight_step5(args)
+            round_cap = _positive_int(str(args.round_cap), "--round-cap")
+        except ValueError as exc:
+            _err(f"review-and-fix step5: {exc}")
+            if loop_mode:
+                _emit_step5_envelope("stall", False, "preflight-failed", 0, 0, "unknown", "", "", default_cap)
+            return 2
+        os.environ["IMPLEMENT_TMPDIR"] = str(implement_tmpdir)
+        os.environ["CODEX_PRESENT"] = args.codex_available
+        os.environ["CURSOR_PRESENT"] = args.cursor_available
+        os.environ.setdefault("CLAUDE_PLUGIN_ROOT", str(_plugin_root()))
+        os.environ["LARCH_TOKEN_SESSION_ID"] = _session_get(Path(args.session_env_path), "LARCH_TOKEN_SESSION_ID", args.run_id)
+        os.environ["LARCH_CLAUDE_SOURCE_FILE"] = _session_get(Path(args.session_env_path), "LARCH_CLAUDE_SOURCE_FILE", os.environ.get("LARCH_CLAUDE_SOURCE_FILE", ""))
+        os.environ["LARCH_TIMING_LEDGER"] = _session_get(Path(args.session_env_path), "LARCH_TIMING_LEDGER", os.environ.get("LARCH_TIMING_LEDGER", ""))
+        _run(["python3", str(_plugin_root() / "python" / "cli.py"), "timing", "mark", "--if-latest-differs", "Step 5 — code review"], env={**os.environ, "LARCH_TIMING_SKILL": "implement"})
+        if not loop_mode:
+            progress_done = implement_tmpdir / "progress" / "done"
         if args.mode == "mav-apply":
             args.round_num = str(_positive_int(args.round_num, "--round-num"))
             round_dir = implement_tmpdir / f"round-{args.round_num}"
@@ -1855,6 +1906,10 @@ def step5(argv: list[str] | None = None) -> int:
                 terminal_status = "complete"
             elif result.status in {"converged-small-changes", "no-changes", "no-findings", "in-scope-filtered-out", "complete"}:
                 terminal_status = "complete"
+            elif result.status == "classifier-failed":
+                terminal_status = "stall"
+                stall_tracking = True
+                stall_reason = "classifier-failed"
             elif result.status == "fix-applied":
                 gate_status, gate_reason, gate_continue = _step5_post_round_gates(result, round_num, round_cap, implement_tmpdir)
                 if gate_continue:
@@ -1887,10 +1942,11 @@ def step5(argv: list[str] | None = None) -> int:
                 _emit_step5_envelope("cap-hit", False, "", rounds_completed, round_num, result.status, result.coder.status, result.coder.commit_sha, round_cap)
                 return 0
             _emit_step5_envelope("complete", False, "", rounds_completed, round_num, result.status, result.coder.status, result.coder.commit_sha, round_cap)
-            return result.rc
+            return 0
     finally:
-        progress_done.parent.mkdir(parents=True, exist_ok=True)
-        progress_done.touch(exist_ok=True)
+        if progress_done is not None:
+            progress_done.parent.mkdir(parents=True, exist_ok=True)
+            progress_done.touch(exist_ok=True)
 
 
 def round_dir_stderr(implement_tmpdir: Path, round_num: int) -> Path:
@@ -1910,6 +1966,8 @@ def apply_findings(argv: list[str] | None = None) -> int:
         _err("review-and-fix apply-findings: --findings-file must name a file")
         return 2
     review_tmpdir.mkdir(parents=True, exist_ok=True)
+    if args.session_env_path:
+        _rehydrate_session_env(Path(args.session_env_path))
     if not findings.stat().st_size or _count_findings(findings) == 0:
         _emit_kv("REVIEW_AND_FIX_STATUS", "no-findings")
         _emit_kv("FIX_COUNT", 0)

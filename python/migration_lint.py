@@ -83,6 +83,23 @@ def _dev_skill_markdown_bare_basename_ref(
     return bare_name.search(line_text) is not None
 
 
+def _implement_skill_markdown_bare_basename_ref(
+    repo_root: Path,
+    rel: str,
+    line_text: str,
+    retired_path: str,
+) -> bool:
+    if rel != "skills/implement/SKILL.md":
+        return False
+    if "# lint-ignore" in line_text:
+        return False
+    basename = Path(retired_path).name
+    bare_name = re.compile(
+        rf"(?<![A-Za-z0-9_./-]){re.escape(basename)}(?![A-Za-z0-9_./-])"
+    )
+    return bare_name.search(line_text) is not None
+
+
 def _line_references_retired(
     repo_root: Path,
     rel: str,
@@ -105,6 +122,8 @@ def _line_references_retired(
     if retired_path in line_text:
         return True
     if rel_dir == retired_dir and any(ref in line_text for ref in retired_refs):
+        return True
+    if _implement_skill_markdown_bare_basename_ref(repo_root, rel, line_text, retired_path):
         return True
     return _dev_skill_markdown_bare_basename_ref(
         repo_root,

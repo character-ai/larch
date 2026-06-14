@@ -88,14 +88,16 @@ Every step MUST print breadcrumb status lines per shared/progress-reporting.md. 
 
 Prompt-side orchestration steps delegate to these script contracts:
 `post-tracking-issue.md`; `commit-implementation.md`;
-`commit-review-fixes.md`; `generate-code-flow-diagram.md`;
-`refresh-execution-issues.md`; `write-rejected-findings.md`;
+`generate-code-flow-diagram.md`;
+`refresh-execution-issues.md`;
 `slack-issue-announce.md`; `write-final-report.md`; `cleanup.md`;
 `step-0-bootstrap.md`; `step-0-degraded-gate.md` (legacy — `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-degraded-gate.sh` remains shipped for offline harnesses but is not called on the active Step 0 path); `step-2-entry.md`;
-`run-step-checks.md`; `step-5-entry.md`; `step-5-resume.md`;
-`step-6-entry.md`; `check-review-changes.md` (`python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review-and-fix check-changes`, invoked by `step-6-entry.sh`); `step-8-ship.md`;
-`step-8-oos-checkpoint.md`; `step-16.md`; `step-17.md`;
-`step-18a-gate.md`; `step-18b-final-report.md`; `step-18-finalize.md`.
+`run-step-checks.md`; `step-5-entry.md`; `step-5-resume.md` (`python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review-and-fix commit-fixes`, via `step-5-resume.sh`);
+`step-6-entry.md` (`python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review-and-fix check-changes`, via `step-6-entry.sh`); `step-8-ship.md`;
+`step-8-oos-checkpoint.md`; `step-16.md` (`python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review-and-fix write-rejected`, via `step-16.sh`);
+`step-17.md`;
+`step-18a-gate.md`; `step-18b-final-report.md`; `step-18-finalize.md`;
+`python/review_and_fix.py` (Step 5 / apply-findings / check-changes / commit-fixes / write-rejected driver).
 **Legacy / regression-only (not on the issue-anchored happy path):** `scripts/extract-closes-issue-from-pr.sh` (PR metadata helper retained for other workflows).
 **Structural harness reachability:** `${CLAUDE_PLUGIN_ROOT}/scripts/test-implement-fence-shape.sh` backs `make test-implement-fence-shape`. `${CLAUDE_PLUGIN_ROOT}/scripts/test-implement-preflight.sh` backs `make test-implement-preflight`.
 

@@ -316,6 +316,16 @@ r = subprocess.run(
 if r.stdout.strip():
     checks.append(f'fabricated path skills/implement/scripts/git-commit.sh referenced under skills/implement/: {r.stdout.strip()}')
 
+for raw in Path('python/migrated-scripts.tsv').read_text(encoding='utf-8').splitlines():
+    line = raw.strip()
+    if not line or line.startswith('#') or '#3678' not in line:
+        continue
+    retired_path = line.split('\t')[0].strip()
+    if retired_path and Path(retired_path).exists():
+        checks.append(f'retired #3678 path still exists: {retired_path}')
+for retired_basename in ['commit-review-fixes.md', 'write-rejected-findings.md', 'check-review-changes.md']:
+    forbid(skill, retired_basename, f'SKILL must not cite retired {retired_basename}')
+
 if checks:
     print('\n'.join(checks), file=sys.stderr)
     sys.exit(1)
