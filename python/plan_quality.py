@@ -21,6 +21,7 @@ from pathlib import Path
 from collections.abc import Iterable
 
 import agents
+import plan_review
 from issue_wire import emit_untrusted_file_block
 from logging_util import diagnostic, emit, emit_kv, quiet_init
 from redact import redact_secrets_only
@@ -1040,8 +1041,6 @@ def _unreadable_marker(design_tmpdir: Path) -> Path:
 
 
 def _drift_baseline_write_once(design_tmpdir: Path, plan_lines: int, diff_lines: int) -> bool:
-    import plan_review
-
     return (
         plan_review.drift_baseline_write_once(design_tmpdir, str(plan_lines), str(diff_lines)) == 0
     )
