@@ -1,6 +1,6 @@
 # design-failure-report.sh
 
-`design-failure-report.sh` is the `/design` teardown report gate. It files at most one report per run through the generic `stall-recovery-report.sh` profile with the `design-failure` artifact prefix.
+`design-failure-report.sh` is the `/design` teardown report gate. It files at most one report per run through `python3 "$PLUGIN_ROOT/python/cli.py" stall-recovery ... --profile generic --artifact-prefix design-failure`.
 
 ## Decision order
 

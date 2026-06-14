@@ -24,6 +24,7 @@ import git
 import proc
 import redact
 import report_tokens_cost
+import stall_recovery
 import tracking_issue
 from errors import ShipError
 from proc import CommandResult, Runner
@@ -677,18 +678,10 @@ def _final_report_duration(run_dir: Path, ship: Path) -> str:
 
 
 def _normalized_outcome(tmpdir: Path) -> str:
-    ship = tmpdir / "ship-pr-state.sh"
-    fin = tmpdir / "finalize-state.sh"
-    if _read_kv(fin, "STALL_TRACKING") == "true" or _read_kv(ship, "STALL_TRACKING") == "true":
-        return "stalled"
-    merge_result = _read_kv(ship, "MERGE_RESULT") or _read_kv(fin, "MERGE_RESULT")
-    if merge_result == "already_merged":
-        return "force-merged-externally"
-    if _read_kv(fin, "DESIGN_ONLY_DONE") == "true":
-        return "done"
-    if _read_kv(ship, "MERGE") == "true" or _read_kv(fin, "MERGE") == "true":
-        return "merged"
-    return "completed"
+    values = stall_recovery.normalized_outcome_values(
+        argparse.Namespace(implement_tmpdir=str(tmpdir), in_memory_stall_tracking="")
+    )
+    return values.get("IMPLEMENT_NORMALIZED_OUTCOME", "bailed")
 
 
 def _refresh_issue_counts(implement_tmpdir: Path, run_id: str) -> tuple[int, int]:

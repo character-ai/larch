@@ -143,7 +143,7 @@ test-append-tool-failure:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_run_logs.py
 
 test-append-execution-issue:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_run_logs.py
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_execution_issues.py -k append_execution_issue
 
 test-validate-research-output:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_research_eval.py
@@ -626,7 +626,7 @@ test-implement-step8-exit3-first-fixer:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-implement-step8-exit3-first-fixer.sh
 
 test-oos-disposition-gate:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_file_oos.py -q -k 'disposition'
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_file_oos.py -q -k 'disposition_gate'
 
 test-oos-file-conflict-deps:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_file_oos.py -q -k 'file_conflict_deps'
@@ -780,7 +780,7 @@ test-write-final-report:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_pr_body.py -q -k 'write_final_report or step18b or render_run_summary or post_tracking or generate_code_flow'
 
 test-render-run-summary:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-render-run-summary.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_pr_body.py -q -k 'render_run_summary'
 
 test-render-review-phase-detail:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-render-review-phase-detail.sh
@@ -963,7 +963,7 @@ test-compose-collector-failure-log:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_dispatch.py -k compose_collector_failure_log
 
 test-compose-pr-summary:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-compose-pr-summary.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_pr_body.py -q -k 'compose_summary'
 
 test-compute-pr-line-counts:
 	cd python && $(PYTHON) -m pytest test_tokens.py -q
@@ -1074,7 +1074,7 @@ test-run-external-agent:
 
 
 test-materialize-manifest-oos:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-materialize-manifest-oos.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_file_oos.py -q -k 'materialize_manifest_oos'
 
 lint-mermaid:
 	if [ ! -f mermaid-lint/node_modules/.package-lock.json ]; then (cd mermaid-lint && npm ci); fi

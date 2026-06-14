@@ -13,6 +13,8 @@ from pathlib import Path
 
 import execution_issues
 import pr_body
+import run_context
+import run_logs
 
 _NON_RUNTIME_NAMES = frozenset({"README.md"})
 _NON_RUNTIME_EXTS = frozenset({"txt", "tsv"})
@@ -126,6 +128,26 @@ def _run_log_flush(
             str(issue_log),
         )
         if capture.returncode != 0:
+            log_flush_status = "degraded"
+    if run_id:
+        ctx = run_context.RunContext(
+            branch="",
+            issue="",
+            repo="",
+            run_id=run_id,
+            tmpdir=str(implement_tmpdir),
+            merge=False,
+            draft=False,
+            forked=False,
+            manifest_path=str(log_root / "implement" / run_id / "manifest.json"),
+            tool_label="",
+            no_admin_fallback=False,
+            repo_unavailable=False,
+            no_logs_commit=no_logs_commit,
+        )
+        with_context = ctx.with_(state_file=None)
+        refresh = run_logs.flush_logs_pre(run_logs.proc, with_context, cwd=None)
+        if refresh.skipped and refresh.reason not in {"no-repo-cwd", "no-logs-commit"}:
             log_flush_status = "degraded"
     if not no_logs_commit and run_id:
         commit = _run_cli(
@@ -249,9 +271,9 @@ def run_step7a(
         claude_source_file=claude_source,
     )
     rebase_outcome = "skipped"
-    relay = implement_tmpdir / "7a.r"
-    if relay.is_file():
-        rebase_outcome = relay.read_text(encoding="utf-8", errors="replace").strip() or "requested"
+    for line in probe.stdout.splitlines():
+        if line.startswith("REBASE_OUTCOME="):
+            rebase_outcome = line.partition("=")[2].strip() or "skipped"
     emit("DIAGRAM_STATUS", diagram_status)
     emit("DIAGRAM_PATH", diagram_path)
     emit("COMMENT_URL", comment_url)

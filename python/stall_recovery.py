@@ -20,9 +20,29 @@ import config
 MAX_PUBLIC_FILE_BYTES = 256_000
 ALLOWLIST_TABLE_COLUMNS = 4
 RETRY_POLICY_TABLE_COLUMNS = 3
+CONTROL_CHAR_ORDINAL_LIMIT = 32
+SAFE_SMALL_INTEGER_DIGITS = 4
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
-_STALL_RECOVERY_SH = _REPO_ROOT / "skills" / "implement" / "scripts" / "stall-recovery-report.sh"
+_DEFAULT_CLASSIFICATION_FILE = "stall-recovery-classification.env"
+_DEFAULT_ATTEMPTS_FILE = "stall-recovery-attempts.env"
+_DEFAULT_ESCALATION_LEDGER = "stall-recovery-escalation-ledger.tsv"
+_DEFAULT_ESCALATION_FALLBACK = "stall-recovery-escalation-fallback.tsv"
+_DEFAULT_RECORD_FAILURE_MARKER = "stall-recovery-escalation-record-failure.env"
+_DEFAULT_ROOT_CAUSE_FILE = "stall-recovery-root-cause.md"
+_DEFAULT_BOUNDED_ROOT_CAUSE_FILE = "stall-recovery-bounded-root-cause.md"
+_DEFAULT_SENSITIVE_CORPUS = "stall-recovery-sensitive-corpus.env"
+_DEFAULT_ISSUE_INPUT = "stall-recovery-issue-input.md"
+_DEFAULT_CHAT_PRINT = "stall-recovery-chat-print.md"
+_DEFAULT_TITLE_FILE = "stall-recovery-title.txt"
+_DEFAULT_OPERATOR_ACTION_RECORD = "stall-recovery-operator-action-record.md"
+_DEFAULT_OPERATOR_ACTION_SENTINEL = "stall-recovery-operator-action.env"
+_DEFAULT_TIER_A_ATTEMPTS_SLICE = "stall-recovery-tier-a-attempts.md"
+_DEFAULT_TIER_A_ESCALATION_SLICE = "stall-recovery-tier-a-escalation.md"
+_DEFAULT_TIER_A_ROOT_CAUSE_SLICE = "stall-recovery-tier-a-root-cause.md"
+_DEFAULT_TIER_B_ATTEMPTS_SLICE = "stall-recovery-bounded-attempts.md"
+_DEFAULT_TIER_B_ESCALATION_SLICE = "stall-recovery-bounded-escalation-summary.md"
+_DEFAULT_TIER_B_ROOT_CAUSE_SLICE = "stall-recovery-bounded-root-cause-public.md"
 
 _OUTCOMES = frozenset({
     "failed-plan-write", "failed-publish", "failed-postplan", "failed-clarify",
@@ -139,15 +159,27 @@ def write_kvs(path: Path, values: Mapping[str, object]) -> None:
     tmp.replace(path)
 
 
-def _state(tmpdir: Path) -> dict[str, str]:
+def _read_state_file(path: Path) -> dict[str, str]:
     out: dict[str, str] = {}
-    for file in (tmpdir / "ship-pr-state.sh", tmpdir / "finalize-state.sh"):
-        if file.is_file():
-            for line in file.read_text(encoding="utf-8", errors="replace").splitlines():
-                if "=" in line:
-                    k, v = line.split("=", 1)
-                    out[k] = v.strip("\r")
+    if path.is_file():
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            if "=" in line:
+                k, v = line.split("=", 1)
+                out[k] = v.strip("\r")
     return out
+
+
+def _merged_state(
+    tmpdir: Path,
+    *,
+    primary_state_file: str = "",
+    finalize_state_file: str = "",
+    session_env_file: str = "",
+) -> dict[str, str]:
+    state_file = Path(primary_state_file) if primary_state_file else tmpdir / "ship-pr-state.sh"
+    finalize_file = Path(finalize_state_file) if finalize_state_file else tmpdir / "finalize-state.sh"
+    session_file = Path(session_env_file) if session_env_file else tmpdir / "session-env.sh"
+    return _read_state_file(state_file) | _read_state_file(finalize_file) | _read_state_file(session_file)
 
 
 def _classify_text(text: str, bail: str, step: str, phase: str, *, detail_log_valid: bool = False) -> tuple[str, str, str]:
@@ -158,6 +190,10 @@ def _classify_text(text: str, bail: str, step: str, phase: str, *, detail_log_va
     if "submodule-edit-required-out-of-scope" in lower:
         return "submodule-restricted", "none", "submodule-restricted-bail-token"
     if "protected-path" in lower:
+        return "protected-path", "step2-impl", "protected-path-bail-token"
+    if "submodule-edit-required-out-of-scope" in lower:
+        return "submodule-restricted", "none", "submodule-restricted-bail-token"
+    if "protected-path-edit-required-out-of-scope" in lower:
         return "protected-path", "step2-impl", "protected-path-bail-token"
     if any(x in lower for x in ("orchestrator-envelope-invalid", "wrapper-validation-failure", "dirty-state-after-timeout", "main-branch-post-dispatch")):
         return "dispatch-failure", "step2-impl", "dispatch-bail-token"
@@ -180,10 +216,19 @@ def _classify_text(text: str, bail: str, step: str, phase: str, *, detail_log_va
 
 def classify(args: argparse.Namespace) -> int:
     tmpdir = Path(args.implement_tmpdir)
-    st = _state(tmpdir)
+    primary_state_file = getattr(args, "primary_state_file", "") or ""
+    finalize_state_file = getattr(args, "finalize_state_file", "") or ""
+    session_env_file = getattr(args, "session_env_file", "") or ""
+    st = _merged_state(
+        tmpdir,
+        primary_state_file=primary_state_file,
+        finalize_state_file=finalize_state_file,
+        session_env_file=session_env_file,
+    )
     step = args.stall_step or st.get("STALL_STEP", "")
     phase = args.phase or st.get("PHASE", "")
-    bail = args.bail_reason or st.get("BAIL_REASON", "")
+    bail = args.bail_reason or st.get("BAIL_REASON", "") or st.get("IMPLEMENT_BAIL_REASON", "")
+    bail_raw = (bail.splitlines()[0] if bail else "")
     detail = ""
     detail_log_valid = False
     if args.failure_detail_log:
@@ -191,26 +236,48 @@ def classify(args: argparse.Namespace) -> int:
         if detail_path.is_file() and _validate_tmpdir_local_file(tmpdir, detail_path):
             detail = detail_path.read_text(encoding="utf-8", errors="replace")[:8192]
             detail_log_valid = True
-    klass, hint, pattern = _classify_text(detail, bail, step, phase, detail_log_valid=detail_log_valid)
-    signature = hashlib.sha256(f"{klass}\n{bail}\n{detail}".encode()).hexdigest()[:16]
-    attempts = Path(args.attempts_file) if args.attempts_file else tmpdir / "stall-recovery-attempts.env"
+    memory_stall = getattr(args, "in_memory_stall_tracking", "")
+    primary_stall = _read_state_file(Path(primary_state_file) if primary_state_file else tmpdir / "ship-pr-state.sh").get("STALL_TRACKING", "false")
+    finalize_stall = _read_state_file(Path(finalize_state_file) if finalize_state_file else tmpdir / "finalize-state.sh").get("STALL_TRACKING", "false")
+    session_stall = _read_state_file(Path(session_env_file) if session_env_file else tmpdir / "session-env.sh").get("STALL_TRACKING", "false")
+    any_stall = _truthy(memory_stall) or _truthy(primary_stall) or _truthy(finalize_stall) or _truthy(session_stall)
+    evidence = detail
+    if not detail_log_valid:
+        for name in ("ship-pr-state.sh", "finalize-state.sh", "session-env.sh"):
+            state_file = tmpdir / name
+            if state_file.is_file():
+                evidence = f"{evidence}\n{state_file.read_text(encoding='utf-8', errors='replace')}"
+    if not any_stall:
+        klass, hint, pattern = ("unrecoverable", "none", "no-stall")
+    else:
+        klass, hint, pattern = _classify_text(evidence, bail, step, phase, detail_log_valid=detail_log_valid)
+    evidence_digest = hashlib.sha256(evidence[:2048].encode()).hexdigest()[:16] if evidence else ""
+    signature = hashlib.sha256(
+        f"class={klass}\nhint={hint}\nstep={step}\nphase={phase}\nbail={bail}\nevidence={evidence_digest}\n".encode(),
+    ).hexdigest()
+    attempts = Path(args.attempts_file) if args.attempts_file else tmpdir / _DEFAULT_ATTEMPTS_FILE
     if attempts.is_file() and read_kv(attempts, "last_signature") == signature and read_kv(attempts, "last_outcome") == "failed":
         klass = "same-cause-repeat"
         hint = "none"
+    classification_file = _artifact_path(tmpdir, _DEFAULT_CLASSIFICATION_FILE, getattr(args, "artifact_prefix", "") or "")
     values = {
         "FAILURE_CLASS": klass,
         "FAILURE_SIGNATURE": signature,
         "RESUME_HINT": hint,
         "STALL_STEP": step,
         "PHASE": phase,
+        "STALL_TRACKING": "true" if any_stall else "false",
         "BAIL_REASON": bail,
-        "EXIT_CODE": args.exit_code or st.get("EXIT_CODE", ""),
+        "BAIL_REASON_RAW": bail_raw,
+        "FAILURE_DETAIL_LOG": args.failure_detail_log if detail_log_valid else "",
+        "EXIT_CODE": args.exit_code or st.get("EXIT_CODE", "unknown"),
         "MATCHED_CLASSIFIER_PATTERN": pattern,
-        "DISPATCHER": args.dispatcher or st.get("DISPATCHER", ""),
+        "DISPATCHER": args.dispatcher or st.get("DISPATCHER", "") or st.get("CODER_TOOL", ""),
     }
     for k, v in values.items():
         emit(k, v)
-    write_kvs(tmpdir / "stall-recovery-classification.env", values)
+    write_kvs(classification_file, values)
+    emit("CLASSIFICATION_FILE", classification_file)
     return 0
 
 
@@ -250,19 +317,65 @@ def retry_policy(args: argparse.Namespace) -> int:
     return 0
 
 
-def normalize_outcome(args: argparse.Namespace) -> int:
-    st = _state(Path(args.implement_tmpdir))
-    if st.get("STALL_TRACKING") == "true":
+def normalized_outcome_values(args: argparse.Namespace) -> dict[str, str]:
+    tmpdir = Path(args.implement_tmpdir)
+    ship = _read_state_file(tmpdir / "ship-pr-state.sh")
+    fin = _read_state_file(tmpdir / "finalize-state.sh")
+    ses = _read_state_file(tmpdir / "session-env.sh")
+    memory_stall = getattr(args, "in_memory_stall_tracking", "") or os.environ.get("STALL_TRACKING", "false")
+    ship_stall = ship.get("STALL_TRACKING", "false")
+    fin_stall = fin.get("STALL_TRACKING", "false")
+    ses_stall = ses.get("STALL_TRACKING", "false")
+    any_stall = _truthy(memory_stall) or _truthy(ship_stall) or _truthy(fin_stall) or _truthy(ses_stall)
+    merge_result = ship.get("MERGE_RESULT") or fin.get("MERGE_RESULT", "")
+    merge = ship.get("MERGE") or fin.get("MERGE", "")
+    draft = ship.get("DRAFT") or fin.get("DRAFT", "false")
+    pr_number = ship.get("PR_NUMBER") or fin.get("PR_NUMBER", "")
+    forked = ship.get("FORKED_TARGET") or fin.get("FORKED_TARGET") or ses.get("FORKED_TARGET", "false")
+    ci_passed = ship.get("CI_PASSED") or fin.get("CI_PASSED", "false")
+    design_done = fin.get("DESIGN_ONLY_DONE", "false")
+    bail_user = fin.get("BAIL_NEEDS_USER_INPUT", "false")
+
+    if any_stall:
         outcome = "stalled"
-        success = "false"
-    elif st.get("MERGE_RESULT") == "already_merged":
+    elif _truthy(forked):
+        outcome = "forked-dry-run"
+    elif _truthy(design_done):
+        outcome = "design-only"
+    elif merge_result in {"merged", "admin_merged"}:
+        outcome = "merged"
+    elif merge_result == "already_merged":
         outcome = "force-merged-externally"
-        success = "true"
+    elif pr_number and pr_number != "0" and _truthy(draft):
+        outcome = "pr-created-draft"
+    elif pr_number and pr_number != "0" and not _truthy(draft) and not _truthy(merge):
+        outcome = "pr-created"
     else:
-        outcome = "completed"
-        success = "true"
-    emit("IMPLEMENT_NORMALIZED_OUTCOME", outcome)
-    emit("IMPLEMENT_OUTCOME_SUCCEEDED", success)
+        outcome = "bailed"
+    if _truthy(bail_user) and outcome == "bailed":
+        outcome = "bailed-needs-user-input"
+    succeeded = outcome in {"merged", "force-merged-externally", "pr-created", "pr-created-draft", "forked-dry-run"} and not any_stall
+    return {
+        "IMPLEMENT_NORMALIZED_OUTCOME": outcome,
+        "IMPLEMENT_OUTCOME_SUCCEEDED": "true" if succeeded else "false",
+        "IMPLEMENT_ANY_STALL_TRACKING": "true" if any_stall else "false",
+        "IMPLEMENT_MEMORY_STALL_TRACKING": memory_stall or "false",
+        "IMPLEMENT_SHIP_STALL_TRACKING": ship_stall or "false",
+        "IMPLEMENT_FINALIZE_STALL_TRACKING": fin_stall or "false",
+        "IMPLEMENT_SESSION_STALL_TRACKING": ses_stall or "false",
+        "IMPLEMENT_MERGE_RESULT": merge_result,
+        "IMPLEMENT_PR_NUMBER": pr_number,
+        "IMPLEMENT_DRAFT": draft or "false",
+        "IMPLEMENT_MERGE": merge,
+        "IMPLEMENT_FORKED_TARGET": forked or "false",
+        "IMPLEMENT_CI_PASSED": ci_passed or "false",
+        "IMPLEMENT_DESIGN_ONLY_DONE": design_done or "false",
+        "IMPLEMENT_BAIL_NEEDS_USER_INPUT": bail_user or "false",
+    }
+
+def normalize_outcome(args: argparse.Namespace) -> int:
+    for key, value in normalized_outcome_values(args).items():
+        emit(key, value)
     return 0
 
 
@@ -344,8 +457,10 @@ def record_escalation(args: argparse.Namespace) -> int:
         emit("ESCALATION_RECORDED", "true")
         emit("ESCALATION_LEDGER_FILE", ledger)
     except OSError:
-        (tmpdir / "stall-recovery-escalation-record-failure.env").write_text("RECORD_ESCALATION_FAILED=true\nREASON=canonical-ledger-not-writable\n", encoding="utf-8")
-        (tmpdir / "stall-recovery-escalation-ledger.fallback.tsv").write_text(row, encoding="utf-8")
+        marker = _artifact_path(tmpdir, _DEFAULT_RECORD_FAILURE_MARKER, prefix)
+        fallback = _artifact_path(tmpdir, _DEFAULT_ESCALATION_FALLBACK, prefix)
+        marker.write_text("RECORD_ESCALATION_FAILED=true\nREASON=canonical-ledger-not-writable\n", encoding="utf-8")
+        fallback.write_text(row, encoding="utf-8")
         emit("ESCALATION_RECORDED", "false")
         emit("ESCALATION_FALLBACK_WRITTEN", "true")
     return 0
@@ -353,35 +468,155 @@ def record_escalation(args: argparse.Namespace) -> int:
 
 def compose_report(args: argparse.Namespace) -> int:
     tmpdir = Path(args.implement_tmpdir)
-    cls = tmpdir / "stall-recovery-classification.env"
-    root = tmpdir / "stall-recovery-root-cause.md"
-    bounded = tmpdir / "stall-recovery-bounded-root-cause.md"
-    summary = "larch stall recovery report"
-    if root.is_file():
-        m = re.search(r"^summary=(.*)$", root.read_text(encoding="utf-8", errors="replace"), re.MULTILINE)
-        if m:
-            summary = m.group(1)
-    kind = args.report_kind
-    title_kind = "terminal" if kind == "terminal-failure" else "escalation"
-    profile = getattr(args, "profile", "implement")
-    artifact_prefix = getattr(args, "artifact_prefix", "") or ""
-    if profile == "generic":
-        first = artifact_prefix.split("-")[0] if artifact_prefix else ""
-        skill_label = f"/{first}" if first else "/generic"
+    if not tmpdir.is_dir():
+        print("stall-recovery: --implement-tmpdir must exist", file=sys.stderr)
+        return 1
+    kind = str(getattr(args, "report_kind", "") or "terminal-failure")
+    surface = str(getattr(args, "surface", "") or "chat-print")
+    if kind not in {"terminal-failure", "escalation-success"}:
+        print("stall-recovery: --report-kind must be terminal-failure or escalation-success", file=sys.stderr)
+        return 1
+    if surface not in {"issue-input", "chat-print"}:
+        print("stall-recovery: --surface must be issue-input or chat-print", file=sys.stderr)
+        return 1
+
+    prefix = getattr(args, "artifact_prefix", "") or ""
+    profile = getattr(args, "profile", "implement") or "implement"
+    class_file = _compose_path(args, "classification_file", tmpdir, _DEFAULT_CLASSIFICATION_FILE, prefix)
+    attempts_file = _compose_path(args, "attempts_file", tmpdir, _DEFAULT_ATTEMPTS_FILE, prefix)
+    ledger = _compose_path(args, "escalation_ledger_file", tmpdir, _DEFAULT_ESCALATION_LEDGER, prefix)
+    fallback = _compose_path(args, "escalation_fallback_file", tmpdir, _DEFAULT_ESCALATION_FALLBACK, prefix)
+    marker = _compose_path(args, "record_failure_marker", tmpdir, _DEFAULT_RECORD_FAILURE_MARKER, prefix)
+    root_file = _compose_path(args, "root_cause_file", tmpdir, _DEFAULT_ROOT_CAUSE_FILE, prefix)
+    bounded_file = _compose_path(args, "bounded_root_cause_file", tmpdir, _DEFAULT_BOUNDED_ROOT_CAUSE_FILE, prefix)
+    title_file = _compose_path(args, "title_file", tmpdir, _DEFAULT_TITLE_FILE, prefix)
+    sensitive_file = _compose_path(args, "sensitive_corpus_file", tmpdir, _DEFAULT_SENSITIVE_CORPUS, prefix)
+    default_output = _DEFAULT_ISSUE_INPUT if surface == "issue-input" else _DEFAULT_CHAT_PRINT
+    out_file = _compose_path(args, "output_file", tmpdir, default_output, prefix)
+
+    if kind == "escalation-success" and not class_file.exists():
+        if not _validate_tmpdir_write_path(tmpdir, class_file):
+            return _compose_error("--classification-file outside implement tmpdir")
+        write_kvs(class_file, {
+            "FAILURE_CLASS": "",
+            "FAILURE_SIGNATURE": hashlib.sha256(b"escalation-success").hexdigest(),
+            "RESUME_HINT": "none",
+            "STALL_STEP": "unknown",
+            "PHASE": "unknown",
+            "STALL_TRACKING": "false",
+            "BAIL_REASON": "",
+            "EXIT_CODE": "unknown",
+            "MATCHED_CLASSIFIER_PATTERN": "no-stall",
+            "DISPATCHER": "unknown",
+        })
+    if not _validate_tmpdir_local_file(tmpdir, class_file):
+        return _compose_error("--classification-file invalid")
+    if attempts_file.exists():
+        if not _validate_tmpdir_local_file(tmpdir, attempts_file):
+            return _compose_error("--attempts-file invalid")
     else:
-        skill_label = "/implement"
-    body = f"[Bug] {skill_label} {title_kind}: {summary}\n\n| Field | Value |\n| --- | --- |\n| Failure class | `{read_kv(cls, 'FAILURE_CLASS', 'unknown')}` |\n| Run ID | `{read_kv(tmpdir / 'parent-issue.md', 'RUN_ID', 'unknown')}` |\n| Larch version | `unknown` |\n\n"
-    if bounded.is_file():
-        body += bounded.read_text(encoding="utf-8", errors="replace") + "\n"
-    sig = hashlib.sha256(body.encode()).hexdigest()[:16]
-    if args.surface == "issue-input":
-        body = f"### {body}<!-- larch-stall:signature={sig} -->\n"
-    if args.output_file:
-        Path(args.output_file).write_text(body, encoding="utf-8")
-    if args.surface == "chat-print" and not args.output_file:
-        sys.stdout.write(body)
-    emit("STALL_RECOVERY_REPORT_STATUS", "dry-run" if os.environ.get("LARCH_STALL_RECOVERY_DRY_RUN") else "printed")
-    emit("REPORT_DEDUP_SIGNATURE", sig)
+        if not _validate_tmpdir_write_path(tmpdir, attempts_file):
+            return _compose_error("--attempts-file outside implement tmpdir")
+        write_kvs(attempts_file, {"version": 1, "created_utc": datetime.now(UTC).isoformat(), "attempt_count": 0})
+    if not _validate_tmpdir_write_path(tmpdir, out_file):
+        return _compose_error("--output-file outside implement tmpdir")
+    for label, path in (
+        ("--escalation-ledger-file", ledger),
+        ("--escalation-fallback-file", fallback),
+        ("--record-failure-marker", marker),
+        ("--title-file", title_file),
+    ):
+        if path.exists() and not _validate_tmpdir_local_file(tmpdir, path):
+            return _compose_error(f"{label} invalid")
+    if kind == "escalation-success" and not any(path.is_file() and path.stat().st_size > 0 for path in (ledger, fallback, marker)) and not _record_escalation_tool_failure_present(tmpdir):
+        return _compose_error("escalation-success report requires escalation evidence")
+    if surface == "issue-input" and not _tier_a_allowed(tmpdir, args):
+        return _compose_error("issue-input surface requires larch dev clone and non-forked target")
+    if not _validate_tmpdir_local_file(tmpdir, root_file) or not _validate_root_cause_artifact(root_file):
+        return _compose_error("--root-cause-file invalid")
+
+    verdict = _parse_root_cause_file(root_file, "verdict", "")
+    summary = _parse_root_cause_file(root_file, "summary", "")
+    if verdict == "operator-action":
+        record = _artifact_path(tmpdir, _DEFAULT_OPERATOR_ACTION_RECORD, prefix)
+        sentinel = _artifact_path(tmpdir, _DEFAULT_OPERATOR_ACTION_SENTINEL, prefix)
+        record.write_text(f"REPORT_KIND={kind}\nVERDICT=operator-action\nROOT_CAUSE_FILE={root_file}\n", encoding="utf-8")
+        sentinel.write_text("STALL_RECOVERY_OPERATOR_ACTION=true\n", encoding="utf-8")
+        emit("STALL_RECOVERY_REPORT_KIND", kind)
+        emit("STALL_RECOVERY_REPORT_STATUS", "skipped_operator_action")
+        emit("STALL_RECOVERY_REPORT_TIER", "skipped")
+        emit("STALL_RECOVERY_REPORT_ARTIFACT", record)
+        emit("STALL_RECOVERY_REPORT_VERDICT", "operator-action")
+        return 0
+
+    title = _safe_title_summary(title_file.read_text(encoding="utf-8", errors="replace") if title_file.is_file() else "")
+    if not title:
+        title = _safe_title_summary(summary)
+    if not title:
+        return _compose_error("unsafe title and root-cause summary")
+    skill_label = _report_skill_label(profile, prefix)
+    if kind == "terminal-failure":
+        title = f"[Bug] {skill_label} terminal: {title} ({_safe_class_value(read_kv(class_file, 'FAILURE_CLASS', 'unrecoverable'))} at {_safe_step_value(read_kv(class_file, 'STALL_STEP', ''))})"
+    else:
+        site = _first_escalation_field("site", ledger, fallback)
+        trigger = _first_escalation_field("trigger", ledger, fallback)
+        title = f"[Bug] {skill_label} escalation: {title} ({site or 'redacted'}:{trigger or 'redacted'})"
+    report_sig = _report_dedup_signature(kind, class_file, ledger, fallback, profile=profile, prefix=prefix, skill_label=skill_label)
+
+    if surface == "issue-input":
+        tier = "A"
+        body = _report_marker(report_sig) + "\n" + _compose_tier_a_issue(kind, class_file, attempts_file, ledger, fallback, marker, root_file, title, tmpdir)
+        _write_tier_a_comment_payloads(tmpdir, attempts_file, ledger, fallback, marker, root_file, prefix)
+    else:
+        tier = "B"
+        if not _validate_tmpdir_local_file(tmpdir, sensitive_file):
+            return _compose_error("--sensitive-corpus-file invalid")
+        if not _validate_tmpdir_local_file(tmpdir, bounded_file) or not _validate_root_cause_artifact(bounded_file):
+            return _compose_error("--bounded-root-cause-file invalid")
+        effective = tmpdir / f"{(prefix or 'stall-recovery')}-sensitive-corpus.effective"
+        build_sensitive_corpus_from_evidence(
+            tmpdir=tmpdir,
+            sensitive_file=sensitive_file,
+            class_file=class_file,
+            attempts_file=attempts_file,
+            ledger=ledger,
+            fallback=fallback,
+            marker=marker,
+            out_file=effective,
+        )
+        if _sensitive_token_rejects_file(effective, bounded_file):
+            with contextlib.suppress(OSError):
+                effective.unlink()
+            return _compose_error("bounded root-cause contains sensitive token")
+        body = f"### {title}\n\n{_report_marker(report_sig)}\n" + _compose_tier_b_projection(kind, class_file, attempts_file, ledger, fallback, marker, root_file, bounded_file, skill_label)
+        raw_candidate = out_file.with_suffix(out_file.suffix + ".raw-check")
+        raw_candidate.write_text(body, encoding="utf-8")
+        if _sensitive_token_rejects_file(effective, raw_candidate):
+            with contextlib.suppress(OSError):
+                effective.unlink()
+                raw_candidate.unlink()
+            return _compose_error("chat-print contains sensitive token")
+        with contextlib.suppress(OSError):
+            effective.unlink()
+            raw_candidate.unlink()
+        _write_tier_b_comment_payloads(tmpdir, attempts_file, ledger, fallback, marker, bounded_file, prefix)
+
+    out_file.write_text(_redact_text(body), encoding="utf-8")
+    dry_run = _truthy(os.environ.get("LARCH_STALL_RECOVERY_DRY_RUN")) or _truthy(os.environ.get("DRY_RUN_DECISION"))
+    emit("STALL_RECOVERY_REPORT_KIND", kind)
+    emit("STALL_RECOVERY_REPORT_TIER", tier)
+    emit("STALL_RECOVERY_REPORT_ARTIFACT", out_file)
+    emit("STALL_RECOVERY_REPORT_VERDICT", verdict)
+    emit("REPORT_DEDUP_SIGNATURE", report_sig)
+    emit("DRY_RUN_DECISION", "true" if dry_run else "false")
+    if dry_run:
+        emit("STALL_RECOVERY_REPORT_STATUS", "dry-run")
+        return 0
+    if surface == "issue-input" and _truthy(os.environ.get("LARCH_STALL_RECOVERY_TEST_LEGACY_SURFACES")) and not _truthy(os.environ.get("LARCH_STALL_RECOVERY_ENABLE_TEST_FILING")):
+        emit("STALL_RECOVERY_REPORT_STATUS", "printed")
+        return 0
+    if surface == "chat-print":
+        _emit_chat_print_filing_status(tmpdir, out_file, title, sensitive_file, prefix)
     return 0
 
 
@@ -611,9 +846,13 @@ def _sensitive_token_rejects_file(corpus_path: Path, candidate_path: Path) -> bo
             continue
         if stripped in _SENSITIVE_TOKEN_ALLOWLIST:
             continue
+        if _sensitive_value_is_allowlisted(stripped):
+            continue
         if "=" in stripped:
             _key, _, value = stripped.partition("=")
             if value in _SENSITIVE_TOKEN_ALLOWLIST:
+                continue
+            if _sensitive_value_is_allowlisted(value):
                 continue
             if value and value not in {"", stripped} and value in candidate_text:
                 return True
@@ -622,6 +861,86 @@ def _sensitive_token_rejects_file(corpus_path: Path, candidate_path: Path) -> bo
     if re.search(r"https?://|git@github\.com:|github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", candidate_text):
         return True
     return bool(re.search(r"(^|[\s`(])/(Users|home|private|tmp|var|Volumes)/[^\s`)]+", candidate_text))
+
+
+def _sensitive_value_is_allowlisted(value: str) -> bool:
+    if value in {"", "true", "false", "TRUE", "FALSE", "True", "False", "unknown", "none", "n/a", "N/A", "-"}:
+        return True
+    if value.isdigit() and len(value) <= SAFE_SMALL_INTEGER_DIGITS:
+        return True
+    if _safe_bail_reason_value(value, generic=True):
+        return True
+    if _safe_step(value, generic=True):
+        return True
+    if _safe_token("phase", value, generic=True):
+        return True
+    if _safe_token("site", value, generic=True):
+        return True
+    if _safe_token("trigger", value, generic=True):
+        return True
+    if value in {
+        "lint-failure", "test-failure", "transient-infra", "dispatch-failure", "protected-path",
+        "submodule-restricted", "unrecoverable", "same-cause-repeat", "contract-failure",
+        "ci-fix-exhausted", "no-stall", "fallback", "bail-token", "step-contract",
+        "transient-output", "test-output", "lint-output",
+    }:
+        return True
+    return bool(re.fullmatch(r"[A-Za-z0-9._+-]+", value) and value in {"codex", "cursor", "claude", "bash", "python", "split-path"})
+
+
+def build_sensitive_corpus_from_evidence(
+    *,
+    tmpdir: Path,
+    sensitive_file: Path,
+    class_file: Path,
+    attempts_file: Path,
+    ledger: Path,
+    fallback: Path,
+    marker: Path,
+    out_file: Path,
+) -> None:
+    sources = [
+        sensitive_file,
+        class_file,
+        attempts_file,
+        ledger,
+        fallback,
+        marker,
+        tmpdir / "ship-pr-state.sh",
+        tmpdir / "finalize-state.sh",
+        tmpdir / "session-env.sh",
+        tmpdir / "source-env.sh",
+        tmpdir / "execution-issues.md",
+        tmpdir / "run-log-pointer.txt",
+        tmpdir / "plan.txt",
+        tmpdir / "feature-description.txt",
+        tmpdir / "issue-body.txt",
+        tmpdir / "composed-plan.md",
+        tmpdir / "final-summary.md",
+        tmpdir / "validate-plan-commands.log",
+        tmpdir / "design-log-publish.failure.log",
+        tmpdir / "design-plan-write.failure.log",
+        tmpdir / "design-publish-tail.failure.log",
+    ]
+    detail_log = read_kv(class_file, "FAILURE_DETAIL_LOG", "")
+    if detail_log:
+        detail_path = Path(detail_log)
+        if _validate_tmpdir_local_file(tmpdir, detail_path):
+            sources.append(detail_path)
+    lines: list[str] = []
+    for src in sources:
+        if src.is_file() and not src.is_symlink():
+            with contextlib.suppress(OSError):
+                text = src.read_text(encoding="utf-8", errors="replace")
+                lines.extend(text.splitlines())
+                lines.extend(re.findall(r"https?://[^\s`)\]]+", text))
+                lines.extend(re.findall(r"git@github\.com:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", text))
+                lines.extend(re.findall(r"github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", text))
+                lines.extend(
+                    match.group(0).strip()
+                    for match in re.finditer(r"(?:^|[\s`(])/(?:Users|home|private|tmp|var|Volumes)/[^\s`)]+", text, re.MULTILINE)
+                )
+    out_file.write_text("\n".join(line.strip() for line in lines if line.strip()) + "\n", encoding="utf-8")
 
 
 def validate_tier_b_public_file(args: argparse.Namespace) -> int:
@@ -641,13 +960,26 @@ def validate_tier_b_public_file(args: argparse.Namespace) -> int:
     if not (cp.is_absolute() and not cp.is_symlink() and (cp == tmpdir or tmpdir in cp.parents) and cp.is_file()):
         emit("PUBLIC_FILE_VALID", "false")
         return 1
+    effective = tmpdir / f"{(getattr(args, 'artifact_prefix', '') or 'stall-recovery')}-sensitive-corpus.public.effective"
+    build_sensitive_corpus_from_evidence(
+        tmpdir=tmpdir,
+        sensitive_file=cp,
+        class_file=_artifact_path(tmpdir, _DEFAULT_CLASSIFICATION_FILE, getattr(args, "artifact_prefix", "") or ""),
+        attempts_file=_artifact_path(tmpdir, _DEFAULT_ATTEMPTS_FILE, getattr(args, "artifact_prefix", "") or ""),
+        ledger=_artifact_path(tmpdir, _DEFAULT_ESCALATION_LEDGER, getattr(args, "artifact_prefix", "") or ""),
+        fallback=_artifact_path(tmpdir, _DEFAULT_ESCALATION_FALLBACK, getattr(args, "artifact_prefix", "") or ""),
+        marker=_artifact_path(tmpdir, _DEFAULT_RECORD_FAILURE_MARKER, getattr(args, "artifact_prefix", "") or ""),
+        out_file=effective,
+    )
     try:
-        if _sensitive_token_rejects_file(cp, path):
+        if _sensitive_token_rejects_file(effective, path):
             emit("PUBLIC_FILE_VALID", "false")
             return 1
     except OSError:
         emit("PUBLIC_FILE_VALID", "false")
         return 1
+    with contextlib.suppress(OSError):
+        effective.unlink()
     emit("PUBLIC_FILE_VALID", "true")
     return 0
 
@@ -669,8 +1001,8 @@ def seed_terminal_state(args: argparse.Namespace) -> int:
     return 0
 
 
-def _truthy(value: str) -> bool:
-    return value.strip().lower() in {"1", "true", "yes", "on"}
+def _truthy(value: str | None) -> bool:
+    return (value or "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _issue_url_number(url: str) -> str | None:
@@ -686,14 +1018,6 @@ def _validate_tmpdir_local_file(tmpdir: Path, file_path: Path) -> bool:
     except ValueError:
         return False
     return True
-
-
-def _delegate_stall_recovery_subcommand(sub: str, rest: list[str]) -> int:
-    if not _STALL_RECOVERY_SH.is_file():
-        print(f"stall-recovery: missing script: {_STALL_RECOVERY_SH}", file=sys.stderr)
-        return 1
-    completed = subprocess.run(["/bin/bash", str(_STALL_RECOVERY_SH), sub, *rest], check=False)
-    return completed.returncode
 
 
 def is_larch_dev_clone(args: argparse.Namespace) -> int:
@@ -739,10 +1063,446 @@ def normalize_file_failure_report_env(args: argparse.Namespace) -> int:
     return 0
 
 
-def populate_sensitive_corpus(rest: list[str], *, implement_tmpdir: str) -> int:
-    if not any(arg == "--implement-tmpdir" for arg in rest):
-        rest = ["--implement-tmpdir", implement_tmpdir, *rest]
-    return _delegate_stall_recovery_subcommand("populate-sensitive-corpus", rest)
+def populate_sensitive_corpus(args: argparse.Namespace) -> int:
+    tmpdir = Path(args.implement_tmpdir)
+    prefix = getattr(args, "artifact_prefix", "") or ""
+    sensitive_file = Path(args.sensitive_corpus_file) if getattr(args, "sensitive_corpus_file", "") else _artifact_path(tmpdir, _DEFAULT_SENSITIVE_CORPUS, prefix)
+    class_file = Path(args.classification_file) if getattr(args, "classification_file", "") else _artifact_path(tmpdir, _DEFAULT_CLASSIFICATION_FILE, prefix)
+    attempts_file = Path(args.attempts_file) if getattr(args, "attempts_file", "") else _artifact_path(tmpdir, _DEFAULT_ATTEMPTS_FILE, prefix)
+    ledger = Path(args.escalation_ledger_file) if getattr(args, "escalation_ledger_file", "") else _artifact_path(tmpdir, _DEFAULT_ESCALATION_LEDGER, prefix)
+    fallback = Path(args.escalation_fallback_file) if getattr(args, "escalation_fallback_file", "") else _artifact_path(tmpdir, _DEFAULT_ESCALATION_FALLBACK, prefix)
+    marker = Path(args.record_failure_marker) if getattr(args, "record_failure_marker", "") else _artifact_path(tmpdir, _DEFAULT_RECORD_FAILURE_MARKER, prefix)
+    effective = tmpdir / f"{(prefix or 'stall-recovery')}-sensitive-corpus.effective"
+    build_sensitive_corpus_from_evidence(
+        tmpdir=tmpdir,
+        sensitive_file=sensitive_file,
+        class_file=class_file,
+        attempts_file=attempts_file,
+        ledger=ledger,
+        fallback=fallback,
+        marker=marker,
+        out_file=effective,
+    )
+    sensitive_file.write_text(effective.read_text(encoding="utf-8", errors="replace"), encoding="utf-8")
+    with contextlib.suppress(OSError):
+        effective.unlink()
+    emit("SENSITIVE_CORPUS_FILE", sensitive_file)
+    return 0
+
+
+def _compose_error(message: str) -> int:
+    print(f"stall-recovery: {message}", file=sys.stderr)
+    return 1
+
+
+def _compose_path(args: argparse.Namespace, attr: str, tmpdir: Path, default_name: str, prefix: str) -> Path:
+    value = getattr(args, attr, "") or ""
+    return Path(value) if value else _artifact_path(tmpdir, default_name, prefix)
+
+
+def _validate_tmpdir_write_path(tmpdir: Path, path: Path) -> bool:
+    if not path.is_absolute() or path.is_symlink():
+        return False
+    try:
+        resolved_parent = path.parent.resolve(strict=True)
+        resolved_tmpdir = tmpdir.resolve(strict=True)
+    except OSError:
+        return False
+    if resolved_parent != resolved_tmpdir and resolved_tmpdir not in resolved_parent.parents:
+        return False
+    return not path.exists() or (path.is_file() and not path.is_symlink())
+
+
+def _parse_root_cause_file(path: Path, key: str, default: str = "") -> str:
+    return read_kv(path, key, default)
+
+
+def _root_cause_prose(path: Path) -> str:
+    lines: list[str] = []
+    seen = False
+    for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if not raw.strip():
+            if seen:
+                lines.append("")
+            continue
+        if raw.startswith(("verdict=", "confidence=", "summary=")):
+            continue
+        seen = True
+        lines.append(raw)
+    return "\n".join(lines).strip()
+
+
+def _validate_root_cause_artifact(path: Path) -> bool:
+    if not path.is_file() or path.is_symlink():
+        return False
+    verdict = _parse_root_cause_file(path, "verdict", "")
+    confidence = _parse_root_cause_file(path, "confidence", "")
+    summary = _parse_root_cause_file(path, "summary", "")
+    if verdict not in {"larch-defect", "environment", "operator-action"}:
+        return False
+    if confidence not in {"low", "medium", "high"}:
+        return False
+    if not summary or "\n" in summary or "\r" in summary:
+        return False
+    return bool(_root_cause_prose(path))
+
+
+def _safe_title_summary(summary: str) -> str:
+    value = summary.strip()
+    if not value or any(ch in value for ch in "\r\n"):
+        return ""
+    lower = value.lower()
+    if value.startswith(("/", "#")) or ".." in value or "`" in value or "<!-- larch:" in value:
+        return ""
+    if "github.com" in lower or "/pull/" in lower or "larch-logs/" in value:
+        return ""
+    if any(ord(ch) < CONTROL_CHAR_ORDINAL_LIMIT for ch in value):
+        return ""
+    if re.search(r"(^|\s)[A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+", value):
+        return ""
+    return value
+
+
+def _report_skill_label(profile: str, prefix: str) -> str:
+    if profile != "generic":
+        return "/implement"
+    if prefix == "design-failure":
+        return "/design"
+    if prefix:
+        return f"/{prefix.split('-', 1)[0]}"
+    return "/generic"
+
+
+def _safe_class_value(value: str) -> str:
+    allowed = {
+        "transient-infra", "test-failure", "lint-failure", "dispatch-failure", "protected-path",
+        "submodule-restricted", "ci-fix-exhausted", "same-cause-repeat", "contract-failure", "unrecoverable",
+        "environment", "operator-action", "larch-defect", "",
+    }
+    return value if value in allowed else "unrecoverable"
+
+
+def _safe_step_value(value: str) -> str:
+    if _safe_step(value, generic=True):
+        return value
+    return value if value == "unknown" else "unknown"
+
+
+def _safe_phase_value(value: str) -> str:
+    if _safe_token("phase", value, generic=True):
+        return value
+    return value if value == "unknown" else "unknown"
+
+
+def _safe_bail_value(value: str) -> str:
+    if not value:
+        return "none"
+    return value if _safe_bail_reason_value(value, generic=True) else "redacted"
+
+
+def _safe_simple_token(value: str, *, fallback: str = "redacted") -> str:
+    return value if value and re.fullmatch(r"[A-Za-z0-9._:-]+", value) else fallback
+
+
+def _read_run_id(tmpdir: Path) -> str:
+    value = read_kv(tmpdir / "parent-issue.md", "RUN_ID", "")
+    if not value and (tmpdir / "session-id").is_file():
+        value = (tmpdir / "session-id").read_text(encoding="utf-8", errors="replace").strip()
+    return _safe_simple_token(value, fallback="unknown")
+
+
+def _read_larch_version() -> str:
+    for path in (_REPO_ROOT / "VERSION", _REPO_ROOT / "package.json"):
+        if not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if path.name == "VERSION":
+            value = text.strip()
+        else:
+            match = re.search(r'"version"\s*:\s*"([^"]+)"', text)
+            value = match.group(1) if match else ""
+        if re.fullmatch(r"[A-Za-z0-9._+-]+", value):
+            return value
+    return "unknown"
+
+
+def _first_escalation_field(field_name: str, ledger: Path, fallback: Path) -> str:
+    for path in (ledger, fallback):
+        if not path.is_file():
+            continue
+        for row in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            for field in row.split("\t"):
+                key, sep, value = field.partition("=")
+                if sep and key == field_name:
+                    return _safe_simple_token(value)
+    return ""
+
+
+def _append_escalation_row_summaries(path: Path, label: str = "") -> str:
+    if not path.is_file() or path.stat().st_size == 0:
+        return ""
+    lines: list[str] = []
+    for row in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        values: dict[str, str] = {}
+        for field in row.split("\t"):
+            key, sep, value = field.partition("=")
+            if sep:
+                values[key] = value
+        site = _safe_simple_token(values.get("site", ""))
+        trigger = _safe_simple_token(values.get("trigger", ""))
+        if values.get("site") or values.get("trigger"):
+            prefix = f"{label} " if label else ""
+            lines.append(f"- {prefix}site=`{site}` trigger=`{trigger}`")
+    if not lines and label:
+        lines.append(f"- {label} present")
+    return "\n".join(lines)
+
+
+def _record_escalation_tool_failure_present(tmpdir: Path) -> bool:
+    execution = tmpdir / "execution-issues.md"
+    if not execution.is_file() or execution.is_symlink():
+        return False
+    return bool(re.search(r"^#{2,3}\s+Tool Failure: record-escalation(\s|$)", execution.read_text(encoding="utf-8", errors="replace"), re.MULTILINE))
+
+
+def _attempts_table(attempts_file: Path) -> str:
+    attempt_count_raw = read_kv(attempts_file, "attempt_count", "0")
+    attempt_count = int(attempt_count_raw) if attempt_count_raw.isdigit() else 0
+    lines = ["| Attempt | Class | Resume hint | Outcome | UTC |", "|---|---|---|---|---|"]
+    if attempt_count == 0:
+        lines.append("| none | n/a | n/a | n/a | n/a |")
+        return "\n".join(lines)
+    lines.extend(
+            f"| `{idx}` | `{_safe_class_value(read_kv(attempts_file, f'attempt.{idx}.class', ''))}` | "
+            f"`{_safe_simple_token(read_kv(attempts_file, f'attempt.{idx}.resume_hint', ''), fallback='none')}` | "
+            f"`{_safe_simple_token(read_kv(attempts_file, f'attempt.{idx}.outcome', ''), fallback='failed')}` | "
+            f"`{_safe_simple_token(read_kv(attempts_file, f'attempt.{idx}.utc', ''), fallback='unknown')}` |"
+            for idx in range(1, attempt_count + 1)
+        )
+    return "\n".join(lines)
+
+
+def _report_dedup_signature(kind: str, class_file: Path, ledger: Path, fallback: Path, *, profile: str, prefix: str, skill_label: str) -> str:
+    seed: list[str] = []
+    seed.append("larch-stall-report-dedup-generic-v1" if profile == "generic" else "larch-stall-report-dedup-v1")
+    if profile == "generic":
+        seed.extend([f"skill_label={skill_label}", f"artifact_prefix={prefix}"])
+    seed.extend([
+        f"report_kind={kind}",
+        f"failure_class={_safe_class_value(read_kv(class_file, 'FAILURE_CLASS', 'unrecoverable'))}",
+        f"step={_safe_step_value(read_kv(class_file, 'STALL_STEP', ''))}",
+        f"phase={_safe_phase_value(read_kv(class_file, 'PHASE', ''))}",
+        f"safe_bail_token={_safe_bail_value(read_kv(class_file, 'BAIL_REASON', ''))}",
+    ])
+    if kind == "escalation-success":
+        seed.extend([
+            f"escalation_site={_first_escalation_field('site', ledger, fallback)}",
+            f"escalation_trigger={_first_escalation_field('trigger', ledger, fallback)}",
+        ])
+    return hashlib.sha256("\n".join(seed).encode()).hexdigest()
+
+
+def _report_marker(signature: str) -> str:
+    return f"<!-- larch-stall:signature={signature} -->"
+
+
+def _append_file_section(label: str, path: Path) -> str:
+    if not path.is_file() or path.is_symlink() or path.stat().st_size == 0:
+        return ""
+    return f"\n## {label}\n\n{path.read_text(encoding='utf-8', errors='replace')}\n"
+
+
+def _compose_tier_a_issue(
+    kind: str,
+    class_file: Path,
+    attempts_file: Path,
+    ledger: Path,
+    fallback: Path,
+    marker: Path,
+    root_file: Path,
+    title: str,
+    tmpdir: Path,
+) -> str:
+    bail = read_kv(class_file, "BAIL_REASON_RAW", "") or read_kv(class_file, "BAIL_REASON", "") or "none"
+    body = [
+        f"### {title}",
+        "",
+        "## Report metadata",
+        "",
+        f"- **Report kind**: `{kind}`",
+        f"- **Failure class**: `{_safe_class_value(read_kv(class_file, 'FAILURE_CLASS', 'unrecoverable'))}`",
+        f"- **Step**: `{_safe_step_value(read_kv(class_file, 'STALL_STEP', ''))}`",
+        f"- **Bail reason**: `{_safe_bail_value(bail)}`",
+        f"- **Run ID**: `{_read_run_id(tmpdir)}`",
+        f"- **Branch**: `{_safe_simple_token(read_kv(tmpdir / 'session-env.sh', 'BRANCH_NAME', '') or read_kv(tmpdir / 'ship-pr-state.sh', 'BRANCH_NAME', '') or read_kv(tmpdir / 'session-env.sh', 'BRANCH', '') or read_kv(tmpdir / 'ship-pr-state.sh', 'BRANCH', ''), fallback='unknown')}`",
+        f"- **PR URL**: `{read_kv(tmpdir / 'ship-pr-state.sh', 'PR_URL', '') or read_kv(tmpdir / 'finalize-state.sh', 'PR_URL', '') or 'unknown'}`",
+        _append_file_section("Root-cause finding", root_file),
+        "\n## Attempts\n\n" + _attempts_table(attempts_file),
+        _append_file_section("Escalation ledger", ledger),
+        _append_file_section("Fallback escalation evidence", fallback),
+        _append_file_section("Record-failure marker", marker),
+    ]
+    if _record_escalation_tool_failure_present(tmpdir):
+        body.append("\n## Record-escalation Tool Failure\n\n- tagged record-escalation Tool Failure present\n")
+    detail = read_kv(class_file, "FAILURE_DETAIL_LOG", "")
+    if detail and _validate_tmpdir_local_file(tmpdir, Path(detail)):
+        body.append("\n## Validated failure-detail log\n\n" + Path(detail).read_text(encoding="utf-8", errors="replace") + "\n")
+    body.append(_append_file_section("Run-log pointer", tmpdir / "run-log-pointer.txt"))
+    return "\n".join(part for part in body if part)
+
+
+def _compose_tier_b_projection(
+    kind: str,
+    class_file: Path,
+    attempts_file: Path,
+    ledger: Path,
+    fallback: Path,
+    marker: Path,
+    root_file: Path,
+    bounded_file: Path,
+    skill_label: str,
+) -> str:
+    tmpdir = class_file.parent
+    bail = _safe_bail_value(read_kv(class_file, "BAIL_REASON", ""))
+    summary = _parse_root_cause_file(bounded_file, "summary", _parse_root_cause_file(root_file, "summary", ""))
+    rows = [
+        f"## {skill_label} {kind} report",
+        "",
+        "| Field | Value |",
+        "|---|---|",
+        f"| Report kind | `{kind}` |",
+    ]
+    if kind == "escalation-success":
+        rows.append("| Recovery outcome | `success` |")
+    else:
+        rows.append(f"| Failure class | `{_safe_class_value(read_kv(class_file, 'FAILURE_CLASS', 'unrecoverable'))}` |")
+    rows.extend([
+        f"| Step | `{_safe_step_value(read_kv(class_file, 'STALL_STEP', ''))}` |",
+        f"| Phase | `{_safe_phase_value(read_kv(class_file, 'PHASE', ''))}` |",
+        f"| Bail reason | `{bail}` |",
+        f"| Exit code | `{_safe_simple_token(read_kv(class_file, 'EXIT_CODE', ''), fallback='unknown')}` |",
+        f"| Dispatcher | `{_safe_simple_token(read_kv(class_file, 'DISPATCHER', ''), fallback='unknown')}` |",
+        f"| Matched classifier pattern | `{_safe_simple_token(read_kv(class_file, 'MATCHED_CLASSIFIER_PATTERN', ''), fallback='redacted')}` |",
+        f"| Larch version | `{_read_larch_version()}` |",
+        f"| Run ID | `{_read_run_id(tmpdir)}` |",
+        f"| Root-cause verdict | `{_parse_root_cause_file(root_file, 'verdict', '')}` |",
+        f"| Root-cause confidence | `{_parse_root_cause_file(root_file, 'confidence', '')}` |",
+        "",
+        "## Bounded root-cause summary",
+        "",
+        summary,
+        "",
+        "## Bounded root-cause details",
+        "",
+        _root_cause_prose(bounded_file),
+        "",
+        "## Attempts",
+        "",
+        _attempts_table(attempts_file),
+        "",
+        "## Escalation evidence",
+        "",
+    ])
+    evidence = [_append_escalation_row_summaries(ledger), _append_escalation_row_summaries(fallback, "fallback")]
+    if marker.is_file() and marker.stat().st_size > 0:
+        evidence.append("- record-failure marker present")
+    if _record_escalation_tool_failure_present(tmpdir):
+        evidence.append("- tagged record-escalation Tool Failure present")
+    rows.append("\n".join(line for line in evidence if line))
+    return "\n".join(rows).rstrip() + "\n"
+
+
+def _write_tier_a_comment_payloads(tmpdir: Path, attempts_file: Path, ledger: Path, fallback: Path, marker: Path, root_file: Path, prefix: str) -> None:
+    _artifact_path(tmpdir, _DEFAULT_TIER_A_ATTEMPTS_SLICE, prefix).write_text(_attempts_table(attempts_file) + "\n", encoding="utf-8")
+    escalation = "\n".join(
+        part for part in (
+            _append_file_section("Escalation ledger", ledger),
+            _append_file_section("Fallback escalation evidence", fallback),
+            _append_file_section("Record-failure marker", marker),
+            "\n## Record-escalation Tool Failure\n\n- tagged record-escalation Tool Failure present\n" if _record_escalation_tool_failure_present(tmpdir) else "",
+        )
+        if part
+    )
+    _artifact_path(tmpdir, _DEFAULT_TIER_A_ESCALATION_SLICE, prefix).write_text(_redact_text(escalation), encoding="utf-8")
+    _artifact_path(tmpdir, _DEFAULT_TIER_A_ROOT_CAUSE_SLICE, prefix).write_text(_redact_text(root_file.read_text(encoding="utf-8", errors="replace")), encoding="utf-8")
+
+
+def _write_tier_b_comment_payloads(tmpdir: Path, attempts_file: Path, ledger: Path, fallback: Path, marker: Path, bounded_file: Path, prefix: str) -> None:
+    _artifact_path(tmpdir, _DEFAULT_TIER_B_ATTEMPTS_SLICE, prefix).write_text(_attempts_table(attempts_file) + "\n", encoding="utf-8")
+    evidence = [_append_escalation_row_summaries(ledger), _append_escalation_row_summaries(fallback, "fallback")]
+    if marker.is_file() and marker.stat().st_size > 0:
+        evidence.append("- record-failure marker present")
+    if _record_escalation_tool_failure_present(tmpdir):
+        evidence.append("- tagged record-escalation Tool Failure present")
+    _artifact_path(tmpdir, _DEFAULT_TIER_B_ESCALATION_SLICE, prefix).write_text("\n".join(line for line in evidence if line) + "\n", encoding="utf-8")
+    root_public = "## Bounded root-cause summary\n\n" + _parse_root_cause_file(bounded_file, "summary", "") + "\n\n## Bounded root-cause details\n\n" + _root_cause_prose(bounded_file) + "\n"
+    _artifact_path(tmpdir, _DEFAULT_TIER_B_ROOT_CAUSE_SLICE, prefix).write_text(root_public, encoding="utf-8")
+
+
+def _tier_a_allowed(tmpdir: Path, args: argparse.Namespace) -> bool:
+    forked = (
+        read_kv(tmpdir / "ship-pr-state.sh", "FORKED_TARGET", "")
+        or read_kv(tmpdir / "finalize-state.sh", "FORKED_TARGET", "")
+        or read_kv(tmpdir / "session-env.sh", "FORKED_TARGET", "")
+        or "false"
+    )
+    if _truthy(forked):
+        return False
+    root = (
+        os.environ.get("CLAUDE_PROJECT_DIR", "")
+        or os.environ.get("REPO_ROOT", "")
+        or read_kv(Path(getattr(args, "session_env_file", "") or tmpdir / "session-env.sh"), "REPO_ROOT", "")
+        or read_kv(tmpdir / "ship-pr-state.sh", "REPO_ROOT", "")
+    )
+    if not root:
+        completed = subprocess.run(["/usr/bin/git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False)
+        root = completed.stdout.strip() if completed.returncode == 0 else ""
+    return bool(root) and (Path(root) / "skills" / "implement" / "SKILL.md").is_file()
+
+
+def _redact_text(text: str) -> str:
+    redactor = _REPO_ROOT / "python" / "cli.py"
+    if not redactor.is_file():
+        return text
+    completed = subprocess.run([sys.executable, str(redactor), "redact", "secrets"], input=text, text=True, capture_output=True, check=False)
+    return completed.stdout if completed.returncode == 0 else text
+
+
+def _emit_chat_print_filing_status(tmpdir: Path, out_file: Path, title: str, sensitive_file: Path, prefix: str) -> None:
+    if _truthy(os.environ.get("LARCH_STALL_RECOVERY_TEST_LEGACY_SURFACES")) and not _truthy(os.environ.get("LARCH_STALL_RECOVERY_ENABLE_TEST_FILING")):
+        emit("STALL_RECOVERY_REPORT_STATUS", "printed")
+        return
+    resolver = _REPO_ROOT / "scripts" / "resolve-upstream-larch-repo.sh"
+    helper = _REPO_ROOT / "scripts" / "file-failure-report-cross-repo.sh"
+    repo_proc = subprocess.run([str(resolver)], capture_output=True, text=True, check=False) if resolver.is_file() else None
+    upstream_repo = repo_proc.stdout.strip() if repo_proc and repo_proc.returncode == 0 else ""
+    if not upstream_repo:
+        emit("STALL_RECOVERY_REPORT_STATUS", "fallback-print-required")
+        emit("STALL_RECOVERY_REPORT_FALLBACK_REASON", "upstream-repo-unresolved")
+        return
+    if not helper.is_file():
+        emit("STALL_RECOVERY_REPORT_STATUS", "fallback-print-required")
+        emit("STALL_RECOVERY_REPORT_FALLBACK_REASON", "cross-repo-helper-missing")
+        return
+    helper_out = _artifact_path(tmpdir, "stall-recovery-tier-b-file.env", prefix)
+    completed = subprocess.run(
+        [
+            str(helper),
+            "--repo", upstream_repo,
+            "--body-file", str(out_file),
+            "--title", title,
+            "--publication-tier", "tier-b",
+            "--attempts-file", str(_artifact_path(tmpdir, _DEFAULT_TIER_B_ATTEMPTS_SLICE, prefix)),
+            "--escalation-ledger-file", str(_artifact_path(tmpdir, _DEFAULT_TIER_B_ESCALATION_SLICE, prefix)),
+            "--root-cause-file", str(_artifact_path(tmpdir, _DEFAULT_TIER_B_ROOT_CAUSE_SLICE, prefix)),
+            "--sensitive-corpus-file", str(sensitive_file),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    helper_out.write_text(completed.stdout, encoding="utf-8")
+    normalize_file_failure_report_env(argparse.Namespace(implement_tmpdir=str(tmpdir), file_failure_report_env=str(helper_out)))
 
 
 _CODE_ALLOWLIST_LINES = """chat-print	report_kind	REPORT_KIND	enum
@@ -879,6 +1639,10 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--attempts-file")
         p.add_argument("--bail-reason", default="")
         p.add_argument("--in-memory-stall-tracking")
+        p.add_argument("--primary-state-file", default="")
+        p.add_argument("--finalize-state-file", default="")
+        p.add_argument("--session-env-file", default="")
+        p.add_argument("--artifact-prefix", default="")
         p.add_argument("--stall-step", default="")
         p.add_argument("--phase", default="")
         p.add_argument("--exit-code", default="")
@@ -902,6 +1666,7 @@ def main(argv: list[str] | None = None) -> int:
         ns, _ = p.parse_known_args(rest)
         return retry_policy(ns)
     if sub == "normalize-outcome":
+        p.add_argument("--in-memory-stall-tracking", default="")
         ns, _ = p.parse_known_args(rest)
         return normalize_outcome(ns)
     if sub == "normalize-issue-env":
@@ -931,9 +1696,21 @@ def main(argv: list[str] | None = None) -> int:
     if sub == "compose-report":
         p.add_argument("--report-kind", default="terminal-failure")
         p.add_argument("--surface", default="chat-print")
+        p.add_argument("--attempts-file", default="")
+        p.add_argument("--classification-file", default="")
+        p.add_argument("--escalation-ledger-file", default="")
+        p.add_argument("--escalation-fallback-file", default="")
+        p.add_argument("--record-failure-marker", default="")
+        p.add_argument("--root-cause-file", default="")
+        p.add_argument("--bounded-root-cause-file", default="")
+        p.add_argument("--title-file", default="")
+        p.add_argument("--sensitive-corpus-file", default="")
         p.add_argument("--output-file")
         p.add_argument("--profile", default="implement")
         p.add_argument("--artifact-prefix", default="")
+        p.add_argument("--primary-state-file", default="")
+        p.add_argument("--finalize-state-file", default="")
+        p.add_argument("--session-env-file", default="")
         ns, _ = p.parse_known_args(rest)
         return compose_report(ns)
     if sub == "validate-token":
@@ -980,8 +1757,15 @@ def main(argv: list[str] | None = None) -> int:
         ns, _ = p.parse_known_args(rest)
         return normalize_file_failure_report_env(ns)
     if sub == "populate-sensitive-corpus":
+        p.add_argument("--sensitive-corpus-file", default="")
+        p.add_argument("--classification-file", default="")
+        p.add_argument("--attempts-file", default="")
+        p.add_argument("--escalation-ledger-file", default="")
+        p.add_argument("--escalation-fallback-file", default="")
+        p.add_argument("--record-failure-marker", default="")
+        p.add_argument("--artifact-prefix", default="")
         ns, _ = p.parse_known_args(rest)
-        return populate_sensitive_corpus(rest, implement_tmpdir=str(ns.implement_tmpdir))
+        return populate_sensitive_corpus(ns)
     if sub == "lint":
         return lint_subcommand(rest)
     print(f"stall-recovery: unknown subcommand: {sub}", file=sys.stderr)

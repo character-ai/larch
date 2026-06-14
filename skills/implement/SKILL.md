@@ -330,26 +330,34 @@ Reference `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/phantom-probe.md` w
 
 **Machine reachability** — scripts whose canonical prose references live in `execution-issues-tracking.md`; listed here to satisfy `agent-lint` S030:
 - `${CLAUDE_PLUGIN_ROOT}/python/cli.py oos materialize-manifest`
-- `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/materialize-manifest-oos.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/materialize-manifest-oos.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-python/cli.py oos materialize-manifest`
-- `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-materialize-manifest-oos.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-materialize-manifest-oos.md`
+- `${CLAUDE_PLUGIN_ROOT}/python/file_oos.py`
+- `${CLAUDE_PLUGIN_ROOT}/python/test_file_oos.py`
 - `${CLAUDE_PLUGIN_ROOT}/python/cli.py oos file-conflict-deps`
 - `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-file-conflict-deps.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-file-conflict-deps.md`
 - `${CLAUDE_PLUGIN_ROOT}/python/cli.py oos issue-cap`
 - `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-issue-cap.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-disposition-checkpoint.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-disposition-gate.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-oos-disposition-gate.sh`
+- `${CLAUDE_PLUGIN_ROOT}/python/test_file_oos.py`
 
 **Machine reachability** — implementation lifecycle helpers whose detailed contracts live in sibling docs or Python CLI surfaces; listed here to satisfy `agent-lint` S030:
+- `${CLAUDE_PLUGIN_ROOT}/python/test_execution_issues.py`
+- `${CLAUDE_PLUGIN_ROOT}/python/cli.py stall-recovery`
+- `${CLAUDE_PLUGIN_ROOT}/python/stall_recovery.py`
+- `${CLAUDE_PLUGIN_ROOT}/python/test_stall_recovery.py`
+- `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-7a.sh`
+- `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-step-7a.sh`
+
+**Machine reachability** — legacy wrappers and harnesses retained during C4c cutover; listed here to satisfy `agent-lint` S030:
 - `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/flush-execution-issues.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-flush-execution-issues.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/stall-recovery-report.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-7a.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-step-7a.sh`
+- `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/materialize-manifest-oos.sh`
+- `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/materialize-manifest-oos.md`
+- `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-materialize-manifest-oos.sh`
+- `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-materialize-manifest-oos.md`
+- `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-disposition-checkpoint.sh`
+- `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-disposition-gate.sh`
+- `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-oos-disposition-gate.sh`
 
 <!-- step:2 — Implement the Feature -->
 

@@ -9,10 +9,25 @@ import step_7a
 def test_step7a_emits_terminal_kvs(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
 
+    def fake_generate_code_flow_diagram(implement_tmpdir: Path, *, base_remote: str, base_ref: str) -> tuple[int, str, str, str]:
+        _ = (base_remote, base_ref)
+        diagram = implement_tmpdir / "code-flow-diagram.md"
+        _ = diagram.write_text("## Code Flow Diagram\n\n```mermaid\ngraph TD\nA-->B\n```\n", encoding="utf-8")
+        return 0, "ok", str(diagram), ""
+
     with patch.object(step_7a, "_is_small_non_runtime_change", return_value=False), patch.object(
+        step_7a.pr_body,
+        "generate_code_flow_diagram",
+        side_effect=fake_generate_code_flow_diagram,
+    ), patch.object(
+        step_7a.run_logs,
+        "flush_logs_pre",
+    ) as mock_flush, patch.object(
         step_7a,
         "subprocess",
     ) as mock_subprocess:
+        mock_flush.return_value.skipped = True
+        mock_flush.return_value.reason = "no-repo-cwd"
         mock_subprocess.run.return_value.returncode = 0
         mock_subprocess.run.return_value.stdout = "REBASE_OUTCOME=skipped\n"
         rc = step_7a.run_step7a(tmp_path)

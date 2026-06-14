@@ -548,7 +548,15 @@ def disposition_checkpoint_main(argv: list[str] | None = None) -> int:
     forked = state.get("FORKED_TARGET", "false") == "true"
     repo_unavailable = state.get("REPO_UNAVAILABLE", "false") == "true"
     merge_base = subprocess.run(["git", "merge-base", "HEAD", "origin/main"], text=True, capture_output=True, check=False)  # noqa: S607
-    commit_range = f"{merge_base.stdout.strip()}..HEAD" if merge_base.returncode == 0 and merge_base.stdout.strip() else "HEAD"
+    if merge_base.returncode == 0 and merge_base.stdout.strip():
+        commit_range = f"{merge_base.stdout.strip()}..HEAD"
+    else:
+        origin_main = subprocess.run(["git", "rev-parse", "--verify", "origin/main"], text=True, capture_output=True, check=False)  # noqa: S607
+        if origin_main.returncode == 0:
+            commit_range = "origin/main..HEAD"
+        else:
+            parent = subprocess.run(["git", "rev-parse", "--verify", "HEAD^"], text=True, capture_output=True, check=False)  # noqa: S607
+            commit_range = "HEAD^..HEAD" if parent.returncode == 0 else "HEAD"
     run_id = state.get("RUN_ID", "")
     if not run_id and (tmpdir / "session-id").is_file():
         run_id = (tmpdir / "session-id").read_text(encoding="utf-8").strip()

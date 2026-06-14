@@ -134,7 +134,7 @@ def test_dedup_tier_a_report_dry_run(monkeypatch: pytest.MonkeyPatch, tmp_path: 
 
 def test_classify_rebase_failed_step(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     _ = (tmp_path / "ship-pr-state.sh").write_text(
-        "STALL_STEP=rebase-failed\nPHASE=rebase-failed\nBAIL_REASON=\nEXIT_CODE=1\n",
+        "STALL_TRACKING=true\nSTALL_STEP=rebase-failed\nPHASE=rebase-failed\nBAIL_REASON=\nEXIT_CODE=1\n",
         encoding="utf-8",
     )
     rc = stall_recovery.classify_main(["--implement-tmpdir", str(tmp_path), "--stall-step", "rebase-failed"])
@@ -146,7 +146,7 @@ def test_classify_rebase_failed_step(tmp_path: Path, capsys: pytest.CaptureFixtu
 
 def test_classify_ci_fix_exhausted_with_detail_log(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     _ = (tmp_path / "ship-pr-state.sh").write_text(
-        "STALL_STEP=8\nPHASE=ci-merge\nBAIL_REASON=ci-fix-exhausted\nEXIT_CODE=2\n",
+        "STALL_TRACKING=true\nSTALL_STEP=8\nPHASE=ci-merge\nBAIL_REASON=ci-fix-exhausted\nEXIT_CODE=2\n",
         encoding="utf-8",
     )
     detail = tmp_path / "failure.log"
@@ -192,16 +192,45 @@ def test_validate_tier_b_public_file_rejects_sensitive_token(tmp_path: Path, cap
     assert "PUBLIC_FILE_VALID=false" in capsys.readouterr().out
 
 
-def test_compose_report_python_impl(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+def test_compose_report_python_impl(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("LARCH_STALL_RECOVERY_DRY_RUN", "1")
+    custom_class = tmp_path / "custom-class.env"
+    custom_root = tmp_path / "custom-root.md"
+    custom_bounded = tmp_path / "custom-bounded.md"
+    custom_corpus = tmp_path / "custom-sensitive.env"
+    _ = custom_class.write_text(
+        "FAILURE_CLASS=lint-failure\nFAILURE_SIGNATURE=abc\nSTALL_STEP=5\nPHASE=review\nEXIT_CODE=1\n",
+        encoding="utf-8",
+    )
+    _ = custom_root.write_text(
+        "verdict=larch-defect\nconfidence=high\nsummary=custom summary\n\nDetailed root cause.\n",
+        encoding="utf-8",
+    )
+    _ = custom_bounded.write_text(
+        "verdict=larch-defect\nconfidence=high\nsummary=custom summary\n\nBounded detail.\n",
+        encoding="utf-8",
+    )
+    _ = custom_corpus.write_text("safe-token\n", encoding="utf-8")
     rc = stall_recovery.compose_report_main([
         "--implement-tmpdir", str(tmp_path),
         "--surface", "chat-print",
         "--report-kind", "terminal-failure",
+        "--classification-file", str(custom_class),
+        "--root-cause-file", str(custom_root),
+        "--bounded-root-cause-file", str(custom_bounded),
+        "--sensitive-corpus-file", str(custom_corpus),
+        "--profile", "generic",
+        "--artifact-prefix", "design-failure",
     ])
     assert rc == 0
     out = capsys.readouterr().out
-    assert "[Bug] /implement terminal:" in out
-    assert "STALL_RECOVERY_REPORT_STATUS=printed" in out
+    assert "STALL_RECOVERY_REPORT_KIND=terminal-failure" in out
+    assert "STALL_RECOVERY_REPORT_TIER=B" in out
+    assert "STALL_RECOVERY_REPORT_STATUS=dry-run" in out
     assert "REPORT_DEDUP_SIGNATURE=" in out
 
 
@@ -209,3 +238,219 @@ def test_lint_subcommand_ok(capsys: pytest.CaptureFixture[str]) -> None:
     rc = stall_recovery.lint_main([])
     assert rc == 0
     assert "LINT_OK=true" in capsys.readouterr().out
+
+
+def test_normalize_outcome_reports_full_kv_layers(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _ = (tmp_path / "ship-pr-state.sh").write_text("STALL_TRACKING=false\nMERGE_RESULT=already_merged\n", encoding="utf-8")
+    rc = stall_recovery.normalize_outcome_main(["--implement-tmpdir", str(tmp_path)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "IMPLEMENT_NORMALIZED_OUTCOME=force-merged-externally" in out
+    assert "IMPLEMENT_ANY_STALL_TRACKING=false" in out
+    assert "IMPLEMENT_SHIP_STALL_TRACKING=false" in out
+
+
+def test_classify_design_state_file_merge(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    primary = tmp_path / "design-failure-terminal-state.env"
+    _ = primary.write_text(
+        "STALL_TRACKING=true\nSTALL_STEP=judge-panel\nPHASE=judge-panel\nBAIL_REASON=decompose-panel-retry-exhausted\nEXIT_CODE=1\nDISPATCHER=split-path\n",
+        encoding="utf-8",
+    )
+    rc = stall_recovery.classify_main(
+        [
+            "--implement-tmpdir",
+            str(tmp_path),
+            "--primary-state-file",
+            str(primary),
+            "--in-memory-stall-tracking",
+            "true",
+            "--artifact-prefix",
+            "design-failure",
+        ]
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "STALL_TRACKING=true" in out
+    assert "MATCHED_CLASSIFIER_PATTERN=" in out
+    assert (tmp_path / "design-failure-classification.env").is_file()
+
+
+def test_classify_no_stall_emits_no_stall_pattern(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    primary = tmp_path / "design-failure-terminal-state.env"
+    _ = primary.write_text(
+        "STALL_TRACKING=false\nSTALL_STEP=judge-panel\nPHASE=judge-panel\nBAIL_REASON=decompose-panel-retry-exhausted\nEXIT_CODE=1\nDISPATCHER=split-path\n",
+        encoding="utf-8",
+    )
+    rc = stall_recovery.classify_main(
+        [
+            "--implement-tmpdir",
+            str(tmp_path),
+            "--primary-state-file",
+            str(primary),
+            "--artifact-prefix",
+            "design-failure",
+        ]
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "FAILURE_CLASS=unrecoverable" in out
+    assert "MATCHED_CLASSIFIER_PATTERN=no-stall" in out
+
+
+def test_populate_sensitive_corpus_python_impl(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _ = (tmp_path / "stall-recovery-sensitive-corpus.env").write_text("existing-token\n", encoding="utf-8")
+    _ = (tmp_path / "plan.txt").write_text("https://client.example.test/private\n", encoding="utf-8")
+    rc = stall_recovery.populate_sensitive_corpus_main(["--implement-tmpdir", str(tmp_path)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "SENSITIVE_CORPUS_FILE=" in out
+    corpus = (tmp_path / "stall-recovery-sensitive-corpus.env").read_text(encoding="utf-8")
+    assert "existing-token" in corpus
+    assert "https://client.example.test/private" in corpus
+
+
+def test_build_sensitive_corpus_includes_detail_log(tmp_path: Path) -> None:
+    sensitive = tmp_path / "stall-recovery-sensitive-corpus.env"
+    _ = sensitive.write_text("existing-token\n", encoding="utf-8")
+    class_file = tmp_path / "stall-recovery-classification.env"
+    detail = tmp_path / "failure.log"
+    _ = detail.write_text("failure-detail-secret\n", encoding="utf-8")
+    _ = class_file.write_text(f"FAILURE_DETAIL_LOG={detail}\n", encoding="utf-8")
+    out = tmp_path / "effective.env"
+    stall_recovery.build_sensitive_corpus_from_evidence(
+        tmpdir=tmp_path,
+        sensitive_file=sensitive,
+        class_file=class_file,
+        attempts_file=tmp_path / "stall-recovery-attempts.env",
+        ledger=tmp_path / "stall-recovery-escalation-ledger.tsv",
+        fallback=tmp_path / "stall-recovery-escalation-fallback.tsv",
+        marker=tmp_path / "stall-recovery-escalation-record-failure.env",
+        out_file=out,
+    )
+    text = out.read_text(encoding="utf-8")
+    assert "existing-token" in text
+    assert "failure-detail-secret" in text
+
+
+def test_validate_tier_b_public_file_rebuilds_effective_corpus(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    corpus = tmp_path / "stall-recovery-sensitive-corpus.env"
+    _ = corpus.write_text("safe-token\n", encoding="utf-8")
+    _ = (tmp_path / "plan.txt").write_text("https://client.example.test/private\n", encoding="utf-8")
+    public = tmp_path / "public.md"
+    _ = public.write_text("mentions https://client.example.test/private\n", encoding="utf-8")
+    rc = stall_recovery.validate_tier_b_public_file_main(
+        [
+            "--implement-tmpdir",
+            str(tmp_path),
+            "--public-file",
+            str(public.resolve()),
+            "--sensitive-corpus-file",
+            str(corpus.resolve()),
+        ]
+    )
+    assert rc == 1
+    assert "PUBLIC_FILE_VALID=false" in capsys.readouterr().out
+
+
+def test_compose_report_rejects_outside_output_path(tmp_path: Path) -> None:
+    outside = Path("/tmp/stall-recovery-outside-report.md")
+    rc = stall_recovery.compose_report_main(
+        [
+            "--implement-tmpdir",
+            str(tmp_path),
+            "--surface",
+            "chat-print",
+            "--report-kind",
+            "terminal-failure",
+            "--output-file",
+            str(outside),
+        ]
+    )
+    assert rc == 1
+
+
+def test_compose_report_rejects_outside_ledger_path(tmp_path: Path) -> None:
+    custom_class = tmp_path / "custom-class.env"
+    custom_root = tmp_path / "custom-root.md"
+    custom_bounded = tmp_path / "custom-bounded.md"
+    custom_corpus = tmp_path / "custom-sensitive.env"
+    _ = custom_class.write_text(
+        "FAILURE_CLASS=lint-failure\nFAILURE_SIGNATURE=abc\nSTALL_STEP=5\nPHASE=review\nEXIT_CODE=1\n",
+        encoding="utf-8",
+    )
+    _ = custom_root.write_text(
+        "verdict=larch-defect\nconfidence=high\nsummary=custom summary\n\nDetailed root cause.\n",
+        encoding="utf-8",
+    )
+    _ = custom_bounded.write_text(
+        "verdict=larch-defect\nconfidence=high\nsummary=custom summary\n\nBounded detail.\n",
+        encoding="utf-8",
+    )
+    _ = custom_corpus.write_text("safe-token\n", encoding="utf-8")
+    outside_ledger = Path("/tmp/stall-ledger-outside.tsv")
+    _ = outside_ledger.write_text("utc=now\tsite=step5\ttrigger=main-agent-required\n", encoding="utf-8")
+    rc = stall_recovery.compose_report_main(
+        [
+            "--implement-tmpdir",
+            str(tmp_path),
+            "--surface",
+            "chat-print",
+            "--report-kind",
+            "terminal-failure",
+            "--classification-file",
+            str(custom_class),
+            "--root-cause-file",
+            str(custom_root),
+            "--bounded-root-cause-file",
+            str(custom_bounded),
+            "--sensitive-corpus-file",
+            str(custom_corpus),
+            "--escalation-ledger-file",
+            str(outside_ledger),
+            "--output-file",
+            str(tmp_path / "out.md"),
+        ],
+    )
+    assert rc == 1
+
+
+def test_compose_report_rejects_sensitive_plan_evidence(tmp_path: Path) -> None:
+    custom_class = tmp_path / "custom-class.env"
+    custom_root = tmp_path / "custom-root.md"
+    custom_bounded = tmp_path / "custom-bounded.md"
+    custom_corpus = tmp_path / "custom-sensitive.env"
+    _ = custom_class.write_text(
+        "FAILURE_CLASS=lint-failure\nFAILURE_SIGNATURE=abc\nSTALL_STEP=5\nPHASE=review\nEXIT_CODE=1\n",
+        encoding="utf-8",
+    )
+    _ = custom_root.write_text(
+        "verdict=larch-defect\nconfidence=high\nsummary=custom summary\n\nDetailed root cause.\n",
+        encoding="utf-8",
+    )
+    _ = custom_bounded.write_text(
+        "verdict=larch-defect\nconfidence=high\nsummary=custom summary\n\nBounded finding mentions https://client.example.test/private.\n",
+        encoding="utf-8",
+    )
+    _ = custom_corpus.write_text("safe-token\n", encoding="utf-8")
+    _ = (tmp_path / "plan.txt").write_text("https://client.example.test/private\n", encoding="utf-8")
+    rc = stall_recovery.compose_report_main(
+        [
+            "--implement-tmpdir",
+            str(tmp_path),
+            "--surface",
+            "chat-print",
+            "--report-kind",
+            "terminal-failure",
+            "--classification-file",
+            str(custom_class),
+            "--root-cause-file",
+            str(custom_root),
+            "--bounded-root-cause-file",
+            str(custom_bounded),
+            "--sensitive-corpus-file",
+            str(custom_corpus),
+            "--output-file",
+            str(tmp_path / "out.md"),
+        ],
+    )
+    assert rc == 1
