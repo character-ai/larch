@@ -249,9 +249,10 @@ def fetch_url(
             path = parsed.path or "/"
             if parsed.query:
                 path += "?" + parsed.query
+            host_header = host if port == 443 else f"{host}:{port}"
             conn = _PinnedHTTPSConnection(host, port, pinned_ip, timeout)
             try:
-                conn.request("HEAD", path, headers={"Host": parsed.netloc})
+                conn.request("HEAD", path, headers={"Host": host_header})
                 response = conn.getresponse()
                 code = response.status
             finally:
@@ -437,7 +438,10 @@ def check_fileline(cite: str, *, git_root: Path | None = None) -> FetchResult:
         return FetchResult("PASS")
     if start > end:
         return FetchResult("FAIL", "line-range-empty")
-    line_count = len(target_real.read_text(encoding="utf-8", errors="replace").splitlines())
+    try:
+        line_count = len(target_real.read_text(encoding="utf-8", errors="replace").splitlines())
+    except OSError:
+        return FetchResult("UNKNOWN", "file-unreadable")
     if end > line_count:
         return FetchResult("FAIL", "line-out-of-range")
     return FetchResult("PASS")
@@ -536,62 +540,77 @@ def validate_citations(
         _write_text_atomic(output, _sidecar(synth_bytes=len(text.encode()), synth_lines=len(text.splitlines()), total=0, pass_count=0, fail_count=0, unknown_count=0, rows=[]))
         _emit_summary(0, 0, 0, 0)
         return 0, 0, 0, 0
-    fetch_targets: dict[str, str] = {url: url for url in urls}
-    for doi in dois:
-        if _VALID_DOI_RE.match(doi):
-            fetch_targets[f"doi:{doi}"] = f"https://doi.org/{doi}"
-    fetch_results = _parallel_fetch_results(
-        fetch_targets,
-        budget_seconds=budget_seconds,
-        per_fetch_timeout=per_fetch_timeout,
-        fetcher=fetcher,
-        sleeper=sleeper,
-    ) if fetch_targets else {}
-    rows: list[CitationLedgerRow] = []
-    credibility_hosts: list[str] = []
-    counts = {"PASS": 0, "FAIL": 0, "UNKNOWN": 0}
+    try:
+        fetch_targets: dict[str, str] = {url: url for url in urls}
+        for doi in dois:
+            if _VALID_DOI_RE.match(doi):
+                fetch_targets[f"doi:{doi}"] = f"https://doi.org/{doi}"
+        fetch_results = _parallel_fetch_results(
+            fetch_targets,
+            budget_seconds=budget_seconds,
+            per_fetch_timeout=per_fetch_timeout,
+            fetcher=fetcher,
+            sleeper=sleeper,
+        ) if fetch_targets else {}
+        rows: list[CitationLedgerRow] = []
+        credibility_hosts: list[str] = []
+        counts = {"PASS": 0, "FAIL": 0, "UNKNOWN": 0}
 
-    def add_row(claim: str, claim_type: str, result: FetchResult) -> None:
-        counts[result.status] = counts.get(result.status, 0) + 1
-        rows.append(CitationLedgerRow(claim, claim_type, result.status, result.reason))
+        def add_row(claim: str, claim_type: str, result: FetchResult) -> None:
+            counts[result.status] = counts.get(result.status, 0) + 1
+            rows.append(CitationLedgerRow(claim, claim_type, result.status, result.reason))
 
-    for url in urls:
-        host = _url_host(url)
-        if host:
-            credibility_hosts.append(host)
-        add_row(url, "url", fetch_results.get(url, FetchResult("UNKNOWN", "timeout")))
-    for doi in dois:
-        if not _VALID_DOI_RE.match(doi):
-            add_row(doi, "doi", FetchResult("FAIL", "doi-syntax"))
-            continue
-        credibility_hosts.append("doi.org")
-        raw = fetch_results.get(f"doi:{doi}", FetchResult("UNKNOWN", "timeout"))
-        if raw.status == "PASS" or raw.token() == "UNKNOWN(redirect-not-followed)":
-            add_row(doi, "doi", FetchResult("PASS"))
-        else:
-            add_row(doi, "doi", FetchResult("UNKNOWN", "doi-unresolved"))
-    for cite in filelines:
-        add_row(cite, "file-line", check_fileline(cite, git_root=git_root))
-    total = len(rows)
-    truncation = ""
-    if truncated:
-        truncation = f"claim count exceeded `--max-claims={max_claims}`. Excess claims were dropped from the ledger; consider re-running with `--max-claims` raised."
-    _write_text_atomic(
-        output,
-        _sidecar(
-            synth_bytes=len(text.encode()),
-            synth_lines=len(text.splitlines()),
-            total=total,
-            pass_count=counts.get("PASS", 0),
-            fail_count=counts.get("FAIL", 0),
-            unknown_count=counts.get("UNKNOWN", 0),
-            rows=rows,
-            truncation=truncation,
-            credibility_hosts=credibility_hosts,
-        ),
-    )
-    _emit_summary(counts.get("PASS", 0), counts.get("FAIL", 0), counts.get("UNKNOWN", 0), total)
-    return counts.get("PASS", 0), counts.get("FAIL", 0), counts.get("UNKNOWN", 0), total
+        for url in urls:
+            host = _url_host(url)
+            if host:
+                credibility_hosts.append(host)
+            add_row(url, "url", fetch_results.get(url, FetchResult("UNKNOWN", "timeout")))
+        for doi in dois:
+            if not _VALID_DOI_RE.match(doi):
+                add_row(doi, "doi", FetchResult("FAIL", "doi-syntax"))
+                continue
+            credibility_hosts.append("doi.org")
+            raw = fetch_results.get(f"doi:{doi}", FetchResult("UNKNOWN", "timeout"))
+            if raw.status == "PASS" or raw.token() == "UNKNOWN(redirect-not-followed)":
+                add_row(doi, "doi", FetchResult("PASS"))
+            else:
+                add_row(doi, "doi", FetchResult("UNKNOWN", "doi-unresolved"))
+        for cite in filelines:
+            add_row(cite, "file-line", check_fileline(cite, git_root=git_root))
+        total = len(rows)
+        truncation = ""
+        if truncated:
+            truncation = f"claim count exceeded `--max-claims={max_claims}`. Excess claims were dropped from the ledger; consider re-running with `--max-claims` raised."
+        _write_text_atomic(
+            output,
+            _sidecar(
+                synth_bytes=len(text.encode()),
+                synth_lines=len(text.splitlines()),
+                total=total,
+                pass_count=counts.get("PASS", 0),
+                fail_count=counts.get("FAIL", 0),
+                unknown_count=counts.get("UNKNOWN", 0),
+                rows=rows,
+                truncation=truncation,
+                credibility_hosts=credibility_hosts,
+            ),
+        )
+        _emit_summary(counts.get("PASS", 0), counts.get("FAIL", 0), counts.get("UNKNOWN", 0), total)
+        return counts.get("PASS", 0), counts.get("FAIL", 0), counts.get("UNKNOWN", 0), total
+    except OSError:
+        _write_text_atomic(
+            output,
+            _sidecar(total=0, pass_count=0, fail_count=0, unknown_count=0, status="validation interrupted: filesystem error"),
+        )
+        _emit_summary(0, 0, 0, 0)
+        return 0, 0, 0, 0
+    except Exception:
+        _write_text_atomic(
+            output,
+            _sidecar(total=0, pass_count=0, fail_count=0, unknown_count=0, status="validation interrupted: unexpected error"),
+        )
+        _emit_summary(0, 0, 0, 0)
+        return 0, 0, 0, 0
 
 
 def _pre_help(argv: list[str], usage: str) -> bool:

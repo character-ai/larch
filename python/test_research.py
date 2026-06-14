@@ -3,6 +3,7 @@ from __future__ import annotations
 # ruff: noqa: UP022,ARG005
 # pyright: reportUnusedCallResult=false, reportUnknownArgumentType=false
 
+import concurrent.futures
 import os
 import re
 import socket
@@ -170,6 +171,44 @@ def test_fetch_url_uses_non_default_https_port() -> None:
     assert seen["pinned_ip"] == "93.184.216.34"
 
 
+def test_fetch_url_host_header_omits_userinfo(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen_headers: dict[str, str] = {}
+
+    class FakeConn:
+        def __init__(self, host: str, port: int, pinned_ip: str | None, timeout: float) -> None:
+            _ = (host, port, pinned_ip, timeout)
+
+        def request(self, method: str, path: str, headers: dict[str, str] | None = None) -> None:
+            _ = (method, path)
+            seen_headers.update(headers or {})
+
+        def getresponse(self) -> object:
+            class Resp:
+                status = 200
+
+            return Resp()
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(research, "_PinnedHTTPSConnection", FakeConn)
+    assert research.fetch_url("https://user:pass@example.com/a", resolver=lambda host: ["93.184.216.34"]).token() == "PASS"
+    assert seen_headers["Host"] == "example.com"
+
+
+def test_fetch_url_ignores_proxy_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, str] = {}
+    for key in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy", "NO_PROXY", "no_proxy"):
+        monkeypatch.setenv(key, "http://127.0.0.1:9")
+
+    def connector(_url: str, pinned_ip: str | None, _timeout: int) -> int:
+        seen["pinned_ip"] = pinned_ip or ""
+        return 200
+
+    assert research.fetch_url("https://example.com/", resolver=lambda host: ["93.184.216.34"], connector=connector).token() == "PASS"
+    assert seen["pinned_ip"] == "93.184.216.34"
+
+
 def test_credibility_tier_allow_list() -> None:
     assert research._credibility_tier("en.wikipedia.org") == "allow"  # pyright: ignore[reportPrivateUsage]
     assert research._credibility_tier("arxiv.org") == "allow"  # pyright: ignore[reportPrivateUsage]
@@ -209,6 +248,8 @@ def test_fetch_url_reason_matrix_and_ssrf() -> None:
     assert research.fetch_url("http://example.com").token() == "FAIL(non-https)"
     assert research.fetch_url("https://127.0.0.1/").token() == "FAIL(ssrf-private-host)"
     assert research.fetch_url("https://100.64.0.1/").token() == "FAIL(ssrf-private-host)"
+    assert research.fetch_url("https://[::1]/").token() == "FAIL(ssrf-private-host)"
+    assert research.fetch_url("https://[fd00::1]/").token() == "FAIL(ssrf-private-host)"
     assert research.fetch_url("https://example.com/", resolver=lambda host: ["10.0.0.1"]).token() == "FAIL(ssrf-private-resolved)"
     assert research.fetch_url("https://example.com/", resolver=lambda host: []).token() == "UNKNOWN(network-error)"
     assert research.fetch_url("https://example.com/", resolver=lambda host: [], connector=lambda _u, _p, _t: 200).token() == "UNKNOWN(network-error)"
@@ -227,10 +268,29 @@ def test_resolve_public_ips_maps_dns_failure_to_network_error(monkeypatch: pytes
     def boom(*_args: object, **_kwargs: object) -> object:
         raise socket.gaierror(8, "dns")
 
-    monkeypatch.setattr(socket, "getaddrinfo", boom)
+    monkeypatch.setattr(research.socket, "getaddrinfo", boom)
     ips, reason = research._resolve_public_ips("example.com", timeout=1)  # pyright: ignore[reportPrivateUsage]
     assert ips == []
     assert reason == "network-error"
+
+
+def test_resolve_public_ips_times_out_slow_dns(monkeypatch: pytest.MonkeyPatch) -> None:
+    class TimeoutFuture:
+        def result(self, timeout: float | None = None) -> list[object]:
+            _ = timeout
+            raise concurrent.futures.TimeoutError
+
+    class SyncPool:
+        def submit(self, *_args: object, **_kwargs: object) -> TimeoutFuture:
+            return TimeoutFuture()
+
+        def shutdown(self, *, wait: bool = False, cancel_futures: bool = False) -> None:
+            _ = (wait, cancel_futures)
+
+    monkeypatch.setattr(research.concurrent.futures, "ThreadPoolExecutor", lambda max_workers=1: SyncPool())
+    ips, reason = research._resolve_public_ips("example.com", timeout=0.2)  # pyright: ignore[reportPrivateUsage]
+    assert ips == []
+    assert reason == "timeout"
 
 
 def test_banner_template_matches_research_phase_literal() -> None:
@@ -267,6 +327,18 @@ def test_fileline_out_of_tree_symlink(tmp_path: Path) -> None:
     outside.write_text("secret\n", encoding="utf-8")
     (repo / "escape").symlink_to(outside)
     assert research.check_fileline("escape:1", git_root=repo).token() == "UNKNOWN(out-of-tree-path-after-realpath)"
+
+
+def test_fileline_unreadable_returns_unknown(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    path = repo / "secret.md"
+    path.write_text("one\n", encoding="utf-8")
+    path.chmod(0o000)
+    try:
+        assert research.check_fileline("secret.md:1", git_root=repo).token() == "UNKNOWN(file-unreadable)"
+    finally:
+        path.chmod(0o644)
 def test_parallel_fetch_budget_backfill_and_subprocess_cleanup(monkeypatch: pytest.MonkeyPatch) -> None:
     spawned: list[subprocess.Popen[bytes]] = []
 
@@ -362,17 +434,21 @@ def test_findings_batch_round_trip_parse_input(tmp_path: Path) -> None:
     assert any(out_dir.glob("item-*-body.txt"))
 
 
-def _quiet_fd3_cli(*cli_args: str, tmp_path: Path) -> subprocess.CompletedProcess[str]:
-    py = (
-        "import os, subprocess, sys; "
-        "fd=os.open(sys.argv[1], os.O_WRONLY|os.O_CREAT|os.O_TRUNC, 0o600); os.dup2(fd,3); os.close(fd); "
-        f"raise SystemExit(subprocess.call([{sys.executable!r}, {str(CLI)!r}, *sys.argv[2:]]))"
-    )
-    fd3 = tmp_path / "fd3.txt"
+def _run_quiet_cli(*cli_args: str, tmp_path: Path) -> tuple[subprocess.CompletedProcess[str], Path | None]:
     env = os.environ.copy()
     env.pop("LARCH_QUIET_DISABLE", None)
     env["IMPLEMENT_TMPDIR"] = str(tmp_path)
-    return subprocess.run([sys.executable, "-c", py, str(fd3), *cli_args], cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
+    got = subprocess.run(
+        [sys.executable, str(CLI), *cli_args],
+        cwd=ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    quiet_logs = list(tmp_path.glob("larch-quiet-*.log"))
+    return got, quiet_logs[0] if quiet_logs else None
 
 
 @pytest.mark.parametrize(
@@ -406,10 +482,33 @@ def test_quiet_fd3_contract_for_all_research_verbs(tmp_path: Path, args: tuple[s
                 "TMP": str(tmp_path),
             }.get(part, part)
         )
-    got = _quiet_fd3_cli(*resolved, tmp_path=tmp_path)
+    got, quiet_log = _run_quiet_cli(*resolved, tmp_path=tmp_path)
     assert got.returncode in {0, 3}
-    fd3 = (tmp_path / "fd3.txt").read_text(encoding="utf-8")
-    assert expect in fd3 or expect in got.stdout
+    assert expect in got.stdout
+    assert quiet_log is not None
+    assert expect not in quiet_log.read_text(encoding="utf-8")
+    assert expect not in got.stderr
+
+
+def test_validate_citations_fail_soft_on_mid_run_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    report = tmp_path / "report.md"
+    out = tmp_path / "sidecar.md"
+    report.write_text("See https://example.com/a\n", encoding="utf-8")
+
+    def boom(*_args: object, **_kwargs: object) -> dict[str, research.FetchResult]:
+        raise OSError("disk full")
+
+    captured: list[str] = []
+
+    def capture_emit(text: str) -> None:
+        captured.append(text)
+
+    monkeypatch.setattr(research, "_parallel_fetch_results", boom)
+    monkeypatch.setattr(research.logging_util, "emit", capture_emit)
+    research.validate_citations(report, out, tmp_path)
+    assert out.is_file()
+    assert "filesystem error" in out.read_text(encoding="utf-8")
+    assert captured[-1].startswith("SUMMARY=")
 
 
 def test_validate_citations_cli_unreadable_and_invalid_flags(tmp_path: Path) -> None:
@@ -421,24 +520,6 @@ def test_validate_citations_cli_unreadable_and_invalid_flags(tmp_path: Path) -> 
     bad = run_cli("research", "validate-citations", "--report", str(tmp_path / "missing"), "--output", str(out), "--tmpdir", str(tmp_path), "--max-claims", "nope")
     assert bad.returncode == 2
     assert "SUMMARY=PASS=0 FAIL=0 UNKNOWN=0 TOTAL=0" in bad.stdout
-
-
-def test_quiet_contract_stream_for_research_verbs(tmp_path: Path) -> None:
-    raw = tmp_path / "raw.txt"
-    out = tmp_path / "out.txt"
-    raw.write_text("A?\nB?\n", encoding="utf-8")
-    py = (
-        "import os, subprocess, sys; "
-        "fd=os.open(sys.argv[1], os.O_WRONLY|os.O_CREAT|os.O_TRUNC, 0o600); os.dup2(fd,3); os.close(fd); "
-        f"raise SystemExit(subprocess.call([{sys.executable!r}, {str(CLI)!r}, 'research', 'run-planner', '--raw', {str(raw)!r}, '--output', {str(out)!r}]))"
-    )
-    fd3 = tmp_path / "fd3.txt"
-    env = os.environ.copy()
-    env.pop("LARCH_QUIET_DISABLE", None)
-    env["IMPLEMENT_TMPDIR"] = str(tmp_path)
-    got = subprocess.run([sys.executable, "-c", py, str(fd3)], cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
-    assert got.returncode == 0
-    assert "COUNT=2" in got.stdout
 
 
 _RENDER_FOOTER = (

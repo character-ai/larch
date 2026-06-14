@@ -152,6 +152,9 @@ def test_eval_research_prompt_and_write_baseline_with_stubbed_claude(tmp_path: P
 def test_eval_baseline_ref_validation_and_missing_values(tmp_path: Path) -> None:
     env = {"PATH": str(tmp_path), "CLAUDE_PLUGIN_ROOT": str(ROOT)}
     assert run_cli("eval", "research", "--baseline", "bad ref", "--smoke-test", env=env).returncode == 2
+    assert run_cli("eval", "research", "--baseline", "--smoke-test", env=env).returncode == 2
+    assert "requires a value" in run_cli("eval", "research", "--baseline", "--smoke-test", env=env).stderr
+    assert run_cli("eval", "research", "--work-dir", "--smoke-test", env=env).returncode == 2
     assert run_cli("eval", "research", "--timeout", "abc", "--smoke-test", env=env).returncode == 2
     assert run_cli("eval", "validate-research-output").returncode == 1
 
@@ -225,36 +228,62 @@ def test_eval_set_failure_matrix(tmp_path: Path) -> None:
     assert research_eval.validate_eval_set(missing_adv) is False
 
 
+def test_eval_baseline_git_show_unresolved_ref(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(research_eval.shutil, "which", fake_claude_path)
+
+    def fake_run(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        if argv[:4] == ["git", "-C", str(ROOT), "show"]:
+            return subprocess.CompletedProcess(argv, 1, stdout="", stderr="fatal: bad revision")
+        return subprocess.CompletedProcess(argv, 1, stdout="", stderr="missing")
+
+    monkeypatch.setattr(research_eval.subprocess, "run", fake_run)
+    assert research_eval.eval_research(plugin_root=ROOT, baseline_ref="v9.9.9", work_dir=tmp_path, id_filter="missing-id") == 2
+
+
 def test_quiet_contract_stream_for_eval_research_smoke(tmp_path: Path) -> None:
-    py = (
-        "import os, subprocess, sys; "
-        "fd=os.open(sys.argv[1], os.O_WRONLY|os.O_CREAT|os.O_TRUNC, 0o600); os.dup2(fd,3); os.close(fd); "
-        f"raise SystemExit(subprocess.call([{sys.executable!r}, {str(CLI)!r}, 'eval', 'research', '--smoke-test'], env={{**os.environ, 'PATH': sys.argv[2], 'CLAUDE_PLUGIN_ROOT': {str(ROOT)!r}}}))"
-    )
-    fd3 = tmp_path / "fd3.txt"
     env = os.environ.copy()
     env.pop("LARCH_QUIET_DISABLE", None)
     env["IMPLEMENT_TMPDIR"] = str(tmp_path)
     env["PATH"] = str(tmp_path)
-    got = subprocess.run([sys.executable, "-c", py, str(fd3), str(tmp_path)], cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
+    env["CLAUDE_PLUGIN_ROOT"] = str(ROOT)
+    got = subprocess.run(
+        [sys.executable, str(CLI), "eval", "research", "--smoke-test"],
+        cwd=ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
     assert got.returncode == 0
-    assert "smoke test PASS" in got.stdout or "smoke test PASS" in (tmp_path / "fd3.txt").read_text(encoding="utf-8")
+    assert "smoke test PASS" in got.stdout
+    quiet_logs = list(tmp_path.glob("larch-quiet-*.log"))
+    assert quiet_logs
+    log_text = quiet_logs[0].read_text(encoding="utf-8")
+    assert "smoke test PASS" not in log_text
+    assert "smoke test PASS" not in got.stderr
 
 
 def test_quiet_contract_stream_for_eval_validator(tmp_path: Path) -> None:
     path = write(tmp_path / "ok.md", " ".join(["word"] * 31) + "\npython/research_eval.py:1\n")
-    py = (
-        "import os, subprocess, sys; "
-        "fd=os.open(sys.argv[1], os.O_WRONLY|os.O_CREAT|os.O_TRUNC, 0o600); os.dup2(fd,3); os.close(fd); "
-        f"raise SystemExit(subprocess.call([{sys.executable!r}, {str(CLI)!r}, 'eval', 'validate-research-output', '--min-words', '999', {str(path)!r}]))"
-    )
-    fd3 = tmp_path / "fd3.txt"
     env = os.environ.copy()
     env.pop("LARCH_QUIET_DISABLE", None)
     env["IMPLEMENT_TMPDIR"] = str(tmp_path)
-    got = subprocess.run([sys.executable, "-c", py, str(fd3)], cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
+    got = subprocess.run(
+        [sys.executable, str(CLI), "eval", "validate-research-output", "--min-words", "999", str(path)],
+        cwd=ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
     assert got.returncode == 2
     assert "body too thin" in got.stdout
+    quiet_logs = list(tmp_path.glob("larch-quiet-*.log"))
+    assert quiet_logs
+    assert "body too thin" not in quiet_logs[0].read_text(encoding="utf-8")
+    assert "body too thin" not in got.stderr
 
 
 def _make_words(n: int) -> str:

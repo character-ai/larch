@@ -697,10 +697,24 @@ def eval_research(
     return 0
 
 
+_EVAL_VALUE_FLAGS = ("--id", "--baseline", "--work-dir", "--write-baseline", "--timeout", "--judge-timeout")
+
+
+def _eval_flag_missing_value(argv: list[str], flag: str) -> bool:
+    for idx, token in enumerate(argv):
+        if token == flag:
+            return idx + 1 >= len(argv) or argv[idx + 1].startswith("--")
+    return False
+
+
 def eval_research_main(argv: list[str]) -> int:
     if any(arg in {"-h", "--help"} for arg in argv):
         print("Usage: eval research [--id ID] [--baseline REF] [--work-dir DIR] [--write-baseline FILE] [--timeout SEC] [--judge-timeout SEC] [--smoke-test]")
         return 0
+    for flag in _EVAL_VALUE_FLAGS:
+        if _eval_flag_missing_value(argv, flag):
+            _diag(f"eval-research: {flag} requires a value")
+            return 2
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--id", default="")
     parser.add_argument("--baseline", default="")
