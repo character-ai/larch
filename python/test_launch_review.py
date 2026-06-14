@@ -476,7 +476,7 @@ def test_cursor_auth_preflight_writes_preflight_bundle(tmp_path: Path, monkeypat
     monkeypatch.setattr(
         agents,
         "cursor_auth_preflight",
-        lambda **_kwargs: agents.AuthVerdict(False, 1, "cursor auth missing"),
+        lambda **_kwargs: agents.AuthVerdict(ok=False, rc=1, message="cursor auth missing"),
     )
     args = argparse.Namespace(
         output=str(out),
@@ -535,7 +535,7 @@ def test_cursor_done_promoted_after_timing_record(tmp_path: Path, monkeypatch: p
 
     monkeypatch.setattr(agents, "_review_record_timing", track_timing)
     monkeypatch.setattr(agents, "_promote_inner_done", track_promote)
-    monkeypatch.setattr(agents, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(True, 0, ""))
+    monkeypatch.setattr(agents, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(ok=True, rc=0, message=""))
     monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: None)
     monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
     monkeypatch.setattr(agents, "_review_setup_cursor_config_dir", lambda: (tmp_path / "cfg", None))
