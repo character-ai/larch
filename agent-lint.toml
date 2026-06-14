@@ -246,16 +246,16 @@ suppress = [
 #  (sibling contract), matching the
 # same Makefile-only pattern as the other test-* harnesses above.
 #
-# scripts/eval-research.sh is the opt-in /research evaluation harness
+# python/cli.py eval research is the opt-in /research evaluation harness
 # (closes #419 under umbrella #413). Referenced only from Makefile
 # (eval-research target — NOT a lint prerequisite) and
-# scripts/eval-research.md (sibling contract); matches the same
+# python/research_eval.py (sibling contract); matches the same
 # Makefile-only pattern as the test-* harnesses.
-# scripts/test-eval-set-structure.sh is the offline structural regression
+# python/test_research_eval.py is the offline structural regression
 # harness for the eval set + harness; referenced only from Makefile
 # (test-eval-set-structure standalone target — also NOT a lint prerequisite,
 # mirroring the runtime harness's opt-in shape) and
-# scripts/test-eval-set-structure.md (sibling contract).
+# python/test_research_eval.py (sibling contract).
 exclude = [
   # read-result-env.sh is structurally invoked from skills/design/SKILL.md;
   # its regression harness is Makefile-only (test-read-result-env target) and
@@ -1021,33 +1021,16 @@ exclude = [
   # test-eval-set-structure standalone target — neither is a lint
   # prerequisite) and from their sibling .md contracts. Same Makefile-only
   # pattern as the test-* harnesses above.
-  "scripts/eval-research.sh",
-  "scripts/test-eval-set-structure.sh",
+  "python/cli.py eval research",
+  "python/test_research_eval.py",
   # scripts/repro-claude-p-edit-permissions.sh is the opt-in operator
   # reproducer for the `claude -p` Edit-permission stall (closes #587;
   # validates kernel fix #585 plus the settings audit derived from #566).
   # Referenced only from its sibling .md contract — no Makefile target,
   # no SKILL.md reference, no CI wiring (depends on a real authenticated
   # `claude` binary, costs API tokens, timing-sensitive). Same opt-in
-  # operator-instrumentation shape as eval-research.sh.
+  # operator-instrumentation shape as python/cli.py eval research.
   "scripts/repro-claude-p-edit-permissions.sh",
-  # scripts/test-eval-research-baseline-flag.sh is the standalone offline
-  # regression harness for the --baseline flag handling in
-  # scripts/eval-research.sh (closes #441). Same Makefile-only shape as
-  # eval-research and test-eval-set-structure above — referenced only
-  # from a standalone Makefile target (test-eval-research-baseline-flag,
-  # NOT a test-harnesses prerequisite) and its sibling .md contract.
-  "scripts/test-eval-research-baseline-flag.sh",
-  # scripts/test-validate-research-output.sh is the regression harness for
-  # scripts/validate-research-output.sh (the substantive-content validator
-  # added by #416 — Phase 3 of umbrella #413). The validator itself is
-  # invoked by scripts/collect-agent-results.sh via ${SCRIPT_DIR}/...,
-  # which is reachable through that file's structural references in
-  # skills/research/references/{research,validation}-phase.md and
-  # skills/shared/external-reviewers.md. The harness is referenced only
-  # from Makefile (test-validate-research-output target) — same Makefile-
-  # only shape as the other test-* harnesses above.
-  "scripts/test-validate-research-output.sh",
   # scripts/test-collect-agent-bash32.sh is the regression harness for
   # the bash 3.2 portability hazard at scripts/collect-agent-results.sh:402
   # (closes #511). Three cases: static idiom grep (Linux-CI backstop), plus

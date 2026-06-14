@@ -1,3 +1,0 @@
-# scripts/test-validate-research-output.sh — contract
-
-Regression harness for `scripts/validate-research-output.sh` (the substantive-content validator invoked by `collect-agent-results.sh --substantive-validation`). Wired into `make lint` via the `test-validate-research-output` target. The full contract — including the long-tier / short-tier extension split (#473), the trailing-boundary rule (#447), the `--min-words` default, validation-mode no-findings sentinels, `CURSOR_EMPTY_RESPONSE`, and the exit-code numbering — is owned by `scripts/validate-research-output.md`. Edits to the marker regex set, the fence-stripping rule, sentinel handling, or exit numbers must update the primary contract, the script header, and this harness in lockstep.

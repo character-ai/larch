@@ -62,12 +62,13 @@ skipm() { SKIP=$((SKIP + 1)); echo "  SKIPPED: $1"; }
 # --- Case 1: static idiom check (always runs) -------------------------------
 #
 # Pin the safe-expansion idiom on the validator-invocation line. The pattern
-# requires both the `${arr[@]+...}` guard form AND the surrounding `$VALIDATOR`
-# call so a future refactor that splits the call site or renames VAL_ARGS will
+# requires both the `${arr[@]+...}` guard form AND the surrounding `VALIDATOR_CMD`
+# argv-array call so a future refactor that splits the call site or renames VAL_ARGS will
 # fail this check until the regex and this contract are updated together.
 # shellcheck disable=SC2016 # Literal regex; outer-shell expansion is intentionally suppressed.
 if grep -q '"\${VAL_ARGS\[@\]+"\${VAL_ARGS\[@\]}"}"' "$COLLECTOR" \
-   && grep -q '\$VALIDATOR.*VAL_ARGS\[@\]+' "$COLLECTOR"; then
+   && grep -q 'VALIDATOR_CMD.*eval validate-research-output' "$COLLECTOR" \
+   && grep -q 'VAL_ARGS\[@\]+' "$COLLECTOR"; then
     ok "case 1: safe-expansion idiom present at validator call site"
 else
     fail "case 1: safe-expansion idiom missing in $COLLECTOR — issue #511 may have regressed"
@@ -105,7 +106,7 @@ if [[ "$DYNAMIC_VULNERABLE" != "true" ]]; then
 else
     # --- Fixture for Case 2: ≥200 words substantive prose with file:line citation
     #
-    # Matches `validate-research-output.sh` defaults (--min-words 200) so the
+    # Matches `python/cli.py eval validate-research-output` defaults (--min-words 200) so the
     # validator returns exit 0 (STATUS=OK). Basename contains `cursor` so
     # `derive_tool` in the collector attributes correctly. Pre-create the
     # .done sentinel containing 0 BEFORE invoking the collector so
@@ -136,7 +137,7 @@ else
 
     # --- Fixture for Case 3: literal NO_ISSUES_FOUND
     #
-    # Fails default `validate-research-output.sh` (200-word floor) but passes
+    # Fails default `python/cli.py eval validate-research-output` (200-word floor) but passes
     # under --validation-mode (which short-circuits on the literal token).
     # Pinning STATUS=OK with --validation-mode AND STATUS=NOT_SUBSTANTIVE
     # without proves the flag is actually being forwarded through the safe

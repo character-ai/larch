@@ -134,7 +134,7 @@ Codex and Cursor support generic prompts plus specialist `--agent-file` modes;
 - Cursor JSON envelopes with high `usage.outputTokens` but a very short
   extracted `.result` are promoted to `CURSOR_DEGRADED_RESPONSE` before the
   result is installed. The heuristic is skipped for legitimate terse sentinels
-  and structures validated by `scripts/validate-research-output.sh --validation-mode`:
+  and structures validated by `python/cli.py eval validate-research-output --validation-mode`:
   `NO_ISSUES_FOUND`, JSON containing `"no_issues_found": true` (on the first
   or last non-empty line when the last differs from the first — covers
   Cursor's narration-then-sentinel shape, #3283), inline TSV records,

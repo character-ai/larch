@@ -24,22 +24,22 @@ The empty-synthesis path is reachable when Step 1 inline-fallback synthesis fail
 
 ## 2.5.2 — Invoke the validator
 
-Invoke the shell validator (it owns argv/curl-flag/SSRF/regex contracts):
+Invoke the Python validator (it owns argv, SSRF, DNS, TLS, regex, and sidecar contracts):
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/skills/research/scripts/validate-citations.sh \
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" research validate-citations \
   --report "$RESEARCH_TMPDIR/research-report.txt" \
   --output "$RESEARCH_TMPDIR/citation-validation.md" \
   --tmpdir "$RESEARCH_TMPDIR"
 ```
 
-The script writes the sidecar to the path passed via `--output` and exits 0 on validation paths (exit 2 only for argument/flag errors — operator or harness bug; fail-soft contract). On any internal error (curl missing, git rev-parse failure, etc.), the script writes a minimally-formed sidecar that explains the degraded path and still exits 0 — Step 3's splice consumer must always have a sidecar to read.
+The Python command writes the sidecar to the path passed via `--output` and exits 0 on validation paths. Usage and bad flags exit 2; degraded argument cases still write a minimally-formed sidecar and `SUMMARY=PASS=0 FAIL=0 UNKNOWN=0 TOTAL=0` so Step 3's splice consumer has a sidecar to read.
 
-See `${CLAUDE_PLUGIN_ROOT}/skills/research/scripts/validate-citations.md` for the full contract (argv, exit codes, sidecar schema, SSRF defenses, regex tiers, idempotency rerun semantics, budget-exhaustion process-group kill — Linux `setsid` available: `kill -- -$$` gated on `__VC_SETSID_DONE=1`; Linux `setsid` absent: per-PID `kill` over `CURL_PIDS` with no `kill -- -$$` because the validator is not a session leader on that branch (issue #779); macOS `set -m` + per-background `kill -- -<pid>` with no `kill -- -$$` fallback because that would self-signal the validator).
+See `python/research.py` for the full contract: argv, exit codes, sidecar schema, SSRF defenses, regex tiers, idempotency rerun semantics, bounded DNS, stdlib HTTPS fetching, no proxy environment use, redirect handling, TLS verification, connection pinning, and budget cancellation.
 
 ## 2.5.3 — Sidecar schema
 
-The sidecar is an operator-readable Markdown document. The single source of truth lives in `validate-citations.md` § Sidecar Schema; the structural shape is:
+The sidecar is an operator-readable Markdown document. The single source of truth lives in `python/research.py`; the structural shape is:
 
 ```markdown
 ## Citation Validation
@@ -88,7 +88,7 @@ The script's stdout summary (parsed by the orchestrator from the validator's las
 
 ## 2.5.6 — Step 3 splice contract
 
-Step 3 (final-report write) is the sole consumer of the sidecar. After writing the report block to `research-report-final.md` and BEFORE the helper-driven sidecar generation (`render-findings-batch.sh`), Step 3:
+Step 3 (final-report write) is the sole consumer of the sidecar. After writing the report block to `research-report-final.md` and BEFORE the helper-driven sidecar generation (`python/cli.py research render-findings-batch`), Step 3:
 
 1. Checks `$RESEARCH_TMPDIR/citation-validation.md` exists and is non-empty.
 2. Appends the sidecar's full content to `research-report-final.md` with a single blank line separator. The sidecar already opens with `## Citation Validation` so no extra header is added.
@@ -101,7 +101,7 @@ The splice happens BEFORE `cat`-ing the report for user-visible output, so the f
 Per the design discussion on issue #516 DECISION_1 (resolved via the plan-review panel's 2-1 sidecar vote, user-confirmed at Step 3.5 round 2), Step 2.5 is a separate phase that writes a sidecar — NOT a 6th reviewer added to Step 2's validation panel. Phase separation:
 
 1. Keeps Step 2's voting machinery focused on the synthesis content and accept/reject votes; citation validation has no vote — it is mechanical.
-2. Lets the validator be a deterministic shell script with no LLM call, costing zero measurable Claude tokens (parallel to Step 0.5's classifier).
+2. Lets the validator be deterministic Python with no LLM call, costing zero measurable Claude tokens (parallel to Step 0.5's classifier).
 3. Keeps the validator failure mode local — a transient network failure during URL HEAD-fetch surfaces as `UNKNOWN(network-error)` rows in the sidecar, NOT as a vote-skewing reviewer fallback.
 
 ## Failure modes and fail-soft posture
@@ -110,7 +110,6 @@ The validator script always exits 0 on validation paths; exit 2 only for argumen
 
 | Failure mode | Sidecar reason |
 |---|---|
-| `curl` binary missing | `UNKNOWN(curl-unavailable)` for every URL/DOI claim |
 | `git rev-parse --show-toplevel` fails (not a git tree) | `UNKNOWN(git-root-unavailable)` for every file:line claim |
 | Hostname pre-rejected by RFC1918/IPv6 link-local/RFC6598 rules | `FAIL(ssrf-private-host)` |
 | DNS resolves to a private IP range | `FAIL(ssrf-private-resolved)` |
@@ -129,13 +128,11 @@ The validator script always exits 0 on validation paths; exit 2 only for argumen
 
 The `UNKNOWN` bucket is deliberately broad: every transient or environment-dependent failure ends there so the validator's strictness scales with the operator's environment without false negatives skewing the audit.
 
-## Process-group kill semantics for budget exhaustion
+## Budget and network contract
 
-When the overall validator budget elapses (`--budget-seconds`, default 300), in-flight curl HEAD fetches MUST be terminated cleanly — orphaned curl processes can outlive the validator and skew network telemetry. On Linux when `setsid` is available, the script self-execs into a new session if not already a session leader and a single `kill -- -$$` sweeps every descendant; the kill is gated on `__VC_SETSID_DONE=1` (the dedicated-session marker). When `setsid` is absent from PATH the re-exec is skipped and the timeout handler falls back to per-PID `kill "$pid"` over `CURL_PIDS` so the validator does not self-signal in its caller's process group (issue #779; orphan curls bounded by `$PER_FETCH_TIMEOUT`). macOS `setsid` is non-portable, so the script enables `set -m` (job control) which places each backgrounded `fetch_url` subshell in its own process group; on timeout the script signals each recorded `$!` via `kill -- -<pid>` (terminating the subshell + curl substitution + descendants together). `kill -- -$$` is **not** used as a Darwin fallback: with `set -m` active, `$$`'s process group still contains the validator itself, so signaling it would kill the script before it writes the per-claim `UNKNOWN(timeout)` rows and the sidecar — exit 143, sidecar absent, fail-soft contract broken. The OS detection branch lives in `validate-citations.sh`; the macOS path is asserted by Test 20 in `test-validate-citations.sh` (Darwin-only — exercised on developer macOS), and the Linux no-setsid path is asserted by Test 21 (Linux-only, issue #849 — exercised by current Ubuntu CI; runs when `setsid` is available on the runner so the harness can isolate the validator in its own session).
+When the overall validator budget elapses (`--budget-seconds`, default 300), in-flight URL and DOI work is canceled where possible and every claim without a result is backfilled as `UNKNOWN(timeout)`. The command still writes the sidecar, emits exactly one trailing `SUMMARY=...` line, and exits 0 on validation paths. `python/test_research.py` covers this through injected fetcher seams instead of real sleeps or network calls.
 
-## Curl-flag MUST / MUST-NOT contract
-
-Every curl invocation in `validate-citations.sh` MUST include `--max-redirs 0`, `--max-time <per-fetch>`, `--noproxy '*'`, AND HTTPS-only enforcement (the URL passed as the last positional argument MUST start with `https://`). MUST-NOT include `--insecure`, `-k`, `--proxy`, `--socks*`, `--cacert` — these would weaken the SSRF posture. The test harness pins this via fake-curl argv assertions; a future edit that adds `--insecure` for "local-CA convenience" fails the harness immediately.
+The Python HTTPS implementation uses stdlib networking with default CA verification. It does not honor proxy environment variables, does not follow normal URL redirects, treats DOI redirects as success, fails closed on private host literals and private resolved IPs, preserves the original hostname for TLS SNI and hostname verification, preserves the original `Host` header, and connects to the checked public IP when pinning is available.
 
 ## Domain-credibility heuristic (advisory only)
 

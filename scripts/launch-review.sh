@@ -1220,8 +1220,7 @@ if [[ -s "$OUTPUT" ]]; then
             if [[ "$OUT_TOKENS" =~ ^[0-9]+$ && "$RESULT_BYTES" =~ ^[0-9]+$ \
                   && "$OUT_TOKENS" -gt 1000 && "$RESULT_BYTES" -lt 500 ]]; then
                 _is_legit_short=false
-                if [[ -x "$SCRIPT_DIR/validate-research-output.sh" ]] \
-                    && "$SCRIPT_DIR/validate-research-output.sh" --validation-mode "$EXTRACT_TMP" >/dev/null 2>&1; then
+                if python3 "$SCRIPT_DIR/../python/cli.py" eval validate-research-output --validation-mode "$EXTRACT_TMP" >/dev/null 2>&1; then
                     _is_legit_short=true
                 fi
                 if [[ "$_is_legit_short" == "true" ]]; then

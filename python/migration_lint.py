@@ -248,20 +248,23 @@ def main(argv: list[str] | None = None) -> int:
     retired_list = sorted(retired_set)
     retired_dirs = {r: Path(r).parent for r in retired_list}
     retired_refs = {r: _script_dir_refs(r) for r in retired_list}
-    # Cheap prefilter: every supported retired-path reference form carries the
-    # script basename. One regex search per line skips the inner loop for the
-    # overwhelming majority of lines.
-    gate_re = re.compile("|".join(re.escape(Path(r).name) for r in retired_list))
+    # Cheap prefilter: every retired reference form carries the retired
+    # basename. Build basename -> retired path candidates so common prose lines
+    # avoid the expensive all-retired-path inner loop.
+    retired_by_basename: dict[str, list[str]] = {}
+    for retired_path in retired_list:
+        retired_by_basename.setdefault(Path(retired_path).name, []).append(retired_path)
     writer = logging_util.BreadcrumbWriter()
     ref_count = 0
 
     for rel in tracked_rel:
-        parts = Path(rel).parts
-        if any(seg in _EXCLUSION_SEGMENTS for seg in parts):
+        rel_parts_str = f"/{rel}/"
+        if any(f"/{seg}/" in rel_parts_str for seg in _EXCLUSION_SEGMENTS):
             continue
         if rel in _EXCLUSION_PATHS:
             continue
-        if Path(rel).name in _EXCLUSION_FILES:
+        rel_name = rel.rsplit("/", 1)[-1]
+        if rel_name in _EXCLUSION_FILES:
             continue
         if rel == manifest_rel:
             continue
@@ -274,9 +277,17 @@ def main(argv: list[str] | None = None) -> int:
             continue
         rel_dir = Path(rel).parent
         for lineno, line_text in enumerate(lines, 1):
-            if not gate_re.search(line_text):
+            # All currently retired script paths are .sh/.md siblings; skip
+            # ordinary lines before checking basename membership.
+            if ".sh" not in line_text and ".md" not in line_text:
                 continue
-            for retired_path in retired_list:
+            candidate_paths: set[str] = set()
+            for basename, paths_for_basename in retired_by_basename.items():
+                if basename in line_text:
+                    candidate_paths.update(paths_for_basename)
+            if not candidate_paths:
+                continue
+            for retired_path in sorted(candidate_paths):
                 if _line_references_retired(
                     root_path,
                     rel,

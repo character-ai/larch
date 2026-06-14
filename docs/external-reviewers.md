@@ -62,7 +62,7 @@ Treat `STATUS=OK` with empty `FAILURE_REASON` as the success signal; do not use 
 
 ### Opt-in substantive-content check
 
-When the collector is invoked with `--substantive-validation`, it additionally calls `scripts/validate-research-output.sh` on each `STATUS=OK` output. Validator failure is rewritten to `STATUS=NOT_SUBSTANTIVE`, and the caller treats it identically to a timeout (Claude-subagent fallback). This catches outputs that pass sentinel + non-empty + retry but contain only banner text (e.g., `Authentication required`) or other non-substantive content.
+When the collector is invoked with `--substantive-validation`, it additionally calls `python/cli.py eval validate-research-output` on each `STATUS=OK` output. Validator failure is rewritten to `STATUS=NOT_SUBSTANTIVE`, and the caller treats it identically to a timeout (Claude-subagent fallback). This catches outputs that pass sentinel + non-empty + retry but contain only banner text (e.g., `Authentication required`) or other non-substantive content.
 
 The optional `--validation-mode` modifier forwards `--validation-mode` to the validator, which (a) lowers the body-word floor from 200 to 30, (b) accepts the canonical JSON no-findings sentinel `{"no_issues_found": true}` and legacy `NO_ISSUES_FOUND` token as substantive without further checks, (c) maps `CURSOR_EMPTY_RESPONSE` to its own status, and (d) keeps the citation requirement unchanged. This preset is for short reviewer-style outputs whose no-findings contract is the JSON sentinel; the plain-text token is deprecated but still accepted for compatibility.
 

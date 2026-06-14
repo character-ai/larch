@@ -1,0 +1,141 @@
+from __future__ import annotations
+
+# ruff: noqa: UP022
+# pyright: reportUnusedCallResult=false
+
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+import research_eval
+
+ROOT = Path(__file__).resolve().parents[1]
+CLI = ROOT / "python" / "cli.py"
+
+
+def write(path: Path, text: str) -> Path:
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def run_cli(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    merged = os.environ.copy()
+    merged["LARCH_QUIET_DISABLE"] = "1"
+    if env:
+        merged.update(env)
+    return subprocess.run([sys.executable, str(CLI), *args], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=merged, check=False)
+
+
+def test_validate_research_output_word_count_and_provenance(tmp_path: Path) -> None:
+    prose = " ".join(["word"] * 35)
+    cited = write(tmp_path / "ok.md", prose + "\nSee python/research_eval.py:1.\n")
+    assert research_eval.validate_research_output(cited, min_words=30) == 0
+    thin = write(tmp_path / "thin.md", "too short python/research_eval.py:1\n")
+    assert research_eval.validate_research_output(thin, min_words=30) == 2
+    no_cite = write(tmp_path / "nocite.md", prose + "\n")
+    assert research_eval.validate_research_output(no_cite, min_words=30) == 3
+    assert research_eval.validate_research_output(no_cite, min_words=30, require_citations=False) == 0
+
+
+def test_validation_mode_sentinels_and_thresholds(tmp_path: Path) -> None:
+    assert research_eval.validate_research_output(write(tmp_path / "no.txt", "NO_ISSUES_FOUND\n"), validation_mode=True) == 0
+    assert research_eval.validate_research_output(write(tmp_path / "json.txt", '{"no_issues_found": true}\ntrailing\n'), validation_mode=True) == 0
+    assert research_eval.validate_research_output(write(tmp_path / "last.txt", "narration\nNO_ISSUES_FOUND\n"), validation_mode=True) == 0
+    assert research_eval.validate_research_output(write(tmp_path / "vote.txt", "FINDING_1: YES\n"), validation_mode=True) == 0
+    degraded = write(tmp_path / "deg.txt", "CURSOR_DEGRADED_RESPONSE\n")
+    cp = run_cli("eval", "validate-research-output", "--validation-mode", str(degraded))
+    assert cp.returncode == 5
+    assert "STATUS=CURSOR_EMPTY_RESPONSE" in cp.stdout
+    short = write(tmp_path / "short.md", " ".join(["word"] * 31) + "\npython/research_eval.py:1\n")
+    assert run_cli("eval", "validate-research-output", "--validation-mode", str(short)).returncode == 0
+    assert run_cli("eval", "validate-research-output", str(short)).returncode == 2
+
+
+def test_fenced_words_excluded_and_code_fence_counts_as_provenance(tmp_path: Path) -> None:
+    body = " ".join(["word"] * 30) + "\n```\ncode here\n```\n"
+    path = write(tmp_path / "code.md", body)
+    assert research_eval.validate_research_output(path, min_words=30) == 0
+    assert research_eval.validate_research_output(path, min_words=31) == 2
+
+
+def test_structured_jsonl_tsv_and_sentinel(tmp_path: Path) -> None:
+    out = tmp_path / "records.jsonl"
+    record = {
+        "schema_version": 1,
+        "scope": "in_scope",
+        "severity": "Important",
+        "focus_area": "correctness",
+        "location": "python/research_eval.py:1",
+        "what": "what",
+        "scenario_or_breakage": "breaks",
+        "suggested_fix": "fix",
+    }
+    path = write(tmp_path / "jsonl.txt", json.dumps(record) + "\n")
+    assert research_eval.validate_research_output(path, structured_reviewer_mode=True, write_structured=out) == 0
+    assert '"severity":"important"' in out.read_text(encoding="utf-8")
+    tsv = write(tmp_path / "records.tsv", "schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix\n1\tout_of_scope\tnit\tsecurity\tloc\twhat\tscenario\tfix\textra\n")
+    assert research_eval.validate_research_output(tsv, structured_reviewer_mode=True, write_structured=out) == 0
+    assert "fix extra" in out.read_text(encoding="utf-8")
+    no = write(tmp_path / "no.txt", '{"no_issues_found": true}\n')
+    assert research_eval.validate_research_output(no, structured_reviewer_mode=True, write_structured=out) == 0
+    assert out.read_text(encoding="utf-8") == ""
+    bad = write(tmp_path / "bad.txt", "not structured\n")
+    cp = run_cli("eval", "validate-research-output", "--structured-reviewer-mode", "--write-structured", str(out), str(bad))
+    assert cp.returncode == 5
+    assert "structured records not found after repair" in cp.stdout
+
+
+def test_eval_set_and_baseline_schema() -> None:
+    assert research_eval.validate_eval_set(ROOT / "skills/research/references/eval-set.md")
+    assert research_eval.validate_baseline_json(ROOT / "skills/research/references/eval-baseline.json")
+    assert research_eval.ANTHROPIC_EVAL_SOURCE == "anthropic.com/engineering/built-multi-agent-research-system"
+
+
+def test_eval_smoke_and_no_claude_requirement(tmp_path: Path) -> None:
+    env = {"PATH": str(tmp_path), "CLAUDE_PLUGIN_ROOT": str(ROOT)}
+    cp = run_cli("eval", "research", "--smoke-test", env=env)
+    assert cp.returncode == 0
+    assert "smoke test PASS" in cp.stdout
+    full = run_cli("eval", "research", "--id", "does-not-matter", env=env)
+    assert full.returncode == 3
+    assert "required tool missing: claude" in full.stderr
+
+
+def test_eval_research_prompt_and_write_baseline_with_stubbed_claude(tmp_path: Path) -> None:
+    stub = tmp_path / "claude"
+    stub.write_text("#!/usr/bin/env bash\ncat > /dev/null\nprintf 'Result with python/research_eval.py:1 and https://example.com plus keyword architecture.\\n'\n", encoding="utf-8")
+    stub.chmod(0o755)
+    work = tmp_path / "work"
+    baseline = tmp_path / "baseline.json"
+    env = {"PATH": f"{tmp_path}:{os.environ.get('PATH','')}", "CLAUDE_PLUGIN_ROOT": str(ROOT)}
+    cp = run_cli("eval", "research", "--id", "where-defined-rebase-push", "--work-dir", str(work), "--write-baseline", str(baseline), "--timeout", "5", env=env)
+    assert cp.returncode == 0
+    prompt = next(work.glob("*/prompt.txt")).read_text(encoding="utf-8")
+    assert prompt.startswith("/larch:research --no-issue ")
+    data = json.loads(baseline.read_text(encoding="utf-8"))
+    assert data["version"] == 1
+    assert isinstance(data["entries"], list)
+
+
+def test_eval_baseline_ref_validation_and_missing_values(tmp_path: Path) -> None:
+    env = {"PATH": str(tmp_path), "CLAUDE_PLUGIN_ROOT": str(ROOT)}
+    assert run_cli("eval", "research", "--baseline", "bad ref", "--smoke-test", env=env).returncode == 2
+    assert run_cli("eval", "research", "--timeout", "abc", "--smoke-test", env=env).returncode == 2
+
+
+def test_quiet_contract_stream_for_eval_validator(tmp_path: Path) -> None:
+    path = write(tmp_path / "ok.md", " ".join(["word"] * 31) + "\npython/research_eval.py:1\n")
+    py = (
+        "import os, subprocess, sys; "
+        "fd=os.open(sys.argv[1], os.O_WRONLY|os.O_CREAT|os.O_TRUNC, 0o600); os.dup2(fd,3); os.close(fd); "
+        f"raise SystemExit(subprocess.call([{sys.executable!r}, {str(CLI)!r}, 'eval', 'validate-research-output', '--min-words', '999', {str(path)!r}]))"
+    )
+    fd3 = tmp_path / "fd3.txt"
+    env = os.environ.copy()
+    env.pop("LARCH_QUIET_DISABLE", None)
+    env["IMPLEMENT_TMPDIR"] = str(tmp_path)
+    got = subprocess.run([sys.executable, "-c", py, str(fd3)], cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
+    assert got.returncode == 2
+    assert "body too thin" in got.stdout
