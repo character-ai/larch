@@ -32,6 +32,17 @@ Keep these byte-stable unless the task explicitly edits them:
 
 Do not rewrite those items for style. Explain around them instead.
 
+## Plan-Drafting Reminders
+
+When `/design` Step 2b drafts a plan that adds, removes, or converts
+Bash fences in `skills/implement/SKILL.md`:
+
+- List `### UPDATED: scripts/test-implement-fence-shape.sh` in
+  **Files to modify/create**.
+- Note that `EXPECTED_OLD` / `EXPECTED_NEW` may need updates.
+
+This is a discoverability reminder only. Do not add plan grammar.
+
 ## Precedence
 
 When rules conflict, use this order:
