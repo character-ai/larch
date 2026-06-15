@@ -95,7 +95,7 @@ def _write_oos(tmp_path: Path, text: str) -> None:
 def _run(tmp_path: Path, fake: FakeCli, monkeypatch: pytest.MonkeyPatch) -> tuple[int, dict[str, object]]:
     monkeypatch.setattr(oos_filer, "_run_cli", fake)
     monkeypatch.setattr(oos_filer, "_repo_root", lambda: tmp_path)
-    monkeypatch.setattr(oos_filer, "_probe_tracking_blocker", lambda *_a: fake.blocker_probe_rc == 0)
+    monkeypatch.setattr(oos_filer, "_probe_tracking_blocker", lambda *_a: fake.blocker_probe_rc == 0)  # type: ignore[arg-type]
     rc = oos_filer.cmd_file(["--implement-tmpdir", str(tmp_path), "--codex-timeout", "1"])
     return rc, {}
 
