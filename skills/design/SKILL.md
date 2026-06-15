@@ -446,7 +446,7 @@ Execute the Gate A body in `approval-gates.md`. When entered from Gate B(c) or G
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step2a.sh
 ```
 
-The Step 2a entry fence writes sentinel artifacts (`NO_SKETCHES`, `NO_CONTESTED_DECISIONS`, empty legacy `dialectic-resolutions.md` placeholder) and `.completed/step-2a` if any are missing. If pre-existing non-sentinel artifacts exist, it refuses to overwrite them and exits for inspection. Proceed directly to Step 2b after `.completed/step-2a` is present. Do NOT call `collect-agent-results.sh`.
+The Step 2a entry fence writes sentinel artifacts (`NO_SKETCHES`, `NO_CONTESTED_DECISIONS`, empty legacy `dialectic-resolutions.md` placeholder) and `.completed/step-2a` if any are missing. If pre-existing non-sentinel artifacts exist, it refuses to overwrite them and exits for inspection. Proceed directly to Step 2b after `.completed/step-2a` is present. Do NOT call `python/cli.py agent collect-results`.
 
 <!-- step:2b — Design the Implementation Plan -->
 

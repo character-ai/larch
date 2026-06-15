@@ -75,19 +75,19 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent launch-review --tool cursor 
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent launch-review --tool codex --output "$DESIGN_TMPDIR/codex-brainstorm-output.txt" --timeout 1200 --timing-task-kind codex-brainstorm --prompt "<CODEX_BRAINSTORM_ASSEMBLED_PROMPT>"
 ```
 
-**Always-Claude pragmatic**: run in the parent session (Agent or inline) using `<BRAINSTORM_PRAGMATIC_PROMPT>` embedded in `<CLAUDE_BRAINSTORM_ASSEMBLED_PROMPT>`; merge result into synthesis input (no `collect-agent-results.sh` row required for a purely in-session path).
+**Always-Claude pragmatic**: run in the parent session (Agent or inline) using `<BRAINSTORM_PRAGMATIC_PROMPT>` embedded in `<CLAUDE_BRAINSTORM_ASSEMBLED_PROMPT>`; merge result into synthesis input (no `python/cli.py agent collect-results` row required for a purely in-session path).
 
 ---
 
-## Collection (`collect-agent-results.sh`) — externals only
+## Collection (`python/cli.py agent collect-results`) — externals only
 
-**Do not copy-paste a fence verbatim.** The argv below is illustrative only: list **only** the canonical staging paths (`cursor-brainstorm-output.txt` / `codex-brainstorm-output.txt`) for slots you **actually launched as externals** this wave (parent-only / Agent-text fallbacks are **not** launches). Use dynamic argv: one path when a single external ran, two when both ran. Use `timeout: 1260000` on a foreground `collect-agent-results.sh` Bash tool call.
+**Do not copy-paste a fence verbatim.** The argv below is illustrative only: list **only** the canonical staging paths (`cursor-brainstorm-output.txt` / `codex-brainstorm-output.txt`) for slots you **actually launched as externals** this wave (parent-only / Agent-text fallbacks are **not** launches). Use dynamic argv: one path when a single external ran, two when both ran. Use `timeout: 1260000` on a foreground `python/cli.py agent collect-results` Bash tool call.
 
 **Example — one external** (e.g. Cursor framing ran; Codex scope was parent-written in-session):
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1260 \
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent collect-results --timeout 1260 \
   "$DESIGN_TMPDIR/cursor-brainstorm-output.txt"
 ```
 
@@ -95,12 +95,12 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1260 \
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1260 \
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent collect-results --timeout 1260 \
   "$DESIGN_TMPDIR/cursor-brainstorm-output.txt" \
   "$DESIGN_TMPDIR/codex-brainstorm-output.txt"
 ```
 
-Guard this call by launched external paths: **omit paths** for slots that were not launched as externals (tool unavailable with parent-written Agent fallback is **not** an external launch). **Never** invoke `collect-agent-results.sh` with zero paths.
+Guard this call by launched external paths: **omit paths** for slots that were not launched as externals (tool unavailable with parent-written Agent fallback is **not** an external launch). **Never** invoke `python/cli.py agent collect-results` with zero paths.
 
 ## Post-collection dirty-tree checkpoint
 

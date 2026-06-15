@@ -178,7 +178,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent wait-reviewers --timeout 126
 
 Use `timeout: 1260000` on the Bash tool call. Use a foreground Bash tool call with a sufficiently large timeout. Note: voter output files use the `-vote-` infix to avoid collision with reviewer output files (`-plan-output` or `-output`).
 
-**Collecting voter results**: Use `collect-agent-results.sh` to validate external voter outputs (same as for reviewer outputs). Parse `STATUS` and `FAILURE_REASON` for each voter. If a voter fails (`STATUS != OK`), print: `**⚠ <Voter> voter failed — <FAILURE_REASON>. Proceeding with <N> voters (<remaining voter names>).**` Always include the `FAILURE_REASON` so the user can see why the voter failed (e.g., timeout, crash, empty output). Reduce the eligible voter count accordingly and apply the threshold rules above.
+**Collecting voter results**: Use `python/cli.py agent collect-results` to validate external voter outputs (same as for reviewer outputs). Parse `STATUS` and `FAILURE_REASON` for each voter. If a voter fails (`STATUS != OK`), print: `**⚠ <Voter> voter failed — <FAILURE_REASON>. Proceeding with <N> voters (<remaining voter names>).**` Always include the `FAILURE_REASON` so the user can see why the voter failed (e.g., timeout, crash, empty output). Reduce the eligible voter count accordingly and apply the threshold rules above.
 
 ## Competition Scoring
 

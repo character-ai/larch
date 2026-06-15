@@ -556,7 +556,7 @@ exclude = [
   "scripts/lib-phantom-probe.md",
   # scripts/lib-net.sh is a sourced-only shell library (no shebang,
   # not invokable directly). It provides is_transient_net_signature() to
-  # scripts/collect-agent-results.sh and scripts/ship-pr.sh via source directives only,
+  # scripts/ship-pr.sh via source directives only; collector retry classification now uses python/retry.py,
   # which agent-lint does not follow.
   "scripts/lib-net.sh",
   # scripts/lib-finalize-state-keys.sh is a sourced-only shell library
@@ -1000,28 +1000,9 @@ exclude = [
   # pattern as the test-* harnesses above.
   "python/cli.py eval research",
   "python/test_research_eval.py",
-  # scripts/test-collect-agent-bash32.sh is the regression harness for
-  # the bash 3.2 portability hazard at scripts/collect-agent-results.sh:402
-  # (closes #511). Three cases: static idiom grep (Linux-CI backstop), plus
-  # two dynamic exercises under /bin/bash 3.x (skip-with-loud-message on bash
-  # 4+) covering the empty-VAL_ARGS path and --validation-mode flag forwarding.
-  # The harness is referenced only from Makefile (test-collect-agent-bash32
-  # target) — same Makefile-only shape as the other test-* harnesses above.
-  "scripts/test-collect-agent-bash32.sh",
   # issue #3039: Makefile-only harness wired via
   # test-render-final-summary-bash32 (now pytest python/test_design_summary.py).
   "python/test_design_summary.py",
-  # scripts/test-collect-agent-retry.sh is the regression harness for the
-  # collect-agent-results.sh CMD_JSON retry metadata reader (issue #1154).
-  # It is referenced only from Makefile (test-collect-agent-retry target) and
-  # scripts/test-collect-agent-retry.md (sibling contract), matching the
-  # Makefile-only harness pattern above.
-  "scripts/test-collect-agent-retry.sh",
-  # scripts/test-collect-agent-results.sh is the regression harness for
-  # collect-agent-results.sh transient-network retry routing. It is referenced
-  # only from Makefile (test-collect-agent-results target) and its sibling
-  # contract, matching the Makefile-only harness pattern above.
-  "scripts/test-collect-agent-results.sh",
   # scripts/test-lib-net.sh is the offline regression harness for
   # scripts/lib-net.sh with_transient_retry / transient_envelope_predicate_none.
   # Referenced only from Makefile (test-lib-net target) and scripts/test-lib-net.md.
@@ -1112,8 +1093,6 @@ exclude = [
   "scripts/test-lib-failed-agent-stderr-tail.md",
   "python/test_agents.py",
   "python/test_agents.py",
-  "scripts/test-collect-agent-retry.md",
-  "scripts/test-collect-agent-results.md",
   "scripts/test-lib-net.md",
   "scripts/test-flush-vendor-failure-diagnostics.md",
   "scripts/lib-net.md",

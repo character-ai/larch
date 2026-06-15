@@ -8,7 +8,7 @@ Single canonical source for external-tool name taxonomy and implementer-coder ta
 
 - `python/cli.py agent model-args`
 - `python/cli.py agent check-reviewers`
-- `scripts/collect-agent-results.sh`
+- `python/cli.py agent collect-results`
 - `python/cli.py implement step2-dispatch`
 
 Update this list whenever a new consumer sources the registry.
@@ -46,13 +46,13 @@ Update this list whenever a new consumer sources the registry.
 3. Add the per-tool branch in `agent check-reviewers` presence detection and in any dispatcher fallback helpers; decide opt-in vs. default and update `--include-*` policy accordingly.
 4. If the new tool is also an implementer, add the launcher branch in `implement step2-dispatch`.
 5. No change is required in `run-external-agent.sh`: it sanitizes `.meta` `TOOL=` for any input. Prefer a label-safe id (alphanumerics, `.`, `_`, `-`) so `.meta` `TOOL=` matches the registry id verbatim; non-label-safe ids may still collide after sanitization (e.g. `tool/a` and `tool?a` both become `tool_a`), so `.meta` `TOOL=` is not a bijection from arbitrary labels. Only widen the wrapper's allowlist if you intentionally change that contract.
-6. If the new tool produces output collected by `scripts/collect-agent-results.sh`, ensure `derive_tool` can classify the new id from metadata and filenames so dispatcher fallback can attribute results.
+6. If the new tool produces output collected by `python/cli.py agent collect-results`, ensure `derive_tool` can classify the new id from metadata and filenames so dispatcher fallback can attribute results.
 7. Update the relevant sibling `.md` contracts.
 8. Run `make lint` and `bash scripts/relevant-checks.sh`.
 
 ## Collector integration
 
-`scripts/collect-agent-results.sh` sources this registry and uses `LARCH_EXTERNAL_TOOLS` for both `.meta` `TOOL=` validation and basename inference. The collector deliberately keeps an `unknown` fallback for observational classification of partial or malformed launches, which is semantically different from dispatch validation and is not a registry member.
+`python/cli.py agent collect-results` uses the same external-tool allowlist exposed by `python/cli.py agent external-tool-registry --kind external-tools` for both `.meta` `TOOL=` validation and basename inference. The collector deliberately keeps an `unknown` fallback for observational classification of partial or malformed launches, which is semantically different from dispatch validation and is not a registry member.
 
 ## Tests
 

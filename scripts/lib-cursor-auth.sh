@@ -14,7 +14,7 @@
 #
 # shellcheck shell=bash
 #
-# Bash 3.2 portability hard constraints (mirrors scripts/collect-agent-results.sh:8-11):
+# Bash 3.2 portability hard constraints historically mirrored the retired shell collector:
 #   - Forbid `declare -n`, `local -n`, `mapfile`, `readarray` (Bash 4+).
 #   - Forbid `eval` for secret-bearing assembly.
 #   - Whitespace trim uses Bash-3.2-safe parameter expansion only.

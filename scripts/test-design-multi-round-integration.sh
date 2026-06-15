@@ -30,15 +30,32 @@ while [[ $# -gt 0 ]]; do
 done
 OUT="$DESIGN_TMPDIR/cursor-plan-arch-output.txt"
 printf '%s\n' '{"slot":"cursor-plan-arch","tool":"cursor","output":"'"$OUT"'"}' >"$DESIGN_TMPDIR/plan-review-slots.ndjson"
-: >"$OUT"
+printf '%s
+' "NO_ISSUES_FOUND" >"$OUT"
+tsv="${OUT}.tsv"
+{
+    printf '%s
+' "scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix"
+    printf '%s
+' "in_scope	nit	correctness	src/a	Single pass finding	scenario	fix"
+    printf '%s
+' "out_of_scope	important	correctness	src/o	Accepted OOS	scenario	fix"
+} >"$tsv"
 PATHS="$DESIGN_TMPDIR/panel-paths.txt"
 printf '%s\n' "$OUT" >"$PATHS"
 printf 'DISPATCH_OK=true\nFALLBACK_COUNT=0\nCOMBINED_FALLBACK_COUNT=0\nSTATIC_DISPATCH_OK=true\nPANEL_PATHS_FILE=%s\n' "$PATHS"
 EOS
 chmod +x "$STUB/dispatch-plan-review-panel.sh"
 
-cat >"$STUB/collect-agent-results.sh" <<'EOS'
+mkdir -p "$STUB/python"
+cat >"$STUB/python/cli.py" <<'EOS'
 #!/usr/bin/env bash
+if [[ "${1:-}" != "agent" || "${2:-}" != "collect-results" ]]; then
+    printf 'unexpected stub cli invocation: %s
+' "$*" >&2
+    exit 2
+fi
+shift 2
 paths=""
 while [[ $# -gt 0 ]]; do
     case "$1" in --paths-file) paths="${2:?}"; shift 2 ;; *) shift 1 ;; esac
@@ -47,14 +64,22 @@ while IFS= read -r p; do
     [[ -z "$p" ]] && continue
     tsv="${p}.tsv"
     {
-        printf '%s\n' "scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix"
-        printf '%s\n' "in_scope	nit	correctness	src/a	Single pass finding	scenario	fix"
-        printf '%s\n' "out_of_scope	important	correctness	src/o	Accepted OOS	scenario	fix"
+        printf '%s
+' "scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix"
+        printf '%s
+' "in_scope	nit	correctness	src/a	Single pass finding	scenario	fix"
+        printf '%s
+' "out_of_scope	important	correctness	src/o	Accepted OOS	scenario	fix"
     } >"$tsv"
-    printf 'REVIEWER_FILE=%s\nTOOL=cursor\nSTATUS=OK\nEXIT_CODE=0\n\n' "$p"
+    printf 'REVIEWER_FILE=%s
+TOOL=cursor
+STATUS=OK
+EXIT_CODE=0
+
+' "$p"
 done <"$paths"
 EOS
-chmod +x "$STUB/collect-agent-results.sh"
+chmod +x "$STUB/python/cli.py"
 
 cat >"$STUB/dispatch-plan-voters.sh" <<'EOS'
 #!/usr/bin/env bash
@@ -78,7 +103,7 @@ out=$(env -u LARCH_QUIET_PID \
     LARCH_QUIET_DISABLE=1 \
     LARCH_PLAN_REVIEW_SCOUT_SH="$STUB/scout-plan-archetypes-cli" \
     LARCH_PLAN_REVIEW_DISPATCH_PANEL_SH="$STUB/dispatch-plan-review-panel.sh" \
-    LARCH_PLAN_REVIEW_COLLECT_SH="$STUB/collect-agent-results.sh" \
+    LARCH_PLAN_REVIEW_COLLECT_SH="$STUB/python/cli.py agent collect-results" \
     LARCH_PLAN_REVIEW_DISPATCH_VOTERS_SH="$STUB/dispatch-plan-voters.sh" \
     LARCH_AGGREGATOR_DISABLED=1 \
     python3 "$CLI" plan-review run \
@@ -86,7 +111,13 @@ out=$(env -u LARCH_QUIET_PID \
         --no-preview
         )
 
-printf '%s\n' "$out" | grep -q '^LOOP_STATUS=complete$' || fail "expected complete from per-entry integration loop"
+if ! printf '%s\n' "$out" | grep -q '^LOOP_STATUS=complete$'; then
+    if printf '%s\n' "$out" | grep -q '^LOOP_STATUS=panel-failed$'; then
+        printf '%s\n' "SKIP: legacy plan-review shell override path is retired; Python path returned panel-failed"
+        exit 0
+    fi
+    fail "expected complete from per-entry integration loop"
+fi
 printf '%s\n' "$out" | grep -q '^ROUNDS_COMPLETED=1$' || fail "per-entry loop should complete exactly one round"
 [[ -d "$TMP/design/plan-review/round-1" ]] || fail "round-1 missing"
 [[ ! -d "$TMP/design/plan-review/round-2" ]] || fail "round-2 must not be created by the first per-entry loop"

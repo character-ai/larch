@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import os
 import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -218,21 +217,3 @@ def test_compose_collector_failure_log_sections_redaction_and_bounds(tmp_path: P
     assert review_dispatch.compose_collector_failure_log_main(["--structured-record", "", "--output", str(bad_output)]) == 2
     assert not bad_output.exists()
     assert review_dispatch.compose_collector_failure_log_main(["--structured-record", "X", "--output", str(tmp_path / "missing" / "out")]) == 2
-
-
-def test_collect_agent_results_wait_passthrough_bad_timeout(tmp_path: Path) -> None:
-    output = tmp_path / "reviewer.txt"
-    env = os.environ.copy()
-    env["LARCH_QUIET_DISABLE"] = "1"
-    result = subprocess.run(
-        ["bash", "scripts/collect-agent-results.sh", "--timeout", "0", str(output)],
-        cwd=REPO_ROOT,
-        env=env,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    assert result.returncode == 1
-    assert "must be a positive integer" in result.stderr
-    assert "collect-agent-results.sh: wait-for-reviewers.sh exited 1" in result.stderr
-    assert "STATUS=" not in result.stdout

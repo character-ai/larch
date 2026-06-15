@@ -10,7 +10,7 @@ make test-design-multi-round-integration
 
 ## Stubs
 
-PATH-style overrides via `LARCH_PLAN_REVIEW_*_SH` env vars (see `python/test_plan_review.py`).
+The first legacy shell-override branch exits 0 with a skip message when the retired `LARCH_PLAN_REVIEW_*_SH` path is unavailable. The active coverage is the Python Step 3 loop and design-log publish path; see `python/test_plan_review.py` for current plan-review unit coverage.
 
 ## Coverage
 

@@ -230,7 +230,7 @@ case "${MODE:-}" in
     _collect_stdout="$DESIGN_TMPDIR/brainstorm-collect.stdout.log"
     _collect_stderr="$DESIGN_TMPDIR/brainstorm-collect.stderr.log"
     set +e
-    "$CLAUDE_PLUGIN_ROOT/scripts/collect-agent-results.sh" --timeout 1260 "${PUBLIC_ARGV_WORDS[@]}" >"$_collect_stdout" 2>"$_collect_stderr"
+    python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" agent collect-results --timeout 1260 "${PUBLIC_ARGV_WORDS[@]}" >"$_collect_stdout" 2>"$_collect_stderr"
     _collect_rc=$?
     set -e
     cat "$_collect_stdout"
@@ -239,7 +239,7 @@ case "${MODE:-}" in
         cat "$_collect_stdout"
         cat "$_collect_stderr"
       } >"$DESIGN_TMPDIR/brainstorm-collect.failure.log"
-      design_append_brainstorm_failure "collect-agent-results.sh" "$DESIGN_TMPDIR/brainstorm-collect.failure.log" "$_collect_rc" || true
+      design_append_brainstorm_failure "agent collect-results" "$DESIGN_TMPDIR/brainstorm-collect.failure.log" "$_collect_rc" || true
     fi
     design_collect_launch_failures "${PUBLIC_ARGV_WORDS[@]}"
     design_brainstorm_dirty_checkpoint "${PUBLIC_ARGV_WORDS[@]}"

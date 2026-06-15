@@ -1,6 +1,6 @@
 # lib-net.sh
 
-Sourced-only helper library carrying the canonical transient-network signature classifier and generic retry wrapper shared by `scripts/collect-agent-results.sh`, `scripts/ship-pr.sh`, and network-touching gap callsites across the repo.
+Sourced-only helper library carrying the shell transient-network signature classifier and generic retry wrapper shared by `scripts/ship-pr.sh` and network-touching gap callsites across the repo. `python/cli.py agent collect-results` now uses `python/retry.py` for transient classification.
 
 Exposes:
 
@@ -27,4 +27,4 @@ rm -f "$fail_file"
 
 Under `set -e`, use the `if with_transient_retry ...; then` shape above or a `set +e` capture block so errexit does not fire before `_WTR_RC` / `_WTR_OUT` are read.
 
-**Edit-in-sync**: `scripts/collect-agent-results.sh`, `scripts/collect-agent-results.md`, `scripts/ship-pr.sh`, `scripts/ship-pr.md`, `scripts/test-collect-agent-results.sh`, `scripts/test-lib-net.sh`, and every script that sources `lib-net.sh` for gap callsite wraps.
+**Edit-in-sync**: `python/retry.py`, `python/collect_results.py`, `python/test_collect_results.py`, `scripts/ship-pr.sh`, `scripts/ship-pr.md`, `scripts/test-lib-net.sh`, and every script that sources `lib-net.sh` for gap callsite wraps.

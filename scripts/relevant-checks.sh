@@ -313,7 +313,7 @@ run_direct_relevant_targets() {
                 ;;
         esac
         case "$f" in
-            scripts/collect-agent-results.sh|scripts/test-collect-agent-results.sh) # lint-foreground-markers: ok relevant-checks case pattern
+            python/collect_results.py|python/test_collect_results.py|python/cli.py|scripts/dispatch-with-waterfall.sh|scripts/test-dispatch-with-waterfall.sh|skills/design/scripts/design-step1d5.sh|python/legacy_review_shell/collect-findings.sh)
                 append_target_once test-collect-agent-results
                 ;;
         esac

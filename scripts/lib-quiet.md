@@ -59,8 +59,8 @@ append-forensics behavior documented in `python/logging_util.py` and
   ordinary stdout rather than contract output.
 
 Long-running quiet scripts (for example `ship-pr.sh`, `ci-wait.sh`, and
-`collect-agent-results.sh`) surface progress via `larch_err` / `larch_errf` on the
-operator-visible stderr channel (FD 4 after `larch_quiet_init`).
+`python/cli.py agent collect-results`) surface progress via the quiet-compatible diagnostic channel on the
+operator-visible stderr channel (FD 4 after quiet initialization).
 
 ## Harness
 
@@ -81,7 +81,7 @@ pass). Routed sites:
   `python/cli.py review collect-findings` (collector and wait failure-log
   relays).
 - **MEDIUM** (defense-in-depth on internal-script stderr in reviewer/CI paths):
-  `scripts/collect-agent-results.sh` (`$WAIT_STDERR` relay),
+  `python/cli.py agent collect-results` (buffered wait diagnostic relay),
   `python/cli.py review core` (`$aggregate_stderr` relay).
 
 Reviewed and intentionally **not** routed (LOW): `python/cli.py eval research` git

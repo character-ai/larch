@@ -16,9 +16,9 @@ Launch all 3 lanes in parallel in a single message. **Spawn order matters for pa
 
 ## Step 2 entry — Propagate research-phase fallbacks to VALIDATION_* keys
 
-Before any external launch in Step 2, propagate any currently-unavailable external lane's pre-launch status into the corresponding `VALIDATION_*` keys in `$RESEARCH_TMPDIR/lane-status.txt`. Without this propagation, a Cursor/Codex tool that became unavailable during research-phase Step 1.4 would leave the Step 0b-initialized `VALIDATION_<TOOL>_STATUS=ok` in place — `collect-agent-results.sh` is never called for a lane whose `*_available` flag is false at validation entry, so Step 2.4 cannot downgrade it.
+Before any external launch in Step 2, propagate any currently-unavailable external lane's pre-launch status into the corresponding `VALIDATION_*` keys in `$RESEARCH_TMPDIR/lane-status.txt`. Without this propagation, a Cursor/Codex tool that became unavailable during research-phase Step 1.4 would leave the Step 0b-initialized `VALIDATION_<TOOL>_STATUS=ok` in place — `python/cli.py agent collect-results` is never called for a lane whose `*_available` flag is false at validation entry, so Step 2.4 cannot downgrade it.
 
-For each external tool, if `cursor_available` (resp. `codex_available`) is currently `false`, write the corresponding fallback token + reason into `VALIDATION_<TOOL>_STATUS` and `VALIDATION_<TOOL>_REASON`. Lanes whose `*_available` flag is currently `true` are left alone — Step 2.4 will update them after `collect-agent-results.sh` returns.
+For each external tool, if `cursor_available` (resp. `codex_available`) is currently `false`, write the corresponding fallback token + reason into `VALIDATION_<TOOL>_STATUS` and `VALIDATION_<TOOL>_REASON`. Lanes whose `*_available` flag is currently `true` are left alone — Step 2.4 will update them after `python/cli.py agent collect-results` returns.
 
 If both `cursor_available` and `codex_available` are `true` at Step 2 entry, no update is needed.
 
@@ -178,13 +178,13 @@ COLLECT_ARGS=()
 [[ "$codex_available" == true ]] && COLLECT_ARGS+=("$RESEARCH_TMPDIR/codex-validation-output.txt")
 ```
 
-**Zero-externals branch**: If BOTH Cursor and Codex are unavailable (`COLLECT_ARGS` is empty), skip `collect-agent-results.sh` entirely and skip all external negotiation. The 3-lane invariant is preserved by 3 Claude streams (the always-on `Code` lane plus the `Cursor` and `Codex` fallback lanes). Merge ALL Claude findings (preserving per-lane attribution) and proceed to Finalize Validation.
+**Zero-externals branch**: If BOTH Cursor and Codex are unavailable (`COLLECT_ARGS` is empty), skip `python/cli.py agent collect-results` entirely and skip all external negotiation. The 3-lane invariant is preserved by 3 Claude streams (the always-on `Code` lane plus the `Cursor` and `Codex` fallback lanes). Merge ALL Claude findings (preserving per-lane attribution) and proceed to Finalize Validation.
 
 Otherwise, after processing Claude findings, invoke the script with only the launched paths. Pass `--substantive-validation --validation-mode`:
 
 ```bash
 export RESEARCH_TMPDIR
-${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1860 --substantive-validation --validation-mode "${COLLECT_ARGS[@]}"
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent collect-results --timeout 1860 --substantive-validation --validation-mode "${COLLECT_ARGS[@]}"
 ```
 
 Use `timeout: 1860000` on the foreground Bash tool call. The harness auto-backgrounds an overrunning call and notifies on completion.
@@ -223,7 +223,7 @@ Use `timeout: 1860000` on the foreground Bash tool call. The harness auto-backgr
    rm -f "$_active_err"
    ```
 
-   Keep append-record bound to `--tmpdir "$RESEARCH_TMPDIR"`. Keep active-ledger ingestion bound to `RESEARCH_TMPDIR`. The active-ledger command unsets inherited explicit ledger, session ID, implementation tmpdir, design tmpdir, and session-env variables so validation sidecars cannot write to a leaked parent ledger or slug. Absent sidecars are no-ops. Ingestion is independent of collector status. The zero-externals branch skips this block because `collect-agent-results.sh` is not invoked and no validation lane sidecars exist.
+   Keep append-record bound to `--tmpdir "$RESEARCH_TMPDIR"`. Keep active-ledger ingestion bound to `RESEARCH_TMPDIR`. The active-ledger command unsets inherited explicit ledger, session ID, implementation tmpdir, design tmpdir, and session-env variables so validation sidecars cannot write to a leaked parent ledger or slug. Absent sidecars are no-ops. Ingestion is independent of collector status. The zero-externals branch skips this block because `python/cli.py agent collect-results` is not invoked and no validation lane sidecars exist.
 3. **Runtime-timeout replacement**: For any reviewer with `STATUS` not `OK`, follow the **Runtime Timeout Fallback** procedure in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md` to flip the availability flag, then immediately launch the matching single Claude Code Reviewer subagent fallback and wait for it before negotiation.
 4. Merge external reviewer findings (and any runtime-fallback Claude findings) into the always-on Claude lane findings and any pre-launch Claude fallback findings.
 5. **Update lane-status.txt (VALIDATION_* slice only)**: surgically update only the `VALIDATION_*` slice — `RESEARCH_*` keys must be preserved verbatim. Map `STATUS != OK` to the lane-status token:

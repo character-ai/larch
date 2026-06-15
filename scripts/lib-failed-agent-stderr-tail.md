@@ -31,7 +31,7 @@ Optional 4th positional argument `explicit_sink`: in default (non-capture) mode,
 ## Callers
 
 - `python/cli.py agent run-external-agent` — mode-aware source via `select_failed_agent_stderr_source` (passes `--stderr-sink` as the explicit sink); `emit_failed_agent_stderr_tail_raw` (non-quiet FD 2).
-- `scripts/collect-agent-results.sh` — batch dedup emit via `larch_err`; delegates tail resolution to `resolve_collector_stderr_tail_file`.
+- `python/cli.py agent collect-results` — batch dedup emit via `logging_util.diagnostic`; Python ports the collector tail resolution helpers.
 - `python/cli.py agent launch-claude-subprocess` — pre-`.done` tail from `${OUTPUT}.stderr`; clears stale `${OUTPUT}.stderr-tail` at entry and on success.
 - `python/cli.py agent launch-claude-review` — parent fallback from subprocess stderr capture; fenced tail via `emit_failed_agent_stderr_tail_larch_err` (quiet-safe).
 - `python/cli.py review collect-findings` — replay fallback uses `resolve_collector_stderr_tail_file`.
