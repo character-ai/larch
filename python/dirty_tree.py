@@ -22,9 +22,9 @@ def _valid_meta_path(value: str) -> bool:
     return bool(value) and _META_PATH_RE.fullmatch(value) is not None
 
 
-def _run_bytes(argv: list[str]) -> tuple[int, bytes]:
+def _run_bytes(argv: list[str], cwd: str | None = None) -> tuple[int, bytes]:
     try:
-        completed = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=False)
+        completed = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=False, cwd=cwd)
     except OSError:
         return 127, b""
     return completed.returncode, completed.stdout
@@ -74,9 +74,9 @@ def _publish(lines: list[str], sidecar: str = "") -> None:
         _ = _write_atomic(Path(sidecar), text.encode())
 
 
-def checkpoint(*, sidecar: str = "") -> list[str]:
+def checkpoint(*, sidecar: str = "", cwd: str | None = None) -> list[str]:
     _ = sidecar
-    rc, status = _run_bytes(["git", "status", "--porcelain"])
+    rc, status = _run_bytes(["git", "status", "--porcelain"], cwd=cwd)
     if rc != 0:
         return _result_lines(status="unknown", mode="checkpoint", reason="git-status-failed")
     if status:
@@ -84,7 +84,7 @@ def checkpoint(*, sidecar: str = "") -> list[str]:
     return _result_lines(status="clean", mode="checkpoint")
 
 
-def baseline(*, baseline_path: str, sidecar: str = "") -> list[str]:
+def baseline(*, baseline_path: str, sidecar: str = "", cwd: str | None = None) -> list[str]:
     if sidecar and not _valid_meta_path(sidecar):
         return _result_lines(
             status="unknown",
@@ -100,16 +100,16 @@ def baseline(*, baseline_path: str, sidecar: str = "") -> list[str]:
             baseline_state="missing",
         )
 
-    rc, _status = _run_bytes(["git", "status", "--porcelain"])
+    rc, _status = _run_bytes(["git", "status", "--porcelain"], cwd=cwd)
     if rc != 0:
         return _result_lines(status="unknown", mode="baseline", reason="git-status-failed", baseline_state="missing")
-    rc, unstaged = _run_bytes(["git", "diff", "--name-only", "-z"])
+    rc, unstaged = _run_bytes(["git", "diff", "--name-only", "-z"], cwd=cwd)
     if rc != 0:
         return _result_lines(status="unknown", mode="baseline", reason="git-diff-failed", baseline_state="missing")
-    rc, staged = _run_bytes(["git", "diff", "--name-only", "--cached", "-z"])
+    rc, staged = _run_bytes(["git", "diff", "--name-only", "--cached", "-z"], cwd=cwd)
     if rc != 0:
         return _result_lines(status="unknown", mode="baseline", reason="git-diff-cached-failed", baseline_state="missing")
-    rc, current_untracked = _run_bytes(["git", "ls-files", "--others", "--exclude-standard", "-z"])
+    rc, current_untracked = _run_bytes(["git", "ls-files", "--others", "--exclude-standard", "-z"], cwd=cwd)
     if rc != 0:
         return _result_lines(status="unknown", mode="baseline", reason="git-ls-files-failed", baseline_state="missing")
 
