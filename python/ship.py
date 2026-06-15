@@ -48,7 +48,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO, cast
 
-import checks
 import ci_monitor
 import config
 import file_oos
@@ -1194,8 +1193,6 @@ def run_ship(
             return ShipResult(Outcome.STALLED, detail="invalid tmpdir")
         if not _state_file_under_tmpdir(ctx):
             return ShipResult(Outcome.STALLED, detail="invalid state_file")
-        codex_present = ctx.codex_present or bool(os.environ.get("CODEX") or os.environ.get("CODEX_HOME") or ctx.tool_label == "codex")
-        cursor_present = ctx.cursor_present or bool(os.environ.get("CURSOR") or os.environ.get("CURSOR_AUTH_ARGS") or ctx.tool_label == "cursor")
         base_ref = "main"
         resume = _resume_plan(ctx, runner, cwd=repo_root)
         if resume.start == "blocked-rebase-continuation":
@@ -1255,37 +1252,10 @@ def run_ship(
 
         if resume.start == "fresh":
             fresh_context = _hydrate_fresh_context(ctx, resume)
-            _write_ship_state(
-                fresh_context,
-                phase="checks",
-                iteration=resume.iteration,
-                rebase_count=resume.rebase_count,
-                fix_attempts=resume.fix_attempts,
-                transient_retries=resume.transient_retries,
-            )
-            _breadcrumb("checks", "Lint&Tests")
-            checks_result = checks.run_checks_phase(
-                runner,
-                tmpdir=fresh_context.tmpdir,
-                repo_root=repo_root,
-                codex_present=codex_present,
-                cursor_present=cursor_present,
-                site="step6",
-                checks_site="step6",
-                fix_site="ship-pr-ci-initial",
-            )
-            if checks_result.outcome is not Outcome.OK:
-                _write_terminal_state(
-                    fresh_context,
-                    checks_result.outcome,
-                    checks_result.detail or "checks",
-                    iteration=resume.iteration,
-                    rebase_count=resume.rebase_count,
-                    fix_attempts=resume.fix_attempts,
-                    transient_retries=resume.transient_retries,
-                )
-                return _step_result_to_ship(checks_result)
-
+            # Upfront local lint/tests phase removed by request: open the PR
+            # immediately and let CI surface failures (no pre-PR `make py-test`
+            # / relevant-checks run). The post-CI fix path is unaffected; only
+            # this fresh-run pre-PR checks gate is skipped.
             _write_ship_state(
                 fresh_context,
                 phase="pr-prep",
