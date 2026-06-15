@@ -763,8 +763,9 @@ def _run_one_cursor_probe(timeout: int) -> int:
         prompt = " /max-mode on. Prompt: Respond with OK"
         state = external_serial_lock_acquire("cursor")
         external_serial_lock_release_after(state)
+        probe_workdir = _resolve_review_codex_workdir(str(Path.cwd()))
         rc = _run_probe_command(
-            ["cursor", "agent", "-p", prompt, "--trust", "--workspace", str(Path.cwd()), *model_args],
+            ["cursor", "agent", "-p", prompt, "--trust", "--workspace", probe_workdir, *model_args],
             timeout=timeout,
             env=dict(os.environ),
             stdout=probe_out,
@@ -804,16 +805,17 @@ def _run_one_codex_probe(timeout: int) -> int:
             model_args = list(resolve_model_args("codex", with_effort=True).argv)
         except ValueError:
             model_args = []
+        probe_workdir = _resolve_review_codex_workdir(str(Path.cwd()))
         cmd = [
             "codex",
             "exec",
             "--sandbox",
             "read-only",
             "-C",
-            str(Path.cwd()),
+            probe_workdir,
             *model_args,
             "-c",
-            _trust_config_arg(str(Path.cwd())),
+            _trust_config_arg(probe_workdir),
             *_codex_auth_args(),
             "--output-last-message",
             str(probe_out),
@@ -2167,7 +2169,7 @@ def _read_keepalive_clone_path(keepalive: Path) -> str | None:
 
 
 def _clone_path_from_session_tmpdir() -> str | None:
-    for name in ("DESIGN_TMPDIR", "SESSION_TMPDIR"):
+    for name in ("IMPLEMENT_TMPDIR", "DESIGN_TMPDIR", "SESSION_TMPDIR"):
         tmpdir = os.environ.get(name)
         if not tmpdir:
             continue
@@ -3881,6 +3883,7 @@ def _review_launch_cursor(args: argparse.Namespace, original_prompt: str) -> int
     sidecar_path = output.with_suffix(output.suffix + ".sidecar")
     _write(sidecar_path, "")
     try:
+        workdir = _resolve_review_codex_workdir(str(Path.cwd()))
         cmd = [
             "cursor",
             "agent",
@@ -3892,7 +3895,7 @@ def _review_launch_cursor(args: argparse.Namespace, original_prompt: str) -> int
             "json",
             *model_args,
             "--workspace",
-            str(Path.cwd()),
+            workdir,
             wrapped,
         ]
         result, auth_attempt, transient_attempt = _review_run_with_retries(
@@ -4246,19 +4249,20 @@ def launch_codex_implement_main(argv: list[str] | None = None) -> int:
             _emit_implement_launcher_envelope(args, 1)
             return 0
         events = output.with_suffix(output.suffix + ".events.jsonl")
+        workdir = _resolve_review_codex_workdir(str(Path.cwd()))
         child = [
             "codex",
             "exec",
             "--full-auto",
             "-C",
-            str(Path.cwd()),
+            workdir,
             "--add-dir",
             str(session_tmpdir),
             "--add-dir",
-            str(Path.cwd()),
+            workdir,
             *model_args,
             "-c",
-            _trust_config_arg(str(Path.cwd())),
+            _trust_config_arg(workdir),
             *_codex_auth_args(),
             "--output-last-message",
             str(output),
@@ -4275,7 +4279,7 @@ def launch_codex_implement_main(argv: list[str] | None = None) -> int:
                 output=output,
                 timeout_seconds=int(args.timeout, 10),
                 cmd=child,
-                cwd=str(Path.cwd()),
+                cwd=workdir,
                 stdout_path=events,
                 stderr_path=sidecar,
             )
@@ -4291,7 +4295,7 @@ def launch_codex_implement_main(argv: list[str] | None = None) -> int:
     _mirror_codex_quota_from_events(events, sidecar)
     _record_implement_timing("codex", task_kind, start, output, result.exit_code)
     _record_usage_from_events(events, sidecar, "codex_implement")
-    _append(output.with_suffix(output.suffix + ".meta"), f"OUTER_LAUNCHER=agent launch-codex-implement\nOUTER_LAUNCHER_PROMPT_FILE={output}.prompt\nOUTER_LAUNCHER_WORKDIR={Path.cwd()}\nOUTER_LAUNCHER_KIND=codex-implement\nOUTER_LAUNCHER_ADD_DIRS_JSON={_json_array([str(session_tmpdir), str(Path.cwd())])}\n")
+    _append(output.with_suffix(output.suffix + ".meta"), f"OUTER_LAUNCHER=agent launch-codex-implement\nOUTER_LAUNCHER_PROMPT_FILE={output}.prompt\nOUTER_LAUNCHER_WORKDIR={workdir}\nOUTER_LAUNCHER_KIND=codex-implement\nOUTER_LAUNCHER_ADD_DIRS_JSON={_json_array([str(session_tmpdir), workdir])}\n")
     if result.exit_code != 0:
         verdict = external_auth_verdict("codex", sidecar, events, output)
         if verdict == "auth":
@@ -4384,7 +4388,8 @@ def launch_cursor_implement_main(argv: list[str] | None = None) -> int:
             shutil.copyfile(user_cfg, Path(cfg_tmp) / "cli-config.json")
     start = time.time()
     try:
-        child = ["cursor", "agent", "-p", "--force", "--trust", "--output-format", "json", *model_args, "--workspace", str(Path.cwd()), wrapped_prompt]
+        workdir = _resolve_review_codex_workdir(str(Path.cwd()))
+        child = ["cursor", "agent", "-p", "--force", "--trust", "--output-format", "json", *model_args, "--workspace", workdir, wrapped_prompt]
         result = _run_external_agent_with_auth_retries(
             tool="cursor",
             output=output,
@@ -4398,7 +4403,7 @@ def launch_cursor_implement_main(argv: list[str] | None = None) -> int:
             os.environ.pop("CURSOR_CONFIG_DIR", None)
         else:
             os.environ["CURSOR_CONFIG_DIR"] = old_cfg
-    _append(output.with_suffix(output.suffix + ".meta"), f"OUTER_LAUNCHER=agent launch-cursor-implement\nOUTER_LAUNCHER_PROMPT_FILE={output}.prompt\nOUTER_LAUNCHER_WORKDIR={Path.cwd()}\n")
+    _append(output.with_suffix(output.suffix + ".meta"), f"OUTER_LAUNCHER=agent launch-cursor-implement\nOUTER_LAUNCHER_PROMPT_FILE={output}.prompt\nOUTER_LAUNCHER_WORKDIR={workdir}\n")
     _record_implement_timing("cursor", task_kind, start, output, result.exit_code)
     _record_cursor_implement_usage(output)
     if result.exit_code != 0:

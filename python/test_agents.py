@@ -1150,6 +1150,85 @@ def test_check_reviewers_codex_argv_no_secrets_in_cmd(
     _ = real_run_probe  # keep reference for lint
 
 
+def test_check_reviewers_codex_probe_resolves_workdir(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    codex = bin_dir / "codex"
+    _ = codex.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    codex.chmod(0o755)
+
+    def fake_resolve(_cwd: str) -> str:
+        return "/resolved/probe-workdir"
+
+    def fake_prepare(_home: Path, *, trusted_instructions_file: str = "") -> tuple[int, str]:
+        _ = trusted_instructions_file
+        return (0, "")
+
+    monkeypatch.setattr(agents, "_resolve_review_codex_workdir", fake_resolve)
+    monkeypatch.setattr(agents, "_prepare_codex_home", fake_prepare)
+    seen_cmds: list[Sequence[str]] = []
+
+    def capture_probe(cmd: Sequence[str], **_kwargs: object) -> int:
+        seen_cmds.append(list(cmd))
+        return 0
+
+    monkeypatch.setattr(agents, "_run_probe_command", capture_probe)
+    agents.check_reviewers(
+        skip_cursor_probe=True,
+        env={"PATH": str(bin_dir), "TMPDIR": str(tmp_path), "LARCH_PROBE_TTL_SECONDS": "0"},
+    )
+    assert seen_cmds
+    cmd = list(seen_cmds[0])
+    assert cmd[cmd.index("-C") + 1] == "/resolved/probe-workdir"
+    assert 'projects."/resolved/probe-workdir".trust_level="trusted"' in cmd
+
+
+def test_check_reviewers_cursor_probe_resolves_workspace(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    cursor = bin_dir / "cursor"
+    _ = cursor.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    cursor.chmod(0o755)
+
+    def fake_resolve(_cwd: str) -> str:
+        return "/resolved/probe-workdir"
+
+    def cursor_auth_ok(*, caller: str = "agent check-reviewers") -> agents.AuthVerdict:
+        _ = caller
+        return agents.AuthVerdict(ok=True, rc=0, message="")
+
+    def cleanup_noop(_setup: object) -> None:
+        return None
+
+    def setup_chain_stub() -> object:
+        return object()
+
+    monkeypatch.setattr(agents, "_resolve_review_codex_workdir", fake_resolve)
+    monkeypatch.setattr(agents, "cursor_auth_preflight", cursor_auth_ok)
+    monkeypatch.setattr(agents, "_cursor_probe_setup_chain", setup_chain_stub)
+    monkeypatch.setattr(agents, "_cursor_probe_cleanup_private_config_dir", cleanup_noop)
+    seen_cmds: list[Sequence[str]] = []
+
+    def capture_probe(cmd: Sequence[str], **_kwargs: object) -> int:
+        seen_cmds.append(list(cmd))
+        return 0
+
+    monkeypatch.setattr(agents, "_run_probe_command", capture_probe)
+    agents.check_reviewers(
+        skip_codex_probe=True,
+        env={"PATH": str(bin_dir), "TMPDIR": str(tmp_path), "LARCH_PROBE_TTL_SECONDS": "0"},
+    )
+    assert seen_cmds
+    cmd = list(seen_cmds[0])
+    assert cmd[cmd.index("--workspace") + 1] == "/resolved/probe-workdir"
+
+
 def test_run_negotiation_round_cursor_probe_failure_exit_2(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

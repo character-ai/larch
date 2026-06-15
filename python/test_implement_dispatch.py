@@ -600,6 +600,9 @@ def test_codex_launcher_builds_exec_argv_and_dynamic_prompt(tmp_path: Path, monk
     monkeypatch.setattr(agents, "_record_usage_from_events", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(agents, "_mirror_codex_quota_from_events", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(agents, "_promote_inner_done", lambda *_args, **_kwargs: None)
+    resolved = tmp_path / "resolved-repo"
+    resolved.mkdir()
+    monkeypatch.setattr(agents, "_resolve_review_codex_workdir", lambda _cwd: str(resolved))  # type: ignore[arg-type]
     captured: dict[str, object] = {}
 
     def fake_run_external_agent_with_auth_retries(**kwargs):  # type: ignore[no-untyped-def]
@@ -623,7 +626,11 @@ def test_codex_launcher_builds_exec_argv_and_dynamic_prompt(tmp_path: Path, monk
     assert cmd[:4] == ["codex", "exec", "--full-auto", "-C"]
     assert cmd.count("--add-dir") == 2
     assert str(tmp_path / "out") in cmd
-    assert str(Path.cwd()) in cmd
+    assert cmd[4] == str(resolved)
+    add_dir_values = [cmd[index + 1] for index, value in enumerate(cmd) if value == "--add-dir"]
+    assert str(resolved) in add_dir_values
+    assert f'projects."{resolved}".trust_level="trusted"' in cmd
+    assert captured["cwd"] == str(resolved)
     assert "--output-last-message" in cmd
     assert cmd[-2] == "--"
     assert "body" not in Path(str(tmp_path / "out" / "transcript.txt.prompt")).read_text(encoding="utf-8")
@@ -650,6 +657,9 @@ def test_cursor_launcher_builds_agent_argv(tmp_path: Path, monkeypatch: pytest.M
     monkeypatch.setattr(agents, "_record_implement_timing", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(agents, "_record_cursor_implement_usage", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(agents, "_promote_inner_done", lambda *_args, **_kwargs: None)
+    resolved = tmp_path / "resolved-repo"
+    resolved.mkdir()
+    monkeypatch.setattr(agents, "_resolve_review_codex_workdir", lambda _cwd: str(resolved))  # type: ignore[arg-type]
     captured: dict[str, object] = {}
 
     def fake_run_external_agent_with_auth_retries(**kwargs):  # type: ignore[no-untyped-def]
@@ -669,6 +679,7 @@ def test_cursor_launcher_builds_agent_argv(tmp_path: Path, monkeypatch: pytest.M
     assert isinstance(cmd, list)
     assert cmd[:7] == ["cursor", "agent", "-p", "--force", "--trust", "--output-format", "json"]
     assert "--workspace" in cmd
+    assert cmd[cmd.index("--workspace") + 1] == str(resolved)
     assert "--" not in cmd
 def _auth_lines(out: str) -> int:
     return sum(1 for line in out.splitlines() if line.startswith("ORCHESTRATOR_EDIT_AUTHORITY="))
