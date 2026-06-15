@@ -234,7 +234,7 @@ assert_wrapper_contract_pins() {
   contains "$SCRIPT_DIR/design-step3-review.sh" 'STEP3_REVIEW_LOOP_STATUS=panel-failed' 'Step 3 review wrapper missing pre-launch panel-failed envelope'
   contains "$SCRIPT_DIR/design-step3-review.sh" 'LOOP_STATUS=panel-failed' 'Step 3 review wrapper missing pre-launch loop panel-failed envelope'
   contains "$SCRIPT_DIR/design-step3-review.sh" 'monitor-mode-unavailable' 'Step 3 review wrapper missing monitor-mode failure reason'
-  contains "$SCRIPT_DIR/lib-step3-prelaunch-failure.sh" 'rm -f "$_result_env"' 'Step 3 review wrapper may replay a stale result envelope'
+  contains "$SCRIPT_DIR/design-step3-review.sh" 'rm -f "$_result_env"' 'Step 3 review wrapper may replay a stale result envelope'
   contains "$SCRIPT_DIR/design-step3-review.sh" 'exit 0' 'Step 3 review wrapper monitor-mode failure must exit 0'
   contains "$SCRIPT_DIR/design-step3b-entry.sh" 'DIAGRAM_REQUIRED=' 'Step 3b entry wrapper missing DIAGRAM_REQUIRED emit'
   contains "$SCRIPT_DIR/design-step3b-entry.sh" '### NEW:' 'Step 3b entry classifier missing NEW heading token pin'
