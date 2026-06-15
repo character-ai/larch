@@ -22,6 +22,13 @@ forbid() {
     fail "$label"
   fi
 }
+ordered_before() {
+  local file="$1" first="$2" second="$3" label="$4"
+  local l1 l2
+  l1=$(grep -nF -- "$first" "$file" | head -1 | cut -d: -f1 || true)
+  l2=$(grep -nF -- "$second" "$file" | head -1 | cut -d: -f1 || true)
+  [[ -n "$l1" && -n "$l2" && "$l1" -lt "$l2" ]] || fail "$label"
+}
 
 [[ -f "$SKILL" ]] || fail "missing SKILL.md"
 [[ -f "$PREFLIGHT_AUDIT_REF" ]] || fail "missing preflight-plan-audit.md"
@@ -76,17 +83,40 @@ contains "$SKILL" '**⚠ --draft and --merge are mutually exclusive. Aborting.**
 contains "$SKILL" '`--emergency` and `--merge` are **compatible**' "missing emergency/merge compatibility note"
 contains "$SKILL" '**⚠ --emergency and --draft are mutually exclusive. Aborting.**' "missing emergency/draft mutex"
 contains "$SKILL" 'STATE=awaiting-response' "missing clarify awaiting-response guard"
-contains "$SKILL" 'plan-adequacy audit refused for issue #<N>; bypassing clarify-state and proceeding to semantic materiality.' "missing audit-refuse emergency warning"
-contains "$SKILL" 'do **not** post a clarify request or add `needs-design-clarification`, and continue to item 6.' "missing audit-refuse clarify bypass contract"
+# Emergency mode skips the item 4 plan-adequacy audit entirely (issue #4442);
+# there is no AUDIT=refuse result and no audit-refuse bypass on the emergency path.
 contains "$SKILL" 'BYPASS kind=<lowercase-token> issue=<number>' "missing structured emergency bypass log grammar"
 contains "$SKILL" 'The log is invalid when it is empty, blank-only, or names an `issue=` value other than the current target issue.' "missing invalid emergency bypass log contract"
 contains "$SKILL" 'missing-plan' "missing missing-plan emergency token"
 contains "$SKILL" 'malformed-plan' "missing malformed-plan emergency token"
 contains "$SKILL" 'missing-designed-prefix' "missing missing-designed-prefix emergency token"
-contains "$SKILL" 'audit-refuse' "missing audit-refuse emergency token"
-contains "$SKILL" 'append exactly `BYPASS kind=audit-refuse issue=<N>`' "missing explicit audit-refuse bypass grammar"
 contains "$SKILL" 'only once for the current emergency run, even after dirty-tree resume' "missing no-replay emergency bypass contract"
 contains "$SKILL" "case \"\${emergency_requested:-}\" in" "missing conditional emergency bootstrap argv"
+
+# --- Emergency item-4 audit-skip contract (issue #4442) ---
+# Item 4's emergency-skip branch must precede the mandatory preflight-plan-audit read.
+ordered_before "$SKILL" \
+  'skipping plan-adequacy audit for issue #<N>; continuing to semantic materiality.' \
+  'MANDATORY — READ ENTIRE FILE** at Preflight item 4' \
+  "item 4 emergency-skip branch must precede the mandatory preflight-plan-audit read"
+contains "$SKILL" '⏭️ /implement --emergency: skipping plan-adequacy audit for issue #<N>; continuing to semantic materiality.' "missing item 4 emergency audit-skip breadcrumb"
+contains "$SKILL" 'On the emergency audit-skip branch, do **not** read' "missing item 4 emergency no-read-of-audit-ref contract"
+contains "$SKILL" 'do **not** create or overwrite `$PREFLIGHT_TMPDIR/audit.txt`, and do **not** append to `$PREFLIGHT_TMPDIR/emergency-bypass.log`' "missing item 4 emergency no-audit-file / no-bypass-log contract"
+contains "$SKILL" 'the audit skip is not a downgraded gate and writes no bypass-log entry' "missing item 4 emergency skip-not-a-gate contract"
+contains "$SKILL" 'On `AUDIT=pass` or the emergency audit skip — semantic materiality' "missing item 6 reachable-from-emergency-skip heading"
+
+# Anti-halt continuation: the emergency skip breadcrumb is a Preflight continuation
+# signal; the orchestrator continues through items 6-7 then Step 0 without waiting
+# for an AUDIT=pass envelope, and the non-emergency audit-pass pin is preserved.
+contains "$SKILL" 'after the emergency plan-adequacy audit skip breadcrumb' "missing anti-halt emergency-skip continuation signal"
+contains "$SKILL" 'do NOT halt waiting for an `AUDIT=pass` envelope on the emergency skip path' "missing anti-halt no-wait-on-emergency-skip contract"
+contains "$SKILL" 'do NOT end the turn on the audit-pass envelope' "missing preserved non-emergency audit-pass continuation pin"
+
+# Active prose must no longer document audit-refuse, clarify-state pending/refuse,
+# or the stale four-gate count as emergency bypasses.
+forbid "$SKILL" 'audit-refuse' "SKILL.md must not retain the removed audit-refuse emergency token"
+forbid "$SKILL" 'bypassing clarify-state' "SKILL.md must not retain the removed clarify-state emergency bypass prose"
+forbid "$SKILL" 'exactly four gates' "SKILL.md must not retain the stale four-gate emergency count"
 
 contains "$PREFLIGHT_HELPER" 'missing-plan' "helper missing stable missing-plan token"
 contains "$PREFLIGHT_HELPER" 'malformed-plan' "helper missing stable malformed-plan token"

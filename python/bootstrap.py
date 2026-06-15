@@ -597,7 +597,7 @@ def _append_emergency_bypass(st: BootstrapState) -> bool:
     except OSError:
         return False
     expected_issue = st.issue_number_resolved or st.opts.issue_number
-    canonical = {"missing-plan", "malformed-plan", "missing-designed-prefix", "audit-refuse"}
+    canonical = {"missing-plan", "malformed-plan", "missing-designed-prefix"}
     valid = bool(text.strip())
     for line in text.splitlines():
         stripped = line.strip()
