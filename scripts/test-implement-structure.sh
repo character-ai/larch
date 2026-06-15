@@ -92,6 +92,7 @@ forbid(skill, 'full seven-key envelope', 'SKILL must not require envelope on exi
 launcher = 'bash "$IMPLEMENT_TMPDIR/larch-run.sh" '
 for script in [
     'skills/implement/scripts/step-2-entry.sh --coder "$coder"',
+    'skills/implement/scripts/step-2-post-dispatch.sh',
     'skills/implement/scripts/run-step-checks.sh --site step3',
     'skills/implement/scripts/step-5-entry.sh',
     'skills/implement/scripts/run-step-checks.sh --site step5-self-review',
@@ -123,7 +124,7 @@ for needle in [
     forbid(skill, needle, 'wrapperized SKILL')
 
 # Script/md sibling and executable coverage for new wrappers.
-wrappers = ['step-0-bootstrap','step-0-degraded-gate','step-2-entry','run-step-checks','step-5-entry','step-5-resume','step-6-entry','step-8-ship','step-8-oos-checkpoint','step-16','step-17','step-18a-gate','step-18-finalize']
+wrappers = ['step-0-bootstrap','step-0-degraded-gate','step-2-entry','step-2-post-dispatch','run-step-checks','step-5-entry','step-5-resume','step-6-entry','step-8-ship','step-8-oos-checkpoint','step-16','step-17','step-18a-gate','step-18-finalize']
 for name in wrappers:
     sh=Path(f'skills/implement/scripts/{name}.sh')
     md=Path(f'skills/implement/scripts/{name}.md')
@@ -166,9 +167,9 @@ for script, timeout in [
     require_near(skill, script, timeout, f'timeout pin for {script}', 1400)
 require_near(skill, launcher + 'python/cli.py review-and-fix step5', '<task-notification>', 'Step 5 review task notification wait', 1800)
 require_near(skill, launcher + 'skills/implement/scripts/step-8-ship.sh', '<task-notification>', 'Step 8 ship task notification wait', 2000)
-require(skill, launcher + 'scripts/phantom-probe-with-warn.sh --step 2-post-dispatch', 'phantom 2-post-dispatch probe')
+require(skill, launcher + 'skills/implement/scripts/step-2-post-dispatch.sh', 'phantom 2-post-dispatch probe')
+require(skill, 'regardless of wrapper exit code', 'post-dispatch phantom parse before wrapper routing')
 require(skill, launcher + 'scripts/phantom-probe-with-warn.sh --step 8-pre-ship', 'phantom 8-pre-ship probe')
-require(skill, 'git-current-branch.sh', 'post-dispatch branch assertion')
 rebase_ref = Path('skills/implement/references/rebase-checkpoint-routing.md').read_text()
 for needle in [
     '**Orchestrator contract — absorbed `1.r` (Step 0 envelope only)**',
@@ -182,7 +183,7 @@ for needle in [
     if needle not in rebase_ref:
         checks.append(f'rebase-checkpoint-routing.md missing {needle!r}')
 phantom_ref = Path('skills/implement/references/phantom-probe.md').read_text()
-for needle in ['2-post-dispatch', '8-pre-ship', 'Do not probe when `STATUS=claude_fallback`']:
+for needle in ['2-post-dispatch', 'step-2-post-dispatch.sh', '8-pre-ship', 'Do not probe when `STATUS=claude_fallback`']:
     if needle not in phantom_ref:
         checks.append(f'phantom-probe.md missing {needle!r}')
 require('scripts/rebase-checkpoint-probe.sh', '--forked-target', 'rebase probe forked target flag')
