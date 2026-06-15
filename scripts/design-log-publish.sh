@@ -1,0 +1,1423 @@
+#!/usr/bin/env bash
+# design-log-publish.sh — flush $DESIGN_TMPDIR into committed larch-logs/design/<run-id>/
+# via a disposable git worktree, push, PR, wait for required CI, squash --admin merge on green, and worktree cleanup.
+#
+# Output (stdout KEY=value lines; diagnostics on stderr):
+#   PUBLISH_OK=true|false
+#   PR_NUMBER=<digits or empty>
+#   PR_URL=<url or empty>
+#   RECOVERY_BRANCH=<branch name> (when PUBLISH_OK=false after a successful git push,
+#     or when the concurrent-worktree guard fires and the matching remote branch is known)
+#
+# Usage:
+#   design-log-publish.sh --design-tmpdir PATH --run-id ID --issue N [--repo OWNER/REPO] [--reason final|pause] [--dry-run]
+#
+# Expected operational failures emit PUBLISH_OK=false on stdout. Most pre-validation and
+# pre-push failures exit 0 so callers can parse stdout. A malformed --repo is a
+# structural argv failure: it exits 1 before gh/network work and does not emit a
+# success envelope. Post-push failures (git push, gh pr create after push,
+# gh pr merge) exit 1 while preserving PUBLISH_OK=false.
+# Per-script larch-quiet-*-*.log files are excluded from top-level staging; they are
+# published only under breadcrumbs/ via python3 python/cli.py run-log publish-breadcrumbs.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
+# shellcheck source=scripts/lib-redact.sh
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib-redact.sh"
+# shellcheck source=scripts/lib-design-tmpdir.sh
+source "$SCRIPT_DIR/lib-design-tmpdir.sh"
+# shellcheck source=scripts/lib-net.sh
+source "$SCRIPT_DIR/lib-net.sh" || { larch_err "design-log-publish: failed to source lib-net.sh"; exit 1; }
+
+design_round_artifact_included() {
+    python3 "$SCRIPT_DIR/../python/cli.py" plan-review round-artifact-included --name "${1:-}"
+}
+
+design_round_revise_artifact_included() {
+    python3 "$SCRIPT_DIR/../python/cli.py" plan-review round-revise-artifact-included --name "${1:-}"
+}
+
+design_round_revise_artifact_excluded() {
+    python3 "$SCRIPT_DIR/../python/cli.py" plan-review round-revise-artifact-excluded --name "${1:-}"
+}
+
+DESIGN_TMPDIR=""
+RUN_ID=""
+ISSUE=""
+REPO=""
+DRY_RUN=false
+REASON="final"
+
+usage() {
+    larch_err "Usage:"
+    larch_err "  design-log-publish.sh --design-tmpdir PATH --run-id ID --issue N [--repo OWNER/REPO] [--reason final|pause] [--dry-run]"
+    larch_err "Writes trimmed + redacted design tmpdir artifacts into a disposable worktree, commits, pushes, opens a PR, waits for required CI checks, then squash-merges with --admin once they pass."
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --design-tmpdir) DESIGN_TMPDIR="${2:?--design-tmpdir requires a value}"; shift 2 ;;
+        --run-id) RUN_ID="${2:?--run-id requires a value}"; shift 2 ;;
+        --issue) ISSUE="${2:?--issue requires a value}"; shift 2 ;;
+        --repo) REPO="${2:?--repo requires a value}"; shift 2 ;;
+        --reason) REASON="${2:?--reason requires a value}"; shift 2 ;;
+        --dry-run) DRY_RUN=true; shift ;;
+        -h|--help) usage; exit 0 ;;
+        *) usage; exit 1 ;;
+    esac
+done
+
+_PUBLISH_META_PR_NUMBER=""
+_PUBLISH_META_PR_URL=""
+_PUBLISH_META_RECOVERY_BRANCH=""
+
+persist_design_log_metadata() {
+    [[ -n "${DESIGN_TMPDIR:-}" && -d "$DESIGN_TMPDIR" ]] || return 0
+    larch_design_tmpdir_validate "$DESIGN_TMPDIR" >/dev/null 2>&1 || return 0
+    {
+        printf 'DESIGN_LOG_PR_NUMBER=%s\n' "${_PUBLISH_META_PR_NUMBER:-}"
+        printf 'DESIGN_LOG_PR_URL=%s\n' "${_PUBLISH_META_PR_URL:-}"
+        printf 'DESIGN_LOG_RECOVERY_BRANCH=%s\n' "${_PUBLISH_META_RECOVERY_BRANCH:-}"
+    } >"$DESIGN_TMPDIR/.design-log-publish-metadata.env"
+}
+
+emit_publish_result() {
+    _PUBLISH_META_PR_NUMBER="${2:-}"
+    _PUBLISH_META_PR_URL="${3:-}"
+    emit_kv PUBLISH_OK "$1"
+    emit_kv PR_NUMBER "${_PUBLISH_META_PR_NUMBER}"
+    emit_kv PR_URL "${_PUBLISH_META_PR_URL}"
+    persist_design_log_metadata
+}
+
+emit_publish_failure() {
+    emit_publish_result false "${1:-}" "${2:-}"
+    if [[ "${PUSH_DONE:-false}" == true ]]; then
+        _PUBLISH_META_RECOVERY_BRANCH="$WT_BRANCH"
+        emit_kv RECOVERY_BRANCH "$WT_BRANCH"
+        persist_design_log_metadata
+    fi
+}
+
+
+validate_repo() {
+    local value="$1"
+    case "$value" in
+        '' | --* | *$'\n'* | *$'\r'* | /* | *../* | *\\*) return 1 ;;
+    esac
+    [[ "$value" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]
+}
+
+larch_log_slug_is_valid() {
+    [[ "${1:-}" =~ ^[A-Za-z0-9._-]+$ ]]
+}
+
+redact_diagnostic() {
+    local text=$1 redacted=""
+    if command -v python3 >/dev/null 2>&1 && [[ -f "$SCRIPT_DIR/../python/cli.py" ]]; then
+        redacted=$(printf '%s' "$text" | python3 "$SCRIPT_DIR/../python/cli.py" redact tmpdir-paths | python3 "$SCRIPT_DIR/../python/cli.py" redact secrets 2>/dev/null || true)
+        case "$redacted" in
+            *'[content truncated'*) redacted="" ;;
+        esac
+    fi
+    if [ -n "$redacted" ]; then
+        printf '%s' "$redacted" | tr '\n' ' ' | head -c 500
+    else
+        printf '%s' 'diagnostic redaction unavailable'
+    fi
+}
+
+if [[ -z "$DESIGN_TMPDIR" || -z "$RUN_ID" || -z "$ISSUE" ]]; then
+    usage
+    exit 1
+fi
+
+case "$REASON" in
+    final|pause) ;;
+    *) larch_err "design-log-publish: invalid --reason (expected final or pause)"; emit_publish_result false; exit 0 ;;
+esac
+
+if ! [[ "$ISSUE" =~ ^[1-9][0-9]*$ ]]; then
+    larch_err "design-log-publish: invalid --issue (expected positive integer)"
+    emit_publish_result false
+    exit 0
+fi
+
+if ! larch_log_slug_is_valid "$RUN_ID"; then
+    larch_err "design-log-publish: invalid --run-id slug"
+    emit_publish_result false
+    exit 0
+fi
+
+if [[ -n "$REPO" ]] && ! validate_repo "$REPO"; then
+    larch_err "design-log-publish: invalid --repo"
+    exit 1
+fi
+
+larch_design_tmpdir_validate "$DESIGN_TMPDIR" || { emit_publish_result false; exit 0; }
+
+if [[ ! -d "$DESIGN_TMPDIR" ]]; then
+    larch_err "design-log-publish: design tmpdir not found: $DESIGN_TMPDIR"
+    emit_publish_result false
+    exit 0
+fi
+
+if [[ "$DRY_RUN" == true ]]; then
+    if ! command -v git >/dev/null 2>&1; then
+        larch_err "design-log-publish: git is required"
+        emit_publish_result false
+        exit 0
+    fi
+    if ! command -v gh >/dev/null 2>&1; then
+        larch_err "design-log-publish: gh is required"
+        emit_publish_result false
+        exit 0
+    fi
+    REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || REPO_ROOT=""
+    if [[ -z "$REPO_ROOT" ]]; then
+        larch_err "design-log-publish: not inside a git worktree"
+        emit_publish_result false
+        exit 0
+    fi
+    ORIGIN_DEFAULT=$(
+        git -C "$REPO_ROOT" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null \
+            | sed 's#^refs/remotes/origin/##'
+    ) || ORIGIN_DEFAULT=""
+    if [[ -z "$ORIGIN_DEFAULT" ]]; then
+        larch_err "design-log-publish: cannot resolve origin/HEAD default branch"
+        emit_publish_result false
+        exit 0
+    fi
+    emit_publish_result true "" ""
+    exit 0
+fi
+
+if ! command -v jq >/dev/null 2>&1; then
+    larch_err "design-log-publish: jq is required"
+    emit_publish_result false
+    exit 0
+fi
+
+REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || REPO_ROOT=""
+if [[ -z "$REPO_ROOT" ]]; then
+    larch_err "design-log-publish: not inside a git worktree"
+    emit_publish_result false
+    exit 0
+fi
+
+ORIGIN_DEFAULT=$(
+    git -C "$REPO_ROOT" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null \
+        | sed 's#^refs/remotes/origin/##'
+) || ORIGIN_DEFAULT=""
+if [[ -z "$ORIGIN_DEFAULT" ]]; then
+    larch_err "design-log-publish: cannot resolve origin/HEAD default branch"
+    emit_publish_result false
+    exit 0
+fi
+
+WT_BRANCH="larch-log-design-${RUN_ID}"
+WT_DIR=""
+WT_PARENT=""
+PUSH_DONE=false
+ENUM_TOP_TMP=""
+ENUM_RC_TMP=""
+ENUM_PR_TMP=""
+PR_BODY_TMP=""
+reg_checks_err_file=""
+reg_view_fail_file=""
+# shellcheck disable=SC2317
+wt_cleanup() {
+    rm -f "${ENUM_TOP_TMP:-}" "${ENUM_RC_TMP:-}" "${ENUM_PR_TMP:-}" \
+        "${push_fail_file:-}" "${create_fail_file:-}" "${merge_fail_file:-}" \
+        "${list_fail_file:-}" "${view_fail_file:-}" \
+        "${reg_checks_err_file:-}" "${reg_view_fail_file:-}" 2>/dev/null || true
+    if [ -n "${PR_BODY_TMP:-}" ]; then
+        rm -f "$PR_BODY_TMP" 2>/dev/null || true
+    fi
+    if [[ -n "${WT_DIR:-}" ]]; then
+        git -C "$REPO_ROOT" worktree remove --force "$WT_DIR" 2>/dev/null || true
+    fi
+    if [[ -n "${WT_PARENT:-}" ]]; then
+        rm -rf "$WT_PARENT" 2>/dev/null || true
+    fi
+}
+trap wt_cleanup EXIT
+
+design_publish_refresh_default_ref() {
+    if ! git -C "$REPO_ROOT" fetch origin "$ORIGIN_DEFAULT:refs/remotes/origin/$ORIGIN_DEFAULT" >/dev/null 2>&1; then
+        larch_err "design-log-publish: failed to fetch origin/$ORIGIN_DEFAULT before final publish"
+        return 1
+    fi
+    return 0
+}
+
+design_publish_refresh_remote_branch_exists() {
+    REMOTE_BRANCH_EXISTS=false
+    if git -C "$REPO_ROOT" ls-remote --exit-code --heads origin "$WT_BRANCH" >/dev/null 2>&1; then
+        REMOTE_BRANCH_EXISTS=true
+        git -C "$REPO_ROOT" fetch origin "$WT_BRANCH:refs/remotes/origin/$WT_BRANCH" >/dev/null 2>&1 || true
+    else
+        git -C "$REPO_ROOT" update-ref -d "refs/remotes/origin/$WT_BRANCH" >/dev/null 2>&1 || true
+    fi
+}
+
+REMOTE_BRANCH_EXISTS=false
+git -C "$REPO_ROOT" fetch origin "$WT_BRANCH:refs/remotes/origin/$WT_BRANCH" >/dev/null 2>&1 || true
+if git -C "$REPO_ROOT" show-ref --verify --quiet "refs/remotes/origin/$WT_BRANCH"; then
+    REMOTE_BRANCH_EXISTS=true
+fi
+
+if git -C "$REPO_ROOT" worktree list | grep -Fq " [$WT_BRANCH]"; then
+    larch_err "design-log-publish: branch $WT_BRANCH is already checked out in another worktree; concurrent or stale publish for this RUN_ID"
+    if [[ "$REMOTE_BRANCH_EXISTS" == true ]]; then
+        _PUBLISH_META_RECOVERY_BRANCH="$WT_BRANCH"
+    fi
+    emit_publish_result false
+    if [[ "$REMOTE_BRANCH_EXISTS" == true ]]; then
+        emit_kv RECOVERY_BRANCH "$WT_BRANCH"
+    fi
+    exit 0
+fi
+if git -C "$REPO_ROOT" show-ref --verify --quiet "refs/heads/$WT_BRANCH"; then
+    if ! git -C "$REPO_ROOT" branch -D "$WT_BRANCH" >/dev/null 2>&1; then
+        larch_err "design-log-publish: cannot delete existing local branch $WT_BRANCH (still in use?)"
+        emit_publish_result false
+        exit 0
+    fi
+fi
+
+if ! WT_PARENT=$(mktemp -d "${TMPDIR:-/tmp}/design-log-publish.XXXXXX"); then
+    larch_err "design-log-publish: cannot allocate worktree tempdir"
+    emit_publish_result false
+    exit 0
+fi
+WT_DIR="$WT_PARENT/wt-checkout"
+if ! mkdir -p "$WT_DIR"; then
+    larch_err "design-log-publish: cannot create worktree checkout directory"
+    emit_publish_result false
+    exit 0
+fi
+WT_BASE_REF="origin/$ORIGIN_DEFAULT"
+if [[ "$REASON" == "pause" && "$REMOTE_BRANCH_EXISTS" == true ]]; then
+    WT_BASE_REF="origin/$WT_BRANCH"
+fi
+if ! git -C "$REPO_ROOT" worktree add -b "$WT_BRANCH" "$WT_DIR" "$WT_BASE_REF" >/dev/null 2>&1; then
+    larch_err "design-log-publish: git worktree add failed"
+    emit_publish_result false
+    exit 0
+fi
+
+LOG_ROOT_ABS=$(cd "$WT_DIR" && pwd)/larch-logs
+mkdir -p "$LOG_ROOT_ABS"
+
+if ! (cd "$WT_DIR" && python3 "$SCRIPT_DIR/../python/cli.py" run-log init \
+    --log-root "$LOG_ROOT_ABS" --skill design --run-id "$RUN_ID" --issue "$ISSUE" >/dev/null); then
+    larch_err "design-log-publish: python3 python/cli.py run-log init failed"
+    emit_publish_result false
+    exit 0
+fi
+
+design_artifact_excluded() {
+    local name="$1"
+    if [[ "$REASON" != "pause" ]]; then
+        case "$name" in
+            .pause-requested|pause-save.out|pause-state.txt)
+                return 0
+                ;;
+        esac
+    fi
+    case "$name" in
+        .design-log-publish-metadata.env|larch-quiet-*-*.log|design-log-ship.stderr.log|*.sidecar|*.dirty-tree|*.untracked-baseline|*.done|*.diag|*.events.jsonl|*-output.txt.prompt|*-output-*.txt.prompt|render-plan-*.prompt|timing-report-final.stderr.log|timing-report-final.failure.log)
+            return 0
+            ;;
+    esac
+    # #3713: raw per-attempt diagnostic archives and scout tier raw stems stay
+    # excluded; only the composed `*.failure-diag` carrier (staged + redacted by
+    # the default-include path below) reaches git. None of these arms end in
+    # `.failure-diag`, so the carrier is never matched (F1).
+    case "$name" in
+        *.sidecar.history|*.events.history)
+            return 0
+            ;;
+        *.raw.cursor|*.raw.claude)
+            return 0
+            ;;
+        scout-plan-manifest.json.raw.meta|scout-plan-manifest.json.raw.stderr|scout-plan-manifest.json.raw.prompt)
+            return 0
+            ;;
+    esac
+    # Derived/duplicate artifacts excluded per #3705 (Phase 1 logs-size-reduction).
+    case "$name" in
+        aggregate-validate.py|findings.md.tmp|composed-plan.redacted.md|ballot.txt)
+            return 0
+            ;;
+        plan.diff|composed-plan.diff)
+            [[ "${LARCH_FLUSH_DEBUG:-}" == "1" ]] || return 0
+            return 1
+            ;;
+        findings.md|findings-oos.md|findings-in-scope.md|accepted-plan-findings.md|rejected-findings.md|oos.md|oos-accepted-design.md|oos-accepted-design.before.md|voting-tally.md|plan-review-slots.ndjson|plan-review-slots.pre-prune.ndjson|plan-voter-slots.ndjson|scout-plan-manifest.json|round-start-s|plan-review-scope-anchor.txt)
+            return 0
+            ;;
+        *-plan-voter-prompt.txt|aggregator-prompt.md|aggregate-untagged-input.md)
+            return 0
+            ;;
+        findings-in-scope.pre-dedup.md|findings-in-scope.pre-aggregation.md)
+            return 0
+            ;;
+        scout-plan-manifest.json.raw|scout-plan-manifest.json.raw.prompt)
+            return 0
+            ;;
+        *-vote-output.txt|*-vote-output-first-pass.txt|*-vote-output.txt.meta|*-vote-output.txt.json)
+            [[ "${LARCH_FLUSH_DEBUG:-}" == "1" ]] || return 0
+            return 1
+            ;;
+    esac
+    # Phase 3b exclusions (#3715 logs-size-reduction).
+    case "$name" in
+        timing-ledger.tsv|timing-ledger.tsv.lock|\
+        scout-dynamic-archetypes-prompt.md|plan.txt.before-revise|\
+        composed-plan.md|\
+        step3-record-escalation-*.stdout.log|step3-record-escalation-*.stderr.log|\
+        design-failure-escalation-*.tsv|design-failure-escalation-*.env|\
+        .step3-report-*.recorded)
+            return 0
+            ;;
+    esac
+    # Phase 3d exclusions (#3721 logs-size-reduction): GitHub-redundant snapshots.
+    # issue-body.txt / issue.json: canonical home is the GitHub issue itself.
+    # architecture-diagram.md: same Mermaid body is upserted into the larch:diagrams comment.
+    case "$name" in
+        issue-body.txt|issue.json|architecture-diagram.md)
+            return 0
+            ;;
+    esac
+    # Synthesized by write-design-round-meta.sh; excluded per concise-allowlist
+    # principle (#3929) — round-level manifests are not committed to design logs.
+    case "$name" in
+        panel-manifest.ndjson|round-meta.json)
+            return 0
+            ;;
+    esac
+    # Raw plan-review transcripts/diagnostics excluded; findings.md / voting-tally.md canonical (#3534).
+    case "$name" in
+        cursor-plan-*-output*.txt|codex-primary-plan-*-output*.txt|claude-plan-*-output*.txt)
+            return 0
+            ;;
+        cursor-plan-*-output*.txt.meta|cursor-plan-*-output*.txt.json|cursor-plan-*-output*.txt.cap-hit|cursor-plan-*-output*.txt.tsv|cursor-plan-*-output*.txt.launch-stderr|cursor-plan-*-output*.txt.stderr-tail)
+            return 0
+            ;;
+        codex-primary-plan-*-output*.txt.meta|codex-primary-plan-*-output*.txt.json|codex-primary-plan-*-output*.txt.cap-hit|codex-primary-plan-*-output*.txt.tsv|codex-primary-plan-*-output*.txt.launch-stderr|codex-primary-plan-*-output*.txt.stderr-tail)
+            return 0
+            ;;
+        claude-plan-*-output*.txt.meta|claude-plan-*-output*.txt.tsv|claude-plan-*-output*.txt.launch-stderr|claude-plan-*-output*.txt.stderr-tail|claude-plan-*-output*.txt.stderr|claude-plan-*-output*.txt.jsonl)
+            return 0
+            ;;
+        claude-plan-*.prompt|cursor-plan-*-collector.failure.log|codex-plan-*-collector.failure.log|dyn-cursor-plan-*-collector.failure.log|dyn-codex-plan-*-collector.failure.log|unknown-slot-collector.failure.log|plan-review-collector.stderr|plan-review-slots.ndjson.output-files.dropped-slots)
+            return 0
+            ;;
+    esac
+    return 1
+}
+
+design_publish_ancestor_within_root() {
+    local _root="$1" _file="$2" _parent
+    _parent=$(cd "$(dirname "$_file")" 2>/dev/null && pwd -P) || return 1
+    case "$_parent" in
+        "$_root"|"$_root"/*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+design_publish_stage_file() {
+    local src="$1"
+    local dest="$2"
+    local include_excluded="${3:-false}"
+    local name trim_tmp py_cli
+    name=$(basename "$src")
+    if [[ -L "$src" ]]; then
+        return 0
+    fi
+    if [[ ! -f "$src" ]]; then
+        return 0
+    fi
+    if [[ "$include_excluded" != "true" ]] && design_artifact_excluded "$name"; then
+        return 0
+    fi
+    trim_tmp=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-trim.XXXXXX") || return 1
+    case "$name" in
+        *.meta)
+            larch_redact_strip_meta_cmd_json "$src" "$trim_tmp" || {
+                rm -f "$trim_tmp"
+                return 1
+            }
+            ;;
+        *-output*.json)
+            larch_redact_strip_json_result "$src" "$trim_tmp" || {
+                rm -f "$trim_tmp"
+                return 1
+            }
+            ;;
+        *)
+            cp "$src" "$trim_tmp" || {
+                rm -f "$trim_tmp"
+                return 1
+            }
+            ;;
+    esac
+    # Cap vote-output rationale prose at ~2 KB; keep per-finding vote lines (#3715).
+    case "$name" in
+        *-vote-output.txt|*-vote-output-first-pass.txt)
+            if [[ $(wc -c <"$trim_tmp") -gt 2048 ]]; then
+                _vote_cap_tmp=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-votecap.XXXXXX") || {
+                    rm -f "$trim_tmp"
+                    return 1
+                }
+                printf '[rationale capped — prose >2KB — vote lines preserved]\n' >"$_vote_cap_tmp"
+                command grep '^FINDING_[0-9]' "$trim_tmp" >>"$_vote_cap_tmp" || true
+                mv -f "$_vote_cap_tmp" "$trim_tmp"
+            fi
+            ;;
+    esac
+    mkdir -p "$(dirname "$dest")"
+    py_cli="$SCRIPT_DIR/../python/cli.py"
+    if [[ ! -f "$py_cli" ]]; then
+        rm -f "$trim_tmp"
+        return 1
+    fi
+    if ! python3 "$py_cli" redact tmpdir-paths <"$trim_tmp" | python3 "$py_cli" redact secrets >"$dest"; then
+        rm -f "$trim_tmp"
+        return 1
+    fi
+    rm -f "$trim_tmp"
+    return 0
+}
+
+design_publish_remove_stale_excluded() {
+    local root="$1" f base
+    [[ -n "$root" && -d "$root" ]] || return 0
+    while IFS= read -r f || [[ -n "$f" ]]; do
+        [[ -z "$f" ]] && continue
+        base=$(basename "$f")
+        if [[ "${DESIGN_PUBLISH_KEEP_TOP_VOTING_TALLY:-false}" == "true" && "$f" == "$root/voting-tally.md" ]]; then
+            continue
+        fi
+        if design_artifact_excluded "$base"; then
+            rm -f "$f"
+        fi
+    done < <(find "$root" -type f 2>/dev/null || true)
+    if [[ -d "$root/plan-review" ]]; then
+        while IFS= read -r f || [[ -n "$f" ]]; do
+            [[ -z "$f" ]] && continue
+            rm -f "$f"
+        done < <(find "$root/plan-review" -type f -path '*/round-*/reviewer-prune-ledger.tsv' 2>/dev/null || true)
+    fi
+}
+
+design_publish_breadcrumbs() {
+    local source_dir="$1" dest_dir="$2"
+    if [[ ! -d "$source_dir" ]]; then
+        return 0
+    fi
+    if ! python3 "$SCRIPT_DIR/../python/cli.py" run-log publish-breadcrumbs --source-dir "$source_dir" --dest-dir "$dest_dir"; then
+        design_publish_breadcrumbs_error "breadcrumb publish failed"
+        return 1
+    fi
+}
+
+design_publish_breadcrumbs_error() {
+    larch_err "design-log-publish: $1"
+}
+
+design_publish_copy_dir_contents() {
+    local src="$1" dest="$2"
+    rm -rf "$dest" || return 1
+    mkdir -p "$dest" || return 1
+    cp -R "$src"/. "$dest"/
+}
+
+design_publish_porcelain_only_manifest() {
+    local porcelain="$1" manifest_path="$2" line path seen=false
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        [[ -z "$line" ]] && continue
+        path="${line#???}"
+        if [[ "$path" != "$manifest_path" ]]; then
+            return 1
+        fi
+        seen=true
+    done <<<"$porcelain"
+    [[ "$seen" == true ]]
+}
+
+design_publish_manifest_timestamp_churn() {
+    local rel="$1" default_mf desired_mf default_norm desired_norm rc=1
+    default_mf=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-default-mf.XXXXXX") || return 1
+    desired_mf="$WT_DIR/$rel/manifest.json"
+    default_norm=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-default-mf-norm.XXXXXX") || {
+        rm -f "$default_mf"
+        return 1
+    }
+    desired_norm=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-desired-mf-norm.XXXXXX") || {
+        rm -f "$default_mf" "$default_norm"
+        return 1
+    }
+    if git -C "$WT_DIR" show "HEAD:$rel/manifest.json" >"$default_mf" 2>/dev/null \
+        && [[ -f "$desired_mf" ]] \
+        && jq -S 'del(.started_at, .updated_at)' "$default_mf" >"$default_norm" \
+        && jq -S 'del(.started_at, .updated_at)' "$desired_mf" >"$desired_norm" \
+        && cmp -s "$default_norm" "$desired_norm"; then
+        rc=0
+    fi
+    rm -f "$default_mf" "$default_norm" "$desired_norm"
+    return "$rc"
+}
+
+design_publish_rebuild_final_commit() {
+    local rel="$1" snapshot_dir snapshot_parent porcelain manifest_path mf_tmp ts jq_expr commit_subject
+    snapshot_dir="$WT_PARENT/desired-run-snapshot"
+    snapshot_parent=$(dirname "$snapshot_dir")
+    mkdir -p "$snapshot_parent" || {
+        larch_err "design-log-publish: cannot prepare final snapshot parent"
+        return 1
+    }
+    if ! design_publish_copy_dir_contents "$RUN_DEST" "$snapshot_dir"; then
+        larch_err "design-log-publish: failed to snapshot desired final run tree"
+        return 1
+    fi
+
+    if ! design_publish_refresh_default_ref; then
+        return 1
+    fi
+
+    if ! git -C "$REPO_ROOT" worktree remove --force "$WT_DIR" >/dev/null 2>&1; then
+        larch_err "design-log-publish: failed to remove stale final worktree before rebuild"
+        return 1
+    fi
+    if git -C "$REPO_ROOT" show-ref --verify --quiet "refs/heads/$WT_BRANCH"; then
+        if ! git -C "$REPO_ROOT" branch -D "$WT_BRANCH" >/dev/null 2>&1; then
+            larch_err "design-log-publish: cannot delete local final branch before rebuild"
+            return 1
+        fi
+    fi
+    if ! mkdir -p "$WT_DIR"; then
+        larch_err "design-log-publish: cannot recreate final worktree directory"
+        return 1
+    fi
+    if ! git -C "$REPO_ROOT" worktree add -b "$WT_BRANCH" "$WT_DIR" "origin/$ORIGIN_DEFAULT" >/dev/null 2>&1; then
+        larch_err "design-log-publish: git worktree add failed during final rebuild"
+        return 1
+    fi
+
+    RUN_DEST="$WT_DIR/$rel"
+    rm -rf "$RUN_DEST" || {
+        larch_err "design-log-publish: failed to remove existing final run directory"
+        return 1
+    }
+    mkdir -p "$(dirname "$RUN_DEST")" || {
+        larch_err "design-log-publish: failed to recreate final run parent"
+        return 1
+    }
+    if ! design_publish_copy_dir_contents "$snapshot_dir" "$RUN_DEST"; then
+        larch_err "design-log-publish: failed to install desired final snapshot"
+        return 1
+    fi
+    design_publish_remove_stale_excluded "$RUN_DEST"
+
+    if ! porcelain=$(git -C "$WT_DIR" status --porcelain -uall -- "$rel" 2>&1); then
+        larch_err "design-log-publish: git status failed for rebuilt final $rel"
+        return 1
+    fi
+    if [[ -z "$porcelain" ]]; then
+        emit_publish_result true "" ""
+        exit 0
+    fi
+    manifest_path="$rel/manifest.json"
+    if design_publish_porcelain_only_manifest "$porcelain" "$manifest_path" \
+        && design_publish_manifest_timestamp_churn "$rel"; then
+        emit_publish_result true "" ""
+        exit 0
+    fi
+
+    ts=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+    mf_tmp=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-mf.XXXXXX") || {
+        larch_err "design-log-publish: manifest temp allocation failed"
+        return 1
+    }
+    # shellcheck disable=SC2016 # jq variable $ts is supplied by --arg below.
+    jq_expr='.updated_at = $ts'
+    if ! jq --arg ts "$ts" "$jq_expr" "$RUN_DEST/manifest.json" >"$mf_tmp"; then
+        rm -f "$mf_tmp"
+        larch_err "design-log-publish: manifest refresh failed"
+        return 1
+    fi
+    if ! mv -f "$mf_tmp" "$RUN_DEST/manifest.json"; then
+        rm -f "$mf_tmp"
+        larch_err "design-log-publish: manifest install failed"
+        return 1
+    fi
+
+    if ! git -C "$WT_DIR" add -A -- "$rel"; then
+        larch_err "design-log-publish: git add failed"
+        return 1
+    fi
+    commit_subject="chore(larch-logs): flush design run ${RUN_ID}"
+    if ! git -C "$WT_DIR" commit -m "$commit_subject" -- "$rel" >/dev/null; then
+        larch_err "design-log-publish: git commit failed"
+        return 1
+    fi
+    return 0
+}
+
+RUN_DEST="$WT_DIR/larch-logs/design/$RUN_ID"
+if [[ "$REASON" == "final" ]]; then
+    _seed_manifest=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-seed-mf.XXXXXX") || {
+        larch_err "design-log-publish: manifest seed temp allocation failed"
+        emit_publish_result false
+        exit 0
+    }
+    if ! cp "$RUN_DEST/manifest.json" "$_seed_manifest"; then
+        rm -f "$_seed_manifest"
+        larch_err "design-log-publish: manifest seed copy failed"
+        emit_publish_result false
+        exit 0
+    fi
+    rm -rf "$RUN_DEST"
+    mkdir -p "$RUN_DEST"
+    if ! mv -f "$_seed_manifest" "$RUN_DEST/manifest.json"; then
+        rm -f "$_seed_manifest"
+        larch_err "design-log-publish: manifest seed restore failed"
+        emit_publish_result false
+        exit 0
+    fi
+fi
+mkdir -p "$RUN_DEST/render-cache"
+if [[ "$REASON" == "pause" ]]; then
+    rm -f "$RUN_DEST"/timing-report-final.json "$RUN_DEST"/timing-report-final.* 2>/dev/null || true
+fi
+
+# Pre-compute last plan-review round source directory for top-level dedup (#3705).
+_last_round_src=0
+if [[ -d "$DESIGN_TMPDIR/plan-review" ]]; then
+    for _lr_d in "$DESIGN_TMPDIR/plan-review"/round-[1-9]*/; do
+        [[ -d "$_lr_d" ]] || continue
+        _lr_n="${_lr_d%/}"
+        _lr_n="${_lr_n##*/round-}"
+        [[ "$_lr_n" =~ ^[0-9]+$ ]] && (( _lr_n > _last_round_src )) && _last_round_src="$_lr_n"
+    done
+fi
+
+_top_files=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-files.XXXXXX")
+ENUM_TOP_TMP="$_top_files"
+DESIGN_PUBLISH_KEEP_TOP_VOTING_TALLY=false
+if ! find "$DESIGN_TMPDIR" -maxdepth 1 -type f | LC_ALL=C sort >"$_top_files"; then
+    rm -f "$_top_files"
+    ENUM_TOP_TMP=""
+    larch_err "design-log-publish: failed to enumerate design tmpdir files"
+    emit_publish_result false
+    exit 0
+fi
+while IFS= read -r f || [[ -n "$f" ]]; do
+    [[ -z "$f" ]] && continue
+    b=$(basename "$f")
+    # Top-level dedup: skip files byte-identical to the final round's copy (#3705).
+    if (( _last_round_src > 0 )); then
+        _round_cmp="$DESIGN_TMPDIR/plan-review/round-$_last_round_src/$b"
+        if [[ -f "$_round_cmp" ]] && cmp -s "$f" "$_round_cmp"; then
+            continue
+        fi
+    fi
+    # aggregator-output cmp-guard: stage only when it differs from findings.md (#3715).
+    case "$b" in
+        aggregator-output.txt|aggregator-output-phase2.txt|aggregator-output-phase3.txt)
+            if [[ -f "$DESIGN_TMPDIR/findings.md" ]] && cmp -s "$f" "$DESIGN_TMPDIR/findings.md"; then
+                continue
+            fi
+            ;;
+    esac
+    _include_excluded=false
+    case "$b" in
+        voting-tally.md)
+            _include_excluded=true
+            DESIGN_PUBLISH_KEEP_TOP_VOTING_TALLY=true
+            ;;
+    esac
+    design_publish_stage_file "$f" "$RUN_DEST/$b" "$_include_excluded" || {
+        larch_err "design-log-publish: staging failed for $f"
+        emit_publish_result false
+        exit 0
+    }
+done <"$_top_files"
+rm -f "$_top_files"
+ENUM_TOP_TMP=""
+
+# Generate composed-plan.diff (diff of composed-plan.md vs final plan.txt) instead
+# of staging composed-plan.md directly (#3715). Lossless: reconstruct with
+# `patch plan.txt composed-plan.diff -o composed-plan.md`.
+_composed_src="$DESIGN_TMPDIR/composed-plan.md"
+_plan_ref="$DESIGN_TMPDIR/plan.txt"
+if [[ "${LARCH_FLUSH_DEBUG:-}" == "1" && -f "$_composed_src" && -f "$_plan_ref" ]]; then
+    _cdiff_tmp=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-composeddiff.XXXXXX")
+    diff -u "$_plan_ref" "$_composed_src" >"$_cdiff_tmp" || true  # diff exits 1 on differences
+    if ! python3 "$SCRIPT_DIR/../python/cli.py" redact tmpdir-paths <"$_cdiff_tmp" | python3 "$SCRIPT_DIR/../python/cli.py" redact secrets >"$RUN_DEST/composed-plan.diff"; then
+        rm -f "$_cdiff_tmp"
+        larch_err "design-log-publish: composed-plan.diff staging failed"
+        emit_publish_result false
+        exit 0
+    fi
+    rm -f "$_cdiff_tmp"
+fi
+
+if [[ -e "$DESIGN_TMPDIR/plan-review" || -L "$DESIGN_TMPDIR/plan-review" ]]; then
+    if [[ -L "$DESIGN_TMPDIR/plan-review" ]]; then
+        larch_err "design-log-publish: plan-review must not be a symlink"
+        emit_publish_result false
+        exit 0
+    fi
+    if [[ ! -d "$DESIGN_TMPDIR/plan-review" ]]; then
+        larch_err "design-log-publish: plan-review exists but is not a directory"
+        emit_publish_result false
+        exit 0
+    fi
+    pr_root=$(cd "$DESIGN_TMPDIR/plan-review" && pwd -P) || {
+        larch_err "design-log-publish: cannot resolve plan-review directory"
+        emit_publish_result false
+        exit 0
+    }
+    _sym_check=$(find "$pr_root" -type l -print -quit 2>/dev/null || true)
+    if [[ -n "$_sym_check" ]]; then
+        larch_err "design-log-publish: plan-review tree must not contain symlinks (found: $_sym_check)"
+        emit_publish_result false
+        exit 0
+    fi
+    _pr_files=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-pr.XXXXXX")
+    ENUM_PR_TMP="$_pr_files"
+    if ! find "$pr_root" -type f | LC_ALL=C sort >"$_pr_files"; then
+        rm -f "$_pr_files"
+        ENUM_PR_TMP=""
+        larch_err "design-log-publish: failed to enumerate plan-review files"
+        emit_publish_result false
+        exit 0
+    fi
+    while IFS= read -r f || [[ -n "$f" ]]; do
+        [[ -z "$f" ]] && continue
+        case "$f" in
+            "$pr_root"/*) ;;
+            *)
+                larch_err "design-log-publish: path escapes plan-review root: $f"
+                emit_publish_result false
+                exit 0
+                ;;
+        esac
+        rel=${f#"$pr_root/"}
+        if [[ "$rel" =~ ^round-[1-9][0-9]*/revise/[A-Za-z0-9._+-]+$ ]]; then
+            _base=$(basename "$rel")
+            if design_round_revise_artifact_included "$_base"; then
+                :
+            elif design_round_revise_artifact_excluded "$_base"; then
+                continue
+            else
+                larch_err "design-log-publish: unexpected file under plan-review (see python/plan_review.py): $rel"
+                emit_publish_result false
+                exit 0
+            fi
+        elif [[ "$rel" =~ ^round-[1-9][0-9]*/[A-Za-z0-9._+-]+$ ]]; then
+            _base=$(basename "$rel")
+            # Extract round number for plan.txt round-1-only check (#3705).
+            _rn_str="${rel%%/*}"
+            _rn_str="${_rn_str#round-}"
+            # plan.txt is round-1-only; rounds >= 2 get plan.diff generated below (#3705).
+            if [[ "$_base" == "plan.txt" ]] && (( _rn_str > 1 )); then
+                continue
+            fi
+            if design_round_artifact_included "$_base"; then
+                :
+            elif [[ "$_base" == "plan.txt" ]]; then
+                continue
+            elif design_artifact_excluded "$_base"; then
+                # Known top-level exclusion also applies at round level; skip silently.
+                continue
+            else
+                larch_err "design-log-publish: unexpected file under plan-review (see python/plan_review.py): $rel"
+                emit_publish_result false
+                exit 0
+            fi
+        else
+            larch_err "design-log-publish: unexpected path under plan-review (see python/plan_review.py): $rel"
+            emit_publish_result false
+            exit 0
+        fi
+        if [[ -L "$f" ]]; then
+            larch_err "design-log-publish: plan-review file became a symlink before staging: $f"
+            emit_publish_result false
+            exit 0
+        fi
+        if ! design_publish_ancestor_within_root "$pr_root" "$f"; then
+            larch_err "design-log-publish: plan-review ancestor became a symlink before staging: $f"
+            emit_publish_result false
+            exit 0
+        fi
+        mkdir -p "$RUN_DEST/plan-review/$(dirname "$rel")"
+        design_publish_stage_file "$f" "$RUN_DEST/plan-review/$rel" || {
+            larch_err "design-log-publish: staging failed for $f"
+            emit_publish_result false
+            exit 0
+        }
+    done <"$_pr_files"
+    rm -f "$_pr_files"
+    ENUM_PR_TMP=""
+
+    # Generate plan.diff only for debug flushes; concise logs omit per-round plan diffs.
+    if [[ "${LARCH_FLUSH_DEBUG:-}" == "1" ]]; then
+    for _diff_rn in 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+        _prev_plan_src="$pr_root/round-$(( _diff_rn - 1 ))/plan.txt"
+        _curr_plan_src="$pr_root/round-$_diff_rn/plan.txt"
+        [[ -f "$_curr_plan_src" ]] || continue
+        [[ -f "$_prev_plan_src" ]] || continue
+        _diff_out_f=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-plandiff.XXXXXX")
+        diff -u "$_prev_plan_src" "$_curr_plan_src" >"$_diff_out_f" || true
+        mkdir -p "$RUN_DEST/plan-review/round-$_diff_rn"
+        if ! python3 "$SCRIPT_DIR/../python/cli.py" redact tmpdir-paths <"$_diff_out_f" | python3 "$SCRIPT_DIR/../python/cli.py" redact secrets >"$RUN_DEST/plan-review/round-$_diff_rn/plan.diff"; then
+            rm -f "$_diff_out_f"
+            larch_err "design-log-publish: plan.diff staging failed for round $_diff_rn"
+            emit_publish_result false
+            exit 0
+        fi
+        rm -f "$_diff_out_f"
+    done
+    fi
+fi
+
+if [[ -e "$DESIGN_TMPDIR/render-cache" || -L "$DESIGN_TMPDIR/render-cache" ]]; then
+    if [[ -L "$DESIGN_TMPDIR/render-cache" ]]; then
+        larch_err "design-log-publish: render-cache must not be a symlink"
+        emit_publish_result false
+        exit 0
+    fi
+    if [[ ! -d "$DESIGN_TMPDIR/render-cache" ]]; then
+        larch_err "design-log-publish: render-cache exists but is not a directory"
+        emit_publish_result false
+        exit 0
+    fi
+    rc_root=$(cd "$DESIGN_TMPDIR/render-cache" && pwd -P) || {
+        larch_err "design-log-publish: cannot resolve render-cache directory"
+        emit_publish_result false
+        exit 0
+    }
+    _sym_check=$(find "$rc_root" -type l -print -quit 2>/dev/null || true)
+    if [[ -n "$_sym_check" ]]; then
+        larch_err "design-log-publish: render-cache tree must not contain symlinks (found: $_sym_check)"
+        emit_publish_result false
+        exit 0
+    fi
+    _rc_files=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-rc.XXXXXX")
+    ENUM_RC_TMP="$_rc_files"
+    if ! find "$rc_root" -type f | LC_ALL=C sort >"$_rc_files"; then
+        rm -f "$_rc_files"
+        ENUM_RC_TMP=""
+        larch_err "design-log-publish: failed to enumerate render-cache files"
+        emit_publish_result false
+        exit 0
+    fi
+    while IFS= read -r f || [[ -n "$f" ]]; do
+        [[ -z "$f" ]] && continue
+        case "$f" in
+            "$rc_root"/*) ;;
+            *)
+                larch_err "design-log-publish: render-cache path outside resolved root: $f"
+                emit_publish_result false
+                exit 0
+                ;;
+        esac
+        rel=${f#"$rc_root/"}
+        if [[ -L "$f" ]]; then
+            larch_err "design-log-publish: render-cache file became a symlink before staging: $f"
+            emit_publish_result false
+            exit 0
+        fi
+        if ! design_publish_ancestor_within_root "$rc_root" "$f"; then
+            larch_err "design-log-publish: render-cache ancestor became a symlink before staging: $f"
+            emit_publish_result false
+            exit 0
+        fi
+        design_publish_stage_file "$f" "$RUN_DEST/render-cache/$rel" || {
+            larch_err "design-log-publish: staging failed for $f"
+            emit_publish_result false
+            exit 0
+        }
+    done <"$_rc_files"
+    rm -f "$_rc_files"
+    ENUM_RC_TMP=""
+fi
+
+if [[ "$REASON" == "pause" && ( -e "$DESIGN_TMPDIR/.completed" || -L "$DESIGN_TMPDIR/.completed" ) ]]; then
+    if [[ -L "$DESIGN_TMPDIR/.completed" ]]; then
+        larch_err "design-log-publish: .completed must not be a symlink"
+        emit_publish_result false
+        exit 0
+    fi
+    if [[ ! -d "$DESIGN_TMPDIR/.completed" ]]; then
+        larch_err "design-log-publish: .completed exists but is not a directory"
+        emit_publish_result false
+        exit 0
+    fi
+    completed_root=$(cd "$DESIGN_TMPDIR/.completed" && pwd -P) || {
+        larch_err "design-log-publish: cannot resolve .completed directory"
+        emit_publish_result false
+        exit 0
+    }
+    _sym_check=$(find "$completed_root" -type l -print -quit 2>/dev/null || true)
+    if [[ -n "$_sym_check" ]]; then
+        larch_err "design-log-publish: .completed tree must not contain symlinks (found: $_sym_check)"
+        emit_publish_result false
+        exit 0
+    fi
+    mkdir -p "$RUN_DEST/.completed"
+    while IFS= read -r f || [[ -n "$f" ]]; do
+        [[ -z "$f" ]] && continue
+        case "$f" in
+            "$completed_root"/*) ;;
+            *)
+                larch_err "design-log-publish: .completed path outside resolved root: $f"
+                emit_publish_result false
+                exit 0
+                ;;
+        esac
+        rel=${f#"$completed_root/"}
+        # Keep in sync with skills/design/scripts/design-driver.sh accepted ACTION names.
+        case "$rel" in
+            emit_plan|tally|finalize|validate_plan_commands) ;;
+            *)
+                if [[ ! "$rel" =~ ^step-[A-Za-z0-9._-]+$ ]]; then
+                    larch_err "design-log-publish: unexpected file under .completed: $rel"
+                    emit_publish_result false
+                    exit 0
+                fi
+                ;;
+        esac
+        if [[ -L "$f" ]]; then
+            larch_err "design-log-publish: .completed file became a symlink before staging: $f"
+            emit_publish_result false
+            exit 0
+        fi
+        if ! design_publish_ancestor_within_root "$completed_root" "$f"; then
+            larch_err "design-log-publish: .completed ancestor became a symlink before staging: $f"
+            emit_publish_result false
+            exit 0
+        fi
+        design_publish_stage_file "$f" "$RUN_DEST/.completed/$rel" || {
+            larch_err "design-log-publish: staging failed for $f"
+            emit_publish_result false
+            exit 0
+        }
+    done < <(find "$completed_root" -type f | LC_ALL=C sort)
+fi
+
+if ! design_publish_breadcrumbs "$DESIGN_TMPDIR/breadcrumbs" "$RUN_DEST/breadcrumbs"; then
+    emit_publish_result false
+    exit 0
+fi
+
+design_publish_remove_stale_excluded "$RUN_DEST"
+
+# Pre-flush secret gate: scrub secret-shaped values (Cursor keys et al.) from
+# the staged run tree before commit. Fail-closed on scrub failure. On a real
+# redaction, propagate the count via emit_kv SECRET_SCRUB_VIOLATIONS so the
+# /design report can warn the operator to rotate the exposed credential.
+scrub_gate="$SCRIPT_DIR/../python/cli.py"
+if [[ ! -f "$scrub_gate" ]]; then
+    larch_err "design-log-publish: secret scrub gate missing: $scrub_gate"
+    emit_publish_result false
+    exit 0
+fi
+set +e
+scrub_out="$(python3 "$scrub_gate" redact scrub-log-secrets "$RUN_DEST")"
+scrub_rc=$?
+set -e
+if [[ "$scrub_rc" -ne 0 ]]; then
+    larch_err "design-log-publish: secret scrub gate failed (rc=$scrub_rc) for $RUN_DEST; refusing to flush"
+    emit_publish_result false
+    exit 0
+fi
+scrub_n="$(printf '%s\n' "$scrub_out" | sed -n 's/^LARCH_SECRET_SCRUB_VIOLATIONS=//p' | tail -1)"
+case "${scrub_n:-}" in ''|*[!0-9]*) scrub_n=0 ;; esac
+if [[ "$scrub_n" -gt 0 ]]; then
+    larch_err "design-log-publish: WARNING — redacted $scrub_n secret-shaped value(s) from design run $RUN_ID logs before flush; ROTATE the affected credential(s)"
+    emit_kv SECRET_SCRUB_VIOLATIONS "$scrub_n"
+fi
+
+rel="larch-logs/design/$RUN_ID"
+if [[ "$REASON" == "final" ]]; then
+    if ! design_publish_rebuild_final_commit "$rel"; then
+        emit_publish_result false
+        exit 0
+    fi
+else
+_porcelain=""
+if ! _porcelain=$(git -C "$WT_DIR" status --porcelain -uall -- "$rel" 2>&1); then
+    larch_err "design-log-publish: git status failed for $rel"
+    emit_publish_result false
+    exit 0
+fi
+design_publish_refresh_default_ref || true
+if [[ -z "$_porcelain" ]]; then
+    if [[ "$REASON" == "pause" ]]; then
+        if [[ "$REMOTE_BRANCH_EXISTS" == true ]]; then
+            if git -C "$REPO_ROOT" diff --quiet "origin/$WT_BRANCH" "origin/$ORIGIN_DEFAULT" -- "larch-logs/design/$RUN_ID" >/dev/null 2>&1; then
+                # No new delta; snapshot already on default branch. Fail closed so
+                # callers get a RECOVERY_BRANCH pointer rather than a silent success.
+                emit_publish_result false
+                emit_kv RECOVERY_BRANCH "$WT_BRANCH"
+                exit 0
+            fi
+            emit_publish_result false
+            emit_kv RECOVERY_BRANCH "$WT_BRANCH"
+            exit 0
+        fi
+        larch_err "design-log-publish: pause publish produced no new snapshot delta"
+        emit_publish_result false
+        exit 0
+    fi
+    if git -C "$REPO_ROOT" ls-tree -r --name-only "origin/$ORIGIN_DEFAULT" -- "$rel" | grep -q .; then
+        design_publish_remove_stale_excluded "$REPO_ROOT/$rel"
+        emit_publish_result true "" ""
+    else
+        larch_err "design-log-publish: final publish produced no new snapshot delta and origin/$ORIGIN_DEFAULT does not contain $rel"
+        emit_publish_result false
+    fi
+    exit 0
+fi
+
+MF="$RUN_DEST/manifest.json"
+ts=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+mf_tmp=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-mf.XXXXXX")
+if [[ "$REASON" == "pause" ]]; then
+    # shellcheck disable=SC2016 # jq variable $ts is supplied by --arg below.
+    jq_expr='.updated_at = $ts | .paused = true'
+else
+    # shellcheck disable=SC2016 # jq variable $ts is supplied by --arg below.
+    jq_expr='.updated_at = $ts'
+fi
+if ! jq --arg ts "$ts" "$jq_expr" "$MF" >"$mf_tmp"; then
+    rm -f "$mf_tmp"
+    larch_err "design-log-publish: manifest refresh failed"
+    emit_publish_result false
+    exit 0
+fi
+if ! mv -f "$mf_tmp" "$MF"; then
+    rm -f "$mf_tmp"
+    larch_err "design-log-publish: manifest install failed"
+    emit_publish_result false
+    exit 0
+fi
+
+if ! git -C "$WT_DIR" add -- "$rel"; then
+    larch_err "design-log-publish: git add failed"
+    emit_publish_result false
+    exit 0
+fi
+if [[ "$REASON" == "pause" ]]; then
+    commit_subject="chore(larch-logs): pause design run ${RUN_ID}"
+else
+    commit_subject="chore(larch-logs): flush design run ${RUN_ID}"
+fi
+if ! git -C "$WT_DIR" commit -m "$commit_subject" -- "$rel" >/dev/null; then
+    larch_err "design-log-publish: git commit failed"
+    emit_publish_result false
+    exit 0
+fi
+fi
+
+gh_repo_args=()
+if [[ -z "${REPO:-}" ]]; then
+    REPO=$("${SCRIPT_DIR}/resolve-repo.sh" 2>/dev/null || true)
+fi
+if [[ -z "${REPO:-}" ]]; then
+    REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || true)
+fi
+if [[ -n "${REPO:-}" ]] && ! validate_repo "$REPO"; then
+    REPO=""
+fi
+if [[ -n "$REPO" ]]; then
+    gh_repo_args+=(--repo "$REPO")
+fi
+
+PR_BODY_TMP=$(mktemp "${TMPDIR:-/tmp}/larch-design-log-pr-body.XXXXXX") || {
+    larch_err "design-log-publish: mktemp failed for PR body"
+    emit_publish_failure
+    [[ "$PUSH_DONE" == true ]] && exit 1
+    exit 0
+}
+printf 'Automated design log directory for run %s. Merged once required CI checks pass.' "$RUN_ID" >"$PR_BODY_TMP"
+
+design_publish_refresh_remote_branch_exists
+push_args=(-u origin "$WT_BRANCH")
+if [[ "$REASON" == "pause" || "$REMOTE_BRANCH_EXISTS" == true ]]; then
+    if [[ "$REMOTE_BRANCH_EXISTS" == true ]]; then
+        lease_sha=$(git -C "$REPO_ROOT" rev-parse "refs/remotes/origin/$WT_BRANCH" 2>/dev/null || true)
+        if [[ -n "$lease_sha" ]]; then
+            push_args=(--force-with-lease="refs/heads/$WT_BRANCH:$lease_sha" -u origin "$WT_BRANCH")
+        else
+            push_args=(--force-with-lease -u origin "$WT_BRANCH")
+        fi
+    else
+        push_args=(--force-with-lease -u origin "$WT_BRANCH")
+    fi
+fi
+push_fail_file=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-push.XXXXXX") || {
+    larch_err "design-log-publish: mktemp failed for push capture"
+    emit_publish_result false
+    exit 0
+}
+if with_transient_retry transient_envelope_predicate_none "$push_fail_file" \
+    git -C "$WT_DIR" push "${push_args[@]}"; then
+    push_rc=0
+else
+    push_rc=$_WTR_RC
+fi
+push_out=$_WTR_OUT
+if [[ "$push_rc" -ne 0 ]]; then
+    larch_err "design-log-publish: git push failed: $(redact_diagnostic "${push_out:-unknown}")"
+    if commit_sha=$(git -C "$WT_DIR" rev-parse HEAD 2>/dev/null); then
+        local_recovery_branch="larch-log-design-recovery-${RUN_ID}"
+        git -C "$REPO_ROOT" branch -f "$local_recovery_branch" "$commit_sha" >/dev/null 2>&1 || true
+        larch_err "design-log-publish: local commit preserved on ref ${local_recovery_branch} ($commit_sha)"
+        emit_publish_result false
+        emit_kv RECOVERY_BRANCH "$local_recovery_branch"
+        exit 1
+    fi
+    emit_publish_result false
+    exit 1
+fi
+PUSH_DONE=true
+PUSH_HEAD_SHA=$(git -C "$WT_DIR" rev-parse HEAD 2>/dev/null || true)
+
+create_fail_file=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-create.XXXXXX") || {
+    larch_err "design-log-publish: mktemp failed for pr-create capture"
+    emit_publish_failure
+    [[ "$PUSH_DONE" == true ]] && exit 1
+    exit 0
+}
+if with_transient_retry transient_envelope_predicate_none "$create_fail_file" \
+    gh pr create "${gh_repo_args[@]+"${gh_repo_args[@]}"}" --head "$WT_BRANCH" --base "$ORIGIN_DEFAULT" \
+        --title "chore(larch-logs): design run ${RUN_ID}" \
+        --body-file "$PR_BODY_TMP"; then
+    create_rc=0
+else
+    create_rc=$_WTR_RC
+fi
+create_out=$_WTR_OUT
+rm -f "$PR_BODY_TMP" 2>/dev/null || true
+PR_BODY_TMP=""
+
+PR_NUM=""
+PR_URL=""
+if [[ "$create_rc" -eq 0 ]]; then
+    PR_URL=$(printf '%s\n' "$create_out" | grep -oE 'https://[^[:space:]]+/pull/[0-9]+' | tail -1 || true)
+    if [[ -n "$PR_URL" ]]; then
+        PR_NUM=$(printf '%s\n' "$PR_URL" | sed -n 's|.*/pull/\([0-9][0-9]*\).*|\1|p')
+    fi
+fi
+
+if [[ -z "$PR_NUM" ]]; then
+    list_rc=1
+    list_fail_file=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-list.XXXXXX") || {
+        larch_err "design-log-publish: mktemp failed for pr-list capture"
+        emit_publish_failure "$PR_NUM" "${PR_URL:-}"
+        exit 1
+    }
+    if with_transient_retry transient_envelope_predicate_none "$list_fail_file" \
+        gh pr list "${gh_repo_args[@]+"${gh_repo_args[@]}"}" --head "$WT_BRANCH" --state open --json number --jq '.[0].number'; then
+        list_rc=0
+    else
+        list_rc=${_WTR_RC:-1}
+    fi
+    PR_NUM=$_WTR_OUT
+    if [[ -z "$PR_NUM" || "$PR_NUM" == "null" ]]; then
+        if [[ "$create_rc" -eq 0 ]]; then
+            larch_err "design-log-publish: gh pr create returned success but PR recovery found no open PR: $(redact_diagnostic "${create_out:-unknown}")"
+        else
+            larch_err "design-log-publish: gh pr create failed: $(redact_diagnostic "${create_out:-unknown}")"
+        fi
+        if [[ "$list_rc" -ne 0 ]]; then
+            larch_err "design-log-publish: gh pr list recovery was inconclusive; preserving pushed branch ${WT_BRANCH}"
+        elif [[ "$create_rc" -ne 0 ]]; then
+            git -C "$WT_DIR" push origin --delete "$WT_BRANCH" >/dev/null 2>&1 || true
+        fi
+        rm -f "$list_fail_file"
+        emit_publish_result false
+        [[ "$PUSH_DONE" == true ]] && emit_kv RECOVERY_BRANCH "$WT_BRANCH"
+        exit 1
+    fi
+    rm -f "$list_fail_file"
+    view_fail_file=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-view.XXXXXX") || {
+        larch_err "design-log-publish: mktemp failed for pr-view capture"
+        emit_publish_failure "$PR_NUM" "${PR_URL:-}"
+        exit 1
+    }
+    if with_transient_retry transient_envelope_predicate_none "$view_fail_file" \
+        gh pr view "${gh_repo_args[@]+"${gh_repo_args[@]}"}" "$PR_NUM" --json url --jq '.url'; then
+        PR_URL=$_WTR_OUT
+    else
+        PR_URL=""
+    fi
+    rm -f "$view_fail_file"
+fi
+
+# Trigger CI by committing without a [skip ci] marker, then wait for the PR's
+# required status checks to register for the just-pushed head before watching
+# them. --admin (not --auto) is deliberate: this repo's review ruleset has no
+# bot reviewer, so a server-side --auto merge would enable but never complete.
+# --admin still bypasses the review gate, but CI gates the merge because we
+# refuse to merge on registration timeout, head mismatch, or required-check
+# failure. The registration probe is bounded to avoid the #3413 check
+# registration race; the +1 covers the inclusive t=0 probe (Codex-Pragmatic
+# off-by-one). The completion watch remains unbounded and relies on GitHub's
+# per-job timeouts for the realistic wait.
+REG_TIMEOUT=300
+REG_INTERVAL=10
+REG_MAX_PROBES=$(( (REG_TIMEOUT + REG_INTERVAL - 1) / REG_INTERVAL + 1 ))
+REG_DEADLINE=$((SECONDS + REG_TIMEOUT))
+checks_registered=false
+last_checks_out=""
+last_checks_err=""
+last_view_out=""
+last_view_err=""
+reg_probe=1
+non_array_checks_json_logged=false
+
+if [[ -z "${REPO:-}" ]]; then
+    larch_err "design-log-publish: could not resolve repository for CI+merge gate"
+    merge_rc=2
+elif [[ -z "${PUSH_HEAD_SHA:-}" ]]; then
+    larch_err "design-log-publish: required CI checks did not register within ${REG_TIMEOUT}s (0/${REG_MAX_PROBES} probes; pushed head SHA unavailable) for PR $PR_NUM; refusing to merge"
+    merge_rc=1
+else
+    reg_checks_err_file=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-checks.XXXXXX") || {
+        larch_err "design-log-publish: mktemp failed for checks-registration capture"
+        emit_publish_failure "$PR_NUM" "${PR_URL:-}"
+        exit 1
+    }
+    reg_view_fail_file=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-head.XXXXXX") || {
+        larch_err "design-log-publish: mktemp failed for pr-head capture"
+        emit_publish_failure "$PR_NUM" "${PR_URL:-}"
+        exit 1
+    }
+    while [[ "$reg_probe" -le "$REG_MAX_PROBES" && "$SECONDS" -le "$REG_DEADLINE" ]]; do
+        : >"$reg_checks_err_file"
+        set +e
+        reg_checks_out=$(gh pr checks "$PR_NUM" "${gh_repo_args[@]+"${gh_repo_args[@]}"}" --required --json bucket 2>"$reg_checks_err_file")
+        reg_checks_rc=$?
+        set -e
+        last_checks_out="$reg_checks_out"
+        last_checks_err=$(cat "$reg_checks_err_file" 2>/dev/null || true)
+        checks_json_nonempty=false
+        if printf '%s\n' "${reg_checks_out:-}" | jq -e 'type == "array"' >/dev/null 2>&1; then
+            if printf '%s\n' "${reg_checks_out:-}" | jq -e 'length > 0' >/dev/null 2>&1; then
+                checks_json_nonempty=true
+            fi
+        elif printf '%s\n' "${reg_checks_out:-}" | jq -e '.' >/dev/null 2>&1 && [[ "$non_array_checks_json_logged" != true ]]; then
+            larch_err "design-log-publish: gh pr checks returned non-array JSON during registration for PR $PR_NUM; treating as not registered yet: $(redact_diagnostic "${reg_checks_out:-unknown}")"
+            non_array_checks_json_logged=true
+        fi
+        if [[ "$checks_json_nonempty" == true ]]; then
+            : >"$reg_view_fail_file"
+            if with_transient_retry transient_envelope_predicate_none "$reg_view_fail_file" \
+                gh pr view "$PR_NUM" "${gh_repo_args[@]+"${gh_repo_args[@]}"}" --json headRefOid; then
+                view_rc=0
+            else
+                view_rc=$_WTR_RC
+            fi
+            last_view_out=$_WTR_OUT
+            last_view_err=$(cat "$reg_view_fail_file" 2>/dev/null || true)
+            pr_head_oid=""
+            if [[ "$view_rc" -eq 0 ]]; then
+                pr_head_oid=$(printf '%s\n' "${last_view_out:-}" | jq -r '.headRefOid // empty' 2>/dev/null || true)
+            fi
+            if [[ -n "$pr_head_oid" && "$pr_head_oid" == "$PUSH_HEAD_SHA" ]]; then
+                checks_registered=true
+                break
+            fi
+        fi
+        if [[ "$reg_probe" -lt "$REG_MAX_PROBES" ]]; then
+            reg_remaining=$((REG_DEADLINE - SECONDS))
+            if [[ "$reg_remaining" -le 0 ]]; then
+                break
+            fi
+            reg_sleep="$REG_INTERVAL"
+            if [[ "$reg_sleep" -gt "$reg_remaining" ]]; then
+                reg_sleep="$reg_remaining"
+            fi
+            "${SLEEP_SCRIPT_DIR:-$SCRIPT_DIR}/sleep-seconds.sh" "$reg_sleep" >/dev/null 2>&1 || sleep "$reg_sleep"
+        fi
+        reg_probe=$((reg_probe + 1))
+        : "$reg_checks_rc"
+    done
+    rm -f "$reg_checks_err_file" "$reg_view_fail_file"
+    reg_checks_err_file=""
+    reg_view_fail_file=""
+
+    if [[ "$checks_registered" != true ]]; then
+        reg_stop_reason="deadline"
+        if [[ "$reg_probe" -ge "$REG_MAX_PROBES" ]]; then
+            reg_stop_reason="probe-budget"
+        fi
+        larch_err "design-log-publish: required CI checks did not register within ${REG_TIMEOUT}s (probe ${reg_probe}/${REG_MAX_PROBES}; stop=${reg_stop_reason}; pushed head ${PUSH_HEAD_SHA}) for PR $PR_NUM; refusing to merge: checks=$(redact_diagnostic "${last_checks_out:-${last_checks_err:-unknown}}") head=$(redact_diagnostic "${last_view_out:-${last_view_err:-unknown}}")"
+        merge_rc=1
+    else
+        if [[ -z "${REPO:-}" ]]; then
+            larch_err "design-log-publish: could not resolve repository for CI+merge gate"
+            merge_rc=2
+        else
+            set +e
+            _dlship_stderr_log="${DESIGN_TMPDIR}/design-log-ship.stderr.log"
+            _dlship_out=$(python3 "${SCRIPT_DIR}/../python/cli.py" ship design-log \
+                --pr-number "$PR_NUM" \
+                --repo "$REPO" \
+                --base-remote origin \
+                --base-ref "$ORIGIN_DEFAULT" \
+                --cwd "$WT_DIR" \
+                --merge-cwd "$REPO_ROOT" 2>"$_dlship_stderr_log")
+            _dlship_rc=$?
+            set -e
+            if [[ "${_dlship_rc:-0}" -ne 0 ]]; then
+                larch_err "design-log-publish: ship design-log failed (rc=$_dlship_rc)"
+                merge_rc="$_dlship_rc"
+            else
+                _dlship_ok=""
+                while IFS= read -r _line || [[ -n "$_line" ]]; do
+                    case "$_line" in PUBLISH_OK=*) _dlship_ok="${_line#PUBLISH_OK=}" ;; esac
+                done <<<"${_dlship_out:-}"
+                if [[ "$_dlship_ok" == "true" ]]; then
+                    merge_rc=0
+                else
+                    larch_err "design-log-publish: CI+merge via ship design-log did not pass (PUBLISH_OK=${_dlship_ok:-empty})"
+                    merge_rc=1
+                fi
+            fi
+        fi
+    fi
+fi
+
+git -C "$REPO_ROOT" worktree remove --force "$WT_DIR" 2>/dev/null || true
+rm -rf "${WT_PARENT:-}" 2>/dev/null || true
+WT_DIR=""
+WT_PARENT=""
+rm -f "${push_fail_file:-}" "${create_fail_file:-}" "${merge_fail_file:-}" 2>/dev/null || true
+trap - EXIT
+
+git -C "$REPO_ROOT" branch -D "$WT_BRANCH" >/dev/null 2>&1 || true
+git -C "$REPO_ROOT" branch -D "larch-log-design-recovery-${RUN_ID}" >/dev/null 2>&1 || true
+
+if [[ "$merge_rc" -ne 0 ]]; then
+    emit_publish_result false "$PR_NUM" "${PR_URL:-}"
+    [[ "$PUSH_DONE" == true ]] && emit_kv RECOVERY_BRANCH "$WT_BRANCH"
+    exit 1
+fi
+
+design_publish_remove_stale_excluded "$REPO_ROOT/$rel"
+emit_publish_result true "$PR_NUM" "${PR_URL:-}"
+exit 0

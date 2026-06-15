@@ -44,6 +44,23 @@ if needle not in window:
 PY
 }
 
+first_line_in_file_after() {
+  local file="$1" needle="$2" start_after="${3:-0}"
+  awk -v needle="$needle" -v start_after="$start_after" '
+    NR > start_after && index($0, needle) { print NR; exit }
+  ' "$file"
+}
+
+assert_line_order_in_file() {
+  local file="$1" label_a="$2" needle_a="$3" label_b="$4" needle_b="$5" start_after="${6:-0}"
+  local line_a line_b
+  line_a=$(first_line_in_file_after "$file" "$needle_a" "$start_after")
+  line_b=$(first_line_in_file_after "$file" "$needle_b" "$start_after")
+  [[ -n "$line_a" ]] || fail "$label_a missing after line $start_after"
+  [[ -n "$line_b" ]] || fail "$label_b missing after line $start_after"
+  (( line_a < line_b )) || fail "$label_a must appear before $label_b after line $start_after"
+}
+
 assert_design_skill_bash_fences_are_wrappers() {
   python3 - "$SKILL_MD" <<'PY'
 import re
@@ -233,6 +250,18 @@ assert_wrapper_contract_pins() {
   contains "$SCRIPT_DIR/design-step3-review.sh" '_step3_review_teardown_loop_group "$_loop_pid"' 'Step 3 review wrapper missing final process-group teardown'
   contains "$SCRIPT_DIR/design-step3-review.sh" 'STEP3_REVIEW_LOOP_STATUS=panel-init-failed' 'Step 3 review wrapper missing pre-launch panel-init-failed envelope'
   contains "$SCRIPT_DIR/design-step3-review.sh" 'LOOP_STATUS=panel-init-failed' 'Step 3 review wrapper missing pre-launch loop panel-init-failed envelope'
+  local step3_review_sh step3_review_normal_anchor step3_review_normal_start
+  step3_review_sh="$SCRIPT_DIR/design-step3-review.sh"
+  step3_review_normal_anchor=$(first_line_in_file_after "$step3_review_sh" '_plan_review_rc=$?' 0)
+  [[ -n "$step3_review_normal_anchor" ]] || fail 'Step 3 review wrapper missing normal-path rc capture'
+  step3_review_normal_start=$((step3_review_normal_anchor - 1))
+  assert_line_order_in_file "$step3_review_sh" 'normal Step 3 rc capture' '_plan_review_rc=$?' 'normal Step 3 process-group teardown' '_step3_review_teardown_loop_group "$_loop_pid"' "$step3_review_normal_start"
+  assert_line_order_in_file "$step3_review_sh" 'normal Step 3 process-group teardown' '_step3_review_teardown_loop_group "$_loop_pid"' 'normal Step 3 loop pid clear' '_loop_pid=""' "$step3_review_normal_anchor"
+  assert_line_order_in_file "$step3_review_sh" 'normal Step 3 loop pid clear' '_loop_pid=""' 'normal Step 3 trap clear' 'trap - EXIT' "$step3_review_normal_anchor"
+  assert_line_order_in_file "$step3_review_sh" 'Step 3 cleanup function' '_step3_review_cleanup()' 'Step 3 cleanup trap clear' 'trap - EXIT'
+  assert_line_order_in_file "$step3_review_sh" 'Step 3 cleanup trap clear' 'trap - EXIT' 'Step 3 cleanup process-group teardown' '_step3_review_teardown_loop_group "$_loop_pid"'
+  contains "$SCRIPT_DIR/design-step3-review.sh" 'STEP3_REVIEW_LOOP_STATUS=panel-failed' 'Step 3 review wrapper missing pre-launch panel-failed envelope'
+  contains "$SCRIPT_DIR/design-step3-review.sh" 'LOOP_STATUS=panel-failed' 'Step 3 review wrapper missing pre-launch loop panel-failed envelope'
   contains "$SCRIPT_DIR/design-step3-review.sh" 'monitor-mode-unavailable' 'Step 3 review wrapper missing monitor-mode failure reason'
   contains "$SCRIPT_DIR/lib-step3-prelaunch-failure.sh" 'rm -f "$_result_env"' 'Step 3 review wrapper may replay a stale result envelope'
   contains "$SCRIPT_DIR/design-step3-review.sh" 'exit 1' 'Step 3 review wrapper monitor-mode failure must hard-stop'
@@ -301,6 +330,7 @@ assert_wrapper_contract_pins() {
   contains "$SCRIPT_DIR/design-step2b-postplan.sh" '--write-completion-only) WRITE_COMPLETION_ONLY=true' 'Step 2b postplan wrapper missing --write-completion-only parser'
   contains "$SCRIPT_DIR/design-step2b-postplan.sh" '--include-step2b) INCLUDE_STEP2B=true' 'Step 2b postplan wrapper missing --include-step2b parser'
   contains "$SCRIPT_DIR/design-step2b-postplan.sh" '--write-step2b-completion-only) WRITE_STEP2B_COMPLETION_ONLY=true' 'Step 2b postplan wrapper missing --write-step2b-completion-only parser'
+  contains_near "$SKILL_MD" 'Fail closed when drafter success has missing postplan rows.' 'When `.completed/step-2b.5` already exists, do not run a second prompt-side postplan fence; fail closed with diagnostics' 'SKILL missing step-2b.5 missing-row fail-safe guard' 900
   contains "$SCRIPT_DIR/design-step3-review.sh" '--phase)' 'Step 3 review wrapper missing --phase parser'
   contains "$SCRIPT_DIR/design-step3-review.sh" '--findings-file)' 'Step 3 review wrapper missing --findings-file parser'
   contains "$SCRIPT_DIR/design-step3-review.sh" '--postplan-operator-continue)' 'Step 3 review wrapper missing --postplan-operator-continue parser'

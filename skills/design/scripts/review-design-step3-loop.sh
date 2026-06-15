@@ -668,7 +668,7 @@ run_design_step3_loop() {
                     ;;
                 tally-error|degraded-empty-collector|panel-failed)
                     step3_loop_write_completed_step3
-                    step3_loop_record_timing "$round_num" "$round_start_s" "$(step3_loop_now_s)"
+                    step3_loop_record_timing "$round_num" "$(step3_loop_read_round_start_s "$round_num" "$round_start_s")" "$(step3_loop_now_s)"
                     step3_loop_emit_envelope "${LOOP_STATUS:-panel-failed}" "$round_num" "$round_num" "$round_num"
                     exit 0
                     ;;
@@ -799,7 +799,7 @@ run_design_step3_loop() {
                     step3_loop_emit_envelope postplan-failed "$round_num" "$round_num" "$round_num"
                     exit 0
                 fi
-                step3_loop_record_timing "$round_num" "$round_start_s" "$(step3_loop_now_s)"
+                step3_loop_record_timing "$round_num" "$(step3_loop_read_round_start_s "$round_num" "$round_start_s")" "$(step3_loop_now_s)"
                 REASON=""
                 if [[ "${PLAN_REVIEW_CONTINUE:-false}" == true ]]; then
                     "$PLUGIN_ROOT/skills/design/scripts/design-step3-state.sh" --design-tmpdir "$DESIGN_TMPDIR" --auto-continuation-entry >/dev/null 2>&1 || true
