@@ -45,7 +45,6 @@ def _codex_review_args(tmp_path: Path, out_name: str = "out.txt", **overrides: o
     values: dict[str, object] = {
         "output": str(out),
         "timeout": "2",
-        "codex_add_dir": "",
         "risk": "",
         "stderr_sink": "",
         "timing_task_kind": "codex-review",
@@ -198,13 +197,6 @@ def test_cursor_launch_extracts_result_and_writes_original_prompt_sidecar(tmp_pa
     assert "--api-key" not in meta
     assert "OUTER_LAUNCHER=agent launch-review" in meta
 
-
-def test_codex_add_dir_rejects_outside_output(tmp_path: Path) -> None:
-    out = tmp_path / "out.txt"
-    outside = tmp_path.parent
-    proc = _run(["--tool", "codex", "--output", str(out), "--timeout", "2", "--prompt", "hi", "--codex-add-dir", str(outside)])
-    assert proc.returncode == 2
-    assert not out.exists()
 
 
 def test_codex_add_dir_rejects_missing_output_parent(tmp_path: Path) -> None:
@@ -1332,44 +1324,34 @@ echo '{{"type":"message","usage":{{"input_tokens":1,"cached_input_tokens":0,"out
     assert fail_proc.returncode == 2
 
 
-def test_codex_add_dir_accepts_inside_output_parent(tmp_path: Path) -> None:
-    staged = tmp_path / "staged-context"
-    staged.mkdir()
+
+
+
+
+def test_codex_grants_output_parent_add_dir(tmp_path: Path) -> None:
     out = tmp_path / "out.txt"
     marker = tmp_path / "add-dir.txt"
     bin_dir = _stub_bin(
         tmp_path,
         "codex",
         f"""#!/usr/bin/env bash
-out=""; last=""
+out=""; last=""; first_add=""
 for a in "$@"; do
-  if [[ "$last" == "--add-dir" ]]; then printf '%s\\n' "$a" > "{marker}"; fi
+  if [[ "$last" == "--add-dir" && -z "$first_add" ]]; then first_add="$a"; fi
   if [[ "$last" == "--output-last-message" ]]; then out="$a"; fi
   last="$a"
 done
+printf '%s\n' "$first_add" > "{marker}"
 printf OK >"$out"
 echo '{{"type":"message","usage":{{"input_tokens":1,"cached_input_tokens":0,"output_tokens":1}}}}'
 """,
     )
     proc = _run(
-        ["--tool", "codex", "--output", str(out), "--timeout", "2", "--prompt", "hi", "--codex-add-dir", str(staged)],
+        ["--tool", "codex", "--output", str(out), "--timeout", "2", "--prompt", "hi"],
         {"PATH": f"{bin_dir}:{os.environ['PATH']}"},
     )
     assert proc.returncode == 0
-    assert Path(marker.read_text(encoding="utf-8").strip()).resolve() == staged.resolve()
-
-
-def test_codex_add_dir_rejects_symlink(tmp_path: Path) -> None:
-    target = tmp_path / "target"
-    target.mkdir()
-    link = tmp_path / "link"
-    link.symlink_to(target, target_is_directory=True)
-    out = tmp_path / "out.txt"
-    proc = _run(
-        ["--tool", "codex", "--output", str(out), "--timeout", "2", "--prompt", "hi", "--codex-add-dir", str(link)],
-    )
-    assert proc.returncode == 2
-    assert not out.exists()
+    assert Path(marker.read_text(encoding="utf-8").strip()).resolve() == tmp_path.resolve()
 
 
 def test_codex_launch_does_not_leak_openai_api_key(tmp_path: Path) -> None:
@@ -1659,7 +1641,6 @@ def _launch_review_argv_reject_case(
         ("codex", ["--timing-task-kind", "--bogus"], None, 2),
         ("codex", ["--token-budget-cap", "0"], None, 2),
         ("codex", ["--token-budget-cap", "abc"], None, 2),
-        ("cursor", ["--codex-add-dir", "/tmp"], None, 2),
         ("codex", ["--timing-task-kind", "ok\nOUTER_LAUNCHER_WORKDIR=/tmp"], None, 2),
         ("codex", ["--risk", "high\nOUTER_LAUNCHER_WORKDIR=/tmp"], None, 2),
     ],

@@ -219,7 +219,7 @@ Clean launcher, content, status, or delimiter failures fall back to inline Step 
 
 ### `OPENAI_API_KEY`
 
-When non-whitespace, the covered Codex paths (`python/cli.py agent launch-review --tool codex`, `python/cli.py agent launch-codex-ci`, `agent launch-codex-implement`, the Codex health probe in `python/cli.py agent check-reviewers`, `python/cli.py review-and-fix apply-findings`, `python/cli.py agent launch-codex-exec`, `/research` Codex research lanes, `/research` validation lane, shared Codex voter/judge fences, `lint-fix-loop.sh`, and `python/cli.py agent run-negotiation-round`) authenticate with API-key billing via per-invocation `-c` provider overrides. Only the variable name `OPENAI_API_KEY` appears in argv or non-secret config references; the key value is read live by Codex from the child process environment, which can be visible to same-UID or host-level process inspection while Codex is running.
+When non-whitespace, the covered Codex paths (`python/cli.py agent launch-review --tool codex`, `python/cli.py agent launch-codex-ci`, `agent launch-codex-implement`, the Codex health probe in `python/cli.py agent check-reviewers`, `python/cli.py review-and-fix apply-findings`, `python/cli.py agent launch-codex-exec`, `/research` Codex research lanes, `/research` validation lane, shared Codex voter/judge fences, `python/cli.py checks lint-fix`, and `python/cli.py agent run-negotiation-round`) authenticate with API-key billing via per-invocation `-c` provider overrides. Only the variable name `OPENAI_API_KEY` appears in argv or non-secret config references; the key value is read live by Codex from the child process environment, which can be visible to same-UID or host-level process inspection while Codex is running.
 
 Bad or expired keys stay on the env-key path and fail loud / waterfall rather than silently reverting to ChatGPT login. When `OPENAI_API_KEY` is unset, empty, or whitespace-only, covered paths fall back to `codex login` / `~/.codex/auth.json`. The legacy top-level `env_key = "OPENAI_API_KEY"` config line is no longer the recommended setup path and is removed from copied larch temp configs; literal `api_key` / `openai_api_key` assignments are also stripped from those temp configs.
 
@@ -234,10 +234,6 @@ The model name to pass to Codex's `-m` flag (e.g., `o3`, `o4-mini`).
 **When not set:**
 - Codex defaults to `gpt-5.5` (hardcoded in `python3 python/cli.py agent model-args`) for all work invocations (reviews, sketches, voting)
 - `python/cli.py agent check-reviewers` runs a lightweight `codex exec --sandbox read-only …` health probe with the Codex model argv from `python3 python/cli.py agent model-args --tool codex --with-effort`, matching reviewer launch model selection. If your Codex installation does not support `gpt-5.5`, set this variable to a supported model (e.g., `o3`, `o4-mini`)
-
-### `LARCH_SHIP_PR_IMPL`
-
-Selects the `/implement` Step 8+ ship-pr driver. Default is `python`, which runs `python3 python/cli.py ship pr` (delegating to `python/ship.py`) with JSON stdout routing. Set `LARCH_SHIP_PR_IMPL=bash` to run the legacy `scripts/ship-pr.sh` path. Step 18 runs `restore-finalize-state.sh` on bash opt-in, when `finalize-state.sh` is missing, or when terminal `ship-pr-state.sh` overrides make the finalize file stale.
 
 ### External reviewer probe tuning (`agent check-reviewers`)
 
@@ -361,14 +357,12 @@ Retention window for `/cleanup` age-based session directory pruning. Default: `7
 ### `LARCH_VERSION_FILES`
 
 Colon-separated list of additional repo-relative paths that should be treated
-as version files during active Step 8+ CI-fix rebase conflict handling. Both
-drivers honor it: bash through `scripts/ship-pr.sh` / `run_rebase_rebump`, and
-the default Python path through `python/rebase.py` with the `ship_pr_pre_push`
-handoff.
+as version files during active Step 8+ CI-fix rebase conflict handling. The active Python driver honors it through `python/rebase.py` with the
+`ship_pr_pre_push` handoff.
 Entries are trimmed for surrounding whitespace; empty entries are ignored. When
 a conflicted path matches `.claude-plugin/plugin.json`, built-in version-adjacent
-basenames (`version.go`, `go.sum`), or any path listed here, `ship-pr.sh` keeps
-the conflict on the version-file path instead of routing it through the
+basenames (`version.go`, `go.sum`), or any path listed here, the active driver
+keeps the conflict on the version-file path instead of routing it through the
 non-bump-only conflict recovery path.
 
 `LARCH_BUMP_FILES` is a deprecated compatibility alias. If

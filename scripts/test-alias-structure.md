@@ -39,4 +39,4 @@ When modifying `skills/alias/SKILL.md` Steps 2/3/4 or NEVER rules #5–#7:
 1. Run this harness: `bash scripts/test-alias-structure.sh`.
 2. Update assertion text here if structural literals shifted.
 3. Run `cd python && python3 -m pytest test_alias_skill.py` to confirm the helper still meets its contract.
-4. Run `bash scripts/relevant-checks.sh` to confirm `pre-commit` + `agent-lint` are green.
+4. Run `python3 python/cli.py checks run-relevant --site alias-structure --tmpdir "${TMPDIR:-/tmp}"` to confirm `pre-commit` + `agent-lint` are green.

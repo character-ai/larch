@@ -372,7 +372,7 @@ Concatenation of per-slot `*.failure-diag` carriers composed by `append_vendor_f
 
 ### token-report.json
 
-**Mode**: replace. **Written**: Step 7a tail (pre-ship log flush) and refreshed at Step 9a.1. CI-fix rebase/push retries also refresh the batch so the merged PR carries the most recent data: bash opt-in uses `python/cli.py run-log refresh` Triggers A-C inside `ship-pr.sh`, while the default Python driver uses `run_logs.flush_logs_pre` at CI/rebase boundaries.
+**Mode**: replace. **Written**: Step 7a tail (pre-ship log flush) and refreshed at Step 9a.1. CI-fix rebase/push retries also refresh the batch so the merged PR carries the most recent data through `run_logs.flush_logs_pre` at CI/rebase boundaries.
 
 Structured per-step Claude and external-vendor token usage for the session. The pre-ship flush captures cost up through implementation and review.
 
@@ -392,7 +392,7 @@ Log of noteworthy events during the run, grouped by category: `Pre-existing Code
 
 ### session-transcript.jsonl
 
-**Mode**: replace. **Written**: Step 7a tail (pre-ship log flush) for runs that reach Step 7a. Runs that bail out before Step 7a do not write this batch. The transcript is truncated at the pre-ship boundary — Steps 8+ (PR creation, CI, merge, cleanup; version bump omitted in Phase 1) are not included. On each CI retry, bash opt-in re-captures through `python/cli.py run-log refresh` Triggers A-C and the default Python driver refreshes through `run_logs.flush_logs_pre`, so the final merged PR carries the most up-to-date transcript available before merge.
+**Mode**: replace. **Written**: Step 7a tail (pre-ship log flush) for runs that reach Step 7a. Runs that bail out before Step 7a do not write this batch. The transcript is truncated at the pre-ship boundary — Steps 8+ (PR creation, CI, merge, cleanup; version bump omitted in Phase 1) are not included. On each CI retry, the Python driver refreshes through `run_logs.flush_logs_pre`, so the final merged PR carries the most up-to-date transcript available before merge.
 
 A filtered, machine-readable rendering of the Claude Code session, produced by `scripts/render-session-transcript.py` from the raw session JSONL. **Schema v3 (policy: prose-errors-only).** The first line is a `{"v": 3, "source_basename": ..., "turns": N, "policy": "prose-errors-only"}` header; subsequent lines are per-turn objects with a `blocks` array. Blocks carry user-typed slash commands and text, assistant prose, and errored/warned `tool_result` entries (full body). `tool_call` blocks and non-error `tool_result` blocks are **omitted entirely** (v3 policy). Assistant `thinking` blocks are kept only when at least one `tool_use` in the same turn produced an errored result. Harness-injected SKILL.md expansions, attachments, and housekeeping events are dropped. Redacted for tmpdir paths and secrets before commit.
 

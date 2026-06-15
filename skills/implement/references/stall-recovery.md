@@ -97,9 +97,9 @@ The finding must distinguish observation from inference and cite evidence by pat
 
 - `review-and-fix step5` records `coder-main-agent-required` directly.
 - Step 5 `main-agent-vote-required` is emitted as `STEP5_REVIEW_LEDGER_*` for the prompt side to record once.
-- `lint-fix-loop.sh` emits `LINT_FIX_LEDGER_*` only for `main-agent-required` paths.
+- `python/cli.py checks lint-fix` emits `LINT_FIX_LEDGER_*` only for `main-agent-required` paths.
 - Python `ship.py` emits ledger-ready JSON keys only for Step 8+ `NEEDS_USER_INPUT` handoffs.
-- Bash `ship-pr.sh` emits ledger-ready data for opt-in handoffs and returns before recovery-waterfall edits on ship-pr-internal lint-fix `main-agent-required`.
+- The Python ship driver emits ledger-ready data for handoffs and returns before recovery-waterfall edits on ship-pr-internal lint-fix `main-agent-required`.
 - Clean retries, reships, and health-only paths do not record escalation events.
 
 ## Filing flow

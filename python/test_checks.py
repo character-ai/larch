@@ -1,8 +1,10 @@
+# pyright: reportUnusedCallResult=false, reportUnusedFunction=false
 """Tests for checks.py (stub Runner only; no bash executed)."""
 
 from __future__ import annotations
 
 import os
+import subprocess
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -11,8 +13,11 @@ import pytest
 
 import checks
 import config
+import proc
 from outcomes import Outcome
 from proc import CommandResult
+
+CLI_PATH = Path(__file__).resolve().parent / "cli.py"
 
 
 def _empty_responses() -> list[CommandResult]:
@@ -662,151 +667,121 @@ def test_run_check_fix_loop_failed_head_changed(tmp_path: Path) -> None:
     assert checks.escalate(loop.status).outcome == Outcome.TRANSIENT
 
 
-def test_run_relevant_checks_skipped_when_script_absent(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+
+def _checks_session(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     cache = tmp_path / "cache"
     session = cache / "larch" / "sessions" / "claude-implement-test"
     session.mkdir(parents=True)
     monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
+    return session
+
+
+def _git_repo(tmp_path: Path) -> Path:
     repo = tmp_path / "repo"
     repo.mkdir()
-    runner = StubRunner()
-    result = checks.run_relevant_checks(
-        runner,
-        site="step6",
-        tmpdir=str(session),
-        repo_root=str(repo),
-    )
-    assert result.skipped is True
-    assert result.ok is True
+    subprocess.run(["git", "init", "-b", "main"], cwd=repo, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return repo
 
 
-def test_run_relevant_checks_broken_symlink_fails_closed(
+def _stub_tool(bin_dir: Path, name: str, body: str) -> None:
+    path = bin_dir / name
+    path.write_text(body, encoding="utf-8")
+    path.chmod(0o755)
+
+
+def _checks_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, precommit: str, agent_lint: str | None = None, make: str | None = None) -> Path:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    _stub_tool(bin_dir, "pre-commit", precommit)
+    if agent_lint is not None:
+        _stub_tool(bin_dir, "agent-lint", agent_lint)
+    if make is not None:
+        _stub_tool(bin_dir, "make", make)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
+    return bin_dir
+
+
+def test_run_relevant_checks_no_changed_files_runs_agent_lint(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    cache = tmp_path / "cache"
-    session = cache / "larch" / "sessions" / "claude-implement-test"
-    session.mkdir(parents=True)
-    monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
-    repo = tmp_path / "repo"
-    scripts = repo / "scripts"
-    scripts.mkdir(parents=True)
-    (scripts / "relevant-checks.sh").symlink_to(repo / "missing.sh")
-    result = checks.run_relevant_checks(
-        StubRunner(),
-        site="step6",
-        tmpdir=str(session),
-        repo_root=str(repo),
+    session = _checks_session(tmp_path, monkeypatch)
+    repo = _git_repo(tmp_path)
+    _checks_path(
+        monkeypatch,
+        tmp_path,
+        precommit="#!/usr/bin/env bash\nexit 0\n",
+        agent_lint="#!/usr/bin/env bash\necho agent ok\n",
     )
-    assert result.ok is False
-    assert result.exit_code == 1
-
-
-def test_run_relevant_checks_parses_markers(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    cache = tmp_path / "cache"
-    session = cache / "larch" / "sessions" / "claude-implement-test"
-    session.mkdir(parents=True)
-    monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
-    repo = tmp_path / "repo"
-    scripts = repo / "scripts"
-    scripts.mkdir(parents=True)
-    check_script = scripts / "relevant-checks.sh"
-    _ = check_script.write_text("#!/bin/sh\necho ok\n", encoding="utf-8")
-    _ = check_script.chmod(0o755)
-    log_body = (
-        "=== Running pre-commit\n"
-        "=== Running agent-lint ===\n"
-    )
-    runner = StubRunner(_with_ledger_stubs([_ok(log_body)]))
-    result = checks.run_relevant_checks(
-        runner,
-        site="step6",
-        tmpdir=str(session),
-        repo_root=str(repo),
-    )
-    assert result.ok is True
-    assert result.coverage == "full"
-    assert result.warn is None
-
-
-def test_run_relevant_checks_agent_lint_missing_warn(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    cache = tmp_path / "cache"
-    session = cache / "larch" / "sessions" / "claude-implement-test"
-    session.mkdir(parents=True)
-    monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
-    repo = tmp_path / "repo"
-    scripts = repo / "scripts"
-    scripts.mkdir(parents=True)
-    check_script = scripts / "relevant-checks.sh"
-    _ = check_script.write_text("#!/bin/sh\necho ok\n", encoding="utf-8")
-    _ = check_script.chmod(0o755)
-    runner = StubRunner(_with_ledger_stubs([_ok("WARNING: agent-lint not found on PATH\n")]))
-    result = checks.run_relevant_checks(
-        runner,
-        site="step6",
-        tmpdir=str(session),
-        repo_root=str(repo),
-    )
-    assert result.ok is True
-    assert result.warn == "agent-lint-missing"
-
-
-def test_run_relevant_checks_post_check_only_coverage(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    cache = tmp_path / "cache"
-    session = cache / "larch" / "sessions" / "claude-implement-test"
-    session.mkdir(parents=True)
-    monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
-    repo = tmp_path / "repo"
-    scripts = repo / "scripts"
-    scripts.mkdir(parents=True)
-    check_script = scripts / "relevant-checks.sh"
-    _ = check_script.write_text("#!/bin/sh\necho ok\n", encoding="utf-8")
-    _ = check_script.chmod(0o755)
-    runner = StubRunner(_with_ledger_stubs([_ok("=== Running agent-lint ===\n")]))
-    result = checks.run_relevant_checks(
-        runner,
-        site="step6",
-        tmpdir=str(session),
-        repo_root=str(repo),
-    )
+    result = checks.run_relevant_checks(proc, site="unit", tmpdir=str(session), repo_root=str(repo))
     assert result.ok is True
     assert result.coverage == "post-check-only"
+
+
+def test_run_relevant_checks_no_phase_fails_when_agent_lint_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+    repo = _git_repo(tmp_path)
+    bin_dir = _checks_path(monkeypatch, tmp_path, precommit="#!/usr/bin/env bash\nexit 0\n")
+    monkeypatch.setenv("PATH", f"{bin_dir}:/usr/bin:/bin")
+    result = checks.run_relevant_checks(proc, site="unit", tmpdir=str(session), repo_root=str(repo))
+    assert result.ok is False
+    assert result.redacted_log_path is not None
+
+
+def test_run_relevant_checks_precommit_missing_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+    repo = _git_repo(tmp_path)
+    (repo / "file.py").write_text("print('ok')\n", encoding="utf-8")
+
+    def available(_runner: object, name: str, **_kwargs: object) -> bool:
+        return name != "pre-commit"
+
+    monkeypatch.setattr(checks, "_command_available", available)  # pyright: ignore[reportPrivateUsage]
+    result = checks.run_relevant_checks(proc, site="unit", tmpdir=str(session), repo_root=str(repo))
+    assert result.ok is False
+    assert result.exit_code == 1
+    assert result.redacted_log_path is not None
+
+
+def test_run_relevant_checks_changed_file_precommit_success(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+    repo = _git_repo(tmp_path)
+    (repo / "file.py").write_text("print('ok')\n", encoding="utf-8")
+    _checks_path(
+        monkeypatch,
+        tmp_path,
+        precommit='#!/usr/bin/env bash\necho precommit "$@"\nexit 0\n',
+        agent_lint="#!/usr/bin/env bash\necho agent ok\n",
+    )
+    result = checks.run_relevant_checks(proc, site="unit", tmpdir=str(session), repo_root=str(repo))
+    assert result.ok is True
+    assert result.coverage == "full"
+    assert "=== Running pre-commit on 1 changed file(s) ===" in Path(result.raw_log_path or "").read_text(encoding="utf-8")
 
 
 def test_run_relevant_checks_fail_produces_redacted_log(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    cache = tmp_path / "cache"
-    session = cache / "larch" / "sessions" / "claude-implement-test"
-    session.mkdir(parents=True)
-    monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
-    repo = tmp_path / "repo"
-    scripts = repo / "scripts"
-    scripts.mkdir(parents=True)
-    check_script = scripts / "relevant-checks.sh"
-    _ = check_script.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
-    _ = check_script.chmod(0o755)
+    session = _checks_session(tmp_path, monkeypatch)
+    repo = _git_repo(tmp_path)
+    (repo / "file.py").write_text("print('bad')\n", encoding="utf-8")
     secret = "sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD"
-    runner = StubRunner(_with_ledger_stubs([_ok(f"=== Running pre-commit\n{secret}\n", rc=1)]))
-    result = checks.run_relevant_checks(
-        runner,
-        site="step6",
-        tmpdir=str(session),
-        repo_root=str(repo),
+    _checks_path(
+        monkeypatch,
+        tmp_path,
+        precommit=f"#!/usr/bin/env bash\necho '=== Running pre-commit'\necho '{secret}'\nexit 1\n",
     )
+    result = checks.run_relevant_checks(proc, site="unit", tmpdir=str(session), repo_root=str(repo))
     assert result.ok is False
     assert result.redacted_log_path is not None
     redacted = Path(result.redacted_log_path).read_text(encoding="utf-8")
@@ -814,52 +789,76 @@ def test_run_relevant_checks_fail_produces_redacted_log(
     assert config.REDACTED_TOKEN in redacted
     assert Path(result.redacted_log_path).stat().st_mode & 0o777 == 0o600
     assert result.phase == "pre-commit"
-    assert result.coverage == "changed-file-only"
+
+
+def test_run_relevant_checks_direct_targets_dedup_and_env_scrub(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+    repo = _git_repo(tmp_path)
+    script = repo / "scripts" / "read-result-env.sh"
+    script.parent.mkdir()
+    script.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", "/plugin-cache")
+    monkeypatch.setenv("LARCH_QUIET_ACTIVE", "1")
+    make_log = tmp_path / "make-env.txt"
+    _checks_path(
+        monkeypatch,
+        tmp_path,
+        precommit="#!/usr/bin/env bash\nexit 0\n",
+        agent_lint="#!/usr/bin/env bash\nexit 0\n",
+        make=f"#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" > '{make_log}'\nprintf 'root=%s quiet=%s\\n' \"${{CLAUDE_PLUGIN_ROOT-unset}}\" \"${{LARCH_QUIET_ACTIVE-unset}}\" >> '{make_log}'\nexit 0\n",
+    )
+    result = checks.run_relevant_checks(proc, site="unit", tmpdir=str(session), repo_root=str(repo))
+    assert result.ok is True
+    text = make_log.read_text(encoding="utf-8")
+    assert "test-read-result-env test-design-structure" in text
+    assert "root=unset quiet=unset" in text
 
 
 def test_run_relevant_checks_rejects_dotdot_site(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    cache = tmp_path / "cache"
-    session = cache / "larch" / "sessions" / "claude-implement-test"
-    session.mkdir(parents=True)
-    monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    result = checks.run_relevant_checks(
-        StubRunner(),
-        site="evil..step6",
-        tmpdir=str(session),
-        repo_root=str(repo),
-    )
+    session = _checks_session(tmp_path, monkeypatch)
+    repo = _git_repo(tmp_path)
+    result = checks.run_relevant_checks(StubRunner(), site="evil..step6", tmpdir=str(session), repo_root=str(repo))
     assert result.ok is False
     assert result.exit_code == 2
+    assert result.failure_reason == "site-validation"
 
 
-def test_run_relevant_checks_non_executable_fails_closed(
+def test_run_relevant_checks_rejects_non_git_repo(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    cache = tmp_path / "cache"
-    session = cache / "larch" / "sessions" / "claude-implement-test"
-    session.mkdir(parents=True)
-    monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
+    session = _checks_session(tmp_path, monkeypatch)
     repo = tmp_path / "repo"
-    scripts = repo / "scripts"
-    scripts.mkdir(parents=True)
-    check_script = scripts / "relevant-checks.sh"
-    _ = check_script.write_text("#!/bin/sh\n", encoding="utf-8")
-    _ = check_script.chmod(0o644)
-    result = checks.run_relevant_checks(
-        StubRunner(),
-        site="step6",
-        tmpdir=str(session),
-        repo_root=str(repo),
-    )
+    repo.mkdir()
+    result = checks.run_relevant_checks(proc, site="unit", tmpdir=str(session), repo_root=str(repo))
     assert result.ok is False
-    assert result.exit_code == 126
+    assert result.failure_reason == "repo-root-unresolved"
 
+
+def test_check_contains_pins_main_success_failure_and_scope(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    target = repo / "skills" / "demo" / "SKILL.md"
+    target.parent.mkdir(parents=True)
+    target.write_text("expected literal\n", encoding="utf-8")
+    script = repo / "skills" / "demo" / "scripts" / "test-demo.sh"
+    script.parent.mkdir(parents=True)
+    script.write_text(
+        'TARGET="$SCRIPT_DIR/../SKILL.md"\ncontains "$TARGET" "expected literal" "ok"\n',
+        encoding="utf-8",
+    )
+    assert checks.check_contains_pins_main(["--repo-root", str(repo)]) == 0
+    target.write_text("drift\n", encoding="utf-8")
+    assert checks.check_contains_pins_main(["--repo-root", str(repo)]) == 1
+    changed = tmp_path / "changed.txt"
+    changed.write_text("README.md\n", encoding="utf-8")
+    assert checks.check_contains_pins_main(["--repo-root", str(repo), "--changed-files", str(changed)]) == 0
 
 def test_run_check_fix_loop_skipped_does_not_dispatch() -> None:
     def checks_runner() -> checks.ChecksResult:
@@ -1648,9 +1647,26 @@ def test_run_checks_phase_threads_target_cmd_display(
     def fake_run_lint_fix(*_args: object, **kwargs: object) -> checks.FixOutcome:
         return fake_fix(**kwargs)
 
+    log = session / "checks.redacted.log"
+    log.write_text("=== Running pre-commit\n", encoding="utf-8")
+
+    def fake_checks(*_args: object, **kwargs: object) -> checks.ChecksResult:
+        return checks.ChecksResult(
+            ok=False,
+            exit_code=1,
+            site=str(kwargs.get("site", "ship-pr-ci-per-job")),
+            redacted_log_path=str(log),
+            phase="pre-commit",
+            coverage="changed-file-only",
+            skipped=False,
+            warn=None,
+            raw_log_path=str(log),
+        )
+
+    monkeypatch.setattr(checks, "run_relevant_checks", fake_checks)
     monkeypatch.setattr(checks, "run_lint_fix", fake_run_lint_fix)
     result = checks.run_checks_phase(
-        StubRunner([_ok("=== Running pre-commit\n", rc=1)]),
+        StubRunner(),
         tmpdir=str(session),
         repo_root=str(repo),
         codex_present=False,
@@ -1873,7 +1889,7 @@ def test_run_check_fix_loop_max_iter_six_exhausted(tmp_path: Path) -> None:
     assert loop.status == "exhausted"
 
 
-def test_run_checks_phase_ok_when_checks_skipped(
+def test_run_checks_phase_stalls_when_repo_unresolved(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1890,7 +1906,7 @@ def test_run_checks_phase_ok_when_checks_skipped(
         codex_present=True,
         cursor_present=True,
     )
-    assert result.outcome == Outcome.OK
+    assert result.outcome == Outcome.STALLED
 
 
 def test_run_lint_fix_non_executable_deleted_launcher_is_ignored(
@@ -2060,53 +2076,19 @@ def test_validate_tmpdir_accepts_tmp_roots(
     assert checks.validate_tmpdir(str(session)) == session.resolve()
 
 
-def test_run_relevant_checks_parses_header_markers_in_large_log(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    cache = tmp_path / "cache"
-    session = cache / "larch" / "sessions" / "claude-implement-test"
-    session.mkdir(parents=True)
-    monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
-    repo = tmp_path / "repo"
-    scripts = repo / "scripts"
-    scripts.mkdir(parents=True)
-    check_script = scripts / "relevant-checks.sh"
-    _ = check_script.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
-    _ = check_script.chmod(0o755)
-    log_body = (
-        "=== Running pre-commit\n"
-        "=== Running agent-lint ===\n"
-        + ("padding\n" * 50000)
-    )
-    runner = StubRunner(_with_ledger_stubs([_ok(log_body, rc=1)]))
-    result = checks.run_relevant_checks(
-        runner,
-        site="step6",
-        tmpdir=str(session),
-        repo_root=str(repo),
-    )
-    assert result.ok is False
-    assert result.phase == "agent-lint"
-    assert result.coverage == "changed-file-only"
-
 
 def test_run_relevant_checks_redaction_failure_removes_partial_file(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    cache = tmp_path / "cache"
-    session = cache / "larch" / "sessions" / "claude-implement-test"
-    session.mkdir(parents=True)
-    monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
-    repo = tmp_path / "repo"
-    scripts = repo / "scripts"
-    scripts.mkdir(parents=True)
-    check_script = scripts / "relevant-checks.sh"
-    _ = check_script.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
-    _ = check_script.chmod(0o755)
-    runner = StubRunner(_with_ledger_stubs([_ok("=== Running pre-commit\nfail\n", rc=1)]))
-
+    session = _checks_session(tmp_path, monkeypatch)
+    repo = _git_repo(tmp_path)
+    (repo / "file.py").write_text("print('bad')\n", encoding="utf-8")
+    _checks_path(
+        monkeypatch,
+        tmp_path,
+        precommit="#!/usr/bin/env bash\necho '=== Running pre-commit'\necho fail\nexit 1\n",
+    )
     original_chmod = Path.chmod
 
     def chmod_fail(self: Path, mode: int, *args: object, **kwargs: object) -> None:
@@ -2115,18 +2097,11 @@ def test_run_relevant_checks_redaction_failure_removes_partial_file(
         original_chmod(self, mode, *args, **kwargs)  # type: ignore[arg-type]
 
     monkeypatch.setattr(Path, "chmod", chmod_fail)
-    result = checks.run_relevant_checks(
-        runner,
-        site="step6",
-        tmpdir=str(session),
-        repo_root=str(repo),
-    )
+    result = checks.run_relevant_checks(proc, site="unit", tmpdir=str(session), repo_root=str(repo))
     assert result.redacted_log_path is None
     assert result.warn == "redaction-failed"
     assert result.raw_log_path is None
-    redacted = session / "relevant-checks" / "step6-1.redacted.log"
-    assert not redacted.exists()
-
+    assert not (session / "relevant-checks" / "unit-1.redacted.log").exists()
 
 def test_validate_tmpdir_rejects_empty_xdg_cache_home(
     tmp_path: Path,
@@ -2232,21 +2207,15 @@ def test_run_checks_phase_dispatch_first_wiring(
     assert result.payload == ("fixed.py",)
 
 
+
 def test_run_relevant_checks_marks_step6_ledger(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    cache = tmp_path / "cache"
-    session = cache / "larch" / "sessions" / "claude-implement-test"
-    session.mkdir(parents=True)
-    monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
+    session = _checks_session(tmp_path, monkeypatch)
     repo = tmp_path / "repo"
-    scripts = repo / "scripts"
-    scripts.mkdir(parents=True)
-    check_script = scripts / "relevant-checks.sh"
-    _ = check_script.write_text("#!/bin/sh\necho ok\n", encoding="utf-8")
-    _ = check_script.chmod(0o755)
-    runner = StubRunner(_with_ledger_stubs([_ok("")]))
+    repo.mkdir()
+    runner = StubRunner([_ok(""), _ok(""), _ok(f"{repo}\n")])
     _ = checks.run_relevant_checks(
         runner,
         site="step6",
@@ -2255,7 +2224,7 @@ def test_run_relevant_checks_marks_step6_ledger(
     )
     ledger_calls = [
         call for call, _kw in runner.calls
-        if any("cli.py" in name or name.endswith(("python3 python/cli.py token", "python3 python/cli.py timing")) for name in call)
+        if any("cli.py" in name for name in call)
     ]
     assert len(ledger_calls) == 2
     assert all("Step 6 — checks second pass" in " ".join(call) for call in ledger_calls)
@@ -2334,3 +2303,379 @@ def test_lint_fix_ship_pr_merge_handoffs_use_internal_ledger_tokens(tmp_path: Pa
         assert outcome.ledger_trigger == "ship-pr-internal-lint-fix"
         assert outcome.ledger_step == "8"
         assert outcome.ledger_phase == "ci-merge"
+
+
+def test_presence_flag_reads_session_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+    (session / "session-env.sh").write_text("CODEX_PRESENT=true\nCURSOR_PRESENT=false\n", encoding="utf-8")
+    monkeypatch.delenv("CODEX_PRESENT", raising=False)
+    monkeypatch.delenv("CURSOR_PRESENT", raising=False)
+    assert checks._presence_flag("CODEX_PRESENT", session) is True  # pyright: ignore[reportPrivateUsage]
+    assert checks._presence_flag("CURSOR_PRESENT", session) is False  # pyright: ignore[reportPrivateUsage]
+
+
+def test_checks_lint_fix_main_reads_presence_from_session_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+    (session / "session-env.sh").write_text("CODEX_PRESENT=true\nCURSOR_PRESENT=false\n", encoding="utf-8")
+    checks_log = session / "fail.redacted.log"
+    checks_log.write_text("error\n", encoding="utf-8")
+    captured: dict[str, object] = {}
+
+    def fake_run_lint_fix(*_args: object, **kwargs: object) -> checks.FixOutcome:
+        captured.update(kwargs)
+        return checks.FixOutcome(
+            status="no-changes",
+            delta_paths=(),
+            failure_reason=None,
+            commit_sha=None,
+            head_changed=False,
+            coder_tool=None,
+        )
+
+    monkeypatch.setattr(checks, "run_lint_fix", fake_run_lint_fix)
+    monkeypatch.delenv("CODEX_PRESENT", raising=False)
+    monkeypatch.delenv("CURSOR_PRESENT", raising=False)
+    rc = checks.checks_lint_fix_main([
+        "--tmpdir",
+        str(session),
+        "--site",
+        "step3",
+        "--checks-log",
+        str(checks_log),
+    ])
+    assert rc == 0
+    assert captured["codex_present"] is True
+    assert captured["cursor_present"] is False
+
+
+def test_direct_targets_rule_targets_before_py_lint(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    _stub_tool(
+        bin_dir,
+        "python3",
+        '#!/usr/bin/env bash\nif [[ "$1" == "-c" ]]; then echo 311; exit 0; fi\nexit 0\n',
+    )
+    for tool in ("ruff", "pylint", "pyright", "pytest"):
+        _stub_tool(bin_dir, tool, "#!/usr/bin/env bash\nexit 0\n")
+    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
+    runner = StubRunner()
+    targets = checks._direct_targets(  # pyright: ignore[reportPrivateUsage]
+        runner,
+        ("python/review_and_fix.py",),
+        cwd=str(tmp_path),
+        env=dict(os.environ),
+        log_fd=2,
+    )
+    assert "test-review-and-fix" in targets
+    assert "py-lint" in targets
+    assert targets.index("test-review-and-fix") < targets.index("py-lint")
+
+
+def test_existing_regular_files_includes_symlink_to_file(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    target = repo / "real.py"
+    target.write_text("x\n", encoding="utf-8")
+    link = repo / "link.py"
+    link.symlink_to(target)
+    assert checks._existing_regular_files(repo, ("link.py",)) == ("link.py",)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_run_relevant_checks_deletion_only_runs_direct_targets(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+    repo = _git_repo(tmp_path)
+    make_calls: list[list[str]] = []
+    direct_changed: list[tuple[str, ...]] = []
+
+    def fake_changed_files(_runner: object, *, cwd: str) -> tuple[str, ...]:
+        _ = cwd
+        return ("scripts/read-result-env.sh",)
+
+    def fake_direct(_runner: object, changed: tuple[str, ...], **_kwargs: object) -> tuple[str, ...]:
+        direct_changed.append(changed)
+        return ("test-read-result-env",)
+
+    def fake_logged(_runner: object, argv: list[str], **_kwargs: object) -> CommandResult:
+        if argv and argv[0] == "make":
+            make_calls.append(list(argv))
+        return _ok("")
+
+    def fake_contains_pin_phase(*_args: object, **_kwargs: object) -> int:
+        return 0
+
+    def fake_agent_lint(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(checks, "_changed_files", fake_changed_files)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(checks, "_direct_targets", fake_direct)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(checks, "_run_logged", fake_logged)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(checks, "_run_contains_pin_phase", fake_contains_pin_phase)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(checks, "_run_agent_lint", fake_agent_lint)  # pyright: ignore[reportPrivateUsage]
+
+    def available(_runner: object, name: str, **_kwargs: object) -> bool:
+        return name != "pre-commit"
+
+    monkeypatch.setattr(checks, "_command_available", available)  # pyright: ignore[reportPrivateUsage]
+    result = checks.run_relevant_checks(proc, site="unit", tmpdir=str(session), repo_root=str(repo))
+    assert result.ok is True
+    assert direct_changed == [("scripts/read-result-env.sh",)]
+    assert make_calls == [["make", "test-read-result-env"]]
+
+
+def test_run_relevant_checks_deletion_only_without_agent_lint_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+    repo = _git_repo(tmp_path)
+
+    def fake_changed_files(_runner: object, *, cwd: str) -> tuple[str, ...]:
+        _ = cwd
+        return ("scripts/unrouted-deleted.sh",)
+
+    def fake_direct(_runner: object, _changed: tuple[str, ...], **_kwargs: object) -> tuple[str, ...]:
+        return ()
+
+    def fake_contains_pin_phase(*_args: object, **_kwargs: object) -> int:
+        return 0
+
+    def fake_agent_lint(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(checks, "_changed_files", fake_changed_files)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(checks, "_direct_targets", fake_direct)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(checks, "_run_contains_pin_phase", fake_contains_pin_phase)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(checks, "_run_agent_lint", fake_agent_lint)  # pyright: ignore[reportPrivateUsage]
+
+    def available(_runner: object, name: str, **_kwargs: object) -> bool:
+        return name != "pre-commit"
+
+    monkeypatch.setattr(checks, "_command_available", available)  # pyright: ignore[reportPrivateUsage]
+    result = checks.run_relevant_checks(proc, site="unit", tmpdir=str(session), repo_root=str(repo))
+    assert result.ok is False
+    assert result.exit_code == 2
+    assert result.failure_reason == "no-validation-phases"
+
+
+def test_run_relevant_checks_no_changes_skips_precommit_requirement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+    repo = _git_repo(tmp_path)
+    _checks_path(
+        monkeypatch,
+        tmp_path,
+        precommit="#!/usr/bin/env bash\nexit 1\n",
+        agent_lint="#!/usr/bin/env bash\necho agent ok\n",
+    )
+
+    def available(_runner: object, name: str, **_kwargs: object) -> bool:
+        return name != "pre-commit"
+
+    monkeypatch.setattr(checks, "_command_available", available)  # pyright: ignore[reportPrivateUsage]
+    result = checks.run_relevant_checks(proc, site="unit", tmpdir=str(session), repo_root=str(repo))
+    assert result.ok is True
+
+
+def test_checks_run_relevant_main_success_envelope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+
+    def fake_checks(*_args: object, **kwargs: object) -> checks.ChecksResult:
+        return checks.ChecksResult(
+            ok=True,
+            exit_code=0,
+            site=str(kwargs["site"]),
+            redacted_log_path=None,
+            phase="pre-commit",
+            coverage="changed-file-only",
+            skipped=False,
+            warn=None,
+        )
+
+    monkeypatch.setattr(checks, "run_relevant_checks", fake_checks)
+    rc = checks.checks_run_relevant_main(["--site", "step3", "--tmpdir", str(session)])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "RELEVANT_CHECKS_OK=true" in out
+    assert "SITE=step3" in out
+
+
+def test_checks_run_relevant_main_fail_envelope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+    log = session / "fail.redacted.log"
+    log.write_text("err\n", encoding="utf-8")
+
+    def fake_checks(*_args: object, **_kwargs: object) -> checks.ChecksResult:
+        return checks.ChecksResult(
+            ok=False,
+            exit_code=1,
+            site="step3",
+            redacted_log_path=str(log),
+            phase="pre-commit",
+            coverage="changed-file-only",
+            skipped=False,
+            warn=None,
+            failure_reason="checks-failed",
+        )
+
+    monkeypatch.setattr(checks, "run_relevant_checks", fake_checks)
+    rc = checks.checks_run_relevant_main(["--site", "step3", "--tmpdir", str(session)])
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "STATUS=fail" in out
+    assert "REDACTED_LOG_FILE=" in out
+
+
+def test_checks_run_relevant_main_allow_skip_envelope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+
+    def fake_checks(*_args: object, **kwargs: object) -> checks.ChecksResult:
+        return checks.ChecksResult(
+            ok=False,
+            exit_code=0,
+            site=str(kwargs["site"]),
+            redacted_log_path=None,
+            phase="none",
+            coverage="none",
+            skipped=True,
+            warn=None,
+        )
+
+    monkeypatch.setattr(checks, "run_relevant_checks", fake_checks)
+    rc = checks.checks_run_relevant_main(["--site", "step3", "--tmpdir", str(session), "--allow-skip"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "RELEVANT_CHECKS_SKIPPED=true" in out
+
+
+def test_checks_run_relevant_main_without_allow_skip_never_emits_skipped(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+
+    def fake_checks(*_args: object, **_kwargs: object) -> checks.ChecksResult:
+        return checks.ChecksResult(
+            ok=False,
+            exit_code=2,
+            site="step3",
+            redacted_log_path=None,
+            phase="none",
+            coverage="none",
+            skipped=True,
+            warn=None,
+            failure_reason="checks-failed",
+        )
+
+    monkeypatch.setattr(checks, "run_relevant_checks", fake_checks)
+    rc = checks.checks_run_relevant_main(["--site", "step3", "--tmpdir", str(session)])
+    out = capsys.readouterr().out
+    assert rc == 2
+    assert "RELEVANT_CHECKS_SKIPPED" not in out
+    assert "STATUS=fail" in out
+
+
+def test_checks_lint_fix_main_main_agent_required_envelope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+    checks_log = session / "fail.redacted.log"
+    checks_log.write_text("err\n", encoding="utf-8")
+
+    def fake_run_lint_fix(*_args: object, **_kwargs: object) -> checks.FixOutcome:
+        return checks.FixOutcome(
+            status="main-agent-required",
+            delta_paths=(),
+            failure_reason="dispatch-failed",
+            commit_sha=None,
+            head_changed=False,
+            coder_tool=None,
+            ledger_ready=True,
+            ledger_site="step3",
+            ledger_trigger="main-agent-required",
+            ledger_step="3",
+            ledger_phase="checks",
+            ledger_dispatcher="lint-fix-loop",
+            ledger_exit_code=1,
+            ledger_failure_detail_log=str(checks_log),
+            stderr_tail_path=str(session / "lint-fix-loop" / "step3.x" / "codex.log"),
+        )
+
+    monkeypatch.setattr(checks, "run_lint_fix", fake_run_lint_fix)
+    rc = checks.checks_lint_fix_main([
+        "--tmpdir",
+        str(session),
+        "--site",
+        "step3",
+        "--checks-log",
+        str(checks_log),
+    ])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "LINT_FIX_STATUS=main-agent-required" in out
+    assert "FAILURE_REASON=dispatch-failed" in out
+    assert "LINT_FIX_LEDGER_READY=true" in out
+    assert "LINT_FIX_LEDGER_SITE=step3" in out
+    assert "STDERR_TAIL_PATH=" in out
+    assert "LINT_FIX_LEDGER_FAILURE_DETAIL_LOG=" in out
+
+
+def test_checks_lint_fix_main_failed_envelope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+    checks_log = session / "fail.redacted.log"
+    checks_log.write_text("err\n", encoding="utf-8")
+
+    def fake_run_lint_fix(*_args: object, **_kwargs: object) -> checks.FixOutcome:
+        return checks.FixOutcome(
+            status="failed",
+            delta_paths=(),
+            failure_reason="checks-log-invalid",
+            commit_sha=None,
+            head_changed=False,
+            coder_tool=None,
+        )
+
+    monkeypatch.setattr(checks, "run_lint_fix", fake_run_lint_fix)
+    rc = checks.checks_lint_fix_main([
+        "--tmpdir",
+        str(session),
+        "--site",
+        "step3",
+        "--checks-log",
+        str(checks_log),
+    ])
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "LINT_FIX_STATUS=failed" in out
+    assert "FAILURE_REASON=checks-log-invalid" in out
+    assert "LINT_FIX_LEDGER_READY" not in out

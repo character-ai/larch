@@ -10,7 +10,7 @@ Backgrounding `ci-wait.sh` disconnects the orchestrator from the script's return
 
 For the paired-PID monitor contract, `ci-wait.sh` remains intentionally
 excluded from the writer list because it is a nested synchronous child under
-`ship-pr.sh` (paired-PID barriers removed in breadcrumbs Stage 3).
+the Python ship driver (paired-PID barriers removed in breadcrumbs Stage 3).
 
 ## Default I/O contract
 
@@ -27,7 +27,7 @@ ITERATION=<N>
 ELAPSED=<seconds>
 ```
 
-When `ci-decide.sh` applies the `fix_attempts >= 10` cap, `BAIL_REASON` is the exact token `fix-attempts-exhausted` (terminal user-input bail via `ship-pr.sh` `needs_user_bail_reason`, not a stall).
+When `ci-decide.sh` applies the `fix_attempts >= 10` cap, `BAIL_REASON` is the exact token `fix-attempts-exhausted` (terminal user-input bail via the Python ship driver `needs_user_bail_reason`, not a stall).
 
 Default callers (`/implement` Step 10, Step 12a, and the four step-7 re-invocation branches in `skills/implement/references/conflict-resolution.md`) parse stdout. No `.done` sentinel is written in default mode.
 

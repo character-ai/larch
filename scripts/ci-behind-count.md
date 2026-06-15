@@ -1,6 +1,6 @@
 # scripts/ci-behind-count.sh — contract
 
-Counts how many commits `HEAD` is behind `${BASE_REMOTE}/${BASE_REF}` using `git rev-list "HEAD..$BASE_TARGET" --count`. Shared by `scripts/ci-status.sh` (with `--no-fetch` after its own fetch) and the CI-fix push path in `scripts/ship-pr.sh`.
+Counts how many commits `HEAD` is behind `${BASE_REMOTE}/${BASE_REF}` using `git rev-list "HEAD..$BASE_TARGET" --count`. Shared by `scripts/ci-status.sh` (with `--no-fetch` after its own fetch) and the CI-fix push path in the Python ship driver.
 
 ## Interface
 

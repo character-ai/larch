@@ -22,12 +22,12 @@ for needle in ['first-fixer-non-health', 'ci-fix-exhausted', 'autonomous main-ag
 for n in range(1,13):
     if f'  {n}.' not in ref:
         errors.append(f'ship-pr exit matrix missing autonomous sub-step {n}')
-if 'Apply the following exit matrix **only when `LARCH_SHIP_PR_IMPL=bash`**' not in ref:
-    errors.append('ship-pr exit matrix must retain bash-only gate')
+if 'Python driver non-zero routing' not in ref:
+    errors.append('ship-pr exit matrix must retain Python non-zero routing contract')
 if 'step-8-ship.sh' not in skill:
     errors.append('SKILL.md must invoke step-8-ship.sh')
-if 'Python driver selector' not in skill:
-    errors.append('SKILL.md must keep Python driver selector prose inline')
+if 'Python ship driver wrapper' not in skill:
+    errors.append('SKILL.md must keep Python ship wrapper prose inline')
 if errors:
     print('\n'.join(errors), file=sys.stderr)
     sys.exit(1)

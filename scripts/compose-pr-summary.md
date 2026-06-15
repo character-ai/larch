@@ -23,9 +23,9 @@ Output (stdout):
 
 The script exits non-zero (and emits nothing to stdout) when the
 plan-goals file is missing, empty, or lacks a Goal line, and when the
-first bullet cannot be composed. This allows `ship-pr.sh` to fail-open
+first bullet cannot be composed. This allows the Python ship driver to fail-open
 and fall back to `"- Implemented the requested changes."`.
 
-Primary caller: `scripts/ship-pr.sh` `run_pr_prep_phase`.
+Primary caller: the Python ship driver `run_pr_prep_phase`.
 
 Harness: `scripts/test-compose-pr-summary.sh`.

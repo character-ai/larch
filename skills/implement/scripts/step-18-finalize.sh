@@ -46,9 +46,7 @@ python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" token mark "Step 18 — done" || tru
 DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" timing mark "Step 18 — done" || true
 _restore_finalize=false
 if [ -f "$IMPLEMENT_TMPDIR/ship-pr-state.sh" ]; then
-  if [ "${LARCH_SHIP_PR_IMPL:-python}" = "bash" ]; then
-    _restore_finalize=true
-  elif [ ! -f "$IMPLEMENT_TMPDIR/finalize-state.sh" ]; then
+  if [ ! -f "$IMPLEMENT_TMPDIR/finalize-state.sh" ]; then
     _restore_finalize=true
   else
     _ship_stall=$(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" session read-key --file "$IMPLEMENT_TMPDIR/ship-pr-state.sh" --key STALL_TRACKING --default "false")

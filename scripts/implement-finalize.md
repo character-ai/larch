@@ -12,7 +12,7 @@ Exit code `0` is not a complete outcome signal. Consumers must parse `STATUS=` f
 
 ## State File
 
-The state file is plain `KEY=value` text written by `scripts/ship-pr.sh` before postmerge and restored by `python/cli.py session restore-finalize-state` immediately before teardown. It must live under `/tmp/`, `/private/tmp/`, `/var/folders/` (macOS), or `${XDG_CACHE_HOME:-$HOME/.cache}/larch/sessions/`. It is never sourced. `implement-finalize.sh` validates each non-comment, non-blank line against `^[A-Z_][A-Z0-9_]*=.*$` and reads values with `awk`, preserving shell metacharacters literally.
+The state file is plain `KEY=value` text written by the Python ship driver before postmerge and restored by `python/cli.py session restore-finalize-state` immediately before teardown. It must live under `/tmp/`, `/private/tmp/`, `/var/folders/` (macOS), or `${XDG_CACHE_HOME:-$HOME/.cache}/larch/sessions/`. It is never sourced. `implement-finalize.sh` validates each non-comment, non-blank line against `^[A-Z_][A-Z0-9_]*=.*$` and reads values with `awk`, preserving shell metacharacters literally.
 
 Required keys:
 
@@ -38,7 +38,7 @@ Required keys:
 
 `FORKED_TARGET` and `REPO_UNAVAILABLE` must be literal `true` or `false`. `BUMP_TYPE` must be `MAJOR`, `MINOR`, `PATCH`, or `NONE`. `BRANCH_NAME` must be non-empty and must not be `main` or `master` unless `FORKED_TARGET=true` (forked upstream-target flows). Phases that rebase or push also verify the current git branch still matches `BRANCH_NAME`. `PR_TITLE` must be present in the state file but may be empty. When `BUMP_TYPE` is not `NONE`, `NEW_VERSION` must match `X.Y.Z`. Phase 1 ship paths write placeholder bump keys (`BUMP_TYPE=NONE`, empty `NEW_VERSION`) because per-PR versioning no longer runs here.
 
-Phase 1 (#3364) does not resume legacy `$IMPLEMENT_TMPDIR/.postbump-phase` checkpoints (including `force-push-gate`). `ship-pr.sh` clears stale checkpoint files before postbump entry; `implement-finalize.sh postbump` clears any remaining checkpoint and always runs the full Step 8b rebase + force-push path. Corrupt, symlinked, or oversized checkpoint files still fail closed with `STATUS=postbump-state-corrupt`. Step 8b rebase conflicts do not write a checkpoint; they emit `STATUS=rebase-failed` and require stall/bail.
+Phase 1 (#3364) does not resume legacy `$IMPLEMENT_TMPDIR/.postbump-phase` checkpoints (including `force-push-gate`). the Python ship driver clears stale checkpoint files before postbump entry; `implement-finalize.sh postbump` clears any remaining checkpoint and always runs the full Step 8b rebase + force-push path. Corrupt, symlinked, or oversized checkpoint files still fail closed with `STATUS=postbump-state-corrupt`. Step 8b rebase conflicts do not write a checkpoint; they emit `STATUS=rebase-failed` and require stall/bail.
 
 ## Output Contract
 

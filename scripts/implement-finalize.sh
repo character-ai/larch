@@ -1008,9 +1008,9 @@ run_teardown() {
     fi
 
     # Flush any pending larch-log writes for the current run (best-effort).
-    # This handles stalled/failed runs where the ci-merge flush in ship-pr.sh
-    # never ran. Root-cause prevention lives in ship-pr.sh (ci-merge flush) and
-    # ship-pr.sh postmerge flush (correct run-id from state file).
+    # This handles stalled/failed runs where the ci-merge flush in the Python ship driver
+    # never ran. Root-cause prevention lives in the Python ship driver (ci-merge flush) and
+    # the Python ship driver postmerge flush (correct run-id from state file).
     local larch_flush_run_id manifest_path_teardown larch_recovery_ok post_merge_sentinel
     larch_flush_run_id=$(read_state RUN_ID)
     post_merge_sentinel="$IMPLEMENT_TMPDIR/post-merge-sentinel"
@@ -1052,9 +1052,9 @@ run_teardown() {
         fi
         # Finalize manifest only on stall paths: record stalled_at_step for operator
         # recovery. Normal teardown does not write post-flush manifest fields such as
-        # status=done or pr_number (those are merge-time fields written from ship-pr.sh
+        # status=done or pr_number (those are merge-time fields written from the Python ship driver
         # postmerge when applicable, or recovery-only status=partial when manifest.json
-        # was lost mid-run — see scripts/implement-finalize.md / scripts/ship-pr.md).
+        # was lost mid-run — see scripts/implement-finalize.md / the Python ship driver docs).
         if [ "$larch_recovery_ok" = "false" ]; then
             :
         elif [ "$stall_tracking" = "true" ]; then

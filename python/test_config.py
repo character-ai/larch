@@ -28,7 +28,6 @@ def test_documented_constants_exist() -> None:
         "EXIT_TIMEOUT",
         "SUBPROCESS_DEFAULT_TIMEOUT_SEC",
         "TRANSIENT_RETRY_MAX_ATTEMPTS",
-        "ENV_LARCH_SHIP_PR_IMPL",
         "PATH_MANIFEST_TEMPLATE",
     )
     for name in names:

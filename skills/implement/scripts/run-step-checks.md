@@ -1,6 +1,6 @@
 # run-step-checks.sh
 
-Captured relevant-checks wrapper for Step 3, Step 5 self-review/MAV, and Step 6 call sites. Rehydrates telemetry keys before invoking run-relevant-checks-captured.sh.
+Captured relevant-checks wrapper for Step 3, Step 5 self-review/MAV, and Step 6 call sites. Rehydrates telemetry keys before invoking python/cli.py checks run-relevant.
 
 ## Caller
 

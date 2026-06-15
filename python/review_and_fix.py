@@ -20,6 +20,7 @@ from pathlib import Path
 from collections.abc import Callable, Generator
 
 import agents
+import checks
 import logging_util
 import proc
 import redact
@@ -1073,48 +1074,76 @@ def _stderr_sidecar(path: Path) -> Generator[None, None, None]:
             sys.stderr = original
 
 
-def _parse_checks_capture(text: str) -> dict[str, str]:
-    values: dict[str, str] = {}
-    for line in text.splitlines():
-        for key in ("STATUS", "FAILURE_REASON", "REDACTED_LOG_FILE", "RELEVANT_CHECKS_OK", "RELEVANT_CHECKS_SKIPPED"):
-            if line.startswith(f"{key}="):
-                values[key] = line.split("=", 1)[1]
-    return values
+
+def _step5_repo_root() -> str:
+    raw = os.environ.get("CLAUDE_PROJECT_DIR", "").strip()
+    if raw:
+        return raw
+    result = _run(["git", "rev-parse", "--show-toplevel"])
+    return result.stdout.strip() if result.returncode == 0 else ""
 
 
-def _parse_lint_capture(text: str) -> dict[str, str]:
-    values: dict[str, str] = {}
-    for line in text.splitlines():
-        for key in ("LINT_FIX_STATUS", "STDERR_TAIL_PATH", "CODER_LOG_FILE"):
-            if line.startswith(f"{key}="):
-                values[key] = line.split("=", 1)[1]
+def _checks_result_capture(result: checks.ChecksResult) -> dict[str, str]:
+    if result.skipped:
+        return {"RELEVANT_CHECKS_SKIPPED": "true", "SITE": result.site}
+    if result.ok:
+        values = {
+            "RELEVANT_CHECKS_OK": "true",
+            "SITE": result.site,
+            "COVERAGE": result.coverage,
+            "PHASE": result.phase,
+        }
+        if result.warn:
+            values["WARN"] = result.warn
+        return values
+    values = {
+        "STATUS": "fail",
+        "FAILURE_REASON": result.failure_reason or "checks-failed",
+    }
+    if result.redacted_log_path:
+        values["REDACTED_LOG_FILE"] = result.redacted_log_path
     return values
 
 
 def _run_relevant_checks_captured(implement_tmpdir: Path) -> dict[str, str]:
-    checks_sh = _plugin_root() / "scripts" / "run-relevant-checks-captured.sh"
-    cap = implement_tmpdir / f".step5-checks-capture.{os.getpid()}.{time.time_ns()}.log"
-    result = _run([str(checks_sh), "--tmpdir", str(implement_tmpdir), "--site", "step5-review-fixes"])
-    _write_text(cap, result.stdout + result.stderr)
-    parsed = _parse_checks_capture(_read_text(cap))
-    with contextlib.suppress(FileNotFoundError):
-        cap.unlink()
-    if not parsed.get("STATUS") and not parsed.get("RELEVANT_CHECKS_OK") and not parsed.get("RELEVANT_CHECKS_SKIPPED"):
-        parsed["STATUS"] = "fail"
-        parsed["FAILURE_REASON"] = "malformed-capture"
-    return parsed
+    result = checks.run_relevant_checks(
+        proc,
+        site="step5-review-fixes",
+        tmpdir=str(implement_tmpdir),
+        repo_root=_step5_repo_root(),
+    )
+    return _checks_result_capture(result)
+
+
+def _presence_flag(name: str, implement_tmpdir: Path) -> bool:
+    value = os.environ.get(name, "")
+    if value in {"true", "false"}:
+        return value == "true"
+    session_env = implement_tmpdir / "session-env.sh"
+    if session_env.is_file():
+        session_value = _session_get(session_env, name, "")
+        if session_value in {"true", "false"}:
+            return session_value == "true"
+    return False
 
 
 def _run_lint_fix_loop(implement_tmpdir: Path, checks_log: str) -> dict[str, str]:
-    lint_sh = _plugin_root() / "scripts" / "lint-fix-loop.sh"
-    cap = implement_tmpdir / f".step5-lint-capture.{os.getpid()}.{time.time_ns()}.log"
-    result = _run([str(lint_sh), "--tmpdir", str(implement_tmpdir), "--site", "step5", "--checks-log", checks_log])
-    _write_text(cap, result.stdout + result.stderr)
-    parsed = _parse_lint_capture(_read_text(cap))
-    with contextlib.suppress(FileNotFoundError):
-        cap.unlink()
-    return parsed
-
+    outcome = checks.run_lint_fix(
+        proc,
+        site="step5",
+        checks_log=checks_log,
+        repo_root=_step5_repo_root(),
+        codex_present=_presence_flag("CODEX_PRESENT", implement_tmpdir),
+        cursor_present=_presence_flag("CURSOR_PRESENT", implement_tmpdir),
+        run_parent=str(implement_tmpdir / "lint-fix-loop"),
+        allowed_tmpdir=str(implement_tmpdir),
+    )
+    values = {"LINT_FIX_STATUS": outcome.status}
+    if outcome.stderr_tail_path:
+        values["STDERR_TAIL_PATH"] = outcome.stderr_tail_path
+    elif outcome.ledger_failure_detail_log:
+        values["STDERR_TAIL_PATH"] = outcome.ledger_failure_detail_log
+    return values
 
 def _step5_post_round_gates(
     result: RoundResult,

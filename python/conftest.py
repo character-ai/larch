@@ -13,7 +13,7 @@ import logging_util
 def _quiet_test_isolation(monkeypatch: pytest.MonkeyPatch) -> None:
     """Disable lib-quiet routing and reset self-initialized state for every test.
 
-    Without this, tests that run inside run-relevant-checks-captured.sh inherit
+    Without this, tests that run inside python/cli.py checks run-relevant inherit
     LARCH_QUIET_ACTIVE=1 + LARCH_QUIET_PID=<bash-pid> from the parent script,
     making _quiet_active() return True in all tests and causing BreadcrumbWriter
     to route to fd4 rather than sys.stderr (capsys cannot capture fd4).

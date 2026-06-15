@@ -1,6 +1,6 @@
 # scripts/rebase-push.sh — contract
 
-`scripts/rebase-push.sh` is the canonical "rebase onto latest base" primitive used at every freshness checkpoint in `/implement` (Steps 1.m, 1.r, 4.r, 7.r, 7a.r, 8b postbump via `implement-finalize.sh`, CI-fix `run_rebase_rebump` in `ship-pr.sh`, and the conflict-resolution Phase 4 path) and at `/design` Step 1's pre-implementation rebase. By default it fetches `origin/main`, runs `git rebase origin/main`, and (unless `--no-push`) force-pushes with lease. Callers may override the base with `--base-remote NAME --base-ref BRANCH`; `/implement --forked` uses `upstream/main`.
+`scripts/rebase-push.sh` is the canonical "rebase onto latest base" primitive used at every freshness checkpoint in `/implement` (Steps 1.m, 1.r, 4.r, 7.r, 7a.r, 8b postbump via `implement-finalize.sh`, CI-fix `run_rebase_rebump` in the Python ship driver, and the conflict-resolution Phase 4 path) and at `/design` Step 1's pre-implementation rebase. By default it fetches `origin/main`, runs `git rebase origin/main`, and (unless `--no-push`) force-pushes with lease. Callers may override the base with `--base-remote NAME --base-ref BRANCH`; `/implement --forked` uses `upstream/main`.
 
 Flags:
 - `--continue` — continue an in-progress rebase (caller must have resolved conflicts and staged); skips fetch.

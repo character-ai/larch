@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run-step-checks.sh — rehydrate /implement telemetry env and run captured relevant checks.
+# run-step-checks.sh — rehydrate /implement telemetry env and run Python relevant checks.
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -52,4 +52,4 @@ rehydrate_larch_triplet() {
 
 rehydrate_plugin_root
 rehydrate_larch_triplet
-"$CLAUDE_PLUGIN_ROOT/scripts/run-relevant-checks-captured.sh" --site "$SITE" --tmpdir "$IMPLEMENT_TMPDIR"
+python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" checks run-relevant --site "$SITE" --tmpdir "$IMPLEMENT_TMPDIR"

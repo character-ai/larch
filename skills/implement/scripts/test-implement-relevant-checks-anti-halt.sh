@@ -9,7 +9,7 @@
 # helper or validate runtime behavior.
 #
 # Extraction detects the four helper invocation sites in SKILL.md today.
-# Steps 10 and 12c moved into scripts/ship-pr.sh.
+# Steps 10 and 12c moved into the Python ship driver.
 #   (1) Step 3 first-pass checks.
 #   (2) Step 5 self-review mode checks.
 #   (3) Step 5 accepted-fix checks.

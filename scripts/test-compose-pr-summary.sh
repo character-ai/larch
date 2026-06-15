@@ -81,7 +81,7 @@ cat > "$plan_goals" <<'EOF'
 Add compose-pr-summary.sh to replace placeholder text during PR prep.
 
 ## Implementation Plan
-Create scripts/compose-pr-summary.sh and wire into ship-pr.sh.
+Create scripts/compose-pr-summary.sh and wire into the Python ship driver.
 
 ## Test plan
 Run scripts/test-compose-pr-summary.sh.

@@ -2986,7 +2986,6 @@ def _review_parser() -> argparse.ArgumentParser:
     parser.add_argument("--token-budget-cap", default="")
     parser.add_argument("--risk", default="")
     parser.add_argument("--stderr-sink", default="")
-    parser.add_argument("--codex-add-dir", default="")
     return parser
 
 
@@ -3018,9 +3017,6 @@ def _review_validate_args(args: argparse.Namespace) -> int:
         return 2
     if args.token_budget_cap and not _is_positive_int(args.token_budget_cap):
         _err("agent launch-review: --token-budget-cap requires a positive integer")
-        return 2
-    if args.codex_add_dir and args.tool != "codex":
-        _err("agent launch-review: --codex-add-dir is only valid with --tool codex")
         return 2
     return 0
 
@@ -3580,28 +3576,6 @@ def _review_emit_launcher_result(output: Path, tool: str, launcher_exit: int) ->
     _emit_kv("OUTPUT", str(output))
 
 
-def _review_validate_codex_add_dir(output: Path, add_dir: str) -> tuple[int, Path | None]:
-    try:
-        output_dir = output.parent.resolve(strict=True)
-    except FileNotFoundError:
-        _err(f"agent launch-review: output parent directory does not exist: {output.parent}")
-        return 2, None
-    if not add_dir:
-        return 0, output_dir
-    if _CTRL_RE.search(add_dir) or ".." in Path(add_dir).parts:
-        _err(f"agent launch-review: --codex-add-dir is not a directory: {add_dir}")
-        return 2, None
-    path = Path(add_dir)
-    if not path.is_dir() or path.is_symlink():
-        _err(f"agent launch-review: --codex-add-dir is not a directory: {add_dir}")
-        return 2, None
-    resolved = path.resolve(strict=True)
-    if not _under(resolved, output_dir):
-        _err(f"agent launch-review: --codex-add-dir outside session root: {add_dir}")
-        return 2, None
-    return 0, resolved
-
-
 def _review_write_preflight_bundle(
     output: Path,
     args: argparse.Namespace,
@@ -3645,9 +3619,11 @@ def _review_launch_codex(args: argparse.Namespace, prompt: str) -> int:
     if "'''" in _CODEX_REVIEW_STRICT_PREAMBLE:
         _err("agent launch-review: hardening preamble contains TOML triple-single-quote delimiter")
         return 2
-    add_rc, sandbox_dir = _review_validate_codex_add_dir(output, args.codex_add_dir)
-    if add_rc != 0 or sandbox_dir is None:
-        return add_rc
+    try:
+        sandbox_dir = output.parent.resolve(strict=True)
+    except FileNotFoundError:
+        _err(f"agent launch-review: output parent directory does not exist: {output.parent}")
+        return 2
     start = time.time()
     prompt_sidecar = _review_write_codex_prompt_sidecar(output, prompt, args)
     with tempfile.TemporaryDirectory(prefix="larch-codex-review-home-", dir=str(_probe_tmpdir())) as home:
@@ -3963,8 +3939,6 @@ def launch_review_main(argv: list[str] | None = None) -> int:
     validation_rc = _review_validate_args(args)
     if validation_rc != 0:
         return validation_rc
-    if args.tool == "cursor" and args.codex_add_dir:
-        return 2
     if not args.timing_task_kind or args.timing_task_kind.startswith("--"):
         args.timing_task_kind = f"{args.tool}-review"
     _review_apply_session_token_env()

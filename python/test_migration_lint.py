@@ -303,32 +303,44 @@ def test_cross_directory_bare_basename_not_flagged(tmp_path: Path) -> None:
     assert rc == 0
 
 
-def test_ship_pr_record_failure_label_not_live_ref(tmp_path: Path) -> None:
+def test_ship_pr_record_failure_label_is_stale_ref(tmp_path: Path) -> None:
     repo = _make_git_repo(tmp_path)
     retired = "scripts/ci-wait.sh"
     _ = _add_file(
         repo,
-        "scripts/ship-pr.sh",
-        'record_failure checks "ci-wait.sh exited unexpectedly" "$rc"\n',
+        "scripts/ship-driver.txt",
+        'record_failure checks "scripts/ci-wait.sh exited unexpectedly" "$rc"\n',
     )
     manifest = _make_manifest(repo, [(retired, "#test")])
     rc = migration_lint.main([
         "--manifest", str(manifest),
         "--root", str(repo),
     ])
-    assert rc == 0
+    assert rc == 1
 
 
-def test_ship_pr_comment_not_deletion_blocker(tmp_path: Path) -> None:
+def test_ship_pr_comment_is_stale_ref(tmp_path: Path) -> None:
     repo = _make_git_repo(tmp_path)
     retired = "scripts/git-current-branch.sh"
-    _ = _add_file(repo, "scripts/ship-pr.sh", "# prose mentions scripts/git-current-branch.sh only\n")
+    _ = _add_file(repo, "scripts/ship-driver.txt", "# prose mentions scripts/git-current-branch.sh only\n")
     manifest = _make_manifest(repo, [(retired, "#test")])
     rc = migration_lint.main([
         "--manifest", str(manifest),
         "--root", str(repo),
     ])
-    assert rc == 0
+    assert rc == 1
+
+
+def test_ship_pr_sh_reference_is_stale_ref(tmp_path: Path) -> None:
+    repo = _make_git_repo(tmp_path)
+    retired = "scripts/old-ship-pr.sh"
+    _ = _add_file(repo, "docs/consumer.md", f"Invoke {retired} for shipping.\n")
+    manifest = _make_manifest(repo, [(retired, "#test")])
+    rc = migration_lint.main([
+        "--manifest", str(manifest),
+        "--root", str(repo),
+    ])
+    assert rc == 1
 
 
 def test_larch_logs_excluded(tmp_path: Path) -> None:

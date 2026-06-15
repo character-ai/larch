@@ -10,6 +10,7 @@ from unittest import mock
 
 import logging_util
 import pytest
+import checks
 import review_and_fix
 from _pytest.mark.structures import Mark, MarkDecorator
 
@@ -314,9 +315,21 @@ def test_write_rejected_redacts_tmpdir_and_secrets(tmp_path, monkeypatch):
 
 
 @MARK_PARSERS
-def test_step5_parse_checks_capture_requires_status_or_ok_fields():
-    parsed = review_and_fix._parse_checks_capture("RELEVANT_CHECKS_OK=true\n")
+def test_step5_checks_result_capture_maps_ok_fields():
+    parsed = review_and_fix._checks_result_capture(
+        review_and_fix.checks.ChecksResult(
+            ok=True,
+            exit_code=0,
+            site="step5-review-fixes",
+            redacted_log_path=None,
+            phase="unknown",
+            coverage="full",
+            skipped=False,
+            warn=None,
+        )
+    )
     assert parsed["RELEVANT_CHECKS_OK"] == "true"
+    assert parsed["COVERAGE"] == "full"
 
 
 @MARK_CONVERGENCE
@@ -1203,3 +1216,82 @@ def test_run_coder_cursor_normalizes_api_key_before_launch(tmp_path, monkeypatch
     ))
     assert review_and_fix._run_coder_cursor(tmp_path, "prompt", tmp_path / "tool.log") is True
     assert seen_env == ["key-with-padding"]
+
+
+@MARK_STEP5
+def test_step5_checks_wiring_passes_repo_site_and_presence(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    impl = _tmp_impl(tmp_path)
+    (impl / "session-env.sh").write_text(
+        "RUN_ID=run-1\nCODEX_PRESENT=true\nCURSOR_PRESENT=false\n",
+        encoding="utf-8",
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(repo))
+    monkeypatch.delenv("CODEX_PRESENT", raising=False)
+    monkeypatch.delenv("CURSOR_PRESENT", raising=False)
+    captured_checks: dict[str, object] = {}
+    captured_fix: dict[str, object] = {}
+
+    def fake_run_relevant_checks(
+        _runner: object,
+        *,
+        site: str,
+        tmpdir: str,
+        repo_root: str,
+    ) -> checks.ChecksResult:
+        captured_checks.update(site=site, tmpdir=tmpdir, repo_root=repo_root)
+        return checks.ChecksResult(
+            ok=True,
+            exit_code=0,
+            site=site,
+            redacted_log_path=None,
+            phase="pre-commit",
+            coverage="changed-file-only",
+            skipped=False,
+            warn=None,
+        )
+
+    def fake_run_lint_fix(
+        _runner: object,
+        *,
+        site: str,
+        checks_log: str,
+        repo_root: str,
+        codex_present: bool,
+        cursor_present: bool,
+        run_parent: str,
+        allowed_tmpdir: str | None,
+    ) -> checks.FixOutcome:
+        captured_fix.update(
+            site=site,
+            checks_log=checks_log,
+            repo_root=repo_root,
+            codex_present=codex_present,
+            cursor_present=cursor_present,
+            run_parent=run_parent,
+            allowed_tmpdir=allowed_tmpdir,
+        )
+        return checks.FixOutcome(
+            status="no-changes",
+            delta_paths=(),
+            failure_reason=None,
+            commit_sha=None,
+            head_changed=False,
+            coder_tool=None,
+        )
+
+    monkeypatch.setattr(checks, "run_relevant_checks", fake_run_relevant_checks)
+    monkeypatch.setattr(checks, "run_lint_fix", fake_run_lint_fix)
+    review_and_fix._run_relevant_checks_captured(impl)
+    review_and_fix._run_lint_fix_loop(impl, str(impl / "checks.log"))
+    assert captured_checks == {
+        "site": "step5-review-fixes",
+        "tmpdir": str(impl),
+        "repo_root": str(repo),
+    }
+    assert captured_fix["site"] == "step5"
+    assert captured_fix["repo_root"] == str(repo)
+    assert captured_fix["codex_present"] is True
+    assert captured_fix["cursor_present"] is False
+    assert captured_fix["allowed_tmpdir"] == str(impl)
