@@ -767,5 +767,52 @@ echo "$out" | grep -Fq 'REBASE_OUTCOME=conflict' || fail "case23 outcome"
 echo "$out" | grep -Fxq 'CONFLICT_FILES=' || fail "case23 empty files"
 [ ! -f "$d/continue.called" ] || fail "case23 continue must not run"
 
+# --- Case 24: empty continue after larch-log resolve uses skip (real git) ---
+repo="$TMPROOT/repo24"
+path='larch-logs/implement/run-1/manifest.json'
+mkdir -p "$repo"
+git -C "$repo" init -q
+git -C "$repo" config user.email t@e
+git -C "$repo" config user.name T
+printf 'base\n' >"$repo/README.md"
+git -C "$repo" add README.md
+git -C "$repo" commit -q -m init
+git -C "$repo" checkout -q -b feature
+mkdir -p "$repo/$(dirname "$path")"
+printf 'feature manifest\n' >"$repo/$path"
+git -C "$repo" add "$path"
+git -C "$repo" commit -q -m 'feature log'
+git -C "$repo" checkout -q -B main
+mkdir -p "$repo/$(dirname "$path")"
+printf 'main manifest\n' >"$repo/$path"
+git -C "$repo" add "$path"
+git -C "$repo" commit -q -m 'main log'
+bare="$TMPROOT/repo24.git"
+git init --bare "$bare" -q
+git -C "$repo" remote add origin "$bare"
+git -C "$repo" push -q origin main
+git -C "$repo" checkout -q feature
+d="$TMPROOT/c24"
+mkdir -p "$d"
+cp "$REPO_ROOT/scripts/rebase-checkpoint-probe.sh" "$d/"
+cp "$REPO_ROOT/scripts/rebase-push.sh" "$d/"
+cp "$REPO_ROOT/scripts/lib-quiet.sh" "$d/"
+cp "$REPO_ROOT/scripts/lib-net.sh" "$d/"
+cp "$REPO_ROOT/scripts/lib-phantom-probe.sh" "$d/"
+cp "$REPO_ROOT/scripts/git-rebase-skip.sh" "$d/"
+write_phantom_clean_stubs "$d"
+chmod +x "$d"/*.sh
+set +e
+out=$(cd "$repo" && IMPLEMENT_TMPDIR="$IMP_BASE" "$d/rebase-checkpoint-probe.sh" x y --base-remote origin --base-ref main 2>&1)
+rc=$?
+set -e
+[ "$rc" = "0" ] || fail "case24 rc=$rc out=$out"
+echo "$out" | grep -Fq 'REBASE_OUTCOME=ok' || fail "case24 outcome"
+echo "$out" | grep -Fq 'ROUTE=continue' || fail "case24 route"
+remaining=$(git -C "$repo" diff --name-only --diff-filter=U)
+[ -z "$remaining" ] || fail "case24 unmerged=$remaining"
+git_dir=$(git -C "$repo" rev-parse --git-dir 2>/dev/null)
+[ ! -d "$repo/$git_dir/rebase-merge" ] && [ ! -d "$repo/$git_dir/rebase-apply" ] || fail "case24 rebase still active"
+
 echo "PASS: test-rebase-checkpoint-probe.sh"
 exit 0
