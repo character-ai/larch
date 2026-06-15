@@ -601,6 +601,31 @@ def test_record_round_timing_writes_ledger_row(tmp_path, monkeypatch):
     assert (impl / "timing-ledger.tsv").is_file()
 
 
+def test_write_self_review_tally_emits_step5_artifacts(tmp_path, monkeypatch):
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = tmp_path / "impl"
+    impl.mkdir()
+    rc = review_and_fix.write_self_review_tally([
+        "--implement-tmpdir", str(impl),
+        "--run-id", "run-sr",
+        "--accepted", "0",
+        "--rejected", "0",
+    ])
+    assert rc == 0
+    run_dir = impl / "larch-logs" / "implement" / "run-sr"
+    tally_path = run_dir / "code-review-tally.json"
+    assert tally_path.is_file()
+    tally = json.loads(tally_path.read_text(encoding="utf-8"))
+    assert tally["phase"] == "code-review"
+    assert tally["mode"] == "self-review"
+    assert tally["rounds"] == 1
+    assert tally["accepted_count"] == 0
+    assert tally["rejected_count"] == 0
+    findings_path = run_dir / "review-findings-full.jsonl"
+    assert findings_path.is_file()
+    assert findings_path.read_text(encoding="utf-8") == ""
+
+
 @pytest.mark.commit_fixes
 def test_commit_fixes_emits_committed_kv(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
