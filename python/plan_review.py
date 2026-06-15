@@ -986,6 +986,10 @@ def _decode_asset(data: str) -> bytes:
     return gzip.decompress(base64.b64decode(data.encode("ascii")))
 
 
+def legacy_asset_bytes(*parts: str) -> bytes:
+    return _decode_asset(_LEGACY_ASSETS[_p(*parts)])
+
+
 def _symlink_or_copy(src: Path, dst: Path) -> None:
     if dst.exists() or dst.is_symlink():
         return
