@@ -29,12 +29,27 @@ def _p(*parts: str) -> str:
     return "/".join(parts)
 
 
+_DESIGN_SCRIPT_PREFIX = ("skills", "design", "scripts")
+_ROOT_SCRIPT_PREFIX = ("scripts",)
+_DESIGN_EMIT_PLAN = (*_DESIGN_SCRIPT_PREFIX, "emit-plan.sh")
+_DESIGN_FINALIZE_PLAN = (*_DESIGN_SCRIPT_PREFIX, "finalize-plan.sh")
+_DESIGN_PREVIEW = (*_DESIGN_SCRIPT_PREFIX, "emit-design-plan-preview.sh")
+_DESIGN_RETALLY_ENV = (*_DESIGN_SCRIPT_PREFIX, "persist-retally-step3-env.sh")
+_DESIGN_TALLY_REVIEW = (*_DESIGN_SCRIPT_PREFIX, "tally-plan-review.sh")
+_DESIGN_PANEL_DISPATCH = (*_DESIGN_SCRIPT_PREFIX, "dispatch-plan-review-panel.sh")
+_DESIGN_RUN_REVIEW = (*_DESIGN_SCRIPT_PREFIX, "run-step3-review.sh")
+_DESIGN_REVIEW_LOOP = (*_DESIGN_SCRIPT_PREFIX, "plan-review-loop.sh")
+_DESIGN_DRIFT_BASELINE = (*_DESIGN_SCRIPT_PREFIX, "lib-drift-baseline.sh")
+_ROOT_VOTER_DISPATCH = (*_ROOT_SCRIPT_PREFIX, "dispatch-plan-voters.sh")
+_ROOT_ROUND_ARTIFACTS = (*_ROOT_SCRIPT_PREFIX, "lib-design-round-artifacts.sh")
+
+
 # Intentional C3a1 compatibility shim: gzip-embedded retired bash bodies keyed by
-# repo-relative paths listed in python/migrated-scripts.tsv. Regenerate blobs from
+# generated legacy-path constants. Regenerate blobs from
 # reviewable sources before editing behavior; native in-process ports are follow-up
 # scope (docs/python-migration.md §C3a1 plan-review CLI façade).
 _LEGACY_ASSETS: dict[str, str] = {
-    _p("skills", "design", "scripts", "emit-plan.sh"): (
+    _p(*_DESIGN_EMIT_PLAN): (
         "H4sIALbdLWoC/7VUXW/aMBR996+4DawplQy0b6NlVTVgitQiVOhUqa0iN3HAIjFZ7EBV4L/PTkK+1mrrwyweyPW9"
         "55x7fO3GUScWUeeF8Q7la3ghYoEa8JP4zCWSAuEu0IBJkAsKHZcKNucQ+oSDyzwPC/ZGQTCXOiRqIySoBEzjFYQs"
         "pB5hPkLT73fWZGYPrLt+88RxwWieuCziJKDqb9doGXB8DOHGBTxpKWKxoL7vLKizBLGKI4f2hROxUIqOz17wr5hR"
@@ -48,7 +63,7 @@ _LEGACY_ASSETS: dict[str, str] = {
         "oZKwrc3Gvq0S2g/J0jb7lPA4zF/BKADsqTKVZKhnSkYkhCwHhg/WDCVn5oH5RTxxs9bit0NhsM7+6dGu8hspJk7R"
         "0Iedr5b5XoFQ5UO/AVG3rUk6BwAA"
     ),
-    _p("skills", "design", "scripts", "finalize-plan.sh"): (
+    _p(*_DESIGN_FINALIZE_PLAN): (
         "H4sIALbdLWoC/5VUbU/iQBD+vr9irETlkoL6EeQuRMWQqCGCX86YZmmndI522+tuwdf/frstFFvfjg0J29nMPC8z"
         "u7s77Uym7SmJNooFTLkM2C4MSPAQInQDLsjVW54q8rmrYMFD8riiWIAfp9D2UNJMQBJyASkuCJctxiQqsDGLIaEE"
         "fU4hY+PTm+Fo4pwNb3qNA9cDq3HgUSp4hHp7aDUt2NuDZOmBPWpqAjLAMHQDdOcg4yx1sSfdlBIl2yFN7b8ZoWpp"
@@ -61,7 +76,7 @@ _LEGACY_ASSETS: dict[str, str] = {
         "aDfeYhbel6KNqSapptWsDvxcHxZCwjLLL7N0B+zLz2t86RmJvLP2+hX/Jqt/MxkO+qcTjfZe0BunzVa7XUyysXw9"
         "dsbufDzVgwKPfN8275U0n6WBpUQJ72wsx3dLnevZ2F5n9cJ8pvFL8HjO/gFurLoCTQcAAA=="
     ),
-    _p("skills", "design", "scripts", "emit-design-plan-preview.sh"): (
+    _p(*_DESIGN_PREVIEW): (
         "H4sIALbdLWoC/81Y3VLbRhS+11McZBL/DLKNSTsTU9LJAE2YkoTB9CIDVJGltbUTeaVoVzgEmOlD9KpXfbY8Sc9Z"
         "CVsrgwMJk8bJhdg9e36/87NbW+lkMu0MuegwcQZDT4ZWDXYnXMFAsQR6Q+CTJGITJpSneCycJPIEJCk742y6lhNt"
         "AC06vicCHniKzbfjFLm9oKVtGHHhRcZxaMjQS1kAkZeOWb4ls8nES88hisfcb7ZhwBjI9zyKZCdgko9FZ/D73v5+"
@@ -111,7 +126,7 @@ _LEGACY_ASSETS: dict[str, str] = {
         "5tfc7gZ7FOoHfWiHqFGERxae8h+XteHqDPeIU+nOuqaqvMks9+biwqo6svUXwP++Ub8N6/51u2/QyzW1L2m9Gdn/"
         "APYTCIgJEQAA"
     ),
-    _p("skills", "design", "scripts", "persist-retally-step3-env.sh"): (
+    _p(*_DESIGN_RETALLY_ENV): (
         "H4sIALbdLWoC/+Va627bOBb+r6dgFU8jpSM5af/sOnWzHsdtDaS2ETsz6CZZQZHoWGOZ0oiy02wSYB9in3CfZA9J"
         "Xaib6wbBAIsVisIiz43n8vGQyt6r9ppG7RuPtDHZoBubLpQ9FOKIejQ2Ihzbvn9v0BiH7wwgMOkC/edf/0YRnkcY"
         "fk9hAr2DV7r2YwQEFNnzGEfoi+2R3i0mMcwZXIipKBTHyMDrAIVeiOe25yvKtH8+nMys0+F5V21pjovgf9eLiL3C"
@@ -200,7 +215,7 @@ _LEGACY_ASSETS: dict[str, str] = {
         "yMvMKETh+wt+v9pi315/1arW9L+gZX5XL7IKChUuUFPYTKPKe86jPmTcwRcScNXHf+PwktbJ2rID0zicF9fdb8Em"
         "xnusUN5nW890pcq9rhepxYtKl4tGqRX/9bY1iy7eLhkZRn7dJNZvhxfll6xCkN2IfwPJVIlikQ8AAA=="
     ),
-    _p("skills", "design", "scripts", "tally-plan-review.sh"): (
+    _p(*_DESIGN_TALLY_REVIEW): (
         "H4sIALbdLWoC/81c7XrbNrL+z6tAGGUtyaFlyb8qR9l1HSX1rmv5WHK2fRyHDy3CNtcUqfLDTtb2Xsj+2ms7V3Jm"
         "AH4AIEhJSXvOUVtLAoHBzGAw884A6ssXvTSOelde0KPBPbly4lvjJZk5vv+V9FwaezcBWfpOYEX03qMP5D5MaEyc"
         "wCURDVwaEd7H8sO54xMnSrxrZ57EO4YR04RYNA3J0lvSa8fzDWN6eHZ0OrPfHZ2NWu25S8xW2/WiwFlQ+Lhrdkzy"
@@ -279,7 +294,7 @@ _LEGACY_ASSETS: dict[str, str] = {
         "s3yG1zq73H2tMzporSp+VyVbleB1ncVkT7RTSVT1a54N10/JVqdmsbfkVAdUhO7TqP4/G5rPBg2joQK0svoT3hnr"
         "1nj+Bx09tMWvTgAA"
     ),
-    _p("skills", "design", "scripts", "dispatch-plan-review-panel.sh"): (
+    _p(*_DESIGN_PANEL_DISPATCH): (
         "H4sIALbdLWoC/+08f3PbOHb/81NgGWUtJqZke7c7d4rlrWIrWc06tivJt7eTpDxagmyuJZJLUnZcRzP9EP2E/SR9"
         "DwBJAAQlOUmn7Uw9excTeHh4eHi/AfjZd+1lmrSvgrBNwzty5ac31jMyDdLYzyY3bjz3QzehdwG9d2M/pPNWekP+"
         "89//gwxpOKUJeVmAkvaUpsF1SKQhpJlmfhZMEOwh9BfwWzqPstRpWVZKM+LSZUTiIKYzP5hb1uh4OLgYeyeDYddu"
@@ -366,7 +381,7 @@ _LEGACY_ASSETS: dict[str, str] = {
         "URgI26q9E6k2lICGFNV8urFVvrpVrroxT12bo26Vn26Zm9bnm9tkrGvy0S8xAU8VP0xw95ls8FT3vwAWpATbl1QA"
         "AA=="
     ),
-    _p("skills", "design", "scripts", "run-step3-review.sh"): (
+    _p(*_DESIGN_RUN_REVIEW): (
         "H4sIALbdLWoC/+08XXfbuHLv/BUI472SnKU/ktuH2lFudW3F0bm27EpytttsykNTkMWaIll+2PHGvqf/oC996lNf"
         "+7f2l3QGAEmAAGU5u3vOPaf1Q3YNYAaD+Z4B6Jcvdoss3b0Kol0a3ZIrL1taL0laRE6W0+SNk9LbgN7tZEvikN05"
         "zYLriExhhrwhSehFYp4kSy+jZJ4GtzTdAQSOk/AZJ47C+wOS0mhOUw7ie9E8mHs5JWINCQHsUECT+C7KyA7fnUZ5"
@@ -445,7 +460,7 @@ _LEGACY_ASSETS: dict[str, str] = {
         "5jTyKfGg2JGQlsd8tIx/CKAv/hCAotHf9CGa9Cm2+jHaJh+h/9/4AB0XPx3E2j9TNz61EZFM+cM8otO45tv156IS"
         "obmIyo+oa/LrB6amzyExiv8vmfqh7WpOAAA="
     ),
-    _p("skills", "design", "scripts", "plan-review-loop.sh"): (
+    _p(*_DESIGN_REVIEW_LOOP): (
         "H4sIALbdLWoC/+193XrbRpLoPZ+igyghIYv688zsLh06q9h0ohNb8kpydmZlBwORoMQRSTAAKNsja7+9Og9wvr06"
         "V+fZ5klOVfUP+g8gKNuZmXPGX76IALqru6urq6urqqu+/GJnmWc7F5P5TjK/YRdxftX6ki2m8bybJTeT5G13mqaL"
         "7fyK/eW//pudTuaX06S7iPOc7YySfHI518uyUTa5SbJtgNDtZulyPurOlzM2yVnM8iIukmkCFSfzIrlMMpYvF4vp"
@@ -825,7 +840,7 @@ _LEGACY_ASSETS: dict[str, str] = {
         "Ja6cFaqF98xnUfz580eysIF9C/8nRqFF6Mbe2PFjWMmS/wR7D/YucjOPpYDg92BZ0mL+djfKooGTIMHP9WucgC8t"
         "yoQOO2V0kDJ41hZr/wuA6tNDEXwAAA=="
     ),
-    _p("skills", "design", "scripts", "lib-drift-baseline.sh"): (
+    _p(*_DESIGN_DRIFT_BASELINE): (
         "H4sIALbdLWoC/71UUW/aMBB+z6+4BtrCQ5LRvlHRiQ7QkKJuKpX20CLLJJfGwjGZndB2lP8+OzQhDNC0PsxPsXPf"
         "fd+dv3PjxMuV9GZMeCiWMKMqthowianEEELJoszRZ8iZQNcEPEuWoYRoIcELUbEnASmnwlHsF0KMPEWpXMtiETw8"
         "gCPAbq78/t2Xr8Qf35DB3Xh0T276k6E/vh0S/1t/MBx0nbUN0+kVZDEKC/SSmOVSwCcrYtZfwL2OZXEqg5gUWkmp"
@@ -836,7 +851,7 @@ _LEGACY_ASSETS: dict[str, str] = {
         "S8zXpHeqHoXx/rZI+2ofMBiPRn8Atl3QgDVc203Nu+ucx0KCWWdnkCw3hiii6iXVELWnZ+f5MRv9BNVdvUdW2rQG"
         "7Ggb/QYwfMH5VwUAAA=="
     ),
-    _p("scripts", "dispatch-plan-voters.sh"): (
+    _p(*_ROOT_VOTER_DISPATCH): (
         "H4sIALbdLWoC/7Ub7XLbNvI/nwKhlVpqQ8mWrtfWjtI6jpr6qtoeS047k2Q4EAlJrCWSIUg5ruuZe4h7wnuS2wVI"
         "CgApWclcMh03Bhf7vYvdBbL3pJPxpDMJwg4LV2RC+dzaI37AY5p6cyde0NBZRSlLeJvPiUOGNAu9Oen4jAezkIjv"
         "CVsF7JZIMJLOkyibzckthV+ndLEg+GNCvZu2ZXGWEodlEYmDmE1psLCs0enV2eXYfXV21bcbTc8n8NMPkpAuGfz1"
@@ -903,7 +918,7 @@ _LEGACY_ASSETS: dict[str, str] = {
         "twPR3u5EexuILlfyqiFfwr/VWXrTP4Xa4Hr5eyQ5JZ9Adr+plGfFaxe9Y63a+ZPKNB1p10DarSDdqVzTkfYMpL0K"
         "0t42pJu0W+vj1fynjVflk3irSD7KHBZwKZC29T847MgVejkAAA=="
     ),
-    _p("scripts", "lib-design-round-artifacts.sh"): (
+    _p(*_ROOT_ROUND_ARTIFACTS): (
         "H4sIALbdLWoC/5WUwU4bMRCG73mKEXCAit2Ua1FU0VLKAfUA4oRQ5Hhns2689sozToiAd+/YuwSCKFL2svZ4PPN7"
         "/I33gRq0VjeoF/1wMlPUjEb7cI61ipZBe6cNIYwrJDN30FnlioBLgysIProKlLV+ZQ1xCRfRWuiCJzyGDsPgh0Hi"
         "cVCOdDAd0zEsPaP8WuVMjZQsSgLlHTlkSjKuTF1DbSwSqIBQ4SzOC+/suhz1WqbZeaoCm1ppnhqnbaywOjyCxxHI"
@@ -1108,11 +1123,11 @@ def _write_atomic(path: Path, content: str) -> None:
 
 
 def emit_plan(argv: Sequence[str]) -> int:
-    return _run_legacy(("skills", "design", "scripts", "emit-plan.sh"), argv)
+    return _run_legacy(_DESIGN_EMIT_PLAN, argv)
 
 
 def finalize_plan(argv: Sequence[str]) -> int:
-    return _run_legacy(("skills", "design", "scripts", "finalize-plan.sh"), argv)
+    return _run_legacy(_DESIGN_FINALIZE_PLAN, argv)
 
 
 def emit_design_plan_preview(argv: Sequence[str]) -> int:
@@ -1154,7 +1169,7 @@ def emit_design_plan_preview(argv: Sequence[str]) -> int:
         else:
             print(missing_messages.get(variant, missing_messages["step3"]))
         return 0
-    return _run_legacy(("skills", "design", "scripts", "emit-design-plan-preview.sh"), argv)
+    return _run_legacy(_DESIGN_PREVIEW, argv)
 
 
 def gate_b_dedup_plan(argv: Sequence[str]) -> int:
@@ -1162,7 +1177,7 @@ def gate_b_dedup_plan(argv: Sequence[str]) -> int:
 
 
 def persist_retally_step3_env(argv: Sequence[str]) -> int:
-    return _run_legacy(("skills", "design", "scripts", "persist-retally-step3-env.sh"), argv)
+    return _run_legacy(_DESIGN_RETALLY_ENV, argv)
 
 
 def step3_state(argv: Sequence[str]) -> int:
@@ -1174,11 +1189,11 @@ def record_plan_review_round_timing(argv: Sequence[str]) -> int:
 
 
 def tally_plan_review(argv: Sequence[str]) -> int:
-    return _run_legacy(("skills", "design", "scripts", "tally-plan-review.sh"), argv)
+    return _run_legacy(_DESIGN_TALLY_REVIEW, argv)
 
 
 def run_step3_review(argv: Sequence[str]) -> int:
-    return _run_legacy(("skills", "design", "scripts", "run-step3-review.sh"), argv)
+    return _run_legacy(_DESIGN_RUN_REVIEW, argv)
 
 
 def run_step3_loop(argv: Sequence[str]) -> int:
@@ -1186,7 +1201,7 @@ def run_step3_loop(argv: Sequence[str]) -> int:
 
 
 def run_plan_review_round(argv: Sequence[str]) -> int:
-    return _run_legacy(("skills", "design", "scripts", "plan-review-loop.sh"), argv)
+    return _run_legacy(_DESIGN_REVIEW_LOOP, argv)
 
 
 def step3_record_report_evidence(

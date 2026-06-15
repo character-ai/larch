@@ -404,15 +404,6 @@ exclude = [
   # the library is still copied by test-step-7a.sh fixtures.
   "scripts/lib-redact.sh",
   "scripts/lib-redact.md",
-  # scripts/launch-codex-implement.sh is invoked by skills/implement/scripts/
-  # step2-implement.sh via a `"$LAUNCHER"` variable rather than a literal
-  # `${CLAUDE_PLUGIN_ROOT}/scripts/...` path — agent-lint's G004/dead-script
-  # rule scans for literal-path references in SKILL.md / hooks.json /
-  # settings.json and does not follow shell variable indirection. Referenced
-  # via the dispatcher (load-bearing call site) and from
-  # scripts/launch-codex-implement.md (sibling contract) and
-  # skills/implement/scripts/step2-implement.md (mentions launcher path).
-  "scripts/launch-codex-implement.sh",
   # scripts/pre-commit-shellcheck.sh is the parallel shellcheck wrapper invoked
   # by the local `shellcheck` pre-commit hook in `.pre-commit-config.yaml`
   # (`entry: scripts/pre-commit-shellcheck.sh`). It replaced the upstream
@@ -437,6 +428,9 @@ exclude = [
   # contract), matching the same Makefile-only pattern as other test-* harnesses.
   "scripts/test-effort-prose.sh",
   "scripts/test-effort-prose.md",
+  # One-shot Step 5 debug helper. It is operator-invoked outside skill prose,
+  # so agent-lint cannot discover a structured runtime edge.
+  "scripts/debug-step5c-once.sh",
   # python/session_env.py invokes python/cli.py admission preflight through proc.Runner for session setup.
   "python/admission.py",
   # python/test_admission.py is the regression harness for
