@@ -236,7 +236,7 @@ Read `skills/design/references/readability-style.md` as the single source of sty
 
 4. **NEVER use the `Monitor` tool anywhere within the `/design` orchestrator.** **Why:** Monitor fires one turn per log line; it is for event streams only. Using it to wait for a background task to complete burns tokens on spurious turns. **How to apply:** use `Bash run_in_background` with `run_in_background: true` and wait for `<task-notification>` for one-shot completion on all Step 3 and Step 5c fences. When a `<task-notification>` fires prematurely with empty output and the underlying process is still running, the only sanctioned exception to the Bash polling-loop ban is one re-launched immediate-background completion waiter: exactly one `Bash run_in_background` task with `until <completion-condition>; do sleep N; done`. Step 3-specific recovery note: the completion condition MUST be `[ -f "$DESIGN_TMPDIR/.completed/step-3" ]`; it MUST NOT be `.step3-review-result.env`.
 
-```bash
+```sh
 # WRONG
 until [ -f "$DESIGN_TMPDIR/.step3-review-result.env" ]; do sleep 30; done
 # CORRECT
