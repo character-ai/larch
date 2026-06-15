@@ -83,6 +83,30 @@ _is_trivial_conflict_file() {
     esac
 }
 
+_conflict_upstream_deleted() {
+    local path="$1"
+
+    # Stage 2 is upstream/base during rebase. Absent stage 2 means upstream deleted
+    # the path; other checkout failures should surface as unresolved conflicts.
+    git ls-files -u -- "$path" 2>/dev/null | awk -v target="$path" '
+    {
+        tab = index($0, "\t")
+        if (tab == 0) next
+        meta = substr($0, 1, tab - 1)
+        file = substr($0, tab + 1)
+        if (file != target) next
+        seen = 1
+        n = split(meta, parts, " ")
+        stage = parts[n]
+        if (stage == 2) has_stage_2 = 1
+    }
+    END {
+        if (!seen) exit 1
+        exit(has_stage_2 ? 1 : 0)
+    }
+    '
+}
+
 _resolve_trivial_conflict_file() {
     local path="$1" checkout_rc rm_rc add_rc
 
@@ -93,6 +117,10 @@ _resolve_trivial_conflict_file() {
     checkout_rc=$?
     set -e
     if [ "$checkout_rc" -ne 0 ]; then
+        if ! _conflict_upstream_deleted "$path"; then
+            larch_err "WARN rebase-probe: failed to resolve trivial conflict ${path}"
+            return 1
+        fi
         set +e
         git rm -f -- "$path" >/dev/null 2>&1
         rm_rc=$?
