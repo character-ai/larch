@@ -1,0 +1,244 @@
+You are an expert engineer researching this repository and producing an implementation plan for /design Step 2b.
+
+You may use only side-effect-free repository discovery. Do not write repository files, design tmpdir files, or any other files. Return only the sentinel-delimited response requested below.
+
+Drafting requirements to follow:
+- Prefer minimum necessary change: avoid scope creep, unnecessary complexity, and additions not required for correctness.
+- Read approach-synthesis.txt: if it is exactly NO_SKETCHES, draft from direct codebase/doc inspection without fabricating planning-panel agreement.
+- Read discussion-round1.md when present for scope boundaries and strict constraints.
+- Read design-outline.md only when non-empty and .outline-approved exists; treat Goals, Non-goals, and Surfaces as binding scope.
+- Read brainstorm.md when present as additive ideation context for plan drafting.
+- Use a Files to modify/create section with per-file headings exactly one path each: ### NEW:, ### UPDATED:, or ### REWRITTEN: (at least one ASCII space after ### before the keyword).
+- Include Approach, Edge cases, Failure modes when non-trivial, Testing strategy, optional diff_added/diff_deleted/mechanical_churn trailers, and final diff_lines: <N>.
+- The final plan body must end with a whole-line diff_lines: <N> trailer.
+- Optionally include up to three dynamic plan-review archetypes in a scout block after the plan. The launcher validates, filters, caps, and materializes this block; invalid post-plan scout output is ignored.
+- Scout sentinels inside the summary or plan are fatal format errors. Never put LARCH_SCOUT_* markers in the plan body.
+
+Readability style (trusted):
+# Readability Style
+
+**Consumer**: `/design` prompt surfaces that produce user-facing text, either through an external-agent prompt token or through inline orchestration prose.
+
+**Contract**: this file is the only source of truth for the `/design` readability preamble. External prompt files embed the literal `<READABILITY_STYLE>` token, and assembly code or orchestration expands it to this full file. Inline composition sites read this file before writing user-facing text.
+
+**When to load**: load only when a `/design` step is about to compose user-facing prose or render a prompt that asks another agent to compose such prose. Do not load during setup, pure validation, or byte-stable artifact handling.
+
+---
+
+## Style Axes
+
+Write in three styles at once:
+
+- **Strunk & White**: use active voice. Omit needless words. Prefer concrete nouns and verbs.
+- **Dyslexia-friendly**: use short sentences. Prefer simple words. Break dense ideas into headings and bullets.
+- **Brevity**: shorter is better. Minimize the total artifact length while preserving meaning.
+- **No em dashes**: never use em dashes; use periods, commas, colons, or semicolons instead.
+- **Hedge vs. direct**: hedge uncertain claims ("may contain", "can fail") instead of absolutes; keep directives imperative.
+
+## Precision Contract
+
+Keep these byte-stable unless the task explicitly edits them:
+
+- fenced code blocks
+- backticked tokens
+- file paths
+- identifiers
+- flag names
+- `### NEW:` / `### UPDATED:` / `### REWRITTEN:` plan grammar
+- the trailing `diff_lines: <N>` line
+
+Do not rewrite those items for style. Explain around them instead.
+
+## Precedence
+
+When rules conflict, use this order:
+
+`code references > meaning > brevity > dyslexia-friendly chunking > Strunk & White micro-rewrites`
+
+Apply it directly:
+
+- Preserve code references first.
+- Preserve exact meaning next.
+- Cut words before adding layout.
+- Add headings or bullets only when they improve scanning.
+- Polish grammar last.
+
+## Substitution Token
+
+External-agent prompt files MUST embed this literal token:
+
+`<READABILITY_STYLE>`
+
+Before launch, replace every literal `<READABILITY_STYLE>` token with the full contents of this file.
+
+## Examples
+
+Before: "It is recommended that the implementer should consider adding a validation step."
+
+After: "Add a validation step."
+
+Before: "The plan should make sure that users are not able to continue when the file cannot be read."
+
+After: "Block the flow when the file cannot be read."
+
+Before: "In order to avoid potential future confusion, documentation can be updated."
+
+After: "Update the docs to avoid confusion."
+
+Before: "The script performs an operation that checks if the path exists."
+
+After: "The script checks that the path exists."
+
+Before: "This could possibly be out of scope depending on how the team wants to proceed."
+
+After: "This may be out of scope."
+
+Required output format:
+[optional]
+LARCH_SUMMARY_BEGIN
+A concise summary for large-plan preview. Omit this whole summary block only when no useful summary is needed.
+LARCH_SUMMARY_END
+[/optional]
+LARCH_PLAN_BEGIN
+Full implementation plan body ending with diff_lines: <N>.
+LARCH_PLAN_END
+[optional]
+LARCH_SCOUT_BEGIN
+{"archetypes":[{"name":"slug","focus_area":"code-quality|risk-integration|correctness|architecture|security","weight":1,"rationale":"single-line reason","prompt_body":"2-6 sentence focus directive ending with the required citation sentence."}]}
+LARCH_SCOUT_END
+[/optional]
+
+Optional advisory status may be included between LARCH_STATUS_BEGIN and LARCH_STATUS_END, but the summary, plan, and optional scout sentinels above are the only parsed contract.
+
+Untrusted feature description:
+<feature_description encoding="literal-redacted">
+# /design leaves orphan background processes after skill completes
+
+/design leaves orphan background processes after skill completes
+
+After a `/design` run finishes and the final-summary is emitted, Claude Code's status bar continues showing "N active shells" referencing the completed session's tmpdir. The processes belong to this session (confirmed by `--design-tmpdir` args), not to any other session. They stay alive until their `--timeout 1860` (31 min) expires or until the operator kills them manually.
+
+## Observed processes left alive after task-notification
+
+From a concrete run (session `claude-design-larch8-4s8d_c2c`, issue #3685, round-1 review completed, `LOOP_STATUS=complete` written):
+
+```
+plan-review-loop.sh        --round-num 2   (32 min elapsed)
+run-step3-review.sh        --mode loop     (49 min elapsed)
+dispatch-plan-voters.sh    --ballot-file … (26 min elapsed)
+dispatch-with-waterfall.sh --slots-file …  (26 min elapsed)
+collect-agent-results.sh   --timeout 1860  (22 min elapsed)
+collect-agent-results.sh   --timeout 1860  (22 min elapsed, duplicate)
+python/cli.py agent wait-reviewers --timeout 1860 … (22 min elapsed)
+```
+
+Additionally, a `run_in_background: true` Bash tool call that tried to expand a large variable (`$PLAN_CONTENT`, ~600 lines) inside a heredoc (`cat &gt; file &lt;&lt; COMPOSED_EOF`) got stuck; its three subshell copies also stayed alive until manually killed.
+
+## Root cause
+
+`design-step3-review.sh` (and its child `run-step3-review.sh --mode loop`) launch background processes with `&amp;` inside bash functions and sub-scripts. When the loop determines it is "done" — writing `.step3-review-result.env` with `LOOP_STATUS=complete` — the top-level wrapper exits. This fires the Claude Code `&lt;task-notification&gt;`. But the children do not receive a signal: they were spawned in sub-shells or from sourced functions, so they are not in the same process group as the parent and `kill -TERM $$` (or implicit SIGHUP on parent exit) does not reach them.
+
+Specific surviving subtrees observed:
+
+1. **Voter collection tree** — `dispatch-plan-voters.sh` → `dispatch-with-waterfall.sh` → `collect-agent-results.sh` → `python/cli.py agent wait-reviewers`. These block waiting for `*.done` sentinel files that were already written. They time out at 1860 s.
+
+2. **Round-2 check** — `plan-review-loop.sh --round-num 2` was apparently started by the loop for a continuation check. The loop wrote `LOOP_STATUS=complete` (stopping the logical flow) but did not kill the already-launched round-2 subprocess.
+
+3. **Heredoc large-variable expansion** — a Bash tool call containing `cat &gt; file &lt;&lt; EOF\n${LARGE_VAR}\nEOF` hung. Claude Code spawned 3 subshell copies (the snapshot + eval pattern); the cat+heredoc combination apparently blocks when the variable expansion is very large. The `run_in_background: true` call never fired a task-notification until the subshells were killed externally (it fired only after `kill -TERM`).
+
+## Impact
+
+- "N active shells" stays non-zero in the status bar after `/design` completes, confusing operators.
+- Each orphan holds open file descriptors to the session tmpdir, potentially blocking cleanup.
+- At scale (many parallel `/design` runs), orphans accumulate until 1860 s timeout, consuming CPU and file descriptors.
+- Operators who check "what is running" get misleading information (as happened in this session).
+
+## Suggested fixes
+
+**Fix 1 — Process-group kill on exit (primary fix)**
+
+In `design-step3-review.sh` and `run-step3-review.sh`, set a process group on entry and kill it on exit:
+
+```bash
+# At the top of the script (after set -euo pipefail):
+set -m   # enable job control / process groups
+
+# Add an EXIT trap that kills the entire process group:
+_PGID=$(ps -o pgid= -p $$ | tr -d ' ')
+trap 'kill -- -"$_PGID" 2&gt;/dev/null || true' EXIT
+```
+
+Or use `setsid bash script.sh` at the launch site so the script runs in its own session, then send `kill -TERM -&lt;pgid&gt;` before the wrapper exits.
+
+**Fix 2 — Explicit child-PID tracking in plan-review-loop.sh**
+
+`plan-review-loop.sh` could collect PIDs of every background subprocess it spawns (`dispatch_pid=$!`) and kill them in an EXIT trap:
+
+```bash
+_child_pids=()
+start_some_subprocess &amp; _child_pids+=($!)
+trap 'kill "${_child_pids[@]}" 2&gt;/dev/null || true' EXIT
+```
+
+**Fix 3 — Avoid large-variable heredoc in Bash tool calls**
+
+The `cat &gt; file &lt;&lt; EOF\n${LARGE_VARIABLE}\nEOF` pattern with `run_in_background: true` is fragile when the variable is large. The SKILL.md (or BASH_AUTHORING.md) should note this anti-pattern and direct implementers to use the Write tool instead for composing files with large variable content. The `btvdcpdyr` shell was the `composed-plan.md` write — using `Write` would have been safer and avoided the stuck subshell entirely.
+
+**Fix 4 — kill_session_background_processes at loop exit**
+
+`finalize.py` already implements `kill_session_background_processes(runner, ctx)` which scans for processes referencing the tmpdir path. This could be called from within `run-step3-review.sh` (or its Python replacement) before the wrapper returns, using `python3 python/cli.py session kill-background-processes --tmpdir "$DESIGN_TMPDIR"`.
+
+## Reproduction
+
+Run `/design` on any issue, wait for the plan-review round to complete, observe `LOOP_STATUS=complete` in `.step3-review-result.env`, then check:
+
+```bash
+ps aux | grep "$(basename $DESIGN_TMPDIR)" | grep -v grep
+```
+
+Processes with elapsed time &gt; 0 after the task-notification fired are orphans.
+
+
+</feature_description>
+
+
+Untrusted approach synthesis:
+<approach_synthesis encoding="literal-redacted">
+NO_SKETCHES
+
+</approach_synthesis>
+
+
+Untrusted approved design outline:
+<design_outline encoding="literal-redacted">
+## Proposed Design Outline
+
+### Goals
+- Ensure all background processes spawned during Step 3 plan review are killed when `design-step3-review.sh` exits.
+- Prevent orphan shells from appearing in Claude Code's active-shell count after `/design` completes.
+- Add BASH_AUTHORING.md documentation for the large-variable heredoc anti-pattern.
+
+### Non-goals
+- Changing `/implement`'s cleanup behavior (already handled by `finalize.py` at its cleanup phase).
+- Modifying reviewer timeout values (`--timeout 1860`).
+- Adding new retry or fallback logic for failed reviewer processes.
+
+### Approach sketch
+- **Fix 1**: Add `set +m` at the top of `run-step3-review.sh`'s loop body to block inheritance of monitor mode from the wrapper; this keeps `dispatch-with-waterfall.sh`'s `( )&amp;` children in PG_R, making the existing `kill -- -PG_R` effective.
+- **Fix 2**: Add EXIT trap to `dispatch-with-waterfall.sh` that kills the tracked `pids` array on exit.
+- **Fix 4**: Expose `kill_session_background_processes` (already in `finalize.py`) as `python3 python/cli.py session kill-background-processes --design-tmpdir PATH`; call it from `design-step3-review.sh` after the `kill -- -PG_R` call as belt-and-suspenders.
+- **Fix 3**: Add a note to BASH_AUTHORING.md about the `cat &gt; file &lt;&lt; EOF\n${LARGE_VAR}\nEOF` anti-pattern in `run_in_background` Bash calls.
+
+### Surfaces in scope
+- `skills/design/scripts/design-step3-review.sh`
+- `skills/design/scripts/run-step3-review.sh`
+- `scripts/dispatch-with-waterfall.sh`, `scripts/dispatch-with-waterfall.md`
+- `python/cli.py`, `python/session_env.py`, `python/finalize.py`
+- `BASH_AUTHORING.md`
+- Sibling `.md` contracts for any changed scripts
+
+### Open questions
+- None.
+
+</design_outline>
+
