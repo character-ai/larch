@@ -13,8 +13,8 @@ trap 'rm -rf "$TMP"' EXIT
 
 FAKE_PLUGIN="$TMP/plugin"
 STUB="$FAKE_PLUGIN/skills/design/scripts"
-mkdir -p "$STUB" "$FAKE_PLUGIN/scripts" "$FAKE_PLUGIN/skills/implement/scripts"
-ln -sf "$ROOT/python" "$FAKE_PLUGIN/python"
+mkdir -p "$STUB" "$FAKE_PLUGIN/scripts" "$FAKE_PLUGIN/skills/implement/scripts" "$FAKE_PLUGIN/bin" "$FAKE_PLUGIN/python"
+ln -sf "$ROOT/python"/* "$FAKE_PLUGIN/python/"
 # lib-phase-driver.sh ported to python/design_lifecycle.py; python/ symlink provides it
 ln -sf "$ROOT/skills/design/scripts/design-stage-terminal-state.sh" "$STUB/design-stage-terminal-state.sh"
 ln -sf "$ROOT/skills/implement/scripts/stall-recovery-report.sh" "$FAKE_PLUGIN/skills/implement/scripts/stall-recovery-report.sh"
@@ -22,50 +22,108 @@ ln -sf "$ROOT/scripts/lib-design-tmpdir.sh" "$FAKE_PLUGIN/scripts/lib-design-tmp
 ln -sf "$ROOT/scripts/lib-quiet.sh" "$FAKE_PLUGIN/scripts/lib-quiet.sh"
 ln -sf "$ROOT/scripts/lib-larch-dev-clone.sh" "$FAKE_PLUGIN/scripts/lib-larch-dev-clone.sh"
 ln -sf "$ROOT/scripts/read-result-env.sh" "$FAKE_PLUGIN/scripts/read-result-env.sh"
-
-cat >"$STUB/design-publish.sh" <<'STUB'
+cat >"$FAKE_PLUGIN/bin/python3" <<STUB
 #!/usr/bin/env bash
-printf 'design-publish stub rc=%s\n' "${DESIGN_PUBLISH_STUB_RC:-0}" >&2
-case "${DESIGN_PUBLISH_STUB_MODE:-}" in
-  success-summary)
-    printf 'stub success summary\n' >"${DESIGN_TMPDIR:-}/final-summary.md"
-    {
-      printf 'PLAN_WRITE_OK=true\n'
-      printf 'VALIDATE_STATUS=ok\n'
-      printf 'PUBLISH_OK=true\n'
-      printf 'FINAL_SUMMARY_PATH=%s/final-summary.md\n' "${DESIGN_TMPDIR:-}"
-    } >"${DESIGN_TMPDIR:-}/.design-publish-result.env"
+set -euo pipefail
+script="\${1:-}"
+shift || true
+if [ "\${script##*/}" != "cli.py" ]; then
+  exec python3 "\$script" "\$@"
+fi
+cmd1="\${1:-}"
+cmd2="\${2:-}"
+shift 2 || true
+case "\$cmd1 \$cmd2" in
+  "design publish")
+    printf 'design-publish stub rc=%s\n' "\${DESIGN_PUBLISH_STUB_RC:-0}" >&2
+    case "\${DESIGN_PUBLISH_STUB_MODE:-}" in
+      success-summary)
+        printf 'stub success summary\n' >"\${DESIGN_TMPDIR:-}/final-summary.md"
+        {
+          printf 'PLAN_WRITE_OK=true\n'
+          printf 'VALIDATE_STATUS=ok\n'
+          printf 'PUBLISH_OK=true\n'
+          printf 'FINAL_SUMMARY_PATH=%s/final-summary.md\n' "\${DESIGN_TMPDIR:-}"
+        } >"\${DESIGN_TMPDIR:-}/.design-publish-result.env"
+        ;;
+      plan-write-failed)
+        printf 'PLAN_WRITE_OK=false\n'
+        printf 'VALIDATE_STATUS=ok\n'
+        printf 'PUBLISH_OK=\n'
+        printf 'FINAL_SUMMARY_PATH=%s/final-summary.md\n' "\${DESIGN_TMPDIR:-}"
+        printf 'stub failed plan write summary\n' >"\${DESIGN_TMPDIR:-}/final-summary.md"
+        ;;
+      validator-defects)
+        printf 'PLAN_WRITE_OK=false\n'
+        printf 'VALIDATE_STATUS=defects-found\n'
+        printf 'VALIDATE_DEFECT_COUNT=2\n'
+        printf 'VALIDATE_SKIPPED_COUNT=0\n'
+        printf 'VALIDATE_UNSAFE_TOKEN_COUNT=1\n'
+        printf 'VALIDATE_LOG_FILE=%s/validate.log\n' "\${DESIGN_TMPDIR:-}"
+        printf 'FINAL_SUMMARY_PATH=%s/final-summary.md\n' "\${DESIGN_TMPDIR:-}"
+        ;;
+    esac
+    exit "\${DESIGN_PUBLISH_STUB_RC:-0}"
     ;;
-  plan-write-failed)
-    printf 'PLAN_WRITE_OK=false\n'
-    printf 'VALIDATE_STATUS=ok\n'
-    printf 'PUBLISH_OK=\n'
-    printf 'FINAL_SUMMARY_PATH=%s/final-summary.md\n' "${DESIGN_TMPDIR:-}"
-    printf 'stub failed plan write summary\n' >"${DESIGN_TMPDIR:-}/final-summary.md"
+  "design render-final-summary")
+    while [ \$# -gt 0 ]; do case "\$1" in --outcome) shift 2 ;; *) shift ;; esac; done
+    tmp="\${DESIGN_TMPDIR:-}"
+    [ -n "\$tmp" ] || tmp="\$(pwd)"
+    if [ ! -s "\$tmp/final-summary.md" ]; then
+      printf 'stub failed publish tail summary\n' >"\$tmp/final-summary.md"
+    fi
+    sidecar="\$tmp/design-failure-operator-action-chat.md"
+    if [ -s "\$sidecar" ]; then
+      printf 'REPORT_GATE_SIDECARS_FILE=%s\n' "\$sidecar"
+    fi
+    exit 0
     ;;
-  validator-defects)
-    printf 'PLAN_WRITE_OK=false\n'
-    printf 'VALIDATE_STATUS=defects-found\n'
-    printf 'VALIDATE_DEFECT_COUNT=2\n'
-    printf 'VALIDATE_SKIPPED_COUNT=0\n'
-    printf 'VALIDATE_UNSAFE_TOKEN_COUNT=1\n'
-    printf 'VALIDATE_LOG_FILE=%s/validate.log\n' "${DESIGN_TMPDIR:-}"
-    printf 'FINAL_SUMMARY_PATH=%s/final-summary.md\n' "${DESIGN_TMPDIR:-}"
+  "design read-result-env")
+    input=""
+    fallback=""
+    output=""
+    allow=""
+    while [ "\$#" -gt 0 ]; do
+      case "\$1" in
+        --input) input="\$2"; shift 2 ;;
+        --fallback-input) fallback="\$2"; shift 2 ;;
+        --allow) allow="\${allow}\${allow:+ }\$2"; shift 2 ;;
+        --output) output="\$2"; shift 2 ;;
+        *) shift ;;
+      esac
+    done
+    : >"\$output"
+    src="\$input"
+    if [ ! -s "\$src" ] && [ -n "\$fallback" ] && [ -s "\$fallback" ]; then
+      src="\$fallback"
+    fi
+    while IFS= read -r line || [ -n "\$line" ]; do
+      key="\${line%%=*}"
+      value="\${line#*=}"
+      for allowed in \$allow; do
+        if [ "\$key" = "\$allowed" ]; then
+          sq=\$(printf '%s' "\$value" | sed "s/'/'\"'\"'/g")
+          printf "%s='%s'\n" "\$key" "\$sq" >>"\$output"
+        fi
+      done
+    done <"\$src"
+    exit 0
+    ;;
+  "run-log append-failure")
+    ;;
+  "stall-recovery validate-token"|"stall-recovery validate-terminal-state")
+    exit 0
+    ;;
+  "session read-key")
+    printf '\n'
+    exit 0
+    ;;
+  *)
+    exec python3 "$ROOT/python/cli.py" "\$cmd1" "\$cmd2" "\$@"
     ;;
 esac
-exit "${DESIGN_PUBLISH_STUB_RC:-0}"
 STUB
-chmod +x "$STUB/design-publish.sh"
-
-cat >"$STUB/render-final-summary.sh" <<'STUB'
-#!/usr/bin/env bash
-while [ $# -gt 0 ]; do case "$1" in --outcome) shift 2 ;; *) shift ;; esac; done
-tmp="${DESIGN_TMPDIR:-}"
-[ -n "$tmp" ] || tmp="$(pwd)"
-printf 'stub failed publish tail summary\n' >"$tmp/final-summary.md"
-exit 0
-STUB
-chmod +x "$STUB/render-final-summary.sh"
+chmod +x "$FAKE_PLUGIN/bin/python3"
 
 setup_design_tmp() {
   local d=$1
@@ -79,7 +137,7 @@ run_step5c() {
   d=$(cd "$d" && pwd -P)
   setup_design_tmp "$d"
   set +e
-  CLAUDE_PLUGIN_ROOT="$FAKE_PLUGIN" DESIGN_TMPDIR="$d" DESIGN_PUBLISH_STUB_RC="$rc" \
+  CLAUDE_PLUGIN_ROOT="$FAKE_PLUGIN" PATH="$FAKE_PLUGIN/bin:$PATH" DESIGN_TMPDIR="$d" DESIGN_PUBLISH_STUB_RC="$rc" \
     "$SUBJECT" >"$d/stdout" 2>"$d/stderr"
   local got=$?
   set -e
@@ -91,7 +149,7 @@ run_step5c_with_mode() {
   d=$(cd "$d" && pwd -P)
   setup_design_tmp "$d"
   set +e
-  CLAUDE_PLUGIN_ROOT="$FAKE_PLUGIN" DESIGN_TMPDIR="$d" DESIGN_PUBLISH_STUB_RC="$rc" DESIGN_PUBLISH_STUB_MODE="$mode" \
+  CLAUDE_PLUGIN_ROOT="$FAKE_PLUGIN" PATH="$FAKE_PLUGIN/bin:$PATH" DESIGN_TMPDIR="$d" DESIGN_PUBLISH_STUB_RC="$rc" DESIGN_PUBLISH_STUB_MODE="$mode" \
     "$SUBJECT" >"$d/stdout" 2>"$d/stderr"
   local got=$?
   set -e

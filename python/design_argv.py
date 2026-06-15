@@ -51,11 +51,9 @@ def parse_argv_main(argv: Sequence[str]) -> int:
         output_path = argv[1]
         argv = argv[2:]
 
-    # Check for leading --output as public flag (reject)
-    for a in argv:
-        if a == "--output":
-            return _emit_validation_error("--output", output_path)
-        break
+    # Hidden --output is internal-only; reject any public appearance after stripping.
+    if "--output" in argv:
+        return _emit_validation_error("--output", output_path)
 
     partition_requested = False
     brainstorm_requested = False
@@ -109,9 +107,12 @@ def parse_argv_main(argv: Sequence[str]) -> int:
 
     first_positional = positional_args[0] if positional_args else ""
 
-    # Validate run_id for newlines
+    # Validate run_id/positional values for newline-smuggling.
     if "\n" in run_id or "\r" in run_id:
         return _emit_validation_error("newline-in-value", output_path)
+    for token in positional_args:
+        if "\n" in token or "\r" in token:
+            return _emit_validation_error("newline-in-value", output_path)
 
     # Determine positional kind and value
     positional_kind = "none"
@@ -129,7 +130,7 @@ def parse_argv_main(argv: Sequence[str]) -> int:
             positional_kind = "verbal"
             positional_value = " ".join(positional_args)
 
-    fields = {
+    output_fields = {
         "partition_requested": str(partition_requested).lower(),
         "brainstorm_requested": str(brainstorm_requested).lower(),
         "approve_requested": str(approve_requested).lower(),
@@ -139,12 +140,21 @@ def parse_argv_main(argv: Sequence[str]) -> int:
         "POSITIONAL_KIND": positional_kind,
         "POSITIONAL_VALUE": positional_value,
     }
+    stdout_fields = {
+        "PARTITION_REQUESTED": str(partition_requested).lower(),
+        "BRAINSTORM_REQUESTED": str(brainstorm_requested).lower(),
+        "APPROVE_REQUESTED": str(approve_requested).lower(),
+        "SKIP_APPROVE_REQUESTED": str(skip_approve_requested).lower(),
+        "NO_DEDUP_REQUESTED": str(no_dedup_requested).lower(),
+        "RUN_ID": run_id,
+        "POSITIONAL_KIND": positional_kind,
+        "POSITIONAL_VALUE": positional_value,
+    }
 
     if output_path:
-        if not _write_output(output_path, fields):
+        if not _write_output(output_path, output_fields):
             return 1
-    else:
-        for key, val in fields.items():
-            print(f"{key}={_quote_single(val)}")
+    for key, val in stdout_fields.items():
+        print(f"{key}={val}")
 
     return 0

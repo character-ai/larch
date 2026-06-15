@@ -142,6 +142,7 @@ def _issue_counts(design_tmpdir: Path) -> tuple[int, int]:
 def invoke_render(
     design_tmpdir: Path,
     outcome: str,
+    mode_str: str,
     run_id: str,
     duration: str,
     issue: str,
@@ -158,6 +159,7 @@ def invoke_render(
         "render", "run-summary",
         "--skill", "design",
         "--outcome", outcome,
+        "--mode", mode_str,
         "--run-id", run_id,
         "--duration", duration,
         "--issue-number", issue or "0",
@@ -176,6 +178,81 @@ def invoke_render(
     ]
     result = _run_cli(*rr_args)
     return result.returncode
+
+
+def _run_design_failure_report_gate(
+    design_tmpdir: Path,
+    phase: str,
+    outcome: str,
+    repo: str,
+    issue: str,
+    run_id: str,
+) -> None:
+    if phase != "post":
+        return
+    root = _plugin_root()
+    helper = root / "skills" / "design" / "scripts" / "design-failure-report.sh"
+    if not helper.is_file() or not os.access(helper, os.X_OK):
+        return
+
+    ex_log = design_tmpdir / "execution-issues.md"
+    ex_before = ex_log.stat().st_size if ex_log.is_file() else 0
+    out_file = design_tmpdir / "design-failure-report.stdout.log"
+    err_file = design_tmpdir / "design-failure-report.stderr.log"
+    cmd = [
+        str(helper),
+        "--design-tmpdir", str(design_tmpdir),
+        "--outcome", outcome,
+    ]
+    if repo:
+        cmd += ["--repo", repo]
+    if issue:
+        cmd += ["--issue", issue]
+    if run_id:
+        cmd += ["--run-id", run_id]
+
+    gate = subprocess.run(  # noqa: S603
+        cmd,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    out_file.write_text(gate.stdout, encoding="utf-8")
+    err_file.write_text(gate.stderr, encoding="utf-8")
+    gate_rc = gate.returncode
+    if gate_rc != 0:
+        _run_cli(  # pyright: ignore[reportUnusedCallResult]
+            "run-log", "append-failure",
+            "--log", str(ex_log),
+            "--site", "design failure report gate",
+            "--tool", "design-failure-report.sh",
+            "--exit-code", str(gate_rc),
+            "--category", "Warnings",
+            "--redact",
+            "--output-file", str(err_file),
+        )
+    ex_after = ex_log.stat().st_size if ex_log.is_file() else 0
+    if gate_rc != 0 or ex_after != ex_before:
+        return
+
+
+def _emit_report_gate_sidecars_file(design_tmpdir: Path) -> None:
+    handoff = design_tmpdir / "design-report-gate-sidecars.md"
+    sidecars = [
+        design_tmpdir / "design-failure-chat-print.md",
+        design_tmpdir / "design-failure-operator-action-chat.md",
+    ]
+    chunks: list[str] = []
+    for sidecar in sidecars:
+        if sidecar.is_file() and sidecar.stat().st_size > 0:
+            chunks.append(sidecar.read_text(encoding="utf-8"))
+    if not chunks:
+        return
+    body = "\n".join(chunks)
+    if not body.endswith("\n"):
+        body += "\n"
+    handoff.write_text(body, encoding="utf-8")
+    print(f"REPORT_GATE_SIDECARS_FILE={handoff}")
 
 
 def render_final_summary_main(argv: Sequence[str]) -> int:
@@ -204,8 +281,6 @@ def render_final_summary_main(argv: Sequence[str]) -> int:
             i += 1
         else:
             i += 1
-
-    _ = mode_str  # consumed for future use
 
     design_tmpdir_str = os.environ.get("DESIGN_TMPDIR", "")
     if not design_tmpdir_str:
@@ -242,9 +317,11 @@ def render_final_summary_main(argv: Sequence[str]) -> int:
     exec_issues, warnings = _issue_counts(design_tmpdir)
     run_logs_path = f"larch-logs/design/{run_id}/" if run_id != "unknown" else "N/A"
     out_file = design_tmpdir / "final-summary.md"
+    _run_design_failure_report_gate(design_tmpdir, phase, outcome, repo, issue, run_id)
+    exec_issues, warnings = _issue_counts(design_tmpdir)
 
     rc = invoke_render(
-        design_tmpdir, outcome, run_id, duration, issue, issue_url,
+        design_tmpdir, outcome, mode_str, run_id, duration, issue, issue_url,
         oos_count, oos_urls, exec_issues, warnings, run_logs_path, cost_args,
     )
 
@@ -278,5 +355,6 @@ def render_final_summary_main(argv: Sequence[str]) -> int:
         if repo:
             ups_args += ["--repo", repo]
         _run_cli(*ups_args)  # pyright: ignore[reportUnusedCallResult]
+    _emit_report_gate_sidecars_file(design_tmpdir)
 
     return 0

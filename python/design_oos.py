@@ -1,11 +1,8 @@
-"""Python CLI entrypoints for /design OOS filing helpers.
-
-Ports skills/design/scripts/file-design-oos.sh prepare and annotate verbs.
-The annotate step uses $DESIGN_TMPDIR/oos-issue.stdout.txt (stdout handoff from /issue).
-"""
+"""Python CLI entrypoints for /design OOS filing helpers."""
 
 from __future__ import annotations
 
+import argparse
 import os
 import re
 import subprocess
@@ -13,9 +10,16 @@ import sys
 from pathlib import Path
 from collections.abc import Sequence
 
-
-# Contract: the annotate step reads this file and writes oos-issues-created.md.
 OOS_ISSUE_STDOUT_FILE = "oos-issue.stdout.txt"
+_GH_ISSUE_URL_RE = re.compile(r"https://github\.com/[^/\s]+/[^/\s]+/issues/\d+")
+_FILED_URL_LINE_RE = re.compile(r"(?m)^\s*-\s*\*\*Filed[ \t]*URL\*\*[ \t]*:")
+_OOS_HEADER_RE = re.compile(r"^###\s+OOS_(\d+):[^\n]*\n", re.MULTILINE)
+_ISSUE_URL_KV_RE = re.compile(r"^ISSUE_(\d+)_(URL|DUPLICATE_OF_URL)=(.*)$")
+_ISSUE_FAILED_KV_RE = re.compile(r"^ISSUE_(\d+)_FAILED=true$")
+
+
+def _emit_kv(key: str, value: str) -> None:
+    print(f"{key}={value}")
 
 
 def _plugin_root() -> Path:
@@ -25,100 +29,394 @@ def _plugin_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
-def _run_cli(*args: str, capture: bool = False) -> subprocess.CompletedProcess[str]:
+def _run_cli(*args: str, capture: bool = False, stderr_path: Path | None = None) -> subprocess.CompletedProcess[str]:
     root = _plugin_root()
-    return subprocess.run(
-        [sys.executable, str(root / "python" / "cli.py"), *args],
-        capture_output=capture, text=True, check=False,
+    command = [sys.executable, str(root / "python" / "cli.py"), *args]
+    if capture:
+        return subprocess.run(command, capture_output=True, text=True, check=False)
+    if stderr_path:
+        with stderr_path.open("w", encoding="utf-8") as stderr_handle:
+            return subprocess.run(command, text=True, stdout=subprocess.DEVNULL, stderr=stderr_handle, check=False)
+    return subprocess.run(command, text=True, check=False)
+
+
+def _require_design_tmpdir(argv: Sequence[str], *, prog: str) -> Path | None:
+    parser = argparse.ArgumentParser(prog=prog, add_help=False)
+    parser.add_argument("--design-tmpdir")
+    parser.add_argument("--issue-number")
+    parser.add_argument("--issue-stdout-file")
+    parser.add_argument("--clear-cross-session-cache", action="store_true")
+    try:
+        args, _extra = parser.parse_known_args(list(argv))
+    except SystemExit:
+        return None
+    design_tmpdir_str = args.design_tmpdir or os.environ.get("DESIGN_TMPDIR", "")
+    if not design_tmpdir_str:
+        print(f"{prog}: DESIGN_TMPDIR unset", file=sys.stderr)
+        return None
+    design_tmpdir = Path(design_tmpdir_str)
+    if not design_tmpdir.is_dir():
+        print(f"{prog}: DESIGN_TMPDIR not a directory", file=sys.stderr)
+        return None
+    return design_tmpdir
+
+
+def _extract_unfiled_blocks(text: str) -> str:
+    indices = [match.start() for match in _OOS_HEADER_RE.finditer(text)]
+    if not indices:
+        return ""
+    blocks: list[str] = []
+    for index, start in enumerate(indices):
+        end = indices[index + 1] if index + 1 < len(indices) else len(text)
+        block = text[start:end]
+        if _FILED_URL_LINE_RE.search(block):
+            continue
+        blocks.append(block.rstrip("\n"))
+    if not blocks:
+        return ""
+    return "\n\n".join(blocks) + "\n"
+
+
+def _count_non_security_blocks(text: str) -> int:
+    if not text.strip():
+        return 0
+    script = _plugin_root() / "skills" / "implement" / "scripts" / "oos-non-security-block-count.awk"
+    result = subprocess.run(["awk", "-f", str(script)], input=text, text=True, capture_output=True, check=False)  # noqa: S607
+    if result.returncode != 0:
+        return 0
+    out = result.stdout.strip()
+    return int(out) if out.isdigit() else 0
+
+
+def _issue_number_from(args_issue_number: str | None) -> str:
+    raw = args_issue_number or os.environ.get("ISSUE_NUMBER", "")
+    raw = raw.strip()
+    if raw.isdigit():
+        return raw
+    return ""
+
+
+def _cross_session_cache_path(issue_number: str) -> Path | None:
+    if not issue_number:
+        return None
+    return Path.home() / ".cache" / "larch" / "design-oos-filed" / f"{issue_number}.md"
+
+
+def _append_warning_log(design_tmpdir: Path, site: str, tool: str, detail: str) -> None:
+    log = design_tmpdir / "execution-issues.md"
+    heading = "### Warnings\n"
+    entry = f"- **Step {site} — {tool} failed (exit 1)**:\n  ```\n{detail.rstrip()}\n  ```\n"
+    existing = log.read_text(encoding="utf-8") if log.exists() else ""
+    if heading not in existing:
+        existing = existing.rstrip() + ("\n\n" if existing.strip() else "") + heading
+    log.write_text(existing.rstrip() + "\n" + entry, encoding="utf-8")
+
+
+def _load_issue_sentinel_status(design_tmpdir: Path) -> tuple[int, int, int]:
+    sentinel = design_tmpdir / "oos-issue-sentinel"
+    if not sentinel.is_file():
+        return 0, 0, 0
+    created = 0
+    failed = 0
+    deduped = 0
+    for line in sentinel.read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.startswith("ISSUES_CREATED="):
+            value = line.split("=", 1)[1].strip()
+            created = int(value) if value.isdigit() else 0
+        elif line.startswith("ISSUES_FAILED="):
+            value = line.split("=", 1)[1].strip()
+            failed = int(value) if value.isdigit() else 0
+        elif line.startswith("ISSUES_DEDUPLICATED="):
+            value = line.split("=", 1)[1].strip()
+            deduped = int(value) if value.isdigit() else 0
+    return created, failed, deduped
+
+
+def _block_range(text: str, os_number: str) -> tuple[int, int] | None:
+    pattern = re.compile(
+        rf"(^###\s+OOS_{re.escape(os_number)}:[^\n]*\n)([\s\S]*?)(?=^###\s+OOS_|\Z)",
+        re.MULTILINE,
     )
+    match = pattern.search(text)
+    if not match:
+        return None
+    return match.start(), match.end()
 
 
-def _emit_kv(key: str, value: str) -> None:
-    print(f"{key}={value}")
+def _recover_accepted_from_sentinel(accepted_text: str, sentinel_text: str) -> tuple[bool, str]:
+    maps: list[tuple[str, str]] = []
+    plain_urls: list[str] = []
+    for line in sentinel_text.splitlines():
+        if line.startswith("OOS_FILE_MAP\t"):
+            parts = line.split("\t", 2)
+            if len(parts) >= 3 and parts[1].strip() and parts[2].strip():
+                maps.append((parts[1].strip(), parts[2].strip()))
+            continue
+        token = line.strip()
+        if token.startswith("http"):
+            plain_urls.append(token)
+    text = accepted_text
+    if maps:
+        for os_number, url in maps:
+            span = _block_range(text, os_number)
+            if span is None:
+                return False, accepted_text
+            block = text[span[0]:span[1]]
+            if _FILED_URL_LINE_RE.search(block):
+                continue
+            new_block = block.rstrip("\n") + f"\n- **Filed URL**: {url}\n"
+            text = text[:span[0]] + new_block + text[span[1]:]
+        return True, text
+    if not plain_urls:
+        return True, text
+    blocks = [match.group(0) for match in re.finditer(r"(?ms)^###\s+OOS_(\d+):[^\n]*\n.*?(?=^###\s+OOS_|\Z)", text)]
+    unfiled = [block for block in blocks if not _FILED_URL_LINE_RE.search(block)]
+    if len(plain_urls) > 1 or len(unfiled) > 1:
+        return False, accepted_text
+    for url in plain_urls:
+        for match in re.finditer(r"(?ms)^###\s+OOS_(\d+):[^\n]*\n.*?(?=^###\s+OOS_|\Z)", text):
+            block = match.group(0)
+            if _FILED_URL_LINE_RE.search(block):
+                continue
+            new_block = block.rstrip("\n") + f"\n- **Filed URL**: {url}\n"
+            text = text[:match.start()] + new_block + text[match.end():]
+            break
+    return True, text
+
+
+def _sync_cross_session_cache(design_tmpdir: Path, sentinel: Path, issue_number: str) -> None:
+    cache_path = _cross_session_cache_path(issue_number)
+    if cache_path is None:
+        return
+    try:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = cache_path.with_suffix(".tmp")
+        tmp.write_text(sentinel.read_text(encoding="utf-8"), encoding="utf-8")
+        tmp.replace(cache_path)
+    except OSError as exc:
+        _append_warning_log(
+            design_tmpdir,
+            "design file-design-oos cache",
+            "python/cli.py design file-oos-annotate",
+            f"cross-session cache sync failed: {exc}",
+        )
 
 
 def file_oos_prepare_main(argv: Sequence[str]) -> int:
-    argv = list(argv)
-    design_tmpdir_str = os.environ.get("DESIGN_TMPDIR", "")
-    for i, a in enumerate(argv):
-        if a == "--design-tmpdir" and i + 1 < len(argv):
-            design_tmpdir_str = argv[i + 1]
-    if not design_tmpdir_str:
-        print("design file-oos-prepare: DESIGN_TMPDIR unset", file=sys.stderr)
+    parser = argparse.ArgumentParser(prog="design file-oos-prepare", add_help=False)
+    parser.add_argument("--design-tmpdir")
+    parser.add_argument("--issue-number")
+    parser.add_argument("--clear-cross-session-cache", action="store_true")
+    try:
+        args = parser.parse_args(list(argv))
+    except SystemExit:
         return 2
-    d = Path(design_tmpdir_str)
-    if not d.is_dir():
-        print("design file-oos-prepare: DESIGN_TMPDIR not a directory", file=sys.stderr)
+    design_tmpdir = _require_design_tmpdir(argv, prog="design file-oos-prepare")
+    if design_tmpdir is None:
         return 2
-
-    sent = d / "oos-issues-created.md"
-    acc = d / "oos-accepted-design.md"
-
-    # Already filed (sentinel exists and is non-empty)
-    if sent.is_file() and sent.stat().st_size > 0:
+    accepted = design_tmpdir / "oos-accepted-design.md"
+    sentinel = design_tmpdir / "oos-issues-created.md"
+    combined = design_tmpdir / "oos-combined.md"
+    deps_tsv = design_tmpdir / "oos-intra-batch-deps.tsv"
+    order_file = design_tmpdir / "oos-design-filing-order.txt"
+    issue_number = _issue_number_from(args.issue_number)
+    cache_path = _cross_session_cache_path(issue_number)
+    if args.clear_cross_session_cache and cache_path is not None:
+        try:
+            cache_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+    if sentinel.is_file() and sentinel.stat().st_size > 0:
         _emit_kv("FILE_DESIGN_OOS_STATUS", "skip-sentinel")
         return 0
-
-    # No accepted OOS items
-    if not acc.is_file() or acc.stat().st_size == 0:
+    created, failed, deduped = _load_issue_sentinel_status(design_tmpdir)
+    if failed == 0 and (created + deduped) > 0:
+        _emit_kv("FILE_DESIGN_OOS_STATUS", "skip-already-filed-sentinel")
+        _emit_kv(
+            "WARN",
+            "file-design-oos prepare: oos-issue-sentinel present "
+            f"(ISSUES_CREATED={created} ISSUES_DEDUPLICATED={deduped}) but "
+            "oos-issues-created.md absent; skipping re-file",
+        )
+        return 0
+    if cache_path and cache_path.is_file() and cache_path.stat().st_size > 0 and accepted.is_file():
+        try:
+            sentinel_text = cache_path.read_text(encoding="utf-8")
+            sentinel.write_text(sentinel_text, encoding="utf-8")
+            ok, recovered = _recover_accepted_from_sentinel(
+                accepted.read_text(encoding="utf-8"),
+                sentinel_text,
+            )
+            if ok:
+                accepted.write_text(recovered, encoding="utf-8")
+                _emit_kv("FILE_DESIGN_OOS_STATUS", "skip-sentinel")
+                return 0
+            sentinel.unlink(missing_ok=True)
+            _append_warning_log(
+                design_tmpdir,
+                "design file-design-oos cross-session",
+                "python/cli.py design file-oos-prepare",
+                "recover_oos_accepted_from_sentinel_urls failed",
+            )
+        except OSError as exc:
+            _append_warning_log(
+                design_tmpdir,
+                "design file-design-oos cross-session",
+                "python/cli.py design file-oos-prepare",
+                f"cross-session cache restore failed: {exc}",
+            )
+    if not accepted.is_file() or accepted.stat().st_size == 0:
         _emit_kv("FILE_DESIGN_OOS_STATUS", "skip-no-items")
         return 0
-
-    # Run OOS issue cap check
-    cap_result = _run_cli("oos", "issue-cap",
-                          "--design-tmpdir", str(d), capture=True)
+    for path in (combined, deps_tsv, order_file):
+        path.unlink(missing_ok=True)
+    unfiled = _extract_unfiled_blocks(accepted.read_text(encoding="utf-8"))
+    if not unfiled.strip():
+        _emit_kv("FILE_DESIGN_OOS_STATUS", "skip-no-items")
+        return 0
+    combined.write_text(unfiled, encoding="utf-8")
+    headers = [match.group(1) for match in _OOS_HEADER_RE.finditer(unfiled)]
+    if not headers:
+        combined.unlink(missing_ok=True)
+        _emit_kv("FILE_DESIGN_OOS_STATUS", "skip-no-items")
+        return 0
+    if _count_non_security_blocks(unfiled) == 0:
+        combined.unlink(missing_ok=True)
+        _emit_kv("FILE_DESIGN_OOS_STATUS", "skip-all-security")
+        return 0
+    order_file.write_text("\n".join(headers) + "\n", encoding="utf-8")
+    capped = combined.with_suffix(".md.capped.tmp")
+    cap_result = _run_cli(
+        "oos",
+        "issue-cap",
+        "--input-file",
+        str(combined),
+        "--output",
+        str(capped),
+        capture=True,
+    )
     if cap_result.returncode != 0:
-        _emit_kv("FILE_DESIGN_OOS_STATUS", "cap-error")
-        print(cap_result.stderr or "", end="", file=sys.stderr)
-        return 1
-
-    # Emit the stdout path so the wrapper can pass it to /issue
-    _emit_kv("OOS_ISSUE_STDOUT_PATH", str(d / OOS_ISSUE_STDOUT_FILE))
-    _emit_kv("FILE_DESIGN_OOS_STATUS", "ok")
+        print("file-design-oos: python/cli.py oos issue-cap failed", file=sys.stderr)
+        if cap_result.stderr:
+            print(cap_result.stderr, end="", file=sys.stderr)
+        capped.unlink(missing_ok=True)
+        return 2
+    capped.replace(combined)
+    deps_result = _run_cli(
+        "oos",
+        "file-conflict-deps",
+        "--input-file",
+        str(combined),
+        "--output",
+        str(deps_tsv),
+        capture=True,
+    )
+    deps_available = deps_result.returncode == 0 and deps_tsv.is_file() and deps_tsv.stat().st_size > 0
+    if not deps_available:
+        deps_tsv.unlink(missing_ok=True)
+        print(
+            f"file-design-oos: python/cli.py oos file-conflict-deps exit {deps_result.returncode} — graceful-degrade (no caller TSV)",
+            file=sys.stderr,
+        )
+    _emit_kv("FILE_DESIGN_OOS_DEPS_AVAILABLE", "true" if deps_available else "false")
+    _emit_kv("FILE_DESIGN_OOS_STATUS", "ready")
+    _emit_kv("FILE_DESIGN_OOS_COMBINED", str(combined))
+    _emit_kv("FILE_DESIGN_OOS_DEPS_TSV", str(deps_tsv))
+    _emit_kv("FILE_DESIGN_OOS_ORDER", str(order_file))
     return 0
 
 
+def _parse_order(order_file: Path) -> list[str]:
+    return [line.strip() for line in order_file.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def _parse_issue_stdout(stdout_text: str) -> tuple[dict[str, str], dict[str, str], set[str], int]:
+    url_by_idx: dict[str, str] = {}
+    dup_by_idx: dict[str, str] = {}
+    failed: set[str] = set()
+    issues_failed_count = 0
+    for line in stdout_text.splitlines():
+        kv = _ISSUE_URL_KV_RE.match(line)
+        if kv:
+            idx, kind, value = kv.group(1), kv.group(2), kv.group(3).strip()
+            if not value:
+                continue
+            if kind == "URL":
+                url_by_idx[idx] = value
+            else:
+                dup_by_idx[idx] = value
+            continue
+        fail = _ISSUE_FAILED_KV_RE.match(line)
+        if fail:
+            failed.add(fail.group(1))
+            continue
+        if line.startswith("ISSUES_FAILED="):
+            value = line.split("=", 1)[1].strip()
+            if value.isdigit():
+                issues_failed_count = int(value)
+    return url_by_idx, dup_by_idx, failed, issues_failed_count
+
+
 def file_oos_annotate_main(argv: Sequence[str]) -> int:
-    argv = list(argv)
-    design_tmpdir_str = os.environ.get("DESIGN_TMPDIR", "")
-    issue_stdout_file = ""
-    for i, a in enumerate(argv):
-        if a == "--design-tmpdir" and i + 1 < len(argv):
-            design_tmpdir_str = argv[i + 1]
-        elif a == "--issue-stdout-file" and i + 1 < len(argv):
-            issue_stdout_file = argv[i + 1]
-    if not design_tmpdir_str:
-        print("design file-oos-annotate: DESIGN_TMPDIR unset", file=sys.stderr)
+    parser = argparse.ArgumentParser(prog="design file-oos-annotate", add_help=False)
+    parser.add_argument("--design-tmpdir")
+    parser.add_argument("--issue-stdout-file")
+    parser.add_argument("--issue-number")
+    try:
+        args = parser.parse_args(list(argv))
+    except SystemExit:
         return 2
-    d = Path(design_tmpdir_str)
-    if not d.is_dir():
-        print("design file-oos-annotate: DESIGN_TMPDIR not a directory", file=sys.stderr)
+    design_tmpdir = _require_design_tmpdir(argv, prog="design file-oos-annotate")
+    if design_tmpdir is None:
         return 2
-
-    # Default stdout file path
-    if not issue_stdout_file:
-        issue_stdout_file = str(d / OOS_ISSUE_STDOUT_FILE)
-
+    issue_stdout_file = args.issue_stdout_file or str(design_tmpdir / OOS_ISSUE_STDOUT_FILE)
     stdout_path = Path(issue_stdout_file)
     if not stdout_path.is_file() or stdout_path.stat().st_size == 0:
-        _emit_kv("STEP5B_STATUS", "annotate-failed")
-        print(f"design file-oos-annotate: issue-stdout-file empty or missing ({issue_stdout_file})",
-              file=sys.stderr)
+        _emit_kv("FILE_DESIGN_OOS_STATUS", "annotate-failed-empty-stdout")
+        _emit_kv(
+            "WARN",
+            f"file-design-oos annotate: issue-stdout-file empty or missing ({issue_stdout_file}); oos-issues-created.md not written",
+        )
+        print(f"design file-oos-annotate: issue-stdout-file empty or missing ({issue_stdout_file})", file=sys.stderr)
         return 1
-
-    # Parse issue URLs from stdout
-    issue_stdout = stdout_path.read_text(encoding="utf-8")
-    urls: list[str] = []
-    for line in issue_stdout.splitlines():
-        m = re.search(r"https://github\.com/[^/]+/[^/]+/issues/\d+", line)
-        if m:
-            urls.append(m.group(0))
-
-    # Write oos-issues-created.md sentinel
-    sent = d / "oos-issues-created.md"
-    with sent.open("w", encoding="utf-8") as fh:
-        for url in urls:
-            fh.write(url + "\n")  # pyright: ignore[reportUnusedCallResult]
-
-    _emit_kv("STEP5B_STATUS", "ok")
+    accepted = design_tmpdir / "oos-accepted-design.md"
+    order_file = design_tmpdir / "oos-design-filing-order.txt"
+    if not order_file.is_file():
+        print(f"file-design-oos: missing {order_file} (run prepare first)", file=sys.stderr)
+        return 2
+    if not accepted.is_file():
+        print(f"file-design-oos: missing {accepted}", file=sys.stderr)
+        return 2
+    order = _parse_order(order_file)
+    stdout_text = stdout_path.read_text(encoding="utf-8", errors="replace")
+    url_by_idx, dup_by_idx, failed_indices, issues_failed_count = _parse_issue_stdout(stdout_text)
+    accepted_text = accepted.read_text(encoding="utf-8")
+    map_lines: list[str] = []
+    gh_urls: set[str] = set()
+    for index, os_number in enumerate(order, start=1):
+        key = str(index)
+        if key in failed_indices:
+            continue
+        url = url_by_idx.get(key) or dup_by_idx.get(key)
+        if not url:
+            continue
+        span = _block_range(accepted_text, os_number)
+        if span is None:
+            continue
+        block = accepted_text[span[0]:span[1]]
+        if _FILED_URL_LINE_RE.search(block):
+            continue
+        new_block = block.rstrip("\n") + f"\n- **Filed URL**: {url}\n"
+        accepted_text = accepted_text[:span[0]] + new_block + accepted_text[span[1]:]
+        map_lines.append(f"OOS_FILE_MAP\t{os_number}\t{url}")
+        gh = _GH_ISSUE_URL_RE.search(url)
+        if gh:
+            gh_urls.add(gh.group(0))
+    accepted.write_text(accepted_text, encoding="utf-8")
+    sentinel_lines = [*map_lines, *sorted(gh_urls)]
+    (design_tmpdir / "oos-issues-created.md").write_text("\n".join(sentinel_lines) + ("\n" if sentinel_lines else ""), encoding="utf-8")
+    _sync_cross_session_cache(design_tmpdir, design_tmpdir / "oos-issues-created.md", _issue_number_from(args.issue_number))
+    _emit_kv("FILE_DESIGN_OOS_STATUS", "annotate-complete")
+    if issues_failed_count > 0:
+        return 1
     return 0

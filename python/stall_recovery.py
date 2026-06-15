@@ -1307,7 +1307,6 @@ def _safe_simple_token(value: str, *, fallback: str = "redacted") -> str:
     return value if value and re.fullmatch(r"[A-Za-z0-9._:-]+", value) else fallback
 
 
-<<<<<<< HEAD
 def _read_source_env_export(path: Path, key: str) -> str:
     """Read an ``export KEY=value`` assignment from a shell source-env file.
 
@@ -1331,43 +1330,20 @@ def _read_source_env_export(path: Path, key: str) -> str:
         value = body[len(key) + 1:]
         quote = value[:1]
         if quote in ("'", '"') and value[-1:] == quote:
-=======
-def _read_shell_kv(path: Path, key: str) -> str:
-    if not path.is_file() or path.is_symlink():
-        return ""
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-        text = line.strip()
-        text = text.removeprefix("export ")
-        if not text.startswith(f"{key}="):
-            continue
-        value = text[len(key) + 1 :].strip("\r")
-        _MIN_QUOTED = 2
-        if len(value) >= _MIN_QUOTED and value[0] == value[-1] and value[0] in {"'", '"'}:
->>>>>>> beaeb990a (sh-to-py C3b: port /design lifecycle, argv, postplan, publish, log-publish, final-summary, OOS, pause, step-log to Python CLI)
             value = value[1:-1]
         return value
     return ""
 
 
-<<<<<<< HEAD
-def _read_source_env_session_id(tmpdir: Path) -> str:
-    return _read_source_env_export(tmpdir / "source-env.sh", "SESSION_ID")
-
-
-def _read_run_id(tmpdir: Path) -> str:
-    value = read_kv(tmpdir / "parent-issue.md", "RUN_ID", "")
-    if not value and (tmpdir / "session-id").is_file():
-        value = (tmpdir / "session-id").read_text(encoding="utf-8", errors="replace").strip()
-    if not value:
-        value = _read_source_env_session_id(tmpdir)
-=======
 def _read_run_id(tmpdir: Path, session_env_file: Path | None = None) -> str:
     value = read_kv(tmpdir / "parent-issue.md", "RUN_ID", "")
     if not value and (tmpdir / "session-id").is_file():
         value = (tmpdir / "session-id").read_text(encoding="utf-8", errors="replace").strip()
-    if not value and session_env_file is not None:
-        value = _read_shell_kv(session_env_file, "SESSION_ID")
->>>>>>> beaeb990a (sh-to-py C3b: port /design lifecycle, argv, postplan, publish, log-publish, final-summary, OOS, pause, step-log to Python CLI)
+    if not value:
+        if session_env_file is not None:
+            value = _read_source_env_export(session_env_file, "SESSION_ID")
+        else:
+            value = _read_source_env_export(tmpdir / "source-env.sh", "SESSION_ID")
     return _safe_simple_token(value, fallback="unknown")
 
 
