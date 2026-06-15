@@ -219,8 +219,8 @@ def test_stderr_tail_resolution_prefers_retry_and_dedupes(capsys: pytest.Capture
 
 
 def test_retry_output_path_non_txt_uses_txt_suffix() -> None:
-    assert collect_results._retry_output_path("/tmp/foo.out") == "/tmp/foo.out-retry.txt"
-    assert collect_results._retry_output_path("/tmp/foo.out", "ns-retry") == "/tmp/foo.out-ns-retry.txt"
+    assert collect_results._retry_output_path("/tmp/foo.out") == "/tmp/foo.out-retry.txt"  # type: ignore[reportPrivateUsage]
+    assert collect_results._retry_output_path("/tmp/foo.out", "ns-retry") == "/tmp/foo.out-ns-retry.txt"  # type: ignore[reportPrivateUsage]
     assert collect_results.resolve_collector_stderr_tail_file("/tmp/foo.out") == ""
 
 
@@ -239,10 +239,10 @@ def test_cmd_json_outer_launcher_uses_last_mode_flag(monkeypatch: pytest.MonkeyP
     _reset(monkeypatch)
     output = tmp_path / "cursor-review.txt"
     cmd = ["cursor", "agent", "--mode", "ask", "--mode", "plan", "--workspace", str(tmp_path), "go"]
-    assert not collect_results._cmd_json_requires_outer_launcher(str(output), "cursor", cmd)
+    assert not collect_results._cmd_json_requires_outer_launcher(str(output), "cursor", cmd)  # type: ignore[reportPrivateUsage]
     codex_cmd = ["codex", "exec", "--sandbox", "read-only", "--sandbox", "full-auto", "-C", str(tmp_path), "--add-dir", str(tmp_path), "--output-last-message", str(tmp_path / "out.txt"), "go"]
-    assert not collect_results._cmd_json_requires_outer_launcher(str(output), "codex", codex_cmd)
-    assert collect_results._cmd_json_requires_outer_launcher(str(output), "cursor", ["cursor", "agent", "--mode", "ask", "--workspace", str(tmp_path), "go"])
+    assert not collect_results._cmd_json_requires_outer_launcher(str(output), "codex", codex_cmd)  # type: ignore[reportPrivateUsage]
+    assert collect_results._cmd_json_requires_outer_launcher(str(output), "cursor", ["cursor", "agent", "--mode", "ask", "--workspace", str(tmp_path), "go"])  # type: ignore[reportPrivateUsage]
 
 
 def test_env_without_test_hooks_strips_collect_results_vars(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -252,7 +252,7 @@ def test_env_without_test_hooks_strips_collect_results_vars(monkeypatch: pytest.
 
     def fake_popen(args: list[str], **kwargs: object) -> object:
         _ = args
-        captured["env"] = json.dumps(dict(kwargs.get("env", {})))
+        captured["env"] = json.dumps(dict(kwargs.get("env", {})))  # type: ignore[reportCallIssue, reportArgumentType]
         class _Proc:
             def wait(self, timeout: float = 0) -> int:
                 _ = timeout
@@ -264,8 +264,8 @@ def test_env_without_test_hooks_strips_collect_results_vars(monkeypatch: pytest.
     _write_done(output)
     _write_meta(output, cmd=["cursor", "agent", "--workspace", str(tmp_path), "retry prompt"])
     monkeypatch.setattr(collect_results.subprocess, "Popen", fake_popen)
-    monkeypatch.setattr(collect_results, "_wait_retry_plans", lambda _plans: None)
-    monkeypatch.setattr(collect_results, "_apply_empty_retry_results", lambda _records, _plans: None)
+    monkeypatch.setattr(collect_results, "_wait_retry_plans", lambda _plans: None)  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    monkeypatch.setattr(collect_results, "_apply_empty_retry_results", lambda _records, _plans: None)  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     assert collect_results.collect_results_main(["--timeout", "2", str(output)]) == 0
     assert "LARCH_COLLECT_RESULTS_TRAP" not in captured.get("env", "")
 
