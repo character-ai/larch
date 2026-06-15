@@ -195,6 +195,7 @@ _write_step3_wrapper_inputs() {
     mkdir -p "$dir"
     printf '{"schema_version":3,"partition_requested":false,"brainstorm_requested":false}\n' >"$dir/run-params.json"
     printf '# Plan\n\ndiff_lines: 1\n' >"$dir/plan.txt"
+    printf 'scope anchor\n' >"$dir/plan-review-scope-anchor.txt"
     printf 'feature\n' >"$dir/feature-description.txt"
     if [[ -n "$starting_round" && "$starting_round" =~ ^[0-9]+$ ]]; then
         local prev=$((starting_round - 1))
