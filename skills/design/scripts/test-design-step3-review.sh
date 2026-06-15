@@ -245,6 +245,7 @@ pass 'Step 3 wrapper hard-stops degraded zero-round panel-failed'
 
 D_EMPTY_R1=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-empty-r1.XXXXXX")
 FAKE_EMPTY_R1="$D_EMPTY_R1/fake-plugin"
+# shellcheck disable=SC2016
 make_fake_step3_plugin "$FAKE_EMPTY_R1" 'mkdir -p "$DESIGN_TMPDIR/plan-review/round-1"; printf "%s\n" "LOOP_STATUS=panel-failed" "ROUNDS_COMPLETED=1" "REVIEW_ROUND_COUNT=1" "DEGRADED_PANEL=1"'
 printf 'anchor\n' >"$D_EMPTY_R1/plan-review-scope-anchor.txt"
 set +e

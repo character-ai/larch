@@ -232,11 +232,16 @@ run_direct_relevant_targets() {
                 append_target_once test-stall-recovery-report
                 append_target_once test-file-failure-report-cross-repo
                 ;;
-            python/plan_review.py|skills/design/scripts/design-step3-review.sh|skills/design/scripts/design-step3-review.md|skills/design/scripts/test-design-step3-review.sh|skills/design/scripts/test-design-step3-review.md|skills/design/scripts/lib-step3-prelaunch-failure.sh)
+            python/plan_review.py|skills/design/scripts/design-step3-review.sh|skills/design/scripts/design-step3-review.md|skills/design/scripts/test-design-step3-review.sh|skills/design/scripts/test-design-step3-review.md)
                 append_target_once test-design-step3-review
                 append_target_once test-plan-review
                 ;;
-            skills/design/scripts/design-step3-entry.sh|skills/design/scripts/design-step3-entry.md|skills/design/scripts/test-design-step3-entry.sh|skills/design/scripts/lib-step3-prelaunch-failure.sh)
+            skills/design/scripts/design-step3-entry.sh|skills/design/scripts/design-step3-entry.md|skills/design/scripts/test-design-step3-entry.sh)
+                append_target_once test-design-step3-entry
+                ;;
+            skills/design/scripts/lib-step3-prelaunch-failure.sh)
+                append_target_once test-design-step3-review
+                append_target_once test-plan-review
                 append_target_once test-design-step3-entry
                 ;;
             skills/design/scripts/design-step0-init.sh|skills/design/scripts/design-step0-init.md|skills/design/scripts/test-design-step0-init.sh)

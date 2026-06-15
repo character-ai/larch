@@ -131,6 +131,7 @@ The wrapper-only D3 surface uses these script contracts. Keep direct wrappers an
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step0-route.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step0-session.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step0-session.md`
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-step0-init.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step0c.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step0c.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step1d5.sh`
@@ -158,10 +159,12 @@ The wrapper-only D3 surface uses these script contracts. Keep direct wrappers an
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-entry-state.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-entry.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-entry.md`
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-step3-entry.sh`
 - `${CLAUDE_PLUGIN_ROOT}/python/cli.py plan-review panel-dispatch`
 - `${CLAUDE_PLUGIN_ROOT}/python/plan_review_panel.py`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-review.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-review.md`
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/lib-step3-prelaunch-failure.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/review-design-step3-loop.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-step3-review.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-step3-review.md`

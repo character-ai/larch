@@ -21,8 +21,8 @@ old plan
 <!-- larch:plan:end -->
 EOF
 set +e
-ok_out=$(env CLAUDE_PLUGIN_ROOT="$ROOT" DESIGN_TMPDIR="$D_OK" ISSUE_NUMBER=9 ISSUE_TITLE='Feature' \
-  "$ENTRY" 2>"$D_OK/stderr.log")
+env CLAUDE_PLUGIN_ROOT="$ROOT" DESIGN_TMPDIR="$D_OK" ISSUE_NUMBER=9 ISSUE_TITLE='Feature' \
+  "$ENTRY" 2>"$D_OK/stderr.log"
 ok_rc=$?
 set -e
 [[ "$ok_rc" -eq 0 ]] || fail "entry ok rc=$ok_rc stderr=$(cat "$D_OK/stderr.log")"

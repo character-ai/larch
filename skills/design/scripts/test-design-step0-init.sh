@@ -39,7 +39,7 @@ export CLAUDE_PLUGIN_ROOT="$FAKE"
 EOF
 
 set +e
-init_out=$(env CLAUDE_PLUGIN_ROOT="$FAKE" bash "$INIT" --session-env-path "$D/session-env.sh" --claude-pid 1 --plugin-root "$FAKE" 2>"$D/stderr.log")
+env CLAUDE_PLUGIN_ROOT="$FAKE" bash "$INIT" --session-env-path "$D/session-env.sh" --claude-pid 1 --plugin-root "$FAKE" 2>"$D/stderr.log"
 init_rc=$?
 set -e
 [[ "$init_rc" -eq 0 ]] || fail "step0 init rc=$init_rc stderr=$(cat "$D/stderr.log")"
