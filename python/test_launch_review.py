@@ -9,7 +9,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -394,6 +394,66 @@ def test_codex_retry_auth_from_stderr_sidecar_retries(tmp_path: Path, monkeypatc
     assert auth_attempt == 2
 
 
+def test_codex_retry_unclassified_empty_exit_one(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    output = tmp_path / "out.txt"
+    events = output.with_suffix(output.suffix + ".events.jsonl")
+    sidecar = output.with_suffix(output.suffix + ".sidecar")
+    calls = {"count": 0}
+    monkeypatch.setenv("LARCH_EXTERNAL_AUTH_RETRIES", "5")
+
+    def fake_run(**_kwargs: object) -> agents.RunExternalAgentResult:
+        calls["count"] += 1
+        events.write_text("", encoding="utf-8")
+        sidecar.write_text("", encoding="utf-8")
+        output.write_text("", encoding="utf-8")
+        exit_code = 1 if calls["count"] == 1 else 3
+        return agents.RunExternalAgentResult(exit_code, output)
+
+    monkeypatch.setattr(agents, "run_external_agent", fake_run)
+    result, auth_attempt, _transient_attempt = agents._review_run_with_retries(
+        tool="codex",
+        output=output,
+        timeout_seconds=2,
+        cmd=["codex", "exec"],
+        stdout_path=events,
+        stderr_path=sidecar,
+    )
+    assert calls["count"] == 2
+    assert result.exit_code == 3
+    assert auth_attempt == 2
+
+
+def test_codex_retry_unclassified_empty_exit_one_respects_auth_retry_limit_one(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = tmp_path / "out.txt"
+    events = output.with_suffix(output.suffix + ".events.jsonl")
+    sidecar = output.with_suffix(output.suffix + ".sidecar")
+    calls = {"count": 0}
+    monkeypatch.setenv("LARCH_EXTERNAL_AUTH_RETRIES", "1")
+
+    def fake_run(**_kwargs: object) -> agents.RunExternalAgentResult:
+        calls["count"] += 1
+        events.write_text("", encoding="utf-8")
+        sidecar.write_text("", encoding="utf-8")
+        output.write_text("", encoding="utf-8")
+        return agents.RunExternalAgentResult(1, output)
+
+    monkeypatch.setattr(agents, "run_external_agent", fake_run)
+    result, auth_attempt, _transient_attempt = agents._review_run_with_retries(
+        tool="codex",
+        output=output,
+        timeout_seconds=2,
+        cmd=["codex", "exec"],
+        stdout_path=events,
+        stderr_path=sidecar,
+    )
+    assert calls["count"] == 2
+    assert result.exit_code == 1
+    assert auth_attempt == 2
+
+
 def test_review_serial_lock_releases_before_blocking_wait(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     output = tmp_path / "out.txt"
     order: list[str] = []
@@ -713,6 +773,123 @@ def _init_git_repo(path: Path) -> None:
     (path / "tracked.txt").write_text("tracked\n", encoding="utf-8")
     subprocess.run(["git", "add", "tracked.txt"], cwd=path, check=True, capture_output=True, text=True)
     subprocess.run(["git", "commit", "-m", "init"], cwd=path, check=True, capture_output=True, text=True)
+
+
+def _codex_launch_cmd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    args = _codex_review_args(tmp_path)
+    out = Path(args.output)
+    captured: dict[str, list[str]] = {}
+
+    def auth_setup_ok(_home_dir: Path, *, trusted_instructions_file: str = "") -> tuple[int, str]:
+        _ = trusted_instructions_file
+        return (0, "")
+
+    def resolve_model_args_ok(_tool: str, *, with_effort: bool = False, default_model: str = "") -> agents.ModelArgResult:
+        _ = (with_effort, default_model)
+        return agents.ModelArgResult(())
+
+    def run_with_retries_ok(**kwargs: object) -> tuple[agents.RunExternalAgentResult, int, int]:
+        cmd = kwargs["cmd"]
+        if not isinstance(cmd, list):
+            raise TypeError("cmd must be a list")
+        cmd_values = cast("list[object]", cmd)
+        captured["cmd"] = [str(value) for value in cmd_values]
+        out.write_text("ok\n", encoding="utf-8")
+        return (agents.RunExternalAgentResult(0, out), 1, 1)
+
+    def record_usage_noop(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    def record_timing_noop(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    def write_dirty_tree_noop(_output: Path) -> None:
+        return None
+
+    def promote_done_noop(_output: Path) -> None:
+        return None
+
+    def emit_launcher_result_noop(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(agents, "_prepare_codex_home", auth_setup_ok)
+    monkeypatch.setattr(agents, "resolve_model_args", resolve_model_args_ok)
+    monkeypatch.setattr(agents, "_review_run_with_retries", run_with_retries_ok)
+    monkeypatch.setattr(agents, "_record_usage_from_events", record_usage_noop)
+    monkeypatch.setattr(agents, "_review_record_timing", record_timing_noop)
+    monkeypatch.setattr(agents, "_review_write_clean_readonly_dirty_tree", write_dirty_tree_noop)
+    monkeypatch.setattr(agents, "_promote_inner_done", promote_done_noop)
+    monkeypatch.setattr(agents, "_review_emit_launcher_result", emit_launcher_result_noop)
+
+    assert agents._review_launch_codex(args, "hi") == 0
+    return captured["cmd"]
+
+
+def _codex_workdir_from_cmd(cmd: list[str]) -> Path:
+    return Path(cmd[cmd.index("-C") + 1])
+
+
+def _codex_trust_config_from_cmd(cmd: list[str]) -> str:
+    for value in cmd:
+        if value.startswith("projects."):
+            return value
+    raise AssertionError("missing codex trust config")
+
+
+def test_codex_launch_resolves_workdir_to_git_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = tmp_path / "consumer"
+    repo.mkdir()
+    _init_git_repo(repo)
+    nested = repo / "nested"
+    nested.mkdir()
+    monkeypatch.chdir(nested)
+    monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+
+    cmd = _codex_launch_cmd(tmp_path, monkeypatch)
+
+    assert _codex_workdir_from_cmd(cmd).resolve() == repo.resolve()
+    assert str(repo.resolve()) in _codex_trust_config_from_cmd(cmd)
+
+
+def test_codex_launch_resolves_workdir_from_plugin_cache_via_keepalive(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    consumer = tmp_path / "consumer"
+    consumer.mkdir()
+    _init_git_repo(consumer)
+    plugin_cache = tmp_path / "plugin-cache"
+    plugin_cache.mkdir()
+    design_tmp = tmp_path / "design"
+    design_tmp.mkdir()
+    (design_tmp / ".larch-keepalive").write_text(f"CLONE_PATH={consumer}\n", encoding="utf-8")
+    monkeypatch.chdir(plugin_cache)
+    monkeypatch.setenv("DESIGN_TMPDIR", str(design_tmp))
+    monkeypatch.delenv("SESSION_TMPDIR", raising=False)
+    monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+
+    cmd = _codex_launch_cmd(tmp_path, monkeypatch)
+
+    assert _codex_workdir_from_cmd(cmd).resolve() == consumer.resolve()
+    assert str(consumer.resolve()) in _codex_trust_config_from_cmd(cmd)
+
+
+def test_codex_launch_resolves_workdir_from_claude_project_dir(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    consumer = tmp_path / "consumer"
+    consumer.mkdir()
+    _init_git_repo(consumer)
+    plugin_cache = tmp_path / "plugin-cache"
+    plugin_cache.mkdir()
+    monkeypatch.chdir(plugin_cache)
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(consumer))
+
+    cmd = _codex_launch_cmd(tmp_path, monkeypatch)
+
+    assert _codex_workdir_from_cmd(cmd).resolve() == consumer.resolve()
+    assert str(consumer.resolve()) in _codex_trust_config_from_cmd(cmd)
 
 
 def test_codex_model_args_preflight_exit_one_with_unknown_dirty_tree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

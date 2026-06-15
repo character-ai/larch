@@ -1653,6 +1653,64 @@ def test_auth_retries_acquire_serial_lock_each_attempt(monkeypatch: pytest.Monke
     assert calls == ["lock:cursor", "release", "run", "lock:cursor", "release", "run"]
 
 
+def test_unclassified_empty_exit_one(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    output = tmp_path / "codex.out"
+    calls = {"count": 0}
+
+    def fake_run_external_agent(**kwargs: object) -> agents.RunExternalAgentResult:
+        calls["count"] += 1
+        output_arg = kwargs["output"]
+        if not isinstance(output_arg, (str, Path)):
+            raise TypeError("output must be a path")
+        output_path = Path(output_arg)
+        output_path.write_text("", encoding="utf-8")
+        exit_code = 1 if calls["count"] == 1 else 4
+        return agents.RunExternalAgentResult(exit_code, output_path)
+
+    monkeypatch.setattr(agents, "run_external_agent", fake_run_external_agent)
+    monkeypatch.setattr(agents, "_auth_retry_limit", lambda: 5)
+    monkeypatch.setattr(agents, "external_serial_lock_acquire", lambda _tool: agents.SerialLockState(None))
+    monkeypatch.setattr(agents, "external_serial_lock_release_after", lambda _state: None)
+    result = agents._run_external_agent_with_auth_retries(  # pylint: disable=protected-access
+        tool="codex",
+        output=output,
+        timeout_seconds=5,
+        cmd=["codex"],
+    )
+    assert calls["count"] == 2
+    assert result.exit_code == 4
+
+
+def test_unclassified_empty_exit_one_respects_auth_retry_limit_one(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "codex.out"
+    calls = {"count": 0}
+
+    def fake_run_external_agent(**kwargs: object) -> agents.RunExternalAgentResult:
+        calls["count"] += 1
+        output_arg = kwargs["output"]
+        if not isinstance(output_arg, (str, Path)):
+            raise TypeError("output must be a path")
+        output_path = Path(output_arg)
+        output_path.write_text("", encoding="utf-8")
+        return agents.RunExternalAgentResult(1, output_path)
+
+    monkeypatch.setattr(agents, "run_external_agent", fake_run_external_agent)
+    monkeypatch.setattr(agents, "_auth_retry_limit", lambda: 1)
+    monkeypatch.setattr(agents, "external_serial_lock_acquire", lambda _tool: agents.SerialLockState(None))
+    monkeypatch.setattr(agents, "external_serial_lock_release_after", lambda _state: None)
+    result = agents._run_external_agent_with_auth_retries(  # pylint: disable=protected-access
+        tool="codex",
+        output=output,
+        timeout_seconds=5,
+        cmd=["codex"],
+    )
+    assert calls["count"] == 2
+    assert result.exit_code == 1
+
+
 def test_launch_codex_exec_promotes_done_and_records_outer_metadata(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
