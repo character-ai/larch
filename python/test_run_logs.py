@@ -567,7 +567,7 @@ def test_flush_logs_pre_commit_exception_returns_commit_skip(
             False,
         ),
         (False, "RUN_ID=run-abc\n", "", "", ("oos-issues.ndjson",), True),
-        (False, "RUN_ID=run-abc\n", "", "", ("run-statistics.md",), True),
+        (False, "RUN_ID=run-abc\n", "", "", ("run-statistics.md",), False),
         (False, "RUN_ID=run-abc\n", "", "", (), None),
     ],
 )
@@ -589,7 +589,12 @@ def test_step9a1_heuristic_matrix(
     run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
     run_dir.mkdir(parents=True)
     for filename in files:
-        _ = (run_dir / filename).write_text("x\n", encoding="utf-8")
+        if filename == "run-statistics.md":
+            _ = (run_dir / filename).write_text("Run run-abc: 0 OOS issue(s) filed.\n", encoding="utf-8")
+        elif filename == "oos-issues.ndjson":
+            _ = (run_dir / filename).write_text('{"phase":"implement"}\n', encoding="utf-8")
+        else:
+            _ = (run_dir / filename).write_text("x\n", encoding="utf-8")
     ctx = _ctx(tmp_path, str(state)).with_(forked=forked)
     assert run_logs._step9a1_heuristic(ctx) is expected  # pyright: ignore[reportPrivateUsage]
 

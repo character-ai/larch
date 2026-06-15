@@ -851,6 +851,56 @@ def _derive_final_report_fields(
     }
 
 
+def _stamp_skipped_steps_for_terminal_report(
+    implement_tmpdir: Path,
+    *,
+    run_id: str,
+    outcome: str,
+) -> tuple[int, str]:
+    if outcome == "merged" or not run_id or run_id == "unknown":
+        return 0, ""
+    run_dir = implement_tmpdir / "larch-logs" / "implement" / run_id
+    manifest = run_dir / "manifest.json"
+    if not manifest.is_file():
+        return 0, ""
+    fields: list[str] = []
+    if not (run_dir / "run-statistics.md").is_file() and not (run_dir / "oos-issues.ndjson").is_file():
+        fields.append("steps_ran.step9a1=false")
+    if not (run_dir / "final-summary.md").is_file() and not (run_dir / "version-bump-reasoning.md").is_file():
+        fields.append("steps_ran.step8=false")
+    if not any(
+        (run_dir / name).is_file()
+        for name in (
+            "token-report.json",
+            "timing-report.json",
+            "execution-issues.ndjson",
+            "session-transcript.jsonl",
+        )
+    ):
+        fields.append("steps_ran.step7a=false")
+    if not fields:
+        return 0, ""
+    cmd = [
+        sys.executable,
+        str(Path(__file__).resolve().parent / "cli.py"),
+        "run-log",
+        "manifest",
+        "--log-root",
+        str(implement_tmpdir / "larch-logs"),
+        "--skill",
+        "implement",
+        "--run-id",
+        run_id,
+    ]
+    for field in fields:
+        cmd.extend(["--field", field])
+    completed = subprocess.run(cmd, text=True, capture_output=True, check=False)
+    if completed.returncode != 0:
+        err = (completed.stderr or completed.stdout or "manifest update failed").strip()
+        return completed.returncode or 1, f"run-log manifest steps_ran update failed: {err[:300]}"
+    return 0, ""
+
+
 def write_final_report(implement_tmpdir: Path, *, comment_only: bool = False, print_stdout: bool = False) -> tuple[int, str, str]:
     parent = implement_tmpdir / "parent-issue.md"
     session = implement_tmpdir / "session-env.sh"
@@ -876,9 +926,10 @@ def write_final_report(implement_tmpdir: Path, *, comment_only: bool = False, pr
         ship=ship,
     )
     cost_fields = _final_report_token_fields(implement_tmpdir, run_id)
+    outcome = _normalized_outcome(implement_tmpdir)
     body = render_run_summary(
         skill="implement",
-        outcome=_normalized_outcome(implement_tmpdir),
+        outcome=outcome,
         run_id=run_id or "unknown",
         mode=_read_kv(session, "MODE", "N/A"),
         workflow_path=_read_kv(session, "WORKFLOW_PATH"),
@@ -903,6 +954,16 @@ def write_final_report(implement_tmpdir: Path, *, comment_only: bool = False, pr
     )
     summary = implement_tmpdir / "summary-final.md"
     summary.write_text(body, encoding="utf-8")
+    if not comment_only:
+        stamp_rc, stamp_err = _stamp_skipped_steps_for_terminal_report(
+            implement_tmpdir,
+            run_id=run_id or "unknown",
+            outcome=outcome,
+        )
+        if stamp_rc != 0:
+            if print_stdout:
+                sys.stdout.write(body)
+            return stamp_rc, "", stamp_err
     if not comment_only:
         run_dir.mkdir(parents=True, exist_ok=True)
         with contextlib.suppress(OSError):

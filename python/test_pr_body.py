@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -112,6 +113,11 @@ def test_compose_pr_body_appends_closes_when_mermaid_mentions_closes() -> None:
     )
     assert body.count("Closes #42") == 2
     assert body.rstrip().endswith("Closes #42")
+
+
+def test_compose_pr_body_does_not_inject_oos_issue_urls() -> None:
+    body = pr_body.compose_pr_body(summary="- Implement the requested change.")
+    assert re.search(r"https://github\.com/[^/\s]+/[^/\s]+/issues/\d+", body) is None
 
 
 def test_compose_pr_body_fail_closed_on_truncation(

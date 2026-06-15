@@ -1401,8 +1401,18 @@ def _step9a1_heuristic(ctx: RunContext) -> bool | None:
     if design_done and no_issues:
         return False
     run_dir = log_root / "implement" / run_id
-    if (run_dir / "oos-issues.ndjson").is_file() or (run_dir / "run-statistics.md").is_file():
+    manifest_path = run_dir / "manifest.json"
+    if manifest_path.is_file():
+        with suppress(OSError, json.JSONDecodeError):
+            if _manifest_step9a1_explicitly_skipped(json.loads(manifest_path.read_text(encoding="utf-8"))):
+                return False
+    ndjson = run_dir / "oos-issues.ndjson"
+    if ndjson.is_file() and ndjson.stat().st_size > 0:
         return True
+    stats = run_dir / "run-statistics.md"
+    if stats.is_file():
+        text = stats.read_text(encoding="utf-8", errors="replace")
+        return not re.search(r":\s*0 OOS issue\(s\) filed\.", text)
     return None
 
 

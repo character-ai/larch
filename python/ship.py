@@ -1331,15 +1331,16 @@ def run_ship(
                         _ = file_oos.materialize_manifest_oos(manifest, tmp_path)
                     break
 
-            if fresh_context.oos_pending and not fresh_context.forked_target and not fresh_context.repo_unavailable:
-                oos_count = file_oos.count_non_security(
-                    file_oos.accepted_oos_paths(tmp_path)
+            security_sidecar = tmp_path / "security-oos-observations.md"
+            if (
+                not fresh_context.forked_target
+                and not fresh_context.repo_unavailable
+                and security_sidecar.is_file()
+                and security_sidecar.stat().st_size > 0
+            ):
+                return ShipResult(
+                    Outcome.NEEDS_USER_INPUT, needs_user_reason="oos-filing"
                 )
-                security_sidecar = tmp_path / "security-oos-observations.md"
-                if oos_count > 0 or (security_sidecar.is_file() and security_sidecar.stat().st_size > 0):
-                    return ShipResult(
-                        Outcome.NEEDS_USER_INPUT, needs_user_reason="oos-filing"
-                    )
 
             pr_context = fresh_context
         else:
