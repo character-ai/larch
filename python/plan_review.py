@@ -958,6 +958,11 @@ def _decode_asset(data: str) -> bytes:
     return gzip.decompress(base64.b64decode(data.encode("ascii")))
 
 
+def legacy_asset_bytes(rel_path: str) -> bytes:
+    """Return embedded legacy asset bytes for contract tests."""
+    return _decode_asset(_LEGACY_ASSETS[rel_path])
+
+
 def _symlink_or_copy(src: Path, dst: Path) -> None:
     if dst.exists() or dst.is_symlink():
         return
