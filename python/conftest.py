@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import os
 import time
 
 import pytest
 import config
 import logging_util
+import pytest_sharding
 
 
 @pytest.fixture(autouse=True)
@@ -47,3 +49,25 @@ def _no_real_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
         pass
 
     monkeypatch.setattr(time, "sleep", noop)
+
+
+def pytest_collection_modifyitems(
+    config: pytest.Config, items: list[pytest.Item]
+) -> None:
+    """Keep only the tests assigned to the current shard (issue #4407).
+
+    No-op unless PYTEST_SHARD_ID / PYTEST_SHARD_COUNT are both set, so local
+    `make py-test` and targeted harness runs execute the full collection.
+    Round-robin by collection index keeps shard sizes within one test of each
+    other; see python/pytest_sharding.py.
+    """
+    parsed = pytest_sharding.read_shard_env(os.environ)
+    if parsed is None:
+        return
+    shard_id, shard_count = parsed
+    keep = pytest_sharding.select_shard_indices(len(items), shard_id, shard_count)
+    selected = [item for index, item in enumerate(items) if index in keep]
+    deselected = [item for index, item in enumerate(items) if index not in keep]
+    if deselected:
+        config.hook.pytest_deselected(items=deselected)
+    items[:] = selected

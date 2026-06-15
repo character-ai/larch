@@ -2,10 +2,21 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+from pytest_sharding import ENV_SHARD_COUNT, ENV_SHARD_ID
+
+
+def _subprocess_env() -> dict[str, str]:
+    """Drop CI shard assignment so nested pytest collects the full module."""
+    env = os.environ.copy()
+    _ = env.pop(ENV_SHARD_ID, None)
+    _ = env.pop(ENV_SHARD_COUNT, None)
+    return env
 
 
 def test_finalize_bash_parity_collects_real_tests_when_bash_present() -> None:
@@ -16,6 +27,7 @@ def test_finalize_bash_parity_collects_real_tests_when_bash_present() -> None:
             check=False,
             text=True,
             capture_output=True,
+            env=_subprocess_env(),
         )
         assert result.returncode == 0
         assert "skipped" in (result.stdout + result.stderr).lower()
@@ -25,6 +37,7 @@ def test_finalize_bash_parity_collects_real_tests_when_bash_present() -> None:
         check=False,
         text=True,
         capture_output=True,
+        env=_subprocess_env(),
     )
     assert result.returncode == 0
     collected = result.stdout
@@ -35,6 +48,7 @@ def test_finalize_bash_parity_collects_real_tests_when_bash_present() -> None:
         check=False,
         text=True,
         capture_output=True,
+        env=_subprocess_env(),
     )
     assert run.returncode == 0
     output = run.stdout + run.stderr

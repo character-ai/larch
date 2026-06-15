@@ -40,7 +40,9 @@ py-lint:
 py-test:
 	@$(PYTHON) -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' \
 		|| (printf '%s\n' "ERROR: make py-test requires Python 3.11 or newer (PYTHON=$(PYTHON))" >&2; exit 1)
-	cd python && $(PYTHON) -m pytest
+	# --durations=0 emits per-test timing so CI shards (PYTEST_SHARD_ID /
+	# PYTEST_SHARD_COUNT, see python/conftest.py) can be rebalanced by wall time.
+	cd python && $(PYTHON) -m pytest --durations=0
 
 lint-only:
 	pre-commit run --all-files
