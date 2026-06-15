@@ -25,7 +25,7 @@ def _session_get(path: Path, key: str, default: str = "") -> str:
         for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
             if raw.startswith(prefix):
                 value = raw[len(prefix):]
-                return value if value else default
+                return value or default
     except OSError:
         return default
     return default
@@ -52,7 +52,7 @@ def _append_log_write_failure(plugin_root: Path, implement_tmpdir: Path, site: s
     if not helper.is_file():
         print(f"run-step1-plan-log.sh: best-effort log write failed for {tool} (see {output_file})", file=sys.stderr)
         return
-    subprocess.run(
+    _ = subprocess.run(
         [
             sys.executable,
             str(helper),
@@ -171,7 +171,7 @@ def step1_log_main(argv: Sequence[str]) -> int:
             )
         if compose.returncode != 0:
             return int(compose.returncode)
-        tmp_output.replace(output_file)
+        _ = tmp_output.replace(output_file)
         tmp_name = ""
     finally:
         if tmp_name:
@@ -197,9 +197,9 @@ def step1_log_main(argv: Sequence[str]) -> int:
         capture_output=True,
     )
     if write_result.stdout:
-        sys.stdout.write(write_result.stdout)
+        _ = sys.stdout.write(write_result.stdout)
     if write_result.stderr:
-        sys.stderr.write(write_result.stderr)
+        _ = sys.stderr.write(write_result.stderr)
     if write_result.returncode != 0:
         return int(write_result.returncode)
 
@@ -226,7 +226,7 @@ def step1_log_main(argv: Sequence[str]) -> int:
             capture_output=True,
         )
         if parent_write.returncode != 0:
-            parent_issue_fail_log.write_text(
+            _ = parent_issue_fail_log.write_text(
                 (parent_write.stdout or "") + (parent_write.stderr or ""),
                 encoding="utf-8",
             )

@@ -11,7 +11,7 @@ from pathlib import Path
 
 def _write_fake_cli(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
+    _ = path.write_text(
         """#!/usr/bin/env python3
 import sys
 args = sys.argv[1:]
@@ -42,9 +42,9 @@ def test_postplan_with_plan_size_returns_pause_code(tmp_path: Path) -> None:
     _write_fake_cli(plugin_root / "python" / "cli.py")
     design = tmp_path / "design"
     design.mkdir()
-    (design / "plan.txt").write_text("# Plan\n\ndiff_lines: 1\n", encoding="utf-8")
-    (design / "run-params.json").write_text('{"partition_requested": false}\n', encoding="utf-8")
-    (design / ".pause-requested").write_text("", encoding="utf-8")
+    _ = (design / "plan.txt").write_text("# Plan\n\ndiff_lines: 1\n", encoding="utf-8")
+    _ = (design / "run-params.json").write_text('{"partition_requested": false}\n', encoding="utf-8")
+    _ = (design / ".pause-requested").write_text("", encoding="utf-8")
     cli_py = Path(__file__).with_name("cli.py")
     env = os.environ.copy()
     env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
@@ -64,8 +64,8 @@ def test_postplan_with_plan_size_returns_defect_code(tmp_path: Path) -> None:
     _write_fake_cli(plugin_root / "python" / "cli.py")
     design = tmp_path / "design"
     design.mkdir()
-    (design / "plan.txt").write_text("# Plan\n\ndiff_lines: 1\n", encoding="utf-8")
-    (design / "run-params.json").write_text('{"partition_requested": false}\n', encoding="utf-8")
+    _ = (design / "plan.txt").write_text("# Plan\n\ndiff_lines: 1\n", encoding="utf-8")
+    _ = (design / "run-params.json").write_text('{"partition_requested": false}\n', encoding="utf-8")
     cli_py = Path(__file__).with_name("cli.py")
     env = os.environ.copy()
     env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)

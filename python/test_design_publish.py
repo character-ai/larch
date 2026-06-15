@@ -11,7 +11,7 @@ from pathlib import Path
 
 def _write_fake_cli(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
+    _ = path.write_text(
         """#!/usr/bin/env python3
 import sys
 args = sys.argv[1:]
@@ -47,7 +47,7 @@ def test_publish_requires_composed_plan(tmp_path: Path) -> None:
     cli_py = Path(__file__).with_name("cli.py")
     design = tmp_path / "design"
     (design / ".completed").mkdir(parents=True)
-    (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     result = subprocess.run(
         [
             sys.executable,
@@ -77,8 +77,8 @@ def test_publish_success_writes_result_env(tmp_path: Path) -> None:
     _write_fake_cli(plugin_root / "python" / "cli.py")
     design = tmp_path / "design"
     (design / ".completed").mkdir(parents=True)
-    (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
-    (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
+    _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
     cli_py = Path(__file__).with_name("cli.py")
     env = os.environ.copy()
     env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)

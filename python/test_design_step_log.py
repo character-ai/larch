@@ -17,7 +17,7 @@ def test_plan_step1_log_registered_as_machine_stdout() -> None:
 
 
 def _make_exec(path: Path, body: str) -> None:
-    path.write_text(body, encoding="utf-8")
+    _ = path.write_text(body, encoding="utf-8")
     path.chmod(path.stat().st_mode | stat.S_IXUSR)
 
 
@@ -25,9 +25,9 @@ def test_step1_log_overrides_compose_and_log(tmp_path: Path) -> None:
     cli_py = Path(__file__).with_name("cli.py")
     work = tmp_path / "impl"
     work.mkdir()
-    (work / "session-env.sh").write_text("LARCH_CLAUDE_PLUGIN_ROOT=/repo\n", encoding="utf-8")
-    (work / "session-id").write_text("run-session\n", encoding="utf-8")
-    (work / "plan.txt").write_text("Plan\n", encoding="utf-8")
+    _ = (work / "session-env.sh").write_text("LARCH_CLAUDE_PLUGIN_ROOT=/repo\n", encoding="utf-8")
+    _ = (work / "session-id").write_text("run-session\n", encoding="utf-8")
+    _ = (work / "plan.txt").write_text("Plan\n", encoding="utf-8")
     compose_args = tmp_path / "compose.args"
     log_args = tmp_path / "log.args"
     compose = tmp_path / "compose.sh"
@@ -67,8 +67,8 @@ def test_step1_log_requires_conventional_plan_file(tmp_path: Path) -> None:
     cli_py = Path(__file__).with_name("cli.py")
     work = tmp_path / "impl"
     work.mkdir()
-    (work / "session-env.sh").write_text("LARCH_CLAUDE_PLUGIN_ROOT=/repo\n", encoding="utf-8")
-    (work / "session-id").write_text("run-session\n", encoding="utf-8")
+    _ = (work / "session-env.sh").write_text("LARCH_CLAUDE_PLUGIN_ROOT=/repo\n", encoding="utf-8")
+    _ = (work / "session-id").write_text("run-session\n", encoding="utf-8")
     result = subprocess.run(
         [sys.executable, str(cli_py), "plan", "step1-log", "--implement-tmpdir", str(work), "--goal-text", "x"],
         capture_output=True,

@@ -86,7 +86,7 @@ def publish_main(argv: Sequence[str]) -> int:
         kvs[2] = ("VALIDATE_DEFECT_COUNT", "1")
         kvs[5] = ("VALIDATE_LOG_FILE", str(design_tmpdir / "validate-plan-commands.log"))
         _emit_rows(kvs)
-        result_env.write_text("\n".join(f"{k}={v}" for k, v in kvs) + "\n", encoding="utf-8")
+        _ = result_env.write_text("\n".join(f"{k}={v}" for k, v in kvs) + "\n", encoding="utf-8")
         return 4
 
     if (design_tmpdir / ".pause-requested").is_file():
@@ -137,7 +137,7 @@ def publish_main(argv: Sequence[str]) -> int:
         kvs[5] = ("VALIDATE_LOG_FILE", parsed_validate.get("VALIDATE_LOG_FILE", ""))
         if kvs[1][1] == "defects-found":
             _emit_rows(kvs)
-            result_env.write_text("\n".join(f"{k}={v}" for k, v in kvs) + "\n", encoding="utf-8")
+            _ = result_env.write_text("\n".join(f"{k}={v}" for k, v in kvs) + "\n", encoding="utf-8")
             return 4
         if validate.returncode != 0 or kvs[1][1] != "ok":
             return 5
@@ -152,7 +152,7 @@ def publish_main(argv: Sequence[str]) -> int:
     )
     if redact.returncode != 0 or not redact.stdout:
         return 5
-    redacted_plan.write_text(redact.stdout, encoding="utf-8")
+    _ = redacted_plan.write_text(redact.stdout, encoding="utf-8")
 
     block = subprocess.run(
         [
@@ -227,6 +227,6 @@ def publish_main(argv: Sequence[str]) -> int:
             kvs.append((key, publish_kv[key]))
             if key == "RECOVERY_BRANCH":
                 kvs.append(("LOG_RECOVERY_BRANCH", publish_kv[key]))
-    result_env.write_text("\n".join(f"{k}={v}" for k, v in kvs) + "\n", encoding="utf-8")
+    _ = result_env.write_text("\n".join(f"{k}={v}" for k, v in kvs) + "\n", encoding="utf-8")
     _emit_rows(kvs)
     return 0

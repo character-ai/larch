@@ -63,9 +63,9 @@ def test_design_read_result_env_cli_writes_sourceable_output(tmp_path: Path) -> 
 
 def test_design_route_merges_flags_for_already_planned(tmp_path: Path) -> None:
     body = tmp_path / "issue-body.md"
-    body.write_text("x\n<!-- larch:plan:start -->\nplan\n<!-- larch:plan:end -->\n", encoding="utf-8")
+    _ = body.write_text("x\n<!-- larch:plan:start -->\nplan\n<!-- larch:plan:end -->\n", encoding="utf-8")
     run_params = tmp_path / "run-params.json"
-    run_params.write_text(
+    _ = run_params.write_text(
         '{"partition_requested": false, "brainstorm_requested": false, "approve_requested": false, "skip_approve_requested": false}\n',
         encoding="utf-8",
     )
@@ -108,9 +108,9 @@ def test_design_route_merges_flags_for_already_planned(tmp_path: Path) -> None:
 def test_design_driver_emit_plan_is_rerunnable(tmp_path: Path) -> None:
     design = tmp_path / "design"
     design.mkdir()
-    (design / "plan.txt").write_text("# Plan\n\ndiff_lines: 5\n", encoding="utf-8")
+    _ = (design / "plan.txt").write_text("# Plan\n\ndiff_lines: 5\n", encoding="utf-8")
     actions = tmp_path / "actions.txt"
-    actions.write_text("ACTION=EMIT_PLAN\nACTION=FINALIZE\n", encoding="utf-8")
+    _ = actions.write_text("ACTION=EMIT_PLAN\nACTION=FINALIZE\n", encoding="utf-8")
     first = subprocess.run(
         [sys.executable, str(CLI), "design", "driver", "--design-tmpdir", str(design), "--action-file", str(actions)],
         capture_output=True,
@@ -119,7 +119,7 @@ def test_design_driver_emit_plan_is_rerunnable(tmp_path: Path) -> None:
     )
     assert first.returncode == 0
     assert "STEP_COMPLETED=FINALIZE" in first.stdout
-    (design / "plan.txt").write_text("# Plan\n\ndiff_lines: 9\n", encoding="utf-8")
+    _ = (design / "plan.txt").write_text("# Plan\n\ndiff_lines: 9\n", encoding="utf-8")
     second = subprocess.run(
         [sys.executable, str(CLI), "design", "driver", "--design-tmpdir", str(design), "--action-file", str(actions)],
         capture_output=True,

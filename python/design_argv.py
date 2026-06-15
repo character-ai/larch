@@ -151,9 +151,8 @@ def parse_argv_main(argv: Sequence[str]) -> int:
         "POSITIONAL_VALUE": positional_value,
     }
 
-    if output_path:
-        if not _write_output(output_path, output_fields):
-            return 1
+    if output_path and not _write_output(output_path, output_fields):
+        return 1
     for key, val in stdout_fields.items():
         print(f"{key}={val}")
 

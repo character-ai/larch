@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 import shutil
@@ -24,13 +25,11 @@ def _validate_slug(value: str) -> bool:
 
 
 def _persist_metadata(design_tmpdir: Path, pr_number: str, pr_url: str, recovery_branch: str) -> None:
-    try:
-        (design_tmpdir / ".design-log-publish-metadata.env").write_text(
+    with contextlib.suppress(OSError):
+        _ = (design_tmpdir / ".design-log-publish-metadata.env").write_text(
             f"DESIGN_LOG_PR_NUMBER={pr_number}\nDESIGN_LOG_PR_URL={pr_url}\nDESIGN_LOG_RECOVERY_BRANCH={recovery_branch}\n",
             encoding="utf-8",
         )
-    except OSError:
-        return
 
 
 def _copy_tree_redacted(plugin_root: Path, source: Path, dest: Path) -> bool:
@@ -56,7 +55,7 @@ def _copy_tree_redacted(plugin_root: Path, source: Path, dest: Path) -> bool:
         )
         if sec.returncode != 0:
             return False
-        dest.write_text(sec.stdout, encoding="utf-8")
+        _ = dest.write_text(sec.stdout, encoding="utf-8")
         return True
     if source.is_dir():
         for child in source.iterdir():
@@ -121,7 +120,7 @@ def log_publish_main(argv: Sequence[str]) -> int:
                 _emit("PR_NUMBER", "")
                 _emit("PR_URL", "")
                 return 0
-        repo_root = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False).stdout.strip()
+        repo_root = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False).stdout.strip()  # noqa: S607
         if not repo_root:
             _emit("PUBLISH_OK", "false")
             _emit("PR_NUMBER", "")
@@ -134,7 +133,7 @@ def log_publish_main(argv: Sequence[str]) -> int:
         return 0
 
     plugin_root = Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[1]))
-    repo_root = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False).stdout.strip()
+    repo_root = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False).stdout.strip()  # noqa: S607
     if not repo_root:
         _emit("PUBLISH_OK", "false")
         _emit("PR_NUMBER", "")
@@ -166,7 +165,7 @@ def log_publish_main(argv: Sequence[str]) -> int:
         return 0
 
     for child in design_tmpdir.iterdir():
-        if child.name in {".design-log-publish-metadata.env"}:
+        if child.name == ".design-log-publish-metadata.env":
             continue
         if not _copy_tree_redacted(plugin_root, child, run_dest / child.name):
             _emit("PUBLISH_OK", "false")

@@ -236,7 +236,7 @@ def postplan_emit_main(argv: Sequence[str]) -> int:
         flush()
         return 1
     if snapshot_original and kvs.get("PLAN_LINES") and kvs.get("DIFF_LINES"):
-        _run_cli(
+        _ = _run_cli(
             root,
             "plan-review",
             "drift-baseline",

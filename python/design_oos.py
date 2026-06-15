@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import os
 import re
 import subprocess
@@ -42,10 +43,10 @@ def _run_cli(*args: str, capture: bool = False, stderr_path: Path | None = None)
 
 def _require_design_tmpdir(argv: Sequence[str], *, prog: str) -> Path | None:
     parser = argparse.ArgumentParser(prog=prog, add_help=False)
-    parser.add_argument("--design-tmpdir")
-    parser.add_argument("--issue-number")
-    parser.add_argument("--issue-stdout-file")
-    parser.add_argument("--clear-cross-session-cache", action="store_true")
+    _ = parser.add_argument("--design-tmpdir")
+    _ = parser.add_argument("--issue-number")
+    _ = parser.add_argument("--issue-stdout-file")
+    _ = parser.add_argument("--clear-cross-session-cache", action="store_true")
     try:
         args, _extra = parser.parse_known_args(list(argv))
     except SystemExit:
@@ -109,7 +110,7 @@ def _append_warning_log(design_tmpdir: Path, site: str, tool: str, detail: str) 
     existing = log.read_text(encoding="utf-8") if log.exists() else ""
     if heading not in existing:
         existing = existing.rstrip() + ("\n\n" if existing.strip() else "") + heading
-    log.write_text(existing.rstrip() + "\n" + entry, encoding="utf-8")
+    _ = log.write_text(existing.rstrip() + "\n" + entry, encoding="utf-8")
 
 
 def _load_issue_sentinel_status(design_tmpdir: Path) -> tuple[int, int, int]:
@@ -149,7 +150,8 @@ def _recover_accepted_from_sentinel(accepted_text: str, sentinel_text: str) -> t
     for line in sentinel_text.splitlines():
         if line.startswith("OOS_FILE_MAP\t"):
             parts = line.split("\t", 2)
-            if len(parts) >= 3 and parts[1].strip() and parts[2].strip():
+            _MIN_MAP_PARTS = 3
+            if len(parts) >= _MIN_MAP_PARTS and parts[1].strip() and parts[2].strip():
                 maps.append((parts[1].strip(), parts[2].strip()))
             continue
         token = line.strip()
@@ -191,8 +193,8 @@ def _sync_cross_session_cache(design_tmpdir: Path, sentinel: Path, issue_number:
     try:
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         tmp = cache_path.with_suffix(".tmp")
-        tmp.write_text(sentinel.read_text(encoding="utf-8"), encoding="utf-8")
-        tmp.replace(cache_path)
+        _ = tmp.write_text(sentinel.read_text(encoding="utf-8"), encoding="utf-8")
+        _ = tmp.replace(cache_path)
     except OSError as exc:
         _append_warning_log(
             design_tmpdir,
@@ -204,9 +206,9 @@ def _sync_cross_session_cache(design_tmpdir: Path, sentinel: Path, issue_number:
 
 def file_oos_prepare_main(argv: Sequence[str]) -> int:
     parser = argparse.ArgumentParser(prog="design file-oos-prepare", add_help=False)
-    parser.add_argument("--design-tmpdir")
-    parser.add_argument("--issue-number")
-    parser.add_argument("--clear-cross-session-cache", action="store_true")
+    _ = parser.add_argument("--design-tmpdir")
+    _ = parser.add_argument("--issue-number")
+    _ = parser.add_argument("--clear-cross-session-cache", action="store_true")
     try:
         args = parser.parse_args(list(argv))
     except SystemExit:
@@ -222,10 +224,8 @@ def file_oos_prepare_main(argv: Sequence[str]) -> int:
     issue_number = _issue_number_from(args.issue_number)
     cache_path = _cross_session_cache_path(issue_number)
     if args.clear_cross_session_cache and cache_path is not None:
-        try:
+        with contextlib.suppress(OSError):
             cache_path.unlink(missing_ok=True)
-        except OSError:
-            pass
     if sentinel.is_file() and sentinel.stat().st_size > 0:
         _emit_kv("FILE_DESIGN_OOS_STATUS", "skip-sentinel")
         return 0
@@ -242,13 +242,13 @@ def file_oos_prepare_main(argv: Sequence[str]) -> int:
     if cache_path and cache_path.is_file() and cache_path.stat().st_size > 0 and accepted.is_file():
         try:
             sentinel_text = cache_path.read_text(encoding="utf-8")
-            sentinel.write_text(sentinel_text, encoding="utf-8")
+            _ = sentinel.write_text(sentinel_text, encoding="utf-8")
             ok, recovered = _recover_accepted_from_sentinel(
                 accepted.read_text(encoding="utf-8"),
                 sentinel_text,
             )
             if ok:
-                accepted.write_text(recovered, encoding="utf-8")
+                _ = accepted.write_text(recovered, encoding="utf-8")
                 _emit_kv("FILE_DESIGN_OOS_STATUS", "skip-sentinel")
                 return 0
             sentinel.unlink(missing_ok=True)
@@ -274,7 +274,7 @@ def file_oos_prepare_main(argv: Sequence[str]) -> int:
     if not unfiled.strip():
         _emit_kv("FILE_DESIGN_OOS_STATUS", "skip-no-items")
         return 0
-    combined.write_text(unfiled, encoding="utf-8")
+    _ = combined.write_text(unfiled, encoding="utf-8")
     headers = [match.group(1) for match in _OOS_HEADER_RE.finditer(unfiled)]
     if not headers:
         combined.unlink(missing_ok=True)
@@ -284,7 +284,7 @@ def file_oos_prepare_main(argv: Sequence[str]) -> int:
         combined.unlink(missing_ok=True)
         _emit_kv("FILE_DESIGN_OOS_STATUS", "skip-all-security")
         return 0
-    order_file.write_text("\n".join(headers) + "\n", encoding="utf-8")
+    _ = order_file.write_text("\n".join(headers) + "\n", encoding="utf-8")
     capped = combined.with_suffix(".md.capped.tmp")
     cap_result = _run_cli(
         "oos",
@@ -301,7 +301,7 @@ def file_oos_prepare_main(argv: Sequence[str]) -> int:
             print(cap_result.stderr, end="", file=sys.stderr)
         capped.unlink(missing_ok=True)
         return 2
-    capped.replace(combined)
+    _ = capped.replace(combined)
     deps_result = _run_cli(
         "oos",
         "file-conflict-deps",
@@ -359,9 +359,9 @@ def _parse_issue_stdout(stdout_text: str) -> tuple[dict[str, str], dict[str, str
 
 def file_oos_annotate_main(argv: Sequence[str]) -> int:
     parser = argparse.ArgumentParser(prog="design file-oos-annotate", add_help=False)
-    parser.add_argument("--design-tmpdir")
-    parser.add_argument("--issue-stdout-file")
-    parser.add_argument("--issue-number")
+    _ = parser.add_argument("--design-tmpdir")
+    _ = parser.add_argument("--issue-stdout-file")
+    _ = parser.add_argument("--issue-number")
     try:
         args = parser.parse_args(list(argv))
     except SystemExit:
@@ -412,9 +412,9 @@ def file_oos_annotate_main(argv: Sequence[str]) -> int:
         gh = _GH_ISSUE_URL_RE.search(url)
         if gh:
             gh_urls.add(gh.group(0))
-    accepted.write_text(accepted_text, encoding="utf-8")
+    _ = accepted.write_text(accepted_text, encoding="utf-8")
     sentinel_lines = [*map_lines, *sorted(gh_urls)]
-    (design_tmpdir / "oos-issues-created.md").write_text("\n".join(sentinel_lines) + ("\n" if sentinel_lines else ""), encoding="utf-8")
+    _ = (design_tmpdir / "oos-issues-created.md").write_text("\n".join(sentinel_lines) + ("\n" if sentinel_lines else ""), encoding="utf-8")
     _sync_cross_session_cache(design_tmpdir, design_tmpdir / "oos-issues-created.md", _issue_number_from(args.issue_number))
     _emit_kv("FILE_DESIGN_OOS_STATUS", "annotate-complete")
     if issues_failed_count > 0:

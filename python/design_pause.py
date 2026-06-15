@@ -163,7 +163,7 @@ def pause_save_main(argv: Sequence[str]) -> int:
         f"BODY_HASH={body_hash}",
     ]
     state_file = design_tmpdir / "pause-state.txt"
-    state_file.write_text("\n".join(state_lines) + "\n", encoding="utf-8")
+    _ = state_file.write_text("\n".join(state_lines) + "\n", encoding="utf-8")
 
     publish = subprocess.run(
         [
@@ -185,7 +185,7 @@ def pause_save_main(argv: Sequence[str]) -> int:
         text=True,
         check=False,
     )
-    publish_kv = {}
+    publish_kv: dict[str, str] = {}
     for line in publish.stdout.splitlines():
         if "=" in line:
             key, value = line.split("=", 1)
@@ -216,7 +216,7 @@ def pause_save_main(argv: Sequence[str]) -> int:
         _emit([("PAUSE_OK", "false"), ("ERROR", "marker-write-failed")])
         return 0
     (design_tmpdir / ".pause-requested").unlink(missing_ok=True)
-    (design_tmpdir / ".pause-save-complete").write_text("", encoding="utf-8")
+    _ = (design_tmpdir / ".pause-save-complete").write_text("", encoding="utf-8")
     _emit([("PAUSE_OK", "true"), ("STEP", step), ("RUN_ID", run_id)])
     return 0
 
@@ -255,25 +255,25 @@ def pause_load_main(argv: Sequence[str]) -> int:
         _emit([("LOAD_OK", "false"), ("ERROR", "invalid-run-id")])
         return 0
 
-    repo_top = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False).stdout.strip()
+    repo_top = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False).stdout.strip()  # noqa: S607
     if not repo_top:
         _emit([("LOAD_OK", "false"), ("ERROR", "not-git-worktree")])
         return 0
     recovery_branch = payload.get("LOG_RECOVERY_BRANCH", "")
     if recovery_branch:
-        fetch = subprocess.run(["git", "-C", repo_top, "fetch", "origin", recovery_branch], check=False)
+        fetch = subprocess.run(["git", "-C", repo_top, "fetch", "origin", recovery_branch], check=False)  # noqa: S607
         if fetch.returncode != 0:
             _emit([("LOAD_OK", "false"), ("ERROR", "snapshot-not-found")])
             return 0
         snapshot_ref = "FETCH_HEAD"
     else:
         default = subprocess.run(
-            ["git", "-C", repo_top, "symbolic-ref", "refs/remotes/origin/HEAD"],
+            ["git", "-C", repo_top, "symbolic-ref", "refs/remotes/origin/HEAD"],  # noqa: S607
             capture_output=True,
             text=True,
             check=False,
         ).stdout.strip().replace("refs/remotes/origin/", "") or "main"
-        if subprocess.run(["git", "-C", repo_top, "fetch", "origin", default], check=False).returncode != 0:
+        if subprocess.run(["git", "-C", repo_top, "fetch", "origin", default], check=False).returncode != 0:  # noqa: S607
             _emit([("LOAD_OK", "false"), ("ERROR", "snapshot-not-found")])
             return 0
         snapshot_ref = f"origin/{default}"
@@ -282,7 +282,7 @@ def pause_load_main(argv: Sequence[str]) -> int:
     try:
         prefix = f"larch-logs/design/{run_id}/"
         ls = subprocess.run(
-            ["git", "-C", repo_top, "ls-tree", "-r", "--name-only", snapshot_ref, "--", prefix],
+            ["git", "-C", repo_top, "ls-tree", "-r", "--name-only", snapshot_ref, "--", prefix],  # noqa: S607
             capture_output=True,
             text=True,
             check=False,
@@ -299,7 +299,7 @@ def pause_load_main(argv: Sequence[str]) -> int:
             dest = restore_tmp / rel
             dest.parent.mkdir(parents=True, exist_ok=True)
             blob = subprocess.run(
-                ["git", "-C", repo_top, "show", f"{snapshot_ref}:{full_path}"],
+                ["git", "-C", repo_top, "show", f"{snapshot_ref}:{full_path}"],  # noqa: S607
                 capture_output=True,
                 text=True,
                 check=False,
@@ -307,7 +307,7 @@ def pause_load_main(argv: Sequence[str]) -> int:
             if blob.returncode != 0:
                 _emit([("LOAD_OK", "false"), ("ERROR", "snapshot-extract-failed")])
                 return 0
-            dest.write_text(blob.stdout, encoding="utf-8")
+            _ = dest.write_text(blob.stdout, encoding="utf-8")
         for required in ("manifest.json", "run-params.json", "pause-state.txt"):
             if not (restore_tmp / required).is_file():
                 _emit([("LOAD_OK", "false"), ("ERROR", "missing-restored-artifact")])
@@ -315,13 +315,13 @@ def pause_load_main(argv: Sequence[str]) -> int:
         if step not in {"1", "1d", "2", "2b", "3", "3.5", "3b", "4", "5", "5c", "6"}:
             _emit([("LOAD_OK", "false"), ("ERROR", "invalid-step")])
             return 0
-        (restore_tmp / ".resume-loaded").write_text("", encoding="utf-8")
+        _ = (restore_tmp / ".resume-loaded").write_text("", encoding="utf-8")
         for child in restore_tmp.iterdir():
             target = design_tmpdir / child.name
             if child.is_dir():
-                shutil.copytree(child, target, dirs_exist_ok=True)
+                _ = shutil.copytree(child, target, dirs_exist_ok=True)
             else:
-                shutil.copy2(child, target)
+                _ = shutil.copy2(child, target)
         (design_tmpdir / ".pause-save-complete").unlink(missing_ok=True)
     finally:
         shutil.rmtree(restore_tmp, ignore_errors=True)

@@ -5,7 +5,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-import pytest
+import pytest  # noqa: TC002
 
 import design_oos
 from test_design_cli_ports import test_design_port_registry_entries_are_machine_stdout  # noqa: F401  # pylint: disable=unused-import  # pyright: ignore[reportUnusedImport]
@@ -23,7 +23,7 @@ def _kv(stdout: str) -> dict[str, str]:
 
 def test_prepare_ready_emits_expected_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     accepted = tmp_path / "oos-accepted-design.md"
-    accepted.write_text(
+    _ = accepted.write_text(
         "### OOS_7: first\n- body\n\n"
         "### OOS_9: second\n- body\n",
         encoding="utf-8",
@@ -34,16 +34,19 @@ def test_prepare_ready_emits_expected_contract(tmp_path: Path, monkeypatch: pyte
         seen.append(args)
         if args[:2] == ("oos", "issue-cap"):
             output = Path(args[args.index("--output") + 1])
-            output.write_text("### OOS_1: capped\n", encoding="utf-8")
+            _ = output.write_text("### OOS_1: capped\n", encoding="utf-8")
             return subprocess.CompletedProcess(list(args), 0, "", "")
         if args[:2] == ("oos", "file-conflict-deps"):
             output = Path(args[args.index("--output") + 1])
-            output.write_text("1\t2\n", encoding="utf-8")
+            _ = output.write_text("1\t2\n", encoding="utf-8")
             return subprocess.CompletedProcess(list(args), 0, "", "")
         return subprocess.CompletedProcess(list(args), 0, "", "")
 
+    def _stub_count(_text: str) -> int:
+        return 2
+
     monkeypatch.setattr(design_oos, "_run_cli", fake_run_cli)
-    monkeypatch.setattr(design_oos, "_count_non_security_blocks", lambda _text: 2)
+    monkeypatch.setattr(design_oos, "_count_non_security_blocks", _stub_count)
 
     rc = design_oos.file_oos_prepare_main(["--design-tmpdir", str(tmp_path)])
     assert rc == 0
@@ -68,14 +71,17 @@ def test_prepare_uses_cross_session_cache_and_recovers_accepted(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     accepted = tmp_path / "oos-accepted-design.md"
-    accepted.write_text("### OOS_3: title\n- desc\n", encoding="utf-8")
+    _ = accepted.write_text("### OOS_3: title\n- desc\n", encoding="utf-8")
     cache = tmp_path / "cache.md"
-    cache.write_text(
+    _ = cache.write_text(
         "OOS_FILE_MAP\t3\thttps://github.com/acme/repo/issues/123\n"
         "https://github.com/acme/repo/issues/123\n",
         encoding="utf-8",
     )
-    monkeypatch.setattr(design_oos, "_cross_session_cache_path", lambda _issue: cache)
+    def _stub_cache1(_issue: str) -> Path:
+        return cache
+
+    monkeypatch.setattr(design_oos, "_cross_session_cache_path", _stub_cache1)
 
     rc = design_oos.file_oos_prepare_main(["--design-tmpdir", str(tmp_path), "--issue-number", "44"])
     assert rc == 0
@@ -91,14 +97,14 @@ def test_annotate_updates_accepted_and_returns_nonzero_on_reported_failures(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     accepted = tmp_path / "oos-accepted-design.md"
-    accepted.write_text(
+    _ = accepted.write_text(
         "### OOS_1: alpha\n- desc\n\n"
         "### OOS_2: beta\n- desc\n",
         encoding="utf-8",
     )
-    (tmp_path / "oos-design-filing-order.txt").write_text("1\n2\n", encoding="utf-8")
+    _ = (tmp_path / "oos-design-filing-order.txt").write_text("1\n2\n", encoding="utf-8")
     stdout_file = tmp_path / "oos-issue.stdout.txt"
-    stdout_file.write_text(
+    _ = stdout_file.write_text(
         "ISSUE_1_URL=https://github.com/acme/repo/issues/101\n"
         "ISSUE_2_DUPLICATE_OF_URL=https://github.com/acme/repo/issues/102\n"
         "ISSUE_2_FAILED=true\n"
@@ -106,7 +112,11 @@ def test_annotate_updates_accepted_and_returns_nonzero_on_reported_failures(
         encoding="utf-8",
     )
     cache = tmp_path / "cache.md"
-    monkeypatch.setattr(design_oos, "_cross_session_cache_path", lambda _issue: cache)
+
+    def _stub_cache2(_issue: str) -> Path:
+        return cache
+
+    monkeypatch.setattr(design_oos, "_cross_session_cache_path", _stub_cache2)
 
     rc = design_oos.file_oos_annotate_main(["--design-tmpdir", str(tmp_path), "--issue-stdout-file", str(stdout_file), "--issue-number", "44"])
     assert rc == 1

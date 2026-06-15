@@ -211,14 +211,14 @@ def _run_design_failure_report_gate(
     if run_id:
         cmd += ["--run-id", run_id]
 
-    gate = subprocess.run(  # noqa: S603
+    gate = subprocess.run(
         cmd,
         capture_output=True,
         text=True,
         check=False,
     )
-    out_file.write_text(gate.stdout, encoding="utf-8")
-    err_file.write_text(gate.stderr, encoding="utf-8")
+    _ = out_file.write_text(gate.stdout, encoding="utf-8")
+    _ = err_file.write_text(gate.stderr, encoding="utf-8")
     gate_rc = gate.returncode
     if gate_rc != 0:
         _run_cli(  # pyright: ignore[reportUnusedCallResult]
@@ -242,16 +242,13 @@ def _emit_report_gate_sidecars_file(design_tmpdir: Path) -> None:
         design_tmpdir / "design-failure-chat-print.md",
         design_tmpdir / "design-failure-operator-action-chat.md",
     ]
-    chunks: list[str] = []
-    for sidecar in sidecars:
-        if sidecar.is_file() and sidecar.stat().st_size > 0:
-            chunks.append(sidecar.read_text(encoding="utf-8"))
+    chunks = [s.read_text(encoding="utf-8") for s in sidecars if s.is_file() and s.stat().st_size > 0]
     if not chunks:
         return
     body = "\n".join(chunks)
     if not body.endswith("\n"):
         body += "\n"
-    handoff.write_text(body, encoding="utf-8")
+    _ = handoff.write_text(body, encoding="utf-8")
     print(f"REPORT_GATE_SIDECARS_FILE={handoff}")
 
 

@@ -270,11 +270,11 @@ def route_main(argv: Sequence[str]) -> int:
     if route.startswith("resume@") or route == "already-planned":
         _merge_router_flags(
             design_tmpdir / "run-params.json",
-            optional["--partition-requested"] == "true",
-            optional["--brainstorm-requested"] == "true" or brainstorm_prefix == "true",
-            optional["--approve-requested"] == "true",
-            optional["--skip-approve-requested"] == "true",
             warn_lines,
+            merge_partition=optional["--partition-requested"] == "true",
+            merge_brainstorm=optional["--brainstorm-requested"] == "true" or brainstorm_prefix == "true",
+            merge_approve=optional["--approve-requested"] == "true",
+            merge_skip_approve=optional["--skip-approve-requested"] == "true",
         )
 
     out: list[tuple[str, str]] = [("ROUTE", route), ("BRAINSTORM_PREFIX", brainstorm_prefix)]
@@ -292,10 +292,8 @@ def route_main(argv: Sequence[str]) -> int:
         out.append(("BRAINSTORM_DONE", brainstorm_done))
     if marker_cleared:
         out.append(("MARKER_CLEARED", marker_cleared))
-    for item in warn_lines:
-        out.append(("WARN", item))
-    for item in error_lines:
-        out.append(("ERROR", item))
+    out.extend(("WARN", item) for item in warn_lines)
+    out.extend(("ERROR", item) for item in error_lines)
     _write_kv_file(result_env, out)  # pyright: ignore[reportUnusedCallResult]
     for key, value in out:
         print(f"{key}={value}")
@@ -413,15 +411,14 @@ def init_runparams_main(argv: Sequence[str]) -> int:
 
     _merge_router_flags(
         run_params_path,
-        parsed["--partition-requested"] == "true",
-        parsed["--brainstorm-requested"] == "true",
-        parsed["--approve-requested"] == "true",
-        parsed["--skip-approve-requested"] == "true",
         warn_lines,
+        merge_partition=parsed["--partition-requested"] == "true",
+        merge_brainstorm=parsed["--brainstorm-requested"] == "true",
+        merge_approve=parsed["--approve-requested"] == "true",
+        merge_skip_approve=parsed["--skip-approve-requested"] == "true",
     )
     result_rows: list[tuple[str, str]] = [("INIT_STATUS", init_status), ("RENAMED", renamed), ("RUN_PARAMS_PATH", str(run_params_path))]
-    for warn in warn_lines:
-        result_rows.append(("WARN", warn))
+    result_rows.extend(("WARN", w) for w in warn_lines)
     _write_kv_file(result_env, result_rows)  # pyright: ignore[reportUnusedCallResult]
     for key, value in result_rows:
         print(f"{key}={value}")
@@ -430,9 +427,9 @@ def init_runparams_main(argv: Sequence[str]) -> int:
 
 def driver_main(argv: Sequence[str]) -> int:
     parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument("--design-tmpdir")
-    parser.add_argument("--action-file")
-    parser.add_argument("--resume-from", default="")
+    _ = parser.add_argument("--design-tmpdir")
+    _ = parser.add_argument("--action-file")
+    _ = parser.add_argument("--resume-from", default="")
     try:
         ns, extra = parser.parse_known_args(list(argv))
     except SystemExit:
@@ -443,7 +440,7 @@ def driver_main(argv: Sequence[str]) -> int:
     completed = design_tmpdir / ".completed"
     completed.mkdir(parents=True, exist_ok=True)
     root = Path(__file__).resolve().parents[1]
-    consumer_repo_root = subprocess.run(["git", "-C", str(Path.cwd()), "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False).stdout.strip() or str(root)
+    consumer_repo_root = subprocess.run(["git", "-C", str(Path.cwd()), "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False).stdout.strip() or str(root)  # noqa: S607
 
     action_lines: list[str]
     if ns.action_file:
@@ -508,7 +505,7 @@ def driver_main(argv: Sequence[str]) -> int:
                 print(f"STEP_FAILED={action} REASON=exit-{proc_out.returncode}")
                 return int(proc_out.returncode)
             if not no_sentinel:
-                sentinel.write_text("", encoding="utf-8")
+                _ = sentinel.write_text("", encoding="utf-8")
             print(f"STEP_COMPLETED={action}")
             continue
         proc_out = subprocess.run(command, capture_output=True, text=True, check=False)
@@ -518,7 +515,7 @@ def driver_main(argv: Sequence[str]) -> int:
             print(f"STEP_FAILED={action} REASON=exit-{proc_out.returncode}")
             return int(proc_out.returncode)
         if not no_sentinel:
-            sentinel.write_text("", encoding="utf-8")
+            _ = sentinel.write_text("", encoding="utf-8")
         print(f"STEP_COMPLETED={action}")
     return 0
 
@@ -545,36 +542,37 @@ def _parse_stdout_kv(text: str) -> dict[str, list[str]]:
 
 def _merge_router_flags(
     run_params: Path,
+    warn_lines: list[str],
+    *,
     merge_partition: bool,
     merge_brainstorm: bool,
     merge_approve: bool,
     merge_skip_approve: bool,
-    warn_lines: list[str],
 ) -> None:
     if not (merge_partition or merge_brainstorm or merge_approve or merge_skip_approve):
         return
     if not run_params.is_file() or run_params.is_symlink():
         warn_lines.append(
-            f"**⚠ 0b: cannot merge current router flags into run-params.json on resumed/already-planned flow; file missing or unsafe. Re-run from Step 0b after repairing run params.**"
+            "**⚠ 0b: cannot merge current router flags into run-params.json on resumed/already-planned flow; file missing or unsafe. Re-run from Step 0b after repairing run params.**"
         )
         return
     try:
-        data = json.loads(run_params.read_text(encoding="utf-8"))
-        if not isinstance(data, dict):
+        _raw = json.loads(run_params.read_text(encoding="utf-8"))
+        if not isinstance(_raw, dict):
             return
+        data: dict[str, object] = _raw  # type: ignore[assignment]
         data["partition_requested"] = bool(data.get("partition_requested")) or merge_partition
         data["brainstorm_requested"] = bool(data.get("brainstorm_requested")) or merge_brainstorm
         data["approve_requested"] = bool(data.get("approve_requested")) or merge_approve
         data["skip_approve_requested"] = bool(data.get("skip_approve_requested")) or merge_skip_approve
-        run_params.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        _ = run_params.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     except (OSError, json.JSONDecodeError):
         warn_lines.append("**⚠ 0b: jq unavailable or run-params parse failed; current router flags may not persist into resumed/already-planned flow.**")
 
 
 def _normalize_step(value: str) -> str:
     lowered = value.lower()
-    allowed = "".join(ch if (ch.isalnum() or ch in "._-") else "-" for ch in lowered)
-    return allowed
+    return "".join(ch if (ch.isalnum() or ch in "._-") else "-" for ch in lowered)
 
 
 def _extract_args(line: str) -> str:

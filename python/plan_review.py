@@ -37,10 +37,12 @@ _DESIGN_PREVIEW = (*_DESIGN_SCRIPT_PREFIX, "emit-design-plan-preview.sh")
 _DESIGN_RETALLY_ENV = (*_DESIGN_SCRIPT_PREFIX, "persist-retally-step3-env.sh")
 _DESIGN_TALLY_REVIEW = (*_DESIGN_SCRIPT_PREFIX, "tally-plan-review.sh")
 _DESIGN_PANEL_DISPATCH = (*_DESIGN_SCRIPT_PREFIX, "dispatch-plan-review-panel.sh")
+DESIGN_PANEL_DISPATCH = _DESIGN_PANEL_DISPATCH
 _DESIGN_RUN_REVIEW = (*_DESIGN_SCRIPT_PREFIX, "run-step3-review.sh")
 _DESIGN_REVIEW_LOOP = (*_DESIGN_SCRIPT_PREFIX, "plan-review-loop.sh")
 _DESIGN_DRIFT_BASELINE = (*_DESIGN_SCRIPT_PREFIX, "lib-drift-baseline.sh")
 _ROOT_VOTER_DISPATCH = (*_ROOT_SCRIPT_PREFIX, "dispatch-plan-voters.sh")
+ROOT_VOTER_DISPATCH = _ROOT_VOTER_DISPATCH
 _ROOT_ROUND_ARTIFACTS = (*_ROOT_SCRIPT_PREFIX, "lib-design-round-artifacts.sh")
 
 
