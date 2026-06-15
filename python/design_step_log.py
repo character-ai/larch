@@ -124,6 +124,10 @@ def step1_log_main(argv: Sequence[str]) -> int:
     if not run_id:
         return _fail("RUN_ID unresolved from session-env, parent-issue, manifest, or session-id")
 
+    plan_file = implement_tmpdir / "plan.txt"
+    if not plan_file.is_file():
+        return _fail(f"plan file not found at conventional path: {plan_file}")
+
     plugin_root = Path(
         os.environ.get("CLAUDE_PLUGIN_ROOT")
         or _session_get(session_env_path, "LARCH_CLAUDE_PLUGIN_ROOT", "")
@@ -133,10 +137,6 @@ def step1_log_main(argv: Sequence[str]) -> int:
         return _fail(f"plugin root not a directory: {plugin_root}")
     os.environ["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
     os.environ["IMPLEMENT_TMPDIR"] = str(implement_tmpdir)
-
-    plan_file = implement_tmpdir / "plan.txt"
-    if not plan_file.is_file():
-        return _fail(f"plan file not found at conventional path: {plan_file}")
 
     compose_override = os.environ.get("RUN_STEP1_COMPOSE_CMD", "").strip()
     if compose_override:
