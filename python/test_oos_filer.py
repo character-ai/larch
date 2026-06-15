@@ -23,9 +23,12 @@ class FakeCli:
         self.created_bodies: list[str] = []
         self.urls = ["https://github.com/owner/repo/issues/101", "https://github.com/owner/repo/issues/102"]
         self.fail_create = False
+        self.fail_create_after = 0
         self.duplicate = False
         self.codex_output = ""
         self.codex_rc = 0
+        self.fail_blocked_by = False
+        self.blocker_probe_rc = 0
 
     def __call__(self, args: list[str], *, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
         self.calls.append(args)
@@ -57,20 +60,21 @@ class FakeCli:
                 )
             lines.append(f"ITEMS_TOTAL={len(items)}")
             return _cp(args, stdout="\n".join(lines) + "\n")
-        if args[:2] == ["issue", "allocate-candidates"]:
-            _ = input_text
-            return _cp(args, stdout="CANDIDATES=\n")
         if args[:2] == ["issue", "create-one"]:
             body_file = Path(args[args.index("--body-file") + 1])
             self.created_bodies.append(body_file.read_text(encoding="utf-8"))
-            if self.fail_create:
+            if self.fail_create or (self.fail_create_after and len(self.created_bodies) >= self.fail_create_after):
                 return _cp(args, stdout="ISSUE_FAILED=true\n", rc=0)
             url = self.urls[min(len(self.created_bodies) - 1, len(self.urls) - 1)]
             if self.duplicate:
                 return _cp(args, stdout=f"ISSUE_DUPLICATE_OF_URL={url}\nISSUE_TITLE=[OOS] Duplicate\n")
             return _cp(args, stdout=f"ISSUE_NUMBER={url.rsplit('/', 1)[-1]}\nISSUE_URL={url}\nISSUE_TITLE=[OOS] Filed\n")
         if args[:2] == ["issue", "add-blocked-by"]:
-            return _cp(args)
+            if self.fail_blocked_by:
+                return _cp(args, stdout="BLOCKED_BY_FAILED=true\nERROR=blocked-by failed\n", rc=2)
+            return _cp(args, stdout="BLOCKED_BY_ADDED=true\n")
+        if args[:2] == ["issue", "cleanup-failed"]:
+            return _cp(args, stdout="CLOSED=true\n")
         return _cp(args, stderr=f"unexpected call: {args}", rc=1)
 
 
@@ -91,6 +95,7 @@ def _write_oos(tmp_path: Path, text: str) -> None:
 def _run(tmp_path: Path, fake: FakeCli, monkeypatch: pytest.MonkeyPatch) -> tuple[int, dict[str, object]]:
     monkeypatch.setattr(oos_filer, "_run_cli", fake)
     monkeypatch.setattr(oos_filer, "_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(oos_filer, "_probe_tracking_blocker", lambda _tmpdir, _repo, _issue: fake.blocker_probe_rc == 0)
     rc = oos_filer.cmd_file(["--implement-tmpdir", str(tmp_path), "--codex-timeout", "1"])
     return rc, {}
 
@@ -126,7 +131,11 @@ def test_two_items_codex_success_uses_combined_output(tmp_path: Path, monkeypatc
     monkeypatch.setattr(oos_filer, "_codex_available", lambda: True)
     rc, _payload = _run(tmp_path, fake, monkeypatch)
     assert rc == 0
-    assert any(call[:2] == ["agent", "launch-codex-exec"] for call in fake.calls)
+    codex_calls = [call for call in fake.calls if call[:2] == ["agent", "launch-codex-exec"]]
+    assert codex_calls
+    assert str(tmp_path) in codex_calls[0]
+    prompt = (tmp_path / "oos-combine-prompt.md").read_text(encoding="utf-8")
+    assert "## Batch markdown" in prompt
     assert len([call for call in fake.calls if call[:2] == ["issue", "create-one"]]) == 1
 
 
@@ -178,6 +187,7 @@ def test_idempotency_sentinel_skips_create_loop(tmp_path: Path, monkeypatch: pyt
     assert rc == 0
     assert not any(call[:2] == ["issue", "create-one"] for call in fake.calls)
     assert "https://github.com/owner/repo/issues/3" in (tmp_path / "larch-logs" / "implement" / "run-1" / "oos-issues.ndjson").read_text(encoding="utf-8")
+    assert any("steps_ran.step9a1=true" in " ".join(call) for call in fake.calls)
 
 
 @pytest.mark.parametrize(
@@ -193,6 +203,7 @@ def test_forked_or_repo_unavailable_skip_create_loop(tmp_path: Path, monkeypatch
     assert rc == 0
     assert not any(call[:2] == ["issue", "create-one"] for call in fake.calls)
     assert "Skipped" in (tmp_path / "larch-logs" / "implement" / "run-1" / "oos-issues.ndjson").read_text(encoding="utf-8")
+    assert any("steps_ran.step9a1=true" in " ".join(call) for call in fake.calls)
 
 
 def test_security_sidecar_fails_closed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -219,6 +230,71 @@ def test_partial_issue_failure_returns_nonzero_without_sentinel(tmp_path: Path, 
     _write_oos(tmp_path, "### OOS_1: First\n- **Description**: A.\n")
     fake = FakeCli(tmp_path)
     fake.fail_create = True
+    rc, _payload = _run(tmp_path, fake, monkeypatch)
+    assert rc != 0
+    assert not (tmp_path / "oos-issues-created.md").exists()
+
+
+def test_two_item_partial_failure_cleans_up_first_issue(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OOS_ISSUES_PER_RUN_CAP", "99")
+    _setup(tmp_path)
+    _write_oos(
+        tmp_path,
+        "### OOS_1: First\n- **Description**: A.\n\n### OOS_2: Second\n- **Description**: B.\n",
+    )
+    fake = FakeCli(tmp_path)
+    fake.fail_create_after = 2
+    rc, _payload = _run(tmp_path, fake, monkeypatch)
+    assert rc != 0
+    assert not (tmp_path / "oos-issues-created.md").exists()
+    assert any(call[:2] == ["issue", "cleanup-failed"] for call in fake.calls)
+    assert len([call for call in fake.calls if call[:2] == ["issue", "create-one"]]) == 2
+
+
+def test_file_conflict_deps_orders_blocker_before_blocked(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OOS_ISSUES_PER_RUN_CAP", "99")
+    _setup(tmp_path)
+    _write_oos(
+        tmp_path,
+        "### OOS_1: First\n- touches `src/a.py:1-5`\n\n### OOS_2: Second\n- touches `src/a.py:2-6`\n",
+    )
+    fake = FakeCli(tmp_path)
+    rc, _payload = _run(tmp_path, fake, monkeypatch)
+    assert rc == 0
+    create_calls = [call for call in fake.calls if call[:2] == ["issue", "create-one"]]
+    assert len(create_calls) == 2
+    first_title = create_calls[0][create_calls[0].index("--title") + 1].strip()
+    second_title = create_calls[1][create_calls[1].index("--title") + 1].strip()
+    assert first_title == "First"
+    assert second_title == "Second"
+    assert any(
+        call[:2] == ["issue", "add-blocked-by"] and call[call.index("--client-issue") + 1] == "102" and call[call.index("--blocker-issue") + 1] == "101"
+        for call in fake.calls
+    )
+
+
+def test_sentinel_with_remaining_blocks_files_new_items(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _setup(tmp_path)
+    (tmp_path / "oos-issues-created.md").write_text("| t | #3 | https://github.com/owner/repo/issues/3 |\n", encoding="utf-8")
+    _write_oos(tmp_path, "### OOS_1: New item\n- **Description**: Still pending.\n")
+    fake = FakeCli(tmp_path)
+    rc, _payload = _run(tmp_path, fake, monkeypatch)
+    assert rc == 0
+    assert any(call[:2] == ["issue", "create-one"] for call in fake.calls)
+    sentinel = (tmp_path / "oos-issues-created.md").read_text(encoding="utf-8")
+    assert "https://github.com/owner/repo/issues/3" in sentinel
+    assert "https://github.com/owner/repo/issues/101" in sentinel
+
+
+def test_blocked_by_failure_returns_nonzero(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _setup(tmp_path)
+    (tmp_path / "ship-pr-state.sh").write_text(
+        "RUN_ID=run-1\nREPO=owner/repo\nFORKED_TARGET=false\nREPO_UNAVAILABLE=false\nISSUE_NUMBER=99\n",
+        encoding="utf-8",
+    )
+    _write_oos(tmp_path, "### OOS_1: First\n- **Description**: A.\n")
+    fake = FakeCli(tmp_path)
+    fake.fail_blocked_by = True
     rc, _payload = _run(tmp_path, fake, monkeypatch)
     assert rc != 0
     assert not (tmp_path / "oos-issues-created.md").exists()

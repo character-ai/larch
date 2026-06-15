@@ -179,7 +179,9 @@ def _maybe_combine_with_codex(tmpdir: Path, text: str, *, codex_timeout: int) ->
         "Aggressively combine accepted out-of-scope observations unless they are clearly unrelated.\n"
         "Return only valid markdown blocks shaped as `### OOS_N:` items.\n"
         "Preserve actionable details and do not increase the item count.\n\n"
-        f"Input file: {input_path}\n",
+        f"Input file: {input_path}\n\n"
+        "## Batch markdown\n\n"
+        f"{text.rstrip()}\n",
         encoding="utf-8",
     )
     if not _codex_available():
@@ -199,6 +201,8 @@ def _maybe_combine_with_codex(tmpdir: Path, text: str, *, codex_timeout: int) ->
             "read-only",
             "--workdir",
             str(_repo_root()),
+            "--add-dir",
+            str(tmpdir),
         ],
     )
     if result.returncode != 0 or not output_path.is_file():
@@ -224,6 +228,75 @@ def _wrap_oos_body(body: str, *, reviewer: str, phase: str, vote: str) -> str:
     )
 
 
+def _parse_intra_batch_deps(path: Path) -> list[tuple[int, int]]:
+    if not path.is_file() or path.stat().st_size == 0:
+        return []
+    edges: list[tuple[int, int]] = []
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if not line.strip():
+            continue
+        parts = line.split("\t")
+        if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
+            edges.append((int(parts[0]), int(parts[1])))
+    return edges
+
+
+def _topological_create_order(total: int, edges: list[tuple[int, int]]) -> list[int]:
+    if total <= 0:
+        return []
+    if not edges:
+        return list(range(1, total + 1))
+    blocked_by: dict[int, set[int]] = {index: set() for index in range(1, total + 1)}
+    blocks: dict[int, set[int]] = {index: set() for index in range(1, total + 1)}
+    for blocker, blocked in edges:
+        if not (1 <= blocker <= total and 1 <= blocked <= total) or blocker == blocked:
+            continue
+        blocked_by[blocked].add(blocker)
+        blocks[blocker].add(blocked)
+    ready = sorted(index for index in range(1, total + 1) if not blocked_by[index])
+    order: list[int] = []
+    while ready:
+        current = ready.pop(0)
+        order.append(current)
+        for dependent in sorted(blocks[current]):
+            blocked_by[dependent].discard(current)
+            if not blocked_by[dependent]:
+                ready.append(dependent)
+        ready.sort()
+    if len(order) != total:
+        return list(range(1, total + 1))
+    return order
+
+
+def _probe_tracking_blocker(tmpdir: Path, repo: str, issue_number: str) -> bool:
+    if not issue_number or not issue_number.isdigit():
+        return True
+    if not repo:
+        _append_tool_failure(tmpdir, "step-9a1-oos-file", "blocker probe", 1, "missing repo for --blocked-by-issue probe")
+        return False
+    result = subprocess.run(  # noqa: S603
+        ["gh", "api", f"/repos/{repo}/issues/{issue_number}", "--jq", ".number"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0 or not result.stdout.strip().isdigit():
+        detail = (result.stderr or result.stdout or "blocker issue probe failed").strip()
+        _append_tool_failure(tmpdir, "step-9a1-oos-file", "gh api blocker probe", result.returncode, detail)
+        return False
+    return True
+
+
+def _cleanup_created_issues(tmpdir: Path, filed: list[FiledIssue], *, repo: str) -> None:
+    for issue in filed:
+        if issue.url.startswith("skipped://") or issue.duplicate:
+            continue
+        number = issue.url.rsplit("/", 1)[-1]
+        if not number.isdigit():
+            continue
+        _ = _run_cli(["issue", "cleanup-failed", "--issue-number", number, *([] if not repo else ["--repo", repo])])
+
+
 def _body_file_for_item(tmpdir: Path, item_index: int, fields: dict[str, str]) -> Path:
     raw_path = Path(fields.get(f"ITEM_{item_index}_BODY_FILE", ""))
     body = raw_path.read_text(encoding="utf-8", errors="replace") if raw_path.is_file() else ""
@@ -239,7 +312,7 @@ def _body_file_for_item(tmpdir: Path, item_index: int, fields: dict[str, str]) -
     return out
 
 
-def _run_issue_batch(tmpdir: Path, combined: Path, *, repo: str, issue_number: str) -> BatchResult:
+def _run_issue_batch(tmpdir: Path, combined: Path, *, repo: str, issue_number: str, deps_path: Path | None = None) -> BatchResult:
     bodies_dir = tmpdir / "oos-issue-bodies"
     bodies_dir.mkdir(parents=True, exist_ok=True)
     sanitized_input = bodies_dir / "oos-combined-sanitized.md"
@@ -251,13 +324,16 @@ def _run_issue_batch(tmpdir: Path, combined: Path, *, repo: str, issue_number: s
         return BatchResult([], 1)
     fields = _parse_kv(parsed.stdout)
     total = int(fields.get("ITEMS_TOTAL", "0") or "0")
-    allocated = _run_cli(["issue", "allocate-candidates", "--total-items", str(total)], input_text="")
-    if allocated.returncode != 0:
-        _append_warning(tmpdir, "issue allocate-candidates failed open; continuing without preallocated candidates.")
+    if not _probe_tracking_blocker(tmpdir, repo, issue_number):
+        return BatchResult([], 1)
+
+    intra_batch_edges = _parse_intra_batch_deps(deps_path) if deps_path is not None else []
+    create_order = _topological_create_order(total, intra_batch_edges)
+    issue_numbers: dict[int, str] = {}
 
     filed: list[FiledIssue] = []
     failures = 0
-    for item_index in range(1, total + 1):
+    for item_index in create_order:
         title = file_oos._sanitize_public_text(fields.get(f"ITEM_{item_index}_TITLE", ""))  # pyright: ignore[reportPrivateUsage]
         body_file = _body_file_for_item(tmpdir, item_index, fields)
         args = [
@@ -276,14 +352,47 @@ def _run_issue_batch(tmpdir: Path, combined: Path, *, repo: str, issue_number: s
         kv = _parse_kv(created.stdout)
         if created.returncode != 0 or kv.get("ISSUE_FAILED") == "true":
             failures += 1
-            continue
+            _cleanup_created_issues(tmpdir, filed, repo=repo)
+            return BatchResult(filed, failures)
         url = kv.get("ISSUE_URL") or kv.get(f"ISSUE_{item_index}_URL") or kv.get("ISSUE_DUPLICATE_OF_URL") or kv.get(f"ISSUE_{item_index}_DUPLICATE_OF_URL")
         duplicate = bool(kv.get("ISSUE_DUPLICATE_OF_URL") or kv.get(f"ISSUE_{item_index}_DUPLICATE_OF_URL"))
         if url:
             filed.append(FiledIssue(kv.get("ISSUE_TITLE") or title, url, duplicate))
         number = kv.get("ISSUE_NUMBER") or ""
+        if number.isdigit():
+            issue_numbers[item_index] = number
         if issue_number and number.isdigit():
-            _ = _run_cli(["issue", "add-blocked-by", "--client-issue", number, "--blocker-issue", issue_number, *([] if not repo else ["--repo", repo])])
+            blocked = _run_cli(["issue", "add-blocked-by", "--client-issue", number, "--blocker-issue", issue_number, *([] if not repo else ["--repo", repo])])
+            blocked_kv = _parse_kv(blocked.stdout)
+            if blocked.returncode != 0 or blocked_kv.get("BLOCKED_BY_FAILED") == "true":
+                detail = blocked_kv.get("ERROR") or blocked.stderr or blocked.stdout or "add-blocked-by failed"
+                _append_tool_failure(tmpdir, "step-9a1-oos-file", "issue add-blocked-by", blocked.returncode or 1, detail)
+                _cleanup_created_issues(tmpdir, filed, repo=repo)
+                return BatchResult(filed, 1)
+        for blocker_index, blocked_index in intra_batch_edges:
+            if blocked_index != item_index:
+                continue
+            blocker_number = issue_numbers.get(blocker_index, "")
+            blocked_number = issue_numbers.get(blocked_index, "")
+            if not blocker_number.isdigit() or not blocked_number.isdigit():
+                continue
+            intra = _run_cli(
+                [
+                    "issue",
+                    "add-blocked-by",
+                    "--client-issue",
+                    blocked_number,
+                    "--blocker-issue",
+                    blocker_number,
+                    *([] if not repo else ["--repo", repo]),
+                ],
+            )
+            intra_kv = _parse_kv(intra.stdout)
+            if intra.returncode != 0 or intra_kv.get("BLOCKED_BY_FAILED") == "true":
+                detail = intra_kv.get("ERROR") or intra.stderr or intra.stdout or "intra-batch add-blocked-by failed"
+                _append_tool_failure(tmpdir, "step-9a1-oos-file", "issue add-blocked-by", intra.returncode or 1, detail)
+                _cleanup_created_issues(tmpdir, filed, repo=repo)
+                return BatchResult(filed, 1)
     return BatchResult(filed, failures)
 
 
@@ -356,11 +465,18 @@ def _file(args: argparse.Namespace) -> tuple[int, dict[str, object]]:
         _append_tool_failure(tmpdir, "step-9a1-oos-file", "oos file", 2, msg)
         return 2, {"status": "security_sidecar_present", "accepted_count": 0, "filed_count": 0, "deduplicated_count": 0, "urls": [], "run_statistics_written": False, "step9a1_stamped": False}
 
+    manifest_path = Path(state.get("MANIFEST_PATH", ""))
+    if manifest_path.is_file():
+        try:
+            _ = file_oos.materialize_manifest_oos(manifest_path, tmpdir)
+        except (OSError, RuntimeError, ValueError) as exc:
+            _append_warning(tmpdir, f"manifest OOS materialization failed: {exc}")
+
     blocks, already = _working_batch(tmpdir)
     accepted_count = len(blocks) + len(already)
-    sentinel = _sentinel_urls(tmpdir)
-    if sentinel:
-        filed = sentinel
+    prior_sentinel = _sentinel_urls(tmpdir)
+    if prior_sentinel and not blocks:
+        filed = prior_sentinel
         _write_oos_ndjson(tmpdir, run_id, filed, status="Recovered from sentinel")
         stats = _write_run_statistics(tmpdir, run_id, len(filed))
         stamped = _stamp_manifest(tmpdir, run_id, value=True)
@@ -395,11 +511,19 @@ def _file(args: argparse.Namespace) -> tuple[int, dict[str, object]]:
         deps.write_text("".join(f"{left}\t{right}\n" for left, right in file_oos.file_conflict_deps(combined)), encoding="utf-8")
     except OSError as exc:
         _append_warning(tmpdir, f"file-conflict pre-pass failed; continuing without intra-batch dependencies: {exc}")
-    batch = _run_issue_batch(tmpdir, combined, repo=repo, issue_number=issue_number)
+    batch = _run_issue_batch(tmpdir, combined, repo=repo, issue_number=issue_number, deps_path=deps)
     if batch.failures:
         _append_tool_failure(tmpdir, "step-9a1-oos-file", "issue create-one", 1, f"ISSUES_FAILED={batch.failures}")
         return 1, {"status": "issue_batch_failed", "accepted_count": accepted_count, "filed_count": len(batch.filed), "deduplicated_count": len([issue for issue in batch.filed if issue.duplicate]), "urls": [issue.url for issue in batch.filed], "run_statistics_written": False, "step9a1_stamped": False}
-    filed = [*already, *batch.filed]
+    filed = [*prior_sentinel, *already, *batch.filed]
+    seen_urls: set[str] = set()
+    deduped: list[FiledIssue] = []
+    for issue in filed:
+        if issue.url in seen_urls:
+            continue
+        seen_urls.add(issue.url)
+        deduped.append(issue)
+    filed = deduped
     _write_sentinel(tmpdir, filed)
     _write_oos_ndjson(tmpdir, run_id, filed)
     stats = _write_run_statistics(tmpdir, run_id, len(filed))
