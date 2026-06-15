@@ -52,7 +52,14 @@ Run from the repository root:
 python3 .claude/skills/rebalance-test-harnesses/scripts/rebalance.py [flags]
 ```
 
-Or invoke via this skill, which will call the script via Bash.
+Or invoke via this skill and pass flags directly to the script:
+
+```
+/rebalance-test-harnesses --n-runs 1
+/rebalance-test-harnesses --n-runs 3 --repo owner/name
+```
+
+Forward all args from the skill invocation to the script unchanged.
 
 ## Flags
 
