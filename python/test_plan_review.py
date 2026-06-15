@@ -28,7 +28,7 @@ def run_cli(*args: str, env: dict[str, str] | None = None) -> subprocess.Complet
 
 def test_embedded_review_design_step3_loop_matches_live_script() -> None:
     live = (ROOT / "skills" / "design" / "scripts" / "review-design-step3-loop.sh").read_bytes()
-    embedded = plan_review.legacy_asset_bytes("skills", "design", "scripts", "review-design-step3-loop.sh")
+    embedded = plan_review.legacy_asset_bytes("skills/design/scripts/review-design-step3-loop.sh")
     assert live == embedded
 
 
