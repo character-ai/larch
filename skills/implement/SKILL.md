@@ -91,7 +91,7 @@ Prompt-side orchestration steps delegate to these script contracts:
 `generate-code-flow-diagram.md` (`skills/implement/scripts/generate-code-flow-diagram.sh`);
 `refresh-execution-issues.md` (`skills/implement/scripts/refresh-execution-issues.sh`);
 `slack-issue-announce.md` (`skills/implement/scripts/slack-issue-announce.sh`); `write-final-report.md` (`skills/implement/scripts/write-final-report.sh`); `skills/implement/scripts/cleanup.md` (`skills/implement/scripts/cleanup.sh`);
-`step-0-bootstrap.md`; `step-0-degraded-gate.md` (legacy — `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-degraded-gate.sh` remains shipped for offline harnesses but is not called on the active Step 0 path); `step-2-entry.md`;
+`step-0-bootstrap.md`; `step-0-degraded-gate.md` (legacy — `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-degraded-gate.sh` remains shipped for offline harnesses but is not called on the active Step 0 path); `step-2-entry.md`; `step-2-post-dispatch.md` (`skills/implement/scripts/step-2-post-dispatch.sh`);
 `run-step-checks.md`; `step-5-entry.md`; `step-5-resume.md` (`python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review-and-fix commit-fixes`, via `step-5-resume.sh`);
 `step-6-entry.md` (`python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review-and-fix check-changes`, via `step-6-entry.sh`); `step-8-ship.md`;
 `step-8-oos-checkpoint.md`; `step-16.md` (`python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review-and-fix write-rejected`, via `step-16.sh`);
@@ -264,7 +264,7 @@ Print: `> **🔶 /implement 0: setup**`
 
 Step 0 is owned by `python/bootstrap.py`, invoked via `python/cli.py bootstrap invoke` (`--mode initial` / `--mode resume`). The foreground bootstrap performs infrastructure setup, tracking adoption, plan materialization, dirty-tree checkpointing, branch capture, plan logging, and implementer selection (`phase_coder_select`). The wrapper conditionally forwards `/implement --emergency` and `/implement --self-review` state via `case "${emergency_requested:-}" in` / `case "${self_review:-}" in` so omitted flags stay omitted from bootstrap argv. Do not duplicate absorbed helper calls prompt-side. When `emergency_requested=true`, `phase_coder_select` forces `coder=claude` regardless of `--coder` or tool availability. The `SELF_REVIEW_REQUESTED` key is included in the routing envelope and should be used to set the orchestrator's `self_review` variable after envelope parse if it was not already set at flag-parse time.
 
-Wrapper-internal reachability: `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-bootstrap.sh` delegates to `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bootstrap invoke`; the prompt-side entrypoint remains the Step 0 wrapper below.
+Wrapper-internal reachability: `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-bootstrap.sh` delegates to `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bootstrap invoke`; the prompt-side entrypoint remains the Step 0 wrapper below. `python/bootstrap.py` calls `${CLAUDE_PLUGIN_ROOT}/scripts/git-current-branch.sh` to capture `BRANCH_NAME` after branch creation.
 
 **⚠ Foreground required — do NOT set `run_in_background: true`.**
 
