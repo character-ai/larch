@@ -66,11 +66,6 @@ def test_happy_path_stage_order(
     flush_args: list[tuple[str | None, str | None]] = []
 
     monkeypatch.setattr(
-        ship.checks,
-        "run_checks_phase",
-        lambda *_a, **_k: order.append("checks") or StepResult(Outcome.OK),
-    )
-    monkeypatch.setattr(
         ship.finalize,
         "postbump",
         lambda *_a, **_k: order.append("postbump") or type("R", (), {"outcome": Outcome.OK})(),
@@ -131,7 +126,6 @@ def test_happy_path_stage_order(
     result = ship.run_ship(_ctx(tmp_path), runner=RecordingRunner(), cwd=str(tmp_path))
     assert result.outcome is Outcome.OK
     assert order == [
-        "checks",
         "flush-pre",
         "postbump",
         "pr-body",
@@ -147,7 +141,7 @@ def test_happy_path_stage_order(
     assert order.count("merge") == 1
     assert flush_args == [(None, str(tmp_path))]
     captured = capsys.readouterr()
-    assert "ship.py: checks:" in captured.err
+    assert "ship.py: pr-prep:" in captured.err
     assert "ship.py: pr-prep:" in captured.err
     assert "ship.py: pr-create:" in captured.err
     assert "ship.py: ci:" not in captured.err
@@ -169,7 +163,6 @@ def test_merge_review_required_exits_as_needs_user_input(
             {"result": config.MERGE_RESULT_REVIEW_REQUIRED, "error": "needs review"},
         )()
 
-    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.OK))
     monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
     monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
     monkeypatch.setattr(
@@ -209,7 +202,6 @@ def test_merge_loop_iteration_cap_stalls(
     tmp_path: Path,
 ) -> None:
     monkeypatch.setattr(config, "SHIP_MERGE_LOOP_MAX_ITERATIONS", 2)
-    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.OK))
     monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
     monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
     monkeypatch.setattr(
@@ -279,7 +271,6 @@ DRAFT=false
     def forbidden(*_args: object, **_kwargs: object) -> object:
         raise AssertionError("fresh-only phase must not run on open-pr resume")
 
-    monkeypatch.setattr(ship.checks, "run_checks_phase", forbidden)
     monkeypatch.setattr(ship.finalize, "postbump", forbidden)
     monkeypatch.setattr(ship.run_logs, "write_final_report_comment", forbidden)
     monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
@@ -370,7 +361,6 @@ def test_resume_branch_mismatch_safe_refuses_without_fresh_work(
     def forbidden(*_args: object, **_kwargs: object) -> object:
         raise AssertionError("fresh work must not run after checkout mismatch")
 
-    monkeypatch.setattr(ship.checks, "run_checks_phase", forbidden)
     monkeypatch.setattr(ship.pr, "ensure_pr", forbidden)
 
     result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
@@ -555,7 +545,6 @@ def test_open_pr_resume_wrong_head_routes_through_fresh_checks(
         "pr_view",
         lambda *_a, **_k: type("PR", (), {"number": 7, "url": "https://example.test/pr/7", "state": "OPEN", "head_ref": "other"})(),
     )
-    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: calls.append("checks") or StepResult(Outcome.OK))
     monkeypatch.setattr(
         ship.finalize,
         "postbump",
@@ -573,7 +562,7 @@ def test_open_pr_resume_wrong_head_routes_through_fresh_checks(
     result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
 
     assert result.outcome is Outcome.OK
-    assert calls == ["checks", "postbump"]
+    assert calls == ["postbump"]
 
 
 def test_non_forked_main_resume_refuses(
@@ -606,8 +595,7 @@ def test_closed_unmerged_pr_routes_through_fresh_checks(
         "pr_view",
         lambda *_a, **_k: type("PR", (), {"number": 7, "url": "https://example.test/pr/7", "state": "CLOSED", "head_ref": "feat"})(),
     )
-    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: calls.append("checks") or StepResult(Outcome.OK))
-    monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
+    monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: calls.append("postbump") or type("R", (), {"outcome": Outcome.OK})())
     monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
     monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
     monkeypatch.setattr(
@@ -619,7 +607,7 @@ def test_closed_unmerged_pr_routes_through_fresh_checks(
     result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
 
     assert result.outcome is Outcome.OK
-    assert calls == ["checks"]
+    assert calls == ["postbump"]
 
 
 def test_invalid_pr_identity_routes_through_fresh_checks_without_github(
@@ -634,8 +622,7 @@ def test_invalid_pr_identity_routes_through_fresh_checks_without_github(
     calls: list[str] = []
     monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
     monkeypatch.setattr(ship.gh, "pr_view", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("gh forbidden")))
-    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: calls.append("checks") or StepResult(Outcome.OK))
-    monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
+    monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: calls.append("postbump") or type("R", (), {"outcome": Outcome.OK})())
     monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
     monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
     monkeypatch.setattr(
@@ -647,7 +634,7 @@ def test_invalid_pr_identity_routes_through_fresh_checks_without_github(
     result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
 
     assert result.outcome is Outcome.OK
-    assert calls == ["checks"]
+    assert calls == ["postbump"]
 
 
 def test_stale_merged_flags_with_open_pr_resume_open_path(
@@ -706,7 +693,6 @@ def test_repo_unavailable_blank_pr_open_resume_skips_fresh_work(
     state_file = tmp_path / "ship-pr-state.sh"
     _ = state_file.write_text("PHASE=ci-initial\nBRANCH_NAME=feat\nREPO=o/r\nREPO_UNAVAILABLE=true\nMERGE=false\n", encoding="utf-8")
     monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
-    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("checks forbidden")))
     monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("postbump forbidden")))
     monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
     monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
@@ -727,7 +713,6 @@ def test_fresh_postmerge_stall_preserves_postmerge_phase(
     tmp_path: Path,
 ) -> None:
     state_file = tmp_path / "ship-pr-state.sh"
-    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.OK))
     monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
     monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
     monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
@@ -855,7 +840,7 @@ def test_terminal_state_uses_canonical_stalled_phase(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.STALLED, "detail with spaces"))
+    monkeypatch.setattr(ship.finalize, "postbump_preflight", lambda *_a, **_k: (_ for _ in ()).throw(Stalled("detail with spaces")))
     state_file = tmp_path / "ship-pr-state.sh"
 
     result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
@@ -1079,7 +1064,7 @@ def test_run_ship_infrastructure_state_read_error_surfaces_internal_error(
     def raise_infra(*_args: object, **_kwargs: object) -> StepResult:
         raise ShipError("cannot read existing ship state: /tmp/state")
 
-    monkeypatch.setattr(ship.checks, "run_checks_phase", raise_infra)
+    monkeypatch.setattr(ship.finalize, "postbump_preflight", raise_infra)
 
     result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
 
@@ -1349,7 +1334,9 @@ def test_fresh_fallback_hydrates_modes_and_preserves_counters(
     )
     monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
     monkeypatch.setattr(ship.gh, "pr_view", lambda *_a, **_k: (_ for _ in ()).throw(ShipError("gh down")))
-    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.STALLED, "checks failed"))
+    monkeypatch.setattr(ship.finalize, "postbump_preflight", lambda *_a, **_k: ship.finalize.PostbumpPreflight(ok=True))
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.STALLED, "status": "stalled", "detail": "postbump failed"})())
 
     result = ship.run_ship(
         _ctx(tmp_path, merge=True, draft=False, pr_number=99, pr_url="stale-url", state_file=str(state_file)),
@@ -1683,12 +1670,12 @@ def test_run_ship_catches_ship_error_as_stalled(
     tmp_path: Path,
 ) -> None:
     def raise_ship_error(*_a: object, **_k: object) -> StepResult:
-        raise ShipError("checks failed operationally")
+        raise ShipError("postbump failed operationally")
 
-    monkeypatch.setattr(ship.checks, "run_checks_phase", raise_ship_error)
+    monkeypatch.setattr(ship.finalize, "postbump_preflight", raise_ship_error)
     result = ship.run_ship(_ctx(tmp_path), runner=RecordingRunner(), cwd=str(tmp_path))
     assert result.outcome is Outcome.STALLED
-    assert result.detail == "checks failed operationally"
+    assert result.detail == "postbump failed operationally"
 
 
 def test_main_emits_json_stdout_and_breadcrumb_stderr(
@@ -1779,7 +1766,6 @@ def test_ci_fix_rebase_pending_survives_head_mismatch(
         encoding="utf-8",
     )
     ctx = _ctx(tmp_path, state_file=str(state), ci_fix_rebase_pending=True)
-    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.OK))
     monkeypatch.setattr(ship.finalize, "postbump_preflight", lambda *_a, **_k: ship.finalize.PostbumpPreflight(ok=True))
     monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
     monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
@@ -1796,7 +1782,7 @@ def test_ci_fix_rebase_pending_survives_head_mismatch(
     written: list[str] = []
 
     def capture_state(ctx_arg: RunContext, **kwargs: object) -> None:
-        if kwargs.get("phase") == "checks":
+        if kwargs.get("phase") == "pr-prep":
             written.append("true" if ctx_arg.ci_fix_rebase_pending else "false")
 
     monkeypatch.setattr(ship, "_write_ship_state", capture_state)
@@ -2233,7 +2219,6 @@ def test_main_ensure_pr_stall_creates_finalize_state(
 ) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(ship.logging_util, "quiet_init", lambda **_: None)
-    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.OK))
     monkeypatch.setattr(ship.finalize, "postbump_preflight", lambda *_a, **_k: ship.finalize.PostbumpPreflight(ok=True))
     monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
     monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
@@ -2401,7 +2386,6 @@ def test_postmerge_flush_skip_writes_stall_shape(monkeypatch: pytest.MonkeyPatch
 
 def test_postbump_stall_writes_terminal_finalize(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     state_file = tmp_path / "ship-pr-state.sh"
-    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.OK))
     monkeypatch.setattr(ship.finalize, "postbump_preflight", lambda *_a, **_k: ship.finalize.PostbumpPreflight(ok=True))
     monkeypatch.setattr(
         ship.finalize,
@@ -2423,26 +2407,13 @@ def test_postbump_stall_writes_terminal_finalize(monkeypatch: pytest.MonkeyPatch
 
 
 
-def test_checks_stall_writes_terminal_finalize_state(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    state_file = tmp_path / "ship-pr-state.sh"
-    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.STALLED, "checks"))
-
-    result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
-
-    assert result.outcome is Outcome.STALLED
-    finalize_state = ship.finalize.read_finalize_state(tmp_path / "finalize-state.sh")
-    assert finalize_state["STALL_TRACKING"] == "true"
-    assert finalize_state["EXIT_CODE"] == "4"
-    assert "STALL_TRACKING=true\n" in state_file.read_text(encoding="utf-8")
-
-
 def test_outer_stalled_exception_writes_terminal_state(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     state_file = tmp_path / "ship-pr-state.sh"
 
     def raise_stalled(*_a: object, **_k: object) -> StepResult:
         raise Stalled("outer stalled path")
 
-    monkeypatch.setattr(ship.checks, "run_checks_phase", raise_stalled)
+    monkeypatch.setattr(ship.finalize, "postbump_preflight", raise_stalled)
 
     result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
 
@@ -2458,7 +2429,6 @@ def test_outer_stalled_exception_writes_terminal_state(monkeypatch: pytest.Monke
 # ---------------------------------------------------------------------------
 
 def _patch_fresh_path_pre_pr_create(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.OK))
     monkeypatch.setattr(ship.finalize, "postbump_preflight", lambda *_a, **_k: ship.finalize.PostbumpPreflight(ok=True))
     monkeypatch.setattr(ship.run_logs, "flush_logs_pre", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
     monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
