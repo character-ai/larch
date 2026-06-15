@@ -1412,9 +1412,7 @@ def _step9a1_heuristic(ctx: RunContext) -> bool | None:
     stats = run_dir / "run-statistics.md"
     if stats.is_file():
         text = stats.read_text(encoding="utf-8", errors="replace")
-        if re.search(r":\s*0 OOS issue\(s\) filed\.", text):
-            return False
-        return True
+        return not re.search(r":\s*0 OOS issue\(s\) filed\.", text)
     return None
 
 

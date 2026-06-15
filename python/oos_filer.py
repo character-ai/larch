@@ -20,6 +20,7 @@ import file_oos
 _CLI = Path(__file__).resolve().parent / "cli.py"
 _GITHUB_URL_RE = re.compile(r"https://[^\s|)]+/issues/\d+")
 _FILED_URL_LINE_RE = re.compile(r"^[ \t]*-[ \t]+\*\*Filed[ \t]URL\*\*[ \t]*:[ \t]+(https://[^\s]+/issues/\d+)", re.MULTILINE)
+_INTRA_BATCH_DEP_FIELD_COUNT = 2
 
 
 @dataclass(frozen=True)
@@ -236,7 +237,7 @@ def _parse_intra_batch_deps(path: Path) -> list[tuple[int, int]]:
         if not line.strip():
             continue
         parts = line.split("\t")
-        if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
+        if len(parts) == _INTRA_BATCH_DEP_FIELD_COUNT and parts[0].isdigit() and parts[1].isdigit():
             edges.append((int(parts[0]), int(parts[1])))
     return edges
 
@@ -274,8 +275,12 @@ def _probe_tracking_blocker(tmpdir: Path, repo: str, issue_number: str) -> bool:
     if not repo:
         _append_tool_failure(tmpdir, "step-9a1-oos-file", "blocker probe", 1, "missing repo for --blocked-by-issue probe")
         return False
-    result = subprocess.run(  # noqa: S603
-        ["gh", "api", f"/repos/{repo}/issues/{issue_number}", "--jq", ".number"],
+    gh_path = shutil.which("gh")
+    if gh_path is None:
+        _append_tool_failure(tmpdir, "step-9a1-oos-file", "blocker probe", 1, "missing gh for --blocked-by-issue probe")
+        return False
+    result = subprocess.run(
+        [gh_path, "api", f"/repos/{repo}/issues/{issue_number}", "--jq", ".number"],
         text=True,
         capture_output=True,
         check=False,
@@ -287,7 +292,7 @@ def _probe_tracking_blocker(tmpdir: Path, repo: str, issue_number: str) -> bool:
     return True
 
 
-def _cleanup_created_issues(tmpdir: Path, filed: list[FiledIssue], *, repo: str) -> None:
+def _cleanup_created_issues(_tmpdir: Path, filed: list[FiledIssue], *, repo: str) -> None:
     for issue in filed:
         if issue.url.startswith("skipped://") or issue.duplicate:
             continue
