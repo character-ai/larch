@@ -1639,6 +1639,67 @@ def test_merge_retry_results_consume_iteration_budget(
     assert "ITERATION=50\n" in state_file.read_text(encoding="utf-8")
 
 
+def test_main_advanced_merge_result_rebases_before_retry(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\nREPO=o/r\nMERGE=true\nDRAFT=false\n",
+        encoding="utf-8",
+    )
+    _open_pr_merge_loop_stubs(monkeypatch)
+    order: list[str] = []
+    merge_results = [
+        config.MERGE_RESULT_MAIN_ADVANCED,
+        config.MERGE_RESULT_DRIVER_ALREADY_MERGED,
+    ]
+
+    monkeypatch.setattr(
+        ship.ci_monitor,
+        "monitor",
+        lambda *_a, **_k: type(
+            "M",
+            (),
+            {
+                "result": StepResult(Outcome.OK),
+                "action": "merge",
+                "goto_rebase": False,
+                "did_fixing": False,
+                "transient_rerun_attempted": False,
+                "failed_run_id": None,
+            },
+        )(),
+    )
+
+    def fake_rebase(*_args: object, **_kwargs: object) -> None:
+        order.append("rebase")
+
+    def fake_merge(*_args: object, **_kwargs: object) -> object:
+        result = merge_results.pop(0)
+        order.append(f"merge:{result}")
+        if result == config.MERGE_RESULT_DRIVER_ALREADY_MERGED:
+            state = state_file.read_text(encoding="utf-8")
+            assert "PHASE=ci-initial\n" in state
+            assert "ITERATION=1\n" in state
+            assert "REBASE_COUNT=1\n" in state
+        return type("MR", (), {"result": result, "error": ""})()
+
+    monkeypatch.setattr(ship.rebase, "rebase_and_push", fake_rebase)
+    monkeypatch.setattr(ship.merge, "merge_pr", fake_merge)
+    monkeypatch.setattr(ship, "run_postmerge_phase", lambda *_a, **_k: ship.ShipResult(Outcome.OK))
+
+    result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.OK
+    assert order == [
+        f"merge:{config.MERGE_RESULT_MAIN_ADVANCED}",
+        "rebase",
+        f"merge:{config.MERGE_RESULT_DRIVER_ALREADY_MERGED}",
+    ]
+    assert not merge_results
+
+
 def test_failed_run_id_surfaces_for_ci_fix_handback() -> None:
     step = StepResult(Outcome.NEEDS_USER_INPUT, "first-fixer-non-health")
     result = ship._step_result_to_ship(step, failed_run_id="123")  # pyright: ignore[reportPrivateUsage]

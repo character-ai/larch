@@ -515,11 +515,25 @@ def _derive_progress_label(
     return kind or "unknown"
 
 
+def _is_ci_gantt_row(kind: str, output: str) -> bool:
+    kind_l = (kind or "").lower()
+    bn = Path(output).name.lower() if output else ""
+    if kind_l in {"codex-ci", "cursor-ci", "claude-ci", "codex-ci-fix", "cursor-ci-fix", "claude-ci-fix"}:
+        return True
+    if kind_l.endswith(("-ci", "-ci-fix", "-ci-test")):
+        return True
+    if bn == "ci.out" or bn.endswith("-ci.out") or re.fullmatch(r"ci-fix-.*\.out", bn):
+        return True
+    return bn in {"claude.out", "codex.out", "cursor.out"}
+
+
 def _progress_vendor_rows(
     timing_ledger: Path,
     window_start_s: int,
     window_end_s: int,
     label_map: dict[str, str] | None = None,
+    *,
+    skip_ci: bool = False,
 ) -> list[GanttRow]:
     if window_end_s <= window_start_s:
         return []
@@ -547,7 +561,10 @@ def _progress_vendor_rows(
         if clamped_end <= clamped_start:
             continue
         output = cols[TIMING_VENDOR_OUTPUT_COL] if len(cols) > TIMING_VENDOR_OUTPUT_COL else ""
-        label = _derive_progress_label(output, cols[TIMING_VENDOR_VENDOR_COL], cols[TIMING_VENDOR_KIND_COL], label_map)
+        kind = cols[TIMING_VENDOR_KIND_COL]
+        if skip_ci and _is_ci_gantt_row(kind, output):
+            continue
+        label = _derive_progress_label(output, cols[TIMING_VENDOR_VENDOR_COL], kind, label_map)
         rows.append((clamped_start, clamped_end, label))
     rows.sort(key=lambda row: (row[0], row[1], row[2]))
     return [GanttRow(label, start_s, end_s) for start_s, end_s, label in rows[:PROGRESS_GANTT_ROW_CAP]]
@@ -577,7 +594,7 @@ def _render_inflight_gantt(
         if len(round_manifest_dirs) == len(label_manifest_paths)
         else _progress_label_map_from_manifests(label_manifest_paths)
     )
-    rows = _progress_vendor_rows(timing_ledger, start_s, end_s, label_map)
+    rows = _progress_vendor_rows(timing_ledger, start_s, end_s, label_map, skip_ci=True)
     if not rows:
         return ""
     chart = render_gantt(start_s, end_s, rows)

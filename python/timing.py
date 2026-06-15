@@ -19,7 +19,8 @@ import tokens
 
 TIMING_TASK_KINDS_ALLOWED: frozenset[str] = frozenset({
     "codex-review", "cursor-review", "codex-review-generic", "cursor-review-generic",
-    "codex-implement", "cursor-implement", "codex-ci-fix", "cursor-ci-fix", "claude-ci-fix",
+    "codex-implement", "cursor-implement", "codex-ci", "cursor-ci", "claude-ci",
+    "codex-ci-fix", "cursor-ci-fix", "claude-ci-fix",
     "claude-review", "cursor-brainstorm", "codex-brainstorm",
     "codex-plan-arch", "codex-plan-innovation", "codex-plan-pragmatic", "codex-plan-requirements",
     "cursor-plan-arch", "cursor-plan-innovation", "cursor-plan-pragmatic", "cursor-plan-requirements",

@@ -190,6 +190,8 @@ def make_conflict_launch_fn(
     def launch(tier: str, conflict_csv: str) -> agents.TierAttempt:
         output = out_root / f"conflict-{tier}.out"
         failure_log = out_root / f"conflict-{tier}.fail.log"
+        if tier in {"codex", "cursor"}:
+            Path(f"{output}.token-record").unlink(missing_ok=True)
         result = agents.launch_tier(
             runner,
             tier,
@@ -210,6 +212,7 @@ def make_conflict_launch_fn(
                 implement_tmpdir=implement_tmpdir,
                 seen=seen_token_records,
                 cwd=cwd,
+                allow_output_fallback=True,
             )
         launcher_exit = agents.resolve_launcher_exit(
             result.stdout + result.stderr,
