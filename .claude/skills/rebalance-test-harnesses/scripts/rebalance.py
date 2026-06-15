@@ -307,12 +307,19 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
     )
     parser.add_argument("--repo", help="owner/name (auto-detected if omitted)")
     parser.add_argument("--n-runs", type=int, default=5, help="baseline CI runs to sample")
+    parser.add_argument(
+        "--last-run",
+        action="store_true",
+        help="use only the most recent CI run (equivalent to --n-runs 1)",
+    )
     parser.add_argument("--branch-prefix", default="rebalance-shards")
     parser.add_argument("--n-verify-runs", type=int, default=3)
     parser.add_argument("--balance-threshold", type=float, default=15.0)
     parser.add_argument("--workflow", default="ci.yaml")
     parser.add_argument("--baseline-branch", default="main")
     args = parser.parse_args(argv)
+    if args.last_run:
+        args.n_runs = 1
 
     makefile_path = _REPO_ROOT / "Makefile"
     repo = args.repo or _detect_repo(_RUNNER)

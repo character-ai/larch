@@ -16,7 +16,7 @@ Keep `scripts/rebalance.md` aligned with this prompt when the script contract ch
 ## Usage
 
 ```
-/rebalance-test-harnesses [--repo owner/name] [--n-runs N] [--branch-prefix PREFIX]
+/rebalance-test-harnesses [--repo owner/name] [--n-runs N] [--last-run] [--branch-prefix PREFIX]
 ```
 
 All flags are optional; defaults are sensible for normal use in this repository.
@@ -60,6 +60,7 @@ Or invoke via this skill, which will call the script via Bash.
 |------|---------|-------------|
 | `--repo` | auto-detected | `owner/name` for all `gh` calls |
 | `--n-runs` | `5` | Number of baseline CI runs to sample |
+| `--last-run` | off | Use only the most recent CI run (equivalent to `--n-runs 1`) |
 | `--branch-prefix` | `rebalance-shards` | Prefix for the new git branch |
 | `--n-verify-runs` | `3` | Verification CI runs to trigger after PR creation |
 | `--balance-threshold` | `15` | Max acceptable shard spread (seconds) |

@@ -32,6 +32,7 @@ AFTER is measured from verification CI runs for that same new layout.
 |------|---------|-------------|
 | `--repo` | auto-detected | `owner/name` for GitHub CLI calls. |
 | `--n-runs` | `5` | Number of baseline CI runs to sample. |
+| `--last-run` | off | Use only the most recent CI run (equivalent to `--n-runs 1`). |
 | `--branch-prefix` | `rebalance-shards` | Prefix for the generated branch name. |
 | `--n-verify-runs` | `3` | Number of verification CI runs to trigger. |
 | `--balance-threshold` | `15.0` | Maximum acceptable shard spread in seconds. |
