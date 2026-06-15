@@ -26,6 +26,13 @@ def run_cli(*args: str, env: dict[str, str] | None = None) -> subprocess.Complet
     )
 
 
+def test_embedded_review_design_step3_loop_matches_live_script() -> None:
+    live = (ROOT / "skills" / "design" / "scripts" / "review-design-step3-loop.sh").read_bytes()
+    key = plan_review._p("skills", "design", "scripts", "review-design-step3-loop.sh")
+    embedded = plan_review._decode_asset(plan_review._LEGACY_ASSETS[key])
+    assert live == embedded
+
+
 def test_emit_plan_persists_diff_lines(tmp_path: Path) -> None:
     _ = (tmp_path / "plan.txt").write_text("## Plan\n\ndiff_lines: 42\n", encoding="utf-8")
     proc = run_cli("plan-review", "emit", "--design-tmpdir", str(tmp_path))
