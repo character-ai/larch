@@ -114,7 +114,7 @@ The body should give `/design` enough context to produce a good implementation p
 <!-- step:5 - Invoke issue -->
 ## Step 5 - Invoke issue
 
-**Security triage (mandatory).** Before invoking `/issue`, assess whether the bug report or investigation results describe a **security vulnerability** (exploitable weakness, credential exposure, auth bypass, injection, RCE, etc.) rather than ordinary functional breakage. If the report is security-sensitive, or if you are uncertain whether it is security-sensitive, **do not** invoke `/issue`. Print:
+**Security triage (mandatory).** Before any `/issue` Skill-tool call, assess whether the bug report or investigation results describe a **security vulnerability** (exploitable weakness, credential exposure, auth bypass, injection, RCE, etc.) rather than ordinary functional breakage. If the report is security-sensitive, or if you are uncertain whether it is security-sensitive, **do not call** `/issue`. Print:
 
 ```text
 **⚠ /bug: this report appears to describe a security vulnerability. Do not file a public GitHub issue. Report it responsibly per SECURITY.md (email disclosure). Aborting before /issue.**
@@ -122,7 +122,7 @@ The body should give `/design` enough context to produce a good implementation p
 
 Remove `$BUG_TMPDIR`, then stop. Do not run Steps 6 or 7. See `${CLAUDE_PLUGIN_ROOT}/SECURITY.md` § Reporting a Vulnerability.
 
-Derive a concise, descriptive issue title from the original bug report, not from `$BUG_TMPDIR/bug-issue-body.md`. If the derived title is empty or whitespace-only after trimming, use `Bug report`. If the title starts with `-`, prefix `Bug: ` so `/issue` does not parse it as a flag.
+Derive a concise, descriptive issue title from the original bug report, not from `$BUG_TMPDIR/bug-issue-body.md`. If the derived title is empty or whitespace-only after trimming, use `Bug report`. If the title starts with `-`, prefix `Bug:` followed by a space so `/issue` does not parse it as a flag.
 
 Invoke `/issue` via the Skill tool:
 
