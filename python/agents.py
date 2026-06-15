@@ -2272,12 +2272,17 @@ def _run_external_agent_with_auth_retries(
             auth_paths.append(Path(stdout_path))
         auth_paths.extend([
             output.with_suffix(output.suffix + ".sidecar"),
-            output.with_suffix(output.suffix + ".diag"),
             output.with_suffix(output.suffix + ".events.jsonl"),
             output,
         ])
+        empty_verdict = external_auth_verdict(tool, *auth_paths)
+        auth_paths.append(output.with_suffix(output.suffix + ".diag"))
         verdict = external_auth_verdict(tool, *auth_paths)
-        if not unclassified_empty_retried and _is_unclassified_empty_startup_failure(result.exit_code, verdict):
+        if (
+            not unclassified_empty_retried
+            and _is_unclassified_empty_startup_failure(result.exit_code, empty_verdict)
+            and verdict != "auth"
+        ):
             unclassified_empty_retried = True
             continue
         if verdict == "auth" and auth_attempt < max_auth:
