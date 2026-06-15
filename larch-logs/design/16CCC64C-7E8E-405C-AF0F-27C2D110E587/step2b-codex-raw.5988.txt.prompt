@@ -1,0 +1,186 @@
+You are an expert engineer researching this repository and producing an implementation plan for /design Step 2b.
+
+You may use only side-effect-free repository discovery. Do not write repository files, design tmpdir files, or any other files. Return only the sentinel-delimited response requested below.
+
+Drafting requirements to follow:
+- Prefer minimum necessary change: avoid scope creep, unnecessary complexity, and additions not required for correctness.
+- Read approach-synthesis.txt: if it is exactly NO_SKETCHES, draft from direct codebase/doc inspection without fabricating planning-panel agreement.
+- Read discussion-round1.md when present for scope boundaries and strict constraints.
+- Read design-outline.md only when non-empty and .outline-approved exists; treat Goals, Non-goals, and Surfaces as binding scope.
+- Read brainstorm.md when present as additive ideation context for plan drafting.
+- Use a Files to modify/create section with per-file headings exactly one path each: ### NEW:, ### UPDATED:, or ### REWRITTEN: (at least one ASCII space after ### before the keyword).
+- Include Approach, Edge cases, Failure modes when non-trivial, Testing strategy, optional diff_added/diff_deleted/mechanical_churn trailers, and final diff_lines: <N>.
+- The final plan body must end with a whole-line diff_lines: <N> trailer.
+- Optionally include up to three dynamic plan-review archetypes in a scout block after the plan. The launcher validates, filters, caps, and materializes this block; invalid post-plan scout output is ignored.
+- Scout sentinels inside the summary or plan are fatal format errors. Never put LARCH_SCOUT_* markers in the plan body.
+
+Readability style (trusted):
+# Readability Style
+
+**Consumer**: `/design` prompt surfaces that produce user-facing text, either through an external-agent prompt token or through inline orchestration prose.
+
+**Contract**: this file is the only source of truth for the `/design` readability preamble. External prompt files embed the literal `<READABILITY_STYLE>` token, and assembly code or orchestration expands it to this full file. Inline composition sites read this file before writing user-facing text.
+
+**When to load**: load only when a `/design` step is about to compose user-facing prose or render a prompt that asks another agent to compose such prose. Do not load during setup, pure validation, or byte-stable artifact handling.
+
+---
+
+## Style Axes
+
+Write in three styles at once:
+
+- **Strunk & White**: use active voice. Omit needless words. Prefer concrete nouns and verbs.
+- **Dyslexia-friendly**: use short sentences. Prefer simple words. Break dense ideas into headings and bullets.
+- **Brevity**: shorter is better. Minimize the total artifact length while preserving meaning.
+- **No em dashes**: never use em dashes; use periods, commas, colons, or semicolons instead.
+- **Hedge vs. direct**: hedge uncertain claims ("may contain", "can fail") instead of absolutes; keep directives imperative.
+
+## Precision Contract
+
+Keep these byte-stable unless the task explicitly edits them:
+
+- fenced code blocks
+- backticked tokens
+- file paths
+- identifiers
+- flag names
+- `### NEW:` / `### UPDATED:` / `### REWRITTEN:` plan grammar
+- the trailing `diff_lines: <N>` line
+
+Do not rewrite those items for style. Explain around them instead.
+
+## Precedence
+
+When rules conflict, use this order:
+
+`code references > meaning > brevity > dyslexia-friendly chunking > Strunk & White micro-rewrites`
+
+Apply it directly:
+
+- Preserve code references first.
+- Preserve exact meaning next.
+- Cut words before adding layout.
+- Add headings or bullets only when they improve scanning.
+- Polish grammar last.
+
+## Substitution Token
+
+External-agent prompt files MUST embed this literal token:
+
+`<READABILITY_STYLE>`
+
+Before launch, replace every literal `<READABILITY_STYLE>` token with the full contents of this file.
+
+## Examples
+
+Before: "It is recommended that the implementer should consider adding a validation step."
+
+After: "Add a validation step."
+
+Before: "The plan should make sure that users are not able to continue when the file cannot be read."
+
+After: "Block the flow when the file cannot be read."
+
+Before: "In order to avoid potential future confusion, documentation can be updated."
+
+After: "Update the docs to avoid confusion."
+
+Before: "The script performs an operation that checks if the path exists."
+
+After: "The script checks that the path exists."
+
+Before: "This could possibly be out of scope depending on how the team wants to proceed."
+
+After: "This may be out of scope."
+
+Required output format:
+[optional]
+LARCH_SUMMARY_BEGIN
+A concise summary for large-plan preview. Omit this whole summary block only when no useful summary is needed.
+LARCH_SUMMARY_END
+[/optional]
+LARCH_PLAN_BEGIN
+Full implementation plan body ending with diff_lines: <N>.
+LARCH_PLAN_END
+[optional]
+LARCH_SCOUT_BEGIN
+{"archetypes":[{"name":"slug","focus_area":"code-quality|risk-integration|correctness|architecture|security","weight":1,"rationale":"single-line reason","prompt_body":"2-6 sentence focus directive ending with the required citation sentence."}]}
+LARCH_SCOUT_END
+[/optional]
+
+Optional advisory status may be included between LARCH_STATUS_BEGIN and LARCH_STATUS_END, but the summary, plan, and optional scout sentinels above are the only parsed contract.
+
+Untrusted feature description:
+<feature_description encoding="literal-redacted">
+# [Bug] /implement escalation: Codex left pyright unknown-lambda-type error and stale fence count in test_oos_filer.py and test-implement-fence-shape.sh (lint-fix-loop:step8-shippr)
+
+## Report metadata
+- **Report kind**: `escalation-success`
+- **Failure class**: ``
+- **Step**: `unknown`
+- **Bail reason**: `redacted`
+- **Run ID**: `2C6C93C1-0517-452C-8368-B6D85915BBF3`
+- **Branch**: `unknown`
+- **PR URL**: `https://github.com/character-ai/larch/pull/4383`
+
+## Root-cause finding
+
+verdict=larch-defect
+confidence=medium
+summary=Codex left pyright unknown-lambda-type error and stale fence count in test_oos_filer.py and test-implement-fence-shape.sh
+
+The run required two Main Claude repairs after the review coder (Cursor) applied accepted findings:
+
+1. **Pyright unknown-lambda-type** (`python/test_oos_filer.py:98`): Codex wrote a new test using `lambda _tmpdir, _repo, _issue:` as a monkeypatch target. Pyright flagged `reportUnknownLambdaType` because `setattr` provides no type context for the lambda parameters. The fix followed the established codebase pattern (`# type: ignore[arg-type]`, same as `test_pr_body.py:218`). Codex should have applied this pattern when writing the new test.
+
+2. **Stale structural fence count** (`scripts/test-implement-fence-shape.sh`): The plan added a new `bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py oos file` fence to `skills/implement/SKILL.md`, increasing the new-fence count from 30 to 31. Codex did not update `EXPECTED_NEW` in the structural harness. The fix was a one-line increment.
+
+Both failures surfaced via `make py-lint` and `test-implement-fence-shape` in the ship driver's pre-push checks. The lint-fix-loop attempted auto-repair but could not resolve the pyright strict-mode lambda type error automatically, causing the step 5 stall.
+
+Evidence: `relevant-checks/step5-review-fixes-1.log` (original pyright errors), `relevant-checks/step6-1.redacted.log` (persistent pyright after first fix attempt), `relevant-checks/step6-3.redacted.log` (fence count failure after pyright fix).
+
+## Mitigations
+
+1. **Fence count (plan gap)**: Any `/design` that adds Bash fences to `skills/implement/SKILL.md` should explicitly include `scripts/test-implement-fence-shape.sh` in the files list. The plan for #3819 listed SKILL.md but omitted the structural harness, so Codex had no signal to update `EXPECTED_NEW`. Adding it to the plan is sufficient — Codex handles the one-line increment correctly when told to.
+
+2. **Pyright lambda type (codebase-pattern gap)**: The `# type: ignore[arg-type]` suppression for `monkeypatch.setattr` lambdas is an established pattern (`test_pr_body.py:218`) but not documented anywhere Codex reliably consults. Two options: (a) add a brief note to `python/test_oos_filer.py` or a shared test helper so callers don't need the suppression inline; or (b) document the pattern in `AGENTS.md` or a `.claude/rules/` file so future coders apply it without needing to search for examples. The lint-fix-loop cannot auto-apply `# type: ignore` comments, so this will recur until the pattern is more discoverable.
+
+
+
+## Attempts
+
+| Attempt | Class | Resume hint | Outcome | UTC |
+|---|---|---|---|---|
+| none | n/a | n/a | n/a | n/a |
+
+## Escalation ledger
+
+utc=2026-06-15T02:26:31.123902+00:00	site=lint-fix-loop	trigger=step8-shippr	step=5	phase=review	dispatcher=	exit_code=unknown	failure_detail_log=
+utc=2026-06-15T02:45:00.104102+00:00	site=ship-pr-internal	trigger=ship-pr-internal-lint-fix	step=8	phase=ci-initial	dispatcher=lint-fix-loop	exit_code=unknown	failure_detail_log=relevant-checks/step6-1.redacted.log
+
+
+
+</feature_description>
+
+
+Untrusted approach synthesis:
+<approach_synthesis encoding="literal-redacted">
+NO_SKETCHES
+
+</approach_synthesis>
+
+
+Untrusted discussion round 1:
+<discussion_round1 encoding="literal-redacted">
+## Decision 1: Fence count convention location
+- **Question**: Where should the convention to update test-implement-fence-shape.sh when adding fences to skills/implement/SKILL.md live?
+- **Resolution**: .claude/rules/ file — augment skill-editing-trace.md (which already fires on skills/**/SKILL.md edits) with a note about the structural harness
+- **Source**: user
+
+## Decision 2: Pyright lambda pattern discoverability
+- **Question**: How to make the `# type: ignore[arg-type]` suppression pattern for monkeypatch.setattr lambdas discoverable?
+- **Resolution**: .claude/rules/ file — new rule triggered on python/test_*.py edits
+- **Source**: user
+
+</discussion_round1>
+
