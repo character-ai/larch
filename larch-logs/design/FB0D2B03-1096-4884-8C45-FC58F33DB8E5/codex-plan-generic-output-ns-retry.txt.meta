@@ -1,0 +1,11 @@
+TOOL=codex
+TIMEOUT=1860
+CAPTURE_STDOUT=false
+CAPTURE_STDOUT_ONLY=false
+OUTPUT_FILE=<TMPDIR>/codex-plan-generic-output-ns-retry.txt
+OUTER_LAUNCHER=agent launch-review
+OUTER_LAUNCHER_PROMPT_FILE=<TMPDIR>/codex-plan-generic-output-ns-retry.txt.prompt
+OUTER_LAUNCHER_WORKDIR=<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/50.0.12
+OUTER_LAUNCHER_RISK=high
+OUTER_LAUNCHER_TIMING_KIND=codex-phase1-codex-plan-generic
+NS_RETRY_REASON=JSON_PARSE_FAIL
