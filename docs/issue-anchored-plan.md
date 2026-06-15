@@ -7,12 +7,13 @@ issue **comments** before `/implement` proceeds. Helpers under
 `python/cli.py clarify` state, comment-post, and label verbs are what
 `/design` and `/implement` use:
 `/implement` **Preflight** (`skills/implement/SKILL.md` — issue-anchored
-plan) reads the plan block, runs the in-prompt plan-adequacy audit, and on
+plan) on non-emergency runs reads the plan block, runs the in-prompt
+plan-adequacy audit, and on
 refuse posts a clarify request and label via
 `python/cli.py clarify comment-post` / `python/cli.py clarify label`
 (exit **3**).
-`/implement --emergency` may downgrade missing/malformed plan block,
-plan-adequacy refusal, and clarify-state pending gates to warn-and-proceed;
+`/implement --emergency` skips the in-prompt plan-adequacy audit and may
+downgrade the missing/malformed plan block gate to warn-and-proceed;
 semantic materiality still fires under emergency. `/design`
 writes the plan block via `python/cli.py named-block write --marker plan` and posts matching clarify
 responses.
@@ -201,14 +202,17 @@ against Step 3 / Gate C plan previews, the mechanical behavior is the live
 `LARCH_DESIGN_PLAN_SUMMARY_THRESHOLD` and the **Chat-order note** there); do not assume duplicated inline fenced
 bodies remain the source of that logic. Issue-level acceptance or transcript audits must not treat the plan preview as immediately after the Step 3 breadcrumb alone — the visible breadcrumb is followed by a `python3 python/cli.py timing mark` line before the preview output.
 
-Emergency mode is intentionally narrow: `/implement --emergency` may downgrade
-`BLOCK_PRESENT=false`, malformed plan extraction, `AUDIT=refuse`, and the
-clarify-state pending/refuse path from hard stops to loud warnings with an
-execution-issues audit trail. It does not bypass admission failures or the
+Emergency mode is intentionally narrow: `/implement --emergency` skips the
+Preflight plan-adequacy audit entirely (no `AUDIT=refuse` result exists on that
+path, so no bypass-log entry is written for the skip) and may
+downgrade `BLOCK_PRESENT=false`, malformed plan extraction, and the
+`missing-designed-prefix` admission carve-out from hard stops to loud warnings
+with an execution-issues audit trail. It does not bypass other admission
+failures (managed lifecycle prefixes, blockers, audit-report) or the
 semantic materiality stale-plan notice.
 
 Canonical emergency bypass-log tokens for `/implement` are `missing-plan`,
-`malformed-plan`, and `audit-refuse`, each written as
+`malformed-plan`, and `missing-designed-prefix`, each written as
 `BYPASS kind=<token> issue=<number>`.
 
 ## `NEXT_ID` and clarify posting
