@@ -170,6 +170,10 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 mkdir -p "${DESIGN_TMPDIR:?}/plan-review/round-${round_num}"
+if [[ "$round_num" == 2 && -e "${DESIGN_TMPDIR}/.step3-review-result.env" ]]; then
+    printf 'round 2 saw stale .step3-review-result.env\n' >&2
+    exit 70
+fi
 printf 'artifact for round %s\n' "$round_num" >"${DESIGN_TMPDIR}/plan-review/round-${round_num}/artifact.txt"
 if [[ "$round_num" == 1 ]]; then
     cat >"${DESIGN_TMPDIR}/accepted-plan-findings.md" <<'FINDINGS'

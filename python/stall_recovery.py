@@ -76,7 +76,7 @@ _GENERIC_BAILS = frozenset({
     "publish-failed", "publish-tail-failed", "plan-write-failed", "judge-panel-collapse",
     "decompose-panel-retry-exhausted", "validator-autofix-exhausted",
     "validator-autofix-failed", "validator-autofix-unavailable",
-    "validator-autofix-skipped-cycle-cap", "operator-action",
+    "validator-autofix-skipped-cycle-cap", "operator-action", "panel-init-failed",
 })
 _GENERIC_STEPS = frozenset({
     "validator", "postplan", "publish", "clarify", "panel", "judge-panel", "step2b", "step3", "step5c",

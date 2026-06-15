@@ -19,6 +19,8 @@ Family B background+monitor pairing assertions were removed in breadcrumbs Stage
 - The harness also pins the AGENTS.md per-turn output-file read ban (`poll the task output file once per turn`) on the `/implement` delivery path (issue #3195).
 - `skills/implement/SKILL.md` Step 5 references `${CLAUDE_PLUGIN_ROOT}/python/cli.py review-and-fix step5`.
 - `/design` Step 3 carries the exact literal ``NEVER poll `.step3-review-result.env` with a sleep loop.`` exactly twice, covering the initial fence and resume `--starting-round` fence.
+- `/design` Step 3 pins the `.completed/step-3` sentinel for sanctioned recovery waiters.
+- `/design` Step 3 pins that the `STEP3_REVIEW_LOOP_STATUS=complete` route requires `.completed/step-3` before Step 3b.
 - `skills/shared/orchestrator-never.md` carries the exact shared NEVER literal for `run_in_background` result-file sleep loops.
 - `skills/shared/orchestrator-never.md` carries the exact narrow recovery wording `only sanctioned exception to the Bash polling-loop ban is one re-launched immediate-background completion waiter`.
 - `AGENTS.md` carries the exact narrow recovery wording `only sanctioned exception to the Bash polling-loop ban is one re-launched immediate-background completion waiter`.

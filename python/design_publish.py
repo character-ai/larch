@@ -29,11 +29,25 @@ def _is_repo(value: str) -> bool:
     return bool(re.fullmatch(r"[A-Za-z0-9._-]+/[A-Za-z0-9._-]+", value))
 
 
-def _review_provenance(design_tmpdir: Path) -> tuple[str, int]:
-    """Return (review_status, rounds_completed) from .step3-review-result.env."""
+_PROVENANCE_META_KEYS = ("review_status", "rounds_completed")
+_OPTIONAL_TRAILER_RE = re.compile(
+    r"^(diff_added: [0-9]+|diff_deleted: [0-9]+|mechanical_churn: .+)$"
+)
+_TERMINAL_STATUSES_REQUIRING_SENTINEL = frozenset({"complete", "cap-hit"})
+
+
+def _is_trailer_region_line(line: str) -> bool:
+    stripped = line.rstrip("\n")
+    if any(stripped.startswith(f"{key}: ") for key in _PROVENANCE_META_KEYS):
+        return True
+    return bool(_OPTIONAL_TRAILER_RE.fullmatch(stripped))
+
+
+def _review_provenance(design_tmpdir: Path) -> tuple[str, int, bool]:
+    """Return (review_status, rounds_completed, provenance_present) from .step3-review-result.env."""
     result_env = design_tmpdir / ".step3-review-result.env"
     if not result_env.is_file() or result_env.is_symlink():
-        return "", 0
+        return "", 0, False
     kv: dict[str, str] = {}
     for line in result_env.read_text(encoding="utf-8", errors="replace").splitlines():
         if "=" in line:
@@ -60,33 +74,52 @@ def _review_provenance(design_tmpdir: Path) -> tuple[str, int]:
         rounds = int(rounds_raw) if rounds_raw.strip().isdigit() else 0
     except (ValueError, AttributeError):
         rounds = 0
-    return status, rounds
+    provenance_present = bool(status or rounds_raw.strip())
+    return status, rounds, provenance_present
 
 
-def _insert_provenance_before_trailer(plan_text: str, review_status: str, rounds_completed: int) -> str:
-    lines = plan_text.splitlines(keepends=True)
+def _splice_plan_provenance(text: str, review_status: str, rounds_completed: int) -> str:
+    """Insert or replace review provenance above optional size trailers and before diff_lines."""
+    lines = text.splitlines(keepends=True)
+    if lines and not lines[-1].endswith("\n"):
+        lines[-1] = lines[-1] + "\n"
     diff_idx = -1
     for idx in range(len(lines) - 1, -1, -1):
-        if re.fullmatch(r"diff_lines: [0-9]+", lines[idx].rstrip("\n")):
+        if re.fullmatch(r"diff_lines: \d+", lines[idx].rstrip("\n")):
             diff_idx = idx
             break
     provenance = [
         f"review_status: {review_status}\n",
         f"rounds_completed: {rounds_completed}\n",
     ]
-    trailer_keys = ("review_status", "rounds_completed", "diff_added", "diff_deleted", "mechanical_churn")
     if diff_idx < 0:
-        return plan_text.rstrip("\n") + "\n" + "".join(provenance)
-    start = diff_idx
-    for idx in range(diff_idx - 1, -1, -1):
+        trailer_start = len(lines)
+        idx = len(lines) - 1
+        while idx >= 0 and _is_trailer_region_line(lines[idx]):
+            trailer_start = idx
+            idx -= 1
+        head = lines[:trailer_start]
+        optional = [
+            line
+            for line in lines[trailer_start:]
+            if _OPTIONAL_TRAILER_RE.fullmatch(line.rstrip("\n"))
+        ]
+        return "".join(head) + "".join(provenance) + "".join(optional)
+    trailer_start = diff_idx
+    optional_lines: list[str] = []
+    idx = diff_idx - 1
+    while idx >= 0 and _is_trailer_region_line(lines[idx]):
         stripped = lines[idx].rstrip("\n")
-        if stripped == "":
-            continue
-        if any(stripped.startswith(f"{key}: ") for key in trailer_keys):
-            start = idx
-            continue
-        break
-    return "".join(lines[:start]) + "".join(provenance) + "".join(lines[diff_idx:])
+        if _OPTIONAL_TRAILER_RE.fullmatch(stripped):
+            optional_lines.insert(0, lines[idx])
+        trailer_start = idx
+        idx -= 1
+    return (
+        "".join(lines[:trailer_start])
+        + "".join(provenance)
+        + "".join(optional_lines)
+        + "".join(lines[diff_idx:])
+    )
 
 
 def publish_main(argv: Sequence[str]) -> int:
@@ -149,10 +182,17 @@ def publish_main(argv: Sequence[str]) -> int:
         _ = result_env.write_text("\n".join(f"{k}={v}" for k, v in kvs) + "\n", encoding="utf-8")
         return 4
 
-    review_status, rounds_completed = _review_provenance(design_tmpdir)
+    review_status, rounds_completed, provenance_present = _review_provenance(design_tmpdir)
+    step3_sentinel = (design_tmpdir / ".completed" / "step-3").is_file()
     _BLOCKED_STATUSES = {"panel-init-failed", "panel-skipped"}
-    if review_status in _BLOCKED_STATUSES or (review_status and rounds_completed == 0):
-        blocked_reason = review_status if review_status in _BLOCKED_STATUSES else "rounds_completed=0"
+    blocked_reason = ""
+    if review_status in _BLOCKED_STATUSES:
+        blocked_reason = review_status
+    elif provenance_present and rounds_completed == 0:
+        blocked_reason = "rounds_completed=0"
+    elif review_status in _TERMINAL_STATUSES_REQUIRING_SENTINEL and not step3_sentinel:
+        blocked_reason = f"{review_status} without .completed/step-3"
+    if blocked_reason:
         print(
             f"**⚠ 5c: publish refused — review provenance indicates {blocked_reason};"
             " plan review did not complete; re-run /design**",
@@ -183,8 +223,10 @@ def publish_main(argv: Sequence[str]) -> int:
 
     if review_status or rounds_completed:
         original = composed_plan.read_text(encoding="utf-8", errors="replace")
-        updated = _insert_provenance_before_trailer(original, review_status, rounds_completed)
-        _ = composed_plan.write_text(updated, encoding="utf-8")
+        _ = composed_plan.write_text(
+            _splice_plan_provenance(original, review_status, rounds_completed),
+            encoding="utf-8",
+        )
 
     if skip_validate:
         kvs[1] = ("VALIDATE_STATUS", "skipped")

@@ -151,6 +151,7 @@ print_admission_refusal() {
 write_fallback_plan() {
   kind="$1"
   shape="$2"
+  PLAN_FROM_EXTRACTED_BLOCK=false
   body="$(json_field "$ISSUE_JSON_PATH" body)" || exit 2
   raw_title="$(json_field "$ISSUE_JSON_PATH" title)" || exit 2
   if ! is_blank "$body"; then
@@ -315,6 +316,7 @@ TITLE_RAW="$(json_field "$ISSUE_JSON_PATH" title)" || exit 2
 TITLE="$(single_line "$TITLE_RAW")"
 
 PLAN_PATH="$PREFLIGHT_TMPDIR/plan-from-issue.txt"
+PLAN_FROM_EXTRACTED_BLOCK=true
 PLAN_STDOUT="$PREFLIGHT_TMPDIR/plan-block.stdout"
 PLAN_STDERR="$PREFLIGHT_TMPDIR/plan-block.stderr"
 set +e
@@ -364,7 +366,7 @@ elif [ "$PLAN_RC" -ne 0 ]; then
   exit 2
 fi
 
-if [ "$BLOCK_PRESENT" = true ] && [ -s "$PLAN_PATH" ]; then
+if [ "$PLAN_FROM_EXTRACTED_BLOCK" = true ] && [ "$BLOCK_PRESENT" = true ] && [ -s "$PLAN_PATH" ]; then
   refuse_unreviewed_plan
 fi
 

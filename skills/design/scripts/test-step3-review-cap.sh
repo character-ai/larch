@@ -108,6 +108,7 @@ printf '%s\n' "$driver_out" | grep -q 'LOOP_STATUS=cap-reached' || fail 'expecte
 printf '%s\n' "$driver_out" | grep -q 'TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached' || fail 'expected skipped-cap-reached tally status'
 printf '%s\n' "$driver_out" | grep -q 'cap reached; skipping' || fail 'expected cap-reached skip breadcrumb'
 [[ "$(cat "$D2/review-round-count.txt")" == "5" ]] || fail 'cap-reached path must leave counter unchanged'
+[[ -f "$D2/.completed/step-3" ]] || fail 'cap-reached path must write .completed/step-3 sentinel'
 [[ ! -e "$D2/accepted-plan-findings.md" ]] || fail 'cap-reached path must clear stale accepted findings'
 [[ ! -e "$D2/voting-tally.md" ]] || fail 'cap-reached path must clear stale voting tally'
 

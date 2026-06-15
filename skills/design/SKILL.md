@@ -166,6 +166,7 @@ The wrapper-only D3 surface uses these script contracts. Keep direct wrappers an
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-review.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/lib-step3-prelaunch-failure.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/review-design-step3-loop.sh`
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/review-design-step3-loop.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-step3-review.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-step3-review.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-mav.sh`
@@ -233,7 +234,16 @@ Read `skills/design/references/readability-style.md` as the single source of sty
 
 3. **NEVER bypass launcher-owned rehydration and pause checks after Step 0a.** **Why:** pause/resume relies on wrappers self-terminating at the next Bash boundary; bypassing the launcher can silently drop a pause request or lose the baked current-env path. **How to apply:** every post-Step-0a Bash fence invokes `"$HOME/.cache/larch/sessions/design-run-$PPID.sh" <wrapper>.sh ...`. The launcher supplies the source-env path and Claude PID. Wrappers own source-env and pause-check behavior internally, including folded sentinel ordering before real work and the Step 6 cleanup exception. The `scripts/test-design-structure.sh` harness enforces wrapper-internal ordering with `assert_wrapper_pause_before_work`.
 
-4. **NEVER use the `Monitor` tool anywhere within the `/design` orchestrator.** **Why:** Monitor fires one turn per log line; it is for event streams only. Using it to wait for a background task to complete burns tokens on spurious turns. **How to apply:** use `Bash run_in_background` with `run_in_background: true` and wait for `<task-notification>` for one-shot completion on all Step 3 and Step 5c fences. When a `<task-notification>` fires prematurely with empty output and the underlying process is still running, the only sanctioned exception to the Bash polling-loop ban is one re-launched immediate-background completion waiter: exactly one `Bash run_in_background` task with `until <completion-condition>; do sleep N; done`. Do NOT fall back to Monitor.
+4. **NEVER use the `Monitor` tool anywhere within the `/design` orchestrator.** **Why:** Monitor fires one turn per log line; it is for event streams only. Using it to wait for a background task to complete burns tokens on spurious turns. **How to apply:** use `Bash run_in_background` with `run_in_background: true` and wait for `<task-notification>` for one-shot completion on all Step 3 and Step 5c fences. When a `<task-notification>` fires prematurely with empty output and the underlying process is still running, the only sanctioned exception to the Bash polling-loop ban is one re-launched immediate-background completion waiter: exactly one `Bash run_in_background` task with `until <completion-condition>; do sleep N; done`. Step 3-specific recovery note: the completion condition MUST be `[ -f "$DESIGN_TMPDIR/.completed/step-3" ]`; it MUST NOT be `.step3-review-result.env`.
+
+```sh
+# WRONG
+until [ -f "$DESIGN_TMPDIR/.step3-review-result.env" ]; do sleep 30; done
+# CORRECT
+until [ -f "$DESIGN_TMPDIR/.completed/step-3" ]; do sleep 30; done
+```
+
+Do NOT fall back to Monitor.
 
 <!-- step:0 — Session Setup -->
 ## Step 0 — Session Setup
@@ -613,7 +623,7 @@ Step 3 invokes `design-step3-review.sh` with `run_in_background: true` (immediat
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-review.sh
 ```
 
-**Task tool notification boundary**: NEVER poll `.step3-review-result.env` with a sleep loop. Polling bypasses Claude Code task lifecycle. It can leave the task registered as running. It can block session exit until `TaskStop`. Wait for `<task-notification>` unconditionally before parsing stdout or reading `.step3-review-result.env`.
+**Task tool notification boundary**: NEVER poll `.step3-review-result.env` with a sleep loop. Polling bypasses Claude Code task lifecycle. It can leave the task registered as running. It can block session exit until `TaskStop`. Wait for `<task-notification>` unconditionally before parsing stdout or reading `.step3-review-result.env`. Any sanctioned one-time recovery waiter after a premature notification MUST use `[ -f "$DESIGN_TMPDIR/.completed/step-3" ]`; it MUST NOT use `.step3-review-result.env`. **Recovery waiter is not a substitute for wrapper completion**: the recovery waiter is only a stale-sentinel guard after a premature notification. After it fires, the orchestrator MUST still wait for the original `design-step3-review.sh` `<task-notification>` before routing past Step 3. Do not advance to Steps 3b, 4, 5, or 6 from `.completed/step-3` alone; do not enter Step 6 until that background task has exited.
 
 **Immediate-background wait rule**: After the `Command running in background` ack, print the Step 3 compact reviewer status table. Then **END THE TURN**. This yield is **not** a halt; yielding is NOT a halt for an in-flight immediate-background fence. `<task-notification> is the only resume trigger`. Ignore the launch ack's "check interim output" suggestion; ignore the launch ack. Do not read tmpdir files, task outputs, stdout captures, result env files, or reviewer directories before the notification.
 
@@ -623,8 +633,8 @@ Plan-review scope anchoring: Step 3 entry materializes and validates `$DESIGN_TM
 
 **Post-loop branch matrix** (read `STEP3_REVIEW_LOOP_STATUS` from the loop envelope first; `.step3-review-result.env` remains the per-round handoff):
 
-- `STEP3_REVIEW_LOOP_STATUS=complete` — write/keep `.completed/step-3` and proceed to Step 3b; the loop has already run apply, postplan, and continuation until a stop decision.
-- `STEP3_REVIEW_LOOP_STATUS=cap-hit` — cap reached; skip Gate B and proceed to Step 3b, then the Step 3b completion boundary, then Step 4.
+- `STEP3_REVIEW_LOOP_STATUS=complete` — before routing to Step 3b, require `[ -f "$DESIGN_TMPDIR/.completed/step-3" ]`. If absent, treat the notification as premature and launch the sanctioned recovery waiter on `[ -f "$DESIGN_TMPDIR/.completed/step-3" ]`; do not advance to Step 3b or later steps from `.step3-review-result.env` alone. When present, proceed to Step 3b; the loop has already run apply, postplan, and continuation until a stop decision.
+- `STEP3_REVIEW_LOOP_STATUS=cap-hit` — cap reached; before routing to Step 3b, require `[ -f "$DESIGN_TMPDIR/.completed/step-3" ]`. If absent, treat the notification as premature and use the same `.completed/step-3` recovery waiter. When present, skip Gate B and proceed to Step 3b, then the Step 3b completion boundary, then Step 4.
 Before any Step 3 mid-loop resume, bind `STEP3_RESUME_ROUND="${FINAL_ROUND_NUM:-${STEP3_REVIEW_ROUND_NUM:-${ROUND_NUM:-}}}"`. If it is empty or non-numeric, treat that as a Step 3 routing error and do not launch the resume fence. Mid-loop returns use the post-loop resume matrix to choose the one wrapper-owned state flag required for the resume. No migrated mid-loop resume uses `--starting-round` alone.
 
 - `STEP3_REVIEW_LOOP_STATUS=main-agent-vote-required` — perform the MainAgent vote/re-tally block below. `design-step3-mav.sh --phase post` refreshes envs, records warnings/timing, and writes the round phase. On successful post, resume the same round with the phase emitted by the wrapper.
@@ -637,7 +647,7 @@ Before any Step 3 mid-loop resume, bind `STEP3_RESUME_ROUND="${FINAL_ROUND_NUM:-
 
 Legacy single-round `LOOP_STATUS` mapping for harnesses and manual `--mode single` calls:
 
-- `LOOP_STATUS=complete` — proceed to Gate B. The review loop has not changed `plan.txt`; Gate B is the sole apply point for accepted findings, auto-applying by default and prompting only when `--per-round-approval` is set. Gate-B-settled paths run the heuristic multi-round continuation check after Gate B and any retained Step 2b.5 return; only the stop path proceeds to Step 3b.
+- `LOOP_STATUS=complete` — proceed to Gate B for legacy single-round callers. A loop-mode post-notification fallback cannot use `LOOP_STATUS=complete` as terminal without `[ -f "$DESIGN_TMPDIR/.completed/step-3" ]`; if the sentinel is absent, use the sanctioned recovery waiter instead. The review loop has not changed `plan.txt`; Gate B is the sole apply point for accepted findings, auto-applying by default and prompting only when `--per-round-approval` is set. Gate-B-settled paths run the heuristic multi-round continuation check after Gate B and any retained Step 2b.5 return; only the stop path proceeds to Step 3b.
 - `LOOP_STATUS=zero-findings-degraded-panel` — proceed to Gate B, whose zero-findings short-circuit returns to the heuristic multi-round continuation check before Step 3b.
 - `LOOP_STATUS=tally-error` — roll back `review-round-count.txt` (`python/cli.py plan-review run` persist/rollback); print `**⚠ Step 3: tally error in round ${ROUNDS_COMPLETED:-?}; review aborted; current plan preserved.**` and short-circuit to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4 (skip Gate B). Before jumping to Step 3b, run `design-step3-gate-b-bypass.sh`, parse `STEP3_STATE=`, and abort for non-zero rc or `STEP3_STATE=refused-partial-gate-b-bypass` until the partial sentinel state is repaired.
 - `LOOP_STATUS=degraded-empty-collector` — roll back `review-round-count.txt` (`python/cli.py plan-review run` persist/rollback); print `**⚠ Step 3: round ${ROUNDS_COMPLETED:-?} had zero findings AND zero successful collectors; treated as panel degradation.**` and short-circuit to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4 (skip Gate B). Before jumping to Step 3b, run the same `design-step3-gate-b-bypass.sh` fail-closed helper path.
@@ -670,7 +680,7 @@ The pre phase renders any readable scope anchor as escaped evidence, prints the 
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --phase awaiting-continuation
 ```
 
-Use the post-loop resume matrix for every Step 3 resume after `STEP3_REVIEW_LOOP_STATUS` handoff. The fence above shows the continuation form; apply, post-apply, findings-file, and postplan-operator resumes use their matching flag on the same wrapper call. NEVER poll `.step3-review-result.env` with a sleep loop. Polling bypasses Claude Code task lifecycle. It can leave the task registered as running. It can block session exit until `TaskStop`. Wait for `<task-notification>` unconditionally before parsing stdout or reading `.step3-review-result.env`.
+Use the post-loop resume matrix for every Step 3 resume after `STEP3_REVIEW_LOOP_STATUS` handoff. The fence above shows the continuation form; apply, post-apply, findings-file, and postplan-operator resumes use their matching flag on the same wrapper call. NEVER poll `.step3-review-result.env` with a sleep loop. Polling bypasses Claude Code task lifecycle. It can leave the task registered as running. It can block session exit until `TaskStop`. Wait for `<task-notification>` unconditionally before parsing stdout or reading `.step3-review-result.env`. Any sanctioned one-time recovery waiter after a premature notification MUST use `[ -f "$DESIGN_TMPDIR/.completed/step-3" ]`; it MUST NOT use `.step3-review-result.env`. **Recovery waiter is not a substitute for wrapper completion**: the recovery waiter is only a stale-sentinel guard after a premature notification. After it fires, the orchestrator MUST still wait for the original `design-step3-review.sh` `<task-notification>` before routing past Step 3. Do not advance to Steps 3b, 4, 5, or 6 from `.completed/step-3` alone; do not enter Step 6 until that background task has exited.
 
 **Immediate-background wait rule**: After the `Command running in background` ack, print the Step 3 compact reviewer status table. Then **END THE TURN**. This yield is **not** a halt; yielding is NOT a halt for an in-flight immediate-background fence. `<task-notification> is the only resume trigger`. Ignore the launch ack's "check interim output" suggestion; ignore the launch ack. Do not read tmpdir files, task outputs, stdout captures, result env files, or reviewer directories before the notification.
 

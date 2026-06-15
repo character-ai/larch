@@ -126,9 +126,25 @@ compound_wrapper_probe="\"\$HOME/.cache/larch/sessions/design-run-123.sh\" desig
 out=$(run_payload "$(payload_bash "$compound_wrapper_probe")")
 assert_deny "$out" 'compound wrapper plus appended probe denies'
 
+step3_recovery_waiter="until [ -f \"\$DESIGN_TMPDIR/.completed/step-3\" ]; do sleep 30; done"
+out=$(run_payload "$(payload_bash "$step3_recovery_waiter" "$D")")
+assert_allow "$out" 'exact Step 3 recovery waiter allows'
+
+step3_recovery_waiter_braced="until [ -f \"\${DESIGN_TMPDIR}/.completed/step-3\" ]; do sleep 30; done"
+out=$(run_payload "$(payload_bash "$step3_recovery_waiter_braced" "$D")")
+assert_allow "$out" 'braced Step 3 recovery waiter allows'
+
+step3_recovery_waiter_probe="until [ -f \"\$DESIGN_TMPDIR/.completed/step-3\" ]; do sleep 30; done && cat \"\$DESIGN_TMPDIR/.step3-review-result.env\""
+out=$(run_payload "$(payload_bash "$step3_recovery_waiter_probe" "$D")")
+assert_deny "$out" 'Step 3 recovery waiter with appended probe denies'
+
 filetest_loop='while [ ! -f .step3-review-result.env ]; do sleep 5; done'
 out=$(run_payload "$(payload_bash "$filetest_loop" "$D")")
 assert_deny "$out" 'live marker plus file-test sleep loop denies'
+
+step3_result_waiter="until [ -f \"\$DESIGN_TMPDIR/.step3-review-result.env\" ]; do sleep 30; done"
+out=$(run_payload "$(payload_bash "$step3_result_waiter" "$D")")
+assert_deny "$out" 'Step 3 result-env waiter remains denied'
 
 out=$(run_payload "$(payload_bash "rg plan-review docs/" "/tmp/other-repo")")
 assert_allow "$out" 'plan-review substring outside live tmpdir allows'

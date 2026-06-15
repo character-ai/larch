@@ -802,6 +802,7 @@ run_design_step3_loop() {
                 step3_loop_record_timing "$round_num" "$(step3_loop_read_round_start_s "$round_num" "$round_start_s")" "$(step3_loop_now_s)"
                 REASON=""
                 if [[ "${PLAN_REVIEW_CONTINUE:-false}" == true ]]; then
+                    rm -f "$DESIGN_TMPDIR/.step3-review-result.env" 2>/dev/null || true
                     "$PLUGIN_ROOT/skills/design/scripts/design-step3-state.sh" --design-tmpdir "$DESIGN_TMPDIR" --auto-continuation-entry >/dev/null 2>&1 || true
                     rm -f "$DESIGN_TMPDIR/.step3-entry-plan-printed"
                     round_num=$((10#$round_num + 1))

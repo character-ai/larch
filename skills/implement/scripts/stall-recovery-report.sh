@@ -779,7 +779,7 @@ safe_bail_reason_value() {
     esac
     if profile_is_generic; then
         case "$1" in
-            failed-plan-write|failed-publish|failed-postplan|failed-clarify|failed-judge-panel|failed-publish-tail|clarify-hard-halt|postplan-failed|publish-failed|publish-tail-failed|plan-write-failed|judge-panel-collapse|decompose-panel-retry-exhausted|validator-autofix-exhausted|validator-autofix-failed|validator-autofix-unavailable|validator-autofix-skipped-cycle-cap|operator-action)
+            failed-plan-write|failed-publish|failed-postplan|failed-clarify|failed-judge-panel|failed-publish-tail|clarify-hard-halt|postplan-failed|publish-failed|publish-tail-failed|plan-write-failed|judge-panel-collapse|decompose-panel-retry-exhausted|validator-autofix-exhausted|validator-autofix-failed|validator-autofix-unavailable|validator-autofix-skipped-cycle-cap|operator-action|panel-init-failed)
                 printf '%s\n' "$1"
                 return 0
                 ;;
