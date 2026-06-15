@@ -1139,7 +1139,9 @@ def _run_lint_fix_loop(implement_tmpdir: Path, checks_log: str) -> dict[str, str
         allowed_tmpdir=str(implement_tmpdir),
     )
     values = {"LINT_FIX_STATUS": outcome.status}
-    if outcome.ledger_failure_detail_log:
+    if outcome.stderr_tail_path:
+        values["STDERR_TAIL_PATH"] = outcome.stderr_tail_path
+    elif outcome.ledger_failure_detail_log:
         values["STDERR_TAIL_PATH"] = outcome.ledger_failure_detail_log
     return values
 

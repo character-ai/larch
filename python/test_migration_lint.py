@@ -331,6 +331,18 @@ def test_ship_pr_comment_is_stale_ref(tmp_path: Path) -> None:
     assert rc == 1
 
 
+def test_ship_pr_sh_reference_is_stale_ref(tmp_path: Path) -> None:
+    repo = _make_git_repo(tmp_path)
+    retired = "scripts/ship-pr.sh"
+    _ = _add_file(repo, "docs/consumer.md", f"Invoke {retired} for shipping.\n")
+    manifest = _make_manifest(repo, [(retired, "#test")])
+    rc = migration_lint.main([
+        "--manifest", str(manifest),
+        "--root", str(repo),
+    ])
+    assert rc == 1
+
+
 def test_larch_logs_excluded(tmp_path: Path) -> None:
     repo = _make_git_repo(tmp_path)
     retired = "scripts/old-helper.sh"

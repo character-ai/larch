@@ -17,6 +17,8 @@ import proc
 from outcomes import Outcome
 from proc import CommandResult
 
+CLI_PATH = Path(__file__).resolve().parent / "cli.py"
+
 
 def _empty_responses() -> list[CommandResult]:
     return []
@@ -735,6 +737,8 @@ def test_run_relevant_checks_precommit_missing_fails(
 ) -> None:
     session = _checks_session(tmp_path, monkeypatch)
     repo = _git_repo(tmp_path)
+    (repo / "file.py").write_text("print('ok')\n", encoding="utf-8")
+
     def available(_runner: object, name: str, **_kwargs: object) -> bool:
         return name != "pre-commit"
 
@@ -2299,3 +2303,344 @@ def test_lint_fix_ship_pr_merge_handoffs_use_internal_ledger_tokens(tmp_path: Pa
         assert outcome.ledger_trigger == "ship-pr-internal-lint-fix"
         assert outcome.ledger_step == "8"
         assert outcome.ledger_phase == "ci-merge"
+
+
+def test_presence_flag_reads_session_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+    (session / "session-env.sh").write_text("CODEX_PRESENT=true\nCURSOR_PRESENT=false\n", encoding="utf-8")
+    monkeypatch.delenv("CODEX_PRESENT", raising=False)
+    monkeypatch.delenv("CURSOR_PRESENT", raising=False)
+    assert checks._presence_flag("CODEX_PRESENT", session) is True  # pyright: ignore[reportPrivateUsage]
+    assert checks._presence_flag("CURSOR_PRESENT", session) is False  # pyright: ignore[reportPrivateUsage]
+
+
+def test_checks_lint_fix_main_reads_presence_from_session_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+    (session / "session-env.sh").write_text("CODEX_PRESENT=true\nCURSOR_PRESENT=false\n", encoding="utf-8")
+    checks_log = session / "fail.redacted.log"
+    checks_log.write_text("error\n", encoding="utf-8")
+    captured: dict[str, object] = {}
+
+    def fake_run_lint_fix(*_args: object, **kwargs: object) -> checks.FixOutcome:
+        captured.update(kwargs)
+        return checks.FixOutcome(
+            status="no-changes",
+            delta_paths=(),
+            failure_reason=None,
+            commit_sha=None,
+            head_changed=False,
+            coder_tool=None,
+        )
+
+    monkeypatch.setattr(checks, "run_lint_fix", fake_run_lint_fix)
+    monkeypatch.delenv("CODEX_PRESENT", raising=False)
+    monkeypatch.delenv("CURSOR_PRESENT", raising=False)
+    rc = checks.checks_lint_fix_main([
+        "--tmpdir",
+        str(session),
+        "--site",
+        "step3",
+        "--checks-log",
+        str(checks_log),
+    ])
+    assert rc == 0
+    assert captured["codex_present"] is True
+    assert captured["cursor_present"] is False
+
+
+def test_direct_targets_rule_targets_before_py_lint(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    _stub_tool(
+        bin_dir,
+        "python3",
+        '#!/usr/bin/env bash\nif [[ "$1" == "-c" ]]; then echo 311; exit 0; fi\nexit 0\n',
+    )
+    for tool in ("ruff", "pylint", "pyright", "pytest"):
+        _stub_tool(bin_dir, tool, "#!/usr/bin/env bash\nexit 0\n")
+    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
+    runner = StubRunner()
+    targets = checks._direct_targets(  # pyright: ignore[reportPrivateUsage]
+        runner,
+        ("python/review_and_fix.py",),
+        cwd=str(tmp_path),
+        env=dict(os.environ),
+        log_fd=2,
+    )
+    assert "test-review-and-fix" in targets
+    assert "py-lint" in targets
+    assert targets.index("test-review-and-fix") < targets.index("py-lint")
+
+
+def test_existing_regular_files_includes_symlink_to_file(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    target = repo / "real.py"
+    target.write_text("x\n", encoding="utf-8")
+    link = repo / "link.py"
+    link.symlink_to(target)
+    assert checks._existing_regular_files(repo, ("link.py",)) == ("link.py",)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_run_relevant_checks_deletion_only_runs_direct_targets(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+    repo = _git_repo(tmp_path)
+    make_calls: list[list[str]] = []
+    direct_changed: list[tuple[str, ...]] = []
+
+    def fake_changed_files(_runner: object, *, cwd: str) -> tuple[str, ...]:
+        _ = cwd
+        return ("scripts/read-result-env.sh",)
+
+    def fake_direct(_runner: object, changed: tuple[str, ...], **_kwargs: object) -> tuple[str, ...]:
+        direct_changed.append(changed)
+        return ("test-read-result-env",)
+
+    def fake_logged(_runner: object, argv: list[str], **_kwargs: object) -> CommandResult:
+        if argv and argv[0] == "make":
+            make_calls.append(list(argv))
+        return _ok("")
+
+    def fake_contains_pin_phase(*_args: object, **_kwargs: object) -> int:
+        return 0
+
+    def fake_agent_lint(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(checks, "_changed_files", fake_changed_files)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(checks, "_direct_targets", fake_direct)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(checks, "_run_logged", fake_logged)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(checks, "_run_contains_pin_phase", fake_contains_pin_phase)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(checks, "_run_agent_lint", fake_agent_lint)  # pyright: ignore[reportPrivateUsage]
+
+    def available(_runner: object, name: str, **_kwargs: object) -> bool:
+        return name != "pre-commit"
+
+    monkeypatch.setattr(checks, "_command_available", available)  # pyright: ignore[reportPrivateUsage]
+    result = checks.run_relevant_checks(proc, site="unit", tmpdir=str(session), repo_root=str(repo))
+    assert result.ok is True
+    assert direct_changed == [("scripts/read-result-env.sh",)]
+    assert make_calls == [["make", "test-read-result-env"]]
+
+
+def test_run_relevant_checks_no_changes_skips_precommit_requirement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+    repo = _git_repo(tmp_path)
+    _checks_path(
+        monkeypatch,
+        tmp_path,
+        precommit="#!/usr/bin/env bash\nexit 1\n",
+        agent_lint="#!/usr/bin/env bash\necho agent ok\n",
+    )
+
+    def available(_runner: object, name: str, **_kwargs: object) -> bool:
+        return name != "pre-commit"
+
+    monkeypatch.setattr(checks, "_command_available", available)  # pyright: ignore[reportPrivateUsage]
+    result = checks.run_relevant_checks(proc, site="unit", tmpdir=str(session), repo_root=str(repo))
+    assert result.ok is True
+
+
+def test_checks_run_relevant_main_success_envelope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+
+    def fake_checks(*_args: object, **kwargs: object) -> checks.ChecksResult:
+        return checks.ChecksResult(
+            ok=True,
+            exit_code=0,
+            site=str(kwargs["site"]),
+            redacted_log_path=None,
+            phase="pre-commit",
+            coverage="changed-file-only",
+            skipped=False,
+            warn=None,
+        )
+
+    monkeypatch.setattr(checks, "run_relevant_checks", fake_checks)
+    rc = checks.checks_run_relevant_main(["--site", "step3", "--tmpdir", str(session)])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "RELEVANT_CHECKS_OK=true" in out
+    assert "SITE=step3" in out
+
+
+def test_checks_run_relevant_main_fail_envelope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+    log = session / "fail.redacted.log"
+    log.write_text("err\n", encoding="utf-8")
+
+    def fake_checks(*_args: object, **_kwargs: object) -> checks.ChecksResult:
+        return checks.ChecksResult(
+            ok=False,
+            exit_code=1,
+            site="step3",
+            redacted_log_path=str(log),
+            phase="pre-commit",
+            coverage="changed-file-only",
+            skipped=False,
+            warn=None,
+            failure_reason="checks-failed",
+        )
+
+    monkeypatch.setattr(checks, "run_relevant_checks", fake_checks)
+    rc = checks.checks_run_relevant_main(["--site", "step3", "--tmpdir", str(session)])
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "STATUS=fail" in out
+    assert "REDACTED_LOG_FILE=" in out
+
+
+def test_checks_run_relevant_main_allow_skip_envelope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+
+    def fake_checks(*_args: object, **kwargs: object) -> checks.ChecksResult:
+        return checks.ChecksResult(
+            ok=False,
+            exit_code=0,
+            site=str(kwargs["site"]),
+            redacted_log_path=None,
+            phase="none",
+            coverage="none",
+            skipped=True,
+            warn=None,
+        )
+
+    monkeypatch.setattr(checks, "run_relevant_checks", fake_checks)
+    rc = checks.checks_run_relevant_main(["--site", "step3", "--tmpdir", str(session), "--allow-skip"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "RELEVANT_CHECKS_SKIPPED=true" in out
+
+
+def test_checks_run_relevant_main_without_allow_skip_never_emits_skipped(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+
+    def fake_checks(*_args: object, **_kwargs: object) -> checks.ChecksResult:
+        return checks.ChecksResult(
+            ok=False,
+            exit_code=2,
+            site="step3",
+            redacted_log_path=None,
+            phase="none",
+            coverage="none",
+            skipped=True,
+            warn=None,
+            failure_reason="checks-failed",
+        )
+
+    monkeypatch.setattr(checks, "run_relevant_checks", fake_checks)
+    rc = checks.checks_run_relevant_main(["--site", "step3", "--tmpdir", str(session)])
+    out = capsys.readouterr().out
+    assert rc == 2
+    assert "RELEVANT_CHECKS_SKIPPED" not in out
+    assert "STATUS=fail" in out
+
+
+def test_checks_lint_fix_main_main_agent_required_envelope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+    checks_log = session / "fail.redacted.log"
+    checks_log.write_text("err\n", encoding="utf-8")
+
+    def fake_run_lint_fix(*_args: object, **_kwargs: object) -> checks.FixOutcome:
+        return checks.FixOutcome(
+            status="main-agent-required",
+            delta_paths=(),
+            failure_reason="dispatch-failed",
+            commit_sha=None,
+            head_changed=False,
+            coder_tool=None,
+            ledger_ready=True,
+            ledger_site="step3",
+            ledger_trigger="main-agent-required",
+            ledger_step="3",
+            ledger_phase="checks",
+            ledger_dispatcher="lint-fix-loop",
+            ledger_exit_code=1,
+            ledger_failure_detail_log=str(checks_log),
+            stderr_tail_path=str(session / "lint-fix-loop" / "step3.x" / "codex.log"),
+        )
+
+    monkeypatch.setattr(checks, "run_lint_fix", fake_run_lint_fix)
+    rc = checks.checks_lint_fix_main([
+        "--tmpdir",
+        str(session),
+        "--site",
+        "step3",
+        "--checks-log",
+        str(checks_log),
+    ])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "LINT_FIX_STATUS=main-agent-required" in out
+    assert "FAILURE_REASON=dispatch-failed" in out
+    assert "LINT_FIX_LEDGER_READY=true" in out
+    assert "LINT_FIX_LEDGER_SITE=step3" in out
+    assert "STDERR_TAIL_PATH=" in out
+    assert "LINT_FIX_LEDGER_FAILURE_DETAIL_LOG=" in out
+
+
+def test_checks_lint_fix_main_failed_envelope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+    checks_log = session / "fail.redacted.log"
+    checks_log.write_text("err\n", encoding="utf-8")
+
+    def fake_run_lint_fix(*_args: object, **_kwargs: object) -> checks.FixOutcome:
+        return checks.FixOutcome(
+            status="failed",
+            delta_paths=(),
+            failure_reason="checks-log-invalid",
+            commit_sha=None,
+            head_changed=False,
+            coder_tool=None,
+        )
+
+    monkeypatch.setattr(checks, "run_lint_fix", fake_run_lint_fix)
+    rc = checks.checks_lint_fix_main([
+        "--tmpdir",
+        str(session),
+        "--site",
+        "step3",
+        "--checks-log",
+        str(checks_log),
+    ])
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "LINT_FIX_STATUS=failed" in out
+    assert "FAILURE_REASON=checks-log-invalid" in out
+    assert "LINT_FIX_LEDGER_READY" not in out

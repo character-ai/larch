@@ -107,6 +107,8 @@ class FixOutcome:
     ledger_dispatcher: str = ""
     ledger_exit_code: int | None = None
     ledger_failure_detail_log: str = ""
+    coder_log_path: str = ""
+    stderr_tail_path: str = ""
 
 
 @dataclass
@@ -153,6 +155,29 @@ def _canonical_dir(path: Path) -> Path | None:
 
 def _under_root(path: Path, root: Path) -> bool:
     return path == root or path.is_relative_to(root)
+
+
+def _session_get(session_env_path: Path, key: str, default: str = "") -> str:
+    if not session_env_path.is_file():
+        return default
+    try:
+        text = session_env_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return default
+    for raw in text.splitlines():
+        if raw.startswith(f"{key}="):
+            return raw.split("=", 1)[1]
+    return default
+
+
+def _presence_flag(name: str, implement_tmpdir: Path) -> bool:
+    value = os.environ.get(name, "")
+    if value in {"true", "false"}:
+        return value == "true"
+    session_value = _session_get(implement_tmpdir / "session-env.sh", name, "")
+    if session_value in {"true", "false"}:
+        return session_value == "true"
+    return False
 
 
 def validate_tmpdir(tmpdir: str) -> Path | None:
@@ -413,7 +438,7 @@ def _existing_regular_files(repo: Path, paths: Iterable[str]) -> tuple[str, ...]
     for raw in paths:
         path = repo / raw
         try:
-            if path.is_file() and not path.is_symlink():
+            if path.is_file():
                 regular.append(raw)
         except OSError:
             continue
@@ -554,12 +579,12 @@ def _direct_targets(
         for patterns, rule_targets, wants_py_lint, wants_py_test in _DIRECT_TARGET_RULES:
             if not _patterns_match(path, patterns):
                 continue
+            for target in rule_targets:
+                _append_once(targets, target)
             if wants_py_lint:
                 _append_py_lint_target(runner, targets, cwd=cwd, env=env, log_fd=log_fd, warned=warned)
             if wants_py_test:
                 _append_py_test_target(runner, targets, cwd=cwd, env=env, log_fd=log_fd, warned=warned)
-            for target in rule_targets:
-                _append_once(targets, target)
     return tuple(targets)
 
 
@@ -671,10 +696,6 @@ def _run_relevant_checks_inner(
     cwd = str(repo)
     phases_run = 0
 
-    if not _command_available(runner, "pre-commit", cwd=cwd, env=env):
-        _write_log(log_fd, "ERROR: pre-commit not found. Run: pip install pre-commit (or: make setup)\n")
-        return 1
-
     changed = _changed_files(runner, cwd=cwd)
     if not changed:
         _write_log(log_fd, "No modified files detected — running full-repo post-checks if available.\n")
@@ -692,16 +713,28 @@ def _run_relevant_checks_inner(
     regular = _existing_regular_files(repo, changed)
     if not regular:
         _write_log(log_fd, "No existing regular files to pass to pre-commit.\n")
+        targets = _direct_targets(runner, changed, cwd=cwd, env=env, log_fd=log_fd)
+        if targets:
+            _write_log(log_fd, f"\n=== Running direct relevant make target(s): {' '.join(targets)} ===\n")
+            make_result = _run_logged(runner, ["make", *targets], cwd=cwd, log_fd=log_fd, env=env)
+            phases_run += 1
+            if make_result.returncode != 0:
+                return make_result.returncode
+        pins_rc = _run_contains_pin_phase(repo, changed, log_fd=log_fd)
+        phases_run += 1
+        if pins_rc != 0:
+            return pins_rc
         agent_rc = _run_agent_lint(runner, cwd=cwd, log_fd=log_fd, env=env)
         if agent_rc is not None:
             phases_run += 1
             rc = agent_rc
         else:
             rc = 0
-        if phases_run == 0:
-            _write_log(log_fd, "\nERROR: no validation phases ran — pre-commit had no eligible files (no changes, or no regular files for pre-commit) and agent-lint was unavailable or skipped.\n")
-            return 2
         return rc
+
+    if not _command_available(runner, "pre-commit", cwd=cwd, env=env):
+        _write_log(log_fd, "ERROR: pre-commit not found. Run: pip install pre-commit (or: make setup)\n")
+        return 1
 
     _write_log(log_fd, f"=== Running pre-commit on {len(regular)} changed file(s) ===\n")
     precommit = _run_logged(runner, ["pre-commit", "run", "--files", *regular], cwd=cwd, log_fd=log_fd, env=env)
@@ -995,6 +1028,21 @@ def checks_run_relevant_main(argv: list[str] | None = None) -> int:
     return result.exit_code or 1
 
 
+def _print_lint_fix_ledger(outcome: FixOutcome) -> None:
+    if not outcome.ledger_ready:
+        return
+    print("LINT_FIX_LEDGER_READY=true")
+    print(f"LINT_FIX_LEDGER_SITE={outcome.ledger_site}")
+    print(f"LINT_FIX_LEDGER_TRIGGER={outcome.ledger_trigger}")
+    print(f"LINT_FIX_LEDGER_STEP={outcome.ledger_step}")
+    print(f"LINT_FIX_LEDGER_PHASE={outcome.ledger_phase}")
+    print(f"LINT_FIX_LEDGER_DISPATCHER={outcome.ledger_dispatcher}")
+    if outcome.ledger_exit_code is not None:
+        print(f"LINT_FIX_LEDGER_EXIT_CODE={outcome.ledger_exit_code}")
+    if outcome.ledger_failure_detail_log:
+        print(f"LINT_FIX_LEDGER_FAILURE_DETAIL_LOG={outcome.ledger_failure_detail_log}")
+
+
 def checks_lint_fix_main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cli.py checks lint-fix")
     _ = parser.add_argument("--tmpdir", required=True)
@@ -1015,20 +1063,22 @@ def checks_lint_fix_main(argv: list[str] | None = None) -> int:
         site=args.site,
         checks_log=args.checks_log,
         repo_root=repo_root,
-        codex_present=os.environ.get("CODEX_PRESENT", "") == "true",
-        cursor_present=os.environ.get("CURSOR_PRESENT", "") == "true",
+        codex_present=_presence_flag("CODEX_PRESENT", canonical_tmp),
+        cursor_present=_presence_flag("CURSOR_PRESENT", canonical_tmp),
         run_parent=run_parent,
         allowed_tmpdir=str(canonical_tmp),
     )
     print(f"LINT_FIX_STATUS={outcome.status}")
-    if outcome.ledger_failure_detail_log:
-        print(f"STDERR_TAIL_PATH={outcome.ledger_failure_detail_log}")
-    if outcome.coder_tool:
-        log_name = "codex.log" if outcome.coder_tool == "codex" else "cursor.log"
-        candidate = Path(run_parent) / log_name
-        if candidate.exists():
-            print(f"CODER_LOG_FILE={candidate}")
-    return 0 if outcome.status in {"applied", "no-changes"} else 1
+    if outcome.failure_reason:
+        print(f"FAILURE_REASON={outcome.failure_reason}")
+    if outcome.stderr_tail_path:
+        print(f"STDERR_TAIL_PATH={outcome.stderr_tail_path}")
+    if outcome.coder_log_path:
+        print(f"CODER_LOG_FILE={outcome.coder_log_path}")
+    _print_lint_fix_ledger(outcome)
+    if outcome.status in {"applied", "no-changes", "main-agent-required"}:
+        return 0
+    return 1
 
 def _plugin_scripts_dir() -> Path:
     return Path(__file__).resolve().parents[1] / "scripts"
@@ -1670,6 +1720,13 @@ def _post_dispatch_forbidden_revert(
     return revert_count
 
 
+def _coder_stderr_tail(run_dir: Path, log_name: str) -> str:
+    candidate = run_dir / log_name
+    if candidate.is_file():
+        return str(candidate)
+    return ""
+
+
 def run_lint_fix(
     runner: Runner,
     *,
@@ -1794,6 +1851,7 @@ def run_lint_fix(
         target_cmd_display=target_cmd_display,
     )
     coder_tool: str | None = None
+    last_stderr_tail = ""
     if codex_present:
         codex_rc = _run_codex(
             runner,
@@ -1806,6 +1864,10 @@ def run_lint_fix(
         )
         if codex_rc == 0:
             coder_tool = "codex"
+        else:
+            tail = _coder_stderr_tail(run_dir, "codex.log")
+            if tail:
+                last_stderr_tail = tail
     if coder_tool is None and cursor_present:
         cursor_rc = _run_cursor(
             runner,
@@ -1817,6 +1879,10 @@ def run_lint_fix(
         )
         if cursor_rc == 0:
             coder_tool = "cursor"
+        else:
+            tail = _coder_stderr_tail(run_dir, "cursor.log")
+            if tail:
+                last_stderr_tail = tail
     if coder_tool is None:
         return FixOutcome(
             status="main-agent-required",
@@ -1833,6 +1899,7 @@ def run_lint_fix(
             ledger_dispatcher="lint-fix-loop",
             ledger_exit_code=1,
             ledger_failure_detail_log=str(log_path),
+            stderr_tail_path=last_stderr_tail,
         )
     try:
         current_head = git.rev_parse(runner, "HEAD", cwd=cwd)
@@ -1941,6 +2008,10 @@ def run_lint_fix(
                 commit_sha=None,
                 head_changed=False,
                 coder_tool=coder_tool,
+                coder_log_path=_coder_stderr_tail(
+                    run_dir,
+                    "codex.log" if coder_tool == "codex" else "cursor.log",
+                ),
             )
         if baseline_clean:
             add_result = runner.run(["git", "add", "--", *delta_paths], cwd=cwd)
@@ -1981,6 +2052,10 @@ def run_lint_fix(
             commit_sha=commit_sha,
             head_changed=head_changed,
             coder_tool=coder_tool,
+            coder_log_path=_coder_stderr_tail(
+                run_dir,
+                "codex.log" if coder_tool == "codex" else "cursor.log",
+            ),
         )
     delta_result = runner.run(
         ["git", "diff", "--name-only", f"{baseline_head}..{commit_sha}"],
@@ -1996,6 +2071,10 @@ def run_lint_fix(
         commit_sha=commit_sha,
         head_changed=head_changed,
         coder_tool=coder_tool,
+        coder_log_path=_coder_stderr_tail(
+            run_dir,
+            "codex.log" if coder_tool == "codex" else "cursor.log",
+        ),
     )
 
 
