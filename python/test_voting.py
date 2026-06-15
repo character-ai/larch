@@ -173,6 +173,47 @@ def test_compose_tally_record_omits_code_review_body(tmp_path: Path) -> None:
     assert "body" not in record
 
 
+def test_compose_tally_record_allows_code_review_self_review_mode() -> None:
+    result = run_cli(
+        "voting",
+        "compose-tally-record",
+        "--phase",
+        "code-review",
+        "--mode",
+        "self-review",
+        "--rounds",
+        "1",
+        "--accepted",
+        "0",
+        "--rejected",
+        "0",
+    )
+    assert result.returncode == 0
+    record = json.loads(result.stdout)
+    assert record["batch"] == "code-review-tally"
+    assert record["phase"] == "code-review"
+    assert record["mode"] == "self-review"
+    assert record["rounds"] == 1
+    assert record["accepted_count"] == 0
+    assert record["rejected_count"] == 0
+
+
+def test_plan_review_rejects_self_review_mode(tmp_path: Path) -> None:
+    body = tmp_path / "plan-body.md"
+    body.write_text("Plan review body.\n", encoding="utf-8")
+    result = run_cli(
+        "voting",
+        "compose-tally-record",
+        "--phase",
+        "plan-review",
+        "--mode",
+        "self-review",
+        "--body-file",
+        str(body),
+    )
+    assert result.returncode == 2
+
+
 def _write_retry_launcher(root: Path, *, retry_output: str) -> None:
     py_dir = root / "python"
     py_dir.mkdir(parents=True)

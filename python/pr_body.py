@@ -801,12 +801,25 @@ def _derive_review_line(run_dir: Path, filename: str) -> str:
     if not isinstance(data_obj, dict):
         return "N/A"
     data = cast("dict[str, object]", data_obj)
-    accepted = int(str(data.get("accepted_count") or 0))
-    rejected = int(str(data.get("rejected_count") or 0))
-    total = accepted + rejected
-    if total <= 0:
+    try:
+        accepted = int(str(data.get("accepted_count") or 0))
+        rejected = int(str(data.get("rejected_count") or 0))
+    except (TypeError, ValueError):
         return "N/A"
-    return f"{accepted}/{total} accepted"
+    if accepted < 0 or rejected < 0:
+        return "N/A"
+    total = accepted + rejected
+    if total > 0:
+        return f"{accepted}/{total} accepted"
+    # Zero-count tally: distinguish "review ran clean" from "no review ran", but
+    # only for code-review tallies. plan-review (or any non-code-review phase)
+    # zero totals stay N/A.
+    is_code_review = filename == "code-review-tally.json" or data.get("phase") == "code-review"
+    if not is_code_review:
+        return "N/A"
+    if data.get("mode") == "self-review":
+        return "self-review: 0 findings"
+    return "0 findings"
 
 
 def _derive_oos_fields(run_dir: Path) -> tuple[str, str]:

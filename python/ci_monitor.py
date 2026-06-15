@@ -650,6 +650,11 @@ def classify_failed_jobs(jobs: tuple[FailedJob, ...]) -> ClassifiedJobs:
         if not sanitized:
             continue
         name, shard, malformed = _parse_job_name_shard(sanitized)
+        # Aggregator gate jobs (e.g. test-harnesses-gate) mirror their matrix and
+        # have no local fix; skip them so a redundant gate failure does not force
+        # local-unfixable when the underlying matrix leg is fixable.
+        if name.endswith("-gate"):
+            continue
         if malformed or not _JOB_NAME_RE.match(name):
             row = JobClass(name=name, shard=shard, klass="no-local-equivalent")
         elif name in config.CI_FIXABLE_JOBS:

@@ -289,10 +289,15 @@ write_fallback_chat() {
 }
 
 safe_root_summary_from_state() {
-    local site trigger outcome
-    site=$(python3 "$PLUGIN_ROOT/python/cli.py" session read-key --file "$TERMINAL_STATE" --key SITE --default unknown)
-    trigger=$(python3 "$PLUGIN_ROOT/python/cli.py" session read-key --file "$TERMINAL_STATE" --key TRIGGER --default unknown)
-    outcome=$(python3 "$PLUGIN_ROOT/python/cli.py" session read-key --file "$TERMINAL_STATE" --key FAILURE_OUTCOME --default "$OUTCOME")
+    local site=unknown trigger=unknown outcome="$OUTCOME" line
+    # One batched read instead of three session read-key spawns (#4439 Trick B).
+    while IFS= read -r line; do
+        case "$line" in
+            SITE=*) site=${line#SITE=} ;;
+            TRIGGER=*) trigger=${line#TRIGGER=} ;;
+            FAILURE_OUTCOME=*) outcome=${line#FAILURE_OUTCOME=} ;;
+        esac
+    done < <(python3 "$PLUGIN_ROOT/python/cli.py" session read-keys --file "$TERMINAL_STATE" --key SITE=unknown --key TRIGGER=unknown --key "FAILURE_OUTCOME=$OUTCOME")
     printf '%s at %s via %s\n' "$outcome" "$site" "$trigger"
 }
 
@@ -350,13 +355,20 @@ case "$OUTCOME" in
             write_fallback_chat invalid-terminal-state
             exit 0
         fi
-        state_outcome=$(python3 "$PLUGIN_ROOT/python/cli.py" session read-key --file "$TERMINAL_STATE" --key FAILURE_OUTCOME --default '')
+        state_outcome=""
+        state_summary=""
+        # One batched read instead of two session read-key spawns (#4439 Trick B).
+        while IFS= read -r kv_line; do
+            case "$kv_line" in
+                FAILURE_OUTCOME=*) state_outcome=${kv_line#FAILURE_OUTCOME=} ;;
+                SUMMARY_OUTCOME=*) state_summary=${kv_line#SUMMARY_OUTCOME=} ;;
+            esac
+        done < <(python3 "$PLUGIN_ROOT/python/cli.py" session read-keys --file "$TERMINAL_STATE" --key "FAILURE_OUTCOME=" --key "SUMMARY_OUTCOME=")
         if [ -n "$state_outcome" ] && [ "$state_outcome" != "$OUTCOME" ]; then
             append_run_log_audit terminal-state-outcome-mismatch
             write_fallback_chat terminal-state-outcome-mismatch
             exit 0
         fi
-        state_summary=$(python3 "$PLUGIN_ROOT/python/cli.py" session read-key --file "$TERMINAL_STATE" --key SUMMARY_OUTCOME --default '')
         if [ -n "$state_summary" ] && [ "$state_summary" != "$OUTCOME" ]; then
             append_run_log_audit terminal-state-summary-mismatch
             write_fallback_chat terminal-state-summary-mismatch
