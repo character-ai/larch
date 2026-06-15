@@ -209,6 +209,28 @@ out=$(run_payload "$(payload_bash "$design_tmpdir_ls")")
 assert_deny "$out" 'symlinked completion sentinel does not release'
 rm -f "$D/.completed/step-3" "$MARKER"
 
+# #4450: extend the same-turn completion release to design-step5c and
+# design-step-final-summary. Each step writes its terminal sentinel
+# (.completed/step-5c / .completed/step-5d) before the bg process exits, so a
+# live marker for either step is released once that sentinel exists — mirroring
+# the design-step3-review coverage above.
+mkdir -p "$D/.completed"
+write_marker $$ "$(date +%s)" 21600 design-step5c
+: >"$D/.completed/step-5c"
+out=$(run_payload "$(payload_read "$D/.design-publish-result.env")")
+assert_allow "$out" 'step5c completion sentinel releases Read of result env'
+out=$(run_payload "$(payload_bash "$design_tmpdir_ls")")
+assert_allow "$out" 'step5c completion sentinel releases Bash probe'
+rm -f "$D/.completed/step-5c" "$MARKER"
+
+write_marker $$ "$(date +%s)" 21600 design-step-final-summary
+: >"$D/.completed/step-5d"
+out=$(run_payload "$(payload_read "$D/final-summary.md")")
+assert_allow "$out" 'final-summary completion sentinel releases Read of result artifact'
+out=$(run_payload "$(payload_bash "$design_tmpdir_ls")")
+assert_allow "$out" 'final-summary completion sentinel releases Bash probe'
+rm -f "$D/.completed/step-5d" "$MARKER"
+
 if [ "$FAIL" -ne 0 ]; then
   printf 'FAIL: test-hook-bg-poll-guard.sh (%s failures, %s passes)\n' "$FAIL" "$PASS" >&2
   exit 1
