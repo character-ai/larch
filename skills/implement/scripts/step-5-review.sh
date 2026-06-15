@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# step-5-entry.sh — /implement Step 5 entry telemetry and review caps.
+# step-5-review.sh — /implement Step 5 review loop launcher.
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -31,13 +31,6 @@ read_session_key() {
     fi
 }
 
-rehydrate_larch_triplet() {
-    LARCH_TOKEN_SESSION_ID=$(read_session_key LARCH_TOKEN_SESSION_ID "${LARCH_TOKEN_SESSION_ID:-}")
-    LARCH_CLAUDE_SOURCE_FILE=$(read_session_key LARCH_CLAUDE_SOURCE_FILE "${LARCH_CLAUDE_SOURCE_FILE:-}")
-    LARCH_TIMING_LEDGER=$(read_session_key LARCH_TIMING_LEDGER "${LARCH_TIMING_LEDGER:-}")
-    export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
-}
-
 rehydrate_plugin_root
 python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" timing telemetry-mark --implement-tmpdir "$IMPLEMENT_TMPDIR" --label "Step 5 — code review" || true
 dynamic_archetypes_cap=""
@@ -51,7 +44,6 @@ fi
 case "$dynamic_archetypes_cap" in [0-3]) ;; *) printf 'ERROR: Step 5 banner dynamic_archetypes_cap is non-integer or out of range: %s
 ' "$dynamic_archetypes_cap" >&2; exit 2 ;; esac
 round_cap=5
-printf 'DYNAMIC_ARCHETYPES_CAP=%s
-' "$dynamic_archetypes_cap"
-printf 'ROUND_CAP=%s
-' "$round_cap"
+printf '> **🔶 /implement 5: code review — review-and-fix step5 --mode loop, up to %s rounds; 3-judge panel on every round (Claude+Codex+Cursor); review panel: specialists per vendor (mechanically pruned in rounds 3-4 when prior yield is zero); dynamic-archetypes cap=%s**\n' "$round_cap" "$dynamic_archetypes_cap"
+exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" review-and-fix step5 \
+  --implement-tmpdir "$IMPLEMENT_TMPDIR" --mode loop --starting-round 1

@@ -94,10 +94,9 @@ for script in [
     'skills/implement/scripts/step-2-entry.sh --coder "$coder"',
     'skills/implement/scripts/step-2-post-dispatch.sh',
     'skills/implement/scripts/run-step-checks.sh --site step3',
-    'skills/implement/scripts/step-5-entry.sh',
+    'skills/implement/scripts/step-5-review.sh',
     'skills/implement/scripts/run-step-checks.sh --site step5-self-review',
     'python/cli.py review-and-fix commit-fixes --stage-all',
-    'python/cli.py review-and-fix step5 --implement-tmpdir "$IMPLEMENT_TMPDIR" --mode loop --starting-round 1',
     'skills/implement/scripts/run-step-checks.sh --site step5-review-fixes',
     'skills/implement/scripts/step-5-resume.sh --final-round-num "$FINAL_ROUND_NUM" --record-only',
     'skills/implement/scripts/step-5-resume.sh --final-round-num "$FINAL_ROUND_NUM" --ready-to-commit',
@@ -123,7 +122,7 @@ for needle in [
     forbid(skill, needle, 'wrapperized SKILL')
 
 # Script/md sibling and executable coverage for new wrappers.
-wrappers = ['step-0-bootstrap','step-0-degraded-gate','step-2-entry','step-2-post-dispatch','run-step-checks','step-5-entry','step-5-resume','step-6-entry','step-8-ship','step-8-oos-checkpoint','step-16','step-17','step-18a-gate','step-18-finalize']
+wrappers = ['step-0-bootstrap','step-0-degraded-gate','step-2-entry','step-2-post-dispatch','run-step-checks','step-5-review','step-5-resume','step-6-entry','step-8-ship','step-8-oos-checkpoint','step-16','step-17','step-18a-gate','step-18-finalize']
 for name in wrappers:
     sh=Path(f'skills/implement/scripts/{name}.sh')
     md=Path(f'skills/implement/scripts/{name}.md')
@@ -132,6 +131,11 @@ for name in wrappers:
     if sh.is_file() and not os.access(sh, os.X_OK): checks.append(f'{sh} is not executable')
 
 # Existing wrappers that gained behavior.
+require('skills/implement/scripts/step-5-review.sh', 'review-and-fix step5', 'step-5-review calls review-and-fix step5')
+retired_step5_entry_sh = 'skills/implement/scripts/' + 'step-5-entry.sh'
+retired_step5_entry_md = 'step-5-' + 'entry.md'
+forbid(skill, retired_step5_entry_sh, 'retired step-5-entry.sh call removed from SKILL')
+forbid(skill, retired_step5_entry_md, 'retired step-5-entry.md ref removed from SKILL')
 require('python/review_and_fix.py', '--stage-all', 'commit-fixes --stage-all')
 require('python/review_and_fix.py', '"git", "add", "-A"', 'commit-fixes stage all implementation')
 require('python/implement_dispatch.py', 'LARCH_TIMING_LEDGER', 'commit-implementation telemetry self-rehydration')
@@ -158,13 +162,13 @@ require(skill, '## NEVER List', 'NEVER list heading')
 require(skill, 'NEVER call `ScheduleWakeup`', 'NEVER #8 ScheduleWakeup pin')
 require(skill, 'Do not spawn a Monitor', 'NEVER #8 background-monitor ban')
 for script, timeout in [
-    (launcher + 'python/cli.py review-and-fix step5', 'timeout: 21600000'),
+    (launcher + 'skills/implement/scripts/step-5-review.sh', 'timeout: 21600000'),
     (launcher + 'python/cli.py implement step-7a', 'timeout: 1800000'),
     (launcher + 'skills/implement/scripts/step-8-ship.sh', 'timeout: 21600000'),
 ]:
     require_near(skill, script, 'Immediate-background required', f'immediate-background pin for {script}', 1400)
     require_near(skill, script, timeout, f'timeout pin for {script}', 1400)
-require_near(skill, launcher + 'python/cli.py review-and-fix step5', '<task-notification>', 'Step 5 review task notification wait', 1800)
+require_near(skill, launcher + 'skills/implement/scripts/step-5-review.sh', '<task-notification>', 'Step 5 review task notification wait', 1800)
 require_near(skill, launcher + 'skills/implement/scripts/step-8-ship.sh', '<task-notification>', 'Step 8 ship task notification wait', 2000)
 require(skill, launcher + 'skills/implement/scripts/step-2-post-dispatch.sh', 'phantom 2-post-dispatch probe')
 require(skill, 'regardless of wrapper exit code', 'post-dispatch phantom parse before wrapper routing')
