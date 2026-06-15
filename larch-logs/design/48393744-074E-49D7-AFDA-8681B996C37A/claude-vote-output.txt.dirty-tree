@@ -1,0 +1,3 @@
+STATUS=clean
+MODE=baseline
+REASON=claude-subprocess-prompt-read-only
