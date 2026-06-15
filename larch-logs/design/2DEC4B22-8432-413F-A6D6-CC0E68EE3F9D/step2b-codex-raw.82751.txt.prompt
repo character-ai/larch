@@ -1,0 +1,191 @@
+You are an expert engineer researching this repository and producing an implementation plan for /design Step 2b.
+
+You may use only side-effect-free repository discovery. Do not write repository files, design tmpdir files, or any other files. Return only the sentinel-delimited response requested below.
+
+Drafting requirements to follow:
+- Prefer minimum necessary change: avoid scope creep, unnecessary complexity, and additions not required for correctness.
+- Read approach-synthesis.txt: if it is exactly NO_SKETCHES, draft from direct codebase/doc inspection without fabricating planning-panel agreement.
+- Read discussion-round1.md when present for scope boundaries and strict constraints.
+- Read design-outline.md only when non-empty and .outline-approved exists; treat Goals, Non-goals, and Surfaces as binding scope.
+- Read brainstorm.md when present as additive ideation context for plan drafting.
+- Use a Files to modify/create section with per-file headings exactly one path each: ### NEW:, ### UPDATED:, or ### REWRITTEN: (at least one ASCII space after ### before the keyword).
+- Include Approach, Edge cases, Failure modes when non-trivial, Testing strategy, optional diff_added/diff_deleted/mechanical_churn trailers, and final diff_lines: <N>. mechanical_churn accepts only true or false; never write a number there.
+- The final plan body must end with a whole-line diff_lines: <N> trailer.
+- Optionally include up to three dynamic plan-review archetypes in a scout block after the plan. The launcher validates, filters, caps, and materializes this block; invalid post-plan scout output is ignored.
+- Scout sentinels inside the summary or plan are fatal format errors. Never put LARCH_SCOUT_* markers in the plan body.
+
+Readability style (trusted):
+# Readability Style
+
+**Consumer**: `/design` prompt surfaces that produce user-facing text, either through an external-agent prompt token or through inline orchestration prose.
+
+**Contract**: this file is the only source of truth for the `/design` readability preamble. External prompt files embed the literal `<READABILITY_STYLE>` token, and assembly code or orchestration expands it to this full file. Inline composition sites read this file before writing user-facing text.
+
+**When to load**: load only when a `/design` step is about to compose user-facing prose or render a prompt that asks another agent to compose such prose. Do not load during setup, pure validation, or byte-stable artifact handling.
+
+---
+
+## Style Axes
+
+Write in three styles at once:
+
+- **Strunk & White**: use active voice. Omit needless words. Prefer concrete nouns and verbs.
+- **Dyslexia-friendly**: use short sentences. Prefer simple words. Break dense ideas into headings and bullets.
+- **Brevity**: shorter is better. Minimize the total artifact length while preserving meaning.
+- **No em dashes**: never use em dashes; use periods, commas, colons, or semicolons instead.
+- **Hedge vs. direct**: hedge uncertain claims ("may contain", "can fail") instead of absolutes; keep directives imperative.
+
+## Precision Contract
+
+Keep these byte-stable unless the task explicitly edits them:
+
+- fenced code blocks
+- backticked tokens
+- file paths
+- identifiers
+- flag names
+- `### NEW:` / `### UPDATED:` / `### REWRITTEN:` plan grammar
+- the trailing `diff_lines: <N>` line
+
+Do not rewrite those items for style. Explain around them instead.
+
+## Plan-Drafting Reminders
+
+When `/design` Step 2b drafts a plan that adds, removes, or converts
+Bash fences in `skills/implement/SKILL.md`:
+
+- List `### UPDATED: scripts/test-implement-fence-shape.sh` in
+  **Files to modify/create**.
+- Note that `EXPECTED_OLD` / `EXPECTED_NEW` may need updates.
+
+This is a discoverability reminder only. Do not add plan grammar.
+
+## Precedence
+
+When rules conflict, use this order:
+
+`code references > meaning > brevity > dyslexia-friendly chunking > Strunk & White micro-rewrites`
+
+Apply it directly:
+
+- Preserve code references first.
+- Preserve exact meaning next.
+- Cut words before adding layout.
+- Add headings or bullets only when they improve scanning.
+- Polish grammar last.
+
+## Substitution Token
+
+External-agent prompt files MUST embed this literal token:
+
+`<READABILITY_STYLE>`
+
+Before launch, replace every literal `<READABILITY_STYLE>` token with the full contents of this file.
+
+## Examples
+
+Before: "It is recommended that the implementer should consider adding a validation step."
+
+After: "Add a validation step."
+
+Before: "The plan should make sure that users are not able to continue when the file cannot be read."
+
+After: "Block the flow when the file cannot be read."
+
+Before: "In order to avoid potential future confusion, documentation can be updated."
+
+After: "Update the docs to avoid confusion."
+
+Before: "The script performs an operation that checks if the path exists."
+
+After: "The script checks that the path exists."
+
+Before: "This could possibly be out of scope depending on how the team wants to proceed."
+
+After: "This may be out of scope."
+
+Required output format:
+[optional]
+LARCH_SUMMARY_BEGIN
+A concise summary for large-plan preview. Omit this whole summary block only when no useful summary is needed.
+LARCH_SUMMARY_END
+[/optional]
+LARCH_PLAN_BEGIN
+Full implementation plan body ending with diff_lines: <N>.
+LARCH_PLAN_END
+[optional]
+LARCH_SCOUT_BEGIN
+{"archetypes":[{"name":"slug","focus_area":"code-quality|risk-integration|correctness|architecture|security","weight":1,"rationale":"single-line reason","prompt_body":"2-6 sentence focus directive ending with the required citation sentence."}]}
+LARCH_SCOUT_END
+[/optional]
+
+Optional advisory status may be included between LARCH_STATUS_BEGIN and LARCH_STATUS_END, but the summary, plan, and optional scout sentinels above are the only parsed contract.
+
+Untrusted feature description:
+<feature_description encoding="literal-redacted">
+# In /design, replace drafter agent (that writes plan right before asking user for approval and then review) by Claude Opus 4.8
+
+Currently, I believe the Waterfall backup for it is Codex -&gt; Claude -&gt; Cursor, and I want to switch Codex and Claude, but to make sure Claude is invoked with Opus 4.8 model, not Sonnet.
+
+</feature_description>
+
+
+Untrusted approach synthesis:
+<approach_synthesis encoding="literal-redacted">
+NO_SKETCHES
+
+</approach_synthesis>
+
+
+Untrusted discussion round 1:
+<discussion_round1 encoding="literal-redacted">
+## Decision 1: Vendor precedence swap
+- **Question**: Simple swap (Claude subprocess primary) or true waterfall?
+- **Resolution**: Simple swap. When LARCH_DESIGN_DRAFTER is unset, prefer Claude subprocess. On failure, fall back to inline. Codex reachable via LARCH_DESIGN_DRAFTER=codex.
+- **Source**: user
+
+## Decision 2: Cursor in drafter
+- **Question**: Was Cursor in the user's waterfall description intentional?
+- **Resolution**: No. Cursor stays review-only. The drafter change is Codex↔Claude swap only.
+- **Source**: user
+
+## Decision 3: Claude model
+- **Question**: Which Claude model for the drafter?
+- **Resolution**: claude-opus-4-8 (change default from claude-fable-5 to claude-opus-4-8).
+- **Source**: issue title + body
+
+2 decisions resolved.
+
+</discussion_round1>
+
+
+Untrusted approved design outline:
+<design_outline encoding="literal-redacted">
+## Proposed Design Outline
+
+### Goals
+- Make Claude subprocess (with model `claude-opus-4-8`) the default drafter when `LARCH_DESIGN_DRAFTER` is unset.
+- Keep Codex reachable via `LARCH_DESIGN_DRAFTER=codex` explicitly.
+- Update `LARCH_DESIGN_PLAN_MODEL` default from `claude-fable-5` to `claude-opus-4-8` in code and docs.
+
+### Non-goals
+- No waterfall between Claude and Codex drafter subprocesses (on failure, go directly to inline).
+- No Cursor drafter support.
+- No changes to the review panel or any other /design step.
+
+### Approach sketch
+- `design-step2b-drafter.sh`: swap the vendor-selection conditional to prefer `claude` when `LARCH_DESIGN_DRAFTER` is unset, regardless of `CODEX_PRESENT`.
+- `design-step2b-drafter.sh`: change the `LARCH_DESIGN_PLAN_MODEL` default from `claude-fable-5` to `claude-opus-4-8`.
+- `docs/configuration-and-permissions.md`: update the `LARCH_DESIGN_DRAFTER` and `LARCH_DESIGN_PLAN_MODEL` default descriptions.
+- `design-step2b-drafter.md`: update the vendor-selection invariant comment.
+
+### Surfaces in scope
+- `skills/design/scripts/design-step2b-drafter.sh`
+- `skills/design/scripts/design-step2b-drafter.md`
+- `docs/configuration-and-permissions.md`
+
+### Open questions
+- None.
+
+</design_outline>
+
