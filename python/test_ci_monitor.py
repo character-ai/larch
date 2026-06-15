@@ -922,6 +922,21 @@ def test_classify_failed_jobs_matrix_and_fixable() -> None:
     assert classified.unfixable[0].name == "gitleaks"
 
 
+def test_classify_failed_jobs_excludes_aggregator_gates() -> None:
+    # Gate jobs (e.g. test-harnesses-gate) mirror their matrix and have no local
+    # fix; they are excluded from the count and from both buckets so a redundant
+    # gate failure does not force local-unfixable.
+    jobs = (
+        FailedJob(name="test-harnesses-gate", conclusion="failure"),
+        FailedJob(name="lint", conclusion="failure"),
+        FailedJob(name="python-tests-gate", conclusion="failure"),
+    )
+    classified = ci_monitor.classify_failed_jobs(jobs)
+    assert classified.count == 1
+    assert [j.name for j in classified.fixable] == ["lint"]
+    assert not classified.unfixable
+
+
 def test_collect_failed_logs_redacts_tail() -> None:
     secret = "ghp_" + "A" * 40
     log_body = f"failed step\n{secret}\n"

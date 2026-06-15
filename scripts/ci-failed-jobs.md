@@ -71,6 +71,12 @@ Fixable jobs are `lint`, `lint-mermaid`, `shellcheck`, `test-harnesses`,
 `agent-lint`, `agnix`, and `agent-sync`. `gitleaks` and
 `trufflehog` are `no-local-equivalent` because CI runs history scans.
 
+Aggregator gate jobs (names ending in `-gate`, e.g. `test-harnesses-gate`)
+are excluded from classification entirely: not counted, not emitted as
+fixable or unfixable, and no TSV row. They mirror their matrix and have no
+local fix, so the underlying matrix leg carries the real fix signal.
+`ci_monitor.py classify_failed_jobs` applies the same exclusion.
+
 Matrix names of the form `test-harnesses (7)` normalize to
 `JOB_NAME=test-harnesses` and `SLICE=7`. Non-digit slice text is ignored, so
 `test-harnesses (abc)` falls back to the unsharded local target. Job names must

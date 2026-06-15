@@ -211,6 +211,25 @@ else
     fail "all-control job name emitted $tsv_rows TSV rows"
 fi
 
+# Aggregator gate jobs (e.g. test-harnesses-gate) are excluded from
+# classification entirely: not counted, not fixable/unfixable, no TSV row.
+T_GATE="$TMPROOT/t_gate"
+mkdir -p "$T_GATE"
+write_subject "$T_GATE"
+write_gh_lines "$T_GATE"
+write_lines_file "$T_GATE/lines.txt" "test-harnesses-gate" "lint" "python-tests-gate"
+GH_MODE=lines
+GH_LINES_FILE="$T_GATE/lines.txt"
+rc=$(run_subject "$T_GATE" "$T_GATE/out" "$T_GATE/err" "$T_GATE/jobs.tsv")
+assert_rc "gate jobs excluded exits 0" "$rc" 0
+assert_file_contains "gate jobs excluded from count" "$T_GATE/out" "FAILED_JOBS_COUNT=1"
+assert_file_contains "gate jobs leave only lint fixable" "$T_GATE/out" "FAILED_JOBS_FIXABLE=lint"
+if grep -q -- '-gate' "$T_GATE/jobs.tsv"; then
+    fail "gate jobs must not appear in classification TSV"
+else
+    ok "gate jobs absent from classification TSV"
+fi
+
 workflow_jobs=$(awk '
     /^jobs:$/ { in_jobs=1; next }
     in_jobs && /^[a-zA-Z_][a-zA-Z0-9_-]*:/ { exit }
@@ -220,6 +239,9 @@ for job in $workflow_jobs; do
     case "$job" in
         lint|lint-local|lint-mermaid|shellcheck|test-harnesses|agent-lint|agent-sync|gitleaks|python-lint|python-tests|bash32-check)
             ok "workflow job mapped: $job"
+            ;;
+        *-gate)
+            ok "workflow job mapped (aggregator gate, excluded from classification): $job"
             ;;
         *)
             fail "workflow job missing from ci-failed-jobs mapping: $job"
