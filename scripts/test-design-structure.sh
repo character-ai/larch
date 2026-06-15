@@ -523,7 +523,7 @@ assert_reference_updates() {
   contains "$CLI_PY" '("plan-review", "preview")' 'cli.py missing plan-review preview registry'
   contains "$RUN_STEP3_SH" '"full": "**⚠ 4b: DESIGN_TMPDIR missing or invalid; cannot present final design plan**"' 'plan_review.py preview facade missing full variant missing-dir warning'
   contains "$RUN_STEP3_SH" '"full": "**⚠ 4b: DESIGN_TMPDIR not under allowlist; cannot present final design plan**"' 'plan_review.py preview facade missing full variant allowlist warning'
-  contains "$RUN_STEP3_SH" 'emit-design-plan-preview.sh"), argv)' 'plan_review.py preview facade missing embedded full-plan helper delegation'
+  contains "$RUN_STEP3_SH" 'emit-design-plan-preview.sh"' 'plan_review.py preview facade missing embedded full-plan helper delegation'
   ! grep -Fq 'cat `$DESIGN_TMPDIR/plan.txt`' "$APPROVAL_MD" \
     || fail 'approval-gates.md must use full-plan helper instead of raw Gate C cat'
   ! grep -Fq 'both paths `cat` `$DESIGN_TMPDIR/plan.txt`' "$SKILL_MD" \
