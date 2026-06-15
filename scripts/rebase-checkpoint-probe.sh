@@ -161,6 +161,58 @@ _current_unmerged_conflict_files() {
     git diff --name-only --diff-filter=U 2>/dev/null | tr '\n' ',' | sed 's/,$//'
 }
 
+_is_empty_or_already_applied_rebase_error() {
+    local text
+    text=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
+    case "$text" in
+        *nothing\ to\ commit*) return 0 ;;
+        *no\ changes*) return 0 ;;
+        *all\ merge\ conflicts\ were\ fixed*) return 0 ;;
+    esac
+    return 1
+}
+
+_handle_empty_continue_rc3() {
+    local unmerged err_line combined skip_rc
+
+    while true; do
+        unmerged=$(_current_unmerged_conflict_files)
+        if [ -n "$unmerged" ]; then
+            rc=1
+            cf="$unmerged"
+            cf_ready=true
+            return 0
+        fi
+
+        combined=""
+        if err_line=$(_parse_rebase_error); then
+            combined="$err_line"
+        elif [ -s "$rb_stderr" ]; then
+            combined=$(tr '\n' ' ' <"$rb_stderr")
+        fi
+        if ! _is_empty_or_already_applied_rebase_error "$combined"; then
+            return 1
+        fi
+
+        set +e
+        "${SCRIPT_DIR}/git-rebase-skip.sh" >/dev/null 2>&1
+        skip_rc=$?
+        set -e
+        if [ "$skip_rc" -ne 0 ]; then
+            larch_err "WARN rebase-probe: git rebase --skip failed after empty continue"
+            return 1
+        fi
+
+        set +e
+        _run_rebase_push --continue --no-push --keep-on-conflict
+        rc=$?
+        set -e
+        if [ "$rc" -ne 3 ]; then
+            return 0
+        fi
+    done
+}
+
 set +e
 _run_rebase_push "${rebase_args[@]}"
 rc=$?
@@ -272,6 +324,16 @@ if [ "$rc" -eq 1 ]; then
         _run_rebase_push --continue --no-push --keep-on-conflict
         rc=$?
         set -e
+
+        if [ "$rc" -eq 3 ]; then
+            if _handle_empty_continue_rc3; then
+                if [ "$rc" -eq 0 ]; then
+                    break
+                fi
+                continue
+            fi
+            break
+        fi
     done
 fi
 
