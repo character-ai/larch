@@ -264,7 +264,7 @@ def _classify_cursor_response(path: str) -> bool:
 
 
 def _retry_output_path(output: str, suffix: str = "retry") -> str:
-    base = output[:-4] if output.endswith(".txt") else output
+    base = output.removesuffix(".txt")
     return f"{base}-{suffix}.txt"
 
 
@@ -891,7 +891,7 @@ def collector_stderr_tail_candidates(reviewer_file: str) -> list[str]:
 
 
 def resolve_collector_stderr_tail_file(reviewer_file: str) -> str:
-    base = reviewer_file[:-4] if reviewer_file.endswith(".txt") else reviewer_file
+    base = reviewer_file.removesuffix(".txt")
     retry_tail = f"{base}-retry.txt.stderr-tail"
     if Path(retry_tail).is_file() and Path(retry_tail).stat().st_size > 0:
         return retry_tail
@@ -927,8 +927,11 @@ def failed_agent_stderr_signature(tail_file: str) -> str:
     if home_cache:
         norm = re.sub(re.escape(home_cache) + r"\S*", "<path>", norm)
     norm = re.sub(r"\S+\.(txt|stderr-tail|sidecar|diag|done)( |$)", r"<out>\2", norm)
+    cksum_bin = shutil.which("cksum")
+    if not cksum_bin:
+        return ""
     proc = subprocess.run(
-        ["cksum"],
+        [cksum_bin],
         input=norm.encode("utf-8"),
         capture_output=True,
         check=False,
