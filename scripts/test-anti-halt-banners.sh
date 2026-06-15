@@ -34,6 +34,7 @@ ORCHESTRATORS=(
   "skills/review/SKILL.md"
   "skills/alias/SKILL.md"  # has Step 4 post-delegation verification
   "skills/research/SKILL.md"  # may invoke /issue via the Skill tool and continue to report/cleanup
+  "skills/bug/SKILL.md"  # invokes /issue via the Skill tool and continues to verify/cleanup/report
 )
 
 # Orchestrators that have the banner but no child Skill calls (use external
