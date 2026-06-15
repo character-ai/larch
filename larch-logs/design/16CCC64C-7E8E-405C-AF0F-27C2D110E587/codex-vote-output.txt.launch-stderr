@@ -1,0 +1,6 @@
+⏳ codex agent: still running (1m elapsed)
+✓ codex agent: completed (exit code 0, output 627 bytes)
+unch
+health-probe fast-fail: codex unhealthy before launch
+⏳ codex agent: still running (1m elapsed)
+✓ codex agent: completed (exit code 0, output 639 bytes)
