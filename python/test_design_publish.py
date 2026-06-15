@@ -146,6 +146,39 @@ def test_publish_refuses_cap_hit_without_step3_sentinel(tmp_path: Path) -> None:
     assert "cap-hit without .completed/step-3" in result.stdout
 
 
+def test_publish_refuses_complete_without_step3_sentinel(tmp_path: Path) -> None:
+    design = tmp_path / "design"
+    (design / ".completed").mkdir(parents=True)
+    _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    _ = (design / "composed-plan.md").write_text("# plan\n\ndiff_lines: 1\n", encoding="utf-8")
+    _ = (design / ".step3-review-result.env").write_text(
+        "STEP3_REVIEW_LOOP_STATUS=complete\nLOOP_STATUS=complete\nROUNDS_COMPLETED=3\n",
+        encoding="utf-8",
+    )
+    cli_py = Path(__file__).with_name("cli.py")
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(cli_py),
+            "design",
+            "publish",
+            "--design-tmpdir",
+            str(design),
+            "--issue",
+            "9",
+            "--session-id",
+            "RUN1",
+            "--claude-pid",
+            "11",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 4
+    assert "complete without .completed/step-3" in result.stdout
+
+
 def test_publish_splices_provenance_above_diff_lines(tmp_path: Path) -> None:
     plugin_root = tmp_path / "plugin"
     _write_fake_cli(plugin_root / "python" / "cli.py")

@@ -30,7 +30,17 @@ def _is_repo(value: str) -> bool:
 
 
 _PROVENANCE_META_KEYS = ("review_status", "rounds_completed")
+_OPTIONAL_TRAILER_RE = re.compile(
+    r"^(diff_added: [0-9]+|diff_deleted: [0-9]+|mechanical_churn: .+)$"
+)
 _TERMINAL_STATUSES_REQUIRING_SENTINEL = frozenset({"complete", "cap-hit"})
+
+
+def _is_trailer_region_line(line: str) -> bool:
+    stripped = line.rstrip("\n")
+    if any(stripped.startswith(f"{key}: ") for key in _PROVENANCE_META_KEYS):
+        return True
+    return bool(_OPTIONAL_TRAILER_RE.fullmatch(stripped))
 
 
 def _review_provenance(design_tmpdir: Path) -> tuple[str, int, bool]:
@@ -69,7 +79,7 @@ def _review_provenance(design_tmpdir: Path) -> tuple[str, int, bool]:
 
 
 def _splice_plan_provenance(text: str, review_status: str, rounds_completed: int) -> str:
-    """Insert or replace review provenance immediately above the final diff_lines trailer."""
+    """Insert or replace review provenance above optional size trailers and before diff_lines."""
     lines = text.splitlines(keepends=True)
     if lines and not lines[-1].endswith("\n"):
         lines[-1] = lines[-1] + "\n"
@@ -78,18 +88,38 @@ def _splice_plan_provenance(text: str, review_status: str, rounds_completed: int
         if re.fullmatch(r"diff_lines: \d+", lines[idx].rstrip("\n")):
             diff_idx = idx
             break
-    stripped = [
-        line
-        for line in lines
-        if not any(line.startswith(f"{key}: ") for key in _PROVENANCE_META_KEYS)
-    ]
     provenance = [
         f"review_status: {review_status}\n",
         f"rounds_completed: {rounds_completed}\n",
     ]
     if diff_idx < 0:
-        return "".join(stripped) + "".join(provenance)
-    return "".join(stripped[:diff_idx]) + "".join(provenance) + "".join(stripped[diff_idx:])
+        trailer_start = len(lines)
+        idx = len(lines) - 1
+        while idx >= 0 and _is_trailer_region_line(lines[idx]):
+            trailer_start = idx
+            idx -= 1
+        head = lines[:trailer_start]
+        optional = [
+            line
+            for line in lines[trailer_start:]
+            if _OPTIONAL_TRAILER_RE.fullmatch(line.rstrip("\n"))
+        ]
+        return "".join(head) + "".join(provenance) + "".join(optional)
+    trailer_start = diff_idx
+    optional_lines: list[str] = []
+    idx = diff_idx - 1
+    while idx >= 0 and _is_trailer_region_line(lines[idx]):
+        stripped = lines[idx].rstrip("\n")
+        if _OPTIONAL_TRAILER_RE.fullmatch(stripped):
+            optional_lines.insert(0, lines[idx])
+        trailer_start = idx
+        idx -= 1
+    return (
+        "".join(lines[:trailer_start])
+        + "".join(provenance)
+        + "".join(optional_lines)
+        + "".join(lines[diff_idx:])
+    )
 
 
 def publish_main(argv: Sequence[str]) -> int:
