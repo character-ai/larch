@@ -3,7 +3,7 @@
 
 Topology row design.plan_commands.validate: Tier2+opt-in Tier3.
 """
-# ruff: noqa: S607,S108,PLR2004,PLW2901,PLR1714,SIM108,PIE810
+# ruff: noqa: S607,S108,PLR2004,PLW2901,PLR1714,PIE810
 
 from __future__ import annotations
 
@@ -928,6 +928,8 @@ def parse_optional_metadata(plan_text: str) -> OptionalMetadata:
             value = line[len("mechanical_churn: ") :]
             if value in {"true", "false"}:
                 mechanical = value
+            elif value.isdigit():
+                mechanical = "true"
             else:
                 mechanical = "invalid:" + value
             has_mech = True

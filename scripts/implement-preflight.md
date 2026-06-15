@@ -63,6 +63,23 @@ Non-emergency malformed-plan refusal:
 **❌ Issue #<N> has a malformed larch:plan block — `MALFORMED=<reason>`. Run /design <N> to repair the plan block before retrying /implement.**
 ```
 
+## Plan-review provenance refusals
+
+When an extracted `larch:plan` block includes plan-review provenance, refuse
+plans that explicitly record zero reviewer coverage:
+
+```text
+**❌ /implement preflight: plan review did not run — `review_status=panel-init-failed`. Re-run /design <N> before retrying /implement.**
+```
+
+```text
+**❌ /implement preflight: plan review did not run — `rounds_completed=0`. Re-run /design <N> before retrying /implement.**
+```
+
+`review_status=panel-skipped` uses the same refusal shape as
+`panel-init-failed`. A non-numeric `rounds_completed:` value is treated as
+malformed plan-review metadata and refused.
+
 ## Emergency warning templates
 
 Admission `missing-designed-prefix` bypass:

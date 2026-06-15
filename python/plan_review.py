@@ -1237,6 +1237,7 @@ def step3_record_report_evidence(
         "main-agent-apply-required": "validation",
         "postplan-operator-required": "postplan",
         "panel-failed": "validation",
+        "panel-init-failed": "validation",
         "tally-error": "validation",
         "degraded-empty-collector": "validation",
     }

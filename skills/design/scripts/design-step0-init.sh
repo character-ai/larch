@@ -122,7 +122,7 @@ design_source_env_optional() {
    if [[ -f "$DESIGN_TMPDIR/.design-route-result.env" ]]; then
      _init_route=$(grep -m1 '^ROUTE=' "$DESIGN_TMPDIR/.design-route-result.env" | cut -d= -f2- || true)
    fi
-   if [[ "${_init_route:-}" == proceed ]]; then
+   if [[ "${_init_route:-}" == proceed || "${_init_route:-}" == already-planned ]]; then
      if [[ -f "$DESIGN_TMPDIR/issue-body.txt" ]]; then
        {
          [[ -n "${ISSUE_TITLE:-}" ]] && printf '# %s\n\n' "$ISSUE_TITLE"

@@ -158,6 +158,10 @@ rm -f "$DESIGN_TMPDIR/plan.txt" \
       "$DESIGN_TMPDIR"/scout-plan-manifest.json.candidate.* \
       "$DESIGN_TMPDIR"/scout-plan-manifest.json.filtered.* \
       "$DESIGN_TMPDIR/step2b-drafter-baseline.porcelain"
+if [[ ! -s "$DESIGN_TMPDIR/feature-description.txt" ]]; then
+  printf '%s\n' '**⚠ 2b: feature-description.txt missing or empty; repair Step 0 init before drafting the plan.**' >&2
+  exit 1
+fi
 if [[ -z "$_step2b_drafter_skip_reason" ]]; then
   _baseline_arg=()
   if git -C "$PWD" status --porcelain > "$DESIGN_TMPDIR/step2b-drafter-baseline.porcelain" 2>/dev/null; then
@@ -175,7 +179,7 @@ if [[ -z "$_step2b_drafter_skip_reason" ]]; then
     printf '%s\n' '- Read design-outline.md only when non-empty and .outline-approved exists; treat Goals, Non-goals, and Surfaces as binding scope.'
     printf '%s\n' '- Read brainstorm.md when present as additive ideation context for plan drafting.'
     printf '%s\n' '- Use a Files to modify/create section with per-file headings exactly one path each: ### NEW:, ### UPDATED:, or ### REWRITTEN: (at least one ASCII space after ### before the keyword).'
-    printf '%s\n' '- Include Approach, Edge cases, Failure modes when non-trivial, Testing strategy, optional diff_added/diff_deleted/mechanical_churn trailers, and final diff_lines: <N>.'
+    printf '%s\n' '- Include Approach, Edge cases, Failure modes when non-trivial, Testing strategy, optional diff_added/diff_deleted/mechanical_churn trailers, and final diff_lines: <N>. mechanical_churn accepts only true or false; never write a number there.'
     printf '%s\n' '- The final plan body must end with a whole-line diff_lines: <N> trailer.'
     printf '%s\n' '- Optionally include up to three dynamic plan-review archetypes in a scout block after the plan. The launcher validates, filters, caps, and materializes this block; invalid post-plan scout output is ignored.'
     printf '%s\n' '- Scout sentinels inside the summary or plan are fatal format errors. Never put LARCH_SCOUT_* markers in the plan body.'

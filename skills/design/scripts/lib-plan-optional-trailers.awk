@@ -67,6 +67,9 @@ END {
             } else if (line ~ /^mechanical_churn: false$/) {
                 mechanical_churn = "false"
                 has_mech = 1
+            } else if (line ~ /^mechanical_churn: [0-9]+$/) {
+                mechanical_churn = "true"
+                has_mech = 1
             } else {
                 mech_val = substr(line, 19)
                 mechanical_churn = "invalid:" mech_val

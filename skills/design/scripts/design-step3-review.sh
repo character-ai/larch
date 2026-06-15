@@ -280,7 +280,6 @@ case $- in *m*) _step3_review_monitor_was_enabled=1 ;; esac
 _step3_review_monitor_enabled_by_wrapper=0
 
 _step3_review_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-# Static contract pin: pre-launch helper emits STEP3_REVIEW_LOOP_STATUS=panel-failed, LOOP_STATUS=panel-failed, monitor-mode-unavailable, then exit 0.
 # shellcheck source=skills/design/scripts/lib-step3-prelaunch-failure.sh
 . "$_step3_review_script_dir/lib-step3-prelaunch-failure.sh"
 
@@ -330,10 +329,24 @@ fi
 case $- in
   *m*) : ;;
   *)
-    printf '%s\n' "**⚠ Step 3: process-group isolation is unavailable (monitor-mode-unavailable); treating plan review as panel-failed before launch**" >&2
-    _step3_review_write_prelaunch_failure
+    printf '%s\n' "**⚠ Step 3: process-group isolation is unavailable (monitor-mode-unavailable); treating plan review as panel-init-failed before launch**" >&2
+    _step3_review_write_prelaunch_failure panel-init-failed monitor-mode-unavailable
+    _step3_review_stage_panel_init_failed monitor-mode-unavailable
+    printf '%s\n' 'SUMMARY_OUTCOME=failed-judge-panel'
+    exit 1
     ;;
 esac
+
+if ! python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" scope-anchor validate \
+  --mode design \
+  --design-tmpdir "$DESIGN_TMPDIR" \
+  --path "$DESIGN_TMPDIR/plan-review-scope-anchor.txt" >/dev/null; then
+  larch_err "**⚠ Step 3: plan-review-scope-anchor.txt is missing, empty, invalid, or outside DESIGN_TMPDIR; treating plan review as panel-init-failed before launch**"
+  _step3_review_write_prelaunch_failure panel-init-failed scope-anchor-missing
+  _step3_review_stage_panel_init_failed scope-anchor-missing
+  printf '%s\n' 'SUMMARY_OUTCOME=failed-judge-panel'
+  exit 1
+fi
 
 trap _step3_review_cleanup EXIT
 set +e
@@ -451,6 +464,7 @@ if [[ -z "${STEP3_REVIEW_LOOP_STATUS:-}" ]]; then
     postplan-operator-required) STEP3_REVIEW_LOOP_STATUS=postplan-operator-required ;;
     postplan-failed) STEP3_REVIEW_LOOP_STATUS=postplan-failed ;;
     panel-failed) STEP3_REVIEW_LOOP_STATUS=panel-failed ;;
+    panel-init-failed) STEP3_REVIEW_LOOP_STATUS=panel-init-failed ;;
     tally-error) STEP3_REVIEW_LOOP_STATUS=tally-error ;;
     degraded-empty-collector) STEP3_REVIEW_LOOP_STATUS=degraded-empty-collector ;;
     zero-findings-degraded-panel) ;;
@@ -462,18 +476,33 @@ if [[ -z "${STEP3_REVIEW_LOOP_STATUS:-}" ]]; then
   fi
 fi
 if [[ -n "${STEP3_REVIEW_LOOP_STATUS:-}" ]]; then
-  if [[ ! "${STEP3_REVIEW_LOOP_STATUS}" =~ ^(complete|cap-hit|main-agent-vote-required|main-agent-apply-required|per-round-approval-required|postplan-operator-required|postplan-failed|panel-failed|tally-error|degraded-empty-collector)$ ]]; then
+  if [[ ! "${STEP3_REVIEW_LOOP_STATUS}" =~ ^(complete|cap-hit|main-agent-vote-required|main-agent-apply-required|per-round-approval-required|postplan-operator-required|postplan-failed|panel-failed|panel-init-failed|tally-error|degraded-empty-collector)$ ]]; then
     larch_err "**⚠ Step 3: missing or invalid STEP3_REVIEW_LOOP_STATUS after plan-review run; treating plan review as panel-failed**"
     STEP3_REVIEW_LOOP_STATUS=panel-failed
   fi
   case "${STEP3_REVIEW_LOOP_STATUS}" in
     cap-hit) LOOP_STATUS=cap-reached ;;
-    complete|panel-failed|tally-error|degraded-empty-collector|main-agent-vote-required|postplan-failed) LOOP_STATUS="${STEP3_REVIEW_LOOP_STATUS}" ;;
+    complete|panel-failed|panel-init-failed|tally-error|degraded-empty-collector|main-agent-vote-required|postplan-failed) LOOP_STATUS="${STEP3_REVIEW_LOOP_STATUS}" ;;
     main-agent-apply-required|per-round-approval-required|postplan-operator-required) LOOP_STATUS=complete ;;
   esac
-elif [[ -z "${LOOP_STATUS:-}" || ! "${LOOP_STATUS}" =~ ^(complete|cap-reached|zero-findings-degraded-panel|tally-error|degraded-empty-collector|panel-failed|main-agent-vote-required|main-agent-apply-required|per-round-approval-required|postplan-operator-required|postplan-failed)$ ]]; then
+elif [[ -z "${LOOP_STATUS:-}" || ! "${LOOP_STATUS}" =~ ^(complete|cap-reached|zero-findings-degraded-panel|tally-error|degraded-empty-collector|panel-failed|panel-init-failed|main-agent-vote-required|main-agent-apply-required|per-round-approval-required|postplan-operator-required|postplan-failed)$ ]]; then
   larch_err "**⚠ Step 3: missing or invalid LOOP_STATUS after plan-review run; treating plan review as panel-failed**"
   LOOP_STATUS=panel-failed
+fi
+_step3_rounds_completed_dec=0
+case "${ROUNDS_COMPLETED:-${REVIEW_ROUND_COUNT:-0}}" in
+  ''|*[!0-9]*) _step3_rounds_completed_dec=0 ;;
+  *) _step3_rounds_completed_dec=$((10#${ROUNDS_COMPLETED:-${REVIEW_ROUND_COUNT:-0}})) ;;
+esac
+if [[ "${STEP3_REVIEW_LOOP_STATUS:-}" == panel-failed && "${DEGRADED_PANEL:-0}" != 1 ]]; then
+  if [[ "$_step3_rounds_completed_dec" -eq 0 || ! -d "$DESIGN_TMPDIR/plan-review/round-1" ]]; then
+    larch_err "**⚠ Step 3: panel failed before any reviewer round launched; treating as panel-init-failed**"
+    STEP3_REVIEW_LOOP_STATUS=panel-init-failed
+    LOOP_STATUS=panel-init-failed
+    TALLY_PLAN_REVIEW_STATUS=panel-init-failed
+    ROUNDS_COMPLETED=0
+    REVIEW_ROUND_COUNT=0
+  fi
 fi
 # Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
 [[ -n "${STEP3_REVIEW_LOOP_STATUS:-}" ]] && printf 'STEP3_REVIEW_LOOP_STATUS=%s\n' "$STEP3_REVIEW_LOOP_STATUS"
@@ -495,7 +524,7 @@ fi
 [[ -n "${DEGRADED_PANEL:-}" ]] && printf 'DEGRADED_PANEL=%s\n' "$DEGRADED_PANEL"
 [[ -n "${PLAN_REVIEW_CONTINUE_REASON:-}" ]] && printf 'PLAN_REVIEW_CONTINUE_REASON=%s\n' "$PLAN_REVIEW_CONTINUE_REASON"
 case "${STEP3_REVIEW_LOOP_STATUS:-}" in
-  panel-failed|tally-error|degraded-empty-collector|main-agent-vote-required|main-agent-apply-required|postplan-operator-required)
+  panel-failed|panel-init-failed|tally-error|degraded-empty-collector|main-agent-vote-required|main-agent-apply-required|postplan-operator-required)
     if ! python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review run \
       --design-tmpdir "$DESIGN_TMPDIR" \
       --record-report-evidence "${STEP3_REVIEW_LOOP_STATUS}" >/dev/null 2>&1; then
@@ -505,5 +534,10 @@ case "${STEP3_REVIEW_LOOP_STATUS:-}" in
 esac
 if [[ "${STEP3_REVIEW_LOOP_STATUS:-}" == postplan-failed ]]; then
   printf '%s\n' 'SUMMARY_OUTCOME=failed-postplan'
+  exit 1
+fi
+if [[ "${STEP3_REVIEW_LOOP_STATUS:-}" == panel-init-failed ]]; then
+  _step3_review_stage_panel_init_failed "${REASON:-panel-init-failed}"
+  printf '%s\n' 'SUMMARY_OUTCOME=failed-judge-panel'
   exit 1
 fi

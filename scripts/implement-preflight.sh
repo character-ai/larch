@@ -182,6 +182,42 @@ write_fallback_plan() {
   fi
 }
 
+plan_review_meta_value() {
+  key="$1"
+  awk -v key="$key" '
+    index($0, key ": ") == 1 {
+      value = substr($0, length(key) + 3)
+      seen = 1
+    }
+    END {
+      if (seen) print value
+    }
+  ' "$PLAN_PATH"
+}
+
+refuse_unreviewed_plan() {
+  review_status="$(plan_review_meta_value review_status)"
+  rounds_completed="$(plan_review_meta_value rounds_completed)"
+  case "$review_status" in
+    panel-init-failed|panel-skipped)
+      printf '**❌ /implement preflight: plan review did not run — `review_status=%s`. Re-run /design %s before retrying /implement.**\n' "$review_status" "$ISSUE"
+      exit 2
+      ;;
+  esac
+  if [ -n "$rounds_completed" ]; then
+    case "$rounds_completed" in
+      ''|*[!0-9]*)
+        printf '**❌ /implement preflight: malformed plan review metadata — `rounds_completed=%s`. Re-run /design %s before retrying /implement.**\n' "$rounds_completed" "$ISSUE"
+        exit 2
+        ;;
+      0)
+        printf '**❌ /implement preflight: plan review did not run — `rounds_completed=0`. Re-run /design %s before retrying /implement.**\n' "$ISSUE"
+        exit 2
+        ;;
+    esac
+  fi
+}
+
 ADMISSION_STDOUT="$PREFLIGHT_TMPDIR/admission.stdout"
 ADMISSION_STDERR="$PREFLIGHT_TMPDIR/admission.stderr"
 set +e
@@ -298,6 +334,10 @@ elif [ "$BLOCK_PRESENT" = false ]; then
   write_fallback_plan missing-plan missing
 elif [ "$PLAN_RC" -ne 0 ]; then
   exit 2
+fi
+
+if [ -s "$PLAN_PATH" ]; then
+  refuse_unreviewed_plan
 fi
 
 [ -n "$BLOCK_PRESENT" ] || BLOCK_PRESENT=false

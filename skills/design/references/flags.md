@@ -64,9 +64,9 @@ The helper emits comma-separated reason tokens in **fixed priority order** `plan
 
 ## `python/cli.py plan check-size` contract (summary)
 
-- **Input**: `$DESIGN_TMPDIR/plan.txt` (or `--plan-file`) with a **final non-empty** `diff_lines: <N>` trailer matching `emit-plan.sh` grammar. Optional trailers `diff_added:`, `diff_deleted:`, and `mechanical_churn:` MAY appear in the final contiguous metadata block immediately above `diff_lines:` (strict full-line regexes — see `check-plan-size.md`).
+- **Input**: `$DESIGN_TMPDIR/plan.txt` (or `--plan-file`) with a **final non-empty** `diff_lines: <N>` trailer matching `emit-plan.sh` grammar. Optional trailers `diff_added:`, `diff_deleted:`, and `mechanical_churn:` MAY appear in the final contiguous metadata block immediately above `diff_lines:` (strict full-line regexes — see `check-plan-size.md`). Numeric legacy `mechanical_churn:` values normalize to `true`; drafters must still emit only `true` or `false`.
 - **Machine output**: `emit_kv` on FD 3 (`lib-quiet.sh`) — `PLAN_LINES`, `DIFF_LINES`, `DIFF_ADDED`, `DIFF_DELETED`, `MECHANICAL_CHURN`, `SOFT_ADVISORY`, `SIZE_TRIGGER_FIRED`, `TRIGGER_REASONS` (see **Helper output** above). `PLAN_LINES` excludes recognized optional metadata trailers above final `diff_lines:`. On validation failure only: `PLAN_SIZE_STATUS` is `missing-plan` or `missing-diff-lines`.
-- **Exit codes**: **0** when the plan parses; **2** only when emitting `PLAN_SIZE_STATUS` (`missing-plan` / `missing-diff-lines`); **3** on argv / usage errors (missing `--design-tmpdir`, unknown flags) — no `PLAN_SIZE_STATUS` lines.
+- **Exit codes**: **0** when the plan parses; **2** only when emitting `PLAN_SIZE_STATUS` (`missing-plan` / `missing-diff-lines` / `invalid-mechanical-churn`); **3** on argv / usage errors (missing `--design-tmpdir`, unknown flags) — no `PLAN_SIZE_STATUS` lines.
 
 ## Plan-command validator
 

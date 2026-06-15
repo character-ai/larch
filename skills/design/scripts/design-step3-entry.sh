@@ -33,4 +33,55 @@ fi
 rm -f "$DESIGN_TMPDIR/.pause-save-complete"
 "$SCRIPT_DIR/design-step3-entry-state.sh" --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID"
 [ -f "$DESIGN_TMPDIR/.pause-save-complete" ] && exit 0
+_scope_anchor="$DESIGN_TMPDIR/plan-review-scope-anchor.txt"
+_scope_body="$(mktemp "${TMPDIR:-/tmp}/larch-plan-review-scope.XXXXXX")" || {
+  printf '%s\n' "**⚠ Step 3: could not allocate plan-review scope anchor staging file; aborting before reviewer launch**" >&2
+  exit 1
+}
+_scope_stripped="$(mktemp "${TMPDIR:-/tmp}/larch-plan-review-scope-stripped.XXXXXX")" || {
+  rm -f "$_scope_body"
+  printf '%s\n' "**⚠ Step 3: could not allocate stripped issue body staging file; aborting before reviewer launch**" >&2
+  exit 1
+}
+if [ -s "$DESIGN_TMPDIR/issue-body.txt" ]; then
+  if ! python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" plan-block strip-body \
+    --file "$DESIGN_TMPDIR/issue-body.txt" \
+    --output "$_scope_stripped" >/dev/null; then
+    rm -f "$_scope_body" "$_scope_stripped"
+    printf '%s\n' "**⚠ Step 3: failed to strip prior larch:plan block from issue body; aborting before reviewer launch**" >&2
+    exit 1
+  fi
+else
+  : >"$_scope_stripped"
+fi
+{
+  if [ -n "${ISSUE_TITLE:-}" ]; then
+    printf '# %s\n\n' "$ISSUE_TITLE"
+  fi
+  if [ -s "$_scope_stripped" ]; then
+    cat "$_scope_stripped"
+  elif [ -s "$DESIGN_TMPDIR/feature-description.txt" ]; then
+    cat "$DESIGN_TMPDIR/feature-description.txt"
+  elif [ "${POSITIONAL_KIND:-}" = verbal ] && [ -n "${POSITIONAL_VALUE:-}" ]; then
+    printf '%s\n' "$POSITIONAL_VALUE"
+  fi
+  if [ -s "$DESIGN_TMPDIR/design-outline.md" ] && [ -f "$DESIGN_TMPDIR/.outline-approved" ]; then
+    printf '\n## Approved direction (outline)\n\n'
+    cat "$DESIGN_TMPDIR/design-outline.md"
+  fi
+} >"$_scope_body"
+rm -f "$_scope_stripped"
+if [ ! -s "$_scope_body" ]; then
+  rm -f "$_scope_body" "$_scope_anchor"
+  printf '%s\n' "**⚠ Step 3: plan-review-scope-anchor.txt would be empty; aborting before reviewer launch**" >&2
+  exit 1
+fi
+mv "$_scope_body" "$_scope_anchor"
+if ! python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" scope-anchor validate \
+  --mode design \
+  --design-tmpdir "$DESIGN_TMPDIR" \
+  --path "$_scope_anchor" >/dev/null; then
+  printf '%s\n' "**⚠ Step 3: plan-review-scope-anchor.txt failed validation; aborting before reviewer launch**" >&2
+  exit 1
+fi
 "$SCRIPT_DIR/design-step3-entry-preview.sh" --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID"

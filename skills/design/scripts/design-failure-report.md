@@ -4,7 +4,7 @@
 
 ## Decision order
 
-The gate skips when a terminal, escalation-success, or operator-action sentinel already exists. Cancelled outcomes write operator-action audit artifacts and do not file. Failed outcomes require a valid `design-failure-terminal-state.env`; missing or invalid state fails closed to `design-failure-chat-print.md`. Successful outcomes are limited to `approved` and `approved-partition`, and only file escalation-success when durable escalation evidence exists.
+The gate skips when a terminal, escalation-success, or operator-action sentinel already exists. Cancelled outcomes write operator-action audit artifacts and do not file. Failed outcomes require a valid `design-failure-terminal-state.env`; missing or invalid state fails closed to `design-failure-chat-print.md`. Successful outcomes are limited to `approved` and `approved-partition`, and only file escalation-success when durable escalation evidence exists. Panel failure evidence (`panel-failed` / `panel-init-failed`) does not require a `COMPOSE_STATUS` line to advance; when a bounded report artifact exists, the gate attempts Tier A filing and otherwise records the artifact instead of falling back solely because compose status was omitted.
 
 Terminal classify and compose calls pass `--primary-state-file "$DESIGN_TMPDIR/design-failure-terminal-state.env"`, `--session-env-file "$DESIGN_TMPDIR/source-env.sh"`, `--finalize-state-file` when present, and `--implement-tmpdir "$DESIGN_TMPDIR"`.
 

@@ -29,6 +29,40 @@ def _is_repo(value: str) -> bool:
     return bool(re.fullmatch(r"[A-Za-z0-9._-]+/[A-Za-z0-9._-]+", value))
 
 
+def _review_provenance(design_tmpdir: Path) -> tuple[str, int]:
+    """Return (review_status, rounds_completed) from .step3-review-result.env."""
+    result_env = design_tmpdir / ".step3-review-result.env"
+    if not result_env.is_file() or result_env.is_symlink():
+        return "", 0
+    kv: dict[str, str] = {}
+    for line in result_env.read_text(encoding="utf-8", errors="replace").splitlines():
+        if "=" in line:
+            k, v = line.split("=", 1)
+            kv[k] = v
+    status = kv.get("STEP3_REVIEW_LOOP_STATUS", "")
+    if not status:
+        loop = kv.get("LOOP_STATUS", "")
+        tally = kv.get("TALLY_PLAN_REVIEW_STATUS", "")
+        if loop == "complete":
+            status = "complete"
+        elif loop in {"cap-reached", "cap-hit"}:
+            status = "cap-hit"
+        elif loop in {
+            "panel-failed", "panel-init-failed", "panel-skipped",
+            "tally-error", "degraded-empty-collector",
+            "main-agent-vote-required", "postplan-failed",
+        }:
+            status = loop
+        elif tally:
+            status = tally
+    rounds_raw = kv.get("ROUNDS_COMPLETED", "") or kv.get("REVIEW_ROUND_COUNT", "")
+    try:
+        rounds = int(rounds_raw) if rounds_raw.strip().isdigit() else 0
+    except (ValueError, AttributeError):
+        rounds = 0
+    return status, rounds
+
+
 def publish_main(argv: Sequence[str]) -> int:
     args = list(argv)
     parsed = {
@@ -89,6 +123,21 @@ def publish_main(argv: Sequence[str]) -> int:
         _ = result_env.write_text("\n".join(f"{k}={v}" for k, v in kvs) + "\n", encoding="utf-8")
         return 4
 
+    review_status, rounds_completed = _review_provenance(design_tmpdir)
+    _BLOCKED_STATUSES = {"panel-init-failed", "panel-skipped"}
+    if review_status in _BLOCKED_STATUSES or (review_status and rounds_completed == 0):
+        blocked_reason = review_status if review_status in _BLOCKED_STATUSES else "rounds_completed=0"
+        print(
+            f"**⚠ 5c: publish refused — review provenance indicates {blocked_reason};"
+            " plan review did not complete; re-run /design**",
+            flush=True,
+        )
+        kvs[1] = ("VALIDATE_STATUS", "defects-found")
+        kvs[2] = ("VALIDATE_DEFECT_COUNT", "1")
+        _emit_rows(kvs)
+        _ = result_env.write_text("\n".join(f"{k}={v}" for k, v in kvs) + "\n", encoding="utf-8")
+        return 4
+
     if (design_tmpdir / ".pause-requested").is_file():
         pause = subprocess.run(
             [
@@ -105,6 +154,14 @@ def publish_main(argv: Sequence[str]) -> int:
             check=False,
         )
         return int(pause.returncode)
+
+    if review_status or rounds_completed:
+        provenance_header = (
+            f"review_status: {review_status}\n"
+            f"rounds_completed: {rounds_completed}\n\n"
+        )
+        original = composed_plan.read_text(encoding="utf-8", errors="replace")
+        composed_plan.write_text(provenance_header + original, encoding="utf-8")
 
     if skip_validate:
         kvs[1] = ("VALIDATE_STATUS", "skipped")

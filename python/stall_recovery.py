@@ -60,7 +60,7 @@ _COMMON_SITES = frozenset({
 _GENERIC_TRIGGERS = frozenset({
     "main-agent-apply-required", "postplan-operator-required", "exhausted", "failed",
     "unavailable", "skipped-cycle-cap", "postplan-failed", "publish-tail-failed",
-    "plan-write-failed", "publish-failed", "panel-failed", "tally-error",
+    "plan-write-failed", "publish-failed", "panel-failed", "panel-init-failed", "tally-error",
     "degraded-empty-collector", "judge-panel-collapse", "decompose-panel-retry-exhausted",
 })
 _COMMON_TRIGGERS = frozenset({

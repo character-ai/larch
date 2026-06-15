@@ -26,6 +26,8 @@ Wrapper for a `/design` Bash block that keeps `skills/design/SKILL.md` free of i
 - `awaiting-vote` remains an internal loop state and is not accepted as a wrapper resume phase.
 - Does not derive the root Claude PID from `$PPID` internally.
 - Step 3 loop contract lives in `python/plan_review.py`; this wrapper captures stdout, reads `.step3-review-result.env` through `scripts/read-result-env.sh`, overlays the full allowlisted KV envelope from captured stdout when needed, normalizes `STEP3_REVIEW_LOOP_STATUS` / `LOOP_STATUS`, and records escalation evidence only for terminal degradation statuses.
+- Refuses to launch when `$DESIGN_TMPDIR/plan-review-scope-anchor.txt` is absent, empty, or invalid. That prelaunch path emits `panel-init-failed`, stages `failed-judge-panel`, and exits non-zero so Gate C and Step 5 cannot run with zero reviewer coverage.
+- Normalizes `panel-failed` with zero completed rounds or no `plan-review/round-1/` directory to `panel-init-failed`.
 
 ## Harness
 
