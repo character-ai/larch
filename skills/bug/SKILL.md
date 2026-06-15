@@ -1,0 +1,164 @@
+---
+name: bug
+description: "Use when filing, reporting, investigating, or root-causing a software bug. Reads the repo, drafts a detailed GitHub issue, and invokes /issue with dedup enabled. Keywords: bug report, regression, broken behavior, reproduction, suggested fix."
+argument-hint: "<bug description>"
+allowed-tools: Bash, Read, Grep, Glob, Write, Skill
+hooks:
+  PreToolUse:
+    - matcher: "Write"
+      hooks:
+        - type: command
+          command: "${CLAUDE_PLUGIN_ROOT}/scripts/deny-edit-write.sh"
+          timeout: 5
+---
+
+# Bug Skill
+
+Investigate a user-described bug inline, compose a detailed issue body, then delegate creation to `/issue` with dedup enabled. This skill is for issue filing only. It never edits the repository.
+
+**Anti-halt continuation reminder.** After every child `Skill` tool call (e.g., `/issue`) returns, IMMEDIATELY continue with this skill's NEXT numbered step - do NOT end the turn on the child's cleanup output, and do NOT write a summary, handoff, status recap, or "returning to parent" message - those are halts in disguise. The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `bail`, `skip to Step N`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception. → shared/subskill-invocation.md#anti-halt
+
+## Contract
+
+- Treat all `$ARGUMENTS` as the bug description. This skill has no flags.
+- If the description starts with `--`, treat it as prose, not as an option.
+- Never pass `--no-dedup` to `/issue`.
+- Use only `Read`, `Grep`, `Glob`, and safe read-only `Bash` discovery for investigation.
+- Use `Write` only for files under `$BUG_TMPDIR`.
+- Do not use `Edit`, `NotebookEdit`, external agents, or repo-writing Bash commands.
+- If root cause is uncertain, say so in the issue body and list the evidence and next steps.
+
+<!-- step:1 - Validate input -->
+## Step 1 - Validate input
+
+Trim `$ARGUMENTS` mentally. If it is empty or whitespace-only, print:
+
+```text
+**⚠ /bug: bug description is required. Aborting.**
+```
+
+Stop before creating any temp directory.
+
+<!-- step:2 - Create temp directory -->
+## Step 2 - Create temp directory
+
+Create a canonical `/tmp` scratch directory before writing any artifacts:
+
+```bash
+BUG_TMPDIR=$(mktemp -d "/tmp/claude-bug-XXXXXX")
+```
+
+All scratch files and the `/issue` sentinel file must stay under `$BUG_TMPDIR`. This placement keeps the skill-scoped `Write` hook on the allowed side of its canonical `/tmp` policy.
+
+<!-- step:3 - Investigate -->
+## Step 3 - Investigate
+
+Investigate the report inline. Prefer direct reads and targeted search:
+
+- Use `Glob` to find likely files.
+- Use `Grep` for error text, function names, commands, config keys, and related tests.
+- Use `Read` to inspect the smallest set of files that can explain the behavior.
+- Use safe read-only `Bash` discovery when needed, such as `git status --short`, `git branch --show-current`, `git rev-parse --short HEAD`, or test listing commands.
+
+Do not edit the repo. Do not run mutating commands. If running a reproduction would be expensive, destructive, or dependent on unavailable services, describe the best reproduction scenario instead of forcing it.
+
+<!-- step:4 - Compose issue body -->
+## Step 4 - Compose issue body
+
+Use `Write` to create `$BUG_TMPDIR/bug-issue-body.md` with exactly these ten `##` headings, in this order:
+
+```markdown
+## Summary
+
+<One-paragraph bug summary.>
+
+## Original report
+
+<The user's bug description, preserving important details.>
+
+## Reproduction scenario
+
+<Concrete steps, command, or scenario. Say what could not be reproduced if applicable.>
+
+## Expected behavior
+
+<What should happen.>
+
+## Observed behavior
+
+<What appears to happen instead.>
+
+## Root cause analysis
+
+<Likely root cause. If uncertain, state uncertainty explicitly and explain why.>
+
+## Evidence
+
+<Bulleted evidence from files, commands, logs, tests, or code paths.>
+
+## Affected files
+
+<Repo-relative paths and why each matters.>
+
+## Suggested fix(es)
+
+<Specific fix ideas, or "No concrete fix identified yet" with next investigation steps.>
+
+## Open questions
+
+<Questions for /design or implementers. Use "None identified" only when true.>
+```
+
+The body should give `/design` enough context to produce a good implementation plan. Do not invent certainty. Separate observations from inferences.
+
+<!-- step:5 - Invoke issue -->
+## Step 5 - Invoke issue
+
+Derive a concise, descriptive issue title from the original bug report, not from `$BUG_TMPDIR/bug-issue-body.md`.
+
+Invoke `/issue` via the Skill tool:
+
+- `/issue --body-file "$BUG_TMPDIR/bug-issue-body.md" --sentinel-file "$BUG_TMPDIR/issue-completed.sentinel" "<descriptive-title>"`
+
+Do not include `--no-dedup`.
+
+> **Continue after child returns.** When the child Skill returns, execute Step 6 - do NOT end the turn, and do NOT write a summary, handoff, or "returning to parent" message. → shared/subskill-invocation.md#anti-halt
+
+<!-- step:6 - Verify issue outcome -->
+## Step 6 - Verify issue outcome
+
+Parse `/issue` stdout as machine text. Do not use `eval` or `source`. Extract:
+
+- `ISSUES_CREATED=<N>`
+- `ISSUES_FAILED=<N>`
+- `ISSUES_DEDUPLICATED=<N>`
+- `ISSUE_1_URL=<url>` for a created issue
+- `ISSUE_1_DUPLICATE_OF_URL=<url>` for a deduplicated issue
+
+Then verify the sentinel file:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" verify skill-called --sentinel-file "$BUG_TMPDIR/issue-completed.sentinel"
+```
+
+Parse `VERIFIED` from stdout.
+
+Success requires both of these conditions:
+
+- `ISSUES_FAILED=0`
+- `VERIFIED=true`
+
+A created issue and a deduplicated issue are both successful outcomes. Prefer `ISSUE_1_URL` for the final report. Fall back to `ISSUE_1_DUPLICATE_OF_URL`. If no URL is present, surface the parsed counters and stop without claiming that an issue was filed.
+
+If `/issue` fails, if `ISSUES_FAILED` is nonzero, or if `VERIFIED` is not `true`, surface the failure and stop without claiming an issue was filed.
+
+<!-- step:7 - Cleanup and report -->
+## Step 7 - Cleanup and report
+
+Remove the scratch directory:
+
+```bash
+rm -rf "$BUG_TMPDIR"
+```
+
+Report the issue URL selected in Step 6. If the issue was deduplicated, say that the existing issue was reused.
