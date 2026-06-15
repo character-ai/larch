@@ -316,4 +316,4 @@ Focused harnesses cover the /design auto-reporting port:
 - `test-file-failure-report-cross-repo` includes design-prefix Tier B corpus coverage.
 - `test-stall-recovery-report` includes generic-profile `/design` validation, prefixed artifacts, and skill-aware dedup signatures.
 
-`bash python/cli.py checks run-relevant` maps the new helper, sibling docs, render-final-summary, publish, Split-path prose, Step 3 review, cross-repo filing, and stall-report changes to these focused targets.
+`python3 python/cli.py checks run-relevant --site <site> --tmpdir "$IMPLEMENT_TMPDIR"` maps the new helper, sibling docs, render-final-summary, publish, Split-path prose, Step 3 review, cross-repo filing, and stall-report changes to these focused targets.

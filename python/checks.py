@@ -611,6 +611,11 @@ def _redact_log(log_file: Path, redacted_file: Path) -> bool:
     return True
 
 
+def _is_no_validation_phases_log(log_file: Path) -> bool:
+    text = _read_log_file_text(log_file)
+    return text is not None and "ERROR: no validation phases ran" in text
+
+
 def _finish_logged_result(
     *,
     result_code: int,
@@ -624,6 +629,16 @@ def _finish_logged_result(
     coverage = _coverage_from_markers(ok=ok, has_precommit=has_precommit, has_agent_lint=has_agent_lint)
     phase = _phase_from_markers(ok=ok, has_precommit=has_precommit, has_agent_lint=has_agent_lint)
     warn = warn_override or ("agent-lint-missing" if has_warn else None)
+    if result_code == 2 and _is_no_validation_phases_log(log_file):  # noqa: PLR2004
+        return _checks_failure(
+            site=site,
+            exit_code=2,
+            reason="no-validation-phases",
+            raw_log_path=str(log_file),
+            phase="none",
+            coverage="none",
+            warn=warn,
+        )
     if ok:
         return ChecksResult(
             ok=True,
@@ -714,14 +729,15 @@ def _run_relevant_checks_inner(
     if not regular:
         _write_log(log_fd, "No existing regular files to pass to pre-commit.\n")
         targets = _direct_targets(runner, changed, cwd=cwd, env=env, log_fd=log_fd)
+        direct_ran = False
         if targets:
             _write_log(log_fd, f"\n=== Running direct relevant make target(s): {' '.join(targets)} ===\n")
             make_result = _run_logged(runner, ["make", *targets], cwd=cwd, log_fd=log_fd, env=env)
             phases_run += 1
+            direct_ran = True
             if make_result.returncode != 0:
                 return make_result.returncode
         pins_rc = _run_contains_pin_phase(repo, changed, log_fd=log_fd)
-        phases_run += 1
         if pins_rc != 0:
             return pins_rc
         agent_rc = _run_agent_lint(runner, cwd=cwd, log_fd=log_fd, env=env)
@@ -730,6 +746,9 @@ def _run_relevant_checks_inner(
             rc = agent_rc
         else:
             rc = 0
+        if not direct_ran and agent_rc is None:
+            _write_log(log_fd, "\nERROR: no validation phases ran — pre-commit had no eligible files (no changes, or no regular files for pre-commit) and agent-lint was unavailable or skipped.\n")
+            return 2
         return rc
 
     if not _command_available(runner, "pre-commit", cwd=cwd, env=env):
@@ -1721,8 +1740,9 @@ def _post_dispatch_forbidden_revert(
 
 
 def _coder_stderr_tail(run_dir: Path, log_name: str) -> str:
-    candidate = run_dir / log_name
-    if candidate.is_file():
+    stem = log_name.removesuffix(".log") if log_name.endswith(".log") else log_name
+    candidate = run_dir / f"{stem}.stderr-tail"
+    if candidate.is_file() and candidate.stat().st_size > 0:
         return str(candidate)
     return ""
 
