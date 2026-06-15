@@ -1,0 +1,427 @@
+"""Accepted-OOS filing pipeline for the Python /implement path."""
+
+# ruff: noqa: SLF001
+# pyright: reportUnusedCallResult=false, reportUnknownVariableType=false
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+
+import file_oos
+
+_CLI = Path(__file__).resolve().parent / "cli.py"
+_GITHUB_URL_RE = re.compile(r"https://[^\s|)]+/issues/\d+")
+_FILED_URL_LINE_RE = re.compile(r"^[ \t]*-[ \t]+\*\*Filed[ \t]URL\*\*[ \t]*:[ \t]+(https://[^\s]+/issues/\d+)", re.MULTILINE)
+
+
+@dataclass(frozen=True)
+class AcceptedBlock:
+    title: str
+    body: str
+
+
+@dataclass(frozen=True)
+class FiledIssue:
+    title: str
+    url: str
+    duplicate: bool = False
+
+
+@dataclass(frozen=True)
+class BatchResult:
+    filed: list[FiledIssue]
+    failures: int
+
+
+def _bool(value: str) -> bool:
+    return value.strip().lower() == "true"
+
+
+def _read_kv_file(path: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
+    if not path.is_file():
+        return values
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        values[key] = value.strip("\r")
+    return values
+
+
+def _run_id(tmpdir: Path, state: dict[str, str]) -> str:
+    if state.get("RUN_ID"):
+        return state["RUN_ID"]
+    session_id = tmpdir / "session-id"
+    if session_id.is_file():
+        return session_id.read_text(encoding="utf-8").strip()
+    return "unknown"
+
+
+def _repo_root() -> Path:
+    result = subprocess.run(["git", "rev-parse", "--show-toplevel"], text=True, capture_output=True, check=False)  # noqa: S607
+    if result.returncode == 0 and result.stdout.strip():
+        return Path(result.stdout.strip())
+    return Path.cwd()
+
+
+def _run_cli(args: list[str], *, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
+    return subprocess.run([sys.executable, str(_CLI), *args], input=input_text, text=True, capture_output=True, check=False)
+
+
+def _parse_kv(text: str) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for line in text.splitlines():
+        if "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        out[key] = value.strip("\r")
+    return out
+
+
+def _is_security_block(block: str) -> bool:
+    normalized = file_oos._strip_md_emphasis(block)  # pyright: ignore[reportPrivateUsage]
+    return bool(file_oos._SECURITY_HEADER_RE.search(block) or file_oos._SECURITY_FOCUS_RE.search(normalized))  # pyright: ignore[reportPrivateUsage]
+
+
+def _accepted_input_paths(tmpdir: Path) -> tuple[Path, ...]:
+    return (
+        tmpdir / "oos-accepted-main-agent.md",
+        file_oos.resolve_design_oos_path(tmpdir),
+        tmpdir / "oos-accepted-review.md",
+    )
+
+
+def _working_batch(tmpdir: Path) -> tuple[list[AcceptedBlock], list[FiledIssue]]:
+    seen: set[str] = set()
+    blocks: list[AcceptedBlock] = []
+    already: list[FiledIssue] = []
+    for path in _accepted_input_paths(tmpdir):
+        if not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for item in file_oos._parse_oos_blocks(text):  # pyright: ignore[reportPrivateUsage]
+            if _is_security_block(item.body):
+                continue
+            filed_urls = _FILED_URL_LINE_RE.findall(item.body)
+            if filed_urls:
+                already.extend(FiledIssue(item.title, url, duplicate=True) for url in filed_urls)
+                continue
+            normalized = file_oos._normalize_title(item.title).lower()  # pyright: ignore[reportPrivateUsage]
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            blocks.append(AcceptedBlock(item.title, item.body))
+    return blocks, already
+
+
+def _render_blocks(blocks: list[AcceptedBlock]) -> str:
+    rendered: list[str] = []
+    for index, block in enumerate(blocks, start=1):
+        rendered.append(re.sub(r"^### OOS_\d+:", f"### OOS_{index}:", block.body, count=1, flags=re.MULTILINE))
+    return "\n\n".join(rendered).rstrip() + ("\n" if rendered else "")
+
+
+def _append_tool_failure(tmpdir: Path, site: str, tool: str, rc: int, output: str) -> None:
+    file_oos._append_failure_log(tmpdir / "execution-issues.md", site, tool, rc, output)  # pyright: ignore[reportPrivateUsage]
+
+
+def _append_warning(tmpdir: Path, message: str) -> None:
+    file_oos._append_run_log_warning(tmpdir, f"- **oos file**: {message}")  # pyright: ignore[reportPrivateUsage]
+
+
+def _sentinel_urls(tmpdir: Path) -> list[FiledIssue]:
+    sentinel = tmpdir / "oos-issues-created.md"
+    if not sentinel.is_file():
+        return []
+    text = sentinel.read_text(encoding="utf-8", errors="replace")
+    urls = _GITHUB_URL_RE.findall(text)
+    return [FiledIssue("Recovered OOS disposition", url, duplicate=True) for url in urls]
+
+
+def _codex_available() -> bool:
+    raw = os.environ.get("LARCH_OOS_CODEX_AVAILABLE", "")
+    if raw.lower() in {"true", "1", "yes"}:
+        return True
+    if raw.lower() in {"false", "0", "no"}:
+        return False
+    return shutil.which("codex") is not None
+
+
+def _valid_combined_output(text: str, original_count: int) -> bool:
+    if not text.strip():
+        return False
+    try:
+        file_oos._validate_issue_cap_input(text)  # pyright: ignore[reportPrivateUsage]
+    except ValueError:
+        return False
+    count = len(file_oos._parse_oos_blocks(text))  # pyright: ignore[reportPrivateUsage]
+    return 0 < count <= original_count
+
+
+def _maybe_combine_with_codex(tmpdir: Path, text: str, *, codex_timeout: int) -> str:
+    original_count = len(file_oos._parse_oos_blocks(text))  # pyright: ignore[reportPrivateUsage]
+    if original_count <= 1:
+        return text
+    input_path = tmpdir / "oos-combine-input.md"
+    output_path = tmpdir / "oos-combine-codex-output.md"
+    prompt_path = tmpdir / "oos-combine-prompt.md"
+    input_path.write_text(text, encoding="utf-8")
+    prompt_path.write_text(
+        "Aggressively combine accepted out-of-scope observations unless they are clearly unrelated.\n"
+        "Return only valid markdown blocks shaped as `### OOS_N:` items.\n"
+        "Preserve actionable details and do not increase the item count.\n\n"
+        f"Input file: {input_path}\n",
+        encoding="utf-8",
+    )
+    if not _codex_available():
+        _append_warning(tmpdir, "Codex unavailable; filing the pre-combine OOS batch.")
+        return text
+    result = _run_cli(
+        [
+            "agent",
+            "launch-codex-exec",
+            "--output",
+            str(output_path),
+            "--timeout",
+            str(codex_timeout),
+            "--prompt-file",
+            str(prompt_path),
+            "--sandbox",
+            "read-only",
+            "--workdir",
+            str(_repo_root()),
+        ],
+    )
+    if result.returncode != 0 or not output_path.is_file():
+        _append_warning(tmpdir, "Codex combine failed; filing the pre-combine OOS batch.")
+        return text
+    combined = output_path.read_text(encoding="utf-8", errors="replace")
+    if not _valid_combined_output(combined, original_count):
+        _append_warning(tmpdir, "Codex combine output was invalid; filing the pre-combine OOS batch.")
+        return text
+    return combined
+
+
+def _wrap_oos_body(body: str, *, reviewer: str, phase: str, vote: str) -> str:
+    return (
+        "## Out-of-Scope Observation\n\n"
+        f"**Surfaced by**: {reviewer or 'N/A'}\n"
+        f"**Phase**: {phase or 'implement'}\n"
+        f"**Vote tally**: {vote or 'N/A'}\n\n"
+        "## Description\n\n"
+        f"{body.rstrip()}\n\n"
+        "---\n"
+        "*This issue was automatically created by the larch `/implement` workflow from an out-of-scope observation surfaced during the workflow.*\n"
+    )
+
+
+def _body_file_for_item(tmpdir: Path, item_index: int, fields: dict[str, str]) -> Path:
+    raw_path = Path(fields.get(f"ITEM_{item_index}_BODY_FILE", ""))
+    body = raw_path.read_text(encoding="utf-8", errors="replace") if raw_path.is_file() else ""
+    body = file_oos._sanitize_public_text(body)  # pyright: ignore[reportPrivateUsage]
+    reviewer = file_oos._sanitize_public_text(fields.get(f"ITEM_{item_index}_REVIEWER", ""))  # pyright: ignore[reportPrivateUsage]
+    phase = file_oos._sanitize_public_text(fields.get(f"ITEM_{item_index}_PHASE", "implement"))  # pyright: ignore[reportPrivateUsage]
+    vote = file_oos._sanitize_public_text(fields.get(f"ITEM_{item_index}_VOTE_TALLY", "N/A"))  # pyright: ignore[reportPrivateUsage]
+    if reviewer or phase or vote:
+        body = _wrap_oos_body(body, reviewer=reviewer, phase=phase, vote=vote)
+    out = tmpdir / "oos-issue-bodies" / f"oos-body-{item_index}.txt"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(body, encoding="utf-8")
+    return out
+
+
+def _run_issue_batch(tmpdir: Path, combined: Path, *, repo: str, issue_number: str) -> BatchResult:
+    bodies_dir = tmpdir / "oos-issue-bodies"
+    bodies_dir.mkdir(parents=True, exist_ok=True)
+    sanitized_input = bodies_dir / "oos-combined-sanitized.md"
+    sanitized_input.write_text(file_oos._sanitize_public_text(combined.read_text(encoding="utf-8", errors="replace")), encoding="utf-8")  # pyright: ignore[reportPrivateUsage]
+
+    parsed = _run_cli(["issue", "parse-input", "--input-file", str(sanitized_input), "--output-dir", str(bodies_dir)])
+    if parsed.returncode != 0:
+        _append_tool_failure(tmpdir, "step-9a1-oos-file", "issue parse-input", parsed.returncode, parsed.stderr or parsed.stdout)
+        return BatchResult([], 1)
+    fields = _parse_kv(parsed.stdout)
+    total = int(fields.get("ITEMS_TOTAL", "0") or "0")
+    allocated = _run_cli(["issue", "allocate-candidates", "--total-items", str(total)], input_text="")
+    if allocated.returncode != 0:
+        _append_warning(tmpdir, "issue allocate-candidates failed open; continuing without preallocated candidates.")
+
+    filed: list[FiledIssue] = []
+    failures = 0
+    for item_index in range(1, total + 1):
+        title = file_oos._sanitize_public_text(fields.get(f"ITEM_{item_index}_TITLE", ""))  # pyright: ignore[reportPrivateUsage]
+        body_file = _body_file_for_item(tmpdir, item_index, fields)
+        args = [
+            "issue",
+            "create-one",
+            "--title",
+            title,
+            "--title-prefix",
+            "[OOS]",
+            "--body-file",
+            str(body_file),
+        ]
+        if repo:
+            args.extend(["--repo", repo])
+        created = _run_cli(args)
+        kv = _parse_kv(created.stdout)
+        if created.returncode != 0 or kv.get("ISSUE_FAILED") == "true":
+            failures += 1
+            continue
+        url = kv.get("ISSUE_URL") or kv.get(f"ISSUE_{item_index}_URL") or kv.get("ISSUE_DUPLICATE_OF_URL") or kv.get(f"ISSUE_{item_index}_DUPLICATE_OF_URL")
+        duplicate = bool(kv.get("ISSUE_DUPLICATE_OF_URL") or kv.get(f"ISSUE_{item_index}_DUPLICATE_OF_URL"))
+        if url:
+            filed.append(FiledIssue(kv.get("ISSUE_TITLE") or title, url, duplicate))
+        number = kv.get("ISSUE_NUMBER") or ""
+        if issue_number and number.isdigit():
+            _ = _run_cli(["issue", "add-blocked-by", "--client-issue", number, "--blocker-issue", issue_number, *([] if not repo else ["--repo", repo])])
+    return BatchResult(filed, failures)
+
+
+def _write_sentinel(tmpdir: Path, filed: list[FiledIssue]) -> None:
+    lines = ["| OOS title | Issue | URL |", "|---|---|---|"]
+    for issue in filed:
+        number = issue.url.rsplit("/", 1)[-1]
+        lines.append(f"| {issue.title} | #{number} | {issue.url} |")
+    lines.append("")
+    lines.append(f"- **Filed**: {len(filed)}")
+    (tmpdir / "oos-issues-created.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _write_oos_ndjson(tmpdir: Path, run_id: str, filed: list[FiledIssue], *, status: str = "Filed") -> Path:
+    run_dir = tmpdir / "larch-logs" / "implement" / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    path = run_dir / "oos-issues.ndjson"
+    records: list[str] = []
+    for issue in filed:
+        body = f"## Accepted / Out-of-Scope Observations\n\n- **Disposition**: {status}\n- **Filed URL**: {issue.url}\n- **Title**: {issue.title}"
+        record = {"phase": "implement", "step": "9a.1", "category": "OOS", "body": file_oos._sanitize_public_text(body)}  # pyright: ignore[reportPrivateUsage]
+        records.append(json.dumps(record, separators=(",", ":")))
+    path.write_text(("\n".join(records) + "\n") if records else "", encoding="utf-8")
+    return path
+
+
+def _write_run_statistics(tmpdir: Path, run_id: str, filed_count: int) -> Path:
+    path = tmpdir / "larch-logs" / "implement" / run_id / "run-statistics.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"Run {run_id}: {filed_count} OOS issue(s) filed.\n", encoding="utf-8")
+    return path
+
+
+def _stamp_manifest(tmpdir: Path, run_id: str, *, value: bool) -> bool:
+    manifest = tmpdir / "larch-logs" / "implement" / run_id / "manifest.json"
+    if not manifest.is_file():
+        return False
+    result = _run_cli(
+        [
+            "run-log",
+            "manifest",
+            "--log-root",
+            str(tmpdir / "larch-logs"),
+            "--skill",
+            "implement",
+            "--run-id",
+            run_id,
+            "--field",
+            f"steps_ran.step9a1={'true' if value else 'false'}",
+        ],
+    )
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "manifest update failed").strip()
+        raise RuntimeError(f"run-log manifest steps_ran.step9a1 update failed: {detail[:300]}")
+    return True
+
+
+def _file(args: argparse.Namespace) -> tuple[int, dict[str, object]]:
+    tmpdir = Path(args.implement_tmpdir)
+    state = _read_kv_file(tmpdir / "ship-pr-state.sh")
+    state = state | {k: v for k, v in {"REPO": args.repo or "", "ISSUE_NUMBER": str(args.issue_number or "")}.items() if v}
+    run_id = _run_id(tmpdir, state)
+    repo = str(args.repo or state.get("REPO", ""))
+    issue_number = str(args.issue_number or state.get("ISSUE_NUMBER", ""))
+    forked = _bool(state.get("FORKED_TARGET", "false"))
+    repo_unavailable = _bool(state.get("REPO_UNAVAILABLE", "false"))
+    security_sidecar = tmpdir / "security-oos-observations.md"
+    if security_sidecar.is_file() and security_sidecar.stat().st_size > 0:
+        msg = "security-routed OOS requires private SECURITY.md disposition before public OOS filing"
+        _append_tool_failure(tmpdir, "step-9a1-oos-file", "oos file", 2, msg)
+        return 2, {"status": "security_sidecar_present", "accepted_count": 0, "filed_count": 0, "deduplicated_count": 0, "urls": [], "run_statistics_written": False, "step9a1_stamped": False}
+
+    blocks, already = _working_batch(tmpdir)
+    accepted_count = len(blocks) + len(already)
+    sentinel = _sentinel_urls(tmpdir)
+    if sentinel:
+        filed = sentinel
+        _write_oos_ndjson(tmpdir, run_id, filed, status="Recovered from sentinel")
+        stats = _write_run_statistics(tmpdir, run_id, len(filed))
+        stamped = _stamp_manifest(tmpdir, run_id, value=True)
+        return 0, {"status": "idempotent", "accepted_count": accepted_count, "filed_count": len(filed), "deduplicated_count": len(filed), "urls": [issue.url for issue in filed], "run_statistics_written": stats.is_file(), "step9a1_stamped": stamped}
+
+    if not blocks:
+        filed = already
+        if filed:
+            _write_oos_ndjson(tmpdir, run_id, filed, status="Already filed")
+        stats = _write_run_statistics(tmpdir, run_id, len(filed))
+        stamped = _stamp_manifest(tmpdir, run_id, value=bool(filed))
+        return 0, {"status": "empty" if not filed else "already_filed", "accepted_count": accepted_count, "filed_count": len(filed), "deduplicated_count": len(filed), "urls": [issue.url for issue in filed], "run_statistics_written": stats.is_file(), "step9a1_stamped": stamped}
+
+    if forked or repo_unavailable:
+        status = "Skipped — repo unavailable" if repo_unavailable else "Skipped — forked target"
+        filed = [FiledIssue(block.title, f"skipped://oos/{index}") for index, block in enumerate(blocks, start=1)]
+        _write_oos_ndjson(tmpdir, run_id, filed, status=status)
+        stats = _write_run_statistics(tmpdir, run_id, 0)
+        stamped = _stamp_manifest(tmpdir, run_id, value=True)
+        return 0, {"status": "skipped", "accepted_count": accepted_count, "filed_count": 0, "deduplicated_count": 0, "urls": [], "run_statistics_written": stats.is_file(), "step9a1_stamped": stamped}
+
+    combined_text = _maybe_combine_with_codex(tmpdir, _render_blocks(blocks), codex_timeout=int(args.codex_timeout))
+    combined = tmpdir / "oos-combined.md"
+    combined.write_text(combined_text, encoding="utf-8")
+    try:
+        file_oos.issue_cap(combined)
+    except (OSError, RuntimeError, ValueError) as exc:
+        _append_tool_failure(tmpdir, "step-9a1-oos-file", "oos issue-cap", 1, str(exc))
+        return 1, {"status": "issue_cap_failed", "accepted_count": accepted_count, "filed_count": 0, "deduplicated_count": 0, "urls": [], "run_statistics_written": False, "step9a1_stamped": False}
+    deps = tmpdir / "oos-intra-batch-deps.tsv"
+    try:
+        deps.write_text("".join(f"{left}\t{right}\n" for left, right in file_oos.file_conflict_deps(combined)), encoding="utf-8")
+    except OSError as exc:
+        _append_warning(tmpdir, f"file-conflict pre-pass failed; continuing without intra-batch dependencies: {exc}")
+    batch = _run_issue_batch(tmpdir, combined, repo=repo, issue_number=issue_number)
+    if batch.failures:
+        _append_tool_failure(tmpdir, "step-9a1-oos-file", "issue create-one", 1, f"ISSUES_FAILED={batch.failures}")
+        return 1, {"status": "issue_batch_failed", "accepted_count": accepted_count, "filed_count": len(batch.filed), "deduplicated_count": len([issue for issue in batch.filed if issue.duplicate]), "urls": [issue.url for issue in batch.filed], "run_statistics_written": False, "step9a1_stamped": False}
+    filed = [*already, *batch.filed]
+    _write_sentinel(tmpdir, filed)
+    _write_oos_ndjson(tmpdir, run_id, filed)
+    stats = _write_run_statistics(tmpdir, run_id, len(filed))
+    stamped = _stamp_manifest(tmpdir, run_id, value=True)
+    return 0, {"status": "filed", "accepted_count": accepted_count, "filed_count": len(filed), "deduplicated_count": len([issue for issue in filed if issue.duplicate]), "urls": [issue.url for issue in filed], "run_statistics_written": stats.is_file(), "step9a1_stamped": stamped}
+
+
+def cmd_file(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py oos file")
+    parser.add_argument("--implement-tmpdir", required=True)
+    parser.add_argument("--repo", default="")
+    parser.add_argument("--issue-number", default="")
+    parser.add_argument("--codex-timeout", default="300")
+    try:
+        args = parser.parse_args(argv)
+        rc, payload = _file(args)
+    except (OSError, RuntimeError, ValueError) as exc:
+        rc = 1
+        payload = {"status": "error", "error": str(exc), "accepted_count": 0, "filed_count": 0, "deduplicated_count": 0, "urls": [], "run_statistics_written": False, "step9a1_stamped": False}
+    print(json.dumps(payload, separators=(",", ":")))
+    return rc
+
+
+if __name__ == "__main__":
+    raise SystemExit(cmd_file())

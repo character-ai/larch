@@ -1,8 +1,10 @@
 # Step 9a.1 OOS Pipeline Procedure
 
-**Consumer**: `/implement` Step 8+ OOS checkpoint: the bash Exit 0 `OOS_PENDING=true` branch, the **OOS checkpoint** block, and the Python `needs_user_reason=oos-filing` dispatch after ship steps 1–7.
+**Consumer**: `/implement` Step 8+ OOS checkpoint on the bash path: the Exit 0 `OOS_PENDING=true` branch and the **OOS checkpoint** block. Python accepted-OOS filing is owned by `python/cli.py oos file` before `step-8-ship.sh`; Python `needs_user_reason=oos-filing` is reserved for the security sidecar pre-PR stall in `python/ship.py`.
 
-**Contract**: Step 9a.1 owns `oos-issues` larch-log evidence on every branch, including sentinel recovery and all-already-filed design batches. `run-statistics` is owned exclusively by the post-checkpoint Step 8+ block after `python/cli.py oos disposition-checkpoint` exits 0; on sentinel recovery or all-already-filed, NEVER #5 applies only to the `oos-issues` half, not `run-statistics`.
+**Path note**: executable steps 1–7 below are bash-path instructions for the `OOS_PENDING=true` checkpoint. Do not load this procedure for Python accepted-OOS filing.
+
+**Contract**: Step 9a.1 owns `oos-issues` larch-log evidence on the bash path, including sentinel recovery and all-already-filed design batches. On the bash path, `run-statistics` is owned by the post-checkpoint Step 8+ block after `python/cli.py oos disposition-checkpoint` exits 0; on sentinel recovery or all-already-filed, NEVER #5 applies only to the `oos-issues` half, not `run-statistics`. On the Python path, `python/cli.py oos file` writes both `oos-issues.ndjson` and `run-statistics.md` pre-ship.
 
 **When to load**: MANDATORY immediately before executing the full Step 9a.1 procedure (steps 1–7). Do not load outside that checkpoint.
 

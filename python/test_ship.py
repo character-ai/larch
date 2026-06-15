@@ -2473,11 +2473,17 @@ def test_oos_pending_exits_with_filing_reason_when_accepted_oos_present(
         "### OOS_1: Some finding\nSome body.\n",
         encoding="utf-8",
     )
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(
+        ship.pr, "ensure_pr",
+        lambda *_a, **_k: (_ for _ in ()).throw(ShipError("past-oos-check")),
+    )
 
     result = ship.run_ship(_ctx(tmp_path), runner=RecordingRunner(), cwd=str(tmp_path))
 
-    assert result.outcome is Outcome.NEEDS_USER_INPUT
-    assert result.needs_user_reason == "oos-filing"
+    assert result.outcome is Outcome.STALLED
+    assert result.needs_user_reason == ""
+    assert "past-oos-check" in result.detail
 
 
 def test_oos_pending_exits_with_filing_reason_when_security_sidecar_only(
