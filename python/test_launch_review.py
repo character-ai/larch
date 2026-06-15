@@ -1088,6 +1088,7 @@ def test_cursor_preexisting_untracked_baseline_stays_clean(tmp_path: Path, monke
         return agents.RunExternalAgentResult(0, out)
 
     monkeypatch.chdir(repo)
+    monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
     monkeypatch.setattr(agents, "cursor_auth_preflight", cursor_auth_ok)
     monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: None)
     monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
@@ -1116,6 +1117,7 @@ def test_cursor_reviewer_untracked_yields_dirty_sidecar(tmp_path: Path, monkeypa
     (repo / "preexisting.txt").write_text("baseline\n", encoding="utf-8")
     out = tmp_path / "out.txt"
     monkeypatch.chdir(repo)
+    monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
     baseline = agents._review_capture_cursor_dirty_baseline(out)
     (repo / "reviewer-new.txt").write_text("reviewer\n", encoding="utf-8")
     agents._review_write_cursor_dirty_tree_from_baseline(out, baseline)
@@ -1124,6 +1126,25 @@ def test_cursor_reviewer_untracked_yields_dirty_sidecar(tmp_path: Path, monkeypa
     new_untracked = out.with_suffix(out.suffix + ".dirty-tree.new-untracked-paths")
     assert new_untracked.is_file()
     assert b"reviewer-new.txt" in new_untracked.read_bytes()
+
+
+def test_cursor_dirty_tree_resolves_consumer_repo_from_non_git_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Regression for #4452: when the review subprocess CWD is the plugin cache dir
+    # (not a git repo), the cursor dirty-tree path must resolve the consumer repo via
+    # CLAUDE_PROJECT_DIR instead of reporting STATUS=unknown / git-status-failed.
+    consumer = tmp_path / "consumer"
+    consumer.mkdir()
+    _init_git_repo(consumer)
+    plugin_cache = tmp_path / "plugin-cache"
+    plugin_cache.mkdir()
+    out = tmp_path / "out.txt"
+    monkeypatch.chdir(plugin_cache)
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(consumer))
+    baseline = agents._review_capture_cursor_dirty_baseline(out)
+    agents._review_write_cursor_dirty_tree_from_baseline(out, baseline)
+    dirty = out.with_suffix(out.suffix + ".dirty-tree").read_text(encoding="utf-8")
+    assert "STATUS=clean" in dirty
+    assert "git-status-failed" not in dirty
 
 
 def test_cursor_empty_result_retries_with_lock_when_enabled(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -82,7 +82,7 @@ def test_bad_baseline_path_status_unknown() -> None:
 def test_baseline_rejects_bad_sidecar_path_without_writing(monkeypatch, tmp_path) -> None:
     calls: list[list[str]] = []
 
-    def fake_run_bytes(argv: list[str]) -> tuple[int, bytes]:
+    def fake_run_bytes(argv: list[str], **_kwargs: object) -> tuple[int, bytes]:
         calls.append(argv)
         return 0, b""
 
@@ -95,7 +95,7 @@ def test_baseline_rejects_bad_sidecar_path_without_writing(monkeypatch, tmp_path
 
 
 def test_baseline_main_bad_sidecar_emits_reason_and_does_not_write(monkeypatch, tmp_path, capsys) -> None:
-    def fake_run_bytes(_argv: list[str]) -> tuple[int, bytes]:
+    def fake_run_bytes(_argv: list[str], **_kwargs: object) -> tuple[int, bytes]:
         return 0, b""
 
     monkeypatch.setattr(dirty_tree, "_run_bytes", fake_run_bytes)  # pyright: ignore[reportPrivateUsage]
@@ -107,7 +107,7 @@ def test_baseline_main_bad_sidecar_emits_reason_and_does_not_write(monkeypatch, 
 
 
 def test_checkpoint_dirty(monkeypatch) -> None:
-    def fake_run_bytes(_argv: list[str]) -> tuple[int, bytes]:
+    def fake_run_bytes(_argv: list[str], **_kwargs: object) -> tuple[int, bytes]:
         return 0, b" M python/dirty_tree.py\n"
 
     monkeypatch.setattr(dirty_tree, "_run_bytes", fake_run_bytes)  # pyright: ignore[reportPrivateUsage]
@@ -117,7 +117,7 @@ def test_checkpoint_dirty(monkeypatch) -> None:
 
 
 def test_checkpoint_git_failure(monkeypatch) -> None:
-    def fake_run_bytes(_argv: list[str]) -> tuple[int, bytes]:
+    def fake_run_bytes(_argv: list[str], **_kwargs: object) -> tuple[int, bytes]:
         return 128, b""
 
     monkeypatch.setattr(dirty_tree, "_run_bytes", fake_run_bytes)  # pyright: ignore[reportPrivateUsage]
@@ -127,7 +127,7 @@ def test_checkpoint_git_failure(monkeypatch) -> None:
 
 
 def test_baseline_clean_missing_baseline_without_untracked(monkeypatch, tmp_path) -> None:
-    def fake_run_bytes(argv: list[str]) -> tuple[int, bytes]:
+    def fake_run_bytes(argv: list[str], **_kwargs: object) -> tuple[int, bytes]:
         _ = argv
         return 0, b""
 
@@ -138,7 +138,7 @@ def test_baseline_clean_missing_baseline_without_untracked(monkeypatch, tmp_path
 
 
 def test_baseline_missing_with_untracked_is_ambiguous(monkeypatch, tmp_path) -> None:
-    def fake_run_bytes(argv: list[str]) -> tuple[int, bytes]:
+    def fake_run_bytes(argv: list[str], **_kwargs: object) -> tuple[int, bytes]:
         if argv[:2] == ["git", "ls-files"]:
             return 0, b"new.txt\0"
         return 0, b""
@@ -150,7 +150,7 @@ def test_baseline_missing_with_untracked_is_ambiguous(monkeypatch, tmp_path) -> 
 
 
 def test_baseline_missing_with_untracked_still_writes_tracked_sidecar(monkeypatch, tmp_path) -> None:
-    def fake_run_bytes(argv: list[str]) -> tuple[int, bytes]:
+    def fake_run_bytes(argv: list[str], **_kwargs: object) -> tuple[int, bytes]:
         if argv[:4] == ["git", "diff", "--name-only", "--cached"]:
             return 0, b"python/test_dirty_tree.py\0"
         if argv[:3] == ["git", "diff", "--name-only"]:
@@ -173,7 +173,7 @@ def test_baseline_dirty_writes_sidecar_paths(monkeypatch, tmp_path) -> None:
     baseline = tmp_path / "baseline.z"
     baseline.write_bytes(b"old.txt\0")
 
-    def fake_run_bytes(argv: list[str]) -> tuple[int, bytes]:
+    def fake_run_bytes(argv: list[str], **_kwargs: object) -> tuple[int, bytes]:
         if argv[:4] == ["git", "diff", "--name-only", "--cached"]:
             return 0, b"python/test_dirty_tree.py\0"
         if argv[:3] == ["git", "diff", "--name-only"]:
@@ -193,7 +193,7 @@ def test_baseline_dirty_writes_sidecar_paths(monkeypatch, tmp_path) -> None:
 
 
 def test_baseline_git_failure(monkeypatch, tmp_path) -> None:
-    def fake_run_bytes(argv: list[str]) -> tuple[int, bytes]:
+    def fake_run_bytes(argv: list[str], **_kwargs: object) -> tuple[int, bytes]:
         if argv[:3] == ["git", "diff", "--name-only"]:
             return 128, b""
         return 0, b""
@@ -222,3 +222,51 @@ def test_checkpoint_main_disables_inherited_quiet(monkeypatch, capsys) -> None:
     assert dirty_tree.checkpoint_main([]) == 0
     assert os.environ["LARCH_QUIET_DISABLE"] == "1"
     assert "STATUS=clean" in capsys.readouterr().out
+
+
+def test_baseline_forwards_cwd_to_every_git_call(monkeypatch, tmp_path) -> None:
+    seen_cwds: list[str | None] = []
+
+    def fake_run_bytes(argv: list[str], cwd: str | None = None) -> tuple[int, bytes]:
+        _ = argv
+        seen_cwds.append(cwd)
+        return 0, b""
+
+    monkeypatch.setattr(dirty_tree, "_run_bytes", fake_run_bytes)  # pyright: ignore[reportPrivateUsage]
+    lines = dirty_tree.baseline(baseline_path=str(tmp_path / "missing.z"), cwd="/consumer/repo")
+    assert "STATUS=clean" in lines
+    # status + diff + diff --cached + ls-files all run in the consumer repo, not the process CWD.
+    assert seen_cwds == ["/consumer/repo", "/consumer/repo", "/consumer/repo", "/consumer/repo"]
+
+
+def test_checkpoint_forwards_cwd_to_run_bytes(monkeypatch) -> None:
+    seen_cwds: list[str | None] = []
+
+    def fake_run_bytes(argv: list[str], cwd: str | None = None) -> tuple[int, bytes]:
+        _ = argv
+        seen_cwds.append(cwd)
+        return 0, b""
+
+    monkeypatch.setattr(dirty_tree, "_run_bytes", fake_run_bytes)  # pyright: ignore[reportPrivateUsage]
+    lines = dirty_tree.checkpoint(cwd="/consumer/repo")
+    assert "STATUS=clean" in lines
+    assert seen_cwds == ["/consumer/repo"]
+
+
+def test_run_bytes_forwards_cwd_to_subprocess(monkeypatch, tmp_path) -> None:
+    captured: dict[str, object] = {}
+
+    class _Completed:
+        returncode = 0
+        stdout = b"out"
+
+    def fake_run(argv: list[str], **kwargs: object) -> _Completed:
+        captured["argv"] = argv
+        captured["cwd"] = kwargs.get("cwd")
+        return _Completed()
+
+    monkeypatch.setattr(dirty_tree.subprocess, "run", fake_run)
+    rc, out = dirty_tree._run_bytes(["git", "status", "--porcelain"], cwd=str(tmp_path))  # pyright: ignore[reportPrivateUsage]
+    assert rc == 0
+    assert out == b"out"
+    assert captured["cwd"] == str(tmp_path)

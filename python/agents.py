@@ -3303,12 +3303,14 @@ def _review_capture_cursor_dirty_baseline(output: Path) -> Path:
     ):
         with contextlib.suppress(FileNotFoundError):
             stale.unlink()
-    git.snapshot_untracked(proc, str(baseline), nul=True)
+    workdir = _resolve_review_codex_workdir(str(Path.cwd()))
+    git.snapshot_untracked(proc, str(baseline), nul=True, cwd=workdir)
     return baseline
 
 
 def _review_write_cursor_dirty_tree_from_baseline(output: Path, baseline: Path) -> None:
-    lines = dirty_tree.baseline(baseline_path=str(baseline), sidecar=str(output.with_suffix(output.suffix + ".dirty-tree")))
+    workdir = _resolve_review_codex_workdir(str(Path.cwd()))
+    lines = dirty_tree.baseline(baseline_path=str(baseline), sidecar=str(output.with_suffix(output.suffix + ".dirty-tree")), cwd=workdir)
     _write(output.with_suffix(output.suffix + ".dirty-tree"), "\n".join(lines) + "\n")
 
 
