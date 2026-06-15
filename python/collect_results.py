@@ -15,7 +15,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Sequence
 
-import agents
 import logging_util
 import retry
 import review_dispatch
@@ -35,6 +34,13 @@ _MIN_TOOL_ARGC = 2
 _EXIT_OUTPUT_EMPTY = 4
 _EXIT_VALIDATION_CURSOR_EMPTY = 5
 _MIN_WAIT_PARTS = 2
+_COLLECTOR_NS_STRONG_HEADER = (
+    "IMPORTANT: Your previous response was not structured correctly. "
+    "You MUST output findings in the exact format your original prompt requires, "
+    "or the literal NO_ISSUES_FOUND if no issues exist. "
+    "Do NOT write narrative, process descriptions, or reading logs. "
+    "Begin your response directly with the format your prompt demands.\n\n"
+)
 
 
 @dataclass(frozen=True)
@@ -133,6 +139,17 @@ def _diagnostic(message: str) -> None:
 
 def _emit(text: str) -> None:
     logging_util.emit(text)
+
+
+def _validate_positive_int(raw: str, flag: str) -> int | None:
+    if not raw or not raw.isdigit():
+        print(f"Error: {flag} value must be a positive integer, got '{raw}'", file=sys.stderr)
+        return None
+    value = int(raw, 10)
+    if value < 1:
+        print(f"Error: {flag} value must be a positive integer, got '{raw}'", file=sys.stderr)
+        return None
+    return value
 
 
 def _parse_meta(meta_path: str | Path) -> RetryMeta:
@@ -257,7 +274,7 @@ def first_pass_sidecar_path(output: str) -> str:
 def preserve_and_publish_ns_retry(orig_output: str, retry_output: str, retry_label: str) -> bool:
     first_pass = first_pass_sidecar_path(orig_output)
     try:
-        shutil.copyfile(orig_output, first_pass)
+        _ = shutil.copyfile(orig_output, first_pass)
         _diagnostic(f"ns-retry: first-pass content preserved at {Path(first_pass).name}")
     except OSError:
         _diagnostic(
@@ -270,8 +287,8 @@ def preserve_and_publish_ns_retry(orig_output: str, retry_output: str, retry_lab
     try:
         fd, publish_tmp = tempfile.mkstemp(prefix=f".{orig_path.name}.ns-retry.", dir=str(orig_path.parent))
         os.close(fd)
-        shutil.copyfile(retry_output, publish_tmp)
-        Path(publish_tmp).replace(orig_path)
+        _ = shutil.copyfile(retry_output, publish_tmp)
+        _ = Path(publish_tmp).replace(orig_path)
         _diagnostic(
             f"ns-retry: published retry content to {orig_path.name}; "
             f"retry artifact retained at {Path(retry_output).name}"
@@ -372,7 +389,7 @@ def _env_without_test_hooks() -> dict[str, str]:
         "LARCH_TEST_TRAP_AFTER_INNER_DONE",
         "RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX",
     ):
-        env.pop(key, None)
+        _ = env.pop(key, None)
     return env
 
 
@@ -385,9 +402,14 @@ def _parse_json_string_array(raw: str) -> tuple[list[str] | None, str]:
         obj = json.loads(raw)
     except json.JSONDecodeError:
         return None, "malformed CMD_JSON"
-    if not isinstance(obj, list) or not obj or not all(isinstance(item, str) for item in obj):
+    if not isinstance(obj, list) or not obj:
         return None, "malformed CMD_JSON"
-    return list(obj), ""
+    items: list[str] = []
+    for item in obj:
+        if not isinstance(item, str):
+            return None, "malformed CMD_JSON"
+        items.append(item)
+    return items, ""
 
 
 def _launch_cmd_json_retry(
@@ -424,7 +446,7 @@ def _launch_cmd_json_retry(
         _mark_retry_metadata_invalid(records, plan.index, plan.orig_output, "Retry metadata invalid: STDERR_SINK contains ..")
         return False
     if strong_prompt and cmd:
-        cmd[-1] = agents._COLLECTOR_NS_STRONG_HEADER + cmd[-1]  # noqa: SLF001 - shared collector contract constant
+        cmd[-1] = _COLLECTOR_NS_STRONG_HEADER + cmd[-1]
     args = [
         sys.executable,
         str(PY_CLI),
@@ -477,9 +499,15 @@ def _build_codex_exec_retry_args(plan: RetryPlan, meta: RetryMeta, records: list
     except json.JSONDecodeError:
         _mark_retry_metadata_invalid(records, plan.index, plan.orig_output, "Retry metadata invalid: OUTER_LAUNCHER_ADD_DIRS_JSON malformed")
         return None
-    if not isinstance(add_dirs_obj, list) or not all(isinstance(item, str) for item in add_dirs_obj):
+    if not isinstance(add_dirs_obj, list):
         _mark_retry_metadata_invalid(records, plan.index, plan.orig_output, "Retry metadata invalid: OUTER_LAUNCHER_ADD_DIRS_JSON malformed")
         return None
+    add_dirs: list[str] = []
+    for item in add_dirs_obj:
+        if not isinstance(item, str):
+            _mark_retry_metadata_invalid(records, plan.index, plan.orig_output, "Retry metadata invalid: OUTER_LAUNCHER_ADD_DIRS_JSON malformed")
+            return None
+        add_dirs.append(item)
     args = [
         "--output",
         plan.retry_output,
@@ -498,7 +526,7 @@ def _build_codex_exec_retry_args(plan: RetryPlan, meta: RetryMeta, records: list
     ]
     if meta.outer_launcher_with_effort == "true":
         args.append("--with-effort")
-    for add_dir in add_dirs_obj:
+    for add_dir in add_dirs:
         if add_dir:
             args.extend(["--add-dir", add_dir])
     return args
@@ -613,7 +641,7 @@ def _launch_retry_plan(plan: RetryPlan, records: list[CollectorRecord], *, stron
             os.close(fd)
             try:
                 original = Path(meta.outer_launcher_prompt_file).read_text(encoding="utf-8", errors="replace")
-                Path(temp_prompt).write_text(agents._COLLECTOR_NS_STRONG_HEADER + original, encoding="utf-8")  # noqa: SLF001
+                _ = Path(temp_prompt).write_text(_COLLECTOR_NS_STRONG_HEADER + original, encoding="utf-8")
             except OSError:
                 with contextlib.suppress(FileNotFoundError):
                     Path(temp_prompt).unlink()
@@ -647,7 +675,7 @@ def _wait_retry_plans(plans: Sequence[RetryPlan]) -> None:
         proc = plan.process
         if proc is not None:
             with contextlib.suppress(Exception):
-                proc.wait(timeout=0)
+                _ = proc.wait(timeout=0)
 
 
 def _retry_failure_result(records: list[CollectorRecord], plan: RetryPlan) -> None:
@@ -823,7 +851,7 @@ def _apply_ns_retry_results(records: list[CollectorRecord], plans: Sequence[Retr
                 continue
             final_sidecar = f"{plan.orig_output}.{Path(sidecar).suffix.lstrip('.')}"
             with contextlib.suppress(OSError):
-                shutil.copyfile(sidecar, final_sidecar)
+                _ = shutil.copyfile(sidecar, final_sidecar)
                 sidecar = final_sidecar
             if _classify_cursor_response(plan.orig_output):
                 records[plan.index] = CollectorRecord(plan.orig_output, entry_tool, _STATUS_CURSOR_EMPTY, "0", failure_reason="cursor narration-only / degraded backend response (structured ns-retry)")
@@ -872,7 +900,7 @@ def resolve_collector_stderr_tail_file(reviewer_file: str) -> str:
             os.close(fd)
             rendered = review_dispatch.render_failed_agent_stderr_tail(launch_stderr)
             if rendered:
-                Path(tmp_tail).write_text(rendered, encoding="utf-8")
+                _ = Path(tmp_tail).write_text(rendered, encoding="utf-8")
                 return tmp_tail
             with contextlib.suppress(FileNotFoundError):
                 Path(tmp_tail).unlink()
@@ -1130,7 +1158,7 @@ def _parse_args(argv: Sequence[str]) -> CollectorOptions | int:
     if not timeout_raw:
         print("collect-results: --timeout is required", file=sys.stderr)
         return 1
-    timeout = review_dispatch._validate_positive_int(timeout_raw, "--timeout")  # noqa: SLF001 - wait-reviewers parity
+    timeout = _validate_positive_int(timeout_raw, "--timeout")
     if timeout is None:
         return 1
     if paths_file and outputs:

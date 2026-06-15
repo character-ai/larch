@@ -38,7 +38,7 @@ def _parse_blocks(stdout: str) -> list[dict[str, str]]:
 
 
 def _write_done(path: Path, code: str = "0\n") -> None:
-    path.with_suffix(path.suffix + ".done").write_text(code, encoding="utf-8")
+    _ = path.with_suffix(path.suffix + ".done").write_text(code, encoding="utf-8")
 
 
 def _write_meta(path: Path, *, tool: str = "cursor", timeout: str = "2", cmd: list[str] | None = None, capture_stdout_only: bool = True) -> None:
@@ -51,7 +51,7 @@ def _write_meta(path: Path, *, tool: str = "cursor", timeout: str = "2", cmd: li
     ]
     if cmd is not None:
         lines.append(f"CMD_JSON={json.dumps(cmd, separators=(',', ':'))}")
-    path.with_suffix(path.suffix + ".meta").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    _ = path.with_suffix(path.suffix + ".meta").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def test_arg_validation_precedes_quiet(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -72,11 +72,11 @@ def test_ok_timeout_duplicate_basename_and_paths_file(capsys: pytest.CaptureFixt
     b_dir.mkdir()
     out_a = a_dir / "same.txt"
     out_b = b_dir / "same.txt"
-    out_a.write_text("NO_ISSUES_FOUND\n", encoding="utf-8")
-    out_b.write_text("will time out\n", encoding="utf-8")
+    _ = out_a.write_text("NO_ISSUES_FOUND\n", encoding="utf-8")
+    _ = out_b.write_text("will time out\n", encoding="utf-8")
     _write_done(out_a)
     paths_file = tmp_path / "paths.txt"
-    paths_file.write_text(f"{out_a}\n\n{out_b}\n", encoding="utf-8")
+    _ = paths_file.write_text(f"{out_a}\n\n{out_b}\n", encoding="utf-8")
 
     assert collect_results.collect_results_main(["--timeout", "1", "--paths-file", str(paths_file)]) == 0
     blocks = _parse_blocks(capsys.readouterr().out)
@@ -90,7 +90,7 @@ def test_ok_timeout_duplicate_basename_and_paths_file(capsys: pytest.CaptureFixt
 def test_paths_file_errors(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _reset(monkeypatch)
     empty = tmp_path / "empty.txt"
-    empty.write_text(" \n\t\n", encoding="utf-8")
+    _ = empty.write_text(" \n\t\n", encoding="utf-8")
     assert collect_results.collect_results_main(["--timeout", "1", "--paths-file", str(empty)]) == 1
     assert "paths-file contains no entries" in capsys.readouterr().err
     out = tmp_path / "out.txt"
@@ -103,14 +103,14 @@ def test_retry_success_and_metadata_fail_closed(capsys: pytest.CaptureFixture[st
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     cursor = bin_dir / "cursor"
-    cursor.write_text("#!/usr/bin/env bash\nprintf 'NO_ISSUES_FOUND\\n'\n", encoding="utf-8")
+    _ = cursor.write_text("#!/usr/bin/env bash\nprintf 'NO_ISSUES_FOUND\\n'\n", encoding="utf-8")
     cursor.chmod(0o755)
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}")
 
     ok_out = tmp_path / "cursor-ok.txt"
     bad_out = tmp_path / "cursor-bad.txt"
-    ok_out.write_text("", encoding="utf-8")
-    bad_out.write_text("", encoding="utf-8")
+    _ = ok_out.write_text("", encoding="utf-8")
+    _ = bad_out.write_text("", encoding="utf-8")
     _write_done(ok_out)
     _write_done(bad_out)
     _write_meta(ok_out, cmd=[str(cursor), "agent", "--workspace", str(tmp_path), "retry prompt"])
@@ -130,17 +130,17 @@ def test_transient_retry_requires_diag(capsys: pytest.CaptureFixture[str], monke
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     cursor = bin_dir / "cursor"
-    cursor.write_text("#!/usr/bin/env bash\nprintf 'NO_ISSUES_FOUND\\n'\n", encoding="utf-8")
+    _ = cursor.write_text("#!/usr/bin/env bash\nprintf 'NO_ISSUES_FOUND\\n'\n", encoding="utf-8")
     cursor.chmod(0o755)
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}")
 
     transient = tmp_path / "cursor-transient.txt"
     non_diag = tmp_path / "cursor-no-diag.txt"
     for output in (transient, non_diag):
-        output.write_text("", encoding="utf-8")
+        _ = output.write_text("", encoding="utf-8")
         _write_done(output, "1\n")
         _write_meta(output, cmd=[str(cursor), "agent", "--workspace", str(tmp_path), "retry prompt"])
-    transient.with_suffix(transient.suffix + ".diag").write_text("Could not resolve host: example.invalid\n", encoding="utf-8")
+    _ = transient.with_suffix(transient.suffix + ".diag").write_text("Could not resolve host: example.invalid\n", encoding="utf-8")
 
     assert collect_results.collect_results_main(["--timeout", "2", str(transient), str(non_diag)]) == 0
     blocks = _parse_blocks(capsys.readouterr().out)
@@ -152,14 +152,14 @@ def test_transient_retry_requires_diag(capsys: pytest.CaptureFixture[str], monke
 def test_substantive_structured_summary_and_cursor_response(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _reset(monkeypatch)
     structured = tmp_path / "cursor-structured.txt"
-    structured.write_text(
+    _ = structured.write_text(
         "schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix\n"
         "1\tin_scope\tImportant\tcorrectness\tfoo.sh:7\tbad branch\tinput fails\tadd guard\n",
         encoding="utf-8",
     )
     _write_done(structured)
     cursor_empty = tmp_path / "cursor-empty.txt"
-    cursor_empty.write_text("CURSOR_DEGRADED_RESPONSE\n", encoding="utf-8")
+    _ = cursor_empty.write_text("CURSOR_DEGRADED_RESPONSE\n", encoding="utf-8")
     _write_done(cursor_empty)
 
     assert collect_results.collect_results_main(["--timeout", "1", "--structured-reviewer-validation", str(structured), str(cursor_empty)]) == 0
@@ -181,12 +181,12 @@ def test_non_substantive_retry_publishes_first_pass(capsys: pytest.CaptureFixtur
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     cursor = bin_dir / "cursor"
-    cursor.write_text("#!/usr/bin/env bash\nprintf 'NO_ISSUES_FOUND\\n'\n", encoding="utf-8")
+    _ = cursor.write_text("#!/usr/bin/env bash\nprintf 'NO_ISSUES_FOUND\\n'\n", encoding="utf-8")
     cursor.chmod(0o755)
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}")
     output = tmp_path / "cursor-specialist-output.txt"
     first_pass = "Reading files and preparing a response.\n"
-    output.write_text(first_pass, encoding="utf-8")
+    _ = output.write_text(first_pass, encoding="utf-8")
     _write_done(output)
     _write_meta(output, cmd=[str(cursor), "agent", "--workspace", str(tmp_path), "retry prompt"])
 
@@ -203,12 +203,12 @@ def test_stderr_tail_resolution_prefers_retry_and_dedupes(capsys: pytest.Capture
     _reset(monkeypatch)
     a = tmp_path / "cursor-a.txt"
     b = tmp_path / "cursor-b.txt"
-    a.write_text("failed\n", encoding="utf-8")
-    b.write_text("failed\n", encoding="utf-8")
+    _ = a.write_text("failed\n", encoding="utf-8")
+    _ = b.write_text("failed\n", encoding="utf-8")
     _write_done(a, "7\n")
     _write_done(b, "7\n")
-    (tmp_path / "cursor-a-retry.txt.stderr-tail").write_text("same failure at /tmp/path/123 line 9\n", encoding="utf-8")
-    b.with_suffix(b.suffix + ".stderr-tail").write_text("same failure at /tmp/path/456 line 10\n", encoding="utf-8")
+    _ = (tmp_path / "cursor-a-retry.txt.stderr-tail").write_text("same failure at /tmp/path/123 line 9\n", encoding="utf-8")
+    _ = b.with_suffix(b.suffix + ".stderr-tail").write_text("same failure at /tmp/path/456 line 10\n", encoding="utf-8")
 
     assert collect_results.resolve_collector_stderr_tail_file(str(a)).endswith("cursor-a-retry.txt.stderr-tail")
     assert collect_results.collect_results_main(["--timeout", "1", str(a), str(b)]) == 0
