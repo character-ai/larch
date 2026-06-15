@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Sourced by design-step3-review.sh for pre-launch plan-review failures.
 # shellcheck shell=bash
+set -euo pipefail
 
 _step3_review_write_prelaunch_failure() {
   local _result_env="$DESIGN_TMPDIR/.step3-review-result.env"
