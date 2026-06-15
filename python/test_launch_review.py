@@ -884,6 +884,83 @@ def test_codex_launch_resolves_workdir_from_claude_project_dir(
     assert str(consumer.resolve()) in _codex_trust_config_from_cmd(cmd)
 
 
+def _cursor_review_launch_cmd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    out = tmp_path / "review-out.txt"
+    captured: dict[str, list[str]] = {}
+
+    def cursor_auth_ok(*, caller: str = "agent cursor-auth-preflight") -> agents.AuthVerdict:
+        _ = caller
+        return agents.AuthVerdict(ok=True, rc=0, message="")
+
+    def setup_cursor_config_dir() -> tuple[Path, str | None]:
+        return (tmp_path / "cfg", None)
+
+    def cleanup_cursor_config_dir(_cfg_tmp: Path, _old_cfg: str | None) -> None:
+        return None
+
+    def capture_cursor_dirty_baseline(_output: Path) -> Path:
+        return tmp_path / "baseline"
+
+    def resolve_model_args_ok(_tool: str, *, with_effort: bool = False, default_model: str = "") -> agents.ModelArgResult:
+        _ = (with_effort, default_model)
+        return agents.ModelArgResult(())
+
+    def run_with_retries_capture(**kwargs: object) -> tuple[agents.RunExternalAgentResult, int, int]:
+        cmd = kwargs["cmd"]
+        if not isinstance(cmd, list):
+            raise TypeError("cmd must be a list")
+        cmd_values = cast("list[object]", cmd)
+        captured["cmd"] = [str(value) for value in cmd_values]
+        out.write_text("ok\n", encoding="utf-8")
+        return (agents.RunExternalAgentResult(0, out), 1, 1)
+
+    def noop(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(agents, "cursor_auth_preflight", cursor_auth_ok)
+    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: None)
+    monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
+    monkeypatch.setattr(agents, "_review_setup_cursor_config_dir", setup_cursor_config_dir)
+    monkeypatch.setattr(agents, "_review_cleanup_cursor_config_dir", cleanup_cursor_config_dir)
+    monkeypatch.setattr(agents, "_review_capture_cursor_dirty_baseline", capture_cursor_dirty_baseline)
+    monkeypatch.setattr(agents, "resolve_model_args", resolve_model_args_ok)
+    monkeypatch.setattr(agents, "_review_run_with_retries", run_with_retries_capture)
+    monkeypatch.setattr(agents, "_review_append_outer_meta", noop)
+    monkeypatch.setattr(agents, "_review_run_test_trap_after_inner_done_if_enabled", lambda: None)
+    monkeypatch.setattr(agents, "_review_cursor_postprocess", noop)
+    monkeypatch.setattr(agents, "_review_write_cursor_dirty_tree_from_baseline", noop)
+    monkeypatch.setattr(agents, "_promote_inner_done", noop)
+    args = argparse.Namespace(
+        output=str(out),
+        timeout="2",
+        risk="",
+        stderr_sink="",
+        timing_task_kind="cursor-review",
+        token_budget_cap="",
+    )
+
+    assert agents._review_launch_cursor(args, "hi") == 0
+    return captured["cmd"]
+
+
+def _cursor_workspace_from_cmd(cmd: list[str]) -> Path:
+    return Path(cmd[cmd.index("--workspace") + 1])
+
+
+def test_cursor_review_resolves_workspace_to_git_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = tmp_path / "consumer"
+    repo.mkdir()
+    _init_git_repo(repo)
+    nested = repo / "nested"
+    nested.mkdir()
+    monkeypatch.chdir(nested)
+    monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+
+    cmd = _cursor_review_launch_cmd(tmp_path, monkeypatch)
+
+    assert _cursor_workspace_from_cmd(cmd).resolve() == repo.resolve()
+
+
 def test_codex_model_args_preflight_exit_one_with_unknown_dirty_tree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     args = _codex_review_args(tmp_path)
 
