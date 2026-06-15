@@ -18,6 +18,6 @@ Invoked by `test-trailer-helpers.sh` before its final PASS line. No standalone M
 
 ## `parse` line 1 (`block_len`)
 
-Line 1 of `parse` output is the physical metadata-block line count from the upward scan (`metadata_trailer_lines = block_len` in `check-plan-size.sh`), **not** the count of distinct present keys. Duplicate strict-trailer lines (e.g. two `diff_added:` before `diff_lines:`) inflate `block_len` independently of last-match-wins on lines 2–4.
+Line 1 of `parse` output is the physical metadata-block line count from the upward scan (`metadata_trailer_lines = block_len` in `python/cli.py plan check-size`), **not** the count of distinct present keys. Duplicate strict-trailer lines (e.g. two `diff_added:` before `diff_lines:`) inflate `block_len` independently of last-match-wins on lines 2–4.
 
 Normative awk contract: [`lib-plan-optional-trailers.md`](lib-plan-optional-trailers.md). Keep harness fixtures in sync when that contract changes.

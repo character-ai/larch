@@ -138,6 +138,9 @@ run_direct_relevant_targets() {
                 append_target_once test-design-stage-terminal-state
                 append_target_once test-design-structure
                 ;;
+            skills/design/scripts/design-clarify.sh|skills/design/scripts/design-clarify.md|skills/design/scripts/test-design-clarify.sh|skills/design/scripts/test-design-clarify.md)
+                append_target_once test-design-clarify
+                ;;
         esac
         case "$f" in
             skills/design/SKILL.md|skills/design/references/*.md)
