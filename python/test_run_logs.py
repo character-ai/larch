@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import subprocess
 from collections.abc import Mapping, Sequence
 from io import StringIO
 from pathlib import Path
@@ -444,6 +445,71 @@ def test_publish_run_tree_copies_run_id_pathspec(
     )
     assert rel == "larch-logs/implement/run-abc"
     assert (repo / rel / "token-report-refresh.json").is_file()
+
+
+def test_is_placeholder_run_id_matches_non_unique_labels() -> None:
+    assert run_logs.is_placeholder_run_id("run-1")
+    assert run_logs.is_placeholder_run_id("run-2")
+    assert run_logs.is_placeholder_run_id("run-10")
+    # Unique run-ids (UUIDs, tmpdir basenames, the "run-abc" test label) are kept.
+    assert not run_logs.is_placeholder_run_id("run-abc")
+    assert not run_logs.is_placeholder_run_id("9F1C2D3E-1234-5678-9ABC-DEF012345678")
+    assert not run_logs.is_placeholder_run_id("larch-implement-AbC123")
+    assert not run_logs.is_placeholder_run_id("run")
+    assert not run_logs.is_placeholder_run_id("")
+
+
+def test_publish_run_tree_refuses_placeholder_run_id(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    # A non-unique placeholder run-id (run-1) must never be copied into the repo
+    # (issue #4397) — the shared path collides across concurrent runs and clones.
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-1\n", encoding="utf-8")
+    run_dir = tmp_path / "larch-logs" / "implement" / "run-1"
+    run_dir.mkdir(parents=True)
+    _ = (run_dir / "token-report-refresh.json").write_text("{}", encoding="utf-8")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    monkeypatch.setattr(run_logs, "_REPO_ROOT", repo)
+    rel = run_logs._publish_run_tree_to_repo(  # pyright: ignore[reportPrivateUsage]
+        _ctx(tmp_path, str(state)),
+        tmp_path / "larch-logs",
+        cwd=str(repo),
+    )
+    assert rel == ""
+    assert not (repo / "larch-logs" / "implement" / "run-1").exists()
+
+
+def _init_git_repo_on_feature(repo: Path) -> None:
+    for argv in (
+        ["git", "init", "-q"],
+        ["git", "checkout", "-q", "-b", "feature"],
+        ["git", "config", "user.email", "t@example.com"],
+        ["git", "config", "user.name", "t"],
+    ):
+        _ = subprocess.run(argv, cwd=repo, check=True, capture_output=True)
+
+
+def test_commit_run_refuses_placeholder_run_id(tmp_path: Path) -> None:
+    # `run-log commit` (the design + implement repo-commit chokepoint) must
+    # no-op for a placeholder run-id rather than commit a shared directory.
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_git_repo_on_feature(repo)
+    log_root = tmp_path / "larch-logs"
+    src = log_root / "implement" / "run-1"
+    src.mkdir(parents=True)
+    _ = (src / "manifest.json").write_text("{}", encoding="utf-8")
+    result = run_logs._commit_run(  # pyright: ignore[reportPrivateUsage]
+        log_root,
+        "implement",
+        "run-1",
+        cwd=str(repo),
+    )
+    assert result.returncode == 0
+    assert not (repo / "larch-logs" / "implement" / "run-1").exists()
 
 
 def test_refresh_only_sidecars_not_written_to_batch_dir(tmp_path: Path) -> None:

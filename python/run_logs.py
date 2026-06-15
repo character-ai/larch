@@ -42,6 +42,13 @@ _TERMINAL_OUTCOME_SUFFIX = re.compile(
 
 _SLUG_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 _QUIET_LOG_RE = re.compile(r"^larch-quiet-[A-Za-z0-9._-]+-[0-9]+\.log$")
+# Non-unique placeholder run-ids (e.g. ``run-1``). Real runs name their log
+# directory after the unique session run-id (a UUID, or the session tmpdir
+# basename). A ``run-<N>`` value is a stale/degraded fallback that collides
+# across concurrent runs and clones, so the same shared path lands in every
+# PR and breaks rebases (issue #4397). Such a value must never name a run-log
+# directory that is copied into the consumer repo.
+_PLACEHOLDER_RUN_ID_RE = re.compile(r"^run-[0-9]+$")
 
 
 @dataclass(frozen=True)
@@ -430,6 +437,24 @@ def validate_run_id_slug(run_id: str) -> bool:
     if not run_id or ".." in run_id or "/" in run_id or "\\" in run_id:
         return False
     return _SLUG_RE.match(run_id) is not None
+
+
+def is_placeholder_run_id(run_id: str) -> bool:
+    """True for non-unique placeholder run-ids (e.g. ``run-1``).
+
+    Such a value must never name a run-log directory that is committed into the
+    consumer repo: it is shared across concurrent runs and clones, so the same
+    path lands in every PR and breaks rebases (issue #4397).
+    """
+    return bool(_PLACEHOLDER_RUN_ID_RE.match(run_id))
+
+
+def _warn_placeholder_run_id(run_id: str) -> None:
+    print(
+        f"**⚠ run-log: refusing to commit non-unique placeholder run-id {run_id!r}; "
+        "expected a unique session run-id (issue #4397). Skipping run-log commit.**",
+        file=sys.stderr,
+    )
 
 
 def read_state_kv(state_file: str | None, key: str) -> str:
@@ -1426,6 +1451,9 @@ def _publish_run_tree_to_repo(
     run_id = effective_run_id(ctx)
     if not validate_run_id_slug(run_id):
         return ""
+    if is_placeholder_run_id(run_id):
+        _warn_placeholder_run_id(run_id)
+        return ""
     src = log_root / "implement" / run_id
     if not src.is_dir():
         return ""
@@ -1786,6 +1814,9 @@ def _commit_run(log_root: Path, skill: str, run_id: str, *, cwd: str | None) -> 
             f"refusing larch-log commit on default branch {branch.stdout.strip()}\n",
             0.0,
         )
+    if is_placeholder_run_id(run_id):
+        _warn_placeholder_run_id(run_id)
+        return CommandResult(("true",), 0, "", "", 0.0)
     manifest = _manifest_cli_path(log_root, skill, run_id)
     if manifest.is_file():
         with suppress(Exception):
