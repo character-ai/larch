@@ -39,6 +39,14 @@ Trim `$ARGUMENTS` mentally. If it is empty or whitespace-only, print:
 
 Stop before creating any temp directory.
 
+**Security triage (mandatory).** After validating input, assess whether `$ARGUMENTS` describes a **security vulnerability** (exploitable weakness, credential exposure, auth bypass, injection, RCE, etc.) rather than ordinary functional breakage. If the report is security-sensitive, or if you are uncertain whether it is security-sensitive, **do not proceed**. Print:
+
+```text
+**⚠ /bug: this report appears to describe a security vulnerability. Do not file a public GitHub issue. Report it responsibly per SECURITY.md (email disclosure). Aborting before /issue.**
+```
+
+Stop before creating any temp directory. See `${CLAUDE_PLUGIN_ROOT}/SECURITY.md` § Reporting a Vulnerability.
+
 <!-- step:2 - Create temp directory -->
 ## Step 2 - Create temp directory
 
@@ -46,7 +54,10 @@ Create a canonical `/tmp` scratch directory before writing any artifacts:
 
 ```bash
 BUG_TMPDIR=$(mktemp -d "/tmp/claude-bug-XXXXXX")
+printf 'BUG_TMPDIR=%s\n' "$BUG_TMPDIR"
 ```
+
+Parse the Bash output for `BUG_TMPDIR=<path>` and bind that path for all later steps. Bash tool calls do not preserve shell variables across fences; retain the parsed value mentally (mirror `/research` Step 0 parsing of `SESSION_TMPDIR`).
 
 All scratch files and the `/issue` sentinel file must stay under `$BUG_TMPDIR`. This placement keeps the skill-scoped `Write` hook on the allowed side of its canonical `/tmp` policy.
 
@@ -62,8 +73,12 @@ Investigate the report inline. Prefer direct reads and targeted search:
 
 Do not edit the repo. Do not run mutating commands. If running a reproduction would be expensive, destructive, or dependent on unavailable services, describe the best reproduction scenario instead of forcing it.
 
+If investigation reveals a security vulnerability rather than ordinary functional breakage, abort before Step 4 using the same security message and `SECURITY.md` guidance from Step 1. Remove `$BUG_TMPDIR` if it exists, then stop.
+
 <!-- step:4 - Compose issue body -->
 ## Step 4 - Compose issue body
+
+**Sanitize before writing.** The body will be filed as a **public** GitHub issue. Before `Write`, apply compose-time redaction to every section (especially **Evidence** and **Original report**): secrets / API keys / OAuth / JWT / passwords / certificates → `<REDACTED-TOKEN>`; internal hostnames / URLs / private IPs → `<INTERNAL-URL>`; PII (emails, names, account IDs linked to a real user) → `<REDACTED-PII>`. Follow `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/execution-issues-tracking.md` and `${CLAUDE_PLUGIN_ROOT}/SECURITY.md` outbound-redaction rules. `/issue`'s shell scrubber covers token-shaped secrets only; prompt-level sanitization is required and `/issue` redaction is defense-in-depth, not sufficient alone.
 
 Use `Write` to create `$BUG_TMPDIR/bug-issue-body.md` with exactly these ten `##` headings, in this order:
 
@@ -114,7 +129,7 @@ The body should give `/design` enough context to produce a good implementation p
 <!-- step:5 - Invoke issue -->
 ## Step 5 - Invoke issue
 
-**Security triage (mandatory).** Before any `/issue` Skill-tool call, assess whether the bug report or investigation results describe a **security vulnerability** (exploitable weakness, credential exposure, auth bypass, injection, RCE, etc.) rather than ordinary functional breakage. If the report is security-sensitive, or if you are uncertain whether it is security-sensitive, **do not call** `/issue`. Print:
+**Security re-check (mandatory, fail-closed).** Immediately before any `/issue` Skill-tool call, re-assess whether the bug report or investigation results describe a **security vulnerability** (exploitable weakness, credential exposure, auth bypass, injection, RCE, etc.) rather than ordinary functional breakage. If the report is security-sensitive, or if you are uncertain whether it is security-sensitive, **do not call** `/issue`. Print:
 
 ```text
 **⚠ /bug: this report appears to describe a security vulnerability. Do not file a public GitHub issue. Report it responsibly per SECURITY.md (email disclosure). Aborting before /issue.**
