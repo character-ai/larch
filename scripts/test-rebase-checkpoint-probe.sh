@@ -23,6 +23,55 @@ stage_with_stubs() {
     chmod +x "$d/rebase-checkpoint-probe.sh"
 }
 
+write_phantom_clean_stubs() {
+    local d="$1"
+    cat >"$d/check-phantom-dirty.sh" <<'EOF'
+#!/usr/bin/env bash
+echo STATUS=clean
+exit 0
+EOF
+    mkdir -p "$TMPROOT/python"
+    cat >"$TMPROOT/python/cli.py" <<'EOF'
+import sys
+if sys.argv[1:2] == ["redact"]:
+    sys.stdout.write(sys.stdin.read())
+    raise SystemExit(0)
+raise SystemExit(0)
+EOF
+    chmod +x "$d"/*.sh
+}
+
+make_conflict_repo() {
+    local repo="$1" path dir base_blob ours_blob theirs_blob zero
+    shift
+    mkdir -p "$repo"
+    git -C "$repo" init -q
+    git -C "$repo" config user.email t@e
+    git -C "$repo" config user.name T
+    printf 'base\n' >"$repo/README.md"
+    git -C "$repo" add README.md
+    git -C "$repo" commit -q -m init
+    zero=0000000000000000000000000000000000000000
+    while [ "$#" -gt 0 ]; do
+        path="$1"
+        shift
+        dir=${path%/*}
+        if [ "$dir" != "$path" ]; then
+            mkdir -p "$repo/$dir"
+        fi
+        base_blob=$(printf 'base %s\n' "$path" | git -C "$repo" hash-object -w --stdin)
+        ours_blob=$(printf 'ours %s\n' "$path" | git -C "$repo" hash-object -w --stdin)
+        theirs_blob=$(printf 'theirs %s\n' "$path" | git -C "$repo" hash-object -w --stdin)
+        printf 'worktree conflict %s\n' "$path" >"$repo/$path"
+        {
+            printf '0 %s\t%s\n' "$zero" "$path"
+            printf '100644 %s 1\t%s\n' "$base_blob" "$path"
+            printf '100644 %s 2\t%s\n' "$ours_blob" "$path"
+            printf '100644 %s 3\t%s\n' "$theirs_blob" "$path"
+        } | git -C "$repo" update-index --index-info
+    done
+}
+
 IMP_BASE="$TMPROOT/imp"
 mkdir -p "$IMP_BASE"
 touch "$IMP_BASE/untracked-baseline.z"
@@ -506,6 +555,217 @@ raise SystemExit(0)
 EOF
 chmod +x "$d"/*.sh
 bash -c "set -euo pipefail; source \"$d/lib-phantom-probe.sh\"; source \"$d/lib-phantom-probe.sh\"; IMPLEMENT_TMPDIR=\"$IMP_BASE\" \"$d/rebase-checkpoint-probe.sh\" z z" >/dev/null || fail "c16"
+
+# --- Case 17: larch-log-only conflict resolves and exits 0 ---
+repo="$TMPROOT/repo17"
+make_conflict_repo "$repo" 'larch-logs/implement/run-1/manifest.json'
+d="$TMPROOT/c17"
+stage_with_stubs "$d"
+cat >"$d/rebase-push.sh" <<'EOF'
+#!/usr/bin/env bash
+if [ "${1:-}" = "--continue" ]; then
+    echo CONTINUE_CALLED=true >"$(dirname "$0")/continue.called"
+    exit 0
+fi
+echo CONFLICT_FILES=larch-logs/implement/run-1/manifest.json
+exit 1
+EOF
+write_phantom_clean_stubs "$d"
+set +e
+out=$(cd "$repo" && IMPLEMENT_TMPDIR="$IMP_BASE" "$d/rebase-checkpoint-probe.sh" x y 2>&1)
+rc=$?
+set -e
+[ "$rc" = "0" ] || fail "case17 rc=$rc out=$out"
+echo "$out" | grep -Fq 'REBASE_OUTCOME=ok' || fail "case17 outcome"
+echo "$out" | grep -Fq 'ROUTE=continue' || fail "case17 route"
+echo "$out" | grep -Fq 'PHANTOM_STATUS=clean' || fail "case17 phantom"
+[ -f "$d/continue.called" ] || fail "case17 continue not called"
+remaining=$(git -C "$repo" diff --name-only --diff-filter=U)
+[ -z "$remaining" ] || fail "case17 unmerged=$remaining"
+
+# --- Case 18: consecutive larch-log-only conflicts loop internally ---
+repo="$TMPROOT/repo18"
+make_conflict_repo "$repo" \
+    'larch-logs/implement/run-1/manifest.json' \
+    'larch-logs/review/run-2/manifest.json'
+d="$TMPROOT/c18"
+stage_with_stubs "$d"
+cat >"$d/rebase-push.sh" <<'EOF'
+#!/usr/bin/env bash
+state="$(dirname "$0")/continue-count"
+if [ "${1:-}" = "--continue" ]; then
+    n=0
+    [ -f "$state" ] && n=$(cat "$state")
+    n=$((n + 1))
+    echo "$n" >"$state"
+    if [ "$n" -eq 1 ]; then
+        echo CONFLICT_FILES=larch-logs/review/run-2/manifest.json
+        exit 1
+    fi
+    exit 0
+fi
+echo CONFLICT_FILES=larch-logs/implement/run-1/manifest.json
+exit 1
+EOF
+write_phantom_clean_stubs "$d"
+set +e
+out=$(cd "$repo" && IMPLEMENT_TMPDIR="$IMP_BASE" "$d/rebase-checkpoint-probe.sh" x y 2>&1)
+rc=$?
+set -e
+[ "$rc" = "0" ] || fail "case18 rc=$rc out=$out"
+[ "$(cat "$d/continue-count")" = "2" ] || fail "case18 continue count"
+echo "$out" | grep -Fq 'REBASE_OUTCOME=ok' || fail "case18 outcome"
+echo "$out" | grep -Fq 'PHANTOM_STATUS=clean' || fail "case18 phantom"
+remaining=$(git -C "$repo" diff --name-only --diff-filter=U)
+[ -z "$remaining" ] || fail "case18 unmerged=$remaining"
+
+# --- Case 19: mixed conflict resolves trivial subset only ---
+repo="$TMPROOT/repo19"
+make_conflict_repo "$repo" \
+    'larch-logs/implement/run-1/manifest.json' \
+    'python/stall_recovery.py'
+d="$TMPROOT/c19"
+stage_with_stubs "$d"
+cat >"$d/rebase-push.sh" <<'EOF'
+#!/usr/bin/env bash
+if [ "${1:-}" = "--continue" ]; then
+    echo SHOULD_NOT_CONTINUE=true >"$(dirname "$0")/continue.called"
+    exit 0
+fi
+echo CONFLICT_FILES=larch-logs/implement/run-1/manifest.json,python/stall_recovery.py
+exit 1
+EOF
+write_phantom_clean_stubs "$d"
+set +e
+out=$(cd "$repo" && IMPLEMENT_TMPDIR="$IMP_BASE" "$d/rebase-checkpoint-probe.sh" x y 2>&1)
+rc=$?
+set -e
+[ "$rc" = "1" ] || fail "case19 rc=$rc out=$out"
+echo "$out" | grep -Fq 'REBASE_OUTCOME=conflict' || fail "case19 outcome"
+echo "$out" | grep -Fq 'CONFLICT_FILES=python/stall_recovery.py' || fail "case19 files"
+if echo "$out" | grep -Fq 'PHANTOM_STATUS'; then
+    fail "case19 phantom must not run"
+fi
+[ ! -f "$d/continue.called" ] || fail "case19 continue must not run"
+remaining=$(git -C "$repo" diff --name-only --diff-filter=U)
+[ "$remaining" = "python/stall_recovery.py" ] || fail "case19 unmerged=$remaining"
+
+# --- Case 20: trivial conflict followed by non-trivial continue conflict ---
+repo="$TMPROOT/repo20"
+make_conflict_repo "$repo" \
+    'larch-logs/implement/run-1/manifest.json' \
+    'agent-lint.toml'
+d="$TMPROOT/c20"
+stage_with_stubs "$d"
+cat >"$d/rebase-push.sh" <<'EOF'
+#!/usr/bin/env bash
+if [ "${1:-}" = "--continue" ]; then
+    echo CONFLICT_FILES=agent-lint.toml
+    exit 1
+fi
+echo CONFLICT_FILES=larch-logs/implement/run-1/manifest.json
+exit 1
+EOF
+write_phantom_clean_stubs "$d"
+set +e
+out=$(cd "$repo" && IMPLEMENT_TMPDIR="$IMP_BASE" "$d/rebase-checkpoint-probe.sh" x y 2>&1)
+rc=$?
+set -e
+[ "$rc" = "1" ] || fail "case20 rc=$rc out=$out"
+echo "$out" | grep -Fq 'CONFLICT_FILES=agent-lint.toml' || fail "case20 files"
+if echo "$out" | grep -Fq 'PHANTOM_STATUS'; then
+    fail "case20 phantom must not run"
+fi
+
+# --- Case 21: trivial conflict with continue failure ---
+repo="$TMPROOT/repo21"
+make_conflict_repo "$repo" 'larch-logs/implement/run-1/manifest.json'
+d="$TMPROOT/c21"
+stage_with_stubs "$d"
+cat >"$d/rebase-push.sh" <<'EOF'
+#!/usr/bin/env bash
+if [ "${1:-}" = "--continue" ]; then
+    echo REBASE_ERROR=continue-failed
+    exit 3
+fi
+echo CONFLICT_FILES=larch-logs/implement/run-1/manifest.json
+exit 1
+EOF
+write_phantom_clean_stubs "$d"
+set +e
+out=$(cd "$repo" && IMPLEMENT_TMPDIR="$IMP_BASE" "$d/rebase-checkpoint-probe.sh" x y 2>&1)
+rc=$?
+set -e
+[ "$rc" = "3" ] || fail "case21 rc=$rc out=$out"
+echo "$out" | grep -Fq 'REBASE_OUTCOME=failed' || fail "case21 failed"
+echo "$out" | grep -Fq 'REBASE_ERROR=continue-failed' || fail "case21 err"
+echo "$out" | grep -Fq 'ROUTE=bail' || fail "case21 route"
+
+# --- Case 22: resolve command failure re-derives CONFLICT_FILES ---
+repo="$TMPROOT/repo22"
+make_conflict_repo "$repo" \
+    'larch-logs/implement/run-1/one.json' \
+    'larch-logs/implement/run-1/two.json'
+d="$TMPROOT/c22"
+stage_with_stubs "$d"
+cat >"$d/rebase-push.sh" <<'EOF'
+#!/usr/bin/env bash
+echo CONFLICT_FILES=larch-logs/implement/run-1/one.json,larch-logs/implement/run-1/two.json
+exit 1
+EOF
+write_phantom_clean_stubs "$d"
+fakebin="$TMPROOT/fakegit22"
+mkdir -p "$fakebin"
+real_git=$(command -v git)
+cat >"$fakebin/git" <<EOF
+#!/usr/bin/env bash
+if [ "\$1" = "checkout" ] && [ "\$2" = "--ours" ] && [ "\$3" = "--" ] && [ "\$4" = "larch-logs/implement/run-1/two.json" ]; then
+    exit 42
+fi
+if [ "\$1" = "rm" ] && [ "\$2" = "-f" ] && [ "\$3" = "--" ] && [ "\$4" = "larch-logs/implement/run-1/two.json" ]; then
+    exit 42
+fi
+exec "$real_git" "\$@"
+EOF
+chmod +x "$fakebin/git"
+set +e
+out=$(cd "$repo" && PATH="$fakebin:$PATH" IMPLEMENT_TMPDIR="$IMP_BASE" "$d/rebase-checkpoint-probe.sh" x y 2>&1)
+rc=$?
+set -e
+[ "$rc" = "1" ] || fail "case22 rc=$rc out=$out"
+echo "$out" | grep -Fq 'CONFLICT_FILES=larch-logs/implement/run-1/two.json' || fail "case22 files"
+if echo "$out" | grep -Fq 'CONFLICT_FILES=larch-logs/implement/run-1/one.json,larch-logs/implement/run-1/two.json'; then
+    fail "case22 stale conflict list"
+fi
+
+# --- Case 23: empty CONFLICT_FILES on rc=1 skips loop ---
+repo="$TMPROOT/repo23"
+mkdir -p "$repo"
+git -C "$repo" init -q
+git -C "$repo" config user.email t@e
+git -C "$repo" config user.name T
+printf 'base\n' >"$repo/README.md"
+git -C "$repo" add README.md
+git -C "$repo" commit -q -m init
+d="$TMPROOT/c23"
+stage_with_stubs "$d"
+cat >"$d/rebase-push.sh" <<'EOF'
+#!/usr/bin/env bash
+if [ "${1:-}" = "--continue" ]; then
+    echo SHOULD_NOT_CONTINUE=true >"$(dirname "$0")/continue.called"
+    exit 0
+fi
+exit 1
+EOF
+write_phantom_clean_stubs "$d"
+set +e
+out=$(cd "$repo" && IMPLEMENT_TMPDIR="$IMP_BASE" "$d/rebase-checkpoint-probe.sh" x y 2>&1)
+rc=$?
+set -e
+[ "$rc" = "1" ] || fail "case23 rc=$rc out=$out"
+echo "$out" | grep -Fq 'REBASE_OUTCOME=conflict' || fail "case23 outcome"
+echo "$out" | grep -Fxq 'CONFLICT_FILES=' || fail "case23 empty files"
+[ ! -f "$d/continue.called" ] || fail "case23 continue must not run"
 
 echo "PASS: test-rebase-checkpoint-probe.sh"
 exit 0

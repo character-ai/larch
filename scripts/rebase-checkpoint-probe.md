@@ -25,13 +25,32 @@ Helpers resolve relative to `SCRIPT_DIR` (`dirname` of this script): `rebase-pus
 | 3 | Non-conflict rebase failure (`REBASE_OUTCOME=failed`, `ROUTE=bail`). |
 | other | Wrapped as `REBASE_OUTCOME=failed` with `REBASE_ERROR=unexpected-rc-<n>` and `ROUTE=bail` (FINDING_9) then **re-exits** with the original rc. |
 
+## Trivial-conflict pre-pass
+
+When `rebase-push.sh --keep-on-conflict` returns a conflict, this wrapper first
+checks whether every surfaced path is an auto-generated run-log artifact under
+`larch-logs/*`. Those paths are resolved by taking the rebase upstream/base side
+with `git checkout --ours`, then staging the result. If the upstream/base side
+deleted the file, the wrapper stages that deletion with `git rm -f`.
+
+The pre-pass stays internal to this wrapper:
+
+- Larch-log-only conflicts are resolved, then the wrapper runs
+  `rebase-push.sh --continue --no-push --keep-on-conflict` internally.
+- Consecutive larch-log-only conflicts are handled in the same loop.
+- Mixed conflict sets surface only the remaining non-trivial paths.
+- The phantom probe runs only after the rebase fully succeeds.
+
+The loop is capped at 50 iterations. If the cap is hit, the wrapper warns and
+falls back to the normal conflict route with the current conflict list.
+
 ## KV grammar (stdout)
 
 - Always (per path): `REBASE_OUTCOME=ok|skipped|conflict|failed`
 - Always (per path): `ROUTE=continue|conflict|bail`
 - Skip path: `SKIPPED_ALREADY_PUSHED=true` **before** `SKIPPED_ALREADY_FRESH=true` when both would apply (wrapper checks pushed first), followed by `ROUTE=continue`.
 - Success path: `REBASE_OUTCOME=ok`, followed by `ROUTE=continue`.
-- Conflict: `CONFLICT_FILES=<comma-list>` (from `rebase-push` stdout; defensive `git diff --name-only --diff-filter=U` fallback when missing), followed by `ROUTE=conflict`.
+- Conflict: `CONFLICT_FILES=<comma-list>` (from `rebase-push` stdout; defensive `git diff --name-only --diff-filter=U` fallback when missing; may contain only the non-trivial subset after larch-log conflicts were auto-resolved), followed by `ROUTE=conflict`.
 - Non-conflict failure: `REBASE_ERROR=<single-line sanitized message>`, followed by `ROUTE=bail`.
 - Unexpected rc: `REBASE_ERROR=unexpected-rc-<n>` (FINDING_9 discriminator for orchestrator bail copy), followed by `ROUTE=bail`.
 - After rc=0: phantom keys from `phantom_probe_with_warn` (`PHANTOM_STATUS`, optional `PHANTOM_REASON`, `PHANTOM_COUNT`, `PHANTOM_PATHS_FILE`, optional `PHANTOM_APPEND_WARN_ERROR`).
