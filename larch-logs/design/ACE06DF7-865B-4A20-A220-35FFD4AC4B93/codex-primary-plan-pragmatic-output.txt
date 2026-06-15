@@ -1,0 +1,10 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	correctness	python/rebase.py:188-213	Fallback sidecar freshness conflicts with path-only seen_token_records	After the proposed pre-clear, a second Codex or Cursor conflict-fix launch can write a fresh ${output}.token-record at the same path, but the existing seen set still contains that path from the first launch, so append-record skips the new usage and rebase token accounting remains partially dropped	When pre-clearing the expected fallback path, also discard that exact path from seen_token_records, and add a two-launch fallback test that proves both fresh sidecars are appended
+
+1. **[correctness] `python/rebase.py:188-213`**
+
+   **Concern:** The plan pre-clears `${output}.token-record`, but also keeps the path-only `seen_token_records` set unchanged.
+
+   **Breakage:** A later Codex or Cursor conflict-fix launch can write a fresh fallback sidecar at the same path. `ingest_launcher_token_sidecar` then skips `append-record` because the path is already in `seen`.
+
+   **Suggested revision:** After pre-clearing the fallback path, discard that path from `seen_token_records`. Add a focused two-launch fallback regression.

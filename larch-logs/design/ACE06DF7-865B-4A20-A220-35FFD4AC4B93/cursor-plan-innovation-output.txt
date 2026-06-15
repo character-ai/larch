@@ -1,0 +1,23 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	python/progress_report.py:518-551	CI/probe row filter omits basename normalization for ledger output column	The plan matches output basenames like ci.out and ci-fix-*.out but does not require Path(output).name before those checks. render-review-phase-detail.sh uses base(out). Ledger rows and tests can store full paths (see scripts/test-render-review-phase-detail.sh). Live inflight Gantt can still show CI/probe bars when only the dirname differs.	In the new filter helper, derive basename = Path(output_col).name when output_col else "" and run all output-basename predicates on basename. Add a regression row with a full-path ci-fix output.
+2	in_scope	important	correctness	python/ship.py:1656-1683	MAIN_ADVANCED split must not double-increment iteration	Current code groups MERGE_RESULT_CI_NOT_READY and MERGE_RESULT_MAIN_ADVANCED and does iteration += 1 once. The plan adds rebase_count += 1 and iteration += 1 on the MAIN_ADVANCED path but does not say to remove MAIN_ADVANCED from that shared handler. A nested fix can increment iteration twice per loop.	Give MAIN_ADVANCED its own elif before the CI_NOT_READY branch (or continue immediately after the rebase pass). Keep CI_NOT_READY-only logic in the remaining branch. Assert ITERATION increments by 1 in the new test.
+3	out_of_scope	latent	architecture	python/timing.py:20-40 scripts/render-review-phase-detail.sh:395-411	Item 4 fixes timing allow-list only; shell CI kind list stays duplicated	Item 4 notes shell list drift. timing.py will gain TIMING_CI_TASK_KINDS_ALLOWED while render-review-phase-detail.sh keeps a parallel awk list. Future kind additions can desync progress filtering from committed reports.	[OUT_OF_SCOPE] Later issue: single exported CI kind tuple plus one drift test shared by timing.py and render-review-phase-detail.sh.
+4	out_of_scope	latent	architecture	python/ci_monitor.py:148-150 python/ship.py:1654-1683	[SCOPE-REDUCTION] Upstream decide() could avoid merge when behind	ci_monitor.decide returns action=merge when status is pass and (not behind or not conflicted), so pass+behind+not-conflicted yields merge with goto_rebase=False. That is the root path to MAIN_ADVANCED. Reactive rebase in ship.py is issue-scoped but duplicates loop logic.	[OUT_OF_SCOPE] Evaluate tightening decide() to require not behind before merge; keep ship MAIN_ADVANCED handling as defense in depth only if needed.
+
+## 1. `progress_report.py` — basename normalization (correctness)
+
+The inflight filter should mirror `base(out)` in `scripts/render-review-phase-detail.sh`. `_derive_progress_label` already uses `Path(output).name`; the new CI/probe predicate should use the same normalization so full-path ledger rows are filtered.
+
+## 2. `ship.py` — avoid double `iteration` bump (correctness)
+
+Split `MERGE_RESULT_MAIN_ADVANCED` out of the shared `{CI_NOT_READY, MAIN_ADVANCED}` handler. The new rebase path already increments `iteration`; leaving MAIN_ADVANCED in the shared branch can add a second increment.
+
+## 3. [OUT_OF_SCOPE] Shell/Python CI kind drift (architecture)
+
+Item 4 adds `TIMING_CI_TASK_KINDS_ALLOWED` in Python but does not unify the awk list in `render-review-phase-detail.sh`. Worth a follow-up, not required for this fix set.
+
+## 4. [OUT_OF_SCOPE] [SCOPE-REDUCTION] `ci_monitor.decide()` upstream (architecture)
+
+Tightening `decide()` so `merge` is not returned when `behind` might be smaller than a ship-only rebase block. Issue #4302 scopes the ship fix; upstream change is an optional alternative.
+
+**Overall:** The plan matches all five issue items with focused, local changes. No retired bash ship paths. Rebase token parity follows `ci_monitor.py`. Research snippet fix matches `validation-phase.md`. The two in-scope items above are control-flow and parity details the implementer should nail during execution.
