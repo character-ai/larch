@@ -1740,8 +1740,7 @@ def _post_dispatch_forbidden_revert(
 
 
 def _coder_stderr_tail(run_dir: Path, log_name: str) -> str:
-    stem = log_name.removesuffix(".log") if log_name.endswith(".log") else log_name
-    candidate = run_dir / f"{stem}.stderr-tail"
+    candidate = run_dir / f"{log_name}.stderr-tail"
     if candidate.is_file() and candidate.stat().st_size > 0:
         return str(candidate)
     return ""

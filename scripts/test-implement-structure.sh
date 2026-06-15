@@ -296,7 +296,7 @@ for needle in [
         checks.append(f'stall-recovery.md missing {needle!r}')
 if 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" ship pr` with the Step 8+ argv' in stall_ref:
     checks.append('stall-recovery.md must not re-enter ship via direct python/cli.py prose')
-require(skill, 're-invoke `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh` per the selector', 'NEVER #13 default-path wrapper re-entry')
+require(skill, 'every Step 8+ re-entry goes through `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh` only', 'NEVER #13 default-path wrapper re-entry')
 for needle in [
     '_restore_finalize=false',
     'restore-finalize-state',
