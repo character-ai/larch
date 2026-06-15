@@ -26,6 +26,10 @@ Stall detected: channel=stdout time_since_last_progress=1s
   PID  %CPU ELAPSED STAT
 57997   0.0   00:01 S   
 Failed with exit code 124. Output size: 0 bytes.
+===== ci fixer codex-ci =====
+exit-code: 127
+STATUS=FAILED
+FAILURE_REASON=codex binary missing
 ===== ci fixer cursor-ci =====
 exit-code: 1
 STATUS=FAILED
@@ -38,10 +42,18 @@ FAILURE_REASON=model args failed: LARCH_CURSOR_MODEL must not contain POSIX [[:c
 exit-code: 127
 STATUS=FAILED
 FAILURE_REASON=codex binary missing
+===== ci fixer claude-ci =====
+exit-code: 1
+===== diag =====
+{"result":""}
 ===== ci fixer cursor-ci =====
 exit-code: 1
 STATUS=FAILED
 FAILURE_REASON=model args failed: LARCH_CURSOR_MODEL must not contain POSIX [[:cntrl:]] characters
+===== ci fixer claude-ci =====
+exit-code: 1
+===== diag =====
+{"result":""}
 ===== ci fixer cursor-ci =====
 exit-code: 1
 STATUS=FAILED
@@ -67,6 +79,11 @@ agent launch-cursor-ci: cursor-auth-preflight failed.
 exit-code: 1
 ===== diag =====
 {"result":""}
+===== ci fixer claude-ci =====
+exit-code: 1
+===== diag =====
+Malformed Claude CI JSON: Expecting value: line 1 column 1 (char 0)
+not-json
 ===== ci fixer cursor-ci =====
 exit-code: 1
 STATUS=FAILED
@@ -151,6 +168,10 @@ agent launch-cursor-ci: cursor-auth-preflight failed.
 exit-code: 1
 STATUS=FAILED
 FAILURE_REASON=model args failed: LARCH_CURSOR_MODEL must not contain POSIX [[:cntrl:]] characters
+===== ci fixer codex-ci =====
+exit-code: 127
+STATUS=FAILED
+FAILURE_REASON=codex binary missing
 ===== ci fixer claude-ci =====
 exit-code: 1
 ===== diag =====
@@ -189,6 +210,10 @@ exit-code: 1
 ===== diag =====
 Malformed Claude CI JSON: Expecting value: line 1 column 1 (char 0)
 not-json
+===== ci fixer cursor-ci =====
+exit-code: 1
+STATUS=FAILED
+FAILURE_REASON=model args failed: LARCH_CURSOR_MODEL must not contain POSIX [[:cntrl:]] characters
 ===== ci fixer cursor-ci =====
 exit-code: 1
 STATUS=FAILED
@@ -253,6 +278,11 @@ exit-code: 1
 ===== diag =====
 Malformed Claude CI JSON: Expecting value: line 1 column 1 (char 0)
 not-json
+===== ci fixer claude-ci =====
+exit-code: 1
+===== diag =====
+Malformed Claude CI JSON: Expecting value: line 1 column 1 (char 0)
+not-json
 ===== ci fixer cursor-ci =====
 exit-code: 124
 ===== diag =====
@@ -261,6 +291,19 @@ Stall detected: channel=stdout time_since_last_progress=1s
   PID  %CPU ELAPSED STAT
 88299   0.0   00:01 S   
 Failed with exit code 124. Output size: 0 bytes.
+===== ci fixer cursor-ci =====
+exit-code: 2
+===== diag =====
+agent launch-cursor-ci: cursor-auth-preflight failed.
+  CURSOR_API_KEY is unset/empty AND no `cursor-user` / `cursor-access-token`
+  keychain entry exists on this Darwin host. Cursor would otherwise emit
+  the cryptic `Security process exited with code: 45`.
+
+  See docs/installation-and-setup.md (Cursor section) for setup.
+
+  To fix, choose one:
+    (a) export CURSOR_API_KEY=<your-cursor-api-key>
+    (b) security delete-generic-password -a cursor-user 2>/dev/null; cursor login
 ===== ci fixer cursor-ci =====
 exit-code: 2
 ===== diag =====
@@ -295,6 +338,14 @@ agent launch-cursor-ci: cursor-auth-preflight failed.
   To fix, choose one:
     (a) export CURSOR_API_KEY=<your-cursor-api-key>
     (b) security delete-generic-password -a cursor-user 2>/dev/null; cursor login
+===== ci fixer claude-ci =====
+exit-code: 1
+===== diag =====
+{"result":""}
+===== ci fixer claude-ci =====
+exit-code: 1
+===== diag =====
+{"is_error":true,"result":"backend failed"}
 ===== ci fixer codex-ci =====
 exit-code: 127
 STATUS=FAILED
@@ -359,6 +410,27 @@ exit-code: 1
 ===== diag =====
 Malformed Claude CI JSON: Expecting value: line 1 column 1 (char 0)
 not-json
+===== ci fixer cursor-ci =====
+exit-code: 124
+===== diag =====
+Stall detected: channel=stdout time_since_last_progress=1s
+--- stall ps snapshot (target pid=59420) ---
+  PID  %CPU ELAPSED STAT
+59420   0.0   00:01 S   
+Failed with exit code 124. Output size: 0 bytes.
+===== ci fixer cursor-ci =====
+exit-code: 2
+===== diag =====
+agent launch-cursor-ci: cursor-auth-preflight failed.
+  CURSOR_API_KEY is unset/empty AND no `cursor-user` / `cursor-access-token`
+  keychain entry exists on this Darwin host. Cursor would otherwise emit
+  the cryptic `Security process exited with code: 45`.
+
+  See docs/installation-and-setup.md (Cursor section) for setup.
+
+  To fix, choose one:
+    (a) export CURSOR_API_KEY=<your-cursor-api-key>
+    (b) security delete-generic-password -a cursor-user 2>/dev/null; cursor login
 ===== ci fixer codex-ci =====
 exit-code: 127
 STATUS=FAILED
@@ -401,6 +473,10 @@ FAILURE_REASON=codex binary missing
 exit-code: 1
 STATUS=FAILED
 FAILURE_REASON=model args failed: LARCH_CURSOR_MODEL must not contain POSIX [[:cntrl:]] characters
+===== ci fixer claude-ci =====
+exit-code: 1
+===== diag =====
+{"result":""}
 ===== ci fixer cursor-ci =====
 exit-code: 1
 STATUS=FAILED
@@ -431,10 +507,22 @@ not-json
 exit-code: 1
 STATUS=FAILED
 FAILURE_REASON=model args failed: LARCH_CURSOR_MODEL must not contain POSIX [[:cntrl:]] characters
+===== ci fixer cursor-ci =====
+exit-code: 1
+STATUS=FAILED
+FAILURE_REASON=model args failed: LARCH_CURSOR_MODEL must not contain POSIX [[:cntrl:]] characters
 ===== ci fixer claude-ci =====
 exit-code: 1
 ===== diag =====
 {"is_error":true,"result":"backend failed"}
+===== ci fixer cursor-ci =====
+exit-code: 124
+===== diag =====
+Stall detected: channel=stdout time_since_last_progress=1s
+--- stall ps snapshot (target pid=61695) ---
+  PID  %CPU ELAPSED STAT
+61695   0.0   00:01 S   
+Failed with exit code 124. Output size: 0 bytes.
 ===== ci fixer codex-ci =====
 exit-code: 127
 STATUS=FAILED
@@ -509,6 +597,11 @@ agent launch-cursor-ci: cursor-auth-preflight failed.
 ===== ci fixer claude-ci =====
 exit-code: 1
 ===== diag =====
+Malformed Claude CI JSON: Expecting value: line 1 column 1 (char 0)
+not-json
+===== ci fixer claude-ci =====
+exit-code: 1
+===== diag =====
 {"result":""}
 ===== ci fixer claude-ci =====
 exit-code: 1
@@ -562,6 +655,10 @@ exit-code: 1
 Malformed Claude CI JSON: Expecting value: line 1 column 1 (char 0)
 not-json
 ===== ci fixer cursor-ci =====
+exit-code: 1
+STATUS=FAILED
+FAILURE_REASON=model args failed: LARCH_CURSOR_MODEL must not contain POSIX [[:cntrl:]] characters
+===== ci fixer cursor-ci =====
 exit-code: 2
 ===== diag =====
 agent launch-cursor-ci: cursor-auth-preflight failed.
@@ -665,6 +762,10 @@ FAILURE_REASON=model args failed: LARCH_CURSOR_MODEL must not contain POSIX [[:c
 ===== ci fixer claude-ci =====
 exit-code: 1
 ===== diag =====
+{"is_error":true,"result":"backend failed"}
+===== ci fixer claude-ci =====
+exit-code: 1
+===== diag =====
 Malformed Claude CI JSON: Expecting value: line 1 column 1 (char 0)
 not-json
 ===== ci fixer claude-ci =====
@@ -699,6 +800,14 @@ exit-code: 1
 Malformed Claude CI JSON: Expecting value: line 1 column 1 (char 0)
 not-json
 ===== ci fixer cursor-ci =====
+exit-code: 124
+===== diag =====
+Stall detected: channel=stdout time_since_last_progress=1s
+--- stall ps snapshot (target pid=58342) ---
+  PID  %CPU ELAPSED STAT
+58342   0.0   00:01 S   
+Failed with exit code 124. Output size: 0 bytes.
+===== ci fixer cursor-ci =====
 exit-code: 2
 ===== diag =====
 agent launch-cursor-ci: cursor-auth-preflight failed.
@@ -711,6 +820,14 @@ agent launch-cursor-ci: cursor-auth-preflight failed.
   To fix, choose one:
     (a) export CURSOR_API_KEY=<your-cursor-api-key>
     (b) security delete-generic-password -a cursor-user 2>/dev/null; cursor login
+===== ci fixer cursor-ci =====
+exit-code: 124
+===== diag =====
+Stall detected: channel=stdout time_since_last_progress=1s
+--- stall ps snapshot (target pid=56006) ---
+  PID  %CPU ELAPSED STAT
+56006   0.0   00:01 S   
+Failed with exit code 124. Output size: 0 bytes.
 ===== ci fixer claude-ci =====
 exit-code: 1
 ===== diag =====
@@ -795,6 +912,23 @@ agent launch-cursor-ci: cursor-auth-preflight failed.
   To fix, choose one:
     (a) export CURSOR_API_KEY=<your-cursor-api-key>
     (b) security delete-generic-password -a cursor-user 2>/dev/null; cursor login
+===== ci fixer cursor-ci =====
+exit-code: 2
+===== diag =====
+agent launch-cursor-ci: cursor-auth-preflight failed.
+  CURSOR_API_KEY is unset/empty AND no `cursor-user` / `cursor-access-token`
+  keychain entry exists on this Darwin host. Cursor would otherwise emit
+  the cryptic `Security process exited with code: 45`.
+
+  See docs/installation-and-setup.md (Cursor section) for setup.
+
+  To fix, choose one:
+    (a) export CURSOR_API_KEY=<your-cursor-api-key>
+    (b) security delete-generic-password -a cursor-user 2>/dev/null; cursor login
+===== ci fixer claude-ci =====
+exit-code: 1
+===== diag =====
+{"is_error":true,"result":"backend failed"}
 ===== ci fixer claude-ci =====
 exit-code: 1
 ===== diag =====
@@ -912,6 +1046,15 @@ exit-code: 1
 ===== diag =====
 Malformed Claude CI JSON: Expecting value: line 1 column 1 (char 0)
 not-json
+===== ci fixer claude-ci =====
+exit-code: 1
+===== diag =====
+Malformed Claude CI JSON: Expecting value: line 1 column 1 (char 0)
+not-json
+===== ci fixer claude-ci =====
+exit-code: 1
+===== diag =====
+{"result":""}
 ===== ci fixer cursor-ci =====
 exit-code: 124
 ===== diag =====
@@ -941,6 +1084,10 @@ not-json
 exit-code: 1
 STATUS=FAILED
 FAILURE_REASON=model args failed: LARCH_CURSOR_MODEL must not contain POSIX [[:cntrl:]] characters
+===== ci fixer codex-ci =====
+exit-code: 127
+STATUS=FAILED
+FAILURE_REASON=codex binary missing
 ===== ci fixer cursor-ci =====
 exit-code: 124
 ===== diag =====
@@ -990,6 +1137,10 @@ Failed with exit code 124. Output size: 0 bytes.
 exit-code: 1
 STATUS=FAILED
 FAILURE_REASON=model args failed: LARCH_CURSOR_MODEL must not contain POSIX [[:cntrl:]] characters
+===== ci fixer codex-ci =====
+exit-code: 127
+STATUS=FAILED
+FAILURE_REASON=codex binary missing
 ===== ci fixer claude-ci =====
 exit-code: 1
 ===== diag =====
@@ -1137,6 +1288,19 @@ exit-code: 1
 ===== diag =====
 Malformed Claude CI JSON: Expecting value: line 1 column 1 (char 0)
 not-json
+===== ci fixer cursor-ci =====
+exit-code: 2
+===== diag =====
+agent launch-cursor-ci: cursor-auth-preflight failed.
+  CURSOR_API_KEY is unset/empty AND no `cursor-user` / `cursor-access-token`
+  keychain entry exists on this Darwin host. Cursor would otherwise emit
+  the cryptic `Security process exited with code: 45`.
+
+  See docs/installation-and-setup.md (Cursor section) for setup.
+
+  To fix, choose one:
+    (a) export CURSOR_API_KEY=<your-cursor-api-key>
+    (b) security delete-generic-password -a cursor-user 2>/dev/null; cursor login
 ===== ci fixer claude-ci =====
 exit-code: 1
 ===== diag =====
@@ -1145,6 +1309,10 @@ exit-code: 1
 exit-code: 127
 STATUS=FAILED
 FAILURE_REASON=codex binary missing
+===== ci fixer claude-ci =====
+exit-code: 1
+===== diag =====
+{"is_error":true,"result":"backend failed"}
 ===== ci fixer claude-ci =====
 exit-code: 1
 ===== diag =====
@@ -1178,6 +1346,10 @@ FAILURE_REASON=model args failed: LARCH_CURSOR_MODEL must not contain POSIX [[:c
 ===== ci fixer claude-ci =====
 exit-code: 1
 ===== diag =====
+{"result":""}
+===== ci fixer claude-ci =====
+exit-code: 1
+===== diag =====
 {"is_error":true,"result":"backend failed"}
 ===== ci fixer claude-ci =====
 exit-code: 1
@@ -1201,6 +1373,10 @@ exit-code: 1
 ===== diag =====
 Malformed Claude CI JSON: Expecting value: line 1 column 1 (char 0)
 not-json
+===== ci fixer cursor-ci =====
+exit-code: 1
+STATUS=FAILED
+FAILURE_REASON=model args failed: LARCH_CURSOR_MODEL must not contain POSIX [[:cntrl:]] characters
 ===== ci fixer claude-ci =====
 exit-code: 1
 ===== diag =====
@@ -1239,6 +1415,10 @@ agent launch-cursor-ci: cursor-auth-preflight failed.
   To fix, choose one:
     (a) export CURSOR_API_KEY=<your-cursor-api-key>
     (b) security delete-generic-password -a cursor-user 2>/dev/null; cursor login
+===== ci fixer claude-ci =====
+exit-code: 1
+===== diag =====
+{"is_error":true,"result":"backend failed"}
 ===== ci fixer cursor-ci =====
 exit-code: 2
 ===== diag =====
@@ -1261,6 +1441,10 @@ exit-code: 1
 ===== diag =====
 Malformed Claude CI JSON: Expecting value: line 1 column 1 (char 0)
 not-json
+===== ci fixer claude-ci =====
+exit-code: 1
+===== diag =====
+{"is_error":true,"result":"backend failed"}
 ===== ci fixer codex-ci =====
 exit-code: 127
 STATUS=FAILED
@@ -1469,6 +1653,10 @@ FAILURE_REASON=model args failed: LARCH_CURSOR_MODEL must not contain POSIX [[:c
 exit-code: 1
 STATUS=FAILED
 FAILURE_REASON=model args failed: LARCH_CURSOR_MODEL must not contain POSIX [[:cntrl:]] characters
+===== ci fixer cursor-ci =====
+exit-code: 1
+STATUS=FAILED
+FAILURE_REASON=model args failed: LARCH_CURSOR_MODEL must not contain POSIX [[:cntrl:]] characters
 ===== ci fixer claude-ci =====
 exit-code: 1
 ===== diag =====
@@ -1480,6 +1668,18 @@ Stall detected: channel=stdout time_since_last_progress=1s
 --- stall ps snapshot (target pid=26540) ---
   PID  %CPU ELAPSED STAT
 26540   0.0   00:01 S   
+Failed with exit code 124. Output size: 0 bytes.
+===== ci fixer cursor-ci =====
+exit-code: 1
+STATUS=FAILED
+FAILURE_REASON=model args failed: LARCH_CURSOR_MODEL must not contain POSIX [[:cntrl:]] characters
+===== ci fixer cursor-ci =====
+exit-code: 124
+===== diag =====
+Stall detected: channel=stdout time_since_last_progress=1s
+--- stall ps snapshot (target pid=10993) ---
+  PID  %CPU ELAPSED STAT
+10993   0.0   00:01 S   
 Failed with exit code 124. Output size: 0 bytes.
 ===== ci fixer claude-ci =====
 exit-code: 1
@@ -1522,6 +1722,10 @@ agent launch-cursor-ci: cursor-auth-preflight failed.
   To fix, choose one:
     (a) export CURSOR_API_KEY=<your-cursor-api-key>
     (b) security delete-generic-password -a cursor-user 2>/dev/null; cursor login
+===== ci fixer claude-ci =====
+exit-code: 1
+===== diag =====
+{"result":""}
 ===== ci fixer cursor-ci =====
 exit-code: 2
 ===== diag =====
@@ -1552,6 +1756,19 @@ agent launch-cursor-ci: cursor-auth-preflight failed.
   To fix, choose one:
     (a) export CURSOR_API_KEY=<your-cursor-api-key>
     (b) security delete-generic-password -a cursor-user 2>/dev/null; cursor login
+===== ci fixer cursor-ci =====
+exit-code: 2
+===== diag =====
+agent launch-cursor-ci: cursor-auth-preflight failed.
+  CURSOR_API_KEY is unset/empty AND no `cursor-user` / `cursor-access-token`
+  keychain entry exists on this Darwin host. Cursor would otherwise emit
+  the cryptic `Security process exited with code: 45`.
+
+  See docs/installation-and-setup.md (Cursor section) for setup.
+
+  To fix, choose one:
+    (a) export CURSOR_API_KEY=<your-cursor-api-key>
+    (b) security delete-generic-password -a cursor-user 2>/dev/null; cursor login
 ===== ci fixer claude-ci =====
 exit-code: 1
 ===== diag =====
@@ -1565,6 +1782,14 @@ FAILURE_REASON=codex binary missing
 exit-code: 1
 STATUS=FAILED
 FAILURE_REASON=model args failed: LARCH_CURSOR_MODEL must not contain POSIX [[:cntrl:]] characters
+===== ci fixer cursor-ci =====
+exit-code: 124
+===== diag =====
+Stall detected: channel=stdout time_since_last_progress=1s
+--- stall ps snapshot (target pid=60173) ---
+  PID  %CPU ELAPSED STAT
+60173   0.0   00:01 S   
+Failed with exit code 124. Output size: 0 bytes.
 ===== ci fixer claude-ci =====
 exit-code: 1
 ===== diag =====
@@ -1629,6 +1854,19 @@ exit-code: 1
 ===== diag =====
 Malformed Claude CI JSON: Expecting value: line 1 column 1 (char 0)
 not-json
+===== ci fixer claude-ci =====
+exit-code: 1
+===== diag =====
+{"is_error":true,"result":"backend failed"}
+===== ci fixer cursor-ci =====
+exit-code: 1
+STATUS=FAILED
+FAILURE_REASON=model args failed: LARCH_CURSOR_MODEL must not contain POSIX [[:cntrl:]] characters
+===== ci fixer claude-ci =====
+exit-code: 1
+===== diag =====
+Malformed Claude CI JSON: Expecting value: line 1 column 1 (char 0)
+not-json
 ===== ci fixer codex-ci =====
 exit-code: 127
 STATUS=FAILED
@@ -1669,6 +1907,23 @@ FAILURE_REASON=model args failed: LARCH_CURSOR_MODEL must not contain POSIX [[:c
 exit-code: 1
 ===== diag =====
 {"result":""}
+===== ci fixer codex-ci =====
+exit-code: 127
+STATUS=FAILED
+FAILURE_REASON=codex binary missing
+===== ci fixer cursor-ci =====
+exit-code: 2
+===== diag =====
+agent launch-cursor-ci: cursor-auth-preflight failed.
+  CURSOR_API_KEY is unset/empty AND no `cursor-user` / `cursor-access-token`
+  keychain entry exists on this Darwin host. Cursor would otherwise emit
+  the cryptic `Security process exited with code: 45`.
+
+  See docs/installation-and-setup.md (Cursor section) for setup.
+
+  To fix, choose one:
+    (a) export CURSOR_API_KEY=<your-cursor-api-key>
+    (b) security delete-generic-password -a cursor-user 2>/dev/null; cursor login
 ===== ci fixer codex-ci =====
 exit-code: 127
 STATUS=FAILED
@@ -1764,6 +2019,11 @@ FAILURE_REASON=model args failed: LARCH_CURSOR_MODEL must not contain POSIX [[:c
 exit-code: 1
 STATUS=FAILED
 FAILURE_REASON=model args failed: LARCH_CURSOR_MODEL must not contain POSIX [[:cntrl:]] characters
+===== ci fixer claude-ci =====
+exit-code: 1
+===== diag =====
+Malformed Claude CI JSON: Expecting value: line 1 column 1 (char 0)
+not-json
 ===== ci fixer cursor-ci =====
 exit-code: 124
 ===== diag =====
@@ -1776,6 +2036,14 @@ Failed with exit code 124. Output size: 0 bytes.
 exit-code: 1
 ===== diag =====
 {"is_error":true,"result":"backend failed"}
+===== ci fixer cursor-ci =====
+exit-code: 124
+===== diag =====
+Stall detected: channel=stdout time_since_last_progress=1s
+--- stall ps snapshot (target pid=62895) ---
+  PID  %CPU ELAPSED STAT
+62895   0.0   00:01 S   
+Failed with exit code 124. Output size: 0 bytes.
 ===== ci fixer cursor-ci =====
 exit-code: 1
 STATUS=FAILED
@@ -1883,6 +2151,10 @@ exit-code: 1
 exit-code: 1
 STATUS=FAILED
 FAILURE_REASON=model args failed: LARCH_CURSOR_MODEL must not contain POSIX [[:cntrl:]] characters
+===== ci fixer codex-ci =====
+exit-code: 127
+STATUS=FAILED
+FAILURE_REASON=codex binary missing
 ===== ci fixer claude-ci =====
 exit-code: 1
 ===== diag =====
@@ -1947,6 +2219,19 @@ exit-code: 1
 ===== diag =====
 Malformed Claude CI JSON: Expecting value: line 1 column 1 (char 0)
 not-json
+===== ci fixer cursor-ci =====
+exit-code: 2
+===== diag =====
+agent launch-cursor-ci: cursor-auth-preflight failed.
+  CURSOR_API_KEY is unset/empty AND no `cursor-user` / `cursor-access-token`
+  keychain entry exists on this Darwin host. Cursor would otherwise emit
+  the cryptic `Security process exited with code: 45`.
+
+  See docs/installation-and-setup.md (Cursor section) for setup.
+
+  To fix, choose one:
+    (a) export CURSOR_API_KEY=<your-cursor-api-key>
+    (b) security delete-generic-password -a cursor-user 2>/dev/null; cursor login
 ===== ci fixer claude-ci =====
 exit-code: 1
 ===== diag =====
@@ -1972,6 +2257,11 @@ Stall detected: channel=stdout time_since_last_progress=1s
   PID  %CPU ELAPSED STAT
 87286   0.0   00:01 S   
 Failed with exit code 124. Output size: 0 bytes.
+===== ci fixer claude-ci =====
+exit-code: 1
+===== diag =====
+Malformed Claude CI JSON: Expecting value: line 1 column 1 (char 0)
+not-json
 ===== ci fixer cursor-ci =====
 exit-code: 1
 STATUS=FAILED
@@ -1984,6 +2274,10 @@ FAILURE_REASON=codex binary missing
 exit-code: 1
 ===== diag =====
 {"result":""}
+===== ci fixer codex-ci =====
+exit-code: 127
+STATUS=FAILED
+FAILURE_REASON=codex binary missing
 ===== ci fixer claude-ci =====
 exit-code: 1
 ===== diag =====
