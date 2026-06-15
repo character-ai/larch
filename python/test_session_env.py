@@ -804,6 +804,46 @@ def test_setup_writes_session_id_and_keepalive(tmp_path: Path, monkeypatch: pyte
     assert not any(line.startswith(("PID=", "PPID=", "PREFIX=", "CREATED=", "NOTE=")) for line in sentinel.splitlines())
 
 
+def test_ignore_placeholder_run_dirs_drops_only_run_n() -> None:
+    names = ["run-1", "run-22", "run-abc", "shared", "run", "0199F1E2-2238-403D-89F3-AAAAAAAAAAAA"]
+    assert session_env._ignore_placeholder_run_dirs("/x", names) == {"run-1", "run-22"}  # pyright: ignore[reportPrivateUsage]
+
+
+def test_setup_carry_forward_drops_placeholder_run_dirs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # A fresh session must not inherit a previous session's non-unique run-1 dir
+    # (issue #4397), but real UUID run dirs and shared/ are carried for resume.
+    cache = tmp_path / "cache"
+    monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
+    prev = tmp_path / "prev"
+    uuid_dir = "0199F1E2-2238-403D-89F3-F37CA6989999"
+    for rel in (f"implement/{uuid_dir}", "implement/run-1", "shared"):
+        (prev / "larch-logs" / rel).mkdir(parents=True)
+    _ = (prev / "larch-logs" / "implement" / uuid_dir / "manifest.json").write_text("{}", encoding="utf-8")
+    _ = (prev / "larch-logs" / "implement" / "run-1" / "manifest.json").write_text("{}", encoding="utf-8")
+    _ = (prev / "larch-logs" / "shared" / "state.json").write_text("{}", encoding="utf-8")
+    caller_env = tmp_path / "caller.env"
+    _ = caller_env.write_text(f"PREV_IMPLEMENT_TMPDIR={prev}\n", encoding="utf-8")
+    result = run_cli(
+        "setup",
+        "--prefix",
+        "claude-implement",
+        "--skip-preflight",
+        "--skip-repo-check",
+        "--caller-env",
+        str(caller_env),
+    )
+    assert result.returncode == 0, result.stderr
+    session_tmpdir = ""
+    for line in result.stdout.splitlines():
+        if line.startswith("SESSION_TMPDIR="):
+            session_tmpdir = line.split("=", 1)[1]
+    assert session_tmpdir
+    carried = Path(session_tmpdir) / "larch-logs"
+    assert (carried / "implement" / uuid_dir / "manifest.json").is_file()
+    assert (carried / "shared" / "state.json").is_file()
+    assert not (carried / "implement" / "run-1").exists()
+
+
 def test_setup_presence_defaults_with_check_reviewers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     stub_bin = tmp_path / "bin"
     stub_bin.mkdir()

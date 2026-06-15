@@ -30,6 +30,11 @@ _SAFE_ID_RE = re.compile(r"^[A-Za-z0-9_.-]{1,128}$")
 _SAFE_RUN_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 _REPO_RE = re.compile(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$")
 _KEY_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
+# Non-unique placeholder run-log directory names (e.g. ``run-1``). These must
+# never be carried forward from a previous session: they collide across runs and
+# clones and get re-committed to the repo (issue #4397). Real UUID run dirs and
+# ``shared/`` are still carried so resume keeps prior batches.
+_PLACEHOLDER_RUN_DIR_RE = re.compile(r"^run-[0-9]+$")
 MAX_PATH_VALUE_LEN = 512
 TMP_FALLBACK = "/tmp"  # noqa: S108 - parity fallback for larch session roots.
 TMP_ROOT = Path(TMP_FALLBACK)
@@ -1201,6 +1206,15 @@ def _write_session_identity(tmpdir: Path, session_id: str) -> None:
         _err(f"session-setup.sh: warning: failed to write session identity: {sentinel}")
 
 
+def _ignore_placeholder_run_dirs(_src: str, names: list[str]) -> set[str]:
+    """Drop placeholder run-log dirs for the ``shutil.copytree`` ``ignore`` hook.
+
+    Returns the subset of ``names`` matching the non-unique ``run-<N>`` pattern so
+    a fresh session never inherits a stale shared run directory (issue #4397).
+    """
+    return {name for name in names if _PLACEHOLDER_RUN_DIR_RE.match(name)}
+
+
 def setup_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="session setup", add_help=False)
     parser.add_argument("--prefix", default="")
@@ -1245,7 +1259,12 @@ def setup_main(argv: list[str]) -> int:
     prev = caller.get("PREV_IMPLEMENT_TMPDIR", "")
     if prev and (Path(prev) / "larch-logs").is_dir():
         with suppress(OSError):
-            shutil.copytree(Path(prev) / "larch-logs", tmpdir / "larch-logs", dirs_exist_ok=True)
+            shutil.copytree(
+                Path(prev) / "larch-logs",
+                tmpdir / "larch-logs",
+                dirs_exist_ok=True,
+                ignore=_ignore_placeholder_run_dirs,
+            )
     if not os.environ.get("LARCH_CURSOR_MODEL") and os.environ.get("CLAUDE_PLUGIN_OPTION_CURSOR_MODEL"):
         os.environ["LARCH_CURSOR_MODEL"] = os.environ["CLAUDE_PLUGIN_OPTION_CURSOR_MODEL"]
     if not os.environ.get("LARCH_CODEX_MODEL") and os.environ.get("CLAUDE_PLUGIN_OPTION_CODEX_MODEL"):

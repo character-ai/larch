@@ -131,6 +131,13 @@ repos:
         always_run: true
         files: ^.*\.(sh|py)$
 
+      - id: lint-run-log-run-id
+        name: Reject non-unique placeholder run-log run-ids (run-N)
+        entry: python3 python/cli.py lint run-log-run-id
+        language: system
+        pass_filenames: false
+        files: ^larch-logs/
+
       - id: lint-bash32
         name: Lint Bash 3.2 portability of shell scripts
         entry: bash scripts/lint-bash32.sh
