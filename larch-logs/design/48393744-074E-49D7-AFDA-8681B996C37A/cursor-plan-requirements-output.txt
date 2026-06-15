@@ -1,0 +1,31 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/bug/SKILL.md:62-63	Plan does not require $BUG_TMPDIR under canonical /tmp	Step 2 only says setup $BUG_TMPDIR while frontmatter adds deny-edit-write.sh; Write to $BUG_TMPDIR/bug-issue-body.md is denied if tmpdir is under ~/.cache or the repo	In Step 2 mandate mktemp -d under /tmp (mirror skills/issue/SKILL.md ISSUE_TMPDIR pattern) and state all Write paths must stay under that directory
+2	in_scope	important	correctness	skills/bug/SKILL.md:49-51	Hook command omits ${CLAUDE_PLUGIN_ROOT} prefix	Plan says scripts/deny-edit-write.sh; skills/research/SKILL.md uses ${CLAUDE_PLUGIN_ROOT}/scripts/deny-edit-write.sh; a bare relative hook path may fail to resolve at runtime	Use command: "${CLAUDE_PLUGIN_ROOT}/scripts/deny-edit-write.sh" in hooks frontmatter
+3	in_scope	important	correctness	skills/bug/SKILL.md:66-67	Stdout parsing omits dedup URL keys	Approach step 37 requires reporting the deduplicated issue URL but step 66 only cites generic per-item URLs; /issue emits ISSUE_1_DUPLICATE=true and ISSUE_1_DUPLICATE_OF_URL on dedup not ISSUE_1_URL	Documents parse ISSUE_1_DUPLICATE_OF_URL (or ISSUE_1_DUPLICATE_OF_NUMBER) when ISSUES_DEDUPLICATED>=1 and ISSUES_CREATED=0 before cleanup
+4	in_scope	important	completeness	skills/bug/SKILL.md:65	/issue Skill-tool argv contract not pinned to composed body	Investigation input is raw $ARGUMENTS; if Skill args pass the user description instead of --body-file "$BUG_TMPDIR/bug-issue-body.md" plus an explicit title the filed issue lacks RCA and template sections the feature requires	Add a Pattern B invoke block: --body-file <composed> --sentinel-file <path> "<title>"; forbid forwarding raw $ARGUMENTS as the issue body
+5	out_of_scope	latent	risk-integration	skills/bug/SKILL.md:13-14	Bash investigation is prompt-only read-only	Unlike Write hook coverage Bash can still mutate the repo during investigation; feature does not require mechanical enforcement	[OUT_OF_SCOPE] Optional future: narrow Bash permissions or document residual risk like skills/research/SKILL.md
+6	out_of_scope	nit	risk-integration	docs/skills.md:1-20	No README or docs/skills.md catalog entry	/bug ships from skills/ without docs discovery; runtime works; public exported does not require docs in approved surfaces	[OUT_OF_SCOPE] Add /bug section to docs/skills.md and README Skills table when documenting the catalog
+
+### Findings
+
+**1. `$BUG_TMPDIR` must be created under `/tmp` (correctness)**  
+The plan adds `deny-edit-write.sh` and `Write` for `bug-issue-body.md`, but Step 2 only says “setup `$BUG_TMPDIR`” without mandating a `/tmp` `mktemp`. The hook allows writes only under canonical `/tmp`. A tmpdir under `~/.cache` would block body composition.
+
+**2. Hook path needs `${CLAUDE_PLUGIN_ROOT}` (correctness)**  
+The plan specifies `scripts/deny-edit-write.sh`. The only in-repo precedent (`skills/research/SKILL.md`) uses `${CLAUDE_PLUGIN_ROOT}/scripts/deny-edit-write.sh`.
+
+**3. Dedup stdout keys missing from verification spec (correctness)**  
+Dedup success is required (approach step 32, edge case line 110, report step 37). `/issue` emits `ISSUE_1_DUPLICATE_OF_URL`, not `ISSUE_1_URL`. The SKILL.md section for step 6 should name those keys so the final URL report works on dedup.
+
+**4. `/issue` invocation must use composed body, not raw description (completeness)**  
+The feature requires investigation output in the filed issue. The plan separates investigation (`$ARGUMENTS`) from composition (`bug-issue-body.md`) but does not pin the Skill-tool argv shape. Without an explicit `--body-file` + title contract, an implementer could forward the raw bug text and skip RCA.
+
+**5. [OUT_OF_SCOPE] Bash read-only is prompt-only**  
+Investigation forbids repo edits in prose, but only `Write` is hook-gated. Same trade-off as `/research` for `Bash`. Not required for the stated feature.
+
+**6. [OUT_OF_SCOPE] No docs catalog entry**  
+Approved surfaces are `skills/bug/SKILL.md` and `test-anti-halt-banners.sh` only. Plugin export does not need README/docs updates for correctness.
+
+### Coverage summary
+
+The plan matches the approved outline well: no `/bug` flags, no `--no-dedup`, inline investigation, structured body for `/design`, `/issue` single mode with sentinel verification, anti-halt sync (`test-anti-halt-banners.sh` + `subskill-invocation.md`), and proportionate lint tests. Gaps are narrow contract pins for tmpdir placement, hook path, dedup stdout parsing, and explicit `/issue` Skill args.
