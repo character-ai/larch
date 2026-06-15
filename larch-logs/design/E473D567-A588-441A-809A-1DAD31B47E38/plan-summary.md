@@ -1,0 +1,1 @@
+Port `scripts/collect-agent-results.sh` to `python/collect_results.py`, register `agent collect-results`, retarget live callers, replace three bash harnesses with pytest, retire the shell collector files, and update stale docs/tests. Approach synthesis is `NO_SKETCHES`, so this plan is based on direct repo inspection and the approved outline.
