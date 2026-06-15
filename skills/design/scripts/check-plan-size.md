@@ -23,7 +23,7 @@ Designers MAY append these lines in the **final contiguous metadata block** imme
 |---------|--------------------------|
 | `diff_added: <N>` | `^diff_added: [0-9]+$` |
 | `diff_deleted: <N>` | `^diff_deleted: [0-9]+$` |
-| `mechanical_churn: true\|false` | `^mechanical_churn: (true\|false)$` |
+| `mechanical_churn: true\|false` | `^mechanical_churn: (true\|false)$`; numeric legacy values are normalized to `true` for resilience |
 
 Parsing rules (implemented in `plan_quality.parse_optional_metadata`; CLI surface: `python/cli.py plan optional-trailers`):
 
@@ -33,7 +33,7 @@ Parsing rules (implemented in `plan_quality.parse_optional_metadata`; CLI surfac
 - `diff_added: 08` / `09` and `diff_deleted: 08` / `09` match the strict line regex but are rejected as absent metadata (same rule as optional-trailer snapshot/validate); threshold logic then falls back to legacy `diff_lines` when `diff_added` is absent.
 - Duplicate keys inside the block: **last match in file order** wins (closest to `diff_lines:`).
 - `mechanical_churn: false` is explicit no-downgrade; absent mechanical values normalize to `false`.
-- Only lowercase `true` and `false` are valid `mechanical_churn` values. Any other present value (for example `mechanical_churn: 35` or `mechanical_churn: TRUE`) exits **2** with `PLAN_SIZE_STATUS=invalid-mechanical-churn` before size-gate calculations.
+- Only lowercase `true` and `false` should be emitted for `mechanical_churn` values. Numeric legacy values such as `mechanical_churn: 35` normalize to `true` so a drafter estimate does not stall the run. Other present values, for example `mechanical_churn: TRUE`, exit **2** with `PLAN_SIZE_STATUS=invalid-mechanical-churn` before size-gate calculations.
 - Threshold comparisons use decimal coercion on emitted `DIFF_ADDED` / `DIFF_LINES` values (e.g. `diff_added: 002001` trips at 2001).
 
 ## Output contract (`emit_kv` on FD 3)

@@ -1404,8 +1404,24 @@ def test_check_plan_size_missing_diff_lines_returns_rc2(tmp_path: Path) -> None:
     assert out["PLAN_SIZE_STATUS"] == "missing-diff-lines"
 
 
-def test_check_plan_size_invalid_mechanical_churn_returns_rc2(tmp_path: Path) -> None:
+def test_check_plan_size_numeric_mechanical_churn_normalizes_true(tmp_path: Path) -> None:
     (tmp_path / "plan.txt").write_text("body\nmechanical_churn: 35\ndiff_lines: 10\n", encoding="utf-8")
+    cp = run_cli("plan", "check-size", "--design-tmpdir", str(tmp_path))
+    assert cp.returncode == 0, cp.stdout
+    out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
+    assert out["MECHANICAL_CHURN"] == "true"
+
+
+def test_check_plan_size_zero_mechanical_churn_normalizes_false(tmp_path: Path) -> None:
+    (tmp_path / "plan.txt").write_text("body\nmechanical_churn: 0\ndiff_lines: 10\n", encoding="utf-8")
+    cp = run_cli("plan", "check-size", "--design-tmpdir", str(tmp_path))
+    assert cp.returncode == 0, cp.stdout
+    out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
+    assert out["MECHANICAL_CHURN"] == "false"
+
+
+def test_check_plan_size_invalid_mechanical_churn_returns_rc2(tmp_path: Path) -> None:
+    (tmp_path / "plan.txt").write_text("body\nmechanical_churn: TRUE\ndiff_lines: 10\n", encoding="utf-8")
     cp = run_cli("plan", "check-size", "--design-tmpdir", str(tmp_path))
     assert cp.returncode == 2, cp.stdout
     out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)

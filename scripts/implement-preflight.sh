@@ -182,6 +182,70 @@ write_fallback_plan() {
   fi
 }
 
+plan_review_meta_value() {
+  key="$1"
+  awk -v key="$key" '
+    {
+      lines[NR] = $0
+    }
+    END {
+      diff_idx = 0
+      for (i = NR; i >= 1; i--) {
+        if (lines[i] ~ /^diff_lines: [0-9]+$/) {
+          diff_idx = i
+          break
+        }
+      }
+      if (diff_idx < 1) {
+        exit
+      }
+      start = diff_idx
+      for (i = diff_idx - 1; i >= 1; i--) {
+        if (lines[i] ~ /^(review_status|rounds_completed|diff_added|diff_deleted|mechanical_churn): /) {
+          start = i
+          continue
+        }
+        if (lines[i] ~ /^[[:space:]]*$/) {
+          continue
+        }
+        break
+      }
+      for (i = start; i < diff_idx; i++) {
+        if (index(lines[i], key ": ") == 1) {
+          value = substr(lines[i], length(key) + 3)
+          seen = 1
+        }
+      }
+      if (seen) {
+        print value
+      }
+    }
+  ' "$PLAN_PATH"
+}
+
+refuse_unreviewed_plan() {
+  review_status="$(plan_review_meta_value review_status)"
+  rounds_completed="$(plan_review_meta_value rounds_completed)"
+  case "$review_status" in
+    panel-init-failed|panel-skipped)
+      printf '**❌ /implement preflight: plan review did not run — `review_status=%s`. Re-run /design %s before retrying /implement.**\n' "$review_status" "$ISSUE"
+      exit 2
+      ;;
+  esac
+  if [ -n "$rounds_completed" ]; then
+    case "$rounds_completed" in
+      ''|*[!0-9]*)
+        printf '**❌ /implement preflight: malformed plan review metadata — `rounds_completed=%s`. Re-run /design %s before retrying /implement.**\n' "$rounds_completed" "$ISSUE"
+        exit 2
+        ;;
+      0)
+        printf '**❌ /implement preflight: plan review did not run — `rounds_completed=0`. Re-run /design %s before retrying /implement.**\n' "$ISSUE"
+        exit 2
+        ;;
+    esac
+  fi
+}
+
 ADMISSION_STDOUT="$PREFLIGHT_TMPDIR/admission.stdout"
 ADMISSION_STDERR="$PREFLIGHT_TMPDIR/admission.stderr"
 set +e
@@ -298,6 +362,10 @@ elif [ "$BLOCK_PRESENT" = false ]; then
   write_fallback_plan missing-plan missing
 elif [ "$PLAN_RC" -ne 0 ]; then
   exit 2
+fi
+
+if [ "$BLOCK_PRESENT" = true ] && [ -s "$PLAN_PATH" ]; then
+  refuse_unreviewed_plan
 fi
 
 [ -n "$BLOCK_PRESENT" ] || BLOCK_PRESENT=false

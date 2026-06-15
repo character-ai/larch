@@ -28,6 +28,8 @@ Wrapper for the initial `/design` Step 2b Bash block.
 - Accepts `--claude-pid` when the wrapped logic must refresh session state.
 - Does not derive the root Claude PID from `$PPID` internally.
 - Removes `step2b-drafter-status.txt.token-record` before launch so retries cannot ingest stale Codex usage.
+- Refuses to launch when `$DESIGN_TMPDIR/feature-description.txt` is missing or empty so the already-planned replacement path cannot proceed with a missing Step 0 input.
+- The generated drafter prompt states that `mechanical_churn` accepts only `true` or `false`, never a numeric estimate.
 - For the Codex drafter path only, best-effort appends the stable sidecar to `$DESIGN_TMPDIR/token-report.ndjson` and records it into the active design token ledger with `DESIGN_TMPDIR` exported. Missing, empty, or malformed sidecars are non-blocking no-ops.
 - Active-ledger ingestion is required for live `/design` cost lines. NDJSON append is required for committed run-log accounting.
 

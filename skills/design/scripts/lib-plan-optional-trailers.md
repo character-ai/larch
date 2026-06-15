@@ -40,7 +40,7 @@ Scan upward from the line above `diff_lines:`. Lines matching strict optional-tr
 
 ### Invalid `mechanical_churn`
 
-Only lowercase `true` and `false` are valid boolean values. When `mechanical_churn:` is present with any other token (including integers, uppercase booleans, or a bare line), awk emits `invalid-mechanical-churn: <value>` to stderr, sets `has_key` success for `mechanical_churn`, and exposes parse line 4 as `invalid:<value>` (not `false`). The `values` mode emits `mechanical_churn=invalid:<value>`. `check-plan-size.sh` rejects invalid values with `PLAN_SIZE_STATUS=invalid-mechanical-churn` and exit **2** before size-gate calculations.
+Only lowercase `true` and `false` should be emitted as boolean values. Numeric legacy values normalize to `true` for resilience. When `mechanical_churn:` is present with any other token (including uppercase booleans or a bare line), awk emits `invalid-mechanical-churn: <value>` to stderr, sets `has_key` success for `mechanical_churn`, and exposes parse line 4 as `invalid:<value>` (not `false`). The `values` mode emits `mechanical_churn=invalid:<value>`. `check-plan-size.sh` rejects invalid non-numeric values with `PLAN_SIZE_STATUS=invalid-mechanical-churn` and exit **2** before size-gate calculations.
 
 ### `block_len` (`parse` line 1)
 

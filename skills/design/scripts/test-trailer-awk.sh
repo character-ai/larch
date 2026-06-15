@@ -147,6 +147,24 @@ EOF
 )
 assert_parse "$f" $'2\n1\n-\nfalse'
 
+f=$(write_fixture mech-numeric <<'EOF'
+body
+diff_added: 1
+mechanical_churn: 35
+diff_lines: 10
+EOF
+)
+assert_parse "$f" $'2\n1\n-\ntrue'
+
+f=$(write_fixture mech-zero <<'EOF'
+body
+diff_added: 1
+mechanical_churn: 0
+diff_lines: 10
+EOF
+)
+assert_parse "$f" $'2\n1\n-\nfalse'
+
 f=$(write_fixture retain-010 <<'EOF'
 body
 diff_added: 010
@@ -173,6 +191,7 @@ assert_keys "$TMPROOT/octal-then-valid" 'diff_added'
 assert_keys "$TMPROOT/blank-before-diff-lines" ''
 assert_keys "$TMPROOT/mech-true" $'diff_added\nmechanical_churn'
 assert_keys "$TMPROOT/mech-false" $'diff_added\nmechanical_churn'
+assert_keys "$TMPROOT/mech-numeric" $'diff_added\nmechanical_churn'
 assert_keys "$TMPROOT/retain-010" $'diff_added\ndiff_deleted'
 assert_keys "$TMPROOT/duplicate-diff-added" 'diff_added'
 assert_keys "$TMPROOT/block-boundary" 'diff_added'
@@ -187,6 +206,7 @@ assert_values "$TMPROOT/all-three-present" $'diff_added=100\ndiff_deleted=50\nme
 assert_values "$TMPROOT/duplicate-diff-added" $'diff_added=2'
 assert_values "$TMPROOT/mech-true" $'diff_added=1\nmechanical_churn=true'
 assert_values "$TMPROOT/mech-false" $'diff_added=1\nmechanical_churn=false'
+assert_values "$TMPROOT/mech-numeric" $'diff_added=1\nmechanical_churn=true'
 assert_values "$TMPROOT/retain-010" $'diff_added=010\ndiff_deleted=010'
 
 # --- has_key (present) ---

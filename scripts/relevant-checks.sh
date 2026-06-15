@@ -236,6 +236,17 @@ run_direct_relevant_targets() {
                 append_target_once test-design-step3-review
                 append_target_once test-plan-review
                 ;;
+            skills/design/scripts/design-step3-entry.sh|skills/design/scripts/design-step3-entry.md|skills/design/scripts/test-design-step3-entry.sh)
+                append_target_once test-design-step3-entry
+                ;;
+            skills/design/scripts/lib-step3-prelaunch-failure.sh)
+                append_target_once test-design-step3-review
+                append_target_once test-plan-review
+                append_target_once test-design-step3-entry
+                ;;
+            skills/design/scripts/design-step0-init.sh|skills/design/scripts/design-step0-init.md|skills/design/scripts/test-design-step0-init.sh)
+                append_target_once test-design-step0-init
+                ;;
         esac
         case "$f" in
             python/design_summary.py|python/test_design_summary.py)

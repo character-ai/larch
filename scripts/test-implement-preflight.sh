@@ -99,6 +99,31 @@ if [ "$#" -ge 3 ] && [ "$2" = plan-block ] && [ "$3" = read ]; then
       printf 'BLOCK_PRESENT=true\n'
       exit 0
       ;;
+    panel-init-failed)
+      [ -n "$out" ] && printf 'Plan text\nreview_status: panel-init-failed\nrounds_completed: 0\ndiff_lines: 10\n' > "$out"
+      printf 'BLOCK_PRESENT=true\n'
+      exit 0
+      ;;
+    panel-skipped)
+      [ -n "$out" ] && printf 'Plan text\nreview_status: panel-skipped\nrounds_completed: 0\ndiff_lines: 10\n' > "$out"
+      printf 'BLOCK_PRESENT=true\n'
+      exit 0
+      ;;
+    zero-rounds)
+      [ -n "$out" ] && printf 'Plan text\nreview_status: complete\nrounds_completed: 0\ndiff_lines: 10\n' > "$out"
+      printf 'BLOCK_PRESENT=true\n'
+      exit 0
+      ;;
+    malformed-rounds)
+      [ -n "$out" ] && printf 'Plan text\nreview_status: complete\nrounds_completed: nope\ndiff_lines: 10\n' > "$out"
+      printf 'BLOCK_PRESENT=true\n'
+      exit 0
+      ;;
+    footer-false-positive)
+      [ -n "$out" ] && printf 'Plan body mentions rounds_completed: 0 in a code example\nreview_status: complete\nrounds_completed: 2\ndiff_lines: 10\n' > "$out"
+      printf 'BLOCK_PRESENT=true\n'
+      exit 0
+      ;;
     absent)
       printf 'BLOCK_PRESENT=false\n'
       exit 0
@@ -270,6 +295,23 @@ contains "$TMPROOT/resume-default/stdout" 'RESUME=false' 'resume false default'
 not_contains "$TMPROOT/resume-default/stdout" 'RESUME=empty' 'no resume empty default'
 ADMISSION_CASE=pass ADMISSION_RESUME=true PLAN_CASE=present GH_JSON="$(json_body '[DESIGNED] Resume' 'body')" run_expect 0 resume-true
 contains "$TMPROOT/resume-true/stdout" 'RESUME=true' 'resume true forwarded'
+
+# 9b. Explicit zero-review provenance blocks /implement, including emergency.
+ADMISSION_CASE=pass PLAN_CASE=panel-init-failed GH_JSON="$(json_body '[DESIGNED] Review' 'body')" run_expect 2 review-panel-init
+contains "$TMPROOT/review-panel-init/stdout" '**❌ /implement preflight: plan review did not run — `review_status=panel-init-failed`. Re-run /design 42 before retrying /implement.**' 'panel-init refusal'
+not_contains "$TMPROOT/review-panel-init/stdout" 'PLAN_PATH=' 'panel-init no success envelope'
+ADMISSION_CASE=pass PLAN_CASE=panel-skipped GH_JSON="$(json_body '[DESIGNED] Review' 'body')" run_expect 2 review-panel-skipped --emergency
+contains "$TMPROOT/review-panel-skipped/stdout" '**❌ /implement preflight: plan review did not run — `review_status=panel-skipped`. Re-run /design 42 before retrying /implement.**' 'panel-skipped emergency refusal'
+ADMISSION_CASE=pass PLAN_CASE=zero-rounds GH_JSON="$(json_body '[DESIGNED] Review' 'body')" run_expect 2 review-zero-rounds
+contains "$TMPROOT/review-zero-rounds/stdout" '**❌ /implement preflight: plan review did not run — `rounds_completed=0`. Re-run /design 42 before retrying /implement.**' 'zero rounds refusal'
+ADMISSION_CASE=pass PLAN_CASE=malformed-rounds GH_JSON="$(json_body '[DESIGNED] Review' 'body')" run_expect 2 review-malformed-rounds
+contains "$TMPROOT/review-malformed-rounds/stdout" '**❌ /implement preflight: malformed plan review metadata — `rounds_completed=nope`. Re-run /design 42 before retrying /implement.**' 'malformed rounds refusal'
+
+# 9c. Footer-only provenance parsing ignores body false positives.
+ADMISSION_CASE=pass PLAN_CASE=footer-false-positive GH_JSON="$(json_body '[DESIGNED] Review' 'body')" run_expect 0 review-footer-false-positive
+not_contains "$TMPROOT/review-footer-false-positive/stdout" 'rounds_completed=0' 'footer parser must ignore body false positive'
+ADMISSION_CASE=pass PLAN_CASE=absent GH_JSON="$(json_body '[DESIGNED] Emergency' 'code example rounds_completed: 0')" run_expect 0 emergency-body-false-positive --emergency
+not_contains "$TMPROOT/emergency-body-false-positive/stdout" 'rounds_completed=0' 'emergency fallback must not parse body provenance'
 
 # 10. JSON decoding and malformed JSON handling.
 json_escaped="$($REAL_PYTHON -c 'import json; print(json.dumps({"body":"line1\\nline2 with \\\"quote\\\"","labels":[],"number":42,"title":"Title with\\nnewline","state":"OPEN"}))')"

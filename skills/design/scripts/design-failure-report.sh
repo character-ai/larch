@@ -184,6 +184,16 @@ handle_compose_outcome() {
     local kind=$1 decision=$2 sentinel=$3 artifact_key=$4
     local status reason artifact
     status=$(compose_env_key STALL_RECOVERY_REPORT_STATUS "")
+    if [ -z "$status" ] && panel_failure_evidence_present && [ -s "${LAST_REPORT_OUTPUT:-}" ]; then
+        if [ "${LAST_REPORT_SURFACE:-}" = issue-input ]; then
+            file_tier_a_after_compose "$LAST_REPORT_OUTPUT"
+            status=$(compose_env_key STALL_RECOVERY_REPORT_STATUS "")
+        fi
+        if [ -z "$status" ]; then
+            write_fallback_chat "compose-status-missing"
+            exit 0
+        fi
+    fi
     case "$status" in
         skipped_operator_action)
             write_operator_action_audit "compose-$kind"
@@ -219,6 +229,17 @@ escalation_evidence_present() {
     [ -s "$LEDGER" ] || [ -s "$FALLBACK" ] || [ -s "$MARKER" ] && return 0
     [ -f "$DESIGN_TMPDIR/execution-issues.md" ] && [ ! -L "$DESIGN_TMPDIR/execution-issues.md" ] && \
         grep -Eq '^#{2,3}[[:space:]]+Tool Failure: record-escalation([[:space:]]|$)' "$DESIGN_TMPDIR/execution-issues.md"
+}
+
+panel_failure_evidence_present() {
+    if [ -f "$TERMINAL_STATE" ] && [ ! -L "$TERMINAL_STATE" ]; then
+        grep -Eq '^(TRIGGER|BAIL_REASON)=(panel-failed|panel-init-failed)$' "$TERMINAL_STATE" && return 0
+    fi
+    [ -f "$LEDGER" ] && grep -Eq 'trigger=(panel-failed|panel-init-failed)([[:space:]]|$)' "$LEDGER" && return 0
+    [ -f "$FALLBACK" ] && grep -Eq 'trigger=(panel-failed|panel-init-failed)([[:space:]]|$)' "$FALLBACK" && return 0
+    [ -f "$MARKER" ] && grep -Eq 'trigger=(panel-failed|panel-init-failed)([[:space:]]|$)' "$MARKER" && return 0
+    [ -f "$DESIGN_TMPDIR/execution-issues.md" ] && [ ! -L "$DESIGN_TMPDIR/execution-issues.md" ] && \
+        grep -Eq 'panel-failed|panel-init-failed' "$DESIGN_TMPDIR/execution-issues.md"
 }
 
 append_run_log_audit() {
@@ -346,6 +367,8 @@ case "$OUTCOME" in
         "${REPORT_CMD[@]}" classify "${helper_common[@]}" "${state_overrides[@]}" >"$DESIGN_TMPDIR/design-failure-classify.env"
         _report_surface=$(report_surface)
         _report_output=$(report_output_file "$_report_surface")
+        LAST_REPORT_SURFACE="$_report_surface"
+        LAST_REPORT_OUTPUT="$_report_output"
         if ! populate_design_sensitive_corpus "$CLASS_FILE" "$ATTEMPTS_FILE"; then
             append_run_log_audit populate-sensitive-corpus-failed
             write_fallback_chat populate-sensitive-corpus-failed
@@ -391,6 +414,8 @@ prepare_root_cause escalation
 "${REPORT_CMD[@]}" init-attempts "${helper_common[@]}" --attempts-file "$ATTEMPTS_FILE" >/dev/null
 _report_surface=$(report_surface)
 _report_output=$(report_output_file "$_report_surface")
+LAST_REPORT_SURFACE="$_report_surface"
+LAST_REPORT_OUTPUT="$_report_output"
 if ! populate_design_sensitive_corpus "" "$ATTEMPTS_FILE"; then
     append_run_log_audit populate-sensitive-corpus-failed
     write_fallback_chat populate-sensitive-corpus-failed
