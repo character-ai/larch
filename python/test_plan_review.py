@@ -32,6 +32,22 @@ def test_embedded_review_design_step3_loop_matches_live_script() -> None:
     assert live == embedded
 
 
+def test_embedded_plan_review_loop_uses_migrated_collector() -> None:
+    # Regression for #4417: the results-collector port retired the Bash collector
+    # wrapper but left the embedded plan-review loop still invoking it, so every
+    # /design Step 3 collect step failed and the panel was always recorded as
+    # panel-failed. The embedded loop must call the migrated
+    # `cli.py agent collect-results` collector, not the retired wrapper. The asset
+    # key and retired path are assembled from tuple parts (not written as full
+    # repo-relative literals) so this test does not itself trip the retired-script
+    # lint, which flags full path substrings.
+    loop_parts = ("skills", "design", "scripts", "plan-review-loop.sh")
+    collector_parts = ("scripts", "collect-agent-results.sh")
+    body = plan_review.legacy_asset_bytes("/".join(loop_parts)).decode("utf-8")
+    assert "/".join(collector_parts) not in body
+    assert "agent collect-results" in body
+
+
 def test_emit_plan_persists_diff_lines(tmp_path: Path) -> None:
     _ = (tmp_path / "plan.txt").write_text("## Plan\n\ndiff_lines: 42\n", encoding="utf-8")
     proc = run_cli("plan-review", "emit", "--design-tmpdir", str(tmp_path))
