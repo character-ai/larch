@@ -28,4 +28,3 @@ rm -f "$fail_file"
 Under `set -e`, use the `if with_transient_retry ...; then` shape above or a `set +e` capture block so errexit does not fire before `_WTR_RC` / `_WTR_OUT` are read.
 
 **Edit-in-sync**: `scripts/lib-net.sh`, `python/retry.py`, `python/test_retry.py`, `python/collect_results.py`, `python/test_collect_results.py`, `scripts/test-lib-net.sh`, and every script that sources `lib-net.sh` for gap callsite wraps.
-
