@@ -214,6 +214,20 @@ bash_is_strict_wrapper_only() {
   esac
 }
 
+bash_is_step3_recovery_waiter() {
+  local cmd="$1" normalized
+  normalized=$(printf '%s' "$cmd" | tr '\n' ' ' | sed 's/[[:space:]][[:space:]]*/ /g')
+  normalized=$(bash_trim "$normalized")
+  case "$normalized" in
+    *.step3-review-result.env*|*'&&'*|*'||'*) return 1 ;;
+  esac
+  if bash_has_probe_verb "$normalized"; then
+    return 1
+  fi
+  # shellcheck disable=SC2016 # Match literal $DESIGN_TMPDIR in the candidate Bash command.
+  printf '%s' "$normalized" | grep -Eq '^until[[:space:]]+\[[[:space:]]+-f[[:space:]]+"?(\$DESIGN_TMPDIR/\.completed/step-3|\$\{DESIGN_TMPDIR\}/\.completed/step-3)"?[[:space:]]+\];[[:space:]]+do[[:space:]]+sleep[[:space:]]+[0-9]+[[:space:]]*;[[:space:]]+done$'
+}
+
 bash_has_probe_verb() {
   printf '%s' "$1" | grep -Eq "(^|[^[:alnum:]_])${_PROBE_VERB_RE}([^[:alnum:]_]|$)"
 }
@@ -295,6 +309,7 @@ fi
 cmd=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""' 2>/dev/null) || exit 0
 [ -n "$cmd" ] || exit 0
 bash_is_strict_wrapper_only "$cmd" && exit 0
+bash_is_step3_recovery_waiter "$cmd" && exit 0
 while IFS= read -r dir || [ -n "$dir" ]; do
   [ -n "$dir" ] || continue
   if bash_has_probe_verb "$cmd" && bash_has_probe_target "$cmd" "$dir" "$cwd_canon"; then

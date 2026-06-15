@@ -117,6 +117,14 @@ check "$DESIGN_MD" \
     'only sanctioned exception to the Bash polling-loop ban is one re-launched immediate-background completion waiter'
 
 check "$DESIGN_MD" \
+    "/design Anti-patterns pins Step 3 completed sentinel for recovery waiters" \
+    'Step 3-specific recovery note: the completion condition MUST be `[ -f "$DESIGN_TMPDIR/.completed/step-3" ]`; it MUST NOT be `.step3-review-result.env`.'
+
+check "$DESIGN_MD" \
+    "/design Step 3 complete route requires completed sentinel" \
+    '`STEP3_REVIEW_LOOP_STATUS=complete` — before routing to Step 3b, require `[ -f "$DESIGN_TMPDIR/.completed/step-3" ]`.'
+
+check "$DESIGN_MD" \
     "/design Anti-patterns tells orchestrator not to fall back to Monitor" \
     'Do NOT fall back to Monitor'
 
