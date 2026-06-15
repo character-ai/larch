@@ -349,6 +349,91 @@ def test_banner_template_matches_research_phase_literal() -> None:
     assert match.group(1).strip() == research.BANNER_TEMPLATE
 
 
+def _research_sidecar_ingestion_snippet() -> str:
+    phase = (ROOT / "skills/research/references/research-phase.md").read_text(encoding="utf-8")
+    match = re.search(
+        r"For each selected output path, set `SIDECAR=.*?```bash\n(?P<body>.*?)\n```",
+        phase,
+        re.DOTALL,
+    )
+    assert match is not None
+    return match.group("body")
+
+
+def _run_research_sidecar_ingestion_snippet(
+    tmp_path: Path,
+    *,
+    fail_verb: str,
+    fail_code: int,
+) -> subprocess.CompletedProcess[str]:
+    stub_dir = tmp_path / "bin"
+    stub_dir.mkdir()
+    python_stub = stub_dir / "python3"
+    python_stub.write_text(
+        """#!/usr/bin/env bash
+if [[ "$*" == *"token append-record"* ]]; then
+  if [[ "${FAIL_VERB:-}" == "append-record" ]]; then
+    printf 'append diagnostic\\n' >&2
+    exit "${FAIL_CODE:-37}"
+  fi
+  exit 0
+fi
+if [[ "$*" == *"token record-vendor-sidecar"* ]]; then
+  if [[ "${FAIL_VERB:-}" == "record-vendor-sidecar" ]]; then
+    printf 'active diagnostic\\n' >&2
+    exit "${FAIL_CODE:-43}"
+  fi
+  exit 0
+fi
+exit 0
+""",
+        encoding="utf-8",
+    )
+    python_stub.chmod(0o755)
+    sidecar = tmp_path / "codex-output.txt.token-record"
+    sidecar.write_text("TOOL=codex\nTOTAL=1\n", encoding="utf-8")
+    snippet = tmp_path / "snippet.sh"
+    snippet.write_text(_research_sidecar_ingestion_snippet(), encoding="utf-8")
+    env = os.environ.copy()
+    env.update({
+        "PATH": f"{stub_dir}{os.pathsep}{env['PATH']}",
+        "CLAUDE_PLUGIN_ROOT": str(ROOT),
+        "RESEARCH_TMPDIR": str(tmp_path),
+        "SIDECAR": str(sidecar),
+        "FAIL_VERB": fail_verb,
+        "FAIL_CODE": str(fail_code),
+    })
+    return subprocess.run(
+        ["bash", "-euo", "pipefail", str(snippet)],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=env,
+        check=False,
+    )
+
+
+def test_research_sidecar_append_warning_reports_real_exit_code(tmp_path: Path) -> None:
+    result = _run_research_sidecar_ingestion_snippet(tmp_path, fail_verb="append-record", fail_code=37)
+
+    assert result.returncode == 0
+    assert "WARNING: token append-record failed with exit 37: append diagnostic" in result.stderr
+    assert "exit 0" not in result.stderr
+
+
+def test_research_sidecar_active_warning_reports_real_exit_code(tmp_path: Path) -> None:
+    result = _run_research_sidecar_ingestion_snippet(
+        tmp_path,
+        fail_verb="record-vendor-sidecar",
+        fail_code=43,
+    )
+
+    assert result.returncode == 0
+    assert "WARNING: token record-vendor-sidecar failed with exit 43: active diagnostic" in result.stderr
+    assert "exit 0" not in result.stderr
+
+
 def test_fileline_failure_modes(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()

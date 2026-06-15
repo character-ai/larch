@@ -293,6 +293,12 @@ if [[ "${PLAN_WRITE_OK:-}" == true ]]; then
   : > "$DESIGN_TMPDIR/.completed/step-5c"
 fi
 
+write_step5c_wrapper_sentinel() {
+  [[ -n "${DESIGN_TMPDIR:-}" ]] || return 0
+  mkdir -p "$DESIGN_TMPDIR/.completed"
+  : > "$DESIGN_TMPDIR/.completed/step-5c-terminal"
+}
+
 _cleanup_eligible=false
 if [[ "${PLAN_WRITE_OK:-}" == true && "${STANDALONE_HEAVY_FAILED:-false}" != true ]]; then
   if [[ -z "${SESSION_ID:-}" || "${PUBLISH_OK:-}" == true ]]; then
@@ -325,3 +331,4 @@ if [[ "${_publish_rc:-0}" -eq 4 ]]; then
 fi
 
 emit_report_gate_sidecars_from_disk
+write_step5c_wrapper_sentinel

@@ -975,7 +975,9 @@ def test_make_conflict_launch_fn_reads_launcher_exit_from_stdout(
     assert attempt.launcher_exit == 1
 
 
+@pytest.mark.parametrize("tier", ["codex", "cursor"])
 def test_make_conflict_launch_fn_ingests_external_token_sidecar(
+    tier: str,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -986,11 +988,11 @@ def test_make_conflict_launch_fn_ingests_external_token_sidecar(
 
     def _launch_stdout(
         _runner: ScriptRunner,
-        tier: str,
+        given_tier: str,
         **kwargs: object,
     ) -> CommandResult:
-        _ = _runner, tier, kwargs
-        return CommandResult(("launch",), 0, f"LAUNCHER_EXIT=0\nTOKEN_RECORD={out_dir / 'cursor.token-record'}\n", "", 0.01)
+        _ = _runner, kwargs
+        return CommandResult(("launch",), 0, f"LAUNCHER_EXIT=0\nTOKEN_RECORD={out_dir / f'{given_tier}.token-record'}\n", "", 0.01)
 
     def fake_ingest(_runner: ScriptRunner, **kwargs: object) -> bool:
         ingest_calls.append(kwargs)
@@ -1005,13 +1007,109 @@ def test_make_conflict_launch_fn_ingests_external_token_sidecar(
         output_dir=out_dir,
         cwd=str(tmp_path),
     )
-    attempt = launch_fn("cursor", "a.txt")
+    attempt = launch_fn(tier, "a.txt")
     assert attempt.launcher_exit == 0
     assert len(ingest_calls) == 1
     assert ingest_calls[0]["tmpdir"] == str(tmp_path)
     assert ingest_calls[0]["implement_tmpdir"] == str(tmp_path)
     assert isinstance(ingest_calls[0]["seen"], set)
     assert ingest_calls[0]["cwd"] == str(tmp_path)
+    assert ingest_calls[0]["allow_output_fallback"] is True
+
+
+def test_make_conflict_launch_fn_clears_stale_fallback_sidecar_before_ingest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    out_dir = tmp_path / "launch"
+    out_dir.mkdir()
+    fallback = out_dir / "conflict-cursor.out.token-record"
+    _ = fallback.write_text("stale\n", encoding="utf-8")
+    runner = ScriptRunner([], permissive=True)
+    monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(tmp_path))
+    freshness_checks: list[bool] = []
+
+    def _launch_stdout(
+        _runner: ScriptRunner,
+        tier: str,
+        **kwargs: object,
+    ) -> CommandResult:
+        _ = _runner, tier, kwargs
+        freshness_checks.append(not fallback.exists())
+        return CommandResult(("launch",), 0, "LAUNCHER_EXIT=0\n", "", 0.01)
+
+    def fake_ingest(_runner: ScriptRunner, **kwargs: object) -> bool:
+        assert kwargs["allow_output_fallback"] is True
+        freshness_checks.append(not fallback.exists())
+        return False
+
+    monkeypatch.setattr(rebase.agents, "launch_tier", _launch_stdout)
+    monkeypatch.setattr(rebase.agents, "ingest_launcher_token_sidecar", fake_ingest)
+    launch_fn = rebase.make_conflict_launch_fn(
+        runner,
+        repo="owner/repo",
+        run_id="run-42",
+        output_dir=out_dir,
+        cwd=str(tmp_path),
+    )
+
+    attempt = launch_fn("cursor", "a.txt")
+
+    assert attempt.launcher_exit == 0
+    assert freshness_checks == [True, True]
+
+
+def test_make_conflict_launch_fn_ingests_output_fallback_sidecar(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    out_dir = tmp_path / "launch"
+    runner = ScriptRunner([], permissive=True)
+    monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(tmp_path))
+
+    def _launch_stdout(
+        _runner: ScriptRunner,
+        tier: str,
+        **kwargs: object,
+    ) -> CommandResult:
+        _ = _runner, tier, kwargs
+        output = Path(str(kwargs["output"]))
+        _ = Path(f"{output}.token-record").write_text(
+            "TOOL=cursor\nINPUT=1\nOUTPUT=2\nTOTAL=3\nRAW=cursor_ci_fix\n",
+            encoding="utf-8",
+        )
+        return CommandResult(("launch",), 0, "LAUNCHER_EXIT=0\n", "", 0.01)
+
+    def _ingest_run(
+        argv: Sequence[str],
+        *,
+        timeout: float | None = None,
+        cwd: str | None = None,
+        env: Mapping[str, str] | None = None,
+        check: bool = False,
+        stdout: int | None = None,
+        stderr: int | None = None,
+    ) -> CommandResult:
+        _ = timeout, cwd, env, check, stdout, stderr
+        key = tuple(argv)
+        runner.calls.append(key)
+        return CommandResult(key, 0, "", "", 0.01)
+
+    monkeypatch.setattr(runner, "run", _ingest_run)
+    monkeypatch.setattr(rebase.agents, "launch_tier", _launch_stdout)
+    launch_fn = rebase.make_conflict_launch_fn(
+        runner,
+        repo="owner/repo",
+        run_id="run-42",
+        output_dir=out_dir,
+        cwd=str(tmp_path),
+    )
+
+    attempt = launch_fn("cursor", "a.txt")
+
+    assert attempt.launcher_exit == 0
+    ingested_inputs = [call[call.index("--input") + 1] for call in runner.calls if "--input" in call]
+    assert ingested_inputs == [str(out_dir / "conflict-cursor.out.token-record")] * 2
 
 
 def test_make_conflict_launch_fn_retries_only_missing_token_sidecar_leg(

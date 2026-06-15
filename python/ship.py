@@ -1623,24 +1623,23 @@ def run_ship(
 
             _breadcrumb("merge")
             merged = merge.merge_pr(runner, working, cwd=repo_root, post_flush=False)
-            if merged.result in {config.MERGE_RESULT_CI_NOT_READY, config.MERGE_RESULT_MAIN_ADVANCED}:
-                if merged.result == config.MERGE_RESULT_CI_NOT_READY:
-                    review_decision = gh.pr_review_decision(
-                        runner,
-                        working.pr_number or 0,
-                        repo=working.repo,
-                        cwd=repo_root,
+            if merged.result == config.MERGE_RESULT_CI_NOT_READY:
+                review_decision = gh.pr_review_decision(
+                    runner,
+                    working.pr_number or 0,
+                    repo=working.repo,
+                    cwd=repo_root,
+                )
+                if review_decision == "REVIEW_REQUIRED":
+                    merged = merge.MergeResult(
+                        result=config.MERGE_RESULT_REVIEW_REQUIRED,
+                        error=(
+                            f"PR requires approving review (mergeStateStatus=BLOCKED): "
+                            f"approve the PR or merge manually with --admin. "
+                            f"Original: {merged.error}"
+                        ),
                     )
-                    if review_decision == "REVIEW_REQUIRED":
-                        merged = merge.MergeResult(
-                            result=config.MERGE_RESULT_REVIEW_REQUIRED,
-                            error=(
-                                f"PR requires approving review (mergeStateStatus=BLOCKED): "
-                                f"approve the PR or merge manually with --admin. "
-                                f"Original: {merged.error}"
-                            ),
-                        )
-                if merged.result != config.MERGE_RESULT_REVIEW_REQUIRED:
+                else:
                     iteration += 1
                     _write_ship_state(
                         working,
@@ -1651,6 +1650,71 @@ def run_ship(
                         transient_retries=transient_retries,
                     )
                     continue
+            if merged.result == config.MERGE_RESULT_MAIN_ADVANCED:
+                _write_ship_state(
+                    working,
+                    phase="rebase",
+                    iteration=iteration,
+                    rebase_count=rebase_count,
+                    fix_attempts=fix_attempts,
+                    transient_retries=transient_retries,
+                )
+                _breadcrumb("rebase", "Flush+Push")
+                pre_rebase = run_logs.flush_logs_pre(runner, working.with_(state_file=None), cwd=repo_root)
+                if (
+                    pre_rebase.skipped
+                    and pre_rebase.reason != run_logs.REFRESH_SKIP_RECOVERY_FAILED
+                    and pre_rebase.reason not in config.REFRESH_SKIP_MERGE_OK
+                ):
+                    _write_terminal_state(
+                        working,
+                        Outcome.STALLED,
+                        "pre-rebase",
+                        iteration=iteration,
+                        rebase_count=rebase_count,
+                        fix_attempts=fix_attempts,
+                        transient_retries=transient_retries,
+                    )
+                    return ShipResult(
+                        Outcome.STALLED,
+                        detail=f"pre-rebase flush skipped: {pre_rebase.reason}",
+                    )
+                try:
+                    _ = rebase.rebase_and_push(
+                        runner,
+                        repo=working.repo,
+                        run_id=working.run_id,
+                        cwd=repo_root,
+                        tmpdir=working.tmpdir,
+                        base_remote=base_remote,
+                        base_ref=base_ref,
+                        allow_conflict_fix=True,
+                        enable_pre_push_handoff=True,
+                    )
+                except PrePushConflictHandoff as exc:
+                    _write_ship_state(
+                        working,
+                        phase="rebase",
+                        iteration=iteration,
+                        rebase_count=rebase_count,
+                        fix_attempts=fix_attempts,
+                        transient_retries=transient_retries,
+                        resume_phase=exc.resume_phase,
+                        caller_kind=exc.caller_kind,
+                        extra_fields={"CONFLICT_FILES": exc.conflict_csv},
+                    )
+                    raise
+                rebase_count += 1
+                iteration += 1
+                _write_ship_state(
+                    working,
+                    phase="ci-initial",
+                    iteration=iteration,
+                    rebase_count=rebase_count,
+                    fix_attempts=fix_attempts,
+                    transient_retries=transient_retries,
+                )
+                continue
             if merged.result == config.MERGE_RESULT_REVIEW_REQUIRED:
                 _write_terminal_state(
                     working.with_(

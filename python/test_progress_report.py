@@ -518,6 +518,24 @@ def test_progress_vendor_rows_use_bare_vendor_task_kind_priority(tmp_path: Path)
     assert rows[0].label == "codex/codex-plan-autofix"
 
 
+def test_progress_vendor_rows_skip_ci_rows_when_requested(tmp_path: Path) -> None:
+    ledger = tmp_path / "timing-ledger.tsv"
+    _write_vendor_timing(ledger, "codex-specialist-correctness-output.txt", 110, 140)
+    _write_vendor_timing(ledger, "reviewer-output.txt", 111, 141, kind="codex-ci")
+    _write_vendor_timing(ledger, "reviewer-output.txt", 112, 142, kind="cursor-ci-fix")
+    _write_vendor_timing(ledger, "reviewer-output.txt", 113, 143, kind="vendor-ci-test")
+    _write_vendor_timing(ledger, "ci.out", 114, 144)
+    _write_vendor_timing(ledger, "codex-ci.out", 115, 145)
+    _write_vendor_timing(ledger, "ci-fix-codex.out", 116, 146)
+    _write_vendor_timing(ledger, "claude.out", 117, 147)
+    _write_vendor_timing(ledger, str(tmp_path / "nested" / "cursor-ci.out"), 118, 148)
+
+    rows = progress_report._progress_vendor_rows(ledger, 100, 200, {}, skip_ci=True)
+
+    assert len(rows) == 1
+    assert rows[0].label == "codex/correctness"
+
+
 def test_render_step5_inflight_only_skips_detail(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     impl = tmp_path / "impl"
     round_dir = impl / "round-1"
@@ -746,6 +764,25 @@ def test_render_inflight_gantt_absent_without_completed_vendor_rows(
     (round_dir / "round-start-s").write_text("100\n", encoding="utf-8")
     (round_dir / "panel-manifest.ndjson").write_text("{}\n", encoding="utf-8")
     _write_vendor_timing(impl / "timing-ledger.tsv", "codex-output.txt", 120, 150, status="signal")
+
+    report = progress_report._render_step5(impl, "run-1")
+
+    assert "Step 5 code review — round 1 in progress" in report
+    assert "Round 1 reviewer timing" not in report
+
+
+def test_render_step5_inflight_gantt_absent_with_only_ci_rows(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(progress_report.time, "time", lambda: 200)
+    impl = tmp_path / "impl"
+    round_dir = impl / "round-1"
+    round_dir.mkdir(parents=True)
+    (round_dir / "round-start-s").write_text("100\n", encoding="utf-8")
+    (round_dir / "panel-manifest.ndjson").write_text("{}\n", encoding="utf-8")
+    _write_vendor_timing(impl / "timing-ledger.tsv", "codex-output.txt", 120, 150, kind="codex-ci")
+    _write_vendor_timing(impl / "timing-ledger.tsv", "ci-fix-codex.out", 130, 160)
 
     report = progress_report._render_step5(impl, "run-1")
 

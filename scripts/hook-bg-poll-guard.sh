@@ -81,8 +81,8 @@ marker_step_completed() {
   [ -n "$dir" ] || return 1
   case "$step" in
     design-step3-review)       sentinel="$dir/.completed/step-3"  ;;
-    design-step5c)             sentinel="$dir/.completed/step-5c" ;;
-    design-step-final-summary) sentinel="$dir/.completed/step-5d" ;;
+    design-step5c)             sentinel="$dir/.completed/step-5c-terminal" ;;
+    design-step-final-summary) sentinel="$dir/.completed/step-final-summary" ;;
     *) return 1 ;;
   esac
   [ -f "$sentinel" ] && [ ! -L "$sentinel" ]

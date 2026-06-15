@@ -145,3 +145,5 @@ emit_report_gate_sidecars_from_disk() {
 }
 emit_final_summary_marked_from_disk
 emit_report_gate_sidecars_from_disk
+mkdir -p "$DESIGN_TMPDIR/.completed"
+: >"$DESIGN_TMPDIR/.completed/step-final-summary"
