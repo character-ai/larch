@@ -161,7 +161,7 @@ def publish_main(argv: Sequence[str]) -> int:
             f"rounds_completed: {rounds_completed}\n\n"
         )
         original = composed_plan.read_text(encoding="utf-8", errors="replace")
-        composed_plan.write_text(provenance_header + original, encoding="utf-8")
+        _ = composed_plan.write_text(provenance_header + original, encoding="utf-8")
 
     if skip_validate:
         kvs[1] = ("VALIDATE_STATUS", "skipped")

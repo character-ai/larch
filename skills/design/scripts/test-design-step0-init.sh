@@ -12,21 +12,7 @@ FAKE="$D/fake-plugin"
 mkdir -p "$FAKE/scripts" "$FAKE/skills/design/scripts"
 ln -sf "$ROOT/scripts/read-result-env.sh" "$FAKE/scripts/read-result-env.sh"
 ln -sf "$ROOT/scripts/lib-quiet.sh" "$FAKE/scripts/lib-quiet.sh"
-ln -sf "$ROOT/scripts/design-pause-save.sh" "$FAKE/scripts/design-pause-save.sh"
-ln -sf "$ROOT/skills/design/scripts/lib-phase-driver.sh" "$FAKE/skills/design/scripts/lib-phase-driver.sh"
 ln -sf "$ROOT/python" "$FAKE/python"
-cat >"$FAKE/skills/design/scripts/design-init-runparams.sh" <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-printf '{"partition_requested":false,"brainstorm_requested":false}\n' >"$DESIGN_TMPDIR/run-params.json"
-{
-  printf 'INIT_STATUS=ok\n'
-  printf 'RUN_PARAMS_PATH=%s\n' "$DESIGN_TMPDIR/run-params.json"
-} >"$DESIGN_TMPDIR/.design-init-runparams-result.env"
-printf 'INIT_STATUS=ok\n'
-exit 0
-EOF
-chmod +x "$FAKE/skills/design/scripts/design-init-runparams.sh"
 
 printf 'ROUTE=already-planned\n' >"$D/.design-route-result.env"
 printf 'replace-path feature body\n' >"$D/issue-body.txt"
