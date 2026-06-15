@@ -187,7 +187,7 @@ After a successful `release finish` re-run or promote-only retry, continue to St
 
 ## Step 7 — Upgrade local install
 
-Prefer the working-tree upgrade script over the installed Skill implementation so sparse allowlist changes apply in the same release cycle. Resolve `RESOLVED_ROOT` for `CLAUDE_PLUGIN_ROOT` in this order and stop at the first match:
+Prefer the working-tree upgrade script over the installed Skill implementation so sparse allowlist changes apply in the same release cycle. The working-tree upgrade script applies both the just-released sparse allowlist and post-install dev/test cache cleanup using the canonical cache path, not stable-verification gating. Cleanup includes dropped dev top-level directories left by older caches, including `tests/`. Resolve `RESOLVED_ROOT` for `CLAUDE_PLUGIN_ROOT` in this order and stop at the first match:
 
 1. Existing active `CLAUDE_PLUGIN_ROOT` when it is cache-shaped (`.../.claude/plugins/cache/larch-local/larch/<version>`) and exists. This is the running session's prune/stamp context, so it wins even when installed metadata names a newer version after a no-restart or retried release.
 2. Installed metadata: parse the installed larch version with the same semantics as `get_installed_larch_version` in `python/cli.py upgrade-larch release-step7-root` (`claude plugin list` first, then `installed_plugins.json`), then map it to `$HOME/.claude/plugins/cache/larch-local/larch/$installed_version` when that directory exists.
