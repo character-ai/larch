@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -215,3 +216,132 @@ def test_stderr_tail_resolution_prefers_retry_and_dedupes(capsys: pytest.Capture
     err = capsys.readouterr().err
     assert "--- failed agent stderr tail ---" in err
     assert "stderr tail suppressed" in err
+
+
+def test_retry_output_path_non_txt_uses_txt_suffix() -> None:
+    assert collect_results._retry_output_path("/tmp/foo.out") == "/tmp/foo.out-retry.txt"
+    assert collect_results._retry_output_path("/tmp/foo.out", "ns-retry") == "/tmp/foo.out-ns-retry.txt"
+    assert collect_results.resolve_collector_stderr_tail_file("/tmp/foo.out") == ""
+
+
+def test_coerced_invalid_sentinel_empty_output_retries(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _reset(monkeypatch)
+    output = tmp_path / "cursor-bad-sentinel.txt"
+    _write_done(output, "abc\n")
+    _write_meta(output, timeout="2", cmd=None)
+    assert collect_results.collect_results_main(["--timeout", "1", str(output)]) == 0
+    block = _parse_blocks(capsys.readouterr().out)[0]
+    assert block["STATUS"] == "EMPTY_OUTPUT"
+    assert block["EXIT_CODE"] == "99"
+
+
+def test_cmd_json_outer_launcher_uses_last_mode_flag(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _reset(monkeypatch)
+    output = tmp_path / "cursor-review.txt"
+    cmd = ["cursor", "agent", "--mode", "ask", "--mode", "plan", "--workspace", str(tmp_path), "go"]
+    assert not collect_results._cmd_json_requires_outer_launcher(str(output), "cursor", cmd)
+    codex_cmd = ["codex", "exec", "--sandbox", "read-only", "--sandbox", "full-auto", "-C", str(tmp_path), "--add-dir", str(tmp_path), "--output-last-message", str(tmp_path / "out.txt"), "go"]
+    assert not collect_results._cmd_json_requires_outer_launcher(str(output), "codex", codex_cmd)
+    assert collect_results._cmd_json_requires_outer_launcher(str(output), "cursor", ["cursor", "agent", "--mode", "ask", "--workspace", str(tmp_path), "go"])
+
+
+def test_env_without_test_hooks_strips_collect_results_vars(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _reset(monkeypatch)
+    monkeypatch.setenv("LARCH_COLLECT_RESULTS_TRAP", "1")
+    captured: dict[str, str] = {}
+
+    def fake_popen(args: list[str], **kwargs: object) -> object:
+        _ = args
+        captured["env"] = json.dumps(dict(kwargs.get("env", {})))
+        class _Proc:
+            def wait(self, timeout: float = 0) -> int:
+                _ = timeout
+                return 0
+        return _Proc()
+
+    output = tmp_path / "cursor-retry-env.txt"
+    _ = output.write_text("", encoding="utf-8")
+    _write_done(output)
+    _write_meta(output, cmd=["cursor", "agent", "--workspace", str(tmp_path), "retry prompt"])
+    monkeypatch.setattr(collect_results.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(collect_results, "_wait_retry_plans", lambda _plans: None)
+    monkeypatch.setattr(collect_results, "_apply_empty_retry_results", lambda _records, _plans: None)
+    assert collect_results.collect_results_main(["--timeout", "2", str(output)]) == 0
+    assert "LARCH_COLLECT_RESULTS_TRAP" not in captured.get("env", "")
+
+
+def test_ns_retry_fields_emitted_on_not_substantive(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _reset(monkeypatch)
+    output = tmp_path / "cursor-thin.txt"
+    _ = output.write_text("Reading files and preparing a response.\n", encoding="utf-8")
+    _write_done(output)
+    assert collect_results.collect_results_main(["--timeout", "1", "--substantive-validation", "--validation-mode", str(output)]) == 0
+    block = _parse_blocks(capsys.readouterr().out)[0]
+    assert block["STATUS"] == "NOT_SUBSTANTIVE"
+    assert block["NS_RETRY_MODE"] == "substantive"
+    assert block["NS_RETRY_REASON"] == "NO_ISSUES_FOUND_TOO_THIN"
+
+
+def test_failed_agent_stderr_signature_matches_cksum(tmp_path: Path) -> None:
+    tail = tmp_path / "sig.stderr-tail"
+    _ = tail.write_text("error in /tmp/foo123/bar.txt exit 2\n", encoding="utf-8")
+    repo_root = Path(__file__).resolve().parents[1]
+    bash_sig = subprocess.run(
+        [
+            "bash",
+            "-c",
+            f'source "{repo_root}/scripts/lib-failed-agent-stderr-tail.sh" && failed_agent_stderr_signature "{tail}"',
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert bash_sig.returncode == 0, bash_sig.stderr
+    assert collect_results.failed_agent_stderr_signature(str(tail)) == bash_sig.stdout.strip()
+
+
+def test_derive_tool_uses_registry_allowlist(tmp_path: Path) -> None:
+    output = tmp_path / "cursor-specialist-output.txt"
+    meta = output.with_suffix(output.suffix + ".meta")
+    _ = meta.write_text("TOOL=sanitized-empty\nOUTPUT_FILE=\n", encoding="utf-8")
+    assert collect_results.derive_tool(str(output)) == "cursor"
+    bogus = tmp_path / "bogus-output.txt"
+    _ = bogus.with_suffix(bogus.suffix + ".meta").write_text("TOOL=not-a-tool\nOUTPUT_FILE=\n", encoding="utf-8")
+    assert collect_results.derive_tool(str(bogus)) == "unknown"
+
+
+def test_retired_outer_launcher_fail_closed(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _reset(monkeypatch)
+    output = tmp_path / "cursor-retired.txt"
+    _ = output.write_text("", encoding="utf-8")
+    _write_done(output)
+    meta = output.with_suffix(output.suffix + ".meta")
+    _ = meta.write_text(
+        "\n".join(
+            [
+                "TOOL=cursor",
+                "TIMEOUT=2",
+                f"OUTPUT_FILE={output}",
+                "OUTER_LAUNCHER=launch-review.sh",
+                f"OUTER_LAUNCHER_PROMPT_FILE={output}.prompt",
+                f"OUTER_LAUNCHER_WORKDIR={tmp_path}",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    _ = output.with_suffix(output.suffix + ".prompt").write_text("prompt\n", encoding="utf-8")
+    assert collect_results.collect_results_main(["--timeout", "2", str(output)]) == 0
+    block = _parse_blocks(capsys.readouterr().out)[0]
+    assert block["STATUS"] == "EMPTY_OUTPUT"
+    assert "retired review OUTER_LAUNCHER" in block["FAILURE_REASON"]
+
+
+def test_cap_hit_status(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _reset(monkeypatch)
+    output = tmp_path / "cursor-cap.txt"
+    _ = output.write_text("STATUS=cap_hit\n", encoding="utf-8")
+    _write_done(output)
+    assert collect_results.collect_results_main(["--timeout", "1", str(output)]) == 0
+    block = _parse_blocks(capsys.readouterr().out)[0]
+    assert block["STATUS"] == "cap_hit"

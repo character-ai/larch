@@ -109,3 +109,50 @@ def test_publish_success_writes_result_env(tmp_path: Path) -> None:
     assert "PUBLISH_OK=true" in result.stdout
     result_env = (design / ".design-publish-result.env").read_text(encoding="utf-8")
     assert "PR_NUMBER=99" in result_env
+
+
+def test_publish_inserts_provenance_before_diff_lines_trailer(tmp_path: Path) -> None:
+    plugin_root = tmp_path / "plugin"
+    _write_fake_cli(plugin_root / "python" / "cli.py")
+    design = tmp_path / "design"
+    (design / ".completed").mkdir(parents=True)
+    _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    _ = (design / "composed-plan.md").write_text(
+        "# plan body\n\ndiff_added: 1\ndiff_deleted: 0\nmechanical_churn: false\ndiff_lines: 3\n",
+        encoding="utf-8",
+    )
+    _ = (design / ".step3-review-result.env").write_text(
+        "STEP3_REVIEW_LOOP_STATUS=complete\nLOOP_STATUS=complete\nROUNDS_COMPLETED=2\n",
+        encoding="utf-8",
+    )
+    cli_py = Path(__file__).with_name("cli.py")
+    env = os.environ.copy()
+    env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(cli_py),
+            "design",
+            "publish",
+            "--design-tmpdir",
+            str(design),
+            "--issue",
+            "9",
+            "--session-id",
+            "RUN1",
+            "--claude-pid",
+            "11",
+            "--repo",
+            "owner/repo",
+            "--skip-validate",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+    assert result.returncode == 0, result.stderr
+    plan_text = (design / "composed-plan.md").read_text(encoding="utf-8")
+    assert plan_text.index("review_status: complete") < plan_text.index("diff_lines: 3")
+    assert plan_text.index("rounds_completed: 2") < plan_text.index("diff_lines: 3")
+    assert not plan_text.startswith("review_status:")

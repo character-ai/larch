@@ -15,13 +15,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Sequence
 
+import agents
 import logging_util
 import retry
 import review_dispatch
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PY_CLI = REPO_ROOT / "python" / "cli.py"
-_EXTERNAL_TOOLS = ("codex", "cursor")
 _TIMEOUT_EXIT = "124"
 _RETRY_WAIT_FLOOR = 30
 _RETRY_WAIT_GRACE = 60
@@ -88,6 +88,10 @@ class CollectorRecord:
             return fields
         fields.append(f"STRUCTURED_SIDECAR={self.structured_sidecar}")
         fields.append(f"FAILURE_REASON={self.failure_reason}")
+        if self.ns_retry_mode:
+            fields.append(f"NS_RETRY_MODE={self.ns_retry_mode}")
+        if self.ns_retry_reason:
+            fields.append(f"NS_RETRY_REASON={self.ns_retry_reason}")
         return fields
 
 
@@ -184,7 +188,7 @@ def _parse_meta(meta_path: str | Path) -> RetryMeta:
 
 
 def _registered_tools() -> tuple[str, ...]:
-    return _EXTERNAL_TOOLS
+    return agents.external_tool_names()
 
 
 def derive_tool(output_file: str) -> str:
@@ -260,9 +264,8 @@ def _classify_cursor_response(path: str) -> bool:
 
 
 def _retry_output_path(output: str, suffix: str = "retry") -> str:
-    if output.endswith(".txt"):
-        return f"{output[:-4]}-{suffix}.txt"
-    return f"{output}-{suffix}"
+    base = output[:-4] if output.endswith(".txt") else output
+    return f"{base}-{suffix}.txt"
 
 
 def first_pass_sidecar_path(output: str) -> str:
@@ -369,20 +372,21 @@ def _cmd_json_requires_outer_launcher(orig_output: str, tool: str, cmd: Sequence
         for idx, arg in enumerate(cmd[:-1]):
             if arg == "--mode":
                 mode = cmd[idx + 1]
-                break
         return mode == "ask"
     if tool == "codex" and argv0 == "codex" and cmd[1] == "exec":
         sandbox = ""
         for idx, arg in enumerate(cmd[:-1]):
             if arg == "--sandbox":
                 sandbox = cmd[idx + 1]
-                break
         return sandbox == "read-only"
     return False
 
 
 def _env_without_test_hooks() -> dict[str, str]:
     env = dict(os.environ)
+    for key in list(env):
+        if key.startswith("LARCH_COLLECT_RESULTS_"):
+            _ = env.pop(key, None)
     for key in (
         "LARCH_ALLOW_TEST_HOOKS",
         "LARCH_TEST_TRAP_AFTER_INNER_DONE_FILE",
@@ -887,10 +891,11 @@ def collector_stderr_tail_candidates(reviewer_file: str) -> list[str]:
 
 
 def resolve_collector_stderr_tail_file(reviewer_file: str) -> str:
-    retry_tail = f"{reviewer_file[:-4]}-retry.txt.stderr-tail" if reviewer_file.endswith(".txt") else f"{reviewer_file}-retry.stderr-tail"
+    base = reviewer_file[:-4] if reviewer_file.endswith(".txt") else reviewer_file
+    retry_tail = f"{base}-retry.txt.stderr-tail"
     if Path(retry_tail).is_file() and Path(retry_tail).stat().st_size > 0:
         return retry_tail
-    ns_retry_tail = f"{reviewer_file[:-4]}-ns-retry.txt.stderr-tail" if reviewer_file.endswith(".txt") else f"{reviewer_file}-ns-retry.stderr-tail"
+    ns_retry_tail = f"{base}-ns-retry.txt.stderr-tail"
     if Path(ns_retry_tail).is_file() and Path(ns_retry_tail).stat().st_size > 0:
         return ns_retry_tail
     for candidate in collector_stderr_tail_candidates(reviewer_file):
@@ -922,8 +927,15 @@ def failed_agent_stderr_signature(tail_file: str) -> str:
     if home_cache:
         norm = re.sub(re.escape(home_cache) + r"\S*", "<path>", norm)
     norm = re.sub(r"\S+\.(txt|stderr-tail|sidecar|diag|done)( |$)", r"<out>\2", norm)
-    checksum = sum(norm.encode("utf-8")) % 2_147_483_647
-    return str(checksum)
+    proc = subprocess.run(
+        ["cksum"],
+        input=norm.encode("utf-8"),
+        capture_output=True,
+        check=False,
+    )
+    if proc.returncode == 0 and proc.stdout:
+        return proc.stdout.decode("utf-8", errors="replace").split()[0]
+    return ""
 
 
 def _emit_failed_agent_stderr_tails(records: Sequence[CollectorRecord]) -> None:
@@ -1006,12 +1018,10 @@ def _build_initial_records(options: CollectorOptions, timed_out_indexes: set[int
             exit_code, coerced = _read_sentinel_exit(sentinel, "initial sentinel")
             record.exit_code = exit_code
             output_nonempty = Path(output).is_file() and Path(output).stat().st_size > 0
-            if coerced and not output_nonempty:
-                record.exit_code = "0"
-            elif record.exit_code == _TIMEOUT_EXIT:
+            if record.exit_code == _TIMEOUT_EXIT:
                 record.status = "TIMED_OUT"
                 record.failure_reason = build_failure_reason(output, record.status, record.exit_code)
-            elif record.exit_code != "0":
+            elif record.exit_code != "0" and not (coerced and not output_nonempty):
                 record.status = "FAILED"
                 record.failure_reason = build_failure_reason(output, record.status, record.exit_code)
             elif output_nonempty and _read_nonempty(output).splitlines()[0:1] == ["STATUS=cap_hit"]:

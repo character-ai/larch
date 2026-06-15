@@ -939,20 +939,27 @@ def check_reviewers_main(argv: list[str] | None = None) -> int:
     return 0
 
 
+EXTERNAL_TOOL_NAMES: tuple[str, ...] = ("codex", "cursor")
+
+
+def external_tool_names() -> tuple[str, ...]:
+    return EXTERNAL_TOOL_NAMES
+
+
 def external_tool_registry_main(argv: list[str] | None = None) -> int:
     logging_util.quiet_init(argv0="cli.py")
     parser = argparse.ArgumentParser(prog="cli.py agent external-tool-registry")
     parser.add_argument("--kind", choices=("external-tools", "implementer-coders", "kv"), default="kv")
     args = parser.parse_args(argv)
     if args.kind == "external-tools":
-        _emit("codex")
-        _emit("cursor")
+        for tool in EXTERNAL_TOOL_NAMES:
+            _emit(tool)
     elif args.kind == "implementer-coders":
         _emit("claude")
-        _emit("codex")
-        _emit("cursor")
+        for tool in EXTERNAL_TOOL_NAMES:
+            _emit(tool)
     else:
-        _emit_kv("EXTERNAL_TOOLS", "codex,cursor")
+        _emit_kv("EXTERNAL_TOOLS", ",".join(EXTERNAL_TOOL_NAMES))
         _emit_kv("IMPLEMENTER_CODERS", "claude,codex,cursor")
     return 0
 

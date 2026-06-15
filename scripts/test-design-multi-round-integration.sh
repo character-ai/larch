@@ -98,24 +98,47 @@ chmod +x "$STUB/dispatch-plan-voters.sh"
 printf '## Plan\n\nDo thing.\n\ndiff_lines: 3\n' >"$TMP/design/plan.txt"
 printf 'feat\n' >"$TMP/design/feature-description.txt"
 
+per_entry_stub="$TMP/per-entry-plan-review-loop.sh"
+cat >"$per_entry_stub" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+design=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in --design-tmpdir) design="${2:?}"; shift 2 ;; *) shift ;; esac
+done
+round_dir="${design}/plan-review/round-1"
+mkdir -p "$round_dir"
+printf 'LOOP_STATUS=complete\nREVISE_STATUS=skipped\n' >"$round_dir/round-summary.env"
+{
+    printf '%s\n' "scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix"
+    printf '%s\n' "out_of_scope	important	correctness	src/o	Accepted OOS	scenario	fix"
+} >"$round_dir/findings-classification.tsv"
+printf '## Accepted OOS\n\nAccepted OOS finding\n' >"${design}/oos-accepted-design.md"
+cat >"${design}/.step3-plan-review-result.env" <<'ENV'
+LOOP_STATUS=complete
+ACCEPTED_COUNT=0
+IMPORTANT_ACCEPTED_COUNT=0
+DEGRADED_PANEL=0
+ROUNDS_COMPLETED=1
+TALLY_PLAN_REVIEW_STATUS=ok
+AGGREGATOR_STATUS=ok
+VOTING_TALLY_FILE=
+ENV
+printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'
+EOS
+chmod +x "$per_entry_stub"
+
 out=$(env -u LARCH_QUIET_PID \
     CLAUDE_PLUGIN_ROOT="$ROOT" \
     LARCH_QUIET_DISABLE=1 \
-    LARCH_PLAN_REVIEW_SCOUT_SH="$STUB/scout-plan-archetypes-cli" \
-    LARCH_PLAN_REVIEW_DISPATCH_PANEL_SH="$STUB/dispatch-plan-review-panel.sh" \
-    LARCH_PLAN_REVIEW_COLLECT_SH="$STUB/python/cli.py agent collect-results" \
-    LARCH_PLAN_REVIEW_DISPATCH_VOTERS_SH="$STUB/dispatch-plan-voters.sh" \
     LARCH_AGGREGATOR_DISABLED=1 \
+    RUN_STEP3_PLAN_REVIEW_LOOP_SH="$per_entry_stub" \
     python3 "$CLI" plan-review run \
         --design-tmpdir "$TMP/design" \
         --no-preview
         )
 
 if ! printf '%s\n' "$out" | grep -q '^LOOP_STATUS=complete$'; then
-    if printf '%s\n' "$out" | grep -q '^LOOP_STATUS=panel-failed$'; then
-        printf '%s\n' "SKIP: legacy plan-review shell override path is retired; Python path returned panel-failed"
-        exit 0
-    fi
     fail "expected complete from per-entry integration loop"
 fi
 printf '%s\n' "$out" | grep -q '^ROUNDS_COMPLETED=1$' || fail "per-entry loop should complete exactly one round"
