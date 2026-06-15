@@ -20,6 +20,7 @@ from pathlib import Path
 from collections.abc import Callable, Sequence
 
 import logging_util
+import plan_review_tally
 from session_env import validate_design_tmpdir
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -1199,7 +1200,10 @@ def record_plan_review_round_timing(argv: Sequence[str]) -> int:
 
 
 def tally_plan_review(argv: Sequence[str]) -> int:
-    return _run_legacy(_DESIGN_TALLY_REVIEW, argv)
+    # Ported in-process (docs/python-migration.md C3a1 follow-up): the retired
+    # tally-plan-review.sh spawned ~F*(3V+5) cli.py subprocesses per tally. The
+    # gzip-embedded body in _LEGACY_ASSETS is retained but no longer executed.
+    return plan_review_tally.main(list(argv))
 
 
 def run_step3_review(argv: Sequence[str]) -> int:

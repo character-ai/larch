@@ -1,0 +1,592 @@
+"""In-process plan-review vote tally (ports the retired tally-plan-review.sh).
+
+Replaces the gzip-embedded bash body previously executed via
+``plan_review._run_legacy()``. Calls ``voting.py`` primitives directly instead
+of spawning one ``cli.py`` subprocess per vote, eliminating the ~``F*(3V+5)``
+process spawns per tally (F findings, V voters) that dominated
+``test-findings-classification`` and every production design plan-review round.
+
+Output is byte-compatible with the retired script: the 22-column
+``findings-classification.tsv``, ``voting-tally.md`` (findings table plus
+reviewer scoreboard), the ``accepted-plan-findings.md`` /
+``rejected-findings.md`` / ``oos.md`` / ``oos-accepted-design.md`` artifacts,
+the ``KEY=value`` contract grammar (``TALLY_PLAN_REVIEW_STATUS``,
+``VOTING_TALLY_FILE``), stderr diagnostics, and exit codes.
+
+See docs/python-migration.md (C3a1 façade) and
+skills/design/scripts/test-findings-classification.sh for the contract.
+"""
+
+from __future__ import annotations
+
+import os
+import re
+import shutil
+import tempfile
+from pathlib import Path
+from typing import NoReturn
+
+import logging_util
+import voting
+from session_env import validate_design_tmpdir
+
+_VALID_SLOTS = {"1", "2", "3", "Claude", "Codex", "Cursor", "MainAgent"}
+_LATENT_BODY_SEVERITY = re.compile(
+    r"(?im)^-[ \t]*\*\*Severity\*\*:[ \t]*latent[ \t]*$"
+)
+_BODY_SEVERITY_PREFIX = re.compile(r"^[\s-]*\*\*Severity\*\*:[ \t]*")
+_FULL_PANEL = 3
+
+
+class _AbortTally(Exception):
+    """Unwind to the CLI boundary with a specific exit code (bash ``exit N``)."""
+
+    def __init__(self, code: int = 2) -> None:
+        super().__init__(code)
+        self.code = code
+
+
+def _sanitize_tsv_cell(value: str) -> str:
+    """Port of the bash ``sanitize_tsv_cell``: strip tab/newline, escape formulae.
+
+    The bash glob ``[=+-@]*`` is a character class where ``+-@`` is the range
+    ``+`` (0x2B) through ``@`` (0x40); ``=`` (0x3D) falls inside it. A leading
+    char in that range is prefixed with ``'`` (spreadsheet formula guard).
+    Preserved exactly for byte parity with the retired script.
+    """
+    cell = (value or "").replace("\t", " ").replace("\n", " ")
+    if cell and "+" <= cell[0] <= "@":
+        return "'" + cell
+    return cell
+
+
+def _body_severity_for_block(block_path: str | Path) -> str:
+    """First ``**Severity**:`` value in a block (port of the awk extractor)."""
+    try:
+        lines = Path(block_path).read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return ""
+    for line in lines:
+        if _BODY_SEVERITY_PREFIX.match(line):
+            value = _BODY_SEVERITY_PREFIX.sub("", line, count=1)
+            return re.sub(r"[ \t]+$", "", value)
+    return ""
+
+
+class _Tally:
+    """Mutable tally state mirroring the retired script's shell globals."""
+
+    def __init__(self) -> None:
+        self.design_tmpdir = ""
+        self.ballot_file = ""
+        self.findings_out = ""
+        self.voter_specs: list[str] = []
+        self.voter_files: list[str] = []
+        self.seen_voter = False
+        self.seen_voter_files = False
+        self.slot_file: dict[int, str] = {1: "", 2: "", 3: ""}
+        self.slot_tool: dict[int, str] = {1: "", 2: "", 3: ""}
+        self.main_agent_voter = ""
+        self.tally_voter_file = ""
+        self.eligible = 0
+        self.tally_file = ""
+        self.status_emitted = False
+        self.block_dir = ""
+        self.workdir = ""
+
+    # -- usage / diagnostics -------------------------------------------------
+    @staticmethod
+    def _usage() -> None:
+        logging_util.diagnostic(
+            "usage: tally-plan-review.sh --ballot-file FILE "
+            "[--voter SLOT:FILE...|POS:TOOL:FILE...] [--voter-files FILE...] "
+            "--design-tmpdir DIR [--findings-classification-out FILE]"
+        )
+
+    # -- stub writers --------------------------------------------------------
+    def _write_tally_stub(self, message: str) -> None:
+        _ = Path(self.tally_file).write_text(
+            f"# Plan Review Voting Tally\n\n{message}\n", encoding="utf-8"
+        )
+
+    def _write_findings_classification_stub(self) -> None:
+        out = Path(self.findings_out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        _ = out.write_text(voting.findings_classification_header() + "\n", encoding="utf-8")
+
+    def _error_exit(
+        self,
+        stderr_message: str,
+        stub_message: str = "",
+        *,
+        write_classification_stub: bool = True,
+    ) -> NoReturn:
+        """Port of bash ``tally_error_exit``: diagnose, stub, emit, exit 2."""
+        logging_util.diagnostic(stderr_message)
+        if stub_message:
+            self._write_tally_stub(stub_message)
+        if write_classification_stub:
+            self._write_findings_classification_stub()
+        self.status_emitted = True
+        if self.tally_file and Path(self.tally_file).exists() and Path(self.tally_file).stat().st_size > 0:
+            logging_util.emit_kv("VOTING_TALLY_FILE", self.tally_file)
+        logging_util.emit_kv("TALLY_PLAN_REVIEW_STATUS", "tally-error")
+        raise _AbortTally(2)
+
+    # -- voter-slot resolution (ports of the like-named bash helpers) --------
+    @staticmethod
+    def _infer_voter_slot(path: str, index: int) -> str:
+        base = Path(path).name.lower()
+        if "claude" in base:
+            return "Claude"
+        if "codex" in base:
+            return "Codex"
+        if "cursor" in base:
+            return "Cursor"
+        return {1: "Claude", 2: "Codex"}.get(index, "Cursor")
+
+    @staticmethod
+    def _canonical_position_for_slot(slot: str) -> str:
+        return {"1": "1", "Claude": "1", "2": "2", "Codex": "2", "3": "3", "Cursor": "3"}.get(slot, "0")
+
+    @staticmethod
+    def _canonical_tool_for_slot(slot: str) -> str:
+        return {
+            "Claude": "Claude", "Codex": "Codex", "Cursor": "Cursor",
+            "1": "Claude", "2": "Codex", "3": "Cursor",
+        }.get(slot, slot)
+
+    def _position_for_voter(self, tool: str, path: str) -> str:
+        base = Path(path).name.lower()
+        groups = (
+            (1, ("voter-1", "voter1", "slot1", "slot-1", "claude-vote-output")),
+            (2, ("voter-2", "voter2", "slot2", "slot-2", "codex-vote-output")),
+            (3, ("voter-3", "voter3", "slot3", "slot-3", "cursor-vote-output")),
+        )
+        for pos, needles in groups:
+            if any(n in base for n in needles):
+                return str(pos)
+        if tool == "Claude" and not self.slot_file[1]:
+            return "1"
+        if tool == "Codex" and not self.slot_file[2]:
+            return "2"
+        if tool == "Cursor" and not self.slot_file[3]:
+            return "3"
+        for pos in (1, 2, 3):
+            if not self.slot_file[pos]:
+                return str(pos)
+        return "0"
+
+    def _assign_voter(self, tool: str, path: str, pos: str = "") -> None:
+        if tool == "MainAgent":
+            self.main_agent_voter = path
+            return
+        if not pos:
+            pos = self._position_for_voter(tool, path)
+        if pos == "0":
+            self._error_exit(
+                "tally-plan-review.sh: too many voters; expected at most three non-MainAgent voters",
+                "**⚠ Tally aborted: too many voters; at most three non-MainAgent voters allowed.**",
+            )
+        slot = int(pos)
+        if self.slot_file[slot]:
+            self._error_exit(
+                f"error: duplicate voter position {pos}",
+                f"**⚠ Tally aborted: duplicate voter position {pos}.**",
+            )
+        self.slot_file[slot] = path
+        self.slot_tool[slot] = tool
+
+    # -- vote tallying -------------------------------------------------------
+    def _tally_votes_for_id(self, item_id: str) -> tuple[int, int, int, str]:
+        yes = no = judge_error = 0
+        if self.tally_voter_file:
+            vote = voting.vote_for_id(item_id, self.tally_voter_file)
+            if vote == "YES":
+                yes = 1
+            elif vote == "NO":
+                no = 1
+            else:
+                judge_error = 1
+        elif self.eligible > 0:
+            for pos in (1, 2, 3):
+                voter_file = self.slot_file[pos]
+                if not voter_file:
+                    continue
+                vote = voting.vote_for_id(item_id, voter_file)
+                if vote == "YES":
+                    yes += 1
+                elif vote == "NO":
+                    no += 1
+                else:
+                    judge_error += 1
+        result = voting.classify_result(yes, no, 0, self.eligible)
+        return yes, no, judge_error, result
+
+    @staticmethod
+    def _is_security(block: str | Path) -> bool:
+        try:
+            return voting.is_security_block(block)
+        except SystemExit:
+            return False
+
+    # -- findings-classification TSV ----------------------------------------
+    def _write_findings_classification(self, sorted_ids: list[str]) -> None:
+        out = Path(self.findings_out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        buf = voting.findings_classification_header() + "\n"
+        for item_id in sorted_ids:
+            block = Path(self.block_dir) / f"{item_id}.md"
+            reviewer = _sanitize_tsv_cell(voting.reviewer_for_block(block))
+            body_severity = _sanitize_tsv_cell(_body_severity_for_block(block))
+            _, _, _, result = self._tally_votes_for_id(item_id)
+            tsv_result = "rejected" if self.main_agent_voter else result
+            row = [item_id, reviewer, tsv_result]
+            for pos in (1, 2, 3):
+                voter_file = self.slot_file[pos]
+                tool = self.slot_tool[pos]
+                if voter_file and self.tally_voter_file != voter_file and self.eligible > 0:
+                    try:
+                        _, correctness, severity, quality, uncertain = voting.parse_judge_vote(voter_file, item_id)
+                    except (OSError, FileNotFoundError):
+                        correctness = severity = quality = uncertain = ""
+                    vote = voting.vote_for_id(item_id, voter_file)
+                    if vote == "JUDGE_ERROR":
+                        vote = ""
+                    row += [
+                        _sanitize_tsv_cell(vote),
+                        _sanitize_tsv_cell(correctness),
+                        _sanitize_tsv_cell(severity),
+                        _sanitize_tsv_cell(quality),
+                        _sanitize_tsv_cell(uncertain),
+                        _sanitize_tsv_cell(tool),
+                    ]
+                else:
+                    row += ["", "", "", "", "", ""]
+            row.append(body_severity)
+            buf += "\t".join(row) + "\n"
+        tmp = out.with_name(f"{out.name}.{os.getpid()}.tmp")
+        _ = tmp.write_text(buf, encoding="utf-8")
+        _ = tmp.replace(out)
+
+    # -- argument parsing ----------------------------------------------------
+    def _parse_args(self, argv: list[str]) -> int | None:
+        i = 0
+        n = len(argv)
+        while i < n:
+            arg = argv[i]
+            if arg == "--design-tmpdir":
+                self.design_tmpdir = self._value(argv, i, "--design-tmpdir requires a value")
+                i += 2
+            elif arg == "--ballot-file":
+                self.ballot_file = self._value(argv, i, "--ballot-file requires a value")
+                i += 2
+            elif arg == "--findings-classification-out":
+                self.findings_out = self._value(argv, i, "--findings-classification-out requires a value")
+                i += 2
+            elif arg == "--voter":
+                self.seen_voter = True
+                self.voter_specs.append(self._value(argv, i, "--voter requires SLOT:PATH"))
+                i += 2
+            elif arg == "--voter-files":
+                self.seen_voter_files = True
+                i += 1
+                while i < n and not argv[i].startswith("--"):
+                    self.voter_files.append(argv[i])
+                    i += 1
+            elif arg in ("-h", "--help"):
+                self._usage()
+                return 0
+            else:
+                logging_util.diagnostic(f"tally-plan-review.sh: unknown argument: {arg}")
+                self._usage()
+                raise _AbortTally(2)
+        return None
+
+    def _value(self, argv: list[str], i: int, message: str) -> str:
+        if i + 1 >= len(argv):
+            logging_util.diagnostic(message)
+            raise _AbortTally(2)
+        return argv[i + 1]
+
+    # -- voter spec resolution ----------------------------------------------
+    def _resolve_voters(self) -> None:
+        if self.seen_voter:
+            for spec in self.voter_specs:
+                if ":" not in spec:
+                    self._error_exit(
+                        f"error: invalid voter slot: {spec} (must be 1|2|3|Claude|Codex|Cursor|MainAgent)",
+                        f"**⚠ Tally aborted: invalid voter slot: {spec}; no votes tallied.**",
+                        write_classification_stub=False,
+                    )
+                match = re.match(r"^([123]):([^:]+):(.*)$", spec)
+                if match:
+                    slot, tool, path = match.group(1), match.group(2), match.group(3)
+                else:
+                    slot, _, path = spec.partition(":")
+                    tool = self._canonical_tool_for_slot(slot)
+                if slot not in _VALID_SLOTS:
+                    self._error_exit(
+                        f"error: invalid voter slot: {slot} (must be 1|2|3|Claude|Codex|Cursor|MainAgent)",
+                        f"**⚠ Tally aborted: invalid voter slot: {slot}; no votes tallied.**",
+                        write_classification_stub=False,
+                    )
+                self.voter_files.append(path)
+                if slot == "MainAgent":
+                    self._assign_voter(slot, path)
+                    continue
+                self._assign_voter(tool, path, self._canonical_position_for_slot(slot))
+        else:
+            if self.seen_voter_files:
+                logging_util.diagnostic("deprecated: --voter-files; use --voter <SLOT>:<PATH>")
+            for idx, path in enumerate(self.voter_files, start=1):
+                self._assign_voter(self._infer_voter_slot(path, idx), path)
+
+        if self.main_agent_voter:
+            non_main = sum(1 for pos in (1, 2, 3) if self.slot_file[pos])
+            if non_main > 0 or len(self.voter_specs) > 1:
+                self._error_exit(
+                    "error: --voter MainAgent is only valid as the sole voter (0-judge fallback path)",
+                    "**⚠ Tally aborted: --voter MainAgent is only valid as the sole voter; no votes tallied.**",
+                )
+
+        if self.main_agent_voter:
+            self.tally_voter_file = self.main_agent_voter
+            self.eligible = 1
+        else:
+            self.eligible = sum(1 for pos in (1, 2, 3) if self.slot_file[pos])
+
+    # -- main driver ---------------------------------------------------------
+    def run(self, argv: list[str]) -> int:
+        early = self._parse_args(argv)
+        if early is not None:
+            return early
+
+        if not self.design_tmpdir or not self.ballot_file:
+            logging_util.diagnostic(
+                "tally-plan-review.sh: --design-tmpdir and --ballot-file are required"
+            )
+            self._usage()
+            raise _AbortTally(2)
+
+        if not self.findings_out:
+            self.findings_out = str(
+                Path(self.design_tmpdir, "plan-review", "round-1", "findings-classification.tsv")
+            )
+
+        ok, message = validate_design_tmpdir(self.design_tmpdir)
+        if not ok:
+            logging_util.diagnostic(message)
+            raise _AbortTally(2)
+        Path(self.design_tmpdir).mkdir(parents=True, exist_ok=True)
+        self.tally_file = str(Path(self.design_tmpdir, "voting-tally.md"))
+
+        if self.seen_voter and self.seen_voter_files:
+            self._error_exit(
+                "error: --voter and --voter-files are mutually exclusive",
+                "**⚠ Tally aborted: --voter and --voter-files are mutually exclusive; no votes tallied.**",
+                write_classification_stub=False,
+            )
+
+        if not os.access(self.ballot_file, os.R_OK):
+            self._error_exit(
+                f"tally-plan-review.sh: ballot file is missing or unreadable: {self.ballot_file}",
+                f"**⚠ Tally aborted: ballot file unreadable: {self.ballot_file}; no votes tallied.**",
+            )
+
+        self._resolve_voters()
+
+        for voter_file in self.voter_files:
+            if not os.access(voter_file, os.R_OK):
+                self._error_exit(
+                    f"tally-plan-review.sh: voter file is missing or unreadable: {voter_file}",
+                    f"**⚠ Tally aborted: voter file unreadable: {voter_file}; no votes tallied.**",
+                )
+
+        self.workdir = tempfile.mkdtemp(prefix="larch-tally-plan-review.")
+        self.block_dir = str(Path(self.workdir, "blocks"))
+        try:
+            voting.split_ballot(self.ballot_file, self.block_dir)
+        except SystemExit:
+            self._error_exit(
+                "tally-plan-review.sh: duplicate or malformed FINDING/OOS headings in ballot",
+                "**⚠ Tally aborted: duplicate or malformed FINDING/OOS headings in ballot; no votes tallied.**",
+            )
+
+        sorted_ids = self._sorted_ids()
+
+        accepted_plan = Path(self.design_tmpdir) / "accepted-plan-findings.md"
+        rejected_plan = Path(self.design_tmpdir) / "rejected-findings.md"
+        oos_file = Path(self.design_tmpdir) / "oos.md"
+        oos_accepted_local = Path(self.design_tmpdir) / "oos-accepted-design.md"
+        for artifact in (accepted_plan, rejected_plan, oos_file, oos_accepted_local):
+            _ = artifact.write_text("", encoding="utf-8")
+
+        if self.eligible == 0:
+            _ = Path(self.tally_file).write_text(
+                "# Plan Review Voting Tally\n\n"
+                "**⚠ Degraded plan-review panel: 0 judges available. "
+                "Panel tier: main-agent-required.**\n\n",
+                encoding="utf-8",
+            )
+            self._write_findings_classification(sorted_ids)
+            self.status_emitted = True
+            logging_util.emit_kv("TALLY_PLAN_REVIEW_STATUS", "main-agent-vote-required")
+            logging_util.emit_kv("VOTING_TALLY_FILE", self.tally_file)
+            return 0
+
+        self._render(sorted_ids, accepted_plan, rejected_plan, oos_file, oos_accepted_local)
+        self._write_findings_classification(sorted_ids)
+        self.status_emitted = True
+        logging_util.emit_kv("TALLY_PLAN_REVIEW_STATUS", "ok")
+        logging_util.emit_kv("VOTING_TALLY_FILE", self.tally_file)
+        return 0
+
+    def _sorted_ids(self) -> list[str]:
+        ids = [path.stem for path in Path(self.block_dir).glob("*.md")]
+
+        def key(item_id: str) -> tuple[int, int]:
+            finding = re.match(r"^FINDING_([0-9]+)$", item_id)
+            if finding:
+                return (1, int(finding.group(1)))
+            oos = re.match(r"^OOS_([0-9]+)$", item_id)
+            if oos:
+                return (2, int(oos.group(1)))
+            return (3, 0)
+
+        eligible = [i for i in ids if re.match(r"^(FINDING|OOS)_[0-9]+$", i)]
+        return sorted(eligible, key=key)
+
+    def _render(
+        self,
+        sorted_ids: list[str],
+        accepted_plan: Path,
+        rejected_plan: Path,
+        oos_file: Path,
+        oos_accepted_local: Path,
+    ) -> None:
+        buf = "# Plan Review Voting Tally\n\n"
+        if self.main_agent_voter:
+            buf += "**⚠ Degraded plan-review panel: 0 judges available. Panel tier: main-agent-adjudicated.**\n\n"
+        elif self.eligible < _FULL_PANEL:
+            tier = voting.panel_tier(self.eligible)
+            buf += f"**⚠ Degraded plan-review panel: {self.eligible} judge(s) available. Panel tier: {tier}.**\n\n"
+        buf += "## Findings\n\n"
+        buf += "| Item | YES | NO | JERR | Result |\n"
+        buf += "|---|---:|---:|---:|---|\n"
+
+        accepted_chunks: list[str] = []
+        rejected_chunks: list[str] = []
+        oos_chunks: list[str] = []
+        oos_accepted_chunks: list[str] = []
+        score_rows: list[tuple[str, str, str]] = []
+
+        for item_id in sorted_ids:
+            block = Path(self.block_dir) / f"{item_id}.md"
+            yes, no, judge_error, result = self._tally_votes_for_id(item_id)
+            buf += f"| {item_id} | {yes} | {no} | {judge_error} | {result} |\n"
+
+            reviewer = voting.reviewer_for_block(block)
+            kind = "oos" if item_id.startswith("OOS_") else "finding"
+            score_rows.append((reviewer, kind, result))
+            security = self._is_security(block)
+            block_text = Path(block).read_text(encoding="utf-8", errors="replace")
+
+            if kind == "finding":
+                if result == "accepted":
+                    accepted_chunks.append(block_text + "\n")
+                elif _LATENT_BODY_SEVERITY.search(block_text):
+                    oos_chunks.append(
+                        block_text
+                        + f"\nVote tally: YES={yes} NO={no} JUDGE_ERROR={judge_error} "
+                        f"Result={result} (latent-rerouted)\n\n"
+                    )
+                else:
+                    rejected_chunks.append(f"### [Plan Review] {item_id}\n\n{block_text}\n")
+            else:
+                # An accepted security OOS is absorbed into the plan with no
+                # artifact; every other OOS is recorded on the OOS track.
+                absorbed = result == "accepted" and security
+                if not absorbed:
+                    oos_chunks.append(
+                        block_text
+                        + f"\nVote tally: YES={yes} NO={no} JUDGE_ERROR={judge_error} Result={result}\n\n"
+                    )
+                    if result == "accepted":
+                        oos_accepted_chunks.append(block_text + "\n")
+
+        buf += "\n## Reviewer Competition Scoreboard\n\n"
+        buf += (
+            "| Reviewer | Proposed | Accepted | Neutral | Rejected | OOS-Proposed | "
+            "OOS-Accepted | OOS-Neutral | OOS-Rejected | Score |\n"
+        )
+        buf += "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n"
+        buf += self._scoreboard(score_rows)
+
+        _ = Path(self.tally_file).write_text(buf, encoding="utf-8")
+        _append(accepted_plan, accepted_chunks)
+        _append(rejected_plan, rejected_chunks)
+        _append(oos_file, oos_chunks)
+        _append(oos_accepted_local, oos_accepted_chunks)
+
+    @staticmethod
+    def _scoreboard(score_rows: list[tuple[str, str, str]]) -> str:
+        agg: dict[str, dict[str, int]] = {}
+        for reviewer, kind, result in score_rows:
+            row = agg.setdefault(
+                reviewer,
+                {"proposed": 0, "accepted": 0, "neutral": 0, "rejected": 0,
+                 "oos_proposed": 0, "oos_accepted": 0, "oos_neutral": 0, "oos_rejected": 0},
+            )
+            if kind == "finding":
+                row["proposed"] += 1
+                if result == "accepted":
+                    row["accepted"] += 1
+                elif result == "neutral":
+                    row["neutral"] += 1
+                else:
+                    row["rejected"] += 1
+            else:
+                row["oos_proposed"] += 1
+                if result == "accepted":
+                    row["oos_accepted"] += 1
+                elif result == "neutral":
+                    row["oos_neutral"] += 1
+                else:
+                    row["oos_rejected"] += 1
+        lines: list[str] = []
+        for reviewer, row in agg.items():
+            score = row["accepted"] + row["oos_accepted"] - row["rejected"] - row["oos_rejected"]
+            lines.append(
+                f"| {reviewer} | {row['proposed']} | {row['accepted']} | {row['neutral']} | "
+                f"{row['rejected']} | {row['oos_proposed']} | {row['oos_accepted']} | "
+                f"{row['oos_neutral']} | {row['oos_rejected']} | {score} |\n"
+            )
+        lines.sort()
+        return "".join(lines)
+
+
+def _append(path: Path, chunks: list[str]) -> None:
+    if chunks:
+        with path.open("a", encoding="utf-8") as handle:
+            _ = handle.write("".join(chunks))
+
+
+def main(argv: list[str]) -> int:
+    """In-process entry point for ``plan-review tally`` (replaces _run_legacy)."""
+    logging_util.quiet_init(argv0="cli.py")
+    tally = _Tally()
+    try:
+        return tally.run(list(argv))
+    except _AbortTally as exc:
+        return exc.code
+    except Exception as exc:  # mirror bash cleanup trap: any failure -> tally-error
+        logging_util.diagnostic(f"tally-plan-review: unexpected error: {exc}")
+        if not tally.status_emitted:
+            if tally.tally_file and Path(tally.tally_file).exists() and Path(tally.tally_file).stat().st_size > 0:
+                logging_util.emit_kv("VOTING_TALLY_FILE", tally.tally_file)
+            logging_util.emit_kv("TALLY_PLAN_REVIEW_STATUS", "tally-error")
+        return 2
+    finally:
+        if tally.workdir and Path(tally.workdir).is_dir():
+            shutil.rmtree(tally.workdir, ignore_errors=True)

@@ -296,37 +296,21 @@ set -e
 grep -Fq 'parse-judge-vote: voter file is missing or unreadable:' "$TMPROOT/parser-unreadable.err" \
     || fail "parser unreadable-file diagnostic missing"
 
-echo "=== malicious parser output is TSV-sanitized ==="
-STUB_ROOT="$TMPROOT/stub-root"
-mkdir -p "$STUB_ROOT/scripts"
-cp "$CLAUDE_PLUGIN_ROOT/scripts/lib-quiet.sh" "$STUB_ROOT/scripts/lib-quiet.sh"
-cp "$CLAUDE_PLUGIN_ROOT/scripts/lib-design-tmpdir.sh" "$STUB_ROOT/scripts/lib-design-tmpdir.sh"
-mkdir -p "$STUB_ROOT/python"
-cat > "$STUB_ROOT/python/cli.py" <<'EOF'
-#!/usr/bin/env python3
-import os
-import sys
-if sys.argv[1:3] == ["voting", "parse-judge-vote"]:
-    print("PARSED_CORRECTNESS=true")
-    print("PARSED_SEVERITY=major")
-    print("PARSED_QUALITY=good\twith\ttab")
-    print("PARSED_UNCERTAIN=false")
-    print("extra")
-    print("line")
-    raise SystemExit(0)
-real_cli = os.environ.get("LARCH_REAL_CLI")
-if real_cli:
-    os.execv(sys.executable, [sys.executable, real_cli, *sys.argv[1:]])
-print(f"unexpected cli args: {sys.argv[1:]}", file=sys.stderr)
-raise SystemExit(2)
-EOF
-chmod +x "$STUB_ROOT/python/cli.py"
+echo "=== malicious ballot content is TSV-sanitized ==="
+# The in-process tally parses judge votes via voting.parse_judge_vote, which
+# validates every rating axis against a fixed enum, so parser-derived columns
+# can never carry a tab or newline. The live TSV-injection vector is untrusted
+# ballot text (reviewer names, body severity), which the tally still passes
+# through sanitize_tsv_cell. Inject a tab into a finding's **Severity** body
+# line and assert the body_severity column collapses it to a space so the row
+# keeps its 22-field shape. Reviewer-field tab sanitization is covered by the
+# FINDING_1 finding_reviewers assertion in the first case above.
 W4S="$TMPROOT/case4-sanitize"
 mkdir -p "$W4S/design"
-write_ballot "$W4S/ballot.md"
-cp "$CLAUDE" "$W4S/claude-vote-output.txt"
-LARCH_PLAN_REVIEW_LEGACY_PYTHON_DIR="$STUB_ROOT/python" LARCH_REAL_CLI="$CLI" CLAUDE_PLUGIN_ROOT="$STUB_ROOT" "${TALLY[@]}" --ballot-file "$W4S/ballot.md" --design-tmpdir "$W4S/design" --findings-classification-out "$W4S/out.tsv" --voter "Claude:$W4S/claude-vote-output.txt" >/dev/null
-assert_cell "$W4S/out.tsv" FINDING_1 v1_quality "good with tab"
+printf '### FINDING_1: Sanitize finding\n- **Reviewer(s)**: Claude-Plan\n- **Severity**: high\twith\ttab\n- **Focus area**: correctness\n- **Location**: src/a\n- **Concern**: sanitize concern.\n' > "$W4S/ballot.md"
+printf 'FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false\n' > "$W4S/claude-vote-output.txt"
+"${TALLY[@]}" --ballot-file "$W4S/ballot.md" --design-tmpdir "$W4S/design" --findings-classification-out "$W4S/out.tsv" --voter "Claude:$W4S/claude-vote-output.txt" >/dev/null
+assert_cell "$W4S/out.tsv" FINDING_1 body_severity "high with tab"
 assert_all_rows_21_fields "$W4S/out.tsv"
 
 echo "=== duplicate position rejection and legacy fallback tool identity ==="
