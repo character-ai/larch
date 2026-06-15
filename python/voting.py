@@ -909,14 +909,16 @@ def _compose_args(argv: list[str], *, require_log: bool = False) -> argparse.Nam
 def _validate_tally_args(args: argparse.Namespace) -> tuple[str, int, int, int, int]:
     if args.phase == "plan-review":
         batch = "plan-review-tally"
+        allowed_modes = {"simple", "hard"}
         if not args.body_file:
             _die("--body-file is required for --phase plan-review")
     elif args.phase == "code-review":
         batch = "code-review-tally"
+        allowed_modes = {"simple", "hard", "self-review"}
     else:
         _die(f"--phase must be plan-review or code-review: {args.phase}")
-    if args.mode not in {"simple", "hard"}:
-        _die(f"--mode must be simple or hard: {args.mode}")
+    if args.mode not in allowed_modes:
+        _die(f"--mode must be one of {', '.join(sorted(allowed_modes))} for --phase {args.phase}: {args.mode}")
     rounds = _require_non_negative("--rounds", args.rounds)
     accepted = _require_non_negative("--accepted", args.accepted)
     rejected = _require_non_negative("--rejected", args.rejected)
