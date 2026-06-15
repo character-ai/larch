@@ -866,6 +866,26 @@ def test_codex_launch_resolves_workdir_from_plugin_cache_via_keepalive(
     assert str(consumer.resolve()) in _codex_trust_config_from_cmd(cmd)
 
 
+def test_resolve_workdir_reads_implement_tmpdir_keepalive(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    consumer = tmp_path / "consumer"
+    consumer.mkdir()
+    _init_git_repo(consumer)
+    plugin_cache = tmp_path / "plugin-cache"
+    plugin_cache.mkdir()
+    implement_tmp = tmp_path / "implement"
+    implement_tmp.mkdir()
+    (implement_tmp / ".larch-keepalive").write_text(f"CLONE_PATH={consumer}\n", encoding="utf-8")
+    monkeypatch.chdir(plugin_cache)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(implement_tmp))
+    monkeypatch.delenv("DESIGN_TMPDIR", raising=False)
+    monkeypatch.delenv("SESSION_TMPDIR", raising=False)
+    monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+
+    resolved = agents._resolve_review_codex_workdir(str(plugin_cache))
+
+    assert Path(resolved).resolve() == consumer.resolve()
+
+
 def test_codex_launch_resolves_workdir_from_claude_project_dir(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
