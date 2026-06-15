@@ -5,7 +5,7 @@
 _step3_review_write_prelaunch_failure() {
   local _result_env="$DESIGN_TMPDIR/.step3-review-result.env"
   local _tmp=""
-  # Drop any prior loop envelope before publishing the pre-launch failure state.
+  # Drop any prior loop envelope first, so publish failures cannot replay stale state.
   rm -f "$_result_env" 2>/dev/null || true
   _tmp="$(mktemp "$DESIGN_TMPDIR/.step3-review-result.env.XXXXXX" 2>/dev/null || true)"
   if [[ -n "$_tmp" ]]; then
