@@ -1,8 +1,8 @@
-## /implement run 2E45B018-F6B4-4A86-9B28-4FE48543949D — bailed
+## /implement run 2E45B018-F6B4-4A86-9B28-4FE48543949D — stalled
 
-- **Outcome**: bailed
+- **Outcome**: stalled
 - **Mode**: N/A
-- **Duration**: N/A
+- **Duration**: 02:36:38
 - **Cost**: 💰 TOTAL ~$53.04 — Claude $11.50, Codex $37.05, Cursor $3.38, Claude (subprocess) $1.11  |  Tokens: 77908k
 - **Issue**: #4336 — https://github.com/character-ai/larch/issues/4336
 - **Plan review**: N/A
