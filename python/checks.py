@@ -630,11 +630,15 @@ def _finish_logged_result(
     phase = _phase_from_markers(ok=ok, has_precommit=has_precommit, has_agent_lint=has_agent_lint)
     warn = warn_override or ("agent-lint-missing" if has_warn else None)
     if result_code == 2 and _is_no_validation_phases_log(log_file):  # noqa: PLR2004
+        attempt = log_file.name.rsplit("-", 1)[-1].removesuffix(".log")
+        redacted_file = log_dir / f"{site}-{attempt}.redacted.log"
+        redacted_path = str(redacted_file) if _redact_log(log_file, redacted_file) else None
         return _checks_failure(
             site=site,
             exit_code=2,
             reason="no-validation-phases",
             raw_log_path=str(log_file),
+            redacted_log_path=redacted_path,
             phase="none",
             coverage="none",
             warn=warn,
