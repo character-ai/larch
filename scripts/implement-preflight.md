@@ -19,6 +19,16 @@ Exit codes:
 
 The helper is Bash 3.2 compatible. It writes only under `$PREFLIGHT_TMPDIR`.
 
+## Plugin root resolution
+
+The helper resolves `CLAUDE_PLUGIN_ROOT` in this order before any `python/cli.py` call:
+
+1. An already-exported `CLAUDE_PLUGIN_ROOT` from the environment.
+2. Resume-path source guard: `$IMPLEMENT_TMPDIR/plugin-root.env` when `IMPLEMENT_TMPDIR` is set and that file exists.
+3. Initial-run fallback: self-location from `${BASH_SOURCE[0]}` (`dirname/..`). Preflight runs before Step 0 creates `IMPLEMENT_TMPDIR`, so on the first `/implement` call the resume-path guard is a no-op and only this fallback resolves the root.
+
+If all three leave `CLAUDE_PLUGIN_ROOT` unset or pointing at a tree without `python/cli.py`, the helper exits `2` with `**❌ /implement preflight: cannot resolve CLAUDE_PLUGIN_ROOT/python/cli.py.**`. The caller does not need to export `CLAUDE_PLUGIN_ROOT` before invoking the helper.
+
 ## Admission parsing
 
 - Capture admission stdout before branching on the admission return code.
@@ -176,7 +186,7 @@ Envelope invariants:
 
 ## Harness
 
-`scripts/test-implement-preflight.sh` is the offline harness. It stubs `gh` and `python3` and covers admission refusal, emergency admission bypass, no-block fallback, malformed-block fallback, emergency title fallback, empty-title abort, JSON extraction, `--repo` forwarding, titles containing `=`, `RESUME=false` defaulting, `RESUME=true` forwarding, one `KEY=value` record per line, success-envelope-only behavior, quiet-mode key output via `LARCH_QUIET_DISABLE=1`, and malformed emergency `BLOCK_PRESENT=true`.
+`scripts/test-implement-preflight.sh` is the offline harness. It stubs `gh` and `python3` and covers admission refusal, emergency admission bypass, no-block fallback, malformed-block fallback, emergency title fallback, empty-title abort, JSON extraction, `--repo` forwarding, titles containing `=`, `RESUME=false` defaulting, `RESUME=true` forwarding, one `KEY=value` record per line, success-envelope-only behavior, quiet-mode key output via `LARCH_QUIET_DISABLE=1`, malformed emergency `BLOCK_PRESENT=true`, and initial-run plugin-root self-location with neither `CLAUDE_PLUGIN_ROOT` nor `IMPLEMENT_TMPDIR` set.
 
 ## Edit in sync
 

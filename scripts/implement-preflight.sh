@@ -64,6 +64,15 @@ rm -f "$PREFLIGHT_TMPDIR/.write-test" 2>/dev/null || true
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ]; then
   . "$IMPLEMENT_TMPDIR/plugin-root.env"
 fi
+# Initial-run fallback: self-locate the plugin root from this script's own path.
+# Preflight runs before Step 0 creates IMPLEMENT_TMPDIR, so the resume-path source
+# guard above is a no-op on the first /implement call and CLAUDE_PLUGIN_ROOT stays
+# unset. This script lives at $CLAUDE_PLUGIN_ROOT/scripts/implement-preflight.sh,
+# so its parent directory's parent is the plugin root.
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+  CLAUDE_PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+  export CLAUDE_PLUGIN_ROOT
+fi
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] || [ ! -f "${CLAUDE_PLUGIN_ROOT}/python/cli.py" ]; then
   printf '**❌ /implement preflight: cannot resolve CLAUDE_PLUGIN_ROOT/python/cli.py.**\n'
   exit 2
