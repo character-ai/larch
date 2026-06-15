@@ -57,7 +57,7 @@ def _populate_cleanup_fixture(version_root: Path) -> None:
         _touch(path)
     for path in (
         version_root / "python/cli.py",
-        version_root / "scripts/relevant-checks.sh",
+        version_root / "python/checks.py",
         version_root / "skills/design/SKILL.md",
         version_root / "docs/installation-and-setup.md",
         version_root / "python/tester.py",
@@ -173,7 +173,7 @@ def test_clean_test_files_from_cache_removes_dev_test_infrastructure(monkeypatch
     )
     kept = (
         "python/cli.py",
-        "scripts/relevant-checks.sh",
+        "python/checks.py",
         "skills/design/SKILL.md",
         "docs/installation-and-setup.md",
         "python/tester.py",
