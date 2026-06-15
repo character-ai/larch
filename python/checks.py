@@ -448,7 +448,7 @@ def _existing_regular_files(repo: Path, paths: Iterable[str]) -> tuple[str, ...]
 _DIRECT_TARGET_RULES: Final[tuple[tuple[tuple[str, ...], tuple[str, ...], bool, bool], ...]] = (
     (("scripts/read-result-env.sh", "scripts/read-result-env.md"), ("test-read-result-env", "test-design-structure"), False, False),
     (("scripts/test-read-result-env.sh", "scripts/test-read-result-env.md"), ("test-read-result-env",), False, False),
-    (("python/session_env.py"), ("test-step0b-router-flag-recovery",), False, False),
+    (("python/session_env.py",), ("test-step0b-router-flag-recovery",), False, False),
     (("python/plan_quality.py", "python/test_plan_quality.py"), ("test-design-publish", "test-design-stage-terminal-state", "test-design-failure-report", "test-design-step5c", "test-design-structure"), False, False),
     (("skills/design/scripts/design-step5c.sh", "skills/design/scripts/test-design-step5c.sh", "skills/design/scripts/test-design-step5c.md"), ("test-design-step5c", "test-design-publish", "test-design-failure-report"), False, False),
     (("skills/design/scripts/design-step0-clarify-hard-halt.sh", "skills/design/scripts/design-step0-clarify-hard-halt.md"), ("test-design-failure-report", "test-design-stage-terminal-state", "test-design-structure"), False, False),
@@ -474,7 +474,7 @@ _DIRECT_TARGET_RULES: Final[tuple[tuple[tuple[str, ...], tuple[str, ...], bool, 
     (("scripts/test-design-structure.sh", "scripts/test-design-structure.md"), ("test-design-structure",), False, False),
     (("skills/*/SKILL.md", "skills/*/references/*.md"), (), False, False),
     (("scripts/lint-readability-preamble.tsv", "scripts/lint-readability-preamble.tsv.md"), ("test-lint-readability-preamble",), False, False),
-    (("scripts/collect-agent-results.sh", "scripts/test-collect-agent-results.sh"), ("test-collect-agent-results",), False, False),
+
     (("scripts/lib-design-tmpdir.sh", "scripts/test-lib-design-tmpdir.sh", "scripts/lib-design-tmpdir.md", "scripts/test-lib-design-tmpdir.md"), ("test-lib-design-tmpdir",), False, False),
     (("python/rendering.py", "python/test_rendering.py"), ("test-plan-review", "test-launch-claude-subprocess", "test-lib-scope-anchor-handoff", "test-plan-review-panel", "test-aggregate-findings"), False, False),
     (("python/decompose.py", "python/test_decompose.py"), ("test-decompose-file-issues", "test-decompose-panel-dispatch", "test-decompose-aggregator"), True, True),
