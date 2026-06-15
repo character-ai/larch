@@ -1,0 +1,16 @@
+## /implement run 2E45B018-F6B4-4A86-9B28-4FE48543949D — bailed
+
+- **Outcome**: bailed
+- **Mode**: N/A
+- **Duration**: N/A
+- **Cost**: 💰 TOTAL ~$53.04 — Claude $11.50, Codex $37.05, Cursor $3.38, Claude (subprocess) $1.11  |  Tokens: 77908k
+- **Issue**: #4336 — https://github.com/character-ai/larch/issues/4336
+- **Plan review**: N/A
+- **Code review**: 23/35 accepted
+- **Lines (PR diff)**: N/A
+- **OOS filed**: 0
+- **Exec issues**: 2
+- **Warnings**: 0
+- **Run logs**: `larch-logs/implement/2E45B018-F6B4-4A86-9B28-4FE48543949D/`
+
+<!-- larch:run-summary v=1 -->
