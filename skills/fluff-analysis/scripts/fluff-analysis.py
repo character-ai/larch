@@ -14,6 +14,7 @@ See fluff-analysis.md for the full contract.
 """
 import argparse
 import collections
+import concurrent.futures
 import datetime
 import glob
 import json
@@ -310,113 +311,150 @@ def extract(log_root, sessions_dir, include_in_progress, cutoff, inprogress_min,
     return records
 
 
-def _extract_implement(impl_root, cutoff, since_version=None):
+def _extract_one_implement_run(args):
+    # Worker for the threaded scan; cutoff / since_version passed explicitly so
+    # there is no reliance on mutated module globals.
+    run_dir, cutoff, since_version = args
     records = []
-    for run_dir in sorted(glob.glob(os.path.join(impl_root, "*"))):
-        jf = os.path.join(run_dir, "review-findings-full.jsonl")
-        if not os.path.exists(jf):
+    jf = os.path.join(run_dir, "review-findings-full.jsonl")
+    if not os.path.exists(jf):
+        return records
+    run_id = os.path.basename(run_dir)
+    started = manifest_started(run_dir)
+    larch_version = manifest_larch_version(run_dir)
+    period = period_of_version(since_version, larch_version) if since_version is not None else period_of(cutoff, started_at=started)
+    round_tsv = {}
+    for tsv in glob.glob(os.path.join(run_dir, "round-*", "findings-classification.tsv")):
+        match = re.search(r"round-(\d+)", tsv)
+        round_tsv[match.group(1) if match else ""] = parse_impl_tsv(read_text(tsv))
+    for line in read_text(jf).splitlines():
+        line = line.strip()
+        if not line:
             continue
-        run_id = os.path.basename(run_dir)
-        started = manifest_started(run_dir)
-        larch_version = manifest_larch_version(run_dir)
-        period = period_of_version(since_version, larch_version) if since_version is not None else period_of(cutoff, started_at=started)
-        round_tsv = {}
-        for tsv in glob.glob(os.path.join(run_dir, "round-*", "findings-classification.tsv")):
-            match = re.search(r"round-(\d+)", tsv)
-            round_tsv[match.group(1) if match else ""] = parse_impl_tsv(read_text(tsv))
-        for line in read_text(jf).splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                data = json.loads(line)
-            except ValueError:
-                continue
-            phase = data.get("phase", "")
-            outcome = data.get("outcome", "") or ""
-            if phase == "retroactive-backfill" or not outcome:
-                continue
-            fid = data.get("id", "")
-            rnum = str(data.get("round_num", "") or "")
-            slots = data.get("reviewer_slots")
-            if not isinstance(slots, list):
-                rev = data.get("reviewer")
-                slots = [rev] if isinstance(rev, str) else []
-            rev_str = ", ".join(s for s in slots if isinstance(s, str))
-            cat = data.get("category", "") or ""
-            prose = data.get("prose_body", "") or ""
-            body_severity = data.get("body_severity", "") or ""
-            focus_area = data.get("focus_area", "") or find_focus(prose)
-            severity = normalize_severity(body_severity) if body_severity else find_severity(prose)
-            title = cat
-            if not title:
-                hmatch = re.search(r"(?m)^#{2,4}\s+(?:(?:FINDING|OOS|REJ)[_A-Z0-9]*\d[:\s]+)?(.*)$", prose)
-                title = (hmatch.group(1).strip() if hmatch else "")[:200]
-            ratings = round_tsv.get(rnum, {}).get(fid, {})
-            records.append({
-                "skill": "implement", "source": "committed", "run_id": run_id,
-                "round": rnum, "phase": phase or "code-review", "finding_id": fid,
-                "larch_version": larch_version,
-                "outcome": outcome, "is_oos_id": fid.startswith("OOS"),
-                "title": title[:300],
-                "focus_area": focus_area,
-                "body_severity": body_severity,
-                "severity": severity,
-                "reviewers": rev_str, "tools": tools_from(rev_str), "is_dynamic": is_dynamic(rev_str),
-                "v_severities": ratings.get("severities", []),
-                "v_qualities": ratings.get("qualities", []),
-                "v_correctness": ratings.get("correctness", []),
-                "v_uncertain": ratings.get("uncertain", []),
-                "period": period,
-                "text": (title + "\n" + prose)[:2000],
-            })
+        try:
+            data = json.loads(line)
+        except ValueError:
+            continue
+        phase = data.get("phase", "")
+        outcome = data.get("outcome", "") or ""
+        if phase == "retroactive-backfill" or not outcome:
+            continue
+        fid = data.get("id", "")
+        rnum = str(data.get("round_num", "") or "")
+        slots = data.get("reviewer_slots")
+        if not isinstance(slots, list):
+            rev = data.get("reviewer")
+            slots = [rev] if isinstance(rev, str) else []
+        rev_str = ", ".join(s for s in slots if isinstance(s, str))
+        cat = data.get("category", "") or ""
+        prose = data.get("prose_body", "") or ""
+        body_severity = data.get("body_severity", "") or ""
+        focus_area = data.get("focus_area", "") or find_focus(prose)
+        severity = normalize_severity(body_severity) if body_severity else find_severity(prose)
+        title = cat
+        if not title:
+            hmatch = re.search(r"(?m)^#{2,4}\s+(?:(?:FINDING|OOS|REJ)[_A-Z0-9]*\d[:\s]+)?(.*)$", prose)
+            title = (hmatch.group(1).strip() if hmatch else "")[:200]
+        ratings = round_tsv.get(rnum, {}).get(fid, {})
+        records.append({
+            "skill": "implement", "source": "committed", "run_id": run_id,
+            "round": rnum, "phase": phase or "code-review", "finding_id": fid,
+            "larch_version": larch_version,
+            "outcome": outcome, "is_oos_id": fid.startswith("OOS"),
+            "title": title[:300],
+            "focus_area": focus_area,
+            "body_severity": body_severity,
+            "severity": severity,
+            "reviewers": rev_str, "tools": tools_from(rev_str), "is_dynamic": is_dynamic(rev_str),
+            "v_severities": ratings.get("severities", []),
+            "v_qualities": ratings.get("qualities", []),
+            "v_correctness": ratings.get("correctness", []),
+            "v_uncertain": ratings.get("uncertain", []),
+            "period": period,
+            "text": (title + "\n" + prose)[:2000],
+        })
+    return records
+
+
+def _extract_implement(impl_root, cutoff, since_version=None):
+    run_dirs = sorted(glob.glob(os.path.join(impl_root, "*")))
+    if not run_dirs:
+        return []
+    jobs = [(run_dir, cutoff, since_version) for run_dir in run_dirs]
+    records = []
+    # Per-run-dir work is independent and dominated by file I/O plus C-level
+    # json/regex parsing (which release the GIL), so threads overlap it. Threads
+    # (not processes) also keep this working when the module is imported under a
+    # synthetic name in tests, where pickling a process worker by module
+    # reference fails. executor.map preserves input order, so the report stays
+    # byte-stable. #4439 Trick D.
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        for chunk in executor.map(_extract_one_implement_run, jobs):
+            records.extend(chunk)
+    return records
+
+
+def _extract_one_design_tsv(args):
+    # Worker for the threaded scan; cutoff / since_version passed explicitly so
+    # there is no reliance on mutated module globals.
+    tsv, design_root, cutoff, since_version = args
+    records = []
+    block_dir = os.path.dirname(tsv)
+    rmatch = re.search(r"/design/([^/]+)/", tsv.replace(os.sep, "/"))
+    run_id = rmatch.group(1) if rmatch else ""
+    run_dir = os.path.join(design_root, run_id)
+    started = manifest_started(run_dir)
+    larch_version = manifest_larch_version(run_dir)
+    period = period_of_version(since_version, larch_version) if since_version is not None else period_of(cutoff, started_at=started)
+    rnmatch = re.search(r"round-(\d+)", block_dir)
+    rnum = rnmatch.group(1) if rnmatch else ""
+    tsv_recs = parse_design_tsv(read_text(tsv))
+    content = parse_md_blocks(read_text(os.path.join(block_dir, "findings.md")))
+    for fid, trec in tsv_recs.items():
+        crec = content.get(fid, {})
+        fields = crec.get("fields", {})
+        reviewers = trec.get("reviewers", "") or fields.get("reviewer(s)", "")
+        title = crec.get("title", "") or fields.get("concern", "")[:120] or fid
+        body_severity = trec.get("body_severity", "") or ""
+        severity = normalize_design_severity(body_severity) if body_severity else (modal(trec.get("severities", [])) or normalize_design_severity(fields.get("severity", "")))
+        if severity == "":
+            severity = "(none)"
+        fallback_text = reviewers or fid
+        records.append({
+            "skill": "design", "source": "committed", "run_id": run_id,
+            "round": rnum, "phase": "plan-review", "finding_id": fid,
+            "larch_version": larch_version,
+            "outcome": trec.get("result", ""), "is_oos_id": fid.startswith("OOS"),
+            "title": title[:300],
+            "focus_area": fields.get("focus area", ""),
+            "body_severity": body_severity,
+            "severity": severity,
+            "reviewers": reviewers,
+            "tools": tools_from(reviewers),
+            "is_dynamic": is_dynamic(reviewers),
+            "v_severities": trec.get("severities", []),
+            "v_qualities": trec.get("qualities", []),
+            "v_correctness": trec.get("correctness", []),
+            "v_uncertain": trec.get("uncertain", []),
+            "period": period,
+            "text": (title + "\n" + (fields.get("concern", "") or fallback_text) + "\n"
+                     + fields.get("proposed resolution", "") + "\n" + crec.get("raw", ""))[:2000],
+        })
     return records
 
 
 def _extract_design(design_root, cutoff, since_version=None):
+    tsvs = sorted(glob.glob(os.path.join(design_root, "*", "**", "findings-classification.tsv"), recursive=True))
+    if not tsvs:
+        return []
+    jobs = [(tsv, design_root, cutoff, since_version) for tsv in tsvs]
     records = []
-    for tsv in sorted(glob.glob(os.path.join(design_root, "*", "**", "findings-classification.tsv"), recursive=True)):
-        block_dir = os.path.dirname(tsv)
-        rmatch = re.search(r"/design/([^/]+)/", tsv.replace(os.sep, "/"))
-        run_id = rmatch.group(1) if rmatch else ""
-        run_dir = os.path.join(design_root, run_id)
-        started = manifest_started(run_dir)
-        larch_version = manifest_larch_version(run_dir)
-        period = period_of_version(since_version, larch_version) if since_version is not None else period_of(cutoff, started_at=started)
-        rnmatch = re.search(r"round-(\d+)", block_dir)
-        rnum = rnmatch.group(1) if rnmatch else ""
-        tsv_recs = parse_design_tsv(read_text(tsv))
-        content = parse_md_blocks(read_text(os.path.join(block_dir, "findings.md")))
-        for fid, trec in tsv_recs.items():
-            crec = content.get(fid, {})
-            fields = crec.get("fields", {})
-            reviewers = trec.get("reviewers", "") or fields.get("reviewer(s)", "")
-            title = crec.get("title", "") or fields.get("concern", "")[:120] or fid
-            body_severity = trec.get("body_severity", "") or ""
-            severity = normalize_design_severity(body_severity) if body_severity else (modal(trec.get("severities", [])) or normalize_design_severity(fields.get("severity", "")))
-            if severity == "":
-                severity = "(none)"
-            fallback_text = reviewers or fid
-            records.append({
-                "skill": "design", "source": "committed", "run_id": run_id,
-                "round": rnum, "phase": "plan-review", "finding_id": fid,
-                "larch_version": larch_version,
-                "outcome": trec.get("result", ""), "is_oos_id": fid.startswith("OOS"),
-                "title": title[:300],
-                "focus_area": fields.get("focus area", ""),
-                "body_severity": body_severity,
-                "severity": severity,
-                "reviewers": reviewers,
-                "tools": tools_from(reviewers),
-                "is_dynamic": is_dynamic(reviewers),
-                "v_severities": trec.get("severities", []),
-                "v_qualities": trec.get("qualities", []),
-                "v_correctness": trec.get("correctness", []),
-                "v_uncertain": trec.get("uncertain", []),
-                "period": period,
-                "text": (title + "\n" + (fields.get("concern", "") or fallback_text) + "\n"
-                         + fields.get("proposed resolution", "") + "\n" + crec.get("raw", ""))[:2000],
-            })
+    # Threaded for the same reasons as _extract_implement (I/O- and C-parse-
+    # bound, and import-safe under a synthetic module name). executor.map
+    # preserves input order, so the report stays byte-stable. #4439 Trick D.
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        for chunk in executor.map(_extract_one_design_tsv, jobs):
+            records.extend(chunk)
     return records
 
 
@@ -579,7 +617,7 @@ def _section_groups(i_all, d_inscope, min_group):
         out.append("")
         out.append("| group | n | acc% |")
         out.append("|---|--:|--:|")
-        for tag, n, a, _o, _r in drows:
+        for tag, n, a, _, _ in drows:
             out.append("| %s | %d | %.1f |" % (tag, n, a))
     return out
 
@@ -754,7 +792,7 @@ def _section_prepost(i_all, d_inscope, since_version=None):
 
 def _section_recommendations(i_all, min_group):
     out = ["", "## Recommendations (data-driven)", ""]
-    base_total, base_acc, _o, _r = threeway(i_all)
+    base_total, base_acc, _, _ = threeway(i_all)
     baseline = pct(base_acc, base_total)
     # reject-heavy fluff groups below baseline
     fluff = []
@@ -762,7 +800,7 @@ def _section_recommendations(i_all, min_group):
         sub = [r for r in i_all if tag in r["_tags"]]
         if len(sub) < min_group:
             continue
-        total, acc, _oos, rej = threeway(sub)
+        total, acc, _, rej = threeway(sub)
         if pct(acc, total) < baseline and pct(rej, total) >= baseline:
             fluff.append((tag, total, pct(acc, total), pct(rej, total)))
     fluff.sort(key=lambda row: -row[3])

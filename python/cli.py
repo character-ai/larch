@@ -383,6 +383,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("session", "setup"): ("session_env", "setup_main"),
     ("session", "write-env"): ("session_env", "write_env_main"),
     ("session", "read-key"): ("session_env", "read_key_main"),
+    ("session", "read-keys"): ("session_env", "read_keys_main"),
     ("session", "write-design-env"): ("session_env", "write_design_env_main"),
     ("session", "write-implement-env"): ("session_env", "write_implement_env_main"),
     ("session", "clear-implement-pointer"): ("session_env", "clear_implement_pointer_main"),
