@@ -1479,13 +1479,13 @@ def revise_plan_with_waterfall_main(argv: list[str]) -> int:
         winner_output = str(out_path)
         return True
 
-    for ord_, tier in ((1, "codex"), (2, "cursor"), (3, "claude")):
+    for ord_, tier in ((1, "cursor"), (2, "codex"), (3, "claude")):
         if attempt(ord_, tier):
             break
     if not winner and patch_format == "unified-diff":
         patch_format = "file-replacement"
         fallback = True
-        for tier in ("codex", "cursor", "claude"):
+        for tier in ("cursor", "codex", "claude"):
             if attempt(4, tier):
                 break
     if winner:
