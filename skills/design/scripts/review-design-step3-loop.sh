@@ -637,13 +637,29 @@ run_design_step3_loop() {
         round_start_s="$(step3_loop_now_s)"
         if [[ -z "$phase" ]]; then
             local round_body_capture=""
-            round_body_capture="$(mktemp "$DESIGN_TMPDIR/.step3-round-body.XXXXXX")"
+            round_body_capture="$(mktemp "$DESIGN_TMPDIR/.step3-round-body.XXXXXX" 2>/dev/null || true)"
             set +e
-            run_step3_round_body >"$round_body_capture" 2>&1
-            body_rc=$?
+            if [[ -n "$round_body_capture" ]]; then
+                run_step3_round_body >"$round_body_capture" 2>&1
+                body_rc=$?
+            else
+                emit "**⚠ Step 3: could not create round-body capture file under DESIGN_TMPDIR; relaying round output directly.**"
+                run_step3_round_body
+                body_rc=$?
+            fi
             set -e
-            cat "$round_body_capture"
-            rm -f "$round_body_capture"
+            # #4431: the round-body capture can vanish mid-round (DESIGN_TMPDIR scratch
+            # cleaned by a sub-step), which previously surfaced as a raw `cat: No such
+            # file` error and could abort the loop under set -e before the envelope was
+            # emitted. Guard the relay so tally-error failures stay diagnosable.
+            if [[ -n "$round_body_capture" && -f "$round_body_capture" ]]; then
+                cat "$round_body_capture"
+            elif [[ -n "$round_body_capture" ]]; then
+                emit "**⚠ Step 3: round-body capture (${round_body_capture##*/}) vanished during the round; captured stdout was not relayed. DESIGN_TMPDIR scratch may have been cleaned mid-round; loop status remains authoritative via .step3-review-result.env.**"
+            fi
+            if [[ -n "$round_body_capture" ]]; then
+                rm -f "$round_body_capture" 2>/dev/null || true
+            fi
             if [[ -z "${REASON:-}" && -f "$DESIGN_TMPDIR/.step3-review-result.env" && ! -L "$DESIGN_TMPDIR/.step3-review-result.env" ]]; then
                 while IFS= read -r _line || [[ -n "$_line" ]]; do
                     case "$_line" in

@@ -14,6 +14,7 @@ Wrapper for a `/design` Bash block that keeps `skills/design/SKILL.md` free of i
 - Accepts `--session-env-path` from the prompt-side Bash call.
 - Accepts `--claude-pid` when the wrapped logic must refresh session state.
 - Accepts `--starting-round N` for mid-loop resumes and forwards it to `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review run --mode loop`.
+- Accepts `--read-result-env` for a hook-safe recovery read: emits `READ_RESULT_ENV_STATUS=ok|missing` plus `STEP3_REVIEW_LOOP_STATUS`, `LOOP_STATUS`, `ROUNDS_COMPLETED`, `FINAL_ROUND_NUM`, and `ACCEPTED_COUNT` from `$DESIGN_TMPDIR/.step3-review-result.env`, then exits 0 without writing the `.bg-wait-active` marker or dispatching the review. Recovers `STEP3_REVIEW_LOOP_STATUS` through the wrapper-routed path the immediate-background poll guard allows when a `<task-notification>` arrives in the same turn as the launch ack and blocks a direct read (#4431).
 - Validates resume-state flags and starting-round bounds before writing state.
 - Calls without `--phase`, `--findings-file`, or `--postplan-operator-continue` preserve the existing first-entry pause ordering before review launch.
 - Calls with resume-state flags write validated phase, findings env, or postplan continue state before pause-save.

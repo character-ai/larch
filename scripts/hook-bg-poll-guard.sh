@@ -68,8 +68,26 @@ marker_value() {
   awk -F= -v k="$key" '$1 == k { sub(/^[^=]*=/, ""); print; found=1; exit } END { exit found ? 0 : 1 }' "$marker" 2>/dev/null
 }
 
+marker_step_completed() {
+  # Returns 0 when the immediate-background step named by the marker's STEP
+  # value has already written its terminal completion sentinel. Used to release
+  # the poll guard when a <task-notification> arrives in the same turn as the
+  # launch ack and the bg process has not yet run its EXIT-trap marker cleanup
+  # (#4431). Race-free: the loop writes the sentinel before the task process
+  # exits on terminal paths, and exits before the notification fires. Scoped to
+  # design-step3-review (the reported same-turn case); other guarded steps rely
+  # on the wrapper-routed read allowance.
+  local dir="$1" step="$2" sentinel=""
+  [ -n "$dir" ] || return 1
+  case "$step" in
+    design-step3-review) sentinel="$dir/.completed/step-3" ;;
+    *) return 1 ;;
+  esac
+  [ -f "$sentinel" ] && [ ! -L "$sentinel" ]
+}
+
 marker_is_live() {
-  local marker="$1" dir pid start timeout age limit grace stored_claude_pid hook_claude_pid
+  local marker="$1" dir pid start timeout age limit grace stored_claude_pid hook_claude_pid step
   [ -f "$marker" ] || return 1
   [ ! -L "$marker" ] || return 1
   dir=$(dirname "$marker") || return 2
@@ -78,6 +96,10 @@ marker_is_live() {
   stored_claude_pid=$(marker_value "$marker" CLAUDE_PID 2>/dev/null) || stored_claude_pid=""
   hook_claude_pid="${HOOK_CLAUDE_PID:-}"
   if [ -n "$stored_claude_pid" ] && [ -n "$hook_claude_pid" ] && [ "$stored_claude_pid" != "$hook_claude_pid" ]; then
+    return 1
+  fi
+  step=$(marker_value "$marker" STEP 2>/dev/null) || step=""
+  if marker_step_completed "$dir" "$step"; then
     return 1
   fi
   pid=$(marker_value "$marker" PID) || return 2

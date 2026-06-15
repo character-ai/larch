@@ -12,6 +12,7 @@ import contextlib
 import hashlib
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -1398,16 +1399,18 @@ def revise_plan_with_waterfall_main(argv: list[str]) -> int:
         launchers["cursor"] = [os.environ["LARCH_TEST_LAUNCH_CURSOR_REVIEW"], "--tool", "cursor"]
     if os.environ.get("LARCH_TEST_LAUNCH_CLAUDE_REVIEW"):
         launchers["claude"] = [os.environ["LARCH_TEST_LAUNCH_CLAUDE_REVIEW"]]
-    design_driver = os.environ.get(
-        "LARCH_TEST_DESIGN_DRIVER",
-        f"{sys.executable} {plugin / 'python' / 'cli.py'} design driver",
+    _test_design_driver = os.environ.get("LARCH_TEST_DESIGN_DRIVER", "")
+    design_driver: list[str] = (
+        shlex.split(_test_design_driver)
+        if _test_design_driver
+        else [sys.executable, str(plugin / "python" / "cli.py"), "design", "driver"]
     )
 
     def restore() -> None:
         shutil.copyfile(snapshot, plan)
 
     def emit_plan_gate() -> bool:
-        proc = subprocess.run([design_driver, "--design-tmpdir", str(design_tmpdir)], input="ACTION=EMIT_PLAN\n", text=True, capture_output=True, check=False)
+        proc = subprocess.run([*design_driver, "--design-tmpdir", str(design_tmpdir)], input="ACTION=EMIT_PLAN\n", text=True, capture_output=True, check=False)
         return any(line == "EMIT_PLAN_STATUS=ok" for line in proc.stdout.splitlines())
 
     def set_tier_status(ord_: int, status: str) -> None:

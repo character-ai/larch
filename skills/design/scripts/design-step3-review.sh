@@ -54,6 +54,7 @@ RESUME_PHASE_SEEN=false
 RESUME_FINDINGS_FILE=""
 RESUME_FINDINGS_FILE_SEEN=false
 POSTPLAN_OPERATOR_CONTINUE=false
+READ_RESULT_ENV=false
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -95,6 +96,7 @@ while [ "$#" -gt 0 ]; do
     --postplan-operator-continue) POSTPLAN_OPERATOR_CONTINUE=true; shift ;;
     --step3-review-loop-status) STEP3_REVIEW_LOOP_STATUS="$2"; shift 2 ;;
     --loop-status) LOOP_STATUS="$2"; shift 2 ;;
+    --read-result-env) READ_RESULT_ENV=true; shift ;;
     --) shift; PUBLIC_ARGV_WORDS=("$@"); break ;;
     *) printf '%s\n' "$0: unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -260,6 +262,39 @@ if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -f "${CLAUDE_PLUGIN_ROOT}/scripts/lib-d
   # shellcheck source=scripts/lib-design-tmpdir.sh
   source "${CLAUDE_PLUGIN_ROOT}/scripts/lib-design-tmpdir.sh"
   larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit 2
+fi
+# #4431 Fix C: hook-safe result-env read. When the immediate-background poll guard
+# blocks a direct Read of .step3-review-result.env (e.g. a <task-notification> that
+# arrives in the same turn as the launch ack), the orchestrator re-invokes this
+# wrapper with --read-result-env to recover STEP3_REVIEW_LOOP_STATUS through the
+# wrapper-routed path the guard allows. Pure read: no marker, no review dispatch.
+if [ "$READ_RESULT_ENV" = true ]; then
+  _rre_file="$DESIGN_TMPDIR/.step3-review-result.env"
+  _rre_review_loop_status=""
+  _rre_loop_status=""
+  _rre_rounds_completed=""
+  _rre_final_round_num=""
+  _rre_accepted_count=""
+  if [ -f "$_rre_file" ] && [ ! -L "$_rre_file" ]; then
+    while IFS= read -r _rre_line || [ -n "$_rre_line" ]; do
+      case "$_rre_line" in
+        STEP3_REVIEW_LOOP_STATUS=*) _rre_review_loop_status="${_rre_line#*=}" ;;
+        LOOP_STATUS=*) _rre_loop_status="${_rre_line#*=}" ;;
+        ROUNDS_COMPLETED=*) _rre_rounds_completed="${_rre_line#*=}" ;;
+        FINAL_ROUND_NUM=*) _rre_final_round_num="${_rre_line#*=}" ;;
+        ACCEPTED_COUNT=*) _rre_accepted_count="${_rre_line#*=}" ;;
+      esac
+    done <"$_rre_file"
+    printf 'READ_RESULT_ENV_STATUS=ok\n'
+  else
+    printf 'READ_RESULT_ENV_STATUS=missing\n'
+  fi
+  printf 'STEP3_REVIEW_LOOP_STATUS=%s\n' "$_rre_review_loop_status"
+  printf 'LOOP_STATUS=%s\n' "$_rre_loop_status"
+  printf 'ROUNDS_COMPLETED=%s\n' "$_rre_rounds_completed"
+  printf 'FINAL_ROUND_NUM=%s\n' "$_rre_final_round_num"
+  printf 'ACCEPTED_COUNT=%s\n' "$_rre_accepted_count"
+  exit 0
 fi
 step3_review_validate_resume_state
 if [ "$STEP3_REVIEW_HAS_RESUME_STATE" = false ]; then

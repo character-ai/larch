@@ -184,6 +184,31 @@ else
   fail 'telemetry count must increment on denial'
 fi
 
+# #4431 Fix A: same-turn completion release. A live design-step3-review marker
+# whose terminal completion sentinel (.completed/step-3) already exists is
+# treated as resolved, so the orchestrator can read the result artifact in the
+# same turn the <task-notification> fired — before the bg process's EXIT trap
+# removes the marker.
+mkdir -p "$D/.completed"
+write_marker $$ "$(date +%s)" 21600 design-step3-review
+: >"$D/.completed/step-3"
+out=$(run_payload "$(payload_read "$D/.step3-review-result.env")")
+assert_allow "$out" 'step3 completion sentinel releases Read of result env'
+out=$(run_payload "$(payload_bash "$design_tmpdir_ls")")
+assert_allow "$out" 'step3 completion sentinel releases Bash probe'
+
+write_marker $$ "$(date +%s)" 21600 design-step5c
+out=$(run_payload "$(payload_bash "$design_tmpdir_ls")")
+assert_deny "$out" 'step-3 sentinel does not release a non-step3 marker'
+
+write_marker $$ "$(date +%s)" 21600 design-step3-review
+rm -f "$D/.completed/step-3"
+: >"$D/.completed/real-target"
+ln -s "$D/.completed/real-target" "$D/.completed/step-3"
+out=$(run_payload "$(payload_bash "$design_tmpdir_ls")")
+assert_deny "$out" 'symlinked completion sentinel does not release'
+rm -f "$D/.completed/step-3" "$MARKER"
+
 if [ "$FAIL" -ne 0 ]; then
   printf 'FAIL: test-hook-bg-poll-guard.sh (%s failures, %s passes)\n' "$FAIL" "$PASS" >&2
   exit 1

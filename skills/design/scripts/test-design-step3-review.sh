@@ -258,4 +258,40 @@ grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=panel-init-failed' <<<"$empty_r1_out" || fai
 rm -rf "$D_EMPTY_R1"
 pass 'Step 3 wrapper treats empty round-1 as zero reviewer coverage'
 
+# #4431 Fix C: --read-result-env recovers loop status without running the review
+# (hook-safe wrapper-routed fallback for when the poll guard blocks a direct read).
+RRE_PLUGIN=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-rre-plugin.XXXXXX")
+make_fake_step3_plugin "$RRE_PLUGIN" 'exit 0'
+D_RRE=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-rre.XXXXXX")
+cat > "$D_RRE/.step3-review-result.env" <<'RESULT'
+STEP3_REVIEW_LOOP_STATUS=tally-error
+LOOP_STATUS=tally-error
+ROUNDS_COMPLETED=1
+FINAL_ROUND_NUM=1
+ACCEPTED_COUNT=0
+RESULT
+set +e
+rre_out=$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$RRE_PLUGIN" DESIGN_TMPDIR="$D_RRE" ISSUE_NUMBER=9 \
+  "$WRAPPER" --read-result-env)
+rre_rc=$?
+set -e
+[[ "$rre_rc" -eq 0 ]] || fail "--read-result-env rc=$rre_rc out=$rre_out"
+grep -Fxq 'READ_RESULT_ENV_STATUS=ok' <<<"$rre_out" || fail '--read-result-env must report ok when result env present'
+grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=tally-error' <<<"$rre_out" || fail '--read-result-env must emit STEP3_REVIEW_LOOP_STATUS from result env'
+grep -Fxq 'ROUNDS_COMPLETED=1' <<<"$rre_out" || fail '--read-result-env must emit ROUNDS_COMPLETED from result env'
+[ ! -f "$D_RRE/.bg-wait-active" ] || fail '--read-result-env must not start the bg-wait marker'
+[ ! -d "$D_RRE/plan-review" ] || fail '--read-result-env must not dispatch the review'
+
+D_RRE_MISSING=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-rre-missing.XXXXXX")
+set +e
+rre_missing_out=$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$RRE_PLUGIN" DESIGN_TMPDIR="$D_RRE_MISSING" ISSUE_NUMBER=9 \
+  "$WRAPPER" --read-result-env)
+rre_missing_rc=$?
+set -e
+[[ "$rre_missing_rc" -eq 0 ]] || fail "--read-result-env (missing) rc=$rre_missing_rc out=$rre_missing_out"
+grep -Fxq 'READ_RESULT_ENV_STATUS=missing' <<<"$rre_missing_out" || fail '--read-result-env must report missing when result env absent'
+grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=' <<<"$rre_missing_out" || fail '--read-result-env must emit empty STEP3_REVIEW_LOOP_STATUS when result env absent'
+rm -rf "$RRE_PLUGIN" "$D_RRE" "$D_RRE_MISSING"
+pass 'Step 3 --read-result-env recovers loop status (hook-safe fallback)'
+
 pass 'design-step3-review.sh checks passed'

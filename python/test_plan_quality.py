@@ -1376,6 +1376,61 @@ def test_revise_waterfall_default_launchers_use_python_cli(tmp_path: Path, monke
         assert cmd[2:4] == ["agent", "launch-review"]
 
 
+def test_revise_waterfall_default_design_driver_is_split_argv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Regression for #4434: the EMIT_PLAN gate's design-driver command must be a
+    # properly-split argv list (argv[0] == sys.executable), not a single
+    # space-joined string passed as argv[0] (which execve cannot resolve, so the
+    # gate raised FileNotFoundError and the waterfall always bailed).
+    original = "## Plan\n### UPDATED: file.txt\nbody\ndiff_lines: 1\n"
+    plan, findings, feature = _revise_base(tmp_path, original)
+    design_driver_cmds: list[list[str]] = []
+    real_run = subprocess.run
+
+    def fake_run(cmd: list[str] | str, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if isinstance(cmd, list) and kwargs.get("input") == "ACTION=EMIT_PLAN\n":
+            design_driver_cmds.append(list(cmd))
+            return subprocess.CompletedProcess(cmd, 0, "EMIT_PLAN_STATUS=ok\n", "")
+        if isinstance(cmd, list) and ("launch-review" in cmd or "launch-claude-review" in cmd):
+            out_path = cmd[cmd.index("--output") + 1]
+            Path(out_path).write_text("## Plan\n### UPDATED: file.txt\nchanged\ndiff_lines: 2\n", encoding="utf-8")
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+        check = kwargs.pop("check", False)
+        return real_run(cmd, check=check, **kwargs)  # type: ignore[arg-type,call-overload]
+
+    monkeypatch.setattr(plan_quality.subprocess, "run", fake_run)
+    for key in ("LARCH_TEST_LAUNCH_CODEX_REVIEW", "LARCH_TEST_LAUNCH_CURSOR_REVIEW", "LARCH_TEST_LAUNCH_CLAUDE_REVIEW", "LARCH_TEST_DESIGN_DRIVER"):
+        monkeypatch.delenv(key, raising=False)
+
+    rc = plan_quality.revise_plan_with_waterfall_main(
+        [
+            "--design-tmpdir",
+            str(tmp_path),
+            "--plan-file",
+            str(plan),
+            "--findings-file",
+            str(findings),
+            "--feature-file",
+            str(feature),
+            "--round-num",
+            "1",
+            "--codex-present",
+            "true",
+            "--cursor-present",
+            "true",
+            "--patch-format",
+            "file-replacement",
+        ]
+    )
+    assert rc == 0
+    assert design_driver_cmds, "emit_plan_gate never invoked the design driver"
+    cmd = design_driver_cmds[0]
+    assert cmd[0] == sys.executable
+    assert " " not in cmd[0]
+    assert cmd[1].endswith("python/cli.py")
+    assert cmd[2:4] == ["design", "driver"]
+    assert "--design-tmpdir" in cmd
+
+
 def test_allow_flag_accepts_dot_slash_prefixed_script(tmp_path: Path) -> None:
     script = REPO_ROOT / "skills" / "design" / "scripts" / "fixtures" / "validate-plan-commands" / "demo-stdout-help.sh"
     plan = f"""### UPDATED: {script.relative_to(REPO_ROOT)}
