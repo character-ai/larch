@@ -279,39 +279,10 @@ _step3_review_monitor_was_enabled=0
 case $- in *m*) _step3_review_monitor_was_enabled=1 ;; esac
 _step3_review_monitor_enabled_by_wrapper=0
 
-_step3_review_write_prelaunch_failure() {
-  local _result_env="$DESIGN_TMPDIR/.step3-review-result.env"
-  local _tmp=""
-  rm -f "$_result_env" 2>/dev/null || true
-  _tmp="$(mktemp "$DESIGN_TMPDIR/.step3-review-result.env.XXXXXX" 2>/dev/null || true)"
-  if [[ -n "$_tmp" ]]; then
-    if {
-      printf '%s\n' 'STEP3_REVIEW_LOOP_STATUS=panel-failed'
-      printf '%s\n' 'LOOP_STATUS=panel-failed'
-      printf '%s\n' 'REASON=monitor-mode-unavailable'
-      printf '%s\n' 'TALLY_PLAN_REVIEW_STATUS=panel-failed'
-      printf '%s\n' 'STEP3_REVIEW_CAP_REACHED=false'
-      printf '%s\n' 'STEP3_REVIEW_ROUND_NUM='
-      printf '%s\n' 'ROUND_NUM='
-      printf '%s\n' 'ROUNDS_COMPLETED=0'
-      printf '%s\n' 'REVIEW_ROUND_COUNT=0'
-    } >"$_tmp"; then
-      mv "$_tmp" "$_result_env" 2>/dev/null || {
-        rm -f "$_tmp" "$_result_env" 2>/dev/null || true
-      }
-    else
-      rm -f "$_tmp" "$_result_env" 2>/dev/null || true
-    fi
-  fi
-  printf '%s\n' 'STEP3_REVIEW_LOOP_STATUS=panel-failed'
-  printf '%s\n' 'LOOP_STATUS=panel-failed'
-  printf '%s\n' 'REASON=monitor-mode-unavailable'
-  printf '%s\n' 'TALLY_PLAN_REVIEW_STATUS=panel-failed'
-  printf '%s\n' 'STEP3_REVIEW_CAP_REACHED=false'
-  printf '%s\n' 'ROUNDS_COMPLETED=0'
-  printf '%s\n' 'REVIEW_ROUND_COUNT=0'
-  exit 0
-}
+_step3_review_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+# Static contract pin: pre-launch helper emits STEP3_REVIEW_LOOP_STATUS=panel-failed, LOOP_STATUS=panel-failed, monitor-mode-unavailable, then exit 0.
+# shellcheck source=skills/design/scripts/lib-step3-prelaunch-failure.sh
+. "$_step3_review_script_dir/lib-step3-prelaunch-failure.sh"
 
 _step3_review_teardown_loop_group() {
   local _pid="${1:-}"
