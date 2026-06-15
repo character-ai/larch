@@ -125,6 +125,10 @@ check "$DESIGN_MD" \
     '`STEP3_REVIEW_LOOP_STATUS=complete` — before routing to Step 3b, require `[ -f "$DESIGN_TMPDIR/.completed/step-3" ]`.'
 
 check "$DESIGN_MD" \
+    "/design Step 3 cap-hit route requires completed sentinel" \
+    '`STEP3_REVIEW_LOOP_STATUS=cap-hit` — cap reached; before routing to Step 3b, require `[ -f "$DESIGN_TMPDIR/.completed/step-3" ]`.'
+
+check "$DESIGN_MD" \
     "/design Anti-patterns tells orchestrator not to fall back to Monitor" \
     'Do NOT fall back to Monitor'
 

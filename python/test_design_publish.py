@@ -107,22 +107,58 @@ def test_publish_success_writes_result_env(tmp_path: Path) -> None:
     assert result.returncode == 0
     assert "PLAN_WRITE_OK=true" in result.stdout
     assert "PUBLISH_OK=true" in result.stdout
+    composed = (design / "composed-plan.md").read_text(encoding="utf-8")
+    assert "review_status:" not in composed.split("diff_lines:")[0]
     result_env = (design / ".design-publish-result.env").read_text(encoding="utf-8")
     assert "PR_NUMBER=99" in result_env
 
 
-def test_publish_inserts_provenance_before_diff_lines_trailer(tmp_path: Path) -> None:
+def test_publish_refuses_cap_hit_without_step3_sentinel(tmp_path: Path) -> None:
+    design = tmp_path / "design"
+    (design / ".completed").mkdir(parents=True)
+    _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    _ = (design / "composed-plan.md").write_text("# plan\n\ndiff_lines: 1\n", encoding="utf-8")
+    _ = (design / ".step3-review-result.env").write_text(
+        "STEP3_REVIEW_LOOP_STATUS=cap-hit\nLOOP_STATUS=cap-reached\nROUNDS_COMPLETED=5\n",
+        encoding="utf-8",
+    )
+    cli_py = Path(__file__).with_name("cli.py")
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(cli_py),
+            "design",
+            "publish",
+            "--design-tmpdir",
+            str(design),
+            "--issue",
+            "9",
+            "--session-id",
+            "RUN1",
+            "--claude-pid",
+            "11",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 4
+    assert "cap-hit without .completed/step-3" in result.stdout
+
+
+def test_publish_splices_provenance_above_diff_lines(tmp_path: Path) -> None:
     plugin_root = tmp_path / "plugin"
     _write_fake_cli(plugin_root / "python" / "cli.py")
     design = tmp_path / "design"
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    _ = (design / ".completed" / "step-3").write_text("", encoding="utf-8")
     _ = (design / "composed-plan.md").write_text(
-        "# plan body\n\ndiff_added: 1\ndiff_deleted: 0\nmechanical_churn: false\ndiff_lines: 3\n",
+        "## Plan\nbody\n\ndiff_lines: 3\n",
         encoding="utf-8",
     )
     _ = (design / ".step3-review-result.env").write_text(
-        "STEP3_REVIEW_LOOP_STATUS=complete\nLOOP_STATUS=complete\nROUNDS_COMPLETED=2\n",
+        "STEP3_REVIEW_LOOP_STATUS=complete\nROUNDS_COMPLETED=2\n",
         encoding="utf-8",
     )
     cli_py = Path(__file__).with_name("cli.py")
@@ -142,9 +178,6 @@ def test_publish_inserts_provenance_before_diff_lines_trailer(tmp_path: Path) ->
             "RUN1",
             "--claude-pid",
             "11",
-            "--repo",
-            "owner/repo",
-            "--skip-validate",
         ],
         capture_output=True,
         text=True,
@@ -152,7 +185,9 @@ def test_publish_inserts_provenance_before_diff_lines_trailer(tmp_path: Path) ->
         env=env,
     )
     assert result.returncode == 0, result.stderr
-    plan_text = (design / "composed-plan.md").read_text(encoding="utf-8")
-    assert plan_text.index("review_status: complete") < plan_text.index("diff_lines: 3")
-    assert plan_text.index("rounds_completed: 2") < plan_text.index("diff_lines: 3")
-    assert not plan_text.startswith("review_status:")
+    composed = (design / "composed-plan.md").read_text(encoding="utf-8")
+    lines = composed.splitlines()
+    diff_idx = next(i for i, line in enumerate(lines) if line.startswith("diff_lines:"))
+    assert lines[diff_idx - 2] == "review_status: complete"
+    assert lines[diff_idx - 1] == "rounds_completed: 2"
+    assert lines[0] == "## Plan"

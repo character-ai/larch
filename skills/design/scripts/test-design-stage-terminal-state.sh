@@ -74,3 +74,11 @@ env -u CLAUDE_PLUGIN_ROOT "$SUBJECT" --design-tmpdir "$D7_CANON" --outcome faile
 grep -Fxq 'TRIGGER=publish-tail-failed' "$D7_CANON/design-failure-terminal-state.env" || fail 'publish-tail-failed trigger missing'
 env -u CLAUDE_PLUGIN_ROOT "$REPORT_SH" --profile generic --artifact-prefix design-failure --implement-tmpdir "$D7_CANON" validate-terminal-state --primary-state-file "$D7_CANON/design-failure-terminal-state.env" | grep -Fxq 'VALID=true' || fail 'publish-tail terminal state invalid'
 pass 'stages failed-publish-tail with publish-tail-failed trigger'
+
+D8=$(mktemp -d)
+inside_panel="$D8/step3-panel-init-failed.log"
+printf 'panel init failed\n' >"$inside_panel"
+env -u CLAUDE_PLUGIN_ROOT "$SUBJECT" --design-tmpdir "$D8" --outcome failed-judge-panel --step judge-panel --phase judge-panel --site step3-review --trigger panel-init-failed --bail-reason panel-init-failed --exit-code 1 --source-script design-step3-review --failure-detail-log "$inside_panel" --summary-outcome failed-judge-panel >/dev/null
+grep -Fxq 'BAIL_REASON=panel-init-failed' "$D8/design-failure-terminal-state.env" || fail 'panel-init-failed bail missing'
+env -u CLAUDE_PLUGIN_ROOT "$REPORT_SH" --profile generic --artifact-prefix design-failure --implement-tmpdir "$D8" validate-token --token-kind bail --value panel-init-failed | grep -Fxq 'VALID=true' || fail 'panel-init-failed bail token invalid'
+pass 'stages failed-judge-panel with panel-init-failed bail token'

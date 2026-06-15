@@ -313,6 +313,9 @@ not_contains "$TMPROOT/review-footer-false-positive/stdout" 'rounds_completed=0'
 ADMISSION_CASE=pass PLAN_CASE=absent GH_JSON="$(json_body '[DESIGNED] Emergency' 'code example rounds_completed: 0')" run_expect 0 emergency-body-false-positive --emergency
 not_contains "$TMPROOT/emergency-body-false-positive/stdout" 'rounds_completed=0' 'emergency fallback must not parse body provenance'
 
+ADMISSION_CASE=pass PLAN_CASE=absent GH_JSON="$(json_body '[DESIGNED] Emergency' $'malformed body\nrounds_completed: 0\ndiff_lines: 10\n')" run_expect 0 emergency-malformed-footer --emergency
+not_contains "$TMPROOT/emergency-malformed-footer/stdout" 'rounds_completed=0' 'emergency malformed footer must not trigger provenance refusal'
+
 # 10. JSON decoding and malformed JSON handling.
 json_escaped="$($REAL_PYTHON -c 'import json; print(json.dumps({"body":"line1\\nline2 with \\\"quote\\\"","labels":[],"number":42,"title":"Title with\\nnewline","state":"OPEN"}))')"
 ADMISSION_CASE=pass PLAN_CASE=absent GH_JSON="$json_escaped" run_expect 0 json-escaped --emergency

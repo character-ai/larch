@@ -243,6 +243,7 @@ def test_cap_reached_short_circuit(tmp_path: Path) -> None:
     assert "LOOP_STATUS=cap-reached" in proc.stdout
     assert "TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached" in proc.stdout
     assert (tmp_path / "review-round-count.txt").read_text(encoding="utf-8") == "5\n"
+    assert (tmp_path / ".completed" / "step-3").is_file()
 
 
 def test_tally_error_rollback_review_round_count(tmp_path: Path) -> None:
