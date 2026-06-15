@@ -1,0 +1,215 @@
+You are an expert engineer researching this repository and producing an implementation plan for /design Step 2b.
+
+You may use only side-effect-free repository discovery. Do not write repository files, design tmpdir files, or any other files. Return only the sentinel-delimited response requested below.
+
+Drafting requirements to follow:
+- Prefer minimum necessary change: avoid scope creep, unnecessary complexity, and additions not required for correctness.
+- Read approach-synthesis.txt: if it is exactly NO_SKETCHES, draft from direct codebase/doc inspection without fabricating planning-panel agreement.
+- Read discussion-round1.md when present for scope boundaries and strict constraints.
+- Read design-outline.md only when non-empty and .outline-approved exists; treat Goals, Non-goals, and Surfaces as binding scope.
+- Read brainstorm.md when present as additive ideation context for plan drafting.
+- Use a Files to modify/create section with per-file headings exactly one path each: ### NEW:, ### UPDATED:, or ### REWRITTEN: (at least one ASCII space after ### before the keyword).
+- Include Approach, Edge cases, Failure modes when non-trivial, Testing strategy, optional diff_added/diff_deleted/mechanical_churn trailers, and final diff_lines: <N>.
+- The final plan body must end with a whole-line diff_lines: <N> trailer.
+- Optionally include up to three dynamic plan-review archetypes in a scout block after the plan. The launcher validates, filters, caps, and materializes this block; invalid post-plan scout output is ignored.
+- Scout sentinels inside the summary or plan are fatal format errors. Never put LARCH_SCOUT_* markers in the plan body.
+
+Readability style (trusted):
+# Readability Style
+
+**Consumer**: `/design` prompt surfaces that produce user-facing text, either through an external-agent prompt token or through inline orchestration prose.
+
+**Contract**: this file is the only source of truth for the `/design` readability preamble. External prompt files embed the literal `<READABILITY_STYLE>` token, and assembly code or orchestration expands it to this full file. Inline composition sites read this file before writing user-facing text.
+
+**When to load**: load only when a `/design` step is about to compose user-facing prose or render a prompt that asks another agent to compose such prose. Do not load during setup, pure validation, or byte-stable artifact handling.
+
+---
+
+## Style Axes
+
+Write in three styles at once:
+
+- **Strunk & White**: use active voice. Omit needless words. Prefer concrete nouns and verbs.
+- **Dyslexia-friendly**: use short sentences. Prefer simple words. Break dense ideas into headings and bullets.
+- **Brevity**: shorter is better. Minimize the total artifact length while preserving meaning.
+- **No em dashes**: never use em dashes; use periods, commas, colons, or semicolons instead.
+- **Hedge vs. direct**: hedge uncertain claims ("may contain", "can fail") instead of absolutes; keep directives imperative.
+
+## Precision Contract
+
+Keep these byte-stable unless the task explicitly edits them:
+
+- fenced code blocks
+- backticked tokens
+- file paths
+- identifiers
+- flag names
+- `### NEW:` / `### UPDATED:` / `### REWRITTEN:` plan grammar
+- the trailing `diff_lines: <N>` line
+
+Do not rewrite those items for style. Explain around them instead.
+
+## Precedence
+
+When rules conflict, use this order:
+
+`code references > meaning > brevity > dyslexia-friendly chunking > Strunk & White micro-rewrites`
+
+Apply it directly:
+
+- Preserve code references first.
+- Preserve exact meaning next.
+- Cut words before adding layout.
+- Add headings or bullets only when they improve scanning.
+- Polish grammar last.
+
+## Substitution Token
+
+External-agent prompt files MUST embed this literal token:
+
+`<READABILITY_STYLE>`
+
+Before launch, replace every literal `<READABILITY_STYLE>` token with the full contents of this file.
+
+## Examples
+
+Before: "It is recommended that the implementer should consider adding a validation step."
+
+After: "Add a validation step."
+
+Before: "The plan should make sure that users are not able to continue when the file cannot be read."
+
+After: "Block the flow when the file cannot be read."
+
+Before: "In order to avoid potential future confusion, documentation can be updated."
+
+After: "Update the docs to avoid confusion."
+
+Before: "The script performs an operation that checks if the path exists."
+
+After: "The script checks that the path exists."
+
+Before: "This could possibly be out of scope depending on how the team wants to proceed."
+
+After: "This may be out of scope."
+
+Required output format:
+[optional]
+LARCH_SUMMARY_BEGIN
+A concise summary for large-plan preview. Omit this whole summary block only when no useful summary is needed.
+LARCH_SUMMARY_END
+[/optional]
+LARCH_PLAN_BEGIN
+Full implementation plan body ending with diff_lines: <N>.
+LARCH_PLAN_END
+[optional]
+LARCH_SCOUT_BEGIN
+{"archetypes":[{"name":"slug","focus_area":"code-quality|risk-integration|correctness|architecture|security","weight":1,"rationale":"single-line reason","prompt_body":"2-6 sentence focus directive ending with the required citation sentence."}]}
+LARCH_SCOUT_END
+[/optional]
+
+Optional advisory status may be included between LARCH_STATUS_BEGIN and LARCH_STATUS_END, but the summary, plan, and optional scout sentinels above are the only parsed contract.
+
+Untrusted feature description:
+<feature_description encoding="literal-redacted">
+# [OOS] /design Step 3 plan-review &amp; log-publish drift + bugs — 7 items
+
+Combined from #4214, #4272, #4248 by `/combine-issues --oos`. Drift, latent timing, and merge-idempotency gaps in the `/design` Step 3 plan-review loop and the `/design` log-publish flow.
+
+### Item 1 — Normative design docs still cite retired plan-quality script basenames
+- **Location**: `skills/design/scripts/lib-plan-optional-trailers.md`, `docs/workflow-lifecycle.md`, `skills/design/scripts/test-trailer-awk.md`, `skills/design/scripts/test-design-postplan-emit.md`
+- **Source**: #4214
+- **Severity**: latent
+- **Description**: Normative design docs still cite the retired `check-plan-size.sh` and `revise-plan-with-waterfall.sh` basenames after the C3a2 cutover to `python/cli.py plan check-size`. Verify each citation against the current Python surface before editing; some test-contract docs may describe historical behavior intentionally.
+
+### Item 2 — Map design-clarify.sh / design-clarify.md in scripts/relevant-checks.sh
+- **Location**: `scripts/relevant-checks.sh`
+- **Source**: #4214
+- **Severity**: latent
+- **Description**: `relevant-checks.sh` does not map `design-clarify.sh` / `design-clarify.md` to `test-design-clarify` like other design wrappers (`test-design-publish`, `test-design-step2b-drafter`). The wrapper, its `.md`, and `test-design-clarify.sh` all exist, so the structure check is unwired.
+
+### Item 3 — Missing-row fail-safe may run a second terminal postplan fence on drafter-success
+- **Location**: `skills/design/SKILL.md` (drafter-success path)
+- **Source**: #4214
+- **Severity**: important
+- **Description**: Acceptance calls for one Bash call through postplan on success; a silent second postplan can re-validate and rewrite sentinels after a partial internal handoff. Confirm the drafter-success path fences postplan exactly once.
+
+### Item 4 — Structure pins only grep for literal tokens, not teardown behavior
+- **Location**: `scripts/test-design-structure.sh`
+- **Source**: #4214
+- **Severity**: latent
+- **Description**: The `contains` checks for `_loop_pid=`, `set -m`, and `kill -- -"$_loop_pid"` can pass while cleanup ordering is wrong (trap left armed after `wait`, `_loop_pid` cleared too late, or `set -e` restored before trap clear), which would not be caught before production.
+
+### Item 5 — Success awaiting-continuation uses loop-local round_start_s
+- **Location**: `skills/design/scripts/review-design-step3-loop.sh` (awaiting-continuation success path)
+- **Source**: #4272
+- **Severity**: latent (3 votes, OOS accepted)
+- **Description**: The success path for `awaiting-continuation` uses loop-local `round_start_s` (reset each iteration) instead of `step3_loop_read_round_start_s`, while the failure path already uses the resume-aware reader. On resumed phases the success-path timing record uses a resume-time start rather than the actual round start, potentially narrowing the Gantt window and hiding reviewer rows. Fix: apply `step3_loop_read_round_start_s` on the success path (and consider the `panel-failed` path). Final-report Gantt uses min/max across round rows so impact may be limited when an earlier row exists, but success-vs-failure timing semantics remain inconsistent on resumed phases.
+
+### Item 6 — design-log-publish.sh: no origin-default fetch before merge-base check
+- **Location**: `scripts/design-log-publish.sh`
+- **Source**: #4248
+- **Severity**: latent
+- **Description**: No fetch of the origin default branch before the merge-base check. A stale `origin/&lt;default&gt;` ref can miss an already-merged branch and skip the idempotent short-circuit.
+
+### Item 7 — Merged-branch harness may not match squash production semantics
+- **Location**: `scripts/test-design-log-publish.sh`
+- **Source**: #4248
+- **Severity**: latent
+- **Description**: The harness merges a log branch into main while keeping the remote ref. Unless it simulates squash-merge plus ref behavior, it may not exercise the production idempotency short-circuit it is meant to cover.
+
+---
+*Combined by the larch `/combine-issues --oos` workflow. Sources: #4214, #4272, #4248. Two stale items (retired plan-review-loop scout doc references) from #4214 were discarded after actuality check.*
+
+
+</feature_description>
+
+
+Untrusted approach synthesis:
+<approach_synthesis encoding="literal-redacted">
+NO_SKETCHES
+
+</approach_synthesis>
+
+
+Untrusted approved design outline:
+<design_outline encoding="literal-redacted">
+## Proposed Design Outline
+
+### Goals
+- Fix 4 normative doc files that still cite retired script basenames (`check-plan-size.sh`, `revise-plan-with-waterfall.sh`).
+- Wire `design-clarify.sh` and its harness into `relevant-checks.sh` so edits trigger `test-design-clarify`.
+- Fix the `awaiting-continuation` success-path timing bug and add origin-fetch before idempotency checks in `design-log-publish.sh`.
+- Strengthen SKILL.md fail-safe guard and test ordering for the Step 3 loop teardown.
+
+### Non-goals
+- Changing the awk library behavior or plan-size thresholds (the doc update is citation-only).
+- Rewriting the test harness structure for `test-design-log-publish.sh` beyond the squash-simulation gap.
+- Adding new features or flags to any modified surface.
+
+### Approach sketch
+- **Item 1**: Replace `check-plan-size.sh` and `revise-plan-with-waterfall.sh` references in 4 doc files with `python/cli.py plan check-size` and `python/cli.py plan revise-waterfall`.
+- **Item 2**: Add a `case` arm in `relevant-checks.sh` for `design-clarify.sh|design-clarify.md|test-design-clarify.sh|test-design-clarify.md` → `append_target_once test-design-clarify`.
+- **Item 3**: Add a guard in SKILL.md: before running the missing-row fail-safe, check if `.completed/step-2b` already exists; if so, skip the retained fence.
+- **Item 4**: Add line-number ordering assertions in `test-design-structure.sh` for `wait "$_loop_pid"` before `kill -- -"$_pid"` in `design-step3-review.sh`.
+- **Item 5**: Fix `review-design-step3-loop.sh` lines 786 and 655 to use `step3_loop_read_round_start_s` on success and panel-failed paths.
+- **Item 6**: Call `design_publish_refresh_default_ref` before the idempotency check in `design-log-publish.sh`.
+- **Item 7**: Add a test case that pushes log content to main without a live branch, then re-runs publish to confirm idempotency.
+
+### Surfaces in scope
+- `skills/design/scripts/lib-plan-optional-trailers.md`
+- `skills/design/scripts/test-trailer-awk.md`
+- `skills/design/scripts/test-design-postplan-emit.md`
+- `docs/workflow-lifecycle.md`
+- `scripts/relevant-checks.sh`
+- `skills/design/SKILL.md`
+- `scripts/test-design-structure.sh`
+- `skills/design/scripts/review-design-step3-loop.sh`
+- `scripts/design-log-publish.sh`
+- `scripts/test-design-log-publish.sh`
+
+### Open questions
+- None.
+
+</design_outline>
+

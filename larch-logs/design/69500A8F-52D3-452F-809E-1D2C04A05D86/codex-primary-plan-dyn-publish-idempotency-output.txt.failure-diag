@@ -1,0 +1,9 @@
+===== diag =====
+health-probe fast-fail: codex unhealthy before launch
+health-probe timed out after 30s
+===== launch-stderr =====
+health-probe fast-fail: codex unhealthy before launch
+health-probe fast-fail: codex unhealthy before launch
+health-probe fast-fail: codex unhealthy before launch
+health-probe fast-fail: codex unhealthy before launch
+health-probe fast-fail: codex unhealthy before launch
