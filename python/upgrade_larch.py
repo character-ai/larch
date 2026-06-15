@@ -15,9 +15,42 @@ import config
 import logging_util
 import proc
 
-LARCH_SPARSE_DIRS = ".claude .claude-plugin .gemini .github agents docs hooks python scripts skills tests"
+LARCH_SPARSE_DIRS = ".claude-plugin agents docs hooks python scripts skills"
 SAFE_VERSION_RE = re.compile(r"^[0-9]+(\.[0-9]+)*$")
 KEEP_VERSIONS = 8
+DEV_TOP_LEVEL_CLEANUP_DIRS = (
+    ".claude",
+    ".github",
+    ".gemini",
+    "tests",
+)
+TEST_FILE_CLEANUP_PATTERNS = (
+    "python/test_*.py",
+    "python/conftest.py",
+    "python/pyproject.toml",
+    "python/ruff.toml",
+    "python/requirements-test.txt",
+    "python/requirements-dev.txt",
+    "python/pyrightconfig.json",
+    "python/.pylintrc",
+    "python/review_test_support.py",
+    "python/harness_*.py",
+    "scripts/test-*.sh",
+    "scripts/test-*.md",
+    "parallel-tests.py",
+    "Makefile",
+)
+DEV_ONLY_SKILL_CLEANUP_PATTERNS = (
+    "skills/test-issue/SKILL.md",
+    "skills/test-issue/scripts/test-issue.sh",
+)
+SKILL_HARNESS_CLEANUP_GLOBS = (
+    "skills/*/scripts/test-*.sh",
+    "skills/*/scripts/test-*.md",
+)
+SKILL_HARNESS_SKIP_PREFIXES = (
+    "skills/test-issue/",
+)
 
 
 def err(message: str = "") -> None:
@@ -40,6 +73,109 @@ def marketplace_clone_path(home: Path | None = None) -> Path | None:
 def release_step7_cache_parent(home: Path | None = None) -> Path | None:
     root = home or Path(os.environ["HOME"]) if os.environ.get("HOME") else None
     return root / ".claude/plugins/cache/larch-local/larch" if root else None
+
+
+def _resolve_confined_version_dir(version: str) -> Path | None:
+    if not is_safe_version(version):
+        err("Skipping dev/test cache cleanup: installed version is missing or unsafe.")
+        return None
+    cache_parent = release_step7_cache_parent()
+    if cache_parent is None or not cache_parent.exists():
+        err("Skipping dev/test cache cleanup: larch cache parent is missing.")
+        return None
+    version_dir = cache_parent / version
+    if version_dir.is_symlink():
+        err(f"Skipping dev/test cache cleanup for larch {version}: cache version directory is a symlink.")
+        return None
+    if not version_dir.is_dir():
+        err(f"Skipping dev/test cache cleanup for larch {version}: cache version directory is missing or not a directory.")
+        return None
+    try:
+        version_root = version_dir.resolve()
+        cache_root = cache_parent.resolve()
+        version_root.relative_to(cache_root)
+    except (OSError, ValueError):
+        err(f"Skipping dev/test cache cleanup for larch {version}: cache version directory escaped the larch cache parent.")
+        return None
+    return version_root
+
+
+def _is_confined_cleanup_candidate(candidate: Path, version_root: Path) -> bool:
+    if not candidate.exists():
+        return False
+    try:
+        resolved_candidate = candidate.resolve()
+        resolved_version_root = version_root.resolve()
+        resolved_candidate.relative_to(resolved_version_root)
+    except (OSError, ValueError):
+        return False
+    return True
+
+
+def _is_confined_direct_child_dir(candidate: Path, version_root: Path) -> bool:
+    if candidate.parent != version_root or not candidate.exists() or candidate.is_symlink() or not candidate.is_dir():
+        return False
+    try:
+        resolved_candidate = candidate.resolve()
+        resolved_version_root = version_root.resolve()
+        resolved_candidate.relative_to(resolved_version_root)
+    except (OSError, ValueError):
+        return False
+    return True
+
+
+def _glob_cache_cleanup(version_root: Path, pattern: str) -> list[Path]:
+    try:
+        return list(version_root.glob(pattern))
+    except OSError as exc:
+        err(f"Warning: failed to scan dev/test cache cleanup pattern '{pattern}': {exc}")
+        return []
+
+
+def clean_test_files_from_cache(version: str) -> None:
+    version_root = _resolve_confined_version_dir(version)
+    if version_root is None:
+        err("Dev/test cache cleanup skipped.")
+        return
+    file_candidates: set[Path] = set()
+    for pattern in TEST_FILE_CLEANUP_PATTERNS:
+        for candidate in _glob_cache_cleanup(version_root, pattern):
+            if candidate.is_file() or candidate.is_symlink():
+                file_candidates.add(candidate)
+    for pattern in DEV_ONLY_SKILL_CLEANUP_PATTERNS:
+        for candidate in _glob_cache_cleanup(version_root, pattern):
+            if candidate.is_file() or candidate.is_symlink():
+                file_candidates.add(candidate)
+    for pattern in SKILL_HARNESS_CLEANUP_GLOBS:
+        for candidate in _glob_cache_cleanup(version_root, pattern):
+            relative = candidate.relative_to(version_root).as_posix()
+            if relative.startswith(SKILL_HARNESS_SKIP_PREFIXES):
+                continue
+            if candidate.is_file() or candidate.is_symlink():
+                file_candidates.add(candidate)
+    dir_candidates = [version_root / name for name in DEV_TOP_LEVEL_CLEANUP_DIRS]
+    if not file_candidates and not any(candidate.exists() for candidate in dir_candidates):
+        err("No dev/test cache cleanup candidates matched.")
+    removed_files = 0
+    for candidate in sorted(file_candidates, key=lambda path: path.as_posix()):
+        if not _is_confined_cleanup_candidate(candidate, version_root):
+            continue
+        try:
+            candidate.unlink()
+            removed_files += 1
+        except OSError as exc:
+            err(f"Warning: failed to remove dev/test cache file '{candidate}': {exc}")
+    removed_dirs = 0
+    for candidate in dir_candidates:
+        if not _is_confined_direct_child_dir(candidate, version_root):
+            continue
+        try:
+            shutil.rmtree(candidate)
+            removed_dirs += 1
+        except OSError as exc:
+            err(f"Warning: failed to remove dev/test cache directory '{candidate}': {exc}")
+    err(f"Removed {removed_files} dev/test cache files.")
+    err(f"Removed {removed_dirs} dropped dev top-level directories.")
 
 
 def get_installed_larch_version() -> str:
@@ -260,7 +396,7 @@ def _refresh_marketplace() -> bool:
             return True
         err("marketplace update failed; falling back to sparse re-add...")
     else:
-        err("Adding larch marketplace (sparse checkout; excludes larch-logs)...")
+        err("Adding larch marketplace (sparse checkout; excludes dev-only top-level directories and larch-logs)...")
     proc.run(["claude", "plugin", "marketplace", "remove", "larch-local"])
     if clone is not None and clone.exists():
         try:
@@ -296,6 +432,7 @@ def run_main(argv: list[str]) -> int:
     active_root_stale = False
     if latest and current == latest and not cone_will_reconcile and (not is_cache_shaped_larch_root(plugin_root) or plugin_root.name == latest):
         write_install_stamp(cache_dir, current)
+        clean_test_files_from_cache(current)
         prune_cached_versions(cache_dir, current, installed_version)
         err("")
         err(f"Already at latest stable larch release ({current}). No upgrade needed.")
@@ -333,6 +470,7 @@ def run_main(argv: list[str]) -> int:
         err("LARCH_RESTART_REQUIRED=true")
         return install.returncode or 1
     actual = get_installed_larch_version()
+    clean_test_files_from_cache(actual)
     verified = bool(latest and actual == latest)
     if cone_will_reconcile:
         if _marketplace_sparse_cone_matches():

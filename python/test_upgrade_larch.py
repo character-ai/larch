@@ -12,7 +12,7 @@ import upgrade_larch
 import proc
 
 # Intentional literal guard: keep in sync with scripts/lib-sparse-dirs.sh LARCH_SPARSE_DIRS.
-EXPECTED_LARCH_SPARSE_DIRS = ".claude .claude-plugin .gemini .github agents docs hooks python scripts skills tests"
+EXPECTED_LARCH_SPARSE_DIRS = ".claude-plugin agents docs hooks python scripts skills"
 
 
 def _expected_normalized_sparse_dirs() -> str:
@@ -21,6 +21,50 @@ def _expected_normalized_sparse_dirs() -> str:
 
 def _result(argv: list[str], returncode: int = 0, stdout: str = "", stderr: str = "") -> proc.CommandResult:
     return proc.CommandResult(tuple(argv), returncode, stdout, stderr, 0.0)
+
+
+def _canonical_cache_root(home: Path, version: str = "1.2.3") -> Path:
+    return home / ".claude/plugins/cache/larch-local/larch" / version
+
+
+def _touch(path: Path, text: str = "x") -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def _populate_cleanup_fixture(version_root: Path) -> None:
+    for path in (
+        version_root / "python/test_cleanup.py",
+        version_root / "python/conftest.py",
+        version_root / "python/pyproject.toml",
+        version_root / "python/ruff.toml",
+        version_root / "python/requirements-test.txt",
+        version_root / "python/requirements-dev.txt",
+        version_root / "python/pyrightconfig.json",
+        version_root / "python/.pylintrc",
+        version_root / "python/review_test_support.py",
+        version_root / "python/harness_makefile.py",
+        version_root / "scripts/test-upgrade.sh",
+        version_root / "scripts/test-upgrade.md",
+        version_root / "skills/design/scripts/test-design-step6.sh",
+        version_root / "skills/design/scripts/test-design-step6.md",
+        version_root / "skills/test-issue/SKILL.md",
+        version_root / "skills/test-issue/scripts/test-issue.sh",
+        version_root / "parallel-tests.py",
+        version_root / "Makefile",
+    ):
+        _touch(path)
+    for path in (
+        version_root / "python/cli.py",
+        version_root / "python/checks.py",
+        version_root / "skills/design/SKILL.md",
+        version_root / "docs/installation-and-setup.md",
+        version_root / "python/tester.py",
+    ):
+        _touch(path, "runtime")
+    for dirname in (".claude", ".github", ".gemini", "tests"):
+        _touch(version_root / dirname / "fixture.txt")
 
 
 def test_release_step7_resolves_active_cache(monkeypatch: Any, tmp_path: Path, capsys: Any) -> None:
@@ -99,6 +143,114 @@ def test_larch_sparse_dirs_matches_bash_literal() -> None:
     assert upgrade_larch.LARCH_SPARSE_DIRS == EXPECTED_LARCH_SPARSE_DIRS
 
 
+def test_clean_test_files_from_cache_removes_dev_test_infrastructure(monkeypatch: Any, tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    version_root = _canonical_cache_root(home)
+    _populate_cleanup_fixture(version_root)
+    monkeypatch.setenv("HOME", str(home))
+
+    upgrade_larch.clean_test_files_from_cache("1.2.3")
+
+    removed = (
+        "python/test_cleanup.py",
+        "python/conftest.py",
+        "python/pyproject.toml",
+        "python/ruff.toml",
+        "python/requirements-test.txt",
+        "python/requirements-dev.txt",
+        "python/pyrightconfig.json",
+        "python/.pylintrc",
+        "python/review_test_support.py",
+        "python/harness_makefile.py",
+        "scripts/test-upgrade.sh",
+        "scripts/test-upgrade.md",
+        "skills/design/scripts/test-design-step6.sh",
+        "skills/design/scripts/test-design-step6.md",
+        "skills/test-issue/SKILL.md",
+        "skills/test-issue/scripts/test-issue.sh",
+        "parallel-tests.py",
+        "Makefile",
+    )
+    kept = (
+        "python/cli.py",
+        "python/checks.py",
+        "skills/design/SKILL.md",
+        "docs/installation-and-setup.md",
+        "python/tester.py",
+    )
+    for path in removed:
+        assert not (version_root / path).exists()
+    for dirname in (".claude", ".github", ".gemini", "tests"):
+        assert not (version_root / dirname).exists()
+    for path in kept:
+        assert (version_root / path).exists()
+
+
+def test_clean_test_files_from_cache_skips_symlink_version_dir(monkeypatch: Any, tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    version_root = _canonical_cache_root(home)
+    target = tmp_path / "outside-version"
+    _touch(target / "python/test_escape.py")
+    version_root.parent.mkdir(parents=True)
+    version_root.symlink_to(target, target_is_directory=True)
+    monkeypatch.setenv("HOME", str(home))
+
+    upgrade_larch.clean_test_files_from_cache("1.2.3")
+
+    assert (target / "python/test_escape.py").exists()
+    assert version_root.is_symlink()
+
+
+def test_clean_test_files_from_cache_confines_directory_cleanup(monkeypatch: Any, tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    version_root = _canonical_cache_root(home)
+    version_root.mkdir(parents=True)
+    outside = tmp_path / "outside-dir"
+    outside.mkdir()
+    (version_root / ".github").symlink_to(outside, target_is_directory=True)
+    _touch(version_root / "docs/tests/fixture.txt")
+    _touch(version_root / "nested/.claude/fixture.txt")
+    _touch(version_root / "tests/fixture.txt")
+    monkeypatch.setenv("HOME", str(home))
+
+    upgrade_larch.clean_test_files_from_cache("1.2.3")
+
+    assert (version_root / ".github").is_symlink()
+    assert outside.exists()
+    assert (version_root / "docs/tests/fixture.txt").exists()
+    assert (version_root / "nested/.claude/fixture.txt").exists()
+    assert not (version_root / "tests").exists()
+
+
+def test_clean_test_files_from_cache_skips_resolved_escapes(monkeypatch: Any, tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    version_root = _canonical_cache_root(home)
+    outside = tmp_path / "outside-python"
+    _touch(outside / "test_escape.py")
+    version_root.mkdir(parents=True)
+    (version_root / "python").symlink_to(outside, target_is_directory=True)
+    monkeypatch.setenv("HOME", str(home))
+
+    upgrade_larch.clean_test_files_from_cache("1.2.3")
+
+    assert (outside / "test_escape.py").exists()
+    assert (version_root / "python").is_symlink()
+
+
+def test_clean_test_files_from_cache_unlinks_confined_symlink_leaf(monkeypatch: Any, tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    version_root = _canonical_cache_root(home)
+    target = _touch(version_root / "python/target.py")
+    link = version_root / "python/test_link.py"
+    link.symlink_to(target)
+    monkeypatch.setenv("HOME", str(home))
+
+    upgrade_larch.clean_test_files_from_cache("1.2.3")
+
+    assert not link.exists()
+    assert target.exists()
+
+
 def test_marketplace_sparse_cone_matches(monkeypatch: Any, tmp_path: Path) -> None:
     home = tmp_path / "home"
     clone = home / ".claude/plugins/marketplaces/larch-local"
@@ -145,6 +297,64 @@ def test_run_main_initializes_quiet_mode(monkeypatch: Any, tmp_path: Path) -> No
     )
     assert upgrade_larch.run_main([]) == 0
     assert quiet_calls == ["upgrade-larch.sh"]
+
+
+def test_run_already_latest_cleans_cache_without_reinstall(monkeypatch: Any, tmp_path: Path, capsys: Any) -> None:
+    home = tmp_path / "home"
+    version_root = _canonical_cache_root(home)
+    _touch(version_root / "python/test_cleanup.py")
+    _touch(version_root / ".claude/fixture.txt")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(version_root))
+    monkeypatch.setenv("LARCH_EXPECTED_STABLE_VERSION", "1.2.3")
+    monkeypatch.setattr(upgrade_larch, "_marketplace_sparse_cone_matches", lambda: True)
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
+        calls.append(argv)
+        if argv[:3] == ["claude", "plugin", "list"]:
+            return _result(argv, stdout="larch@larch-local\n  Version: 1.2.3\n")
+        return _result(argv)
+
+    monkeypatch.setattr(upgrade_larch.proc, "run", fake_run)
+
+    assert upgrade_larch.run_main([]) == 0
+    err = capsys.readouterr().err
+    assert "No upgrade needed." in err
+    assert not (version_root / "python/test_cleanup.py").exists()
+    assert not (version_root / ".claude").exists()
+    assert not any(call[:3] == ["claude", "plugin", "install"] for call in calls)
+
+
+def test_run_post_install_cleanup_runs_before_unverified_failure(monkeypatch: Any, tmp_path: Path, capsys: Any) -> None:
+    home = tmp_path / "home"
+    running_root = _canonical_cache_root(home, "1.0.0")
+    actual_root = _canonical_cache_root(home, "1.5.0")
+    running_root.mkdir(parents=True)
+    _touch(actual_root / "python/test_cleanup.py")
+    _touch(actual_root / ".github/fixture.txt")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(running_root))
+    monkeypatch.setenv("LARCH_EXPECTED_STABLE_VERSION", "2.0.0")
+    monkeypatch.setattr(upgrade_larch, "_marketplace_sparse_cone_matches", lambda: True)
+    calls: list[list[str]] = []
+    list_versions = iter(("1.0.0", "1.5.0", "1.5.0"))
+
+    def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
+        calls.append(argv)
+        if argv[:3] == ["claude", "plugin", "list"]:
+            version = next(list_versions)
+            return _result(argv, stdout=f"larch@larch-local\n  Version: {version}\n")
+        return _result(argv)
+
+    monkeypatch.setattr(upgrade_larch.proc, "run", fake_run)
+
+    assert upgrade_larch.run_main([]) == 1
+    err = capsys.readouterr().err
+    assert "Upgrade incomplete: expected stable version 2.0.0 was not verified." in err
+    assert not (actual_root / "python/test_cleanup.py").exists()
+    assert not (actual_root / ".github").exists()
+    assert any(call[:3] == ["claude", "plugin", "install"] for call in calls)
 
 
 def test_restore_operator_stdout_when_quiet(monkeypatch: Any) -> None:
