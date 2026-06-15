@@ -6,7 +6,7 @@ Sourced Step 3 loop controller for `/design` plan-review rounds.
 
 ## Primary callers
 
-- `skills/design/scripts/run-step3-review.sh` sources this file after defining `run_step3_round_body`.
+- `skills/design/scripts/design-step3-review.sh` invokes this loop through `python3 python/cli.py plan-review run --mode loop`.
 - `python/plan_review.py` embeds this file in `_LEGACY_ASSETS` so `python3 python/cli.py plan-review run --mode loop` materializes the live runtime copy.
 
 ## Invariants
