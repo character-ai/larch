@@ -35,7 +35,7 @@ Each rule states WHY; per-site reminders reference by anchor name.
 
 3. **NEVER use the `ours`/`theirs` git labels when describing conflict sides during rebase.** **Why**: during rebase their semantics are inverted vs. merge (`--ours` = base being rebased onto = upstream main); labels cause silent resolution errors. **How to apply**: always use "upstream (main)" and "feature branch commit" in Phase 1 commentary and user prompts.
 
-4. **NEVER skip the code-review step regardless of the nature of changes.** **Why**: all changes — code, skills, documentation, data files, configuration — require reviewer-panel vetting. **How to apply**: Step 5 always invokes `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review-and-fix step5 --mode loop` once per Step 5 entry on the standard path; the launcher forwards session-env + tmpdir context to `review-and-fix CLI` **without** any `--panel` token (see `python/test_review_and_fix.py` for the pinned Step 5 contract). `review-and-fix step5` uses the conventional `$IMPLEMENT_TMPDIR/plan.txt` path and a fixed `--round-cap` of **5** (hard ceiling; degraded rounds consume the budget). The **hard** review panel is applied only inside `review-and-fix CLI` → `review core`. **`--self-review` exception**: when `self_review=true`, Step 5 skips `review-and-fix step5` and the main agent performs a thorough inline self-review instead — review still runs, just by a different reviewer.
+4. **NEVER skip the code-review step regardless of the nature of changes.** **Why**: all changes — code, skills, documentation, data files, configuration — require reviewer-panel vetting. **How to apply**: Step 5 always invokes `skills/implement/scripts/step-5-review.sh` once per Step 5 entry on the standard path; the launcher prints the banner, forwards session-env + tmpdir context, and execs `review-and-fix CLI` **without** any `--panel` token (see `python/test_review_and_fix.py` for the pinned Step 5 contract). `review-and-fix step5` uses the conventional `$IMPLEMENT_TMPDIR/plan.txt` path and a fixed `--round-cap` of **5** (hard ceiling; degraded rounds consume the budget). The **hard** review panel is applied only inside `review-and-fix CLI` → `review core`. **`--self-review` exception**: when `self_review=true`, Step 5 skips `review-and-fix step5` and the main agent performs a thorough inline self-review instead — review still runs, just by a different reviewer.
 
 5. **NEVER let the Step 9a.1 sentinel short-circuit silently skip the larch-log OOS update.** **Why**: idempotency recovery MUST write the recovered accepted-OOS URLs to the `oos-issues` log batch and refresh the terminal summary content; silent skip breaks the committed run-log contract. **How to apply**: the idempotent-rerun branch in Step 9a.1 performs only `run-log append --log-root "$IMPLEMENT_TMPDIR/larch-logs" --batch oos-issues` using URLs recovered from `oos-issues-created.md`, plus terminal-summary refresh when applicable. `run-statistics` remains owned by the post-checkpoint Step 8+ block after `python/cli.py oos disposition-checkpoint` exit 0 (NEVER #14). **Fork-mode carve-out**: when `forked_target=true`, tracking-issue lifecycle and OOS issue creation are disabled, so Step 9a.1 skips issue filing and larch-log Accepted-OOS updates; accepted OOS items are emitted in the final report as text only.
 
@@ -92,7 +92,7 @@ Prompt-side orchestration steps delegate to these script contracts:
 `refresh-execution-issues.md` (`skills/implement/scripts/refresh-execution-issues.sh`);
 `slack-issue-announce.md` (`skills/implement/scripts/slack-issue-announce.sh`); `write-final-report.md` (`skills/implement/scripts/write-final-report.sh`); `skills/implement/scripts/cleanup.md` (`skills/implement/scripts/cleanup.sh`);
 `step-0-bootstrap.md`; `step-0-degraded-gate.md` (legacy — `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-degraded-gate.sh` remains shipped for offline harnesses but is not called on the active Step 0 path); `step-2-entry.md`; `step-2-post-dispatch.md` (`skills/implement/scripts/step-2-post-dispatch.sh`);
-`run-step-checks.md`; `step-5-entry.md`; `step-5-resume.md` (`python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review-and-fix commit-fixes`, via `step-5-resume.sh`);
+`run-step-checks.md`; `step-5-review.md`; `step-5-resume.md` (`python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review-and-fix commit-fixes`, via `step-5-resume.sh`);
 `step-6-entry.md` (`python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review-and-fix check-changes`, via `step-6-entry.sh`); `step-8-ship.md`;
 `step-8-oos-checkpoint.md`; `step-16.md` (`python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review-and-fix write-rejected`, via `step-16.sh`);
 `step-17.md`;
@@ -540,13 +540,15 @@ Then apply the **Rebase Checkpoint Macro** orchestrator routing from the `## Reb
 <!-- step:5 — Code Review: review-and-fix step5 → review-and-fix CLI (dynamic-archetypes default=3 in implement tmpdir mode; maximum allowed cap=3) -->
 ## Step 5 — Code Review
 
-```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-5-entry.sh
-```
-
 ### Self-review mode (`--self-review`)
 
-When `self_review=true`, skip the scripted review loop below and perform an inline main-agent self-review instead. Print `> **🔶 /implement 5: code review — self-review mode (main agent inline)**`.
+When `self_review=true`, skip the scripted review loop below and perform an inline main-agent self-review instead. First mark Step 5 telemetry best-effort:
+
+```bash
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py timing telemetry-mark --implement-tmpdir "$IMPLEMENT_TMPDIR" --label "Step 5 — code review" || true
+```
+
+Then print `> **🔶 /implement 5: code review — self-review mode (main agent inline)**`.
 
 1. Read the materialized plan from `$IMPLEMENT_TMPDIR/plan.txt`.
 2. Run a foreground Bash block to capture the feature-branch diff: `git diff "$(git merge-base HEAD origin/main)"..HEAD` (or `git diff "$(git merge-base HEAD upstream/main)"..HEAD` when `forked_target=true`). Read the changed files in full using the Read tool before evaluating them.
@@ -579,31 +581,25 @@ bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py review-and-fix commit-fixes 
 
 ### Scripted review loop
 
-**IMPORTANT: Code review must ALWAYS run.** Never skip regardless of the nature of changes — code, skills, documentation, data files, configuration — all changes require review. Step 5 invokes `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review-and-fix step5` with `--mode loop` (see `python/test_review_and_fix.py` for the pinned Step 5 contract). Step 5 invokes **one** `review-and-fix step5` Bash tool call with `run_in_background: true` (immediate-background mode) that internalizes the entire round loop, post-round captured relevant checks, lint-fix repair, and the substantiality / bulk-skip gates — rely on `<task-notification>` for one-shot completion; never use a polling or Monitor launch. The launcher reads `$IMPLEMENT_TMPDIR/plan.txt`, passes a fixed `--round-cap` of **5** (hard ceiling; degraded rounds consume the budget), and does **not** forward `--panel`. The unified **hard** panel is applied only inside `review-and-fix CLI` → `review core` with specialists per vendor plus optional dynamic archetypes; rounds 3-4 may launch a mechanically reduced reviewer panel, and all-pruned rounds consume a round slot and advance toward the round-5 full re-probe.
+**IMPORTANT: Code review must ALWAYS run.** Never skip regardless of the nature of changes — code, skills, documentation, data files, configuration — all changes require review. Step 5 invokes **one** `skills/implement/scripts/step-5-review.sh` Bash tool call with `run_in_background: true` (immediate-background mode) that marks Step 5 telemetry, resolves `dynamic_archetypes_cap` from `LARCH_DYNAMIC_ARCHETYPES_MAX` in `$IMPLEMENT_TMPDIR/session-env.sh`, then from process `LARCH_DYNAMIC_ARCHETYPES_MAX`, then the implement-mode default `3`, prints the Step 5 banner (3-judge panel on every round: Claude+Codex+Cursor, specialists per vendor, mechanically pruned in rounds 3-4 when prior yield is zero), and execs `review-and-fix step5 --mode loop --starting-round 1`. The absorbed loop internalizes the entire round loop, post-round captured relevant checks, lint-fix repair, and the substantiality / bulk-skip gates — rely on `<task-notification>` for one-shot completion; never use a polling or Monitor launch. The launcher reads `$IMPLEMENT_TMPDIR/plan.txt`, passes a fixed `--round-cap` of **5** (hard ceiling; degraded rounds consume the budget), and does **not** forward `--panel`. The unified **hard** panel is applied only inside `review-and-fix CLI` → `review core` with specialists per vendor plus optional dynamic archetypes; rounds 3-4 may launch a mechanically reduced reviewer panel, and all-pruned rounds consume a round slot and advance toward the round-5 full re-probe.
 
 Nested review token-context propagation through `review-and-fix CLI` is pinned by `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-implement-review-token-propagation.sh` and `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-implement-review-token-propagation.md`.
-
-Use the `DYNAMIC_ARCHETYPES_CAP` and `ROUND_CAP` lines emitted by the Step 5 telemetry fence above for the banner variables. The fence derives `dynamic_archetypes_cap` with the same precedence the launcher forwards to `review-and-fix CLI` at runtime: `LARCH_DYNAMIC_ARCHETYPES_MAX` from `$IMPLEMENT_TMPDIR/session-env.sh`; otherwise non-empty process `LARCH_DYNAMIC_ARCHETYPES_MAX`; otherwise `3` (implement mode default, valid up to 3). For the Step 5 banner, `round_cap` is the fixed hard ceiling **5**. Treat a non-zero fence exit as a hard Step 5 preflight failure and log it to `Warnings`.
-
-Print once before the `review-and-fix step5` invocation:
-
-`> **🔶 /implement 5: code review — review-and-fix step5 --mode loop, up to $round_cap rounds; 3-judge panel on every round (Claude+Codex+Cursor); review panel: specialists per vendor (mechanically pruned in rounds 3-4 when prior yield is zero); dynamic-archetypes cap=$dynamic_archetypes_cap**`
 
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 21600000`.**
 
 ```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py review-and-fix step5 --implement-tmpdir "$IMPLEMENT_TMPDIR" --mode loop --starting-round 1
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-5-review.sh
 ```
 
-Wait for `<task-notification>` before parsing the loop stdout or reading Step 5 result files.
+Wait for `<task-notification>` before parsing the loop stdout or reading Step 5 result files. If the wrapper exits non-zero and stdout has no `STEP5_REVIEW_STATUS`, treat it as a Step 5 preflight failure, log it to `Warnings`, set `STALL_TRACKING=true`, set `STALL_STEP=5`, and skip to Step 16 — do **not** fall through to status parsing or branching. Step 6 continuation requires a present `STEP5_REVIEW_STATUS`; without it, the review loop did not run and NEVER #4 is not satisfied by proceeding to Step 6.
 
-Parse the child stdout with **token-aware** key extraction (each output line may carry multiple `KEY=value` tokens separated by whitespace; scan every token on every line — do not assume one KV per line). Extract at minimum: `STEP5_REVIEW_STATUS`, `STALL_TRACKING`, `STALL_REASON`, `ROUNDS_COMPLETED`, `FINAL_ROUND_NUM`, `FINAL_REVIEW_AND_FIX_STATUS`, `CODER_STATUS`, `FILES_CHANGED_HINT`, `EFFECTIVE_ROUND_CAP`.
+Only when stdout contains `STEP5_REVIEW_STATUS`, parse the child stdout with **token-aware** key extraction (each output line may carry multiple `KEY=value` tokens separated by whitespace; scan every token on every line — do not assume one KV per line). Extract at minimum: `STEP5_REVIEW_STATUS`, `STALL_TRACKING`, `STALL_REASON`, `ROUNDS_COMPLETED`, `FINAL_ROUND_NUM`, `FINAL_REVIEW_AND_FIX_STATUS`, `CODER_STATUS`, `FILES_CHANGED_HINT`, `EFFECTIVE_ROUND_CAP`.
 
 > **Continue after the loop returns.** On any non-stall `STEP5_REVIEW_STATUS`, execute the Cross-Skill Presence Propagation + Track Rejected Code Review Findings + Step 6 breadcrumb in order — do NOT end the turn, summarize, or write a handoff message before reaching Step 6. → shared/subskill-invocation.md#anti-halt
 
 For `stall`, `main-agent-vote-required`, `coder-main-agent-required`, and `mav-resume-past-cap`, **MANDATORY — READ ENTIRE FILE** before executing the branch: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/step5-review-branches.md`.
 
-Branch on `STEP5_REVIEW_STATUS`:
+Branch on `STEP5_REVIEW_STATUS` (only when present — preflight failures without it terminate at Step 16 per above):
 
 - **`complete`**: proceed with Cross-Skill Presence Propagation, then Track Rejected Code Review Findings, then the Step 6 breadcrumb (the absorbed loop already ran `python/cli.py checks run-relevant`, `python/cli.py checks lint-fix` when needed, and the substantiality / bulk-skip gates inside Bash).
 - **`cap-hit`**: print `**⚠ 5: code review hit $EFFECTIVE_ROUND_CAP-round cap without converging. Proceeding.**`, log to `Warnings`, then run the same post-Step-5 chain as `complete`.

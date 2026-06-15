@@ -952,3 +952,5 @@ scripts/test-lint-fix-loop.md	#3690
 scripts/test-check-contains-pins.sh	#3690
 scripts/test-check-contains-pins.md	#3690
 
+skills/implement/scripts/step-5-entry.sh	#4015
+skills/implement/scripts/step-5-entry.md	#4015

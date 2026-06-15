@@ -8,7 +8,7 @@
 #       Monitor and Bash run_in_background polling loops, plus the narrow
 #       single-waiter premature-notification recovery guidance.
 #   (2) skills/implement/SKILL.md: Step 5 delegates reviewer waiting to
-#       python/cli.py review-and-fix step5 (no ad-hoc polling loops), and
+#       skills/implement/scripts/step-5-review.sh (no ad-hoc polling loops), and
 #       the NEVER list bans Monitor fallback for one-shot completion.
 #   (3) skills/design/SKILL.md: both Step 3 immediate-background fences carry
 #       the result-file sleep-loop ban and consequence prose, and the
@@ -74,7 +74,7 @@ check "$AGENTS_MD" \
 
 check "$IMPL_MD" \
     "SKILL.md Step 5 delegates reviewer waiting to scripts" \
-    'Step 5 invokes `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review-and-fix step5`'
+    'Step 5 invokes **one** `skills/implement/scripts/step-5-review.sh`'
 
 step3_count=$(grep -cF -- "$STEP3_LITERAL" "$DESIGN_MD" || true)
 if [[ "$step3_count" == "2" ]]; then

@@ -7,7 +7,7 @@ Regression harness pinning anti-polling-loop, Monitor-ban, and premature-notific
 Issue #1011 extended the original Monitor-only rule to forbid Bash `run_in_background` polling loops (`for`/`while`/`until` + `sleep`) used to wait on another `run_in_background` job. Issue #4110 adds the result-file variant for `/design` Step 3. Issue #4268 adds explicit Monitor-ban and premature-notification recovery-contract surfaces. The harness pins these surfaces:
 
 - `AGENTS.md`: the canonical bullet covering Monitor, Bash polling loops, and narrow single-waiter recovery.
-- `skills/implement/SKILL.md`: Step 5 delegates reviewer waiting to `python/cli.py review-and-fix step5` instead of ad-hoc polling loops, and the NEVER list bans Monitor fallback.
+- `skills/implement/SKILL.md`: Step 5 delegates reviewer waiting to `skills/implement/scripts/step-5-review.sh` instead of ad-hoc polling loops, and the NEVER list bans Monitor fallback.
 - `skills/design/SKILL.md`: both Step 3 immediate-background fences carry the result-file sleep-loop ban and consequence prose, and the Anti-patterns list bans Monitor fallback.
 - `skills/shared/orchestrator-never.md`: the shared NEVER list carries the `run_in_background` result-file sleep-loop ban and narrow single-waiter recovery wording.
 
@@ -17,7 +17,7 @@ Family B background+monitor pairing assertions were removed in breadcrumbs Stage
 
 - `AGENTS.md` carries the extended phrasing `Don't spawn a Monitor or a Bash` and explicitly mentions the `for`/`while`/`until` + `sleep` form.
 - The harness also pins the AGENTS.md per-turn output-file read ban (`poll the task output file once per turn`) on the `/implement` delivery path (issue #3195).
-- `skills/implement/SKILL.md` Step 5 references `${CLAUDE_PLUGIN_ROOT}/python/cli.py review-and-fix step5`.
+- `skills/implement/SKILL.md` Step 5 references `skills/implement/scripts/step-5-review.sh`.
 - `/design` Step 3 carries the exact literal ``NEVER poll `.step3-review-result.env` with a sleep loop.`` exactly twice, covering the initial fence and resume `--starting-round` fence.
 - `/design` Step 3 pins the `.completed/step-3` sentinel for sanctioned recovery waiters.
 - `/design` Step 3 pins that the `STEP3_REVIEW_LOOP_STATUS=complete` route requires `.completed/step-3` before Step 3b.

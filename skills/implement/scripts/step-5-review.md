@@ -1,0 +1,23 @@
+# step-5-review.sh
+
+Step 5 review loop launcher. Marks Step 5 telemetry, prints the scripted-review banner, and execs `review-and-fix step5 --mode loop`.
+
+## Caller
+
+`skills/implement/SKILL.md` invokes this wrapper from the scripted review loop so the prompt-side Bash fence remains one launcher call with immediate-background handling.
+
+## KV grammar
+
+None. The wrapper prints the human-facing Step 5 banner before `exec`, then relays all stdout and status grammar from `python/cli.py review-and-fix step5` unchanged.
+
+## Invariants
+
+- Bash 3.2 portable; no associative arrays or namerefs.
+- Self-rehydrates `CLAUDE_PLUGIN_ROOT` from `$IMPLEMENT_TMPDIR/plugin-root.env` where needed.
+- Telemetry marking is best-effort and must not block the review loop.
+- `dynamic_archetypes_cap` resolves from `$IMPLEMENT_TMPDIR/session-env.sh`, then from process `LARCH_DYNAMIC_ARCHETYPES_MAX`, then the implement-mode default `3`.
+- `exec` replaces the wrapper process so review loop output and exit status flow through directly.
+
+## Edit-in-sync
+
+Update `skills/implement/SKILL.md`, `scripts/test-implement-structure.sh`, and the Step 5 review harnesses when this contract or argv changes.
