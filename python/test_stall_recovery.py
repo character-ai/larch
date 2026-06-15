@@ -202,6 +202,7 @@ def test_compose_report_python_impl(
     custom_root = tmp_path / "custom-root.md"
     custom_bounded = tmp_path / "custom-bounded.md"
     custom_corpus = tmp_path / "custom-sensitive.env"
+    source_env = tmp_path / "source-env.sh"
     _ = custom_class.write_text(
         "FAILURE_CLASS=lint-failure\nFAILURE_SIGNATURE=abc\nSTALL_STEP=5\nPHASE=review\nEXIT_CODE=1\n",
         encoding="utf-8",
@@ -215,6 +216,7 @@ def test_compose_report_python_impl(
         encoding="utf-8",
     )
     _ = custom_corpus.write_text("safe-token\n", encoding="utf-8")
+    _ = source_env.write_text("export SESSION_ID='compose-run-123'\n", encoding="utf-8")
     rc = stall_recovery.compose_report_main([
         "--implement-tmpdir", str(tmp_path),
         "--surface", "chat-print",
@@ -223,6 +225,7 @@ def test_compose_report_python_impl(
         "--root-cause-file", str(custom_root),
         "--bounded-root-cause-file", str(custom_bounded),
         "--sensitive-corpus-file", str(custom_corpus),
+        "--session-env-file", str(source_env),
         "--profile", "generic",
         "--artifact-prefix", "design-failure",
     ])
@@ -232,6 +235,7 @@ def test_compose_report_python_impl(
     assert "STALL_RECOVERY_REPORT_TIER=B" in out
     assert "STALL_RECOVERY_REPORT_STATUS=dry-run" in out
     assert "REPORT_DEDUP_SIGNATURE=" in out
+    assert "compose-run-123" in (tmp_path / "design-failure-chat-print.md").read_text(encoding="utf-8")
 
 
 def test_lint_subcommand_ok(capsys: pytest.CaptureFixture[str]) -> None:

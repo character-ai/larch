@@ -115,7 +115,7 @@ block's `TOOL` plus archetype from the `REVIEWER_FILE` basename.
 
 ## `/design` scope
 
-`/design` plan-review now feeds this renderer through `skills/design/scripts/render-final-summary.sh --skill design`. `scripts/write-design-round-meta.sh` emits per-round `round-meta.json` and `panel-manifest.ndjson` under `plan-review/round-N/` from snapshotted `voting-tally.md`, fallback `findings-classification.tsv`, and `plan-review-slots.ndjson`; it never reads mutable session-root tally files for counts. The design tally contract uses the same six keys as implement (`ACCEPTED_COUNT`, `REJECTED_COUNT`, `EXONERATED_COUNT`, `NEUTRAL_COUNT`, `OOS_ACCEPTED_COUNT`, `OOS_REJECTED_COUNT`) and `summary.panel.total_slot_count`. When collection fails before reviewer records exist, the writer inserts placeholder collector blocks with `TOOL=unknown`, `STATUS=FAILED`, and `REVIEWER_FILE=collector-failure-N.txt`, allowing the failed-slot count to render instead of a false zero. `render-final-summary.sh` composes design `review-findings-full.jsonl` before invoking this renderer.
+`/design` plan-review now feeds this renderer through `python/cli.py design render-final-summary --skill design`. `scripts/write-design-round-meta.sh` emits per-round `round-meta.json` and `panel-manifest.ndjson` under `plan-review/round-N/` from snapshotted `voting-tally.md`, fallback `findings-classification.tsv`, and `plan-review-slots.ndjson`; it never reads mutable session-root tally files for counts. The design tally contract uses the same six keys as implement (`ACCEPTED_COUNT`, `REJECTED_COUNT`, `EXONERATED_COUNT`, `NEUTRAL_COUNT`, `OOS_ACCEPTED_COUNT`, `OOS_REJECTED_COUNT`) and `summary.panel.total_slot_count`. When collection fails before reviewer records exist, the writer inserts placeholder collector blocks with `TOOL=unknown`, `STATUS=FAILED`, and `REVIEWER_FILE=collector-failure-N.txt`, allowing the failed-slot count to render instead of a false zero. `python/cli.py design render-final-summary` composes design `review-findings-full.jsonl` before invoking this renderer.
 
 ## Harness
 
@@ -127,8 +127,7 @@ block's `TOOL` plus archetype from the `REVIEWER_FILE` basename.
 - `skills/implement/scripts/write-final-report.sh` and
   `skills/implement/scripts/write-final-report.md`.
 - `skills/implement/scripts/test-write-final-report.sh`.
-- `skills/design/scripts/render-final-summary.sh` and
-  `skills/design/scripts/render-final-summary.md`.
+- `python/design_summary.py` (`python/cli.py design render-final-summary`).
 - `python/progress_report.py` and `python/test_progress_report.py`.
 - `scripts/test-render-review-phase-detail.sh` (+ `.md`) and the Makefile target /
   shard registration.

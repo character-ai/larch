@@ -94,7 +94,7 @@ DESIGN_TMPDIR="$(cd "$DESIGN_TMPDIR" && pwd -P)"
 larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit 2
 
 if [ -f "$DESIGN_TMPDIR/.pause-requested" ]; then
-    exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" \
+    exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design pause-save \
         --design-tmpdir "$DESIGN_TMPDIR" \
         --issue "$ISSUE_NUMBER" \
         ${REPO:+--repo "$REPO"}

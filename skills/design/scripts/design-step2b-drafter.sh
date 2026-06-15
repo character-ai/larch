@@ -111,7 +111,7 @@ design_require_plugin_root
 if [ -f "$DESIGN_TMPDIR/.pause-requested" ]; then
   printf 'POSTPLAN_RC=11\n'
   printf 'POSTPLAN_STATUS=pause-save\n'
-  exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+  exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design pause-save --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
 fi
 LARCH_TIMING_SKILL=design python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" timing mark "design Step 2b — plan" || true
 _drafter_postplan_fallback_used=false

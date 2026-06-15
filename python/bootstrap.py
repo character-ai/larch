@@ -702,7 +702,7 @@ def _phase_plan(st: BootstrapState) -> None:
     issue = st.issue_number_resolved or st.opts.issue_number
     title = feature_file.read_text(encoding="utf-8", errors="replace").splitlines()[0] if feature_file.is_file() else "planned change"
     goal = f"Implement issue #{issue}: {title or 'planned change'}."
-    planlog = _run([str(_SCRIPTS / "run-step1-plan-log.sh"), "--implement-tmpdir", st.implement_tmpdir, "--goal-text", goal])
+    planlog = _run([sys.executable, str(_PY_CLI), "plan", "step1-log", "--implement-tmpdir", st.implement_tmpdir, "--goal-text", goal])
     (Path(st.implement_tmpdir) / "run-step1-plan-log.out").write_text(planlog.stdout, encoding="utf-8")
     _publish_plan_review_tally(st)
     _upsert_plan_summary(st)

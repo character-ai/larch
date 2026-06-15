@@ -25,13 +25,15 @@ TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-design-step6.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT
 
 STUB="$TMP/stub-plugin"
-mkdir -p "$STUB/scripts"
-cat >"$STUB/scripts/design-pause-save.sh" <<'STUB'
-#!/usr/bin/env bash
-printf 'pause-save-called\n' >>"${LARCH_TEST_PAUSE_LOG:?}"
-exit 0
+mkdir -p "$STUB/python"
+cat >"$STUB/python/cli.py" <<'STUB'
+#!/usr/bin/env python3
+import os
+from pathlib import Path
+Path(os.environ["LARCH_TEST_PAUSE_LOG"]).open("a").write("pause-save-called\n")
+raise SystemExit(0)
 STUB
-chmod +x "$STUB/scripts/design-pause-save.sh"
+chmod +x "$STUB/python/cli.py"
 
 run_subject() {
   local subject="$1" design_tmp="$2" stdout_file="$3" stderr_file="$4" plugin_root="${5:-$ROOT}"

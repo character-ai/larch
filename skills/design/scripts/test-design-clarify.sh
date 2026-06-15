@@ -52,18 +52,6 @@ while IFS= read -r line || [ -n "$line" ]; do
 done <"$input"
 SH
   chmod +x "$root/scripts/read-result-env.sh"
-  cat >"$root/scripts/design-log-publish.sh" <<'SH'
-#!/usr/bin/env bash
-set -euo pipefail
-printf 'design-log-publish %s\n' "$*" >>"${STUB_CALL_LOG:?}"
-if [ "${STUB_PUBLISH_FAIL:-}" = 1 ]; then
-  printf 'publish failed\n' >&2
-  printf 'PUBLISH_OK=true\n'
-  exit 9
-fi
-printf 'PUBLISH_OK=true\n'
-SH
-  chmod +x "$root/scripts/design-log-publish.sh"
   cat >"$root/skills/design/scripts/design-stage-terminal-state.sh" <<'SH'
 #!/usr/bin/env bash
 printf 'stage-terminal %s\n' "$*" >>"${STUB_CALL_LOG:?}"
@@ -117,6 +105,15 @@ case "$cmd1 $cmd2" in
   "tracking-issue rename")
     printf 'rename %s\n' "$*" >>"${STUB_CALL_LOG:?}"
     printf 'RENAMED=true\n'
+    ;;
+  "design log-publish")
+    printf 'design-log-publish %s\n' "$*" >>"${STUB_CALL_LOG:?}"
+    if [ "${STUB_PUBLISH_FAIL:-}" = 1 ]; then
+      printf 'publish failed\n' >&2
+      printf 'PUBLISH_OK=true\n'
+      exit 9
+    fi
+    printf 'PUBLISH_OK=true\n'
     ;;
   "run-log append-failure")
     printf 'append-failure %s\n' "$*" >>"${STUB_CALL_LOG:?}"

@@ -26,5 +26,5 @@ PATH-style overrides via `LARCH_PLAN_REVIEW_*_SH` env vars (see `python/test_pla
 
 ## Related harnesses
 
-- `scripts/test-design-log-publish.sh`
+- `python/test_design_log_publish_flow.py`
 - `python/test_plan_review.py`

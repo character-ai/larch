@@ -86,6 +86,6 @@ design_source_env_optional() {
 }
 
 design_source_env_optional
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design pause-save --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
 python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" plan-review step3-state --design-tmpdir "$DESIGN_TMPDIR" --direct-review-entry >/dev/null
 LARCH_TIMING_SKILL=design python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" timing mark "design Step 3 — plan review" || true

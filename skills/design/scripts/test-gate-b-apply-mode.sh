@@ -5,8 +5,8 @@ export LARCH_QUIET_DISABLE=1
 
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd -P)"
 WRITE_RUN_PARAMS=(python3 "$ROOT/python/cli.py" session write-run-params)
-POSTPLAN="$ROOT/skills/design/scripts/design-postplan-emit.sh"
 CLI="$ROOT/python/cli.py"
+POSTPLAN_CLI=(python3 "$CLI" design postplan-emit)
 SETTLE="$ROOT/skills/design/scripts/design-step35-settle.sh"
 SKILL_MD="$ROOT/skills/design/SKILL.md"
 APPROVAL_GATES="$ROOT/skills/design/references/approval-gates.md"
@@ -14,7 +14,7 @@ APPROVAL_GATES="$ROOT/skills/design/references/approval-gates.md"
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 pass() { printf 'PASS: %s\n' "$1"; }
 
-bash -n "$POSTPLAN" || fail 'design-postplan-emit bash -n failed'
+python3 -m py_compile "$ROOT/python/design_postplan.py" || fail 'design_postplan.py py_compile failed'
 python3 -m py_compile "$ROOT/python/plan_review.py" || fail 'plan_review.py py_compile failed'
 bash -n "$SETTLE" || fail 'design-step35-settle bash -n failed'
 
@@ -108,7 +108,7 @@ grep -Fq 'POSTPLAN_RC=0' "$D_APPLY/settle.out" \
 D_LARGE="$TMP/hard"
 mk_design "$D_LARGE" 805 10
 set +e
-"$POSTPLAN" --design-tmpdir "$D_LARGE" --with-plan-size >"$D_LARGE/out.txt" 2>"$D_LARGE/err.txt"
+"${POSTPLAN_CLI[@]}" --design-tmpdir "$D_LARGE" --with-plan-size >"$D_LARGE/out.txt" 2>"$D_LARGE/err.txt"
 rc=$?
 set -e
 [[ "$rc" -eq 12 ]] || fail "hard size brake expected rc 12, got $rc"
@@ -119,7 +119,7 @@ D_DRIFT="$TMP/drift"
 mk_design "$D_DRIFT" 20 10
 printf 'BASELINE_PLAN_LINES=5\nBASELINE_DIFF_LINES=5\n' >"$D_DRIFT/drift-baseline.env"
 set +e
-LARCH_DESIGN_DRIFT_MULTIPLE=2 "$POSTPLAN" --design-tmpdir "$D_DRIFT" --with-plan-size >"$D_DRIFT/out.txt" 2>"$D_DRIFT/err.txt"
+LARCH_DESIGN_DRIFT_MULTIPLE=2 "${POSTPLAN_CLI[@]}" --design-tmpdir "$D_DRIFT" --with-plan-size >"$D_DRIFT/out.txt" 2>"$D_DRIFT/err.txt"
 rc=$?
 set -e
 [[ "$rc" -eq 0 ]] || fail "drift size brake expected rc 0, got $rc"

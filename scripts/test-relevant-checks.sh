@@ -678,7 +678,7 @@ echo "=== Section 3j1d: plan-quality survivor harness routing ==="
 
 REPO_3J1D="$TMPROOT/repo-postplan-emit"
 STUB_3J1D="$TMPROOT/stub-postplan-emit"
-setup_plan_quality_survivor_repo "$REPO_3J1D" "skills/design/scripts/design-postplan-emit.sh"
+setup_plan_quality_survivor_repo "$REPO_3J1D" "python/design_postplan.py"
 make_stub_dir "$STUB_3J1D" present absent
 run_checks "$REPO_3J1D" "$(controlled_path "$STUB_3J1D")"
 assert_exit_eq "3j1d: design-postplan-emit change exits 0" "$RUN_EXIT" 0
@@ -686,7 +686,7 @@ assert_stdout_contains "3j1d: routes design-postplan-emit harness" "$RUN_OUT" "t
 
 REPO_3J1E="$TMPROOT/repo-design-driver"
 STUB_3J1E="$TMPROOT/stub-design-driver"
-setup_plan_quality_survivor_repo "$REPO_3J1E" "skills/design/scripts/design-driver.sh"
+setup_plan_quality_survivor_repo "$REPO_3J1E" "python/design_lifecycle.py"
 make_stub_dir "$STUB_3J1E" present absent
 run_checks "$REPO_3J1E" "$(controlled_path "$STUB_3J1E")"
 assert_exit_eq "3j1e: design-driver change exits 0" "$RUN_EXIT" 0
@@ -710,7 +710,7 @@ assert_stdout_contains "3j1g: routes design-step2b5 harness" "$RUN_OUT" "test-ch
 
 REPO_3J1H="$TMPROOT/repo-run-step1-plan-log"
 STUB_3J1H="$TMPROOT/stub-run-step1-plan-log"
-setup_plan_quality_survivor_repo "$REPO_3J1H" "scripts/run-step1-plan-log.sh"
+setup_plan_quality_survivor_repo "$REPO_3J1H" "python/design_step_log.py"
 make_stub_dir "$STUB_3J1H" present absent
 run_checks "$REPO_3J1H" "$(controlled_path "$STUB_3J1H")"
 assert_exit_eq "3j1h: run-step1-plan-log change exits 0" "$RUN_EXIT" 0

@@ -13,10 +13,8 @@ paths:
   - "python/tracking_issue.py"
   - "scripts/create-pr.md"
   - "scripts/create-pr.sh"
-  - "scripts/design-log-publish.md"
-  - "scripts/design-log-publish.sh"
+  - "python/design_log_publish_flow.py"
   - "python/issue_wire.py"
-  - "scripts/test-design-log-publish.sh"
   - "scripts/gh-pr-body-update.md"
   - "scripts/gh-pr-body-update.sh"
   - "scripts/ship-pr.md"
@@ -112,8 +110,7 @@ repo argument threading.
 Disposable-worktree scripts that push a custom branch and require their own
 PR/merge/recovery semantics may invoke `gh pr create --head <branch>
 --body-file <path>` directly. The documented current caller is
-`scripts/design-log-publish.sh`; keep its sibling `scripts/design-log-publish.md`
-in sync with that exception.
+`python/cli.py design log-publish` (see `python/design_log_publish_flow.py`).
 
 Issue-body marker writers use `python/cli.py named-block write`, which applies
 redaction and `gh issue edit --body-file` for its callers.

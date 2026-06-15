@@ -88,4 +88,4 @@ design_source_env_optional() {
 design_source_env_optional
 rm -f "$DESIGN_TMPDIR/.completed/step-1e" "$DESIGN_TMPDIR/.completed/step-2a" "$DESIGN_TMPDIR/.completed/step-2a.5" "$DESIGN_TMPDIR/.completed/step-2b" "$DESIGN_TMPDIR/.completed/step-2b.5" "$DESIGN_TMPDIR/.completed/step-3" "$DESIGN_TMPDIR/.completed/step-3.5" "$DESIGN_TMPDIR/.completed/step-3b" "$DESIGN_TMPDIR/.completed/step-4" "$DESIGN_TMPDIR/.completed/step-4b"
 rm -f "$DESIGN_TMPDIR"/.gate-b-postapply-ready-*
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design pause-save --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}

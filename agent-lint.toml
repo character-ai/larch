@@ -293,20 +293,18 @@ exclude = [
   "scripts/test-lib-prune-decision.sh",
   "scripts/lib-prune-decision.md",
   # Step 1 launcher split: compose-goals-test is now invoked by
-  # scripts/run-step1-plan-log.sh rather than directly from SKILL.md, and
-  # agent-lint does not follow Bash-to-Bash launcher edges. The launcher
-  # harness is Makefile-only.
+  # python/cli.py plan step1-log rather than directly from SKILL.md, and
+  # agent-lint does not follow Python-to-Python launcher edges. The launcher
+  # harness is Makefile-only (test-run-step1-plan-log target).
   "python/cli.py plan compose-goals-test",
   "scripts/test-compose-plan-goals-test.sh",
   "scripts/test-compose-plan-goals-test.md",
-  "scripts/test-run-step1-plan-log.sh",
-  "scripts/test-run-step1-plan-log.md",
+  "python/test_design_step_log.py",
   # Python bootstrap invokes these Step 0 shell helpers through subprocess;
   # agent-lint does not follow Python-to-Bash edges.
   "scripts/create-branch.sh",
   "scripts/create-branch.md",
-  "scripts/run-step1-plan-log.sh",
-  "scripts/run-step1-plan-log.md",
+  "python/design_step_log.py",
   "scripts/snapshot-untracked.sh",
   # Step 5 launcher harness is Makefile-only; runtime reachability is through
   # the SKILL.md invocation of python/cli.py review-and-fix step5.
@@ -401,6 +399,11 @@ exclude = [
   # python/plan_review.py through $DEDUP_PLAN_LINES_PY;
   # agent-lint's G004/dead-script rule does not follow shell variable indirection.
   "skills/design/scripts/dedup-plan-lines.py",
+  # scripts/lib-redact.sh is a sourced-only trimmer library. Its former
+  # structured invoker was ported to Python (python/design_log_publish_flow.py);
+  # the library is still copied by test-step-7a.sh fixtures.
+  "scripts/lib-redact.sh",
+  "scripts/lib-redact.md",
   # scripts/pre-commit-shellcheck.sh is the parallel shellcheck wrapper invoked
   # by the local `shellcheck` pre-commit hook in `.pre-commit-config.yaml`
   # (`entry: scripts/pre-commit-shellcheck.sh`). It replaced the upstream
@@ -425,6 +428,9 @@ exclude = [
   # contract), matching the same Makefile-only pattern as other test-* harnesses.
   "scripts/test-effort-prose.sh",
   "scripts/test-effort-prose.md",
+  # One-shot Step 5 debug helper. It is operator-invoked outside skill prose,
+  # so agent-lint cannot discover a structured runtime edge.
+  "scripts/debug-step5c-once.sh",
   # python/session_env.py invokes python/cli.py admission preflight through proc.Runner for session setup.
   "python/admission.py",
   # python/test_admission.py is the regression harness for
@@ -454,7 +460,7 @@ exclude = [
   # scripts/test-design-multi-round-integration.sh are Makefile-only
   # regression harnesses for the /design plan-review round-artifact
   # allowlist. The runtime library/script surfaces are referenced from
-  # python/plan_review.py and scripts/design-log-publish.sh,
+  # python/plan_review.py and python/design_log_publish_flow.py,
   # but the harnesses themselves are not invoked from skill prose.
   "python/test_plan_review.py",
   "python/test_plan_review.py",
@@ -814,19 +820,16 @@ exclude = [
   # scripts/test-alias-structure.md. Same Makefile-only pattern.
   "scripts/test-alias-structure.sh",
   "scripts/test-design-structure.sh",
-  # scripts/test-design-reentry-guard.sh is a Makefile-only harness for
-  # scripts/lib-design-reentry-guard.sh, a sourced-only /design Step 0b
-  # library; the sibling .md is a contract file.
-  "scripts/lib-design-reentry-guard.sh",
-  "scripts/test-design-reentry-guard.sh",
-  "scripts/test-design-reentry-guard.md",
-  "skills/design/scripts/test-design-driver.sh",
-  "skills/design/scripts/test-design-publish.sh",
+  # python/test_design_lifecycle.py is a Makefile-only harness for
+  # python/design_lifecycle.py (/design Step 0b lifecycle port);
+  # the test covers reentry guard and router flag recovery.
+  "python/test_design_lifecycle.py",
+  "python/test_design_publish.py",
   # upgrade-larch release-step7-root is invoked by /release Step 7 and upgrade-larch run;
   # agent-lint's dead-script graph does not follow source directives or prompt
   # fence source comments, so exclude the sourced-only helper and contract.
   "python/cli.py upgrade-larch release-step7-root",
-  "skills/design/scripts/test-design-pause-resume.sh",
+  "python/test_design_pause.py",
   # for python/cli.py session write-design-env (Makefile test-write-design-
   # current-env target). Same Makefile-only pattern as other design test-*.
   "python/test_plan_review.py",
@@ -840,7 +843,7 @@ exclude = [
   "skills/design/scripts/decompose-prompts/scope-minimalist.txt",
   "skills/design/scripts/decompose-prompts/risk-isolation.txt",
   "skills/design/scripts/decompose-prompts/_common-tail.txt",
-  "skills/design/scripts/test-render-final-summary.sh",
+  "python/test_design_summary.py",
   # skills/pause/scripts/test-pause-skill.sh is the offline regression harness
   # for the /larch:pause Bash block embedded in skills/pause/SKILL.md. It is
   # referenced only from Makefile (test-pause-skill target) and its sibling
@@ -939,8 +942,8 @@ exclude = [
   "scripts/test-research-structure.sh",
   "scripts/test-review-structure.sh",
   "scripts/test-python/cli.py render reviewer",
-  "scripts/test-step0b-router-flag-recovery.sh",
-  "scripts/test-step0b-router-flag-recovery.md",
+  # python/test_design_lifecycle.py covers step0b router flag recovery
+  # (ported from the retired shell harness).
   # scripts/test-python/cli.py render specialist is the regression harness for
   # python/cli.py render specialist (the specialist reviewer prompt
   # renderer for /review's 5-specialist panel). The renderer itself
@@ -949,13 +952,11 @@ exclude = [
   # (test-render-specialist-prompt target) and
   # (sibling contract), matching the same Makefile-only pattern.
   "scripts/test-python/cli.py render specialist",
-  # scripts/test-design-log-publish.sh exercises design-log-publish.sh
-  # (Makefile test-design-log-publish target + sibling .md). Same
-  # and skills/design/scripts/test-design-pause-resume.sh is its Makefile-only
-  # pause/resume harness.
-  "scripts/test-design-log-publish.sh",
-  "scripts/test-design-log-publish.md",
-  "skills/design/scripts/test-design-pause-resume.sh",
+  # python/test_design_log_publish_flow.py exercises design log-publish
+  # (Makefile test-design-log-publish target). Same
+  # and python/test_design_pause.py is its Makefile-only pause/resume harness.
+  "python/test_design_log_publish_flow.py",
+  "python/test_design_pause.py",
   # test harness ships with no runtime consumers yet. Phase 3 is the
   # first consumer via skills/implement/SKILL.md (not in this phase).
   # scripts/lib-design-tmpdir.sh is a sourced-only validator for
@@ -1008,8 +1009,8 @@ exclude = [
   # target) — same Makefile-only shape as the other test-* harnesses above.
   "scripts/test-collect-agent-bash32.sh",
   # issue #3039: Makefile-only harness wired via
-  # test-render-final-summary-bash32.
-  "scripts/test-render-final-summary-bash32.sh",
+  # test-render-final-summary-bash32 (now pytest python/test_design_summary.py).
+  "python/test_design_summary.py",
   # scripts/test-collect-agent-retry.sh is the regression harness for the
   # collect-agent-results.sh CMD_JSON retry metadata reader (issue #1154).
   # It is referenced only from Makefile (test-collect-agent-retry target) and
@@ -1124,20 +1125,20 @@ exclude = [
   # sibling-not-cited-from-SKILL.md pattern as other Makefile-only harness .md files.
   "python/test_alias_skill.py",
   "scripts/test-alias-structure.md",
-  # skills/design/scripts/test-*.md files below are sibling contracts for
-  # Makefile-only regression harnesses added with the design ACTION dispatcher
-  # refactor. The primary scripts are cited from /design runtime prose; the
-  # harnesses are referenced only from Makefile and their sibling contracts.
-  "skills/design/scripts/test-design-driver.md",
-  "skills/design/scripts/test-design-publish.md",
-  "skills/design/scripts/test-design-pause-resume.md",
+  # python/test_design_*.py files below are pytest harnesses for
+  # Makefile-only regression targets after the /design Python migration.
+  # The primary modules are cited from /design runtime prose; the
+  # harnesses are referenced only from Makefile.
+  "python/test_design_lifecycle.py",
+  "python/test_design_publish.py",
+  "python/test_design_pause.py",
   "python/test_plan_review.py",
   "python/test_plan_review.py",
   "skills/design/scripts/test-findings-classification.md",
   "python/test_plan_review.py",
   "python/test_plan_review.py",
   "python/test_plan_review_panel.py",
-  "skills/design/scripts/test-render-final-summary.md",
+  "python/test_design_summary.py",
   "skills/pause/scripts/test-pause-skill.md",
   "scripts/test-rebase-push-keep-on-conflict.md",
   "scripts/test-rebase-push-force-lease.md",
@@ -1296,7 +1297,7 @@ exclude = [
   # scripts/render-review-phase-detail.sh (issue #3774) renders the per-round
   # review-phase detail section. It is invoked at runtime from
   # skills/implement/scripts/write-final-report.sh and
-  # skills/design/scripts/render-final-summary.sh via variable-expanded shell
+  # python/design_summary.py (design render-final-summary) via subprocess
   # edges that G004 dead-script reachability cannot discover.
   "scripts/render-review-phase-detail.sh",
   "scripts/render-review-phase-detail.md",

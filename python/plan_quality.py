@@ -1396,7 +1396,10 @@ def revise_plan_with_waterfall_main(argv: list[str]) -> int:
         launchers["cursor"] = [os.environ["LARCH_TEST_LAUNCH_CURSOR_REVIEW"], "--tool", "cursor"]
     if os.environ.get("LARCH_TEST_LAUNCH_CLAUDE_REVIEW"):
         launchers["claude"] = [os.environ["LARCH_TEST_LAUNCH_CLAUDE_REVIEW"]]
-    design_driver = os.environ.get("LARCH_TEST_DESIGN_DRIVER", str(plugin / "skills" / "design" / "scripts" / "design-driver.sh"))
+    design_driver = os.environ.get(
+        "LARCH_TEST_DESIGN_DRIVER",
+        f"{sys.executable} {plugin / 'python' / 'cli.py'} design driver",
+    )
 
     def restore() -> None:
         shutil.copyfile(snapshot, plan)

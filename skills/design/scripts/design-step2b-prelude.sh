@@ -107,5 +107,5 @@ if [ -z "${DESIGN_TMPDIR:-}" ] \
 fi
 mkdir -p "$DESIGN_TMPDIR/.completed"
 [ -f "$DESIGN_TMPDIR/.completed/step-2a" ] || : > "$DESIGN_TMPDIR/.completed/step-2a"
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design pause-save --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
 LARCH_TIMING_SKILL=design python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" timing mark "design Step 2b — plan" || true

@@ -150,6 +150,37 @@ def test_all_registry_targets_resolve_to_callable_mains() -> None:
         assert callable(target), f"{domain} {verb} -> {module_name}.{func_name}"
 
 
+def test_design_lifecycle_registry_entries_are_machine_stdout() -> None:
+    expected = {
+        ("design", "parse-argv"),
+        ("design", "route"),
+        ("design", "init-runparams"),
+        ("design", "driver"),
+        ("design", "postplan-emit"),
+        ("design", "publish"),
+        ("design", "pause-save"),
+        ("design", "pause-load"),
+        ("design", "log-publish"),
+        ("design", "render-final-summary"),
+        ("design", "read-result-env"),
+        ("design", "file-oos-prepare"),
+        ("design", "file-oos-annotate"),
+        ("plan", "step1-log"),
+    }
+    assert expected <= set(cli._REGISTRY)  # pyright: ignore[reportPrivateUsage]
+    assert expected <= cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
+
+
+def test_design_kv_entrypoint_disables_inherited_quiet(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_QUIET_ACTIVE", "1")
+    monkeypatch.setenv("LARCH_QUIET_PID", "999999")
+    mock_main = MagicMock(return_value=0)
+    with patch.dict("sys.modules", {"design_argv": MagicMock(parse_argv_main=mock_main)}):
+        rc = cli.main(["design", "parse-argv", "--help"])
+    assert rc == 0
+    assert os.environ["LARCH_QUIET_DISABLE"] == "1"
+
+
 def test_machine_stdout_entrypoints_disable_inherited_quiet(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LARCH_QUIET_ACTIVE", "1")
     monkeypatch.setenv("LARCH_QUIET_PID", "999999")

@@ -86,7 +86,7 @@ design_source_env_optional() {
 }
 
 design_source_env_optional
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design pause-save --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
 _step3_entry_tmpdir_allowed=0
 if python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); from session_env import validate_design_tmpdir; ok, _ = validate_design_tmpdir(sys.argv[2]); sys.exit(0 if ok else 1)' \
     "${CLAUDE_PLUGIN_ROOT}/python" "$DESIGN_TMPDIR" 2>/dev/null; then
