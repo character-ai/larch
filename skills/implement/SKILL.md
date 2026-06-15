@@ -575,7 +575,13 @@ bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py review-and-fix commit-fixes 
 
 8. Log `Step 5 — self-review mode: main-agent inline review complete` to `Warnings` in `$IMPLEMENT_TMPDIR/execution-issues.md`.
 
-9. Proceed directly to Cross-Skill Presence Propagation + Track Rejected Code Review Findings + Step 6 (same post-Step-5 chain as `STEP5_REVIEW_STATUS=complete`). Set `FILES_CHANGED_HINT=true` if any fixes were committed, `false` otherwise.
+9. Emit the self-review Step 5 run-log artifacts so the final report and `audit_runs` Step 5 detection treat a clean self-review as "review ran" rather than "no review". This verb is best effort: on writer failure it records a Warnings entry in `$IMPLEMENT_TMPDIR/execution-issues.md` and returns `0`, so it never blocks Step 6.
+
+```bash
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py review-and-fix write-self-review-tally --implement-tmpdir "$IMPLEMENT_TMPDIR" --run-id "$RUN_ID" --accepted 0 --rejected 0
+```
+
+10. Proceed directly to Cross-Skill Presence Propagation + Track Rejected Code Review Findings + Step 6 (same post-Step-5 chain as `STEP5_REVIEW_STATUS=complete`). Set `FILES_CHANGED_HINT=true` if any fixes were committed, `false` otherwise.
 
 > **Continue after self-review completes.** Do NOT end the turn, summarize, or write a handoff message. → shared/subskill-invocation.md#anti-halt
 

@@ -100,6 +100,12 @@ job_re='^[A-Za-z][A-Za-z0-9_-]*$'
 while IFS= read -r raw_name || [ -n "$raw_name" ]; do
     raw_name=$(printf '%s' "$raw_name" | sanitize_diagnostic_line)
     [ -n "$raw_name" ] || continue
+    # Aggregator gate jobs (e.g. test-harnesses-gate) mirror their matrix and
+    # have no local fix; the underlying leg carries the real fix signal. Skip
+    # them so they are neither counted nor classified as fixable/unfixable.
+    case "$raw_name" in
+        *-gate) continue ;;
+    esac
     count=$((count + 1))
 
     job_name=$raw_name

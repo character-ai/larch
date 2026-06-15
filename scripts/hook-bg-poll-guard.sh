@@ -73,14 +73,16 @@ marker_step_completed() {
   # value has already written its terminal completion sentinel. Used to release
   # the poll guard when a <task-notification> arrives in the same turn as the
   # launch ack and the bg process has not yet run its EXIT-trap marker cleanup
-  # (#4431). Race-free: the loop writes the sentinel before the task process
-  # exits on terminal paths, and exits before the notification fires. Scoped to
-  # design-step3-review (the reported same-turn case); other guarded steps rely
-  # on the wrapper-routed read allowance.
+  # (#4431, #4450). Race-free: each step writes its sentinel before the task
+  # process exits on terminal paths, and exits before the notification fires.
+  # Covers design-step3-review, design-step5c, and design-step-final-summary;
+  # other guarded steps rely on the wrapper-routed read allowance.
   local dir="$1" step="$2" sentinel=""
   [ -n "$dir" ] || return 1
   case "$step" in
-    design-step3-review) sentinel="$dir/.completed/step-3" ;;
+    design-step3-review)       sentinel="$dir/.completed/step-3"  ;;
+    design-step5c)             sentinel="$dir/.completed/step-5c" ;;
+    design-step-final-summary) sentinel="$dir/.completed/step-5d" ;;
     *) return 1 ;;
   esac
   [ -f "$sentinel" ] && [ ! -L "$sentinel" ]

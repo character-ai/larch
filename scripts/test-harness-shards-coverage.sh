@@ -480,6 +480,12 @@ main() {
 
   make_tmpdir
   validate_makefile "$MAKEFILE"
+  # #4439 Trick A4: strict-partition guard for the explicitly-sliced
+  # multi-target pytest files (test_review_tally.py, test_review_pipeline.py,
+  # test_research.py). Rides this target so it runs under `make lint` without
+  # new shard wiring; requires pytest on PATH (true on this harness's shard).
+  # See scripts/lint-harness-pytest-partition.py.
+  python3 "$REPO_ROOT/scripts/lint-harness-pytest-partition.py"
 }
 
 main "$@"

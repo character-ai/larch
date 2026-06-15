@@ -26,7 +26,11 @@ The Makefile documents opt-in evaluation targets and full-run convenience target
 - The guard-owning `test-harnesses-N:` rule with `test-harness-shards-coverage` as the first prerequisite (currently `test-harnesses-5:`; the harness discovers which shard that is — do not rely on a stale hardcoded id).
 - `test-harnesses:` as an aggregate over every declared `test-harnesses-N` (currently `test-harnesses-1` through `test-harnesses-20`).
 
-When adding a new harness target, add it to `.PHONY`, add its recipe, and assign it to exactly one `test-harnesses-N:` shard prerequisite list. Rebalance shard lists when timing drift makes a shard materially slower than the `test-validate-citations` floor documented in `docs/linting.md`. Review launcher coverage is now the shard-bound Python pytest target `test-launch-review`.
+When adding a new harness target, add it to `.PHONY`, add its recipe, and assign it to exactly one `test-harnesses-N:` shard prerequisite list. Rebalance shard lists when timing drift makes a shard materially slower than the `test-render-findings-batch` floor documented in `docs/linting.md`. Review launcher coverage is now the shard-bound Python pytest target `test-launch-review`.
+
+## Pytest Partition Guard (#4439 Trick A4)
+
+The non-`--self-test` run also invokes `scripts/lint-harness-pytest-partition.py` against the real `Makefile`. That guard asserts a *strict partition* for an explicit allow-list of pytest source files sliced across several harness targets: every test in the file is collected by exactly one target (none uncovered, none covered twice). The allow-list (`ENFORCED` in the script) currently holds `python/test_review_tally.py`, `python/test_review_pipeline.py`, and `python/test_research.py` — the files de-duplicated in #4439. It runs `pytest --co` per selection, so this harness now requires pytest on PATH (already true on its shard). The guard does **not** police the ~25 other multi-target files that still run their full file under multiple target names; bringing one under the guard means slicing its targets into disjoint `-k` selections first, then adding it to `ENFORCED`. See `scripts/lint-harness-pytest-partition.md`.
 
 ## Self-Test Mode
 

@@ -299,6 +299,22 @@ jobs:
       - name: Run test harnesses (shard ${{ matrix.shard }} of 20)
         run: make test-harnesses-${{ matrix.shard }}
 
+  # Aggregate gate so branch protection can require the whole test-harnesses
+  # matrix via one stable check, regardless of shard count.
+  # needs.<job>.result is 'success' only when every matrix leg succeeded;
+  # `if: always()` ensures this job still runs (and reports failure) when a
+  # shard fails, instead of being skipped (a skipped required check passes).
+  test-harnesses-gate:
+    name: test-harnesses-gate
+    needs: [test-harnesses]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all test-harnesses shards to pass
+        run: |
+          result="${{ needs.test-harnesses.result }}"
+          [ "$result" = success ] || { echo "::error::test-harnesses result=$result"; exit 1; }
+
   # agent-lint and agnix consolidated into one job so both run sequentially
   # on a single runner instead of competing for two.
   agent-lint:
@@ -597,6 +613,19 @@ jobs:
           PYTEST_SHARD_ID: ${{ matrix.shard }}
           PYTEST_SHARD_COUNT: "4"
         run: make py-test
+
+  # Aggregate gate for the python-tests matrix (see test-harnesses-gate for the
+  # rationale: one stable required check independent of shard count).
+  python-tests-gate:
+    name: python-tests-gate
+    needs: [python-tests]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all python-tests shards to pass
+        run: |
+          result="${{ needs.python-tests.result }}"
+          [ "$result" = success ] || { echo "::error::python-tests result=$result"; exit 1; }
 
   # Bash 3.2 conformance check. macOS ships /bin/bash at 3.2.57 (Apple
   # keeps the GPLv2-era bash frozen). Runs bash -n (syntax-only, no

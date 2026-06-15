@@ -2362,3 +2362,75 @@ def record_round_timing(argv: list[str] | None = None) -> int:
     if ledger.is_file():
         return 0
     return 1
+
+
+def write_self_review_tally(argv: list[str] | None = None) -> int:
+    """Emit the Step 5 self-review run-log artifacts (best effort).
+
+    Writes ``code-review-tally.json`` (mode ``self-review``) and an empty
+    ``review-findings-full.jsonl`` so the final-report ``Code review`` line and
+    ``audit_runs`` Step 5 detection treat a clean ``--self-review`` run as
+    "review ran" rather than "no review". Observability only: writer failures
+    are surfaced (stderr + an execution-issues Warnings entry) but the verb
+    still returns 0 so the thin SKILL.md launcher fence never blocks Step 6.
+    """
+    logging_util.quiet_init(argv0="review-and-fix-write-self-review-tally")
+    parser = argparse.ArgumentParser(prog="cli.py review-and-fix write-self-review-tally")
+    parser.add_argument("--implement-tmpdir", required=True)
+    parser.add_argument("--run-id", required=True)
+    parser.add_argument("--accepted", default="0")
+    parser.add_argument("--rejected", default="0")
+    try:
+        args = parser.parse_args(argv)
+        accepted = _non_negative_int(args.accepted, "--accepted")
+        rejected = _non_negative_int(args.rejected, "--rejected")
+    except (SystemExit, ValueError) as exc:
+        if not isinstance(exc, SystemExit):
+            _err(f"write-self-review-tally: WARNING: {exc}")
+        return 2
+    implement_tmpdir = Path(args.implement_tmpdir)
+    if not implement_tmpdir.is_dir():
+        _err("write-self-review-tally: WARNING: --implement-tmpdir must name a directory")
+        return 2
+    if not args.run_id:
+        _err("write-self-review-tally: WARNING: --run-id must be non-empty")
+        return 2
+    log_root = implement_tmpdir / "larch-logs"
+    batch_input = implement_tmpdir / "larch-log-batches-input"
+    batch_input.mkdir(parents=True, exist_ok=True)
+    findings_file = batch_input / "review-findings-full.jsonl"
+    _write_text(findings_file, "")
+    tally_result = _run([
+        "python3", str(_PY_CLI), "voting", "write-tally",
+        "--log-root", str(log_root),
+        "--skill", "implement",
+        "--run-id", args.run_id,
+        "--phase", "code-review",
+        "--mode", "self-review",
+        "--rounds", "1",
+        "--accepted", str(accepted),
+        "--rejected", str(rejected),
+    ])
+    if tally_result.returncode != 0:
+        _err(f"⚠ review-and-fix: self-review write-tally failed (rc={tally_result.returncode})")
+        if tally_result.stderr:
+            _err(tally_result.stderr.rstrip())
+    findings_result = _run([
+        "python3", str(_PY_CLI), "run-log", "write",
+        "--log-root", str(log_root),
+        "--skill", "implement",
+        "--run-id", args.run_id,
+        "--batch", "review-findings-full",
+        "--input-file", str(findings_file),
+    ])
+    if findings_result.returncode != 0:
+        _err(f"⚠ review-and-fix: self-review run-log write review-findings-full failed (rc={findings_result.returncode})")
+        if findings_result.stderr:
+            _err(findings_result.stderr.rstrip())
+    if tally_result.returncode != 0 or findings_result.returncode != 0:
+        run_logs.append_execution_issue(
+            implement_tmpdir / "execution-issues.md",
+            "Warnings",
+            "Step 5 self-review tally emission failed; final report may fall back to Code review: N/A.",
+        )
+    return 0

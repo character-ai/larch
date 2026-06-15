@@ -337,7 +337,8 @@ PLAN
     cp = _run_revise(tmp_path, plan, findings, feature, env, "--patch-format", "file-replacement")
     assert cp.returncode == 0, cp.stderr
     out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
-    assert out["REVISE_TIER_1_STATUS"] == "emit-plan-failed"
+    assert out["REVISE_TIER_1_STATUS"] == "skipped-not-present"
+    assert out["REVISE_TIER_2_STATUS"] == "emit-plan-failed"
     assert out["REVISE_STATUS"] == "failed-apply"
     assert plan.read_text(encoding="utf-8") == original
 
@@ -375,7 +376,8 @@ fi
     cp = _run_revise(tmp_path, plan, findings, feature, env)
     assert cp.returncode == 0, cp.stderr
     out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
-    assert out["REVISE_TIER_1_STATUS"] == "apply-failed"
+    assert out["REVISE_TIER_1_STATUS"] == "skipped-not-present"
+    assert out["REVISE_TIER_2_STATUS"] == "apply-failed"
     assert out["REVISE_STATUS"] == "failed-apply"
     assert plan.read_text(encoding="utf-8") == original
 
@@ -417,6 +419,72 @@ fi
     assert out["REVISE_TIER_4_STATUS"] == "ok"
     assert calls.read_text(encoding="utf-8").splitlines() == ["codex-output.txt", "claude-output.txt", "codex-output.txt"]
     assert "fallback fixed" in plan.read_text(encoding="utf-8")
+
+
+def test_revise_waterfall_attempts_cursor_first_when_present(tmp_path: Path) -> None:
+    plan, findings, feature = _revise_base(tmp_path)
+    calls = tmp_path / "calls.txt"
+    fake = _write_executable(
+        tmp_path / "fake-launch.sh",
+        f"""#!/usr/bin/env bash
+out=""; prompt=""
+while [ $# -gt 0 ]; do
+  case "$1" in --output) out="$2"; shift 2 ;; --prompt-file) prompt="$2"; shift 2 ;; *) shift ;;
+  esac
+done
+printf '%s\\n' "$(basename "$out")" >>"{calls}"
+if grep -Fq 'complete replacement plan' "$prompt" && [ "$(basename "$out")" = "cursor-output.txt" ]; then
+  cat >"$out" <<'PLAN'
+## Plan
+### UPDATED: file.txt
+cursor fixed
+diff_lines: 2
+PLAN
+else
+  printf 'not a diff\\n' >"$out"
+fi
+""",
+    )
+    driver = _write_executable(tmp_path / "driver.sh", "#!/usr/bin/env bash\nprintf 'EMIT_PLAN_STATUS=ok\\n'\n")
+    env = {
+        "LARCH_TEST_LAUNCH_CODEX_REVIEW": str(fake),
+        "LARCH_TEST_LAUNCH_CURSOR_REVIEW": str(fake),
+        "LARCH_TEST_LAUNCH_CLAUDE_REVIEW": str(fake),
+        "LARCH_TEST_DESIGN_DRIVER": str(driver),
+    }
+    cp = run_cli(
+        "plan",
+        "revise-waterfall",
+        "--design-tmpdir",
+        str(tmp_path),
+        "--plan-file",
+        str(plan),
+        "--findings-file",
+        str(findings),
+        "--feature-file",
+        str(feature),
+        "--round-num",
+        "1",
+        "--codex-present",
+        "true",
+        "--cursor-present",
+        "true",
+        env=env,
+    )
+    assert cp.returncode == 0, cp.stderr
+    out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
+    assert out["REVISE_STATUS"] == "ok-fallback"
+    assert out["REVISE_TIER_4_STATUS"] == "ok"
+    assert out["REVISE_WINNING_TIER"] == "cursor"
+    assert out["REVISE_PATCH_PATH"].endswith("revise/cursor-output.txt")
+    # Cursor-first order in both the initial unified-diff pass and the
+    # file-replacement fallback pass (Part 1: Cursor-first apply-agent).
+    assert calls.read_text(encoding="utf-8").splitlines() == [
+        "cursor-output.txt",
+        "codex-output.txt",
+        "claude-output.txt",
+        "cursor-output.txt",
+    ]
 
 
 def test_revise_waterfall_tier4_merge_keeps_invalid_patch_over_emit_plan_failed(tmp_path: Path) -> None:
@@ -550,7 +618,7 @@ fi
     assert not (tmp_path / "plan.txt.before-revise").exists()
 
 
-def test_revise_waterfall_emit_plan_failure_on_tier1_sets_failed_apply(tmp_path: Path) -> None:
+def test_revise_waterfall_emit_plan_failure_on_codex_tier_sets_failed_apply(tmp_path: Path) -> None:
     original = "## Plan\nalpha\ndiff_lines: 1\n"
     plan, findings, feature = _revise_base(tmp_path, original)
     fake = _write_executable(
@@ -615,8 +683,8 @@ fi
     assert cp.returncode == 0, cp.stderr
     out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
     assert out["REVISE_STATUS"] == "failed-apply"
-    assert out["REVISE_TIER_1_STATUS"] == "emit-plan-failed"
-    assert out["REVISE_TIER_2_STATUS"] == "no-patch"
+    assert out["REVISE_TIER_1_STATUS"] == "no-patch"
+    assert out["REVISE_TIER_2_STATUS"] == "emit-plan-failed"
     assert out["REVISE_TIER_3_STATUS"] == "no-patch"
     assert out["REVISE_TIER_4_STATUS"] == "no-patch"
     assert "alpha" in plan.read_text(encoding="utf-8")
@@ -687,7 +755,8 @@ PLAN
     cp = _run_revise(tmp_path, plan, findings, feature, env, "--patch-format", "file-replacement")
     assert cp.returncode == 0, cp.stderr
     out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
-    assert out["REVISE_TIER_1_STATUS"] == "invalid-patch"
+    assert out["REVISE_TIER_1_STATUS"] == "skipped-not-present"
+    assert out["REVISE_TIER_2_STATUS"] == "invalid-patch"
     assert out["REVISE_STATUS"] == "failed-validation"
     assert plan.read_text(encoding="utf-8") == original
 
