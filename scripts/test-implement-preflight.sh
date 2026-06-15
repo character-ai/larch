@@ -340,6 +340,25 @@ awk '
   }
 ' "$TMPROOT/title-equals/stdout" || fail 'success envelope keys or one-record-per-line shape invalid'
 
+# 11. Initial run with neither CLAUDE_PLUGIN_ROOT nor IMPLEMENT_TMPDIR set: the
+#     helper self-locates its plugin root from BASH_SOURCE and still succeeds.
+#     Reproduces issue #4458 (preflight exits 2 before Step 0 creates the tmpdir).
+self_loc_dir="$TMPROOT/self-location"
+mkdir -p "$self_loc_dir/preflight"
+set +e
+env -u CLAUDE_PLUGIN_ROOT -u IMPLEMENT_TMPDIR \
+  STUB_LOG="$self_loc_dir/stub.log" \
+  REAL_PYTHON="$REAL_PYTHON" \
+  PATH="$STUBDIR:$PATH" \
+  ADMISSION_CASE=pass PLAN_CASE=present GH_JSON="$(json_body '[DESIGNED] Self' 'body')" \
+  "$HELPER" --issue 42 --preflight-tmpdir "$self_loc_dir/preflight" > "$self_loc_dir/stdout" 2> "$self_loc_dir/stderr"
+self_loc_rc=$?
+set -e
+assert_eq "$self_loc_rc" 0 'self-location rc'
+not_contains "$self_loc_dir/stdout" 'cannot resolve CLAUDE_PLUGIN_ROOT' 'self-location no resolve error'
+contains "$self_loc_dir/stdout" 'ADMISSION_RESULT=pass' 'self-location admission pass'
+contains "$self_loc_dir/stdout" 'PLAN_PATH=' 'self-location success envelope'
+
 # Source grep pins use stable executable tokens only.
 contains "$HELPER" 'BYPASS kind=' 'source bypass token'
 contains "$HELPER" 'LARCH_QUIET_DISABLE=1' 'source quiet token'
@@ -347,5 +366,6 @@ contains "$HELPER" '$PREFLIGHT_TMPDIR/emergency-bypass.log' 'source bypass path 
 contains "$HELPER" 'missing-plan' 'source missing-plan token'
 contains "$HELPER" 'malformed-plan' 'source malformed-plan token'
 contains "$HELPER" 'missing-designed-prefix' 'source missing-designed-prefix token'
+contains "$HELPER" 'BASH_SOURCE' 'source self-location token'
 
 printf 'PASS: test-implement-preflight.sh\n'

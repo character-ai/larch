@@ -21,3 +21,4 @@ The harness stubs `gh` and `python3` and does not hit the network. It covers:
 - Success-envelope only behavior.
 - Quiet-mode key output via `LARCH_QUIET_DISABLE=1`.
 - Malformed emergency `BLOCK_PRESENT=true`.
+- Initial-run plugin-root self-location when neither `CLAUDE_PLUGIN_ROOT` nor `IMPLEMENT_TMPDIR` is set (issue #4458).
