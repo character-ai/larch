@@ -330,7 +330,8 @@ assert_wrapper_contract_pins() {
   contains "$SCRIPT_DIR/design-step2b-postplan.sh" '--write-completion-only) WRITE_COMPLETION_ONLY=true' 'Step 2b postplan wrapper missing --write-completion-only parser'
   contains "$SCRIPT_DIR/design-step2b-postplan.sh" '--include-step2b) INCLUDE_STEP2B=true' 'Step 2b postplan wrapper missing --include-step2b parser'
   contains "$SCRIPT_DIR/design-step2b-postplan.sh" '--write-step2b-completion-only) WRITE_STEP2B_COMPLETION_ONLY=true' 'Step 2b postplan wrapper missing --write-step2b-completion-only parser'
-  contains_near "$SKILL_MD" 'Fail closed when drafter success has missing postplan rows.' 'When `.completed/step-2b.5` already exists, do not run a second prompt-side postplan fence; fail closed with diagnostics' 'SKILL missing step-2b.5 missing-row fail-safe guard' 900
+  contains_near "$SKILL_MD" 'Fail closed when drafter success has missing postplan rows.' 'When `.completed/step-2b.5` exists and the sidecar shows `POSTPLAN_EMIT_STATUS=ok`' 'SKILL missing step-2b.5 sidecar missing-row fail-safe guard' 900
+  contains_near "$SKILL_MD" 'Fail closed when drafter success has missing postplan rows.' 'treat that sentinel alone as non-authoritative for this branch' 'SKILL missing non-authoritative completion-only fail-safe note' 1500
   contains "$SCRIPT_DIR/design-step3-review.sh" '--phase)' 'Step 3 review wrapper missing --phase parser'
   contains "$SCRIPT_DIR/design-step3-review.sh" '--findings-file)' 'Step 3 review wrapper missing --findings-file parser'
   contains "$SCRIPT_DIR/design-step3-review.sh" '--postplan-operator-continue)' 'Step 3 review wrapper missing --postplan-operator-continue parser'

@@ -22,7 +22,7 @@ Wrapper for the `/design` Step 2b postplan Bash block.
 - Accepts `--claude-pid` when the wrapped logic must refresh session state.
 - Completion-only modes validate `DESIGN_TMPDIR`, write their markers, honor pause-save, and exit without running `design-postplan-emit.sh`.
 - `--write-step2b-completion-only` writes `.completed/step-2b` only.
-- `--write-completion-only` writes `.completed/step-2b.5`; `--include-step2b` additionally writes `.completed/step-2b`.
+- `--write-completion-only` writes `.completed/step-2b.5`; `--include-step2b` additionally writes `.completed/step-2b`. This mode does not run `design-postplan-emit.sh`, so its `step-2b.5` write is non-authoritative for the drafter missing-row fail-safe; that branch requires `POSTPLAN_EMIT_STATUS=ok` in `.design-postplan-emit-result.env`.
 - The normal postplan emit path still honors the existing pause gate before `design-postplan-emit.sh`.
 - Clean rc 0 writes `.completed/step-2b.5` for every site and `.completed/step-2b` only for the initial Step 2b site.
 - Does not derive the root Claude PID from `$PPID` internally.
