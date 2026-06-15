@@ -48,6 +48,55 @@ def test_read_key_defaults_and_embedded_equals(tmp_path: Path) -> None:
     assert forgotten.returncode == 1
 
 
+def test_read_keys_batch_order_defaults_and_first_match(tmp_path: Path) -> None:
+    session = tmp_path / "session-env.sh"
+    session.write_text("SITE=core\nTRIGGER=\nVALUE=a=b=c\nFIRST=one\nFIRST=two\n", encoding="utf-8")
+    got = run_cli(
+        "read-keys",
+        "--file",
+        str(session),
+        "--key",
+        "SITE=unknown",
+        "--key",
+        "TRIGGER=fallback",
+        "--key",
+        "VALUE",
+        "--key",
+        "MISSING=def",
+        "--key",
+        "ABSENT",
+        "--key",
+        "FIRST",
+    )
+    assert got.returncode == 0, got.stderr
+    # Input order preserved; embedded '=' kept; empty value -> default;
+    # absent+no-default -> empty; first occurrence wins.
+    assert got.stdout == "SITE=core\nTRIGGER=fallback\nVALUE=a=b=c\nMISSING=def\nABSENT=\nFIRST=one\n"
+
+
+def test_read_keys_missing_file_resolves_defaults(tmp_path: Path) -> None:
+    got = run_cli("read-keys", "--file", str(tmp_path / "nope"), "--key", "A=1", "--key", "B")
+    assert got.returncode == 0
+    assert got.stdout == "A=1\nB=\n"
+
+
+def test_read_keys_requires_file_flag_and_a_key(tmp_path: Path) -> None:
+    session = tmp_path / "session-env.sh"
+    session.write_text("A=1\n", encoding="utf-8")
+    no_file = run_cli("read-keys", "--key", "A=1")
+    assert no_file.returncode == 1
+    no_key = run_cli("read-keys", "--file", str(session))
+    assert no_key.returncode == 1
+
+
+def test_read_keys_rejects_carriage_return_injection(tmp_path: Path) -> None:
+    session = tmp_path / "session-env.sh"
+    session.write_text("SAFE=value\rLARCH_TOKEN_SESSION_ID=attacker\n", encoding="utf-8")
+    result = run_cli("read-keys", "--file", str(session), "--key", "SAFE")
+    assert result.returncode == 1
+    assert "carriage return" in result.stderr
+
+
 def test_write_env_writer_guard_and_plugin_root_only(tmp_path: Path) -> None:
     out = tmp_path / "session-env.sh"
     ok = run_cli(

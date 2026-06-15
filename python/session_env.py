@@ -887,6 +887,70 @@ def read_key_main(argv: list[str]) -> int:
     return 0
 
 
+def read_keys_main(argv: list[str]) -> int:
+    """Batch sibling of read_key_main: read many keys from one KV file in a
+    single process and emit `KEY=value` lines (input order).
+
+    Each `--key` is `NAME` or `NAME=DEFAULT` (split on the first `=`). A key
+    that is absent or empty in the file falls back to its DEFAULT, or to the
+    empty string when no DEFAULT was given. A missing/empty/unreadable file
+    resolves every key to its default; only an entirely absent `--file` flag
+    is an error. Carriage-return injection is rejected exactly as read_key.
+    Collapses N `session read-key` spawns (one process each) into one.
+    """
+    parser = argparse.ArgumentParser(prog="session read-keys", add_help=False)
+    parser.add_argument("--file", default=None)
+    parser.add_argument("--key", action="append", default=[])
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit:
+        return 1
+    logging_util.quiet_init(argv0="read-session-env-keys.sh")
+    if not args.key:
+        _err("read-session-env-keys.sh: at least one --key is required")
+        return 1
+    if "--file" not in argv:
+        _err("read-session-env-keys.sh: --file is required")
+        return 1
+    specs: list[tuple[str, str | None]] = []
+    for raw in args.key:
+        if "=" in raw:
+            name, default = raw.split("=", 1)
+            specs.append((name, default))
+        else:
+            specs.append((raw, None))
+    for name, _ in specs:
+        if not name:
+            _err("read-session-env-keys.sh: empty --key name")
+            return 1
+    found: dict[str, str] = {}
+    if args.file:
+        path = Path(args.file)
+        if path.is_file():
+            try:
+                lines = _read_kv_file_text(path).splitlines()
+            except ValueError as exc:
+                _err(str(exc))
+                return 1
+            except OSError:
+                lines = []
+            for line in lines:
+                idx = line.find("=")
+                if idx <= 0:
+                    continue
+                name = line[:idx]
+                if name not in found:  # first occurrence wins, matching read_key
+                    found[name] = line[idx + 1:]
+    out_lines: list[str] = []
+    for name, default in specs:
+        value = found.get(name, "")
+        if (name not in found or value == "") and default is not None:
+            value = default
+        out_lines.append(f"{name}={value}")
+    _emit("\n".join(out_lines))
+    return 0
+
+
 def _uuid_or_basename(parent: Path) -> str:
     try:
         result = proc.run(["uuidgen"])
@@ -1206,7 +1270,7 @@ def _write_session_identity(tmpdir: Path, session_id: str) -> None:
         _err(f"session-setup.sh: warning: failed to write session identity: {sentinel}")
 
 
-def _ignore_placeholder_run_dirs(_src: str, names: list[str]) -> set[str]:
+def _ignore_placeholder_run_dirs(_: str, names: list[str]) -> set[str]:
     """Drop placeholder run-log dirs for the ``shutil.copytree`` ``ignore`` hook.
 
     Returns the subset of ``names`` matching the non-unique ``run-<N>`` pattern so
@@ -1285,7 +1349,10 @@ def setup_main(argv: list[str]) -> int:
     final_codex_bin = caller.get("CODEX_BINARY_FOUND", "")
     final_cursor_bin = caller.get("CURSOR_BINARY_FOUND", "")
     if args.check_reviewers:
-        reviewer = agents.check_reviewers(
+        # agents.check_reviewers is a real module-level function (see agents.py);
+        # a newer pyright misresolves this cross-module attribute while the
+        # repo-pinned pyright is clean. Suppress the false positive (#4439).
+        reviewer = agents.check_reviewers(  # pyright: ignore[reportAttributeAccessIssue]
             skip_codex_probe=args.skip_codex_probe or bool(final_codex),
             skip_cursor_probe=args.skip_cursor_probe or bool(final_cursor),
         )
