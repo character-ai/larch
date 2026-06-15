@@ -3541,7 +3541,6 @@ def _review_run_with_retries(
             and not quota_failure
         ):
             unclassified_empty_retried = True
-            auth_attempt += 1
             _review_reset_retry_artifacts(
                 output,
                 tool=tool,

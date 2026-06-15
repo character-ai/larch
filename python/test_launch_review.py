@@ -420,7 +420,7 @@ def test_codex_retry_unclassified_empty_exit_one(tmp_path: Path, monkeypatch: py
     )
     assert calls["count"] == 2
     assert result.exit_code == 3
-    assert auth_attempt == 2
+    assert auth_attempt == 1
 
 
 def test_codex_retry_unclassified_empty_exit_one_respects_auth_retry_limit_one(
@@ -451,7 +451,7 @@ def test_codex_retry_unclassified_empty_exit_one_respects_auth_retry_limit_one(
     )
     assert calls["count"] == 2
     assert result.exit_code == 1
-    assert auth_attempt == 2
+    assert auth_attempt == 1
 
 
 def test_review_serial_lock_releases_before_blocking_wait(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
