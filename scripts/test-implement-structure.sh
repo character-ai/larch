@@ -119,7 +119,6 @@ for needle in [
     'session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID',
     '_oos_chk_err=',
     '_restore_finalize=false',
-    'if [ "${LARCH_SHIP_PR_IMPL:-python}" != "bash" ]; then',
 ]:
     forbid(skill, needle, 'wrapperized SKILL')
 
@@ -147,7 +146,7 @@ require('skills/implement/scripts/step-8-ship.sh', 'read_state_key', 'step-8 shi
 require('skills/implement/scripts/step-8-ship.sh', 'sys.version_info >= (3, 11)', 'step-8 python 3.11 guard')
 require('skills/implement/scripts/step-8-ship.sh', '"outcome":"STALLED"', 'step-8 stalled JSON stdout')
 require('skills/implement/scripts/step-8-ship.sh', 'exit 4', 'step-8 stale-python exit 4')
-require('skills/implement/scripts/step-8-ship.sh', '${_resume_args[@]+"${_resume_args[@]}"}', 'step-8 bash32-safe resume args')
+require('skills/implement/scripts/step-8-ship.sh', 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" ship pr', 'step-8 python ship invocation')
 require('skills/implement/scripts/step-0-bootstrap.sh', 'LARCH_CLAUDE_PID="${LARCH_CLAUDE_PID:-$PPID}"', 'step-0 wrapper claude pid export')
 require('skills/implement/scripts/step-18-finalize.sh', 'LARCH_CLAUDE_PID:-$PPID', 'step-18-finalize claude pid fallback')
 require('skills/implement/scripts/step-18a-gate.sh', 'STALL_TRACKING_MEMORY_ARG', 'step-18a stall-tracking memory arg')
@@ -247,7 +246,7 @@ if conflict_ref.is_file():
         'default Python foreground argv',
         'Python foreground argv',
         'foreground `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" ship pr`',
-        're-invoke `${CLAUDE_PLUGIN_ROOT}/scripts/ship-pr.sh --resume-phase ship-pr-rrr-phase14`',
+        're-invoke `${CLAUDE_PLUGIN_ROOT}/python/cli.py ship pr --resume-phase ship-pr-rrr-phase14`',
     ]:
         if forbidden in conflict_text:
             checks.append(f'conflict-resolution.md must not use direct foreground ship re-entry prose {forbidden!r}')
@@ -270,16 +269,15 @@ for needle in [
     require('skills/implement/scripts/step-0-degraded-gate.sh', needle, f'step-0-degraded-gate legacy {needle}')
 require('skills/implement/scripts/step-5-resume.sh', 'review-and-fix commit-fixes --stage-all || true', 'step-5-resume commit failure guard')
 require('skills/implement/scripts/step-5-resume.sh', 'review-and-fix step5', 'step-5-resume review loop resume')
-require('scripts/ship-pr.sh', 'pr-create) advance_phase pr-prep; state_set RESUME_PHASE ""', 'ship-pr pr-create resume token consumption')
+require('skills/implement/scripts/step-8-ship.sh', '--state-file "$IMPLEMENT_TMPDIR/ship-pr-state.sh"', 'step-8 state file forwarding')
 exit_matrix = Path('skills/implement/references/ship-pr-exit-matrix.md')
 if exit_matrix.is_file():
     exit_text = exit_matrix.read_text()
     for needle in [
-        'Apply the following exit matrix **only when `LARCH_SHIP_PR_IMPL=bash`**',
+        'Python driver non-zero routing',
         'Phase 4 exit 0 re-invokes the active Step 8+ selector',
         'ship-pr-net-retries-python.count',
-        'RESUME_PHASE=pr-create',
-        'Read `RESUME_PHASE`, `CALLER_KIND`, and `CONFLICT_FILES` from `ship-pr-state.sh` on both paths.',
+        'Read `CONFLICT_FILES` from `ship-pr-state.sh` on conflict handoff paths.',
     ]:
         if needle not in exit_text:
             checks.append(f'ship-pr-exit-matrix.md missing {needle!r}')
@@ -303,14 +301,11 @@ for needle in [
     '_restore_finalize=false',
     'restore-finalize-state',
     'implement-finalize teardown',
-    'LARCH_SHIP_PR_IMPL:-python}" = "bash"',
     'DESIGN_TMPDIR=\'\' LARCH_TIMING_SKILL=implement',
 ]:
     require('skills/implement/scripts/step-18-finalize.sh', needle, f'step-18-finalize {needle}')
 for needle in [
-    'default `LARCH_SHIP_PR_IMPL=python` runs the Python branch',
-    'Python driver selector',
-    'Unless `LARCH_SHIP_PR_IMPL=bash`, the `step-8-ship.sh` wrapper runs',
+    'Python ship driver wrapper',
     '## Load-Bearing Invariants',
     'Two invariants enforced across multiple steps',
 ]:
@@ -319,7 +314,6 @@ for needle in [
 for retired in [
     'Version Bump Freshness', 'Degraded-Git Fail-Closed', '### Step 8a',
     'phantom-probe-with-warn.sh" --step 8-pre-bump',
-    'default `LARCH_SHIP_PR_IMPL=bash` runs the bash contract',
 ]:
     if retired in skill_text:
         checks.append(f'SKILL.md must not retain retired surface {retired!r}')

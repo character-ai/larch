@@ -1,18 +1,20 @@
 """Local relevant-checks runner and lint-fix loop (ship-pr Phase 4).
 
-Local fixer dispatch mirrors ``lint-fix-loop.sh`` (#3207): non-zero codex/cursor
+Local fixer dispatch mirrors ``python/cli.py checks lint-fix`` (#3207): non-zero codex/cursor
 launch maps to ``main-agent-required`` with ``failure_reason=dispatch-failed``;
 ``agents.classify_launch_failure`` is not used on this path (unlike CI fixer).
 """
 
 from __future__ import annotations
 
+import argparse
 import contextlib
+import fnmatch
 import os
 import re
 import sys
 import tempfile
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
@@ -86,6 +88,7 @@ class ChecksResult:
     skipped: bool
     warn: str | None
     raw_log_path: str | None = None
+    failure_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -122,7 +125,7 @@ class LoopResult:
 
 
 def normalize_max_iter(raw: str | int | None = None) -> int:
-    """Port of normalize_rcc_max_iter in ship-pr.sh."""
+    """Port of normalize_rcc_max_iter in the Python ship driver."""
     raw_str = "" if raw is None else str(raw).strip()
     if not raw_str.isdigit():
         return config.RCC_MAX_ITER_DEFAULT
@@ -153,7 +156,7 @@ def _under_root(path: Path, root: Path) -> bool:
 
 
 def validate_tmpdir(tmpdir: str) -> Path | None:
-    """Port of validate_tmpdir in run-relevant-checks-captured.sh."""
+    """Port of validate_tmpdir in python/cli.py checks run-relevant."""
     if not tmpdir.startswith("/"):
         return None
     candidate = Path(tmpdir)
@@ -289,164 +292,313 @@ def _allocate_log_file(log_dir: Path, site: str) -> tuple[int, Path] | None:
     return None
 
 
-def run_relevant_checks(
-    runner: Runner,
+
+def _checks_failure(
     *,
     site: str,
-    tmpdir: str,
-    repo_root: str,
+    exit_code: int,
+    reason: str,
+    raw_log_path: str | None = None,
+    redacted_log_path: str | None = None,
+    phase: str = "unknown",
+    coverage: str = "changed-file-only",
+    warn: str | None = None,
 ) -> ChecksResult:
-    """Port of run-relevant-checks-captured.sh orchestration."""
-    if (
-        not site
-        or not re.fullmatch(r"[A-Za-z0-9._-]+", site)
-        or site.startswith(".")
-        or ".." in site
-    ):
-        return ChecksResult(
-            ok=False,
-            exit_code=2,
-            site=site,
-            redacted_log_path=None,
-            phase="unknown",
-            coverage="changed-file-only",
-            skipped=False,
-            warn=None,
-        )
-    canonical_tmp = validate_tmpdir(tmpdir)
-    if canonical_tmp is None:
-        return ChecksResult(
-            ok=False,
-            exit_code=2,
-            site=site,
-            redacted_log_path=None,
-            phase="unknown",
-            coverage="changed-file-only",
-            skipped=False,
-            warn=None,
-        )
-    _mark_step_ledger(runner, canonical_tmp, site)
-    repo = Path(repo_root)
-    check_script = repo / "scripts" / "relevant-checks.sh"
-    if check_script.is_symlink() and not check_script.exists():
-        return ChecksResult(
-            ok=False,
-            exit_code=1,
-            site=site,
-            redacted_log_path=None,
-            phase="unknown",
-            coverage="changed-file-only",
-            skipped=False,
-            warn=None,
-        )
-    if not check_script.exists():
-        return ChecksResult(
-            ok=True,
-            exit_code=0,
-            site=site,
-            redacted_log_path=None,
-            phase="unknown",
-            coverage="changed-file-only",
-            skipped=True,
-            warn=None,
-        )
-    if not check_script.is_file() or not os.access(check_script, os.X_OK):
-        return ChecksResult(
-            ok=False,
-            exit_code=126,
-            site=site,
-            redacted_log_path=None,
-            phase="unknown",
-            coverage="changed-file-only",
-            skipped=False,
-            warn=None,
-        )
-    log_dir = canonical_tmp / "relevant-checks"
-    log_dir.mkdir(mode=0o700, exist_ok=True)
-    if log_dir.is_symlink():
-        return ChecksResult(
-            ok=False,
-            exit_code=1,
-            site=site,
-            redacted_log_path=None,
-            phase="unknown",
-            coverage="changed-file-only",
-            skipped=False,
-            warn=None,
-        )
+    return ChecksResult(
+        ok=False,
+        exit_code=exit_code,
+        site=site,
+        redacted_log_path=redacted_log_path,
+        phase=phase,
+        coverage=coverage,
+        skipped=False,
+        warn=warn,
+        raw_log_path=raw_log_path,
+        failure_reason=reason,
+    )
+
+
+def _clean_child_env() -> dict[str, str]:
+    env = dict(os.environ)
+    for key in tuple(env):
+        if key.startswith("LARCH_QUIET_"):
+            del env[key]
+    for key in ("CLAUDE_PLUGIN_ROOT", "LARCH_CLAUDE_PLUGIN_ROOT"):
+        _ = env.pop(key, None)
+    return env
+
+
+def _write_log(log_fd: int, text: str) -> None:
+    _ = os.write(log_fd, text.encode("utf-8", errors="replace"))
+
+
+def _run_logged(
+    runner: Runner,
+    argv: Sequence[str],
+    *,
+    cwd: str,
+    log_fd: int,
+    env: dict[str, str],
+) -> CommandResult:
+    return runner.run(argv, cwd=cwd, env=env, stdout=log_fd, stderr=log_fd)
+
+
+def _command_available(runner: Runner, name: str, *, cwd: str, env: dict[str, str]) -> bool:
+    result = runner.run(
+        ["bash", "-lc", f"command -v {name} >/dev/null 2>&1"],
+        cwd=cwd,
+        env=env,
+    )
+    return result.returncode == 0
+
+
+def _python311_available(runner: Runner, *, cwd: str, env: dict[str, str]) -> bool:
+    result = runner.run(
+        [
+            "python3",
+            "-c",
+            "import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)",
+        ],
+        cwd=cwd,
+        env=env,
+    )
+    return result.returncode == 0
+
+
+def _pytest_available(runner: Runner, *, cwd: str, env: dict[str, str]) -> bool:
+    result = runner.run(["python3", "-m", "pytest", "--version"], cwd=cwd, env=env)
+    return result.returncode == 0
+
+
+def _resolve_repo_root(runner: Runner, repo_root: str) -> Path | None:
+    candidate = Path(repo_root) if repo_root else Path.cwd()
+    if not candidate.is_dir() or candidate.is_symlink():
+        return None
+    result = runner.run(["git", "rev-parse", "--show-toplevel"], cwd=str(candidate))
+    if result.returncode != 0:
+        return None
+    raw = result.stdout.strip().splitlines()[0] if result.stdout.strip() else ""
+    if not raw:
+        return None
+    resolved = Path(raw)
+    if not resolved.is_dir() or resolved.is_symlink():
+        return None
     try:
-        log_dir.chmod(0o700)
+        return resolved.resolve()
     except OSError:
-        return ChecksResult(
-            ok=False,
-            exit_code=1,
-            site=site,
-            redacted_log_path=None,
-            phase="unknown",
-            coverage="changed-file-only",
-            skipped=False,
-            warn=None,
-        )
-    allocated = _allocate_log_file(log_dir, site)
-    if allocated is None:
-        return ChecksResult(
-            ok=False,
-            exit_code=1,
-            site=site,
-            redacted_log_path=None,
-            phase="unknown",
-            coverage="changed-file-only",
-            skipped=False,
-            warn=None,
-        )
-    log_fd, log_file = allocated
-    try:
+        return None
+
+
+def _git_lines(runner: Runner, argv: Sequence[str], *, cwd: str) -> tuple[str, ...]:
+    result = runner.run(argv, cwd=cwd)
+    if result.returncode != 0:
+        return ()
+    return tuple(line.strip() for line in result.stdout.splitlines() if line.strip())
+
+
+def _changed_files(runner: Runner, *, cwd: str) -> tuple[str, ...]:
+    branch_diff: tuple[str, ...] = ()
+    if runner.run(["git", "rev-parse", "--verify", "main"], cwd=cwd).returncode == 0:
+        branch_diff = _git_lines(runner, ["git", "diff", "--name-only", "main...HEAD"], cwd=cwd)
+    elif runner.run(["git", "rev-parse", "--verify", "origin/main"], cwd=cwd).returncode == 0:
+        branch_diff = _git_lines(runner, ["git", "diff", "--name-only", "origin/main...HEAD"], cwd=cwd)
+    staged = _git_lines(runner, ["git", "diff", "--cached", "--name-only"], cwd=cwd)
+    unstaged = _git_lines(runner, ["git", "diff", "--name-only"], cwd=cwd)
+    untracked = _git_lines(runner, ["git", "ls-files", "--others", "--exclude-standard"], cwd=cwd)
+    return tuple(sorted({*branch_diff, *staged, *unstaged, *untracked}))
+
+
+def _existing_regular_files(repo: Path, paths: Iterable[str]) -> tuple[str, ...]:
+    regular: list[str] = []
+    for raw in paths:
+        path = repo / raw
         try:
-            result = runner.run(
-                [str(check_script)],
-                cwd=str(repo),
-                stdout=log_fd,
-                stderr=log_fd,
-            )
-        except Exception:
-            return ChecksResult(
-                ok=False,
-                exit_code=1,
-                site=site,
-                redacted_log_path=None,
-                phase="unknown",
-                coverage="changed-file-only",
-                skipped=False,
-                warn=None,
-                raw_log_path=str(log_file),
-            )
-        if not log_file.is_file() or log_file.is_symlink() or log_file.parent.resolve() != log_dir.resolve():
-            return ChecksResult(
-                ok=False,
-                exit_code=1,
-                site=site,
-                redacted_log_path=None,
-                phase="unknown",
-                coverage="changed-file-only",
-                skipped=False,
-                warn=None,
-            )
-    finally:
+            if path.is_file() and not path.is_symlink():
+                regular.append(raw)
+        except OSError:
+            continue
+    return tuple(regular)
+
+
+_DIRECT_TARGET_RULES: Final[tuple[tuple[tuple[str, ...], tuple[str, ...], bool, bool], ...]] = (
+    (("scripts/read-result-env.sh", "scripts/read-result-env.md"), ("test-read-result-env", "test-design-structure"), False, False),
+    (("scripts/test-read-result-env.sh", "scripts/test-read-result-env.md"), ("test-read-result-env",), False, False),
+    (("skills/design/scripts/parse-design-argv.sh", "skills/design/scripts/parse-design-argv.md"), ("test-parse-design-argv", "test-design-structure"), False, False),
+    (("skills/design/scripts/test-parse-design-argv.sh",), ("test-parse-design-argv",), False, False),
+    (("skills/design/scripts/design-init-runparams.md",), ("test-design-structure",), False, False),
+    (("scripts/test-step0b-router-flag-recovery.sh", "scripts/test-step0b-router-flag-recovery.md", "python/session_env.py", "skills/design/scripts/design-init-runparams.sh", "skills/design/scripts/design-init-runparams.md"), ("test-step0b-router-flag-recovery",), False, False),
+    (("skills/design/scripts/design-route.sh", "skills/design/scripts/design-route.md"), ("test-design-structure",), False, False),
+    (("skills/design/scripts/design-publish.sh", "skills/design/scripts/design-publish.md", "skills/design/scripts/test-design-publish.sh", "skills/design/scripts/test-design-publish.md", "python/plan_quality.py", "python/test_plan_quality.py"), ("test-design-publish", "test-design-stage-terminal-state", "test-design-failure-report", "test-design-step5c", "test-design-structure"), False, False),
+    (("skills/design/scripts/design-step5c.sh", "skills/design/scripts/test-design-step5c.sh", "skills/design/scripts/test-design-step5c.md"), ("test-design-step5c", "test-design-publish", "test-design-failure-report"), False, False),
+    (("skills/design/scripts/design-step0-clarify-hard-halt.sh", "skills/design/scripts/design-step0-clarify-hard-halt.md"), ("test-design-failure-report", "test-design-stage-terminal-state", "test-design-structure"), False, False),
+    (("skills/design/SKILL.md", "skills/design/references/*.md"), ("test-design-structure",), False, False),
+    (("skills/design/SKILL.md", "skills/design/references/plan-review.md", "skills/design/scripts/design-step3-mav.sh", "skills/design/scripts/design-step3-mav.md", "skills/design/scripts/test-design-step3-mav.sh", "skills/design/scripts/test-design-step3-mav.md", "skills/design/scripts/test-step3-orchestrator-fence.sh", "skills/design/scripts/test-step3-orchestrator-fence.md"), ("test-design-step3-mav", "test-step3-orchestrator-fence"), False, False),
+    (("python/upgrade_larch.py", "python/test_upgrade_larch.py"), ("py-test",), False, False),
+    (("skills/design/scripts/plan-review-continuation.sh", "skills/design/scripts/plan-review-continuation.md", "skills/design/scripts/test-step3-review-cap.sh", "skills/design/scripts/test-step3-review-cap.md"), ("test-step3-review-cap",), False, False),
+    (("python/plan_review.py", "python/test_plan_review.py"), ("test-plan-review", "test-design-multi-round-integration", "test-design-log-publish"), False, False),
+    (("python/plan_review_panel.py", "python/test_plan_review_panel.py"), ("test-plan-review-panel", "test-dispatch-plan-voters"), False, False),
+    (("skills/design/scripts/design-step2b-drafter.sh", "skills/design/scripts/design-step2b-drafter.md", "skills/design/scripts/test-design-step2b-drafter.sh", "skills/design/scripts/test-design-step2b-drafter.md", "scripts/launch-codex-drafter.sh", "scripts/launch-codex-drafter.md", "scripts/test-launch-codex-drafter.sh", "scripts/test-launch-codex-drafter.md", "scripts/parse-drafter-output.py", "scripts/parse-drafter-output.md", "scripts/test-parse-drafter-output.sh", "scripts/test-parse-drafter-output.md"), ("test-design-step2b-drafter", "test-launch-codex-drafter", "test-parse-drafter-output"), False, False),
+    (("python/plan_quality.py", "python/test_plan_quality.py", "skills/design/scripts/test-auto-fix-plan-commands.sh", "skills/design/scripts/design-step-validator-autofix.sh", "skills/design/scripts/design-step-validator-autofix.md", "skills/design/scripts/test-design-step-validator-autofix.sh", "skills/design/scripts/test-design-step-validator-autofix.md"), ("test-auto-fix-plan-commands", "test-design-step-validator-autofix", "test-design-failure-report"), False, False),
+    (("python/plan_quality.py", "python/test_plan_quality.py", "skills/design/scripts/design-postplan-emit.sh", "skills/design/scripts/design-postplan-emit.md", "skills/design/scripts/test-design-postplan-emit.sh", "skills/design/scripts/test-design-postplan-emit.md"), ("test-design-postplan-emit",), False, False),
+    (("python/plan_quality.py", "python/test_plan_quality.py", "skills/design/scripts/design-driver.sh", "skills/design/scripts/design-driver.md", "skills/design/scripts/test-design-driver.sh", "skills/design/scripts/test-design-driver.md"), ("test-design-driver",), False, False),
+    (("python/plan_quality.py", "python/test_plan_quality.py", "skills/design/scripts/design-step2b5.sh", "skills/design/scripts/design-step2b5.md"), ("test-check-plan-size",), False, False),
+    (("python/plan_quality.py", "python/test_plan_quality.py", "scripts/run-step1-plan-log.sh", "scripts/run-step1-plan-log.md", "scripts/test-run-step1-plan-log.sh", "scripts/test-run-step1-plan-log.md"), ("test-run-step1-plan-log",), False, False),
+    (("python/agents.py", "python/test_agents.py"), ("test-launch-codex-exec", "test-launch-codex-ci", "test-launch-cursor-ci", "test-parse-codex-usage", "test-token-vendor-scrapers", "test-degraded-tools-gate", "test-run-external-agent"), False, False),
+    (("skills/design/scripts/design-stage-terminal-state.sh", "skills/design/scripts/design-stage-terminal-state.md", "skills/design/scripts/test-design-stage-terminal-state.sh", "skills/design/scripts/test-design-stage-terminal-state.md"), ("test-design-stage-terminal-state", "test-stall-recovery-report"), False, False),
+    (("skills/design/scripts/design-failure-report.sh", "skills/design/scripts/design-failure-report.md", "skills/design/scripts/test-design-failure-report.sh", "skills/design/scripts/test-design-failure-report.md"), ("test-design-failure-report", "test-stall-recovery-report", "test-file-failure-report-cross-repo"), False, False),
+    (("python/plan_review.py", "skills/design/scripts/design-step3-review.sh", "skills/design/scripts/design-step3-review.md", "skills/design/scripts/test-design-step3-review.sh", "skills/design/scripts/test-design-step3-review.md"), ("test-design-step3-review", "test-plan-review"), False, False),
+    (("skills/design/scripts/render-final-summary.sh", "skills/design/scripts/render-final-summary.md", "skills/design/scripts/test-render-final-summary.sh", "skills/design/scripts/test-render-final-summary.md", "scripts/test-render-final-summary-bash32.sh", "scripts/test-render-final-summary-bash32.md"), ("test-render-final-summary", "test-design-failure-report", "test-render-final-summary-bash32"), False, False),
+    (("python/plan_review.py", "skills/design/references/plan-review.md", "python/test_plan_review.py", "skills/design/scripts/dedup-plan-lines.py", "skills/design/scripts/dedup-plan-lines.md"), ("test-plan-review", "test-design-step3-review", "test-design-multi-round-integration"), False, False),
+    (("python/plan_quality.py", "python/test_plan_quality.py", "python/plan_review.py"), ("test-revise-plan-with-waterfall",), False, False),
+    (("scripts/design-log-publish.sh", "scripts/test-design-log-publish.sh", "scripts/test-design-multi-round-integration.sh", "scripts/test-design-multi-round-integration.md"), ("test-design-log-publish", "test-design-multi-round-integration"), False, False),
+    (("scripts/test-design-structure.sh", "scripts/test-design-structure.md"), ("test-design-structure",), False, False),
+    (("skills/*/SKILL.md", "skills/*/references/*.md"), (), False, False),
+    (("scripts/lint-readability-preamble.tsv", "scripts/lint-readability-preamble.tsv.md"), ("test-lint-readability-preamble",), False, False),
+    (("scripts/collect-agent-results.sh", "scripts/test-collect-agent-results.sh"), ("test-collect-agent-results",), False, False),
+    (("scripts/lib-design-tmpdir.sh", "scripts/test-lib-design-tmpdir.sh", "scripts/lib-design-tmpdir.md", "scripts/test-lib-design-tmpdir.md"), ("test-lib-design-tmpdir",), False, False),
+    (("python/rendering.py", "python/test_rendering.py"), ("test-plan-review", "test-launch-claude-subprocess", "test-lib-scope-anchor-handoff", "test-plan-review-panel", "test-aggregate-findings"), False, False),
+    (("python/decompose.py", "python/test_decompose.py"), ("test-decompose-file-issues", "test-decompose-panel-dispatch", "test-decompose-aggregator"), True, True),
+    (("python/plan_scout.py", "python/test_plan_scout.py"), ("test-scout-dynamic-archetypes", "test-scout-plan-archetypes-wrapper", "test-dispatch-panel-core-dynamic"), True, True),
+    (("python/issue_wire.py", "python/test_issue_wire.py", "python/plan_quality.py", "python/test_plan_quality.py", "python/redact.py", "python/gh.py", "python/rendering.py", "python/test_rendering.py", ".claude/rules/gh-body-file.md", "AGENTS.md", "SECURITY.md", "agent-lint.toml", "docs/issue-anchored-plan.md", "docs/linting.md", "skills/design/scripts/test-design-publish.sh", "python/test_plan_review.py", "skills/design/scripts/test-design-pause-resume.sh", "scripts/test-legacy-title-prefix-literals-scope.sh"), ("test-design-structure", "test-review-structure", "test-research-structure"), True, True),
+    (("scripts/lib-net.sh", "scripts/lib-net.md", "scripts/test-lib-net.sh", "scripts/test-lib-net.md"), ("test-lib-net",), False, False),
+    (("scripts/resolve-upstream-larch-repo.sh", "scripts/resolve-upstream-larch-repo.md", "scripts/test-resolve-upstream-larch-repo.sh", "scripts/test-resolve-upstream-larch-repo.md"), ("test-resolve-upstream-larch-repo",), False, False),
+    (("scripts/file-failure-report-cross-repo.sh", "scripts/file-failure-report-cross-repo.md", "scripts/test-file-failure-report-cross-repo.sh", "scripts/test-file-failure-report-cross-repo.md"), ("test-file-failure-report-cross-repo", "test-design-failure-report"), False, False),
+    (("skills/implement/scripts/stall-recovery-report.sh", "skills/implement/scripts/stall-recovery-report.md", "skills/implement/scripts/stall-recovery-report-allowlists.tsv", "skills/implement/scripts/test-stall-recovery-report.sh", "skills/implement/scripts/test-stall-recovery-report.md", "skills/implement/references/stall-recovery.md"), ("test-stall-recovery-report", "test-design-stage-terminal-state", "test-design-failure-report"), False, False),
+    (("scripts/lib-external-launcher-common.sh", "scripts/lib-external-launcher-common.md", "scripts/test-lib-external-launcher-common.sh", "scripts/test-lib-external-launcher-common.md"), ("test-lib-external-launcher-common",), False, False),
+    (("python/blocker.py", "python/test_blocker.py"), ("test-blocker",), True, True),
+    (("python/issue_query.py", "python/test_issue_query.py"), ("test-issue-query",), True, True),
+    (("python/admission.py", "python/test_admission.py"), ("test-implement-admission",), False, False),
+    (("python/dirty_tree.py", "python/test_dirty_tree.py"), ("test-check-mid-run-dirty-tree", "test-check-scope-reduction-marker"), False, False),
+    (("python/bootstrap.py", "python/test_bootstrap.py"), ("test-implement-bootstrap", "test-implement-bootstrap-invoke", "test-parse-bootstrap-routing-envelope"), False, False),
+    (("scripts/implement-preflight.sh", "scripts/implement-preflight.md", "scripts/test-implement-preflight.sh", "scripts/test-implement-preflight.md"), ("test-implement-preflight",), False, False),
+    (("scripts/implement-finalize.sh", "scripts/implement-finalize.md", "scripts/test-implement-finalize.sh"), ("test-implement-finalize",), False, False),
+    (("python/oos.py", "python/test_oos.py"), (), True, True),
+    (("python/review_pipeline.py", "python/test_review_pipeline.py", "python/legacy_review_shell/*"), ("test-gather-context", "test-review-core", "test-dispatch-panel-core", "test-dispatch-panel-core-dynamic", "test-dispatch-panel-reuse", "test-dispatch-panel-limits", "test-collect-findings"), True, True),
+    (("python/review_aggregate.py", "python/test_review_aggregate.py"), ("test-aggregate-findings",), True, True),
+    (("python/compose_review.py", "python/test_compose_review.py"), ("test-compose-review-findings",), True, True),
+    (("python/review_tally.py", "python/test_review_tally.py"), ("test-emit-tally", "test-tally-code-votes"), True, True),
+    (("python/review_and_fix.py", "python/test_review_and_fix.py", "skills/review-and-fix/SKILL.md"), ("test-review-and-fix",), True, True),
+    (("python/*.py",), (), True, True),
+    (("python/fixtures/**",), (), False, True),
+    (("skills/report-tokens/SKILL.md", "skills/report-tokens/scripts/plot-cost-over-time.py", "skills/report-tokens/scripts/plot-cost-over-time.md", "docs/run-logs.md"), ("py-test",), False, False),
+    (("python/migrated-scripts.tsv",), ("lint-retired-scripts",), False, True),
+    (("python/pyproject.toml", "python/ruff.toml", "python/pyrightconfig.json", "python/.pylintrc", "python/requirements-dev.txt", "python/requirements-test.txt"), (), True, True),
+)
+
+
+def _append_once(items: list[str], item: str) -> None:
+    if item not in items:
+        items.append(item)
+
+
+def _patterns_match(path: str, patterns: tuple[str, ...]) -> bool:
+    return any(fnmatch.fnmatchcase(path, pattern) for pattern in patterns)
+
+
+def _append_py_lint_target(
+    runner: Runner,
+    targets: list[str],
+    *,
+    cwd: str,
+    env: dict[str, str],
+    log_fd: int,
+    warned: set[str],
+) -> None:
+    if not _python311_available(runner, cwd=cwd, env=env):
+        if "py-lint" not in warned:
+            _write_log(log_fd, "WARNING: python3 >= 3.11 not found — skipping py-lint direct relevant target\n")
+            warned.add("py-lint")
+        return
+    missing = [tool for tool in ("ruff", "pylint", "pyright") if not _command_available(runner, tool, cwd=cwd, env=env)]
+    if missing:
+        if "py-lint" not in warned:
+            _write_log(log_fd, f"WARNING: Python lint tools not found on PATH ({' '.join(missing)}) — skipping py-lint direct relevant target\n")
+            warned.add("py-lint")
+        return
+    _append_once(targets, "py-lint")
+
+
+def _append_py_test_target(
+    runner: Runner,
+    targets: list[str],
+    *,
+    cwd: str,
+    env: dict[str, str],
+    log_fd: int,
+    warned: set[str],
+) -> None:
+    if not _python311_available(runner, cwd=cwd, env=env):
+        if "py-test" not in warned:
+            _write_log(log_fd, "WARNING: python3 >= 3.11 not found — skipping py-test direct relevant target\n")
+            warned.add("py-test")
+        return
+    if not _pytest_available(runner, cwd=cwd, env=env):
+        if "py-test" not in warned:
+            _write_log(log_fd, "WARNING: python3 pytest not found — skipping py-test direct relevant target\n")
+            warned.add("py-test")
+        return
+    _append_once(targets, "py-test")
+
+
+def _direct_targets(
+    runner: Runner,
+    changed: tuple[str, ...],
+    *,
+    cwd: str,
+    env: dict[str, str],
+    log_fd: int,
+) -> tuple[str, ...]:
+    targets: list[str] = []
+    warned: set[str] = set()
+    for path in changed:
+        for patterns, rule_targets, wants_py_lint, wants_py_test in _DIRECT_TARGET_RULES:
+            if not _patterns_match(path, patterns):
+                continue
+            if wants_py_lint:
+                _append_py_lint_target(runner, targets, cwd=cwd, env=env, log_fd=log_fd, warned=warned)
+            if wants_py_test:
+                _append_py_test_target(runner, targets, cwd=cwd, env=env, log_fd=log_fd, warned=warned)
+            for target in rule_targets:
+                _append_once(targets, target)
+    return tuple(targets)
+
+
+def _run_agent_lint(runner: Runner, *, cwd: str, log_fd: int, env: dict[str, str]) -> int | None:
+    if _command_available(runner, "agent-lint", cwd=cwd, env=env):
+        _write_log(log_fd, "\n=== Running agent-lint ===\n")
+        result = _run_logged(runner, ["agent-lint", "--pedantic", cwd], cwd=cwd, log_fd=log_fd, env=env)
+        return result.returncode
+    _write_log(log_fd, "\nWARNING: agent-lint not found on PATH — skipping\n")
+    return None
+
+
+def _redact_log(log_file: Path, redacted_file: Path) -> bool:
+    log_text = _read_log_file_text(log_file)
+    if log_text is None:
+        return False
+    try:
+        _ = redacted_file.write_text(redact.redact(log_text), encoding="utf-8")
+        redacted_file.chmod(0o600)
+    except OSError:
         with contextlib.suppress(OSError):
-            os.close(log_fd)
+            redacted_file.unlink(missing_ok=True)
+        return False
+    return True
+
+
+def _finish_logged_result(
+    *,
+    result_code: int,
+    site: str,
+    log_file: Path,
+    log_dir: Path,
+    warn_override: str | None = None,
+) -> ChecksResult:
     has_precommit, has_agent_lint, has_warn = _scan_checks_log_markers(log_file)
-    ok = result.returncode == 0
-    coverage = _coverage_from_markers(
-        ok=ok,
-        has_precommit=has_precommit,
-        has_agent_lint=has_agent_lint,
-    )
-    phase = _phase_from_markers(
-        ok=ok,
-        has_precommit=has_precommit,
-        has_agent_lint=has_agent_lint,
-    )
-    warn = "agent-lint-missing" if has_warn else None
+    ok = result_code == 0
+    coverage = _coverage_from_markers(ok=ok, has_precommit=has_precommit, has_agent_lint=has_agent_lint)
+    phase = _phase_from_markers(ok=ok, has_precommit=has_precommit, has_agent_lint=has_agent_lint)
+    warn = warn_override or ("agent-lint-missing" if has_warn else None)
     if ok:
         return ChecksResult(
             ok=True,
@@ -459,50 +611,424 @@ def run_relevant_checks(
             warn=warn,
             raw_log_path=str(log_file),
         )
-    log_text = _read_log_file_text(log_file)
-    if log_text is None:
-        return ChecksResult(
-            ok=False,
-            exit_code=1,
-            site=site,
-            redacted_log_path=None,
-            phase="unknown",
-            coverage="changed-file-only",
-            skipped=False,
-            warn=warn,
-            raw_log_path=str(log_file),
-        )
     attempt = log_file.name.rsplit("-", 1)[-1].removesuffix(".log")
     redacted_file = log_dir / f"{site}-{attempt}.redacted.log"
-    try:
-        _ = redacted_file.write_text(redact.redact(log_text), encoding="utf-8")
-        redacted_file.chmod(0o600)
-    except OSError:
-        with contextlib.suppress(OSError):
-            redacted_file.unlink(missing_ok=True)
-        return ChecksResult(
-            ok=False,
-            exit_code=1,
+    if not _redact_log(log_file, redacted_file):
+        return _checks_failure(
             site=site,
-            redacted_log_path=None,
+            exit_code=1,
+            reason="redaction-failed",
             phase=phase,
             coverage=coverage,
-            skipped=False,
             warn="redaction-failed",
-            raw_log_path=None,
         )
-    return ChecksResult(
-        ok=False,
-        exit_code=result.returncode,
+    return _checks_failure(
         site=site,
+        exit_code=result_code,
+        reason="checks-failed",
+        raw_log_path=str(log_file),
         redacted_log_path=str(redacted_file),
         phase=phase,
         coverage=coverage,
-        skipped=False,
         warn=warn,
-        raw_log_path=str(log_file),
     )
 
+
+def _run_contains_pin_phase(repo: Path, changed: tuple[str, ...], *, log_fd: int) -> int:
+    changed_file: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False) as handle:
+            changed_file = Path(handle.name)
+            for path in changed:
+                _ = handle.write(f"{path}\n")
+        with contextlib.redirect_stdout(_FdTextWriter(log_fd)), contextlib.redirect_stderr(_FdTextWriter(log_fd)):
+            return check_contains_pins_main(["--changed-files", str(changed_file), "--repo-root", str(repo)])
+    finally:
+        if changed_file is not None:
+            with contextlib.suppress(OSError):
+                changed_file.unlink()
+
+
+class _FdTextWriter:
+    def __init__(self, fd: int) -> None:
+        self.fd = fd
+
+    def write(self, text: str) -> int:
+        _write_log(self.fd, text)
+        return len(text)
+
+    def flush(self) -> None:
+        return None
+
+
+def _run_relevant_checks_inner(
+    runner: Runner,
+    *,
+    repo: Path,
+    log_fd: int,
+) -> int:
+    env = _clean_child_env()
+    cwd = str(repo)
+    phases_run = 0
+
+    if not _command_available(runner, "pre-commit", cwd=cwd, env=env):
+        _write_log(log_fd, "ERROR: pre-commit not found. Run: pip install pre-commit (or: make setup)\n")
+        return 1
+
+    changed = _changed_files(runner, cwd=cwd)
+    if not changed:
+        _write_log(log_fd, "No modified files detected — running full-repo post-checks if available.\n")
+        agent_rc = _run_agent_lint(runner, cwd=cwd, log_fd=log_fd, env=env)
+        if agent_rc is not None:
+            phases_run += 1
+            rc = agent_rc
+        else:
+            rc = 0
+        if phases_run == 0:
+            _write_log(log_fd, "\nERROR: no validation phases ran — pre-commit had no eligible files (no changes, or no regular files for pre-commit) and agent-lint was unavailable or skipped.\n")
+            return 2
+        return rc
+
+    regular = _existing_regular_files(repo, changed)
+    if not regular:
+        _write_log(log_fd, "No existing regular files to pass to pre-commit.\n")
+        agent_rc = _run_agent_lint(runner, cwd=cwd, log_fd=log_fd, env=env)
+        if agent_rc is not None:
+            phases_run += 1
+            rc = agent_rc
+        else:
+            rc = 0
+        if phases_run == 0:
+            _write_log(log_fd, "\nERROR: no validation phases ran — pre-commit had no eligible files (no changes, or no regular files for pre-commit) and agent-lint was unavailable or skipped.\n")
+            return 2
+        return rc
+
+    _write_log(log_fd, f"=== Running pre-commit on {len(regular)} changed file(s) ===\n")
+    precommit = _run_logged(runner, ["pre-commit", "run", "--files", *regular], cwd=cwd, log_fd=log_fd, env=env)
+    if precommit.returncode != 0:
+        return precommit.returncode
+    phases_run += 1
+
+    targets = _direct_targets(runner, changed, cwd=cwd, env=env, log_fd=log_fd)
+    if targets:
+        _write_log(log_fd, f"\n=== Running direct relevant make target(s): {' '.join(targets)} ===\n")
+        make_result = _run_logged(runner, ["make", *targets], cwd=cwd, log_fd=log_fd, env=env)
+        phases_run += 1
+        if make_result.returncode != 0:
+            return make_result.returncode
+
+    pins_rc = _run_contains_pin_phase(repo, changed, log_fd=log_fd)
+    phases_run += 1
+    if pins_rc != 0:
+        return pins_rc
+
+    agent_rc = _run_agent_lint(runner, cwd=cwd, log_fd=log_fd, env=env)
+    if agent_rc is not None:
+        phases_run += 1
+        if agent_rc != 0:
+            return agent_rc
+    return 0
+
+
+def run_relevant_checks(
+    runner: Runner,
+    *,
+    site: str,
+    tmpdir: str,
+    repo_root: str,
+) -> ChecksResult:
+    """Run relevant checks natively and capture a redacted failure log."""
+    if (
+        not site
+        or not re.fullmatch(r"[A-Za-z0-9._-]+", site)
+        or site.startswith(".")
+        or ".." in site
+    ):
+        return _checks_failure(site=site, exit_code=2, reason="site-validation")
+    canonical_tmp = validate_tmpdir(tmpdir)
+    if canonical_tmp is None:
+        return _checks_failure(site=site, exit_code=2, reason="tmpdir-validation")
+    _mark_step_ledger(runner, canonical_tmp, site)
+    repo = _resolve_repo_root(runner, repo_root)
+    if repo is None:
+        return _checks_failure(site=site, exit_code=1, reason="repo-root-unresolved")
+    log_dir = canonical_tmp / "relevant-checks"
+    try:
+        log_dir.mkdir(mode=0o700, exist_ok=True)
+    except OSError:
+        return _checks_failure(site=site, exit_code=1, reason="log-dir-create-failed")
+    if log_dir.is_symlink():
+        return _checks_failure(site=site, exit_code=1, reason="log-dir-symlink-rejected")
+    try:
+        log_dir.chmod(0o700)
+    except OSError:
+        return _checks_failure(site=site, exit_code=1, reason="log-dir-chmod-failed")
+    allocated = _allocate_log_file(log_dir, site)
+    if allocated is None:
+        return _checks_failure(site=site, exit_code=1, reason="log-alloc-failed")
+    log_fd, log_file = allocated
+    try:
+        try:
+            rc = _run_relevant_checks_inner(
+                runner,
+                repo=repo,
+                log_fd=log_fd,
+            )
+        except Exception as exc:  # fail closed and retain the captured diagnostic
+            _write_log(log_fd, f"ERROR: relevant checks internal failure: {exc}\n")
+            rc = 1
+        if not log_file.is_file() or log_file.is_symlink() or log_file.parent.resolve() != log_dir.resolve():
+            return _checks_failure(site=site, exit_code=1, reason="log-validation-failed")
+    finally:
+        with contextlib.suppress(OSError):
+            os.close(log_fd)
+    return _finish_logged_result(result_code=rc, site=site, log_file=log_file, log_dir=log_dir)
+
+
+def _normalize_rel(path: str, repo_root: Path) -> str:
+    raw = path
+    root_text = str(repo_root)
+    if raw.startswith(root_text + os.sep):
+        raw = raw.removeprefix(root_text + os.sep)
+    raw = raw.removeprefix("./")
+    parts: list[str] = []
+    for part in raw.split("/"):
+        if part in {"", "."}:
+            continue
+        if part == "..":
+            if parts:
+                _ = parts.pop()
+            else:
+                parts.append(part)
+        else:
+            parts.append(part)
+    return "/".join(parts)
+
+
+def _read_changed_scope(path: Path | None, repo_root: Path) -> set[str] | None:
+    if path is None:
+        return None
+    rels: set[str] = set()
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        raw = line.strip()
+        if raw:
+            rels.add(_normalize_rel(raw, repo_root))
+    return rels
+
+
+
+def _assertion_in_scope(script: str, target: str | None, changed: set[str] | None) -> bool:
+    if changed is None:
+        return True
+    if script in changed:
+        return True
+    return bool(target and target in changed)
+
+
+_REPO_ASSIGN_RE: Final = re.compile(r'^\s*([A-Za-z_][A-Za-z0-9_]*)="\$REPO_ROOT/([^"]*)"\s*$')
+_SCRIPT_ASSIGN_RE: Final = re.compile(r'^\s*([A-Za-z_][A-Za-z0-9_]*)="\$SCRIPT_DIR/\.\./([^"]*)"\s*$')
+_CONTAINS_PREFIX_RE: Final = re.compile(r'^\s*contains\s+"\$([A-Za-z_][A-Za-z0-9_]*)"\s+')
+_DOUBLE_QUOTED_LITERAL_ESCAPES: Final = frozenset(("$", '"', "\\"))
+
+
+def _scan_shell_quoted_literal(rest: str) -> tuple[str | None, bool]:
+    if not rest:
+        return None, False
+    quote = rest[0]
+    if quote == "'":
+        end = rest.find("'", 1)
+        if end < 0:
+            return None, False
+        literal = rest[1:end]
+        suffix = rest[end + 1:]
+        return (literal, True) if suffix[:1].isspace() else (None, False)
+    if quote != '"':
+        return None, False
+    body: list[str] = []
+    escaped = False
+    bare_dollar = False
+    for index, char in enumerate(rest[1:], start=1):
+        if escaped:
+            if char in _DOUBLE_QUOTED_LITERAL_ESCAPES:
+                body.append(char)
+            else:
+                body.append("\\")
+                body.append(char)
+            escaped = False
+            continue
+        if char == "\\":
+            escaped = True
+            continue
+        if char == "$":
+            bare_dollar = True
+            body.append(char)
+            continue
+        if char == '"':
+            suffix = rest[index + 1:]
+            if bare_dollar or not suffix[:1].isspace():
+                return None, False
+            return "".join(body), True
+        body.append(char)
+    return None, False
+
+
+def _scan_contains_pin_script(
+    script: Path,
+    *,
+    repo_root: Path,
+    changed: set[str] | None,
+) -> int:
+    script_rel = _normalize_rel(str(script), repo_root)
+    script_dir = Path(script_rel).parent
+    script_parent = script_dir.parent if str(script_dir) != "." else Path()
+    vars_to_rel: dict[str, str] = {}
+    defects = 0
+    for line_no, line in enumerate(script.read_text(encoding="utf-8", errors="replace").splitlines(), start=1):
+        repo_assign = _REPO_ASSIGN_RE.match(line)
+        if repo_assign:
+            vars_to_rel[repo_assign.group(1)] = _normalize_rel(repo_assign.group(2), repo_root)
+            continue
+        script_assign = _SCRIPT_ASSIGN_RE.match(line)
+        if script_assign:
+            raw = str(script_parent / script_assign.group(2)) if str(script_parent) else script_assign.group(2)
+            vars_to_rel[script_assign.group(1)] = _normalize_rel(raw, repo_root)
+            continue
+        contains = _CONTAINS_PREFIX_RE.match(line)
+        if not contains:
+            continue
+        var = contains.group(1)
+        target_rel = vars_to_rel.get(var)
+        literal, canonical = _scan_shell_quoted_literal(line[contains.end():])
+        if not canonical:
+            if _assertion_in_scope(script_rel, target_rel, changed):
+                print(f"SKIPPED_NON_CANONICAL: {script_rel}:{line_no}: assertion shape not in v1 grammar", file=sys.stderr)
+            continue
+        if target_rel is None:
+            if _assertion_in_scope(script_rel, target_rel, changed):
+                print(f"UNRESOLVED_VAR: {script_rel}:{line_no}: could not resolve ${var}", file=sys.stderr)
+            continue
+        if not _assertion_in_scope(script_rel, target_rel, changed):
+            continue
+        assert literal is not None
+        target = (repo_root / target_rel).resolve()
+        try:
+            _ = target.relative_to(repo_root.resolve())
+        except ValueError:
+            print(f"UNRESOLVED_VAR: {script_rel}:{line_no}: could not resolve ${var}", file=sys.stderr)
+            continue
+        if not target.is_file() or target.is_symlink():
+            print(f"UNRESOLVED_VAR: {script_rel}:{line_no}: could not resolve ${var}", file=sys.stderr)
+            continue
+        if literal not in target.read_text(encoding="utf-8", errors="replace"):
+            print(f"DEFECT: {script_rel}:{line_no}: literal '{literal}' not found in {target_rel}")
+            defects += 1
+    return defects
+
+
+def _contains_pin_test_scripts(repo_root: Path) -> tuple[Path, ...]:
+    scripts: list[Path] = []
+    root_scripts = repo_root / "scripts"
+    if root_scripts.is_dir():
+        scripts.extend(sorted(root_scripts.glob("test-*.sh")))
+    skills = repo_root / "skills"
+    if skills.is_dir():
+        scripts.extend(sorted(skills.glob("*/scripts/test-*.sh")))
+    return tuple(path for path in scripts if path.is_file())
+
+
+def check_contains_pins_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py checks contains-pins")
+    _ = parser.add_argument("--changed-files", default="")
+    _ = parser.add_argument("--repo-root", default="")
+    args = parser.parse_args(argv)
+    repo_root = Path(args.repo_root).resolve() if args.repo_root else Path.cwd().resolve()
+    if not repo_root.is_dir():
+        print(f"ERROR: --repo-root is not a directory: {repo_root}", file=sys.stderr)
+        return 2
+    changed_path = Path(args.changed_files) if args.changed_files else None
+    if changed_path is not None and not changed_path.is_file():
+        print(f"ERROR: --changed-files path not found: {changed_path}", file=sys.stderr)
+        return 2
+    changed = _read_changed_scope(changed_path, repo_root)
+    defects = 0
+    for script in _contains_pin_test_scripts(repo_root):
+        defects += _scan_contains_pin_script(script, repo_root=repo_root, changed=changed)
+    print(f"DEFECTS={defects}")
+    return 1 if defects else 0
+
+
+def _default_repo_root() -> str:
+    raw = os.environ.get("CLAUDE_PROJECT_DIR", "").strip()
+    if raw:
+        return raw
+    result = __import__("proc").run(["git", "rev-parse", "--show-toplevel"], cwd=str(Path.cwd()))
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def checks_run_relevant_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py checks run-relevant")
+    _ = parser.add_argument("--site", required=True)
+    _ = parser.add_argument("--tmpdir", default=os.environ.get("IMPLEMENT_TMPDIR", os.environ.get("REVIEW_TMPDIR", "")))
+    _ = parser.add_argument("--repo-root", default="")
+    _ = parser.add_argument("--allow-skip", action="store_true")
+    args = parser.parse_args(argv)
+    repo_root = args.repo_root or _default_repo_root()
+    result = run_relevant_checks(__import__("proc"), site=args.site, tmpdir=args.tmpdir, repo_root=repo_root)
+    if result.skipped and args.allow_skip:
+        print(f"RELEVANT_CHECKS_SKIPPED=true SITE={result.site}")
+        return 0
+    if result.ok:
+        line = f"RELEVANT_CHECKS_OK=true SITE={result.site} COVERAGE={result.coverage} PHASE={result.phase}"
+        if result.warn:
+            line += f" WARN={result.warn}"
+        print(line)
+        return 0
+    reason = result.failure_reason or "checks-failed"
+    parts = ["STATUS=fail", f"FAILURE_REASON={reason}"]
+    if result.redacted_log_path:
+        parts.extend([
+            f"EXIT_CODE={result.exit_code}",
+            f"PHASE={result.phase}",
+            f"REDACTED_LOG_FILE={result.redacted_log_path}",
+        ])
+    print(" ".join(parts))
+    return result.exit_code or 1
+
+
+def checks_lint_fix_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py checks lint-fix")
+    _ = parser.add_argument("--tmpdir", required=True)
+    _ = parser.add_argument("--site", required=True)
+    _ = parser.add_argument("--checks-log", required=True)
+    _ = parser.add_argument("--repo-root", default="")
+    _ = parser.add_argument("--run-parent", default="")
+    args = parser.parse_args(argv)
+    canonical_tmp = validate_tmpdir(args.tmpdir)
+    if canonical_tmp is None:
+        print("LINT_FIX_STATUS=failed")
+        print("FAILURE_REASON=tmpdir-validation")
+        return 2
+    repo_root = args.repo_root or _default_repo_root()
+    run_parent = args.run_parent or str(canonical_tmp / "lint-fix-loop")
+    outcome = run_lint_fix(
+        __import__("proc"),
+        site=args.site,
+        checks_log=args.checks_log,
+        repo_root=repo_root,
+        codex_present=os.environ.get("CODEX_PRESENT", "") == "true",
+        cursor_present=os.environ.get("CURSOR_PRESENT", "") == "true",
+        run_parent=run_parent,
+        allowed_tmpdir=str(canonical_tmp),
+    )
+    print(f"LINT_FIX_STATUS={outcome.status}")
+    if outcome.ledger_failure_detail_log:
+        print(f"STDERR_TAIL_PATH={outcome.ledger_failure_detail_log}")
+    if outcome.coder_tool:
+        log_name = "codex.log" if outcome.coder_tool == "codex" else "cursor.log"
+        candidate = Path(run_parent) / log_name
+        if candidate.exists():
+            print(f"CODER_LOG_FILE={candidate}")
+    return 0 if outcome.status in {"applied", "no-changes"} else 1
 
 def _plugin_scripts_dir() -> Path:
     return Path(__file__).resolve().parents[1] / "scripts"
@@ -568,7 +1094,7 @@ def _compose_prompt(
         )
     else:
         fix_sentence = (
-            f"Fix the repository so `scripts/relevant-checks.sh` passes for {site_label}."
+            f"Fix the repository so `python/cli.py checks run-relevant` passes for {site_label}."
         )
     body = _read_log_tail(checks_log, _PROMPT_TAIL_BYTES)
     body = _sanitize_log_fence(body)
@@ -1156,7 +1682,7 @@ def run_lint_fix(
     allowed_tmpdir: str | None = None,
     target_cmd_display: str | None = None,
 ) -> FixOutcome:
-    """Port of lint-fix-loop.sh single dispatch."""
+    """Port of python/cli.py checks lint-fix single dispatch."""
     if not _is_known_site(site):
         return FixOutcome(
             status="failed",

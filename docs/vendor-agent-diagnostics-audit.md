@@ -68,7 +68,7 @@ below.
 | `python/cli.py review-and-fix apply-findings` | ✅ inherit | ✅ backstop | R batch | **I/R** | `run_coder_dispatch_*` give-up inherits; per-tool sink + batch append is residual. |
 | `python/cli.py scout dynamic-archetypes` | ✅ inherit | ✅ backstop | R | **I/R** | Cursor tier via `agent launch-review` (**D**), Claude tier via `launch-claude-subprocess.sh` (**D**). Tier-specific raw stems + direct-Claude site-aware logging are residual; stale Codex-scout row is the incident's dropped path. |
 | `scripts/generate-code-flow-diagram.sh` | ✅ inherit | R | R | **I/R** | Claude subprocess via `launch-claude-subprocess.sh` (carrier saved); `code-flow-diagram.raw.md` site-aware execution-issues + batch is residual. |
-| `scripts/lint-fix-loop.sh` | ✅ inherit | ✅ backstop | R batch | **I/R** | Codex/Cursor dispatch inherits; per-tool carrier resolve + batch is residual. |
+| `python/cli.py checks lint-fix` | ✅ inherit | ✅ backstop | R batch | **I/R** | Codex/Cursor dispatch inherits; per-tool carrier resolve + batch is residual. |
 | `python3 python/cli.py agent compose-collector-failure-log` / `python/review_dispatch.py` | ✅ inherit | ✅ | R | **R** | Collector failure log composition now lives in the Python CLI/module surface. |
 
 ## Named residual {saved, logged, flushed} gaps
@@ -98,7 +98,7 @@ the carrier into its `run-log append-failure` source and (b) call
    logging.
 7. `generate-code-flow-diagram.sh`: resolve `code-flow-diagram.raw.md` carrier +
    site-aware execution-issues + batch (F2).
-8. `lint-fix-loop.sh`: per-tool carrier resolve + execution-issues + batch (F3).
+8. `python/cli.py checks lint-fix`: per-tool carrier resolve + execution-issues + batch (F3).
 9. `python3 python/cli.py agent compose-collector-failure-log`: prefer `${REVIEWER_FILE}.failure-diag` via
    the resolver, including retry / ns-retry candidates (F9).
 These are tracked as residual-OOS for follow-up; none regress the prior behavior,

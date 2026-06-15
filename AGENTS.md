@@ -6,7 +6,7 @@ This repository **is** the larch Claude Code plugin. Edits here ship to consumer
 
 Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/`, `scripts/`, `.claude-plugin/`. Everything else is supplementary (docs, CI config, `.claude/skills/`, `.claude/rules/`, dev settings).
 
-`python/` holds stdlib-only runtime modules. `python3 python/cli.py ship pr` is the live ship-pr driver by default; set `LARCH_SHIP_PR_IMPL=bash` for legacy `scripts/ship-pr.sh`. `/report-tokens` uses `python3 python/cli.py report-tokens analyze`. See `python/README.md` and `make py-lint` / `make py-test`.
+`python/` holds stdlib-only runtime modules. `python3 python/cli.py ship pr` is the live ship-pr driver. `/report-tokens` uses `python3 python/cli.py report-tokens analyze`. See `python/README.md` and `make py-lint` / `make py-test`.
 
 ## Load Semantics
 
@@ -17,7 +17,7 @@ Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/
 ## Editing rules
 
 - Respect `scripts/block-submodule-edit.sh`. If a hook blocks a write, investigate the underlying issue. The guard ships via `hooks/hooks.json` only; contributors need larch loaded as a plugin (`claude --plugin-dir .` or the local marketplace) to pick it up.
-- After any change, run `bash scripts/relevant-checks.sh` (or `make lint`, which exercises the same pre-commit hooks repo-wide).
+- After any change, run `make lint`. When Python files change, also run `make py-lint` and `make py-test`.
 - Update `SECURITY.md` when security-relevant behavior changes.
 
 ## Common editing tasks

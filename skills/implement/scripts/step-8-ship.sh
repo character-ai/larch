@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# step-8-ship.sh — /implement Step 8+ active ship driver selector.
+# step-8-ship.sh — /implement Step 8+ Python ship driver wrapper.
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -46,7 +46,6 @@ MANIFEST_PATH_RESOLVED="${MANIFEST_PATH:-$(read_state_key MANIFEST_PATH "")}"
 TOOL_LABEL_RESOLVED="${coder:-$(read_state_key TOOL_LABEL "")}"
 NO_ADMIN_FALLBACK_RESOLVED="${no_admin_fallback:-$(read_state_key NO_ADMIN_FALLBACK "")}"
 NO_LOGS_COMMIT_RESOLVED="${no_logs_commit:-$(read_state_key NO_LOGS_COMMIT "")}"
-RESUME_PHASE_RESOLVED="${RESUME_PHASE:-$(read_state_key RESUME_PHASE "")}"
 
 require_value BRANCH_NAME "$BRANCH_NAME_RESOLVED"
 require_value RUN_ID "$RUN_ID_RESOLVED"
@@ -68,47 +67,25 @@ else
   CLONE_TAG_FULL=$(printf '%.32s' "$CLONE_TAG_FULL")
   [ -n "$CLONE_TAG_FULL" ] || CLONE_TAG_FULL="_"
 fi
-if [ "${LARCH_SHIP_PR_IMPL:-python}" != "bash" ]; then
-  if ! python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
-    echo "ERROR: Python ship driver requires Python 3.11 or newer" >&2
-    printf '%s\n' '{"detail":"Python ship driver requires Python 3.11 or newer","failed_run_id":"","ledger_dispatcher":"","ledger_exit_code":null,"ledger_failure_detail_log":"","ledger_phase":"","ledger_ready":false,"ledger_site":"","ledger_step":"","ledger_trigger":"","merge_result":"","needs_user_reason":"","outcome":"STALLED","pr_number":null,"pr_url":""}'
-    exit 4
-  fi
-  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" ship pr \
-    --branch "$BRANCH_NAME_RESOLVED" \
-    --issue "$ISSUE_NUMBER_RESOLVED" \
-    --repo "$REPO_RESOLVED" \
-    --run-id "$RUN_ID_RESOLVED" \
-    --tmpdir "$IMPLEMENT_TMPDIR" \
-    --manifest-path "$MANIFEST_PATH_RESOLVED" \
-    --state-file "$IMPLEMENT_TMPDIR/ship-pr-state.sh" \
-    --tool-label "$TOOL_LABEL_RESOLVED" \
-    --merge "$MERGE_RESOLVED" \
-    --draft "$DRAFT_RESOLVED" \
-    --forked "$FORKED_TARGET_RESOLVED" \
-    --repo-unavailable "$REPO_UNAVAILABLE_RESOLVED" \
-    --no-admin-fallback "$NO_ADMIN_FALLBACK_RESOLVED" \
-    --no-logs-commit "$NO_LOGS_COMMIT_RESOLVED" \
-    --expected-session-id "$(cat "$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || true)" \
-    --expected-tmpdir-basename-prefix "claude-implement-${CLONE_TAG_FULL}-"
-else
-_resume_args=()
-[ -n "$RESUME_PHASE_RESOLVED" ] && _resume_args+=(--resume-phase "$RESUME_PHASE_RESOLVED")
-"${CLAUDE_PLUGIN_ROOT}/scripts/ship-pr.sh" \
+if ! python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
+  echo "ERROR: Python ship driver requires Python 3.11 or newer" >&2
+  printf '%s\n' '{"detail":"Python ship driver requires Python 3.11 or newer","failed_run_id":"","ledger_dispatcher":"","ledger_exit_code":null,"ledger_failure_detail_log":"","ledger_phase":"","ledger_ready":false,"ledger_site":"","ledger_step":"","ledger_trigger":"","merge_result":"","needs_user_reason":"","outcome":"STALLED","pr_number":null,"pr_url":""}'
+  exit 4
+fi
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" ship pr \
+  --branch "$BRANCH_NAME_RESOLVED" \
+  --issue "$ISSUE_NUMBER_RESOLVED" \
+  --repo "$REPO_RESOLVED" \
+  --run-id "$RUN_ID_RESOLVED" \
+  --tmpdir "$IMPLEMENT_TMPDIR" \
+  --manifest-path "$MANIFEST_PATH_RESOLVED" \
   --state-file "$IMPLEMENT_TMPDIR/ship-pr-state.sh" \
-  --implement-tmpdir "$IMPLEMENT_TMPDIR" \
+  --tool-label "$TOOL_LABEL_RESOLVED" \
   --merge "$MERGE_RESOLVED" \
   --draft "$DRAFT_RESOLVED" \
   --forked "$FORKED_TARGET_RESOLVED" \
-  --branch-name "$BRANCH_NAME_RESOLVED" \
-  --expected-session-id "$(cat "$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || true)" \
-  --expected-tmpdir-basename-prefix "claude-implement-${CLONE_TAG_FULL}-" \
-  --issue-number "$ISSUE_NUMBER_RESOLVED" \
-  --manifest-path "$MANIFEST_PATH_RESOLVED" \
-  --run-id "$RUN_ID_RESOLVED" \
-  --tool-label "$TOOL_LABEL_RESOLVED" \
+  --repo-unavailable "$REPO_UNAVAILABLE_RESOLVED" \
   --no-admin-fallback "$NO_ADMIN_FALLBACK_RESOLVED" \
   --no-logs-commit "$NO_LOGS_COMMIT_RESOLVED" \
-  --repo "$REPO_RESOLVED" \
-  "${_resume_args[@]+"${_resume_args[@]}"}"
-fi
+  --expected-session-id "$(cat "$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || true)" \
+  --expected-tmpdir-basename-prefix "claude-implement-${CLONE_TAG_FULL}-"

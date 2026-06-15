@@ -17,8 +17,6 @@ paths:
   - "python/issue_wire.py"
   - "scripts/gh-pr-body-update.md"
   - "scripts/gh-pr-body-update.sh"
-  - "scripts/ship-pr.md"
-  - "scripts/ship-pr.sh"
   - "skills/design/SKILL.md"
   - "skills/design/references/l3-velocity-deferral-comment.txt"
   - "python/decompose.py"

@@ -18,8 +18,6 @@ this recipe.
 
 - **C3a1 plan-review CLI façade (#3680)**: `python/plan_review.py` and `python/plan_review_panel.py` register the shipped `plan-review` verbs but delegate loop, tally, emit/finalize/preview, state, timing, Gate B dedup, panel dispatch, and voter dispatch to gzip-embedded retired bash via `_run_legacy()` / `_materialize_legacy_root()`. Treat those Python modules as CLI entrypoints and contract relays, not as the implementation authority for Step 3 loop bodies, panel dispatch, or voter dispatch until a follow-up issue ports them in-process. Operator docs should name `python/cli.py plan-review <verb>` (with an explicit delegation note where relevant) rather than deleted script paths.
 
-- **F2 session/state scope (#3668)**: invoke-style session/state helpers are now `python/session_env.py` under the `session` domain. Three sourced-only bash libraries are intentionally deferred because surviving bash still sources them: `scripts/lib-design-tmpdir.sh`, `skills/implement/scripts/lib-resolve-implement-tmpdir.sh`, and `scripts/lib-finalize-state-keys.sh` (follow-up tracked in #3780, blocked by the consumer-owning migration phases). `session_env.py` preserves per-verb emitter routing instead of applying a global fd-3 policy, keeps the cleanup tempdir predicate separate from the session-writer target validator and finalize cleanup gate, uses a dedicated hardcoded-home design-env symlink validator, and keeps `restore-finalize-state` on the 20-key bash allowlist until the final ship-pr bash sourcer is retired.
-
 ## Per-domain migration recipe
 
 1. **Port functions** into a new or existing `python/<module>.py`. Keep the module
@@ -77,10 +75,9 @@ Rules:
   Repo-wide bare basenames outside that scoped branch are not matched, so a live
   file at `other/path/run-analysis.sh` will not be flagged for a retired path at
   `scripts/old/run-analysis.sh`.
-- **`scripts/ship-pr.sh` retention carve-out.** Because the legacy bash driver
-  remains live during staged migration, matches in `scripts/ship-pr.sh` are
-  deletion blockers only when they look like live invocation/source forms.
-  Comment or prose mentions do not block retirement by themselves.
+- Retired path references are deletion blockers whenever they match the manifest
+  path or same-directory invocation forms. Comment and prose references are
+  scanned the same way as code unless they fall under the exclusions below.
 - Exclusions from scanning: any file under a `larch-logs/` path segment,
   `CHANGELOG.md`, and the manifest file itself are never scanned.
 - **Do NOT write retired-path literals in test fixtures.** Build fixture paths

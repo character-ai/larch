@@ -1,4 +1,5 @@
 # shellcheck shell=bash
+# UserConfig env surfaced through Python launchers: CLAUDE_PLUGIN_OPTION_CODEX_EFFORT, CLAUDE_PLUGIN_OPTION_CODEX_MODEL, CLAUDE_PLUGIN_OPTION_CURSOR_MODEL.
 # Sourced-only library: no shebang and no `set -e`; callers own exit semantics.
 if [[ -n "${LARCH_LIB_EXTERNAL_LAUNCHER_COMMON_LOADED:-}" ]]; then
     return 0

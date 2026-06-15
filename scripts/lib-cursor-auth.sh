@@ -97,7 +97,7 @@ cursor_preread_service_token() {
 # NO auth argv element — the Cursor child reads CURSOR_API_KEY from the env it
 # inherits from the launcher process (python/cli.py agent launch-review --tool cursor,
 # agent launch-cursor-implement, launch-cursor-ci.sh, agent check-reviewers,
-# agent run-negotiation-round, review-and-fix.sh, lint-fix-loop.sh). The
+# agent run-negotiation-round, review-and-fix.sh, python/cli.py checks lint-fix). The
 # markdown-template path (cursor-auth-flags.sh) cannot re-export back to the
 # orchestrator, so it relies on the operator's ambient CURSOR_API_KEY export;
 # this helper still normalizes the in-process launcher paths.

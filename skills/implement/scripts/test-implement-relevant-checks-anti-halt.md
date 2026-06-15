@@ -2,7 +2,7 @@
 
 `skills/implement/scripts/test-implement-relevant-checks-anti-halt.sh` is the offline regression harness for `/implement`'s per-site relevant-checks helper anti-halt reminders in `skills/implement/SKILL.md`. It is hermetic and runs against the checked-in skill prose; it does not invoke the helper, touch git state, or require network access.
 
-The harness scans the four load-bearing launcher-based relevant-checks wrapper invocation lines currently present in `skills/implement/SKILL.md`. Steps 10 and 12c moved into `scripts/ship-pr.sh`:
+The harness scans the four load-bearing launcher-based relevant-checks wrapper invocation lines currently present in `skills/implement/SKILL.md`. Steps 10 and 12c moved into the Python ship driver:
 
 - Step 3 first-pass checks.
 - Step 5 self-review mode checks (`--self-review` path, site `step5-self-review`).

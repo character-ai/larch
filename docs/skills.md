@@ -10,7 +10,7 @@ Reference for every slash command shipped by the larch plugin. Each section belo
 - [`/issue`](#issue)
 - [`/pause`](#pause)
 - [`/report-tokens`](#report-tokens)
-- [`scripts/relevant-checks.sh`](#relevant-checks-script)
+- [`python/cli.py checks run-relevant`](#relevant-checks-script)
 - [`/research`](#research)
 - [`/review`](#review)
 - [`/review-and-fix`](#review-and-fix)
@@ -114,13 +114,13 @@ Characterize review **fluff** — suggestions that are *not accepted* (rejected 
 
 ## Relevant checks script
 
-**Path**: `scripts/relevant-checks.sh`
+**Path**: `python/cli.py checks run-relevant`
 
 **Arguments**: *(none — invoked as a Bash script, not a SlashCommand skill)*
 
-**Source**: consumer repo file at `scripts/relevant-checks.sh` (larch ships a reference implementation in-tree for this repository).
+**Source**: consumer repo file at `python/cli.py checks run-relevant` (larch ships a reference implementation in-tree for this repository).
 
-Run pre-commit linters (shellcheck, markdownlint, jsonlint, actionlint, gitleaks) scoped to changed files (except gitleaks, which always scans the full working tree; see `.pre-commit-config.yaml` `pass_filenames: false` hooks). Human operators run it directly with `bash scripts/relevant-checks.sh`. `/implement` and `/review` use `scripts/run-relevant-checks-captured.sh` to call the same project-local script without spending Skill-tool tokens on the green path; when the script is absent, the helper emits `RELEVANT_CHECKS_SKIPPED=true` (exit 0) so the skip is machine-observable. **Not part of the plugin SlashCommand surface; each consuming repo provides its own copy.**
+Run relevant local checks from Python: changed-file `pre-commit`, direct make-target routing, contains-pin validation, and `agent-lint` when available. Human operators run it directly with `python3 python/cli.py checks run-relevant`. `/implement` and `/review` use the same CLI without spending Skill-tool tokens on the green path. The default path fails closed on structural errors; `RELEVANT_CHECKS_SKIPPED=true` is reserved for explicit `--allow-skip` test paths. **Not part of the plugin SlashCommand surface.**
 
 ## `/research`
 

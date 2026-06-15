@@ -18,7 +18,7 @@ At selected `/implement` boundaries, detect non-ignored untracked files that app
 **Probe locations (registry)**:
 - After Step 2 dispatch returns on the external-implementer `STATUS=complete` path only: `skills/implement/scripts/step-2-post-dispatch.sh` bundles the `2-post-dispatch` probe with branch and optional SHA reads. The orchestrator always consumes `PHANTOM_*` before exit-code routing; branch comparison stays in SKILL.md. Do not probe when `STATUS=claude_fallback`; Claude-fallback implementation files are uncommitted until Step 4.
 - After Step 1.r / 4.r / 7.r / 7a.r `rebase-checkpoint-probe.sh` returns on the success path: phantom handling is **inside** the wrapper (`1.r-post-rebase`, `4.r-post-rebase`, `7.r-post-rebase`, `7a.r-post-rebase`).
-- Immediately before the active Step 8+ driver unless `LARCH_SHIP_PR_IMPL=bash` (then before `ship-pr.sh` first invocation): `--step 8-pre-ship` via `phantom-probe-with-warn.sh`.
+- Immediately before the active Step 8+ driver: `--step 8-pre-ship` via `phantom-probe-with-warn.sh`.
 
 There is intentionally no post-Step-6 probe. When `FILES_CHANGED=true`,
 review-created files are legitimately untracked until Step 7 commits them; a

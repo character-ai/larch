@@ -173,23 +173,24 @@ assert_contains "coder acceptable-output example" \
 assert_contains "coder PROHIBITION via lib" \
     '## PROHIBITION: Submodules' "$coder_prompt"
 
-# ── lint-fix-loop.sh compose_prompt runtime render smoke ─────────────────────
+# ── python checks lint-fix compose_prompt runtime render smoke ─────────────────────
 
 lint_tmp="$TMP/lint-fix"
-mkdir -p "$lint_tmp"
-cat > "$lint_tmp/session-env.sh" <<'EOF'
-CODEX_PRESENT=true
-CURSOR_PRESENT=false
-EOF
-PATH="$stub_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" LINT_FIX_LOOP_RUN_EXTERNAL_AGENT_SH="$run_external_stub" \
-    LARCH_QUIET_DISABLE=1 \
-    "$REPO_ROOT/scripts/lint-fix-loop.sh" \
-    --tmpdir "$lint_tmp" \
-    --site step3 \
-    --checks-log "$checks_log" >/dev/null || true
-
-lint_prompt=$(find "$lint_tmp/lint-fix-loop" -name 'prompt.md' -print -quit)
-[[ -n "$lint_prompt" ]] || fail "lint-fix prompt was not rendered"
+mkdir -p "$lint_tmp/lint-fix-loop"
+lint_prompt="$lint_tmp/lint-fix-loop/prompt.md"
+PYTHONPATH="$REPO_ROOT/python" python3 - "$checks_log" "$lint_prompt" <<'PYCHECKS'
+import sys
+from pathlib import Path
+import checks
+prompt = checks._compose_prompt(  # pyright: ignore[reportPrivateUsage]
+    checks_log=Path(sys.argv[1]),
+    site_label="Step 3",
+    submodule_paths=(),
+    target_cmd_display=None,
+)
+Path(sys.argv[2]).write_text(prompt, encoding="utf-8")
+PYCHECKS
+[[ -s "$lint_prompt" ]] || fail "lint-fix prompt was not rendered"
 assert_contains "lint-fix FIXED: result-shape spec" \
     'FIXED:' "$lint_prompt"
 assert_contains "lint-fix UNFIXABLE: result-shape spec" \

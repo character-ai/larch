@@ -5,7 +5,7 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
 ## Table of Contents
 
 - **Setup**
-  - [Installation and Setup](docs/installation-and-setup.md) — plugin install, local development, agent setup recipes (Claude / Codex / Cursor), [clean-main entry contract](docs/installation-and-setup.md#clean-main-entry-contract-for-implement-and-design) for `/implement` and `/design`, what the plugin provides, the `scripts/relevant-checks.sh` consumer contract, prerequisites
+  - [Installation and Setup](docs/installation-and-setup.md) — plugin install, local development, agent setup recipes (Claude / Codex / Cursor), [clean-main entry contract](docs/installation-and-setup.md#clean-main-entry-contract-for-implement-and-design) for `/implement` and `/design`, what the plugin provides, the `python/cli.py checks run-relevant` consumer contract, prerequisites
 - **Reference**
   - [Features](#features)
   - [Skills](#skills)
@@ -97,10 +97,10 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
     <tr><td colspan="2">Characterize review <strong>fluff</strong> from committed larch run logs — which <code>/design</code> and <code>/implement</code> review suggestions get rejected, deferred to OOS, or accepted-but-low-value — by acceptance baselines, low-acceptance semantic groups, severity cuts, and reviewer-lane splits, then print data-driven recommendations for tightening the reviewer self-filter and judge (voter) instructions.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
-      <td><a href="docs/skills.md#relevant-checks-script"><code>scripts/relevant-checks.sh</code></a></td>
+      <td><a href="docs/skills.md#relevant-checks-script"><code>python/cli.py checks run-relevant</code></a></td>
       <td><em>(none)</em></td>
     </tr>
-    <tr><td colspan="2">Consumer-provided validation entrypoint (not a SlashCommand skill). Orchestrators call it through <code>scripts/run-relevant-checks-captured.sh</code>. <strong>Not part of the plugin surface; each consuming repo provides its own executable script.</strong></td></tr>
+    <tr><td colspan="2">Consumer-provided validation entrypoint (not a SlashCommand skill). Orchestrators call it through <code>python/cli.py checks run-relevant</code>. <strong>Not part of the plugin surface; each consuming repo provides its own executable script.</strong></td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#research"><code>/research</code></a></td>

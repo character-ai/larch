@@ -1,6 +1,6 @@
 # larch Python runtime
 
-Flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3.11 for the default `/implement` Step 8+ ship driver and `/report-tokens`). `/implement` Step 8+ defaults to the Python ship driver via `python/cli.py ship pr` (delegating to `python/ship.py`); set `LARCH_SHIP_PR_IMPL=bash` to use the legacy `scripts/ship-pr.sh` path. `/report-tokens` is live via `python/cli.py report-tokens analyze` (delegating to `report_tokens_cli.py`); the retired `run-analysis.sh` wrapper has been removed. Linters and pytest are dev/CI-only and are never imported by runtime code.
+Flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3.11 for the `/implement` Step 8+ ship driver and `/report-tokens`). `/implement` Step 8+ uses `python/cli.py ship pr` (delegating to `python/ship.py`). `/report-tokens` is live via `python/cli.py report-tokens analyze` (delegating to `report_tokens_cli.py`); the retired `run-analysis.sh` wrapper has been removed. Linters and pytest are dev/CI-only and are never imported by runtime code.
 
 ## Layout
 
@@ -31,7 +31,7 @@ Flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3.11 for
   Tool-failure batch capture remains deferred to Phase 7 wiring; bash launchers still own
   `append-tool-failure.sh` calls on the live path.
 - `test_rendering.py` — pytest coverage replacing the retired renderer/generator bash harnesses.
-- `test_<module>.py` — colocated unit tests; `test_support.py` provides the shared list-queue `RecordingRunner` (with `test_run_logs.py` preserving `git_commits` via a subclass and `test_ci_monitor.py` retaining its keyed runner); `test_checks_bash_parity.py` bash-sourced parity harness; `test_stdlib_only.py` enforces stdlib-only imports
+- `test_<module>.py` — colocated unit tests; `test_support.py` provides the shared list-queue `RecordingRunner` (with `test_run_logs.py` preserving `git_commits` via a subclass and `test_ci_monitor.py` retaining its keyed runner); `test_stdlib_only.py` enforces stdlib-only imports
 
 ## Dependencies
 
@@ -59,7 +59,7 @@ for tests.
 Python parity tests require **bash** for shell helper comparisons. CI `python-tests` installs the required shell tooling;
 local runs without it skip those cases via `pytest.mark.skipif`.
 
-The live `/implement` path defaults to `python/cli.py ship pr`; use `LARCH_SHIP_PR_IMPL=bash` only when you need the legacy shell driver. `/report-tokens` is cut over to `python/cli.py report-tokens analyze`; the `run-analysis.sh` wrapper has been retired.
+The live `/implement` path uses `python/cli.py ship pr`. `/report-tokens` is cut over to `python/cli.py report-tokens analyze`; the `run-analysis.sh` wrapper has been retired.
 
 ## Pre-push conflict handoff scope
 
@@ -87,7 +87,7 @@ fail closed. See `skills/implement/references/conflict-resolution.md` and issue
 
 ## Phase 1 wiring outside `python/`
 
-Plan acceptance lists four non-`python/` files (Makefile, CI workflow, docs, harnesses). **`scripts/ship-pr.sh`** is an intentional fifth wiring change: failed-job replay maps `python-lint` / `python-tests` CI jobs to `make py-lint` / `make py-test` (see `scripts/test-ship-pr.sh` replay cases). Revert only if replay stays allowlist-only until a later phase.
+Plan acceptance lists four non-`python/` files (Makefile, CI workflow, docs, harnesses). The Python ship driver also maps `python-lint` / `python-tests` CI jobs to `make py-lint` / `make py-test`; keep that wiring with the ship path.
 
 ## Phase 4 scope note (branch hygiene)
 
@@ -95,7 +95,7 @@ The Phase 4 plan file list names `python/checks.py`, `python/test_checks.py`, an
 
 ## Phase 6 scope note (`CI_FIX_REBASE_PENDING`)
 
-`ci_monitor.py` deliberately omits bash ship-pr's `CI_FIX_REBASE_PENDING` pending-retry fast path: a verified-but-unpushed CI fix that fails `git push` terminates as `Outcome.STALLED` by design (stateless monitor, rebase limited to merge-conflict-only, bash retired — not a parity gap). See issue #3405.
+`ci_monitor.py` deliberately omits the retired shell driver's `CI_FIX_REBASE_PENDING` pending-retry fast path: a verified-but-unpushed CI fix that fails `git push` terminates as `Outcome.STALLED` by design (stateless monitor, rebase limited to merge-conflict-only, shell driver retired). See issue #3405.
 
 ## Orphan flush-reset parity note
 

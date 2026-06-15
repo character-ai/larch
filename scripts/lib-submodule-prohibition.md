@@ -7,7 +7,7 @@ Sourced-only library (no shebang) exposing `emit_submodule_prohibition()`. Centr
 ## Primary Callers
 
 - `python/cli.py review-and-fix apply-findings::compose_coder_prompt()` — passes `$submodules_list` from `submodule_paths()` output
-- `scripts/lint-fix-loop.sh::compose_prompt()` — passes a submodule-paths-only file; `.gitmodules` stays on the caller's mechanical forbidden-path list while the function itself appends the `.git/` / `.gitmodules` catch-all prohibition line
+- `scripts/python/cli.py checks lint-fix::compose_prompt()` — passes a submodule-paths-only file; `.gitmodules` stays on the caller's mechanical forbidden-path list while the function itself appends the `.git/` / `.gitmodules` catch-all prohibition line
 
 ## Function Contract
 

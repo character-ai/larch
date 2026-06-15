@@ -1,6 +1,6 @@
 # step-8-ship.sh
 
-Step 8+ ship-driver selector. Derives CLONE_TAG_FULL, rehydrates durable ship argv from `$IMPLEMENT_TMPDIR/ship-pr-state.sh` when prompt-side variables are absent, enforces the Python 3.11 JSON fallback, and invokes either python/cli.py ship pr or scripts/ship-pr.sh with the canonical argv.
+Step 8+ Python ship-driver wrapper. Derives CLONE_TAG_FULL, rehydrates durable ship argv from `$IMPLEMENT_TMPDIR/ship-pr-state.sh` when prompt-side variables are absent, enforces the Python 3.11 JSON fallback, and invokes `python/cli.py ship pr` with the canonical argv.
 
 ## Caller
 

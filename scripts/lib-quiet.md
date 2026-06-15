@@ -58,8 +58,8 @@ append-forensics behavior documented in `python/logging_util.py` and
   `LARCH_QUIET_DISABLE=1` before calling it, because their data stream is
   ordinary stdout rather than contract output.
 
-Long-running quiet scripts (for example `ship-pr.sh`, `ci-wait.sh`, and
-`python/cli.py agent collect-results`) surface progress via the quiet-compatible diagnostic channel on the
+Long-running quiet scripts and Python commands (for example the Python ship driver, `ci-wait.sh`, and
+`python/cli.py agent collect-results`) surface progress via quiet-compatible diagnostic helpers on the
 operator-visible stderr channel (FD 4 after quiet initialization).
 
 ## Harness
@@ -77,7 +77,7 @@ External or captured content relayed into `larch_err` / `larch_errf` must be
 sanitized per line with `sanitize_diagnostic_line` (after any `redact-secrets.sh`
 pass). Routed sites:
 
-- **HIGH**: `scripts/ship-pr.sh` (`append_tool_failure_local` fallback relay),
+- **HIGH**: the Python ship driver (`append_tool_failure_local` fallback relay),
   `python/cli.py review collect-findings` (collector and wait failure-log
   relays).
 - **MEDIUM** (defense-in-depth on internal-script stderr in reviewer/CI paths):

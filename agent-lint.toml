@@ -506,17 +506,9 @@ exclude = [
   # Relevant-checks helper and hook harnesses are Makefile-only regression
   # tests for the script-first green path; the runtime scripts are referenced
   # from SKILL.md or hooks.json, while these tests are not.
-  "scripts/test-relevant-checks-byte-budget.sh",
-  "scripts/test-relevant-checks-validation.sh",
-  "scripts/test-relevant-checks-helper-failure.sh",
-  "scripts/test-relevant-checks.sh",
-  "scripts/relevant-checks.sh",
-  "scripts/check-contains-pins.sh",
-  "scripts/test-check-contains-pins.sh",
   "scripts/test-hook-anti-read-poll.sh",
   "scripts/test-hook-bg-poll-guard.sh",
   "scripts/test-hook-progress-report.sh",
-  "scripts/test-review-relevant-checks-helper.sh",
   # scripts/lib-cursor-auth.sh is a sourced-only shell library (no shebang,
   # not invokable directly). It is referenced from shell consumers via source
   # directives only, which agent-lint does not follow.
@@ -556,13 +548,9 @@ exclude = [
   "scripts/lib-phantom-probe.md",
   # scripts/lib-net.sh is a sourced-only shell library (no shebang,
   # not invokable directly). It provides is_transient_net_signature() to
-  # scripts/ship-pr.sh via source directives only; collector retry classification now uses python/retry.py,
-  # which agent-lint does not follow.
+  # shell callsites via source directives only, which agent-lint does not follow.
+  # Python retry callers use python/retry.py instead.
   "scripts/lib-net.sh",
-  # scripts/lib-finalize-state-keys.sh is a sourced-only shell library
-  # (no shebang, not invokable directly). scripts/ship-pr.sh and
-  # python/cli.py session restore-finalize-state source it for shared finalizer keys.
-  "scripts/lib-finalize-state-keys.sh",
   # scripts/lib-execution-issues.sh is a sourced-only shell library shared by
   # scripts/implement-finalize.sh and skills/implement/scripts/flush-execution-issues.sh.
   "scripts/lib-execution-issues.sh",
@@ -705,7 +693,7 @@ exclude = [
   # as a tiny future amend primitive with a sibling contract.
   "scripts/git-amend-add.sh",
   "scripts/git-amend-add.md",
-  # by implement-finalize.sh and ship-pr.sh. Its harness is Makefile-only
+  # by implement-finalize.sh and the Python ship driver. Its harness is Makefile-only
   # (test-commit-release notes target) and its sibling docs own the contract.
   "scripts/commit-release notes.md",
   "scripts/test-commit-release notes.md",
@@ -788,7 +776,6 @@ exclude = [
   # above. Both the .sh and the .md are excluded.
   "python/test_review_and_fix.py",
   # skills/implement/scripts/test-implement-relevant-checks-anti-halt.sh is
-  # the offline structural guard for per-site run-relevant-checks-captured.sh continuation
   # callouts in skills/implement/SKILL.md (issue #1381). Referenced only from
   # Makefile (test-implement-relevant-checks-anti-halt target) and the sibling
   # contract below, matching the same Makefile-only pattern as the other
@@ -851,12 +838,9 @@ exclude = [
   # skill-local regression tests.
   "skills/pause/scripts/test-pause-skill.sh",
   "scripts/test-implement-rebase-macro.sh",
-  "scripts/test-ship-pr-rebase.sh",
-  # scripts/test-ship-pr-oos-pr-prep.sh — offline harness for ship-pr.sh
   # pr-prep materialize failure with manifest OOS (Makefile
   # test-ship-pr-oos-pr-prep target). Same Makefile-only pattern as
   # test-ship-pr-rebase.sh.
-  "scripts/test-ship-pr-oos-pr-prep.sh",
   # scripts/test-rebase-checkpoint-probe.sh — offline harness for
   # scripts/rebase-checkpoint-probe.sh (Makefile test-rebase-checkpoint-probe).
   "scripts/test-rebase-checkpoint-probe.sh",
@@ -1068,20 +1052,12 @@ exclude = [
   "scripts/check-clean-tree.md",
   "scripts/check-stale-plugin.sh",
   "scripts/check-stale-plugin.md",
-  "scripts/test-relevant-checks-byte-budget.md",
-  "scripts/test-relevant-checks-validation.md",
-  "scripts/test-relevant-checks-helper-failure.md",
-  "scripts/test-relevant-checks.md",
-  "scripts/relevant-checks.md",
-  "scripts/check-contains-pins.md",
-  "scripts/test-check-contains-pins.md",
   "scripts/test-hook-anti-read-poll.md",
   "scripts/hook-anti-read-poll.md",
   "scripts/test-hook-bg-poll-guard.md",
   "scripts/hook-bg-poll-guard.md",
   "scripts/test-hook-progress-report.md",
   "scripts/hook-progress-report.md",
-  "scripts/test-review-relevant-checks-helper.md",
   "scripts/test-lib-quiet.md",
   "scripts/lib-quiet.md",
   "scripts/test-lib-cursor-auth.md",
@@ -1096,7 +1072,6 @@ exclude = [
   "scripts/test-lib-net.md",
   "scripts/test-flush-vendor-failure-diagnostics.md",
   "scripts/lib-net.md",
-  "scripts/lib-finalize-state-keys.md",
   "python/session_env.py (session restore-finalize-state)",
   # python/test_alias_skill.py and scripts/test-alias-structure.md
   # are the sibling contracts for the two alias-rework regression harnesses
@@ -1234,13 +1209,8 @@ exclude = [
   # sibling contract and no runtime skill-prose invocation edge.
   "scripts/test-ci-decide.sh",
   "scripts/test-ci-decide.md",
-  # scripts/test-lint-fix-loop.sh is the offline regression harness for
-  # scripts/lint-fix-loop.sh dispatch safety and helper-owned commit rollback.
+  # python/cli.py checks lint-fix dispatch safety and helper-owned commit rollback.
   # Referenced from Makefile (test-lint-fix-loop target), docs/linting.md,
-  # scripts/lint-fix-loop.md, and the sibling contract
-  # scripts/test-lint-fix-loop.md; not invoked from runtime skill prose.
-  "scripts/test-lint-fix-loop.sh",
-  "scripts/test-lint-fix-loop.md",
   # scripts/test-gh-run-logs.sh is the offline regression harness for the
   # gh-run-logs.sh exit-code contract (exit 2 on in-progress polling). It is
   # referenced only from Makefile (test-gh-run-logs target) and the sibling
@@ -1335,7 +1305,7 @@ exclude = [
   "skills/implement/scripts/test-cleanup.md",
   # scripts/lib-submodule-prohibition.sh is a sourced-only shell library (no
   # shebang, not invokable directly). It is referenced from review-and-fix CLI
-  # and lint-fix-loop.sh via `source` directives only, which agent-lint does
+  # and python/cli.py checks lint-fix via `source` directives only, which agent-lint does
   # not follow. scripts/test-lib-submodule-prohibition.sh is its Makefile-only
   # regression harness.
   "scripts/lib-submodule-prohibition.sh",
@@ -1349,4 +1319,16 @@ exclude = [
   # scripts/test-prompt-template-invariants.md, not from runtime skill prose.
   "scripts/test-prompt-template-invariants.sh",
   "scripts/test-prompt-template-invariants.md",
+  # Python ship driver owns these legacy shell helpers now; agent-lint does not
+  # follow the Python CLI call graph for G004 reachability.
+  "scripts/ci-rerun-failed.sh",
+  "scripts/gh-pr-body-update.sh",
+  "scripts/merge-pr.sh",
+  "scripts/create-pr.sh",
+  "scripts/git-sync-local-main.sh",
+  "scripts/ci-wait.sh",
+  "scripts/ci-status.sh",
+  "scripts/ci-decide.sh",
+  "scripts/ci-behind-count.sh",
+
 ]

@@ -25,7 +25,7 @@ Run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review-and-fix apply-findings
 
 Contracts and harnesses: `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review-and-fix apply-findings`, `step5`, `check-changes`, `commit-fixes`, `write-rejected`, and `record-round-timing` are implemented in `python/review_and_fix.py` and covered by `python/test_review_and_fix.py`. `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review compose-findings` remains the findings JSONL composition surface. Submodule scrubbing remains covered by `${CLAUDE_PLUGIN_ROOT}/python/cli.py redact scrub-submodule-paths`, `${CLAUDE_PLUGIN_ROOT}/scripts/test-redact scrub-submodule-paths`, and `${CLAUDE_PLUGIN_ROOT}/python/test_redact.py`.
 
-Validation: after edits, run `python3 -m pytest python/test_review_and_fix.py` and `${CLAUDE_PLUGIN_ROOT}/scripts/test-redact scrub-submodule-paths`; callers then run `${CLAUDE_PLUGIN_ROOT}/scripts/run-relevant-checks-captured.sh --site review-step3e --tmpdir "$REVIEW_TMPDIR"`.
+Validation: after edits, run `python3 -m pytest python/test_review_and_fix.py` and `${CLAUDE_PLUGIN_ROOT}/scripts/test-redact scrub-submodule-paths`; callers then run `${CLAUDE_PLUGIN_ROOT}/python/cli.py checks run-relevant --site review-step3e --tmpdir "$REVIEW_TMPDIR"`.
 
 End by emitting:
 

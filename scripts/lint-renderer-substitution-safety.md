@@ -4,7 +4,7 @@
 
 ## Purpose And Callers
 
-The linter catches the bash 5.x `&` replacement-corruption class from issue #3077 Section A. It is run by `make lint-renderer-substitution-safety`, by the pre-commit hook of the same name, and by `scripts/relevant-checks.sh` through scoped pre-commit.
+The linter catches the bash 5.x `&` replacement-corruption class from issue #3077 Section A. It is run by `make lint-renderer-substitution-safety`, by the pre-commit hook of the same name, and by `python/cli.py checks run-relevant` through scoped pre-commit.
 
 ## Inputs And Scope
 

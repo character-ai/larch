@@ -3,7 +3,7 @@
 # CI lint job uses: make lint-only (repo-wide via pre-commit run --all-files); harness
 # matrix runs make test-harnesses-N separately. Local make lint runs test-harnesses
 # then lint-only.
-# scripts/relevant-checks.sh uses: pre-commit run --files <changed-files> (scoped)
+# python/cli.py checks run-relevant uses: pre-commit run --files <changed-files> (scoped)
 # Developers use: pre-commit install (opt-in git hook)
 
 # larch-logs/ holds committed run-log artifacts (redacted reviewer prompts,

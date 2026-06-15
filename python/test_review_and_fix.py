@@ -314,9 +314,21 @@ def test_write_rejected_redacts_tmpdir_and_secrets(tmp_path, monkeypatch):
 
 
 @MARK_PARSERS
-def test_step5_parse_checks_capture_requires_status_or_ok_fields():
-    parsed = review_and_fix._parse_checks_capture("RELEVANT_CHECKS_OK=true\n")
+def test_step5_checks_result_capture_maps_ok_fields():
+    parsed = review_and_fix._checks_result_capture(
+        review_and_fix.checks.ChecksResult(
+            ok=True,
+            exit_code=0,
+            site="step5-review-fixes",
+            redacted_log_path=None,
+            phase="unknown",
+            coverage="full",
+            skipped=False,
+            warn=None,
+        )
+    )
     assert parsed["RELEVANT_CHECKS_OK"] == "true"
+    assert parsed["COVERAGE"] == "full"
 
 
 @MARK_CONVERGENCE

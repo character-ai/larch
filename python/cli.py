@@ -37,6 +37,9 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("agent", "launch-claude-ci"): ("agents", "launch_claude_ci_main"),
     ("agent", "launch-claude-review"): ("agents", "launch_claude_review_main"),
     ("agent", "launch-claude-subprocess"): ("agents", "launch_claude_subprocess_main"),
+    ("checks", "run-relevant"): ("checks", "checks_run_relevant_main"),
+    ("checks", "lint-fix"): ("checks", "checks_lint_fix_main"),
+    ("checks", "contains-pins"): ("checks", "check_contains_pins_main"),
     ("bootstrap", "invoke"): ("bootstrap", "invoke_main"),
     ("bootstrap", "parse-routing"): ("bootstrap", "parse_routing_main"),
     ("bootstrap", "resolve-non-interactive"): ("bootstrap", "resolve_non_interactive_main"),
@@ -393,6 +396,9 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
 }
 
 _MACHINE_STDOUT_KEYS: frozenset[tuple[str, str]] = frozenset({
+    ("checks", "run-relevant"),
+    ("checks", "lint-fix"),
+    ("checks", "contains-pins"),
     ("bootstrap", "invoke"),
     ("bootstrap", "parse-routing"),
     ("admission", "gate"),

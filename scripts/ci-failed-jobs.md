@@ -1,7 +1,7 @@
 # ci-failed-jobs.sh
 
 `scripts/ci-failed-jobs.sh` classifies failed GitHub Actions jobs from a run so
-`scripts/ship-pr.sh` can replay the fixable ones locally without executing
+the Python ship driver can replay the fixable ones locally without executing
 strings from the GitHub API.
 
 ## Interface
@@ -33,10 +33,10 @@ When `--output-tsv` is supplied, the file contains:
 JOB_NAME<TAB>SLICE<TAB>CLASS
 ```
 
-There is intentionally no local command column. `ship-pr.sh` owns the fixed
+There is intentionally no local command column. the Python ship driver owns the fixed
 case-statement argv dispatcher. The TSV is consumed by both
 `run_per_job_local_fix_loop` and the vendor-path `_verify_failed_jobs_locally`
-gate in `ship-pr.sh`.
+gate in the Python ship driver.
 
 ## Exit Codes
 

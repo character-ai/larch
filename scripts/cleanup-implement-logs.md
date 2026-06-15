@@ -65,5 +65,5 @@ Verification steps are in the issue body (#3709):
 
 - `/report-tokens --skill=implement` scans clean after the PR.
 - `python/cli.py audit-runs scan-run --skill implement` passes on a sample of surviving dirs.
-- `bash scripts/relevant-checks.sh` passes.
+- `bash python/cli.py checks run-relevant` passes.
 - Spot-check one multi-round run: chain intact, re-rendered transcript parses.
