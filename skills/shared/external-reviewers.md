@@ -60,7 +60,7 @@ Use this warning template when a slot reaches Phase 3:
 
 - `**⚠ <Reviewer> failed — <FAILURE_REASON>. Using Claude replacement for this slot.**`
 
-Where `<FAILURE_REASON>` is the `FAILURE_REASON` value from `collect-agent-results.sh` output (or from the `.diag` file if collecting results manually). Always include the reason so the user can diagnose the root cause (e.g., timeout duration, exit code, last error output).
+Where `<FAILURE_REASON>` is the `FAILURE_REASON` value from `python/cli.py agent collect-results` output (or from the `.diag` file if collecting results manually). Always include the reason so the user can diagnose the root cause (e.g., timeout duration, exit code, last error output).
 
 Do not write runtime failure status back to session env. `CODEX_PRESENT` and `CURSOR_PRESENT` are set once at session start via the runtime health probe; they are not updated mid-session by per-slot launch failures.
 
@@ -69,7 +69,7 @@ Do not write runtime failure status back to session env. `CODEX_PRESENT` and `CU
 After all other tasks are done, collect and validate external reviewer outputs using the shared collection script:
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout <seconds> <output-file> [<output-file> ...]
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent collect-results --timeout <seconds> <output-file> [<output-file> ...]
 ```
 
 Only include output file paths for reviewers that were actually launched. For the Bash tool call, use `timeout: <seconds>000` (milliseconds) and use a foreground collector invocation. The script internally calls `python3 python/cli.py agent wait-reviewers` to poll for `.done` sentinel files, validates each output, and retries once on empty output (using `.meta` files written by `python3 python/cli.py agent run-external-agent`). Wait records are correlated by 1-based argv index, so callers should pass output files in the same order they want result blocks interpreted.
@@ -85,11 +85,11 @@ FAILURE_REASON=<explanation>
 Parse each reviewer's `STATUS`, `REVIEWER_FILE`, and `FAILURE_REASON`:
 - `STATUS=OK`: Read the output file — it is non-empty and validated. `FAILURE_REASON` is empty.
 - Any other status: The reviewer failed. `FAILURE_REASON` explains why (e.g., "Timed out after 1800s (limit: 1800s). Process was killed after exceeding the timeout." or "Failed with exit code 1 after 5s. Last output: error message here"). Follow the **Runtime Timeout Fallback** procedure above, including `FAILURE_REASON` in the message.
-- Treat `STATUS=OK` with empty `FAILURE_REASON` as the success signal; do NOT use `EXIT_CODE` alone — see `scripts/collect-agent-results.md` for retry-row exit-code semantics.
+- Treat `STATUS=OK` with empty `FAILURE_REASON` as the success signal; do NOT use `EXIT_CODE` alone — see `python/collect_results.py` for retry-row exit-code semantics.
 
-**Important**: Do NOT read output files before calling `collect-agent-results.sh`. Cursor buffers all stdout until exit — its output file is empty until the process finishes. The collection script handles all sentinel polling and validation internally.
+**Important**: Do NOT read output files before calling `python/cli.py agent collect-results`. Cursor buffers all stdout until exit — its output file is empty until the process finishes. The collection script handles all sentinel polling and validation internally.
 
-**Substantive-content validation is opt-in.** The default collector behavior described above is sentinel + non-empty + retry. Substantive-content classification (`STATUS=NOT_SUBSTANTIVE`) only runs when callers pass `--substantive-validation` (and optionally `--validation-mode` for short reviewer-style outputs). See the `--substantive-validation` / `--validation-mode` stanza of the `scripts/collect-agent-results.sh` header for the authoritative flag documentation and `docs/external-reviewers.md` Output Validation for the per-skill opt-in matrix.
+**Substantive-content validation is opt-in.** The default collector behavior described above is sentinel + non-empty + retry. Substantive-content classification (`STATUS=NOT_SUBSTANTIVE`) only runs when callers pass `--substantive-validation` (and optionally `--validation-mode` for short reviewer-style outputs). See the `--substantive-validation` / `--validation-mode` stanza of the `python/cli.py agent collect-results` CLI implementation for the authoritative flag documentation and `docs/external-reviewers.md` Output Validation for the per-skill opt-in matrix.
 
 ## Negotiation Protocol
 

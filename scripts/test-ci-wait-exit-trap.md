@@ -64,4 +64,4 @@ Update this harness in lockstep with:
 
 - Issue #842 — surfacing failure-mode trace (the leaked-polling-loop scenario this harness regresses against).
 - `python/cli.py agent run-external-agent:70` — positive precedent for the EXIT-trap-writes-`.done` idiom; the test mirrors its numeric-content sentinel format.
-- `scripts/test-collect-agent-bash32.sh` — peer test harness with a similar Makefile-wired regression-test pattern.
+- `python/test_collect_results.py` — peer pytest suite with a similar Makefile-wired regression-test pattern.

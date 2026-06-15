@@ -5,7 +5,7 @@
 # Sourced by:
 #   - python/cli.py agent model-args
 #   - python/cli.py agent check-reviewers
-#   - scripts/collect-agent-results.sh
+#   - python/cli.py agent collect-results
 #   - python/cli.py implement step2-dispatch
 #
 # Related:
@@ -27,9 +27,9 @@
 # Bash 3.2 constraint: indexed arrays only. No associative arrays, namerefs,
 # mapfile/readarray, or eval.
 #
-# scripts/collect-agent-results.sh derives observed tool labels from this
-# registry and still preserves `unknown` as an observational fallback for
-# partial or malformed launches.
+# python/cli.py agent collect-results derives observed tool labels from the
+# matching Python registry and still preserves `unknown` as an observational
+# fallback for partial or malformed launches.
 
 [[ -n "${LARCH_EXTERNAL_TOOL_REGISTRY_LOADED:-}" ]] && return 0
 

@@ -253,15 +253,15 @@ assert_contains "scout closing-sentence repair" \
 assert_contains "scout closing-sentence full anchor" \
     'Cite specific file paths and line ranges for any issues found, and follow the output-format rules from your outer wrapper exactly.' "$scout_out"
 
-# ── collect-agent-results.sh NS_STRONG_HEADER static source assertions ───────
+# ── agent collect-results NS_STRONG_HEADER static source assertions ───────
 
-COLLECT="$REPO_ROOT/scripts/collect-agent-results.sh"
-collect_out="$TMP/collect-agent-results.sh"
+COLLECT="$REPO_ROOT/python/agents.py"
+collect_out="$TMP/agents.py"
 cp "$COLLECT" "$collect_out"
 
-assert_contains "collect-agent NS_STRONG_HEADER format-agnostic" \
+assert_contains "collect-results NS_STRONG_HEADER format-agnostic" \
     'the exact format your original prompt requires' "$collect_out"
 grep -Fq '### FINDING_N: title / bullet fields' "$collect_out" \
-    && fail "collect-agent: old FINDING_N format reference should have been replaced"
+    && fail "collect-results: old FINDING_N format reference should have been replaced"
 
 echo "PASS: test-prompt-template-invariants.sh"

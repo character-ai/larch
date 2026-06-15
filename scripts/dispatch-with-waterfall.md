@@ -11,7 +11,7 @@ Input is an NDJSON slots file. Each row must contain:
 
 Rows may include optional metadata such as `weight` and `focus_area`; the dispatcher preserves validation compatibility and ignores those fields at launch time.
 
-Per-slot launcher stderr is captured to `${output}.launch-stderr` (stdout remains `/dev/null`) so launcher-level validation failures are recoverable and surfaced by `collect-agent-results.sh` via the failed-agent stderr tail path (#3202).
+Per-slot launcher stderr is captured to `${output}.launch-stderr` (stdout remains `/dev/null`) so launcher-level validation failures are recoverable and surfaced by `python/cli.py agent collect-results` via the failed-agent stderr tail path (#3202).
 
 An `EXIT` trap kills active phase launcher process groups when Bash monitor mode is available, then falls back to descendant and direct PID cleanup before reaping tracked launchers. This is only a cleanup guard. It does not change fallback semantics or timeout values.
 
@@ -21,7 +21,7 @@ An `EXIT` trap kills active phase launcher process groups when Bash monitor mode
 2. Failed or absent phase-1 slots launch on the other present external tool.
 3. Remaining slots launch through `python/cli.py agent launch-claude-review`.
 
-Each phase is collected with `scripts/collect-agent-results.sh --summary-only`; `STATUS=OK` and `STATUS=cap_hit` settle a slot. Other statuses advance to the next phase, and a phase-3 failure leaves `DISPATCH_OK=false`.
+Each phase is collected with `python/cli.py agent collect-results --summary-only`; `STATUS=OK` and `STATUS=cap_hit` settle a slot. Other statuses advance to the next phase, and a phase-3 failure leaves `DISPATCH_OK=false`.
 
 No result is ever copied between slots. Grouped reuse-by-copy (`fallback_group`, group ledger, `.dedup` sidecars) was removed.
 

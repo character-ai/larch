@@ -323,8 +323,8 @@ collect_phase() {
     pids=()
 
     # Split summary into per-slot blocks by position (same order as argv to
-    # collect-agent-results.sh). This avoids the retry-path mismatch where
-    # collect-agent-results emits REVIEWER_FILE=<orig>-retry.txt but we
+    # python/cli.py agent collect-results). This avoids the retry-path mismatch where
+    # agent collect-results emits REVIEWER_FILE=<orig>-retry.txt but we
     # search for REVIEWER_FILE=<orig>.
     summary_blocks=()
     current_block=""
@@ -341,7 +341,7 @@ collect_phase() {
                 current_block="$line"
             fi
         fi
-    done <<< "$("$SCRIPT_DIR/collect-agent-results.sh" --timeout "$TIMEOUT" --summary-only "${phase_outputs[@]}")"
+    done <<< "$(python3 "$SCRIPT_DIR/../python/cli.py" agent collect-results --timeout "$TIMEOUT" --summary-only "${phase_outputs[@]}")"
     [[ -n "$current_block" ]] && summary_blocks+=("$current_block")
 
     for i in "${!phase_outputs[@]}"; do
@@ -554,7 +554,7 @@ if [[ ${#phase3_failed[@]} -gt 0 ]]; then
     for idx in "${phase3_failed[@]}"; do
         _wf_tail_replay_paths+=("${final_outputs[$idx]}")
     done
-    LARCH_QUIET_DISABLE=1 "$SCRIPT_DIR/collect-agent-results.sh" --timeout "$TIMEOUT" \
+    LARCH_QUIET_DISABLE=1 python3 "$SCRIPT_DIR/../python/cli.py" agent collect-results --timeout "$TIMEOUT" \
         "${_wf_tail_replay_paths[@]}" >/dev/null || true
 fi
 

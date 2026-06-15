@@ -12,7 +12,7 @@ Cross-cutting regression harness that asserts structural invariants in rendered 
 | `scripts/lint-fix-loop.sh` | `FIXED:` / `UNFIXABLE:` result-shape spec; acceptable final-line shapes example; `emit_submodule_prohibition` call |
 | `python/cli.py render plan-review` | TSV header literal; filled-in TSV example; anti-preamble directive; no-issues sentinel instruction |
 | `python/cli.py scout dynamic-archetypes` | `prompt_body` constraints block; closing-sentence requirement; closing-sentence repair code |
-| `scripts/collect-agent-results.sh` | format-agnostic NS_STRONG_HEADER; absence of old `### FINDING_N` format reference |
+| `python/agents.py` | format-agnostic NS_STRONG_HEADER; absence of old `### FINDING_N` format reference |
 
 ## Makefile Wiring
 

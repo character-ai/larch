@@ -172,18 +172,18 @@ COLLECT_ARGS=()
 [[ "$codex_available" == true ]] && COLLECT_ARGS+=("$RESEARCH_TMPDIR/codex-research-sec-output.txt")
 ```
 
-**Zero-externals branch**: if `codex_available=false` (all four lanes ran as Claude fallbacks), skip `collect-agent-results.sh` entirely. Proceed directly to Step 1.5 with the four Claude fallback outputs.
+**Zero-externals branch**: if `codex_available=false` (all four lanes ran as Claude fallbacks), skip `python/cli.py agent collect-results` entirely. Proceed directly to Step 1.5 with the four Claude fallback outputs.
 
 Otherwise invoke the collector with substantive validation:
 
 ```bash
 export RESEARCH_TMPDIR
-${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1860 --substantive-validation "${COLLECT_ARGS[@]}"
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent collect-results --timeout 1860 --substantive-validation "${COLLECT_ARGS[@]}"
 ```
 
 Use `timeout: 1860000` on the foreground Bash tool call. The harness auto-backgrounds an overrunning call and notifies on completion.
 
-Parse the structured output for each lane's `STATUS` and `REVIEWER_FILE`. Under `--substantive-validation`, content validation is performed by `collect-agent-results.sh`; thin-but-cited or long-but-uncited prose is rejected with `STATUS=NOT_SUBSTANTIVE` and a diagnostic in `FAILURE_REASON`.
+Parse the structured output for each lane's `STATUS` and `REVIEWER_FILE`. Under `--substantive-validation`, content validation is performed by `python/cli.py agent collect-results`; thin-but-cited or long-but-uncited prose is rejected with `STATUS=NOT_SUBSTANTIVE` and a diagnostic in `FAILURE_REASON`.
 
 **Codex sidecar ingestion after collection settles**: best-effort token sidecar ingestion is operator-visible and does not depend on collector `STATUS=OK`. Map collector rows to the slots in `COLLECT_ARGS` order: `arch`, `edge`, `ext`, `sec`. Use these fixed slot output paths: `arch` → `codex-research-arch-output.txt`, `edge` → `codex-research-edge-output.txt`, `ext` → `codex-research-ext-output.txt`, `sec` → `codex-research-sec-output.txt`. For each slot, build candidate output paths in this order: the collector-reported `REVIEWER_FILE` when present, the fixed slot output path, `${fixed%.txt}-retry.txt`, then `${fixed%.txt}-ns-retry.txt`. Keep `REVIEWER_FILE` first, and still include the fixed path plus both retry-derived paths even when `REVIEWER_FILE` points at the fixed output. Deduplicate candidate paths before ingestion. Retry outputs can have sidecars next to `REVIEWER_FILE`, and retry outputs can also have sidecars next to derived fixed retry paths. First-pass fixed outputs can also have sidecars after retry selection. Ingest retry, non-substantive retry, and first-pass sidecars when they exist and are non-empty.
 

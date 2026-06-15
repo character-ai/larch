@@ -302,7 +302,7 @@ grep -Fq '**⚠ /review requires either --diff (branch diff review) or a descrip
   || fail "(12) SKILL.md is missing the verbatim no-args error abort message"
 
 # ---------------------------------------------------------------------------
-# (13) Substantive-validation flag pin (#661). The Step 3a collect-agent-results.sh
+# (13) Substantive-validation flag pin (#661). The Step 3a agent collect-results
 #      invocation in SKILL.md must carry both --substantive-validation AND
 #      --validation-mode on the SAME line as --timeout 1860, so banner-only
 #      reviewer output (e.g., "Authentication required") is rejected as
@@ -314,11 +314,11 @@ grep -Fq '**⚠ /review requires either --diff (branch diff review) or a descrip
 grep -Fq 'run_legacy("collect-findings.sh"' "$REPO_ROOT/python/review_pipeline.py" \
   || fail "(13) python/review_pipeline.py does not delegate review collect-findings to collect-findings.sh"
 COLLECT_FINDINGS_IMPL="$REPO_ROOT/python/legacy_review_shell/collect-findings.sh"
-grep 'collect-agent-results.sh' "$COLLECT_FINDINGS_IMPL" \
+grep 'agent collect-results' "$COLLECT_FINDINGS_IMPL" \
   | grep -F -- '--timeout 1860' \
   | grep -F -- '--substantive-validation' \
   | grep -Fq -- '--validation-mode' \
-  || fail "(13) no review collect-findings implementation line carries 'collect-agent-results.sh', '--timeout 1860', '--substantive-validation', and '--validation-mode' together — issue #661 substantive-validation contract pin is broken"
+  || fail "(13) no review collect-findings implementation line carries 'agent collect-results', '--timeout 1860', '--substantive-validation', and '--validation-mode' together — issue #661 substantive-validation contract pin is broken"
 
 # ---------------------------------------------------------------------------
 # (14) Specialist prompt rendering is wired (#659).

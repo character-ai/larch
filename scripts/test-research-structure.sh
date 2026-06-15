@@ -233,7 +233,7 @@ for file in "$RESEARCH_MD" "$VALIDATION_MD"; do
   contains "$file" "RESEARCH_TMPDIR=\"\$RESEARCH_TMPDIR\"" "[$base sidecar] missing RESEARCH_TMPDIR binding"
 done
 
-collect_line=$(line_for "$VALIDATION_MD" "\${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1860 --substantive-validation --validation-mode")
+collect_line=$(line_for "$VALIDATION_MD" "python3 \"\${CLAUDE_PLUGIN_ROOT}/python/cli.py\" agent collect-results --timeout 1860 --substantive-validation --validation-mode")
 parse_line=$(line_for "$VALIDATION_MD" "1. Parse the structured output for each reviewer's \`STATUS\` and \`REVIEWER_FILE\`.")
 ingest_line=$(line_for "$VALIDATION_MD" '2. **Codex/Cursor validation sidecar ingestion after collection settles**')
 status_line=$(line_for "$VALIDATION_MD" '3. **Runtime-timeout replacement**')

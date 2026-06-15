@@ -235,7 +235,7 @@ append_non_ok_collector_results_from_file() {
                     --reviewer-file "$reviewer_file" \
                     --structured-record "$_structured_record" \
                     --output "$combined" >/dev/null 2>&1 || true
-                append_review_failure "review Step 3a" "collect-agent-results.sh ${tool:-unknown} $status" "${exit_code:-1}" "$combined"
+                append_review_failure "review Step 3a" "agent collect-results ${tool:-unknown} $status" "${exit_code:-1}" "$combined"
                 rm -f "$combined"
                 unset _structured_record
             fi
@@ -259,7 +259,7 @@ append_non_ok_collector_results_from_file() {
             --reviewer-file "$reviewer_file" \
             --structured-record "$_structured_record" \
             --output "$combined" >/dev/null 2>&1 || true
-        append_review_failure "review Step 3a" "collect-agent-results.sh ${tool:-unknown} $status" "${exit_code:-1}" "$combined"
+        append_review_failure "review Step 3a" "agent collect-results ${tool:-unknown} $status" "${exit_code:-1}" "$combined"
         rm -f "$combined"
         unset _structured_record
     fi
@@ -268,7 +268,7 @@ append_non_ok_collector_results_from_file() {
 collector_results_file="$REVIEW_TMPDIR/collector-results.env"
 : > "$collector_results_file"
 if [[ "$EXTERNAL_COUNT" -gt 0 ]]; then
-    # Pin: collect-agent-results.sh --timeout 1860 --substantive-validation --validation-mode
+    # Pin: agent collect-results --timeout 1860 --substantive-validation --validation-mode
     args=(--timeout "$TIMEOUT" --substantive-validation --validation-mode)
     collector_log="$REVIEW_TMPDIR/collect-agent-results.log"
     collector_stderr="$REVIEW_TMPDIR/collect-agent-results.stderr"
@@ -280,7 +280,7 @@ if [[ "$EXTERNAL_COUNT" -gt 0 ]]; then
     # Subshell clears inherited quiet-session exports so collector stderr is not routed to FD 4 only.
     (
         unset LARCH_QUIET_ACTIVE LARCH_QUIET_PID LARCH_QUIET_LOG_FILE LARCH_QUIET_LOG 2>/dev/null || true
-        LARCH_QUIET_DISABLE=1 "$PLUGIN_ROOT/scripts/collect-agent-results.sh" "${args[@]}" "${EXTERNAL_OUTPUT_FILES[@]}"
+        LARCH_QUIET_DISABLE=1 python3 "$PLUGIN_ROOT/python/cli.py" agent collect-results "${args[@]}" "${EXTERNAL_OUTPUT_FILES[@]}"
     ) > "$collector_results_file" 2>"$collector_stderr"
     collector_rc=$?
     set -e
@@ -296,7 +296,7 @@ if [[ "$EXTERNAL_COUNT" -gt 0 ]]; then
     unset _collector_err_line
     cat "$collector_results_file" >> "$collector_log"
     if [[ "$collector_rc" -ne 0 ]]; then
-        append_review_failure "review Step 3a" "collect-agent-results.sh" "$collector_rc" "$collector_log"
+        append_review_failure "review Step 3a" "agent collect-results" "$collector_rc" "$collector_log"
         # Redact stderr replay; the unredacted file is already captured in
         # the verbatim execution-issues entry via --redact above.
         if command -v python3 >/dev/null 2>&1; then

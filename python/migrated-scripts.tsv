@@ -913,3 +913,11 @@ scripts/run-step1-plan-log.sh	#3681
 scripts/run-step1-plan-log.md	#3681
 scripts/test-run-step1-plan-log.sh	#3681
 scripts/test-run-step1-plan-log.md	#3681
+scripts/collect-agent-results.sh	#3676
+scripts/test-collect-agent-results.sh	#3676
+scripts/test-collect-agent-results.md	#3676
+scripts/test-collect-agent-retry.sh	#3676
+scripts/test-collect-agent-retry.md	#3676
+scripts/test-collect-agent-bash32.sh	#3676
+scripts/test-collect-agent-bash32.md	#3676
+scripts/collect-agent-results.md	#3676

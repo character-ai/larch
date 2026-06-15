@@ -63,6 +63,32 @@ def _review_provenance(design_tmpdir: Path) -> tuple[str, int]:
     return status, rounds
 
 
+def _insert_provenance_before_trailer(plan_text: str, review_status: str, rounds_completed: int) -> str:
+    lines = plan_text.splitlines(keepends=True)
+    diff_idx = -1
+    for idx in range(len(lines) - 1, -1, -1):
+        if re.fullmatch(r"diff_lines: [0-9]+", lines[idx].rstrip("\n")):
+            diff_idx = idx
+            break
+    provenance = [
+        f"review_status: {review_status}\n",
+        f"rounds_completed: {rounds_completed}\n",
+    ]
+    trailer_keys = ("review_status", "rounds_completed", "diff_added", "diff_deleted", "mechanical_churn")
+    if diff_idx < 0:
+        return plan_text.rstrip("\n") + "\n" + "".join(provenance)
+    start = diff_idx
+    for idx in range(diff_idx - 1, -1, -1):
+        stripped = lines[idx].rstrip("\n")
+        if stripped == "":
+            continue
+        if any(stripped.startswith(f"{key}: ") for key in trailer_keys):
+            start = idx
+            continue
+        break
+    return "".join(lines[:start]) + "".join(provenance) + "".join(lines[diff_idx:])
+
+
 def publish_main(argv: Sequence[str]) -> int:
     args = list(argv)
     parsed = {
@@ -156,12 +182,9 @@ def publish_main(argv: Sequence[str]) -> int:
         return int(pause.returncode)
 
     if review_status or rounds_completed:
-        provenance_header = (
-            f"review_status: {review_status}\n"
-            f"rounds_completed: {rounds_completed}\n\n"
-        )
         original = composed_plan.read_text(encoding="utf-8", errors="replace")
-        _ = composed_plan.write_text(provenance_header + original, encoding="utf-8")
+        updated = _insert_provenance_before_trailer(original, review_status, rounds_completed)
+        _ = composed_plan.write_text(updated, encoding="utf-8")
 
     if skip_validate:
         kvs[1] = ("VALIDATE_STATUS", "skipped")

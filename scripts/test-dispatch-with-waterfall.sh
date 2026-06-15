@@ -406,7 +406,7 @@ grep -Fq '## Recommendation' "$TMPROOT/pattern-fallback-slot-phase2.txt" \
 
 # Case B: STATUS=cap_hit bypasses the pattern gate (token-budget skip is
 # terminal). Cursor returns `STATUS=cap_hit\n...` as its `.result`, which
-# collect-agent-results.sh promotes to STATUS=cap_hit. Slot settles on the
+# agent collect-results promotes to STATUS=cap_hit. Slot settles on the
 # assigned primary tool; no phase-2 launch occurs.
 manifest="$TMPROOT/slots-pattern-caphit.ndjson"
 printf '{"slot":"s1","tool":"cursor","output":"%s","prompt_file":"%s"}\n' \
@@ -735,7 +735,7 @@ fi
 [[ ! -f "${manifest}.output-files.dropped-slots" ]] || { echo "FAIL: no-fallback keep must not write a drops sidecar" >&2; exit 1; }
 
 _collect_paths="${manifest}.output-files"
-_collect_out=$(LARCH_QUIET_DISABLE=1 bash "$REPO_ROOT/scripts/collect-agent-results.sh" \
+_collect_out=$(LARCH_QUIET_DISABLE=1 python3 "$REPO_ROOT/python/cli.py" agent collect-results \
     --timeout 5 \
     --paths-file "$_collect_paths" 2>&1) || true
 if grep -Fq 'STATUS=SENTINEL_TIMEOUT' <<<"$_collect_out"; then
@@ -774,7 +774,7 @@ partial_drop_file="${partial_drop_kv#DROPPED_SLOTS_FILE=}"
 IFS=$'\t' read -r pd_slot _ pd_reason _ < "$partial_drop_file"
 [[ "$pd_slot" == "partial-drop" ]] || { echo "FAIL: partial drop record should name the dropped slot, got '$pd_slot'" >&2; cat "$partial_drop_file" >&2; exit 1; }
 [[ "$pd_reason" == "collector-failure" ]] || { echo "FAIL: partial drop reason, got '$pd_reason'" >&2; cat "$partial_drop_file" >&2; exit 1; }
-_collect_partial_out=$(LARCH_QUIET_DISABLE=1 bash "$REPO_ROOT/scripts/collect-agent-results.sh" \
+_collect_partial_out=$(LARCH_QUIET_DISABLE=1 python3 "$REPO_ROOT/python/cli.py" agent collect-results \
     --timeout 5 \
     --paths-file "$partial_paths" 2>&1) || true
 if grep -Fq 'STATUS=SENTINEL_TIMEOUT' <<<"$_collect_partial_out"; then
@@ -809,7 +809,7 @@ if grep -Fq 'SENTINEL_TIMEOUT' <<<"$out"; then
     exit 1
 fi
 _absent_paths="${manifest}.output-files"
-_collect_absent_out=$(LARCH_QUIET_DISABLE=1 bash "$REPO_ROOT/scripts/collect-agent-results.sh" \
+_collect_absent_out=$(LARCH_QUIET_DISABLE=1 python3 "$REPO_ROOT/python/cli.py" agent collect-results \
     --timeout 5 \
     --paths-file "$_absent_paths" 2>&1) || true
 if grep -Fq 'STATUS=SENTINEL_TIMEOUT' <<<"$_collect_absent_out"; then
@@ -866,7 +866,7 @@ assert_line "DISPATCH_OK=true" "$out"
 
 # --- Degraded Cursor output integration: high-token narration triggers fallback ---
 # Cursor stub returns outputTokens=5000 with a short narration result (<500 bytes).
-# agent launch-review writes CURSOR_DEGRADED_RESPONSE; collect-agent-results.sh maps
+# agent launch-review writes CURSOR_DEGRADED_RESPONSE; agent collect-results maps
 # it to STATUS=CURSOR_EMPTY_RESPONSE; dispatch-with-waterfall.sh falls back to Claude.
 manifest_deg="$TMPROOT/slots-degraded.ndjson"
 printf '{"slot":"s1","tool":"cursor","output":"%s","prompt_file":"%s"}\n' \
