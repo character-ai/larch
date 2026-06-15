@@ -156,6 +156,15 @@ EOF
 )
 assert_parse "$f" $'2\n1\n-\ntrue'
 
+f=$(write_fixture mech-zero <<'EOF'
+body
+diff_added: 1
+mechanical_churn: 0
+diff_lines: 10
+EOF
+)
+assert_parse "$f" $'2\n1\n-\nfalse'
+
 f=$(write_fixture retain-010 <<'EOF'
 body
 diff_added: 010

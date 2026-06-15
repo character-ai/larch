@@ -100,22 +100,27 @@ if [ "$#" -ge 3 ] && [ "$2" = plan-block ] && [ "$3" = read ]; then
       exit 0
       ;;
     panel-init-failed)
-      [ -n "$out" ] && printf 'Plan text\nreview_status: panel-init-failed\nrounds_completed: 0\n' > "$out"
+      [ -n "$out" ] && printf 'Plan text\nreview_status: panel-init-failed\nrounds_completed: 0\ndiff_lines: 10\n' > "$out"
       printf 'BLOCK_PRESENT=true\n'
       exit 0
       ;;
     panel-skipped)
-      [ -n "$out" ] && printf 'Plan text\nreview_status: panel-skipped\nrounds_completed: 0\n' > "$out"
+      [ -n "$out" ] && printf 'Plan text\nreview_status: panel-skipped\nrounds_completed: 0\ndiff_lines: 10\n' > "$out"
       printf 'BLOCK_PRESENT=true\n'
       exit 0
       ;;
     zero-rounds)
-      [ -n "$out" ] && printf 'Plan text\nreview_status: complete\nrounds_completed: 0\n' > "$out"
+      [ -n "$out" ] && printf 'Plan text\nreview_status: complete\nrounds_completed: 0\ndiff_lines: 10\n' > "$out"
       printf 'BLOCK_PRESENT=true\n'
       exit 0
       ;;
     malformed-rounds)
-      [ -n "$out" ] && printf 'Plan text\nreview_status: complete\nrounds_completed: nope\n' > "$out"
+      [ -n "$out" ] && printf 'Plan text\nreview_status: complete\nrounds_completed: nope\ndiff_lines: 10\n' > "$out"
+      printf 'BLOCK_PRESENT=true\n'
+      exit 0
+      ;;
+    footer-false-positive)
+      [ -n "$out" ] && printf 'Plan body mentions rounds_completed: 0 in a code example\nreview_status: complete\nrounds_completed: 2\ndiff_lines: 10\n' > "$out"
       printf 'BLOCK_PRESENT=true\n'
       exit 0
       ;;
@@ -301,6 +306,12 @@ ADMISSION_CASE=pass PLAN_CASE=zero-rounds GH_JSON="$(json_body '[DESIGNED] Revie
 contains "$TMPROOT/review-zero-rounds/stdout" '**❌ /implement preflight: plan review did not run — `rounds_completed=0`. Re-run /design 42 before retrying /implement.**' 'zero rounds refusal'
 ADMISSION_CASE=pass PLAN_CASE=malformed-rounds GH_JSON="$(json_body '[DESIGNED] Review' 'body')" run_expect 2 review-malformed-rounds
 contains "$TMPROOT/review-malformed-rounds/stdout" '**❌ /implement preflight: malformed plan review metadata — `rounds_completed=nope`. Re-run /design 42 before retrying /implement.**' 'malformed rounds refusal'
+
+# 9c. Footer-only provenance parsing ignores body false positives.
+ADMISSION_CASE=pass PLAN_CASE=footer-false-positive GH_JSON="$(json_body '[DESIGNED] Review' 'body')" run_expect 0 review-footer-false-positive
+not_contains "$TMPROOT/review-footer-false-positive/stdout" 'rounds_completed=0' 'footer parser must ignore body false positive'
+ADMISSION_CASE=pass PLAN_CASE=absent GH_JSON="$(json_body '[DESIGNED] Emergency' 'code example rounds_completed: 0')" run_expect 0 emergency-body-false-positive --emergency
+not_contains "$TMPROOT/emergency-body-false-positive/stdout" 'rounds_completed=0' 'emergency fallback must not parse body provenance'
 
 # 10. JSON decoding and malformed JSON handling.
 json_escaped="$($REAL_PYTHON -c 'import json; print(json.dumps({"body":"line1\\nline2 with \\\"quote\\\"","labels":[],"number":42,"title":"Title with\\nnewline","state":"OPEN"}))')"

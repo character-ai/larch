@@ -190,10 +190,7 @@ handle_compose_outcome() {
             status=$(compose_env_key STALL_RECOVERY_REPORT_STATUS "")
         fi
         if [ -z "$status" ]; then
-            cp "$COMPOSE_ENV" "$sentinel"
-            emit_kv DESIGN_FAILURE_REPORT_DECISION "$decision"
-            emit_kv DESIGN_FAILURE_REPORT_ENV "$sentinel"
-            emit_kv DESIGN_FAILURE_REPORT_ARTIFACT "$LAST_REPORT_OUTPUT"
+            write_fallback_chat "compose-status-missing"
             exit 0
         fi
     fi

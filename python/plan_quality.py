@@ -929,7 +929,7 @@ def parse_optional_metadata(plan_text: str) -> OptionalMetadata:
             if value in {"true", "false"}:
                 mechanical = value
             elif value.isdigit():
-                mechanical = "true"
+                mechanical = "true" if int(value) > 0 else "false"
             else:
                 mechanical = "invalid:" + value
             has_mech = True

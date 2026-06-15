@@ -494,14 +494,16 @@ case "${ROUNDS_COMPLETED:-${REVIEW_ROUND_COUNT:-0}}" in
   ''|*[!0-9]*) _step3_rounds_completed_dec=0 ;;
   *) _step3_rounds_completed_dec=$((10#${ROUNDS_COMPLETED:-${REVIEW_ROUND_COUNT:-0}})) ;;
 esac
-if [[ "${STEP3_REVIEW_LOOP_STATUS:-}" == panel-failed && "${DEGRADED_PANEL:-0}" != 1 ]]; then
-  if [[ "$_step3_rounds_completed_dec" -eq 0 || ! -d "$DESIGN_TMPDIR/plan-review/round-1" ]]; then
+if [[ "${STEP3_REVIEW_LOOP_STATUS:-}" == panel-failed ]]; then
+  if _step3_review_zero_round_coverage_missing "$_step3_rounds_completed_dec"; then
     larch_err "**⚠ Step 3: panel failed before any reviewer round launched; treating as panel-init-failed**"
     STEP3_REVIEW_LOOP_STATUS=panel-init-failed
     LOOP_STATUS=panel-init-failed
     TALLY_PLAN_REVIEW_STATUS=panel-init-failed
     ROUNDS_COMPLETED=0
     REVIEW_ROUND_COUNT=0
+    REASON=panel-failed-zero-coverage
+    _step3_review_write_result_env panel-init-failed panel-failed-zero-coverage 0
   fi
 fi
 # Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security

@@ -95,7 +95,7 @@ test-harnesses-5: test-harness-shards-coverage test-findings-classification test
 
 test-harnesses-6: test-write-final-report test-design-clarify test-auto-fix-plan-commands test-emit-design-plan-preview test-design-step5c test-design-step6 test-run-negotiation-round test-review-and-fix-parsers test-scout-dynamic-archetypes test-parse-design-argv test-review-and-fix-write-rejected test-rebase-push-keep-on-conflict test-lib-phase-driver test-parse-drafter-output test-research-angle-prompts test-alias-structure
 
-test-harnesses-7: test-design-step3-mav test-design-failure-report test-dispatch-code-voters-regressions-r1-r2 test-oos-disposition-gate test-gate-b-apply-mode test-design-step3-review test-review-and-fix-step5-loop-timing test-flush-execution-issues test-scrub-log-secrets test-lint-bash32 test-references-headers test-rebase-push-fork-mode test-lib-prune-decision
+test-harnesses-7: test-design-step3-mav test-design-failure-report test-dispatch-code-voters-regressions-r1-r2 test-oos-disposition-gate test-gate-b-apply-mode test-design-step3-review test-design-step3-entry test-design-step0-init test-review-and-fix-step5-loop-timing test-flush-execution-issues test-scrub-log-secrets test-lint-bash32 test-references-headers test-rebase-push-fork-mode test-lib-prune-decision
 
 test-harnesses-8: test-stall-recovery-report-2 test-dispatch-panel-core-dynamic test-file-design-oos test-implement-bootstrap-invoke test-render-findings-batch test-check-topology-rule-paths test-classify-bump test-capture-session-transcript test-refresh-run-logs test-record-plan-review-round-timing test-redact test-verify-skill-called test-emit-plan test-pause-skill test-implement-step2-routing
 
@@ -1156,7 +1156,7 @@ setup:
 test-check-contains-pins:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-check-contains-pins.sh
 
-.PHONY: test-design-stage-terminal-state test-design-failure-report test-design-step3-review test-design-step5c test-design-step6 test-design-step-validator-autofix
+.PHONY: test-design-stage-terminal-state test-design-failure-report test-design-step3-review test-design-step3-entry test-design-step0-init test-design-step5c test-design-step6 test-design-step-validator-autofix
 
 test-design-stage-terminal-state:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-stage-terminal-state.sh
@@ -1166,6 +1166,12 @@ test-design-failure-report:
 
 test-design-step3-review:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-step3-review.sh
+
+test-design-step3-entry:
+	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-step3-entry.sh
+
+test-design-step0-init:
+	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-step0-init.sh
 
 test-design-step5c:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-step5c.sh

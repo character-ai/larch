@@ -185,12 +185,40 @@ write_fallback_plan() {
 plan_review_meta_value() {
   key="$1"
   awk -v key="$key" '
-    index($0, key ": ") == 1 {
-      value = substr($0, length(key) + 3)
-      seen = 1
+    {
+      lines[NR] = $0
     }
     END {
-      if (seen) print value
+      diff_idx = 0
+      for (i = NR; i >= 1; i--) {
+        if (lines[i] ~ /^diff_lines: [0-9]+$/) {
+          diff_idx = i
+          break
+        }
+      }
+      if (diff_idx < 1) {
+        exit
+      }
+      start = diff_idx
+      for (i = diff_idx - 1; i >= 1; i--) {
+        if (lines[i] ~ /^(review_status|rounds_completed|diff_added|diff_deleted|mechanical_churn): /) {
+          start = i
+          continue
+        }
+        if (lines[i] ~ /^[[:space:]]*$/) {
+          continue
+        }
+        break
+      }
+      for (i = start; i < diff_idx; i++) {
+        if (index(lines[i], key ": ") == 1) {
+          value = substr(lines[i], length(key) + 3)
+          seen = 1
+        }
+      }
+      if (seen) {
+        print value
+      }
     }
   ' "$PLAN_PATH"
 }
@@ -336,7 +364,7 @@ elif [ "$PLAN_RC" -ne 0 ]; then
   exit 2
 fi
 
-if [ -s "$PLAN_PATH" ]; then
+if [ "$BLOCK_PRESENT" = true ] && [ -s "$PLAN_PATH" ]; then
   refuse_unreviewed_plan
 fi
 

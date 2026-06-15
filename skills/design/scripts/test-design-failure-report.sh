@@ -137,6 +137,10 @@ run_report "$D8" failed-publish "$D8/operator-sentinel.out"
 grep -Fxq 'DESIGN_FAILURE_REPORT_DECISION=terminal-failure' "$D8/operator-sentinel.out" || fail 'operator sentinel must not suppress terminal failure'
 pass 'stale operator-action sentinel does not suppress terminal failure'
 
+grep -Fq 'panel_failure_evidence_present' "$SUBJECT" || fail 'panel failure evidence helper missing'
+grep -Fq 'write_fallback_chat "compose-status-missing"' "$SUBJECT" || fail 'compose-status-missing fallback helper missing'
+pass 'panel failure evidence bypass does not emit terminal-failure without compose status'
+
 D9=$(mktemp -d)
 cat >"$D9/design-failure-operator-action.env" <<'EOF2'
 DESIGN_FAILURE_OPERATOR_ACTION=true
