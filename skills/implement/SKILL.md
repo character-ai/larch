@@ -591,15 +591,15 @@ Nested review token-context propagation through `review-and-fix CLI` is pinned b
 bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-5-review.sh
 ```
 
-Wait for `<task-notification>` before parsing the loop stdout or reading Step 5 result files. If the wrapper exits non-zero and stdout has no `STEP5_REVIEW_STATUS`, treat it as a Step 5 preflight failure, log it to `Warnings`, and do not parse the loop status branches.
+Wait for `<task-notification>` before parsing the loop stdout or reading Step 5 result files. If the wrapper exits non-zero and stdout has no `STEP5_REVIEW_STATUS`, treat it as a Step 5 preflight failure, log it to `Warnings`, set `STALL_TRACKING=true`, set `STALL_STEP=5`, and skip to Step 16 — do **not** fall through to status parsing or branching. Step 6 continuation requires a present `STEP5_REVIEW_STATUS`; without it, the review loop did not run and NEVER #4 is not satisfied by proceeding to Step 6.
 
-Parse the child stdout with **token-aware** key extraction (each output line may carry multiple `KEY=value` tokens separated by whitespace; scan every token on every line — do not assume one KV per line). Extract at minimum: `STEP5_REVIEW_STATUS`, `STALL_TRACKING`, `STALL_REASON`, `ROUNDS_COMPLETED`, `FINAL_ROUND_NUM`, `FINAL_REVIEW_AND_FIX_STATUS`, `CODER_STATUS`, `FILES_CHANGED_HINT`, `EFFECTIVE_ROUND_CAP`.
+Only when stdout contains `STEP5_REVIEW_STATUS`, parse the child stdout with **token-aware** key extraction (each output line may carry multiple `KEY=value` tokens separated by whitespace; scan every token on every line — do not assume one KV per line). Extract at minimum: `STEP5_REVIEW_STATUS`, `STALL_TRACKING`, `STALL_REASON`, `ROUNDS_COMPLETED`, `FINAL_ROUND_NUM`, `FINAL_REVIEW_AND_FIX_STATUS`, `CODER_STATUS`, `FILES_CHANGED_HINT`, `EFFECTIVE_ROUND_CAP`.
 
 > **Continue after the loop returns.** On any non-stall `STEP5_REVIEW_STATUS`, execute the Cross-Skill Presence Propagation + Track Rejected Code Review Findings + Step 6 breadcrumb in order — do NOT end the turn, summarize, or write a handoff message before reaching Step 6. → shared/subskill-invocation.md#anti-halt
 
 For `stall`, `main-agent-vote-required`, `coder-main-agent-required`, and `mav-resume-past-cap`, **MANDATORY — READ ENTIRE FILE** before executing the branch: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/step5-review-branches.md`.
 
-Branch on `STEP5_REVIEW_STATUS`:
+Branch on `STEP5_REVIEW_STATUS` (only when present — preflight failures without it terminate at Step 16 per above):
 
 - **`complete`**: proceed with Cross-Skill Presence Propagation, then Track Rejected Code Review Findings, then the Step 6 breadcrumb (the absorbed loop already ran `python/cli.py checks run-relevant`, `python/cli.py checks lint-fix` when needed, and the substantiality / bulk-skip gates inside Bash).
 - **`cap-hit`**: print `**⚠ 5: code review hit $EFFECTIVE_ROUND_CAP-round cap without converging. Proceeding.**`, log to `Warnings`, then run the same post-Step-5 chain as `complete`.
