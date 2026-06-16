@@ -874,9 +874,11 @@ def test_run_legacy_consumer_repo_env_override_wins(monkeypatch: pytest.MonkeyPa
 
 def test_embedded_waterfall_dispatchers_call_agent_verb() -> None:
     retired = "dispatch-with-" + "waterfall.sh"
+    dispatch_voters = "dispatch-plan-" + "voters.sh"
+    review_panel = "dispatch-plan-review-" + "panel.sh"
     keys = (
-        "/".join(("scripts", "dispatch-plan-voters.sh")),
-        "/".join(("skills", "design", "scripts", "dispatch-plan-review-panel.sh")),
+        f"scripts/{dispatch_voters}",
+        f"skills/design/scripts/{review_panel}",
     )
     for key in keys:
         body = plan_review.legacy_asset_bytes(key).decode("utf-8")
