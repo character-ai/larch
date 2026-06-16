@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import contextlib
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import plan_review
 from test_support import ROOT, run_cli
+
+if TYPE_CHECKING:
+    import pytest
 
 
 def test_embedded_review_design_step3_loop_matches_live_script() -> None:
@@ -808,3 +813,60 @@ def test_preview_small_plan_full_body_without_large_note(tmp_path: Path) -> None
     assert proc.returncode == 0
     assert "Hello" in proc.stdout
     assert "very large" not in proc.stdout
+
+
+class _Completed:
+    returncode = 0
+
+
+def test_run_legacy_exposes_consumer_repo_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    # issue #4509: embedded scripts run with cwd=_REPO_ROOT (the plugin cache, not
+    # a git repo). _run_legacy must expose the consumer repo (this process's CWD)
+    # via LARCH_CONSUMER_REPO so child `dirty-tree checkpoint` calls target a real
+    # git repo instead of mapping a failing `git status` to STATUS=unknown.
+    captured: dict[str, object] = {}
+
+    @contextlib.contextmanager
+    def fake_root():
+        yield str(tmp_path)
+
+    def fake_run(argv: list[str], **kwargs: object) -> _Completed:
+        _ = argv
+        captured["env"] = kwargs.get("env")
+        captured["cwd"] = kwargs.get("cwd")
+        return _Completed()
+
+    monkeypatch.delenv("LARCH_CONSUMER_REPO", raising=False)
+    monkeypatch.setattr(plan_review, "_materialize_legacy_root", fake_root)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(plan_review.subprocess, "run", fake_run)
+    monkeypatch.chdir(tmp_path)
+    expected_cwd = str(Path.cwd())
+    rc = plan_review.run_legacy_script(("skills", "design", "scripts", "x.sh"), [])
+    assert rc == 0
+    env = captured["env"]
+    assert isinstance(env, dict)
+    assert env["LARCH_CONSUMER_REPO"] == expected_cwd
+    # The subprocess still runs from the plugin-cache root, not the consumer repo.
+    assert captured["cwd"] == str(plan_review._REPO_ROOT)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_run_legacy_consumer_repo_env_override_wins(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    captured: dict[str, object] = {}
+
+    @contextlib.contextmanager
+    def fake_root():
+        yield str(tmp_path)
+
+    def fake_run(argv: list[str], **kwargs: object) -> _Completed:
+        _ = argv
+        captured["env"] = kwargs.get("env")
+        return _Completed()
+
+    monkeypatch.setattr(plan_review, "_materialize_legacy_root", fake_root)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(plan_review.subprocess, "run", fake_run)
+    monkeypatch.setenv("LARCH_CONSUMER_REPO", "/explicit/consumer")
+    rc = plan_review.run_legacy_script(("skills", "design", "scripts", "x.sh"), [])
+    assert rc == 0
+    env = captured["env"]
+    assert isinstance(env, dict)
+    assert env["LARCH_CONSUMER_REPO"] == "/explicit/consumer"

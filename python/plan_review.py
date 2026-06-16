@@ -1107,6 +1107,11 @@ def _run_legacy(rel_parts: Sequence[str], argv: Sequence[str]) -> int:
         env = os.environ.copy()
         env["CLAUDE_PLUGIN_ROOT"] = str(root)
         _ = env.setdefault("LARCH_REAL_PLUGIN_ROOT", str(_REPO_ROOT))
+        # Embedded scripts run with cwd=_REPO_ROOT (the plugin cache, not a git
+        # repo). Expose the consumer repo (this process's CWD) so child `dirty-tree
+        # checkpoint` calls can target it via LARCH_CONSUMER_REPO and avoid the
+        # false-positive dirty-tree WARN from a failing `git status` (issue #4509).
+        _ = env.setdefault("LARCH_CONSUMER_REPO", str(Path.cwd()))
         bash = shutil.which("bash") or "/bin/bash"
         proc = subprocess.run(
             [bash, str(script), *argv], cwd=str(_REPO_ROOT), env=env, check=False
