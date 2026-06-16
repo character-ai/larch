@@ -1,3 +1,4 @@
+# pyright: reportPrivateUsage=false
 """Tests for /design log publish flow port."""
 
 from __future__ import annotations
@@ -7,6 +8,12 @@ import stat
 import subprocess
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+import design_log_publish_flow
+
+if TYPE_CHECKING:
+    import pytest
 
 RUN_ID = "ABCDEF01-2345-6789-ABCD-EF0123456789"
 LOG_BRANCH = f"larch-logs/design-{RUN_ID}"
@@ -145,3 +152,54 @@ def test_log_publish_pr_failure_keeps_tree_clean_and_emits_recovery(tmp_path: Pa
     origin = tmp_path / "origin.git"
     ls = subprocess.run(["git", "ls-tree", "-r", "--name-only", LOG_BRANCH], cwd=origin, capture_output=True, text=True, check=False)
     assert f"larch-logs/design/{RUN_ID}/artifact.txt" in ls.stdout, ls.stdout
+
+
+def test_spawn_detached_admin_merge_routes_to_ship_design_log(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Bug #4524: GitHub-native --auto can never satisfy the active "Code review"
+    # ruleset's required-review gate for an unreviewed automated PR, so log PRs
+    # never merge. The fix routes the log PR through the existing ship design-log
+    # admin-merge waiter, launched detached so /design is not blocked on CI (#4404).
+    captured_argv: list[str] = []
+    captured_kwargs: dict[str, object] = {}
+
+    def fake_popen(argv: list[str], **kwargs: object) -> object:
+        captured_argv.extend(argv)
+        captured_kwargs.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(design_log_publish_flow.subprocess, "Popen", fake_popen)  # type: ignore[arg-type]
+    design_log_publish_flow._spawn_detached_admin_merge("/p/python/cli.py", "77", "o/r", "/repo")
+
+    assert captured_argv == [
+        sys.executable, "/p/python/cli.py", "ship", "design-log", "--pr-number", "77", "--repo", "o/r",
+    ]
+    assert "--auto" not in captured_argv
+    assert captured_kwargs["start_new_session"] is True
+    assert captured_kwargs["cwd"] == "/repo"
+    assert captured_kwargs["stdin"] == subprocess.DEVNULL
+    assert captured_kwargs["stdout"] == subprocess.DEVNULL
+    assert captured_kwargs["stderr"] == subprocess.DEVNULL
+
+
+def test_spawn_detached_admin_merge_omits_repo_when_empty(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured_argv: list[str] = []
+
+    def fake_popen(argv: list[str], **_kwargs: object) -> object:
+        captured_argv.extend(argv)
+        return object()
+
+    monkeypatch.setattr(design_log_publish_flow.subprocess, "Popen", fake_popen)  # type: ignore[arg-type]
+    design_log_publish_flow._spawn_detached_admin_merge("/p/python/cli.py", "77", "", "/repo")
+
+    assert captured_argv == [sys.executable, "/p/python/cli.py", "ship", "design-log", "--pr-number", "77"]
+    assert "--repo" not in captured_argv
+
+
+def test_spawn_detached_admin_merge_swallows_launch_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Best-effort: a launch failure must not raise (the log PR stays open for a
+    # manual/CI merge and the working tree is already clean).
+    def boom(_argv: list[str], **_kwargs: object) -> object:
+        raise OSError("no exec")
+
+    monkeypatch.setattr(design_log_publish_flow.subprocess, "Popen", boom)  # type: ignore[arg-type]
+    design_log_publish_flow._spawn_detached_admin_merge("/p/python/cli.py", "77", "o/r", "/repo")
