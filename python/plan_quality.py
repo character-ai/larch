@@ -685,6 +685,33 @@ def redact_capture(repo_root: Path, text: str) -> str:
     return _redact_capture(repo_root, text)
 
 
+def _resolve_repo_script(script: str, repo: Path, plugin: Path | None) -> tuple[Path | None, str]:
+    """Resolve a repo-relative plan-command script against the consumer repo
+    root first, then the plugin root.
+
+    Returns ``(resolved_path, "")`` when the script stays canonical under one of
+    the roots and exists there. Otherwise returns ``(None, kind)`` where ``kind``
+    is ``"missing-script"`` when at least one root kept the path canonical (the
+    file is simply absent) or ``"non-canonical-path"`` when every root escaped
+    its tree. Checking both roots lets scripts that live only in the consumer
+    repo or only in the plugin cache pass the existence check (#4490).
+    """
+    roots = [repo]
+    if plugin is not None and plugin != repo:
+        roots.append(plugin)
+    canonical_seen = False
+    for root in roots:
+        candidate = (root / script).resolve()
+        try:
+            _ = candidate.relative_to(root)
+        except ValueError:
+            continue
+        canonical_seen = True
+        if candidate.is_file():
+            return candidate, ""
+    return None, "missing-script" if canonical_seen else "non-canonical-path"
+
+
 def validate_plan_command_rows(
     rows: list[PlanCommandRow],
     repo_root: str | Path,
@@ -692,8 +719,10 @@ def validate_plan_command_rows(
     source_kind: str = "plan",
     help_timeout: float = 10,
     dry_run_timeout: float = 10,
+    plugin_root: str | Path | None = None,
 ) -> ValidationSummary:
     repo = Path(repo_root).resolve()
+    plugin = Path(plugin_root).resolve() if plugin_root else None
     reg = Path(registry).resolve() if registry else repo / "scripts" / "dry-runnable-scripts.tsv"
     hooks = _registry_hooks(reg)
     log: list[str] = []
@@ -730,14 +759,9 @@ def validate_plan_command_rows(
         if _is_new_script(rows, script):
             skip(f"SKIPPED script={script} reason=new-script")
             continue
-        abs_path = (repo / script).resolve()
-        try:
-            abs_path.relative_to(repo)
-        except ValueError:
-            defect(f"DEFECT script={script} kind=non-canonical-path")
-            continue
-        if not abs_path.is_file():
-            defect(f"DEFECT script={script} kind=missing-script")
+        abs_path, existence_defect = _resolve_repo_script(script, repo, plugin)
+        if abs_path is None:
+            defect(f"DEFECT script={script} kind={existence_defect}")
             continue
         if script not in help_cache:
             env = os.environ.copy()
@@ -841,7 +865,7 @@ def validate_plan_commands_main(argv: list[str]) -> int:
         return 2
     repo = _repo_root_for_plan(tsv.parent, args.repo_root)
     summary = validate_plan_command_rows(
-        _read_tsv(tsv), repo, args.dry_runnable_registry, args.source_kind, args.help_timeout, args.dry_run_timeout
+        _read_tsv(tsv), repo, args.dry_runnable_registry, args.source_kind, args.help_timeout, args.dry_run_timeout, plugin_root=_plugin_root(repo)
     )
     _atomic_write(Path(args.log_file), summary.log_text)
     emit(f"VALIDATE_STATUS={summary.status}\tDEFECT_COUNT={summary.defect_count}\tSKIPPED_COUNT={summary.skipped_count}\tUNSAFE_TOKEN_COUNT={summary.unsafe_token_count}")
@@ -861,9 +885,10 @@ def validate_plan_main(argv: list[str]) -> int:
         diagnostic(f"validate: unreadable plan file: {plan}")
         return 2
     repo = _repo_root_for_plan(plan, args.repo_root)
+    plugin = _plugin_root(repo)
     source_kind = args.source_kind or ("composed" if plan.name == "composed-plan.md" else "plan")
-    rows = parse_plan_commands(plan.read_text(encoding="utf-8", errors="replace"), repo, _plugin_root(repo))
-    summary = validate_plan_command_rows(rows, repo, None, source_kind)
+    rows = parse_plan_commands(plan.read_text(encoding="utf-8", errors="replace"), repo, plugin)
+    summary = validate_plan_command_rows(rows, repo, None, source_kind, plugin_root=plugin)
     emit_kv("VALIDATE_STATUS", summary.status)
     emit_kv("VALIDATE_DEFECT_COUNT", str(summary.defect_count))
     emit_kv("VALIDATE_SKIPPED_COUNT", str(summary.skipped_count))

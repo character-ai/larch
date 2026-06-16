@@ -1083,6 +1083,43 @@ def test_validate_plan_defaults_to_plugin_root_for_session_tmpdir_plan(tmp_path:
     assert out["VALIDATE_DEFECT_COUNT"] == "1"
 
 
+def test_validate_plan_command_rows_dual_root_existence(tmp_path: Path) -> None:
+    # A script may exist only in the consumer repo (the #4490 regression) or
+    # only in the plugin cache; either root must satisfy the existence check.
+    repo = tmp_path / "consumer"
+    plugin = tmp_path / "plugin"
+    for base in (repo, plugin):
+        (base / "skills" / "demo" / "scripts").mkdir(parents=True)
+    consumer_only = repo / "skills" / "demo" / "scripts" / "consumer-only.sh"
+    plugin_only = plugin / "skills" / "demo" / "scripts" / "plugin-only.sh"
+    for script in (consumer_only, plugin_only):
+        script.write_text("#!/usr/bin/env bash\necho hi\n", encoding="utf-8")
+        script.chmod(0o755)
+
+    def _summary(name: str) -> plan_quality.ValidationSummary:
+        plan_text = f"## Plan\n\n```bash\nskills/demo/scripts/{name}\n```\n\ndiff_lines: 1\n"
+        rows = plan_quality.parse_plan_commands(plan_text, repo, plugin)
+        return plan_quality.validate_plan_command_rows(rows, repo, plugin_root=plugin, help_timeout=5, dry_run_timeout=5)
+
+    # Found under the consumer repo root.
+    assert "kind=missing-script" not in _summary("consumer-only.sh").log_text
+    # Found under the plugin root fallback.
+    assert "kind=missing-script" not in _summary("plugin-only.sh").log_text
+    # Present in neither root: still flagged.
+    assert "DEFECT script=skills/demo/scripts/nope.sh kind=missing-script" in _summary("nope.sh").log_text
+
+
+def test_validate_plan_command_rows_single_root_unchanged(tmp_path: Path) -> None:
+    # Without a plugin_root, a missing script is still flagged (no regression to
+    # the legacy single-root behavior).
+    repo = tmp_path / "consumer"
+    (repo / "skills" / "demo" / "scripts").mkdir(parents=True)
+    plan_text = "## Plan\n\n```bash\nskills/demo/scripts/gone.sh\n```\n\ndiff_lines: 1\n"
+    rows = plan_quality.parse_plan_commands(plan_text, repo, repo)
+    summary = plan_quality.validate_plan_command_rows(rows, repo, help_timeout=5, dry_run_timeout=5)
+    assert "DEFECT script=skills/demo/scripts/gone.sh kind=missing-script" in summary.log_text
+
+
 def test_auto_fix_dispatch_alternation_with_stub(tmp_path: Path) -> None:
     plan = tmp_path / "plan.txt"
     plan.write_text("plan body\ndiff_lines: 3\n")
