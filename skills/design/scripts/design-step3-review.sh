@@ -318,6 +318,24 @@ _step3_review_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=skills/design/scripts/lib-step3-prelaunch-failure.sh
 . "$_step3_review_script_dir/lib-step3-prelaunch-failure.sh"
 
+# #4489: Guarantee the Step 3 completion sentinel on every terminal exit of this
+# background entrypoint. hook-bg-poll-guard.sh gates on .completed/step-3 only and
+# releases a live design-step3-review marker as soon as it exists; terminal paths
+# that skip the inner loop's sentinel write (postplan-failed, the post-loop
+# config/panel-init-failed exits, or a process abandoned mid-continuation) would
+# otherwise leave the guard blocked until the slower dead-process race clears it.
+# Writes ONLY step-3, never step-3.5: step-3.5 is a deferred Gate C / pause-resume
+# gate (design_pause.py step resolution, the Gate B post-apply idempotency guard,
+# design-step3b-entry.sh). Creating it here would skip Gate B on apply-pending
+# exits (main-agent-apply-required, per-round-approval-required). Idempotent and
+# best-effort: only creates a missing sentinel and never alters $?.
+_step3_review_guarantee_completed_sentinels() {
+  [ -n "${DESIGN_TMPDIR:-}" ] && [ -d "${DESIGN_TMPDIR:-}" ] || return 0
+  mkdir -p "$DESIGN_TMPDIR/.completed" 2>/dev/null || return 0
+  [ -e "$DESIGN_TMPDIR/.completed/step-3" ] || : >"$DESIGN_TMPDIR/.completed/step-3" 2>/dev/null || true
+  return 0
+}
+
 _step3_review_teardown_loop_group() {
   local _pid="${1:-}"
   [[ -n "$_pid" ]] || return 0
@@ -337,6 +355,7 @@ _step3_review_kill_tmpdir_processes() {
 _step3_review_cleanup() {
   local _rc=$?
   trap - EXIT
+  _step3_review_guarantee_completed_sentinels  # #4489: sentinel before exit
   if [[ -n "${_loop_pid:-}" ]]; then
     _step3_review_teardown_loop_group "$_loop_pid"
     _step3_review_kill_tmpdir_processes
@@ -405,6 +424,11 @@ _step3_review_teardown_loop_group "$_loop_pid"
 _step3_review_kill_tmpdir_processes
 _loop_pid=""
 trap - EXIT
+# #4489: loop teardown is done; from here every terminal exit (config-error,
+# postplan-failed, panel-init-failed, or the normal complete/cap-hit/main-agent
+# fall-through) must leave .completed/step-3 in place so the poll guard releases
+# on the first notification instead of waiting out the dead-process race.
+trap '_step3_review_guarantee_completed_sentinels' EXIT
 if [[ "${_step3_review_monitor_enabled_by_wrapper:-0}" -eq 1 ]]; then
   set +m 2>/dev/null || true
 fi

@@ -248,8 +248,13 @@ bash_is_step3_recovery_waiter() {
   if bash_has_probe_verb "$normalized"; then
     return 1
   fi
+  # #4489: accept an optional leading `DESIGN_TMPDIR=<abs>;` assignment. Bash tool
+  # calls do not persist $DESIGN_TMPDIR, so the orchestrator must set it inline for
+  # the waiter to resolve the sentinel; the bare `until` form still matches when the
+  # variable is already exported. The `&&`/`||` and probe-verb guards above still
+  # reject compound or probing tails appended after the assignment.
   # shellcheck disable=SC2016 # Match literal $DESIGN_TMPDIR in the candidate Bash command.
-  printf '%s' "$normalized" | grep -Eq '^until[[:space:]]+\[[[:space:]]+-f[[:space:]]+"?(\$DESIGN_TMPDIR/\.completed/step-3|\$\{DESIGN_TMPDIR\}/\.completed/step-3)"?[[:space:]]+\];[[:space:]]+do[[:space:]]+sleep[[:space:]]+[0-9]+[[:space:]]*;[[:space:]]+done$'
+  printf '%s' "$normalized" | grep -Eq '^(DESIGN_TMPDIR=[^;]+;[[:space:]]*)?until[[:space:]]+\[[[:space:]]+-f[[:space:]]+"?(\$DESIGN_TMPDIR/\.completed/step-3|\$\{DESIGN_TMPDIR\}/\.completed/step-3)"?[[:space:]]+\];[[:space:]]+do[[:space:]]+sleep[[:space:]]+[0-9]+[[:space:]]*;[[:space:]]+done$'
 }
 
 bash_has_probe_verb() {

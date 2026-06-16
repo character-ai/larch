@@ -194,6 +194,35 @@ fi
 rm -rf "$D_KILL"
 pass 'Step 3 wrapper invokes tmpdir kill helper after loop and ignores helper failure'
 
+# #4489: the wrapper guarantees the Step 3 completion sentinels on a terminal exit
+# even when the (stubbed) inner loop wrote a terminal result env but not the
+# sentinel, so hook-bg-poll-guard.sh releases the marker without the dead-process
+# race.
+D_SENTINEL=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-sentinel.XXXXXX")
+FAKE_SENTINEL="$D_SENTINEL/fake-plugin"
+# shellcheck disable=SC2016
+make_fake_step3_plugin "$FAKE_SENTINEL" 'cat > "$DESIGN_TMPDIR/.step3-review-result.env" <<RESULT
+STEP3_REVIEW_LOOP_STATUS=complete
+LOOP_STATUS=complete
+TALLY_PLAN_REVIEW_STATUS=ok
+STEP3_REVIEW_CAP_REACHED=false
+ROUNDS_COMPLETED=1
+REVIEW_ROUND_COUNT=1
+RESULT'
+printf 'anchor\n' >"$D_SENTINEL/plan-review-scope-anchor.txt"
+[ ! -e "$D_SENTINEL/.completed/step-3" ] || fail 'precondition: step-3 sentinel must be absent before run'
+set +e
+sentinel_out=$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$FAKE_SENTINEL" DESIGN_TMPDIR="$D_SENTINEL" ISSUE_NUMBER=9 \
+  LARCH_TEST_REAL_REPO_ROOT="$ROOT" "$WRAPPER" 2>"$D_SENTINEL/stderr.log")
+sentinel_rc=$?
+set -e
+[[ "$sentinel_rc" -eq 0 ]] || fail "sentinel-guarantee wrapper rc=$sentinel_rc stdout=$sentinel_out stderr=$(cat "$D_SENTINEL/stderr.log")"
+grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=complete' <<<"$sentinel_out" || fail 'sentinel-guarantee path should preserve complete envelope'
+[ -f "$D_SENTINEL/.completed/step-3" ] || fail '#4489: terminal exit must guarantee .completed/step-3'
+[ ! -e "$D_SENTINEL/.completed/step-3.5" ] || fail '#4489: guarantee must not write deferred .completed/step-3.5 (Gate C / pause-resume gate)'
+rm -rf "$D_SENTINEL"
+pass 'Step 3 wrapper guarantees step-3 sentinel and defers step-3.5 on terminal exit (#4489)'
+
 D_NO_ANCHOR=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-no-anchor.XXXXXX")
 FAKE_NO_ANCHOR="$D_NO_ANCHOR/fake-plugin"
 make_fake_step3_plugin "$FAKE_NO_ANCHOR" 'printf "%s\n" "SHOULD_NOT_RUN=true"'
@@ -281,6 +310,7 @@ grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=tally-error' <<<"$rre_out" || fail '--read-r
 grep -Fxq 'ROUNDS_COMPLETED=1' <<<"$rre_out" || fail '--read-result-env must emit ROUNDS_COMPLETED from result env'
 [ ! -f "$D_RRE/.bg-wait-active" ] || fail '--read-result-env must not start the bg-wait marker'
 [ ! -d "$D_RRE/plan-review" ] || fail '--read-result-env must not dispatch the review'
+[ ! -e "$D_RRE/.completed/step-3" ] || fail '--read-result-env must not write the completion sentinel (#4489)'
 
 D_RRE_MISSING=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-rre-missing.XXXXXX")
 set +e

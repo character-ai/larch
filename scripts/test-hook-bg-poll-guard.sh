@@ -134,6 +134,20 @@ step3_recovery_waiter_braced="until [ -f \"\${DESIGN_TMPDIR}/.completed/step-3\"
 out=$(run_payload "$(payload_bash "$step3_recovery_waiter_braced" "$D")")
 assert_allow "$out" 'braced Step 3 recovery waiter allows'
 
+# #4489: a single leading DESIGN_TMPDIR=<abs>; assignment is accepted so the
+# waiter resolves when the shell has not exported $DESIGN_TMPDIR.
+step3_recovery_waiter_prefixed="DESIGN_TMPDIR=/tmp/larch-design-xyz; until [ -f \"\$DESIGN_TMPDIR/.completed/step-3\" ]; do sleep 30; done"
+out=$(run_payload "$(payload_bash "$step3_recovery_waiter_prefixed" "$D")")
+assert_allow "$out" 'DESIGN_TMPDIR-prefixed Step 3 recovery waiter allows'
+
+step3_recovery_waiter_prefixed_braced="DESIGN_TMPDIR=/tmp/larch-design-xyz; until [ -f \"\${DESIGN_TMPDIR}/.completed/step-3\" ]; do sleep 30; done"
+out=$(run_payload "$(payload_bash "$step3_recovery_waiter_prefixed_braced" "$D")")
+assert_allow "$out" 'DESIGN_TMPDIR-prefixed braced Step 3 recovery waiter allows'
+
+step3_recovery_waiter_prefixed_probe="DESIGN_TMPDIR=/tmp/larch-design-xyz; until [ -f \"\$DESIGN_TMPDIR/.completed/step-3\" ]; do sleep 30; done && cat \"\$DESIGN_TMPDIR/.step3-review-result.env\""
+out=$(run_payload "$(payload_bash "$step3_recovery_waiter_prefixed_probe" "$D")")
+assert_deny "$out" 'DESIGN_TMPDIR-prefixed Step 3 recovery waiter with appended probe denies'
+
 step3_recovery_waiter_probe="until [ -f \"\$DESIGN_TMPDIR/.completed/step-3\" ]; do sleep 30; done && cat \"\$DESIGN_TMPDIR/.step3-review-result.env\""
 out=$(run_payload "$(payload_bash "$step3_recovery_waiter_probe" "$D")")
 assert_deny "$out" 'Step 3 recovery waiter with appended probe denies'
