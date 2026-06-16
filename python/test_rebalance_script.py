@@ -351,3 +351,335 @@ def test_python_verification_within_threshold_passes(
     args = rebalance._parse_args(["--kind", "python", "--repo", "o/r", "--n-python-shards", "2"])
 
     assert rebalance._verify_python(args, [1], repo="o/r", pr_url="https://pr") == 0
+
+
+def _sample_harness_plan():
+    current = {1: ["test-a"], 2: ["test-b"]}
+    new = {1: ["test-b"], 2: ["test-a"]}
+    medians = {"test-a": 1.0, "test-b": 2.0}
+    return rebalance.HarnessPlan(current, new, medians, 2, 1.0)
+
+
+def _sample_python_plan():
+    return rebalance.PythonPlan(
+        assignments={"pkg/test_a.py::test_x": 1, "pkg/test_b.py::test_y": 2},
+        medians={"pkg/test_a.py::test_x": 1.0, "pkg/test_b.py::test_y": 2.0},
+        n_shards=2,
+    )
+
+
+def _stub_clean_git(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_current_branch(_runner: object, *, cwd: str | None = None) -> str:
+        assert cwd == str(rebalance._REPO_ROOT)
+        return "main"
+
+    def fake_status(_runner: object, _path: str, *, cwd: str | None = None) -> CommandResult:
+        assert cwd == str(rebalance._REPO_ROOT)
+        return _cr("")
+
+    monkeypatch.setattr(rebalance.git, "try_current_branch", fake_current_branch)
+    monkeypatch.setattr(rebalance.git, "status_porcelain_paths", fake_status)
+
+
+def test_cleanliness_gate_raises_on_git_status_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_status(_runner: object, _path: str, *, cwd: str) -> CommandResult:
+        assert cwd == str(rebalance._REPO_ROOT)
+        return _cr("", rc=128)
+
+    monkeypatch.setattr(rebalance.git, "status_porcelain_paths", fake_status)
+
+    with pytest.raises(rebalance.ShipError, match="git status failed for Makefile"):
+        rebalance._assert_artifact_paths_clean(["Makefile"])
+
+
+def test_revert_written_paths_raises_on_restore_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_restore(_runner: object, _path: str, *, cwd: str) -> CommandResult:
+        assert cwd == str(rebalance._REPO_ROOT)
+        return _cr(rc=1)
+
+    monkeypatch.setattr(rebalance.git, "restore_staged", fake_restore)
+
+    with pytest.raises(rebalance.ShipError, match="git restore --staged failed for Makefile"):
+        rebalance._revert_written_paths(["Makefile"])
+
+
+def test_main_python_zero_rows_aborts_before_writes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    write_calls: list[str] = []
+
+    def track_write_shards(*_args: object, **_kwargs: object) -> None:
+        write_calls.append("write_shards")
+
+    def track_write_assignments(*_args: object, **_kwargs: object) -> None:
+        write_calls.append("_write_assignments_json")
+
+    _stub_clean_git(monkeypatch)
+
+    def fake_fetch_timing_rows(*_args: object, **_kwargs: object) -> list[object]:
+        return []
+
+    monkeypatch.setattr(
+        rebalance.pytest_ci_timing,
+        "fetch_timing_rows",
+        fake_fetch_timing_rows,
+    )
+    monkeypatch.setattr(rebalance, "write_shards", track_write_shards)
+    monkeypatch.setattr(rebalance, "_write_assignments_json", track_write_assignments)
+
+    result = rebalance.main(["--kind", "python", "--repo", "o/r"])
+
+    assert result == 1
+    assert not write_calls
+
+
+def test_main_dirty_artifact_aborts_before_writes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    write_calls: list[str] = []
+
+    def track_write_shards(*_args: object, **_kwargs: object) -> None:
+        write_calls.append("write_shards")
+
+    def fake_status(_runner: object, path: str, *, cwd: str) -> CommandResult:
+        assert cwd == str(rebalance._REPO_ROOT)
+        stdout = " M " + path + "\n" if path == "python/shard-assignments.json" else ""
+        return _cr(stdout)
+
+    def fake_current_branch(_runner: object, *, cwd: str | None = None) -> str:
+        assert cwd == str(rebalance._REPO_ROOT)
+        return "main"
+
+    monkeypatch.setattr(rebalance.git, "try_current_branch", fake_current_branch)
+    monkeypatch.setattr(rebalance.git, "status_porcelain_paths", fake_status)
+
+    def fake_prepare_python_plan(*_args: object, **_kwargs: object) -> object:
+        return _sample_python_plan()
+
+    monkeypatch.setattr(
+        rebalance,
+        "_prepare_python_plan",
+        fake_prepare_python_plan,
+    )
+    monkeypatch.setattr(rebalance, "write_shards", track_write_shards)
+
+    result = rebalance.main(["--kind", "python", "--repo", "o/r"])
+
+    assert result == 1
+    assert not write_calls
+
+
+def test_main_partition_failure_skips_assignments_writer(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    assignments_path = tmp_path / "shard-assignments.json"
+    baseline = "{}\n"
+    _ = assignments_path.write_text(baseline, encoding="utf-8")
+    makefile_path = tmp_path / "Makefile"
+    _ = makefile_path.write_text("test-harnesses-1: test-a\n", encoding="utf-8")
+
+    assignment_calls: list[str] = []
+
+    def track_write_assignments(*_args: object, **_kwargs: object) -> None:
+        assignment_calls.append("_write_assignments_json")
+
+    def fake_validate_partition() -> bool:
+        return False
+
+    def fake_revert_written_paths(_paths: list[str]) -> None:
+        return None
+
+    monkeypatch.setattr(rebalance, "_ASSIGNMENTS_PATH", assignments_path)
+    monkeypatch.setattr(rebalance, "_validate_partition", fake_validate_partition)
+    monkeypatch.setattr(rebalance, "_write_assignments_json", track_write_assignments)
+    monkeypatch.setattr(rebalance, "_revert_written_paths", fake_revert_written_paths)
+
+    plan = rebalance.RebalancePlan(harness=_sample_harness_plan(), python=_sample_python_plan())
+
+    with pytest.raises(rebalance.ShipError, match="harness partition validation failed"):
+        rebalance._write_selected_artifacts(plan, makefile_path)
+
+    assert not assignment_calls
+    assert assignments_path.read_text(encoding="utf-8") == baseline
+
+
+def test_main_assignments_write_failure_reverts_makefile(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    assignments_path = tmp_path / "shard-assignments.json"
+    baseline = "{}\n"
+    _ = assignments_path.write_text(baseline, encoding="utf-8")
+    makefile_path = tmp_path / "Makefile"
+    _ = makefile_path.write_text("test-harnesses-1: test-a\n", encoding="utf-8")
+
+    reverted: list[list[str]] = []
+
+    def fail_write_assignments(*_args: object, **_kwargs: object) -> None:
+        raise OSError("disk full")
+
+    def fake_validate_partition() -> bool:
+        return True
+
+    def track_revert_written_paths(paths: list[str]) -> None:
+        reverted.append(list(paths))
+
+    monkeypatch.setattr(rebalance, "_ASSIGNMENTS_PATH", assignments_path)
+    monkeypatch.setattr(rebalance, "_validate_partition", fake_validate_partition)
+    monkeypatch.setattr(rebalance, "_write_assignments_json", fail_write_assignments)
+    monkeypatch.setattr(rebalance, "_revert_written_paths", track_revert_written_paths)
+
+    plan = rebalance.RebalancePlan(harness=_sample_harness_plan(), python=_sample_python_plan())
+
+    with pytest.raises(rebalance.ShipError, match="assignments JSON write failed"):
+        rebalance._write_selected_artifacts(plan, makefile_path)
+
+    assert reverted == [["Makefile"]]
+    assert assignments_path.read_text(encoding="utf-8") == baseline
+
+
+def test_main_python_dispatches_verification_after_pr(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    call_order: list[str] = []
+
+    class _Pr:
+        number = 42
+        url = "https://pr/42"
+
+    _stub_clean_git(monkeypatch)
+
+    def fake_prepare_python_plan(*_args: object, **_kwargs: object) -> object:
+        return _sample_python_plan()
+
+    def fake_plan_is_noop(*_args: object, **_kwargs: object) -> bool:
+        return False
+
+    def fake_write_selected_artifacts(*_args: object, **_kwargs: object) -> list[str]:
+        return ["python/shard-assignments.json"]
+
+    def fake_commit_push_and_pr(*_args: object, **_kwargs: object) -> _Pr:
+        call_order.append("pr")
+        return _Pr()
+
+    def fake_trigger_verification_runs(*_args: object, **_kwargs: object) -> list[int]:
+        call_order.append("verify")
+        return [101]
+
+    def fake_verify_python(*_args: object, **_kwargs: object) -> int:
+        return 0
+
+    monkeypatch.setattr(rebalance, "_prepare_python_plan", fake_prepare_python_plan)
+    monkeypatch.setattr(rebalance, "_plan_is_noop", fake_plan_is_noop)
+    monkeypatch.setattr(rebalance, "_write_selected_artifacts", fake_write_selected_artifacts)
+    monkeypatch.setattr(rebalance, "_commit_push_and_pr", fake_commit_push_and_pr)
+    monkeypatch.setattr(rebalance, "_trigger_verification_runs", fake_trigger_verification_runs)
+    monkeypatch.setattr(rebalance, "_verify_python", fake_verify_python)
+
+    result = rebalance.main(["--kind", "python", "--repo", "o/r", "--n-verify-runs", "1"])
+
+    assert result == 0
+    assert call_order == ["pr", "verify"]
+
+
+def test_main_all_dispatches_verification_after_pr(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    call_order: list[str] = []
+
+    class _Pr:
+        number = 7
+        url = "https://pr/7"
+
+    _stub_clean_git(monkeypatch)
+
+    def fake_prepare_harness_plan(*_args: object, **_kwargs: object) -> object:
+        return _sample_harness_plan()
+
+    def fake_prepare_python_plan(*_args: object, **_kwargs: object) -> object:
+        return _sample_python_plan()
+
+    def fake_plan_is_noop(*_args: object, **_kwargs: object) -> bool:
+        return False
+
+    def fake_write_selected_artifacts(*_args: object, **_kwargs: object) -> list[str]:
+        return ["Makefile", "python/shard-assignments.json"]
+
+    def fake_commit_push_and_pr(*_args: object, **_kwargs: object) -> _Pr:
+        call_order.append("pr")
+        return _Pr()
+
+    def fake_trigger_verification_runs(*_args: object, **_kwargs: object) -> list[int]:
+        call_order.append("verify")
+        return [201]
+
+    def fake_verify_harness(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    def fake_verify_python(*_args: object, **_kwargs: object) -> int:
+        return 0
+
+    monkeypatch.setattr(rebalance, "_prepare_harness_plan", fake_prepare_harness_plan)
+    monkeypatch.setattr(rebalance, "_prepare_python_plan", fake_prepare_python_plan)
+    monkeypatch.setattr(rebalance, "_plan_is_noop", fake_plan_is_noop)
+    monkeypatch.setattr(rebalance, "_write_selected_artifacts", fake_write_selected_artifacts)
+    monkeypatch.setattr(rebalance, "_commit_push_and_pr", fake_commit_push_and_pr)
+    monkeypatch.setattr(rebalance, "_trigger_verification_runs", fake_trigger_verification_runs)
+    monkeypatch.setattr(rebalance, "_verify_harness", fake_verify_harness)
+    monkeypatch.setattr(rebalance, "_verify_python", fake_verify_python)
+
+    result = rebalance.main(["--kind", "all", "--repo", "o/r", "--n-verify-runs", "1"])
+
+    assert result == 0
+    assert call_order == ["pr", "verify"]
+
+
+def test_main_harness_verification_spread_failure_still_exits_zero(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Pr:
+        number = 3
+        url = "https://pr/3"
+
+    _stub_clean_git(monkeypatch)
+
+    def fake_prepare_harness_plan(*_args: object, **_kwargs: object) -> object:
+        return _sample_harness_plan()
+
+    def fake_plan_is_noop(*_args: object, **_kwargs: object) -> bool:
+        return False
+
+    def fake_write_selected_artifacts(*_args: object, **_kwargs: object) -> list[str]:
+        return ["Makefile"]
+
+    def fake_commit_push_and_pr(*_args: object, **_kwargs: object) -> _Pr:
+        return _Pr()
+
+    def fake_trigger_verification_runs(*_args: object, **_kwargs: object) -> list[int]:
+        return [301]
+
+    def fake_collect_log_rows(*_args: object, **_kwargs: object) -> list[object]:
+        return [
+            rebalance.TimingRow(301, 1, "test-a", 50.0),
+            rebalance.TimingRow(301, 2, "test-b", 1.0),
+        ]
+
+    def fake_collect_wall_clock(*_args: object, **_kwargs: object) -> dict[int, float]:
+        return {}
+
+    monkeypatch.setattr(rebalance, "_prepare_harness_plan", fake_prepare_harness_plan)
+    monkeypatch.setattr(rebalance, "_plan_is_noop", fake_plan_is_noop)
+    monkeypatch.setattr(rebalance, "_write_selected_artifacts", fake_write_selected_artifacts)
+    monkeypatch.setattr(rebalance, "_commit_push_and_pr", fake_commit_push_and_pr)
+    monkeypatch.setattr(rebalance, "_trigger_verification_runs", fake_trigger_verification_runs)
+    monkeypatch.setattr(rebalance, "_collect_log_rows", fake_collect_log_rows)
+    monkeypatch.setattr(rebalance, "_collect_wall_clock", fake_collect_wall_clock)
+
+    result = rebalance.main(["--kind", "harness", "--repo", "o/r", "--n-verify-runs", "1"])
+
+    assert result == 0

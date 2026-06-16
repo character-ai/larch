@@ -466,6 +466,9 @@ def _assert_artifact_paths_clean(paths: list[str]) -> None:
     dirty: list[str] = []
     for path in paths:
         result = git.status_porcelain_paths(_RUNNER, path, cwd=str(_REPO_ROOT))
+        if result.returncode != 0:
+            stderr = result.stderr.strip() or f"returncode {result.returncode}"
+            raise ShipError(f"git status failed for {path}: {stderr}")
         if result.stdout.strip():
             dirty.append(path)
     if dirty:
@@ -476,8 +479,14 @@ def _assert_artifact_paths_clean(paths: list[str]) -> None:
 def _revert_written_paths(paths: list[str]) -> None:
     """Restore staged and working-tree state for written artifact paths."""
     for path in paths:
-        _ = git.restore_staged(_RUNNER, path, cwd=str(_REPO_ROOT))
-        _ = git.checkout_paths(_RUNNER, path, cwd=str(_REPO_ROOT))
+        restore = git.restore_staged(_RUNNER, path, cwd=str(_REPO_ROOT))
+        if restore.returncode != 0:
+            stderr = restore.stderr.strip() or f"returncode {restore.returncode}"
+            raise ShipError(f"git restore --staged failed for {path}: {stderr}")
+        checkout = git.checkout_paths(_RUNNER, path, cwd=str(_REPO_ROOT))
+        if checkout.returncode != 0:
+            stderr = checkout.stderr.strip() or f"returncode {checkout.returncode}"
+            raise ShipError(f"git checkout -- failed for {path}: {stderr}")
 
 
 def _paths_for_kind(kind: str) -> list[str]:

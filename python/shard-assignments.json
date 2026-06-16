@@ -1,1 +1,4 @@
-{}
+{
+  "pkg/test_a.py::test_x": 1,
+  "pkg/test_b.py::test_y": 2
+}
