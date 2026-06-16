@@ -1,0 +1,65 @@
+# [BUG] (URGENT) Progress report seems to be broken in /implement review and ship-pr phases
+
+e.g.:
+```
+⏺ ROUTE=continue. Proceeding to Step 5.
+
+  ▎ 🔶 /implement 5: code review
+
+⏺ Bash(IMPLEMENT_TMPDIR="<TMPDIR>"
+      export IMPLEMENT_TMPDIR…)
+  ⎿  Running in the background (↓ to manage)
+
+⏺ Step 5 code review running. Waiting for notification.
+
+✻ Churned for 22s · 1 shell still running
+
+※ recap: Implementing issue #4426 (ship/merge/rebase robustness fixes). Codex wrote the code, checks passed, now waiting for the 3-judge code review panel to finish before committing review fixes and creating the
+  PR. (disable recaps in /config)
+
+⏺ UserPromptSubmit operation blocked by hook:
+  implement: Step 0 — preflight — started 13m ago
+  last artifact: 2026-06-15 23:14:28 copy-plan.stderr.log
+
+  Original prompt: p
+
+❯ status?
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Step 5 is in Round 1: 12 reviewers launched (3 Cursor static, 3 Codex static, 6 dynamic), findings consolidated, 9 in-scope findings remaining after nit pruning. Still running — waiting for notification.
+
+✻ Worked for 8s · 1 shell still running
+
+⏺ UserPromptSubmit operation blocked by hook:
+  implement: Step 0 — preflight — started 17m ago
+  last artifact: 2026-06-15 23:14:28 copy-plan.stderr.log
+
+  Original prompt: p
+```
+
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Select the most recently active implement session (by tmpdir activity, not pointer file mtime) when multiple stale pointer files exist for the same repo.
+- Fix "Step 0 — preflight" false-positive in the progress report during Steps 5 and 8+ phases.
+
+### Non-goals
+- Garbage-collect the 591 accumulated stale pointer files (separate issue).
+- Fix design session pointer selection (symlinks; different mechanism).
+
+### Approach sketch
+- In `_implement_candidate`, use `_path_mtime(tmpdir)` instead of `_path_mtime(pointer)` for the `LiveRun.mtime` field.
+- The active session's tmpdir has more recently created entries (Steps 1–4 artifacts, `round-1/`, `ship-pr-state.sh`) than an abandoned stale session's tmpdir.
+- Update the existing `test_newest_pointer_wins` test to use tmpdir mtimes instead of pointer mtimes.
+- Add `test_stale_pointer_active_tmpdir_wins`: old pointer file mtime but newer tmpdir beats new pointer file mtime with older (stale) tmpdir.
+
+### Surfaces in scope
+- `python/progress_report.py` — `_implement_candidate` (one-line change)
+- `python/test_progress_report.py` — one updated test + one new test
+
+### Open questions
+- None.

@@ -1,0 +1,15 @@
+v1	mark	1781570854	design	design folded discussion block	-	-	-	-	-	-	-	-
+v1	mark	1781572661	design	design Step 2a — sentinel prep	-	-	-	-	-	-	-	-
+v1	mark	1781572665	design	design Step 2b — plan	-	-	-	-	-	-	-	-
+v1	vendor	1781572779	implement	-	codex	codex-plan-draft	1781572666	1781572779	113	step2b-codex-raw.5848.txt	0	complete
+v1	mark	1781572833	design	design Step 3 — plan review	-	-	-	-	-	-	-	-
+v1	vendor	1781572912	implement	-	codex	codex-phase1-codex-plan-innovation	1781572842	1781572912	70	codex-primary-plan-innovation-output.txt	0	complete
+v1	vendor	1781572944	implement	-	codex	codex-phase1-codex-plan-requirements	1781572842	1781572942	100	codex-primary-plan-requirements-output.txt	0	complete
+v1	vendor	1781572948	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1781572842	1781572947	105	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1781572956	implement	-	codex	codex-phase1-codex-plan-pragmatic	1781572842	1781572956	114	codex-primary-plan-pragmatic-output.txt	0	complete
+v1	vendor	1781572957	implement	-	codex	codex-phase1-codex-plan-arch	1781572842	1781572957	115	codex-primary-plan-arch-output.txt	0	complete
+v1	round	1781572965	design	design Step 3 — plan review	1	1781572840	1781572965	125	0	0	0	-
+v1	mark	1781573074	design	design Step 3b — arch diagram	-	-	-	-	-	-	-	-
+v1	mark	1781573101	design	design Step 4 — rejected findings	-	-	-	-	-	-	-	-
+v1	mark	1781573101	design	design Step 4b — gate C	-	-	-	-	-	-	-	-
+v1	mark	1781573133	design	design Step 5 — finalize	-	-	-	-	-	-	-	-

@@ -1,0 +1,39 @@
+# [BUG] (URGENT) Progress report seems to be broken in /implement review and ship-pr phases
+
+e.g.:
+```
+⏺ ROUTE=continue. Proceeding to Step 5.
+
+  ▎ 🔶 /implement 5: code review
+
+⏺ Bash(IMPLEMENT_TMPDIR="<TMPDIR>"
+      export IMPLEMENT_TMPDIR…)
+  ⎿  Running in the background (↓ to manage)
+
+⏺ Step 5 code review running. Waiting for notification.
+
+✻ Churned for 22s · 1 shell still running
+
+※ recap: Implementing issue #4426 (ship/merge/rebase robustness fixes). Codex wrote the code, checks passed, now waiting for the 3-judge code review panel to finish before committing review fixes and creating the
+  PR. (disable recaps in /config)
+
+⏺ UserPromptSubmit operation blocked by hook:
+  implement: Step 0 — preflight — started 13m ago
+  last artifact: 2026-06-15 23:14:28 copy-plan.stderr.log
+
+  Original prompt: p
+
+❯ status?
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Step 5 is in Round 1: 12 reviewers launched (3 Cursor static, 3 Codex static, 6 dynamic), findings consolidated, 9 in-scope findings remaining after nit pruning. Still running — waiting for notification.
+
+✻ Worked for 8s · 1 shell still running
+
+⏺ UserPromptSubmit operation blocked by hook:
+  implement: Step 0 — preflight — started 17m ago
+  last artifact: 2026-06-15 23:14:28 copy-plan.stderr.log
+
+  Original prompt: p
+```
