@@ -26,7 +26,6 @@ The skill set documented here matches the skills in the repository. Each entry l
 - [`/review-and-fix`](#review-and-fix)
 - [`/set-up-forked-open-source-repo`](#set-up-forked-open-source-repo)
 - [`/status`](#status)
-- [`/test-issue`](#test-issue)
 - [`/upgrade-larch`](#upgrade-larch)
 
 ### `/alias`
@@ -178,14 +177,6 @@ The workflow is intentionally single-clone (per-clone single-flight lock; multip
 **Source**: [`skills/status/SKILL.md`](../skills/status/SKILL.md)
 
 Print the current larch version and health status of external vendor tools (Codex and Cursor). Uses the same probe machinery as `/implement` Step 0: `agent check-reviewers` for binary/runtime probes, then `python3 python/cli.py agent degraded-tools-gate` to classify each vendor as `ok`, `binary-missing`, or `probe-failed`. Reports whether the session would run degraded (reduced panel or Claude-only fallback).
-
-### `/test-issue`
-
-**Arguments**: `[--run-id <ID>]`
-
-**Source**: [`skills/test-issue/SKILL.md`](../skills/test-issue/SKILL.md)
-
-Minimal end-to-end smoke skill that runs a single test command (`skills/test-issue/scripts/test-issue.sh`). It exists to exercise the skill-invocation path itself rather than to drive a user workflow. The optional `--run-id <ID>` overrides the auto-generated run identifier. It ships with the plugin but is a diagnostic/fixture skill, not a day-to-day entry point.
 
 ### `/upgrade-larch`
 

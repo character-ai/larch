@@ -141,12 +141,6 @@ larch ships **public skills** with the plugin (`skills/`); **private** skills li
       <td><em>(none)</em></td>
     </tr>
     <tr><td colspan="2">Upgrade the larch plugin to the latest version by refreshing the sparse marketplace checkout in place when possible, repairing legacy clones when needed, then reinstalling the plugin.</td></tr>
-    <tr><td colspan="2"><hr></td></tr>
-    <tr>
-      <td><a href="docs/skills.md#test-issue"><code>/test-issue</code></a></td>
-      <td><code>[--run-id &lt;ID&gt;]</code></td>
-    </tr>
-    <tr><td colspan="2">Minimal end-to-end smoke skill that runs a single test command. Ships with the plugin but is a diagnostic/fixture skill, not a day-to-day entry point.</td></tr>
   </tbody>
 </table>
 
