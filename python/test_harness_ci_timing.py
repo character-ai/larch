@@ -139,6 +139,49 @@ def test_shard_totals_per_run_basic() -> None:
     assert per_run[1][2] == 20.0
 
 
+def test_shard_totals_per_run_retried_shard_uses_latest_attempt() -> None:
+    # A retried matrix job replays the shard from its first target, so the
+    # opening target reappears non-consecutively. Only the latest attempt
+    # counts; summing both attempts would double the total to 35.0.
+    rows = [
+        TimingRow(run_id=1, shard=1, target="test-a", seconds=10.0),
+        TimingRow(run_id=1, shard=1, target="test-b", seconds=5.0),
+        TimingRow(run_id=1, shard=1, target="test-a", seconds=12.0),
+        TimingRow(run_id=1, shard=1, target="test-b", seconds=8.0),
+    ]
+    per_run = shard_totals_per_run(rows)
+    assert per_run[1][1] == 20.0
+
+
+def test_shard_totals_per_run_multi_bash_rows_all_summed() -> None:
+    # Multi-bash targets emit consecutive rows with the same label; a
+    # consecutive repeat of the first target is NOT a retry, so every row
+    # in the single attempt is summed (1+2+3+4 == 10.0).
+    rows = [
+        TimingRow(run_id=1, shard=1, target="test-multi", seconds=1.0),
+        TimingRow(run_id=1, shard=1, target="test-multi", seconds=2.0),
+        TimingRow(run_id=1, shard=1, target="test-multi", seconds=3.0),
+        TimingRow(run_id=1, shard=1, target="test-other", seconds=4.0),
+    ]
+    per_run = shard_totals_per_run(rows)
+    assert per_run[1][1] == 10.0
+
+
+def test_shard_totals_per_run_retried_shard_with_multi_bash() -> None:
+    # Retry + multi-bash combined: each attempt repeats a multi-bash target.
+    # Only the latest attempt's rows count (4+5+6 == 15.0), not all six.
+    rows = [
+        TimingRow(run_id=1, shard=1, target="test-a", seconds=1.0),
+        TimingRow(run_id=1, shard=1, target="test-a", seconds=2.0),
+        TimingRow(run_id=1, shard=1, target="test-b", seconds=3.0),
+        TimingRow(run_id=1, shard=1, target="test-a", seconds=4.0),
+        TimingRow(run_id=1, shard=1, target="test-a", seconds=5.0),
+        TimingRow(run_id=1, shard=1, target="test-b", seconds=6.0),
+    ]
+    per_run = shard_totals_per_run(rows)
+    assert per_run[1][1] == 15.0
+
+
 # ---------------------------------------------------------------------------
 # median_shard_totals
 # ---------------------------------------------------------------------------
