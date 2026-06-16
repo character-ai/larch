@@ -189,6 +189,20 @@ if [ "${_autofix_rc:-0}" -ne 0 ]; then
   _autofix_status=failed
 fi
 [ -n "${_autofix_log_file:-}" ] || _autofix_log_file="$DESIGN_TMPDIR/validate-plan-commands.log"
+[ -n "${_autofix_fixed_by:-}" ] || _autofix_fixed_by="unknown"
+if [ "${_autofix_status:-}" = ok ]; then
+  design_require_plugin_root
+  if [ -n "${DESIGN_TMPDIR:-}" ] && [ -d "$DESIGN_TMPDIR" ]; then
+    python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" run-log append-failure \
+      --log "$DESIGN_TMPDIR/execution-issues.md" \
+      --site "${SITE:-design validator autofix}" \
+      --tool "validate-plan-commands(auto-fixed:${_autofix_fixed_by})" \
+      --exit-code 0 \
+      --category Warnings \
+      --output-file "$_autofix_log_file" \
+      --redact >/dev/null 2>&1
+  fi
+fi
 
 autofix_site_token() {
   case "${SITE:-}" in

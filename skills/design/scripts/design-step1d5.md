@@ -16,4 +16,4 @@ Wrapper for a `/design` Bash block that keeps `skills/design/SKILL.md` free of i
 
 ## Harness
 
-Covered by `scripts/test-design-structure.sh` and relevant `/design` script checks.
+Covered by `scripts/test-design-structure.sh`, `skills/design/scripts/test-design-step1d5.sh`, and relevant `/design` script checks.

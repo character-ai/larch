@@ -877,7 +877,7 @@ def _stamp_skipped_steps_for_terminal_report(
     if not manifest.is_file():
         return 0, ""
     fields: list[str] = []
-    if not (run_dir / "run-statistics.md").is_file() and not (run_dir / "oos-issues.ndjson").is_file():
+    if not (run_dir / "run-statistics.md").is_file():
         fields.append("steps_ran.step9a1=false")
     if not (run_dir / "final-summary.md").is_file() and not (run_dir / "version-bump-reasoning.md").is_file():
         fields.append("steps_ran.step8=false")

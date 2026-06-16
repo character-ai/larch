@@ -4,7 +4,9 @@
 
 **Path note**: executable steps 1–7 below are bash-path instructions for the `OOS_PENDING=true` checkpoint. Do not load this procedure for Python accepted-OOS filing.
 
-**Contract**: Step 9a.1 owns `oos-issues` larch-log evidence on the bash path, including sentinel recovery and all-already-filed design batches. On the bash path, `run-statistics` is owned by the post-checkpoint Step 8+ block after `python/cli.py oos disposition-checkpoint` exits 0; on sentinel recovery or all-already-filed, NEVER #5 applies only to the `oos-issues` half, not `run-statistics`. On the Python path, `python/cli.py oos file` writes both `oos-issues.ndjson` and `run-statistics.md` pre-ship.
+**Contract**: Step 9a.1 owns `oos-issues` larch-log evidence on the bash path, including sentinel recovery and all-already-filed design batches. On the bash path, `run-statistics` is owned by the post-checkpoint Step 8+ block after `python/cli.py oos disposition-checkpoint` exits 0; on sentinel recovery or all-already-filed, NEVER #5 applies only to the `oos-issues` half, not `run-statistics`. On the Python path, `python/cli.py oos file` writes checkpoint-visible evidence first, runs `python/cli.py oos disposition-checkpoint`, then writes `run-statistics.md` and completion markers only after checkpoint exit 0. A checkpoint failure may leave provisional `oos-issues.ndjson`, but that file alone is not Step 9a.1 completion.
+
+**Python path parity**: `python/cli.py oos file` checks persisted filed evidence before combining or filing a new batch. Checkpoint-failed retries reuse persisted filed evidence before creating any new public OOS issues. Persisted evidence is matched to accepted blocks by filed URL or stable identifier first, then by normalized title fallback; only unmatched accepted blocks are filed. Sentinel-only recovery materializes accepted-OOS recovery evidence before running the checkpoint, using the strict `- **Filed URL**: <url>` accepted evidence form so the real checkpoint can pass.
 
 **When to load**: MANDATORY immediately before executing the full Step 9a.1 procedure (steps 1–7). Do not load outside that checkpoint.
 
@@ -21,9 +23,9 @@
    - True no-input batch: emit no Accepted-OOS bullets and early-exit before steps 3–7.
    - All-already-filed design batch: do not call `/issue` and skip steps 3.3–3.5 (combine, cap, and file-conflict pre-passes). Still run step 6 and step 7 to materialize checkpoint-visible `oos-issues` NDJSON evidence from existing `- **Filed URL**:` lines and any recovered sentinel URLs so `python/cli.py oos disposition-checkpoint` can pass without a new filing batch.
 3. **Idempotency guard**.
-   - If `$IMPLEMENT_TMPDIR/oos-issues-created.md` exists, recover created-or-deduplicated URLs and tallies from it, then skip `/issue`.
+   - If `$IMPLEMENT_TMPDIR/oos-issues-created.md` exists, recover created-or-deduplicated URLs and tallies from it, then skip `/issue` for matched accepted blocks.
    - On this branch, still perform the NEVER #5 `oos-issues` larch-log append from recovered URLs and refresh the terminal summary when applicable; do not write `run-statistics` here.
-   - Do not run combine, cap, worksheet, or helper pre-passes on sentinel recovery (steps 3.4–3.5).
+   - Do not run combine, cap, worksheet, or helper pre-passes on sentinel-only recovery (steps 3.4–3.5). If persisted evidence matches only part of the current batch, remove matched blocks from the working set and run combine, cap, and filing only for unmatched blocks.
 3.3. **Cross-phase dedup**. Build the working batch from `### OOS_N:` blocks in fixed phase order: main-agent, design, review (same accepted-file order as `python/cli.py oos disposition-checkpoint`). Deduplicate equivalent titles across phases before grouping.
 3.4. **Combine pass**. Write `$IMPLEMENT_TMPDIR/oos-combined.md` and `$IMPLEMENT_TMPDIR/oos-grouping-worksheet.md` for the post-3.3 working batch.
    - **Sanitize before compose**: apply the dual-write redaction rules from `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/execution-issues-tracking.md` to combined issue bodies and session-derived worksheet prose destined for public `/issue` bodies or committed larch-log records: secrets → `<REDACTED-TOKEN>`, internal URLs → `<INTERNAL-URL>`, PII → `<REDACTED-PII>`. Paraphrase when in doubt.

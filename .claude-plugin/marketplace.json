@@ -8,7 +8,7 @@
     {
       "name": "larch",
       "source": "./",
-      "description": "Multi-agent workflow automation for Claude Code: design, code review, implementation, and PR automation with collaborative reviewers (Claude subagents + Codex + Cursor).",
+      "description": "Multi-agent workflow automation for Claude Code: design, code review, implementation, and PR automation, and `/bug` issue-report filing with collaborative reviewers (Claude subagents + Codex + Cursor).",
       "category": "development"
     }
   ]

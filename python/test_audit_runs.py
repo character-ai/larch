@@ -693,6 +693,25 @@ def test_scan_required_non_bail_incomplete_and_explicit_step9a1_false(tmp_path: 
     assert row["result"] == "pass"
 
 
+
+def test_scan_required_step9a1_ignores_provisional_ndjson(tmp_path: Path, capsys):
+    run = tmp_path / "run"
+    run.mkdir()
+    required = tmp_path / "required.tsv"
+    required.write_text("relative_path\tcondition\nrun-statistics.md\tstep9a1\n", encoding="utf-8")
+    scans = tmp_path / "scans.tsv"
+    scans.write_text("name\ttype\nrequired-file-presence\tfile\n", encoding="utf-8")
+    (run / "manifest.json").write_text('{"steps_ran":{}}\n', encoding="utf-8")
+    (run / "oos-issues.ndjson").write_text('{"phase":"implement"}\n', encoding="utf-8")
+    assert audit_runs.scan_run_main(["--skill","implement","--run-dir",str(run),"--pr","7","--scans-tsv",str(scans),"--required-files-tsv",str(required)]) == 0
+    row = json.loads(capsys.readouterr().out.splitlines()[0])
+    assert row["result"] == "fail"
+    assert row["missing"] == ["run-statistics.md"]
+    (run / "run-statistics.md").write_text("Run run: 0 OOS issue(s) filed.\n", encoding="utf-8")
+    assert audit_runs.scan_run_main(["--skill","implement","--run-dir",str(run),"--pr","7","--scans-tsv",str(scans),"--required-files-tsv",str(required)]) == 0
+    row = json.loads(capsys.readouterr().out.splitlines()[0])
+    assert row["result"] == "pass"
+
 def test_scan_cross_cutting_emits_self_deploying_gap_alias(tmp_path: Path, capsys):
     run = tmp_path / "run"
     run.mkdir()

@@ -1429,15 +1429,17 @@ def _step9a1_heuristic(ctx: RunContext) -> bool | None:
     manifest_path = run_dir / "manifest.json"
     if manifest_path.is_file():
         with suppress(OSError, json.JSONDecodeError):
-            if _manifest_step9a1_explicitly_skipped(json.loads(manifest_path.read_text(encoding="utf-8"))):
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            if _manifest_step9a1_explicitly_skipped(manifest):
                 return False
-    ndjson = run_dir / "oos-issues.ndjson"
-    if ndjson.is_file() and ndjson.stat().st_size > 0:
-        return True
+            if _manifest_step9a1_explicitly_ran(manifest):
+                return True
     stats = run_dir / "run-statistics.md"
     if stats.is_file():
-        text = stats.read_text(encoding="utf-8", errors="replace")
-        return not re.search(r":\s*0 OOS issue\(s\) filed\.", text)
+        return True
+    ndjson = run_dir / "oos-issues.ndjson"
+    if ndjson.is_file() and ndjson.stat().st_size > 0:
+        return False
     return None
 
 
@@ -2410,6 +2412,12 @@ def _manifest_step9a1_explicitly_skipped(data: dict[str, Any]) -> bool:
     return steps.get("step9a1") is False
 
 
+def _manifest_step9a1_explicitly_ran(data: dict[str, Any]) -> bool:
+    steps_raw = data.get("steps_ran")
+    steps = cast("dict[str, Any]", steps_raw) if isinstance(steps_raw, dict) else {}
+    return steps.get("step9a1") is True
+
+
 def _manifest_steps_ran_empty(data: dict[str, Any]) -> bool:
     steps = data.get("steps_ran")
     if steps is None:
@@ -2509,13 +2517,12 @@ def _verify_condition_reached(
     if condition == "step9a1":
         if _manifest_step9a1_explicitly_skipped(manifest_data):
             return False
+        if _manifest_step9a1_explicitly_ran(manifest_data):
+            return True
         if (
             _manifest_steps_ran_empty(manifest_data)
             and _final_summary_heading_bail_signal(run_dir)
-            and not (
-                _verify_has_file(run_dir, "run-statistics.md")
-                or _verify_has_file(run_dir, "oos-issues.ndjson")
-            )
+            and not _verify_has_file(run_dir, "run-statistics.md")
         ):
             return False
         if (
@@ -2524,13 +2531,7 @@ def _verify_condition_reached(
             and _manifest_steps_ran_nonempty_without_step9a1(manifest_data)
         ):
             return False
-        return (
-            _verify_has_file(run_dir, "run-statistics.md")
-            or _verify_has_file(run_dir, "oos-issues.ndjson")
-            or bool(manifest_pr_number)
-            or manifest_status == config.MANIFEST_STATUS_DONE
-            or _verify_has_file(run_dir, "final-summary.md")
-        )
+        return _verify_has_file(run_dir, "run-statistics.md")
     if condition == "exn-agg-validate-fail":
         path = run_dir / "execution-issues.ndjson"
         return path.is_file() and "merged output failed validation" in path.read_text(encoding="utf-8", errors="replace")

@@ -623,8 +623,9 @@ def test_flush_logs_pre_commit_exception_returns_commit_skip(
             (),
             False,
         ),
-        (False, "RUN_ID=run-abc\n", "", "", ("oos-issues.ndjson",), True),
-        (False, "RUN_ID=run-abc\n", "", "", ("run-statistics.md",), False),
+        (False, "RUN_ID=run-abc\n", "", "", ("oos-issues.ndjson",), False),
+        (False, "RUN_ID=run-abc\n", "", "", ("run-statistics.md",), True),
+        (False, "RUN_ID=run-abc\n", "", "", ("oos-issues.ndjson", "run-statistics.md"), True),
         (False, "RUN_ID=run-abc\n", "", "", (), None),
     ],
 )
@@ -655,6 +656,19 @@ def test_step9a1_heuristic_matrix(
     ctx = _ctx(tmp_path, str(state)).with_(forked=forked)
     assert run_logs._step9a1_heuristic(ctx) is expected  # pyright: ignore[reportPrivateUsage]
 
+
+
+def test_step9a1_heuristic_manifest_explicit_values(tmp_path: Path) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
+    run_dir.mkdir(parents=True)
+    _ = (run_dir / "oos-issues.ndjson").write_text('{"phase":"implement"}\n', encoding="utf-8")
+    _ = (run_dir / "manifest.json").write_text('{"steps_ran":{"step9a1":false}}\n', encoding="utf-8")
+    ctx = _ctx(tmp_path, str(state))
+    assert run_logs._step9a1_heuristic(ctx) is False  # pyright: ignore[reportPrivateUsage]
+    _ = (run_dir / "manifest.json").write_text('{"steps_ran":{"step9a1":true}}\n', encoding="utf-8")
+    assert run_logs._step9a1_heuristic(ctx) is True  # pyright: ignore[reportPrivateUsage]
 
 def test_render_token_timing_batches_skips_missing_refresh_json(tmp_path: Path) -> None:
     state = tmp_path / "state.env"

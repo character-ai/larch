@@ -8,6 +8,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+import file_oos
 import issue_create
 import oos_filer
 
@@ -29,11 +30,14 @@ class FakeCli:
         self.codex_rc = 0
         self.fail_blocked_by = False
         self.blocker_probe_rc = 0
+        self.checkpoint_rc = 0
 
     def __call__(self, args: list[str], *, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
         self.calls.append(args)
         if args[:2] == ["run-log", "manifest"]:
             return _cp(args)
+        if args[:2] == ["oos", "disposition-checkpoint"]:
+            return _cp(args, stderr="checkpoint failed" if self.checkpoint_rc else "", rc=self.checkpoint_rc)
         if args[:2] == ["agent", "launch-codex-exec"]:
             if self.codex_rc != 0:
                 return _cp(args, stderr="codex failed", rc=self.codex_rc)
@@ -344,3 +348,115 @@ def test_duplicate_of_url_is_recorded(tmp_path: Path, monkeypatch: pytest.Monkey
     assert rc == 0
     sentinel = (tmp_path / "oos-issues-created.md").read_text(encoding="utf-8")
     assert "https://github.com/owner/repo/issues/101" in sentinel
+
+
+def test_checkpoint_runs_before_manifest_stamp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _setup(tmp_path)
+    _write_oos(tmp_path, "### OOS_1: First\n- **Description**: A.\n")
+    fake = FakeCli(tmp_path)
+    rc, _payload = _run(tmp_path, fake, monkeypatch)
+    assert rc == 0
+    checkpoint_index = next(i for i, call in enumerate(fake.calls) if call[:2] == ["oos", "disposition-checkpoint"])
+    manifest_index = next(i for i, call in enumerate(fake.calls) if call[:2] == ["run-log", "manifest"])
+    assert checkpoint_index < manifest_index
+
+
+def test_checkpoint_failure_preserves_evidence_without_success_markers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _setup(tmp_path)
+    _write_oos(tmp_path, "### OOS_1: First\n- **Description**: A.\n")
+    fake = FakeCli(tmp_path)
+    fake.checkpoint_rc = 2
+    rc, _payload = _run(tmp_path, fake, monkeypatch)
+    assert rc != 0
+    run_dir = tmp_path / "larch-logs" / "implement" / "run-1"
+    assert not (run_dir / "run-statistics.md").exists()
+    assert (run_dir / "oos-issues.ndjson").is_file()
+    assert "https://github.com/owner/repo/issues/101" in (tmp_path / "oos-issues-created.md").read_text(encoding="utf-8")
+    flat = [arg for call in fake.calls for arg in call]
+    assert "steps_ran.step9a1=false" in flat
+    assert "steps_ran.step9a1=true" not in flat
+
+
+def test_checkpoint_failed_retry_reuses_persisted_evidence(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _setup(tmp_path)
+    _write_oos(tmp_path, "### OOS_1: First\n- **Description**: A.\n")
+    first = FakeCli(tmp_path)
+    first.checkpoint_rc = 2
+    rc1, _payload = _run(tmp_path, first, monkeypatch)
+    assert rc1 != 0
+    second = FakeCli(tmp_path)
+    rc2, _payload = _run(tmp_path, second, monkeypatch)
+    assert rc2 == 0
+    assert not any(call[:2] == ["issue", "create-one"] for call in second.calls)
+    assert any(call[:2] == ["oos", "disposition-checkpoint"] for call in second.calls)
+    assert (tmp_path / "larch-logs" / "implement" / "run-1" / "run-statistics.md").is_file()
+
+
+def test_mixed_checkpoint_retry_files_only_unmatched_block(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _setup(tmp_path)
+    (tmp_path / "oos-issues-created.md").write_text(
+        "| OOS title | Issue | URL |\n|---|---|---|\n| First rewritten | #101 | https://github.com/owner/repo/issues/101 |\n\n"
+        "- **Title**: First rewritten\n- **Stable ID**: OOS_1\n- **Filed URL**: https://github.com/owner/repo/issues/101\n",
+        encoding="utf-8",
+    )
+    run_dir = tmp_path / "larch-logs" / "implement" / "run-1"
+    (run_dir / "oos-issues.ndjson").write_text(
+        '{"body":"- **Filed URL**: https://github.com/owner/repo/issues/101\n- **Title**: First rewritten\n- **Stable ID**: OOS_1"}\n',
+        encoding="utf-8",
+    )
+    _write_oos(
+        tmp_path,
+        "### OOS_1: First original\n- **Description**: A.\n\n### OOS_2: Second\n- **Description**: B.\n",
+    )
+    fake = FakeCli(tmp_path)
+    rc, _payload = _run(tmp_path, fake, monkeypatch)
+    assert rc == 0
+    create_calls = [call for call in fake.calls if call[:2] == ["issue", "create-one"]]
+    assert len(create_calls) == 1
+    assert create_calls[0][create_calls[0].index("--title") + 1] == "Second"
+    ndjson = (run_dir / "oos-issues.ndjson").read_text(encoding="utf-8")
+    assert "https://github.com/owner/repo/issues/101" in ndjson
+    assert "https://github.com/owner/repo/issues/102" in ndjson or "https://github.com/owner/repo/issues/101" in ndjson
+
+
+def test_sentinel_recovery_materializes_strict_evidence_for_real_checkpoint(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _setup(tmp_path)
+    (tmp_path / "oos-issues-created.md").write_text(
+        "| OOS title | Issue | URL |\n|---|---|---|\n| Prior | #3 | https://github.com/owner/repo/issues/3 |\n",
+        encoding="utf-8",
+    )
+
+    def fake_run(args: list[str], *, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
+        _ = input_text
+        if args[:2] == ["oos", "disposition-checkpoint"]:
+            rc = file_oos.disposition_checkpoint_main(["--implement-tmpdir", str(tmp_path)])
+            return _cp(args, rc=rc)
+        fake.calls.append(args)
+        if args[:2] == ["run-log", "manifest"]:
+            return _cp(args)
+        return _cp(args)
+
+    def fake_subprocess_run(argv: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        if argv[:3] == ["git", "merge-base", "HEAD"]:
+            return _cp(argv, stdout="base\n")
+        if argv[:3] == ["git", "-C", str(tmp_path)]:
+            return _cp(argv)
+        if argv[:2] == ["git", "rev-parse"]:
+            return _cp(argv, stdout=str(tmp_path) + "\n")
+        if argv[:3] == ["git", "-C", str(tmp_path)]:
+            return _cp(argv)
+        if argv[:2] == ["git", "log"] or (len(argv) > 3 and argv[0] == "git" and argv[2] == "log"):
+            return _cp(argv, stdout="")
+        return _cp(argv)
+
+    fake = FakeCli(tmp_path)
+    monkeypatch.setattr(oos_filer, "_run_cli", fake_run)
+    monkeypatch.setattr(file_oos.subprocess, "run", fake_subprocess_run)
+    rc = oos_filer.cmd_file(["--implement-tmpdir", str(tmp_path), "--codex-timeout", "1"])
+    assert rc == 0
+    accepted = tmp_path / "oos-accepted-main-agent.md"
+    assert accepted.is_file()
+    assert "- **Filed URL**: https://github.com/owner/repo/issues/3" in accepted.read_text(encoding="utf-8")

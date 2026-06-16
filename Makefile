@@ -21,6 +21,7 @@ PYLINT_JOBS ?= $(shell $(PYTHON) -c 'import os; print(0 if os.sysconf("SC_SEM_NS
 .PHONY: test-stall-recovery-report test-stall-recovery-report-1 test-stall-recovery-report-2 test-stall-recovery-report-3 test-step-18b-final-report
 .PHONY: test-resolve-upstream-larch-repo test-file-failure-report-cross-repo
 .PHONY: test-design-pause-resume
+.PHONY: test-design-step1d5 test-design-log-ship
 .PHONY: test-review-design-step3-loop
 .PHONY: test-read-result-env test-parse-design-argv
 .PHONY: lint-readability-preamble test-lint-readability-preamble
@@ -125,7 +126,7 @@ test-harnesses-11: test-design-stage-terminal-state test-cursor-implementer test
 
 test-harnesses-12: test-render-findings-batch test-implement-bootstrap-invoke test-dispatch-code-voters-retry-codex-fail-and-fallback test-tally-plan-review test-decompose-panel-dispatch test-lib-failed-agent-stderr-tail test-issue-query test-gather-context test-lib-design-tmpdir test-fetch-combinable-issues-filter test-implement-cleanup-script test-implement-admission test-run-external-agent-args test-step-telemetry-mark test-rebase-push-fork-mode test-references-headers
 
-test-harnesses-13: test-harness-shards-coverage test-ci-decide test-gate-b-apply-mode test-revise-plan-with-waterfall test-design-step3-entry test-larch-log-write-round test-append-tool-failure test-launch-claude-subprocess test-release-prepare test-dispatch-panel-limits test-resolve-repo test-flush-vendor-failure-diagnostics test-render-run-summary test-token-ledger test-token-report test-hook-progress-report test-alias-structure test-research-angle-prompts
+test-harnesses-13: test-harness-shards-coverage test-design-log-ship test-ci-decide test-gate-b-apply-mode test-revise-plan-with-waterfall test-design-step3-entry test-larch-log-write-round test-append-tool-failure test-launch-claude-subprocess test-release-prepare test-dispatch-panel-limits test-resolve-repo test-flush-vendor-failure-diagnostics test-render-run-summary test-token-ledger test-token-report test-hook-progress-report test-alias-structure test-research-angle-prompts
 
 test-harnesses-14: test-check-reviewers test-design-step3-review test-review-core test-dispatch-panel-reuse test-decompose-aggregator test-lint-literal-counts test-capture-session-transcript test-step-7a test-plan-review-scope-anchor test-check-main-sync test-launch-codex-exec test-stall-recovery-report-1 test-degraded-tools-gate test-timing-report test-token-report-dedup test-design-step6 test-implement-anti-halt test-implement-rebase-macro
 
@@ -137,7 +138,7 @@ test-harnesses-17: test-dispatch-plan-voters test-plan-review-panel test-dispatc
 
 test-harnesses-18: test-step2-dispatch test-dispatch-plan-review-panel test-design-step-validator-autofix test-render-review-phase-detail test-compose-review-findings test-lib-phase-driver test-larch-logs-manifest test-review-and-fix-commit-fixes test-audit-runs test-review-and-fix-dispatch test-oos-issue-cap test-clarify-state test-launch-cursor-ci test-redact-tmpdir-paths test-lint-readability-preamble test-plan-adequacy-audit test-slack-issue-announce test-brainstorm-prompts
 
-test-harnesses-19: test-hook-anti-read-poll test-step3-review-cap test-dispatch-code-voters-retry-claude test-review-and-fix-parsers test-file-failure-report-cross-repo test-persist-retally-step3-env test-scout-plan-archetypes-wrapper test-classify-bump test-review-and-fix-write-rejected test-write-final-report test-token-report-summary-format test-lint-codex-exec-auth test-agent-model-args test-analyze test-token-cost-per-bucket test-lib-net test-git-commit-only test-implement-relevant-checks-anti-halt
+test-harnesses-19: test-hook-anti-read-poll test-design-step1d5 test-step3-review-cap test-dispatch-code-voters-retry-claude test-review-and-fix-parsers test-file-failure-report-cross-repo test-persist-retally-step3-env test-scout-plan-archetypes-wrapper test-classify-bump test-review-and-fix-write-rejected test-write-final-report test-token-report-summary-format test-lint-codex-exec-auth test-agent-model-args test-analyze test-token-cost-per-bucket test-lib-net test-git-commit-only test-implement-relevant-checks-anti-halt
 
 test-harnesses-20: test-gh-pr-body-update test-commit-implementation test-gate-b-dedup-plan test-implement-review-token-propagation test-record-plan-review-round-timing test-read-result-env test-parse-bootstrap-routing-envelope test-reviewer-prune test-emit-tally test-render-cost-line-realism test-design-postplan-emit test-preflight-args test-compute-pr-line-counts test-design-pause-resume test-render-cost-line test-audit-edit-write test-github-remote-repo test-lib-submodule-prohibition
 
@@ -1156,3 +1157,9 @@ test-design-step6:
 
 test-design-step-validator-autofix:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-step-validator-autofix.sh
+
+test-design-step1d5:
+	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-step1d5.sh
+
+test-design-log-ship:
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_design_log_ship.py

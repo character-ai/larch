@@ -39,6 +39,12 @@ TEST_FILE_CLEANUP_PATTERNS = (
     "scripts/test-*.md",
     "parallel-tests.py",
     "Makefile",
+    ".pre-commit-config.yaml",
+    ".markdownlint.json",
+    ".markdownlintignore",
+    "agent-lint.toml",
+    ".agnix.toml",
+    ".gitleaks.toml",
 )
 SKILL_HARNESS_CLEANUP_GLOBS = (
     "skills/*/scripts/test-*.sh",

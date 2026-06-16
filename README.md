@@ -89,6 +89,12 @@ larch ships **public skills** with the plugin (`skills/`); **private** skills li
     <tr><td colspan="2">End-to-end implementation from the <strong>positional</strong> GitHub <code>&lt;issue-N&gt;</code> after <code>/design</code> has written <code>larch:plan</code> into that issue's body. Step 5 always runs <code>review-and-fix CLI</code> with the unified internal hard panel (no public <code>--panel</code> argv): up to <strong>5 rounds</strong> (fixed hard ceiling), a <strong>3-judge panel on every round</strong> (Claude opus + Codex + Cursor when both vendors are available; shrink-not-backfill drops an unavailable external instead of replacing it), and the <strong>review panel</strong> with <strong>specialists per vendor</strong> (plus optional dynamic archetypes). <code>--merge</code> enables CI+merge; <code>--forked</code> is mutually exclusive with <code>--merge</code>. Use <code>--emergency</code> to bypass plan-block presence / plan-adequacy audit / clarify-state pending gates (default off). <code>--self-review</code> skips the external panel for a thorough inline self-review at Step 5. Preflight audit refusal exits <strong>3</strong> (distinct from flag/plan hard errors exit <strong>2</strong>).</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
+      <td><a href="docs/skills.md#bug"><code>/bug</code></a></td>
+      <td><code>&lt;bug description&gt;</code></td>
+    </tr>
+    <tr><td colspan="2">Read-only bug investigation that drafts and files a deduped GitHub issue through <code>/issue</code>. Security reports abort to <code>SECURITY.md</code> guidance instead of public issue filing.</td></tr>
+    <tr><td colspan="2"><hr></td></tr>
+    <tr>
       <td><a href="docs/skills.md#issue"><code>/issue</code></a></td>
       <td><code>[--input-file FILE] [--intra-batch-deps-file FILE] [--blocked-by-issue N] [--title-prefix PREFIX] [--label LABEL]... [--body-file FILE] [--dry-run] [--no-dedup] [--no-dep-llm] [--sentinel-file PATH] [&lt;issue description or title&gt;]</code></td>
     </tr>
