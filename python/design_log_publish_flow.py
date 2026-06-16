@@ -82,6 +82,37 @@ def _default_base_ref(repo_root: str) -> str:
     return "main"
 
 
+def _spawn_detached_admin_merge(cli: str, pr_number: str, repo: str, repo_root: str) -> None:
+    """Launch the design-log admin-merge waiter as a detached background process.
+
+    Routes the automated log PR through the existing ``ship design-log`` path
+    (``design_log_ship.run_design_log_ci_merge``): it polls required CI checks to
+    green, then runs ``gh pr merge --admin --squash --delete-branch`` -- bypassing
+    the review gate that GitHub-native ``--auto`` can never satisfy for an
+    unreviewed automated PR (issue #4524). Detached via ``start_new_session`` so
+    the /design orchestrator is not blocked on CI (issue #4404). Best-effort: a
+    launch failure leaves the PR open for manual/CI merge.
+    """
+    argv = [sys.executable, cli, "ship", "design-log", "--pr-number", pr_number]
+    if repo:
+        argv += ["--repo", repo]
+    try:
+        _ = subprocess.Popen(  # pylint: disable=consider-using-with
+            argv,
+            cwd=repo_root,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except OSError as exc:
+        print(
+            f"design log-publish: detached admin-merge launch failed; "
+            f"PR #{pr_number} left open for manual/CI merge: {exc}",
+            file=sys.stderr,
+        )
+
+
 def _publish_design_logs(
     plugin_root: Path,
     design_tmpdir: Path,
@@ -159,14 +190,18 @@ def _publish_design_logs(
         pr_url = pr.stdout.strip().splitlines()[-1] if pr.stdout.strip() else ""
         match = _PR_URL_RE.search(pr_url)
         pr_number = match.group(1) if match else ""
-        # Enqueue GitHub-native auto-merge (non-blocking) so the log PR squashes
-        # in once required checks pass, without stalling the /design orchestrator
-        # on CI. Best-effort: if auto-merge is unavailable the PR stays open and
-        # the operator merges it; the working tree is already clean either way.
+        # Launch the wait-then-admin-merge waiter detached so the log PR squashes
+        # in once required CI checks pass, without stalling the /design orchestrator
+        # on CI (preserving the non-blocking goal of #4404). GitHub-native --auto
+        # cannot satisfy the active "Code review" ruleset's required-review gate
+        # that an unreviewed automated PR never receives, so the log PR is routed
+        # through the existing ship design-log path (run_design_log_ci_merge), which
+        # waits for required checks then merges with --admin --delete-branch,
+        # bypassing only the review gate (#4524). Best-effort: a launch failure
+        # leaves the PR open for manual/CI merge and the working tree is already
+        # clean either way.
         if pr_number:
-            merge = _run(["gh", "pr", "merge", "--auto", "--squash", pr_number, *repo_args], cwd=repo_root)
-            if merge.returncode != 0:
-                print(f"design log-publish: auto-merge enable non-zero; PR #{pr_number} left open for manual/CI merge: {merge.stderr.strip()}", file=sys.stderr)
+            _spawn_detached_admin_merge(cli, pr_number, repo, repo_root)
         return (True, pr_number, pr_url, "")
     finally:
         _ = _run(["git", "worktree", "remove", "--force", str(worktree)], cwd=repo_root)
