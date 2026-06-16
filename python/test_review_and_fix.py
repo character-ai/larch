@@ -767,6 +767,7 @@ def test_review_core_capture_rejects_non_executable_override(tmp_path, monkeypat
 @MARK_DISPATCH
 def test_run_coder_cursor_acquires_external_serial_lock(tmp_path, monkeypatch):
     monkeypatch.setenv("CURSOR_PRESENT", "true")
+    monkeypatch.setenv("CURSOR_BINARY_FOUND", "true")
     monkeypatch.setattr(review_and_fix, "_cursor_available", lambda: True)
     lock_calls: list[str] = []
     release_calls: list[review_and_fix.agents.SerialLockState] = []
@@ -1221,6 +1222,7 @@ def test_flush_scout_manifest_writes_batch(tmp_path, monkeypatch):
 @MARK_DISPATCH
 def test_run_coder_cursor_normalizes_api_key_before_launch(tmp_path, monkeypatch):
     monkeypatch.setenv("CURSOR_PRESENT", "true")
+    monkeypatch.setenv("CURSOR_BINARY_FOUND", "true")
     monkeypatch.setenv("CURSOR_API_KEY", "  key-with-padding  ")
     monkeypatch.setattr(review_and_fix, "_cursor_available", lambda: True)
     monkeypatch.setattr(

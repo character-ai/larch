@@ -1324,10 +1324,6 @@ def _parse_probe_stdout(text: str) -> tuple[dict[str, str], list[str]]:
 
 def _refresh_gate_probe(st: BootstrapState) -> str | None:
     args = ["agent", "check-reviewers"]
-    if shutil.which("codex") is None:
-        args.append("--skip-codex-probe")
-    if shutil.which("cursor") is None:
-        args.append("--skip-cursor-probe")
     result = _cli(*args)
     if result.returncode != 0:
         result = _cli(*args)

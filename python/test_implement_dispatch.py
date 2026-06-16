@@ -822,7 +822,7 @@ def test_step2_dispatch_main_branch_prohibited(repo: Path, tmp_path: Path, monke
         "--plan-file", str(tmp / "plan.txt"),
         "--feature-file", str(tmp / "feature-description.txt"),
         "--coder", "cursor",
-        "--cursor-present", "true",
+        "--cursor-binary-found", "true",
     ])
     assert rc == 0
     out = capsys.readouterr().out
@@ -986,7 +986,7 @@ def test_step2_dispatch_detached_head_prohibited(repo: Path, tmp_path: Path, mon
         "--plan-file", str(tmp / "plan.txt"),
         "--feature-file", str(tmp / "feature-description.txt"),
         "--coder", "cursor",
-        "--cursor-present", "true",
+        "--cursor-binary-found", "true",
     ])
     assert rc == 0
     assert launcher_calls == 0
