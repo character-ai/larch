@@ -1,5 +1,5 @@
 # pyright: reportPrivateUsage=false, reportAttributeAccessIssue=false, reportUnusedCallResult=false, reportUnusedFunction=false
-"""Regression for #4495: pytest must stay hermetic inside a live larch session.
+"""Regression for #4495 and #4500: pytest stays hermetic inside a live larch session.
 
 CI-fixer code paths in agents.py resolve their output target from ambient
 session-routing env vars (IMPLEMENT_TMPDIR, SESSION_ENV_PATH, DESIGN_TMPDIR,
@@ -92,4 +92,29 @@ def test_vendor_failure_diagnostics_skips_ambient_session_tmpdir(
     agents._append_vendor_failure_diagnostics(
         source, site="step3 cursor-ci", exit_code=7
     )
+    assert not (_ambient_live_session / "vendor-failure-diagnostics.parts").exists()
+
+
+@pytest.mark.parametrize("tool", ["codex", "cursor", "claude"])
+def test_append_ci_failure_skips_ambient_session_tmpdir(
+    _ambient_live_session: Path, tmp_path: Path, tool: str
+) -> None:
+    """End-to-end guard for #4500 (OOS twin of #4495): `_append_ci_failure` is the
+    shared CI-fixer sink the test_launch_codex_ci / test_launch_cursor_ci /
+    test_check_reviewers / test_cursor_ci_stall_monitor paths funnel a failing
+    launcher exit through. Under the conftest isolation it must resolve no
+    execution-issues target and write nothing into the ambient session tmpdir for
+    any vendor (covering both the run-log append and the vendor-diagnostics sink
+    in one call, one level above test_execution_issues_log_unresolved_under_isolation
+    and test_vendor_failure_diagnostics_skips_ambient_session_tmpdir).
+    """
+    output = tmp_path / f"{tool}-ci-out.txt"
+    _ = output.write_text("", encoding="utf-8")
+    _ = output.with_suffix(output.suffix + ".diag").write_text(
+        "STATUS=FAILED\nFAILURE_REASON=health\n", encoding="utf-8"
+    )
+    agents._append_ci_failure(
+        output, tool=tool, launcher_exit=127, site="ci fixer", binary_present=False
+    )
+    assert not (_ambient_live_session / "execution-issues.md").exists()
     assert not (_ambient_live_session / "vendor-failure-diagnostics.parts").exists()
