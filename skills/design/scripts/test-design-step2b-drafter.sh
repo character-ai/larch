@@ -138,19 +138,19 @@ export SESSION_ID='test-session'
 export ISSUE_NUMBER='1'
 export ISSUE_TITLE='Test issue'
 export REPO='example/repo'
-export CODEX_PRESENT='true'
-export CURSOR_PRESENT='false'
-EOF_ENV
-    if [[ "$drafter_value" != "__omit__" ]]; then
-        printf "export LARCH_DESIGN_DRAFTER='%s'\n" "$drafter_value" >> "$env_file"
-    fi
-    cat >> "$env_file" <<EOF_ENV
+export CODEX_BINARY_FOUND='true'
+export CURSOR_BINARY_FOUND='false'
 export CLAUDE_PLUGIN_ROOT='$plugin_root'
 export LARCH_TOKEN_SESSION_ID='step2b-drafter-test'
 export LARCH_TEST_REAL_REPO_ROOT='$REPO_ROOT'
 export IMPLEMENT_TMPDIR=''
 unset LARCH_TOKEN_LEDGER
 EOF_ENV
+    if [[ "$drafter_value" == "__omit__" ]]; then
+        printf '%s\n' 'unset LARCH_DESIGN_DRAFTER' >> "$env_file"
+    else
+        printf "export LARCH_DESIGN_DRAFTER='%s'\n" "$drafter_value" >> "$env_file"
+    fi
 }
 
 setup_design_tmp() {
@@ -316,7 +316,7 @@ assert_order "$TMP_ROOT/call.log" 'timing design Step 2b — plan' 'launch succe
 assert_not_called "$TMP_ROOT/call.log" 'PRELUDE_SOURCED_OR_EXECUTED' 'design-step2b-prelude.sh was sourced on success'
 pass 'prelude merge order is preserved'
 
-# 3 Unset drafter defaults to Claude even when Codex is present.
+# 3 Unset drafter defaults to Codex when the binary is present.
 plugin_default="$TMP_ROOT/plugin-default"
 design_default="$TMP_ROOT/design-default"
 make_fake_plugin "$plugin_default"
@@ -330,12 +330,12 @@ CALL_LOG="$TMP_ROOT/call.log" POSTPLAN_ARGV_FILE="$design_default/postplan.argv"
   "$WRAPPER" --session-env-path "$design_default/session.env" --claude-pid 4242 >"$design_default/stdout.txt" 2>"$design_default/stderr.txt"
 rc=$?
 set -e
-[[ "$rc" -eq 0 ]] || fail 'default Claude route should exit cleanly'
-assert_contains "$TMP_ROOT/call.log" 'launch-claude model=claude-opus-4-8 mode=success' 'default route did not pass Claude Opus 4.8'
-assert_not_called "$TMP_ROOT/call.log" 'launch success' 'default route should not launch Codex'
-assert_contains "$design_default/stdout.txt" 'DRAFTER_VENDOR=claude' 'default route vendor row missing'
+[[ "$rc" -eq 0 ]] || fail 'default Codex route should exit cleanly'
+assert_contains "$TMP_ROOT/call.log" 'launch success' 'default route did not launch Codex'
+assert_not_called "$TMP_ROOT/call.log" 'launch-claude' 'default route should not launch Claude'
+assert_contains "$design_default/stdout.txt" 'DRAFTER_VENDOR=codex' 'default route vendor row missing'
 assert_contains "$design_default/stdout.txt" 'POSTPLAN_STATUS=ok' 'default route postplan row missing'
-pass 'unset drafter defaults to Claude'
+pass 'unset drafter defaults to Codex when binary present'
 
 # 4 Explicit Claude route honors the model override.
 plugin_claude="$TMP_ROOT/plugin-claude"

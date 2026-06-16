@@ -17,10 +17,20 @@ import proc
 import session_env
 
 CLI = Path(__file__).with_name("cli.py")
+TOOL_ENV_KEYS = ("CODEX_PRESENT", "CURSOR_PRESENT", "CODEX_AVAILABLE", "CURSOR_AVAILABLE", "CODEX_BINARY_FOUND", "CURSOR_BINARY_FOUND")
+
+
+def clean_env(extra: dict[str, str] | None = None) -> dict[str, str]:
+    merged = os.environ.copy()
+    for key in TOOL_ENV_KEYS:
+        merged.pop(key, None)
+    if extra:
+        merged.update(extra)
+    return merged
 
 
 def run_cli(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
-    merged = os.environ.copy()
+    merged = clean_env()
     merged["LARCH_QUIET_DISABLE"] = "1"
     if env:
         merged.update(env)
@@ -118,7 +128,8 @@ def test_write_env_writer_guard_and_plugin_root_only(tmp_path: Path) -> None:
     assert ok.returncode == 0, ok.stderr
     text = out.read_text(encoding="utf-8")
     assert "REPO=owner/repo\n" in text
-    assert "CODEX_AVAILABLE=true\n" in text
+    assert "CODEX_AVAILABLE" not in text
+    assert "CODEX_PRESENT" not in text
     assert "LARCH_RUN_ID=RUN_1\n" in text
     assert (tmp_path / "plugin-root.env").read_text(encoding="utf-8") == "CLAUDE_PLUGIN_ROOT=/tmp/larch-plugin\nexport CLAUDE_PLUGIN_ROOT\n"
     bad = run_cli("write-env", "--output", "/etc/larch-session-env", "--repo-unavailable", "false")
@@ -193,8 +204,8 @@ def test_write_design_env_source_safe_and_home_symlink(tmp_path: Path) -> None:
         env=env,
     )
     assert result.returncode == 0, result.stderr
-    source = subprocess.run(["bash", "-c", f"source {out}; printf '%s|%s|%s' \"$DESIGN_TMPDIR\" \"$CODEX_AVAILABLE\" \"$CLAUDE_PLUGIN_ROOT\""], text=True, capture_output=True, check=False)
-    assert source.stdout == f"{design}|true|/tmp/plugin"
+    source = subprocess.run(["bash", "-c", f"source {out}; printf '%s|%s|%s' \"$DESIGN_TMPDIR\" \"${{CODEX_PRESENT:-}}\" \"$CLAUDE_PLUGIN_ROOT\""], text=True, capture_output=True, env=clean_env(), check=False)
+    assert source.stdout == f"{design}||/tmp/plugin"
     link = home / ".cache" / "larch" / "sessions" / "current-design-env-12345.sh"
     assert link.is_symlink()
     assert link.readlink() == out
@@ -531,12 +542,14 @@ def test_write_design_env_partial_codex_override_clears_binary(tmp_path: Path) -
         ["bash", "-c", f"set -u; source {out}; printf '%s|%s|%s|%s|%s|%s' \"$SESSION_ID\" \"${{CODEX_PRESENT:-}}\" \"${{CODEX_AVAILABLE:-}}\" \"${{CURSOR_PRESENT:-}}\" \"${{CURSOR_AVAILABLE:-}}\" \"${{CURSOR_BINARY_FOUND:-}}\""],
         text=True,
         capture_output=True,
+        env=clean_env(),
         check=False,
     )
     assert source.returncode == 0, source.stderr
-    assert source.stdout == "PARTIAL-OVERRIDE|false|false|true|true|false"
+    assert source.stdout == "PARTIAL-OVERRIDE|||||false"
     text = out.read_text(encoding="utf-8")
-    assert "CODEX_BINARY_FOUND" not in text
+    assert "CODEX_PRESENT" not in text
+    assert "CODEX_AVAILABLE" not in text
 
 
 def test_write_design_env_strict_boolean_recovery(tmp_path: Path) -> None:
@@ -569,13 +582,14 @@ def test_write_design_env_strict_boolean_recovery(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     assert not marker.exists()
     source = subprocess.run(
-        ["bash", "-c", f"set -u; source {out}; printf '%s|%s' \"$CODEX_PRESENT\" \"${{CURSOR_AVAILABLE:-}}\""],
+        ["bash", "-c", f"set -u; source {out}; printf '%s|%s' \"${{CODEX_PRESENT:-}}\" \"${{CURSOR_AVAILABLE:-}}\""],
         text=True,
         capture_output=True,
+        env=clean_env(),
         check=False,
     )
     assert source.returncode == 0, source.stderr
-    assert source.stdout == "true|false"
+    assert source.stdout == "|"
     text = out.read_text(encoding="utf-8")
     assert "CURSOR_PRESENT" not in text
     assert "CODEX_AVAILABLE" not in text
@@ -658,8 +672,8 @@ def test_write_design_env_refresh_preserves_prior_bools(tmp_path: Path) -> None:
     )
     assert second.returncode == 0, second.stderr
     text = out.read_text(encoding="utf-8")
-    assert "CODEX_PRESENT=true\n" in text
-    assert "CURSOR_PRESENT=false\n" in text
+    assert "CODEX_PRESENT" not in text
+    assert "CURSOR_PRESENT" not in text
 
 
 def test_write_env_rejects_invalid_run_id(tmp_path: Path) -> None:
@@ -925,13 +939,14 @@ def test_setup_presence_defaults_with_check_reviewers(tmp_path: Path, monkeypatc
         env=reviewer_env,
     )
     assert result1.returncode == 0, result1.stderr
-    for key in ("CODEX_PRESENT=true", "CURSOR_PRESENT=true", "CODEX_AVAILABLE=true", "CURSOR_AVAILABLE=true"):
+    for key in ("CODEX_PRESENT=true", "CURSOR_PRESENT=true", "CODEX_BINARY_FOUND=true", "CURSOR_BINARY_FOUND=true"):
         assert key in result1.stdout
+    assert "CODEX_AVAILABLE" not in result1.stdout
     text1 = out1.read_text(encoding="utf-8")
-    assert "CODEX_PRESENT=true\n" in text1
-    assert "CURSOR_PRESENT=true\n" in text1
-    assert "CODEX_AVAILABLE=true\n" in text1
-    assert "CURSOR_AVAILABLE=true\n" in text1
+    assert "CODEX_PRESENT" not in text1
+    assert "CURSOR_PRESENT" not in text1
+    assert "CODEX_BINARY_FOUND=true\n" in text1
+    assert "CURSOR_BINARY_FOUND=true\n" in text1
 
     env2 = tmp_path / "env2.txt"
     env2.write_text("CODEX_PRESENT=false\nCURSOR_PRESENT=true\n", encoding="utf-8")
@@ -950,11 +965,12 @@ def test_setup_presence_defaults_with_check_reviewers(tmp_path: Path, monkeypatc
         env=reviewer_env,
     )
     assert result2.returncode == 0, result2.stderr
-    assert "CODEX_PRESENT=false" in result2.stdout
+    assert "CODEX_PRESENT=true" in result2.stdout
     assert "CURSOR_PRESENT=true" in result2.stdout
     text2 = out2.read_text(encoding="utf-8")
-    assert "CODEX_PRESENT=false\n" in text2
-    assert "CURSOR_PRESENT=true\n" in text2
+    assert "CODEX_PRESENT" not in text2
+    assert "CURSOR_PRESENT" not in text2
+    assert "CODEX_BINARY_FOUND=true\n" in text2
 
     env3 = tmp_path / "env3.txt"
     env3.write_text(

@@ -6,10 +6,16 @@ INIT="$ROOT/skills/design/scripts/design-step0-init.sh"
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 pass() { printf 'PASS: %s\n' "$*"; }
 
-D=$(mktemp -d "${TMPDIR:-/tmp}/test-step0-init.XXXXXX")
+if [[ -d /private/tmp ]]; then
+    TMP_BASE="/private/tmp"
+else
+    TMP_BASE="${TMPDIR:-/tmp}"
+    [[ -d "$TMP_BASE" ]] || TMP_BASE="/tmp"
+fi
+D=$(mktemp -d "${TMP_BASE%/}/test-step0-init.XXXXXX")
 trap 'rm -rf "$D"' EXIT
 FAKE="$D/fake-plugin"
-mkdir -p "$FAKE/scripts" "$FAKE/skills/design/scripts"
+mkdir -p "$FAKE/scripts" "$FAKE/skills/design/scripts" "$D/home"
 ln -sf "$ROOT/scripts/read-result-env.sh" "$FAKE/scripts/read-result-env.sh"
 ln -sf "$ROOT/scripts/lib-quiet.sh" "$FAKE/scripts/lib-quiet.sh"
 ln -sf "$ROOT/python" "$FAKE/python"
@@ -25,7 +31,7 @@ export CLAUDE_PLUGIN_ROOT="$FAKE"
 EOF
 
 set +e
-env CLAUDE_PLUGIN_ROOT="$FAKE" bash "$INIT" --session-env-path "$D/session-env.sh" --claude-pid 1 --plugin-root "$FAKE" 2>"$D/stderr.log"
+env HOME="$D/home" CLAUDE_PLUGIN_ROOT="$FAKE" bash "$INIT" --session-env-path "$D/session-env.sh" --claude-pid 1 --plugin-root "$FAKE" 2>"$D/stderr.log"
 init_rc=$?
 set -e
 [[ "$init_rc" -eq 0 ]] || fail "step0 init rc=$init_rc stderr=$(cat "$D/stderr.log")"

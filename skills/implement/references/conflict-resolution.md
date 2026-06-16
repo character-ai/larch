@@ -51,7 +51,7 @@ Call `AskUserQuestion` with the upstream (main) version, the feature branch comm
 
 **3a. Create temp directory**: Create `$IMPLEMENT_TMPDIR/conflict-review/` for reviewer artifacts. If it already exists (from a prior conflict resolution in this rebase loop), remove it and recreate.
 
-**3b. Check external reviewer availability**: Follow the **Binary Check and Health Probe** procedure in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md`. Honor any `CODEX_PRESENT=false` / `CURSOR_PRESENT=false` state from the session-env (reviewers already known to be unhealthy should not be re-probed or used).
+**3b. Check external reviewer availability**: Use `CODEX_BINARY_FOUND` / `CURSOR_BINARY_FOUND` from session env or fresh executable checks for impossible-command guards. Do not honor stale `CODEX_PRESENT=false` / `CURSOR_PRESENT=false` health from Step 0 as a routing gate.
 
 **3c. Prepare review context**: For each non-trivial conflicted file, prepare a per-file conflict context block:
 ```

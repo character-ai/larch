@@ -167,6 +167,32 @@ def test_codex_item_count_increase_falls_back(tmp_path: Path, monkeypatch: pytes
     assert len([call for call in fake.calls if call[:2] == ["issue", "create-one"]]) == 2
 
 
+def test_codex_available_honors_explicit_false_binary_found_with_codex_on_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CODEX_BINARY_FOUND", "false")
+    monkeypatch.delenv("LARCH_OOS_CODEX_BINARY_FOUND", raising=False)
+
+    def fake_which(name: str) -> str | None:
+        return "/usr/bin/codex" if name == "codex" else None
+
+    monkeypatch.setattr(oos_filer.shutil, "which", fake_which)
+    assert oos_filer._codex_available() is False  # pyright: ignore[reportPrivateUsage]
+
+
+def test_codex_available_ignores_stale_larch_oos_codex_available_false(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LARCH_OOS_CODEX_AVAILABLE", "false")
+    monkeypatch.delenv("LARCH_OOS_CODEX_BINARY_FOUND", raising=False)
+    monkeypatch.delenv("CODEX_BINARY_FOUND", raising=False)
+    def fake_which(name: str) -> str | None:
+        return "/usr/bin/codex" if name == "codex" else None
+
+    monkeypatch.setattr(oos_filer.shutil, "which", fake_which)
+    assert oos_filer._codex_available() is True  # pyright: ignore[reportPrivateUsage]
+
+
 def test_two_items_codex_unavailable_skips_combine(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OOS_ISSUES_PER_RUN_CAP", "99")
     _setup(tmp_path)

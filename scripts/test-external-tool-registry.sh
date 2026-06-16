@@ -117,7 +117,7 @@ reviewer_output=""
 if reviewer_output=$(python3 "$REPO_ROOT/python/cli.py" agent check-reviewers --skip-codex-probe --skip-cursor-probe 2>"$reviewer_err"); then
     for tool in codex cursor; do
         upper=$(printf '%s' "$tool" | tr '[:lower:]' '[:upper:]')
-        assert_contains "check-reviewers availability key for $tool" "${upper}_AVAILABLE=" "$reviewer_output"
+        assert_contains "check-reviewers binary key for $tool" "${upper}_BINARY_FOUND=" "$reviewer_output"
     done
     if grep -q 'internal error: unsupported reviewer tool' "$reviewer_err"; then
         fail "check-reviewers emitted unsupported-tool internal error"

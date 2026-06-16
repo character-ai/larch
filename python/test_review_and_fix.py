@@ -699,12 +699,12 @@ def test_commit_fixes_replaces_empty_session_backed_env(tmp_path, monkeypatch):
 def test_apply_findings_rehydrates_session_env_before_coder(tmp_path, monkeypatch):
     monkeypatch.delenv("LARCH_TOKEN_SESSION_ID", raising=False)
     monkeypatch.delenv("LARCH_TIMING_LEDGER", raising=False)
-    monkeypatch.setenv("CODEX_PRESENT", "true")
-    monkeypatch.setenv("CURSOR_PRESENT", "true")
+    monkeypatch.setenv("CODEX_BINARY_FOUND", "true")
+    monkeypatch.setenv("CURSOR_BINARY_FOUND", "true")
     session = tmp_path / "session-env.sh"
     session.write_text(
         "LARCH_TOKEN_SESSION_ID=parent-session\nLARCH_TIMING_LEDGER=/tmp/ledger.tsv\n"
-        "CODEX_PRESENT=false\nCURSOR_PRESENT=false\n",
+        "CODEX_PRESENT=false\nCURSOR_PRESENT=false\nCODEX_BINARY_FOUND=false\nCURSOR_BINARY_FOUND=false\n",
         encoding="utf-8",
     )
     findings = tmp_path / "findings.md"
@@ -715,8 +715,8 @@ def test_apply_findings_rehydrates_session_env_before_coder(tmp_path, monkeypatc
         del input_file, round_dir, result_file, round_num
         seen["token"] = os.environ.get("LARCH_TOKEN_SESSION_ID", "")
         seen["ledger"] = os.environ.get("LARCH_TIMING_LEDGER", "")
-        seen["codex"] = os.environ.get("CODEX_PRESENT", "")
-        seen["cursor"] = os.environ.get("CURSOR_PRESENT", "")
+        seen["codex"] = os.environ.get("CODEX_BINARY_FOUND", "")
+        seen["cursor"] = os.environ.get("CURSOR_BINARY_FOUND", "")
         return review_and_fix.CoderResult(0, status="no-changes")
 
     monkeypatch.setattr(review_and_fix, "apply_findings_with_coder", fake_coder)
@@ -767,6 +767,7 @@ def test_review_core_capture_rejects_non_executable_override(tmp_path, monkeypat
 @MARK_DISPATCH
 def test_run_coder_cursor_acquires_external_serial_lock(tmp_path, monkeypatch):
     monkeypatch.setenv("CURSOR_PRESENT", "true")
+    monkeypatch.setenv("CURSOR_BINARY_FOUND", "true")
     monkeypatch.setattr(review_and_fix, "_cursor_available", lambda: True)
     lock_calls: list[str] = []
     release_calls: list[review_and_fix.agents.SerialLockState] = []
@@ -1221,6 +1222,7 @@ def test_flush_scout_manifest_writes_batch(tmp_path, monkeypatch):
 @MARK_DISPATCH
 def test_run_coder_cursor_normalizes_api_key_before_launch(tmp_path, monkeypatch):
     monkeypatch.setenv("CURSOR_PRESENT", "true")
+    monkeypatch.setenv("CURSOR_BINARY_FOUND", "true")
     monkeypatch.setenv("CURSOR_API_KEY", "  key-with-padding  ")
     monkeypatch.setattr(review_and_fix, "_cursor_available", lambda: True)
     monkeypatch.setattr(
@@ -1244,17 +1246,17 @@ def test_run_coder_cursor_normalizes_api_key_before_launch(tmp_path, monkeypatch
 
 
 @MARK_STEP5
-def test_step5_checks_wiring_passes_repo_site_and_presence(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_step5_checks_wiring_passes_repo_site_and_binary_presence(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     impl = _tmp_impl(tmp_path)
     (impl / "session-env.sh").write_text(
-        "RUN_ID=run-1\nCODEX_PRESENT=true\nCURSOR_PRESENT=false\n",
+        "RUN_ID=run-1\nCODEX_PRESENT=false\nCURSOR_PRESENT=true\nCODEX_BINARY_FOUND=true\nCURSOR_BINARY_FOUND=false\n",
         encoding="utf-8",
     )
     repo = tmp_path / "repo"
     repo.mkdir()
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(repo))
-    monkeypatch.delenv("CODEX_PRESENT", raising=False)
-    monkeypatch.delenv("CURSOR_PRESENT", raising=False)
+    monkeypatch.delenv("CODEX_BINARY_FOUND", raising=False)
+    monkeypatch.delenv("CURSOR_BINARY_FOUND", raising=False)
     captured_checks: dict[str, object] = {}
     captured_fix: dict[str, object] = {}
 

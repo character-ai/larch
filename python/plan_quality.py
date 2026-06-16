@@ -31,6 +31,11 @@ from session_env import validate_design_tmpdir
 HEADER = "row_type\tsource_line\tscript_path\tflag\tflag_value\tnote\tcmd_uid"
 OPTIONAL_KEYS = ("diff_added", "diff_deleted", "mechanical_churn")
 
+def _binary_arg(value: str, binary: str) -> str:
+    if value in {"true", "false"}:
+        return value
+    return "true" if shutil.which(binary) is not None else "false"
+
 
 @dataclass(frozen=True)
 class PlanCommandRow:
@@ -1374,8 +1379,10 @@ def revise_plan_with_waterfall_main(argv: list[str]) -> int:
     parser.add_argument("--findings-file", required=True)
     parser.add_argument("--feature-file", required=True)
     parser.add_argument("--round-num", required=True, type=int)
-    parser.add_argument("--codex-present", required=True, choices=("true", "false"))
-    parser.add_argument("--cursor-present", required=True, choices=("true", "false"))
+    parser.add_argument("--codex-present", default="", choices=("", "true", "false"))
+    parser.add_argument("--cursor-present", default="", choices=("", "true", "false"))
+    parser.add_argument("--codex-binary-found", default="", choices=("", "true", "false"))
+    parser.add_argument("--cursor-binary-found", default="", choices=("", "true", "false"))
     parser.add_argument("--timeout", type=int, default=1800)
     parser.add_argument("--patch-format", choices=("unified-diff", "file-replacement"), default="unified-diff")
     args = parser.parse_args(argv)
@@ -1424,6 +1431,8 @@ def revise_plan_with_waterfall_main(argv: list[str]) -> int:
         launchers["cursor"] = [os.environ["LARCH_TEST_LAUNCH_CURSOR_REVIEW"], "--tool", "cursor"]
     if os.environ.get("LARCH_TEST_LAUNCH_CLAUDE_REVIEW"):
         launchers["claude"] = [os.environ["LARCH_TEST_LAUNCH_CLAUDE_REVIEW"]]
+    codex_binary_found = _binary_arg(args.codex_binary_found, "codex")
+    cursor_binary_found = _binary_arg(args.cursor_binary_found, "cursor")
     _test_design_driver = os.environ.get("LARCH_TEST_DESIGN_DRIVER", "")
     design_driver: list[str] = (
         shlex.split(_test_design_driver)
@@ -1446,11 +1455,11 @@ def revise_plan_with_waterfall_main(argv: list[str]) -> int:
 
     def attempt(ord_: int, tier: str) -> bool:
         nonlocal winner, winner_output
-        if tier == "codex" and args.codex_present == "false":
-            set_tier_status(ord_, "skipped-not-present")
+        if tier == "codex" and codex_binary_found == "false":
+            set_tier_status(ord_, "skipped-binary-missing")
             return False
-        if tier == "cursor" and args.cursor_present == "false":
-            set_tier_status(ord_, "skipped-not-present")
+        if tier == "cursor" and cursor_binary_found == "false":
+            set_tier_status(ord_, "skipped-binary-missing")
             return False
         out_path = revise_dir / f"{tier}-output.txt"
         prompt = revise_dir / "prompt.txt"
@@ -1842,10 +1851,12 @@ def auto_fix_plan_commands_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="cli.py plan auto-fix-commands")
     parser.add_argument("--design-tmpdir", required=True)
     parser.add_argument("--plan-file", required=True)
-    parser.add_argument("--codex-present", required=True, choices=("true", "false"))
-    parser.add_argument("--cursor-present", required=True, choices=("true", "false"))
+    parser.add_argument("--codex-present", default="", choices=("", "true", "false"))
+    parser.add_argument("--cursor-present", default="", choices=("", "true", "false"))
     parser.add_argument("--codex-available", choices=("true", "false"))
     parser.add_argument("--cursor-available", choices=("true", "false"))
+    parser.add_argument("--codex-binary-found", default="", choices=("", "true", "false"))
+    parser.add_argument("--cursor-binary-found", default="", choices=("", "true", "false"))
     parser.add_argument("--repo-root")
     parser.add_argument("--max-attempts", type=int, default=2)
     parser.add_argument("--site", default="design plan-command auto-fix")
@@ -1877,12 +1888,12 @@ def auto_fix_plan_commands_main(argv: list[str]) -> int:
     plugin = _plugin_root(validate_repo)
     consumer_repo = _repo_root_from(Path.cwd())
     repo = consumer_repo if _git_repo_root(Path.cwd()) else validate_repo
-    codex_available = args.codex_available or args.codex_present
-    cursor_available = args.cursor_available or args.cursor_present
+    codex_available = _binary_arg(args.codex_binary_found, "codex")
+    cursor_available = _binary_arg(args.cursor_binary_found, "cursor")
     vendors = []
-    if args.codex_present == "true" and codex_available == "true":
+    if codex_available == "true":
         vendors.append("codex")
-    if args.cursor_present == "true" and cursor_available == "true":
+    if cursor_available == "true":
         vendors.append("cursor")
     if not vendors:
         emit_kv("AUTOFIX_STATUS", "unavailable")

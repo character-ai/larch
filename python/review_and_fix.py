@@ -156,7 +156,7 @@ def _rehydrate_session_env(session_env_path: Path) -> None:
         value = _session_get(session_env_path, key, default)
         if value:
             os.environ[key] = value
-    for key in ("CODEX_PRESENT", "CURSOR_PRESENT"):
+    for key in ("CODEX_BINARY_FOUND", "CURSOR_BINARY_FOUND"):
         value = _session_get(session_env_path, key, "")
         if value in {"true", "false"}:
             os.environ[key] = value
@@ -1115,7 +1115,7 @@ def _run_relevant_checks_captured(implement_tmpdir: Path) -> dict[str, str]:
     return _checks_result_capture(result)
 
 
-def _presence_flag(name: str, implement_tmpdir: Path) -> bool:
+def _binary_flag(name: str, implement_tmpdir: Path, binary: str) -> bool:
     value = os.environ.get(name, "")
     if value in {"true", "false"}:
         return value == "true"
@@ -1124,7 +1124,7 @@ def _presence_flag(name: str, implement_tmpdir: Path) -> bool:
         session_value = _session_get(session_env, name, "")
         if session_value in {"true", "false"}:
             return session_value == "true"
-    return False
+    return shutil.which(binary) is not None
 
 
 def _run_lint_fix_loop(implement_tmpdir: Path, checks_log: str) -> dict[str, str]:
@@ -1133,8 +1133,8 @@ def _run_lint_fix_loop(implement_tmpdir: Path, checks_log: str) -> dict[str, str
         site="step5",
         checks_log=checks_log,
         repo_root=_step5_repo_root(),
-        codex_present=_presence_flag("CODEX_PRESENT", implement_tmpdir),
-        cursor_present=_presence_flag("CURSOR_PRESENT", implement_tmpdir),
+        codex_present=_binary_flag("CODEX_BINARY_FOUND", implement_tmpdir, "codex"),
+        cursor_present=_binary_flag("CURSOR_BINARY_FOUND", implement_tmpdir, "cursor"),
         run_parent=str(implement_tmpdir / "lint-fix-loop"),
         allowed_tmpdir=str(implement_tmpdir),
     )
@@ -1248,7 +1248,8 @@ def _codex_available() -> bool:
 
 
 def _run_coder_cursor(round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
-    if os.environ.get("CURSOR_PRESENT") == "false" or not _cursor_available():
+    binary_flag = os.environ.get("CURSOR_BINARY_FOUND", "")
+    if binary_flag == "false" or not _cursor_available():
         return False
     cli = _plugin_root() / "python" / "cli.py"
     agents.cursor_preread_service_token()
@@ -1286,7 +1287,8 @@ def _run_coder_cursor(round_dir: Path, prompt_body: str, tool_log: Path) -> bool
 
 
 def _run_coder_codex(round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
-    if os.environ.get("CODEX_PRESENT") == "false" or not _codex_available():
+    binary_flag = os.environ.get("CODEX_BINARY_FOUND", "")
+    if binary_flag == "false" or not _codex_available():
         return False
     cli = _plugin_root() / "python" / "cli.py"
     output = round_dir / "coder-codex.log"
@@ -1837,13 +1839,13 @@ def _preflight_step5(args: argparse.Namespace) -> tuple[Path, int]:
     args.feature_file = str(feature_file)
     args.plan_file = str(plan_file)
     if not args.codex_available:
-        args.codex_available = _session_get(session_env, "CODEX_PRESENT", "false")
+        args.codex_available = _session_get(session_env, "CODEX_BINARY_FOUND", "")
     if not args.cursor_available:
-        args.cursor_available = _session_get(session_env, "CURSOR_PRESENT", "false")
+        args.cursor_available = _session_get(session_env, "CURSOR_BINARY_FOUND", "")
     if args.codex_available not in {"true", "false"}:
-        raise ValueError(f"CODEX_PRESENT must be true or false, got: {args.codex_available}")
+        args.codex_available = "true" if shutil.which("codex") is not None else "false"
     if args.cursor_available not in {"true", "false"}:
-        raise ValueError(f"CURSOR_PRESENT must be true or false, got: {args.cursor_available}")
+        args.cursor_available = "true" if shutil.which("cursor") is not None else "false"
     if args.no_dynamic_archetypes:
         args.dynamic_archetypes = "0"
     if args.mode != "mav-apply" and not args.pre_scouted_manifest:
@@ -1951,8 +1953,8 @@ def step5(argv: list[str] | None = None) -> int:
                 _emit_step5_envelope("stall", False, "preflight-failed", 0, 0, "unknown", "", "", default_cap)
             return 2
         os.environ["IMPLEMENT_TMPDIR"] = str(implement_tmpdir)
-        os.environ["CODEX_PRESENT"] = args.codex_available
-        os.environ["CURSOR_PRESENT"] = args.cursor_available
+        os.environ["CODEX_BINARY_FOUND"] = args.codex_available
+        os.environ["CURSOR_BINARY_FOUND"] = args.cursor_available
         os.environ.setdefault("CLAUDE_PLUGIN_ROOT", str(_plugin_root()))
         os.environ["LARCH_TOKEN_SESSION_ID"] = _session_get(Path(args.session_env_path), "LARCH_TOKEN_SESSION_ID", args.run_id)
         os.environ["LARCH_CLAUDE_SOURCE_FILE"] = _session_get(Path(args.session_env_path), "LARCH_CLAUDE_SOURCE_FILE", os.environ.get("LARCH_CLAUDE_SOURCE_FILE", ""))

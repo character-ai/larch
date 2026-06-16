@@ -850,7 +850,7 @@ def test_invoke_absorbed_degraded_gate_healthy_tools_do_not_prompt(tmp_path: Pat
     assert tail.routing.get("ROUTE") == "continue"
 
 
-def test_invoke_absorbed_degraded_gate_one_down_interactive_writes_sentinel(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_invoke_absorbed_degraded_gate_one_down_interactive_requires_prompt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_cli(*args: str, **_kwargs):
         if args[:2] == ("agent", "degraded-tools-gate"):
             return subprocess.CompletedProcess(["cli", *args], 0, _degraded_gate_stdout(both_down="false"), "")
@@ -863,11 +863,13 @@ def test_invoke_absorbed_degraded_gate_one_down_interactive_writes_sentinel(tmp_
         opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
         non_interactive=False,
     )
-    assert (tmp_path / ".degraded-tools-gate-prompted").is_file()
-    assert tail.routing.get("ROUTE") == "continue"
+    assert not (tmp_path / ".degraded-tools-gate-prompted").exists()
+    assert tail.routing.get("DEGRADED_PROMPT_REQUIRED") == "true"
+    assert "DEGRADED_HARD_FAIL" not in tail.routing
+    assert "ROUTE" not in tail.routing
 
 
-def test_invoke_absorbed_degraded_gate_both_down_interactive_emits_prompt_required(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_invoke_absorbed_degraded_gate_both_down_interactive_hard_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         bootstrap,
         "_cli",
@@ -878,11 +880,16 @@ def test_invoke_absorbed_degraded_gate_both_down_interactive_emits_prompt_requir
         opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
         non_interactive=False,
     )
-    assert tail.routing.get("DEGRADED_PROMPT_REQUIRED") == "true"
+    assert tail.contract_failure is True
+    assert tail.step_failed == "degraded-both-down-hard-fail"
+    assert tail.routing.get("DEGRADED_HARD_FAIL") == "true"
     assert "ROUTE" not in tail.routing
 
 
-def test_invoke_absorbed_degraded_gate_existing_sentinel_avoids_reprompt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_invoke_absorbed_degraded_gate_both_down_with_existing_sentinel_hard_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     _ = (tmp_path / ".degraded-tools-gate-prompted").write_text("", encoding="utf-8")
     monkeypatch.setattr(
         bootstrap,
@@ -895,11 +902,94 @@ def test_invoke_absorbed_degraded_gate_existing_sentinel_avoids_reprompt(tmp_pat
         opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
         non_interactive=False,
     )
+    assert tail.contract_failure is True
+    assert tail.step_failed == "degraded-both-down-hard-fail"
+    assert tail.routing.get("DEGRADED_HARD_FAIL") == "true"
+    assert "ROUTE" not in tail.routing
+
+
+def test_refresh_gate_probe_retries_then_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, ...]] = []
+
+    def fake_cli(*args: str, **_kwargs):
+        calls.append(args)
+        return subprocess.CompletedProcess(list(args), 1, "", "probe failed")
+
+    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
+    st = bootstrap.BootstrapState(
+        bootstrap.BootstrapOptions(up_to_phase="coder"),
+        implement_tmpdir=str(tmp_path),
+    )
+    st.codex_present = "true"
+    st.cursor_present = "true"
+    assert bootstrap._refresh_gate_probe(st) == "absorbed-gate-probe-refresh-failed"  # pyright: ignore[reportPrivateUsage]
+    assert len(calls) == 2
+    assert calls[0][:2] == ("agent", "check-reviewers")
+
+
+def test_refresh_gate_probe_always_reruns_check_reviewers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, ...]] = []
+
+    def fake_cli(*args: str, **_kwargs):
+        calls.append(args)
+        return subprocess.CompletedProcess(
+            list(args),
+            0,
+            "CODEX_PRESENT=false\nCURSOR_PRESENT=false\nCODEX_BINARY_FOUND=true\nCURSOR_BINARY_FOUND=true\n",
+            "",
+        )
+
+    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
+    st = bootstrap.BootstrapState(
+        bootstrap.BootstrapOptions(up_to_phase="coder"),
+        implement_tmpdir=str(tmp_path),
+    )
+    st.codex_present = "true"
+    st.cursor_present = "true"
+    st.codex_binary_found = "false"
+    st.cursor_binary_found = "false"
+    assert bootstrap._refresh_gate_probe(st) is None  # pyright: ignore[reportPrivateUsage]
+    assert len(calls) == 1
+    assert "--skip-codex-probe" not in calls[0]
+    assert "--skip-cursor-probe" not in calls[0]
+    assert st.codex_present == "false"
+    assert st.codex_binary_found == "true"
+
+
+def test_invoke_absorbed_gate_probe_refresh_failure_contract_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        bootstrap,
+        "_cli",
+        lambda *args, **_: subprocess.CompletedProcess(list(args), 1, "", "probe failed"),
+    )
+    tail = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
+        _continue_data(tmp_path),
+        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
+        non_interactive=False,
+    )
+    assert tail.contract_failure is True
+    assert tail.step_failed == "absorbed-gate-probe-refresh-failed"
+    assert "ROUTE" not in tail.routing
+
+
+def test_invoke_absorbed_degraded_gate_existing_sentinel_avoids_reprompt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _ = (tmp_path / ".degraded-tools-gate-prompted").write_text("", encoding="utf-8")
+    monkeypatch.setattr(
+        bootstrap,
+        "_cli",
+        lambda *args, **_: subprocess.CompletedProcess(list(args), 0, _degraded_gate_stdout(both_down="false"), ""),
+    )
+    monkeypatch.setattr(bootstrap, "_run", lambda argv, **_: subprocess.CompletedProcess(argv, 0, _probe_stdout(), ""))
+    tail = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
+        _continue_data(tmp_path),
+        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
+        non_interactive=False,
+    )
     assert tail.routing.get("DEGRADED_PROMPT_REQUIRED") == "false"
     assert tail.routing.get("ROUTE") == "continue"
 
 
-def test_invoke_absorbed_degraded_gate_both_down_noninteractive_logs_and_proceeds(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_invoke_absorbed_degraded_gate_both_down_noninteractive_hard_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[tuple[str, ...]] = []
 
     def fake_cli(*args: str, **_kwargs):
@@ -917,13 +1007,13 @@ def test_invoke_absorbed_degraded_gate_both_down_noninteractive_logs_and_proceed
         opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
         non_interactive=True,
     )
-    assert tail.routing.get("DEGRADED_PROMPT_REQUIRED") == "false"
-    assert tail.routing.get("ROUTE") == "continue"
-    assert (tmp_path / ".degraded-tools-gate-prompted").is_file()
-    assert any(call[:2] == ("run-log", "append-entry") for call in calls)
+    assert tail.contract_failure is True
+    assert tail.step_failed == "degraded-both-down-hard-fail"
+    assert tail.routing.get("DEGRADED_HARD_FAIL") == "true"
+    assert not (tmp_path / ".degraded-tools-gate-prompted").exists()
 
 
-def test_invoke_absorbed_degraded_gate_noninteractive_never_emits_prompt_required(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_invoke_absorbed_degraded_gate_one_down_noninteractive_requires_prompt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         bootstrap,
         "_cli",
@@ -935,7 +1025,8 @@ def test_invoke_absorbed_degraded_gate_noninteractive_never_emits_prompt_require
         opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
         non_interactive=True,
     )
-    assert tail.routing.get("DEGRADED_PROMPT_REQUIRED") == "false"
+    assert tail.routing.get("DEGRADED_PROMPT_REQUIRED") == "true"
+    assert "ROUTE" not in tail.routing
 
 
 def test_invoke_absorbed_degraded_gate_missing_both_down_interactive_fails_closed_to_prompt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1137,8 +1228,8 @@ def test_resolve_non_interactive_both_down_claude_p_never_interactive_prompt(
         opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
         non_interactive=bootstrap._resolve_non_interactive(""),  # pyright: ignore[reportPrivateUsage]
     )
-    assert tail.routing.get("DEGRADED_PROMPT_REQUIRED") == "false"
-    assert tail.routing.get("ROUTE") == "continue"
+    assert tail.contract_failure is True
+    assert tail.step_failed == "degraded-both-down-hard-fail"
 
 
 def test_invoke_absorbed_degraded_gate_relays_presence_stderr(
@@ -1357,9 +1448,10 @@ def test_invoke_absorbed_degraded_gate_missing_presence_keys_passed_through(tmp_
     gate_args = next(call for call in captured if call[:2] == ("agent", "degraded-tools-gate"))
     assert "--codex-present" in gate_args
     assert "--cursor-present" in gate_args
-    assert gate_args[gate_args.index("--codex-present") + 1] == ""
-    assert gate_args[gate_args.index("--cursor-present") + 1] == ""
-    assert tail.routing.get("DEGRADED_PROMPT_REQUIRED") == "false"
+    assert gate_args[gate_args.index("--codex-present") + 1] in {"", "false"}
+    assert gate_args[gate_args.index("--cursor-present") + 1] in {"", "false"}
+    assert tail.contract_failure is True
+    assert tail.routing.get("DEGRADED_HARD_FAIL") == "true"
 
 
 def test_invoke_absorbed_1r_passes_forked_target_without_base_remote_ref(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

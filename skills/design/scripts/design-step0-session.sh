@@ -21,12 +21,8 @@ ISSUE_NUMBER="${ISSUE_NUMBER:-}"
 ISSUE_TITLE="${ISSUE_TITLE:-}"
 HAS_CLARIFY_LABEL="${HAS_CLARIFY_LABEL:-false}"
 REPO="${REPO:-}"
-CODEX_PRESENT="${CODEX_PRESENT:-false}"
-CURSOR_PRESENT="${CURSOR_PRESENT:-false}"
-CODEX_AVAILABLE="${CODEX_AVAILABLE:-$CODEX_PRESENT}"
-CURSOR_AVAILABLE="${CURSOR_AVAILABLE:-$CURSOR_PRESENT}"
-CODEX_BINARY_FOUND="${CODEX_BINARY_FOUND:-false}"
-CURSOR_BINARY_FOUND="${CURSOR_BINARY_FOUND:-false}"
+CODEX_BINARY_FOUND="${CODEX_BINARY_FOUND:-}"
+CURSOR_BINARY_FOUND="${CURSOR_BINARY_FOUND:-}"
 IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:-}"
 POSITIONAL_KIND="${POSITIONAL_KIND:-}"
 POSITIONAL_VALUE="${POSITIONAL_VALUE:-}"
@@ -119,14 +115,12 @@ if [ "$_ss_rc" -ne 0 ]; then
   exit "$_ss_rc"
 fi
 
-SESSION_TMPDIR="" SESSION_ID="" CODEX_AVAILABLE="" CURSOR_AVAILABLE="" CODEX_PRESENT="" CURSOR_PRESENT="" CODEX_BINARY_FOUND="" CURSOR_BINARY_FOUND=""
+SESSION_TMPDIR="" SESSION_ID="" CODEX_PRESENT="" CURSOR_PRESENT="" CODEX_BINARY_FOUND="" CURSOR_BINARY_FOUND=""
 while IFS= read -r _line || [ -n "$_line" ]; do
   [ -z "$_line" ] && continue
   case "$_line" in
     SESSION_TMPDIR=*) SESSION_TMPDIR="${_line#SESSION_TMPDIR=}" ;;
     SESSION_ID=*) SESSION_ID="${_line#SESSION_ID=}" ;;
-    CODEX_AVAILABLE=*) CODEX_AVAILABLE="${_line#CODEX_AVAILABLE=}" ;;
-    CURSOR_AVAILABLE=*) CURSOR_AVAILABLE="${_line#CURSOR_AVAILABLE=}" ;;
     CODEX_PRESENT=*) CODEX_PRESENT="${_line#CODEX_PRESENT=}" ;;
     CURSOR_PRESENT=*) CURSOR_PRESENT="${_line#CURSOR_PRESENT=}" ;;
     CODEX_BINARY_FOUND=*) CODEX_BINARY_FOUND="${_line#CODEX_BINARY_FOUND=}" ;;
@@ -155,10 +149,6 @@ _wdce_args=(
   --session-id "$SESSION_ID"
   --claude-pid "$CLAUDE_PID"
 )
-[ -n "$CODEX_PRESENT" ] && _wdce_args+=(--codex-present "$CODEX_PRESENT")
-[ -n "$CURSOR_PRESENT" ] && _wdce_args+=(--cursor-present "$CURSOR_PRESENT")
-[ -n "$CODEX_AVAILABLE" ] && _wdce_args+=(--codex-available "$CODEX_AVAILABLE")
-[ -n "$CURSOR_AVAILABLE" ] && _wdce_args+=(--cursor-available "$CURSOR_AVAILABLE")
 [ -n "$CODEX_BINARY_FOUND" ] && _wdce_args+=(--codex-binary-found "$CODEX_BINARY_FOUND")
 [ -n "$CURSOR_BINARY_FOUND" ] && _wdce_args+=(--cursor-binary-found "$CURSOR_BINARY_FOUND")
 "${_wdce_args[@]}"
@@ -176,6 +166,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent degraded-tools-gate --skill 
 DEGRADED=false
 BOTH_DOWN=false
 BOTH_DOWN_SEEN=false
+DEGRADED_HARD_FAIL=false
 PRESENCE_INPUT_EMPTY=false
 _in_explanation=false
 while IFS= read -r _gate_line || [[ -n "$_gate_line" ]]; do
@@ -184,6 +175,7 @@ while IFS= read -r _gate_line || [[ -n "$_gate_line" ]]; do
     DEGRADED_EXPLANATION_END) _in_explanation=false; printf '%s\n' "$_gate_line" ;;
     DEGRADED=*) DEGRADED="${_gate_line#DEGRADED=}"; printf '%s\n' "$_gate_line" ;;
     BOTH_DOWN=*) BOTH_DOWN="${_gate_line#BOTH_DOWN=}"; BOTH_DOWN_SEEN=true; printf '%s\n' "$_gate_line" ;;
+    DEGRADED_HARD_FAIL=*) DEGRADED_HARD_FAIL="${_gate_line#DEGRADED_HARD_FAIL=}"; printf '%s\n' "$_gate_line" ;;
     PRESENCE_INPUT_EMPTY=*) PRESENCE_INPUT_EMPTY="${_gate_line#PRESENCE_INPUT_EMPTY=}"; printf '%s\n' "$_gate_line" ;;
     CODEX_STATE=*|CURSOR_STATE=*)
       printf '%s\n' "$_gate_line"
@@ -205,15 +197,10 @@ if [[ "${LARCH_SKILL_NON_INTERACTIVE:-}" == true ]]; then
 fi
 STEP0_STATUS=ok
 if [[ "${DEGRADED:-false}" == true ]]; then
-  if [[ "$BOTH_DOWN_SEEN" == true && "${BOTH_DOWN:-}" == false ]]; then
-    : >"$DESIGN_TMPDIR/.degraded-tools-gate-prompted"
+  if [[ "$BOTH_DOWN_SEEN" == true && "${BOTH_DOWN:-}" == true ]]; then
+    STEP0_STATUS=degraded-both-down-hard-fail
+  elif [[ "$BOTH_DOWN_SEEN" == true && "${BOTH_DOWN:-}" == false && -f "$DESIGN_TMPDIR/.degraded-tools-gate-prompted" ]]; then
     STEP0_STATUS=degraded-one-down
-  elif [[ "$BOTH_DOWN_SEEN" == true && "${BOTH_DOWN:-}" == true && "$_design_interactive" != true ]]; then
-    printf '%s\n' '- Step 0 degraded-tools gate: both external tools unavailable; proceeding degraded (non-interactive)' >>"$DESIGN_TMPDIR/execution-issues.md"
-    : >"$DESIGN_TMPDIR/.degraded-tools-gate-prompted"
-    STEP0_STATUS=degraded-both-down-auto
-  elif [[ "$BOTH_DOWN_SEEN" == true && "${BOTH_DOWN:-}" == true && "$_design_interactive" == true && -f "$DESIGN_TMPDIR/.degraded-tools-gate-prompted" ]]; then
-    STEP0_STATUS=degraded-both-down-auto
   else
     STEP0_STATUS=needs-degraded-decision
   fi
@@ -221,6 +208,9 @@ fi
 printf 'STEP0_STATUS=%s\n' "$STEP0_STATUS"
 printf 'DEGRADED=%s\n' "${DEGRADED:-false}"
 printf 'BOTH_DOWN=%s\n' "${BOTH_DOWN:-}"
+if [[ "$STEP0_STATUS" == degraded-both-down-hard-fail ]]; then
+  printf '%s\n' 'DEGRADED_HARD_FAIL=true'
+fi
 if [[ "$STEP0_STATUS" == needs-degraded-decision ]]; then
   printf '%s\n' 'DEGRADED_PROMPT_REQUIRED=true'
 fi

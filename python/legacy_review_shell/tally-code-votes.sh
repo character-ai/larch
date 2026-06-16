@@ -41,8 +41,8 @@ PLAN_FILE=""
 MANIFEST_FILE=""
 COLLECTOR_RESULTS_FILE=""
 NOT_SUBSTANTIVE_COUNT=0
-CURSOR_AVAILABLE=""
-CODEX_AVAILABLE=""
+CURSOR_BINARY_FOUND=""
+CODEX_BINARY_FOUND=""
 ROUND_NUM=1
 BOTH_DOWN="false"
 
@@ -57,8 +57,8 @@ while [[ $# -gt 0 ]]; do
         --manifest-file) MANIFEST_FILE="${2:?--manifest-file requires a value}"; shift 2 ;;
         --collector-results-file) COLLECTOR_RESULTS_FILE="${2:?--collector-results-file requires a value}"; shift 2 ;;
         --not-substantive-count) NOT_SUBSTANTIVE_COUNT="${2:?--not-substantive-count requires a value}"; shift 2 ;;
-        --cursor-available) CURSOR_AVAILABLE="${2:?--cursor-available requires a value}"; shift 2 ;;
-        --codex-available) CODEX_AVAILABLE="${2:?--codex-available requires a value}"; shift 2 ;;
+        --cursor-available) CURSOR_BINARY_FOUND="${2:?--cursor-available requires a value}"; shift 2 ;;
+        --codex-available) CODEX_BINARY_FOUND="${2:?--codex-available requires a value}"; shift 2 ;;
         --round-num) ROUND_NUM="${2:?--round-num requires a value}"; shift 2 ;;
         --both-down) BOTH_DOWN="${2:?--both-down requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
@@ -313,8 +313,8 @@ expected_voters_for_round() {
     # warning threshold is availability-aware. Per-round `--round-num` does not
     # shrink quorum.
     local expected=1
-    [[ "$CODEX_AVAILABLE" != "false" ]] && expected=$((expected + 1))
-    [[ "$CURSOR_AVAILABLE" != "false" ]] && expected=$((expected + 1))
+    [[ "$CODEX_BINARY_FOUND" == "true" ]] && expected=$((expected + 1))
+    [[ "$CURSOR_BINARY_FOUND" == "true" ]] && expected=$((expected + 1))
     printf '%s\n' "$expected"
 }
 

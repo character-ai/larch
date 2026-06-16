@@ -127,16 +127,15 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session setup --prefix claude-rese
 
 If the script exits non-zero, print the error and abort.
 
-Parse the output for `SESSION_TMPDIR`, `CODEX_AVAILABLE`, `CURSOR_AVAILABLE`, `CODEX_PRESENT`, `CURSOR_PRESENT`. Set `RESEARCH_TMPDIR` = `SESSION_TMPDIR`.
+Parse the output for `SESSION_TMPDIR`, `CODEX_BINARY_FOUND`, `CURSOR_BINARY_FOUND`, `CODEX_PRESENT`, and `CURSOR_PRESENT`. Set `RESEARCH_TMPDIR` = `SESSION_TMPDIR`. Use presence only for the immediate degraded-tools gate.
 
-Set mental flags `codex_available` and `cursor_available` based on the output, and remember each lane's pre-launch attribution status (one of `ok` / `fallback_binary_missing` / `fallback_presence_failed`):
+Set lane launch guards from `CODEX_BINARY_FOUND` / `CURSOR_BINARY_FOUND` or fresh executable checks, and remember each lane's pre-launch attribution status (`ok` / `fallback_binary_missing`):
 
-- If `CODEX_AVAILABLE=false`: `codex_available=false`. Pre-launch status = `fallback_binary_missing` (no reason). Print: `**⚠ Codex not available (binary not found). Proceeding with Claude fallback for Codex lanes.**`
-- Else if `CODEX_PRESENT=false`: `codex_available=false`. Pre-launch status = `fallback_presence_failed`. Print: `**⚠ Codex not present for this session. Using Claude replacement.**`
-- Else: `codex_available=true`. Pre-launch status = `ok`.
+- If `CODEX_BINARY_FOUND=false`: do not launch Codex; pre-launch status = `fallback_binary_missing`. Print: `**⚠ Codex not available (binary not found). Proceeding with Claude fallback for Codex lanes.**`
+- Else: attempt Codex and let launcher-owned retry/fallback handle runtime failures. Pre-launch status = `ok`.
 - Same logic for Cursor.
 
-**Degraded-tools gate (#3207).** After setting `codex_available` / `cursor_available` above, run the **Degraded-tools gate (Step 0)** procedure in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md`: invoke `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent degraded-tools-gate` with explicit `--codex-binary-found` / `--codex-present` / `--cursor-binary-found` / `--cursor-present` from the session-setup parse in this Step 0 block (do not omit flags and rely on shell exports) and `--skill research`. Use the canonical interactive predicate from that shared procedure. If `DEGRADED=true` on an **interactive** run: when `BOTH_DOWN` is **exactly** `false` (one tool unavailable), print the explanation block as a notice, write the `.degraded-tools-gate-prompted` sentinel, and proceed; when `BOTH_DOWN` is not exactly `false` (both tools unavailable or parse failed), present the explanation block and fire `AskUserQuestion` with **Continue (degraded)** / **Abort**; on **Continue**, write `$RESEARCH_TMPDIR/.degraded-tools-gate-prompted` and proceed with the Codex-first / Claude-fallback lane topology; on **Abort**, run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session cleanup-tmpdir --dir "$RESEARCH_TMPDIR"` and stop. On a **non-interactive / CI / eval** run, do not prompt — log the explanation and proceed degraded, consistent with the Step 1.1.c passthrough convention. Guard with a `$RESEARCH_TMPDIR/.degraded-tools-gate-prompted` sentinel. The gate does not flip `codex_available` / `cursor_available`; `/research` lanes keep their Codex-first / Claude-fallback topology.
+**Degraded-tools gate (#3207).** After parsing Step 0 probe and binary KVs, run the **Degraded-tools gate (Step 0)** procedure in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md`: invoke `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent degraded-tools-gate` with explicit `--codex-binary-found` / `--codex-present` / `--cursor-binary-found` / `--cursor-present` from the session-setup parse in this Step 0 block (do not omit flags and rely on shell exports) and `--skill research`. Use the canonical interactive predicate from that shared procedure. Apply the shared contract: one-down without a prior Continue sentinel requires an operator decision, including non-interactive prompt-required routing; both-down hard-fails in every mode. The gate is not a lane-routing input; research lanes use binary-found or launcher fallback semantics.
 
 ### 0b — Initialize lane-status record
 

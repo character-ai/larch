@@ -100,6 +100,13 @@ def _session_get(file: Path, key: str, default: str = "") -> str:
     return default
 
 
+
+def _binary_available(session_env: Path, key: str, binary: str) -> str:
+    value = _session_get(session_env, key, "")
+    if value in {"true", "false"}:
+        return value
+    return "true" if shutil.which(binary) is not None else "false"
+
 def _current_cli_path() -> Path:
     root = Path(os.environ.get("LARCH_CLAUDE_PLUGIN_ROOT") or os.environ.get("CLAUDE_PLUGIN_ROOT") or _PLUGIN_ROOT)
     return root / "python" / "cli.py"
@@ -314,12 +321,13 @@ def run_dispatch_main(argv: list[str] | None = None) -> int:
     if not Path(plugin_root).is_dir():
         _err(f"implement run-dispatch: plugin root not a directory: {plugin_root}")
         return 2
-    cursor_present = _session_get(session_env, "CURSOR_PRESENT", "false")
-    if cursor_present not in {"true", "false"}:
-        _err(f"implement run-dispatch: CURSOR_PRESENT must be true or false, got: {cursor_present}")
+    cursor_binary_found = _binary_available(session_env, "CURSOR_BINARY_FOUND", "cursor")
+    codex_binary_found = _binary_available(session_env, "CODEX_BINARY_FOUND", "codex")
+    if args.coder == "cursor" and cursor_binary_found != "true":
+        _err("implement run-dispatch: cursor coder selected at Step 0 but cursor binary is missing; refusing Step 2 dispatch")
         return 2
-    if args.coder == "cursor" and cursor_present != "true":
-        _err(f"implement run-dispatch: cursor coder selected at Step 0 but CURSOR_PRESENT={cursor_present} in session-env; refusing Step 2 dispatch because that would silently override bootstrap routing")
+    if args.coder == "codex" and codex_binary_found != "true":
+        _err("implement run-dispatch: codex coder selected at Step 0 but codex binary is missing; refusing Step 2 dispatch")
         return 2
     child = [
         sys.executable,
@@ -334,8 +342,10 @@ def run_dispatch_main(argv: list[str] | None = None) -> int:
         str(feature_file),
         "--coder",
         args.coder,
-        "--cursor-present",
-        cursor_present,
+        "--cursor-binary-found",
+        cursor_binary_found,
+        "--codex-binary-found",
+        codex_binary_found,
     ]
     if args.answers:
         child.extend(["--answers", args.answers])
@@ -360,6 +370,8 @@ class DispatchState:
     feature_file: Path
     coder: str
     cursor_present: str
+    cursor_binary_found: str
+    codex_binary_found: str
     answers_file: Path | None
     plugin_root: Path
     tool_tag: str
@@ -701,6 +713,8 @@ def _dispatch_state(args: argparse.Namespace, repo_root: Path, tmpdir: Path, plu
         feature_file=Path(args.feature_file),
         coder=tool,
         cursor_present=args.cursor_present or "false",
+        cursor_binary_found=args.cursor_binary_found or "",
+        codex_binary_found=args.codex_binary_found or "",
         answers_file=Path(args.answers) if args.answers else None,
         plugin_root=plugin_root,
         tool_tag=tool,
@@ -778,6 +792,10 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--coder", default="")
     parser.add_argument("--codex-available", default="")
     parser.add_argument("--cursor-present", default="")
+    parser.add_argument("--codex-present", default="")
+    parser.add_argument("--cursor-available", default="")
+    parser.add_argument("--codex-binary-found", default="")
+    parser.add_argument("--cursor-binary-found", default="")
     parser.add_argument("--answers", default="")
     args = parser.parse_args(argv)
 
@@ -800,6 +818,11 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:
     if args.coder not in _SAFE_CODERS:
         _err(f"implement step2-dispatch: --coder must be one of {{claude,codex,cursor}}, got: {args.coder}")
         return 2
+    for flag_name in ("codex_present", "cursor_present", "cursor_available", "codex_binary_found", "cursor_binary_found"):
+        value = getattr(args, flag_name)
+        if value and value not in {"true", "false"}:
+            _err(f"implement step2-dispatch: --{flag_name.replace('_', '-')} must be 'true', 'false', or empty, got: {value}")
+            return 2
     tmpdir_raw = Path(args.tmpdir)
     if not tmpdir_raw.is_dir():
         _err(f"implement step2-dispatch: --tmpdir not a directory: {tmpdir_raw}")
@@ -823,13 +846,17 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:
         _emit_kv("STATUS", "claude_fallback")
         _emit_kv("ORCHESTRATOR_EDIT_AUTHORITY", "allowed")
         return 0
-    if args.cursor_present:
-        if args.cursor_present not in {"true", "false"}:
-            _err(f"implement step2-dispatch: --cursor-present must be 'true', 'false', or empty, got: {args.cursor_present}")
-            return 2
-    else:
-        args.cursor_present = "false"
-    if args.coder == "cursor" and args.cursor_present != "true":
+    session_env = tmpdir / "session-env.sh"
+    if not args.cursor_binary_found:
+        args.cursor_binary_found = _binary_available(session_env, "CURSOR_BINARY_FOUND", "cursor")
+    if not args.codex_binary_found:
+        args.codex_binary_found = _binary_available(session_env, "CODEX_BINARY_FOUND", "codex")
+    if args.coder == "cursor" and args.cursor_binary_found != "true":
+        _clear_external_scout_state(tmpdir)
+        _emit_kv("STATUS", "claude_fallback")
+        _emit_kv("ORCHESTRATOR_EDIT_AUTHORITY", "allowed")
+        return 0
+    if args.coder == "codex" and args.codex_binary_found != "true":
         _clear_external_scout_state(tmpdir)
         _emit_kv("STATUS", "claude_fallback")
         _emit_kv("ORCHESTRATOR_EDIT_AUTHORITY", "allowed")

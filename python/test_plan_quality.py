@@ -53,9 +53,9 @@ def _run_revise(tmp_path: Path, plan: Path, findings: Path, feature: Path, env: 
         str(feature),
         "--round-num",
         "1",
-        "--codex-present",
+        "--codex-binary-found",
         "true",
-        "--cursor-present",
+        "--cursor-binary-found",
         "false",
         *extra,
         env=env,
@@ -258,9 +258,9 @@ def test_auto_fix_unavailable_contract(tmp_path: Path) -> None:
         str(tmp_path),
         "--plan-file",
         str(plan),
-        "--codex-present",
+        "--codex-binary-found",
         "false",
-        "--cursor-present",
+        "--cursor-binary-found",
         "false",
     )
     assert cp.returncode == 0, cp.stderr
@@ -297,16 +297,16 @@ def test_revise_plan_with_waterfall_records_failed_no_patch(tmp_path: Path) -> N
         str(feature),
         "--round-num",
         "1",
-        "--codex-present",
+        "--codex-binary-found",
         "false",
-        "--cursor-present",
+        "--cursor-binary-found",
         "false",
         env=env,
     )
     assert cp.returncode == 0, cp.stderr
     out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
     assert out["REVISE_STATUS"] == "failed-no-patch"
-    assert out["REVISE_TIER_1_STATUS"] == "skipped-not-present"
+    assert out["REVISE_TIER_1_STATUS"] == "skipped-binary-missing"
     assert (tmp_path / "plan-review" / "round-1" / "revise" / "revise.env").is_file()
 
 
@@ -337,7 +337,7 @@ PLAN
     cp = _run_revise(tmp_path, plan, findings, feature, env, "--patch-format", "file-replacement")
     assert cp.returncode == 0, cp.stderr
     out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
-    assert out["REVISE_TIER_1_STATUS"] == "skipped-not-present"
+    assert out["REVISE_TIER_1_STATUS"] == "skipped-binary-missing"
     assert out["REVISE_TIER_2_STATUS"] == "emit-plan-failed"
     assert out["REVISE_STATUS"] == "failed-apply"
     assert plan.read_text(encoding="utf-8") == original
@@ -376,7 +376,7 @@ fi
     cp = _run_revise(tmp_path, plan, findings, feature, env)
     assert cp.returncode == 0, cp.stderr
     out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
-    assert out["REVISE_TIER_1_STATUS"] == "skipped-not-present"
+    assert out["REVISE_TIER_1_STATUS"] == "skipped-binary-missing"
     assert out["REVISE_TIER_2_STATUS"] == "apply-failed"
     assert out["REVISE_STATUS"] == "failed-apply"
     assert plan.read_text(encoding="utf-8") == original
@@ -465,9 +465,9 @@ fi
         str(feature),
         "--round-num",
         "1",
-        "--codex-present",
+        "--codex-binary-found",
         "true",
-        "--cursor-present",
+        "--cursor-binary-found",
         "true",
         env=env,
     )
@@ -553,9 +553,9 @@ fi
         str(feature),
         "--round-num",
         "1",
-        "--codex-present",
+        "--codex-binary-found",
         "true",
-        "--cursor-present",
+        "--cursor-binary-found",
         "true",
         env=env,
     )
@@ -674,9 +674,9 @@ fi
         str(feature),
         "--round-num",
         "1",
-        "--codex-present",
+        "--codex-binary-found",
         "true",
-        "--cursor-present",
+        "--cursor-binary-found",
         "true",
         env=env,
     )
@@ -755,7 +755,7 @@ PLAN
     cp = _run_revise(tmp_path, plan, findings, feature, env, "--patch-format", "file-replacement")
     assert cp.returncode == 0, cp.stderr
     out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
-    assert out["REVISE_TIER_1_STATUS"] == "skipped-not-present"
+    assert out["REVISE_TIER_1_STATUS"] == "skipped-binary-missing"
     assert out["REVISE_TIER_2_STATUS"] == "invalid-patch"
     assert out["REVISE_STATUS"] == "failed-validation"
     assert plan.read_text(encoding="utf-8") == original
@@ -991,9 +991,9 @@ def test_revise_waterfall_rejects_disallowed_design_tmpdir(tmp_path: Path) -> No
         str(feature),
         "--round-num",
         "1",
-        "--codex-present",
+        "--codex-binary-found",
         "false",
-        "--cursor-present",
+        "--cursor-binary-found",
         "false",
     )
     assert cp.returncode == 2
@@ -1011,9 +1011,9 @@ def test_auto_fix_rejects_disallowed_design_tmpdir(tmp_path: Path) -> None:
         str(disallowed),
         "--plan-file",
         str(plan),
-        "--codex-present",
+        "--codex-binary-found",
         "false",
-        "--cursor-present",
+        "--cursor-binary-found",
         "false",
     )
     assert cp.returncode == 2
@@ -1180,9 +1180,9 @@ fi
         str(tmp_path),
         "--plan-file",
         str(plan),
-        "--codex-present",
+        "--codex-binary-found",
         "true",
-        "--cursor-present",
+        "--cursor-binary-found",
         "true",
         env=env,
     )
@@ -1263,9 +1263,9 @@ fi
         str(plan),
         "--repo-root",
         str(consumer.resolve()),
-        "--codex-present",
+        "--codex-binary-found",
         "true",
-        "--cursor-present",
+        "--cursor-binary-found",
         "false",
         cwd=consumer,
         env=env,
@@ -1315,9 +1315,9 @@ printf 'VALIDATE_STATUS=ok\\n'
         str(tmp_path),
         "--plan-file",
         str(plan),
-        "--codex-present",
+        "--codex-binary-found",
         "true",
-        "--cursor-present",
+        "--cursor-binary-found",
         "false",
         "--max-attempts",
         "1",
@@ -1357,9 +1357,9 @@ def test_revise_waterfall_prompt_uses_untrusted_blocks(tmp_path: Path) -> None:
         str(feature),
         "--round-num",
         "1",
-        "--codex-present",
+        "--codex-binary-found",
         "false",
-        "--cursor-present",
+        "--cursor-binary-found",
         "false",
         env=env,
     )
@@ -1415,9 +1415,9 @@ exit 0
         str(feature),
         "--round-num",
         "1",
-        "--codex-present",
+        "--codex-binary-found",
         "true",
-        "--cursor-present",
+        "--cursor-binary-found",
         "true",
         "--patch-format",
         "file-replacement",
@@ -1463,9 +1463,9 @@ def test_revise_waterfall_default_launchers_use_python_cli(tmp_path: Path, monke
             str(feature),
             "--round-num",
             "1",
-            "--codex-present",
+            "--codex-binary-found",
             "true",
-            "--cursor-present",
+            "--cursor-binary-found",
             "true",
             "--patch-format",
             "file-replacement",
@@ -1519,9 +1519,9 @@ def test_revise_waterfall_default_design_driver_is_split_argv(tmp_path: Path, mo
             str(feature),
             "--round-num",
             "1",
-            "--codex-present",
+            "--codex-binary-found",
             "true",
-            "--cursor-present",
+            "--cursor-binary-found",
             "true",
             "--patch-format",
             "file-replacement",

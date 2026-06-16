@@ -2307,11 +2307,11 @@ def test_lint_fix_ship_pr_merge_handoffs_use_internal_ledger_tokens(tmp_path: Pa
 
 def test_presence_flag_reads_session_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     session = _checks_session(tmp_path, monkeypatch)
-    (session / "session-env.sh").write_text("CODEX_PRESENT=true\nCURSOR_PRESENT=false\n", encoding="utf-8")
-    monkeypatch.delenv("CODEX_PRESENT", raising=False)
-    monkeypatch.delenv("CURSOR_PRESENT", raising=False)
-    assert checks._presence_flag("CODEX_PRESENT", session) is True  # pyright: ignore[reportPrivateUsage]
-    assert checks._presence_flag("CURSOR_PRESENT", session) is False  # pyright: ignore[reportPrivateUsage]
+    (session / "session-env.sh").write_text("CODEX_BINARY_FOUND=true\nCURSOR_BINARY_FOUND=false\n", encoding="utf-8")
+    monkeypatch.delenv("CODEX_BINARY_FOUND", raising=False)
+    monkeypatch.delenv("CURSOR_BINARY_FOUND", raising=False)
+    assert checks._binary_flag("CODEX_BINARY_FOUND", session, "codex") is True  # pyright: ignore[reportPrivateUsage]
+    assert checks._binary_flag("CURSOR_BINARY_FOUND", session, "cursor") is False  # pyright: ignore[reportPrivateUsage]
 
 
 def test_checks_lint_fix_main_reads_presence_from_session_env(
@@ -2319,7 +2319,7 @@ def test_checks_lint_fix_main_reads_presence_from_session_env(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session = _checks_session(tmp_path, monkeypatch)
-    (session / "session-env.sh").write_text("CODEX_PRESENT=true\nCURSOR_PRESENT=false\n", encoding="utf-8")
+    (session / "session-env.sh").write_text("CODEX_BINARY_FOUND=true\nCURSOR_BINARY_FOUND=false\n", encoding="utf-8")
     checks_log = session / "fail.redacted.log"
     checks_log.write_text("error\n", encoding="utf-8")
     captured: dict[str, object] = {}
@@ -2336,8 +2336,8 @@ def test_checks_lint_fix_main_reads_presence_from_session_env(
         )
 
     monkeypatch.setattr(checks, "run_lint_fix", fake_run_lint_fix)
-    monkeypatch.delenv("CODEX_PRESENT", raising=False)
-    monkeypatch.delenv("CURSOR_PRESENT", raising=False)
+    monkeypatch.delenv("CODEX_BINARY_FOUND", raising=False)
+    monkeypatch.delenv("CURSOR_BINARY_FOUND", raising=False)
     rc = checks.checks_lint_fix_main([
         "--tmpdir",
         str(session),

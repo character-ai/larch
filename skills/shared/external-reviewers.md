@@ -1,29 +1,19 @@
 ## Binary Presence Check (Step 0)
 
-The binary check, presence check, and presence status write are now handled by `session-setup.sh` with the `--check-reviewers` flag. Skills call a single script in Step 0:
+`session setup --check-reviewers` performs two separate checks:
 
-```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session setup --prefix <name> [--skip-preflight] [--skip-branch-check] \
-  [--skip-codex-probe] [--skip-cursor-probe]
-```
+- `CODEX_BINARY_FOUND` / `CURSOR_BINARY_FOUND`: whether the CLI binary is on `PATH`.
+- `CODEX_PRESENT` / `CURSOR_PRESENT`: immediate Step 0 probe health for the degraded-tools gate only.
 
-**Session-env override**: If `--caller-env` provides a non-empty `CODEX_PRESENT` or `CURSOR_PRESENT` value (either `true` or `false`), the script auto-sets the corresponding `--skip-codex-probe` / `--skip-cursor-probe` flag internally and propagates the caller value — you do not need to pass these explicitly when using `--caller-env`.
+Durable session env files must keep only the binary-found keys. Do not persist `CODEX_PRESENT`, `CURSOR_PRESENT`, `CODEX_AVAILABLE`, or `CURSOR_AVAILABLE`. Treat legacy `--codex-present`, `--cursor-present`, `--codex-available`, and `--cursor-available` flags as compatibility input only.
 
-Set mental flags `codex_available` and `cursor_available` from session-env / `session-setup.sh` stdout. Treat `codex_available` as `true` only when **both** `CODEX_BINARY_FOUND=true` **and** `CODEX_PRESENT=true`; if **either** `CODEX_BINARY_FOUND=false` **or** `CODEX_PRESENT=false`, set `codex_available=false` (aliases `CODEX_AVAILABLE` / `CURSOR_AVAILABLE` mirror the same booleans). Use `CODEX_BINARY_FOUND` / `CURSOR_BINARY_FOUND` when you need to split the cases:
-
-- If `CODEX_BINARY_FOUND=false`: `codex_available=false` — the Codex CLI is not on `PATH`. Print: `**⚠ Codex not available (binary not found). Proceeding without Codex reviewer.**`
-- Else if `CODEX_PRESENT=false`: `codex_available=false` — the binary exists but the Step 0 runtime probe reported unhealthy (skipped probe, non-auth failure, auth failure after retries, or timeout). Print: `**⚠ Codex not healthy for this session (runtime probe failed). Using Claude replacement.**`
-- Else: `codex_available=true`
-
-Mirror the same two-tier pattern for Cursor (`CURSOR_BINARY_FOUND` / `CURSOR_PRESENT`): `cursor_available=false` when **either** `CURSOR_BINARY_FOUND=false` **or** `CURSOR_PRESENT=false`; `cursor_available=true` only when both are `true`.
-
-**Note**: `*_AVAILABLE` remains a backward-compatible alias for `*_PRESENT`; it does **not** mean "binary on `PATH`" by itself.
-
-Launch eligibility requires `*_PRESENT=true`. Runtime failures do not mutate `session-env.sh`; multi-slot dispatchers handle them through per-slot waterfall fallback.
+Later vendor routing must use `CODEX_BINARY_FOUND` / `CURSOR_BINARY_FOUND` or a fresh `command -v` / `shutil.which()` check. Step 0 probe health is not a launch-routing input.
 
 ## Degraded-tools gate (Step 0)
 
-Issue #3207: when an external tool is unhealthy at session start, the skill MUST surface what is down and the expected degradation — not silently proceed degraded. On interactive runs, prompt via `AskUserQuestion` only when **both** tools are down (`BOTH_DOWN` is not exactly `false`); when exactly one tool is down (`BOTH_DOWN=false`), print the explanation as a notice and proceed automatically. Immediately after presence detection, run the gate detector with **all four** `--check-reviewers` keys on every invocation (contract: `python/agents.py`). Do not rely on exported env from an earlier skill in the same shell — re-parse `session-setup.sh` stdout in the current Step 0 block and pass explicit `--codex-binary-found` / `--codex-present` / `--cursor-binary-found` / `--cursor-present` flags. When the gate runs in a different Bash block from `session-setup.sh`, first read `/implement` presence keys from durable session env with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key <KEY> --default ""` (including binary-found keys) so missing keys trigger `PRESENCE_INPUT_EMPTY`; `/design` sources `source-env.sh` and omits binary-found flags when those vars are unset. Then pass explicit flags for every known key. `PRESENCE_INPUT_EMPTY=true` is the loud symptom that this separate-block rehydration rule was violated:
+Issue #3207: Step 0 health probes exist to warn or stop the operator before work starts. They do not decide later reviewer, voter, fixer, scout, or implementer routing.
+
+Immediately after `session setup --check-reviewers`, pass explicit probe KVs to the gate:
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent degraded-tools-gate \
@@ -32,28 +22,24 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent degraded-tools-gate \
   --skill <design|implement|review|research>
 ```
 
-Parse `DEGRADED`, `CODEX_STATE`, `CURSOR_STATE`, `BOTH_DOWN`, and `PRESENCE_INPUT_EMPTY`.
+Parse `DEGRADED`, `CODEX_STATE`, `CURSOR_STATE`, `BOTH_DOWN`, `DEGRADED_HARD_FAIL`, and `PRESENCE_INPUT_EMPTY`. Preserve the explanation block between `DEGRADED_EXPLANATION_BEGIN` and `DEGRADED_EXPLANATION_END`.
 
-**Canonical interactive predicate**: a run is interactive for this gate when the skill is allowed to call `AskUserQuestion` in the invoking context. `/design`, `/implement`, and `/research` use the skill's normal interactive branch; `/review` uses the same branch only outside `--subagent` mode. Subagents, `claude -p`, cron, eval, and autonomous-loop runs are non-interactive and must use the non-blocking notice/log path below.
+Apply this contract:
 
-Then apply the gate result:
+- **Healthy**: `DEGRADED=false`. Proceed silently.
+- **One vendor down, no sentinel**: emit or surface the explanation and require explicit operator **Continue** or **Abort**. In non-interactive, CI, eval, autonomous-loop, and `/review --subagent` contexts, emit a prompt-required envelope instead of proceeding.
+- **One vendor down, sentinel exists**: proceed degraded. The sentinel must mean a prior operator chose Continue.
+- **Both vendors down**: hard-fail in every mode. Ignore any stale sentinel. Emit `DEGRADED_HARD_FAIL=true` when producing an envelope. Do not ask Continue / Abort.
+- **`PRESENCE_INPUT_EMPTY=true`**: record a warning. Treat empty presence as fail-safe down for the gate.
 
-- **`DEGRADED=false`** — both tools healthy; proceed silently (the per-tool warning prints above are unaffected).
-- **`DEGRADED=true`** — lift the explanation block between `DEGRADED_EXPLANATION_BEGIN` / `DEGRADED_EXPLANATION_END`, then:
-  - **`PRESENCE_INPUT_EMPTY=true`** — append a `Warnings` entry to the session `execution-issues.md` before applying the normal degraded branch. Treat this as a caller rehydration bug warning, not as a normal tool outage; preserve the gate stderr diagnostics in operator-visible output when available.
-  - **Interactive run, `BOTH_DOWN=false`** (exactly one tool unavailable) — print the explanation block as a plain notice and proceed without prompting. Write the `.degraded-tools-gate-prompted` sentinel under the session tmpdir after printing the notice (same sentinel as the ask-path) so re-entry does not re-warn.
-  - **Interactive run, `BOTH_DOWN` is not exactly `false`** (both tools unavailable, or empty/unset/parse failed) — present the explanation block and fire `AskUserQuestion`. **`/design` and `/implement`** use **Continue (reduced panel — unavailable tools dropped, no cross-tool or Claude padding)** / **Abort**, and on **Continue** proceed with reduced-panel dispatch. **`/review`** uses **Continue (degraded waterfall)** / **Abort**, and on **Continue** proceeds with its Step 0 dispatch waterfall. **`/research`** uses **Continue (degraded)** / **Abort**, and on **Continue** proceeds with its Codex-first / Claude-fallback lane topology. On **Continue**, write the `.degraded-tools-gate-prompted` sentinel under the session tmpdir (same sentinel as the notice path) so re-entry does not re-prompt. On **Abort**, print `**⚠ /<skill>: aborted by operator — external tool unhealthy; re-run once it recovers.**`, clean up the session tmpdir, and stop the skill (run no further steps).
-  - **Fail-safe polarity** — auto-proceed only when `BOTH_DOWN` is **exactly** `false`; when `BOTH_DOWN` is empty, unset, or any other value, treat as `BOTH_DOWN=true` and prompt. Callers must use `[[ "$BOTH_DOWN" == "false" ]]` (exact-string check), not `[[ "$BOTH_DOWN" != "true" ]]`, to avoid silent auto-proceed on empty parse.
-  - **Non-interactive / autonomous run** (cron, `claude -p`, `<<autonomous-loop>>`, eval) — do **NOT** block. Print the explanation block once as a notice and, when a session tmpdir exists, log it to `execution-issues.md` under `Warnings`; then proceed degraded — the waterfall guarantees completion. This mirrors the autonomous carve-outs that already bracket `AskUserQuestion` in `/implement`.
-
-Fire the gate **once per run**: guard it with a `.degraded-tools-gate-prompted` sentinel under the session tmpdir so Step 0 re-entry (e.g. `/implement` dirty-tree / resume-plan-tail) does not re-prompt. The gate is advisory about availability only — it does **not** flip `codex_available` / `cursor_available`, which continue to drive per-slot launch eligibility and the runtime waterfall below.
+Only the explicit Continue path may create `.degraded-tools-gate-prompted`. The detection path must not create it.
 
 ## Runtime Waterfall Fallback
 
 When processing reviewer results, failed external slots should fall through the waterfall dispatcher rather than flipping session-wide availability:
 
-- Phase 1 launches the slot's assigned external tool when present.
-- Phase 2 retries the slot with the other present external tool.
+- Phase 1 launches the slot's assigned external tool when its binary is present or the manifest intentionally attempts the slot.
+- Phase 2 retries the slot with the other binary-present external tool.
 - Phase 3 launches a Claude reviewer subprocess via `python/cli.py agent launch-claude-review`.
 
 Use this warning template when a slot reaches Phase 3:
@@ -62,7 +48,7 @@ Use this warning template when a slot reaches Phase 3:
 
 Where `<FAILURE_REASON>` is the `FAILURE_REASON` value from `python/cli.py agent collect-results` output (or from the `.diag` file if collecting results manually). Always include the reason so the user can diagnose the root cause (e.g., timeout duration, exit code, last error output).
 
-Do not write runtime failure status back to session env. `CODEX_PRESENT` and `CURSOR_PRESENT` are set once at session start via the runtime health probe; they are not updated mid-session by per-slot launch failures.
+Do not write runtime failure status back to session env. `CODEX_PRESENT` and `CURSOR_PRESENT` are immediate Step 0 gate outputs only; per-slot launch failures must stay local to the slot result.
 
 ## Collecting External Reviewer Results
 

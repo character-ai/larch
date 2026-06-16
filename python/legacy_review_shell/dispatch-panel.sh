@@ -18,8 +18,8 @@ DIFF_FILE=""
 COMMIT_COUNT="0"
 SCOPE_FILES=""
 REVIEW_TMPDIR=""
-CODEX_AVAILABLE=""
-CURSOR_AVAILABLE=""
+CODEX_BINARY_FOUND=""
+CURSOR_BINARY_FOUND=""
 COMPETITION_NOTICE_FILE=""
 PLAN_FILE=""
 FEATURE_FILE=""
@@ -52,8 +52,8 @@ while [[ $# -gt 0 ]]; do
         --commit-count) COMMIT_COUNT="${2:?--commit-count requires a value}"; shift 2 ;;
         --scope-files) SCOPE_FILES="${2:?--scope-files requires a value}"; shift 2 ;;
         --review-tmpdir) REVIEW_TMPDIR="${2:?--review-tmpdir requires a value}"; shift 2 ;;
-        --codex-available) CODEX_AVAILABLE="${2:?--codex-available requires a value}"; shift 2 ;;
-        --cursor-available) CURSOR_AVAILABLE="${2:?--cursor-available requires a value}"; shift 2 ;;
+        --codex-available) CODEX_BINARY_FOUND="${2:?--codex-available requires a value}"; shift 2 ;;
+        --cursor-available) CURSOR_BINARY_FOUND="${2:?--cursor-available requires a value}"; shift 2 ;;
         --competition-notice-file) COMPETITION_NOTICE_FILE="${2:?--competition-notice-file requires a value}"; shift 2 ;;
         --plan-file) PLAN_FILE="${2:?--plan-file requires a value}"; shift 2 ;;
         --feature-file) FEATURE_FILE="${2:?--feature-file requires a value}"; shift 2 ;;
@@ -78,8 +78,8 @@ export SESSION_ENV_PATH
 
 [[ "$MODE" == "diff" || "$MODE" == "description" ]] || { larch_err "dispatch-panel.sh: --mode must be diff or description"; exit 2; }
 [[ -n "$REVIEW_TMPDIR" ]] || { larch_err "dispatch-panel.sh: --review-tmpdir is required"; exit 2; }
-[[ "$CODEX_AVAILABLE" == "true" || "$CODEX_AVAILABLE" == "false" ]] || { larch_err "dispatch-panel.sh: --codex-available must be true or false"; exit 2; }
-[[ "$CURSOR_AVAILABLE" == "true" || "$CURSOR_AVAILABLE" == "false" ]] || { larch_err "dispatch-panel.sh: --cursor-available must be true or false"; exit 2; }
+[[ "$CODEX_BINARY_FOUND" == "true" || "$CODEX_BINARY_FOUND" == "false" ]] || { larch_err "dispatch-panel.sh: --codex-available must be true or false"; exit 2; }
+[[ "$CURSOR_BINARY_FOUND" == "true" || "$CURSOR_BINARY_FOUND" == "false" ]] || { larch_err "dispatch-panel.sh: --cursor-available must be true or false"; exit 2; }
 [[ "$PANEL" == "simple" || "$PANEL" == "hard" ]] || { larch_err "dispatch-panel.sh: --panel must be simple or hard"; exit 2; }
 case "$DYNAMIC_ARCHETYPES" in
     [0-3]) ;;
@@ -89,12 +89,11 @@ case "$ROUND_NUM" in ''|*[!0-9]*) larch_err "dispatch-panel.sh: --round-num must
 ROUND_NUM=$((10#$ROUND_NUM))
 (( ROUND_NUM > 0 )) || { larch_err "dispatch-panel.sh: --round-num must be a positive integer"; exit 2; }
 # Codex specialist slots: round 1 only; round 2+ only as replacement when
-# Cursor is unavailable (#4062).
+# Cursor is unavailable (#4062). Topology only — binary-found gates launch in
+# dispatch-with-waterfall.sh, not manifest build time.
 codex_slots_enabled="false"
-if [[ "$CODEX_AVAILABLE" == "true" ]]; then
-    if (( ROUND_NUM < 2 )) || [[ "$CURSOR_AVAILABLE" != "true" ]]; then
-        codex_slots_enabled="true"
-    fi
+if (( ROUND_NUM < 2 )) || [[ "$CURSOR_BINARY_FOUND" != "true" ]]; then
+    codex_slots_enabled="true"
 fi
 mkdir -p "$REVIEW_TMPDIR"
 
@@ -133,17 +132,11 @@ queue_external_slot() {
 static_specialists=(correctness edge-cases testing)
 
 for name in "${static_specialists[@]}"; do
-    if [[ "$CURSOR_AVAILABLE" == "true" ]]; then
-        queue_external_slot cursor "$name" "$REVIEW_TMPDIR/cursor-specialist-${name}-output.txt"
-        static_cursor=$((static_cursor + 1))
-    fi
+    queue_external_slot cursor "$name" "$REVIEW_TMPDIR/cursor-specialist-${name}-output.txt"
+    static_cursor=$((static_cursor + 1))
     if [[ "$codex_slots_enabled" == "true" ]]; then
         queue_external_slot codex "$name" "$REVIEW_TMPDIR/codex-specialist-${name}-output.txt"
         static_codex=$((static_codex + 1))
-    fi
-    if [[ "$CURSOR_AVAILABLE" == "false" && "$CODEX_AVAILABLE" == "false" ]]; then
-        queue_external_slot cursor "$name" "$REVIEW_TMPDIR/cursor-specialist-${name}-output.txt"
-        static_cursor=$((static_cursor + 1))
     fi
 done
 
@@ -151,7 +144,7 @@ done
 # Cursor is available (specialists suppressed from round 2 onward; #4062).
 # Cursor-unavailable rounds use codex_slots_enabled to run Codex specialists
 # instead; do not double-add a generic slot in that case.
-if [[ "$CODEX_AVAILABLE" == "true" && "$CURSOR_AVAILABLE" == "true" ]] && (( ROUND_NUM >= 2 )); then
+if [[ "$CURSOR_BINARY_FOUND" == "true" ]] && (( ROUND_NUM >= 2 )); then
     printf '{"slot":"codex-generic","tool":"codex","output":"%s","agent":"%s"}\n' \
         "$REVIEW_TMPDIR/codex-generic-output.txt" \
         "$PLUGIN_ROOT/agents/code-reviewer.md" >> "$manifest"
@@ -224,17 +217,15 @@ synthesize_dynamic_slots() {
             render_args+=(--competition-notice --competition-notice-file "$COMPETITION_NOTICE_FILE")
         fi
         python3 "$PLUGIN_ROOT/python/cli.py" render specialist "${render_args[@]}" > "$rendered_prompt"
-        if [[ "$CURSOR_AVAILABLE" == "true" ]]; then
-            jq -cn \
-                --arg slot "dyn-$name" \
-                --arg output "$output_file" \
-                --arg prompt_file "$rendered_prompt" \
-                --arg focus_area "$focus_area" \
-                --argjson weight "$weight" \
-                '{slot:$slot, tool:"cursor", output:$output, prompt_file:$prompt_file, weight:$weight, focus_area:$focus_area}' \
-                >> "$manifest"
-            DYNAMIC_SLOTS=$((DYNAMIC_SLOTS + 1))
-        fi
+        jq -cn \
+            --arg slot "dyn-$name" \
+            --arg output "$output_file" \
+            --arg prompt_file "$rendered_prompt" \
+            --arg focus_area "$focus_area" \
+            --argjson weight "$weight" \
+            '{slot:$slot, tool:"cursor", output:$output, prompt_file:$prompt_file, weight:$weight, focus_area:$focus_area}' \
+            >> "$manifest"
+        DYNAMIC_SLOTS=$((DYNAMIC_SLOTS + 1))
         if [[ "$codex_slots_enabled" == "true" ]]; then
             jq -cn \
                 --arg slot "dyn-$name-codex" \
@@ -243,17 +234,6 @@ synthesize_dynamic_slots() {
                 --arg focus_area "$focus_area" \
                 --argjson weight "$weight" \
                 '{slot:$slot, tool:"codex", output:$output, prompt_file:$prompt_file, weight:$weight, focus_area:$focus_area}' \
-                >> "$manifest"
-            DYNAMIC_SLOTS=$((DYNAMIC_SLOTS + 1))
-        fi
-        if [[ "$CURSOR_AVAILABLE" == "false" && "$CODEX_AVAILABLE" == "false" ]]; then
-            jq -cn \
-                --arg slot "dyn-$name" \
-                --arg output "$output_file" \
-                --arg prompt_file "$rendered_prompt" \
-                --arg focus_area "$focus_area" \
-                --argjson weight "$weight" \
-                '{slot:$slot, tool:"cursor", output:$output, prompt_file:$prompt_file, weight:$weight, focus_area:$focus_area}' \
                 >> "$manifest"
             DYNAMIC_SLOTS=$((DYNAMIC_SLOTS + 1))
         fi
@@ -448,7 +428,7 @@ if [[ "$DYNAMIC_ARCHETYPES" != "0" && "$SCOUT_STATUS" == "na" ]]; then
             write_scout_status_file
         else
             scout_args=(--mode "$MODE" --max-archetypes "$DYNAMIC_ARCHETYPES" --output "$SCOUT_MANIFEST"
-                --codex-present "$CODEX_AVAILABLE" --cursor-present "$CURSOR_AVAILABLE")
+                --codex-present "$CODEX_BINARY_FOUND" --cursor-present "$CURSOR_BINARY_FOUND")
             [[ -n "$SESSION_ENV_PATH" ]] && scout_args+=(--session-env-path "$SESSION_ENV_PATH")
             [[ -n "$PLAN_FILE" && -f "$PLAN_FILE" ]] && scout_args+=(--plan-file "$PLAN_FILE")
             if [[ "$MODE" == "diff" ]]; then
@@ -621,8 +601,8 @@ if (( total > 0 )); then
     larch_err "→ review: launching $total reviewers ($static_cursor Cursor static, $static_codex Codex static, $DYNAMIC_SLOTS dynamic)"
 fi
 
-codex_present_for_waterfall="$CODEX_AVAILABLE"
-waterfall_args=(--slots-file "$manifest" --codex-present "$codex_present_for_waterfall" --cursor-present "$CURSOR_AVAILABLE" --mode "$MODE" --timeout 1800)
+codex_present_for_waterfall="$CODEX_BINARY_FOUND"
+waterfall_args=(--slots-file "$manifest" --codex-present "$codex_present_for_waterfall" --cursor-present "$CURSOR_BINARY_FOUND" --mode "$MODE" --timeout 1800)
 [[ "$MODE" == "diff" && -n "$DIFF_FILE" ]] && waterfall_args+=(--diff-file "$DIFF_FILE" --commit-count "$COMMIT_COUNT")
 [[ "$MODE" == "description" && -n "$SCOPE_FILES" ]] && waterfall_args+=(--description-text "${DESCRIPTION_TEXT:-description review}" --scope-files "$SCOPE_FILES")
 [[ -n "$PLAN_FILE" && -f "$PLAN_FILE" ]] && waterfall_args+=(--plan-file "$PLAN_FILE")
@@ -631,7 +611,7 @@ waterfall_args=(--slots-file "$manifest" --codex-present "$codex_present_for_wat
 # --no-fallback only in round 1 with both vendors (peer specialist rows cover
 # each other). In round 2+ Codex specialist slots are suppressed (#4062), so
 # keep normal fallback: a failed Cursor slot may backfill via Codex or Claude.
-if [[ "$CURSOR_AVAILABLE" == "true" && "$CODEX_AVAILABLE" == "true" && "$codex_slots_enabled" == "true" ]]; then
+if [[ "$CURSOR_BINARY_FOUND" == "true" && "$CODEX_BINARY_FOUND" == "true" && "$codex_slots_enabled" == "true" ]]; then
     waterfall_args+=(--no-fallback)
 fi
 

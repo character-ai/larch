@@ -39,8 +39,37 @@ rehydrate_larch_triplet() {
 }
 
 rehydrate_plugin_root
-CODEX_PRESENT=$(read_session_key CODEX_PRESENT "")
-CURSOR_PRESENT=$(read_session_key CURSOR_PRESENT "")
 CODEX_BINARY_FOUND=$(read_session_key CODEX_BINARY_FOUND "")
 CURSOR_BINARY_FOUND=$(read_session_key CURSOR_BINARY_FOUND "")
+
+_check_reviewer_args=(agent check-reviewers)
+if ! command -v codex >/dev/null 2>&1; then
+    _check_reviewer_args+=(--skip-codex-probe)
+fi
+if ! command -v cursor >/dev/null 2>&1; then
+    _check_reviewer_args+=(--skip-cursor-probe)
+fi
+
+_probe_stdout_file="$(mktemp "${TMPDIR:-/tmp}/larch-degraded-gate-probe.XXXXXX")" || {
+    printf '%s\n' "step-0-degraded-gate: could not allocate probe stdout capture" >&2
+    exit 1
+}
+set +e
+python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" "${_check_reviewer_args[@]}" >"$_probe_stdout_file" 2>/dev/null
+_probe_rc=$?
+if [[ "$_probe_rc" -ne 0 ]]; then
+    python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" "${_check_reviewer_args[@]}" >"$_probe_stdout_file" 2>/dev/null || true
+fi
+set -e
+
+CODEX_PRESENT=""
+CURSOR_PRESENT=""
+while IFS= read -r _probe_line || [[ -n "$_probe_line" ]]; do
+    case "$_probe_line" in
+        CODEX_PRESENT=*) CODEX_PRESENT="${_probe_line#CODEX_PRESENT=}" ;;
+        CURSOR_PRESENT=*) CURSOR_PRESENT="${_probe_line#CURSOR_PRESENT=}" ;;
+    esac
+done < "$_probe_stdout_file"
+rm -f "$_probe_stdout_file"
+
 python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" agent degraded-tools-gate --skill implement   --codex-present "$CODEX_PRESENT"   --cursor-present "$CURSOR_PRESENT"   --codex-binary-found "$CODEX_BINARY_FOUND"   --cursor-binary-found "$CURSOR_BINARY_FOUND"

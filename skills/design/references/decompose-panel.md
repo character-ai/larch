@@ -36,8 +36,8 @@ Run (stdout is KV-shaped; parse `PANEL_OUTPUTS_FILE`, `DEGRADED_PANEL`, `PANEL_S
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" decompose panel-dispatch \
   --design-tmpdir "$DESIGN_TMPDIR" \
-  --codex-present "$codex_present" \
-  --cursor-present "$cursor_present" \
+  --codex-binary-found "$CODEX_BINARY_FOUND" \
+  --cursor-binary-found "$CURSOR_BINARY_FOUND" \
   --mode "$PANEL_MODE" \
   ${PANEL_MODE_PLAN_ARGS[@]+"${PANEL_MODE_PLAN_ARGS[@]}"} \
   --feature-file "$DESIGN_TMPDIR/feature-description.txt" \
@@ -115,8 +115,8 @@ Concatenate the eight panel outputs and merge into one canonical partition propo
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" decompose aggregate \
   --design-tmpdir "$DESIGN_TMPDIR" \
   --panel-outputs-file "$PANEL_OUTPUTS_FILE" \
-  --codex-present "$codex_present" \
-  --cursor-present "$cursor_present" \
+  --codex-binary-found "$CODEX_BINARY_FOUND" \
+  --cursor-binary-found "$CURSOR_BINARY_FOUND" \
   --output "$DESIGN_TMPDIR/decompose/aggregator-partition.md" \
   --timeout 1800
 ```
