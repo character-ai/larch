@@ -934,6 +934,29 @@ def test_resolve_implement_tmpdir_legacy_sentinels_and_acceptance_order(tmp_path
     assert session_env.resolve_implement_tmpdir(cwd, env=env, now=10000) == str(expected)
 
 
+@pytest.mark.parametrize("sentinel", [".bump-version-armed", ".release-armed"])
+def test_resolve_implement_tmpdir_legacy_sentinel_only_candidate(
+    tmp_path: Path, sentinel: str
+) -> None:
+    root = tmp_path / "cache" / "larch" / "sessions"
+    cwd = str(tmp_path / "repo")
+    expected = _make_implement_candidate(root, "legacy-only", cwd, sentinel=sentinel, mtime=1000)
+    env = {"XDG_CACHE_HOME": str(tmp_path / "cache"), "LARCH_IMPLEMENT_TMPDIR_TTL_SECONDS": "0", "LARCH_TOKEN_SESSION_ID": ""}
+    assert session_env.resolve_implement_tmpdir(cwd, env=env, now=5000) == str(expected)
+
+
+@pytest.mark.parametrize("sentinel", [".bump-version-armed", ".release-armed"])
+def test_resolve_implement_tmpdir_legacy_sentinel_newest_candidate(
+    tmp_path: Path, sentinel: str
+) -> None:
+    root = tmp_path / "cache" / "larch" / "sessions"
+    cwd = str(tmp_path / "repo")
+    _make_implement_candidate(root, "older", cwd, sentinel="design-export/manifest.env", mtime=1000)
+    expected = _make_implement_candidate(root, "legacy-newest", cwd, sentinel=sentinel, mtime=3000)
+    env = {"XDG_CACHE_HOME": str(tmp_path / "cache"), "LARCH_IMPLEMENT_TMPDIR_TTL_SECONDS": "0", "LARCH_TOKEN_SESSION_ID": ""}
+    assert session_env.resolve_implement_tmpdir(cwd, env=env, now=5000) == str(expected)
+
+
 def test_resolve_implement_tmpdir_ttl_and_session_bypass(tmp_path: Path) -> None:
     root = tmp_path / "cache" / "larch" / "sessions"
     cwd = str(tmp_path / "repo")
