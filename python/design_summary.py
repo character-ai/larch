@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
 from collections.abc import Sequence
+
+from design_publish import review_provenance
 
 
 _VALID_OUTCOMES = frozenset({
@@ -118,24 +121,46 @@ def _oos_info(design_tmpdir: Path) -> tuple[int, str]:
     return len(urls), "\n".join(urls)
 
 
+# execution-issues.md uses h3 (`### `) category headers (### Tool Failures,
+# ### Warnings, ...). Match the same exec/warning split python/pr_body.py uses so
+# /design and /implement report consistent counts. Exec issues are bullets under
+# Tool Failures / External Reviewer Issues; warnings are bullets under Warnings.
+_EXEC_ISSUE_CATEGORIES = frozenset({"Tool Failures", "External Reviewer Issues"})
+_ISSUE_BULLET_RE = re.compile(r"^- \*\*[^*].*\*\*:?([ \t].*)?$")
+
+
 def _issue_counts(design_tmpdir: Path) -> tuple[int, int]:
     ei = design_tmpdir / "execution-issues.md"
     if not ei.is_file():
         return 0, 0
     exec_count = warn_count = 0
-    in_exec = in_warn = False
-    for raw in ei.read_text(encoding="utf-8").splitlines():
-        s = raw.strip()
-        if s.startswith("## "):
-            h = s.lstrip("#").strip().lower()
-            in_exec = "execution" in h and "issues" in h
-            in_warn = "warning" in h
-        elif s.startswith("- "):
-            if in_exec:
+    bucket = ""
+    for line in ei.read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.startswith("### "):
+            heading = line[4:].strip()
+            if heading in _EXEC_ISSUE_CATEGORIES:
+                bucket = "exec"
+            elif heading == "Warnings":
+                bucket = "warn"
+            else:
+                bucket = ""
+        elif bucket and _ISSUE_BULLET_RE.match(line):
+            if bucket == "exec":
                 exec_count += 1
-            elif in_warn:
+            else:
                 warn_count += 1
     return exec_count, warn_count
+
+
+def _plan_review_line(design_tmpdir: Path) -> str:
+    """Render plan-review provenance like 'complete (5 rounds)', or 'N/A' when absent."""
+    status, rounds, _ = review_provenance(design_tmpdir)
+    if not status:
+        return "N/A"
+    if rounds > 0:
+        unit = "round" if rounds == 1 else "rounds"
+        return f"{status} ({rounds} {unit})"
+    return status
 
 
 # Calls `python/cli.py render run-summary` with --claude-input-tokens for per-bucket cost detail.
@@ -151,6 +176,7 @@ def invoke_render(
     oos_urls: str,
     exec_issues: int,
     warnings: int,
+    plan_review_line: str,
     run_logs_path: str,
     cost_args: list[str],
 ) -> int:
@@ -166,7 +192,7 @@ def invoke_render(
         "--issue-url", issue_url,
         "--pr-number", "0",
         "--pr-url", "N/A",
-        "--plan-review-line", "N/A",
+        "--plan-review-line", plan_review_line,
         "--code-review-line", "N/A",
         "--oos-count", str(oos_count),
         "--oos-urls", oos_urls,
@@ -316,10 +342,11 @@ def render_final_summary_main(argv: Sequence[str]) -> int:
     out_file = design_tmpdir / "final-summary.md"
     _run_design_failure_report_gate(design_tmpdir, phase, outcome, repo, issue, run_id)
     exec_issues, warnings = _issue_counts(design_tmpdir)
+    plan_review_line = _plan_review_line(design_tmpdir)
 
     rc = invoke_render(
         design_tmpdir, outcome, mode_str, run_id, duration, issue, issue_url,
-        oos_count, oos_urls, exec_issues, warnings, run_logs_path, cost_args,
+        oos_count, oos_urls, exec_issues, warnings, plan_review_line, run_logs_path, cost_args,
     )
 
     if rc != 0 or not out_file.is_file() or out_file.stat().st_size == 0:
