@@ -81,14 +81,18 @@ def pytest_collection_modifyitems(
 
     No-op unless PYTEST_SHARD_ID / PYTEST_SHARD_COUNT are both set, so local
     `make py-test` and targeted harness runs execute the full collection.
-    Round-robin by collection index keeps shard sizes within one test of each
-    other; see python/pytest_sharding.py.
+    Assigned nodeids use python/shard-assignments.json; unassigned tests
+    keep round-robin collection-index fallback.
     """
     parsed = pytest_sharding.read_shard_env(os.environ)
     if parsed is None:
         return
     shard_id, shard_count = parsed
-    keep = pytest_sharding.select_shard_indices(len(items), shard_id, shard_count)
+    nodeids = [item.nodeid for item in items]
+    assignments = pytest_sharding.load_shard_assignments()
+    keep = pytest_sharding.select_shard_nodeids(
+        nodeids, shard_id, shard_count, assignments
+    )
     selected = [item for index, item in enumerate(items) if index in keep]
     deselected = [item for index, item in enumerate(items) if index not in keep]
     if deselected:

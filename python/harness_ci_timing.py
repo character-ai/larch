@@ -15,7 +15,7 @@ import statistics
 from dataclasses import dataclass
 from collections.abc import Sequence
 
-import gh
+from ci_timing_fetch import fetch_parsed_timing_rows
 from proc import Runner
 
 
@@ -47,16 +47,14 @@ def fetch_timing_rows(
     Returns an empty list (not an exception) when a run's log cannot be
     fetched so a single transient failure does not abort the whole pass.
     """
-    runs = gh.run_list_successful(
-        runner, repo=repo, branch=branch, workflow=workflow, limit=n_runs
+    return fetch_parsed_timing_rows(
+        runner,
+        parse_log=parse_log,
+        n_runs=n_runs,
+        workflow=workflow,
+        branch=branch,
+        repo=repo,
     )
-    rows: list[TimingRow] = []
-    for run in runs:
-        result = gh.run_log_read(runner, run.database_id, repo=repo)
-        if result.returncode != 0:
-            continue
-        rows.extend(parse_log(result.stdout, run.database_id))
-    return rows
 
 
 def parse_log(log: str, run_id: int) -> list[TimingRow]:
