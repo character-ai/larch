@@ -870,3 +870,20 @@ def test_run_legacy_consumer_repo_env_override_wins(monkeypatch: pytest.MonkeyPa
     env = captured["env"]
     assert isinstance(env, dict)
     assert env["LARCH_CONSUMER_REPO"] == "/explicit/consumer"
+
+
+def test_embedded_waterfall_dispatchers_call_agent_verb() -> None:
+    retired = "dispatch-with-" + "waterfall.sh"
+    keys = (
+        "/".join(("scripts", "dispatch-plan-voters.sh")),
+        "/".join(("skills", "design", "scripts", "dispatch-plan-review-panel.sh")),
+    )
+    for key in keys:
+        body = plan_review.legacy_asset_bytes(key).decode("utf-8")
+        assert "agent dispatch-waterfall" in body
+        assert retired not in body
+        if key.endswith("dispatch-plan-review-panel.sh"):
+            assert "DISPATCH_WATERFALL_CMD=(python3" in body
+            assert '"${DISPATCH_WATERFALL_CMD[@]}"' in body
+        else:
+            assert 'python3 "$PLUGIN_ROOT/python/cli.py" agent dispatch-waterfall' in body

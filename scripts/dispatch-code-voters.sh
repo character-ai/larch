@@ -139,7 +139,7 @@ codex_present_for_waterfall="$CODEX_BINARY_FOUND"
 # Guard against non-zero exit from waterfall (e.g. a reviewer launcher exiting
 # abnormally mid-run) so set -e does not abort dispatch before tally.
 set +e
-waterfall_output=$("$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh" \
+waterfall_output=$(python3 "$CLI" agent dispatch-waterfall \
     --slots-file "$manifest" \
     --codex-present "$codex_present_for_waterfall" \
     --cursor-present "$CURSOR_BINARY_FOUND" \
@@ -150,7 +150,7 @@ waterfall_output=$("$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh" \
 _waterfall_rc=$?
 set -e
 if [[ $_waterfall_rc -ne 0 ]]; then
-    larch_err "dispatch-code-voters.sh: dispatch-with-waterfall.sh exited $_waterfall_rc — proceeding with partial or empty result"
+    larch_err "dispatch-code-voters.sh: agent dispatch-waterfall exited $_waterfall_rc — proceeding with partial or empty result"
 fi
 
 # Reap the parallel Claude voter; it has been running concurrently with the

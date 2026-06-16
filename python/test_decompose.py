@@ -3,6 +3,9 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
+import sys
+from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -261,3 +264,52 @@ def test_aggregate_malformed_panel_ndjson(tmp_path: Path, capsys: pytest.Capture
     out = capsys.readouterr().out
     assert rc == 2
     assert "AGGREGATOR_STATUS=failed" in out
+
+
+def test_dispatch_panel_defaults_to_agent_dispatch_waterfall(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    d = _design_tmp(tmp_path)
+    plan = d / "plan.txt"
+    plan.write_text("## Plan\n", encoding="utf-8")
+    seen: list[list[str]] = []
+
+    def fake_run(cmd: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        seen.append(list(cmd))
+        slots = Path(cmd[cmd.index("--slots-file") + 1])
+        paths = tmp_path / "panel.paths"
+        with paths.open("w", encoding="utf-8") as handle:
+            for row in slots.read_text(encoding="utf-8").splitlines():
+                data = json.loads(row)
+                out = Path(data["output"])
+                out.write_text("## Recommendation\nsplit\n", encoding="utf-8")
+                handle.write(str(out) + "\n")
+        return subprocess.CompletedProcess(cmd, 0, stdout=f"DISPATCH_OK=true\nFALLBACK_COUNT=0\nCOMBINED_FALLBACK_COUNT=0\nSTATIC_DISPATCH_OK=true\nALL_OUTPUT_FILES_PATH={paths}\n", stderr="")
+
+    monkeypatch.delenv("DECOMPOSE_PANEL_WATERFALL_SH", raising=False)
+    monkeypatch.setattr(decompose.subprocess, "run", fake_run)  # type: ignore[arg-type]
+    decompose.dispatch_panel(design_tmpdir=d, codex_present=True, cursor_present=True, mode="plan", plan_file=plan)
+    assert seen
+    assert seen[0][:4] == [sys.executable, str(decompose.PLUGIN_ROOT / "python" / "cli.py"), "agent", "dispatch-waterfall"]
+
+
+def test_aggregate_partition_defaults_to_agent_dispatch_waterfall(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    d = _design_tmp(tmp_path)
+    source = d / "panel-output.txt"
+    source.write_text("## Recommendation\nsplit\n", encoding="utf-8")
+    panel = d / "panel.ndjson"
+    panel.write_text(json.dumps({"archetype": "a", "vendor": "codex", "output": str(source), "status": "ok"}) + "\n", encoding="utf-8")
+    seen: list[list[str]] = []
+
+    def fake_run(cmd: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        seen.append(list(cmd))
+        out = d / "aggregate-final.txt"
+        out.write_text("## Recommendation\nsplit\n", encoding="utf-8")
+        paths = d / "aggregate.paths"
+        paths.write_text(str(out) + "\n", encoding="utf-8")
+        return subprocess.CompletedProcess(cmd, 0, stdout=f"DISPATCH_OK=true\nALL_OUTPUT_FILES_PATH={paths}\n", stderr="")
+
+    monkeypatch.delenv("DECOMPOSE_AGGREGATE_WATERFALL_SH", raising=False)
+    monkeypatch.setattr(decompose.subprocess, "run", fake_run)  # type: ignore[arg-type]
+    status = decompose.aggregate_partition(design_tmpdir=d, panel_outputs_file=panel, codex_present=True, cursor_present=True, output=d / "merged.md")
+    assert status == "ok"
+    assert seen
+    assert seen[0][:4] == [sys.executable, str(decompose.PLUGIN_ROOT / "python" / "cli.py"), "agent", "dispatch-waterfall"]

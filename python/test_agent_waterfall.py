@@ -1,0 +1,299 @@
+# pyright: reportUnusedCallResult=false
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+from test_support import ROOT
+
+CLI = Path(__file__).with_name("cli.py")
+
+
+def _write(path: Path, text: str) -> Path:
+    path.write_text(text, encoding="utf-8")
+    path.chmod(0o755)
+    return path
+
+
+@pytest.fixture()
+def stub_env(tmp_path: Path) -> dict[str, str]:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    _write(
+        bin_dir / "codex",
+        """#!/usr/bin/env bash
+out=""
+last=""
+log="${CODEX_STUB_LOG:-}"
+for arg in "$@"; do
+  if [[ "$last" == "--output-last-message" ]]; then out="$arg"; fi
+  last="$arg"
+done
+[[ -n "$log" ]] && printf '%s\n' "$*" >> "$log"
+[[ -n "$out" ]] || exit 9
+if [[ -n "${CODEX_STUB_COUNTER:-}" ]]; then
+  n=0; [[ -f "$CODEX_STUB_COUNTER" ]] && n=$(cat "$CODEX_STUB_COUNTER" 2>/dev/null || echo 0)
+  case "$n" in ''|*[!0-9]*) n=0 ;; esac
+  printf '%s\n' "$((n + 1))" > "$CODEX_STUB_COUNTER"
+fi
+if [[ -n "${CODEX_STUB_FAIL_OUTPUT_CONTAINS:-}" && "$out" == *"${CODEX_STUB_FAIL_OUTPUT_CONTAINS}"* ]]; then exit 7; fi
+if [[ "${CODEX_STUB_FAIL:-false}" == "true" ]]; then exit 7; fi
+printf '%s\n' "${CODEX_STUB_RESULT_CONTENT:-codex ok}" > "$out"
+""",
+    )
+    _write(
+        bin_dir / "cursor",
+        """#!/usr/bin/env bash
+if [[ -n "${CURSOR_STUB_DELAY:-}" ]]; then sleep "$CURSOR_STUB_DELAY"; fi
+log="${CURSOR_STUB_LOG:-}"
+[[ -n "$log" ]] && printf '%s\n' "$*" >> "$log"
+if [[ -n "${CURSOR_STUB_FAIL_OUTPUT_CONTAINS:-}" && "$*" == *"${CURSOR_STUB_FAIL_OUTPUT_CONTAINS}"* ]]; then exit 8; fi
+if [[ "${CURSOR_STUB_FAIL:-false}" == "true" ]]; then exit 8; fi
+python3 - <<'PY_CURSOR'
+import json, os
+print(json.dumps({"result": os.environ.get("CURSOR_STUB_RESULT_CONTENT", "cursor ok"), "usage": {"inputTokens": 1, "outputTokens": int(os.environ.get("CURSOR_STUB_OUTPUT_TOKENS", "1")), "cacheReadTokens": 0, "cacheWriteTokens": 0}}))
+PY_CURSOR
+""",
+    )
+    _write(
+        bin_dir / "claude",
+        """#!/usr/bin/env bash
+cat >/dev/null
+if [[ "${CLAUDE_STUB_FAIL:-false}" == "true" ]]; then exit 9; fi
+python3 - <<'PY_CLAUDE'
+import json, os
+print(json.dumps({"type":"result","subtype":"success","is_error":False,"result":os.environ.get("CLAUDE_STUB_RESULT_CONTENT", "claude ok"),"usage":{"input_tokens":1,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}))
+PY_CLAUDE
+""",
+    )
+    env = os.environ.copy()
+    env.update(
+        {
+            "PATH": f"{bin_dir}:{os.environ['PATH']}",
+            "CLAUDE_PLUGIN_ROOT": str(ROOT),
+            "LARCH_QUIET_DISABLE": "1",
+            "WAIT_FOR_REVIEWERS_POLL_INTERVAL": "0.05",
+            "RUN_EXTERNAL_AGENT_POLL_INTERVAL": "0.05",
+            "LARCH_TRANSIENT_RETRY_DELAY": "0",
+            "LARCH_CURSOR_LAUNCH_JITTER_MS": "0",
+            "LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT": "0",
+            "LARCH_EXTERNAL_SERIAL_LOCK_FORCE_UNAME": "Linux",
+            "LARCH_LIB_CURSOR_AUTH_TEST_MODE": "1",
+            "LIB_CURSOR_AUTH_TEST_UNAME": "Linux",
+        }
+    )
+    return env
+
+
+def _slot(tmp_path: Path, *, name: str = "s1", tool: str = "codex", output_name: str = "out.txt") -> tuple[Path, Path]:
+    prompt = tmp_path / f"{name}.prompt"
+    prompt.write_text("review\n", encoding="utf-8")
+    manifest = tmp_path / f"{name}.ndjson"
+    output = tmp_path / output_name
+    manifest.write_text(json.dumps({"slot": name, "tool": tool, "output": str(output), "prompt_file": str(prompt)}) + "\n", encoding="utf-8")
+    return manifest, output
+
+
+def _run(manifest: Path, env: dict[str, str], *extra: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, str(CLI), "agent", "dispatch-waterfall", "--slots-file", str(manifest), "--codex-present", "true", "--cursor-present", "true", "--mode", "description", "--timeout", "5", *extra],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+
+def _kv(stdout: str) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for line in stdout.splitlines():
+        key, sep, value = line.partition("=")
+        if sep:
+            out[key] = value
+    return out
+
+
+def test_phase2_and_phase3_fallbacks(tmp_path: Path, stub_env: dict[str, str]) -> None:
+    manifest, _output = _slot(tmp_path)
+    proc = _run(manifest, {**stub_env, "CODEX_STUB_FAIL": "true"})
+    assert proc.returncode == 0, proc.stderr
+    kvs = _kv(proc.stdout)
+    assert kvs["ALL_OUTPUT_TOOLS"] == "cursor"
+    assert (tmp_path / "out-phase2.txt").read_text(encoding="utf-8").strip() == "cursor ok"
+
+    proc = _run(manifest, {**stub_env, "CODEX_STUB_FAIL": "true", "CURSOR_STUB_FAIL": "true"})
+    assert proc.returncode == 0, proc.stderr
+    kvs = _kv(proc.stdout)
+    assert kvs["FALLBACK_COUNT"] == "1"
+    assert kvs["ALL_OUTPUT_TOOLS"] == "claude"
+    assert (tmp_path / "out-phase3.txt").read_text(encoding="utf-8").strip() == "claude ok"
+
+
+def test_phase3_hard_fail_still_emits_final_path(tmp_path: Path, stub_env: dict[str, str]) -> None:
+    manifest, _ = _slot(tmp_path, output_name="hard.txt")
+    env = {**stub_env, "CODEX_STUB_FAIL": "true", "CURSOR_STUB_FAIL": "true", "CLAUDE_STUB_FAIL": "true"}
+    proc = _run(manifest, env)
+    assert proc.returncode == 0, proc.stderr
+    kvs = _kv(proc.stdout)
+    final = str(tmp_path / "hard-phase3.txt")
+    assert kvs["DISPATCH_OK"] == "false"
+    assert kvs["ALL_OUTPUT_FILES"] == final
+    assert Path(kvs["ALL_OUTPUT_FILES_PATH"]).read_text(encoding="utf-8") == final + "\n"
+    assert Path(final + ".launch-stderr").exists()
+
+
+def test_validation_errors_exit_two_and_do_not_launch(tmp_path: Path, stub_env: dict[str, str]) -> None:
+    manifest, _ = _slot(tmp_path)
+    codex_log = tmp_path / "codex.log"
+    proc = _run(manifest, {**stub_env, "CODEX_STUB_LOG": str(codex_log)}, "--require-result-pattern", "[")
+    assert proc.returncode == 2
+    assert "--require-result-pattern is not a valid ERE" in proc.stderr
+    assert not codex_log.exists() or codex_log.read_text(encoding="utf-8") == ""
+
+    empty = tmp_path / "empty.ndjson"
+    empty.write_text("", encoding="utf-8")
+    proc = _run(empty, stub_env)
+    assert proc.returncode == 2
+    assert "no slot rows" in proc.stderr
+    assert not Path(str(empty) + ".output-files").exists()
+
+
+def test_posix_ere_result_gate_and_caphit_bypass(tmp_path: Path, stub_env: dict[str, str]) -> None:
+    manifest, _ = _slot(tmp_path, tool="cursor", output_name="pattern.txt")
+    proc = _run(
+        manifest,
+        {**stub_env, "CURSOR_STUB_RESULT_CONTENT": "narration", "CODEX_STUB_RESULT_CONTENT": "## Recommendation\nsplit"},
+        "--require-result-pattern",
+        "^[[:space:]]*## Recommendation",
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert _kv(proc.stdout)["ALL_OUTPUT_TOOLS"] == "codex"
+
+    codex_log = tmp_path / "codex-caphit.log"
+    proc = _run(
+        manifest,
+        {**stub_env, "CURSOR_STUB_RESULT_CONTENT": "STATUS=cap_hit\nbudget", "CODEX_STUB_LOG": str(codex_log)},
+        "--require-result-pattern",
+        "^[[:space:]]*## Recommendation",
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert _kv(proc.stdout)["ALL_OUTPUT_TOOLS"] == "cursor"
+    assert not codex_log.exists() or codex_log.read_text(encoding="utf-8") == ""
+
+
+@pytest.mark.parametrize(
+    ("content", "expected_tool"),
+    [
+        ("### FINDING_1:\nbody", "cursor"),
+        ("   LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED   \n", "cursor"),
+        ("unrelated body", "codex"),
+    ],
+)
+def test_aggregate_findings_posix_alternation(tmp_path: Path, stub_env: dict[str, str], content: str, expected_tool: str) -> None:
+    manifest, _ = _slot(tmp_path, tool="cursor", output_name="agg.txt")
+    pattern = r"^(### FINDING_[0-9]+:|[[:space:]]*LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED[[:space:]]*$)"
+    proc = _run(
+        manifest,
+        {**stub_env, "CURSOR_STUB_RESULT_CONTENT": content, "CODEX_STUB_RESULT_CONTENT": "### FINDING_2:\nbody"},
+        "--require-result-pattern",
+        pattern,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert _kv(proc.stdout)["ALL_OUTPUT_TOOLS"] == expected_tool
+
+
+def test_first_line_salvage_and_no_fallback_drop_file(tmp_path: Path, stub_env: dict[str, str]) -> None:
+    manifest, output = _slot(tmp_path, tool="cursor", output_name="first.txt")
+    proc = _run(
+        manifest,
+        {**stub_env, "CURSOR_STUB_RESULT_CONTENT": "preamble\nschema_version\tscope\n1\tx"},
+        "--require-first-line-pattern",
+        r"^[[:space:]]*schema_version",
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert _kv(proc.stdout)["ALL_OUTPUT_TOOLS"] == "cursor"
+    assert output.read_text(encoding="utf-8").startswith("schema_version")
+
+    manifest, _ = _slot(tmp_path, tool="cursor", output_name="drop.txt")
+    proc = _run(
+        manifest,
+        {**stub_env, "CURSOR_STUB_RESULT_CONTENT": "narration only"},
+        "--no-fallback",
+        "--require-first-line-pattern",
+        r"^[[:space:]]*schema_version",
+    )
+    assert proc.returncode == 0, proc.stderr
+    kvs = _kv(proc.stdout)
+    assert kvs["ALL_SLOTS_DROPPED"] == "true"
+    drop_file = Path(kvs["DROPPED_SLOTS_FILE"])
+    fields = drop_file.read_text(encoding="utf-8").split("\t")
+    assert fields[:3] == ["s1", "cursor", "format-gate-miss"]
+
+
+def test_fallback_counter_and_paths_file_override(tmp_path: Path, stub_env: dict[str, str]) -> None:
+    manifest, _ = _slot(tmp_path)
+    counter = tmp_path / "counter.txt"
+    counter.write_text("2\n", encoding="utf-8")
+    paths = tmp_path / "outputs.list"
+    proc = _run(
+        manifest,
+        {**stub_env, "CODEX_STUB_FAIL": "true", "CURSOR_STUB_FAIL": "true"},
+        "--fallback-counter-file",
+        str(counter),
+        "--paths-file",
+        str(paths),
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert counter.read_text(encoding="utf-8") == "3\n"
+    assert _kv(proc.stdout)["ALL_OUTPUT_FILES_PATH"] == str(paths)
+    assert paths.read_text(encoding="utf-8").strip().endswith("out-phase3.txt")
+
+
+def test_rejects_newline_output_path(tmp_path: Path, stub_env: dict[str, str]) -> None:
+    prompt = tmp_path / "p"
+    prompt.write_text("x\n", encoding="utf-8")
+    manifest = tmp_path / "bad.ndjson"
+    manifest.write_text(json.dumps({"slot": "bad", "tool": "codex", "output": "x\ny", "prompt_file": str(prompt)}) + "\n", encoding="utf-8")
+    proc = _run(manifest, stub_env)
+    assert proc.returncode == 2
+    assert "newline or carriage return" in proc.stderr
+
+
+def test_grouped_reuse_guard() -> None:
+    dispatcher = (ROOT / "python" / "agent_waterfall.py").read_text(encoding="utf-8")
+    symbols = [
+        "reuse_slot_result",
+        "find_group_ok_for_tool",
+        "append_group_ledger_ok",
+        "GROUP_LEDGER",
+        "REUSED_INDICES",
+        "idx_was_reused",
+        "has_fallback_groups",
+        "waterfall-" + "group-results",
+        "DEDUPE_REUSED",
+        "slot_" + "fallback_" + "groups",
+        "REUSED_INDICES_FILE",
+        "phase2_grouped",
+    ]
+    for symbol in symbols:
+        assert symbol not in dispatcher
+    for needle in ("fallback_" + "group", "." + "dedup", "waterfall-" + "group-results"):
+        assert needle not in dispatcher
+    token = "fallback_" + "group"
+    hits: list[str] = []
+    for root_name in ("skills", "scripts"):
+        for path in (ROOT / root_name).rglob("*"):
+            if not path.is_file() or path.suffix == ".md" or (path.name.startswith("test-") and path.suffix == ".sh"):
+                continue
+            try:
+                text = path.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            if token in text:
+                hits.append(str(path.relative_to(ROOT)))
+    assert not hits

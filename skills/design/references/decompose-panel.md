@@ -2,7 +2,7 @@
 
 **Consumer**: `/design` Step **2b.5 Split-path** only — after a hard trigger or `--partition` / `-p`. This file is **not** loaded during routine Step 2b plan emission, Step 3 plan review, or Gate A/B/C flows unless Split-path runs.
 
-**Contract**: single normative source for **panel input selection**, **availability-gated external dispatch** (up to four archetypes × present vendors via `python/cli.py decompose panel-dispatch` → `scripts/dispatch-with-waterfall.sh --no-fallback`), **3-stage `AskUserQuestion` presentation** (path → archetype → vendor), **aggregator delegation**, **cycle-checked batch filing** via `/larch:issue`, **annotating filed URLs**, **redacted original-issue close**, and **sentinel idempotency** under `$DESIGN_TMPDIR`. <!-- topology: 8 fixed manifest cap when both tools present -->
+**Contract**: single normative source for **panel input selection**, **availability-gated external dispatch** (up to four archetypes × present vendors via `python/cli.py decompose panel-dispatch` → `python/cli.py agent dispatch-waterfall --no-fallback`), **3-stage `AskUserQuestion` presentation** (path → archetype → vendor), **aggregator delegation**, **cycle-checked batch filing** via `/larch:issue`, **annotating filed URLs**, **redacted original-issue close**, and **sentinel idempotency** under `$DESIGN_TMPDIR`. <!-- topology: 8 fixed manifest cap when both tools present -->
 
 **When to load**: immediately when Step 2b.5 enters **Split-path (decomposition panel)** in `skills/design/SKILL.md` — read this entire file before invoking any helper below.
 
@@ -29,7 +29,7 @@ Always pass `--design-tmpdir "$DESIGN_TMPDIR"` and the session’s `codex_presen
 
 ## 2) Dispatch the decomposition panel (availability-gated, `--no-fallback`)
 
-`python/cli.py decompose panel-dispatch` emits only rows for tools present at Step 0 (`codex_present` / `cursor_present`). It invokes `dispatch-with-waterfall.sh` with **`--no-fallback`**: each slot gets a single launch; absent tools are omitted from the manifest; failed or narration-only outputs are **dropped** (no cross-tool relaunch, no per-slot Claude pad). `ALL_OUTPUT_FILES_PATH` lists **only succeeded** paths; panel rows match manifest `output` paths to that list (unmatched rows are `missing`).
+`python/cli.py decompose panel-dispatch` emits only rows for tools present at Step 0 (`codex_present` / `cursor_present`). It invokes `agent dispatch-waterfall` with **`--no-fallback`**: each slot gets a single launch; absent tools are omitted from the manifest; failed or narration-only outputs are **dropped** (no cross-tool relaunch, no per-slot Claude pad). `ALL_OUTPUT_FILES_PATH` lists **only succeeded** paths; panel rows match manifest `output` paths to that list (unmatched rows are `missing`).
 
 Run (stdout is KV-shaped; parse `PANEL_OUTPUTS_FILE`, `DEGRADED_PANEL`, `PANEL_STATUS`):
 
@@ -70,7 +70,7 @@ Where:
 
 - `PANEL_STATUS=degraded` or `DEGRADED_PANEL=true` — include **degraded vendor counts** in option labels where it helps the operator (mirror Step 3 plan-review degraded presentation).
 
-**Harness override**: `DECOMPOSE_PANEL_WATERFALL_SH` substitutes `scripts/dispatch-with-waterfall.sh` for offline tests (`python/test_decompose.py`).
+**Harness override**: `DECOMPOSE_PANEL_WATERFALL_SH` substitutes `python/cli.py agent dispatch-waterfall` for offline tests (`python/test_decompose.py`).
 
 ---
 

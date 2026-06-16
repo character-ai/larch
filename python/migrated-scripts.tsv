@@ -954,3 +954,8 @@ scripts/test-check-contains-pins.md	#3690
 
 skills/implement/scripts/step-5-entry.sh	#4015
 skills/implement/scripts/step-5-entry.md	#4015
+scripts/dispatch-with-waterfall.sh	#4169
+scripts/dispatch-with-waterfall.md	#4169
+scripts/test-dispatch-with-waterfall.sh	#4169
+scripts/test-dispatch-with-waterfall.md	#4169
+scripts/test-no-grouped-reuse-guard.sh	#4169

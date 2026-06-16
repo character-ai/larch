@@ -50,7 +50,7 @@ The historical **ownership-domains** sprawl heuristic from early design notes is
 - Deletions (`diff_deleted`) never trip.
 - `mechanical_churn: true` downgrades only the diff trigger to a soft advisory (`SOFT_ADVISORY`); plan-body hard triggers are unchanged.
 
-**`--partition` / `-p` (Step 2b.5)**: when `partition_requested=true` in `run-params.json`, Step 2b.5 routes directly to the **Split-path** even if no hard threshold fired. That path runs the **real decomposition panel** (8 external slots via `scripts/dispatch-with-waterfall.sh`). Full procedure, idempotent sentinels, and filing semantics live in `skills/design/references/decompose-panel.md`.
+**`--partition` / `-p` (Step 2b.5)**: when `partition_requested=true` in `run-params.json`, Step 2b.5 routes directly to the **Split-path** even if no hard threshold fired. That path runs the **real decomposition panel** (8 external slots via `python/cli.py agent dispatch-waterfall`). Full procedure, idempotent sentinels, and filing semantics live in `skills/design/references/decompose-panel.md`.
 
 ## Step 3 review env vars
 
