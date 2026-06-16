@@ -120,11 +120,24 @@ def compute_medians(rows: Sequence[TimingRow]) -> dict[str, float]:
 
 
 def shard_totals_per_run(rows: Sequence[TimingRow]) -> dict[int, dict[int, float]]:
-    """Return ``{run_id: {shard: total_seconds}}`` — per-run shard wall times."""
-    result: dict[int, dict[int, float]] = {}
+    """Return ``{run_id: {shard: total_seconds}}`` — per-run shard wall times.
+
+    Deduplicates by ``(run_id, shard, target)`` before summing, keeping the
+    last observation.  ``gh run view --log`` can include logs from all job
+    attempts when a matrix job is retried; without deduplication every target
+    in the retried shard is counted twice, doubling the reported shard total.
+    Multi-bash targets that legitimately emit multiple rows for the same
+    target are also deduplicated (last row wins), which slightly underestimates
+    their contribution to the shard total — an acceptable trade-off for
+    balance-verification accuracy.
+    """
+    deduped: dict[tuple[int, int, str], float] = {}
     for row in rows:
-        run_data = result.setdefault(row.run_id, {})
-        run_data[row.shard] = run_data.get(row.shard, 0.0) + row.seconds
+        deduped[(row.run_id, row.shard, row.target)] = row.seconds
+    result: dict[int, dict[int, float]] = {}
+    for (run_id, shard, _), seconds in deduped.items():
+        run_data = result.setdefault(run_id, {})
+        run_data[shard] = run_data.get(shard, 0.0) + seconds
     return result
 
 
