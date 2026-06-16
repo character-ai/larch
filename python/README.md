@@ -46,7 +46,7 @@ From the repository root (after `pip install -r python/requirements-dev.txt` and
 `python/requirements-test.txt`):
 
 ```bash
-make py-lint   # cd python && ruff check . && pylint . && pyright
+make py-lint   # cd python && ruff check . && pylint -j 0 . && pyright
 make py-test   # cd python && pytest
 ```
 
