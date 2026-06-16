@@ -446,6 +446,212 @@ def test_embedded_space_output_paths(tmp_path: Path, stub_env: dict[str, str]) -
     assert Path(kvs["ALL_OUTPUT_FILES_PATH"]).read_text(encoding="utf-8").strip() == expected
 
 
+def test_load_slots_validation_rejects_bad_rows(tmp_path: Path, stub_env: dict[str, str]) -> None:
+    prompt = tmp_path / "p.prompt"
+    prompt.write_text("review\n", encoding="utf-8")
+    codex_log = tmp_path / "codex-val.log"
+    env = {**stub_env, "CODEX_STUB_LOG": str(codex_log)}
+    cases: list[tuple[str, str]] = [
+        ("bad-json.ndjson", "not json\n"),
+        ("bad-tool.ndjson", json.dumps({"slot": "s1", "tool": "claude", "output": str(tmp_path / "o.txt"), "prompt_file": str(prompt)}) + "\n"),
+        ("empty-slot.ndjson", json.dumps({"slot": "", "tool": "codex", "output": str(tmp_path / "o.txt"), "prompt_file": str(prompt)}) + "\n"),
+        ("both-agent-prompt.ndjson", json.dumps({"slot": "s1", "tool": "codex", "output": str(tmp_path / "o.txt"), "agent": "a.md", "prompt_file": str(prompt)}) + "\n"),
+        ("neither-agent-prompt.ndjson", json.dumps({"slot": "s1", "tool": "codex", "output": str(tmp_path / "o.txt")}) + "\n"),
+        ("non-string-agent.ndjson", json.dumps({"slot": "bad", "tool": "codex", "output": str(tmp_path / "invalid.txt"), "agent": 1}) + "\n"),
+    ]
+    for name, body in cases:
+        manifest = tmp_path / name
+        manifest.write_text(body, encoding="utf-8")
+        proc = _run(manifest, env)
+        assert proc.returncode == 2, name
+        assert "invalid slot row" in proc.stderr or "no slot rows" in proc.stderr or "must set either agent or prompt_file" in proc.stderr or "must not set both agent and prompt_file" in proc.stderr, name
+        assert not codex_log.exists() or codex_log.read_text(encoding="utf-8") == "", name
+        assert not Path(str(manifest) + ".output-files").exists(), name
+
+
+def test_static_dynamic_dispatch_ok_split_on_partial_failure(tmp_path: Path, stub_env: dict[str, str]) -> None:
+    manifest = tmp_path / "mixed.ndjson"
+    static_out = tmp_path / "static.txt"
+    dyn_out = tmp_path / "dyn.txt"
+    prompt = tmp_path / "mixed.prompt"
+    prompt.write_text("review\n", encoding="utf-8")
+    manifest.write_text(
+        "\n".join(
+            [
+                json.dumps({"slot": "static-slot", "tool": "codex", "output": str(static_out), "prompt_file": str(prompt)}),
+                json.dumps({"slot": "dyn-cursor-plan-x", "tool": "cursor", "output": str(dyn_out), "prompt_file": str(prompt)}),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    proc = _run(
+        manifest,
+        {
+            **stub_env,
+            "CODEX_STUB_RESULT_CONTENT": "## Recommendation\ncodex ok",
+            "CURSOR_STUB_RESULT_CONTENT": "narration only",
+        },
+        "--no-fallback",
+        "--require-result-pattern",
+        r"^[[:space:]]*## Recommendation",
+    )
+    assert proc.returncode == 0, proc.stderr
+    kvs = _kv(proc.stdout)
+    assert kvs["STATIC_DISPATCH_OK"] == "true"
+    assert kvs["DYNAMIC_DISPATCH_OK"] == "false"
+
+
+def test_metadata_passthrough_on_launcher_argv(tmp_path: Path, stub_env: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
+    manifest, _output = _slot(tmp_path, output_name="meta.txt")
+    diff = tmp_path / "diff.patch"
+    diff.write_text("diff\n", encoding="utf-8")
+    plan = tmp_path / "plan.txt"
+    plan.write_text("plan\n", encoding="utf-8")
+    launch_argv: list[list[str]] = []
+    real_popen = subprocess.Popen
+
+    def recording_popen(argv: Sequence[str], **kwargs: object) -> subprocess.Popen[bytes]:
+        argv_list = list(argv)
+        if "launch-review" in argv_list or "launch-claude-review" in argv_list:
+            launch_argv.append(argv_list)
+        return real_popen(argv, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(agent_waterfall.subprocess, "Popen", recording_popen)
+    for key, value in stub_env.items():
+        monkeypatch.setenv(key, value)
+    logging_util.reset_quiet_state()
+    argv = [
+        "--slots-file",
+        str(manifest),
+        "--codex-present",
+        "true",
+        "--cursor-present",
+        "true",
+        "--mode",
+        "diff",
+        "--timeout",
+        "5",
+        "--diff-file",
+        str(diff),
+        "--commit-count",
+        "3",
+        "--plan-file",
+        str(plan),
+    ]
+    out = io.StringIO()
+    with redirect_stdout(out), redirect_stderr(io.StringIO()):
+        rc = agent_waterfall.dispatch_waterfall_main(argv)
+    assert rc == 0
+    assert launch_argv
+    joined = " ".join(launch_argv[0])
+    assert "--diff-file" in joined
+    assert str(diff) in joined
+    assert "--commit-count" in joined
+    assert "3" in joined
+    assert "--plan-file" in joined
+    assert str(plan) in joined
+
+
+def test_dropped_slots_tab_cr_flattening(tmp_path: Path, stub_env: dict[str, str]) -> None:
+    manifest = tmp_path / "tab-cr.ndjson"
+    out = tmp_path / "nf-tab.txt"
+    prompt = tmp_path / "tab.prompt"
+    prompt.write_text("review\n", encoding="utf-8")
+    manifest.write_text(
+        json.dumps({"slot": "dyn-cursor-plan-a\tb", "tool": "cursor", "output": str(out), "prompt_file": str(prompt)}) + "\n",
+        encoding="utf-8",
+    )
+    proc = _run(
+        manifest,
+        {**stub_env, "CURSOR_STUB_FAIL": "true"},
+        "--no-fallback",
+        "--codex-present",
+        "false",
+    )
+    assert proc.returncode == 0, proc.stderr
+    drop_file = Path(_kv(proc.stdout)["DROPPED_SLOTS_FILE"])
+    lines = drop_file.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1
+    fields = lines[0].split("\t")
+    assert len(fields) == 4
+    assert fields[2] == "collector-failure"
+    assert "\t" not in fields[0]
+    assert "\r" not in fields[0]
+
+
+def test_aggregate_alternation_invalid_ere_exits_two(tmp_path: Path, stub_env: dict[str, str]) -> None:
+    manifest, _ = _slot(tmp_path)
+    codex_log = tmp_path / "codex-agg-invalid.log"
+    cursor_log = tmp_path / "cursor-agg-invalid.log"
+    pattern = r"^(### FINDING_[0-9]+:|[[:space:]]*LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED[[:space:]]*$"
+    proc = _run(
+        manifest,
+        {**stub_env, "CODEX_STUB_LOG": str(codex_log), "CURSOR_STUB_LOG": str(cursor_log)},
+        "--require-result-pattern",
+        pattern,
+    )
+    assert proc.returncode == 2
+    assert "--require-result-pattern is not a valid ERE" in proc.stderr
+    assert not codex_log.exists() or codex_log.read_text(encoding="utf-8") == ""
+    assert not cursor_log.exists() or cursor_log.read_text(encoding="utf-8") == ""
+    assert not Path(str(manifest) + ".output-files").exists()
+
+
+def test_phase2_launches_all_before_single_collect(tmp_path: Path, stub_env: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
+    collect_calls = _record_collect_calls(monkeypatch)
+    manifest = tmp_path / "phase2-concurrency.ndjson"
+    out1 = tmp_path / "p2a.txt"
+    out2 = tmp_path / "p2b.txt"
+    prompt = tmp_path / "p2.prompt"
+    prompt.write_text("review\n", encoding="utf-8")
+    manifest.write_text(
+        "\n".join(
+            [
+                json.dumps({"slot": "s1", "tool": "codex", "output": str(out1), "prompt_file": str(prompt)}),
+                json.dumps({"slot": "s2", "tool": "codex", "output": str(out2), "prompt_file": str(prompt)}),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    env = {**stub_env, "CODEX_STUB_FAIL": "true"}
+    rc, _stdout = _run_direct(manifest, env, monkeypatch)
+    assert rc == 0
+    summary_calls = [call for call in collect_calls if "--summary-only" in call]
+    assert len(summary_calls) == 2
+    phase2_call = summary_calls[1]
+    outputs = phase2_call[phase2_call.index("--summary-only") + 1 :]
+    assert outputs == [str(out1).replace(".txt", "-phase2.txt"), str(out2).replace(".txt", "-phase2.txt")]
+
+
+def test_phase3_launches_all_before_single_collect(tmp_path: Path, stub_env: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
+    collect_calls = _record_collect_calls(monkeypatch)
+    manifest = tmp_path / "phase3-concurrency.ndjson"
+    out1 = tmp_path / "p3a.txt"
+    out2 = tmp_path / "p3b.txt"
+    prompt = tmp_path / "p3.prompt"
+    prompt.write_text("review\n", encoding="utf-8")
+    manifest.write_text(
+        "\n".join(
+            [
+                json.dumps({"slot": "s1", "tool": "codex", "output": str(out1), "prompt_file": str(prompt)}),
+                json.dumps({"slot": "s2", "tool": "codex", "output": str(out2), "prompt_file": str(prompt)}),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    env = {**stub_env, "CODEX_STUB_FAIL": "true", "CURSOR_STUB_FAIL": "true"}
+    rc, _stdout = _run_direct(manifest, env, monkeypatch)
+    assert rc == 0
+    summary_calls = [call for call in collect_calls if "--summary-only" in call]
+    assert len(summary_calls) == 3
+    phase3_call = summary_calls[2]
+    outputs = phase3_call[phase3_call.index("--summary-only") + 1 :]
+    assert outputs == [str(out1).replace(".txt", "-phase3.txt"), str(out2).replace(".txt", "-phase3.txt")]
+
+
 def test_phase1_launches_all_before_single_collect(tmp_path: Path, stub_env: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
     collect_calls = _record_collect_calls(monkeypatch)
     manifest = tmp_path / "concurrency.ndjson"

@@ -423,6 +423,8 @@ def _reap_phase(launches: Sequence[PhaseLaunch]) -> None:
             _ = Path(f"{launch.output}.done").write_text(f"{rc}\n", encoding="utf-8")
         if launch in _ACTIVE_LAUNCHES:
             _ACTIVE_LAUNCHES.remove(launch)
+        if launch in _DISPATCH_LAUNCHES:
+            _DISPATCH_LAUNCHES.remove(launch)
 
 
 def _split_summary_blocks(stdout: str) -> list[str]:
