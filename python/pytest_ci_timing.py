@@ -22,6 +22,7 @@ class PytestTimingRow:
 
 
 _DURATION_RE = re.compile(r"^(\d+(?:\.\d+)?)s\s+(call|setup|teardown)\s+(.+)$")
+_SLOWEST_BANNER_RE = re.compile(r"slowest\s+(?:\d+\s+)?durations", re.IGNORECASE)
 _JOB_PYTHON_RE = re.compile(r"\bpython-tests\b")
 _JOB_SHARD_RE = re.compile(r"python-tests\s*\([^)]*,\s*(\d+)\)")
 _STEP_SHARD_RE = re.compile(r"shard\s+(\d+)\s+of\s+(\d+)", re.IGNORECASE)
@@ -60,11 +61,14 @@ def parse_log(log: str, run_id: int) -> list[PytestTimingRow]:
             continue
         key = (job_name, step_name)
         content = _TIMESTAMP_RE.sub("", content.strip())
-        if "slowest durations" in content:
+        if _SLOWEST_BANNER_RE.search(content):
             attempts[key] = attempts.get(key, 0) + 1
             continue
         match = _DURATION_RE.match(content)
         if match is None or match.group(2) != "call":
+            continue
+        current_attempt = attempts.get(key, 0)
+        if current_attempt == 0:
             continue
         rows.append(
             PytestTimingRow(
@@ -72,7 +76,7 @@ def parse_log(log: str, run_id: int) -> list[PytestTimingRow]:
                 shard=shard,
                 nodeid=match.group(3).strip(),
                 seconds=float(match.group(1)),
-                attempt=max(attempts.get(key, 0), 1),
+                attempt=current_attempt,
                 shard_total=shard_total,
             )
         )

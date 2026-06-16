@@ -101,9 +101,9 @@ lint-awk-multibyte-regex:
 # appended to one shard line.
 test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 test-harnesses-6 test-harnesses-7 test-harnesses-8 test-harnesses-9 test-harnesses-10 test-harnesses-11 test-harnesses-12 test-harnesses-13 test-harnesses-14 test-harnesses-15 test-harnesses-16 test-harnesses-17 test-harnesses-18 test-harnesses-19 test-harnesses-20
 
-test-harnesses-1: test-b
+test-harnesses-1: test-fluff-analysis-corpus
 
-test-harnesses-2: test-a
+test-harnesses-2: test-dispatch-with-waterfall
 
 test-harnesses-3: test-dispatch-code-voters-happy test-parse-drafter-output
 

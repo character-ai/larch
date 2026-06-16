@@ -46,7 +46,10 @@ def test_parse_log_python_test_rows_and_preserves_param_nodeid() -> None:
 
 
 def test_parse_log_accepts_integer_seconds_and_job_name_shard_fallback() -> None:
-    log = "python-tests (3.11, 3)\tRun Python tests\t7s call     test_a.py::test_b\n"
+    log = (
+        "python-tests (3.11, 3)\tRun Python tests\tslowest 1 durations\n"
+        "python-tests (3.11, 3)\tRun Python tests\t7s call     test_a.py::test_b\n"
+    )
     rows = parse_log(log, run_id=1)
     assert rows[0].shard == 3
     assert rows[0].seconds == 7.0
@@ -82,12 +85,37 @@ def test_observed_shard_count_conflict_and_fallback() -> None:
 
 def test_duration_banners_increment_attempts() -> None:
     log = (
-        "python-tests (3.11, 1)\tRun Python tests (shard 1 of 4)\tslowest durations\n"
+        "python-tests (3.11, 1)\tRun Python tests (shard 1 of 4)\tslowest 5 durations\n"
         "python-tests (3.11, 1)\tRun Python tests (shard 1 of 4)\t1.0s call     first.py::test\n"
-        "python-tests (3.11, 1)\tRun Python tests (shard 1 of 4)\tslowest durations\n"
+        "python-tests (3.11, 1)\tRun Python tests (shard 1 of 4)\tslowest 312 durations\n"
         "python-tests (3.11, 1)\tRun Python tests (shard 1 of 4)\t2.0s call     second.py::test\n"
     )
     assert [row.attempt for row in parse_log(log, 1)] == [1, 2]
+
+
+def test_parse_log_ignores_pre_banner_duration_rows() -> None:
+    log = (
+        "python-tests (3.11, 1)\tRun Python tests (shard 1 of 4)\t1.0s call     stale.py::test\n"
+        "python-tests (3.11, 1)\tRun Python tests (shard 1 of 4)\tSlowest Durations\n"
+        "python-tests (3.11, 1)\tRun Python tests (shard 1 of 4)\t2.0s call     fresh.py::test\n"
+    )
+    rows = parse_log(log, 1)
+    assert len(rows) == 1
+    assert rows[0].nodeid == "fresh.py::test"
+    assert rows[0].attempt == 1
+
+
+def test_parse_log_retry_banner_splits_attempts_with_different_first_nodeid() -> None:
+    log = (
+        "python-tests (3.11, 1)\tRun Python tests (shard 1 of 4)\tslowest 5 durations\n"
+        "python-tests (3.11, 1)\tRun Python tests (shard 1 of 4)\t10.0s call     test_a.py::test_old\n"
+        "python-tests (3.11, 1)\tRun Python tests (shard 1 of 4)\tslowest 5 durations\n"
+        "python-tests (3.11, 1)\tRun Python tests (shard 1 of 4)\t2.0s call     test_c.py::test_new\n"
+    )
+    rows = parse_log(log, 1)
+    assert [row.nodeid for row in rows] == ["test_a.py::test_old", "test_c.py::test_new"]
+    assert [row.attempt for row in rows] == [1, 2]
+    assert shard_totals_per_run(rows) == {1: {1: 2.0}}
 
 
 def test_retry_dedup_uses_latest_attempt_even_with_different_first_nodeid() -> None:
@@ -121,7 +149,10 @@ def test_fetch_timing_rows_happy_path_and_failed_log_skip() -> None:
     runner = RecordingRunner(
         responses=[
             _cr('[{"databaseId":1,"status":"completed","conclusion":"success"},{"databaseId":2,"status":"completed","conclusion":"success"}]'),
-            _cr("python-tests (3.11, 1)\tRun Python tests (shard 1 of 4)\t1.0s call     test_a.py::test\n"),
+            _cr(
+                "python-tests (3.11, 1)\tRun Python tests (shard 1 of 4)\tslowest 1 durations\n"
+                "python-tests (3.11, 1)\tRun Python tests (shard 1 of 4)\t1.0s call     test_a.py::test\n"
+            ),
             _cr("", rc=1),
         ]
     )
