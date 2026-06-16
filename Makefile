@@ -245,10 +245,10 @@ test-lib-scope-anchor-handoff:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_rendering.py -q
 
 test-clarify-comment:
-	cd python && $(PYTHON) -m pytest test_clarify.py
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_clarify.py -q -k comment
 
 test-clarify-state:
-	cd python && $(PYTHON) -m pytest test_clarify.py
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_clarify.py -q -k 'not comment'
 
 test-check-stale-plugin:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-check-stale-plugin.sh
@@ -278,22 +278,22 @@ test-deny-edit-write:
 
 
 test-token-tally:
-	cd python && $(PYTHON) -m pytest test_tokens.py -q
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_tokens.py -q -k tally
 
 test-token-ledger:
-	cd python && $(PYTHON) -m pytest test_tokens.py -q
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_tokens.py -q -k ledger
 
 test-token-report:
-	cd python && $(PYTHON) -m pytest test_tokens.py -q
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_tokens.py -q -k token_report
 
 test-token-report-dedup:
-	cd python && $(PYTHON) -m pytest test_tokens.py -q
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_tokens.py -q -k dedupe
 
 test-token-cost-per-bucket:
-	cd python && $(PYTHON) -m pytest test_report_tokens_cost.py -q
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_report_tokens_cost.py -q -k bucket
 
 test-render-cost-line-realism:
-	cd python && $(PYTHON) -m pytest test_report_tokens_cost.py -q
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_report_tokens_cost.py -q -k 'not (render_cost_line or token_cost or bucket)'
 
 test-render-cost-line-callsites:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-render-cost-line-callsites.sh
@@ -305,10 +305,10 @@ test-render-run-summary-format:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-render-run-summary-format.sh
 
 test-token-report-summary-format:
-	cd python && $(PYTHON) -m pytest test_tokens.py -q
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_tokens.py -q -k 'not (compute_pr_line_counts or claude_source or ledger or tally or dedupe or token_report)'
 
 test-timing-ledger:
-	cd python && $(PYTHON) -m pytest test_timing.py -q
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_timing.py -q -k 'not harness_mark and not telemetry_mark and not report'
 
 test-review-and-fix-record-timing:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_review_and_fix.py -q -k record_timing
@@ -320,19 +320,19 @@ test-record-plan-review-round-timing:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review.py -q -k record_round_timing
 
 test-step-telemetry-mark:
-	cd python && $(PYTHON) -m pytest test_timing.py -q
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_timing.py -q -k telemetry_mark
 
 test-timing-report:
-	cd python && $(PYTHON) -m pytest test_timing.py -q
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_timing.py -q -k report
 
 test-token-vendor-scrapers:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-token-vendor-scrapers.sh
 
 test-parse-codex-usage:
-	cd python && $(PYTHON) -m pytest test_agents.py -q
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_agents.py -q -k parse_codex_usage
 
 test-token-claude-source:
-	cd python && $(PYTHON) -m pytest test_tokens.py -q
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_tokens.py -q -k claude_source
 
 test-verify-skill-called:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_verify_skill.py
@@ -539,16 +539,16 @@ test-brainstorm-prompts:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-brainstorm-prompts.sh
 
 test-lint-readability-preamble:
-	cd python && $(PYTHON) -m pytest test_lint_readability_preamble.py
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_lint_readability_preamble.py -q
 
 test-lint-skill-md-flag-signature:
-	cd python && $(PYTHON) -m pytest test_lint_skill_md_flag_signature.py
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_lint_skill_md_flag_signature.py -q
 
 test-lint-codex-exec-auth:
-	cd python && $(PYTHON) -m pytest test_lint_codex_exec_auth.py
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_lint_codex_exec_auth.py -q
 
 test-lint-skill-invocations:
-	cd python && $(PYTHON) -m pytest test_lint_skill_invocations.py
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_lint_skill_invocations.py -q
 
 test-lint-renderer-substitution-safety:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-lint-renderer-substitution-safety.sh
@@ -559,7 +559,7 @@ test-lint-bare-grep-probe:
 
 
 test-launch-codex-exec:
-	cd python && $(PYTHON) -m pytest test_agents.py -q
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_agents.py -q -k launch_codex_exec
 
 test-lint-awk-multibyte-regex:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-lint-awk-multibyte-regex.sh
@@ -580,10 +580,10 @@ test-implement-rebase-macro:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-implement-rebase-macro.sh
 
 test-rebase-checkpoint-probe:
-	bash scripts/test-rebase-checkpoint-probe.sh
+	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-rebase-checkpoint-probe.sh
 
 test-phantom-probe-with-warn:
-	bash scripts/test-phantom-probe-with-warn.sh
+	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-phantom-probe-with-warn.sh
 
 test-implement-step2-routing:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-implement-step2-routing.sh
@@ -698,19 +698,19 @@ test-ci-wait:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-ci-wait.sh
 
 test-launch-cursor-ci:
-	cd python && $(PYTHON) -m pytest test_agents.py -q
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_agents.py -q -k launch_cursor_ci
 
 test-launch-claude-ci:
-	cd python && $(PYTHON) -m pytest test_agents.py -q
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_agents.py -q -k launch_claude_ci
 
 test-launch-codex-ci:
-	cd python && $(PYTHON) -m pytest test_agents.py -q
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_agents.py -q -k launch_codex_ci
 
 test-run-negotiation-round:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_agents.py -q -k negotiation_round
 
 test-run-external-agent-args:
-	cd python && $(PYTHON) -m pytest test_agents.py -q
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_agents.py -q -k run_external_agent_args
 
 test-quick-mode-docs-sync:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-quick-mode-docs-sync.sh
@@ -768,7 +768,7 @@ test-render-review-phase-detail:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-render-review-phase-detail.sh
 
 test-token-cost:
-	cd python && $(PYTHON) -m pytest test_report_tokens_cost.py -q
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_report_tokens_cost.py -q -k token_cost
 
 lint-retired-scripts:
 	@$(PYTHON) -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' \
@@ -776,7 +776,7 @@ lint-retired-scripts:
 	$(PYTHON) python/cli.py lint retired-scripts
 
 test-render-cost-line:
-	cd python && $(PYTHON) -m pytest test_report_tokens_cost.py -q
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_report_tokens_cost.py -q -k render_cost_line
 
 test-implement-cleanup-script:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_finalize.py -q -k cleanup
@@ -786,7 +786,7 @@ test-harness-shards-coverage:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-harness-shards-coverage.sh --self-test
 
 test-harness-timer:
-	cd python && $(PYTHON) -m pytest test_timing.py -q
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_timing.py -q -k harness_mark
 
 test-references-headers:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-references-headers.sh
@@ -942,7 +942,7 @@ test-compose-pr-summary:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_pr_body.py -q -k 'compose_summary'
 
 test-compute-pr-line-counts:
-	cd python && $(PYTHON) -m pytest test_tokens.py -q
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_tokens.py -q -k compute_pr_line_counts
 
 test-compose-review-findings:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_compose_review.py
@@ -966,7 +966,7 @@ test-check-reviewers:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_agents.py -q -k 'check_reviewers or health_gate'
 
 test-degraded-tools-gate:
-	cd python && $(PYTHON) -m pytest test_agents.py -q
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_agents.py -q -k degraded_tools
 
 test-no-grouped-reuse-guard:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-no-grouped-reuse-guard.sh
@@ -984,10 +984,10 @@ test-lib-external-launcher-common:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-lib-external-launcher-common.sh
 
 test-launch-claude-subprocess:
-	cd python && $(PYTHON) -m pytest test_agents.py -q
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_agents.py -q -k launch_claude_subprocess
 
 test-launch-claude-review:
-	cd python && $(PYTHON) -m pytest test_agents.py -q
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_agents.py -q -k launch_claude_review
 
 test-launch-claude-drafter:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-launch-claude-drafter.sh
@@ -1005,7 +1005,7 @@ test-revise-plan-with-waterfall:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_plan_quality.py -k revise_waterfall
 
 test-agent-model-args:
-	cd python && $(PYTHON) -m pytest test_agents.py -q
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_agents.py -q -k 'model_args and not launch_codex_exec'
 
 test-effort-prose:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-effort-prose.sh
@@ -1044,7 +1044,7 @@ test-gather-branch-context:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_dispatch.py -k gather_branch_context
 
 test-run-external-agent:
-	cd python && $(PYTHON) -m pytest test_agents.py -q
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_agents.py -q -k 'not (negotiation_round or check_reviewers or health_gate or launch_claude_ci or launch_claude_review or launch_claude_subprocess or launch_codex_ci or launch_codex_exec or launch_cursor_ci or parse_codex_usage or run_external_agent_args or model_args or degraded_tools)'
 
 
 
