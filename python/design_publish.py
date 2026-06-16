@@ -43,7 +43,7 @@ def _is_trailer_region_line(line: str) -> bool:
     return bool(_OPTIONAL_TRAILER_RE.fullmatch(stripped))
 
 
-def _review_provenance(design_tmpdir: Path) -> tuple[str, int, bool]:
+def review_provenance(design_tmpdir: Path) -> tuple[str, int, bool]:
     """Return (review_status, rounds_completed, provenance_present) from .step3-review-result.env."""
     result_env = design_tmpdir / ".step3-review-result.env"
     if not result_env.is_file() or result_env.is_symlink():
@@ -182,7 +182,7 @@ def publish_main(argv: Sequence[str]) -> int:
         _ = result_env.write_text("\n".join(f"{k}={v}" for k, v in kvs) + "\n", encoding="utf-8")
         return 4
 
-    review_status, rounds_completed, provenance_present = _review_provenance(design_tmpdir)
+    review_status, rounds_completed, provenance_present = review_provenance(design_tmpdir)
     step3_sentinel = (design_tmpdir / ".completed" / "step-3").is_file()
     _BLOCKED_STATUSES = {"panel-init-failed", "panel-skipped"}
     blocked_reason = ""
