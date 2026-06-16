@@ -1,0 +1,4 @@
+Reading additional input from stdin...
+codex-quota: usage limit / quota reported on the codex exec --json events stream
+codex-quota: usage limit / quota reported on the codex exec --json events stream
+agent parse-codex-usage: no usage events
