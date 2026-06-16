@@ -115,10 +115,14 @@ if [ -f "$DESIGN_TMPDIR/.step2b-postplan-inline-retry-done" ]; then
   _drafter_postplan_fallback_used=true
 fi
 printf '%s\n' "${_drafter_postplan_fallback_used}" > "$DESIGN_TMPDIR/.step2b-postplan-fallback-used"
-# Vendor selection: LARCH_DESIGN_DRAFTER=codex|claude; when unset, use Claude.
+# Vendor selection: LARCH_DESIGN_DRAFTER=codex|claude; when unset, prefer Codex when the binary is present.
 _step2b_drafter_vendor="${LARCH_DESIGN_DRAFTER:-}"
 if [[ -z "$_step2b_drafter_vendor" ]]; then
-  _step2b_drafter_vendor="claude"
+  if [[ "$CODEX_BINARY_FOUND" == "true" ]] || command -v codex >/dev/null 2>&1; then
+    _step2b_drafter_vendor="codex"
+  else
+    _step2b_drafter_vendor="claude"
+  fi
 fi
 _step2b_drafter_model=""
 if [[ "$_step2b_drafter_vendor" == "claude" ]]; then

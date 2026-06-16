@@ -850,6 +850,22 @@ else
     fail "health gate retry must forward probe timeout on every call and set TTL bypass only on attempts 2+"
 fi
 
+_hg_noexec_dir="$TMPDIR_ROOT/health-non-executable-codex"
+mkdir -p "$_hg_noexec_dir/scripts" "$_hg_noexec_dir/bin"
+cp "$REPO_ROOT/scripts/lib-external-launcher-common.sh" "$_hg_noexec_dir/scripts/lib-external-launcher-common.sh"
+printf '#!/usr/bin/env bash\necho codex\n' > "$_hg_noexec_dir/bin/codex"
+chmod -x "$_hg_noexec_dir/bin/codex"
+_hg_noexec_result=$(LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT=5 \
+    PATH="$_hg_noexec_dir/bin:/usr/bin:/bin" \
+    bash -c 'source "$1"; _diag=""; external_launch_health_gate "$2" _diag; printf "%s|%s" "$?" "$_diag"' bash "$_hg_noexec_dir/scripts/lib-external-launcher-common.sh" codex)
+_hg_noexec_rc="${_hg_noexec_result%%|*}"
+_hg_noexec_diag="${_hg_noexec_result#*|}"
+if [[ "$_hg_noexec_rc" -eq 1 && "$_hg_noexec_diag" == *"binary missing or not executable"* ]]; then
+    pass
+else
+    fail "health gate non-executable codex: expected rc 1 with missing-or-not-executable diagnostic, got rc $_hg_noexec_rc diag=$_hg_noexec_diag"
+fi
+
 assert_resolver_timeout() {
     local label="$1" env_val="$2" session_val="$3" implement_val="$4" want="$5"
     local case_dir="$TMPDIR_ROOT/resolver-$label"

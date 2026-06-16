@@ -267,7 +267,7 @@ require('python/bootstrap.py', '_ADVISORY_STDOUT_PREFIXES', 'bootstrap phantom a
 require(skill, 'DEGRADED_PROMPT_REQUIRED=true', 'SKILL degraded prompt route row')
 for needle in [
     'agent degraded-tools-gate', '--codex-present', '--cursor-present',
-    'read_session_key CODEX_PRESENT', 'read_session_key CURSOR_PRESENT',
+    'agent check-reviewers',
     'read_session_key CODEX_BINARY_FOUND', 'read_session_key CURSOR_BINARY_FOUND',
 ]:
     require('skills/implement/scripts/step-0-degraded-gate.sh', needle, f'step-0-degraded-gate legacy {needle}')

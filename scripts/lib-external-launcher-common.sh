@@ -138,7 +138,9 @@ external_launch_health_gate() {
             ;;
     esac
 
-    if ! command -v "$tool" >/dev/null 2>&1; then
+    local _tool_bin=""
+    _tool_bin="$(command -v "$tool" 2>/dev/null || true)"
+    if [[ -z "$_tool_bin" || ! -x "$_tool_bin" ]]; then
         if [[ -n "$_probe_diag_var" ]]; then
             printf -v "$_probe_diag_var" '%s' "${tool} binary missing or not executable"
         fi
