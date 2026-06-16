@@ -79,6 +79,14 @@ def test_dispatch_session_kill_background_processes() -> None:
     assert rc == 0
 
 
+def test_dispatch_session_resolve_implement_tmpdir() -> None:
+    mock_main = MagicMock(return_value=0)
+    with patch.dict("sys.modules", {"session_env": MagicMock(resolve_implement_tmpdir_main=mock_main)}):
+        rc = cli.main(["session", "resolve-implement-tmpdir", "--cwd", "/tmp/repo"])
+    mock_main.assert_called_once_with(["--cwd", "/tmp/repo"])
+    assert rc == 0
+
+
 def test_dispatch_lint_retired_scripts() -> None:
     mock_main = MagicMock(return_value=0)
     with patch.dict("sys.modules", {"migration_lint": MagicMock(main=mock_main)}):
@@ -169,11 +177,17 @@ def test_design_kv_entrypoint_disables_inherited_quiet(monkeypatch: pytest.Monke
 def test_machine_stdout_entrypoints_disable_inherited_quiet(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LARCH_QUIET_ACTIVE", "1")
     monkeypatch.setenv("LARCH_QUIET_PID", "999999")
-    mock_main = MagicMock(return_value=0)
-    with patch.dict("sys.modules", {"dirty_tree": MagicMock(checkpoint_main=mock_main)}):
-        rc = cli.main(["dirty-tree", "checkpoint"])
-    assert rc == 0
-    assert os.environ["LARCH_QUIET_DISABLE"] == "1"
+    cases = [
+        (["dirty-tree", "checkpoint"], "dirty_tree", "checkpoint_main"),
+        (["session", "resolve-implement-tmpdir", "--cwd", "/tmp/repo"], "session_env", "resolve_implement_tmpdir_main"),
+    ]
+    for argv, module_name, func_name in cases:
+        monkeypatch.delenv("LARCH_QUIET_DISABLE", raising=False)
+        mock_main = MagicMock(return_value=0)
+        with patch.dict("sys.modules", {module_name: MagicMock(**{func_name: mock_main})}):
+            rc = cli.main(argv)
+        assert rc == 0
+        assert os.environ["LARCH_QUIET_DISABLE"] == "1"
 
 
 def test_review_core_entrypoint_disables_inherited_quiet(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -33,6 +33,31 @@ check_contains() {
   fi
 }
 
+first_line_number() {
+  local needle="$1"
+  local rel="$2"
+  local abs="$REPO_ROOT/$rel"
+  grep -nF -- "$needle" "$abs" | head -1 | cut -d: -f1 || true
+}
+
+check_order() {
+  local label="$1"
+  local rel="$2"
+  local before="$3"
+  local after="$4"
+  local before_line after_line
+
+  before_line=$(first_line_number "$before" "$rel")
+  after_line=$(first_line_number "$after" "$rel")
+  if [[ -n "$before_line" && -n "$after_line" && "$before_line" -lt "$after_line" ]]; then
+    echo "PASS: $label"
+    PASS_COUNT=$((PASS_COUNT + 1))
+  else
+    echo "FAIL: $label — before=$before_line after=$after_line" >&2
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+  fi
+}
+
 echo "--- /implement step-boundary anti-halt coverage ---"
 
 # Step 2→3: pin the post-implementation-completion boundary specifically
@@ -79,6 +104,16 @@ echo "--- /implement post-/review Stop hook coverage (issue #1862) ---"
 check_contains "Post-/review boundary — Stop hook reads review-round-summary.md sentinel" \
   "skills/implement/scripts/hook-stop-fail-close.sh" \
   "review-round-summary.md"
+check_contains "Post-/review boundary — Stop hook calls Python resolver CLI" \
+  "skills/implement/scripts/hook-stop-fail-close.sh" \
+  "session resolve-implement-tmpdir"
+check_order "Post-/review boundary — Stop hook pre-check before Python resolver" \
+  "skills/implement/scripts/hook-stop-fail-close.sh" \
+  "for dir in \"\$root\"/claude-implement-*; do" \
+  "session resolve-implement-tmpdir --cwd \"\$HOOK_CWD\""
+check_contains "Post-/review boundary — Stop hook resolver capture fail-open" \
+  "skills/implement/scripts/hook-stop-fail-close.sh" \
+  "IMPLEMENT_TMPDIR=\$(python3 \"\$PLUGIN_ROOT/python/cli.py\" session resolve-implement-tmpdir --cwd \"\$HOOK_CWD\" 2>/dev/null) || IMPLEMENT_TMPDIR=\"\""
 check_contains "Post-/review boundary — review-boundary-passed sentinel write in SKILL.md" \
   "skills/implement/SKILL.md" \
   ".review-boundary-passed"

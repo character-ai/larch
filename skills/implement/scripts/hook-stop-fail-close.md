@@ -8,4 +8,18 @@
 
 All checks share the `.run-cleaned-up` sentinel as the terminal escape: once teardown writes it the hook allows all stops through. The `stop_hook_active` guard prevents a continuation-loop trap. The block envelope shape (top-level `{"decision":"block","reason":"..."}`) was verified against the Claude Code hooks reference. If `jq` is missing, the hook emits a static literal block envelope.
 
-Edit in sync with `lib-resolve-implement-tmpdir.sh`, `hooks/hooks.json`, `skills/implement/SKILL.md` Steps 6 and 8, and `scripts/test-implement-anti-halt.sh`.
+Tmpdir resolution is delegated to `python/cli.py session resolve-implement-tmpdir --cwd "$HOOK_CWD"`. Before spawning Python, the hook performs a cheap bash glob pre-check for `claude-implement-*` directories under these roots:
+
+1. `${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/larch/sessions`
+2. `/tmp`
+3. `/private/tmp`
+
+The resolver call is fail-open and must keep this capture shape:
+
+```bash
+IMPLEMENT_TMPDIR=$(python3 "$PLUGIN_ROOT/python/cli.py" session resolve-implement-tmpdir --cwd "$HOOK_CWD" 2>/dev/null) || IMPLEMENT_TMPDIR=""
+```
+
+Missing `python3`, a failed resolver, empty stdout, a missing matching tmpdir, a stale candidate, or `.run-cleaned-up` all allow Stop to proceed.
+
+Edit in sync with `hooks/hooks.json`, `skills/implement/SKILL.md` Steps 6 and 8, `python/session_env.py`, and `scripts/test-implement-anti-halt.sh`.

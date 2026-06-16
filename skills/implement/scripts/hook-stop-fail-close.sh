@@ -12,6 +12,23 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 
+implement_session_dir_exists() {
+    [[ -n "$HOOK_CWD" ]] || return 1
+    local roots=(
+        "${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/larch/sessions"
+        "/tmp"
+        "/private/tmp"
+    )
+    local root dir
+    for root in "${roots[@]}"; do
+        [[ -d "$root" ]] || continue
+        for dir in "$root"/claude-implement-*; do
+            [[ -d "$dir" ]] && return 0
+        done
+    done
+    return 1
+}
+
 INPUT=$(cat 2>/dev/null) || exit 0
 
 STOP_ACTIVE=false
@@ -29,20 +46,18 @@ fi
 # Surface the active Claude Code session_id from the Stop event payload
 # into LARCH_TOKEN_SESSION_ID so the resolver's session-id binding branch
 # is reachable in production. Empty /
-# missing / null falls through to TTL. See lib-resolve-implement-tmpdir.sh
-# session-id binding for the resolver-side slim session-identity record
-# (`.larch-keepalive` `SESSION_ID=` match) this export feeds.
+# missing / null falls through to TTL. The Python resolver consumes the
+# `.larch-keepalive` `SESSION_ID=` slim session-identity record this feeds.
 SID=""
 if command -v jq >/dev/null 2>&1; then
     SID=$(printf '%s' "$INPUT" | jq -r '.session_id // ""' 2>/dev/null) || SID=""
 fi
 [[ -n "$SID" ]] && export LARCH_TOKEN_SESSION_ID="$SID"
 
-# shellcheck source=lib-resolve-implement-tmpdir.sh
-# shellcheck disable=SC1091
-source "$SCRIPT_DIR/lib-resolve-implement-tmpdir.sh"
-
-IMPLEMENT_TMPDIR=$(resolve_implement_tmpdir "$HOOK_CWD")
+IMPLEMENT_TMPDIR=""
+if implement_session_dir_exists && command -v python3 >/dev/null 2>&1; then
+    IMPLEMENT_TMPDIR=$(python3 "$PLUGIN_ROOT/python/cli.py" session resolve-implement-tmpdir --cwd "$HOOK_CWD" 2>/dev/null) || IMPLEMENT_TMPDIR=""
+fi
 [[ -n "$IMPLEMENT_TMPDIR" ]] || exit 0
 [[ ! -f "$IMPLEMENT_TMPDIR/.run-cleaned-up" ]] || exit 0
 

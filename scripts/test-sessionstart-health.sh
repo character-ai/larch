@@ -13,6 +13,7 @@ fi
 
 REAL_JQ=$(command -v jq || true)
 REAL_GIT=$(command -v git || true)
+REAL_PYTHON3=$(command -v python3 || true)
 BASH_BIN=$(command -v bash || true)
 if [[ -z "$REAL_JQ" || ! -x "$REAL_JQ" ]]; then
     echo "FAIL: harness jq not on PATH; cannot validate JSON output" >&2
@@ -20,6 +21,10 @@ if [[ -z "$REAL_JQ" || ! -x "$REAL_JQ" ]]; then
 fi
 if [[ -z "$REAL_GIT" || ! -x "$REAL_GIT" ]]; then
     echo "FAIL: harness git not on PATH; cannot create git-state fixtures" >&2
+    exit 1
+fi
+if [[ -z "$REAL_PYTHON3" || ! -x "$REAL_PYTHON3" ]]; then
+    echo "FAIL: harness python3 not on PATH; cannot validate resolver path" >&2
     exit 1
 fi
 if [[ -z "$BASH_BIN" || ! -x "$BASH_BIN" ]]; then
@@ -87,6 +92,26 @@ assert_not_contains() {
         FAIL=$((FAIL + 1))
         FAILED_TESTS+=("$label (leaked '$needle')")
         echo "  FAIL: $label (leaked '$needle')" >&2
+    fi
+}
+
+first_line_number() {
+    local needle=$1 file=$2
+    grep -nF -- "$needle" "$file" | head -1 | cut -d: -f1 || true
+}
+
+assert_source_order() {
+    local label=$1 before=$2 after=$3 file=$4
+    local before_line after_line
+    before_line=$(first_line_number "$before" "$file")
+    after_line=$(first_line_number "$after" "$file")
+    if [[ -n "$before_line" && -n "$after_line" && "$before_line" -lt "$after_line" ]]; then
+        PASS=$((PASS + 1))
+        echo "  ok: $label"
+    else
+        FAIL=$((FAIL + 1))
+        FAILED_TESTS+=("$label (before=$before_line after=$after_line)")
+        echo "  FAIL: $label" >&2
     fi
 }
 
@@ -256,6 +281,17 @@ assert_contains "$ctx" "jq not on PATH and git not on PATH" "case 4: fixed jq+gi
 build_bin "$tmp/real_bin"
 add_real_tool "$tmp/real_bin" jq "$REAL_JQ"
 add_real_tool "$tmp/real_bin" git "$REAL_GIT"
+add_real_tool "$tmp/real_bin" python3 "$REAL_PYTHON3"
+
+echo "=== Case 4a0: resolver pre-check structurally guards Python spawn ==="
+assert_source_order "case 4a0: claude-implement pre-check before Python resolver" \
+    "for dir in \"\$root\"/claude-implement-*; do" \
+    "session resolve-implement-tmpdir --cwd \"\$HOOK_CWD\"" \
+    "$SCRIPT"
+assert_contains "$(cat "$SCRIPT")" 'if implement_session_dir_exists && command -v python3 >/dev/null 2>&1; then' \
+    "case 4a0: pre-check and python3 guard share spawn branch"
+assert_contains "$(cat "$SCRIPT")" "IMPLEMENT_TMPDIR=\$(python3 \"\$PLUGIN_ROOT/python/cli.py\" session resolve-implement-tmpdir --cwd \"\$HOOK_CWD\" 2>/dev/null) || IMPLEMENT_TMPDIR=\"\"" \
+    "case 4a0: resolver capture is fail-open under set -e"
 
 EXPECTED_SPARSE_DIRS=()
 # shellcheck source=scripts/lib-sparse-dirs.sh
@@ -554,6 +590,33 @@ rc=$(run_with_stdin "$tmp/real_bin" "$tmp/c11b-cwd" '{"cwd":' "$XDG_TEST" "$tmp/
 assert_eq "$rc" "0" "case 11b: exit code 0"
 stdout=$(cat "$tmp/c11b.out")
 assert_empty "$stdout" "case 11b: stdout empty on malformed json"
+
+echo "=== Case 12: pre-check pass with resolver failure is fail-open ==="
+build_bin "$tmp/c12_bin"
+add_real_tool "$tmp/c12_bin" jq "$REAL_JQ"
+add_real_tool "$tmp/c12_bin" git "$REAL_GIT"
+cat > "$tmp/c12_bin/python3" <<STUB
+#!$BASH_BIN
+exit 9
+STUB
+chmod +x "$tmp/c12_bin/python3"
+mkdir -p "$tmp/c12-cwd" "$XDG_TEST/larch/sessions/claude-implement-c12-dummy"
+rc=$(run_with_stdin "$tmp/c12_bin" "$tmp/c12-cwd" '{"cwd":"'"$tmp/c12-cwd"'"}' "$XDG_TEST" "$tmp/c12.out" "$tmp/c12.err")
+assert_eq "$rc" "0" "case 12: exit code 0"
+stdout=$(cat "$tmp/c12.out")
+assert_empty "$stdout" "case 12: stdout empty when resolver exits non-zero"
+assert_not_contains "$stdout" "boundary" "case 12: no boundary advisory after resolver failure"
+
+echo "=== Case 12b: XDG_CACHE_HOME-only pre-check and resolver path ==="
+mkdir -p "$tmp/c12b-cwd"
+impl=$(make_impl_tmpdir c12b-xdg-only "$tmp/c12b-cwd")
+printf 'review summary\n' > "$impl/review-round-summary.md"
+rc=$(run_with_stdin "$tmp/real_bin" "$tmp/c12b-cwd" '{"cwd":"'"$tmp/c12b-cwd"'"}' "$XDG_TEST" "$tmp/c12b.out" "$tmp/c12b.err")
+assert_eq "$rc" "0" "case 12b: exit code 0"
+stdout=$(cat "$tmp/c12b.out")
+assert_valid_json "$stdout" "case 12b"
+ctx=$(ctx_from_stdout "$stdout")
+assert_contains "$ctx" "post-/review boundary" "case 12b: XDG-only cache root resolves boundary"
 
 echo "=== Case 13: .run-cleaned-up suppresses boundary advisories ==="
 mkdir -p "$tmp/c13-cwd"

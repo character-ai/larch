@@ -18,7 +18,21 @@ Probe-internal failures are skipped silently; missing `jq` or `git` still produc
 
 When both `jq` and `git` are available, the hook also performs a warn-only sparse-cone drift probe for `$HOME/.claude/plugins/marketplaces/larch-local`. The probe sources `scripts/lib-sparse-dirs.sh` from `SCRIPT_DIR`, never from `HOOK_CWD`, a later `PLUGIN_ROOT`, or `upgrade-larch run`; it skips silently when `HOME` is empty, the marketplace clone is missing, the directory is not a git repo, `larch-logs/` is present, the library cannot be sourced, `normalize_sparse_dirs` is unavailable, or either compare side is empty. The compare is read-only (`git sparse-checkout list` versus `normalize_sparse_dirs`), best-effort under restored parent-shell `errexit`, and non-mutating: it never removes, adds, updates, or installs a marketplace. On mismatch, `append_msg` runs in the parent shell and emits a fixed-string advisory pointing at `/upgrade-larch`. The hook still exits 0.
 
-When `jq` is available, the hook reads the SessionStart JSON payload on stdin and extracts `cwd` and `session_id`. It resolves the active `/implement` tmpdir through `skills/implement/scripts/lib-resolve-implement-tmpdir.sh`, exporting the payload `session_id` as `LARCH_TOKEN_SESSION_ID` when present so the resolver can apply its session binding. Missing stdin, missing `jq`, malformed JSON, a missing resolver, no matching tmpdir, stale candidates, or `.run-cleaned-up` all fail open with no boundary advisory.
+When `jq` is available, the hook reads the SessionStart JSON payload on stdin and extracts `cwd` and `session_id`. It exports the payload `session_id` as `LARCH_TOKEN_SESSION_ID` when present so the resolver can apply its session binding, then resolves the active `/implement` tmpdir through `python/cli.py session resolve-implement-tmpdir --cwd "$HOOK_CWD"`.
+
+Before spawning Python, the hook performs a cheap bash glob pre-check for `claude-implement-*` directories under these roots:
+
+1. `${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/larch/sessions`
+2. `/tmp`
+3. `/private/tmp`
+
+The resolver call is fail-open and must keep this `set -e`-safe capture shape:
+
+```bash
+IMPLEMENT_TMPDIR=$(python3 "$PLUGIN_ROOT/python/cli.py" session resolve-implement-tmpdir --cwd "$HOOK_CWD" 2>/dev/null) || IMPLEMENT_TMPDIR=""
+```
+
+A bare command substitution without `|| IMPLEMENT_TMPDIR=""` can abort the always-exit-0 hook under `set -e`. Missing stdin, missing `jq`, malformed JSON, no session dirs, missing `python3`, a failed resolver, no matching tmpdir, stale candidates, or `.run-cleaned-up` all fail open with no boundary advisory.
 
 Boundary advisories are emitted for:
 

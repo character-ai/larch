@@ -42,6 +42,23 @@ append_msg() {
     MSG="${MSG}$1"
 }
 
+implement_session_dir_exists() {
+    [[ -n "$HOOK_CWD" ]] || return 1
+    local roots=(
+        "${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/larch/sessions"
+        "/tmp"
+        "/private/tmp"
+    )
+    local root dir
+    for root in "${roots[@]}"; do
+        [[ -d "$root" ]] || continue
+        for dir in "$root"/claude-implement-*; do
+            [[ -d "$dir" ]] && return 0
+        done
+    done
+    return 1
+}
+
 probe_sparse_cone_drift() {
     local restore_errexit=false
     local restore_nounset=false
@@ -169,20 +186,17 @@ fi
 
 if [[ -n "$HOOK_CWD" ]]; then
     PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
-    LIB_RESOLVE="$PLUGIN_ROOT/skills/implement/scripts/lib-resolve-implement-tmpdir.sh"
-    if [[ -f "$LIB_RESOLVE" ]]; then
-        # shellcheck source=skills/implement/scripts/lib-resolve-implement-tmpdir.sh
-        # shellcheck disable=SC1090
-        source "$LIB_RESOLVE" 2>/dev/null || true
+    if [[ -n "$SID" ]]; then
+        export LARCH_TOKEN_SESSION_ID="$SID"
+    else
+        unset LARCH_TOKEN_SESSION_ID || true
     fi
-    if declare -F resolve_implement_tmpdir >/dev/null 2>&1; then
-        if [[ -n "$SID" ]]; then
-            export LARCH_TOKEN_SESSION_ID="$SID"
-        else
-            unset LARCH_TOKEN_SESSION_ID || true
-        fi
-        IMPLEMENT_TMPDIR=$(resolve_implement_tmpdir "$HOOK_CWD" 2>/dev/null) || IMPLEMENT_TMPDIR=""
-        if [[ -n "$IMPLEMENT_TMPDIR" && ! -f "$IMPLEMENT_TMPDIR/.run-cleaned-up" ]]; then
+    IMPLEMENT_TMPDIR=""
+    if implement_session_dir_exists && command -v python3 >/dev/null 2>&1; then
+        IMPLEMENT_TMPDIR=$(python3 "$PLUGIN_ROOT/python/cli.py" session resolve-implement-tmpdir --cwd "$HOOK_CWD" 2>/dev/null) || IMPLEMENT_TMPDIR=""
+    fi
+    if [[ -n "$IMPLEMENT_TMPDIR" ]]; then
+        if [[ ! -f "$IMPLEMENT_TMPDIR/.run-cleaned-up" ]]; then
             TMPDIR_BASENAME=$(basename "$IMPLEMENT_TMPDIR" 2>/dev/null) \
                 || TMPDIR_BASENAME="<implement-tmpdir>"
             if [[ -f "$IMPLEMENT_TMPDIR/review-round-summary.md" && \

@@ -959,3 +959,7 @@ scripts/dispatch-with-waterfall.md	#4169
 scripts/test-dispatch-with-waterfall.sh	#4169
 scripts/test-dispatch-with-waterfall.md	#4169
 scripts/test-no-grouped-reuse-guard.sh	#4169
+skills/implement/scripts/lib-resolve-implement-tmpdir.sh	#4515
+skills/implement/scripts/lib-resolve-implement-tmpdir.md	#4515
+skills/implement/scripts/test-resolve-implement-tmpdir.sh	#4515
+skills/implement/scripts/test-resolve-implement-tmpdir.md	#4515
