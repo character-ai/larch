@@ -27,6 +27,29 @@ def _quiet_test_isolation(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _session_routing_isolation(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Scrub larch session-routing env vars so the suite stays hermetic when
+    `make py-test` runs inside a live /implement or /design session (issue #4495).
+
+    agents.py CI-fixer resolvers (_resolve_execution_issues_log,
+    _append_vendor_failure_diagnostics) key off these vars. Outside a session
+    they are unset, so standalone CI never writes to them; inside a session they
+    point at the real session tmpdir, so simulated CI-fixer failures leaked into
+    the committed run log and the tracking issue's execution-issues summary.
+    Tests that need a routing var set provide their own via monkeypatch.setenv;
+    the autouse delenv runs first, so per-test setenv still wins.
+    """
+    for name in (
+        "IMPLEMENT_TMPDIR",
+        "DESIGN_TMPDIR",
+        "REVIEW_TMPDIR",
+        "SESSION_ENV_PATH",
+        "LARCH_EXECUTION_ISSUES_LOG",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _no_real_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
     """Replace time.sleep with a no-op so retry/backoff tests don't wait.
 
