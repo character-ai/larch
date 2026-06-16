@@ -67,9 +67,11 @@ boundaries for `gh` stderr and stdout.
 
 ## Mapping
 
-Fixable jobs are `lint`, `lint-mermaid`, `shellcheck`, `test-harnesses`,
-`agent-lint`, `agnix`, and `agent-sync`. `gitleaks` and
-`trufflehog` are `no-local-equivalent` because CI runs history scans.
+Fixable jobs are `lint`, `lint-local`, `lint-mermaid`, `shellcheck`,
+`test-harnesses`, `agent-lint`, `agnix`, `agent-sync`, `python-lint`,
+`python-lint-duplicate-code`, `python-tests`, and `bash32-check`.
+`gitleaks` and `trufflehog` are `no-local-equivalent` because CI runs
+history scans.
 
 Aggregator gate jobs (names ending in `-gate`, e.g. `test-harnesses-gate`)
 are excluded from classification entirely: not counted, not emitted as

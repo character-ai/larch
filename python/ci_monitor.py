@@ -781,6 +781,8 @@ def per_job_command(name: str, shard: str) -> tuple[str, ...] | None:
         return ("make", "agent-sync")
     if name == "python-lint":
         return ("make", "py-lint")
+    if name == "python-lint-duplicate-code":
+        return ("make", "py-lint-duplicate-code")
     if name == "python-tests":
         return ("make", "py-test")
     return None
@@ -788,14 +790,20 @@ def per_job_command(name: str, shard: str) -> tuple[str, ...] | None:
 
 def prepare_python_toolchain(runner: Runner, name: str, *, cwd: str | None = None) -> bool:
     """Port of _prepare_python_job_toolchain."""
-    if name == "python-lint":
+    if name in ("python-lint", "python-lint-duplicate-code"):
         req = _REPO_ROOT / "python" / "requirements-dev.txt"
         if req.is_file():
             _ = runner.run(
                 ["python3", "-m", "pip", "install", "-q", "-r", str(req)],
                 cwd=cwd,
             )
-        for tool in ("ruff", "pylint", "pyright"):
+        # The duplicate-code pass only needs pylint; the full lint job also
+        # needs ruff and pyright.
+        if name == "python-lint-duplicate-code":
+            tools = ("pylint",)
+        else:
+            tools = ("ruff", "pylint", "pyright")
+        for tool in tools:
             which = runner.run(["command", "-v", tool], cwd=cwd)
             if which.returncode != 0:
                 return False
