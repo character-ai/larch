@@ -156,3 +156,13 @@ The C3c slice moves /design decomposition helpers to `python/decompose.py`, dyna
 - `/design` lifecycle wrappers now call `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design <verb>` for argv parsing, routing, run-params init, postplan emission, publish, pause/resume, log publish, final summary, and OOS filing.
 - Pause/resume marker bytes and `docs/issue-anchored-plan.md` payload fields remain compatible with in-progress sessions.
 - `scripts/read-result-env.sh` now delegates allowlisted sourceable output generation to `python/design_lifecycle.py`.
+
+### C1a5 waterfall dispatcher
+
+- Ported the waterfall dispatcher to `agent dispatch-waterfall` and cut live callers over to the CLI verb.
+- `decompose.py` uses explicit `in os.environ` override detection instead of `get` with a truthy default path.
+- Embedded plan-review blobs call the verb through argv arrays.
+- Audit predicates accept the renamed aggregator warning plus historical wording.
+- POSIX ERE patterns are translated for Python `re`.
+- Per-phase launch-all-then-collect-once concurrency, phase-3 failure finalization, and tail `collect-results` replay are preserved.
+- `python/test_agent_waterfall.py` pins the aggregate alternation gate and grouped-reuse artifact guard.

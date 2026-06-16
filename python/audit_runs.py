@@ -539,7 +539,14 @@ def _scan_required(run_dir: Path, pr: int, required: Path | None) -> dict[str, o
             return f.is_file() and "merged output failed validation" in f.read_text(encoding="utf-8", errors="replace")
         if c == "exn-agg-dispatch-fail":
             f = run_dir / "execution-issues.ndjson"
-            return f.is_file() and any(x in f.read_text(encoding="utf-8", errors="replace") for x in ("dispatch-with-waterfall exited non-zero", "DISPATCH_OK=false"))
+            return f.is_file() and any(
+                x in f.read_text(encoding="utf-8", errors="replace")
+                for x in (
+                    "dispatch-with-waterfall exited non-zero",
+                    "agent dispatch-waterfall exited non-zero",
+                    "DISPATCH_OK=false",
+                )
+            )
         return False
     missing: list[str] = []
     for raw in required.read_text(encoding="utf-8").splitlines():

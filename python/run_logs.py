@@ -2539,7 +2539,11 @@ def _verify_condition_reached(
         if not path.is_file():
             return False
         text = path.read_text(encoding="utf-8", errors="replace")
-        return "dispatch-with-waterfall exited non-zero" in text or "DISPATCH_OK=false" in text
+        return (
+            "dispatch-with-waterfall exited non-zero" in text
+            or "agent dispatch-waterfall exited non-zero" in text
+            or "DISPATCH_OK=false" in text
+        )
     msg = f"unsupported manifest condition: {condition}"
     raise ValueError(msg)
 

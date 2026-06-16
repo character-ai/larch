@@ -24,7 +24,11 @@ COMPETITION_NOTICE_FILE=""
 PLAN_FILE=""
 FEATURE_FILE=""
 DESCRIPTION_TEXT=""
-DISPATCH_WATERFALL="${DISPATCH_WATERFALL:-$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh}"
+if [[ -n "${DISPATCH_WATERFALL:-}" ]]; then
+    DISPATCH_WATERFALL_CMD=("$DISPATCH_WATERFALL")
+else
+    DISPATCH_WATERFALL_CMD=(python3 "$PLUGIN_ROOT/python/cli.py" agent dispatch-waterfall)
+fi
 CLASSIFY_DIFF_MODE_SH="${CLASSIFY_DIFF_MODE_SH:-}"
 SESSION_ENV_PATH="${SESSION_ENV_PATH:-}"
 PANEL="hard"
@@ -90,7 +94,7 @@ ROUND_NUM=$((10#$ROUND_NUM))
 (( ROUND_NUM > 0 )) || { larch_err "dispatch-panel.sh: --round-num must be a positive integer"; exit 2; }
 # Codex specialist slots: round 1 only; round 2+ only as replacement when
 # Cursor is unavailable (#4062). Topology only — binary-found gates launch in
-# dispatch-with-waterfall.sh, not manifest build time.
+# agent dispatch-waterfall, not manifest build time.
 codex_slots_enabled="false"
 if (( ROUND_NUM < 2 )) || [[ "$CURSOR_BINARY_FOUND" != "true" ]]; then
     codex_slots_enabled="true"
@@ -616,7 +620,7 @@ if [[ "$CURSOR_BINARY_FOUND" == "true" && "$CODEX_BINARY_FOUND" == "true" && "$c
 fi
 
 set +e
-waterfall_output=$("$DISPATCH_WATERFALL" "${waterfall_args[@]}")
+waterfall_output=$("${DISPATCH_WATERFALL_CMD[@]}" "${waterfall_args[@]}")
 waterfall_rc=$?
 set -e
 all_outputs=""
@@ -626,7 +630,7 @@ static_dispatch_ok="true"
 dynamic_dispatch_ok="true"
 dropped_slots_file=""
 if [[ "$waterfall_rc" -ne 0 ]]; then
-    emit_kv WARN "dispatch-with-waterfall exited rc=$waterfall_rc"
+    emit_kv WARN "agent dispatch-waterfall exited rc=$waterfall_rc"
     dispatch_ok="false"
     static_dispatch_ok="false"
     dynamic_dispatch_ok="false"

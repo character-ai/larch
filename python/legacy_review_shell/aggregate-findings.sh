@@ -699,7 +699,11 @@ if __name__ == "__main__":
     raise SystemExit(main())
 PY
 
-DISPATCH_SH="${AGGREGATE_DISPATCH_SH:-$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh}"
+if [[ -n "${AGGREGATE_DISPATCH_SH:-}" ]]; then
+    dispatch_cmd=("$AGGREGATE_DISPATCH_SH")
+else
+    dispatch_cmd=(python3 "$PLUGIN_ROOT/python/cli.py" agent dispatch-waterfall)
+fi
 dispatch_out="$REVIEW_TMPDIR/aggregator-dispatch.env"
 
 _agg_pipeline_for_candidate() {
@@ -887,14 +891,14 @@ dispatch_args=(
 dispatch_args+=(--require-result-pattern "$REQUIRE_RESULT_PATTERN")
 
 set +e
-"$DISPATCH_SH" "${dispatch_args[@]}" > "$dispatch_out" 2>"$REVIEW_TMPDIR/aggregator-dispatch.stderr"
+"${dispatch_cmd[@]}" "${dispatch_args[@]}" > "$dispatch_out" 2>"$REVIEW_TMPDIR/aggregator-dispatch.stderr"
 dispatch_rc=$?
 set -e
 
 if [[ "$dispatch_rc" -ne 0 ]]; then
     REASON="dispatch-failed"
     FAILURE_LOG="$REVIEW_TMPDIR/aggregator-dispatch.stderr"
-    append_warning "- **findings aggregator**: dispatch-with-waterfall exited non-zero (rc=$dispatch_rc); leaving $FINDINGS_FILE unchanged. $(failure_see_phrase "$FAILURE_LOG")"
+    append_warning "- **findings aggregator**: agent dispatch-waterfall exited non-zero (rc=$dispatch_rc); leaving $FINDINGS_FILE unchanged. $(failure_see_phrase "$FAILURE_LOG")"
     emit_result
     exit 0
 fi

@@ -1,0 +1,803 @@
+# pyright: reportUnknownMemberType=false, reportUnknownVariableType=false
+"""Three-phase waterfall dispatcher for external review slots."""
+
+from __future__ import annotations
+
+import atexit
+import contextlib
+import json
+import os
+import re
+import signal
+import subprocess
+import sys
+import tempfile
+from dataclasses import dataclass
+from pathlib import Path
+from collections.abc import Sequence
+
+import logging_util
+import proc
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+PY_CLI = REPO_ROOT / "python" / "cli.py"
+TIMING_KIND_MAX = 64
+
+_USAGE = (
+    "Usage: dispatch-with-waterfall.sh --slots-file FILE --codex-present true|false "
+    "--cursor-present true|false --mode diff|description [--paths-file FILE] [context flags]. "
+    "Default paths-file is SLOTS_FILE.output-files; its parent directory must already exist. "
+    "Stdout KVs include ALL_OUTPUT_FILES_PATH, ALL_OUTPUT_FILES, ALL_OUTPUT_TOOLS, DISPATCH_OK, WARN, …"
+)
+_POSIX_CLASS_REPLACEMENTS = {
+    "[[:alnum:]]": r"[A-Za-z0-9]",
+    "[[:alpha:]]": r"[A-Za-z]",
+    "[[:blank:]]": r"[ \t]",
+    "[[:cntrl:]]": r"[\x00-\x1f\x7f]",
+    "[[:digit:]]": r"\d",
+    "[[:graph:]]": r"[^\s]",
+    "[[:lower:]]": r"[a-z]",
+    "[[:print:]]": r"[^\x00-\x1f\x7f]",
+    "[[:punct:]]": r"[^\w\s]",
+    "[[:space:]]": r"\s",
+    "[[:upper:]]": r"[A-Z]",
+    "[[:xdigit:]]": r"[A-Fa-f0-9]",
+    "[[:word:]]": r"\w",
+}
+
+
+@dataclass(frozen=True)
+class Slot:
+    name: str
+    tool: str
+    output: str
+    agent: str
+    prompt_file: str
+
+
+@dataclass(frozen=True)
+class Options:
+    slots_file: str
+    codex_present: bool
+    cursor_present: bool
+    mode: str
+    diff_file: str = ""
+    commit_count: str = ""
+    plan_file: str = ""
+    feature_file: str = ""
+    scope_files: str = ""
+    description_text: str = ""
+    timeout: str = "1800"
+    fallback_counter_file: str = ""
+    competition_notice: bool = False
+    competition_notice_file: str = ""
+    paths_file: str = ""
+    require_result_pattern: str = ""
+    require_first_line_pattern: str = ""
+    no_fallback: bool = False
+
+
+@dataclass
+class DropState:
+    reason: str = ""
+    detail: str = ""
+
+
+@dataclass
+class PhaseLaunch:
+    idx: int
+    output: str
+    tool: str
+    process: subprocess.Popen[bytes]
+    stderr_handle: object
+
+
+class ValidationError(RuntimeError):
+    pass
+
+
+_ACTIVE_LAUNCHES: list[PhaseLaunch] = []
+_DISPATCH_LAUNCHES: list[PhaseLaunch] = []
+
+def posix_ere_to_python(pattern: str) -> str:
+    """Translate the POSIX character classes used by shell callers."""
+    translated = pattern
+    for needle, replacement in _POSIX_CLASS_REPLACEMENTS.items():
+        translated = translated.replace(needle, replacement)
+    return translated
+
+
+def _compile_pattern(raw: str, flag: str) -> re.Pattern[str] | None:
+    if not raw:
+        return None
+    try:
+        return re.compile(posix_ere_to_python(raw), re.MULTILINE)
+    except re.error as exc:
+        raise ValidationError(f"dispatch-with-waterfall.sh: {flag} is not a valid ERE: {raw}") from exc
+
+
+def _err(message: str) -> None:
+    logging_util.diagnostic(message)
+
+
+def _usage() -> None:
+    _err(_USAGE)
+
+
+def _bool_raw(raw: str, flag: str) -> bool:
+    if raw == "true":
+        return True
+    if raw == "false":
+        return False
+    raise ValidationError(f"dispatch-with-waterfall.sh: {flag} must be true or false")
+
+
+def _parse_args(argv: Sequence[str]) -> Options | int:
+    values: dict[str, str | bool] = {
+        "slots_file": "",
+        "codex_present": "",
+        "cursor_present": "",
+        "mode": "",
+        "diff_file": "",
+        "commit_count": "",
+        "plan_file": "",
+        "feature_file": "",
+        "scope_files": "",
+        "description_text": "",
+        "timeout": "1800",
+        "fallback_counter_file": "",
+        "competition_notice": False,
+        "competition_notice_file": "",
+        "paths_file": "",
+        "require_result_pattern": "",
+        "require_first_line_pattern": "",
+        "no_fallback": False,
+    }
+    idx = 0
+    while idx < len(argv):
+        arg = argv[idx]
+        key_map = {
+            "--slots-file": "slots_file",
+            "--mode": "mode",
+            "--diff-file": "diff_file",
+            "--commit-count": "commit_count",
+            "--plan-file": "plan_file",
+            "--feature-file": "feature_file",
+            "--scope-files": "scope_files",
+            "--description-text": "description_text",
+            "--timeout": "timeout",
+            "--fallback-counter-file": "fallback_counter_file",
+            "--competition-notice-file": "competition_notice_file",
+            "--paths-file": "paths_file",
+            "--require-result-pattern": "require_result_pattern",
+            "--require-first-line-pattern": "require_first_line_pattern",
+        }
+        if arg in {"--codex-present", "--codex-available"}:
+            if idx + 1 >= len(argv):
+                raise ValidationError("dispatch-with-waterfall.sh: --codex-present requires a value")
+            values["codex_present"] = argv[idx + 1]
+            idx += 2
+        elif arg in {"--cursor-present", "--cursor-available"}:
+            if idx + 1 >= len(argv):
+                raise ValidationError("dispatch-with-waterfall.sh: --cursor-present requires a value")
+            values["cursor_present"] = argv[idx + 1]
+            idx += 2
+        elif arg in key_map:
+            if idx + 1 >= len(argv):
+                raise ValidationError(f"dispatch-with-waterfall.sh: {arg} requires a value")
+            values[key_map[arg]] = argv[idx + 1]
+            idx += 2
+        elif arg == "--competition-notice":
+            values["competition_notice"] = True
+            idx += 1
+        elif arg == "--no-fallback":
+            values["no_fallback"] = True
+            idx += 1
+        elif arg == "--help":
+            _usage()
+            return 0
+        else:
+            _err(f"dispatch-with-waterfall.sh: unknown option: {arg}")
+            _usage()
+            return 2
+    slots_file = str(values["slots_file"])
+    if not slots_file or not Path(slots_file).is_file():
+        raise ValidationError("dispatch-with-waterfall.sh: --slots-file must name a file")
+    codex_present = _bool_raw(str(values["codex_present"]), "--codex-present")
+    cursor_present = _bool_raw(str(values["cursor_present"]), "--cursor-present")
+    mode = str(values["mode"])
+    if mode not in {"diff", "description"}:
+        raise ValidationError("dispatch-with-waterfall.sh: --mode must be diff or description")
+    timeout = str(values["timeout"])
+    if not timeout.isdigit() or int(timeout, 10) == 0:
+        raise ValidationError("dispatch-with-waterfall.sh: --timeout must be a positive integer")
+    return Options(
+        slots_file=slots_file,
+        codex_present=codex_present,
+        cursor_present=cursor_present,
+        mode=mode,
+        diff_file=str(values["diff_file"]),
+        commit_count=str(values["commit_count"]),
+        plan_file=str(values["plan_file"]),
+        feature_file=str(values["feature_file"]),
+        scope_files=str(values["scope_files"]),
+        description_text=str(values["description_text"]),
+        timeout=timeout,
+        fallback_counter_file=str(values["fallback_counter_file"]),
+        competition_notice=bool(values["competition_notice"]),
+        competition_notice_file=str(values["competition_notice_file"]),
+        paths_file=str(values["paths_file"]),
+        require_result_pattern=str(values["require_result_pattern"]),
+        require_first_line_pattern=str(values["require_first_line_pattern"]),
+        no_fallback=bool(values["no_fallback"]),
+    )
+
+
+def _load_slots(slots_file: str) -> list[Slot]:
+    slots: list[Slot] = []
+    for row in Path(slots_file).read_text(encoding="utf-8", errors="replace").splitlines():
+        if not row:
+            continue
+        try:
+            data = json.loads(row)
+        except json.JSONDecodeError as exc:
+            raise ValidationError(f"dispatch-with-waterfall.sh: invalid slot row: {row}") from exc
+        if not isinstance(data, dict):
+            raise ValidationError(f"dispatch-with-waterfall.sh: invalid slot row: {row}")
+        slot = data.get("slot")
+        tool = data.get("tool")
+        output = data.get("output")
+        agent = data.get("agent", "")
+        prompt_file = data.get("prompt_file", "")
+        if not isinstance(slot, str) or not slot:
+            raise ValidationError(f"dispatch-with-waterfall.sh: invalid slot row: {row}")
+        if not isinstance(tool, str) or tool not in {"codex", "cursor"}:
+            raise ValidationError(f"dispatch-with-waterfall.sh: invalid slot row: {row}")
+        tool_value = tool
+        if not isinstance(output, str) or not output:
+            raise ValidationError(f"dispatch-with-waterfall.sh: invalid slot row: {row}")
+        if "\n" in output or "\r" in output:
+            raise ValidationError(
+                "dispatch-with-waterfall.sh: slot "
+                f"'{slot}' output path contains a newline or carriage return (line-oriented paths-file contract)"
+            )
+        if agent is None:
+            agent = ""
+        if prompt_file is None:
+            prompt_file = ""
+        if not isinstance(agent, str) or not isinstance(prompt_file, str):
+            raise ValidationError(f"dispatch-with-waterfall.sh: invalid slot row: {row}")
+        if agent and prompt_file:
+            raise ValidationError(f"dispatch-with-waterfall.sh: slot '{slot}' must not set both agent and prompt_file")
+        if not agent and not prompt_file:
+            raise ValidationError(f"dispatch-with-waterfall.sh: slot '{slot}' must set either agent or prompt_file")
+        slots.append(Slot(slot, tool_value, output, agent, prompt_file))
+    if not slots:
+        raise ValidationError("dispatch-with-waterfall.sh: slots file contains no slot rows")
+    return slots
+
+
+def _output_for_phase(base: str, phase: str) -> str:
+    if phase == "phase1":
+        return base
+    if base.endswith(".txt"):
+        return f"{base[:-4]}-{phase}.txt"
+    return f"{base}-{phase}"
+
+
+def _present_for_tool(tool: str, opts: Options) -> bool:
+    if tool == "codex":
+        return opts.codex_present
+    if tool == "cursor":
+        return opts.cursor_present
+    return False
+
+
+def _other_tool(tool: str) -> str:
+    return "cursor" if tool == "codex" else "codex"
+
+
+def _common_args(opts: Options) -> list[str]:
+    args: list[str] = []
+    pairs = [
+        ("--diff-file", opts.diff_file),
+        ("--commit-count", opts.commit_count),
+        ("--plan-file", opts.plan_file),
+        ("--feature-file", opts.feature_file),
+        ("--scope-files", opts.scope_files),
+        ("--description-text", opts.description_text),
+    ]
+    for flag, value in pairs:
+        if value:
+            args.extend([flag, value])
+    return args
+
+
+def _timing_kind(tool: str, phase: str, slot_name: str) -> str:
+    timing = f"{tool}-{phase}-{slot_name}"
+    if len(timing) > TIMING_KIND_MAX:
+        timing = timing[:TIMING_KIND_MAX].removesuffix("-")
+    return timing
+
+
+def _launch_slot(idx: int, phase: str, tool: str, output: str, slots: Sequence[Slot], opts: Options) -> PhaseLaunch:
+    slot = slots[idx]
+    Path(output).parent.mkdir(parents=True, exist_ok=True)
+    if tool == "claude":
+        argv = [
+            sys.executable,
+            str(PY_CLI),
+            "agent",
+            "launch-claude-review",
+            "--output",
+            output,
+        ]
+        argv.extend(["--prompt-file", slot.prompt_file] if slot.prompt_file else ["--agent-file", slot.agent])
+    else:
+        argv = [
+            sys.executable,
+            str(PY_CLI),
+            "agent",
+            "launch-review",
+            "--tool",
+            tool,
+            "--output",
+            output,
+        ]
+        argv.extend(["--prompt-file", slot.prompt_file] if slot.prompt_file else ["--agent-file", slot.agent])
+    argv.extend(["--mode", opts.mode, "--timeout", opts.timeout, "--timing-task-kind", _timing_kind(tool, phase, slot.name)])
+    argv.extend(_common_args(opts))
+    if tool != "claude":
+        if opts.competition_notice:
+            argv.append("--competition-notice")
+        if opts.competition_notice_file:
+            argv.extend(["--competition-notice-file", opts.competition_notice_file])
+    stderr_handle = Path(f"{output}.launch-stderr").open("wb")  # noqa: SIM115  # pylint: disable=consider-using-with
+    try:
+        process = subprocess.Popen(  # pylint: disable=consider-using-with
+            argv, stdout=subprocess.DEVNULL, stderr=stderr_handle, start_new_session=True
+        )
+    except Exception:
+        stderr_handle.close()
+        raise
+    launch = PhaseLaunch(idx=idx, output=output, tool=tool, process=process, stderr_handle=stderr_handle)
+    _ACTIVE_LAUNCHES.append(launch)
+    _DISPATCH_LAUNCHES.append(launch)
+    return launch
+
+
+def _descendants(pid: int) -> list[int]:
+    result = proc.run(["pgrep", "-P", str(pid)])
+    children: list[int] = []
+    if result.returncode != 0:
+        return children
+    for line in result.stdout.splitlines():
+        if line.strip().isdigit():
+            child = int(line.strip())
+            children.extend(_descendants(child))
+            children.append(child)
+    return children
+
+
+def _terminate_launch(launch: PhaseLaunch) -> None:
+    pid = launch.process.pid
+    with contextlib.suppress(OSError):
+        os.killpg(pid, signal.SIGTERM)
+    for child in _descendants(pid):
+        with contextlib.suppress(OSError):
+            os.kill(child, signal.SIGTERM)
+    if launch.process.poll() is None:
+        try:
+            _ = launch.process.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            with contextlib.suppress(OSError):
+                launch.process.kill()
+            _ = launch.process.wait()
+    with contextlib.suppress(OSError):
+        launch.stderr_handle.close()  # type: ignore[attr-defined]
+
+
+def _kill_active_launches() -> None:
+    for launch in _DISPATCH_LAUNCHES[:]:
+        _terminate_launch(launch)
+    _ACTIVE_LAUNCHES.clear()
+    _DISPATCH_LAUNCHES.clear()
+
+
+def _sigterm_handler(_signum: int, _frame: object) -> None:
+    _kill_active_launches()
+    raise SystemExit(143)
+
+
+def _reap_phase(launches: Sequence[PhaseLaunch]) -> None:
+    for launch in launches:
+        while True:
+            try:
+                rc = launch.process.wait(timeout=0.05)
+                break
+            except subprocess.TimeoutExpired:
+                continue
+        with contextlib.suppress(OSError):
+            launch.stderr_handle.close()  # type: ignore[attr-defined]
+        if not Path(f"{launch.output}.done").is_file():
+            _ = Path(f"{launch.output}.done").write_text(f"{rc}\n", encoding="utf-8")
+        if launch in _ACTIVE_LAUNCHES:
+            _ACTIVE_LAUNCHES.remove(launch)
+        if launch in _DISPATCH_LAUNCHES:
+            _DISPATCH_LAUNCHES.remove(launch)
+
+
+def _split_summary_blocks(stdout: str) -> list[str]:
+    blocks: list[str] = []
+    current: list[str] = []
+    for line in stdout.splitlines():
+        if not line:
+            if current:
+                blocks.append("\n".join(current))
+                current = []
+        else:
+            current.append(line)
+    if current:
+        blocks.append("\n".join(current))
+    return blocks
+
+
+def _parse_block(block: str) -> tuple[str, str]:
+    status = ""
+    reviewer_file = ""
+    for line in block.splitlines():
+        key, sep, value = line.partition("=")
+        if not sep:
+            continue
+        if key == "STATUS":
+            status = value
+        elif key == "REVIEWER_FILE":
+            reviewer_file = value
+    return status, reviewer_file
+
+
+def _snippet_from_file(path: str) -> str:
+    try:
+        with Path(path).open("rb") as handle:
+            data = handle.read(2000)
+    except OSError:
+        return ""
+    text = data.decode("utf-8", errors="replace")
+    return text.replace("\n", " ").replace("\r", " ").replace("\t", " ")[:200]
+
+
+def _first_nonblank_trimmed(text: str) -> str:
+    for line in text.splitlines():
+        if line.strip():
+            return line.strip()
+    return ""
+
+
+def _salvage_first_line(check_file: str, pattern: re.Pattern[str]) -> bool:
+    try:
+        lines = Path(check_file).read_text(encoding="utf-8", errors="replace").splitlines(keepends=True)
+    except OSError:
+        return False
+    for idx, line in enumerate(lines):
+        if pattern.search(line.rstrip("\n")):
+            if idx <= 0:
+                return False
+            fd, tmp = tempfile.mkstemp(prefix=f"{Path(check_file).name}.salvage.", dir=str(Path(check_file).parent))
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                    handle.writelines(lines[idx:])
+                _ = Path(tmp).replace(check_file)
+                return True
+            except OSError:
+                with contextlib.suppress(OSError):
+                    Path(tmp).unlink()
+                return False
+    return False
+
+
+def _collect_phase(
+    launches: Sequence[PhaseLaunch],
+    opts: Options,
+    final_outputs: list[str],
+    final_tools: list[str],
+    drops: list[DropState],
+    result_pattern: re.Pattern[str] | None,
+    first_line_pattern: re.Pattern[str] | None,
+) -> list[int]:
+    if not launches:
+        return []
+    _reap_phase(launches)
+    outputs = [launch.output for launch in launches]
+    result = proc.run(
+        [sys.executable, str(PY_CLI), "agent", "collect-results", "--timeout", opts.timeout, "--summary-only", *outputs]
+    )
+    blocks = _split_summary_blocks(result.stdout if result.returncode == 0 else "")
+    failed: list[int] = []
+    for pos, launch in enumerate(launches):
+        idx = launch.idx
+        output = launch.output
+        status, reviewer_file = _parse_block(blocks[pos] if pos < len(blocks) else "")
+        if status in {"OK", "cap_hit"}:
+            if status == "OK" and result_pattern is not None:
+                check_file = reviewer_file or output
+                if not Path(check_file).is_file():
+                    _err(
+                        "dispatch-with-waterfall.sh: result file not readable for --require-result-pattern check: "
+                        f"{check_file}"
+                    )
+                    drops[idx] = DropState("result-unreadable", f"result file not readable: {check_file}")
+                    failed.append(idx)
+                    continue
+                content = Path(check_file).read_text(encoding="utf-8", errors="replace")
+                if not result_pattern.search(content):
+                    drops[idx] = DropState("result-gate-miss", _snippet_from_file(check_file))
+                    failed.append(idx)
+                    continue
+            if status == "OK" and first_line_pattern is not None:
+                check_file = reviewer_file or output
+                if not Path(check_file).is_file():
+                    _err(
+                        "dispatch-with-waterfall.sh: result file not readable for --require-first-line-pattern check: "
+                        f"{check_file}"
+                    )
+                    drops[idx] = DropState("result-unreadable", f"result file not readable: {check_file}")
+                    failed.append(idx)
+                    continue
+                content = Path(check_file).read_text(encoding="utf-8", errors="replace")
+                first_nonblank = _first_nonblank_trimmed(content)
+                if not first_line_pattern.search(first_nonblank):
+                    if not first_nonblank:
+                        drops[idx] = DropState("empty", "")
+                        failed.append(idx)
+                        continue
+                    if not _salvage_first_line(check_file, first_line_pattern):
+                        drops[idx] = DropState("format-gate-miss", _snippet_from_file(check_file))
+                        failed.append(idx)
+                        continue
+            final_outputs[idx] = reviewer_file or output
+            final_tools[idx] = launch.tool
+            drops[idx] = DropState()
+        else:
+            stderr_snippet = _snippet_from_file(f"{output}.launch-stderr")
+            detail = f"STATUS={status or 'unknown'}"
+            if stderr_snippet:
+                detail = f"{detail} {stderr_snippet}"
+            drops[idx] = DropState("collector-failure", detail)
+            failed.append(idx)
+    return failed
+
+
+def _write_counter(path: str, combined_fallback: int) -> None:
+    if not path:
+        return
+    prior = 0
+    try:
+        raw = Path(path).read_text(encoding="utf-8", errors="replace").strip()
+        if raw.isdigit():
+            prior = int(raw, 10)
+    except OSError:
+        pass
+    fd, tmp = tempfile.mkstemp(prefix=f"{Path(path).name}.tmp.", dir=str(Path(path).parent))
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        _ = handle.write(f"{prior + combined_fallback}\n")
+    _ = Path(tmp).replace(path)
+
+
+def _flatten_field(text: str) -> str:
+    return text.replace("\t", " ").replace("\n", " ").replace("\r", " ")
+
+
+def _write_drops(path: str, slots: Sequence[Slot], final_outputs: Sequence[str], drops: Sequence[DropState]) -> str:
+    paths_dir = Path(path).parent
+    tmp = ""
+    try:
+        fd, tmp = tempfile.mkstemp(prefix=".dispatch-waterfall-drops.", dir=str(paths_dir))
+        drop_any = False
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            for idx, slot in enumerate(slots):
+                if final_outputs[idx]:
+                    continue
+                drop_any = True
+                _ = handle.write(
+                    f"{_flatten_field(slot.name)}\t{_flatten_field(slot.tool)}\t{drops[idx].reason or 'unknown'}\t{drops[idx].detail}\n"
+                )
+        if not drop_any:
+            Path(tmp).unlink(missing_ok=True)
+            return ""
+        dropped_slots_file = f"{path}.dropped-slots"
+        _ = Path(tmp).replace(dropped_slots_file)
+        return dropped_slots_file
+    except OSError as exc:
+        if tmp:
+            with contextlib.suppress(OSError):
+                Path(tmp).unlink()
+        raise ValidationError(f"dispatch-with-waterfall.sh: dropped-slots sidecar not writable: {path}") from exc
+
+
+def _write_paths_file(path: str, final_outputs: Sequence[str], *, no_fallback: bool) -> None:
+    paths_dir = Path(path).parent
+    tmp = ""
+    try:
+        fd, tmp = tempfile.mkstemp(prefix=".dispatch-waterfall-paths.", dir=str(paths_dir))
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            for output in final_outputs:
+                if no_fallback and not output:
+                    continue
+                _ = handle.write(f"{output}\n")
+        _ = Path(tmp).replace(path)
+    except OSError as exc:
+        if tmp:
+            with contextlib.suppress(OSError):
+                Path(tmp).unlink()
+        raise ValidationError(f"dispatch-with-waterfall.sh: paths-file not writable: {path}") from exc
+
+
+def _emit_bool(key: str, *, value: bool) -> None:
+    logging_util.emit_kv(key, "true" if value else "false")
+
+
+def dispatch_waterfall(opts: Options) -> int:
+    _ACTIVE_LAUNCHES.clear()
+    _DISPATCH_LAUNCHES.clear()
+    result_pattern = _compile_pattern(opts.require_result_pattern, "--require-result-pattern")
+    first_line_pattern = _compile_pattern(opts.require_first_line_pattern, "--require-first-line-pattern")
+    slots = _load_slots(opts.slots_file)
+    final_outputs = [""] * len(slots)
+    final_tools = [""] * len(slots)
+    drops = [DropState() for _ in slots]
+
+    phase1_outputs: list[str] = []
+    phase2_outputs: list[str] = []
+    phase3_outputs: list[str] = []
+    phase1_queue: list[int] = []
+
+    phase1_launches: list[PhaseLaunch] = []
+    for idx, slot in enumerate(slots):
+        if _present_for_tool(slot.tool, opts):
+            out = _output_for_phase(slot.output, "phase1")
+            phase1_outputs.append(out)
+            phase1_launches.append(_launch_slot(idx, "phase1", slot.tool, out, slots, opts))
+        else:
+            phase1_queue.append(idx)
+    phase1_failed = _collect_phase(
+        phase1_launches, opts, final_outputs, final_tools, drops, result_pattern, first_line_pattern
+    )
+
+    fallback_count = 0
+    combined_fallback = 0
+    phase3_failed: list[int] = []
+    dispatch_ok = True
+    static_dispatch_ok = True
+    dynamic_dispatch_ok = True
+
+    if opts.no_fallback:
+        for idx in phase1_queue:
+            drops[idx] = DropState("tool-absent", f"primary tool {slots[idx].tool} not present")
+        for idx in [*phase1_queue, *phase1_failed]:
+            if slots[idx].name.startswith("dyn-"):
+                dynamic_dispatch_ok = False
+            else:
+                static_dispatch_ok = False
+    else:
+        phase2_queue = [*phase1_queue, *phase1_failed]
+        phase3_seed: list[int] = []
+        phase2_launches: list[PhaseLaunch] = []
+        for idx in phase2_queue:
+            alt = _other_tool(slots[idx].tool)
+            if _present_for_tool(alt, opts):
+                out = _output_for_phase(slots[idx].output, "phase2")
+                phase2_outputs.append(out)
+                phase2_launches.append(_launch_slot(idx, "phase2", alt, out, slots, opts))
+            else:
+                phase3_seed.append(idx)
+        phase2_failed = _collect_phase(
+            phase2_launches, opts, final_outputs, final_tools, drops, result_pattern, first_line_pattern
+        )
+        phase3_queue = [*phase3_seed, *phase2_failed]
+        phase3_launches: list[PhaseLaunch] = []
+        for idx in phase3_queue:
+            out = _output_for_phase(slots[idx].output, "phase3")
+            phase3_outputs.append(out)
+            fallback_count += 1
+            phase3_launches.append(_launch_slot(idx, "phase3", "claude", out, slots, opts))
+        phase3_failed = _collect_phase(
+            phase3_launches, opts, final_outputs, final_tools, drops, result_pattern, first_line_pattern
+        )
+        combined_fallback = fallback_count
+
+    _write_counter(opts.fallback_counter_file, combined_fallback)
+
+    for idx in phase3_failed:
+        final_outputs[idx] = _output_for_phase(slots[idx].output, "phase3")
+        final_tools[idx] = "claude"
+        dispatch_ok = False
+        if slots[idx].name.startswith("dyn-"):
+            dynamic_dispatch_ok = False
+        else:
+            static_dispatch_ok = False
+
+    if phase3_failed:
+        env = dict(os.environ)
+        env["LARCH_QUIET_DISABLE"] = "1"
+        _ = proc.run(
+            [
+                sys.executable,
+                str(PY_CLI),
+                "agent",
+                "collect-results",
+                "--timeout",
+                opts.timeout,
+                *[final_outputs[idx] for idx in phase3_failed],
+            ],
+            env=env,
+            stdout=subprocess.DEVNULL,
+        )
+
+    threshold_raw = os.environ.get("LARCH_FALLBACK_CLAUDE_WARN_THRESHOLD", "3")
+    threshold = int(threshold_raw, 10) if threshold_raw.isdigit() else 3
+    warn = "cost-fallback-exceeded-threshold" if combined_fallback > threshold else ""
+
+    resolved_paths_file = opts.paths_file or f"{opts.slots_file}.output-files"
+    paths_dir = Path(resolved_paths_file).parent
+    if not paths_dir.is_dir():
+        raise ValidationError(f"dispatch-with-waterfall.sh: paths-file parent directory does not exist: {paths_dir}")
+    for idx, output in enumerate(final_outputs):
+        if "\n" in output or "\r" in output:
+            raise ValidationError(
+                "dispatch-with-waterfall.sh: output path for slot "
+                f"'{slots[idx].name}' contains a newline or carriage return (line-oriented paths-file contract)"
+            )
+
+    all_output_files: list[str] = []
+    all_output_tools: list[str] = []
+    for idx, output in enumerate(final_outputs):
+        if opts.no_fallback and not output:
+            continue
+        all_output_files.append(output)
+        all_output_tools.append(final_tools[idx])
+
+    dropped_slots_file = ""
+    if opts.no_fallback:
+        dropped_slots_file = _write_drops(resolved_paths_file, slots, final_outputs, drops)
+    _write_paths_file(resolved_paths_file, final_outputs, no_fallback=opts.no_fallback)
+
+    logging_util.emit_kv("PHASE1_SLOTS", " ".join(phase1_outputs))
+    logging_util.emit_kv("PHASE2_SLOTS", " ".join(phase2_outputs))
+    logging_util.emit_kv("PHASE3_SLOTS", " ".join(phase3_outputs))
+    logging_util.emit_kv("ALL_OUTPUT_FILES", " ".join(all_output_files))
+    logging_util.emit_kv("ALL_OUTPUT_FILES_PATH", resolved_paths_file)
+    logging_util.emit_kv("ALL_OUTPUT_TOOLS", " ".join(all_output_tools))
+    logging_util.emit_kv("FALLBACK_COUNT", str(fallback_count))
+    logging_util.emit_kv("COMBINED_FALLBACK_COUNT", str(combined_fallback))
+    if warn:
+        logging_util.emit_kv("WARN", warn)
+    _emit_bool("DISPATCH_OK", value=dispatch_ok)
+    _emit_bool("STATIC_DISPATCH_OK", value=static_dispatch_ok)
+    _emit_bool("DYNAMIC_DISPATCH_OK", value=dynamic_dispatch_ok)
+    if opts.no_fallback and not all_output_files and slots:
+        logging_util.emit_kv("ALL_SLOTS_DROPPED", "true")
+    if dropped_slots_file:
+        logging_util.emit_kv("DROPPED_SLOTS_FILE", dropped_slots_file)
+    _DISPATCH_LAUNCHES.clear()
+    return 0
+
+
+def dispatch_waterfall_main(argv: list[str] | None = None) -> int:
+    logging_util.quiet_init(argv0="dispatch-with-waterfall.sh")
+    _ = signal.signal(signal.SIGTERM, _sigterm_handler)
+    _ = atexit.register(_kill_active_launches)
+    args = sys.argv[1:] if argv is None else argv
+    try:
+        parsed = _parse_args(args)
+        if isinstance(parsed, int):
+            return parsed
+        return dispatch_waterfall(parsed)
+    except ValidationError as exc:
+        _err(str(exc))
+        return 2
+    except SystemExit as exc:
+        return int(exc.code or 0)
+
+
+if __name__ == "__main__":
+    raise SystemExit(dispatch_waterfall_main())

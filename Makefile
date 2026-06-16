@@ -517,7 +517,7 @@ test-run-step3-review:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review.py -q -k record_report_evidence
 
 test-review-design-step3-loop:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review.py -q -k 'embedded_review or embedded_run_step3_review or run_legacy'
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review.py -q -k 'embedded_review or embedded_run_step3_review or embedded_waterfall or run_legacy'
 
 test-step3-orchestrator-fence:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-step3-orchestrator-fence.sh
@@ -971,7 +971,7 @@ test-degraded-tools-gate:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_agents.py -q -k degraded_tools
 
 test-no-grouped-reuse-guard:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-no-grouped-reuse-guard.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_agent_waterfall.py -k grouped_reuse_guard
 
 test-check-topology-rule-paths:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-check-topology-rule-paths.sh
@@ -1001,7 +1001,7 @@ test-parse-drafter-output:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-parse-drafter-output.sh
 
 test-dispatch-with-waterfall:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-dispatch-with-waterfall.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_agent_waterfall.py
 
 test-revise-plan-with-waterfall:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_plan_quality.py -k revise_waterfall

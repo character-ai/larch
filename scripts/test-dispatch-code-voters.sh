@@ -57,6 +57,7 @@ make_wait_barrier_plugin_root() {
 import os
 import sys
 import time
+import subprocess
 from pathlib import Path
 REAL_CLI = '$REPO_ROOT/python/cli.py'
 if sys.argv[1:3] == ["agent", "wait-reviewers"]:
@@ -93,6 +94,39 @@ if sys.argv[1:3] == ["agent", "launch-claude-review"]:
         Path(output).write_text("FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false\\n", encoding="utf-8")
     Path(output + ".done").write_text("0\\n", encoding="utf-8")
     raise SystemExit(0)
+if sys.argv[1:3] == ["agent", "dispatch-waterfall"]:
+    review_tmpdir = str(Path(os.environ["LARCH_WAIT_BARRIER_VOTER2"]).parent)
+    mode = os.environ.get("LARCH_WAIT_BARRIER_MODE", "delayed")
+    v2 = os.environ["LARCH_WAIT_BARRIER_VOTER2"]
+    v3 = os.environ["LARCH_WAIT_BARRIER_VOTER3"]
+    if mode == "delayed":
+        Path(v2).write_text("FINDING_1: YES\n", encoding="utf-8")
+        Path(v3).write_text("FINDING_1: NO\n", encoding="utf-8")
+        time.sleep(float(os.environ.get("LARCH_WAIT_BARRIER_DELAY", "0.2")))
+        Path(v2 + ".done").write_text("0\n", encoding="utf-8")
+        Path(v3 + ".done").write_text("0\n", encoding="utf-8")
+    elif mode == "immediate":
+        Path(v2).write_text("FINDING_1: YES\n", encoding="utf-8")
+        Path(v2 + ".done").write_text("0\n", encoding="utf-8")
+        Path(v3).write_text("FINDING_1: NO\n", encoding="utf-8")
+        Path(v3 + ".done").write_text("0\n", encoding="utf-8")
+    elif mode == "concurrent":
+        Path(os.environ["LARCH_WAIT_BARRIER_MARKER"]).write_text("", encoding="utf-8")
+        Path(v2).write_text("FINDING_1: YES\n", encoding="utf-8")
+        Path(v2 + ".done").write_text("0\n", encoding="utf-8")
+        Path(v3).write_text("FINDING_1: NO\n", encoding="utf-8")
+        Path(v3 + ".done").write_text("0\n", encoding="utf-8")
+    elif mode == "nonzero_done":
+        Path(v2).write_text("FINDING_1: YES\n", encoding="utf-8")
+        Path(v2 + ".done").write_text("7\n", encoding="utf-8")
+        Path(v3).write_text("FINDING_1: NO\n", encoding="utf-8")
+        Path(v3 + ".done").write_text("9\n", encoding="utf-8")
+    elif mode == "timeout":
+        Path(review_tmpdir, "timeout-mode-observed").write_text("", encoding="utf-8")
+    print(f"ALL_OUTPUT_FILES={v2} {v3}")
+    print("ALL_OUTPUT_TOOLS=codex cursor")
+    print("DISPATCH_OK=true")
+    raise SystemExit(0)
 if sys.argv[1:3] != ["render", "voter"]:
     print(f"unexpected cli args: {sys.argv[1:]}", file=sys.stderr)
     raise SystemExit(2)
@@ -100,50 +134,6 @@ print("stub voter prompt")
 print("Read the ballot from this path: /stub/ballot")
 STUB_RENDER
     chmod +x "$root/python/cli.py"
-    cat > "$root/scripts/dispatch-with-waterfall.sh" <<'STUB_WATERFALL'
-#!/usr/bin/env bash
-set -euo pipefail
-review_tmpdir="$(dirname "${LARCH_WAIT_BARRIER_VOTER2:?}")"
-case "${LARCH_WAIT_BARRIER_MODE:-delayed}" in
-    delayed)
-        printf 'FINDING_1: YES\n' > "$LARCH_WAIT_BARRIER_VOTER2"
-        printf 'FINDING_1: NO\n' > "$LARCH_WAIT_BARRIER_VOTER3"
-        (
-            sleep "${LARCH_WAIT_BARRIER_DELAY:-0.2}"
-            printf '0\n' > "${LARCH_WAIT_BARRIER_VOTER2}.done"
-            printf '0\n' > "${LARCH_WAIT_BARRIER_VOTER3}.done"
-        ) >/dev/null 2>&1 &
-        ;;
-    immediate)
-        printf 'FINDING_1: YES\n' > "$LARCH_WAIT_BARRIER_VOTER2"
-        printf '0\n' > "${LARCH_WAIT_BARRIER_VOTER2}.done"
-        printf 'FINDING_1: NO\n' > "$LARCH_WAIT_BARRIER_VOTER3"
-        printf '0\n' > "${LARCH_WAIT_BARRIER_VOTER3}.done"
-        ;;
-    concurrent)
-        # #3704 parallel-dispatch probe: drop the marker the blocked Claude CLI
-        # stub is polling for, then settle the external slots immediately.
-        : > "${LARCH_WAIT_BARRIER_MARKER:?}"
-        printf 'FINDING_1: YES\n' > "$LARCH_WAIT_BARRIER_VOTER2"
-        printf '0\n' > "${LARCH_WAIT_BARRIER_VOTER2}.done"
-        printf 'FINDING_1: NO\n' > "$LARCH_WAIT_BARRIER_VOTER3"
-        printf '0\n' > "${LARCH_WAIT_BARRIER_VOTER3}.done"
-        ;;
-    nonzero_done)
-        printf 'FINDING_1: YES\n' > "$LARCH_WAIT_BARRIER_VOTER2"
-        printf '7\n' > "${LARCH_WAIT_BARRIER_VOTER2}.done"
-        printf 'FINDING_1: NO\n' > "$LARCH_WAIT_BARRIER_VOTER3"
-        printf '9\n' > "${LARCH_WAIT_BARRIER_VOTER3}.done"
-        ;;
-    timeout)
-        : > "$review_tmpdir/timeout-mode-observed"
-        ;;
-esac
-printf 'ALL_OUTPUT_FILES=%s %s\n' "$LARCH_WAIT_BARRIER_VOTER2" "$LARCH_WAIT_BARRIER_VOTER3"
-printf 'ALL_OUTPUT_TOOLS=codex cursor\n'
-printf 'DISPATCH_OK=true\n'
-STUB_WATERFALL
-    chmod +x "$root/scripts/dispatch-with-waterfall.sh"
 }
 
 make_wait_usage_error_plugin_root() {
@@ -191,6 +181,30 @@ if sys.argv[1:3] == ["agent", "launch-claude-review"]:
             output + ".done",
         ])
     raise SystemExit(0)
+if sys.argv[1:3] == ["agent", "dispatch-waterfall"]:
+    review_tmpdir = ""
+    args = sys.argv[3:]
+    i = 0
+    while i < len(args):
+        if args[i] == "--slots-file":
+            review_tmpdir = str(Path(args[i + 1]).parent)
+            i += 2
+        elif args[i] in ("--codex-present", "--cursor-present", "--mode", "--timeout", "--diff-file", "--plan-file", "--feature-file", "--require-result-pattern", "--require-first-line-pattern", "--paths-file"):
+            i += 2
+        else:
+            i += 1
+    if not review_tmpdir:
+        raise SystemExit(2)
+    v2 = str(Path(review_tmpdir) / "codex-vote-output.txt")
+    v3 = str(Path(review_tmpdir) / "cursor-vote-output.txt")
+    Path(v2).write_text("FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false\n", encoding="utf-8")
+    Path(v2 + ".done").write_text("0\n", encoding="utf-8")
+    Path(v3).write_text("FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false\n", encoding="utf-8")
+    Path(v3 + ".done").write_text("0\n", encoding="utf-8")
+    print(f"ALL_OUTPUT_FILES={v2} {v3}")
+    print("ALL_OUTPUT_TOOLS=codex cursor")
+    print("DISPATCH_OK=true")
+    raise SystemExit(0)
 if sys.argv[1:3] != ["render", "voter"]:
     print(f"unexpected cli args: {sys.argv[1:]}", file=sys.stderr)
     raise SystemExit(2)
@@ -198,33 +212,6 @@ print("stub voter prompt")
 print("Read the ballot from this path: /stub/ballot")
 STUB_RENDER
     chmod +x "$root/python/cli.py"
-    cat > "$root/scripts/dispatch-with-waterfall.sh" <<'STUB_WATERFALL'
-#!/usr/bin/env bash
-set -euo pipefail
-review_tmpdir=""
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --slots-file)
-            review_tmpdir="$(dirname "${2:?}")"
-            shift 2
-            ;;
-        *)
-            shift
-            ;;
-    esac
-done
-[[ -n "$review_tmpdir" ]] || exit 2
-v2="$review_tmpdir/codex-vote-output.txt"
-v3="$review_tmpdir/cursor-vote-output.txt"
-printf 'FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false\n' > "$v2"
-printf '0\n' > "${v2}.done"
-printf 'FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false\n' > "$v3"
-printf '0\n' > "${v3}.done"
-printf 'ALL_OUTPUT_FILES=%s %s\n' "$v2" "$v3"
-printf 'ALL_OUTPUT_TOOLS=codex cursor\n'
-printf 'DISPATCH_OK=true\n'
-STUB_WATERFALL
-    chmod +x "$root/scripts/dispatch-with-waterfall.sh"
 }
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
