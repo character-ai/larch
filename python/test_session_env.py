@@ -17,10 +17,20 @@ import proc
 import session_env
 
 CLI = Path(__file__).with_name("cli.py")
+TOOL_ENV_KEYS = ("CODEX_PRESENT", "CURSOR_PRESENT", "CODEX_AVAILABLE", "CURSOR_AVAILABLE", "CODEX_BINARY_FOUND", "CURSOR_BINARY_FOUND")
+
+
+def clean_env(extra: dict[str, str] | None = None) -> dict[str, str]:
+    merged = os.environ.copy()
+    for key in TOOL_ENV_KEYS:
+        merged.pop(key, None)
+    if extra:
+        merged.update(extra)
+    return merged
 
 
 def run_cli(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
-    merged = os.environ.copy()
+    merged = clean_env()
     merged["LARCH_QUIET_DISABLE"] = "1"
     if env:
         merged.update(env)
@@ -194,7 +204,7 @@ def test_write_design_env_source_safe_and_home_symlink(tmp_path: Path) -> None:
         env=env,
     )
     assert result.returncode == 0, result.stderr
-    source = subprocess.run(["bash", "-c", f"source {out}; printf '%s|%s|%s' \"$DESIGN_TMPDIR\" \"${{CODEX_PRESENT:-}}\" \"$CLAUDE_PLUGIN_ROOT\""], text=True, capture_output=True, check=False)
+    source = subprocess.run(["bash", "-c", f"source {out}; printf '%s|%s|%s' \"$DESIGN_TMPDIR\" \"${{CODEX_PRESENT:-}}\" \"$CLAUDE_PLUGIN_ROOT\""], text=True, capture_output=True, env=clean_env(), check=False)
     assert source.stdout == f"{design}||/tmp/plugin"
     link = home / ".cache" / "larch" / "sessions" / "current-design-env-12345.sh"
     assert link.is_symlink()
@@ -532,6 +542,7 @@ def test_write_design_env_partial_codex_override_clears_binary(tmp_path: Path) -
         ["bash", "-c", f"set -u; source {out}; printf '%s|%s|%s|%s|%s|%s' \"$SESSION_ID\" \"${{CODEX_PRESENT:-}}\" \"${{CODEX_AVAILABLE:-}}\" \"${{CURSOR_PRESENT:-}}\" \"${{CURSOR_AVAILABLE:-}}\" \"${{CURSOR_BINARY_FOUND:-}}\""],
         text=True,
         capture_output=True,
+        env=clean_env(),
         check=False,
     )
     assert source.returncode == 0, source.stderr
@@ -574,6 +585,7 @@ def test_write_design_env_strict_boolean_recovery(tmp_path: Path) -> None:
         ["bash", "-c", f"set -u; source {out}; printf '%s|%s' \"${{CODEX_PRESENT:-}}\" \"${{CURSOR_AVAILABLE:-}}\""],
         text=True,
         capture_output=True,
+        env=clean_env(),
         check=False,
     )
     assert source.returncode == 0, source.stderr
