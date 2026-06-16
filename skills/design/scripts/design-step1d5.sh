@@ -82,7 +82,9 @@ design_source_env_optional() {
 }
 
 design_pause_check() {
-  [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design pause-save --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+  if [ -f "$DESIGN_TMPDIR/.pause-requested" ]; then
+    exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design pause-save --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+  fi
 }
 
 design_brainstorm_requested() {
@@ -244,7 +246,9 @@ case "${MODE:-}" in
     design_source_env_optional
     mkdir -p "$DESIGN_TMPDIR/.completed"
     : > "$DESIGN_TMPDIR/.completed/step-1d.5"
-    [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design pause-save --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+    if [ -f "$DESIGN_TMPDIR/.pause-requested" ]; then
+      exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design pause-save --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+    fi
     ;;
   *) printf '%s\n' "$0: --mode required" >&2; exit 2 ;;
 esac
