@@ -14,23 +14,15 @@ from errors import ShipError
 from proc import CommandResult
 from run_context import RunContext
 
-from test_support import RecordingRunner
+from test_support import RecordingRunner, make_run_context
 
 
 def _ctx(tmp_path: Path, **kwargs: object) -> RunContext:
-    base = RunContext(
-        branch="feat",
-        issue="1",
-        repo="o/r",
+    base = make_run_context(
         run_id="run-abc",
         tmpdir=str(tmp_path),
-        merge=True,
-        draft=False,
-        forked=False,
         manifest_path=str(tmp_path / "manifest.json"),
         tool_label="codex",
-        no_admin_fallback=False,
-        repo_unavailable=False,
         pr_number=7,
         pr_title="Implement thing",
         issue_number="1",

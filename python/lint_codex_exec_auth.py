@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import argparse
 import re
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 
-GIT = shutil.which("git") or "git"
+from lint_common import GIT, git_rooted, parse_root_args
 
 ALLOWED_SHELL_FILES: set[str] = set()
 ALLOWED_PYTHON_FILES = {"python/agents.py"}
@@ -22,26 +20,6 @@ PY_CODEX_EXEC_RE = re.compile(r"(['\"]codex['\"]\s*,\s*['\"]exec['\"]|['\"]codex
 ENV_PREFIX_RE = re.compile(r"^([\s]*[A-Za-z_][A-Za-z0-9_]*=[^\s]*\s*)+")
 
 
-def _parse_args(argv: list[str]) -> argparse.Namespace | None:
-    parser = argparse.ArgumentParser(prog="cli.py lint codex-exec-auth", description=__doc__)
-    _ = parser.add_argument("--root", default=str(Path(__file__).resolve().parents[1]))
-    try:
-        return parser.parse_args(argv)
-    except SystemExit as exc:
-        if exc.code == 0:
-            raise
-        return None
-
-
-def _git_rooted(root: Path) -> bool:
-    return subprocess.run(
-        [GIT, "-C", str(root), "rev-parse", "--is-inside-work-tree"],
-        check=False,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    ).returncode == 0
-
-
 def _git_files(root: Path, patterns: list[str]) -> list[str]:
     proc = subprocess.run(
         [GIT, "-C", str(root), "ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", *patterns],
@@ -52,7 +30,7 @@ def _git_files(root: Path, patterns: list[str]) -> list[str]:
 
 
 def _shell_files(root: Path) -> list[str]:
-    if _git_rooted(root):
+    if git_rooted(root):
         candidates = _git_files(root, ["scripts/*.sh", "skills/*/scripts/*.sh"])
     else:
         candidates: list[str] = []
@@ -63,7 +41,7 @@ def _shell_files(root: Path) -> list[str]:
 
 
 def _python_files(root: Path) -> list[str]:
-    if _git_rooted(root):
+    if git_rooted(root):
         candidates = _git_files(root, ["python/*.py"])
     else:
         candidates = [str(path.relative_to(root)) for path in (root / "python").glob("*.py") if path.is_file()]
@@ -71,7 +49,7 @@ def _python_files(root: Path) -> list[str]:
 
 
 def _markdown_files(root: Path) -> list[str]:
-    if _git_rooted(root):
+    if git_rooted(root):
         return _git_files(root, ["skills/**/*.md", ".claude/skills/**/*.md", ".claude/rules/*.md"])
     rels: list[str] = []
     for base in (root / "skills", root / ".claude" / "skills", root / ".claude" / "rules"):
@@ -218,7 +196,11 @@ def scan_python_file(root: Path, rel: str) -> bool:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parsed = _parse_args(argv if argv is not None else sys.argv[1:])
+    parsed = parse_root_args(
+        argv if argv is not None else sys.argv[1:],
+        prog="cli.py lint codex-exec-auth",
+        description=__doc__,
+    )
     if parsed is None:
         return 2
     root = Path(parsed.root)

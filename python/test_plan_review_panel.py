@@ -2,27 +2,10 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-CLI = ROOT / "python" / "cli.py"
-
-
-def run_cli(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
-    merged = os.environ.copy()
-    merged["CLAUDE_PLUGIN_ROOT"] = str(ROOT)
-    if env:
-        merged.update(env)
-    return subprocess.run(
-        [sys.executable, str(CLI), *args],
-        cwd=ROOT,
-        env=merged,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
+from test_support import run_cli
 
 
 def _stdout_key_order(stdout: str) -> list[str]:

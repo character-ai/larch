@@ -19,7 +19,7 @@ from outcomes import Outcome, StepResult
 from run_context import RunContext
 
 
-from test_support import RecordingRunner
+from test_support import RecordingRunner, make_run_context
 
 
 def _ctx(tmp_path: Path, **kwargs: object) -> RunContext:
@@ -28,19 +28,11 @@ def _ctx(tmp_path: Path, **kwargs: object) -> RunContext:
         json.dumps({"summary_bullets": ["Add driver", "Add finalize"]}),
         encoding="utf-8",
     )
-    base = RunContext(
-        branch="feat",
-        issue="1",
-        repo="o/r",
+    base = make_run_context(
         run_id="run-abc",
         tmpdir=str(tmp_path),
-        merge=True,
-        draft=False,
-        forked=False,
         manifest_path=str(manifest),
         tool_label="codex",
-        no_admin_fallback=False,
-        repo_unavailable=False,
         pr_title="Implement driver",
         issue_number="1",
     )

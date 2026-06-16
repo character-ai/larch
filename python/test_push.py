@@ -13,7 +13,7 @@ from errors import ShipError
 from proc import CommandResult
 from run_context import RunContext
 
-from test_support import RecordingRunner as _RecordingRunner
+from test_support import RecordingRunner as _RecordingRunner, make_run_context
 import phantom
 import rebase
 
@@ -44,20 +44,7 @@ def _push_git_responses(*extra: CommandResult) -> list[CommandResult]:
 
 
 def _ctx(**kwargs: object) -> RunContext:
-    base = RunContext(
-        branch="feat/x",
-        issue="1",
-        repo="o/r",
-        run_id="run-1",
-        tmpdir="/tmp/impl",
-        merge=True,
-        draft=False,
-        forked=False,
-        manifest_path="/tmp/impl/manifest.json",
-        tool_label="cursor",
-        no_admin_fallback=False,
-        repo_unavailable=False,
-    )
+    base = make_run_context(branch="feat/x")
     return base.with_(**kwargs)
 
 def test_assert_clean_worktree_refuses_dirty() -> None:

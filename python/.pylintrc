@@ -537,12 +537,14 @@ ignore-imports=yes
 ignore-signatures=yes
 
 # Minimum lines number of a similarity.
-# Temporarily raised from 5 to 20 so the dedicated `python-lint-duplicate-code`
-# CI job (`pylint --disable=all --enable=duplicate-code -j 1`) passes with zero
-# R0801 findings on the current tree. Lower toward the optimal (~8) and fix the
-# duplicates surfaced in issue #4480. The main `python-lint` job keeps
-# duplicate-code disabled (see `disable=` above), so this only affects that job.
-min-similarity-lines=20
+# Set to 8 (the optimal from issue #4480): low enough to catch genuine
+# copy-paste (clusters of 8+ duplicate lines), high enough to avoid flagging
+# short test/argparse boilerplate that reads more clearly left inline. The
+# dedicated `python-lint-duplicate-code` CI job (`pylint --disable=all
+# --enable=duplicate-code -j 1`) enforces this threshold; the main `python-lint`
+# job keeps duplicate-code disabled (see `disable=` above), so this only affects
+# that job.
+min-similarity-lines=8
 
 
 [SPELLING]

@@ -12,7 +12,7 @@ import pytest
 import finalize
 from proc import CommandResult
 from run_context import RunContext
-from test_support import RecordingRunner
+from test_support import RecordingRunner, make_run_context
 
 
 IMPLEMENT_FINALIZE_SH = Path(__file__).resolve().parents[1] / "scripts" / "implement-finalize.sh"
@@ -26,19 +26,11 @@ def test_finalize_bash_reference_script_present() -> None:
 
 
 def _ctx(tmp_path: Path, **kwargs: object) -> RunContext:
-    base = RunContext(
-        branch="feat",
-        issue="1",
-        repo="o/r",
+    base = make_run_context(
         run_id="run-abc",
         tmpdir=str(tmp_path),
-        merge=True,
-        draft=False,
-        forked=False,
         manifest_path=str(tmp_path / "manifest.json"),
         tool_label="codex",
-        no_admin_fallback=False,
-        repo_unavailable=False,
         pr_number=2,
         pr_title="Title",
         issue_number="1",
