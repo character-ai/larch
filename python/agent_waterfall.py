@@ -587,28 +587,36 @@ def _flatten_field(text: str) -> str:
 
 def _write_drops(path: str, slots: Sequence[Slot], final_outputs: Sequence[str], drops: Sequence[DropState]) -> str:
     paths_dir = Path(path).parent
-    fd, tmp = tempfile.mkstemp(prefix=".dispatch-waterfall-drops.", dir=str(paths_dir))
-    drop_any = False
-    with os.fdopen(fd, "w", encoding="utf-8") as handle:
-        for idx, slot in enumerate(slots):
-            if final_outputs[idx]:
-                continue
-            drop_any = True
-            _ = handle.write(
-                f"{_flatten_field(slot.name)}\t{_flatten_field(slot.tool)}\t{drops[idx].reason or 'unknown'}\t{drops[idx].detail}\n"
-            )
-    if not drop_any:
-        Path(tmp).unlink(missing_ok=True)
-        return ""
-    dropped_slots_file = f"{path}.dropped-slots"
-    _ = Path(tmp).replace(dropped_slots_file)
-    return dropped_slots_file
+    tmp = ""
+    try:
+        fd, tmp = tempfile.mkstemp(prefix=".dispatch-waterfall-drops.", dir=str(paths_dir))
+        drop_any = False
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            for idx, slot in enumerate(slots):
+                if final_outputs[idx]:
+                    continue
+                drop_any = True
+                _ = handle.write(
+                    f"{_flatten_field(slot.name)}\t{_flatten_field(slot.tool)}\t{drops[idx].reason or 'unknown'}\t{drops[idx].detail}\n"
+                )
+        if not drop_any:
+            Path(tmp).unlink(missing_ok=True)
+            return ""
+        dropped_slots_file = f"{path}.dropped-slots"
+        _ = Path(tmp).replace(dropped_slots_file)
+        return dropped_slots_file
+    except OSError as exc:
+        if tmp:
+            with contextlib.suppress(OSError):
+                Path(tmp).unlink()
+        raise ValidationError(f"dispatch-with-waterfall.sh: dropped-slots sidecar not writable: {path}") from exc
 
 
 def _write_paths_file(path: str, final_outputs: Sequence[str], *, no_fallback: bool) -> None:
     paths_dir = Path(path).parent
-    fd, tmp = tempfile.mkstemp(prefix=".dispatch-waterfall-paths.", dir=str(paths_dir))
+    tmp = ""
     try:
+        fd, tmp = tempfile.mkstemp(prefix=".dispatch-waterfall-paths.", dir=str(paths_dir))
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             for output in final_outputs:
                 if no_fallback and not output:
@@ -616,8 +624,9 @@ def _write_paths_file(path: str, final_outputs: Sequence[str], *, no_fallback: b
                 _ = handle.write(f"{output}\n")
         _ = Path(tmp).replace(path)
     except OSError as exc:
-        with contextlib.suppress(OSError):
-            Path(tmp).unlink()
+        if tmp:
+            with contextlib.suppress(OSError):
+                Path(tmp).unlink()
         raise ValidationError(f"dispatch-with-waterfall.sh: paths-file not writable: {path}") from exc
 
 

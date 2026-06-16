@@ -521,6 +521,147 @@ def test_paths_file_directory_target_exits_two_without_success_kvs(tmp_path: Pat
     assert "DISPATCH_OK" not in proc.stdout
 
 
+def test_paths_file_unwritable_parent_exits_two_without_success_kvs(tmp_path: Path, stub_env: dict[str, str]) -> None:
+    manifest, _ = _slot(tmp_path)
+    unreadable = tmp_path / "no-write"
+    unreadable.mkdir()
+    unreadable.chmod(0o555)
+    try:
+        proc = _run(manifest, stub_env, "--paths-file", str(unreadable / "outputs.list"))
+        assert proc.returncode == 2
+        assert "paths-file not writable" in proc.stderr
+        assert "DISPATCH_OK" not in proc.stdout
+    finally:
+        unreadable.chmod(0o755)
+
+
+def test_no_fallback_result_gate_miss_drop(tmp_path: Path, stub_env: dict[str, str]) -> None:
+    manifest, _ = _slot(tmp_path, tool="cursor", output_name="gate-miss.txt")
+    proc = _run(
+        manifest,
+        {**stub_env, "CURSOR_STUB_RESULT_CONTENT": "narration only"},
+        "--no-fallback",
+        "--require-result-pattern",
+        r"^[[:space:]]*## Recommendation",
+    )
+    assert proc.returncode == 0, proc.stderr
+    kvs = _kv(proc.stdout)
+    assert kvs["ALL_SLOTS_DROPPED"] == "true"
+    fields = Path(kvs["DROPPED_SLOTS_FILE"]).read_text(encoding="utf-8").split("\t")
+    assert fields[:3] == ["s1", "cursor", "result-gate-miss"]
+
+
+def test_no_fallback_empty_drop(tmp_path: Path, stub_env: dict[str, str]) -> None:
+    manifest, _ = _slot(tmp_path, tool="cursor", output_name="empty.txt")
+    proc = _run(
+        manifest,
+        {**stub_env, "CURSOR_STUB_RESULT_CONTENT": "   \n\t\n  "},
+        "--no-fallback",
+        "--require-first-line-pattern",
+        r"^[[:space:]]*schema_version",
+    )
+    assert proc.returncode == 0, proc.stderr
+    kvs = _kv(proc.stdout)
+    assert kvs["ALL_SLOTS_DROPPED"] == "true"
+    fields = Path(kvs["DROPPED_SLOTS_FILE"]).read_text(encoding="utf-8").split("\t")
+    assert fields[:3] == ["s1", "cursor", "empty"]
+
+
+def test_no_fallback_collector_failure_drop(tmp_path: Path, stub_env: dict[str, str]) -> None:
+    manifest, _ = _slot(tmp_path, output_name="collector-fail.txt")
+    proc = _run(manifest, {**stub_env, "CODEX_STUB_FAIL": "true"}, "--no-fallback")
+    assert proc.returncode == 0, proc.stderr
+    kvs = _kv(proc.stdout)
+    assert kvs["ALL_SLOTS_DROPPED"] == "true"
+    fields = Path(kvs["DROPPED_SLOTS_FILE"]).read_text(encoding="utf-8").split("\t")
+    assert fields[2] == "collector-failure"
+
+
+def test_no_fallback_result_unreadable_drop(tmp_path: Path, stub_env: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
+    manifest, _ = _slot(tmp_path, tool="cursor", output_name="unreadable.txt")
+    missing = tmp_path / "missing-reviewer.txt"
+    real_run = proc_module.run
+
+    def fake_run(
+        argv: Sequence[str],
+        *,
+        timeout: float | None = None,
+        cwd: str | None = None,
+        env: Mapping[str, str] | None = None,
+        check: bool = False,
+        stdout: int | None = None,
+        stderr: int | None = None,
+    ) -> proc_module.CommandResult:
+        if "collect-results" in argv:
+            return proc_module.CommandResult(
+                tuple(argv),
+                0,
+                f"STATUS=OK\nREVIEWER_FILE={missing}\n",
+                "",
+                0.0,
+            )
+        return real_run(
+            argv,
+            timeout=timeout,
+            cwd=cwd,
+            env=env,
+            check=check,
+            stdout=stdout,
+            stderr=stderr,
+        )
+
+    monkeypatch.setattr(agent_waterfall.proc, "run", fake_run)
+    rc, stdout = _run_direct(
+        manifest,
+        stub_env,
+        monkeypatch,
+        "--no-fallback",
+        "--require-result-pattern",
+        r"^[[:space:]]*## Recommendation",
+    )
+    assert rc == 0
+    kvs = _kv(stdout)
+    assert kvs["ALL_SLOTS_DROPPED"] == "true"
+    fields = Path(kvs["DROPPED_SLOTS_FILE"]).read_text(encoding="utf-8").split("\t")
+    assert fields[:3] == ["s1", "cursor", "result-unreadable"]
+
+
+def test_no_fallback_partial_drop_emits_dropped_file_not_all_slots_dropped(tmp_path: Path, stub_env: dict[str, str]) -> None:
+    manifest = tmp_path / "partial.ndjson"
+    out_ok = tmp_path / "ok.txt"
+    out_drop = tmp_path / "drop.txt"
+    prompt = tmp_path / "partial.prompt"
+    prompt.write_text("review\n", encoding="utf-8")
+    manifest.write_text(
+        "\n".join(
+            [
+                json.dumps({"slot": "ok", "tool": "codex", "output": str(out_ok), "prompt_file": str(prompt)}),
+                json.dumps({"slot": "drop", "tool": "cursor", "output": str(out_drop), "prompt_file": str(prompt)}),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    proc = _run(
+        manifest,
+        {
+            **stub_env,
+            "CURSOR_STUB_RESULT_CONTENT": "narration only",
+            "CODEX_STUB_RESULT_CONTENT": "## Recommendation\ncodex ok",
+        },
+        "--no-fallback",
+        "--require-result-pattern",
+        r"^[[:space:]]*## Recommendation",
+    )
+    assert proc.returncode == 0, proc.stderr
+    kvs = _kv(proc.stdout)
+    assert "ALL_SLOTS_DROPPED" not in kvs
+    assert "DROPPED_SLOTS_FILE" in kvs
+    drop_lines = Path(kvs["DROPPED_SLOTS_FILE"]).read_text(encoding="utf-8").splitlines()
+    assert len(drop_lines) == 1
+    assert drop_lines[0].split("\t")[2] == "result-gate-miss"
+
+
 def _pid_alive(pid: int) -> bool:
     try:
         os.kill(pid, 0)
