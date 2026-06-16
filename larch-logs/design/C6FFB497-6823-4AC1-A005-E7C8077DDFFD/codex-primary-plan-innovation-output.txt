@@ -1,0 +1,8 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	security	python/session_env.py:558; python/logging_util.py:49-78	Proposed validator CLI initializes quiet logging before validation	Wrappers source an exported DESIGN_TMPDIR before calling the new verb. logging_util.quiet_init can create a larch-quiet log under that unvalidated directory before validate_design_tmpdir rejects it, so an invalid existing design tmpdir gets written to before the security gate runs.	Remove logging_util.quiet_init from validate_design_tmpdir_main and print validation failures directly to stderr with _plain_err or print.
+
+1. **[security] `python/session_env.py:558`**
+   - **Concern:** The proposed `validate_design_tmpdir_main` calls `logging_util.quiet_init` before validation.
+   - **Breakage:** `quiet_init` chooses `$DESIGN_TMPDIR` as a log root and can create a log file there.
+   - **Why it matters:** The retired bash validator did not write under the candidate path before approving it.
+   - **Suggested revision:** Keep this verb side-effect free. Parse args, call `validate_design_tmpdir`, and write failures directly to stderr.

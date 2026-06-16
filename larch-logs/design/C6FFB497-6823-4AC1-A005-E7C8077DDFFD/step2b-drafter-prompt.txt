@@ -1,0 +1,210 @@
+You are an expert engineer researching this repository and producing an implementation plan for /design Step 2b.
+
+You may use only side-effect-free repository discovery. Do not write repository files, design tmpdir files, or any other files. Return only the sentinel-delimited response requested below.
+
+Drafting requirements to follow:
+- Prefer minimum necessary change: avoid scope creep, unnecessary complexity, and additions not required for correctness.
+- Read approach-synthesis.txt: if it is exactly NO_SKETCHES, draft from direct codebase/doc inspection without fabricating planning-panel agreement.
+- Read discussion-round1.md when present for scope boundaries and strict constraints.
+- Read design-outline.md only when non-empty and .outline-approved exists; treat Goals, Non-goals, and Surfaces as binding scope.
+- Read brainstorm.md when present as additive ideation context for plan drafting.
+- Use a Files to modify/create section with per-file headings exactly one path each: ### NEW:, ### UPDATED:, or ### REWRITTEN: (at least one ASCII space after ### before the keyword).
+- Include Approach, Edge cases, Failure modes when non-trivial, Testing strategy, optional diff_added/diff_deleted/mechanical_churn trailers, and final diff_lines: <N>. mechanical_churn accepts only true or false; never write a number there.
+- The final plan body must end with a whole-line diff_lines: <N> trailer.
+- Optionally include up to three dynamic plan-review archetypes in a scout block after the plan. The launcher validates, filters, caps, and materializes this block; invalid post-plan scout output is ignored.
+- Scout sentinels inside the summary or plan are fatal format errors. Never put LARCH_SCOUT_* markers in the plan body.
+
+Readability style (trusted):
+# Readability Style
+
+**Consumer**: `/design` prompt surfaces that produce user-facing text, either through an external-agent prompt token or through inline orchestration prose.
+
+**Contract**: this file is the only source of truth for the `/design` readability preamble. External prompt files embed the literal `<READABILITY_STYLE>` token, and assembly code or orchestration expands it to this full file. Inline composition sites read this file before writing user-facing text.
+
+**When to load**: load only when a `/design` step is about to compose user-facing prose or render a prompt that asks another agent to compose such prose. Do not load during setup, pure validation, or byte-stable artifact handling.
+
+---
+
+## Style Axes
+
+Write in three styles at once:
+
+- **Strunk & White**: use active voice. Omit needless words. Prefer concrete nouns and verbs.
+- **Dyslexia-friendly**: use short sentences. Prefer simple words. Break dense ideas into headings and bullets.
+- **Brevity**: shorter is better. Minimize the total artifact length while preserving meaning.
+- **No em dashes**: never use em dashes; use periods, commas, colons, or semicolons instead.
+- **Hedge vs. direct**: hedge uncertain claims ("may contain", "can fail") instead of absolutes; keep directives imperative.
+
+## Precision Contract
+
+Keep these byte-stable unless the task explicitly edits them:
+
+- fenced code blocks
+- backticked tokens
+- file paths
+- identifiers
+- flag names
+- `### NEW:` / `### UPDATED:` / `### REWRITTEN:` plan grammar
+- the trailing `diff_lines: <N>` line
+
+Do not rewrite those items for style. Explain around them instead.
+
+## Plan-Drafting Reminders
+
+When `/design` Step 2b drafts a plan that adds, removes, or converts
+Bash fences in `skills/implement/SKILL.md`:
+
+- List `### UPDATED: scripts/test-implement-fence-shape.sh` in
+  **Files to modify/create**.
+- Note that `EXPECTED_OLD` / `EXPECTED_NEW` may need updates.
+
+This is a discoverability reminder only. Do not add plan grammar.
+
+## Precedence
+
+When rules conflict, use this order:
+
+`code references > meaning > brevity > dyslexia-friendly chunking > Strunk & White micro-rewrites`
+
+Apply it directly:
+
+- Preserve code references first.
+- Preserve exact meaning next.
+- Cut words before adding layout.
+- Add headings or bullets only when they improve scanning.
+- Polish grammar last.
+
+## Substitution Token
+
+External-agent prompt files MUST embed this literal token:
+
+`<READABILITY_STYLE>`
+
+Before launch, replace every literal `<READABILITY_STYLE>` token with the full contents of this file.
+
+## Examples
+
+Before: "It is recommended that the implementer should consider adding a validation step."
+
+After: "Add a validation step."
+
+Before: "The plan should make sure that users are not able to continue when the file cannot be read."
+
+After: "Block the flow when the file cannot be read."
+
+Before: "In order to avoid potential future confusion, documentation can be updated."
+
+After: "Update the docs to avoid confusion."
+
+Before: "The script performs an operation that checks if the path exists."
+
+After: "The script checks that the path exists."
+
+Before: "This could possibly be out of scope depending on how the team wants to proceed."
+
+After: "This may be out of scope."
+
+Required output format:
+[optional]
+LARCH_SUMMARY_BEGIN
+A concise summary for large-plan preview. Omit this whole summary block only when no useful summary is needed.
+LARCH_SUMMARY_END
+[/optional]
+LARCH_PLAN_BEGIN
+Full implementation plan body ending with diff_lines: <N>.
+LARCH_PLAN_END
+[optional]
+LARCH_SCOUT_BEGIN
+{"archetypes":[{"name":"slug","focus_area":"code-quality|risk-integration|correctness|architecture|security","weight":1,"rationale":"single-line reason","prompt_body":"2-6 sentence focus directive ending with the required citation sentence."}]}
+LARCH_SCOUT_END
+[/optional]
+
+Optional advisory status may be included between LARCH_STATUS_BEGIN and LARCH_STATUS_END, but the summary, plan, and optional scout sentinels above are the only parsed contract.
+
+Untrusted feature description:
+<feature_description encoding="literal-redacted">
+# sh-to-py F2-followup: port the 4 deferred session/state sourced-only bash libs
+
+sh-to-py F2-followup: port the 4 deferred session/state sourced-only bash libs
+
+Follow-up to #3668 (sh-to-py F2: session/state module). F2 was formally re-scoped to port 13 invoke-style session/state scripts now and DEFER 4 sourced-only bash libraries, because surviving bash owned by later migration phases still `source` them and bash cannot `source` a Python function — deleting them in F2 would break out-of-phase consumers. This issue tracks porting those 4 libs into python/session_env.py (or the appropriate module) once their consumers migrate, then deleting the bash + .md + harness siblings and appending python/migrated-scripts.tsv.
+
+Deferred libs and the phase that owns their last surviving sourcer:
+- scripts/lib-design-tmpdir.sh — sourced by ~35 design-machinery scripts; retire after C3a/C3b/C3c (#3679, #3680, #3681, #3682).
+- scripts/lib-validate-meta-path.sh — sourced by external-agent launchers (run-external-agent.sh, launch-codex-exec.sh, launch-review.sh, check-mid-run-dirty-tree.sh); retire after B4 (#3673).
+- scripts/lib-finalize-state-keys.sh — sourced by ship-pr.sh; retire after E1 (#3690).
+- skills/implement/scripts/lib-resolve-implement-tmpdir.sh — sourced by the bash hook hook-stop-fail-close.sh plus sessionstart-health.sh. NOTE: hooks stay bash pending a separate hook overhaul, so this lib may need to remain bash until that overhaul lands; it may be split out if the hook overhaul is not scheduled with the other phases.
+
+Definition of done: each deferred lib's logic is ported into the Python session/state module (stdlib-only), its surviving sourcers are repointed to the CLI/importable surface, the bash lib + .md + harness siblings are deleted, python/migrated-scripts.tsv is updated, and make lint-retired-scripts + make lint + py-lint + py-test are green. Wire this issue blocked-by the consumer-owning phases so it does not run prematurely.
+
+</feature_description>
+
+
+Untrusted approach synthesis:
+<approach_synthesis encoding="literal-redacted">
+NO_SKETCHES
+
+</approach_synthesis>
+
+
+Untrusted discussion round 1:
+<discussion_round1 encoding="literal-redacted">
+## Decision 1: Scope — which deferred libs does #3780 retire now
+- **Question**: #3780 lists 4 deferred libs, but 2 are already migrated and 1 is still bash-hook-sourced. Which are in scope for this run?
+- **Resolution**: In scope = `scripts/lib-design-tmpdir.sh` ONLY. Out of scope: `lib-validate-meta-path.sh` (already migrated #4333) and `lib-finalize-state-keys.sh` (already migrated #3690) — both already deleted and in `python/migrated-scripts.tsv`, nothing to do. `skills/implement/scripts/lib-resolve-implement-tmpdir.sh` is deferred (still sourced by 2 bash hooks; not ported).
+- **Source**: user
+
+## Decision 2: Disposition of the hook-blocked lib
+- **Question**: How to track `lib-resolve-implement-tmpdir.sh` (hook-blocked; no hook-overhaul issue exists)?
+- **Resolution**: Split it into a NEW follow-up tracking issue (to be ported after a future hook overhaul) and drop it from #3780's scope so #3780 can close once `lib-design-tmpdir.sh` is retired. Record as an out-of-scope follow-up.
+- **Source**: user
+
+## Decision 3 (hard constraint): Reuse the existing Python validator
+- **Question**: Does the design-tmpdir validator need to be (re)written in Python?
+- **Resolution**: No. `python/session_env.py::validate_design_tmpdir(candidate) -&gt; (bool, str)` already exists and is used by `plan_review.py`, `plan_review_tally.py`, and `rendering.py`. Reuse it; do NOT reimplement the validation logic. The remaining gap is a thin `cli.py` verb so bash callers can reach it (no `session validate-design-tmpdir` verb exists yet).
+- **Source**: codebase
+
+## Decision 4 (hard constraint): The 14 live bash sourcers must keep working
+- **Question**: What must not break?
+- **Resolution**: 14 live bash scripts still `source scripts/lib-design-tmpdir.sh` and call `larch_design_tmpdir_validate "$X" || exit 2` (design-step3-review.sh, design-step3-entry.sh, design-step2b-postplan.sh, design-step3-mav.sh, design-step35-settle.sh, design-step3-continuation-entry.sh, design-failure-report.sh, plan-review-continuation.sh, design-stage-terminal-state.sh, plus debug/test scripts). Each must be repointed to the new CLI verb with identical fail-fast (exit 2) semantics before the bash lib is deleted. Pause-before-work ordering in the wrappers must be preserved (test-design-structure.sh enforces it).
+- **Source**: codebase + issue DoD
+
+## Decision 5 (definition of done): ledger + lint gates
+- **Question**: What proves the retirement is complete?
+- **Resolution**: Delete `scripts/lib-design-tmpdir.sh` + `.md` + `scripts/test-lib-design-tmpdir.sh` + `.md`; append all four to `python/migrated-scripts.tsv` tagged `#3780`; remove the `python/checks.py` allowlist entry + the `Makefile` `test-lib-design-tmpdir` target + any `agent-lint.toml` allowlist entry; `make lint-retired-scripts &amp;&amp; make lint &amp;&amp; make py-lint &amp;&amp; make py-test` all green.
+- **Source**: issue
+
+</discussion_round1>
+
+
+Untrusted approved design outline:
+<design_outline encoding="literal-redacted">
+## Proposed Design Outline
+
+### Goals
+- Retire `scripts/lib-design-tmpdir.sh`: delete the bash lib, its `.md`, and its test harness.
+- Give bash callers a CLI surface for the already-ported `session_env.validate_design_tmpdir`.
+- Repoint all 14 live bash sourcers with identical fail-fast (`exit 2`) behavior.
+
+### Non-goals
+- Porting `skills/implement/scripts/lib-resolve-implement-tmpdir.sh` (bash-hook-sourced); split to a new follow-up tracking issue.
+- Touching the 2 already-migrated libs (`lib-validate-meta-path.sh` #4333, `lib-finalize-state-keys.sh` #3690).
+- Reimplementing validation logic or refactoring the 14 wrappers beyond the source-to-CLI swap.
+
+### Approach sketch
+- Add `validate_design_tmpdir_main(argv)` to `python/session_env.py`; route `("session", "validate-design-tmpdir")` in `python/cli.py`. Exit 0 on ok, 2 on failure, message to stderr.
+- Replace `source .../lib-design-tmpdir.sh` + `larch_design_tmpdir_validate "$X" || exit 2` with `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" session validate-design-tmpdir "$X" || exit 2` in each sourcer, preserving pause-before-work ordering.
+- Delete the bash lib + `.md` + harness; append the 4 paths to `python/migrated-scripts.tsv` (#3780); drop the `python/checks.py` allowlist row, the `Makefile` `test-lib-design-tmpdir` target, and any `agent-lint.toml` allowlist entry.
+- Add `python/test_session_env.py` coverage for the new verb.
+
+### Surfaces in scope
+- `python/session_env.py`, `python/cli.py`, `python/test_session_env.py`
+- `scripts/lib-design-tmpdir.{sh,md}`, `scripts/test-lib-design-tmpdir.{sh,md}` (delete)
+- 14 wrapper `.sh` files under `scripts/` and `skills/design/scripts/`
+- `python/migrated-scripts.tsv`, `python/checks.py`, `Makefile`, `agent-lint.toml`
+
+### Open questions
+- None. Scope resolved in Round 1.
+
+</design_outline>
+
