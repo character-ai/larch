@@ -31,6 +31,10 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
 
 ## Skills
 
+larch ships **public skills** with the plugin (`skills/`); **private** skills live under `.claude/skills/` and are dev-only (not exported). Both are listed below; shortcut **aliases** are in the [Aliases](#aliases) section. See [docs/skills.md](docs/skills.md) for full per-skill detail.
+
+### Public skills
+
 <table>
   <thead>
     <tr><th>Name</th><th>Arguments</th></tr>
@@ -56,9 +60,15 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#block-issue"><code>/block-issue</code></a></td>
-      <td><code>&lt;ISSUE_A&gt; &lt;ISSUE_B&gt;</code></td>
+      <td><code>&lt;ISSUE_A&gt; &lt;ISSUE_B&gt; [--repo owner/name]</code></td>
     </tr>
-    <tr><td colspan="2">Express a native GitHub blocked-by relationship between two issues using the <code>addBlockedBy</code> GraphQL mutation.</td></tr>
+    <tr><td colspan="2">Express a native GitHub blocked-by relationship between two issues using the <code>addBlockedBy</code> GraphQL mutation. Repo auto-detected when <code>--repo</code> is omitted.</td></tr>
+    <tr><td colspan="2"><hr></td></tr>
+    <tr>
+      <td><a href="docs/skills.md#bug"><code>/bug</code></a></td>
+      <td><code>&lt;bug description&gt;</code></td>
+    </tr>
+    <tr><td colspan="2">Investigate a user-described bug read-only, compose a detailed issue body, then file it via <code>/issue</code> with dedup enabled. Aborts to <code>SECURITY.md</code> disclosure if the report looks security-sensitive; never edits the repo.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#design"><code>/design</code></a></td>
@@ -67,40 +77,34 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
     <tr><td colspan="2">Author or refresh an issue-anchored implementation plan in GitHub (plan markers in the issue body). <code>-p</code>/<code>--partition</code> routes Step 2b.5 directly to the decomposition panel when no plan-size threshold trips; size triggers show the <code>Override</code>/<code>Cancel</code> prompt. Optional <code>--brainstorm</code> runs Step 1d.5 ideation before the Step 1d.7 outline-approval gate (Gate A re-entry only post-plan) (see <a href="docs/skills.md#design">docs/skills.md</a>). Gate B auto-applies accepted findings by default; <code>--per-round-approval</code> restores the explicit per-round apply prompt. <code>--skip-approve</code>/<code>-s</code> auto-approves the Step 1d.7 outline and Gate C final plan without an <code>AskUserQuestion</code> (no other prompts are skipped). The old <code>--approve</code> and <code>--hard</code> flags are rejected; use <code>--per-round-approval</code> for explicit Gate B prompts. Finalize runs upstream <code>/larch:issue</code> batch filing for accepted non-security OOS (Step <strong>5b</strong>) before writing and publishing the <code>larch:plan</code> block (<strong>5c</strong>); tmpdir cleanup is Step <strong>6</strong>.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
-      <td><a href="docs/skills.md#pause"><code>/larch:pause</code></a></td>
+      <td><a href="docs/skills.md#pause"><code>/pause</code></a></td>
       <td></td>
     </tr>
     <tr><td colspan="2">Pause a running <code>/design</code>; saves state to GitHub for cross-session resume. Source: <a href="skills/pause/SKILL.md"><code>skills/pause/SKILL.md</code></a>.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#implement"><code>/implement</code></a></td>
-      <td><code>[--merge] [--forked] [--draft] [--no-admin-fallback] [--no-logs-commit] [--coder &lt;claude|codex|cursor&gt;] [--run-id &lt;ID&gt;] [--emergency] &lt;issue-N&gt;</code></td>
+      <td><code>[--merge] [--forked] [--draft] [--no-admin-fallback] [--no-logs-commit] [--coder &lt;claude|codex|cursor&gt;] [--run-id &lt;ID&gt;] [--emergency] [--self-review] &lt;issue-N&gt;</code></td>
     </tr>
-    <tr><td colspan="2">End-to-end implementation from the <strong>positional</strong> GitHub <code>&lt;issue-N&gt;</code> after <code>/design</code> has written <code>larch:plan</code> into that issue's body. Step 5 always runs <code>review-and-fix CLI</code> with the unified internal hard panel (no public <code>--panel</code> argv): up to <strong>5 rounds</strong> (fixed hard ceiling), a <strong>3-judge panel on every round</strong> (Claude opus + Codex + Cursor when both vendors are available; shrink-not-backfill drops an unavailable external instead of replacing it), and the <strong>review panel</strong> with <strong>specialists per vendor</strong> (plus optional dynamic archetypes). <code>--merge</code> enables CI+merge; <code>--forked</code> is mutually exclusive with <code>--merge</code>. Use <code>--emergency</code> to bypass plan-block presence / plan-adequacy audit / clarify-state pending gates (default off). Preflight audit refusal exits <strong>3</strong> (distinct from flag/plan hard errors exit <strong>2</strong>).</td></tr>
+    <tr><td colspan="2">End-to-end implementation from the <strong>positional</strong> GitHub <code>&lt;issue-N&gt;</code> after <code>/design</code> has written <code>larch:plan</code> into that issue's body. Step 5 always runs <code>review-and-fix CLI</code> with the unified internal hard panel (no public <code>--panel</code> argv): up to <strong>5 rounds</strong> (fixed hard ceiling), a <strong>3-judge panel on every round</strong> (Claude opus + Codex + Cursor when both vendors are available; shrink-not-backfill drops an unavailable external instead of replacing it), and the <strong>review panel</strong> with <strong>specialists per vendor</strong> (plus optional dynamic archetypes). <code>--merge</code> enables CI+merge; <code>--forked</code> is mutually exclusive with <code>--merge</code>. Use <code>--emergency</code> to bypass plan-block presence / plan-adequacy audit / clarify-state pending gates (default off). <code>--self-review</code> skips the external panel for a thorough inline self-review at Step 5. Preflight audit refusal exits <strong>3</strong> (distinct from flag/plan hard errors exit <strong>2</strong>).</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#issue"><code>/issue</code></a></td>
-      <td><code>[--input-file FILE] [--title-prefix P] [--label L]... [--body-file F] [--dry-run] [&lt;issue description&gt;]</code></td>
+      <td><code>[--input-file FILE] [--intra-batch-deps-file FILE] [--blocked-by-issue N] [--title-prefix PREFIX] [--label LABEL]... [--body-file FILE] [--dry-run] [--no-dedup] [--no-dep-llm] [--sentinel-file PATH] [&lt;issue description or title&gt;]</code></td>
     </tr>
-    <tr><td colspan="2">Create one or more GitHub issues with LLM-based semantic duplicate detection and always-on inter-issue blocker-dependency analysis.</td></tr>
+    <tr><td colspan="2">Create one or more GitHub issues with LLM-based semantic duplicate detection and always-on inter-issue blocker-dependency analysis. <code>--no-dedup</code> skips both passes; <code>--no-dep-llm</code> keeps dedup but skips the LLM dependency pass. Batch/wiring flags (<code>--input-file</code>, <code>--body-file</code>, <code>--blocked-by-issue</code>, <code>--intra-batch-deps-file</code>, <code>--sentinel-file</code>) are used mainly by calling skills.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#report-tokens"><code>/report-tokens</code></a></td>
-      <td><code>--skill &lt;design|implement&gt; [--no-issue] [--no-plot]</code></td>
+      <td><code>--skill &lt;design|implement&gt; [--no-issue] [--no-plot] [--run-id &lt;ID&gt;]</code></td>
     </tr>
     <tr><td colspan="2">Analyze structured token reports from committed larch run logs, price Claude/Codex/Cursor runs through `python/report_tokens_cost.py`, plot skill-aware trends, and print cost-reduction suggestions.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#fluff-analysis"><code>/fluff-analysis</code></a></td>
-      <td><code>[--include-in-progress] [--cutoff ISO8601] [--min-group N]</code></td>
+      <td><code>[--include-in-progress] [--cutoff ISO8601] [--since-version X.Y.Z] [--min-group N] [--log-root DIR] [--out FILE]</code></td>
     </tr>
     <tr><td colspan="2">Characterize review <strong>fluff</strong> from committed larch run logs — which <code>/design</code> and <code>/implement</code> review suggestions get rejected, deferred to OOS, or accepted-but-low-value — by acceptance baselines, low-acceptance semantic groups, severity cuts, and reviewer-lane splits, then print data-driven recommendations for tightening the reviewer self-filter and judge (voter) instructions.</td></tr>
-    <tr><td colspan="2"><hr></td></tr>
-    <tr>
-      <td><a href="docs/skills.md#relevant-checks-script"><code>python/cli.py checks run-relevant</code></a></td>
-      <td><em>(none)</em></td>
-    </tr>
-    <tr><td colspan="2">Consumer-provided validation entrypoint (not a SlashCommand skill). Orchestrators call it through <code>python/cli.py checks run-relevant</code>. <strong>Not part of the plugin surface; each consuming repo provides its own executable script.</strong></td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#research"><code>/research</code></a></td>
@@ -110,13 +114,13 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#review"><code>/review</code></a></td>
-      <td><code>[--diff] [&lt;description&gt;]</code></td>
+      <td><code>[--diff] [--subagent] [--dynamic-archetypes &lt;N&gt;] [--session-env &lt;path&gt;] [--step-prefix &lt;prefix&gt;] [&lt;description&gt;]</code></td>
     </tr>
-    <tr><td colspan="2">Code review with the specialist panel described in <code>docs/review-agents.md</code>. <code>--diff</code>: review branch changes and implement fixes. <code>&lt;description&gt;</code>: review existing code; description mode records voting outcomes and OOS artifacts locally — file follow-up issues with <code>/issue</code> when you want GitHub tracking.</td></tr>
+    <tr><td colspan="2">Code review with the specialist panel described in <code>docs/review-agents.md</code>. <code>--diff</code>: review branch changes and implement fixes. <code>&lt;description&gt;</code>: review existing code; description mode records voting outcomes and OOS artifacts locally — file follow-up issues with <code>/issue</code> when you want GitHub tracking. <code>--subagent</code>, <code>--dynamic-archetypes</code>, <code>--session-env</code>, and <code>--step-prefix</code> are used mainly by <code>/implement</code> Step 5.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#review-and-fix"><code>/review-and-fix</code></a></td>
-      <td><code>--findings-file &lt;path&gt; --review-tmpdir &lt;path&gt; [--session-env &lt;path&gt;]</code></td>
+      <td><code>--findings-file &lt;path&gt; [--session-env &lt;path&gt;] [--review-tmpdir &lt;path&gt;]</code></td>
     </tr>
     <tr><td colspan="2">Apply accepted review findings as code fixes via Codex/Cursor/Claude-subagent dispatch. Internal sub-skill invoked by <code>/review</code> in diff mode and by <code>/implement</code> Step 5; not a standalone user entry point.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
@@ -140,6 +144,74 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
   </tbody>
 </table>
 
+### Private skills
+
+Dev-only: not shipped with the plugin; runnable only inside the larch source tree.
+
+<table>
+  <thead>
+    <tr><th>Name</th><th>Arguments</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><a href="docs/skills.md#agnix-fix"><code>/agnix-fix</code></a></td>
+      <td><code>&lt;upstream-issue-number&gt; [extra-flags...]</code></td>
+    </tr>
+    <tr><td colspan="2">Fix an open <code>agent-sh/agnix</code> issue end-to-end via fork-CI dry-run: fetch the upstream issue body, provision the <code>skip-changelog</code> label on the fork, then forward to <code>/implement --forked</code> with the positional upstream issue number.</td></tr>
+    <tr><td colspan="2"><hr></td></tr>
+    <tr>
+      <td><a href="docs/skills.md#analyze-issues"><code>/analyze-issues</code></a></td>
+      <td><code>[--limit N] [--span-days N] [--top-K N] [--categories=auto|default] [--lenient]</code></td>
+    </tr>
+    <tr><td colspan="2">Generate a backlog-and-process insight report from a repo's GitHub issues: coverage stats, category breakdown, cumulative-growth chart, wasteful-work signatures, and reviewer/persona effectiveness.</td></tr>
+    <tr><td colspan="2"><hr></td></tr>
+    <tr>
+      <td><a href="docs/skills.md#audit-runs"><code>/audit-runs</code></a></td>
+      <td><code>--skill &lt;design|implement&gt; [&lt;verbal-description&gt;] [--repo owner/name] [--allow-concurrent]</code></td>
+    </tr>
+    <tr><td colspan="2">Audit recently-merged larch run logs for anomalies, file the chain-of-history audit-report issue, and propose bug-issue follow-ups that require explicit user direction before any filing.</td></tr>
+    <tr><td colspan="2"><hr></td></tr>
+    <tr>
+      <td><a href="docs/skills.md#combine-issues"><code>/combine-issues</code></a></td>
+      <td><code>[--oos]</code></td>
+    </tr>
+    <tr><td colspan="2">Combine related open issues into fewer broader ones (closing the sources) to reduce token spend. <code>--oos</code> operates only on <code>[OOS]</code>-prefixed issues, discards stale items, and proposes an aggressive combination scheme.</td></tr>
+    <tr><td colspan="2"><hr></td></tr>
+    <tr>
+      <td><a href="docs/skills.md#larch-size"><code>/larch-size</code></a></td>
+      <td><em>(none)</em></td>
+    </tr>
+    <tr><td colspan="2">Report larch repository line counts (Bash, Python, Markdown) and <code>larch-logs</code> size breakdowns. Takes no flags.</td></tr>
+    <tr><td colspan="2"><hr></td></tr>
+    <tr>
+      <td><a href="docs/skills.md#rebalance-tests"><code>/rebalance-tests</code></a></td>
+      <td><code>[--kind {harness,python,all}] [--repo owner/name] [--n-runs N] [--branch-prefix PREFIX] [--n-python-shards N]</code></td>
+    </tr>
+    <tr><td colspan="2">Rebalance CI test harness shards, Python unit-test shards, or both from recent CI timings; create one PR and trigger verification CI. Harness verification is warning-only; Python timing verification fails closed.</td></tr>
+    <tr><td colspan="2"><hr></td></tr>
+    <tr>
+      <td><a href="docs/skills.md#release"><code>/release</code></a></td>
+      <td><code>[--dry-run] [--bump major|minor|patch] [--repo OWNER/REPO]</code></td>
+    </tr>
+    <tr><td colspan="2">Operator-run release cut (model cannot auto-invoke): gather merged PRs since the last Latest release, generate notes, decide the semver bump, open and merge the <code>plugin.json</code> bump PR, tag and create the GitHub Release, promote to Latest, then run <code>/upgrade-larch</code>.</td></tr>
+  </tbody>
+</table>
+
+### Non-skill entrypoints
+
+<table>
+  <thead>
+    <tr><th>Name</th><th>Arguments</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><a href="docs/skills.md#relevant-checks-script"><code>python/cli.py checks run-relevant</code></a></td>
+      <td><em>(none)</em></td>
+    </tr>
+    <tr><td colspan="2">Consumer-provided validation entrypoint (not a SlashCommand skill). Orchestrators call it through <code>python/cli.py checks run-relevant</code>. <strong>Not part of the plugin surface; each consuming repo provides its own executable script.</strong></td></tr>
+  </tbody>
+</table>
+
 See [docs/skills.md](docs/skills.md) for full details on each skill.
 
 ## Aliases
@@ -148,4 +220,4 @@ Shortcut skills shipped with the plugin. Each alias forwards to an existing skil
 
 | Alias | Equivalent |
 |---|---|
-| [`/im`](skills/im/SKILL.md) | `/implement --merge` (same public flags as `/implement`; requires positional `<issue-N>`) |
+| [`/im`](docs/skills.md#im) | `/implement --merge` (same public flags as `/implement`; requires positional `<issue-N>`) |

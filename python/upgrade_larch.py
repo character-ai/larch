@@ -40,16 +40,9 @@ TEST_FILE_CLEANUP_PATTERNS = (
     "parallel-tests.py",
     "Makefile",
 )
-DEV_ONLY_SKILL_CLEANUP_PATTERNS = (
-    "skills/test-issue/SKILL.md",
-    "skills/test-issue/scripts/test-issue.sh",
-)
 SKILL_HARNESS_CLEANUP_GLOBS = (
     "skills/*/scripts/test-*.sh",
     "skills/*/scripts/test-*.md",
-)
-SKILL_HARNESS_SKIP_PREFIXES = (
-    "skills/test-issue/",
 )
 
 
@@ -142,15 +135,8 @@ def clean_test_files_from_cache(version: str) -> None:
         for candidate in _glob_cache_cleanup(version_root, pattern):
             if candidate.is_file() or candidate.is_symlink():
                 file_candidates.add(candidate)
-    for pattern in DEV_ONLY_SKILL_CLEANUP_PATTERNS:
-        for candidate in _glob_cache_cleanup(version_root, pattern):
-            if candidate.is_file() or candidate.is_symlink():
-                file_candidates.add(candidate)
     for pattern in SKILL_HARNESS_CLEANUP_GLOBS:
         for candidate in _glob_cache_cleanup(version_root, pattern):
-            relative = candidate.relative_to(version_root).as_posix()
-            if relative.startswith(SKILL_HARNESS_SKIP_PREFIXES):
-                continue
             if candidate.is_file() or candidate.is_symlink():
                 file_candidates.add(candidate)
     dir_candidates = [version_root / name for name in DEV_TOP_LEVEL_CLEANUP_DIRS]

@@ -49,8 +49,6 @@ def _populate_cleanup_fixture(version_root: Path) -> None:
         version_root / "scripts/test-upgrade.md",
         version_root / "skills/design/scripts/test-design-step6.sh",
         version_root / "skills/design/scripts/test-design-step6.md",
-        version_root / "skills/test-issue/SKILL.md",
-        version_root / "skills/test-issue/scripts/test-issue.sh",
         version_root / "parallel-tests.py",
         version_root / "Makefile",
     ):
@@ -166,8 +164,6 @@ def test_clean_test_files_from_cache_removes_dev_test_infrastructure(monkeypatch
         "scripts/test-upgrade.md",
         "skills/design/scripts/test-design-step6.sh",
         "skills/design/scripts/test-design-step6.md",
-        "skills/test-issue/SKILL.md",
-        "skills/test-issue/scripts/test-issue.sh",
         "parallel-tests.py",
         "Makefile",
     )
