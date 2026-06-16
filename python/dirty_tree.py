@@ -190,12 +190,18 @@ def checkpoint_main(argv: list[str]) -> int:
     os.environ["LARCH_QUIET_DISABLE"] = "1"
     parser = argparse.ArgumentParser(prog="dirty-tree checkpoint")
     parser.add_argument("--sidecar", default="")
+    parser.add_argument("--cwd", default="")
     try:
         args = parser.parse_args(argv)
     except SystemExit:
         _publish(_result_lines(status="unknown", mode="checkpoint", reason="argv-error"))
         return 0
-    lines = checkpoint(sidecar=args.sidecar)
+    # Run git in the consumer repo, not the process CWD. When larch runs from the
+    # plugin cache (not a git repo), an unset cwd makes `git status` exit non-zero
+    # and map to STATUS=unknown, which callers treat as dirty (issue #4509).
+    # Precedence: explicit --cwd, then the LARCH_CONSUMER_REPO env var, then unset.
+    cwd = args.cwd or os.environ.get("LARCH_CONSUMER_REPO", "")
+    lines = checkpoint(sidecar=args.sidecar, cwd=cwd or None)
     _publish(lines, args.sidecar if _valid_meta_path(args.sidecar) else "")
     return 0
 

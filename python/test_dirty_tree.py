@@ -216,9 +216,13 @@ def test_baseline_main_writes_sidecar(tmp_path, monkeypatch) -> None:
 
 
 def test_checkpoint_main_disables_inherited_quiet(monkeypatch, capsys) -> None:
+    def fake_checkpoint(*, sidecar: str = "", cwd: str | None = None) -> list[str]:
+        _ = sidecar, cwd
+        return ["STATUS=clean", "MODE=checkpoint"]
+
     monkeypatch.setenv("LARCH_QUIET_ACTIVE", "1")
     monkeypatch.setenv("LARCH_QUIET_PID", "999999")
-    monkeypatch.setattr(dirty_tree, "checkpoint", lambda sidecar="": ["STATUS=clean", "MODE=checkpoint"])  # noqa: ARG005
+    monkeypatch.setattr(dirty_tree, "checkpoint", fake_checkpoint)
     assert dirty_tree.checkpoint_main([]) == 0
     assert os.environ["LARCH_QUIET_DISABLE"] == "1"
     assert "STATUS=clean" in capsys.readouterr().out
@@ -270,3 +274,59 @@ def test_run_bytes_forwards_cwd_to_subprocess(monkeypatch, tmp_path) -> None:
     assert rc == 0
     assert out == b"out"
     assert captured["cwd"] == str(tmp_path)
+
+
+def test_checkpoint_main_forwards_cwd_flag(monkeypatch, capsys) -> None:
+    seen: dict[str, object] = {}
+
+    def fake_checkpoint(*, sidecar: str = "", cwd: str | None = None) -> list[str]:
+        seen["sidecar"] = sidecar
+        seen["cwd"] = cwd
+        return ["STATUS=clean", "MODE=checkpoint"]
+
+    monkeypatch.setattr(dirty_tree, "checkpoint", fake_checkpoint)
+    assert dirty_tree.checkpoint_main(["--cwd", "/consumer/repo"]) == 0
+    assert seen["cwd"] == "/consumer/repo"
+    assert "STATUS=clean" in capsys.readouterr().out
+
+
+def test_checkpoint_main_cwd_falls_back_to_consumer_repo_env(monkeypatch) -> None:
+    seen: dict[str, object] = {}
+
+    def fake_checkpoint(*, sidecar: str = "", cwd: str | None = None) -> list[str]:
+        _ = sidecar
+        seen["cwd"] = cwd
+        return ["STATUS=clean", "MODE=checkpoint"]
+
+    monkeypatch.setattr(dirty_tree, "checkpoint", fake_checkpoint)
+    monkeypatch.setenv("LARCH_CONSUMER_REPO", "/env/consumer/repo")
+    assert dirty_tree.checkpoint_main([]) == 0
+    assert seen["cwd"] == "/env/consumer/repo"
+
+
+def test_checkpoint_main_cwd_flag_overrides_env(monkeypatch) -> None:
+    seen: dict[str, object] = {}
+
+    def fake_checkpoint(*, sidecar: str = "", cwd: str | None = None) -> list[str]:
+        _ = sidecar
+        seen["cwd"] = cwd
+        return ["STATUS=clean", "MODE=checkpoint"]
+
+    monkeypatch.setattr(dirty_tree, "checkpoint", fake_checkpoint)
+    monkeypatch.setenv("LARCH_CONSUMER_REPO", "/env/consumer/repo")
+    assert dirty_tree.checkpoint_main(["--cwd", "/flag/repo"]) == 0
+    assert seen["cwd"] == "/flag/repo"
+
+
+def test_checkpoint_main_cwd_unset_is_none(monkeypatch) -> None:
+    seen: dict[str, object] = {}
+
+    def fake_checkpoint(*, sidecar: str = "", cwd: str | None = None) -> list[str]:
+        _ = sidecar
+        seen["cwd"] = cwd
+        return ["STATUS=clean", "MODE=checkpoint"]
+
+    monkeypatch.setattr(dirty_tree, "checkpoint", fake_checkpoint)
+    monkeypatch.delenv("LARCH_CONSUMER_REPO", raising=False)
+    assert dirty_tree.checkpoint_main([]) == 0
+    assert seen["cwd"] is None
