@@ -1,0 +1,14 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	agent-lint.toml:391-392	The plan adds source-only `skills/implement/scripts/lib-implement-clone-tag.sh` but does not list an `agent-lint.toml` G004 exclusion for it (same pattern as `lib-resolve-implement-tmpdir.sh`).	`make lint` / agent-lint G004 scans SKILL.md literal invocations and does not follow shell `source` edges; the clone-tag helper may be flagged unreachable/dead and block the PR.	Add `### UPDATED: agent-lint.toml` (or fold into an existing lint-touch surface): exclude `skills/implement/scripts/lib-implement-clone-tag.sh` and `lib-implement-clone-tag.md` with a sourced-only comment mirroring `lib-resolve-implement-tmpdir.sh`.
+
+## 1. Missing agent-lint reachability for source-only clone-tag helper (risk-integration)
+
+The plan correctly extracts `CLONE_TAG_FULL` / `EXPECTED_TMPDIR_BASENAME_PREFIX` into `lib-implement-clone-tag.sh` and sources it from `step-8-ship.sh` and `step-8-seed-initial.sh`. That matches how `lib-resolve-implement-tmpdir.sh` is handled today: it lives in `agent-lint.toml` exclusions because G004 does not follow `source` edges.
+
+Without the same exclusion, `make lint` may fail even when the feature works.
+
+**Suggested revision:** add an `agent-lint.toml` update to the plan (minimal: two exclusion entries + comment).
+
+---
+
+[OUT_OF_SCOPE] `skills/implement/SKILL.md` Extracted Script Registry (lines 87–97) is not listed for update alongside the new Step 8 wrappers; discoverability only, not a runtime defect.
