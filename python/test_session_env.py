@@ -867,6 +867,145 @@ def test_setup_writes_session_id_and_keepalive(tmp_path: Path, monkeypatch: pyte
     assert not any(line.startswith(("PID=", "PPID=", "PREFIX=", "CREATED=", "NOTE=")) for line in sentinel.splitlines())
 
 
+def _make_implement_candidate(
+    root: Path,
+    name: str,
+    cwd: str,
+    *,
+    sentinel: str = "design-export/manifest.env",
+    session_id: str = "sid-1",
+    mtime: int = 1000,
+    keepalive_text: str | None = None,
+) -> Path:
+    candidate = root / f"claude-implement-{name}"
+    candidate.mkdir(parents=True)
+    if keepalive_text is None:
+        keepalive_text = f"# larch session identity (hook routing)\nCLONE_PATH={cwd}\nSESSION_ID={session_id}\n"
+    (candidate / ".larch-keepalive").write_text(keepalive_text, encoding="utf-8")
+    sentinel_path = candidate / sentinel
+    sentinel_path.parent.mkdir(parents=True, exist_ok=True)
+    sentinel_path.write_text("sentinel\n", encoding="utf-8")
+    os.utime(sentinel_path, (mtime, mtime))
+    return candidate
+
+
+def test_resolve_implement_tmpdir_empty_cwd_and_roots(tmp_path: Path) -> None:
+    env = {"HOME": "", "XDG_CACHE_HOME": str(tmp_path / "xdg")}
+    assert session_env.implement_session_roots(env=env)[0] == tmp_path / "xdg" / "larch" / "sessions"
+    assert session_env.implement_session_roots(env={"HOME": ""})[0] == Path("/tmp/.cache/larch/sessions")
+    assert session_env.resolve_implement_tmpdir("", env=env, now=1000) == ""
+    cli = run_cli("resolve-implement-tmpdir")
+    assert cli.returncode == 0
+    assert cli.stdout == ""
+
+
+def test_resolve_implement_tmpdir_routes_clone_path_and_embedded_equals(tmp_path: Path) -> None:
+    root = tmp_path / "cache" / "larch" / "sessions"
+    cwd = str(tmp_path / "repo=name")
+    other = str(tmp_path / "repo-other")
+    wanted = _make_implement_candidate(root, "wanted", cwd, mtime=2000)
+    _make_implement_candidate(root, "other", other, mtime=3000)
+    env = {"XDG_CACHE_HOME": str(tmp_path / "cache"), "HOME": ""}
+    assert session_env.resolve_implement_tmpdir(cwd, env=env, now=2500) == str(wanted)
+
+
+def test_resolve_implement_tmpdir_session_id_disambiguates_and_disqualifies(tmp_path: Path) -> None:
+    root = tmp_path / "cache" / "larch" / "sessions"
+    cwd = str(tmp_path / "repo")
+    wanted = _make_implement_candidate(root, "sid-a", cwd, session_id="sid-a", mtime=1000)
+    _make_implement_candidate(root, "sid-b", cwd, session_id="sid-b", mtime=3000)
+    env = {"XDG_CACHE_HOME": str(tmp_path / "cache"), "LARCH_TOKEN_SESSION_ID": "sid-a"}
+    assert session_env.resolve_implement_tmpdir(cwd, env=env, now=25000) == str(wanted)
+    env["LARCH_TOKEN_SESSION_ID"] = "sid-missing"
+    assert session_env.resolve_implement_tmpdir(cwd, env=env, now=25000) == ""
+
+
+def test_resolve_implement_tmpdir_legacy_sentinels_and_acceptance_order(tmp_path: Path) -> None:
+    root = tmp_path / "cache" / "larch" / "sessions"
+    cwd = str(tmp_path / "repo")
+    first_order = _make_implement_candidate(root, "first-order", cwd, sentinel="design-export/manifest.env", mtime=1000)
+    review = first_order / "review-round-summary.md"
+    review.write_text("newer review\n", encoding="utf-8")
+    os.utime(review, (5000, 5000))
+    expected = _make_implement_candidate(root, "review-only", cwd, sentinel="review-round-summary.md", mtime=3000)
+    _make_implement_candidate(root, "bump", cwd, sentinel=".bump-version-armed", mtime=2000)
+    _make_implement_candidate(root, "release", cwd, sentinel=".release-armed", mtime=2500)
+    env = {"XDG_CACHE_HOME": str(tmp_path / "cache"), "LARCH_IMPLEMENT_TMPDIR_TTL_SECONDS": "0", "LARCH_TOKEN_SESSION_ID": ""}
+    assert session_env.resolve_implement_tmpdir(cwd, env=env, now=10000) == str(expected)
+
+
+@pytest.mark.parametrize("sentinel", [".bump-version-armed", ".release-armed"])
+def test_resolve_implement_tmpdir_legacy_sentinel_only_candidate(
+    tmp_path: Path, sentinel: str
+) -> None:
+    root = tmp_path / "cache" / "larch" / "sessions"
+    cwd = str(tmp_path / "repo")
+    expected = _make_implement_candidate(root, "legacy-only", cwd, sentinel=sentinel, mtime=1000)
+    env = {"XDG_CACHE_HOME": str(tmp_path / "cache"), "LARCH_IMPLEMENT_TMPDIR_TTL_SECONDS": "0", "LARCH_TOKEN_SESSION_ID": ""}
+    assert session_env.resolve_implement_tmpdir(cwd, env=env, now=5000) == str(expected)
+
+
+@pytest.mark.parametrize("sentinel", [".bump-version-armed", ".release-armed"])
+def test_resolve_implement_tmpdir_legacy_sentinel_newest_candidate(
+    tmp_path: Path, sentinel: str
+) -> None:
+    root = tmp_path / "cache" / "larch" / "sessions"
+    cwd = str(tmp_path / "repo")
+    _make_implement_candidate(root, "older", cwd, sentinel="design-export/manifest.env", mtime=1000)
+    expected = _make_implement_candidate(root, "legacy-newest", cwd, sentinel=sentinel, mtime=3000)
+    env = {"XDG_CACHE_HOME": str(tmp_path / "cache"), "LARCH_IMPLEMENT_TMPDIR_TTL_SECONDS": "0", "LARCH_TOKEN_SESSION_ID": ""}
+    assert session_env.resolve_implement_tmpdir(cwd, env=env, now=5000) == str(expected)
+
+
+def test_resolve_implement_tmpdir_ttl_and_session_bypass(tmp_path: Path) -> None:
+    root = tmp_path / "cache" / "larch" / "sessions"
+    cwd = str(tmp_path / "repo")
+    fresh = _make_implement_candidate(root, "fresh", cwd, mtime=800)
+    _make_implement_candidate(root, "equal-stale", cwd, mtime=1000 - 21600)
+    env = {"XDG_CACHE_HOME": str(tmp_path / "cache")}
+    assert session_env.resolve_implement_tmpdir(cwd, env=env, now=1000) == str(fresh)
+    env = {"XDG_CACHE_HOME": str(tmp_path / "cache"), "LARCH_IMPLEMENT_TMPDIR_TTL_SECONDS": "200"}
+    assert session_env.resolve_implement_tmpdir(cwd, env=env, now=1000) == ""
+    env = {"XDG_CACHE_HOME": str(tmp_path / "cache"), "LARCH_IMPLEMENT_TMPDIR_TTL_SECONDS": "bogus"}
+    assert session_env.resolve_implement_tmpdir(cwd, env=env, now=1000) == str(fresh)
+    env = {"XDG_CACHE_HOME": str(tmp_path / "cache"), "LARCH_IMPLEMENT_TMPDIR_TTL_SECONDS": "0", "LARCH_TOKEN_SESSION_ID": ""}
+    assert session_env.resolve_implement_tmpdir(cwd, env=env, now=1000) == str(fresh)
+    env = {"XDG_CACHE_HOME": str(tmp_path / "cache"), "LARCH_TOKEN_SESSION_ID": "sid-1"}
+    assert session_env.resolve_implement_tmpdir(cwd, env=env, now=0) == str(fresh)
+
+
+def test_resolve_implement_tmpdir_newest_tie_and_malformed_skip(tmp_path: Path) -> None:
+    root = tmp_path / "cache" / "larch" / "sessions"
+    cwd = str(tmp_path / "repo")
+    lex_winner = _make_implement_candidate(root, "aaa", cwd, mtime=1000)
+    _make_implement_candidate(root, "bbb", cwd, mtime=1000)
+    newest = _make_implement_candidate(root, "newest", cwd, mtime=2000)
+    _make_implement_candidate(
+        root,
+        "malformed",
+        cwd,
+        mtime=3000,
+        keepalive_text=f"CLONE_PATH={cwd}\rSESSION_ID=sid-1\n",
+    )
+    env = {"XDG_CACHE_HOME": str(tmp_path / "cache"), "LARCH_IMPLEMENT_TMPDIR_TTL_SECONDS": "0"}
+    assert session_env.resolve_implement_tmpdir(cwd, env=env, now=4000) == str(newest)
+    newest.joinpath("design-export/manifest.env").unlink()
+    assert session_env.resolve_implement_tmpdir(cwd, env=env, now=4000) == str(lex_winner)
+
+
+def test_resolve_implement_tmpdir_cli_output(tmp_path: Path) -> None:
+    root = tmp_path / "cache" / "larch" / "sessions"
+    cwd = str(tmp_path / "repo")
+    wanted = _make_implement_candidate(root, "cli", cwd, mtime=1000)
+    env = {"XDG_CACHE_HOME": str(tmp_path / "cache"), "LARCH_IMPLEMENT_TMPDIR_TTL_SECONDS": "0", "LARCH_TOKEN_SESSION_ID": ""}
+    resolved = run_cli("resolve-implement-tmpdir", "--cwd", cwd, env=env)
+    assert resolved.returncode == 0, resolved.stderr
+    assert resolved.stdout == str(wanted)
+    missing = run_cli("resolve-implement-tmpdir", "--cwd", str(tmp_path / "missing"), env=env)
+    assert missing.returncode == 0
+    assert missing.stdout == ""
+
+
 def test_ignore_placeholder_run_dirs_drops_only_run_n() -> None:
     names = ["run-1", "run-22", "run-abc", "shared", "run", "0199F1E2-2238-403D-89F3-AAAAAAAAAAAA"]
     assert session_env._ignore_placeholder_run_dirs("/x", names) == {"run-1", "run-22"}  # pyright: ignore[reportPrivateUsage]

@@ -11,11 +11,12 @@ import shlex
 import shutil
 import sys
 import tempfile
+import time
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 
 import agents
 import config
@@ -177,14 +178,32 @@ def _read_kv_file_text(path: Path) -> str:
     return text
 
 
-def cleanup_cache_sessions_root() -> Path:
-    xdg = os.environ.get("XDG_CACHE_HOME")
+IMPLEMENT_SENTINEL_RELS = (
+    Path("design-export") / "manifest.env",
+    Path("review-round-summary.md"),
+    Path(".bump-version-armed"),
+    Path(".release-armed"),
+)
+IMPLEMENT_TMPDIR_TTL_SECONDS = 21600
+
+
+def cleanup_cache_sessions_root(*, env: Mapping[str, str] | None = None) -> Path:
+    environ = os.environ if env is None else env
+    xdg = environ.get("XDG_CACHE_HOME")
     if xdg:
         base = xdg
     else:
-        home = os.environ.get("HOME", "")
+        home = environ.get("HOME", "")
         base = f"{home}/.cache" if home else f"{TMP_FALLBACK}/.cache"
     return Path(base) / "larch" / "sessions"
+
+
+def implement_session_roots(*, env: Mapping[str, str] | None = None) -> tuple[Path, ...]:
+    return (
+        cleanup_cache_sessions_root(env=env),
+        TMP_ROOT,
+        Path("/private/tmp"),
+    )
 
 
 def _resolved(path: Path) -> Path:
@@ -312,6 +331,95 @@ def _read_kv_raw(path: Path) -> dict[str, str]:
         key, value = line.split("=", 1)
         data[key] = value
     return data
+
+
+def _read_first_raw_key(path: Path, key: str) -> str | None:
+    for line in _read_kv_file_text(path).splitlines():
+        if "=" not in line:
+            continue
+        found_key, value = line.split("=", 1)
+        if found_key == key:
+            return value
+    return None
+
+
+def _first_existing_implement_sentinel(candidate: Path) -> Path | None:
+    for rel in IMPLEMENT_SENTINEL_RELS:
+        sentinel = candidate / rel
+        if sentinel.is_file():
+            return sentinel
+    return None
+
+
+def _implement_tmpdir_ttl(env: Mapping[str, str]) -> int:
+    raw = env.get("LARCH_IMPLEMENT_TMPDIR_TTL_SECONDS", str(IMPLEMENT_TMPDIR_TTL_SECONDS))
+    return int(raw) if raw.isdigit() else IMPLEMENT_TMPDIR_TTL_SECONDS
+
+
+def resolve_implement_tmpdir(
+    hook_cwd: str,
+    *,
+    env: Mapping[str, str] | None = None,
+    now: int | None = None,
+) -> str:
+    if not hook_cwd:
+        return ""
+    environ = os.environ if env is None else env
+    now_value = int(time.time()) if now is None else now
+    best = ""
+    best_mtime = -1
+    session_id = environ.get("LARCH_TOKEN_SESSION_ID", "")
+    for root in implement_session_roots(env=environ):
+        try:
+            candidates = list(root.glob("claude-implement-*")) if root.is_dir() else []
+        except OSError:
+            continue
+        for candidate in candidates:
+            try:
+                if not candidate.is_dir():
+                    continue
+                sentinel = _first_existing_implement_sentinel(candidate)
+                if sentinel is None:
+                    continue
+                keepalive = candidate / ".larch-keepalive"
+                if not keepalive.is_file():
+                    continue
+                if _read_first_raw_key(keepalive, "CLONE_PATH") != hook_cwd:
+                    continue
+                session_match = False
+                if session_id:
+                    if _read_first_raw_key(keepalive, "SESSION_ID") != session_id:
+                        continue
+                    session_match = True
+                mtime = int(sentinel.stat().st_mtime)
+            except (OSError, ValueError):
+                continue
+            if not session_match:
+                ttl = _implement_tmpdir_ttl(environ)
+                if ttl > 0:
+                    if now_value <= 0:
+                        continue
+                    if now_value - mtime >= ttl:
+                        continue
+            candidate_text = str(candidate)
+            if mtime > best_mtime or (mtime == best_mtime and (not best or candidate_text < best)):
+                best_mtime = mtime
+                best = candidate_text
+    return best
+
+
+def resolve_implement_tmpdir_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="session resolve-implement-tmpdir", add_help=False)
+    parser.add_argument("--cwd", default="")
+    try:
+        args = parser.parse_args(argv)
+        resolved = resolve_implement_tmpdir(args.cwd)
+    except (OSError, ValueError, SystemExit) as exc:
+        _plain_err(f"resolve-implement-tmpdir: {exc}")
+        return 1
+    if resolved:
+        sys.stdout.write(resolved)
+    return 0
 
 
 

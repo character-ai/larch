@@ -396,6 +396,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("session", "kill-background-processes"): ("finalize", "kill_background_processes_main"),
     ("session", "local-cleanup"): ("session_env", "local_cleanup_main"),
     ("session", "entry-gate"): ("session_env", "entry_gate_main"),
+    ("session", "resolve-implement-tmpdir"): ("session_env", "resolve_implement_tmpdir_main"),
 }
 
 # Design-lifecycle + plan step1 entrypoints that emit machine-readable stdout.
@@ -505,6 +506,7 @@ _MACHINE_STDOUT_KEYS: frozenset[tuple[str, str]] = frozenset({
     ("diagram", "code-flow"),
     ("render", "run-summary"),
     ("pr", "compose-summary"),
+    ("session", "resolve-implement-tmpdir"),
 })
 
 
