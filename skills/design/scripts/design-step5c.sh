@@ -319,6 +319,17 @@ printf 'FINAL_SUMMARY_PATH=%s\nUPSERT_STATUS=%s\nARCHITECTURE_SOURCE=%s\n' "${FI
 printf 'CLEANUP_ELIGIBLE=%s\n' "${_cleanup_eligible}"
 
 if [[ "${_publish_rc:-0}" -eq 0 || "${_publish_rc:-0}" -eq 1 || "${_publish_rc:-0}" -eq 3 ]]; then
+  if [[ "${PLAN_WRITE_OK:-}" == true ]]; then
+    _render_outcome="approved"
+  else
+    _render_outcome="failed-plan-write"
+  fi
+  python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design render-final-summary \
+    --outcome "$_render_outcome" \
+    --mode "${MODE:-N/A}" \
+    ${REPO:+--repo "$REPO"} \
+    --post-publish-only \
+    >"$DESIGN_TMPDIR/render-final-summary.${_render_outcome}.stdout.log" || true
   emit_final_summary_marked_from_disk
 fi
 

@@ -4930,14 +4930,13 @@ def ingest_launcher_token_sidecar(
         if not token_record:
             return False
     effective_tmpdir = tmpdir if tmpdir is not None else implement_tmpdir
-    if token_record not in seen:
+    if token_record not in seen and effective_tmpdir:
         seen.add(token_record)
-        if effective_tmpdir:
-            runner.run(
-                [sys.executable, str(_PY_CLI), "token", "append-record",
-                 "--tmpdir", effective_tmpdir, "--input", token_record],
-                cwd=cwd,
-            )
+        runner.run(
+            [sys.executable, str(_PY_CLI), "token", "append-record",
+             "--tmpdir", effective_tmpdir, "--input", token_record],
+            cwd=cwd,
+        )
     runner.run(
         [sys.executable, str(_PY_CLI), "token", "record-vendor-sidecar",
          "--input", token_record],

@@ -213,6 +213,42 @@ def test_ingest_launcher_token_sidecar_dedups_append_but_records_each_time(tmp_p
     assert len(active_calls) == 2
 
 
+def test_ingest_launcher_token_sidecar_none_effective_tmpdir_first_call(tmp_path: Path) -> None:
+    runner = IngestRunner()
+    seen: set[str] = set()
+    token_record = tmp_path / "retry.token-record"
+    stdout = f"TOKEN_RECORD={token_record}\n"
+
+    # First call: no effective tmpdir (tmpdir and implement_tmpdir both None).
+    # append-record must be deferred, and the record must stay OUT of `seen` so
+    # a later retry with a real tmpdir can still record it.
+    assert agents.ingest_launcher_token_sidecar(
+        runner,
+        launcher_stdout=stdout,
+        tmpdir=None,
+        implement_tmpdir=None,
+        seen=seen,
+    )
+    assert [call for call in runner.calls if call[2:4] == ("token", "append-record")] == []
+    assert seen == set()
+
+    # Second call: tmpdir now available; append-record must run (not silently missed).
+    assert agents.ingest_launcher_token_sidecar(
+        runner,
+        launcher_stdout=stdout,
+        tmpdir=str(tmp_path),
+        implement_tmpdir=None,
+        seen=seen,
+    )
+
+    append_calls = [call for call in runner.calls if call[2:4] == ("token", "append-record")]
+    active_calls = [call for call in runner.calls if call[2:4] == ("token", "record-vendor-sidecar")]
+    assert len(append_calls) == 1
+    assert append_calls[0][-1] == str(token_record)
+    assert seen == {str(token_record)}
+    assert len(active_calls) == 2
+
+
 def test_classify_success() -> None:
     failure = agents.classify_launch_failure(0)
     assert failure == LaunchFailure("none", "")
