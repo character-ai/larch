@@ -23,6 +23,30 @@ def _plugin_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
+def _consumer_repo_root() -> Path | None:
+    """Git toplevel of the current working directory, or ``None`` when cwd is
+    not inside a git work tree.
+
+    /design post-plan validation runs from the plugin cache, but plan-command
+    fences reference scripts by repo-relative path. Passing the consumer repo as
+    ``--repo-root`` lets scripts that exist in the consumer repo but not the
+    plugin cache pass the validator's existence check (#4490).
+    """
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(Path.cwd()), "rev-parse", "--show-toplevel"],  # noqa: S607
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return None
+    out = result.stdout.strip()
+    if result.returncode == 0 and out:
+        return Path(out).resolve()
+    return None
+
+
 def _parse_kv(text: str) -> dict[str, str]:
     out: dict[str, str] = {}
     for line in text.splitlines():
@@ -185,6 +209,12 @@ def postplan_emit_main(argv: Sequence[str]) -> int:
     validate_env = os.environ.copy()
     validate_env["DESIGN_TMPDIR"] = str(design_tmpdir)
     validate_env["LARCH_QUIET_DISABLE"] = "1"
+    # Resolve plan-command script existence against the consumer repo first (it
+    # may carry scripts absent from the plugin cache), while preserving the
+    # plugin cache as CLAUDE_PLUGIN_ROOT so plugin-only scripts still pass the
+    # dual-root existence check in `plan validate` (#4490).
+    validate_env["CLAUDE_PLUGIN_ROOT"] = str(root)
+    repo_root_arg = _consumer_repo_root() or root
     validate = _run_cli(
         root,
         "plan",
@@ -194,7 +224,7 @@ def postplan_emit_main(argv: Sequence[str]) -> int:
         "--design-tmpdir",
         str(design_tmpdir),
         "--repo-root",
-        str(root),
+        str(repo_root_arg),
         env=validate_env,
     )
     validate_kv = _parse_kv((validate.stdout or "") + "\n" + (validate.stderr or ""))
