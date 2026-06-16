@@ -1,0 +1,13 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	safety	python/ship.py:new seed_initial_state_main	Create-if-absent rule allows overwriting a non-empty corrupt state file without KEY=value lines	A truncated or corrupt ship-pr-state.sh containing non-KV data can be silently replaced, hiding state corruption despite the plan's fail-closed non-empty-state requirement	Reject any existing non-empty state file before writing, and add the create-if-absent test for non-empty non-KV content
+2	in_scope	important	architecture	skills/implement/SKILL.md:746-791	Step 8 pre-seed Python 3.11 guard has no fence-shape-compliant implementation surface	The plan requires a Bash guard before seed-initial-state, but SKILL.md Bash fences must be thin one-line launcher calls; an inline guard would fail or weaken scripts/test-implement-fence-shape.sh	Add a tiny launched guard script or a guard-only mode in an existing wrapper, then update SKILL.md and fence-shape tests to call that surface
+
+1. **[safety]** `python/ship.py:new seed_initial_state_main`
+   - **Concern:** The seeder contract says to refuse only a non-empty file with a `KEY=value` line.
+   - **Breakage:** A non-empty corrupt file without `=` can be overwritten.
+   - **Revision:** Refuse any existing non-empty state file.
+
+2. **[architecture]** `skills/implement/SKILL.md:746-791`
+   - **Concern:** The pre-seed 3.11 guard needs a compliant Bash fence target.
+   - **Breakage:** An inline guard conflicts with the fence-shape standard.
+   - **Revision:** Add a launched guard surface and pin it in tests.
