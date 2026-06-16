@@ -243,6 +243,8 @@ until [ -f "$DESIGN_TMPDIR/.step3-review-result.env" ]; do sleep 30; done
 until [ -f "$DESIGN_TMPDIR/.completed/step-3" ]; do sleep 30; done
 ```
 
+Bash tool calls do not persist `$DESIGN_TMPDIR`. When it is not already exported, prefix the waiter with a single `DESIGN_TMPDIR=<absolute-path>;` assignment so the sentinel resolves; the guard accepts that one leading assignment (`DESIGN_TMPDIR=/abs/path; until [ -f "$DESIGN_TMPDIR/.completed/step-3" ]; do sleep 30; done`). The bare `until` form above still matches when `$DESIGN_TMPDIR` is exported (#4489).
+
 Do NOT fall back to Monitor.
 
 <!-- step:0 — Session Setup -->
