@@ -1,14 +1,15 @@
 # pyright: reportUnusedCallResult=false
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
+import contextlib
+import io
 import json
 import os
 import signal
 import subprocess
 import sys
 import time
-import contextlib
-import io
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
@@ -131,11 +132,28 @@ def _record_collect_calls(monkeypatch: pytest.MonkeyPatch) -> list[list[str]]:
     calls: list[list[str]] = []
     real_run = proc_module.run
 
-    def recording_run(argv, **kwargs):  # type: ignore[no-untyped-def]
+    def recording_run(
+        argv: Sequence[str],
+        *,
+        timeout: float | None = None,
+        cwd: str | None = None,
+        env: Mapping[str, str] | None = None,
+        check: bool = False,
+        stdout: int | None = None,
+        stderr: int | None = None,
+    ) -> proc_module.CommandResult:
         argv_list = list(argv)
         if "collect-results" in argv_list:
             calls.append(argv_list)
-        return real_run(argv, **kwargs)
+        return real_run(
+            argv,
+            timeout=timeout,
+            cwd=cwd,
+            env=env,
+            check=check,
+            stdout=stdout,
+            stderr=stderr,
+        )
 
     monkeypatch.setattr(agent_waterfall.proc, "run", recording_run)
     return calls
@@ -515,7 +533,7 @@ def test_sigterm_kills_launcher_subtree(tmp_path: Path, stub_env: dict[str, str]
     manifest, _ = _slot(tmp_path, tool="cursor", output_name="term-trap-slot.txt")
     stub_pid_file = tmp_path / "term-trap-stub.pid"
     env = {**stub_env, "CURSOR_STUB_DELAY": "30", "CURSOR_STUB_PID_FILE": str(stub_pid_file)}
-    dispatcher = subprocess.Popen(
+    with subprocess.Popen(
         [
             sys.executable,
             str(CLI),
@@ -535,26 +553,26 @@ def test_sigterm_kills_launcher_subtree(tmp_path: Path, stub_env: dict[str, str]
         env=env,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
-    )
-    deadline = time.monotonic() + 10
-    while not stub_pid_file.is_file():
-        if time.monotonic() >= deadline:
-            dispatcher.kill()
-            dispatcher.wait()
-            pytest.fail("cursor stub PID file not created within 10s")
-        time.sleep(0.05)
-    stub_pid = int(stub_pid_file.read_text(encoding="utf-8").strip())
-    time.sleep(0.2)
-    os.kill(dispatcher.pid, signal.SIGTERM)
-    rc = dispatcher.wait(timeout=10)
-    assert rc == 143
-    gone_deadline = time.monotonic() + 5
-    while _pid_alive(stub_pid):
-        if time.monotonic() >= gone_deadline:
-            with contextlib.suppress(ProcessLookupError):
-                os.kill(stub_pid, signal.SIGKILL)
-            pytest.fail("cursor stub launcher still alive after dispatcher SIGTERM")
-        time.sleep(0.05)
+    ) as dispatcher:
+        deadline = time.monotonic() + 10
+        while not stub_pid_file.is_file():
+            if time.monotonic() >= deadline:
+                dispatcher.kill()
+                dispatcher.wait()
+                pytest.fail("cursor stub PID file not created within 10s")
+            time.sleep(0.05)
+        stub_pid = int(stub_pid_file.read_text(encoding="utf-8").strip())
+        time.sleep(0.2)
+        os.kill(dispatcher.pid, signal.SIGTERM)
+        rc = dispatcher.wait(timeout=10)
+        assert rc == 143
+        gone_deadline = time.monotonic() + 5
+        while _pid_alive(stub_pid):
+            if time.monotonic() >= gone_deadline:
+                with contextlib.suppress(ProcessLookupError):
+                    os.kill(stub_pid, signal.SIGKILL)
+                pytest.fail("cursor stub launcher still alive after dispatcher SIGTERM")
+            time.sleep(0.05)
 
 
 def test_grouped_reuse_guard() -> None:
