@@ -119,18 +119,14 @@ if [ -f "$DESIGN_TMPDIR/.step2b-postplan-inline-retry-done" ]; then
   _drafter_postplan_fallback_used=true
 fi
 printf '%s\n' "${_drafter_postplan_fallback_used}" > "$DESIGN_TMPDIR/.step2b-postplan-fallback-used"
-# Vendor selection: LARCH_DESIGN_DRAFTER=codex|claude; when unset, prefer codex if CODEX_PRESENT=true.
+# Vendor selection: LARCH_DESIGN_DRAFTER=codex|claude; when unset, default to claude.
 _step2b_drafter_vendor="${LARCH_DESIGN_DRAFTER:-}"
 if [[ -z "$_step2b_drafter_vendor" ]]; then
-  if [[ "${CODEX_PRESENT:-false}" == "true" ]]; then
-    _step2b_drafter_vendor="codex"
-  else
-    _step2b_drafter_vendor="claude"
-  fi
+  _step2b_drafter_vendor="claude"
 fi
 _step2b_drafter_model=""
 if [[ "$_step2b_drafter_vendor" == "claude" ]]; then
-  _step2b_drafter_model="${LARCH_DESIGN_PLAN_MODEL:-claude-fable-5}"
+  _step2b_drafter_model="${LARCH_DESIGN_PLAN_MODEL:-claude-opus-4-8}"
 fi
 _step2b_drafter_skip_reason=""
 case "$_step2b_drafter_vendor" in

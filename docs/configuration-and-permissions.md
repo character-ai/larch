@@ -203,17 +203,17 @@ The vendor used by `/design` Step 2b's drafter subprocess.
 - Accepted values: `codex`, `claude`. Step 2b dispatches to `scripts/launch-codex-drafter.sh` or `scripts/launch-claude-drafter.sh` accordingly. Any other value causes the drafter to skip and fall back to inline drafting.
 
 **When not set:**
-- Defaults to `codex` when `CODEX_PRESENT=true` (Codex is available in the session); otherwise defaults to `claude`.
+- Defaults to `claude`. Set `LARCH_DESIGN_DRAFTER=codex` to use the Codex drafter.
 
 ### `LARCH_DESIGN_PLAN_MODEL`
 
-The Claude model used by `/design` Step 2b's drafter subprocess when `LARCH_DESIGN_DRAFTER=claude` (or when Codex is unavailable and the drafter falls back to Claude).
+The Claude model used by `/design` Step 2b's drafter subprocess on the default Claude path or when `LARCH_DESIGN_DRAFTER=claude`.
 
 **When set:**
 - Step 2b uses this model for the subprocess-first plan drafting path via `scripts/launch-claude-drafter.sh`. The launcher validates it as one non-empty token with no whitespace or control characters before invoking Claude.
 
 **When not set:**
-- Defaults to `claude-fable-5`. Has no effect when `LARCH_DESIGN_DRAFTER=codex`.
+- Defaults to `claude-opus-4-8`. Empty values also use this default. Has no effect when `LARCH_DESIGN_DRAFTER=codex`.
 
 Clean launcher, content, status, or delimiter failures fall back to inline Step 2b drafting. Only confirmed baseline-delta new mutations (`STATUS=dirty MODE=baseline-delta` in the drafter `.dirty-tree` sidecar) block fallback until recovery.
 
