@@ -46,6 +46,14 @@ case "\$cmd1 \$cmd2" in
           printf 'FINAL_SUMMARY_PATH=%s/final-summary.md\n' "\${DESIGN_TMPDIR:-}"
         } >"\${DESIGN_TMPDIR:-}/.design-publish-result.env"
         ;;
+      success-no-summary)
+        {
+          printf 'PLAN_WRITE_OK=true\n'
+          printf 'VALIDATE_STATUS=ok\n'
+          printf 'PUBLISH_OK=true\n'
+          printf 'FINAL_SUMMARY_PATH=%s/final-summary.md\n' "\${DESIGN_TMPDIR:-}"
+        } >"\${DESIGN_TMPDIR:-}/.design-publish-result.env"
+        ;;
       plan-write-failed)
         printf 'PLAN_WRITE_OK=false\n'
         printf 'VALIDATE_STATUS=ok\n'
@@ -252,5 +260,16 @@ got=$(run_step5c_with_mode "$D5" 0 success-summary)
 [[ "$got" -eq 0 ]] || fail "publish rc=0 should parse result env and exit 0 (got $got)"
 assert_marked_summary_matches "$D5" 'rc=0 publish success'
 pass 'publish-tail rc=0 emits marked final summary'
+
+# Success path with PLAN_WRITE_OK=true but no pre-written final-summary.md:
+# the marked summary can only appear if the success path renders it first.
+D6=$(mktemp -d "$TMP/rc0-no-summary.XXXXXX")
+D6=$(cd "$D6" && pwd -P)
+got=$(run_step5c_with_mode "$D6" 0 success-no-summary)
+[[ "$got" -eq 0 ]] || fail "publish rc=0 (no pre-written summary) should exit 0 (got $got)"
+[ -s "$D6/final-summary.md" ] \
+  || fail 'rc=0 success path must render final-summary.md when absent (render-final-summary not called on success path)'
+assert_marked_summary_matches "$D6" 'rc=0 publish success renders missing summary'
+pass 'publish-tail rc=0 renders final-summary on success path when file absent'
 
 printf 'PASS: test-design-step5c.sh\n'
