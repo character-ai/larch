@@ -6,7 +6,13 @@ INIT="$ROOT/skills/design/scripts/design-step0-init.sh"
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 pass() { printf 'PASS: %s\n' "$*"; }
 
-D=$(mktemp -d "/private/tmp/test-step0-init.XXXXXX")
+if [[ -d /private/tmp ]]; then
+    TMP_BASE="/private/tmp"
+else
+    TMP_BASE="${TMPDIR:-/tmp}"
+    [[ -d "$TMP_BASE" ]] || TMP_BASE="/tmp"
+fi
+D=$(mktemp -d "${TMP_BASE%/}/test-step0-init.XXXXXX")
 trap 'rm -rf "$D"' EXIT
 FAKE="$D/fake-plugin"
 mkdir -p "$FAKE/scripts" "$FAKE/skills/design/scripts" "$D/home"

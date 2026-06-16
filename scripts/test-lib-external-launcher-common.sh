@@ -753,6 +753,15 @@ shift
 exec "$@"
 EOF
     chmod +x "$case_dir/bin/timeout"
+    case "$tool" in
+        codex|cursor)
+            cat > "$case_dir/bin/$tool" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+            chmod +x "$case_dir/bin/$tool"
+            ;;
+    esac
 
     if [[ -n "$session_timeout" ]]; then
         printf 'LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT=%s\n' "$session_timeout" > "$case_dir/session-env-path.env"
