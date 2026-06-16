@@ -7,14 +7,21 @@ targets' selections form a *strict partition*: every test in the file is
 covered by exactly one target (no test uncovered, no test covered twice).
 
 This locks in the per-target `-k` slicing landed for #4439 (Tricks A1/A2),
-the research-target de-duplication (Trick A3), and the timing-blind-spot
+the research-target de-duplication (Trick A3), the timing-blind-spot
 de-duplication of the five previously-untimed full-file pytest groups
-(test_agents/test_tokens/test_report_tokens_cost/test_timing/test_clarify)
-against regression. It does **not** yet enforce the invariant on the
-remaining ~9 timed-but-duplicated multi-target files (e.g. test_run_logs.py,
-test_implement_dispatch.py, test_release.py) that still run their full file
-under several target names; that de-duplication is a tracked follow-up. To
-bring another file under the guard, slice its targets and add it to ENFORCED.
+(test_agents/test_tokens/test_report_tokens_cost/test_timing/test_clarify),
+and the #4459 follow-up batch that closed coverage gaps / overlaps in seven
+more already-sliced files (test_review_dispatch/test_execution_issues/
+test_dirty_tree/test_finalize/test_admission/test_stall_recovery/
+test_plan_review) against regression. It does **not** yet enforce the
+invariant on the multi-target files that still run their full file under
+several target names (e.g. test_run_logs.py, test_implement_dispatch.py,
+test_release.py) or on the heavier `-k`-sliced files whose re-partition
+moves many tests between shards and needs wall-time re-measurement
+(test_review_and_fix.py, test_plan_quality.py, test_bootstrap.py,
+test_pr_body.py, test_file_oos.py); those remain tracked #4459 follow-ups.
+To bring another file under the guard, slice its targets and add it to
+ENFORCED.
 
 Invoked from scripts/test-harness-shards-coverage.sh (rides the
 `test-harness-shards-coverage` harness target, already in `make lint`).
@@ -44,6 +51,16 @@ ENFORCED = (
     "python/test_report_tokens_cost.py",
     "python/test_timing.py",
     "python/test_clarify.py",
+    # #4459 follow-up batch: already-`-k`-sliced files whose selections had
+    # coverage gaps / overlaps, closed into strict partitions with negligible
+    # shard-timing shift (each catch-all absorbs only a handful of tests).
+    "python/test_review_dispatch.py",
+    "python/test_execution_issues.py",
+    "python/test_dirty_tree.py",
+    "python/test_finalize.py",
+    "python/test_admission.py",
+    "python/test_stall_recovery.py",
+    "python/test_plan_review.py",
 )
 
 # Mirrors CARVE_OUTS in scripts/test-harness-shards-coverage.sh: targets that

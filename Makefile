@@ -161,7 +161,7 @@ test-append-tool-failure:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_run_logs.py
 
 test-append-execution-issue:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_execution_issues.py -k append_execution_issue
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_execution_issues.py -k 'not (flush or refresh)'
 
 test-validate-research-output:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_research_eval.py
@@ -206,7 +206,7 @@ test-issue-query:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_issue_query.py -x -q
 
 test-implement-admission:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_admission.py -x -q -k 'gate'
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_admission.py -x -q -k 'not (preflight or fork_env)'
 
 test-anti-improvised-wakeup:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-anti-improvised-wakeup.sh
@@ -497,7 +497,7 @@ test-review-findings-classification:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_tally.py -k findings_classification
 
 test-plan-review-loop:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review.py -q -k loop_dedup
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review.py -q -k 'loop_dedup or migrated_collector'
 
 test-lib-design-round-artifacts:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review.py -q -k round_artifact
@@ -524,7 +524,7 @@ test-design-step3-mav:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-step3-mav.sh
 
 test-design-step3-state:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review.py -q -k 'step3_state or embedded_review'
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review.py -q -k step3_state
 
 test-lib-phase-driver:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_design_lifecycle.py
@@ -658,10 +658,10 @@ test-step2-dispatch:
 test-stall-recovery-report: test-stall-recovery-report-1 test-stall-recovery-report-2 test-stall-recovery-report-3
 
 test-stall-recovery-report-1:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_stall_recovery.py -q -k 'retry_policy or normalize_issue or classify or record_attempt'
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_stall_recovery.py -q -k 'retry_policy or normalize_issue or normalize_outcome or classify or record_attempt'
 
 test-stall-recovery-report-2:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_stall_recovery.py -q -k 'record_escalation or dedup or compose_report or lint or clear_stall or seed_terminal'
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_stall_recovery.py -q -k 'record_escalation or dedup or compose_report or lint_subcommand or clear_stall or seed_terminal or sensitive_corpus'
 
 test-stall-recovery-report-3:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_stall_recovery.py -q -k 'validate_token or validate_terminal or validate_tier_b'
@@ -717,7 +717,7 @@ test-quick-mode-docs-sync:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-quick-mode-docs-sync.sh --self-test
 
 test-implement-finalize:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_finalize.py -q -k 'teardown or finalize or write_finalize'
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_finalize.py -q -k 'not cleanup'
 
 test-implement-bootstrap:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_bootstrap.py -x -q -k 'write_base_session_env or tracking or emergency_bypass or resume_plan_tail or forked_plan or run_bootstrap or phase_coder'
@@ -957,7 +957,7 @@ test-review-and-fix-check-changes:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_review_and_fix.py -q -k check_changes
 
 test-check-mid-run-dirty-tree:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_dirty_tree.py -x -q -k 'baseline or checkpoint'
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_dirty_tree.py -x -q -k 'not (scope_check or scope_marker)'
 
 test-check-phantom-dirty:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-check-phantom-dirty.sh
