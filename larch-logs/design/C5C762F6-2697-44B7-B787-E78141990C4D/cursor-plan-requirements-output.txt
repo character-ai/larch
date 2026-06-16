@@ -1,0 +1,24 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	.claude/skills/rebalance-tests/scripts/rebalance.py:104-111	Post-PR verification-run triggering is not bound to Python-selected kinds	Under `--kind python` (or a Python-only leg of `--kind all`), an implementer can gate `workflow_dispatch` / `_trigger_and_wait` on the harness leg only; Python verification then reads stale or empty logs and fail-closes (or passes on the wrong data) even though baseline packing succeeded	In the Verification section and `rebalance.md`, state explicitly that after PR creation any selected leg that runs post-PR verification (harness, python, or both) shares one `n_verify_runs` workflow_dispatch loop before leg-specific collection; Python fail-closed checks run only after those runs complete
+2	in_scope	important	correctness	.claude/skills/rebalance-tests/SKILL.md:24-53	Harness-only numbered operator workflow is not slated for replacement	The REWRITTEN SKILL.md bullets document flags and gates but do not require replacing the current 12-step harness-only list; after rename, `/rebalance-tests` with `--kind python` or default `all` would still tell operators to run Makefile/untilmed-target steps 1-6 that do not apply	In the SKILL.md rewrite task, explicitly replace the harness-only step list with kind-aware steps (or kind-specific sub-lists) covering python-only, harness-only, and `all` paths through asymmetric verification
+3	in_scope	important	correctness	python/pytest_ci_timing.py:132-137	parse_log lacks a stateful shard context contract across log lines	CI `gh run view --log` lines put `shard X of N` on the step header while `--durations=0` rows usually only repeat the `python-tests (3.11, k)` job column; per-line parsing without carrying `shard_total` into each `call` row makes `observed_shard_count` fall back to `max(shard)` and can reject valid `--n-python-shards 4` when shard 4 has no `call` rows but headers still say `of 4`	Add an explicit parse_log rule: within each `python-tests` job slice, track current `shard` and `shard_total` from the latest step header / `shard X of N` line and stamp every emitted `PytestTimingRow`; extend the parse contract bullet list to match the already-planned `observed_shard_count` tests
+
+### FINDING_1: **risk-integration** `.claude/skills/rebalance-tests/scripts/rebalance.py` — Post-PR verification triggering not tied to Python kinds
+
+The plan extracts shared “verification-run triggering” helpers and documents Python fail-closed verification parsing, but the Verification block never states that `n_verify_runs` workflow_dispatch must run whenever the Python leg is selected. On `--kind python`, skipping triggers leaves verification with no fresh `python-tests` logs and the new fail-closed path becomes a false failure.
+
+**Suggested revision:** Document that one shared post-PR dispatch/wait loop runs for any kind that needs verification data, then branch into harness wall-clock vs Python duration-sum checks.
+
+### FINDING_2: **correctness** `.claude/skills/rebalance-tests/SKILL.md` — Harness-only 12-step workflow survives rename
+
+The hard-rename goal requires accurate operator docs. The plan’s SKILL.md rewrite lists flags, gates, and library modules but does not instruct removal/replacement of the existing harness-only steps 1–12. Those steps contradict `--kind python` and default `--kind all`.
+
+**Suggested revision:** Make the SKILL.md task explicitly replace the numbered workflow with kind-aware steps (or per-kind subflows) through asymmetric verification.
+
+### FINDING_3: **correctness** `python/pytest_ci_timing.py` — Missing stateful `shard_total` propagation in `parse_log`
+
+The approved edge case requires `observed_shard_count` to return `4` when logs say `of 4` even if shard 4 has no `call` rows. Duration rows typically lack `of N` on the same line; only step headers carry it. The parse spec covers per-line regex, job-name shard fallback, and attempt banners, but not carrying `shard`/`shard_total` context into each emitted row.
+
+**Suggested revision:** Add explicit within-job-slice context tracking to the `parse_log` contract so planned tests and runtime shard-count validation stay aligned.
+
+[OUT_OF_SCOPE] **architecture** `python/pytest_sharding.py:1-17`, `python/conftest.py:80-85` — Module docstrings still describe index round-robin only; after assignments land, prose drift is likely. Update when touching those files, but not required for the feature to work.
