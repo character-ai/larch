@@ -731,7 +731,8 @@ def _safe_bail_reason_value(value: str, *, generic: bool) -> bool:
         "codex-runtime-failure", "cursor-bailed-no-reason", "cursor-modified-history", "cursor-runtime-failure",
         "detached-head-prohibited", "interactive-subprocess-unsupported", "main-branch-prohibited",
         "manifest-missing", "manifest-oos-materialization-failed", "manifest-schema-invalid",
-        "protected-path-modified", "qa-pending-missing", "redactor-not-executable", "resume-incompatible",
+        "protected-path-modified", "protected-path-modification-required",
+        "qa-pending-missing", "redactor-not-executable", "resume-incompatible",
         "submodule-dirty", "submodule-edit-required-out-of-scope", "local-unfixable", "checks-failed",
         "checks-timeout", "ci-health-failed", "ci-timeout", "ci-status-error", "ci-too-many-rebases",
         "no-fix-path", "main-agent-required", "coder-main-agent-required", "main-agent-vote-required",
@@ -850,7 +851,7 @@ def _sensitive_token_rejects_file(corpus_path: Path, candidate_path: Path) -> bo
         if _sensitive_value_is_allowlisted(stripped):
             continue
         if "=" in stripped:
-            _key, _, value = stripped.partition("=")
+            _, _, value = stripped.partition("=")
             if value in _SENSITIVE_TOKEN_ALLOWLIST:
                 continue
             if _sensitive_value_is_allowlisted(value):

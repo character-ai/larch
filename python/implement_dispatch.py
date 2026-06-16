@@ -21,7 +21,6 @@ import logging_util
 import redact
 
 _PLUGIN_ROOT = Path(__file__).resolve().parents[1]
-_CLI_PATH = Path(os.environ.get("LARCH_CLAUDE_PLUGIN_ROOT", _PLUGIN_ROOT)) / "python" / "cli.py"
 _SAFE_CODERS = {"claude", "codex", "cursor"}
 WRAPPER_VALIDATION_RC = 2
 RESUME_CAP = 5
@@ -64,16 +63,6 @@ def _git_stdout(repo: Path, *args: str) -> str:
     if result.returncode != 0:
         return ""
     return result.stdout.rstrip("\n")
-
-
-def _read_text(path: Path | str | None) -> str:
-    if not path:
-        return ""
-    p = Path(path)
-    try:
-        return p.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return ""
 
 
 def _write_text_atomic(path: Path, text: str) -> None:
@@ -390,7 +379,6 @@ class DispatchState:
     recovery_paths_file: Path
     resume_count_file: Path
     spawn_branch_file: Path
-    plugin_json_baseline_file: Path
     spawn_coder_file: Path
     runtime_failure_token: str
     bailed_no_reason_token: str
@@ -398,7 +386,6 @@ class DispatchState:
     nonzero_exit_warn_token: str = ""
     baseline_sha: str = ""
     spawn_branch: str = ""
-    plugin_json_baseline: str = ""
     scout_status: str = ""
 
     def emit_bailed(self, reason: str, *, manifest: bool = False) -> int:
@@ -443,10 +430,6 @@ def _post_implementer_safety_reason(st: DispatchState) -> str:
     current_branch = _git_stdout(st.repo_root, "rev-parse", "--abbrev-ref", "HEAD")
     if current_branch != st.spawn_branch:
         return "branch-changed"
-    plugin_json = st.repo_root / ".claude-plugin" / "plugin.json"
-    current_plugin_hash = _git_stdout(st.repo_root, "hash-object", str(plugin_json)) if plugin_json.is_file() else ""
-    if current_plugin_hash != st.plugin_json_baseline:
-        return "protected-path-modified"
     sub_status = _git_stdout(st.repo_root, "submodule", "status", "--recursive")
     if sub_status and re.search(r"^[+\-U]", sub_status, re.MULTILINE):
         return "submodule-dirty"
@@ -528,8 +511,6 @@ def _emit_manifest_invalid_or_recover(st: DispatchState, status: str, raw_obj: o
         if not rel:
             continue
         path = rel.decode("utf-8", "surrogateescape")
-        if path == ".claude-plugin/plugin.json":
-            return st.emit_bailed("protected-path-modified")
         if _path_under_submodule(path, roots):
             return st.emit_bailed("submodule-dirty")
     reason = _post_implementer_safety_reason(st)
@@ -592,7 +573,7 @@ def _validate_manifest_paths(st: DispatchState, obj: dict[str, Any]) -> str:
     ]
     paths.extend(item for item in obj.get("tests_added_or_modified", []) if isinstance(item, str))
     for p in paths:
-        if "\x00" in p or p.startswith("/") or ".." in p or p == ".claude-plugin/plugin.json" or _path_under_submodule(p, roots):
+        if "\x00" in p or p.startswith("/") or ".." in p or _path_under_submodule(p, roots):
             return "protected-path-modified"
     return ""
 
@@ -739,7 +720,6 @@ def _dispatch_state(args: argparse.Namespace, repo_root: Path, tmpdir: Path, plu
         recovery_paths_file=tmpdir / "step2-recovery-paths.nul",
         resume_count_file=tmpdir / f"{tool}-resume-count.txt",
         spawn_branch_file=tmpdir / "step2-spawn-branch.txt",
-        plugin_json_baseline_file=tmpdir / "step2-plugin-json-baseline.txt",
         spawn_coder_file=tmpdir / "step2-spawn-coder.txt",
         runtime_failure_token=f"{tool}-runtime-failure",
         bailed_no_reason_token=f"{tool}-bailed-no-reason",
@@ -887,11 +867,6 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:
         return st.emit_bailed("detached-head-prohibited")
     if forked_target != "true" and issue_anchored and st.spawn_branch in {"main", "master"}:
         return st.emit_bailed("main-branch-prohibited")
-    if not st.plugin_json_baseline_file.is_file():
-        plugin_json = repo_root / ".claude-plugin" / "plugin.json"
-        value = _git_stdout(repo_root, "hash-object", str(plugin_json)) if plugin_json.is_file() else ""
-        _write_text_atomic(st.plugin_json_baseline_file, value + ("\n" if value else ""))
-    st.plugin_json_baseline = st.plugin_json_baseline_file.read_text(encoding="utf-8", errors="replace").strip()
 
     resume_count = 0
     if st.resume_count_file.is_file():
@@ -915,7 +890,7 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:
     _clear_external_scout_state(tmpdir)
     _write_prelaunch_baseline(st)
 
-    wrapper_rc, kv, _out = _run_launcher(st)
+    wrapper_rc, kv, _ = _run_launcher(st)
     if wrapper_rc == WRAPPER_VALIDATION_RC:
         return st.emit_bailed("wrapper-validation-failure")
     launcher_exit = kv.get("LAUNCHER_EXIT", "99")
@@ -929,7 +904,7 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:
         current_head = _git_stdout(repo_root, "rev-parse", "HEAD")
         if dirty or index_lock.exists() or current_head != st.baseline_sha:
             return st.emit_bailed("dirty-state-after-timeout")
-        wrapper_rc, kv, _out = _run_launcher(st)
+        wrapper_rc, kv, _ = _run_launcher(st)
         if wrapper_rc == WRAPPER_VALIDATION_RC:
             return st.emit_bailed("wrapper-validation-failure")
         launcher_exit = kv.get("LAUNCHER_EXIT", "99")

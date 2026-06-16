@@ -52,6 +52,23 @@ def test_classify_transient_infra(tmp_path: Path, capsys: pytest.CaptureFixture[
     assert "RESUME_HINT=step8-shippr" in out
 
 
+def test_classify_protected_path_modification_required(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _ = (tmp_path / "ship-pr-state.sh").write_text(
+        "PHASE=implementation\nSTALL_TRACKING=true\nSTALL_STEP=2\nBAIL_REASON=protected-path-modification-required\nEXIT_CODE=4\n",
+        encoding="utf-8",
+    )
+
+    rc = stall_recovery.classify_main([
+        "--implement-tmpdir", str(tmp_path),
+    ])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "FAILURE_CLASS=protected-path" in out
+    assert "RESUME_HINT=step2-impl" in out
+    assert "MATCHED_CLASSIFIER_PATTERN=protected-path-bail-token" in out
+
+
 def test_record_escalation_writes_canonical_ledger(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     rc = stall_recovery.record_escalation_main([
         "--implement-tmpdir", str(tmp_path),
