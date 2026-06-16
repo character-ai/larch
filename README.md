@@ -31,7 +31,7 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
 
 ## Skills
 
-larch ships **public skills** with the plugin (`skills/`); **private** skills live under `.claude/skills/` and are dev-only (not exported). Both sets appear below; see [docs/skills.md](docs/skills.md) for full per-skill detail.
+larch ships **public skills** with the plugin (`skills/`); **private** skills live under `.claude/skills/` and are dev-only (not exported). Both are listed below; shortcut **aliases** are in the [Aliases](#aliases) section. See [docs/skills.md](docs/skills.md) for full per-skill detail.
 
 ### Public skills
 
@@ -143,12 +143,6 @@ larch ships **public skills** with the plugin (`skills/`); **private** skills li
     <tr><td colspan="2">Upgrade the larch plugin to the latest version by refreshing the sparse marketplace checkout in place when possible, repairing legacy clones when needed, then reinstalling the plugin.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
-      <td><a href="docs/skills.md#im"><code>/im</code></a></td>
-      <td><code>&lt;issue-N&gt; [implement-flags...]</code></td>
-    </tr>
-    <tr><td colspan="2">Shortcut alias for <code>/implement --merge</code>. Forwards <code>/implement</code> public flags and the positional <code>&lt;issue-N&gt;</code>. See the Aliases section below.</td></tr>
-    <tr><td colspan="2"><hr></td></tr>
-    <tr>
       <td><a href="docs/skills.md#test-issue"><code>/test-issue</code></a></td>
       <td><code>[--run-id &lt;ID&gt;]</code></td>
     </tr>
@@ -232,4 +226,4 @@ Shortcut skills shipped with the plugin. Each alias forwards to an existing skil
 
 | Alias | Equivalent |
 |---|---|
-| [`/im`](skills/im/SKILL.md) | `/implement --merge` (same public flags as `/implement`; requires positional `<issue-N>`) |
+| [`/im`](docs/skills.md#im) | `/implement --merge` (same public flags as `/implement`; requires positional `<issue-N>`) |
