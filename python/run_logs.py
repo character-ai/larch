@@ -1418,25 +1418,25 @@ def _step9a1_heuristic(ctx: RunContext) -> bool | None:
     run_id = effective_run_id(ctx)
     if not run_id:
         return None
-    forked_target = _read_state_kv(ctx.state_file, "FORKED_TARGET") == "true"
-    if ctx.forked or forked_target:
-        return False
     design_done = _read_finalize_kv(tmpdir, "DESIGN_ONLY_DONE") == "true"
     no_issues = _read_run_flags_kv(tmpdir, "NO_ISSUES") == "true"
     if design_done and no_issues:
         return False
     run_dir = log_root / "implement" / run_id
     manifest_path = run_dir / "manifest.json"
+    stats = run_dir / "run-statistics.md"
     if manifest_path.is_file():
         with suppress(OSError, json.JSONDecodeError):
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             if _manifest_step9a1_explicitly_skipped(manifest):
                 return False
             if _manifest_step9a1_explicitly_ran(manifest):
-                return True
-    stats = run_dir / "run-statistics.md"
+                return stats.is_file()
     if stats.is_file():
         return True
+    forked_target = _read_state_kv(ctx.state_file, "FORKED_TARGET") == "true"
+    if ctx.forked or forked_target:
+        return False
     ndjson = run_dir / "oos-issues.ndjson"
     if ndjson.is_file() and ndjson.stat().st_size > 0:
         return False
@@ -2518,7 +2518,7 @@ def _verify_condition_reached(
         if _manifest_step9a1_explicitly_skipped(manifest_data):
             return False
         if _manifest_step9a1_explicitly_ran(manifest_data):
-            return True
+            return _verify_has_file(run_dir, "run-statistics.md")
         if (
             _manifest_steps_ran_empty(manifest_data)
             and _final_summary_heading_bail_signal(run_dir)

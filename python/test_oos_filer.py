@@ -4,6 +4,9 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
+import json
 import subprocess
 from pathlib import Path
 
@@ -104,13 +107,13 @@ def _run(tmp_path: Path, fake: FakeCli, monkeypatch: pytest.MonkeyPatch) -> tupl
     return rc, {}
 
 
-def test_empty_batch_writes_zero_statistics_and_stamps_false(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_empty_batch_writes_zero_statistics_and_stamps_true(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _setup(tmp_path)
     fake = FakeCli(tmp_path)
     rc, _payload = _run(tmp_path, fake, monkeypatch)
     assert rc == 0
     assert "Run run-1: 0 OOS issue(s) filed." in (tmp_path / "larch-logs" / "implement" / "run-1" / "run-statistics.md").read_text(encoding="utf-8")
-    assert any("steps_ran.step9a1=false" in call for call in fake.calls for call in call)
+    assert any("steps_ran.step9a1=true" in call for call in fake.calls for call in call)
     assert not any(call[:2] == ["issue", "create-one"] for call in fake.calls)
 
 
@@ -417,6 +420,68 @@ def test_mixed_checkpoint_retry_files_only_unmatched_block(tmp_path: Path, monke
     ndjson = (run_dir / "oos-issues.ndjson").read_text(encoding="utf-8")
     assert "https://github.com/owner/repo/issues/101" in ndjson
     assert "https://github.com/owner/repo/issues/102" in ndjson or "https://github.com/owner/repo/issues/101" in ndjson
+
+
+def test_checkpoint_failed_retry_reuses_url_only_persisted_evidence(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _setup(tmp_path)
+    run_dir = tmp_path / "larch-logs" / "implement" / "run-1"
+    (run_dir / "oos-issues.ndjson").write_text(
+        '{"body":"- **Filed URL**: https://github.com/owner/repo/issues/101\n- **Title**: Rewritten title only"}\n',
+        encoding="utf-8",
+    )
+    _write_oos(
+        tmp_path,
+        "### OOS_1: Original title\n- **Description**: A.\n- **Filed URL**: https://github.com/owner/repo/issues/101\n",
+    )
+    fake = FakeCli(tmp_path)
+    rc, _payload = _run(tmp_path, fake, monkeypatch)
+    assert rc == 0
+    assert not any(call[:2] == ["issue", "create-one"] for call in fake.calls)
+
+
+def test_combined_issue_retry_satisfies_all_source_blocks(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _setup(tmp_path)
+    (tmp_path / "oos-issues-created.md").write_text(
+        "| OOS title | Issue | URL |\n|---|---|---|\n| Combined | #101 | https://github.com/owner/repo/issues/101 |\n\n"
+        "- **Title**: Combined\n- **Stable ID**: OOS_1\n- **Stable ID**: OOS_2\n- **Filed URL**: https://github.com/owner/repo/issues/101\n",
+        encoding="utf-8",
+    )
+    run_dir = tmp_path / "larch-logs" / "implement" / "run-1"
+    (run_dir / "oos-issues.ndjson").write_text(
+        '{"body":"- **Filed URL**: https://github.com/owner/repo/issues/101\n- **Title**: Combined\n- **Stable ID**: OOS_1\n- **Stable ID**: OOS_2"}\n',
+        encoding="utf-8",
+    )
+    _write_oos(
+        tmp_path,
+        "### OOS_1: First\n- **Description**: A.\n\n### OOS_2: Second\n- **Description**: B.\n",
+    )
+    fake = FakeCli(tmp_path)
+    rc, _payload = _run(tmp_path, fake, monkeypatch)
+    assert rc == 0
+    assert not any(call[:2] == ["issue", "create-one"] for call in fake.calls)
+
+
+def test_checkpoint_failure_manifest_stamp_error_still_reports_checkpoint_failed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _setup(tmp_path)
+    _write_oos(tmp_path, "### OOS_1: First\n- **Description**: A.\n")
+    fake = FakeCli(tmp_path)
+    fake.checkpoint_rc = 2
+
+    def run_cli(args: list[str], *, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
+        if args[:2] == ["run-log", "manifest"]:
+            return _cp(args, stderr="manifest update failed", rc=1)
+        return fake(args, input_text=input_text)
+
+    monkeypatch.setattr(oos_filer, "_run_cli", run_cli)
+    monkeypatch.setattr(oos_filer, "_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(oos_filer, "_probe_tracking_blocker", lambda *_a: True)  # type: ignore[arg-type]
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc = oos_filer.cmd_file(["--implement-tmpdir", str(tmp_path), "--codex-timeout", "1"])
+    output = json.loads(buf.getvalue())
+    assert rc != 0
+    assert output["status"] == "disposition_checkpoint_failed"
+    assert output["step9a1_stamped"] is False
 
 
 def test_sentinel_recovery_materializes_strict_evidence_for_real_checkpoint(

@@ -138,9 +138,39 @@ out_false=$(PATH="$D_FALSE/bin:$PATH" CLAUDE_PLUGIN_ROOT="$D_FALSE/fake-plugin" 
 rc_false=$?
 set -e
 [[ "$rc_false" -eq 0 ]] || fail "false-ok wrapper invocation must exit 0 for escalation path (rc=$rc_false)"
-[[ "$(kv "$out_false" AUTOFIX_STATUS)" == "ok" ]] || fail "false-ok fixture must print raw ok status"
+[[ "$(kv "$out_false" AUTOFIX_STATUS)" == "failed" ]] || fail "false-ok fixture must print normalized failed status"
 [ ! -s "$D_FALSE/execution-issues.md" ] || fail 'nonzero helper with ok output must not append ok-path Warnings row'
 pass 'validator autofix suppresses ok audit when helper exits nonzero'
+
+D_APPEND=$(mktemp -d "$TMP/append-fail.XXXXXX")
+mkdir -p "$D_APPEND/bin" "$D_APPEND/fake-plugin/python"
+printf 'plan body\ndiff_lines: 3\n' >"$D_APPEND/plan.txt"
+printf 'validator defects\n' >"$D_APPEND/validate-plan-commands.log"
+cat >"$D_APPEND/bin/python3" <<'STUBPY'
+#!/usr/bin/env bash
+set -euo pipefail
+shift || true
+if [ "${1:-} ${2:-}" = "plan auto-fix-commands" ]; then
+  printf 'AUTOFIX_STATUS=ok\nFIXED_BY=codex\nORIGINAL_VALIDATE_LOG_FILE=%s\n' "$DESIGN_TMPDIR/validate-plan-commands.log"
+  exit 0
+fi
+if [ "${1:-} ${2:-}" = "run-log append-failure" ]; then
+  exit 9
+fi
+exit 0
+STUBPY
+chmod +x "$D_APPEND/bin/python3"
+set +e
+out_append=$(PATH="$D_APPEND/bin:$PATH" CLAUDE_PLUGIN_ROOT="$D_APPEND/fake-plugin" DESIGN_TMPDIR="$D_APPEND" \
+  CODEX_BINARY_FOUND=true CURSOR_BINARY_FOUND=false \
+  "$SUBJECT" --site 'design Step 2b' --validator-target-file "$D_APPEND/plan.txt" --validate-log-file "$D_APPEND/validate-plan-commands.log" \
+  --validate-defect-count 1 --validate-unsafe-token-count 0 --validate-skipped-count 0 2>"$D_APPEND/err")
+rc_append=$?
+set -e
+[[ "$rc_append" -eq 0 ]] || fail "append-failure stub wrapper must exit 0 (rc=$rc_append)"
+[[ "$(kv "$out_append" AUTOFIX_STATUS)" == "failed" ]] || fail "append-failure stub must normalize ok helper output to failed: $out_append"
+[ ! -s "$D_APPEND/execution-issues.md" ] || fail 'append-failure stub must not write ok-path Warnings row'
+pass 'validator autofix normalizes failed append to failed status'
 
 bash -n "$SUBJECT" || fail 'bash -n design-step-validator-autofix.sh failed'
 

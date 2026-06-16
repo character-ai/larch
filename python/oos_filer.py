@@ -38,6 +38,7 @@ class FiledIssue:
     url: str
     duplicate: bool = False
     stable_id: str = ""
+    source_stable_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -109,6 +110,34 @@ def _normalized_title(text: str) -> str:
     return file_oos._normalize_title(text).lower()  # pyright: ignore[reportPrivateUsage]
 
 
+def _issue_covers_stable_id(issue: FiledIssue, stable_id: str) -> bool:
+    if not stable_id:
+        return False
+    if issue.stable_id == stable_id:
+        return True
+    return stable_id in issue.source_stable_ids
+
+
+def _block_has_filed_url(block: AcceptedBlock, url: str) -> bool:
+    return bool(url and url in block.body)
+
+
+def _stable_ids_by_combined_item(blocks: list[AcceptedBlock], combined_text: str) -> dict[int, tuple[str, ...]]:
+    source_ids = tuple(block.stable_id for block in blocks if block.stable_id)
+    combined_count = len(file_oos._parse_oos_blocks(combined_text))  # pyright: ignore[reportPrivateUsage]
+    if combined_count <= 0:
+        return {}
+    if combined_count == len(blocks):
+        return {index: (blocks[index - 1].stable_id,) for index in range(1, combined_count + 1) if blocks[index - 1].stable_id}
+    if combined_count == 1 and source_ids:
+        return {1: source_ids}
+    mapped: dict[int, tuple[str, ...]] = {}
+    for index in range(1, combined_count + 1):
+        if index <= len(blocks) and blocks[index - 1].stable_id:
+            mapped[index] = (blocks[index - 1].stable_id,)
+    return mapped
+
+
 def _accepted_input_paths(tmpdir: Path) -> tuple[Path, ...]:
     return (
         tmpdir / "oos-accepted-main-agent.md",
@@ -163,23 +192,27 @@ def _sentinel_urls(tmpdir: Path) -> list[FiledIssue]:
     text = sentinel.read_text(encoding="utf-8", errors="replace")
     issues: list[FiledIssue] = []
     stable_by_url: dict[str, str] = {}
+    source_stable_ids_by_url: dict[str, tuple[str, ...]] = {}
     title_by_url: dict[str, str] = {}
-    current_stable = ""
+    current_stable_ids: list[str] = []
     current_title = ""
     for line in text.splitlines():
         stable_match = re.match(r"^[ \t]*-[ \t]+\*\*Stable ID\*\*:[ \t]*(\S+)", line)
         if stable_match:
-            current_stable = stable_match.group(1)
+            current_stable_ids.append(stable_match.group(1))
             continue
         title_match = re.match(r"^[ \t]*-[ \t]+\*\*Title\*\*:[ \t]*(.+)", line)
         if title_match:
             current_title = title_match.group(1).strip()
+            current_stable_ids = []
             continue
         filed_match = _FILED_URL_LINE_RE.search(line)
         if filed_match:
             url = filed_match.group(1)
-            stable_by_url[url] = current_stable
+            stable_by_url[url] = current_stable_ids[0] if current_stable_ids else ""
+            source_stable_ids_by_url[url] = tuple(current_stable_ids)
             title_by_url[url] = current_title
+            current_stable_ids = []
             continue
         table_match = re.match(r"^\|[ \t]*(.*?)[ \t]*\|[ \t]*#[0-9]+[ \t]*\|[ \t]*(https://[^|]+/issues/\d+)[ \t]*\|", line)
         if table_match and not table_match.group(1).startswith("OOS title"):
@@ -190,6 +223,7 @@ def _sentinel_urls(tmpdir: Path) -> list[FiledIssue]:
             url,
             duplicate=True,
             stable_id=stable_by_url.get(url, ""),
+            source_stable_ids=source_stable_ids_by_url.get(url, ()),
         )
         for url in _GITHUB_URL_RE.findall(text)
     ]
@@ -212,10 +246,13 @@ def _ndjson_filed_evidence(tmpdir: Path, run_id: str) -> list[FiledIssue]:
         body = str(item.get("body", ""))
         urls = _FILED_URL_LINE_RE.findall(body) or _GITHUB_URL_RE.findall(body)
         title_match = re.search(r"^[ \t]*-[ \t]+\*\*Title\*\*:[ \t]*(.+)$", body, re.MULTILINE)
-        stable_match = re.search(r"^[ \t]*-[ \t]+\*\*Stable ID\*\*:[ \t]*(\S+)", body, re.MULTILINE)
+        stable_ids = re.findall(r"^[ \t]*-[ \t]+\*\*Stable ID\*\*:[ \t]*(\S+)", body, re.MULTILINE)
         title = title_match.group(1).strip() if title_match else "Recovered OOS disposition"
-        stable_id = stable_match.group(1) if stable_match else ""
-        issues.extend(FiledIssue(title, url, duplicate=True, stable_id=stable_id) for url in urls)
+        stable_id = stable_ids[0] if stable_ids else ""
+        issues.extend(
+            FiledIssue(title, url, duplicate=True, stable_id=stable_id, source_stable_ids=tuple(stable_ids))
+            for url in urls
+        )
     return _dedupe_filed(issues)
 
 
@@ -234,18 +271,22 @@ def _dedupe_filed(filed: list[FiledIssue]) -> list[FiledIssue]:
     return deduped
 
 
+def _issue_matches_block(issue: FiledIssue, block: AcceptedBlock) -> bool:
+    if _issue_covers_stable_id(issue, block.stable_id):
+        return True
+    if _block_has_filed_url(block, issue.url):
+        return True
+    return _normalized_title(issue.title) == _normalized_title(block.title)
+
+
 def _split_persisted_matches(blocks: list[AcceptedBlock], persisted: list[FiledIssue]) -> tuple[list[AcceptedBlock], list[FiledIssue]]:
     remaining: list[AcceptedBlock] = []
     matched: list[FiledIssue] = []
-    used_urls: set[str] = set()
     for block in blocks:
-        match = next((issue for issue in persisted if issue.url not in used_urls and issue.stable_id and issue.stable_id == block.stable_id), None)
-        if match is None:
-            match = next((issue for issue in persisted if issue.url not in used_urls and _normalized_title(issue.title) == _normalized_title(block.title)), None)
+        match = next((issue for issue in persisted if _issue_matches_block(issue, block)), None)
         if match is None:
             remaining.append(block)
             continue
-        used_urls.add(match.url)
         matched.append(match)
     return remaining, matched
 
@@ -284,7 +325,10 @@ def _after_checkpoint(
     checkpoint = _run_disposition_checkpoint(tmpdir)
     urls = [issue.url for issue in filed]
     if checkpoint.returncode != 0:
-        stamped = _stamp_manifest(tmpdir, run_id, value=False)
+        try:
+            stamped = _stamp_manifest(tmpdir, run_id, value=False)
+        except RuntimeError:
+            stamped = False
         return checkpoint.returncode or 1, {
             "status": "disposition_checkpoint_failed",
             "accepted_count": accepted_count,
@@ -478,7 +522,15 @@ def _body_file_for_item(tmpdir: Path, item_index: int, fields: dict[str, str]) -
     return out
 
 
-def _run_issue_batch(tmpdir: Path, combined: Path, *, repo: str, issue_number: str, deps_path: Path | None = None) -> BatchResult:
+def _run_issue_batch(
+    tmpdir: Path,
+    combined: Path,
+    *,
+    repo: str,
+    issue_number: str,
+    deps_path: Path | None = None,
+    stable_ids_by_item: dict[int, tuple[str, ...]] | None = None,
+) -> BatchResult:
     bodies_dir = tmpdir / "oos-issue-bodies"
     bodies_dir.mkdir(parents=True, exist_ok=True)
     sanitized_input = bodies_dir / "oos-combined-sanitized.md"
@@ -523,7 +575,9 @@ def _run_issue_batch(tmpdir: Path, combined: Path, *, repo: str, issue_number: s
         url = kv.get("ISSUE_URL") or kv.get(f"ISSUE_{item_index}_URL") or kv.get("ISSUE_DUPLICATE_OF_URL") or kv.get(f"ISSUE_{item_index}_DUPLICATE_OF_URL")
         duplicate = bool(kv.get("ISSUE_DUPLICATE_OF_URL") or kv.get(f"ISSUE_{item_index}_DUPLICATE_OF_URL"))
         if url:
-            filed.append(FiledIssue(title, url, duplicate, f"OOS_{item_index}"))
+            source_ids = stable_ids_by_item.get(item_index, ()) if stable_ids_by_item else ()
+            primary_stable = source_ids[0] if source_ids else f"OOS_{item_index}"
+            filed.append(FiledIssue(title, url, duplicate, primary_stable, source_ids))
         number = kv.get("ISSUE_NUMBER") or ""
         if number.isdigit():
             issue_numbers[item_index] = number
@@ -570,8 +624,8 @@ def _write_sentinel(tmpdir: Path, filed: list[FiledIssue]) -> None:
     lines.append("")
     for issue in filed:
         lines.append(f"- **Title**: {issue.title}")
-        if issue.stable_id:
-            lines.append(f"- **Stable ID**: {issue.stable_id}")
+        stable_ids = issue.source_stable_ids or ((issue.stable_id,) if issue.stable_id else ())
+        lines.extend(f"- **Stable ID**: {stable_id}" for stable_id in stable_ids)
         lines.append(f"- **Filed URL**: {issue.url}")
     lines.append(f"- **Filed**: {len(filed)}")
     (tmpdir / "oos-issues-created.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -583,8 +637,9 @@ def _write_oos_ndjson(tmpdir: Path, run_id: str, filed: list[FiledIssue], *, sta
     path = run_dir / "oos-issues.ndjson"
     records: list[str] = []
     for issue in filed:
-        stable_line = f"\n- **Stable ID**: {issue.stable_id}" if issue.stable_id else ""
-        body = f"## Accepted / Out-of-Scope Observations\n\n- **Disposition**: {status}\n- **Filed URL**: {issue.url}\n- **Title**: {issue.title}{stable_line}"
+        stable_ids = issue.source_stable_ids or ((issue.stable_id,) if issue.stable_id else ())
+        stable_lines = "".join(f"\n- **Stable ID**: {stable_id}" for stable_id in stable_ids)
+        body = f"## Accepted / Out-of-Scope Observations\n\n- **Disposition**: {status}\n- **Filed URL**: {issue.url}\n- **Title**: {issue.title}{stable_lines}"
         record = {"phase": "implement", "step": "9a.1", "category": "OOS", "body": file_oos._sanitize_public_text(body)}  # pyright: ignore[reportPrivateUsage]
         records.append(json.dumps(record, separators=(",", ":")))
     path.write_text(("\n".join(records) + "\n") if records else "", encoding="utf-8")
@@ -659,7 +714,7 @@ def _file(args: argparse.Namespace) -> tuple[int, dict[str, object]]:
         filed = already or persisted
         if filed:
             _write_oos_ndjson(tmpdir, run_id, filed, status="Already filed")
-        return _after_checkpoint(tmpdir, run_id, filed, status="empty" if not filed else "already_filed", accepted_count=accepted_count, stamp_value=bool(filed))
+        return _after_checkpoint(tmpdir, run_id, filed, status="empty" if not filed else "already_filed", accepted_count=accepted_count, stamp_value=True)
 
     if forked or repo_unavailable:
         status = "Skipped — repo unavailable" if repo_unavailable else "Skipped — forked target"
@@ -680,7 +735,8 @@ def _file(args: argparse.Namespace) -> tuple[int, dict[str, object]]:
         deps.write_text("".join(f"{left}\t{right}\n" for left, right in file_oos.file_conflict_deps(combined)), encoding="utf-8")
     except OSError as exc:
         _append_warning(tmpdir, f"file-conflict pre-pass failed; continuing without intra-batch dependencies: {exc}")
-    batch = _run_issue_batch(tmpdir, combined, repo=repo, issue_number=issue_number, deps_path=deps)
+    stable_ids_by_item = _stable_ids_by_combined_item(blocks, combined_text)
+    batch = _run_issue_batch(tmpdir, combined, repo=repo, issue_number=issue_number, deps_path=deps, stable_ids_by_item=stable_ids_by_item)
     if batch.failures:
         _append_tool_failure(tmpdir, "step-9a1-oos-file", "issue create-one", 1, f"ISSUES_FAILED={batch.failures}")
         return 1, {"status": "issue_batch_failed", "accepted_count": accepted_count, "filed_count": len(batch.filed), "deduplicated_count": len([issue for issue in batch.filed if issue.duplicate]), "urls": [issue.url for issue in batch.filed], "run_statistics_written": False, "step9a1_stamped": False}
