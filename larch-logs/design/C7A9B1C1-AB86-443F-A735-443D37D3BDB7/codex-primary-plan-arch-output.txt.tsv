@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	scripts/test-sessionstart-health.sh (planned), plan.txt:119-123	SessionStart pre-check regression is not observable	A hook that still invokes python3 when no claude-implement-* dirs exist would pass because the failing stub exits nonzero and the hook fail-opens to the same empty stdout	Make the python3 stub record invocation or emit a unique token, then assert the marker or token is absent when no session dirs exist

@@ -1,0 +1,25 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	python/session_env.py:48-55	CLI stdout contract omits no-trailing-newline parity with bash printf %s	Bash returns the path via printf '%s' with no newline; hooks capture IMPLEMENT_TMPDIR=$(python3 ...). A print()-based CLI adds a trailing newline so [[ -f "$IMPLEMENT_TMPDIR/.run-cleaned-up" ]] and downstream sentinel checks miss the real directory and fail open silently	skills/implement/scripts/lib-resolve-implement-tmpdir.sh:109	Specify resolve_implement_tmpdir_main must write only the path bytes with sys.stdout.write(path) (no trailing newline) when non-empty; add a pytest that captures stdout via subprocess/check_output and asserts captured == path with no \n
+2	in_scope	important	correctness	skills/implement/scripts/hook-stop-fail-close.sh:87-90	Bash pre-check root formula not pinned to bash HOME:-/tmp fallback	Python plan documents /tmp/.cache/larch/sessions when HOME is unset (cleanup_cache_sessions_root parity), but hook pre-check sections only say scan the same three roots without ${HOME:-/tmp}. A naive $HOME/.cache pre-check skips python3 while resolver-eligible dirs exist under /tmp/.cache/larch/sessions	Hook returns empty tmpdir and misses Stop/SessionStart boundary protection for that environment	Spell out the exact pre-check root expansion in both hook updates: ${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/larch/sessions /tmp /private/tmp; add one harness case with unset HOME and a session only under /tmp/.cache
+3	in_scope	important	correctness	python/test_session_env.py:64-79	now<=0 fail-closed TTL rule lacks listed regression coverage	Bash rejects all TTL-gated candidates when date +%s fails (now=0); plan documents the same rule but the pytest bullet list omits it, so a Python port could regress to accepting stale tmpdirs when now is pinned to 0	Add test_resolve_implement_tmpdir_rejects_when_now_zero: fresh sentinel + unset LARCH_TOKEN_SESSION_ID + now=0 must resolve empty
+
+### Finding 1
+**correctness** — `python/session_env.py` (planned CLI stdout)
+
+Bash emits the winner with `printf '%s'` and no newline (`skills/implement/scripts/lib-resolve-implement-tmpdir.sh:109`). Both hooks assign `IMPLEMENT_TMPDIR=$(...)`. If the new CLI uses `print(path)`, the captured value includes `\n`, so `[[ -f "$IMPLEMENT_TMPDIR/.run-cleaned-up" ]]` and post-/review sentinel checks miss the real directory and the hook fail-opens when it should block or advise.
+
+**Suggested revision:** Pin stdout to `sys.stdout.write(resolved)` with no trailing newline; add a subprocess-based pytest asserting captured bytes equal the path exactly.
+
+### Finding 2
+**correctness** — `skills/implement/scripts/hook-stop-fail-close.sh`, `scripts/sessionstart-health.sh` (planned pre-check)
+
+`cleanup_cache_sessions_root()` already maps unset `HOME` to `/tmp/.cache` (`python/session_env.py:180-187`), matching bash `${HOME:-/tmp}/.cache` (`skills/implement/scripts/lib-resolve-implement-tmpdir.sh:10`). The plan’s hook pre-check only says “scan the same three roots” without the `${HOME:-/tmp}` expansion. A literal `$HOME/.cache` pre-check can skip `python3` while eligible `claude-implement-*` dirs live only under `/tmp/.cache/larch/sessions`.
+
+**Suggested revision:** Copy the exact bash root tuple into both hook pre-checks; add one harness case with unset `HOME` and a session rooted under `/tmp/.cache`.
+
+### Finding 3
+**correctness** — `python/test_session_env.py` (planned coverage)
+
+Bash fail-closes TTL evaluation when `now` is 0 (`skills/implement/scripts/lib-resolve-implement-tmpdir.sh:90-91`; contract `skills/implement/scripts/lib-resolve-implement-tmpdir.md:43-44`). The plan states “Reject when `now <= 0`” but the pytest checklist does not include it. That gap could let a port accept stale candidates under broken clock probes.
+
+**Suggested revision:** Add an explicit `now=0` regression test alongside the listed TTL cases.
