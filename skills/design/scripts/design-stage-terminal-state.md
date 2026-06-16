@@ -6,7 +6,7 @@
 
 Inputs are `--design-tmpdir`, `--outcome`, `--step`, `--phase`, `--site`, `--trigger`, `--bail-reason`, `--exit-code`, and `--source-script`. Optional inputs are `--failure-detail-log`, `--root-cause-hint`, `--summary-outcome`, and `--evidence-ref`.
 
-The helper validates `$DESIGN_TMPDIR` through `scripts/lib-design-tmpdir.sh`. It validates tokens through `python3 "$PLUGIN_ROOT/python/cli.py" stall-recovery validate-token --profile generic --artifact-prefix design-failure --implement-tmpdir "$DESIGN_TMPDIR"`, then validates the completed candidate with `stall-recovery validate-terminal-state` before the atomic rename.
+The helper validates `$DESIGN_TMPDIR` through `python3 "$PLUGIN_ROOT/python/cli.py" session validate-design-tmpdir` before `larch_quiet_init`. It validates tokens through `python3 "$PLUGIN_ROOT/python/cli.py" stall-recovery validate-token --profile generic --artifact-prefix design-failure --implement-tmpdir "$DESIGN_TMPDIR"`, then validates the completed candidate with `stall-recovery validate-terminal-state` before the atomic rename.
 
 `FAILURE_DETAIL_LOG` must be a regular, readable, non-symlink file under `$DESIGN_TMPDIR`. The written state excludes raw prompt text, issue bodies, feature text, plans, repo paths, URLs, and log tails.
 

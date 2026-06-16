@@ -164,6 +164,51 @@ def test_read_key_rejects_carriage_return_injection(tmp_path: Path) -> None:
     assert "carriage return" in result.stderr
 
 
+def test_validate_design_tmpdir_main_accepts_allowlisted_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+
+    rc = session_env.validate_design_tmpdir_main([str(tmp_path / "sub")])
+
+    assert rc == 0
+
+
+def test_validate_design_tmpdir_main_requires_path(capsys: pytest.CaptureFixture[str]) -> None:
+    rc = session_env.validate_design_tmpdir_main([])
+
+    assert rc == 2
+    assert "path is required" in capsys.readouterr().err
+
+
+def test_validate_design_tmpdir_main_rejects_disallowed_prefix(capsys: pytest.CaptureFixture[str]) -> None:
+    rc = session_env.validate_design_tmpdir_main(["/var/tmp/x"])
+
+    assert rc == 2
+    assert "allowlist" in capsys.readouterr().err
+
+
+def test_validate_design_tmpdir_main_writes_no_quiet_log_before_allowlist(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    disallowed = Path("/var/tmp") / f"larch-test-session-env-disallowed-{os.getpid()}"
+    try:
+        disallowed.mkdir()
+    except OSError as exc:
+        pytest.skip(f"/var/tmp unavailable for disallowed-path check: {exc}")
+    try:
+        monkeypatch.setenv("TMPDIR", str(tmp_path))
+        monkeypatch.setenv("DESIGN_TMPDIR", str(disallowed))
+
+        rc = session_env.validate_design_tmpdir_main([str(disallowed)])
+
+        assert rc == 2
+        assert "allowlist" in capsys.readouterr().err
+        assert not list(disallowed.glob("larch-quiet-*.log"))
+    finally:
+        shutil.rmtree(disallowed, ignore_errors=True)
+
+
 def test_write_design_env_relative_tmpdir_stderr_parity(tmp_path: Path) -> None:
     out = tmp_path / "source-env.sh"
     result = run_cli(

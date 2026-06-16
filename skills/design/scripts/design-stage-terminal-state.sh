@@ -8,9 +8,6 @@ REPORT_SH="$PLUGIN_ROOT/python/cli.py"
 
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
-larch_quiet_init
-# shellcheck source=scripts/lib-design-tmpdir.sh
-source "$PLUGIN_ROOT/scripts/lib-design-tmpdir.sh"
 
 usage() {
     larch_err 'Usage: design-stage-terminal-state.sh --design-tmpdir DIR --outcome TOKEN --step TOKEN --phase TOKEN --site TOKEN --trigger TOKEN --bail-reason TOKEN --exit-code N|unknown --source-script TOKEN [--failure-detail-log PATH] [--root-cause-hint TOKEN] [--summary-outcome TOKEN] [--evidence-ref TOKEN]'
@@ -53,8 +50,9 @@ while [ $# -gt 0 ]; do
 done
 
 [ -n "$DESIGN_TMPDIR_ARG" ] || fail '--design-tmpdir is required'
-larch_design_tmpdir_validate "$DESIGN_TMPDIR_ARG" || exit $?
+python3 "$PLUGIN_ROOT/python/cli.py" session validate-design-tmpdir "$DESIGN_TMPDIR_ARG" || exit $?
 DESIGN_TMPDIR="$(cd "$DESIGN_TMPDIR_ARG" && pwd -P)"
+larch_quiet_init
 
 for pair in "outcome:$OUTCOME" "step:$STEP" "phase:$PHASE" "site:$SITE" "trigger:$TRIGGER" "bail:$BAIL_REASON" "source-script:$SOURCE_SCRIPT"; do
     kind=${pair%%:*}

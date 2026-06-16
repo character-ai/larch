@@ -8,9 +8,6 @@ REPORT_CMD=(python3 "$PLUGIN_ROOT/python/cli.py" stall-recovery)
 
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
-larch_quiet_init
-# shellcheck source=scripts/lib-design-tmpdir.sh
-source "$PLUGIN_ROOT/scripts/lib-design-tmpdir.sh"
 
 usage() {
     larch_err 'Usage: design-failure-report.sh --design-tmpdir DIR --outcome TOKEN [--repo OWNER/REPO] [--issue N] [--run-id TOKEN]'
@@ -40,8 +37,9 @@ done
 [ -n "$DESIGN_TMPDIR_ARG" ] || fail '--design-tmpdir is required'
 [ -n "$OUTCOME" ] || fail '--outcome is required'
 : "$REPO" "$ISSUE" "$RUN_ID"
-larch_design_tmpdir_validate "$DESIGN_TMPDIR_ARG" || exit $?
+python3 "$PLUGIN_ROOT/python/cli.py" session validate-design-tmpdir "$DESIGN_TMPDIR_ARG" || exit $?
 DESIGN_TMPDIR="$(cd "$DESIGN_TMPDIR_ARG" && pwd -P)"
+larch_quiet_init
 
 TERMINAL_STATE="$DESIGN_TMPDIR/design-failure-terminal-state.env"
 CLASS_FILE="$DESIGN_TMPDIR/design-failure-classification.env"

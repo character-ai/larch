@@ -5,9 +5,6 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
-# shellcheck source=scripts/lib-design-tmpdir.sh
-# shellcheck disable=SC1091
-source "$PLUGIN_ROOT/scripts/lib-design-tmpdir.sh"
 
 fail() {
     printf 'plan-review-continuation.sh: %s\n' "$1" >&2
@@ -44,7 +41,7 @@ done
 
 [[ -n "$DESIGN_TMPDIR" ]] || { usage; fail '--design-tmpdir is required'; }
 [[ "$APPROVE_REQUESTED" == true || "$APPROVE_REQUESTED" == false ]] || fail '--approve-requested must be true or false'
-larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit 2
+python3 "$PLUGIN_ROOT/python/cli.py" session validate-design-tmpdir "$DESIGN_TMPDIR" || exit 2
 DESIGN_TMPDIR="$(cd "$DESIGN_TMPDIR" && pwd -P)"
 
 kv_get() {

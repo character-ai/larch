@@ -92,13 +92,12 @@ larch_err() { printf '%s\n' "$*" >&2; }
 emit() { printf '%s\n' "$*"; }
 emit_kv() { printf '%s=%s\n' "$1" "$2"; }
 FAKE
-cat >"$FAKE_PLUGIN/scripts/lib-design-tmpdir.sh" <<'FAKE'
-larch_design_tmpdir_validate() { return 0; }
-FAKE
 mkdir -p "$FAKE_PLUGIN/python"
 cat >"$FAKE_PLUGIN/python/cli.py" <<'FAKE'
 #!/usr/bin/env python3
 import sys
+if len(sys.argv) >= 3 and sys.argv[1] == "session" and sys.argv[2] == "validate-design-tmpdir":
+    raise SystemExit(0)
 if len(sys.argv) >= 3 and sys.argv[1] == "design" and sys.argv[2] == "pause-save":
     print("PAUSE_STUB_ARGS=", end="")
     for a in sys.argv[3:]:
@@ -122,6 +121,8 @@ EOF2
 cat >"$FAKE_PLUGIN/python/cli.py" <<'FAKE'
 #!/usr/bin/env python3
 import sys
+if len(sys.argv) >= 3 and sys.argv[1] == "session" and sys.argv[2] == "validate-design-tmpdir":
+    raise SystemExit(0)
 if len(sys.argv) >= 3 and sys.argv[1] == "design" and sys.argv[2] == "pause-save":
     args = sys.argv[3:]
     for i, a in enumerate(args):

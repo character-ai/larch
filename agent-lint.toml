@@ -942,14 +942,6 @@ exclude = [
   "python/test_design_pause.py",
   # test harness ships with no runtime consumers yet. Phase 3 is the
   # first consumer via skills/implement/SKILL.md (not in this phase).
-  # scripts/lib-design-tmpdir.sh is a sourced-only validator for
-  # --design-tmpdir consumers. scripts/test-lib-design-tmpdir.sh is its
-  # Makefile-only regression harness (test-lib-design-tmpdir target) and
-  # scripts/test-lib-design-tmpdir.md is the sibling contract, matching the
-  # same sourced-library / Makefile-only pattern as the title-eligibility block.
-  "scripts/lib-design-tmpdir.sh",
-  "scripts/test-lib-design-tmpdir.sh",
-  "scripts/test-lib-design-tmpdir.md",
   # Agent-lint does not follow sibling `source` directives or Makefile targets.
   # (added by #359 — ADOPTED= contract pin). Invoked only from Makefile's
   # test-harnesses target; no SKILL.md reference. Phase 3 first consumes

@@ -97,7 +97,6 @@ CLI
     chmod +x "$root/python/cli.py"
     if [[ "$postplan_mode" == "real" ]]; then
         cp "$REPO_ROOT/skills/design/scripts/design-step2b-postplan.sh" "$root/skills/design/scripts/design-step2b-postplan.sh"
-        cp "$REPO_ROOT/scripts/lib-design-tmpdir.sh" "$root/scripts/lib-design-tmpdir.sh"
         chmod +x "$root/skills/design/scripts/design-step2b-postplan.sh"
     else
         cat > "$root/skills/design/scripts/design-step2b-postplan.sh" <<'STUB'

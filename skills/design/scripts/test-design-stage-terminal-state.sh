@@ -75,6 +75,22 @@ grep -Fxq 'TRIGGER=publish-tail-failed' "$D7_CANON/design-failure-terminal-state
 env -u CLAUDE_PLUGIN_ROOT "$REPORT_SH" --profile generic --artifact-prefix design-failure --implement-tmpdir "$D7_CANON" validate-terminal-state --primary-state-file "$D7_CANON/design-failure-terminal-state.env" | grep -Fxq 'VALID=true' || fail 'publish-tail terminal state invalid'
 pass 'stages failed-publish-tail with publish-tail-failed trigger'
 
+if D_DISALLOWED=$(mktemp -d "/var/tmp/larch-test-terminal-disallowed.XXXXXX" 2>/dev/null); then
+  set +e
+  env -u CLAUDE_PLUGIN_ROOT "$SUBJECT" --design-tmpdir "$D_DISALLOWED" --outcome failed-clarify --step clarify --phase clarify-loop --site clarify-loop --trigger failed --bail-reason clarify-hard-halt --exit-code 1 --source-script clarify-loop >"$D_DISALLOWED/out" 2>"$D_DISALLOWED/err"
+  disallowed_rc=$?
+  set -e
+  [ "$disallowed_rc" -ne 0 ] || fail 'disallowed existing tmpdir accepted'
+  grep -Fq 'allowlist' "$D_DISALLOWED/err" || fail 'disallowed stderr omitted allowlist rejection'
+  if find "$D_DISALLOWED" -name 'larch-quiet-*.log' -print -quit | grep -q .; then
+    fail 'quiet log created before disallowed tmpdir rejection'
+  fi
+  rm -rf "$D_DISALLOWED"
+  pass 'rejects disallowed tmpdir before quiet init'
+else
+  pass 'skips disallowed tmpdir quiet-init check because /var/tmp is unavailable'
+fi
+
 D8=$(mktemp -d)
 inside_panel="$D8/step3-panel-init-failed.log"
 printf 'panel init failed\n' >"$inside_panel"

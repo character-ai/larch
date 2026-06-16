@@ -967,3 +967,7 @@ scripts/dispatch-code-voters.sh	#4170
 scripts/dispatch-code-voters.md	#4170
 scripts/test-dispatch-code-voters.sh	#4170
 scripts/test-dispatch-code-voters.md	#4170
+scripts/lib-design-tmpdir.sh	#3780
+scripts/lib-design-tmpdir.md	#3780
+scripts/test-lib-design-tmpdir.sh	#3780
+scripts/test-lib-design-tmpdir.md	#3780

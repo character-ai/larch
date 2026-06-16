@@ -118,13 +118,11 @@ design_settle_parse_postplan_rc() {
 
 design_source_env_optional
 design_require_plugin_root
-# shellcheck source=scripts/lib-design-tmpdir.sh
-source "$CLAUDE_PLUGIN_ROOT/scripts/lib-design-tmpdir.sh"
 if [ -z "${DESIGN_TMPDIR:-}" ]; then
   printf '%s\n' "/design Step 3.5 settle: DESIGN_TMPDIR required" >&2
   exit 2
 fi
-larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit 2
+python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" session validate-design-tmpdir "$DESIGN_TMPDIR" || exit 2
 DESIGN_TMPDIR="$(cd "$DESIGN_TMPDIR" && pwd -P)"
 
 if [ -f "$DESIGN_TMPDIR/.pause-requested" ]; then

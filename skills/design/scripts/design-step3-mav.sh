@@ -82,16 +82,14 @@ fi
 
 # shellcheck source=scripts/lib-quiet.sh
 source "$CLAUDE_PLUGIN_ROOT/scripts/lib-quiet.sh"
-larch_quiet_init
-# shellcheck source=scripts/lib-design-tmpdir.sh
-source "$CLAUDE_PLUGIN_ROOT/scripts/lib-design-tmpdir.sh"
 
 if [ -z "${DESIGN_TMPDIR:-}" ] || [ ! -d "$DESIGN_TMPDIR" ]; then
     larch_err '/design Step 3 MAV: DESIGN_TMPDIR required'
     exit 1
 fi
 DESIGN_TMPDIR="$(cd "$DESIGN_TMPDIR" && pwd -P)"
-larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit 2
+python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" session validate-design-tmpdir "$DESIGN_TMPDIR" || exit 2
+larch_quiet_init
 
 if [ -f "$DESIGN_TMPDIR/.pause-requested" ]; then
     exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design pause-save \

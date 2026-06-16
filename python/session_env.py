@@ -645,6 +645,20 @@ def validate_design_tmpdir(candidate: str) -> tuple[bool, str]:
     return True, ""
 
 
+def validate_design_tmpdir_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="session validate-design-tmpdir", add_help=False)
+    parser.add_argument("path", nargs="?", default="")
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit:
+        return 2
+    ok, message = validate_design_tmpdir(args.path)
+    if not ok:
+        _plain_err(message)
+        return 2
+    return 0
+
+
 def _recover_prior_bool(key: str, prior_file: Path) -> str:
     if not prior_file.is_file():
         return ""

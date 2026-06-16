@@ -18,7 +18,6 @@ ln -sf "$ROOT/python"/* "$FAKE_PLUGIN/python/"
 # lib-phase-driver.sh ported to python/design_lifecycle.py; python/ symlink provides it
 ln -sf "$ROOT/skills/design/scripts/design-stage-terminal-state.sh" "$STUB/design-stage-terminal-state.sh"
 ln -sf "$ROOT/skills/implement/scripts/stall-recovery-report.sh" "$FAKE_PLUGIN/skills/implement/scripts/stall-recovery-report.sh"
-ln -sf "$ROOT/scripts/lib-design-tmpdir.sh" "$FAKE_PLUGIN/scripts/lib-design-tmpdir.sh"
 ln -sf "$ROOT/scripts/lib-quiet.sh" "$FAKE_PLUGIN/scripts/lib-quiet.sh"
 ln -sf "$ROOT/scripts/lib-larch-dev-clone.sh" "$FAKE_PLUGIN/scripts/lib-larch-dev-clone.sh"
 ln -sf "$ROOT/scripts/read-result-env.sh" "$FAKE_PLUGIN/scripts/read-result-env.sh"

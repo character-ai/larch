@@ -487,7 +487,6 @@ _DIRECT_TARGET_RULES: Final[tuple[tuple[tuple[str, ...], tuple[str, ...], bool, 
     (("skills/*/SKILL.md", "skills/*/references/*.md"), (), False, False),
     (("scripts/lint-readability-preamble.tsv", "scripts/lint-readability-preamble.tsv.md"), ("test-lint-readability-preamble",), False, False),
 
-    (("scripts/lib-design-tmpdir.sh", "scripts/test-lib-design-tmpdir.sh", "scripts/lib-design-tmpdir.md", "scripts/test-lib-design-tmpdir.md"), ("test-lib-design-tmpdir",), False, False),
     (("python/rendering.py", "python/test_rendering.py"), ("test-plan-review", "test-launch-claude-subprocess", "test-lib-scope-anchor-handoff", "test-plan-review-panel", "test-aggregate-findings"), False, False),
     (("python/decompose.py", "python/test_decompose.py"), ("test-decompose-file-issues", "test-decompose-panel-dispatch", "test-decompose-aggregator"), True, True),
     (("python/plan_scout.py", "python/test_plan_scout.py"), ("test-scout-dynamic-archetypes", "test-scout-plan-archetypes-wrapper", "test-dispatch-panel-core-dynamic"), True, True),
