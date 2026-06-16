@@ -1,0 +1,30 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	blocking	correctness	python/legacy_review_shell/aggregate-findings.sh:702-702,890-890	`DISPATCH_SH` default is still a single executable path but the replacement is a multi-token `python3 … agent dispatch-waterfall` invocation	After cutover `"$DISPATCH_SH" "${dispatch_args[@]}"` treats the whole CLI tail as one binary name; findings aggregation dispatch fails immediately (ENOENT) while review panel/decompose paths work	Add the same array default + `"${DISPATCH_SH[@]}"` call pattern used for `DISPATCH_WATERFALL` in `dispatch-panel.sh`; keep `AGGREGATE_DISPATCH_SH` as a one-element override for harness stubs
+2	in_scope	important	risk-integration	scripts/dispatch-code-voters.md:3-34	Contract doc still names `dispatch-with-waterfall.sh` in four places but is absent from the plan’s file list	`make lint-retired-scripts` fails once `scripts/dispatch-with-waterfall.sh` is in `migrated-scripts.tsv`; CI blocks the hard cutover	Add `### UPDATED: scripts/dispatch-code-voters.md` and replace every waterfall reference with `agent dispatch-waterfall` wording (mirror the `dispatch-code-voters.sh` cutover)
+3	in_scope	important	risk-integration	python/decompose.py:469-469	Failure logging still uses `tool="dispatch-with-waterfall.sh"`	Retired-basename lint flags `python/decompose.py:469` after the script is deleted; decompose panel failures may also log a nonexistent tool name	When retargeting `dispatch_panel`, change the `_append_failure` `tool=` label to `agent dispatch-waterfall` (or `cli.py agent dispatch-waterfall`)
+4	in_scope	important	risk-integration	skills/review/SKILL.md:20-20	Skill still lists `dispatch-with-waterfall.sh` and `test-dispatch-with-waterfall.sh` as retained Bash surfaces	Plan text says “replace the reference,” which can leave the waterfall on the retained-Bash/harness lists even after the bash script is deleted; agent-lint S030 pins stay stale	Remove both paths from “Retained Bash dependencies” and offline harnesses; register `python/cli.py agent dispatch-waterfall` and `python/test_agent_waterfall.py` instead
+5	in_scope	important	correctness	scripts/dispatch-code-voters.sh:153-153	Error breadcrumb still cites `dispatch-with-waterfall.sh` after the call site moves to the CLI verb	Line 153 survives a naive repoint of line 142 and keeps a retired-path literal that fails `lint-retired-scripts`	Update the `larch_err` text to name `agent dispatch-waterfall` (or `python/cli.py agent dispatch-waterfall`)
+
+### 1. **architecture / correctness** — `python/legacy_review_shell/aggregate-findings.sh:702,890`
+
+The plan retargets `dispatch-panel.sh` with an **array-form** default and `"${DISPATCH_WATERFALL[@]}"`, but `aggregate-findings.sh` still uses a scalar `DISPATCH_SH` and `"$DISPATCH_SH"`. A multi-token CLI default cannot work there. `/review` findings aggregation would break while panel dispatch succeeds.
+
+### 2. **risk-integration** — `scripts/dispatch-code-voters.md:3-34`
+
+Four references to `dispatch-with-waterfall.sh` remain. The plan updates many docs but omits this sibling contract. That omission will trip `make lint-retired-scripts` on the definition-of-done path.
+
+### 3. **risk-integration** — `python/decompose.py:469`
+
+`dispatch_panel` retargeting is planned, but `_append_failure(..., tool="dispatch-with-waterfall.sh", ...)` is not. The retired basename will fail lint and mislabel execution-issues after cutover.
+
+### 4. **risk-integration** — `skills/review/SKILL.md:20`
+
+The skill still pins `dispatch-with-waterfall.sh` and `test-dispatch-with-waterfall.sh` as retained Bash/harness surfaces. After port, those should drop from the retained-Bash list; the verb and `python/test_agent_waterfall.py` should replace them.
+
+### 5. **correctness** — `scripts/dispatch-code-voters.sh:153`
+
+The waterfall call at line 142 is in scope, but the error line at 153 still names the retired script. Easy to miss during cutover; it blocks lint.
+
+---
+
+**[OUT_OF_SCOPE]** `python/run_logs.py:2542` and `python/audit_runs.py:542` still grep for `dispatch-with-waterfall exited non-zero`. If caller warning prose is renamed, rc-only aggregator failures may no longer match that substring (though `DISPATCH_OK=false` still matches). Worth a follow-up issue if audit coverage matters; not required for the port itself.

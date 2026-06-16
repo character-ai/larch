@@ -1,0 +1,18 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	blocking	correctness	python/decompose.py:460-461,610-611	Decompose waterfall argv pseudocode conflates os.environ.get default with override-only single-executable seam	The plan says waterfall_argv = [env] if env else [python3, cli, agent, dispatch-waterfall] while today both call sites use waterfall = os.environ.get(DECOMPOSE_*_WATERFALL_SH, <default path>) then cmd = [waterfall, ...]. After copy-paste, get still supplies a truthy default string so the python3/cli/agent/dispatch-waterfall branch never runs and subprocess.run keeps invoking the deleted scripts/dispatch-with-waterfall.sh path (or a one-string ENOENT) instead of the new verb.	Split override detection from default: if DECOMPOSE_PANEL_WATERFALL_SH / DECOMPOSE_AGGREGATE_WATERFALL_SH in os.environ then waterfall_argv = [that value]; else waterfall_argv = [sys.executable or python3, str(PLUGIN_ROOT / python/cli.py), agent, dispatch-waterfall]. Add/adjust python/test_decompose.py to assert the default argv shape when the env vars are unset.
+2	in_scope	important	risk-integration	python/agent_waterfall.py:47-48,scripts/dispatch-with-waterfall.sh:221-248	Teardown plan does not pin bash kill -- -pid ordering before descendant pgrep sweep	Bash enables job-control monitor mode when needed and tears down with kill -- -$pid (process group) then recursive pgrep -P sweep; the plan only says killpg + pgrep generically. A naive Popen.pid-only SIGTERM can leave vendor grandchildren alive on cancel/timeout despite the promised behavioral SIGTERM test.	Mirror _waterfall_kill_active_pids ordering explicitly: track (pid, pgid) per active launcher; on EXIT/TERM/atexit send SIGTERM to the group via killpg(pgid, SIGTERM), recurse pgrep -P descendants, SIGTERM individuals, wait, then exit 143 on SIGTERM. Reference scripts/dispatch-with-waterfall.sh:221-248 in agent_waterfall.py and keep the behavioral teardown pytest.
+3	out_of_scope	nit	code-quality	scripts/dispatch-code-voters.sh:153,python/decompose.py:469	Stale dispatch-with-waterfall.sh strings remain in runtime diagnostics after call-site repoint	Plan repoints the invocation but leaves larch_err / _append_failure tool= strings citing the deleted script basename; operators and execution-issues will show the old name even though lint-retired-scripts may still pass.	When touching those files for cutover, rename diagnostics to agent dispatch-waterfall (optional hygiene; not required for functional parity).
+
+## Findings
+
+### 1. Decompose default argv construction (blocking)
+
+The plan’s `waterfall_argv = [env] if env else [...]` pattern does not match how `decompose.py` builds commands today. Both `dispatch_panel` and `aggregate_partition` use `os.environ.get(..., default_path)` and always get a truthy string, so a literal translation never selects the new CLI verb default.
+
+### 2. Teardown ordering (important)
+
+Bash teardown is specific about process-group kill before descendant sweep (`kill -- -$pid` after optional `set -m`). The plan should pin that ordering so the Python port does not regress orphan vendor processes.
+
+### 3. [OUT_OF_SCOPE] Diagnostic string renames
+
+`dispatch-code-voters.sh` and `decompose.py` failure logging still name `dispatch-with-waterfall.sh`. Worth fixing during cutover, but not required for parity or CI green.

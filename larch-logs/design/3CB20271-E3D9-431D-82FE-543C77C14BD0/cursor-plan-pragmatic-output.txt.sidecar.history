@@ -1,0 +1,4 @@
+===== attempt diag =====
+health-probe fast-fail: cursor unhealthy before launch
+health-probe timed out after 30s
+

@@ -1,0 +1,4 @@
+OUTER_LAUNCHER=claude-drafter
+TIMEOUT=1800
+TOOL=claude
+CMD_JSON=["claude","--model","claude-opus-4-8","--print","--output-format","json","--add-dir","<OPERATOR_REPO_PATH>","--allowedTools","Read,Glob,Grep,LS","--permission-mode","plan"]
