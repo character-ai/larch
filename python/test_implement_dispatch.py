@@ -704,7 +704,6 @@ def test_step2_dispatch_auth_pair_external_bailed(repo: Path, tmp_path: Path, ca
     tmp = _session(tmp_path)
     (tmp / "step2-baseline.txt").write_text(_git(repo, "rev-parse", "HEAD").stdout, encoding="utf-8")
     (tmp / "step2-spawn-branch.txt").write_text(_git(repo, "rev-parse", "--abbrev-ref", "HEAD").stdout, encoding="utf-8")
-    (tmp / "step2-plugin-json-baseline.txt").write_text("", encoding="utf-8")
     (tmp / "codex-resume-count.txt").write_text("5\n", encoding="utf-8")
     answers = tmp / "answers.json"
     answers.write_text("{}\n", encoding="utf-8")
@@ -862,9 +861,6 @@ def _seed_external_dispatch_state(
 ) -> None:
     (tmp / "step2-baseline.txt").write_text(_git(repo, "rev-parse", "HEAD").stdout, encoding="utf-8")
     (tmp / "step2-spawn-branch.txt").write_text(_git(repo, "rev-parse", "--abbrev-ref", "HEAD").stdout, encoding="utf-8")
-    plugin_json = repo / ".claude-plugin" / "plugin.json"
-    baseline = _git(repo, "hash-object", str(plugin_json)).stdout if plugin_json.is_file() else ""
-    (tmp / "step2-plugin-json-baseline.txt").write_text(baseline + ("\n" if baseline else ""), encoding="utf-8")
     if resume_count is not None:
         (tmp / "codex-resume-count.txt").write_text(resume_count + "\n", encoding="utf-8")
     if spawn_coder is not None:
@@ -1176,6 +1172,36 @@ def test_step2_dispatch_complete_emits_scout_kv(repo: Path, tmp_path: Path, monk
     assert "SCOUT_CODER_STATUS=ok" in out
 
 
+def test_step2_dispatch_complete_allows_plugin_json_edit(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+
+    def fake_launcher(st: implement_dispatch.DispatchState):
+        plugin_json = repo / ".claude-plugin" / "plugin.json"
+        plugin_json.parent.mkdir(parents=True, exist_ok=True)
+        plugin_json.write_text('{"name": "larch", "version": "1.0.0", "description": "edited"}\n', encoding="utf-8")
+        st.manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        st.manifest_path.write_text(
+            json.dumps(_complete_manifest_payload(path=".claude-plugin/plugin.json", commit_message="Edit plugin.json description")),
+            encoding="utf-8",
+        )
+        return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
+
+    monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(implement_dispatch, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
+    monkeypatch.setattr(implement_dispatch, "_materialize_oos", lambda *_a, **_k: "")
+    rc = implement_dispatch.step2_dispatch_main([
+        "--tmpdir", str(tmp),
+        "--plan-file", str(tmp / "plan.txt"),
+        "--feature-file", str(tmp / "feature-description.txt"),
+        "--coder", "codex",
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "STATUS=complete" in out
+    assert "protected-path-modified" not in out
+
+
 def test_step2_dispatch_undeclared_path_warning(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     tmp = _session(tmp_path)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
@@ -1241,7 +1267,6 @@ def test_materialize_oos_missing_helper_with_observations_bails(tmp_path: Path, 
         recovery_paths_file=tmp / "recovery.nul",
         resume_count_file=tmp / "resume.txt",
         spawn_branch_file=tmp / "branch.txt",
-        plugin_json_baseline_file=tmp / "plugin.txt",
         spawn_coder_file=tmp / "coder.txt",
         runtime_failure_token="codex-runtime-failure",  # noqa: S106
         bailed_no_reason_token="codex-bailed-no-reason",  # noqa: S106
