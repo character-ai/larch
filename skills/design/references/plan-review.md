@@ -41,7 +41,7 @@ Step 2b **may** extend the fixed static panel with up to 3 scout-proposed specia
 
 1. **Scout (Step 2b drafter, fail-open)**: `python/cli.py scout plan-archetypes` derives scope files from `### NEW`, `### UPDATED`, or `### REWRITTEN` headings in the plan, invokes `python/cli.py scout dynamic-archetypes` in description mode with `--prompt-override-file` pointing at `skills/design/scripts/scout-plan-archetypes-prompt.txt` when that template is readable, then `python/cli.py scout filter-manifest` filters reserved static slugs and caps at three archetypes. Scout failures write an empty archetype manifest and the static panel still runs at Step 3.
 
-2. **Dispatch (Step 3 manifest consumption)**: `python/cli.py plan-review panel-dispatch` renders static prompts first, then dynamic prompts from the Step 2b manifest (via `python/cli.py render plan-review` for the dynamic tail), emits only **available** vendor rows per archetype (Codex and/or Cursor from Step 0 `CODEX_PRESENT` / `CURSOR_PRESENT`, with Codex rows round-gated per #4062), and invokes `dispatch-with-waterfall.sh` with **`--no-fallback`** only while peer rows cover each other. From round 2 onward with both vendors present, Codex specialist rows are replaced by one generic Codex row and normal fallback remains enabled. When **both** externals are absent, the panel launches one generic Claude reviewer (all static lenses + structured TSV contract) and writes that sole path to `PANEL_PATHS_FILE`. Voter parity uses the same availability matrix via `python/cli.py plan-review voter-dispatch` (issue #3207 skip-do-not-pad policy). `/review` code panels keep the legacy multi-phase waterfall. Emits `PANEL_PATHS_FILE=<path>` on stdout when the paths sidecar is written so SKILL can pass `--paths-file` without re-parsing `ALL_OUTPUT_FILES_PATH`.
+2. **Dispatch (Step 3 manifest consumption)**: `python/cli.py plan-review panel-dispatch` renders static prompts first, then dynamic prompts from the Step 2b manifest (via `python/cli.py render plan-review` for the dynamic tail), emits vendor rows from binary-derived attempt flags rather than Step 0 probe health (Codex rows remain round-gated per #4062), and invokes `dispatch-with-waterfall.sh` with **`--no-fallback`** only while peer rows cover each other. From round 2 onward with both vendors present, Codex specialist rows are replaced by one generic Codex row and normal fallback remains enabled. When **both** externals are absent, the panel launches one generic Claude reviewer (all static lenses + structured TSV contract) and writes that sole path to `PANEL_PATHS_FILE`. Voter parity uses the same availability matrix via `python/cli.py plan-review voter-dispatch` (issue #3207 skip-do-not-pad policy). `/review` code panels keep the legacy multi-phase waterfall. Emits `PANEL_PATHS_FILE=<path>` on stdout when the paths sidecar is written so SKILL can pass `--paths-file` without re-parsing `ALL_OUTPUT_FILES_PATH`.
 
 3. **Harness overrides**: `SCOUT_PLAN_ARCHETYPES_SCOUT_SH` substitutes the scout binary for offline tests; `DISPATCH_PLAN_REVIEW_WATERFALL_SH` substitutes the waterfall dispatcher.
 
@@ -152,8 +152,8 @@ _plan_voter_dispatch_file="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/dispatch-plan-vo
 "${CLAUDE_PLUGIN_ROOT}/python/cli.py plan-review voter-dispatch" \
   --ballot-file "$DESIGN_TMPDIR/ballot.txt" \
   --design-tmpdir "$DESIGN_TMPDIR" \
-  --codex-available "$codex_available" \
-  --cursor-available "$cursor_available" \
+  --codex-available "$CODEX_BINARY_FOUND" \
+  --cursor-available "$CURSOR_BINARY_FOUND" \
   > "$_plan_voter_dispatch_file"
 ```
 

@@ -21,12 +21,8 @@ ISSUE_NUMBER="${ISSUE_NUMBER:-}"
 ISSUE_TITLE="${ISSUE_TITLE:-}"
 HAS_CLARIFY_LABEL="${HAS_CLARIFY_LABEL:-false}"
 REPO="${REPO:-}"
-CODEX_PRESENT="${CODEX_PRESENT:-false}"
-CURSOR_PRESENT="${CURSOR_PRESENT:-false}"
-CODEX_AVAILABLE="${CODEX_AVAILABLE:-$CODEX_PRESENT}"
-CURSOR_AVAILABLE="${CURSOR_AVAILABLE:-$CURSOR_PRESENT}"
-CODEX_BINARY_FOUND="${CODEX_BINARY_FOUND:-false}"
-CURSOR_BINARY_FOUND="${CURSOR_BINARY_FOUND:-false}"
+CODEX_BINARY_FOUND="${CODEX_BINARY_FOUND:-}"
+CURSOR_BINARY_FOUND="${CURSOR_BINARY_FOUND:-}"
 IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:-}"
 POSITIONAL_KIND="${POSITIONAL_KIND:-}"
 POSITIONAL_VALUE="${POSITIONAL_VALUE:-}"
@@ -86,4 +82,14 @@ design_source_env_optional() {
 }
 
 design_source_env_optional
+design_derive_binary_found() {
+  if [ -z "${CODEX_BINARY_FOUND:-}" ]; then
+    if command -v codex >/dev/null 2>&1; then CODEX_BINARY_FOUND=true; else CODEX_BINARY_FOUND=false; fi
+  fi
+  if [ -z "${CURSOR_BINARY_FOUND:-}" ]; then
+    if command -v cursor >/dev/null 2>&1; then CURSOR_BINARY_FOUND=true; else CURSOR_BINARY_FOUND=false; fi
+  fi
+  export CODEX_BINARY_FOUND CURSOR_BINARY_FOUND
+}
+design_derive_binary_found
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design pause-save --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}

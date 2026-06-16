@@ -42,7 +42,7 @@ When either side fails the **debate quorum gate** (including `no_output` from a 
 1. **1st retry** targets the **other** external relative to that side's original launch tool, **unless** the pre-retry-wave `agent check-reviewers` refresh shows that tool is unavailable — then skip directly to tier 2.
 2. **2nd retry** targets **Claude** (Agent-tool inline debater) with a corrective prompt from `python/cli.py render debate-retry`. This is the **only** permitted Claude debater slot (final retry). GitHub issue #98 still forbids Claude as the **primary** debater or **1st-retry** debater.
 3. **Parallelism**: thesis and antithesis 1st retries launch together when both need them; same for coordinated 2nd-retry waves. **Serialism within a side**: never launch retry2 for a side before retry1 for that side has been collected and re-evaluated.
-4. **Presence re-check**: refresh **only** `dialectic_codex_available` / `dialectic_cursor_available` before each retry wave; never mutate orchestrator-wide `codex_available` / `cursor_available`.
+4. **Presence re-check**: refresh **only** binary-derived `dialectic_codex_available` / `dialectic_cursor_available` before each retry wave; never mutate orchestrator-wide vendor flags.
 5. **Outputs**: original `debate-<n>-<tool>-<side>.txt`; 1st retry `debate-<n>-<retry-tool>-<side>-retry1.txt`; 2nd Claude `debate-<n>-claude-<side>-retry2.txt`.
 6. **Worst-case wall time**: each external launch keeps the existing **1800s** per-call budget; retries multiply best-case duration — operators should expect longer `/design --hard` runs when many sides exhaust the waterfall.
 
@@ -150,14 +150,14 @@ Before launching judges, run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agen
 
 Parse the output and derive judge-local flags using the **same two-key rule** that `session-setup.sh` applies at session startup (see `skills/shared/external-reviewers.md:19-23`):
 
-- `judge_codex_available = (CODEX_AVAILABLE=true AND CODEX_PRESENT=true)`
-- `judge_cursor_available = (CURSOR_AVAILABLE=true AND CURSOR_PRESENT=true)`
+- `judge_codex_available = (CODEX_BINARY_FOUND=true or fresh codex executable check succeeds)`
+- `judge_cursor_available = (CURSOR_BINARY_FOUND=true or fresh cursor executable check succeeds)`
 
 A tool that is installed but not present for this session (`*_PRESENT=false`) MUST be treated as unavailable for judge-panel purposes — otherwise the judge launch will time out and drop the eligible voter count. **Do NOT confuse `*_AVAILABLE` (binary on PATH) with `judge_*_available` (launch-eligible).** Naming reflects purpose: the `judge_` prefix signals these flags are scoped to the judge panel only.
 
 **Scoping**: the dialectic-local presence-check result is used only for the judge panel. It MUST NOT:
 
-- Mutate orchestrator-wide `codex_available` / `cursor_available` flags (those drive Step 3 plan review; Phase 3 must not poison later steps).
+- Mutate orchestrator-wide vendor flags. Phase 3 must not poison later steps.
 - Mutate `SESSION_ENV_PATH` or any session-env file. Judge-phase collection is read-only with respect to session-wide availability state.
 
 ## Judge Prompt Template

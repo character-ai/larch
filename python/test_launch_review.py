@@ -857,6 +857,7 @@ def test_codex_launch_resolves_workdir_from_plugin_cache_via_keepalive(
     (design_tmp / ".larch-keepalive").write_text(f"CLONE_PATH={consumer}\n", encoding="utf-8")
     monkeypatch.chdir(plugin_cache)
     monkeypatch.setenv("DESIGN_TMPDIR", str(design_tmp))
+    monkeypatch.delenv("IMPLEMENT_TMPDIR", raising=False)
     monkeypatch.delenv("SESSION_TMPDIR", raising=False)
     monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
 

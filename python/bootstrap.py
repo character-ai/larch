@@ -36,8 +36,6 @@ ROUTING_KEYS: tuple[str, ...] = (
     "DEFERRED",
     "ISSUE_NUMBER",
     "REPO",
-    "CODEX_PRESENT",
-    "CURSOR_PRESENT",
     "CODEX_BINARY_FOUND",
     "CURSOR_BINARY_FOUND",
     "codex_available",
@@ -51,6 +49,7 @@ ROUTING_KEYS: tuple[str, ...] = (
     "CODEX_STATE",
     "CURSOR_STATE",
     "DEGRADED_PROMPT_REQUIRED",
+    "DEGRADED_HARD_FAIL",
     "ROUTE",
     "REBASE_RC",
     "REBASE_OUTCOME",
@@ -381,8 +380,8 @@ def _phase_infra(st: BootstrapState) -> None:
         st.session_id = skv.get("SESSION_ID", "")
         st.repo = skv.get("REPO", "")
         st.repo_unavailable = skv.get("REPO_UNAVAILABLE", "false")
-        st.codex_present = skv.get("CODEX_PRESENT", skv.get("CODEX_AVAILABLE", ""))
-        st.cursor_present = skv.get("CURSOR_PRESENT", skv.get("CURSOR_AVAILABLE", ""))
+        st.codex_present = skv.get("CODEX_PRESENT", "")
+        st.cursor_present = skv.get("CURSOR_PRESENT", "")
         st.codex_binary_found = skv.get("CODEX_BINARY_FOUND", "")
         st.cursor_binary_found = skv.get("CURSOR_BINARY_FOUND", "")
         if st.opts.preflight_tmpdir:
@@ -415,8 +414,8 @@ def _phase_infra(st: BootstrapState) -> None:
                     output_file=diag,
                     status_label="failed",
                 )
-    st.codex_available = "true" if st.codex_binary_found == "true" and st.codex_present == "true" else "false"
-    st.cursor_available = "true" if st.cursor_binary_found == "true" and st.cursor_present == "true" else "false"
+    st.codex_available = "true" if st.codex_binary_found == "true" else "false"
+    st.cursor_available = "true" if st.cursor_binary_found == "true" else "false"
     _err(f"→ step0: infra ready (tmpdir={st.implement_tmpdir} session={st.session_id})")
 
 
@@ -884,8 +883,6 @@ def _emit_final(st: BootstrapState) -> None:
         ("SKIP_BRANCH_CHECK", st.skip_branch_check),
         ("IMPLEMENT_TMPDIR", st.implement_tmpdir),
         ("SESSION_ID", st.session_id),
-        ("CODEX_PRESENT", st.codex_present),
-        ("CURSOR_PRESENT", st.cursor_present),
         ("CODEX_BINARY_FOUND", st.codex_binary_found),
         ("CURSOR_BINARY_FOUND", st.cursor_binary_found),
         ("REPO", st.repo),
@@ -1114,6 +1111,7 @@ def _invoke_error(step_failed: str, out: str, implement_tmpdir: str) -> None:
         "create-branch": "**⚠ /implement Step 0: could not verify branch state before bootstrap. Aborting.**",
         "write-session-env": "**⚠ /implement Step 0: could not write session environment. Aborting.**",
         "larch-run": "**⚠ /implement Step 0: could not write the session launcher. Aborting.**",
+        "degraded-both-down-hard-fail": "**⚠ /implement Step 0: both Codex and Cursor are unavailable after health probes. Aborting.**",
         "emergency-bypass-log": "**⚠ /implement Step 0: emergency bypass log handling failed. Aborting.**",
     }
     if step_failed in {"copy-plan", "gh-issue-view"} and implement_tmpdir:
@@ -1145,6 +1143,7 @@ _GATE_STDERR_KV_PREFIXES: tuple[str, ...] = (
     "CODEX_STATE=",
     "CURSOR_STATE=",
     "PRESENCE_INPUT_EMPTY=",
+    "DEGRADED_HARD_FAIL=",
 )
 
 
@@ -1292,7 +1291,7 @@ def _parse_gate_output(text: str) -> tuple[dict[str, str], list[str], str]:
         if "=" not in line:
             continue
         key, value = line.split("=", 1)
-        if key in {"DEGRADED", "BOTH_DOWN", "CODEX_STATE", "CURSOR_STATE", "PRESENCE_INPUT_EMPTY"}:
+        if key in {"DEGRADED", "BOTH_DOWN", "DEGRADED_HARD_FAIL", "CODEX_STATE", "CURSOR_STATE", "PRESENCE_INPUT_EMPTY"}:
             routing[key] = value
     return routing, explanation, "\n".join(explanation).strip()
 
@@ -1322,20 +1321,23 @@ def _parse_probe_stdout(text: str) -> tuple[dict[str, str], list[str]]:
     return routing, advisory
 
 
-def _write_degraded_sentinel(implement_tmpdir: str) -> None:
-    with contextlib.suppress(OSError):
-        Path(implement_tmpdir, ".degraded-tools-gate-prompted").write_text("", encoding="utf-8")
 
-
-def _log_degraded_explanation(st: BootstrapState, explanation: str) -> None:
-    if not st.implement_tmpdir or not explanation:
+def _refresh_gate_probe(st: BootstrapState) -> None:
+    if st.codex_present in {"true", "false"} and st.cursor_present in {"true", "false"}:
         return
-    entry = (
-        "- **Step 0 degraded-tools gate (non-interactive)**:\n"
-        f"  {explanation.replace(chr(10), '  ' + chr(10))}\n"
-    )
-    _append_execution_issue_entry(Path(st.implement_tmpdir) / "execution-issues.md", "Warnings", entry)
-
+    args = ["agent", "check-reviewers"]
+    if st.codex_binary_found == "false":
+        args.append("--skip-codex-probe")
+    if st.cursor_binary_found == "false":
+        args.append("--skip-cursor-probe")
+    result = _cli(*args)
+    if result.returncode != 0:
+        return
+    kv = _parse_kv(result.stdout)
+    st.codex_present = kv.get("CODEX_PRESENT", st.codex_present)
+    st.cursor_present = kv.get("CURSOR_PRESENT", st.cursor_present)
+    st.codex_binary_found = kv.get("CODEX_BINARY_FOUND", st.codex_binary_found)
+    st.cursor_binary_found = kv.get("CURSOR_BINARY_FOUND", st.cursor_binary_found)
 
 def _run_1r_probe(st: BootstrapState, *, forked_target: str) -> tuple[dict[str, str], list[str], int]:
     probe = _SCRIPTS / "rebase-checkpoint-probe.sh"
@@ -1372,6 +1374,7 @@ def _run_absorbed_continue_tail(
     st.cursor_present = data.get("CURSOR_PRESENT", st.cursor_present)
     st.codex_binary_found = data.get("CODEX_BINARY_FOUND", st.codex_binary_found)
     st.cursor_binary_found = data.get("CURSOR_BINARY_FOUND", st.cursor_binary_found)
+    _refresh_gate_probe(st)
     forked_target = opts.forked_target if opts.forked_target in {"true", "false"} else "false"
     sentinel = Path(tmpdir) / ".degraded-tools-gate-prompted"
     sentinel_exists = sentinel.is_file()
@@ -1414,6 +1417,8 @@ def _run_absorbed_continue_tail(
         "CURSOR_STATE": gate_routing.get("CURSOR_STATE", ""),
         "DEGRADED_PROMPT_REQUIRED": "false",
     }
+    if gate_routing.get("DEGRADED_HARD_FAIL") == "true":
+        routing["DEGRADED_HARD_FAIL"] = "true"
     if gate_routing.get("BOTH_DOWN") in {"true", "false"}:
         routing["BOTH_DOWN"] = gate_routing["BOTH_DOWN"]
     if gate_routing.get("PRESENCE_INPUT_EMPTY") == "true":
@@ -1438,23 +1443,18 @@ def _run_absorbed_continue_tail(
             if not sentinel_exists:
                 for line in explanation_lines:
                     _err(line)
-                if non_interactive:
-                    _log_degraded_explanation(st, explanation_text)
-                _write_degraded_sentinel(tmpdir)
-        elif both_down == "true":
-            if non_interactive:
-                if not sentinel_exists:
-                    for line in explanation_lines:
-                        _err(line)
-                    _log_degraded_explanation(st, explanation_text)
-                    _write_degraded_sentinel(tmpdir)
-            elif sentinel_exists:
-                pass
-            else:
-                for line in explanation_lines:
-                    _err(line)
                 prompt_required = True
                 run_probe = False
+        elif both_down == "true":
+            for line in explanation_lines:
+                _err(line)
+            routing["DEGRADED_HARD_FAIL"] = "true"
+            return ContinueTailResult(
+                routing=routing,
+                contract_failure=True,
+                step_failed="degraded-both-down-hard-fail",
+                failure_detail=explanation_text,
+            )
         else:
             if non_interactive:
                 return ContinueTailResult(contract_failure=True, step_failed="absorbed-both-down-missing")
@@ -1463,7 +1463,7 @@ def _run_absorbed_continue_tail(
             prompt_required = True
             run_probe = False
     advisory: list[str] = []
-    if prompt_required and not non_interactive:
+    if prompt_required:
         routing["DEGRADED_PROMPT_REQUIRED"] = "true"
     elif run_probe:
         probe_routing, probe_advisory, _probe_rc = _run_1r_probe(st, forked_target=forked_target)

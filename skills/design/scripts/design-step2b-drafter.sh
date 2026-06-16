@@ -21,12 +21,8 @@ ISSUE_NUMBER="${ISSUE_NUMBER:-}"
 ISSUE_TITLE="${ISSUE_TITLE:-}"
 HAS_CLARIFY_LABEL="${HAS_CLARIFY_LABEL:-false}"
 REPO="${REPO:-}"
-CODEX_PRESENT="${CODEX_PRESENT:-false}"
-CURSOR_PRESENT="${CURSOR_PRESENT:-false}"
-CODEX_AVAILABLE="${CODEX_AVAILABLE:-$CODEX_PRESENT}"
-CURSOR_AVAILABLE="${CURSOR_AVAILABLE:-$CURSOR_PRESENT}"
-CODEX_BINARY_FOUND="${CODEX_BINARY_FOUND:-false}"
-CURSOR_BINARY_FOUND="${CURSOR_BINARY_FOUND:-false}"
+CODEX_BINARY_FOUND="${CODEX_BINARY_FOUND:-}"
+CURSOR_BINARY_FOUND="${CURSOR_BINARY_FOUND:-}"
 IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:-}"
 POSITIONAL_KIND="${POSITIONAL_KIND:-}"
 POSITIONAL_VALUE="${POSITIONAL_VALUE:-}"
@@ -119,10 +115,14 @@ if [ -f "$DESIGN_TMPDIR/.step2b-postplan-inline-retry-done" ]; then
   _drafter_postplan_fallback_used=true
 fi
 printf '%s\n' "${_drafter_postplan_fallback_used}" > "$DESIGN_TMPDIR/.step2b-postplan-fallback-used"
-# Vendor selection: LARCH_DESIGN_DRAFTER=codex|claude; when unset, default to claude.
+# Vendor selection: LARCH_DESIGN_DRAFTER=codex|claude; when unset, prefer codex if the binary exists.
 _step2b_drafter_vendor="${LARCH_DESIGN_DRAFTER:-}"
 if [[ -z "$_step2b_drafter_vendor" ]]; then
-  _step2b_drafter_vendor="claude"
+  if [[ "${CODEX_BINARY_FOUND:-false}" == "true" ]] || { [[ -z "${CODEX_BINARY_FOUND:-}" ]] && command -v codex >/dev/null 2>&1; }; then
+    _step2b_drafter_vendor="codex"
+  else
+    _step2b_drafter_vendor="claude"
+  fi
 fi
 _step2b_drafter_model=""
 if [[ "$_step2b_drafter_vendor" == "claude" ]]; then

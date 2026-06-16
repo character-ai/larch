@@ -18,9 +18,9 @@ Launch all 3 lanes in parallel in a single message. **Spawn order matters for pa
 
 Before any external launch in Step 2, propagate any currently-unavailable external lane's pre-launch status into the corresponding `VALIDATION_*` keys in `$RESEARCH_TMPDIR/lane-status.txt`. Without this propagation, a Cursor/Codex tool that became unavailable during research-phase Step 1.4 would leave the Step 0b-initialized `VALIDATION_<TOOL>_STATUS=ok` in place — `python/cli.py agent collect-results` is never called for a lane whose `*_available` flag is false at validation entry, so Step 2.4 cannot downgrade it.
 
-For each external tool, if `cursor_available` (resp. `codex_available`) is currently `false`, write the corresponding fallback token + reason into `VALIDATION_<TOOL>_STATUS` and `VALIDATION_<TOOL>_REASON`. Lanes whose `*_available` flag is currently `true` are left alone — Step 2.4 will update them after `python/cli.py agent collect-results` returns.
+For each external tool, if `cursor_binary_available` (resp. `codex_binary_available`) is currently `false`, write the corresponding fallback token + reason into `VALIDATION_<TOOL>_STATUS` and `VALIDATION_<TOOL>_REASON`. Lanes whose `*_available` flag is currently `true` are left alone — Step 2.4 will update them after `python/cli.py agent collect-results` returns.
 
-If both `cursor_available` and `codex_available` are `true` at Step 2 entry, no update is needed.
+If both `cursor_binary_available` and `codex_binary_available` are `true` at Step 2 entry, no update is needed.
 
 Otherwise, surgically update only the `VALIDATION_*` slice (preserve `RESEARCH_*` keys verbatim) using a read-filter-rewrite via temp + atomic `mv`. The append uses a **quoted heredoc** (`<<'EOF'`) so residual shell metacharacters in a substituted reason value are preserved literally rather than expanded. All three `VALIDATION_*` keys must be emitted on every rewrite (the `Code` lane is always `ok`):
 
@@ -41,7 +41,7 @@ mv "$LANE_STATUS_TMP" "$LANE_STATUS_FILE"
 
 Token vocabulary is documented in `${CLAUDE_PLUGIN_ROOT}/python/rendering.py`.
 
-## External Reviewer Setup (if `codex_available` or `cursor_available`)
+## External Reviewer Setup (if `codex_binary_available` or `cursor_binary_available`)
 
 The research report is already written to `$RESEARCH_TMPDIR/research-report.txt` from Step 1.5, so both Codex and Cursor can read it.
 
@@ -59,7 +59,7 @@ Do NOT modify files.
 LARCH_INSCOPE_END_a3f2b1
 ```
 
-## Cursor Reviewer (if `cursor_available`)
+## Cursor Reviewer (if `cursor_binary_available`)
 
 Run Cursor **first** in the parallel message (it takes the longest). Render the prompt **in foreground** before the background launch:
 
@@ -72,7 +72,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" render reviewer \
   > "$RESEARCH_TMPDIR/cursor-prompt.txt"
 ```
 
-**On non-zero exit**: capture and sanitize the failed render's stderr. Surgically rewrite the `VALIDATION_*` slice of `$RESEARCH_TMPDIR/lane-status.txt` BEFORE launching the fallback so an abort after spawn still leaves Step 3 attribution honest. Set `VALIDATION_CURSOR_STATUS=fallback_runtime_failed`. Then follow the **Runtime Timeout Fallback** procedure in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md` — set `cursor_available=false`, do NOT add `$RESEARCH_TMPDIR/cursor-validation-output.txt` to `COLLECT_ARGS`, and launch a Claude Code Reviewer subagent fallback. Attribute as `Cursor` (the slot identity is preserved).
+**On non-zero exit**: capture and sanitize the failed render's stderr. Surgically rewrite the `VALIDATION_*` slice of `$RESEARCH_TMPDIR/lane-status.txt` BEFORE launching the fallback so an abort after spawn still leaves Step 3 attribution honest. Set `VALIDATION_CURSOR_STATUS=fallback_runtime_failed`. Then follow the **Runtime Timeout Fallback** procedure in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md` — set `cursor_binary_available=false`, do NOT add `$RESEARCH_TMPDIR/cursor-validation-output.txt` to `COLLECT_ARGS`, and launch a Claude Code Reviewer subagent fallback. Attribute as `Cursor` (the slot identity is preserved).
 
 **On success**, launch in background:
 
@@ -107,9 +107,9 @@ Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
 
 > **Diagnostic note**: this lane uses `python3 python/cli.py agent run-external-agent` directly and has no `/implement`-style flush path for the `vendor-failure-diagnostics` larch-log batch. Validation-lane failure diagnostics (`*.failure-diag` carriers) stay in `$RESEARCH_TMPDIR` and are removed at `/research` cleanup; they are not committed to run logs.
 
-**Cursor fallback** (if `cursor_available` is false at lane-launch time): Launch 1 Claude Code Reviewer subagent via the Agent tool (`subagent_type: larch:code-reviewer`) using the unified Code Reviewer archetype with the research-validation variable bindings below. Attribute as `Cursor`.
+**Cursor fallback** (if `cursor_binary_available` is false at lane-launch time): Launch 1 Claude Code Reviewer subagent via the Agent tool (`subagent_type: larch:code-reviewer`) using the unified Code Reviewer archetype with the research-validation variable bindings below. Attribute as `Cursor`.
 
-## Codex Reviewer (if `codex_available`)
+## Codex Reviewer (if `codex_binary_available`)
 
 Run Codex **second** in the parallel message (after Cursor):
 
@@ -122,7 +122,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" render reviewer \
   > "$RESEARCH_TMPDIR/codex-prompt.txt"
 ```
 
-**On non-zero exit**: same handling as Cursor render-failure path. Set `VALIDATION_CODEX_STATUS=fallback_runtime_failed`, set `codex_available=false`, omit the path from `COLLECT_ARGS`, launch a Claude Code Reviewer subagent fallback. Attribute as `Codex`.
+**On non-zero exit**: same handling as Cursor render-failure path. Set `VALIDATION_CODEX_STATUS=fallback_runtime_failed`, set `codex_binary_available=false`, omit the path from `COLLECT_ARGS`, launch a Claude Code Reviewer subagent fallback. Attribute as `Codex`.
 
 **On success**, launch in background:
 
@@ -139,7 +139,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" render reviewer \
 
 Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
 
-**Codex fallback** (if `codex_available` is false at lane-launch time): Launch 1 Claude Code Reviewer subagent via the Agent tool (`subagent_type: larch:code-reviewer`) using the unified Code Reviewer archetype with the research-validation variable bindings below. Attribute as `Codex`.
+**Codex fallback** (if `codex_binary_available` is false at lane-launch time): Launch 1 Claude Code Reviewer subagent via the Agent tool (`subagent_type: larch:code-reviewer`) using the unified Code Reviewer archetype with the research-validation variable bindings below. Attribute as `Codex`.
 
 ## Claude Code Reviewer Subagent (always-on lane — launched **last** in the parallel message)
 
@@ -174,8 +174,8 @@ Build the argument list from only the externals that were actually launched:
 
 ```
 COLLECT_ARGS=()
-[[ "$cursor_available" == true ]] && COLLECT_ARGS+=("$RESEARCH_TMPDIR/cursor-validation-output.txt")
-[[ "$codex_available" == true ]] && COLLECT_ARGS+=("$RESEARCH_TMPDIR/codex-validation-output.txt")
+[[ "$cursor_binary_available" == true ]] && COLLECT_ARGS+=("$RESEARCH_TMPDIR/cursor-validation-output.txt")
+[[ "$codex_binary_available" == true ]] && COLLECT_ARGS+=("$RESEARCH_TMPDIR/codex-validation-output.txt")
 ```
 
 **Zero-externals branch**: If BOTH Cursor and Codex are unavailable (`COLLECT_ARGS` is empty), skip `python/cli.py agent collect-results` entirely and skip all external negotiation. The 3-lane invariant is preserved by 3 Claude streams (the always-on `Code` lane plus the `Cursor` and `Codex` fallback lanes). Merge ALL Claude findings (preserving per-lane attribution) and proceed to Finalize Validation.

@@ -50,11 +50,11 @@ rehydrate_larch_triplet() {
 
 rehydrate_plugin_root
 rehydrate_larch_triplet
-CODEX_PRESENT=$(read_session_key CODEX_PRESENT false)
-CURSOR_PRESENT=$(read_session_key CURSOR_PRESENT false)
+CODEX_BINARY_FOUND=$(read_session_key CODEX_BINARY_FOUND false)
+CURSOR_BINARY_FOUND=$(read_session_key CURSOR_BINARY_FOUND false)
 case "$CODER" in
   claude) python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" token mark "Step 2 — implementation" || true ;;
-  codex) [ "$CODEX_PRESENT" = true ] || python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" token mark "Step 2 — implementation" || true ;;
-  cursor) [ "$CURSOR_PRESENT" = true ] || python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" token mark "Step 2 — implementation" || true ;;
+  codex) [ "$CODEX_BINARY_FOUND" = true ] || python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" token mark "Step 2 — implementation" || true ;;
+  cursor) [ "$CURSOR_BINARY_FOUND" = true ] || python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" token mark "Step 2 — implementation" || true ;;
 esac
 DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" timing mark "Step 2 — implementation" || true

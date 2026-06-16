@@ -14,7 +14,7 @@ This is the surviving `/implement` Step 2 dispatch contract after the shell-to-P
 
 **Invariants**:
 - Implementer-coder set: `{claude} ∪ external_tools`. `claude` is the implementer-only fallback path, never an external tool. The `TOOL=` envelope-line contract on external implementer paths continues to mean external implementer only.
-- Cursor presence gate: `--cursor-present true|false|""` is accepted. Empty and missing values normalize to false. The gate runs after the `claude` early-return and before `REPO_ROOT` git-tree lookup, so `--coder=cursor --cursor-present false` emits `STATUS=claude_fallback` even outside a git work-tree and does not write baseline files. The orchestrator then runs the main-agent code-edit path the same way it would for `--coder=claude`.
+- Cursor binary gate: `--cursor-binary-found true|false|""` is accepted. Empty and missing values fall back to `CURSOR_BINARY_FOUND` from session env or a fresh executable check. `--cursor-present` remains compatibility-only and must not block a selected Cursor coder when the binary exists.
 - `--coder` is required. `/implement` Step 0 resolves the omitted operator flag in `python/bootstrap.py phase_coder_select`, and `python/cli.py implement run-dispatch` forwards that explicit value. A direct dispatcher call without `--coder` exits 2 before git resolution.
 - Stdout is KV-only — `STATUS`, `TOOL`, `MANIFEST`, `QA_PENDING`, `REASON`, `TRANSCRIPT`, `SIDECAR_LOG`, `SCOUT_CODER_MANIFEST`, `SCOUT_CODER_STATUS`, `ORCHESTRATOR_EDIT_AUTHORITY`, plus the optional advisory `WARN_CODEX_NONZERO_EXIT=true` on the salvaged Codex complete path (see the launcher-exit salvage invariant below). The launcher's progress chatter is captured to the sidecar log; the implementer transcript is captured to disk; neither leaks to stdout. SKILL.md Step 2's parser is a fixed grammar; the `WARN_*` marker is a trailing advisory KV (like the `PHANTOM_*` probe tail) that Step 2 does not branch on.
 - Spawn-time baseline files are written ONCE on the first invocation under `$TMPDIR_ARG`: `step2-baseline.txt` (HEAD SHA), `step2-spawn-branch.txt` (branch name). All resume invocations reuse them. The baseline SHA anchors the launcher-retry "clean state" guard (post-failure HEAD must equal baseline). The baseline-vs-HEAD diff cross-check that previously enforced manifest path-set equality was removed when the dispatcher took over committing — there is no longer a committed Codex diff to compare against.
@@ -81,7 +81,9 @@ RECOVERY_PATHS_FILE=<path-to-step2-recovery-paths.nul>
 | `--feature-file PATH` | yes | The original feature description (passed through to Codex) |
 | `--coder VALUE` | yes | `claude`, `codex`, or `cursor`. Resolved by `/implement` Step 0 and forwarded by `python/cli.py implement run-dispatch`. |
 | `--codex-available VALUE` | optional (deprecated) | `true` (maps to `--coder codex`) or `false` (maps to `--coder claude`). Emits a stderr deprecation warning. Mutually exclusive with `--coder`. |
-| `--cursor-present VALUE` | optional | `true`, `false`, or empty. Empty/missing normalizes to false. Consulted only on `--coder=cursor`; non-`true` falls back to `STATUS=claude_fallback` before `REPO_ROOT` lookup. |
+| `--cursor-present VALUE` | optional, deprecated | Compatibility-only probe-health flag. Ignored for routing. |
+| `--cursor-binary-found VALUE` | optional | `true`, `false`, or empty. A false value blocks an impossible Cursor command; empty falls back to session env or a fresh executable check. |
+| `--codex-binary-found VALUE` | optional | `true`, `false`, or empty. A false value blocks an impossible Codex command; empty falls back to session env or a fresh executable check. |
 | `--answers PATH` | optional | Operator answers to a prior `needs_qa` cycle; presence increments the resume counter |
 
 External implementer launches use a fixed 7200-second wall-clock timeout. `python/cli.py implement run-dispatch` forwards the launcher argv and `python/cli.py implement step2-dispatch` owns the fixed 7200-second timeout value.
@@ -136,7 +138,7 @@ Derived sources:
   path; the launcher does not read `PLAN_FILE` from `session-env.sh`).
 - No workflow flag is passed; the launcher reads only the conventional plan, feature file, coder, cursor-presence, and optional answers inputs.
 - `$IMPLEMENT_TMPDIR/session-env.sh`
-  - `CURSOR_PRESENT`: forwarded as `--cursor-present`.
+  - `CURSOR_BINARY_FOUND`: forwarded as `--cursor-binary-found`; `CURSOR_PRESENT` is compatibility-only when present in old examples.
   - `LARCH_CLAUDE_PLUGIN_ROOT`: resolves the downstream script path when
     `CLAUDE_PLUGIN_ROOT` is not already set.
 - `$IMPLEMENT_TMPDIR/feature-description.txt`: forwarded as `--feature-file`.

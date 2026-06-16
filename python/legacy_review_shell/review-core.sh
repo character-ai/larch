@@ -18,8 +18,8 @@ usage() {
 MODE=""
 REVIEW_TMPDIR=""
 SESSION_ENV_PATH="${SESSION_ENV_PATH:-}"
-CODEX_AVAILABLE=""
-CURSOR_AVAILABLE=""
+CODEX_BINARY_FOUND=""
+CURSOR_BINARY_FOUND=""
 DIFF_FILE=""
 COMMIT_COUNT="0"
 SCOPE_FILES=""
@@ -45,8 +45,8 @@ while [[ $# -gt 0 ]]; do
         --mode) MODE="${2:?--mode requires a value}"; shift 2 ;;
         --output-dir) REVIEW_TMPDIR="${2:?--output-dir requires a value}"; shift 2 ;;
         --session-env-path) SESSION_ENV_PATH="${2:?--session-env-path requires a value}"; shift 2 ;;
-        --codex-available) CODEX_AVAILABLE="${2:?--codex-available requires a value}"; shift 2 ;;
-        --cursor-available) CURSOR_AVAILABLE="${2:?--cursor-available requires a value}"; shift 2 ;;
+        --codex-available) CODEX_BINARY_FOUND="${2:?--codex-available requires a value}"; shift 2 ;;
+        --cursor-available) CURSOR_BINARY_FOUND="${2:?--cursor-available requires a value}"; shift 2 ;;
         --diff-file) DIFF_FILE="${2:?--diff-file requires a value}"; shift 2 ;;
         --commit-count) COMMIT_COUNT="${2:?--commit-count requires a value}"; shift 2 ;;
         --scope-files) SCOPE_FILES="${2:?--scope-files requires a value}"; shift 2 ;;
@@ -66,8 +66,8 @@ done
 
 [[ "$MODE" == "diff" || "$MODE" == "description" ]] || { larch_err "review-core.sh: --mode must be diff or description"; exit 2; }
 [[ -n "$REVIEW_TMPDIR" ]] || { larch_err "review-core.sh: --output-dir is required"; exit 2; }
-[[ "$CODEX_AVAILABLE" == "true" || "$CODEX_AVAILABLE" == "false" ]] || { larch_err "review-core.sh: --codex-available must be true or false"; exit 2; }
-[[ "$CURSOR_AVAILABLE" == "true" || "$CURSOR_AVAILABLE" == "false" ]] || { larch_err "review-core.sh: --cursor-available must be true or false"; exit 2; }
+[[ "$CODEX_BINARY_FOUND" == "true" || "$CODEX_BINARY_FOUND" == "false" ]] || { larch_err "review-core.sh: --codex-available must be true or false"; exit 2; }
+[[ "$CURSOR_BINARY_FOUND" == "true" || "$CURSOR_BINARY_FOUND" == "false" ]] || { larch_err "review-core.sh: --cursor-available must be true or false"; exit 2; }
 [[ "$PANEL" == "simple" || "$PANEL" == "hard" ]] || { larch_err "review-core.sh: --panel must be simple or hard"; exit 2; }
 case "$DYNAMIC_ARCHETYPES" in
     [0-3]) ;;
@@ -368,8 +368,8 @@ emit_zero_findings_branch() {
     zero_tally_args=(
         --ballot-file "$REVIEW_TMPDIR/findings.md"
         --review-tmpdir "$REVIEW_TMPDIR"
-        --cursor-available "$CURSOR_AVAILABLE"
-        --codex-available "$CODEX_AVAILABLE"
+        --cursor-available "$CURSOR_BINARY_FOUND"
+        --codex-available "$CODEX_BINARY_FOUND"
         --round-num "$ROUND_NUM"
         --voter-files "$zero_findings_voter"
     )
@@ -703,8 +703,8 @@ dispatch_args=(
     --mode "$MODE"
     --review-tmpdir "$REVIEW_TMPDIR"
     --panel "$PANEL"
-    --codex-available "$CODEX_AVAILABLE"
-    --cursor-available "$CURSOR_AVAILABLE"
+    --codex-available "$CODEX_BINARY_FOUND"
+    --cursor-available "$CURSOR_BINARY_FOUND"
     --commit-count "${COMMIT_COUNT:-0}"
     --timing-task-prefix "review-round${ROUND_NUM}"
     --dynamic-archetypes "$DYNAMIC_ARCHETYPES"
@@ -949,8 +949,8 @@ aggregate_out="$REVIEW_TMPDIR/review-core-aggregate.env"
 aggregate_args=(
     --findings-file "$REVIEW_TMPDIR/findings.md"
     --review-tmpdir "$REVIEW_TMPDIR"
-    --codex-present "$CODEX_AVAILABLE"
-    --cursor-present "$CURSOR_AVAILABLE"
+    --codex-present "$CODEX_BINARY_FOUND"
+    --cursor-present "$CURSOR_BINARY_FOUND"
     --mode "$MODE"
 )
 [[ -n "$SESSION_ENV_PATH" ]] && aggregate_args+=(--session-env-path "$SESSION_ENV_PATH")
@@ -979,8 +979,8 @@ if [[ "$aggregate_reason" == "validation-exhausted" ]]; then
     tally_args=(
         --ballot-file "$REVIEW_TMPDIR/findings.md"
         --review-tmpdir "$REVIEW_TMPDIR"
-        --cursor-available "$CURSOR_AVAILABLE"
-        --codex-available "$CODEX_AVAILABLE"
+        --cursor-available "$CURSOR_BINARY_FOUND"
+        --codex-available "$CODEX_BINARY_FOUND"
         --round-num "$ROUND_NUM"
     )
     [[ -n "$SESSION_ENV_PATH" ]] && tally_args+=(--session-env-path "$SESSION_ENV_PATH")
@@ -1069,8 +1069,8 @@ voters_out="$REVIEW_TMPDIR/review-core-voters.env"
 voter_args=(
     --ballot-file "$REVIEW_TMPDIR/findings.md"
     --review-tmpdir "$REVIEW_TMPDIR"
-    --codex-available "$CODEX_AVAILABLE"
-    --cursor-available "$CURSOR_AVAILABLE"
+    --codex-available "$CODEX_BINARY_FOUND"
+    --cursor-available "$CURSOR_BINARY_FOUND"
     --round-num "$ROUND_NUM"
 )
 [[ -n "$SESSION_ENV_PATH" ]] && voter_args+=(--session-env-path "$SESSION_ENV_PATH")
@@ -1095,8 +1095,8 @@ voter_3_tool=$(kv_get "$voters_out" VOTER_3_TOOL)
 tally_args=(
     --ballot-file "$REVIEW_TMPDIR/findings.md"
     --review-tmpdir "$REVIEW_TMPDIR"
-    --cursor-available "$CURSOR_AVAILABLE"
-    --codex-available "$CODEX_AVAILABLE"
+    --cursor-available "$CURSOR_BINARY_FOUND"
+    --codex-available "$CODEX_BINARY_FOUND"
     --round-num "$ROUND_NUM"
 )
 [[ -n "$SESSION_ENV_PATH" ]] && tally_args+=(--session-env-path "$SESSION_ENV_PATH")

@@ -12,6 +12,7 @@ import contextlib
 import fnmatch
 import os
 import re
+import shutil
 import sys
 import tempfile
 from collections.abc import Callable, Iterable, Sequence
@@ -170,15 +171,14 @@ def _session_get(session_env_path: Path, key: str, default: str = "") -> str:
     return default
 
 
-def _presence_flag(name: str, implement_tmpdir: Path) -> bool:
+def _binary_flag(name: str, implement_tmpdir: Path, binary: str) -> bool:
     value = os.environ.get(name, "")
     if value in {"true", "false"}:
         return value == "true"
     session_value = _session_get(implement_tmpdir / "session-env.sh", name, "")
     if session_value in {"true", "false"}:
         return session_value == "true"
-    return False
-
+    return shutil.which(binary) is not None
 
 def validate_tmpdir(tmpdir: str) -> Path | None:
     """Port of validate_tmpdir in python/cli.py checks run-relevant."""
@@ -1081,8 +1081,8 @@ def checks_lint_fix_main(argv: list[str] | None = None) -> int:
         site=args.site,
         checks_log=args.checks_log,
         repo_root=repo_root,
-        codex_present=_presence_flag("CODEX_PRESENT", canonical_tmp),
-        cursor_present=_presence_flag("CURSOR_PRESENT", canonical_tmp),
+        codex_present=_binary_flag("CODEX_BINARY_FOUND", canonical_tmp, "codex"),
+        cursor_present=_binary_flag("CURSOR_BINARY_FOUND", canonical_tmp, "cursor"),
         run_parent=run_parent,
         allowed_tmpdir=str(canonical_tmp),
     )

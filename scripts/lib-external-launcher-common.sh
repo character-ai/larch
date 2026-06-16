@@ -138,6 +138,13 @@ external_launch_health_gate() {
             ;;
     esac
 
+    if ! command -v "$tool" >/dev/null 2>&1; then
+        if [[ -n "$_probe_diag_var" ]]; then
+            printf -v "$_probe_diag_var" '%s' "${tool} binary missing or not executable"
+        fi
+        return 1
+    fi
+
     external_launch_health_gate_timeout timeout_seconds
     [[ -n "$timeout_seconds" ]] || return 0
 

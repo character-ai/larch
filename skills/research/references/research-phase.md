@@ -10,7 +10,7 @@
 
 The four research lanes:
 
-1. **Architecture lane** — Codex-first running `RESEARCH_PROMPT_ARCH`. Per-lane Claude `Agent` fallback when `codex_available=false` or the Codex run fails at runtime.
+1. **Architecture lane** — Codex-first running `RESEARCH_PROMPT_ARCH`. Per-lane Claude `Agent` fallback when `codex_binary_available=false` or the Codex run fails at runtime.
 2. **Edge cases lane** — Codex-first running `RESEARCH_PROMPT_EDGE`. Per-lane Claude `Agent` fallback.
 3. **External comparisons lane** — Codex-first running `RESEARCH_PROMPT_EXT`. Per-lane Claude `Agent` fallback.
 4. **Security lane** — Codex-first running `RESEARCH_PROMPT_SEC`. Per-lane Claude `Agent` fallback.
@@ -132,7 +132,7 @@ Print: `> **🔶 /research 1.3: lane-launch**`
 
 **Critical sequencing**: launch all four lanes in a single message — Codex Bash invocations (with `run_in_background: true`) AND any per-lane Claude `Agent` fallbacks together.
 
-**Token telemetry (research lanes)**: every Claude `Agent` fallback (pre-launch when `codex_available=false` AND every runtime-timeout replacement) writes a per-lane sidecar after the Agent return: `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" token lane-write --phase research --lane <slot> --tool claude --total-tokens <N|unknown> --dir "$RESEARCH_TMPDIR"`. Stable slot names: `architecture`, `edge-cases`, `external-comparisons`, `security`. Non-fallback Codex lanes receive best-effort usage records from `launch-codex-exec.sh` (`${OUTPUT}.token-record` / events sidecar); Claude fallbacks remain the authoritative per-lane token tally path.
+**Token telemetry (research lanes)**: every Claude `Agent` fallback (pre-launch when `codex_binary_available=false` AND every runtime-timeout replacement) writes a per-lane sidecar after the Agent return: `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" token lane-write --phase research --lane <slot> --tool claude --total-tokens <N|unknown> --dir "$RESEARCH_TMPDIR"`. Stable slot names: `architecture`, `edge-cases`, `external-comparisons`, `security`. Non-fallback Codex lanes receive best-effort usage records from `launch-codex-exec.sh` (`${OUTPUT}.token-record` / events sidecar); Claude fallbacks remain the authoritative per-lane token tally path.
 
 **Named angle prompts** (orchestrator substitutes `<RESEARCH_QUESTION>` literally at launch time; appends the per-lane suffix from §1.2 when `RESEARCH_PLAN_N>0`):
 
@@ -144,7 +144,7 @@ Print: `> **🔶 /research 1.3: lane-launch**`
 
 `RESEARCH_PROMPT_SEC` = ``"You are researching a codebase to answer this question: <RESEARCH_QUESTION>. Focus your investigation on the **security & threat surface** angle — injection vectors, authn/authz gaps, secret handling, crypto choices, deserialization risks, SSRF, path traversal, dependency CVEs, and any other security-relevant exposure. Explore the codebase to ground your findings with verifiable provenance (see (4)). Write 2-3 paragraphs covering: (1) key security findings — concrete threat surfaces and exposures, (2) relevant files/modules/areas (including dependency manifests and trust boundaries), (3) security risks, attacker scenarios, and mitigation feasibility, (4) Every concrete claim must carry provenance: a `file:line` reference for repo-internal claims, a fenced command + 1–3 lines of its output for behavior claims, or a URL for external claims. Do NOT modify files."``
 
-**Codex launch (per lane)** when `codex_available=true`. Substitute the lane's angle prompt literal into `<LANE_PROMPT>`:
+**Codex launch (per lane)** when `codex_binary_available=true`. Substitute the lane's angle prompt literal into `<LANE_PROMPT>`:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT:?}/python/cli.py agent launch-codex-exec" \
@@ -158,7 +158,7 @@ Print: `> **🔶 /research 1.3: lane-launch**`
 
 `<slot>` is one of `arch` / `edge` / `ext` / `sec`. Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
 
-**Per-lane Claude fallback** when `codex_available=false`: launch a Claude `Agent` subagent (no `subagent_type`) carrying the lane's angle prompt + per-lane suffix. Do NOT use `subagent_type: code-reviewer`.
+**Per-lane Claude fallback** when `codex_binary_available=false`: launch a Claude `Agent` subagent (no `subagent_type`) carrying the lane's angle prompt + per-lane suffix. Do NOT use `subagent_type: code-reviewer`.
 
 ## 1.4 — Wait and Validate Research Outputs
 
@@ -166,13 +166,13 @@ Collect and validate research outputs using the shared collection script. Build 
 
 ```
 COLLECT_ARGS=()
-[[ "$codex_available" == true ]] && COLLECT_ARGS+=("$RESEARCH_TMPDIR/codex-research-arch-output.txt")
-[[ "$codex_available" == true ]] && COLLECT_ARGS+=("$RESEARCH_TMPDIR/codex-research-edge-output.txt")
-[[ "$codex_available" == true ]] && COLLECT_ARGS+=("$RESEARCH_TMPDIR/codex-research-ext-output.txt")
-[[ "$codex_available" == true ]] && COLLECT_ARGS+=("$RESEARCH_TMPDIR/codex-research-sec-output.txt")
+[[ "$codex_binary_available" == true ]] && COLLECT_ARGS+=("$RESEARCH_TMPDIR/codex-research-arch-output.txt")
+[[ "$codex_binary_available" == true ]] && COLLECT_ARGS+=("$RESEARCH_TMPDIR/codex-research-edge-output.txt")
+[[ "$codex_binary_available" == true ]] && COLLECT_ARGS+=("$RESEARCH_TMPDIR/codex-research-ext-output.txt")
+[[ "$codex_binary_available" == true ]] && COLLECT_ARGS+=("$RESEARCH_TMPDIR/codex-research-sec-output.txt")
 ```
 
-**Zero-externals branch**: if `codex_available=false` (all four lanes ran as Claude fallbacks), skip `python/cli.py agent collect-results` entirely. Proceed directly to Step 1.5 with the four Claude fallback outputs.
+**Zero-externals branch**: if `codex_binary_available=false` (all four lanes ran as Claude fallbacks), skip `python/cli.py agent collect-results` entirely. Proceed directly to Step 1.5 with the four Claude fallback outputs.
 
 Otherwise invoke the collector with substantive validation:
 
@@ -216,7 +216,7 @@ rm -f "$_active_err"
 
 Keep append-record bound to `--tmpdir "$RESEARCH_TMPDIR"`. Keep active-ledger ingestion bound to `RESEARCH_TMPDIR`. The active-ledger command unsets inherited explicit ledger, session ID, implementation tmpdir, design tmpdir, and session-env variables so research sidecars cannot write to a leaked parent ledger or slug. Absent sidecars are no-ops. Claude fallback lanes require no ingestion unless a Codex `.token-record` sidecar exists.
 
-**Runtime-timeout replacement**: For any lane with `STATUS` not `OK`, follow the **Runtime Timeout Fallback** procedure in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md` to flip `codex_available=false` for the affected slot, then **immediately launch a Claude `Agent` subagent fallback** carrying the lane's angle prompt + per-lane suffix and wait for it before synthesis. This preserves the 4-lane invariant at synthesis time.
+**Runtime-timeout replacement**: For any lane with `STATUS` not `OK`, follow the **Runtime Timeout Fallback** procedure in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md` for that slot, then **immediately launch a Claude `Agent` subagent fallback** carrying the lane's angle prompt + per-lane suffix and wait for it before synthesis. This preserves the 4-lane invariant at synthesis time.
 
 ### Update lane-status.txt (RESEARCH_* slice only)
 

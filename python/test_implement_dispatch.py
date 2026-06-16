@@ -44,7 +44,11 @@ def _session(tmp_path: Path) -> Path:
     tmp.mkdir()
     (tmp / "plan.txt").write_text("## Plan\n", encoding="utf-8")
     (tmp / "feature-description.txt").write_text("feature\n", encoding="utf-8")
-    (tmp / "session-env.sh").write_text("CURSOR_PRESENT=false\nLARCH_CLAUDE_PLUGIN_ROOT=.\n", encoding="utf-8")
+    plugin_root = Path(__file__).resolve().parents[1]
+    (tmp / "session-env.sh").write_text(
+        f"CURSOR_PRESENT=false\nCODEX_BINARY_FOUND=true\nCURSOR_BINARY_FOUND=true\nLARCH_CLAUDE_PLUGIN_ROOT={plugin_root}\n",
+        encoding="utf-8",
+    )
     return tmp
 
 
@@ -145,11 +149,12 @@ def _malformed_launcher(edit: Callable[[Path, implement_dispatch.DispatchState],
     return fake_launcher
 
 
-def test_run_dispatch_fails_closed_on_cursor_drift(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_run_dispatch_fails_closed_on_cursor_binary_missing(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     tmp = _session(tmp_path)
+    (tmp / "session-env.sh").write_text("CURSOR_BINARY_FOUND=false\nLARCH_CLAUDE_PLUGIN_ROOT=.\n", encoding="utf-8")
     rc = implement_dispatch.run_dispatch_main(["--implement-tmpdir", str(tmp), "--coder", "cursor"])
     assert rc == 2
-    assert "CURSOR_PRESENT=false" in capsys.readouterr().err
+    assert "cursor binary is missing" in capsys.readouterr().err
 
 
 def test_run_dispatch_missing_tmpdir_exits_2(capsys: pytest.CaptureFixture[str]) -> None:
@@ -170,12 +175,24 @@ def test_run_dispatch_missing_answers_path_exits_2(tmp_path: Path, capsys: pytes
     assert "--answers path does not exist" in capsys.readouterr().err
 
 
-def test_run_dispatch_invalid_cursor_present_exits_2(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_run_dispatch_ignores_legacy_cursor_present(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     tmp = _session(tmp_path)
-    (tmp / "session-env.sh").write_text("CURSOR_PRESENT=maybe\n", encoding="utf-8")
+    (tmp / "session-env.sh").write_text(
+        "CURSOR_PRESENT=maybe\nCODEX_BINARY_FOUND=true\nCURSOR_BINARY_FOUND=true\nLARCH_CLAUDE_PLUGIN_ROOT=.\n",
+        encoding="utf-8",
+    )
+    captured: dict[str, list[str]] = {}
+
+    def fake_run(argv, **_kwargs):  # type: ignore[no-untyped-def]
+        if len(argv) >= 4 and argv[2:4] == ["implement", "step2-dispatch"]:
+            captured["argv"] = list(argv)
+            return subprocess.CompletedProcess(argv, 0, "STATUS=claude_fallback\nORCHESTRATOR_EDIT_AUTHORITY=allowed\n", "")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(implement_dispatch.subprocess, "run", fake_run)
     rc = implement_dispatch.run_dispatch_main(["--implement-tmpdir", str(tmp), "--coder", "codex"])
-    assert rc == 2
-    assert "CURSOR_PRESENT must be true or false" in capsys.readouterr().err
+    assert rc == 0
+    assert "--cursor-binary-found" in captured["argv"]
 
 
 def test_run_dispatch_forwards_answers_to_step2(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1245,10 +1262,12 @@ def test_materialize_oos_missing_helper_with_observations_bails(tmp_path: Path, 
         repo_root=tmp_path,
         tmpdir=tmp,
         plan_file=tmp / "plan.txt",
-        feature_file=tmp / "feature.txt",
-        coder="codex",
-        cursor_present="false",
-        answers_file=None,
+            feature_file=tmp / "feature.txt",
+            coder="codex",
+            cursor_present="false",
+            cursor_binary_found="true",
+            codex_binary_found="true",
+            answers_file=None,
         plugin_root=plugin,
         tool_tag="codex",
         manifest_path=manifest,

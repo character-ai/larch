@@ -51,7 +51,7 @@ printf 'plan body\ndiff_lines: 3\n' >"$D/plan.txt"
 printf 'validate defects\n' >"$D/validate-plan-commands.log"
 set +e
 out=$(AUTOFIX_TEST_MODE=never-fix CLAUDE_PLUGIN_ROOT="$ROOT" DESIGN_TMPDIR="$D" \
-  CODEX_PRESENT=true CURSOR_PRESENT=true CODEX_AVAILABLE=true CURSOR_AVAILABLE=true \
+  CODEX_BINARY_FOUND=true CURSOR_BINARY_FOUND=true \
   LARCH_AUTOFIX_DISPATCH_SH="$DISPATCH_STUB" \
   LARCH_AUTOFIX_VALIDATE_PLAN_SH="$VALIDATE_STUB" \
   "$SUBJECT" --site 'design Step 2b' --validator-target-file "$D/plan.txt" --validate-log-file "$D/validate-plan-commands.log" \

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # dispatch-code-voters.sh — Launch the /review code-review judge panel: Claude
-# (always) plus each available external (Codex, Cursor). Unavailable externals
+# (always) plus each available external (Codex, Cursor). Missing-binary externals
 # are dropped via the waterfall's --no-fallback mode (shrink-not-backfill), never
 # replaced by a duplicate judge; the acceptance-threshold table compensates for
 # the smaller panel.
@@ -21,8 +21,8 @@ usage() {
 
 BALLOT_FILE=""
 REVIEW_TMPDIR=""
-CODEX_AVAILABLE=""
-CURSOR_AVAILABLE=""
+CODEX_BINARY_FOUND=""
+CURSOR_BINARY_FOUND=""
 SESSION_ENV_PATH="${SESSION_ENV_PATH:-}"
 DIFF_FILE=""
 PLAN_FILE=""
@@ -32,8 +32,8 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --ballot-file) BALLOT_FILE="${2:?--ballot-file requires a value}"; shift 2 ;;
         --review-tmpdir) REVIEW_TMPDIR="${2:?--review-tmpdir requires a value}"; shift 2 ;;
-        --codex-available) CODEX_AVAILABLE="${2:?--codex-available requires a value}"; shift 2 ;;
-        --cursor-available) CURSOR_AVAILABLE="${2:?--cursor-available requires a value}"; shift 2 ;;
+        --codex-available) CODEX_BINARY_FOUND="${2:?--codex-available requires a value}"; shift 2 ;;
+        --cursor-available) CURSOR_BINARY_FOUND="${2:?--cursor-available requires a value}"; shift 2 ;;
         --session-env-path) SESSION_ENV_PATH="${2:?--session-env-path requires a value}"; shift 2 ;;
         --diff-file) DIFF_FILE="${2:?--diff-file requires a value}"; shift 2 ;;
         --plan-file) PLAN_FILE="${2:?--plan-file requires a value}"; shift 2 ;;
@@ -45,8 +45,8 @@ done
 
 [[ -n "$BALLOT_FILE" && -f "$BALLOT_FILE" ]] || { larch_err "dispatch-code-voters.sh: --ballot-file must name a file"; exit 2; }
 [[ -n "$REVIEW_TMPDIR" ]] || { larch_err "dispatch-code-voters.sh: --review-tmpdir is required"; exit 2; }
-[[ "$CODEX_AVAILABLE" == "true" || "$CODEX_AVAILABLE" == "false" ]] || { larch_err "dispatch-code-voters.sh: --codex-available must be true or false"; exit 2; }
-[[ "$CURSOR_AVAILABLE" == "true" || "$CURSOR_AVAILABLE" == "false" ]] || { larch_err "dispatch-code-voters.sh: --cursor-available must be true or false"; exit 2; }
+[[ "$CODEX_BINARY_FOUND" == "true" || "$CODEX_BINARY_FOUND" == "false" ]] || { larch_err "dispatch-code-voters.sh: --codex-available must be true or false"; exit 2; }
+[[ "$CURSOR_BINARY_FOUND" == "true" || "$CURSOR_BINARY_FOUND" == "false" ]] || { larch_err "dispatch-code-voters.sh: --cursor-available must be true or false"; exit 2; }
 case "$ROUND_NUM" in ''|*[!0-9]*) larch_err "dispatch-code-voters.sh: --round-num must be a positive integer"; exit 2 ;; esac
 ROUND_NUM=$((10#$ROUND_NUM))
 (( ROUND_NUM > 0 )) || { larch_err "dispatch-code-voters.sh: --round-num must be a positive integer"; exit 2; }
@@ -130,11 +130,11 @@ manifest="$REVIEW_TMPDIR/code-voter-slots.ndjson"
     printf '{"slot":"voter-3","tool":"cursor","output":"%s","prompt_file":"%s"}\n' "$VOTER_3_BASE" "$cursor_prompt"
 } > "$manifest"
 
-codex_present_for_waterfall="$CODEX_AVAILABLE"
+codex_present_for_waterfall="$CODEX_BINARY_FOUND"
 # Shrink-not-backfill: pass --no-fallback so an unavailable (or failed) external
 # slot is dropped from the result set instead of being replaced by a duplicate
 # judge (the alternate external, then Claude). The panel is Claude (always) plus
-# each AVAILABLE external; the acceptance-threshold table compensates for the
+# each binary-present external; the acceptance-threshold table compensates for the
 # smaller panel (2 judges → unanimous, 1 → binding single).
 # Guard against non-zero exit from waterfall (e.g. a reviewer launcher exiting
 # abnormally mid-run) so set -e does not abort dispatch before tally.
@@ -142,7 +142,7 @@ set +e
 waterfall_output=$("$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh" \
     --slots-file "$manifest" \
     --codex-present "$codex_present_for_waterfall" \
-    --cursor-present "$CURSOR_AVAILABLE" \
+    --cursor-present "$CURSOR_BINARY_FOUND" \
     --mode "$mode" \
     --timeout 1200 \
     --no-fallback \
@@ -242,14 +242,14 @@ for _wf_i in "${!tools_arr[@]}"; do
     esac
 done
 unset _wf_i
-# An unavailable external is intentionally skipped (no duplicate judge launched);
+# A missing-binary external is intentionally skipped (no duplicate judge launched);
 # Claude (voter 1) remains the always-on floor. A genuine failure of an
 # *available* external is detected later by the size/sentinel re-evaluation and
 # marked "failed" (which the degraded-panel check still counts as a degradation).
 VOTER_2_STATUS="launched"
 VOTER_3_STATUS="launched"
-[[ "$CODEX_AVAILABLE" != "true" ]] && VOTER_2_STATUS="skipped"
-[[ "$CURSOR_AVAILABLE" != "true" ]] && VOTER_3_STATUS="skipped"
+[[ "$CODEX_BINARY_FOUND" != "true" ]] && VOTER_2_STATUS="skipped"
+[[ "$CURSOR_BINARY_FOUND" != "true" ]] && VOTER_3_STATUS="skipped"
 voter1_wait_timed_out=false
 _wait_rc=0
 
@@ -329,13 +329,13 @@ VOTER_3_PARSE_RATE_STATUS="SKIPPED"
 [[ "$VOTER_3_STATUS" != "failed" && "$VOTER_3_STATUS" != "skipped" ]] && VOTER_3_PARSE_RATE_STATUS=$(python3 "$CLI" voting parse-rate-retry "${VPR_ARGS[@]}" --slot 3 --voter-file "$VOTER_3_PATH" --voter-tool "$VOTER_3_TOOL" --prompt-file "$cursor_prompt")
 
 # Shrink-not-backfill: the expected (eligible) panel is Claude (always) plus each
-# AVAILABLE external. Unavailable externals are intentionally skipped, not
+# binary-present external. Missing-binary externals are intentionally skipped, not
 # back-filled, so they are NOT counted toward expected_judges — their absence is
 # the designed state, not a degradation. The degraded-panel warning below then
 # fires only when an *available* judge failed to produce substantive output.
 expected_judges=1
-[[ "$CODEX_AVAILABLE" == "true" ]] && expected_judges=$((expected_judges + 1))
-[[ "$CURSOR_AVAILABLE" == "true" ]] && expected_judges=$((expected_judges + 1))
+[[ "$CODEX_BINARY_FOUND" == "true" ]] && expected_judges=$((expected_judges + 1))
+[[ "$CURSOR_BINARY_FOUND" == "true" ]] && expected_judges=$((expected_judges + 1))
 
 effective_judges=0
 for slot_record in \

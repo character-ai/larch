@@ -156,7 +156,7 @@ def test_panel_degraded_when_static_dispatch_false(tmp_path: Path, monkeypatch: 
     (d / "plan.txt").write_text("## Plan\n", encoding="utf-8")
     stub = _panel_stub(tmp_path, static_ok="false")
     monkeypatch.setenv("DECOMPOSE_PANEL_WATERFALL_SH", str(stub))
-    decompose.panel_dispatch_main(["--design-tmpdir", str(d), "--codex-present", "true", "--cursor-present", "true", "--mode", "plan", "--plan-file", str(d / "plan.txt"), "--timeout", "30"])
+    decompose.panel_dispatch_main(["--design-tmpdir", str(d), "--codex-binary-found", "true", "--cursor-binary-found", "true", "--mode", "plan", "--plan-file", str(d / "plan.txt"), "--timeout", "30"])
     out = capsys.readouterr().out
     assert "DEGRADED_PANEL=true" in out
     assert "PANEL_STATUS=degraded" in out
@@ -167,7 +167,7 @@ def test_panel_partial_paths_file_marks_degraded(tmp_path: Path, monkeypatch: py
     (d / "plan.txt").write_text("## Plan\n", encoding="utf-8")
     stub = _panel_stub(tmp_path, path_limit=4)
     monkeypatch.setenv("DECOMPOSE_PANEL_WATERFALL_SH", str(stub))
-    decompose.panel_dispatch_main(["--design-tmpdir", str(d), "--codex-present", "true", "--cursor-present", "true", "--mode", "plan", "--plan-file", str(d / "plan.txt"), "--timeout", "30"])
+    decompose.panel_dispatch_main(["--design-tmpdir", str(d), "--codex-binary-found", "true", "--cursor-binary-found", "true", "--mode", "plan", "--plan-file", str(d / "plan.txt"), "--timeout", "30"])
     out = capsys.readouterr().out
     assert "DEGRADED_PANEL=true" in out
     rows = [json.loads(line) for line in (d / "decompose" / "panel-outputs.ndjson").read_text(encoding="utf-8").splitlines()]
@@ -183,7 +183,7 @@ def test_panel_both_tools_absent_generic_claude(tmp_path: Path, monkeypatch: pyt
     claude.write_text("#!/usr/bin/env bash\nwhile [[ $# -gt 0 ]]; do if [[ $1 == --output ]]; then out=$2; shift 2; else shift; fi; done\nprintf '## Recommendation\\nGeneric\\n' >\"$out\"\nprintf '0\\n' >\"${out}.done\"\n", encoding="utf-8")
     claude.chmod(0o755)
     monkeypatch.setenv("LARCH_TEST_LAUNCH_CLAUDE_REVIEW", str(claude))
-    decompose.panel_dispatch_main(["--design-tmpdir", str(d), "--codex-present", "false", "--cursor-present", "false", "--mode", "plan", "--plan-file", str(d / "plan.txt"), "--timeout", "30"])
+    decompose.panel_dispatch_main(["--design-tmpdir", str(d), "--codex-binary-found", "false", "--cursor-binary-found", "false", "--mode", "plan", "--plan-file", str(d / "plan.txt"), "--timeout", "30"])
     rows = [json.loads(line) for line in (d / "decompose" / "panel-outputs.ndjson").read_text(encoding="utf-8").splitlines()]
     assert len(rows) == 1
     assert rows[0]["archetype"] == "generic"
@@ -199,7 +199,7 @@ def test_aggregate_failed_when_dispatch_broken(tmp_path: Path, monkeypatch: pyte
     stub.write_text("#!/usr/bin/env bash\nprintf 'DISPATCH_OK=false\\nALL_OUTPUT_FILES_PATH=/dev/null\\n'\n", encoding="utf-8")
     stub.chmod(0o755)
     monkeypatch.setenv("DECOMPOSE_AGGREGATE_WATERFALL_SH", str(stub))
-    decompose.aggregate_main(["--design-tmpdir", str(d), "--panel-outputs-file", str(panel), "--codex-present", "true", "--cursor-present", "true", "--output", str(d / "merged.md"), "--timeout", "30"])
+    decompose.aggregate_main(["--design-tmpdir", str(d), "--panel-outputs-file", str(panel), "--codex-binary-found", "true", "--cursor-binary-found", "true", "--output", str(d / "merged.md"), "--timeout", "30"])
     assert "AGGREGATOR_STATUS=failed" in capsys.readouterr().out
 
 
@@ -208,7 +208,7 @@ def test_panel_replays_waterfall_kvs_on_contract_stream(tmp_path: Path, monkeypa
     (d / "plan.txt").write_text("## Plan\n", encoding="utf-8")
     stub = _panel_stub(tmp_path)
     monkeypatch.setenv("DECOMPOSE_PANEL_WATERFALL_SH", str(stub))
-    decompose.panel_dispatch_main(["--design-tmpdir", str(d), "--codex-present", "true", "--cursor-present", "true", "--mode", "plan", "--plan-file", str(d / "plan.txt"), "--timeout", "30"])
+    decompose.panel_dispatch_main(["--design-tmpdir", str(d), "--codex-binary-found", "true", "--cursor-binary-found", "true", "--mode", "plan", "--plan-file", str(d / "plan.txt"), "--timeout", "30"])
     out = capsys.readouterr().out
     assert "DISPATCH_OK=true" in out
     assert "ALL_OUTPUT_FILES_PATH=" in out
@@ -244,7 +244,7 @@ def test_panel_dispatch_malformed_slots_ndjson(tmp_path: Path, monkeypatch: pyte
     stub.chmod(0o755)
     monkeypatch.setenv("DECOMPOSE_PANEL_WATERFALL_SH", str(stub))
     rc = decompose.panel_dispatch_main(
-        ["--design-tmpdir", str(d), "--codex-present", "true", "--cursor-present", "true", "--mode", "plan", "--plan-file", str(d / "plan.txt"), "--timeout", "30"],
+        ["--design-tmpdir", str(d), "--codex-binary-found", "true", "--cursor-binary-found", "true", "--mode", "plan", "--plan-file", str(d / "plan.txt"), "--timeout", "30"],
     )
     out = capsys.readouterr().out
     assert rc == 2
@@ -256,7 +256,7 @@ def test_aggregate_malformed_panel_ndjson(tmp_path: Path, capsys: pytest.Capture
     panel = d / "panel.ndjson"
     panel.write_text("not-json\n", encoding="utf-8")
     rc = decompose.aggregate_main(
-        ["--design-tmpdir", str(d), "--panel-outputs-file", str(panel), "--codex-present", "true", "--cursor-present", "true", "--output", str(d / "merged.md"), "--timeout", "30"],
+        ["--design-tmpdir", str(d), "--panel-outputs-file", str(panel), "--codex-binary-found", "true", "--cursor-binary-found", "true", "--output", str(d / "merged.md"), "--timeout", "30"],
     )
     out = capsys.readouterr().out
     assert rc == 2

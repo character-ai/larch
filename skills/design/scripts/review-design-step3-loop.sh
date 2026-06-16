@@ -511,8 +511,8 @@ step3_loop_run_apply() {
         --findings-file "$findings_file" \
         --feature-file "$DESIGN_TMPDIR/feature-description.txt" \
         --round-num "$round_num" \
-        --codex-present "${CODEX_PRESENT:-false}" \
-        --cursor-present "${CURSOR_PRESENT:-false}" \
+        --codex-binary-found "${CODEX_BINARY_FOUND:-}" \
+        --cursor-binary-found "${CURSOR_BINARY_FOUND:-}" \
         --patch-format file-replacement)
     revise_rc=$?
     while IFS= read -r _line || [[ -n "$_line" ]]; do

@@ -44,11 +44,7 @@ WRITE_ENV_KEYS = frozenset({
     "REPO_UNAVAILABLE",
     "FORKED_TARGET",
     "LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT",
-    "CODEX_PRESENT",
-    "CODEX_AVAILABLE",
     "CODEX_BINARY_FOUND",
-    "CURSOR_PRESENT",
-    "CURSOR_AVAILABLE",
     "CURSOR_BINARY_FOUND",
     "LARCH_AUTO_MODE",
     "LARCH_TIMING_LEDGER",
@@ -65,10 +61,6 @@ WRITE_DESIGN_ENV_KEYS = frozenset({
     "SESSION_ID",
     "REPO",
     "ISSUE_NUMBER",
-    "CODEX_PRESENT",
-    "CURSOR_PRESENT",
-    "CODEX_AVAILABLE",
-    "CURSOR_AVAILABLE",
     "CODEX_BINARY_FOUND",
     "CURSOR_BINARY_FOUND",
     "LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT",
@@ -112,10 +104,6 @@ RESTORE_FINALIZE_DEFAULTS = {
 CALLER_ENV_KEYS = frozenset({
     "REPO",
     "REPO_UNAVAILABLE",
-    "CODEX_PRESENT",
-    "CURSOR_PRESENT",
-    "CODEX_AVAILABLE",
-    "CURSOR_AVAILABLE",
     "CODEX_BINARY_FOUND",
     "CURSOR_BINARY_FOUND",
     "LARCH_TOKEN_SESSION_ID",
@@ -366,12 +354,7 @@ def _parse_key_value_file(path: str) -> dict[str, str]:
             continue
         key, value = line.split("=", 1)
         if key in CALLER_ENV_KEYS and value:
-            if key == "CODEX_AVAILABLE":
-                data["CODEX_PRESENT"] = value
-            elif key == "CURSOR_AVAILABLE":
-                data["CURSOR_PRESENT"] = value
-            else:
-                data[key] = value
+            data[key] = value
     return data
 
 
@@ -399,6 +382,8 @@ def write_env_main(argv: list[str]) -> int:
     parser.add_argument("--repo-unavailable")
     parser.add_argument("--codex-present", default="")
     parser.add_argument("--cursor-present", default="")
+    parser.add_argument("--codex-available", default="")
+    parser.add_argument("--cursor-available", default="")
     parser.add_argument("--codex-binary-found", default="")
     parser.add_argument("--cursor-binary-found", default="")
     parser.add_argument("--auto-mode", default="")
@@ -428,7 +413,7 @@ def write_env_main(argv: list[str]) -> int:
             return 0
         if args.repo_unavailable is None:
             raise ValueError("Missing required arguments: --output, --repo-unavailable")
-        for flag in ("codex_present", "cursor_present", "codex_binary_found", "cursor_binary_found", "auto_mode"):
+        for flag in ("codex_present", "cursor_present", "codex_available", "cursor_available", "codex_binary_found", "cursor_binary_found", "auto_mode"):
             value = getattr(args, flag)
             if value:
                 _parse_bool_arg(value, f"--{flag.replace('_', '-')}")
@@ -456,14 +441,8 @@ def write_env_main(argv: list[str]) -> int:
             "FORKED_TARGET": args.forked_target,
             "LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT": _external_timeout(),
         }
-        if args.codex_present:
-            data["CODEX_PRESENT"] = args.codex_present
-            data["CODEX_AVAILABLE"] = args.codex_present
         if args.codex_binary_found:
             data["CODEX_BINARY_FOUND"] = args.codex_binary_found
-        if args.cursor_present:
-            data["CURSOR_PRESENT"] = args.cursor_present
-            data["CURSOR_AVAILABLE"] = args.cursor_present
         if args.cursor_binary_found:
             data["CURSOR_BINARY_FOUND"] = args.cursor_binary_found
         if args.auto_mode:
@@ -705,36 +684,15 @@ def write_design_env_main(argv: list[str]) -> int:
             values["REPO"] = args.repo
         if args.issue_number:
             values["ISSUE_NUMBER"] = args.issue_number
-        codex_present_set = "--codex-present" in argv
-        codex_available_set = "--codex-available" in argv
-        cursor_present_set = "--cursor-present" in argv
-        cursor_available_set = "--cursor-available" in argv
         code_bin_set = "--codex-binary-found" in argv
         cur_bin_set = "--cursor-binary-found" in argv
-        cp, ca = args.codex_present, args.codex_available
-        up, ua = args.cursor_present, args.cursor_available
-        if codex_present_set and not codex_available_set:
-            ca = cp
-        elif codex_available_set and not codex_present_set:
-            cp = ca
-        if cursor_present_set and not cursor_available_set:
-            ua = up
-        elif cursor_available_set and not cursor_present_set:
-            up = ua
         recovered = {
-            "CODEX_PRESENT": cp,
-            "CODEX_AVAILABLE": ca,
-            "CURSOR_PRESENT": up,
-            "CURSOR_AVAILABLE": ua,
             "CODEX_BINARY_FOUND": args.codex_binary_found,
             "CURSOR_BINARY_FOUND": args.cursor_binary_found,
         }
-        for key in ("CODEX_PRESENT", "CURSOR_PRESENT", "CODEX_AVAILABLE", "CURSOR_AVAILABLE"):
-            if not recovered[key]:
-                recovered[key] = _recover_prior_bool(key, out_path)
-        if not recovered["CODEX_BINARY_FOUND"] and not code_bin_set and not codex_present_set and not codex_available_set:
+        if not recovered["CODEX_BINARY_FOUND"] and not code_bin_set:
             recovered["CODEX_BINARY_FOUND"] = _recover_prior_bool("CODEX_BINARY_FOUND", out_path)
-        if not recovered["CURSOR_BINARY_FOUND"] and not cur_bin_set and not cursor_present_set and not cursor_available_set:
+        if not recovered["CURSOR_BINARY_FOUND"] and not cur_bin_set:
             recovered["CURSOR_BINARY_FOUND"] = _recover_prior_bool("CURSOR_BINARY_FOUND", out_path)
         for key, value in recovered.items():
             if value:
@@ -1344,8 +1302,8 @@ def setup_main(argv: list[str]) -> int:
             repo_unavailable = "false" if repo_value else "true"
         _emit_kv("REPO", repo_value)
         _emit_kv("REPO_UNAVAILABLE", repo_unavailable)
-    final_codex = caller.get("CODEX_PRESENT", "")
-    final_cursor = caller.get("CURSOR_PRESENT", "")
+    final_codex = ""
+    final_cursor = ""
     final_codex_bin = caller.get("CODEX_BINARY_FOUND", "")
     final_cursor_bin = caller.get("CURSOR_BINARY_FOUND", "")
     if args.check_reviewers:
@@ -1357,26 +1315,14 @@ def setup_main(argv: list[str]) -> int:
             skip_cursor_probe=args.skip_cursor_probe or bool(final_cursor),
         )
         probed = reviewer.kv()
-        if final_codex:
-            probed["CODEX_PRESENT"] = final_codex
-            probed["CODEX_AVAILABLE"] = final_codex
-        if final_cursor:
-            probed["CURSOR_PRESENT"] = final_cursor
-            probed["CURSOR_AVAILABLE"] = final_cursor
-        for key in ("CODEX_PRESENT", "CURSOR_PRESENT", "CODEX_AVAILABLE", "CURSOR_AVAILABLE", "CODEX_BINARY_FOUND", "CURSOR_BINARY_FOUND"):
+        for key in ("CODEX_PRESENT", "CURSOR_PRESENT", "CODEX_BINARY_FOUND", "CURSOR_BINARY_FOUND"):
             if probed.get(key):
                 _emit_kv(key, probed[key])
-        final_codex = probed.get("CODEX_PRESENT", probed.get("CODEX_AVAILABLE", ""))
-        final_cursor = probed.get("CURSOR_PRESENT", probed.get("CURSOR_AVAILABLE", ""))
+        final_codex = probed.get("CODEX_PRESENT", "")
+        final_cursor = probed.get("CURSOR_PRESENT", "")
         final_codex_bin = probed.get("CODEX_BINARY_FOUND", "")
         final_cursor_bin = probed.get("CURSOR_BINARY_FOUND", "")
     else:
-        if final_codex:
-            _emit_kv("CODEX_PRESENT", final_codex)
-            _emit_kv("CODEX_AVAILABLE", final_codex)
-        if final_cursor:
-            _emit_kv("CURSOR_PRESENT", final_cursor)
-            _emit_kv("CURSOR_AVAILABLE", final_cursor)
         if final_codex_bin not in _BOOL and final_codex in _BOOL:
             final_codex_bin = final_codex
         if final_cursor_bin not in _BOOL and final_cursor in _BOOL:

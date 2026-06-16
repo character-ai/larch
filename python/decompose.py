@@ -56,10 +56,10 @@ def _positive_int(value: str, flag: str) -> int:
     return int(value)
 
 
-def _parse_bool(value: str, flag: str) -> bool:
-    if value not in {"true", "false"}:
-        _fail(f"{flag} must be true or false")
-    return value == "true"
+def _binary_bool(value: str, binary: str) -> bool:
+    if value in {"true", "false"}:
+        return value == "true"
+    return shutil.which(binary) is not None
 
 
 def _neutralize_markdown_h3_line_starts(text: str) -> str:
@@ -682,8 +682,10 @@ def panel_dispatch_main(argv: list[str]) -> int:
     logging_util.quiet_init(argv0="decompose-panel-dispatch.sh")
     parser = argparse.ArgumentParser(prog="decompose panel-dispatch", add_help=False)
     parser.add_argument("--design-tmpdir", required=True)
-    parser.add_argument("--codex-present", required=True)
-    parser.add_argument("--cursor-present", required=True)
+    parser.add_argument("--codex-present", default="")
+    parser.add_argument("--cursor-present", default="")
+    parser.add_argument("--codex-binary-found", default="")
+    parser.add_argument("--cursor-binary-found", default="")
     parser.add_argument("--mode", required=True)
     parser.add_argument("--plan-file", default="")
     parser.add_argument("--feature-file", default="")
@@ -693,8 +695,8 @@ def panel_dispatch_main(argv: list[str]) -> int:
         args = parser.parse_args(argv)
         dispatch_panel(
             design_tmpdir=_validate_design_tmpdir(args.design_tmpdir),
-            codex_present=_parse_bool(args.codex_present, "--codex-present"),
-            cursor_present=_parse_bool(args.cursor_present, "--cursor-present"),
+            codex_present=_binary_bool(args.codex_binary_found, "codex"),
+            cursor_present=_binary_bool(args.cursor_binary_found, "cursor"),
             mode=args.mode,
             plan_file=Path(args.plan_file) if args.plan_file else None,
             feature_file=Path(args.feature_file) if args.feature_file else None,
@@ -712,8 +714,10 @@ def aggregate_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="decompose aggregate", add_help=False)
     parser.add_argument("--design-tmpdir", required=True)
     parser.add_argument("--panel-outputs-file", required=True)
-    parser.add_argument("--codex-present", required=True)
-    parser.add_argument("--cursor-present", required=True)
+    parser.add_argument("--codex-present", default="")
+    parser.add_argument("--cursor-present", default="")
+    parser.add_argument("--codex-binary-found", default="")
+    parser.add_argument("--cursor-binary-found", default="")
     parser.add_argument("--output", required=True)
     parser.add_argument("--timeout", default="1800")
     try:
@@ -721,8 +725,8 @@ def aggregate_main(argv: list[str]) -> int:
         status = aggregate_partition(
             design_tmpdir=_validate_design_tmpdir(args.design_tmpdir),
             panel_outputs_file=Path(args.panel_outputs_file),
-            codex_present=_parse_bool(args.codex_present, "--codex-present"),
-            cursor_present=_parse_bool(args.cursor_present, "--cursor-present"),
+            codex_present=_binary_bool(args.codex_binary_found, "codex"),
+            cursor_present=_binary_bool(args.cursor_binary_found, "cursor"),
             output=Path(args.output),
             timeout=_positive_int(args.timeout, "--timeout"),
         )

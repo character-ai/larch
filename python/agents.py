@@ -4,10 +4,9 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import html
-import contextlib
-import concurrent.futures
 import json
 import os
 import platform
@@ -167,15 +166,11 @@ class CheckReviewersResult:
     cursor_probe_timed_out: bool = False
 
     def kv(self) -> dict[str, str]:
-        codex_present = str(self.codex_present).lower()
-        cursor_present = str(self.cursor_present).lower()
         return {
             "CODEX_BINARY_FOUND": str(self.codex_binary_found).lower(),
             "CURSOR_BINARY_FOUND": str(self.cursor_binary_found).lower(),
-            "CODEX_PRESENT": codex_present,
-            "CURSOR_PRESENT": cursor_present,
-            "CODEX_AVAILABLE": codex_present,
-            "CURSOR_AVAILABLE": cursor_present,
+            "CODEX_PRESENT": str(self.codex_present).lower(),
+            "CURSOR_PRESENT": str(self.cursor_present).lower(),
             "CODEX_PROBE_TIMED_OUT": str(self.codex_probe_timed_out).lower(),
             "CURSOR_PROBE_TIMED_OUT": str(self.cursor_probe_timed_out).lower(),
         }
@@ -187,8 +182,6 @@ class CheckReviewersResult:
             "CURSOR_BINARY_FOUND",
             "CODEX_PRESENT",
             "CURSOR_PRESENT",
-            "CODEX_AVAILABLE",
-            "CURSOR_AVAILABLE",
             "CODEX_PROBE_TIMED_OUT",
             "CURSOR_PROBE_TIMED_OUT",
         ))
@@ -1021,39 +1014,24 @@ def degraded_tools_result(
                 "",
             ]
         )
-        if skill == "design":
-            explanation.extend(
-                [
-                    "What this means for /design: plan-review, decomposition, and plan-voter",
-                    "panels use availability-gated single launch (--no-fallback). Absent tools are",
-                    "omitted from the manifest; failed slots are dropped without cross-tool or Claude",
-                    "padding. When both externals are absent, plan-review uses one generic Claude",
-                    "reviewer covering all archetype lenses. Expect fewer reviewers and possible",
-                    "zero-findings / degraded tally paths — not per-slot Codex→Cursor→Claude waterfall.",
-                    "",
-                ]
-            )
-        else:
-            explanation.extend(
-                [
-                    "What this means: multi-tool roles (reviewer/voter panels, decomposition, the",
-                    "implementer, and CI/fix coders) run through the per-slot backup waterfall —",
-                    "Codex roles fall through to Cursor then Claude, and Cursor roles fall through",
-                    "to Codex then Claude — so the run will still COMPLETE. The cost is reduced",
-                    "model-family diversity: an unavailable tool's slots are covered by the other",
-                    "external tool (or Claude), and a few tool-specific roles are dropped rather",
-                    "than substituted (e.g. /design Codex dialectic buckets and Codex sketch",
-                    "personalities when Codex is down).",
-                    "",
-                ]
-            )
+        explanation.extend(
+            [
+                "Step 0 uses this health probe only as an operator-safety gate.",
+                "Later vendor calls do not route from this probe result; they use binary",
+                "presence, launcher-owned retries, and existing fallback/degradation paths.",
+                "",
+            ]
+        )
         if both_down:
             explanation.extend([
-                "Continue in this degraded mode (backup waterfall), or abort and retry once",
-                "the tool is healthy?",
+                "Both external vendors are unavailable. This run cannot continue.",
+                "Fix at least one vendor or retry after the outage clears.",
             ])
         else:
-            explanation.append("⚠ Warning: proceeding automatically (one tool available). Retry once the unavailable tool is healthy.")
+            explanation.extend([
+                "Exactly one external vendor is unavailable. Explicit operator confirmation",
+                "is required before continuing with reduced model-family diversity.",
+            ])
     return DegradedToolsResult(degraded, codex_state, cursor_state, both_down, presence_empty, tuple(explanation))
 
 
@@ -1081,6 +1059,8 @@ def degraded_tools_gate_main(argv: list[str] | None = None) -> int:
     _emit_kv("CODEX_STATE", result.codex_state)
     _emit_kv("CURSOR_STATE", result.cursor_state)
     _emit_kv("BOTH_DOWN", str(result.both_down).lower())
+    if result.both_down:
+        _emit_kv("DEGRADED_HARD_FAIL", "true")
     if result.presence_input_empty:
         _emit_kv("PRESENCE_INPUT_EMPTY", "true")
     if result.degraded:
@@ -1297,42 +1277,6 @@ def _compose_failure_diag(output: Path, *, sink: str = "") -> None:
         _write(carrier, redact.redact_tmpdir_paths(redact.redact_secrets_only("\n".join(sections)))[:16384])
 
 
-def _read_session_key(path: Path, key: str) -> str:
-    if not path.is_file():
-        return ""
-    try:
-        text = path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return ""
-    if "\r" in text:
-        return ""
-    prefix = f"{key}="
-    for line in text.splitlines():
-        if line.startswith(prefix):
-            return line[len(prefix):]
-    return ""
-
-
-def _health_gate_timeout() -> int | None:
-    raw = os.environ.get("LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT", "")
-    parsed = _parse_positive_or_zero_int(raw)
-    if parsed is not None:
-        return parsed or None
-    session_paths = [
-        os.environ.get("SESSION_ENV_PATH", ""),
-        str(Path(os.environ["IMPLEMENT_TMPDIR"]) / "session-env.sh") if os.environ.get("IMPLEMENT_TMPDIR") else "",
-    ]
-    for candidate_path in session_paths:
-        if not candidate_path:
-            continue
-        parsed = _parse_positive_or_zero_int(
-            _read_session_key(Path(candidate_path), "LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT")
-        )
-        if parsed is not None:
-            return parsed or None
-    return config.EXTERNAL_HEALTH_CHECK_TIMEOUT_DEFAULT_SEC
-
-
 def _positive_int_env(name: str, default: int) -> int:
     raw = os.environ.get(name, str(default))
     parsed = _parse_positive_or_zero_int(raw)
@@ -1346,88 +1290,6 @@ def _nonnegative_float_env(name: str, default: float) -> float:
     except ValueError:
         return default
     return value if value >= 0 else default
-
-
-def _check_reviewers_under_wall_clock_deadline(
-    deadline_seconds: int,
-    **kwargs: object,
-) -> tuple[CheckReviewersResult | None, bool]:
-    def _run() -> CheckReviewersResult:
-        mod = sys.modules[__name__]
-        return mod.check_reviewers(**kwargs)
-
-    pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-    future = pool.submit(_run)
-    try:
-        result = future.result(timeout=deadline_seconds)
-        pool.shutdown(wait=False, cancel_futures=True)
-        return result, False
-    except concurrent.futures.TimeoutError:
-        pool.shutdown(wait=False, cancel_futures=True)
-        return None, True
-
-
-def _external_health_gate(tool: str) -> tuple[bool, str]:
-    if tool not in {"codex", "cursor"}:
-        return True, ""
-    timeout = _health_gate_timeout()
-    if timeout is None:
-        return True, ""
-    present_key = "CODEX_PRESENT" if tool == "codex" else "CURSOR_PRESENT"
-    attempts = _positive_int_env("LARCH_EXTERNAL_HEALTH_GATE_MAX_ATTEMPTS", 8)
-    sleep_seconds = _nonnegative_float_env("LARCH_EXTERNAL_HEALTH_GATE_SLEEP_SECONDS", 15.0)
-    last_stdout = ""
-    last_stderr = ""
-    for attempt in range(max(attempts, 1)):
-        if attempt:
-            time.sleep(sleep_seconds)
-        gate_env = {
-            "LARCH_EXTERNAL_AUTH_RETRIES": "1",
-            "LARCH_PROBE_TIMEOUT_SECONDS": str(timeout),
-        }
-        if attempt:
-            gate_env["LARCH_PROBE_TTL_SECONDS"] = "0"
-        try:
-            result, wall_timed_out = _check_reviewers_under_wall_clock_deadline(
-                timeout,
-                skip_codex_probe=tool == "cursor",
-                skip_cursor_probe=tool == "codex",
-                probe_timeout_seconds=timeout,
-                env={**os.environ, **gate_env},
-            )
-            if wall_timed_out or result is None:
-                return False, f"health-probe timed out after {timeout}s"
-            stdout = "\n".join(result.kv_lines())
-            stderr = ""
-        except Exception as exc:
-            last_stderr = str(exc)
-            continue
-        probe_timed_out = (
-            result.codex_probe_timed_out
-            if tool == "codex"
-            else result.cursor_probe_timed_out
-        )
-        if probe_timed_out:
-            return False, f"health-probe timed out after {timeout}s"
-        last_stdout = stdout
-        last_stderr = stderr
-        if not stdout.strip():
-            return True, ""
-        found: str | None = None
-        for line in stdout.splitlines():
-            if line.startswith(f"{present_key}="):
-                found = line.split("=", 1)[1]
-                break
-        if found == "true":
-            return True, ""
-        if found is not None and found not in ("true", "false"):
-            # Key present but value unrecognized → fail-open per original contract.
-            return True, ""
-        if found is None:
-            return True, ""
-        # found == "false" → loop to next attempt.
-    return False, f"probe output: {last_stdout[:500]}; probe stderr: {last_stderr[:300]}"
-
 
 def _cursor_ci_stall_sidecar_dir(output_file: Path) -> Path | None:
     for parent in [output_file.parent, *output_file.parents]:
@@ -1601,15 +1463,6 @@ def run_external_agent(
     proc_obj: subprocess.Popen[bytes] | None = None
     _old_sigterm: object = None
     try:
-        if tool in {"codex", "cursor"}:
-            healthy, health_diag = _external_health_gate(tool)
-            if not healthy:
-                _write(output_path, "")
-                _append(diag, f"health-probe fast-fail: {tool} unhealthy before launch\n{health_diag}\n")
-                _err(f"health-probe fast-fail: {tool} unhealthy before launch")
-                exit_code = 7 if tool == "codex" else 8
-                return RunExternalAgentResult(exit_code, output_path)
-
         stdin = subprocess.DEVNULL if tool == "codex" else None
         stdout_target = None
         stderr_target = None
