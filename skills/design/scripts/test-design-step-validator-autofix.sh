@@ -98,7 +98,7 @@ set -e
 [[ "$(kv "$out_ok" AUTOFIX_STATUS)" == "ok" ]] || fail "ok autofix status missing: $out_ok"
 issues_ok="$D_OK/execution-issues.md"
 [ -s "$issues_ok" ] || fail 'ok autofix must append execution issue audit'
-[[ "$(grep -F 'validate-plan-commands(auto-fixed:' "$issues_ok" | wc -l | tr -d ' ')" == "1" ]] || fail 'ok autofix must append exactly one auto-fixed Warnings row'
+[[ "$(grep -Fc -- 'validate-plan-commands(auto-fixed:' "$issues_ok")" == "1" ]] || fail 'ok autofix must append exactly one auto-fixed Warnings row'
 grep -Fq 'design Step 2b' "$issues_ok" || fail 'ok autofix Warnings row must include site value'
 orig_log=$(kv "$out_ok" ORIGINAL_VALIDATE_LOG_FILE)
 [ -n "$orig_log" ] || fail 'ok autofix output must include ORIGINAL_VALIDATE_LOG_FILE'

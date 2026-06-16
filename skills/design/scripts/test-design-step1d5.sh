@@ -8,7 +8,7 @@ fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 pass() { printf 'PASS: %s\n' "$*"; }
 contains() { grep -Fq -- "$2" "$1" || fail "$3"; }
 not_contains() { ! grep -Fq -- "$2" "$1" || fail "$3"; }
-count_lines() { grep -F -- "$2" "$1" | wc -l | tr -d ' '; }
+count_lines() { grep -Fc -- "$2" "$1"; }
 
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-design-step1d5.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT
