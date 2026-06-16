@@ -52,25 +52,60 @@ Local ordering changed: under `make test-harnesses` and therefore `make lint`, h
 
 ### Refreshing harness shard balance
 
-Use the `/rebalance-test-harnesses` dev skill (`.claude/skills/rebalance-test-harnesses/`):
+Use the `/rebalance-tests` dev skill (`.claude/skills/rebalance-tests/`):
 
 ```bash
-python3 .claude/skills/rebalance-test-harnesses/scripts/rebalance.py
+python3 .claude/skills/rebalance-tests/scripts/rebalance.py
 ```
 
-The script fetches `LARCH_HARNESS_TIMING` rows from the last 5 successful CI
-runs on `main` via `gh run view --log`, computes per-target median wall times
-using `python/harness_ci_timing.py`, redistributes all targets across the 20
-shards with round-robin LPT (slowest-first) via `python/harness_shard_packer.py`,
-writes the new shard lines via `python/harness_makefile.py`, validates the
-partition with `bash scripts/test-harness-shards-coverage.sh`, creates a PR,
-triggers three verification CI runs, and prints a before/after comparison.
-Merge is left to the operator.
+The script accepts `--kind harness`, `--kind python`, or `--kind all` (default).
+Harness mode refreshes the `Makefile` `test-harnesses-N` target lists from
+`LARCH_HARNESS_TIMING` rows. Python mode refreshes the checked-in
+`python/shard-assignments.json` map from `python-tests` pytest `--durations=0`
+`call` rows. Merge is left to the operator.
 
-See `.claude/skills/rebalance-test-harnesses/SKILL.md` for flags and full
-workflow documentation.  Unit tests for the three Python libraries live in
-`python/test_harness_ci_timing.py`, `python/test_harness_makefile.py`, and
-`python/test_harness_shard_packer.py`; run with `make py-test`.
+Verification is asymmetric. Harness verification reports real job wall-clock and
+sum-spread, but spread failures are warning-only. Python verification fails
+closed when verification logs contain zero parseable rows, do not cover every
+expected shard, or exceed `--balance-threshold`.
+
+Before any write, branch, or PR, the unified pre-write gate runs every selected
+leg in memory. Harness work rejects untimed targets, then runs
+`_select_packed_workload`, `pack`, and warning-only `_check_feasibility` before
+`write_shards`. Python work rejects empty timing rows, dedupes retried shard
+attempts before medians, and validates `--n-python-shards` against the observed
+`python-tests` matrix shard count. The current matrix count is 4, and the parser
+prefers the `shard X of N` total from CI logs over the maximum shard id seen in
+rows. Under `--kind all`, every selected gate must pass before the first write.
+
+The artifact cleanliness gate then requires each selected output path to be
+clean in git: `Makefile` for harness and `python/shard-assignments.json` for
+Python. Dirty paths abort with a named error and no branch or PR.
+
+Under `--kind all`, the script writes `Makefile` first and validates the harness
+partition before writing `python/shard-assignments.json`. The assignments file is
+written through a temp file plus atomic replace. Assignment-write failure rolls
+back every path already written and never leaves truncated JSON.
+
+After PR creation, one shared `workflow_dispatch` loop runs for every selected
+leg before leg-specific verification collection. Python fail-closed checks run
+only after those verification runs finish.
+
+Python shard selection uses `python/pytest_ci_timing.py` to parse `call` rows and
+dedupe retried shards by duration-section attempt for both baseline packing and
+verification totals. At runtime, assigned nodeids use `python/shard-assignments.json`;
+unassigned nodeids keep the global collection-index round-robin fallback.
+Malformed maps, including JSON booleans as shard ids, fail closed during pytest
+collection. A non-empty map whose maximum shard id does not match the runtime
+`PYTEST_SHARD_COUNT` is ignored in favor of round-robin selection so coverage is
+not reduced.
+
+See `.claude/skills/rebalance-tests/SKILL.md` for flags and full workflow
+documentation. Unit tests for the Python libraries include
+`python/test_harness_ci_timing.py`, `python/test_harness_makefile.py`,
+`python/test_harness_shard_packer.py`, `python/test_pytest_ci_timing.py`,
+`python/test_pytest_sharding.py`, and `python/test_ci_timing_fetch.py`; run with
+`make py-test`.
 
 **`LARCH_HARNESS_TIMING` format** (from `python/timing.py harness docs`): each
 wrapped `bash` invocation emits one tab-separated row to stdout:

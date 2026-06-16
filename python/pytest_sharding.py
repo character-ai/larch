@@ -1,28 +1,15 @@
-"""Round-robin sharding for the pytest suite (issue #4407).
-
-The ``python-tests`` CI job fans out into several matrix sub-jobs, each running
-about ``1/PYTEST_SHARD_COUNT`` of the unit tests, to speed up CI. ``conftest.py``
-calls into this module from ``pytest_collection_modifyitems`` to keep only the
-tests assigned to the current shard.
-
-Sharding is controlled by two environment variables:
-
-- ``PYTEST_SHARD_COUNT`` -- total number of shards (>= 1).
-- ``PYTEST_SHARD_ID``    -- 1-based index of this shard, in [1, PYTEST_SHARD_COUNT].
-
-When neither is set (the default for local ``make py-test`` and for targeted
-harness runs) the full collection runs. Assignment is round-robin by collection
-index, which keeps shard sizes within one test of each other by count; the
-per-test timing output (``make py-test`` runs pytest with ``--durations=0``)
-provides the data to repartition by wall time later.
-"""
+"""Round-robin and assignment-map sharding for the pytest suite (issue #4407)."""
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
+from pathlib import Path
+from typing import cast
 
 ENV_SHARD_ID = "PYTEST_SHARD_ID"
 ENV_SHARD_COUNT = "PYTEST_SHARD_COUNT"
+DEFAULT_ASSIGNMENTS_PATH = Path(__file__).with_name("shard-assignments.json")
 
 
 def read_shard_env(environ: Mapping[str, str]) -> tuple[int, int] | None:
@@ -57,3 +44,56 @@ def select_shard_indices(num_items: int, shard_id: int, shard_count: int) -> set
     Round-robin: collected item ``i`` belongs to shard ``(i % shard_count) + 1``.
     """
     return {i for i in range(num_items) if i % shard_count == shard_id - 1}
+
+
+def load_shard_assignments(path: Path = DEFAULT_ASSIGNMENTS_PATH) -> dict[str, int]:
+    """Load a checked-in ``nodeid -> shard_id`` assignment map."""
+    if not path.exists():
+        return {}
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        msg = f"malformed shard assignments JSON: {exc}"
+        raise ValueError(msg) from exc
+    if not isinstance(raw, dict):
+        msg = "shard assignments JSON must be an object"
+        raise ValueError(msg)  # noqa: TRY004
+    raw_map = cast("dict[object, object]", raw)
+    assignments: dict[str, int] = {}
+    for key, value in raw_map.items():
+        if not isinstance(key, str):
+            msg = "shard assignment keys must be strings"
+            raise ValueError(msg)  # noqa: TRY004
+        if isinstance(value, bool) or type(value) is not int:  # pylint: disable=unidiomatic-typecheck
+            msg = f"shard id for {key!r} must be a JSON integer"
+            raise ValueError(msg)
+        if value < 1:
+            msg = f"shard id for {key!r} must be >= 1"
+            raise ValueError(msg)
+        assignments[key] = value
+    return assignments
+
+
+def select_shard_nodeids(
+    nodeids: list[str],
+    shard_id: int,
+    shard_count: int,
+    assignments: Mapping[str, int],
+) -> set[int]:
+    """Return collection indices assigned to this shard.
+
+    A non-empty map whose maximum shard id does not match the runtime shard
+    count is ignored so checked-in maps can never reduce coverage.
+    """
+    if assignments and max(assignments.values()) != shard_count:
+        return select_shard_indices(len(nodeids), shard_id, shard_count)
+
+    keep: set[int] = set()
+    for index, nodeid in enumerate(nodeids):
+        assigned = assignments.get(nodeid)
+        if assigned is None:
+            if index % shard_count == shard_id - 1:
+                keep.add(index)
+        elif assigned == shard_id:
+            keep.add(index)
+    return keep

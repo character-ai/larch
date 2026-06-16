@@ -1,7 +1,13 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
+
 import pytest
 
+import conftest
 import pytest_sharding
 
 
@@ -77,3 +83,125 @@ def test_select_shard_indices_balanced_within_one() -> None:
 
 def test_select_shard_indices_single_shard_keeps_all() -> None:
     assert pytest_sharding.select_shard_indices(5, 1, 1) == {0, 1, 2, 3, 4}
+
+
+def test_load_shard_assignments_absent_and_empty(tmp_path: Path) -> None:
+    assert not pytest_sharding.load_shard_assignments(tmp_path / "missing.json")
+    path = tmp_path / "assignments.json"
+    _ = path.write_text("{}\n", encoding="utf-8")
+    assert not pytest_sharding.load_shard_assignments(path)
+
+
+def test_load_shard_assignments_valid_map(tmp_path: Path) -> None:
+    path = tmp_path / "assignments.json"
+    _ = path.write_text(json.dumps({"test_a.py::test_b": 2}), encoding="utf-8")
+    assert pytest_sharding.load_shard_assignments(path) == {"test_a.py::test_b": 2}
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "{bad",
+        "[]",
+        json.dumps({"a": 1.5}),
+        json.dumps({"a": "1"}),
+        json.dumps({"a": 0}),
+        json.dumps({"a": -1}),
+        json.dumps({"a": True}),
+        json.dumps({"a": False}),
+    ],
+)
+def test_load_shard_assignments_rejects_invalid_values(
+    tmp_path: Path, content: str
+) -> None:
+    path = tmp_path / "assignments.json"
+    _ = path.write_text(content, encoding="utf-8")
+    with pytest.raises(ValueError, match=r"shard|malformed|JSON"):
+        _ = pytest_sharding.load_shard_assignments(path)
+
+
+def test_select_shard_nodeids_uses_assignments_and_round_robin_fallback() -> None:
+    nodeids = ["a", "b", "c", "d", "e"]
+    assignments = {"a": 2, "c": 1, "e": 2}
+
+    assert pytest_sharding.select_shard_nodeids(nodeids, 1, 2, assignments) == {2}
+    assert pytest_sharding.select_shard_nodeids(nodeids, 2, 2, assignments) == {0, 1, 3, 4}
+
+
+def test_select_shard_nodeids_complete_and_disjoint() -> None:
+    nodeids = ["a", "b", "c", "d", "e", "f"]
+    assignments = {"a": 3, "b": 1, "c": 2}
+    seen: set[int] = set()
+    for shard_id in range(1, 4):
+        selected = pytest_sharding.select_shard_nodeids(
+            nodeids, shard_id, 3, assignments
+        )
+        assert seen.isdisjoint(selected)
+        seen |= selected
+    assert seen == set(range(len(nodeids)))
+
+
+def test_select_shard_nodeids_ignores_mismatched_map() -> None:
+    nodeids = ["a", "b", "c", "d"]
+    assignments = {"a": 1, "b": 2, "c": 5}
+
+    assert pytest_sharding.select_shard_nodeids(nodeids, 1, 4, assignments) == {0}
+    assert pytest_sharding.select_shard_nodeids(nodeids, 4, 4, assignments) == {3}
+
+
+def test_select_shard_nodeids_single_shard_keeps_all() -> None:
+    assert pytest_sharding.select_shard_nodeids(["a", "b"], 1, 1, {}) == {0, 1}
+
+
+class _Hook:
+    def __init__(self) -> None:
+        self.deselected: list[Any] = []
+
+    def pytest_deselected(self, *, items: list[Any]) -> None:
+        self.deselected.extend(items)
+
+
+class _Config:
+    def __init__(self) -> None:
+        self.hook = _Hook()
+
+
+def _item(nodeid: str) -> Any:
+    return SimpleNamespace(nodeid=nodeid)
+
+
+def test_collection_hook_uses_assignments(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PYTEST_SHARD_ID", "2")
+    monkeypatch.setenv("PYTEST_SHARD_COUNT", "2")
+
+    def load_assignments() -> dict[str, int]:
+        return {"a": 2, "c": 1}
+
+    monkeypatch.setattr(pytest_sharding, "load_shard_assignments", load_assignments)
+    items = [_item("a"), _item("b"), _item("c"), _item("d")]
+    config = _Config()
+
+    config_any: Any = config
+    conftest.pytest_collection_modifyitems(config_any, items)
+
+    assert [item.nodeid for item in items] == ["a", "b", "d"]
+    assert [item.nodeid for item in config.hook.deselected] == ["c"]
+
+
+def test_collection_hook_unset_env_does_not_load_assignments(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("PYTEST_SHARD_ID", raising=False)
+    monkeypatch.delenv("PYTEST_SHARD_COUNT", raising=False)
+
+    def fail_load_assignments() -> dict[str, int]:
+        raise AssertionError("should not load assignments when sharding is disabled")
+
+    monkeypatch.setattr(pytest_sharding, "load_shard_assignments", fail_load_assignments)
+    items = [_item("a"), _item("b")]
+    config_any: Any = _Config()
+    conftest.pytest_collection_modifyitems(config_any, items)
+
+    assert [item.nodeid for item in items] == ["a", "b"]
