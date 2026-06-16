@@ -20,7 +20,7 @@ from errors import ShipError
 from proc import CommandResult
 from run_context import RunContext
 
-from test_support import RecordingRunner as _RecordingRunner
+from test_support import RecordingRunner as _RecordingRunner, make_run_context
 
 
 class RecordingRunner(_RecordingRunner):
@@ -51,19 +51,10 @@ class RecordingRunner(_RecordingRunner):
 
 
 def _ctx(tmp_path: Path, state_file: str | None = None) -> RunContext:
-    return RunContext(
-        branch="feat",
-        issue="1",
-        repo="o/r",
+    return make_run_context(
         run_id="run-abc",
         tmpdir=str(tmp_path),
-        merge=True,
-        draft=False,
-        forked=False,
         manifest_path=str(tmp_path / "manifest.json"),
-        tool_label="cursor",
-        no_admin_fallback=False,
-        repo_unavailable=False,
         state_file=state_file,
     )
 

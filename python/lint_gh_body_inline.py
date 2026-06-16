@@ -2,38 +2,16 @@
 
 from __future__ import annotations
 
-import argparse
 import os
 import re
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 
-GIT = shutil.which("git") or "git"
+from lint_common import GIT, git_rooted, parse_root_args
 
 GH_RE = re.compile(r"(^|[\s/'\"`(=])gh([\s'\"])")
 PRAGMA_RE = re.compile(r"(^|\s)#\s*lint-gh-body-inline: ok(\s.*)?$")
-
-
-def _parse_args(argv: list[str]) -> argparse.Namespace | None:
-    parser = argparse.ArgumentParser(prog="cli.py lint gh-body-inline", description=__doc__)
-    _ = parser.add_argument("--root", default=str(Path(__file__).resolve().parents[1]))
-    try:
-        return parser.parse_args(argv)
-    except SystemExit as exc:
-        if exc.code == 0:
-            raise
-        return None
-
-
-def _git_rooted(root: Path) -> bool:
-    return subprocess.run(
-        [GIT, "-C", str(root), "rev-parse", "--is-inside-work-tree"],
-        check=False,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    ).returncode == 0
 
 
 def _list_git_files(root: Path) -> list[str]:
@@ -72,7 +50,7 @@ def _list_find_files(root: Path) -> list[str]:
 
 
 def list_shell_files(root: Path) -> list[str]:
-    return _list_git_files(root) if _git_rooted(root) else _list_find_files(root)
+    return _list_git_files(root) if git_rooted(root) else _list_find_files(root)
 
 
 def _is_violation_line(line: str) -> list[tuple[str, str]]:
@@ -111,7 +89,11 @@ def scan_file(root: Path, rel: str) -> bool:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parsed = _parse_args(argv if argv is not None else sys.argv[1:])
+    parsed = parse_root_args(
+        argv if argv is not None else sys.argv[1:],
+        prog="cli.py lint gh-body-inline",
+        description=__doc__,
+    )
     if parsed is None:
         return 2
     root = Path(parsed.root)

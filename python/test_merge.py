@@ -17,25 +17,11 @@ from pathlib import Path
 from run_context import RunContext
 
 
-from test_support import RecordingRunner
+from test_support import RecordingRunner, make_run_context, merge_admin_responses
 
 
 def _ctx(**kwargs: object) -> RunContext:
-    base = RunContext(
-        branch="feat",
-        issue="1",
-        repo="o/r",
-        run_id="run-1",
-        tmpdir="/tmp/impl",
-        merge=True,
-        draft=False,
-        forked=False,
-        manifest_path="/tmp/impl/manifest.json",
-        tool_label="cursor",
-        no_admin_fallback=False,
-        repo_unavailable=False,
-        pr_number=1,
-    )
+    base = make_run_context(pr_number=1)
     return base.with_(**kwargs)
 
 
@@ -104,25 +90,7 @@ def test_merge_continues_when_flush_skips_missing_state(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    runner = RecordingRunner(
-        responses=[
-            CommandResult(
-                ("gh", "pr", "view", "1"),
-                0,
-                '{"number":1,"url":"u","state":"OPEN","headRefName":"feat"}',
-                "",
-                0.01,
-            ),
-            CommandResult(
-                ("gh", "pr", "view", "1"),
-                0,
-                '{"mergeStateStatus":"BEHIND","headRefOid":"abc"}',
-                "",
-                0.01,
-            ),
-            CommandResult(("gh", "pr", "merge"), 0, "", "", 0.01),
-        ],
-    )
+    runner = RecordingRunner(responses=merge_admin_responses())
     monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", _mock_checks_pass)
     monkeypatch.setattr(merge_module, "_ensure_head_matches_pr", _mock_ensure_head_behind)
     monkeypatch.setattr(merge_module, "_version_race_gate", _mock_version_gate_none)
@@ -661,25 +629,7 @@ def test_merge_does_not_call_pre_flush_on_clean_green_path(
 ) -> None:
     state = tmp_path / "state.env"
     _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
-    runner = RecordingRunner(
-        responses=[
-            CommandResult(
-                ("gh", "pr", "view", "1"),
-                0,
-                '{"number":1,"url":"u","state":"OPEN","headRefName":"feat"}',
-                "",
-                0.01,
-            ),
-            CommandResult(
-                ("gh", "pr", "view", "1"),
-                0,
-                '{"mergeStateStatus":"BEHIND","headRefOid":"abc"}',
-                "",
-                0.01,
-            ),
-            CommandResult(("gh", "pr", "merge"), 0, "", "", 0.01),
-        ],
-    )
+    runner = RecordingRunner(responses=merge_admin_responses())
     pre_calls = {"count": 0}
 
     def fake_pre_skipped(*_a: object, **_k: object) -> run_logs.RefreshSkip:
@@ -1076,32 +1026,7 @@ def test_merge_noop_defaults_to_merged_when_state_unknown(
 def test_merge_post_flush_false_skips_internal_flush(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    runner = RecordingRunner(
-        responses=[
-            CommandResult(
-                ("gh", "pr", "view", "1"),
-                0,
-                '{"number":1,"url":"u","state":"OPEN","headRefName":"feat"}',
-                "",
-                0.01,
-            ),
-            CommandResult(
-                ("gh", "pr", "view", "1"),
-                0,
-                '{"number":1,"url":"u","state":"OPEN","headRefName":"feat"}',
-                "",
-                0.01,
-            ),
-            CommandResult(
-                ("gh", "pr", "view", "1"),
-                0,
-                '{"mergeStateStatus":"BEHIND","headRefOid":"abc"}',
-                "",
-                0.01,
-            ),
-            CommandResult(("gh", "pr", "merge"), 0, "", "", 0.01),
-        ],
-    )
+    runner = RecordingRunner(responses=merge_admin_responses(double_open_view=True))
     calls = {"post": 0}
 
     def fake_post(*_args: object, **_kwargs: object) -> run_logs.RefreshSkip:

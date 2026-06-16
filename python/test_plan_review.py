@@ -1,29 +1,9 @@
 from __future__ import annotations
 
-import os
-import subprocess
-import sys
 from pathlib import Path
 
 import plan_review
-
-ROOT = Path(__file__).resolve().parents[1]
-CLI = ROOT / "python" / "cli.py"
-
-
-def run_cli(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
-    merged = os.environ.copy()
-    merged["CLAUDE_PLUGIN_ROOT"] = str(ROOT)
-    if env:
-        merged.update(env)
-    return subprocess.run(
-        [sys.executable, str(CLI), *args],
-        cwd=ROOT,
-        env=merged,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
+from test_support import ROOT, run_cli
 
 
 def test_embedded_review_design_step3_loop_matches_live_script() -> None:

@@ -188,3 +188,28 @@ def _run_subprocess(
             stderr=result.stderr,
         )
     return result
+
+
+class ProcRunner:
+    """Concrete Runner backed by the module-level run() subprocess seam."""
+
+    def run(
+        self,
+        argv: Sequence[str],
+        *,
+        timeout: float | None = None,
+        cwd: str | None = None,
+        env: Mapping[str, str] | None = None,
+        check: bool = False,
+        stdout: int | None = None,
+        stderr: int | None = None,
+    ) -> CommandResult:
+        return run(
+            argv,
+            timeout=timeout,
+            cwd=cwd,
+            env=env,
+            check=check,
+            stdout=stdout,
+            stderr=stderr,
+        )

@@ -17,7 +17,7 @@ import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Sequence
 
 import gh
 import issue_wire
@@ -272,29 +272,6 @@ def render_findings_issue_batch(
         ),
         section_absent,
     )
-
-
-class _ProcRunner:
-    def run(
-        self,
-        argv: Sequence[str],
-        *,
-        timeout: float | None = None,
-        cwd: str | None = None,
-        env: Mapping[str, str] | None = None,
-        check: bool = False,
-        stdout: int | None = None,
-        stderr: int | None = None,
-    ) -> proc.CommandResult:
-        return proc.run(
-            argv,
-            timeout=timeout,
-            cwd=cwd,
-            env=env,
-            check=check,
-            stdout=stdout,
-            stderr=stderr,
-        )
 
 
 class UsageError(ValueError):
@@ -1432,7 +1409,7 @@ def diagrams_upsert_main(argv: list[str]) -> int:
         existing = ""
         comment_id: int | None = None
         repo = args.repo
-        runner = _ProcRunner()
+        runner = proc.ProcRunner()
         if not args.dry_run:
             if not repo:
                 result = runner.run(["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"])

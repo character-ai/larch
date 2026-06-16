@@ -397,6 +397,26 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("session", "entry-gate"): ("session_env", "entry_gate_main"),
 }
 
+# Design-lifecycle + plan step1 entrypoints that emit machine-readable stdout.
+# Shared with test_cli.py so the registry-membership test does not re-enumerate
+# the same keys (issue #4480 duplicate-code consolidation).
+_DESIGN_LIFECYCLE_STDOUT_KEYS: frozenset[tuple[str, str]] = frozenset({
+    ("design", "parse-argv"),
+    ("design", "route"),
+    ("design", "init-runparams"),
+    ("design", "driver"),
+    ("design", "postplan-emit"),
+    ("design", "publish"),
+    ("design", "pause-save"),
+    ("design", "pause-load"),
+    ("design", "log-publish"),
+    ("design", "render-final-summary"),
+    ("design", "read-result-env"),
+    ("design", "file-oos-prepare"),
+    ("design", "file-oos-annotate"),
+    ("plan", "step1-log"),
+})
+
 _MACHINE_STDOUT_KEYS: frozenset[tuple[str, str]] = frozenset({
     ("checks", "run-relevant"),
     ("checks", "lint-fix"),
@@ -415,20 +435,7 @@ _MACHINE_STDOUT_KEYS: frozenset[tuple[str, str]] = frozenset({
     ("plan", "auto-fix-commands"),
     ("plan", "optional-trailers"),
     ("plan", "compose-goals-test"),
-    ("design", "parse-argv"),
-    ("design", "route"),
-    ("design", "init-runparams"),
-    ("design", "driver"),
-    ("design", "postplan-emit"),
-    ("design", "publish"),
-    ("design", "pause-save"),
-    ("design", "pause-load"),
-    ("design", "log-publish"),
-    ("design", "render-final-summary"),
-    ("design", "read-result-env"),
-    ("design", "file-oos-prepare"),
-    ("design", "file-oos-annotate"),
-    ("plan", "step1-log"),
+    *_DESIGN_LIFECYCLE_STDOUT_KEYS,
     ("plan-review", "run"),
     ("plan-review", "panel-dispatch"),
     ("plan-review", "voter-dispatch"),

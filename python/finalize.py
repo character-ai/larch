@@ -749,29 +749,6 @@ def kill_session_background_processes(runner: Runner, ctx: RunContext) -> bool:
     return killed
 
 
-class _ProcRunner:
-    def run(
-        self,
-        argv: Sequence[str],
-        *,
-        timeout: float | None = None,
-        cwd: str | None = None,
-        env: Mapping[str, str] | None = None,
-        check: bool = False,
-        stdout: int | None = None,
-        stderr: int | None = None,
-    ) -> CommandResult:
-        return proc.run(
-            argv,
-            timeout=timeout,
-            cwd=cwd,
-            env=env,
-            check=check,
-            stdout=stdout,
-            stderr=stderr,
-        )
-
-
 def _kill_background_processes_error(message: str) -> int:
     print(f"ERROR={message}", file=sys.stderr)
     return 2
@@ -829,7 +806,7 @@ def kill_background_processes_main(argv: list[str]) -> int:
     env = dict(os.environ)
     env["IMPLEMENT_TMPDIR"] = str(resolved)
     ctx = RunContext.from_env(env=env)
-    killed = kill_session_background_processes(_ProcRunner(), ctx)
+    killed = kill_session_background_processes(proc.ProcRunner(), ctx)
     print(f"KILLED={_bool_text(killed)}")
     return 0
 

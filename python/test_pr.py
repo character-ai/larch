@@ -15,7 +15,7 @@ from proc import CommandResult, Runner
 from run_context import RunContext
 
 
-from test_support import RecordingRunner
+from test_support import RecordingRunner, make_run_context
 
 
 _PORCELAIN_CLEAN = CommandResult(
@@ -35,20 +35,7 @@ _HEAD_FEAT = CommandResult(
 
 
 def _ctx(**kwargs: object) -> RunContext:
-    base = RunContext(
-        branch="feat",
-        issue="9",
-        repo="o/r",
-        run_id="run-1",
-        tmpdir="/tmp/impl",
-        merge=True,
-        draft=False,
-        forked=False,
-        manifest_path="/tmp/impl/manifest.json",
-        tool_label="cursor",
-        no_admin_fallback=False,
-        repo_unavailable=False,
-    )
+    base = make_run_context(issue="9")
     return base.with_(**kwargs)
 
 
