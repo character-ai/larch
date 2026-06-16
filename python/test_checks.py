@@ -2009,6 +2009,35 @@ def test_compose_prompt_includes_submodule_prohibition(tmp_path: Path) -> None:
     assert "Do NOT touch `.git/`, `.gitmodules`, or any path under a submodule." in prompt
 
 
+def test_compose_prompt_includes_pyright_type_ignore_guidance(tmp_path: Path) -> None:
+    log = tmp_path / "checks.log"
+    _ = log.write_text(
+        "python/test_collect_results.py:42:9 - error: ... (reportPrivateUsage)\n",
+        encoding="utf-8",
+    )
+    prompt = checks._compose_prompt(  # pyright: ignore[reportPrivateUsage]
+        checks_log=log,
+        site_label="Step 6",
+        submodule_paths=(),
+        target_cmd_display=None,
+    )
+    assert "## Pyright type errors" in prompt
+    assert "# type: ignore[reportPrivateUsage]" in prompt
+    assert "# type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]" in prompt
+    for code in (
+        "reportPrivateUsage",
+        "reportCallIssue",
+        "reportArgumentType",
+        "reportUnknownArgumentType",
+        "reportUnknownLambdaType",
+    ):
+        assert code in prompt
+    assert (
+        "Do not rename private helpers or broaden APIs just to silence `reportPrivateUsage`."
+        in prompt
+    )
+
+
 def test_read_log_tail_truncation_uses_constant(tmp_path: Path) -> None:
     log = tmp_path / "large.log"
     _ = log.write_bytes(b"a" * (checks._PROMPT_TAIL_BYTES + 1))  # pyright: ignore[reportPrivateUsage]

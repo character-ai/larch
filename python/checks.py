@@ -1192,6 +1192,23 @@ def _compose_prompt(
     )
     parts.extend([
         "",
+        "## Pyright type errors",
+        "If Pyright reports a narrow line-level issue and a safe local typed fix is not "
+        "obvious, add an exact ignore comment using the exact error code, for example "
+        "`# type: ignore[reportPrivateUsage]`.",
+        "Cover at least these codes:",
+        "- `reportPrivateUsage`",
+        "- `reportCallIssue`",
+        "- `reportArgumentType`",
+        "- `reportUnknownArgumentType`",
+        "- `reportUnknownLambdaType`",
+        "When Pyright prints multiple codes for one line, use one exact comma-separated "
+        "ignore comment, for example `# type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]`.",
+        "Do not rename private helpers or broaden APIs just to silence `reportPrivateUsage`.",
+        "Keep edits minimal.",
+    ])
+    parts.extend([
+        "",
         "When done, report on a single final line in this exact shape:",
         "  FIXED: <comma-separated repo-relative paths of files you changed> | <short check-failure description>",
         "If you cannot fix the failure, instead report on a single final line:",

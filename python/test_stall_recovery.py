@@ -528,3 +528,85 @@ def test_seed_terminal_state_fresh_seeds_defaults(tmp_path: Path, capsys: pytest
     out = capsys.readouterr().out
     assert "SEEDED=true" in out
     assert "SEED_MODE=seed" in out
+
+
+_LINT_FIX_BAIL_TOKENS = ("lint-fix-failed", "lint-fix-attempt-cap", "lint-fix-main-agent-required")
+
+# A timeout-only detail log would classify as transient-infra without the Step 5 lint-fix
+# bail handoff; the bail token must beat the timeout scan (issue #4402).
+_TIMEOUT_PYRIGHT_LOG = (
+    "subprocess timed out after 600s\n"
+    'python/test_collect_results.py:42:9 - error: "_retry_output_path" is private (reportPrivateUsage)\n'
+    "timeout\n"
+)
+
+
+@pytest.mark.parametrize("token", _LINT_FIX_BAIL_TOKENS)
+def test_classify_lint_fix_bail_token_beats_timeout(token: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _ = (tmp_path / "ship-pr-state.sh").write_text(
+        "PHASE=review\nSTALL_TRACKING=true\nSTALL_STEP=5\nBAIL_REASON=\nEXIT_CODE=1\n",
+        encoding="utf-8",
+    )
+    log = tmp_path / "failure.log"
+    _ = log.write_text(_TIMEOUT_PYRIGHT_LOG, encoding="utf-8")
+
+    rc = stall_recovery.classify_main([
+        "--implement-tmpdir", str(tmp_path),
+        "--failure-detail-log", str(log),
+        "--bail-reason", token,
+    ])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "FAILURE_CLASS=lint-failure" in out
+    assert "RESUME_HINT=step5-review" in out
+    assert "MATCHED_CLASSIFIER_PATTERN=lint-fix-bail-token" in out
+
+
+@pytest.mark.parametrize("token", _LINT_FIX_BAIL_TOKENS)
+def test_classify_lint_fix_bail_token_from_state_beats_timeout(token: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _ = (tmp_path / "ship-pr-state.sh").write_text(
+        f"PHASE=review\nSTALL_TRACKING=true\nSTALL_STEP=5\nBAIL_REASON={token}\nEXIT_CODE=1\n",
+        encoding="utf-8",
+    )
+    log = tmp_path / "failure.log"
+    _ = log.write_text(_TIMEOUT_PYRIGHT_LOG, encoding="utf-8")
+
+    rc = stall_recovery.classify_main([
+        "--implement-tmpdir", str(tmp_path),
+        "--failure-detail-log", str(log),
+    ])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "FAILURE_CLASS=lint-failure" in out
+    assert "RESUME_HINT=step5-review" in out
+    assert "MATCHED_CLASSIFIER_PATTERN=lint-fix-bail-token" in out
+
+
+def test_classify_timeout_without_lint_fix_token_stays_transient(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _ = (tmp_path / "ship-pr-state.sh").write_text(
+        "PHASE=review\nSTALL_TRACKING=true\nSTALL_STEP=5\nBAIL_REASON=\nEXIT_CODE=1\n",
+        encoding="utf-8",
+    )
+    log = tmp_path / "failure.log"
+    _ = log.write_text("subprocess timed out after 600s\ntimeout\n", encoding="utf-8")
+
+    rc = stall_recovery.classify_main([
+        "--implement-tmpdir", str(tmp_path),
+        "--failure-detail-log", str(log),
+    ])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "FAILURE_CLASS=transient-infra" in out
+    assert "RESUME_HINT=step8-shippr" in out
+    assert "MATCHED_CLASSIFIER_PATTERN=transient-output" in out
+
+
+def test_compose_report_allows_lint_fix_bail_classifier_pattern() -> None:
+    # The classifier pattern and the three Step 5 lint-fix bail tokens must all pass the
+    # Tier B chat-print sensitive-token allowlist so report rendering does not reject them (issue #4402).
+    assert stall_recovery._sensitive_value_is_allowlisted("lint-fix-bail-token")  # pyright: ignore[reportPrivateUsage]
+    for token in _LINT_FIX_BAIL_TOKENS:
+        assert stall_recovery._sensitive_value_is_allowlisted(token)  # pyright: ignore[reportPrivateUsage]
