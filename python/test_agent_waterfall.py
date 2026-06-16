@@ -3,12 +3,20 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import subprocess
 import sys
+import time
+import contextlib
+import io
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 import pytest
 
+import agent_waterfall
+import logging_util
+import proc as proc_module
 from test_support import ROOT
 
 CLI = Path(__file__).with_name("cli.py")
@@ -49,6 +57,7 @@ printf '%s\n' "${CODEX_STUB_RESULT_CONTENT:-codex ok}" > "$out"
     _write(
         bin_dir / "cursor",
         """#!/usr/bin/env bash
+if [[ -n "${CURSOR_STUB_PID_FILE:-}" ]]; then printf '%s\n' "$$" > "$CURSOR_STUB_PID_FILE"; fi
 if [[ -n "${CURSOR_STUB_DELAY:-}" ]]; then sleep "$CURSOR_STUB_DELAY"; fi
 log="${CURSOR_STUB_LOG:-}"
 [[ -n "$log" ]] && printf '%s\n' "$*" >> "$log"
@@ -118,6 +127,49 @@ def _kv(stdout: str) -> dict[str, str]:
     return out
 
 
+def _record_collect_calls(monkeypatch: pytest.MonkeyPatch) -> list[list[str]]:
+    calls: list[list[str]] = []
+    real_run = proc_module.run
+
+    def recording_run(argv, **kwargs):  # type: ignore[no-untyped-def]
+        argv_list = list(argv)
+        if "collect-results" in argv_list:
+            calls.append(argv_list)
+        return real_run(argv, **kwargs)
+
+    monkeypatch.setattr(agent_waterfall.proc, "run", recording_run)
+    return calls
+
+
+def _run_direct(
+    manifest: Path,
+    env: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    *extra: str,
+) -> tuple[int, str]:
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+    logging_util.reset_quiet_state()
+    argv = [
+        "--slots-file",
+        str(manifest),
+        "--codex-present",
+        "true",
+        "--cursor-present",
+        "true",
+        "--mode",
+        "description",
+        "--timeout",
+        "5",
+        *extra,
+    ]
+    out = io.StringIO()
+    err = io.StringIO()
+    with redirect_stdout(out), redirect_stderr(err):
+        rc = agent_waterfall.dispatch_waterfall_main(argv)
+    return rc, out.getvalue()
+
+
 def test_phase2_and_phase3_fallbacks(tmp_path: Path, stub_env: dict[str, str]) -> None:
     manifest, _output = _slot(tmp_path)
     proc = _run(manifest, {**stub_env, "CODEX_STUB_FAIL": "true"})
@@ -134,17 +186,21 @@ def test_phase2_and_phase3_fallbacks(tmp_path: Path, stub_env: dict[str, str]) -
     assert (tmp_path / "out-phase3.txt").read_text(encoding="utf-8").strip() == "claude ok"
 
 
-def test_phase3_hard_fail_still_emits_final_path(tmp_path: Path, stub_env: dict[str, str]) -> None:
+def test_phase3_hard_fail_still_emits_final_path(tmp_path: Path, stub_env: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
+    collect_calls = _record_collect_calls(monkeypatch)
     manifest, _ = _slot(tmp_path, output_name="hard.txt")
     env = {**stub_env, "CODEX_STUB_FAIL": "true", "CURSOR_STUB_FAIL": "true", "CLAUDE_STUB_FAIL": "true"}
-    proc = _run(manifest, env)
-    assert proc.returncode == 0, proc.stderr
-    kvs = _kv(proc.stdout)
+    rc, stdout = _run_direct(manifest, env, monkeypatch)
+    assert rc == 0
+    kvs = _kv(stdout)
     final = str(tmp_path / "hard-phase3.txt")
     assert kvs["DISPATCH_OK"] == "false"
     assert kvs["ALL_OUTPUT_FILES"] == final
     assert Path(kvs["ALL_OUTPUT_FILES_PATH"]).read_text(encoding="utf-8") == final + "\n"
     assert Path(final + ".launch-stderr").exists()
+    tail_calls = [call for call in collect_calls if "--summary-only" not in call]
+    assert len(tail_calls) == 1
+    assert final in tail_calls[0]
 
 
 def test_validation_errors_exit_two_and_do_not_launch(tmp_path: Path, stub_env: dict[str, str]) -> None:
@@ -154,6 +210,12 @@ def test_validation_errors_exit_two_and_do_not_launch(tmp_path: Path, stub_env: 
     assert proc.returncode == 2
     assert "--require-result-pattern is not a valid ERE" in proc.stderr
     assert not codex_log.exists() or codex_log.read_text(encoding="utf-8") == ""
+
+    cursor_log = tmp_path / "cursor-invalid.log"
+    proc = _run(manifest, {**stub_env, "CURSOR_STUB_LOG": str(cursor_log)}, "--require-first-line-pattern", "[")
+    assert proc.returncode == 2
+    assert "--require-first-line-pattern is not a valid ERE" in proc.stderr
+    assert not cursor_log.exists() or cursor_log.read_text(encoding="utf-8") == ""
 
     empty = tmp_path / "empty.ndjson"
     empty.write_text("", encoding="utf-8")
@@ -262,6 +324,237 @@ def test_rejects_newline_output_path(tmp_path: Path, stub_env: dict[str, str]) -
     proc = _run(manifest, stub_env)
     assert proc.returncode == 2
     assert "newline or carriage return" in proc.stderr
+
+
+def test_two_slot_phase1_order_and_default_paths_file(tmp_path: Path, stub_env: dict[str, str]) -> None:
+    manifest = tmp_path / "two.ndjson"
+    out1 = tmp_path / "phase1-codex.txt"
+    out2 = tmp_path / "phase1-cursor.txt"
+    prompt = tmp_path / "two.prompt"
+    prompt.write_text("review\n", encoding="utf-8")
+    manifest.write_text(
+        "\n".join(
+            [
+                json.dumps({"slot": "s1", "tool": "codex", "output": str(out1), "prompt_file": str(prompt)}),
+                json.dumps({"slot": "s2", "tool": "cursor", "output": str(out2), "prompt_file": str(prompt)}),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    proc = _run(manifest, stub_env)
+    assert proc.returncode == 0, proc.stderr
+    kvs = _kv(proc.stdout)
+    paths_file = Path(f"{manifest}.output-files")
+    assert kvs["ALL_OUTPUT_FILES_PATH"] == str(paths_file)
+    lines = paths_file.read_text(encoding="utf-8").splitlines()
+    assert lines == [str(out1), str(out2)]
+    assert kvs["ALL_OUTPUT_TOOLS"] == "codex cursor"
+
+
+def test_warn_threshold_emits_cost_fallback_warning(tmp_path: Path, stub_env: dict[str, str]) -> None:
+    manifest, _ = _slot(tmp_path, tool="cursor", output_name="warn.txt")
+    proc = _run(
+        manifest,
+        {**stub_env, "LARCH_FALLBACK_CLAUDE_WARN_THRESHOLD": "0", "CURSOR_STUB_FAIL": "true"},
+        "--codex-present",
+        "false",
+        "--cursor-present",
+        "false",
+    )
+    assert proc.returncode == 0, proc.stderr
+    kvs = _kv(proc.stdout)
+    assert kvs["WARN"] == "cost-fallback-exceeded-threshold"
+    assert kvs["FALLBACK_COUNT"] == "1"
+
+
+def test_competition_notice_forwarded_to_codex_prompt(tmp_path: Path, stub_env: dict[str, str]) -> None:
+    agent = ROOT / "agents" / "reviewer-structure.md"
+    prompt = tmp_path / "comp.prompt"
+    prompt.write_text("vote\n", encoding="utf-8")
+    output = tmp_path / "competition-slot.txt"
+    manifest = tmp_path / "competition.ndjson"
+    manifest.write_text(
+        json.dumps({"slot": "s1", "tool": "codex", "output": str(output), "agent": str(agent)}) + "\n",
+        encoding="utf-8",
+    )
+    notice = tmp_path / "competition-notice.md"
+    notice.write_text("Custom notice text\n", encoding="utf-8")
+    scope = tmp_path / "scope.txt"
+    scope.write_text("python/agent_waterfall.py\n", encoding="utf-8")
+    codex_log = tmp_path / "codex-competition.log"
+    proc = _run(
+        manifest,
+        {**stub_env, "CODEX_STUB_LOG": str(codex_log)},
+        "--competition-notice",
+        "--competition-notice-file",
+        str(notice),
+        "--description-text",
+        "competition review context",
+        "--scope-files",
+        str(scope),
+    )
+    assert proc.returncode == 0, proc.stderr
+    prompt_sidecar = Path(f"{output}.prompt")
+    prompt_text = prompt_sidecar.read_text(encoding="utf-8")
+    assert "Structure, KISS, and Maintainability" in prompt_text
+    log = codex_log.read_text(encoding="utf-8")
+    assert "Structure, KISS, and Maintainability" in log
+    assert "Competition notice" in log
+    assert "Custom notice text" in log
+
+
+def test_embedded_space_output_paths(tmp_path: Path, stub_env: dict[str, str]) -> None:
+    prompt = tmp_path / "space.prompt"
+    prompt.write_text("vote\n", encoding="utf-8")
+    output = tmp_path / "with space out.txt"
+    manifest = tmp_path / "slots space.ndjson"
+    manifest.write_text(
+        json.dumps({"slot": "s-space", "tool": "codex", "output": str(output), "prompt_file": str(prompt)}) + "\n",
+        encoding="utf-8",
+    )
+    proc = _run(
+        manifest,
+        stub_env,
+        "--codex-present",
+        "false",
+        "--cursor-present",
+        "false",
+    )
+    assert proc.returncode == 0, proc.stderr
+    kvs = _kv(proc.stdout)
+    expected = str(tmp_path / "with space out-phase3.txt")
+    assert kvs["ALL_OUTPUT_FILES"] == expected
+    assert Path(kvs["ALL_OUTPUT_FILES_PATH"]).read_text(encoding="utf-8").strip() == expected
+
+
+def test_phase1_launches_all_before_single_collect(tmp_path: Path, stub_env: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
+    collect_calls = _record_collect_calls(monkeypatch)
+    manifest = tmp_path / "concurrency.ndjson"
+    out1 = tmp_path / "c1.txt"
+    out2 = tmp_path / "c2.txt"
+    prompt = tmp_path / "c.prompt"
+    prompt.write_text("review\n", encoding="utf-8")
+    manifest.write_text(
+        "\n".join(
+            [
+                json.dumps({"slot": "s1", "tool": "codex", "output": str(out1), "prompt_file": str(prompt)}),
+                json.dumps({"slot": "s2", "tool": "cursor", "output": str(out2), "prompt_file": str(prompt)}),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    rc, _stdout = _run_direct(manifest, stub_env, monkeypatch)
+    assert rc == 0
+    summary_calls = [call for call in collect_calls if "--summary-only" in call]
+    assert len(summary_calls) == 1
+    outputs = summary_calls[0][summary_calls[0].index("--summary-only") + 1 :]
+    assert outputs == [str(out1), str(out2)]
+
+
+def test_degraded_cursor_falls_back_to_claude(tmp_path: Path, stub_env: dict[str, str]) -> None:
+    manifest, _ = _slot(tmp_path, tool="cursor", output_name="cursor-deg.txt")
+    narration = "Exploring the design skill...Creating the architectural review plan from codebase alignment."
+    proc = _run(
+        manifest,
+        {
+            **stub_env,
+            "CURSOR_STUB_OUTPUT_TOKENS": "5000",
+            "CURSOR_STUB_RESULT_CONTENT": narration,
+            "CODEX_STUB_FAIL": "true",
+        },
+        "--codex-present",
+        "false",
+    )
+    assert proc.returncode == 0, proc.stderr
+    kvs = _kv(proc.stdout)
+    assert kvs["ALL_OUTPUT_TOOLS"] == "claude"
+    assert kvs["FALLBACK_COUNT"] == "1"
+    assert (tmp_path / "cursor-deg-phase3.txt").read_text(encoding="utf-8").strip() == "claude ok"
+
+
+def test_no_fallback_tool_absent_drop(tmp_path: Path, stub_env: dict[str, str]) -> None:
+    manifest, _ = _slot(tmp_path, name="absent", output_name="no-fallback-absent.txt")
+    proc = _run(
+        manifest,
+        stub_env,
+        "--no-fallback",
+        "--codex-present",
+        "false",
+        "--cursor-present",
+        "false",
+    )
+    assert proc.returncode == 0, proc.stderr
+    kvs = _kv(proc.stdout)
+    assert kvs["ALL_SLOTS_DROPPED"] == "true"
+    drop_file = Path(kvs["DROPPED_SLOTS_FILE"])
+    fields = drop_file.read_text(encoding="utf-8").split("\t")
+    assert fields[2] == "tool-absent"
+
+
+def test_paths_file_directory_target_exits_two_without_success_kvs(tmp_path: Path, stub_env: dict[str, str]) -> None:
+    manifest, _ = _slot(tmp_path)
+    paths_dir = tmp_path / "is-a-dir"
+    paths_dir.mkdir()
+    proc = _run(manifest, stub_env, "--paths-file", str(paths_dir))
+    assert proc.returncode == 2
+    assert "paths-file not writable" in proc.stderr
+    assert "DISPATCH_OK" not in proc.stdout
+
+
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    return True
+
+
+def test_sigterm_kills_launcher_subtree(tmp_path: Path, stub_env: dict[str, str]) -> None:
+    manifest, _ = _slot(tmp_path, tool="cursor", output_name="term-trap-slot.txt")
+    stub_pid_file = tmp_path / "term-trap-stub.pid"
+    env = {**stub_env, "CURSOR_STUB_DELAY": "30", "CURSOR_STUB_PID_FILE": str(stub_pid_file)}
+    dispatcher = subprocess.Popen(
+        [
+            sys.executable,
+            str(CLI),
+            "agent",
+            "dispatch-waterfall",
+            "--slots-file",
+            str(manifest),
+            "--codex-present",
+            "false",
+            "--cursor-present",
+            "true",
+            "--mode",
+            "description",
+            "--timeout",
+            "60",
+        ],
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    deadline = time.monotonic() + 10
+    while not stub_pid_file.is_file():
+        if time.monotonic() >= deadline:
+            dispatcher.kill()
+            dispatcher.wait()
+            pytest.fail("cursor stub PID file not created within 10s")
+        time.sleep(0.05)
+    stub_pid = int(stub_pid_file.read_text(encoding="utf-8").strip())
+    time.sleep(0.2)
+    os.kill(dispatcher.pid, signal.SIGTERM)
+    rc = dispatcher.wait(timeout=10)
+    assert rc == 143
+    gone_deadline = time.monotonic() + 5
+    while _pid_alive(stub_pid):
+        if time.monotonic() >= gone_deadline:
+            with contextlib.suppress(ProcessLookupError):
+                os.kill(stub_pid, signal.SIGKILL)
+            pytest.fail("cursor stub launcher still alive after dispatcher SIGTERM")
+        time.sleep(0.05)
 
 
 def test_grouped_reuse_guard() -> None:

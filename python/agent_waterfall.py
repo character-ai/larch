@@ -97,6 +97,7 @@ class ValidationError(RuntimeError):
 
 
 _ACTIVE_LAUNCHES: list[PhaseLaunch] = []
+_DISPATCH_LAUNCHES: list[PhaseLaunch] = []
 
 def posix_ere_to_python(pattern: str) -> str:
     """Translate the POSIX character classes used by shell callers."""
@@ -361,6 +362,7 @@ def _launch_slot(idx: int, phase: str, tool: str, output: str, slots: Sequence[S
         raise
     launch = PhaseLaunch(idx=idx, output=output, tool=tool, process=process, stderr_handle=stderr_handle)
     _ACTIVE_LAUNCHES.append(launch)
+    _DISPATCH_LAUNCHES.append(launch)
     return launch
 
 
@@ -384,22 +386,22 @@ def _terminate_launch(launch: PhaseLaunch) -> None:
     for child in _descendants(pid):
         with contextlib.suppress(OSError):
             os.kill(child, signal.SIGTERM)
-    try:
-        _ = launch.process.wait(timeout=1)
-    except subprocess.TimeoutExpired:
-        with contextlib.suppress(OSError):
-            launch.process.kill()
-        _ = launch.process.wait()
+    if launch.process.poll() is None:
+        try:
+            _ = launch.process.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            with contextlib.suppress(OSError):
+                launch.process.kill()
+            _ = launch.process.wait()
     with contextlib.suppress(OSError):
         launch.stderr_handle.close()  # type: ignore[attr-defined]
 
 
 def _kill_active_launches() -> None:
-    active = list(_ACTIVE_LAUNCHES)
-    for launch in active:
-        if launch.process.poll() is None:
-            _terminate_launch(launch)
+    for launch in _DISPATCH_LAUNCHES[:]:
+        _terminate_launch(launch)
     _ACTIVE_LAUNCHES.clear()
+    _DISPATCH_LAUNCHES.clear()
 
 
 def _sigterm_handler(_signum: int, _frame: object) -> None:
@@ -409,7 +411,12 @@ def _sigterm_handler(_signum: int, _frame: object) -> None:
 
 def _reap_phase(launches: Sequence[PhaseLaunch]) -> None:
     for launch in launches:
-        rc = launch.process.wait()
+        while True:
+            try:
+                rc = launch.process.wait(timeout=0.05)
+                break
+            except subprocess.TimeoutExpired:
+                continue
         with contextlib.suppress(OSError):
             launch.stderr_handle.close()  # type: ignore[attr-defined]
         if not Path(f"{launch.output}.done").is_file():
@@ -601,12 +608,17 @@ def _write_drops(path: str, slots: Sequence[Slot], final_outputs: Sequence[str],
 def _write_paths_file(path: str, final_outputs: Sequence[str], *, no_fallback: bool) -> None:
     paths_dir = Path(path).parent
     fd, tmp = tempfile.mkstemp(prefix=".dispatch-waterfall-paths.", dir=str(paths_dir))
-    with os.fdopen(fd, "w", encoding="utf-8") as handle:
-        for output in final_outputs:
-            if no_fallback and not output:
-                continue
-            _ = handle.write(f"{output}\n")
-    _ = Path(tmp).replace(path)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            for output in final_outputs:
+                if no_fallback and not output:
+                    continue
+                _ = handle.write(f"{output}\n")
+        _ = Path(tmp).replace(path)
+    except OSError as exc:
+        with contextlib.suppress(OSError):
+            Path(tmp).unlink()
+        raise ValidationError(f"dispatch-with-waterfall.sh: paths-file not writable: {path}") from exc
 
 
 def _emit_bool(key: str, *, value: bool) -> None:
@@ -614,6 +626,8 @@ def _emit_bool(key: str, *, value: bool) -> None:
 
 
 def dispatch_waterfall(opts: Options) -> int:
+    _ACTIVE_LAUNCHES.clear()
+    _DISPATCH_LAUNCHES.clear()
     result_pattern = _compile_pattern(opts.require_result_pattern, "--require-result-pattern")
     first_line_pattern = _compile_pattern(opts.require_first_line_pattern, "--require-first-line-pattern")
     slots = _load_slots(opts.slots_file)
@@ -731,6 +745,11 @@ def dispatch_waterfall(opts: Options) -> int:
         all_output_files.append(output)
         all_output_tools.append(final_tools[idx])
 
+    dropped_slots_file = ""
+    if opts.no_fallback:
+        dropped_slots_file = _write_drops(resolved_paths_file, slots, final_outputs, drops)
+    _write_paths_file(resolved_paths_file, final_outputs, no_fallback=opts.no_fallback)
+
     logging_util.emit_kv("PHASE1_SLOTS", " ".join(phase1_outputs))
     logging_util.emit_kv("PHASE2_SLOTS", " ".join(phase2_outputs))
     logging_util.emit_kv("PHASE3_SLOTS", " ".join(phase3_outputs))
@@ -746,11 +765,9 @@ def dispatch_waterfall(opts: Options) -> int:
     _emit_bool("DYNAMIC_DISPATCH_OK", value=dynamic_dispatch_ok)
     if opts.no_fallback and not all_output_files and slots:
         logging_util.emit_kv("ALL_SLOTS_DROPPED", "true")
-    if opts.no_fallback:
-        dropped_slots_file = _write_drops(resolved_paths_file, slots, final_outputs, drops)
-        if dropped_slots_file:
-            logging_util.emit_kv("DROPPED_SLOTS_FILE", dropped_slots_file)
-    _write_paths_file(resolved_paths_file, final_outputs, no_fallback=opts.no_fallback)
+    if dropped_slots_file:
+        logging_util.emit_kv("DROPPED_SLOTS_FILE", dropped_slots_file)
+    _DISPATCH_LAUNCHES.clear()
     return 0
 
 
