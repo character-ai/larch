@@ -318,19 +318,21 @@ _step3_review_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=skills/design/scripts/lib-step3-prelaunch-failure.sh
 . "$_step3_review_script_dir/lib-step3-prelaunch-failure.sh"
 
-# #4489: Guarantee the Step 3 completion sentinels on every terminal exit of this
-# background entrypoint. hook-bg-poll-guard.sh releases a live design-step3-review
-# marker as soon as .completed/step-3 exists; terminal paths that skip the inner
-# loop's sentinel write (postplan-failed, the post-loop config/panel-init-failed
-# exits, or a process abandoned mid-continuation) would otherwise leave the guard
-# blocked until the slower dead-process race clears it. Mirrors
-# step3_loop_write_completed_step3 in the retired review-design-step3-loop.sh asset.
-# Idempotent, best-effort: only creates a missing sentinel and never alters $?.
+# #4489: Guarantee the Step 3 completion sentinel on every terminal exit of this
+# background entrypoint. hook-bg-poll-guard.sh gates on .completed/step-3 only and
+# releases a live design-step3-review marker as soon as it exists; terminal paths
+# that skip the inner loop's sentinel write (postplan-failed, the post-loop
+# config/panel-init-failed exits, or a process abandoned mid-continuation) would
+# otherwise leave the guard blocked until the slower dead-process race clears it.
+# Writes ONLY step-3, never step-3.5: step-3.5 is a deferred Gate C / pause-resume
+# gate (design_pause.py step resolution, the Gate B post-apply idempotency guard,
+# design-step3b-entry.sh). Creating it here would skip Gate B on apply-pending
+# exits (main-agent-apply-required, per-round-approval-required). Idempotent and
+# best-effort: only creates a missing sentinel and never alters $?.
 _step3_review_guarantee_completed_sentinels() {
   [ -n "${DESIGN_TMPDIR:-}" ] && [ -d "${DESIGN_TMPDIR:-}" ] || return 0
   mkdir -p "$DESIGN_TMPDIR/.completed" 2>/dev/null || return 0
   [ -e "$DESIGN_TMPDIR/.completed/step-3" ] || : >"$DESIGN_TMPDIR/.completed/step-3" 2>/dev/null || true
-  [ -e "$DESIGN_TMPDIR/.completed/step-3.5" ] || : >"$DESIGN_TMPDIR/.completed/step-3.5" 2>/dev/null || true
   return 0
 }
 

@@ -219,9 +219,9 @@ set -e
 [[ "$sentinel_rc" -eq 0 ]] || fail "sentinel-guarantee wrapper rc=$sentinel_rc stdout=$sentinel_out stderr=$(cat "$D_SENTINEL/stderr.log")"
 grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=complete' <<<"$sentinel_out" || fail 'sentinel-guarantee path should preserve complete envelope'
 [ -f "$D_SENTINEL/.completed/step-3" ] || fail '#4489: terminal exit must guarantee .completed/step-3'
-[ -f "$D_SENTINEL/.completed/step-3.5" ] || fail '#4489: terminal exit must guarantee .completed/step-3.5'
+[ ! -e "$D_SENTINEL/.completed/step-3.5" ] || fail '#4489: guarantee must not write deferred .completed/step-3.5 (Gate C / pause-resume gate)'
 rm -rf "$D_SENTINEL"
-pass 'Step 3 wrapper guarantees completion sentinels on terminal exit (#4489)'
+pass 'Step 3 wrapper guarantees step-3 sentinel and defers step-3.5 on terminal exit (#4489)'
 
 D_NO_ANCHOR=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-no-anchor.XXXXXX")
 FAKE_NO_ANCHOR="$D_NO_ANCHOR/fake-plugin"
