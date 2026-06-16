@@ -362,7 +362,7 @@ Two sub-blocks per record: accepted OOS observations that were filed as GitHub i
 
 **Mode**: replace. **Written**: Step 9a.1, after the OOS disposition checkpoint succeeds.
 
-Summary statistics for the run: number of accepted and rejected OOS items, filed-issue URLs, round counts, and other aggregate metrics. `run-statistics.md` or an explicit `manifest.json` `steps_ran.step9a1=true` marker is the Step 9a.1 completion signal.
+Summary statistics for the run: number of accepted and rejected OOS items, filed-issue URLs, round counts, and other aggregate metrics. Step 9a.1 completion requires post-checkpoint `run-statistics.md`. Explicit `manifest.json` `steps_ran.step9a1=true` is recorded only together with that file; `step9a1=true` without `run-statistics.md` is a stale or corrupt marker and must fail audit/verify scans.
 
 ### vendor-failure-diagnostics.txt
 

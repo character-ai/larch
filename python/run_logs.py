@@ -2518,7 +2518,7 @@ def _verify_condition_reached(
         if _manifest_step9a1_explicitly_skipped(manifest_data):
             return False
         if _manifest_step9a1_explicitly_ran(manifest_data):
-            return _verify_has_file(run_dir, "run-statistics.md")
+            return True
         if (
             _manifest_steps_ran_empty(manifest_data)
             and _final_summary_heading_bail_signal(run_dir)

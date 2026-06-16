@@ -271,22 +271,38 @@ def _dedupe_filed(filed: list[FiledIssue]) -> list[FiledIssue]:
     return deduped
 
 
-def _issue_matches_block(issue: FiledIssue, block: AcceptedBlock) -> bool:
+def _issue_matches_block(issue: FiledIssue, block: AcceptedBlock, *, allow_title_match: bool = True) -> bool:
     if _issue_covers_stable_id(issue, block.stable_id):
         return True
     if _block_has_filed_url(block, issue.url):
         return True
+    if not allow_title_match:
+        return False
     return _normalized_title(issue.title) == _normalized_title(block.title)
 
 
 def _split_persisted_matches(blocks: list[AcceptedBlock], persisted: list[FiledIssue]) -> tuple[list[AcceptedBlock], list[FiledIssue]]:
+    title_counts: dict[str, int] = {}
+    for block in blocks:
+        key = _normalized_title(block.title)
+        title_counts[key] = title_counts.get(key, 0) + 1
     remaining: list[AcceptedBlock] = []
     matched: list[FiledIssue] = []
+    used_urls: set[str] = set()
     for block in blocks:
-        match = next((issue for issue in persisted if _issue_matches_block(issue, block)), None)
+        allow_title_match = title_counts.get(_normalized_title(block.title), 0) == 1
+        match = next(
+            (
+                issue
+                for issue in persisted
+                if issue.url not in used_urls and _issue_matches_block(issue, block, allow_title_match=allow_title_match)
+            ),
+            None,
+        )
         if match is None:
             remaining.append(block)
             continue
+        used_urls.add(match.url)
         matched.append(match)
     return remaining, matched
 

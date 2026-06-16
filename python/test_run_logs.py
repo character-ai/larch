@@ -1451,6 +1451,30 @@ def test_verify_completeness_ok_when_required_file_present(
     assert run_logs.verify_completeness_main([str(run_dir)]) == 0
 
 
+def test_verify_completeness_stale_step9a1_true_without_stats_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(run_logs, "_REPO_ROOT", tmp_path)
+    run_dir = tmp_path / "larch-logs" / "implement" / "RUN1"
+    run_dir.mkdir(parents=True)
+    manifest = {
+        "schema_version": 2,
+        "skill": "implement",
+        "run_id": "RUN1",
+        "steps_ran": {"step9a1": True},
+        "status": "partial",
+    }
+    _ = (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    _ = (run_dir / "oos-issues.ndjson").write_text('{"phase":"implement"}\n', encoding="utf-8")
+    tsv = tmp_path / "required.tsv"
+    _ = tsv.write_text("relative_path\tcondition\nrun-statistics.md\tstep9a1\n", encoding="utf-8")
+    monkeypatch.setenv("LARCH_VERIFY_MANIFEST", str(tsv))
+    assert run_logs.verify_completeness_main([str(run_dir)]) == 1
+    assert "run-statistics.md" in capsys.readouterr().out
+
+
 def test_refresh_run_logs_main_skips_without_state_file(tmp_path: Path) -> None:
     buf = StringIO()
     with contextlib.redirect_stdout(buf):

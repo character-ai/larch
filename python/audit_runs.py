@@ -531,7 +531,7 @@ def _scan_required(run_dir: Path, pr: int, required: Path | None) -> dict[str, o
             return has("version-bump-reasoning.md") or has("final-summary.md") or cond("step9a1", chain=True)
         if c == "step9a1":
             if steps_false("step9a1"): return False
-            if sr.get("step9a1") is True: return has("run-statistics.md")
+            if sr.get("step9a1") is True: return True
             if empty_steps() and bail_signal() and not has("run-statistics.md"): return False
             if bail_signal() and not has("run-statistics.md") and nonempty_without_step9a1(): return False
             return has("run-statistics.md") if chain else True

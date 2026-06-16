@@ -186,6 +186,7 @@ case "${_autofix_status:-}" in
 esac
 if [ "${_autofix_rc:-0}" -ne 0 ]; then
   _autofix_status=failed
+  rm -f "$_autofix_attempted"
 fi
 [ -n "${_autofix_log_file:-}" ] || _autofix_log_file="$DESIGN_TMPDIR/validate-plan-commands.log"
 [ -n "${_autofix_fixed_by:-}" ] || _autofix_fixed_by="unknown"
@@ -201,6 +202,7 @@ if [ "${_autofix_status:-}" = ok ]; then
       --output-file "$_autofix_log_file" \
       --redact; then
       _autofix_status=failed
+      rm -f "$_autofix_attempted"
     fi
   fi
 fi

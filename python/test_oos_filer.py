@@ -114,6 +114,7 @@ def test_empty_batch_writes_zero_statistics_and_stamps_true(tmp_path: Path, monk
     assert rc == 0
     assert "Run run-1: 0 OOS issue(s) filed." in (tmp_path / "larch-logs" / "implement" / "run-1" / "run-statistics.md").read_text(encoding="utf-8")
     assert any("steps_ran.step9a1=true" in call for call in fake.calls for call in call)
+    assert any(call[:2] == ["oos", "disposition-checkpoint"] for call in fake.calls)
     assert not any(call[:2] == ["issue", "create-one"] for call in fake.calls)
 
 
@@ -219,6 +220,7 @@ def test_idempotency_sentinel_skips_create_loop(tmp_path: Path, monkeypatch: pyt
     rc, _payload = _run(tmp_path, fake, monkeypatch)
     assert rc == 0
     assert not any(call[:2] == ["issue", "create-one"] for call in fake.calls)
+    assert any(call[:2] == ["oos", "disposition-checkpoint"] for call in fake.calls)
     assert "https://github.com/owner/repo/issues/3" in (tmp_path / "larch-logs" / "implement" / "run-1" / "oos-issues.ndjson").read_text(encoding="utf-8")
     assert any("steps_ran.step9a1=true" in " ".join(call) for call in fake.calls)
 
@@ -235,6 +237,7 @@ def test_forked_or_repo_unavailable_skip_create_loop(tmp_path: Path, monkeypatch
     rc, _payload = _run(tmp_path, fake, monkeypatch)
     assert rc == 0
     assert not any(call[:2] == ["issue", "create-one"] for call in fake.calls)
+    assert any(call[:2] == ["oos", "disposition-checkpoint"] for call in fake.calls)
     assert "Skipped" in (tmp_path / "larch-logs" / "implement" / "run-1" / "oos-issues.ndjson").read_text(encoding="utf-8")
     assert any("steps_ran.step9a1=true" in " ".join(call) for call in fake.calls)
 
@@ -255,6 +258,7 @@ def test_already_filed_block_is_excluded_from_create_loop(tmp_path: Path, monkey
     rc, _payload = _run(tmp_path, fake, monkeypatch)
     assert rc == 0
     assert not any(call[:2] == ["issue", "create-one"] for call in fake.calls)
+    assert any(call[:2] == ["oos", "disposition-checkpoint"] for call in fake.calls)
     assert "https://github.com/owner/repo/issues/44" in (tmp_path / "larch-logs" / "implement" / "run-1" / "oos-issues.ndjson").read_text(encoding="utf-8")
 
 
