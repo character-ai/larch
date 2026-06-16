@@ -1,6 +1,6 @@
 ---
 name: rebalance-test-harnesses
-description: "Use when rebalancing CI test harness shards to equalise wall-clock time across the 20 shards. Fetches per-target timings from the last 5 successful CI runs on main, applies round-robin LPT repacking, creates a PR, triggers 3 verification CI runs, checks the max-min shard spread is ≤ 15 s, then reports before/after statistics (merge is left to the operator)."
+description: "Use when rebalancing CI test harness shards to equalise wall-clock time across the 20 shards. Fetches per-target timings from the last 5 successful CI runs on main, applies round-robin LPT repacking, creates a PR, triggers 3 verification CI runs, verifies real per-shard CI job wall-clock (jobs API) against a 60 s budget, then reports before/after statistics (merge is left to the operator)."
 allowed-tools: Bash, Read, Write
 ---
 
@@ -40,8 +40,11 @@ All flags are optional; defaults are sensible for normal use in this repository.
 7. Commit, push a new branch, and create a PR.
 8. Wait for the first CI run (triggered automatically by the push), then trigger
    two more via `gh workflow run ci.yaml --ref <branch>`.
-9. Collect timing from all three runs, compute median per-shard wall times.
-10. Verify: `max_shard_total − min_shard_total ≤ 15 s`.
+9. Collect, per run, real per-shard CI job wall-clock from the jobs API and the
+   `LARCH_HARNESS_TIMING` sum, then compute per-shard medians.
+10. Verify: each shard's median real wall-clock stays within `--max-shard-wall-clock`
+    (default 60 s). The sum spread vs `--balance-threshold` is reported as secondary
+    context only.
 11. Print a before / after comparison table. BEFORE shows the estimated spread
     of the new layout from baseline medians. AFTER shows the measured spread of
     that same new layout from verification CI runs.
@@ -74,7 +77,8 @@ Forward all args from the skill invocation to the script unchanged.
 | `--n-runs` | `5` | Number of baseline CI runs to sample |
 | `--branch-prefix` | `rebalance-shards` | Prefix for the new git branch |
 | `--n-verify-runs` | `3` | Verification CI runs to trigger after PR creation |
-| `--balance-threshold` | `15` | Max acceptable shard spread (seconds) |
+| `--balance-threshold` | `15` | Max acceptable sum-estimate shard spread (seconds), secondary metric |
+| `--max-shard-wall-clock` | `60` | Real per-shard CI job wall-clock budget (seconds), primary jobs-API verdict |
 | `--workflow` | `ci.yaml` | Workflow file name |
 | `--baseline-branch` | `main` | Branch to fetch baseline timings from |
 
@@ -85,7 +89,7 @@ Forward all args from the skill invocation to the script unchanged.
 | `python/harness_ci_timing.py` | `fetch_timing_rows`, `compute_medians`, `median_shard_totals` |
 | `python/harness_makefile.py` | `read_shards`, `write_shards` |
 | `python/harness_shard_packer.py` | `pack` |
-| `python/gh.py` | `run_log_read`, `run_list_successful`, `workflow_dispatch` (added) |
+| `python/gh.py` | `run_log_read`, `run_list_successful`, `workflow_dispatch`, `job_durations` (real per-shard wall-clock) |
 
 Unit tests live alongside the modules (`python/test_harness_*.py`);
 run with `make py-test` or `cd python && pytest test_harness_*.py`.

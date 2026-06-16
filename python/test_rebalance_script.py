@@ -7,6 +7,10 @@ import importlib.util
 import io
 from pathlib import Path
 from types import ModuleType
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import pytest
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -97,3 +101,74 @@ def test_orphan_medians_are_excluded_from_packed_shard_totals() -> None:
     shards = {1: ["test-a"], 2: ["test-b"]}
 
     assert _feasibility_output(shards, medians) == ""
+
+
+def _wall_clock_output(
+    wall_clock: dict[int, float],
+    *,
+    max_shard_wall_clock: float,
+) -> tuple[str, bool]:
+    stream = io.StringIO()
+    with contextlib.redirect_stdout(stream):
+        result = rebalance._report_wall_clock_balance(
+            wall_clock,
+            max_shard_wall_clock=max_shard_wall_clock,
+            n_verify_runs=3,
+        )
+    return stream.getvalue(), result
+
+
+def test_wall_clock_within_budget_is_verified() -> None:
+    # PR #4492 scenario from issue #4493: worst 54s, fastest 37s, 0 shards over 60s.
+    output, balanced = _wall_clock_output(
+        {1: 54.0, 2: 37.0, 3: 48.0},
+        max_shard_wall_clock=60.0,
+    )
+    assert balanced is True
+    assert "✓ Shard balance VERIFIED" in output
+    assert "Slowest shard: 1 (54.0s)" in output
+    assert "Spread (max-min): 17.0s" in output
+
+
+def test_wall_clock_over_budget_fails_and_lists_offenders() -> None:
+    output, balanced = _wall_clock_output(
+        {1: 72.0, 2: 40.0, 3: 65.0},
+        max_shard_wall_clock=60.0,
+    )
+    assert balanced is False
+    assert "⚠ Shard balance FAILED" in output
+    assert "[1, 3]" in output
+
+
+def test_collect_wall_clock_takes_per_shard_median_across_runs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    durations_by_run = {
+        101: {1: 50.0, 2: 40.0},
+        102: {1: 54.0, 2: 42.0},
+        103: {1: 58.0, 2: 38.0},
+    }
+
+    def fake_job_durations(runner: object, run_id: int, *, repo: str) -> dict[int, float]:
+        assert runner is rebalance._RUNNER
+        assert repo == "o/r"
+        return durations_by_run[run_id]
+
+    monkeypatch.setattr(rebalance.gh, "job_durations", fake_job_durations)
+    result = rebalance._collect_wall_clock(rebalance._RUNNER, [101, 102, 103], repo="o/r")
+    assert result == {1: 54.0, 2: 40.0}
+
+
+def test_collect_wall_clock_skips_runs_whose_jobs_api_read_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_job_durations(runner: object, run_id: int, *, repo: str) -> dict[int, float]:
+        assert runner is rebalance._RUNNER
+        assert repo == "o/r"
+        if run_id == 102:
+            raise rebalance.ShipError("jobs api boom")
+        return {1: 50.0}
+
+    monkeypatch.setattr(rebalance.gh, "job_durations", fake_job_durations)
+    result = rebalance._collect_wall_clock(rebalance._RUNNER, [101, 102], repo="o/r")
+    assert result == {1: 50.0}

@@ -20,6 +20,7 @@ import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
+from statistics import median
 from typing import Any
 
 # ---------------------------------------------------------------------------
@@ -30,6 +31,7 @@ sys.path.insert(0, str(_REPO_ROOT / "python"))
 
 import gh  # noqa: E402 — must come after sys.path is patched
 import git  # noqa: E402
+from errors import ShipError, TransientNetworkError  # noqa: E402
 from harness_ci_timing import (  # noqa: E402
     TimingRow,
     compute_medians,
@@ -297,6 +299,74 @@ def _check_feasibility(
     print("  Continuing anyway; rebalancing may still improve spread.")
 
 
+def _collect_wall_clock(
+    runner: _ProcRunner,
+    run_ids: list[int],
+    *,
+    repo: str,
+) -> dict[int, float]:
+    """Return ``{shard: median real CI wall-clock seconds}`` across *run_ids*.
+
+    Reads real per-shard job wall-clock from the GitHub jobs API for each
+    verification run (``gh.job_durations``) and takes the per-shard median so a
+    single slow run does not dominate. A run whose jobs-API read fails is skipped
+    with a warning; an empty result tells the caller to fall back to the
+    ``LARCH_HARNESS_TIMING`` sum estimate.
+    """
+    per_shard: dict[int, list[float]] = {}
+    for run_id in run_ids:
+        try:
+            durations = gh.job_durations(runner, run_id, repo=repo)
+        except (ShipError, TransientNetworkError) as exc:
+            print(
+                f"  WARNING: could not fetch real wall-clock for run {run_id}: {exc}",
+                file=sys.stderr,
+            )
+            continue
+        for shard, seconds in durations.items():
+            per_shard.setdefault(shard, []).append(seconds)
+    return {shard: median(values) for shard, values in per_shard.items()}
+
+
+def _report_wall_clock_balance(
+    wall_clock: dict[int, float],
+    *,
+    max_shard_wall_clock: float,
+    n_verify_runs: int,
+) -> bool:
+    """Print the real per-shard wall-clock table and verdict; return True if within budget.
+
+    The verdict is keyed on the slowest shard's real wall-clock against
+    ``max_shard_wall_clock`` (the operator-facing goal), not on the
+    ``LARCH_HARNESS_TIMING`` sum that omits per-job overhead.
+    """
+    slowest_shard, slowest = max(wall_clock.items(), key=lambda item: item[1])
+    fastest = min(wall_clock.values())
+    spread = slowest - fastest
+    over_budget = sorted(shard for shard, secs in wall_clock.items() if secs > max_shard_wall_clock)
+
+    print(f"\nReal CI job wall-clock (jobs API, median of {n_verify_runs} verification runs):")
+    print(f"  {'Shard':>6}  {'Wall-clock (s)':>14}")
+    for shard_n in sorted(wall_clock):
+        marker = "  <-- over budget" if wall_clock[shard_n] > max_shard_wall_clock else ""
+        print(f"  {shard_n:>6}  {wall_clock[shard_n]:>14.1f}{marker}")
+    print(f"  Slowest shard: {slowest_shard} ({slowest:.1f}s)")
+    print(f"  Spread (max-min): {spread:.1f}s")
+    print(f"  Budget (--max-shard-wall-clock): {max_shard_wall_clock:.1f}s")
+
+    if over_budget:
+        print(
+            f"⚠ Shard balance FAILED: {len(over_budget)} shard(s) over the "
+            f"{max_shard_wall_clock:.1f}s wall-clock budget: {over_budget}"
+        )
+        return False
+    print(
+        f"✓ Shard balance VERIFIED: slowest shard {slowest:.1f}s within "
+        f"{max_shard_wall_clock:.1f}s budget"
+    )
+    return True
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -311,6 +381,12 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
     parser.add_argument("--branch-prefix", default="rebalance-shards")
     parser.add_argument("--n-verify-runs", type=int, default=3)
     parser.add_argument("--balance-threshold", type=float, default=15.0)
+    parser.add_argument(
+        "--max-shard-wall-clock",
+        type=float,
+        default=60.0,
+        help="real per-shard CI job wall-clock budget in seconds (jobs-API verdict)",
+    )
     parser.add_argument("--workflow", default="ci.yaml")
     parser.add_argument("--baseline-branch", default="main")
     args = parser.parse_args(argv)
@@ -509,15 +585,39 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
 
     # ------------------------------------------------------------------
     # Step 9: Collect timing and verify balance
+    #
+    # The operator-facing goal is "every shard runs under N seconds of real CI
+    # wall-clock". The LARCH_HARNESS_TIMING sum is only a self-reported estimate
+    # that omits per-job overhead (checkout, setup-python, deps, make), so the
+    # pass/fail verdict is keyed on the jobs-API wall-clock; the sum spread is
+    # kept below as secondary context. See issue #4493.
     # ------------------------------------------------------------------
     print("\n[9/9] Collecting timing and verifying shard balance …")
+
+    # Primary metric: real per-shard CI job wall-clock from the jobs API.
+    wall_clock = _collect_wall_clock(_RUNNER, verify_run_ids, repo=repo)
+    if wall_clock:
+        _ = _report_wall_clock_balance(
+            wall_clock,
+            max_shard_wall_clock=args.max_shard_wall_clock,
+            n_verify_runs=len(verify_run_ids),
+        )
+    else:
+        print(
+            "WARNING: no real job wall-clock available from the jobs API; "
+            "relying on the LARCH_HARNESS_TIMING sum estimate below.",
+            file=sys.stderr,
+        )
+
+    # Secondary metric: LARCH_HARNESS_TIMING sum estimate (blind to per-job overhead).
     verify_rows: list[TimingRow] = []
     for run_id in verify_run_ids:
         print(f"  Fetching log for run {run_id} …")
         verify_rows.extend(_collect_log_rows(_RUNNER, run_id, repo=repo))
 
     if not verify_rows:
-        print("WARNING: could not collect any timing from verification runs.", file=sys.stderr)
+        if not wall_clock:
+            print("WARNING: could not collect any timing from verification runs.", file=sys.stderr)
     else:
         medians_verify = median_shard_totals(verify_rows)
         max_shard = max(medians_verify.values())
@@ -525,18 +625,18 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
         spread = max_shard - min_shard
         threshold = args.balance_threshold
 
-        print(f"\nVerification spread: {spread:.1f}s (threshold: {threshold}s)")
+        print(f"\nSum-of-timing estimate spread: {spread:.1f}s (threshold: {threshold}s)")
         if spread <= threshold:
-            print("✓ Shard balance VERIFIED")
+            print("✓ Sum estimate within threshold")
         else:
-            print(f"⚠ Shard balance FAILED (spread {spread:.1f}s > {threshold}s threshold)")
+            print(f"⚠ Sum estimate over threshold (spread {spread:.1f}s > {threshold}s)")
 
         # BEFORE: per-shard totals estimated from per-target baseline medians
         _print_shard_table("BEFORE (estimated from baseline medians):", new_shards, medians)
         # AFTER: per-shard totals measured directly from verification runs.
         # medians_verify is {shard_int: total_float} — print it directly instead
         # of routing through _print_shard_table (which expects {target: seconds}).
-        print(f"\nAFTER (measured median of {args.n_verify_runs} verification runs):")
+        print(f"\nAFTER (measured sum median of {args.n_verify_runs} verification runs):")
         print(f"  {'Shard':>6}  {'Total (s)':>10}")
         for shard_n in sorted(medians_verify):
             print(f"  {shard_n:>6}  {medians_verify[shard_n]:>10.1f}")

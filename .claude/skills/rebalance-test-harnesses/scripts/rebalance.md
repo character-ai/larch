@@ -4,6 +4,7 @@
 
 `rebalance.py` refreshes CI test harness shard assignments so the harness lanes have a lower wall-clock spread.
 It samples recent baseline CI timings, repacks Makefile shard targets, opens a PR, runs verification CI, and reports before and after shard totals.
+The post-merge verdict is keyed on **real per-shard CI job wall-clock** read from the GitHub jobs API (`started_at`/`completed_at` per `test-harnesses (N)` job), not on the `LARCH_HARNESS_TIMING` sum, which is blind to per-job overhead (checkout, setup-python, deps, make). The sum spread is retained as secondary context and as the pre-pack feasibility heuristic (no jobs-API data exists pre-merge). See issue #4493.
 
 ## Primary callers
 
@@ -21,11 +22,13 @@ It samples recent baseline CI timings, repacks Makefile shard targets, opens a P
 7. Run the warning-only feasibility check on the packed shard totals.
 8. Write the new shard lines and validate coverage.
 9. Create a branch and PR for the new Makefile layout.
-10. Trigger verification CI runs and collect median per-shard totals.
-11. Print BEFORE and AFTER tables for the new shard layout.
+10. Trigger verification CI runs and collect, per run, both real per-shard CI job wall-clock (jobs API) and the `LARCH_HARNESS_TIMING` sum.
+11. Key the pass/fail verdict on the median real per-shard wall-clock against `--max-shard-wall-clock`; print the sum-based BEFORE and AFTER tables as secondary context.
 
+The real-wall-clock verdict is primary; a shard passes when its median real wall-clock stays within the budget.
 BEFORE is estimated from baseline per-target medians for the new layout.
 AFTER is measured from verification CI runs for that same new layout.
+When the jobs API returns no usable wall-clock, the run warns and falls back to the sum estimate.
 
 ## CLI flags
 
@@ -35,7 +38,8 @@ AFTER is measured from verification CI runs for that same new layout.
 | `--n-runs` | `5` | Number of baseline CI runs to sample. |
 | `--branch-prefix` | `rebalance-shards` | Prefix for the generated branch name. |
 | `--n-verify-runs` | `3` | Number of verification CI runs to trigger. |
-| `--balance-threshold` | `15.0` | Maximum acceptable shard spread in seconds. |
+| `--balance-threshold` | `15.0` | Maximum acceptable sum-estimate shard spread in seconds (secondary metric). |
+| `--max-shard-wall-clock` | `60.0` | Real per-shard CI job wall-clock budget in seconds; drives the primary jobs-API verdict. |
 | `--workflow` | `ci.yaml` | Workflow file used for baseline and verification runs. |
 | `--baseline-branch` | `main` | Branch used for baseline timing data. |
 
