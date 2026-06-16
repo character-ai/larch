@@ -33,13 +33,24 @@ requires every script under `scripts/` to carry a neighboring
   groups, now sliced into per-target `-k` selections (each target also
   wrapped with `timing harness-mark`). One target per file carries a
   `not (...)` catch-all so new tests stay covered.
+- `python/test_review_dispatch.py`, `python/test_execution_issues.py`,
+  `python/test_dirty_tree.py`, `python/test_finalize.py`,
+  `python/test_admission.py`, `python/test_stall_recovery.py`,
+  `python/test_plan_review.py` — the #4459 follow-up batch: already-sliced
+  files whose `-k` selections had coverage gaps or overlaps, closed into
+  strict partitions (a `not (...)` catch-all on one target per file, or a
+  tightened keyword to drop an overlap). Each delta moves only a handful of
+  tests, so shard wall-time is effectively unchanged.
 
-The guard does **not** yet enforce the invariant globally. The remaining
-timed-but-duplicated multi-target files (e.g. `test_run_logs.py`,
-`test_implement_dispatch.py`, `test_release.py`) still run their full file
-under several target names; de-duplicating those is a tracked follow-up. To
-bring a file under the guard, slice its targets into disjoint `-k`/node-id
-selections first, then add the file to `ENFORCED`.
+The guard does **not** yet enforce the invariant globally. Two follow-up
+buckets remain, both tracked under #4459: the multi-target files that still
+run their full file under several target names (e.g. `test_run_logs.py`,
+`test_implement_dispatch.py`, `test_release.py`), and the heavier
+`-k`-sliced files whose re-partition moves many tests between shards and so
+needs wall-time re-measurement (`test_review_and_fix.py`,
+`test_plan_quality.py`, `test_bootstrap.py`, `test_pr_body.py`,
+`test_file_oos.py`). To bring a file under the guard, slice its targets into
+disjoint `-k`/node-id selections first, then add the file to `ENFORCED`.
 
 ## Invariants
 
