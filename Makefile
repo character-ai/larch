@@ -1022,6 +1022,9 @@ test-lib-cursor-auth:
 test-lib-quiet:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-lib-quiet.sh
 
+test-lib-design-tmpdir:
+	@: # retired — stub kept for installed-plugin compat; validator migrated to python/session_env.py
+
 test-github-remote-repo:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-github-remote-repo.sh
 
