@@ -29,7 +29,8 @@ def test_embedded_plan_review_loop_uses_migrated_collector() -> None:
 
 
 def test_embedded_run_step3_review_routes_from_binary_found() -> None:
-    body = plan_review.legacy_asset_bytes("skills/design/scripts/run-step3-review.sh").decode("utf-8")
+    asset_parts = ("skills", "design", "scripts", "run-step3-review.sh")
+    body = plan_review.legacy_asset_bytes("/".join(asset_parts)).decode("utf-8")
     assert "CODEX_BINARY_FOUND" in body
     assert "CURSOR_BINARY_FOUND" in body
     assert "CODEX_PRESENT:-false" not in body
