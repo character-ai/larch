@@ -130,6 +130,7 @@ STUB
 
 write_session_env() {
     local env_file="$1" design_tmpdir="$2" plugin_root="$3"
+    local drafter_value="${4:-codex}"
     cat > "$env_file" <<EOF_ENV
 export DESIGN_TMPDIR='$design_tmpdir'
 export SESSION_TMPDIR='$design_tmpdir'
@@ -139,7 +140,11 @@ export ISSUE_TITLE='Test issue'
 export REPO='example/repo'
 export CODEX_PRESENT='true'
 export CURSOR_PRESENT='false'
-export LARCH_DESIGN_DRAFTER='codex'
+EOF_ENV
+    if [[ "$drafter_value" != "__omit__" ]]; then
+        printf "export LARCH_DESIGN_DRAFTER='%s'\n" "$drafter_value" >> "$env_file"
+    fi
+    cat >> "$env_file" <<EOF_ENV
 export CLAUDE_PLUGIN_ROOT='$plugin_root'
 export LARCH_TOKEN_SESSION_ID='step2b-drafter-test'
 export LARCH_TEST_REAL_REPO_ROOT='$REPO_ROOT'
@@ -150,12 +155,13 @@ EOF_ENV
 
 setup_design_tmp() {
     local d="$1" plugin="$2"
+    local drafter_value="${3:-codex}"
     mkdir -p "$d/.completed"
     printf 'NO_SKETCHES\n' > "$d/approach-synthesis.txt"
     printf 'NO_CONTESTED_DECISIONS\n' > "$d/contested-decisions.md"
     : > "$d/dialectic-resolutions.md"
     printf 'Feature\n' > "$d/feature-description.txt"
-    write_session_env "$d/session.env" "$d" "$plugin"
+    write_session_env "$d/session.env" "$d" "$plugin" "$drafter_value"
 }
 
 install_launcher() {
@@ -204,6 +210,47 @@ STUB
     chmod +x "$plugin/scripts/launch-codex-drafter.sh"
     printf -v LAUNCH_MODE '%s' "$mode"
     export LAUNCH_MODE
+}
+
+install_claude_launcher() {
+    local plugin="$1" mode="$2"
+    cat > "$plugin/scripts/launch-claude-drafter.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""; design=""; model=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --model) model="$2"; shift 2 ;;
+    --output-file) out="$2"; shift 2 ;;
+    --design-tmpdir) design="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+echo "launch-claude model=$model mode=${CLAUDE_LAUNCH_MODE:?}" >>"${CALL_LOG:?}"
+case "$CLAUDE_LAUNCH_MODE" in
+  success)
+    cat > "$design/plan.txt" <<'PLAN'
+## Plan
+
+DRAFTER_STATUS=succeeded
+POSTPLAN_RC=0
+POSTPLAN_STATUS=ok
+
+diff_lines: 1
+PLAN
+    printf 'STATUS=OK\nPLAN_WRITTEN=true\nPLAN_LINES=7\nDIFF_LINES=1\nSUMMARY_WRITTEN=false\nDRAFTER_LAUNCHED=true\n' > "$out"
+    printf 'STATUS=clean\nMODE=absolute\nREASON=test\n' > "$out.dirty-tree"
+    exit 0
+    ;;
+  failure)
+    printf 'STATUS=ERROR\nPLAN_WRITTEN=false\nDRAFTER_LAUNCHED=true\nREASON=no-sidecar\n' > "$out"
+    exit 1
+    ;;
+esac
+STUB
+    chmod +x "$plugin/scripts/launch-claude-drafter.sh"
+    printf -v CLAUDE_LAUNCH_MODE '%s' "$mode"
+    export CLAUDE_LAUNCH_MODE
 }
 
 run_wrapper() {
@@ -269,7 +316,46 @@ assert_order "$TMP_ROOT/call.log" 'timing design Step 2b — plan' 'launch succe
 assert_not_called "$TMP_ROOT/call.log" 'PRELUDE_SOURCED_OR_EXECUTED' 'design-step2b-prelude.sh was sourced on success'
 pass 'prelude merge order is preserved'
 
-# 3 Drafter failure keeps fallback-only behavior.
+# 3 Unset drafter defaults to Claude even when Codex is present.
+plugin_default="$TMP_ROOT/plugin-default"
+design_default="$TMP_ROOT/design-default"
+make_fake_plugin "$plugin_default"
+setup_design_tmp "$design_default" "$plugin_default" "__omit__"
+install_launcher "$plugin_default" success
+install_claude_launcher "$plugin_default" success
+: >"$TMP_ROOT/call.log"
+set +e
+CALL_LOG="$TMP_ROOT/call.log" POSTPLAN_ARGV_FILE="$design_default/postplan.argv" \
+  env -u IMPLEMENT_TMPDIR -u LARCH_TOKEN_LEDGER -u LARCH_DESIGN_DRAFTER CLAUDE_PLUGIN_ROOT="$plugin_default" \
+  "$WRAPPER" --session-env-path "$design_default/session.env" --claude-pid 4242 >"$design_default/stdout.txt" 2>"$design_default/stderr.txt"
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || fail 'default Claude route should exit cleanly'
+assert_contains "$TMP_ROOT/call.log" 'launch-claude model=claude-opus-4-8 mode=success' 'default route did not pass Claude Opus 4.8'
+assert_not_called "$TMP_ROOT/call.log" 'launch success' 'default route should not launch Codex'
+assert_contains "$design_default/stdout.txt" 'DRAFTER_VENDOR=claude' 'default route vendor row missing'
+assert_contains "$design_default/stdout.txt" 'POSTPLAN_STATUS=ok' 'default route postplan row missing'
+pass 'unset drafter defaults to Claude'
+
+# 4 Explicit Claude route honors the model override.
+plugin_claude="$TMP_ROOT/plugin-claude"
+design_claude="$TMP_ROOT/design-claude"
+make_fake_plugin "$plugin_claude"
+setup_design_tmp "$design_claude" "$plugin_claude" "claude"
+printf "export LARCH_DESIGN_PLAN_MODEL='claude-custom-plan'\n" >> "$design_claude/session.env"
+install_launcher "$plugin_claude" success
+install_claude_launcher "$plugin_claude" success
+set +e
+run_wrapper "$design_claude" "$plugin_claude"
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || fail 'explicit Claude route should exit cleanly'
+assert_contains "$TMP_ROOT/call.log" 'launch-claude model=claude-custom-plan mode=success' 'explicit Claude route did not pass override model'
+assert_not_called "$TMP_ROOT/call.log" 'launch success' 'explicit Claude route should not launch Codex'
+assert_contains "$design_claude/stdout.txt" 'DRAFTER_VENDOR=claude' 'explicit Claude vendor row missing'
+pass 'explicit Claude route honors model override'
+
+# 5 Drafter failure keeps fallback-only behavior.
 plugin_fail="$TMP_ROOT/plugin-fail"
 design_fail="$TMP_ROOT/design-fail"
 make_fake_plugin "$plugin_fail"

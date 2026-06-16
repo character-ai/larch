@@ -6,6 +6,8 @@ It covers folded prelude setup for every case: `approach-synthesis.txt`, `contes
 
 It covers delegated postplan expectations, pinned launcher transport argv, machine-safe preview output, incomplete internal-postplan output, fatal postplan rc handling, dirty-tree recovery, and drafter fallback. rc 11 coverage uses the real `design-step2b-postplan.sh` wrapper with fake lower-level dependencies, not only a stub.
 
+It covers drafter vendor routing: omitted `LARCH_DESIGN_DRAFTER` in `session.env` with the invoking environment cleared routes to Claude with the default model, explicit `LARCH_DESIGN_DRAFTER=codex` remains the default fixture path for existing Codex cases, and explicit `LARCH_DESIGN_DRAFTER=claude` honors `LARCH_DESIGN_PLAN_MODEL`.
+
 Token sidecar scenarios also satisfy folded-prelude artifacts and fake postplan scaffolding. They assert stale sidecars are ignored, fresh Codex sidecars are ingested exactly once, and stale parent token ledger settings do not leak into the active design ledger.
 
 Edit in sync with `design-step2b-drafter.sh`, `design-step2b-drafter.md`, `design-step2b-postplan.sh`, and `scripts/launch-codex-drafter.sh`. Run through `make test-design-step2b-drafter` and relevant-check mappings for Step 2b/drafter files.
