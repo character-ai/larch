@@ -2533,10 +2533,10 @@ def test_run_relevant_checks_skips_undefined_direct_make_targets(
 
     def fake_changed_files(_runner: object, *, cwd: str) -> tuple[str, ...]:
         _ = cwd
-        return ("scripts/test-lib-design-tmpdir.sh", "scripts/read-result-env.sh")
+        return ("scripts/unwired-direct-target.sh", "scripts/read-result-env.sh")
 
     def fake_direct(_runner: object, _changed: tuple[str, ...], **_kwargs: object) -> tuple[str, ...]:
-        return ("test-lib-design-tmpdir", "test-read-result-env")
+        return ("test-unwired-direct-target", "test-read-result-env")
 
     def fake_logged(_runner: object, argv: list[str], **_kwargs: object) -> CommandResult:
         if argv and argv[0] == "make":
@@ -2564,7 +2564,7 @@ def test_run_relevant_checks_skips_undefined_direct_make_targets(
     assert make_calls == [["make", "test-read-result-env"]]
     assert result.raw_log_path is not None
     log = Path(result.raw_log_path).read_text(encoding="utf-8")
-    assert "skipping undefined direct make target(s): test-lib-design-tmpdir" in log
+    assert "skipping undefined direct make target(s): test-unwired-direct-target" in log
 
 
 def test_run_relevant_checks_deletion_only_without_agent_lint_fails_closed(
