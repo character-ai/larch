@@ -119,25 +119,47 @@ def compute_medians(rows: Sequence[TimingRow]) -> dict[str, float]:
     return {t: statistics.median(times) for t, times in by_target.items()}
 
 
+def _split_shard_attempts(shard_rows: Sequence[TimingRow]) -> list[list[TimingRow]]:
+    """Split ordered rows for one ``(run_id, shard)`` into job attempts.
+
+    Multi-bash Makefile targets emit consecutive rows with the same target
+    label.  A retried matrix job replays the shard from the first target, so a
+    non-consecutive repeat of the opening target starts a new attempt.
+    """
+    if not shard_rows:
+        return []
+    attempts: list[list[TimingRow]] = [[shard_rows[0]]]
+    first_target = shard_rows[0].target
+    for row in shard_rows[1:]:
+        prev = attempts[-1][-1]
+        if row.target == prev.target:
+            attempts[-1].append(row)
+        elif row.target == first_target:
+            attempts.append([row])
+            first_target = row.target
+        else:
+            attempts[-1].append(row)
+    return attempts
+
+
 def shard_totals_per_run(rows: Sequence[TimingRow]) -> dict[int, dict[int, float]]:
     """Return ``{run_id: {shard: total_seconds}}`` — per-run shard wall times.
 
-    Deduplicates by ``(run_id, shard, target)`` before summing, keeping the
-    last observation.  ``gh run view --log`` can include logs from all job
-    attempts when a matrix job is retried; without deduplication every target
-    in the retried shard is counted twice, doubling the reported shard total.
-    Multi-bash targets that legitimately emit multiple rows for the same
-    target are also deduplicated (last row wins), which slightly underestimates
-    their contribution to the shard total — an acceptable trade-off for
-    balance-verification accuracy.
+    Sums every timing row in the latest job attempt for each shard.  Multi-bash
+    Makefile targets emit consecutive rows with the same label (for example
+    ``test-harness-shards-coverage``); those rows are all counted.  When
+    ``gh run view --log`` includes retried matrix job output, only the latest
+    attempt is kept so targets are not double-counted across retries.
     """
-    deduped: dict[tuple[int, int, str], float] = {}
+    by_run_shard: dict[tuple[int, int], list[TimingRow]] = {}
     for row in rows:
-        deduped[(row.run_id, row.shard, row.target)] = row.seconds
+        by_run_shard.setdefault((row.run_id, row.shard), []).append(row)
+
     result: dict[int, dict[int, float]] = {}
-    for (run_id, shard, _), seconds in deduped.items():
-        run_data = result.setdefault(run_id, {})
-        run_data[shard] = run_data.get(shard, 0.0) + seconds
+    for (run_id, shard), shard_rows in by_run_shard.items():
+        attempts = _split_shard_attempts(shard_rows)
+        total = sum(r.seconds for r in attempts[-1])
+        result.setdefault(run_id, {})[shard] = total
     return result
 
 
