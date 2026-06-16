@@ -61,14 +61,19 @@ def pack(
     all_targets = sorted_targets + (extras or [])
 
     shards: dict[int, list[str]] = {i: [] for i in range(1, n_shards + 1)}
-    # heap entries: (cumulative_seconds, shard_id) — shard_id breaks ties
-    heap: list[tuple[float, int]] = [(0.0, i) for i in range(1, n_shards + 1)]
+    # heap entries: (cumulative_seconds, item_count, shard_id). The item_count
+    # secondary key makes zero-weight targets (extras with no timing data) fan
+    # out round-robin instead of avalanching onto one shard: a 0.0-weight target
+    # leaves the popped shard's total unchanged, so without the count tiebreak
+    # that shard stays lightest and every subsequent 0-weight target piles onto
+    # it. shard_id remains the final tiebreak for determinism.
+    heap: list[tuple[float, int, int]] = [(0.0, 0, i) for i in range(1, n_shards + 1)]
     heapq.heapify(heap)
 
     for target in all_targets:
-        total, shard_id = heapq.heappop(heap)
+        total, count, shard_id = heapq.heappop(heap)
         shards[shard_id].append(target)
-        heapq.heappush(heap, (total + medians.get(target, 0.0), shard_id))
+        heapq.heappush(heap, (total + medians.get(target, 0.0), count + 1, shard_id))
 
     # Ensure guard is first in its assigned shard (structural invariant)
     if guard:

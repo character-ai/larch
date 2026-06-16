@@ -35,6 +35,7 @@ from harness_ci_timing import (  # noqa: E402
     compute_medians,
     median_shard_totals,
     parse_log,
+    untimed_targets,
 )
 from harness_makefile import read_shards, write_shards  # noqa: E402
 from harness_shard_packer import pack  # noqa: E402
@@ -368,20 +369,40 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
     medians = compute_medians(all_timing_rows)
     print(f"  Medians computed for {len(medians)} targets")
 
-    # Targets present in the Makefile shards but absent from timing data
-    extras = [
-        t for t in all_shard_targets
-        if t not in medians and t != _GUARD
-    ]
-    if extras:
-        print(f"  {len(extras)} targets have no timing data (new tests?) → placed at tail")
+    # ------------------------------------------------------------------
+    # Hard gate: refuse to rebalance on partial timing data.
+    # An untimed target is invisible to the LPT packer (zero weight), so it
+    # silently piles onto whichever shard looks lightest and creates an
+    # unbalanced "monster" shard the balancer never measures. Fail loud and
+    # abort rather than emit a layout we know is wrong.
+    # ------------------------------------------------------------------
+    untimed = untimed_targets(all_shard_targets, medians)
+    if untimed:
+        print(
+            f"\nERROR: refusing to rebalance — {len(untimed)} shard target(s) "
+            "have NO timing data:",
+            file=sys.stderr,
+        )
+        for target in sorted(untimed):
+            print(f"  - {target}", file=sys.stderr)
+        print(
+            "\nEvery test-harnesses target must emit a LARCH_HARNESS_TIMING row. "
+            "Wrap each recipe with\n"
+            "  python3 python/cli.py timing harness-mark --label $@ -- <command>\n"
+            "Untimed targets are invisible to the balancer and create an "
+            "unbalanced 'monster' shard.\n"
+            "Instrument them (or let CI run them once, for genuinely new tests), "
+            "then retry.",
+            file=sys.stderr,
+        )
+        return 1
 
     # ------------------------------------------------------------------
     # Step 3: Pack shards with round-robin LPT
     # ------------------------------------------------------------------
     print(f"\n[3/9] Packing {n_shards} shards with round-robin LPT …")
     measured = _select_packed_workload(medians, all_shard_targets)
-    new_shards = pack(measured, n_shards, guard=_GUARD, extras=extras)
+    new_shards = pack(measured, n_shards, guard=_GUARD)
     _check_feasibility(new_shards, medians, args.balance_threshold)
 
     # ------------------------------------------------------------------
@@ -449,7 +470,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
         f"- Baseline: {args.n_runs} successful runs on `{args.baseline_branch}`\n"
         f"- Algorithm: round-robin LPT (slowest-first, {n_shards} shards)\n"
         f"- Before spread (estimated): {baseline_spread:.1f}s\n"
-        f"- {len(extras)} target(s) with no timing data placed at tail\n\n"
+        "- All shard targets have timing data (rebalance refuses otherwise)\n\n"
         "After merging, the new shard layout will take effect on the next CI run.\n"
     )
     pr, created = gh.pr_create(

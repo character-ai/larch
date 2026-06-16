@@ -6,12 +6,15 @@ For an explicit allow-list of pytest source files that several
 targets' selections form a *strict partition*: every test in the file is
 covered by exactly one target (no test uncovered, no test covered twice).
 
-This locks in the per-target `-k` slicing landed for #4439 (Tricks A1/A2)
-and the research-target de-duplication (Trick A3) against regression. It
-does **not** attempt to enforce the same invariant on the ~25 other
-multi-target files that currently run their full file under several target
-names; that broader de-duplication is a separate, larger effort. To bring
-another file under the guard, slice its targets and add it to ENFORCED.
+This locks in the per-target `-k` slicing landed for #4439 (Tricks A1/A2),
+the research-target de-duplication (Trick A3), and the timing-blind-spot
+de-duplication of the five previously-untimed full-file pytest groups
+(test_agents/test_tokens/test_report_tokens_cost/test_timing/test_clarify)
+against regression. It does **not** yet enforce the invariant on the
+remaining ~9 timed-but-duplicated multi-target files (e.g. test_run_logs.py,
+test_implement_dispatch.py, test_release.py) that still run their full file
+under several target names; that de-duplication is a tracked follow-up. To
+bring another file under the guard, slice its targets and add it to ENFORCED.
 
 Invoked from scripts/test-harness-shards-coverage.sh (rides the
 `test-harness-shards-coverage` harness target, already in `make lint`).
@@ -36,6 +39,11 @@ ENFORCED = (
     "python/test_review_tally.py",
     "python/test_review_pipeline.py",
     "python/test_research.py",
+    "python/test_agents.py",
+    "python/test_tokens.py",
+    "python/test_report_tokens_cost.py",
+    "python/test_timing.py",
+    "python/test_clarify.py",
 )
 
 # Mirrors CARVE_OUTS in scripts/test-harness-shards-coverage.sh: targets that

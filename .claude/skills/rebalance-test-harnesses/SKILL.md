@@ -25,22 +25,27 @@ All flags are optional; defaults are sensible for normal use in this repository.
 
 1. Fetch `LARCH_HARNESS_TIMING` rows from the last 5 successful CI runs on `main`.
 2. Compute the per-target median wall time.
-3. Sort all shard targets slowest-to-fastest and distribute across 20 shards in
+3. **Refuse to rebalance** (exit 1, loud error listing each offender) if any
+   shard target has no timing data. An untimed target is invisible to the
+   packer (zero weight), so it piles onto whichever shard looks lightest and
+   creates an unbalanced "monster" shard. Instrument it with `timing
+   harness-mark` (or, for a genuinely new test, let CI run it once), then retry.
+4. Sort all shard targets slowest-to-fastest and distribute across 20 shards in
    round-robin order (LPT heuristic — guarantees the slowest tests never cluster).
    Packing runs before the warning-only feasibility check. The check evaluates
    packed shard totals against the configured threshold. Orphan timing rows
    remain ignored because totals come from packed shard targets.
-4. Write the new `test-harnesses-N:` lines to `Makefile`.
-5. Validate the partition with `bash scripts/test-harness-shards-coverage.sh`.
-6. Commit, push a new branch, and create a PR.
-7. Wait for the first CI run (triggered automatically by the push), then trigger
+5. Write the new `test-harnesses-N:` lines to `Makefile`.
+6. Validate the partition with `bash scripts/test-harness-shards-coverage.sh`.
+7. Commit, push a new branch, and create a PR.
+8. Wait for the first CI run (triggered automatically by the push), then trigger
    two more via `gh workflow run ci.yaml --ref <branch>`.
-8. Collect timing from all three runs, compute median per-shard wall times.
-9. Verify: `max_shard_total − min_shard_total ≤ 15 s`.
-10. Print a before / after comparison table. BEFORE shows the estimated spread
+9. Collect timing from all three runs, compute median per-shard wall times.
+10. Verify: `max_shard_total − min_shard_total ≤ 15 s`.
+11. Print a before / after comparison table. BEFORE shows the estimated spread
     of the new layout from baseline medians. AFTER shows the measured spread of
     that same new layout from verification CI runs.
-11. **Merge is intentionally commented out.** Inspect the PR and merge manually
+12. **Merge is intentionally commented out.** Inspect the PR and merge manually
     (or uncomment the `_merge_pr` call in `scripts/rebalance.py` when you are
     satisfied).
 

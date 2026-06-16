@@ -27,13 +27,19 @@ requires every script under `scripts/` to carry a neighboring
   (`test-render-findings-batch`) after the four redundant research targets
   were retired (Trick A3). A single full-file target is a valid partition;
   the guard fails if a duplicate full-file target is reintroduced.
+- `python/test_agents.py`, `python/test_tokens.py`,
+  `python/test_report_tokens_cost.py`, `python/test_timing.py`,
+  `python/test_clarify.py` — the five previously-**untimed** full-file
+  groups, now sliced into per-target `-k` selections (each target also
+  wrapped with `timing harness-mark`). One target per file carries a
+  `not (...)` catch-all so new tests stay covered.
 
-The guard does **not** enforce the invariant globally. ~25 other
-multi-target files (e.g. `test_agents.py`, `test_run_logs.py`,
-`test_tokens.py`) currently run their full file under several target names;
-de-duplicating those is a separate, larger effort. To bring a file under
-the guard, slice its targets into disjoint `-k`/node-id selections first,
-then add the file to `ENFORCED`.
+The guard does **not** yet enforce the invariant globally. The remaining
+timed-but-duplicated multi-target files (e.g. `test_run_logs.py`,
+`test_implement_dispatch.py`, `test_release.py`) still run their full file
+under several target names; de-duplicating those is a tracked follow-up. To
+bring a file under the guard, slice its targets into disjoint `-k`/node-id
+selections first, then add the file to `ENFORCED`.
 
 ## Invariants
 

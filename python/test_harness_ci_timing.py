@@ -9,6 +9,7 @@ from harness_ci_timing import (
     median_shard_totals,
     parse_log,
     shard_totals_per_run,
+    untimed_targets,
 )
 from proc import CommandResult
 from test_support import RecordingRunner
@@ -202,3 +203,21 @@ def test_fetch_timing_rows_skips_failed_log_fetch() -> None:
     )
     rows = fetch_timing_rows(runner, repo="owner/repo", n_runs=1)
     assert not rows
+
+
+def test_untimed_targets_flags_targets_absent_from_medians() -> None:
+    all_targets = ["test-a", "test-b", "test-c", "test-d"]
+    medians = {"test-a": 1.0, "test-c": 2.0}
+    assert untimed_targets(all_targets, medians) == ["test-b", "test-d"]
+
+
+def test_untimed_targets_empty_when_all_present() -> None:
+    all_targets = ["test-a", "test-b"]
+    medians = {"test-a": 1.0, "test-b": 2.0}
+    assert not untimed_targets(all_targets, medians)
+
+
+def test_untimed_targets_dedupes_preserving_first_seen_order() -> None:
+    # A target repeated across shard lists must appear once, in first-seen order.
+    all_targets = ["test-z", "test-a", "test-z", "test-a"]
+    assert untimed_targets(all_targets, {}) == ["test-z", "test-a"]

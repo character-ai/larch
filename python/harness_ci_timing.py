@@ -153,3 +153,27 @@ def median_shard_totals(rows: Sequence[TimingRow]) -> dict[int, float]:
         for shard, total in run_data.items():
             by_shard.setdefault(shard, []).append(total)
     return {shard: statistics.median(totals) for shard, totals in by_shard.items()}
+
+
+def untimed_targets(
+    all_shard_targets: Sequence[str],
+    medians: dict[str, float],
+) -> list[str]:
+    """Return shard targets with no timing data, de-duplicated, order-preserving.
+
+    A target is *untimed* when no ``LARCH_HARNESS_TIMING`` row yielded a median
+    for it across the sampled runs — either its Makefile recipe is missing the
+    ``timing harness-mark`` wrapper, or it has never run in the sampled CI.
+
+    The rebalancer refuses to proceed when this list is non-empty: an untimed
+    target is invisible to the LPT packer, which assigns it zero weight and
+    piles it onto whichever shard it believes is lightest, producing an
+    unbalanced "monster" shard whose real wall-clock the balancer never sees.
+    """
+    seen: set[str] = set()
+    out: list[str] = []
+    for target in all_shard_targets:
+        if target not in medians and target not in seen:
+            seen.add(target)
+            out.append(target)
+    return out

@@ -15,13 +15,14 @@ It samples recent baseline CI timings, repacks Makefile shard targets, opens a P
 1. Read the current `test-harnesses-N` targets from `Makefile`.
 2. Fetch `LARCH_HARNESS_TIMING` rows from recent successful baseline CI runs.
 3. Compute per-target median seconds.
-4. Select the measured workload that is also present in the shard target set.
-5. Pass the selected workload to `pack()` for round-robin LPT packing.
-6. Run the warning-only feasibility check on the packed shard totals.
-7. Write the new shard lines and validate coverage.
-8. Create a branch and PR for the new Makefile layout.
-9. Trigger verification CI runs and collect median per-shard totals.
-10. Print BEFORE and AFTER tables for the new shard layout.
+4. **Hard gate:** refuse to rebalance (exit 1, loud error) if any shard target has no timing data.
+5. Select the measured workload that is also present in the shard target set.
+6. Pass the selected workload to `pack()` for round-robin LPT packing.
+7. Run the warning-only feasibility check on the packed shard totals.
+8. Write the new shard lines and validate coverage.
+9. Create a branch and PR for the new Makefile layout.
+10. Trigger verification CI runs and collect median per-shard totals.
+11. Print BEFORE and AFTER tables for the new shard layout.
 
 BEFORE is estimated from baseline per-target medians for the new layout.
 AFTER is measured from verification CI runs for that same new layout.
@@ -38,17 +39,25 @@ AFTER is measured from verification CI runs for that same new layout.
 | `--workflow` | `ci.yaml` | Workflow file used for baseline and verification runs. |
 | `--baseline-branch` | `main` | Branch used for baseline timing data. |
 
+## Timing-completeness hard gate
+
+Before packing, `untimed_targets(all_shard_targets, medians)` (from `harness_ci_timing`) lists every shard target with no timing data.
+If that list is non-empty the run prints each offending target and exits 1 — it never emits a layout.
+An untimed target is invisible to `pack()` (zero weight), so it silently piles onto whichever shard the packer thinks is lightest and creates an unbalanced "monster" shard the balancer never measures.
+Every `test-harnesses` target must therefore emit a `LARCH_HARNESS_TIMING` row via `timing harness-mark`.
+A genuinely new test blocks a rebalance until it has run in CI at least once; instrument it (or wait for one CI run), then retry.
+
 ## Feasibility preflight
 
 The preflight checks whether the estimated packed shard spread exceeds the configured threshold.
 It is warning-only.
 It never aborts the rebalance.
 
-The check runs after packing:
+The check runs after the hard gate and packing:
 
 ```python
 measured = _select_packed_workload(medians, all_shard_targets)
-new_shards = pack(measured, n_shards, guard=_GUARD, extras=extras)
+new_shards = pack(measured, n_shards, guard=_GUARD)
 _check_feasibility(new_shards, medians, args.balance_threshold)
 ```
 

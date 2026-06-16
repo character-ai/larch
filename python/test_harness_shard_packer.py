@@ -63,6 +63,18 @@ def test_pack_extras_all_distributed() -> None:
         assert e in all_targets
 
 
+def test_pack_zero_weight_extras_fan_out_not_avalanche() -> None:
+    # Regression: zero-weight extras (no timing data) must spread across shards,
+    # not avalanche onto whichever shard is lightest. With a pure (total, id)
+    # heap a 0.0-weight item left the popped shard still lightest, so all extras
+    # piled onto one shard — the bug behind the 2-minute "monster" shard.
+    medians: dict[str, float] = {}
+    extras = [f"test-x{i}" for i in range(20)]
+    shards = pack(medians, 5, extras=extras, guard="")
+    counts = sorted(len(ts) for ts in shards.values())
+    assert counts == [4, 4, 4, 4, 4], f"extras avalanched instead of spreading: {counts}"
+
+
 def test_pack_all_targets_covered() -> None:
     medians = {f"test-{i}": float(i) for i in range(40)}
     shards = pack(medians, 20, guard="")
