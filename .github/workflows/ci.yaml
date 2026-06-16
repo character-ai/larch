@@ -583,6 +583,31 @@ jobs:
       - name: Run Python linters
         run: make py-lint
 
+  # Duplicate-code (R0801) is split into its own job: pylint's similarities
+  # checker is incorrect under -j>1 (workers each see only a slice of files), so
+  # it must run single-process. Splitting it keeps the main python-lint job fast.
+  # Threshold lives in python/.pylintrc (min-similarity-lines); see issue #4480.
+  python-lint-duplicate-code:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        python-version: ["3.11"]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: python/requirements-dev.txt
+      - name: Install Python lint dependencies
+        env:
+          PIP_RETRIES: "5"
+          PIP_DEFAULT_TIMEOUT: "30"
+        run: pip install -r python/requirements-dev.txt
+      - name: Run pylint duplicate-code check
+        run: make py-lint-duplicate-code
+
   # Python unit tests, sharded across a matrix to speed up CI. conftest.py
   # round-robins the collected tests by index using PYTEST_SHARD_ID /
   # PYTEST_SHARD_COUNT (see python/pytest_sharding.py); the matrix `shard` list

@@ -28,7 +28,7 @@ sanitize_list() {
 
 job_class() {
     case "$1" in
-        lint|lint-local|lint-mermaid|shellcheck|test-harnesses|agent-lint|agent-sync|python-lint|python-tests|bash32-check)
+        lint|lint-local|lint-mermaid|shellcheck|test-harnesses|agent-lint|agent-sync|python-lint|python-lint-duplicate-code|python-tests|bash32-check)
             printf '%s\n' fixable
             ;;
         gitleaks|trufflehog)

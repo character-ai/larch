@@ -200,6 +200,7 @@ CI_FIXABLE_JOBS: Final[frozenset[str]] = frozenset({
     "agnix",
         "agent-sync",
     "python-lint",
+    "python-lint-duplicate-code",
     "python-tests",
     "bash32-check",
 })
