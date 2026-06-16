@@ -35,7 +35,10 @@ lint: test-harnesses lint-bash32 lint-readability-preamble lint-renderer-substit
 py-lint:
 	@$(PYTHON) -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' \
 		|| (printf '%s\n' "ERROR: make py-lint requires Python 3.11 or newer (PYTHON=$(PYTHON))" >&2; exit 1)
-	cd python && ruff check . && pylint . && pyright
+	# pylint runs -j 0 (all cores) for the per-file checks. duplicate-code is
+	# disabled here (.pylintrc) and runs single-process in py-lint-duplicate-code,
+	# so parallelism is safe (the similarities checker is incorrect under -j>1).
+	cd python && ruff check . && pylint -j 0 . && pyright
 
 py-lint-duplicate-code:
 	@$(PYTHON) -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' \
