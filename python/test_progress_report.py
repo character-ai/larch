@@ -222,7 +222,7 @@ def test_stale_pointer_skipped(tmp_path: Path, monkeypatch) -> None:  # type: ig
     assert progress_report._report(str(cwd)) == ""
 
 
-def test_newest_pointer_wins(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_newest_implement_tmpdir_wins(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     home = tmp_path / "home"
     monkeypatch.setenv("HOME", str(home))
     cwd = tmp_path / "repo"
@@ -235,12 +235,48 @@ def test_newest_pointer_wins(tmp_path: Path, monkeypatch) -> None:  # type: igno
     new_pointer = _write_implement_pointer(home, "200", new_impl, cwd)
     _write_mark(old_impl, "Step old", ts=10)
     _write_mark(new_impl, "Step new", ts=20)
-    os.utime(old_pointer, (100, 100))
-    os.utime(new_pointer, (200, 200))
+    # Pointer mtimes run opposite to tmpdir mtimes: the winning tmpdir (new_impl)
+    # has the OLDER pointer file but the NEWER tmpdir activity time. The contract
+    # ranks by tmpdir mtime, so new_impl must win.
+    os.utime(old_pointer, (200, 200))
+    os.utime(new_pointer, (100, 100))
+    _set_mtime(old_impl, 100)
+    _set_mtime(new_impl, 200)
 
     report = progress_report._report(str(cwd))
 
     assert report.startswith("implement: Step new")
+
+
+def test_stale_pointer_newer_file_active_tmpdir_wins(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    cwd = tmp_path / "repo"
+    cwd.mkdir()
+    stale_impl = tmp_path / "stale"
+    active_impl = tmp_path / "active"
+    stale_impl.mkdir()
+    active_impl.mkdir()
+    stale_pointer = _write_implement_pointer(home, "100", stale_impl, cwd)
+    active_pointer = _write_implement_pointer(home, "200", active_impl, cwd)
+    _write_mark(stale_impl, "Step 0 — preflight", ts=10)
+    _write_mark(active_impl, "Step 5 — code review", ts=20)
+    round_dir = active_impl / "round-1"
+    round_dir.mkdir()
+    (round_dir / "panel-manifest.ndjson").write_text("{}\n{}\n{}\n", encoding="utf-8")
+    # Reproduce the reported bug: the stale session's pointer file is the newest
+    # file on disk, but its tmpdir was last touched at Step 0; the active
+    # session's tmpdir is newer. Ranking by tmpdir mtime must pick the active
+    # session. Set directory mtimes AFTER all child writes so they stick.
+    os.utime(stale_pointer, (300, 300))
+    os.utime(active_pointer, (100, 100))
+    _set_mtime(stale_impl, 100)
+    _set_mtime(active_impl, 300)
+
+    report = progress_report._report(str(cwd))
+
+    assert "Step 5 code review" in report
+    assert "Step 0" not in report
 
 
 def test_canonical_cwd_match(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
