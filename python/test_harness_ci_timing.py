@@ -182,6 +182,39 @@ def test_shard_totals_per_run_retried_shard_with_multi_bash() -> None:
     assert per_run[1][1] == 15.0
 
 
+def test_shard_totals_per_run_single_target_retry_dedupes() -> None:
+    # A single-target shard (one heavy target gets its own shard, e.g.
+    # test-harnesses-1) replays that lone target on retry, so the rows repeat
+    # *consecutively* and the non-consecutive-repeat retry heuristic never
+    # fires. The retry must be deduped to the latest attempt (12.0), not
+    # summed (10+12 == 22.0).
+    rows = [
+        TimingRow(run_id=1, shard=1, target="test-solo", seconds=10.0),
+        TimingRow(run_id=1, shard=1, target="test-solo", seconds=12.0),
+    ]
+    per_run = shard_totals_per_run(rows)
+    assert per_run[1][1] == 12.0
+
+
+def test_shard_totals_per_run_single_target_multiple_retries_keeps_latest() -> None:
+    # Several consecutive retries of a single-target shard keep only the most
+    # recent attempt (13.0), never the sum of all three.
+    rows = [
+        TimingRow(run_id=1, shard=1, target="test-solo", seconds=10.0),
+        TimingRow(run_id=1, shard=1, target="test-solo", seconds=11.0),
+        TimingRow(run_id=1, shard=1, target="test-solo", seconds=13.0),
+    ]
+    per_run = shard_totals_per_run(rows)
+    assert per_run[1][1] == 13.0
+
+
+def test_shard_totals_per_run_single_target_no_retry_unchanged() -> None:
+    # A single-target shard with no retry keeps its single timing untouched.
+    rows = [TimingRow(run_id=1, shard=1, target="test-solo", seconds=9.0)]
+    per_run = shard_totals_per_run(rows)
+    assert per_run[1][1] == 9.0
+
+
 # ---------------------------------------------------------------------------
 # median_shard_totals
 # ---------------------------------------------------------------------------
