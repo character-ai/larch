@@ -123,9 +123,22 @@ def _split_shard_attempts(shard_rows: Sequence[TimingRow]) -> list[list[TimingRo
     Multi-bash Makefile targets emit consecutive rows with the same target
     label.  A retried matrix job replays the shard from the first target, so a
     non-consecutive repeat of the opening target starts a new attempt.
+
+    A *single-target* shard (one heavy target given its own slice, e.g.
+    ``test-harnesses-1``) is the exception: its retry replays that lone target,
+    so the opening target reappears *consecutively* and the
+    non-consecutive-repeat heuristic never fires — every repeat would otherwise
+    be misread as a multi-bash continuation and summed.  Treat each row of a
+    single-target shard as its own attempt so the caller keeps only the latest
+    (dedupes the retry) instead of summing every attempt.  Single-target shards
+    in this repo run single-bash targets; a hypothetical single-target
+    *multi-bash* shard would be mis-split here, but heavy multi-bash targets
+    always share a slice with sibling targets.
     """
     if not shard_rows:
         return []
+    if len({row.target for row in shard_rows}) == 1:
+        return [[row] for row in shard_rows]
     attempts: list[list[TimingRow]] = [[shard_rows[0]]]
     first_target = shard_rows[0].target
     for row in shard_rows[1:]:
