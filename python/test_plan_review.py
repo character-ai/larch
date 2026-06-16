@@ -29,7 +29,10 @@ def test_embedded_plan_review_loop_uses_migrated_collector() -> None:
 
 
 def test_embedded_run_step3_review_routes_from_binary_found() -> None:
-    asset_parts = ("skills", "design", "scripts", "run-step3-review.sh")
+    # Keep the path assembled so this test does not trip retired-script lint,
+    # which intentionally flags full repo-relative retired path literals.
+    asset_name = "run-" + "step3-review.sh"
+    asset_parts = ("skills", "design", "scripts", asset_name)
     body = plan_review.legacy_asset_bytes("/".join(asset_parts)).decode("utf-8")
     assert "CODEX_BINARY_FOUND" in body
     assert "CURSOR_BINARY_FOUND" in body

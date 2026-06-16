@@ -140,13 +140,17 @@ export ISSUE_TITLE='Test issue'
 export REPO='example/repo'
 export CODEX_BINARY_FOUND='true'
 export CURSOR_BINARY_FOUND='false'
-export LARCH_DESIGN_DRAFTER='codex'
 export CLAUDE_PLUGIN_ROOT='$plugin_root'
 export LARCH_TOKEN_SESSION_ID='step2b-drafter-test'
 export LARCH_TEST_REAL_REPO_ROOT='$REPO_ROOT'
 export IMPLEMENT_TMPDIR=''
 unset LARCH_TOKEN_LEDGER
 EOF_ENV
+    if [[ "$drafter_value" == "__omit__" ]]; then
+        printf '%s\n' 'unset LARCH_DESIGN_DRAFTER' >> "$env_file"
+    else
+        printf "export LARCH_DESIGN_DRAFTER='%s'\n" "$drafter_value" >> "$env_file"
+    fi
 }
 
 setup_design_tmp() {
