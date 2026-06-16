@@ -1322,22 +1322,23 @@ def _parse_probe_stdout(text: str) -> tuple[dict[str, str], list[str]]:
 
 
 
-def _refresh_gate_probe(st: BootstrapState) -> None:
-    if st.codex_present in {"true", "false"} and st.cursor_present in {"true", "false"}:
-        return
+def _refresh_gate_probe(st: BootstrapState) -> str | None:
     args = ["agent", "check-reviewers"]
-    if st.codex_binary_found == "false":
+    if shutil.which("codex") is None:
         args.append("--skip-codex-probe")
-    if st.cursor_binary_found == "false":
+    if shutil.which("cursor") is None:
         args.append("--skip-cursor-probe")
     result = _cli(*args)
     if result.returncode != 0:
-        return
+        result = _cli(*args)
+        if result.returncode != 0:
+            return "absorbed-gate-probe-refresh-failed"
     kv = _parse_kv(result.stdout)
     st.codex_present = kv.get("CODEX_PRESENT", st.codex_present)
     st.cursor_present = kv.get("CURSOR_PRESENT", st.cursor_present)
     st.codex_binary_found = kv.get("CODEX_BINARY_FOUND", st.codex_binary_found)
     st.cursor_binary_found = kv.get("CURSOR_BINARY_FOUND", st.cursor_binary_found)
+    return None
 
 def _run_1r_probe(st: BootstrapState, *, forked_target: str) -> tuple[dict[str, str], list[str], int]:
     probe = _SCRIPTS / "rebase-checkpoint-probe.sh"
@@ -1374,7 +1375,9 @@ def _run_absorbed_continue_tail(
     st.cursor_present = data.get("CURSOR_PRESENT", st.cursor_present)
     st.codex_binary_found = data.get("CODEX_BINARY_FOUND", st.codex_binary_found)
     st.cursor_binary_found = data.get("CURSOR_BINARY_FOUND", st.cursor_binary_found)
-    _refresh_gate_probe(st)
+    probe_failed = _refresh_gate_probe(st)
+    if probe_failed:
+        return ContinueTailResult(contract_failure=True, step_failed=probe_failed)
     forked_target = opts.forked_target if opts.forked_target in {"true", "false"} else "false"
     sentinel = Path(tmpdir) / ".degraded-tools-gate-prompted"
     sentinel_exists = sentinel.is_file()

@@ -1505,6 +1505,11 @@ def run_external_agent(
             _append(diag, f"Failed to launch child: {exc}\n")
             exit_code = 127
             return RunExternalAgentResult(exit_code, output_path)
+        except PermissionError as exc:
+            _write(output_path, "")
+            _append(diag, f"Failed to launch child: {exc}\n")
+            exit_code = 126
+            return RunExternalAgentResult(exit_code, output_path)
         finally:
             for handle in handles:
                 handle.close()

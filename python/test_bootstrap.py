@@ -886,6 +886,92 @@ def test_invoke_absorbed_degraded_gate_both_down_interactive_hard_fails(tmp_path
     assert "ROUTE" not in tail.routing
 
 
+def test_invoke_absorbed_degraded_gate_both_down_with_existing_sentinel_hard_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _ = (tmp_path / ".degraded-tools-gate-prompted").write_text("", encoding="utf-8")
+    monkeypatch.setattr(
+        bootstrap,
+        "_cli",
+        lambda *args, **_: subprocess.CompletedProcess(list(args), 0, _degraded_gate_stdout(), ""),
+    )
+    monkeypatch.setattr(bootstrap, "_run", lambda argv, **_: subprocess.CompletedProcess(argv, 0, _probe_stdout(), ""))
+    tail = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
+        _continue_data(tmp_path),
+        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
+        non_interactive=False,
+    )
+    assert tail.contract_failure is True
+    assert tail.step_failed == "degraded-both-down-hard-fail"
+    assert tail.routing.get("DEGRADED_HARD_FAIL") == "true"
+    assert "ROUTE" not in tail.routing
+
+
+def test_refresh_gate_probe_retries_then_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, ...]] = []
+
+    def fake_cli(*args: str, **_kwargs):
+        calls.append(args)
+        return subprocess.CompletedProcess(list(args), 1, "", "probe failed")
+
+    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
+    st = bootstrap.BootstrapState(
+        bootstrap.BootstrapOptions(up_to_phase="coder"),
+        implement_tmpdir=str(tmp_path),
+    )
+    st.codex_present = "true"
+    st.cursor_present = "true"
+    assert bootstrap._refresh_gate_probe(st) == "absorbed-gate-probe-refresh-failed"  # pyright: ignore[reportPrivateUsage]
+    assert len(calls) == 2
+    assert calls[0][:2] == ("agent", "check-reviewers")
+
+
+def test_refresh_gate_probe_always_reruns_check_reviewers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, ...]] = []
+
+    def fake_cli(*args: str, **_kwargs):
+        calls.append(args)
+        return subprocess.CompletedProcess(
+            list(args),
+            0,
+            "CODEX_PRESENT=false\nCURSOR_PRESENT=false\nCODEX_BINARY_FOUND=true\nCURSOR_BINARY_FOUND=true\n",
+            "",
+        )
+
+    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
+    st = bootstrap.BootstrapState(
+        bootstrap.BootstrapOptions(up_to_phase="coder"),
+        implement_tmpdir=str(tmp_path),
+    )
+    st.codex_present = "true"
+    st.cursor_present = "true"
+    st.codex_binary_found = "false"
+    st.cursor_binary_found = "false"
+    assert bootstrap._refresh_gate_probe(st) is None  # pyright: ignore[reportPrivateUsage]
+    assert len(calls) == 1
+    assert "--skip-codex-probe" not in calls[0]
+    assert "--skip-cursor-probe" not in calls[0]
+    assert st.codex_present == "false"
+    assert st.codex_binary_found == "true"
+
+
+def test_invoke_absorbed_gate_probe_refresh_failure_contract_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        bootstrap,
+        "_cli",
+        lambda *args, **_: subprocess.CompletedProcess(list(args), 1, "", "probe failed"),
+    )
+    tail = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
+        _continue_data(tmp_path),
+        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
+        non_interactive=False,
+    )
+    assert tail.contract_failure is True
+    assert tail.step_failed == "absorbed-gate-probe-refresh-failed"
+    assert "ROUTE" not in tail.routing
+
+
 def test_invoke_absorbed_degraded_gate_existing_sentinel_avoids_reprompt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _ = (tmp_path / ".degraded-tools-gate-prompted").write_text("", encoding="utf-8")
     monkeypatch.setattr(

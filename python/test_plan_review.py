@@ -28,6 +28,14 @@ def test_embedded_plan_review_loop_uses_migrated_collector() -> None:
     assert "agent collect-results" in body
 
 
+def test_embedded_run_step3_review_routes_from_binary_found() -> None:
+    body = plan_review.legacy_asset_bytes("skills/design/scripts/run-step3-review.sh").decode("utf-8")
+    assert "CODEX_BINARY_FOUND" in body
+    assert "CURSOR_BINARY_FOUND" in body
+    assert "CODEX_PRESENT:-false" not in body
+    assert "CURSOR_PRESENT:-false" not in body
+
+
 def test_emit_plan_persists_diff_lines(tmp_path: Path) -> None:
     _ = (tmp_path / "plan.txt").write_text("## Plan\n\ndiff_lines: 42\n", encoding="utf-8")
     proc = run_cli("plan-review", "emit", "--design-tmpdir", str(tmp_path))

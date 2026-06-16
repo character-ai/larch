@@ -313,8 +313,8 @@ expected_voters_for_round() {
     # warning threshold is availability-aware. Per-round `--round-num` does not
     # shrink quorum.
     local expected=1
-    [[ "$CODEX_BINARY_FOUND" != "false" ]] && expected=$((expected + 1))
-    [[ "$CURSOR_BINARY_FOUND" != "false" ]] && expected=$((expected + 1))
+    [[ "$CODEX_BINARY_FOUND" == "true" ]] && expected=$((expected + 1))
+    [[ "$CURSOR_BINARY_FOUND" == "true" ]] && expected=$((expected + 1))
     printf '%s\n' "$expected"
 }
 

@@ -89,12 +89,11 @@ case "$ROUND_NUM" in ''|*[!0-9]*) larch_err "dispatch-panel.sh: --round-num must
 ROUND_NUM=$((10#$ROUND_NUM))
 (( ROUND_NUM > 0 )) || { larch_err "dispatch-panel.sh: --round-num must be a positive integer"; exit 2; }
 # Codex specialist slots: round 1 only; round 2+ only as replacement when
-# Cursor is unavailable (#4062).
+# Cursor is unavailable (#4062). Topology only — binary-found gates launch in
+# dispatch-with-waterfall.sh, not manifest build time.
 codex_slots_enabled="false"
-if [[ "$CODEX_BINARY_FOUND" == "true" ]]; then
-    if (( ROUND_NUM < 2 )) || [[ "$CURSOR_BINARY_FOUND" != "true" ]]; then
-        codex_slots_enabled="true"
-    fi
+if (( ROUND_NUM < 2 )) || [[ "$CURSOR_BINARY_FOUND" != "true" ]]; then
+    codex_slots_enabled="true"
 fi
 mkdir -p "$REVIEW_TMPDIR"
 
@@ -133,17 +132,11 @@ queue_external_slot() {
 static_specialists=(correctness edge-cases testing)
 
 for name in "${static_specialists[@]}"; do
-    if [[ "$CURSOR_BINARY_FOUND" == "true" ]]; then
-        queue_external_slot cursor "$name" "$REVIEW_TMPDIR/cursor-specialist-${name}-output.txt"
-        static_cursor=$((static_cursor + 1))
-    fi
+    queue_external_slot cursor "$name" "$REVIEW_TMPDIR/cursor-specialist-${name}-output.txt"
+    static_cursor=$((static_cursor + 1))
     if [[ "$codex_slots_enabled" == "true" ]]; then
         queue_external_slot codex "$name" "$REVIEW_TMPDIR/codex-specialist-${name}-output.txt"
         static_codex=$((static_codex + 1))
-    fi
-    if [[ "$CURSOR_BINARY_FOUND" == "false" && "$CODEX_BINARY_FOUND" == "false" ]]; then
-        queue_external_slot cursor "$name" "$REVIEW_TMPDIR/cursor-specialist-${name}-output.txt"
-        static_cursor=$((static_cursor + 1))
     fi
 done
 
@@ -151,7 +144,7 @@ done
 # Cursor is available (specialists suppressed from round 2 onward; #4062).
 # Cursor-unavailable rounds use codex_slots_enabled to run Codex specialists
 # instead; do not double-add a generic slot in that case.
-if [[ "$CODEX_BINARY_FOUND" == "true" && "$CURSOR_BINARY_FOUND" == "true" ]] && (( ROUND_NUM >= 2 )); then
+if [[ "$CURSOR_BINARY_FOUND" == "true" ]] && (( ROUND_NUM >= 2 )); then
     printf '{"slot":"codex-generic","tool":"codex","output":"%s","agent":"%s"}\n' \
         "$REVIEW_TMPDIR/codex-generic-output.txt" \
         "$PLUGIN_ROOT/agents/code-reviewer.md" >> "$manifest"
@@ -224,17 +217,15 @@ synthesize_dynamic_slots() {
             render_args+=(--competition-notice --competition-notice-file "$COMPETITION_NOTICE_FILE")
         fi
         python3 "$PLUGIN_ROOT/python/cli.py" render specialist "${render_args[@]}" > "$rendered_prompt"
-        if [[ "$CURSOR_BINARY_FOUND" == "true" ]]; then
-            jq -cn \
-                --arg slot "dyn-$name" \
-                --arg output "$output_file" \
-                --arg prompt_file "$rendered_prompt" \
-                --arg focus_area "$focus_area" \
-                --argjson weight "$weight" \
-                '{slot:$slot, tool:"cursor", output:$output, prompt_file:$prompt_file, weight:$weight, focus_area:$focus_area}' \
-                >> "$manifest"
-            DYNAMIC_SLOTS=$((DYNAMIC_SLOTS + 1))
-        fi
+        jq -cn \
+            --arg slot "dyn-$name" \
+            --arg output "$output_file" \
+            --arg prompt_file "$rendered_prompt" \
+            --arg focus_area "$focus_area" \
+            --argjson weight "$weight" \
+            '{slot:$slot, tool:"cursor", output:$output, prompt_file:$prompt_file, weight:$weight, focus_area:$focus_area}' \
+            >> "$manifest"
+        DYNAMIC_SLOTS=$((DYNAMIC_SLOTS + 1))
         if [[ "$codex_slots_enabled" == "true" ]]; then
             jq -cn \
                 --arg slot "dyn-$name-codex" \
@@ -243,17 +234,6 @@ synthesize_dynamic_slots() {
                 --arg focus_area "$focus_area" \
                 --argjson weight "$weight" \
                 '{slot:$slot, tool:"codex", output:$output, prompt_file:$prompt_file, weight:$weight, focus_area:$focus_area}' \
-                >> "$manifest"
-            DYNAMIC_SLOTS=$((DYNAMIC_SLOTS + 1))
-        fi
-        if [[ "$CURSOR_BINARY_FOUND" == "false" && "$CODEX_BINARY_FOUND" == "false" ]]; then
-            jq -cn \
-                --arg slot "dyn-$name" \
-                --arg output "$output_file" \
-                --arg prompt_file "$rendered_prompt" \
-                --arg focus_area "$focus_area" \
-                --argjson weight "$weight" \
-                '{slot:$slot, tool:"cursor", output:$output, prompt_file:$prompt_file, weight:$weight, focus_area:$focus_area}' \
                 >> "$manifest"
             DYNAMIC_SLOTS=$((DYNAMIC_SLOTS + 1))
         fi

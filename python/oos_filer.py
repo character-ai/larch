@@ -149,12 +149,10 @@ def _sentinel_urls(tmpdir: Path) -> list[FiledIssue]:
 
 
 def _codex_available() -> bool:
-    for name in ("LARCH_OOS_CODEX_BINARY_FOUND", "CODEX_BINARY_FOUND", "LARCH_OOS_CODEX_AVAILABLE"):
+    for name in ("LARCH_OOS_CODEX_BINARY_FOUND", "CODEX_BINARY_FOUND"):
         raw = os.environ.get(name, "").lower()
         if raw in {"true", "1", "yes"}:
             return True
-        if raw in {"false", "0", "no"}:
-            return False
     return shutil.which("codex") is not None
 
 

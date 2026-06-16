@@ -769,6 +769,60 @@ def test_run_external_agent_missing_child_is_post_validation_failure(tmp_path: P
     assert output.with_suffix(output.suffix + ".done").read_text(encoding="utf-8") == "127\n"
 
 
+def test_run_external_agent_non_executable_binary_returns_126(tmp_path: Path) -> None:
+    binary = tmp_path / "codex"
+    _ = binary.write_text("#!/bin/sh\necho ok\n", encoding="utf-8")
+    binary.chmod(0o644)
+    output = tmp_path / "out.txt"
+    result = agents.run_external_agent(
+        tool="codex",
+        output=str(output),
+        timeout_seconds=5,
+        cmd=[str(binary)],
+    )
+    assert result.exit_code == 126
+    assert "Permission denied" in output.with_suffix(output.suffix + ".diag").read_text(encoding="utf-8")
+    assert output.with_suffix(output.suffix + ".done").read_text(encoding="utf-8") == "126\n"
+
+
+def test_run_external_agent_spawns_despite_unhealthy_probe_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CODEX_PRESENT", "false")
+    monkeypatch.setenv("CURSOR_PRESENT", "false")
+    popen_calls: list[list[str]] = []
+
+    class _FakeProc:
+        pid = 12345
+
+        def wait(self, timeout: float | None = None) -> int:
+            _ = timeout
+            return 0
+
+        def poll(self) -> int:
+            return 0
+
+    def fake_popen(cmd: list[str], **kwargs: object) -> _FakeProc:
+        _ = kwargs
+        popen_calls.append(list(cmd))
+        return _FakeProc()
+
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+    helper = tmp_path / "helper.sh"
+    _ = helper.write_text("#!/bin/sh\necho ok\n", encoding="utf-8")
+    helper.chmod(0o755)
+    output = tmp_path / "out.txt"
+    result = agents.run_external_agent(
+        tool="codex",
+        output=str(output),
+        timeout_seconds=5,
+        cmd=[str(helper)],
+    )
+    assert popen_calls == [[str(helper)]]
+    assert result.exit_code == 0
+
+
 def test_run_external_agent_args_rejects_timeout_zero(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     rc = agents.run_external_agent_main(
         [
