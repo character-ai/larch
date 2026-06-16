@@ -1,0 +1,16 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	python/pytest_ci_timing.py:139-148	Baseline packing uses compute_medians on all parsed rows without latest-attempt dedup	When a baseline CI run retried a python-tests matrix job, parse_log keeps call rows from every duration section (attempt 0 and 1+). compute_medians pools those seconds per nodeid while shard_totals_per_run dedupes to the latest attempt only. LPT packing can overweight or duplicate retried work and emit a shard-assignments.json that fails Python verification or needs another manual run	Filter rows to the latest attempt per (run_id, shard) — reuse _split_pytest_shard_attempts — before compute_medians in the Python rebalance path; document the same rule in rebalance.md and cover it in test_pytest_ci_timing.py
+
+## Findings
+
+### 1. correctness — `python/pytest_ci_timing.py:139-148`
+
+The plan adds duration-section `attempt` tracking and uses latest-attempt dedup in `shard_totals_per_run` / `median_shard_totals` for verification, but `compute_medians(rows)` for baseline packing is specified as a straight median over **all** parsed `call` rows.
+
+When a sampled baseline run retried a `python-tests` shard, the same nodeid can appear in multiple attempts with different durations (the plan’s own retry test case). Pooling every attempt into `compute_medians` diverges from verification math and can skew LPT packing. That can yield a bad `shard-assignments.json` and a fail-closed verification exit even though the parser and dedup helper are otherwise correct.
+
+**Suggested revision:** Before `compute_medians` in the Python rebalance leg, reduce rows to the latest attempt per `(run_id, shard)` (same grouping as `_split_pytest_shard_attempts`), then compute medians and pack. Add a test where retried baseline rows change the packed assignment when dedup is applied vs skipped.
+
+### [OUT_OF_SCOPE] risk-integration — `.github/workflows/ci.yaml:636-639`
+
+`PYTEST_SHARD_COUNT` is a separate hardcoded `"4"` from the matrix `shard: [1, 2, 3, 4]` list. If those drift in a future edit, CI can mis-shard before `observed_shard_count` catches it at rebalance time. Worth a follow-up issue; not required for this rename + rebalance feature.

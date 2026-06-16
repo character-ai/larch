@@ -1,0 +1,28 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	blocking	correctness	plan.txt:85-86 (### NEW: python/pytest_ci_timing.py)	Duration regex uses (\S.*) for nodeid but requires verbatim preservation	Real CI --durations=0 lines include parametrized nodeids with spaces (e.g. test_retry.py::test_parity_is_transient_net_signature[fatal: unable to access ...]); \S.* truncates at the first space so assignments never match item.nodeid and rebalance data is wrong	In plan.txt ### NEW: python/pytest_ci_timing.py, change the duration capture to (.+)$ (strip only trailing whitespace) after the setup|call|teardown phase; add a test_pytest_ci_timing.py fixture using the test_retry.py nodeid shape
+1	in_scope	important	correctness	plan.txt:83-86 (### NEW: python/pytest_ci_timing.py)	Job filter is startswith('python-tests') which also matches python-tests-gate	.github/workflows/ci.yaml:644-645 names the aggregate job python-tests-gate; combined gh logs can include its lines under a job column that still satisfies startswith, diverging from the harness model (gh.py:947 anchors test-harnesses (\d+)) and risking stray parses if gate output ever resembles a duration row	In plan.txt ### NEW: python/pytest_ci_timing.py, restrict to matrix jobs only (e.g. re.match(r'^python-tests \(', job_name) or equivalent); extend test_pytest_ci_timing.py to assert python-tests-gate lines are ignored
+1	in_scope	important	correctness	plan.txt:84-85 (### NEW: python/pytest_ci_timing.py)	Job-name shard fallback is underspecified for python-version tuples	Fallback text says final integer inside (python-tests (3.11, 1) -> 1) but a naive first-\d+ match inside parentheses can yield 3 from 3.11, mis-assigning every row to the wrong shard and breaking observed_shard_count / --n-python-shards gating	Pin the fallback in plan.txt (e.g. last integer token inside the parenthesized suffix, or re.search(r',\s*(\d+)\)\s*$', job_name)); add a test_pytest_ci_timing.py case for python-tests (3.11, 2) when step text lacks shard N of M
+
+### 1. [blocking / correctness] Nodeid capture cannot preserve verbatim parametrized ids
+
+**Location:** plan.txt lines 85-86 (`### NEW: python/pytest_ci_timing.py`); contrast `python/test_retry.py` lines 66-92.
+
+The plan requires keeping only `call` rows and preserving the raw nodeid string verbatim so keys match `item.nodeid` from `cd python && pytest`. The proposed regex ends with `(\S.*)$`, which stops at the first whitespace. CI already emits parametrized nodeids with spaces inside brackets, for example `test_retry.py::test_parity_is_transient_net_signature[fatal: unable to access 'https://github.com/example/repo.git/': Failed to connect]` (seen in real `make py-test` / `--durations=0` output). Those rows would be truncated, `compute_medians` would key on the wrong string, and `shard-assignments.json` would not match runtime collection.
+
+**Suggested revision:** After matching `setup|call|teardown`, capture the remainder with `(.+)$` (strip trailing whitespace only). Add a parser test using the `test_retry.py` parametrized shape, not only `test_x.py::test_y[param]`.
+
+### 2. [important / correctness] `startswith('python-tests')` is broader than matrix shard jobs
+
+**Location:** plan.txt lines 83-86; `.github/workflows/ci.yaml` lines 644-645; `python/gh.py` line 947.
+
+The plan filters lines whose job column starts with `python-tests`. The aggregate gate job is literally named `python-tests-gate`, which also starts with `python-tests`. The harness parser avoids this class of false positive with an anchored pattern (`^test-harnesses \((\d+)\)$`). Matrix python jobs are named `python-tests (3.11, N)` per prior implement notes, so the filter should require the matrix parenthesis form (for example `^python-tests \(`), not a bare prefix.
+
+**Suggested revision:** Match only `python-tests (` matrix jobs; add a negative test for `python-tests-gate` log lines.
+
+### 3. [important / correctness] Parenthesized job-name shard fallback can parse `3.11` as shard 3
+
+**Location:** plan.txt lines 84-85.
+
+The fallback says to take the final integer inside the parenthesized job name (`python-tests (3.11, 1)` → `1`), but the plan does not pin an algorithm. A common mistake is the first `\d+` inside parentheses, which yields `3` from `3.11` and assigns all timings to shard 3. That corrupts `observed_shard_count`, LPT packing, and the `--n-python-shards` mismatch gate.
+
+**Suggested revision:** Specify the extraction rule explicitly (last integer in the parenthesized suffix, or a regex such as `,\s*(\d+)\)\s*$` on the job name) and test `python-tests (3.11, 2)` when step text has no `shard N of M`.
