@@ -587,6 +587,20 @@ else
     fail "14: runtime bail tokens should derive from python/config.py, not ci-decide.sh"
 fi
 
+# case14b: Step 5 lint-fix bail tokens (issue #4402) are in the config token set AND render
+# render-safe. case14 lint only checks tokens already in config; this also asserts presence.
+for token in lint-fix-failed lint-fix-attempt-cap lint-fix-main-agent-required; do
+    if PYTHONPATH="$REPO_ROOT/python" python3 -c "import config, sys; sys.exit(0 if sys.argv[1] in config.STALL_RECOVERY_BAIL_REASON_TOKENS else 1)" "$token"; then
+        pass "14b: $token present in config.STALL_RECOVERY_BAIL_REASON_TOKENS"
+    else
+        fail "14b: $token missing from config.STALL_RECOVERY_BAIL_REASON_TOKENS"
+    fi
+    dir=$(make_tmp "case14b-$token")
+    write_state "$dir" 5 review "$token"
+    run_capture "$SANDBOX/case14b-$token.out" "$SCRIPT" classify --implement-tmpdir "$dir" --bail-reason "$token"
+    assert_eq "$token" "$(kv BAIL_REASON "$SANDBOX/case14b-$token.out")" "14b: $token renders render-safe (not redacted)"
+done
+
 dir=$(make_tmp case15)
 cp "$SANDBOX/case5a.out" "$dir/class.env"
 "$SCRIPT" bug-body --implement-tmpdir "$dir" --classification-file "$dir/class.env" --output-file "$dir/a.md" >/dev/null

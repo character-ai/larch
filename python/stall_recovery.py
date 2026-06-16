@@ -197,6 +197,8 @@ def _classify_text(text: str, bail: str, step: str, phase: str, *, detail_log_va
         return "protected-path", "step2-impl", "protected-path-bail-token"
     if any(x in lower for x in ("orchestrator-envelope-invalid", "wrapper-validation-failure", "dirty-state-after-timeout", "main-branch-post-dispatch")):
         return "dispatch-failure", "step2-impl", "dispatch-bail-token"
+    if any(token in lower for token in config.LINT_FIX_BAIL_REASON_TOKENS):
+        return "lint-failure", "step5-review", "lint-fix-bail-token"
     if any(x in lower for x in ("api rate limit", "network timeout", "timeout", "temporarily unavailable")):
         return "transient-infra", "step8-shippr", "transient-output"
     if any(x in lower for x in ("pytest", "failing test", "jest", "failed with")):
@@ -884,7 +886,7 @@ def _sensitive_value_is_allowlisted(value: str) -> bool:
         "lint-failure", "test-failure", "transient-infra", "dispatch-failure", "protected-path",
         "submodule-restricted", "unrecoverable", "same-cause-repeat", "contract-failure",
         "ci-fix-exhausted", "no-stall", "fallback", "bail-token", "step-contract",
-        "transient-output", "test-output", "lint-output",
+        "transient-output", "test-output", "lint-output", "lint-fix-bail-token",
     }:
         return True
     return bool(re.fullmatch(r"[A-Za-z0-9._+-]+", value) and value in {"codex", "cursor", "claude", "bash", "python", "split-path"})
