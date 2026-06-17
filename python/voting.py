@@ -840,8 +840,11 @@ def write_tally_main(argv: list[str]) -> int:
             if rc == 3:  # noqa: PLR2004
                 _die(f"code-review body header validation failed: {output or 'python3 validation error'}")
             if rc == 4:  # noqa: PLR2004
-                _die(f"unrecognized section header in code-review body: {output}")
-            if rc != 0:
+                _plain_diagnostic(
+                    "WARNING=code-review body header validation ignored: "
+                    f"unrecognized section header: {output}"
+                )
+            if rc not in (0, 4):
                 _die("code-review body header validation failed")
         record = compose_tally_record(args)
         with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False, prefix="write-tally-record.") as handle:

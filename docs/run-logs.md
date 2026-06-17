@@ -298,7 +298,7 @@ bailout paths may not produce them.
 
 One JSON object per `/implement` session. The tally envelope shape is shared with
 `code-review-tally.json`: `schema_version` (`2`), `phase`, `batch`, `mode`, `rounds`,
-`accepted_count`, `rejected_count`, `exonerated_count` (always 0; retained for backward compatibility), and `body`. For plan review the extra counters are normally `0`. Plan review voting itself runs during `/design`; this batch is often a stub or summary that references that outcome. The `body` contains
+`accepted_count`, `rejected_count`, and `exonerated_count` (always 0; retained for backward compatibility). The `body` field is phase-dependent. `plan-review-tally.json` includes `body`; `code-review-tally.json` omits it. For plan review the extra counters are normally `0`. Plan review voting itself runs during `/design`; this batch is often a stub or summary that references that outcome. The `body` contains
 the plan-review voting outcome (accepted count, rejected count, round summaries)
 plus any rejected plan-review findings under a `## Rejected Plan Review Findings`
 sub-header. When no voting artifact is attached for this run, the body may note that plan review was completed in the `/design` phase instead of duplicating ballots here.
@@ -307,11 +307,19 @@ sub-header. When no voting artifact is attached for this run, the body may note 
 
 **Mode**: replace (JSON object). **Written**: Step 5, after the Step 5 review loop completes (via `review-and-fix CLI` / `review core`; standalone `/review` is a separate skill).
 
-One JSON object per `/implement` session with the same tally envelope fields as
-`plan-review-tally.json`. `exonerated_count` is an informational sub-count of
-`rejected_count` (operator-facing summaries use “`K` accepted, `N` rejected (`P` exonerated)” where `P ≤ N`). `rejected_count` counts every finding that did not meet the acceptance threshold (including split-panel and exonerated vote patterns). The body contains the code-review voting outcome and a round-by-round
-summary. It also includes rejected code-review findings under a
-`## Rejected Code Review Findings` sub-header — findings that are not accepted appear here under a unified `### [rejected] FINDING_N` heading with a short **Rejected subtype** line when useful for operators.
+One JSON object per `/implement` session with these envelope fields:
+`schema_version` (`2`), `phase`, `batch`, `mode`, `rounds`, `accepted_count`,
+`rejected_count`, and `exonerated_count`. It does not store a `body` field. The
+body file is validation input only when the tally is written. Round markdown,
+voting prose, and rejected-finding details live in the per-round artifacts and
+`review-findings-full.jsonl`.
+
+`rounds` is the total number of completed code-review rounds for the run. For a
+normal multi-round `/implement`, it should match the committed `round-*`
+directory count. `accepted_count` and `rejected_count` are cumulative across all
+code-review rounds and are derived from composed `review-findings-full.jsonl`
+code-review rows. `exonerated_count` is an informational sub-count of
+`rejected_count` (operator-facing summaries use “`K` accepted, `N` rejected (`P` exonerated)” where `P ≤ N`). `rejected_count` counts every finding that did not meet the acceptance threshold (including split-panel and exonerated vote patterns).
 
 **Note**: Internal tally KV may still emit `NEUTRAL_COUNT` for scoreboard accounting; that key is **not** the same thing as `JUDGE_ERROR`, which is a per-judge-per-finding state (the parser fallback when a
 voter's ballot did not contain a parseable vote line for that finding). `JUDGE_ERROR`

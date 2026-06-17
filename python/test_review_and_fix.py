@@ -699,6 +699,70 @@ def test_write_self_review_tally_emits_step5_artifacts(tmp_path, monkeypatch):
     assert findings_path.read_text(encoding="utf-8") == ""
 
 
+def test_flush_review_batches_rewrites_cumulative_tally_with_ignored_body_header(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = tmp_path / "impl"
+    impl.mkdir()
+    run_id = "run-flush"
+    round1 = impl / "round-1"
+    round2 = impl / "round-2"
+    round1.mkdir()
+    round2.mkdir()
+    (round1 / "review-round-summary.md").write_text(
+        "# Review Round 1\n\n## Accepted Findings\n\n### FINDING_1: first\n",
+        encoding="utf-8",
+    )
+    (round1 / "voting-tally.md").write_text(
+        "# Code Review Voting Tally\n\n## Per-finding vote breakdown\n",
+        encoding="utf-8",
+    )
+    round1_jsonl = tmp_path / "round1.jsonl"
+    round1_jsonl.write_text(
+        json.dumps({"id": "FINDING_1", "phase": "code-review", "outcome": "accepted"}) + "\n",
+        encoding="utf-8",
+    )
+
+    assert review_and_fix.flush_review_batches(impl, run_id, 1, 1, 0, composed_findings_source=round1_jsonl)
+    run_dir = impl / "larch-logs" / "implement" / run_id
+    tally_path = run_dir / "code-review-tally.json"
+    tally = json.loads(tally_path.read_text(encoding="utf-8"))
+    assert tally["rounds"] == 1
+    assert tally["accepted_count"] == 1
+    assert tally["rejected_count"] == 0
+    assert "body" not in tally
+
+    (round2 / "review-round-summary.md").write_text(
+        "# Review Round 2\n\n## Round 2\n\n### FINDING_2: second\n",
+        encoding="utf-8",
+    )
+    (round2 / "voting-tally.md").write_text(
+        "# Code Review Voting Tally\n\n## Per-finding vote breakdown\n",
+        encoding="utf-8",
+    )
+    round2_records = [
+        {"id": "FINDING_1", "phase": "code-review", "outcome": "accepted"},
+        {"id": "FINDING_2", "phase": "code-review", "outcome": "accepted"},
+        {"id": "FINDING_3", "phase": "code-review", "outcome": "rejected"},
+    ]
+    round2_jsonl = tmp_path / "round2.jsonl"
+    round2_jsonl.write_text(
+        "".join(json.dumps(record) + "\n" for record in round2_records),
+        encoding="utf-8",
+    )
+
+    assert review_and_fix.flush_review_batches(impl, run_id, 2, 2, 1, composed_findings_source=round2_jsonl)
+    tally = json.loads(tally_path.read_text(encoding="utf-8"))
+    assert tally["rounds"] == 2
+    assert tally["accepted_count"] == 2
+    assert tally["rejected_count"] == 1
+    assert "body" not in tally
+    findings_path = run_dir / "review-findings-full.jsonl"
+    assert findings_path.read_text(encoding="utf-8") == round2_jsonl.read_text(encoding="utf-8")
+    assert sorted(path.name for path in impl.glob("round-*")) == ["round-1", "round-2"]
+
+
 @pytest.mark.commit_fixes
 def test_commit_fixes_emits_committed_kv(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
