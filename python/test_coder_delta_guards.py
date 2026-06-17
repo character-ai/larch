@@ -23,7 +23,7 @@ def test_revert_forbidden_paths_clears_staged_and_worktree() -> None:
 
     class _Runner:
         def run(self, argv: object, **_kwargs: object) -> object:
-            key = tuple(argv)  # type: ignore[arg-type]
+            key: tuple[str, ...] = tuple(argv)  # type: ignore[arg-type]
             calls.append(key)
             if key[:3] == ("git", "diff", "--name-only") and "--cached" not in key:
                 return type("R", (), {"returncode": 0, "stdout": ""})()
