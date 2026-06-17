@@ -900,6 +900,32 @@ def test_run_cycle_wait_error_fails_closed_without_reusing_run_id(
     assert calls["push"] == 1
 
 
+def test_run_cycle_wait_untrusted_action_fails_closed_without_reusing_run_id(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    _ = _stub_successful_fix_until_wait(
+        monkeypatch,
+        wait_result=({"ACTION": "retry", "CI_STATUS": "fail"}, None),
+    )
+
+    status, detail, _attempted, _delta, _pending, next_run, _log = ci_agentic_fix._run_cycle(  # pyright: ignore[reportPrivateUsage]
+        proc,
+        args=_cycle_args(out_dir),
+        repo_root=repo,
+        ctx=_make_ctx(),
+        cycle=1,
+        run_id="42",
+    )
+    assert status == "ci-fix-exhausted"
+    assert detail == "ci-wait-untrusted-output"
+    assert next_run is None
+
+
 def test_run_cycle_wait_action_bail_fails_closed_with_reason(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

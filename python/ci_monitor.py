@@ -1323,7 +1323,12 @@ def _parse_kv_output(text: str) -> dict[str, str]:
 
 def _agentic_fix_delegate_timeout_sec() -> float | None:
     """Budget all delegate cycles, passive CI waits, and local verification."""
-    per_cycle = config.CI_WAIT_TIMEOUT_SEC + 2 * config.SUBPROCESS_DEFAULT_TIMEOUT_SEC
+    verify_slots = len(config.CI_FIXABLE_JOBS)
+    per_cycle = (
+        config.CI_WAIT_TIMEOUT_SEC
+        + config.SUBPROCESS_DEFAULT_TIMEOUT_SEC
+        + verify_slots * config.SUBPROCESS_DEFAULT_TIMEOUT_SEC
+    )
     return float(config.CI_AGENTIC_FIX_MAX_CYCLES * per_cycle)
 
 

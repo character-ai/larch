@@ -2623,7 +2623,9 @@ def test_agentic_fix_delegate_timeout_includes_verify_budget(
     monkeypatch.setattr(config, "CI_WAIT_TIMEOUT_SEC", 100)
     monkeypatch.setattr(config, "SUBPROCESS_DEFAULT_TIMEOUT_SEC", 10)
 
-    assert ci_monitor._agentic_fix_delegate_timeout_sec() == 360  # pyright: ignore[reportPrivateUsage]
+    verify_slots = len(config.CI_FIXABLE_JOBS)
+    per_cycle = 100 + 10 + verify_slots * 10
+    assert ci_monitor._agentic_fix_delegate_timeout_sec() == 3 * per_cycle  # pyright: ignore[reportPrivateUsage]
 
 
 def test_agentic_fix_result_fix_attempted_local_unfixable_promotes_exhausted(tmp_path: Path) -> None:

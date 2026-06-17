@@ -272,6 +272,12 @@ def _resolve_conflicts(
                     cwd=cwd,
                     forbidden=forbidden,
                 ) > 0:
+                    git.paths_delta_revert(
+                        runner,
+                        baseline_tracked,
+                        baseline_untracked,
+                        cwd=cwd,
+                    )
                     _reset_conflict_paths(runner, unmerged, cwd=cwd)
                     raise Stalled(_redact_outbound("conflict fixer touched forbidden path"))
                 tier_succeeded = attempt.launcher_exit == 0 and attempt.wrapper_rc == 0

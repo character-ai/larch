@@ -18,6 +18,31 @@ def test_forbidden_path_prefix_matching() -> None:
     assert not coder_delta_guards.path_matches_forbidden("vendor/submodule-other/file.txt", forbidden)
 
 
+def test_revert_forbidden_paths_clears_staged_and_worktree() -> None:
+    calls: list[tuple[str, ...]] = []
+
+    class _Runner:
+        def run(self, argv: object, **_kwargs: object) -> object:
+            key = tuple(argv)  # type: ignore[arg-type]
+            calls.append(key)
+            if key[:3] == ("git", "diff", "--name-only") and "--cached" not in key:
+                return type("R", (), {"returncode": 0, "stdout": ""})()
+            if key[:3] == ("git", "diff", "--name-only") and "--cached" in key:
+                return type("R", (), {"returncode": 0, "stdout": f"{config.PLUGIN_JSON_PATH}\n"})()
+            if key[:2] == ("git", "ls-files"):
+                return type("R", (), {"returncode": 0, "stdout": ""})()
+            return type("R", (), {"returncode": 0, "stdout": ""})()
+
+    count = coder_delta_guards.revert_forbidden_paths(
+        _Runner(),  # type: ignore[arg-type]
+        cwd=None,
+        forbidden=(config.PLUGIN_JSON_PATH,),
+    )
+    assert count == 1
+    assert ("git", "restore", "--staged", "--", config.PLUGIN_JSON_PATH) in calls
+    assert ("git", "checkout", "--", config.PLUGIN_JSON_PATH) in calls
+
+
 def test_coder_forbidden_paths_include_plugin_json() -> None:
     class _Runner:
         def run(self, *_args: object, **_kwargs: object) -> object:
