@@ -1,0 +1,27 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-dispatch-code-voters.sh:144-148,606-633	Stub PLUGIN_ROOT voter1/wait-barrier cases shell `scripts/dispatch-code-voters.sh` directly; plan does not require pytest to replace those entrypoints with `python/cli.py agent dispatch-voters`	After the script is deleted, late-sentinel, missing-sentinel, and wait-timeout cases that build `make_voter1_delayed_done_plugin_root` / invoke `"$voter1_plugin/scripts/dispatch-code-voters.sh"` cannot run; parity for voter-1 `.done` arbitration regresses while simpler happy-path CLI tests still pass	In `### NEW: python/test_agent_voters.py`, add an explicit port note: fake `CLAUDE_PLUGIN_ROOT` trees must stop symlinking `scripts/dispatch-code-voters.sh`; invoke `python3 <repo>/python/cli.py agent dispatch-voters` (or a cli.py stub that delegates to the real verb) for voter1-delayed-done, voter1-missing-done, and wait-barrier scenarios
+2	in_scope	important	risk-integration	Makefile:849-871	Makefile retarget says matching `-k` filters but does not pin the eight section→pytest selectors that preserve CI shard boundaries	The eight `test-dispatch-code-voters-*` harness rows can silently drift: a target may run zero tests, the wrong slice, or the full module, breaking the shard timing contract without losing all coverage	In `### UPDATED: Makefile`, add a fixed mapping table (happy, edge-and-r3-claude, retry-claude, retry-codex-success, retry-cursor, retry-codex-fail-and-fallback, regressions-r1-r2, regressions-r3-codex) to concrete `pytest -k` expressions and require each `test-dispatch-code-voters-*` recipe to use `python3 -m pytest -q python/test_agent_voters.py -k '<section>'` under `timing harness-mark`
+
+## Findings
+
+### 1. **correctness** — Stub PLUGIN_ROOT cases still shell the retired script (`scripts/test-dispatch-code-voters.sh:144-148`, `606-633`)
+
+The bash harness builds fake plugin roots that symlink `scripts/dispatch-code-voters.sh`, then calls that path directly for voter-1 delayed `.done`, missing `.done`, and wait-timeout scenarios. The plan ports happy-path coverage and lists those branches, but it never states that pytest must drop the script symlink and enter through `python/cli.py agent dispatch-voters`.
+
+After deletion, those cases cannot run as written. Voter-1 sentinel arbitration is the highest-risk slice; it can regress while simpler CLI smoke tests stay green.
+
+**Suggested revision:** In `### NEW: python/test_agent_voters.py`, require fake `CLAUDE_PLUGIN_ROOT` trees to invoke `agent dispatch-voters` via repo `python/cli.py` (or a delegating stub), not `scripts/dispatch-code-voters.sh`.
+
+### 2. **risk-integration** — Eight-way Makefile shard mapping is unspecified (`Makefile:849-871`)
+
+The plan retargets eight `test-dispatch-code-voters-*` targets to pytest with “matching `-k` filters” but does not pin the section names from `scripts/test-dispatch-code-voters.sh:12-21` (`happy`, `edge-and-r3-claude`, `retry-claude`, etc.) to concrete `-k` expressions.
+
+Without a fixed table, CI shards can drift: run zero tests, the wrong slice, or the whole module. That breaks the timing contract that motivated the eight-way split.
+
+**Suggested revision:** In `### UPDATED: Makefile`, document the exact `pytest -k` selector per target and use the same `timing harness-mark` + `python3 -m pytest -q python/test_agent_voters.py -k '...'` shape as `test-dispatch-with-waterfall`.
+
+## [OUT_OF_SCOPE]
+
+### docs/python-migration.md — No C1a6 decision-log row (`docs/python-migration.md`)
+
+The sibling `agent dispatch-waterfall` port added a migration decision-log note. This plan sweeps runtime docs but does not list `docs/python-migration.md`. Stale migration narrative only; `lint retired-scripts` does not catch it. Worth a follow-up issue, not an in-scope blocker.

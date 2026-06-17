@@ -1,0 +1,42 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	python/agent_voters.py:51-66	Plan does not require rendering and validating all three voter prompts before any subprocess launch	Retired bash builds claude, codex, and cursor prompts at scripts/dispatch-code-voters.sh:107-109 before backgrounding Claude at :115-123. A Python port that renders only the Claude prompt then Popen's can leave a running Claude voter if a later codex/cursor render or ballot-pointer check fails	Add an explicit prelaunch step: render voter plus ballot-pointer validation for claude, codex, and cursor; exit 2 on any failure; only then start Claude Popen and dispatch-waterfall
+2	in_scope	important	correctness	python/agent_voters.py:48-61	Plan omits retired prompt artifact path convention	scripts/dispatch-code-voters.sh:57 writes $REVIEW_TMPDIR/${label}-vote-prompt.txt and the harness asserts content in claude-vote-prompt.txt, codex-vote-prompt.txt, and cursor-vote-prompt.txt at scripts/test-dispatch-code-voters.sh:383-397. Divergent names break parse-rate --prompt-file wiring and ported pytest parity	Pin prompt paths to $REVIEW_TMPDIR/{claude,codex,cursor}-vote-prompt.txt in agent_voters.py and in the test port checklist
+3	out_of_scope	nit	architecture	docs/review-agents.md:96-102	[SCOPE-REDUCTION] docs/review-agents.md is listed UPDATED but has no dispatch-code-voters.sh literals to retarget	Extra doc churn without helping lint retired-scripts or runtime cutover	Drop docs/review-agents.md from Files to modify/create unless a concrete stale literal is found during sweep
+
+## Findings
+
+### 1. Prelaunch prompt gate must cover all three voters before any launch
+
+**Focus:** correctness
+
+Retired bash always finishes `make_voter_prompt_file` for claude, codex, and cursor before it backgrounds Claude:
+
+```107:123:scripts/dispatch-code-voters.sh
+claude_prompt=$(make_voter_prompt_file claude)
+codex_prompt=$(make_voter_prompt_file codex)
+cursor_prompt=$(make_voter_prompt_file cursor)
+...
+python3 "$CLI" agent launch-claude-review \
+    ...
+    "${ctx_args[@]+"${ctx_args[@]}"}" >/dev/null 2> "${VOTER_1_PATH}.launcher-stderr" &
+```
+
+The plan’s fail-closed `render voter` rule is right, but it does not state that **all three** prompts must succeed before **any** voter starts. A sequential port can orphan a Claude child and still corrupt the panel.
+
+**Suggested revision:** Add one explicit prelaunch block in `python/agent_voters.py`: render and validate claude, codex, and cursor prompts; exit `2` on any failure; only then launch voters.
+
+### 2. Pin `{label}-vote-prompt.txt` artifact names
+
+**Focus:** correctness
+
+The plan names `claude-vote-output.txt` and `code-voter-slots.ndjson`, but not prompt paths. The harness checks prompt files by fixed basename under the review tmpdir (`scripts/test-dispatch-code-voters.sh:383-397`). `voting.parse_rate_retry` also keys retry prompt naming off the prompt basename.
+
+**Suggested revision:** Document and implement `$REVIEW_TMPDIR/{claude,codex,cursor}-vote-prompt.txt` explicitly in `agent_voters.py` and the pytest port checklist.
+
+### 3. [OUT_OF_SCOPE] Drop unnecessary `docs/review-agents.md` edit
+
+**Focus:** architecture
+
+The plan lists `docs/review-agents.md` as UPDATED, but that file has no `dispatch-code-voters` references today. Its shrink-not-backfill wording already matches live behavior. Editing it adds diff without helping cutover or `lint retired-scripts`.
+
+**Suggested revision:** Remove that file from scope unless the stale-reference sweep finds a literal to fix.
