@@ -1,0 +1,10 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	requirements	python/review_test_support.py:194-239; python/test_review_pipeline.py:372-407	The planned regression avoids the empty collector-results shape described by the issue	The observed failure evidence points to an empty collector record with parseable OOS output. The proposed zero-ok-oos-only fixture instead writes non-success per-slot records, so tests can pass while the actual empty-collector path remains broken or unverifiable	Add one targeted regression with empty collector-results.env, non-empty Claude OOS findings, default threshold success, and collector-slot-status.env allowed to be empty; assert review-core exits 0 without panel-failed or zero-findings
+
+1. **[requirements]** `python/review_test_support.py:194-239; python/test_review_pipeline.py:372-407`
+
+   **Concern:** The test plan skips the observed empty `collector-results.env` shape.
+
+   **Breakage:** A fix could depend on collector records existing and still fail the reported run shape.
+
+   **Suggested revision:** Add one empty-collector OOS regression. Keep the existing per-slot status test if needed.

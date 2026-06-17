@@ -1,0 +1,7 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	security	python/run_logs.py:2773-2783	[SCOPE-REDUCTION] Allowlisting raw collector-results.env commits reviewer collector diagnostics that were previously sidecar-only	collector-results.env records can include FAILURE_REASON copied from reviewer .diag or validation stdout/stderr; run-log redaction scrubs secrets and tmpdir paths but not arbitrary internal URLs or PII, so a panel-failed diagnostic can add a new committed data-exposure path	Do not move collector-results.env into _ROUND_ARTIFACT_ALLOW; allowlist review-core-threshold.env plus a distilled status-only per-slot artifact, or strip REVIEWER_FILE/STRUCTURED_SIDECAR/FAILURE_REASON before committing
+
+1. **[security] `python/run_logs.py:2773-2783`**  
+   **Concern:** The plan commits raw `collector-results.env`. That file may contain collector `FAILURE_REASON` text derived from reviewer diagnostics.  
+   **Scenario:** A reviewer failure reason includes internal URLs, customer text, or PII. Existing run-log redaction does not scrub all such content.  
+   **Suggested revision:** Commit `review-core-threshold.env` and a distilled status-only artifact instead. Or sanitize `collector-results.env` down to safe fields before allowlisting it.
