@@ -13,6 +13,7 @@
 ```json
 "Skill(alias)",
 "Skill(block-issue)",
+"Skill(bug)",
 "Skill(cleanup)",
 "Skill(design)",
 "Skill(im)",
@@ -20,6 +21,7 @@
 "Skill(issue)",
 "Skill(larch:alias)",
 "Skill(larch:block-issue)",
+"Skill(larch:bug)",
 "Skill(larch:cleanup)",
 "Skill(larch:design)",
 "Skill(larch:im)",

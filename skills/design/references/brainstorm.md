@@ -61,18 +61,25 @@ External review **Agent** fallbacks return **text only** to the parent session. 
 
 ## External launches (representative)
 
-Use `run_in_background: true` + `timeout: 1260000` on Bash tool calls for externals, matching the long-running review launch family. Capture failures under `$DESIGN_TMPDIR/*-brainstorm-launch.failure.log` and append via `run-log append-failure`.
+Use `run_in_background: true` + `timeout: 1260000` on Bash tool calls for externals, matching the long-running review launch family. Capture failures under the launch-failure sink that matches the slot's canonical output path, and append via `run-log append-failure` during collection.
+
+Canonical pairings:
+
+- **Framing** output: `$DESIGN_TMPDIR/cursor-brainstorm-output.txt`; matching failure sink: `$DESIGN_TMPDIR/cursor-brainstorm-launch.failure.log`.
+- **Scope** output: `$DESIGN_TMPDIR/codex-brainstorm-output.txt`; matching failure sink: `$DESIGN_TMPDIR/codex-brainstorm-launch.failure.log`.
+
+The launcher `.meta` file's `STDERR_SINK=` value must point at the matching failure log for the same output path. Mismatched sink/output pairs can create `External Reviewer Issues` rows that collect mode cannot ingest.
 
 **Cursor framing** (when `CURSOR_BINARY_FOUND=true` or a fresh executable check succeeds):
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent launch-review --tool cursor --output "$DESIGN_TMPDIR/cursor-brainstorm-output.txt" --timeout 1200 --timing-task-kind cursor-brainstorm --prompt "<CURSOR_BRAINSTORM_ASSEMBLED_PROMPT>"
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent launch-review --tool cursor --output "$DESIGN_TMPDIR/cursor-brainstorm-output.txt" --stderr-sink "$DESIGN_TMPDIR/cursor-brainstorm-launch.failure.log" --timeout 1200 --timing-task-kind cursor-brainstorm --prompt "<CURSOR_BRAINSTORM_ASSEMBLED_PROMPT>"
 ```
 
 **Codex scope** (when `CODEX_BINARY_FOUND=true` or a fresh executable check succeeds):
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent launch-review --tool codex --output "$DESIGN_TMPDIR/codex-brainstorm-output.txt" --timeout 1200 --timing-task-kind codex-brainstorm --prompt "<CODEX_BRAINSTORM_ASSEMBLED_PROMPT>"
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent launch-review --tool codex --output "$DESIGN_TMPDIR/codex-brainstorm-output.txt" --stderr-sink "$DESIGN_TMPDIR/codex-brainstorm-launch.failure.log" --timeout 1200 --timing-task-kind codex-brainstorm --prompt "<CODEX_BRAINSTORM_ASSEMBLED_PROMPT>"
 ```
 
 **Always-Claude pragmatic**: run in the parent session (Agent or inline) using `<BRAINSTORM_PRAGMATIC_PROMPT>` embedded in `<CLAUDE_BRAINSTORM_ASSEMBLED_PROMPT>`; merge result into synthesis input (no `python/cli.py agent collect-results` row required for a purely in-session path).

@@ -201,6 +201,25 @@ def test_dynamic_archetypes_defaults_to_three_with_implement_tmpdir(monkeypatch,
     assert review_and_fix._dynamic_archetypes(args, impl) == "3"
 
 
+
+@MARK_DISPATCH
+def test_dynamic_archetypes_uses_exported_env(monkeypatch, tmp_path):
+    monkeypatch.setenv("LARCH_DYNAMIC_ARCHETYPES_MAX", "2")
+    impl = _tmp_impl(tmp_path)
+    args = mock.Mock(dynamic_archetypes="", session_env_path="")
+    assert review_and_fix._dynamic_archetypes(args, impl) == "2"
+
+
+def test_step5_shell_exports_validated_dynamic_cap_before_exec() -> None:
+    text = (Path(__file__).resolve().parents[1] / "skills/implement/scripts/step-5-review.sh").read_text(encoding="utf-8")
+    validation = 'case "$dynamic_archetypes_cap" in [0-3])'
+    export = 'export LARCH_DYNAMIC_ARCHETYPES_MAX="$dynamic_archetypes_cap"'
+    banner = "dynamic-archetypes cap=%s"
+    exec_line = "exec python3"
+    assert validation in text
+    assert export in text
+    assert text.index(validation) < text.index(export) < text.index(banner) < text.index(exec_line)
+
 @MARK_DISPATCH
 def test_dynamic_archetypes_defaults_to_zero_without_implement_tmpdir(monkeypatch, tmp_path):
     monkeypatch.delenv("LARCH_DYNAMIC_ARCHETYPES_MAX", raising=False)

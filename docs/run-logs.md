@@ -354,15 +354,15 @@ Committed **rich markdown** projection of the run: outcome, mode flags, token to
 
 ### oos-issues.ndjson
 
-**Mode**: append (NDJSON records). **Written**: Step 9a.1, after out-of-scope issue filing.
+**Mode**: append (NDJSON records). **Written**: Step 9a.1, after out-of-scope disposition evidence is materialized.
 
-Two sub-blocks per record: accepted OOS observations that were filed as GitHub issues (each entry includes the filed issue URL), and rejected / out-of-scope observations that were voted down or not filed (each entry includes the rejection reason). Security findings are never filed via this path.
+Two sub-blocks per record: accepted OOS observations that were filed as GitHub issues (each entry includes the filed issue URL), and rejected / out-of-scope observations that were voted down or not filed (each entry includes the rejection reason). Security findings are never filed via this path. `oos-issues.ndjson` is disposition evidence, not the Step 9a.1 completion signal. A provisional `oos-issues.ndjson` written before a failed disposition checkpoint must not mark Step 9a.1 complete.
 
 ### run-statistics.md
 
-**Mode**: replace. **Written**: Step 9a.1.
+**Mode**: replace. **Written**: Step 9a.1, after the OOS disposition checkpoint succeeds.
 
-Summary statistics for the run: number of accepted and rejected OOS items, filed-issue URLs, round counts, and other aggregate metrics.
+Summary statistics for the run: number of accepted and rejected OOS items, filed-issue URLs, round counts, and other aggregate metrics. Step 9a.1 completion requires post-checkpoint `run-statistics.md`. Explicit `manifest.json` `steps_ran.step9a1=true` is recorded only together with that file; `step9a1=true` without `run-statistics.md` is a stale or corrupt marker and must fail audit/verify scans.
 
 ### vendor-failure-diagnostics.txt
 

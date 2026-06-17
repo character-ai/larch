@@ -176,10 +176,9 @@ else
   _autofix_rc=$?
   set -e
 fi
-printf '%s\n' "${_autofix_out:-}"
-_autofix_status=$(printf '%s\n' "$_autofix_out" | awk -F= '$1=="AUTOFIX_STATUS"{print $2; exit}')
-_autofix_fixed_by=$(printf '%s\n' "$_autofix_out" | awk -F= '$1=="FIXED_BY"{print $2; exit}')
-_autofix_log_file=$(printf '%s\n' "$_autofix_out" | awk -F= '$1=="ORIGINAL_VALIDATE_LOG_FILE"{print $2; exit}')
+_autofix_status=$(printf '%s\n' "${_autofix_out:-}" | awk -F= '$1=="AUTOFIX_STATUS"{print $2; exit}')
+_autofix_fixed_by=$(printf '%s\n' "${_autofix_out:-}" | awk -F= '$1=="FIXED_BY"{print $2; exit}')
+_autofix_log_file=$(printf '%s\n' "${_autofix_out:-}" | awk -F= '$1=="ORIGINAL_VALIDATE_LOG_FILE"{print $2; exit}')
 case "${_autofix_status:-}" in
   ok|exhausted|unavailable) ;;
   skipped-cycle-cap) ;;
@@ -187,8 +186,29 @@ case "${_autofix_status:-}" in
 esac
 if [ "${_autofix_rc:-0}" -ne 0 ]; then
   _autofix_status=failed
+  rm -f "$_autofix_attempted"
 fi
 [ -n "${_autofix_log_file:-}" ] || _autofix_log_file="$DESIGN_TMPDIR/validate-plan-commands.log"
+[ -n "${_autofix_fixed_by:-}" ] || _autofix_fixed_by="unknown"
+if [ "${_autofix_status:-}" = ok ]; then
+  design_require_plugin_root
+  if [ -n "${DESIGN_TMPDIR:-}" ] && [ -d "$DESIGN_TMPDIR" ]; then
+    if ! python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" run-log append-failure \
+      --log "$DESIGN_TMPDIR/execution-issues.md" \
+      --site "${SITE:-design validator autofix}" \
+      --tool "validate-plan-commands(auto-fixed:${_autofix_fixed_by})" \
+      --exit-code 0 \
+      --category Warnings \
+      --output-file "$_autofix_log_file" \
+      --redact; then
+      _autofix_status=failed
+      rm -f "$_autofix_attempted"
+    fi
+  fi
+fi
+printf 'AUTOFIX_STATUS=%s\n' "${_autofix_status:-failed}"
+printf 'FIXED_BY=%s\n' "${_autofix_fixed_by:-unknown}"
+printf 'ORIGINAL_VALIDATE_LOG_FILE=%s\n' "${_autofix_log_file:-$DESIGN_TMPDIR/validate-plan-commands.log}"
 
 autofix_site_token() {
   case "${SITE:-}" in

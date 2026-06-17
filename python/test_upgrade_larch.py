@@ -51,6 +51,12 @@ def _populate_cleanup_fixture(version_root: Path) -> None:
         version_root / "skills/design/scripts/test-design-step6.md",
         version_root / "parallel-tests.py",
         version_root / "Makefile",
+        version_root / ".pre-commit-config.yaml",
+        version_root / ".markdownlint.json",
+        version_root / ".markdownlintignore",
+        version_root / "agent-lint.toml",
+        version_root / ".agnix.toml",
+        version_root / ".gitleaks.toml",
     ):
         _touch(path)
     for path in (
@@ -166,6 +172,12 @@ def test_clean_test_files_from_cache_removes_dev_test_infrastructure(monkeypatch
         "skills/design/scripts/test-design-step6.md",
         "parallel-tests.py",
         "Makefile",
+        ".pre-commit-config.yaml",
+        ".markdownlint.json",
+        ".markdownlintignore",
+        "agent-lint.toml",
+        ".agnix.toml",
+        ".gitleaks.toml",
     )
     kept = (
         "python/cli.py",

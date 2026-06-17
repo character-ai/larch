@@ -2380,6 +2380,67 @@ def test_checks_lint_fix_main_reads_presence_from_session_env(
     assert captured["cursor_present"] is False
 
 
+
+def _direct_targets_for(paths: tuple[str, ...], tmp_path: Path) -> tuple[str, ...]:
+    return checks._direct_targets(  # pyright: ignore[reportPrivateUsage]
+        StubRunner(),
+        paths,
+        cwd=str(tmp_path),
+        env=dict(os.environ),
+        log_fd=2,
+    )
+
+
+def test_direct_targets_implement_skill_focused_targets(tmp_path: Path) -> None:
+    targets = _direct_targets_for(("skills/implement/SKILL.md",), tmp_path)
+    assert "test-implement-structure" in targets
+    assert "test-render-cost-line-callsites" in targets
+
+
+def test_direct_targets_design_step1d5_wrapper_and_harness(tmp_path: Path) -> None:
+    for path in (
+        "skills/design/scripts/design-step1d5.sh",
+        "skills/design/scripts/test-design-step1d5.sh",
+    ):
+        assert "test-design-step1d5" in _direct_targets_for((path,), tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("path", "target"),
+    [
+        ("python/design_argv.py", "test-parse-design-argv"),
+        ("python/design_lifecycle.py", "test-design-driver"),
+        ("python/design_log_publish_flow.py", "test-design-log-publish"),
+        ("python/design_log_ship.py", "test-design-log-ship"),
+        ("python/design_oos.py", "test-file-design-oos"),
+        ("python/design_pause.py", "test-design-pause-resume"),
+        ("python/design_postplan.py", "test-design-postplan-emit"),
+        ("python/design_publish.py", "test-design-publish"),
+        ("python/design_step_log.py", "test-run-step1-plan-log"),
+        ("python/design_summary.py", "test-render-final-summary"),
+        ("python/test_design_log_ship.py", "test-design-log-ship"),
+    ],
+)
+def test_direct_targets_design_module_focused_targets(tmp_path: Path, path: str, target: str) -> None:
+    assert target in _direct_targets_for((path,), tmp_path)
+
+
+def test_direct_targets_design_legacy_has_no_focused_target(tmp_path: Path) -> None:
+    targets = _direct_targets_for(("python/design_legacy.py",), tmp_path)
+    planned_targets = {
+        "test-parse-design-argv",
+        "test-design-driver",
+        "test-design-log-publish",
+        "test-design-log-ship",
+        "test-file-design-oos",
+        "test-design-pause-resume",
+        "test-design-postplan-emit",
+        "test-design-publish",
+        "test-run-step1-plan-log",
+        "test-render-final-summary",
+    }
+    assert not planned_targets.intersection(targets)
+
 def test_direct_targets_rule_targets_before_py_lint(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

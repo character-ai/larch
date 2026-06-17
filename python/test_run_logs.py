@@ -613,8 +613,8 @@ def test_flush_logs_pre_commit_exception_returns_commit_skip(
 @pytest.mark.parametrize(
     ("forked", "state_text", "finalize_text", "flags_text", "files", "expected"),
     [
-        (True, "RUN_ID=run-abc\n", "", "", (), False),
-        (False, "RUN_ID=run-abc\nFORKED_TARGET=true\n", "", "", (), False),
+        (True, "RUN_ID=run-abc\n", "", "", ("run-statistics.md",), True),
+        (False, "RUN_ID=run-abc\nFORKED_TARGET=true\n", "", "", ("run-statistics.md",), True),
         (
             False,
             "RUN_ID=run-abc\n",
@@ -623,8 +623,9 @@ def test_flush_logs_pre_commit_exception_returns_commit_skip(
             (),
             False,
         ),
-        (False, "RUN_ID=run-abc\n", "", "", ("oos-issues.ndjson",), True),
-        (False, "RUN_ID=run-abc\n", "", "", ("run-statistics.md",), False),
+        (False, "RUN_ID=run-abc\n", "", "", ("oos-issues.ndjson",), False),
+        (False, "RUN_ID=run-abc\n", "", "", ("run-statistics.md",), True),
+        (False, "RUN_ID=run-abc\n", "", "", ("oos-issues.ndjson", "run-statistics.md"), True),
         (False, "RUN_ID=run-abc\n", "", "", (), None),
     ],
 )
@@ -654,6 +655,52 @@ def test_step9a1_heuristic_matrix(
             _ = (run_dir / filename).write_text("x\n", encoding="utf-8")
     ctx = _ctx(tmp_path, str(state)).with_(forked=forked)
     assert run_logs._step9a1_heuristic(ctx) is expected  # pyright: ignore[reportPrivateUsage]
+
+
+
+def test_step9a1_heuristic_manifest_explicit_values(tmp_path: Path) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
+    run_dir.mkdir(parents=True)
+    _ = (run_dir / "oos-issues.ndjson").write_text('{"phase":"implement"}\n', encoding="utf-8")
+    _ = (run_dir / "manifest.json").write_text('{"steps_ran":{"step9a1":false}}\n', encoding="utf-8")
+    ctx = _ctx(tmp_path, str(state))
+    assert run_logs._step9a1_heuristic(ctx) is False  # pyright: ignore[reportPrivateUsage]
+    _ = (run_dir / "manifest.json").write_text('{"steps_ran":{"step9a1":true}}\n', encoding="utf-8")
+    assert run_logs._step9a1_heuristic(ctx) is False  # pyright: ignore[reportPrivateUsage]
+
+
+def test_flush_logs_pre_downgrades_stale_step9a1_true_with_ndjson_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    ctx = _ctx(tmp_path, str(state))
+    _ = run_logs.init_run(ctx)
+    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
+    _ = (run_dir / "oos-issues.ndjson").write_text('{"phase":"implement"}\n', encoding="utf-8")
+    manifest_path = run_dir / "manifest.json"
+    _ = manifest_path.write_text(
+        json.dumps({"status": "partial", "version": "1", "run_id": "run-abc", "steps_ran": {"step9a1": True}}),
+        encoding="utf-8",
+    )
+
+    def noop(*_a: object, **_k: object) -> None:
+        return None
+
+    monkeypatch.setattr(run_logs, "_write_final_report", noop)
+    monkeypatch.setattr(run_logs, "capture_session_transcript", noop)
+    monkeypatch.setattr(run_logs, "_render_ledger_reports", noop)
+    def noop_commit(*_args: object, **_kwargs: object) -> CommandResult:
+        return CommandResult(("",), 0, "", "", 0.0)
+
+    monkeypatch.setattr(run_logs, "_commit_run", noop_commit)
+    skip = run_logs.flush_logs_pre(RecordingRunner(), ctx, cwd=str(tmp_path))
+    assert not skip.skipped
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["steps_ran"]["step9a1"] is False
 
 
 def test_render_token_timing_batches_skips_missing_refresh_json(tmp_path: Path) -> None:
@@ -1402,6 +1449,30 @@ def test_verify_completeness_ok_when_required_file_present(
     _ = tsv.write_text("relative_path\tcondition\nfinal-summary.md\tstep8\n", encoding="utf-8")
     monkeypatch.setenv("LARCH_VERIFY_MANIFEST", str(tsv))
     assert run_logs.verify_completeness_main([str(run_dir)]) == 0
+
+
+def test_verify_completeness_stale_step9a1_true_without_stats_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(run_logs, "_REPO_ROOT", tmp_path)
+    run_dir = tmp_path / "larch-logs" / "implement" / "RUN1"
+    run_dir.mkdir(parents=True)
+    manifest = {
+        "schema_version": 2,
+        "skill": "implement",
+        "run_id": "RUN1",
+        "steps_ran": {"step9a1": True},
+        "status": "partial",
+    }
+    _ = (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    _ = (run_dir / "oos-issues.ndjson").write_text('{"phase":"implement"}\n', encoding="utf-8")
+    tsv = tmp_path / "required.tsv"
+    _ = tsv.write_text("relative_path\tcondition\nrun-statistics.md\tstep9a1\n", encoding="utf-8")
+    monkeypatch.setenv("LARCH_VERIFY_MANIFEST", str(tsv))
+    assert run_logs.verify_completeness_main([str(run_dir)]) == 1
+    assert "run-statistics.md" in capsys.readouterr().out
 
 
 def test_refresh_run_logs_main_skips_without_state_file(tmp_path: Path) -> None:

@@ -902,13 +902,17 @@ def test_sigterm_kills_launcher_subtree(tmp_path: Path, stub_env: dict[str, str]
         stderr=subprocess.DEVNULL,
     ) as dispatcher:
         deadline = time.monotonic() + 10
-        while not stub_pid_file.is_file():
-            if time.monotonic() >= deadline:
-                dispatcher.kill()
-                dispatcher.wait()
-                pytest.fail("cursor stub PID file not created within 10s")
-            time.sleep(0.05)
-        stub_pid = int(stub_pid_file.read_text(encoding="utf-8").strip())
+        pid_text = ""
+        while not pid_text:
+            if stub_pid_file.is_file():
+                pid_text = stub_pid_file.read_text(encoding="utf-8").strip()
+            if not pid_text:
+                if time.monotonic() >= deadline:
+                    dispatcher.kill()
+                    dispatcher.wait()
+                    pytest.fail("cursor stub PID file not created within 10s")
+                time.sleep(0.05)
+        stub_pid = int(pid_text)
         time.sleep(0.2)
         os.kill(dispatcher.pid, signal.SIGTERM)
         rc = dispatcher.wait(timeout=10)

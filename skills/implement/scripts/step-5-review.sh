@@ -43,6 +43,7 @@ fi
 [ -n "$dynamic_archetypes_cap" ] || dynamic_archetypes_cap=3
 case "$dynamic_archetypes_cap" in [0-3]) ;; *) printf 'ERROR: Step 5 banner dynamic_archetypes_cap is non-integer or out of range: %s
 ' "$dynamic_archetypes_cap" >&2; exit 2 ;; esac
+export LARCH_DYNAMIC_ARCHETYPES_MAX="$dynamic_archetypes_cap"
 round_cap=5
 printf '> **🔶 /implement 5: code review — review-and-fix step5 --mode loop, up to %s rounds; 3-judge panel on every round (Claude+Codex+Cursor); review panel: specialists per vendor (mechanically pruned in rounds 3-4 when prior yield is zero); dynamic-archetypes cap=%s**\n' "$round_cap" "$dynamic_archetypes_cap"
 exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" review-and-fix step5 \
