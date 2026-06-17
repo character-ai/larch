@@ -1,0 +1,10 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	python/plan_review.py:36 (_LEGACY_ASSETS skills/design/scripts/run-step3-review.sh)	run-step3-review.sh normal paths are not given a concrete validate-before-quiet placement	The asset only has validate-design-tmpdir inside the --preview-only sentinel check, while the plan allows added validate lines only in the two no-validate scripts. The normal single and loop paths would either lose quiet logging or still lack a successful validation point before larch_quiet_init.	Revise the run-step3-review.sh bullets and decoded-diff allowlist to permit the minimal validate-design-tmpdir plus larch_quiet_init placement after PLUGIN_ROOT resolution on each non-preview path, before any DESIGN_TMPDIR writes or timing exports.
+
+1. **[correctness]** `python/plan_review.py:36` (`_LEGACY_ASSETS`, `skills/design/scripts/run-step3-review.sh`)
+
+   **Concern:** The plan does not give `run-step3-review.sh` a valid normal-path placement for `larch_quiet_init`.
+
+   **Why it matters:** Its only current `validate-design-tmpdir` call is inside `--preview-only`. The single-round and loop paths still need quiet logging, but the plan only allows added validate calls in the two no-validate scripts.
+
+   **Suggested revision:** Explicitly allow the minimal validate plus quiet-init pair in `run-step3-review.sh` after `PLUGIN_ROOT` is resolved on non-preview paths, before `$DESIGN_TMPDIR` writes or timing exports.

@@ -1,0 +1,15 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	security	python/plan_review.py:356-425 (decoded skills/design/scripts/run-step3-review.sh:120-168,423-477); <TMPDIR>/plan.txt:60-64,150-164	run-step3-review full path can still avoid validate-before-quiet	The current embedded script has its only validate-design-tmpdir in the preview-only sentinel branch, while the single/loop path canonicalizes DESIGN_TMPDIR and writes result envs later. The proposed invariant only checks first textual validate before first larch_quiet_init, so a preview-only placement can pass while the normal path lacks validation before quiet/log setup.	Require an explicit validate-design-tmpdir on the non-preview path before canonicalizing/exporting DESIGN_TMPDIR, then call larch_quiet_init after that successful validation; update the check to cover run-step3-review execution branches, not only first textual occurrence.
+1	in_scope	important	risk-integration	python/plan_review.py:869-908; python/test_plan_review.py:875-891; <TMPDIR>/plan.txt:17-21,112-117,159-164	waterfall raw-marker contract is untested	legacy_asset_bytes returns the substituted body, and the existing waterfall test asserts only the substituted agent dispatch command. Re-encoding already-substituted text would still pass that test while losing the raw retired-marker input that _decode_legacy_asset is meant to transform.	Extend the existing waterfall dispatcher test with a tiny raw decode assertion for the two keys, using _decode_asset on _LEGACY_ASSETS, that the raw blobs still contain the retired waterfall marker or pre-substitution variable assignment before legacy_asset_bytes applies substitutions.
+
+1. **[security] `python/plan_review.py:356-425`**
+   - **Concern:** `run-step3-review.sh` needs branch-aware validation.
+   - **Evidence:** The decoded asset validates only in the `--preview-only` branch around decoded lines 120-126. The single/loop path starts around decoded lines 153-168 and later writes `$RESULT_ENV` around decoded lines 423-477.
+   - **Plan gap:** Plan lines 60-64 say to move quiet init, but the test in lines 106-108 only checks first textual order.
+   - **Suggested revision:** Add explicit non-preview validation before `DESIGN_TMPDIR="$(cd ...)"`, then call `larch_quiet_init`.
+
+2. **[risk-integration] `python/test_plan_review.py:875-891`**
+   - **Concern:** Existing waterfall assertions do not protect the raw substitution contract.
+   - **Evidence:** `legacy_asset_bytes()` returns `_decode_legacy_asset(...)` at `python/plan_review.py:906-908`, after substitutions at `python/plan_review.py:869-908`.
+   - **Plan gap:** Plan lines 17-21 preserve the raw round-trip contract, but lines 112-117 and 159-164 rely on substituted-body checks.
+   - **Suggested revision:** Add a small raw-blob assertion beside the existing waterfall test.

@@ -1,0 +1,9 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	security	<TMPDIR>/plan.txt:78-82; python/plan_review.py:167-191; scripts/lib-quiet.sh:31-42	record-plan-review-round-timing validates DESIGN_TMPDIR_ARG but plans larch_quiet_init before binding DESIGN_TMPDIR	lib-quiet chooses DESIGN_TMPDIR when set; with inherited disallowed DESIGN_TMPDIR and allowed --design-tmpdir, the proposed order can still create larch-quiet log under the rejected inherited directory	Keep validate before cd, but canonicalize and bind DESIGN_TMPDIR from DESIGN_TMPDIR_ARG before larch_quiet_init; apply the same ARG-variable rule to run-step3-review placements
+
+1. **[security] `record-plan-review-round-timing.sh` still has a stale-env quiet-log path.**
+   - **Plan:** `<TMPDIR>/plan.txt:78-82` adds `validate-design-tmpdir "$DESIGN_TMPDIR_ARG"` and then `larch_quiet_init` before canonicalizing with `cd`.
+   - **Repo evidence:** `scripts/lib-quiet.sh:31-42` chooses `DESIGN_TMPDIR` for the quiet log when that variable is set and names a directory.
+   - **Asset evidence:** the embedded timing asset is stored in `python/plan_review.py:167-191`; its decoded body uses `DESIGN_TMPDIR_ARG` until it later assigns `DESIGN_TMPDIR`.
+   - **Breakage:** an inherited, disallowed `DESIGN_TMPDIR` can still receive `larch-quiet-*.log` even after the allowed `--design-tmpdir` argument validates.
+   - **Suggested revision:** validate `DESIGN_TMPDIR_ARG`, then bind/canonicalize `DESIGN_TMPDIR` from that validated argument before `larch_quiet_init`. Apply the same rule to `run-step3-review.sh` placements that validate `DESIGN_TMPDIR_ARG`.

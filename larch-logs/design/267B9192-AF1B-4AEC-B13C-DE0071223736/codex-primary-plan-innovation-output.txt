@@ -1,0 +1,7 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	security	python/plan_review.py:356; plan.txt:60-64,94-108	run-step3-review.sh normal execution path is not explicitly validated before quiet init	The plan treats run-step3-review.sh as already validating, but only the preview branch has validate-design-tmpdir today; the single/loop path canonicalizes and writes under DESIGN_TMPDIR, so following the plan can either drop quiet logging there or keep the allowlist gap unresolved	Add an explicit non-preview validate-design-tmpdir step before canonicalizing/exporting DESIGN_TMPDIR and before larch_quiet_init; keep preview invalid-tmpdir warnings unchanged; update the decoded-diff/test notes to allow this third added validate
+
+1. **[security] `run-step3-review.sh` needs a non-preview validation point.**
+   - **Concern:** The plan says to “move only `larch_quiet_init`” for this asset.
+   - **Breakage:** The normal single/loop path lacks an existing validator.
+   - **Fix:** Add validate-before-quiet on the non-preview path. Keep preview warning behavior intact.

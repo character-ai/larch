@@ -1,0 +1,21 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:60-64,106-108; python/plan_review.py:1150-1151,1327-1342	run-step3-review needs explicit non-preview validate-before-quiet, not just a moved quiet call	plan-review run delegates straight to the embedded script (run_main → run_step3_review) with no Python pre-validation, unlike emit_design_plan_preview which validates in-process first (python/plan_review.py:1117-1124). The plan only says to move larch_quiet_init and rely on an existing validate command (plan.txt:60-64). The proposed test only checks the first textual session validate-design-tmpdir before the first larch_quiet_init in the whole decoded body (plan.txt:106-108). That can pass if validate exists only on a --preview-only branch while loop/single paths still canonicalize DESIGN_TMPDIR and write result env or source the loop driver before embedded validation.	Add an explicit session validate-design-tmpdir on run-step3-review.sh non-preview paths before the first cd/export/write and before larch_quiet_init; keep preview-only warning behavior per plan.txt:136-138. Extend the new test with a run-step3-specific assertion that the non-preview branch contains validate-design-tmpdir before larch_quiet_init, not only a global first-occurrence check.
+2	out_of_scope	important	risk-integration	python/test_plan_review.py:875-891; python/plan_review.py:865-908; plan.txt:17-21,112-117,159-164	[OUT_OF_SCOPE] Existing waterfall test does not guard the raw substitution contract	test_embedded_waterfall_dispatchers_call_agent_verb decodes with legacy_asset_bytes(), which applies _decode_legacy_asset substitutions (python/plan_review.py:869-908). It asserts the substituted body contains agent dispatch-waterfall and omits the retired script name. Re-encoding already-substituted text would still pass while the raw gzip blob loses the retired-marker input _decode_legacy_asset is meant to transform, which plan.txt:17-21 and Failure modes:145-146 warn about. Plan.txt:159-164 only requires the existing waterfall test to keep passing plus manual decode diffs.	Add a small raw-blob assertion beside the existing waterfall test: for the two dispatcher keys, _decode_asset(_LEGACY_ASSETS[key]) must still contain the retired waterfall marker (or the pre-substitution DISPATCH_WATERFALL_SH assignment) before legacy_asset_bytes applies substitutions.
+
+### 1. **correctness** — `plan.txt:60-64,106-108`; `python/plan_review.py:1150-1151,1327-1342`
+
+The plan treats `run-step3-review.sh` as “move `larch_quiet_init` after the existing validate,” but `plan-review run` has no in-process validator before `_run_legacy` (contrast `emit_design_plan_preview` at `python/plan_review.py:1117-1124`). The new substring invariant only compares first global occurrences, so it may not catch a preview-only validate branch while loop/single paths still quiet-init or write before embedded validation.
+
+**Suggested revision:** Require an explicit `session validate-design-tmpdir` on non-preview paths before canonicalize/write/quiet-init, and add a run-step3-specific test branch check.
+
+### 2. **[OUT_OF_SCOPE] risk-integration** — `python/test_plan_review.py:875-891`; `python/plan_review.py:865-908`
+
+`test_embedded_waterfall_dispatchers_call_agent_verb` exercises substituted decoded bodies only. It does not prove the raw gzip blobs still carry the retired waterfall markers that `_decode_legacy_asset` rewrites at runtime.
+
+**Suggested revision:** Add a minimal `_decode_asset` raw-marker assertion next to the existing waterfall test; keep manual decode-diff review as a secondary gate.
+
+### Assessment of the plan’s other test choices
+
+- **Iterating `_LEGACY_ASSETS`:** Sufficient for the universal quiet/validate ordering invariant across every embedded script that calls `larch_quiet_init`.
+- **Using `legacy_asset_bytes()` for the invariant:** Acceptable; waterfall substitutions do not alter `session validate-design-tmpdir` or `larch_quiet_init` tokens.
+- **Preserving `test_embedded_waterfall_dispatchers_call_agent_verb`:** Necessary but not sufficient for the raw round-trip contract (finding 2).
