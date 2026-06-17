@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	nit	architecture	docs/review-agents.md	[SCOPE-REDUCTION] Plan lists docs/review-agents.md but the tracked file has no dispatch-code-voters.sh or code-review voter-dispatch surface to retarget	Implementer may make unrelated doc edits during closeout	Drop docs/review-agents.md from Files to modify/create unless the final stale-reference sweep finds a concrete voter-dispatch literal there

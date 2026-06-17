@@ -1,0 +1,1 @@
+Port `/review` code voter dispatch from `scripts/dispatch-code-voters.sh` into `python/cli.py agent dispatch-voters`, delete the retired shell harness/docs, retarget `review core`, and sweep stale C1a references plus lint manifests.

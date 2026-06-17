@@ -1,0 +1,4 @@
+===== cursor auth attempt diag =====
+Error: Password not found for account 'cursor-user' and service 'cursor-access-token'
+Failed with exit code 1. Output size: 0 bytes.
+
