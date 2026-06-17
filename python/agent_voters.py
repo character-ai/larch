@@ -327,8 +327,15 @@ def _run_parse_rate_retry(vpr_args: Sequence[str], *, slot: str, voter_file: str
             prompt_file,
         ]
     )
+    if result.returncode != 0:
+        return "NOT_SUBSTANTIVE"
     lines = [line for line in result.stdout.splitlines() if line]
-    return lines[-1] if lines else ""
+    if not lines:
+        return "NOT_SUBSTANTIVE"
+    status = lines[-1]
+    if status not in {"OK", "NOT_SUBSTANTIVE"}:
+        return "NOT_SUBSTANTIVE"
+    return status
 
 
 def _file_nonempty(path: str) -> bool:

@@ -6,6 +6,7 @@ import os
 import subprocess
 import sys
 import textwrap
+import time
 from pathlib import Path
 from collections.abc import Sequence
 from typing import Any
@@ -50,6 +51,7 @@ class FakeHarness:
         self.wait_stdout = ""
         self.wait_rc = 0
         self.parse_status: dict[str, str] = {}
+        self.parse_rate_rc: dict[str, int] = {}
         self.claude_rc = 0
         self.claude_output = "FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false\n"
         self.claude_write_output = True
@@ -79,7 +81,9 @@ class FakeHarness:
             return _result(args, self.wait_rc, stdout=self.wait_stdout)
         if verb == ("voting", "parse-rate-retry"):
             tool = _value_after(args, "--voter-tool") or ""
-            return _result(args, 0, stdout=self.parse_status.get(tool, "OK") + "\n")
+            rc = self.parse_rate_rc.get(tool, 0)
+            stdout = (self.parse_status.get(tool, "OK") + "\n") if rc == 0 else ""
+            return _result(args, rc, stdout=stdout)
         if verb == ("run-log", "append-failure"):
             self.append_calls.append(args)
             return _result(args, 0, stdout="APPENDED=true\nLOG=/tmp/log\n")
@@ -588,6 +592,85 @@ def _write_wait_barrier_stub_plugin(root: Path, real_cli: Path) -> None:
     (root / "python" / "cli.py").chmod(0o755)
 
 
+def _write_voter1_delayed_done_stub_plugin(root: Path, real_cli: Path) -> None:
+    (root / "python").mkdir(parents=True)
+    script = textwrap.dedent(
+        f"""\
+        import os
+        import subprocess
+        import sys
+        from pathlib import Path
+        REAL_CLI = {str(real_cli)!r}
+        log_file = os.environ.get("LARCH_STUB_CLI_LOG", "")
+        if log_file:
+            Path(log_file).parent.mkdir(parents=True, exist_ok=True)
+            with open(log_file, "a", encoding="utf-8") as handle:
+                handle.write(" ".join(sys.argv) + "\\n")
+        if sys.argv[1:3] == ["agent", "wait-reviewers"]:
+            os.execv(sys.executable, [sys.executable, REAL_CLI, *sys.argv[1:]])
+        if sys.argv[1:2] == ["voting"]:
+            os.execv(sys.executable, [sys.executable, REAL_CLI, *sys.argv[1:]])
+        if sys.argv[1:3] == ["agent", "launch-claude-review"]:
+            output = ""
+            args = sys.argv[3:]
+            i = 0
+            while i < len(args):
+                if args[i] in ("--output", "--output-file"):
+                    output = args[i + 1]
+                    i += 2
+                elif args[i] in ("--prompt-file", "--mode", "--role", "--timeout", "--timing-task-kind", "--diff-file", "--plan-file"):
+                    i += 2
+                else:
+                    i += 1
+            if not output:
+                raise SystemExit(2)
+            Path(output).write_text("FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false\\n", encoding="utf-8")
+            if os.environ.get("LARCH_VOTER1_DONE_MODE", "delayed") != "missing":
+                delay = os.environ.get("LARCH_VOTER1_DONE_DELAY", "1")
+                subprocess.Popen([
+                    sys.executable,
+                    "-c",
+                    "import pathlib,sys,time; time.sleep(float(sys.argv[1])); pathlib.Path(sys.argv[2]).write_text('0\\\\n', encoding='utf-8')",
+                    delay,
+                    output + ".done",
+                ])
+            raise SystemExit(0)
+        if sys.argv[1:3] == ["agent", "dispatch-waterfall"]:
+            review_tmpdir = ""
+            args = sys.argv[3:]
+            i = 0
+            while i < len(args):
+                if args[i] == "--slots-file":
+                    review_tmpdir = str(Path(args[i + 1]).parent)
+                    i += 2
+                elif args[i] in ("--codex-present", "--cursor-present", "--mode", "--timeout", "--diff-file", "--plan-file", "--feature-file", "--require-result-pattern", "--require-first-line-pattern", "--paths-file"):
+                    i += 2
+                else:
+                    i += 1
+            if not review_tmpdir:
+                raise SystemExit(2)
+            v2 = str(Path(review_tmpdir) / "codex-vote-output.txt")
+            v3 = str(Path(review_tmpdir) / "cursor-vote-output.txt")
+            Path(v2).write_text("FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false\\n", encoding="utf-8")
+            Path(v2 + ".done").write_text("0\\n", encoding="utf-8")
+            Path(v3).write_text("FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false\\n", encoding="utf-8")
+            Path(v3 + ".done").write_text("0\\n", encoding="utf-8")
+            print(f"ALL_OUTPUT_FILES={{v2}} {{v3}}")
+            print("ALL_OUTPUT_TOOLS=codex cursor")
+            print("DISPATCH_OK=true")
+            raise SystemExit(0)
+        if sys.argv[1:3] == ["render", "voter"]:
+            print("stub voter prompt")
+            print("Read the ballot from this path: /stub/ballot")
+            raise SystemExit(0)
+        print(f"unexpected cli args: {{sys.argv[1:]}}", file=sys.stderr)
+        raise SystemExit(2)
+        """
+    )
+    (root / "python" / "cli.py").write_text(script, encoding="utf-8")
+    (root / "python" / "cli.py").chmod(0o755)
+
+
 def _dispatch_via_cli(
     review: Path,
     ballot: Path,
@@ -746,6 +829,139 @@ def test_wait_usage_error_proceeds_with_existing_output(tmp_path: Path) -> None:
     assert "VOTER_2_STATUS=launched" in result.stdout
     assert "VOTER_3_STATUS=launched" in result.stdout
     assert "wait-reviewers exited 1" in result.stderr
+
+
+@pytest.mark.voter_happy
+def test_wait_barrier_delayed_external_done(tmp_path: Path) -> None:
+    stub_bin = _make_voter_stub_bin(tmp_path)
+    plugin = tmp_path / "wait-delayed-plugin"
+    _write_wait_barrier_stub_plugin(plugin, CLI)
+    review = tmp_path / "wait-delayed"
+    review.mkdir()
+    ballot = _standard_ballot(tmp_path)
+    start = time.time()
+    result = _dispatch_via_cli(
+        review,
+        ballot,
+        stub_bin=stub_bin,
+        plugin_root=plugin,
+        env={
+            "LARCH_WAIT_BARRIER_MODE": "delayed",
+            "LARCH_WAIT_BARRIER_DELAY": "1",
+            "LARCH_WAIT_BARRIER_VOTER2": str(review / "codex-vote-output.txt"),
+            "LARCH_WAIT_BARRIER_VOTER3": str(review / "cursor-vote-output.txt"),
+            "LARCH_VOTER_WAIT_TIMEOUT": "2",
+        },
+    )
+    elapsed = time.time() - start
+    assert result.returncode == 0, result.stderr
+    assert "VOTER_2_STATUS=launched" in result.stdout
+    assert "VOTER_3_STATUS=launched" in result.stdout
+    assert elapsed >= 1.0
+
+
+@pytest.mark.voter_happy
+def test_wait_barrier_nonzero_done_fails_externals(tmp_path: Path) -> None:
+    stub_bin = _make_voter_stub_bin(tmp_path)
+    plugin = tmp_path / "wait-nonzero-plugin"
+    _write_wait_barrier_stub_plugin(plugin, CLI)
+    review = tmp_path / "wait-nonzero-done"
+    review.mkdir()
+    ballot = _standard_ballot(tmp_path)
+    result = _dispatch_via_cli(
+        review,
+        ballot,
+        stub_bin=stub_bin,
+        plugin_root=plugin,
+        env={
+            "LARCH_WAIT_BARRIER_MODE": "nonzero_done",
+            "LARCH_WAIT_BARRIER_VOTER2": str(review / "codex-vote-output.txt"),
+            "LARCH_WAIT_BARRIER_VOTER3": str(review / "cursor-vote-output.txt"),
+            "LARCH_VOTER_WAIT_TIMEOUT": "2",
+        },
+    )
+    assert result.returncode == 0, result.stderr
+    assert "VOTER_2_STATUS=failed" in result.stdout
+    assert "VOTER_3_STATUS=failed" in result.stdout
+    assert "1/3 effective judges" in result.stdout
+
+
+@pytest.mark.voter_happy
+def test_wait_barrier_external_timeout_degrades_panel(tmp_path: Path) -> None:
+    stub_bin = _make_voter_stub_bin(tmp_path)
+    plugin = tmp_path / "wait-timeout-plugin"
+    _write_wait_barrier_stub_plugin(plugin, CLI)
+    review = tmp_path / "wait-timeout"
+    review.mkdir()
+    ballot = _standard_ballot(tmp_path)
+    result = _dispatch_via_cli(
+        review,
+        ballot,
+        stub_bin=stub_bin,
+        plugin_root=plugin,
+        env={
+            "LARCH_WAIT_BARRIER_MODE": "timeout",
+            "LARCH_WAIT_BARRIER_VOTER2": str(review / "codex-vote-output.txt"),
+            "LARCH_WAIT_BARRIER_VOTER3": str(review / "cursor-vote-output.txt"),
+            "LARCH_VOTER_WAIT_TIMEOUT": "1",
+        },
+    )
+    assert result.returncode == 0, result.stderr
+    assert "VOTER_2_STATUS=failed" in result.stdout
+    assert "VOTER_3_STATUS=failed" in result.stdout
+    assert "1/3 effective judges" in result.stdout
+
+
+@pytest.mark.voter_happy
+def test_voter1_delayed_done_subprocess_uses_stub_plugin_root(tmp_path: Path) -> None:
+    stub_bin = _make_voter_stub_bin(tmp_path)
+    plugin = tmp_path / "voter1-delayed-plugin"
+    log_path = tmp_path / "stub-cli.log"
+    _write_voter1_delayed_done_stub_plugin(plugin, CLI)
+    review = tmp_path / "voter1-delayed-done"
+    review.mkdir()
+    ballot = _standard_ballot(tmp_path)
+    stub_cli = str(plugin / "python" / "cli.py")
+    start = time.time()
+    result = _dispatch_via_cli(
+        review,
+        ballot,
+        stub_bin=stub_bin,
+        plugin_root=plugin,
+        env={
+            "LARCH_VOTER1_DONE_DELAY": "1",
+            "LARCH_STUB_CLI_LOG": str(log_path),
+        },
+    )
+    elapsed = time.time() - start
+    assert result.returncode == 0, result.stderr
+    assert "VOTER_1_STATUS=launched" in result.stdout
+    assert "VOTER_1_PARSE_RATE_STATUS=OK" in result.stdout
+    assert (review / "claude-vote-output.txt.done").is_file()
+    assert elapsed >= 1.0
+    log_lines = [line for line in log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert log_lines
+    for line in log_lines:
+        parts = line.split()
+        assert stub_cli in parts
+
+
+@pytest.mark.voter_happy
+def test_parse_rate_retry_nonzero_rc_counts_as_not_substantive(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    review = tmp_path / "review"
+    ballot = tmp_path / "ballot.md"
+    ballot.write_text("### FINDING_1: one\n", encoding="utf-8")
+    harness, _stub_root = _install_harness(monkeypatch, tmp_path, review)
+    harness.parse_rate_rc = {"codex": 1}
+    harness.waterfall_mode = "codex"
+
+    assert agent_voters.dispatch_voters(_opts(ballot, review, codex="true", cursor="false")) == 0
+
+    out = capsys.readouterr().out
+    assert "VOTER_2_PARSE_RATE_STATUS=NOT_SUBSTANTIVE" in out
+    assert "DEGRADED_PANEL_WARNING=" in out
 
 
 @pytest.mark.voter_edge_and_r3_claude
