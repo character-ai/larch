@@ -1310,6 +1310,10 @@ exclude = [
   # scripts/test-prompt-template-invariants.md, not from runtime skill prose.
   "scripts/test-prompt-template-invariants.sh",
   "scripts/test-prompt-template-invariants.md",
+  # skills/implement/scripts/lib-implement-clone-tag.sh is sourced by
+  # step-8-ship.sh and step-8-seed-initial.sh; G004 does not follow shell source edges.
+  "skills/implement/scripts/lib-implement-clone-tag.sh",
+  "skills/implement/scripts/lib-implement-clone-tag.md",
   # Python ship driver owns these legacy shell helpers now; agent-lint does not
   # follow the Python CLI call graph for G004 reachability.
   "scripts/ci-rerun-failed.sh",

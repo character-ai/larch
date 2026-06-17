@@ -1,22 +1,23 @@
 # step-8-ship.sh
 
-Step 8+ Python ship-driver wrapper. Derives CLONE_TAG_FULL, rehydrates durable ship argv from `$IMPLEMENT_TMPDIR/ship-pr-state.sh` when prompt-side variables are absent, enforces the Python 3.11 JSON fallback, and invokes `python/cli.py ship pr` with the canonical argv.
+Step 8+ Python ship-driver wrapper. It rehydrates durable ship argv from `$IMPLEMENT_TMPDIR/ship-pr-state.sh`, sources `lib-implement-clone-tag.sh` for tmpdir-prefix derivation, delegates the Python 3.11 guard to `step-8-python-guard.sh`, runs the advisory `8-pre-ship` phantom probe, and invokes `python/cli.py ship pr` with the canonical argv.
 
 ## Caller
 
-`skills/implement/SKILL.md` invokes this wrapper from the named `/implement` step so the prompt-side Bash fence remains a plugin-root source guard plus one script call.
+`skills/implement/SKILL.md` invokes this wrapper from Step 8+ in immediate-background mode. Pre-driver orchestration may run guard, initial seeding, and `oos file` first; post-driver continuations invoke only this wrapper.
 
-## KV grammar
+## Stdout contract
 
-The wrapper relays the underlying helper stdout unchanged unless this file names explicit keys. Explicit keys are newline-delimited `KEY=value` records and must be token-scannable by the orchestrator.
+Wrapper stdout must remain exactly the single JSON object emitted by `python/cli.py ship pr`, except when `step-8-python-guard.sh` fails with Python <3.11 and emits the shared STALLED JSON object. The `8-pre-ship` phantom probe is diagnostic only and redirects stdout to stderr so `PHANTOM_*` records cannot pollute the JSON stream.
 
 ## Invariants
 
 - Bash 3.2 portable; no associative arrays or namerefs.
 - Self-rehydrates `CLAUDE_PLUGIN_ROOT` from `$IMPLEMENT_TMPDIR/plugin-root.env` where needed.
 - Self-rehydrates `BRANCH_NAME`, `ISSUE_NUMBER`, `RUN_ID`, `REPO`, `MERGE`, `DRAFT`, `FORKED_TARGET`, `REPO_UNAVAILABLE`, `MANIFEST_PATH`, `TOOL_LABEL`, `NO_ADMIN_FALLBACK`, and `NO_LOGS_COMMIT` from `ship-pr-state.sh` before invoking the active driver.
-- Telemetry consumers read `LARCH_TOKEN_SESSION_ID`, `LARCH_CLAUDE_SOURCE_FILE`, and `LARCH_TIMING_LEDGER` from `$IMPLEMENT_TMPDIR/session-env.sh` internally instead of relying on inline SKILL.md triplets.
+- `EXPECTED_TMPDIR_BASENAME_PREFIX` comes from `lib-implement-clone-tag.sh` and must match the initial state seeder.
+- The Python version guard lives in `step-8-python-guard.sh`.
 
 ## Edit-in-sync
 
-Update `skills/implement/SKILL.md` and the implement structure/timing harnesses when this contract or argv changes.
+Update `skills/implement/SKILL.md`, `step-8-seed-initial.md`, and `skills/implement/scripts/test-step-8-ship.sh` when this contract or argv changes.

@@ -1,6 +1,6 @@
 # step-2-post-dispatch.sh
 
-Step 2 post-dispatch wrapper. Runs the phantom untracked probe, emits the checked-out branch, and best-effort emits the current short commit SHA in one foreground call.
+Step 2 post-dispatch wrapper. Runs the phantom untracked probe, emits the checked-out branch, best-effort emits the current short commit SHA, and persists ship-seed context in one foreground call.
 
 ## Caller
 
@@ -29,13 +29,18 @@ Stdout is newline-delimited `KEY=value` records:
 
 Do not source or `eval` wrapper stdout.
 
+## Ship seed persistence
+
+After the branch/SHA probe succeeds, the wrapper merge-appends missing keys to `$IMPLEMENT_TMPDIR/ship-seed-input.env`:
+
+- `MANIFEST_PATH`: `$IMPLEMENT_TMPDIR/codex-step2-out/manifest.json` when readable, else `$IMPLEMENT_TMPDIR/manifest.json` when readable, else empty.
+- `TOOL_LABEL`: maps `$IMPLEMENT_TMPDIR/bootstrap-routing.env` `coder` from `codex` to `Codex`, `cursor` to `Cursor`, and all other values to `claude`.
+
+Existing keys are preserved. Step 0 owns run flags in the same file.
+
 ## Bootstrap and libraries
 
-The wrapper requires `IMPLEMENT_TMPDIR` and exports it for shared helpers. Before sourcing libraries, `rehydrate_plugin_root` mirrors `step-2-entry.sh`:
-
-- source `$IMPLEMENT_TMPDIR/plugin-root.env` when `CLAUDE_PLUGIN_ROOT` is unset;
-- read `LARCH_CLAUDE_PLUGIN_ROOT=` from `$IMPLEMENT_TMPDIR/session-env.sh` when still unset;
-- fall back to the script-derived plugin root and export `CLAUDE_PLUGIN_ROOT`.
+The wrapper requires `IMPLEMENT_TMPDIR` and exports it for shared helpers. Before sourcing libraries, `rehydrate_plugin_root` mirrors `step-2-entry.sh`.
 
 It sources shared libraries from `$CLAUDE_PLUGIN_ROOT/scripts/`: `lib-quiet.sh` and `lib-phantom-probe.sh`.
 

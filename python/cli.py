@@ -219,6 +219,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("gantt", "render"): ("gantt", "gantt_render_main"),
     ("ship", "design-log"): ("design_log_ship", "main"),
     ("ship", "pr"): ("ship", "main"),
+    ("ship", "seed-initial-state"): ("ship", "seed_initial_state_main"),
     ("clarify", "state"): ("clarify", "clarify_state_main"),
     ("clarify", "comment-fetch"): ("clarify", "clarify_comment_fetch_main"),
     ("clarify", "comment-post"): ("clarify", "clarify_comment_post_main"),

@@ -111,6 +111,46 @@ def _atomic_text(path: Path, text: str) -> None:
     tmp.replace(path)
 
 
+
+
+def _read_simple_kv(path: Path, key: str) -> str:
+    if not path.is_file() or path.is_symlink():
+        return ""
+    try:
+        prefix = f"{key}="
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            if line.startswith(prefix):
+                return line[len(prefix) :].removesuffix("\r")
+    except OSError:
+        return ""
+    return ""
+
+
+def _bool_text(value: str, default: str = "false") -> str:
+    if value in {"true", "false"}:
+        return value
+    return default
+
+
+def _merge_write_ship_seed_input(tmpdir: str, values: dict[str, str], *, only_missing: bool) -> None:
+    if not tmpdir:
+        return
+    path = Path(tmpdir) / "ship-seed-input.env"
+    existing: dict[str, str] = {}
+    if path.is_file() and not path.is_symlink():
+        try:
+            existing = _parse_kv(path.read_text(encoding="utf-8", errors="replace"))
+        except OSError:
+            existing = {}
+    data = dict(existing)
+    for key, value in values.items():
+        if only_missing and data.get(key):
+            continue
+        data[key] = value
+    ordered = ("MERGE", "DRAFT", "FORKED_TARGET", "NO_ADMIN_FALLBACK", "NO_LOGS_COMMIT", "DEFERRED", "MANIFEST_PATH", "TOOL_LABEL")
+    text = "".join(f"{key}={data.get(key, '')}\n" for key in ordered if key in data)
+    _atomic_text(path, text)
+
 def _write_larch_run_sh(implement_tmpdir: str) -> bool:
     if not implement_tmpdir:
         return False
@@ -163,6 +203,10 @@ class BootstrapOptions:
     caller_env: str = ""
     issue_number: str = ""
     forked_target: str = "false"
+    merge_requested: str = "false"
+    draft_requested: str = "false"
+    no_admin_fallback: str = "false"
+    no_logs_commit: str = "false"
     emergency_requested: str = "false"
     self_review_requested: str = "false"
     upstream_repo: str = ""
@@ -981,6 +1025,10 @@ def bootstrap_main(argv: list[str]) -> int:
     parser.add_argument("--caller-env", default="")
     parser.add_argument("--issue-number", default="")
     parser.add_argument("--forked-target", default="false", choices=["true", "false"])
+    parser.add_argument("--merge-requested", default="false", choices=["true", "false"])
+    parser.add_argument("--draft-requested", default="false", choices=["true", "false"])
+    parser.add_argument("--no-admin-fallback", default="false", choices=["true", "false"])
+    parser.add_argument("--no-logs-commit", default="false", choices=["true", "false"])
     parser.add_argument("--emergency-requested", default="false", choices=["true", "false"])
     parser.add_argument("--self-review-requested", default="false", choices=["true", "false"])
     parser.add_argument("--upstream-repo", default="")
@@ -1008,6 +1056,10 @@ def bootstrap_main(argv: list[str]) -> int:
         caller_env=args.caller_env,
         issue_number=args.issue_number,
         forked_target=args.forked_target,
+        merge_requested=args.merge_requested,
+        draft_requested=args.draft_requested,
+        no_admin_fallback=args.no_admin_fallback,
+        no_logs_commit=args.no_logs_commit,
         emergency_requested=args.emergency_requested,
         self_review_requested=args.self_review_requested,
         upstream_repo=args.upstream_repo,
@@ -1523,6 +1575,10 @@ def invoke_main(argv: list[str]) -> int:
     parser.add_argument("--mode", required=True, choices=["initial", "resume"])
     parser.add_argument("--issue-number", default="")
     parser.add_argument("--forked-target", default="", choices=["", "true", "false"])
+    parser.add_argument("--merge-requested", default="", choices=["", "true", "false"])
+    parser.add_argument("--draft-requested", default="", choices=["", "true", "false"])
+    parser.add_argument("--no-admin-fallback", default="", choices=["", "true", "false"])
+    parser.add_argument("--no-logs-commit", default="", choices=["", "true", "false"])
     parser.add_argument("--upstream-repo", default="")
     parser.add_argument("--run-id", default="")
     parser.add_argument("--coder", default="", choices=["", "claude", "codex", "cursor"])
@@ -1542,6 +1598,37 @@ def invoke_main(argv: list[str]) -> int:
     forked = args.forked_target or env.get("forked_target") or (env.get("FORKED_TARGET", "") if not env.get("forked_target") else "") or "false"
     upstream = args.upstream_repo or env.get("UPSTREAM_REPO", "")
     run_id = args.run_id or env.get("RUN_ID", "")
+    implement_tmpdir_env = env.get("IMPLEMENT_TMPDIR", "")
+    seed_file = Path(implement_tmpdir_env) / "ship-seed-input.env" if implement_tmpdir_env else Path()
+    resume_seed = args.mode == "resume"
+    merge_requested = (
+        args.merge_requested
+        or _str_bool(env.get("merge", ""))
+        or _str_bool(env.get("MERGE", ""))
+        or (_read_simple_kv(seed_file, "MERGE") if resume_seed else "")
+        or "false"
+    )
+    draft_requested = (
+        args.draft_requested
+        or _str_bool(env.get("draft", ""))
+        or _str_bool(env.get("DRAFT", ""))
+        or (_read_simple_kv(seed_file, "DRAFT") if resume_seed else "")
+        or "false"
+    )
+    no_admin_fallback = (
+        args.no_admin_fallback
+        or _str_bool(env.get("no_admin_fallback", ""))
+        or _str_bool(env.get("NO_ADMIN_FALLBACK", ""))
+        or (_read_simple_kv(seed_file, "NO_ADMIN_FALLBACK") if resume_seed else "")
+        or "false"
+    )
+    no_logs_commit = (
+        args.no_logs_commit
+        or _str_bool(env.get("no_logs_commit", ""))
+        or _str_bool(env.get("NO_LOGS_COMMIT", ""))
+        or (_read_simple_kv(seed_file, "NO_LOGS_COMMIT") if resume_seed else "")
+        or "false"
+    )
     emergency = args.emergency_requested or _str_bool(env.get("emergency_requested", "")) or "false"
     self_review = args.self_review_requested or _str_bool(env.get("self_review", "")) or "false"
     non_interactive = args.non_interactive or _str_bool(env.get("non_interactive", "")) or ""
@@ -1554,6 +1641,10 @@ def invoke_main(argv: list[str]) -> int:
         caller_env=caller_env,
         issue_number=issue,
         forked_target=forked if forked in {"true", "false"} else "false",
+        merge_requested=_bool_text(merge_requested),
+        draft_requested=_bool_text(draft_requested),
+        no_admin_fallback=_bool_text(no_admin_fallback),
+        no_logs_commit=_bool_text(no_logs_commit),
         emergency_requested=emergency if emergency in {"true", "false"} else "false",
         self_review_requested=self_review if self_review in {"true", "false"} else "false",
         upstream_repo=upstream,
@@ -1598,6 +1689,23 @@ def invoke_main(argv: list[str]) -> int:
         if value:
             data[key] = value
     envelope = _envelope_text(data)
+    try:
+        _merge_write_ship_seed_input(
+            tmpdir,
+            {
+                "MERGE": _bool_text(opts.merge_requested),
+                "DRAFT": _bool_text(opts.draft_requested),
+                "FORKED_TARGET": _bool_text(opts.forked_target),
+                "NO_ADMIN_FALLBACK": _bool_text(opts.no_admin_fallback),
+                "NO_LOGS_COMMIT": _bool_text(opts.no_logs_commit),
+                "DEFERRED": _bool_text(data.get("DEFERRED", "false")),
+            },
+            only_missing=args.mode == "resume",
+        )
+    except OSError as exc:
+        print(f"bootstrap invoke: could not write ship-seed-input.env ({exc})", file=sys.stderr)
+        if args.mode == "initial":
+            return 2
 
     def _emit_envelope() -> None:
         sys.stdout.write(envelope)

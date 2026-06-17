@@ -58,20 +58,10 @@ require_value REPO "$REPO_RESOLVED"
 [ -n "$NO_ADMIN_FALLBACK_RESOLVED" ] || NO_ADMIN_FALLBACK_RESOLVED=false
 [ -n "$NO_LOGS_COMMIT_RESOLVED" ] || NO_LOGS_COMMIT_RESOLVED=false
 
-if [ -n "${CLONE_TAG:-}" ]; then
-  CLONE_TAG_FULL=$CLONE_TAG
-else
-  _clone_bt=$(basename "$PWD")
-  CLONE_TAG_FULL=$(printf '%s' "$_clone_bt" | tr -c 'A-Za-z0-9_-' '_')
-  CLONE_TAG_FULL=${CLONE_TAG_FULL%????????????????????????????????*}
-  CLONE_TAG_FULL=$(printf '%.32s' "$CLONE_TAG_FULL")
-  [ -n "$CLONE_TAG_FULL" ] || CLONE_TAG_FULL="_"
-fi
-if ! python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
-  echo "ERROR: Python ship driver requires Python 3.11 or newer" >&2
-  printf '%s\n' '{"detail":"Python ship driver requires Python 3.11 or newer","failed_run_id":"","ledger_dispatcher":"","ledger_exit_code":null,"ledger_failure_detail_log":"","ledger_phase":"","ledger_ready":false,"ledger_site":"","ledger_step":"","ledger_trigger":"","merge_result":"","needs_user_reason":"","outcome":"STALLED","pr_number":null,"pr_url":""}'
-  exit 4
-fi
+# shellcheck source=skills/implement/scripts/lib-implement-clone-tag.sh
+. "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/lib-implement-clone-tag.sh"
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-8-python-guard.sh
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" scripts/phantom-probe-with-warn.sh --step 8-pre-ship >&2
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" ship pr \
   --branch "$BRANCH_NAME_RESOLVED" \
   --issue "$ISSUE_NUMBER_RESOLVED" \
@@ -88,4 +78,4 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" ship pr \
   --no-admin-fallback "$NO_ADMIN_FALLBACK_RESOLVED" \
   --no-logs-commit "$NO_LOGS_COMMIT_RESOLVED" \
   --expected-session-id "$(cat "$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || true)" \
-  --expected-tmpdir-basename-prefix "claude-implement-${CLONE_TAG_FULL}-"
+  --expected-tmpdir-basename-prefix "$EXPECTED_TMPDIR_BASENAME_PREFIX"
