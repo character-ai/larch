@@ -295,6 +295,15 @@ def test_refresh_issue_counts_body_text_fallback_counts_plain_bullets(tmp_path: 
     assert pr_body._refresh_issue_counts(tmp_path, "run1") == (2, 1)
 
 
+def test_refresh_issue_counts_section_heading_inside_fence_is_boundary(tmp_path: Path) -> None:
+    _ = (tmp_path / "execution-issues.md").write_text(
+        "### Tool Failures\n- exec1\n```\nlog line\n### Warnings\n- warn1\n",
+        encoding="utf-8",
+    )
+
+    assert pr_body._refresh_issue_counts(tmp_path, "run1") == (1, 1)
+
+
 def test_step18b_emits_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     _ = (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=1\nRUN_ID=run1\n", encoding="utf-8")
     _ = (tmp_path / "session-env.sh").write_text("REPO=o/r\nMODE=N/A\n", encoding="utf-8")

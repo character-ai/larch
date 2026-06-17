@@ -709,12 +709,15 @@ def _count_issue_sections(text: str) -> tuple[int, int]:
             elif section == _ISSUE_SECTION_WARN:
                 warn_lines.append(line)
             in_fence = not in_fence
-        elif not in_fence and line in _EXEC_ISSUE_HEADINGS:
+        elif line in _EXEC_ISSUE_HEADINGS:
             section = _ISSUE_SECTION_EXEC
-        elif not in_fence and line == "### Warnings":
+            in_fence = False
+        elif line == "### Warnings":
             section = _ISSUE_SECTION_WARN
-        elif not in_fence and line.startswith("### "):
+            in_fence = False
+        elif line.startswith("### "):
             section = _ISSUE_SECTION_NONE
+            in_fence = False
         elif section == _ISSUE_SECTION_EXEC:
             exec_lines.append(line)
         elif section == _ISSUE_SECTION_WARN:

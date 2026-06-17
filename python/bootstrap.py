@@ -657,16 +657,21 @@ def _strip_plan_provenance_headers(text: str) -> str:
     if diff_idx < 0 or in_fence_by_idx[diff_idx]:
         return text
 
-    remove: set[int] = set()
     idx = diff_idx - 1
     while idx >= 0:
         stripped = lines[idx].rstrip("\n")
-        is_provenance = any(stripped.startswith(prefix) for prefix in _PLAN_PROVENANCE_PREFIXES)
-        is_optional = bool(_OPTIONAL_PLAN_SIZE_TRAILER_RE.fullmatch(stripped))
-        if in_fence_by_idx[idx] or not (is_provenance or is_optional):
+        if in_fence_by_idx[idx] or not _OPTIONAL_PLAN_SIZE_TRAILER_RE.fullmatch(stripped):
             break
-        if is_provenance:
-            remove.add(idx)
+        idx -= 1
+
+    remove: set[int] = set()
+    while idx >= 0:
+        stripped = lines[idx].rstrip("\n")
+        if in_fence_by_idx[idx]:
+            break
+        if not any(stripped.startswith(prefix) for prefix in _PLAN_PROVENANCE_PREFIXES):
+            break
+        remove.add(idx)
         idx -= 1
     if not remove:
         return text

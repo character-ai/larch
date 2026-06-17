@@ -357,6 +357,25 @@ def test_plan_materialization_strips_only_terminal_design_provenance(tmp_path, m
     assert plan_src.read_text(encoding="utf-8") == source_text
 
 
+def test_strip_plan_provenance_headers_skips_prose_above_size_trailers() -> None:
+    source = (
+        "## Plan\n\n"
+        "review_status: prose survives\n"
+        "rounds_completed: prose survives\n"
+        "diff_added: 10\n"
+        "diff_deleted: 2\n"
+        "mechanical_churn: false\n"
+        "review_status: complete\n"
+        "rounds_completed: 5\n"
+        "diff_lines: 10\n"
+    )
+    result = bootstrap._strip_plan_provenance_headers(source)  # pyright: ignore[reportPrivateUsage]
+    assert "review_status: prose survives" in result
+    assert "rounds_completed: prose survives" in result
+    assert "review_status: complete" not in result
+    assert "rounds_completed: 5" not in result
+
+
 def test_forked_plan_requires_upstream_repo_before_gh(tmp_path, monkeypatch) -> None:
     calls: list[list[str]] = []
     preflight = tmp_path / "preflight"
