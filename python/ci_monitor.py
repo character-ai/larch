@@ -866,7 +866,7 @@ def _ls_untracked(runner: Runner, *, cwd: str | None = None) -> tuple[str, ...]:
     return tuple(line for line in result.stdout.splitlines() if line)
 
 
-def _capture_baseline(
+def _capture_baseline(  # pyright: ignore[reportUnusedFunction]  # used by ci_agentic_fix
     runner: Runner,
     *,
     cwd: str | None,
@@ -911,7 +911,7 @@ def _is_submodule_gitlink(runner: Runner, path: str, *, cwd: str | None) -> bool
     return any(line.startswith("160000 ") for line in result.stdout.splitlines())
 
 
-def _rollback_to_baseline(
+def _rollback_to_baseline(  # pyright: ignore[reportUnusedFunction]  # used by ci_agentic_fix
     runner: Runner,
     *,
     baseline_tracked: tuple[str, ...],
@@ -947,7 +947,7 @@ def _rollback_to_baseline(
             _ = runner.run(["rm", "-f", "--", path], cwd=cwd)
 
 
-def _delta_paths(
+def _delta_paths(  # pyright: ignore[reportUnusedFunction]  # used by ci_agentic_fix
     runner: Runner,
     *,
     baseline_tracked: tuple[str, ...],
@@ -982,7 +982,7 @@ def _resolve_launcher_exit(
     )
 
 
-def _available_tiers() -> tuple[str, ...]:
+def _available_tiers() -> tuple[str, ...]:  # pyright: ignore[reportUnusedFunction]
     tiers = list(config.FIXER_TIER_ORDER)
     return tuple(tiers) if tiers else config.FIXER_TIER_ORDER
 
@@ -1034,7 +1034,7 @@ def _wait_for_ci_ready(
             return logs
 
 
-def _make_default_launch_fn(
+def _make_default_launch_fn(  # pyright: ignore[reportUnusedFunction]
     runner: Runner,
     *,
     run_id: str,
@@ -1237,9 +1237,9 @@ def run_ci_fix(
     ci_fix_rebase_pending: bool = False,
     ctx: RunContext | None = None,
 ) -> FixResult:
-    """Drive the CI vendor waterfall once."""
+    """Retry a pending CI-fix rebase push; normal fixing is delegated."""
     if ci_fix_rebase_pending:
-        pushed, post_head, delta_paths, did_rebase, pending = stage_and_push(
+        pushed, _post_head, delta_paths, did_rebase, pending = stage_and_push(
             runner,
             cwd=cwd,
             commit_label="pending-retry",
@@ -1263,143 +1263,11 @@ def run_ci_fix(
             did_rebase=did_rebase,
             ci_fix_rebase_pending=False,
         )
-    baseline_tracked, baseline_untracked, baseline_staged, baseline_head = _capture_baseline(
-        runner,
-        cwd=cwd,
+    _ = run_id, repo, classified, logs, plan_file, launch_fn, output_dir, base_remote, base_ref, ctx
+    return FixResult(
+        status="waterfall-failed",
+        detail="run_ci_fix: non-pending calls not supported",
     )
-    failure_log_paths: list[str] = []
-    base_launch = launch_fn or _make_default_launch_fn(
-        runner,
-        run_id=run_id,
-        repo=repo,
-        plan_file=plan_file,
-        logs=logs,
-        output_dir=output_dir,
-        cwd=cwd,
-        failure_log_paths=failure_log_paths,
-    )
-
-    def _rollback() -> None:
-        _rollback_to_baseline(
-            runner,
-            baseline_tracked=baseline_tracked,
-            baseline_untracked=baseline_untracked,
-            baseline_staged=baseline_staged,
-            cwd=cwd,
-        )
-
-    def _tier_launch(tier: str) -> TierAttempt:
-        attempt = base_launch(tier)
-        if attempt.launcher_exit != 0 or attempt.wrapper_rc != 0:
-            _rollback()
-        return attempt
-
-    try:
-        unfixable = [_job_token(job.name, job.shard) for job in classified.unfixable]
-        if not classified.fixable and unfixable:
-            return FixResult(status="local-unfixable", unfixable=tuple(unfixable))
-
-        code_fix_attempted = False
-
-        tiers = _available_tiers()
-        if not tiers:
-            return FixResult(status="waterfall-failed", detail="no launcher tiers available")
-        first_tier = tiers[0]
-        waterfall = agents.run_waterfall(
-            tiers,
-            _tier_launch,
-            first_tier=first_tier,
-        )
-        if waterfall.short_circuited:
-            _rollback()
-            return FixResult(
-                status="first-fixer-non-health",
-                detail="first-fixer-non-health",
-            )
-        if waterfall.winning_tier is None:
-            _rollback()
-            return FixResult(
-                status="waterfall-failed",
-                detail="all tiers failed",
-            )
-
-        if classified.fixable:
-            code_fix_attempted = True
-        for job in classified.fixable:
-            argv = per_job_command(job.name, job.shard)
-            if argv is None or not prepare_python_toolchain(runner, job.name, cwd=cwd):
-                unfixable.append(_job_token(job.name, job.shard))
-        if unfixable:
-            _rollback()
-            return FixResult(
-                status="local-unfixable",
-                unfixable=tuple(unfixable),
-                code_fix_attempted_on_ready_log=code_fix_attempted,
-            )
-
-        current_head = git.try_rev_parse(runner, "HEAD", cwd=cwd)
-        if current_head != baseline_head:
-            _rollback()
-            return FixResult(
-                status="head-changed",
-                code_fix_attempted_on_ready_log=code_fix_attempted,
-            )
-
-        failed_verify = [
-            _job_token(job.name, job.shard)
-            for job in classified.fixable
-            if not verify_job_locally(runner, job.name, job.shard, cwd=cwd)
-        ]
-        if failed_verify:
-            _rollback()
-            return FixResult(
-                status="verify-failed",
-                failed_verify=tuple(failed_verify),
-                code_fix_attempted_on_ready_log=code_fix_attempted,
-            )
-
-        delta = _delta_paths(
-            runner,
-            baseline_tracked=baseline_tracked,
-            baseline_untracked=baseline_untracked,
-            cwd=cwd,
-        )
-        pushed, post_head, delta_paths, did_rebase, pending = stage_and_push(
-            runner,
-            cwd=cwd,
-            commit_label=waterfall.winning_tier or "vendor",
-            delta_paths=delta,
-            base_remote=base_remote,
-            base_ref=base_ref,
-            ci_fix_rebase_pending=ci_fix_rebase_pending,
-            classified=classified,
-            ctx=ctx,
-        )
-        if not pushed:
-            return FixResult(
-                status="waterfall-failed",
-                detail="push failed",
-                code_fix_attempted_on_ready_log=code_fix_attempted,
-                did_rebase=did_rebase,
-                ci_fix_rebase_pending=pending,
-            )
-        if post_head == baseline_head:
-            return FixResult(
-                status="first-fixer-non-health",
-                winning_tier=waterfall.winning_tier,
-                detail="first-fixer-non-health",
-            )
-        return FixResult(
-            status="pushed",
-            winning_tier=waterfall.winning_tier,
-            delta_paths=delta_paths,
-            code_fix_attempted_on_ready_log=code_fix_attempted,
-            did_rebase=did_rebase,
-            ci_fix_rebase_pending=False,
-        )
-    finally:
-        for path in failure_log_paths:
-            Path(path).unlink(missing_ok=True)
 
 
 def _fix_exhausted_detail(
@@ -1454,8 +1322,8 @@ def _parse_kv_output(text: str) -> dict[str, str]:
 
 
 def _agentic_fix_delegate_timeout_sec() -> float | None:
-    """Budget for one full agentic delegate run (all cycles + passive CI waits)."""
-    per_cycle = config.CI_WAIT_TIMEOUT_SEC + config.SUBPROCESS_DEFAULT_TIMEOUT_SEC
+    """Budget all delegate cycles, passive CI waits, and local verification."""
+    per_cycle = config.CI_WAIT_TIMEOUT_SEC + 2 * config.SUBPROCESS_DEFAULT_TIMEOUT_SEC
     return float(config.CI_AGENTIC_FIX_MAX_CYCLES * per_cycle)
 
 

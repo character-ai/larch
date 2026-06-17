@@ -294,7 +294,8 @@ def _run_cycle(
                         failure_log_text,
                     )
                 return "waterfall-failed", failure.reason or "claude-health", fix_attempted, (), False, None, failure_log_text
-            return "first-fixer-non-health", failure.reason or "claude-failed", fix_attempted, (), False, None, failure_log_text
+            status = "first-fixer-non-health" if cycle == 1 else "waterfall-failed"
+            return status, failure.reason or "claude-failed", fix_attempted, (), False, None, failure_log_text
         current_head = coder_delta_guards.capture_head(runner, cwd=cwd)
         if coder_delta_guards.head_changed_from_baseline(baseline_head, current_head):
             _ = git.reset(runner, "--hard", baseline_head, cwd=cwd)
@@ -398,7 +399,28 @@ def _run_cycle(
                 pending=False,
                 detail=wait_err,
             )
-            return "pushed", wait_err, fix_attempted, pushed_paths, False, run_id, failure_log_text
+            return "ci-fix-exhausted", wait_err, fix_attempted, pushed_paths, False, None, failure_log_text
+        if wait.get("ACTION") == "bail":
+            return (
+                "ci-fix-exhausted",
+                wait.get("BAIL_REASON", "") or "ci-wait-bail",
+                fix_attempted,
+                pushed_paths,
+                False,
+                None,
+                failure_log_text,
+            )
+        expected_actions = {"", "merge", "already_merged", "rebase", "rebase_then_evaluate"}
+        if wait.get("ACTION", "") not in expected_actions and not wait.get("FAILED_RUN_ID"):
+            return (
+                "ci-fix-exhausted",
+                wait.get("BAIL_REASON", "") or "ci-wait-untrusted-output",
+                fix_attempted,
+                pushed_paths,
+                False,
+                None,
+                failure_log_text,
+            )
         if wait.get("ACTION") in {"rebase", "rebase_then_evaluate"}:
             return (
                 "rebase-required",
