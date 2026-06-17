@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/fluff-analysis/scripts/fluff-analysis.py:280-296	New code-review TSV columns are not routed through the existing fixed-index parser	Adding vN_tool columns after each uncertain cell shifts v2/v3 rating indexes, so fluff analysis silently reads tool labels as severities/qualities/correctness and corrupts later analysis	Update parse_impl_tsv to read by header name while tolerating old 18-column logs, and add one fixture for the new code-review schema
