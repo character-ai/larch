@@ -17,6 +17,27 @@ if TYPE_CHECKING:
     import pytest
 
 
+def _make_ctx() -> RunContext:
+    return RunContext(
+        branch="feat", issue="", repo="o/r", run_id="42",
+        tmpdir="/tmp/implement", merge=False, draft=False, forked=False,
+        manifest_path="", tool_label="claude", no_admin_fallback=False,
+        repo_unavailable=False, pr_number=1,
+    )
+
+
+def _call_agentic_fix(kv: str) -> "ci_monitor.FixResult":
+    class _KvRunner:
+        def run(self, *_a: object, **_kw: object) -> proc.CommandResult:
+            return proc.CommandResult(("cli",), 0, kv, "", 0.01)
+
+    return ci_monitor._agentic_fix_result(  # pyright: ignore[reportPrivateUsage]
+        _KvRunner(), pr=1, run_id="42", repo="o/r", plan_file=None,
+        cwd="/tmp/repo", base_remote="origin", base_ref="main",
+        ctx=_make_ctx(),
+    )
+
+
 def test_missing_repo_root_fails_closed(capsys: pytest.CaptureFixture[str]) -> None:
     rc = ci_agentic_fix.main([
         "--pr", "1",
@@ -135,35 +156,7 @@ def test_agentic_fix_result_reads_exhausted_detail_file(
         "CI_FIX_REBASE_PENDING=false\n"
     )
 
-    class _Runner:
-        def run(self, *_args: object, **_kwargs: object) -> proc.CommandResult:
-            return proc.CommandResult(("cli",), 0, kv, "", 0.01)
-
-    fix = ci_monitor._agentic_fix_result(  # pyright: ignore[reportPrivateUsage]
-        _Runner(),
-        pr=1,
-        run_id="42",
-        repo="o/r",
-        plan_file=None,
-        cwd="/tmp/repo",
-        base_remote="origin",
-        base_ref="main",
-        ctx=RunContext(
-            branch="feat",
-            issue="",
-            repo="o/r",
-            run_id="42",
-            tmpdir="/tmp/implement",
-            merge=False,
-            draft=False,
-            forked=False,
-            manifest_path="",
-            tool_label="claude",
-            no_admin_fallback=False,
-            repo_unavailable=False,
-            pr_number=1,
-        ),
-    )
+    fix = _call_agentic_fix(kv)
     assert fix.status == "fix-exhausted"
     assert "FAIL test_bar.py" in (fix.detail or "")
 
@@ -183,35 +176,7 @@ def test_agentic_fix_result_local_unfixable_prefixes_detail(tmp_path: Path) -> N
         "CI_FIX_REBASE_PENDING=false\n"
     )
 
-    class _Runner:
-        def run(self, *_args: object, **_kwargs: object) -> proc.CommandResult:
-            return proc.CommandResult(("cli",), 0, kv, "", 0.01)
-
-    fix = ci_monitor._agentic_fix_result(  # pyright: ignore[reportPrivateUsage]
-        _Runner(),
-        pr=1,
-        run_id="42",
-        repo="o/r",
-        plan_file=None,
-        cwd="/tmp/repo",
-        base_remote="origin",
-        base_ref="main",
-        ctx=RunContext(
-            branch="feat",
-            issue="",
-            repo="o/r",
-            run_id="42",
-            tmpdir="/tmp/implement",
-            merge=False,
-            draft=False,
-            forked=False,
-            manifest_path="",
-            tool_label="claude",
-            no_admin_fallback=False,
-            repo_unavailable=False,
-            pr_number=1,
-        ),
-    )
+    fix = _call_agentic_fix(kv)
     assert fix.status == "local-unfixable"
     assert fix.detail == "local-unfixable: gitleaks\nFAIL gitleaks scan"
 
