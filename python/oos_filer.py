@@ -295,7 +295,8 @@ def _split_persisted_matches(blocks: list[AcceptedBlock], persisted: list[FiledI
             (
                 issue
                 for issue in persisted
-                if issue.url not in used_urls and _issue_matches_block(issue, block, allow_title_match=allow_title_match)
+                if (issue.url not in used_urls or _issue_covers_stable_id(issue, block.stable_id))
+                and _issue_matches_block(issue, block, allow_title_match=allow_title_match)
             ),
             None,
         )
