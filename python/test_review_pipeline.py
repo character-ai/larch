@@ -73,6 +73,10 @@ def _run_review_core(
     )
 
 
+def test_review_core_default_dispatches_voters_through_python_cli() -> None:
+    assert rts.review_core_uses_agent_dispatch_voters_by_default()
+
+
 def test_gather_context_help_routes_through_review_cli() -> None:
     result = run_review("gather-context", "--help")
 

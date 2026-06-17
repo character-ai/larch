@@ -4,7 +4,7 @@ The voting protocol is used by `/design` (plan review) and `/review` (code revie
 
 ## Overview
 
-After reviewers submit findings and findings are deduplicated, a voting panel votes on each finding. `/design` plan review always uses the 3-voter panel (Claude + Codex + Cursor). `/review` (code review) uses a 3-voter panel (Claude + Codex + Cursor) on every round. Claude replacement voters cover unavailable external voters. Each voter casts one of two votes:
+After reviewers submit findings and findings are deduplicated, a voting panel votes on each finding. `/design` plan review always uses the 3-voter panel (Claude + Codex + Cursor). `/review` (code review) uses Claude plus each available external voter. Unavailable externals are skipped; the panel shrinks rather than back-filling with extra Claude voters. Each voter casts one of two votes:
 
 | Vote | Meaning |
 |---|---|
@@ -30,16 +30,16 @@ When a finding is not accepted, it is classified as either **`neutral`** (at lea
 
 ## Degraded-Panel Warnings
 
-The dispatch scripts emit loud degraded-panel warnings when effective judges drop below the expected panel size. Effective means the voter did not fail and produced a non-empty output file. Warnings include the available judge count, missing slots, and the active tier (`unanimous-2`, `single-judge`, or `main-agent-required`) so operators can distinguish a stricter degraded vote from a 0-judge main-agent handoff.
+The dispatchers emit loud degraded-panel warnings when effective judges drop below the expected panel size. Effective means the voter did not fail and produced a non-empty output file. Warnings include the available judge count, missing slots, and the active tier (`unanimous-2`, `single-judge`, or `main-agent-required`) so operators can distinguish a stricter degraded vote from a 0-judge main-agent handoff.
 
 ## Voter Panel Composition
 
-`/design` always uses a 3-voter panel in normal mode. `/review` uses a 3-voter panel (Claude + Codex + Cursor) on every round. All launched voters vote on all findings — there is no self-voting exclusion.
+`/design` always uses a 3-voter panel in normal mode. `/review` uses Claude plus each available external voter on every round. All launched voters vote on all findings — there is no self-voting exclusion.
 
 | Skill | Voters |
 |---|---|
 | `/design` (plan review, normal mode) | Claude Code Reviewer subagent + Codex + Cursor — all 3 always launched |
-| `/review` (code review) | Claude + Codex + Cursor — all 3 launched every round, with Claude replacements for unhealthy external voters |
+| `/review` (code review) | Claude is always Voter 1. Codex and Cursor participate when available; unavailable externals are skipped. Dispatch surface: `python/cli.py agent dispatch-voters`. |
 
 ## Ballot Format
 

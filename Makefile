@@ -85,11 +85,11 @@ lint-awk-multibyte-regex:
 # slow harnesses pushed shards 2/3/5 over the 20s target, resharded to 10, then resharded to 11,
 # then to 13 after heavy tests pushed shard wall time over the 40s target, then to 16 after
 # shards 12/13 exceeded 50s with test-dispatch-code-voters and test-dispatch-panel, then to 14
-# after splitting test-ship-pr/-dispatch-code-voters/-dispatch-panel into sections and stubbing
+# after splitting test-ship-pr/-agent-voters/-dispatch-panel into sections and stubbing
 # after stubbing long ship-driver sleeps brought the ceiling under 22s, then to 18 after isolating the four
-# retry-only dispatch-code-voters harness sections into dedicated shard rows, and now to 20
+# retry-only agent-voters pytest slices into dedicated shard rows, and now to 20
 # after gating the three previously-ungated Regression 1/2/3 blocks in
-# test-dispatch-code-voters.sh into two new sections (regressions-r1-r2, regressions-r3-codex),
+# python/test_agent_voters.py into two new sections (regressions-r1-r2, regressions-r3-codex),
 # folding Regression 3's claude case into the edge shard as edge-and-r3-claude, and splitting
 # test-review-and-fix into dispatch/convergence sections (plus a parsers slice for Step 5 KV parsing) to shrink shard 13). Rebalanced 2026-05-31: fourth-pass LPT dropped test-ship-pr from CI shards;
 # the Python ship driver is the shipped default after the sh-to-py cutover.
@@ -848,28 +848,28 @@ test-check-reviewer-failure-threshold:
 
 .PHONY: test-dispatch-code-voters-happy test-dispatch-code-voters-edge-and-r3-claude test-dispatch-code-voters-retry-claude test-dispatch-code-voters-retry-codex-success test-dispatch-code-voters-retry-cursor test-dispatch-code-voters-retry-codex-fail-and-fallback test-dispatch-code-voters-regressions-r1-r2 test-dispatch-code-voters-regressions-r3-codex
 test-dispatch-code-voters-happy:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-dispatch-code-voters.sh --section happy
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_agent_voters.py
 
 test-dispatch-code-voters-edge-and-r3-claude:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-dispatch-code-voters.sh --section edge-and-r3-claude
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_agent_voters.py
 
 test-dispatch-code-voters-regressions-r1-r2:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-dispatch-code-voters.sh --section regressions-r1-r2
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_agent_voters.py
 
 test-dispatch-code-voters-regressions-r3-codex:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-dispatch-code-voters.sh --section regressions-r3-codex
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_agent_voters.py
 
 test-dispatch-code-voters-retry-claude:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-dispatch-code-voters.sh --section retry-claude
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_agent_voters.py
 
 test-dispatch-code-voters-retry-codex-success:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-dispatch-code-voters.sh --section retry-codex-success
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_agent_voters.py
 
 test-dispatch-code-voters-retry-cursor:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-dispatch-code-voters.sh --section retry-cursor
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_agent_voters.py
 
 test-dispatch-code-voters-retry-codex-fail-and-fallback:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-dispatch-code-voters.sh --section retry-codex-fail-and-fallback
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_agent_voters.py
 
 test-emit-tally:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_tally.py -k emit_tally

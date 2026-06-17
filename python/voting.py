@@ -467,6 +467,7 @@ def is_harness_review_path(path: str | Path) -> bool:
     text = str(path)
     patterns = (
         "test-dispatch-code-voters.",
+        "test_agent_voters.",
         "test-dispatch-plan-voters.",
         "test-plan-review-loop.",
         "test-collect-",
@@ -503,7 +504,7 @@ def check_voter_parse_rate(
     slot: str = "",
     log_mode: str = "log",
     plugin_root: str = "",
-    dispatch_label: str = "dispatch-code-voters.sh",
+    dispatch_label: str = "agent dispatch-voters",
 ) -> str:
     voter_path = Path(voter_file)
     diag_file = voter_parse_rate_diag_path(voter_path)
@@ -586,7 +587,7 @@ def _parse_rate_common_parser(prog: str) -> argparse.ArgumentParser:
     parser.add_argument("--slot", default="")
     parser.add_argument("--log-mode", default="log")
     parser.add_argument("--plugin-root", default="")
-    parser.add_argument("--dispatch-label", default="dispatch-code-voters.sh")
+    parser.add_argument("--dispatch-label", default="agent dispatch-voters")
     return parser
 
 

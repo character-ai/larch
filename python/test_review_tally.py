@@ -218,14 +218,14 @@ def test_tally_scope_fit_drift_reclassifies_out_of_diff(tmp_path: Path) -> None:
 - **Concern**: Usage CI bullet still documents harnesses-1 through harnesses-10 after eleven-way sharding.
 - **Suggested revision**: Update to reflect 11 shards.
 
-### FINDING_2: **Important** — `correctness` — `scripts/dispatch-code-voters.sh:42`
+### FINDING_2: **Important** — `correctness` — `python/cli.py:42`
 - **Reviewer**: Codex-Structure
 - **Concern**: Null check missing on return path.
 - **Suggested revision**: Add nil guard.
 """,
         encoding="utf-8",
     )
-    _ = (case / "scope-files.txt").write_text("scripts/dispatch-code-voters.sh\n", encoding="utf-8")
+    _ = (case / "scope-files.txt").write_text("python/cli.py\n", encoding="utf-8")
     for name in ("cursor-vote-output.txt", "codex-vote-output.txt", "claude-vote-output.txt"):
         _ = (case / name).write_text("FINDING_1: YES\nFINDING_2: YES\n", encoding="utf-8")
 
@@ -262,7 +262,7 @@ def test_tally_plan_file_scope_fit_exemption(tmp_path: Path) -> None:
 """,
         encoding="utf-8",
     )
-    _ = (case / "scope-files.txt").write_text("scripts/dispatch-code-voters.sh\n", encoding="utf-8")
+    _ = (case / "scope-files.txt").write_text("python/cli.py\n", encoding="utf-8")
     _ = (case / "plan.txt").write_text("Touch docs/linting.md per plan section 3.\n", encoding="utf-8")
     for name in ("cursor-vote-output.txt", "codex-vote-output.txt", "claude-vote-output.txt"):
         _ = (case / name).write_text("FINDING_1: YES\n", encoding="utf-8")

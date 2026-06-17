@@ -1,0 +1,528 @@
+# pyright: reportUnusedCallResult=false
+"""Code-review voter dispatcher."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+import tempfile
+from contextlib import suppress
+from dataclasses import dataclass
+from pathlib import Path
+from collections.abc import Sequence
+
+import logging_util
+import proc
+
+_PLUGIN_ROOT = Path(__file__).resolve().parents[1]
+DISPATCH_LABEL = "agent dispatch-voters"
+MODE = "description"
+VOTER_PANEL_ROLE = "scrupulous senior code reviewer on a 3-judge voting panel deciding which proposed code-review findings should be accepted"
+
+
+@dataclass(frozen=True)
+class Options:
+    ballot_file: str
+    review_tmpdir: str
+    codex_available: str
+    cursor_available: str
+    session_env_path: str = ""
+    diff_file: str = ""
+    plan_file: str = ""
+    round_num: int = 1
+
+
+@dataclass
+class DispatchState:
+    voter_1_path: str
+    voter_2_path: str = ""
+    voter_3_path: str = ""
+    voter_1_tool: str = "claude"
+    voter_2_tool: str = "codex"
+    voter_3_tool: str = "cursor"
+    voter_1_status: str = "launched"
+    voter_2_status: str = "launched"
+    voter_3_status: str = "launched"
+    voter_1_parse_rate_status: str = "SKIPPED"
+    voter_2_parse_rate_status: str = "SKIPPED"
+    voter_3_parse_rate_status: str = "SKIPPED"
+
+
+class ValidationError(RuntimeError):
+    pass
+
+
+def _plugin_root() -> Path:
+    return Path(os.environ.get("CLAUDE_PLUGIN_ROOT", str(_PLUGIN_ROOT))).resolve()
+
+
+def _cli_path() -> Path:
+    return _plugin_root() / "python" / "cli.py"
+
+
+def _cli_argv(*subcommand: str) -> list[str]:
+    return [sys.executable, str(_cli_path()), *subcommand]
+
+
+def _err(message: str) -> None:
+    logging_util.diagnostic(message)
+
+
+def _validate_bool(raw: str, flag: str) -> None:
+    if raw not in {"true", "false"}:
+        raise ValidationError(f"agent dispatch-voters: {flag} must be true or false")
+
+
+def _validate_options(opts: Options) -> None:
+    if not opts.ballot_file or not Path(opts.ballot_file).is_file():
+        raise ValidationError("agent dispatch-voters: --ballot-file must name a file")
+    if not opts.review_tmpdir:
+        raise ValidationError("agent dispatch-voters: --review-tmpdir is required")
+    _validate_bool(opts.codex_available, "--codex-available")
+    _validate_bool(opts.cursor_available, "--cursor-available")
+    if opts.round_num <= 0:
+        raise ValidationError("agent dispatch-voters: --round-num must be a positive integer")
+
+
+def _make_bounded_context_copy(review_tmpdir: Path, label: str, src: str, max_bytes: int) -> str:
+    if not src or not Path(src).is_file():
+        return ""
+    dest = review_tmpdir / f"{label}-context.txt"
+    dest.write_bytes(Path(src).read_bytes()[:max_bytes])
+    return str(dest)
+
+
+def _context_args(review_tmpdir: Path, diff_file: str, plan_file: str) -> tuple[list[str], str, str]:
+    bounded_diff = _make_bounded_context_copy(review_tmpdir, "diff", diff_file, 200000)
+    bounded_plan = _make_bounded_context_copy(review_tmpdir, "plan", plan_file, 60000)
+    ctx_args: list[str] = []
+    if bounded_diff:
+        ctx_args.extend(["--diff-file", bounded_diff])
+    if bounded_plan:
+        ctx_args.extend(["--plan-file", bounded_plan])
+    return ctx_args, bounded_diff, bounded_plan
+
+
+def _parse_rate_ctx_args(bounded_diff: str, bounded_plan: str) -> list[str]:
+    args: list[str] = []
+    if bounded_diff:
+        args.extend(["--ctx=--diff-file", "--ctx", bounded_diff])
+    if bounded_plan:
+        args.extend(["--ctx=--plan-file", "--ctx", bounded_plan])
+    return args
+
+
+def _make_voter_prompt_file(opts: Options, review_tmpdir: Path, label: str) -> str:
+    prompt_file = review_tmpdir / f"{label}-vote-prompt.txt"
+    result = proc.run(
+        [
+            *_cli_argv("render", "voter"),
+            "--ballot-file",
+            opts.ballot_file,
+            "--panel-role",
+            VOTER_PANEL_ROLE,
+            "--id-grammar",
+            "finding-oos",
+            "--verification-context",
+            "code",
+        ]
+    )
+    with prompt_file.open("w", encoding="utf-8") as handle:
+        _ = handle.write(result.stdout)
+    if result.returncode != 0:
+        _err(f"agent dispatch-voters: python/cli.py render voter failed for {label} voter; aborting")
+        raise SystemExit(2)
+    if "Read the ballot from this path" not in result.stdout:
+        _err(f"agent dispatch-voters: python/cli.py render voter output for {label} voter is missing ballot pointer; aborting")
+        raise SystemExit(2)
+    return str(prompt_file)
+
+
+def _launch_claude_voter(voter_1_path: str, prompt_file: str, ctx_args: Sequence[str]) -> subprocess.Popen[bytes]:
+    stderr_path = f"{voter_1_path}.launcher-stderr"
+    with Path(stderr_path).open("wb") as stderr_handle:
+        return subprocess.Popen(
+            [
+                *_cli_argv("agent", "launch-claude-review"),
+                "--output",
+                voter_1_path,
+                "--prompt-file",
+                prompt_file,
+                "--mode",
+                MODE,
+                "--role",
+                "voter",
+                "--timeout",
+                "1200",
+                "--timing-task-kind",
+                "claude-code-voter",
+                *ctx_args,
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=stderr_handle,
+        )
+
+
+def _write_waterfall_manifest(review_tmpdir: Path, codex_prompt: str, cursor_prompt: str) -> str:
+    manifest = review_tmpdir / "code-voter-slots.ndjson"
+    rows = [
+        {"slot": "voter-2", "tool": "codex", "output": str(review_tmpdir / "codex-vote-output.txt"), "prompt_file": codex_prompt},
+        {"slot": "voter-3", "tool": "cursor", "output": str(review_tmpdir / "cursor-vote-output.txt"), "prompt_file": cursor_prompt},
+    ]
+    with manifest.open("w", encoding="utf-8") as handle:
+        for row in rows:
+            _ = handle.write(json.dumps(row, separators=(",", ":")) + "\n")
+    return str(manifest)
+
+
+def _dispatch_waterfall(opts: Options, manifest: str, ctx_args: Sequence[str]) -> str:
+    result = proc.run(
+        [
+            *_cli_argv("agent", "dispatch-waterfall"),
+            "--slots-file",
+            manifest,
+            "--codex-present",
+            opts.codex_available,
+            "--cursor-present",
+            opts.cursor_available,
+            "--mode",
+            MODE,
+            "--timeout",
+            "1200",
+            "--no-fallback",
+            *ctx_args,
+        ]
+    )
+    if result.returncode != 0:
+        _err(f"agent dispatch-voters: agent dispatch-waterfall exited {result.returncode} — proceeding with partial or empty result")
+    return result.stdout
+
+
+def _append_voter1_failure(opts: Options, review_tmpdir: Path, voter_1_path: str, voter1_rc: int) -> None:
+    diag = review_tmpdir / "voter1-diag.txt"
+    output_path = Path(voter_1_path)
+    output_bytes = 0
+    try:
+        output_bytes = output_path.stat().st_size
+    except OSError:
+        output_bytes = 0
+    lines = [f"voter1_rc={voter1_rc}", f"output_bytes={output_bytes}"]
+    if voter1_rc != 0 and output_path.is_file() and output_path.stat().st_size > 0:
+        lines.extend(["--- first 200 bytes of voter output ---", output_path.read_bytes()[:200].decode("utf-8", errors="replace")])
+    diag_path = Path(f"{voter_1_path}.diag")
+    if diag_path.is_file() and diag_path.stat().st_size > 0:
+        lines.extend(["--- first 200 bytes of .diag ---", diag_path.read_bytes()[:200].decode("utf-8", errors="replace")])
+    stderr_path = Path(f"{voter_1_path}.launcher-stderr")
+    if stderr_path.is_file() and stderr_path.stat().st_size > 0:
+        lines.extend(["--- launcher stderr (first 500 bytes) ---", stderr_path.read_bytes()[:500].decode("utf-8", errors="replace")])
+    with diag.open("w", encoding="utf-8") as handle:
+        _ = handle.write("\n".join(lines) + "\n")
+
+    issues_log = os.environ.get("LARCH_EXECUTION_ISSUES_LOG", "")
+    if not issues_log and opts.session_env_path:
+        issues_log = str(Path(opts.session_env_path).parent / "execution-issues.md")
+    if not issues_log and os.environ.get("IMPLEMENT_TMPDIR"):
+        issues_log = str(Path(os.environ["IMPLEMENT_TMPDIR"]) / "execution-issues.md")
+    if not issues_log:
+        issues_log = str(review_tmpdir / "execution-issues.md")
+    status_label = "warning" if voter1_rc == 0 else "failed"
+    proc.run(
+        [
+            *_cli_argv("run-log", "append-failure"),
+            "--log",
+            issues_log,
+            "--site",
+            "agent dispatch-voters voter1",
+            "--tool",
+            "agent launch-claude-review (claude voter)",
+            "--exit-code",
+            str(voter1_rc),
+            "--status-label",
+            status_label,
+            "--category",
+            "Warnings",
+            "--output-file",
+            str(diag),
+            "--redact",
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
+def _parse_waterfall_output(output: str) -> tuple[list[str], list[str], str]:
+    all_outputs = ""
+    all_tools = ""
+    dispatch_ok = "true"
+    for line in output.splitlines():
+        key, sep, value = line.partition("=")
+        if not sep:
+            continue
+        if key == "ALL_OUTPUT_FILES":
+            all_outputs = value
+        elif key == "ALL_OUTPUT_TOOLS":
+            all_tools = value
+        elif key == "DISPATCH_OK":
+            dispatch_ok = value
+        elif key == "WARN":
+            logging_util.emit_kv("WARN", value)
+    return all_outputs.split(), all_tools.split(), dispatch_ok
+
+
+def _read_done_exit_code(path: str) -> str:
+    if not path or not Path(path).is_file():
+        return ""
+    try:
+        return Path(path).read_text(encoding="utf-8", errors="replace").splitlines()[0]
+    except (OSError, IndexError):
+        return ""
+
+
+def _wait_sentinels(review_tmpdir: Path, sentinels: Sequence[str]) -> tuple[bool, int]:
+    voter1_timed_out = False
+    wait_rc = 0
+    if not sentinels:
+        return voter1_timed_out, wait_rc
+    timeout = os.environ.get("LARCH_VOTER_WAIT_TIMEOUT", "60")
+    fd, wait_out = tempfile.mkstemp(prefix="voter-wait.", dir=str(review_tmpdir))
+    os.close(fd)
+    wait_path = Path(wait_out)
+    try:
+        with wait_path.open("wb") as handle:
+            result = proc.run(
+                [*_cli_argv("agent", "wait-reviewers"), "--timeout", timeout, *sentinels],
+                stdout=handle.fileno(),
+                stderr=handle.fileno(),
+            )
+        wait_rc = result.returncode
+        lines = wait_path.read_text(encoding="utf-8", errors="replace").splitlines()
+        for line in lines:
+            if line.startswith("TIMEOUT "):
+                _err(f"agent dispatch-voters: voter sentinel {line}")
+                if line.startswith("TIMEOUT 1 "):
+                    voter1_timed_out = True
+        if wait_rc != 0:
+            _err(f"agent dispatch-voters: wait-reviewers exited {wait_rc} (usage/config error) - proceeding with whatever state exists")
+    finally:
+        with suppress(FileNotFoundError):
+            wait_path.unlink()
+    return voter1_timed_out, wait_rc
+
+
+def _run_parse_rate_retry(vpr_args: Sequence[str], *, slot: str, voter_file: str, voter_tool: str, prompt_file: str) -> str:
+    result = proc.run(
+        [
+            *_cli_argv("voting", "parse-rate-retry"),
+            *vpr_args,
+            "--slot",
+            slot,
+            "--voter-file",
+            voter_file,
+            "--voter-tool",
+            voter_tool,
+            "--prompt-file",
+            prompt_file,
+        ]
+    )
+    lines = [line for line in result.stdout.splitlines() if line]
+    return lines[-1] if lines else ""
+
+
+def _file_nonempty(path: str) -> bool:
+    return bool(path) and Path(path).is_file() and Path(path).stat().st_size > 0
+
+
+def _effective_judges(state: DispatchState) -> int:
+    count = 0
+    for status, path, parse_rate_status in (
+        (state.voter_1_status, state.voter_1_path, state.voter_1_parse_rate_status),
+        (state.voter_2_status, state.voter_2_path, state.voter_2_parse_rate_status),
+        (state.voter_3_status, state.voter_3_path, state.voter_3_parse_rate_status),
+    ):
+        if status not in {"failed", "skipped"} and parse_rate_status != "NOT_SUBSTANTIVE" and _file_nonempty(path):
+            count += 1
+    return count
+
+
+def _write_voter_paths_file(review_tmpdir: Path, state: DispatchState) -> str:
+    paths_file = review_tmpdir / "code-voter-paths.txt"
+    fd, tmp = tempfile.mkstemp(prefix=".code-voter-paths.", dir=str(review_tmpdir))
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        if state.voter_1_path:
+            _ = handle.write(state.voter_1_path + "\n")
+        if state.voter_2_status != "skipped" and state.voter_2_path:
+            _ = handle.write(state.voter_2_path + "\n")
+        if state.voter_3_status != "skipped" and state.voter_3_path:
+            _ = handle.write(state.voter_3_path + "\n")
+    Path(tmp).replace(paths_file)
+    return str(paths_file)
+
+
+def _emit_final_kvs(state: DispatchState, voter_paths_file: str, dispatch_ok: str) -> None:
+    logging_util.emit_kv("VOTER_1_PATH", state.voter_1_path)
+    logging_util.emit_kv("VOTER_1_TOOL", state.voter_1_tool)
+    logging_util.emit_kv("VOTER_1_STATUS", state.voter_1_status)
+    logging_util.emit_kv("VOTER_1_PARSE_RATE_STATUS", state.voter_1_parse_rate_status)
+    logging_util.emit_kv("VOTER_2_PATH", state.voter_2_path)
+    logging_util.emit_kv("VOTER_2_TOOL", state.voter_2_tool)
+    logging_util.emit_kv("VOTER_2_STATUS", state.voter_2_status)
+    logging_util.emit_kv("VOTER_2_PARSE_RATE_STATUS", state.voter_2_parse_rate_status)
+    logging_util.emit_kv("VOTER_3_PATH", state.voter_3_path)
+    logging_util.emit_kv("VOTER_3_TOOL", state.voter_3_tool)
+    logging_util.emit_kv("VOTER_3_STATUS", state.voter_3_status)
+    logging_util.emit_kv("VOTER_3_PARSE_RATE_STATUS", state.voter_3_parse_rate_status)
+    logging_util.emit_kv("VOTER_PATHS_FILE", voter_paths_file)
+    logging_util.emit_kv("DISPATCH_OK", dispatch_ok)
+
+
+def dispatch_voters(opts: Options) -> int:
+    _validate_options(opts)
+    if not _cli_path().is_file():
+        _err(f"agent dispatch-voters: missing python/cli.py at {_cli_path()}")
+        return 2
+    review_tmpdir = Path(opts.review_tmpdir)
+    review_tmpdir.mkdir(parents=True, exist_ok=True)
+    ctx_args, bounded_diff, bounded_plan = _context_args(review_tmpdir, opts.diff_file, opts.plan_file)
+
+    voter_1_path = str(review_tmpdir / "claude-vote-output.txt")
+    claude_prompt = _make_voter_prompt_file(opts, review_tmpdir, "claude")
+    codex_prompt = _make_voter_prompt_file(opts, review_tmpdir, "codex")
+    cursor_prompt = _make_voter_prompt_file(opts, review_tmpdir, "cursor")
+
+    claude_process = _launch_claude_voter(voter_1_path, claude_prompt, ctx_args)
+    manifest = _write_waterfall_manifest(review_tmpdir, codex_prompt, cursor_prompt)
+    waterfall_output = _dispatch_waterfall(opts, manifest, ctx_args)
+    voter1_rc = claude_process.wait()
+
+    if voter1_rc != 0 or not _file_nonempty(voter_1_path):
+        _append_voter1_failure(opts, review_tmpdir, voter_1_path, voter1_rc)
+
+    outputs, tools, dispatch_ok = _parse_waterfall_output(waterfall_output)
+    state = DispatchState(voter_1_path=voter_1_path)
+    for idx, tool in enumerate(tools):
+        output = outputs[idx] if idx < len(outputs) else ""
+        if tool == "codex":
+            state.voter_2_path = output
+        elif tool == "cursor":
+            state.voter_3_path = output
+    if opts.codex_available != "true":
+        state.voter_2_status = "skipped"
+    if opts.cursor_available != "true":
+        state.voter_3_status = "skipped"
+
+    sentinels = [f"{state.voter_1_path}.done"]
+    if state.voter_2_status != "skipped" and state.voter_2_path:
+        sentinels.append(f"{state.voter_2_path}.done")
+    if state.voter_3_status != "skipped" and state.voter_3_path:
+        sentinels.append(f"{state.voter_3_path}.done")
+    voter1_timed_out, wait_rc = _wait_sentinels(review_tmpdir, sentinels)
+
+    if (
+        not Path(f"{state.voter_1_path}.done").is_file()
+        and voter1_rc == 0
+        and _file_nonempty(state.voter_1_path)
+        and not voter1_timed_out
+        and wait_rc == 0
+    ):
+        Path(f"{state.voter_1_path}.done").write_text("0\n", encoding="utf-8")
+
+    voter1_done_rc = _read_done_exit_code(f"{state.voter_1_path}.done")
+    voter2_done_rc = _read_done_exit_code(f"{state.voter_2_path}.done")
+    voter3_done_rc = _read_done_exit_code(f"{state.voter_3_path}.done")
+    if not (voter1_rc == 0 and _file_nonempty(state.voter_1_path) and voter1_done_rc == "0"):
+        state.voter_1_status = "failed"
+    if not (state.voter_2_status == "skipped" or (_file_nonempty(state.voter_2_path) and voter2_done_rc == "0")):
+        state.voter_2_status = "failed"
+    if not (state.voter_3_status == "skipped" or (_file_nonempty(state.voter_3_path) and voter3_done_rc == "0")):
+        state.voter_3_status = "failed"
+
+    vpr_args = [
+        "--ballot-file",
+        opts.ballot_file,
+        "--id-grammar",
+        "finding-oos",
+        "--review-tmpdir",
+        opts.review_tmpdir,
+        "--plugin-root",
+        str(_plugin_root()),
+        "--dispatch-label",
+        DISPATCH_LABEL,
+        "--retry-prefix-kind",
+        "code",
+        "--launch-mode",
+        MODE,
+        *_parse_rate_ctx_args(bounded_diff, bounded_plan),
+    ]
+    if state.voter_1_status != "failed":
+        state.voter_1_parse_rate_status = _run_parse_rate_retry(
+            vpr_args, slot="1", voter_file=state.voter_1_path, voter_tool=state.voter_1_tool, prompt_file=claude_prompt
+        )
+    if state.voter_2_status not in {"failed", "skipped"}:
+        state.voter_2_parse_rate_status = _run_parse_rate_retry(
+            vpr_args, slot="2", voter_file=state.voter_2_path, voter_tool=state.voter_2_tool, prompt_file=codex_prompt
+        )
+    if state.voter_3_status not in {"failed", "skipped"}:
+        state.voter_3_parse_rate_status = _run_parse_rate_retry(
+            vpr_args, slot="3", voter_file=state.voter_3_path, voter_tool=state.voter_3_tool, prompt_file=cursor_prompt
+        )
+
+    expected_judges = 1
+    if opts.codex_available == "true":
+        expected_judges += 1
+    if opts.cursor_available == "true":
+        expected_judges += 1
+    effective_judges = _effective_judges(state)
+    if effective_judges < expected_judges:
+        warn_msg = f"**⚠ Degraded code-review panel: {effective_judges}/{expected_judges} effective judges produced output.**"
+        _err(warn_msg)
+        logging_util.emit_kv("DEGRADED_PANEL_WARNING", warn_msg)
+
+    voter_paths_file = _write_voter_paths_file(review_tmpdir, state)
+    if state.voter_1_status == "failed":
+        dispatch_ok = "false"
+    _emit_final_kvs(state, voter_paths_file, dispatch_ok)
+    return 0
+
+
+def _parse_args(argv: Sequence[str]) -> Options | int:
+    parser = argparse.ArgumentParser(prog="agent dispatch-voters")
+    parser.add_argument("--ballot-file", required=True)
+    parser.add_argument("--review-tmpdir", required=True)
+    parser.add_argument("--codex-available", required=True)
+    parser.add_argument("--cursor-available", required=True)
+    parser.add_argument("--session-env-path", default=os.environ.get("SESSION_ENV_PATH", ""))
+    parser.add_argument("--diff-file", default="")
+    parser.add_argument("--plan-file", default="")
+    parser.add_argument("--round-num", default="1")
+    args = parser.parse_args(argv)
+    if not str(args.round_num).isdigit() or int(str(args.round_num), 10) <= 0:
+        raise ValidationError("agent dispatch-voters: --round-num must be a positive integer")
+    return Options(
+        ballot_file=str(args.ballot_file),
+        review_tmpdir=str(args.review_tmpdir),
+        codex_available=str(args.codex_available),
+        cursor_available=str(args.cursor_available),
+        session_env_path=str(args.session_env_path),
+        diff_file=str(args.diff_file),
+        plan_file=str(args.plan_file),
+        round_num=int(str(args.round_num), 10),
+    )
+
+
+def dispatch_voters_main(argv: list[str]) -> int:
+    logging_util.quiet_init(argv0="agent dispatch-voters")
+    try:
+        parsed = _parse_args(argv)
+        if isinstance(parsed, int):
+            return parsed
+        return dispatch_voters(parsed)
+    except ValidationError as exc:
+        _err(str(exc))
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(dispatch_voters_main(sys.argv[1:]))
