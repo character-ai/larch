@@ -175,6 +175,23 @@ if grep -Fq -- 'unknown/claude.out' "$OUT"; then fail 'ASCII chart must filter l
 if grep -Fq -- 'unknown/codex.out' "$OUT"; then fail 'ASCII chart must filter symmetric launcher probe rows'; fi
 grep -Fq -- 'cursor/correctness' "$OUT" || fail 'ASCII chart must render round 2 task'
 grep -Fq -- '### Round 2 reviewer timing' "$OUT" || fail 'ASCII chart must render round 2 heading'
+ROUND2_GANTT="$WORK/round-2-gantt.md"
+awk '
+  /^### Round 2 reviewer timing$/ { in_section=1 }
+  in_section {
+    print
+    if ($0 == "```") {
+      fence_count += 1
+      if (fence_count == 2) {
+        exit
+      }
+    }
+  }
+' "$OUT" >"$ROUND2_GANTT"
+grep -Fq -- 'cursor/correctness' "$ROUND2_GANTT" || fail 'round 2 Gantt must include round 2 vendor rows'
+if grep -Fq -- 'cursor/structure' "$ROUND2_GANTT" || grep -Fq -- 'aggregator' "$ROUND2_GANTT"; then
+    fail 'round 2 settled Gantt must omit round 1 vendor rows'
+fi
 grep -Fq -- '120s' "$OUT" || fail 'ASCII chart must include bare duration suffix'
 if grep -Eq '\([0-9]+-[0-9]+\)' "$OUT"; then fail 'ASCII chart must not include parenthesized ranges'; fi
 assert_ascii_chart_invariants "$OUT"

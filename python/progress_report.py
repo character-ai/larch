@@ -18,6 +18,10 @@ from typing import cast
 from gantt import GanttRow, format_mss, render_gantt
 
 TIMING_MARK_MIN_COLS = 5
+TIMING_ROUND_MIN_COLS = 8
+TIMING_ROUND_SKILL_COL = 3
+TIMING_ROUND_ROUND_NUM_COL = 5
+TIMING_ROUND_END_COL = 7
 TIMING_VENDOR_MIN_COLS = 13
 TIMING_VENDOR_VENDOR_COL = 5
 TIMING_VENDOR_KIND_COL = 6
@@ -574,15 +578,45 @@ def _progress_vendor_rows(
     return [GanttRow(label, start_s, end_s) for start_s, end_s, label in rows[:PROGRESS_GANTT_ROW_CAP]]
 
 
+def _prior_immediate_round_end_s(timing_ledger: Path, skill: str, round_num: int) -> int | None:
+    if round_num <= 1:
+        return None
+    try:
+        lines = timing_ledger.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return None
+    prior_round = str(round_num - 1)
+    ends: list[int] = []
+    for line in lines:
+        cols = line.split("\t")
+        if len(cols) < TIMING_ROUND_MIN_COLS:
+            continue
+        if (
+            cols[0] != "v1"
+            or cols[1] != "round"
+            or cols[TIMING_ROUND_SKILL_COL] != skill
+            or cols[TIMING_ROUND_ROUND_NUM_COL] != prior_round
+        ):
+            continue
+        try:
+            ends.append(int(cols[TIMING_ROUND_END_COL]))
+        except ValueError:
+            continue
+    return max(ends) if ends else None
+
+
 def _render_inflight_gantt(
     round_dir: Path,
     round_num: int,
+    skill: str,
     timing_ledger: Path,
     label_manifest_paths: list[Path],
     window_start_s: int | None = None,
 ) -> str:
     start_s = _read_epoch_file(round_dir / "round-start-s")
-    if start_s is None:
+    if start_s is None and round_num > 1:
+        start_s = _prior_immediate_round_end_s(timing_ledger, skill, round_num)
+    if start_s is None and round_num == 1:
         start_s = window_start_s
     if start_s is None:
         mtime = _path_mtime_s(round_dir)
@@ -641,6 +675,7 @@ def _render_step5(implement_tmpdir: Path, run_id: str, window_start_s: int | Non
         inflight = _render_inflight_gantt(
             round_dir,
             round_num,
+            "implement",
             implement_tmpdir / "timing-ledger.tsv",
             [round_dir / "panel-manifest.ndjson"],
             window_start_s,
@@ -657,8 +692,11 @@ def _render_step5(implement_tmpdir: Path, run_id: str, window_start_s: int | Non
 
 
 def _round_dir_is_fresh(round_dir: Path, mark_ts: int | None) -> bool:
-    if (round_dir / "round-start-s").is_file():
-        return True
+    start_file = round_dir / "round-start-s"
+    if start_file.is_file():
+        start_s = _read_epoch_file(start_file)
+        if start_s is not None and (mark_ts is None or start_s > mark_ts):
+            return True
     if mark_ts is None:
         return round_dir.is_dir()
     try:
@@ -707,6 +745,8 @@ def _is_design_plan_review_step(step_label: str) -> bool:
 
 
 def _read_epoch_file(path: Path) -> int | None:
+    if path.is_symlink():
+        return None
     try:
         raw = path.read_text(encoding="utf-8", errors="replace").strip()
     except OSError:
@@ -1011,6 +1051,7 @@ def _render_design_plan_review(design_tmpdir: Path, start_s: int | None) -> str:
         inflight = _render_inflight_gantt(
             round_dir,
             round_num,
+            "design",
             design_tmpdir / "timing-ledger.tsv",
             [manifest],
             start_s,

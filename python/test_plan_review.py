@@ -17,6 +17,17 @@ def test_embedded_review_design_step3_loop_matches_live_script() -> None:
     assert live == embedded
 
 
+def test_embedded_review_design_step3_loop_persists_round_start() -> None:
+    body = plan_review.legacy_asset_bytes("skills/design/scripts/review-design-step3-loop.sh").decode("utf-8")
+    helper = body[body.index("step3_loop_persist_round_start_s() {"):body.index("step3_loop_phase_file() {")]
+    assert 'python3 "$PLUGIN_ROOT/python/cli.py" plan-review persist-round-start-s' in helper
+    assert '--design-tmpdir "$DESIGN_TMPDIR" --round-num "$round_num" --start-s "$start_s"' in helper
+    round_start_idx = body.index('round_start_s="$(step3_loop_now_s)"')
+    persist_idx = body.index('step3_loop_persist_round_start_s "$round_num" "$round_start_s"', round_start_idx)
+    body_idx = body.index("run_step3_round_body", persist_idx)
+    assert round_start_idx < persist_idx < body_idx
+
+
 def test_embedded_plan_review_loop_uses_migrated_collector() -> None:
     # Regression for #4417: the results-collector port retired the Bash collector
     # wrapper but left the embedded plan-review loop still invoking it, so every
@@ -183,6 +194,27 @@ def test_record_report_evidence_requires_design_tmpdir() -> None:
     )
     assert proc.returncode == 2
     assert "design-tmpdir is required" in proc.stderr
+
+
+def test_persist_round_start_s_rejects_disallowed_design_tmpdir() -> None:
+    disallowed = ROOT / "python" / ".persist-round-start-disallowed-test-dir"
+    disallowed.mkdir(exist_ok=True)
+    try:
+        assert plan_review.persist_design_round_start_s(disallowed, 1, 100) == 1
+        proc = run_cli(
+            "plan-review",
+            "persist-round-start-s",
+            "--design-tmpdir",
+            str(disallowed),
+            "--round-num",
+            "1",
+            "--start-s",
+            "100",
+        )
+        assert proc.returncode == 1
+    finally:
+        if disallowed.exists():
+            disallowed.rmdir()
 
 
 def test_record_report_evidence_rejects_relative_tmpdir() -> None:

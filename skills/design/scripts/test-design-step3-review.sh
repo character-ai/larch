@@ -42,6 +42,28 @@ grep -Fq -- '--outcome failed-postplan' "$LOOP" || fail 'failed-postplan outcome
 # shellcheck disable=SC2016
 ( command grep -Fq -- '--trigger "$trigger"' "$LOOP" ) || fail 'record-escalation --trigger missing'
 grep -Fq 'main-agent-vote-required|main-agent-apply-required|postplan-operator-required|panel-failed|tally-error|degraded-empty-collector' "$LOOP" || fail 'escalation/degradation status set missing'
+python3 - "$LOOP" <<'PY' || fail 'round-start persist contract missing or misordered'
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+body = Path(sys.argv[1]).read_text(encoding="utf-8")
+helper = body[body.index("step3_loop_persist_round_start_s() {"):body.index("step3_loop_phase_file() {")]
+required = [
+    'python3 "$PLUGIN_ROOT/python/cli.py" plan-review persist-round-start-s',
+    '--design-tmpdir "$DESIGN_TMPDIR" --round-num "$round_num" --start-s "$start_s"',
+]
+missing = [item for item in required if item not in helper]
+if missing:
+    raise SystemExit(f"missing helper substrings: {missing}")
+round_start_idx = body.index('round_start_s="$(step3_loop_now_s)"')
+persist_idx = body.index('step3_loop_persist_round_start_s "$round_num" "$round_start_s"', round_start_idx)
+body_idx = body.index('run_step3_round_body', persist_idx)
+if not (round_start_idx < persist_idx < body_idx):
+    raise SystemExit("persist call must be between round_start_s capture and run_step3_round_body")
+PY
+pass 'Step 3 loop persists round-start-s before round body with symlink guards'
 for status in panel-failed tally-error degraded-empty-collector; do
   grep -Fq "$status" "$MODULE" || fail "$status missing"
 done
@@ -85,6 +107,137 @@ for status in main-agent-vote-required main-agent-apply-required panel-failed pa
 done
 assert_escalation_recorded postplan-operator-required postplan
 pass 'Step 3 main-agent and degradation statuses record escalation evidence'
+
+D_ROUND_START=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-round-start.XXXXXX")
+cat >"$D_ROUND_START/continuation.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' 'PLAN_REVIEW_CONTINUE=false' 'ACCEPTED_COUNT=0' 'DEGRADED_PANEL=0'
+SH
+chmod +x "$D_ROUND_START/continuation.sh"
+cat >"$D_ROUND_START/source-live-loop.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+export DESIGN_TMPDIR="$1"
+export PLUGIN_ROOT="$2"
+export STARTING_ROUND=1
+export RUN_STEP3_CONTINUATION_SH="$DESIGN_TMPDIR/continuation.sh"
+emit() { printf '%s\n' "$*"; }
+emit_kv() { printf '%s=%s\n' "$1" "$2"; }
+larch_err() { printf '%s\n' "$*" >&2; }
+phase_driver_write_result_env() {
+  local result_env="$1"
+  shift
+  printf '%s\n' "$@" >"$result_env"
+}
+run_step3_round_body() {
+  : >"$DESIGN_TMPDIR/body-entered"
+  local waited=0
+  while [[ ! -f "$DESIGN_TMPDIR/release-body" && "$waited" -lt 50 ]]; do
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  LOOP_STATUS=complete
+  STEP3_REVIEW_ROUND_NUM=1
+  TALLY_PLAN_REVIEW_STATUS=ok
+}
+# shellcheck source=/dev/null
+source "$PLUGIN_ROOT/skills/design/scripts/review-design-step3-loop.sh"
+run_design_step3_loop
+SH
+chmod +x "$D_ROUND_START/source-live-loop.sh"
+"$D_ROUND_START/source-live-loop.sh" "$D_ROUND_START" "$ROOT" >"$D_ROUND_START/stdout.log" 2>"$D_ROUND_START/stderr.log" &
+round_start_pid=$!
+release_round_start_stub() {
+  touch "$D_ROUND_START/release-body" 2>/dev/null || true
+}
+wait_round_start_pid_bounded() {
+  local waited=0
+  while kill -0 "$round_start_pid" 2>/dev/null && [[ "$waited" -lt 50 ]]; do
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  if kill -0 "$round_start_pid" 2>/dev/null; then
+    kill "$round_start_pid" 2>/dev/null || true
+    waited=0
+    while kill -0 "$round_start_pid" 2>/dev/null && [[ "$waited" -lt 50 ]]; do
+      sleep 0.1
+      waited=$((waited + 1))
+    done
+    kill -9 "$round_start_pid" 2>/dev/null || true
+    wait "$round_start_pid" 2>/dev/null || true
+    return 1
+  fi
+  wait "$round_start_pid"
+}
+cleanup_round_start_harness() {
+  release_round_start_stub
+  if kill -0 "$round_start_pid" 2>/dev/null; then
+    kill "$round_start_pid" 2>/dev/null || true
+    local waited=0
+    while kill -0 "$round_start_pid" 2>/dev/null && [[ "$waited" -lt 50 ]]; do
+      sleep 0.1
+      waited=$((waited + 1))
+    done
+    kill -9 "$round_start_pid" 2>/dev/null || true
+  fi
+  wait "$round_start_pid" 2>/dev/null || true
+  rm -rf "$D_ROUND_START" 2>/dev/null || true
+}
+trap cleanup_round_start_harness EXIT
+for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do
+  [[ -f "$D_ROUND_START/body-entered" ]] && break
+  sleep 0.1
+done
+if [[ ! -f "$D_ROUND_START/body-entered" ]]; then
+  wait_round_start_pid_bounded || true
+  fail "live loop body did not start; stderr=$(cat "$D_ROUND_START/stderr.log")"
+fi
+[[ -f "$D_ROUND_START/plan-review/round-1/round-start-s" ]] || {
+  wait_round_start_pid_bounded || true
+  fail 'live loop must persist round-start-s before round body returns'
+}
+release_round_start_stub
+wait_round_start_pid_bounded || fail "live loop round-start harness failed; stderr=$(cat "$D_ROUND_START/stderr.log")"
+trap - EXIT
+rm -rf "$D_ROUND_START"
+pass 'Step 3 live loop creates round-start-s before the sourced round body returns'
+
+D_PERSIST_GUARD=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-persist-guard.XXXXXX")
+OUTSIDE=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-persist-outside.XXXXXX")
+# shellcheck disable=SC2016
+cat >"$D_PERSIST_GUARD/run-persist.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+export DESIGN_TMPDIR="$1"
+export PLUGIN_ROOT="$2"
+# shellcheck source=/dev/null
+source "$PLUGIN_ROOT/skills/design/scripts/review-design-step3-loop.sh"
+step3_loop_persist_round_start_s 1 12345
+SH
+chmod +x "$D_PERSIST_GUARD/run-persist.sh"
+ln -s "$OUTSIDE" "$D_PERSIST_GUARD/plan-review"
+"$D_PERSIST_GUARD/run-persist.sh" "$D_PERSIST_GUARD" "$ROOT"
+[[ ! -e "$OUTSIDE/round-1/round-start-s" ]] || fail 'persist must not follow symlinked plan-review parent'
+rm "$D_PERSIST_GUARD/plan-review"
+printf 'x\n' >"$D_PERSIST_GUARD/plan-review"
+set +e
+"$D_PERSIST_GUARD/run-persist.sh" "$D_PERSIST_GUARD" "$ROOT"
+file_parent_rc=$?
+set -e
+[[ "$file_parent_rc" -eq 0 ]] || fail "persist must not abort when plan-review parent is a file (rc=$file_parent_rc)"
+rm -rf "$D_PERSIST_GUARD" "$OUTSIDE"
+pass 'Step 3 persist helper skips symlink parent and tolerates mkdir failure'
+
+D_PERSIST_TOCTOU=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-persist-toctou.XXXXXX")
+OUTSIDE_TOCTOU=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-persist-toctou-outside.XXXXXX")
+mkdir -p "$D_PERSIST_TOCTOU/plan-review/round-1"
+ln -s "$OUTSIDE_TOCTOU/round-start-s" "$D_PERSIST_TOCTOU/plan-review/round-1/round-start-s"
+python3 "$ROOT/python/cli.py" plan-review persist-round-start-s \
+  --design-tmpdir "$D_PERSIST_TOCTOU" --round-num 1 --start-s 12345
+[[ ! -e "$OUTSIDE_TOCTOU/round-start-s" ]] || fail 'persist must not follow symlinked round-start-s'
+rm -rf "$D_PERSIST_TOCTOU" "$OUTSIDE_TOCTOU"
+pass 'Step 3 persist helper refuses symlinked round-start-s'
 
 if grep 'printf.*\*\*⚠ Step 3' "$WRAPPER" | grep -qv '>&2'; then
   fail 'design-step3-review.sh must route Step 3 markdown warnings to stderr'

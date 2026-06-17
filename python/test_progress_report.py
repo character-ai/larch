@@ -73,13 +73,31 @@ def _write_vendor_timing(
     vendor: str = "codex",
     kind: str = "codex-review",
     status: str = "complete",
+    skill: str = "implement",
 ) -> None:
     ledger.parent.mkdir(parents=True, exist_ok=True)
     duration = max(0, end_s - start_s)
     with ledger.open("a", encoding="utf-8") as handle:
         handle.write(
-            f"v1\tvendor\t{end_s}\timplement\t-\t{vendor}\t{kind}\t{start_s}\t{end_s}\t"
+            f"v1\tvendor\t{end_s}\t{skill}\t-\t{vendor}\t{kind}\t{start_s}\t{end_s}\t"
             f"{duration}\t{output}\t0\t{status}\n"
+        )
+
+
+def _write_round_timing(
+    ledger: Path,
+    *,
+    skill: str,
+    round_num: int,
+    start_s: int,
+    end_s: int,
+) -> None:
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+    duration = max(0, end_s - start_s)
+    with ledger.open("a", encoding="utf-8") as handle:
+        handle.write(
+            f"v1\tround\t{start_s}\t{skill}\t-\t{round_num}\t{start_s}\t{end_s}\t"
+            f"{duration}\t0\t0\t0\t-\n"
         )
 
 
@@ -719,6 +737,38 @@ def test_render_step5_mixed_state_appends_inflight_gantt(tmp_path: Path, monkeyp
     assert "cursor/slot" in report
 
 
+def test_render_step5_round_two_without_start_uses_prior_round_end_only(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(progress_report.time, "time", lambda: 300)
+    impl = tmp_path / "impl"
+    completed = impl / "round-1"
+    inflight = impl / "round-2"
+    current_output = inflight / "cursor-specialist-current-output.txt"
+    completed.mkdir(parents=True)
+    inflight.mkdir(parents=True)
+    (completed / "round-meta.json").write_text(_MINIMAL_ROUND_META, encoding="utf-8")
+    (inflight / "panel-manifest.ndjson").write_text(
+        f'{{"slot":"current","tool":"cursor","output":"{current_output}"}}\n',
+        encoding="utf-8",
+    )
+    _write_round_timing(impl / "timing-ledger.tsv", skill="implement", round_num=1, start_s=100, end_s=200)
+    _write_vendor_timing(impl / "timing-ledger.tsv", "cursor-specialist-round-one-output.txt", 120, 180)
+    _write_vendor_timing(impl / "timing-ledger.tsv", "aggregator-output.txt", 181, 190, vendor="claude", kind="vendor-misc")
+    _write_vendor_timing(impl / "timing-ledger.tsv", "claude-vote-output.txt", 191, 199, vendor="claude", kind="vote")
+    _write_vendor_timing(impl / "timing-ledger.tsv", str(current_output), 210, 260, vendor="cursor", kind="cursor-review")
+    monkeypatch.setattr(progress_report, "_render_review_detail", lambda _tmpdir, _run_id: "completed-detail")
+
+    report = progress_report._render_step5(impl, "run-1", 90)
+
+    assert "Round 2 reviewer timing" in report
+    assert "cursor/current" in report
+    assert "cursor/round-one" not in report
+    assert "aggregator" not in report
+    assert "claude/vote" not in report
+
+
 def test_render_design_plan_review_inflight_only_skips_detail(
     tmp_path: Path,
     monkeypatch,
@@ -822,6 +872,99 @@ def test_render_design_plan_review_mixed_state_appends_inflight_gantt(
     assert "completed-design-detail" in report
     assert "Round 2 reviewer timing" in report
     assert "codex/slot-1" in report
+
+
+def test_render_design_round_two_without_start_uses_prior_round_end_only(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(progress_report.time, "time", lambda: 300)
+    design = tmp_path / "design"
+    completed = design / "plan-review" / "round-1"
+    inflight = design / "plan-review" / "round-2"
+    current_output = design / "cursor-current-output.txt"
+    completed.mkdir(parents=True)
+    inflight.mkdir(parents=True)
+    (completed / "round-meta.json").write_text(_MINIMAL_ROUND_META, encoding="utf-8")
+    _write_output(current_output, 210)
+    _write_slot_manifest(inflight / "panel-manifest.ndjson", [current_output])
+    _set_mtime(inflight / "panel-manifest.ndjson", 205)
+    _write_round_timing(design / "timing-ledger.tsv", skill="design", round_num=1, start_s=100, end_s=200)
+    _write_vendor_timing(
+        design / "timing-ledger.tsv",
+        "cursor-specialist-round-one-output.txt",
+        120,
+        180,
+        skill="design",
+    )
+    _write_vendor_timing(
+        design / "timing-ledger.tsv",
+        "aggregator-output.txt",
+        181,
+        190,
+        vendor="claude",
+        kind="vendor-misc",
+        skill="design",
+    )
+    _write_vendor_timing(
+        design / "timing-ledger.tsv",
+        "claude-vote-output.txt",
+        191,
+        199,
+        vendor="claude",
+        kind="vote",
+        skill="design",
+    )
+    _write_vendor_timing(
+        design / "timing-ledger.tsv",
+        str(current_output),
+        210,
+        260,
+        vendor="cursor",
+        kind="cursor-review",
+        skill="design",
+    )
+    monkeypatch.setattr(progress_report, "_render_design_review_detail", lambda _tmpdir: "completed-design-detail")
+
+    report = progress_report._render_design_plan_review(design, 90)
+
+    assert "Round 2 reviewer timing" in report
+    assert "codex/slot-1" in report
+    assert "cursor/round-one" not in report
+    assert "aggregator" not in report
+    assert "claude/vote" not in report
+
+
+def test_render_inflight_gantt_ignores_round_n_minus_two_when_prior_round_missing(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(progress_report.time, "time", lambda: 500)
+    impl = tmp_path / "impl"
+    round_one = impl / "round-1"
+    round_two = impl / "round-2"
+    round_three = impl / "round-3"
+    current_output = round_three / "cursor-specialist-current-output.txt"
+    round_one.mkdir(parents=True)
+    round_two.mkdir(parents=True)
+    round_three.mkdir(parents=True)
+    (round_one / "round-meta.json").write_text(_MINIMAL_ROUND_META, encoding="utf-8")
+    (round_two / "round-meta.json").write_text(_MINIMAL_ROUND_META, encoding="utf-8")
+    (round_three / "panel-manifest.ndjson").write_text(
+        f'{{"slot":"current","tool":"cursor","output":"{current_output}"}}\n',
+        encoding="utf-8",
+    )
+    _set_mtime(round_three, 400)
+    _write_round_timing(impl / "timing-ledger.tsv", skill="implement", round_num=1, start_s=100, end_s=200)
+    _write_vendor_timing(impl / "timing-ledger.tsv", "cursor-specialist-orphan-round-two-output.txt", 250, 260)
+    _write_vendor_timing(impl / "timing-ledger.tsv", str(current_output), 410, 450, vendor="cursor", kind="cursor-review")
+    monkeypatch.setattr(progress_report, "_render_review_detail", lambda _tmpdir, _run_id: "completed-detail")
+
+    report = progress_report._render_step5(impl, "run-1", 90)
+
+    assert "Round 3 reviewer timing" in report
+    assert "cursor/current" in report
+    assert "cursor/orphan-round-two" not in report
 
 
 def test_render_inflight_gantt_absent_without_completed_vendor_rows(

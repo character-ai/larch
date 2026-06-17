@@ -72,6 +72,16 @@ step3_loop_now_s() {
     date +%s
 }
 
+step3_loop_persist_round_start_s() {
+    local round_num="$1" start_s="$2"
+    command -v python3 >/dev/null 2>&1 || return 0
+    set +e
+    python3 "$PLUGIN_ROOT/python/cli.py" plan-review persist-round-start-s \
+        --design-tmpdir "$DESIGN_TMPDIR" --round-num "$round_num" --start-s "$start_s" \
+        >/dev/null 2>&1
+    set -e
+}
+
 step3_loop_phase_file() {
     printf '%s/.step3-round-%s.phase\n' "$DESIGN_TMPDIR" "$1"
 }
@@ -636,6 +646,7 @@ run_design_step3_loop() {
         phase="$(step3_loop_read_phase "$round_num")"
         round_start_s="$(step3_loop_now_s)"
         if [[ -z "$phase" ]]; then
+            step3_loop_persist_round_start_s "$round_num" "$round_start_s"
             local round_body_capture=""
             round_body_capture="$(mktemp "$DESIGN_TMPDIR/.step3-round-body.XXXXXX" 2>/dev/null || true)"
             set +e
