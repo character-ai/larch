@@ -1039,7 +1039,12 @@ def _write_atomic(path: Path, content: str) -> None:
 
 def persist_design_round_start_s(design_tmpdir: str | Path, round_num: int, start_s: int) -> int:
     """Write plan-review/round-N/round-start-s once with O_EXCL|O_NOFOLLOW."""
+    ok, _message = validate_design_tmpdir(str(design_tmpdir))
+    if not ok:
+        return 1
     tmpdir = Path(design_tmpdir)
+    if tmpdir.is_symlink():
+        return 1
     plan_review_dir = tmpdir / "plan-review"
     if plan_review_dir.is_symlink() or (plan_review_dir.exists() and not plan_review_dir.is_dir()):
         return 0

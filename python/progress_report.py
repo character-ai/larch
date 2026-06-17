@@ -692,8 +692,11 @@ def _render_step5(implement_tmpdir: Path, run_id: str, window_start_s: int | Non
 
 
 def _round_dir_is_fresh(round_dir: Path, mark_ts: int | None) -> bool:
-    if (round_dir / "round-start-s").is_file():
-        return True
+    start_file = round_dir / "round-start-s"
+    if start_file.is_file():
+        start_s = _read_epoch_file(start_file)
+        if start_s is not None and (mark_ts is None or start_s > mark_ts):
+            return True
     if mark_ts is None:
         return round_dir.is_dir()
     try:
@@ -742,6 +745,8 @@ def _is_design_plan_review_step(step_label: str) -> bool:
 
 
 def _read_epoch_file(path: Path) -> int | None:
+    if path.is_symlink():
+        return None
     try:
         raw = path.read_text(encoding="utf-8", errors="replace").strip()
     except OSError:

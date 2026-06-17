@@ -196,6 +196,27 @@ def test_record_report_evidence_requires_design_tmpdir() -> None:
     assert "design-tmpdir is required" in proc.stderr
 
 
+def test_persist_round_start_s_rejects_disallowed_design_tmpdir() -> None:
+    disallowed = ROOT / "python" / ".persist-round-start-disallowed-test-dir"
+    disallowed.mkdir(exist_ok=True)
+    try:
+        assert plan_review.persist_design_round_start_s(disallowed, 1, 100) == 1
+        proc = run_cli(
+            "plan-review",
+            "persist-round-start-s",
+            "--design-tmpdir",
+            str(disallowed),
+            "--round-num",
+            "1",
+            "--start-s",
+            "100",
+        )
+        assert proc.returncode == 1
+    finally:
+        if disallowed.exists():
+            disallowed.rmdir()
+
+
 def test_record_report_evidence_rejects_relative_tmpdir() -> None:
     proc = run_cli(
         "plan-review",
