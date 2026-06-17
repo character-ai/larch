@@ -6,7 +6,8 @@ this recipe.
 
 ## Decision log
 
-- **No shims**: consumers call `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" <domain> <verb> [args...]` directly — no intermediate .sh wrapper files, ever.
+- **No shims for migration cutover**: when retiring a bash domain or making a voluntary port, consumers call `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" <domain> <verb> [args...]` directly. Do not add intermediate `.sh` forwarding stubs as migration cutover aids. Delete retired bash per recipe steps 4-6. This prohibition does not forbid forward-looking thin glue wrappers governed by the Python-first policy: thin environment-plus-`cli.py` delegation wrappers, Claude Code hooks, and pre-commit or CI glue.
+- **Python-first for new scripts**: new larch script logic lives in `python/` behind `python3 python/cli.py`. Bash is allowed only for thin environment-plus-`cli.py` delegation wrappers, Claude Code hooks, and pre-commit or CI glue. This complements [recipe step 4](#per-domain-migration-recipe), **Cut ALL consumers to direct `cli.py` calls**, so migration and voluntary-port cutover keep direct `cli.py` calls while forward-looking glue-wrapper permissions stay separate. See [AGENTS.md](../AGENTS.md) and [`.claude/rules/python-first-scripts.md`](../.claude/rules/python-first-scripts.md).
 - **Hard cutover**: once a domain is registered in `cli.py`, all consumers (skills, docs, Makefile, CI) are repointed in the same commit. No `LARCH_*_IMPL`-style selectors.
 - **Hooks stay bash**: Claude Code hooks remain bash pending a separate overhaul.
 - **Flat layout**: all Python modules live directly under `python/` (no sub-packages).
