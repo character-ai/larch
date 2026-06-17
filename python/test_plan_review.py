@@ -20,15 +20,8 @@ def test_embedded_review_design_step3_loop_matches_live_script() -> None:
 def test_embedded_review_design_step3_loop_persists_round_start() -> None:
     body = plan_review.legacy_asset_bytes("skills/design/scripts/review-design-step3-loop.sh").decode("utf-8")
     helper = body[body.index("step3_loop_persist_round_start_s() {"):body.index("step3_loop_phase_file() {")]
-    assert 'plan_review_dir="$DESIGN_TMPDIR/plan-review"' in helper
-    assert 'round_dir="$plan_review_dir/round-${round_num}"' in helper
-    assert '[[ -L "$plan_review_dir" ]]' in helper
-    assert '[[ -L "$round_dir" ]]' in helper
-    assert 'mkdir -p "$round_dir" 2>/dev/null || return 0' in helper
-    assert 'start_file="$round_dir/round-start-s"' in helper
-    assert '[[ -L "$start_file" || -e "$start_file" ]]' in helper
-    assert "set -C; printf" in helper
-    assert helper.index('mkdir -p "$round_dir" 2>/dev/null || return 0') < helper.index('[[ -L "$start_file" || -e "$start_file" ]]')
+    assert 'python3 "$PLUGIN_ROOT/python/cli.py" plan-review persist-round-start-s' in helper
+    assert '--design-tmpdir "$DESIGN_TMPDIR" --round-num "$round_num" --start-s "$start_s"' in helper
     round_start_idx = body.index('round_start_s="$(step3_loop_now_s)"')
     persist_idx = body.index('step3_loop_persist_round_start_s "$round_num" "$round_start_s"', round_start_idx)
     body_idx = body.index("run_step3_round_body", persist_idx)

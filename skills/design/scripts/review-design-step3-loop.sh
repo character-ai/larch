@@ -73,24 +73,13 @@ step3_loop_now_s() {
 }
 
 step3_loop_persist_round_start_s() {
-    local round_num="$1" start_s="$2" round_dir start_file plan_review_dir
-    plan_review_dir="$DESIGN_TMPDIR/plan-review"
-    round_dir="$plan_review_dir/round-${round_num}"
-    if [[ -L "$plan_review_dir" ]] || { [[ -e "$plan_review_dir" ]] && [[ ! -d "$plan_review_dir" ]]; }; then
-        return 0
-    fi
-    if [[ -L "$round_dir" ]]; then
-        return 0
-    fi
-    mkdir -p "$round_dir" 2>/dev/null || return 0
-    if [[ -L "$round_dir" || ! -d "$round_dir" ]]; then
-        return 0
-    fi
-    start_file="$round_dir/round-start-s"
-    if [[ -L "$start_file" || -e "$start_file" ]]; then
-        return 0
-    fi
-    ( set -C; printf '%s\n' "$start_s" >"$start_file" ) 2>/dev/null || true
+    local round_num="$1" start_s="$2"
+    command -v python3 >/dev/null 2>&1 || return 0
+    set +e
+    python3 "$PLUGIN_ROOT/python/cli.py" plan-review persist-round-start-s \
+        --design-tmpdir "$DESIGN_TMPDIR" --round-num "$round_num" --start-s "$start_s" \
+        >/dev/null 2>&1
+    set -e
 }
 
 step3_loop_phase_file() {

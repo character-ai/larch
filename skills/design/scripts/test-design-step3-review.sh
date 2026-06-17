@@ -51,20 +51,12 @@ from pathlib import Path
 body = Path(sys.argv[1]).read_text(encoding="utf-8")
 helper = body[body.index("step3_loop_persist_round_start_s() {"):body.index("step3_loop_phase_file() {")]
 required = [
-    'plan_review_dir="$DESIGN_TMPDIR/plan-review"',
-    'round_dir="$plan_review_dir/round-${round_num}"',
-    '[[ -L "$plan_review_dir" ]]',
-    '[[ -L "$round_dir" ]]',
-    'mkdir -p "$round_dir" 2>/dev/null || return 0',
-    'start_file="$round_dir/round-start-s"',
-    '[[ -L "$start_file" || -e "$start_file" ]]',
-    'set -C; printf',
+    'python3 "$PLUGIN_ROOT/python/cli.py" plan-review persist-round-start-s',
+    '--design-tmpdir "$DESIGN_TMPDIR" --round-num "$round_num" --start-s "$start_s"',
 ]
 missing = [item for item in required if item not in helper]
 if missing:
     raise SystemExit(f"missing helper substrings: {missing}")
-if helper.index('mkdir -p "$round_dir" 2>/dev/null || return 0') > helper.index('[[ -L "$start_file" || -e "$start_file" ]]'):
-    raise SystemExit("mkdir must precede round-start-s write-once check")
 round_start_idx = body.index('round_start_s="$(step3_loop_now_s)"')
 persist_idx = body.index('step3_loop_persist_round_start_s "$round_num" "$round_start_s"', round_start_idx)
 body_idx = body.index('run_step3_round_body', persist_idx)
@@ -156,22 +148,58 @@ SH
 chmod +x "$D_ROUND_START/source-live-loop.sh"
 "$D_ROUND_START/source-live-loop.sh" "$D_ROUND_START" "$ROOT" >"$D_ROUND_START/stdout.log" 2>"$D_ROUND_START/stderr.log" &
 round_start_pid=$!
+release_round_start_stub() {
+  touch "$D_ROUND_START/release-body" 2>/dev/null || true
+}
+wait_round_start_pid_bounded() {
+  local waited=0
+  while kill -0 "$round_start_pid" 2>/dev/null && [[ "$waited" -lt 50 ]]; do
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  if kill -0 "$round_start_pid" 2>/dev/null; then
+    kill "$round_start_pid" 2>/dev/null || true
+    waited=0
+    while kill -0 "$round_start_pid" 2>/dev/null && [[ "$waited" -lt 50 ]]; do
+      sleep 0.1
+      waited=$((waited + 1))
+    done
+    kill -9 "$round_start_pid" 2>/dev/null || true
+    wait "$round_start_pid" 2>/dev/null || true
+    return 1
+  fi
+  wait "$round_start_pid"
+}
+cleanup_round_start_harness() {
+  release_round_start_stub
+  if kill -0 "$round_start_pid" 2>/dev/null; then
+    kill "$round_start_pid" 2>/dev/null || true
+    local waited=0
+    while kill -0 "$round_start_pid" 2>/dev/null && [[ "$waited" -lt 50 ]]; do
+      sleep 0.1
+      waited=$((waited + 1))
+    done
+    kill -9 "$round_start_pid" 2>/dev/null || true
+  fi
+  wait "$round_start_pid" 2>/dev/null || true
+  rm -rf "$D_ROUND_START" 2>/dev/null || true
+}
+trap cleanup_round_start_harness EXIT
 for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do
   [[ -f "$D_ROUND_START/body-entered" ]] && break
   sleep 0.1
 done
 if [[ ! -f "$D_ROUND_START/body-entered" ]]; then
-  touch "$D_ROUND_START/release-body"
-  wait "$round_start_pid" || true
+  wait_round_start_pid_bounded || true
   fail "live loop body did not start; stderr=$(cat "$D_ROUND_START/stderr.log")"
 fi
 [[ -f "$D_ROUND_START/plan-review/round-1/round-start-s" ]] || {
-  touch "$D_ROUND_START/release-body"
-  wait "$round_start_pid" || true
+  wait_round_start_pid_bounded || true
   fail 'live loop must persist round-start-s before round body returns'
 }
-touch "$D_ROUND_START/release-body"
-wait "$round_start_pid" || fail "live loop round-start harness failed; stderr=$(cat "$D_ROUND_START/stderr.log")"
+release_round_start_stub
+wait_round_start_pid_bounded || fail "live loop round-start harness failed; stderr=$(cat "$D_ROUND_START/stderr.log")"
+trap - EXIT
 rm -rf "$D_ROUND_START"
 pass 'Step 3 live loop creates round-start-s before the sourced round body returns'
 
@@ -200,6 +228,16 @@ set -e
 [[ "$file_parent_rc" -eq 0 ]] || fail "persist must not abort when plan-review parent is a file (rc=$file_parent_rc)"
 rm -rf "$D_PERSIST_GUARD" "$OUTSIDE"
 pass 'Step 3 persist helper skips symlink parent and tolerates mkdir failure'
+
+D_PERSIST_TOCTOU=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-persist-toctou.XXXXXX")
+OUTSIDE_TOCTOU=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-persist-toctou-outside.XXXXXX")
+mkdir -p "$D_PERSIST_TOCTOU/plan-review/round-1"
+ln -s "$OUTSIDE_TOCTOU/round-start-s" "$D_PERSIST_TOCTOU/plan-review/round-1/round-start-s"
+python3 "$ROOT/python/cli.py" plan-review persist-round-start-s \
+  --design-tmpdir "$D_PERSIST_TOCTOU" --round-num 1 --start-s 12345
+[[ ! -e "$OUTSIDE_TOCTOU/round-start-s" ]] || fail 'persist must not follow symlinked round-start-s'
+rm -rf "$D_PERSIST_TOCTOU" "$OUTSIDE_TOCTOU"
+pass 'Step 3 persist helper refuses symlinked round-start-s'
 
 if grep 'printf.*\*\*⚠ Step 3' "$WRAPPER" | grep -qv '>&2'; then
   fail 'design-step3-review.sh must route Step 3 markdown warnings to stderr'
