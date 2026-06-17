@@ -404,6 +404,11 @@ def render_run_summary(**kwargs: object) -> str:
     ])
     if skill != "design" and pr != "N/A":
         lines.append(f"- **PR**: {pr}")
+    if skill != "design" and str(kwargs.get("merge_downgraded") or "false") == "true":
+        lines.append(
+            "- **⚠ Merge downgraded**: requested `--merge`, but panel-failed "
+            "recovery shipped a PR without merging. Manual review and merge required."
+        )
     lines.append(f"- **Plan review**: {kwargs.get('plan_review_line') or 'N/A'}")
     if skill != "design":
         lines.extend([
@@ -426,7 +431,7 @@ def render_run_summary(**kwargs: object) -> str:
 
 def render_run_summary_main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cli.py render run-summary")
-    for name in ("skill", "outcome", "run-id", "mode", "workflow-path", "duration", "issue-number", "issue-url", "pr-number", "pr-url", "plan-review-line", "code-review-line", "code-added", "code-deleted", "logs-added", "logs-deleted", "oos-count", "oos-urls", "exec-issues", "warnings", "run-logs-path", "emergency-requested"):
+    for name in ("skill", "outcome", "run-id", "mode", "workflow-path", "duration", "issue-number", "issue-url", "pr-number", "pr-url", "plan-review-line", "code-review-line", "code-added", "code-deleted", "logs-added", "logs-deleted", "oos-count", "oos-urls", "exec-issues", "warnings", "run-logs-path", "emergency-requested", "merge-downgraded"):
         parser.add_argument(f"--{name}")
     parser.add_argument("--output-file")
     parser.add_argument("--note-lines-file")
@@ -492,6 +497,7 @@ def render_run_summary_main(argv: list[str] | None = None) -> int:
         warnings=args.warnings,
         run_logs_path=args.run_logs_path,
         emergency_requested=args.emergency_requested,
+        merge_downgraded=args.merge_downgraded,
         cost_unavailable=cost_unavailable,
         total_tokens=total_tokens,
         total_cost=total_cost,
@@ -679,13 +685,6 @@ def _final_report_duration(run_dir: Path, ship: Path) -> str:
             if total_seconds is not None:
                 return f"{total_seconds}s"
     return _read_kv(ship, "DURATION", "N/A")
-
-
-def _normalized_outcome(tmpdir: Path) -> str:
-    values = stall_recovery.normalized_outcome_values(
-        argparse.Namespace(implement_tmpdir=str(tmpdir), in_memory_stall_tracking="")
-    )
-    return values.get("IMPLEMENT_NORMALIZED_OUTCOME", "bailed")
 
 
 def _count_markdown_bullets_outside_fences(text: str) -> int:
@@ -971,7 +970,10 @@ def write_final_report(implement_tmpdir: Path, *, comment_only: bool = False, pr
         ship=ship,
     )
     cost_fields = _final_report_token_fields(implement_tmpdir, run_id)
-    outcome = _normalized_outcome(implement_tmpdir)
+    outcome_values = stall_recovery.normalized_outcome_values(
+        argparse.Namespace(implement_tmpdir=str(implement_tmpdir), in_memory_stall_tracking="")
+    )
+    outcome = outcome_values.get("IMPLEMENT_NORMALIZED_OUTCOME", "bailed")
     body = render_run_summary(
         skill="implement",
         outcome=outcome,
@@ -995,6 +997,7 @@ def write_final_report(implement_tmpdir: Path, *, comment_only: bool = False, pr
         warnings=warn_count,
         run_logs_path=f"larch-logs/implement/{run_id}/" if run_id else "N/A",
         emergency_requested=_read_kv(run_flags, "EMERGENCY_REQUESTED", "false"),
+        merge_downgraded=outcome_values.get("IMPLEMENT_MERGE_DOWNGRADED", "false"),
         **cost_fields,
     )
     try:

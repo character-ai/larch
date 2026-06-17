@@ -192,6 +192,15 @@ mkdir -p "$(dirname "$findings")"
 rtmp="${rtmp:-$(dirname "$findings")}"
 : > "$oos"
 case "${TEST_COLLECTOR_VARIANT:-ok-all}" in
+  empty-with-oos)
+    : > "$rtmp/collector-results.env"
+    cat > "$oos" <<'EOF'
+### OOS_1: [OUT_OF_SCOPE] parseable observation
+- **Reviewer(s)**: stub
+- **Concern**: unrelated observation
+- **Suggested revision**: follow up separately
+EOF
+    ;;
   external-files-only)
     cat > "$rtmp/collector-results.env" <<EOF
 REVIEWER_FILE=$rtmp/codex-specialist-correctness-output.txt
@@ -248,7 +257,11 @@ else
 EOF
 fi
 printf 'FINDINGS_COUNT=%s\\n' "${TEST_FINDINGS:-0}"
-printf 'OOS_COUNT=0\\nDIRTY_DETECTED=false\\nCOLLECT_OK=true\\nCOLLECTOR_OUTPUT_FILE=collector.env\\n'
+case "${TEST_COLLECTOR_VARIANT:-ok-all}" in
+  empty-with-oos) printf 'OOS_COUNT=1\\n' ;;
+  *) printf 'OOS_COUNT=0\\n' ;;
+esac
+printf 'DIRTY_DETECTED=false\\nCOLLECT_OK=true\\nCOLLECTOR_OUTPUT_FILE=collector.env\\n'
 """,
     )
     write_executable(

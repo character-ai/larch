@@ -840,6 +840,31 @@ def test_scrub_run_tree_redacts_cursor_key(tmp_path: Path) -> None:
     assert (run_dir / "clean.md").read_text(encoding="utf-8") == "clean prose\n"
 
 
+def test_write_round_commits_review_threshold_inputs(tmp_path: Path) -> None:
+    source = tmp_path / "source-round"
+    source.mkdir()
+    _ = (source / "collector-results.env").write_text("STATUS=OK\n", encoding="utf-8")
+    _ = (source / "review-core-threshold.env").write_text("THRESHOLD_OK=true\n", encoding="utf-8")
+
+    rc = run_logs.larch_log_write_round_main([
+        "--log-root",
+        str(tmp_path / "larch-logs"),
+        "--skill",
+        "implement",
+        "--run-id",
+        "run-abc",
+        "--round",
+        "1",
+        "--source-dir",
+        str(source),
+    ])
+
+    assert rc == 0
+    round_dir = tmp_path / "larch-logs" / "implement" / "run-abc" / "round-1"
+    assert (round_dir / "collector-results.env").read_text(encoding="utf-8") == "STATUS=OK\n"
+    assert (round_dir / "review-core-threshold.env").read_text(encoding="utf-8") == "THRESHOLD_OK=true\n"
+
+
 def test_scrub_run_tree_fail_closed_on_residual(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

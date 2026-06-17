@@ -386,6 +386,25 @@ def test_review_core_panel_failed_on_collector_error_static_files(tmp_path: Path
     assert "COVERAGE_GATE_REASON=no successful launched reviewer output" in threshold_env
 
 
+def test_review_core_all_oos_parseable_output_bypasses_no_success_gate(tmp_path: Path) -> None:
+    result = _run_review_core(
+        tmp_path,
+        findings=0,
+        outdir_name="all-oos-parseable",
+        extra_env={
+            "TEST_EXTERNAL_STATIC_OUTPUTS": "true",
+            "TEST_STATIC_SLOT_COUNT": "3",
+            "TEST_COLLECTOR_VARIANT": "empty-with-oos",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "REVIEW_CORE_STATUS=zero-findings" in result.stdout
+    threshold_env = (tmp_path / "all-oos-parseable" / "review-core-threshold.env").read_text(encoding="utf-8")
+    assert "COVERAGE_GATE_OK=true" in threshold_env
+    assert "COVERAGE_GATE_REASON=parseable reviewer output present" in threshold_env
+
+
 def test_review_core_panel_failed_on_missing_static_archetype(tmp_path: Path) -> None:
     result = _run_review_core(
         tmp_path,
