@@ -1257,9 +1257,8 @@ def _resolve_coder_timing_ledger(round_dir: Path) -> Path:
 def _coder_timing_env(round_dir: Path, ledger: Path) -> dict[str, str]:
     env = {**os.environ, "LARCH_TIMING_LEDGER": str(ledger)}
     if re.fullmatch(r"round-\d+", round_dir.name):
-        if not env.get("IMPLEMENT_TMPDIR"):
-            env["IMPLEMENT_TMPDIR"] = str(round_dir.parent)
-    elif not env.get("REVIEW_TMPDIR"):
+        env["IMPLEMENT_TMPDIR"] = str(round_dir.parent)
+    else:
         env["REVIEW_TMPDIR"] = str(round_dir)
     return env
 

@@ -222,6 +222,32 @@ def test_run_coder_codex_exports_resolved_timing_ledger(tmp_path: Path, monkeypa
 
 
 @MARK_DISPATCH
+def test_run_coder_codex_overrides_stale_implement_tmpdir_in_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    round_dir = tmp_path / "impl-session" / "round-1"
+    round_dir.mkdir(parents=True)
+    stale = tmp_path / "stale-implement"
+    stale.mkdir()
+    output = round_dir / "coder-codex.log"
+    output.write_text("ok\n", encoding="utf-8")
+    seen_env: dict[str, str] = {}
+    monkeypatch.setenv("CODEX_BINARY_FOUND", "true")
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(stale))
+    monkeypatch.setattr(review_and_fix, "_codex_available", lambda: True)
+
+    def fake_run(argv: list[str], **kwargs: object) -> review_and_fix.proc.CommandResult:
+        seen_env.update(kwargs.get("env") or {})  # type: ignore[arg-type]
+        return review_and_fix.proc.CommandResult(tuple(argv), 0, "LAUNCHER_EXIT=0\n", "", 0.0)
+
+    monkeypatch.setattr(review_and_fix, "_run", fake_run)
+
+    assert review_and_fix._run_coder_codex(round_dir, "prompt", round_dir / "tool.log") is True
+    assert seen_env["IMPLEMENT_TMPDIR"] == str(round_dir.parent)
+    assert seen_env["LARCH_TIMING_LEDGER"] == str(round_dir.parent / "timing-ledger.tsv")
+
+
+@MARK_DISPATCH
 def test_dynamic_archetypes_defaults_to_three_with_implement_tmpdir(monkeypatch, tmp_path):
     monkeypatch.delenv("LARCH_DYNAMIC_ARCHETYPES_MAX", raising=False)
     impl = _tmp_impl(tmp_path)
