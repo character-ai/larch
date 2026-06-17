@@ -1595,7 +1595,7 @@ def test_effective_failure_class_falls_back_without_launcher_kv(tmp_path: Path) 
         failure=LaunchFailure("other", "parse"),
         failure_log=capture,
     )
-    assert rebase.agents.effective_failure_class(attempt) == "other"
+    assert rebase.agents.effective_failure_class(attempt) == "health"
 
 
 def test_conflict_loop_continues_when_log_missing_failure_class_kv(

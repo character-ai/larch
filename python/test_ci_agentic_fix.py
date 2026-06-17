@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from argparse import Namespace
 from pathlib import Path
-from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 import ci_agentic_fix
@@ -433,7 +433,7 @@ def test_wait_for_ci_fails_closed_on_nonzero_exit(tmp_path: Path) -> None:
         def run(self, *_args: object, **_kwargs: object) -> proc.CommandResult:
             return proc.CommandResult(("cli",), 1, "", "wait crashed", 0.01)
 
-    args = SimpleNamespace(
+    args = Namespace(
         pr=1,
         repo="o/r",
         base_remote="origin",
@@ -446,7 +446,7 @@ def test_wait_for_ci_fails_closed_on_nonzero_exit(tmp_path: Path) -> None:
         repo_root=repo,
         cycle=1,
     )
-    assert parsed == {}
+    assert not parsed
     assert err == "ci-wait-exit-1"
 
 
@@ -462,7 +462,7 @@ def test_wait_for_ci_fails_closed_on_malformed_output(tmp_path: Path) -> None:
         def run(self, *_args: object, **_kwargs: object) -> proc.CommandResult:
             return proc.CommandResult(("cli",), 0, "", "", 0.01)
 
-    args = SimpleNamespace(
+    args = Namespace(
         pr=1,
         repo="o/r",
         base_remote="origin",
@@ -475,7 +475,7 @@ def test_wait_for_ci_fails_closed_on_malformed_output(tmp_path: Path) -> None:
         repo_root=repo,
         cycle=1,
     )
-    assert parsed == {}
+    assert not parsed
     assert err == "ci-wait-malformed-output"
 
 

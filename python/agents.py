@@ -377,15 +377,9 @@ def parse_launcher_failure_class(log_file: str | Path | None) -> str:
 
 
 def effective_failure_class(attempt: TierAttempt) -> str:
-    """Failure class from launcher capture when KV is present, else ``attempt.failure``."""
+    """Failure class from launcher capture when present, else ``attempt.failure``."""
     if attempt.failure_log is not None:
-        path = Path(attempt.failure_log)
-        if path.is_file():
-            parsed = _launcher_failure_class_from_text(
-                path.read_text(encoding="utf-8", errors="replace"),
-            )
-            if parsed is not None:
-                return parsed
+        return parse_launcher_failure_class(attempt.failure_log)
     return attempt.failure.failure_class
 
 
