@@ -45,14 +45,19 @@ fi
 
 # Surface the active Claude Code session_id from the Stop event payload
 # into LARCH_TOKEN_SESSION_ID so the resolver's session-id binding branch
-# is reachable in production. Empty /
-# missing / null falls through to TTL. The Python resolver consumes the
-# `.larch-keepalive` `SESSION_ID=` slim session-identity record this feeds.
+# is reachable in production. Empty, missing, or null session_id unsets any
+# inherited LARCH_TOKEN_SESSION_ID before the resolver falls through to TTL.
+# The Python resolver consumes the `.larch-keepalive` `SESSION_ID=` slim
+# session-identity record this feeds.
 SID=""
 if command -v jq >/dev/null 2>&1; then
     SID=$(printf '%s' "$INPUT" | jq -r '.session_id // ""' 2>/dev/null) || SID=""
 fi
-[[ -n "$SID" ]] && export LARCH_TOKEN_SESSION_ID="$SID"
+if [[ -n "$SID" ]]; then
+    export LARCH_TOKEN_SESSION_ID="$SID"
+else
+    unset LARCH_TOKEN_SESSION_ID || true
+fi
 
 IMPLEMENT_TMPDIR=""
 if implement_session_dir_exists && command -v python3 >/dev/null 2>&1; then
