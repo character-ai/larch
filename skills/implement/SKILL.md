@@ -755,7 +755,7 @@ Steps 8–14 are driven by the **Python ship driver wrapper** inside `step-8-shi
 bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-8-python-guard.sh
 ```
 
-2. If the state file is absent or empty, seed it through the thin wrapper. When Step 5 stall seeding already created a non-empty `ship-pr-state.sh`, skip this fence; the wrapper and Python seeder fail closed on re-seed.
+2. Invoke the seeder fence only when the state file is absent or empty. Seed through the thin wrapper. On any non-zero `step-8-seed-initial.sh` exit, halt before `oos file` and `step-8-ship.sh`. When Step 5 stall seeding already created a non-empty `ship-pr-state.sh`, skip this fence; the wrapper and Python seeder fail closed on re-seed.
 
 ```bash
 bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-8-seed-initial.sh
