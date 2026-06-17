@@ -73,6 +73,7 @@ _MAX_CLAUDE_TIMEOUT = 1800
 _DEFAULT_CURSOR_CI_STALL_THRESHOLD = 180
 _TOML_CLOSED_STRING_DELIMITER_COUNT = 2
 _AUTH_RETRY_RC = 2
+_PROBE_NO_RETRY_RC = 3
 _CURSOR_PREFLIGHT_AUTH_RC = 2
 _CLAUDE_REVIEW_READ_ONLY_PREAMBLE = (
     "HARD CONSTRAINTS — your role is read-only review. "
@@ -627,6 +628,14 @@ def _env_int(name: str, default: int, *, zero_allowed: bool = True) -> int:
     return parsed
 
 
+def _max_transient_probe_retries(max_auth_retries: int) -> int:
+    if "LARCH_PROBE_RETRIES" in os.environ:
+        return _env_int("LARCH_PROBE_RETRIES", 2)
+    if max_auth_retries == 1:
+        return 0
+    return 2
+
+
 def _probe_tmpdir() -> Path:
     return Path(os.environ.get("TMPDIR") or "/tmp")  # noqa: S108 - parity with Bash TMPDIR fallback.
 
@@ -784,7 +793,7 @@ def _run_one_cursor_probe(timeout: int) -> int:
         if rc == 0:
             return 0
         if external_auth_verdict("cursor", probe_out) == "auth":
-            return 2
+            return _AUTH_RETRY_RC
         return 1
     finally:
         if probe_out is not None:
@@ -808,7 +817,7 @@ def _run_one_codex_probe(timeout: int) -> int:
                 _append(probe_side, prep_msg + "\n")
             if _codex_env_key_enabled():
                 _err("agent check-reviewers: Codex OPENAI_API_KEY auth setup failed")
-            return 1
+            return _PROBE_NO_RETRY_RC
         try:
             model_args = list(resolve_model_args("codex", with_effort=True).argv)
         except ValueError:
@@ -840,7 +849,7 @@ def _run_one_codex_probe(timeout: int) -> int:
         if rc == 0:
             return 0
         if external_auth_verdict("codex", probe_out, probe_side) == "auth":
-            return 2
+            return _AUTH_RETRY_RC
         return 1
     finally:
         if codex_home is not None:
@@ -851,34 +860,56 @@ def _run_one_codex_probe(timeout: int) -> int:
                     path.unlink()
 
 
-def _run_codex_probes(max_retries: int, timeout: int) -> tuple[bool, bool]:
-    for attempt in range(1, max(max_retries, 1) + 1):
+def _run_codex_probes(max_auth_retries: int, max_transient_retries: int, timeout: int) -> tuple[bool, bool]:
+    auth_failures = 0
+    transient_retries_used = 0
+    while True:
         rc = _run_one_codex_probe(timeout)
         if rc == config.EXIT_TIMEOUT:
             return False, True
         if rc == 0:
             return True, False
-        if rc == _AUTH_RETRY_RC and attempt < max(max_retries, 1):
+        if rc == _PROBE_NO_RETRY_RC:
+            return False, False
+        if rc == _AUTH_RETRY_RC:
+            auth_failures += 1
+            if auth_failures >= max(max_auth_retries, 1):
+                return False, False
+            continue
+        if rc == 1:
+            if transient_retries_used >= max_transient_retries:
+                return False, False
+            transient_retries_used += 1
             continue
         return False, False
-    return False, False
 
 
-def _run_cursor_probes(max_retries: int, timeout: int) -> tuple[bool, bool]:
+def _run_cursor_probes(max_auth_retries: int, max_transient_retries: int, timeout: int) -> tuple[bool, bool]:
     setup = _cursor_probe_setup_chain()
     if setup is None:
         return False, False
     try:
-        for attempt in range(1, max(max_retries, 1) + 1):
+        auth_failures = 0
+        transient_retries_used = 0
+        while True:
             rc = _run_one_cursor_probe(timeout)
             if rc == config.EXIT_TIMEOUT:
                 return False, True
             if rc == 0:
                 return True, False
-            if rc == _AUTH_RETRY_RC and attempt < max(max_retries, 1):
+            if rc == _PROBE_NO_RETRY_RC:
+                return False, False
+            if rc == _AUTH_RETRY_RC:
+                auth_failures += 1
+                if auth_failures >= max(max_auth_retries, 1):
+                    return False, False
+                continue
+            if rc == 1:
+                if transient_retries_used >= max_transient_retries:
+                    return False, False
+                transient_retries_used += 1
                 continue
             return False, False
-        return False, False
     finally:
         _cursor_probe_cleanup_private_config_dir(setup)
 
@@ -894,6 +925,7 @@ def check_reviewers(
         negative_ttl = _env_int("LARCH_PROBE_NEGATIVE_TTL_SECONDS", 0)
         timeout = probe_timeout_seconds or _env_int("LARCH_PROBE_TIMEOUT_SECONDS", 30, zero_allowed=False)
         max_auth_retries = _env_int("LARCH_EXTERNAL_AUTH_RETRIES", 5, zero_allowed=False)
+        max_transient_retries = _max_transient_probe_retries(max_auth_retries)
 
         codex_binary_found = shutil.which("codex") is not None
         cursor_binary_found = shutil.which("cursor") is not None
@@ -908,8 +940,13 @@ def check_reviewers(
                 cursor_present = cached
             else:
                 preflight = cursor_auth_preflight(caller="agent check-reviewers")
-                max_retries = 1 if preflight.rc == _CURSOR_PREFLIGHT_AUTH_RC else max_auth_retries
-                cursor_present, cursor_probe_timed_out = _run_cursor_probes(max_retries, timeout)
+                cursor_auth_retries = 1 if preflight.rc == _CURSOR_PREFLIGHT_AUTH_RC else max_auth_retries
+                cursor_transient_retries = 0 if preflight.rc == _CURSOR_PREFLIGHT_AUTH_RC else max_transient_retries
+                cursor_present, cursor_probe_timed_out = _run_cursor_probes(
+                    cursor_auth_retries,
+                    cursor_transient_retries,
+                    timeout,
+                )
                 _write_probe_stamp(_probe_stamp_path("cursor"), cursor_present)
 
         if codex_binary_found and not skip_codex_probe:
@@ -918,7 +955,11 @@ def check_reviewers(
             if cached is not None:
                 codex_present = cached
             else:
-                codex_present, codex_probe_timed_out = _run_codex_probes(max_auth_retries, timeout)
+                codex_present, codex_probe_timed_out = _run_codex_probes(
+                    max_auth_retries,
+                    max_transient_retries,
+                    timeout,
+                )
                 _write_probe_stamp(stamp, codex_present)
 
         return CheckReviewersResult(

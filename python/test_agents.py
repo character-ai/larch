@@ -1032,6 +1032,52 @@ def test_check_reviewers_cursor_preflight_rc2_one_shot_and_cleanup(
     assert calls == 1
 
 
+def test_check_reviewers_cursor_preflight_rc2_transient_rc1_one_shot(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    cursor = bin_dir / "cursor"
+    _ = cursor.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    cursor.chmod(0o755)
+    calls = 0
+    cfg_dir = tmp_path / "larch-cursor-cfg-test"
+
+    def fake_preflight(**_kwargs: object) -> agents.AuthVerdict:
+        return agents.AuthVerdict(ok=False, rc=2, message="missing")
+
+    def fake_setup() -> agents._CursorProbeSetup:
+        cfg_dir.mkdir()
+        return agents._CursorProbeSetup(cfg_tmp=cfg_dir, old_cfg=None)  # pylint: disable=protected-access
+
+    def fake_cleanup(setup: agents._CursorProbeSetup | None) -> None:
+        if setup is not None:
+            shutil.rmtree(setup.cfg_tmp, ignore_errors=True)
+
+    def fake_cursor_probe(_timeout: int) -> int:
+        nonlocal calls
+        calls += 1
+        return 1
+
+    monkeypatch.setattr(agents, "cursor_auth_preflight", fake_preflight)
+    monkeypatch.setattr(agents, "_cursor_probe_setup_chain", fake_setup)
+    monkeypatch.setattr(agents, "_cursor_probe_cleanup_private_config_dir", fake_cleanup)
+    monkeypatch.setattr(agents, "_run_one_cursor_probe", fake_cursor_probe)
+    result = agents.check_reviewers(
+        skip_codex_probe=True,
+        env={
+            "PATH": str(bin_dir),
+            "TMPDIR": str(tmp_path),
+            "LARCH_EXTERNAL_AUTH_RETRIES": "5",
+            "LARCH_PROBE_RETRIES": "2",
+            "LARCH_PROBE_TTL_SECONDS": "0",
+        },
+    )
+    assert result.cursor_present is False
+    assert calls == 1
+
+
 def test_check_reviewers_invalid_env_normalization(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -1045,7 +1091,7 @@ def test_check_reviewers_invalid_env_normalization(
 
     def fake_probe(timeout: int) -> int:
         seen_timeouts.append(timeout)
-        return 0
+        return 0 if len(seen_timeouts) == 3 else 1
 
     monkeypatch.setattr(agents, "_run_one_codex_probe", fake_probe)
     result = agents.check_reviewers(
@@ -1055,14 +1101,15 @@ def test_check_reviewers_invalid_env_normalization(
             "TMPDIR": str(tmp_path),
             "LARCH_PROBE_TIMEOUT_SECONDS": "bad",
             "LARCH_EXTERNAL_AUTH_RETRIES": "0",
+            "LARCH_PROBE_RETRIES": "bad",
             "LARCH_PROBE_TTL_SECONDS": "0",
         },
     )
     assert result.codex_present is True
-    assert seen_timeouts == [30]
+    assert seen_timeouts == [30, 30, 30]
 
 
-def test_check_reviewers_non_auth_failure_no_retry(
+def test_check_reviewers_transient_failure_retries_until_exhausted(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -1089,7 +1136,182 @@ def test_check_reviewers_non_auth_failure_no_retry(
         },
     )
     assert result.codex_present is False
+    assert result.codex_probe_timed_out is False
+    assert calls == 3
+
+
+def test_check_reviewers_transient_failure_retries_until_success(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    codex = bin_dir / "codex"
+    _ = codex.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    codex.chmod(0o755)
+    calls = 0
+
+    def fake_probe(_timeout: int) -> int:
+        nonlocal calls
+        calls += 1
+        return 0 if calls == 2 else 1
+
+    monkeypatch.setattr(agents, "_run_one_codex_probe", fake_probe)
+    result = agents.check_reviewers(
+        skip_cursor_probe=True,
+        env={
+            "PATH": str(bin_dir),
+            "TMPDIR": str(tmp_path),
+            "LARCH_PROBE_TTL_SECONDS": "0",
+        },
+    )
+    assert result.codex_present is True
+    assert calls == 2
+
+
+def test_check_reviewers_transient_failure_zero_budget_one_shot(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    codex = bin_dir / "codex"
+    _ = codex.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    codex.chmod(0o755)
+    calls = 0
+
+    def fake_probe(_timeout: int) -> int:
+        nonlocal calls
+        calls += 1
+        return 1
+
+    monkeypatch.setattr(agents, "_run_one_codex_probe", fake_probe)
+    result = agents.check_reviewers(
+        skip_cursor_probe=True,
+        env={
+            "PATH": str(bin_dir),
+            "TMPDIR": str(tmp_path),
+            "LARCH_PROBE_RETRIES": "0",
+            "LARCH_PROBE_TTL_SECONDS": "0",
+        },
+    )
+    assert result.codex_present is False
     assert calls == 1
+
+
+def test_check_reviewers_probe_no_retry_rc_one_shot(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    codex = bin_dir / "codex"
+    _ = codex.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    codex.chmod(0o755)
+    calls = 0
+
+    def fake_probe(_timeout: int) -> int:
+        nonlocal calls
+        calls += 1
+        return agents._PROBE_NO_RETRY_RC
+
+    monkeypatch.setattr(agents, "_run_one_codex_probe", fake_probe)
+    result = agents.check_reviewers(
+        skip_cursor_probe=True,
+        env={"PATH": str(bin_dir), "TMPDIR": str(tmp_path), "LARCH_PROBE_TTL_SECONDS": "0"},
+    )
+    assert result.codex_present is False
+    assert calls == 1
+
+
+def test_check_reviewers_health_gate_unset_probe_retries_one_shot(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    codex = bin_dir / "codex"
+    _ = codex.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    codex.chmod(0o755)
+    calls = 0
+
+    def fake_probe(_timeout: int) -> int:
+        nonlocal calls
+        calls += 1
+        return 1
+
+    monkeypatch.setattr(agents, "_run_one_codex_probe", fake_probe)
+    result = agents.check_reviewers(
+        skip_cursor_probe=True,
+        env={
+            "PATH": str(bin_dir),
+            "TMPDIR": str(tmp_path),
+            "LARCH_EXTERNAL_AUTH_RETRIES": "1",
+            "LARCH_PROBE_TTL_SECONDS": "0",
+        },
+    )
+    assert result.codex_present is False
+    assert calls == 1
+
+
+def test_check_reviewers_health_gate_explicit_probe_retries_override(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    codex = bin_dir / "codex"
+    _ = codex.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    codex.chmod(0o755)
+    calls = 0
+
+    def fake_probe(_timeout: int) -> int:
+        nonlocal calls
+        calls += 1
+        return 1
+
+    monkeypatch.setattr(agents, "_run_one_codex_probe", fake_probe)
+    result = agents.check_reviewers(
+        skip_cursor_probe=True,
+        env={
+            "PATH": str(bin_dir),
+            "TMPDIR": str(tmp_path),
+            "LARCH_EXTERNAL_AUTH_RETRIES": "1",
+            "LARCH_PROBE_RETRIES": "2",
+            "LARCH_PROBE_TTL_SECONDS": "0",
+        },
+    )
+    assert result.codex_present is False
+    assert calls == 3
+
+
+def test_check_reviewers_auth_and_transient_budgets_are_independent(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    codex = bin_dir / "codex"
+    _ = codex.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    codex.chmod(0o755)
+    rcs = [1, agents._AUTH_RETRY_RC, 1, 0]
+
+    def fake_probe(_timeout: int) -> int:
+        return rcs.pop(0)
+
+    monkeypatch.setattr(agents, "_run_one_codex_probe", fake_probe)
+    result = agents.check_reviewers(
+        skip_cursor_probe=True,
+        env={
+            "PATH": str(bin_dir),
+            "TMPDIR": str(tmp_path),
+            "LARCH_EXTERNAL_AUTH_RETRIES": "2",
+            "LARCH_PROBE_RETRIES": "2",
+            "LARCH_PROBE_TTL_SECONDS": "0",
+        },
+    )
+    assert result.codex_present is True
+    assert not rcs
 
 
 def test_check_reviewers_codex_auth_setup_failure(
@@ -1117,6 +1339,97 @@ def test_check_reviewers_codex_auth_setup_failure(
     )
     assert result.codex_present is False
     assert probe_calls == 1
+
+
+def test_check_reviewers_cursor_transient_retry_until_success(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    cursor = bin_dir / "cursor"
+    _ = cursor.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    cursor.chmod(0o755)
+    cfg_dir = tmp_path / "larch-cursor-cfg-test"
+    calls = 0
+    cleanup_calls = 0
+
+    def fake_preflight(**_kwargs: object) -> agents.AuthVerdict:
+        return agents.AuthVerdict(ok=True, rc=0, message="")
+
+    def fake_setup() -> agents._CursorProbeSetup:
+        cfg_dir.mkdir()
+        return agents._CursorProbeSetup(cfg_tmp=cfg_dir, old_cfg=None)  # pylint: disable=protected-access
+
+    def fake_cleanup(setup: agents._CursorProbeSetup | None) -> None:
+        nonlocal cleanup_calls
+        cleanup_calls += 1
+        if setup is not None:
+            shutil.rmtree(setup.cfg_tmp, ignore_errors=True)
+
+    def fake_cursor_probe(_timeout: int) -> int:
+        nonlocal calls
+        calls += 1
+        return 0 if calls == 2 else 1
+
+    monkeypatch.setattr(agents, "cursor_auth_preflight", fake_preflight)
+    monkeypatch.setattr(agents, "_cursor_probe_setup_chain", fake_setup)
+    monkeypatch.setattr(agents, "_cursor_probe_cleanup_private_config_dir", fake_cleanup)
+    monkeypatch.setattr(agents, "_run_one_cursor_probe", fake_cursor_probe)
+    result = agents.check_reviewers(
+        skip_codex_probe=True,
+        env={"PATH": str(bin_dir), "TMPDIR": str(tmp_path), "LARCH_PROBE_TTL_SECONDS": "0"},
+    )
+    assert result.cursor_present is True
+    assert calls == 2
+    assert cleanup_calls == 1
+    assert not cfg_dir.exists()
+
+
+def test_check_reviewers_cursor_transient_retry_until_exhausted(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    cursor = bin_dir / "cursor"
+    _ = cursor.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    cursor.chmod(0o755)
+    cfg_dir = tmp_path / "larch-cursor-cfg-test"
+    calls = 0
+    cleanup_calls = 0
+
+    def fake_preflight(**_kwargs: object) -> agents.AuthVerdict:
+        return agents.AuthVerdict(ok=True, rc=0, message="")
+
+    def fake_setup() -> agents._CursorProbeSetup:
+        cfg_dir.mkdir()
+        return agents._CursorProbeSetup(cfg_tmp=cfg_dir, old_cfg=None)  # pylint: disable=protected-access
+
+    def fake_cleanup(setup: agents._CursorProbeSetup | None) -> None:
+        nonlocal cleanup_calls
+        cleanup_calls += 1
+        if setup is not None:
+            shutil.rmtree(setup.cfg_tmp, ignore_errors=True)
+
+    def fake_cursor_probe(_timeout: int) -> int:
+        nonlocal calls
+        calls += 1
+        return 1
+
+    monkeypatch.setattr(agents, "cursor_auth_preflight", fake_preflight)
+    monkeypatch.setattr(agents, "_cursor_probe_setup_chain", fake_setup)
+    monkeypatch.setattr(agents, "_cursor_probe_cleanup_private_config_dir", fake_cleanup)
+    monkeypatch.setattr(agents, "_run_one_cursor_probe", fake_cursor_probe)
+    result = agents.check_reviewers(
+        skip_codex_probe=True,
+        env={"PATH": str(bin_dir), "TMPDIR": str(tmp_path), "LARCH_PROBE_TTL_SECONDS": "0"},
+    )
+    assert result.cursor_present is False
+    assert result.cursor_probe_timed_out is False
+    assert calls == 3
+    assert cleanup_calls == 1
+    assert not cfg_dir.exists()
 
 
 def test_check_reviewers_cursor_setup_chain_failure(
