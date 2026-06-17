@@ -467,6 +467,7 @@ def test_partial_success_waterfall_bump_only_stalls_without_flag(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Winning tier + residual retired version-file conflicts raises Stalled without handoff flag."""
+    # pylint: disable=no-member
     monkeypatch.setenv(config.VERSION_ENV_RETIRED, "pkg/version.txt")
     runner = ScriptRunner(
         [
@@ -559,6 +560,7 @@ def test_bump_only_waterfall_exhaustion_stalls_without_handoff_flag(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # pylint: disable=no-member
     monkeypatch.setenv(config.VERSION_ENV_RETIRED, "pkg/version.txt")
     runner = ScriptRunner(
         [
@@ -598,6 +600,7 @@ def test_bump_only_waterfall_exhaustion_stalls_without_handoff_flag(
 )
 @pytest.mark.skip(reason="agentic conflict loop removes bump prepass")
 def test_bump_path_classes_disable_handoff(path: str) -> None:
+    # pylint: disable=no-member
     assert rebase._retired_is_version_path(path)  # pyright: ignore[reportPrivateUsage]
     assert not rebase._retired_conflicts_are_ordinary_only((path,))  # pyright: ignore[reportPrivateUsage]
 
@@ -606,6 +609,7 @@ def test_bump_path_classes_disable_handoff(path: str) -> None:
 def test_larch_version_files_is_canonical_for_bump_paths(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # pylint: disable=no-member
     monkeypatch.setenv(config.VERSION_ENV_RETIRED, "pkg/version.txt")
     monkeypatch.setenv(config.BUMP_ENV_RETIRED, "vendor/not-version.txt")
     assert rebase._retired_is_version_path("pkg/version.txt")  # pyright: ignore[reportPrivateUsage]
@@ -763,6 +767,7 @@ def test_rebase_push_invalid_flag_combo_exit_3() -> None:
 def test_larch_bump_files_legacy_alias_when_version_files_unset(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # pylint: disable=no-member
     monkeypatch.delenv(config.VERSION_ENV_RETIRED, raising=False)
     monkeypatch.setenv(config.BUMP_ENV_RETIRED, "pkg/legacy-version.txt")
     assert rebase._retired_is_version_path("pkg/legacy-version.txt")  # pyright: ignore[reportPrivateUsage]
@@ -773,6 +778,7 @@ def test_mixed_bump_waterfall_exhaustion_stalls_without_handoff_flag(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # pylint: disable=no-member
     monkeypatch.setenv(config.BUMP_ENV_RETIRED, "pkg/version.txt")
     runner = ScriptRunner(
         [
@@ -803,6 +809,7 @@ def test_mixed_bump_waterfall_exhaustion_stalls_without_handoff_flag(
 
 @pytest.mark.skip(reason="agentic conflict loop removes bump prepass")
 def test_changelog_conflict_is_non_bump_for_handoff() -> None:
+    # pylint: disable=no-member
     assert not rebase._retired_is_version_path("CHANGELOG.md")  # pyright: ignore[reportPrivateUsage]
     assert rebase._retired_conflicts_are_ordinary_only(("CHANGELOG.md",))  # pyright: ignore[reportPrivateUsage]
 
@@ -1176,6 +1183,7 @@ def test_make_conflict_launch_fn_retries_only_missing_token_sidecar_leg(
 
 @pytest.mark.skip(reason="agentic conflict loop removes bump prepass")
 def test_retired_prepass_no_retired_checkout_ours_on_vendor() -> None:
+    # pylint: disable=no-member
     runner = ScriptRunner(
         [
             (("git", "checkout", "--ours", "--", "vendor/foo.txt"), _fail(
@@ -1194,6 +1202,7 @@ def test_retired_prepass_no_retired_checkout_ours_on_vendor() -> None:
 
 @pytest.mark.skip(reason="agentic conflict loop removes bump prepass")
 def test_retired_prepass_plugin_json_retired_checkout_ours() -> None:
+    # pylint: disable=no-member
     path = config.PLUGIN_JSON_PATH
     runner = ScriptRunner(
         [
@@ -1433,6 +1442,7 @@ def test_sync_local_main_on_main_stalls() -> None:
 
 @pytest.mark.skip(reason="agentic conflict loop removes bump prepass")
 def test_retired_prepass_version_go_and_go_sum() -> None:
+    # pylint: disable=no-member
     for name in ("version.go", "go.sum"):
         runner = ScriptRunner(
             [
