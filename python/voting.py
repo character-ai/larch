@@ -76,15 +76,30 @@ FINDINGS_CLASSIFICATION_HEADER = (
     "finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool\tbody_severity"
 )
 
+CODE_REVIEW_FINDINGS_CLASSIFICATION_HEADER = (
+    "finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool"
+)
+
 
 def findings_classification_header() -> str:
     return FINDINGS_CLASSIFICATION_HEADER
+
+
+def code_review_classification_header() -> str:
+    return CODE_REVIEW_FINDINGS_CLASSIFICATION_HEADER
 
 
 def findings_classification_header_main(argv: list[str]) -> int:
     if argv:
         return _error("usage: findings-classification-header")
     print(findings_classification_header())
+    return 0
+
+
+def code_review_classification_header_main(argv: list[str]) -> int:
+    if argv:
+        return _error("usage: code-review-classification-header")
+    print(code_review_classification_header())
     return 0
 
 
@@ -433,11 +448,18 @@ def _ballot_ids(ballot_file: str | Path, grammar: str) -> list[str]:
     return ids
 
 
+def voter_launcher_tool(voter_tool: str) -> str:
+    if voter_tool.startswith("cursor-"):
+        return "cursor"
+    return voter_tool
+
+
 def parse_rate_check_tool_label(voter_tool: str) -> str:
-    if voter_tool == "claude":
+    launcher_tool = voter_launcher_tool(voter_tool)
+    if launcher_tool == "claude":
         return "agent launch-claude-review (voter parse-rate check)"
-    if voter_tool in {"codex", "cursor"}:
-        return f"agent launch-review --tool {voter_tool} (voter parse-rate check)"
+    if launcher_tool in {"codex", "cursor"}:
+        return f"agent launch-review --tool {launcher_tool} (voter parse-rate check; label {voter_tool})"
     return f"voter parse-rate check ({voter_tool})"
 
 

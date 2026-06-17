@@ -1061,11 +1061,12 @@ fi
 
 tally_out="$REVIEW_TMPDIR/review-core-tally.env"
 
-# Dispatch the code-review voting panel and collect vote-output files.
-# Shrink-not-backfill: Claude (always; the floor) plus each available external.
-# An unavailable external is skipped, not replaced by a duplicate judge; a
-# failed/empty voter is treated as an abstention by reducing the eligible count.
-voter_files=()
+# Dispatch the code-review voting panel and collect canonical slot-indexed vote-output files.
+# Cursor available: three Cursor archetype voters at fixed slots. Cursor
+# unavailable: one Claude fallback voter in slot 1, with slots 2-3 as empty
+# placeholders for stable tally attribution.
+voter_files=("" "" "")
+voter_tools=("cursor-validity" "cursor-plan-fidelity" "cursor-pragmatism")
 voter_1_tool=""
 voter_2_tool=""
 voter_3_tool=""
@@ -1093,11 +1094,14 @@ voter_3_status=$(kv_get "$voters_out" VOTER_3_STATUS)
 voter_1_tool=$(kv_get "$voters_out" VOTER_1_TOOL)
 voter_2_tool=$(kv_get "$voters_out" VOTER_2_TOOL)
 voter_3_tool=$(kv_get "$voters_out" VOTER_3_TOOL)
-# Only include voter files whose dispatch succeeded; failed voters are
-# treated as abstentions by reducing the eligible voter count.
-[[ "$voter_1_status" != "failed" && -s "$voter_1_path" ]] && voter_files+=("$voter_1_path")
-[[ "$voter_2_status" != "failed" && -s "$voter_2_path" ]] && voter_files+=("$voter_2_path")
-[[ "$voter_3_status" != "failed" && -s "$voter_3_path" ]] && voter_files+=("$voter_3_path")
+# Keep fixed voter slots for the normal code-review tally path. Failed,
+# skipped, or empty slots pass an empty path while preserving the slot label.
+[[ -n "$voter_1_tool" ]] && voter_tools[0]="$voter_1_tool"
+[[ -n "$voter_2_tool" ]] && voter_tools[1]="$voter_2_tool"
+[[ -n "$voter_3_tool" ]] && voter_tools[2]="$voter_3_tool"
+[[ "$voter_1_status" != "failed" && -s "$voter_1_path" ]] && voter_files[0]="$voter_1_path"
+[[ "$voter_2_status" != "failed" && "$voter_2_status" != "skipped" && -s "$voter_2_path" ]] && voter_files[1]="$voter_2_path"
+[[ "$voter_3_status" != "failed" && "$voter_3_status" != "skipped" && -s "$voter_3_path" ]] && voter_files[2]="$voter_3_path"
 
 tally_args=(
     --ballot-file "$REVIEW_TMPDIR/findings.md"
@@ -1112,9 +1116,7 @@ tally_args=(
 [[ -n "$panel_manifest" && -f "$panel_manifest" ]] && tally_args+=(--manifest-file "$panel_manifest")
 [[ -f "$collector_results_file" ]] && tally_args+=(--collector-results-file "$collector_results_file")
 [[ "$not_substantive_slots" -gt 0 ]] && tally_args+=(--not-substantive-count "$not_substantive_slots")
-if [[ "${#voter_files[@]}" -gt 0 ]]; then
-    tally_args+=(--voter-files "${voter_files[@]}")
-fi
+tally_args+=(--voter-files "${voter_files[@]}" --voter-tools "${voter_tools[@]}")
 "$TALLY_VOTES_SH" "${tally_args[@]}" > "$tally_out"
 
 out_of_scope_drift_count=$(kv_get "$tally_out" OUT_OF_SCOPE_DRIFT_COUNT)

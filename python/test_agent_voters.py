@@ -90,20 +90,21 @@ class FakeHarness:
         return _result(args, 2, stderr=f"unexpected args: {args}\n")
 
     def _waterfall(self, args: list[str]) -> proc.CommandResult:
-        codex = self.review_tmpdir / "codex-vote-output.txt"
-        cursor = self.review_tmpdir / "cursor-vote-output.txt"
+        slots_file = Path(_value_after(args, "--slots-file"))
+        rows = [__import__("json").loads(line) for line in slots_file.read_text(encoding="utf-8").splitlines() if line]
         outputs: list[str] = []
         tools: list[str] = []
-        if self.waterfall_mode in {"both", "codex"}:
-            codex.write_text("FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false\n", encoding="utf-8")
-            (Path(str(codex) + ".done")).write_text("0\n", encoding="utf-8")
-            outputs.append(str(codex))
-            tools.append("codex")
-        if self.waterfall_mode in {"both", "cursor"}:
-            cursor.write_text("FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false\n", encoding="utf-8")
-            (Path(str(cursor) + ".done")).write_text("0\n", encoding="utf-8")
-            outputs.append(str(cursor))
-            tools.append("cursor")
+        for idx, row in enumerate(rows, start=1):
+            if self.waterfall_mode == "none":
+                continue
+            if self.waterfall_mode == "slot2_failed" and idx == 2:
+                continue
+            out = Path(str(row["output"]))
+            vote = "YES" if idx != 3 else "NO"
+            out.write_text(f"FINDING_1: {vote} CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false\n", encoding="utf-8")
+            Path(str(out) + ".done").write_text("0\n", encoding="utf-8")
+            outputs.append(str(out))
+            tools.append(str(row.get("tool", "cursor")))
         stdout = "ALL_OUTPUT_FILES=" + " ".join(outputs) + "\n"
         stdout += "ALL_OUTPUT_TOOLS=" + " ".join(tools) + "\n"
         stdout += "DISPATCH_OK=true\n"
@@ -186,7 +187,7 @@ def test_happy_path_uses_stub_plugin_root_and_emits_clean_final_kvs(tmp_path: Pa
     assert Path(paths_file).is_file()
     assert Path(paths_file).read_text(encoding="utf-8").count("vote-output.txt") == 3
     _assert_stub_plugin_root_on_calls(harness, stub_root)
-    assert harness.popen_calls[0][1] == subprocess.DEVNULL
+    assert not harness.popen_calls
 
 
 @pytest.mark.voter_happy
@@ -204,15 +205,19 @@ def test_child_argv_parity_timeout_context_and_parse_rate_args(tmp_path: Path, m
 
     assert agent_voters.dispatch_voters(opts) == 0
 
-    launch_argv = harness.popen_calls[0][0]
-    assert _value_after(launch_argv, "--mode") == "description"
-    assert _value_after(launch_argv, "--timeout") == "1200"
-    assert Path(_value_after(launch_argv, "--diff-file")).stat().st_size == 200000
-    assert Path(_value_after(launch_argv, "--plan-file")).stat().st_size == 60000
+    assert not harness.popen_calls
+    render_calls = [call for call in harness.run_calls if _verb(call) == ("render", "voter")]
+    assert [ _value_after(call, "--archetype") for call in render_calls ] == [
+        "validity-correctness",
+        "plan-fidelity-completeness",
+        "pragmatism-cost",
+    ]
     waterfall = next(call for call in harness.run_calls if _verb(call) == ("agent", "dispatch-waterfall"))
     assert "--slots-file" in waterfall
     assert _value_after(waterfall, "--mode") == "description"
     assert _value_after(waterfall, "--timeout") == "1200"
+    assert Path(_value_after(waterfall, "--diff-file")).stat().st_size == 200000
+    assert Path(_value_after(waterfall, "--plan-file")).stat().st_size == 60000
     assert "--no-fallback" in waterfall
     waiter = next(call for call in harness.run_calls if _verb(call) == ("agent", "wait-reviewers"))
     assert _value_after(waiter, "--timeout") == "7"
@@ -269,28 +274,32 @@ def test_both_externals_down_shrink_not_backfill(tmp_path: Path, monkeypatch: py
     assert agent_voters.dispatch_voters(_opts(ballot, review, codex="false", cursor="false")) == 0
 
     out = capsys.readouterr().out
+    assert "VOTER_1_TOOL=claude" in out
     assert "VOTER_2_PATH=\n" in out
+    assert "VOTER_2_TOOL=cursor-plan-fidelity" in out
     assert "VOTER_2_STATUS=skipped" in out
     assert "VOTER_3_PATH=\n" in out
+    assert "VOTER_3_TOOL=cursor-pragmatism" in out
     assert "VOTER_3_STATUS=skipped" in out
     assert Path(_kv(out, "VOTER_PATHS_FILE")).read_text(encoding="utf-8").count("vote-output.txt") == 1
 
 
 @pytest.mark.voter_happy
-def test_cursor_only_maps_by_tool_name_and_degrades_available_codex(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_failed_middle_cursor_slot_degrades_without_backfill(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     review = tmp_path / "review"
     ballot = tmp_path / "ballot.md"
     ballot.write_text("### FINDING_1: one\n", encoding="utf-8")
     harness, _stub_root = _install_harness(monkeypatch, tmp_path, review)
-    harness.waterfall_mode = "cursor"
+    harness.waterfall_mode = "slot2_failed"
 
     assert agent_voters.dispatch_voters(_opts(ballot, review)) == 0
 
     out = capsys.readouterr().out
-    assert "VOTER_2_PATH=\n" in out
+    assert "cursor-plan-fidelity-vote-output.txt" in _kv(out, "VOTER_2_PATH")
     assert "VOTER_2_STATUS=failed" in out
     assert "VOTER_3_PATH=" in out
-    assert "cursor-vote-output.txt" in _kv(out, "VOTER_3_PATH")
+    assert "cursor-pragmatism-vote-output.txt" in _kv(out, "VOTER_3_PATH")
+    assert not (review / "codex-vote-output.txt").exists()
     assert "DEGRADED_PANEL_WARNING=" in out
 
 
@@ -303,7 +312,7 @@ def test_wait_timeout_blocks_voter1_late_sentinel(tmp_path: Path, monkeypatch: p
     harness.claude_write_done = False
     harness.wait_stdout = f"TIMEOUT 1 {review / 'claude-vote-output.txt.done'}\n"
 
-    assert agent_voters.dispatch_voters(_opts(ballot, review)) == 0
+    assert agent_voters.dispatch_voters(_opts(ballot, review, cursor="false")) == 0
 
     out = capsys.readouterr().out
     assert "VOTER_1_STATUS=failed" in out
@@ -319,7 +328,7 @@ def test_successful_voter1_without_launcher_done_gets_local_sentinel_after_wait(
     harness, _stub_root = _install_harness(monkeypatch, tmp_path, review)
     harness.claude_write_done = False
 
-    assert agent_voters.dispatch_voters(_opts(ballot, review)) == 0
+    assert agent_voters.dispatch_voters(_opts(ballot, review, cursor="false")) == 0
 
     out = capsys.readouterr().out
     assert "VOTER_1_STATUS=launched" in out
@@ -336,7 +345,7 @@ def test_voter1_failure_appends_pinned_site_and_suppresses_helper_stdout(tmp_pat
     harness.claude_write_output = False
     harness.claude_write_done = False
 
-    assert agent_voters.dispatch_voters(_opts(ballot, review)) == 0
+    assert agent_voters.dispatch_voters(_opts(ballot, review, cursor="false")) == 0
 
     out = capsys.readouterr().out
     assert "APPENDED=" not in out
@@ -563,36 +572,37 @@ def _write_wait_barrier_stub_plugin(root: Path, real_cli: Path) -> None:
             Path(output + ".done").write_text("0\\n", encoding="utf-8")
             raise SystemExit(0)
         if sys.argv[1:3] == ["agent", "dispatch-waterfall"]:
-            review_tmpdir = str(Path(os.environ["LARCH_WAIT_BARRIER_VOTER2"]).parent)
+            import json
+            args = sys.argv[3:]
+            slots_file = args[args.index("--slots-file") + 1]
+            rows = [json.loads(line) for line in Path(slots_file).read_text(encoding="utf-8").splitlines() if line]
+            review_tmpdir = str(Path(rows[0]["output"]).parent)
             mode = os.environ.get("LARCH_WAIT_BARRIER_MODE", "delayed")
-            v2 = os.environ["LARCH_WAIT_BARRIER_VOTER2"]
-            v3 = os.environ["LARCH_WAIT_BARRIER_VOTER3"]
-            if mode == "delayed":
-                Path(v2).write_text("FINDING_1: YES\\n", encoding="utf-8")
-                Path(v3).write_text("FINDING_1: NO\\n", encoding="utf-8")
-                time.sleep(float(os.environ.get("LARCH_WAIT_BARRIER_DELAY", "0.2")))
-                Path(v2 + ".done").write_text("0\\n", encoding="utf-8")
-                Path(v3 + ".done").write_text("0\\n", encoding="utf-8")
-            elif mode == "immediate":
-                Path(v2).write_text("FINDING_1: YES\\n", encoding="utf-8")
-                Path(v2 + ".done").write_text("0\\n", encoding="utf-8")
-                Path(v3).write_text("FINDING_1: NO\\n", encoding="utf-8")
-                Path(v3 + ".done").write_text("0\\n", encoding="utf-8")
-            elif mode == "concurrent":
+            delay = float(os.environ.get("LARCH_WAIT_BARRIER_DELAY", "0.2"))
+            if mode == "concurrent":
                 Path(os.environ["LARCH_WAIT_BARRIER_MARKER"]).write_text("", encoding="utf-8")
-                Path(v2).write_text("FINDING_1: YES\\n", encoding="utf-8")
-                Path(v2 + ".done").write_text("0\\n", encoding="utf-8")
-                Path(v3).write_text("FINDING_1: NO\\n", encoding="utf-8")
-                Path(v3 + ".done").write_text("0\\n", encoding="utf-8")
-            elif mode == "nonzero_done":
-                Path(v2).write_text("FINDING_1: YES\\n", encoding="utf-8")
-                Path(v2 + ".done").write_text("7\\n", encoding="utf-8")
-                Path(v3).write_text("FINDING_1: NO\\n", encoding="utf-8")
-                Path(v3 + ".done").write_text("9\\n", encoding="utf-8")
-            elif mode == "timeout":
+            if mode == "timeout":
                 Path(review_tmpdir, "timeout-mode-observed").write_text("", encoding="utf-8")
-            print(f"ALL_OUTPUT_FILES={{v2}} {{v3}}")
-            print("ALL_OUTPUT_TOOLS=codex cursor")
+            outputs = []
+            for index, row in enumerate(rows, start=1):
+                out = row["output"]
+                outputs.append(out)
+                if mode == "timeout":
+                    continue
+                vote = "NO" if index == 3 else "YES"
+                Path(out).write_text("FINDING_1: " + vote + "\\n", encoding="utf-8")
+                if mode == "nonzero_done":
+                    Path(out + ".done").write_text(str(index + 6) + "\\n", encoding="utf-8")
+                elif mode == "delayed":
+                    pass
+                else:
+                    Path(out + ".done").write_text("0\\n", encoding="utf-8")
+            if mode == "delayed":
+                time.sleep(delay)
+                for out in outputs:
+                    Path(out + ".done").write_text("0\\n", encoding="utf-8")
+            print("ALL_OUTPUT_FILES=" + " ".join(outputs))
+            print("ALL_OUTPUT_TOOLS=" + " ".join(["cursor"] * len(outputs)))
             print("DISPATCH_OK=true")
             raise SystemExit(0)
         if sys.argv[1:3] == ["render", "voter"]:
@@ -605,7 +615,7 @@ def _write_wait_barrier_stub_plugin(root: Path, real_cli: Path) -> None:
         raise SystemExit(2)
         """
     )
-    (root / "python" / "cli.py").write_text(script, encoding="utf-8")
+    (root / "python" / "cli.py").write_text(script.lstrip(), encoding="utf-8")
     (root / "python" / "cli.py").chmod(0o755)
 
 
@@ -752,8 +762,8 @@ def test_waterfall_dispatch_runs_before_claude_wait(tmp_path: Path, monkeypatch:
     assert agent_voters.dispatch_voters(_opts(ballot, review)) == 0
 
     assert "waterfall" in harness.events
-    assert "claude_wait" in harness.events
-    assert harness.events.index("waterfall") < harness.events.index("claude_wait")
+    assert "claude_wait" not in harness.events
+    assert not harness.popen_calls
 
 
 @pytest.mark.voter_happy
@@ -766,10 +776,11 @@ def test_one_external_down_shrink_without_degraded_warning(tmp_path: Path, monke
     assert agent_voters.dispatch_voters(_opts(ballot, review, codex="false", cursor="true")) == 0
 
     out = capsys.readouterr().out
-    assert "VOTER_2_STATUS=skipped" in out
+    assert "VOTER_1_TOOL=cursor-validity" in out
+    assert "VOTER_2_STATUS=launched" in out
     assert "VOTER_3_STATUS=launched" in out
     assert "DEGRADED_PANEL_WARNING=" not in out
-    assert Path(_kv(out, "VOTER_PATHS_FILE")).read_text(encoding="utf-8").count("vote-output.txt") == 2
+    assert Path(_kv(out, "VOTER_PATHS_FILE")).read_text(encoding="utf-8").count("vote-output.txt") == 3
 
 
 @pytest.mark.voter_happy
@@ -787,8 +798,10 @@ def test_round2_three_judge_parity(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     manifest = review / "code-voter-slots.ndjson"
     assert manifest.is_file()
     text = manifest.read_text(encoding="utf-8")
+    assert '"slot":"voter-1"' in text
     assert '"slot":"voter-2"' in text
     assert '"slot":"voter-3"' in text
+    assert text.count('"tool":"cursor"') == 3
 
 
 @pytest.mark.voter_happy
@@ -898,9 +911,10 @@ def test_wait_barrier_nonzero_done_fails_externals(tmp_path: Path) -> None:
         },
     )
     assert result.returncode == 0, result.stderr
+    assert "VOTER_1_STATUS=failed" in result.stdout
     assert "VOTER_2_STATUS=failed" in result.stdout
     assert "VOTER_3_STATUS=failed" in result.stdout
-    assert "1/3 effective judges" in result.stdout
+    assert "0/3 effective judges" in result.stdout
 
 
 @pytest.mark.voter_happy
@@ -924,9 +938,10 @@ def test_wait_barrier_external_timeout_degrades_panel(tmp_path: Path) -> None:
         },
     )
     assert result.returncode == 0, result.stderr
+    assert "VOTER_1_STATUS=failed" in result.stdout
     assert "VOTER_2_STATUS=failed" in result.stdout
     assert "VOTER_3_STATUS=failed" in result.stdout
-    assert "1/3 effective judges" in result.stdout
+    assert "0/3 effective judges" in result.stdout
 
 
 @pytest.mark.voter_happy
@@ -945,6 +960,7 @@ def test_voter1_delayed_done_subprocess_uses_stub_plugin_root(tmp_path: Path) ->
         ballot,
         stub_bin=stub_bin,
         plugin_root=plugin,
+        cursor_available="false",
         env={
             "LARCH_VOTER1_DONE_DELAY": "1",
             "LARCH_STUB_CLI_LOG": str(log_path),
@@ -971,13 +987,12 @@ def test_parse_rate_retry_nonzero_rc_counts_as_not_substantive(
     ballot = tmp_path / "ballot.md"
     ballot.write_text("### FINDING_1: one\n", encoding="utf-8")
     harness, _stub_root = _install_harness(monkeypatch, tmp_path, review)
-    harness.parse_rate_rc = {"codex": 1}
-    harness.waterfall_mode = "codex"
+    harness.parse_rate_rc = {"cursor-validity": 1}
 
-    assert agent_voters.dispatch_voters(_opts(ballot, review, codex="true", cursor="false")) == 0
+    assert agent_voters.dispatch_voters(_opts(ballot, review, codex="false", cursor="true")) == 0
 
     out = capsys.readouterr().out
-    assert "VOTER_2_PARSE_RATE_STATUS=NOT_SUBSTANTIVE" in out
+    assert "VOTER_1_PARSE_RATE_STATUS=NOT_SUBSTANTIVE" in out
     assert "DEGRADED_PANEL_WARNING=" in out
 
 
@@ -1041,6 +1056,7 @@ def test_oos_only_ballot_triggers_parse_retry(tmp_path: Path) -> None:
         review,
         ballot,
         stub_bin=stub_bin,
+        cursor_available="false",
         env={"CLAUDE_STUB_MODE": "parse_retry_success", "CLAUDE_STUB_COUNT_FILE": str(count)},
     )
     assert result.returncode == 0, result.stderr
@@ -1061,6 +1077,7 @@ def test_prod_shape_claude_parse_retry_appends_issues_log(tmp_path: Path) -> Non
         review,
         ballot,
         stub_bin=stub_bin,
+        cursor_available="false",
         env={
             "CLAUDE_STUB_MODE": "parse_retry_fail",
             "CLAUDE_STUB_COUNT_FILE": str(count),
@@ -1085,6 +1102,7 @@ def test_retry_success_claude_preserves_first_pass_sidecar(tmp_path: Path) -> No
         review,
         ballot,
         stub_bin=stub_bin,
+        cursor_available="false",
         env={"CLAUDE_STUB_MODE": "parse_retry_success", "CLAUDE_STUB_COUNT_FILE": str(count)},
     )
     assert result.returncode == 0, result.stderr
@@ -1106,6 +1124,7 @@ def test_retry_fail_claude_preserves_narrative_and_diag(tmp_path: Path) -> None:
         review,
         ballot,
         stub_bin=stub_bin,
+        cursor_available="false",
         env={"CLAUDE_STUB_MODE": "parse_retry_fail", "CLAUDE_STUB_COUNT_FILE": str(count)},
     )
     assert result.returncode == 0, result.stderr
@@ -1127,14 +1146,17 @@ def test_retry_success_codex_preserves_first_pass_sidecar(tmp_path: Path) -> Non
         review,
         ballot,
         stub_bin=stub_bin,
-        env={"CODEX_STUB_MODE": "parse_retry_success", "CODEX_STUB_COUNT_FILE": str(count)},
+        env={"CURSOR_STUB_MODE": "parse_retry_success", "CURSOR_STUB_COUNT_FILE": str(count)},
     )
     assert result.returncode == 0, result.stderr
-    assert "VOTER_2_PARSE_RATE_STATUS=NOT_SUBSTANTIVE" in result.stdout
-    final = review / "codex-vote-output.txt"
-    assert "Narrative codex output" in final.read_text(encoding="utf-8")
-    assert not (review / "codex-vote-output-first-pass.txt").exists()
-    assert not (review / "codex-vote-output-parse-retry.txt").exists()
+    # Parse-rate retry was removed (main #4547): a narrative voter degrades the
+    # panel and leaves no retry/first-pass sidecars on any archetype slot. Which
+    # slot races to the narrative output is non-deterministic, so assert panel
+    # degradation rather than a specific voter index.
+    assert "DEGRADED_PANEL_WARNING=" in result.stdout
+    for label in ("cursor-validity", "cursor-plan-fidelity", "cursor-pragmatism"):
+        assert not (review / f"{label}-vote-output-first-pass.txt").exists()
+        assert not (review / f"{label}-vote-output-parse-retry.txt").exists()
 
 
 @pytest.mark.voter_retry_cursor
@@ -1150,11 +1172,12 @@ def test_retry_success_cursor_preserves_first_pass_sidecar(tmp_path: Path) -> No
         env={"CURSOR_STUB_MODE": "parse_retry_success", "CURSOR_STUB_COUNT_FILE": str(count)},
     )
     assert result.returncode == 0, result.stderr
-    assert "VOTER_3_PARSE_RATE_STATUS=NOT_SUBSTANTIVE" in result.stdout
-    final = review / "cursor-vote-output.txt"
-    assert "Narrative cursor output" in final.read_text(encoding="utf-8")
-    assert not (review / "cursor-vote-output-first-pass.txt").exists()
-    assert not (review / "cursor-vote-output-parse-retry.txt").exists()
+    # Parse-rate retry was removed (main #4547): a narrative voter degrades the
+    # panel and leaves no retry/first-pass sidecars on any archetype slot.
+    assert "DEGRADED_PANEL_WARNING=" in result.stdout
+    for label in ("cursor-validity", "cursor-plan-fidelity", "cursor-pragmatism"):
+        assert not (review / f"{label}-vote-output-first-pass.txt").exists()
+        assert not (review / f"{label}-vote-output-parse-retry.txt").exists()
 
 
 @pytest.mark.voter_retry_codex_fail_and_fallback
@@ -1167,13 +1190,13 @@ def test_retry_fail_codex_degrades_panel(tmp_path: Path) -> None:
         review,
         ballot,
         stub_bin=stub_bin,
-        env={"CODEX_STUB_MODE": "parse_retry_fail", "CODEX_STUB_COUNT_FILE": str(count)},
+        env={"CURSOR_STUB_MODE": "parse_retry_fail", "CURSOR_STUB_COUNT_FILE": str(count)},
     )
     assert result.returncode == 0, result.stderr
     assert "VOTER_2_PARSE_RATE_STATUS=NOT_SUBSTANTIVE" in result.stdout
     assert "DEGRADED_PANEL_WARNING=" in result.stdout
-    assert (review / "codex-vote-output-parse-rate-diag.txt").is_file()
-    assert not (review / "codex-vote-output-first-pass.txt").exists()
+    assert (review / "cursor-plan-fidelity-vote-output-parse-rate-diag.txt").is_file()
+    assert not (review / "cursor-plan-fidelity-vote-output-first-pass.txt").exists()
 
 
 @pytest.mark.voter_retry_codex_fail_and_fallback
@@ -1208,6 +1231,7 @@ def test_env_isolation_suppresses_parent_issues_log(tmp_path: Path) -> None:
         review,
         ballot,
         stub_bin=stub_bin,
+        cursor_available="false",
         env={
             "CLAUDE_STUB_MODE": "parse_retry_fail",
             "CLAUDE_STUB_COUNT_FILE": str(count),
@@ -1230,6 +1254,7 @@ def test_harness_path_guard_writes_local_diag_only(tmp_path: Path) -> None:
         review,
         ballot,
         stub_bin=stub_bin,
+        cursor_available="false",
         env={
             "CLAUDE_STUB_MODE": "parse_retry_fail",
             "CLAUDE_STUB_COUNT_FILE": str(count),
@@ -1255,17 +1280,17 @@ def test_prod_shape_codex_parse_retry_appends_issues_log(tmp_path: Path) -> None
         ballot,
         stub_bin=stub_bin,
         env={
-            "CODEX_STUB_MODE": "parse_retry_fail",
-            "CODEX_STUB_COUNT_FILE": str(count),
+            "CURSOR_STUB_MODE": "parse_retry_fail",
+            "CURSOR_STUB_COUNT_FILE": str(count),
             "LARCH_EXECUTION_ISSUES_LOG": str(issues),
         },
     )
     assert result.returncode == 0, result.stderr
-    assert "VOTER_2_PARSE_RATE_STATUS=NOT_SUBSTANTIVE" in result.stdout
-    assert (review / "codex-vote-output-parse-rate-diag.txt").is_file()
+    assert "VOTER_1_PARSE_RATE_STATUS=NOT_SUBSTANTIVE" in result.stdout
+    assert (review / "cursor-validity-vote-output-parse-rate-diag.txt").is_file()
     issues_text = issues.read_text(encoding="utf-8")
-    assert "agent dispatch-voters codex" in issues_text
-    assert "agent launch-review --tool codex (voter parse-rate check)" in issues_text
+    assert "agent dispatch-voters cursor-validity" in issues_text
+    assert "agent launch-review --tool cursor (voter parse-rate check; label cursor-validity)" in issues_text
 
 
 def _kv(output: str, key: str) -> str:

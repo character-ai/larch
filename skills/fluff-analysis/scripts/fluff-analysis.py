@@ -14,6 +14,7 @@ See fluff-analysis.md for the full contract.
 """
 import argparse
 import collections
+import csv
 import concurrent.futures
 import datetime
 import glob
@@ -278,11 +279,28 @@ def parse_design_tsv(text):
 
 
 def parse_impl_tsv(text):
-    """18-column implement findings-classification.tsv -> {id: {...ratings}}."""
+    """Parse implement/code-review TSV ratings from legacy 18-column or new 21-column schemas."""
     out = {}
-    for line in (text or "").splitlines()[1:]:
+    lines = (text or "").splitlines()
+    if not lines:
+        return out
+    header = lines[0].split("\t")
+    has_named_ratings = all(f"v{idx}_severity" in header for idx in (1, 2, 3))
+    if has_named_ratings:
+        for row in csv.DictReader(lines, delimiter="\t"):
+            fid = (row.get("finding_id") or "").strip()
+            if not re.match(r"^(FINDING|OOS|REJ)", fid):
+                continue
+            out[fid] = {
+                "severities": [(row.get(f"v{idx}_severity") or "").lower() for idx in (1, 2, 3) if row.get(f"v{idx}_severity")],
+                "qualities": [(row.get(f"v{idx}_quality") or "").lower() for idx in (1, 2, 3) if row.get(f"v{idx}_quality")],
+                "correctness": [(row.get(f"v{idx}_correctness") or "").lower() for idx in (1, 2, 3) if row.get(f"v{idx}_correctness")],
+                "uncertain": [(row.get(f"v{idx}_uncertain") or "").lower() for idx in (1, 2, 3) if row.get(f"v{idx}_uncertain")],
+            }
+        return out
+    for line in lines[1:]:
         cells = _cells(line)
-        if len(cells) < 3 or not re.match(r"^(FINDING|OOS|REJ)", cells[0]):
+        if len(cells) != 18 or not re.match(r"^(FINDING|OOS|REJ)", cells[0]):
             continue
 
         def get(idx, row=cells):
