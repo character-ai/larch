@@ -319,7 +319,7 @@ test-review-and-fix-step5-loop-timing:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_review_and_fix.py -q -k loop_timing
 
 test-record-plan-review-round-timing:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review.py -q -k record_round_timing
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review.py -q -k 'record_round_timing or persist_round_start_s'
 
 test-step-telemetry-mark:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_timing.py -q -k telemetry_mark
