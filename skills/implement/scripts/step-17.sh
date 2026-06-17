@@ -38,23 +38,71 @@ rehydrate_larch_triplet() {
     export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 }
 
+NO_PRINT_STDOUT=false
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --no-print-stdout) NO_PRINT_STDOUT=true; shift ;;
+        --help)
+            printf '%s\n' 'Usage: step-17.sh [--no-print-stdout]'
+            exit 0
+            ;;
+        *)
+            printf 'step-17.sh: unknown option: %s\n' "$1" >&2
+            exit 2
+            ;;
+    esac
+done
+summary_path="$IMPLEMENT_TMPDIR/summary-final.md"
+
+append_step17_failure() {
+    python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" run-log append-failure \
+        --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
+        --site "Step 17 — final report" \
+        --tool "python/cli.py final-report write" \
+        --exit-code "$1" \
+        --category "Tool Failures" \
+        --output-file "$_step17_wfr_log" \
+        --redact >/dev/null 2>&1 || true
+}
+
 rehydrate_plugin_root
 python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" timing telemetry-mark --implement-tmpdir "$IMPLEMENT_TMPDIR" --label "Step 17 — final report" || true
 _step17_wfr_log="$IMPLEMENT_TMPDIR/step17-write-final-report.failure.log"
 : >"$_step17_wfr_log" 2>/dev/null || true
-if python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" final-report write --implement-tmpdir "$IMPLEMENT_TMPDIR" --print-stdout >"$_step17_wfr_log" 2>&1; then
+if [ "$NO_PRINT_STDOUT" = true ]; then
+    summary_backup=""
+    if [ -f "$summary_path" ]; then
+        summary_backup="$IMPLEMENT_TMPDIR/.summary-final.pre-step17.bak"
+        mv "$summary_path" "$summary_backup"
+    fi
+    set +e
+    python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" final-report write --implement-tmpdir "$IMPLEMENT_TMPDIR" >"$_step17_wfr_log" 2>&1
+    _step17_wfr_rc=$?
+    set -e
+    if [ "$_step17_wfr_rc" -eq 0 ]; then
+        rm -f "$summary_backup"
+        exit 0
+    fi
+    append_step17_failure "$_step17_wfr_rc"
+    if [ -s "$summary_path" ]; then
+        rm -f "$summary_backup"
+        exit 0
+    fi
+    if [ -n "$summary_backup" ] && [ -f "$summary_backup" ]; then
+        mv "$summary_backup" "$summary_path"
+    fi
+    exit "$_step17_wfr_rc"
+fi
+
+set +e
+python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" final-report write --implement-tmpdir "$IMPLEMENT_TMPDIR" --print-stdout >"$_step17_wfr_log" 2>&1
+_step17_wfr_rc=$?
+set -e
+if [ "$_step17_wfr_rc" -eq 0 ]; then
   cat "$_step17_wfr_log"
-  if [ -s "$IMPLEMENT_TMPDIR/summary-final.md" ]; then
+  if [ -s "$summary_path" ]; then
     touch "$IMPLEMENT_TMPDIR/.step17-printed"
   fi
 else
-  _step17_wfr_rc=$?
-  python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" run-log append-failure \
-    --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
-    --site "Step 17 — final report" \
-    --tool "python/cli.py final-report write" \
-    --exit-code "$_step17_wfr_rc" \
-    --category "Tool Failures" \
-    --output-file "$_step17_wfr_log" \
-    --redact >/dev/null 2>&1 || true
+  append_step17_failure "$_step17_wfr_rc"
 fi

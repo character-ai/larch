@@ -107,8 +107,7 @@ for script in [
     'skills/implement/scripts/step-8-seed-initial.sh',
     'skills/implement/scripts/step-8-ship.sh',
     'skills/implement/scripts/step-8-oos-checkpoint.sh',
-    'skills/implement/scripts/step-16.sh',
-    'skills/implement/scripts/step-17.sh',
+    'skills/implement/scripts/step-16-17.sh',
     'skills/implement/scripts/step-18a-gate.sh --stall-tracking-memory "${STALL_TRACKING:-false}"',
     'python/cli.py final-report step18b --implement-tmpdir "$IMPLEMENT_TMPDIR"',
     'skills/implement/scripts/step-18-finalize.sh',
@@ -124,7 +123,7 @@ for needle in [
     forbid(skill, needle, 'wrapperized SKILL')
 
 # Script/md sibling and executable coverage for new wrappers.
-wrappers = ['step-0-bootstrap','step-0-degraded-gate','step-2-entry','step-2-post-dispatch','run-step-checks','step-5-review','step-5-resume','step-6-entry','step-8-python-guard','step-8-seed-initial','step-8-ship','step-8-oos-checkpoint','step-16','step-17','step-18a-gate','step-18-finalize']
+wrappers = ['step-0-bootstrap','step-0-degraded-gate','step-2-entry','step-2-post-dispatch','run-step-checks','step-5-review','step-5-resume','step-6-entry','step-8-python-guard','step-8-seed-initial','step-8-ship','step-8-oos-checkpoint','step-16','step-16-17','step-17','step-18a-gate','step-18-finalize']
 for name in wrappers:
     sh=Path(f'skills/implement/scripts/{name}.sh')
     md=Path(f'skills/implement/scripts/{name}.md')
@@ -228,9 +227,18 @@ for line in text_impl.splitlines():
 if fence_has_marker:
     checks.append('SKILL.md bash fence must not reference LARCH_FINAL_SUMMARY_BEGIN or LARCH_FINAL_SUMMARY_END')
 
-# Step 17 delivery-channel prohibition must exist
-require(skill, 'Do NOT use a Bash `cat` or Python tool call to print the summary body', 'SKILL missing Step 17 delivery-channel prohibition')
-# Old Bash-cat mechanism text must be gone
+# Step 17 marker handoff contract must exist.
+require('skills/implement/scripts/step-16-17.sh', '---LARCH-SUMMARY-FINAL-BEGIN---', 'step-16-17 begin marker literal')
+require('skills/implement/scripts/step-16-17.sh', '---LARCH-SUMMARY-FINAL-END---', 'step-16-17 end marker literal')
+require(skill, 'extract the first balanced whole-line `---LARCH-SUMMARY-FINAL-BEGIN---` / `---LARCH-SUMMARY-FINAL-END---` pair from captured wrapper output', 'SKILL marker extraction contract')
+require(skill, 'emit the extracted body verbatim as plain chat markdown', 'SKILL marker body plain-chat emission')
+require(skill, 'do not Read that file on the Step 17 primary path', 'SKILL no Read-tool Step 17 primary path')
+require(skill, 'When `EMIT_BODY=true` and `WFR_RC=0` and `[ -s "$IMPLEMENT_TMPDIR/summary-final.md" ]`', 'SKILL Step 18b Read fallback retained')
+require('skills/implement/scripts/step-16-17.sh', 'touch "$IMPLEMENT_TMPDIR/.step17-printed"', 'step-16-17 owns .step17-printed')
+require(skill, 'Write `$IMPLEMENT_TMPDIR/.step17-emitted` only after that plain-chat emission.', 'SKILL .step17-emitted orchestrator ownership')
+require('skills/implement/scripts/step-16-17.sh', 'if [ "$STEP17_RC" -eq 0 ] && [ -s "$IMPLEMENT_TMPDIR/summary-final.md" ]; then', 'step-16-17 marker gate uses Step 17 rc and non-empty summary')
+require(skill, 'Marker emission is gated on captured Step 17 render success and a non-empty `summary-final.md`, not `summary-final.md` presence alone.', 'SKILL stale-summary marker gate')
+forbid(skill, 'Do NOT use a Bash `cat` or Python tool call to print the summary body', 'retired Step 17 Bash-cat prohibition string')
 forbid(skill, 'via Bash `cat` whose output is then re-emitted as orchestrator text', 'SKILL must not sanction Bash cat for summary emit')
 
 if skill_text.count('timeout: 10800000') < 4:

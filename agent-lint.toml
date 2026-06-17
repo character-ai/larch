@@ -1284,6 +1284,8 @@ exclude = [
   "python/test_review_and_fix.py",
   "skills/implement/scripts/test-slack-issue-announce.sh",
   "skills/implement/scripts/test-slack-issue-announce.md",
+  "skills/implement/scripts/test-step-16-17.sh",
+  "skills/implement/scripts/test-step-16-17.md",
   "skills/implement/scripts/test-write-final-report.sh",
   "skills/implement/scripts/test-write-final-report.md",
   "skills/implement/scripts/test-stall-recovery-report.sh",
