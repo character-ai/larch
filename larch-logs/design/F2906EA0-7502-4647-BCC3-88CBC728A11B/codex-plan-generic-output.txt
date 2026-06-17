@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	code-quality	docs/linting.md:229	Plan omits docs/linting.md from the full startup-lock rename	After the helper and env-var rename, the linting docs still describe the run-negotiation-round harness as covering Darwin serial-lock acquire/release, leaving stale user-facing docs for the renamed startup-lock contract	Add docs/linting.md to the plan and update the row to say Darwin startup-lock acquire/release, matching the new helper and env terminology.
