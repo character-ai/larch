@@ -685,27 +685,53 @@ def _normalized_outcome(tmpdir: Path) -> str:
     return values.get("IMPLEMENT_NORMALIZED_OUTCOME", "bailed")
 
 
+def _count_markdown_bullets_outside_fences(text: str) -> int:
+    in_fence = False
+    count = 0
+    for line in text.splitlines():
+        if line.lstrip().startswith("```"):
+            in_fence = not in_fence
+            continue
+        if not in_fence and line.startswith("- "):
+            count += 1
+    return count
+
+
+def _count_issue_sections(text: str) -> tuple[int, int]:
+    exec_lines: list[str] = []
+    warn_lines: list[str] = []
+    section = _ISSUE_SECTION_NONE
+    in_fence = False
+    for line in text.splitlines():
+        if line.lstrip().startswith("```"):
+            if section == _ISSUE_SECTION_EXEC:
+                exec_lines.append(line)
+            elif section == _ISSUE_SECTION_WARN:
+                warn_lines.append(line)
+            in_fence = not in_fence
+        elif not in_fence and line in _EXEC_ISSUE_HEADINGS:
+            section = _ISSUE_SECTION_EXEC
+        elif not in_fence and line == "### Warnings":
+            section = _ISSUE_SECTION_WARN
+        elif not in_fence and line.startswith("### "):
+            section = _ISSUE_SECTION_NONE
+        elif section == _ISSUE_SECTION_EXEC:
+            exec_lines.append(line)
+        elif section == _ISSUE_SECTION_WARN:
+            warn_lines.append(line)
+    return (
+        _count_markdown_bullets_outside_fences("\n".join(exec_lines)),
+        _count_markdown_bullets_outside_fences("\n".join(warn_lines)),
+    )
+
+
 def _refresh_issue_counts(implement_tmpdir: Path, run_id: str) -> tuple[int, int]:
     """Port write-final-report.sh refresh_issue_counts category split and ndjson fallback."""
     issue_log = implement_tmpdir / "execution-issues.md"
     exec_n = 0
     warn_n = 0
-    bullet_re = re.compile(r"^- \*\*[^*].*\*\*:?([ \t].*)?$")
     if issue_log.is_file() and issue_log.stat().st_size > 0:
-        section = _ISSUE_SECTION_NONE
-        for line in issue_log.read_text(encoding="utf-8", errors="replace").splitlines():
-            if line in _EXEC_ISSUE_HEADINGS:
-                section = _ISSUE_SECTION_EXEC
-            elif line == "### Warnings":
-                section = _ISSUE_SECTION_WARN
-            elif line.startswith("### "):
-                section = _ISSUE_SECTION_NONE
-            elif bullet_re.match(line):
-                if section == _ISSUE_SECTION_EXEC:
-                    exec_n += 1
-                elif section == _ISSUE_SECTION_WARN:
-                    warn_n += 1
-        return exec_n, warn_n
+        return _count_issue_sections(issue_log.read_text(encoding="utf-8", errors="replace"))
     run_dir = implement_tmpdir / "larch-logs" / "implement" / run_id
     ndjson = run_dir / "execution-issues.ndjson"
     if not ndjson.is_file():
@@ -715,11 +741,13 @@ def _refresh_issue_counts(implement_tmpdir: Path, run_id: str) -> tuple[int, int
     except json.JSONDecodeError:
         rows = []
     if rows and all(isinstance(row, dict) for row in rows):
-        exec_n = sum(
-            1 for row in rows
-            if str(cast("dict[str, object]", row).get("category", "")) in {"Tool Failures", "External Reviewer Issues"}
-        )
-        warn_n = sum(1 for row in rows if str(cast("dict[str, object]", row).get("category", "")) == "Warnings")
+        for row in rows:
+            item = cast("dict[str, object]", row)
+            category = str(item.get("category", ""))
+            if category in {"Tool Failures", "External Reviewer Issues"}:
+                exec_n += max(1, _count_markdown_bullets_outside_fences(str(item.get("body", ""))))
+            elif category == "Warnings":
+                warn_n += max(1, _count_markdown_bullets_outside_fences(str(item.get("body", ""))))
         return exec_n, warn_n
     body_text = ""
     for raw in ndjson.read_text(encoding="utf-8", errors="replace").splitlines():
@@ -732,19 +760,7 @@ def _refresh_issue_counts(implement_tmpdir: Path, run_id: str) -> tuple[int, int
         if isinstance(item, dict):
             body_text += str(cast("dict[str, object]", item).get("body", "")) + "\n"
     if re.search(r"^### (Tool Failures|External Reviewer Issues|Warnings)$", body_text, re.MULTILINE):
-        section = _ISSUE_SECTION_NONE
-        for line in body_text.splitlines():
-            if line in _EXEC_ISSUE_HEADINGS:
-                section = _ISSUE_SECTION_EXEC
-            elif line == "### Warnings":
-                section = _ISSUE_SECTION_WARN
-            elif line.startswith("### "):
-                section = _ISSUE_SECTION_NONE
-            elif bullet_re.match(line):
-                if section == _ISSUE_SECTION_EXEC:
-                    exec_n += 1
-                elif section == _ISSUE_SECTION_WARN:
-                    warn_n += 1
+        exec_n, warn_n = _count_issue_sections(body_text)
     else:
         exec_n = body_text.count('"category":"Tool Failures"') + body_text.count('"category":"External Reviewer Issues"')
         warn_n = body_text.count('"category":"Warnings"')

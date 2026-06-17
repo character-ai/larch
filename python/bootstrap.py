@@ -637,6 +637,42 @@ def _append_emergency_bypass(st: BootstrapState) -> bool:
     return True
 
 
+_PLAN_PROVENANCE_PREFIXES = ("review_status:", "rounds_completed:")
+_OPTIONAL_PLAN_SIZE_TRAILER_RE = re.compile(
+    r"^(diff_added: [0-9]+|diff_deleted: [0-9]+|mechanical_churn: .+)$"
+)
+
+
+def _strip_plan_provenance_headers(text: str) -> str:
+    lines = text.splitlines(keepends=True)
+    diff_idx = -1
+    in_fence = False
+    in_fence_by_idx: list[bool] = []
+    for idx, line in enumerate(lines):
+        in_fence_by_idx.append(in_fence)
+        if line.lstrip().startswith("```"):
+            in_fence = not in_fence
+        if re.fullmatch(r"diff_lines: \d+", line.rstrip("\n")):
+            diff_idx = idx
+    if diff_idx < 0 or in_fence_by_idx[diff_idx]:
+        return text
+
+    remove: set[int] = set()
+    idx = diff_idx - 1
+    while idx >= 0:
+        stripped = lines[idx].rstrip("\n")
+        is_provenance = any(stripped.startswith(prefix) for prefix in _PLAN_PROVENANCE_PREFIXES)
+        is_optional = bool(_OPTIONAL_PLAN_SIZE_TRAILER_RE.fullmatch(stripped))
+        if in_fence_by_idx[idx] or not (is_provenance or is_optional):
+            break
+        if is_provenance:
+            remove.add(idx)
+        idx -= 1
+    if not remove:
+        return text
+    return "".join(line for idx, line in enumerate(lines) if idx not in remove)
+
+
 def _phase_plan(st: BootstrapState) -> None:
     st.plan_file = str(Path(st.implement_tmpdir) / "plan.txt")
     feature_file = Path(st.implement_tmpdir) / "feature-description.txt"
@@ -653,7 +689,10 @@ def _phase_plan(st: BootstrapState) -> None:
             st.emit_tmp_step_failed("emergency-bypass-log")
         plan_src = Path(st.opts.preflight_tmpdir) / "plan-from-issue.txt"
         try:
-            shutil.copyfile(plan_src, st.plan_file)
+            Path(st.plan_file).write_text(
+                _strip_plan_provenance_headers(plan_src.read_text(encoding="utf-8", errors="replace")),
+                encoding="utf-8",
+            )
         except OSError as exc:
             (Path(st.implement_tmpdir) / "copy-plan.stderr.log").write_text(str(exc), encoding="utf-8")
             st.emit_tmp_step_failed("copy-plan")
