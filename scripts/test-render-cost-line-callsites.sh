@@ -31,15 +31,28 @@ b=$(grep -cF -- 'claude-input-tokens' "$f") || b=0
 test "$b" -ge 1 || fail 'design_summary.py must pass --claude-input-tokens to render-run-summary'
 pass 'design_summary.py render-run-summary per-bucket argv shape'
 
-# Step 17 Bash literals moved to skills/implement/scripts/step-17.sh wrapper
+# Step 17 marker handoff lives in the composed Step 16-17 wrapper.
 # shellcheck disable=SC2016
-grep -Fq 'python/cli.py" final-report write --implement-tmpdir "$IMPLEMENT_TMPDIR" --print-stdout >"$_step17_wfr_log" 2>&1; then' "$REPO/skills/implement/scripts/step-17.sh" || fail 'Step 17 must gate touch on write-final-report success'
+grep -Fq '"$SCRIPT_DIR/step-17.sh" --no-print-stdout || STEP17_RC=$?' "$REPO/skills/implement/scripts/step-16-17.sh" || fail 'Step 16-17 wrapper must call step-17.sh --no-print-stdout and capture rc'
 # shellcheck disable=SC2016
-grep -Fq 'if [ -s "$IMPLEMENT_TMPDIR/summary-final.md" ]; then' "$REPO/skills/implement/scripts/step-17.sh" || fail 'Step 17 must gate touch on non-empty summary body'
+grep -Fq 'STEP17_RC=0' "$REPO/skills/implement/scripts/step-16-17.sh" || fail 'Step 16-17 wrapper must initialize Step 17 rc before capture'
+# shellcheck disable=SC2016
+grep -Fq 'if [ "$STEP17_RC" -eq 0 ] && [ -s "$IMPLEMENT_TMPDIR/summary-final.md" ]; then' "$REPO/skills/implement/scripts/step-16-17.sh" || fail 'Step 16-17 wrapper must gate markers on Step 17 success and non-empty summary'
+grep -Fq -- '---LARCH-SUMMARY-FINAL-BEGIN---' "$REPO/skills/implement/scripts/step-16-17.sh" || fail 'Step 16-17 wrapper must emit begin marker'
+grep -Fq -- '---LARCH-SUMMARY-FINAL-END---' "$REPO/skills/implement/scripts/step-16-17.sh" || fail 'Step 16-17 wrapper must emit end marker'
+# shellcheck disable=SC2016
+grep -Fq 'final-report write --implement-tmpdir "$IMPLEMENT_TMPDIR" >"$_step17_wfr_log" 2>&1' "$REPO/skills/implement/scripts/step-17.sh" || fail 'Step 17 --no-print-stdout path must call final-report write without --print-stdout'
+# shellcheck disable=SC2016
+grep -Fq 'final-report write --implement-tmpdir "$IMPLEMENT_TMPDIR" --print-stdout >"$_step17_wfr_log" 2>&1' "$REPO/skills/implement/scripts/step-17.sh" || fail 'Step 17 default mode may retain --print-stdout'
+grep -Fq -- '--category "Tool Failures"' "$REPO/skills/implement/scripts/step-17.sh" || fail 'Step 17 failure path must retain Tool Failures append'
 # shellcheck disable=SC2016
 step18_launcher='bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py final-report step18b --implement-tmpdir "$IMPLEMENT_TMPDIR"'
 # shellcheck disable=SC2016
 grep -Fq "$step18_launcher" "$REPO/skills/implement/SKILL.md" || fail 'Step 18 must invoke final-report step18b through python/cli.py'
+# shellcheck disable=SC2016
+grep -Fq 'extract the first balanced whole-line `---LARCH-SUMMARY-FINAL-BEGIN---` / `---LARCH-SUMMARY-FINAL-END---` pair from captured wrapper output' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must pin Step 17 marker extraction'
+# shellcheck disable=SC2016
+grep -Fq 'emit the extracted body verbatim as plain chat markdown' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must pin Step 17 marker body emission'
 # shellcheck disable=SC2016
 grep -Fq 'When `EMIT_BODY=true` and `WFR_RC=0` and `[ -s "$IMPLEMENT_TMPDIR/summary-final.md" ]`' "$REPO/skills/implement/SKILL.md" || fail 'Step 18 orchestrator emit must key on EMIT_BODY=true with WFR_RC=0 and non-empty summary-final.md'
 # shellcheck disable=SC2016
@@ -55,11 +68,11 @@ if printf '%s\n' "$step18_block" | grep -Fq 'touch "$IMPLEMENT_TMPDIR/.step17-em
     fail 'Step 18 Bash block must not touch .step17-emitted before orchestrator emit'
 fi
 # shellcheck disable=SC2016
-grep -Fq 'the orchestrator MUST emit the full body of summary-final.md verbatim as plain chat markdown' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must pin Step 17 full-body emit prose'
+grep -Fq 'When a non-empty marker body is present, emit the extracted body verbatim as plain chat markdown.' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must pin Step 17 full-body emit prose'
 # shellcheck disable=SC2016
 grep -Fq 'When `EMIT_BODY=true` and `WFR_RC=0` and `[ -s "$IMPLEMENT_TMPDIR/summary-final.md" ]`, the orchestrator MUST emit the full body of summary-final.md verbatim as plain chat markdown' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must pin Step 18 full-body emit prose keyed on EMIT_BODY'
 # shellcheck disable=SC2016
-grep -Fq 'The only orchestrator-text addition permitted after the Bash summary is the verbatim full-body emission of $IMPLEMENT_TMPDIR/summary-final.md' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must pin NEVER #20 full-body exception prose'
+grep -Fq 'The only orchestrator-text addition permitted after the Bash summary is the verbatim full-body emission of the extracted marker body defined in Step 17' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must pin NEVER #17 full-body exception prose'
 grep -Fq 'NEVER write a free-form natural-language recap summary at end of turn after Step 17' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must pin NEVER #20 literal'
 grep -Fq -- '--post-publish-only' "$REPO/skills/design/SKILL.md" || fail 'design SKILL must call render-final-summary.sh with --post-publish-only'
 # shellcheck disable=SC2016
