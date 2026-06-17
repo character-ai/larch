@@ -11,6 +11,7 @@ import re
 import sys
 from pathlib import Path
 
+import config
 import proc
 import version_bump
 from errors import ShipError
@@ -153,11 +154,15 @@ def main(argv: list[str] | None = None) -> int:
     pr_list_file = out_dir / "pr-list.tsv"
     pr_list_file.write_text("", encoding="utf-8")
     written: set[int] = set()
+    ignored: set[int] = set()
     missing: list[str] = []
     for n in pr_nums:
         pr = _gh_json(["pr", "view", str(n), "--repo", args.repo, "--json", "number,title,labels,author,url"])
         if not isinstance(pr, dict):
             missing.append(str(n))
+            continue
+        if str(pr.get("title", "")).startswith(config.TRANSPARENT_LARCH_LOGS_SUBJECT_PREFIX):
+            ignored.add(int(pr.get("number", n)))
             continue
         _write_pr_row(pr_list_file, pr)
         written.add(int(pr.get("number", n)))
@@ -180,17 +185,21 @@ def main(argv: list[str] | None = None) -> int:
         if pulls:
             p = pulls[0]
             num = int(p.get("number", 0))
-            if num not in written:
-                row = {
-                    "number": num,
-                    "title": p.get("title", ""),
-                    "labels": p.get("labels", []),
-                    "author": {"login": (p.get("user") or {}).get("login", "unknown")},
-                    "url": p.get("html_url", ""),
-                }
-                _write_pr_row(pr_list_file, row)
-                written.add(num)
-                print(f"NOTE: commit {sha} resolved to PR #{num} via GitHub API ({subj})", file=sys.stderr)
+            if num in written or num in ignored:
+                continue
+            if str(p.get("title", "")).startswith(config.TRANSPARENT_LARCH_LOGS_SUBJECT_PREFIX):
+                ignored.add(num)
+                continue
+            row = {
+                "number": num,
+                "title": p.get("title", ""),
+                "labels": p.get("labels", []),
+                "author": {"login": (p.get("user") or {}).get("login", "unknown")},
+                "url": p.get("html_url", ""),
+            }
+            _write_pr_row(pr_list_file, row)
+            written.add(num)
+            print(f"NOTE: commit {sha} resolved to PR #{num} via GitHub API ({subj})", file=sys.stderr)
         else:
             print(f"WARN: commit {sha} has no associated pull request: {subj}", file=sys.stderr)
             orphan_shas.append(sha)
@@ -212,6 +221,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"NEW_VERSION={new}")
     print(f"BUMP_TYPE={bump}")
     print(f"PR_COUNT={len(written)}")
+    print(f"IGNORED_LARCHLOG_PR_COUNT={len(ignored)}")
     print(f"PR_LIST_FILE={pr_list_file}")
     return 0
 

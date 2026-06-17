@@ -448,3 +448,46 @@ def test_release_prepare_pr_list_tsv_column_order(monkeypatch: pytest.MonkeyPatc
     assert (tmp_path / "pr-list.tsv").read_text(encoding="utf-8").splitlines() == [
         "12\tFeature title\tenhancement,release-note\talice\thttps://github.com/o/r/pull/12"
     ]
+
+
+def test_release_prepare_ignores_larch_logs_prs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    repo_root = Path(release_prepare.__file__).resolve().parents[1]
+    runner = ReleasePrepareRunner(
+        repo_root,
+        log_subjects="Feature (#12)\nchore(larch-logs): flush abc (#13)\nchore(larch-logs): design run def (#14)\n",
+        log_hash_subjects="h1 Feature (#12)\nh2 chore(larch-logs): flush abc (#13)\nh3 chore(larch-logs): design run def (#14)\n",
+    )
+    pr_views = {
+        12: {"number": 12, "title": "Feature", "labels": [], "author": {"login": "alice"}, "url": "u12"},
+        13: {"number": 13, "title": "chore(larch-logs): flush abc", "labels": [], "author": {"login": "bot"}, "url": "u13"},
+        14: {"number": 14, "title": "chore(larch-logs): design run def", "labels": [], "author": {"login": "bot"}, "url": "u14"},
+    }
+    monkeypatch.setattr(release_prepare.proc, "run", runner.run)
+    monkeypatch.setattr(release_prepare, "_origin_repo", lambda _root: "o/r")
+    def gh_json(argv: list[str]) -> object:
+        if argv[:2] == ["release", "list"]:
+            return [{"tagName": "v1.2.3", "isLatest": True}]
+        if argv[:2] == ["pr", "list"]:
+            return []
+        if argv[:2] == ["pr", "view"]:
+            return pr_views[int(argv[2])]
+        raise AssertionError(f"unexpected gh json argv: {argv}")
+    monkeypatch.setattr(release_prepare, "_gh_json", gh_json)
+    monkeypatch.setattr(release_prepare.version_bump, "classify_bump", lambda *_args, **_kwargs: Classification())
+    assert release_prepare.main(["--repo", "o/r", "--out-dir", str(tmp_path)]) == 0
+    out = dict(line.split("=", 1) for line in capsys.readouterr().out.splitlines())
+    assert out["PR_COUNT"] == "1"
+    assert out["IGNORED_LARCHLOG_PR_COUNT"] == "2"
+    assert (tmp_path / "pr-list.tsv").read_text(encoding="utf-8").splitlines() == ["12\tFeature\t\talice\tu12"]
+
+
+def test_release_prepare_ignores_larch_logs_pr_via_commit_to_pulls(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    repo_root = Path(release_prepare.__file__).resolve().parents[1]
+    pulls = json.dumps([{"number": 13, "title": "chore(larch-logs): flush abc", "labels": [], "user": {"login": "bot"}, "html_url": "u13"}])
+    runner = ReleasePrepareRunner(repo_root, log_subjects="", log_hash_subjects="h2 chore(larch-logs): flush abc\n", api_stdout=pulls)
+    _prepare_common(monkeypatch, runner)
+    assert release_prepare.main(["--repo", "o/r", "--out-dir", str(tmp_path)]) == 0
+    out = dict(line.split("=", 1) for line in capsys.readouterr().out.splitlines())
+    assert out["PR_COUNT"] == "0"
+    assert out["IGNORED_LARCHLOG_PR_COUNT"] == "1"
+    assert (tmp_path / "pr-list.tsv").read_text(encoding="utf-8") == ""

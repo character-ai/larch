@@ -85,7 +85,7 @@ prepare_out=$(python3 "$PWD/python/cli.py" release prepare \
   --out-dir "$PREPARE_DIR")
 ```
 
-Parse `prepare_out` for `BASELINE_TAG`, `CURRENT_VERSION`, `NEW_VERSION`, `BUMP_TYPE`, `PR_COUNT`, `PR_LIST_FILE`. Then derive:
+Parse `prepare_out` for `BASELINE_TAG`, `CURRENT_VERSION`, `NEW_VERSION`, `BUMP_TYPE`, `PR_COUNT`, `IGNORED_LARCHLOG_PR_COUNT`, `PR_LIST_FILE`. Then derive:
 
 ```bash
 NOTES_DIR="$(dirname "$PR_LIST_FILE")"
@@ -98,6 +98,8 @@ RECOVERY_NOTES_FILE="$RECOVERY_NOTES_DIR/v${NEW_VERSION}-notes.redacted.md"
 Re-derive these paths from `PR_LIST_FILE` in each later Bash fence that consumes notes (Step 3, Step 5, Step 6, and Step 6 recovery) rather than relying on `PREPARE_DIR` or prior shell-local variables surviving across Bash invocations.
 
 On exit **1**, parse `ERROR=` from stdout (e.g. `no-unique-latest-release`, `stale-local-main`, `baseline-tag-unresolvable`, `pr-metadata-incomplete`) and stop.
+
+**Narrate the prepared window** before Step 3: state that `PR_COUNT` PRs merged since `BASELINE_TAG`, then that you are reading the PR list for release notes. When `IGNORED_LARCHLOG_PR_COUNT` is greater than `0`, add that `IGNORED_LARCHLOG_PR_COUNT` larch run-log PRs (`chore(larch-logs): …`) were excluded from the count and notes. `release prepare` already drops those PRs from both `PR_COUNT` and `PR_LIST_FILE`, so the count reflects substantive PRs only.
 
 When `PR_COUNT=0`, warn that no PRs merged since the last Latest release. At Step 4 confirm, **default to Cancel** unless the operator explicitly chooses Confirm to proceed with an empty release window.
 
@@ -319,7 +321,7 @@ If `NEW_VERSION_INSTALLED=true`, `CONE_RECONCILED=true`, or `RESTART_REQUIRED=tr
 
 Runtime helpers:
 
-- `python3 "$PWD/python/cli.py" release prepare`: baseline, PR list, aggregate bump KV
+- `python3 "$PWD/python/cli.py" release prepare`: baseline, PR list (larch-logs housekeeping PRs excluded; count reported as `IGNORED_LARCHLOG_PR_COUNT`), aggregate bump KV
 - `python3 "$PWD/python/cli.py" release set-version`: atomic `plugin.json` version write
 - `python3 "$PWD/python/cli.py" release finish`: tag, GitHub Release, promote tail
 - `python3 "$PWD/python/cli.py" release promote`: promote a specific release after `finish`, or during promote-only recovery
