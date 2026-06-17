@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/bug/SKILL.md:32-40	[SCOPE-REDUCTION] Plan adds `--urgent` parsing but does not require stripping it before Step 1 validation	`/bug --urgent` alone is non-empty to the current trim check, so the run can continue and file `[BUG] (URGENT) Bug report` with no real operator description	Add an explicit Step 0/1 rule: strip all leading `--urgent` tokens first, then run empty-input and security triage on the remaining description text

@@ -1,0 +1,32 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/bug/SKILL.md:32-40	[SCOPE-REDUCTION] Plan adds `--urgent` parsing but does not require stripping it before Step 1 validation	`/bug --urgent` alone is non-empty to the current trim check, so the run can continue and file `[BUG] (URGENT) Bug report` with no real operator description	Add an explicit Step 0/1 rule: strip all leading `--urgent` tokens first, then run empty-input and security triage on the remaining description text
+2	in_scope	important	correctness	skills/bug/SKILL.md:21-24	Contract bullets still say "no flags" and "treat all `$ARGUMENTS` as the bug description" while also adding `--urgent`	Prompt-side parsing can ignore the new flag and keep treating `--urgent` as literal description text	Replace the Contract section in one pass: document `--urgent` only, say description is argv after stripping that flag, and keep the existing rule that other leading `--...` tokens stay prose
+3	in_scope	important	architecture	python/review_and_fix.py:830-837	[SCOPE-REDUCTION] Item 2 changes aggregate headers, but the tally flush bug is in `_render_rejected_findings_for_tally`	`## Round N` is appended via `elif lines:` once round 1 findings are buffered, so `voting write-tally` rejects the composed body	Prefer skipping `^## Round [0-9]+$` (and optionally `^# Review Round [0-9]+$`) in `_render_rejected_findings_for_tally` instead of renaming headers in `write_rejected_findings_aggregate`
+4	out_of_scope	latent	risk-integration	python/step_7a.py:25-26	New `DIAGRAM_REASON` KV is not documented in `skills/implement/scripts/step-7a.md` or the Step 7a KV list in `skills/implement/SKILL.md`	Operators debugging from skill docs may not know the new KV exists	Add a one-line KV contract note in `step-7a.md` only if you want doc parity; runtime behavior does not depend on it
+5	out_of_scope	nit	architecture	docs/linting.md:325	No linting-doc row for `make test-bug-structure`	Minor discoverability gap versus `test-alias-structure`	Add a table row mirroring the alias-structure entry when the harness lands
+
+## Findings
+
+**1. [in_scope / important / correctness]** `skills/bug/SKILL.md:32-40` — Strip `--urgent` before Step 1 validation.
+
+The plan adds `--urgent` but only says to preserve the empty check "after removing `--urgent`" in Edge cases. It does not place that strip before Step 1. Today Step 1 trims raw `$ARGUMENTS`. `/bug --urgent` is non-empty, so the run can continue and file a generic title with no real description.
+
+**Revision:** Add an explicit pre-Step-1 rule: remove all leading `--urgent` tokens, then run empty-input and security triage on the remainder.
+
+**2. [in_scope / important / correctness]** `skills/bug/SKILL.md:21-24` — Reconcile the Contract section with `--urgent`.
+
+The plan updates Step 5 and frontmatter, but lines 23-24 still say "no flags" and "treat all `$ARGUMENTS` as the bug description." That conflicts with the new flag.
+
+**Revision:** Rewrite Contract in one pass: `--urgent` only; description is argv after stripping it; other leading `--...` tokens remain prose.
+
+**3. [in_scope / important / architecture]** `python/review_and_fix.py:830-837` — Prefer a renderer skip over a composer rename for Item 2.
+
+The live failure path is `_build_tally_body` → `_render_rejected_findings_for_tally`. Round headers leak because of `elif lines:` at line 836, not because the on-disk aggregate format is wrong. Changing `write_rejected_findings_aggregate` to `# Review Round N` works, but it touches more surface than needed.
+
+**Revision:** Skip `^## Round [0-9]+$` in `_render_rejected_findings_for_tally`. Keep aggregate headers unchanged unless you want the spelling aligned for human readers.
+
+**4. [OUT_OF_SCOPE]** `skills/implement/scripts/step-7a.md` — Optional doc note for `DIAGRAM_REASON`.
+
+**5. [OUT_OF_SCOPE]** `docs/linting.md` — Optional harness table row for discoverability.
+
+Items 1, 3, and 4 otherwise look proportionate: JSON parsing for OOS URLs matches `oos_filer._ndjson_filed_evidence`, diagram failure surfacing matches the discard-at-`pr_body.py:1246-1247` root cause, and the bug harness plus `agent-lint.toml` registration follow existing `test-alias-structure` convention.
