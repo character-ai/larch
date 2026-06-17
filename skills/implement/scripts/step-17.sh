@@ -53,20 +53,6 @@ while [ $# -gt 0 ]; do
     esac
 done
 summary_path="$IMPLEMENT_TMPDIR/summary-final.md"
-pre_summary_cksum=""
-if [ -f "$summary_path" ]; then
-    pre_summary_cksum=$(cksum < "$summary_path" 2>/dev/null || true)
-fi
-
-summary_refreshed_since_snapshot() {
-    [ -s "$summary_path" ] || return 1
-    post_summary_cksum=$(cksum < "$summary_path" 2>/dev/null || true)
-    [ -n "$post_summary_cksum" ] || return 1
-    if [ -z "$pre_summary_cksum" ]; then
-        return 0
-    fi
-    [ "$post_summary_cksum" != "$pre_summary_cksum" ]
-}
 
 append_step17_failure() {
     python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" run-log append-failure \
@@ -84,16 +70,26 @@ python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" timing telemetry-mark --implement-tm
 _step17_wfr_log="$IMPLEMENT_TMPDIR/step17-write-final-report.failure.log"
 : >"$_step17_wfr_log" 2>/dev/null || true
 if [ "$NO_PRINT_STDOUT" = true ]; then
+    summary_backup=""
+    if [ -f "$summary_path" ]; then
+        summary_backup="$IMPLEMENT_TMPDIR/.summary-final.pre-step17.bak"
+        mv "$summary_path" "$summary_backup"
+    fi
     set +e
     python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" final-report write --implement-tmpdir "$IMPLEMENT_TMPDIR" >"$_step17_wfr_log" 2>&1
     _step17_wfr_rc=$?
     set -e
     if [ "$_step17_wfr_rc" -eq 0 ]; then
+        rm -f "$summary_backup"
         exit 0
     fi
     append_step17_failure "$_step17_wfr_rc"
-    if summary_refreshed_since_snapshot; then
+    if [ -s "$summary_path" ]; then
+        rm -f "$summary_backup"
         exit 0
+    fi
+    if [ -n "$summary_backup" ] && [ -f "$summary_backup" ]; then
+        mv "$summary_backup" "$summary_path"
     fi
     exit "$_step17_wfr_rc"
 fi

@@ -39,7 +39,9 @@ append_slack_warning() {
 print_summary_markers() {
     summary_path="$IMPLEMENT_TMPDIR/summary-final.md"
     printf '%s\n' '---LARCH-SUMMARY-FINAL-BEGIN---'
-    cat "$summary_path"
+    if ! cat "$summary_path"; then
+        return 1
+    fi
     last_hex=$(tail -c 1 "$summary_path" 2>/dev/null | od -An -t x1 | tr -d ' \n')
     if [ "$last_hex" != "0a" ]; then
         printf '\n'
