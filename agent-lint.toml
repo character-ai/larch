@@ -1288,6 +1288,8 @@ exclude = [
   "skills/implement/scripts/test-step-16-17.md",
   "skills/implement/scripts/test-write-final-report.sh",
   "skills/implement/scripts/test-write-final-report.md",
+  "skills/implement/scripts/test-step-18.sh",
+  "skills/implement/scripts/test-step-18.md",
   "skills/implement/scripts/test-stall-recovery-report.sh",
   "skills/implement/scripts/test-stall-recovery-report.md",
   "python/test_pr_body.py",
