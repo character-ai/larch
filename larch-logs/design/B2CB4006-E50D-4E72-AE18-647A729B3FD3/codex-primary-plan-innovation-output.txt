@@ -1,0 +1,8 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	Makefile:148-155,901-902; scripts/test-harness-shards-coverage.sh:63-76,213-219; scripts/lint-harness-pytest-partition.py:147-154	Retirement instructions omit deleting retired Makefile recipe blocks	A retired target removed only from shards and .PHONY remains a test-* recipe, so coverage reports missing from shards and the partition guard can still count its pytest selection	State that retiring a target means deleting its recipe block, or keep the target sliced and shard-bound
+
+1. **[correctness] Make target retirement is underspecified.**
+   - **Location:** `Makefile:148-155,901-902`; `scripts/test-harness-shards-coverage.sh:63-76,213-219`; `scripts/lint-harness-pytest-partition.py:147-154`
+   - **Concern:** The plan says to remove retired targets from shard prerequisites and `.PHONY`.
+   - **Breakage:** If the recipe block remains, `test-harness-shards-coverage` still inventories it as a `test-*` target and reports it missing from shards. The partition guard can also still see its pytest selection.
+   - **Suggested revision:** Say explicitly: **when retiring a target, delete the Makefile recipe block too**. Otherwise, keep the target and slice it into the strict partition.
