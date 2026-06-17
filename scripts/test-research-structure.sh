@@ -236,7 +236,7 @@ done
 collect_line=$(line_for "$VALIDATION_MD" "python3 \"\${CLAUDE_PLUGIN_ROOT}/python/cli.py\" agent collect-results --timeout 1860 --substantive-validation --validation-mode")
 parse_line=$(line_for "$VALIDATION_MD" "1. Parse the structured output for each reviewer's \`STATUS\` and \`REVIEWER_FILE\`.")
 ingest_line=$(line_for "$VALIDATION_MD" '2. **Codex/Cursor validation sidecar ingestion after collection settles**')
-status_line=$(line_for "$VALIDATION_MD" '3. **Runtime-timeout replacement**')
+status_line=$(line_for "$VALIDATION_MD" '3. **Runtime fallback replacement**')
 if [[ -n "$collect_line" && -n "$parse_line" && -n "$ingest_line" && -n "$status_line" \
       && "$collect_line" -lt "$parse_line" && "$parse_line" -lt "$ingest_line" && "$ingest_line" -lt "$status_line" ]]; then
   PASS=$((PASS + 1))
@@ -246,7 +246,7 @@ fi
 
 contains "$VALIDATION_MD" 'REVIEWER_FILE' '[validation sidecar] candidate expansion must include REVIEWER_FILE'
 contains "$VALIDATION_MD" '-retry.txt' '[validation sidecar] candidate expansion must include -retry.txt'
-contains "$VALIDATION_MD" '-ns-retry.txt' '[validation sidecar] candidate expansion must include -ns-retry.txt'
+contains "$VALIDATION_MD" 'No non-substantive retry artifacts are created' '[validation sidecar] must document no non-substantive retry artifacts'
 contains "$VALIDATION_MD" 'Deduplicate candidate paths before ingestion.' '[validation sidecar] candidate expansion must dedupe paths'
 
 # ---------- Check 13: Python CLI call-site pins ----------

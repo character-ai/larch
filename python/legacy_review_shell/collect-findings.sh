@@ -432,8 +432,36 @@ normalize_reviewer_label() {
     printf '%s%s\n' "$stem" "$ext"
 }
 
+collector_status_for_file() {
+    local needle="$1" line reviewer_file="" status=""
+    [[ -f "$collector_results_file" ]] || return 1
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        if [[ -z "$line" ]]; then
+            if [[ "$reviewer_file" == "$needle" ]]; then
+                [[ "$status" == "OK" ]] && return 0
+                return 1
+            fi
+            reviewer_file=""
+            status=""
+            continue
+        fi
+        case "$line" in
+            REVIEWER_FILE=*) reviewer_file="${line#REVIEWER_FILE=}" ;;
+            STATUS=*) status="${line#STATUS=}" ;;
+        esac
+    done < "$collector_results_file"
+    if [[ "$reviewer_file" == "$needle" ]]; then
+        [[ "$status" == "OK" ]] && return 0
+        return 1
+    fi
+    return 1
+}
+
 per_tmp=$(mktemp "${TMPDIR:-/tmp}/review-per-file.XXXXXX") || exit 1
 for f in "${EXTERNAL_OUTPUT_FILES[@]+"${EXTERNAL_OUTPUT_FILES[@]}"}"; do
+    if ! collector_status_for_file "$f"; then
+        continue
+    fi
     : > "$per_tmp"
     parse_output_tsv "$f" "$(basename "$f")" > "$per_tmp"
     if [[ ! -s "$per_tmp" ]]; then

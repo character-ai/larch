@@ -150,10 +150,10 @@ count_static_status_once() {
         return 0
     fi
     if ! status_is_success "$old_status" && status_is_success "$status"; then
-        FAILED_SLOTS=$((FAILED_SLOTS - 1))
-        [[ "$old_status" == "NOT_SUBSTANTIVE" ]] && NOT_SUBSTANTIVE_SLOTS=$((NOT_SUBSTANTIVE_SLOTS - 1))
-        SUCCEEDED_SLOTS=$((SUCCEEDED_SLOTS + 1))
-        replace_counted_status "$base" "$status"
+        # Collector failures are authoritative. Do not upgrade a reviewer whose
+        # first-pass collector record was NOT_SUBSTANTIVE (or otherwise non-OK)
+        # merely because the raw narrative output file is non-empty.
+        return 0
     elif status_is_success "$old_status" && ! status_is_success "$status"; then
         SUCCEEDED_SLOTS=$((SUCCEEDED_SLOTS - 1))
         FAILED_SLOTS=$((FAILED_SLOTS + 1))

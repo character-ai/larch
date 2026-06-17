@@ -9,7 +9,6 @@ import hashlib
 import json
 import os
 import re
-import shutil
 import sys
 import tempfile
 from collections.abc import Iterable
@@ -20,27 +19,6 @@ from typing import NoReturn
 import logging_util
 import proc
 import redact
-
-VOTER_PARSE_RATE_RETRY_PREFIX_CODE = (
-    "IMPORTANT: Your previous attempt produced narrative output instead of structured votes. "
-    "Each line MUST start with the same ballot ID from the ballot (FINDING_N: or OOS_N:) "
-    "followed by exactly one of YES or NO, then CORRECTNESS=<true|partially-true|false-positive|uncertain> "
-    "SEVERITY=<blocker|major|minor|nit|uncertain> QUALITY=<excellent|good|adequate|weak|no-fix|uncertain> "
-    "UNCERTAIN=<true|false>. Four-axis ratings are required on the same line as every vote. "
-    "Axis tokens must be lowercase and must precede any optional -- reason; axis-looking tokens after -- are ignored. "
-    "Do not output any prose, reasoning, or status updates before, between, or after the vote lines. "
-    "If you need to verify claims, do so silently. Output ONLY vote lines."
-)
-
-VOTER_PARSE_RATE_RETRY_PREFIX_PLAN = (
-    "IMPORTANT: Your previous attempt produced narrative output instead of structured votes. "
-    "Each line MUST start with the same ballot ID from the ballot (FINDING_N: or OOS_N:) "
-    "followed by exactly one of YES or NO, then CORRECTNESS=<true|partially-true|false-positive|uncertain> "
-    "SEVERITY=<blocker|major|minor|nit|uncertain> QUALITY=<excellent|good|adequate|weak|no-fix|uncertain> "
-    "UNCERTAIN=<true|false>. Axis tokens must be lowercase and must precede any optional -- reason; "
-    "axis-looking tokens after -- are ignored. Do not output any prose, reasoning, or status updates before, "
-    "between, or after the vote lines. If you need to verify claims, do so silently. Output ONLY vote lines."
-)
 
 LONG_EXTS = "cc|cfg|cjs|cpp|css|csv|cs|dart|gradle|groovy|go|html|htm|hpp|java|json|jsx|js|kt|lua|mjs|mk|mm|md|php|pl|proto|py|rb|rs|sass|scala|scss|sh|sql|swift|toml|tsx|tsv|ts|vue|xml|yaml|yml"
 SHORT_EXTS = "lock|env|txt|c|h|m|r"
@@ -629,175 +607,14 @@ def _extract_ctx(argv: list[str]) -> tuple[list[str], list[str]]:
     return rest, ctx
 
 
-def make_voter_retry_prompt_file(label: str, src_prompt_file: str, review_tmpdir: str, kind: str) -> Path:
-    prompt_base = Path(src_prompt_file).name
-    if prompt_base.endswith("-prompt.txt"):
-        retry_prompt_file = Path(review_tmpdir) / f"{prompt_base[:-4]}-retry.txt"
-    else:
-        retry_prompt_file = Path(review_tmpdir) / f"{label}-vote-prompt-retry.txt"
-    prefix = VOTER_PARSE_RATE_RETRY_PREFIX_PLAN if kind == "plan" else VOTER_PARSE_RATE_RETRY_PREFIX_CODE
-    retry_prompt_file.write_text(prefix + "\n\n" + Path(src_prompt_file).read_text(encoding="utf-8"), encoding="utf-8")
-    return retry_prompt_file
-
-
-def _retry_output_path(voter_path: str | Path) -> Path:
-    text = str(voter_path)
-    if text.endswith(".txt"):
-        return Path(text[:-4] + "-parse-retry.txt")
-    return Path(text + "-parse-retry")
-
-
-def _first_pass_path(voter_path: str | Path) -> Path:
-    text = str(voter_path)
-    if text.endswith(".txt"):
-        return Path(text[:-4] + "-first-pass.txt")
-    return Path(text + "-first-pass")
-
-
-def launch_voter_retry(
-    *,
-    voter_tool: str,
-    retry_output: Path,
-    retry_prompt: Path,
-    timing_task: str,
-    launch_mode: str,
-    plugin_root: str,
-    ctx: list[str],
-) -> int:
-    root = Path(plugin_root) if plugin_root else _plugin_root()
-    if voter_tool == "claude":
-        argv = [
-            "python3",
-            str(root / "python" / "cli.py"),
-            "agent",
-            "launch-claude-review",
-            "--output",
-            str(retry_output),
-            "--prompt-file",
-            str(retry_prompt),
-            "--mode",
-            launch_mode,
-            "--role",
-            "voter",
-            "--timeout",
-            "1200",
-            "--timing-task-kind",
-            timing_task,
-            *ctx,
-        ]
-    elif voter_tool in {"codex", "cursor"}:
-        argv = [
-            sys.executable,
-            str(root / "python" / "cli.py"),
-            "agent",
-            "launch-review",
-            "--tool",
-            voter_tool,
-            "--output",
-            str(retry_output),
-            "--prompt-file",
-            str(retry_prompt),
-            "--mode",
-            launch_mode,
-            "--timeout",
-            "1200",
-            "--timing-task-kind",
-            timing_task,
-            *ctx,
-        ]
-    else:
-        _plain_diagnostic(f"launch_voter_retry: unknown voter retry tool: {voter_tool}")
-        return 2
-    stderr_path = Path(str(retry_output) + ".launcher-stderr")
-    try:
-        with stderr_path.open("w", encoding="utf-8") as stderr_handle, Path(os.devnull).open("w", encoding="utf-8") as stdout_handle:
-            result = proc.run(argv, stdout=stdout_handle.fileno(), stderr=stderr_handle.fileno())
-        rc = result.returncode
-    except OSError as exc:
-        stderr_path.write_text(str(exc) + "\n", encoding="utf-8")
-        rc = 127
-    done_path = Path(str(retry_output) + ".done")
-    if not done_path.exists():
-        done_path.write_text(f"{rc}\n", encoding="utf-8")
-    return rc
-
-
 def parse_rate_retry_main(argv: list[str]) -> int:
-    rest, ctx = _extract_ctx(argv)
+    rest, _ctx = _extract_ctx(argv)
     parser = _parse_rate_common_parser("parse-rate-retry")
-    parser.add_argument("--prompt-file", required=True)
-    parser.add_argument("--retry-prefix-kind", choices=("code", "plan"), required=True)
-    parser.add_argument("--launch-mode", required=True)
+    parser.add_argument("--prompt-file", default="")
+    parser.add_argument("--retry-prefix-kind", choices=("code", "plan"), default="code")
+    parser.add_argument("--launch-mode", default="")
     args = parser.parse_args(rest)
     status = check_voter_parse_rate(
-        voter_file=args.voter_file,
-        voter_tool=args.voter_tool,
-        ballot_file=args.ballot_file,
-        id_grammar=args.id_grammar,
-        review_tmpdir=args.review_tmpdir,
-        slot=args.slot,
-        log_mode="silent",
-        plugin_root=args.plugin_root,
-        dispatch_label=args.dispatch_label,
-    )
-    if status != "NOT_SUBSTANTIVE":
-        print(status)
-        return 0
-    retry_prompt = make_voter_retry_prompt_file(args.voter_tool, args.prompt_file, args.review_tmpdir, args.retry_prefix_kind)
-    retry_output = _retry_output_path(args.voter_file)
-    retry_diag_file = voter_parse_rate_diag_path(retry_output)
-    for path in (retry_output, Path(str(retry_output) + ".done"), Path(str(retry_output) + ".launcher-stderr")):
-        with suppress(FileNotFoundError):
-            path.unlink()
-    retry_rc = launch_voter_retry(
-        voter_tool=args.voter_tool,
-        retry_output=retry_output,
-        retry_prompt=retry_prompt,
-        timing_task=f"{args.voter_tool}-voter-{args.slot}-parse-retry",
-        launch_mode=args.launch_mode,
-        plugin_root=args.plugin_root,
-        ctx=ctx,
-    )
-    if retry_rc == 0 and retry_output.is_file() and retry_output.stat().st_size > 0:
-        retry_status = check_voter_parse_rate(
-            voter_file=str(retry_output),
-            voter_tool=args.voter_tool,
-            ballot_file=args.ballot_file,
-            id_grammar=args.id_grammar,
-            review_tmpdir=args.review_tmpdir,
-            slot=args.slot,
-            log_mode="silent",
-            plugin_root=args.plugin_root,
-            dispatch_label=args.dispatch_label,
-        )
-        if retry_status == "OK":
-            first_pass = _first_pass_path(args.voter_file)
-            with suppress(FileNotFoundError):
-                first_pass.unlink()
-            try:
-                shutil.copyfile(args.voter_file, first_pass)
-                _plain_diagnostic(
-                    f"voter-{args.voter_tool}: first-pass content preserved at {first_pass.name} (parse-rate retry succeeded)"
-                )
-            except OSError:
-                _plain_diagnostic(
-                    f"check_and_retry_voter_parse_rate: warning: failed to preserve first-pass voter output at {first_pass} after parse-rate retry succeeded"
-                )
-            shutil.move(str(retry_output), args.voter_file)
-            retry_done = Path(str(retry_output) + ".done")
-            if retry_done.exists():
-                shutil.move(str(retry_done), args.voter_file + ".done")
-            else:
-                Path(args.voter_file + ".done").write_text("0\n", encoding="utf-8")
-            for path in (voter_parse_rate_diag_path(args.voter_file), retry_diag_file, Path(str(retry_output) + ".launcher-stderr")):
-                with suppress(FileNotFoundError):
-                    path.unlink()
-            print("OK")
-            return 0
-    for path in (retry_output, Path(str(retry_output) + ".done"), Path(str(retry_output) + ".launcher-stderr"), retry_diag_file):
-        with suppress(FileNotFoundError):
-            path.unlink()
-    final_status = check_voter_parse_rate(
         voter_file=args.voter_file,
         voter_tool=args.voter_tool,
         ballot_file=args.ballot_file,
@@ -808,7 +625,7 @@ def parse_rate_retry_main(argv: list[str]) -> int:
         plugin_root=args.plugin_root,
         dispatch_label=args.dispatch_label,
     )
-    print(final_status)
+    print(status)
     return 0
 
 

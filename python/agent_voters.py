@@ -313,7 +313,7 @@ def _wait_sentinels(review_tmpdir: Path, sentinels: Sequence[str]) -> tuple[bool
     return voter1_timed_out, wait_rc
 
 
-def _run_parse_rate_retry(vpr_args: Sequence[str], *, slot: str, voter_file: str, voter_tool: str, prompt_file: str) -> str:
+def _run_parse_rate_retry(vpr_args: Sequence[str], *, slot: str, voter_file: str, voter_tool: str) -> str:
     result = proc.run(
         [
             *_cli_argv("voting", "parse-rate-retry"),
@@ -324,8 +324,6 @@ def _run_parse_rate_retry(vpr_args: Sequence[str], *, slot: str, voter_file: str
             voter_file,
             "--voter-tool",
             voter_tool,
-            "--prompt-file",
-            prompt_file,
         ]
     )
     if result.returncode != 0:
@@ -458,23 +456,19 @@ def dispatch_voters(opts: Options) -> int:
         str(_plugin_root()),
         "--dispatch-label",
         DISPATCH_LABEL,
-        "--retry-prefix-kind",
-        "code",
-        "--launch-mode",
-        MODE,
         *_parse_rate_ctx_args(bounded_diff, bounded_plan),
     ]
     if state.voter_1_status != "failed":
         state.voter_1_parse_rate_status = _run_parse_rate_retry(
-            vpr_args, slot="1", voter_file=state.voter_1_path, voter_tool=state.voter_1_tool, prompt_file=claude_prompt
+            vpr_args, slot="1", voter_file=state.voter_1_path, voter_tool=state.voter_1_tool
         )
     if state.voter_2_status not in {"failed", "skipped"}:
         state.voter_2_parse_rate_status = _run_parse_rate_retry(
-            vpr_args, slot="2", voter_file=state.voter_2_path, voter_tool=state.voter_2_tool, prompt_file=codex_prompt
+            vpr_args, slot="2", voter_file=state.voter_2_path, voter_tool=state.voter_2_tool
         )
     if state.voter_3_status not in {"failed", "skipped"}:
         state.voter_3_parse_rate_status = _run_parse_rate_retry(
-            vpr_args, slot="3", voter_file=state.voter_3_path, voter_tool=state.voter_3_tool, prompt_file=cursor_prompt
+            vpr_args, slot="3", voter_file=state.voter_3_path, voter_tool=state.voter_3_tool
         )
 
     expected_judges = 1

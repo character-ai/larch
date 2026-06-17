@@ -150,9 +150,7 @@ assert_contains "plan-voter cursor Verify silently" \
 assert_contains "plan-voter cursor Output ONLY vote lines" \
     'Output ONLY vote lines' "$plan_voter_tmp/cursor-plan-voter-prompt.txt"
 retry_prompt=$(find "$plan_voter_tmp" -name '*plan-voter-prompt-retry.txt' -print -quit)
-[[ -n "$retry_prompt" ]] || fail "plan-voter retry prompt was not rendered"
-assert_contains "plan-voter retry prefix" \
-    'FINDING_N: or OOS_N:' "$retry_prompt"
+[[ -z "$retry_prompt" ]] || fail "plan-voter retry prompt should not be rendered"
 
 # ── review-and-fix CLI compose_coder_prompt runtime render smoke ──────────────
 
