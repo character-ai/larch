@@ -1,0 +1,238 @@
+You are an expert engineer researching this repository and producing an implementation plan for /design Step 2b.
+
+You may use only side-effect-free repository discovery. Do not write repository files, design tmpdir files, or any other files. Return only the sentinel-delimited response requested below.
+
+Drafting requirements to follow:
+- Prefer minimum necessary change: avoid scope creep, unnecessary complexity, and additions not required for correctness.
+- Read approach-synthesis.txt: if it is exactly NO_SKETCHES, draft from direct codebase/doc inspection without fabricating planning-panel agreement.
+- Read discussion-round1.md when present for scope boundaries and strict constraints.
+- Read design-outline.md only when non-empty and .outline-approved exists; treat Goals, Non-goals, and Surfaces as binding scope.
+- Read brainstorm.md when present as additive ideation context for plan drafting.
+- Use a Files to modify/create section with per-file headings exactly one path each: ### NEW:, ### UPDATED:, or ### REWRITTEN: (at least one ASCII space after ### before the keyword).
+- Include Approach, Edge cases, Failure modes when non-trivial, Testing strategy, optional diff_added/diff_deleted/mechanical_churn trailers, and final diff_lines: <N>. mechanical_churn accepts only true or false; never write a number there.
+- The final plan body must end with a whole-line diff_lines: <N> trailer.
+- Optionally include up to three dynamic plan-review archetypes in a scout block after the plan. The launcher validates, filters, caps, and materializes this block; invalid post-plan scout output is ignored.
+- Scout sentinels inside the summary or plan are fatal format errors. Never put LARCH_SCOUT_* markers in the plan body.
+
+Readability style (trusted):
+# Readability Style
+
+**Consumer**: `/design` prompt surfaces that produce user-facing text, either through an external-agent prompt token or through inline orchestration prose.
+
+**Contract**: this file is the only source of truth for the `/design` readability preamble. External prompt files embed the literal `<READABILITY_STYLE>` token, and assembly code or orchestration expands it to this full file. Inline composition sites read this file before writing user-facing text.
+
+**When to load**: load only when a `/design` step is about to compose user-facing prose or render a prompt that asks another agent to compose such prose. Do not load during setup, pure validation, or byte-stable artifact handling.
+
+---
+
+## Style Axes
+
+Write in three styles at once:
+
+- **Strunk & White**: use active voice. Omit needless words. Prefer concrete nouns and verbs.
+- **Dyslexia-friendly**: use short sentences. Prefer simple words. Break dense ideas into headings and bullets.
+- **Brevity**: shorter is better. Minimize the total artifact length while preserving meaning.
+- **No em dashes**: never use em dashes; use periods, commas, colons, or semicolons instead.
+- **Hedge vs. direct**: hedge uncertain claims ("may contain", "can fail") instead of absolutes; keep directives imperative.
+
+## Precision Contract
+
+Keep these byte-stable unless the task explicitly edits them:
+
+- fenced code blocks
+- backticked tokens
+- file paths
+- identifiers
+- flag names
+- `### NEW:` / `### UPDATED:` / `### REWRITTEN:` plan grammar
+- the trailing `diff_lines: <N>` line
+
+Do not rewrite those items for style. Explain around them instead.
+
+## Plan-Drafting Reminders
+
+When `/design` Step 2b drafts a plan that adds, removes, or converts
+Bash fences in `skills/implement/SKILL.md`:
+
+- List `### UPDATED: scripts/test-implement-fence-shape.sh` in
+  **Files to modify/create**.
+- Note that `EXPECTED_OLD` / `EXPECTED_NEW` may need updates.
+
+This is a discoverability reminder only. Do not add plan grammar.
+
+## Precedence
+
+When rules conflict, use this order:
+
+`code references > meaning > brevity > dyslexia-friendly chunking > Strunk & White micro-rewrites`
+
+Apply it directly:
+
+- Preserve code references first.
+- Preserve exact meaning next.
+- Cut words before adding layout.
+- Add headings or bullets only when they improve scanning.
+- Polish grammar last.
+
+## Substitution Token
+
+External-agent prompt files MUST embed this literal token:
+
+`<READABILITY_STYLE>`
+
+Before launch, replace every literal `<READABILITY_STYLE>` token with the full contents of this file.
+
+## Examples
+
+Before: "It is recommended that the implementer should consider adding a validation step."
+
+After: "Add a validation step."
+
+Before: "The plan should make sure that users are not able to continue when the file cannot be read."
+
+After: "Block the flow when the file cannot be read."
+
+Before: "In order to avoid potential future confusion, documentation can be updated."
+
+After: "Update the docs to avoid confusion."
+
+Before: "The script performs an operation that checks if the path exists."
+
+After: "The script checks that the path exists."
+
+Before: "This could possibly be out of scope depending on how the team wants to proceed."
+
+After: "This may be out of scope."
+
+Required output format:
+[optional]
+LARCH_SUMMARY_BEGIN
+A concise summary for large-plan preview. Omit this whole summary block only when no useful summary is needed.
+LARCH_SUMMARY_END
+[/optional]
+LARCH_PLAN_BEGIN
+Full implementation plan body ending with diff_lines: <N>.
+LARCH_PLAN_END
+[optional]
+LARCH_SCOUT_BEGIN
+{"archetypes":[{"name":"slug","focus_area":"code-quality|risk-integration|correctness|architecture|security","weight":1,"rationale":"single-line reason","prompt_body":"2-6 sentence focus directive ending with the required citation sentence."}]}
+LARCH_SCOUT_END
+[/optional]
+
+Optional advisory status may be included between LARCH_STATUS_BEGIN and LARCH_STATUS_END, but the summary, plan, and optional scout sentinels above are the only parsed contract.
+
+Untrusted feature description:
+<feature_description encoding="literal-redacted">
+# [OOS] larch doc/config/prose drift + test-coverage gaps — 6 items
+
+Combined from #4577 by `/combine-issues --oos`. Consumer-facing documentation, config, and prose drift against current larch contracts, plus two regression-test coverage gaps. Aggressive-mode grouping: low-risk doc/config edits and additive tests in one host. All items re-verified against the working tree at combine time. (Source #4577 Item 5 — `scripts/render-review-phase-detail.md` edit-in-sync — was dropped as stale: the edit-in-sync list now references `python/pr_body.py` with no `write-final-report.md` / `note_lines` drift.)
+
+### Item 1 — docs/skills.md + README.md --emergency framed as bypassing clarify-state pending gates
+- **Location**: `docs/skills.md:99` (the `/implement` entry, `--emergency` sentence), `README.md:89`
+- **Source**: #4577 (Item 1, originally #4475 Item 1)
+- **Severity**: latent (documentation drift)
+- **Verified**: stale phrasing still present in both files at combine time.
+- **Description**: Both `docs/skills.md` and `README.md` still read that `--emergency` "bypasses plan-block presence / plan-adequacy audit / clarify-state pending gates". The binding `skills/implement/SKILL.md` reframed `--emergency` to **skip** the item-4 plan-adequacy audit entirely (no `AUDIT=refuse` to downgrade), and the clarify-state refuse path is simply unreachable downstream rather than a separately bypassed gate. Fix: update the consumer summary in both files to the audit-skip framing.
+
+### Item 2 — skills/implement/SKILL.md NEVER #5 prose claims run-statistics owned by post-checkpoint Step 8+ block
+- **Location**: `skills/implement/SKILL.md:40` (NEVER #5)
+- **Source**: #4577 (Item 2, originally #4475 Item 3)
+- **Severity**: latent (documentation drift)
+- **Verified**: drift confirmed. `python/oos_filer.py` `_write_run_statistics` (line 700) writes `run-statistics.md` inside the `oos file` path (called at line 392).
+- **Description**: NEVER #5 still states `run-statistics` "remains owned by the post-checkpoint Step 8+ block after `oos disposition-checkpoint` exit 0", but the run-statistics write now also lives inside the `python/cli.py oos` path (`python/oos_filer.py`). Operators reading the implement SKILL may believe `run-statistics` still comes only from Step 8+. Fix: update the NEVER #5 prose to reflect where `run-statistics` is actually emitted after the move.
+
+### Item 3 — .claude/settings.json Skill allowlist missing Skill(bug) / Skill(larch:bug)
+- **Location**: `.claude/settings.json` (Skill allowlist)
+- **Source**: #4577 (Item 3, originally #4475 Item 4)
+- **Severity**: latent
+- **Verified**: confirmed. The allowlist has `Skill(issue)` (line 151) and `Skill(larch:issue)` (line 158) but no `Skill(bug)` / `Skill(larch:bug)`. Note: `docs/configuration-and-permissions.md` already lists both (lines 16, 24), so only the settings.json change remains.
+- **Description**: Contributors running strict permissions in this repo lack `Skill(bug)` / `Skill(larch:bug)` even though `/bug` is consumer-facing. Fix: add both `Skill(bug)` and `Skill(larch:bug)` to the canonical `.claude/settings.json` allowlist (the permissions doc already lists them).
+
+### Item 4 — skills/status/SKILL.md health copy may not match the both-down hard-fail contract
+- **Location**: `skills/status/SKILL.md:29` (health-copy section)
+- **Source**: #4577 (Item 4, originally #4475 Item 7)
+- **Severity**: latent
+- **Verified**: uncertain. The `DEGRADED=true` copy at line 29 still says `/implement` "will fall back to a reduced panel or Claude-only mode"; the both-down branch lives in the Python `degraded-tools-gate` (not confirmed against the copy at combine time).
+- **Description**: If the current `degraded-tools-gate` both-down contract hard-fails instead of falling back, this user-facing copy is stale. Fix: reconcile the status SKILL health copy with the actual both-down `degraded-tools-gate` behavior (verify the Python gate first; **drop this item** if the copy already matches).
+
+### Item 5 — test-sessionstart-health.sh has no coverage for stale LARCH_TOKEN_SESSION_ID with empty/missing session_id
+- **Location**: `scripts/test-sessionstart-health.sh` (harness for `scripts/sessionstart-health.sh`)
+- **Source**: #4577 (Item 6, originally #4566)
+- **Severity**: latent (test gap)
+- **Verified**: gap confirmed. `sessionstart-health.sh:192` unsets `LARCH_TOKEN_SESSION_ID` when `session_id` is empty/missing; no harness case references `LARCH_TOKEN_SESSION_ID`.
+- **Description**: Add a regression case to `scripts/test-sessionstart-health.sh` that pre-exports a stale `LARCH_TOKEN_SESSION_ID`, runs with empty/missing `session_id` on stdin, and asserts the variable is unset by `sessionstart-health.sh`. The existing cases run under `env -i`, so the unset path at line 192 is never exercised.
+
+### Item 6 — design-step1d5.sh collect-results non-zero-RC failure logging has no CI signal
+- **Location**: `skills/design/scripts/design-step1d5.sh` (`--mode collect`, the `_collect_rc != 0` branch at lines 235-240), harness `skills/design/scripts/test-design-step1d5.sh`
+- **Source**: #4577 (Item 7, originally #4475 Item 5)
+- **Severity**: latent (test gap)
+- **Verified**: gap confirmed. The runtime logs failures via `design_append_brainstorm_failure` when `_collect_rc != 0` (line 240); the harness covers no-paths and per-sink launch failures, but not the non-zero `agent collect-results` RC append path.
+- **Description**: Add a regression test that drives a non-zero `collect-results` RC and asserts both the failure log (`brainstorm-collect.failure.log`) and the `design_append_brainstorm_failure` invocation. The existing `collect records launch failures once per sink` case exercises `design_collect_launch_failures`, a different path.
+
+---
+*Combined by the larch `/combine-issues --oos` workflow. Source: #4577 (items 1-4, 6-7; item 5 dropped as stale).*
+
+
+</feature_description>
+
+
+Untrusted approach synthesis:
+<approach_synthesis encoding="literal-redacted">
+NO_SKETCHES
+
+</approach_synthesis>
+
+
+Untrusted discussion round 1:
+<discussion_round1 encoding="literal-redacted">
+## Decision 1: Scope — all 6 combined OOS items in one PR
+- **Question**: Which of the 6 combined OOS items are in scope?
+- **Resolution**: All 6 (doc/config/prose drift + 2 test-coverage gaps), per the combined-OOS intent (aggressive-mode single host: low-risk doc/config edits + additive tests). Item 4 is conditional — see Decision 2. No cross-item ordering dependency; each is an independent low-risk edit.
+- **Source**: issue #4595 body
+
+## Decision 2: Item 4 disposition — verified stale, KEEP and FIX (do not drop)
+- **Question**: Does `skills/status/SKILL.md` DEGRADED copy already match the degraded-tools-gate both-down contract (issue says drop if it matches)?
+- **Resolution**: Does NOT match — keep and fix. `degraded_tools_result` (python/agents.py) sets `both_down`; the both-down explanation is "Both external vendors are unavailable. This run cannot continue." `/implement` SKILL.md confirms both-down emits `DEGRADED_HARD_FAIL=true` and "stops in every mode" (no Claude-only fallback); one-down requires explicit operator confirmation to continue on a reduced panel with "no Claude padding". The status copy at line 29 ("will fall back to a reduced panel or Claude-only mode") is stale for both cases. Fix: rewrite the `DEGRADED=true` note to distinguish one-down (reduced panel, operator confirm) from both-down (hard fail, cannot continue).
+- **Source**: codebase (python/agents.py `degraded_tools_result`; skills/implement/SKILL.md degraded gate; skills/status/SKILL.md:29)
+
+## Decision 3: Hard constraints — surgical edits, preserve machine contracts
+- **Question**: What must not break?
+- **Resolution**: (a) Surgical edits only — change only the drifted prose/config/test lines; no adjacent reformatting. (b) `.claude/settings.json` stays valid JSON; new `Skill(bug)`/`Skill(larch:bug)` entries match existing allowlist style/placement. (c) Doc reframes (Items 1, 2, 4) must match the binding SKILL contracts exactly — verify `--emergency` audit-skip semantics and `run-statistics` emit sites before editing. (d) New test cases (Items 5, 6) follow each harness's existing case conventions and pass. (e) `make lint` (+ `make py-lint` / `make py-test` since Python test files change) must pass.
+- **Source**: codebase + KARPATHY_CLAUDE.md (surgical changes)
+
+</discussion_round1>
+
+
+Untrusted approved design outline:
+<design_outline encoding="literal-redacted">
+## Proposed Design Outline
+
+### Goals
+- Resolve all 6 combined-OOS drift/test items in #4595 in one low-risk PR.
+- Reconcile consumer docs/config/prose with current binding larch contracts.
+- Close two regression-test coverage gaps (sessionstart-health; design-step1d5 collect).
+
+### Non-goals
+- No behavior changes to runtime code paths (docs/config/test-only).
+- No reformatting or refactoring of adjacent unrelated lines.
+- No new abstractions, helpers, or flags.
+
+### Approach sketch
+- Items 1, 2, 4: surgical prose edits to match binding SKILL contracts (re-verify each before editing).
+- Item 3: add `Skill(bug)` + `Skill(larch:bug)` to `.claude/settings.json` allowlist, matching existing style.
+- Item 5: add a `LARCH_TOKEN_SESSION_ID`-unset regression case to the sessionstart-health harness (exercise line 192, not under `env -i`).
+- Item 6: add a non-zero `collect-results` RC regression case to the design-step1d5 harness.
+
+### Surfaces in scope
+- `docs/skills.md`, `README.md` (Item 1)
+- `skills/implement/SKILL.md` NEVER #5 (Item 2)
+- `.claude/settings.json` (Item 3)
+- `skills/status/SKILL.md` (Item 4)
+- `scripts/test-sessionstart-health.sh` (Item 5)
+- `skills/design/scripts/test-design-step1d5.sh` (Item 6)
+
+### Open questions
+- None. Item 4 verified stale (both-down hard-fails; copy says Claude-only fallback) -&gt; fix, not drop.
+
+</design_outline>
+
