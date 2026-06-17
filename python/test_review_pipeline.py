@@ -215,9 +215,9 @@ def test_check_reviewer_failure_threshold_zero_static_slots(tmp_path: Path) -> N
 
 def test_check_reviewer_failure_threshold_preserves_not_substantive_against_raw_output(tmp_path: Path) -> None:
     reviewer = tmp_path / "cursor-specialist-arch-output.txt"
-    reviewer.write_text("narrative output that is non-empty\n", encoding="utf-8")
+    _ = reviewer.write_text("narrative output that is non-empty\n", encoding="utf-8")
     collector = tmp_path / "collector-results.env"
-    collector.write_text(
+    _ = collector.write_text(
         f"REVIEWER_FILE={reviewer}\n"
         "TOOL=cursor\n"
         "STATUS=NOT_SUBSTANTIVE\n"
@@ -824,12 +824,12 @@ def test_collect_findings_skips_external_not_substantive_from_collector(tmp_path
     case = tmp_path / "collect-external-not-substantive"
     case.mkdir()
     outf = case / "cursor-specialist-arch-output.txt"
-    outf.write_text(
+    _ = outf.write_text(
         "### In-Scope Findings\n- This narrative finding would be parsed without collector gating.\n",
         encoding="utf-8",
     )
-    (case / "cursor-specialist-arch-output.txt.done").write_text("0\n", encoding="utf-8")
-    (case / "cursor-specialist-arch-output.txt.dirty-tree").write_text("STATUS=clean\n", encoding="utf-8")
+    _ = (case / "cursor-specialist-arch-output.txt.done").write_text("0\n", encoding="utf-8")
+    _ = (case / "cursor-specialist-arch-output.txt.dirty-tree").write_text("STATUS=clean\n", encoding="utf-8")
     findings = case / "findings.md"
     oos = case / "oos.md"
     result = run_review(

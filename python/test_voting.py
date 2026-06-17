@@ -214,34 +214,6 @@ def test_plan_review_rejects_self_review_mode(tmp_path: Path) -> None:
     assert result.returncode == 2
 
 
-def _write_retry_launcher(root: Path, *, retry_output: str) -> None:
-    py_dir = root / "python"
-    py_dir.mkdir(parents=True)
-    launcher = py_dir / "cli.py"
-    launcher.write_text(
-        "import sys\n"
-        "from pathlib import Path\n"
-        "out = ''\n"
-        "args = sys.argv[1:]\n"
-        "i = 0\n"
-        "while i < len(args):\n"
-        "    if args[i] == '--output' and i + 1 < len(args):\n"
-        "        out = args[i + 1]\n"
-        "        i += 2\n"
-        "    else:\n"
-        "        i += 1\n"
-        "Path(out).write_text(" + repr(retry_output + "\n") + ", encoding='utf-8')\n"
-        "Path(out + '.done').write_text('0\\n', encoding='utf-8')\n",
-        encoding="utf-8",
-    )
-    launcher.chmod(0o755)
-    scripts = root / "scripts"
-    scripts.mkdir(parents=True)
-    append = scripts / "append-tool-failure.sh"
-    append.write_text("#!/usr/bin/env bash\nprintf 'append called\\n' >>\"$1\"\n", encoding="utf-8")
-    append.chmod(0o755)
-
-
 def test_parse_rate_retry_bare_status_and_oos_grammar(tmp_path: Path) -> None:
     root = tmp_path / "root"
     (root / "python").mkdir(parents=True)
