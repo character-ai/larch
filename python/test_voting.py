@@ -266,7 +266,7 @@ def test_parse_rate_retry_bare_status_and_oos_grammar(tmp_path: Path) -> None:
         "--plugin-root",
         str(root),
         "--dispatch-label",
-        "dispatch-code-voters.sh",
+        "agent dispatch-voters",
         "--retry-prefix-kind",
         "code",
         "--launch-mode",
@@ -326,7 +326,7 @@ def test_parse_rate_retry_claude_uses_agent_launcher_and_forwards_context(tmp_pa
         "--plugin-root",
         str(root),
         "--dispatch-label",
-        "dispatch-code-voters.sh",
+        "agent dispatch-voters",
         "--retry-prefix-kind",
         "code",
         "--launch-mode",
@@ -401,6 +401,13 @@ def test_parse_rate_failure_is_not_substantive_and_suppressed(tmp_path: Path) ->
     assert result.returncode == 0
     assert result.stdout == "NOT_SUBSTANTIVE\n"
     assert not append_log.exists()
+
+
+def test_is_harness_review_path_matches_agent_voters_pytest_segment(tmp_path: Path) -> None:
+    base = tmp_path / "test_agent_voters.tmp" / "review"
+    voter = base / "voter.txt"
+    assert voting.is_harness_review_path(base)
+    assert voting.should_suppress_parse_rate_issue_append(voter, base)
 
 
 def test_plan_coverage_and_degraded_warning(tmp_path: Path) -> None:
@@ -598,7 +605,7 @@ def test_parse_rate_retry_empty_retry_output_stays_not_substantive(tmp_path: Pat
         "--plugin-root",
         str(root),
         "--dispatch-label",
-        "dispatch-code-voters.sh",
+        "agent dispatch-voters",
         "--retry-prefix-kind",
         "code",
         "--launch-mode",

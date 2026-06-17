@@ -50,7 +50,7 @@ The persistent [Code Reviewer archetype](review-agents.md) — a unified reviewe
 
 ### Voting Panel Agents
 
-The voters in the [voting process](voting-process.md) (Claude Code Reviewer subagent + Codex + Cursor). These are ephemeral agents launched with the ballot and voting instructions. For `/review` code-review, Codex and Cursor participate on every round alongside Claude; unavailable externals waterfall to Claude replacements while preserving the three-slot panel shape.
+The voters in the [voting process](voting-process.md) (Claude Code Reviewer subagent + Codex + Cursor). These are ephemeral agents launched with the ballot and voting instructions. For `/review` code review, Claude always participates with each available external voter. Unavailable Codex or Cursor voters are skipped, not back-filled by Claude duplicates, so the panel uses shrink-not-backfill semantics. The dispatch surface is `python/cli.py agent dispatch-voters`.
 
 ### Research Agents
 

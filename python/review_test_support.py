@@ -530,3 +530,11 @@ def init_git_repo(path: Path) -> None:
     _ = (path / "src" / "main.py").write_text("changed\n", encoding="utf-8")
     _ = subprocess.run([GIT, "add", "src/main.py"], cwd=path, check=True)
     _ = subprocess.run([GIT, "commit", "-qm", "feature"], cwd=path, check=True)
+
+
+def review_core_uses_agent_dispatch_voters_by_default() -> bool:
+    text = (ROOT / "python" / "legacy_review_shell" / "review-core.sh").read_text(encoding="utf-8")
+    return (
+        """python3 "$PLUGIN_ROOT/python/cli.py" agent dispatch-voters "$@""" in text
+        and ("PLUGIN_ROOT/scripts/" + "dispatch-code-" + "voters.sh") not in text
+    )

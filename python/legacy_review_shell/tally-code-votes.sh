@@ -302,7 +302,7 @@ normalize_reviewer_basename() {
 
 expected_voters_for_round() {
     # Eligible judge count for the degraded-panel *warning* only. Mirrors
-    # dispatch-code-voters.sh shrink-not-backfill: the panel is Claude (always)
+    # agent dispatch-voters shrink-not-backfill: the panel is Claude (always)
     # plus each AVAILABLE external, so an external that was unavailable is not
     # counted — a panel that shrank solely because a vendor was unavailable is the
     # designed state, not a degradation, and must not raise a spurious warning. An

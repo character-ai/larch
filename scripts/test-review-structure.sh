@@ -109,9 +109,9 @@ esac
 [[ ! -e "$REPO_ROOT/agents/reviewer-aggregator.md" ]] \
   || fail "(1d) agents/reviewer-aggregator.md must not exist; use orchestrator-aggregator.md"
 [[ ! -e "$REPO_ROOT/agents/orchestrator-judge.md" ]] \
-  || fail "(1d) agents/orchestrator-judge.md must not exist; the 3-judge code-review panel is launched by scripts/dispatch-code-voters.sh"
+  || fail "(1d) agents/orchestrator-judge.md must not exist; the code-review panel is launched by python/cli.py agent dispatch-voters"
 [[ ! -e "$REPO_ROOT/skills/review/references/voting.md" ]] \
-  || fail "(1d) skills/review/references/voting.md must not exist; code-review voting is now owned by scripts/dispatch-code-voters.sh + python/cli.py review tally-code-votes"
+  || fail "(1d) skills/review/references/voting.md must not exist; code-review voting is now owned by python/cli.py agent dispatch-voters + python/cli.py review tally-code-votes"
 
 # ---------------------------------------------------------------------------
 # (2) Each expected baseline reference file exists.
@@ -203,13 +203,13 @@ grep 'MANDATORY — READ ENTIRE FILE' "$SKILL_MD" \
   || fail "(5a) no single SKILL.md line carries 'MANDATORY — READ ENTIRE FILE', 'Step 3' (boundary-anchored), and 'references/domain-rules.md' together — Step 3 entry callsite pin for domain-rules.md is broken"
 
 # (5b/5c) voting.md callsite pins removed in #2207. Code-review voting is now
-# script-owned (scripts/dispatch-code-voters.sh + python/cli.py review tally-code-votes)
+# Python-owned (python/cli.py agent dispatch-voters + python/cli.py review tally-code-votes)
 # rather than prompt-orchestrated — no MANDATORY-line pin is required.
 
-# (5d) dispatch-code-voters and tally-code-votes are reachable from SKILL.md so
+# (5d) agent dispatch-voters and tally-code-votes are reachable from SKILL.md so
 # the script-owned voting pipeline cannot be silently un-wired.
-grep -Fq 'dispatch-code-voters.sh' "$SKILL_MD" \
-  || fail "(5d) SKILL.md must reference scripts/dispatch-code-voters.sh — code-review judge panel dispatch contract is broken"
+grep -Fq 'agent dispatch-voters' "$SKILL_MD" \
+  || fail "(5d) SKILL.md must reference python/cli.py agent dispatch-voters — code-review judge panel dispatch contract is broken"
 grep -Fq 'review tally-code-votes' "$SKILL_MD" \
   || fail "(5d) SKILL.md must reference python/cli.py review tally-code-votes — code-review vote tally contract is broken"
 

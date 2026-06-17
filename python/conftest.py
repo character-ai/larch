@@ -74,6 +74,20 @@ def _no_real_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(time, "sleep", noop)
 
 
+def pytest_configure(config: pytest.Config) -> None:
+    for marker in (
+        "voter_happy",
+        "voter_edge_and_r3_claude",
+        "voter_retry_claude",
+        "voter_retry_codex_success",
+        "voter_retry_cursor",
+        "voter_retry_codex_fail_and_fallback",
+        "voter_regressions_r1_r2",
+        "voter_regressions_r3_codex",
+    ):
+        config.addinivalue_line("markers", f"{marker}: dispatch-code-voters harness section shard")
+
+
 def pytest_collection_modifyitems(
     config: pytest.Config, items: list[pytest.Item]
 ) -> None:

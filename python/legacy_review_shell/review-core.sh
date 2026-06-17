@@ -89,7 +89,14 @@ TALLY_VOTES_SH="${REVIEW_CORE_TALLY_VOTES_SH:-$SCRIPT_DIR/tally-code-votes.sh}"
 EMIT_TALLY_SH="${REVIEW_CORE_EMIT_TALLY_SH:-$SCRIPT_DIR/emit-tally.sh}"
 CHECK_DIRTY_TREE_SH="${REVIEW_CORE_CHECK_DIRTY_TREE_SH:-}"
 CHECK_THRESHOLD_SH="${REVIEW_CORE_CHECK_THRESHOLD_SH:-$SCRIPT_DIR/check-reviewer-failure-threshold.sh}"
-DISPATCH_VOTERS_SH="${REVIEW_CORE_DISPATCH_VOTERS_SH:-$PLUGIN_ROOT/scripts/dispatch-code-voters.sh}"
+review_core_dispatch_voters() {
+    if [[ -n "${REVIEW_CORE_DISPATCH_VOTERS_SH:-}" ]]; then
+        "$REVIEW_CORE_DISPATCH_VOTERS_SH" "$@"
+        return
+    fi
+    python3 "$PLUGIN_ROOT/python/cli.py" agent dispatch-voters "$@"
+}
+
 review_core_can_larch_log() {
     if [[ -n "${REVIEW_CORE_LARCH_LOG_SH:-}" ]]; then
         [[ -x "$REVIEW_CORE_LARCH_LOG_SH" ]]
@@ -1076,7 +1083,7 @@ voter_args=(
 [[ -n "$SESSION_ENV_PATH" ]] && voter_args+=(--session-env-path "$SESSION_ENV_PATH")
 [[ -n "$DIFF_FILE" ]] && voter_args+=(--diff-file "$DIFF_FILE")
 [[ -n "$PLAN_FILE" ]] && voter_args+=(--plan-file "$PLAN_FILE")
-"$DISPATCH_VOTERS_SH" "${voter_args[@]}" > "$voters_out"
+review_core_dispatch_voters "${voter_args[@]}" > "$voters_out"
 voter_1_path=$(kv_get "$voters_out" VOTER_1_PATH)
 voter_2_path=$(kv_get "$voters_out" VOTER_2_PATH)
 voter_3_path=$(kv_get "$voters_out" VOTER_3_PATH)

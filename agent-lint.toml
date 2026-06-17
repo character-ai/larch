@@ -524,8 +524,7 @@ exclude = [
   # scripts/lib-sparse-dirs.md — sibling contract for lib-sparse-dirs.sh
   # (script-md-siblings / G004).
   "scripts/lib-sparse-dirs.md",
-  # not invokable directly). dispatch-code-voters.sh and dispatch-plan-voters.sh
-  # source it; agent-lint does not follow source directives.
+  # not invokable directly). dispatch-plan-voters.sh sources it; agent-lint does not follow source directives.
   # scripts/lib-external-launcher-common.sh is a sourced-only shell library (no
   # shebang, not invokable directly) carrying the canonical bodies shared
   # between lib-codex-launcher-common.sh and lib-cursor-launcher-common.sh
