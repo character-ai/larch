@@ -1,0 +1,10 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	python/agents.py:805-811	The plan makes no-retry handling for Codex setup failures optional even though the new rc==1 retry loop would otherwise retry them	The proposed rc==1 transient retry would turn a deterministic _prepare_codex_home failure into 3 attempts by default, violating the stated fast-fail constraint and the existing one-shot regression coverage in python/test_agents.py:1095-1119	Make the no-retry path mandatory for _prepare_codex_home failures, for example with an internal sentinel rc handled by the loop as fail-without-retry, and keep the existing setup-failure test asserting one probe call
+
+1. **[correctness] `python/agents.py:805-811`**
+
+   **Concern:** The plan says to retry `rc == 1` failures, but only says to “consider” a no-retry code for `_prepare_codex_home` failures.
+
+   **Breakage:** That setup failure currently returns `1`. Under the planned default `LARCH_PROBE_RETRIES=2`, it would run three times unless the plan requires a distinct no-retry path.
+
+   **Suggested revision:** Make the no-retry sentinel mandatory for `_prepare_codex_home` failures, and keep `python/test_agents.py:1095-1119` asserting one probe call.
