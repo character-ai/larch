@@ -70,12 +70,23 @@ stopwords = [
     "abcdefghijklmnopqrstuvwxyz0123456789",
     "abcdefghijklmnopqrstuvwxyz0123456789ABCD",
     "sk-ant-abcdefghijklmnopqrstuvwxyz",
+    "sk-abcdefghijklmnopqrstuvwxyz123456",
     "MIIBOgIBAAJBAKj34GkxFhD90vcNLYLInFEX6Ppy1tPf9",
+    "00EF27EE-D305-4A60-8B89-BD9DC48B84E1",
+    "BC141FCF-42EF-4367-A029-A1C5C4463304",
+    "D604A28E-86CA-4BA6-A161-74C72B205CA0",
+    "absent/octal/boundary",
+    "budget/orphan",
 ]
 regexes = [
     '''sk-ant-[a-zA-Z0-9-_]{1,48}''',
     '''abcdefghijklmnopqrstuvwxyz0123456789''',
     '''MIIBOgIBAAJBAKj34GkxFhD90vcNLYLInFEX6Ppy1tPf9''',
+    '''IMPLEMENT_BAIL_REASON=''',
+    '''MERGE_RESULT=merged''',
+    '''LARCH_TOKEN_SESSION_ID=[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}''',
+    '''keys, absent/octal/boundary''',
+    '''tokens, budget/orphan''',
 ]
 
 # Override the default Anthropic API key rule to use only the long-form patterns
