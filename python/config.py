@@ -119,8 +119,10 @@ RCC_MAX_ITER_DEFAULT: Final = 3
 CI_LOCAL_FIX_ITER_DEFAULT: Final = 6
 WATERFALL_MAX_TIERS: Final = 3
 
-# Fixer tier order (parity with ship-pr run_ci_fix_vendor)
-FIXER_TIER_ORDER: Final[tuple[str, ...]] = ("codex", "cursor", "claude")
+# Fixer tier order (parity across conflict and local lint fixers)
+FIXER_TIER_ORDER: Final[tuple[str, ...]] = ("claude", "codex", "cursor")
+CLAUDE_CI_FIX_MODEL: Final = "claude-opus-4-8"
+CI_AGENTIC_FIX_MAX_CYCLES: Final = 20
 FIXER_ROLE: Final = "resolve-conflict"
 REBASE_MAX_ATTEMPTS: Final = 20
 SHIP_PR_RRR_RESUME_PHASE: Final = "ship-pr-rrr-phase14"
@@ -138,8 +140,6 @@ ENV_LARCH_QUIET_ACTIVE: Final = "LARCH_QUIET_ACTIVE"
 ENV_LARCH_QUIET_LOG_FILE: Final = "LARCH_QUIET_LOG_FILE"
 ENV_LARCH_QUIET_PID: Final = "LARCH_QUIET_PID"
 ENV_LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT: Final = "LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT"
-ENV_LARCH_VERSION_FILES: Final = "LARCH_VERSION_FILES"
-ENV_LARCH_BUMP_FILES: Final = "LARCH_BUMP_FILES"
 EXTERNAL_HEALTH_CHECK_TIMEOUT_DEFAULT_SEC: Final = 30
 
 # Implementation selector values

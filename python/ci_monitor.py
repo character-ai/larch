@@ -6,6 +6,7 @@ import json
 import math
 import os
 import re
+import sys
 import tempfile
 import time
 from collections.abc import Callable
@@ -1171,6 +1172,8 @@ def stage_and_push(
                 )
                 did_rebase = rebased.exit_code == 0
                 if not did_rebase:
+                    if rebased.conflict_files:
+                        return False, head, delta_paths, False, True
                     _ = git.rebase(runner, "--abort", cwd=cwd)
                     return False, head, delta_paths, False, False
     if did_rebase or ci_fix_rebase_pending:
@@ -1406,10 +1409,9 @@ def _fix_exhausted_detail(
     """Compose the diagnostic detail surfaced when the CI-fix loop exhausts.
 
     Carries the stable ``ci-fix-exhausted`` reason token, the failing job
-    name(s), and the already-redacted CI log tail so Step 18a stall recovery
-    can route the stall to an inline fix (``RESUME_HINT=step8-shippr``) instead
-    of terminal ``unrecoverable`` handling. The job names come from the closed
-    CI-job enum and the log tail is redacted upstream in ``collect_failed_logs``.
+    name(s), and the already-redacted CI log tail for Step 12d operator bail.
+    The job names come from the closed CI-job enum and the log tail is redacted
+    upstream in ``collect_failed_logs``.
     """
     jobs = ""
     if classified is not None:
@@ -1421,9 +1423,159 @@ def _fix_exhausted_detail(
     return header
 
 
+def _agentic_output_dir(ctx: RunContext | None) -> str:
+    if ctx is not None and ctx.tmpdir:
+        path = Path(ctx.tmpdir) / "ci-agentic-fix"
+    else:
+        path = Path(tempfile.gettempdir()) / "ci-agentic-fix"
+    path.mkdir(parents=True, exist_ok=True)
+    return str(path)
+
+
+def _read_push_checkpoint_from_ctx(ctx: RunContext | None) -> dict[str, str] | None:
+    path = Path(_agentic_output_dir(ctx)) / "ci-agentic-push-checkpoint.latest"
+    if not path.is_file():
+        return None
+    values: dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        key, sep, value = line.partition("=")
+        if sep and key:
+            values[key] = value.strip()
+    return values
+
+
+def _parse_kv_output(text: str) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for line in text.splitlines():
+        key, sep, value = line.partition("=")
+        if sep and key:
+            values[key] = value.strip()
+    return values
+
+
+def _agentic_fix_delegate_timeout_sec() -> float | None:
+    """Budget for one full agentic delegate run (all cycles + passive CI waits)."""
+    per_cycle = config.CI_WAIT_TIMEOUT_SEC + config.SUBPROCESS_DEFAULT_TIMEOUT_SEC
+    return float(config.CI_AGENTIC_FIX_MAX_CYCLES * per_cycle)
+
+
+def _agentic_fix_result(
+    runner: Runner,
+    *,
+    pr: int,
+    run_id: str,
+    repo: str,
+    plan_file: str | None,
+    cwd: str | None,
+    base_remote: str,
+    base_ref: str,
+    ctx: RunContext | None,
+) -> FixResult:
+    if cwd is None:
+        return FixResult(status="waterfall-failed", detail="missing repo_root")
+    implement_tmpdir = ctx.tmpdir if ctx is not None and ctx.tmpdir else os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
+    if not implement_tmpdir:
+        return FixResult(status="waterfall-failed", detail="missing implement_tmpdir")
+    argv = [
+        sys.executable,
+        str(_REPO_ROOT / "python" / "cli.py"),
+        "ci",
+        "agentic-fix",
+        "--pr",
+        str(pr),
+        "--repo",
+        repo,
+        "--repo-root",
+        cwd,
+        "--run-id",
+        run_id,
+        "--base-remote",
+        base_remote,
+        "--base-ref",
+        base_ref,
+        "--output-dir",
+        _agentic_output_dir(ctx),
+        "--max-cycles",
+        str(config.CI_AGENTIC_FIX_MAX_CYCLES),
+        "--implement-tmpdir",
+        implement_tmpdir,
+    ]
+    if plan_file:
+        argv.extend(["--plan-file", plan_file])
+    if ctx is not None and ctx.state_file:
+        argv.extend(["--state-file", ctx.state_file])
+    if ctx is not None and ctx.no_logs_commit:
+        argv.append("--no-logs-commit")
+    result = runner.run(argv, cwd=cwd, timeout=_agentic_fix_delegate_timeout_sec())
+    if result.returncode == config.EXIT_TIMEOUT:
+        checkpoint = _read_push_checkpoint_from_ctx(ctx)
+        if checkpoint is not None:
+            pending = checkpoint.get("CI_FIX_REBASE_PENDING", "").lower() == "true"
+            delta_paths = tuple(
+                path for path in checkpoint.get("DELTA_PATHS", "").split(",") if path
+            )
+            detail = checkpoint.get("DETAIL", "") or "delegate-timeout-after-push"
+            if pending:
+                return FixResult(
+                    status="pushed",
+                    winning_tier="claude",
+                    delta_paths=delta_paths,
+                    detail=detail,
+                    ci_fix_rebase_pending=True,
+                )
+            return FixResult(
+                status="pushed",
+                winning_tier="claude",
+                delta_paths=delta_paths,
+                detail=detail,
+            )
+        return FixResult(
+            status="fix-exhausted",
+            detail="ci-fix-exhausted: delegate-timeout",
+        )
+    parsed = _parse_kv_output(result.stdout)
+    status = parsed.get("STATUS", "")
+    detail = parsed.get("DETAIL", "")
+    exhausted_detail_file = parsed.get("EXHAUSTED_DETAIL_FILE", "")
+    if status in {"ci-fix-exhausted", "local-unfixable"} and exhausted_detail_file:
+        detail_path = Path(exhausted_detail_file)
+        if detail_path.is_file():
+            detail = detail_path.read_text(encoding="utf-8", errors="replace").strip()
+    fix_attempted = parsed.get("FIX_ATTEMPTED", "").lower() == "true"
+    delta_paths = tuple(path for path in parsed.get("DELTA_PATHS", "").split(",") if path)
+    pending = parsed.get("CI_FIX_REBASE_PENDING", "").lower() == "true"
+    if status in {"passed", "pushed"}:
+        return FixResult(status="pushed", winning_tier="claude", delta_paths=delta_paths)
+    if status == "rebase-required":
+        return FixResult(
+            status="pushed",
+            winning_tier="claude",
+            delta_paths=delta_paths,
+            detail=detail,
+            ci_fix_rebase_pending=True,
+        )
+    if status == "local-unfixable":
+        if fix_attempted:
+            exhausted_detail = detail if detail.startswith("ci-fix-exhausted") else f"ci-fix-exhausted: {detail}"
+            return FixResult(status="fix-exhausted", detail=exhausted_detail)
+        prefixed = detail if detail.startswith("local-unfixable:") else f"local-unfixable: {detail}"
+        return FixResult(status="local-unfixable", detail=prefixed)
+    if status == "first-fixer-non-health":
+        return FixResult(status="first-fixer-non-health", detail=detail)
+    if status == "ci-fix-exhausted":
+        exhausted_detail = detail if detail.startswith("ci-fix-exhausted") else f"ci-fix-exhausted: {detail}"
+        return FixResult(status="fix-exhausted", detail=exhausted_detail)
+    if status == "waterfall-failed":
+        if detail == "head-changed" and fix_attempted:
+            return FixResult(status="fix-exhausted", detail=f"ci-fix-exhausted: {detail}")
+        return FixResult(status="waterfall-failed", detail=detail, ci_fix_rebase_pending=pending)
+    return FixResult(status="waterfall-failed", detail="malformed agentic-fix output")
+
+
 def evaluate_failure(
     runner: Runner,
     *,
+    pr: int = 0,
     run_id: str,
     repo: str,
     plan_file: str | None,
@@ -1479,10 +1631,26 @@ def evaluate_failure(
     if upfront_logs.state == "ready" and not blind_rerun_attempted:
         upfront_ready_stash = upfront_logs
 
-    last_verify: tuple[str, ...] = ()
+    if not ci_fix_rebase_pending:
+        if not _on_named_branch(runner, cwd=cwd):
+            return FixResult(
+                status="waterfall-failed",
+                detail="evaluate_failure: detached HEAD",
+            )
+        return _agentic_fix_result(
+            runner,
+            pr=pr,
+            run_id=run_id,
+            repo=repo,
+            plan_file=plan_file,
+            cwd=cwd,
+            base_remote=base_remote,
+            base_ref=base_ref,
+            ctx=ctx,
+        )
+
     last_classified: ClassifiedJobs | None = None
     last_logs: LogCollectResult | None = None
-    code_fix_attempted_on_ready_log = False
     for attempt in range(1, config.CI_MONITOR_FIX_WATERFALL_MAX_ATTEMPTS + 1):
         if not _on_named_branch(runner, cwd=cwd):
             return FixResult(
@@ -1525,85 +1693,6 @@ def evaluate_failure(
                     continue
                 return pending_fix
             return pending_fix
-        if attempt == 1 and upfront_ready_stash is not None:
-            logs = upfront_ready_stash
-        else:
-            logs = collect_failed_logs(runner, run_id=run_id, repo=repo, cwd=cwd)
-        if logs.state != "ready":
-            if attempt < config.CI_MONITOR_FIX_WATERFALL_MAX_ATTEMPTS:
-                sleep_fn(_outer_backoff_seconds(attempt))
-            continue
-        jobs_raw, jobs_state = read_failed_jobs(
-            runner,
-            run_id=run_id,
-            repo=repo,
-            cwd=cwd,
-        )
-        if jobs_state != "ready":
-            if attempt < config.CI_MONITOR_FIX_WATERFALL_MAX_ATTEMPTS:
-                sleep_fn(_outer_backoff_seconds(attempt))
-            continue
-
-        classified = classify_failed_jobs(jobs_raw)
-        last_classified = classified
-        last_logs = logs
-        fix = run_ci_fix(
-            runner,
-            run_id=run_id,
-            repo=repo,
-            classified=classified,
-            logs=logs,
-            plan_file=plan_file,
-            cwd=cwd,
-            launch_fn=launch_fn,
-            base_remote=base_remote,
-            base_ref=base_ref,
-            ci_fix_rebase_pending=ci_fix_rebase_pending,
-            ctx=ctx,
-        )
-        if fix.code_fix_attempted_on_ready_log:
-            code_fix_attempted_on_ready_log = True
-        if fix.status == "local-unfixable":
-            if code_fix_attempted_on_ready_log:
-                return FixResult(
-                    status="fix-exhausted",
-                    detail=_fix_exhausted_detail(classified, logs),
-                )
-            return fix
-        if fix.status == "head-changed":
-            if code_fix_attempted_on_ready_log:
-                return FixResult(
-                    status="fix-exhausted",
-                    detail=_fix_exhausted_detail(classified, logs),
-                )
-            return fix
-        if fix.status == "pushed":
-            return fix
-        if fix.status == "first-fixer-non-health":
-            return fix
-        if fix.status == "verify-failed":
-            last_verify = fix.failed_verify
-            if attempt < config.CI_MONITOR_FIX_WATERFALL_MAX_ATTEMPTS:
-                sleep_fn(_outer_backoff_seconds(attempt))
-            continue
-        if fix.status == "waterfall-failed":
-            if attempt < config.CI_MONITOR_FIX_WATERFALL_MAX_ATTEMPTS:
-                sleep_fn(_outer_backoff_seconds(attempt))
-            continue
-        return fix
-
-    if code_fix_attempted_on_ready_log:
-        return FixResult(
-            status="fix-exhausted",
-            detail=_fix_exhausted_detail(last_classified, last_logs),
-        )
-    if last_verify:
-        jobs = ", ".join(last_verify)
-        return FixResult(
-            status="waterfall-failed",
-            failed_verify=last_verify,
-            detail=f"verify-failed after outer cap: {jobs}",
-        )
     return FixResult(status="fix-exhausted", detail=_fix_exhausted_detail(last_classified, last_logs))
 
 
@@ -1698,6 +1787,7 @@ def monitor(
             )
         fix = evaluate_failure(
             runner,
+            pr=pr,
             run_id=status.failed_run_id,
             repo=repo,
             plan_file=plan_file,
@@ -1730,7 +1820,7 @@ def monitor(
         if fix.status == "pushed":
             return _base_result(
                 did_fixing=True,
-                goto=status.behind_count > 0,
+                goto=fix.ci_fix_rebase_pending or status.behind_count > 0,
                 step=StepResult(outcome=Outcome.OK),
                 pending=fix.ci_fix_rebase_pending,
             )

@@ -175,7 +175,34 @@ def test_classify_ci_fix_exhausted_with_detail_log(tmp_path: Path, capsys: pytes
     ])
     assert rc == 0
     out = capsys.readouterr().out
-    assert "FAILURE_CLASS=ci-fix-exhausted" in out
+    assert "FAILURE_CLASS=unrecoverable" in out
+    assert "RESUME_HINT=none" in out
+
+
+def test_classify_ci_fix_exhausted_outranks_test_evidence(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _ = (tmp_path / "ship-pr-state.sh").write_text(
+        "STALL_TRACKING=true\nSTALL_STEP=8\nPHASE=ci-merge\nBAIL_REASON=ci-fix-exhausted\nEXIT_CODE=2\n",
+        encoding="utf-8",
+    )
+    detail = tmp_path / "failure.log"
+    _ = detail.write_text("pytest reports 2 failing tests\n", encoding="utf-8")
+    rc = stall_recovery.classify_main([
+        "--implement-tmpdir", str(tmp_path),
+        "--failure-detail-log", str(detail),
+        "--bail-reason", "ci-fix-exhausted",
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "FAILURE_CLASS=unrecoverable" in out
+    assert "RESUME_HINT=none" in out
+
+
+def test_retry_policy_ci_fix_exhausted_cap(capsys: pytest.CaptureFixture[str]) -> None:
+    rc = stall_recovery.retry_policy_main(["--class", "ci-fix-exhausted"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "MAX_ATTEMPTS=0" in out
+    assert "RETRY_DELAY=none" in out
 
 
 def test_retry_policy_lint_failure_cap(capsys: pytest.CaptureFixture[str]) -> None:

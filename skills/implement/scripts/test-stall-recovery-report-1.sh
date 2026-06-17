@@ -240,7 +240,12 @@ dir=$(make_tmp case7l3)
 write_state "$dir" 2 implementation
 run_capture "$SANDBOX/case7l3.out" "$SCRIPT" classify --implement-tmpdir "$dir" --bail-reason ci-fix-exhausted
 assert_eq unrecoverable "$(kv FAILURE_CLASS "$SANDBOX/case7l3.out")" "7: ci-fix-exhausted without detail log stays unrecoverable"
+assert_eq none "$(kv RESUME_HINT "$SANDBOX/case7l3.out")" "7: ci-fix-exhausted does not resume"
 assert_eq ci-fix-exhausted "$(kv BAIL_REASON "$SANDBOX/case7l3.out")" "7: ci-fix-exhausted renders allowlisted bail"
+run_capture "$SANDBOX/case7l3-retry.out" "$SCRIPT" retry-policy --class ci-fix-exhausted
+assert_eq ci-fix-exhausted "$(kv FAILURE_CLASS "$SANDBOX/case7l3-retry.out")" "7: retry-policy class ci-fix-exhausted"
+assert_eq 0 "$(kv MAX_ATTEMPTS "$SANDBOX/case7l3-retry.out")" "7: retry-policy attempts ci-fix-exhausted"
+assert_eq none "$(kv RETRY_DELAY "$SANDBOX/case7l3-retry.out")" "7: retry-policy delay ci-fix-exhausted"
 
 # #3592 bug b: distinct failure evidence produces distinct signatures.
 dir=$(make_tmp case7m)
@@ -268,6 +273,7 @@ lint-failure|8|none
 dispatch-failure|3|none
 protected-path|1|none
 submodule-restricted|0|none
+ci-fix-exhausted|0|none
 same-cause-repeat|2|none
 contract-failure|0|none
 unrecoverable|0|none

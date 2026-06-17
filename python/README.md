@@ -65,11 +65,10 @@ The live `/implement` path uses `python/cli.py ship pr`. `/report-tokens` is cut
 
 `rebase.py` represents the bash exit-4 `ship_pr_pre_push` conflict handoff at
 library level only. When the in-process conflict fixer waterfall exhausts on
-non-bump-only conflicts, it writes `ship-pr-rrr-after-phase14.flag` under the
+remaining conflicts, it writes `ship-pr-rrr-after-phase14.flag` under the
 resolved implement tmpdir and raises `PrePushConflictHandoff` with the conflict
-files plus the `ship-pr-rrr-phase14` / `ship_pr_pre_push` tokens. Bump-only or
-mixed conflicts, conflicts that remain after a tier reported success, and flag
-write failures all raise plain `Stalled` instead.
+files plus the `ship-pr-rrr-phase14` / `ship_pr_pre_push` tokens. Flag
+write failures raise plain `Stalled` instead.
 
 `python/ship.py` now persists the handoff state for the default path. The
 `PrePushConflictHandoff` handler writes `RESUME_PHASE=ship-pr-rrr-phase14`,

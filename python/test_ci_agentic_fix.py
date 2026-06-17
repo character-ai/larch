@@ -1,0 +1,769 @@
+"""Tests for the delegated agentic CI fixer CLI surface."""
+
+from __future__ import annotations
+
+from argparse import Namespace
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+import ci_agentic_fix
+import ci_monitor
+import agents
+import config
+import proc
+from run_context import RunContext
+
+if TYPE_CHECKING:
+    import pytest
+
+
+def _make_ctx() -> RunContext:
+    return RunContext(
+        branch="feat", issue="", repo="o/r", run_id="42",
+        tmpdir="/tmp/implement", merge=False, draft=False, forked=False,
+        manifest_path="", tool_label="claude", no_admin_fallback=False,
+        repo_unavailable=False, pr_number=1,
+    )
+
+
+def _call_agentic_fix(kv: str) -> ci_monitor.FixResult:
+    class _KvRunner:
+        def run(self, *_a: object, **_kw: object) -> proc.CommandResult:
+            return proc.CommandResult(("cli",), 0, kv, "", 0.01)
+
+    return ci_monitor._agentic_fix_result(  # pyright: ignore[reportPrivateUsage]
+        _KvRunner(), pr=1, run_id="42", repo="o/r", plan_file=None,
+        cwd="/tmp/repo", base_remote="origin", base_ref="main",
+        ctx=_make_ctx(),
+    )
+
+
+def test_missing_repo_root_fails_closed(capsys: pytest.CaptureFixture[str]) -> None:
+    rc = ci_agentic_fix.main([
+        "--pr", "1",
+        "--repo", "o/r",
+        "--repo-root", "relative",
+        "--run-id", "42",
+        "--output-dir", "/tmp",
+        "--implement-tmpdir", "/tmp",
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "STATUS=waterfall-failed" in out
+    assert "DETAIL=missing-repo-root" in out
+
+
+def test_valid_repo_root_rejects_missing_directory(tmp_path: Path) -> None:
+    assert ci_agentic_fix._valid_repo_root(str(tmp_path / "missing")) is None  # pyright: ignore[reportPrivateUsage]
+
+
+def test_compose_exhausted_detail_includes_log_tail() -> None:
+    detail = ci_agentic_fix._compose_exhausted_detail(  # pyright: ignore[reportPrivateUsage]
+        "empty-delta",
+        "FAIL test_foo.py\n",
+    )
+    assert detail.startswith("ci-fix-exhausted: empty-delta")
+    assert "FAIL test_foo.py" in detail
+
+
+def test_first_cycle_health_emits_ci_fix_exhausted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+
+    def fake_read_failed_jobs(
+        _runner: object,
+        *,
+        run_id: str,
+        repo: str,
+        cwd: str | None,
+    ) -> tuple[tuple[ci_monitor.FailedJob, ...], str]:
+        _ = run_id, repo, cwd
+        return ((ci_monitor.FailedJob(name="python-lint", conclusion="failure"),), "ready")
+
+    def fake_collect_failed_logs(
+        _runner: object,
+        *,
+        run_id: str,
+        repo: str,
+        cwd: str | None,
+    ) -> ci_monitor.LogCollectResult:
+        _ = run_id, repo, cwd
+        return ci_monitor.LogCollectResult(text="FAIL lint\n", state="ready")
+
+    def fake_capture_baseline(
+        _runner: object,
+        *,
+        cwd: str | None,
+    ) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...], str]:
+        _ = cwd
+        return (), (), (), "abc123"
+
+    def fake_launch_tier(*_args: object, **_kwargs: object) -> proc.CommandResult:
+        return proc.CommandResult(("cli",), 1, "LAUNCHER_EXIT=127\n", "", 0.01)
+
+    def fake_resolve_launcher_exit(*_args: object, **_kwargs: object) -> int:
+        return 127
+
+    def fake_classify_launch_failure(*_args: object, **_kwargs: object) -> agents.LaunchFailure:
+        return agents.LaunchFailure("health", "binary-missing")
+
+    def fake_rollback(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(ci_monitor, "read_failed_jobs", fake_read_failed_jobs)
+    monkeypatch.setattr(ci_monitor, "collect_failed_logs", fake_collect_failed_logs)
+    monkeypatch.setattr(ci_monitor, "_capture_baseline", fake_capture_baseline)
+    monkeypatch.setattr(agents, "launch_tier", fake_launch_tier)
+    monkeypatch.setattr(agents, "resolve_launcher_exit", fake_resolve_launcher_exit)
+    monkeypatch.setattr(agents, "classify_launch_failure", fake_classify_launch_failure)
+    monkeypatch.setattr(ci_agentic_fix, "_rollback", fake_rollback)
+
+    rc = ci_agentic_fix.main([
+        "--pr", "1",
+        "--repo", "o/r",
+        "--repo-root", str(repo),
+        "--run-id", "42",
+        "--output-dir", str(out_dir),
+        "--implement-tmpdir", str(tmp_path),
+        "--max-cycles", "3",
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "STATUS=ci-fix-exhausted" in out
+    assert "DETAIL=binary-missing" in out
+
+
+def test_agentic_fix_result_reads_exhausted_detail_file(
+    tmp_path: Path,
+) -> None:
+    detail_file = tmp_path / "exhausted.detail"
+    _ = detail_file.write_text(
+        "ci-fix-exhausted: empty-delta\nFAIL test_bar.py\n",
+        encoding="utf-8",
+    )
+    kv = (
+        "STATUS=ci-fix-exhausted\n"
+        "DETAIL=empty-delta\n"
+        f"EXHAUSTED_DETAIL_FILE={detail_file}\n"
+        "FIX_ATTEMPTED=true\n"
+        "DELTA_PATHS=\n"
+        "CI_FIX_REBASE_PENDING=false\n"
+    )
+
+    fix = _call_agentic_fix(kv)
+    assert fix.status == "fix-exhausted"
+    assert "FAIL test_bar.py" in (fix.detail or "")
+
+
+def test_agentic_fix_result_local_unfixable_prefixes_detail(tmp_path: Path) -> None:
+    detail_file = tmp_path / "local-unfixable.detail"
+    _ = detail_file.write_text(
+        "local-unfixable: gitleaks\nFAIL gitleaks scan\n",
+        encoding="utf-8",
+    )
+    kv = (
+        "STATUS=local-unfixable\n"
+        "DETAIL=gitleaks\n"
+        f"EXHAUSTED_DETAIL_FILE={detail_file}\n"
+        "FIX_ATTEMPTED=false\n"
+        "DELTA_PATHS=\n"
+        "CI_FIX_REBASE_PENDING=false\n"
+    )
+
+    fix = _call_agentic_fix(kv)
+    assert fix.status == "local-unfixable"
+    assert fix.detail == "local-unfixable: gitleaks\nFAIL gitleaks scan"
+
+
+def test_agentic_fix_result_missing_repo_root_fail_closed() -> None:
+    fix = ci_monitor._agentic_fix_result(  # pyright: ignore[reportPrivateUsage]
+        proc,
+        pr=1,
+        run_id="42",
+        repo="o/r",
+        plan_file=None,
+        cwd=None,
+        base_remote="origin",
+        base_ref="main",
+        ctx=None,
+    )
+    assert fix.status == "waterfall-failed"
+    assert fix.detail == "missing repo_root"
+
+
+def test_first_cycle_transient_health_continues_delegate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    cycles = {"n": 0}
+
+    def fake_read_failed_jobs(
+        _runner: object,
+        *,
+        run_id: str,
+        repo: str,
+        cwd: str | None,
+    ) -> tuple[tuple[ci_monitor.FailedJob, ...], str]:
+        _ = run_id, repo, cwd
+        return ((ci_monitor.FailedJob(name="python-lint", conclusion="failure"),), "ready")
+
+    def fake_collect_failed_logs(
+        _runner: object,
+        *,
+        run_id: str,
+        repo: str,
+        cwd: str | None,
+    ) -> ci_monitor.LogCollectResult:
+        _ = run_id, repo, cwd
+        return ci_monitor.LogCollectResult(text="FAIL lint\n", state="ready")
+
+    def fake_capture_baseline(
+        _runner: object,
+        *,
+        cwd: str | None,
+    ) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...], str]:
+        _ = cwd
+        return (), (), (), "abc123"
+
+    def fake_launch_tier(*_args: object, **_kwargs: object) -> proc.CommandResult:
+        return proc.CommandResult(("cli",), 1, "LAUNCHER_EXIT=1\n", "", 0.01)
+
+    def fake_resolve_launcher_exit(*_args: object, **_kwargs: object) -> int:
+        return 1
+
+    def fake_classify_launch_failure(*_args: object, **_kwargs: object) -> agents.LaunchFailure:
+        return agents.LaunchFailure("health", "health-probe")
+
+    def fake_rollback(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    def fake_run_cycle(*_args: object, **_kwargs: object) -> tuple[str, str, bool, tuple[str, ...], bool, str | None, str]:
+        cycles["n"] += 1
+        if cycles["n"] < 2:
+            return "waterfall-failed", "health-probe", True, (), False, None, "FAIL lint\n"
+        return "passed", "", True, ("file.py",), False, None, ""
+
+    monkeypatch.setattr(ci_monitor, "read_failed_jobs", fake_read_failed_jobs)
+    monkeypatch.setattr(ci_monitor, "collect_failed_logs", fake_collect_failed_logs)
+    monkeypatch.setattr(ci_monitor, "_capture_baseline", fake_capture_baseline)
+    monkeypatch.setattr(agents, "launch_tier", fake_launch_tier)
+    monkeypatch.setattr(agents, "resolve_launcher_exit", fake_resolve_launcher_exit)
+    monkeypatch.setattr(agents, "classify_launch_failure", fake_classify_launch_failure)
+    monkeypatch.setattr(ci_agentic_fix, "_rollback", fake_rollback)
+    monkeypatch.setattr(ci_agentic_fix, "_run_cycle", fake_run_cycle)
+
+    rc = ci_agentic_fix.main([
+        "--pr", "1",
+        "--repo", "o/r",
+        "--repo-root", str(repo),
+        "--run-id", "42",
+        "--output-dir", str(out_dir),
+        "--implement-tmpdir", str(tmp_path),
+        "--max-cycles", "3",
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "STATUS=passed" in out
+    assert cycles["n"] == 2
+
+
+def test_mixed_fixable_and_unfixable_launches_claude(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    launch_calls = {"n": 0}
+
+    def fake_read_failed_jobs(
+        _runner: object,
+        *,
+        run_id: str,
+        repo: str,
+        cwd: str | None,
+    ) -> tuple[tuple[ci_monitor.FailedJob, ...], str]:
+        _ = run_id, repo, cwd
+        return (
+            (
+                ci_monitor.FailedJob(name="python-lint", conclusion="failure"),
+                ci_monitor.FailedJob(name="gitleaks", conclusion="failure"),
+            ),
+            "ready",
+        )
+
+    def fake_collect_failed_logs(
+        _runner: object,
+        *,
+        run_id: str,
+        repo: str,
+        cwd: str | None,
+    ) -> ci_monitor.LogCollectResult:
+        _ = run_id, repo, cwd
+        return ci_monitor.LogCollectResult(text="FAIL lint\n", state="ready")
+
+    def fake_capture_baseline(
+        _runner: object,
+        *,
+        cwd: str | None,
+    ) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...], str]:
+        _ = cwd
+        return (), (), (), "abc123"
+
+    def fake_launch_tier(*_args: object, **_kwargs: object) -> proc.CommandResult:
+        launch_calls["n"] += 1
+        return proc.CommandResult(("cli",), 1, "LAUNCHER_EXIT=1\n", "", 0.01)
+
+    def fake_resolve_launcher_exit(*_args: object, **_kwargs: object) -> int:
+        return 1
+
+    def fake_classify_launch_failure(*_args: object, **_kwargs: object) -> agents.LaunchFailure:
+        return agents.LaunchFailure("other", "parse")
+
+    def fake_rollback(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(ci_monitor, "read_failed_jobs", fake_read_failed_jobs)
+    monkeypatch.setattr(ci_monitor, "collect_failed_logs", fake_collect_failed_logs)
+    monkeypatch.setattr(ci_monitor, "_capture_baseline", fake_capture_baseline)
+    monkeypatch.setattr(agents, "launch_tier", fake_launch_tier)
+    monkeypatch.setattr(agents, "resolve_launcher_exit", fake_resolve_launcher_exit)
+    monkeypatch.setattr(agents, "classify_launch_failure", fake_classify_launch_failure)
+    monkeypatch.setattr(ci_agentic_fix, "_rollback", fake_rollback)
+
+    rc = ci_agentic_fix.main([
+        "--pr", "1",
+        "--repo", "o/r",
+        "--repo-root", str(repo),
+        "--run-id", "42",
+        "--output-dir", str(out_dir),
+        "--implement-tmpdir", str(tmp_path),
+        "--max-cycles", "1",
+    ])
+    assert rc == 0
+    assert launch_calls["n"] == 1
+    out = capsys.readouterr().out
+    assert "STATUS=first-fixer-non-health" in out
+
+
+def test_head_changed_continues_until_cycle_cap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    cycles = {"n": 0}
+
+    def fake_run_cycle(*_args: object, **_kwargs: object) -> tuple[str, str, bool, tuple[str, ...], bool, str | None, str]:
+        cycles["n"] += 1
+        return "waterfall-failed", "head-changed", True, (), False, None, "FAIL lint\n"
+
+    monkeypatch.setattr(ci_agentic_fix, "_run_cycle", fake_run_cycle)
+
+    rc = ci_agentic_fix.main([
+        "--pr", "1",
+        "--repo", "o/r",
+        "--repo-root", str(repo),
+        "--run-id", "42",
+        "--output-dir", str(out_dir),
+        "--implement-tmpdir", str(tmp_path),
+        "--max-cycles", "3",
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "STATUS=ci-fix-exhausted" in out
+    assert cycles["n"] == 3
+
+
+def test_ci_wait_rebase_action_surfaces_rebase_required(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+
+    def fake_run_cycle(*_args: object, **_kwargs: object) -> tuple[str, str, bool, tuple[str, ...], bool, str | None, str]:
+        return "rebase-required", "ci-wait-rebase-required", True, ("a.py",), True, None, ""
+
+    monkeypatch.setattr(ci_agentic_fix, "_run_cycle", fake_run_cycle)
+
+    rc = ci_agentic_fix.main([
+        "--pr", "1",
+        "--repo", "o/r",
+        "--repo-root", str(repo),
+        "--run-id", "42",
+        "--output-dir", str(out_dir),
+        "--implement-tmpdir", str(tmp_path),
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "STATUS=rebase-required" in out
+    assert "CI_FIX_REBASE_PENDING=true" in out
+
+
+def test_wait_for_ci_fails_closed_on_nonzero_exit(tmp_path: Path) -> None:
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    class _Runner:
+        def run(self, *_args: object, **_kwargs: object) -> proc.CommandResult:
+            return proc.CommandResult(("cli",), 1, "", "wait crashed", 0.01)
+
+    args = Namespace(
+        pr=1,
+        repo="o/r",
+        base_remote="origin",
+        base_ref="main",
+        output_dir=str(out_dir),
+    )
+    parsed, err = ci_agentic_fix._wait_for_ci(  # pyright: ignore[reportPrivateUsage]
+        _Runner(),
+        args=args,
+        repo_root=repo,
+        cycle=1,
+    )
+    assert not parsed
+    assert err == "ci-wait-exit-1"
+
+
+def test_wait_for_ci_fails_closed_on_malformed_output(tmp_path: Path) -> None:
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    wait_out = out_dir / "ci-agentic-wait-1.out"
+    _ = wait_out.write_text("UNRELATED=noise\n", encoding="utf-8")
+
+    class _Runner:
+        def run(self, *_args: object, **_kwargs: object) -> proc.CommandResult:
+            return proc.CommandResult(("cli",), 0, "", "", 0.01)
+
+    args = Namespace(
+        pr=1,
+        repo="o/r",
+        base_remote="origin",
+        base_ref="main",
+        output_dir=str(out_dir),
+    )
+    parsed, err = ci_agentic_fix._wait_for_ci(  # pyright: ignore[reportPrivateUsage]
+        _Runner(),
+        args=args,
+        repo_root=repo,
+        cycle=1,
+    )
+    assert not parsed
+    assert err == "ci-wait-malformed-output"
+
+
+def test_agentic_fix_result_missing_implement_tmpdir_fail_closed() -> None:
+    fix = ci_monitor._agentic_fix_result(  # pyright: ignore[reportPrivateUsage]
+        proc,
+        pr=1,
+        run_id="42",
+        repo="o/r",
+        plan_file=None,
+        cwd="/tmp/repo",
+        base_remote="origin",
+        base_ref="main",
+        ctx=None,
+    )
+    assert fix.status == "waterfall-failed"
+    assert fix.detail == "missing implement_tmpdir"
+
+
+def test_wait_for_ci_accepts_action_bail(tmp_path: Path) -> None:
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    wait_out = out_dir / "ci-agentic-wait-1.out"
+    _ = wait_out.write_text(
+        "ACTION=bail\nBAIL_REASON=CI_WAIT_BAIL_POLL_BUDGET_EXHAUSTED\n",
+        encoding="utf-8",
+    )
+
+    class _Runner:
+        def run(self, *_args: object, **_kwargs: object) -> proc.CommandResult:
+            return proc.CommandResult(("cli",), 0, "", "", 0.01)
+
+    args = Namespace(
+        pr=1,
+        repo="o/r",
+        base_remote="origin",
+        base_ref="main",
+        output_dir=str(out_dir),
+    )
+    parsed, err = ci_agentic_fix._wait_for_ci(  # pyright: ignore[reportPrivateUsage]
+        _Runner(),
+        args=args,
+        repo_root=repo,
+        cycle=1,
+    )
+    assert err is None
+    assert parsed.get("ACTION") == "bail"
+
+
+def test_first_cycle_quota_emits_ci_fix_exhausted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+
+    def fake_read_failed_jobs(
+        _runner: object,
+        *,
+        run_id: str,
+        repo: str,
+        cwd: str | None,
+    ) -> tuple[tuple[ci_monitor.FailedJob, ...], str]:
+        _ = run_id, repo, cwd
+        return ((ci_monitor.FailedJob(name="python-lint", conclusion="failure"),), "ready")
+
+    def fake_collect_failed_logs(
+        _runner: object,
+        *,
+        run_id: str,
+        repo: str,
+        cwd: str | None,
+    ) -> ci_monitor.LogCollectResult:
+        _ = run_id, repo, cwd
+        return ci_monitor.LogCollectResult(text="FAIL lint\n", state="ready")
+
+    def fake_capture_baseline(
+        _runner: object,
+        *,
+        cwd: str | None,
+    ) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...], str]:
+        _ = cwd
+        return (), (), (), "abc123"
+
+    def fake_launch_tier(*_args: object, **_kwargs: object) -> proc.CommandResult:
+        return proc.CommandResult(("cli",), 1, "LAUNCHER_EXIT=1\n", "", 0.01)
+
+    def fake_resolve_launcher_exit(*_args: object, **_kwargs: object) -> int:
+        return 1
+
+    def fake_classify_launch_failure(*_args: object, **_kwargs: object) -> agents.LaunchFailure:
+        return agents.LaunchFailure("health", "quota")
+
+    def fake_rollback(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(ci_monitor, "read_failed_jobs", fake_read_failed_jobs)
+    monkeypatch.setattr(ci_monitor, "collect_failed_logs", fake_collect_failed_logs)
+    monkeypatch.setattr(ci_monitor, "_capture_baseline", fake_capture_baseline)
+    monkeypatch.setattr(agents, "launch_tier", fake_launch_tier)
+    monkeypatch.setattr(agents, "resolve_launcher_exit", fake_resolve_launcher_exit)
+    monkeypatch.setattr(agents, "classify_launch_failure", fake_classify_launch_failure)
+    monkeypatch.setattr(ci_agentic_fix, "_rollback", fake_rollback)
+
+    rc = ci_agentic_fix.main([
+        "--pr", "1",
+        "--repo", "o/r",
+        "--repo-root", str(repo),
+        "--run-id", "42",
+        "--output-dir", str(out_dir),
+        "--implement-tmpdir", str(tmp_path),
+        "--max-cycles", "3",
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "STATUS=ci-fix-exhausted" in out
+    assert "DETAIL=quota" in out
+
+
+def test_agentic_fix_result_timeout_reads_push_checkpoint(tmp_path: Path) -> None:
+    implement = tmp_path / "implement"
+    implement.mkdir()
+    checkpoint_dir = implement / "ci-agentic-fix"
+    checkpoint_dir.mkdir()
+    _ = (checkpoint_dir / "ci-agentic-push-checkpoint.latest").write_text(
+        "RUN_ID=99\nDELTA_PATHS=a.py\nCI_FIX_REBASE_PENDING=true\nDETAIL=wait-timeout\n",
+        encoding="utf-8",
+    )
+
+    class _Runner:
+        def run(self, *_args: object, **_kwargs: object) -> proc.CommandResult:
+            return proc.CommandResult(("cli",), config.EXIT_TIMEOUT, "", "", 0.01)
+
+    fix = ci_monitor._agentic_fix_result(  # pyright: ignore[reportPrivateUsage]
+        _Runner(),
+        pr=1,
+        run_id="42",
+        repo="o/r",
+        plan_file=None,
+        cwd=str(tmp_path / "repo"),
+        base_remote="origin",
+        base_ref="main",
+        ctx=RunContext(
+            branch="feat",
+            issue="",
+            repo="o/r",
+            run_id="42",
+            tmpdir=str(implement),
+            merge=False,
+            draft=False,
+            forked=False,
+            manifest_path="",
+            tool_label="claude",
+            no_admin_fallback=False,
+            repo_unavailable=False,
+            pr_number=1,
+        ),
+    )
+    assert fix.status == "pushed"
+    assert fix.ci_fix_rebase_pending is True
+    assert fix.delta_paths == ("a.py",)
+
+
+def test_run_cycle_empty_delta_returns_no_progress_without_push(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    push_calls = {"n": 0}
+
+    def fake_read_failed_jobs(
+        _runner: object,
+        *,
+        run_id: str,
+        repo: str,
+        cwd: str | None,
+    ) -> tuple[tuple[ci_monitor.FailedJob, ...], str]:
+        _ = run_id, repo, cwd
+        return ((ci_monitor.FailedJob(name="python-lint", conclusion="failure"),), "ready")
+
+    def fake_collect_failed_logs(
+        _runner: object,
+        *,
+        run_id: str,
+        repo: str,
+        cwd: str | None,
+    ) -> ci_monitor.LogCollectResult:
+        _ = run_id, repo, cwd
+        return ci_monitor.LogCollectResult(text="FAIL lint\n", state="ready")
+
+    def fake_capture_baseline(
+        _runner: object,
+        *,
+        cwd: str | None,
+    ) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...], str]:
+        _ = cwd
+        return (), (), (), "abc123"
+
+    def fake_launch_tier(*_args: object, **_kwargs: object) -> proc.CommandResult:
+        return proc.CommandResult(("cli",), 0, "LAUNCHER_EXIT=0\n", "", 0.01)
+
+    def fake_resolve_launcher_exit(*_args: object, **_kwargs: object) -> int:
+        return 0
+
+    def fake_classify_launch_failure(*_args: object, **_kwargs: object) -> agents.LaunchFailure:
+        return agents.LaunchFailure("none", "")
+
+    def fake_prepare_python_toolchain(*_args: object, **_kwargs: object) -> bool:
+        return True
+
+    def fake_verify_job_locally(*_args: object, **_kwargs: object) -> bool:
+        return True
+
+    def fake_delta_paths(*_args: object, **_kwargs: object) -> tuple[str, ...]:
+        return ()
+
+    def fake_stage_and_push(*_args: object, **_kwargs: object) -> tuple[bool, str | None, tuple[str, ...], bool, bool]:
+        push_calls["n"] += 1
+        return True, "head", ("a.py",), False, False
+
+    def fake_rollback(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    def fake_capture_head(*_args: object, **_kwargs: object) -> str:
+        return "abc123"
+
+    def fake_head_changed(*_args: object, **_kwargs: object) -> bool:
+        return False
+
+    def fake_forbidden_paths(*_args: object, **_kwargs: object) -> tuple[str, ...]:
+        return ()
+
+    def fake_revert_forbidden(*_args: object, **_kwargs: object) -> int:
+        return 0
+
+    monkeypatch.setattr(ci_monitor, "read_failed_jobs", fake_read_failed_jobs)
+    monkeypatch.setattr(ci_monitor, "collect_failed_logs", fake_collect_failed_logs)
+    monkeypatch.setattr(ci_monitor, "_capture_baseline", fake_capture_baseline)
+    monkeypatch.setattr(ci_monitor, "prepare_python_toolchain", fake_prepare_python_toolchain)
+    monkeypatch.setattr(ci_monitor, "verify_job_locally", fake_verify_job_locally)
+    monkeypatch.setattr(ci_monitor, "_delta_paths", fake_delta_paths)
+    monkeypatch.setattr(ci_monitor, "stage_and_push", fake_stage_and_push)
+    monkeypatch.setattr(agents, "launch_tier", fake_launch_tier)
+    monkeypatch.setattr(agents, "resolve_launcher_exit", fake_resolve_launcher_exit)
+    monkeypatch.setattr(agents, "classify_launch_failure", fake_classify_launch_failure)
+    monkeypatch.setattr(ci_agentic_fix, "_rollback", fake_rollback)
+    monkeypatch.setattr(ci_agentic_fix.coder_delta_guards, "capture_head", fake_capture_head)
+    monkeypatch.setattr(ci_agentic_fix.coder_delta_guards, "head_changed_from_baseline", fake_head_changed)
+    monkeypatch.setattr(ci_agentic_fix.coder_delta_guards, "coder_forbidden_paths", fake_forbidden_paths)
+    monkeypatch.setattr(ci_agentic_fix.coder_delta_guards, "revert_forbidden_paths", fake_revert_forbidden)
+
+    args = Namespace(
+        pr=1,
+        repo="o/r",
+        plan_file="",
+        base_remote="origin",
+        base_ref="main",
+        output_dir=str(out_dir),
+    )
+    ctx = RunContext(
+        branch="feat",
+        issue="",
+        repo="o/r",
+        run_id="42",
+        tmpdir=str(tmp_path),
+        merge=False,
+        draft=False,
+        forked=False,
+        manifest_path="",
+        tool_label="claude",
+        no_admin_fallback=False,
+        repo_unavailable=False,
+        pr_number=1,
+    )
+    status, detail, attempted, _delta, _pending, _next_run, _log = ci_agentic_fix._run_cycle(  # pyright: ignore[reportPrivateUsage]
+        proc,
+        args=args,
+        repo_root=repo,
+        ctx=ctx,
+        cycle=1,
+        run_id="42",
+    )
+    assert status == "no-progress"
+    assert detail == "empty-delta"
+    assert attempted is True
+    assert push_calls["n"] == 0

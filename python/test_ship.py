@@ -2294,7 +2294,7 @@ def test_ci_fix_exhausted_terminal_state_sets_bail_reason(tmp_path: Path) -> Non
 
 
 def test_ci_fix_exhausted_detail_log_classified_by_stall_recovery(tmp_path: Path) -> None:
-    """Stall-recovery classifier on the new envelope yields ci-fix-exhausted/step8-shippr."""
+    """Stall-recovery classifier on the new envelope yields unrecoverable/none."""
     stall_recovery = Path(__file__).resolve().parents[1] / "skills" / "implement" / "scripts" / "stall-recovery-report.sh"
     if not stall_recovery.exists():
         pytest.skip("stall-recovery-report.sh not found — skipping integration check")
@@ -2323,8 +2323,8 @@ def test_ci_fix_exhausted_detail_log_classified_by_stall_recovery(tmp_path: Path
     )
     assert completed.returncode == 0, completed.stderr
     out = completed.stdout
-    assert "FAILURE_CLASS=ci-fix-exhausted" in out, f"unexpected classify output: {out}"
-    assert "RESUME_HINT=step8-shippr" in out, f"unexpected classify output: {out}"
+    assert "FAILURE_CLASS=unrecoverable" in out, f"unexpected classify output: {out}"
+    assert "RESUME_HINT=none" in out, f"unexpected classify output: {out}"
 
 
 def test_emit_result_prints_before_journal_failure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

@@ -96,8 +96,9 @@ The **fallback taxonomy** (issue #3207 audit): **full waterfall** = the assigned
 | [Voting](voting-process.md) | Vote on findings | `/design`, `/review` | **Full waterfall** (Voter 2/3 per slot) |
 | Plan revision | Apply accepted plan findings | `/design` | **Full waterfall** (Codex→Cursor→Claude) |
 | Implementer (Step 2) | Write the implementation | `/implement` | **Selection waterfall** keyed on `--coder` (chosen → other external → Claude main-agent), #3207 |
-| review-and-fix / lint-fix coders | Apply review/lint fixes | `/implement`, `/review` | **Waterfall** Codex→Cursor→Claude main-agent (#3207) |
-| CI / checks recovery | Fix failing CI/checks | `/implement` (active Step 8+ driver) | **Full waterfall** (Codex→Cursor→Claude) |
+| review-and-fix coders | Apply accepted review fixes | `/implement`, `/review` | **Waterfall** Codex→Cursor→Claude main-agent (#3207) |
+| lint-fix coders | Repair local lint/check failures | `/implement`, `/review` | **Waterfall** Claude/Opus 4.8→Codex→Cursor→main-agent-required |
+| CI / checks recovery | Fix failing CI/checks | `/implement` (active Step 8+ driver) | Ship-pr CI fix delegates to the Claude/Opus agentic loop with explicit `--repo-root`; conflict resolution uses Claude→Codex→Cursor with driver-owned staging. |
 | Negotiation | Multi-round dispute resolution | `/research` | Replacement-first |
 | Research lanes | Read-only investigation | `/research` | Replacement-first (Codex→Claude; Cursor deliberately excluded for diversity banner) |
 | Dynamic-archetype scout | Propose ephemeral reviewer archetypes | `/design`, `/implement` reviews | **Cursor→Claude waterfall** (#3704; Codex is not in the scout waterfall) |

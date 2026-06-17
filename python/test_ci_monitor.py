@@ -20,6 +20,7 @@ from agents import LaunchFailure, TierAttempt
 from gh import FailedJob
 from outcomes import Outcome
 from proc import CommandResult
+from run_context import RunContext
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS_DIR = REPO_ROOT / "scripts"
@@ -1112,7 +1113,7 @@ def test_run_ci_fix_pushed_after_winning_tier(tmp_path: Any) -> None:
     del responses[("git", "rev-parse", "HEAD")]
     responses[("git", "add", "--", "fixed.py")] = _cr(("git", "add"), 0)
     commit_script = str(SCRIPTS_DIR / "git-commit.sh")
-    responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (codex)")] = _cr(
+    responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (claude)")] = _cr(
         (commit_script,),
         0,
     )
@@ -1152,14 +1153,14 @@ def test_run_ci_fix_pushed_after_winning_tier(tmp_path: Any) -> None:
         launch_fn=launch_fn,
     )
     assert fix.status == "pushed"
-    assert launch_calls == ["codex"]
+    assert launch_calls == ["claude"]
 
 
 def test_stage_and_push_defer_rebase_uses_typed_rebase_push(tmp_path: Any) -> None:
     commit_script = str(SCRIPTS_DIR / "git-commit.sh")
     responses = {
         ("git", "add", "--", "fixed.py"): _cr(("git", "add"), 0),
-        (commit_script, "--no-trailer", "-m", "Apply CI fixes (codex)"): _cr((commit_script,), 0),
+        (commit_script, "--no-trailer", "-m", "Apply CI fixes (claude)"): _cr((commit_script,), 0),
         ("git", "rev-parse", "HEAD"): _cr(("git", "rev-parse"), stdout="head\n"),
         ("git", "symbolic-ref", "--short", "HEAD"): _cr(("git", "symbolic-ref"), stdout="feature\n"),
         ("git", "rev-list", "--count", "HEAD..origin/main"): _cr(("git", "rev-list"), stdout="1\n"),
@@ -1322,7 +1323,7 @@ def test_run_ci_fix_first_fixer_non_health_after_stage(tmp_path: Any) -> None:
     responses[("git", "add", "--", "fixed.py")] = _cr(("git", "add"), 0)
     responses[("make", "py-lint")] = _cr(("make", "py-lint"), 0)
     commit_script = str(SCRIPTS_DIR / "git-commit.sh")
-    responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (codex)")] = _cr(
+    responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (claude)")] = _cr(
         (commit_script,),
         0,
     )
@@ -1542,6 +1543,7 @@ def test_wait_for_ci_ready_polls_until_ready() -> None:
     assert result.state == "ready"
 
 
+@pytest.mark.skip(reason="agentic CI delegate replaces in-process fixer")
 def test_evaluate_failure_deterministic_no_rerun() -> None:
     runner = RecordingRunner(
         {
@@ -1583,6 +1585,7 @@ def test_evaluate_failure_deterministic_no_rerun() -> None:
     assert fix.detail.startswith("ci-fix-exhausted")
 
 
+@pytest.mark.skip(reason="agentic CI delegate replaces in-process fixer")
 def test_evaluate_failure_exhausted_routes_needs_user_input() -> None:
     jobs_json = json.dumps({"jobs": [{"name": "python-lint", "conclusion": "failure"}]})
     responses = _baseline_responses()
@@ -1621,6 +1624,7 @@ def test_evaluate_failure_exhausted_routes_needs_user_input() -> None:
     assert "FAIL test" in fix.detail
 
 
+@pytest.mark.skip(reason="agentic CI delegate replaces in-process fixer")
 def test_evaluate_failure_per_job_exhausted_routes_needs_user_input() -> None:
     jobs_json = json.dumps({"jobs": [{"name": "python-lint", "conclusion": "failure"}]})
     responses = _baseline_responses()
@@ -1660,6 +1664,7 @@ def test_evaluate_failure_per_job_exhausted_routes_needs_user_input() -> None:
     assert "FAIL test" in fix.detail
 
 
+@pytest.mark.skip(reason="agentic CI delegate replaces in-process fixer")
 def test_evaluate_failure_upfront_ready_stash_when_transient_cap_exhausted() -> None:
     jobs_json = json.dumps({"jobs": []})
     log_responses = [
@@ -1696,6 +1701,7 @@ def test_evaluate_failure_upfront_ready_stash_when_transient_cap_exhausted() -> 
     assert fix.detail.startswith("ci-fix-exhausted")
 
 
+@pytest.mark.skip(reason="agentic CI delegate replaces in-process fixer")
 def test_evaluate_failure_fixable_jobs_launcher_exhausted_stalls() -> None:
     jobs_json = json.dumps({"jobs": [{"name": "python-lint", "conclusion": "failure"}]})
     responses = _baseline_responses()
@@ -1731,6 +1737,7 @@ def test_evaluate_failure_fixable_jobs_launcher_exhausted_stalls() -> None:
     assert fix.detail.startswith("ci-fix-exhausted")
 
 
+@pytest.mark.skip(reason="agentic CI delegate replaces in-process fixer")
 def test_evaluate_failure_vendor_only_push_failed_stalls(tmp_path: Any) -> None:
     launch_calls: list[str] = []
 
@@ -1751,7 +1758,7 @@ def test_evaluate_failure_vendor_only_push_failed_stalls(tmp_path: Any) -> None:
     )
     responses[("git", "add", "--", "fixed.py")] = _cr(("git", "add"), 0)
     commit_script = str(SCRIPTS_DIR / "git-commit.sh")
-    responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (codex)")] = _cr(
+    responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (claude)")] = _cr(
         (commit_script,),
         0,
     )
@@ -1789,6 +1796,7 @@ def test_evaluate_failure_vendor_only_push_failed_stalls(tmp_path: Any) -> None:
     assert fix.detail.startswith("ci-fix-exhausted")
 
 
+@pytest.mark.skip(reason="agentic CI delegate replaces in-process fixer")
 def test_evaluate_failure_push_failed_routes_fix_exhausted(tmp_path: Any) -> None:
     launch_calls: list[str] = []
 
@@ -1810,7 +1818,7 @@ def test_evaluate_failure_push_failed_routes_fix_exhausted(tmp_path: Any) -> Non
     responses[("make", "py-lint")] = _cr(("make", "py-lint"), 0)
     responses[("git", "add", "--", "fixed.py")] = _cr(("git", "add"), 0)
     commit_script = str(SCRIPTS_DIR / "git-commit.sh")
-    responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (codex)")] = _cr(
+    responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (claude)")] = _cr(
         (commit_script,),
         0,
     )
@@ -1850,6 +1858,7 @@ def test_evaluate_failure_push_failed_routes_fix_exhausted(tmp_path: Any) -> Non
     assert "FAIL test" in fix.detail
 
 
+@pytest.mark.skip(reason="agentic CI delegate replaces in-process fixer")
 def test_evaluate_failure_exhausted_surfaces_job_and_log_tail() -> None:
     """fix-exhausted detail carries the failing job name and redacted log tail."""
     jobs_json = json.dumps({"jobs": [{"name": "python-lint", "conclusion": "failure"}]})
@@ -1890,6 +1899,7 @@ def test_evaluate_failure_exhausted_surfaces_job_and_log_tail() -> None:
     assert "\n" in fix.detail
 
 
+@pytest.mark.skip(reason="agentic CI delegate replaces in-process fixer")
 def test_evaluate_failure_launcher_exhausted_stalls() -> None:
     jobs_json = json.dumps({"jobs": []})
     responses = _baseline_responses()
@@ -1918,6 +1928,7 @@ def test_evaluate_failure_launcher_exhausted_stalls() -> None:
     assert fix.detail.startswith("ci-fix-exhausted")
 
 
+@pytest.mark.skip(reason="agentic CI delegate replaces in-process fixer")
 def test_evaluate_failure_jobs_in_progress_defers_vendor() -> None:
     launch_count = 0
 
@@ -1966,6 +1977,7 @@ def test_evaluate_failure_jobs_in_progress_defers_vendor() -> None:
     assert fix.detail.startswith("ci-fix-exhausted")
 
 
+@pytest.mark.skip(reason="agentic CI delegate replaces in-process fixer")
 def test_evaluate_failure_error_logs_defers_fix() -> None:
     launch_count = 0
 
@@ -2002,6 +2014,7 @@ def test_evaluate_failure_error_logs_defers_fix() -> None:
     assert not any(c[:4] == ("gh", "run", "view", "42") and "--json" in c for c in runner.calls)
 
 
+@pytest.mark.skip(reason="agentic CI delegate replaces in-process fixer")
 def test_monitor_push_failed_stalls(monkeypatch: pytest.MonkeyPatch) -> None:
     """#3405: vendor-only push failure → NEEDS_USER_INPUT (ci-fix-exhausted)."""
     monkeypatch.setattr(config, "CI_MONITOR_FIX_WATERFALL_MAX_ATTEMPTS", 1)
@@ -2025,7 +2038,7 @@ def test_monitor_push_failed_stalls(monkeypatch: pytest.MonkeyPatch) -> None:
     responses.update(_baseline_responses(baseline_head))
     responses[("git", "add", "--", "fixed.py")] = _cr(("git", "add"), 0)
     commit_script = str(SCRIPTS_DIR / "git-commit.sh")
-    responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (codex)")] = _cr(
+    responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (claude)")] = _cr(
         (commit_script,),
         0,
     )
@@ -2063,6 +2076,7 @@ def test_monitor_push_failed_stalls(monkeypatch: pytest.MonkeyPatch) -> None:
     assert ("gh", "run", "view", "999", "--repo", "o/r", "--json", "jobs") in runner.calls
 
 
+@pytest.mark.skip(reason="agentic CI delegate replaces in-process fixer")
 def test_monitor_fix_exhausted_needs_user_input() -> None:
     jobs_json = json.dumps({"jobs": [{"name": "python-lint", "conclusion": "failure"}]})
     responses = _status(status="fail")
@@ -2238,12 +2252,13 @@ def test_run_ci_fix_short_circuit_first_fixer_non_health() -> None:
         launch_fn=launch_fn,
     )
     assert fix.status == "first-fixer-non-health"
-    assert call_log == ["codex"]
+    assert call_log == ["claude"]
     assert not any(c[0] == "git" and c[1] == "add" for c in runner.calls)
     assert not any(c[0] == "git" and c[1] == "push" for c in runner.calls)
 
 
 # FINDING_11: evaluate_failure verify-failed retry
+@pytest.mark.skip(reason="agentic CI delegate replaces in-process fixer")
 def test_evaluate_failure_verify_failed_then_pushed(tmp_path: Any) -> None:
     """verify-failed on outer 1, pushed on outer 2; assert launch count and fresh log fetches."""
     launch_calls: list[str] = []
@@ -2273,7 +2288,7 @@ def test_evaluate_failure_verify_failed_then_pushed(tmp_path: Any) -> None:
         ("git", "rev-list", "--count", "HEAD..origin/main"): _cr(("git", "rev-list"), stdout="0\n"),
         ("git", "push", "origin", "feat"): _cr(("git", "push"), 0),
         # both attempts use codex (always first tier, #3994)
-        (commit_script, "--no-trailer", "-m", "Apply CI fixes (codex)"): _cr((commit_script,), 0),
+        (commit_script, "--no-trailer", "-m", "Apply CI fixes (claude)"): _cr((commit_script,), 0),
     }
     responses.update(_python_toolchain_stubs())
 
@@ -2324,6 +2339,7 @@ def test_evaluate_failure_verify_failed_then_pushed(tmp_path: Any) -> None:
 
 
 # FINDING_12: monitor driver mapping tests
+@pytest.mark.skip(reason="agentic CI delegate replaces in-process fixer")
 def test_monitor_pushed_goto_rebase(tmp_path: Any) -> None:
     """Pushed fix with a current base → OK + no rebase + did_fixing."""
     baseline_head = "1111" * 10
@@ -2347,7 +2363,7 @@ def test_monitor_pushed_goto_rebase(tmp_path: Any) -> None:
     responses[("env", "SKIP=agnix,lint-mermaid-fences,shellcheck", "make", "lint-only")] = _cr(("env",), 0)
     responses[("git", "add", "--", "fixed.sh")] = _cr(("git", "add"), 0)
     commit_script = str(SCRIPTS_DIR / "git-commit.sh")
-    responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (codex)")] = _cr((commit_script,), 0)
+    responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (claude)")] = _cr((commit_script,), 0)
     responses[("git", "symbolic-ref", "--short", "HEAD")] = _cr(("git", "symbolic-ref"), stdout="feat\n")
     responses[("git", "push", "origin", "feat")] = _cr(("git", "push"), 0)
 
@@ -2380,6 +2396,7 @@ def test_monitor_pushed_goto_rebase(tmp_path: Any) -> None:
     assert result.did_fixing is True
 
 
+@pytest.mark.skip(reason="agentic CI delegate replaces in-process fixer")
 def test_monitor_first_fixer_non_health_needs_user_input(tmp_path: Any) -> None:
     """first-fixer-non-health from fix loop → NEEDS_USER_INPUT."""
     baseline_head = "cccc" * 10
@@ -2571,3 +2588,168 @@ def test_required_text_fallback_ambiguous_output_is_not_pass() -> None:
 
 def test_default_optional_json_classifier_unchanged_for_unknown_bucket() -> None:
     assert ci_monitor._classify_checks_json(json.dumps([{"bucket": "cancelled"}])) == ("pass", None)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_monitor_agentic_rebase_required_goto_rebase(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_poll_ci(*_args: object, **_kwargs: object) -> tuple[ci_monitor.CiStatus, ci_monitor.Decision]:
+        return (
+            ci_monitor.CiStatus("fail", 0, "42"),
+            ci_monitor.Decision("evaluate_failure"),
+        )
+
+    def fake_evaluate_failure(*_args: object, **_kwargs: object) -> ci_monitor.FixResult:
+        return ci_monitor.FixResult(
+            status="pushed",
+            winning_tier="claude",
+            ci_fix_rebase_pending=True,
+        )
+
+    monkeypatch.setattr(ci_monitor, "poll_ci", fake_poll_ci)
+    monkeypatch.setattr(ci_monitor, "evaluate_failure", fake_evaluate_failure)
+
+    result = ci_monitor.monitor(RecordingRunner({}), pr=1, repo="o/r")
+    assert result.result.outcome is Outcome.OK
+    assert result.goto_rebase is True
+
+
+def test_agentic_fix_result_fix_attempted_local_unfixable_promotes_exhausted(tmp_path: Path) -> None:
+    detail_file = tmp_path / "exhausted.detail"
+    _ = detail_file.write_text(
+        "local-unfixable: gitleaks\nFAIL gitleaks\n",
+        encoding="utf-8",
+    )
+    kv = (
+        "STATUS=local-unfixable\n"
+        "DETAIL=gitleaks\n"
+        f"EXHAUSTED_DETAIL_FILE={detail_file}\n"
+        "FIX_ATTEMPTED=true\n"
+        "DELTA_PATHS=\n"
+        "CI_FIX_REBASE_PENDING=false\n"
+    )
+
+    class _Runner:
+        def run(self, *_args: object, **_kwargs: object) -> CommandResult:
+            return _cr(("cli",), stdout=kv)
+
+    fix = ci_monitor._agentic_fix_result(  # pyright: ignore[reportPrivateUsage]
+        _Runner(),
+        pr=1,
+        run_id="42",
+        repo="o/r",
+        plan_file=None,
+        cwd="/tmp/repo",
+        base_remote="origin",
+        base_ref="main",
+        ctx=RunContext(
+            branch="feat",
+            issue="",
+            repo="o/r",
+            run_id="42",
+            tmpdir="/tmp/implement",
+            merge=False,
+            draft=False,
+            forked=False,
+            manifest_path="",
+            tool_label="claude",
+            no_admin_fallback=False,
+            repo_unavailable=False,
+            pr_number=1,
+        ),
+    )
+    assert fix.status == "fix-exhausted"
+    assert fix.detail is not None
+    assert "FAIL gitleaks" in fix.detail
+
+
+def test_evaluate_failure_pending_push_only_skips_agentic_delegate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    agentic_calls = {"n": 0}
+
+    def fake_agentic(*_args: object, **_kwargs: object) -> ci_monitor.FixResult:
+        agentic_calls["n"] += 1
+        return ci_monitor.FixResult(status="pushed", winning_tier="claude")
+
+    def fake_run_ci_fix(*_args: object, **_kwargs: object) -> ci_monitor.FixResult:
+        return ci_monitor.FixResult(status="pushed", winning_tier="claude")
+
+    def fake_collect_failed_logs(*_args: object, **_kwargs: object) -> ci_monitor.LogCollectResult:
+        return ci_monitor.LogCollectResult(text="", state="ready")
+
+    def fake_read_failed_jobs(*_args: object, **_kwargs: object) -> tuple[list[FailedJob], str]:
+        return [], "ready"
+
+    monkeypatch.setattr(ci_monitor, "_agentic_fix_result", fake_agentic)
+    monkeypatch.setattr(ci_monitor, "run_ci_fix", fake_run_ci_fix)
+    monkeypatch.setattr(ci_monitor, "collect_failed_logs", fake_collect_failed_logs)
+    monkeypatch.setattr(ci_monitor, "read_failed_jobs", fake_read_failed_jobs)
+
+    runner = RecordingRunner(_baseline_responses())
+    fix = ci_monitor.evaluate_failure(
+        runner,
+        run_id="42",
+        repo="o/r",
+        plan_file=None,
+        transient_retries=1,
+        _fix_attempts=0,
+        cwd="/tmp/repo",
+        launch_fn=lambda _t: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
+        ci_fix_rebase_pending=True,
+    )
+    assert agentic_calls["n"] == 0
+    assert fix.status == "pushed"
+
+
+def test_evaluate_failure_normal_path_uses_agentic_delegate_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    agentic_calls = {"n": 0}
+    waterfall_calls = {"n": 0}
+
+    def fake_agentic(*_args: object, **_kwargs: object) -> ci_monitor.FixResult:
+        agentic_calls["n"] += 1
+        return ci_monitor.FixResult(status="pushed", winning_tier="claude")
+
+    def fake_run_ci_fix(*_args: object, **_kwargs: object) -> ci_monitor.FixResult:
+        waterfall_calls["n"] += 1
+        return ci_monitor.FixResult(status="waterfall-failed", detail="should-not-run")
+
+    def fake_collect_failed_logs(
+        *_args: object,
+        **_kwargs: object,
+    ) -> ci_monitor.LogCollectResult:
+        return ci_monitor.LogCollectResult(text="", state="ready")
+
+    monkeypatch.setattr(ci_monitor, "_agentic_fix_result", fake_agentic)
+    monkeypatch.setattr(ci_monitor, "run_ci_fix", fake_run_ci_fix)
+    monkeypatch.setattr(ci_monitor, "collect_failed_logs", fake_collect_failed_logs)
+
+    runner = RecordingRunner(_baseline_responses())
+    fix = ci_monitor.evaluate_failure(
+        runner,
+        pr=1,
+        run_id="42",
+        repo="o/r",
+        plan_file=None,
+        transient_retries=0,
+        _fix_attempts=0,
+        cwd="/tmp/repo",
+        ctx=RunContext(
+            branch="feat",
+            issue="",
+            repo="o/r",
+            run_id="42",
+            tmpdir="/tmp/implement",
+            merge=False,
+            draft=False,
+            forked=False,
+            manifest_path="",
+            tool_label="claude",
+            no_admin_fallback=False,
+            repo_unavailable=False,
+            pr_number=1,
+        ),
+    )
+    assert agentic_calls["n"] == 1
+    assert waterfall_calls["n"] == 0
+    assert fix.status == "pushed"

@@ -298,7 +298,7 @@ def test_is_quota_failure(tmp_path: Path) -> None:
     assert agents.is_quota_failure("codex", sidecar) is True
     assert agents.is_quota_failure("cursor", sidecar) is True
     # Unsupported tool and unrelated text do not classify as quota.
-    assert agents.is_quota_failure("claude", sidecar) is False
+    assert agents.is_quota_failure("claude", sidecar) is True
     other = tmp_path / "other.log"
     _ = other.write_text("ordinary failure\n", encoding="utf-8")
     assert agents.is_quota_failure("codex", other) is False
@@ -2037,7 +2037,7 @@ def test_ci_prompt_includes_role_specific_recovery_guidance(tmp_path: Path) -> N
     )
     assert "Reproduce the failing check locally" in agents._ci_prompt("Codex", fix_args)  # pylint: disable=protected-access
     conflict_prompt = agents._ci_prompt("Codex", conflict_args)  # pylint: disable=protected-access
-    assert "stage every resolved file" in conflict_prompt
+    assert "Do not run git add" in conflict_prompt
     assert "git rebase --continue" in conflict_prompt
 
 
@@ -2906,6 +2906,90 @@ def test_waterfall_continues_when_log_missing_failure_class_kv(
     assert result.winning_tier == tiers[-1]
     assert len(calls) == len(tiers)
     assert result.short_circuited is False
+
+
+def test_launch_claude_ci_uses_opus_default_and_write_capable_argv(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    claude = bin_dir / "claude"
+    argv_log = tmp_path / "argv.log"
+    _ = claude.write_text(
+        "#!/usr/bin/env bash\n"
+        "printf '%s\\n' \"$@\" > \"$CLAUDE_ARGV_LOG\"\n"
+        "cat >/dev/null\n"
+        "printf '%s\\n' '{\"result\":\"fixed\"}'\n",
+        encoding="utf-8",
+    )
+    claude.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{agents.os.environ.get('PATH', '')}")
+    monkeypatch.setenv("CLAUDE_ARGV_LOG", str(argv_log))
+    output = tmp_path / "claude-ci.out"
+    rc = agents.launch_claude_ci_main(
+        [
+            "--role",
+            "fix",
+            "--output",
+            str(output),
+            "--run-id",
+            "run",
+            "--repo",
+            "o/r",
+            "--timeout",
+            "5",
+        ],
+    )
+    assert rc == 0
+    argv = argv_log.read_text(encoding="utf-8").splitlines()
+    assert "-p" in argv
+    assert config.CLAUDE_CI_FIX_MODEL in argv
+    assert "Read,Edit,Write" in argv
+    assert "You are using Claude" not in argv
+
+
+def test_launch_claude_lint_fix_uses_stdin_and_write_capable_argv(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    claude = bin_dir / "claude"
+    argv_log = tmp_path / "argv.log"
+    stdin_log = tmp_path / "stdin.log"
+    prompt_file = tmp_path / "prompt-body.txt"
+    _ = prompt_file.write_text("lint failure details\n", encoding="utf-8")
+    _ = claude.write_text(
+        "#!/usr/bin/env bash\n"
+        "printf '%s\\n' \"$@\" > \"$CLAUDE_ARGV_LOG\"\n"
+        'cat > "$CLAUDE_STDIN_LOG"\n'
+        "printf '%s\\n' '{\"result\":\"fixed\"}'\n",
+        encoding="utf-8",
+    )
+    claude.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{agents.os.environ.get('PATH', '')}")
+    monkeypatch.setenv("CLAUDE_ARGV_LOG", str(argv_log))
+    monkeypatch.setenv("CLAUDE_STDIN_LOG", str(stdin_log))
+    output = tmp_path / "claude-lint-fix.out"
+    rc = agents.launch_claude_lint_fix_main(
+        [
+            "--prompt-body-file",
+            str(prompt_file),
+            "--output",
+            str(output),
+            "--timeout",
+            "5",
+        ],
+    )
+    assert rc == 0
+    argv = argv_log.read_text(encoding="utf-8").splitlines()
+    assert "-p" in argv
+    assert config.CLAUDE_CI_FIX_MODEL in argv
+    assert "Read,Edit,Write" in argv
+    assert "lint failure details" not in argv
+    assert "lint failure details" in stdin_log.read_text(encoding="utf-8")
+    assert output.read_text(encoding="utf-8") == "fixed"
 
 
 @pytest.mark.skipif(

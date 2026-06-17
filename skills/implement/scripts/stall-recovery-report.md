@@ -198,7 +198,7 @@ Lint parity covers Tier B only. The committed TSV, helper code, and this table m
 | dispatch-failure | 3 | none |
 | protected-path | 1 | none |
 | submodule-restricted | 0 | none |
-| ci-fix-exhausted | 8 | none |
+| ci-fix-exhausted | 0 | none |
 | same-cause-repeat | 2 | none |
 | contract-failure | 0 | none |
 | unrecoverable | 0 | none |

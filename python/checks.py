@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Final
 
 import config
+import coder_delta_guards
 import git
 import redact
 from outcomes import Outcome, StepResult
@@ -1120,6 +1121,7 @@ def checks_lint_fix_main(argv: list[str] | None = None) -> int:
         site=args.site,
         checks_log=args.checks_log,
         repo_root=repo_root,
+        claude_present=_binary_flag("CLAUDE_BINARY_FOUND", canonical_tmp, "claude"),
         codex_present=_binary_flag("CODEX_BINARY_FOUND", canonical_tmp, "codex"),
         cursor_present=_binary_flag("CURSOR_BINARY_FOUND", canonical_tmp, "cursor"),
         run_parent=run_parent,
@@ -1301,52 +1303,18 @@ def _capture_untracked_paths(runner: Runner, *, cwd: str) -> tuple[str, ...]:
 
 
 def _submodule_paths(runner: Runner, *, cwd: str) -> tuple[str, ...]:
-    seen: set[str] = set()
-    paths: list[str] = []
-    gitmodules = Path(cwd) / ".gitmodules"
-    if gitmodules.is_file():
-        result = runner.run(
-            ["git", "config", "-f", ".gitmodules", "--get-regexp", r"^[^.]+\.path$"],
-            cwd=cwd,
-        )
-        for line in result.stdout.splitlines():
-            parts = line.split(maxsplit=1)
-            if len(parts) == 2 and parts[1] not in seen:  # noqa: PLR2004
-                seen.add(parts[1])
-                paths.append(parts[1])
-        for line in gitmodules.read_text(encoding="utf-8").splitlines():
-            match = re.match(r"^\s*path\s*=\s*(.+)\s*$", line)
-            if match:
-                path = match.group(1).strip()
-                if path and path not in seen:
-                    seen.add(path)
-                    paths.append(path)
-    result = runner.run(
-        ["git", "submodule", "foreach", "--quiet", "echo $sm_path"],
-        cwd=cwd,
-    )
-    for raw in result.stdout.splitlines():
-        path = raw.strip()
-        if path and path not in seen:
-            seen.add(path)
-            paths.append(path)
-    return tuple(paths)
+    return coder_delta_guards.submodule_paths(runner, cwd=cwd)
 
 
 def _path_matches_forbidden(path: str, forbidden: tuple[str, ...]) -> bool:
-    for forbidden_path in forbidden:
-        if not forbidden_path:
-            continue
-        if path == forbidden_path or path.startswith(f"{forbidden_path}/"):
-            return True
-    return False
+    return coder_delta_guards.path_matches_forbidden(path, forbidden)
 
 
 def _forbidden_paths_match_count(
     paths: tuple[str, ...],
     forbidden: tuple[str, ...],
 ) -> int:
-    return sum(1 for path in paths if _path_matches_forbidden(path, forbidden))
+    return coder_delta_guards.forbidden_paths_match_count(paths, forbidden)
 
 
 def _delta_paths_after_dispatch(
@@ -1610,6 +1578,38 @@ def _run_codex(
     return launcher_exit
 
 
+def _run_claude(
+    runner: Runner,
+    *,
+    agent_cli: Path,
+    run_dir: Path,
+    repo_root: str,
+    prompt_body: str,
+) -> int:
+    prompt_file = run_dir / "prompt.md"
+    _ = prompt_file.write_text(prompt_body, encoding="utf-8")
+    output = run_dir / "claude.log"
+    result = runner.run(
+        [
+            "python3",
+            str(agent_cli),
+            "agent",
+            "launch-claude-lint-fix",
+            "--prompt-body-file",
+            str(prompt_file),
+            "--output",
+            str(output),
+            "--timeout",
+            str(_RUN_EXTERNAL_TIMEOUT),
+        ],
+        cwd=repo_root,
+    )
+    launcher_exit = _parse_launcher_exit(result.stdout)
+    if launcher_exit is None:
+        launcher_exit = _read_done_exit(output) or result.returncode
+    return launcher_exit
+
+
 def _parse_launcher_exit(text: str) -> int | None:
     for line in text.splitlines():
         if line.startswith("LAUNCHER_EXIT="):
@@ -1812,6 +1812,7 @@ def run_lint_fix(
     run_parent: str,
     allowed_tmpdir: str | None = None,
     target_cmd_display: str | None = None,
+    claude_present: bool | None = None,
 ) -> FixOutcome:
     """Port of python/cli.py checks lint-fix single dispatch."""
     if not _is_known_site(site):
@@ -1876,7 +1877,10 @@ def run_lint_fix(
             head_changed=False,
             coder_tool=None,
         )
-    if not codex_present and not cursor_present:
+    if claude_present is None:
+        probe_root = Path(allowed_tmpdir) if allowed_tmpdir is not None else Path(run_parent).resolve().parent
+        claude_present = _binary_flag("CLAUDE_BINARY_FOUND", probe_root, "claude")
+    if not claude_present and not codex_present and not cursor_present:
         return FixOutcome(
             status="main-agent-required",
             delta_paths=(),
@@ -1917,7 +1921,7 @@ def run_lint_fix(
         baseline_branch = ""
     baseline_clean = not baseline_tracked and not baseline_untracked
     submodule_paths = _submodule_paths(runner, cwd=cwd)
-    forbidden = tuple(dict.fromkeys((".gitmodules", *submodule_paths)))
+    forbidden = coder_delta_guards.coder_forbidden_paths(runner, cwd=cwd)
     prompt_body = _compose_prompt(
         checks_log=log_path,
         site_label=site_label,
@@ -1926,7 +1930,21 @@ def run_lint_fix(
     )
     coder_tool: str | None = None
     last_stderr_tail = ""
-    if codex_present:
+    if claude_present:
+        claude_rc = _run_claude(
+            runner,
+            agent_cli=agent_cli,
+            run_dir=run_dir,
+            repo_root=repo_root,
+            prompt_body=prompt_body,
+        )
+        if claude_rc == 0:
+            coder_tool = "claude"
+        else:
+            tail = _coder_stderr_tail(run_dir, "claude.log")
+            if tail:
+                last_stderr_tail = tail
+    if coder_tool is None and codex_present:
         codex_rc = _run_codex(
             runner,
             scripts_dir=scripts,
@@ -2084,7 +2102,7 @@ def run_lint_fix(
                 coder_tool=coder_tool,
                 coder_log_path=_coder_stderr_tail(
                     run_dir,
-                    "codex.log" if coder_tool == "codex" else "cursor.log",
+                    f"{coder_tool}.log",
                 ),
             )
         if baseline_clean:
@@ -2128,7 +2146,7 @@ def run_lint_fix(
             coder_tool=coder_tool,
             coder_log_path=_coder_stderr_tail(
                 run_dir,
-                "codex.log" if coder_tool == "codex" else "cursor.log",
+                f"{coder_tool}.log",
             ),
         )
     delta_result = runner.run(
@@ -2147,7 +2165,7 @@ def run_lint_fix(
         coder_tool=coder_tool,
         coder_log_path=_coder_stderr_tail(
             run_dir,
-            "codex.log" if coder_tool == "codex" else "cursor.log",
+            f"{coder_tool}.log",
         ),
     )
 
@@ -2408,6 +2426,7 @@ def run_checks_phase(
     repo_root: str,
     codex_present: bool,
     cursor_present: bool,
+    claude_present: bool | None = None,
     site: str = "step6",
     checks_site: str | None = None,
     fix_site: str | None = None,
@@ -2450,6 +2469,7 @@ def run_checks_phase(
             repo_root=repo_root,
             codex_present=codex_present,
             cursor_present=cursor_present,
+            claude_present=claude_present,
             run_parent=run_parent,
             allowed_tmpdir=str(canonical_tmp),
             target_cmd_display=target_cmd_display,

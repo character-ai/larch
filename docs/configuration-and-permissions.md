@@ -364,25 +364,13 @@ When set to `true`, `/implement` Step 17 prints the full per-step token/timing t
 
 Retention window for `/cleanup` age-based session directory pruning. Default: `7` (positive integer days). `/cleanup` removes entries under `~/.cache/larch/sessions/` and matching `/tmp` larch patterns when the entry's top-level mtime is older than the cutoff. Non-numeric or non-positive explicit values warn on stderr and fall back to `7`. See `python/cleanup_skill.py` for the script contract.
 
-### `LARCH_VERSION_FILES`
+### Fixer model policy
 
-Colon-separated list of additional repo-relative paths that should be treated
-as version files during active Step 8+ CI-fix rebase conflict handling. The active Python driver honors it through `python/rebase.py` with the
-`ship_pr_pre_push` handoff.
-Entries are trimmed for surrounding whitespace; empty entries are ignored. When
-a conflicted path matches `.claude-plugin/plugin.json`, built-in version-adjacent
-basenames (`version.go`, `go.sum`), or any path listed here, the active driver
-keeps the conflict on the version-file path instead of routing it through the
-non-bump-only conflict recovery path.
+Ship-pr CI fixing uses a delegated Claude/Opus 4.8 agentic loop. The delegate receives an explicit `--repo-root` filesystem path, runs local verification under that cwd, pushes only after guard checks pass, and waits for CI with a blocking subprocess. `ci-fix-exhausted` is an operator bail, not a stall-recovery auto-resume.
 
-`LARCH_BUMP_FILES` is a deprecated compatibility alias. If
-`LARCH_VERSION_FILES` is unset or empty and `LARCH_BUMP_FILES` is set,
-the active driver reads the old variable with the same colon-separated semantics and
-emits a deprecation warning on stderr. If both variables are set,
-`LARCH_VERSION_FILES` wins. This alias no longer controls any per-PR
-drop-bump behavior; per-PR version bumps have been retired, so existing
-`LARCH_BUMP_FILES` settings now only identify conflict paths that should be
-treated as version-file conflicts.
+Conflict resolution uses Claude/Opus 4.8, then Codex `gpt-5.5`, then Cursor `composer-2.5`. Conflict fixers edit files only. The Python driver stages resolved files and runs `git rebase --continue`.
+
+Pre-ship lint-fix uses Claude/Opus 4.8, then Codex `gpt-5.5`, then Cursor `composer-2.5`, then `main-agent-required`. Routine local check failures may therefore spawn Claude/Opus before Codex or Cursor.
 
 ### `OOS_ISSUES_PER_RUN_CAP`
 

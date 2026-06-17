@@ -6,7 +6,9 @@ import config
 
 
 def test_fixer_tier_order() -> None:
-    assert config.FIXER_TIER_ORDER == ("codex", "cursor", "claude")
+    assert config.FIXER_TIER_ORDER == ("claude", "codex", "cursor")
+    assert config.CLAUDE_CI_FIX_MODEL == "claude-opus-4-8"
+    assert config.CI_AGENTIC_FIX_MAX_CYCLES == 20
 
 
 def test_ship_pr_pre_push_handoff_literals() -> None:

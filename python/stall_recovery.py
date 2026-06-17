@@ -201,17 +201,17 @@ def _classify_text(text: str, bail: str, step: str, phase: str, *, detail_log_va
         return "lint-failure", "step5-review", "lint-fix-bail-token"
     if any(x in lower for x in ("api rate limit", "network timeout", "timeout", "temporarily unavailable")):
         return "transient-infra", "step8-shippr", "transient-output"
+    if detail_log_valid and bail == "ci-fix-exhausted":
+        return "unrecoverable", "none", "ci-fix-exhausted-with-detail"
+    if bail == "ci-fix-exhausted":
+        return "unrecoverable", "none", "bail-token"
     if any(x in lower for x in ("pytest", "failing test", "jest", "failed with")):
         return "test-failure", "step2-impl", "test-output"
     if any(x in lower for x in ("shellcheck", "markdownlint", "ruff", "lint-fix-loop", "lint")):
         return "lint-failure", "step5-review", "lint-output"
     if step in {"3", "6"}:
         return "contract-failure", "none", "step-contract"
-    if detail_log_valid and bail == "ci-fix-exhausted":
-        return "ci-fix-exhausted", "step8-shippr", "ci-fix-exhausted-with-detail"
     if bail in {"adopted-issue-closed", "tracking-init-failed", "recovery-out-of-scope"}:
-        return "unrecoverable", "none", "bail-token"
-    if bail == "ci-fix-exhausted":
         return "unrecoverable", "none", "bail-token"
     return "unrecoverable", "none", "fallback"
 
@@ -304,7 +304,7 @@ def retry_policy(args: argparse.Namespace) -> int:
         "transient-infra": (4, "sleep-seconds.sh 5"),
         "test-failure": (8, "none"),
         "lint-failure": (8, "none"),
-        "ci-fix-exhausted": (8, "none"),
+        "ci-fix-exhausted": (0, "none"),
         "dispatch-failure": (3, "none"),
         "protected-path": (1, "none"),
         "submodule-restricted": (0, "none"),
@@ -1675,7 +1675,7 @@ def _retry_policy_lines() -> list[str]:
         "transient-infra": (4, "sleep-seconds.sh 5"),
         "test-failure": (8, "none"),
         "lint-failure": (8, "none"),
-        "ci-fix-exhausted": (8, "none"),
+        "ci-fix-exhausted": (0, "none"),
         "dispatch-failure": (3, "none"),
         "protected-path": (1, "none"),
         "submodule-restricted": (0, "none"),

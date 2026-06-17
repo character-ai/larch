@@ -1388,7 +1388,8 @@ def test_run_coder_cursor_normalizes_api_key_before_launch(tmp_path, monkeypatch
 def test_step5_checks_wiring_passes_repo_site_and_binary_presence(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     impl = _tmp_impl(tmp_path)
     (impl / "session-env.sh").write_text(
-        "RUN_ID=run-1\nCODEX_PRESENT=false\nCURSOR_PRESENT=true\nCODEX_BINARY_FOUND=true\nCURSOR_BINARY_FOUND=false\n",
+        "RUN_ID=run-1\nCODEX_PRESENT=false\nCURSOR_PRESENT=true\n"
+        "CODEX_BINARY_FOUND=true\nCURSOR_BINARY_FOUND=false\nCLAUDE_BINARY_FOUND=false\n",
         encoding="utf-8",
     )
     repo = tmp_path / "repo"
@@ -1428,11 +1429,13 @@ def test_step5_checks_wiring_passes_repo_site_and_binary_presence(tmp_path: Path
         cursor_present: bool,
         run_parent: str,
         allowed_tmpdir: str | None,
+        claude_present: bool | None = None,
     ) -> checks.FixOutcome:
         captured_fix.update(
             site=site,
             checks_log=checks_log,
             repo_root=repo_root,
+            claude_present=claude_present,
             codex_present=codex_present,
             cursor_present=cursor_present,
             run_parent=run_parent,
@@ -1460,4 +1463,5 @@ def test_step5_checks_wiring_passes_repo_site_and_binary_presence(tmp_path: Path
     assert captured_fix["repo_root"] == str(repo)
     assert captured_fix["codex_present"] is True
     assert captured_fix["cursor_present"] is False
+    assert captured_fix["claude_present"] is False
     assert captured_fix["allowed_tmpdir"] == str(impl)

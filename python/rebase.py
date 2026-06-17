@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import random
+import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -102,32 +103,6 @@ def _abort_rebase(runner: Runner, *, cwd: str | None) -> None:
     _ = git.rebase(runner, "--abort", cwd=cwd)
 
 
-def _is_plugin_json_path(path: str) -> bool:
-    return path == config.PLUGIN_JSON_PATH or path.endswith(
-        f"/{config.PLUGIN_JSON_PATH}",
-    )
-
-
-def _larch_bump_files() -> frozenset[str]:
-    raw = os.environ.get(config.ENV_LARCH_VERSION_FILES, "")
-    if not raw:
-        raw = os.environ.get(config.ENV_LARCH_BUMP_FILES, "")
-    return frozenset(segment.strip() for segment in raw.split(os.pathsep) if segment.strip())
-
-
-def _is_bump_path(path: str) -> bool:
-    base = Path(path).name
-    if _is_plugin_json_path(path):
-        return True
-    if base in ("version.go", "go.sum"):
-        return True
-    return path in _larch_bump_files()
-
-
-def _conflicts_are_non_bump_only(paths: tuple[str, ...]) -> bool:
-    return bool(paths) and not any(_is_bump_path(path) for path in paths)
-
-
 def _write_handoff_flag(tmpdir: str | None) -> None:
     root = tmpdir or os.environ.get(config.ENV_IMPLEMENT_TMPDIR)
     if not root:
@@ -140,38 +115,56 @@ def _write_handoff_flag(tmpdir: str | None) -> None:
         raise Stalled(_redact_outbound(msg)) from exc
 
 
-def _deterministic_prepass(
-    runner: Runner,
-    paths: list[str],
-    *,
-    cwd: str | None,
-) -> list[str]:
-    remaining: list[str] = []
-    for path in paths:
-        base = Path(path).name
-        if base == "plugin.json" and _is_plugin_json_path(path):
-            result = git.checkout_ours(runner, path, cwd=cwd)
-            if result.returncode == 0:
-                _ = git.add(runner, path, cwd=cwd)
-            else:
-                remaining.append(path)
-            continue
-        if base in ("version.go", "go.sum"):
-            result = git.checkout_ours(runner, path, cwd=cwd)
-            if result.returncode == 0:
-                _ = git.add(runner, path, cwd=cwd)
-            else:
-                remaining.append(path)
-            continue
-        remaining.append(path)
-    return remaining
-
-
 def _unmerged_paths(runner: Runner, *, cwd: str | None) -> list[str]:
     try:
         return git.unmerged_paths(runner, cwd=cwd)
     except ShipError:
         raise Stalled(_redact_outbound("git diff --diff-filter=U failed")) from None
+
+
+def _path_has_conflict_markers(path: str, *, cwd: str | None) -> bool:
+    root = Path(cwd) if cwd else Path.cwd()
+    file_path = root / path
+    if not file_path.is_file():
+        return False
+    try:
+        text = file_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return True
+    marker_re = re.compile(r"^(<<<<<<<|=======|>>>>>>>)", re.MULTILINE)
+    return marker_re.search(text) is not None
+
+
+def _stage_resolved_conflict_files(
+    runner: Runner,
+    conflict_paths: tuple[str, ...] | list[str],
+    *,
+    cwd: str | None,
+) -> tuple[list[str], list[str]]:
+    """Stage only conflict paths that exist and no longer contain conflict markers."""
+    staged: list[str] = []
+    still_marked: list[str] = []
+    root = Path(cwd) if cwd else Path.cwd()
+    for path in conflict_paths:
+        if _path_has_conflict_markers(path, cwd=cwd):
+            still_marked.append(path)
+            continue
+        if not (root / path).exists():
+            continue
+        _ = git.add(runner, path, cwd=cwd)
+        staged.append(path)
+    return staged, still_marked
+
+
+def _reset_conflict_paths(
+    runner: Runner,
+    conflict_paths: tuple[str, ...] | list[str],
+    *,
+    cwd: str | None,
+) -> None:
+    for path in conflict_paths:
+        _ = git.restore_staged(runner, path, cwd=cwd)
+        _ = runner.run(["git", "checkout", "--merge", "--", path], cwd=cwd)
 
 
 def make_conflict_launch_fn(
@@ -214,24 +207,28 @@ def make_conflict_launch_fn(
                 cwd=cwd,
                 allow_output_fallback=True,
             )
+        launcher_capture = result.stdout + result.stderr
         launcher_exit = agents.resolve_launcher_exit(
-            result.stdout + result.stderr,
+            launcher_capture,
             output_file=output,
             process_rc=result.returncode,
         )
         failure = agents.classify_launch_failure(
             launcher_exit,
-            failure_log if failure_log.is_file() else None,
+            failure_log,
             tool=tier,
             output_file=output,
         )
-        flog: str | Path | None = failure_log if failure_log.is_file() else None
+        if not launcher_capture.endswith("\n"):
+            launcher_capture += "\n"
+        launcher_capture += f"LAUNCHER_FAILURE_CLASS={failure.failure_class}\n"
+        _ = failure_log.write_text(launcher_capture, encoding="utf-8")
         return agents.TierAttempt(
             tier=tier,
             wrapper_rc=result.returncode,
             launcher_exit=launcher_exit,
             failure=failure,
-            failure_log=flog,
+            failure_log=failure_log,
         )
 
     return launch
@@ -248,45 +245,59 @@ def _resolve_conflicts(
     enable_pre_push_handoff: bool = False,
 ) -> None:
     _ = repo, run_id
+
+    def _handoff_or_stall(conflict_files: tuple[str, ...], detail: str) -> None:
+        if enable_pre_push_handoff and conflict_files:
+            _write_handoff_flag(tmpdir)
+            raise PrePushConflictHandoff(
+                conflict_files=conflict_files,
+                resume_phase=config.SHIP_PR_RRR_RESUME_PHASE,
+                caller_kind=config.SHIP_PR_PRE_PUSH_CALLER_KIND,
+            )
+        raise Stalled(_redact_outbound(detail))
+
     while True:
         unmerged = _unmerged_paths(runner, cwd=cwd)
         if unmerged:
-            remaining = _deterministic_prepass(runner, unmerged, cwd=cwd)
-            if remaining:
-                conflict_csv = ",".join(remaining)
-
-                def _tier_launch(tier: str, csv: str = conflict_csv) -> agents.TierAttempt:
-                    return launch_fn(tier, csv)
-
-                waterfall = agents.run_waterfall(
-                    config.FIXER_TIER_ORDER,
-                    _tier_launch,
-                    runner=runner,
-                    cwd=cwd,
-                )
-                if waterfall.winning_tier is None:
-                    conflict_files = tuple(remaining)
-                    if enable_pre_push_handoff and _conflicts_are_non_bump_only(conflict_files):
-                        _write_handoff_flag(tmpdir)
-                        raise PrePushConflictHandoff(
-                            conflict_files=conflict_files,
-                            resume_phase=config.SHIP_PR_RRR_RESUME_PHASE,
-                            caller_kind=config.SHIP_PR_PRE_PUSH_CALLER_KIND,
-                        )
-                    raise Stalled(
-                        _redact_outbound("fixer waterfall could not resolve conflicts"),
+            conflict_csv = ",".join(unmerged)
+            baseline_tracked = git.tracked_dirty_paths(runner, cwd=cwd)
+            baseline_untracked = git.untracked_dirty_paths(runner, cwd=cwd)
+            resolved = False
+            for index, tier in enumerate(config.FIXER_TIER_ORDER):
+                attempt = launch_fn(tier, conflict_csv)
+                tier_succeeded = attempt.launcher_exit == 0 and attempt.wrapper_rc == 0
+                still_marked: list[str] = []
+                if tier_succeeded:
+                    _, still_marked = _stage_resolved_conflict_files(
+                        runner,
+                        unmerged,
+                        cwd=cwd,
                     )
+                else:
+                    _reset_conflict_paths(runner, unmerged, cwd=cwd)
                 unmerged_remaining = _unmerged_paths(runner, cwd=cwd)
-                if unmerged_remaining:
-                    conflict_files = tuple(unmerged_remaining)
-                    if enable_pre_push_handoff and _conflicts_are_non_bump_only(conflict_files):
-                        _write_handoff_flag(tmpdir)
-                        raise PrePushConflictHandoff(
-                            conflict_files=conflict_files,
-                            resume_phase=config.SHIP_PR_RRR_RESUME_PHASE,
-                            caller_kind=config.SHIP_PR_PRE_PUSH_CALLER_KIND,
+                active_paths = unmerged_remaining or unmerged
+                markers_remain = bool(still_marked) or any(
+                    _path_has_conflict_markers(path, cwd=cwd) for path in active_paths
+                )
+                if tier_succeeded and not unmerged_remaining and not markers_remain:
+                    resolved = True
+                    break
+                git.paths_delta_revert(runner, baseline_tracked, baseline_untracked, cwd=cwd)
+                _reset_conflict_paths(runner, unmerged, cwd=cwd)
+                if not tier_succeeded:
+                    failure_class = agents.effective_failure_class(attempt)
+                    if index == 0 and attempt.wrapper_rc == 0 and failure_class == "other":
+                        _handoff_or_stall(
+                            tuple(active_paths),
+                            "first fixer could not resolve conflicts",
                         )
-                    raise Stalled(_redact_outbound("conflicts remain after fixer waterfall"))
+            if not resolved:
+                remaining_after = tuple(_unmerged_paths(runner, cwd=cwd) or unmerged)
+                _handoff_or_stall(
+                    remaining_after,
+                    "fixer waterfall could not resolve conflicts",
+                )
 
         continue_result = git.rebase_continue(runner, cwd=cwd)
         if continue_result.returncode == 0:
