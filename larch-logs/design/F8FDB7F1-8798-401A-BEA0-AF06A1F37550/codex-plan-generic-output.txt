@@ -1,0 +1,7 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	blocking	correctness	plan.txt:7-19,127,140-155	The plan changes the accepted no-stall contract from one Bash call to two Bash calls	The binding issue acceptance requires one `step-18.sh` no-stall Bash call, but the proposed SKILL flow still requires prompt-side orchestration between `--phase gate` and `--phase finalize`	Restore the one-call no-stall wrapper contract, or return for explicit rescoping before implementing this plan if Step 18a.5 must remain prompt-side
+
+1. **[correctness]** `plan.txt:7-19,127,140-155`: The plan rewrites the core acceptance criterion.
+   - **Concern:** The issue asks for one no-stall Bash call.
+   - **Breakage:** This plan lands two calls, so the feature fails its stated acceptance.
+   - **Suggested revision:** Keep one no-stall `step-18.sh` invocation, or stop and rescope the issue explicitly.

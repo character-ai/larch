@@ -1,0 +1,5 @@
+TOOL=claude
+TIMEOUT=1200
+OUTPUT_FILE=<TMPDIR>/claude-vote-output.txt
+PROMPT_FILE=<TMPDIR>/claude-vote-output.txt.prompt
+CMD_JSON=["claude","--print","--output-format","json","--model","claude-sonnet-4-6","--add-dir","<TMPDIR>","--allowedTools","Read","--permission-mode","plan"]

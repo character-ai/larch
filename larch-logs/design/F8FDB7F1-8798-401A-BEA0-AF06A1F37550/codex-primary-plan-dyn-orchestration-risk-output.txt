@@ -1,0 +1,13 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:205-213; docs/python-migration.md:51-60; python/migration_lint.py:252-263	Plan reverses the retired-script manifest update by adding new live step-18 files and forbidding entries for the deleted legacy Step 18 helpers.	The manifest is for deleted retired paths. If the new live files are listed, lint-retired-scripts fails because the manifest path still exists. If the deleted helpers are not listed, lingering references to retired helper paths are not guarded.	Replace plan.txt lines 209-213 with entries for skills/implement/scripts/step-18a-gate.{sh,md}, step-18b-final-report.{sh,md}, and step-18-finalize.{sh,md}. Do not add step-18.sh, step-18.md, test-step-18.sh, or test-step-18.md to python/migrated-scripts.tsv.
+1	in_scope	important	risk-integration	plan.txt:136-163; plan.txt:187-195; agent-lint.toml:52-67; agent-lint.toml:1272-1295	New Makefile-only test-step-18 harness is not added to agent-lint.toml's dead-script exclusions.	make lint runs agent-lint. Existing Makefile-only implement harnesses are excluded because G004 does not follow Makefile targets. The planned test-step-18.sh and test-step-18.md would follow the same pattern and can be flagged as dead scripts.	Add agent-lint.toml to the plan. Exclude skills/implement/scripts/test-step-18.sh and skills/implement/scripts/test-step-18.md with the adjacent implement harness exclusions.
+
+1. **correctness:** `python/migrated-scripts.tsv` update is inverted.
+   - **Plan evidence:** `plan.txt:205-213`.
+   - **Repo evidence:** `docs/python-migration.md:51-60`, `python/migration_lint.py:252-263`.
+   - **Fix:** list the deleted legacy helpers, not the new active wrapper and harness.
+
+2. **risk-integration:** `agent-lint.toml` is missing for the new harness.
+   - **Plan evidence:** `plan.txt:136-163`, `plan.txt:187-195`.
+   - **Repo evidence:** `agent-lint.toml:52-67`, `agent-lint.toml:1272-1295`.
+   - **Fix:** add the new `test-step-18` `.sh` and `.md` files to the existing Makefile-only implement harness exclusions.

@@ -1,0 +1,13 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	blocking	correctness	<TMPDIR>/plan.txt:205-213	[SCOPE-REDUCTION] Migrated-scripts update is inverted: it adds new active Step 18 files and excludes the deleted legacy wrappers	python/migrated-scripts.tsv is the retired-path manifest. Adding active step-18.sh or step-18.md can make make lint-retired-scripts flag the new SKILL/docs references, while omitting the deleted wrappers removes the required stale-reference guard.	Keep the new active step-18.* files out of python/migrated-scripts.tsv. Append only the six deleted legacy Step 18 .sh/.md paths, then update or reword remaining exact retired-path references before make lint.
+1	in_scope	important	correctness	<TMPDIR>/plan.txt:58-65; skills/implement/SKILL.md:870-890	Step 18a.5 escalation-success gate has no concrete execution point after the wrapper absorbs Step 18b and teardown	Current Step 18 runs the escalation-success report gate after the active stall gate and before Step 18b. The proposed wrapper goes from no-stall gate to final-report and finalize, so a recovered run with escalation evidence can tear down without the required success report.	Add the existing Step 18a.5 normalize-outcome and escalation-success procedure inside step-18.sh after the stall gate clears and before final-report step18b. Keep the SKILL.md flow aligned with that placement.
+
+1. **[correctness] Migrated manifest scope is backwards.**
+   - **Concern:** The plan adds new active Step 18 files to `python/migrated-scripts.tsv`.
+   - **Breakage:** That manifest tracks retired paths only.
+   - **Revision:** Add the deleted legacy Step 18 paths instead. Do not add `step-18.sh` or `step-18.md`.
+
+2. **[correctness] Step 18a.5 can be skipped.**
+   - **Concern:** The wrapper owns the point where Step 18a.5 must run, but the wrapper steps omit it.
+   - **Breakage:** Escalation-success reporting may be lost before teardown.
+   - **Revision:** Run Step 18a.5 inside `step-18.sh`, before final-report refresh and teardown.
