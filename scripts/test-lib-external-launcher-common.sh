@@ -29,6 +29,12 @@ assert_returns() {
 # shellcheck source=scripts/lib-external-launcher-common.sh
 source "$REPO_ROOT/scripts/lib-external-launcher-common.sh"
 
+cleanup_lock_dir() {
+    local lock_path="${1:-}"
+    [[ -n "$lock_path" ]] || return 0
+    rmdir "$lock_path" 2>/dev/null || true
+}
+
 assert_file_contains() {
     local label="$1" file="$2" needle="$3"
     if grep -Fq -- "$needle" "$file" 2>/dev/null; then
@@ -68,6 +74,61 @@ assert_top_level_not_line() {
         pass
     fi
 }
+
+# --- Shared Darwin startup lock ---
+_saved_user_set=0
+_saved_user=""
+if [[ "${USER+x}" == "x" ]]; then
+    _saved_user_set=1
+    _saved_user="$USER"
+fi
+LARCH_EXTERNAL_STARTUP_LOCK_FORCE_UNAME=Darwin
+LARCH_EXTERNAL_STARTUP_LOCK_TTL=60
+LARCH_EXTERNAL_STARTUP_LOCK_TRIES=1
+
+USER="larch-test-$(basename "$TMPDIR_ROOT")"
+_LOCK=""
+_LOCK2=""
+external_startup_lock_acquire _LOCK codex
+if [[ -n "$_LOCK" ]]; then pass; else fail "startup lock codex acquire returns path"; fi
+if [[ "$_LOCK" == "/tmp/larch-external-startup-$USER.lock" ]]; then pass; else fail "startup lock codex path mismatch: $_LOCK"; fi
+if [[ -d "$_LOCK" ]]; then pass; else fail "startup lock codex directory missing"; fi
+external_startup_lock_acquire _LOCK2 cursor
+if [[ -z "$_LOCK2" ]]; then pass; else fail "startup lock cursor must block while codex holds shared lock"; fi
+cleanup_lock_dir "$_LOCK"
+cleanup_lock_dir "$_LOCK2"
+
+_LOCK=""
+_LOCK2=""
+external_startup_lock_acquire _LOCK cursor
+if [[ -n "$_LOCK" ]]; then pass; else fail "startup lock cursor acquire returns path"; fi
+if [[ "$_LOCK" == "/tmp/larch-external-startup-$USER.lock" ]]; then pass; else fail "startup lock cursor path mismatch: $_LOCK"; fi
+if [[ -d "$_LOCK" ]]; then pass; else fail "startup lock cursor directory missing"; fi
+external_startup_lock_acquire _LOCK2 codex
+if [[ -z "$_LOCK2" ]]; then pass; else fail "startup lock codex must block while cursor holds shared lock"; fi
+cleanup_lock_dir "$_LOCK"
+cleanup_lock_dir "$_LOCK2"
+
+unset USER
+_LOCK=""
+cleanup_lock_dir "/tmp/larch-external-startup-larch.lock"
+external_startup_lock_acquire _LOCK cursor
+if [[ "$_LOCK" == "/tmp/larch-external-startup-larch.lock" ]]; then pass; else fail "startup lock unset USER fallback mismatch: $_LOCK"; fi
+cleanup_lock_dir "$_LOCK"
+
+USER=""
+_LOCK=""
+cleanup_lock_dir "/tmp/larch-external-startup-larch.lock"
+external_startup_lock_acquire _LOCK cursor
+if [[ "$_LOCK" == "/tmp/larch-external-startup-larch.lock" ]]; then pass; else fail "startup lock empty USER fallback mismatch: $_LOCK"; fi
+cleanup_lock_dir "$_LOCK"
+
+if (( _saved_user_set == 1 )); then
+    USER="$_saved_user"
+else
+    unset USER
+fi
+unset LARCH_EXTERNAL_STARTUP_LOCK_FORCE_UNAME LARCH_EXTERNAL_STARTUP_LOCK_TTL LARCH_EXTERNAL_STARTUP_LOCK_TRIES
 
 # --- Codex env-key auth helper ---
 _codex_auth_home="$TMPDIR_ROOT/codex-auth-home"

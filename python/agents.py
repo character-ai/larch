@@ -152,7 +152,7 @@ class LaunchResult:
 
 
 @dataclass(frozen=True)
-class SerialLockState:
+class StartupLockState:
     lock_path: Path | None
 
 
@@ -754,8 +754,8 @@ def _run_one_cursor_probe(timeout: int) -> int:
         except ValueError:
             model_args = []
         prompt = " /max-mode on. Prompt: Respond with OK"
-        state = external_serial_lock_acquire("cursor")
-        external_serial_lock_release_after(state)
+        state = external_startup_lock_acquire("cursor")
+        external_startup_lock_release_after(state)
         probe_workdir = _resolve_review_codex_workdir(str(Path.cwd()))
         rc = _run_probe_command(
             ["cursor", "agent", "-p", prompt, "--trust", "--workspace", probe_workdir, *model_args],
@@ -817,8 +817,8 @@ def _run_one_codex_probe(timeout: int) -> int:
         ]
         env = dict(os.environ)
         env["CODEX_HOME"] = str(codex_home)
-        state = external_serial_lock_acquire("codex")
-        external_serial_lock_release_after(state)
+        state = external_startup_lock_acquire("codex")
+        external_startup_lock_release_after(state)
         rc = _run_probe_command(cmd, timeout=timeout, env=env, stderr=probe_side)
         if rc == config.EXIT_TIMEOUT:
             return config.EXIT_TIMEOUT
@@ -1680,18 +1680,18 @@ def run_external_agent_main(argv: list[str] | None = None) -> int:
     return result.exit_code
 
 
-def external_serial_lock_acquire(tool: str) -> SerialLockState:
-    forced = os.environ.get("LARCH_EXTERNAL_SERIAL_LOCK_FORCE_UNAME")
+def external_startup_lock_acquire(tool: str) -> StartupLockState:
+    forced = os.environ.get("LARCH_EXTERNAL_STARTUP_LOCK_FORCE_UNAME")
     if (forced or platform.system()) != "Darwin" or tool not in {"codex", "cursor"}:
-        return SerialLockState(None)
-    user = os.environ.get("USER", "larch")
-    lock_path = Path(f"/tmp/larch-{tool}-serial-{user}.lock")  # noqa: S108 - parity with the bash Darwin lock path
-    ttl = _positive_int_env("LARCH_EXTERNAL_SERIAL_LOCK_TTL", 30)
-    tries = _positive_int_env("LARCH_EXTERNAL_SERIAL_LOCK_TRIES", 300)
+        return StartupLockState(None)
+    user = os.environ.get("USER") or "larch"
+    lock_path = Path(f"/tmp/larch-external-startup-{user}.lock")  # noqa: S108 - Bash Darwin startup-lock path parity
+    ttl = _positive_int_env("LARCH_EXTERNAL_STARTUP_LOCK_TTL", 30)
+    tries = _positive_int_env("LARCH_EXTERNAL_STARTUP_LOCK_TRIES", 300)
     for _ in range(max(tries, 1)):
         try:
             lock_path.mkdir()
-            return SerialLockState(lock_path)
+            return StartupLockState(lock_path)
         except FileExistsError:
             if ttl > 0:
                 try:
@@ -1702,13 +1702,13 @@ def external_serial_lock_acquire(tool: str) -> SerialLockState:
                 except OSError:
                     pass
             time.sleep(0.1)
-    return SerialLockState(None)
+    return StartupLockState(None)
 
 
-def external_serial_lock_release_after(state: SerialLockState, delay: float | None = None) -> None:
+def external_startup_lock_release_after(state: StartupLockState, delay: float | None = None) -> None:
     if state.lock_path is None:
         return
-    release_delay = delay if delay is not None else _nonnegative_float_env("LARCH_EXTERNAL_SERIAL_LOCK_DELAY", 0.5)
+    release_delay = delay if delay is not None else _nonnegative_float_env("LARCH_EXTERNAL_STARTUP_LOCK_DELAY", 0.5)
 
     def release() -> None:
         with contextlib.suppress(OSError):
@@ -2115,8 +2115,8 @@ def _run_external_agent_with_auth_retries(
     unclassified_empty_retried = False
     while True:
         with _temporary_env("RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX", ".inner.done"):
-            state = external_serial_lock_acquire(tool)
-            external_serial_lock_release_after(state)
+            state = external_startup_lock_acquire(tool)
+            external_startup_lock_release_after(state)
             result = run_external_agent(
                 tool=tool,
                 output=str(output),
@@ -2219,8 +2219,8 @@ def run_negotiation_round(tool: str, prompt_file: str | Path, output: str | Path
             ]
             env = dict(os.environ)
             env["CODEX_HOME"] = str(codex_home)
-            state = external_serial_lock_acquire("codex")
-            external_serial_lock_release_after(state)
+            state = external_startup_lock_acquire("codex")
+            external_startup_lock_release_after(state)
             with prompt.open("r", encoding="utf-8", errors="replace") as input_handle:
                 try:
                     with events.open("w", encoding="utf-8") as out_handle, sidecar.open("w", encoding="utf-8") as err_handle:
@@ -2261,8 +2261,8 @@ def run_negotiation_round(tool: str, prompt_file: str | Path, output: str | Path
         return 3
     cursor_auth_export_env()
     wrapped = f" /max-mode on. Prompt: Read the negotiation prompt from {prompt} and respond to it."
-    state = external_serial_lock_acquire("cursor")
-    external_serial_lock_release_after(state)
+    state = external_startup_lock_acquire("cursor")
+    external_startup_lock_release_after(state)
     cmd = [
         "cursor",
         "agent",
@@ -3311,8 +3311,8 @@ def _review_run_wrapper_attempt(
 ) -> RunExternalAgentResult:
     old_suffix = os.environ.get("RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX")
     os.environ["RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX"] = ".inner.done"
-    state = external_serial_lock_acquire(tool)
-    external_serial_lock_release_after(state)
+    state = external_startup_lock_acquire(tool)
+    external_startup_lock_release_after(state)
     try:
         return run_external_agent(
             tool=tool,

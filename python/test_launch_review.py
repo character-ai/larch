@@ -446,23 +446,23 @@ def test_codex_retry_unclassified_empty_exit_one_respects_auth_retry_limit_one(
     assert auth_attempt == 1
 
 
-def test_review_serial_lock_releases_before_blocking_wait(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_review_startup_lock_releases_before_blocking_wait(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     output = tmp_path / "out.txt"
     order: list[str] = []
 
-    def fake_acquire(_tool: str) -> agents.SerialLockState:
+    def fake_acquire(_tool: str) -> agents.StartupLockState:
         order.append("acquire")
-        return agents.SerialLockState(None)
+        return agents.StartupLockState(None)
 
-    def fake_release(_state: agents.SerialLockState) -> None:
+    def fake_release(_state: agents.StartupLockState) -> None:
         order.append("release")
 
     def fake_run(**_kwargs: object) -> agents.RunExternalAgentResult:
         order.append("run")
         return agents.RunExternalAgentResult(0, output)
 
-    monkeypatch.setattr(agents, "external_serial_lock_acquire", fake_acquire)
-    monkeypatch.setattr(agents, "external_serial_lock_release_after", fake_release)
+    monkeypatch.setattr(agents, "external_startup_lock_acquire", fake_acquire)
+    monkeypatch.setattr(agents, "external_startup_lock_release_after", fake_release)
     monkeypatch.setattr(agents, "run_external_agent", fake_run)
     agents._review_run_wrapper_attempt(tool="cursor", output=output, timeout_seconds=1, cmd=["cursor"])
     assert order == ["acquire", "release", "run"]
@@ -1152,9 +1152,9 @@ def test_cursor_empty_result_retries_with_lock_when_enabled(tmp_path: Path, monk
     output = tmp_path / "out.txt"
     calls = {"count": 0, "locks": 0}
 
-    def fake_acquire(_tool: str) -> agents.SerialLockState:
+    def fake_acquire(_tool: str) -> agents.StartupLockState:
         calls["locks"] += 1
-        return agents.SerialLockState(None)
+        return agents.StartupLockState(None)
 
     def fake_run(**_kwargs: object) -> agents.RunExternalAgentResult:
         calls["count"] += 1
@@ -1164,12 +1164,12 @@ def test_cursor_empty_result_retries_with_lock_when_enabled(tmp_path: Path, monk
             output.write_text('{"result":"ok","usage":{"inputTokens":1,"outputTokens":2}}\n', encoding="utf-8")
         return agents.RunExternalAgentResult(0, output)
 
-    def fake_release(_state: agents.SerialLockState) -> None:
+    def fake_release(_state: agents.StartupLockState) -> None:
         return None
 
     monkeypatch.setenv("LARCH_CURSOR_RETRY_EMPTY_RESULT", "1")
-    monkeypatch.setattr(agents, "external_serial_lock_acquire", fake_acquire)
-    monkeypatch.setattr(agents, "external_serial_lock_release_after", fake_release)
+    monkeypatch.setattr(agents, "external_startup_lock_acquire", fake_acquire)
+    monkeypatch.setattr(agents, "external_startup_lock_release_after", fake_release)
     monkeypatch.setattr(agents, "run_external_agent", fake_run)
     _result, _auth_attempt, transient_attempt = agents._review_run_with_retries(
         tool="cursor",
@@ -1187,21 +1187,21 @@ def test_cursor_empty_result_skips_retry_when_disabled(tmp_path: Path, monkeypat
     output = tmp_path / "out.txt"
     calls = {"count": 0, "locks": 0}
 
-    def fake_acquire(_tool: str) -> agents.SerialLockState:
+    def fake_acquire(_tool: str) -> agents.StartupLockState:
         calls["locks"] += 1
-        return agents.SerialLockState(None)
+        return agents.StartupLockState(None)
 
     def fake_run(**_kwargs: object) -> agents.RunExternalAgentResult:
         calls["count"] += 1
         output.write_text('{"result":"","usage":{"inputTokens":1,"outputTokens":0}}\n', encoding="utf-8")
         return agents.RunExternalAgentResult(0, output)
 
-    def fake_release(_state: agents.SerialLockState) -> None:
+    def fake_release(_state: agents.StartupLockState) -> None:
         return None
 
     monkeypatch.setenv("LARCH_CURSOR_RETRY_EMPTY_RESULT", "0")
-    monkeypatch.setattr(agents, "external_serial_lock_acquire", fake_acquire)
-    monkeypatch.setattr(agents, "external_serial_lock_release_after", fake_release)
+    monkeypatch.setattr(agents, "external_startup_lock_acquire", fake_acquire)
+    monkeypatch.setattr(agents, "external_startup_lock_release_after", fake_release)
     monkeypatch.setattr(agents, "run_external_agent", fake_run)
     _result, _auth_attempt, transient_attempt = agents._review_run_with_retries(
         tool="cursor",

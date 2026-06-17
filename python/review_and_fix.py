@@ -1265,8 +1265,8 @@ def _run_coder_cursor(round_dir: Path, prompt_body: str, tool_log: Path) -> bool
         return False
     output = round_dir / "coder-cursor.log"
     wrapper = round_dir / "coder-cursor.wrapper.log"
-    lock_state = agents.external_serial_lock_acquire("cursor")
-    agents.external_serial_lock_release_after(lock_state)
+    lock_state = agents.external_startup_lock_acquire("cursor")
+    agents.external_startup_lock_release_after(lock_state)
     result = _run([
         "python3", str(cli), "agent", "run-external-agent",
         "--tool", "cursor",
