@@ -841,7 +841,7 @@ After the combined Step 16-17 fence returns, extract the first balanced whole-li
 
 Internal Step 16, Slack, and Step 17 failures are logged inside the composed wrapper and `step-17.sh`; the outer fence still continues to Step 18. Stale-summary guard: absence of markers after a failed Step 17 render is expected even when an older non-empty `summary-final.md` remains from an earlier ship-side `final-report write`; do not Read that file on the Step 17 primary path. Marker emission is gated on captured Step 17 render success and a non-empty `summary-final.md`, not `summary-final.md` presence alone.
 
-Step 18 parses `EMIT_BODY` and `WFR_RC` from `python/cli.py final-report step18b` stdout and emits the refreshed `summary-final.md` body verbatim as plain chat markdown only when `EMIT_BODY=true`, `WFR_RC=0`, and `summary-final.md` is non-empty; see Step 18b below for the wrapper-owned decision. The full per-step token and timing data is committed to `larch-logs/implement/<run-id>/token-report.json` and `timing-report.json` via `run-log refresh`.
+Step 18 status KVs and the optional final summary body come from captured `step-18.sh --phase finalize` stdout only. The orchestrator re-emits the first balanced `---LARCH-SUMMARY-FINAL-BEGIN---` / `---LARCH-SUMMARY-FINAL-END---` marker pair verbatim and uses `EMIT_BODY` and `WFR_RC` only for the missing-marker warning, not for direct `summary-final.md` emission or Read fallback; see Step 18b below. The full per-step token and timing data is committed to `larch-logs/implement/<run-id>/token-report.json` and `timing-report.json` via `run-log refresh`.
 
 > **Continue to Step 18.** Do NOT end the turn after the final report.
 
