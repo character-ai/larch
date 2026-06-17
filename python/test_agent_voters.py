@@ -242,6 +242,22 @@ def test_render_failure_aborts_before_launch(tmp_path: Path, monkeypatch: pytest
 
 
 @pytest.mark.voter_happy
+def test_render_nonzero_exit_aborts_before_launch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    review = tmp_path / "review"
+    ballot = tmp_path / "ballot.md"
+    ballot.write_text("### FINDING_1: one\n", encoding="utf-8")
+    harness, _stub_root = _install_harness(monkeypatch, tmp_path, review)
+    harness.render_rc = 1
+
+    with pytest.raises(SystemExit) as excinfo:
+        agent_voters.dispatch_voters(_opts(ballot, review))
+
+    assert excinfo.value.code == 2
+    assert not harness.popen_calls
+    assert not any(_verb(call) == ("agent", "dispatch-waterfall") for call in harness.run_calls)
+
+
+@pytest.mark.voter_happy
 def test_both_externals_down_shrink_not_backfill(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     review = tmp_path / "review"
     ballot = tmp_path / "ballot.md"
