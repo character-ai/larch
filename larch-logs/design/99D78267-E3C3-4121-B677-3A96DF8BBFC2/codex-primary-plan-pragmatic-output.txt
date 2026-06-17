@@ -1,0 +1,19 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	architecture	.claude/rules/python-first-scripts.md (proposed), docs/python-migration.md:9-14	Rule permits thin wrappers to delegate to another Python module instead of the canonical cli.py entrypoint	The new policy conflicts with the existing migration contract that external consumers call python3 ${CLAUDE_PLUGIN_ROOT}/python/cli.py directly, so future shell wrappers could bypass the supported CLI surface while still following the new rule	Remove "or another Python module" from the proposed rule and approach wording; require thin wrappers to delegate through python3 ${CLAUDE_PLUGIN_ROOT}/python/cli.py
+2	in_scope	important	architecture	.claude/rules/python-first-scripts.md (proposed)	[SCOPE-REDUCTION] Proposed paths include .github/workflows/**/* even though the issue asks for .sh edit-time globs modeled on shell-strict-mode.md	The rule would load during unrelated workflow or requirements-file edits, expanding the prompt surface beyond the requested .sh point-of-edit reminder	Drop .github/workflows/**/* from the frontmatter; keep the CI and pre-commit glue exception in the rule prose for matching shell-script edits
+
+1. **[architecture] `.claude/rules/python-first-scripts.md` (proposed), `docs/python-migration.md:9-14`**
+
+   **Concern:** The proposed rule allows delegation to "another Python module."
+
+   **Breakage:** That conflicts with the existing `cli.py` canonical-entrypoint contract for external consumers.
+
+   **Suggested revision:** Require thin wrappers to call `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" ...`.
+
+2. **[architecture] `.claude/rules/python-first-scripts.md` (proposed)**
+
+   **Concern:** `[SCOPE-REDUCTION]` The `.github/workflows/**/*` path expands the rule beyond `.sh` edit-time reminders.
+
+   **Breakage:** The rule would load for unrelated workflow and requirements edits.
+
+   **Suggested revision:** Remove `.github/workflows/**/*` from frontmatter. Keep the CI/pre-commit exception in prose.
