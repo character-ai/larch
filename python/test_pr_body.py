@@ -512,16 +512,43 @@ def test_generate_code_flow_diagram_uses_launcher_not_stub(tmp_path: Path, monke
     _ = launcher.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
     launcher.chmod(0o755)
     monkeypatch.setenv("LARCH_TEST_LAUNCH_CLAUDE_SUBPROCESS", str(launcher))
+    raw_secret = "sk-abcdefghijklmnopqrstuvwxyz123456"
+    raw_stderr = f"timeout after 600s token={raw_secret}"
 
     def fake_run(*_args: object, **_kwargs: object) -> object:
-        return type("R", (), {"returncode": 1, "stdout": "", "stderr": ""})()
+        return type("R", (), {"returncode": 1, "stdout": "stdout diagnostic", "stderr": raw_stderr})()
 
     monkeypatch.setattr(pr_body.subprocess, "run", fake_run)
     rc, status, _diagram, reason = pr_body.generate_code_flow_diagram(tmp_path)
     assert rc == 1
     assert status == "failed"
-    assert reason == "generation-failed"
+    assert reason != "generation-failed"
+    assert "generation-failed rc=1" in reason
+    assert "tail=" in reason
+    assert "timeout after 600s" in reason
+    assert raw_secret not in reason
+    failure_log = tmp_path / "code-flow-diagram.failure.log"
+    assert failure_log.is_file()
+    log_text = failure_log.read_text(encoding="utf-8")
+    assert "returncode: 1" in log_text
+    assert "timeout after 600s" in log_text
+    assert "stdout diagnostic" in log_text
+    assert raw_secret not in log_text
     assert (tmp_path / "code-flow-prompt.md").is_file()
+
+
+def test_derive_oos_fields_reads_json_body_filed_url(tmp_path: Path) -> None:
+    body = "- **Filed URL**: https://github.com/acme/repo/issues/123\nnext line\n"
+    _ = (tmp_path / "oos-issues.ndjson").write_text(
+        json.dumps({"body": body}) + "\n",
+        encoding="utf-8",
+    )
+
+    count, urls = pr_body._derive_oos_fields(tmp_path)
+
+    assert count == "1"
+    assert urls == "https://github.com/acme/repo/issues/123"
+    assert not urls.endswith("/i")
 
 
 def _write_tally(run_dir: Path, filename: str, payload: object) -> None:

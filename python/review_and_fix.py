@@ -817,7 +817,7 @@ def write_rejected_findings_aggregate(impl_tmpdir: Path, fallback_file: Path | N
             parts.append("# Rejected Findings\n\n")
         body_start = _rejected_body_start_line(_read_text(round_file))
         body_lines = _read_text(round_file).splitlines()[body_start - 1:]
-        parts.append(f"## Round {round_num}\n\n")
+        parts.append(f"# Review Round {round_num}\n\n")
         parts.extend(line + "\n" for line in body_lines)
         parts.append("\n")
     if parts:

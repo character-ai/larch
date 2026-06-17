@@ -1,7 +1,7 @@
 ---
 name: bug
 description: "Use when filing, reporting, investigating, or root-causing a software bug. Reads the repo, drafts a detailed GitHub issue, and invokes /issue with dedup enabled. Keywords: bug report, regression, broken behavior, reproduction, suggested fix."
-argument-hint: "<bug description>"
+argument-hint: "[--urgent] <bug description>"
 allowed-tools: Bash, Read, Grep, Glob, Write, Skill
 hooks:
   PreToolUse:
@@ -20,8 +20,11 @@ Investigate a user-described bug inline, compose a detailed issue body, then del
 
 ## Contract
 
-- Treat all `$ARGUMENTS` as the bug description. This skill has no flags.
-- If the description starts with `--`, treat it as prose, not as an option.
+- `--urgent` is the only flag.
+- Remove one or more leading `--urgent` tokens from the description before validation.
+- If any other leading `--...` token remains after removing `--urgent`, treat it as prose, not as an option.
+- Use `[BUG]` as the default issue title prefix.
+- Use `[BUG] (URGENT)` as the issue title prefix when `--urgent` was present.
 - Never pass `--no-dedup` to `/issue`.
 - Use only `Read`, `Grep`, `Glob`, and safe read-only `Bash` discovery for investigation.
 - Use `Write` only for files under `$BUG_TMPDIR`.
@@ -31,7 +34,9 @@ Investigate a user-described bug inline, compose a detailed issue body, then del
 <!-- step:1 - Validate input -->
 ## Step 1 - Validate input
 
-Trim `$ARGUMENTS` mentally. If it is empty or whitespace-only, print:
+Trim `$ARGUMENTS` mentally. Remove one or more leading `--urgent` tokens before validation. If at least one leading `--urgent` was present, remember the issue title prefix `[BUG] (URGENT)`. Otherwise remember the issue title prefix `[BUG]`.
+
+If the remaining description is empty or whitespace-only, print:
 
 ```text
 **⚠ /bug: bug description is required. Aborting.**
@@ -141,7 +146,10 @@ Derive a concise, descriptive issue title from the original bug report, not from
 
 Invoke `/issue` via the Skill tool:
 
-- `/issue --body-file "$BUG_TMPDIR/bug-issue-body.md" --sentinel-file "$BUG_TMPDIR/issue-completed.sentinel" "<descriptive-title>"`
+- Default: `/issue --title-prefix "[BUG]" --body-file "$BUG_TMPDIR/bug-issue-body.md" --sentinel-file "$BUG_TMPDIR/issue-completed.sentinel" "<descriptive-title>"`
+- Urgent: `/issue --title-prefix "[BUG] (URGENT)" --body-file "$BUG_TMPDIR/bug-issue-body.md" --sentinel-file "$BUG_TMPDIR/issue-completed.sentinel" "<descriptive-title>"`
+
+Pass exactly one `--title-prefix` value. Do not reimplement prefix de-duplication; `/issue` owns that behavior.
 
 Do not include `--no-dedup`.
 

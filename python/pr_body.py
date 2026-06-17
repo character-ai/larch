@@ -47,6 +47,8 @@ _ISSUE_SECTION_NONE = 0
 _ISSUE_SECTION_EXEC = 1
 _ISSUE_SECTION_WARN = 2
 _EXEC_ISSUE_HEADINGS = frozenset({"### Tool Failures", "### External Reviewer Issues"})
+_OOS_FILED_URL_LINE_RE = re.compile(r"^[ \t]*-[ \t]+\*\*Filed[ \t]URL\*\*[ \t]*:[ \t]+(https://[^\s]+/issues/\d+)", re.MULTILINE)
+_DIAGRAM_FAILURE_TAIL_LIMIT = 200
 
 
 def _path_under_repo(repo_root: Path, rel_path: str) -> bool:
@@ -848,8 +850,18 @@ def _derive_oos_fields(run_dir: Path) -> tuple[str, str]:
         return "0", ""
     text = ndjson.read_text(encoding="utf-8", errors="replace")
     lines = [line for line in text.splitlines() if line.strip()]
-    urls = sorted(set(re.findall(r"https://github\.com[^\"\\s>)]+", text)))
-    return str(len(lines)), ",".join(urls)
+    urls: list[str] = []
+    for line in lines:
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(record, dict):
+            continue
+        body = cast("Mapping[str, object]", record).get("body")
+        if isinstance(body, str):
+            urls.extend(_OOS_FILED_URL_LINE_RE.findall(body))
+    return str(len(lines)), ",".join(sorted(set(urls)))
 
 
 def _derive_final_report_fields(
@@ -1204,12 +1216,24 @@ def slack_issue_announce_main(argv: list[str] | None = None) -> int:
     return rc
 
 
+def _diagram_failure_capture(returncode: int, stderr: str, stdout: str) -> tuple[str, str]:
+    try:
+        capture = redact.redact(f"stderr:\n{stderr or ''}\nstdout:\n{stdout or ''}\n")
+    except Exception:
+        return f"returncode: {returncode}\nredaction-failed\n", "redaction-failed"
+    collapsed = re.sub(r"\s+", " ", capture).strip() or "no-output"
+    if len(collapsed) > _DIAGRAM_FAILURE_TAIL_LIMIT:
+        collapsed = "..." + collapsed[-(_DIAGRAM_FAILURE_TAIL_LIMIT - 3):]
+    return f"returncode: {returncode}\n{capture}", collapsed
+
+
 def generate_code_flow_diagram(implement_tmpdir: Path, *, model: str = "claude-sonnet-4-6", base_remote: str = "origin", base_ref: str = "main") -> tuple[int, str, str, str]:
     implement_tmpdir.mkdir(parents=True, exist_ok=True)
     raw = implement_tmpdir / "code-flow-diagram.raw.md"
     candidate = implement_tmpdir / "code-flow-diagram.candidate.md"
     diagram = implement_tmpdir / "code-flow-diagram.md"
     prompt_path = implement_tmpdir / "code-flow-prompt.md"
+    failure_log = implement_tmpdir / "code-flow-diagram.failure.log"
     base_target = f"{base_remote}/{base_ref}"
     merge_base = subprocess.run(["git", "merge-base", "HEAD", base_target], text=True, capture_output=True, check=False)  # noqa: S607
     if merge_base.returncode != 0 or not merge_base.stdout.strip():
@@ -1235,6 +1259,8 @@ def generate_code_flow_diagram(implement_tmpdir: Path, *, model: str = "claude-s
         launch_cmd = [launcher]
     else:
         launch_cmd = [sys.executable, str(plugin_root / "cli.py"), "agent", "launch-claude-subprocess"]
+    with contextlib.suppress(OSError):
+        failure_log.unlink()
     completed = subprocess.run(
         [
             *launch_cmd,
@@ -1250,13 +1276,21 @@ def generate_code_flow_diagram(implement_tmpdir: Path, *, model: str = "claude-s
         check=False,
     )
     if completed.returncode != 0:
-        return 1, "failed", "", "generation-failed"
+        diagnostic, tail = _diagram_failure_capture(completed.returncode, completed.stderr, completed.stdout)
+        reason = f"generation-failed rc={completed.returncode} tail={tail}"
+        try:
+            failure_log.write_text(diagnostic, encoding="utf-8")
+        except OSError:
+            reason = f"{reason} log-write-failed"
+        return 1, "failed", "", reason
     if not raw.is_file() or raw.stat().st_size == 0:
         return 1, "failed", "", "empty-generation"
     candidate.write_bytes(raw.read_bytes())
     result = sanitize_fragment(candidate.read_text(encoding="utf-8"), from_md=True)
     if result.status == "ok":
         candidate.replace(diagram)
+        with contextlib.suppress(OSError):
+            failure_log.unlink()
         return 0, "ok", str(diagram), ""
     candidate.unlink(missing_ok=True)
     return 0, "skipped", "", result.reason_tokens[0] if result.reason_tokens else "sanitizer-rejected"

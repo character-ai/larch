@@ -105,11 +105,17 @@ def test_step7a_reads_run_id_from_session_env_when_session_id_absent(tmp_path: P
 def test_step7a_diagram_failure_exits_zero_and_clears_stale_artifacts(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
     _ = (tmp_path / "code-flow-diagram.md").write_text("stale\n", encoding="utf-8")
+    reason = "generation-failed rc=7 tail=timeout after 600s"
+
+    def fake_generate_code_flow_diagram(implement_tmpdir: Path, *, base_remote: str, base_ref: str) -> tuple[int, str, str, str]:
+        _ = (base_remote, base_ref)
+        _ = (implement_tmpdir / "code-flow-diagram.failure.log").write_text("returncode: 7\nstderr: timeout after 600s\n", encoding="utf-8")
+        return 1, "failed", "", reason
 
     with patch.object(step_7a, "_is_small_non_runtime_change", return_value=False), patch.object(
         step_7a.pr_body,
         "generate_code_flow_diagram",
-        return_value=(1, "failed", "", "generation-failed"),
+        side_effect=fake_generate_code_flow_diagram,
     ), patch.object(step_7a, "_run_log_flush", return_value="ok"), patch.object(step_7a, "subprocess") as mock_subprocess:
         mock_subprocess.run.return_value.returncode = 0
         mock_subprocess.run.return_value.stdout = "REBASE_OUTCOME=skipped\n"
@@ -118,9 +124,35 @@ def test_step7a_diagram_failure_exits_zero_and_clears_stale_artifacts(tmp_path: 
     assert rc == 0
     out = capsys.readouterr().out
     assert "DIAGRAM_STATUS=failed" in out
+    assert f"DIAGRAM_REASON={reason}" in out
     assert "STEP_7A_BAIL_REASON=\n" in out or out.endswith("STEP_7A_BAIL_REASON=\n") or "STEP_7A_BAIL_REASON=" in out
     assert not (tmp_path / "code-flow-diagram.md").exists()
-    assert "### Warnings" in (tmp_path / "execution-issues.md").read_text(encoding="utf-8")
+    issue_text = (tmp_path / "execution-issues.md").read_text(encoding="utf-8")
+    assert "### Warnings" in issue_text
+    assert reason in issue_text
+    copied_log = tmp_path / "larch-logs" / "implement" / "run-1" / "code-flow-diagram.failure.log"
+    assert copied_log.is_file()
+    assert "timeout after 600s" in copied_log.read_text(encoding="utf-8")
+
+
+def test_step7a_diagram_failure_emits_diagram_reason_on_rebase_failure(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
+    reason = "generation-failed rc=7 tail=timeout after 600s"
+
+    with patch.object(step_7a, "_is_small_non_runtime_change", return_value=False), patch.object(
+        step_7a.pr_body,
+        "generate_code_flow_diagram",
+        return_value=(1, "failed", "", reason),
+    ), patch.object(step_7a, "subprocess") as mock_subprocess:
+        mock_subprocess.run.return_value.returncode = 1
+        mock_subprocess.run.return_value.stdout = "REBASE_OUTCOME=conflict\n"
+        rc = step_7a.run_step7a(tmp_path)
+
+    assert rc == 1
+    out = capsys.readouterr().out
+    assert "DIAGRAM_STATUS=failed" in out
+    assert f"DIAGRAM_REASON={reason}" in out
+    assert "LOG_FLUSH_STATUS=skipped-rebase-checkpoint" in out
 
 
 def test_step7a_no_logs_commit_emits_skipped_status(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

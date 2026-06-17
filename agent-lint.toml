@@ -800,6 +800,11 @@ exclude = [
   # only from Makefile (test-alias-structure target) and the sibling
   # scripts/test-alias-structure.md. Same Makefile-only pattern.
   "scripts/test-alias-structure.sh",
+  # scripts/test-bug-structure.sh is the structural regression test for
+  # skills/bug/SKILL.md --urgent parsing and title-prefix delegation.
+  # Referenced only from Makefile (test-bug-structure target) and the
+  # sibling scripts/test-bug-structure.md. Same Makefile-only pattern.
+  "scripts/test-bug-structure.sh",
   "scripts/test-design-structure.sh",
   # python/test_design_lifecycle.py is a Makefile-only harness for
   # python/design_lifecycle.py (/design Step 0b lifecycle port);
@@ -1073,6 +1078,7 @@ exclude = [
   # sibling-not-cited-from-SKILL.md pattern as other Makefile-only harness .md files.
   "python/test_alias_skill.py",
   "scripts/test-alias-structure.md",
+  "scripts/test-bug-structure.md",
   # python/test_design_*.py files below are pytest harnesses for
   # Makefile-only regression targets after the /design Python migration.
   # The primary modules are cited from /design runtime prose; the

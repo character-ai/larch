@@ -510,10 +510,38 @@ def test_write_tally_header_validation_and_logger_kv_reemission(tmp_path: Path) 
     assert result.stdout == ""
 
     logger = _write_tally_logger(tmp_path)
-    valid_body = tmp_path / "valid-body.md"
-    valid_body.write_text("# Code Review Voting Tally\n", encoding="utf-8")
+    valid_rejected_round_body = tmp_path / "valid-rejected-round-body.md"
+    valid_rejected_round_body.write_text(
+        "# Rejected Findings\n\n# Review Round 2\n\n### FINDING_1: valid rejected finding\n",
+        encoding="utf-8",
+    )
     env = os.environ.copy()
     env["LARCH_WRITE_TALLY_LOGGER"] = str(logger)
+    result = run_cli(
+        "voting",
+        "write-tally",
+        "--log-root",
+        str(tmp_path / "logs-code-round"),
+        "--skill",
+        "implement",
+        "--run-id",
+        "run-code-round",
+        "--phase",
+        "code-review",
+        "--mode",
+        "simple",
+        "--accepted",
+        "1",
+        "--rejected",
+        "0",
+        "--body-file",
+        str(valid_rejected_round_body),
+        env=env,
+    )
+    assert result.returncode == 0
+
+    valid_body = tmp_path / "valid-body.md"
+    valid_body.write_text("# Code Review Voting Tally\n", encoding="utf-8")
     result = run_cli(
         "voting",
         "write-tally",

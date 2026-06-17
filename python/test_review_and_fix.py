@@ -555,8 +555,8 @@ def test_write_rejected_findings_aggregate_multi_round(tmp_path):
     (r2 / "rejected-findings-full.md").write_text("### FINDING_2: B\nbody\n", encoding="utf-8")
     review_and_fix.write_rejected_findings_aggregate(impl)
     text = (impl / "rejected-findings.md").read_text(encoding="utf-8")
-    assert "## Round 1" in text
-    assert "## Round 2" in text
+    assert "# Review Round 1" in text
+    assert "# Review Round 2" in text
     assert "FINDING_1" in text
     assert "FINDING_2" in text
 
