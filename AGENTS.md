@@ -77,6 +77,7 @@ Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/
 ## Conventions
 
 - Follow recent commit history style.
+- New larch scripts are Python by default. Put new logic in `python/` behind `python3 python/cli.py`; Bash is allowed only for thin delegation wrappers that set up environment and call `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" <domain> <verb> [args...]`, Claude Code hooks, and pre-commit or CI glue. Thin wrappers are forward-looking glue only, not migration cutover shims. Migration and voluntary ports must repoint consumers to direct `cli.py` calls per [docs/python-migration.md](docs/python-migration.md) **No shims**; see also [.claude/rules/python-first-scripts.md](.claude/rules/python-first-scripts.md).
 - Single-runner invariant: Run only one `/implement` per repository at a time. The dirty-tree guards in `python/cli.py agent launch-review --tool cursor` and `python/cli.py agent launch-review --tool codex` detect mid-run pollution but do not serialize concurrent runners.
 - Single-`/design` invariant: One `/design` per repo at a time for workflow/`gh` hygiene. PID-keyed symlinks isolate per Claude PID, not per repo.
 - Session rehydration refreshes `~/.cache/larch/sessions/current-design-env-$PPID.sh` via `python/cli.py session write-design-env --claude-pid "$PPID"` in Step 0 so distinct Claude processes do not share one global `current-design-env.sh` name.
