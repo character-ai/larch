@@ -1,0 +1,229 @@
+You are an expert engineer researching this repository and producing an implementation plan for /design Step 2b.
+
+You may use only side-effect-free repository discovery. Do not write repository files, design tmpdir files, or any other files. Return only the sentinel-delimited response requested below.
+
+Drafting requirements to follow:
+- Prefer minimum necessary change: avoid scope creep, unnecessary complexity, and additions not required for correctness.
+- Read approach-synthesis.txt: if it is exactly NO_SKETCHES, draft from direct codebase/doc inspection without fabricating planning-panel agreement.
+- Read discussion-round1.md when present for scope boundaries and strict constraints.
+- Read design-outline.md only when non-empty and .outline-approved exists; treat Goals, Non-goals, and Surfaces as binding scope.
+- Read brainstorm.md when present as additive ideation context for plan drafting.
+- Use a Files to modify/create section with per-file headings exactly one path each: ### NEW:, ### UPDATED:, or ### REWRITTEN: (at least one ASCII space after ### before the keyword).
+- Include Approach, Edge cases, Failure modes when non-trivial, Testing strategy, optional diff_added/diff_deleted/mechanical_churn trailers, and final diff_lines: <N>. mechanical_churn accepts only true or false; never write a number there.
+- The final plan body must end with a whole-line diff_lines: <N> trailer.
+- Optionally include up to three dynamic plan-review archetypes in a scout block after the plan. The launcher validates, filters, caps, and materializes this block; invalid post-plan scout output is ignored.
+- Scout sentinels inside the summary or plan are fatal format errors. Never put LARCH_SCOUT_* markers in the plan body.
+
+Readability style (trusted):
+# Readability Style
+
+**Consumer**: `/design` prompt surfaces that produce user-facing text, either through an external-agent prompt token or through inline orchestration prose.
+
+**Contract**: this file is the only source of truth for the `/design` readability preamble. External prompt files embed the literal `<READABILITY_STYLE>` token, and assembly code or orchestration expands it to this full file. Inline composition sites read this file before writing user-facing text.
+
+**When to load**: load only when a `/design` step is about to compose user-facing prose or render a prompt that asks another agent to compose such prose. Do not load during setup, pure validation, or byte-stable artifact handling.
+
+---
+
+## Style Axes
+
+Write in three styles at once:
+
+- **Strunk & White**: use active voice. Omit needless words. Prefer concrete nouns and verbs.
+- **Dyslexia-friendly**: use short sentences. Prefer simple words. Break dense ideas into headings and bullets.
+- **Brevity**: shorter is better. Minimize the total artifact length while preserving meaning.
+- **No em dashes**: never use em dashes; use periods, commas, colons, or semicolons instead.
+- **Hedge vs. direct**: hedge uncertain claims ("may contain", "can fail") instead of absolutes; keep directives imperative.
+
+## Precision Contract
+
+Keep these byte-stable unless the task explicitly edits them:
+
+- fenced code blocks
+- backticked tokens
+- file paths
+- identifiers
+- flag names
+- `### NEW:` / `### UPDATED:` / `### REWRITTEN:` plan grammar
+- the trailing `diff_lines: <N>` line
+
+Do not rewrite those items for style. Explain around them instead.
+
+## Plan-Drafting Reminders
+
+When `/design` Step 2b drafts a plan that adds, removes, or converts
+Bash fences in `skills/implement/SKILL.md`:
+
+- List `### UPDATED: scripts/test-implement-fence-shape.sh` in
+  **Files to modify/create**.
+- Note that `EXPECTED_OLD` / `EXPECTED_NEW` may need updates.
+
+This is a discoverability reminder only. Do not add plan grammar.
+
+## Precedence
+
+When rules conflict, use this order:
+
+`code references > meaning > brevity > dyslexia-friendly chunking > Strunk & White micro-rewrites`
+
+Apply it directly:
+
+- Preserve code references first.
+- Preserve exact meaning next.
+- Cut words before adding layout.
+- Add headings or bullets only when they improve scanning.
+- Polish grammar last.
+
+## Substitution Token
+
+External-agent prompt files MUST embed this literal token:
+
+`<READABILITY_STYLE>`
+
+Before launch, replace every literal `<READABILITY_STYLE>` token with the full contents of this file.
+
+## Examples
+
+Before: "It is recommended that the implementer should consider adding a validation step."
+
+After: "Add a validation step."
+
+Before: "The plan should make sure that users are not able to continue when the file cannot be read."
+
+After: "Block the flow when the file cannot be read."
+
+Before: "In order to avoid potential future confusion, documentation can be updated."
+
+After: "Update the docs to avoid confusion."
+
+Before: "The script performs an operation that checks if the path exists."
+
+After: "The script checks that the path exists."
+
+Before: "This could possibly be out of scope depending on how the team wants to proceed."
+
+After: "This may be out of scope."
+
+Required output format:
+[optional]
+LARCH_SUMMARY_BEGIN
+A concise summary for large-plan preview. Omit this whole summary block only when no useful summary is needed.
+LARCH_SUMMARY_END
+[/optional]
+LARCH_PLAN_BEGIN
+Full implementation plan body ending with diff_lines: <N>.
+LARCH_PLAN_END
+[optional]
+LARCH_SCOUT_BEGIN
+{"archetypes":[{"name":"slug","focus_area":"code-quality|risk-integration|correctness|architecture|security","weight":1,"rationale":"single-line reason","prompt_body":"2-6 sentence focus directive ending with the required citation sentence."}]}
+LARCH_SCOUT_END
+[/optional]
+
+Optional advisory status may be included between LARCH_STATUS_BEGIN and LARCH_STATUS_END, but the summary, plan, and optional scout sentinels above are the only parsed contract.
+
+Untrusted feature description:
+<feature_description encoding="literal-redacted">
+# [OOS] Embedded legacy assets in plan_review.py: defer larch_quiet_init until after session validate-design-tmpdir
+
+## Out-of-Scope Observation
+
+**Surfaced by**: dyn-compat-shims-output.txt
+**Phase**: review
+**Vote tally**: accepted (risk-integration)
+
+## Description
+
+Five embedded scripts in `python/plan_review.py`'s `_LEGACY_ASSETS` run `larch_quiet_init` before calling `python3 "$PLUGIN_ROOT/python/cli.py" session validate-design-tmpdir`, recreating the quiet-log-before-allowlist security regression on the legacy asset code path.
+
+Affected embedded scripts: `scripts/dispatch-plan-voters.sh` (~line 11 vs ~59), `skills/design/scripts/dispatch-plan-review-panel.sh` (~line 15 vs ~81), `skills/design/scripts/plan-review-loop.sh` (~line 29 vs ~106), `skills/design/scripts/emit-plan.sh` (~line 9 vs ~43), `skills/design/scripts/finalize-plan.sh` (~line 9 vs ~43).
+
+This branch (#3780) deferred quiet init for three live design scripts (`design-step3-mav.sh`, `design-stage-terminal-state.sh`, `design-failure-report.sh`) and documented the allowlist-before-quiet ordering in `SECURITY.md`. But the same ordering was not applied when regenerating `_LEGACY_ASSETS` in `python/plan_review.py`. When `/design` has already exported `DESIGN_TMPDIR`, `_materialize_legacy_root()` runs these blobs with `CLAUDE_PLUGIN_ROOT` set to the temp root; `lib-quiet.sh` can still pick that path and create `larch-quiet-*.log` under a disallowed directory before the Python validator rejects it.
+
+**Fix**: In each affected embedded asset, move `larch_quiet_init` to immediately after a successful `python3 "$PLUGIN_ROOT/python/cli.py" session validate-design-tmpdir …` (or `$CLI` equivalent), mirroring the live scripts. Add a decoded-asset test that asserts quiet init appears after the validate verb in every embedded script that sources `lib-quiet.sh`.
+
+---
+*This issue was automatically created by the larch `/implement` workflow from an out-of-scope observation surfaced during the workflow.*
+
+
+</feature_description>
+
+
+Untrusted approach synthesis:
+<approach_synthesis encoding="literal-redacted">
+NO_SKETCHES
+
+</approach_synthesis>
+
+
+Untrusted discussion round 1:
+<discussion_round1 encoding="literal-redacted">
+# Design Discussion — Round 1 (Issue #4589)
+
+Scope: defer `larch_quiet_init` until after `session validate-design-tmpdir` in the
+embedded `_LEGACY_ASSETS` bash bodies in `python/plan_review.py`, mirroring the
+live #3780 wrappers and the SECURITY.md allowlist-before-quiet rule.
+
+## Decision 1: Fix breadth (which embedded scripts get the reorder)
+- **Question**: The issue names 5 scripts, but decoding every `_LEGACY_ASSETS` entry found two more that also run `larch_quiet_init` before `validate-design-tmpdir`: `run-step3-review.sh` (LIVE, executed via `plan-review run`; gets quiet-init transitively via `lib-phase-driver.sh`) and `tally-plan-review.sh` (embedded body retained but no longer executed). Which set?
+- **Resolution**: ALL 7 quiet-before-validate scripts — `emit-plan.sh`, `finalize-plan.sh`, `dispatch-plan-review-panel.sh`, `plan-review-loop.sh`, `dispatch-plan-voters.sh` (the 5 named) **plus** `run-step3-review.sh` and `tally-plan-review.sh`.
+- **Source**: user
+
+## Decision 2: No-validate scripts (persist-retally, record-timing)
+- **Question**: `persist-retally-step3-env.sh` and `record-plan-review-round-timing.sh` source lib-quiet and call `larch_quiet_init` but NEVER call `validate-design-tmpdir` (only basic `-d`/`! -L` checks). 'Move quiet after validate' is unsatisfiable without adding a validate call. How to handle?
+- **Resolution**: ADD a `session validate-design-tmpdir` call (after arg-parse, before any DESIGN_TMPDIR write) to each, and init quiet immediately after it. Net effect: all 9 embedded scripts that call `larch_quiet_init` validate first.
+- **Source**: user
+
+## Hard constraint 1: Source `.sh` files are retired/absent
+- **Finding**: All five named source scripts (and the others) are absent from the repo — the gzip+base64 blobs in `_LEGACY_ASSETS` are the ONLY copy, and no regeneration tooling exists. The fix must decode → edit → re-gzip/base64 → replace the blob string literal in `python/plan_review.py`. Native in-process ports remain follow-up scope per `docs/python-migration.md §C3a1`.
+- **Source**: codebase
+
+## Hard constraint 2: Preserve the runtime waterfall substitution
+- **Finding**: `_decode_legacy_asset` applies post-decode text substitutions for `dispatch-plan-voters.sh` (`_ROOT_VOTER_DISPATCH`) and `dispatch-plan-review-panel.sh` (`_DESIGN_PANEL_DISPATCH`) — replacing retired `dispatch-with-waterfall.sh` references with `agent dispatch-waterfall`. Blob regeneration for those two MUST round-trip via the RAW `_decode_asset` (NOT `legacy_asset_bytes`), edit, re-encode — so the substitution markers (`"$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh"`, etc.) survive untouched.
+- **Source**: codebase
+
+## Hard constraint 3: Keep the `source` lines; move only the `larch_quiet_init` call
+- **Finding**: `larch_err` (from lib-quiet) is used in `usage()` and arg-parse error paths that run BEFORE validate. So the `source ".../lib-quiet.sh"` (and `source lib-phase-driver.sh`) lines stay at the top; only the `larch_quiet_init` invocation moves to after the validate call. Blob byte changes must be limited to the quiet-init line move (+ the added validate line for the 2 no-validate scripts) — a decode-diff of old vs new must show ONLY those intended changes.
+- **Source**: codebase
+
+## Hard constraint 4: Keep canonical docs in sync (SECURITY.md)
+- **Finding**: SECURITY.md (~line 166) documents the `/design` allowlist-before-quiet ordering and names the 3 live #3780 wrappers. Per AGENTS.md ("Update SECURITY.md when security-relevant behavior changes"), extend it to note the embedded `_LEGACY_ASSETS` bodies now follow the same ordering.
+- **Source**: codebase
+
+## Out of scope
+- Native in-process ports of the retired scripts (C3a1 follow-up).
+- Restoring the deleted source `.sh` files / changing `_materialize_legacy_root` to read from disk.
+- Adding allowlist validation to scripts that neither source lib-quiet nor call `larch_quiet_init`.
+
+</discussion_round1>
+
+
+Untrusted approved design outline:
+<design_outline encoding="literal-redacted">
+## Proposed Design Outline
+
+### Goals
+- Defer `larch_quiet_init` until after `session validate-design-tmpdir` in every embedded `_LEGACY_ASSETS` bash body that initializes quiet logging (the 7 quiet-before-validate scripts).
+- Add a `validate-design-tmpdir` call (then quiet-init right after) to the 2 embedded scripts that init quiet but never validate.
+- Add a universal decoded-asset test: every embedded script that calls `larch_quiet_init` must call `validate-design-tmpdir` before it.
+
+### Non-goals
+- No native in-process port of the retired scripts (C3a1 follow-up scope).
+- No restoring deleted source `.sh` files or reading them from disk in `_materialize_legacy_root`.
+- No behavior change beyond the quiet/validate ordering, plus the 2 added validate calls.
+
+### Approach sketch
+- Edit `python/plan_review.py`: regenerate the 9 affected `_LEGACY_ASSETS` blobs (decode -&gt; move/add lines -&gt; re-gzip+base64).
+- Keep each script's top-of-file `source` lines (so `larch_err` stays available in `usage()`); move only the `larch_quiet_init` call.
+- For `dispatch-plan-voters.sh` and `dispatch-plan-review-panel.sh`, round-trip via raw `_decode_asset` so the runtime waterfall-substitution markers survive; verify a decode-diff shows only the intended line changes.
+- Add the invariant test to `python/test_plan_review.py`; update `SECURITY.md` (~line 166) to note the embedded assets now follow the ordering.
+
+### Surfaces in scope
+- `python/plan_review.py` (`_LEGACY_ASSETS` blobs).
+- `python/test_plan_review.py` (new invariant test).
+- `SECURITY.md` (ordering note).
+
+### Open questions
+- None.
+
+</design_outline>
+
