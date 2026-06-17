@@ -178,6 +178,23 @@ run_with_stdin() {
     printf '%s\n' "$rc"
 }
 
+run_with_stdin_and_stale_token() {
+    local bin=$1 cwd=$2 input=$3 xdg_cache=$4 out_file=$5 err_file=$6 record_file=$7 rc=0
+    local home="${8:-}"
+    local env_args=(
+        PATH="$bin"
+        XDG_CACHE_HOME="$xdg_cache"
+        CLAUDE_PLUGIN_ROOT="$REPO_ROOT"
+        LARCH_TOKEN_SESSION_ID="stale-session"
+        TOKEN_RECORD_FILE="$record_file"
+    )
+    if [[ -n "$home" ]]; then
+        env_args+=(HOME="$home")
+    fi
+    (cd "$cwd" && printf '%s' "$input" | env "${env_args[@]}" "$BASH_BIN" "$SCRIPT" > "$out_file" 2> "$err_file") || rc=$?
+    printf '%s\n' "$rc"
+}
+
 ctx_from_stdout() {
     local stdout=$1
     printf '%s' "$stdout" | "$REAL_JQ" -r '.hookSpecificOutput.additionalContext // empty'
@@ -617,6 +634,24 @@ stdout=$(cat "$tmp/c12b.out")
 assert_valid_json "$stdout" "case 12b"
 ctx=$(ctx_from_stdout "$stdout")
 assert_contains "$ctx" "post-/review boundary" "case 12b: XDG-only cache root resolves boundary"
+
+echo "=== Case 12c: stale ambient LARCH_TOKEN_SESSION_ID is cleared before resolver ==="
+build_bin "$tmp/c12c_bin"
+add_real_tool "$tmp/c12c_bin" jq "$REAL_JQ"
+add_real_tool "$tmp/c12c_bin" git "$REAL_GIT"
+cat > "$tmp/c12c_bin/python3" <<STUB
+#!$BASH_BIN
+printf '%s\n' "\${LARCH_TOKEN_SESSION_ID-__UNSET__}" > "\$TOKEN_RECORD_FILE"
+exit 0
+STUB
+chmod +x "$tmp/c12c_bin/python3"
+mkdir -p "$tmp/c12c-cwd" "$tmp/c12c-home" "$XDG_TEST/larch/sessions/claude-implement-c12c-stale"
+rc=$(run_with_stdin_and_stale_token "$tmp/c12c_bin" "$tmp/c12c-cwd" '{"cwd":"'"$tmp/c12c-cwd"'"}' "$XDG_TEST" "$tmp/c12c.out" "$tmp/c12c.err" "$tmp/c12c-token.txt" "$tmp/c12c-home")
+assert_eq "$rc" "0" "case 12c: exit code 0"
+assert_eq "$(cat "$tmp/c12c-token.txt")" "__UNSET__" "case 12c: resolver sees token unset"
+stdout=$(cat "$tmp/c12c.out")
+assert_empty "$stdout" "case 12c: stdout empty with resolver returning no tmpdir"
+assert_not_contains "$(cat "$tmp/c12c-token.txt")" "stale-session" "case 12c: stale token not leaked to resolver"
 
 echo "=== Case 13: .run-cleaned-up suppresses boundary advisories ==="
 mkdir -p "$tmp/c13-cwd"

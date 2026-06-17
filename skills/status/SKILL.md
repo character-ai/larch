@@ -26,6 +26,6 @@ Render a human-readable status report using the parsed values:
 - **Codex**: translate `CODEX_STATE` — `ok` → `ok`; `binary-missing` → `binary not found on PATH`; `probe-failed` → `binary found but runtime probe failed`; `unknown` → `probe did not run`
 - **Cursor**: same translation using `CURSOR_STATE`
 
-When `DEGRADED=true`, append a brief note that one or more vendors are unavailable and that `/implement` will fall back to a reduced panel or Claude-only mode.
+When `DEGRADED=true`, append a brief note based on vendor availability: if exactly one vendor is unavailable, `/implement` requires explicit operator confirmation and then continues with that external dropped from the reduced panel; if both vendors are unavailable, `/implement` hard-fails until at least one vendor is fixed.
 
 If the script exits non-zero, surface the error message and do not invent status values.
