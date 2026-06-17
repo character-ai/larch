@@ -1,0 +1,1 @@
+Plan: add chartable cursor apply timing, allow review-fix timing kinds, label apply bars as `vendor/apply`, update docs, and add harness coverage for `/implement`, `/review`, `/design`, and live progress.

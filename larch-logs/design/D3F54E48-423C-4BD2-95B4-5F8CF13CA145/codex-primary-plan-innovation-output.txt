@@ -1,0 +1,8 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	architecture	python/agents.py:1604-1680; python/review_and_fix.py:1250-1278	[SCOPE-REDUCTION] Plan adds generic timing support to agent run-external-agent for one Cursor apply caller	The feature only needs the Cursor apply coder to emit a vendor row. Broadening a reusable CLI adds parser validation and tests without being required, and exposes timing behavior to unrelated callers.	Record cursor-review-fix directly in python/review_and_fix.py around _run_coder_cursor using the existing timing record-vendor-task pathway, similar to python/plan_quality.py:1786-1840. Drop the python/agents.py and python/test_agents.py plan changes.
+
+1. **[architecture] Minimum-change breach:** The plan expands `agent run-external-agent` for one caller.
+
+   **Concern:** This creates a new generic CLI surface.
+
+   **Suggested revision:** Keep timing local to `_run_coder_cursor`. Use the existing timing CLI after the Cursor run completes.
