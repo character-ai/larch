@@ -1,0 +1,23 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	testing	skills/design/scripts/test-design-step3-review.sh:11-34	Proposed /design round-start-s regression routes through design-step3-review.sh plus make_fake_step3_plugin stub	The fake plugin replaces python/cli.py plan-review run with plan-review-loop-stub.sh, so review-design-step3-loop.sh never executes; asserting plan-review/round-1/round-start-s after the wrapper would not catch a missing or mis-placed step3_loop_persist_round_start_s on the production embedded loop path	Add a runtime harness that sources live review-design-step3-loop.sh (or materialized embedded copy), defines a stub run_step3_round_body that exits complete, calls run_design_step3_loop, and asserts round-start-s exists and is not overwritten when pre-seeded; keep test_plan_review.py embedded/static checks as secondary only
+2	in_scope	important	correctness	python/progress_report.py:577-614	Prior-round fallback contract for _render_inflight_gantt is underspecified	The plan says to derive prior round max end_s from v1 round rows but does not require filtering by skill (col 4) and exact prior round index (round_num - 1, col 6); settled-chart fix adds SKILL to gantt_rrange because same-number cross-skill rows can widen windows, and the same ledger grammar applies here	Specify and implement helper lookup as max end_s over v1 round rows where type=round, skill matches caller (implement vs design), and round index equals round_num - 1; thread skill into _render_inflight_gantt from _render_step5 / _render_design_plan_review
+
+## Findings
+
+### 1. [testing] Design round-start-s test will not exercise production loop
+**Location:** `skills/design/scripts/test-design-step3-review.sh:11-34`
+
+The plan adds a `/design` regression via `test-design-step3-review.sh` using the existing fake Step 3 plugin. That plugin stubs `plan-review run` with `plan-review-loop-stub.sh` and never runs `review-design-step3-loop.sh` (the script that would get the new `step3_loop_persist_round_start_s` helper). Production runs the gzipped embedded loop via `plan_review._run_legacy`, not the wrapper fake path.
+
+A post-wrapper assert on `plan-review/round-1/round-start-s` would not fail if persist logic is missing or gated wrong. Static blob string checks in `test_plan_review.py` only prove the helper text exists in the asset.
+
+**Suggested revision:** Add a runtime test that sources the live loop (or materialized embedded copy), stubs only `run_step3_round_body`, invokes `run_design_step3_loop`, and asserts write-once `round-start-s` behavior. Keep `test_embedded_review_design_step3_loop_matches_live_script` as a companion check.
+
+### 2. [correctness] Prior-round fallback needs explicit skill and round filters
+**Location:** `python/progress_report.py:577-614`
+
+The plan hardens `_render_inflight_gantt` with a prior-round-end fallback but does not pin the lookup contract. `scripts/render-review-phase-detail.sh` already filters `table_rrange` by `SKILL` while `gantt_rrange` does not (lines 246-262); the plan fixes that asymmetry for settled charts but omits the same constraint for the new Python prior-round helper.
+
+Without filtering `v1 round` rows by skill and exact prior round index (`round_num - 1`), a same-number cross-skill row can skew the fallback lower bound.
+
+**Suggested revision:** Document and implement: max `end_s` over rows where `$2=="round"`, `$4==skill`, and `$6==round_num-1` (matching `python/timing.py` / `render-review-phase-detail.sh` column layout). Pass `skill` from `_render_step5` (`implement`) and `_render_design_plan_review` (`design`).
