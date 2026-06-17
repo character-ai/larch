@@ -1010,6 +1010,26 @@ def test_big_diff_bounded_copy(tmp_path: Path) -> None:
 
 
 @pytest.mark.voter_edge_and_r3_claude
+def test_bounded_copy_does_not_read_entire_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    review = tmp_path / "review"
+    review.mkdir()
+    src = tmp_path / "big-diff.txt"
+    src.write_bytes(b"x" * (2048 * 1024))
+
+    def _no_whole_file_read(self: Path) -> bytes:
+        raise AssertionError(f"_make_bounded_context_copy must not read all of {self} into memory")
+
+    monkeypatch.setattr(agent_voters.Path, "read_bytes", _no_whole_file_read)  # type: ignore[arg-type]
+
+    dest = agent_voters._make_bounded_context_copy(review, "diff", str(src), 200000)  # pyright: ignore[reportPrivateUsage]
+    assert dest, "expected a bounded context copy path"
+    dest_path = Path(dest)
+    assert dest_path.stat().st_size == 200000
+    with dest_path.open("rb") as handle:
+        assert handle.read() == b"x" * 200000
+
+
+@pytest.mark.voter_edge_and_r3_claude
 def test_oos_only_ballot_triggers_parse_retry(tmp_path: Path) -> None:
     stub_bin = _make_voter_stub_bin(tmp_path)
     review = _harness_review_tmpdir(tmp_path, "oos-retry")

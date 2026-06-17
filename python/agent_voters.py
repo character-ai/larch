@@ -91,7 +91,8 @@ def _make_bounded_context_copy(review_tmpdir: Path, label: str, src: str, max_by
     if not src or not Path(src).is_file():
         return ""
     dest = review_tmpdir / f"{label}-context.txt"
-    dest.write_bytes(Path(src).read_bytes()[:max_bytes])
+    with Path(src).open("rb") as handle:
+        dest.write_bytes(handle.read(max_bytes))
     return str(dest)
 
 
