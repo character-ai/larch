@@ -2772,7 +2772,6 @@ def append_failure_main(argv: list[str]) -> int:
 
 _ROUND_SIDECAR_FILES = frozenset({
     "review-tally.env",
-    "collector-results.env",
     "collect-agent-results.log",
     "review-summary.json",
     "coder.env",
@@ -2783,6 +2782,8 @@ _ROUND_SIDECAR_FILES = frozenset({
 _ROUND_ARTIFACT_ALLOW = (
     "prune-decision.env",
     "prune-nit.env",
+    "collector-results.env",
+    "review-core-threshold.env",
     "findings-classification.tsv",
     "scout-archetype-yield.tsv",
     "rejected-findings.md",

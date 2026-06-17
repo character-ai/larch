@@ -253,6 +253,10 @@ collector_success_count() {
     printf '%s\n' "$count"
 }
 
+parseable_review_output_present() {
+    [[ -s "$REVIEW_TMPDIR/findings.md" || -s "$REVIEW_TMPDIR/oos.md" ]]
+}
+
 execution_issues_log() {
     if [[ -n "${LARCH_EXECUTION_ISSUES_LOG:-}" ]]; then
         printf '%s\n' "$LARCH_EXECUTION_ISSUES_LOG"
@@ -875,13 +879,20 @@ not_substantive_slots=$(kv_get "$threshold_out" NOT_SUBSTANTIVE_SLOTS)
 not_substantive_slots="${not_substantive_slots:-0}"
 if [[ "$threshold_ok" != "false" ]]; then
     launched_success_count=$(collector_success_count "$collector_results_file")
-    if (( launched_success_count == 0 )); then
+    if (( launched_success_count == 0 )) && ! parseable_review_output_present; then
         threshold_ok=false
         threshold_reason="no successful launched reviewer output"
         {
             cat "$threshold_out"
             printf 'COVERAGE_GATE_OK=false\n'
             printf 'COVERAGE_GATE_REASON=%s\n' "$threshold_reason"
+        } > "${threshold_out}.tmp"
+        mv -f "${threshold_out}.tmp" "$threshold_out"
+    elif (( launched_success_count == 0 )); then
+        {
+            cat "$threshold_out"
+            printf 'COVERAGE_GATE_OK=true\n'
+            printf 'COVERAGE_GATE_REASON=parseable reviewer output present\n'
         } > "${threshold_out}.tmp"
         mv -f "${threshold_out}.tmp" "$threshold_out"
     fi

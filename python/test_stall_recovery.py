@@ -298,6 +298,29 @@ def test_normalize_outcome_reports_full_kv_layers(tmp_path: Path, capsys: pytest
     assert "IMPLEMENT_SHIP_STALL_TRACKING=false" in out
 
 
+def test_normalize_outcome_flags_panel_failed_merge_downgrade(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _ = (tmp_path / "ship-seed-input.env").write_text("MERGE=true\n", encoding="utf-8")
+    _ = (tmp_path / "ship-pr-state.sh").write_text(
+        "STALL_TRACKING=false\nPR_NUMBER=12\nMERGE=false\nDRAFT=false\n",
+        encoding="utf-8",
+    )
+    _ = (tmp_path / "stall-recovery-classification.env").write_text(
+        "STALL_STEP=5\nRESUME_HINT=step8-shippr\n",
+        encoding="utf-8",
+    )
+    _ = (tmp_path / "execution-issues.md").write_text("Step 5 — wrapper stalled: panel-failed\n", encoding="utf-8")
+
+    rc = stall_recovery.normalize_outcome_main(["--implement-tmpdir", str(tmp_path)])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "IMPLEMENT_NORMALIZED_OUTCOME=pr-created" in out
+    assert "IMPLEMENT_MERGE_DOWNGRADED=true" in out
+
+
 def test_classify_design_state_file_merge(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     primary = tmp_path / "design-failure-terminal-state.env"
     _ = primary.write_text(

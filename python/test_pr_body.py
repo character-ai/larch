@@ -234,6 +234,38 @@ def test_write_final_report_counts_warnings_and_exec(tmp_path: Path, monkeypatch
     assert "**Warnings**: 1" in body
 
 
+def test_write_final_report_renders_panel_failed_merge_downgrade(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _ = (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=0\nRUN_ID=run1\n", encoding="utf-8")
+    _ = (tmp_path / "session-env.sh").write_text("REPO=o/r\nMODE=N/A\n", encoding="utf-8")
+    _ = (tmp_path / "ship-seed-input.env").write_text("MERGE=true\n", encoding="utf-8")
+    _ = (tmp_path / "ship-pr-state.sh").write_text(
+        "PR_NUMBER=12\nPR_URL=https://github.com/o/r/pull/12\nSTALL_TRACKING=false\nMERGE=false\nDRAFT=false\n",
+        encoding="utf-8",
+    )
+    _ = (tmp_path / "finalize-state.sh").write_text("", encoding="utf-8")
+    _ = (tmp_path / "run-flags.sh").write_text("EMERGENCY_REQUESTED=false\n", encoding="utf-8")
+    _ = (tmp_path / "stall-recovery-classification.env").write_text(
+        "STALL_STEP=5\nRESUME_HINT=step8-shippr\n",
+        encoding="utf-8",
+    )
+    _ = (tmp_path / "execution-issues.md").write_text("Step 5 — wrapper stalled: panel-failed\n", encoding="utf-8")
+
+    def fake_final_report_token_fields(implement_tmpdir: Path, run_id: str) -> dict[str, object]:
+        _ = (implement_tmpdir, run_id)
+        return {"cost_unavailable": True}
+
+    monkeypatch.setattr(pr_body, "_final_report_token_fields", fake_final_report_token_fields)
+    rc, _url, _err = pr_body.write_final_report(tmp_path, comment_only=True)
+
+    assert rc == 0
+    body = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
+    assert "## /implement run run1 — pr-created" in body
+    assert "**⚠ Merge downgraded**" in body
+
+
 def _write_minimal_final_report_state(tmp_path: Path, *, issue: str = "0", run_id: str = "run1") -> None:
     _ = (tmp_path / "parent-issue.md").write_text(f"ISSUE_NUMBER={issue}\nRUN_ID={run_id}\n", encoding="utf-8")
     _ = (tmp_path / "session-env.sh").write_text("REPO=o/r\nMODE=N/A\n", encoding="utf-8")
@@ -483,6 +515,20 @@ def test_render_run_summary_includes_cost_line() -> None:
     )
     assert "💰 TOTAL" in body
     assert "**Cost**:" in body
+
+
+def test_render_run_summary_includes_merge_downgrade_warning() -> None:
+    body = pr_body.render_run_summary(
+        skill="implement",
+        outcome="pr-created",
+        run_id="run1",
+        pr_number="12",
+        merge_downgraded="true",
+        cost_unavailable=True,
+    )
+
+    assert "**⚠ Merge downgraded**" in body
+    assert "panel-failed recovery shipped a PR without merging" in body
 
 
 def test_post_tracking_issue_writes_metadata(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

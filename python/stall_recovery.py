@@ -169,6 +169,16 @@ def _read_state_file(path: Path) -> dict[str, str]:
     return out
 
 
+def _text_file_contains(path: Path, needle: str) -> bool:
+    if not path.is_file():
+        return False
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    return needle.lower() in text.lower()
+
+
 def _merged_state(
     tmpdir: Path,
     *,
@@ -324,6 +334,8 @@ def normalized_outcome_values(args: argparse.Namespace) -> dict[str, str]:
     ship = _read_state_file(tmpdir / "ship-pr-state.sh")
     fin = _read_state_file(tmpdir / "finalize-state.sh")
     ses = _read_state_file(tmpdir / "session-env.sh")
+    seed = _read_state_file(tmpdir / "ship-seed-input.env")
+    classification = _read_state_file(tmpdir / _DEFAULT_CLASSIFICATION_FILE)
     memory_stall = getattr(args, "in_memory_stall_tracking", "") or os.environ.get("STALL_TRACKING", "false")
     ship_stall = ship.get("STALL_TRACKING", "false")
     fin_stall = fin.get("STALL_TRACKING", "false")
@@ -357,9 +369,18 @@ def normalized_outcome_values(args: argparse.Namespace) -> dict[str, str]:
     if _truthy(bail_user) and outcome == "bailed":
         outcome = "bailed-needs-user-input"
     succeeded = outcome in {"merged", "force-merged-externally", "pr-created", "pr-created-draft", "forked-dry-run"} and not any_stall
+    merge_downgraded = (
+        outcome == "pr-created"
+        and _truthy(seed.get("MERGE", "false"))
+        and not _truthy(merge)
+        and classification.get("STALL_STEP") == "5"
+        and classification.get("RESUME_HINT") == "step8-shippr"
+        and _text_file_contains(tmpdir / "execution-issues.md", "panel-failed")
+    )
     return {
         "IMPLEMENT_NORMALIZED_OUTCOME": outcome,
         "IMPLEMENT_OUTCOME_SUCCEEDED": "true" if succeeded else "false",
+        "IMPLEMENT_MERGE_DOWNGRADED": "true" if merge_downgraded else "false",
         "IMPLEMENT_ANY_STALL_TRACKING": "true" if any_stall else "false",
         "IMPLEMENT_MEMORY_STALL_TRACKING": memory_stall or "false",
         "IMPLEMENT_SHIP_STALL_TRACKING": ship_stall or "false",
