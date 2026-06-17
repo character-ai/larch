@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import pytest
 from proc import CommandResult
 from test_support import RecordingRunner
 
@@ -218,3 +219,61 @@ def test_wait_output_file_writes_done_sentinel(monkeypatch, tmp_path):
     assert done.is_file()
     assert done.read_text(encoding="utf-8").strip() == "0"
     assert out_file.read_text(encoding="utf-8").splitlines()[0] == "ACTION=merge"
+
+
+def test_agentic_fix_usage_exits_nonzero(capsys) -> None:
+    with pytest.raises(SystemExit) as exc:
+        ci.agentic_fix_main([])
+    assert exc.value.code == 2
+    assert "required" in capsys.readouterr().err.lower()
+
+
+def test_agentic_fix_rejects_relative_repo_root(capsys, tmp_path) -> None:
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    rc = ci.agentic_fix_main([
+        "--pr", "1",
+        "--repo", "o/r",
+        "--repo-root", "relative",
+        "--run-id", "42",
+        "--output-dir", str(out_dir),
+        "--implement-tmpdir", str(tmp_path),
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "STATUS=waterfall-failed" in out
+    assert "DETAIL=missing-repo-root" in out
+
+
+def test_agentic_fix_accepts_optional_flags(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+
+    def fake_run_cycle(*_args: object, **_kwargs: object) -> tuple[str, str, bool, tuple[str, ...], bool, str | None, str]:
+        return "passed", "", False, (), False, None, ""
+
+    monkeypatch.setattr(ci.ci_agentic_fix, "_run_cycle", fake_run_cycle)
+    rc = ci.agentic_fix_main([
+        "--pr", "1",
+        "--repo", "o/r",
+        "--repo-root", str(repo),
+        "--run-id", "42",
+        "--output-dir", str(out_dir),
+        "--implement-tmpdir", str(tmp_path),
+        "--plan-file", str(tmp_path / "plan.md"),
+        "--base-remote", "upstream",
+        "--base-ref", "develop",
+        "--max-cycles", "2",
+        "--state-file", str(tmp_path / "state.sh"),
+        "--no-logs-commit",
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "STATUS=passed" in out
+    assert "CYCLES=1" in out

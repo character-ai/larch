@@ -353,6 +353,16 @@ def read_launcher_exit(output_file: str | Path, process_rc: int = 0) -> int:
     return resolve_launcher_exit("", output_file=path, process_rc=process_rc)
 
 
+def _launcher_failure_class_from_text(text: str) -> str | None:
+    last = ""
+    for line in text.splitlines():
+        if line.startswith("LAUNCHER_FAILURE_CLASS="):
+            last = line.split("=", 1)[1].strip().strip("\r")
+    if last in ("none", "health", "other"):
+        return last
+    return None
+
+
 def parse_launcher_failure_class(log_file: str | Path | None) -> str:
     """Last LAUNCHER_FAILURE_CLASS= from launcher capture; unknown/missing → health."""
     if log_file is None:
@@ -360,19 +370,22 @@ def parse_launcher_failure_class(log_file: str | Path | None) -> str:
     path = Path(log_file)
     if not path.is_file():
         return "health"
-    last = ""
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-        if line.startswith("LAUNCHER_FAILURE_CLASS="):
-            last = line.split("=", 1)[1].strip().strip("\r")
-    if last in ("none", "health", "other"):
-        return last
-    return "health"
+    parsed = _launcher_failure_class_from_text(
+        path.read_text(encoding="utf-8", errors="replace"),
+    )
+    return parsed if parsed is not None else "health"
 
 
 def effective_failure_class(attempt: TierAttempt) -> str:
-    """Failure class from capture log when present, else ``attempt.failure``."""
+    """Failure class from launcher capture when KV is present, else ``attempt.failure``."""
     if attempt.failure_log is not None:
-        return parse_launcher_failure_class(attempt.failure_log)
+        path = Path(attempt.failure_log)
+        if path.is_file():
+            parsed = _launcher_failure_class_from_text(
+                path.read_text(encoding="utf-8", errors="replace"),
+            )
+            if parsed is not None:
+                return parsed
     return attempt.failure.failure_class
 
 
@@ -4381,6 +4394,31 @@ def launch_claude_ci_main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def _validate_lint_fix_args(args: argparse.Namespace) -> tuple[bool, int]:
+    if not _is_positive_int(args.timeout):
+        _err("agent launch-claude-lint-fix: --timeout must be a positive integer")
+        return False, 2
+    output = Path(args.output)
+    session_root, output_msg = _validate_claude_output(output)
+    if session_root is None:
+        _err(f"agent launch-claude-lint-fix: {output_msg}")
+        return False, 2
+    prompt_file = Path(args.prompt_body_file)
+    roots = [session_root, Path.cwd().resolve()]
+    prompt_ok, prompt_msg = _validate_prompt_file(prompt_file, roots)
+    if not prompt_ok:
+        _err(f"agent launch-claude-lint-fix: {prompt_msg}")
+        return False, 2
+    try:
+        if prompt_file.stat().st_size > 1024 * 1024:
+            _err("agent launch-claude-lint-fix: prompt body file exceeds 1 MB")
+            return False, 2
+    except OSError:
+        _err("agent launch-claude-lint-fix: prompt body file validation failed")
+        return False, 2
+    return True, 0
+
+
 def launch_claude_lint_fix_main(argv: list[str] | None = None) -> int:
     logging_util.quiet_init(argv0="cli.py")
     parser = argparse.ArgumentParser(prog="cli.py agent launch-claude-lint-fix")
@@ -4389,6 +4427,9 @@ def launch_claude_lint_fix_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--timeout", default="1800")
     parser.add_argument("--model", default=config.CLAUDE_CI_FIX_MODEL)
     args = parser.parse_args(argv)
+    ok, rc = _validate_lint_fix_args(args)
+    if not ok:
+        return rc
     output = Path(args.output)
     prompt_file = Path(args.prompt_body_file)
     if not prompt_file.is_file():

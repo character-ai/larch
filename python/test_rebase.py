@@ -1572,14 +1572,27 @@ def test_success_tier_stages_marker_free_conflict_file(tmp_path: Path) -> None:
     assert ("git", "rebase", "--continue") in runner.calls
 
 
-def test_effective_failure_class_reads_launcher_output_envelope(tmp_path: Path) -> None:
-    output = tmp_path / "conflict-claude.out"
-    _ = output.write_text("LAUNCHER_FAILURE_CLASS=health\n", encoding="utf-8")
+def test_effective_failure_class_reads_launcher_capture_envelope(tmp_path: Path) -> None:
+    capture = tmp_path / "conflict-claude.fail.log"
+    _ = capture.write_text("LAUNCHER_FAILURE_CLASS=health\n", encoding="utf-8")
     attempt = TierAttempt(
         tier="claude",
         wrapper_rc=0,
         launcher_exit=127,
         failure=LaunchFailure("other", "unknown"),
-        failure_log=output,
+        failure_log=capture,
     )
     assert rebase.agents.effective_failure_class(attempt) == "health"
+
+
+def test_effective_failure_class_falls_back_without_launcher_kv(tmp_path: Path) -> None:
+    capture = tmp_path / "conflict-claude.fail.log"
+    _ = capture.write_text("ordinary launcher output\n", encoding="utf-8")
+    attempt = TierAttempt(
+        tier="claude",
+        wrapper_rc=0,
+        launcher_exit=1,
+        failure=LaunchFailure("other", "parse"),
+        failure_log=capture,
+    )
+    assert rebase.agents.effective_failure_class(attempt) == "other"

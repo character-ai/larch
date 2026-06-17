@@ -122,7 +122,7 @@ def _unmerged_paths(runner: Runner, *, cwd: str | None) -> list[str]:
         raise Stalled(_redact_outbound("git diff --diff-filter=U failed")) from None
 
 
-_CONFLICT_MARKER_RE = re.compile(r"^(<<<<<<<|=======|>>>>>>>)", re.MULTILINE)
+_CONFLICT_MARKER_RE = re.compile(r"^(<<<<<<<|>>>>>>>)", re.MULTILINE)
 
 
 def _path_has_conflict_markers(path: str, *, cwd: str | None) -> bool:
@@ -209,26 +209,25 @@ def make_conflict_launch_fn(
                 cwd=cwd,
                 allow_output_fallback=True,
             )
+        launcher_capture = result.stdout + result.stderr
+        _ = failure_log.write_text(launcher_capture, encoding="utf-8")
         launcher_exit = agents.resolve_launcher_exit(
-            result.stdout + result.stderr,
+            launcher_capture,
             output_file=output,
             process_rc=result.returncode,
         )
         failure = agents.classify_launch_failure(
             launcher_exit,
-            failure_log if failure_log.is_file() else None,
+            failure_log,
             tool=tier,
             output_file=output,
-        )
-        flog: str | Path | None = output if output.is_file() else (
-            failure_log if failure_log.is_file() else None
         )
         return agents.TierAttempt(
             tier=tier,
             wrapper_rc=result.returncode,
             launcher_exit=launcher_exit,
             failure=failure,
-            failure_log=flog,
+            failure_log=failure_log,
         )
 
     return launch
