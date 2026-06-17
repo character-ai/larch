@@ -6,7 +6,6 @@ if [ -n "${CLONE_TAG:-}" ]; then
 else
   _clone_bt=$(basename "$PWD")
   CLONE_TAG_FULL=$(printf '%s' "$_clone_bt" | tr -c 'A-Za-z0-9_-' '_')
-  CLONE_TAG_FULL=${CLONE_TAG_FULL%????????????????????????????????*}
   CLONE_TAG_FULL=$(printf '%.32s' "$CLONE_TAG_FULL")
   [ -n "$CLONE_TAG_FULL" ] || CLONE_TAG_FULL="_"
 fi
