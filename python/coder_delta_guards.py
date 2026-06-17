@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import config
 import git
 from proc import Runner
 
@@ -35,6 +36,16 @@ def untracked_dirty_paths(runner: Runner, *, cwd: str | None = None) -> tuple[st
     if result.returncode != 0:
         return ()
     return tuple(line.strip() for line in result.stdout.splitlines() if line.strip())
+
+
+def protected_repo_paths() -> tuple[str, ...]:
+    return (config.PLUGIN_JSON_PATH,)
+
+
+def coder_forbidden_paths(runner: Runner, *, cwd: str | None = None) -> tuple[str, ...]:
+    return tuple(
+        dict.fromkeys((".gitmodules", *protected_repo_paths(), *submodule_paths(runner, cwd=cwd))),
+    )
 
 
 def submodule_paths(runner: Runner, *, cwd: str | None = None) -> tuple[str, ...]:

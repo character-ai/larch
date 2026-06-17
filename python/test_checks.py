@@ -971,7 +971,8 @@ def test_run_lint_fix_codex_argv_parity(tmp_path: Path) -> None:
         _ok(""),  # baseline untracked status
         _ok(head + "\n"),  # rev-parse HEAD
         _ok("main\n"),  # symbolic-ref
-        _ok(""),  # submodule foreach
+        _ok(""),  # submodule foreach (prompt)
+        _ok(""),  # submodule foreach (forbidden paths)
         _ok("", rc=1),  # codex dispatch fails
         _ok("", rc=1),  # cursor not tried when codex_present only
     ])
@@ -1197,7 +1198,8 @@ def test_run_lint_fix_threads_session_root_as_codex_implement_tmpdir(
         _ok(""),  # baseline untracked status
         _ok("abc123\n"),  # rev-parse HEAD
         _ok("main\n"),  # symbolic-ref
-        _ok(""),  # submodule foreach
+        _ok(""),  # submodule foreach (prompt)
+        _ok(""),  # submodule foreach (forbidden paths)
     ])
 
     outcome = checks.run_lint_fix(
@@ -1241,7 +1243,8 @@ def test_run_lint_fix_derives_implement_tmpdir_from_run_parent_without_allowed_t
         _ok(""),  # baseline untracked status
         _ok("abc123\n"),  # rev-parse HEAD
         _ok("main\n"),  # symbolic-ref
-        _ok(""),  # submodule foreach
+        _ok(""),  # submodule foreach (prompt)
+        _ok(""),  # submodule foreach (forbidden paths)
     ])
 
     _ = checks.run_lint_fix(
@@ -1282,7 +1285,8 @@ def test_run_lint_fix_dispatch_failure_ignores_health_classification(
         _ok(""),  # baseline untracked status
         _ok(head + "\n"),  # rev-parse HEAD
         _ok("main\n"),  # symbolic-ref
-        _ok(""),  # submodule foreach
+        _ok(""),  # submodule foreach (prompt)
+        _ok(""),  # submodule foreach (forbidden paths)
     ])
     outcome = checks.run_lint_fix(
         runner,
@@ -1311,7 +1315,8 @@ def test_run_lint_fix_git_commit_applied_path(tmp_path: Path) -> None:
         _ok(""),  # baseline untracked status
         _ok(head + "\n"),  # baseline HEAD
         _ok("main\n"),  # branch
-        _ok(""),  # submodule foreach
+        _ok(""),  # submodule foreach (prompt)
+        _ok(""),  # submodule foreach (forbidden paths)
         _ok(""),  # codex dispatch succeeds
         _ok(head + "\n"),  # current HEAD after dispatch
         _ok("fixed.py\n"),  # forbidden-revert tracked diff
@@ -1354,7 +1359,8 @@ def test_run_lint_fix_forbidden_reset_failure_is_structural(tmp_path: Path) -> N
         _ok(""),  # baseline untracked status
         _ok(head + "\n"),  # baseline HEAD
         _ok("main\n"),  # baseline branch
-        _ok(""),  # submodule foreach
+        _ok(""),  # submodule foreach (prompt)
+        _ok(""),  # submodule foreach (forbidden paths)
         _ok(""),  # codex dispatch succeeds
         _ok(moved + "\n"),  # current HEAD after dispatch
         _ok("main\n"),  # current branch
@@ -1394,7 +1400,8 @@ def test_run_lint_fix_committed_forbidden_delta_reset_success_is_violation(
         _ok(""),  # baseline untracked status
         _ok(head + "\n"),  # baseline HEAD
         _ok("main\n"),  # baseline branch
-        _ok(""),  # submodule foreach
+        _ok(""),  # submodule foreach (prompt)
+        _ok(""),  # submodule foreach (forbidden paths)
         _ok(""),  # codex dispatch succeeds
         _ok(moved + "\n"),  # current HEAD after dispatch
         _ok("main\n"),  # current branch
@@ -1431,7 +1438,8 @@ def test_run_lint_fix_forbidden_worktree_delta_is_reverted(tmp_path: Path) -> No
         _ok(""),  # baseline untracked status
         _ok(head + "\n"),  # baseline HEAD
         _ok("main\n"),  # branch
-        _ok(""),  # submodule foreach
+        _ok(""),  # submodule foreach (prompt)
+        _ok(""),  # submodule foreach (forbidden paths)
         _ok(""),  # codex dispatch succeeds
         _ok(head + "\n"),  # current HEAD after dispatch
         _ok(".gitmodules\n"),  # forbidden-revert tracked diff
@@ -1454,6 +1462,50 @@ def test_run_lint_fix_forbidden_worktree_delta_is_reverted(tmp_path: Path) -> No
     assert any(call[:3] == ("git", "checkout", "--") for call, _kw in runner.calls)
 
 
+def test_run_lint_fix_plugin_json_touch_is_reverted(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    log = tmp_path / "checks.log"
+    _ = log.write_text("lint error\n", encoding="utf-8")
+    head = "abc123"
+
+    def succeed_claude(*_args: object, **_kwargs: object) -> int:
+        return 0
+
+    monkeypatch.setattr(checks, "_run_claude", succeed_claude)
+    runner = StubRunner([
+        _ok(""),  # baseline tracked diff
+        _ok(""),  # baseline cached diff
+        _ok(""),  # baseline untracked status
+        _ok(head + "\n"),  # baseline HEAD
+        _ok("main\n"),  # branch
+        _ok(""),  # submodule foreach (prompt)
+        _ok(""),  # submodule foreach (forbidden paths)
+        _ok(head + "\n"),  # current HEAD after dispatch
+        _ok(f"{config.PLUGIN_JSON_PATH}\n"),  # forbidden-revert tracked diff
+        _ok(""),  # forbidden-revert cached diff
+        _ok(""),  # forbidden-revert untracked status
+        _ok(""),  # git checkout -- plugin.json
+    ])
+    outcome = checks.run_lint_fix(
+        runner,
+        site="step6",
+        checks_log=str(log),
+        repo_root=str(repo),
+        claude_present=True,
+        codex_present=False,
+        cursor_present=False,
+        allowed_tmpdir=_lint_fix_dirs(tmp_path)[0],
+        run_parent=_lint_fix_dirs(tmp_path)[1],
+    )
+    assert outcome.status == "failed"
+    assert outcome.failure_reason == "forbidden-path-violation"
+    assert any(
+        call[:4] == ("git", "checkout", "--", config.PLUGIN_JSON_PATH)
+        for call, _kw in runner.calls
+    )
+
+
 def test_run_lint_fix_cursor_argv_and_wrap_cwd(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -1466,7 +1518,8 @@ def test_run_lint_fix_cursor_argv_and_wrap_cwd(tmp_path: Path) -> None:
         _ok(""),  # baseline untracked status
         _ok(head + "\n"),  # baseline HEAD
         _ok("main\n"),  # branch
-        _ok(""),  # submodule foreach
+        _ok(""),  # submodule foreach (prompt)
+        _ok(""),  # submodule foreach (forbidden paths)
         _ok("\0__DELIM__\0"),  # cursor model/auth argv loader
         _ok("wrapped promptX"),  # cursor-wrap-prompt.sh
         _ok("", rc=1),  # cursor dispatch fails
@@ -1802,7 +1855,8 @@ def test_run_lint_fix_dispatches_claude_before_codex(
         _ok(""),  # baseline untracked status
         _ok(head + "\n"),  # rev-parse HEAD
         _ok("main\n"),  # symbolic-ref
-        _ok(""),  # submodule foreach
+        _ok(""),  # submodule foreach (prompt)
+        _ok(""),  # submodule foreach (forbidden paths)
         _ok(head + "\n"),  # current HEAD after dispatch
         _ok("fixed.py\n"),  # forbidden-revert tracked diff
         _ok(""),  # forbidden-revert cached diff
@@ -1854,7 +1908,8 @@ def test_run_lint_fix_codex_fail_cursor_success(tmp_path: Path, monkeypatch: pyt
         _ok(""),  # baseline untracked status
         _ok(head + "\n"),  # rev-parse HEAD
         _ok("main\n"),  # symbolic-ref
-        _ok(""),  # submodule foreach
+        _ok(""),  # submodule foreach (prompt)
+        _ok(""),  # submodule foreach (forbidden paths)
         _ok(head + "\n"),  # current HEAD after dispatch
         _ok("fixed.py\n"),  # forbidden-revert tracked diff
         _ok(""),  # forbidden-revert cached diff

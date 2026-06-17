@@ -164,3 +164,83 @@ def test_agentic_fix_result_reads_exhausted_detail_file(
     )
     assert fix.status == "fix-exhausted"
     assert "FAIL test_bar.py" in (fix.detail or "")
+
+
+def test_agentic_fix_result_local_unfixable_prefixes_detail(tmp_path: Path) -> None:
+    detail_file = tmp_path / "local-unfixable.detail"
+    _ = detail_file.write_text(
+        "local-unfixable: gitleaks\nFAIL gitleaks scan\n",
+        encoding="utf-8",
+    )
+    kv = (
+        "STATUS=local-unfixable\n"
+        "DETAIL=gitleaks\n"
+        f"EXHAUSTED_DETAIL_FILE={detail_file}\n"
+        "FIX_ATTEMPTED=false\n"
+        "DELTA_PATHS=\n"
+        "CI_FIX_REBASE_PENDING=false\n"
+    )
+
+    class _Runner:
+        def run(self, *_args: object, **_kwargs: object) -> proc.CommandResult:
+            return proc.CommandResult(("cli",), 0, kv, "", 0.01)
+
+    fix = ci_monitor._agentic_fix_result(  # pyright: ignore[reportPrivateUsage]
+        _Runner(),
+        pr=1,
+        run_id="42",
+        repo="o/r",
+        plan_file=None,
+        cwd="/tmp/repo",
+        base_remote="origin",
+        base_ref="main",
+        ctx=RunContext(
+            branch="feat",
+            issue="",
+            repo="o/r",
+            run_id="42",
+            tmpdir="/tmp/implement",
+            merge=False,
+            draft=False,
+            forked=False,
+            manifest_path="",
+            tool_label="claude",
+            no_admin_fallback=False,
+            repo_unavailable=False,
+            pr_number=1,
+        ),
+    )
+    assert fix.status == "local-unfixable"
+    assert fix.detail == "local-unfixable: gitleaks\nFAIL gitleaks scan"
+
+
+def test_agentic_fix_result_missing_repo_root_fail_closed() -> None:
+    fix = ci_monitor._agentic_fix_result(  # pyright: ignore[reportPrivateUsage]
+        proc,
+        pr=1,
+        run_id="42",
+        repo="o/r",
+        plan_file=None,
+        cwd=None,
+        base_remote="origin",
+        base_ref="main",
+        ctx=None,
+    )
+    assert fix.status == "waterfall-failed"
+    assert fix.detail == "missing repo_root"
+
+
+def test_agentic_fix_result_missing_implement_tmpdir_fail_closed() -> None:
+    fix = ci_monitor._agentic_fix_result(  # pyright: ignore[reportPrivateUsage]
+        proc,
+        pr=1,
+        run_id="42",
+        repo="o/r",
+        plan_file=None,
+        cwd="/tmp/repo",
+        base_remote="origin",
+        base_ref="main",
+        ctx=None,
+    )
+    assert fix.status == "waterfall-failed"
+    assert fix.detail == "missing implement_tmpdir"

@@ -122,7 +122,7 @@ def _unmerged_paths(runner: Runner, *, cwd: str | None) -> list[str]:
         raise Stalled(_redact_outbound("git diff --diff-filter=U failed")) from None
 
 
-_CONFLICT_MARKER_RE = re.compile(r"^(<<<<<<<|>>>>>>>)", re.MULTILINE)
+_CONFLICT_MARKER_RE = re.compile(r"^(<<<<<<<|=======|>>>>>>>|\|\|\|\|\|\|\|)", re.MULTILINE)
 
 
 def _path_has_conflict_markers(path: str, *, cwd: str | None) -> bool:
@@ -285,7 +285,11 @@ def _resolve_conflicts(
                 git.paths_delta_revert(runner, baseline_tracked, baseline_untracked, cwd=cwd)
                 _reset_conflict_paths(runner, unmerged, cwd=cwd)
                 if not tier_succeeded:
-                    failure_class = agents.effective_failure_class(attempt)
+                    failure_class = (
+                        agents.parse_launcher_failure_class(attempt.failure_log)
+                        if attempt.failure_log is not None
+                        else agents.effective_failure_class(attempt)
+                    )
                     if index == 0 and attempt.wrapper_rc == 0 and failure_class == "other":
                         _handoff_or_stall(
                             tuple(active_paths),

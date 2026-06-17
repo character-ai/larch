@@ -114,6 +114,14 @@ def _compose_exhausted_detail(cycle_detail: str, failure_log_text: str) -> str:
     return header
 
 
+def _compose_local_unfixable_detail(job_list: str, failure_log_text: str) -> str:
+    header = f"local-unfixable: {job_list}" if job_list else "local-unfixable"
+    tail = failure_log_text.strip()
+    if tail:
+        return f"{header}\n{redact.redact(tail).rstrip()}\n"
+    return header
+
+
 def _rollback(
     runner: proc.Runner,
     *,
@@ -257,7 +265,7 @@ def _run_cycle(
                 cwd=cwd,
             )
             return "waterfall-failed", "head-changed", fix_attempted, (), False, None, failure_log_text
-        forbidden = (".gitmodules", *coder_delta_guards.submodule_paths(runner, cwd=cwd))
+        forbidden = coder_delta_guards.coder_forbidden_paths(runner, cwd=cwd)
         if coder_delta_guards.revert_forbidden_paths(runner, cwd=cwd, forbidden=forbidden) > 0:
             _rollback(
                 runner,
@@ -386,7 +394,22 @@ def main(argv: list[str] | None = None) -> int:
         last_delta = delta_paths
         if failure_log_text:
             last_failure_log_text = failure_log_text
-        if status in {"passed", "rebase-required", "local-unfixable", "first-fixer-non-health"}:
+        if status == "local-unfixable":
+            exhausted_path = Path(args.output_dir) / f"ci-agentic-local-unfixable-{cycle}.detail"
+            _ = exhausted_path.write_text(
+                _compose_local_unfixable_detail(detail, failure_log_text),
+                encoding="utf-8",
+            )
+            return _emit_result(
+                status,
+                detail=detail,
+                fix_attempted=fix_attempted,
+                cycles=cycle,
+                delta_paths=delta_paths,
+                ci_fix_rebase_pending=pending,
+                exhausted_detail_file=str(exhausted_path),
+            )
+        if status in {"passed", "rebase-required", "first-fixer-non-health"}:
             return _emit_result(
                 status,
                 detail=detail,

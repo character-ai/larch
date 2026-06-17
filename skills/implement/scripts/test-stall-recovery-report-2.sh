@@ -344,13 +344,13 @@ write_state "$dir" 8 ci-initial ci-fix-exhausted
 run_capture "$SANDBOX/case20k.out" "$SCRIPT" classify --implement-tmpdir "$dir"
 assert_eq unrecoverable "$(kv FAILURE_CLASS "$SANDBOX/case20k.out")" "20: ci-fix-exhausted without detail log stays unrecoverable"
 assert_eq none "$(kv RESUME_HINT "$SANDBOX/case20k.out")" "20: ci-fix-exhausted without detail log does not resume"
-# A more precise evidence signature still outranks the generic ci-fix-exhausted class.
+# A ci-fix-exhausted bail with test-like detail log still classifies unrecoverable.
 dir=$(make_tmp case20l)
 write_state "$dir" 8 ci-initial ci-fix-exhausted
 printf 'pytest reports 2 failing tests\n' >"$dir/detail.log"
 run_capture "$SANDBOX/case20l.out" "$SCRIPT" classify --implement-tmpdir "$dir" --failure-detail-log "$dir/detail.log"
-assert_eq test-failure "$(kv FAILURE_CLASS "$SANDBOX/case20l.out")" "20: precise test evidence outranks ci-fix-exhausted"
-assert_eq step8-shippr "$(kv RESUME_HINT "$SANDBOX/case20l.out")" "20: test evidence at step8 still resumes ship-pr"
+assert_eq unrecoverable "$(kv FAILURE_CLASS "$SANDBOX/case20l.out")" "20: ci-fix-exhausted outranks test evidence"
+assert_eq none "$(kv RESUME_HINT "$SANDBOX/case20l.out")" "20: ci-fix-exhausted does not resume"
 
 run_capture "$SANDBOX/case21-badargv.out" "$SCRIPT" unknown-subcommand
 assert_eq 1 "$RC" "21: bad argv exits 1"

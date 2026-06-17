@@ -20,6 +20,7 @@ from agents import LaunchFailure, TierAttempt
 from gh import FailedJob
 from outcomes import Outcome
 from proc import CommandResult
+from run_context import RunContext
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS_DIR = REPO_ROOT / "scripts"
@@ -2587,3 +2588,113 @@ def test_required_text_fallback_ambiguous_output_is_not_pass() -> None:
 
 def test_default_optional_json_classifier_unchanged_for_unknown_bucket() -> None:
     assert ci_monitor._classify_checks_json(json.dumps([{"bucket": "cancelled"}])) == ("pass", None)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_monitor_agentic_rebase_required_goto_rebase(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_poll_ci(*_args: object, **_kwargs: object) -> tuple[ci_monitor.CiStatus, ci_monitor.Decision]:
+        return (
+            ci_monitor.CiStatus("fail", 0, "42"),
+            ci_monitor.Decision("evaluate_failure"),
+        )
+
+    def fake_evaluate_failure(*_args: object, **_kwargs: object) -> ci_monitor.FixResult:
+        return ci_monitor.FixResult(
+            status="pushed",
+            winning_tier="claude",
+            ci_fix_rebase_pending=True,
+        )
+
+    monkeypatch.setattr(ci_monitor, "poll_ci", fake_poll_ci)
+    monkeypatch.setattr(ci_monitor, "evaluate_failure", fake_evaluate_failure)
+
+    result = ci_monitor.monitor(RecordingRunner({}), pr=1, repo="o/r")
+    assert result.result.outcome is Outcome.OK
+    assert result.goto_rebase is True
+
+
+def test_agentic_fix_result_fix_attempted_local_unfixable_promotes_exhausted(tmp_path: Path) -> None:
+    detail_file = tmp_path / "exhausted.detail"
+    _ = detail_file.write_text(
+        "local-unfixable: gitleaks\nFAIL gitleaks\n",
+        encoding="utf-8",
+    )
+    kv = (
+        "STATUS=local-unfixable\n"
+        "DETAIL=gitleaks\n"
+        f"EXHAUSTED_DETAIL_FILE={detail_file}\n"
+        "FIX_ATTEMPTED=true\n"
+        "DELTA_PATHS=\n"
+        "CI_FIX_REBASE_PENDING=false\n"
+    )
+
+    class _Runner:
+        def run(self, *_args: object, **_kwargs: object) -> CommandResult:
+            return _cr(("cli",), stdout=kv)
+
+    fix = ci_monitor._agentic_fix_result(  # pyright: ignore[reportPrivateUsage]
+        _Runner(),
+        pr=1,
+        run_id="42",
+        repo="o/r",
+        plan_file=None,
+        cwd="/tmp/repo",
+        base_remote="origin",
+        base_ref="main",
+        ctx=RunContext(
+            branch="feat",
+            issue="",
+            repo="o/r",
+            run_id="42",
+            tmpdir="/tmp/implement",
+            merge=False,
+            draft=False,
+            forked=False,
+            manifest_path="",
+            tool_label="claude",
+            no_admin_fallback=False,
+            repo_unavailable=False,
+            pr_number=1,
+        ),
+    )
+    assert fix.status == "fix-exhausted"
+    assert fix.detail is not None
+    assert "FAIL gitleaks" in fix.detail
+
+
+def test_evaluate_failure_pending_push_only_skips_agentic_delegate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    agentic_calls = {"n": 0}
+
+    def fake_agentic(*_args: object, **_kwargs: object) -> ci_monitor.FixResult:
+        agentic_calls["n"] += 1
+        return ci_monitor.FixResult(status="pushed", winning_tier="claude")
+
+    def fake_run_ci_fix(*_args: object, **_kwargs: object) -> ci_monitor.FixResult:
+        return ci_monitor.FixResult(status="pushed", winning_tier="claude")
+
+    def fake_collect_failed_logs(*_args: object, **_kwargs: object) -> ci_monitor.LogCollectResult:
+        return ci_monitor.LogCollectResult(text="", state="ready")
+
+    def fake_read_failed_jobs(*_args: object, **_kwargs: object) -> tuple[list[FailedJob], str]:
+        return [], "ready"
+
+    monkeypatch.setattr(ci_monitor, "_agentic_fix_result", fake_agentic)
+    monkeypatch.setattr(ci_monitor, "run_ci_fix", fake_run_ci_fix)
+    monkeypatch.setattr(ci_monitor, "collect_failed_logs", fake_collect_failed_logs)
+    monkeypatch.setattr(ci_monitor, "read_failed_jobs", fake_read_failed_jobs)
+
+    runner = RecordingRunner(_baseline_responses())
+    fix = ci_monitor.evaluate_failure(
+        runner,
+        run_id="42",
+        repo="o/r",
+        plan_file=None,
+        transient_retries=1,
+        _fix_attempts=0,
+        cwd="/tmp/repo",
+        launch_fn=lambda _t: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
+        ci_fix_rebase_pending=True,
+    )
+    assert agentic_calls["n"] == 0
+    assert fix.status == "pushed"

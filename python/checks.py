@@ -1920,7 +1920,7 @@ def run_lint_fix(
         baseline_branch = ""
     baseline_clean = not baseline_tracked and not baseline_untracked
     submodule_paths = _submodule_paths(runner, cwd=cwd)
-    forbidden = tuple(dict.fromkeys((".gitmodules", *submodule_paths)))
+    forbidden = coder_delta_guards.coder_forbidden_paths(runner, cwd=cwd)
     prompt_body = _compose_prompt(
         checks_log=log_path,
         site_label=site_label,

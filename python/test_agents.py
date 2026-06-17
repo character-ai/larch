@@ -2908,6 +2908,90 @@ def test_waterfall_continues_when_log_missing_failure_class_kv(
     assert result.short_circuited is False
 
 
+def test_launch_claude_ci_uses_opus_default_and_write_capable_argv(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    claude = bin_dir / "claude"
+    argv_log = tmp_path / "argv.log"
+    _ = claude.write_text(
+        "#!/usr/bin/env bash\n"
+        "printf '%s\\n' \"$@\" > \"$CLAUDE_ARGV_LOG\"\n"
+        "cat >/dev/null\n"
+        "printf '%s\\n' '{\"result\":\"fixed\"}'\n",
+        encoding="utf-8",
+    )
+    claude.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{agents.os.environ.get('PATH', '')}")
+    monkeypatch.setenv("CLAUDE_ARGV_LOG", str(argv_log))
+    output = tmp_path / "claude-ci.out"
+    rc = agents.launch_claude_ci_main(
+        [
+            "--role",
+            "fix",
+            "--output",
+            str(output),
+            "--run-id",
+            "run",
+            "--repo",
+            "o/r",
+            "--timeout",
+            "5",
+        ],
+    )
+    assert rc == 0
+    argv = argv_log.read_text(encoding="utf-8").splitlines()
+    assert "-p" in argv
+    assert config.CLAUDE_CI_FIX_MODEL in argv
+    assert "Read,Edit,Write" in argv
+    assert "You are using Claude" not in argv
+
+
+def test_launch_claude_lint_fix_uses_stdin_and_write_capable_argv(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    claude = bin_dir / "claude"
+    argv_log = tmp_path / "argv.log"
+    stdin_log = tmp_path / "stdin.log"
+    prompt_file = tmp_path / "prompt-body.txt"
+    _ = prompt_file.write_text("lint failure details\n", encoding="utf-8")
+    _ = claude.write_text(
+        "#!/usr/bin/env bash\n"
+        "printf '%s\\n' \"$@\" > \"$CLAUDE_ARGV_LOG\"\n"
+        'cat > "$CLAUDE_STDIN_LOG"\n'
+        "printf '%s\\n' '{\"result\":\"fixed\"}'\n",
+        encoding="utf-8",
+    )
+    claude.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{agents.os.environ.get('PATH', '')}")
+    monkeypatch.setenv("CLAUDE_ARGV_LOG", str(argv_log))
+    monkeypatch.setenv("CLAUDE_STDIN_LOG", str(stdin_log))
+    output = tmp_path / "claude-lint-fix.out"
+    rc = agents.launch_claude_lint_fix_main(
+        [
+            "--prompt-body-file",
+            str(prompt_file),
+            "--output",
+            str(output),
+            "--timeout",
+            "5",
+        ],
+    )
+    assert rc == 0
+    argv = argv_log.read_text(encoding="utf-8").splitlines()
+    assert "-p" in argv
+    assert config.CLAUDE_CI_FIX_MODEL in argv
+    assert "Read,Edit,Write" in argv
+    assert "lint failure details" not in argv
+    assert "lint failure details" in stdin_log.read_text(encoding="utf-8")
+    assert output.read_text(encoding="utf-8") == "fixed"
+
+
 @pytest.mark.skipif(
     not LIB_COMMON.is_file() or shutil.which("bash") is None,
     reason="bash or lib-external-launcher-common.sh unavailable",

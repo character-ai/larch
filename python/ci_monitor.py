@@ -1504,7 +1504,7 @@ def _agentic_fix_result(
     status = parsed.get("STATUS", "")
     detail = parsed.get("DETAIL", "")
     exhausted_detail_file = parsed.get("EXHAUSTED_DETAIL_FILE", "")
-    if status == "ci-fix-exhausted" and exhausted_detail_file:
+    if status in {"ci-fix-exhausted", "local-unfixable"} and exhausted_detail_file:
         detail_path = Path(exhausted_detail_file)
         if detail_path.is_file():
             detail = detail_path.read_text(encoding="utf-8", errors="replace").strip()
@@ -1523,8 +1523,10 @@ def _agentic_fix_result(
         )
     if status == "local-unfixable":
         if fix_attempted:
-            return FixResult(status="fix-exhausted", detail=f"ci-fix-exhausted: {detail}")
-        return FixResult(status="local-unfixable", detail=detail)
+            exhausted_detail = detail if detail.startswith("ci-fix-exhausted") else f"ci-fix-exhausted: {detail}"
+            return FixResult(status="fix-exhausted", detail=exhausted_detail)
+        prefixed = detail if detail.startswith("local-unfixable:") else f"local-unfixable: {detail}"
+        return FixResult(status="local-unfixable", detail=prefixed)
     if status == "first-fixer-non-health":
         return FixResult(status="first-fixer-non-health", detail=detail)
     if status == "ci-fix-exhausted":

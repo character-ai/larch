@@ -1596,3 +1596,141 @@ def test_effective_failure_class_falls_back_without_launcher_kv(tmp_path: Path) 
         failure_log=capture,
     )
     assert rebase.agents.effective_failure_class(attempt) == "other"
+
+
+def test_conflict_loop_continues_when_log_missing_failure_class_kv(
+    tmp_path: Path,
+) -> None:
+    log_file = tmp_path / "conflict-claude.fail.log"
+    _ = log_file.write_text("ordinary launcher output\n", encoding="utf-8")
+    launch_calls: list[str] = []
+    conflict_dir = tmp_path / "vendor"
+    conflict_dir.mkdir()
+    _ = (conflict_dir / "foo.txt").write_text("resolved content\n", encoding="utf-8")
+    diff_calls = {"n": 0}
+
+    def unmerged_handler(_argv: tuple[str, ...]) -> CommandResult:
+        diff_calls["n"] += 1
+        if diff_calls["n"] == 1:
+            return _ok(
+                ("git", "diff", "--name-only", "--diff-filter=U"),
+                "vendor/foo.txt\n",
+            )
+        return _ok(("git", "diff", "--name-only", "--diff-filter=U"), "")
+
+    def launch_fn(tier: str, _csv: str) -> TierAttempt:
+        launch_calls.append(tier)
+        if tier == config.FIXER_TIER_ORDER[-1]:
+            return TierAttempt(
+                tier,
+                wrapper_rc=0,
+                launcher_exit=0,
+                failure=LaunchFailure("none", ""),
+            )
+        return TierAttempt(
+            tier,
+            wrapper_rc=0,
+            launcher_exit=1,
+            failure=LaunchFailure("other", "unknown"),
+            failure_log=log_file,
+        )
+
+    runner = ScriptRunner(
+        [
+            (("git", "diff", "--name-only", "--diff-filter=U"), unmerged_handler),
+            (("git", "rebase", "--continue"), _ok(("git", "rebase", "--continue"))),
+        ],
+    )
+    rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
+        runner,
+        launch_fn,
+        repo="o/r",
+        run_id="run",
+        cwd=str(tmp_path),
+        tmpdir=str(tmp_path),
+    )
+    assert launch_calls == list(config.FIXER_TIER_ORDER)
+
+
+def test_conflict_loop_health_failure_continues_to_next_tier(tmp_path: Path) -> None:
+    log_file = tmp_path / "conflict-claude.fail.log"
+    _ = log_file.write_text("LAUNCHER_FAILURE_CLASS=health\n", encoding="utf-8")
+    launch_calls: list[str] = []
+
+    def launch_fn(tier: str, _csv: str) -> TierAttempt:
+        launch_calls.append(tier)
+        if tier == config.FIXER_TIER_ORDER[-1]:
+            return TierAttempt(
+                tier,
+                wrapper_rc=0,
+                launcher_exit=0,
+                failure=LaunchFailure("none", ""),
+            )
+        return TierAttempt(
+            tier,
+            wrapper_rc=0,
+            launcher_exit=1,
+            failure=LaunchFailure("health", "binary-missing"),
+            failure_log=log_file,
+        )
+
+    conflict_dir = tmp_path / "vendor"
+    conflict_dir.mkdir()
+    _ = (conflict_dir / "foo.txt").write_text("resolved content\n", encoding="utf-8")
+    diff_calls = {"n": 0}
+
+    def unmerged_handler(_argv: tuple[str, ...]) -> CommandResult:
+        diff_calls["n"] += 1
+        if diff_calls["n"] == 1:
+            return _ok(
+                ("git", "diff", "--name-only", "--diff-filter=U"),
+                "vendor/foo.txt\n",
+            )
+        return _ok(("git", "diff", "--name-only", "--diff-filter=U"), "")
+
+    runner = ScriptRunner(
+        [
+            (("git", "diff", "--name-only", "--diff-filter=U"), unmerged_handler),
+            (("git", "rebase", "--continue"), _ok(("git", "rebase", "--continue"))),
+        ],
+    )
+    rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
+        runner,
+        launch_fn,
+        repo="o/r",
+        run_id="run",
+        cwd=str(tmp_path),
+        tmpdir=str(tmp_path),
+    )
+    assert launch_calls == list(config.FIXER_TIER_ORDER)
+
+
+def test_path_has_conflict_markers_detects_separator_only(tmp_path: Path) -> None:
+    conflict_file = tmp_path / "partial.txt"
+    _ = conflict_file.write_text("resolved top\n=======\nresolved bottom\n", encoding="utf-8")
+    assert rebase._path_has_conflict_markers("partial.txt", cwd=str(tmp_path))  # pyright: ignore[reportPrivateUsage]
+
+
+def test_partial_conflict_markers_are_not_staged(tmp_path: Path) -> None:
+    conflict_dir = tmp_path / "vendor"
+    conflict_dir.mkdir()
+    conflict_file = conflict_dir / "foo.txt"
+    _ = conflict_file.write_text("resolved top\n=======\n", encoding="utf-8")
+    runner = ScriptRunner(
+        [
+            (("git", "diff", "--name-only", "--diff-filter=U"), _ok(
+                ("git", "diff", "--name-only", "--diff-filter=U"),
+                "vendor/foo.txt\n",
+            )),
+        ],
+    )
+    with pytest.raises(Stalled, match=r"fixer|first fixer"):
+        rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
+            runner,
+            lambda tier, _csv: TierAttempt(tier, 0, 0, LaunchFailure("none", "")),
+            repo="o/r",
+            run_id="run",
+            cwd=str(tmp_path),
+            tmpdir=str(tmp_path),
+        )
+    assert not any(call[:3] == ("git", "add") for call in runner.calls)
