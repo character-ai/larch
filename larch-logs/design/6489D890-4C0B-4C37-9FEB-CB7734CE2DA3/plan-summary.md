@@ -1,0 +1,1 @@
+Surgical plan: fix OOS URL derivation with JSON parsing, align rejected-findings round headers composer-side, persist redacted diagram failure details, and add `/bug --urgent` plus forced `/issue --title-prefix` coverage.
