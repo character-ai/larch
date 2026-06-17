@@ -2522,6 +2522,51 @@ def test_run_relevant_checks_deletion_only_runs_direct_targets(
     assert make_calls == [["make", "test-read-result-env"]]
 
 
+def test_run_relevant_checks_skips_undefined_direct_make_targets(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+    repo = _git_repo(tmp_path)
+    (repo / "Makefile").write_text("test-read-result-env:\n\t@true\n", encoding="utf-8")
+    make_calls: list[list[str]] = []
+
+    def fake_changed_files(_runner: object, *, cwd: str) -> tuple[str, ...]:
+        _ = cwd
+        return ("scripts/unwired-direct-target.sh", "scripts/read-result-env.sh")
+
+    def fake_direct(_runner: object, _changed: tuple[str, ...], **_kwargs: object) -> tuple[str, ...]:
+        return ("test-unwired-direct-target", "test-read-result-env")
+
+    def fake_logged(_runner: object, argv: list[str], **_kwargs: object) -> CommandResult:
+        if argv and argv[0] == "make":
+            make_calls.append(list(argv))
+        return _ok("")
+
+    def fake_contains_pin_phase(*_args: object, **_kwargs: object) -> int:
+        return 0
+
+    def fake_agent_lint(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(checks, "_changed_files", fake_changed_files)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(checks, "_direct_targets", fake_direct)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(checks, "_run_logged", fake_logged)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(checks, "_run_contains_pin_phase", fake_contains_pin_phase)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(checks, "_run_agent_lint", fake_agent_lint)  # pyright: ignore[reportPrivateUsage]
+
+    def available(_runner: object, name: str, **_kwargs: object) -> bool:
+        return name != "pre-commit"
+
+    monkeypatch.setattr(checks, "_command_available", available)  # pyright: ignore[reportPrivateUsage]
+    result = checks.run_relevant_checks(proc, site="unit", tmpdir=str(session), repo_root=str(repo))
+    assert result.ok is True
+    assert make_calls == [["make", "test-read-result-env"]]
+    assert result.raw_log_path is not None
+    log = Path(result.raw_log_path).read_text(encoding="utf-8")
+    assert "skipping undefined direct make target(s): test-unwired-direct-target" in log
+
+
 def test_run_relevant_checks_deletion_only_without_agent_lint_fails_closed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

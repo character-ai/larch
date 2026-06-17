@@ -487,7 +487,6 @@ _DIRECT_TARGET_RULES: Final[tuple[tuple[tuple[str, ...], tuple[str, ...], bool, 
     (("skills/*/SKILL.md", "skills/*/references/*.md"), (), False, False),
     (("scripts/lint-readability-preamble.tsv", "scripts/lint-readability-preamble.tsv.md"), ("test-lint-readability-preamble",), False, False),
 
-    (("scripts/lib-design-tmpdir.sh", "scripts/test-lib-design-tmpdir.sh", "scripts/lib-design-tmpdir.md", "scripts/test-lib-design-tmpdir.md"), ("test-lib-design-tmpdir",), False, False),
     (("python/rendering.py", "python/test_rendering.py"), ("test-plan-review", "test-launch-claude-subprocess", "test-lib-scope-anchor-handoff", "test-plan-review-panel", "test-aggregate-findings"), False, False),
     (("python/decompose.py", "python/test_decompose.py"), ("test-decompose-file-issues", "test-decompose-panel-dispatch", "test-decompose-aggregator"), True, True),
     (("python/plan_scout.py", "python/test_plan_scout.py"), ("test-scout-dynamic-archetypes", "test-scout-plan-archetypes-wrapper", "test-dispatch-panel-core-dynamic"), True, True),
@@ -593,6 +592,32 @@ def _direct_targets(
             if wants_py_test:
                 _append_py_test_target(runner, targets, cwd=cwd, env=env, log_fd=log_fd, warned=warned)
     return tuple(targets)
+
+
+_MAKE_TARGET_RE: Final = re.compile(r"^([A-Za-z0-9_.-]+)\s*:")
+
+
+def _make_targets(repo: Path) -> set[str] | None:
+    makefile = repo / "Makefile"
+    if not makefile.is_file() or makefile.is_symlink():
+        return None
+    targets: set[str] = set()
+    for line in makefile.read_text(encoding="utf-8", errors="replace").splitlines():
+        match = _MAKE_TARGET_RE.match(line)
+        if match and not match.group(1).startswith("."):
+            targets.add(match.group(1))
+    return targets
+
+
+def _filter_defined_make_targets(repo: Path, targets: tuple[str, ...], *, log_fd: int) -> tuple[str, ...]:
+    defined = _make_targets(repo)
+    if defined is None:
+        return targets
+    filtered = tuple(target for target in targets if target in defined)
+    missing = tuple(target for target in targets if target not in defined)
+    if missing:
+        _write_log(log_fd, f"\nWARNING: skipping undefined direct make target(s): {' '.join(missing)}\n")
+    return filtered
 
 
 def _run_agent_lint(runner: Runner, *, cwd: str, log_fd: int, env: dict[str, str]) -> int | None:
@@ -740,6 +765,7 @@ def _run_relevant_checks_inner(
     if not regular:
         _write_log(log_fd, "No existing regular files to pass to pre-commit.\n")
         targets = _direct_targets(runner, changed, cwd=cwd, env=env, log_fd=log_fd)
+        targets = _filter_defined_make_targets(repo, targets, log_fd=log_fd)
         direct_ran = False
         if targets:
             _write_log(log_fd, f"\n=== Running direct relevant make target(s): {' '.join(targets)} ===\n")
@@ -773,6 +799,7 @@ def _run_relevant_checks_inner(
     phases_run += 1
 
     targets = _direct_targets(runner, changed, cwd=cwd, env=env, log_fd=log_fd)
+    targets = _filter_defined_make_targets(repo, targets, log_fd=log_fd)
     if targets:
         _write_log(log_fd, f"\n=== Running direct relevant make target(s): {' '.join(targets)} ===\n")
         make_result = _run_logged(runner, ["make", *targets], cwd=cwd, log_fd=log_fd, env=env)

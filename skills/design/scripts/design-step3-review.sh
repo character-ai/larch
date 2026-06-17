@@ -254,10 +254,8 @@ if [ -z "${DESIGN_TMPDIR:-}" ] || [ ! -d "$DESIGN_TMPDIR" ]; then
   exit 1
 fi
 DESIGN_TMPDIR="$(cd "$DESIGN_TMPDIR" && pwd -P)"
-if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -f "${CLAUDE_PLUGIN_ROOT}/scripts/lib-design-tmpdir.sh" ]; then
-  # shellcheck source=scripts/lib-design-tmpdir.sh
-  source "${CLAUDE_PLUGIN_ROOT}/scripts/lib-design-tmpdir.sh"
-  larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit 2
+if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -f "${CLAUDE_PLUGIN_ROOT}/python/cli.py" ]; then
+  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session validate-design-tmpdir "$DESIGN_TMPDIR" || exit 2
 fi
 # #4431 Fix C: hook-safe result-env read. When the immediate-background poll guard
 # blocks a direct Read of .step3-review-result.env (e.g. a <task-notification> that

@@ -174,6 +174,8 @@ if len(sys.argv) >= 3 and sys.argv[1] == "design" and sys.argv[2] == "read-resul
     sys.exit(0)
 if len(sys.argv) >= 3 and sys.argv[1] == "scope-anchor" and sys.argv[2] == "validate":
     raise SystemExit(0)
+if len(sys.argv) >= 3 and sys.argv[1] == "session" and sys.argv[2] == "validate-design-tmpdir":
+    raise SystemExit(0)
 with open(os.environ["ORDER_LOG"], "a", encoding="utf-8") as handle:
     handle.write("helper " + " ".join(sys.argv[1:]) + "\n")
 raise SystemExit(int(os.environ.get("HELPER_RC", "0")))

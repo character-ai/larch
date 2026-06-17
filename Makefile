@@ -124,7 +124,7 @@ test-harnesses-10: test-design-step2b-drafter test-tally-code-votes test-auto-fi
 
 test-harnesses-11: test-design-stage-terminal-state test-cursor-implementer test-lib-cursor-auth test-trailer-helpers test-wait-for-reviewers test-design-log-publish test-parse-design-argv test-flush-execution-issues test-release-set-version test-external-tool-registry test-log-phase test-compose-pr-summary test-redact test-lint-skill-invocations test-render-final-summary-bash32 test-lint-renderer-substitution-safety test-implement-anti-polling-rule test-anti-improvised-wakeup
 
-test-harnesses-12: test-render-findings-batch test-implement-bootstrap-invoke test-dispatch-code-voters-retry-codex-fail-and-fallback test-tally-plan-review test-decompose-panel-dispatch test-lib-failed-agent-stderr-tail test-issue-query test-gather-context test-lib-design-tmpdir test-fetch-combinable-issues-filter test-implement-cleanup-script test-implement-admission test-run-external-agent-args test-step-telemetry-mark test-rebase-push-fork-mode test-references-headers
+test-harnesses-12: test-render-findings-batch test-implement-bootstrap-invoke test-dispatch-code-voters-retry-codex-fail-and-fallback test-tally-plan-review test-decompose-panel-dispatch test-lib-failed-agent-stderr-tail test-issue-query test-gather-context test-fetch-combinable-issues-filter test-implement-cleanup-script test-implement-admission test-run-external-agent-args test-step-telemetry-mark test-rebase-push-fork-mode test-references-headers
 
 test-harnesses-13: test-harness-shards-coverage test-design-log-ship test-ci-decide test-gate-b-apply-mode test-revise-plan-with-waterfall test-design-step3-entry test-larch-log-write-round test-append-tool-failure test-launch-claude-subprocess test-release-prepare test-dispatch-panel-limits test-resolve-repo test-flush-vendor-failure-diagnostics test-render-run-summary test-token-ledger test-token-report test-hook-progress-report test-alias-structure test-bug-structure test-research-angle-prompts
 
@@ -1022,8 +1022,11 @@ test-lib-cursor-auth:
 test-lib-quiet:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-lib-quiet.sh
 
+# Retired stub — kept for installed-plugin compat until checks.py ships without the
+# lib-design-tmpdir _DIRECT_TARGET_RULES entry. NOT a test-harnesses prerequisite;
+# see CARVE_OUTS in scripts/test-harness-shards-coverage.sh.
 test-lib-design-tmpdir:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-lib-design-tmpdir.sh
+	@:
 
 test-github-remote-repo:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-github-remote-repo.sh

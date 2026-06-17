@@ -9,7 +9,6 @@ STUB="$FAKE/skills/design/scripts"
 mkdir -p "$STUB" "$FAKE/scripts" "$FAKE/skills/implement/scripts" "$FAKE/bin" "$FAKE/python"
 ln -sf "$ROOT/python"/* "$FAKE/python/"
 ln -sf "$ROOT/skills/design/scripts/design-stage-terminal-state.sh" "$STUB/design-stage-terminal-state.sh"
-ln -sf "$ROOT/scripts/lib-design-tmpdir.sh" "$FAKE/scripts/lib-design-tmpdir.sh"
 ln -sf "$ROOT/scripts/lib-quiet.sh" "$FAKE/scripts/lib-quiet.sh"
 # shellcheck disable=SC2016
 cat >"$FAKE/bin/python3" <<'EOF'
