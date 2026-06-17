@@ -1,0 +1,36 @@
+Reading the plan and tracing the cited codebase paths to validate contracts and integration points.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	python/design_lifecycle.py:step0_session_main	Inline parse stdout not specified when session runs parse before setup	Step 0-pre bindings come from the Step 0a fence; bash prints parse KVs (STEP0_PARSED_ENV_PATH, PARTITION_REQUESTED, POSITIONAL_KIND, POSITIONAL_VALUE, etc.) before session setup (design-step0-session.sh:100-113). Plan only says inline the same validation paths, not relay stdout. Step 0b flag binding and verbal routing can silently use stale or empty argv state.	In step0_session_main, when public argv is present, call step0_parse_main (or shared helper) and print its full KV stdout to the orchestrator before the combined session-setup stream; add pytest that session output includes parse KVs ahead of SESSION_TMPDIR.
+2	in_scope	important	correctness	python/design_lifecycle.py:check_pause_and_exit	Pause terminal semantics may suppress pause-save KVs	Plan says emit no further stdout on pause. Bash uses exec pause-save, so orchestrator still sees PAUSE_OK and related KVs. In-process check_pause_and_exit that suppresses pause_save_main output breaks pause detection and resume.	Clarify and implement: after check_pause_and_exit, emit only pause_save_main stdout, then sys.exit(rc); suppress subsequent wrapper KVs only. Pin with pytest.
+3	in_scope	important	risk-integration	scripts/test-design-structure.sh:74-170	Embedded Python harness still pins design-step0-session.sh	Plan updates bash contains pins but the Python block hardcodes explicit_step0 to design-step0-session.sh and rejects launcher routing. After SKILL switches to direct python3 ... design step0-session, make test-design-structure.sh fails until that block is rewritten.	Extend scripts/test-design-structure.sh update: change explicit_step0 to accept python/cli.py design step0-session, keep exactly-one Step 0a fence, forbid launcher dispatch for step0-session.
+4	out_of_scope	latent	architecture	skills/design/references/brainstorm.md:124-127	Recovery prose still re-reads sidecars after collect merge	Plan drops the post-collection checkpoint section because step1d5 --mode collect writes dirty-tree-detected.env, but recovery step 1 still tells orchestrator to consult .dirty-tree sidecars. Redundant, not breaking.	After collect merge, simplify recovery to read dirty-tree-detected.env only.
+
+## Findings
+
+### 1. Inline parse KV relay missing from `step0_session_main` (correctness)
+
+Bash runs `design-step0-parse.sh` and prints its stdout before session setup:
+
+```100:113:skills/design/scripts/design-step0-session.sh
+  _parse_out=$("$SCRIPT_DIR/design-step0-parse.sh" "${_parse_args[@]}") || _parse_rc=$?
+  printf '%s\n' "${_parse_out:-}"
+  if [ "$_parse_rc" -ne 0 ]; then
+    exit "$_parse_rc"
+  fi
+fi
+LARCH_TIMING_SKILL=design python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" timing mark "design Step 0 — session setup" || true
+```
+
+Step 0-pre has no separate parse fence; the orchestrator binds flags from Step 0a output. The plan’s `step0-session` section covers validation parity but not stdout relay. Add explicit relay plus a test.
+
+### 2. Pause boundary must still emit pause-save KVs (correctness)
+
+Wrappers use `exec python3 ... design pause-save`. The plan’s “emit no further stdout” wording is easy to misread as suppressing all pause output. `check_pause_and_exit` should print `pause_save_main` KVs, then `sys.exit(rc)`, and never emit later wrapper KVs.
+
+### 3. `test-design-structure.sh` Python harness must track direct Step 0a (risk-integration)
+
+The embedded Python checker (lines 74–170) requires `design-step0-session.sh` and rejects launcher routing. The plan’s SKILL change to direct `python3 ... design step0-session` needs a matching harness update, not only bash `contains` pin swaps.
+
+### 4. [OUT_OF_SCOPE] Brainstorm recovery sidecar re-read (latent)
+
+After `step1d5 --mode collect` owns sidecar merge, recovery step 1 in `brainstorm.md` can drop redundant sidecar consultation. Safe follow-up, not blocking this port.

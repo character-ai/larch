@@ -1,0 +1,23 @@
+Reviewing the plan and tracing cited codebase paths to validate contracts and integration points.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	python/design_lifecycle.py:step0_init_main	Plan calls init_runparams_main in-process without stdout capture	Bash design-step0-init.sh redirects design init-runparams stdout to a temp file and only surfaces read-result-env output; an in-process call prints INIT_STATUS/WARN/RENAMED KVs to the Step 0b fence stdout, changing orchestrator-visible output and quiet-mode behavior	Mirror step0_route_main: subprocess python/cli.py design init-runparams with stdout captured to a temp file, parse .design-init-runparams-result.env via read-result-env semantics, and emit only the wrapper's existing stderr abort messages on failure
+2	in_scope	important	correctness	python/design_lifecycle.py:step0_route_main	Plan omits bash issue-binding guards before gh issue view	design-step0-route.sh rejects non-numeric --issue-number, non-numeric POSITIONAL_KIND=issue values, invalid POSITIONAL_KIND, and verbal without ISSUE_NUMBER; omitting these lets bad argv reach gh issue view or emit misleading route KVs	Port the ISSUE_NUMBER_ARG/POSITIONAL_KIND case block from design-step0-route.sh:93-120 with the same stderr messages and exit 1
+3	in_scope	blocking	correctness	python/design_lifecycle.py:step0_route_main	Plan does not require handling design route subprocess exit codes before parsing result env	Bash aborts on design route exit 2 or other non-zero before read-result-env; reading .design-route-result.env after a failed subprocess can reuse a stale ROUTE from an earlier run and mis-route Step 0b	After subprocess design route, fail closed on rc 2 with the existing configuration-error stderr and on any other non-zero rc before read-result-env; only parse route fields when rc is 0
+
+**1. [correctness]** `step0_init_main` should not call `init_runparams_main()` in-process. Bash captures init stdout and never relays it to the orchestrator:
+
+```136:147:skills/design/scripts/design-step0-init.sh
+   set +e
+   python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design init-runparams \
+     --design-tmpdir "$DESIGN_TMPDIR" \
+     ...
+     >"$_init_stdout_file"
+```
+
+The plan only mandates subprocess capture for `design route`, not for init-runparams. That gap leaks machine KVs on the Step 0b fence.
+
+**2. [correctness]** `step0_route_main` must preserve the route-wrapper issue-binding guards in `design-step0-route.sh:93-120` (numeric `--issue-number`, numeric positional issue, verbal requires `ISSUE_NUMBER`, invalid `POSITIONAL_KIND`). The plan lists happy-path bindings and tests but does not require these abort branches.
+
+**3. [correctness / risk-integration]** `step0_route_main` must treat `design route` subprocess exit codes like bash (`design-step0-route.sh:176-184`): abort on rc `2` or any other non-zero before `read-result-env`. Without that check, a failed subprocess can leave a stale `.design-route-result.env` and poison routing.
+
+**[OUT_OF_SCOPE]** `design-step0-clarify-hard-halt.sh` has no SKILL fence caller (only wrapper inventory); `design-clarify.sh` already stages terminal state inline. The issue still lists it among the 11 bodies, so the port stays in slice scope, but a future slice could drop the orphan verb and delete the bash without runtime loss.
