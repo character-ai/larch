@@ -1,0 +1,274 @@
+You are an expert engineer researching this repository and producing an implementation plan for /design Step 2b.
+
+You may use only side-effect-free repository discovery. Do not write repository files, design tmpdir files, or any other files. Return only the sentinel-delimited response requested below.
+
+Drafting requirements to follow:
+- Prefer minimum necessary change: avoid scope creep, unnecessary complexity, and additions not required for correctness.
+- Read approach-synthesis.txt: if it is exactly NO_SKETCHES, draft from direct codebase/doc inspection without fabricating planning-panel agreement.
+- Read discussion-round1.md when present for scope boundaries and strict constraints.
+- Read design-outline.md only when non-empty and .outline-approved exists; treat Goals, Non-goals, and Surfaces as binding scope.
+- Read brainstorm.md when present as additive ideation context for plan drafting.
+- Use a Files to modify/create section with per-file headings exactly one path each: ### NEW:, ### UPDATED:, or ### REWRITTEN: (at least one ASCII space after ### before the keyword).
+- Include Approach, Edge cases, Failure modes when non-trivial, Testing strategy, optional diff_added/diff_deleted/mechanical_churn trailers, and final diff_lines: <N>. mechanical_churn accepts only true or false; never write a number there.
+- The final plan body must end with a whole-line diff_lines: <N> trailer.
+- Optionally include up to three dynamic plan-review archetypes in a scout block after the plan. The launcher validates, filters, caps, and materializes this block; invalid post-plan scout output is ignored.
+- Scout sentinels inside the summary or plan are fatal format errors. Never put LARCH_SCOUT_* markers in the plan body.
+
+Readability style (trusted):
+# Readability Style
+
+**Consumer**: `/design` prompt surfaces that produce user-facing text, either through an external-agent prompt token or through inline orchestration prose.
+
+**Contract**: this file is the only source of truth for the `/design` readability preamble. External prompt files embed the literal `<READABILITY_STYLE>` token, and assembly code or orchestration expands it to this full file. Inline composition sites read this file before writing user-facing text.
+
+**When to load**: load only when a `/design` step is about to compose user-facing prose or render a prompt that asks another agent to compose such prose. Do not load during setup, pure validation, or byte-stable artifact handling.
+
+---
+
+## Style Axes
+
+Write in three styles at once:
+
+- **Strunk & White**: use active voice. Omit needless words. Prefer concrete nouns and verbs.
+- **Dyslexia-friendly**: use short sentences. Prefer simple words. Break dense ideas into headings and bullets.
+- **Brevity**: shorter is better. Minimize the total artifact length while preserving meaning.
+- **No em dashes**: never use em dashes; use periods, commas, colons, or semicolons instead.
+- **Hedge vs. direct**: hedge uncertain claims ("may contain", "can fail") instead of absolutes; keep directives imperative.
+
+## Precision Contract
+
+Keep these byte-stable unless the task explicitly edits them:
+
+- fenced code blocks
+- backticked tokens
+- file paths
+- identifiers
+- flag names
+- `### NEW:` / `### UPDATED:` / `### REWRITTEN:` plan grammar
+- the trailing `diff_lines: <N>` line
+
+Do not rewrite those items for style. Explain around them instead.
+
+## Plan-Drafting Reminders
+
+When `/design` Step 2b drafts a plan that adds, removes, or converts
+Bash fences in `skills/implement/SKILL.md`:
+
+- List `### UPDATED: scripts/test-implement-fence-shape.sh` in
+  **Files to modify/create**.
+- Note that `EXPECTED_OLD` / `EXPECTED_NEW` may need updates.
+
+This is a discoverability reminder only. Do not add plan grammar.
+
+## Precedence
+
+When rules conflict, use this order:
+
+`code references > meaning > brevity > dyslexia-friendly chunking > Strunk & White micro-rewrites`
+
+Apply it directly:
+
+- Preserve code references first.
+- Preserve exact meaning next.
+- Cut words before adding layout.
+- Add headings or bullets only when they improve scanning.
+- Polish grammar last.
+
+## Substitution Token
+
+External-agent prompt files MUST embed this literal token:
+
+`<READABILITY_STYLE>`
+
+Before launch, replace every literal `<READABILITY_STYLE>` token with the full contents of this file.
+
+## Examples
+
+Before: "It is recommended that the implementer should consider adding a validation step."
+
+After: "Add a validation step."
+
+Before: "The plan should make sure that users are not able to continue when the file cannot be read."
+
+After: "Block the flow when the file cannot be read."
+
+Before: "In order to avoid potential future confusion, documentation can be updated."
+
+After: "Update the docs to avoid confusion."
+
+Before: "The script performs an operation that checks if the path exists."
+
+After: "The script checks that the path exists."
+
+Before: "This could possibly be out of scope depending on how the team wants to proceed."
+
+After: "This may be out of scope."
+
+Required output format:
+[optional]
+LARCH_SUMMARY_BEGIN
+A concise summary for large-plan preview. Omit this whole summary block only when no useful summary is needed.
+LARCH_SUMMARY_END
+[/optional]
+LARCH_PLAN_BEGIN
+Full implementation plan body ending with diff_lines: <N>.
+LARCH_PLAN_END
+[optional]
+LARCH_SCOUT_BEGIN
+{"archetypes":[{"name":"slug","focus_area":"code-quality|risk-integration|correctness|architecture|security","weight":1,"rationale":"single-line reason","prompt_body":"2-6 sentence focus directive ending with the required citation sentence."}]}
+LARCH_SCOUT_END
+[/optional]
+
+Optional advisory status may be included between LARCH_STATUS_BEGIN and LARCH_STATUS_END, but the summary, plan, and optional scout sentinels above are the only parsed contract.
+
+Untrusted feature description:
+<feature_description encoding="literal-redacted">
+# [BUG] /design and /implement final reports omit per-round review table and Gantt charts (dropped in sh-to-py ports)
+
+## Summary
+
+The `/design` final summary (rendered by `python/design_summary.py` via `python/cli.py design render-final-summary`) is missing the per-round plan-review table and per-round ASCII Gantt charts. This is a regression from the #3681 sh-to-py port: the old `skills/design/scripts/render-final-summary.sh` invoked `scripts/render-review-phase-detail.sh` to render that section (added by #3776, a follow-up to #3774; ASCII Gantt added by #4192), but the port to `python/design_summary.py` dropped the call. The new renderer emits only the compact `render run-summary` block, so the per-round charts cannot appear regardless of the run.
+
+## Original report
+
+During a `/design` run that completed with "approved", the final summary block (Duration / Cost / Issue / `Plan review: complete (3 rounds)` / OOS / Exec issues / Warnings / Run logs, ending with the larch run-summary HTML comment marker) did not contain per-round Gantt charts, contrary to expectation.
+
+The run itself was healthy: the plan-review loop ran 3 rounds fully inside the autonomous loop driver (no bail to the main agent), and the compact summary rendered correctly. Only the per-round review detail (table + Gantt) was missing.
+
+## Reproduction scenario
+
+1. Run `/design &lt;issue&gt;` to completion (Approve at Gate C) so the plan-review loop runs at least one round.
+2. Inspect the `/design` final summary produced by `python/cli.py design render-final-summary` (printed to chat and upserted as the issue's run-summary comment).
+
+- Expected: a per-round plan-review table plus per-round ASCII Gantt charts (the section #3776 + #4192 added to the old renderer; `render-review-phase-detail.sh` still supports `--skill design`).
+- Actual: only the compact `render run-summary` block. No per-round table, no Gantt.
+
+Confirmed by code inspection plus git history (see Evidence). Observed live on a real 3-round run whose session tmpdir has since been cleaned up.
+
+## Expected behavior
+
+The `/design` final summary includes the per-round plan-review detail: the review table and per-round ASCII Gantt charts, matching what the old `render-final-summary.sh` produced before the #3681 port, and the same detail the live `p` progress report still renders.
+
+## Observed behavior
+
+The `/design` final summary contains only the compact `render run-summary` block. No per-round table and no Gantt charts appear.
+
+## Root cause analysis
+
+The #3681 sh-to-py migration ported `skills/design/scripts/render-final-summary.sh` to `python/design_summary.py` and dropped the per-round detail rendering in the process.
+
+- `python/design_summary.py::render_final_summary_main` (behind `python/cli.py design render-final-summary`, the sole `/design` final-summary renderer) builds the summary by calling only `render run-summary` (through `invoke_render`) with scalar args. It never invokes `scripts/render-review-phase-detail.sh` and never composes `review-findings-full.jsonl` (the renderer's documented precondition). There is no Gantt / phase-detail code path in the file.
+- The old `render-final-summary.sh` DID invoke `render-review-phase-detail.sh`: `git log -S "render-review-phase-detail" -- skills/design/scripts/render-final-summary.sh` shows it was added by `Fixes #3776` (commit `08bd313c2`) and last changed by `Fixes #3681` (commit `42fa25cbc`, the port/retire commit). `python/migrated-scripts.tsv` records `skills/design/scripts/render-final-summary.sh&lt;TAB&gt;#3681`.
+- The replacement `python/design_summary.py` never re-added the call: `git log -S "render-review-phase-detail" -- python/design_summary.py` is empty.
+
+Net: a feature added by #3776 (per-review-round detail) and #4192 (ASCII Gantt) to the old shell renderer was lost when #3681 ported it to Python. This is independent of run outcome; the autonomous review loop and compact summary work, only the per-round detail rendering is missing.
+
+## Evidence
+
+- `python/design_summary.py`: `render_final_summary_main` to `invoke_render` to `render run-summary --skill design ... --plan-review-line "complete (N rounds)"`. No `gantt` or `render-review-phase-detail` reference; no `review-findings-full.jsonl` composition (full-file read).
+- `git log -S "render-review-phase-detail" -- skills/design/scripts/render-final-summary.sh` returns `08bd313c2 Fixes #3776` (added) and `42fa25cbc Fixes #3681` (port/retire).
+- `git log -S "render-review-phase-detail" -- python/design_summary.py` returns empty (never re-added in the Python port).
+- `python/migrated-scripts.tsv`: `skills/design/scripts/render-final-summary.sh` retired by `#3681`.
+- `scripts/render-review-phase-detail.sh` line 3: "/implement final report and /design final summary (issue #3774)."; accepts `--skill implement|design` (lines 48, 58); Gantt toggled by `--no-gantt`.
+- `scripts/render-review-phase-detail.md`: line 4 names "the `/design` final summary (issue #3774)"; states "`/design` plan-review now feeds this renderer through `python/cli.py design render-final-summary --skill design`" and lists `python/design_summary.py` as a caller, describing behavior the port never implemented.
+- Per-round inputs are still produced: `skills/design/scripts/review-design-step3-loop.sh` (around line 529) refreshes `round-meta.json` via `scripts/write-design-round-meta.sh` under `plan-review/round-N/`. The data exists in the run-log; only consumption is missing.
+- The renderer still works and is reachable: `python/progress_report.py:404` invokes `render-review-phase-detail.sh` for the live `p` progress report.
+- Verb mapping: `python/cli.py` maps `("design", "render-final-summary")` to `design_summary.render_final_summary_main`.
+
+## Affected files
+
+- `python/design_summary.py` — the `/design` final-summary renderer; missing the `render-review-phase-detail.sh` invocation and `review-findings-full.jsonl` composition dropped in the #3681 port. Primary fix site.
+- `scripts/render-review-phase-detail.sh` — the renderer to re-invoke (`--skill design`); already supports design and Gantt.
+- `scripts/render-review-phase-detail.md` — contract still claims `design render-final-summary` feeds the renderer; reconcile with whatever fix lands.
+- `python/test_design_summary.py` — add coverage asserting the per-round detail / Gantt is spliced into the `/design` final summary; this gap let the #3681 port regress silently.
+
+## Suggested fix(es)
+
+Restore in `python/design_summary.py::render_final_summary_main` (post phase) what the old `render-final-summary.sh` did, mirroring the live `p` report's consumption:
+
+1. Compose `review-findings-full.jsonl` for the design rounds (the renderer's documented precondition).
+2. Invoke `scripts/render-review-phase-detail.sh --skill design --rounds-root &lt;plan-review dir&gt; --timing-ledger &lt;timing-ledger.tsv&gt; [--token-ledger ...]` and splice its stdout into `final-summary.md` (default includes the charts; pass `--no-gantt` only for a table-only mode).
+3. Apply the same outbound redaction to the spliced content before the issue-body upsert.
+4. Add `python/test_design_summary.py` coverage: per-round table + Gantt appear when `round-meta.json` plus a `type=round` timing ledger are present, and degrade gracefully (no charts) when the timing ledger is missing. Use the pre-#3681 `render-final-summary.sh` behavior for parity.
+
+Cross-check #3776 / #4192 for the exact section format the old renderer produced, and reconcile `scripts/render-review-phase-detail.md`.
+
+## Open questions
+
+- Confirm whether the #3681 port dropped the `render-review-phase-detail` call intentionally or accidentally. History shows #3681 changed its count in `render-final-summary.sh` and the Python replacement never re-added it, which looks accidental.
+- Should the per-round detail live inside the upserted run-summary issue comment (public, requires redaction), only in chat, or only in the committed run-log? This affects where the splice happens and which redaction path applies.
+- Does the design review loop write `type=round` rows into a timing ledger that `render-review-phase-detail.sh` can read at final-summary time, so the Gantt window has data? "Missing timing ledgers mean no charts."
+
+
+</feature_description>
+
+
+Untrusted approach synthesis:
+<approach_synthesis encoding="literal-redacted">
+NO_SKETCHES
+
+</approach_synthesis>
+
+
+Untrusted discussion round 1:
+<discussion_round1 encoding="literal-redacted">
+## Decision 1: Scope — fix both /design and /implement
+- **Question**: Should the fix restore the per-round review table + Gantt in /design only (body scope) or both /design and /implement (title scope)?
+- **Resolution**: Both. Splice `render-review-phase-detail.sh` output into BOTH `python/design_summary.py` (the `/design` final summary) and `python/pr_body.py` (the `/implement` final report). Both renderers are confirmed regressed; `/implement`'s harness `skills/implement/scripts/test-write-final-report.sh` (CI shard `test-harnesses-19`) is currently RED asserting `## Review Phase Detail` + `### Round 1 reviewer timing`, so the fix must turn it green.
+- **Source**: user
+
+## Decision 2: Placement — chat + public comment, redacted
+- **Question**: Where should the spliced per-round detail appear?
+- **Resolution**: In the final-summary body so it shows BOTH in chat AND in the upserted public issue/run-summary comment, with outbound redaction applied to the spliced content before the public upsert. Restores pre-#3681 parity (the old `render-final-summary.sh` spliced into `final-summary.md`, which feeds both chat and the comment).
+- **Source**: user
+
+## Decision 3: Gantt data availability (codebase, not user)
+- **Question**: Does the /design plan-review loop produce the `type=round` / `type=vendor` timing-ledger rows the Gantt needs, or would the fix have to add new timing writes?
+- **Resolution**: Design already writes `DESIGN_TMPDIR/timing-ledger.tsv` (read live by `progress_report.py::_render_design_review_detail`) and `python/plan_review.py` emits vendor/round timing rows; design review rounds live under `DESIGN_TMPDIR/plan-review/round-N/round-meta.json`. So the splice can reuse the existing data and degrade gracefully (table from round-meta; Gantt only when timing rows exist). No new timing-ledger writes are in scope.
+- **Source**: codebase
+
+## Decision 4: Reuse the live-report rendering path (codebase, not user)
+- **Question**: Build new rendering logic or reuse what the live `p` report already does?
+- **Resolution**: Mirror the live-report helpers. Design: rounds-root `DESIGN_TMPDIR/plan-review`, skill `design`, timing `DESIGN_TMPDIR/timing-ledger.tsv`, token ledger latest `larch-tokens-*.jsonl` (see `progress_report.py::_render_design_review_detail` / `_call_render_phase_detail_script` / `_latest_token_ledger`). Implement: rounds-root via `_review_rounds_root(implement_tmpdir, run_id)`, skill `implement`, same timing/token ledgers (see `_render_review_detail`). `--findings-file review-findings-full.jsonl` is optional (Top-reviewers sub-section only); compose/point it where available, degrade gracefully when absent.
+- **Source**: codebase
+
+## Hard constraints
+- Renderer `scripts/render-review-phase-detail.sh` and the live `p` report (`progress_report.py:404`) must keep working unchanged; this is consumption-only restoration.
+- Best-effort/observability-only: a renderer failure or missing inputs must NEVER break the final summary/report (renderer already exits 0 on missing inputs; the splice must swallow failures).
+- Reconcile `scripts/render-review-phase-detail.md` (its contract already claims `design render-final-summary` feeds the renderer).
+- Outbound redaction required on the public comment surface for the spliced content.
+
+</discussion_round1>
+
+
+Untrusted approved design outline:
+<design_outline encoding="literal-redacted">
+## Proposed Design Outline
+
+### Goals
+- Restore the per-round review table + ASCII Gantt in the `/design` final summary (`design_summary.py`) and the `/implement` final report (`pr_body.py`).
+- Show the detail in chat AND the upserted public comment, redacting the spliced content before the public upsert.
+- Turn the currently-RED `test-write-final-report.sh` green; add `/design` coverage.
+
+### Non-goals
+- No new timing-ledger / round-meta writes. Reuse existing data; Gantt degrades gracefully when timing rows are absent.
+- No change to `render-review-phase-detail.sh` rendering logic or the live `p` report (`progress_report.py`).
+- No change to the compact `render run-summary` block format.
+
+### Approach sketch
+- Reuse the live-report path: invoke `render-review-phase-detail.sh --skill design|implement` over the rounds-root, mirroring `progress_report.py::_render_design_review_detail` / `_render_review_detail`.
+- `design_summary.py`: after `invoke_render` writes `final-summary.md`, splice the redacted detail in before the stdout emit and the `tracking-issue upsert-summary`.
+- `pr_body.py::write_final_report`: after `render_run_summary`, splice the redacted detail into the body before `summary-final.md` write and upsert.
+- Factor one best-effort splice helper (swallows renderer failures) so both stay in sync.
+
+### Surfaces in scope
+- `python/design_summary.py`, `python/pr_body.py` (splice sites).
+- `python/test_design_summary.py` (new), `skills/implement/scripts/test-write-final-report.sh` (already asserts it; goes green).
+- `scripts/render-review-phase-detail.md` (reconcile contract).
+- A small shared splice helper (reuse `progress_report.py` helpers or a new module).
+
+### Open questions
+- Compose `review-findings-full.jsonl` for `/design` to populate the "Top reviewers" sub-section, or render table + Gantt only? Lean: point at it where present, degrade gracefully when absent (design currently omits it).
+
+</design_outline>
+
