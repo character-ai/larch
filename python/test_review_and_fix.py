@@ -601,6 +601,27 @@ def test_step5_handoff_persists_round_start_before_normal_round_returns(tmp_path
     assert timing_argv[timing_argv.index("--start-s") + 1] == start_value
 
 
+def test_persist_round_start_skips_symlinked_round_dir(tmp_path: Path) -> None:
+    impl = tmp_path / "impl"
+    impl.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (impl / "round-1").symlink_to(outside)
+    review_and_fix._persist_round_start(impl, 1, 12345)
+    assert not (outside / "round-start-s").exists()
+
+
+def test_persist_round_start_tolerates_write_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    impl = tmp_path / "impl"
+    impl.mkdir()
+
+    def boom(*_args: object, **_kwargs: object) -> object:
+        raise OSError("write failed")
+
+    monkeypatch.setattr(os, "fdopen", boom)
+    review_and_fix._persist_round_start(impl, 1, 12345)
+
+
 @MARK_STEP5
 def test_step5_invalid_dynamic_archetypes_emits_stall(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")

@@ -73,12 +73,16 @@ step3_loop_now_s() {
 }
 
 step3_loop_persist_round_start_s() {
-    local round_num="$1" start_s="$2" round_dir start_file
-    round_dir="$DESIGN_TMPDIR/plan-review/round-${round_num}"
+    local round_num="$1" start_s="$2" round_dir start_file plan_review_dir
+    plan_review_dir="$DESIGN_TMPDIR/plan-review"
+    round_dir="$plan_review_dir/round-${round_num}"
+    if [[ -L "$plan_review_dir" ]] || { [[ -e "$plan_review_dir" ]] && [[ ! -d "$plan_review_dir" ]]; }; then
+        return 0
+    fi
     if [[ -L "$round_dir" ]]; then
         return 0
     fi
-    mkdir -p "$round_dir"
+    mkdir -p "$round_dir" 2>/dev/null || return 0
     if [[ -L "$round_dir" || ! -d "$round_dir" ]]; then
         return 0
     fi

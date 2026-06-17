@@ -1938,10 +1938,10 @@ def _persist_round_start(implement_tmpdir: Path, round_num: int, start_s: int) -
         flags |= os.O_NOFOLLOW
     try:
         fd = os.open(start_file, flags, 0o644)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(f"{start_s}\n")
     except OSError:
         return
-    with os.fdopen(fd, "w", encoding="utf-8") as handle:
-        handle.write(f"{start_s}\n")
 
 
 def _append_record_escalation_tool_failure(implement_tmpdir: Path, reason: str) -> None:

@@ -51,9 +51,11 @@ from pathlib import Path
 body = Path(sys.argv[1]).read_text(encoding="utf-8")
 helper = body[body.index("step3_loop_persist_round_start_s() {"):body.index("step3_loop_phase_file() {")]
 required = [
-    'round_dir="$DESIGN_TMPDIR/plan-review/round-${round_num}"',
+    'plan_review_dir="$DESIGN_TMPDIR/plan-review"',
+    'round_dir="$plan_review_dir/round-${round_num}"',
+    '[[ -L "$plan_review_dir" ]]',
     '[[ -L "$round_dir" ]]',
-    'mkdir -p "$round_dir"',
+    'mkdir -p "$round_dir" 2>/dev/null || return 0',
     'start_file="$round_dir/round-start-s"',
     '[[ -L "$start_file" || -e "$start_file" ]]',
     'set -C; printf',
@@ -61,7 +63,7 @@ required = [
 missing = [item for item in required if item not in helper]
 if missing:
     raise SystemExit(f"missing helper substrings: {missing}")
-if helper.index('mkdir -p "$round_dir"') > helper.index('[[ -L "$start_file" || -e "$start_file" ]]'):
+if helper.index('mkdir -p "$round_dir" 2>/dev/null || return 0') > helper.index('[[ -L "$start_file" || -e "$start_file" ]]'):
     raise SystemExit("mkdir must precede round-start-s write-once check")
 round_start_idx = body.index('round_start_s="$(step3_loop_now_s)"')
 persist_idx = body.index('step3_loop_persist_round_start_s "$round_num" "$round_start_s"', round_start_idx)
@@ -172,6 +174,32 @@ touch "$D_ROUND_START/release-body"
 wait "$round_start_pid" || fail "live loop round-start harness failed; stderr=$(cat "$D_ROUND_START/stderr.log")"
 rm -rf "$D_ROUND_START"
 pass 'Step 3 live loop creates round-start-s before the sourced round body returns'
+
+D_PERSIST_GUARD=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-persist-guard.XXXXXX")
+OUTSIDE=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-persist-outside.XXXXXX")
+# shellcheck disable=SC2016
+cat >"$D_PERSIST_GUARD/run-persist.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+export DESIGN_TMPDIR="$1"
+export PLUGIN_ROOT="$2"
+# shellcheck source=/dev/null
+source "$PLUGIN_ROOT/skills/design/scripts/review-design-step3-loop.sh"
+step3_loop_persist_round_start_s 1 12345
+SH
+chmod +x "$D_PERSIST_GUARD/run-persist.sh"
+ln -s "$OUTSIDE" "$D_PERSIST_GUARD/plan-review"
+"$D_PERSIST_GUARD/run-persist.sh" "$D_PERSIST_GUARD" "$ROOT"
+[[ ! -e "$OUTSIDE/round-1/round-start-s" ]] || fail 'persist must not follow symlinked plan-review parent'
+rm "$D_PERSIST_GUARD/plan-review"
+printf 'x\n' >"$D_PERSIST_GUARD/plan-review"
+set +e
+"$D_PERSIST_GUARD/run-persist.sh" "$D_PERSIST_GUARD" "$ROOT"
+file_parent_rc=$?
+set -e
+[[ "$file_parent_rc" -eq 0 ]] || fail "persist must not abort when plan-review parent is a file (rc=$file_parent_rc)"
+rm -rf "$D_PERSIST_GUARD" "$OUTSIDE"
+pass 'Step 3 persist helper skips symlink parent and tolerates mkdir failure'
 
 if grep 'printf.*\*\*⚠ Step 3' "$WRAPPER" | grep -qv '>&2'; then
   fail 'design-step3-review.sh must route Step 3 markdown warnings to stderr'
