@@ -125,6 +125,9 @@ case "\$cmd1 \$cmd2" in
     printf '\n'
     exit 0
     ;;
+  "session validate-design-tmpdir")
+    exit 0
+    ;;
   *)
     exec python3 "$ROOT/python/cli.py" "\$cmd1" "\$cmd2" "\$@"
     ;;
