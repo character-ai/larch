@@ -23,6 +23,7 @@ import gh
 import git
 import proc
 import redact
+import review_phase_detail
 import report_tokens_cost
 import stall_recovery
 import tokens
@@ -984,6 +985,11 @@ def write_final_report(implement_tmpdir: Path, *, comment_only: bool = False, pr
         emergency_requested=_read_kv(run_flags, "EMERGENCY_REQUESTED", "false"),
         **cost_fields,
     )
+    try:
+        detail = review_phase_detail.render_implement_review_detail(implement_tmpdir, run_id or "unknown")
+    except Exception:
+        detail = ""
+    body = review_phase_detail.append_review_phase_detail(body, detail)
     summary = implement_tmpdir / "summary-final.md"
     summary.write_text(body, encoding="utf-8")
     if not comment_only:
