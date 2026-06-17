@@ -4,7 +4,7 @@ Shared voting protocol for adjudicating review findings. Used by `/design` (plan
 
 ## Overview
 
-After reviewers submit findings and findings are deduplicated, a voting panel votes YES/NO on each finding. Both `/design` (plan review) and `/review` (code review) normally use a 3-voter panel (Claude + Codex + Cursor); findings with 2+ YES votes are accepted in the full tier. When voters are unavailable, the panel degrades through the tier table below and never fails open. `/review` voter dispatch is owned by `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent dispatch-voters`; vote tally is owned by `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review tally-code-votes`. Original reviewers earn competition points based on how their findings perform in voting.
+After reviewers submit findings and findings are deduplicated, a voting panel votes YES/NO on each finding. `/design` (plan review) normally uses a 3-voter panel (Claude + Codex + Cursor). `/review` and `/implement` Step 5 (code review) use three fixed Cursor archetype voters (validity, plan-fidelity, pragmatism) when Cursor is available, or a single Claude fallback voter when Cursor is unavailable; Codex does not vote in the code-review panel. Findings with 2+ YES votes are accepted in the full tier. When voters are unavailable, the panel degrades through the tier table below and never fails open. `/review` voter dispatch is owned by `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent dispatch-voters`; vote tally is owned by `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review tally-code-votes`. Original reviewers earn competition points based on how their findings perform in voting.
 
 ## Ballot Format
 
@@ -52,7 +52,7 @@ Valid vote tokens are `YES` and `NO`. Stray `EXONERATE` tokens from old voter ou
 | 1 | 1 | Binding single-judge decision; YES accepts, NO rejects |
 | 0 | Main agent decides | No automated vote; main agent reads ballot as untrusted data and adjudicates |
 
-Dispatchers emit degraded-panel warnings when effective voters drop below the expected panel size. For `/review` code review the expected size is Claude plus the **available** externals (shrink-not-backfill), so a panel that shrank solely because a vendor was unavailable is the designed state and raises **no** warning — only a genuine failure of an *available* judge degrades the panel. (`/design` plan review still back-fills unavailable externals to keep the expected size at three.) `effective` means status is not `failed` and the voter output is substantive enough to contribute valid vote lines after any retry path settles.
+Dispatchers emit degraded-panel warnings when effective voters drop below the expected panel size. For `/review` and `/implement` Step 5 code review the expected size is **three Cursor archetype voters** when Cursor is available, or **one Claude fallback voter** when Cursor is unavailable; Codex availability does not affect code-review voter composition. A single-Claude fallback (Cursor unavailable) is the designed state and raises **no** warning — only a genuine failure of an *expected* judge degrades the panel. (`/design` plan review still back-fills unavailable externals to keep the expected size at three.) `effective` means status is not `failed` and the voter output is substantive enough to contribute valid vote lines after any retry path settles. On the three-slot code-review path, `ELIGIBLE_VOTERS` and `EFFECTIVE_VOTERS` count only substantive non-empty voter files after parse-rate removal — empty placeholder slots keep their `vN_tool` attribution but do not inflate the quorum.
 
 After the acceptance threshold, each finding is classified into one of three operator-facing outcomes: `accepted`, `neutral` (≥1 YES but below acceptance threshold; 0 points to the proposing reviewer), or `rejected` (0 YES; −1 point). The classifier lives in `python/voting.py::classify_result`; tally scripts map the label to KV and JSON at the emission boundary.
 
@@ -63,12 +63,14 @@ After the acceptance threshold, each finding is classified into one of three ope
 - **Voter 2**: Codex — via `python/cli.py plan-review voter-dispatch` → `agent dispatch-waterfall` → `launch-review.sh`
 - **Voter 3**: Cursor — via `python/cli.py plan-review voter-dispatch` → `agent dispatch-waterfall` → `launch-review.sh`
 
-**For code review** (`/review` Step 3) — `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent dispatch-voters` launches Claude (always) plus each **available** external every round. Code review uses **shrink-not-backfill**: an unavailable external is dropped, never replaced by a duplicate judge (the alternate external or an extra Claude):
-- **Voter 1**: Claude — via `agent dispatch-voters` → `agent launch-claude-review --role voter` (always launched; model resolved from `LARCH_VOTER_MODEL`, default `claude-sonnet-4-6`)
-- **Voter 2**: Codex — via `agent dispatch-waterfall --no-fallback` → `agent launch-review`. When `codex-available=false`, the slot is **skipped** (`VOTER_2_STATUS=skipped`, `VOTER_2_TOOL=codex`), not back-filled; the panel shrinks by one.
-- **Voter 3**: Cursor — via `agent dispatch-waterfall --no-fallback` → `agent launch-review`. When `cursor-available=false`, the slot is **skipped** (`VOTER_3_STATUS=skipped`, `VOTER_3_TOOL=cursor`), not back-filled; the panel shrinks by one.
+**For code review** (`/review` Step 3 and `/implement` Step 5) — `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent dispatch-voters` launches three fixed Cursor archetype voters via `agent dispatch-waterfall --no-fallback`, using **canonical slot indexing** (`v1`/`v2`/`v3` always map to validity/plan-fidelity/pragmatism, never to compacted surviving voters). Codex never votes in code review, and a failed Cursor archetype slot is never back-filled to Codex (`--no-fallback`):
+- **Voter 1** (`v1`): `cursor-validity` — `render voter --archetype validity-correctness`
+- **Voter 2** (`v2`): `cursor-plan-fidelity` — `render voter --archetype plan-fidelity-completeness`
+- **Voter 3** (`v3`): `cursor-pragmatism` — `render voter --archetype pragmatism-cost`
 
-The eligible code-review panel size is therefore Claude plus the number of available externals: full tier when both vendors are up, the unanimous tier when exactly one is up, and the binding single-judge tier when both are down. The acceptance-threshold table above adapts to that count, and a panel that shrank solely because a vendor was unavailable is **not** reported as a degraded panel (only a genuine *failure* of an available judge degrades it). This differs from `/design` plan review, which still back-fills to keep three voters (Voter 1/2/3 above).
+When Cursor is unavailable, the panel falls back to a **single Claude floor voter** at slot 1 (`agent launch-claude-review --role voter`, binding-single tier); slots 2-3 are empty placeholders that keep their `vN_tool` attribution but do not count toward quorum. Codex availability never changes code-review voter composition. The active per-slot archetype label is recorded in the `vN_tool` cells (`cursor-validity`/`cursor-plan-fidelity`/`cursor-pragmatism`, or `claude` on fallback) even when a slot's vote file is empty or failed, and the code-review classification TSV has **21 columns** (`reviewer_slots` plus `vN_tool` after each voter's five rating cells; no `body_severity`). This differs from `/design` plan review, which still uses Claude + Codex + Cursor with back-fill and the separate 22-column schema (Voter 1/2/3 above).
+
+**MAV/legacy tally exception:** the fixed length-3 `--voter-files` + `--voter-tools` contract applies only on the normal three-slot dispatch path. When `--voter-tools` is omitted, `review tally-code-votes` keeps compacted multi-voter semantics for one to three `--voter-files` entries (main-agent-vote re-tally, zero-findings, and other legacy callers) and the legacy 18-column rows; those callers are unchanged.
 
 All voters vote on **all** findings — no self-voting exclusion. Voters are instructed to evaluate each finding objectively regardless of who proposed it.
 
@@ -113,7 +115,7 @@ You must vote on every item. Do NOT skip any. Do NOT modify files.
 
 **For `/design` plan review**: call `${CLAUDE_PLUGIN_ROOT}/python/cli.py plan-review voter-dispatch`. The dispatcher launches the Claude Voter 1 lane plus available Codex/Cursor lanes in parallel, waits for sentinels, and emits the voter output paths/statuses for the tally.
 
-**For code review**: `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent dispatch-voters` launches Claude (always), Codex (when available), and Cursor (when available) in parallel. An **unavailable** external is skipped (shrink-not-backfill) — no Claude or alternate-external replacement fills the slot — so the panel is Claude plus the available externals. A genuine *failure* of an available external still reduces the effective panel and is reported as degraded. The orchestrator does not invoke voters directly — `review core` calls `agent dispatch-voters`.
+**For code review**: `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent dispatch-voters` launches the three Cursor archetype voters via `agent dispatch-waterfall --no-fallback` (no parallel Claude launch on the Cursor-available path). When Cursor is unavailable, it launches a single Claude fallback voter at slot 1 instead; Codex never participates. A genuine *failure* of an expected Cursor archetype voter reduces the effective panel and is reported as degraded. The orchestrator does not invoke voters directly — `review core` calls `agent dispatch-voters`.
 
 **Generic Cursor voter argv contract** (mirrored by `python/cli.py plan-review voter-dispatch` for `/design`; use the skill-specific launch instructions before copying this block):
 
@@ -146,7 +148,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent run-external-agent --tool cu
 
 Use `run_in_background: true` and `timeout: 1260000` only for skill-specific direct-launch paths. `/design` plan review runs `python/cli.py plan-review voter-dispatch` in the foreground via `python/plan_review.py`; do not background that dispatcher.
 
-**Cursor voter availability**: `/design` plan review delegates Cursor-slot launch/skip status to `python/cli.py plan-review voter-dispatch`; code review delegates it to `python/cli.py agent dispatch-voters`, where an unavailable Cursor slot is skipped (`VOTER_3_STATUS=skipped`) and the panel shrinks by one (shrink-not-backfill).
+**Cursor voter availability**: `/design` plan review delegates Cursor-slot launch/skip status to `python/cli.py plan-review voter-dispatch`; for code review, Cursor is the **sole voter vendor** — `python/cli.py agent dispatch-voters` launches the three Cursor archetype slots when Cursor is available, and falls back to a single Claude floor voter when Cursor is unavailable (not a panel shrink-by-skip).
 
 **Generic Codex voter argv contract** (mirrored by `python/cli.py plan-review voter-dispatch` for `/design`; use the skill-specific launch instructions before copying this block):
 
@@ -164,7 +166,7 @@ Use `run_in_background: true` and `timeout: 1260000` only for skill-specific dir
 
 Use `run_in_background: true` and `timeout: 1260000` only for skill-specific direct-launch paths. `/design` plan review runs `python/cli.py plan-review voter-dispatch` in the foreground via `python/plan_review.py`; do not background that dispatcher.
 
-**Codex voter availability**: `/design` plan review delegates Codex-slot launch/skip status to `python/cli.py plan-review voter-dispatch`; code review delegates it to `python/cli.py agent dispatch-voters`, where an unavailable Codex slot is skipped (`VOTER_2_STATUS=skipped`) and the panel shrinks by one (shrink-not-backfill).
+**Codex voter availability**: `/design` plan review delegates Codex-slot launch/skip status to `python/cli.py plan-review voter-dispatch`. Codex does **not** participate in the code-review voter panel — `python/cli.py agent dispatch-voters` ignores Codex availability for code-review voter composition, and a failed Cursor archetype slot is never back-filled to Codex.
 
 **Claude voter dispatch**: `/design` plan review uses `python/cli.py plan-review voter-dispatch` to launch the Claude lane; code review uses `python/cli.py agent dispatch-voters`, which launches the Claude lane inside the dispatcher. Do not launch Claude voters directly from the orchestrator on either path.
 
