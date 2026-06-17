@@ -1343,7 +1343,7 @@ def _delta_paths_after_dispatch(
     return tuple(delta)
 
 
-def _run_with_serial_lock(
+def _run_with_startup_lock(
     runner: Runner,
     *,
     scripts_dir: Path,
@@ -1351,14 +1351,14 @@ def _run_with_serial_lock(
     argv: list[str],
     cwd: str | None,
 ) -> CommandResult:
-    delay = os.environ.get("LARCH_EXTERNAL_SERIAL_LOCK_DELAY", "0.5")
+    delay = os.environ.get("LARCH_EXTERNAL_STARTUP_LOCK_DELAY", "0.5")
     if not re.fullmatch(r"[0-9]+(?:\.[0-9]+)?", delay):
         delay = "0.5"
     lib = scripts_dir / "lib-external-launcher-common.sh"
     wrapper = (
         'source "$1"\n'
-        'external_serial_lock_acquire _SERIAL_LOCK "$2"\n'
-        'external_serial_lock_release_after "$_SERIAL_LOCK" "$3"\n'
+        'external_startup_lock_acquire _STARTUP_LOCK "$2"\n'
+        'external_startup_lock_release_after "$_STARTUP_LOCK" "$3"\n'
         'shift 3\n'
         'exec "$@"\n'
     )
@@ -1681,7 +1681,7 @@ def _run_cursor(
     )
     cursor_log = run_dir / "cursor.log"
     cursor_wrapper_log = run_dir / "cursor.wrapper.log"
-    result = _run_with_serial_lock(
+    result = _run_with_startup_lock(
         runner,
         scripts_dir=scripts_dir,
         tool="cursor",

@@ -6,7 +6,7 @@ paths: ["python/agents.py", "python/test_launch_review.py", "python/cli.py", "py
 
 Codex and Cursor share most launcher surfaces; changes in one
 usually apply to the other. This rule covers shared argv grammar,
-sanitization, serial-lock spawn guards, retry, health, and cross-doc
+sanitization, startup-lock spawn guards, retry, health, and cross-doc
 supported-tool lists.
 Intentional asymmetries exist; classify each one instead of forcing symmetry
 blindly.
@@ -17,7 +17,7 @@ or `python/cli.py checks lint-fix`,
 audit:
 
 - **Argv validation** — `--timeout`, `--api-key`, `--model`, `--output`, `--prompt`, `--agent-file`; accepted in one launcher and rejected by another is a parity bug unless documented.
-- **Serial-lock spawn site** — Darwin `external_serial_lock_acquire` / `external_serial_lock_release_after` coverage and relative ordering versus the actual Codex/Cursor spawn must stay aligned across the launcher family; dedicated harnesses pin the concrete lock behavior.
+- **Startup-lock spawn site** — Darwin `external_startup_lock_acquire` / `external_startup_lock_release_after` coverage and relative ordering versus the actual Codex/Cursor spawn must stay aligned across the launcher family; dedicated harnesses pin the concrete lock behavior. Concrete behavior includes shared Codex/Cursor path parity across Python and Bash. Python uses `os.environ.get("USER") or "larch"` to match Bash `${USER:-larch}` for unset and empty `USER`. Bash acquire takes `<out_var> <tool>` while Python acquire returns a `StartupLockState`. Cross-lane contention is regression-tested in `python/test_agents.py`.
 - **Sibling agent prompt** — `agents/codex-implementer.md` / `agents/cursor-implementer.md`; schema/wording changes usually apply to both.
 - **Sibling `.md` contracts** — every launcher has `<basename>.md` (per `.claude/rules/script-md-siblings.md`); update both together.
 - **Common collectors** — `python/cli.py agent run-external-agent` and `python/cli.py agent collect-results`; sanitization, retry, and `.meta` parser changes affect all lanes.

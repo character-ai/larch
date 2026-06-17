@@ -367,13 +367,13 @@ external_launcher_extract_cursor_model() {
     external_launcher_extract_arg_after "$_out_var" "--model" "$@"
 }
 
-external_serial_lock_acquire() {
+external_startup_lock_acquire() {
     local _out_var="$1"
     local tool="$2"
     local platform lock_path ttl tries attempt now mtime age
     printf -v "$_out_var" '%s' ""
 
-    platform="${LARCH_EXTERNAL_SERIAL_LOCK_FORCE_UNAME:-$(uname -s 2>/dev/null || true)}"
+    platform="${LARCH_EXTERNAL_STARTUP_LOCK_FORCE_UNAME:-$(uname -s 2>/dev/null || true)}"
     [[ "$platform" == "Darwin" ]] || return 0
 
     case "$tool" in
@@ -381,9 +381,9 @@ external_serial_lock_acquire() {
         *) return 0 ;;
     esac
 
-    lock_path="/tmp/larch-${tool}-serial-${USER:-larch}.lock"
-    ttl="${LARCH_EXTERNAL_SERIAL_LOCK_TTL:-30}"
-    tries="${LARCH_EXTERNAL_SERIAL_LOCK_TRIES:-300}"
+    lock_path="/tmp/larch-external-startup-${USER:-larch}.lock"
+    ttl="${LARCH_EXTERNAL_STARTUP_LOCK_TTL:-30}"
+    tries="${LARCH_EXTERNAL_STARTUP_LOCK_TRIES:-300}"
     case "$ttl" in ''|*[!0-9]*) ttl=30 ;; esac
     case "$tries" in ''|*[!0-9]*) tries=300 ;; esac
 
@@ -421,7 +421,7 @@ external_serial_lock_acquire() {
     printf -v "$_out_var" '%s' "$lock_path"
 }
 
-external_serial_lock_release_after() {
+external_startup_lock_release_after() {
     local lock_path="${1:-}"
     local delay="${2:-0.5}"
     local release_pid

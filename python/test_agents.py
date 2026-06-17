@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import shutil
 import subprocess
@@ -44,6 +45,18 @@ def _bash_classify(*args: str) -> tuple[str, str]:
         if line.startswith("LAUNCHER_FAILURE_REASON="):
             reason = line.split("=", 1)[1]
     return cls, reason
+
+
+def _bash_startup_lock_acquire(tool: str) -> str:
+    script = f'source "{LIB_COMMON}"\nexternal_startup_lock_acquire _LOCK "$1"\nprintf "%s" "$_LOCK"\n'
+    proc = subprocess.run(
+        ["bash", "-c", script, "bash", tool],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0
+    return proc.stdout.strip()
 
 
 class IngestRunner:
@@ -1447,7 +1460,7 @@ def test_run_negotiation_round_cursor_preflight_failure_and_success(
 
 
 @pytest.mark.parametrize("tool", ["codex", "cursor"])
-def test_run_negotiation_round_serial_lock_before_spawn(
+def test_run_negotiation_round_startup_lock_before_spawn(
     tool: str,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -1455,14 +1468,14 @@ def test_run_negotiation_round_serial_lock_before_spawn(
     prompt = tmp_path / "prompt.txt"
     output = tmp_path / "reply.txt"
     _ = prompt.write_text("prompt body", encoding="utf-8")
-    monkeypatch.setenv("LARCH_EXTERNAL_SERIAL_LOCK_FORCE_UNAME", "Darwin")
+    monkeypatch.setenv("LARCH_EXTERNAL_STARTUP_LOCK_FORCE_UNAME", "Darwin")
     calls: list[str] = []
 
-    def fake_lock(lock_tool: str) -> agents.SerialLockState:
+    def fake_lock(lock_tool: str) -> agents.StartupLockState:
         calls.append(f"lock:{lock_tool}")
-        return agents.SerialLockState(None)
+        return agents.StartupLockState(None)
 
-    def fake_release(_state: agents.SerialLockState) -> None:
+    def fake_release(_state: agents.StartupLockState) -> None:
         calls.append("release")
 
     def fake_run(cmd: object, **kwargs: object) -> agents.subprocess.CompletedProcess[str]:
@@ -1478,8 +1491,8 @@ def test_run_negotiation_round_serial_lock_before_spawn(
                 stdout.write("cursor ok\n")
         return agents.subprocess.CompletedProcess(cmd, 0)
 
-    monkeypatch.setattr(agents, "external_serial_lock_acquire", fake_lock)
-    monkeypatch.setattr(agents, "external_serial_lock_release_after", fake_release)
+    monkeypatch.setattr(agents, "external_startup_lock_acquire", fake_lock)
+    monkeypatch.setattr(agents, "external_startup_lock_release_after", fake_release)
     monkeypatch.setattr(agents.subprocess, "run", fake_run)
     if tool == "codex":
         monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
@@ -1495,12 +1508,12 @@ def test_run_negotiation_round_serial_lock_before_spawn(
 
 
 
-def test_serial_lock_invalid_env_falls_back(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("LARCH_EXTERNAL_SERIAL_LOCK_FORCE_UNAME", "Darwin")
+def test_startup_lock_invalid_env_falls_back(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_EXTERNAL_STARTUP_LOCK_FORCE_UNAME", "Darwin")
     monkeypatch.setenv("USER", "larch-test-invalid-env")
-    monkeypatch.setenv("LARCH_EXTERNAL_SERIAL_LOCK_TTL", "bad")
-    monkeypatch.setenv("LARCH_EXTERNAL_SERIAL_LOCK_TRIES", "bad")
-    monkeypatch.setenv("LARCH_EXTERNAL_SERIAL_LOCK_DELAY", "bad")
+    monkeypatch.setenv("LARCH_EXTERNAL_STARTUP_LOCK_TTL", "bad")
+    monkeypatch.setenv("LARCH_EXTERNAL_STARTUP_LOCK_TRIES", "bad")
+    monkeypatch.setenv("LARCH_EXTERNAL_STARTUP_LOCK_DELAY", "bad")
 
     class FakeTimer:
         def __init__(self, delay: float, callback: object) -> None:
@@ -1512,10 +1525,11 @@ def test_serial_lock_invalid_env_falls_back(monkeypatch: pytest.MonkeyPatch) -> 
             assert self.delay == 0.5
 
     monkeypatch.setattr(agents, "Timer", FakeTimer)
-    state = agents.external_serial_lock_acquire("cursor")
+    state = agents.external_startup_lock_acquire("cursor")
     try:
         assert state.lock_path is not None
-        agents.external_serial_lock_release_after(state)
+        assert state.lock_path == Path("/tmp/larch-external-startup-larch-test-invalid-env.lock")
+        agents.external_startup_lock_release_after(state)
     finally:
         if state.lock_path is not None:
             state.lock_path.rmdir()
@@ -1523,6 +1537,92 @@ def test_serial_lock_invalid_env_falls_back(monkeypatch: pytest.MonkeyPatch) -> 
 
 
 
+
+
+@pytest.mark.parametrize(("first_tool", "second_tool"), [("codex", "cursor"), ("cursor", "codex")])
+def test_startup_lock_blocks_cross_tool_acquire(
+    first_tool: str,
+    second_tool: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    user = f"larch-test-cross-tool-{tmp_path.name}"
+    monkeypatch.setenv("LARCH_EXTERNAL_STARTUP_LOCK_FORCE_UNAME", "Darwin")
+    monkeypatch.setenv("LARCH_EXTERNAL_STARTUP_LOCK_TTL", "60")
+    monkeypatch.setenv("LARCH_EXTERNAL_STARTUP_LOCK_TRIES", "1")
+    monkeypatch.setenv("USER", user)
+    expected = Path(f"/tmp/larch-external-startup-{user}.lock")
+
+    blocked = agents.StartupLockState(None)
+    state = agents.external_startup_lock_acquire(first_tool)
+    try:
+        assert state.lock_path == expected
+        assert expected.is_dir()
+        blocked = agents.external_startup_lock_acquire(second_tool)
+        assert blocked.lock_path is None
+    finally:
+        for lock_path in (blocked.lock_path, state.lock_path):
+            if lock_path is not None:
+                with contextlib.suppress(OSError):
+                    lock_path.rmdir()
+
+
+@pytest.mark.skipif(
+    not LIB_COMMON.is_file() or shutil.which("bash") is None,
+    reason="bash or lib-external-launcher-common.sh unavailable",
+)
+@pytest.mark.parametrize(("python_tool", "bash_tool"), [("codex", "cursor"), ("cursor", "codex")])
+def test_startup_lock_blocks_bash_when_python_holds_shared_path(
+    python_tool: str,
+    bash_tool: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    user = f"larch-test-cross-lane-{tmp_path.name}"
+    monkeypatch.setenv("LARCH_EXTERNAL_STARTUP_LOCK_FORCE_UNAME", "Darwin")
+    monkeypatch.setenv("LARCH_EXTERNAL_STARTUP_LOCK_TTL", "60")
+    monkeypatch.setenv("LARCH_EXTERNAL_STARTUP_LOCK_TRIES", "1")
+    monkeypatch.setenv("USER", user)
+    expected = Path(f"/tmp/larch-external-startup-{user}.lock")
+
+    bash_lock = ""
+    state = agents.external_startup_lock_acquire(python_tool)
+    try:
+        assert state.lock_path == expected
+        assert expected.is_dir()
+        bash_lock = _bash_startup_lock_acquire(bash_tool)
+        assert bash_lock == ""
+        assert expected.is_dir()
+    finally:
+        if bash_lock:
+            with contextlib.suppress(OSError):
+                Path(bash_lock).rmdir()
+        if state.lock_path is not None:
+            with contextlib.suppress(OSError):
+                state.lock_path.rmdir()
+
+
+@pytest.mark.parametrize("user_value", [None, ""])
+def test_startup_lock_user_fallback_matches_bash(
+    user_value: str | None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LARCH_EXTERNAL_STARTUP_LOCK_FORCE_UNAME", "Darwin")
+    monkeypatch.setenv("LARCH_EXTERNAL_STARTUP_LOCK_TRIES", "1")
+    if user_value is None:
+        monkeypatch.delenv("USER", raising=False)
+    else:
+        monkeypatch.setenv("USER", user_value)
+    expected = Path("/tmp/larch-external-startup-larch.lock")
+    with contextlib.suppress(OSError):
+        expected.rmdir()
+    state = agents.external_startup_lock_acquire("cursor")
+    try:
+        assert state.lock_path == expected
+    finally:
+        if state.lock_path is not None:
+            with contextlib.suppress(OSError):
+                state.lock_path.rmdir()
 
 
 def test_cursor_auth_prereads_darwin_keychain_token(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1537,7 +1637,7 @@ def test_cursor_auth_prereads_darwin_keychain_token(monkeypatch: pytest.MonkeyPa
     assert agents.os.environ["CURSOR_API_KEY"] == "crsr_from_keychain"
 
 
-def test_auth_retries_acquire_serial_lock_each_attempt(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_auth_retries_acquire_startup_lock_each_attempt(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     output = tmp_path / "cursor.out"
     calls: list[str] = []
 
@@ -1551,17 +1651,17 @@ def test_auth_retries_acquire_serial_lock_each_attempt(monkeypatch: pytest.Monke
         _ = Path(str(output_path) + ".diag").write_text("authentication failed\n", encoding="utf-8")
         return agents.RunExternalAgentResult(1, output_path)
 
-    def fake_lock(tool: str) -> agents.SerialLockState:
+    def fake_lock(tool: str) -> agents.StartupLockState:
         calls.append(f"lock:{tool}")
-        return agents.SerialLockState(None)
+        return agents.StartupLockState(None)
 
-    def fake_release(_state: agents.SerialLockState) -> None:
+    def fake_release(_state: agents.StartupLockState) -> None:
         calls.append("release")
 
     monkeypatch.setattr(agents, "run_external_agent", fake_run_external_agent)
     monkeypatch.setattr(agents, "_auth_retry_limit", lambda: 2)
-    monkeypatch.setattr(agents, "external_serial_lock_acquire", fake_lock)
-    monkeypatch.setattr(agents, "external_serial_lock_release_after", fake_release)
+    monkeypatch.setattr(agents, "external_startup_lock_acquire", fake_lock)
+    monkeypatch.setattr(agents, "external_startup_lock_release_after", fake_release)
     result = agents._run_external_agent_with_auth_retries(  # pylint: disable=protected-access
         tool="cursor",
         output=output,
@@ -1588,8 +1688,8 @@ def test_unclassified_empty_exit_one(monkeypatch: pytest.MonkeyPatch, tmp_path: 
 
     monkeypatch.setattr(agents, "run_external_agent", fake_run_external_agent)
     monkeypatch.setattr(agents, "_auth_retry_limit", lambda: 5)
-    monkeypatch.setattr(agents, "external_serial_lock_acquire", lambda _tool: agents.SerialLockState(None))
-    monkeypatch.setattr(agents, "external_serial_lock_release_after", lambda _state: None)
+    monkeypatch.setattr(agents, "external_startup_lock_acquire", lambda _tool: agents.StartupLockState(None))
+    monkeypatch.setattr(agents, "external_startup_lock_release_after", lambda _state: None)
     result = agents._run_external_agent_with_auth_retries(  # pylint: disable=protected-access
         tool="codex",
         output=output,
@@ -1618,8 +1718,8 @@ def test_unclassified_empty_exit_one_respects_auth_retry_limit_one(
 
     monkeypatch.setattr(agents, "run_external_agent", fake_run_external_agent)
     monkeypatch.setattr(agents, "_auth_retry_limit", lambda: 1)
-    monkeypatch.setattr(agents, "external_serial_lock_acquire", lambda _tool: agents.SerialLockState(None))
-    monkeypatch.setattr(agents, "external_serial_lock_release_after", lambda _state: None)
+    monkeypatch.setattr(agents, "external_startup_lock_acquire", lambda _tool: agents.StartupLockState(None))
+    monkeypatch.setattr(agents, "external_startup_lock_release_after", lambda _state: None)
     result = agents._run_external_agent_with_auth_retries(  # pylint: disable=protected-access
         tool="codex",
         output=output,

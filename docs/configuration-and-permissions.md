@@ -252,7 +252,15 @@ default; `/design` and `/implement` session writers also persist `30` explicitly
 Standalone `/review` and `/research` inherit the gate without session-env writers.
 This closes the activation gap previously tracked in OOS #3369.
 
-Darwin-only mutex delay remains **`LARCH_EXTERNAL_SERIAL_LOCK_DELAY`** (default `0.5` seconds) via `external_serial_lock_release_after`.
+Darwin-only external CLI startup locking uses the shared path
+`/tmp/larch-external-startup-$USER.lock` for Codex and Cursor because both
+startup paths can contend for the same per-user macOS Keychain resource. The
+lock is a reliability mechanism, not an authorization boundary. Unset and empty
+`USER` both resolve to `larch` in Python and Bash. The release delay is
+**`LARCH_EXTERNAL_STARTUP_LOCK_DELAY`** (default `0.5` seconds) via
+`external_startup_lock_release_after`. Other operator knobs are
+**`LARCH_EXTERNAL_STARTUP_LOCK_TTL`**, **`LARCH_EXTERNAL_STARTUP_LOCK_TRIES`**,
+and the test-only **`LARCH_EXTERNAL_STARTUP_LOCK_FORCE_UNAME`**.
 
 ### `LARCH_REVIEWER_PRUNE`
 

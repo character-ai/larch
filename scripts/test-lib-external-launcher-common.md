@@ -12,4 +12,12 @@ fail-open, gate off, explicit `0` opt-out, `SESSION_ENV_PATH` and
 `$IMPLEMENT_TMPDIR/session-env.sh` timeout resolution, non-tool no-op, and
 malformed non-timeout fail-open.
 
+Covers the shared Darwin startup lock: Codex and Cursor use the same Bash lock
+path, cross-tool acquisition blocks within the Bash lane, startup-lock env var
+names drive tuning, and Bash acquire uses the two-argument form
+`<out_var> <tool>`. Unset and empty `USER` both resolve to `larch` via
+`${USER:-larch}`. Lock tests use a path-safe `USER` token such as
+`larch-test-$(basename "$TMPDIR_ROOT")`. Cross-lane Python-holds /
+Bash-blocked coverage lives in `python/test_agents.py`.
+
 Run via `bash scripts/test-lib-external-launcher-common.sh` or `make test`.

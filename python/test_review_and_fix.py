@@ -784,22 +784,22 @@ def test_review_core_capture_rejects_non_executable_override(tmp_path, monkeypat
 
 
 @MARK_DISPATCH
-def test_run_coder_cursor_acquires_external_serial_lock(tmp_path, monkeypatch):
+def test_run_coder_cursor_acquires_external_startup_lock(tmp_path, monkeypatch):
     monkeypatch.setenv("CURSOR_PRESENT", "true")
     monkeypatch.setenv("CURSOR_BINARY_FOUND", "true")
     monkeypatch.setattr(review_and_fix, "_cursor_available", lambda: True)
     lock_calls: list[str] = []
-    release_calls: list[review_and_fix.agents.SerialLockState] = []
+    release_calls: list[review_and_fix.agents.StartupLockState] = []
 
     def fake_acquire(tool):
         lock_calls.append(tool)
-        return review_and_fix.agents.SerialLockState(None)
+        return review_and_fix.agents.StartupLockState(None)
 
     def fake_release(state):
         release_calls.append(state)
 
-    monkeypatch.setattr(review_and_fix.agents, "external_serial_lock_acquire", fake_acquire)
-    monkeypatch.setattr(review_and_fix.agents, "external_serial_lock_release_after", fake_release)
+    monkeypatch.setattr(review_and_fix.agents, "external_startup_lock_acquire", fake_acquire)
+    monkeypatch.setattr(review_and_fix.agents, "external_startup_lock_release_after", fake_release)
     monkeypatch.setattr(review_and_fix, "_run", lambda argv, **_kw: review_and_fix.proc.CommandResult(
         argv, 0, "wrapped prompt", "", 0.0,
     ))
