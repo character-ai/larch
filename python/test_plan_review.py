@@ -31,6 +31,9 @@ def test_embedded_plan_review_loop_uses_migrated_collector() -> None:
     body = plan_review.legacy_asset_bytes("/".join(loop_parts)).decode("utf-8")
     assert "/".join(collector_parts) not in body
     assert "agent collect-results" in body
+    assert "collector-results.env" in body
+    assert "NOT_SUBSTANTIVE and other non-OK" in body
+    assert "COLLECT_FAILURE_COUNT" in body
 
 
 def test_embedded_run_step3_review_routes_from_binary_found() -> None:
@@ -887,5 +890,17 @@ def test_embedded_waterfall_dispatchers_call_agent_verb() -> None:
         if key.endswith("dispatch-plan-review-panel.sh"):
             assert "DISPATCH_WATERFALL_CMD=(python3" in body
             assert '"${DISPATCH_WATERFALL_CMD[@]}"' in body
+            assert "codex-plan-generic" in body
+            assert "Output only the shared TSV header block" in body
+            assert "Do not write lens summaries" in body
+            assert "--require-first-line-pattern" not in body
         else:
             assert 'python3 "$PLUGIN_ROOT/python/cli.py" agent dispatch-waterfall' in body
+            assert "plan-voter-prompt-retry" not in body
+            assert "--prompt-file" not in _parse_rate_retry_lines(body)
+            assert "--retry-prefix-kind" not in _parse_rate_retry_lines(body)
+            assert "--launch-mode" not in _parse_rate_retry_lines(body)
+
+
+def _parse_rate_retry_lines(body: str) -> str:
+    return "\n".join(line for line in body.splitlines() if "voting parse-rate-retry" in line or "VPR_ARGS=" in line)

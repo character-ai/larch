@@ -211,6 +211,38 @@ def test_check_reviewer_failure_threshold_zero_static_slots(tmp_path: Path) -> N
     assert "THRESHOLD_OK=true" in result.stdout
 
 
+
+
+def test_check_reviewer_failure_threshold_preserves_not_substantive_against_raw_output(tmp_path: Path) -> None:
+    reviewer = tmp_path / "cursor-specialist-arch-output.txt"
+    reviewer.write_text("narrative output that is non-empty\n", encoding="utf-8")
+    collector = tmp_path / "collector-results.env"
+    collector.write_text(
+        f"REVIEWER_FILE={reviewer}\n"
+        "TOOL=cursor\n"
+        "STATUS=NOT_SUBSTANTIVE\n"
+        "EXIT_CODE=0\n\n",
+        encoding="utf-8",
+    )
+    result = run_review(
+        "check-reviewer-failure-threshold",
+        "--collector-results-file",
+        str(collector),
+        "--panel",
+        "hard",
+        "--intended-slots",
+        "1",
+        "--launched-slots",
+        "1",
+        "--reviewer-output-files",
+        str(reviewer),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "SUCCEEDED_SLOTS=0" in result.stdout
+    assert "FAILED_SLOTS=1" in result.stdout
+    assert "NOT_SUBSTANTIVE_SLOTS=1" in result.stdout
+
 def test_dispatch_panel_python_surface_does_not_import_agents_waterfall() -> None:
     text = (ROOT / "python" / "review_pipeline.py").read_text(encoding="utf-8")
     assert "agents.run_waterfall" not in text
@@ -785,6 +817,45 @@ def test_collect_findings_done_sentinel_wait_success(tmp_path: Path) -> None:
     assert "FINDINGS_COUNT=1" in result.stdout
     assert "### FINDING_1:" in findings.read_text(encoding="utf-8")
 
+
+
+
+def test_collect_findings_skips_external_not_substantive_from_collector(tmp_path: Path) -> None:
+    case = tmp_path / "collect-external-not-substantive"
+    case.mkdir()
+    outf = case / "cursor-specialist-arch-output.txt"
+    outf.write_text(
+        "### In-Scope Findings\n- This narrative finding would be parsed without collector gating.\n",
+        encoding="utf-8",
+    )
+    (case / "cursor-specialist-arch-output.txt.done").write_text("0\n", encoding="utf-8")
+    (case / "cursor-specialist-arch-output.txt.dirty-tree").write_text("STATUS=clean\n", encoding="utf-8")
+    findings = case / "findings.md"
+    oos = case / "oos.md"
+    result = run_review(
+        "collect-findings",
+        "--external-output-files",
+        str(outf),
+        "--mode",
+        "description",
+        "--timeout",
+        "1",
+        "--findings-file",
+        str(findings),
+        "--oos-file",
+        str(oos),
+        env={
+            "CLAUDE_PLUGIN_ROOT": str(ROOT),
+            "REVIEW_TMPDIR": str(case),
+            "WAIT_FOR_REVIEWERS_POLL_INTERVAL": "0.01",
+            "LARCH_QUIET_DISABLE": "1",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "FINDINGS_COUNT=0" in result.stdout
+    assert "STATUS=NOT_SUBSTANTIVE" in (case / "collector-results.env").read_text(encoding="utf-8")
+    assert findings.read_text(encoding="utf-8") == ""
 
 def test_collect_findings_wait_timeout_redacts_stderr(tmp_path: Path) -> None:
     # Test that collect-findings exits non-zero when wait-for-reviewers times out.

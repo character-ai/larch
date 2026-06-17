@@ -1,5 +1,5 @@
 # pyright: reportUnknownMemberType=false, reportUnknownVariableType=false
-"""Collect, validate, and retry external reviewer outputs."""
+"""Collect, validate, and retry launch failures for external reviewer outputs."""
 
 from __future__ import annotations
 
@@ -34,15 +34,6 @@ _MIN_TOOL_ARGC = 2
 _EXIT_OUTPUT_EMPTY = 4
 _EXIT_VALIDATION_CURSOR_EMPTY = 5
 _MIN_WAIT_PARTS = 2
-_COLLECTOR_NS_STRONG_HEADER = (
-    "IMPORTANT: Your previous response was not structured correctly. "
-    "You MUST output findings in the exact format your original prompt requires, "
-    "or the literal NO_ISSUES_FOUND if no issues exist. "
-    "Do NOT write narrative, process descriptions, or reading logs. "
-    "Begin your response directly with the format your prompt demands.\n\n"
-)
-
-
 @dataclass(frozen=True)
 class CollectorOptions:
     timeout: int
@@ -263,50 +254,9 @@ def _classify_cursor_response(path: str) -> bool:
     return False
 
 
-def _retry_output_path(output: str, suffix: str = "retry") -> str:
+def _retry_output_path(output: str) -> str:
     base = output.removesuffix(".txt")
-    return f"{base}-{suffix}.txt"
-
-
-def first_pass_sidecar_path(output: str) -> str:
-    if output.endswith(".txt"):
-        return f"{output[:-4]}-first-pass.txt"
-    return f"{output}-first-pass"
-
-
-def preserve_and_publish_ns_retry(orig_output: str, retry_output: str, retry_label: str) -> bool:
-    first_pass = first_pass_sidecar_path(orig_output)
-    try:
-        _ = shutil.copyfile(orig_output, first_pass)
-        _diagnostic(f"ns-retry: first-pass content preserved at {Path(first_pass).name}")
-    except OSError:
-        _diagnostic(
-            f"collect-results: {retry_label}: failed to preserve first-pass content at {first_pass}; "
-            "leaving STATUS=NOT_SUBSTANTIVE"
-        )
-        return False
-    orig_path = Path(orig_output)
-    publish_tmp = ""
-    try:
-        fd, publish_tmp = tempfile.mkstemp(prefix=f".{orig_path.name}.ns-retry.", dir=str(orig_path.parent))
-        os.close(fd)
-        _ = shutil.copyfile(retry_output, publish_tmp)
-        _ = Path(publish_tmp).replace(orig_path)
-        _diagnostic(
-            f"ns-retry: published retry content to {orig_path.name}; "
-            f"retry artifact retained at {Path(retry_output).name}"
-        )
-        return True
-    except OSError:
-        for path in (publish_tmp, first_pass):
-            if path:
-                with contextlib.suppress(FileNotFoundError):
-                    Path(path).unlink()
-        _diagnostic(
-            f"collect-results: {retry_label}: failed to publish retry output to {orig_output}; "
-            "leaving STATUS=NOT_SUBSTANTIVE"
-        )
-        return False
+    return f"{base}-retry.txt"
 
 
 def derive_ns_retry_reason(val_exit: int, ns_mode: str) -> str:
@@ -420,8 +370,6 @@ def _launch_cmd_json_retry(
     plan: RetryPlan,
     meta: RetryMeta,
     records: list[CollectorRecord],
-    *,
-    strong_prompt: bool = False,
 ) -> bool:
     if not meta.cmd_json and not meta.tool:
         _mark_retry_metadata_invalid(records, plan.index, plan.orig_output, "Retry metadata invalid: missing CMD_JSON and TOOL")
@@ -449,8 +397,6 @@ def _launch_cmd_json_retry(
     if meta.stderr_sink and not _safe_meta_path_value(meta.stderr_sink):
         _mark_retry_metadata_invalid(records, plan.index, plan.orig_output, "Retry metadata invalid: STDERR_SINK contains ..")
         return False
-    if strong_prompt and cmd:
-        cmd[-1] = _COLLECTOR_NS_STRONG_HEADER + cmd[-1]
     args = [
         sys.executable,
         str(PY_CLI),
@@ -540,8 +486,6 @@ def _launch_outer_retry(
     plan: RetryPlan,
     meta: RetryMeta,
     records: list[CollectorRecord],
-    *,
-    prompt_override: str = "",
 ) -> bool:
     if not meta.outer_launcher:
         _mark_retry_metadata_invalid(records, plan.index, plan.orig_output, "Retry metadata invalid: missing OUTER_LAUNCHER")
@@ -572,7 +516,7 @@ def _launch_outer_retry(
     if meta.outer_launcher_prompt_file != expected_prompt:
         _mark_retry_metadata_invalid(records, plan.index, plan.orig_output, "Retry metadata invalid: OUTER_LAUNCHER_PROMPT_FILE not the expected sidecar")
         return False
-    prompt_for_launch = prompt_override or meta.outer_launcher_prompt_file
+    prompt_for_launch = meta.outer_launcher_prompt_file
     prompt_path = Path(prompt_for_launch)
     if not prompt_path.is_file() or prompt_path.is_symlink():
         _mark_retry_metadata_invalid(records, plan.index, plan.orig_output, "Retry metadata invalid: OUTER_LAUNCHER_PROMPT_FILE not a readable regular non-symlink file")
@@ -631,7 +575,7 @@ def _launch_outer_retry(
     return True
 
 
-def _launch_retry_plan(plan: RetryPlan, records: list[CollectorRecord], *, strong_prompt: bool = False) -> bool:
+def _launch_retry_plan(plan: RetryPlan, records: list[CollectorRecord]) -> bool:
     meta = _parse_meta(f"{plan.orig_output}.meta")
     timeout, reason = _validate_retry_timeout(meta)
     if timeout is None:
@@ -639,26 +583,8 @@ def _launch_retry_plan(plan: RetryPlan, records: list[CollectorRecord], *, stron
         return False
     plan.timeout = timeout
     if meta.outer_launcher or meta.outer_launcher_prompt_file or meta.outer_launcher_workdir:
-        prompt_override = ""
-        if strong_prompt:
-            fd, temp_prompt = tempfile.mkstemp(prefix="larch-ns-retry-prompt.", dir=os.environ.get("TMPDIR") or None)
-            os.close(fd)
-            try:
-                original = Path(meta.outer_launcher_prompt_file).read_text(encoding="utf-8", errors="replace")
-                _ = Path(temp_prompt).write_text(_COLLECTOR_NS_STRONG_HEADER + original, encoding="utf-8")
-            except OSError:
-                with contextlib.suppress(FileNotFoundError):
-                    Path(temp_prompt).unlink()
-                return False
-            plan.temp_prompt = temp_prompt
-            prompt_override = temp_prompt
-        ok = _launch_outer_retry(plan, meta, records, prompt_override=prompt_override)
-        if not ok and plan.temp_prompt:
-            with contextlib.suppress(FileNotFoundError):
-                Path(plan.temp_prompt).unlink()
-            plan.temp_prompt = ""
-        return ok
-    return _launch_cmd_json_retry(plan, meta, records, strong_prompt=strong_prompt)
+        return _launch_outer_retry(plan, meta, records)
+    return _launch_cmd_json_retry(plan, meta, records)
 
 
 def _wait_retry_plans(plans: Sequence[RetryPlan]) -> None:
@@ -803,81 +729,18 @@ def _validate_structured(records: list[CollectorRecord]) -> None:
             )
 
 
-def _collect_ns_retry_plans(records: list[CollectorRecord]) -> list[RetryPlan]:
-    plans: list[RetryPlan] = []
-    for idx, record in enumerate(records):
-        if record.status != "NOT_SUBSTANTIVE" or not record.ns_retry_mode:
+def _emit_not_substantive_diagnostics(records: Sequence[CollectorRecord]) -> None:
+    for record in records:
+        if record.status != "NOT_SUBSTANTIVE":
             continue
-        if not Path(f"{record.reviewer_file}.meta").is_file():
-            continue
-        meta = _parse_meta(f"{record.reviewer_file}.meta")
-        timeout, reason = _validate_retry_timeout(meta)
-        if timeout is None:
-            _mark_retry_metadata_invalid(records, idx, record.reviewer_file, reason)
-            continue
-        plans.append(
-            RetryPlan(
-                index=idx,
-                orig_output=record.reviewer_file,
-                retry_output=_retry_output_path(record.reviewer_file, "ns-retry"),
-                timeout=timeout,
-                mode=record.ns_retry_mode,
-                ns_retry_reason=record.ns_retry_reason or "UNKNOWN",
-            )
+        _diagnostic(
+            "collect-results: warning: dropping NOT_SUBSTANTIVE reviewer "
+            f"basename={Path(record.reviewer_file).name} "
+            f"tool={record.tool or 'unknown'} "
+            f"NS_RETRY_MODE={record.ns_retry_mode or 'none'} "
+            f"NS_RETRY_REASON={record.ns_retry_reason or 'UNKNOWN'} "
+            f"FAILURE_REASON={_sanitize_failure_reason(record.failure_reason)}"
         )
-    return plans
-
-
-def _apply_ns_retry_results(records: list[CollectorRecord], plans: Sequence[RetryPlan], *, validation_mode: bool) -> None:
-    val_args = ["--validation-mode"] if validation_mode else []
-    for plan in plans:
-        if not plan.launched:
-            continue
-        retry_meta = Path(f"{plan.retry_output}.meta")
-        if retry_meta.is_file() and not retry_meta.is_symlink():
-            with contextlib.suppress(OSError):
-                with retry_meta.open("a", encoding="utf-8") as handle:
-                    _ = handle.write(f"NS_RETRY_REASON={plan.ns_retry_reason or 'UNKNOWN'}\n")
-        retry_sentinel = Path(plan.sentinel)
-        retry_file = Path(plan.retry_output)
-        if not (retry_sentinel.is_file() and retry_file.is_file() and retry_file.stat().st_size > 0):
-            continue
-        ns_exit, _ = _read_sentinel_exit(str(retry_sentinel), "ns-retry sentinel")
-        if ns_exit != "0":
-            continue
-        entry_tool = records[plan.index].tool
-        if plan.mode == "structured":
-            sidecar = f"{plan.retry_output}{'.tsv' if entry_tool in {'cursor', 'codex'} else '.jsonl'}"
-            result = _run_validator(["--structured-reviewer-mode", "--write-structured", sidecar, plan.retry_output])
-            if result.returncode != 0 or not Path(sidecar).is_file():
-                continue
-            if not preserve_and_publish_ns_retry(plan.orig_output, plan.retry_output, "structured NS retry"):
-                continue
-            final_sidecar = f"{plan.orig_output}.{Path(sidecar).suffix.lstrip('.')}"
-            with contextlib.suppress(OSError):
-                _ = shutil.copyfile(sidecar, final_sidecar)
-                sidecar = final_sidecar
-            if _classify_cursor_response(plan.orig_output):
-                records[plan.index] = CollectorRecord(plan.orig_output, entry_tool, _STATUS_CURSOR_EMPTY, "0", failure_reason="cursor narration-only / degraded backend response (structured ns-retry)")
-            else:
-                records[plan.index] = CollectorRecord(plan.orig_output, entry_tool, "OK", "0", structured_sidecar=sidecar)
-        else:
-            result = _run_validator([*val_args, plan.retry_output])
-            if result.returncode != 0:
-                continue
-            if not preserve_and_publish_ns_retry(plan.orig_output, plan.retry_output, "substantive NS retry"):
-                continue
-            if _classify_cursor_response(plan.orig_output):
-                records[plan.index] = CollectorRecord(plan.orig_output, entry_tool, _STATUS_CURSOR_EMPTY, "0", failure_reason="cursor narration-only / degraded backend response (substantive ns-retry)")
-            else:
-                records[plan.index] = CollectorRecord(plan.orig_output, entry_tool, "OK", "0")
-        for tail in (f"{plan.orig_output}.stderr-tail", f"{plan.retry_output}.stderr-tail"):
-            with contextlib.suppress(FileNotFoundError):
-                Path(tail).unlink()
-    for plan in plans:
-        if plan.temp_prompt:
-            with contextlib.suppress(FileNotFoundError):
-                Path(plan.temp_prompt).unlink()
 
 
 def collector_stderr_tail_candidates(reviewer_file: str) -> list[str]:
@@ -1079,10 +942,7 @@ def collect_results(options: CollectorOptions) -> int:
     if options.structured_reviewer_validation:
         _validate_structured(records)
     if options.substantive_validation or options.structured_reviewer_validation:
-        ns_plans = _collect_ns_retry_plans(records)
-        launched_ns_plans = [plan for plan in ns_plans if _launch_retry_plan(plan, records, strong_prompt=True)]
-        _wait_retry_plans(launched_ns_plans)
-        _apply_ns_retry_results(records, ns_plans, validation_mode=options.validation_mode)
+        _emit_not_substantive_diagnostics(records)
     if not options.summary_only:
         _emit_failed_agent_stderr_tails(records)
     _emit_records(records, summary_only=options.summary_only)

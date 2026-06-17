@@ -177,27 +177,45 @@ def test_substantive_structured_summary_and_cursor_response(capsys: pytest.Captu
     assert "FAILURE_REASON=" not in summary
 
 
-def test_non_substantive_retry_publishes_first_pass(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_non_substantive_validation_warns_without_retry(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _reset(monkeypatch)
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    cursor = bin_dir / "cursor"
-    _ = cursor.write_text("#!/usr/bin/env bash\nprintf 'NO_ISSUES_FOUND\\n'\n", encoding="utf-8")
-    cursor.chmod(0o755)
-    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}")
     output = tmp_path / "cursor-specialist-output.txt"
     first_pass = "Reading files and preparing a response.\n"
     _ = output.write_text(first_pass, encoding="utf-8")
     _write_done(output)
-    _write_meta(output, cmd=[str(cursor), "agent", "--workspace", str(tmp_path), "retry prompt"])
 
     assert collect_results.collect_results_main(["--timeout", "2", "--substantive-validation", "--validation-mode", str(output)]) == 0
-    blocks = _parse_blocks(capsys.readouterr().out)
+    captured = capsys.readouterr()
+    blocks = _parse_blocks(captured.out)
     assert blocks[0]["REVIEWER_FILE"] == str(output)
-    assert blocks[0]["STATUS"] == "OK"
-    assert output.read_text(encoding="utf-8") == "NO_ISSUES_FOUND\n"
-    assert (tmp_path / "cursor-specialist-output-first-pass.txt").read_text(encoding="utf-8") == first_pass
-    assert "NS_RETRY_REASON=NO_ISSUES_FOUND_TOO_THIN" in (tmp_path / "cursor-specialist-output-ns-retry.txt.meta").read_text(encoding="utf-8")
+    assert blocks[0]["STATUS"] == "NOT_SUBSTANTIVE"
+    assert blocks[0]["NS_RETRY_MODE"] == "substantive"
+    assert blocks[0]["NS_RETRY_REASON"] == "NO_ISSUES_FOUND_TOO_THIN"
+    assert output.read_text(encoding="utf-8") == first_pass
+    assert not (tmp_path / "cursor-specialist-output-ns-retry.txt").exists()
+    assert not (tmp_path / "cursor-specialist-output-first-pass.txt").exists()
+    assert "dropping NOT_SUBSTANTIVE reviewer" in captured.err
+    assert "basename=cursor-specialist-output.txt" in captured.err
+
+
+def test_structured_validation_not_substantive_no_retry(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _reset(monkeypatch)
+    output = tmp_path / "codex-plan-generic-output.txt"
+    narrative = "I reviewed the plan and found one important issue, but this is narrative prose.\n"
+    _ = output.write_text(narrative, encoding="utf-8")
+    _write_done(output)
+
+    assert collect_results.collect_results_main(["--timeout", "2", "--structured-reviewer-validation", str(output)]) == 0
+    captured = capsys.readouterr()
+    blocks = _parse_blocks(captured.out)
+    assert blocks[0]["REVIEWER_FILE"] == str(output)
+    assert blocks[0]["STATUS"] == "NOT_SUBSTANTIVE"
+    assert blocks[0]["NS_RETRY_MODE"] == "structured"
+    assert blocks[0]["NS_RETRY_REASON"] in {"JSON_PARSE_FAIL", "UNKNOWN"}
+    assert output.read_text(encoding="utf-8") == narrative
+    assert not (tmp_path / "codex-plan-generic-output-ns-retry.txt").exists()
+    assert not (tmp_path / "codex-plan-generic-output-first-pass.txt").exists()
+    assert "dropping NOT_SUBSTANTIVE reviewer" in captured.err
 
 
 def test_stderr_tail_resolution_prefers_retry_and_dedupes(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -220,7 +238,6 @@ def test_stderr_tail_resolution_prefers_retry_and_dedupes(capsys: pytest.Capture
 
 def test_retry_output_path_non_txt_uses_txt_suffix() -> None:
     assert collect_results._retry_output_path("/tmp/foo.out") == "/tmp/foo.out-retry.txt"  # type: ignore[reportPrivateUsage]
-    assert collect_results._retry_output_path("/tmp/foo.out", "ns-retry") == "/tmp/foo.out-ns-retry.txt"  # type: ignore[reportPrivateUsage]
     assert collect_results.resolve_collector_stderr_tail_file("/tmp/foo.out") == ""
 
 

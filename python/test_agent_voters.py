@@ -217,9 +217,10 @@ def test_child_argv_parity_timeout_context_and_parse_rate_args(tmp_path: Path, m
     waiter = next(call for call in harness.run_calls if _verb(call) == ("agent", "wait-reviewers"))
     assert _value_after(waiter, "--timeout") == "7"
     parse_call = next(call for call in harness.run_calls if _verb(call) == ("voting", "parse-rate-retry"))
-    for flag in ("--ballot-file", "--id-grammar", "--review-tmpdir", "--plugin-root", "--dispatch-label", "--retry-prefix-kind", "--launch-mode", "--slot", "--voter-file", "--voter-tool", "--prompt-file"):
+    for flag in ("--ballot-file", "--id-grammar", "--review-tmpdir", "--plugin-root", "--dispatch-label", "--slot", "--voter-file", "--voter-tool"):
         assert flag in parse_call
-    assert _value_after(parse_call, "--launch-mode") == "description"
+    for flag in ("--prompt-file", "--retry-prefix-kind", "--launch-mode"):
+        assert flag not in parse_call
     assert _value_after(parse_call, "--plugin-root") == str(stub_root)
     assert "--ctx=--diff-file" in parse_call
     assert "--ctx=--plan-file" in parse_call
@@ -1044,7 +1045,7 @@ def test_oos_only_ballot_triggers_parse_retry(tmp_path: Path) -> None:
     )
     assert result.returncode == 0, result.stderr
     assert "VOTER_1_PARSE_RATE_STATUS=NOT_SUBSTANTIVE" in result.stdout
-    assert (review / "claude-vote-prompt-retry.txt").is_file()
+    assert not (review / "claude-vote-prompt-retry.txt").exists()
 
 
 @pytest.mark.voter_edge_and_r3_claude
@@ -1087,13 +1088,12 @@ def test_retry_success_claude_preserves_first_pass_sidecar(tmp_path: Path) -> No
         env={"CLAUDE_STUB_MODE": "parse_retry_success", "CLAUDE_STUB_COUNT_FILE": str(count)},
     )
     assert result.returncode == 0, result.stderr
-    assert "VOTER_1_PARSE_RATE_STATUS=OK" in result.stdout
-    first_pass = review / "claude-vote-output-first-pass.txt"
+    assert "VOTER_1_PARSE_RATE_STATUS=NOT_SUBSTANTIVE" in result.stdout
     final = review / "claude-vote-output.txt"
-    assert first_pass.is_file()
-    assert "narrative instead of votes" in first_pass.read_text(encoding="utf-8")
-    assert first_pass.read_text(encoding="utf-8") != final.read_text(encoding="utf-8")
-    assert count.read_text(encoding="utf-8").strip() == "2"
+    assert "narrative instead of votes" in final.read_text(encoding="utf-8")
+    assert not (review / "claude-vote-output-first-pass.txt").exists()
+    assert not (review / "claude-vote-output-parse-retry.txt").exists()
+    assert count.read_text(encoding="utf-8").strip() == "1"
 
 
 @pytest.mark.voter_retry_claude
@@ -1130,12 +1130,11 @@ def test_retry_success_codex_preserves_first_pass_sidecar(tmp_path: Path) -> Non
         env={"CODEX_STUB_MODE": "parse_retry_success", "CODEX_STUB_COUNT_FILE": str(count)},
     )
     assert result.returncode == 0, result.stderr
-    assert "VOTER_2_PARSE_RATE_STATUS=OK" in result.stdout
-    first_pass = review / "codex-vote-output-first-pass.txt"
+    assert "VOTER_2_PARSE_RATE_STATUS=NOT_SUBSTANTIVE" in result.stdout
     final = review / "codex-vote-output.txt"
-    assert first_pass.is_file()
-    assert "Narrative codex output" in first_pass.read_text(encoding="utf-8")
-    assert first_pass.read_text(encoding="utf-8") != final.read_text(encoding="utf-8")
+    assert "Narrative codex output" in final.read_text(encoding="utf-8")
+    assert not (review / "codex-vote-output-first-pass.txt").exists()
+    assert not (review / "codex-vote-output-parse-retry.txt").exists()
 
 
 @pytest.mark.voter_retry_cursor
@@ -1151,12 +1150,11 @@ def test_retry_success_cursor_preserves_first_pass_sidecar(tmp_path: Path) -> No
         env={"CURSOR_STUB_MODE": "parse_retry_success", "CURSOR_STUB_COUNT_FILE": str(count)},
     )
     assert result.returncode == 0, result.stderr
-    assert "VOTER_3_PARSE_RATE_STATUS=OK" in result.stdout
-    first_pass = review / "cursor-vote-output-first-pass.txt"
+    assert "VOTER_3_PARSE_RATE_STATUS=NOT_SUBSTANTIVE" in result.stdout
     final = review / "cursor-vote-output.txt"
-    assert first_pass.is_file()
-    assert "Narrative cursor output" in first_pass.read_text(encoding="utf-8")
-    assert first_pass.read_text(encoding="utf-8") != final.read_text(encoding="utf-8")
+    assert "Narrative cursor output" in final.read_text(encoding="utf-8")
+    assert not (review / "cursor-vote-output-first-pass.txt").exists()
+    assert not (review / "cursor-vote-output-parse-retry.txt").exists()
 
 
 @pytest.mark.voter_retry_codex_fail_and_fallback
