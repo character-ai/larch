@@ -26,7 +26,7 @@ def _make_ctx() -> RunContext:
     )
 
 
-def _call_agentic_fix(kv: str) -> "ci_monitor.FixResult":
+def _call_agentic_fix(kv: str) -> ci_monitor.FixResult:
     class _KvRunner:
         def run(self, *_a: object, **_kw: object) -> proc.CommandResult:
             return proc.CommandResult(("cli",), 0, kv, "", 0.01)
