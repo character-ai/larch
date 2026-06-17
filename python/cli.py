@@ -264,6 +264,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("lint", "skill-invocations"): ("lint_skill_invocations", "main"),
     ("lint", "run-log-run-id"): ("lint_run_log_run_id", "main"),
     ("voting", "findings-classification-header"): ("voting", "findings_classification_header_main"),
+    ("voting", "code-review-classification-header"): ("voting", "code_review_classification_header_main"),
     ("voting", "vote-for-id"): ("voting", "vote_for_id_main"),
     ("voting", "reviewer-for-block"): ("voting", "reviewer_for_block_main"),
     ("voting", "is-security-block"): ("voting", "is_security_block_main"),

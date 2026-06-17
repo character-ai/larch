@@ -671,3 +671,30 @@ def test_findings_classification_header_cli(capsys) -> None:
     rc = voting.findings_classification_header_main([])
     assert rc == 0
     assert capsys.readouterr().out == voting.FINDINGS_CLASSIFICATION_HEADER + "\n"
+
+
+def test_code_review_classification_header_is_21_column_schema() -> None:
+    code = voting.code_review_classification_header().split("\t")
+    design = voting.findings_classification_header().split("\t")
+    assert len(code) == 21
+    assert code[1] == "reviewer_slots"
+    assert "body_severity" not in code
+    assert code[8] == "v1_tool"
+    assert code[14] == "v2_tool"
+    assert code[20] == "v3_tool"
+    assert len(design) == 22
+    assert design[1] == "finding_reviewers"
+    assert design[-1] == "body_severity"
+
+
+def test_voter_launcher_tool_normalizes_cursor_archetypes() -> None:
+    # launch_voter_retry was removed with the parse-rate retry subsystem (main
+    # #4547); the surviving contract is that cursor-* archetype voter labels
+    # normalize to the "cursor" launcher tool, while non-archetype labels pass
+    # through unchanged.
+    assert voting.voter_launcher_tool("cursor-validity") == "cursor"
+    assert voting.voter_launcher_tool("cursor-plan-fidelity") == "cursor"
+    assert voting.voter_launcher_tool("cursor-pragmatism") == "cursor"
+    assert voting.voter_launcher_tool("claude") == "claude"
+    assert voting.voter_launcher_tool("codex") == "codex"
+    assert voting.voter_launcher_tool("cursor") == "cursor"

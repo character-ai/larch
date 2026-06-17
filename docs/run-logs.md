@@ -154,7 +154,7 @@ groups of: `vote`, `correctness`, `severity`, `quality`, `uncertain`, `tool`.
 The canonical header is:
 
 ```text
-finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool
+finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool
 ```
 
 Semantics:
@@ -243,9 +243,7 @@ finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\
 ```
 
 `finding_id` is the ballot id (`FINDING_N` or `OOS_N`), `reviewer_slots` is the
-pipe-delimited proposer attribution, and `voting_result` is one of `accepted`, `neutral`, or `rejected`. `vN_*` columns follow compact effective
-voter order after failed/degraded slots are removed. Rating cells are enum-only;
-missing or invalid axis tokens are empty and force `vN_uncertain=true`.
+pipe-delimited proposer attribution, and `voting_result` is one of `accepted`, `neutral`, or `rejected`. On the three-slot code-review path, `v1` is `cursor-validity`, `v2` is `cursor-plan-fidelity`, and `v3` is `cursor-pragmatism`; `claude` appears in `v1_tool` on the fallback path. Empty or failed slots keep their `vN_tool` label with empty rating cells. Rating cells are enum-only; missing or invalid axis tokens are empty and force `vN_uncertain=true`. Older logs may lack `vN_tool` or use the compact 18-column layout. MAV re-tally rows may also use the legacy single-voter 18-column shape.
 
 For 0-judge degraded rounds (`TALLY_STATUS=main-agent-vote-required`),
 `voting_result=rejected` is a placeholder TSV sentinel, not a literal panel

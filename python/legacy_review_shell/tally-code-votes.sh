@@ -29,11 +29,12 @@ voter_parse_rate_diag_path() {
 }
 
 usage() {
-    larch_err "Usage: tally-code-votes.sh --ballot-file FILE --voter-files FILE... --review-tmpdir DIR [--session-env-path FILE] [--scope-files FILE] [--plan-file FILE] [--manifest-file FILE] [--collector-results-file FILE] [--not-substantive-count N] [--cursor-available true|false] [--codex-available true|false] [--round-num N] [--both-down true|false]"
+    larch_err "Usage: tally-code-votes.sh --ballot-file FILE --voter-files FILE... [--voter-tools TOOL...] --review-tmpdir DIR [--session-env-path FILE] [--scope-files FILE] [--plan-file FILE] [--manifest-file FILE] [--collector-results-file FILE] [--not-substantive-count N] [--cursor-available true|false] [--codex-available true|false] [--round-num N] [--both-down true|false]"
 }
 
 BALLOT_FILE=""
 VOTER_FILES=()
+VOTER_TOOLS=()
 REVIEW_TMPDIR=""
 SESSION_ENV_PATH=""
 SCOPE_FILES=""
@@ -50,6 +51,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --ballot-file) BALLOT_FILE="${2:?--ballot-file requires a value}"; shift 2 ;;
         --voter-files) shift; while [[ $# -gt 0 && "$1" != --* ]]; do VOTER_FILES+=("$1"); shift; done ;;
+        --voter-tools) shift; while [[ $# -gt 0 && "$1" != --* ]]; do VOTER_TOOLS+=("$1"); shift; done ;;
         --review-tmpdir) REVIEW_TMPDIR="${2:?--review-tmpdir requires a value}"; shift 2 ;;
         --session-env-path) SESSION_ENV_PATH="${2:?--session-env-path requires a value}"; shift 2 ;;
         --scope-files) SCOPE_FILES="${2:?--scope-files requires a value}"; shift 2 ;;
@@ -72,6 +74,15 @@ done
 case "$ROUND_NUM" in ''|*[!0-9]*) larch_err "tally-code-votes.sh: --round-num must be a positive integer"; exit 2 ;; esac
 (( ROUND_NUM > 0 )) || { larch_err "tally-code-votes.sh: --round-num must be a positive integer"; exit 2; }
 mkdir -p "$REVIEW_TMPDIR"
+
+THREE_SLOT_PANEL=false
+if [[ "${#VOTER_TOOLS[@]}" -gt 0 ]]; then
+    THREE_SLOT_PANEL=true
+    if [[ "${#VOTER_FILES[@]}" -ne 3 || "${#VOTER_TOOLS[@]}" -ne 3 ]]; then
+        larch_err "tally-code-votes.sh: --voter-tools requires exactly three --voter-files and three tool labels"
+        exit 2
+    fi
+fi
 
 ACCEPTED_FINDINGS_FILE="$REVIEW_TMPDIR/accepted-findings.md"
 REJECTED_FINDINGS_FILE="$REVIEW_TMPDIR/rejected-findings.md"
@@ -160,7 +171,11 @@ OOS_REJECTED_COUNT=0
 OUT_OF_SCOPE_DRIFT_COUNT=0
 
 write_classification_tsv_header() {
-    printf '%s\n' 'finding_id	reviewer_slots	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain'
+    if [[ "$THREE_SLOT_PANEL" == "true" ]]; then
+        python3 "$CLI" voting code-review-classification-header
+    else
+        printf '%s\n' 'finding_id	reviewer_slots	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain'
+    fi
 }
 
 sanitize_classification_text_cell() {
@@ -254,14 +269,27 @@ write_classification_tsv_row() {
     local ballot_id="$1" reviewer_slots="$2" voting_result="$3"
     shift 3
     local row=("$ballot_id" "$(sanitize_classification_text_cell "$(reviewer_slots_for_tsv "$reviewer_slots")")" "$(sanitize_result_cell "$voting_result")")
-    local value vote correctness severity quality uncertain raw_vote
+    local value vote correctness severity quality uncertain raw_vote tool
     for _ in 1 2 3; do
-        if [[ $# -lt 5 ]]; then
-            row+=("" "" "" "" "")
+        if [[ "$THREE_SLOT_PANEL" == "true" ]]; then
+            if [[ $# -lt 6 ]]; then
+                row+=("" "" "" "" "" "")
+                continue
+            fi
+            raw_vote="${1:-}"; correctness="${2:-}"; severity="${3:-}"; quality="${4:-}"; uncertain="${5:-}"; tool="${6:-}"
+            shift 6
+        else
+            if [[ $# -lt 5 ]]; then
+                row+=("" "" "" "" "")
+                continue
+            fi
+            raw_vote="${1:-}"; correctness="${2:-}"; severity="${3:-}"; quality="${4:-}"; uncertain="${5:-}"; tool=""
+            shift 5
+        fi
+        if [[ "$THREE_SLOT_PANEL" == "true" && -z "$raw_vote$correctness$severity$quality$uncertain" ]]; then
+            row+=("" "" "" "" "" "$(sanitize_classification_text_cell "$tool")")
             continue
         fi
-        raw_vote="${1:-}"; correctness="${2:-}"; severity="${3:-}"; quality="${4:-}"; uncertain="${5:-}"
-        shift 5
         vote="$raw_vote"
         [[ -z "$vote" ]] && vote="JUDGE_ERROR"
         value=$(sanitize_vote_cell "$vote"); row+=("$value")
@@ -275,8 +303,13 @@ write_classification_tsv_row() {
         [[ -z "$value" ]] && uncertain=true
         row+=("$value")
         row+=("$(sanitize_uncertain_cell "$uncertain")")
+        [[ "$THREE_SLOT_PANEL" == "true" ]] && row+=("$(sanitize_classification_text_cell "$tool")")
     done
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "${row[@]}" >> "$CLASSIFICATION_TSV"
+    if [[ "$THREE_SLOT_PANEL" == "true" ]]; then
+        printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "${row[@]}" >> "$CLASSIFICATION_TSV"
+    else
+        printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "${row[@]}" >> "$CLASSIFICATION_TSV"
+    fi
 }
 
 mkdir -p "$(dirname "$CLASSIFICATION_TSV")"
@@ -301,17 +334,14 @@ normalize_reviewer_basename() {
 }
 
 expected_voters_for_round() {
-    # Eligible judge count for the degraded-panel *warning* only. Mirrors
-    # agent dispatch-voters shrink-not-backfill: the panel is Claude (always)
-    # plus each AVAILABLE external, so an external that was unavailable is not
-    # counted — a panel that shrank solely because a vendor was unavailable is the
-    # designed state, not a degradation, and must not raise a spurious warning. An
-    # external is counted unless explicitly marked unavailable (--codex-available
-    # false / --cursor-available false), preserving the historical expected=3 for
-    # callers that do not pass availability. The acceptance-threshold table
-    # (accept_finding / classify_result / panel_tier) is unchanged; only this
-    # warning threshold is availability-aware. Per-round `--round-num` does not
-    # shrink quorum.
+    if [[ "$THREE_SLOT_PANEL" == "true" ]]; then
+        if [[ "$CURSOR_BINARY_FOUND" == "true" ]]; then
+            printf '3\n'
+        else
+            printf '1\n'
+        fi
+        return
+    fi
     local expected=1
     [[ "$CODEX_BINARY_FOUND" == "true" ]] && expected=$((expected + 1))
     [[ "$CURSOR_BINARY_FOUND" == "true" ]] && expected=$((expected + 1))
@@ -418,22 +448,39 @@ record_tally_outcome() {
     fi
 }
 
-# Voter eligibility is the panel-level count of available voter files. The
-# deprecated --both-down flag maps to the 0-judge main-agent path.
-ELIGIBLE_VOTERS="${#VOTER_FILES[@]}"
+# Voter eligibility is the panel-level count of substantive voter files. The
+# deprecated --both-down flag maps to the 0-judge main-agent path on the legacy path.
+ELIGIBLE_VOTERS=0
 VOTING_SKIPPED_WARNING=""
-if [[ "$BOTH_DOWN" == "true" ]]; then
-    ELIGIBLE_VOTERS=0
-fi
 VOTER_PARSE_FAILED_COUNT=0
 EFFECTIVE_VOTER_FILES=()
-for voter_file in "${VOTER_FILES[@]+"${VOTER_FILES[@]}"}"; do
-    if python3 "$CLI" voting parse-rate-diag-matches --voter-file "$voter_file"; then
-        VOTER_PARSE_FAILED_COUNT=$((VOTER_PARSE_FAILED_COUNT + 1))
-    else
-        EFFECTIVE_VOTER_FILES+=("$voter_file")
+EFFECTIVE_SLOT=(false false false)
+if [[ "$THREE_SLOT_PANEL" == "true" ]]; then
+    for slot in 0 1 2; do
+        voter_file="${VOTER_FILES[$slot]:-}"
+        if [[ -n "$voter_file" && -r "$voter_file" && -s "$voter_file" ]]; then
+            ELIGIBLE_VOTERS=$((ELIGIBLE_VOTERS + 1))
+            if python3 "$CLI" voting parse-rate-diag-matches --voter-file "$voter_file"; then
+                VOTER_PARSE_FAILED_COUNT=$((VOTER_PARSE_FAILED_COUNT + 1))
+            else
+                EFFECTIVE_SLOT[slot]=true
+                EFFECTIVE_VOTER_FILES+=("$voter_file")
+            fi
+        fi
+    done
+else
+    ELIGIBLE_VOTERS="${#VOTER_FILES[@]}"
+    if [[ "$BOTH_DOWN" == "true" ]]; then
+        ELIGIBLE_VOTERS=0
     fi
-done
+    for voter_file in "${VOTER_FILES[@]+"${VOTER_FILES[@]}"}"; do
+        if python3 "$CLI" voting parse-rate-diag-matches --voter-file "$voter_file"; then
+            VOTER_PARSE_FAILED_COUNT=$((VOTER_PARSE_FAILED_COUNT + 1))
+        else
+            EFFECTIVE_VOTER_FILES+=("$voter_file")
+        fi
+    done
+fi
 EFFECTIVE_VOTERS=$((ELIGIBLE_VOTERS - VOTER_PARSE_FAILED_COUNT))
 (( EFFECTIVE_VOTERS < 0 )) && EFFECTIVE_VOTERS=0
 
@@ -444,7 +491,14 @@ if (( EFFECTIVE_VOTERS == 0 )); then
         # Placeholder row for a 0-judge degraded round; main-agent
         # adjudication, not this TSV, determines the final accepted/rejected
         # artifacts.
-        write_classification_tsv_row "$id" "$reviewer" rejected
+        if [[ "$THREE_SLOT_PANEL" == "true" ]]; then
+            write_classification_tsv_row "$id" "$reviewer" rejected \
+                "" "" "" "" "" "${VOTER_TOOLS[0]:-}" \
+                "" "" "" "" "" "${VOTER_TOOLS[1]:-}" \
+                "" "" "" "" "" "${VOTER_TOOLS[2]:-}"
+        else
+            write_classification_tsv_row "$id" "$reviewer" rejected
+        fi
     done
     VOTING_SKIPPED_WARNING="**⚠ Degraded code-review panel: 0 judges available. Panel tier: main-agent-required. Manual adjudication needed.**"
     printf '# Code Review Voting Tally\n\n' > "$VOTING_TALLY_FILE"
@@ -506,20 +560,43 @@ write_archetype_map "$MANIFEST_FILE" "$archetype_map"
         classification_cells=()
         # Code review uses EFFECTIVE_VOTERS, not raw voter-file count, after
         # parse-rate degradation removes narrative-only voter slots.
-        for voter_file in "${EFFECTIVE_VOTER_FILES[@]}"; do
-            parsed_vote_rating=$(parse_vote_rating_for "$voter_file" "$id")
-            vote=$(printf '%s\n' "$parsed_vote_rating" | kv_value PARSED_VOTE)
-            correctness=$(printf '%s\n' "$parsed_vote_rating" | kv_value PARSED_CORRECTNESS)
-            severity=$(printf '%s\n' "$parsed_vote_rating" | kv_value PARSED_SEVERITY)
-            quality=$(printf '%s\n' "$parsed_vote_rating" | kv_value PARSED_QUALITY)
-            uncertain=$(printf '%s\n' "$parsed_vote_rating" | kv_value PARSED_UNCERTAIN)
-            classification_cells+=("$vote" "$correctness" "$severity" "$quality" "$uncertain")
-            case "$vote" in
-                YES) yes=$((yes + 1)) ;;
-                NO) no=$((no + 1)) ;;
-                *) judge_error=$((judge_error + 1)) ;;
-            esac
-        done
+        if [[ "$THREE_SLOT_PANEL" == "true" ]]; then
+            for slot in 0 1 2; do
+                voter_file="${VOTER_FILES[$slot]:-}"
+                voter_tool="${VOTER_TOOLS[$slot]:-}"
+                if [[ "${EFFECTIVE_SLOT[$slot]}" != "true" ]]; then
+                    classification_cells+=("" "" "" "" "" "$voter_tool")
+                    continue
+                fi
+                parsed_vote_rating=$(parse_vote_rating_for "$voter_file" "$id")
+                vote=$(printf '%s\n' "$parsed_vote_rating" | kv_value PARSED_VOTE)
+                correctness=$(printf '%s\n' "$parsed_vote_rating" | kv_value PARSED_CORRECTNESS)
+                severity=$(printf '%s\n' "$parsed_vote_rating" | kv_value PARSED_SEVERITY)
+                quality=$(printf '%s\n' "$parsed_vote_rating" | kv_value PARSED_QUALITY)
+                uncertain=$(printf '%s\n' "$parsed_vote_rating" | kv_value PARSED_UNCERTAIN)
+                classification_cells+=("$vote" "$correctness" "$severity" "$quality" "$uncertain" "$voter_tool")
+                case "$vote" in
+                    YES) yes=$((yes + 1)) ;;
+                    NO) no=$((no + 1)) ;;
+                    *) judge_error=$((judge_error + 1)) ;;
+                esac
+            done
+        else
+            for voter_file in "${EFFECTIVE_VOTER_FILES[@]}"; do
+                parsed_vote_rating=$(parse_vote_rating_for "$voter_file" "$id")
+                vote=$(printf '%s\n' "$parsed_vote_rating" | kv_value PARSED_VOTE)
+                correctness=$(printf '%s\n' "$parsed_vote_rating" | kv_value PARSED_CORRECTNESS)
+                severity=$(printf '%s\n' "$parsed_vote_rating" | kv_value PARSED_SEVERITY)
+                quality=$(printf '%s\n' "$parsed_vote_rating" | kv_value PARSED_QUALITY)
+                uncertain=$(printf '%s\n' "$parsed_vote_rating" | kv_value PARSED_UNCERTAIN)
+                classification_cells+=("$vote" "$correctness" "$severity" "$quality" "$uncertain")
+                case "$vote" in
+                    YES) yes=$((yes + 1)) ;;
+                    NO) no=$((no + 1)) ;;
+                    *) judge_error=$((judge_error + 1)) ;;
+                esac
+            done
+        fi
 
         result=$(python3 "$CLI" voting classify-result "$yes" "$no" "$exonerate" "$EFFECTIVE_VOTERS")
         case "$result" in

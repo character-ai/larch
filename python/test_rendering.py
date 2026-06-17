@@ -570,3 +570,34 @@ def test_scope_anchor_retally_prefers_parsed(tmp_path: Path, capsys: pytest.Capt
     ])
     assert rc == 0
     assert capsys.readouterr().out == str(parsed)
+
+
+def _render_voter_text(tmp_path: Path, capsys: pytest.CaptureFixture[str], *extra: str) -> str:
+    ballot = tmp_path / "ballot.md"
+    ballot.write_text("### FINDING_1: one\n", encoding="utf-8")
+    rc = rendering.render_voter_main([
+        "--ballot-file", str(ballot),
+        "--panel-role", "test voter",
+        "--id-grammar", "finding-oos",
+        "--verification-context", "code",
+        *extra,
+    ])
+    assert rc == 0
+    return capsys.readouterr().out
+
+
+def test_render_voter_no_archetype_matches_default_output(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    first = _render_voter_text(tmp_path, capsys)
+    second = _render_voter_text(tmp_path, capsys)
+    assert first == second
+    assert "Archetype lens" not in first
+
+
+def test_render_voter_archetype_lens_blocks(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    validity = _render_voter_text(tmp_path, capsys, "--archetype", "validity-correctness")
+    assert "full Review Acceptance Rubric" in validity
+    assert "defect is real and triggerable" in validity
+    plan = _render_voter_text(tmp_path, capsys, "--archetype", "plan-fidelity-completeness")
+    assert "missing plan context is not an automatic NO" in plan
+    pragmatic = _render_voter_text(tmp_path, capsys, "--archetype", "pragmatism-cost")
+    assert "never trade correctness or security away for simplicity" in pragmatic

@@ -17,6 +17,13 @@ _CLASSIFICATION_HEADER = (
     "v2_uncertain\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain"
 )
 
+_CODE_REVIEW_CLASSIFICATION_HEADER = (
+    "finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\t"
+    "v1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\t"
+    "v2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\t"
+    "v3_quality\tv3_uncertain\tv3_tool"
+)
+
 
 def _write_classification_ballot(path: Path) -> None:
     _ = path.write_text(
@@ -792,3 +799,99 @@ def test_findings_classification_quiet_mode_emits_tsv(tmp_path: Path) -> None:
     class_file = Path(rts.kv_get(result.stdout, "FINDINGS_CLASSIFICATION_TSV_FILE") or "")
     assert class_file.is_file()
     assert class_file.stat().st_size > 0
+
+
+def test_tally_three_slot_failed_middle_preserves_slot_columns(tmp_path: Path) -> None:
+    case = tmp_path / "three-slot-middle"
+    case.mkdir()
+    _mk_ballot(case / "ballot.md")
+    _ = (case / "v1.txt").write_text("FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n", encoding="utf-8")
+    _ = (case / "v2.txt").write_text("", encoding="utf-8")
+    _ = (case / "v3.txt").write_text("FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false\n", encoding="utf-8")
+
+    result = run_review(
+        "tally-code-votes",
+        "--ballot-file",
+        str(case / "ballot.md"),
+        "--review-tmpdir",
+        str(case),
+        "--cursor-available",
+        "true",
+        "--codex-available",
+        "false",
+        "--voter-files",
+        str(case / "v1.txt"),
+        "",
+        str(case / "v3.txt"),
+        "--voter-tools",
+        "cursor-validity",
+        "cursor-plan-fidelity",
+        "cursor-pragmatism",
+        env={"CLAUDE_PLUGIN_ROOT": str(ROOT)},
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert rts.kv_get(result.stdout, "ELIGIBLE_VOTER_COUNT") == "2"
+    class_file = Path(rts.kv_get(result.stdout, "FINDINGS_CLASSIFICATION_TSV_FILE") or "")
+    lines = class_file.read_text(encoding="utf-8").splitlines()
+    assert lines[0] == _CODE_REVIEW_CLASSIFICATION_HEADER
+    assert all(len(line.split("\t")) == 21 for line in lines)
+    row = _tsv_rows(class_file)["FINDING_1"]
+    assert row["v1_tool"] == "cursor-validity"
+    assert row["v2_vote"] == ""
+    assert row["v2_tool"] == "cursor-plan-fidelity"
+    assert row["v3_vote"] == "NO"
+    assert row["v3_tool"] == "cursor-pragmatism"
+
+
+def test_tally_three_slot_mismatched_tools_fails(tmp_path: Path) -> None:
+    case = tmp_path / "three-slot-mismatch"
+    case.mkdir()
+    _mk_ballot(case / "ballot.md")
+    _ = (case / "v1.txt").write_text("FINDING_1: YES\n", encoding="utf-8")
+    result = run_review(
+        "tally-code-votes",
+        "--ballot-file",
+        str(case / "ballot.md"),
+        "--review-tmpdir",
+        str(case),
+        "--voter-files",
+        str(case / "v1.txt"),
+        "--voter-tools",
+        "cursor-validity",
+    )
+    assert result.returncode == 2
+
+
+def test_tally_three_slot_claude_fallback_single_quorum(tmp_path: Path) -> None:
+    case = tmp_path / "claude-fallback"
+    case.mkdir()
+    _mk_ballot(case / "ballot.md")
+    _ = (case / "claude.txt").write_text("FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n", encoding="utf-8")
+    result = run_review(
+        "tally-code-votes",
+        "--ballot-file",
+        str(case / "ballot.md"),
+        "--review-tmpdir",
+        str(case),
+        "--cursor-available",
+        "false",
+        "--codex-available",
+        "true",
+        "--voter-files",
+        str(case / "claude.txt"),
+        "",
+        "",
+        "--voter-tools",
+        "claude",
+        "cursor-plan-fidelity",
+        "cursor-pragmatism",
+        env={"CLAUDE_PLUGIN_ROOT": str(ROOT)},
+    )
+    assert result.returncode == 0, result.stderr
+    assert rts.kv_get(result.stdout, "VOTER_COUNT") == "1"
+    row = _tsv_rows(Path(rts.kv_get(result.stdout, "FINDINGS_CLASSIFICATION_TSV_FILE") or ""))["FINDING_1"]
+    assert row["voting_result"] == "accepted"
+    assert row["v1_tool"] == "claude"
+    assert row["v2_tool"] == "cursor-plan-fidelity"
+    assert row["v3_tool"] == "cursor-pragmatism"

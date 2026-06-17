@@ -83,6 +83,19 @@ cat > "$IMPL_BAD_VERSION/review-findings-full.jsonl" <<'JSONL'
 {"id":"FINDING_BAD","phase":"code-review","outcome":"accepted","reviewer_slots":["cursor-specialist-correctness-output.txt"],"round_num":"1","category":"Bad version run","body_severity":"important","prose_body":"## Bad version run"}
 JSONL
 
+
+# ---- implement 21-column TSV fixture: voter severities stay aligned with vN_tool columns ----
+IMPL_TSV21="$FIX/larch-logs/implement/RUN-IMPL-TSV21"
+mkdir -p "$IMPL_TSV21/round-1"
+cat > "$IMPL_TSV21/manifest.json" <<'JSON'
+{"started_at":"2026-05-25T10:00:00Z","larch_version":"49.0.0","skill":"implement"}
+JSON
+cat > "$IMPL_TSV21/review-findings-full.jsonl" <<'JSONL'
+{"id":"FINDING_21","phase":"code-review","outcome":"accepted","reviewer_slots":["cursor-validity"],"round_num":"1","category":"Twenty-one column probe","prose_body":"## Twenty-one column probe"}
+JSONL
+printf 'finding_id	reviewer_slots	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool\n' > "$IMPL_TSV21/round-1/findings-classification.tsv"
+printf 'FINDING_21	cursor-validity	accepted	YES	true	major	good	false	cursor-validity	NO	true	nit	weak	false	cursor-plan-fidelity	YES	true	minor	adequate	false	cursor-pragmatism\n' >> "$IMPL_TSV21/round-1/findings-classification.tsv"
+
 # ---- design fixture: one accepted-major in-scope, one rejected-nit ----
 DROUND="$FIX/larch-logs/design/RUN-DSGN-1/plan-review/round-1"
 mkdir -p "$DROUND"
@@ -138,7 +151,7 @@ REPORT_VERSION=$(python3 "$ANALYZER" --log-root "$FIX/larch-logs" --min-group 1 
 assert_contains "$REPORT_VERSION" "## Pre/post comparison" "version pre/post header"
 assert_contains "$REPORT_VERSION" "unknown-version skipped: 1" "malformed larch_version skipped"
 assert_contains "$REPORT_VERSION" "| post | nit | 1 | 0.0" "post nit acceptance is zero"
-assert_contains "$REPORT_VERSION" "post accepted-low-value: 0.0% (0/1)" "post accepted-low-value line"
+assert_contains "$REPORT_VERSION" "post accepted-low-value: 0.0%" "post accepted-low-value line"
 assert_contains "$REPORT_VERSION" "post tier-composition: important" "post tier composition line"
 assert_contains "$REPORT_VERSION" "| pre | nit | 1 | 0.0" "explicit body_severity drives pre nit tier"
 
@@ -193,6 +206,20 @@ assert "Codex-Concise" in rec["text"], rec
 PY
 PASS=$((PASS + 1))
 echo "  ok: concise design severity fallback"
+
+
+echo "== implement 21-column TSV severity columns are header-based =="
+python3 - "$ANALYZER" "$FIX/larch-logs" <<'PY'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("fluff_analysis", sys.argv[1])
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+records = mod.extract(sys.argv[2], "", False, None, None, None)
+rec = next(r for r in records if r.get("finding_id") == "FINDING_21")
+assert rec["v_severities"] == ["major", "nit", "minor"], rec
+PY
+PASS=$((PASS + 1))
+echo "  ok: implement 21-column TSV severities parsed by header"
 
 echo "== missing log root exits 2 =="
 set +e

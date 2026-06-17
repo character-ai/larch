@@ -22,6 +22,12 @@ DISPATCH_LABEL = "agent dispatch-voters"
 MODE = "description"
 VOTER_PANEL_ROLE = "scrupulous senior code reviewer on a 3-judge voting panel deciding which proposed code-review findings should be accepted"
 
+CURSOR_VOTER_SLOTS = (
+    ("1", "voter-1", "cursor-validity", "validity-correctness", "validity", "cursor-validity-vote-output.txt"),
+    ("2", "voter-2", "cursor-plan-fidelity", "plan-fidelity-completeness", "plan-fidelity", "cursor-plan-fidelity-vote-output.txt"),
+    ("3", "voter-3", "cursor-pragmatism", "pragmatism-cost", "pragmatism", "cursor-pragmatism-vote-output.txt"),
+)
+
 
 @dataclass(frozen=True)
 class Options:
@@ -40,9 +46,9 @@ class DispatchState:
     voter_1_path: str
     voter_2_path: str = ""
     voter_3_path: str = ""
-    voter_1_tool: str = "claude"
-    voter_2_tool: str = "codex"
-    voter_3_tool: str = "cursor"
+    voter_1_tool: str = "cursor-validity"
+    voter_2_tool: str = "cursor-plan-fidelity"
+    voter_3_tool: str = "cursor-pragmatism"
     voter_1_status: str = "launched"
     voter_2_status: str = "launched"
     voter_3_status: str = "launched"
@@ -116,21 +122,22 @@ def _parse_rate_ctx_args(bounded_diff: str, bounded_plan: str) -> list[str]:
     return args
 
 
-def _make_voter_prompt_file(opts: Options, review_tmpdir: Path, label: str) -> str:
+def _make_voter_prompt_file(opts: Options, review_tmpdir: Path, label: str, archetype: str = "") -> str:
     prompt_file = review_tmpdir / f"{label}-vote-prompt.txt"
-    result = proc.run(
-        [
-            *_cli_argv("render", "voter"),
-            "--ballot-file",
-            opts.ballot_file,
-            "--panel-role",
-            VOTER_PANEL_ROLE,
-            "--id-grammar",
-            "finding-oos",
-            "--verification-context",
-            "code",
-        ]
-    )
+    argv = [
+        *_cli_argv("render", "voter"),
+        "--ballot-file",
+        opts.ballot_file,
+        "--panel-role",
+        VOTER_PANEL_ROLE,
+        "--id-grammar",
+        "finding-oos",
+        "--verification-context",
+        "code",
+    ]
+    if archetype:
+        argv.extend(["--archetype", archetype])
+    result = proc.run(argv)
     with prompt_file.open("w", encoding="utf-8") as handle:
         _ = handle.write(result.stdout)
     if result.returncode != 0:
@@ -167,14 +174,11 @@ def _launch_claude_voter(voter_1_path: str, prompt_file: str, ctx_args: Sequence
         )
 
 
-def _write_waterfall_manifest(review_tmpdir: Path, codex_prompt: str, cursor_prompt: str) -> str:
+def _write_waterfall_manifest(review_tmpdir: Path, prompt_files: dict[str, str]) -> str:
     manifest = review_tmpdir / "code-voter-slots.ndjson"
-    rows = [
-        {"slot": "voter-2", "tool": "codex", "output": str(review_tmpdir / "codex-vote-output.txt"), "prompt_file": codex_prompt},
-        {"slot": "voter-3", "tool": "cursor", "output": str(review_tmpdir / "cursor-vote-output.txt"), "prompt_file": cursor_prompt},
-    ]
     with manifest.open("w", encoding="utf-8") as handle:
-        for row in rows:
+        for _slot_num, slot_name, _tool_label, _archetype, prompt_label, output_name in CURSOR_VOTER_SLOTS:
+            row = {"slot": slot_name, "tool": "cursor", "output": str(review_tmpdir / output_name), "prompt_file": prompt_files[prompt_label]}
             _ = handle.write(json.dumps(row, separators=(",", ":")) + "\n")
     return str(manifest)
 
@@ -393,52 +397,53 @@ def dispatch_voters(opts: Options) -> int:
     review_tmpdir.mkdir(parents=True, exist_ok=True)
     ctx_args, bounded_diff, bounded_plan = _context_args(review_tmpdir, opts.diff_file, opts.plan_file)
 
-    voter_1_path = str(review_tmpdir / "claude-vote-output.txt")
-    claude_prompt = _make_voter_prompt_file(opts, review_tmpdir, "claude")
-    codex_prompt = _make_voter_prompt_file(opts, review_tmpdir, "codex")
-    cursor_prompt = _make_voter_prompt_file(opts, review_tmpdir, "cursor")
+    cursor_path = opts.cursor_available == "true"
+    prompt_files: dict[str, str] = {}
+    state: DispatchState
+    dispatch_ok = "true"
 
-    claude_process = _launch_claude_voter(voter_1_path, claude_prompt, ctx_args)
-    manifest = _write_waterfall_manifest(review_tmpdir, codex_prompt, cursor_prompt)
-    waterfall_output = _dispatch_waterfall(opts, manifest, ctx_args)
-    voter1_rc = claude_process.wait()
-
-    if voter1_rc != 0 or not _file_nonempty(voter_1_path):
-        _append_voter1_failure(opts, review_tmpdir, voter_1_path, voter1_rc)
-
-    outputs, tools, dispatch_ok = _parse_waterfall_output(waterfall_output)
-    state = DispatchState(voter_1_path=voter_1_path)
-    for idx, tool in enumerate(tools):
-        output = outputs[idx] if idx < len(outputs) else ""
-        if tool == "codex":
-            state.voter_2_path = output
-        elif tool == "cursor":
-            state.voter_3_path = output
-    if opts.codex_available != "true":
-        state.voter_2_status = "skipped"
-    if opts.cursor_available != "true":
-        state.voter_3_status = "skipped"
-
-    sentinels = [f"{state.voter_1_path}.done"]
-    if state.voter_2_status != "skipped" and state.voter_2_path:
-        sentinels.append(f"{state.voter_2_path}.done")
-    if state.voter_3_status != "skipped" and state.voter_3_path:
-        sentinels.append(f"{state.voter_3_path}.done")
-    voter1_timed_out, wait_rc = _wait_sentinels(review_tmpdir, sentinels)
-
-    if (
-        not Path(f"{state.voter_1_path}.done").is_file()
-        and voter1_rc == 0
-        and _file_nonempty(state.voter_1_path)
-        and not voter1_timed_out
-        and wait_rc == 0
-    ):
-        Path(f"{state.voter_1_path}.done").write_text("0\n", encoding="utf-8")
+    if cursor_path:
+        for _slot_num, _slot_name, _tool_label, archetype, prompt_label, _output_name in CURSOR_VOTER_SLOTS:
+            prompt_files[prompt_label] = _make_voter_prompt_file(opts, review_tmpdir, prompt_label, archetype)
+        manifest = _write_waterfall_manifest(review_tmpdir, prompt_files)
+        waterfall_output = _dispatch_waterfall(opts, manifest, ctx_args)
+        _outputs, _tools, _raw_dispatch_ok = _parse_waterfall_output(waterfall_output)
+        state = DispatchState(
+            voter_1_path=str(review_tmpdir / CURSOR_VOTER_SLOTS[0][5]),
+            voter_2_path=str(review_tmpdir / CURSOR_VOTER_SLOTS[1][5]),
+            voter_3_path=str(review_tmpdir / CURSOR_VOTER_SLOTS[2][5]),
+        )
+        sentinels = [f"{state.voter_1_path}.done", f"{state.voter_2_path}.done", f"{state.voter_3_path}.done"]
+        _voter1_timed_out, _wait_rc = _wait_sentinels(review_tmpdir, sentinels)
+    else:
+        voter_1_path = str(review_tmpdir / "claude-vote-output.txt")
+        claude_prompt = _make_voter_prompt_file(opts, review_tmpdir, "claude")
+        prompt_files["claude"] = claude_prompt
+        claude_process = _launch_claude_voter(voter_1_path, claude_prompt, ctx_args)
+        voter1_rc = claude_process.wait()
+        if voter1_rc != 0 or not _file_nonempty(voter_1_path):
+            _append_voter1_failure(opts, review_tmpdir, voter_1_path, voter1_rc)
+        state = DispatchState(
+            voter_1_path=voter_1_path,
+            voter_1_tool="claude",
+            voter_2_status="skipped",
+            voter_3_status="skipped",
+        )
+        sentinels = [f"{state.voter_1_path}.done"]
+        voter1_timed_out, wait_rc = _wait_sentinels(review_tmpdir, sentinels)
+        if (
+            not Path(f"{state.voter_1_path}.done").is_file()
+            and voter1_rc == 0
+            and _file_nonempty(state.voter_1_path)
+            and not voter1_timed_out
+            and wait_rc == 0
+        ):
+            Path(f"{state.voter_1_path}.done").write_text("0\n", encoding="utf-8")
 
     voter1_done_rc = _read_done_exit_code(f"{state.voter_1_path}.done")
     voter2_done_rc = _read_done_exit_code(f"{state.voter_2_path}.done")
     voter3_done_rc = _read_done_exit_code(f"{state.voter_3_path}.done")
-    if not (voter1_rc == 0 and _file_nonempty(state.voter_1_path) and voter1_done_rc == "0"):
+    if not (_file_nonempty(state.voter_1_path) and voter1_done_rc == "0"):
         state.voter_1_status = "failed"
     if not (state.voter_2_status == "skipped" or (_file_nonempty(state.voter_2_path) and voter2_done_rc == "0")):
         state.voter_2_status = "failed"
@@ -471,11 +476,7 @@ def dispatch_voters(opts: Options) -> int:
             vpr_args, slot="3", voter_file=state.voter_3_path, voter_tool=state.voter_3_tool
         )
 
-    expected_judges = 1
-    if opts.codex_available == "true":
-        expected_judges += 1
-    if opts.cursor_available == "true":
-        expected_judges += 1
+    expected_judges = 3 if cursor_path else 1
     effective_judges = _effective_judges(state)
     if effective_judges < expected_judges:
         warn_msg = f"**⚠ Degraded code-review panel: {effective_judges}/{expected_judges} effective judges produced output.**"
@@ -483,11 +484,9 @@ def dispatch_voters(opts: Options) -> int:
         logging_util.emit_kv("DEGRADED_PANEL_WARNING", warn_msg)
 
     voter_paths_file = _write_voter_paths_file(review_tmpdir, state)
-    if state.voter_1_status == "failed":
-        dispatch_ok = "false"
+    dispatch_ok = "true" if effective_judges > 0 else "false"
     _emit_final_kvs(state, voter_paths_file, dispatch_ok)
     return 0
-
 
 def _parse_args(argv: Sequence[str]) -> Options | int:
     parser = argparse.ArgumentParser(prog="agent dispatch-voters")

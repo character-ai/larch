@@ -40,6 +40,17 @@ TOPOLOGY_COLUMN_COUNT = 4
 GENERATOR_COLUMN_COUNT = 2
 _SCOPE_ANCHOR_MAX_BYTES = 65536
 
+VOTER_ARCHETYPES = {
+    "validity-correctness": """**Archetype lens: validity and correctness.**
+
+Apply the full Review Acceptance Rubric to every ballot item. This is multi-axis voting, not single-axis rejection. Prioritize the **is it real** lens: read the cited file:line and the claimed failing scenario. Vote YES only when the defect is real and triggerable, including logic errors, off-by-one behavior, nil/None handling, type mismatches, races, exception or cleanup paths, security defects, and boundary correctness. Default NO when the cited code does not exhibit the claimed defect.""",
+    "plan-fidelity-completeness": """**Archetype lens: plan fidelity and completeness.**
+
+Apply the full Review Acceptance Rubric to every ballot item. This is multi-axis voting, not single-axis rejection. Prioritize the **is it in scope** lens: vote YES when the feature would be incomplete, broken, unverifiable, or regressed without the finding, including plan traceability, missing required artifacts or tests, stale surfaces, and partial implementation. Default NO for real-but-out-of-scope findings. When no plan context is staged, for example `/review --diff`, judge against the diff and ballot scope only; missing plan context is not an automatic NO.""",
+    "pragmatism-cost": """**Archetype lens: pragmatism and cost.**
+
+Apply the full Review Acceptance Rubric to every ballot item. This is multi-axis voting, not single-axis rejection. Prioritize the **is it worth it** lens: vote NO on speculative robustness, cleaner or idiomatic churn, best-practice churn, premature configurability, unrequested refactors, micro-optimizations, and portability speculation. Vote YES when the finding is necessary or clearly proportionate. Hard constraint: defer to validity on correctness and security; never trade correctness or security away for simplicity.""",
+}
 
 
 # Shared findings-batch rendering helpers used by /research. Keep these pure:
@@ -985,6 +996,7 @@ def render_voter_main(argv: list[str]) -> int:
     parser.add_argument("--id-grammar")
     parser.add_argument("--verification-context")
     parser.add_argument("--scope-anchor-file", default="")
+    parser.add_argument("--archetype", default="")
     try:
         args = parser.parse_args(argv)
         for attr, flag in (("ballot_file", "--ballot-file"), ("panel_role", "--panel-role"), ("id_grammar", "--id-grammar"), ("verification_context", "--verification-context")):
@@ -994,6 +1006,8 @@ def render_voter_main(argv: list[str]) -> int:
             raise UsageError("--id-grammar must be finding-oos or finding-only")
         if args.verification_context not in {"plan", "diff-plan", "code"}:
             raise UsageError("--verification-context must be plan, diff-plan, or code")
+        if args.archetype and args.archetype not in VOTER_ARCHETYPES:
+            raise UsageError("--archetype must be one of: " + ", ".join(sorted(VOTER_ARCHETYPES)))
         rubric = _read_text(REPO_ROOT / "skills" / "shared" / "review-acceptance-rubric.md").split("\n---", 1)[0].rstrip("\n")
         out = [
             f"You are a {args.panel_role}.",
@@ -1007,6 +1021,8 @@ def render_voter_main(argv: list[str]) -> int:
             rubric,
             "",
         ]
+        if args.archetype:
+            out.extend([VOTER_ARCHETYPES[args.archetype], ""])
         if args.id_grammar == "finding-only":
             out.append("For items prefixed with `[OUT_OF_SCOPE]`: apply the OOS Acceptance Rubric (skills/shared/oos-acceptance-rubric.md) — vote YES only when the problem passes the backlog-relative materiality gate: impact floor, concrete trigger, and issue-overhead test, with default-deny. Treat any suggested remedy in the item body as *informational only* — do not vote NO because you disagree with the proposed fix. The future implementer of the OOS issue chooses the actual remedy.")
         else:

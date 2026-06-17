@@ -4,7 +4,7 @@ The voting protocol is used by `/design` (plan review) and `/review` (code revie
 
 ## Overview
 
-After reviewers submit findings and findings are deduplicated, a voting panel votes on each finding. `/design` plan review always uses the 3-voter panel (Claude + Codex + Cursor). `/review` (code review) uses Claude plus each available external voter. Unavailable externals are skipped; the panel shrinks rather than back-filling with extra Claude voters. Each voter casts one of two votes:
+After reviewers submit findings and findings are deduplicated, a voting panel votes on each finding. `/design` plan review always uses the 3-voter panel (Claude + Codex + Cursor). `/review` and `/implement` Step 5 code review use three fixed Cursor archetype voters when Cursor is available, or a single Claude fallback voter when Cursor is unavailable. Codex does not vote in the code-review panel. Each voter casts one of two votes:
 
 | Vote | Meaning |
 |---|---|
@@ -34,12 +34,16 @@ The dispatchers emit loud degraded-panel warnings when effective judges drop bel
 
 ## Voter Panel Composition
 
-`/design` always uses a 3-voter panel in normal mode. `/review` uses Claude plus each available external voter on every round. All launched voters vote on all findings — there is no self-voting exclusion.
+`/design` always uses a 3-voter panel in normal mode. Code-review voters use canonical slot indexing on the three-slot path: `v1` is validity, `v2` is plan-fidelity, and `v3` is pragmatism. All launched voters vote on all findings — there is no self-voting exclusion.
 
 | Skill | Voters |
 |---|---|
 | `/design` (plan review, normal mode) | Claude Code Reviewer subagent + Codex + Cursor — all 3 always launched |
-| `/review` (code review) | Claude is always Voter 1. Codex and Cursor participate when available; unavailable externals are skipped. Dispatch surface: `python/cli.py agent dispatch-voters`. |
+| `/review` and `/implement` Step 5 (code review) | Fixed slots: `v1` = `cursor-validity`, `v2` = `cursor-plan-fidelity`, `v3` = `cursor-pragmatism`. If Cursor is unavailable, slot 1 uses `claude` and slots 2-3 are empty placeholders. Dispatch surface: `python/cli.py agent dispatch-voters`. |
+
+On the three-slot code-review path, quorum counts only substantive non-empty voter files after parse-rate removal. Empty placeholders keep `vN_tool` attribution but do not inflate `ELIGIBLE_VOTERS` or `EFFECTIVE_VOTERS`. The code-review classification TSV has 21 columns: `reviewer_slots`, five rating cells plus `vN_tool` for each voter, and no `body_severity`. `/design` plan review keeps its separate 22-column `finding_reviewers` + `body_severity` schema.
+
+Legacy callers that omit `--voter-tools` keep compacted semantics for one to three `--voter-files`. This preserves MAV re-tally and zero-findings paths.
 
 ## Ballot Format
 
