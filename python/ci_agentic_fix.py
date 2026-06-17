@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -145,7 +146,7 @@ def _wait_for_ci(
     args: argparse.Namespace,
     repo_root: Path,
     cycle: int,
-) -> dict[str, str]:
+) -> tuple[dict[str, str], str | None]:
     output = Path(args.output_dir) / f"ci-agentic-wait-{cycle}.out"
     result = runner.run(
         [
@@ -169,8 +170,23 @@ def _wait_for_ci(
         cwd=str(repo_root),
         timeout=float(config.CI_WAIT_TIMEOUT_SEC),
     )
-    text = output.read_text(encoding="utf-8", errors="replace") if output.is_file() else result.stdout
-    return _parse_kv(text)
+    if result.returncode != 0:
+        return {}, f"ci-wait-exit-{result.returncode}"
+    if not output.is_file():
+        return {}, "ci-wait-missing-output"
+    text = output.read_text(encoding="utf-8", errors="replace")
+    if not text.strip():
+        return {}, "ci-wait-empty-output"
+    parsed = _parse_kv(text)
+    if parsed.get("ACTION") in {"merge", "already_merged"} or parsed.get("CI_STATUS") == "pass":
+        return parsed, None
+    if parsed.get("ACTION") in {"rebase", "rebase_then_evaluate"}:
+        return parsed, None
+    if parsed.get("FAILED_RUN_ID"):
+        return parsed, None
+    if parsed.get("CI_STATUS") in {"fail", "failure"} and parsed.get("ACTION"):
+        return parsed, None
+    return {}, "ci-wait-malformed-output"
 
 
 def _run_cycle(
@@ -188,6 +204,16 @@ def _run_cycle(
         return "waterfall-failed", f"failed-jobs-{jobs_state}", False, (), False, None, ""
     classified = ci_monitor.classify_failed_jobs(jobs_raw)
     if not classified.fixable:
+        return (
+            "local-unfixable",
+            ",".join(_job_token(job) for job in classified.unfixable),
+            False,
+            (),
+            False,
+            None,
+            "",
+        )
+    if classified.unfixable:
         return (
             "local-unfixable",
             ",".join(_job_token(job) for job in classified.unfixable),
@@ -227,9 +253,12 @@ def _run_cycle(
             output_file=output,
             process_rc=result.returncode,
         )
+        diag = output.with_suffix(output.suffix + ".diag")
         failure = agents.classify_launch_failure(
             launcher_exit,
-            output.with_suffix(output.suffix + ".diag"),
+            diag,
+            auth_verdict=agents.external_auth_verdict("claude", diag, output),
+            binary_present=shutil.which("claude") is not None,
             tool="claude",
             output_file=output,
         )
@@ -242,7 +271,7 @@ def _run_cycle(
                 cwd=cwd,
             )
             if failure.failure_class == "health":
-                if cycle == 1:
+                if failure.reason in {"binary-missing", "auth"}:
                     return (
                         "first-fixer-non-health",
                         failure.reason or "claude-health",
@@ -340,7 +369,41 @@ def _run_cycle(
                 cwd=cwd,
             )
             return "push-failed", "push-failed", fix_attempted, (), False, None, failure_log_text
-        wait = _wait_for_ci(runner, args=args, repo_root=repo_root, cycle=cycle)
+        wait, wait_err = _wait_for_ci(runner, args=args, repo_root=repo_root, cycle=cycle)
+        if wait_err:
+            _ = git.reset(runner, "--hard", baseline_head, cwd=cwd)
+            _rollback(
+                runner,
+                baseline_tracked=baseline_tracked,
+                baseline_untracked=baseline_untracked,
+                baseline_staged=baseline_staged,
+                cwd=cwd,
+            )
+            return "waterfall-failed", wait_err, fix_attempted, (), False, None, failure_log_text
+        if wait.get("ACTION") in {"rebase", "rebase_then_evaluate"}:
+            return (
+                "rebase-required",
+                wait.get("BAIL_REASON", "") or "ci-wait-rebase-required",
+                fix_attempted,
+                pushed_paths,
+                True,
+                None,
+                failure_log_text,
+            )
+        try:
+            behind = int(wait.get("BEHIND_COUNT", "0") or "0")
+        except ValueError:
+            behind = 0
+        if behind > 0:
+            return (
+                "rebase-required",
+                wait.get("BAIL_REASON", "") or "ci-wait-behind-base",
+                fix_attempted,
+                pushed_paths,
+                True,
+                None,
+                failure_log_text,
+            )
         if wait.get("ACTION") in {"merge", "already_merged"} or wait.get("CI_STATUS") == "pass":
             return "passed", "", fix_attempted, pushed_paths, False, None, failure_log_text
         next_run = wait.get("FAILED_RUN_ID") or run_id
@@ -432,8 +495,6 @@ def main(argv: list[str] | None = None) -> int:
                 delta_paths=(),
                 exhausted_detail_file=str(exhausted_path),
             )
-        if status == "waterfall-failed" and detail in {"head-changed", "forbidden-path"}:
-            return _emit_result(status, detail=detail, fix_attempted=fix_attempted, cycles=cycle)
         if next_run_id:
             run_id = next_run_id
     exhausted_path = Path(args.output_dir) / "ci-agentic-exhausted-final.detail"

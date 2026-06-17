@@ -1500,7 +1500,7 @@ def _agentic_fix_result(
             status="fix-exhausted",
             detail="ci-fix-exhausted: delegate-timeout",
         )
-    parsed = _parse_kv_output(result.stdout + "\n" + result.stderr)
+    parsed = _parse_kv_output(result.stdout)
     status = parsed.get("STATUS", "")
     detail = parsed.get("DETAIL", "")
     exhausted_detail_file = parsed.get("EXHAUSTED_DETAIL_FILE", "")

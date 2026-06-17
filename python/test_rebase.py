@@ -1631,7 +1631,7 @@ def test_conflict_loop_continues_when_log_missing_failure_class_kv(
             tier,
             wrapper_rc=0,
             launcher_exit=1,
-            failure=LaunchFailure("other", "unknown"),
+            failure=LaunchFailure("health", "health-probe"),
             failure_log=log_file,
         )
 
@@ -1705,9 +1705,11 @@ def test_conflict_loop_health_failure_continues_to_next_tier(tmp_path: Path) -> 
     assert launch_calls == list(config.FIXER_TIER_ORDER)
 
 
-def test_path_has_conflict_markers_detects_separator_only(tmp_path: Path) -> None:
+def test_path_has_conflict_markers_requires_full_pair(tmp_path: Path) -> None:
     conflict_file = tmp_path / "partial.txt"
     _ = conflict_file.write_text("resolved top\n=======\nresolved bottom\n", encoding="utf-8")
+    assert not rebase._path_has_conflict_markers("partial.txt", cwd=str(tmp_path))  # pyright: ignore[reportPrivateUsage]
+    _ = conflict_file.write_text("<<<<<<< ours\n=======\n>>>>>>> theirs\n", encoding="utf-8")
     assert rebase._path_has_conflict_markers("partial.txt", cwd=str(tmp_path))  # pyright: ignore[reportPrivateUsage]
 
 
@@ -1716,21 +1718,33 @@ def test_partial_conflict_markers_are_not_staged(tmp_path: Path) -> None:
     conflict_dir.mkdir()
     conflict_file = conflict_dir / "foo.txt"
     _ = conflict_file.write_text("resolved top\n=======\n", encoding="utf-8")
-    runner = ScriptRunner(
-        [
-            (("git", "diff", "--name-only", "--diff-filter=U"), _ok(
+    diff_calls = {"n": 0}
+
+    def unmerged_handler(_argv: tuple[str, ...]) -> CommandResult:
+        diff_calls["n"] += 1
+        if diff_calls["n"] == 1:
+            return _ok(
                 ("git", "diff", "--name-only", "--diff-filter=U"),
                 "vendor/foo.txt\n",
-            )),
+            )
+        return _ok(("git", "diff", "--name-only", "--diff-filter=U"), "")
+
+    runner = ScriptRunner(
+        [
+            (("git", "diff", "--name-only", "--diff-filter=U"), unmerged_handler),
+            (("git", "add", "vendor/foo.txt"), _ok(("git", "add"), "")),
+            (("git", "rebase", "--continue"), _ok(("git", "rebase", "--continue"), "")),
         ],
     )
-    with pytest.raises(Stalled, match=r"fixer|first fixer"):
-        rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
-            runner,
-            lambda tier, _csv: TierAttempt(tier, 0, 0, LaunchFailure("none", "")),
-            repo="o/r",
-            run_id="run",
-            cwd=str(tmp_path),
-            tmpdir=str(tmp_path),
-        )
-    assert not any(call[:3] == ("git", "add") for call in runner.calls)
+    rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
+        runner,
+        lambda tier, _csv: TierAttempt(tier, 0, 0, LaunchFailure("none", "")),
+        repo="o/r",
+        run_id="run",
+        cwd=str(tmp_path),
+        tmpdir=str(tmp_path),
+    )
+    assert any(
+        call[:2] == ("git", "add") and "vendor/foo.txt" in call
+        for call in runner.calls
+    )

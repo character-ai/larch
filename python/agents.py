@@ -4489,7 +4489,9 @@ def launch_claude_lint_fix_main(argv: list[str] | None = None) -> int:
                 _write(output, "CLAUDE_LINT_FIX_EMPTY_RESULT\n")
                 diag_parts.append(result.stdout)
     elif result.stdout:
-        _write(output, result.stdout)
+        exit_code = 1
+        _write(output, "CLAUDE_LINT_FIX_NON_JSON_OUTPUT\n")
+        diag_parts.append(result.stdout)
     else:
         _write(output, "")
     if result.stderr:
@@ -5148,11 +5150,7 @@ def run_waterfall(
             return WaterfallResult(winning_tier=tier, attempts=tuple(attempts))
         if runner is not None and baseline_tracked is not None and baseline_untracked is not None:
             git.paths_delta_revert(runner, baseline_tracked, baseline_untracked, cwd=cwd)
-        failure_class = (
-            parse_launcher_failure_class(attempt.failure_log)
-            if attempt.failure_log is not None
-            else effective_failure_class(attempt)
-        )
+        failure_class = effective_failure_class(attempt)
         if idx == 0 and tier == first and attempt.wrapper_rc == 0 and failure_class == "other":
             return WaterfallResult(winning_tier=None, attempts=tuple(attempts), short_circuited=True)
     return WaterfallResult(winning_tier=None, attempts=tuple(attempts))

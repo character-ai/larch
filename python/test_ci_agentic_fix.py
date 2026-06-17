@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 import ci_agentic_fix
@@ -228,6 +229,254 @@ def test_agentic_fix_result_missing_repo_root_fail_closed() -> None:
     )
     assert fix.status == "waterfall-failed"
     assert fix.detail == "missing repo_root"
+
+
+def test_first_cycle_transient_health_continues_delegate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    cycles = {"n": 0}
+
+    def fake_read_failed_jobs(
+        _runner: object,
+        *,
+        run_id: str,
+        repo: str,
+        cwd: str | None,
+    ) -> tuple[tuple[ci_monitor.FailedJob, ...], str]:
+        _ = run_id, repo, cwd
+        return ((ci_monitor.FailedJob(name="python-lint", conclusion="failure"),), "ready")
+
+    def fake_collect_failed_logs(
+        _runner: object,
+        *,
+        run_id: str,
+        repo: str,
+        cwd: str | None,
+    ) -> ci_monitor.LogCollectResult:
+        _ = run_id, repo, cwd
+        return ci_monitor.LogCollectResult(text="FAIL lint\n", state="ready")
+
+    def fake_capture_baseline(
+        _runner: object,
+        *,
+        cwd: str | None,
+    ) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...], str]:
+        _ = cwd
+        return (), (), (), "abc123"
+
+    def fake_launch_tier(*_args: object, **_kwargs: object) -> proc.CommandResult:
+        return proc.CommandResult(("cli",), 1, "LAUNCHER_EXIT=1\n", "", 0.01)
+
+    def fake_resolve_launcher_exit(*_args: object, **_kwargs: object) -> int:
+        return 1
+
+    def fake_classify_launch_failure(*_args: object, **_kwargs: object) -> agents.LaunchFailure:
+        return agents.LaunchFailure("health", "health-probe")
+
+    def fake_rollback(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    def fake_run_cycle(*_args: object, **_kwargs: object) -> tuple[str, str, bool, tuple[str, ...], bool, str | None, str]:
+        cycles["n"] += 1
+        if cycles["n"] < 2:
+            return "waterfall-failed", "health-probe", True, (), False, None, "FAIL lint\n"
+        return "passed", "", True, ("file.py",), False, None, ""
+
+    monkeypatch.setattr(ci_monitor, "read_failed_jobs", fake_read_failed_jobs)
+    monkeypatch.setattr(ci_monitor, "collect_failed_logs", fake_collect_failed_logs)
+    monkeypatch.setattr(ci_monitor, "_capture_baseline", fake_capture_baseline)
+    monkeypatch.setattr(agents, "launch_tier", fake_launch_tier)
+    monkeypatch.setattr(agents, "resolve_launcher_exit", fake_resolve_launcher_exit)
+    monkeypatch.setattr(agents, "classify_launch_failure", fake_classify_launch_failure)
+    monkeypatch.setattr(ci_agentic_fix, "_rollback", fake_rollback)
+    monkeypatch.setattr(ci_agentic_fix, "_run_cycle", fake_run_cycle)
+
+    rc = ci_agentic_fix.main([
+        "--pr", "1",
+        "--repo", "o/r",
+        "--repo-root", str(repo),
+        "--run-id", "42",
+        "--output-dir", str(out_dir),
+        "--implement-tmpdir", str(tmp_path),
+        "--max-cycles", "3",
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "STATUS=passed" in out
+    assert cycles["n"] == 2
+
+
+def test_mixed_unfixable_returns_local_unfixable_before_launch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    launch_calls = {"n": 0}
+
+    def fake_read_failed_jobs(
+        _runner: object,
+        *,
+        run_id: str,
+        repo: str,
+        cwd: str | None,
+    ) -> tuple[tuple[ci_monitor.FailedJob, ...], str]:
+        _ = run_id, repo, cwd
+        return (
+            (
+                ci_monitor.FailedJob(name="python-lint", conclusion="failure"),
+                ci_monitor.FailedJob(name="gitleaks", conclusion="failure"),
+            ),
+            "ready",
+        )
+
+    def fake_launch_tier(*_args: object, **_kwargs: object) -> proc.CommandResult:
+        launch_calls["n"] += 1
+        return proc.CommandResult(("cli",), 0, "", "", 0.01)
+
+    monkeypatch.setattr(ci_monitor, "read_failed_jobs", fake_read_failed_jobs)
+    monkeypatch.setattr(agents, "launch_tier", fake_launch_tier)
+
+    rc = ci_agentic_fix.main([
+        "--pr", "1",
+        "--repo", "o/r",
+        "--repo-root", str(repo),
+        "--run-id", "42",
+        "--output-dir", str(out_dir),
+        "--implement-tmpdir", str(tmp_path),
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "STATUS=local-unfixable" in out
+    assert "gitleaks" in out
+    assert "FIX_ATTEMPTED=false" in out
+    assert launch_calls["n"] == 0
+
+
+def test_head_changed_continues_until_cycle_cap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    cycles = {"n": 0}
+
+    def fake_run_cycle(*_args: object, **_kwargs: object) -> tuple[str, str, bool, tuple[str, ...], bool, str | None, str]:
+        cycles["n"] += 1
+        return "waterfall-failed", "head-changed", True, (), False, None, "FAIL lint\n"
+
+    monkeypatch.setattr(ci_agentic_fix, "_run_cycle", fake_run_cycle)
+
+    rc = ci_agentic_fix.main([
+        "--pr", "1",
+        "--repo", "o/r",
+        "--repo-root", str(repo),
+        "--run-id", "42",
+        "--output-dir", str(out_dir),
+        "--implement-tmpdir", str(tmp_path),
+        "--max-cycles", "3",
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "STATUS=ci-fix-exhausted" in out
+    assert cycles["n"] == 3
+
+
+def test_ci_wait_rebase_action_surfaces_rebase_required(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+
+    def fake_run_cycle(*_args: object, **_kwargs: object) -> tuple[str, str, bool, tuple[str, ...], bool, str | None, str]:
+        return "rebase-required", "ci-wait-rebase-required", True, ("a.py",), True, None, ""
+
+    monkeypatch.setattr(ci_agentic_fix, "_run_cycle", fake_run_cycle)
+
+    rc = ci_agentic_fix.main([
+        "--pr", "1",
+        "--repo", "o/r",
+        "--repo-root", str(repo),
+        "--run-id", "42",
+        "--output-dir", str(out_dir),
+        "--implement-tmpdir", str(tmp_path),
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "STATUS=rebase-required" in out
+    assert "CI_FIX_REBASE_PENDING=true" in out
+
+
+def test_wait_for_ci_fails_closed_on_nonzero_exit(tmp_path: Path) -> None:
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    class _Runner:
+        def run(self, *_args: object, **_kwargs: object) -> proc.CommandResult:
+            return proc.CommandResult(("cli",), 1, "", "wait crashed", 0.01)
+
+    args = SimpleNamespace(
+        pr=1,
+        repo="o/r",
+        base_remote="origin",
+        base_ref="main",
+        output_dir=str(out_dir),
+    )
+    parsed, err = ci_agentic_fix._wait_for_ci(  # pyright: ignore[reportPrivateUsage]
+        _Runner(),
+        args=args,
+        repo_root=repo,
+        cycle=1,
+    )
+    assert parsed == {}
+    assert err == "ci-wait-exit-1"
+
+
+def test_wait_for_ci_fails_closed_on_malformed_output(tmp_path: Path) -> None:
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    wait_out = out_dir / "ci-agentic-wait-1.out"
+    _ = wait_out.write_text("UNRELATED=noise\n", encoding="utf-8")
+
+    class _Runner:
+        def run(self, *_args: object, **_kwargs: object) -> proc.CommandResult:
+            return proc.CommandResult(("cli",), 0, "", "", 0.01)
+
+    args = SimpleNamespace(
+        pr=1,
+        repo="o/r",
+        base_remote="origin",
+        base_ref="main",
+        output_dir=str(out_dir),
+    )
+    parsed, err = ci_agentic_fix._wait_for_ci(  # pyright: ignore[reportPrivateUsage]
+        _Runner(),
+        args=args,
+        repo_root=repo,
+        cycle=1,
+    )
+    assert parsed == {}
+    assert err == "ci-wait-malformed-output"
 
 
 def test_agentic_fix_result_missing_implement_tmpdir_fail_closed() -> None:
