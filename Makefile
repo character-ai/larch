@@ -848,28 +848,28 @@ test-check-reviewer-failure-threshold:
 
 .PHONY: test-dispatch-code-voters-happy test-dispatch-code-voters-edge-and-r3-claude test-dispatch-code-voters-retry-claude test-dispatch-code-voters-retry-codex-success test-dispatch-code-voters-retry-cursor test-dispatch-code-voters-retry-codex-fail-and-fallback test-dispatch-code-voters-regressions-r1-r2 test-dispatch-code-voters-regressions-r3-codex
 test-dispatch-code-voters-happy:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_agent_voters.py
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_agent_voters.py -k voter_happy
 
 test-dispatch-code-voters-edge-and-r3-claude:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_agent_voters.py
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_agent_voters.py -k voter_edge_and_r3_claude
 
 test-dispatch-code-voters-regressions-r1-r2:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_agent_voters.py
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_agent_voters.py -k voter_regressions_r1_r2
 
 test-dispatch-code-voters-regressions-r3-codex:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_agent_voters.py
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_agent_voters.py -k voter_regressions_r3_codex
 
 test-dispatch-code-voters-retry-claude:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_agent_voters.py
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_agent_voters.py -k voter_retry_claude
 
 test-dispatch-code-voters-retry-codex-success:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_agent_voters.py
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_agent_voters.py -k voter_retry_codex_success
 
 test-dispatch-code-voters-retry-cursor:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_agent_voters.py
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_agent_voters.py -k voter_retry_cursor
 
 test-dispatch-code-voters-retry-codex-fail-and-fallback:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_agent_voters.py
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_agent_voters.py -k voter_retry_codex_fail_and_fallback
 
 test-emit-tally:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_tally.py -k emit_tally
