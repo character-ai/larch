@@ -7,9 +7,10 @@ import os
 import re
 import subprocess
 import sys
-from pathlib import Path
 from collections.abc import Sequence
+from pathlib import Path
 
+import review_phase_detail
 from design_publish import review_provenance
 
 
@@ -362,6 +363,12 @@ def render_final_summary_main(argv: Sequence[str]) -> int:
 
     try:
         body = out_file.read_text(encoding="utf-8")
+        try:
+            detail = review_phase_detail.render_design_review_detail(design_tmpdir)
+        except Exception:
+            detail = ""
+        body = review_phase_detail.append_review_phase_detail(body, detail)
+        _ = out_file.write_text(body, encoding="utf-8")
         sys.stdout.write(body)  # pyright: ignore[reportUnusedCallResult]
         if not body.endswith("\n"):
             sys.stdout.write("\n")  # pyright: ignore[reportUnusedCallResult]

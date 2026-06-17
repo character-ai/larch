@@ -8,10 +8,14 @@ by `vendor/archetype`.
 
 ## Primary caller
 
-`skills/implement/scripts/write-final-report.sh` invokes it before composing the
-`render-run-summary.sh --note-lines-file` appendix and `cat`s the result into the
-note block, so the section lands after the `<!-- larch:run-summary v=1 -->`
-sentinel in `summary-final.md` / the tracking-issue `larch:final-summary` comment.
+`python/pr_body.py::write_final_report` appends the section to `/implement`
+final reports. `python/design_summary.py::render_final_summary_main` appends the
+section to `/design` final summaries. `python/progress_report.py` invokes the
+same renderer for live progress reporting.
+
+Final-report callers append the section after the `<!-- larch:run-summary v=1 -->`
+sentinel in `summary-final.md` / the tracking-issue `larch:final-summary`
+comment.
 
 ## Inputs / argv
 
@@ -115,7 +119,7 @@ block's `TOOL` plus archetype from the `REVIEWER_FILE` basename.
 
 ## `/design` scope
 
-`/design` plan-review now feeds this renderer through `python/cli.py design render-final-summary --skill design`. `scripts/write-design-round-meta.sh` emits per-round `round-meta.json` and `panel-manifest.ndjson` under `plan-review/round-N/` from snapshotted `voting-tally.md`, fallback `findings-classification.tsv`, and `plan-review-slots.ndjson`; it never reads mutable session-root tally files for counts. The design tally contract uses the same six keys as implement (`ACCEPTED_COUNT`, `REJECTED_COUNT`, `EXONERATED_COUNT`, `NEUTRAL_COUNT`, `OOS_ACCEPTED_COUNT`, `OOS_REJECTED_COUNT`) and `summary.panel.total_slot_count`. When collection fails before reviewer records exist, the writer inserts placeholder collector blocks with `TOOL=unknown`, `STATUS=FAILED`, and `REVIEWER_FILE=collector-failure-N.txt`, allowing the failed-slot count to render instead of a false zero. `python/cli.py design render-final-summary` composes design `review-findings-full.jsonl` before invoking this renderer.
+`/design` plan-review now feeds this renderer through `python/cli.py design render-final-summary --skill design`. `scripts/write-design-round-meta.sh` emits per-round `round-meta.json` and `panel-manifest.ndjson` under `plan-review/round-N/` from snapshotted `voting-tally.md`, fallback `findings-classification.tsv`, and `plan-review-slots.ndjson`; it never reads mutable session-root tally files for counts. The design tally contract uses the same six keys as implement (`ACCEPTED_COUNT`, `REJECTED_COUNT`, `EXONERATED_COUNT`, `NEUTRAL_COUNT`, `OOS_ACCEPTED_COUNT`, `OOS_REJECTED_COUNT`) and `summary.panel.total_slot_count`. When collection fails before reviewer records exist, the writer inserts placeholder collector blocks with `TOOL=unknown`, `STATUS=FAILED`, and `REVIEWER_FILE=collector-failure-N.txt`, allowing the failed-slot count to render instead of a false zero. The Python final-summary helper points at an existing design `review-findings-full.jsonl` when present; it does not compose a new findings file before invoking this renderer.
 
 ## Harness
 
@@ -124,10 +128,10 @@ block's `TOOL` plus archetype from the `REVIEWER_FILE` basename.
 
 ## Edit-in-sync
 
-- `skills/implement/scripts/write-final-report.sh` and
-  `skills/implement/scripts/write-final-report.md`.
-- `skills/implement/scripts/test-write-final-report.sh`.
+- `python/pr_body.py` (`python/cli.py final-report write`).
 - `python/design_summary.py` (`python/cli.py design render-final-summary`).
+- `python/review_phase_detail.py`.
+- `skills/implement/scripts/test-write-final-report.sh`.
 - `python/progress_report.py` and `python/test_progress_report.py`.
 - `scripts/test-render-review-phase-detail.sh` (+ `.md`) and the Makefile target /
   shard registration.

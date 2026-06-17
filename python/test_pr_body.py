@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -230,6 +232,133 @@ def test_write_final_report_counts_warnings_and_exec(tmp_path: Path, monkeypatch
     body = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
     assert "**Exec issues**: 1" in body
     assert "**Warnings**: 1" in body
+
+
+def _write_minimal_final_report_state(tmp_path: Path, *, issue: str = "0", run_id: str = "run1") -> None:
+    _ = (tmp_path / "parent-issue.md").write_text(f"ISSUE_NUMBER={issue}\nRUN_ID={run_id}\n", encoding="utf-8")
+    _ = (tmp_path / "session-env.sh").write_text("REPO=o/r\nMODE=N/A\n", encoding="utf-8")
+    _ = (tmp_path / "ship-pr-state.sh").write_text("PR_NUMBER=1\nPR_URL=https://github.com/o/r/pull/1\n", encoding="utf-8")
+    _ = (tmp_path / "finalize-state.sh").write_text("", encoding="utf-8")
+    _ = (tmp_path / "run-flags.sh").write_text("EMERGENCY_REQUESTED=false\n", encoding="utf-8")
+
+
+def _stub_final_report_cost(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_final_report_token_fields(implement_tmpdir: Path, run_id: str) -> dict[str, object]:
+        _ = (implement_tmpdir, run_id)
+        return {"cost_unavailable": True}
+
+    monkeypatch.setattr(pr_body, "_final_report_token_fields", fake_final_report_token_fields)
+
+
+def test_write_final_report_appends_review_detail_in_comment_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_minimal_final_report_state(tmp_path)
+    _stub_final_report_cost(monkeypatch)
+
+    def fake_render_implement_review_detail(implement_tmpdir: Path, run_id: str) -> str:
+        _ = (implement_tmpdir, run_id)
+        return "## Review Phase Detail\nfrom helper\n"
+
+    monkeypatch.setattr(pr_body.review_phase_detail, "render_implement_review_detail", fake_render_implement_review_detail)
+
+    rc, _url, _err = pr_body.write_final_report(tmp_path, comment_only=True)
+
+    assert rc == 0
+    body = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
+    assert "## Review Phase Detail" in body
+    assert not (tmp_path / "larch-logs" / "implement" / "run1" / "final-summary.md").exists()
+
+
+def test_write_final_report_keeps_compact_summary_when_review_detail_empty(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_minimal_final_report_state(tmp_path)
+    _stub_final_report_cost(monkeypatch)
+
+    def fake_render_implement_review_detail(implement_tmpdir: Path, run_id: str) -> str:
+        _ = (implement_tmpdir, run_id)
+        return ""
+
+    monkeypatch.setattr(pr_body.review_phase_detail, "render_implement_review_detail", fake_render_implement_review_detail)
+
+    rc, _url, _err = pr_body.write_final_report(tmp_path, comment_only=True)
+
+    assert rc == 0
+    body = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
+    assert "<!-- larch:run-summary v=1 -->" in body
+    assert "## Review Phase Detail" not in body
+
+
+def test_write_final_report_keeps_compact_summary_when_review_detail_raises(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_minimal_final_report_state(tmp_path)
+    _stub_final_report_cost(monkeypatch)
+
+    def fake_render_implement_review_detail(implement_tmpdir: Path, run_id: str) -> str:
+        _ = (implement_tmpdir, run_id)
+        raise RuntimeError("renderer boom")
+
+    monkeypatch.setattr(pr_body.review_phase_detail, "render_implement_review_detail", fake_render_implement_review_detail)
+
+    rc, _url, _err = pr_body.write_final_report(tmp_path, comment_only=True)
+
+    assert rc == 0
+    body = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
+    assert "<!-- larch:run-summary v=1 -->" in body
+    assert "## Review Phase Detail" not in body
+
+
+@pytest.mark.skipif(shutil.which("jq") is None, reason="render-review-phase-detail.sh requires jq")
+def test_write_final_report_uses_run_log_root_for_review_detail(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_id = "run-3794"
+    _write_minimal_final_report_state(tmp_path, issue="42", run_id=run_id)
+    _stub_final_report_cost(monkeypatch)
+    run_dir = tmp_path / "larch-logs" / "implement" / run_id
+    run_dir.mkdir(parents=True)
+    stale_round = tmp_path / "round-1"
+    stale_round.mkdir()
+    _ = (stale_round / "round-meta.json").write_text(
+        '{"tally":{"ACCEPTED_COUNT":"2","REJECTED_COUNT":"0","EXONERATED_COUNT":"0","NEUTRAL_COUNT":"0","OOS_ACCEPTED_COUNT":"0","OOS_REJECTED_COUNT":"0"},"summary":{"panel":{"total_slot_count":2}}}\n',
+        encoding="utf-8",
+    )
+    original_run = subprocess.run
+    upsert_bodies: list[str] = []
+
+    def fake_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if argv and argv[0].endswith("render-review-phase-detail.sh"):
+            timeout = kwargs.get("timeout")
+            return original_run(
+                argv,
+                text=True,
+                capture_output=True,
+                timeout=timeout if isinstance(timeout, (int, float)) else None,
+                check=False,
+            )
+        if "tracking-issue" in argv and "upsert-summary" in argv:
+            content_file = Path(argv[argv.index("--content-file") + 1])
+            upsert_bodies.append(content_file.read_text(encoding="utf-8"))
+            return subprocess.CompletedProcess(argv, 0, stdout="COMMENT_URL=https://github.com/o/r/issues/42#issuecomment-1\n", stderr="")
+        return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(pr_body.subprocess, "run", fake_run)
+
+    rc, _url, _err = pr_body.write_final_report(tmp_path, comment_only=True)
+
+    assert rc == 0
+    body = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
+    assert "## Review Phase Detail" in body
+    assert "No review rounds completed." in body
+    assert "| 1 | 2 | 2 | 0 | 0 |" not in body
+    assert upsert_bodies
+    assert "No review rounds completed." in upsert_bodies[0]
 
 
 def test_refresh_issue_counts_counts_plain_markdown_bullets(tmp_path: Path) -> None:
