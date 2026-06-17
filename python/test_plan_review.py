@@ -17,6 +17,22 @@ def test_embedded_review_design_step3_loop_matches_live_script() -> None:
     assert live == embedded
 
 
+def test_embedded_review_design_step3_loop_persists_round_start() -> None:
+    body = plan_review.legacy_asset_bytes("skills/design/scripts/review-design-step3-loop.sh").decode("utf-8")
+    helper = body[body.index("step3_loop_persist_round_start_s() {"):body.index("step3_loop_phase_file() {")]
+    assert 'round_dir="$DESIGN_TMPDIR/plan-review/round-${round_num}"' in helper
+    assert '[[ -L "$round_dir" ]]' in helper
+    assert 'mkdir -p "$round_dir"' in helper
+    assert 'start_file="$round_dir/round-start-s"' in helper
+    assert '[[ -L "$start_file" || -e "$start_file" ]]' in helper
+    assert "set -C; printf" in helper
+    assert helper.index('mkdir -p "$round_dir"') < helper.index('[[ -L "$start_file" || -e "$start_file" ]]')
+    round_start_idx = body.index('round_start_s="$(step3_loop_now_s)"')
+    persist_idx = body.index('step3_loop_persist_round_start_s "$round_num" "$round_start_s"', round_start_idx)
+    body_idx = body.index("run_step3_round_body", persist_idx)
+    assert round_start_idx < persist_idx < body_idx
+
+
 def test_embedded_plan_review_loop_uses_migrated_collector() -> None:
     # Regression for #4417: the results-collector port retired the Bash collector
     # wrapper but left the embedded plan-review loop still invoking it, so every

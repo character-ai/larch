@@ -1922,10 +1922,26 @@ def _preflight_step5(args: argparse.Namespace) -> tuple[Path, int]:
 
 def _persist_round_start(implement_tmpdir: Path, round_num: int, start_s: int) -> None:
     round_dir = implement_tmpdir / f"round-{round_num}"
-    round_dir.mkdir(parents=True, exist_ok=True)
+    if round_dir.is_symlink():
+        return
+    try:
+        round_dir.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return
+    if round_dir.is_symlink() or not round_dir.is_dir():
+        return
     start_file = round_dir / "round-start-s"
-    if not start_file.exists():
-        _write_text(start_file, f"{start_s}\n")
+    if start_file.is_symlink() or start_file.exists():
+        return
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        fd = os.open(start_file, flags, 0o644)
+    except OSError:
+        return
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        handle.write(f"{start_s}\n")
 
 
 def _append_record_escalation_tool_failure(implement_tmpdir: Path, reason: str) -> None:
@@ -2080,6 +2096,7 @@ def step5(argv: list[str] | None = None) -> int:
                 return 0
             args.round_num = str(round_num)
             start_s = int(time.time())
+            _persist_round_start(implement_tmpdir, round_num, start_s)
             stderr_path = round_dir_stderr(implement_tmpdir, round_num)
             with _stderr_sidecar(stderr_path):
                 result = _run_round(args, suppress_emit=True)

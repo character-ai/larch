@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import threading
 from pathlib import Path
 from unittest import mock
 
@@ -540,15 +541,21 @@ def test_step5_handoff_returns_zero_when_core_rc_nonzero(tmp_path, monkeypatch, 
 
 
 @MARK_LOOP_TIMING
-def test_step5_handoff_persists_round_start_without_timing(tmp_path, monkeypatch):
+def test_step5_handoff_persists_round_start_before_normal_round_returns(tmp_path, monkeypatch):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
     timing_calls: list[list[str]] = []
+    round_entered = threading.Event()
+    release_round = threading.Event()
+    rc_box: list[int] = []
+    exc_box: list[BaseException] = []
 
     def fake_round(args, *, suppress_emit, review_core_impl=None):
         del args, suppress_emit, review_core_impl
+        round_entered.set()
+        assert release_round.wait(5)
         return review_and_fix.RoundResult(
-            0, "main-agent-vote-required", "main-agent-vote-required", 1, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, "complete", "complete", 1, 0, 0, 0, 0, 0, 0, 0, 0,
             impl / "round-1" / "accepted-findings.md",
             impl / "round-1" / "rejected-findings.md",
             impl / "round-1",
@@ -559,10 +566,39 @@ def test_step5_handoff_persists_round_start_without_timing(tmp_path, monkeypatch
 
     monkeypatch.setattr(review_and_fix, "_run_round", fake_round)
     monkeypatch.setattr(review_and_fix, "record_round_timing", lambda argv: timing_calls.append(argv) or 0)
-    rc = review_and_fix.step5(["--implement-tmpdir", str(impl), "--mode", "loop", "--starting-round", "1", "--round-cap", "1"])
-    assert rc == 0
-    assert not timing_calls
-    assert (impl / "round-1" / "round-start-s").is_file()
+
+    def run_step5() -> None:
+        try:
+            rc_box.append(
+                review_and_fix.step5([
+                    "--implement-tmpdir", str(impl),
+                    "--mode", "loop",
+                    "--starting-round", "1",
+                    "--round-cap", "1",
+                ])
+            )
+        except BaseException as exc:  # pragma: no cover - re-raised in parent thread
+            exc_box.append(exc)
+
+    worker = threading.Thread(target=run_step5)
+    worker.start()
+    try:
+        assert round_entered.wait(5)
+        start_file = impl / "round-1" / "round-start-s"
+        assert start_file.is_file()
+        start_value = start_file.read_text(encoding="utf-8").strip()
+        assert start_value.isdigit()
+        assert not timing_calls
+    finally:
+        release_round.set()
+        worker.join(5)
+    assert not worker.is_alive()
+    if exc_box:
+        raise exc_box[0]
+    assert rc_box == [0]
+    assert timing_calls
+    timing_argv = timing_calls[0]
+    assert timing_argv[timing_argv.index("--start-s") + 1] == start_value
 
 
 @MARK_STEP5

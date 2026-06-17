@@ -72,6 +72,23 @@ step3_loop_now_s() {
     date +%s
 }
 
+step3_loop_persist_round_start_s() {
+    local round_num="$1" start_s="$2" round_dir start_file
+    round_dir="$DESIGN_TMPDIR/plan-review/round-${round_num}"
+    if [[ -L "$round_dir" ]]; then
+        return 0
+    fi
+    mkdir -p "$round_dir"
+    if [[ -L "$round_dir" || ! -d "$round_dir" ]]; then
+        return 0
+    fi
+    start_file="$round_dir/round-start-s"
+    if [[ -L "$start_file" || -e "$start_file" ]]; then
+        return 0
+    fi
+    ( set -C; printf '%s\n' "$start_s" >"$start_file" ) 2>/dev/null || true
+}
+
 step3_loop_phase_file() {
     printf '%s/.step3-round-%s.phase\n' "$DESIGN_TMPDIR" "$1"
 }
@@ -636,6 +653,7 @@ run_design_step3_loop() {
         phase="$(step3_loop_read_phase "$round_num")"
         round_start_s="$(step3_loop_now_s)"
         if [[ -z "$phase" ]]; then
+            step3_loop_persist_round_start_s "$round_num" "$round_start_s"
             local round_body_capture=""
             round_body_capture="$(mktemp "$DESIGN_TMPDIR/.step3-round-body.XXXXXX" 2>/dev/null || true)"
             set +e
