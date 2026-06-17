@@ -2,13 +2,13 @@
 
 - **Outcome**: bailed
 - **Mode**: N/A
-- **Duration**: N/A
-- **Cost**: 💰 TOTAL ~$12.23 — Claude $0.74, Codex $9.11, Cursor $1.18, Claude (subprocess) $1.20  |  Tokens: 14828k
+- **Duration**: 00:42:29
+- **Cost**: 💰 TOTAL ~$13.69 — Claude $2.20, Codex $9.11, Cursor $1.18, Claude (subprocess) $1.20  |  Tokens: 15981k
 - **Issue**: #4613 — https://github.com/character-ai/larch/issues/4613
 - **Plan review**: N/A
 - **Code review**: 0 findings
 - **Lines (PR diff)**: N/A
-- **OOS filed**: 0
+- **OOS filed**: 1 — https://github.com/character-ai/larch/issues/4643
 - **Exec issues**: 0
 - **Warnings**: 1
 - **Run logs**: `larch-logs/implement/C3A4FC9B-A483-40CB-BE90-CC6A986A6BA5/`
