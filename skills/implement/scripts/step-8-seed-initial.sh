@@ -102,10 +102,28 @@ case "$bootstrap_coder" in
   *) mapped_tool=claude ;;
 esac
 
-BRANCH_NAME_RESOLVED=$(first_nonempty "$(read_kv_file "$bootstrap_file" BRANCH_NAME)" "$(read_sentinel_key BRANCH_NAME)")
-ISSUE_NUMBER_RESOLVED=$(first_nonempty "$(read_kv_file "$bootstrap_file" ISSUE_NUMBER)" "$(read_sentinel_key ISSUE_NUMBER)")
-RUN_ID_RESOLVED=$(first_nonempty "$(read_kv_file "$bootstrap_file" RUN_ID)" "$(read_session_key LARCH_RUN_ID "")" "$(read_sentinel_key RUN_ID)")
+parent_issue_file="$IMPLEMENT_TMPDIR/parent-issue.md"
+BRANCH_NAME_RESOLVED=$(first_nonempty "$(read_kv_file "$bootstrap_file" BRANCH_NAME)" "$(read_kv_file "$parent_issue_file" BRANCH_NAME)" "$(read_sentinel_key BRANCH_NAME)")
+ISSUE_NUMBER_RESOLVED=$(first_nonempty "$(read_kv_file "$bootstrap_file" ISSUE_NUMBER)" "$(read_kv_file "$parent_issue_file" ISSUE_NUMBER)" "$(read_sentinel_key ISSUE_NUMBER)")
+RUN_ID_RESOLVED=$(first_nonempty "$(read_kv_file "$bootstrap_file" RUN_ID)" "$(read_session_key LARCH_RUN_ID "")" "$(read_kv_file "$parent_issue_file" RUN_ID)" "$(read_sentinel_key RUN_ID)")
 REPO_RESOLVED=$(first_nonempty "$(read_kv_file "$bootstrap_file" REPO)" "$(read_session_key REPO "")")
+
+if [ -z "$BRANCH_NAME_RESOLVED" ]; then
+  printf '%s\n' 'step-8-seed-initial.sh: BRANCH_NAME is required but missing from durable inputs' >&2
+  exit 2
+fi
+if [ -z "$ISSUE_NUMBER_RESOLVED" ] || ! printf '%s' "$ISSUE_NUMBER_RESOLVED" | grep -Eq '^[0-9]+$'; then
+  printf '%s\n' 'step-8-seed-initial.sh: ISSUE_NUMBER must be a non-empty digit value' >&2
+  exit 2
+fi
+if [ -z "$RUN_ID_RESOLVED" ]; then
+  printf '%s\n' 'step-8-seed-initial.sh: RUN_ID is required but missing from durable inputs' >&2
+  exit 2
+fi
+if [ -z "$REPO_RESOLVED" ]; then
+  printf '%s\n' 'step-8-seed-initial.sh: REPO is required but missing from durable inputs' >&2
+  exit 2
+fi
 REPO_UNAVAILABLE_RESOLVED=$(first_nonempty "$(read_kv_file "$bootstrap_file" REPO_UNAVAILABLE)" "$(read_session_key REPO_UNAVAILABLE "")" false)
 FORKED_TARGET_RESOLVED=$(first_nonempty "$(read_kv_file "$seed_file" FORKED_TARGET)" "$(read_session_key FORKED_TARGET "")" false)
 DEFERRED_RESOLVED=$(first_nonempty "$(read_kv_file "$bootstrap_file" DEFERRED)" "$(read_kv_file "$seed_file" DEFERRED)" false)

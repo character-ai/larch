@@ -1924,6 +1924,21 @@ def _path_under(parent: Path, child: Path) -> bool:
     return resolved_child == resolved_parent or resolved_parent in resolved_child.parents
 
 
+def _validate_seed_identity_args(args: argparse.Namespace) -> None:
+    branch = (args.branch or "").strip()
+    issue = (args.issue or "").strip()
+    repo = (args.repo or "").strip()
+    run_id = (args.run_id or "").strip()
+    if not branch or not _valid_branch_name(branch):
+        raise ShipError("--branch must be a non-empty valid branch name")
+    if not issue or not issue.isdigit():
+        raise ShipError("--issue must be a non-empty digit issue number")
+    if not repo or not _valid_repo_slug(repo):
+        raise ShipError("--repo must be a non-empty owner/repo slug")
+    if not run_id:
+        raise ShipError("--run-id must be non-empty")
+
+
 def _validate_seed_manifest(path_text: str) -> None:
     if not path_text:
         return
@@ -1997,6 +2012,7 @@ def _write_initial_ship_state(args: argparse.Namespace) -> None:
         raise ShipError(f"refusing to write symlinked ship state path: {state_file}")
     if _state_file_has_kv(state_file):
         raise ShipError("ship initial state is create-if-absent only; refusing to overwrite existing state")
+    _validate_seed_identity_args(args)
     fields = _seed_initial_state_fields(args)
     _validate_seed_manifest(fields["MANIFEST_PATH"])
     for key, value in fields.items():

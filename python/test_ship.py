@@ -186,6 +186,42 @@ def test_seed_initial_state_create_if_absent_refuses_existing_driver_keys(tmp_pa
     assert state.read_text(encoding="utf-8") == before
 
 
+@pytest.mark.parametrize(
+    ("extra_args", "field"),
+    [
+        (["--branch", "", "--issue", "42", "--repo", "owner/repo", "--run-id", "run-42"], "branch"),
+        (["--branch", "feature/ship", "--issue", "", "--repo", "owner/repo", "--run-id", "run-42"], "issue"),
+        (["--branch", "feature/ship", "--issue", "42", "--repo", "", "--run-id", "run-42"], "repo"),
+        (["--branch", "feature/ship", "--issue", "42", "--repo", "owner/repo", "--run-id", ""], "run-id"),
+        (["--branch", "-bad", "--issue", "42", "--repo", "owner/repo", "--run-id", "run-42"], "branch"),
+        (["--branch", "feature/ship", "--issue", "abc", "--repo", "owner/repo", "--run-id", "run-42"], "issue"),
+    ],
+)
+def test_seed_initial_state_rejects_empty_or_invalid_identity_fields(
+    tmp_path: Path,
+    extra_args: list[str],
+    field: str,
+) -> None:
+    state = tmp_path / "ship-pr-state.sh"
+    rc = ship.seed_initial_state_main(["--tmpdir", str(tmp_path), "--state-file", str(state), *extra_args])
+    assert rc == 2, field
+    assert not state.exists()
+
+
+def test_ship_state_merge_preserves_no_admin_fallback(tmp_path: Path) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text("NO_ADMIN_FALLBACK=true\nEXPECTED_SESSION_ID=session-1\n", encoding="utf-8")
+
+    ship._write_ship_state(  # pyright: ignore[reportPrivateUsage]
+        _ctx(tmp_path, state_file=str(state_file), pr_number=12, no_admin_fallback=True),
+        phase="ci-initial",
+    )
+
+    state = state_file.read_text(encoding="utf-8")
+    assert "NO_ADMIN_FALLBACK=true\n" in state
+    assert "EXPECTED_SESSION_ID=session-1\n" in state
+
+
 def test_outcome_exit_map_matches_bash_contract() -> None:
     assert config.OUTCOME_EXIT_MAP == {
         Outcome.OK: 0,

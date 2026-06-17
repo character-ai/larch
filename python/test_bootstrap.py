@@ -519,6 +519,34 @@ def test_invoke_resume_preserves_existing_ship_seed_context(tmp_path, monkeypatc
     assert data["NO_LOGS_COMMIT"] == "false"
 
 
+def test_invoke_initial_fails_when_ship_seed_input_write_fails(tmp_path, monkeypatch) -> None:
+    def fake_run_bootstrap(_opts: bootstrap.BootstrapOptions) -> int:
+        print(f"IMPLEMENT_TMPDIR={tmp_path}")
+        print("DEFERRED=true")
+        print("PLAN_FILE=/tmp/plan.txt")
+        print("STALL_TRACKING=false")
+        print("coder=codex")
+        return 0
+
+    def fail_seed_write(*_args: object, **_kwargs: object) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(bootstrap, "run_bootstrap", fake_run_bootstrap)
+    monkeypatch.setattr(
+        bootstrap,
+        "_run_absorbed_continue_tail",
+        lambda data, **_kwargs: bootstrap.ContinueTailResult(routing=data, advisory_lines=[]),  # pyright: ignore[reportPrivateUsage]
+    )
+    monkeypatch.setattr(bootstrap, "_merge_write_ship_seed_input", fail_seed_write)
+    rc = bootstrap.invoke_main([
+        "--mode", "initial",
+        "--merge-requested", "true",
+        "--draft-requested", "true",
+    ])
+    assert rc == 2
+    assert not (tmp_path / "ship-seed-input.env").exists()
+
+
 def test_invoke_env_fallback_and_flag_precedence(tmp_path, monkeypatch) -> None:
     captured: list[bootstrap.BootstrapOptions] = []
     monkeypatch.setenv("TARGET_ISSUE_NUMBER", "41")
@@ -635,11 +663,15 @@ def test_invoke_routing_write_failure_preserves_stdout_envelope(tmp_path, monkey
         print("coder=codex")
         return 0
 
-    def fail_atomic(_path: Path, _text: str) -> None:
-        raise OSError("permission denied")
+    real_atomic = bootstrap._atomic_text  # pyright: ignore[reportPrivateUsage]
+
+    def fail_routing_only(path: Path, text: str) -> None:
+        if path.name == "bootstrap-routing.env":
+            raise OSError("permission denied")
+        real_atomic(path, text)
 
     monkeypatch.setattr(bootstrap, "run_bootstrap", fake_run_bootstrap)
-    monkeypatch.setattr(bootstrap, "_atomic_text", fail_atomic)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(bootstrap, "_atomic_text", fail_routing_only)  # pyright: ignore[reportPrivateUsage]
     assert bootstrap.invoke_main(["--mode", "initial"]) == 0
     captured = capsys.readouterr()
     assert f"IMPLEMENT_TMPDIR={tmp_path}" in captured.out

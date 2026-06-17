@@ -1703,7 +1703,9 @@ def invoke_main(argv: list[str]) -> int:
             only_missing=args.mode == "resume",
         )
     except OSError as exc:
-        print(f"bootstrap invoke: could not write ship-seed-input.env ({exc}); stdout envelope emitted", file=sys.stderr)
+        print(f"bootstrap invoke: could not write ship-seed-input.env ({exc})", file=sys.stderr)
+        if args.mode == "initial":
+            return 2
 
     def _emit_envelope() -> None:
         sys.stdout.write(envelope)

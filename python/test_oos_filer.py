@@ -465,6 +465,34 @@ def test_combined_issue_retry_satisfies_all_source_blocks(tmp_path: Path, monkey
     assert not any(call[:2] == ["issue", "create-one"] for call in fake.calls)
 
 
+def test_multi_source_duplicate_oos_1_does_not_cross_match_retry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _setup(tmp_path)
+    (tmp_path / "oos-issues-created.md").write_text(
+        "| OOS title | Issue | URL |\n|---|---|---|\n| Main item | #101 | https://github.com/owner/repo/issues/101 |\n\n"
+        "- **Title**: Main item\n- **Stable ID**: OOS_1\n- **Filed URL**: https://github.com/owner/repo/issues/101\n",
+        encoding="utf-8",
+    )
+    run_dir = tmp_path / "larch-logs" / "implement" / "run-1"
+    (run_dir / "oos-issues.ndjson").write_text(
+        '{"body":"- **Filed URL**: https://github.com/owner/repo/issues/101\n- **Title**: Main item\n- **Stable ID**: OOS_1"}\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "oos-accepted-main-agent.md").write_text(
+        "### OOS_1: Main item\n- **Description**: Already filed from main-agent source.\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "oos-accepted-review.md").write_text(
+        "### OOS_1: Review item\n- **Description**: Distinct review-source item.\n",
+        encoding="utf-8",
+    )
+    fake = FakeCli(tmp_path)
+    rc, _payload = _run(tmp_path, fake, monkeypatch)
+    assert rc == 0
+    create_calls = [call for call in fake.calls if call[:2] == ["issue", "create-one"]]
+    assert len(create_calls) == 1
+    assert create_calls[0][create_calls[0].index("--title") + 1] == "Review item"
+
+
 def test_checkpoint_failure_manifest_stamp_error_still_reports_checkpoint_failed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _setup(tmp_path)
     _write_oos(tmp_path, "### OOS_1: First\n- **Description**: A.\n")

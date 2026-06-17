@@ -98,12 +98,27 @@ def _is_security_block(block: str) -> bool:
     return bool(file_oos._SECURITY_HEADER_RE.search(block) or file_oos._SECURITY_FOCUS_RE.search(normalized))  # pyright: ignore[reportPrivateUsage]
 
 
-def _stable_identifier(title: str, body: str) -> str:
+def _stable_source_key(path: Path) -> str:
+    return path.stem
+
+
+def _bare_oos_suffix(stable_id: str) -> str | None:
+    match = re.fullmatch(r"(?:[^:]+:)?(OOS_\d+)", stable_id)
+    return match.group(1) if match else None
+
+
+def _stable_identifier(title: str, body: str, *, source_key: str = "") -> str:
     header = re.search(r"^###[ \t]+OOS_(\d+):", body, re.MULTILINE)
     if header:
-        return f"OOS_{header.group(1)}"
+        bare = f"OOS_{header.group(1)}"
+        return f"{source_key}:{bare}" if source_key else bare
     normalized = file_oos._normalize_title(f"{title}\n{body}").lower()  # pyright: ignore[reportPrivateUsage]
-    return hashlib.sha256(normalized.encode("utf-8", errors="replace")).hexdigest()[:16]
+    digest = hashlib.sha256(normalized.encode("utf-8", errors="replace")).hexdigest()[:16]
+    return f"{source_key}:{digest}" if source_key else digest
+
+
+def _legacy_primary_oos_source() -> str:
+    return "oos-accepted-main-agent"
 
 
 def _normalized_title(text: str) -> str:
@@ -115,7 +130,25 @@ def _issue_covers_stable_id(issue: FiledIssue, stable_id: str) -> bool:
         return False
     if issue.stable_id == stable_id:
         return True
-    return stable_id in issue.source_stable_ids
+    if stable_id in issue.source_stable_ids:
+        return True
+    block_suffix = _bare_oos_suffix(stable_id)
+    if block_suffix and block_suffix in issue.source_stable_ids:
+        block_source = stable_id.rsplit(":", 1)[0] if ":" in stable_id else ""
+        if not block_source or block_source == _legacy_primary_oos_source():
+            return True
+    issue_suffix = _bare_oos_suffix(issue.stable_id)
+    if not issue_suffix or issue_suffix != block_suffix:
+        return False
+    issue_source = issue.stable_id.rsplit(":", 1)[0] if ":" in issue.stable_id else ""
+    block_source = stable_id.rsplit(":", 1)[0] if ":" in stable_id else ""
+    if issue_source and block_source:
+        return issue_source == block_source
+    if not issue_source and block_source:
+        return block_source == _legacy_primary_oos_source()
+    if issue_source and not block_source:
+        return issue_source == _legacy_primary_oos_source()
+    return True
 
 
 def _block_has_filed_url(block: AcceptedBlock, url: str) -> bool:
@@ -153,20 +186,21 @@ def _working_batch(tmpdir: Path) -> tuple[list[AcceptedBlock], list[FiledIssue]]
     for path in _accepted_input_paths(tmpdir):
         if not path.is_file():
             continue
+        source_key = _stable_source_key(path)
         text = path.read_text(encoding="utf-8", errors="replace")
         for item in file_oos._parse_oos_blocks(text):  # pyright: ignore[reportPrivateUsage]
             if _is_security_block(item.body):
                 continue
             filed_urls = _FILED_URL_LINE_RE.findall(item.body)
             if filed_urls:
-                stable_id = _stable_identifier(item.title, item.body)
+                stable_id = _stable_identifier(item.title, item.body, source_key=source_key)
                 already.extend(FiledIssue(item.title, url, duplicate=True, stable_id=stable_id) for url in filed_urls)
                 continue
             normalized = _normalized_title(item.title)
             if normalized in seen:
                 continue
             seen.add(normalized)
-            blocks.append(AcceptedBlock(item.title, item.body, _stable_identifier(item.title, item.body)))
+            blocks.append(AcceptedBlock(item.title, item.body, _stable_identifier(item.title, item.body, source_key=source_key)))
     return blocks, already
 
 
