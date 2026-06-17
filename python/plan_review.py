@@ -866,9 +866,46 @@ def _decode_asset(data: str) -> bytes:
     return gzip.decompress(base64.b64decode(data.encode("ascii")))
 
 
+def _decode_legacy_asset(rel_path: str, data: str) -> bytes:
+    body = _decode_asset(data)
+    retired_waterfall = "dispatch-with-" + "waterfall.sh"
+    if rel_path == _p(*_ROOT_VOTER_DISPATCH):
+        text = body.decode("utf-8")
+        text = text.replace(
+            f'"$PLUGIN_ROOT/scripts/{retired_waterfall}"',
+            'python3 "$PLUGIN_ROOT/python/cli.py" agent dispatch-waterfall',
+        )
+        text = text.replace(
+            f"{retired_waterfall} exited $_waterfall_rc",
+            "agent dispatch-waterfall exited $_waterfall_rc",
+        )
+        return text.encode("utf-8")
+    if rel_path == _p(*_DESIGN_PANEL_DISPATCH):
+        text = body.decode("utf-8")
+        text = text.replace(
+            'DISPATCH_WATERFALL_SH="${DISPATCH_PLAN_REVIEW_WATERFALL_SH:-$PLUGIN_ROOT/scripts/'
+            f'{retired_waterfall}}}"',
+            'if [[ -n "${DISPATCH_PLAN_REVIEW_WATERFALL_SH:-}" ]]; then\n'
+            '    DISPATCH_WATERFALL_CMD=("$DISPATCH_PLAN_REVIEW_WATERFALL_SH")\n'
+            "else\n"
+            '    DISPATCH_WATERFALL_CMD=(python3 "$PLUGIN_ROOT/python/cli.py" agent dispatch-waterfall)\n'
+            "fi",
+        )
+        text = text.replace(
+            '"$DISPATCH_WATERFALL_SH"',
+            '"${DISPATCH_WATERFALL_CMD[@]}"',
+        )
+        text = text.replace(
+            "dispatch-with-waterfall exited rc=$_waterfall_rc",
+            "agent dispatch-waterfall exited rc=$_waterfall_rc",
+        )
+        return text.encode("utf-8")
+    return body
+
+
 def legacy_asset_bytes(rel_path: str) -> bytes:
     """Return embedded legacy asset bytes for contract tests."""
-    return _decode_asset(_LEGACY_ASSETS[rel_path])
+    return _decode_legacy_asset(rel_path, _LEGACY_ASSETS[rel_path])
 
 
 def _symlink_or_copy(src: Path, dst: Path) -> None:
@@ -935,7 +972,7 @@ def _materialize_legacy_root() -> tempfile.TemporaryDirectory[str]:
         for rel, data in _LEGACY_ASSETS.items():
             path = root / rel
             path.parent.mkdir(parents=True, exist_ok=True)
-            _ = path.write_bytes(_decode_asset(data))
+            _ = path.write_bytes(_decode_legacy_asset(rel, data))
             if path.suffix == ".sh":
                 path.chmod(0o755)
         # Provide a compatibility stub for lib-phase-driver.sh which was ported
