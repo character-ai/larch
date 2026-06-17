@@ -1,0 +1,7 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	python/ci_agentic_fix.py:201-208,392-429	CI wait failure output without FAILED_RUN_ID can still reuse stale run_id	After a pushed fix, cli.py ci wait can emit ACTION=evaluate_failure and CI_STATUS=fail with an empty FAILED_RUN_ID when the failed run id cannot be extracted; the current parse-valid fail/action branch lets _run_cycle fall through to next_run = wait.get("FAILED_RUN_ID") or run_id, so the delegated loop burns cycles against the old run despite the plan's malformed-output fail-closed goal	Require FAILED_RUN_ID for failure/evaluate_failure wait output, or return ci-fix-exhausted in _run_cycle when the post-push wait action needs a failed run id but it is absent; cover that stubbed case
+
+1. **[correctness] `python/ci_agentic_fix.py:201-208,392-429`**
+   - **Concern:** The plan handles `wait_err` and `ACTION=bail`, but it does not close the `CI_STATUS=fail` plus `ACTION=evaluate_failure` plus empty `FAILED_RUN_ID` path.
+   - **Breakage:** `_run_cycle` can reuse the old `run_id` after a pushed fix.
+   - **Suggested revision:** Treat failure wait output without `FAILED_RUN_ID` as malformed or return `ci-fix-exhausted` before the `next_run = ... or run_id` fallback. Add one stubbed test for that case.

@@ -1,0 +1,128 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	python/ci_monitor.py:1456-1459	Proposed delegate timeout uses only 2× SUBPROCESS_DEFAULT_TIMEOUT_SEC per cycle but _run_cycle runs verify_job_locally once per classified.fixable job, each with default subprocess timeout	Multi-job CI failures (e.g. python-lint plus python-tests shards) can still exceed the per-cycle budget; parent kills the delegate mid-verify and OOS delegate-timeout fix is only partial	Extend the formula with a static verify ceiling tied to existing config (e.g. multiply verify budget by a documented max slots constant) or document and test the single-verify assumption explicitly
+2	in_scope	important	correctness	python/ci_agentic_fix.py:391-401	python/ci_agentic_fix.py:426-429	Plan switches wait_err/ACTION=bail/post-push fail-closed paths to ci-fix-exhausted but does not require preserving pushed_paths in the _run_cycle return tuple after a successful push	Delegate stdout may emit empty DELTA_PATHS; parent checkpoint recovery and ship routing lose evidence that a push already happened	Add an explicit plan step: any ci-fix-exhausted return after stage_and_push succeeded must still pass pushed_paths (and fix_attempted=true) through main/_emit_result
+3	in_scope	important	architecture	python/test_checks.py:1832-3065	[SCOPE-REDUCTION] Plan mandates new lint-fix waterfall tests but Claude-first, Codex/Cursor fallback, and all-tiers-fail paths are already covered	Duplicate stub tests inflate diff without closing a coverage gap	Drop the test_checks.py section or reduce it to a coverage audit note; add tests only if audit finds a real gap
+4	in_scope	important	architecture	python/test_ci_monitor.py:2615-2755	[SCOPE-REDUCTION] Plan asks to add _agentic_fix_result evaluate_failure tests for behaviors already covered (normal delegate routing, pending push-only, FIX_ATTEMPTED local-unfixable promotion)	Re-implementing existing tests wastes effort and risks divergent assertions	Audit skipped evaluate_failure tests against existing non-skipped coverage; port only behaviors still missing (e.g. exhausted-detail-file propagation if absent)
+5	in_scope	important	architecture	python/rebase.py:266-287	Forbidden-path guard plan reuses iteration-level baseline_tracked/baseline_untracked for tier delta revert, but those baselines are captured once before the tier loop, not immediately before each launch_fn	If an earlier tier mutates the tree and is reverted only via paths_delta_revert at loop end, a later tier’s forbidden-path revert may target the wrong baseline snapshot	Capture per-tier baseline_tracked/baseline_untracked immediately before each launch_fn and use that snapshot for forbidden-path full-tier revert
+
+Finding 5 - let me re-verify. On failed tier, line 277 resets conflict paths only. Line 286-287 reverts iteration baseline at end of each tier iteration when not resolved. So before tier 2 starts, tier 1's failed attempt should have been reverted at 286... 
+
+Flow for tier 1 fail:
+- launch tier 1, fail
+- reset conflict paths (277)
+- check unmerged, markers
+- not resolved
+- line 286 revert iteration baseline
+- line 287 reset conflict paths
+- continue to tier 2
+
+So before tier 2, tree is back to iteration baseline. Pre-tier-2 forbidden snapshot at iteration baseline - good.
+
+For tier 1 success but not fully resolved:
+- stage attempt, still markers
+- line 286 revert iteration baseline before tier 2
+
+So iteration baseline is correct before each tier because failed/partial tiers revert at 286 before next tier.
+
+Forbidden guard on tier 1 success BEFORE staging - if forbidden found, revert to iteration baseline - same as line 286 baseline. Good.
+
+Forbidden guard on tier 1 failed - before reset at 277, fixer may have left forbidden deltas on non-conflict files. reset_conflict_paths doesn't clean those. Forbidden guard should revert forbidden + full tier delta to tier baseline. What's "tier baseline"? Start of tier 1 = iteration baseline. Good.
+
+If tier 1 partially succeeded (staged some?), tier_succeeded path runs staging before check... on success with still_marked, doesn't break, falls through to 286 revert.
+
+Actually tier_succeeded with still_marked - doesn't break at 283, goes to 286 revert. Forbidden guard before staging on success - if forbidden, stall before staging - tree may have fixer edits. Revert to iteration baseline - correct.
+
+Finding 5 may be invalid - iteration baseline is restored between tiers via 286. Per-tier capture redundant IF 286 always runs between tiers. But on forbidden stall mid-tier, we need revert without continuing loop - iteration baseline is correct.
+
+Withdraw finding 5.
+
+Any other solid findings? 
+
+**rebase: enable_pre_push_handoff path** - forbidden raises Stalled not handoff - correct per plan.
+
+**test for _agentic_fix_delegate_timeout_sec** - plan adds - good.
+
+I'll go with 4 findings.
+
+Double-check finding 2 - wait_err current: `return "pushed", wait_err, fix_attempted, pushed_paths, False, run_id, failure_log_text` - pushed_paths preserved. Plan says return ci-fix-exhausted - implementer should preserve pushed_paths in 4th tuple element. Plan doesn't say - valid gap.
+
+For ACTION=bail after push - same.
+
+For post-push fail without FAILED_RUN_ID - return ci-fix-exhausted - should still have pushed_paths since push succeeded. Valid.
+
+JSON sentinel only if no findings - we have findings, use TSV header first then numbered findings.
+
+Format: "Return numbered findings with focus-area tag, repo-relative file:line when applicable, concern, and suggested revision."
+
+Then TSV block.
+
+First line must be schema_version header when findings exist.
+
+Structure:
+```
+schema_version	scope	...
+1	...
+
+### FINDING_1: ...
+```
+
+Or numbered list then TSV? User said "Return numbered findings" AND "When you have findings, include a TSV structured-record block with this exact header"
+
+First non-whitespace must be `s` from schema_version. So TSV first, then numbered findings? Or numbered findings first would violate format gate.
+
+Order: TSV block first (header + rows), then numbered findings for human readers.
+
+Actually re-read: "Your response MUST begin with either the TSV header line (when you have findings) or the literal single-line JSON sentinel"
+
+So TSV header is first line. Then TSV rows. Then numbered findings prose.
+
+Let me also add [OUT_OF_SCOPE] item if any - optional for worth tracking.
+
+**OOS: auth/quota retry from rollup** - dropped from plan goals intentionally - could note as out of scope observation that rollup item 1 not in plan - user might want tracked issue. Approved outline non-goals don't mention it but goals list 7 OOS - rollup had auth/quota in item 1 text. Outline goals don't include auth/quota. Plan fidelity to outline is OK.
+
+**OOS: belt-and-suspenders main() cycle check for first-fixer-non-health** - forward-looking defensive - vote NO / OOS
+
+I'll finalize 4 findings.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	python/ci_monitor.py:1456-1459	Proposed delegate timeout budgets only 2× SUBPROCESS_DEFAULT_TIMEOUT_SEC per cycle while _run_cycle calls verify_job_locally once per classified.fixable job	Multi-job CI failures can still exceed the per-cycle budget; parent kills a live delegate mid-verify and the OOS timeout fix remains partial	Budget verify time with a static ceiling derived from existing config (e.g. a max verify slots constant) instead of a fixed 2× multiplier, or document and test a single-verify assumption
+2	in_scope	important	correctness	python/ci_agentic_fix.py:391-429	Plan moves wait_err/ACTION=bail/post-push fail-closed paths to ci-fix-exhausted but does not require preserving pushed_paths in the _run_cycle return tuple after a successful push	Delegate stdout can emit empty DELTA_PATHS; parent checkpoint recovery loses evidence that a push already happened	State explicitly in the plan: any ci-fix-exhausted return after stage_and_push succeeded must still pass pushed_paths and fix_attempted=true through main/_emit_result
+3	in_scope	important	architecture	python/test_checks.py:1832-3065	[SCOPE-REDUCTION] Plan mandates new lint-fix waterfall tests though Claude-first, Codex/Cursor fallback, and all-tiers-fail behavior are already stub-tested	Duplicate tests add churn without closing a coverage gap	Drop or shrink the test_checks.py section to a coverage audit; add tests only if the audit finds a real hole
+4	in_scope	important	architecture	python/test_ci_monitor.py:2615-2755	[SCOPE-REDUCTION] Plan asks for new _agentic_fix_result / evaluate_failure tests that overlap existing non-skipped coverage	Re-implementing delegate routing and FIX_ATTEMPTED local-unfixable promotion risks divergent assertions	Audit skipped evaluate_failure tests against existing tests first; port only behaviors still missing (e.g. exhausted-detail-file propagation if uncovered)
+
+### FINDING_1: risk-integration — delegate timeout still undercounts multi-job verify
+**Location**: `python/ci_monitor.py:1456-1459` (planned formula in plan `### UPDATED: python/ci_monitor.py`)
+
+**Concern**: The plan changes `_agentic_fix_delegate_timeout_sec` to `CI_AGENTIC_FIX_MAX_CYCLES * (CI_WAIT_TIMEOUT_SEC + 2 * SUBPROCESS_DEFAULT_TIMEOUT_SEC)`. Inside each cycle, `_run_cycle` can run `verify_job_locally` for every entry in `classified.fixable`, and each call uses the runner default timeout. Two subprocess slots do not bound N verify calls.
+
+**Suggested revision**: Replace the fixed `2 *` multiplier with a verify ceiling tied to repo config (worst-case fixable job count or a small new constant used only in the timeout formula), or document and test that only one verify runs per cycle.
+
+---
+
+### FINDING_2: correctness — exhausted-after-push must keep delta paths
+**Location**: `python/ci_agentic_fix.py:391-429` (planned `_run_cycle` wait handling)
+
+**Concern**: The plan correctly stops returning `pushed` on `wait_err`, `ACTION=bail`, and missing `FAILED_RUN_ID`, but it does not state that `pushed_paths` must remain in the `_run_cycle` return tuple when `stage_and_push` already succeeded. Today those paths flow into delegate `DELTA_PATHS` and parent push-checkpoint recovery.
+
+**Suggested revision**: Add an explicit contract in the `ci_agentic_fix.py` plan bullets: `ci-fix-exhausted` after a successful push must still return the pushed delta tuple and `fix_attempted=true`.
+
+---
+
+### FINDING_3: architecture — redundant `test_checks.py` work
+**Location**: `python/test_checks.py:1832-3065`
+
+**Concern**: The plan's `test_checks.py` section asks for Claude-first and Codex/Cursor fallback coverage that already exists (`test_run_lint_fix_dispatches_claude_before_codex`, `test_run_lint_fix_codex_fail_cursor_success`, `test_run_lint_fix_all_three_tiers_fail_main_agent_required`).
+
+**Suggested revision**: Remove or narrow that plan section to "verify existing coverage; add nothing unless audit finds a gap."
+
+---
+
+### FINDING_4: architecture — overlapping `test_ci_monitor.py` delegate tests
+**Location**: `python/test_ci_monitor.py:2615-2755`
+
+**Concern**: The plan calls for new stubbed `_agentic_fix_result` / `evaluate_failure` tests for normal delegate routing, pending push-only, and `FIX_ATTEMPTED` local-unfixable promotion. Those behaviors are already covered by `test_evaluate_failure_normal_path_uses_agentic_delegate_only`, `test_evaluate_failure_pending_push_only_skips_agentic_delegate`, and `test_agentic_fix_result_fix_attempted_local_unfixable_promotes_exhausted`.
+
+**Suggested revision**: List only uncovered behaviors before writing tests (e.g. exhausted-detail-file propagation from delegate KV if no test reads `EXHAUSTED_DETAIL_FILE` end-to-end through `evaluate_failure`).
+
+---
+
+[OUT_OF_SCOPE] **auth/quota consume-retry** (`python/ci_agentic_fix.py:285-296`): Rollup item 1 is not in the approved outline goals; no plan step addresses it. File separately if still wanted.
