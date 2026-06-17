@@ -174,9 +174,21 @@ def append_execution_issue(log: Path, *, category: str, entry: str) -> None:
     text = log.read_text(encoding="utf-8") if log.exists() else ""
     if entry in text:
         return
-    if f"### {category}" not in text:
-        text = text.rstrip() + ("\n\n" if text.strip() else "") + f"### {category}\n"
-    text = text.rstrip() + f"\n{entry}\n"
+    heading = f"### {category}"
+    lines = text.splitlines()
+    section_idx = next((idx for idx, line in enumerate(lines) if line == heading), -1)
+    if section_idx < 0:
+        text = text.rstrip() + ("\n\n" if text.strip() else "") + f"{heading}\n{entry}\n"
+    else:
+        insert_idx = len(lines)
+        for idx in range(section_idx + 1, len(lines)):
+            if lines[idx].startswith("### "):
+                insert_idx = idx
+                break
+        while insert_idx > section_idx + 1 and lines[insert_idx - 1] == "":
+            insert_idx -= 1
+        lines.insert(insert_idx, entry)
+        text = "\n".join(lines).rstrip() + "\n"
     log.parent.mkdir(parents=True, exist_ok=True)
     log.write_text(text, encoding="utf-8")
 

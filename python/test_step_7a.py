@@ -85,6 +85,23 @@ def test_step7a_honors_issue_number_and_run_id(tmp_path: Path, capsys: pytest.Ca
     assert "reason=small-non-runtime-change" in capsys.readouterr().out
 
 
+def test_step7a_reads_run_id_from_session_env_when_session_id_absent(tmp_path: Path) -> None:
+    _ = (tmp_path / "session-env.sh").write_text("LARCH_RUN_ID=run-99\n", encoding="utf-8")
+
+    with patch.object(step_7a, "_is_small_non_runtime_change", return_value=True), patch.object(
+        step_7a,
+        "_run_log_flush",
+        return_value="skip",
+    ) as mock_flush, patch.object(step_7a, "subprocess") as mock_subprocess:
+        mock_subprocess.run.return_value.returncode = 0
+        mock_subprocess.run.return_value.stdout = "REBASE_OUTCOME=skipped\n"
+        rc = step_7a.run_step7a(tmp_path)
+
+    assert rc == 0
+    mock_flush.assert_called_once()
+    assert mock_flush.call_args.kwargs["run_id"] == "run-99"
+
+
 def test_step7a_diagram_failure_exits_zero_and_clears_stale_artifacts(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
     _ = (tmp_path / "code-flow-diagram.md").write_text("stale\n", encoding="utf-8")

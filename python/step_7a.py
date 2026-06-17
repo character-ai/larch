@@ -208,8 +208,10 @@ def run_step7a(
         issue_number = _read_kv(session_env, "LARCH_ISSUE_NUMBER")
     if not run_id:
         run_id = _read_kv(session_env, "LARCH_RUN_ID") or (
-            implement_tmpdir / "session-id"
-        ).read_text(encoding="utf-8").strip() if (implement_tmpdir / "session-id").is_file() else ""
+            (implement_tmpdir / "session-id").read_text(encoding="utf-8").strip()
+            if (implement_tmpdir / "session-id").is_file()
+            else ""
+        )
     if session_env.is_file() and not forked_target:
         forked_target = _read_kv(session_env, "LARCH_FORKED_TARGET", "false") == "true"
     if forked_target:

@@ -2318,7 +2318,7 @@ def launch_codex_exec_main(argv: list[str] | None = None) -> int:
     prompt_group = parser.add_mutually_exclusive_group(required=True)
     prompt_group.add_argument("--prompt")
     prompt_group.add_argument("--prompt-file")
-    parser.add_argument("--workdir", default=str(Path.cwd()))
+    parser.add_argument("--workdir", default=None)
     parser.add_argument("--add-dir", action="append", default=[])
     parser.add_argument("--sandbox", choices=("full-auto", "read-only"), default="full-auto")
     parser.add_argument("--with-effort", action="store_true")
@@ -2332,7 +2332,8 @@ def launch_codex_exec_main(argv: list[str] | None = None) -> int:
         return 2
     if not output.is_absolute() or not _validate_meta_path("--output", str(output)):
         return 2
-    workdir = Path(args.workdir)
+    workdir_value = args.workdir if args.workdir is not None else _resolve_review_codex_workdir(str(Path.cwd()))
+    workdir = Path(workdir_value)
     if not workdir.is_dir():
         _err(f"agent launch-codex-exec: --workdir is not a directory: {workdir}")
         return 2
@@ -2586,7 +2587,7 @@ def launch_codex_ci_main(argv: list[str] | None = None) -> int:
     output = Path(args.output)
     prompt = _ci_prompt("Codex", args)
     _write(output.with_suffix(output.suffix + ".prompt"), prompt)
-    workdir = str(Path.cwd())
+    workdir = _resolve_review_codex_workdir(str(Path.cwd()))
     start = time.time()
     if shutil.which("codex") is None:
         _write_preflight_bundle(output, args.timeout, 127, "codex binary missing", tool="codex", binary_present=False)
@@ -2671,7 +2672,7 @@ def launch_codex_ci_main(argv: list[str] | None = None) -> int:
     _record_usage_from_events(events, output.with_suffix(output.suffix + ".sidecar"), "codex_ci_fix", _token_record_path)
     if _token_record_path.is_file():
         _emit_kv("TOKEN_RECORD", str(_token_record_path))
-    _append(output.with_suffix(output.suffix + ".meta"), f"OUTER_LAUNCHER=agent launch-codex-ci\nOUTER_LAUNCHER_PROMPT_FILE={output}.prompt\nOUTER_LAUNCHER_WORKDIR={Path.cwd()}\n")
+    _append(output.with_suffix(output.suffix + ".meta"), f"OUTER_LAUNCHER=agent launch-codex-ci\nOUTER_LAUNCHER_PROMPT_FILE={output}.prompt\nOUTER_LAUNCHER_WORKDIR={workdir}\n")
     if result.exit_code == config.EXIT_TIMEOUT:
         _write(output.with_suffix(output.suffix + ".stall.json"), json.dumps({"tool": "codex", "exit_code": result.exit_code, "timeout": int(args.timeout, 10)}) + "\n")
     _promote_inner_done(output)
@@ -2716,6 +2717,7 @@ def launch_cursor_ci_main(argv: list[str] | None = None) -> int:
     if not ok:
         return rc
     output = Path(args.output)
+    workdir = _resolve_review_codex_workdir(str(Path.cwd()))
     if shutil.which("cursor") is None:
         _write_preflight_bundle(output, args.timeout, 127, "cursor binary missing", tool="cursor", binary_present=False)
         _append_ci_failure(output, tool="cursor", launcher_exit=127, site="ci fixer", binary_present=False)
@@ -2748,14 +2750,14 @@ def launch_cursor_ci_main(argv: list[str] | None = None) -> int:
         shutil.copyfile(user_cfg, Path(cfg_tmp) / "cli-config.json")
     start = time.time()
     try:
-        child = ["cursor", "agent", "-p", "--force", "--trust", *model_args, "--output-format", "json", "--workspace", str(Path.cwd()), prompt]
+        child = ["cursor", "agent", "-p", "--force", "--trust", *model_args, "--output-format", "json", "--workspace", workdir, prompt]
         result = _run_external_agent_with_auth_retries(
             tool="cursor",
             output=output,
             timeout_seconds=int(args.timeout, 10),
             cmd=child,
             capture_stdout_only=True,
-            stall_channel="stdout" if args.role == "fix" else f"tree:{Path.cwd()}",
+            stall_channel="stdout" if args.role == "fix" else f"tree:{workdir}",
             stall_threshold_seconds=_parse_positive_or_zero_int(os.environ.get("LARCH_CURSOR_CI_STALL_THRESHOLD", "")) or _DEFAULT_CURSOR_CI_STALL_THRESHOLD,
         )
     finally:
@@ -2764,7 +2766,7 @@ def launch_cursor_ci_main(argv: list[str] | None = None) -> int:
             os.environ.pop("CURSOR_CONFIG_DIR", None)
         else:
             os.environ["CURSOR_CONFIG_DIR"] = old_cfg
-    _append(output.with_suffix(output.suffix + ".meta"), f"OUTER_LAUNCHER=agent launch-cursor-ci\nOUTER_LAUNCHER_PROMPT_FILE={output}.prompt\nOUTER_LAUNCHER_WORKDIR={Path.cwd()}\n")
+    _append(output.with_suffix(output.suffix + ".meta"), f"OUTER_LAUNCHER=agent launch-cursor-ci\nOUTER_LAUNCHER_PROMPT_FILE={output}.prompt\nOUTER_LAUNCHER_WORKDIR={workdir}\n")
     proc.run(
         [
             sys.executable,

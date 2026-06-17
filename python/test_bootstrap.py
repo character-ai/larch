@@ -308,6 +308,74 @@ def test_plan_stops_after_run_flags_failure(tmp_path, monkeypatch) -> None:
     assert st.implement_bail_reason == "run-flags-persist-failed"
 
 
+def test_plan_materialization_strips_only_terminal_design_provenance(tmp_path, monkeypatch) -> None:
+    preflight = tmp_path / "preflight"
+    impl = tmp_path / "impl"
+    preflight.mkdir()
+    impl.mkdir()
+    source_text = (
+        "## Plan\n\n"
+        "review_status: prose survives\n"
+        "rounds_completed: prose survives\n\n"
+        "```text\n"
+        "review_status: fenced survives\n"
+        "rounds_completed: fenced survives\n"
+        "```\n\n"
+        "review_status: complete\n"
+        "rounds_completed: 5\n"
+        "diff_added: 10\n"
+        "diff_deleted: 2\n"
+        "mechanical_churn: false\n"
+        "diff_lines: 10\n"
+    )
+    plan_src = preflight / "plan-from-issue.txt"
+    plan_src.write_text(source_text, encoding="utf-8")
+    monkeypatch.setattr(bootstrap.dirty_tree, "checkpoint", lambda: ["STATUS=clean", "MODE=checkpoint"])
+    monkeypatch.setattr(bootstrap, "_append_emergency_bypass", lambda _st: True)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(bootstrap, "_persist_run_flags", lambda _st: True)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(bootstrap, "_run", lambda argv, **_kwargs: subprocess.CompletedProcess(argv, 0, "Title\n\nBody\n", ""))  # pyright: ignore[reportPrivateUsage]
+
+    st = bootstrap.BootstrapState(
+        bootstrap.BootstrapOptions(up_to_phase="plan", issue_number="7", preflight_tmpdir=str(preflight)),
+        implement_tmpdir=str(impl),
+        issue_number_resolved="7",
+        is_user_branch="true",
+    )
+    bootstrap._phase_plan(st)  # pyright: ignore[reportPrivateUsage]
+
+    materialized = (impl / "plan.txt").read_text(encoding="utf-8")
+    assert "review_status: prose survives" in materialized
+    assert "rounds_completed: prose survives" in materialized
+    assert "review_status: fenced survives" in materialized
+    assert "rounds_completed: fenced survives" in materialized
+    assert "review_status: complete" not in materialized
+    assert "rounds_completed: 5" not in materialized
+    assert "diff_added: 10" in materialized
+    assert "diff_deleted: 2" in materialized
+    assert "mechanical_churn: false" in materialized
+    assert "diff_lines: 10" in materialized
+    assert plan_src.read_text(encoding="utf-8") == source_text
+
+
+def test_strip_plan_provenance_headers_skips_prose_above_size_trailers() -> None:
+    source = (
+        "## Plan\n\n"
+        "review_status: prose survives\n"
+        "rounds_completed: prose survives\n"
+        "diff_added: 10\n"
+        "diff_deleted: 2\n"
+        "mechanical_churn: false\n"
+        "review_status: complete\n"
+        "rounds_completed: 5\n"
+        "diff_lines: 10\n"
+    )
+    result = bootstrap._strip_plan_provenance_headers(source)  # pyright: ignore[reportPrivateUsage]
+    assert "review_status: prose survives" in result
+    assert "rounds_completed: prose survives" in result
+    assert "review_status: complete" not in result
+    assert "rounds_completed: 5" not in result
+
+
 def test_forked_plan_requires_upstream_repo_before_gh(tmp_path, monkeypatch) -> None:
     calls: list[list[str]] = []
     preflight = tmp_path / "preflight"

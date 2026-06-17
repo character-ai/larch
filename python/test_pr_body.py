@@ -232,6 +232,78 @@ def test_write_final_report_counts_warnings_and_exec(tmp_path: Path, monkeypatch
     assert "**Warnings**: 1" in body
 
 
+def test_refresh_issue_counts_counts_plain_markdown_bullets(tmp_path: Path) -> None:
+    _ = (tmp_path / "execution-issues.md").write_text(
+        "### Tool Failures\n- a\n- b\n",
+        encoding="utf-8",
+    )
+
+    assert pr_body._refresh_issue_counts(tmp_path, "run1") == (2, 0)
+
+
+def test_refresh_issue_counts_counts_structured_rows_per_bullet(tmp_path: Path) -> None:
+    run_dir = tmp_path / "larch-logs" / "implement" / "run1"
+    run_dir.mkdir(parents=True)
+    rows = [
+        {"category": "Tool Failures", "body": "- a\n- b\n"},
+        {"category": "Warnings", "body": "- **step5**: c\n- **step5**: d\n"},
+    ]
+    _ = (run_dir / "execution-issues.ndjson").write_text(
+        "\n".join(json.dumps(row) for row in rows) + "\n",
+        encoding="utf-8",
+    )
+
+    assert pr_body._refresh_issue_counts(tmp_path, "run1") == (2, 2)
+
+
+def test_refresh_issue_counts_structured_row_without_bullets_counts_once(tmp_path: Path) -> None:
+    run_dir = tmp_path / "larch-logs" / "implement" / "run1"
+    run_dir.mkdir(parents=True)
+    _ = (run_dir / "execution-issues.ndjson").write_text(
+        json.dumps({"category": "Tool Failures", "body": "plain row"}) + "\n",
+        encoding="utf-8",
+    )
+
+    assert pr_body._refresh_issue_counts(tmp_path, "run1") == (1, 0)
+
+
+def test_refresh_issue_counts_ignores_fenced_diagnostic_bullets(tmp_path: Path) -> None:
+    run_dir = tmp_path / "larch-logs" / "implement" / "run1"
+    run_dir.mkdir(parents=True)
+    row = {
+        "category": "Tool Failures",
+        "body": "```text\n- failed check\n```\n- real issue\n",
+    }
+    _ = (run_dir / "execution-issues.ndjson").write_text(json.dumps(row) + "\n", encoding="utf-8")
+
+    assert pr_body._refresh_issue_counts(tmp_path, "run1") == (1, 0)
+
+
+def test_refresh_issue_counts_body_text_fallback_counts_plain_bullets(tmp_path: Path) -> None:
+    run_dir = tmp_path / "larch-logs" / "implement" / "run1"
+    run_dir.mkdir(parents=True)
+    rows: list[object] = [
+        "legacy row",
+        {"body": "### Tool Failures\n- a\n- b\n"},
+        {"body": "### Warnings\n- c\n"},
+    ]
+    _ = (run_dir / "execution-issues.ndjson").write_text(
+        "\n".join(json.dumps(row) for row in rows) + "\n",
+        encoding="utf-8",
+    )
+
+    assert pr_body._refresh_issue_counts(tmp_path, "run1") == (2, 1)
+
+
+def test_refresh_issue_counts_section_heading_inside_fence_is_boundary(tmp_path: Path) -> None:
+    _ = (tmp_path / "execution-issues.md").write_text(
+        "### Tool Failures\n- exec1\n```\nlog line\n### Warnings\n- warn1\n",
+        encoding="utf-8",
+    )
+
+    assert pr_body._refresh_issue_counts(tmp_path, "run1") == (1, 1)
+
+
 def test_step18b_emits_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     _ = (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=1\nRUN_ID=run1\n", encoding="utf-8")
     _ = (tmp_path / "session-env.sh").write_text("REPO=o/r\nMODE=N/A\n", encoding="utf-8")

@@ -27,6 +27,18 @@ def test_append_execution_issue_idempotent(tmp_path: Path) -> None:
     assert log.read_text(encoding="utf-8").count("- warning") == 1
 
 
+def test_append_execution_issue_inserts_inside_existing_section(tmp_path: Path) -> None:
+    log = tmp_path / "execution-issues.md"
+    _ = log.write_text("### Tool Failures\n- old\n### Warnings\n- warn\n", encoding="utf-8")
+
+    execution_issues.append_execution_issue(log, category="Tool Failures", entry="- new")
+    execution_issues.append_execution_issue(log, category="Tool Failures", entry="- new")
+
+    text = log.read_text(encoding="utf-8")
+    assert text.index("- new") < text.index("### Warnings")
+    assert text.count("- new") == 1
+
+
 def test_flush_execution_issues_writes_sentinel_and_clears_log(tmp_path: Path) -> None:
     issue_log = tmp_path / "execution-issues.md"
     _ = issue_log.write_text("### Warnings\n- one\n", encoding="utf-8")

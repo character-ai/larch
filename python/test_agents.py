@@ -1685,6 +1685,101 @@ def test_launch_codex_exec_promotes_done_and_records_outer_metadata(
     assert home_log.read_text(encoding="utf-8").strip()
 
 
+def test_launch_codex_exec_default_workdir_resolves_before_launch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    raw_cwd = tmp_path / "raw"
+    consumer_repo = tmp_path / "consumer"
+    raw_cwd.mkdir()
+    consumer_repo.mkdir()
+    prompt = tmp_path / "prompt.md"
+    _ = prompt.write_text("do work", encoding="utf-8")
+    output = tmp_path / "codex.out"
+    captured: dict[str, object] = {}
+
+    def fake_resolve(cwd: str) -> str:
+        assert cwd == str(raw_cwd)
+        return str(consumer_repo)
+
+    def fake_prepare(_home: Path, *, trusted_instructions_file: str = "") -> tuple[int, str]:
+        _ = trusted_instructions_file
+        return 0, ""
+
+    def fake_run_external_agent_with_auth_retries(**kwargs: object) -> agents.RunExternalAgentResult:
+        captured.update(kwargs)
+        output_path = kwargs["output"]
+        assert isinstance(output_path, Path)
+        _ = output_path.write_text("done\n", encoding="utf-8")
+        _ = output_path.with_suffix(output_path.suffix + ".inner.done").write_text("0\n", encoding="utf-8")
+        return agents.RunExternalAgentResult(0, output_path)
+
+    def fake_proc_run(argv: Sequence[str], **_kwargs: object) -> CommandResult:
+        return CommandResult(tuple(str(arg) for arg in argv), 0, "", "", 0.0)
+
+    monkeypatch.chdir(raw_cwd)
+    monkeypatch.setattr(agents, "_resolve_review_codex_workdir", fake_resolve)
+    monkeypatch.setattr(agents, "_prepare_codex_home", fake_prepare)
+    monkeypatch.setattr(agents, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(()))
+    monkeypatch.setattr(agents, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
+    monkeypatch.setattr(agents.proc, "run", fake_proc_run)
+
+    rc = agents.launch_codex_exec_main(["--output", str(output), "--timeout", "5", "--prompt-file", str(prompt)])
+
+    assert rc == 0
+    cmd = list(captured["cmd"])
+    assert captured["cwd"] == str(consumer_repo)
+    assert cmd[cmd.index("-C") + 1] == str(consumer_repo)
+    assert cmd[cmd.index("--add-dir") + 1] == str(consumer_repo)
+    assert agents._trust_config_arg(str(consumer_repo)) in cmd
+
+
+def test_launch_codex_exec_explicit_workdir_is_not_resolved(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    raw_cwd = tmp_path / "raw"
+    raw_cwd.mkdir()
+    prompt = tmp_path / "prompt.md"
+    _ = prompt.write_text("do work", encoding="utf-8")
+    output = tmp_path / "codex.out"
+    captured: dict[str, object] = {}
+
+    def fail_resolve(_cwd: str) -> str:
+        raise AssertionError("explicit --workdir must not be resolved")
+
+    def fake_prepare(_home: Path, *, trusted_instructions_file: str = "") -> tuple[int, str]:
+        _ = trusted_instructions_file
+        return 0, ""
+
+    def fake_run_external_agent_with_auth_retries(**kwargs: object) -> agents.RunExternalAgentResult:
+        captured.update(kwargs)
+        output_path = kwargs["output"]
+        assert isinstance(output_path, Path)
+        _ = output_path.write_text("done\n", encoding="utf-8")
+        _ = output_path.with_suffix(output_path.suffix + ".inner.done").write_text("0\n", encoding="utf-8")
+        return agents.RunExternalAgentResult(0, output_path)
+
+    def fake_proc_run(argv: Sequence[str], **_kwargs: object) -> CommandResult:
+        return CommandResult(tuple(str(arg) for arg in argv), 0, "", "", 0.0)
+
+    monkeypatch.chdir(raw_cwd)
+    monkeypatch.setattr(agents, "_resolve_review_codex_workdir", fail_resolve)
+    monkeypatch.setattr(agents, "_prepare_codex_home", fake_prepare)
+    monkeypatch.setattr(agents, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(()))
+    monkeypatch.setattr(agents, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
+    monkeypatch.setattr(agents.proc, "run", fake_proc_run)
+
+    rc = agents.launch_codex_exec_main(
+        ["--output", str(output), "--timeout", "5", "--prompt-file", str(prompt), "--workdir", str(raw_cwd)]
+    )
+
+    assert rc == 0
+    cmd = list(captured["cmd"])
+    assert captured["cwd"] == str(raw_cwd)
+    assert cmd[cmd.index("-C") + 1] == str(raw_cwd)
+
+
 def test_launch_codex_exec_preflight_missing_trusted_instructions_writes_bundle(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1874,6 +1969,74 @@ def test_launch_codex_ci_missing_binary_classifies_health(
     stdout = capsys.readouterr().out
     assert "LAUNCHER_FAILURE_CLASS=health" in stdout
     assert "LAUNCHER_FAILURE_REASON=binary-missing" in stdout
+
+
+def test_launch_codex_ci_resolves_consumer_workdir(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    raw_cwd = tmp_path / "plugin-cache"
+    consumer_repo = tmp_path / "consumer"
+    raw_cwd.mkdir()
+    consumer_repo.mkdir()
+    output = tmp_path / "codex-ci.out"
+    captured: dict[str, object] = {}
+
+    def fake_resolve(cwd: str) -> str:
+        assert cwd == str(raw_cwd)
+        return str(consumer_repo)
+
+    def fake_prepare(_home: Path, *, trusted_instructions_file: str = "") -> tuple[int, str]:
+        _ = trusted_instructions_file
+        return 0, ""
+
+    def fake_which(name: str) -> str | None:
+        return "/usr/bin/true" if name == "codex" else None
+
+    def fake_run_external_agent_with_auth_retries(**kwargs: object) -> agents.RunExternalAgentResult:
+        captured.update(kwargs)
+        output_path = kwargs["output"]
+        assert isinstance(output_path, Path)
+        _ = output_path.write_text("fixed\n", encoding="utf-8")
+        _ = output_path.with_suffix(output_path.suffix + ".inner.done").write_text("0\n", encoding="utf-8")
+        return agents.RunExternalAgentResult(0, output_path)
+
+    def fake_proc_run(argv: Sequence[str], **_kwargs: object) -> CommandResult:
+        return CommandResult(tuple(str(arg) for arg in argv), 0, "", "", 0.0)
+
+    monkeypatch.chdir(raw_cwd)
+    monkeypatch.setattr(agents, "_resolve_review_codex_workdir", fake_resolve)
+    monkeypatch.setattr(agents.shutil, "which", fake_which)
+    monkeypatch.setattr(agents, "_prepare_codex_home", fake_prepare)
+    monkeypatch.setattr(agents, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(()))
+    monkeypatch.setattr(agents, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
+    monkeypatch.setattr(agents.proc, "run", fake_proc_run)
+    monkeypatch.setattr(agents, "_append_ci_failure", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(agents, "_emit_ci_launcher_result", lambda *_args, **_kwargs: None)
+
+    rc = agents.launch_codex_ci_main(
+        [
+            "--role",
+            "fix",
+            "--output",
+            str(output),
+            "--run-id",
+            "run",
+            "--repo",
+            "o/r",
+            "--timeout",
+            "5",
+        ],
+    )
+
+    assert rc == 0
+    cmd = list(captured["cmd"])
+    assert captured["cwd"] == str(consumer_repo)
+    assert cmd[cmd.index("-C") + 1] == str(consumer_repo)
+    assert cmd[cmd.index("--add-dir") + 1] == str(consumer_repo)
+    assert agents._trust_config_arg(str(consumer_repo)) in cmd
+    meta = output.with_suffix(output.suffix + ".meta").read_text(encoding="utf-8")
+    assert f"OUTER_LAUNCHER_WORKDIR={consumer_repo}" in meta
 
 
 def test_launch_claude_ci_uses_stdin_not_prompt_argv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2070,6 +2233,73 @@ def test_launch_cursor_ci_model_arg_failure_writes_launcher_contract(
     assert "STATUS=FAILED" in diag
     assert "model args failed" in diag
     assert "LAUNCHER_EXIT=1" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(("role", "expected_stall"), [("resolve-conflict", "tree:{workdir}"), ("fix", "stdout")])
+def test_launch_cursor_ci_resolves_consumer_workdir_and_preserves_fix_stall_channel(
+    role: str,
+    expected_stall: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    raw_cwd = tmp_path / "plugin-cache"
+    consumer_repo = tmp_path / "consumer"
+    raw_cwd.mkdir()
+    consumer_repo.mkdir()
+    output = tmp_path / f"cursor-ci-{role}.out"
+    captured: dict[str, object] = {}
+
+    def fake_resolve(cwd: str) -> str:
+        assert cwd == str(raw_cwd)
+        return str(consumer_repo)
+
+    def fake_which(name: str) -> str | None:
+        return "/usr/bin/true" if name == "cursor" else None
+
+    def fake_run_external_agent_with_auth_retries(**kwargs: object) -> agents.RunExternalAgentResult:
+        captured.update(kwargs)
+        output_path = kwargs["output"]
+        assert isinstance(output_path, Path)
+        _ = output_path.write_text('{"result":"fixed"}\n', encoding="utf-8")
+        _ = output_path.with_suffix(output_path.suffix + ".inner.done").write_text("0\n", encoding="utf-8")
+        return agents.RunExternalAgentResult(0, output_path)
+
+    def fake_proc_run(argv: Sequence[str], **_kwargs: object) -> CommandResult:
+        return CommandResult(tuple(str(arg) for arg in argv), 0, "", "", 0.0)
+
+    monkeypatch.chdir(raw_cwd)
+    monkeypatch.setattr(agents, "_resolve_review_codex_workdir", fake_resolve)
+    monkeypatch.setattr(agents.shutil, "which", fake_which)
+    monkeypatch.setattr(agents, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(ok=True, rc=0, message=""))
+    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: None)
+    monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
+    monkeypatch.setattr(agents, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(()))
+    monkeypatch.setattr(agents, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
+    monkeypatch.setattr(agents.proc, "run", fake_proc_run)
+    monkeypatch.setattr(agents, "_append_ci_failure", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(agents, "_emit_ci_launcher_result", lambda *_args, **_kwargs: None)
+
+    rc = agents.launch_cursor_ci_main(
+        [
+            "--role",
+            role,
+            "--output",
+            str(output),
+            "--run-id",
+            "run",
+            "--repo",
+            "o/r",
+            "--timeout",
+            "5",
+        ],
+    )
+
+    assert rc == 0
+    cmd = list(captured["cmd"])
+    assert cmd[cmd.index("--workspace") + 1] == str(consumer_repo)
+    assert captured["stall_channel"] == expected_stall.format(workdir=consumer_repo)
+    meta = output.with_suffix(output.suffix + ".meta").read_text(encoding="utf-8")
+    assert f"OUTER_LAUNCHER_WORKDIR={consumer_repo}" in meta
 
 
 def test_launch_claude_subprocess_rejects_prompt_file_outside_safe_roots(tmp_path: Path) -> None:

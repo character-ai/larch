@@ -63,6 +63,10 @@ contains "$PREFLIGHT_AUDIT_REF" 'Use `$PREFLIGHT_TMPDIR/issue.json` for issue ti
 contains "$PREFLIGHT_AUDIT_REF" 'Use `$PREFLIGHT_TMPDIR/plan-from-issue.txt` for plan text.' "missing plan text audit source"
 contains "$PREFLIGHT_AUDIT_REF" 'Do not require live issue fetch.' "missing no live issue fetch audit contract"
 contains "$PREFLIGHT_AUDIT_REF" 'Do not require direct `plan-block read`.' "missing no direct plan-block audit contract"
+contains "$PREFLIGHT_AUDIT_REF" 'Ignore recognized `/design` provenance only in the terminal metadata region near `diff_lines:`' "missing terminal metadata provenance scope"
+contains "$PREFLIGHT_AUDIT_REF" '`review_status:`' "missing review_status provenance prefix"
+contains "$PREFLIGHT_AUDIT_REF" '`rounds_completed:`' "missing rounds_completed provenance prefix"
+contains "$PREFLIGHT_AUDIT_REF" 'Matching lines in plan prose, examples, or code fences still count as plan content.' "missing prose and fence provenance preservation"
 contains "$PREFLIGHT_AUDIT_REF" 'Do **not** write `$PREFLIGHT_TMPDIR/audit.txt` on pass.' "missing pass no audit file contract"
 contains "$PREFLIGHT_AUDIT_REF" 'Write `$PREFLIGHT_TMPDIR/audit.txt` only on refuse.' "missing refuse-only audit file contract"
 
