@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	python/progress_report.py	Prior-round fallback bound is ambiguous for round N greater than 2	Round 3 in flight without round-start-s and without a round-2 v1 row can fall back to round-1 end and re-include round-2 vendor rows	Resolve prior-round end only from the v1 round row where round column equals round_num minus 1; if that row is absent use current round directory mtime never an older round end
