@@ -13,11 +13,12 @@ de-duplication of the five previously-untimed full-file pytest groups
 and the #4459 follow-up batch that closed coverage gaps / overlaps in seven
 more already-sliced files (test_review_dispatch/test_execution_issues/
 test_dirty_tree/test_finalize/test_admission/test_stall_recovery/
-test_plan_review) against regression. It does **not** yet enforce the
-invariant on the multi-target files that still run their full file under
-several target names (e.g. test_run_logs.py, test_implement_dispatch.py,
-test_release.py) or on the heavier `-k`-sliced files whose re-partition
-moves many tests between shards and needs wall-time re-measurement
+test_plan_review), plus the #4459 Bucket-1 full-file duplicate group
+(test_run_logs/test_implement_dispatch/test_redact/test_release/
+test_design_lifecycle/test_plan_review_panel/test_decompose/test_plan_scout/
+test_design_summary), against regression. It does **not** yet enforce the
+invariant on the heavier `-k`-sliced files whose re-partition moves many
+tests between shards and needs wall-time re-measurement
 (test_review_and_fix.py, test_plan_quality.py, test_bootstrap.py,
 test_pr_body.py, test_file_oos.py); those remain tracked #4459 follow-ups.
 To bring another file under the guard, slice its targets and add it to
@@ -61,6 +62,17 @@ ENFORCED = (
     "python/test_admission.py",
     "python/test_stall_recovery.py",
     "python/test_plan_review.py",
+    # #4459 Bucket 1: files that previously paid full-file pytest runtime
+    # under several target names, now sliced into strict per-target partitions.
+    "python/test_run_logs.py",
+    "python/test_implement_dispatch.py",
+    "python/test_redact.py",
+    "python/test_release.py",
+    "python/test_design_lifecycle.py",
+    "python/test_plan_review_panel.py",
+    "python/test_decompose.py",
+    "python/test_plan_scout.py",
+    "python/test_design_summary.py",
 )
 
 # Mirrors CARVE_OUTS in scripts/test-harness-shards-coverage.sh: targets that

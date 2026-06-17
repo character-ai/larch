@@ -2410,6 +2410,7 @@ def test_direct_targets_design_step1d5_wrapper_and_harness(tmp_path: Path) -> No
     [
         ("python/design_argv.py", "test-parse-design-argv"),
         ("python/design_lifecycle.py", "test-design-driver"),
+        ("python/design_lifecycle.py", "test-step0b-router-flag-recovery"),
         ("python/design_log_publish_flow.py", "test-design-log-publish"),
         ("python/design_log_ship.py", "test-design-log-ship"),
         ("python/design_oos.py", "test-file-design-oos"),
@@ -2418,6 +2419,14 @@ def test_direct_targets_design_step1d5_wrapper_and_harness(tmp_path: Path) -> No
         ("python/design_publish.py", "test-design-publish"),
         ("python/design_step_log.py", "test-run-step1-plan-log"),
         ("python/design_summary.py", "test-render-final-summary"),
+        ("python/design_summary.py", "test-render-final-summary-bash32"),
+        ("python/plan_quality.py", "test-design-driver"),
+        ("python/plan_quality.py", "test-step0b-router-flag-recovery"),
+        ("python/plan_review_panel.py", "test-plan-review-panel"),
+        ("python/plan_review_panel.py", "test-dispatch-plan-review-panel"),
+        ("python/plan_review_panel.py", "test-dispatch-plan-voters"),
+        ("python/rendering.py", "test-dispatch-plan-review-panel"),
+        ("python/rendering.py", "test-dispatch-plan-voters"),
         ("python/test_design_log_ship.py", "test-design-log-ship"),
     ],
 )
@@ -2430,6 +2439,7 @@ def test_direct_targets_design_legacy_has_no_focused_target(tmp_path: Path) -> N
     planned_targets = {
         "test-parse-design-argv",
         "test-design-driver",
+        "test-step0b-router-flag-recovery",
         "test-design-log-publish",
         "test-design-log-ship",
         "test-file-design-oos",
@@ -2438,6 +2448,7 @@ def test_direct_targets_design_legacy_has_no_focused_target(tmp_path: Path) -> N
         "test-design-publish",
         "test-run-step1-plan-log",
         "test-render-final-summary",
+        "test-render-final-summary-bash32",
     }
     assert not planned_targets.intersection(targets)
 
