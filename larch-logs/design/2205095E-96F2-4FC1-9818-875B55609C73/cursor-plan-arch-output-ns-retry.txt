@@ -1,0 +1,10 @@
+Reading the plan and tracing the cited codebase paths to validate the proposed changes.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/fluff-analysis/scripts/fluff-analysis.py:280-296	21-column TSV breaks parse_impl_tsv hardcoded column indices	After vN_tool columns are inserted, parse_impl_tsv still reads v2/v3 severities at indices 10 and 15; they shift to 11 and 17, so /fluff-analysis misattributes voter severities on new implement run logs	Add ### UPDATED: skills/fluff-analysis/scripts/fluff-analysis.py (and adjust parse_impl_tsv indices or parse by header) in the plan Files section
+2	out_of_scope	latent	risk-integration	skills/implement/SKILL.md:592 and skills/implement/scripts/step-5-review.sh:48	/implement Step 5 banner still says Claude+Codex+Cursor after voter cutover	Operators on /implement runs see stale 3-vendor voter wording while /review SKILL is updated; confusing but does not break voting	Add ### UPDATED: skills/implement/SKILL.md and skills/implement/scripts/step-5-review.sh to match the 3-Cursor-archetype / Claude-floor model
+
+### 1. [correctness] `skills/fluff-analysis/scripts/fluff-analysis.py:280-296`
+The plan expands code-review `findings-classification.tsv` from 18 to 21 columns by inserting `vN_tool` after each voter’s five rating cells. `parse_impl_tsv` still assumes the old layout and reads v2/v3 severities at columns 10 and 15. After the change those severities sit at 11 and 17, so `/fluff-analysis` will silently misread voter ratings on post-change implement logs. Add `skills/fluff-analysis/scripts/fluff-analysis.py` to **Files to modify/create** and update `parse_impl_tsv` (or parse by header).
+
+### 2. [OUT_OF_SCOPE] [risk-integration] `skills/implement/SKILL.md:592`, `skills/implement/scripts/step-5-review.sh:48`
+Issue scope includes `/implement` Step 5, but the plan only updates `skills/review/SKILL.md`. The implement Step 5 banner and SKILL prose still describe a Claude+Codex+Cursor voter panel. Worth a follow-up doc fix; voting behavior does not depend on it.
