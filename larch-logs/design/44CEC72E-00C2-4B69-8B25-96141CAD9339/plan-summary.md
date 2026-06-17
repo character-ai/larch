@@ -1,0 +1,1 @@
+Port Step 3 plan-review runtime bodies into Python, keep launcher wrappers thin, remove gzip legacy execution, retire pure internal bash and shell harnesses, and preserve existing Step 3 wire contracts.

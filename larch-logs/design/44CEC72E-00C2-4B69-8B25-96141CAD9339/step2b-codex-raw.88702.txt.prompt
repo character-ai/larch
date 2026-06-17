@@ -1,0 +1,225 @@
+You are an expert engineer researching this repository and producing an implementation plan for /design Step 2b.
+
+You may use only side-effect-free repository discovery. Do not write repository files, design tmpdir files, or any other files. Return only the sentinel-delimited response requested below.
+
+Drafting requirements to follow:
+- Prefer minimum necessary change: avoid scope creep, unnecessary complexity, and additions not required for correctness.
+- Read approach-synthesis.txt: if it is exactly NO_SKETCHES, draft from direct codebase/doc inspection without fabricating planning-panel agreement.
+- Read discussion-round1.md when present for scope boundaries and strict constraints.
+- Read design-outline.md only when non-empty and .outline-approved exists; treat Goals, Non-goals, and Surfaces as binding scope.
+- Read brainstorm.md when present as additive ideation context for plan drafting.
+- Use a Files to modify/create section with per-file headings exactly one path each: ### NEW:, ### UPDATED:, or ### REWRITTEN: (at least one ASCII space after ### before the keyword).
+- Include Approach, Edge cases, Failure modes when non-trivial, Testing strategy, optional diff_added/diff_deleted/mechanical_churn trailers, and final diff_lines: <N>. mechanical_churn accepts only true or false; never write a number there.
+- The final plan body must end with a whole-line diff_lines: <N> trailer.
+- Optionally include up to three dynamic plan-review archetypes in a scout block after the plan. The launcher validates, filters, caps, and materializes this block; invalid post-plan scout output is ignored.
+- Scout sentinels inside the summary or plan are fatal format errors. Never put LARCH_SCOUT_* markers in the plan body.
+
+Readability style (trusted):
+# Readability Style
+
+**Consumer**: `/design` prompt surfaces that produce user-facing text, either through an external-agent prompt token or through inline orchestration prose.
+
+**Contract**: this file is the only source of truth for the `/design` readability preamble. External prompt files embed the literal `<READABILITY_STYLE>` token, and assembly code or orchestration expands it to this full file. Inline composition sites read this file before writing user-facing text.
+
+**When to load**: load only when a `/design` step is about to compose user-facing prose or render a prompt that asks another agent to compose such prose. Do not load during setup, pure validation, or byte-stable artifact handling.
+
+---
+
+## Style Axes
+
+Write in three styles at once:
+
+- **Strunk & White**: use active voice. Omit needless words. Prefer concrete nouns and verbs.
+- **Dyslexia-friendly**: use short sentences. Prefer simple words. Break dense ideas into headings and bullets.
+- **Brevity**: shorter is better. Minimize the total artifact length while preserving meaning.
+- **No em dashes**: never use em dashes; use periods, commas, colons, or semicolons instead.
+- **Hedge vs. direct**: hedge uncertain claims ("may contain", "can fail") instead of absolutes; keep directives imperative.
+
+## Precision Contract
+
+Keep these byte-stable unless the task explicitly edits them:
+
+- fenced code blocks
+- backticked tokens
+- file paths
+- identifiers
+- flag names
+- `### NEW:` / `### UPDATED:` / `### REWRITTEN:` plan grammar
+- the trailing `diff_lines: <N>` line
+
+Do not rewrite those items for style. Explain around them instead.
+
+## Plan-Drafting Reminders
+
+When `/design` Step 2b drafts a plan that adds, removes, or converts
+Bash fences in `skills/implement/SKILL.md`:
+
+- List `### UPDATED: scripts/test-implement-fence-shape.sh` in
+  **Files to modify/create**.
+- Note that `EXPECTED_OLD` / `EXPECTED_NEW` may need updates.
+
+This is a discoverability reminder only. Do not add plan grammar.
+
+## Precedence
+
+When rules conflict, use this order:
+
+`code references > meaning > brevity > dyslexia-friendly chunking > Strunk & White micro-rewrites`
+
+Apply it directly:
+
+- Preserve code references first.
+- Preserve exact meaning next.
+- Cut words before adding layout.
+- Add headings or bullets only when they improve scanning.
+- Polish grammar last.
+
+## Substitution Token
+
+External-agent prompt files MUST embed this literal token:
+
+`<READABILITY_STYLE>`
+
+Before launch, replace every literal `<READABILITY_STYLE>` token with the full contents of this file.
+
+## Examples
+
+Before: "It is recommended that the implementer should consider adding a validation step."
+
+After: "Add a validation step."
+
+Before: "The plan should make sure that users are not able to continue when the file cannot be read."
+
+After: "Block the flow when the file cannot be read."
+
+Before: "In order to avoid potential future confusion, documentation can be updated."
+
+After: "Update the docs to avoid confusion."
+
+Before: "The script performs an operation that checks if the path exists."
+
+After: "The script checks that the path exists."
+
+Before: "This could possibly be out of scope depending on how the team wants to proceed."
+
+After: "This may be out of scope."
+
+Required output format:
+[optional]
+LARCH_SUMMARY_BEGIN
+A concise summary for large-plan preview. Omit this whole summary block only when no useful summary is needed.
+LARCH_SUMMARY_END
+[/optional]
+LARCH_PLAN_BEGIN
+Full implementation plan body ending with diff_lines: <N>.
+LARCH_PLAN_END
+[optional]
+LARCH_SCOUT_BEGIN
+{"archetypes":[{"name":"slug","focus_area":"code-quality|risk-integration|correctness|architecture|security","weight":1,"rationale":"single-line reason","prompt_body":"2-6 sentence focus directive ending with the required citation sentence."}]}
+LARCH_SCOUT_END
+[/optional]
+
+Optional advisory status may be included between LARCH_STATUS_BEGIN and LARCH_STATUS_END, but the summary, plan, and optional scout sentinels above are the only parsed contract.
+
+Untrusted feature description:
+<feature_description encoding="literal-redacted">
+# sh-to-py G3: /design Step-3 plan-review loop bodies — port in-process
+
+**Umbrella**: #3692. **Parent slice**: C3a1 #3680. **Kind**: port gzip-embedded + on-disk façade bodies.
+**Targets**: `python/plan_review.py`, `python/plan_review_panel.py` (remove `EMBEDDED_LEGACY_REFS` gzip blobs and `_run_legacy`).
+
+**Bodies to port** (~3.7k bash, `skills/design/scripts/`):
+- `review-design-step3-loop.sh` (838)
+- `design-step3-review.sh` (598)
+- `design-step3-mav.sh` (352)
+- `plan-review-continuation.sh` (205)
+- `design-step3b-entry.sh` (209), `design-step3b-sanitize.sh` (161), `design-step3b-tail.sh` (130)
+- `design-step35-settle.sh` (266), `design-step35.sh` (113)
+- `design-step3-entry.sh`, `design-step3-entry-preview.sh`, `design-step3-entry-state.sh`, `design-step3-continuation-entry.sh`, `design-step3-gate-b-bypass.sh`
+- `lib-step3-prelaunch-failure.sh` (97)
+
+Port the Step-3 loop body, panel/voter dispatch, MAV, Gate-B dedup, and continuation/re-entry.
+
+**Context**: C3a1 moved the CLI entry but kept the loop body as gzip-embedded/on-disk bash. The `tally` verb was already ported (#4433); this finishes the loop.
+
+**Definition of done**: standard sh-to-py recipe; preserve pause/resume marker bytes and `docs/issue-anchored-plan.md` payload compatibility.
+
+
+</feature_description>
+
+
+Untrusted approach synthesis:
+<approach_synthesis encoding="literal-redacted">
+NO_SKETCHES
+
+</approach_synthesis>
+
+
+Untrusted discussion round 1:
+<discussion_round1 encoding="literal-redacted">
+## Decision 1: Launcher-invoked wrapper disposition
+- **Question**: Keep launcher-invoked Step-3 `.sh` files as thin bash, or delete them and repoint SKILL.md to direct `cli.py`?
+- **Resolution**: Keep thin wrappers. Move heavy logic into `python/plan_review.py` / `python/plan_review_panel.py`. Leave launcher-invoked wrappers (`design-step3-review.sh`, `design-step35.sh`, `design-step35-settle.sh`, `design-step3b-entry.sh`, `design-step3b-sanitize.sh`, `design-step3b-tail.sh`, `design-step3-entry.sh`, `design-step3-entry-preview.sh`, `design-step3-entry-state.sh`, `design-step3-mav.sh`, `design-step3-continuation-entry.sh`, `design-step3-gate-b-bypass.sh`) as thin bash that calls new `cli.py plan-review` verbs and keeps session rehydration + pause checks. Preserves the SKILL.md launcher contract.
+- **Source**: user
+
+## Decision 2: Behavior latitude during the port
+- **Question**: Strict bug-for-bug parity, or allow inline fixes?
+- **Resolution**: Allow opportunistic low-risk fixes and simplifications during the port. Still preserve pause/resume marker bytes and `docs/issue-anchored-plan.md` payload compatibility exactly.
+- **Source**: user
+
+## Decision 3: Scope of `_run_legacy` removal
+- **Question**: Port only the listed on-disk scripts, or fully eliminate the legacy shim?
+- **Resolution**: Full removal. Port every body `_run_legacy()` dispatches so `_run_legacy`, `_LEGACY_ASSETS` / gzip blobs, `import gzip`, and `_materialize_legacy_root` are deleted from `python/plan_review.py`. Meets the issue Definition of Done.
+- **Source**: issue DoD + codebase
+
+## Decision 4: Pure internal bodies (not launcher-invoked) are deleted
+- **Question**: What about scripts SKILL.md does not invoke through the launcher?
+- **Resolution**: Delete outright after porting (`review-design-step3-loop.sh`, `plan-review-continuation.sh`, `lib-step3-prelaunch-failure.sh`, and any gzip-embedded bodies such as `run-step3-review.sh`, `plan-review-loop.sh`, `dispatch-plan-review-panel.sh`, `dispatch-plan-voters.sh`, `emit-plan.sh`, `finalize-plan.sh`, the preview script, `design-step3-state.sh`, `record-plan-review-round-timing.sh`, `gate-b-dedup-plan.sh`, `lib-drift-baseline.sh`, `lib-design-round-artifacts.sh`). Logic moves into Python. No stubs.
+- **Source**: issue + recipe
+
+## Decision 5: Consumer cutover + retirement bookkeeping
+- **Question**: Which consumers get repointed, and what bookkeeping is required?
+- **Resolution**: Follow the sh-to-py recipe. Repoint all consumers (SKILL.md, `skills/design/references/*.md`, Makefile targets, CI, other helpers) to direct `cli.py plan-review` verbs. Delete retired `.sh` + `test-*.sh` harness + `.md` siblings. Append deleted paths to `python/migrated-scripts.tsv`. Move test coverage into `python/test_plan_review.py` / `python/test_plan_review_panel.py`. Pass `make lint-retired-scripts`.
+- **Source**: docs/python-migration.md recipe
+
+## Decision 6: Hard constraints and non-goals
+- **Question**: What must not break, and what is out of scope?
+- **Resolution**: Hard constraints: preserve pause/resume marker bytes; preserve `docs/issue-anchored-plan.md` payload fields; preserve the `STEP3_REVIEW_LOOP_STATUS` envelope grammar, exit codes, and result-env contracts (`.step3-review-result.env`, `.step3-review-cap.env`); preserve `review-round-count.txt` persist/rollback semantics. Non-goals: do not re-port `tally` (done in #4433); do not change Step 3 panel composition or voting thresholds; do not touch unrelated /design steps; keep `design-step3-review.sh` as the Step-3 process-group wrapper.
+- **Source**: issue DoD + C3a1 note + codebase
+
+Decisions resolved: 6 (2 from user, 4 from issue/codebase/recipe).
+
+</discussion_round1>
+
+
+Untrusted approved design outline:
+<design_outline encoding="literal-redacted">
+## Proposed Design Outline
+
+### Goals
+- Port the Step-3 plan-review loop bodies into native Python: loop mechanics, panel/voter dispatch, MainAgent vote, Gate-B dedup, continuation, re-entry, Step 3b diagram, Step 4 tail.
+- Remove `_run_legacy`, `_materialize_legacy_root`, the `_LEGACY_ASSETS` gzip blobs, and `import gzip` from `python/plan_review.py`.
+- Preserve every orchestrator-visible contract: `STEP3_REVIEW_LOOP_STATUS` envelope, exit codes, result-env files, pause/resume marker bytes, `docs/issue-anchored-plan.md` payload.
+
+### Non-goals
+- Do not re-port `tally` (already in-process in `python/plan_review_tally.py`, #4433).
+- Do not change Step 3 panel composition, voting thresholds, or any other /design step.
+- Do not delete launcher-invoked wrappers; they stay as thin bash.
+
+### Approach sketch
+- House loop mechanics in `python/plan_review.py`; move panel and voter dispatch into `python/plan_review_panel.py`; keep `cli.py plan-review` verbs.
+- Replace each `_run_legacy(...)` call with a direct in-process function, then delete the body it referenced.
+- Shrink launcher-invoked Step-3 `.sh` files to thin wrappers that call the new verbs; delete pure internal bodies and retired on-disk bash with no stubs.
+- Apply low-risk fixes and dedup where safe; keep parity-critical bytes intact.
+
+### Surfaces in scope
+- `python/plan_review.py`, `python/plan_review_panel.py`, `python/cli.py`.
+- `python/test_plan_review.py`, `python/test_plan_review_panel.py`, `python/migration_lint.py`.
+- `skills/design/scripts/` Step-3 `.sh` wrappers, internal bodies, `test-*.sh` + `.md` siblings.
+- `skills/design/SKILL.md`, `skills/design/references/*.md`, `Makefile`, CI, `python/migrated-scripts.tsv`.
+
+### Open questions
+- None.
+
+</design_outline>
+

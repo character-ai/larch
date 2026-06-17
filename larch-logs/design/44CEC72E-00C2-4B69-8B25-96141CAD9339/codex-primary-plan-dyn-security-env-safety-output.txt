@@ -1,0 +1,7 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	blocking	correctness	plan.txt:333-383; python/checks.py:457-482; scripts/test-design-structure.sh:241-339,523-527; skills/design/scripts/design-step3-mav.md:56-64; skills/design/scripts/design-step35-settle.md:84-86	Retired Step 3 script cleanup omits existing lint and structure guard files	After the plan appends deleted Step 3 paths to python/migrated-scripts.tsv and shrinks or deletes the scripts, make lint-retired-scripts and make test-design-structure can still see retired paths and old wrapper-body assertions	Extend the plan with minimal updates to python/checks.py, scripts/test-design-structure.sh, and affected wrapper docs. Remove stale retired path references and retarget assertions to the new plan-review CLI/thin-wrapper contracts.
+
+1. **[correctness]** The plan retires Step 3 scripts but misses existing guard surfaces.
+   - **Concern:** `python/checks.py` and `scripts/test-design-structure.sh` still pin deleted scripts or old wrapper internals.
+   - **Breakage:** Required `make lint` can fail after the port.
+   - **Suggested revision:** Add those files to the plan. Update only the stale guards and references.
