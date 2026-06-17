@@ -14,9 +14,28 @@ pass() { PASS=$((PASS + 1)); printf 'PASS: %s\n' "$1"; }
 fail() { FAIL=$((FAIL + 1)); printf 'FAIL: %s\n' "$1" >&2; }
 assert_contains() { case "$2" in *"$1"*) pass "$3" ;; *) fail "$3 (missing $1)"; printf 'ACTUAL: %s\n' "$2" >&2 ;; esac; }
 assert_not_contains() { case "$2" in *"$1"*) fail "$3 (unexpected $1)" ;; *) pass "$3" ;; esac; }
-assert_file_exists() { [ -e "$1" ] && pass "$2" || fail "$2 (missing $1)"; }
-assert_file_absent() { [ ! -e "$1" ] && pass "$2" || fail "$2 (present $1)"; }
-assert_equals() { [ "$1" = "$2" ] && pass "$3" || { fail "$3"; printf 'EXPECTED: %s\nACTUAL: %s\n' "$1" "$2" >&2; }; }
+assert_file_exists() {
+    if [ -e "$1" ]; then
+        pass "$2"
+    else
+        fail "$2 (missing $1)"
+    fi
+}
+assert_file_absent() {
+    if [ ! -e "$1" ]; then
+        pass "$2"
+    else
+        fail "$2 (present $1)"
+    fi
+}
+assert_equals() {
+    if [ "$1" = "$2" ]; then
+        pass "$3"
+    else
+        fail "$3"
+        printf 'EXPECTED: %s\nACTUAL: %s\n' "$1" "$2" >&2
+    fi
+}
 
 finish() {
     [ "$FAIL" -eq 0 ] || exit 1
