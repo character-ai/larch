@@ -499,6 +499,10 @@ def _derive_progress_label(
     kind: str = "",
     label_map: dict[str, str] | None = None,
 ) -> str:
+    if kind in {"codex-review-fix", "codex-plan-autofix"}:
+        return "codex/apply"
+    if kind in {"cursor-review-fix", "cursor-plan-autofix"}:
+        return "cursor/apply"
     basename = Path(output).name if output and output != "-" else ""
     labels = label_map or {}
     if basename and basename in labels:

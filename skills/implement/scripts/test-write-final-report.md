@@ -11,8 +11,8 @@ emission for the Step 17 `--print-stdout` callsite.
 The harness verifies final-report wrapper integration still appends Review Phase
 Detail for completed rounds. Reviewer timing appears as a plain fenced ASCII
 chart when timing data exists, with raw labels, bare `Ns` durations, the
-`0:00-M:SS` title span, and no Mermaid timing directives. Final reports do not
-pass `--no-gantt`.
+ledger-window `0:00-M:SS` title span, and no Mermaid timing directives. Final
+reports do not pass `--no-gantt`.
 
 Run with:
 

@@ -152,6 +152,7 @@ def _rehydrate_session_env(session_env_path: Path) -> None:
         ("LARCH_TOKEN_SESSION_ID", ""),
         ("LARCH_CLAUDE_SOURCE_FILE", os.environ.get("LARCH_CLAUDE_SOURCE_FILE", "")),
         ("LARCH_TIMING_LEDGER", os.environ.get("LARCH_TIMING_LEDGER", "")),
+        ("LARCH_TIMING_SKILL", os.environ.get("LARCH_TIMING_SKILL", "")),
     ):
         value = _session_get(session_env_path, key, default)
         if value:
@@ -1247,6 +1248,49 @@ def _codex_available() -> bool:
     return shutil.which("codex") is not None
 
 
+def _resolve_coder_timing_ledger(round_dir: Path) -> Path:
+    if re.fullmatch(r"round-\d+", round_dir.name):
+        return round_dir.parent / "timing-ledger.tsv"
+    return round_dir / "timing-ledger.tsv"
+
+
+def _coder_timing_env(round_dir: Path, ledger: Path) -> dict[str, str]:
+    env = {**os.environ, "LARCH_TIMING_LEDGER": str(ledger)}
+    if re.fullmatch(r"round-\d+", round_dir.name):
+        if not env.get("IMPLEMENT_TMPDIR"):
+            env["IMPLEMENT_TMPDIR"] = str(round_dir.parent)
+    elif not env.get("REVIEW_TMPDIR"):
+        env["REVIEW_TMPDIR"] = str(round_dir)
+    return env
+
+
+def _record_coder_vendor_task(
+    *,
+    round_dir: Path,
+    ledger: Path,
+    vendor: str,
+    task_kind: str,
+    output: Path,
+    start_s: int,
+    end_s: int,
+    exit_code: int,
+    status: str,
+) -> None:
+    with contextlib.suppress(Exception):
+        _run([
+            "python3", str(_plugin_root() / "python" / "cli.py"),
+            "timing", "record-vendor-task",
+            "--ledger", str(ledger),
+            "--vendor", vendor,
+            "--task-kind", task_kind,
+            "--start-s", str(start_s),
+            "--end-s", str(end_s),
+            "--output", str(output),
+            "--exit-code", str(exit_code),
+            "--status", status,
+        ], env=_coder_timing_env(round_dir, ledger))
+
+
 def _run_coder_cursor(round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
     binary_flag = os.environ.get("CURSOR_BINARY_FOUND", "")
     if binary_flag == "false" or not _cursor_available():
@@ -1267,6 +1311,8 @@ def _run_coder_cursor(round_dir: Path, prompt_body: str, tool_log: Path) -> bool
     wrapper = round_dir / "coder-cursor.wrapper.log"
     lock_state = agents.external_startup_lock_acquire("cursor")
     agents.external_startup_lock_release_after(lock_state)
+    ledger = _resolve_coder_timing_ledger(round_dir)
+    start_s = int(time.time())
     result = _run([
         "python3", str(cli), "agent", "run-external-agent",
         "--tool", "cursor",
@@ -1276,6 +1322,18 @@ def _run_coder_cursor(round_dir: Path, prompt_body: str, tool_log: Path) -> bool
         "--",
         "cursor", "agent", "-p", "--trust", *model_args, "--workspace", str(Path.cwd()), wrapped.stdout,
     ])
+    end_s = int(time.time())
+    _record_coder_vendor_task(
+        round_dir=round_dir,
+        ledger=ledger,
+        vendor="cursor",
+        task_kind="cursor-review-fix",
+        output=output,
+        start_s=start_s,
+        end_s=end_s,
+        exit_code=result.returncode,
+        status="complete" if result.returncode == 0 else "signal",
+    )
     _write_text(wrapper, result.stderr + result.stdout)
     if result.returncode == 0:
         if output.exists():
@@ -1292,6 +1350,7 @@ def _run_coder_codex(round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
         return False
     cli = _plugin_root() / "python" / "cli.py"
     output = round_dir / "coder-codex.log"
+    ledger = _resolve_coder_timing_ledger(round_dir)
     result = _run([
         "python3", str(cli), "agent", "launch-codex-exec",
         "--output", str(output),
@@ -1304,7 +1363,7 @@ def _run_coder_codex(round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
         "--with-effort",
         "--usage-label", "codex_review_fix",
         "--timing-task-kind", "codex-review-fix",
-    ])
+    ], env=_coder_timing_env(round_dir, ledger))
     wrapper = round_dir / "coder-codex.wrapper.log"
     _write_text(wrapper, result.stderr + result.stdout)
     launcher_exit = agents.resolve_launcher_exit(result.stdout, output, result.returncode)

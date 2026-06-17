@@ -411,6 +411,8 @@ function skip_gantt_row(kind, out) {
         is_launcher_probe_basename(out))
 }
 function label_for(out, vendor, kind,    bn, val) {
+    if (kind == "codex-review-fix" || kind == "codex-plan-autofix") return "codex/apply"
+    if (kind == "cursor-review-fix" || kind == "cursor-plan-autofix") return "cursor/apply"
     bn = base(out)
     if (bn in m) return m[bn]
     if (bn != "" && bn != "-") {
@@ -453,26 +455,14 @@ AWK
         {
             printf '### Round %s reviewer timing\n\n' "$gw_rn"
             if [ -s "$tasks_file" ]; then
-                chart_range="$(awk -F'\t' '
-                    NF >= 3 {
-                        if (s=="" || ($2+0) < s) s=$2+0
-                        if (e=="" || ($3+0) > e) e=$3+0
-                    }
-                    END { if (s != "" && e != "") printf "%d %d", s, e }
-                ' "$tasks_file" 2>/dev/null || true)"
-                chart_start=""; chart_end=""
-                if [ -n "$chart_range" ]; then
-                    chart_start="${chart_range%% *}"
-                    chart_end="${chart_range##* }"
-                fi
                 chart=""
-                if [ -n "$chart_start" ] && [ -n "$chart_end" ] && [ "$chart_end" -gt "$chart_start" ] &&
+                if [ "$gw_end" -gt "$gw_start" ] &&
                     chart="$(python3 "$SCRIPT_DIR/../python/cli.py" gantt render \
-                        --window-start-s "$chart_start" \
-                        --window-end-s "$chart_end" \
+                        --window-start-s "$gw_start" \
+                        --window-end-s "$gw_end" \
                         --rows-tsv "$tasks_file" 2>/dev/null)"; then
                     if [ -n "$chart" ]; then
-                        span=$((chart_end - chart_start))
+                        span=$((gw_end - gw_start))
                         printf '```\n'
                         printf 'Round %s reviewer timing  ·  window 0:00-%s (%ss)\n' "$gw_rn" "$(fmt_mss "$span")" "$span"
                         printf '%s\n' "$chart"

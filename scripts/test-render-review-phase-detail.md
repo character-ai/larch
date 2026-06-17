@@ -11,9 +11,9 @@ plain fenced ASCII reviewer timing charts, and `--no-gantt` suppression.
 The harness validates plain fenced ASCII charts instead of generated Mermaid.
 It checks absolute TSV sort order, tab-delimited sorting for label-first TSV
 rows, unfiltered round-window aggregation, vendor overlap selection without
-skill filtering, best-effort renderer failure handling under `set -e`, renderer
-launch from outside the repo root, chart title `m:ss` formatting, and axis
-placement.
+skill filtering, apply-row labels, ledger-window chart titles, best-effort
+renderer failure handling under `set -e`, renderer launch from outside the repo
+root, chart title `m:ss` formatting, and axis placement.
 
 For rendered charts it checks these invariants:
 

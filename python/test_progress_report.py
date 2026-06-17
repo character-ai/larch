@@ -519,7 +519,7 @@ def test_progress_label_fallbacks_and_manifest_precedence(tmp_path: Path) -> Non
             "codex",
             "codex-plan-autofix",
         )
-        == "codex/codex-plan-autofix"
+        == "codex/apply"
     )
     assert (
         progress_report._derive_progress_label(
@@ -527,17 +527,19 @@ def test_progress_label_fallbacks_and_manifest_precedence(tmp_path: Path) -> Non
             "cursor",
             "cursor-plan-autofix",
         )
-        == "cursor/cursor-plan-autofix"
+        == "cursor/apply"
     )
+    assert progress_report._derive_progress_label("coder-codex.log", "codex", "codex-review-fix") == "codex/apply"
+    assert progress_report._derive_progress_label("coder-cursor.log", "cursor", "cursor-review-fix") == "cursor/apply"
 
     output = tmp_path / "codex-output.txt"
     manifest = tmp_path / "panel-manifest.ndjson"
     manifest.write_text(f'{{"slot":"mapped","tool":"tool","output":"{output}"}}\n', encoding="utf-8")
     label_map = progress_report._progress_label_map_from_manifests([manifest])
-    assert progress_report._derive_progress_label(str(output), "codex", "codex-plan-autofix", label_map) == "tool/mapped"
+    assert progress_report._derive_progress_label(str(output), "codex", "codex-plan-autofix", label_map) == "codex/apply"
 
 
-def test_progress_vendor_rows_use_bare_vendor_task_kind_priority(tmp_path: Path) -> None:
+def test_progress_vendor_rows_use_apply_task_kind_priority(tmp_path: Path) -> None:
     ledger = tmp_path / "timing-ledger.tsv"
     _write_vendor_timing(
         ledger,
@@ -547,11 +549,26 @@ def test_progress_vendor_rows_use_bare_vendor_task_kind_priority(tmp_path: Path)
         vendor="codex",
         kind="codex-plan-autofix",
     )
+    _write_vendor_timing(
+        ledger,
+        "coder-cursor.log",
+        141,
+        170,
+        vendor="cursor",
+        kind="cursor-review-fix",
+    )
+    _write_vendor_timing(
+        ledger,
+        "coder-codex.log",
+        171,
+        190,
+        vendor="codex",
+        kind="codex-review-fix",
+    )
 
     rows = progress_report._progress_vendor_rows(ledger, 100, 200, {})
 
-    assert len(rows) == 1
-    assert rows[0].label == "codex/codex-plan-autofix"
+    assert [row.label for row in rows] == ["codex/apply", "cursor/apply", "codex/apply"]
 
 
 def test_progress_vendor_rows_skip_ci_rows_when_requested(tmp_path: Path) -> None:
@@ -602,6 +619,22 @@ def test_render_step5_first_round_inflight_gantt(tmp_path: Path, monkeypatch) ->
         encoding="utf-8",
     )
     _write_vendor_timing(impl / "timing-ledger.tsv", str(output), 120, 170)
+    _write_vendor_timing(
+        impl / "timing-ledger.tsv",
+        "coder-cursor.log",
+        171,
+        180,
+        vendor="cursor",
+        kind="cursor-review-fix",
+    )
+    _write_vendor_timing(
+        impl / "timing-ledger.tsv",
+        "codex-output.txt",
+        181,
+        190,
+        vendor="codex",
+        kind="codex-plan-autofix",
+    )
 
     def fail_detail(_tmpdir: Path, _run_id: str) -> str:
         raise AssertionError("_render_review_detail must not run without completed metadata")
@@ -613,6 +646,8 @@ def test_render_step5_first_round_inflight_gantt(tmp_path: Path, monkeypatch) ->
     assert "Step 5 code review — round 1 in progress" in report
     assert "Round 1 reviewer timing" in report
     assert "tool/slot" in report
+    assert "cursor/apply" in report
+    assert "codex/apply" in report
 
 
 def test_render_step5_inflight_gantt_uses_step_mark_start_fallback(
