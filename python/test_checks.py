@@ -1770,6 +1770,66 @@ def test_run_check_fix_loop_rejects_initial_log_outside_allowed_tmpdir(tmp_path:
     assert loop.status == "dispatch-failed"
 
 
+def test_run_lint_fix_dispatches_claude_before_codex(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    log = tmp_path / "checks.log"
+    _ = log.write_text("lint error\n", encoding="utf-8")
+    head = "abc123"
+    dispatch_calls: list[str] = []
+
+    def succeed_claude(*_args: object, **_kwargs: object) -> int:
+        dispatch_calls.append("claude")
+        return 0
+
+    def fail_codex(*_args: object, **_kwargs: object) -> int:
+        dispatch_calls.append("codex")
+        return 1
+
+    def fail_cursor(*_args: object, **_kwargs: object) -> int:
+        dispatch_calls.append("cursor")
+        return 1
+
+    monkeypatch.setattr(checks, "_run_claude", succeed_claude)
+    monkeypatch.setattr(checks, "_run_codex", fail_codex)
+    monkeypatch.setattr(checks, "_run_cursor", fail_cursor)
+    runner = StubRunner([
+        _ok(""),  # baseline tracked diff
+        _ok(""),  # baseline cached diff
+        _ok(""),  # baseline untracked status
+        _ok(head + "\n"),  # rev-parse HEAD
+        _ok("main\n"),  # symbolic-ref
+        _ok(""),  # submodule foreach
+        _ok(head + "\n"),  # current HEAD after dispatch
+        _ok("fixed.py\n"),  # forbidden-revert tracked diff
+        _ok(""),  # forbidden-revert cached diff
+        _ok(""),  # forbidden-revert untracked status
+        _ok("fixed.py\n"),  # current tracked diff
+        _ok(""),  # current cached diff
+        _ok(""),  # untracked status
+        _ok(""),  # git add
+        _ok(""),  # git-commit.sh
+        _ok("def456\n"),  # commit SHA
+    ])
+    outcome = checks.run_lint_fix(
+        runner,
+        site="step6",
+        checks_log=str(log),
+        repo_root=str(repo),
+        claude_present=True,
+        codex_present=True,
+        cursor_present=True,
+        allowed_tmpdir=_lint_fix_dirs(tmp_path)[0],
+        run_parent=_lint_fix_dirs(tmp_path)[1],
+    )
+    assert dispatch_calls == ["claude"]
+    assert outcome.status == "applied"
+    assert outcome.coder_tool == "claude"
+
+
 def test_run_lint_fix_codex_fail_cursor_success(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()

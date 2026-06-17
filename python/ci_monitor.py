@@ -1172,6 +1172,8 @@ def stage_and_push(
                 )
                 did_rebase = rebased.exit_code == 0
                 if not did_rebase:
+                    if rebased.conflict_files:
+                        return False, head, delta_paths, False, True
                     _ = git.rebase(runner, "--abort", cwd=cwd)
                     return False, head, delta_paths, False, False
     if did_rebase or ci_fix_rebase_pending:
@@ -1439,6 +1441,12 @@ def _parse_kv_output(text: str) -> dict[str, str]:
     return values
 
 
+def _agentic_fix_delegate_timeout_sec() -> float | None:
+    """Budget for one full agentic delegate run (all cycles + passive CI waits)."""
+    per_cycle = config.CI_WAIT_TIMEOUT_SEC + config.SUBPROCESS_DEFAULT_TIMEOUT_SEC
+    return float(config.CI_AGENTIC_FIX_MAX_CYCLES * per_cycle)
+
+
 def _agentic_fix_result(
     runner: Runner,
     *,
@@ -1486,10 +1494,20 @@ def _agentic_fix_result(
         argv.extend(["--state-file", ctx.state_file])
     if ctx is not None and ctx.no_logs_commit:
         argv.append("--no-logs-commit")
-    result = runner.run(argv, cwd=cwd, timeout=float(config.SUBPROCESS_DEFAULT_TIMEOUT_SEC))
+    result = runner.run(argv, cwd=cwd, timeout=_agentic_fix_delegate_timeout_sec())
+    if result.returncode == config.EXIT_TIMEOUT:
+        return FixResult(
+            status="fix-exhausted",
+            detail="ci-fix-exhausted: delegate-timeout",
+        )
     parsed = _parse_kv_output(result.stdout + "\n" + result.stderr)
     status = parsed.get("STATUS", "")
     detail = parsed.get("DETAIL", "")
+    exhausted_detail_file = parsed.get("EXHAUSTED_DETAIL_FILE", "")
+    if status == "ci-fix-exhausted" and exhausted_detail_file:
+        detail_path = Path(exhausted_detail_file)
+        if detail_path.is_file():
+            detail = detail_path.read_text(encoding="utf-8", errors="replace").strip()
     fix_attempted = parsed.get("FIX_ATTEMPTED", "").lower() == "true"
     delta_paths = tuple(path for path in parsed.get("DELTA_PATHS", "").split(",") if path)
     pending = parsed.get("CI_FIX_REBASE_PENDING", "").lower() == "true"
@@ -1510,7 +1528,8 @@ def _agentic_fix_result(
     if status == "first-fixer-non-health":
         return FixResult(status="first-fixer-non-health", detail=detail)
     if status == "ci-fix-exhausted":
-        return FixResult(status="fix-exhausted", detail=f"ci-fix-exhausted: {detail}")
+        exhausted_detail = detail if detail.startswith("ci-fix-exhausted") else f"ci-fix-exhausted: {detail}"
+        return FixResult(status="fix-exhausted", detail=exhausted_detail)
     if status == "waterfall-failed":
         if detail == "head-changed" and fix_attempted:
             return FixResult(status="fix-exhausted", detail=f"ci-fix-exhausted: {detail}")

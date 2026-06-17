@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import random
+import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -121,6 +122,53 @@ def _unmerged_paths(runner: Runner, *, cwd: str | None) -> list[str]:
         raise Stalled(_redact_outbound("git diff --diff-filter=U failed")) from None
 
 
+_CONFLICT_MARKER_RE = re.compile(r"^(<<<<<<<|=======|>>>>>>>)", re.MULTILINE)
+
+
+def _path_has_conflict_markers(path: str, *, cwd: str | None) -> bool:
+    root = Path(cwd) if cwd else Path.cwd()
+    file_path = root / path
+    if not file_path.is_file():
+        return False
+    try:
+        text = file_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return True
+    return _CONFLICT_MARKER_RE.search(text) is not None
+
+
+def _stage_resolved_conflict_files(
+    runner: Runner,
+    conflict_paths: tuple[str, ...] | list[str],
+    *,
+    cwd: str | None,
+) -> tuple[list[str], list[str]]:
+    """Stage only conflict paths that exist and no longer contain conflict markers."""
+    staged: list[str] = []
+    still_marked: list[str] = []
+    root = Path(cwd) if cwd else Path.cwd()
+    for path in conflict_paths:
+        if _path_has_conflict_markers(path, cwd=cwd):
+            still_marked.append(path)
+            continue
+        if not (root / path).exists():
+            continue
+        _ = git.add(runner, path, cwd=cwd)
+        staged.append(path)
+    return staged, still_marked
+
+
+def _reset_conflict_paths(
+    runner: Runner,
+    conflict_paths: tuple[str, ...] | list[str],
+    *,
+    cwd: str | None,
+) -> None:
+    for path in conflict_paths:
+        _ = git.restore_staged(runner, path, cwd=cwd)
+        _ = runner.run(["git", "checkout", "--merge", "--", path], cwd=cwd)
+
+
 def make_conflict_launch_fn(
     runner: Runner,
     *,
@@ -172,7 +220,9 @@ def make_conflict_launch_fn(
             tool=tier,
             output_file=output,
         )
-        flog: str | Path | None = failure_log if failure_log.is_file() else None
+        flog: str | Path | None = output if output.is_file() else (
+            failure_log if failure_log.is_file() else None
+        )
         return agents.TierAttempt(
             tier=tier,
             wrapper_rc=result.returncode,
@@ -215,19 +265,33 @@ def _resolve_conflicts(
             resolved = False
             for index, tier in enumerate(config.FIXER_TIER_ORDER):
                 attempt = launch_fn(tier, conflict_csv)
-                for path in unmerged:
-                    _ = git.add(runner, path, cwd=cwd)
+                tier_succeeded = attempt.launcher_exit == 0 and attempt.wrapper_rc == 0
+                still_marked: list[str] = []
+                if tier_succeeded:
+                    _, still_marked = _stage_resolved_conflict_files(
+                        runner,
+                        unmerged,
+                        cwd=cwd,
+                    )
+                else:
+                    _reset_conflict_paths(runner, unmerged, cwd=cwd)
                 unmerged_remaining = _unmerged_paths(runner, cwd=cwd)
-                if attempt.launcher_exit == 0 and attempt.wrapper_rc == 0 and not unmerged_remaining:
+                active_paths = unmerged_remaining or unmerged
+                markers_remain = bool(still_marked) or any(
+                    _path_has_conflict_markers(path, cwd=cwd) for path in active_paths
+                )
+                if tier_succeeded and not unmerged_remaining and not markers_remain:
                     resolved = True
                     break
                 git.paths_delta_revert(runner, baseline_tracked, baseline_untracked, cwd=cwd)
-                failure_class = agents.effective_failure_class(attempt)
-                if index == 0 and attempt.wrapper_rc == 0 and failure_class == "other":
-                    _handoff_or_stall(
-                        tuple(unmerged_remaining or unmerged),
-                        "first fixer could not resolve conflicts",
-                    )
+                _reset_conflict_paths(runner, unmerged, cwd=cwd)
+                if not tier_succeeded:
+                    failure_class = agents.effective_failure_class(attempt)
+                    if index == 0 and attempt.wrapper_rc == 0 and failure_class == "other":
+                        _handoff_or_stall(
+                            tuple(active_paths),
+                            "first fixer could not resolve conflicts",
+                        )
             if not resolved:
                 remaining_after = tuple(_unmerged_paths(runner, cwd=cwd) or unmerged)
                 _handoff_or_stall(

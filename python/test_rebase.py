@@ -1501,3 +1501,85 @@ def test_sync_local_main_missing_remote_on_main_stalls() -> None:
             base_ref="main",
             cwd=None,
         )
+
+
+def test_failed_tier_skips_blind_staging(tmp_path: Path) -> None:
+    conflict_dir = tmp_path / "vendor"
+    conflict_dir.mkdir()
+    conflict_file = conflict_dir / "foo.txt"
+    _ = conflict_file.write_text("<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> branch\n", encoding="utf-8")
+    runner = ScriptRunner(
+        [
+            (("git", "diff", "--name-only", "--diff-filter=U"), _ok(
+                ("git", "diff", "--name-only", "--diff-filter=U"),
+                "vendor/foo.txt\n",
+            )),
+        ],
+    )
+    with pytest.raises(Stalled, match=r"fixer|first fixer"):
+        rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
+            runner,
+            lambda tier, _csv: TierAttempt(
+                tier,
+                wrapper_rc=1,
+                launcher_exit=1,
+                failure=LaunchFailure("other", "unknown"),
+            ),
+            repo="o/r",
+            run_id="run",
+            cwd=str(tmp_path),
+            tmpdir=str(tmp_path),
+        )
+    assert not any(call[:3] == ("git", "add") for call in runner.calls)
+
+
+def test_success_tier_stages_marker_free_conflict_file(tmp_path: Path) -> None:
+    conflict_dir = tmp_path / "vendor"
+    conflict_dir.mkdir()
+    conflict_file = conflict_dir / "foo.txt"
+    _ = conflict_file.write_text("resolved content\n", encoding="utf-8")
+    diff_calls = {"n": 0}
+
+    def unmerged_handler(_argv: tuple[str, ...]) -> CommandResult:
+        diff_calls["n"] += 1
+        if diff_calls["n"] == 1:
+            return _ok(
+                ("git", "diff", "--name-only", "--diff-filter=U"),
+                "vendor/foo.txt\n",
+            )
+        return _ok(("git", "diff", "--name-only", "--diff-filter=U"), "")
+
+    runner = ScriptRunner(
+        [
+            (("git", "diff", "--name-only", "--diff-filter=U"), unmerged_handler),
+            (("git", "rebase", "--continue"), _ok(("git", "rebase", "--continue"))),
+        ],
+    )
+
+    def launch_fn(tier: str, conflict_csv: str) -> TierAttempt:
+        assert conflict_csv == "vendor/foo.txt"
+        return TierAttempt(tier, 0, 0, LaunchFailure("none", ""))
+
+    rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
+        runner,
+        launch_fn,
+        repo="o/r",
+        run_id="run",
+        cwd=str(tmp_path),
+        tmpdir=str(tmp_path),
+    )
+    assert ("git", "add", "--", "vendor/foo.txt") in runner.calls
+    assert ("git", "rebase", "--continue") in runner.calls
+
+
+def test_effective_failure_class_reads_launcher_output_envelope(tmp_path: Path) -> None:
+    output = tmp_path / "conflict-claude.out"
+    _ = output.write_text("LAUNCHER_FAILURE_CLASS=health\n", encoding="utf-8")
+    attempt = TierAttempt(
+        tier="claude",
+        wrapper_rc=0,
+        launcher_exit=127,
+        failure=LaunchFailure("other", "unknown"),
+        failure_log=output,
+    )
+    assert rebase.agents.effective_failure_class(attempt) == "health"

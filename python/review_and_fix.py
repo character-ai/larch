@@ -1134,6 +1134,7 @@ def _run_lint_fix_loop(implement_tmpdir: Path, checks_log: str) -> dict[str, str
         site="step5",
         checks_log=checks_log,
         repo_root=_step5_repo_root(),
+        claude_present=_binary_flag("CLAUDE_BINARY_FOUND", implement_tmpdir, "claude"),
         codex_present=_binary_flag("CODEX_BINARY_FOUND", implement_tmpdir, "codex"),
         cursor_present=_binary_flag("CURSOR_BINARY_FOUND", implement_tmpdir, "cursor"),
         run_parent=str(implement_tmpdir / "lint-fix-loop"),

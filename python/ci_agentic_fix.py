@@ -48,9 +48,12 @@ def _emit_result(
     cycles: int = 0,
     delta_paths: tuple[str, ...] = (),
     ci_fix_rebase_pending: bool = False,
+    exhausted_detail_file: str = "",
 ) -> int:
     _emit_kv("STATUS", status)
-    _emit_kv("DETAIL", detail)
+    _emit_kv("DETAIL", detail.replace("\n", " ").strip())
+    if exhausted_detail_file:
+        _emit_kv("EXHAUSTED_DETAIL_FILE", exhausted_detail_file)
     _emit_kv("FIX_ATTEMPTED", _bool(fix_attempted))
     _emit_kv("WINNING_TIER", "claude")
     _emit_kv("CYCLES", cycles)
@@ -101,6 +104,14 @@ def _write_failure_log(output_dir: Path, text: str) -> Path:
     _ = path.write_text(redact.redact(text), encoding="utf-8")
     path.chmod(0o600)
     return path
+
+
+def _compose_exhausted_detail(cycle_detail: str, failure_log_text: str) -> str:
+    header = f"ci-fix-exhausted: {cycle_detail}" if cycle_detail else "ci-fix-exhausted"
+    tail = failure_log_text.strip()
+    if tail:
+        return f"{header}\n{redact.redact(tail).rstrip()}\n"
+    return header
 
 
 def _rollback(
@@ -162,11 +173,11 @@ def _run_cycle(
     ctx: RunContext,
     cycle: int,
     run_id: str,
-) -> tuple[str, str, bool, tuple[str, ...], bool, str | None]:
+) -> tuple[str, str, bool, tuple[str, ...], bool, str | None, str]:
     cwd = str(repo_root)
     jobs_raw, jobs_state = ci_monitor.read_failed_jobs(runner, run_id=run_id, repo=args.repo, cwd=cwd)
     if jobs_state != "ready":
-        return "waterfall-failed", f"failed-jobs-{jobs_state}", False, (), False, None
+        return "waterfall-failed", f"failed-jobs-{jobs_state}", False, (), False, None, ""
     classified = ci_monitor.classify_failed_jobs(jobs_raw)
     if not classified.fixable:
         return (
@@ -176,10 +187,12 @@ def _run_cycle(
             (),
             False,
             None,
+            "",
         )
     logs = ci_monitor.collect_failed_logs(runner, run_id=run_id, repo=args.repo, cwd=cwd)
     if logs.state != "ready":
-        return "waterfall-failed", f"logs-{logs.state}", False, (), False, None
+        return "waterfall-failed", f"logs-{logs.state}", False, (), False, None, ""
+    failure_log_text = logs.text
     output_dir = Path(args.output_dir)
     failure_log = _write_failure_log(output_dir, logs.text)
     output = output_dir / f"ci-agentic-claude-{cycle}.out"
@@ -221,10 +234,21 @@ def _run_cycle(
                 cwd=cwd,
             )
             if failure.failure_class == "health":
-                return "waterfall-failed", failure.reason or "claude-health", fix_attempted, (), False, None
-            return "first-fixer-non-health", failure.reason or "claude-failed", fix_attempted, (), False, None
+                if cycle == 1:
+                    return (
+                        "first-fixer-non-health",
+                        failure.reason or "claude-health",
+                        fix_attempted,
+                        (),
+                        False,
+                        None,
+                        failure_log_text,
+                    )
+                return "waterfall-failed", failure.reason or "claude-health", fix_attempted, (), False, None, failure_log_text
+            return "first-fixer-non-health", failure.reason or "claude-failed", fix_attempted, (), False, None, failure_log_text
         current_head = coder_delta_guards.capture_head(runner, cwd=cwd)
         if coder_delta_guards.head_changed_from_baseline(baseline_head, current_head):
+            _ = git.reset(runner, "--hard", baseline_head, cwd=cwd)
             _rollback(
                 runner,
                 baseline_tracked=baseline_tracked,
@@ -232,7 +256,7 @@ def _run_cycle(
                 baseline_staged=baseline_staged,
                 cwd=cwd,
             )
-            return "waterfall-failed", "head-changed", fix_attempted, (), False, None
+            return "waterfall-failed", "head-changed", fix_attempted, (), False, None, failure_log_text
         forbidden = (".gitmodules", *coder_delta_guards.submodule_paths(runner, cwd=cwd))
         if coder_delta_guards.revert_forbidden_paths(runner, cwd=cwd, forbidden=forbidden) > 0:
             _rollback(
@@ -242,7 +266,7 @@ def _run_cycle(
                 baseline_staged=baseline_staged,
                 cwd=cwd,
             )
-            return "waterfall-failed", "forbidden-path", fix_attempted, (), False, None
+            return "waterfall-failed", "forbidden-path", fix_attempted, (), False, None, failure_log_text
         unfixable = [
             _job_token(job)
             for job in classified.fixable
@@ -256,7 +280,7 @@ def _run_cycle(
                 baseline_staged=baseline_staged,
                 cwd=cwd,
             )
-            return "local-unfixable", ",".join(unfixable), fix_attempted, (), False, None
+            return "local-unfixable", ",".join(unfixable), fix_attempted, (), False, None, failure_log_text
         failed_verify = [
             _job_token(job)
             for job in classified.fixable
@@ -270,7 +294,7 @@ def _run_cycle(
                 baseline_staged=baseline_staged,
                 cwd=cwd,
             )
-            return "verify-failed", ",".join(failed_verify), fix_attempted, (), False, None
+            return "verify-failed", ",".join(failed_verify), fix_attempted, (), False, None, failure_log_text
         delta_paths = ci_monitor._delta_paths(  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
             runner,
             baseline_tracked=baseline_tracked,
@@ -285,7 +309,7 @@ def _run_cycle(
                 baseline_staged=baseline_staged,
                 cwd=cwd,
             )
-            return "no-progress", "empty-delta", fix_attempted, (), False, None
+            return "no-progress", "empty-delta", fix_attempted, (), False, None, failure_log_text
         pushed, _post_head, pushed_paths, _did_rebase, pending = ci_monitor.stage_and_push(
             runner,
             cwd=cwd,
@@ -297,14 +321,22 @@ def _run_cycle(
             ctx=ctx,
         )
         if not pushed and pending:
-            return "rebase-required", "push-rebase-required", fix_attempted, pushed_paths, True, None
+            return "rebase-required", "push-rebase-required", fix_attempted, pushed_paths, True, None, failure_log_text
         if not pushed:
-            return "waterfall-failed", "push-failed", fix_attempted, pushed_paths, False, None
+            _ = git.reset(runner, "--hard", baseline_head, cwd=cwd)
+            _rollback(
+                runner,
+                baseline_tracked=baseline_tracked,
+                baseline_untracked=baseline_untracked,
+                baseline_staged=baseline_staged,
+                cwd=cwd,
+            )
+            return "push-failed", "push-failed", fix_attempted, (), False, None, failure_log_text
         wait = _wait_for_ci(runner, args=args, repo_root=repo_root, cycle=cycle)
         if wait.get("ACTION") in {"merge", "already_merged"} or wait.get("CI_STATUS") == "pass":
-            return "passed", "", fix_attempted, pushed_paths, False, None
+            return "passed", "", fix_attempted, pushed_paths, False, None, failure_log_text
         next_run = wait.get("FAILED_RUN_ID") or run_id
-        return "pushed", wait.get("BAIL_REASON", "") or "ci-failed-after-push", fix_attempted, pushed_paths, False, next_run
+        return "pushed", wait.get("BAIL_REASON", "") or "ci-failed-after-push", fix_attempted, pushed_paths, False, next_run, failure_log_text
     finally:
         failure_log.unlink(missing_ok=True)
 
@@ -339,8 +371,9 @@ def main(argv: list[str] | None = None) -> int:
     fix_attempted = False
     last_detail = ""
     last_delta: tuple[str, ...] = ()
+    last_failure_log_text = ""
     for cycle in range(1, max_cycles + 1):
-        status, detail, attempted, delta_paths, pending, next_run_id = _run_cycle(
+        status, detail, attempted, delta_paths, pending, next_run_id, failure_log_text = _run_cycle(
             proc,
             args=args,
             repo_root=repo_root,
@@ -351,6 +384,8 @@ def main(argv: list[str] | None = None) -> int:
         fix_attempted = fix_attempted or attempted
         last_detail = detail
         last_delta = delta_paths
+        if failure_log_text:
+            last_failure_log_text = failure_log_text
         if status in {"passed", "rebase-required", "local-unfixable", "first-fixer-non-health"}:
             return _emit_result(
                 status,
@@ -360,16 +395,36 @@ def main(argv: list[str] | None = None) -> int:
                 delta_paths=delta_paths,
                 ci_fix_rebase_pending=pending,
             )
+        if status == "push-failed":
+            exhausted_path = Path(args.output_dir) / f"ci-agentic-exhausted-{cycle}.detail"
+            _ = exhausted_path.write_text(
+                _compose_exhausted_detail(detail, failure_log_text),
+                encoding="utf-8",
+            )
+            return _emit_result(
+                "ci-fix-exhausted",
+                detail=detail,
+                fix_attempted=fix_attempted,
+                cycles=cycle,
+                delta_paths=(),
+                exhausted_detail_file=str(exhausted_path),
+            )
         if status == "waterfall-failed" and detail in {"head-changed", "forbidden-path"}:
             return _emit_result(status, detail=detail, fix_attempted=fix_attempted, cycles=cycle)
         if next_run_id:
             run_id = next_run_id
+    exhausted_path = Path(args.output_dir) / "ci-agentic-exhausted-final.detail"
+    _ = exhausted_path.write_text(
+        _compose_exhausted_detail(last_detail or "cycle cap exhausted", last_failure_log_text),
+        encoding="utf-8",
+    )
     return _emit_result(
         "ci-fix-exhausted",
         detail=last_detail or "cycle cap exhausted",
         fix_attempted=fix_attempted,
         cycles=max_cycles,
         delta_paths=last_delta,
+        exhausted_detail_file=str(exhausted_path),
     )
 
 
