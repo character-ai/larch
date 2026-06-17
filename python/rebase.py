@@ -102,32 +102,6 @@ def _abort_rebase(runner: Runner, *, cwd: str | None) -> None:
     _ = git.rebase(runner, "--abort", cwd=cwd)
 
 
-def _is_plugin_json_path(path: str) -> bool:
-    return path == config.PLUGIN_JSON_PATH or path.endswith(
-        f"/{config.PLUGIN_JSON_PATH}",
-    )
-
-
-def _larch_bump_files() -> frozenset[str]:
-    raw = os.environ.get(config.ENV_LARCH_VERSION_FILES, "")
-    if not raw:
-        raw = os.environ.get(config.ENV_LARCH_BUMP_FILES, "")
-    return frozenset(segment.strip() for segment in raw.split(os.pathsep) if segment.strip())
-
-
-def _is_bump_path(path: str) -> bool:
-    base = Path(path).name
-    if _is_plugin_json_path(path):
-        return True
-    if base in ("version.go", "go.sum"):
-        return True
-    return path in _larch_bump_files()
-
-
-def _conflicts_are_non_bump_only(paths: tuple[str, ...]) -> bool:
-    return bool(paths) and not any(_is_bump_path(path) for path in paths)
-
-
 def _write_handoff_flag(tmpdir: str | None) -> None:
     root = tmpdir or os.environ.get(config.ENV_IMPLEMENT_TMPDIR)
     if not root:
@@ -138,33 +112,6 @@ def _write_handoff_flag(tmpdir: str | None) -> None:
     except OSError as exc:
         msg = f"cannot write {config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME}"
         raise Stalled(_redact_outbound(msg)) from exc
-
-
-def _deterministic_prepass(
-    runner: Runner,
-    paths: list[str],
-    *,
-    cwd: str | None,
-) -> list[str]:
-    remaining: list[str] = []
-    for path in paths:
-        base = Path(path).name
-        if base == "plugin.json" and _is_plugin_json_path(path):
-            result = git.checkout_ours(runner, path, cwd=cwd)
-            if result.returncode == 0:
-                _ = git.add(runner, path, cwd=cwd)
-            else:
-                remaining.append(path)
-            continue
-        if base in ("version.go", "go.sum"):
-            result = git.checkout_ours(runner, path, cwd=cwd)
-            if result.returncode == 0:
-                _ = git.add(runner, path, cwd=cwd)
-            else:
-                remaining.append(path)
-            continue
-        remaining.append(path)
-    return remaining
 
 
 def _unmerged_paths(runner: Runner, *, cwd: str | None) -> list[str]:
@@ -248,45 +195,45 @@ def _resolve_conflicts(
     enable_pre_push_handoff: bool = False,
 ) -> None:
     _ = repo, run_id
+
+    def _handoff_or_stall(conflict_files: tuple[str, ...], detail: str) -> None:
+        if enable_pre_push_handoff and conflict_files:
+            _write_handoff_flag(tmpdir)
+            raise PrePushConflictHandoff(
+                conflict_files=conflict_files,
+                resume_phase=config.SHIP_PR_RRR_RESUME_PHASE,
+                caller_kind=config.SHIP_PR_PRE_PUSH_CALLER_KIND,
+            )
+        raise Stalled(_redact_outbound(detail))
+
     while True:
         unmerged = _unmerged_paths(runner, cwd=cwd)
         if unmerged:
-            remaining = _deterministic_prepass(runner, unmerged, cwd=cwd)
-            if remaining:
-                conflict_csv = ",".join(remaining)
-
-                def _tier_launch(tier: str, csv: str = conflict_csv) -> agents.TierAttempt:
-                    return launch_fn(tier, csv)
-
-                waterfall = agents.run_waterfall(
-                    config.FIXER_TIER_ORDER,
-                    _tier_launch,
-                    runner=runner,
-                    cwd=cwd,
-                )
-                if waterfall.winning_tier is None:
-                    conflict_files = tuple(remaining)
-                    if enable_pre_push_handoff and _conflicts_are_non_bump_only(conflict_files):
-                        _write_handoff_flag(tmpdir)
-                        raise PrePushConflictHandoff(
-                            conflict_files=conflict_files,
-                            resume_phase=config.SHIP_PR_RRR_RESUME_PHASE,
-                            caller_kind=config.SHIP_PR_PRE_PUSH_CALLER_KIND,
-                        )
-                    raise Stalled(
-                        _redact_outbound("fixer waterfall could not resolve conflicts"),
-                    )
+            conflict_csv = ",".join(unmerged)
+            baseline_tracked = git.tracked_dirty_paths(runner, cwd=cwd)
+            baseline_untracked = git.untracked_dirty_paths(runner, cwd=cwd)
+            resolved = False
+            for index, tier in enumerate(config.FIXER_TIER_ORDER):
+                attempt = launch_fn(tier, conflict_csv)
+                for path in unmerged:
+                    _ = git.add(runner, path, cwd=cwd)
                 unmerged_remaining = _unmerged_paths(runner, cwd=cwd)
-                if unmerged_remaining:
-                    conflict_files = tuple(unmerged_remaining)
-                    if enable_pre_push_handoff and _conflicts_are_non_bump_only(conflict_files):
-                        _write_handoff_flag(tmpdir)
-                        raise PrePushConflictHandoff(
-                            conflict_files=conflict_files,
-                            resume_phase=config.SHIP_PR_RRR_RESUME_PHASE,
-                            caller_kind=config.SHIP_PR_PRE_PUSH_CALLER_KIND,
-                        )
-                    raise Stalled(_redact_outbound("conflicts remain after fixer waterfall"))
+                if attempt.launcher_exit == 0 and attempt.wrapper_rc == 0 and not unmerged_remaining:
+                    resolved = True
+                    break
+                git.paths_delta_revert(runner, baseline_tracked, baseline_untracked, cwd=cwd)
+                failure_class = agents.effective_failure_class(attempt)
+                if index == 0 and attempt.wrapper_rc == 0 and failure_class == "other":
+                    _handoff_or_stall(
+                        tuple(unmerged_remaining or unmerged),
+                        "first fixer could not resolve conflicts",
+                    )
+            if not resolved:
+                remaining_after = tuple(_unmerged_paths(runner, cwd=cwd) or unmerged)
+                _handoff_or_stall(
+                    remaining_after,
+                    "fixer waterfall could not resolve conflicts",
+                )
 
         continue_result = git.rebase_continue(runner, cwd=cwd)
         if continue_result.returncode == 0:

@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import cast
 
 import ci_monitor
+import ci_agentic_fix
 import config
 import git
 import logging_util
@@ -347,6 +348,10 @@ def failed_jobs_main(argv: list[str]) -> int:
     _emit_kv("FAILED_JOBS_FIXABLE", fixable)
     _emit_kv("FAILED_JOBS_UNFIXABLE", unfixable)
     return 0
+
+
+def agentic_fix_main(argv: list[str]) -> int:
+    return ci_agentic_fix.main(argv)
 
 
 def behind_count_main(argv: list[str]) -> int:

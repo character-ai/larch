@@ -59,7 +59,7 @@
 - **category**: architecture
 - **expected_provenance_count**: 2
 - **expected_keywords**: conflict-resolution.md, ship_pr_pre_push, run_rebase_rebump, step12, step10, hard-bail, 12d
-- **notes**: Architecture; should explain why the Python ship driver owns CI-fix rebase/force-push sequencing, when non-bump conflicts hand off through `CALLER_KIND=ship_pr_pre_push`, and why Step 12 remains the strict last-chance path while Step 10 is best-effort.
+- **notes**: Architecture; should explain why the Python ship driver owns CI-fix rebase/force-push sequencing, when remaining conflicts hand off through `CALLER_KIND=ship_pr_pre_push`, and why Step 12 remains the strict last-chance path while Step 10 is best-effort.
 
 ### eval-8: plan-review-tenure-weighting
 - **question**: How does the `/design` plan-review voting panel weight reviewer judges by tenure, and where in the codebase is the tenure-lookup table stored?
@@ -115,7 +115,7 @@
 - **category**: risk-assessment
 - **expected_provenance_count**: 2
 - **expected_keywords**: rebase-push.sh, conflict-resolution.md, ship_pr_pre_push, force-push, hard-bail, 12d, step10
-- **notes**: Risk; should enumerate at least three failure modes (non-bump rebase conflict handoff, unresolved conflict-resolution bail, force-push rejection, post-rebase verification failure) and pair each with the correct Step 12 versus Step 10 disposition.
+- **notes**: Risk; should enumerate at least three failure modes (remaining rebase conflict handoff, unresolved conflict-resolution bail, force-push rejection, post-rebase verification failure) and pair each with the correct Step 12 versus Step 10 disposition.
 
 ### eval-16: deny-edit-write-bypass-blast-radius
 - **question**: What is the security blast-radius if `/research`'s deny-edit-write hook is bypassed, what mechanisms in the repo backstop the hook, and what residual risk is documented?

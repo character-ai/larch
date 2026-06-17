@@ -32,7 +32,7 @@ class PrePushConflictHandoff(Stalled):
         conflict_files: tuple[str, ...],
         resume_phase: str,
         caller_kind: str,
-        message: str = "fixer waterfall could not resolve non-bump conflicts",
+        message: str = "fixer waterfall could not resolve conflicts",
     ) -> None:
         super().__init__(message)
         self.conflict_files = conflict_files

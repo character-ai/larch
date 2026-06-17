@@ -336,8 +336,8 @@ dir=$(make_tmp case20j)
 write_state "$dir" 8 ci-initial ci-fix-exhausted
 printf 'ci-fix-exhausted: python-lint\n--- CI log (run 42) ---\nE501 line too long in bar.py\n' >"$dir/detail.log"
 run_capture "$SANDBOX/case20j.out" "$SCRIPT" classify --implement-tmpdir "$dir" --failure-detail-log "$dir/detail.log"
-assert_eq ci-fix-exhausted "$(kv FAILURE_CLASS "$SANDBOX/case20j.out")" "20: ci-fix-exhausted with detail log is recoverable"
-assert_eq step8-shippr "$(kv RESUME_HINT "$SANDBOX/case20j.out")" "20: ci-fix-exhausted routes to ship-pr resume"
+assert_eq unrecoverable "$(kv FAILURE_CLASS "$SANDBOX/case20j.out")" "20: ci-fix-exhausted with detail log is unrecoverable"
+assert_eq none "$(kv RESUME_HINT "$SANDBOX/case20j.out")" "20: ci-fix-exhausted does not resume"
 # Without a readable detail log there is nothing to act on -> stays unrecoverable.
 dir=$(make_tmp case20k)
 write_state "$dir" 8 ci-initial ci-fix-exhausted

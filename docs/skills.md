@@ -158,7 +158,7 @@ Code review with the specialist panel described in [Review Agents](review-agents
 
 **Source**: [`skills/review-and-fix/SKILL.md`](../skills/review-and-fix/SKILL.md)
 
-Apply accepted review findings as code fixes. Internal sub-skill invoked by `/review` in diff mode and by `/implement` Step 5; not a standalone user entry point. It dispatches Codex, Cursor, then a Claude subagent fallback to apply voted-in suggestions directly, with pre-dispatch submodule finding scrubbing and post-dispatch submodule revert checks. `--findings-file` is required; `--session-env` and `--review-tmpdir` are optional.
+Apply accepted review findings as code fixes. Internal sub-skill invoked by `/review` in diff mode and by `/implement` Step 5; not a standalone user entry point. It dispatches Codex, Cursor, then a Claude subagent fallback to apply voted-in suggestions directly, with pre-dispatch submodule finding scrubbing and post-dispatch submodule revert checks. The separate local lint-fix loop uses Claude/Opus, then Codex, then Cursor before `main-agent-required`. `--findings-file` is required; `--session-env` and `--review-tmpdir` are optional.
 
 ### `/set-up-forked-open-source-repo`
 

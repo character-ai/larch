@@ -755,10 +755,10 @@ classify_from_evidence() {
         CLASSIFIED_FAILURE_CLASS=transient-infra
         return 0
     fi
-    # CI-fix exhaustion with an actionable failure-detail log is recoverable.
+    # CI-fix exhaustion is an operator bail, even with a detail log.
     if [ "$detail_log_valid" = true ]; then
         case "$bail" in
-            ci-fix-exhausted) MATCHED_CLASSIFIER_PATTERN=ci-fix-exhausted-with-detail; CLASSIFIED_FAILURE_CLASS=ci-fix-exhausted; return 0 ;;
+            ci-fix-exhausted) MATCHED_CLASSIFIER_PATTERN=ci-fix-exhausted-with-detail; CLASSIFIED_FAILURE_CLASS=unrecoverable; return 0 ;;
         esac
     fi
     CLASSIFIED_FAILURE_CLASS=unrecoverable
@@ -902,7 +902,8 @@ read_run_id() {
 retry_cap_for() {
     case "${1:-}" in
         transient-infra) printf '4\n' ;;
-        test-failure|lint-failure|ci-fix-exhausted) printf '8\n' ;;
+        test-failure|lint-failure) printf '8\n' ;;
+        ci-fix-exhausted) printf '0\n' ;;
         dispatch-failure) printf '3\n' ;;
         protected-path) printf '1\n' ;;
         submodule-restricted) printf '0\n' ;;

@@ -6,6 +6,7 @@ import json
 import math
 import os
 import re
+import sys
 import tempfile
 import time
 from collections.abc import Callable
@@ -1406,10 +1407,9 @@ def _fix_exhausted_detail(
     """Compose the diagnostic detail surfaced when the CI-fix loop exhausts.
 
     Carries the stable ``ci-fix-exhausted`` reason token, the failing job
-    name(s), and the already-redacted CI log tail so Step 18a stall recovery
-    can route the stall to an inline fix (``RESUME_HINT=step8-shippr``) instead
-    of terminal ``unrecoverable`` handling. The job names come from the closed
-    CI-job enum and the log tail is redacted upstream in ``collect_failed_logs``.
+    name(s), and the already-redacted CI log tail for Step 12d operator bail.
+    The job names come from the closed CI-job enum and the log tail is redacted
+    upstream in ``collect_failed_logs``.
     """
     jobs = ""
     if classified is not None:
@@ -1421,9 +1421,107 @@ def _fix_exhausted_detail(
     return header
 
 
+def _agentic_output_dir(ctx: RunContext | None) -> str:
+    if ctx is not None and ctx.tmpdir:
+        path = Path(ctx.tmpdir) / "ci-agentic-fix"
+    else:
+        path = Path(tempfile.gettempdir()) / "ci-agentic-fix"
+    path.mkdir(parents=True, exist_ok=True)
+    return str(path)
+
+
+def _parse_kv_output(text: str) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for line in text.splitlines():
+        key, sep, value = line.partition("=")
+        if sep and key:
+            values[key] = value.strip()
+    return values
+
+
+def _agentic_fix_result(
+    runner: Runner,
+    *,
+    pr: int,
+    run_id: str,
+    repo: str,
+    plan_file: str | None,
+    cwd: str | None,
+    base_remote: str,
+    base_ref: str,
+    ctx: RunContext | None,
+) -> FixResult:
+    if cwd is None:
+        return FixResult(status="waterfall-failed", detail="missing repo_root")
+    implement_tmpdir = ctx.tmpdir if ctx is not None and ctx.tmpdir else os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
+    if not implement_tmpdir:
+        return FixResult(status="waterfall-failed", detail="missing implement_tmpdir")
+    argv = [
+        sys.executable,
+        str(_REPO_ROOT / "python" / "cli.py"),
+        "ci",
+        "agentic-fix",
+        "--pr",
+        str(pr),
+        "--repo",
+        repo,
+        "--repo-root",
+        cwd,
+        "--run-id",
+        run_id,
+        "--base-remote",
+        base_remote,
+        "--base-ref",
+        base_ref,
+        "--output-dir",
+        _agentic_output_dir(ctx),
+        "--max-cycles",
+        str(config.CI_AGENTIC_FIX_MAX_CYCLES),
+        "--implement-tmpdir",
+        implement_tmpdir,
+    ]
+    if plan_file:
+        argv.extend(["--plan-file", plan_file])
+    if ctx is not None and ctx.state_file:
+        argv.extend(["--state-file", ctx.state_file])
+    if ctx is not None and ctx.no_logs_commit:
+        argv.append("--no-logs-commit")
+    result = runner.run(argv, cwd=cwd, timeout=float(config.SUBPROCESS_DEFAULT_TIMEOUT_SEC))
+    parsed = _parse_kv_output(result.stdout + "\n" + result.stderr)
+    status = parsed.get("STATUS", "")
+    detail = parsed.get("DETAIL", "")
+    fix_attempted = parsed.get("FIX_ATTEMPTED", "").lower() == "true"
+    delta_paths = tuple(path for path in parsed.get("DELTA_PATHS", "").split(",") if path)
+    pending = parsed.get("CI_FIX_REBASE_PENDING", "").lower() == "true"
+    if status in {"passed", "pushed"}:
+        return FixResult(status="pushed", winning_tier="claude", delta_paths=delta_paths)
+    if status == "rebase-required":
+        return FixResult(
+            status="pushed",
+            winning_tier="claude",
+            delta_paths=delta_paths,
+            detail=detail,
+            ci_fix_rebase_pending=True,
+        )
+    if status == "local-unfixable":
+        if fix_attempted:
+            return FixResult(status="fix-exhausted", detail=f"ci-fix-exhausted: {detail}")
+        return FixResult(status="local-unfixable", detail=detail)
+    if status == "first-fixer-non-health":
+        return FixResult(status="first-fixer-non-health", detail=detail)
+    if status == "ci-fix-exhausted":
+        return FixResult(status="fix-exhausted", detail=f"ci-fix-exhausted: {detail}")
+    if status == "waterfall-failed":
+        if detail == "head-changed" and fix_attempted:
+            return FixResult(status="fix-exhausted", detail=f"ci-fix-exhausted: {detail}")
+        return FixResult(status="waterfall-failed", detail=detail, ci_fix_rebase_pending=pending)
+    return FixResult(status="waterfall-failed", detail="malformed agentic-fix output")
+
+
 def evaluate_failure(
     runner: Runner,
     *,
+    pr: int = 0,
     run_id: str,
     repo: str,
     plan_file: str | None,
@@ -1478,6 +1576,24 @@ def evaluate_failure(
             )
     if upfront_logs.state == "ready" and not blind_rerun_attempted:
         upfront_ready_stash = upfront_logs
+
+    if not ci_fix_rebase_pending:
+        if not _on_named_branch(runner, cwd=cwd):
+            return FixResult(
+                status="waterfall-failed",
+                detail="evaluate_failure: detached HEAD",
+            )
+        return _agentic_fix_result(
+            runner,
+            pr=pr,
+            run_id=run_id,
+            repo=repo,
+            plan_file=plan_file,
+            cwd=cwd,
+            base_remote=base_remote,
+            base_ref=base_ref,
+            ctx=ctx,
+        )
 
     last_verify: tuple[str, ...] = ()
     last_classified: ClassifiedJobs | None = None
@@ -1698,6 +1814,7 @@ def monitor(
             )
         fix = evaluate_failure(
             runner,
+            pr=pr,
             run_id=status.failed_run_id,
             repo=repo,
             plan_file=plan_file,
@@ -1730,7 +1847,7 @@ def monitor(
         if fix.status == "pushed":
             return _base_result(
                 did_fixing=True,
-                goto=status.behind_count > 0,
+                goto=fix.ci_fix_rebase_pending or status.behind_count > 0,
                 step=StepResult(outcome=Outcome.OK),
                 pending=fix.ci_fix_rebase_pending,
             )

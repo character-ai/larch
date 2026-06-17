@@ -298,7 +298,7 @@ def test_is_quota_failure(tmp_path: Path) -> None:
     assert agents.is_quota_failure("codex", sidecar) is True
     assert agents.is_quota_failure("cursor", sidecar) is True
     # Unsupported tool and unrelated text do not classify as quota.
-    assert agents.is_quota_failure("claude", sidecar) is False
+    assert agents.is_quota_failure("claude", sidecar) is True
     other = tmp_path / "other.log"
     _ = other.write_text("ordinary failure\n", encoding="utf-8")
     assert agents.is_quota_failure("codex", other) is False
@@ -2037,7 +2037,7 @@ def test_ci_prompt_includes_role_specific_recovery_guidance(tmp_path: Path) -> N
     )
     assert "Reproduce the failing check locally" in agents._ci_prompt("Codex", fix_args)  # pylint: disable=protected-access
     conflict_prompt = agents._ci_prompt("Codex", conflict_args)  # pylint: disable=protected-access
-    assert "stage every resolved file" in conflict_prompt
+    assert "Do not run git add" in conflict_prompt
     assert "git rebase --continue" in conflict_prompt
 
 

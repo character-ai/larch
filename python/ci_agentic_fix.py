@@ -1,0 +1,377 @@
+"""Delegated agentic ship-pr CI fixer loop."""
+
+from __future__ import annotations
+
+import argparse
+import os
+import sys
+import tempfile
+from pathlib import Path
+
+import agents
+import ci_monitor
+import coder_delta_guards
+import config
+import git
+import logging_util
+import proc
+import redact
+from run_context import RunContext
+
+
+def _emit_kv(key: str, value: object) -> None:
+    logging_util.emit_kv(key, str(value))
+
+
+def _bool(value: object) -> str:
+    return str(value).lower()
+
+
+def _job_token(job: ci_monitor.JobClass) -> str:
+    return f"{job.name}-{job.shard}" if job.shard else job.name
+
+
+def _parse_kv(text: str) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for line in text.splitlines():
+        key, sep, value = line.partition("=")
+        if sep and key:
+            values[key] = value.strip()
+    return values
+
+
+def _emit_result(
+    status: str,
+    *,
+    detail: str = "",
+    fix_attempted: bool = False,
+    cycles: int = 0,
+    delta_paths: tuple[str, ...] = (),
+    ci_fix_rebase_pending: bool = False,
+) -> int:
+    _emit_kv("STATUS", status)
+    _emit_kv("DETAIL", detail)
+    _emit_kv("FIX_ATTEMPTED", _bool(fix_attempted))
+    _emit_kv("WINNING_TIER", "claude")
+    _emit_kv("CYCLES", cycles)
+    _emit_kv("DELTA_PATHS", ",".join(delta_paths))
+    _emit_kv("CI_FIX_REBASE_PENDING", _bool(ci_fix_rebase_pending))
+    return 0
+
+
+def _valid_repo_root(raw: str) -> Path | None:
+    if not raw:
+        return None
+    path = Path(raw)
+    if not path.is_absolute() or not path.is_dir():
+        return None
+    try:
+        return path.resolve(strict=True)
+    except OSError:
+        return None
+
+
+def _reconstruct_ctx(args: argparse.Namespace, repo_root: Path) -> RunContext:
+    branch = git.try_current_branch(proc, cwd=str(repo_root)) or ""
+    return RunContext(
+        branch=branch,
+        issue="",
+        repo=args.repo,
+        run_id=args.run_id,
+        tmpdir=args.implement_tmpdir,
+        merge=False,
+        draft=False,
+        forked=False,
+        manifest_path="",
+        tool_label="claude",
+        no_admin_fallback=False,
+        repo_unavailable=False,
+        pr_number=args.pr,
+        state_file=args.state_file or None,
+        no_logs_commit=args.no_logs_commit,
+        plan_file=args.plan_file,
+    )
+
+
+def _write_failure_log(output_dir: Path, text: str) -> Path:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    fd, name = tempfile.mkstemp(prefix="ci-agentic-failure.", suffix=".redacted.log", dir=str(output_dir))
+    os.close(fd)
+    path = Path(name)
+    _ = path.write_text(redact.redact(text), encoding="utf-8")
+    path.chmod(0o600)
+    return path
+
+
+def _rollback(
+    runner: proc.Runner,
+    *,
+    baseline_tracked: tuple[str, ...],
+    baseline_untracked: tuple[str, ...],
+    baseline_staged: tuple[str, ...],
+    cwd: str,
+) -> None:
+    ci_monitor._rollback_to_baseline(  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+        runner,
+        baseline_tracked=baseline_tracked,
+        baseline_untracked=baseline_untracked,
+        baseline_staged=baseline_staged,
+        cwd=cwd,
+    )
+
+
+def _wait_for_ci(
+    runner: proc.Runner,
+    *,
+    args: argparse.Namespace,
+    repo_root: Path,
+    cycle: int,
+) -> dict[str, str]:
+    output = Path(args.output_dir) / f"ci-agentic-wait-{cycle}.out"
+    result = runner.run(
+        [
+            sys.executable,
+            str(Path(__file__).resolve().with_name("cli.py")),
+            "ci",
+            "wait",
+            "--pr",
+            str(args.pr),
+            "--repo",
+            args.repo,
+            "--base-remote",
+            args.base_remote,
+            "--base-ref",
+            args.base_ref,
+            "--iteration",
+            str(cycle),
+            "--output-file",
+            str(output),
+        ],
+        cwd=str(repo_root),
+        timeout=float(config.CI_WAIT_TIMEOUT_SEC),
+    )
+    text = output.read_text(encoding="utf-8", errors="replace") if output.is_file() else result.stdout
+    return _parse_kv(text)
+
+
+def _run_cycle(
+    runner: proc.Runner,
+    *,
+    args: argparse.Namespace,
+    repo_root: Path,
+    ctx: RunContext,
+    cycle: int,
+    run_id: str,
+) -> tuple[str, str, bool, tuple[str, ...], bool, str | None]:
+    cwd = str(repo_root)
+    jobs_raw, jobs_state = ci_monitor.read_failed_jobs(runner, run_id=run_id, repo=args.repo, cwd=cwd)
+    if jobs_state != "ready":
+        return "waterfall-failed", f"failed-jobs-{jobs_state}", False, (), False, None
+    classified = ci_monitor.classify_failed_jobs(jobs_raw)
+    if not classified.fixable:
+        return (
+            "local-unfixable",
+            ",".join(_job_token(job) for job in classified.unfixable),
+            False,
+            (),
+            False,
+            None,
+        )
+    logs = ci_monitor.collect_failed_logs(runner, run_id=run_id, repo=args.repo, cwd=cwd)
+    if logs.state != "ready":
+        return "waterfall-failed", f"logs-{logs.state}", False, (), False, None
+    output_dir = Path(args.output_dir)
+    failure_log = _write_failure_log(output_dir, logs.text)
+    output = output_dir / f"ci-agentic-claude-{cycle}.out"
+    baseline_tracked, baseline_untracked, baseline_staged, baseline_head = ci_monitor._capture_baseline(  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+        runner,
+        cwd=cwd,
+    )
+    fix_attempted = False
+    try:
+        result = agents.launch_tier(
+            runner,
+            "claude",
+            role=config.CI_FIX_ROLE,
+            output=str(output),
+            run_id=run_id,
+            repo=args.repo,
+            plan_file=args.plan_file,
+            failure_log=str(failure_log),
+            cwd=cwd,
+        )
+        fix_attempted = True
+        launcher_exit = agents.resolve_launcher_exit(
+            result.stdout + result.stderr,
+            output_file=output,
+            process_rc=result.returncode,
+        )
+        failure = agents.classify_launch_failure(
+            launcher_exit,
+            output.with_suffix(output.suffix + ".diag"),
+            tool="claude",
+            output_file=output,
+        )
+        if launcher_exit != 0 or result.returncode != 0:
+            _rollback(
+                runner,
+                baseline_tracked=baseline_tracked,
+                baseline_untracked=baseline_untracked,
+                baseline_staged=baseline_staged,
+                cwd=cwd,
+            )
+            if failure.failure_class == "health":
+                return "waterfall-failed", failure.reason or "claude-health", fix_attempted, (), False, None
+            return "first-fixer-non-health", failure.reason or "claude-failed", fix_attempted, (), False, None
+        current_head = coder_delta_guards.capture_head(runner, cwd=cwd)
+        if coder_delta_guards.head_changed_from_baseline(baseline_head, current_head):
+            _rollback(
+                runner,
+                baseline_tracked=baseline_tracked,
+                baseline_untracked=baseline_untracked,
+                baseline_staged=baseline_staged,
+                cwd=cwd,
+            )
+            return "waterfall-failed", "head-changed", fix_attempted, (), False, None
+        forbidden = (".gitmodules", *coder_delta_guards.submodule_paths(runner, cwd=cwd))
+        if coder_delta_guards.revert_forbidden_paths(runner, cwd=cwd, forbidden=forbidden) > 0:
+            _rollback(
+                runner,
+                baseline_tracked=baseline_tracked,
+                baseline_untracked=baseline_untracked,
+                baseline_staged=baseline_staged,
+                cwd=cwd,
+            )
+            return "waterfall-failed", "forbidden-path", fix_attempted, (), False, None
+        unfixable = [
+            _job_token(job)
+            for job in classified.fixable
+            if not ci_monitor.prepare_python_toolchain(runner, job.name, cwd=cwd)
+        ]
+        if unfixable:
+            _rollback(
+                runner,
+                baseline_tracked=baseline_tracked,
+                baseline_untracked=baseline_untracked,
+                baseline_staged=baseline_staged,
+                cwd=cwd,
+            )
+            return "local-unfixable", ",".join(unfixable), fix_attempted, (), False, None
+        failed_verify = [
+            _job_token(job)
+            for job in classified.fixable
+            if not ci_monitor.verify_job_locally(runner, job.name, job.shard, cwd=cwd)
+        ]
+        if failed_verify:
+            _rollback(
+                runner,
+                baseline_tracked=baseline_tracked,
+                baseline_untracked=baseline_untracked,
+                baseline_staged=baseline_staged,
+                cwd=cwd,
+            )
+            return "verify-failed", ",".join(failed_verify), fix_attempted, (), False, None
+        delta_paths = ci_monitor._delta_paths(  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+            runner,
+            baseline_tracked=baseline_tracked,
+            baseline_untracked=baseline_untracked,
+            cwd=cwd,
+        )
+        if not delta_paths:
+            _rollback(
+                runner,
+                baseline_tracked=baseline_tracked,
+                baseline_untracked=baseline_untracked,
+                baseline_staged=baseline_staged,
+                cwd=cwd,
+            )
+            return "no-progress", "empty-delta", fix_attempted, (), False, None
+        pushed, _post_head, pushed_paths, _did_rebase, pending = ci_monitor.stage_and_push(
+            runner,
+            cwd=cwd,
+            commit_label="claude",
+            delta_paths=delta_paths,
+            base_remote=args.base_remote,
+            base_ref=args.base_ref,
+            classified=classified,
+            ctx=ctx,
+        )
+        if not pushed and pending:
+            return "rebase-required", "push-rebase-required", fix_attempted, pushed_paths, True, None
+        if not pushed:
+            return "waterfall-failed", "push-failed", fix_attempted, pushed_paths, False, None
+        wait = _wait_for_ci(runner, args=args, repo_root=repo_root, cycle=cycle)
+        if wait.get("ACTION") in {"merge", "already_merged"} or wait.get("CI_STATUS") == "pass":
+            return "passed", "", fix_attempted, pushed_paths, False, None
+        next_run = wait.get("FAILED_RUN_ID") or run_id
+        return "pushed", wait.get("BAIL_REASON", "") or "ci-failed-after-push", fix_attempted, pushed_paths, False, next_run
+    finally:
+        failure_log.unlink(missing_ok=True)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py ci agentic-fix")
+    _ = parser.add_argument("--pr", required=True, type=int)
+    _ = parser.add_argument("--repo", required=True)
+    _ = parser.add_argument("--repo-root", required=True)
+    _ = parser.add_argument("--run-id", required=True)
+    _ = parser.add_argument("--plan-file", default="")
+    _ = parser.add_argument("--base-remote", default="origin")
+    _ = parser.add_argument("--base-ref", default="main")
+    _ = parser.add_argument("--output-dir", required=True)
+    _ = parser.add_argument("--max-cycles", default=str(config.CI_AGENTIC_FIX_MAX_CYCLES))
+    _ = parser.add_argument("--implement-tmpdir", required=True)
+    _ = parser.add_argument("--state-file", default="")
+    _ = parser.add_argument("--no-logs-commit", action="store_true")
+    args = parser.parse_args(argv)
+    repo_root = _valid_repo_root(args.repo_root)
+    if repo_root is None:
+        return _emit_result("waterfall-failed", detail="missing-repo-root")
+    try:
+        max_cycles = int(args.max_cycles)
+    except ValueError:
+        max_cycles = config.CI_AGENTIC_FIX_MAX_CYCLES
+    if max_cycles < 1:
+        max_cycles = config.CI_AGENTIC_FIX_MAX_CYCLES
+    max_cycles = min(max_cycles, config.CI_AGENTIC_FIX_MAX_CYCLES)
+    ctx = _reconstruct_ctx(args, repo_root)
+    run_id = args.run_id
+    fix_attempted = False
+    last_detail = ""
+    last_delta: tuple[str, ...] = ()
+    for cycle in range(1, max_cycles + 1):
+        status, detail, attempted, delta_paths, pending, next_run_id = _run_cycle(
+            proc,
+            args=args,
+            repo_root=repo_root,
+            ctx=ctx,
+            cycle=cycle,
+            run_id=run_id,
+        )
+        fix_attempted = fix_attempted or attempted
+        last_detail = detail
+        last_delta = delta_paths
+        if status in {"passed", "rebase-required", "local-unfixable", "first-fixer-non-health"}:
+            return _emit_result(
+                status,
+                detail=detail,
+                fix_attempted=fix_attempted,
+                cycles=cycle,
+                delta_paths=delta_paths,
+                ci_fix_rebase_pending=pending,
+            )
+        if status == "waterfall-failed" and detail in {"head-changed", "forbidden-path"}:
+            return _emit_result(status, detail=detail, fix_attempted=fix_attempted, cycles=cycle)
+        if next_run_id:
+            run_id = next_run_id
+    return _emit_result(
+        "ci-fix-exhausted",
+        detail=last_detail or "cycle cap exhausted",
+        fix_attempted=fix_attempted,
+        cycles=max_cycles,
+        delta_paths=last_delta,
+    )
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main(sys.argv[1:]))

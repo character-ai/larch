@@ -175,7 +175,7 @@ def test_classify_ci_fix_exhausted_with_detail_log(tmp_path: Path, capsys: pytes
     ])
     assert rc == 0
     out = capsys.readouterr().out
-    assert "FAILURE_CLASS=ci-fix-exhausted" in out
+    assert "FAILURE_CLASS=unrecoverable" in out
 
 
 def test_retry_policy_lint_failure_cap(capsys: pytest.CaptureFixture[str]) -> None:

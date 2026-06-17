@@ -57,6 +57,11 @@ _AUTH_RE = {
         r"unauthorized|invalid api key",
         re.IGNORECASE,
     ),
+    "claude": re.compile(
+        r"auth[-_ ]?error|not logged in|login required|authentication (failed|required)|"
+        r"unauthorized|invalid api key|api key not found",
+        re.IGNORECASE,
+    ),
 }
 _SAFE_META_PATH_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
 _CTRL_RE = re.compile(r"[\x00-\x1f\x7f]")
@@ -263,6 +268,9 @@ def is_transient_infra_failure(
     elif tool == "cursor":
         if exit_code not in {4, 8}:
             return False
+    elif tool == "claude":
+        if exit_code not in {4, 5, 7, 8}:
+            return False
     else:
         return False
     if output_file is None:
@@ -275,7 +283,7 @@ def is_transient_infra_failure(
 
 def is_quota_failure(tool: str, sidecar: str | Path | None) -> bool:
     """Port of external_is_quota_failure in lib-external-launcher-common.sh."""
-    if tool not in ("codex", "cursor"):
+    if tool not in ("codex", "cursor", "claude"):
         return False
     if not sidecar:
         return False
@@ -2523,7 +2531,7 @@ def _ci_parser(prog: str) -> argparse.ArgumentParser:
     parser.add_argument("--failure-log", default="")
     parser.add_argument("--timeout", default="1800")
     parser.add_argument("--timing-task-kind", default="")
-    parser.add_argument("--model", default="claude-sonnet-4-6")
+    parser.add_argument("--model", default=config.CLAUDE_CI_FIX_MODEL)
     return parser
 
 
@@ -2537,7 +2545,7 @@ def _ci_prompt(tool: str, args: argparse.Namespace) -> str:
     role_line = "resolve merge/rebase conflicts" if args.role == "resolve-conflict" else "fix larch /implement CI subwork"
     if args.role == "resolve-conflict":
         role_guidance = (
-            "Resolve only the reported merge or rebase conflicts. Inspect each conflict marker, keep the intended behavior from both sides where possible, stage every resolved file, then continue the in-progress rebase with git rebase --continue when applicable. If a nested conflict appears, resolve it the same way and continue again.\n"
+            "Resolve only the reported merge or rebase conflict-marker files. Inspect each conflict marker and edit the working tree to keep the intended behavior from both sides where possible. Do not run git add, git rebase --continue, git rebase --skip, or any command that advances rebase state. Do not stage resolved files. The Python driver stages files and continues the rebase after your edit turn.\n"
         )
     else:
         role_guidance = (
@@ -4291,9 +4299,21 @@ def launch_claude_ci_main(argv: list[str] | None = None) -> int:
         _write_preflight_bundle(output, args.timeout, 127, "claude binary missing", tool="claude", binary_present=False)
         _append_ci_failure(output, tool="claude", launcher_exit=127, site="ci fixer", binary_present=False)
         return 0
-    child = ["claude", "--print", "--output-format", "json", "--model", args.model]
+    cwd = str(Path.cwd())
+    child = [
+        "claude",
+        "-p",
+        "--output-format",
+        "json",
+        "--model",
+        args.model,
+        "--add-dir",
+        cwd,
+        "--allowedTools",
+        "Read,Edit,Write",
+    ]
     start = time.time()
-    result = _run_claude_with_stdin(child, prompt, timeout=float(args.timeout), cwd=str(Path.cwd()))
+    result = _run_claude_with_stdin(child, prompt, timeout=float(args.timeout), cwd=cwd)
     end = time.time()
     exit_code = result.returncode
     diag_parts: list[str] = []
@@ -4355,6 +4375,116 @@ def launch_claude_ci_main(argv: list[str] | None = None) -> int:
         _record_claude_ci_usage(parsed_obj, output, "claude_ci_fix")
     _write(output.with_suffix(output.suffix + ".done"), f"{exit_code}\n")
     _append_ci_failure(output, tool="claude", launcher_exit=exit_code, site="ci fixer")
+    _emit_ci_launcher_result(output, exit_code, tool="claude")
+    return 0
+
+
+def launch_claude_lint_fix_main(argv: list[str] | None = None) -> int:
+    logging_util.quiet_init(argv0="cli.py")
+    parser = argparse.ArgumentParser(prog="cli.py agent launch-claude-lint-fix")
+    parser.add_argument("--prompt-body-file", required=True)
+    parser.add_argument("--output", required=True)
+    parser.add_argument("--timeout", default="1800")
+    parser.add_argument("--model", default=config.CLAUDE_CI_FIX_MODEL)
+    args = parser.parse_args(argv)
+    output = Path(args.output)
+    prompt_file = Path(args.prompt_body_file)
+    if not prompt_file.is_file():
+        _write_preflight_bundle(output, args.timeout, 1, "prompt body file missing", tool="claude")
+        _emit_ci_launcher_result(output, 1, tool="claude")
+        return 0
+    prompt_body = _read_text(prompt_file)
+    prompt = (
+        "You are Claude fixing local larch lint or check failures.\n"
+        "Do not commit. Do not push. Do not wait for CI.\n"
+        "Make focused working-tree edits only, then stop.\n"
+        "Never spawn persistent interactive subprocess sessions.\n\n"
+        f"{prompt_body}"
+    )
+    _write(output.with_suffix(output.suffix + ".prompt"), prompt)
+    if shutil.which("claude") is None:
+        _write_preflight_bundle(output, args.timeout, 127, "claude binary missing", tool="claude", binary_present=False)
+        _append_ci_failure(output, tool="claude", launcher_exit=127, site="lint fixer", binary_present=False)
+        return 0
+    cwd = str(Path.cwd())
+    child = [
+        "claude",
+        "-p",
+        "--output-format",
+        "json",
+        "--model",
+        args.model,
+        "--add-dir",
+        cwd,
+        "--allowedTools",
+        "Read,Edit,Write",
+    ]
+    start = time.time()
+    result = _run_claude_with_stdin(child, prompt, timeout=float(args.timeout), cwd=cwd)
+    end = time.time()
+    exit_code = result.returncode
+    diag_parts: list[str] = []
+    parsed_obj: dict[str, object] | None = None
+    if result.stdout and exit_code == 0:
+        try:
+            obj = json.loads(result.stdout)
+        except json.JSONDecodeError as exc:
+            exit_code = 1
+            _write(output, "CLAUDE_LINT_FIX_MALFORMED_JSON\n")
+            diag_parts.append(f"Malformed Claude lint-fix JSON: {exc}\n{result.stdout}")
+        else:
+            value = obj.get("result") if isinstance(obj, dict) and not obj.get("is_error") else None
+            if isinstance(value, str) and value:
+                parsed_obj = obj
+                _write(output, value)
+            elif isinstance(obj, dict) and obj.get("is_error"):
+                exit_code = 1
+                _write(output, "CLAUDE_LINT_FIX_ERROR_RESPONSE\n")
+                diag_parts.append(result.stdout)
+            else:
+                exit_code = 1
+                _write(output, "CLAUDE_LINT_FIX_EMPTY_RESULT\n")
+                diag_parts.append(result.stdout)
+    elif result.stdout:
+        _write(output, result.stdout)
+    else:
+        _write(output, "")
+    if result.stderr:
+        diag_parts.append(result.stderr)
+    if diag_parts:
+        _write(
+            output.with_suffix(output.suffix + ".diag"),
+            redact.redact_tmpdir_paths(redact.redact_secrets_only("\n".join(diag_parts))),
+        )
+    if exit_code != 0:
+        _compose_failure_diag(output)
+    proc.run(
+        [
+            sys.executable,
+            str(_PY_CLI),
+            "timing",
+            "record-vendor-task",
+            "--vendor",
+            "claude",
+            "--task-kind",
+            "claude-lint-fix",
+            "--start-s",
+            str(int(start)),
+            "--end-s",
+            str(int(end)),
+            "--output",
+            str(output),
+            "--exit-code",
+            str(exit_code),
+            "--status",
+            "complete" if exit_code == 0 else "signal",
+        ],
+        check=False,
+    )
+    if parsed_obj is not None:
+        _record_claude_ci_usage(parsed_obj, output, "claude_lint_fix")
+    _write(output.with_suffix(output.suffix + ".done"), f"{exit_code}\n")
+    _append_ci_failure(output, tool="claude", launcher_exit=exit_code, site="lint fixer")
     _emit_ci_launcher_result(output, exit_code, tool="claude")
     return 0
 

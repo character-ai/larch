@@ -372,7 +372,7 @@ Concatenation of per-slot `*.failure-diag` carriers composed by `append_vendor_f
 
 ### token-report.json
 
-**Mode**: replace. **Written**: Step 7a tail (pre-ship log flush) and refreshed at Step 9a.1. CI-fix rebase/push retries also refresh the batch so the merged PR carries the most recent data through `run_logs.flush_logs_pre` at CI/rebase boundaries.
+**Mode**: replace. **Written**: Step 7a tail (pre-ship log flush) and refreshed at Step 9a.1. The agentic Claude CI-fix delegate reconstructs `RunContext` and requires `--repo-root`, so rebase/push retries refresh the batch through `run_logs.flush_logs_pre` before force-push or rebase preparation. `ci-fix-exhausted` pairs with Step 12d operator bail. Stall recovery does not auto-resume the ship step for that token.
 
 Structured per-step Claude and external-vendor token usage for the session. The pre-ship flush captures cost up through implementation and review.
 
