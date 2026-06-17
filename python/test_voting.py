@@ -491,9 +491,19 @@ def test_write_tally_header_validation_and_logger_kv_reemission(tmp_path: Path) 
         "--body-file",
         str(invalid_body),
     )
-    assert result.returncode == 2
-    assert "unrecognized section header in code-review body: ## Foo" in result.stderr
-    assert result.stdout == ""
+    assert result.returncode == 0
+    assert "WARNING=code-review body header validation ignored" in result.stderr
+    assert "unrecognized section header: ## Foo" in result.stderr
+    assert "unrecognized section header" not in result.stdout
+    assert "LOG_WRITTEN=true" in result.stdout
+    assert all("=" in line for line in result.stdout.splitlines())
+    record_path = tmp_path / "logs-invalid" / "implement" / "run-code-invalid" / "code-review-tally.json"
+    assert record_path.is_file()
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    assert record["schema_version"] == 2
+    assert record["phase"] == "code-review"
+    assert record["batch"] == "code-review-tally"
+    assert "body" not in record
 
     logger = _write_tally_logger(tmp_path)
     valid_rejected_round_body = tmp_path / "valid-rejected-round-body.md"
@@ -525,6 +535,7 @@ def test_write_tally_header_validation_and_logger_kv_reemission(tmp_path: Path) 
         env=env,
     )
     assert result.returncode == 0
+    assert result.stderr == ""
 
     valid_body = tmp_path / "valid-body.md"
     valid_body.write_text("# Code Review Voting Tally\n", encoding="utf-8")
@@ -550,6 +561,7 @@ def test_write_tally_header_validation_and_logger_kv_reemission(tmp_path: Path) 
         env=env,
     )
     assert result.returncode == 0
+    assert result.stderr == ""
     assert "LOG_WRITTEN=true" in result.stdout
 
     plan_body = tmp_path / "plan-body.md"
@@ -579,6 +591,9 @@ def test_write_tally_header_validation_and_logger_kv_reemission(tmp_path: Path) 
     )
     assert result.returncode == 0
     assert "LOG_WRITTEN=true" in result.stdout
+    plan_record_path = tmp_path / "logs-plan" / "implement" / "run-plan" / "plan-review-tally.json"
+    plan_record = json.loads(plan_record_path.read_text(encoding="utf-8"))
+    assert plan_record["body"] == "Plan review accepted with one follow-up.\n"
 
 
 def test_parse_rate_retry_empty_retry_output_stays_not_substantive(tmp_path: Path) -> None:
