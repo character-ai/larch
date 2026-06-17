@@ -46,18 +46,26 @@ comment.
   number, column 6. Renders `—` when no ledger / round timing is present
   (committed logs do not carry the ledger).
 - **Reviewer timing charts**: `timing-ledger.tsv` `type=vendor` rows provide
-  reviewer task windows. Column 8 is `start_s`; column 9 is `end_s`. Round
+  round-agent task windows. Column 8 is `start_s`; column 9 is `end_s`. Round
   windows aggregate `type=round` rows by round number only and are not filtered
   by `--skill`. Vendor rows are selected by overlap only and are not filtered by
-  `--skill`. The chart is a filtered reviewer view: CI-fix, CI-test,
-  CI-output, and launcher probe timing rows are excluded before sorting and
-  before the 25-task cap. Excluded basenames include `ci.out`, `*-ci.out`,
-  `ci-fix-*.out`, `claude.out`, `codex.out`, and `cursor.out`. Matching rows
-  are clamped to absolute round bounds before TSV emission. The shell sorts by
-  absolute `start_s`, then absolute `end_s`, then label with a tab-delimited
-  sort because label is the first TSV field. It caps at 25 displayed tasks after
-  sorting. Chart axes use the span of those displayed rows, not the full round
-  timing row; the table Time column still uses the round timing row.
+  `--skill`. The chart is a filtered round-agent view: reviewers, aggregators,
+  voters, scouts, and apply coders appear when they already emit chartable vendor
+  rows. CI-fix, CI-test, CI-output, verification, and launcher probe timing rows
+  are excluded before sorting and before the 25-task cap. Excluded basenames
+  include `ci.out`, `*-ci.out`, `ci-fix-*.out`, `claude.out`, `codex.out`, and
+  `cursor.out`. Apply coder rows render as `codex/apply` or `cursor/apply` by
+  task kind. `/design` plan-review apply rows use the existing
+  `codex-plan-autofix` / `cursor-plan-autofix` vendor timing from
+  `plan revise-waterfall`, with `codex-output.txt` / `cursor-output.txt`
+  outputs. Matching rows are clamped to absolute round bounds before TSV
+  emission. The shell sorts by absolute `start_s`, then absolute `end_s`, then
+  label with a tab-delimited sort because label is the first TSV field. It caps
+  at 25 displayed tasks after sorting. Chart axes and title spans use the
+  ledger `gantt_rrange` round window (`gw_start` / `gw_end` from unfiltered
+  `type=round` rows), not `round-meta.json` and not the displayed-task min/max.
+  The table Time column still uses the `--skill`-filtered round timing row. A
+  tail gap can remain when post-apply verification time is uncharted.
 - **Cost** — the per-round **vendor** cost (Codex + Cursor + Claude subprocess).
   Per-round Cost attribution uses the same `--skill`-filtered table window as
   Time. Vendor token records from `--token-ledger` are attributed to a round by
@@ -81,7 +89,7 @@ TSV emission, and best-effort subprocess failure handling.
 
 The shell-to-CLI contract is absolute-time based: TSV `start_s` and `end_s` are
 absolute clamped overlap bounds, and `--window-start-s` / `--window-end-s` use
-the displayed-row span after filtering. Relative offsets are not accepted at
+the ledger `gantt_rrange` round window. Relative offsets are not accepted at
 this call site. Chart title windows use `m:ss`, not the table `fmt_hms` output.
 
 Renderer non-zero status, an unreadable CLI path, or missing `python3` must not

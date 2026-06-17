@@ -1143,7 +1143,7 @@ assert_not_contains 'dateFormat X' "$rpd_body" 'review phase detail omits Mermai
 assert_not_contains 'axisFormat %H:%M:%S' "$rpd_body" 'review phase detail omits hour axisFormat'
 assert_contains 'cursor/correctness' "$rpd_body" 'review phase detail includes ASCII chart label'
 assert_contains '50s' "$rpd_body" 'review phase detail includes bare ASCII duration'
-assert_contains 'window 0:00-0:50 (50s)' "$rpd_body" 'review phase detail uses m:ss title span'
+assert_contains 'window 0:00-1:05 (65s)' "$rpd_body" 'review phase detail uses ledger round-window title span'
 # Regression (issue #3794): round-meta.json only under live working dir -> no completed rounds for selected root.
 # This reproduces the path-mismatch bug: renderer must NOT find the table when
 # round-meta.json exists only under IMPLEMENT_TMPDIR/round-N/ (old wrong root).

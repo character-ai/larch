@@ -104,6 +104,8 @@ JSON
     printf 'v1\tvendor\t1700000030\timplement\t-\tcodex\tvendor-misc\t1700000030\t1700000050\t20\tscout-plan-manifest.json.raw\t0\tcomplete\n'
     printf 'v1\tvendor\t1700000040\timplement\t-\tcodex\tcodex-plan-autofix\t1700000040\t1700000070\t30\tcodex-output.txt\t0\tcomplete\n'
     printf 'v1\tvendor\t1700000050\timplement\t-\tcursor\tcursor-plan-autofix\t1700000050\t1700000080\t30\tcursor-output.txt\t0\tcomplete\n'
+    printf 'v1\tvendor\t1700000210\timplement\t-\tcodex\tcodex-review-fix\t1700000210\t1700000240\t30\tcoder-codex.log\t0\tcomplete\n'
+    printf 'v1\tvendor\t1700000240\timplement\t-\tcursor\tcursor-review-fix\t1700000240\t1700000275\t35\tcoder-cursor.log\t0\tcomplete\n'
     printf 'v1\tvendor\t1700000285\timplement\t-\tcursor\tcursor-ci\t1700000285\t1700000286\t1\tcursor-ci.out\t0\tcomplete\n'
     printf 'v1\tvendor\t1700000286\timplement\t-\tclaude\tclaude-ci\t1700000286\t1700000287\t1\tclaude-ci.out\t0\tcomplete\n'
     printf 'v1\tvendor\t1700000287\timplement\t-\tcodex\treview\t1700000287\t1700000288\t1\tci-fix-codex.out\t0\tcomplete\n'
@@ -156,13 +158,15 @@ top_line=$(grep -nF '**Top reviewers**' "$OUT" | head -1 | cut -d: -f1 || true)
 grep -Fq -- '```' "$OUT" || fail 'ASCII chart missing plain fence'
 if grep -Fq -- '```mermaid' "$OUT"; then fail 'ASCII chart must not use Mermaid fence'; fi
 if grep -Fq -- 'dateFormat X' "$OUT" || grep -Fq -- 'axisFormat %H:%M:%S' "$OUT"; then fail 'ASCII chart must not contain Mermaid directives'; fi
-grep -Fq -- 'Round 1 reviewer timing  ·  window 0:00-3:20 (200s)' "$OUT" || fail 'ASCII chart title must use filtered m:ss span'
+grep -Fq -- 'Round 1 reviewer timing  ·  window 0:00-5:00 (300s)' "$OUT" || fail 'ASCII chart title must use ledger round window'
 grep -Fq -- 'cursor/structure' "$OUT" || fail 'ASCII label must use slot_map when available'
 grep -Fq -- 'unknown/reviewer:unsafe,name' "$OUT" || fail 'ASCII fallback label must preserve punctuation'
 grep -Fq -- 'aggregator ' "$OUT" || fail 'ASCII fallback label must render aggregator'
 grep -Fq -- 'scout ' "$OUT" || fail 'ASCII fallback label must render scout-plan-manifest as scout'
-grep -Fq -- 'codex/codex-plan-autofix' "$OUT" || fail 'ASCII bare codex output must use task kind'
-grep -Fq -- 'cursor/cursor-plan-autofix' "$OUT" || fail 'ASCII bare cursor output must use task kind'
+grep -Fq -- 'codex/apply' "$OUT" || fail 'ASCII codex apply rows must use apply label'
+grep -Fq -- 'cursor/apply' "$OUT" || fail 'ASCII cursor apply rows must use apply label'
+if grep -Fq -- 'codex/codex-plan-autofix' "$OUT"; then fail 'ASCII plan-autofix rows must not use raw task kind'; fi
+if grep -Fq -- 'cursor/cursor-plan-autofix' "$OUT"; then fail 'ASCII plan-autofix rows must not use raw task kind'; fi
 if grep -Fq -- 'ci.out' "$OUT"; then fail 'ASCII chart must filter CI output basenames'; fi
 if grep -Fq -- 'cursor/ci.out' "$OUT"; then fail 'ASCII chart must filter cursor CI output rows'; fi
 if grep -Fq -- 'claude/ci.out' "$OUT"; then fail 'ASCII chart must filter claude CI output rows'; fi

@@ -175,6 +175,13 @@ def test_compose_coder_prompt_uses_canonical_submodule_prohibition(tmp_path):
 
 
 @MARK_DISPATCH
+def test_resolve_coder_timing_ledger_round_and_flat_layouts(tmp_path: Path) -> None:
+    assert review_and_fix._resolve_coder_timing_ledger(tmp_path / "round-1") == tmp_path / "timing-ledger.tsv"
+    flat = tmp_path / "review-flat"
+    assert review_and_fix._resolve_coder_timing_ledger(flat) == flat / "timing-ledger.tsv"
+
+
+@MARK_DISPATCH
 def test_run_coder_codex_rejects_nonzero_launcher_exit(tmp_path, monkeypatch):
     monkeypatch.setenv("CODEX_PRESENT", "true")
     monkeypatch.setattr(review_and_fix, "_codex_available", lambda: True)
@@ -191,6 +198,53 @@ def test_run_coder_codex_rejects_nonzero_launcher_exit(tmp_path, monkeypatch):
 
     monkeypatch.setattr(review_and_fix, "_run", fake_run)
     assert review_and_fix._run_coder_codex(tmp_path, "prompt", tmp_path / "tool.log") is False
+
+
+@MARK_DISPATCH
+def test_run_coder_codex_exports_resolved_timing_ledger(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    round_dir = tmp_path / "round-1"
+    round_dir.mkdir()
+    output = round_dir / "coder-codex.log"
+    output.write_text("ok\n", encoding="utf-8")
+    seen_env: dict[str, str] = {}
+    monkeypatch.setenv("CODEX_BINARY_FOUND", "true")
+    monkeypatch.setattr(review_and_fix, "_codex_available", lambda: True)
+
+    def fake_run(argv: list[str], **kwargs: object) -> review_and_fix.proc.CommandResult:
+        seen_env.update(kwargs.get("env") or {})  # type: ignore[arg-type]
+        return review_and_fix.proc.CommandResult(tuple(argv), 0, "LAUNCHER_EXIT=0\n", "", 0.0)
+
+    monkeypatch.setattr(review_and_fix, "_run", fake_run)
+
+    assert review_and_fix._run_coder_codex(round_dir, "prompt", round_dir / "tool.log") is True
+    assert seen_env["LARCH_TIMING_LEDGER"] == str(tmp_path / "timing-ledger.tsv")
+    assert seen_env["IMPLEMENT_TMPDIR"] == str(tmp_path)
+
+
+@MARK_DISPATCH
+def test_run_coder_codex_overrides_stale_implement_tmpdir_in_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    round_dir = tmp_path / "impl-session" / "round-1"
+    round_dir.mkdir(parents=True)
+    stale = tmp_path / "stale-implement"
+    stale.mkdir()
+    output = round_dir / "coder-codex.log"
+    output.write_text("ok\n", encoding="utf-8")
+    seen_env: dict[str, str] = {}
+    monkeypatch.setenv("CODEX_BINARY_FOUND", "true")
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(stale))
+    monkeypatch.setattr(review_and_fix, "_codex_available", lambda: True)
+
+    def fake_run(argv: list[str], **kwargs: object) -> review_and_fix.proc.CommandResult:
+        seen_env.update(kwargs.get("env") or {})  # type: ignore[arg-type]
+        return review_and_fix.proc.CommandResult(tuple(argv), 0, "LAUNCHER_EXIT=0\n", "", 0.0)
+
+    monkeypatch.setattr(review_and_fix, "_run", fake_run)
+
+    assert review_and_fix._run_coder_codex(round_dir, "prompt", round_dir / "tool.log") is True
+    assert seen_env["IMPLEMENT_TMPDIR"] == str(round_dir.parent)
+    assert seen_env["LARCH_TIMING_LEDGER"] == str(round_dir.parent / "timing-ledger.tsv")
 
 
 @MARK_DISPATCH
@@ -752,6 +806,47 @@ def test_apply_findings_rehydrates_session_env_before_coder(tmp_path, monkeypatc
 
 
 @MARK_DISPATCH
+def test_apply_findings_uses_flat_review_tmpdir_timing_ledger_without_session_ledger(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    monkeypatch.delenv("LARCH_TIMING_LEDGER", raising=False)
+    findings = tmp_path / "findings.md"
+    findings.write_text("### FINDING_1: apply me\n- Suggested revision: change file.\n", encoding="utf-8")
+    review_tmpdir = tmp_path / "review"
+    session_env = tmp_path / "session-env.sh"
+    session_env.write_text("CODEX_BINARY_FOUND=false\nCURSOR_BINARY_FOUND=true\n", encoding="utf-8")
+    seen: dict[str, Path] = {}
+
+    def fake_scrub(input_file: Path, output_file: Path, _log_file: Path) -> tuple[bool, int]:
+        shutil.copyfile(input_file, output_file)
+        return True, 0
+
+    def fake_cursor(round_dir: Path, _prompt: str, tool_log: Path) -> bool:
+        seen["ledger"] = review_and_fix._resolve_coder_timing_ledger(round_dir)
+        tool_log.write_text("APPLIED: FINDING_1\n", encoding="utf-8")
+        return True
+
+    monkeypatch.setattr(review_and_fix, "_scrub_findings", fake_scrub)
+    monkeypatch.setattr(review_and_fix, "_submodule_paths", list)
+    monkeypatch.setattr(review_and_fix, "_run_coder_cursor", fake_cursor)
+    monkeypatch.setattr(review_and_fix, "_run_coder_codex", lambda *_a, **_k: False)
+    monkeypatch.setattr(review_and_fix, "_git_status_porcelain", lambda: "")
+
+    rc = review_and_fix.apply_findings([
+        "--findings-file", str(findings),
+        "--review-tmpdir", str(review_tmpdir),
+        "--session-env-path", str(session_env),
+    ])
+
+    assert rc == 0
+    assert seen["ledger"] == review_tmpdir / "timing-ledger.tsv"
+    assert "REVIEW_AND_FIX_STATUS=complete" in capsys.readouterr().out
+
+
+@MARK_DISPATCH
 def test_scrub_findings_missing_output_fails_closed(tmp_path, monkeypatch):
     input_file = tmp_path / "in.md"
     output_file = tmp_path / "out.md"
@@ -788,8 +883,21 @@ def test_run_coder_cursor_acquires_external_startup_lock(tmp_path, monkeypatch):
     monkeypatch.setenv("CURSOR_PRESENT", "true")
     monkeypatch.setenv("CURSOR_BINARY_FOUND", "true")
     monkeypatch.setattr(review_and_fix, "_cursor_available", lambda: True)
+    monkeypatch.setattr(review_and_fix.time, "time", mock.Mock(side_effect=[100, 125]))
+    monkeypatch.setattr(
+        review_and_fix.agents,
+        "cursor_auth_preflight",
+        lambda **_kw: review_and_fix.agents.AuthVerdict(ok=True, rc=0),
+    )
+    monkeypatch.setattr(review_and_fix.agents, "cursor_auth_export_env", lambda: None)
+    monkeypatch.setattr(
+        review_and_fix.agents,
+        "resolve_model_args",
+        lambda *_a, **_k: review_and_fix.agents.ModelArgResult(argv=("--model", "test")),
+    )
     lock_calls: list[str] = []
     release_calls: list[review_and_fix.agents.StartupLockState] = []
+    run_calls: list[tuple[list[str], dict[str, object]]] = []
 
     def fake_acquire(tool):
         lock_calls.append(tool)
@@ -800,12 +908,24 @@ def test_run_coder_cursor_acquires_external_startup_lock(tmp_path, monkeypatch):
 
     monkeypatch.setattr(review_and_fix.agents, "external_startup_lock_acquire", fake_acquire)
     monkeypatch.setattr(review_and_fix.agents, "external_startup_lock_release_after", fake_release)
-    monkeypatch.setattr(review_and_fix, "_run", lambda argv, **_kw: review_and_fix.proc.CommandResult(
-        argv, 0, "wrapped prompt", "", 0.0,
-    ))
+
+    def fake_run(argv: list[str], **kwargs: object) -> review_and_fix.proc.CommandResult:
+        run_calls.append((argv, kwargs))
+        stdout = "wrapped prompt" if "cursor-wrap-prompt" in argv else ""
+        return review_and_fix.proc.CommandResult(tuple(argv), 0, stdout, "", 0.0)
+
+    monkeypatch.setattr(review_and_fix, "_run", fake_run)
     assert review_and_fix._run_coder_cursor(tmp_path, "prompt", tmp_path / "tool.log") is True
     assert lock_calls == ["cursor"]
     assert len(release_calls) == 1
+    timing_calls = [call for call in run_calls if call[0][2:4] == ["timing", "record-vendor-task"]]
+    assert len(timing_calls) == 1
+    argv = timing_calls[0][0]
+    assert argv[argv.index("--ledger") + 1] == str(tmp_path / "timing-ledger.tsv")
+    assert argv[argv.index("--task-kind") + 1] == "cursor-review-fix"
+    assert argv[argv.index("--output") + 1] == str(tmp_path / "coder-cursor.log")
+    assert argv[argv.index("--start-s") + 1] == "100"
+    assert argv[argv.index("--end-s") + 1] == "125"
 
 
 @MARK_CONVERGENCE
