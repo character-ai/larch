@@ -1,0 +1,40 @@
+## Structured collector record
+
+REVIEWER_FILE=<TMPDIR>/cursor-plan-requirements-output.txt|TOOL=cursor|STATUS=NOT_SUBSTANTIVE|EXIT_CODE=0|FAILURE_REASON=structured records not found after repair
+
+## Reviewer output (<TMPDIR>/cursor-plan-requirements-output.txt)
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	completeness	skills/design/scripts/review-design-step3-loop.sh:530-535	Plan omits the per-round `write-design-round-meta.sh` hook when porting loop round-body mechanics	Native `run_plan_review_round` can finish apply/dedup/tally without calling `WRITE_DESIGN_ROUND_META_SH` / `scripts/write-design-round-meta.sh`, so round renderer metadata stops being synthesized and run-log Review Phase Detail rows lose accepted/rejected/OOS counts	Add an explicit port step: after each round body, best-effort invoke `WRITE_DESIGN_ROUND_META_SH` defaulting to `scripts/write-design-round-meta.sh --round-dir "$DESIGN_TMPDIR/plan-review/round-${N}"`; add a pytest parity check
+2	in_scope	important	correctness	skills/design/scripts/review-design-step3-loop.sh:333-342	Plan is silent on `step3_loop_refresh_issue_from_source_env` before pause-save exits	Post-apply `design postplan-emit` rc `11` execs `design pause-save`; when `ISSUE_NUMBER` is unset in the loop process, pause-save can run without the issue binding the bash path recovers from `$DESIGN_TMPDIR/source-env.sh`	Port `step3_loop_refresh_issue_from_source_env` (or equivalent) immediately before every pause-save handoff in the native loop; cover rc `11` in pytest
+3	in_scope	important	correctness	python/test_plan_review.py:273-295	Cap-reached completion-sentinel tests do not require `.completed/step-3.5` even though bash writes both sentinels on `cap-reached`	Bash calls `step3_loop_write_completed_step3` before emitting `cap-hit` (review-design-step3-loop.sh:678-683). A native port that only writes `step-3`, or tests that never assert `step-3.5`, can regress the #4489 split-sentinel contract and stall or early-unlock Gate B polling	Extend the cap-reached pytest case to assert both `.completed/step-3` and `.completed/step-3.5`; state explicitly in the plan that `cap-reached` is a dual-sentinel terminal path
+4	in_scope	important	risk-integration	python/test_plan_review.py:288	skills/design/scripts/test-step3-orchestrator-fence.sh:232	scripts/test-design-multi-round-integration.sh:135	Plan retargets Step 3 harnesses but does not define the post-port contract for `RUN_STEP3_PLAN_REVIEW_LOOP_SH`	After the loop moves in-process, stubbing `RUN_STEP3_PLAN_REVIEW_LOOP_SH` no longer intercepts round behavior; `make test-step3-orchestrator-fence` and `make test-design-multi-round-integration` can pass vacuously or fail unless the seam is replaced	Pick one contract and document it: either keep `RUN_STEP3_PLAN_REVIEW_LOOP_SH` as an optional external loop subprocess override with a native default, or delete the env gate and migrate every stub harness to pytest/native `plan-review run` mocks; do not leave an "or migrate" fork untested
+5	out_of_scope	nit	architecture	python/design_lifecycle.py	[SCOPE-REDUCTION] New shared JSON-bool helper in `design_lifecycle.py` expands the blast radius beyond Step 3 bodies	`design_postplan.py` already shells out to `plan-review json-get-bool`; adding `design_lifecycle.py` is not required to finish the port	Implement `json-get-bool` in `plan_review.py` (or an existing shared module already used by postplan) and skip a new `design_lifecycle.py` surface unless a second consumer already exists on main
+
+**Findings**
+
+1. **completeness** — `skills/design/scripts/review-design-step3-loop.sh:530-535`: the plan ports the Step 3 loop but never carries forward the best-effort `write-design-round-meta.sh` call at the end of each round body. Without it, round metadata for run logs can disappear.
+
+2. **correctness** — `skills/design/scripts/review-design-step3-loop.sh:333-342`: pause-save on postplan rc `11` depends on refreshing `ISSUE_NUMBER` from `source-env.sh`. The plan mentions pause handoff in tests but not this refresh step.
+
+3. **correctness** — `python/test_plan_review.py:273-295`: cap-hit is a dual-sentinel path in bash (`step-3` and `step-3.5`). The planned tests call out cap short-circuit but not `step-3.5`, which weakens the pinned #4489 contract.
+
+4. **risk-integration** — harness files still stub `RUN_STEP3_PLAN_REVIEW_LOOP_SH`, but the plan does not say whether native code will honor that env gate or replace it. That ambiguity can break `make test-step3-orchestrator-fence` and `make test-design-multi-round-integration`.
+
+5. **[OUT_OF_SCOPE]** — `python/design_lifecycle.py`: the extra module for `json-get-bool` is optional; the verb can live in `plan_review.py` with less churn.
+## Reviewer stderr (<TMPDIR>/cursor-plan-requirements-output.txt.diag)
+
+(empty: <TMPDIR>/cursor-plan-requirements-output.txt.diag)
+
+## Failed-agent stderr tail (<TMPDIR>/cursor-plan-requirements-output.txt.stderr-tail)
+
+(file missing: <TMPDIR>/cursor-plan-requirements-output.txt.stderr-tail)
+
+## Launcher stderr (<TMPDIR>/cursor-plan-requirements-output.txt.launch-stderr)
+
+⏳ cursor agent: still running (1m elapsed)
+⏳ cursor agent: still running (2m elapsed)
+⏳ cursor agent: still running (3m elapsed)
+✓ cursor agent: completed (exit code 0, output 4914 bytes)
+
+
