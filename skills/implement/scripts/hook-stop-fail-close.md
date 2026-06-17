@@ -8,6 +8,8 @@
 
 All checks share the `.run-cleaned-up` sentinel as the terminal escape: once teardown writes it the hook allows all stops through. The `stop_hook_active` guard prevents a continuation-loop trap. The block envelope shape (top-level `{"decision":"block","reason":"..."}`) was verified against the Claude Code hooks reference. If `jq` is missing, the hook emits a static literal block envelope.
 
+The hook reads `session_id` from the Stop payload before tmpdir resolution. A non-empty `session_id` is surfaced as `LARCH_TOKEN_SESSION_ID` so `python/cli.py session resolve-implement-tmpdir` can bind to the matching session identity. An empty, missing, or null `session_id` unsets any inherited `LARCH_TOKEN_SESSION_ID` before tmpdir resolution, then the resolver can fall back to TTL matching.
+
 Tmpdir resolution is delegated to `python/cli.py session resolve-implement-tmpdir --cwd "$HOOK_CWD"`. Before spawning Python, the hook performs a cheap bash glob pre-check for `claude-implement-*` directories under these roots:
 
 1. `${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/larch/sessions`
