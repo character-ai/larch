@@ -1,0 +1,183 @@
+You are an expert engineer researching this repository and producing an implementation plan for /design Step 2b.
+
+You may use only side-effect-free repository discovery. Do not write repository files, design tmpdir files, or any other files. Return only the sentinel-delimited response requested below.
+
+Drafting requirements to follow:
+- Prefer minimum necessary change: avoid scope creep, unnecessary complexity, and additions not required for correctness.
+- Read approach-synthesis.txt: if it is exactly NO_SKETCHES, draft from direct codebase/doc inspection without fabricating planning-panel agreement.
+- Read discussion-round1.md when present for scope boundaries and strict constraints.
+- Read design-outline.md only when non-empty and .outline-approved exists; treat Goals, Non-goals, and Surfaces as binding scope.
+- Read brainstorm.md when present as additive ideation context for plan drafting.
+- Use a Files to modify/create section with per-file headings exactly one path each: ### NEW:, ### UPDATED:, or ### REWRITTEN: (at least one ASCII space after ### before the keyword).
+- Include Approach, Edge cases, Failure modes when non-trivial, Testing strategy, optional diff_added/diff_deleted/mechanical_churn trailers, and final diff_lines: <N>. mechanical_churn accepts only true or false; never write a number there.
+- The final plan body must end with a whole-line diff_lines: <N> trailer.
+- Optionally include up to three dynamic plan-review archetypes in a scout block after the plan. The launcher validates, filters, caps, and materializes this block; invalid post-plan scout output is ignored.
+- Scout sentinels inside the summary or plan are fatal format errors. Never put LARCH_SCOUT_* markers in the plan body.
+
+Readability style (trusted):
+# Readability Style
+
+**Consumer**: `/design` prompt surfaces that produce user-facing text, either through an external-agent prompt token or through inline orchestration prose.
+
+**Contract**: this file is the only source of truth for the `/design` readability preamble. External prompt files embed the literal `<READABILITY_STYLE>` token, and assembly code or orchestration expands it to this full file. Inline composition sites read this file before writing user-facing text.
+
+**When to load**: load only when a `/design` step is about to compose user-facing prose or render a prompt that asks another agent to compose such prose. Do not load during setup, pure validation, or byte-stable artifact handling.
+
+---
+
+## Style Axes
+
+Write in three styles at once:
+
+- **Strunk & White**: use active voice. Omit needless words. Prefer concrete nouns and verbs.
+- **Dyslexia-friendly**: use short sentences. Prefer simple words. Break dense ideas into headings and bullets.
+- **Brevity**: shorter is better. Minimize the total artifact length while preserving meaning.
+- **No em dashes**: never use em dashes; use periods, commas, colons, or semicolons instead.
+- **Hedge vs. direct**: hedge uncertain claims ("may contain", "can fail") instead of absolutes; keep directives imperative.
+
+## Precision Contract
+
+Keep these byte-stable unless the task explicitly edits them:
+
+- fenced code blocks
+- backticked tokens
+- file paths
+- identifiers
+- flag names
+- `### NEW:` / `### UPDATED:` / `### REWRITTEN:` plan grammar
+- the trailing `diff_lines: <N>` line
+
+Do not rewrite those items for style. Explain around them instead.
+
+## Plan-Drafting Reminders
+
+When `/design` Step 2b drafts a plan that adds, removes, or converts
+Bash fences in `skills/implement/SKILL.md`:
+
+- List `### UPDATED: scripts/test-implement-fence-shape.sh` in
+  **Files to modify/create**.
+- Note that `EXPECTED_OLD` / `EXPECTED_NEW` may need updates.
+
+This is a discoverability reminder only. Do not add plan grammar.
+
+## Precedence
+
+When rules conflict, use this order:
+
+`code references > meaning > brevity > dyslexia-friendly chunking > Strunk & White micro-rewrites`
+
+Apply it directly:
+
+- Preserve code references first.
+- Preserve exact meaning next.
+- Cut words before adding layout.
+- Add headings or bullets only when they improve scanning.
+- Polish grammar last.
+
+## Substitution Token
+
+External-agent prompt files MUST embed this literal token:
+
+`<READABILITY_STYLE>`
+
+Before launch, replace every literal `<READABILITY_STYLE>` token with the full contents of this file.
+
+## Examples
+
+Before: "It is recommended that the implementer should consider adding a validation step."
+
+After: "Add a validation step."
+
+Before: "The plan should make sure that users are not able to continue when the file cannot be read."
+
+After: "Block the flow when the file cannot be read."
+
+Before: "In order to avoid potential future confusion, documentation can be updated."
+
+After: "Update the docs to avoid confusion."
+
+Before: "The script performs an operation that checks if the path exists."
+
+After: "The script checks that the path exists."
+
+Before: "This could possibly be out of scope depending on how the team wants to proceed."
+
+After: "This may be out of scope."
+
+Required output format:
+[optional]
+LARCH_SUMMARY_BEGIN
+A concise summary for large-plan preview. Omit this whole summary block only when no useful summary is needed.
+LARCH_SUMMARY_END
+[/optional]
+LARCH_PLAN_BEGIN
+Full implementation plan body ending with diff_lines: <N>.
+LARCH_PLAN_END
+[optional]
+LARCH_SCOUT_BEGIN
+{"archetypes":[{"name":"slug","focus_area":"code-quality|risk-integration|correctness|architecture|security","weight":1,"rationale":"single-line reason","prompt_body":"2-6 sentence focus directive ending with the required citation sentence."}]}
+LARCH_SCOUT_END
+[/optional]
+
+Optional advisory status may be included between LARCH_STATUS_BEGIN and LARCH_STATUS_END, but the summary, plan, and optional scout sentinels above are the only parsed contract.
+
+Untrusted feature description:
+<feature_description encoding="literal-redacted">
+# /implement Steps 16-17: one wrapper for rejected findings, notify, and final report with marker-based body emission
+
+**Problem.** Steps 16, 16a, and 17 are three consecutive run-and-continue Bash calls (`step-16.sh`, `slack-issue-announce.sh`, `step-17.sh`) with only fixed breadcrumbs between them, and the orchestrator then separately reads `summary-final.md` to emit it verbatim.
+
+**Proposal.**
+
+- One `skills/implement/scripts/step-16-17.sh` wrapper runs rejected-findings, the best-effort Slack announce, and the final report in sequence, logging failures per today's per-step contracts (skipped silently, failed to Warnings, Step 17 failure captured via the tool-failure append path).
+- The wrapper prints `summary-final.md` between stable BEGIN/END markers on stdout so the orchestrator re-emits the body verbatim from captured output with no separate Read call. SKILL.md already permits the "Bash cat whose output is then re-emitted" mechanism; this makes it the default.
+- The wrapper writes `.step17-printed`. The orchestrator still emits the body as chat text, and `.step17-emitted` remains a post-emission write (folding that write into the Step 18 call is the Step 18 issue).
+- Update NEVER #17 wording to name the wrapper; the per-agent cost line and the no-free-form-recap rule are unchanged.
+
+**Acceptance.**
+
+- One Bash call covers Steps 16 through 17 plus the body hand-off; breadcrumbs preserved.
+- The verbatim-emission contract still holds: full body, no paraphrase, sentinel written only after emission.
+
+
+</feature_description>
+
+
+Untrusted approach synthesis:
+<approach_synthesis encoding="literal-redacted">
+NO_SKETCHES
+
+</approach_synthesis>
+
+
+Untrusted approved design outline:
+<design_outline encoding="literal-redacted">
+## Proposed Design Outline
+
+### Goals
+- Collapse `/implement` Steps 16, 16a, 17 into one Bash call via a new `step-16-17.sh` wrapper.
+- Print `summary-final.md` between stable BEGIN/END markers so the orchestrator re-emits the body verbatim from captured output, with no separate Read call.
+- Preserve the verbatim-emission contract: full body, no paraphrase, `.step17-emitted` written only after emission.
+
+### Non-goals
+- No fold of the `.step17-emitted` write or the Step 18b emit path (the separate Step 18 issue).
+- No change to the per-agent cost line or the no-free-form-recap rule (NEVER #17 intent unchanged).
+- No change to per-step behavior contracts: rejected-findings silent-skip, Slack best-effort, Step 17 tool-failure append.
+
+### Approach sketch
+- New `skills/implement/scripts/step-16-17.sh` runs rejected-findings, best-effort Slack announce, then final report in sequence.
+- The wrapper prints `summary-final.md` between `---LARCH-SUMMARY-FINAL-BEGIN---` / `---LARCH-SUMMARY-FINAL-END---` and writes `.step17-printed`.
+- `skills/implement/SKILL.md` Steps 16/16a/17 collapse to one fence; orchestrator extracts the marked body, emits it verbatim, then writes `.step17-emitted`; breadcrumbs preserved.
+- Reword NEVER #17 and the anti-halt terminal boundary to name the wrapper.
+
+### Surfaces in scope
+- `skills/implement/scripts/step-16-17.sh` plus `.md` sibling; `step-16.sh` / `step-17.sh` (sequenced or folded).
+- `skills/implement/SKILL.md`: Steps 16-17 region, NEVER #17, anti-halt terminal boundary, helper list.
+- `scripts/test-implement-fence-shape.sh`, `scripts/test-implement-structure.sh` (fence / step-count pins).
+
+### Open questions
+- Compose (wrapper calls `step-16.sh` + `step-17.sh`; modify step-17 for markers) vs fold (wrapper owns all three; retire step-16/17). Recommend compose for minimal churn.
+- Marker token name `---LARCH-SUMMARY-FINAL-BEGIN/END---` vs aligning with `/design`'s `LARCH_FINAL_SUMMARY_*`.
+
+</design_outline>
+
