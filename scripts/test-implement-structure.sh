@@ -108,9 +108,8 @@ for script in [
     'skills/implement/scripts/step-8-ship.sh',
     'skills/implement/scripts/step-8-oos-checkpoint.sh',
     'skills/implement/scripts/step-16-17.sh',
-    'skills/implement/scripts/step-18a-gate.sh --stall-tracking-memory "${STALL_TRACKING:-false}"',
-    'python/cli.py final-report step18b --implement-tmpdir "$IMPLEMENT_TMPDIR"',
-    'skills/implement/scripts/step-18-finalize.sh',
+    'skills/implement/scripts/step-18.sh --phase gate --stall-tracking-memory "${STALL_TRACKING:-false}"',
+    'skills/implement/scripts/step-18.sh --phase finalize --step17-emitted "${STEP17_EMITTED_FOR_STEP18:-false}"',
 ]:
     require(skill, launcher + script, f'SKILL launcher wrapper {script}')
 
@@ -123,7 +122,7 @@ for needle in [
     forbid(skill, needle, 'wrapperized SKILL')
 
 # Script/md sibling and executable coverage for new wrappers.
-wrappers = ['step-0-bootstrap','step-0-degraded-gate','step-2-entry','step-2-post-dispatch','run-step-checks','step-5-review','step-5-resume','step-6-entry','step-8-python-guard','step-8-seed-initial','step-8-ship','step-8-oos-checkpoint','step-16','step-16-17','step-17','step-18a-gate','step-18-finalize']
+wrappers = ['step-0-bootstrap','step-0-degraded-gate','step-2-entry','step-2-post-dispatch','run-step-checks','step-5-review','step-5-resume','step-6-entry','step-8-python-guard','step-8-seed-initial','step-8-ship','step-8-oos-checkpoint','step-16','step-16-17','step-17','step-18']
 for name in wrappers:
     sh=Path(f'skills/implement/scripts/{name}.sh')
     md=Path(f'skills/implement/scripts/{name}.md')
@@ -140,8 +139,26 @@ forbid(skill, retired_step5_entry_md, 'retired step-5-entry.md ref removed from 
 require('python/review_and_fix.py', '--stage-all', 'commit-fixes --stage-all')
 require('python/review_and_fix.py', '"git", "add", "-A"', 'commit-fixes stage all implementation')
 require('python/implement_dispatch.py', 'LARCH_TIMING_LEDGER', 'commit-implementation telemetry self-rehydration')
-require('skills/implement/scripts/step-18b-final-report.sh', 'cleanup.sh" --help', 'step-18b cleanup smoke')
-require('skills/implement/scripts/step-18b-final-report.sh', 'Step 18 — cleanup', 'step-18b telemetry mark')
+require('skills/implement/scripts/step-18.sh', '--phase gate', 'step-18 phase gate argv')
+require('skills/implement/scripts/step-18.sh', '--phase finalize', 'step-18 phase finalize argv')
+require('skills/implement/scripts/step-18.sh', '_stall_layer_active', 'step-18 stall predicate helper')
+require('skills/implement/scripts/step-18.sh', 'STALL_TRACKING_MEMORY_ARG', 'step-18 stall-tracking memory arg')
+require('skills/implement/scripts/step-18.sh', 'STALL_TRACKING_DISK=', 'step-18 stall disk layer')
+require('skills/implement/scripts/step-18.sh', 'STALL_TRACKING_FINALIZE=', 'step-18 stall finalize layer')
+require('skills/implement/scripts/step-18.sh', 'STALL_TRACKING_SESSION=', 'step-18 stall session layer')
+require('skills/implement/scripts/step-18.sh', 'STALL_RECOVERY_REQUIRED=', 'step-18 stall recovery kv')
+require('skills/implement/scripts/step-18.sh', 'set +e', 'step-18 non-aborting blocks')
+require('skills/implement/scripts/step-18.sh', 'final-report step18b --implement-tmpdir "$IMPLEMENT_TMPDIR"', 'step-18 live step18b path')
+require('skills/implement/scripts/step-18.sh', 'print_summary_markers', 'step-18 marker helper')
+require('skills/implement/scripts/step-18.sh', '---LARCH-SUMMARY-FINAL-BEGIN---', 'step-18 begin marker')
+require('skills/implement/scripts/step-18.sh', '_restore_finalize=false', 'step-18 restore gate')
+require('skills/implement/scripts/step-18.sh', 'restore-finalize-state --implement-tmpdir "$IMPLEMENT_TMPDIR"', 'step-18 restore finalize argv')
+require('skills/implement/scripts/step-18.sh', 'implement-finalize teardown --state-file "$IMPLEMENT_TMPDIR/finalize-state.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"', 'step-18 exact teardown argv')
+require('skills/implement/scripts/step-18.sh', 'LARCH_CLAUDE_PID:-$PPID', 'step-18 claude pid fallback')
+require('skills/implement/scripts/step-18.sh', "DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement", 'step-18 timing env')
+forbid('skills/implement/scripts/step-18.sh', 'cleanup.sh" --help', 'step-18 must not resurrect cleanup smoke')
+forbid('skills/implement/scripts/step-18.sh', 'token report --full', 'step-18 must not resurrect full token report')
+forbid('skills/implement/scripts/step-18.sh', 'Step 18 — cleanup', 'step-18 must not resurrect cleanup telemetry mark')
 require('skills/implement/scripts/step-0-bootstrap.sh', 'CALLER_ENV_PATH=*) CALLER_ENV_PATH=', 'step-0 fork metadata caller-env parse')
 require('skills/implement/scripts/step-0-bootstrap.sh', 'UPSTREAM_REPO=*) UPSTREAM_REPO=', 'step-0 fork metadata upstream parse')
 require('skills/implement/scripts/step-0-bootstrap.sh', 'preflight-tmpdir.env', 'step-0 preflight tmpdir resume persistence')
@@ -155,11 +172,6 @@ require('skills/implement/scripts/step-8-ship.sh', 'step-8-python-guard.sh', 'st
 require('skills/implement/scripts/step-8-ship.sh', 'lib-implement-clone-tag.sh', 'step-8 ship uses clone-tag helper')
 require('skills/implement/scripts/step-8-ship.sh', 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" ship pr', 'step-8 python ship invocation')
 require('skills/implement/scripts/step-0-bootstrap.sh', 'LARCH_CLAUDE_PID="${LARCH_CLAUDE_PID:-$PPID}"', 'step-0 wrapper claude pid export')
-require('skills/implement/scripts/step-18-finalize.sh', 'LARCH_CLAUDE_PID:-$PPID', 'step-18-finalize claude pid fallback')
-require('skills/implement/scripts/step-18a-gate.sh', 'STALL_TRACKING_MEMORY_ARG', 'step-18a stall-tracking memory arg')
-require('skills/implement/scripts/step-18a-gate.sh', 'STALL_TRACKING_DISK=', 'step-18a stall disk layer')
-require('skills/implement/scripts/step-18a-gate.sh', 'STALL_TRACKING_FINALIZE=', 'step-18a stall finalize layer')
-require('skills/implement/scripts/step-18a-gate.sh', 'STALL_TRACKING_SESSION=', 'step-18a stall session layer')
 require(skill, 'python/cli.py ship seed-initial-state', 'ship state initial seeder authority')
 require('skills/implement/scripts/step-8-seed-initial.sh', '--no-admin-fallback', 'ship state no-admin fallback seeder argv')
 require('python/ship.py', 'NO_ADMIN_FALLBACK', 'ship state no-admin fallback allowed key')
@@ -233,9 +245,17 @@ require('skills/implement/scripts/step-16-17.sh', '---LARCH-SUMMARY-FINAL-END---
 require(skill, 'extract the first balanced whole-line `---LARCH-SUMMARY-FINAL-BEGIN---` / `---LARCH-SUMMARY-FINAL-END---` pair from captured wrapper output', 'SKILL marker extraction contract')
 require(skill, 'emit the extracted body verbatim as plain chat markdown', 'SKILL marker body plain-chat emission')
 require(skill, 'do not Read that file on the Step 17 primary path', 'SKILL no Read-tool Step 17 primary path')
-require(skill, 'When `EMIT_BODY=true` and `WFR_RC=0` and `[ -s "$IMPLEMENT_TMPDIR/summary-final.md" ]`', 'SKILL Step 18b Read fallback retained')
+require(skill, 'Extract the first balanced whole-line `---LARCH-SUMMARY-FINAL-BEGIN---` / `---LARCH-SUMMARY-FINAL-END---` pair from captured `step-18.sh --phase finalize` stdout.', 'SKILL Step 18 marker extraction')
+require(skill, 'Do not Read `summary-final.md` on the Step 18 path because teardown may have removed the tmpdir.', 'SKILL Step 18 no Read fallback')
+require(skill, '**⚠ Step 18: EMIT_BODY=true but marker pair missing from finalize stdout.**', 'SKILL Step 18 missing-marker warning')
+require(skill, 'Relay teardown tail records verbatim from captured finalize stdout.', 'SKILL Step 18 tail relay')
+require(skill, '**Escalation recording owners.**', 'SKILL escalation recording owners preserved')
+require(skill, 'Repeat any external reviewer warnings from earlier', 'SKILL Step 18b warnings preserved')
+require(skill, 'Cap the per-run token/timing ledgers **before** teardown removes them.', 'SKILL #3425 closing marks preserved')
+forbid(skill, 'When `EMIT_BODY=true` and `WFR_RC=0` and `[ -s "$IMPLEMENT_TMPDIR/summary-final.md" ]`', 'SKILL Step 18 Read fallback removed')
 require('skills/implement/scripts/step-16-17.sh', 'touch "$IMPLEMENT_TMPDIR/.step17-printed"', 'step-16-17 owns .step17-printed')
-require(skill, 'Write `$IMPLEMENT_TMPDIR/.step17-emitted` only after that plain-chat emission.', 'SKILL .step17-emitted orchestrator ownership')
+require(skill, 'Write `$IMPLEMENT_TMPDIR/.step17-emitted` only after that plain-chat emission.', 'SKILL Step 17 .step17-emitted orchestrator ownership')
+require(skill, 'The orchestrator does not write `.step17-emitted` after finalize returns.', 'SKILL Step 18 .step17-emitted wrapper ownership')
 require('skills/implement/scripts/step-16-17.sh', 'if [ "$STEP17_RC" -eq 0 ] && [ -s "$IMPLEMENT_TMPDIR/summary-final.md" ]; then', 'step-16-17 marker gate uses Step 17 rc and non-empty summary')
 require(skill, 'Marker emission is gated on captured Step 17 render success and a non-empty `summary-final.md`, not `summary-final.md` presence alone.', 'SKILL stale-summary marker gate')
 forbid(skill, 'Do NOT use a Bash `cat` or Python tool call to print the summary body', 'retired Step 17 Bash-cat prohibition string')
@@ -332,7 +352,7 @@ for needle in [
     'implement-finalize teardown',
     'DESIGN_TMPDIR=\'\' LARCH_TIMING_SKILL=implement',
 ]:
-    require('skills/implement/scripts/step-18-finalize.sh', needle, f'step-18-finalize {needle}')
+    require('skills/implement/scripts/step-18.sh', needle, f'step-18 {needle}')
 for needle in [
     'Python ship driver wrapper',
     '## Load-Bearing Invariants',

@@ -45,7 +45,7 @@ PY
 for wrapper in \
   skills/implement/scripts/step-2-entry.sh \
   skills/implement/scripts/step-5-resume.sh \
-  skills/implement/scripts/step-18-finalize.sh; do
+  skills/implement/scripts/step-18.sh; do
   command grep -Fq 'LARCH_TIMING_LEDGER' "$wrapper" || fail "$wrapper does not resolve LARCH_TIMING_LEDGER"
   command grep -Fq 'LARCH_TIMING_SKILL=implement' "$wrapper" || fail "$wrapper does not mark timing with LARCH_TIMING_SKILL=implement"
 done
@@ -82,15 +82,19 @@ if errors:
 print(f'plugin-root guards={guard_count} awk-fallbacks={awk_count}')
 PY
 
-# Invariant E (#3425): closing marks stay inside step-18-finalize.sh before teardown.
-finalizer="skills/implement/scripts/step-18-finalize.sh"
+# Invariant E (#3425): closing marks stay inside step-18.sh before teardown.
+finalizer="skills/implement/scripts/step-18.sh"
 done_mark_line=$(awk '/Step 18 — done/ {print NR; exit}' "$finalizer")
 teardown_line=$(awk '/implement-finalize teardown/ {print NR; exit}' "$finalizer")
-[ -n "$done_mark_line" ] || fail 'step-18-finalize.sh lacks Step 18 done mark'
-[ -n "$teardown_line" ] || fail 'step-18-finalize.sh lacks implement-finalize teardown'
-[ "$done_mark_line" -lt "$teardown_line" ] || fail 'Step 18 done mark must precede teardown in step-18-finalize.sh'
-finalize_invocations=$(command grep -Fc 'step-18-finalize.sh' "$skill_file" || true)
-[ "$finalize_invocations" -eq 1 ] || fail "expected one step-18-finalize.sh invocation in SKILL.md, found $finalize_invocations"
+[ -n "$done_mark_line" ] || fail 'step-18.sh lacks Step 18 done mark'
+[ -n "$teardown_line" ] || fail 'step-18.sh lacks implement-finalize teardown'
+[ "$done_mark_line" -lt "$teardown_line" ] || fail 'Step 18 done mark must precede teardown in step-18.sh'
+finalize_invocations=$(command grep -Fc 'bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-18.sh' "$skill_file" || true)
+[ "$finalize_invocations" -eq 2 ] || fail "expected two step-18.sh invocations in SKILL.md, found $finalize_invocations"
+command grep -Fq 'implement-finalize teardown --state-file "$IMPLEMENT_TMPDIR/finalize-state.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"' "$finalizer" || fail 'step-18.sh lacks exact teardown argv'
+command grep -Fq 'final-report step18b --implement-tmpdir "$IMPLEMENT_TMPDIR"' "$finalizer" || fail 'step-18.sh lacks live step18b argv'
+command grep -Fq 'print_summary_markers' "$finalizer" || fail 'step-18.sh lacks marker helper'
+command grep -Fq 'set +e' "$finalizer" || fail 'step-18.sh lacks set +e tolerance blocks'
 
 # Invariant F (#4286): round timing duplicate probe returns success when the row exists.
 step5_resume="skills/implement/scripts/step-5-resume.sh"
