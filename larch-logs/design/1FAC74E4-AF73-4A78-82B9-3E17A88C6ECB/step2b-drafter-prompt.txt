@@ -1,0 +1,271 @@
+You are an expert engineer researching this repository and producing an implementation plan for /design Step 2b.
+
+You may use only side-effect-free repository discovery. Do not write repository files, design tmpdir files, or any other files. Return only the sentinel-delimited response requested below.
+
+Drafting requirements to follow:
+- Prefer minimum necessary change: avoid scope creep, unnecessary complexity, and additions not required for correctness.
+- Read approach-synthesis.txt: if it is exactly NO_SKETCHES, draft from direct codebase/doc inspection without fabricating planning-panel agreement.
+- Read discussion-round1.md when present for scope boundaries and strict constraints.
+- Read design-outline.md only when non-empty and .outline-approved exists; treat Goals, Non-goals, and Surfaces as binding scope.
+- Read brainstorm.md when present as additive ideation context for plan drafting.
+- Use a Files to modify/create section with per-file headings exactly one path each: ### NEW:, ### UPDATED:, or ### REWRITTEN: (at least one ASCII space after ### before the keyword).
+- Include Approach, Edge cases, Failure modes when non-trivial, Testing strategy, optional diff_added/diff_deleted/mechanical_churn trailers, and final diff_lines: <N>. mechanical_churn accepts only true or false; never write a number there.
+- The final plan body must end with a whole-line diff_lines: <N> trailer.
+- Optionally include up to three dynamic plan-review archetypes in a scout block after the plan. The launcher validates, filters, caps, and materializes this block; invalid post-plan scout output is ignored.
+- Scout sentinels inside the summary or plan are fatal format errors. Never put LARCH_SCOUT_* markers in the plan body.
+
+Readability style (trusted):
+# Readability Style
+
+**Consumer**: `/design` prompt surfaces that produce user-facing text, either through an external-agent prompt token or through inline orchestration prose.
+
+**Contract**: this file is the only source of truth for the `/design` readability preamble. External prompt files embed the literal `<READABILITY_STYLE>` token, and assembly code or orchestration expands it to this full file. Inline composition sites read this file before writing user-facing text.
+
+**When to load**: load only when a `/design` step is about to compose user-facing prose or render a prompt that asks another agent to compose such prose. Do not load during setup, pure validation, or byte-stable artifact handling.
+
+---
+
+## Style Axes
+
+Write in three styles at once:
+
+- **Strunk & White**: use active voice. Omit needless words. Prefer concrete nouns and verbs.
+- **Dyslexia-friendly**: use short sentences. Prefer simple words. Break dense ideas into headings and bullets.
+- **Brevity**: shorter is better. Minimize the total artifact length while preserving meaning.
+- **No em dashes**: never use em dashes; use periods, commas, colons, or semicolons instead.
+- **Hedge vs. direct**: hedge uncertain claims ("may contain", "can fail") instead of absolutes; keep directives imperative.
+
+## Precision Contract
+
+Keep these byte-stable unless the task explicitly edits them:
+
+- fenced code blocks
+- backticked tokens
+- file paths
+- identifiers
+- flag names
+- `### NEW:` / `### UPDATED:` / `### REWRITTEN:` plan grammar
+- the trailing `diff_lines: <N>` line
+
+Do not rewrite those items for style. Explain around them instead.
+
+## Plan-Drafting Reminders
+
+When `/design` Step 2b drafts a plan that adds, removes, or converts
+Bash fences in `skills/implement/SKILL.md`:
+
+- List `### UPDATED: scripts/test-implement-fence-shape.sh` in
+  **Files to modify/create**.
+- Note that `EXPECTED_OLD` / `EXPECTED_NEW` may need updates.
+
+This is a discoverability reminder only. Do not add plan grammar.
+
+## Precedence
+
+When rules conflict, use this order:
+
+`code references > meaning > brevity > dyslexia-friendly chunking > Strunk & White micro-rewrites`
+
+Apply it directly:
+
+- Preserve code references first.
+- Preserve exact meaning next.
+- Cut words before adding layout.
+- Add headings or bullets only when they improve scanning.
+- Polish grammar last.
+
+## Substitution Token
+
+External-agent prompt files MUST embed this literal token:
+
+`<READABILITY_STYLE>`
+
+Before launch, replace every literal `<READABILITY_STYLE>` token with the full contents of this file.
+
+## Examples
+
+Before: "It is recommended that the implementer should consider adding a validation step."
+
+After: "Add a validation step."
+
+Before: "The plan should make sure that users are not able to continue when the file cannot be read."
+
+After: "Block the flow when the file cannot be read."
+
+Before: "In order to avoid potential future confusion, documentation can be updated."
+
+After: "Update the docs to avoid confusion."
+
+Before: "The script performs an operation that checks if the path exists."
+
+After: "The script checks that the path exists."
+
+Before: "This could possibly be out of scope depending on how the team wants to proceed."
+
+After: "This may be out of scope."
+
+Required output format:
+[optional]
+LARCH_SUMMARY_BEGIN
+A concise summary for large-plan preview. Omit this whole summary block only when no useful summary is needed.
+LARCH_SUMMARY_END
+[/optional]
+LARCH_PLAN_BEGIN
+Full implementation plan body ending with diff_lines: <N>.
+LARCH_PLAN_END
+[optional]
+LARCH_SCOUT_BEGIN
+{"archetypes":[{"name":"slug","focus_area":"code-quality|risk-integration|correctness|architecture|security","weight":1,"rationale":"single-line reason","prompt_body":"2-6 sentence focus directive ending with the required citation sentence."}]}
+LARCH_SCOUT_END
+[/optional]
+
+Optional advisory status may be included between LARCH_STATUS_BEGIN and LARCH_STATUS_END, but the summary, plan, and optional scout sentinels above are the only parsed contract.
+
+Untrusted feature description:
+<feature_description encoding="literal-redacted">
+# Rework fixer waterfalls: Claude/Opus-4.8 first, agentic ship-pr CI loop, drop version bumps
+
+## Summary
+
+Rework larch's coder-fixer waterfalls in `/implement` with four changes:
+
+1. **Reorder the ship-pr fixer waterfall** to Claude → Codex → Cursor, and bump the Claude tier to **Opus 4.8**.
+2. **Make the ship-pr CI fixer agentic**: fix → run relevant tests locally → push → passively monitor CI, looping up to 20 cycles before bailing.
+3. **Remove version-bump conflict resolution** from ship-pr. Version bumps now belong exclusively to `/release`.
+4. **Apply the same order/model policy to the separate pre-ship lint-fix loop** in `python/checks.py` (currently Codex → Cursor with no Claude tier).
+
+## Current state (verified)
+
+### ship-pr fixer waterfall
+
+- The waterfall order is `FIXER_TIER_ORDER = ("codex", "cursor", "claude")` in `python/config.py`. Codex is tried first, then Cursor, then Claude.
+- Per-tier models: Codex `gpt-5.5` (effort `high`) and Cursor `composer-2.5` are resolved in `resolve_model_args` (`python/agents.py`). The Claude CI/conflict tier defaults to **`claude-sonnet-4-6`**, not Opus (the `_ci_parser` `--model` default; launched via `claude --print` in `launch_claude_ci_main`).
+- The same waterfall serves two roles: CI-check fixes (`role=fix`, `python/ci_monitor.py`) and rebase/merge-conflict resolution (`role=resolve-conflict`, `python/rebase.py`).
+- Each tier is a **single-shot** subprocess. It does not run tests locally, push, or monitor CI in a loop. The orchestration/monitor loop lives outside the fixer in `python/ci_monitor.py`.
+- Version-bump conflicts are auto-resolved by a deterministic prepass over `plugin.json`, `version.go`, `go.sum` (`_deterministic_prepass` in `python/rebase.py`), with `_is_bump_path` / `_conflicts_are_non_bump_only` gating the pre-push handoff.
+
+### Pre-ship lint-fix loop (separate surface)
+
+- The local lint-fix loop (`run_lint_fix` in `python/checks.py`) currently dispatches **Codex** (`launch-codex-exec`, `gpt-5.5`) first, then **Cursor** (`run-external-agent --tool cursor`, `composer-2.5`), then returns `main-agent-required` when both are unavailable or fail. **There is no Claude tier.**
+- This loop is a **pre-ship gate, not part of ship-pr.** It runs in `/implement` Steps 3, 5 (`step5-self-review`, `step5-mav`), and 6 (via `run-step-checks.sh` for detection + prompt-side `checks lint-fix`), and in `/review-and-fix` (`python/review_and_fix.py`, in-process `checks.run_lint_fix`).
+- ship-pr itself has **no** local checks/lint gate. The upfront pre-PR checks phase was removed (`python/ship.py`: "Upfront local lint/tests phase removed by request"); CI surfaces failures, which the ship-pr CI-fix waterfall then fixes.
+
+## Requested changes
+
+### 1. Reorder ship-pr waterfall and move the Claude tier to Opus 4.8
+
+- New order: **Claude/Opus 4.8 → Codex/GPT-5.5 → Cursor/composer-2.5.**
+- Move Claude to the **first** slot and change its model to **Opus 4.8** (`claude-opus-4-8`).
+- Codex and Cursor move down one slot each. **Keep their models unchanged** (Codex `gpt-5.5`, Cursor `composer-2.5`).
+- Mind the interaction with the first-fixer short-circuit (`run_waterfall` in `python/agents.py`): the "first fixer fails for a non-health reason → escalate" behavior now keys off Claude.
+
+### 2. Agentic ship-pr CI fixer: local tests + passive CI monitoring, up to 20 cycles
+
+The ship-pr CI-issue fixer (lint or test failures) should:
+
+- After making a fix, **run the relevant tests locally before pushing.**
+- Loop up to **20 cycles** of: fix → test locally → push → check CI, then give up and bail if CI still fails.
+- **Critically: after pushing, the fixer MUST monitor CI _passively_** until CI reports pass or fail, **without generating extra turns or burning tokens on the monitoring process itself.**
+- In short, the Claude fixer should behave **like the main agent would if it took over manually fixing CI.**
+
+Rationale for spawning a dedicated Opus fixer instead of bailing back to the main agent:
+
+- (a) The main agent is likely **Sonnet, not Opus**.
+- (b) The main agent carries **bloated context**. A dedicated fixer keeps context minimal to save tokens and money.
+
+### 3. Remove version-bump resolution from ship-pr
+
+- Regular PRs no longer perform version bumps. **`/release` owns version bumping exclusively.**
+- Remove version-bump conflict resolution and all related mentions from ship-pr: the `plugin.json` / `version.go` / `go.sum` deterministic prepass and the bump-path gating (`_is_bump_path`, `_conflicts_are_non_bump_only`) in `python/rebase.py`, plus any prose or docs that reference version-bump handling in ship-pr.
+
+### 4. Apply the same order/model policy to the pre-ship lint-fix loop (`python/checks.py`)
+
+- Give the local lint-fix loop the **same tier order and models** as the ship-pr waterfall: **Claude/Opus 4.8 → Codex/GPT-5.5 → Cursor/composer-2.5.**
+- Add a **Claude/Opus 4.8 tier as the first dispatch** in `run_lint_fix`; demote Codex and Cursor one slot each and **keep their models** (`gpt-5.5`, `composer-2.5`).
+- Keep the existing `main-agent-required` outcome as the **final fallback** after all three vendor tiers are unavailable or fail.
+- Scope: this change is **order/model only.** The agentic local-test + push + passive-CI-monitor loop from change #2 does **not** apply here, because this loop runs pre-push and never touches CI.
+- Behavioral note for the implementer: with Claude/Opus first, an Opus fixer is spawned on **routine pre-ship lint failures** (Steps 3/5/6 and `/review-and-fix`), not just CI failures. This is intended, for policy consistency across larch's coder waterfalls; the same "spawn a minimal-context Opus fixer rather than fall back to a bloated-context main agent" rationale from change #2 applies.
+
+## Notes
+
+- Changes 1, 2, and 4 unify the fixer order/model policy across larch's coder waterfalls; change 3 is independent cleanup.
+- The ship-pr CI/conflict waterfall (`ci_monitor.py` / `rebase.py`) and the pre-ship lint-fix loop (`checks.py`) are **separate code paths** that share the same policy after this issue. Reordering one does not reorder the other; both must be changed.
+- Update affected tests and `.md` sibling contracts (e.g. `python/test_agents.py`, `python/test_checks.py`, the `ci_monitor` / `rebase` harnesses, launcher harnesses) and any docs enumerating the waterfall order or tier models.
+
+
+</feature_description>
+
+
+Untrusted approach synthesis:
+<approach_synthesis encoding="literal-redacted">
+NO_SKETCHES
+
+</approach_synthesis>
+
+
+Untrusted discussion round 1:
+<discussion_round1 encoding="literal-redacted">
+## Decision 1: Agentic ship-pr CI fixer architecture (Change #2)
+- **Question**: How should the agentic CI fixer integrate with the existing Python `monitor()` loop in `ci_monitor.py`?
+- **Resolution**: Spawn a dedicated minimal-context **Opus 4.8** agentic subprocess that owns the full `fix → local-test → push → passive-CI-wait` loop internally (≤20 cycles). `ci_monitor` delegates to it for the CI-fix path instead of driving its own fix/push/poll cycle. Passive CI monitoring must use a **blocking shell CI-watch** so the LLM spends no tokens polling.
+- **Source**: user
+
+## Decision 2: CI-fix loop exhaustion behavior (Change #2)
+- **Question**: After the agentic Opus loop exhausts its 20 cycles without green CI, what happens?
+- **Resolution**: **Bail to the operator** (NEEDS_USER `ci-fix-exhausted`). The 20-cycle Opus loop is the entire CI-fix budget. Codex/Cursor are **no longer used for CI fixes** (role=fix); they serve conflict-resolution only after this change.
+- **Source**: user
+
+## Decision 3: resolve-conflict role stays single-shot (Change #1 only)
+- **Question**: Does the Change #2 agentic loop also apply to rebase/merge-conflict resolution (role=resolve-conflict)?
+- **Resolution**: No. The conflict-resolution waterfall (`rebase.py`) stays a **single-shot** Claude→Codex→Cursor waterfall (reordered + Opus model per Change #1). The agentic loop's "push → monitor CI" steps are inapplicable to local conflict resolution. Only the order/model change touches this path.
+- **Source**: codebase (CI monitoring is not meaningful for local conflict resolution)
+
+## Decision 4: Version-bump removal scope (Change #3)
+- **Question**: How much of the version-bump machinery is removed from ship-pr?
+- **Resolution**: Full removal of `_deterministic_prepass`, `_is_bump_path`, `_conflicts_are_non_bump_only` (and now-orphaned helpers like `_is_plugin_json_path` / `_larch_bump_files` if unused elsewhere) from `python/rebase.py`. `_resolve_conflicts` sends all unmerged paths straight to the waterfall; the pre-push handoff gate becomes unconditional on `enable_pre_push_handoff`. Remove related prose/docs. Premise: regular PRs no longer bump versions, so version-file conflicts should not arise; `/release` owns version bumping exclusively.
+- **Source**: issue + codebase
+
+## Decision 5: Pre-ship lint-fix loop is order/model only (Change #4)
+- **Question**: Does Change #4 (`python/checks.py` `run_lint_fix`) get the agentic loop too?
+- **Resolution**: No. Order/model only — add a **Claude/Opus 4.8** tier as the first dispatch, demote Codex/Cursor one slot each, keep their models (`gpt-5.5`, `composer-2.5`), and keep `main-agent-required` as the final fallback. The agentic local-test+push+CI-monitor loop does NOT apply here (this loop is pre-push and never touches CI). Spawning Opus on routine pre-ship lint failures is intended for policy consistency.
+- **Source**: issue
+
+## Hard constraints (binding for plan drafting)
+- Passive CI monitoring MUST NOT generate extra LLM turns or burn tokens on the monitoring process itself (use a blocking shell-level CI watch, not LLM polling).
+- Keep Codex `gpt-5.5` (effort `high`) and Cursor `composer-2.5` models unchanged; only the Claude tier moves to `claude-opus-4-8`.
+- Update affected tests (`python/test_agents.py`, `python/test_checks.py`, `python/test_ci_monitor.py`, `python/test_rebase.py`, `python/test_config.py`, launcher/review harnesses) and `.md` sibling contracts and any docs enumerating waterfall order or tier models.
+- ship-pr has no local checks/lint gate (the upfront pre-PR checks phase was removed by design); do not reintroduce it.
+
+</discussion_round1>
+
+
+Untrusted approved design outline:
+<design_outline encoding="literal-redacted">
+## Proposed Design Outline
+
+### Goals
+- Unify the coder-fixer order/model policy to **Claude/Opus-4.8 → Codex/gpt-5.5 → Cursor/composer-2.5** across both fixer surfaces.
+- Make the ship-pr CI fixer **agentic**: a dedicated minimal-context Opus subprocess that loops fix → local-test → push → passive-CI-wait (≤20 cycles), then bails to the operator.
+- Drop version-bump conflict handling from ship-pr; `/release` owns version bumping.
+
+### Non-goals
+- No agentic loop for conflict resolution (`rebase.py`) or the pre-ship lint-fix loop (`checks.py`); those get order/model only.
+- No model change for Codex (`gpt-5.5`) or Cursor (`composer-2.5`); only the Claude tier moves to `claude-opus-4-8`.
+- No reintroduction of an upfront ship-pr local checks/lint gate.
+
+### Approach sketch
+- `config.py`: reorder `FIXER_TIER_ORDER` → `("claude", "codex", "cursor")`; move the Claude fixer model default to `claude-opus-4-8`.
+- `ci_monitor.py`: replace the role=fix waterfall with a delegated **agentic Opus fixer** that owns the fix/local-test/push/passive-CI-wait loop; exhaustion bails to operator (`ci-fix-exhausted`). Reuse existing helpers (`verify_job_locally`, `stage_and_push`, blocking CI wait) so the LLM never polls.
+- `rebase.py`: delete `_deterministic_prepass` + bump-path gating; all conflicts go straight to the reordered single-shot waterfall.
+- `checks.py`: add a Claude/Opus first tier in `run_lint_fix`; keep `main-agent-required` as the final fallback.
+
+### Surfaces in scope
+- `python/config.py`, `python/agents.py`, `python/ci_monitor.py`, `python/rebase.py`, `python/checks.py`.
+- Tests: `test_config.py`, `test_agents.py`, `test_ci_monitor.py`, `test_rebase.py`, `test_checks.py`, launcher/review harnesses.
+- `.md` sibling contracts and docs enumerating waterfall order or tier models.
+
+### Open questions
+- Passive-CI-wait + agentic-loop mechanism: reuse `ci_monitor`'s Python helpers driving a thin Opus subprocess, vs. hand the Opus subprocess a blocking CLI verb (resolve during plan drafting).
+
+</design_outline>
+

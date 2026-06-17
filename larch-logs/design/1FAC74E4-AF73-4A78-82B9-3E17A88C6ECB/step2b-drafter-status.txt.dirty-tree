@@ -1,0 +1,3 @@
+STATUS=clean
+MODE=baseline-delta
+REASON=codex-drafter-no-new-mutations

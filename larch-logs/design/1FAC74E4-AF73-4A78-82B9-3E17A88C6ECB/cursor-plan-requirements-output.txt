@@ -1,0 +1,28 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	python/ci_agentic_fix.py:66-79	Agentic cycle omits delta path computation before stage_and_push	The plan captures baseline tracked/untracked sets and calls ci_monitor.stage_and_push after verification, but never computes changed paths via ci_monitor._delta_paths (or equivalent). stage_and_push only commits when delta_paths is non-empty, so a successful Opus edit plus passing local verify would still return push failed with no commit	After verification passes, compute delta_paths from the pre-cycle baselines (same contract as ci_monitor.run_ci_fix today), pass them into stage_and_push with commit_label claude, and treat empty delta as a no-progress cycle outcome
+2	in_scope	important	correctness	python/ci_agentic_fix.py:66-79	Verification failure path lacks explicit working-tree rollback in the main cycle steps	Edge cases mention rollback on verify failure, but the per-cycle procedure only says do not push. Leaving failed-cycle edits in the tree can poison later cycles or forbidden-path guards	A mirror ci_monitor._rollback_to_baseline step after verify failure before continuing the 20-cycle loop; keep edge-case text aligned with the main procedure
+3	in_scope	important	correctness	python/ci_agentic_fix.py:73-74	Claude launcher health failures during agentic CI fix are unspecified	The issue removes Codex/Cursor CI fallback. The plan covers non-health first-fixer short-circuit and conflict-tier health continuation, but not auth/quota/transient failures inside the agentic loop. The delegate could retry Opus up to 20 times on a dead tier	Fail fast on Claude health-class launcher failures (return first-fixer-non-health or waterfall-failed immediately); reserve multi-cycle retry for fix/verify/CI-fail outcomes only
+4	in_scope	important	correctness	python/ci_agentic_fix.py:66-79	No-op or empty-delta cycles after a successful launcher are unspecified	If Opus exits cleanly but makes no effective edits, verify may pass, delta_paths is empty, and stage_and_push returns without pushing. Current run_ci_fix maps unchanged head after push to first-fixer-non-health; the agentic plan does not define equivalent behavior and may burn cycles or stall silently	Define explicit no-progress handling: treat empty delta after a successful launcher as a failed cycle (rollback if needed), continue while cycles remain, and surface first-fixer-non-health or ci-fix-exhausted when no progress is possible
+5	out_of_scope	nit	architecture	python/rebase.py:203-220	[SCOPE-REDUCTION] Explicit per-tier conflict loop duplicates run_waterfall instead of extending it with a staging hook	The approved outline already chose this shape, and driver-owned git add is likely required for edit-only conflict prompts. Not a spec miss, but it adds substantial surface beyond reorder plus bump removal	Defer unless implementer can add a minimal run_waterfall post-tier staging callback without rewriting launcher-failure parity by hand
+
+**1. correctness — `python/ci_agentic_fix.py:66-79` — Missing delta path computation**
+
+The agentic cycle lists verify then `stage_and_push`, but never computes `delta_paths` from the captured baselines. Today's `run_ci_fix` calls `_delta_paths` before push; without that step the delegate cannot commit fixes.
+
+**2. correctness — `python/ci_agentic_fix.py:66-79` — Verify failure rollback omitted from main steps**
+
+Rollback on verify failure appears only in Edge cases. The primary cycle should require `_rollback_to_baseline` before advancing to the next cycle.
+
+**3. correctness — `python/ci_agentic_fix.py:73-74` — Health failure behavior undefined for CI-only agentic path**
+
+With Codex/Cursor removed from ship-pr CI fix, Claude auth/quota/transient failures need an immediate terminal outcome, not repeated Opus launches across 20 cycles.
+
+**4. correctness — `python/ci_agentic_fix.py:66-79` — Empty-delta / no-op cycle behavior undefined**
+
+The plan does not say what happens when the launcher succeeds but produces no committable delta. Current code has explicit first-fixer semantics for that case; the agentic loop needs the same contract.
+
+**5. [OUT_OF_SCOPE] architecture — `python/rebase.py:203-220` — Explicit conflict loop vs `run_waterfall` extension**
+
+Real complexity increase, but it matches the approved outline and supports driver-owned staging. Track only if implementer finds a smaller hook-based path.
+
+**Coverage note:** Reorder to Claude/Opus first, 20-cycle agentic CI loop with blocking `ci wait`, version-bump removal, lint-fix tier reorder, stall-recovery `ci-fix-exhausted` → Step 12d, and doc/test surfaces are otherwise addressed. The four in-scope items above are the material gaps against the feature spec.
