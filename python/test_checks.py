@@ -2426,6 +2426,7 @@ def test_direct_targets_design_step1d5_wrapper_and_harness(tmp_path: Path) -> No
         ("python/plan_review_panel.py", "test-dispatch-plan-review-panel"),
         ("python/plan_review_panel.py", "test-dispatch-plan-voters"),
         ("python/rendering.py", "test-dispatch-plan-review-panel"),
+        ("python/rendering.py", "test-dispatch-plan-voters"),
         ("python/test_design_log_ship.py", "test-design-log-ship"),
     ],
 )

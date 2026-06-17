@@ -487,7 +487,7 @@ _DIRECT_TARGET_RULES: Final[tuple[tuple[tuple[str, ...], tuple[str, ...], bool, 
     (("skills/*/SKILL.md", "skills/*/references/*.md"), (), False, False),
     (("scripts/lint-readability-preamble.tsv", "scripts/lint-readability-preamble.tsv.md"), ("test-lint-readability-preamble",), False, False),
 
-    (("python/rendering.py", "python/test_rendering.py"), ("test-plan-review", "test-launch-claude-subprocess", "test-lib-scope-anchor-handoff", "test-plan-review-panel", "test-dispatch-plan-review-panel", "test-aggregate-findings"), False, False),
+    (("python/rendering.py", "python/test_rendering.py"), ("test-plan-review", "test-launch-claude-subprocess", "test-lib-scope-anchor-handoff", "test-plan-review-panel", "test-dispatch-plan-review-panel", "test-dispatch-plan-voters", "test-aggregate-findings"), False, False),
     (("python/decompose.py", "python/test_decompose.py"), ("test-decompose-file-issues", "test-decompose-panel-dispatch", "test-decompose-aggregator"), True, True),
     (("python/plan_scout.py", "python/test_plan_scout.py"), ("test-scout-dynamic-archetypes", "test-scout-plan-archetypes-wrapper", "test-dispatch-panel-core-dynamic"), True, True),
     (("python/issue_wire.py", "python/test_issue_wire.py", "python/plan_quality.py", "python/test_plan_quality.py", "python/redact.py", "python/gh.py", "python/rendering.py", "python/test_rendering.py", ".claude/rules/gh-body-file.md", "AGENTS.md", "SECURITY.md", "agent-lint.toml", "docs/issue-anchored-plan.md", "docs/linting.md", "python/test_plan_review.py", "scripts/test-legacy-title-prefix-literals-scope.sh"), ("test-design-structure", "test-review-structure", "test-research-structure"), True, True),
