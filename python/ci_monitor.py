@@ -1432,6 +1432,18 @@ def _agentic_output_dir(ctx: RunContext | None) -> str:
     return str(path)
 
 
+def _read_push_checkpoint_from_ctx(ctx: RunContext | None) -> dict[str, str] | None:
+    path = Path(_agentic_output_dir(ctx)) / "ci-agentic-push-checkpoint.latest"
+    if not path.is_file():
+        return None
+    values: dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        key, sep, value = line.partition("=")
+        if sep and key:
+            values[key] = value.strip()
+    return values
+
+
 def _parse_kv_output(text: str) -> dict[str, str]:
     values: dict[str, str] = {}
     for line in text.splitlines():
@@ -1496,6 +1508,27 @@ def _agentic_fix_result(
         argv.append("--no-logs-commit")
     result = runner.run(argv, cwd=cwd, timeout=_agentic_fix_delegate_timeout_sec())
     if result.returncode == config.EXIT_TIMEOUT:
+        checkpoint = _read_push_checkpoint_from_ctx(ctx)
+        if checkpoint is not None:
+            pending = checkpoint.get("CI_FIX_REBASE_PENDING", "").lower() == "true"
+            delta_paths = tuple(
+                path for path in checkpoint.get("DELTA_PATHS", "").split(",") if path
+            )
+            detail = checkpoint.get("DETAIL", "") or "delegate-timeout-after-push"
+            if pending:
+                return FixResult(
+                    status="pushed",
+                    winning_tier="claude",
+                    delta_paths=delta_paths,
+                    detail=detail,
+                    ci_fix_rebase_pending=True,
+                )
+            return FixResult(
+                status="pushed",
+                winning_tier="claude",
+                delta_paths=delta_paths,
+                detail=detail,
+            )
         return FixResult(
             status="fix-exhausted",
             detail="ci-fix-exhausted: delegate-timeout",
@@ -1616,10 +1649,8 @@ def evaluate_failure(
             ctx=ctx,
         )
 
-    last_verify: tuple[str, ...] = ()
     last_classified: ClassifiedJobs | None = None
     last_logs: LogCollectResult | None = None
-    code_fix_attempted_on_ready_log = False
     for attempt in range(1, config.CI_MONITOR_FIX_WATERFALL_MAX_ATTEMPTS + 1):
         if not _on_named_branch(runner, cwd=cwd):
             return FixResult(
@@ -1662,85 +1693,6 @@ def evaluate_failure(
                     continue
                 return pending_fix
             return pending_fix
-        if attempt == 1 and upfront_ready_stash is not None:
-            logs = upfront_ready_stash
-        else:
-            logs = collect_failed_logs(runner, run_id=run_id, repo=repo, cwd=cwd)
-        if logs.state != "ready":
-            if attempt < config.CI_MONITOR_FIX_WATERFALL_MAX_ATTEMPTS:
-                sleep_fn(_outer_backoff_seconds(attempt))
-            continue
-        jobs_raw, jobs_state = read_failed_jobs(
-            runner,
-            run_id=run_id,
-            repo=repo,
-            cwd=cwd,
-        )
-        if jobs_state != "ready":
-            if attempt < config.CI_MONITOR_FIX_WATERFALL_MAX_ATTEMPTS:
-                sleep_fn(_outer_backoff_seconds(attempt))
-            continue
-
-        classified = classify_failed_jobs(jobs_raw)
-        last_classified = classified
-        last_logs = logs
-        fix = run_ci_fix(
-            runner,
-            run_id=run_id,
-            repo=repo,
-            classified=classified,
-            logs=logs,
-            plan_file=plan_file,
-            cwd=cwd,
-            launch_fn=launch_fn,
-            base_remote=base_remote,
-            base_ref=base_ref,
-            ci_fix_rebase_pending=ci_fix_rebase_pending,
-            ctx=ctx,
-        )
-        if fix.code_fix_attempted_on_ready_log:
-            code_fix_attempted_on_ready_log = True
-        if fix.status == "local-unfixable":
-            if code_fix_attempted_on_ready_log:
-                return FixResult(
-                    status="fix-exhausted",
-                    detail=_fix_exhausted_detail(classified, logs),
-                )
-            return fix
-        if fix.status == "head-changed":
-            if code_fix_attempted_on_ready_log:
-                return FixResult(
-                    status="fix-exhausted",
-                    detail=_fix_exhausted_detail(classified, logs),
-                )
-            return fix
-        if fix.status == "pushed":
-            return fix
-        if fix.status == "first-fixer-non-health":
-            return fix
-        if fix.status == "verify-failed":
-            last_verify = fix.failed_verify
-            if attempt < config.CI_MONITOR_FIX_WATERFALL_MAX_ATTEMPTS:
-                sleep_fn(_outer_backoff_seconds(attempt))
-            continue
-        if fix.status == "waterfall-failed":
-            if attempt < config.CI_MONITOR_FIX_WATERFALL_MAX_ATTEMPTS:
-                sleep_fn(_outer_backoff_seconds(attempt))
-            continue
-        return fix
-
-    if code_fix_attempted_on_ready_log:
-        return FixResult(
-            status="fix-exhausted",
-            detail=_fix_exhausted_detail(last_classified, last_logs),
-        )
-    if last_verify:
-        jobs = ", ".join(last_verify)
-        return FixResult(
-            status="waterfall-failed",
-            failed_verify=last_verify,
-            detail=f"verify-failed after outer cap: {jobs}",
-        )
     return FixResult(status="fix-exhausted", detail=_fix_exhausted_detail(last_classified, last_logs))
 
 

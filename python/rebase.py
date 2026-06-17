@@ -131,9 +131,8 @@ def _path_has_conflict_markers(path: str, *, cwd: str | None) -> bool:
         text = file_path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return True
-    has_start = re.search(r"^<<<<<<<", text, re.MULTILINE) is not None
-    has_end = re.search(r"^>>>>>>>", text, re.MULTILINE) is not None
-    return has_start and has_end
+    marker_re = re.compile(r"^(<<<<<<<|=======|>>>>>>>)", re.MULTILINE)
+    return marker_re.search(text) is not None
 
 
 def _stage_resolved_conflict_files(
@@ -209,7 +208,6 @@ def make_conflict_launch_fn(
                 allow_output_fallback=True,
             )
         launcher_capture = result.stdout + result.stderr
-        _ = failure_log.write_text(launcher_capture, encoding="utf-8")
         launcher_exit = agents.resolve_launcher_exit(
             launcher_capture,
             output_file=output,
@@ -221,6 +219,10 @@ def make_conflict_launch_fn(
             tool=tier,
             output_file=output,
         )
+        if not launcher_capture.endswith("\n"):
+            launcher_capture += "\n"
+        launcher_capture += f"LAUNCHER_FAILURE_CLASS={failure.failure_class}\n"
+        _ = failure_log.write_text(launcher_capture, encoding="utf-8")
         return agents.TierAttempt(
             tier=tier,
             wrapper_rc=result.returncode,

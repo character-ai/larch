@@ -1878,7 +1878,8 @@ def run_lint_fix(
             coder_tool=None,
         )
     if claude_present is None:
-        claude_present = False
+        probe_root = Path(allowed_tmpdir) if allowed_tmpdir is not None else Path(run_parent).resolve().parent
+        claude_present = _binary_flag("CLAUDE_BINARY_FOUND", probe_root, "claude")
     if not claude_present and not codex_present and not cursor_present:
         return FixOutcome(
             status="main-agent-required",

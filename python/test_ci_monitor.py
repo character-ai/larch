@@ -2698,3 +2698,58 @@ def test_evaluate_failure_pending_push_only_skips_agentic_delegate(
     )
     assert agentic_calls["n"] == 0
     assert fix.status == "pushed"
+
+
+def test_evaluate_failure_normal_path_uses_agentic_delegate_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    agentic_calls = {"n": 0}
+    waterfall_calls = {"n": 0}
+
+    def fake_agentic(*_args: object, **_kwargs: object) -> ci_monitor.FixResult:
+        agentic_calls["n"] += 1
+        return ci_monitor.FixResult(status="pushed", winning_tier="claude")
+
+    def fake_run_ci_fix(*_args: object, **_kwargs: object) -> ci_monitor.FixResult:
+        waterfall_calls["n"] += 1
+        return ci_monitor.FixResult(status="waterfall-failed", detail="should-not-run")
+
+    def fake_collect_failed_logs(
+        *_args: object,
+        **_kwargs: object,
+    ) -> ci_monitor.LogCollectResult:
+        return ci_monitor.LogCollectResult(text="", state="ready")
+
+    monkeypatch.setattr(ci_monitor, "_agentic_fix_result", fake_agentic)
+    monkeypatch.setattr(ci_monitor, "run_ci_fix", fake_run_ci_fix)
+    monkeypatch.setattr(ci_monitor, "collect_failed_logs", fake_collect_failed_logs)
+
+    runner = RecordingRunner(_baseline_responses())
+    fix = ci_monitor.evaluate_failure(
+        runner,
+        pr=1,
+        run_id="42",
+        repo="o/r",
+        plan_file=None,
+        transient_retries=0,
+        _fix_attempts=0,
+        cwd="/tmp/repo",
+        ctx=RunContext(
+            branch="feat",
+            issue="",
+            repo="o/r",
+            run_id="42",
+            tmpdir="/tmp/implement",
+            merge=False,
+            draft=False,
+            forked=False,
+            manifest_path="",
+            tool_label="claude",
+            no_admin_fallback=False,
+            repo_unavailable=False,
+            pr_number=1,
+        ),
+    )
+    assert agentic_calls["n"] == 1
+    assert waterfall_calls["n"] == 0
+    assert fix.status == "pushed"

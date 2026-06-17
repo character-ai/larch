@@ -18,6 +18,19 @@ def test_messages_preserved() -> None:
     assert str(err) == "network blip"
 
 
+def test_pre_push_conflict_handoff_default_message_is_generic() -> None:
+    err = errors.PrePushConflictHandoff(
+        conflict_files=("vendor/a.txt",),
+        resume_phase="ship-pr-rrr-phase14",
+        caller_kind="ship_pr_pre_push",
+    )
+    message = str(err)
+    assert message == "fixer waterfall could not resolve conflicts"
+    lowered = message.lower()
+    for token in ("bump", "version", "postbump", "semver"):
+        assert token not in lowered
+
+
 def test_pre_push_conflict_handoff_fields_and_csv() -> None:
     err = errors.PrePushConflictHandoff(
         conflict_files=("vendor/a.txt", "src/b.txt"),

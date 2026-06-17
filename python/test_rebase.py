@@ -1705,12 +1705,16 @@ def test_conflict_loop_health_failure_continues_to_next_tier(tmp_path: Path) -> 
     assert launch_calls == list(config.FIXER_TIER_ORDER)
 
 
-def test_path_has_conflict_markers_requires_full_pair(tmp_path: Path) -> None:
+def test_path_has_conflict_markers_detects_any_marker_line(tmp_path: Path) -> None:
     conflict_file = tmp_path / "partial.txt"
     _ = conflict_file.write_text("resolved top\n=======\nresolved bottom\n", encoding="utf-8")
-    assert not rebase._path_has_conflict_markers("partial.txt", cwd=str(tmp_path))  # pyright: ignore[reportPrivateUsage]
+    assert rebase._path_has_conflict_markers("partial.txt", cwd=str(tmp_path))  # pyright: ignore[reportPrivateUsage]
+    _ = conflict_file.write_text("<<<<<<< ours\n", encoding="utf-8")
+    assert rebase._path_has_conflict_markers("partial.txt", cwd=str(tmp_path))  # pyright: ignore[reportPrivateUsage]
     _ = conflict_file.write_text("<<<<<<< ours\n=======\n>>>>>>> theirs\n", encoding="utf-8")
     assert rebase._path_has_conflict_markers("partial.txt", cwd=str(tmp_path))  # pyright: ignore[reportPrivateUsage]
+    _ = conflict_file.write_text("resolved content\n", encoding="utf-8")
+    assert not rebase._path_has_conflict_markers("partial.txt", cwd=str(tmp_path))  # pyright: ignore[reportPrivateUsage]
 
 
 def test_partial_conflict_markers_are_not_staged(tmp_path: Path) -> None:
@@ -1736,15 +1740,16 @@ def test_partial_conflict_markers_are_not_staged(tmp_path: Path) -> None:
             (("git", "rebase", "--continue"), _ok(("git", "rebase", "--continue"), "")),
         ],
     )
-    rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
-        runner,
-        lambda tier, _csv: TierAttempt(tier, 0, 0, LaunchFailure("none", "")),
-        repo="o/r",
-        run_id="run",
-        cwd=str(tmp_path),
-        tmpdir=str(tmp_path),
-    )
-    assert any(
+    with pytest.raises(Stalled):
+        rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
+            runner,
+            lambda tier, _csv: TierAttempt(tier, 0, 0, LaunchFailure("none", "")),
+            repo="o/r",
+            run_id="run",
+            cwd=str(tmp_path),
+            tmpdir=str(tmp_path),
+        )
+    assert not any(
         call[:2] == ("git", "add") and "vendor/foo.txt" in call
         for call in runner.calls
     )

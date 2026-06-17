@@ -140,6 +140,26 @@ def _rollback(
     )
 
 
+def _write_push_checkpoint(
+    output_dir: Path,
+    *,
+    cycle: int,
+    run_id: str,
+    delta_paths: tuple[str, ...],
+    pending: bool,
+    detail: str = "",
+) -> None:
+    """Record last successful push so parent timeout can recover remote state."""
+    text = (
+        f"CYCLE={cycle}\n"
+        f"RUN_ID={run_id}\n"
+        f"DELTA_PATHS={','.join(delta_paths)}\n"
+        f"CI_FIX_REBASE_PENDING={'true' if pending else 'false'}\n"
+        f"DETAIL={detail}\n"
+    )
+    _ = (output_dir / "ci-agentic-push-checkpoint.latest").write_text(text, encoding="utf-8")
+
+
 def _wait_for_ci(
     runner: proc.Runner,
     *,
@@ -186,6 +206,8 @@ def _wait_for_ci(
         return parsed, None
     if parsed.get("CI_STATUS") in {"fail", "failure"} and parsed.get("ACTION"):
         return parsed, None
+    if parsed.get("ACTION") == "bail":
+        return parsed, None
     return {}, "ci-wait-malformed-output"
 
 
@@ -204,16 +226,6 @@ def _run_cycle(
         return "waterfall-failed", f"failed-jobs-{jobs_state}", False, (), False, None, ""
     classified = ci_monitor.classify_failed_jobs(jobs_raw)
     if not classified.fixable:
-        return (
-            "local-unfixable",
-            ",".join(_job_token(job) for job in classified.unfixable),
-            False,
-            (),
-            False,
-            None,
-            "",
-        )
-    if classified.unfixable:
         return (
             "local-unfixable",
             ",".join(_job_token(job) for job in classified.unfixable),
@@ -271,9 +283,9 @@ def _run_cycle(
                 cwd=cwd,
             )
             if failure.failure_class == "health":
-                if failure.reason in {"binary-missing", "auth"}:
+                if failure.reason in {"binary-missing", "auth", "quota"}:
                     return (
-                        "first-fixer-non-health",
+                        "ci-fix-exhausted",
                         failure.reason or "claude-health",
                         fix_attempted,
                         (),
@@ -369,17 +381,24 @@ def _run_cycle(
                 cwd=cwd,
             )
             return "push-failed", "push-failed", fix_attempted, (), False, None, failure_log_text
+        _write_push_checkpoint(
+            Path(args.output_dir),
+            cycle=cycle,
+            run_id=run_id,
+            delta_paths=pushed_paths,
+            pending=pending,
+        )
         wait, wait_err = _wait_for_ci(runner, args=args, repo_root=repo_root, cycle=cycle)
         if wait_err:
-            _ = git.reset(runner, "--hard", baseline_head, cwd=cwd)
-            _rollback(
-                runner,
-                baseline_tracked=baseline_tracked,
-                baseline_untracked=baseline_untracked,
-                baseline_staged=baseline_staged,
-                cwd=cwd,
+            _write_push_checkpoint(
+                Path(args.output_dir),
+                cycle=cycle,
+                run_id=run_id,
+                delta_paths=pushed_paths,
+                pending=False,
+                detail=wait_err,
             )
-            return "waterfall-failed", wait_err, fix_attempted, (), False, None, failure_log_text
+            return "pushed", wait_err, fix_attempted, pushed_paths, False, run_id, failure_log_text
         if wait.get("ACTION") in {"rebase", "rebase_then_evaluate"}:
             return (
                 "rebase-required",
@@ -470,6 +489,20 @@ def main(argv: list[str] | None = None) -> int:
                 cycles=cycle,
                 delta_paths=delta_paths,
                 ci_fix_rebase_pending=pending,
+                exhausted_detail_file=str(exhausted_path),
+            )
+        if status == "ci-fix-exhausted":
+            exhausted_path = Path(args.output_dir) / f"ci-agentic-exhausted-{cycle}.detail"
+            _ = exhausted_path.write_text(
+                _compose_exhausted_detail(detail, failure_log_text),
+                encoding="utf-8",
+            )
+            return _emit_result(
+                status,
+                detail=detail,
+                fix_attempted=fix_attempted,
+                cycles=cycle,
+                delta_paths=delta_paths,
                 exhausted_detail_file=str(exhausted_path),
             )
         if status in {"passed", "rebase-required", "first-fixer-non-health"}:
