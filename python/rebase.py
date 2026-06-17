@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import agents
+import coder_delta_guards
 import config
 import git
 import redact
@@ -264,7 +265,21 @@ def _resolve_conflicts(
             baseline_untracked = git.untracked_dirty_paths(runner, cwd=cwd)
             resolved = False
             for index, tier in enumerate(config.FIXER_TIER_ORDER):
+                forbidden = coder_delta_guards.coder_forbidden_paths(runner, cwd=cwd)
                 attempt = launch_fn(tier, conflict_csv)
+                if coder_delta_guards.revert_forbidden_paths(
+                    runner,
+                    cwd=cwd,
+                    forbidden=forbidden,
+                ) > 0:
+                    git.paths_delta_revert(
+                        runner,
+                        baseline_tracked,
+                        baseline_untracked,
+                        cwd=cwd,
+                    )
+                    _reset_conflict_paths(runner, unmerged, cwd=cwd)
+                    raise Stalled(_redact_outbound("conflict fixer touched forbidden path"))
                 tier_succeeded = attempt.launcher_exit == 0 and attempt.wrapper_rc == 0
                 still_marked: list[str] = []
                 if tier_succeeded:

@@ -767,3 +767,256 @@ def test_run_cycle_empty_delta_returns_no_progress_without_push(
     assert detail == "empty-delta"
     assert attempted is True
     assert push_calls["n"] == 0
+
+
+def _stub_successful_fix_until_wait(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    wait_result: tuple[dict[str, str], str | None],
+) -> dict[str, int]:
+    calls = {"push": 0}
+
+    def fake_read_failed_jobs(
+        _runner: object,
+        *,
+        run_id: str,
+        repo: str,
+        cwd: str | None,
+    ) -> tuple[tuple[ci_monitor.FailedJob, ...], str]:
+        _ = run_id, repo, cwd
+        return ((ci_monitor.FailedJob(name="python-lint", conclusion="failure"),), "ready")
+
+    def fake_collect_failed_logs(
+        _runner: object,
+        *,
+        run_id: str,
+        repo: str,
+        cwd: str | None,
+    ) -> ci_monitor.LogCollectResult:
+        _ = run_id, repo, cwd
+        return ci_monitor.LogCollectResult(text="FAIL lint\n", state="ready")
+
+    def fake_capture_baseline(
+        _runner: object,
+        *,
+        cwd: str | None,
+    ) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...], str]:
+        _ = cwd
+        return (), (), (), "abc123"
+
+    def fake_launch_tier(*_args: object, **_kwargs: object) -> proc.CommandResult:
+        return proc.CommandResult(("cli",), 0, "LAUNCHER_EXIT=0\n", "", 0.01)
+
+    def fake_resolve_launcher_exit(*_args: object, **_kwargs: object) -> int:
+        return 0
+
+    def fake_classify_launch_failure(*_args: object, **_kwargs: object) -> agents.LaunchFailure:
+        return agents.LaunchFailure("none", "")
+
+    def fake_prepare_python_toolchain(*_args: object, **_kwargs: object) -> bool:
+        return True
+
+    def fake_verify_job_locally(*_args: object, **_kwargs: object) -> bool:
+        return True
+
+    def fake_delta_paths(*_args: object, **_kwargs: object) -> tuple[str, ...]:
+        return ("fixed.py",)
+
+    def fake_stage_and_push(*_args: object, **_kwargs: object) -> tuple[bool, str | None, tuple[str, ...], bool, bool]:
+        calls["push"] += 1
+        return True, "head", ("fixed.py",), False, False
+
+    def fake_capture_head(*_args: object, **_kwargs: object) -> str:
+        return "abc123"
+
+    def fake_head_changed(*_args: object, **_kwargs: object) -> bool:
+        return False
+
+    def fake_forbidden_paths(*_args: object, **_kwargs: object) -> tuple[str, ...]:
+        return ()
+
+    def fake_revert_forbidden(*_args: object, **_kwargs: object) -> int:
+        return 0
+
+    def fake_wait_for_ci(*_args: object, **_kwargs: object) -> tuple[dict[str, str], str | None]:
+        return wait_result
+
+    monkeypatch.setattr(ci_monitor, "read_failed_jobs", fake_read_failed_jobs)
+    monkeypatch.setattr(ci_monitor, "collect_failed_logs", fake_collect_failed_logs)
+    monkeypatch.setattr(ci_monitor, "_capture_baseline", fake_capture_baseline)
+    monkeypatch.setattr(ci_monitor, "prepare_python_toolchain", fake_prepare_python_toolchain)
+    monkeypatch.setattr(ci_monitor, "verify_job_locally", fake_verify_job_locally)
+    monkeypatch.setattr(ci_monitor, "_delta_paths", fake_delta_paths)
+    monkeypatch.setattr(ci_monitor, "stage_and_push", fake_stage_and_push)
+    monkeypatch.setattr(agents, "launch_tier", fake_launch_tier)
+    monkeypatch.setattr(agents, "resolve_launcher_exit", fake_resolve_launcher_exit)
+    monkeypatch.setattr(agents, "classify_launch_failure", fake_classify_launch_failure)
+    monkeypatch.setattr(ci_agentic_fix.coder_delta_guards, "capture_head", fake_capture_head)
+    monkeypatch.setattr(ci_agentic_fix.coder_delta_guards, "head_changed_from_baseline", fake_head_changed)
+    monkeypatch.setattr(ci_agentic_fix.coder_delta_guards, "coder_forbidden_paths", fake_forbidden_paths)
+    monkeypatch.setattr(ci_agentic_fix.coder_delta_guards, "revert_forbidden_paths", fake_revert_forbidden)
+    monkeypatch.setattr(ci_agentic_fix, "_wait_for_ci", fake_wait_for_ci)
+    return calls
+
+
+def _cycle_args(out_dir: Path) -> Namespace:
+    return Namespace(
+        pr=1,
+        repo="o/r",
+        plan_file="",
+        base_remote="origin",
+        base_ref="main",
+        output_dir=str(out_dir),
+    )
+
+
+def test_run_cycle_wait_error_fails_closed_without_reusing_run_id(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    calls = _stub_successful_fix_until_wait(
+        monkeypatch,
+        wait_result=({}, "ci-wait-malformed-output"),
+    )
+
+    status, detail, attempted, delta, pending, next_run, _log = ci_agentic_fix._run_cycle(  # pyright: ignore[reportPrivateUsage]
+        proc,
+        args=_cycle_args(out_dir),
+        repo_root=repo,
+        ctx=_make_ctx(),
+        cycle=1,
+        run_id="42",
+    )
+    assert status == "ci-fix-exhausted"
+    assert detail == "ci-wait-malformed-output"
+    assert attempted is True
+    assert delta == ("fixed.py",)
+    assert pending is False
+    assert next_run is None
+    assert calls["push"] == 1
+
+
+def test_run_cycle_wait_untrusted_action_fails_closed_without_reusing_run_id(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    _ = _stub_successful_fix_until_wait(
+        monkeypatch,
+        wait_result=({"ACTION": "retry", "CI_STATUS": "fail"}, None),
+    )
+
+    status, detail, _attempted, _delta, _pending, next_run, _log = ci_agentic_fix._run_cycle(  # pyright: ignore[reportPrivateUsage]
+        proc,
+        args=_cycle_args(out_dir),
+        repo_root=repo,
+        ctx=_make_ctx(),
+        cycle=1,
+        run_id="42",
+    )
+    assert status == "ci-fix-exhausted"
+    assert detail == "ci-wait-untrusted-output"
+    assert next_run is None
+
+
+def test_run_cycle_wait_action_bail_fails_closed_with_reason(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    _ = _stub_successful_fix_until_wait(
+        monkeypatch,
+        wait_result=({"ACTION": "bail", "BAIL_REASON": "CI_WAIT_BAIL_POLL_BUDGET_EXHAUSTED"}, None),
+    )
+
+    status, detail, _attempted, _delta, _pending, next_run, _log = ci_agentic_fix._run_cycle(  # pyright: ignore[reportPrivateUsage]
+        proc,
+        args=_cycle_args(out_dir),
+        repo_root=repo,
+        ctx=_make_ctx(),
+        cycle=1,
+        run_id="42",
+    )
+    assert status == "ci-fix-exhausted"
+    assert detail == "CI_WAIT_BAIL_POLL_BUDGET_EXHAUSTED"
+    assert next_run is None
+
+
+def test_run_cycle_later_non_health_is_waterfall_failed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+
+    def fake_read_failed_jobs(
+        _runner: object,
+        *,
+        run_id: str,
+        repo: str,
+        cwd: str | None,
+    ) -> tuple[tuple[ci_monitor.FailedJob, ...], str]:
+        _ = run_id, repo, cwd
+        return ((ci_monitor.FailedJob(name="python-lint", conclusion="failure"),), "ready")
+
+    def fake_collect_failed_logs(
+        _runner: object,
+        *,
+        run_id: str,
+        repo: str,
+        cwd: str | None,
+    ) -> ci_monitor.LogCollectResult:
+        _ = run_id, repo, cwd
+        return ci_monitor.LogCollectResult(text="FAIL lint\n", state="ready")
+
+    def fake_capture_baseline(
+        _runner: object,
+        *,
+        cwd: str | None,
+    ) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...], str]:
+        _ = cwd
+        return (), (), (), "abc123"
+
+    def fake_launch_tier(*_args: object, **_kwargs: object) -> proc.CommandResult:
+        return proc.CommandResult(("cli",), 1, "LAUNCHER_EXIT=1\n", "", 0.01)
+
+    def fake_resolve_launcher_exit(*_args: object, **_kwargs: object) -> int:
+        return 1
+
+    def fake_classify_launch_failure(*_args: object, **_kwargs: object) -> agents.LaunchFailure:
+        return agents.LaunchFailure("other", "parse")
+
+    def fake_rollback(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(ci_monitor, "read_failed_jobs", fake_read_failed_jobs)
+    monkeypatch.setattr(ci_monitor, "collect_failed_logs", fake_collect_failed_logs)
+    monkeypatch.setattr(ci_monitor, "_capture_baseline", fake_capture_baseline)
+    monkeypatch.setattr(agents, "launch_tier", fake_launch_tier)
+    monkeypatch.setattr(agents, "resolve_launcher_exit", fake_resolve_launcher_exit)
+    monkeypatch.setattr(agents, "classify_launch_failure", fake_classify_launch_failure)
+    monkeypatch.setattr(ci_agentic_fix, "_rollback", fake_rollback)
+
+    status, detail, _attempted, _delta, _pending, next_run, _log = ci_agentic_fix._run_cycle(  # pyright: ignore[reportPrivateUsage]
+        proc,
+        args=_cycle_args(out_dir),
+        repo_root=repo,
+        ctx=_make_ctx(),
+        cycle=2,
+        run_id="42",
+    )
+    assert status == "waterfall-failed"
+    assert detail == "parse"
+    assert next_run is None

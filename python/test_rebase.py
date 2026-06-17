@@ -461,6 +461,111 @@ def test_partial_success_waterfall_without_handoff_stalls(tmp_path: Path) -> Non
     assert not (tmp_path / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME).exists()
 
 
+def test_conflict_fixer_forbidden_path_reverts_and_stalls(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = ScriptRunner(
+        [
+            (("git", "diff", "--name-only", "--diff-filter=U"), _ok(
+                ("git", "diff", "--name-only", "--diff-filter=U"),
+                "README.md\n",
+            )),
+        ],
+    )
+
+    def fake_forbidden_paths(_runner: object, *, cwd: str | None = None) -> tuple[str, ...]:
+        _ = cwd
+        return (".gitmodules",)
+
+    def fake_revert_forbidden(
+        _runner: object,
+        *,
+        cwd: str | None,
+        forbidden: tuple[str, ...],
+    ) -> int:
+        _ = cwd, forbidden
+        return 1
+
+    monkeypatch.setattr(rebase.coder_delta_guards, "coder_forbidden_paths", fake_forbidden_paths)
+    monkeypatch.setattr(rebase.coder_delta_guards, "revert_forbidden_paths", fake_revert_forbidden)
+
+    with pytest.raises(Stalled, match="conflict fixer touched forbidden path"):
+        rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
+            runner,
+            lambda tier, _csv: TierAttempt(
+                tier,
+                wrapper_rc=0,
+                launcher_exit=0,
+                failure=LaunchFailure("none", ""),
+            ),
+            repo="o/r",
+            run_id="run",
+            cwd=None,
+            tmpdir=str(tmp_path),
+            enable_pre_push_handoff=True,
+        )
+    assert ("git", "restore", "--staged", "--", "README.md") in runner.calls
+    assert ("git", "checkout", "--merge", "--", "README.md") in runner.calls
+    assert not (tmp_path / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME).exists()
+
+
+def test_conflict_forbidden_snapshot_is_prelaunch_and_not_recomputed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    diff_calls = {"n": 0}
+    events: list[str] = []
+
+    def unmerged_handler(_argv: tuple[str, ...]) -> CommandResult:
+        diff_calls["n"] += 1
+        if diff_calls["n"] == 1:
+            return _ok(
+                ("git", "diff", "--name-only", "--diff-filter=U"),
+                "README.md\n",
+            )
+        return _ok(("git", "diff", "--name-only", "--diff-filter=U"), "")
+
+    runner = ScriptRunner(
+        [
+            (("git", "diff", "--name-only", "--diff-filter=U"), unmerged_handler),
+            (("git", "rebase", "--continue"), _ok(("git", "rebase", "--continue"))),
+        ],
+    )
+
+    def fake_forbidden_paths(_runner: object, *, cwd: str | None = None) -> tuple[str, ...]:
+        _ = cwd
+        events.append("snapshot")
+        return ("frozen-path",)
+
+    def fake_revert_forbidden(
+        _runner: object,
+        *,
+        cwd: str | None,
+        forbidden: tuple[str, ...],
+    ) -> int:
+        _ = cwd
+        events.append(f"revert:{','.join(forbidden)}")
+        return 0
+
+    def launch_fn(tier: str, _csv: str) -> TierAttempt:
+        events.append(f"launch:{tier}")
+        return TierAttempt(tier, 0, 0, LaunchFailure("none", ""))
+
+    monkeypatch.setattr(rebase.coder_delta_guards, "coder_forbidden_paths", fake_forbidden_paths)
+    monkeypatch.setattr(rebase.coder_delta_guards, "revert_forbidden_paths", fake_revert_forbidden)
+
+    rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
+        runner,
+        launch_fn,
+        repo="o/r",
+        run_id="run",
+        cwd=str(tmp_path),
+        tmpdir=str(tmp_path),
+    )
+    assert events == ["snapshot", "launch:claude", "revert:frozen-path"]
+
+
 @pytest.mark.skip(reason="agentic conflict loop removes bump prepass")
 def test_partial_success_waterfall_bump_only_stalls_without_flag(
     tmp_path: Path,

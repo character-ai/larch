@@ -111,6 +111,7 @@ def revert_forbidden_paths(
         if path in current_untracked:
             _ = runner.run(["rm", "-f", "--", path], cwd=cwd)
         else:
-            _ = runner.run(["git", "checkout", "--", path], cwd=cwd)
+            _ = git.restore_staged(runner, path, cwd=cwd)
+            _ = git.checkout_paths(runner, path, cwd=cwd)
         revert_count += 1
     return revert_count

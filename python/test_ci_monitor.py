@@ -1095,7 +1095,7 @@ def _baseline_responses(head: str = "abc123") -> dict[tuple[str, ...], CommandRe
     return out
 
 
-def test_run_ci_fix_pushed_after_winning_tier(tmp_path: Any) -> None:
+def test_run_ci_fix_non_pending_winning_tier_fails_closed(tmp_path: Any) -> None:
     launch_calls: list[str] = []
 
     def launch_fn(tier: str) -> TierAttempt:
@@ -1152,8 +1152,9 @@ def test_run_ci_fix_pushed_after_winning_tier(tmp_path: Any) -> None:
         cwd=str(tmp_path),
         launch_fn=launch_fn,
     )
-    assert fix.status == "pushed"
-    assert launch_calls == ["claude"]
+    assert fix.status == "waterfall-failed"
+    assert fix.detail == "run_ci_fix: non-pending calls not supported"
+    assert not launch_calls
 
 
 def test_stage_and_push_defer_rebase_uses_typed_rebase_push(tmp_path: Any) -> None:
@@ -1308,7 +1309,7 @@ def test_evaluate_failure_pending_reload_failed_jobs_before_force_push(
     assert not any("force-with-lease" in " ".join(call) for call in runner.calls)
 
 
-def test_run_ci_fix_first_fixer_non_health_after_stage(tmp_path: Any) -> None:
+def test_run_ci_fix_non_pending_after_stage_fails_closed(tmp_path: Any) -> None:
     head = "deadbeef" * 5
 
     def launch_fn(_tier: str) -> TierAttempt:
@@ -1360,10 +1361,11 @@ def test_run_ci_fix_first_fixer_non_health_after_stage(tmp_path: Any) -> None:
         cwd=str(tmp_path),
         launch_fn=launch_fn,
     )
-    assert fix.status == "first-fixer-non-health"
+    assert fix.status == "waterfall-failed"
+    assert fix.detail == "run_ci_fix: non-pending calls not supported"
 
 
-def test_run_ci_fix_verify_failed_no_push() -> None:
+def test_run_ci_fix_non_pending_verify_case_fails_closed() -> None:
     def launch_fn(_tier: str) -> TierAttempt:
         return TierAttempt(
             tier="cursor",
@@ -1389,12 +1391,12 @@ def test_run_ci_fix_verify_failed_no_push() -> None:
         cwd=None,
         launch_fn=launch_fn,
     )
-    assert fix.status == "verify-failed"
-    assert fix.failed_verify == ("python-lint",)
+    assert fix.status == "waterfall-failed"
+    assert fix.detail == "run_ci_fix: non-pending calls not supported"
     assert not any(call[0] == "git" and call[1] == "push" for call in runner.calls)
 
 
-def test_run_ci_fix_local_unfixable() -> None:
+def test_run_ci_fix_non_pending_unfixable_fails_closed() -> None:
     classified = ci_monitor.classify_failed_jobs(
         (FailedJob(name="gitleaks", conclusion="failure"),),
     )
@@ -1410,8 +1412,8 @@ def test_run_ci_fix_local_unfixable() -> None:
         cwd=None,
         launch_fn=lambda _t: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
     )
-    assert fix.status == "local-unfixable"
-    assert "gitleaks" in fix.unfixable
+    assert fix.status == "waterfall-failed"
+    assert fix.detail == "run_ci_fix: non-pending calls not supported"
 
 
 def test_evaluate_failure_transient_rerun_only() -> None:
@@ -2191,8 +2193,8 @@ def test_poll_ci_no_checks_bail() -> None:
 
 
 # FINDING_15: run_ci_fix head-changed
-def test_run_ci_fix_head_changed_no_push() -> None:
-    """HEAD moves after vendor fix → head-changed, no push."""
+def test_run_ci_fix_non_pending_head_changed_fails_closed() -> None:
+    """Non-pending callers fail closed before legacy head-change handling."""
     baseline_head = "aaaa" * 10
     new_head = "bbbb" * 10
 
@@ -2220,13 +2222,14 @@ def test_run_ci_fix_head_changed_no_push() -> None:
         cwd=None,
         launch_fn=launch_fn,
     )
-    assert fix.status == "head-changed"
+    assert fix.status == "waterfall-failed"
+    assert fix.detail == "run_ci_fix: non-pending calls not supported"
     assert not any(c[0] == "git" and c[1] == "push" for c in runner.calls)
 
 
 # FINDING_16: waterfall short-circuit (pre-verify) → first-fixer-non-health, no stage
-def test_run_ci_fix_short_circuit_first_fixer_non_health() -> None:
-    """First-tier other-class failure → short_circuited, first-fixer-non-health, no stage/push."""
+def test_run_ci_fix_non_pending_short_circuit_fails_closed() -> None:
+    """Non-pending callers fail closed before legacy waterfall launch."""
     call_log: list[str] = []
 
     def launch_fn(tier: str) -> TierAttempt:
@@ -2251,8 +2254,9 @@ def test_run_ci_fix_short_circuit_first_fixer_non_health() -> None:
         cwd=None,
         launch_fn=launch_fn,
     )
-    assert fix.status == "first-fixer-non-health"
-    assert call_log == ["claude"]
+    assert fix.status == "waterfall-failed"
+    assert fix.detail == "run_ci_fix: non-pending calls not supported"
+    assert not call_log
     assert not any(c[0] == "git" and c[1] == "add" for c in runner.calls)
     assert not any(c[0] == "git" and c[1] == "push" for c in runner.calls)
 
@@ -2610,6 +2614,18 @@ def test_monitor_agentic_rebase_required_goto_rebase(monkeypatch: pytest.MonkeyP
     result = ci_monitor.monitor(RecordingRunner({}), pr=1, repo="o/r")
     assert result.result.outcome is Outcome.OK
     assert result.goto_rebase is True
+
+
+def test_agentic_fix_delegate_timeout_includes_verify_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(config, "CI_AGENTIC_FIX_MAX_CYCLES", 3)
+    monkeypatch.setattr(config, "CI_WAIT_TIMEOUT_SEC", 100)
+    monkeypatch.setattr(config, "SUBPROCESS_DEFAULT_TIMEOUT_SEC", 10)
+
+    verify_slots = len(config.CI_FIXABLE_JOBS)
+    per_cycle = 100 + 10 + verify_slots * 10
+    assert ci_monitor._agentic_fix_delegate_timeout_sec() == 3 * per_cycle  # pyright: ignore[reportPrivateUsage]
 
 
 def test_agentic_fix_result_fix_attempted_local_unfixable_promotes_exhausted(tmp_path: Path) -> None:
