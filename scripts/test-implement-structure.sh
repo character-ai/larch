@@ -103,6 +103,8 @@ for script in [
     'skills/implement/scripts/step-6-entry.sh',
     'skills/implement/scripts/run-step-checks.sh --site step6',
     'python/cli.py implement step-7a --implement-tmpdir "$IMPLEMENT_TMPDIR"',
+    'skills/implement/scripts/step-8-python-guard.sh',
+    'skills/implement/scripts/step-8-seed-initial.sh',
     'skills/implement/scripts/step-8-ship.sh',
     'skills/implement/scripts/step-8-oos-checkpoint.sh',
     'skills/implement/scripts/step-16.sh',
@@ -122,7 +124,7 @@ for needle in [
     forbid(skill, needle, 'wrapperized SKILL')
 
 # Script/md sibling and executable coverage for new wrappers.
-wrappers = ['step-0-bootstrap','step-0-degraded-gate','step-2-entry','step-2-post-dispatch','run-step-checks','step-5-review','step-5-resume','step-6-entry','step-8-ship','step-8-oos-checkpoint','step-16','step-17','step-18a-gate','step-18-finalize']
+wrappers = ['step-0-bootstrap','step-0-degraded-gate','step-2-entry','step-2-post-dispatch','run-step-checks','step-5-review','step-5-resume','step-6-entry','step-8-python-guard','step-8-seed-initial','step-8-ship','step-8-oos-checkpoint','step-16','step-17','step-18a-gate','step-18-finalize']
 for name in wrappers:
     sh=Path(f'skills/implement/scripts/{name}.sh')
     md=Path(f'skills/implement/scripts/{name}.md')
@@ -147,9 +149,11 @@ require('skills/implement/scripts/step-0-bootstrap.sh', 'preflight-tmpdir.env', 
 require('skills/implement/scripts/step-0-bootstrap.sh', 'read_session_key FORKED_TARGET', 'step-0 resume fork metadata rehydration')
 require('python/bootstrap.py', 'preflight-tmpdir.env', 'bootstrap preflight tmpdir persistence')
 require('skills/implement/scripts/step-8-ship.sh', 'read_state_key', 'step-8 ship state rehydration')
-require('skills/implement/scripts/step-8-ship.sh', 'sys.version_info >= (3, 11)', 'step-8 python 3.11 guard')
-require('skills/implement/scripts/step-8-ship.sh', '"outcome":"STALLED"', 'step-8 stalled JSON stdout')
-require('skills/implement/scripts/step-8-ship.sh', 'exit 4', 'step-8 stale-python exit 4')
+require('skills/implement/scripts/step-8-python-guard.sh', 'sys.version_info >= (3, 11)', 'step-8 shared python 3.11 guard')
+require('skills/implement/scripts/step-8-python-guard.sh', '"outcome":"STALLED"', 'step-8 shared stalled JSON stdout')
+require('skills/implement/scripts/step-8-python-guard.sh', 'exit 4', 'step-8 shared stale-python exit 4')
+require('skills/implement/scripts/step-8-ship.sh', 'step-8-python-guard.sh', 'step-8 ship delegates python guard')
+require('skills/implement/scripts/step-8-ship.sh', 'lib-implement-clone-tag.sh', 'step-8 ship uses clone-tag helper')
 require('skills/implement/scripts/step-8-ship.sh', 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" ship pr', 'step-8 python ship invocation')
 require('skills/implement/scripts/step-0-bootstrap.sh', 'LARCH_CLAUDE_PID="${LARCH_CLAUDE_PID:-$PPID}"', 'step-0 wrapper claude pid export')
 require('skills/implement/scripts/step-18-finalize.sh', 'LARCH_CLAUDE_PID:-$PPID', 'step-18-finalize claude pid fallback')
@@ -157,7 +161,9 @@ require('skills/implement/scripts/step-18a-gate.sh', 'STALL_TRACKING_MEMORY_ARG'
 require('skills/implement/scripts/step-18a-gate.sh', 'STALL_TRACKING_DISK=', 'step-18a stall disk layer')
 require('skills/implement/scripts/step-18a-gate.sh', 'STALL_TRACKING_FINALIZE=', 'step-18a stall finalize layer')
 require('skills/implement/scripts/step-18a-gate.sh', 'STALL_TRACKING_SESSION=', 'step-18a stall session layer')
-require(skill, 'NO_ADMIN_FALLBACK=$no_admin_fallback', 'ship state no-admin fallback persistence')
+require(skill, 'python/cli.py ship seed-initial-state', 'ship state initial seeder authority')
+require('skills/implement/scripts/step-8-seed-initial.sh', '--no-admin-fallback', 'ship state no-admin fallback seeder argv')
+require('python/ship.py', 'NO_ADMIN_FALLBACK', 'ship state no-admin fallback allowed key')
 require(skill, '## NEVER List', 'NEVER list heading')
 require(skill, 'NEVER call `ScheduleWakeup`', 'NEVER #8 ScheduleWakeup pin')
 require(skill, 'Do not spawn a Monitor', 'NEVER #8 background-monitor ban')
@@ -170,9 +176,20 @@ for script, timeout in [
     require_near(skill, script, timeout, f'timeout pin for {script}', 1400)
 require_near(skill, launcher + 'skills/implement/scripts/step-5-review.sh', '<task-notification>', 'Step 5 review task notification wait', 1800)
 require_near(skill, launcher + 'skills/implement/scripts/step-8-ship.sh', '<task-notification>', 'Step 8 ship task notification wait', 2000)
+
+require(skill, 'PHASE=checks` and `PR_NUMBER` is empty/absent', 'SKILL pre-driver predicate checks phase and empty pr')
+require(skill, 'Seeded-but-no-PR state is still pre-driver', 'SKILL seeded no-pr retry stays pre-driver')
+require(skill, 'pre-driver retry reruns guard and `oos file`', 'SKILL pre-driver retry reruns oos file')
+forbid(skill, 'write-initial-state-keys:begin', 'SKILL initial state marker removed')
+forbid(skill, 'sys.version_info >= (3, 11)', 'SKILL inline python version guard removed')
+forbid(skill, 'python/cli.py ship seed-initial-state --tmpdir', 'SKILL direct seeder invocation removed')
+require('skills/implement/references/step5-review-branches.md', 'step-8-seed-initial.sh --stall-tracking "$STALL_TRACKING" --stall-step 5', 'Step 5 stall seeder wrapper')
+require('skills/implement/references/step5-review-branches.md', '--merge false --draft false', 'Step 5 stall merge draft false')
+require('python/bootstrap.py', 'ship-seed-input.env', 'bootstrap ship seed input writer')
 require(skill, launcher + 'skills/implement/scripts/step-2-post-dispatch.sh', 'phantom 2-post-dispatch probe')
 require(skill, 'regardless of wrapper exit code', 'post-dispatch phantom parse before wrapper routing')
-require(skill, launcher + 'scripts/phantom-probe-with-warn.sh --step 8-pre-ship', 'phantom 8-pre-ship probe')
+require('skills/implement/scripts/step-8-ship.sh', 'phantom-probe-with-warn.sh --step 8-pre-ship', 'phantom 8-pre-ship probe moved into ship wrapper')
+forbid(skill, launcher + 'scripts/phantom-probe-with-warn.sh --step 8-pre-ship', 'standalone orchestrator 8-pre-ship fence removed')
 rebase_ref = Path('skills/implement/references/rebase-checkpoint-routing.md').read_text()
 for needle in [
     '**Orchestrator contract — absorbed `1.r` (Step 0 envelope only)**',

@@ -39,6 +39,153 @@ def _ctx(tmp_path: Path, **kwargs: object) -> RunContext:
     return base.with_(**kwargs)
 
 
+
+
+def _read_state(path: Path) -> dict[str, str]:
+    data: dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        key, value = line.split("=", 1)
+        data[key] = value
+    return data
+
+
+def test_seed_initial_state_writes_exact_ordered_key_set(tmp_path: Path) -> None:
+    manifest = tmp_path / "manifest.json"
+    _ = manifest.write_text('{"summary_bullets":["Ship"]}\n', encoding="utf-8")
+    state = tmp_path / "ship-pr-state.sh"
+    rc = ship.seed_initial_state_main([
+        "--tmpdir", str(tmp_path),
+        "--state-file", str(state),
+        "--branch", "feature/ship",
+        "--issue", "42",
+        "--repo", "owner/repo",
+        "--run-id", "run-42",
+        "--manifest-path", str(manifest),
+        "--tool-label", "Codex",
+        "--merge", "true",
+        "--draft", "true",
+        "--forked", "true",
+        "--repo-unavailable", "false",
+        "--deferred", "true",
+        "--no-admin-fallback", "true",
+        "--no-logs-commit", "true",
+        "--expected-session-id", "sid",
+        "--expected-tmpdir-basename-prefix", "claude-implement-larch-",
+    ])
+    assert rc == 0
+    lines = state.read_text(encoding="utf-8").splitlines()
+    assert [line.split("=", 1)[0] for line in lines] == list(ship.INITIAL_SHIP_STATE_KEYS)
+    data = _read_state(state)
+    assert data["PHASE"] == "checks"
+    assert data["BRANCH_NAME"] == "feature/ship"
+    assert data["ISSUE_NUMBER"] == "42"
+    assert data["RUN_ID"] == "run-42"
+    assert data["REPO"] == "owner/repo"
+    assert data["IMPLEMENT_TMPDIR"] == str(tmp_path)
+    assert data["MANIFEST_PATH"] == str(manifest)
+    assert data["TOOL_LABEL"] == "Codex"
+    assert data["MERGE"] == "true"
+    assert data["DRAFT"] == "true"
+    assert data["FORKED_TARGET"] == "true"
+    assert data["DEFERRED"] == "true"
+    assert data["NO_ADMIN_FALLBACK"] == "true"
+    assert data["NO_LOGS_COMMIT"] == "true"
+    assert data["EXPECTED_SESSION_ID"] == "sid"
+    assert data["EXPECTED_TMPDIR_BASENAME_PREFIX"] == "claude-implement-larch-"
+    assert data["PR_CLOSED"] == "false"
+    assert data["STALL_TRACKING"] == "false"
+    assert data["OOS_PENDING"] == "false"
+    assert data["PR_NUMBER"] == ""
+    assert data["BAIL_REASON"] == ""
+    assert data["REBASE_COUNT"] == "0"
+    assert data["FIX_ATTEMPTS"] == "0"
+    assert data["ITERATION"] == "0"
+    assert data["TRANSIENT_RETRIES"] == "0"
+    assert data["CI_FIX_REBASE_PENDING"] == "false"
+
+
+def test_seed_initial_state_stall_profile_forces_merge_and_draft_false(tmp_path: Path) -> None:
+    state = tmp_path / "ship-pr-state.sh"
+    rc = ship.seed_initial_state_main([
+        "--tmpdir", str(tmp_path),
+        "--state-file", str(state),
+        "--branch", "feature/ship",
+        "--issue", "42",
+        "--repo", "owner/repo",
+        "--run-id", "run-42",
+        "--merge", "true",
+        "--draft", "true",
+        "--stall-tracking", "true",
+        "--stall-step", "5",
+        "--bail-reason", "lint-fix-failed",
+    ])
+    assert rc == 0
+    data = _read_state(state)
+    assert data["STALL_TRACKING"] == "true"
+    assert data["STALL_STEP"] == "5"
+    assert data["BAIL_REASON"] == "lint-fix-failed"
+    assert data["MERGE"] == "false"
+    assert data["DRAFT"] == "false"
+    assert data["OOS_PENDING"] == "false"
+
+
+def test_seed_initial_state_manifest_guard_and_no_partial_file(tmp_path: Path) -> None:
+    state = tmp_path / "ship-pr-state.sh"
+    missing = tmp_path / "missing.json"
+    rc = ship.seed_initial_state_main([
+        "--tmpdir", str(tmp_path),
+        "--state-file", str(state),
+        "--branch", "feature/ship",
+        "--issue", "42",
+        "--repo", "owner/repo",
+        "--run-id", "run-42",
+        "--manifest-path", str(missing),
+    ])
+    assert rc == 2
+    assert not state.exists()
+    bad_env = tmp_path / "manifest.env"
+    _ = bad_env.write_text("STATUS=complete\n", encoding="utf-8")
+    rc = ship.seed_initial_state_main([
+        "--tmpdir", str(tmp_path),
+        "--state-file", str(state),
+        "--branch", "feature/ship",
+        "--issue", "42",
+        "--repo", "owner/repo",
+        "--run-id", "run-42",
+        "--manifest-path", str(bad_env),
+    ])
+    assert rc == 2
+    assert not state.exists()
+    manifest = tmp_path / "manifest.json"
+    _ = manifest.write_text('{"summary_bullets":["Ship"]}\n', encoding="utf-8")
+    rc = ship.seed_initial_state_main([
+        "--tmpdir", str(tmp_path),
+        "--state-file", str(state),
+        "--branch", "feature/ship",
+        "--issue", "42",
+        "--repo", "owner/repo",
+        "--run-id", "run-42",
+        "--manifest-path", str(manifest),
+    ])
+    assert rc == 0
+
+
+def test_seed_initial_state_create_if_absent_refuses_existing_driver_keys(tmp_path: Path) -> None:
+    state = tmp_path / "ship-pr-state.sh"
+    _ = state.write_text("PHASE=checks\nPR_NUMBER=7\n", encoding="utf-8")
+    before = state.read_text(encoding="utf-8")
+    rc = ship.seed_initial_state_main([
+        "--tmpdir", str(tmp_path),
+        "--state-file", str(state),
+        "--branch", "feature/ship",
+        "--issue", "42",
+        "--repo", "owner/repo",
+        "--run-id", "run-42",
+    ])
+    assert rc == 2
+    assert state.read_text(encoding="utf-8") == before
+
+
 def test_outcome_exit_map_matches_bash_contract() -> None:
     assert config.OUTCOME_EXIT_MAP == {
         Outcome.OK: 0,

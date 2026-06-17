@@ -454,6 +454,71 @@ def test_step0_wrapper_runs_without_non_interactive_flag() -> None:
     assert "unbound variable" not in result.stderr.lower()
 
 
+
+
+def test_invoke_persists_ship_seed_input_flags(tmp_path, monkeypatch) -> None:
+    def fake_run_bootstrap(_opts: bootstrap.BootstrapOptions) -> int:
+        print(f"IMPLEMENT_TMPDIR={tmp_path}")
+        print("DEFERRED=true")
+        print("PLAN_FILE=/tmp/plan.txt")
+        print("STALL_TRACKING=false")
+        print("coder=codex")
+        return 0
+
+    monkeypatch.setattr(bootstrap, "run_bootstrap", fake_run_bootstrap)
+    monkeypatch.setattr(
+        bootstrap,
+        "_run_absorbed_continue_tail",
+        lambda data, **_kwargs: bootstrap.ContinueTailResult(routing=data, advisory_lines=[]),  # pyright: ignore[reportPrivateUsage]
+    )
+    rc = bootstrap.invoke_main([
+        "--mode", "initial",
+        "--merge-requested", "true",
+        "--draft-requested", "true",
+        "--forked-target", "true",
+        "--no-admin-fallback", "true",
+        "--no-logs-commit", "true",
+    ])
+    assert rc == 0
+    data = bootstrap._parse_kv((tmp_path / "ship-seed-input.env").read_text(encoding="utf-8"))  # pyright: ignore[reportPrivateUsage]
+    assert data == {
+        "MERGE": "true",
+        "DRAFT": "true",
+        "FORKED_TARGET": "true",
+        "NO_ADMIN_FALLBACK": "true",
+        "NO_LOGS_COMMIT": "true",
+        "DEFERRED": "true",
+    }
+
+
+def test_invoke_resume_preserves_existing_ship_seed_context(tmp_path, monkeypatch) -> None:
+    (tmp_path / "ship-seed-input.env").write_text("MERGE=true\nMANIFEST_PATH=/tmp/manifest.json\nTOOL_LABEL=Codex\n", encoding="utf-8")
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+
+    def fake_run_bootstrap(_opts: bootstrap.BootstrapOptions) -> int:
+        print(f"IMPLEMENT_TMPDIR={tmp_path}")
+        print("DEFERRED=false")
+        print("PLAN_FILE=/tmp/plan.txt")
+        print("STALL_TRACKING=false")
+        print("coder=codex")
+        return 0
+
+    monkeypatch.setattr(bootstrap, "run_bootstrap", fake_run_bootstrap)
+    monkeypatch.setattr(
+        bootstrap,
+        "_run_absorbed_continue_tail",
+        lambda data, **_kwargs: bootstrap.ContinueTailResult(routing=data, advisory_lines=[]),  # pyright: ignore[reportPrivateUsage]
+    )
+    assert bootstrap.invoke_main(["--mode", "resume"]) == 0
+    data = bootstrap._parse_kv((tmp_path / "ship-seed-input.env").read_text(encoding="utf-8"))  # pyright: ignore[reportPrivateUsage]
+    assert data["MERGE"] == "true"
+    assert data["MANIFEST_PATH"] == "/tmp/manifest.json"
+    assert data["TOOL_LABEL"] == "Codex"
+    assert data["DRAFT"] == "false"
+    assert data["NO_ADMIN_FALLBACK"] == "false"
+    assert data["NO_LOGS_COMMIT"] == "false"
+
+
 def test_invoke_env_fallback_and_flag_precedence(tmp_path, monkeypatch) -> None:
     captured: list[bootstrap.BootstrapOptions] = []
     monkeypatch.setenv("TARGET_ISSUE_NUMBER", "41")
