@@ -1,0 +1,7 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	python/agents.py:1683-1688; scripts/lib-external-launcher-common.sh:376-384	Python USER fallback can remain different from Bash empty-USER fallback	The plan changes the lock path but does not say to change `user = os.environ.get("USER", "larch")`. If `USER` is set to empty, Python would use `/tmp/larch-external-startup-.lock` while Bash `${USER:-larch}` uses `/tmp/larch-external-startup-larch.lock`, so cross-lane Codex/Cursor startup would not share one mutex.	Explicitly require Python to use `os.environ.get("USER") or "larch"` before building `/tmp/larch-external-startup-{user}.lock`.
+
+1. **[correctness]** `python/agents.py:1683-1688` and `scripts/lib-external-launcher-common.sh:376-384`.
+   - **Concern:** The plan preserves the current Python `USER` fallback unless called out.
+   - **Breakage:** Empty `USER` makes Python and Bash compute different shared paths.
+   - **Suggested revision:** Add the Python fallback change above so Bash `${USER:-larch}` and Python match.

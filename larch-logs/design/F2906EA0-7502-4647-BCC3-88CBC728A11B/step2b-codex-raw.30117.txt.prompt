@@ -1,0 +1,293 @@
+You are an expert engineer researching this repository and producing an implementation plan for /design Step 2b.
+
+You may use only side-effect-free repository discovery. Do not write repository files, design tmpdir files, or any other files. Return only the sentinel-delimited response requested below.
+
+Drafting requirements to follow:
+- Prefer minimum necessary change: avoid scope creep, unnecessary complexity, and additions not required for correctness.
+- Read approach-synthesis.txt: if it is exactly NO_SKETCHES, draft from direct codebase/doc inspection without fabricating planning-panel agreement.
+- Read discussion-round1.md when present for scope boundaries and strict constraints.
+- Read design-outline.md only when non-empty and .outline-approved exists; treat Goals, Non-goals, and Surfaces as binding scope.
+- Read brainstorm.md when present as additive ideation context for plan drafting.
+- Use a Files to modify/create section with per-file headings exactly one path each: ### NEW:, ### UPDATED:, or ### REWRITTEN: (at least one ASCII space after ### before the keyword).
+- Include Approach, Edge cases, Failure modes when non-trivial, Testing strategy, optional diff_added/diff_deleted/mechanical_churn trailers, and final diff_lines: <N>. mechanical_churn accepts only true or false; never write a number there.
+- The final plan body must end with a whole-line diff_lines: <N> trailer.
+- Optionally include up to three dynamic plan-review archetypes in a scout block after the plan. The launcher validates, filters, caps, and materializes this block; invalid post-plan scout output is ignored.
+- Scout sentinels inside the summary or plan are fatal format errors. Never put LARCH_SCOUT_* markers in the plan body.
+
+Readability style (trusted):
+# Readability Style
+
+**Consumer**: `/design` prompt surfaces that produce user-facing text, either through an external-agent prompt token or through inline orchestration prose.
+
+**Contract**: this file is the only source of truth for the `/design` readability preamble. External prompt files embed the literal `<READABILITY_STYLE>` token, and assembly code or orchestration expands it to this full file. Inline composition sites read this file before writing user-facing text.
+
+**When to load**: load only when a `/design` step is about to compose user-facing prose or render a prompt that asks another agent to compose such prose. Do not load during setup, pure validation, or byte-stable artifact handling.
+
+---
+
+## Style Axes
+
+Write in three styles at once:
+
+- **Strunk & White**: use active voice. Omit needless words. Prefer concrete nouns and verbs.
+- **Dyslexia-friendly**: use short sentences. Prefer simple words. Break dense ideas into headings and bullets.
+- **Brevity**: shorter is better. Minimize the total artifact length while preserving meaning.
+- **No em dashes**: never use em dashes; use periods, commas, colons, or semicolons instead.
+- **Hedge vs. direct**: hedge uncertain claims ("may contain", "can fail") instead of absolutes; keep directives imperative.
+
+## Precision Contract
+
+Keep these byte-stable unless the task explicitly edits them:
+
+- fenced code blocks
+- backticked tokens
+- file paths
+- identifiers
+- flag names
+- `### NEW:` / `### UPDATED:` / `### REWRITTEN:` plan grammar
+- the trailing `diff_lines: <N>` line
+
+Do not rewrite those items for style. Explain around them instead.
+
+## Plan-Drafting Reminders
+
+When `/design` Step 2b drafts a plan that adds, removes, or converts
+Bash fences in `skills/implement/SKILL.md`:
+
+- List `### UPDATED: scripts/test-implement-fence-shape.sh` in
+  **Files to modify/create**.
+- Note that `EXPECTED_OLD` / `EXPECTED_NEW` may need updates.
+
+This is a discoverability reminder only. Do not add plan grammar.
+
+## Precedence
+
+When rules conflict, use this order:
+
+`code references > meaning > brevity > dyslexia-friendly chunking > Strunk & White micro-rewrites`
+
+Apply it directly:
+
+- Preserve code references first.
+- Preserve exact meaning next.
+- Cut words before adding layout.
+- Add headings or bullets only when they improve scanning.
+- Polish grammar last.
+
+## Substitution Token
+
+External-agent prompt files MUST embed this literal token:
+
+`<READABILITY_STYLE>`
+
+Before launch, replace every literal `<READABILITY_STYLE>` token with the full contents of this file.
+
+## Examples
+
+Before: "It is recommended that the implementer should consider adding a validation step."
+
+After: "Add a validation step."
+
+Before: "The plan should make sure that users are not able to continue when the file cannot be read."
+
+After: "Block the flow when the file cannot be read."
+
+Before: "In order to avoid potential future confusion, documentation can be updated."
+
+After: "Update the docs to avoid confusion."
+
+Before: "The script performs an operation that checks if the path exists."
+
+After: "The script checks that the path exists."
+
+Before: "This could possibly be out of scope depending on how the team wants to proceed."
+
+After: "This may be out of scope."
+
+Required output format:
+[optional]
+LARCH_SUMMARY_BEGIN
+A concise summary for large-plan preview. Omit this whole summary block only when no useful summary is needed.
+LARCH_SUMMARY_END
+[/optional]
+LARCH_PLAN_BEGIN
+Full implementation plan body ending with diff_lines: <N>.
+LARCH_PLAN_END
+[optional]
+LARCH_SCOUT_BEGIN
+{"archetypes":[{"name":"slug","focus_area":"code-quality|risk-integration|correctness|architecture|security","weight":1,"rationale":"single-line reason","prompt_body":"2-6 sentence focus directive ending with the required citation sentence."}]}
+LARCH_SCOUT_END
+[/optional]
+
+Optional advisory status may be included between LARCH_STATUS_BEGIN and LARCH_STATUS_END, but the summary, plan, and optional scout sentinels above are the only parsed contract.
+
+Untrusted feature description:
+<feature_description encoding="literal-redacted">
+# [BUG] Unify per-tool Codex/Cursor startup serial locks into one shared mutex (macOS…
+
+## Summary
+
+The Darwin external-CLI startup serial lock is **per-tool**, but the resource it protects (the macOS Keychain) is **shared across tools**. `external_serial_lock_acquire(tool)` builds a lock path that embeds the tool name, so Codex and Cursor acquire two independent mutexes (`/tmp/larch-codex-serial-$USER.lock` and `/tmp/larch-cursor-serial-$USER.lock`). The lock therefore serializes only same-tool startups (codex-vs-codex, cursor-vs-cursor) and provides **zero** serialization for the cross-tool case (codex-vs-cursor) that the larch panels create on every round. Request: unify the per-tool locks into one shared, tool-independent startup mutex and clean up the surrounding code, docs, and tests.
+
+## Original report
+
+unify and clean up the above mutex locking
+
+Context (from the investigation that prompted this report): the per-tool serial lock surfaced while root-causing reviewer-scheduling anomalies in a `/design` plan-review run (one Codex slot hitting the 1860s timeout in round 1; a Codex generic reviewer running a serial auth-retry after its first attempt in round 2). The serial lock itself is not the primary cause of those, but inspecting it revealed the per-tool-vs-shared mismatch documented here.
+
+## Reproduction scenario
+
+The race is probabilistic, so this is a "make it likely," not a deterministic repro.
+
+1. On macOS (Darwin), with both Codex and Cursor configured.
+2. Run any flow that launches Codex and Cursor external CLIs concurrently at startup. The most direct is the `/design` Step 3 plan-review panel, whose `dispatch-with-waterfall.sh` phase 1 launches all present-tool reviewer slots in parallel (round 1: 4 Cursor + 4 Codex; round 2: 4 Cursor + 1 Codex-generic). `/review` and `/implement` reviewer panels launch the same way.
+3. Observe that `/tmp/larch-codex-serial-$USER.lock` and `/tmp/larch-cursor-serial-$USER.lock` can be held simultaneously, i.e., a Codex startup and a Cursor startup run their auth/Keychain-touching startup at the same instant.
+4. Under load this surfaces as Cursor "Security process exited with code: 45" startup failures and/or empty-startup failures that trip the bounded auth-startup retry wrapper.
+
+Deterministic confirmation of the lock topology does not need the race: inspect the two lock paths in the code (below) and confirm the tool name is in the path.
+
+## Expected behavior
+
+One **shared, tool-independent** startup mutex so that **any** two external-CLI startups serialize against each other, regardless of tool or launcher implementation. Because the macOS Keychain is a single per-user resource, a Codex startup and a Cursor startup that both touch it must not run concurrently. A single lock (e.g. `/tmp/larch-external-serial-$USER.lock`) also makes the Python launcher (`python/agents.py`) and the Bash launcher (`scripts/lib-external-launcher-common.sh`) serialize against each other for the cross-tool case, which per-tool paths never do today.
+
+## Observed behavior
+
+Two independent per-tool locks. Codex and Cursor startups never serialize against each other. The lock only serializes same-tool concurrency. The cross-tool Keychain race the lock was introduced to prevent is left unguarded, which is exactly the concurrency the reviewer panels create.
+
+## Root cause analysis
+
+The lock path embeds the tool name in both implementations:
+
+- Python `external_serial_lock_acquire` (`python/agents.py`): `lock_path = Path(f"/tmp/larch-{tool}-serial-{user}.lock")`.
+- Bash `external_serial_lock_acquire` (`scripts/lib-external-launcher-common.sh`): `lock_path="/tmp/larch-${tool}-serial-${USER:-larch}.lock"`.
+
+The introducing commit (#1986, "Generalize external CLI startup serialization") is internally inconsistent: it chose **per-tool** locks ("Add shared external launcher helpers for Darwin **per-tool serial locks**") yet justified them by a **shared** resource ("Apply external_serial_lock_acquire/release_after to codex **and** cursor probe spawns … **so concurrent health probes do not race the macOS keychain**"). A per-tool lock cannot serialize a shared resource across tools.
+
+**Inference vs. observation.** Observed: the lock is per-tool; Cursor reads the Keychain via `security find-generic-password -a cursor-user -s cursor-access-token`; Cursor's auth-failure regex includes `keychain` / `Security (process exited with code|command failed)`; Codex's auth-failure regex does **not** mention the Keychain (Codex auth is `OPENAI_API_KEY` env-key or file-based `CODEX_HOME`). Inference: whether the per-tool split is an active bug or merely redundant hinges on whether the **codex binary itself** touches the login Keychain at startup. The introducing commit's author explicitly assumed it does (they wrapped Codex spawns "so concurrent health probes do not race the macOS keychain"). If Codex does touch the Keychain, per-tool locks are a real bug; if Codex never touches it, the Cursor lock alone already serializes the sole Keychain client and the split is harmless-but-redundant. Either way, the design's own stated intent calls for one shared lock, and unifying is strictly safer.
+
+## Evidence
+
+- `python/agents.py` — `external_serial_lock_acquire(tool)` builds `f"/tmp/larch-{tool}-serial-{user}.lock"`; `external_serial_lock_release_after` schedules `rmdir` after `LARCH_EXTERNAL_SERIAL_LOCK_DELAY` (default 0.5s), so the lock is a startup/spawn guard, not a whole-run lock. Acquired at 7 call sites (cursor probe, codex probe, `_run_external_agent_with_auth_retries`, codex/cursor negotiation, and the review launch path).
+- `scripts/lib-external-launcher-common.sh` — `external_serial_lock_acquire` builds `"/tmp/larch-${tool}-serial-${USER:-larch}.lock"` (mkdir-based mutex, TTL 30s, up to 300 tries); `external_serial_lock_release_after` disowns a delayed `rmdir`. Mirrors the Python path token-for-token (`larch-${tool}-serial`).
+- Both implementations use the identical per-tool template, so a Python-launched tool and a Bash-launched **same** tool do serialize, but **no** combination of Codex+Cursor ever serializes.
+- Commit #1986 message: "per-tool serial locks" + "so concurrent health probes do not race the macOS keychain."
+- `SECURITY.md` ("External CLI startup locks"): the lock "only reduces concurrent CLI startup/auth races" and is "a reliability mechanism, not an authorization boundary." (Confirms purpose; confirms this is a reliability bug, not a security issue.)
+- Cursor Keychain access: `python/agents.py` `cursor_auth_preflight` / `cursor_preread_service_token` call `security find-generic-password -a cursor-user -s cursor-access-token`.
+- Auth-failure classification (`_AUTH_RE` in `python/agents.py`): the `cursor` pattern includes `keychain.*(not found|failed)` and `Security (process exited with code|command failed)`; the `codex` pattern does not.
+- The reviewer panels launch tools concurrently: `scripts/dispatch-with-waterfall.sh` phase 1 backgrounds every present-tool slot, so Codex and Cursor startups overlap in `/design` Step 3, `/review`, and `/implement`.
+
+## Affected files
+
+- `python/agents.py` — implementation: `external_serial_lock_acquire`, `external_serial_lock_release_after`, and the 7 acquire call sites. Primary fix site (drop `{tool}` from the path).
+- `scripts/lib-external-launcher-common.sh` — Bash twin of the lock. Must change in lockstep with the Python path and stay byte-identical so cross-impl/cross-tool startups serialize.
+- `scripts/lib-external-launcher-common.md` — `.md` contract for the Bash library; documents the lock helpers; update wording.
+- `python/checks.py`, `python/review_and_fix.py` — consumers that invoke the serial-lock-guarded launch paths; verify no per-tool assumptions leak in.
+- `python/test_agents.py`, `python/test_launch_review.py`, `python/test_review_and_fix.py`, `python/test_implement_dispatch.py`, `scripts/test-dispatch-with-waterfall.sh` — harnesses that pin lock behavior / set `LARCH_EXTERNAL_SERIAL_LOCK_*`; update path expectations and add a cross-tool serialization assertion.
+- `.claude/rules/external-tool-launcher-parity.md` — names the "serial-lock spawn site" as a parity surface; the lock change must apply to both lanes and is covered by this rule.
+- `SECURITY.md`, `docs/configuration-and-permissions.md` — document the lock path / `LARCH_EXTERNAL_SERIAL_LOCK_*` env vars; update prose to the unified path.
+
+## Suggested fix(es)
+
+1. **Unify the lock path.** Replace the per-tool template with a single tool-independent path in both implementations, kept byte-identical:
+   - Python: `f"/tmp/larch-external-serial-{user}.lock"`.
+   - Bash: `"/tmp/larch-external-serial-${USER:-larch}.lock"`.
+   Keep the `tool` argument in the function signatures for now (callers pass it; it still gates the Darwin/`{codex,cursor}` guard) but stop using it in the path. Optionally rename to `external_startup_lock_*` for clarity as part of "clean up."
+2. **Keep the spawn-guard semantics.** TTL (30s), tries (300), and the delayed release (0.5s) are unchanged; only the path key changes. A single lock slightly increases cross-tool startup serialization (intended), bounded by the same release delay.
+3. **Tests.** Update the path literals in the harnesses and add an assertion that a Codex acquire blocks a concurrent Cursor acquire (and vice versa) on Darwin, which would have caught this.
+4. **Docs.** Update `SECURITY.md`, `docs/configuration-and-permissions.md`, and `scripts/lib-external-launcher-common.md` to the unified path and the "shared across tools" rationale.
+5. **Clean up.** Reconcile the commit-#1986 "per-tool" wording wherever it persists in comments; ensure the `noqa: S108` parity comment and the `.md` contract reflect the single shared path.
+
+## Open questions
+
+- Does the Codex CLI binary touch the macOS login Keychain at startup in larch's invocation (env-key `OPENAI_API_KEY` and/or file-based `CODEX_HOME`)? If empirically no, the unification is a safe simplification rather than a correctness fix. A quick confirmation: `sudo fs_usage -w -f filesys codex` (or dtrace) on a Codex spawn and check for `login.keychain-db` access.
+- Should the lock be scoped per `$USER` only (current) or also per host boot session? Current age-based stale recovery (TTL 30s) is probably sufficient; confirm it does not over-serialize when many slots launch in one panel.
+- Should the function/env-var names (`external_serial_lock_*`, `LARCH_EXTERNAL_SERIAL_LOCK_*`) be renamed to reflect "shared startup lock," or kept for backward compatibility with operator-set env vars and existing docs?
+
+
+</feature_description>
+
+
+Untrusted approach synthesis:
+<approach_synthesis encoding="literal-redacted">
+NO_SKETCHES
+
+</approach_synthesis>
+
+
+Untrusted discussion round 1:
+<discussion_round1 encoding="literal-redacted">
+## Decision 1: Rename scope
+- **Question**: How far should the lock-helper rename go (open question #3)?
+- **Resolution**: Full rename. Rename the functions `external_serial_lock_acquire` / `external_serial_lock_release_after` to `external_startup_lock_acquire` / `external_startup_lock_release_after` in both lanes, AND rename the operator env vars `LARCH_EXTERNAL_SERIAL_LOCK_{TTL,TRIES,DELAY,FORCE_UNAME}` to `LARCH_EXTERNAL_STARTUP_LOCK_{TTL,TRIES,DELAY,FORCE_UNAME}`.
+- **Source**: user
+
+## Decision 2: Lock-path token
+- **Question**: Should the unified lock-path token be `external-serial` (issue's literal) or `external-startup` (consistent with the rename)?
+- **Resolution**: `external-startup`. The unified path is `/tmp/larch-external-startup-$USER.lock`, used byte-identically by both the Python and Bash lanes.
+- **Source**: user
+
+## Decision 3: Lock scoping key
+- **Question**: Scope the unified lock per-$USER only, or also per boot session (open question #2)?
+- **Resolution**: Per-$USER only. Keep the current `$USER`-scoped path and the existing TTL-30s stale-recovery; do not add a boot-session component.
+- **Source**: user
+
+## Decision 4: Operator env-var backward compatibility
+- **Question**: Provide a fallback that still reads the old `LARCH_EXTERNAL_SERIAL_LOCK_*` env vars?
+- **Resolution**: No. Hard rename — the old env-var names are no longer read. This is an accepted breaking change for operators who set them (the rename-scope choice explicitly accepted breaking operator env-var compat). No compatibility shim.
+- **Source**: user
+
+## Decision 5: Keychain empirical investigation
+- **Question**: Block the fix on empirically confirming the Codex binary touches the macOS login Keychain at startup (open question #1)?
+- **Resolution**: No. Proceed with unification as a strictly-safer change regardless of the empirical result (the issue's own conclusion). No `sudo fs_usage` / dtrace tracing is in scope. The open empirical question may be noted in prose but does not gate the change.
+- **Source**: issue
+
+## Decision 6: `tool` argument retention
+- **Question**: Remove the `tool` parameter from the lock functions since it leaves the path?
+- **Resolution**: Keep it in both signatures. The `tool` arg still gates the early-return guard (`Darwin` AND `tool in {codex, cursor}`); only its use in the path literal is removed. Callers continue to pass it.
+- **Source**: codebase (`python/agents.py:1685`, `scripts/lib-external-launcher-common.sh:376-384`)
+
+## Decision 7: Cross-tool serialization regression test
+- **Question**: What new test coverage is required?
+- **Resolution**: Add a regression assertion that a Codex startup-lock acquire blocks a concurrent Cursor acquire (and vice versa) on Darwin — coverage that would have caught the original per-tool bug. Update all existing path/env-var literals in the harnesses in the same change.
+- **Source**: issue + `.claude/rules/launcher-argv-test-coverage.md`
+
+## Decision 8: Python/Bash byte-identical parity (hard constraint)
+- **Question**: What must not break?
+- **Resolution**: The Python and Bash lock-path literal must stay byte-identical so a Python-launched tool and a Bash-launched tool serialize cross-lane. This is the whole point of the fix. Covered by `.claude/rules/external-tool-launcher-parity.md` (serial-lock spawn site parity surface).
+- **Source**: codebase / repo rule
+
+</discussion_round1>
+
+
+Untrusted approved design outline:
+<design_outline encoding="literal-redacted">
+## Proposed Design Outline
+
+### Goals
+- Replace the per-tool Darwin startup lock with one shared, tool-independent mutex so any two external-CLI startups (Codex vs Cursor) serialize against each other.
+- Full rename to "startup lock": helpers `external_startup_lock_*`, env vars `LARCH_EXTERNAL_STARTUP_LOCK_*`, path `/tmp/larch-external-startup-$USER.lock` (byte-identical across Python + Bash).
+- Add cross-tool serialization regression coverage and update the docs/comments to the unified path + "shared across tools" rationale.
+
+### Non-goals
+- No backward-compat shim for the old `LARCH_EXTERNAL_SERIAL_LOCK_*` env vars (hard rename; breaking change accepted).
+- No live macOS Keychain tracing (`fs_usage`/dtrace); proceed as a strictly-safer change.
+- No change to lock semantics (TTL 30s, 300 tries, 0.5s delayed release) or to per-`$USER` scoping.
+
+### Approach sketch
+- `python/agents.py`: drop `{tool}` from the path; rename functions + env-var reads; keep the `tool` arg (still gates the `Darwin` + `{codex,cursor}` early-return guard).
+- `scripts/lib-external-launcher-common.sh`: mirror token-for-token so the path literal stays byte-identical to Python; rename functions + env-var reads; update `python/checks.py`'s generated snippet.
+- Update remaining call sites/consumers (`review_and_fix.py`, the ~7 acquire sites) for the renamed symbols.
+- Tests: swap path/env-var literals everywhere; add a Codex-acquire-blocks-Cursor (and vice versa) Darwin assertion.
+- Docs/comments: `SECURITY.md`, `docs/configuration-and-permissions.md`, `.md` contract, parity rule; reconcile the "#1986 per-tool" wording.
+
+### Surfaces in scope
+- `python/agents.py`, `python/checks.py`, `python/review_and_fix.py`
+- `scripts/lib-external-launcher-common.sh` + `scripts/lib-external-launcher-common.md`
+- Harnesses: `python/test_agents.py`, `python/test_launch_review.py`, `python/test_review_and_fix.py`, `python/test_implement_dispatch.py`, `python/test_agent_waterfall.py`, `scripts/test-dispatch-with-waterfall.sh`
+- Docs/rules: `SECURITY.md`, `docs/configuration-and-permissions.md`, `.claude/rules/external-tool-launcher-parity.md`
+
+### Open questions
+- None. All three issue open questions resolved in Round 1 (full rename, per-`$USER` scope, strictly-safer with no empirical gating).
+
+</design_outline>
+
