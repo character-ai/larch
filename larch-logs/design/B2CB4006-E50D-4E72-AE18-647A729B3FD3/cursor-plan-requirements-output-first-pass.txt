@@ -1,0 +1,10 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	completeness	plan.txt:113-113	Per-file Makefile audit for `python/test_run_logs.py` omits `test-capture-session-transcript`	The issue and Makefile both have eight full-file targets for `python/test_run_logs.py`; the plan’s explicit audit lists only seven and never names `test-capture-session-transcript` (Makefile:923-924, shard `test-harnesses-14`). If that target stays full-file while siblings are sliced, the partition guard will report overlap and block adding `python/test_run_logs.py` to `ENFORCED`.	Add `test-capture-session-transcript` to the `python/test_run_logs.py` target audit (slice to the `capture_transcript` family per the illustrative guidance at plan.txt:85) and include it in the retirement/slicing checklist before ENFORCED sign-off.
+
+### Finding 1 — completeness — plan.txt:113
+
+**Concern:** The binding issue lists eight full-file Makefile targets for `python/test_run_logs.py`. The plan’s “Per-file target audit” names seven and omits `test-capture-session-transcript`, even though illustrative guidance at line 85 mentions a `capture_transcript` family.
+
+**Scenario:** An implementer treating the enumerated audit as complete could slice the seven listed targets and leave `test-capture-session-transcript` as a full-file invocation. That preserves duplicate coverage, so `scripts/lint-harness-pytest-partition.py` would fail strict-partition checks and block `ENFORCED` for Bucket 1’s headline file.
+
+**Suggested revision:** Add `test-capture-session-transcript` to the explicit `python/test_run_logs.py` target list and require slicing it into the `capture_transcript` selection (or absorbing it into another disjoint slice) before ENFORCED sign-off.
