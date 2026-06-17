@@ -483,8 +483,9 @@ def test_conflict_fixer_forbidden_path_reverts_and_stalls(
         *,
         cwd: str | None,
         forbidden: tuple[str, ...],
+        baseline_staged: tuple[str, ...] = (),
     ) -> int:
-        _ = cwd, forbidden
+        _ = cwd, forbidden, baseline_staged
         return 1
 
     monkeypatch.setattr(rebase.coder_delta_guards, "coder_forbidden_paths", fake_forbidden_paths)
@@ -543,8 +544,9 @@ def test_conflict_forbidden_snapshot_is_prelaunch_and_not_recomputed(
         *,
         cwd: str | None,
         forbidden: tuple[str, ...],
+        baseline_staged: tuple[str, ...] = (),
     ) -> int:
-        _ = cwd
+        _ = cwd, baseline_staged
         events.append(f"revert:{','.join(forbidden)}")
         return 0
 

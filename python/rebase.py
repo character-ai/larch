@@ -263,15 +263,20 @@ def _resolve_conflicts(
             conflict_csv = ",".join(unmerged)
             baseline_tracked = git.tracked_dirty_paths(runner, cwd=cwd)
             baseline_untracked = git.untracked_dirty_paths(runner, cwd=cwd)
+            baseline_staged = coder_delta_guards.staged_dirty_paths(runner, cwd=cwd)
             resolved = False
             for index, tier in enumerate(config.FIXER_TIER_ORDER):
                 forbidden = coder_delta_guards.coder_forbidden_paths(runner, cwd=cwd)
                 attempt = launch_fn(tier, conflict_csv)
-                if coder_delta_guards.revert_forbidden_paths(
-                    runner,
-                    cwd=cwd,
-                    forbidden=forbidden,
-                ) > 0:
+                if (
+                    coder_delta_guards.revert_forbidden_paths(
+                        runner,
+                        cwd=cwd,
+                        forbidden=forbidden,
+                        baseline_staged=baseline_staged,
+                    )
+                    > 0
+                ):
                     git.paths_delta_revert(
                         runner,
                         baseline_tracked,

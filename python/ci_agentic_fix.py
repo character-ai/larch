@@ -308,7 +308,15 @@ def _run_cycle(
             )
             return "waterfall-failed", "head-changed", fix_attempted, (), False, None, failure_log_text
         forbidden = coder_delta_guards.coder_forbidden_paths(runner, cwd=cwd)
-        if coder_delta_guards.revert_forbidden_paths(runner, cwd=cwd, forbidden=forbidden) > 0:
+        if (
+            coder_delta_guards.revert_forbidden_paths(
+                runner,
+                cwd=cwd,
+                forbidden=forbidden,
+                baseline_staged=baseline_staged,
+            )
+            > 0
+        ):
             _rollback(
                 runner,
                 baseline_tracked=baseline_tracked,
@@ -410,7 +418,7 @@ def _run_cycle(
                 None,
                 failure_log_text,
             )
-        expected_actions = {"", "merge", "already_merged", "rebase", "rebase_then_evaluate"}
+        expected_actions = {"", "merge", "already_merged", "rebase", "rebase_then_evaluate", "evaluate_failure"}
         if wait.get("ACTION", "") not in expected_actions and not wait.get("FAILED_RUN_ID"):
             return (
                 "ci-fix-exhausted",

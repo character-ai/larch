@@ -92,14 +92,21 @@ def forbidden_paths_match_count(paths: tuple[str, ...], forbidden: tuple[str, ..
     return sum(1 for path in paths if path_matches_forbidden(path, forbidden))
 
 
+def staged_dirty_paths(runner: Runner, *, cwd: str | None = None) -> tuple[str, ...]:
+    result = runner.run(["git", "diff", "--name-only", "--cached"], cwd=cwd)
+    return tuple(line.strip() for line in result.stdout.splitlines() if line.strip())
+
+
 def revert_forbidden_paths(
     runner: Runner,
     *,
     cwd: str | None,
     forbidden: tuple[str, ...],
+    baseline_staged: tuple[str, ...] = (),
 ) -> int:
     current_tracked = tracked_dirty_paths(runner, cwd=cwd)
     current_untracked = untracked_dirty_paths(runner, cwd=cwd)
+    baseline_staged_set = set(baseline_staged)
     revert_count = 0
     seen: set[str] = set()
     for path in (*current_tracked, *current_untracked):
@@ -111,7 +118,8 @@ def revert_forbidden_paths(
         if path in current_untracked:
             _ = runner.run(["rm", "-f", "--", path], cwd=cwd)
         else:
-            _ = git.restore_staged(runner, path, cwd=cwd)
+            if path not in baseline_staged_set:
+                _ = git.restore_staged(runner, path, cwd=cwd)
             _ = git.checkout_paths(runner, path, cwd=cwd)
         revert_count += 1
     return revert_count
