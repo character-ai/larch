@@ -961,4 +961,3 @@ def test_embedded_waterfall_dispatchers_preserve_raw_retired_markers() -> None:
                 + '}"'
             )
             assert assignment in body, key
-
