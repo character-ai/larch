@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Structural timing/telemetry rehydration checks for /implement.
 
+# shellcheck disable=SC2016 # single-quoted strings are intentional grep literals
 set -euo pipefail
 
 skill_file="skills/implement/SKILL.md"
