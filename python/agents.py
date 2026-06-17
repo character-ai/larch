@@ -5148,7 +5148,11 @@ def run_waterfall(
             return WaterfallResult(winning_tier=tier, attempts=tuple(attempts))
         if runner is not None and baseline_tracked is not None and baseline_untracked is not None:
             git.paths_delta_revert(runner, baseline_tracked, baseline_untracked, cwd=cwd)
-        failure_class = effective_failure_class(attempt)
+        failure_class = (
+            parse_launcher_failure_class(attempt.failure_log)
+            if attempt.failure_log is not None
+            else effective_failure_class(attempt)
+        )
         if idx == 0 and tier == first and attempt.wrapper_rc == 0 and failure_class == "other":
             return WaterfallResult(winning_tier=None, attempts=tuple(attempts), short_circuited=True)
     return WaterfallResult(winning_tier=None, attempts=tuple(attempts))
