@@ -48,6 +48,39 @@ def test_embedded_run_step3_review_routes_from_binary_found() -> None:
     assert "CURSOR_PRESENT:-false" not in body
 
 
+def test_embedded_review_quiet_init_follows_design_tmpdir_validation() -> None:
+    asset_keys = tuple(plan_review._LEGACY_ASSETS)  # pyright: ignore[reportPrivateUsage]
+    for rel_path in asset_keys:
+        body = plan_review.legacy_asset_bytes(rel_path).decode("utf-8")
+        if "larch_quiet_init" not in body:
+            continue
+        validate_index = body.find("session validate-design-tmpdir")
+        quiet_index = body.find("larch_quiet_init")
+        assert validate_index != -1, f"{rel_path} initializes quiet logging without validating design tmpdir"
+        assert validate_index < quiet_index, f"{rel_path} validates design tmpdir after quiet logging"
+
+
+def test_embedded_run_step3_review_round_paths_validate_before_quiet() -> None:
+    asset_name = "run-" + "step3-review.sh"
+    asset_parts = ("skills", "design", "scripts", asset_name)
+    rel_path = "/".join(asset_parts)
+    body = plan_review.legacy_asset_bytes(rel_path).decode("utf-8")
+
+    single_start = body.index("run_step3_round_body() {")
+    single_end = body.index("validate_step3_loop_starting_round()")
+    loop_start = body.index('if [[ "$STEP3_MODE" == loop ]]; then')
+    regions = {
+        "single": body[single_start:single_end],
+        "loop": body[loop_start:],
+    }
+    for label, region in regions.items():
+        validate_index = region.find("session validate-design-tmpdir")
+        quiet_index = region.find("larch_quiet_init")
+        assert validate_index != -1, f"{rel_path} {label} path does not validate design tmpdir"
+        assert quiet_index != -1, f"{rel_path} {label} path does not initialize quiet logging"
+        assert validate_index < quiet_index, f"{rel_path} {label} path initializes quiet before validation"
+
+
 def test_emit_plan_persists_diff_lines(tmp_path: Path) -> None:
     _ = (tmp_path / "plan.txt").write_text("## Plan\n\ndiff_lines: 42\n", encoding="utf-8")
     proc = run_cli("plan-review", "emit", "--design-tmpdir", str(tmp_path))
@@ -904,3 +937,28 @@ def test_embedded_waterfall_dispatchers_call_agent_verb() -> None:
 
 def _parse_rate_retry_lines(body: str) -> str:
     return "\n".join(line for line in body.splitlines() if "voting parse-rate-retry" in line or "VPR_ARGS=" in line)
+
+
+def test_embedded_waterfall_dispatchers_preserve_raw_retired_markers() -> None:
+    retired = "dispatch-with-" + "waterfall.sh"
+    dispatch_voters = "dispatch-plan-" + "voters.sh"
+    review_panel = "dispatch-plan-review-" + "panel.sh"
+    dispatch_parts = ("scripts", dispatch_voters)
+    panel_parts = ("skills", "design", "scripts", review_panel)
+    keys = (
+        "/".join(dispatch_parts),
+        "/".join(panel_parts),
+    )
+    for key in keys:
+        body = plan_review._decode_asset(  # pyright: ignore[reportPrivateUsage]
+            plan_review._LEGACY_ASSETS[key]  # pyright: ignore[reportPrivateUsage]
+        ).decode("utf-8")
+        assert retired in body, key
+        if key.endswith(review_panel):
+            assignment = (
+                'DISPATCH_WATERFALL_SH="${DISPATCH_PLAN_REVIEW_WATERFALL_SH:-$PLUGIN_ROOT/scripts/'
+                + retired
+                + '}"'
+            )
+            assert assignment in body, key
+
