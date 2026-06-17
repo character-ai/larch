@@ -34,6 +34,11 @@ if [ "$cmd1 $cmd2" = "agent collect-results" ]; then
     printf '%s\n' "$@" >"$actual"
     diff -u "$EXPECTED_PATHS_FILE" "$actual" >/dev/null || { printf 'unexpected collect argv\n' >&2; exit 7; }
   fi
+  if [ -n "${LARCH_TEST_COLLECT_RESULTS_RC:-}" ]; then
+    printf 'collector stdout fixture\n'
+    printf 'collector stderr fixture\n' >&2
+    exit "$LARCH_TEST_COLLECT_RESULTS_RC"
+  fi
   for path in "$@"; do
     printf 'COLLECTED:%s:%s\n' "$(basename "$path")" "$(cat "$path" 2>/dev/null || true)"
   done
@@ -101,6 +106,19 @@ EXPECTED_PATHS_FILE="$D1/expected-paths.txt" LARCH_TEST_DIRTY_STATUS=clean run_c
 contains "$D1/out" 'COLLECTED:cursor-brainstorm-output.txt:framing text' 'framing slot output missing'
 contains "$D1/out" 'COLLECTED:codex-brainstorm-output.txt:scope text' 'scope slot output missing'
 pass 'collect relays per-slot collector output and argv'
+
+D1B="$TMP/collect-results-rc-failure"
+mkdir -p "$D1B"
+collect_fail="$D1B/cursor-brainstorm-output.txt"
+printf 'collector input' >"$collect_fail"
+printf '%s\n' "$collect_fail" >"$D1B/expected-paths.txt"
+EXPECTED_PATHS_FILE="$D1B/expected-paths.txt" LARCH_TEST_COLLECT_RESULTS_RC=23 LARCH_TEST_DIRTY_STATUS=clean run_collect "$D1B" "$collect_fail" >"$D1B/out"
+[ -s "$D1B/brainstorm-collect.failure.log" ] || fail 'collect-results failure log must be non-empty'
+contains "$D1B/brainstorm-collect.failure.log" 'collector stdout fixture' 'collect-results failure log missing stdout'
+contains "$D1B/brainstorm-collect.failure.log" 'collector stderr fixture' 'collect-results failure log missing stderr'
+contains "$D1B/execution-issues.md" 'agent collect-results exited 23' 'collect-results failure row missing exit code'
+contains "$D1B/execution-issues.md" 'brainstorm-collect.failure.log' 'collect-results failure row missing log path'
+pass 'collect records non-zero collector failures'
 
 D2="$TMP/launch-failures"
 mkdir -p "$D2"
