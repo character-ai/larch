@@ -1,0 +1,23 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	blocking	correctness	python/stall_recovery.py:229-293	Generic-profile classify port omits cmd_classify_generic_from_terminal_state semantics	With --profile generic and --primary-state-file, bash validates terminal state, forces STALL_TRACKING=true and RESUME_HINT=none, hashes signatures with profile/skill_label, and emits DISPATCHER from SOURCE_SCRIPT; current classify() uses the implement path only, so /design terminal-state classification and Tier A/B dedup signatures diverge after shell deletion	Add a dedicated generic branch (validate_terminal_state first) mirroring bash:1091-1112 signature seed, SOURCE_SCRIPT-based DISPATCHER, fixed RESUME_HINT/STALL_TRACKING, and generic artifact naming; cover in test_stall_recovery.py per plan line 127
+2	in_scope	important	correctness	python/stall_recovery.py:271-287	Same-cause-repeat promotion omits MATCHED_CLASSIFIER_PATTERN=same-cause-repeat	Bash case20b sets MATCHED_CLASSIFIER_PATTERN on promotion; Python only rewrites klass/hint, so persisted MATCHED_CLASSIFIER_PATTERN can stay on the pre-promotion pattern and break downstream report/dedup contracts	In the same-cause-repeat guard, set pattern="same-cause-repeat" before sanitization/write_kvs; assert KV and classification-file values in the planned case20b test
+3	in_scope	important	risk-integration	agent-lint.toml:1293-1294	Phantom combined harness paths not called out for removal	agent-lint.toml pins skills/implement/scripts/test-stall-recovery-report.sh/.md, which do not exist (only -1/-2/-3 harnesses do); deleting split harnesses without removing this pin can leave agent-lint stale post-cutover	Under ### UPDATED: agent-lint.toml, explicitly drop test-stall-recovery-report.sh and test-stall-recovery-report.md pins; keep only live python/ and pytest partition surfaces
+4	out_of_scope	nit	architecture	python/test_stall_recovery.py:129-139	Ten separate case7g–7k6 named tests add harness bulk	Behavior must be ported before bash deletion, but one parametrized matrix can cover argv-only bail, stale-evidence precedence, and submodule/dispatch tokens with less maintenance churn	[SCOPE-REDUCTION] Prefer a single parametrized bail-precedence table over ten individually named tests unless Makefile -k shard lint requires distinct substrings
+
+## Findings
+
+**1. architecture / correctness (blocking)** — `python/stall_recovery.py:229-293`
+
+Generic `/design` classification is not fully specified. Bash `cmd_classify_generic_from_terminal_state` (`stall-recovery-report.sh:1065-1122`) differs from implement `cmd_classify` beyond `validate_terminal_state`: signature seed includes `profile` and `skill_label`, `DISPATCHER` comes from `SOURCE_SCRIPT`, and `RESUME_HINT` stays `none` with `STALL_TRACKING=true`. The plan routes generic profile through `validate_terminal_state()` but does not require porting those semantics. After shell deletion, design failure reports and dedup signatures can drift.
+
+**2. correctness (important)** — `python/stall_recovery.py:271-287`
+
+The plan’s case20b guard excludes `contract-failure` and `unrecoverable` but does not require setting `MATCHED_CLASSIFIER_PATTERN=same-cause-repeat` on promotion. Bash sets that explicitly (`:1096-1097`, `:1247-1248`). Python only changes `klass` and `hint`, so the written artifact can keep the pre-promotion pattern.
+
+**3. risk-integration (important)** — `agent-lint.toml:1293-1294`
+
+The plan updates `agent-lint.toml` generically but does not name the phantom combined harness pins. Only `test-stall-recovery-report-{1,2,3}.*` exist on disk. Leaving `test-stall-recovery-report.sh` in agent-lint is a stale-reference trap after cutover.
+
+**[OUT_OF_SCOPE] 4. architecture (nit)** — `python/test_stall_recovery.py`
+
+The long case7g–7k6 named-test list is correct for parity but heavy. A parametrized bail-precedence matrix could cover the same behavior with a smaller diff if shard `-k` filters allow it.
