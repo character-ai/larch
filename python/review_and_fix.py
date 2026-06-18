@@ -883,18 +883,36 @@ def _cleanup_failed_coder_attempt(round_dir: Path) -> bool:
     return _finalize_failed_cleanup(round_dir, pre_head=pre_head, mode=mode, reason="verification failed")
 
 
-def _collect_round_stage_paths(round_dir: Path) -> list[str]:
+def _round_diff_base(round_dir: Path, *, since_committed: bool) -> str:
     snap_dir = pre_coder_snapshot_dir(round_dir)
+    if since_committed:
+        post_head_file = round_dir / "post-coder-head.txt"
+        if post_head_file.is_file() and post_head_file.stat().st_size:
+            return _read_text(post_head_file).strip()
     pre_head_file = snap_dir / "pre-coder-head.txt"
+    if pre_head_file.is_file() and pre_head_file.stat().st_size:
+        return _read_text(pre_head_file).strip()
+    return ""
+
+
+def _round_has_full_pre_coder_snapshot(round_dir: Path) -> bool:
+    snap_dir = pre_coder_snapshot_dir(round_dir)
+    return (
+        (snap_dir / "pre-coder-tracked-paths.txt").is_file()
+        and (snap_dir / "pre-coder-untracked-paths.txt").is_file()
+    )
+
+
+def _collect_round_stage_paths(round_dir: Path, *, since_committed: bool = False) -> list[str]:
+    diff_base = _round_diff_base(round_dir, since_committed=since_committed)
     paths: list[str] = []
     seen: set[str] = set()
     mode = _snapshot_mode(round_dir)
-    if mode in {"full", "head_untracked"} and pre_head_file.is_file() and pre_head_file.stat().st_size:
-        pre_head = _read_text(pre_head_file).strip()
+    if mode in {"full", "head_untracked"} and diff_base:
         tracked = (
-            _round_coder_delta_paths(round_dir, pre_head)
+            _round_coder_delta_paths(round_dir, diff_base)
             if mode == "full"
-            else _round_attempt_tracked_delta_paths(round_dir, pre_head)
+            else _round_attempt_tracked_delta_paths(round_dir, diff_base)
         )
         for path in tracked:
             if path not in seen:
@@ -912,6 +930,22 @@ def _collect_round_stage_paths(round_dir: Path) -> list[str]:
     else:
         untracked = _capture_round_untracked_paths()
     for path in untracked:
+        if path not in seen:
+            seen.add(path)
+            paths.append(path)
+    return paths
+
+
+def _collect_self_review_stage_paths(implement_tmpdir: Path) -> list[str]:
+    if not (implement_tmpdir / "self-review-accepted.md").is_file():
+        return []
+    paths: list[str] = []
+    seen: set[str] = set()
+    for path in _capture_round_tracked_paths():
+        if path not in seen:
+            seen.add(path)
+            paths.append(path)
+    for path in _capture_round_untracked_paths():
         if path not in seen:
             seen.add(path)
             paths.append(path)
@@ -945,24 +979,6 @@ def _post_dispatch_submodule_revert(round_dir: Path, submodules: list[str]) -> i
                 break
     _write_text(revert_log, "\n".join(reverted) + ("\n" if reverted else ""))
     return revert_count
-
-
-def _write_mav_pre_coder_head_snapshot(round_dir: Path) -> str:
-    snap_dir = pre_coder_snapshot_dir(round_dir)
-    snap_dir.mkdir(parents=True, exist_ok=True)
-    _clear_stale_pre_coder_snapshot_artifacts(snap_dir)
-    head = _git_head()
-    pre_head = snap_dir / "pre-coder-head.txt"
-    if head:
-        _write_text(pre_head, head + "\n")
-        untracked = _capture_round_untracked_paths()
-        _write_text(snap_dir / "pre-coder-untracked-paths.txt", "\n".join(untracked) + ("\n" if untracked else ""))
-        pre_head.chmod(0o444)
-        _harden_pre_coder_snapshot_perms(snap_dir)
-    else:
-        with contextlib.suppress(FileNotFoundError):
-            pre_head.unlink()
-    return head
 
 
 def _write_pre_coder_snapshot(round_dir: Path) -> str:
@@ -1660,15 +1676,16 @@ def _step5_post_round_gates(
         lint_max = _lint_fix_max_attempts()
         lint_attempts = 0
         pre_lint_head = _write_pre_lint_snapshot(result.round_dir) if _git_status_porcelain().strip() else ""
-        lint_applied_ever = False
         lint_delta_paths: set[str] = set()
 
         def _lint_loop_successful_break(reason: str) -> tuple[str | None, str | None]:
-            if not lint_applied_ever or not _git_status_porcelain().strip():
+            if not _git_status_porcelain().strip():
                 return None, None
             if not pre_lint_head:
                 return None, None
             commit_paths = _lint_fix_delta_paths(result.round_dir, pre_lint_head, tuple(sorted(lint_delta_paths)))
+            if not commit_paths:
+                return None, None
             commit_sha = _commit_lint_fix_delta_paths(round_num, result.round_dir, commit_paths, reason)
             if not commit_sha and _git_status_porcelain().strip():
                 return "stall", "lint-fix-commit-failed"
@@ -1678,7 +1695,6 @@ def _step5_post_round_gates(
             lint = _run_lint_fix_loop(implement_tmpdir, checks["REDACTED_LOG_FILE"])
             lint_status = lint.get("LINT_FIX_STATUS", "")
             if lint_status == "applied":
-                lint_applied_ever = True
                 lint_delta_paths.update(path for path in lint.get("LINT_FIX_DELTA_PATHS", "").split(",") if path)
                 lint_attempts += 1
                 if lint_attempts >= lint_max:
@@ -1926,7 +1942,14 @@ def _collect_review_fix_stage_paths(implement_tmpdir: Path) -> list[str]:
         pre_head_file = pre_coder_snapshot_dir(round_dir) / "pre-coder-head.txt"
         if not pre_head_file.is_file() or not pre_head_file.stat().st_size:
             continue
-        for path in _collect_round_stage_paths(round_dir):
+        if not _round_has_full_pre_coder_snapshot(round_dir):
+            continue
+        for path in _collect_round_stage_paths(round_dir, since_committed=True):
+            if path not in seen:
+                seen.add(path)
+                paths.append(path)
+    if not paths:
+        for path in _collect_self_review_stage_paths(implement_tmpdir):
             if path not in seen:
                 seen.add(path)
                 paths.append(path)
@@ -2621,7 +2644,7 @@ def step5(argv: list[str] | None = None) -> int:
             args.round_num = str(_positive_int(args.round_num, "--round-num"))
             round_dir = implement_tmpdir / f"round-{args.round_num}"
             round_dir.mkdir(parents=True, exist_ok=True)
-            _write_mav_pre_coder_head_snapshot(round_dir)
+            _write_pre_coder_snapshot(round_dir)
             coder = apply_findings_with_coder(Path(args.findings_file), round_dir, round_dir / "coder.env", int(args.round_num))
             if coder.rc == 0 and coder.status == "applied":
                 with contextlib.suppress(FileNotFoundError):
