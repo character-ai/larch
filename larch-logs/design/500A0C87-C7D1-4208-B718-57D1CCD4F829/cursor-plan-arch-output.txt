@@ -1,0 +1,25 @@
+Reviewing the plan and cited codebase paths for architecture and contract gaps.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/scripts/design-clarify.sh:78-97	python/clarify.py (planned _load_route_state_repo)	Missing route-state sidecar must not become route-state-read-failed	Bash returns 0 when REPO is unset and `.design-step0-route-state.env` is absent; only a present file with a failed read yields route-state-read-failed. Calling `phase_driver_read_result_env` on a missing path raises OSError and can be misclassified as a hard clarify failure.	Match `load_route_state_repo_fallback`: if REPO is already set, skip; if the sidecar is missing, continue with empty REPO; only when the file exists and allowlisted read fails, emit route-state-read-failed (fetch stages, publish does not).
+2	in_scope	important	architecture	python/clarify.py (planned _load_route_state_repo / _read_result_env)	Reuse `design_lifecycle.phase_driver_read_result_env` for allowlisted reads	`scripts/read-result-env.sh` already delegates to that helper. A new parser in `clarify.py` duplicates symlink refusal and CR/LF handling and can drift from `step0_init_main` and other G6 ports.	Implement route-state and publish request-state reads via `phase_driver_read_result_env` (allowlist `REPO` or request keys); keep `_write_result_env` local for writes only.
+3	in_scope	important	correctness	python/clarify.py (planned DESIGN_TMPDIR gate)	DESIGN_TMPDIR must be an absolute directory	Bash requires `cd "$DESIGN_TMPDIR" && pwd -P`. A plan that only checks `Path.exists()` accepts a regular file path and fails later with confusing errors.	Require `Path(DESIGN_TMPDIR).is_absolute()` and `is_dir()` (optionally `resolve()` for parity) before phase work; exit 2 via `_fail_usage` with the same message shape as Bash `fail 'DESIGN_TMPDIR required'`.
+4	out_of_scope	latent	architecture	python/clarify.py (planned helpers list)	[SCOPE-REDUCTION] Drop `_build_delegate_pause_args` from the planned helper surface	Pause-save terminates inside Python via `design_pause.pause_save_main`; the Bash wrapper no longer builds pause argv. A dedicated delegate-args helper adds API surface with no caller.	Remove `_build_delegate_pause_args` from the helper list; build pause-save argv inline at the single call site.
+5	out_of_scope	latent	architecture	python/clarify.py (planned _append_clarify_failure)	[SCOPE-REDUCTION] Reuse `design_lifecycle._append_failure` for staging warnings	`design_lifecycle._append_failure` already wraps `run-log append-failure` with the same site/category contract used when `design-stage-terminal-state.sh` staging fails.	Call `_append_failure` from `_stage_failed_clarify` instead of adding `_append_clarify_failure`.
+
+## Findings
+
+**1. [correctness] Missing route-state file is not a read failure** (`skills/design/scripts/design-clarify.sh:78-97`, planned `python/clarify.py`)
+
+Bash only attempts the sidecar when `REPO` is empty and the file exists. A missing `.design-step0-route-state.env` is a no-op, not `route-state-read-failed`. The plan describes failure tokens but does not pin this guard. `phase_driver_read_result_env` raises on a missing path (`python/design_lifecycle.py:45-46`), so a naive port can treat absence as terminal clarify failure.
+
+**2. [architecture] Read path should reuse `phase_driver_read_result_env`** (planned `python/clarify.py`)
+
+`read-result-env.sh` is already a thin delegate to `design read-result-env` → `phase_driver_read_result_env`. New `_load_route_state_repo` / `_read_result_env` parsers in `clarify.py` duplicate tested trust boundaries. Reuse the existing helper; keep a local `_write_result_env` only for writes (as the plan already distinguishes from `design_postplan._write_result_env`).
+
+**3. [correctness] `DESIGN_TMPDIR` must be a directory** (planned `python/clarify.py`)
+
+The plan requires absolute and existing paths but not `is_dir()`. Bash fails on `cd` when the path is a file. Add an explicit directory check before fetch/publish.
+
+**[OUT_OF_SCOPE] 4.** Drop `_build_delegate_pause_args` from the planned helper list; pause argv belongs at the single `pause_save_main` call site.
+
+**[OUT_OF_SCOPE] 5.** Prefer `design_lifecycle._append_failure` over a new `_append_clarify_failure` for staging-warning append parity.

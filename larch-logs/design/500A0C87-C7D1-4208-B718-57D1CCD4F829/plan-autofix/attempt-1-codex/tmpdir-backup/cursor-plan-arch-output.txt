@@ -1,0 +1,58 @@
+Reviewing the implementation plan and tracing cited code paths in the repo.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/scripts/design-clarify.sh:189-200	Route-state read failure must not always call `_stage_failed_clarify`	Bash only stages `failed-clarify` on fetch-phase route-state failure; publish writes `CLARIFY_PUBLISH_STATUS=route-state-read-failed` and exits without staging. The plan groups route-state with fetch staging and never splits by phase.	A publish run with missing `REPO` and unreadable `.design-step0-route-state.env` could spuriously stage terminal failed-clarify state.
+2	in_scope	important	correctness	skills/design/scripts/design-clarify.sh:311	publish phase omits `REQUEST_ID` positive-int validation	Bash rejects empty or non-numeric `REQUEST_ID` before comment-post. The plan validates issue match and artifact files but not `REQUEST_ID`.	A malformed `.design-clarify-request.env` can reach `clarify_comment_post` with bad `--id`, changing failure mode and stdout vs current bash.
+3	in_scope	important	security	python/design_lifecycle.py:711-741	Custom `_load_session_env_file` risks bypassing trusted session-env symlink handling	Launcher passes `--session-env-path` to a cache symlink. Other design ports use `_load_source_env(..., claude_pid=...)` with `resolve_trusted_design_session_env_source`. A bespoke parser may skip that trust boundary.	Untrusted or stale symlink session env could load wrong `DESIGN_TMPDIR` / `REPO` / `SESSION_ID` on clarify fetch or publish.
+4	in_scope	important	correctness	skills/design/scripts/design-clarify.sh:382	Publish path drops the `SESSION_ID` missing warning	Bash prints `**⚠ /design: SESSION_ID missing; skipping design log publish**` when `SESSION_ID` is empty. The plan only skips publish/rename; tests move to Python without requiring the warning.	Operators lose the visible skip breadcrumb; behavior diverges from the current harness expectation at `test-design-clarify.sh:198`.
+
+### 1. Route-state failure staging is phase-dependent (correctness)
+
+Pre-phase route-state loading in bash treats fetch and publish differently:
+
+```189:200:skills/design/scripts/design-clarify.sh
+if ! load_route_state_repo_fallback; then
+    route_state_log="$DESIGN_TMPDIR/clarify-route-state.failure.log"
+    printf 'could not read route state sidecar\n' >"$route_state_log"
+    if [[ "$PHASE" == fetch ]]; then
+        write_result_env "$FETCH_RESULT_ENV" "CLARIFY_FETCH_STATUS=route-state-read-failed" "SUMMARY_OUTCOME=failed-clarify"
+        stage_failed_clarify 1 "$route_state_log"
+        ...
+    fi
+    write_result_env "$PUBLISH_RESULT_ENV" "CLARIFY_PUBLISH_STATUS=route-state-read-failed" "SUMMARY_OUTCOME=failed-clarify"
+    ...
+fi
+```
+
+The plan lists route-state under fetch failures that call `_stage_failed_clarify` but does not require publish to skip staging. Add an explicit phase branch: stage only on fetch; on publish emit `route-state-read-failed` and exit without terminal staging.
+
+### 2. Missing `REQUEST_ID` validation on publish (correctness)
+
+After loading request state, bash validates `REQUEST_ID` before any publish I/O:
+
+```305:311:skills/design/scripts/design-clarify.sh
+if [[ "${ISSUE_NUMBER:-}" != "$ISSUE" ]]; then
+    ...
+fi
+ISSUE="$ISSUE_NUMBER"
+validate_positive_int REQUEST_ID "${REQUEST_ID:-}"
+```
+
+The plan’s publish section does not mention this. Add the same positive-int gate and fail-closed behavior before redaction and `clarify_comment_post`.
+
+### 3. Session env loading should reuse trusted symlink handling (security / architecture)
+
+The plan proposes a new `_load_session_env_file` parser. Design lifecycle already implements the trusted pattern in `_load_source_env` with `claude_pid`-gated symlink resolution (`python/design_lifecycle.py:711-741`, `python/session_env.py:773-781`). Clarify is invoked with `--session-env-path` pointing at the cache symlink. Reuse `_load_source_env` (or equivalent) instead of a one-off parser to avoid trust-boundary drift.
+
+### 4. Preserve `SESSION_ID` missing warning (correctness)
+
+```381:383:skills/design/scripts/design-clarify.sh
+else
+    printf '\n**⚠ /design: SESSION_ID missing; skipping design log publish**\n'
+fi
+```
+
+The plan covers skip semantics but not this stdout warning. The current shell harness asserts it. Preserve the same line on the publish path and cover it in Python tests.
+
+---
+
+**[OUT_OF_SCOPE]** `python/clarify.py` (proposed helpers): Reuse existing `design_lifecycle` helpers (`_require_design_tmpdir`, `check_pause_and_exit`, `phase_driver_read_result_env`, `_cli_cmd`, `_append_failure`) instead of reimplementing parallel private copies. Real maintainability win, but not required for functional parity if the four items above are fixed.
