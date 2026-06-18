@@ -1,0 +1,42 @@
+Reviewing the plan against the issue scope and inspecting the cited code paths.
+Checking loop-exit semantics and whether the plan covers all failure paths from the issue.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	python/review_and_fix.py:234-247	The restructured per-coder loop documents CoderResult construction for applied, no-changes, rc=2 cleanup failure, and rc=3 submodule paths but only no-changes explicitly says return	An implementer could fall through after a successful Cursor commit and dispatch Codex on an already-committed tree, causing duplicate edits, spurious failures, or a dirty tree that still breaks later rebases	Add explicit loop-exit rules: return immediately on applied, no-changes, rc=2 (after _finalize_failed_cleanup), and rc=3 submodule-violation; only edit failure with successful cleanup and commit failure with successful cleanup may continue to the next coder
+
+## Findings
+
+### 1. Per-coder loop missing explicit return semantics (correctness)
+
+The plan restructures `apply_findings_with_coder` into a Cursor→Codex loop. It states outcomes clearly, but only the **no-changes** branch uses the word **return**:
+
+```234:247:<TMPDIR>/plan.txt
+- For each attempt:
+  ...
+  - On `False`: if cleanup fails, `_finalize_failed_cleanup` then `CoderResult(2, ...)`; else continue.
+  ...
+  - **No-changes**: when `_collect_round_stage_paths(round_dir)` is empty, return `CoderResult(0, tool, "no-changes", ...)`.
+  - When `round_num > 0` and stage paths non-empty: `_stage_and_commit_round`; on empty commit sha, cleanup and continue waterfall.
+  - On success: `CoderResult(0, tool, "applied", ..., commit_sha)`.
+- After all attempts exhausted cleanly: `CoderResult(4, "none", "main-agent-required", ...)`.
+```
+
+**Applied**, **rc=2 cleanup failure**, and **rc=3 submodule-violation** do not say **return**. Without that, a literal reading lets the loop continue after a successful Cursor commit and run Codex on an already-mutated tree. That would regress the core bug fix and violate the outline goal that commit failure should fall through only after cleanup, not after success.
+
+**Suggested revision:** Add one bullet: return immediately from the loop on `applied`, `no-changes`, rc=2 (post-`_finalize_failed_cleanup`), and rc=3; only failed edit/commit paths with verified cleanup may `continue`.
+
+---
+
+## Requirements coverage (summary)
+
+| Requirement | Plan coverage |
+|---|---|
+| Clean tree after coder edit failure (Path A) | `_cleanup_failed_coder_attempt` + waterfall continue |
+| Clean tree after commit failure (Path B) | Cleanup on empty commit sha + waterfall continue |
+| Stall path (rc=2) leaves no staged residue | `_finalize_failed_cleanup` before rc=2 |
+| Commit failure falls through to next coder / main agent | Waterfall replaces current rc=2 stall on commit fail |
+| Preserve pre-existing carryover / MAV semantics | Snapshot modes, attempt baselines, no hard reset |
+| Preserve no-changes / submodule rc=3 | Explicitly preserved |
+| Doc fix (Cursor→Codex order) | `step5-review-branches.md` |
+| Regression tests | 12 targeted tests listed |
+
+No other gaps cleared the necessity gate for in-scope acceptance. The snapshot/attempt-baseline machinery is large but matches the approved outline and existing `#3272` carryover contracts; simpler `git restore --staged .`-only rollback would not meet the stated non-goal of preserving unrelated pre-existing work.
