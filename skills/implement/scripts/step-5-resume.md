@@ -18,7 +18,7 @@ For `--ready-to-commit`, relay the `COMMITTED=`, `ERROR=`, and `SHA=` lines from
 - Self-rehydrates `CLAUDE_PLUGIN_ROOT` from `$IMPLEMENT_TMPDIR/plugin-root.env` where needed.
 - Telemetry consumers read `LARCH_TOKEN_SESSION_ID`, `LARCH_CLAUDE_SOURCE_FILE`, and `LARCH_TIMING_LEDGER` from `$IMPLEMENT_TMPDIR/session-env.sh` internally instead of relying on inline SKILL.md triplets.
 - The round-timing duplicate probe uses awk success-on-match semantics: `found` must exit `0`, and missing rows must exit `1`.
-- `--ready-to-commit` exits non-zero before `review-and-fix step5` only when porcelain remains non-empty after a failed handoff commit. Empty porcelain continues to `step5` even when `COMMITTED=false`.
+- `--ready-to-commit` exits non-zero before `review-and-fix step5` when porcelain remains non-empty after the handoff commit, including when `COMMITTED=true` left unstaged dirty paths. Empty porcelain continues to `step5` even when `COMMITTED=false`.
 - Commit-phase failure exits before `review-and-fix step5`, so wrapper exit-code semantics stay separable from normal Step 5 loop stalls such as `STEP5_REVIEW_STATUS=stall`.
 - `skills/implement/SKILL.md` treats commit-phase failure as a terminal Step 5 stall and skips to Step 16. When `STEP5_REVIEW_STATUS=` is present, the orchestrator branches on that envelope instead of treating non-zero exit alone as `resume-handoff-commit-failed`.
 

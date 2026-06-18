@@ -91,7 +91,7 @@ if [ "$READY" = true ] || [ "${STEP5_HANDOFF_READY_TO_COMMIT:-false}" = true ]; 
   committed="$(printf '%s\n' "$commit_output" | awk -F= '$1 == "COMMITTED" { value=$2 } END { print value }')"
   error_value="$(printf '%s\n' "$commit_output" | awk -F= '$1 == "ERROR" { sub(/^[^=]*=/, ""); value=$0 } END { print value }')"
   porcelain="$(git status --porcelain)"
-  if [ -n "$porcelain" ] && { [ "$committed" = false ] || [ -n "$error_value" ] || [ "$commit_rc" -ne 0 ]; }; then
+  if [ -n "$porcelain" ]; then
     if [ "$commit_rc" -ne 0 ]; then
       exit "$commit_rc"
     fi

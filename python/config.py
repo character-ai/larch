@@ -102,6 +102,7 @@ LINT_FIX_BAIL_REASON_TOKENS: Final[tuple[str, ...]] = (
     "lint-fix-main-agent-required",
     "lint-fix-commit-failed",
     "resume-handoff-commit-failed",
+    "review-fix-commit-failed",
 )
 STALL_RECOVERY_BAIL_REASON_TOKENS: Final[tuple[str, ...]] = tuple(dict.fromkeys((
     *CI_WAIT_BAIL_REASON_TOKENS,

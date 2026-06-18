@@ -628,18 +628,19 @@ def _path_matches_attempt_snapshot(round_dir: Path, pre_head: str, path: str) ->
     return wt_diff == _read_text(wt_snap) and idx_diff == _read_text(idx_snap)
 
 
-def _round_coder_delta_paths(round_dir: Path, pre_head: str) -> list[str]:
+def _round_coder_delta_paths(round_dir: Path, diff_base: str, *, snapshot_head: str | None = None) -> list[str]:
     snap_dir = pre_coder_snapshot_dir(round_dir)
     pre_tracked = snap_dir / "pre-coder-tracked-paths.txt"
     pre_tracked_set: set[str] = (
         {line for line in _read_text(pre_tracked).splitlines() if line} if pre_tracked.is_file() else set()
     )
+    compare_head = snapshot_head if snapshot_head is not None else diff_base
     deltas: list[str] = []
     seen: set[str] = set()
-    for path in _tracked_paths_vs_ref(pre_head):
+    for path in _tracked_paths_vs_ref(diff_base):
         if not path or path in seen:
             continue
-        if path in pre_tracked_set and _path_matches_pre_coder_snapshot(round_dir, pre_head, path):
+        if path in pre_tracked_set and _path_matches_pre_coder_snapshot(round_dir, compare_head, path):
             continue
         seen.add(path)
         deltas.append(path)
@@ -905,12 +906,18 @@ def _round_has_full_pre_coder_snapshot(round_dir: Path) -> bool:
 
 def _collect_round_stage_paths(round_dir: Path, *, since_committed: bool = False) -> list[str]:
     diff_base = _round_diff_base(round_dir, since_committed=since_committed)
+    snap_dir = pre_coder_snapshot_dir(round_dir)
+    pre_head_file = snap_dir / "pre-coder-head.txt"
+    snapshot_head = _read_text(pre_head_file).strip() if pre_head_file.is_file() and pre_head_file.stat().st_size else ""
+    snapshot_kw: dict[str, str] = {}
+    if snapshot_head and snapshot_head != diff_base:
+        snapshot_kw["snapshot_head"] = snapshot_head
     paths: list[str] = []
     seen: set[str] = set()
     mode = _snapshot_mode(round_dir)
     if mode in {"full", "head_untracked"} and diff_base:
         tracked = (
-            _round_coder_delta_paths(round_dir, diff_base)
+            _round_coder_delta_paths(round_dir, diff_base, **snapshot_kw)
             if mode == "full"
             else _round_attempt_tracked_delta_paths(round_dir, diff_base)
         )
@@ -1761,8 +1768,11 @@ def _step5_post_round_gates(
         lint_attempts = 0
         pre_lint_head = _write_pre_lint_snapshot(result.round_dir) if _git_status_porcelain().strip() else ""
         lint_delta_paths: set[str] = set()
+        lint_applied_ever = False
 
         def _lint_loop_successful_break(reason: str) -> tuple[str | None, str | None]:
+            if not lint_applied_ever:
+                return None, None
             if not _git_status_porcelain().strip():
                 return None, None
             if not pre_lint_head:
@@ -1779,6 +1789,7 @@ def _step5_post_round_gates(
             lint = _run_lint_fix_loop(implement_tmpdir, checks["REDACTED_LOG_FILE"])
             lint_status = lint.get("LINT_FIX_STATUS", "")
             if lint_status == "applied":
+                lint_applied_ever = True
                 lint_delta_paths.update(path for path in lint.get("LINT_FIX_DELTA_PATHS", "").split(",") if path)
                 lint_attempts += 1
                 if lint_attempts >= lint_max:
