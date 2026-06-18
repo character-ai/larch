@@ -941,8 +941,17 @@ exclude = [
   # python3 python/cli.py implement-finalize, wired into Makefile test-implement-finalize
   # target only (no SKILL.md invocation). Same Makefile-only shape as the
   # other test-* harnesses above.
-  # python/cli.py session restore-finalize-state, wired into Makefile
-  # the other test-* harnesses above.
+  "python/test_finalize.py",
+  # python/test_closeout.py is the regression harness for python/closeout.py
+  # Step 16/17 helpers, wired into Makefile test-step-16-17 target only.
+  "python/test_closeout.py",
+  # python/test_preflight.py is the regression harness for python/cli.py
+  # implement preflight, wired into Makefile test-preflight target only.
+  "python/test_preflight.py",
+  # python/test_final_report.py is the regression harness for python/cli.py
+  # final-report write, wired into Makefile test-write-final-report and
+  # test-step-18b targets only.
+  "python/test_final_report.py",
   # scripts/test-python/cli.py render lane-status is the regression harness for
   # python/cli.py render lane-status (the /research lane-attribution formatter
   # added by #421). Wired only via Makefile test-render-lane-status target;

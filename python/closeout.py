@@ -48,8 +48,11 @@ def _read_key(path: Path, key: str, default: str = "") -> str:
     result = _run(
         [sys.executable, str(_PY_CLI), "session", "read-key", "--file", str(path), "--key", key, "--default", default],
         env=dict(os.environ),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
     )
-    return result.stdout.strip() if result.returncode == 0 else default
+    stdout = (result.stdout or "").strip()
+    return stdout if result.returncode == 0 else default
 
 
 def _env_for(tmpdir: Path, plugin_root: Path) -> dict[str, str]:

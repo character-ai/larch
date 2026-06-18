@@ -8,10 +8,9 @@ from __future__ import annotations
 import os
 import subprocess
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-if TYPE_CHECKING:
-    import pytest
+import pytest
 
 import closeout
 
@@ -219,3 +218,58 @@ def test_step_16_17_empty_failure_prints_no_markers(
     out = capsys.readouterr().out
     assert closeout.SUMMARY_BEGIN not in out
     assert not (tmp_path / ".step17-printed").exists()
+
+
+def test_read_key_returns_cli_stdout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+    session = tmp_path / "session-env.sh"
+    session.write_text("LARCH_RUN_ID=session-run\n", encoding="utf-8")
+    assert closeout._read_key(session, "LARCH_RUN_ID", "") == "session-run"
+
+
+@pytest.mark.parametrize(
+    ("session_text", "ship_text", "finalize_text", "expected_run_id"),
+    [
+        ("LARCH_RUN_ID=session-run\n", "RUN_ID=ship-run\n", "RUN_ID=finalize-run\n", "session-run"),
+        ("", "RUN_ID=ship-run\n", "RUN_ID=finalize-run\n", "ship-run"),
+        ("", "", "RUN_ID=finalize-run\n", "finalize-run"),
+    ],
+)
+def test_step_16_forwards_run_id_from_state_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    session_text: str,
+    ship_text: str,
+    finalize_text: str,
+    expected_run_id: str,
+) -> None:
+    plugin_root = Path(__file__).resolve().parents[1]
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
+    (tmp_path / "session-env.sh").write_text(session_text, encoding="utf-8")
+    (tmp_path / "ship-pr-state.sh").write_text(ship_text, encoding="utf-8")
+    (tmp_path / "finalize-state.sh").write_text(finalize_text, encoding="utf-8")
+
+    captured: list[str] = []
+    real_run = subprocess.run
+
+    def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        if "write-rejected" in argv:
+            captured.append(argv[argv.index("--run-id") + 1])
+            return _completed(argv)
+        if "telemetry-mark" in argv:
+            return _completed(argv)
+        if "session" in argv and "read-key" in argv:
+            return real_run(
+                argv,
+                text=True,
+                env=kwargs.get("env"),
+                stdout=kwargs.get("stdout", subprocess.PIPE),
+                stderr=kwargs.get("stderr", subprocess.DEVNULL),
+                check=False,
+            )
+        return _completed(argv)
+
+    monkeypatch.setattr(closeout.subprocess, "run", fake_run)
+    assert closeout.step_16_main([]) == 0
+    assert captured == [expected_run_id]
