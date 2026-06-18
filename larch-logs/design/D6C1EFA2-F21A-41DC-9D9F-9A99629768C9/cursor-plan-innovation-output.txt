@@ -1,0 +1,26 @@
+Reviewing the plan and tracing the cited code paths in read-only mode.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	python/progress_report.py:145-172	[SCOPE-REDUCTION] Reverting to pointer mtime reopens the #4464 failure mode this code path fixed in the opposite direction	A prior shipped fix switched implement ranking from pointer mtime to tmpdir mtime because a newer pointer from a short-lived failed bootstrap (Step 0 only, copy-plan.stderr.log) beat a longer-running Step 5 session; see larch-logs/implement/C96E8AB0 plan goals. This plan flips back and deletes test_stale_pointer_newer_file_active_tmpdir_wins, so both single-key heuristics trade the same symptom without a new selection signal	Keep the issue-4661 regression (older tmpdir dir mtime, newer active pointer) but also retain a harness for the #4464 case: either a second regression test where the stale candidate has the newer pointer and only Step 0 artifacts, documenting expected wrong selection, or rank by latest timing-ledger mark timestamp (already available via _latest_timing_mark) instead of pointer mtime alone
+1	in_scope	important	risk-integration	python/test_progress_report.py:36-43	Regression test spec omits directory mtime ordering after copy-plan.stderr.log	The plan requires copy-plan.stderr.log on the stale tmpdir but does not require setting directory mtimes after all writes; child writes refresh parent directory mtime and can invert the intended older-active-tmpdir / newer-stale-tmpdir setup (same flake called out in #4464 plan failure modes)	Add to Testing strategy: create copy-plan.stderr.log and other artifacts first, then call _set_mtime on each tmpdir as the final step before invoking _report, matching the pattern in test_stale_pointer_newer_file_active_tmpdir_wins
+
+## Findings
+
+### 1. Pointer-mtime revert trades one bug for a prior regression (important, correctness)
+
+The plan is a **minimum one-line change**, and it matches design’s pointer-mtime semantics. But this repo **already shipped the inverse fix** for the same user-visible symptom.
+
+**#4464** (`larch-logs/implement/C96E8AB0-1186-4115-AA5C-098F0B2CAA05/plan-goals-test.md`) moved implement ranking **from pointer mtime to tmpdir mtime** because a **newer pointer** on a failed Step 0 bootstrap beat a longer-running Step 5 session. The current tests `test_newest_implement_tmpdir_wins` and `test_stale_pointer_newer_file_active_tmpdir_wins` encode that contract.
+
+This plan **reverts that** and **removes** `test_stale_pointer_newer_file_active_tmpdir_wins`. Failure modes mention the newer-pointer case, but there is **no regression harness** left for it.
+
+**Issue #4661’s** failure mode (old pointer, recent tmpdir root write) is real. So is **#4464’s**. A single mtime key cannot fix both. The plan fixes 4661 and **reopens 4464**.
+
+A ledger-based rank (max timing-mark timestamp) may fix the stale-tmpdir-write case **without** pointer regression, but that is a larger change than this plan targets. At minimum, **keep a test** documenting the known tradeoff.
+
+### 2. Regression test needs explicit mtime ordering (important, risk-integration)
+
+The planned regression uses `copy-plan.stderr.log` to bump stale tmpdir directory mtime. On APFS, **writes after `_set_mtime` refresh parent mtime** and can flip which candidate wins. The #4464 plan called this out explicitly. This plan’s test spec should require **mtime manipulation as the last step**.
+
+---
+
+**[OUT_OF_SCOPE]** Teardown / pointer GC remains a separate hygiene issue; the plan is right to defer it given `step-18.sh` already calls `session clear-implement-pointer`. No other in-scope gaps found in the two-file surface.
