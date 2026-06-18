@@ -186,3 +186,36 @@ def test_compose_findings_body_severity_focus_area_before_prose_truncation(tmp_p
     assert _record_field_by_id(output, "FINDING_TRUNC", "focus_area") == "security"
     prose = _record_field_by_id(output, "FINDING_TRUNC", "prose_body")
     assert len(prose) <= 2000
+
+
+def test_compose_findings_rejected_full_code_review_artifact(tmp_path: Path) -> None:
+    impl = tmp_path / "impl-rej"
+    round_dir = impl / "round-2"
+    round_dir.mkdir(parents=True)
+    _ = (round_dir / "rejected-findings-full.md").write_text(
+        """### [rejected] FINDING_7
+
+### FINDING_7: correctness: src/app.py:10
+- **Reviewer**: Cursor-Correctness
+- **Concern**: rejected prose remains available.
+""",
+        encoding="utf-8",
+    )
+    output = tmp_path / "rejected.jsonl"
+
+    result = run_review("compose-findings", "--implement-tmpdir", str(impl), "--issue", "9", "--output", str(output))
+
+    assert result.returncode == 0, result.stderr
+    assert "FINDINGS_TOTAL=1" in result.stdout
+    assert _record_field_by_id(output, "REJ_CR2_1", "outcome") == "rejected"
+    assert _record_field_by_id(output, "REJ_CR2_1", "category") == "correctness"
+
+
+def test_compose_findings_invalid_issue_failure_envelope(tmp_path: Path) -> None:
+    output = tmp_path / "bad.jsonl"
+
+    result = run_review("compose-findings", "--issue", "abc", "--output", str(output))
+
+    assert result.returncode == 2
+    assert "FAILED=true" in result.stdout
+    assert "invalid value for --issue" in result.stdout

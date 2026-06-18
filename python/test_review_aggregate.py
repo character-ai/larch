@@ -2,8 +2,14 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
+import review_aggregate
 import review_test_support as rts
+import shutil
+
+if TYPE_CHECKING:
+    import pytest
 
 ROOT = rts.ROOT
 CLI = rts.CLI
@@ -465,3 +471,129 @@ printf 'DISPATCH_OK=true\\nALL_OUTPUT_FILES=%s\\nALL_OUTPUT_FILES_PATH=%s\\nALL_
     assert result.returncode == 0, result.stderr
     assert "AGGREGATED=true" in result.stdout
     assert "- **Severity**: blocking" in findings.read_text(encoding="utf-8")
+
+
+def test_prune_nit_code_mode_marks_oos_and_preserves_ids(tmp_path: Path) -> None:
+    findings = tmp_path / "findings.md"
+    _ = findings.write_text(
+        """### FINDING_1: Important
+- **Severity**: important
+- **Concern**: keep
+
+### FINDING_2: Nit title
+- **Severity**: nit
+- **Concern**: style
+""",
+        encoding="utf-8",
+    )
+
+    result = run_review("prune-nit-findings", "--findings-file", str(findings), "--input-mode", "code")
+
+    assert result.returncode == 0, result.stderr
+    assert "PRUNED_COUNT=1" in result.stdout
+    text = findings.read_text(encoding="utf-8")
+    assert "### FINDING_2: [OUT_OF_SCOPE] Nit title" in text
+    assert "### FINDING_1:" in text
+    assert "### FINDING_2:" in text
+
+
+def test_prune_nit_disabled_is_noop(tmp_path: Path) -> None:
+    findings = tmp_path / "findings.md"
+    original = "### FINDING_1: Nit\n- **Severity**: nit\n"
+    _ = findings.write_text(original, encoding="utf-8")
+
+    result = run_review(
+        "prune-nit-findings",
+        "--findings-file",
+        str(findings),
+        "--input-mode",
+        "code",
+        env={"LARCH_PRUNE_NITS_DISABLED": "1"},
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "STATUS=disabled" in result.stdout
+    assert findings.read_text(encoding="utf-8") == original
+
+
+def test_prune_nit_no_blocks_ok(tmp_path: Path) -> None:
+    findings = tmp_path / "findings.md"
+    _ = findings.write_text("no findings\n", encoding="utf-8")
+
+    result = run_review("prune-nit-findings", "--findings-file", str(findings))
+
+    assert result.returncode == 0, result.stderr
+    assert "STATUS=ok" in result.stdout
+    assert "PRUNED_COUNT=0" in result.stdout
+
+
+def test_prune_nit_plan_mode_moves_to_oos_and_renumbers(tmp_path: Path) -> None:
+    findings = tmp_path / "findings.md"
+    oos = tmp_path / "oos.md"
+    _ = findings.write_text(
+        """### FINDING_1: Keep important
+- **Severity**: important
+- **Concern**: keep
+
+### FINDING_2: Move nit
+- **Severity**: nit
+- **Concern**: move
+
+### FINDING_3: Keep latent
+- **Severity**: latent
+- **Concern**: keep latent
+""",
+        encoding="utf-8",
+    )
+    _ = oos.write_text("### OOS_1: Existing\n- **Concern**: old\n\n", encoding="utf-8")
+
+    result = run_review(
+        "prune-nit-findings",
+        "--findings-file",
+        str(findings),
+        "--oos-file",
+        str(oos),
+        "--input-mode",
+        "plan",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "PRUNED_COUNT=1" in result.stdout
+    text = findings.read_text(encoding="utf-8")
+    assert "Move nit" not in text
+    assert "### FINDING_2: Keep latent" in text
+    oos_text = oos.read_text(encoding="utf-8")
+    assert "### OOS_1: Existing" in oos_text
+    assert "### OOS_2: Move nit" in oos_text
+
+
+def test_prune_nit_plan_oos_replace_failure_restores_findings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    findings = tmp_path / "findings.md"
+    oos = tmp_path / "oos.md"
+    original_findings = "### FINDING_1: Nit\n- **Severity**: nit\n- **Concern**: move\n"
+    original_oos = "### OOS_1: Existing\n- **Concern**: old\n"
+    _ = findings.write_text(original_findings, encoding="utf-8")
+    _ = oos.write_text(original_oos, encoding="utf-8")
+    real_move = shutil.move
+    calls = {"count": 0}
+
+    def flaky_move(src: str, dst: str) -> Any:
+        calls["count"] += 1
+        if calls["count"] == 2:
+            raise OSError("simulated oos move failure")
+        return real_move(src, dst)
+
+    monkeypatch.setattr(review_aggregate.shutil, "move", flaky_move)
+
+    rc = review_aggregate.prune_nit_findings([
+        "--findings-file",
+        str(findings),
+        "--oos-file",
+        str(oos),
+        "--input-mode",
+        "plan",
+    ])
+
+    assert rc == 0
+    assert findings.read_text(encoding="utf-8") == original_findings
+    assert oos.read_text(encoding="utf-8") == original_oos

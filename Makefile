@@ -840,7 +840,7 @@ test-aggregate-findings:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_aggregate.py
 
 test-prune-nit-findings:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/review/scripts/test-prune-nit-findings.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_aggregate.py -k 'prune_nit'
 
 test-tally-code-votes:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_tally.py -k 'tally_ and not emit'

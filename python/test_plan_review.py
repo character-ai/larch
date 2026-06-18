@@ -68,6 +68,23 @@ def test_embedded_plan_review_reviewer_prune_uses_review_cli() -> None:
         assert "PRUNED_COMBOS" in body
 
 
+
+
+def test_embedded_plan_review_prune_nit_uses_review_cli() -> None:
+    loop_name = "plan-review-" + "loop.sh"
+    body = plan_review.legacy_asset_bytes(f"skills/design/scripts/{loop_name}").decode("utf-8")
+    retired = "prune-nit-" + "findings.sh"
+    assert retired not in body
+    assert "review prune-nit-findings" in body
+    assert "PLAN_REVIEW_PRUNE_NITS_CLI" in body
+    assert '"${PLAN_REVIEW_PRUNE_NITS_CLI[@]}"' in body
+    assert '"$PLAN_REVIEW_PRUNE_NITS_SH"' not in body
+    assert "LARCH_PLAN_REVIEW_PRUNE_NITS_SH" in body
+    assert "PRUNED_COUNT" in body
+    assert "INSCOPE_REMAINING" in body
+    assert "STATUS" in body
+
+
 def test_embedded_plan_review_loop_not_substantive_count_emitted() -> None:
     loop_parts = ("skills", "design", "scripts", "plan-review-loop.sh")
     body = plan_review.legacy_asset_bytes("/".join(loop_parts)).decode("utf-8")

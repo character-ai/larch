@@ -903,6 +903,23 @@ def _rewrite_prune_asset(text: str) -> str:
         'prune.sh" record',
         'python3 "$PLUGIN_ROOT/python/cli.py" review reviewer-prune record',
     )
+    text = text.replace(
+        'PLAN_REVIEW_PRUNE_NITS_SH="${LARCH_PLAN_REVIEW_PRUNE_NITS_SH:-$PLUGIN_ROOT/skills/review/scripts/'
+        'prune-nit-findings.sh}"',
+        'if [[ -n "${LARCH_PLAN_REVIEW_PRUNE_NITS_SH:-}" ]]; then\n'
+        '    PLAN_REVIEW_PRUNE_NITS_CLI=("$LARCH_PLAN_REVIEW_PRUNE_NITS_SH")\n'
+        'else\n'
+        '    PLAN_REVIEW_PRUNE_NITS_CLI=(python3 "$PLUGIN_ROOT/python/cli.py" review prune-nit-findings)\n'
+        'fi',
+    )
+    text = text.replace(
+        '"$PLAN_REVIEW_PRUNE_NITS_SH"',
+        '"${PLAN_REVIEW_PRUNE_NITS_CLI[@]}"',
+    )
+    text = text.replace(
+        '"${PLAN_REVIEW_PRUNE_NITS_SH}"',
+        '"${PLAN_REVIEW_PRUNE_NITS_CLI[@]}"',
+    )
     return text  # noqa: RET504
 
 

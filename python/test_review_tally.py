@@ -934,3 +934,34 @@ def test_tally_three_slot_claude_fallback_single_quorum(tmp_path: Path) -> None:
     assert row["v1_tool"] == "claude"
     assert row["v2_tool"] == "cursor-plan-fidelity"
     assert row["v3_tool"] == "cursor-pragmatism"
+
+
+def test_emit_tally_refuses_destructive_oos_rebuild_mismatch(tmp_path: Path) -> None:
+    case = tmp_path / "oos-mismatch"
+    case.mkdir()
+    tally = case / "tally.env"
+    _ = tally.write_text("ACCEPTED_COUNT=0\nREJECTED_COUNT=0\nOOS_ACCEPTED_COUNT=2\n", encoding="utf-8")
+    accepted = case / "accepted.md"
+    _ = accepted.write_text("", encoding="utf-8")
+    oos = case / "oos.md"
+    _ = oos.write_text("", encoding="utf-8")
+    _ = (case / "oos-accepted-review.md").write_text("### OOS_1: Existing\n- **Concern**: keep\n", encoding="utf-8")
+
+    result = run_review(
+        "emit-tally",
+        "--tally-file",
+        str(tally),
+        "--accepted-findings-file",
+        str(accepted),
+        "--oos-file",
+        str(oos),
+        "--review-tmpdir",
+        str(case),
+        "--round",
+        "1",
+        "--mode",
+        "description",
+    )
+
+    assert result.returncode == 1
+    assert "refusing destructive rebuild" in result.stderr

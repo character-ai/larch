@@ -12,7 +12,6 @@ import review_test_support as rts
 ROOT = rts.ROOT
 CLI = rts.CLI
 REVIEW_PIPELINE = ROOT / "python" / "review_pipeline.py"
-PRUNE_NITS = ROOT / "skills" / "review" / "scripts" / "prune-nit-findings.sh"
 
 
 def run_review(*args: str, env: dict[str, str] | None = None, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
@@ -241,10 +240,11 @@ def test_dispatch_panel_python_surface_does_not_import_agents_waterfall() -> Non
     assert "agents.run_waterfall" not in text
 
 
-def test_review_core_default_prune_nits_points_at_skills_script() -> None:
+def test_review_core_default_prune_nits_uses_review_cli() -> None:
     text = REVIEW_PIPELINE.read_text(encoding="utf-8")
-    assert "skills/review/scripts/prune-nit-findings.sh" in text
-    assert PRUNE_NITS.is_file()
+    retired_prune = "/".join(("skills", "review", "scripts", "prune-nit-findings.sh"))  # noqa: FLY002
+    assert retired_prune not in text
+    assert '_call_maybe_override(commands.prune_nits, "prune-nit-findings"' in text
 
 
 def test_review_core_prune_nit_subprocess_succeeds(tmp_path: Path) -> None:

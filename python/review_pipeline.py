@@ -1503,7 +1503,7 @@ def _review_commands() -> ReviewCommands:
         aggregate=os.environ.get("REVIEW_CORE_AGGREGATE_FINDINGS_SH", ""),
         tally=os.environ.get("REVIEW_CORE_TALLY_VOTES_SH", ""),
         emit=os.environ.get("REVIEW_CORE_EMIT_TALLY_SH", ""),
-        prune_nits=os.environ.get("REVIEW_CORE_PRUNE_NITS_SH", str(_PLUGIN_ROOT / "skills/review/scripts/prune-nit-findings.sh")),
+        prune_nits=os.environ.get("REVIEW_CORE_PRUNE_NITS_SH", ""),
         dispatch_voters=os.environ.get("REVIEW_CORE_DISPATCH_VOTERS_SH", ""),
     )
 
@@ -2001,7 +2001,7 @@ def review_core(argv: list[str], *, runner: proc.Runner | None = None) -> int:
         _zero_findings_branch(commands, review_tmpdir, round_num, mode, cursor_available, codex_available, session_env_path, panel_manifest, collector_results, not_substantive, panel_mode, panel_shape, scout_status, dynamic_slots, static_slot_count, run_id, runner=runner)
         return 0
 
-    prune_result = _run_command_string(commands.prune_nits, ["--findings-file", str(review_tmpdir / "findings.md"), "--input-mode", "code"], runner=runner)
+    prune_result = _call_maybe_override(commands.prune_nits, "prune-nit-findings", ["--findings-file", str(review_tmpdir / "findings.md"), "--input-mode", "code"], runner=runner)
     _write_text(review_tmpdir / "review-core-prune-nit.env", prune_result.stdout)
     _write_text(review_tmpdir / "prune-nit.env", prune_result.stdout or "PRUNED_COUNT=0\nINSCOPE_REMAINING=0\nSTATUS=skipped\n")
     if _kv_parse(prune_result.stdout).get("PRUNED_COUNT", "0") != "0":
