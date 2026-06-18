@@ -1,0 +1,10 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:203-211,258-291,425-450	[SCOPE-REDUCTION] Retain-or-rewrite options conflict with adding the same paths to migrated-scripts.tsv	If any listed harness or .md contract file is retained while its path is appended to python/migrated-scripts.tsv, make lint-retired-scripts fails because retired paths may not remain on disk	Make deletion mandatory for every path appended to python/migrated-scripts.tsv, or omit any retained path from the manifest. Prefer deletion per the migration recipe
+
+1. **[correctness]** `plan.txt:203-211,258-291,425-450`
+
+   **Concern:** The plan allows retaining or rewriting several files while also adding those same paths to `python/migrated-scripts.tsv`.
+
+   **Breakage:** `make lint-retired-scripts` will fail if a manifest-retired path still exists.
+
+   **Suggested revision:** Remove the retain/rewrite branches for those paths. Delete every path listed in the manifest, or do not list retained files as retired.

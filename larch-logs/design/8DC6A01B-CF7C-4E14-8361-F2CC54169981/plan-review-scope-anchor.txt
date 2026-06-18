@@ -1,0 +1,18 @@
+# sh-to-py G11: rendering + round-meta + small-skill bodies — port in-process
+
+**Umbrella**: #3692. **Parent slice**: B6 #3675. **Kind**: port renderer façade bodies.
+**Targets**: `python/rendering.py`, `python/progress_report.py`, `python/pr_body.py`.
+
+**Bodies to port** (~2.0k bash):
+- `scripts/render-review-phase-detail.sh` (528, façade via `progress_report.py`)
+- `scripts/render-run-summary.sh` (328), `scripts/write-design-round-meta.sh` (340)
+- `scripts/write-implement-round-meta.sh` (200, façade via `review_and_fix.py`)
+- `scripts/render-findings-view.sh` (43), `scripts/compose-pr-summary.sh` (77, façade via `pr_body.py`)
+- `skills/gc-run-logs/scripts/gc-run-logs.sh` (393), `skills/status/scripts/status.sh` (73)
+
+Port per-round review-phase rendering, run-summary rendering, round-meta writers, findings view, PR-summary composition, run-log GC, and status reporting.
+
+**Coordination**: overlaps in-flight #4546 (in-flight progress Gantt). Sequence to avoid renderer churn.
+
+**Definition of done**: standard sh-to-py recipe; preserve Mermaid sanitization and the per-round review-table/Gantt output (regression-sensitive — see #4537).
+

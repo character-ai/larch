@@ -1,0 +1,25 @@
+## Structured collector record
+
+REVIEWER_FILE=<TMPDIR>/codex-plan-generic-output.txt|TOOL=codex|STATUS=NOT_SUBSTANTIVE|EXIT_CODE=0|FAILURE_REASON=structured records not found after repair
+
+## Reviewer output (<TMPDIR>/codex-plan-generic-output.txt)
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	pragmatism	Makefile:770-944	[SCOPE-REDUCTION] Plan deletes pytest-backed Make targets that are not retired bash harnesses	`test-render-run-summary` and `test-compose-pr-summary` already run `python/test_pr_body.py`, so deleting them is unnecessary churn and breaks existing focused `make` targets without being required by the sh-to-py cutover	Keep those two Make targets and update docs/linting.md to describe the Python pytest coverage; remove only targets that still invoke deleted bash harnesses
+## Reviewer stderr (<TMPDIR>/codex-plan-generic-output.txt.diag)
+
+(file missing: <TMPDIR>/codex-plan-generic-output.txt.diag)
+
+## Failed-agent stderr tail (<TMPDIR>/codex-plan-generic-output.txt.stderr-tail)
+
+(file missing: <TMPDIR>/codex-plan-generic-output.txt.stderr-tail)
+
+## Launcher stderr (<TMPDIR>/codex-plan-generic-output.txt.launch-stderr)
+
+⏳ codex agent: still running (1m elapsed)
+⏳ codex agent: still running (2m elapsed)
+⏳ codex agent: still running (3m elapsed)
+⏳ codex agent: still running (4m elapsed)
+✓ codex agent: completed (exit code 0, output 610 bytes)
+
+

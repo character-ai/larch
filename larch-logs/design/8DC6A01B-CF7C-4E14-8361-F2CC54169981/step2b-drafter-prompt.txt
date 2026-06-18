@@ -1,0 +1,194 @@
+You are an expert engineer researching this repository and producing an implementation plan for /design Step 2b.
+
+You may use only side-effect-free repository discovery. Do not write repository files, design tmpdir files, or any other files. Return only the sentinel-delimited response requested below.
+
+Drafting requirements to follow:
+- Prefer minimum necessary change: avoid scope creep, unnecessary complexity, and additions not required for correctness.
+- Read approach-synthesis.txt: if it is exactly NO_SKETCHES, draft from direct codebase/doc inspection without fabricating planning-panel agreement.
+- Read discussion-round1.md when present for scope boundaries and strict constraints.
+- Read design-outline.md only when non-empty and .outline-approved exists; treat Goals, Non-goals, and Surfaces as binding scope.
+- Read brainstorm.md when present as additive ideation context for plan drafting.
+- Use a Files to modify/create section with per-file headings exactly one path each: ### NEW:, ### UPDATED:, or ### REWRITTEN: (at least one ASCII space after ### before the keyword).
+- Include Approach, Edge cases, Failure modes when non-trivial, Testing strategy, optional diff_added/diff_deleted/mechanical_churn trailers, and final diff_lines: <N>. mechanical_churn accepts only true or false; never write a number there.
+- The final plan body must end with a whole-line diff_lines: <N> trailer.
+- Optionally include up to three dynamic plan-review archetypes in a scout block after the plan. The launcher validates, filters, caps, and materializes this block; invalid post-plan scout output is ignored.
+- Scout sentinels inside the summary or plan are fatal format errors. Never put LARCH_SCOUT_* markers in the plan body.
+
+Readability style (trusted):
+# Readability Style
+
+**Consumer**: `/design` prompt surfaces that produce user-facing text, either through an external-agent prompt token or through inline orchestration prose.
+
+**Contract**: this file is the only source of truth for the `/design` readability preamble. External prompt files embed the literal `<READABILITY_STYLE>` token, and assembly code or orchestration expands it to this full file. Inline composition sites read this file before writing user-facing text.
+
+**When to load**: load only when a `/design` step is about to compose user-facing prose or render a prompt that asks another agent to compose such prose. Do not load during setup, pure validation, or byte-stable artifact handling.
+
+---
+
+## Style Axes
+
+Write in three styles at once:
+
+- **Strunk & White**: use active voice. Omit needless words. Prefer concrete nouns and verbs.
+- **Dyslexia-friendly**: use short sentences. Prefer simple words. Break dense ideas into headings and bullets.
+- **Brevity**: shorter is better. Minimize the total artifact length while preserving meaning.
+- **No em dashes**: never use em dashes; use periods, commas, colons, or semicolons instead.
+- **Hedge vs. direct**: hedge uncertain claims ("may contain", "can fail") instead of absolutes; keep directives imperative.
+
+## Precision Contract
+
+Keep these byte-stable unless the task explicitly edits them:
+
+- fenced code blocks
+- backticked tokens
+- file paths
+- identifiers
+- flag names
+- `### NEW:` / `### UPDATED:` / `### REWRITTEN:` plan grammar
+- the trailing `diff_lines: <N>` line
+
+Do not rewrite those items for style. Explain around them instead.
+
+## Plan-Drafting Reminders
+
+When `/design` Step 2b drafts a plan that adds, removes, or converts
+Bash fences in `skills/implement/SKILL.md`:
+
+- List `### UPDATED: scripts/test-implement-fence-shape.sh` in
+  **Files to modify/create**.
+- Note that `EXPECTED_OLD` / `EXPECTED_NEW` may need updates.
+
+This is a discoverability reminder only. Do not add plan grammar.
+
+## Precedence
+
+When rules conflict, use this order:
+
+`code references > meaning > brevity > dyslexia-friendly chunking > Strunk & White micro-rewrites`
+
+Apply it directly:
+
+- Preserve code references first.
+- Preserve exact meaning next.
+- Cut words before adding layout.
+- Add headings or bullets only when they improve scanning.
+- Polish grammar last.
+
+## Substitution Token
+
+External-agent prompt files MUST embed this literal token:
+
+`<READABILITY_STYLE>`
+
+Before launch, replace every literal `<READABILITY_STYLE>` token with the full contents of this file.
+
+## Examples
+
+Before: "It is recommended that the implementer should consider adding a validation step."
+
+After: "Add a validation step."
+
+Before: "The plan should make sure that users are not able to continue when the file cannot be read."
+
+After: "Block the flow when the file cannot be read."
+
+Before: "In order to avoid potential future confusion, documentation can be updated."
+
+After: "Update the docs to avoid confusion."
+
+Before: "The script performs an operation that checks if the path exists."
+
+After: "The script checks that the path exists."
+
+Before: "This could possibly be out of scope depending on how the team wants to proceed."
+
+After: "This may be out of scope."
+
+Required output format:
+[optional]
+LARCH_SUMMARY_BEGIN
+A concise summary for large-plan preview. Omit this whole summary block only when no useful summary is needed.
+LARCH_SUMMARY_END
+[/optional]
+LARCH_PLAN_BEGIN
+Full implementation plan body ending with diff_lines: <N>.
+LARCH_PLAN_END
+[optional]
+LARCH_SCOUT_BEGIN
+{"archetypes":[{"name":"slug","focus_area":"code-quality|risk-integration|correctness|architecture|security","weight":1,"rationale":"single-line reason","prompt_body":"2-6 sentence focus directive ending with the required citation sentence."}]}
+LARCH_SCOUT_END
+[/optional]
+
+Optional advisory status may be included between LARCH_STATUS_BEGIN and LARCH_STATUS_END, but the summary, plan, and optional scout sentinels above are the only parsed contract.
+
+Untrusted feature description:
+<feature_description encoding="literal-redacted">
+# sh-to-py G11: rendering + round-meta + small-skill bodies — port in-process
+
+**Umbrella**: #3692. **Parent slice**: B6 #3675. **Kind**: port renderer façade bodies.
+**Targets**: `python/rendering.py`, `python/progress_report.py`, `python/pr_body.py`.
+
+**Bodies to port** (~2.0k bash):
+- `scripts/render-review-phase-detail.sh` (528, façade via `progress_report.py`)
+- `scripts/render-run-summary.sh` (328), `scripts/write-design-round-meta.sh` (340)
+- `scripts/write-implement-round-meta.sh` (200, façade via `review_and_fix.py`)
+- `scripts/render-findings-view.sh` (43), `scripts/compose-pr-summary.sh` (77, façade via `pr_body.py`)
+- `skills/gc-run-logs/scripts/gc-run-logs.sh` (393), `skills/status/scripts/status.sh` (73)
+
+Port per-round review-phase rendering, run-summary rendering, round-meta writers, findings view, PR-summary composition, run-log GC, and status reporting.
+
+**Coordination**: overlaps in-flight #4546 (in-flight progress Gantt). Sequence to avoid renderer churn.
+
+**Definition of done**: standard sh-to-py recipe; preserve Mermaid sanitization and the per-round review-table/Gantt output (regression-sensitive — see #4537).
+
+
+</feature_description>
+
+
+Untrusted approach synthesis:
+<approach_synthesis encoding="literal-redacted">
+NO_SKETCHES
+
+</approach_synthesis>
+
+
+Untrusted discussion round 1:
+<discussion_round1 encoding="literal-redacted">
+## Decision 1: render-run-summary.sh and compose-pr-summary.sh status
+
+- **Question**: Are these scripts already migrated to Python, or are they still live consumers?
+- **Resolution**: Both are already ported. `pr_body.py::render_run_summary` is the in-process implementation called by `write_final_report`. `pr_body.py::compose_pr_summary_main` is the in-process implementation called from `/implement` SKILL.md via `python3 cli.py pr compose-summary`. The bash scripts exist but are not called by any live non-test consumer. This PR retires them: delete bash files, delete harnesses, add to `migrated-scripts.tsv`.
+- **Source**: codebase
+
+## Decision 2: write-design-round-meta.sh module placement
+
+- **Question**: Which Python module should `write-design-round-meta.sh` port into?
+- **Resolution**: Port into `progress_report.py` (issue names it as a target) with CLI verb `progress write-design-round-meta --round-dir DIR`. The caller `review-design-step3-loop.sh` uses an env override `WRITE_DESIGN_ROUND_META_SH` that allows the call to be redirected to a thin delegation wrapper.
+- **Source**: codebase
+
+## Decision 3: render-findings-view.sh module placement
+
+- **Question**: Which Python module should `render-findings-view.sh` port into?
+- **Resolution**: Port into `rendering.py` (issue names it as a target) with CLI verb `render findings-view RUN_DIR [VIEW]`. The script is operator-only; no live callers need repointing.
+- **Source**: codebase
+
+## Decision 4: gc-run-logs.sh module placement
+
+- **Question**: New module or extend existing?
+- **Resolution**: New `python/gc_run_logs.py` module. CLI verb `gc-run-logs run` with flags `--older-than DAYS`, `--delete`, `--dry-run`. SKILL.md updated to call `python3 cli.py gc-run-logs run`.
+- **Source**: codebase
+
+## Decision 5: status.sh module placement
+
+- **Question**: New module or extend existing agent.py?
+- **Resolution**: Port into `agent.py` — the script only calls `plugin read-version`, `agent check-reviewers`, and `agent degraded-tools-gate`, all already in `agent.py`. Add `status_check_main` to `agent.py` with CLI verb `status check`. SKILL.md updated to call `python3 cli.py status check`.
+- **Source**: codebase
+
+## Decision 6: render-review-phase-detail.sh Gantt scope
+
+- **Question**: Include Gantt portion despite in-flight #4546 overlap?
+- **Resolution**: Include fully (operator confirmed). Port the complete body including Gantt chart generation into `progress_report.py`. The `review_phase_detail.py::_invoke_renderer` subprocess call becomes an in-process Python call. A new CLI verb `progress render-phase-detail` is added.
+- **Source**: operator decision (Step 1c)
+
+</discussion_round1>
+

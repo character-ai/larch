@@ -1,0 +1,2 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- The stdout KV contract is real, but the plan already requires parseable status KVs and avoiding raw stdout diagnostics; mandating quiet_init/emit_kv is an implementation detail.
+FINDING_2: YES CORRECTNESS=true SEVERITY=blocker QUALITY=good UNCERTAIN=false

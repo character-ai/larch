@@ -1,0 +1,12 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	blocking	correctness	python/plan_review.py:615-820, skills/design/scripts/review-design-step3-loop.sh:539-545	Plan updates on-disk review-design-step3-loop.sh for write-design-round-meta cutover but omits regenerating the gzip _LEGACY_ASSETS blob that production Step 3 actually runs	Live /design Step 3 delegates through plan_review._run_legacy(), which skips linking on-disk design/scripts (review-design-step3-loop.sh is in _RETIRE_DESIGN_SKIPS) and overwrites the materialized script from _LEGACY_ASSETS; deleting scripts/write-design-round-meta.sh while the stale embedded loop still defaults to that path leaves the -x gate false and post-revise round-meta.json refresh silently stops	Add ### UPDATED: python/plan_review.py to regenerate the embedded skills/design/scripts/review-design-step3-loop.sh asset from the edited live script per docs/python-migration.md C3a1; keep test_embedded_review_design_step3_loop_matches_live_script passing
+
+## Findings
+
+**1. correctness** (`python/plan_review.py:615-820`, `skills/design/scripts/review-design-step3-loop.sh:539-545`)
+
+The plan cuts over post-revise design round-meta writes in the on-disk `review-design-step3-loop.sh`, but `/design` Step 3 does not execute that file. `python/plan_review.py` materializes `review-design-step3-loop.sh` from gzip `_LEGACY_ASSETS` because the path is listed in `_RETIRE_DESIGN_SKIPS`.
+
+After `scripts/write-design-round-meta.sh` is deleted, a stale embedded loop still defaults to that path and only calls it under `[[ -x "$_rmd_sh" ]]`. The meta-write path becomes a silent no-op. Revise tier/status and panel metadata stop updating in production even if the on-disk loop and `test-design-step3-review.sh` grep checks look correct.
+
+**Suggested revision:** Add an explicit `### UPDATED: python/plan_review.py` step to regenerate the `_LEGACY_ASSETS` entry for `skills/design/scripts/review-design-step3-loop.sh` from the updated live script (per `docs/python-migration.md` C3a1). Keep `test_embedded_review_design_step3_loop_matches_live_script` green. Optionally add a `test_plan_review.py` assertion that the embedded body invokes `python/cli.py progress write-design-round-meta`, mirroring `test_embedded_plan_review_loop_uses_migrated_collector`.

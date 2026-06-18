@@ -1,0 +1,1 @@
+Port the remaining G11 rendering, round-meta, status, and run-log GC bash bodies into Python CLI verbs. Retire stale bash scripts, harnesses, docs, and allowlist entries. Preserve review detail tables, Gantt output, round-meta JSON shape, quiet KV contracts, and retired-script lint cleanliness.

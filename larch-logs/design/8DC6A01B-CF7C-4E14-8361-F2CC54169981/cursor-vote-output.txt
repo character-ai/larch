@@ -1,0 +1,2 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- plan already binds sh-to-py quiet/KV via migration doc, failure-mode quiet-stream drift, and same-module agent CLI precedents.
+FINDING_2: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
