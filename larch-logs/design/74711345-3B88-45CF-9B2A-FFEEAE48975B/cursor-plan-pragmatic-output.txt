@@ -1,0 +1,16 @@
+Reviewing the plan and tracing cited codebase paths for contract and integration risks.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	python/execution_issues.py:119-139	[SCOPE-REDUCTION] Step 18 append-only flush must never call shared truncate branches	Plan allows `--no-truncate` on shared `flush_execution_issues()`; today `already-flushed`, `no-records`, and `ok` all call `issue_log.write_text("")`. Guarding only the success path still clears stall-time Tool Failures on idempotent teardown replay.	Prefer a dedicated `flush_execution_issues_safety_net()` mirroring bash `flush_execution_issues_safety_net()` (append via `run-log append` only). If a flag is kept, gate every `issue_log.write_text("", ...)` site.
+2	in_scope	important	risk-integration	skills/implement/SKILL.md:Step 0	Step 0 initial bootstrap fence must not use `larch-run.sh`	Plan says bootstrap invoke runs through `larch-run.sh` only where required. `larch-run.sh` is written inside bootstrap (`python/bootstrap.py`); initial Step 0 has no launcher yet and fails if routed through a missing script.	Pin Step 0 initial and dirty-tree resume fences to direct `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bootstrap invoke ...` (no `larch-run` prefix). Add `test-implement-structure.sh` forbid rule for `larch-run` on Step 0 fences.
+
+### 1. **correctness** — `python/execution_issues.py:119-139` — Step 18 safety-net must not reuse truncate paths
+
+The plan allows either a dedicated `flush_execution_issues_safety_net()` or a `--no-truncate` flag on shared `flush_execution_issues()`. The shared function truncates `execution-issues.md` on `ok`, `already-flushed`, and `no-records` (lines 119-139). Step 18 teardown must stay append-only per the plan and bash `implement-finalize.sh`.
+
+If implementers add `--no-truncate` only on the success path, idempotent safety-net replay can still wipe stall diagnostics. Prefer the dedicated safety-net function (smaller, matches bash). If the flag stays, guard every truncate site.
+
+### 2. **risk-integration** — `skills/implement/SKILL.md` (Step 0) — Do not route initial bootstrap through `larch-run.sh`
+
+The plan says Step 0 calls `bootstrap invoke` "through `larch-run.sh` only where a Bash fence remains required." On the initial path, `larch-run.sh` does not exist until bootstrap writes it mid-`invoke`. Routing Step 0 through the launcher breaks first-time setup.
+
+Keep Step 0 initial and dirty-tree resume on direct `python3 ... bootstrap invoke` (same as today's `step-0-bootstrap.sh` inner call). Reserve `larch-run.sh` for post-Step-0 fences only. Add a structure harness forbid for `larch-run` on Step 0.

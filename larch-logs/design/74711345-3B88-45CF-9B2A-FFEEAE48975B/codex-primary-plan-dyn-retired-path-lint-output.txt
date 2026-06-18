@@ -1,0 +1,15 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:124-129,210-229; scripts/implement-finalize.sh:19-20; scripts/lib-execution-issues.md:3-5	Plan retires scripts/lib-execution-issues.sh while a live finalizer still sources it	After the PR deletes the library, scripts/implement-finalize.sh fails at startup before any subcommand can run	Do not delete or manifest scripts/lib-execution-issues.sh until scripts/implement-finalize.sh no longer sources it, or add scripts/implement-finalize.sh to the plan and move that dependency in the same PR
+1	in_scope	important	risk-integration	plan.txt:180-196,239-265; scripts/test-implement-structure.sh:92-109; scripts/test-implement-structure.sh:197-202; scripts/test-implement-structure.sh:338-352; skills/implement/references/phantom-probe.md:12-21; skills/implement/references/step5-review-branches.md:11-17; scripts/test-implement-anti-polling-rule.md:10-20; scripts/test-implement-fence-shape.md:19-25	Retired-path sweep omits active harness/reference files that contain full retired helper paths	make lint-retired-scripts will still see retired path literals outside python/migrated-scripts.tsv, and active harnesses will keep asserting deleted wrappers	Add these files to the plan and replace the wrapper literals with the new cli.py surfaces, or delete only harnesses that the plan also removes from Makefile
+
+1. **[correctness] `scripts/implement-finalize.sh:19-20`**
+   - **Concern:** The plan deletes `scripts/lib-execution-issues.sh`, but `scripts/implement-finalize.sh` still sources it.
+   - **Plan section:** `plan.txt:124-129`, `plan.txt:210-229`.
+   - **Why it matters:** The finalizer remains a shipped script. Deleting the sourced library breaks it before argument parsing.
+   - **Suggested revision:** Keep the library out of the retired manifest, or explicitly port/remove the finalizer dependency in this PR.
+
+2. **[risk-integration] active retired-path literals outside the plan**
+   - **Concern:** The plan updates only three harness files, but active references still pin deleted helper paths.
+   - **Examples:** `scripts/test-implement-structure.sh:92-109`, `skills/implement/references/phantom-probe.md:12-21`, `skills/implement/references/step5-review-branches.md:11-17`.
+   - **Why it matters:** The plan requires `make lint-retired-scripts` to pass, but these literals would survive outside `python/migrated-scripts.tsv`.
+   - **Suggested revision:** Add the omitted files to **Files to modify/create** and update them to the new direct CLI verbs.
