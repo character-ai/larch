@@ -81,6 +81,7 @@ grep -Fq 'SUMMARY_OUTCOME=failed-judge-panel' "$WRAPPER" || fail 'panel-init-fai
 grep -Fq 'step3_loop_write_terminal_step3' "$LOOP" || fail 'Step 3 loop terminal sentinel helper missing'
 grep -Fq '.step3-terminal-persisted-this-run' "$LOOP" || fail 'Step 3 loop persist sidecar missing'
 grep -Fq '.step3-terminal-persisted-this-run' "$WRAPPER" || fail 'Step 3 wrapper must key terminal trap fallback on current-pass sidecar'
+# shellcheck disable=SC2016 # literal $DESIGN_TMPDIR must match wrapper source text.
 grep -Fq 'rm -f "$DESIGN_TMPDIR/.step3-review-result.env" "$DESIGN_TMPDIR/.completed/step-3"' "$WRAPPER" || fail 'Step 3 wrapper must clear stale result env and step-3 at non-resume entry'
 
 D_STEP3=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-stage.XXXXXX")
@@ -623,8 +624,8 @@ fi
 exit 1'
 printf 'anchor\n' >"$D_STALE_ENV/plan-review-scope-anchor.txt"
 set +e
-stale_env_out=$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$FAKE_STALE" DESIGN_TMPDIR="$D_STALE_ENV" ISSUE_NUMBER=9 \
-  LARCH_TEST_REAL_REPO_ROOT="$ROOT" "$WRAPPER" 2>"$D_STALE_ENV/stderr.log")
+env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$FAKE_STALE" DESIGN_TMPDIR="$D_STALE_ENV" ISSUE_NUMBER=9 \
+  LARCH_TEST_REAL_REPO_ROOT="$ROOT" "$WRAPPER" >/dev/null 2>"$D_STALE_ENV/stderr.log"
 stale_env_rc=$?
 set -e
 [[ "$stale_env_rc" -ne 0 ]] || fail "stale-env wrapper should fail before loop (rc=$stale_env_rc)"
