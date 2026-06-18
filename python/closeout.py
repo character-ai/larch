@@ -15,6 +15,7 @@ from typing import Any
 
 SUMMARY_BEGIN = "---LARCH-SUMMARY-FINAL-BEGIN---"
 SUMMARY_END = "---LARCH-SUMMARY-FINAL-END---"
+_PY_CLI = Path(__file__).with_name("cli.py")
 
 
 def _plugin_root() -> Path:
@@ -44,14 +45,11 @@ def _validate_plugin_root(plugin_root: Path) -> int | None:
 
 
 def _read_key(path: Path, key: str, default: str = "") -> str:
-    if not path.is_file():
-        return default
-    prefix = key + "="
-    value = default
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-        if line.startswith(prefix):
-            value = line[len(prefix) :]
-    return value
+    result = _run(
+        [sys.executable, str(_PY_CLI), "session", "read-key", "--file", str(path), "--key", key, "--default", default],
+        env=dict(os.environ),
+    )
+    return result.stdout.strip() if result.returncode == 0 else default
 
 
 def _env_for(tmpdir: Path, plugin_root: Path) -> dict[str, str]:
@@ -275,8 +273,22 @@ def step_16_17(argv: list[str] | None = None) -> int:
         return rc
     env = _env_for(tmpdir, plugin_root)
     cli = str(plugin_root / "python" / "cli.py")
-    with suppress(Exception):
+    step16_log = tmpdir / "step16-write-rejected.failure.log"
+    try:
         step_16(["--implement-tmpdir", str(tmpdir)])
+    except Exception:
+        with suppress(OSError):
+            step16_log.write_text("", encoding="utf-8")
+        _append_failure(
+            tmpdir=tmpdir,
+            plugin_root=plugin_root,
+            env=env,
+            site="Step 16 — rejected findings",
+            tool="python/closeout.py step_16",
+            exit_code=1,
+            category="Tool Failures",
+            output_file=step16_log,
+        )
     slack_log = tmpdir / "step16a-slack-issue-announce.log"
     with suppress(OSError):
         slack_log.write_text("", encoding="utf-8")
@@ -312,9 +324,23 @@ def step_16_17(argv: list[str] | None = None) -> int:
             category="Warnings",
             output_file=slack_log,
         )
+    step17_log = tmpdir / "step17-write-final-report.failure.log"
     step17_rc = 1
-    with suppress(Exception):
+    try:
         step17_rc = step_17(["--implement-tmpdir", str(tmpdir), "--no-print-stdout"])
+    except Exception:
+        with suppress(OSError):
+            step17_log.write_text("", encoding="utf-8")
+        _append_failure(
+            tmpdir=tmpdir,
+            plugin_root=plugin_root,
+            env=env,
+            site="Step 17 — final report",
+            tool="python/closeout.py step_17",
+            exit_code=1,
+            category="Tool Failures",
+            output_file=step17_log,
+        )
     if step17_rc == 0 and _summary_nonempty(tmpdir) and _print_summary_markers(tmpdir, sentinel=".step17-printed") != 0:
         print("closeout: failed to emit summary markers", file=sys.stderr)
     return 0
