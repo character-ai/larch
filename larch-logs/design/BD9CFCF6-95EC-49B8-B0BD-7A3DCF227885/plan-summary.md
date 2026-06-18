@@ -1,0 +1,1 @@
+Plan: add implementer checklist reminders, run the legacy-prefix scope harness in the local pre-commit fast lane, add deterministic CI self-heals for the two known harness failures, and commit successful Step 5 lint-fix review-loop edits before ship.

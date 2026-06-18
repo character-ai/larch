@@ -1,0 +1,8 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	<TMPDIR>/plan.txt:119-132; python/review_and_fix.py:1124-1141; python/checks.py:1905-1922,2108-2144	Step 5 lint-fix commit stages the current dirty tree instead of just lint-fix edits	A pre-existing dirty path at lint-fix entry can be swept into the new review-loop lint-fix commit by git add -A	Carry the lint-fix delta or assert a clean pre-lint baseline, then stage only verified lint-fix paths or stall before commit
+
+1. **[correctness]** `plan.txt:119-132` tells the helper to run `git add -A` and commit the current dirty tree.  
+   **Concern:** That does not prove the commit contains only successful lint-fix edits.  
+   **Evidence:** `python/checks.py:1905-1922` captures whether the lint-fix baseline was already dirty. It only auto-commits when that baseline is clean at `python/checks.py:2108-2144`. `python/review_and_fix.py:1124-1141` currently discards the lint-fix `delta_paths`.  
+   **Breakage:** If any dirty file exists before lint-fix dispatch, the proposed helper can commit that unrelated file after a passing recheck.  
+   **Suggested revision:** Track the pre-lint baseline and lint-fix delta. Commit only verified lint-fix paths. If the tree contains non-lint-fix dirt, stall with `lint-fix-commit-failed` or a more specific dirty-baseline reason before ship.
