@@ -1209,6 +1209,22 @@ def test_step2_launcher_argv_rehydrates_wrapper_env(tmp_path: Path) -> None:
     assert os.environ["ISSUE_NUMBER"] == "42"
 
 
+def test_step2a_rejects_missing_design_tmpdir(tmp_path: Path) -> None:
+    session_env = tmp_path / "session-env.sh"
+    session_env.write_text(f"export CLAUDE_PLUGIN_ROOT={CLI.parent.parent}\n", encoding="utf-8")
+    with pytest.raises(SystemExit) as exc:
+        design_lifecycle.step2a_main(["--session-env-path", str(session_env), "--claude-pid", "123"])
+    assert exc.value.code == 1
+
+
+def test_step2a_rejects_relative_design_tmpdir(tmp_path: Path) -> None:
+    session_env = tmp_path / "session-env.sh"
+    session_env.write_text("export DESIGN_TMPDIR=relative/path\n", encoding="utf-8")
+    with pytest.raises(SystemExit) as exc:
+        design_lifecycle.step2a_main(["--session-env-path", str(session_env), "--claude-pid", "123"])
+    assert exc.value.code == 1
+
+
 def test_rehydrate_wrapper_env_resolves_trusted_design_symlink(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     home = tmp_path / "home"
     sessions = home / ".cache" / "larch" / "sessions"

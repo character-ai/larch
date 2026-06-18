@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import re
@@ -12,6 +13,8 @@ import tempfile
 from pathlib import Path
 from typing import NamedTuple, NoReturn, cast
 
+import design_lifecycle
+import design_pause
 import gh
 import logging_util
 import proc
@@ -22,6 +25,11 @@ from proc import CommandResult, Runner
 LABEL_NAME = "needs-design-clarification"
 LABEL_COLOR = "D73A4A"
 LABEL_DESCRIPTION = "Issue plan requires clarification before /implement can proceed"
+CLARIFY_ENV_ALLOW = frozenset({"CLAUDE_PLUGIN_ROOT", "DESIGN_TMPDIR", "SESSION_ID", "ISSUE_NUMBER", "REPO"})
+ROUTE_STATE_ALLOW = frozenset({"REPO"})
+REQUEST_STATE_ALLOW = frozenset(
+    {"REQUEST_ID", "REQUEST_BODY_FILE", "PLAN_FILE", "RESPONSE_FILE", "ISSUE_NUMBER", "REPO"}
+)
 
 _MARKER_RE = re.compile(
     r"^\s*<!--\s+larch:clarify-(request|response)\s+id=([1-9][0-9]*)\s*-->\s*$"
@@ -651,3 +659,577 @@ def clarify_label_main(argv: list[str]) -> int:
         return 2
     _emit_label(result)
     return 0
+
+
+class DesignClarifyArgs(NamedTuple):
+    session_env_path: str
+    claude_pid: str
+    phase: str
+    issue: str
+
+
+def _design_clarify_usage() -> None:
+    print("Usage: design-clarify.sh --phase fetch|publish --issue N", file=sys.stderr)
+
+
+def _fail_usage(message: str) -> NoReturn:
+    print(f"design-clarify.sh: {message}", file=sys.stderr)
+    raise SystemExit(2)
+
+
+def _validate_positive_int(label: str, value: str) -> str:
+    if not value or not value.isdigit() or value == "0":
+        _fail_usage(f"{label} must be a positive integer")
+    return value
+
+
+def _parse_design_clarify_args(argv: list[str]) -> DesignClarifyArgs:
+    data = {"--session-env-path": "", "--claude-pid": "", "--phase": "", "--issue": ""}
+    idx = 0
+    while idx < len(argv):
+        token = argv[idx]
+        if token in data:
+            if idx + 1 >= len(argv):
+                _fail_usage(f"{token} requires a value")
+            data[token] = argv[idx + 1]
+            idx += 2
+            continue
+        if token in {"-h", "--help"}:
+            _design_clarify_usage()
+            raise SystemExit(0)
+        _design_clarify_usage()
+        _fail_usage(f"unknown option: {token}")
+    if not data["--phase"]:
+        _design_clarify_usage()
+        _fail_usage("--phase is required")
+    if data["--phase"] not in {"fetch", "publish"}:
+        _fail_usage("--phase must be fetch or publish")
+    if not data["--issue"]:
+        _design_clarify_usage()
+        _fail_usage("--issue is required")
+    _validate_positive_int("--issue", data["--issue"])
+    if data["--claude-pid"]:
+        _validate_positive_int("--claude-pid", data["--claude-pid"])
+    return DesignClarifyArgs(
+        session_env_path=data["--session-env-path"],
+        claude_pid=data["--claude-pid"],
+        phase=data["--phase"],
+        issue=data["--issue"],
+    )
+
+
+def _plugin_root() -> Path:
+    return Path(__file__).resolve().parents[1]
+
+
+def _cli_cmd(plugin_root: Path, *args: str) -> list[str]:
+    return [sys.executable, str(plugin_root / "python" / "cli.py"), *args]
+
+
+def _build_driver_env(args: DesignClarifyArgs) -> tuple[dict[str, str], Path, Path]:
+    env = {key: os.environ[key] for key in CLARIFY_ENV_ALLOW if key in os.environ}
+    env.update(
+        design_lifecycle._load_source_env(  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+            args.session_env_path,
+            CLARIFY_ENV_ALLOW,
+            claude_pid=args.claude_pid,
+        )
+    )
+    if not env.get("CLAUDE_PLUGIN_ROOT"):
+        env["CLAUDE_PLUGIN_ROOT"] = str(_plugin_root())
+    design_tmpdir = design_lifecycle._require_design_tmpdir(env)  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+    env["DESIGN_TMPDIR"] = str(design_tmpdir)
+    env["ISSUE_NUMBER"] = args.issue
+    return env, design_tmpdir, Path(env["CLAUDE_PLUGIN_ROOT"])
+
+
+def _write_result_env(path: str | Path, rows: list[tuple[str, str]]) -> None:
+    destination = Path(path)
+    if destination.is_symlink():
+        raise _ClarifyValidationError(f"refusing symlink result env: {destination}")
+    for _key, value in rows:
+        if "\n" in value or "\r" in value:
+            raise _ClarifyValidationError("refusing result env value with newline")
+    tmp_name = ""
+    try:
+        fd, tmp_name = tempfile.mkstemp(prefix=f".{destination.name}.", dir=str(destination.parent))
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            for key, value in rows:
+                handle.write(f"{key}={value}\n")
+        Path(tmp_name).replace(destination)
+        tmp_name = ""
+    finally:
+        if tmp_name:
+            with contextlib.suppress(FileNotFoundError):
+                Path(tmp_name).unlink()
+
+
+def _read_result_env(path: str | Path, allow_keys: frozenset[str]) -> dict[str, str]:
+    source = Path(path)
+    if source.is_symlink() or not source.is_file():
+        raise OSError(f"result env is not a regular file: {source}")
+    return dict(design_lifecycle.phase_driver_read_result_env(source, allow_keys))
+
+
+def _load_route_state_repo(env: dict[str, str], design_tmpdir: Path) -> bool:
+    if env.get("REPO"):
+        return True
+    route_state = design_tmpdir / ".design-step0-route-state.env"
+    if not route_state.exists():
+        return True
+    try:
+        env.update(_read_result_env(route_state, ROUTE_STATE_ALLOW))
+    except OSError:
+        return False
+    return True
+
+
+def _validate_design_repo(repo: str) -> None:
+    if repo and not gh.validate_repo_slug(repo):
+        _fail_usage("invalid --repo")
+
+
+def _write_text(path: Path, text: str) -> None:
+    path.write_text(text, encoding="utf-8")
+
+
+def _run_cli(
+    plugin_root: Path,
+    env: dict[str, str],
+    *args: str,
+    stdout_path: Path | None = None,
+    stderr_path: Path | None = None,
+) -> CommandResult:
+    result = proc.run(_cli_cmd(plugin_root, *args), env={**os.environ, **env})
+    if stdout_path is not None:
+        _write_text(stdout_path, result.stdout)
+    if stderr_path is not None:
+        _write_text(stderr_path, result.stderr)
+    return result
+
+
+def _append_clarify_failure(
+    plugin_root: Path,
+    design_tmpdir: Path,
+    env: dict[str, str],
+    *,
+    site: str,
+    tool: str,
+    exit_code: int,
+    output_file: Path,
+) -> None:
+    # Single-line argv mirrors design_lifecycle._append_failure to avoid R0801
+    # duplicate-code collision with decompose._append_failure's multi-line form.
+    _ = _run_cli(plugin_root, env, "run-log", "append-failure", "--log", str(design_tmpdir / "execution-issues.md"), "--site", site, "--tool", tool, "--exit-code", str(exit_code), "--category", "Warnings", "--output-file", str(output_file), "--redact")
+
+
+def _stage_failed_clarify(
+    plugin_root: Path,
+    design_tmpdir: Path,
+    env: dict[str, str],
+    *,
+    exit_code: int,
+    detail_log: Path,
+) -> None:
+    if not detail_log.is_file():
+        detail_log.write_text("clarify failure\n", encoding="utf-8")
+    stage = proc.run(
+        [
+            str(plugin_root / "skills" / "design" / "scripts" / "design-stage-terminal-state.sh"),
+            "--design-tmpdir",
+            str(design_tmpdir),
+            "--outcome",
+            "failed-clarify",
+            "--step",
+            "clarify",
+            "--phase",
+            "clarify-loop",
+            "--site",
+            "clarify-loop",
+            "--trigger",
+            "failed",
+            "--bail-reason",
+            "clarify-hard-halt",
+            "--exit-code",
+            str(exit_code),
+            "--source-script",
+            "clarify-loop",
+            "--summary-outcome",
+            "failed-clarify",
+            "--failure-detail-log",
+            str(detail_log),
+        ],
+        env={**os.environ, **env},
+    )
+    (design_tmpdir / "design-clarify-stage.stdout.log").write_text(stage.stdout, encoding="utf-8")
+    (design_tmpdir / "design-clarify-stage.stderr.log").write_text(stage.stderr, encoding="utf-8")
+    if stage.returncode != 0:
+        _append_clarify_failure(
+            plugin_root,
+            design_tmpdir,
+            env,
+            site="design Step 0b clarify fetch",
+            tool="design-stage-terminal-state.sh",
+            exit_code=stage.returncode,
+            output_file=design_tmpdir / "design-clarify-stage.stderr.log",
+        )
+
+
+def _parse_publish_ok(text: str) -> str:
+    value = ""
+    for line in text.splitlines():
+        if line.startswith("PUBLISH_OK="):
+            value = line.split("=", 1)[1]
+    return value
+
+
+def _emit_design_kvs(rows: list[tuple[str, str]]) -> None:
+    for key, value in rows:
+        print(f"{key}={value}")
+
+
+def _fetch_failure(
+    plugin_root: Path,
+    design_tmpdir: Path,
+    env: dict[str, str],
+    *,
+    status: str,
+    detail_log: Path,
+    exit_code: int = 1,
+    extra_rows: list[tuple[str, str]] | None = None,
+) -> int:
+    rows = [("CLARIFY_FETCH_STATUS", status)]
+    if extra_rows:
+        rows.extend(extra_rows)
+    rows.append(("SUMMARY_OUTCOME", "failed-clarify"))
+    _write_result_env(design_tmpdir / ".design-clarify-fetch-result.env", rows)
+    _stage_failed_clarify(plugin_root, design_tmpdir, env, exit_code=exit_code, detail_log=detail_log)
+    _emit_design_kvs(rows)
+    return 1
+
+
+def _publish_failure(
+    design_tmpdir: Path,
+    *,
+    status: str,
+    summary: str = "failed-clarify",
+    extra_rows: list[tuple[str, str]] | None = None,
+) -> int:
+    rows = [("CLARIFY_PUBLISH_STATUS", status)]
+    if extra_rows:
+        rows.extend(extra_rows)
+    rows.append(("SUMMARY_OUTCOME", summary))
+    _write_result_env(design_tmpdir / ".design-clarify-publish-result.env", rows)
+    _emit_design_kvs(rows)
+    return 1
+
+
+def _handle_design_clarify_fetch(
+    args: DesignClarifyArgs,
+    env: dict[str, str],
+    design_tmpdir: Path,
+    plugin_root: Path,
+) -> int:
+    request_body_file = design_tmpdir / "clarify-request.md"
+    plan_file = design_tmpdir / "clarify-plan.md"
+    response_file = design_tmpdir / "clarify-response.md"
+    repo = env.get("REPO") or None
+    try:
+        state = clarify_state(proc, args.issue, repo=repo)
+    except (ShipError, _ClarifyValidationError, _ClarifyRepoResolutionError, RuntimeError) as exc:
+        detail = design_tmpdir / "clarify-state.stderr"
+        detail.write_text(_runtime_error_text(exc), encoding="utf-8")
+        return _fetch_failure(
+            plugin_root,
+            design_tmpdir,
+            env,
+            status="state-failed",
+            detail_log=detail,
+            exit_code=1,
+        )
+    if state.state != "awaiting-response" or not state.last_request_id:
+        detail = design_tmpdir / "clarify-fetch.failure.log"
+        detail.write_text(f"unexpected clarify state: {state.state or '<empty>'}\n", encoding="utf-8")
+        return _fetch_failure(
+            plugin_root,
+            design_tmpdir,
+            env,
+            status="unexpected-state",
+            detail_log=detail,
+            extra_rows=[("STATE", state.state)],
+        )
+    try:
+        fetch = clarify_comment_fetch(
+            proc,
+            args.issue,
+            state.last_request_id,
+            str(request_body_file),
+            repo=repo,
+        )
+    except (ShipError, _ClarifyValidationError, _ClarifyRepoResolutionError, RuntimeError) as exc:
+        detail = design_tmpdir / "clarify-comment-fetch.stderr"
+        detail.write_text(_runtime_error_text(exc), encoding="utf-8")
+        return _fetch_failure(
+            plugin_root,
+            design_tmpdir,
+            env,
+            status="fetch-failed",
+            detail_log=detail,
+            exit_code=1,
+        )
+    if not fetch.fetched:
+        detail = design_tmpdir / "clarify-comment-fetch.stderr"
+        detail.write_text("clarify comment fetch did not fetch\n", encoding="utf-8")
+        return _fetch_failure(
+            plugin_root,
+            design_tmpdir,
+            env,
+            status="fetch-failed",
+            detail_log=detail,
+            exit_code=1,
+        )
+    rows = [
+        ("CLARIFY_FETCH_STATUS", "ok"),
+        ("REQUEST_ID", state.last_request_id),
+        ("REQUEST_BODY_FILE", str(request_body_file)),
+        ("PLAN_FILE", str(plan_file)),
+        ("RESPONSE_FILE", str(response_file)),
+        ("ISSUE_NUMBER", args.issue),
+    ]
+    if env.get("REPO"):
+        rows.append(("REPO", env["REPO"]))
+    request_rows = rows[1:]
+    _write_result_env(design_tmpdir / ".design-clarify-request.env", request_rows)
+    _write_result_env(design_tmpdir / ".design-clarify-fetch-result.env", rows)
+    _emit_design_kvs(rows)
+    return 0
+
+
+def _publish_artifact_ok(path_text: str) -> bool:
+    path = Path(path_text)
+    try:
+        return not path.is_symlink() and path.is_file() and os.access(path, os.R_OK) and path.stat().st_size > 0
+    except OSError:
+        return False
+
+
+def _handle_design_clarify_publish(
+    args: DesignClarifyArgs,
+    env: dict[str, str],
+    design_tmpdir: Path,
+    plugin_root: Path,
+) -> int:
+    request_state_env = design_tmpdir / ".design-clarify-request.env"
+    try:
+        request = _read_result_env(request_state_env, REQUEST_STATE_ALLOW)
+    except OSError:
+        return _publish_failure(design_tmpdir, status="missing-request-state")
+    request_id = request.get("REQUEST_ID", "")
+    _validate_positive_int("REQUEST_ID", request_id)
+    if request.get("ISSUE_NUMBER", "") != args.issue:
+        return _publish_failure(design_tmpdir, status="issue-mismatch")
+    if "REPO" in request:
+        env["REPO"] = request["REPO"]
+    _validate_design_repo(env.get("REPO", ""))
+    plan_file = request.get("PLAN_FILE", "")
+    response_file = request.get("RESPONSE_FILE", "")
+    if not _publish_artifact_ok(plan_file) or not _publish_artifact_ok(response_file):
+        return _publish_failure(design_tmpdir, status="missing-artifact")
+
+    redacted_plan = design_tmpdir / "clarify-plan.redacted.md"
+    try:
+        redacted = redact.redact_secrets_only(Path(plan_file).read_text(encoding="utf-8", errors="replace"))
+    except (OSError, RuntimeError):
+        return _publish_failure(design_tmpdir, status="redact-failed", summary="failed-plan-write")
+    redacted_plan.write_text(redacted, encoding="utf-8")
+    if not redacted_plan.is_file() or redacted_plan.stat().st_size == 0:
+        return _publish_failure(design_tmpdir, status="redact-empty", summary="failed-plan-write")
+
+    repo_args = ["--repo", env["REPO"]] if env.get("REPO") else []
+    plan_write = _run_cli(
+        plugin_root,
+        env,
+        "named-block",
+        "write",
+        "--marker",
+        "plan",
+        "--issue",
+        args.issue,
+        "--content-file",
+        str(redacted_plan),
+        *repo_args,
+        stdout_path=design_tmpdir / "clarify-plan-write.stdout",
+        stderr_path=design_tmpdir / "clarify-plan-write.stderr",
+    )
+    if plan_write.returncode != 0:
+        (design_tmpdir / "clarify-plan-write.failure.log").write_text(
+            "plan-block write failed\n",
+            encoding="utf-8",
+        )
+        return _publish_failure(
+            design_tmpdir,
+            status="plan-write-failed",
+            summary="failed-plan-write",
+            extra_rows=[("PLAN_WRITE_OK", "false")],
+        )
+
+    publish_ok = "false"
+    session_id = env.get("SESSION_ID", "")
+    if session_id:
+        publish = _run_cli(
+            plugin_root,
+            env,
+            "design",
+            "log-publish",
+            "--design-tmpdir",
+            str(design_tmpdir),
+            "--run-id",
+            session_id,
+            "--issue",
+            args.issue,
+            *repo_args,
+            stdout_path=design_tmpdir / "design-log-publish.stdout",
+            stderr_path=design_tmpdir / "design-log-publish.failure.log",
+        )
+        parsed_publish_ok = _parse_publish_ok(publish.stdout)
+        if publish.returncode == 0 and parsed_publish_ok == "true":
+            publish_ok = "true"
+        else:
+            failure_exit = publish.returncode if publish.returncode != 0 else 1
+            _append_clarify_failure(
+                plugin_root,
+                design_tmpdir,
+                env,
+                site="design Step 0b clarify publish",
+                tool="design-log-publish.sh",
+                exit_code=failure_exit,
+                output_file=design_tmpdir / "design-log-publish.failure.log",
+            )
+    else:
+        print("\n**⚠ /design: SESSION_ID missing; skipping design log publish**")
+
+    try:
+        posted = clarify_comment_post(
+            proc,
+            args.issue,
+            "response",
+            request_id,
+            response_file,
+            repo=env.get("REPO") or None,
+        )
+        (design_tmpdir / "clarify-comment-post.stdout").write_text(
+            "\n".join(
+                [
+                    f"POSTED={_bool_text(posted.posted)}",
+                    f"COMMENT_ID={posted.comment_id}",
+                    f"COMMENT_URL={posted.comment_url}",
+                    f"MARKER={posted.marker}",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+    except (ShipError, _ClarifyValidationError, _ClarifyRepoResolutionError, RuntimeError) as exc:
+        (design_tmpdir / "clarify-comment-post.stderr").write_text(_runtime_error_text(exc), encoding="utf-8")
+        return _publish_failure(
+            design_tmpdir,
+            status="comment-post-failed",
+            extra_rows=[("PLAN_WRITE_OK", "true"), ("PUBLISH_OK", publish_ok)],
+        )
+
+    try:
+        label = clarify_label(proc, args.issue, "remove", repo=env.get("REPO") or None)
+        (design_tmpdir / "clarify-label-remove.stdout").write_text(
+            "\n".join(
+                [
+                    f"CHANGED={_bool_text(label.changed)}",
+                    f"ACTION={label.action}",
+                    f"LABEL={label.label}",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+    except (ShipError, _ClarifyValidationError, _ClarifyRepoResolutionError, RuntimeError) as exc:
+        (design_tmpdir / "clarify-label-remove.stderr").write_text(_runtime_error_text(exc), encoding="utf-8")
+        return _publish_failure(
+            design_tmpdir,
+            status="label-remove-failed",
+            extra_rows=[("PLAN_WRITE_OK", "true"), ("PUBLISH_OK", publish_ok)],
+        )
+
+    renamed = ""
+    if session_id and publish_ok == "true":
+        rename = _run_cli(
+            plugin_root,
+            env,
+            "tracking-issue",
+            "rename",
+            "--issue",
+            args.issue,
+            "--state",
+            "designing",
+            *repo_args,
+            stdout_path=design_tmpdir / "clarify-rename.stdout",
+            stderr_path=design_tmpdir / "clarify-rename.stderr",
+        )
+        if rename.returncode == 0:
+            for line in rename.stdout.splitlines():
+                if line.startswith("RENAMED="):
+                    renamed = line.split("=", 1)[1]
+        else:
+            renamed = "false"
+            _append_clarify_failure(
+                plugin_root,
+                design_tmpdir,
+                env,
+                site="design Step 0b clarify rename",
+                tool="python/cli.py tracking-issue rename",
+                exit_code=rename.returncode,
+                output_file=design_tmpdir / "clarify-rename.stderr",
+            )
+
+    rows = [
+        ("CLARIFY_PUBLISH_STATUS", "ok"),
+        ("PLAN_WRITE_OK", "true"),
+        ("PUBLISH_OK", publish_ok),
+        ("RENAMED", renamed),
+        ("SUMMARY_OUTCOME", "cancelled-clarify"),
+    ]
+    _write_result_env(design_tmpdir / ".design-clarify-publish-result.env", rows)
+    _emit_design_kvs(rows)
+    return 0
+
+
+def design_clarify_main(argv: list[str]) -> int:
+    try:
+        args = _parse_design_clarify_args(argv)
+        env, design_tmpdir, plugin_root = _build_driver_env(args)
+        route_state_ok = _load_route_state_repo(env, design_tmpdir)
+        if not route_state_ok:
+            route_state_log = design_tmpdir / "clarify-route-state.failure.log"
+            route_state_log.write_text("could not read route state sidecar\n", encoding="utf-8")
+            if args.phase == "fetch":
+                return _fetch_failure(
+                    plugin_root,
+                    design_tmpdir,
+                    env,
+                    status="route-state-read-failed",
+                    detail_log=route_state_log,
+                    exit_code=1,
+                )
+            return _publish_failure(design_tmpdir, status="route-state-read-failed")
+        _validate_design_repo(env.get("REPO", ""))
+        if (design_tmpdir / ".pause-requested").is_file():
+            pause_args = ["--design-tmpdir", str(design_tmpdir), "--issue", args.issue]
+            if env.get("REPO"):
+                pause_args.extend(["--repo", env["REPO"]])
+            return design_pause.pause_save_main(pause_args)
+        if args.phase == "fetch":
+            return _handle_design_clarify_fetch(args, env, design_tmpdir, plugin_root)
+        return _handle_design_clarify_publish(args, env, design_tmpdir, plugin_root)
+    except SystemExit as exc:
+        return int(exc.code or 0)
+    except _ClarifyValidationError as exc:
+        print(f"design-clarify.sh: {exc}", file=sys.stderr)
+        return 2
