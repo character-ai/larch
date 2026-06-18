@@ -2295,9 +2295,7 @@ def test_ci_fix_exhausted_terminal_state_sets_bail_reason(tmp_path: Path) -> Non
 
 def test_ci_fix_exhausted_detail_log_classified_by_stall_recovery(tmp_path: Path) -> None:
     """Stall-recovery classifier on the new envelope yields unrecoverable/none."""
-    stall_recovery = Path(__file__).resolve().parents[1] / "skills" / "implement" / "scripts" / "stall-recovery-report.sh"
-    if not stall_recovery.exists():
-        pytest.skip("stall-recovery-report.sh not found — skipping integration check")
+    stall_recovery = Path(__file__).resolve().parents[1] / "python" / "cli.py"
 
     ci_detail = "ci-fix-exhausted: python-lint\nFAIL test_foo.py asserted False\n"
     detail_log = tmp_path / "ci-fix-exhausted-detail.log"
@@ -2313,7 +2311,7 @@ def test_ci_fix_exhausted_detail_log_classified_by_stall_recovery(tmp_path: Path
     _ = (tmp_path / "session-env.sh").write_text("", encoding="utf-8")
 
     completed = subprocess.run(
-        ["bash", str(stall_recovery), "classify",
+        [sys.executable, str(stall_recovery), "stall-recovery", "classify",
          "--implement-tmpdir", str(tmp_path),
          "--in-memory-stall-tracking", "true",
          "--failure-detail-log", str(detail_log)],

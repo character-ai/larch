@@ -62,8 +62,8 @@ inside_log="$D6/design-log-publish.failure.log"
 printf 'publish failed\n' >"$inside_log"
 env -u CLAUDE_PLUGIN_ROOT "$SUBJECT" --design-tmpdir "$D6" --outcome failed-publish --step publish --phase publish --site design-publish --trigger failed --bail-reason publish-failed --exit-code 1 --source-script design-publish --failure-detail-log "$inside_log" >/dev/null
 grep -Fxq "FAILURE_DETAIL_LOG=$inside_log" "$D6/design-failure-terminal-state.env" || fail 'user-cache failure detail log rejected'
-REPORT_SH="$ROOT/skills/implement/scripts/stall-recovery-report.sh"
-env -u CLAUDE_PLUGIN_ROOT "$REPORT_SH" --profile generic --artifact-prefix design-failure --implement-tmpdir "$D6" validate-terminal-state --primary-state-file "$D6/design-failure-terminal-state.env" | grep -Fxq 'VALID=true' || fail 'validate-terminal-state rejected user-cache failure detail log'
+REPORT_CMD=(python3 "$ROOT/python/cli.py" stall-recovery)
+env -u CLAUDE_PLUGIN_ROOT "${REPORT_CMD[@]}" validate-terminal-state --profile generic --artifact-prefix design-failure --implement-tmpdir "$D6" --primary-state-file "$D6/design-failure-terminal-state.env" | grep -Fxq 'VALID=true' || fail 'validate-terminal-state rejected user-cache failure detail log'
 pass 'accepts failure detail log under user-cache design tmpdir'
 
 D7=$(mktemp -d)
@@ -72,7 +72,7 @@ inside_tail="$D7_CANON/design-publish-tail.failure.log"
 printf 'publish tail failed\n' >"$inside_tail"
 env -u CLAUDE_PLUGIN_ROOT "$SUBJECT" --design-tmpdir "$D7_CANON" --outcome failed-publish-tail --step publish --phase publish --site design-publish --trigger publish-tail-failed --bail-reason publish-tail-failed --exit-code 2 --source-script design-step5c --failure-detail-log "$inside_tail" --summary-outcome failed-publish-tail >/dev/null
 grep -Fxq 'TRIGGER=publish-tail-failed' "$D7_CANON/design-failure-terminal-state.env" || fail 'publish-tail-failed trigger missing'
-env -u CLAUDE_PLUGIN_ROOT "$REPORT_SH" --profile generic --artifact-prefix design-failure --implement-tmpdir "$D7_CANON" validate-terminal-state --primary-state-file "$D7_CANON/design-failure-terminal-state.env" | grep -Fxq 'VALID=true' || fail 'publish-tail terminal state invalid'
+env -u CLAUDE_PLUGIN_ROOT "${REPORT_CMD[@]}" validate-terminal-state --profile generic --artifact-prefix design-failure --implement-tmpdir "$D7_CANON" --primary-state-file "$D7_CANON/design-failure-terminal-state.env" | grep -Fxq 'VALID=true' || fail 'publish-tail terminal state invalid'
 pass 'stages failed-publish-tail with publish-tail-failed trigger'
 
 if D_DISALLOWED=$(mktemp -d "/var/tmp/larch-test-terminal-disallowed.XXXXXX" 2>/dev/null); then
@@ -96,5 +96,5 @@ inside_panel="$D8/step3-panel-init-failed.log"
 printf 'panel init failed\n' >"$inside_panel"
 env -u CLAUDE_PLUGIN_ROOT "$SUBJECT" --design-tmpdir "$D8" --outcome failed-judge-panel --step judge-panel --phase judge-panel --site step3-review --trigger panel-init-failed --bail-reason panel-init-failed --exit-code 1 --source-script design-step3-review --failure-detail-log "$inside_panel" --summary-outcome failed-judge-panel >/dev/null
 grep -Fxq 'BAIL_REASON=panel-init-failed' "$D8/design-failure-terminal-state.env" || fail 'panel-init-failed bail missing'
-env -u CLAUDE_PLUGIN_ROOT "$REPORT_SH" --profile generic --artifact-prefix design-failure --implement-tmpdir "$D8" validate-token --token-kind bail --value panel-init-failed | grep -Fxq 'VALID=true' || fail 'panel-init-failed bail token invalid'
+env -u CLAUDE_PLUGIN_ROOT "${REPORT_CMD[@]}" validate-token --profile generic --artifact-prefix design-failure --implement-tmpdir "$D8" --token-kind bail --value panel-init-failed | grep -Fxq 'TOKEN_VALID=true' || fail 'panel-init-failed bail token invalid'
 pass 'stages failed-judge-panel with panel-init-failed bail token'

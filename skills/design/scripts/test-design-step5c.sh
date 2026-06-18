@@ -13,11 +13,10 @@ trap 'rm -rf "$TMP"' EXIT
 
 FAKE_PLUGIN="$TMP/plugin"
 STUB="$FAKE_PLUGIN/skills/design/scripts"
-mkdir -p "$STUB" "$FAKE_PLUGIN/scripts" "$FAKE_PLUGIN/skills/implement/scripts" "$FAKE_PLUGIN/bin" "$FAKE_PLUGIN/python"
+mkdir -p "$STUB" "$FAKE_PLUGIN/scripts" "$FAKE_PLUGIN/bin" "$FAKE_PLUGIN/python"
 ln -sf "$ROOT/python"/* "$FAKE_PLUGIN/python/"
 # lib-phase-driver.sh ported to python/design_lifecycle.py; python/ symlink provides it
 ln -sf "$ROOT/skills/design/scripts/design-stage-terminal-state.sh" "$STUB/design-stage-terminal-state.sh"
-ln -sf "$ROOT/skills/implement/scripts/stall-recovery-report.sh" "$FAKE_PLUGIN/skills/implement/scripts/stall-recovery-report.sh"
 ln -sf "$ROOT/scripts/lib-quiet.sh" "$FAKE_PLUGIN/scripts/lib-quiet.sh"
 ln -sf "$ROOT/scripts/lib-larch-dev-clone.sh" "$FAKE_PLUGIN/scripts/lib-larch-dev-clone.sh"
 ln -sf "$ROOT/scripts/read-result-env.sh" "$FAKE_PLUGIN/scripts/read-result-env.sh"
