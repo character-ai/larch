@@ -818,25 +818,9 @@ def _append_clarify_failure(
     exit_code: int,
     output_file: Path,
 ) -> None:
-    _ = _run_cli(
-        plugin_root,
-        env,
-        "run-log",
-        "append-failure",
-        "--log",
-        str(design_tmpdir / "execution-issues.md"),
-        "--site",
-        site,
-        "--tool",
-        tool,
-        "--exit-code",
-        str(exit_code),
-        "--category",
-        "Warnings",
-        "--output-file",
-        str(output_file),
-        "--redact",
-    )
+    # Single-line argv mirrors design_lifecycle._append_failure to avoid R0801
+    # duplicate-code collision with decompose._append_failure's multi-line form.
+    _ = _run_cli(plugin_root, env, "run-log", "append-failure", "--log", str(design_tmpdir / "execution-issues.md"), "--site", site, "--tool", tool, "--exit-code", str(exit_code), "--category", "Warnings", "--output-file", str(output_file), "--redact")
 
 
 def _stage_failed_clarify(
