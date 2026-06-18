@@ -319,16 +319,19 @@ def _capture_stdout(callable_obj, argv: Sequence[str]) -> tuple[int, str]:
 
 def _capture_stdout_stderr(callable_obj, argv: Sequence[str], *, stderr_path: Path) -> tuple[int, str]:
     buf = io.StringIO()
-    with stderr_path.open("w", encoding="utf-8") as err, contextlib.redirect_stdout(buf), contextlib.redirect_stderr(err):
-        try:
-            rc = callable_obj(list(argv))
-            return int(rc), buf.getvalue()
-        except SystemExit as exc:
-            code = exc.code if isinstance(exc.code, int) else 1
-            return code, buf.getvalue()
-        except BaseException:
-            err.write(traceback.format_exc())
-            return 1, buf.getvalue()
+    try:
+        with stderr_path.open("w", encoding="utf-8") as err, contextlib.redirect_stdout(buf), contextlib.redirect_stderr(err):
+            try:
+                rc = callable_obj(list(argv))
+                return int(rc), buf.getvalue()
+            except SystemExit as exc:
+                code = exc.code if isinstance(exc.code, int) else 1
+                return code, buf.getvalue()
+            except BaseException:
+                err.write(traceback.format_exc())
+                return 1, buf.getvalue()
+    except OSError:
+        return 1, buf.getvalue()
 
 
 def _print_text(text: str) -> None:

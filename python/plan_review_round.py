@@ -279,13 +279,6 @@ def _write_round_summary(
     _ = tmp.replace(dest)
 
 
-def _rollback_round_count(design: Path, prior: int) -> None:
-    path = design / "review-round-count.txt"
-    tmp = path.with_name(f"{path.name}.tmp.{os.getpid()}")
-    _ = tmp.write_text(f"{prior}\n", encoding="utf-8")
-    _ = tmp.replace(path)
-
-
 def execute_round(
     design: Path,
     *,
@@ -297,12 +290,6 @@ def execute_round(
     feature_file: Path,
 ) -> tuple[int, dict[str, str]]:
     """Run one plan-review round; return (exit_code, stdout_kv)."""
-    prior_count = 0
-    count_path = design / "review-round-count.txt"
-    if count_path.is_file() and not count_path.is_symlink():
-        raw = count_path.read_text(encoding="utf-8", errors="replace").strip()
-        prior_count = int(raw, 10) if re.fullmatch(r"[0-9]+", raw) else 0
-
     values: dict[str, str] = {
         "PANEL_PRUNED_EMPTY": "false",
         "TALLY_PLAN_REVIEW_STATUS": "ok",
@@ -490,7 +477,6 @@ def execute_round(
     if tally_status == "tally-error" or tally.returncode not in {0, 2}:
         values["LOOP_STATUS"] = "tally-error"
         values["TALLY_PLAN_REVIEW_STATUS"] = "tally-error"
-        _rollback_round_count(design, prior_count)
         _write_round_summary(design, round_num, loop_status="tally-error", collect_ok=ok_count, collect_fail=fail_count, values=values)
         for k, v in values.items():
             _emit(k, v)
@@ -511,7 +497,6 @@ def execute_round(
     if accepted == 0 and ok_count == 0 and degraded:
         values["LOOP_STATUS"] = "degraded-empty-collector"
         values["DEGRADED_PANEL"] = "1"
-        _rollback_round_count(design, prior_count)
         _write_round_summary(design, round_num, loop_status="degraded-empty-collector", collect_ok=ok_count, collect_fail=fail_count, values=values)
         for k, v in values.items():
             _emit(k, v)
