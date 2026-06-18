@@ -1,0 +1,7 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	python/test_review_and_fix.py:354-369	Existing MAV snapshot test still asserts head-only snapshots	The plan replaces MAV head-only snapshot setup with full pre-coder snapshots, so this existing test will fail even if the implementation is correct	Update or rename this test to expect pre-coder-head.txt, pre-coder-tracked-paths.txt, and pre-coder-untracked-paths.txt after mav-apply
+
+1. **[correctness] `python/test_review_and_fix.py:354-369`**
+   - **Concern:** The plan changes `mav-apply` from head-only snapshots to full pre-coder snapshots.
+   - **Breakage:** `test_mav_apply_writes_relocated_pre_coder_head_only` still asserts the tracked and untracked snapshot files do not exist.
+   - **Suggested revision:** Update that existing test expectation when adding the new regression tests.
