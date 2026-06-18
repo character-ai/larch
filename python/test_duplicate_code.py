@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from pathlib import Path
+from types import MethodType
 
 import pytest
 from astroid import nodes
@@ -221,6 +222,158 @@ def test_disabled_duplicate_code_lines_remain_in_file_set_but_do_not_report(tmp_
     assert result.exit_code == 0
     assert result.files == ("a.py", "b.py")
     assert result.pair_count == 1
+
+
+def test_disable_all_suppresses_attribution_while_pairs_are_compared(tmp_path: Path) -> None:
+    _write_rc(tmp_path, min_lines=4)
+    (tmp_path / "a.py").write_text(_module(5), encoding="utf-8")
+    (tmp_path / "b.py").write_text("# pylint: disable=all\n" + _module(5), encoding="utf-8")
+
+    result = _run(tmp_path)
+
+    assert result.exit_code == 0
+    assert result.digest == "[]"
+
+
+def test_enabled_peers_still_fail_when_disabled_peer_is_present(tmp_path: Path) -> None:
+    _write_rc(tmp_path, min_lines=4)
+    _write_modules(
+        tmp_path,
+        ["a.py", "b.py", "c.py"],
+        _module(5),
+    )
+    (tmp_path / "c.py").write_text("# pylint: disable=duplicate-code\n" + _module(5), encoding="utf-8")
+
+    result = _run(tmp_path)
+
+    assert result.exit_code == 1
+    assert result.pair_count == 3
+    assert "==a:[0:5]" in result.findings
+    assert "==b:[0:5]" in result.findings
+    assert "==c:" not in result.findings
+
+
+def test_block_level_disable_via_file_state_suppresses_duplicate(tmp_path: Path) -> None:
+    _write_rc(tmp_path, min_lines=4)
+    disabled_block = "HEADER = 1\n# pylint: disable=duplicate-code\n" + _module(5)
+    (tmp_path / "a.py").write_text(disabled_block, encoding="utf-8")
+    (tmp_path / "b.py").write_text(_module(5), encoding="utf-8")
+
+    result = _run(tmp_path)
+
+    assert result.exit_code == 0
+    assert result.files == ("a.py", "b.py")
+    assert result.digest == "[]"
+
+
+def test_close_equivalent_gating_suppresses_disabled_only_commonalities(tmp_path: Path) -> None:
+    _write_rc(tmp_path, min_lines=4)
+    (tmp_path / "a.py").write_text(_module(5), encoding="utf-8")
+    (tmp_path / "b.py").write_text("# pylint: disable=duplicate-code\n" + _module(5), encoding="utf-8")
+
+    result = _run(tmp_path)
+
+    assert result.exit_code == 0
+    assert result.pair_count == 1
+    assert result.digest == "[]"
+
+
+def test_close_equivalent_gating_reports_enabled_clusters(tmp_path: Path) -> None:
+    _write_rc(tmp_path, min_lines=4)
+    _write_modules(tmp_path, ["a.py", "b.py", "c.py"], _module(5))
+    (tmp_path / "c.py").write_text("# pylint: disable=all\n" + _module(5), encoding="utf-8")
+
+    result = _run(tmp_path)
+
+    assert result.exit_code == 1
+    assert result.digest != "[]"
+    assert "==a:[0:5]" in result.findings
+    assert "==b:[0:5]" in result.findings
+
+
+def test_cross_file_shard_guard_detects_non_adjacent_duplicates_under_parallel_jobs(tmp_path: Path) -> None:
+    _write_rc(tmp_path, min_lines=4)
+    (tmp_path / "a.py").write_text(_module(5), encoding="utf-8")
+    (tmp_path / "b.py").write_text("UNIQUE_ONLY = 1\n" + _module(5, prefix="OTHER"), encoding="utf-8")
+    (tmp_path / "c.py").write_text(_module(5), encoding="utf-8")
+
+    serial = _run(tmp_path, jobs=1)
+    parallel = _run(tmp_path, jobs=2)
+
+    assert serial.exit_code == parallel.exit_code == 1
+    assert serial.digest == parallel.digest
+    assert "==a:[0:5]" in serial.findings
+    assert "==c:[0:5]" in serial.findings
+    assert "==b:" not in serial.findings
+
+
+def test_pair_enumeration_uses_instance_bound_find_common_without_iter_sims_prescan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    original_find_commonalities = duplicate_code._find_commonalities
+    find_common_calls: list[tuple[int, object, object]] = []
+    iter_sims_during_find: list[bool] = []
+
+    def find_commonalities_spy(
+        symilar: object,
+        linesets: Sequence[object],
+        pairs: Sequence[tuple[int, int]],
+        jobs: int,
+    ) -> list[object]:
+        checker_id = id(symilar)
+        original_find_common = symilar._find_common  # type: ignore[attr-defined]
+        original_iter_sims = symilar._iter_sims  # type: ignore[attr-defined]
+
+        def find_common_spy(_self: object, lineset1: object, lineset2: object) -> list[object]:
+            find_common_calls.append((checker_id, lineset1, lineset2))
+            assert id(symilar) == checker_id
+            return original_find_common(lineset1, lineset2)
+
+        def iter_sims_guard(_self: object) -> object:
+            iter_sims_during_find.append(True)
+            return original_iter_sims()
+
+        symilar._find_common = MethodType(find_common_spy, symilar)  # type: ignore[attr-defined]
+        symilar._iter_sims = MethodType(iter_sims_guard, symilar)  # type: ignore[attr-defined]
+        try:
+            return original_find_commonalities(symilar, linesets, pairs, jobs)
+        finally:
+            symilar._find_common = original_find_common  # type: ignore[attr-defined]
+            symilar._iter_sims = original_iter_sims  # type: ignore[attr-defined]
+
+    monkeypatch.setattr(duplicate_code, "_find_commonalities", find_commonalities_spy)
+    _write_rc(tmp_path, min_lines=4)
+    _write_modules(tmp_path, ["a.py", "b.py", "c.py"], _module(5))
+
+    result = _run(tmp_path, jobs=1)
+
+    assert result.exit_code == 1
+    assert result.pair_count == 3
+    assert len(find_common_calls) == 3
+    assert len({checker_id for checker_id, _, _ in find_common_calls}) == 1
+    assert not iter_sims_during_find
+
+
+def test_configured_threshold_lives_on_checker_namespace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured: list[int] = []
+    original_bootstrap = duplicate_code._bootstrap_linter
+
+    def bootstrap_spy(config: duplicate_code.DuplicateCodeConfig, backend: duplicate_code.PylintBackend) -> tuple[object, object, list[object]]:
+        linter, checker, fileitems = original_bootstrap(config, backend)
+        captured.append(checker.namespace.min_similarity_lines)  # type: ignore[attr-defined]
+        assert not hasattr(checker, "min_similarity_lines")
+        return linter, checker, fileitems
+
+    monkeypatch.setattr(duplicate_code, "_bootstrap_linter", bootstrap_spy)
+    _write_rc(tmp_path, min_lines=8)
+    _write_modules(tmp_path, ["a.py"], _module(4))
+
+    result = duplicate_code.run_duplicate_code(root=tmp_path, rcfile=tmp_path / ".pylintrc", jobs=1)
+
+    assert captured == [8]
+    assert result.exit_code == 0
 
 
 def test_cluster_digest_is_stable_between_serial_and_parallel_paths(tmp_path: Path) -> None:
