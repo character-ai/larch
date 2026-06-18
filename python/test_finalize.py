@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+import execution_issues
 import finalize
 import run_logs
 from errors import ShipError
@@ -167,6 +168,35 @@ def test_teardown_stall_preserves_tmpdir_and_writes_manifest(tmp_path: Path) -> 
         ),
     )
     assert manifest["stalled_at_step"] == "12"
+
+
+def test_teardown_log_flush_uses_safety_net_not_render_batch(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    render_called = False
+    safety_net_called = False
+
+    def spy_render(*_args: object, **_kwargs: object) -> None:
+        nonlocal render_called
+        render_called = True
+
+    def spy_safety_net(**_kwargs: object) -> tuple[int, str, int, str]:
+        nonlocal safety_net_called
+        safety_net_called = True
+        return 0, "skip", 0, ""
+
+    monkeypatch.setattr(run_logs, "render_execution_issues_batch", spy_render)
+    monkeypatch.setattr(execution_issues, "flush_execution_issues_safety_net", spy_safety_net)
+
+    runner = RecordingRunner()
+    _ = finalize._teardown_log_flush(
+        runner,
+        _ctx(tmp_path, no_logs_commit=True),
+        cwd=str(tmp_path),
+    )
+    assert not render_called
+    assert safety_net_called
 
 
 def test_teardown_log_flush_failure_does_not_skip_stash_or_sentinel(

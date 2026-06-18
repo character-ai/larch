@@ -152,7 +152,6 @@ require('skills/implement/scripts/step-18.sh', '---LARCH-SUMMARY-FINAL-BEGIN---'
 require('skills/implement/scripts/step-18.sh', '_restore_finalize=false', 'step-18 restore gate')
 require('skills/implement/scripts/step-18.sh', 'restore-finalize-state --implement-tmpdir "$IMPLEMENT_TMPDIR"', 'step-18 restore finalize argv')
 require('skills/implement/scripts/step-18.sh', 'implement-finalize teardown --state-file "$IMPLEMENT_TMPDIR/finalize-state.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"', 'step-18 exact teardown argv')
-require('skills/implement/scripts/step-18.sh', 'execution-issues flush-safety-net', 'step-18 execution issues safety net')
 require('skills/implement/scripts/step-18.sh', 'LARCH_CLAUDE_PID:-$PPID', 'step-18 claude pid fallback')
 require('skills/implement/scripts/step-18.sh', "DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement", 'step-18 timing env')
 forbid('skills/implement/scripts/step-18.sh', 'cleanup.sh" --help', 'step-18 must not resurrect cleanup smoke')
