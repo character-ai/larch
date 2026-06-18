@@ -657,10 +657,10 @@ test-step2-dispatch:
 test-stall-recovery-report: test-stall-recovery-report-1 test-stall-recovery-report-2 test-stall-recovery-report-3
 
 test-stall-recovery-report-1:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_stall_recovery.py -q -k 'retry_policy or normalize_issue or normalize_outcome or classify or record_attempt'
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_stall_recovery.py -q -k 'retry_policy or normalize_issue_env or normalize_outcome or classify or record_attempt or init_attempts'
 
 test-stall-recovery-report-2:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_stall_recovery.py -q -k 'record_escalation or dedup or compose_report or lint_subcommand or clear_stall or seed_terminal or sensitive_corpus'
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_stall_recovery.py -q -k 'record_escalation or dedup_tier or compose_report or lint_subcommand or clear_stall or seed_terminal or sensitive_corpus or redact_text or report_dedup'
 
 test-stall-recovery-report-3:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_stall_recovery.py -q -k 'validate_token or validate_terminal or validate_tier_b'

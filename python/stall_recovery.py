@@ -17,6 +17,7 @@ from datetime import datetime, UTC
 from pathlib import Path
 
 import config
+import run_logs
 
 MAX_PUBLIC_FILE_BYTES = 256_000
 ALLOWLIST_TABLE_COLUMNS = 4
@@ -95,6 +96,15 @@ _GENERIC_SOURCE_SCRIPTS = frozenset({
     "split-path", "design-publish", "design-step3-review", "design-step5c",
     "clarify-loop", "prompt-step", "validator", "postplan", "decompose-panel", "bash", "python",
 })
+_DISPATCH_BAIL_TOKENS = frozenset({
+    "branch-changed", "cap_hit", "codex-runtime-failure", "cursor-bailed-no-reason",
+    "cursor-modified-history", "cursor-runtime-failure", "detached-head-prohibited",
+    "dirty-state-after-timeout", "interactive-subprocess-unsupported", "main-branch-post-dispatch",
+    "main-branch-prohibited", "manifest-missing", "manifest-oos-materialization-failed",
+    "manifest-schema-invalid", "protected-path-modified", "qa-pending-missing",
+    "redactor-not-executable", "resume-incompatible", "submodule-dirty",
+    "wrapper-validation-failure", "orchestrator-envelope-invalid",
+})
 
 
 def _safe_outcome(value: str) -> bool:
@@ -167,7 +177,7 @@ def _latest_attempt_signature(path: Path) -> str:
     count = read_kv(path, "attempt_count", "0")
     if not count.isdigit() or count == "0":
         return ""
-    return read_kv(path, f"attempt.{count}.signature", "") or read_kv(path, "last_signature", "")
+    return read_kv(path, f"attempt.{count}.signature", "")
 
 
 def _safe_matched_pattern_value(value: str) -> str:
@@ -315,37 +325,74 @@ def _merged_state(
     return _read_state_file(state_file) | _read_state_file(finalize_file) | _read_state_file(session_file)
 
 
+def _resume_hint_for(klass: str, step: str, phase: str) -> str:
+    safe_step = _safe_step_value(step)
+    if klass in {"contract-failure", "same-cause-repeat", "unrecoverable", "submodule-restricted"}:
+        return "none"
+    if safe_step in {"3", "6", "12d", "bump-branch-guard"}:
+        return "none"
+    if safe_step == "2":
+        return "step2-impl"
+    if safe_step == "5":
+        return "step5-review"
+    if safe_step in {"8", "9", "10", "11", "12", "13", "14", "15", "rebase-failed"}:
+        return "step8-shippr"
+    if safe_step and re.fullmatch(r"(8|9|10|11|12|13|14|15)([a-z][0-9]?|-[a-z0-9]+(-[a-z0-9]+)*)?", safe_step):
+        return "step8-shippr"
+    if safe_step and safe_step != "unknown":
+        return "none"
+    if phase.startswith("review"):
+        return "step5-review"
+    if phase.startswith(("impl", "step2")):
+        return "step2-impl"
+    if not phase:
+        return "none"
+    return "step8-shippr"
+
+
 def _classify_text(text: str, bail: str, step: str, phase: str, *, detail_log_valid: bool = False) -> tuple[str, str, str]:
     _ = phase
     if step == "rebase-failed":
         return "transient-infra", "step8-shippr", "rebase-transient"
-    lower = f"{bail}\n{text}".lower()
-    if "submodule-edit-required-out-of-scope" in lower:
-        return "submodule-restricted", "none", "submodule-restricted-bail-token"
-    if "protected-path" in lower:
-        return "protected-path", "step2-impl", "protected-path-bail-token"
-    if "submodule-edit-required-out-of-scope" in lower:
-        return "submodule-restricted", "none", "submodule-restricted-bail-token"
-    if "protected-path-edit-required-out-of-scope" in lower:
-        return "protected-path", "step2-impl", "protected-path-bail-token"
-    if any(x in lower for x in ("orchestrator-envelope-invalid", "wrapper-validation-failure", "dirty-state-after-timeout", "main-branch-post-dispatch")):
-        return "dispatch-failure", "step2-impl", "dispatch-bail-token"
-    if any(token in lower for token in config.LINT_FIX_BAIL_REASON_TOKENS):
-        return "lint-failure", "step5-review", "lint-fix-bail-token"
-    if any(x in lower for x in ("api rate limit", "network timeout", "timeout", "temporarily unavailable")):
-        return "transient-infra", "step8-shippr", "transient-output"
-    if detail_log_valid and bail == "ci-fix-exhausted":
-        return "unrecoverable", "none", "ci-fix-exhausted-with-detail"
-    if bail == "ci-fix-exhausted":
-        return "unrecoverable", "none", "bail-token"
-    if any(x in lower for x in ("pytest", "failing test", "jest", "failed with")):
-        return "test-failure", "step2-impl", "test-output"
-    if any(x in lower for x in ("shellcheck", "markdownlint", "ruff", "lint-fix-loop", "lint")):
-        return "lint-failure", "step5-review", "lint-output"
     if step in {"3", "6"}:
         return "contract-failure", "none", "step-contract"
-    if bail in {"adopted-issue-closed", "tracking-init-failed", "recovery-out-of-scope"}:
-        return "unrecoverable", "none", "bail-token"
+    if step == "merge-loop-iteration-cap":
+        return "unrecoverable", "none", "terminal-step"
+    if bail == "protected-path-edit-required-out-of-scope":
+        return "protected-path", "step2-impl", "protected-path-bail-token"
+    if bail == "submodule-edit-required-out-of-scope":
+        return "submodule-restricted", "none", "submodule-restricted-bail-token"
+    if bail in {"adopted-issue-closed", "tracking-init-failed"}:
+        return "unrecoverable", "none", "terminal-bail"
+    if bail == "recovery-out-of-scope":
+        return "unrecoverable", "none", "recovery-out-of-scope"
+    if bail == "ci-fix-exhausted":
+        pattern = "ci-fix-exhausted-with-detail" if detail_log_valid else "terminal-bail"
+        return "unrecoverable", "none", pattern
+    lower = f"{bail}\n{text}".lower()
+    if any(token in lower for token in config.LINT_FIX_BAIL_REASON_TOKENS):
+        return "lint-failure", "step5-review", "lint-fix-bail-token"
+    if "submodule-edit-required-out-of-scope" in lower:
+        return "submodule-restricted", "none", "submodule-restricted-bail-token"
+    if "protected-path-edit-required-out-of-scope" in lower or (
+        "protected-path" in lower and "protected-path-edit-required-out-of-scope" not in lower
+    ):
+        return "protected-path", "step2-impl", "protected-path-bail-token"
+    if any(x in lower for x in ("pytest", "jest", "vitest", "rspec", "go test", "test failed", "failing test", "tests failed", "failed with")):
+        return "test-failure", "step2-impl", "test-output"
+    if any(x in lower for x in ("lint-fix", "shellcheck", "markdownlint", "pre-commit", "lint-fix-loop", "lint")):
+        return "lint-failure", "step5-review", "lint-output"
+    if bail in _DISPATCH_BAIL_TOKENS:
+        return "dispatch-failure", "step2-impl", "dispatch-bail-token"
+    if re.search(r"envelope-invalid|invalid.*envelope|orchestrator-envelope-invalid|wrapper-validation|step2.*dispatch", lower):
+        return "dispatch-failure", "step2-impl", "dispatch-output"
+    if re.search(
+        r"rate limit|api rate|network/auth issue|network (error|failure|unavailable)|timed? out|timeout|"
+        r"connection (reset|refused)|temporary failure|tls handshake|dns failure|name resolution|"
+        r"github unavailable|github api unavailable|service unavailable|http 5\d\d",
+        lower,
+    ):
+        return "transient-infra", "step8-shippr", "transient-output"
     return "unrecoverable", "none", "fallback"
 
 
@@ -390,9 +437,10 @@ def classify(args: argparse.Namespace) -> int:
             state_path = tmpdir / name
             evidence = f"{evidence}\n{_read_optional_evidence(state_path)}"
     if not any_stall:
-        klass, hint, pattern = ("unrecoverable", "none", "no-stall")
+        klass, _hint, pattern = ("unrecoverable", "none", "no-stall")
     else:
-        klass, hint, pattern = _classify_text(evidence, bail, step, phase, detail_log_valid=detail_log_valid)
+        klass, _hint, pattern = _classify_text(evidence, bail, step, phase, detail_log_valid=detail_log_valid)
+    hint = _resume_hint_for(klass, step, phase)
     evidence_digest = hashlib.sha256(evidence[:2048].encode()).hexdigest()[:16] if evidence else ""
     signature = hashlib.sha256(
         f"class={klass}\nhint={hint}\nstep={step}\nphase={phase}\nbail={bail}\nevidence={evidence_digest}\n".encode(),
@@ -502,6 +550,8 @@ def init_attempts(args: argparse.Namespace) -> int:
         return 1
     if not path.exists():
         write_kvs(path, {"version": 1, "created_utc": datetime.now(UTC).isoformat(), "attempt_count": 0})
+    emit("ATTEMPTS_FILE", path)
+    emit("ATTEMPT_COUNT", read_kv(path, "attempt_count", "0"))
     return 0
 
 
@@ -692,6 +742,11 @@ def record_escalation(args: argparse.Namespace) -> int:
     prefix = getattr(args, "artifact_prefix", "") or ""
     profile = getattr(args, "profile", "implement") or "implement"
     generic = profile == "generic"
+
+    def hard_fail(reason: str) -> int:
+        _append_record_escalation_tool_failure(tmpdir, reason)
+        return 1
+
     site = args.site
     trigger = args.trigger
     step = args.step
@@ -700,17 +755,17 @@ def record_escalation(args: argparse.Namespace) -> int:
     exit_code = args.exit_code
     if not _safe_token("site", site, generic=generic) or not _safe_token("trigger", trigger, generic=generic):
         print("stall-recovery: record-escalation token validation failed", file=sys.stderr)
-        return 1
+        return hard_fail("token-validation-failed")
     if not _safe_token("step", step, generic=generic) or not _safe_token("phase", phase, generic=generic):
         print("stall-recovery: record-escalation token validation failed", file=sys.stderr)
-        return 1
+        return hard_fail("token-validation-failed")
     rel_log = ""
     detail_log = getattr(args, "failure_detail_log", "") or ""
     if detail_log:
         detail_path = Path(detail_log)
         if not validate_failure_detail_log(tmpdir, detail_path):
             print("stall-recovery: --failure-detail-log invalid", file=sys.stderr)
-            return 1
+            return hard_fail("failure-detail-log-invalid")
         try:
             rel = detail_path.resolve().relative_to(tmpdir.resolve())
             rel_log = str(rel)
@@ -721,10 +776,13 @@ def record_escalation(args: argparse.Namespace) -> int:
     marker = _artifact_path(tmpdir, _DEFAULT_RECORD_FAILURE_MARKER, prefix)
     if not _validate_tmpdir_write_path(tmpdir, ledger):
         print("stall-recovery: record-escalation ledger path invalid", file=sys.stderr)
-        return 1
+        return hard_fail("ledger-path-invalid")
+    safe_dispatcher = _safe_dispatcher_value(dispatcher, generic=generic)
+    raw_exit_code = str(exit_code or "")
+    safe_exit_code = raw_exit_code if re.fullmatch(r"[0-9]+|unknown", raw_exit_code) else "unknown"
     row = (
         f"utc={datetime.now(UTC).isoformat()}\tsite={site}\ttrigger={trigger}\tstep={step}\tphase={phase}"
-        f"\tdispatcher={dispatcher}\texit_code={exit_code}\tfailure_detail_log={rel_log}\n"
+        f"\tdispatcher={safe_dispatcher}\texit_code={safe_exit_code}\tfailure_detail_log={rel_log}\n"
     )
     try:
         old = ledger.read_text(encoding="utf-8") if ledger.exists() else ""
@@ -738,7 +796,7 @@ def record_escalation(args: argparse.Namespace) -> int:
         fallback = _artifact_path(tmpdir, _DEFAULT_ESCALATION_FALLBACK, prefix)
         if not _validate_tmpdir_write_path(tmpdir, fallback) or not _validate_tmpdir_write_path(tmpdir, marker):
             print("stall-recovery: record-escalation fallback path invalid", file=sys.stderr)
-            return 1
+            return hard_fail("fallback-path-invalid")
         marker.write_text("RECORD_ESCALATION_FAILED=true\nREASON=canonical-ledger-not-writable\n", encoding="utf-8")
         fallback.write_text(row, encoding="utf-8")
         emit("ESCALATION_RECORDED", "false")
@@ -847,7 +905,12 @@ def compose_report(args: argparse.Namespace) -> int:
     if surface == "issue-input":
         tier = "A"
         body = _report_marker(report_sig) + "\n" + _compose_tier_a_issue(kind, class_file, attempts_file, ledger, fallback, marker, root_file, title, tmpdir, session_env_file)
-        _write_tier_a_comment_payloads(tmpdir, attempts_file, ledger, fallback, marker, root_file, prefix)
+        redacted_body = _redact_text(body)
+        if redacted_body is None:
+            return _compose_redaction_failed()
+        if not _write_tier_a_comment_payloads(tmpdir, attempts_file, ledger, fallback, marker, root_file, prefix):
+            return _compose_redaction_failed()
+        body = redacted_body
     else:
         tier = "B"
         if not _validate_tmpdir_local_file(tmpdir, sensitive_file):
@@ -882,7 +945,13 @@ def compose_report(args: argparse.Namespace) -> int:
             raw_candidate.unlink()
         _write_tier_b_comment_payloads(tmpdir, attempts_file, ledger, fallback, marker, bounded_file, prefix)
 
-    out_file.write_text(_redact_text(body), encoding="utf-8")
+    if surface == "chat-print":
+        redacted_body = _redact_text(body)
+        if redacted_body is None:
+            return _compose_redaction_failed()
+        body = redacted_body
+
+    out_file.write_text(body, encoding="utf-8")
     dry_run = _truthy(os.environ.get("LARCH_STALL_RECOVERY_DRY_RUN")) or _truthy(os.environ.get("DRY_RUN_DECISION"))
     emit("STALL_RECOVERY_REPORT_KIND", kind)
     emit("STALL_RECOVERY_REPORT_TIER", tier)
@@ -918,8 +987,22 @@ def dedup_tier_a_report(args: argparse.Namespace) -> int:
     attempts_file = Path(args.attempts_file) if args.attempts_file else tmpdir / "stall-recovery-tier-a-attempts.md"
     escalation_file = Path(args.escalation_ledger_file) if args.escalation_ledger_file else tmpdir / "stall-recovery-tier-a-escalation.md"
     root_file = Path(args.root_cause_file) if args.root_cause_file else tmpdir / "stall-recovery-tier-a-root-cause.md"
+    if not _validate_tmpdir_local_file(tmpdir, body_file):
+        print("stall-recovery: --body-file outside implement tmpdir", file=sys.stderr)
+        return 1
+    for label, slice_file in (
+        ("--attempts-file", attempts_file),
+        ("--escalation-ledger-file", escalation_file),
+        ("--root-cause-file", root_file),
+    ):
+        if slice_file.is_file() and not _validate_tmpdir_local_file(tmpdir, slice_file):
+            print(f"stall-recovery: {label} outside implement tmpdir", file=sys.stderr)
+            return 1
     for slice_file in (attempts_file, escalation_file, root_file):
         if not slice_file.is_file():
+            if not _validate_tmpdir_write_path(tmpdir, slice_file):
+                print("stall-recovery: dedup slice path outside implement tmpdir", file=sys.stderr)
+                return 1
             slice_file.write_text("", encoding="utf-8")
     plugin_root = Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[1]))
     helper = plugin_root / "scripts" / "file-failure-report-cross-repo.sh"
@@ -1195,7 +1278,14 @@ def _sensitive_value_is_allowlisted(value: str) -> bool:
         "submodule-restricted", "unrecoverable", "same-cause-repeat", "contract-failure",
         "ci-fix-exhausted", "no-stall", "fallback", "bail-token", "step-contract",
         "transient-output", "test-output", "lint-output", "lint-fix-bail-token",
+        "dispatch-output", "dispatch-bail-token", "terminal-bail", "terminal-step",
+        "rebase-transient", "recovery-out-of-scope", "ci-fix-exhausted-with-detail",
+        "step2-impl", "step5-review", "step8-shippr",
     }:
+        return True
+    if _safe_token("source-script", value, generic=True):
+        return True
+    if _safe_matched_pattern_value(value) != "redacted":
         return True
     return bool(re.fullmatch(r"[A-Za-z0-9._+-]+", value) and value in {"codex", "cursor", "claude", "bash", "python", "split-path"})
 
@@ -1498,6 +1588,9 @@ def populate_sensitive_corpus(args: argparse.Namespace) -> int:
         marker=marker,
         out_file=effective,
     )
+    if not _validate_tmpdir_write_path(tmpdir, sensitive_file):
+        print("stall-recovery: --sensitive-corpus-file outside implement tmpdir", file=sys.stderr)
+        return 1
     sensitive_file.write_text(effective.read_text(encoding="utf-8", errors="replace"), encoding="utf-8")
     with contextlib.suppress(OSError):
         effective.unlink()
@@ -1723,6 +1816,21 @@ def _record_escalation_tool_failure_present(tmpdir: Path) -> bool:
     return bool(re.search(r"^#{2,3}\s+Tool Failure: record-escalation(\s|$)", execution.read_text(encoding="utf-8", errors="replace"), re.MULTILINE))
 
 
+def _append_record_escalation_tool_failure(tmpdir: Path, reason: str) -> None:
+    execution = tmpdir / "execution-issues.md"
+    if not _validate_tmpdir_write_path(tmpdir, execution):
+        return
+    ts = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    entry = (
+        f"\n## Tool Failure: record-escalation\n\n"
+        f"- utc: `{ts}`\n"
+        f"- helper: `python/cli.py stall-recovery record-escalation`\n"
+        f"- reason: `{reason}`\n"
+    )
+    with contextlib.suppress(OSError):
+        run_logs.append_execution_issue(execution, "Tool Failures", entry)
+
+
 def _attempts_table(attempts_file: Path) -> str:
     attempt_count_raw = read_kv(attempts_file, "attempt_count", "0")
     attempt_count = int(attempt_count_raw) if attempt_count_raw.isdigit() else 0
@@ -1874,7 +1982,7 @@ def _compose_tier_b_projection(
     return "\n".join(rows).rstrip() + "\n"
 
 
-def _write_tier_a_comment_payloads(tmpdir: Path, attempts_file: Path, ledger: Path, fallback: Path, marker: Path, root_file: Path, prefix: str) -> None:
+def _write_tier_a_comment_payloads(tmpdir: Path, attempts_file: Path, ledger: Path, fallback: Path, marker: Path, root_file: Path, prefix: str) -> bool:
     _artifact_path(tmpdir, _DEFAULT_TIER_A_ATTEMPTS_SLICE, prefix).write_text(_attempts_table(attempts_file) + "\n", encoding="utf-8")
     escalation = "\n".join(
         part for part in (
@@ -1885,8 +1993,13 @@ def _write_tier_a_comment_payloads(tmpdir: Path, attempts_file: Path, ledger: Pa
         )
         if part
     )
-    _artifact_path(tmpdir, _DEFAULT_TIER_A_ESCALATION_SLICE, prefix).write_text(_redact_text(escalation), encoding="utf-8")
-    _artifact_path(tmpdir, _DEFAULT_TIER_A_ROOT_CAUSE_SLICE, prefix).write_text(_redact_text(root_file.read_text(encoding="utf-8", errors="replace")), encoding="utf-8")
+    redacted_escalation = _redact_text(escalation)
+    redacted_root = _redact_text(root_file.read_text(encoding="utf-8", errors="replace"))
+    if redacted_escalation is None or redacted_root is None:
+        return False
+    _artifact_path(tmpdir, _DEFAULT_TIER_A_ESCALATION_SLICE, prefix).write_text(redacted_escalation, encoding="utf-8")
+    _artifact_path(tmpdir, _DEFAULT_TIER_A_ROOT_CAUSE_SLICE, prefix).write_text(redacted_root, encoding="utf-8")
+    return True
 
 
 def _write_tier_b_comment_payloads(tmpdir: Path, attempts_file: Path, ledger: Path, fallback: Path, marker: Path, bounded_file: Path, prefix: str) -> None:
@@ -1922,12 +2035,20 @@ def _tier_a_allowed(tmpdir: Path, args: argparse.Namespace) -> bool:
     return bool(root) and (Path(root) / "skills" / "implement" / "SKILL.md").is_file()
 
 
-def _redact_text(text: str) -> str:
+def _redact_text(text: str) -> str | None:
     redactor = _REPO_ROOT / "python" / "cli.py"
     if not redactor.is_file():
-        return text
+        return None
     completed = subprocess.run([sys.executable, str(redactor), "redact", "secrets"], input=text, text=True, capture_output=True, check=False)
-    return completed.stdout if completed.returncode == 0 else text
+    if completed.returncode != 0:
+        return None
+    return completed.stdout
+
+
+def _compose_redaction_failed() -> int:
+    emit("STALL_RECOVERY_REPORT_STATUS", "fallback-print-required")
+    emit("STALL_RECOVERY_REPORT_FALLBACK_REASON", "redactor-failed")
+    return _compose_error("redactor failed")
 
 
 def _emit_chat_print_filing_status(tmpdir: Path, out_file: Path, title: str, sensitive_file: Path, prefix: str) -> None:
