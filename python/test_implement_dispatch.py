@@ -1524,7 +1524,7 @@ def test_step2_dispatch_plan_read_failure_suppresses_coverage_kv(
     assert "docs/expected.md" not in issues
 
 
-def test_materialize_oos_missing_helper_with_observations_bails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_materialize_oos_cli_failure_with_observations_bails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     plugin = tmp_path / "plugin"
     plugin.mkdir()
     tmp = tmp_path / "impl"
@@ -1565,7 +1565,14 @@ def test_materialize_oos_missing_helper_with_observations_bails(tmp_path: Path, 
         requires_head_unchanged=False,
         nonzero_exit_warn_token="",
     )
-    monkeypatch.setattr(implement_dispatch, "_invoke_cli", lambda *_a, **_k: subprocess.CompletedProcess([], 0, "", ""))
+    def fake_invoke(args, **_kwargs):  # type: ignore[no-untyped-def]
+        if "--count-only" in args:
+            return subprocess.CompletedProcess(args, 0, "1\n", "")
+        if "materialize-manifest" in args:
+            return subprocess.CompletedProcess(args, 1, "", "forced materialize failure")
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(implement_dispatch, "_invoke_cli", fake_invoke)
     reason = implement_dispatch._materialize_oos(st, oos_observations_nonempty=True)
     assert reason == "manifest-oos-materialization-failed"
     assert (tmp / "materialize-manifest-oos.log").is_file()
