@@ -17,17 +17,6 @@ if ! (: >&3) 2>/dev/null; then
     exec 3>&1
 fi
 
-
-voter_parse_rate_diag_path() {
-    local voter_path="$1"
-    case "$voter_path" in
-        *.txt) printf '%s
-' "${voter_path%.txt}-parse-rate-diag.txt" ;;
-        *) printf '%s-parse-rate-diag.txt
-' "$voter_path" ;;
-    esac
-}
-
 usage() {
     larch_err "Usage: tally-code-votes.sh --ballot-file FILE --voter-files FILE... [--voter-tools TOOL...] --review-tmpdir DIR [--session-env-path FILE] [--scope-files FILE] [--plan-file FILE] [--manifest-file FILE] [--collector-results-file FILE] [--not-substantive-count N] [--cursor-available true|false] [--codex-available true|false] [--round-num N] [--both-down true|false]"
 }
@@ -448,6 +437,31 @@ record_tally_outcome() {
     fi
 }
 
+parse_rate_status_for_voter() {
+    local voter_file="$1" voter_tool="$2" slot="${3:-}"
+    local output status
+    local args=(
+        voting parse-rate-check
+        --voter-file "$voter_file"
+        --ballot-file "$BALLOT_FILE"
+        --id-grammar finding-oos
+        --review-tmpdir "$REVIEW_TMPDIR"
+        --log-mode none
+        --voter-tool "$voter_tool"
+    )
+    [[ -z "$slot" ]] || args+=(--slot "$slot")
+    if ! output=$(python3 "$CLI" "${args[@]}"); then
+        larch_err "tally-code-votes.sh: voter parse-rate check failed for $voter_file"
+        exit 2
+    fi
+    status=$(printf '%s\n' "$output" | awk -F= '$1 == "PARSE_RATE_STATUS" {print $2; exit}')
+    if [[ -z "$status" ]]; then
+        larch_err "tally-code-votes.sh: voter parse-rate check emitted no PARSE_RATE_STATUS for $voter_file"
+        exit 2
+    fi
+    printf '%s\n' "$status"
+}
+
 # Voter eligibility is the panel-level count of substantive voter files. The
 # deprecated --both-down flag maps to the 0-judge main-agent path on the legacy path.
 ELIGIBLE_VOTERS=0
@@ -460,11 +474,12 @@ if [[ "$THREE_SLOT_PANEL" == "true" ]]; then
         voter_file="${VOTER_FILES[$slot]:-}"
         if [[ -n "$voter_file" && -r "$voter_file" && -s "$voter_file" ]]; then
             ELIGIBLE_VOTERS=$((ELIGIBLE_VOTERS + 1))
-            if python3 "$CLI" voting parse-rate-diag-matches --voter-file "$voter_file"; then
-                VOTER_PARSE_FAILED_COUNT=$((VOTER_PARSE_FAILED_COUNT + 1))
-            else
+            parse_rate_status=$(parse_rate_status_for_voter "$voter_file" "${VOTER_TOOLS[$slot]}" "$slot")
+            if [[ "$parse_rate_status" == "OK" ]]; then
                 EFFECTIVE_SLOT[slot]=true
                 EFFECTIVE_VOTER_FILES+=("$voter_file")
+            else
+                VOTER_PARSE_FAILED_COUNT=$((VOTER_PARSE_FAILED_COUNT + 1))
             fi
         fi
     done
@@ -474,10 +489,14 @@ else
         ELIGIBLE_VOTERS=0
     fi
     for voter_file in "${VOTER_FILES[@]+"${VOTER_FILES[@]}"}"; do
-        if python3 "$CLI" voting parse-rate-diag-matches --voter-file "$voter_file"; then
-            VOTER_PARSE_FAILED_COUNT=$((VOTER_PARSE_FAILED_COUNT + 1))
-        else
+        voter_tool="$(basename "$voter_file")"
+        voter_tool="${voter_tool%-vote-output.txt}"
+        [[ -n "$voter_tool" ]] || voter_tool="claude"
+        parse_rate_status=$(parse_rate_status_for_voter "$voter_file" "$voter_tool")
+        if [[ "$parse_rate_status" == "OK" ]]; then
             EFFECTIVE_VOTER_FILES+=("$voter_file")
+        else
+            VOTER_PARSE_FAILED_COUNT=$((VOTER_PARSE_FAILED_COUNT + 1))
         fi
     done
 fi

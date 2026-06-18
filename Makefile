@@ -137,7 +137,7 @@ test-harnesses-17: test-dispatch-plan-voters test-plan-review-panel test-dispatc
 
 test-harnesses-18: test-step2-dispatch test-dispatch-plan-review-panel test-design-step-validator-autofix test-render-review-phase-detail test-compose-review-findings test-larch-logs-manifest test-review-and-fix-commit-fixes test-audit-runs test-review-and-fix-dispatch test-oos-issue-cap test-clarify-state test-launch-cursor-ci test-redact-tmpdir-paths test-lint-readability-preamble test-plan-adequacy-audit test-slack-issue-announce test-brainstorm-prompts
 
-test-harnesses-19: test-hook-anti-read-poll test-design-step1d5 test-step3-review-cap test-dispatch-code-voters-retry-claude test-review-and-fix-parsers test-file-failure-report-cross-repo test-persist-retally-step3-env test-scout-plan-archetypes-wrapper test-classify-bump test-review-and-fix-write-rejected test-step-16-17 test-write-final-report test-step-18 test-token-report-summary-format test-lint-codex-exec-auth test-agent-model-args test-analyze test-token-cost-per-bucket test-lib-net test-git-commit-only test-implement-relevant-checks-anti-halt
+test-harnesses-19: test-hook-anti-read-poll test-design-step1d5 test-step3-review-cap test-dispatch-code-voters-parse-rate-claude test-review-and-fix-parsers test-file-failure-report-cross-repo test-persist-retally-step3-env test-scout-plan-archetypes-wrapper test-classify-bump test-review-and-fix-write-rejected test-step-16-17 test-write-final-report test-step-18 test-token-report-summary-format test-lint-codex-exec-auth test-agent-model-args test-analyze test-token-cost-per-bucket test-lib-net test-git-commit-only test-implement-relevant-checks-anti-halt
 
 test-harnesses-20: test-gh-pr-body-update test-commit-implementation test-gate-b-dedup-plan test-implement-review-token-propagation test-record-plan-review-round-timing test-read-result-env test-parse-bootstrap-routing-envelope test-reviewer-prune test-emit-tally test-render-cost-line-realism test-design-postplan-emit test-preflight-args test-compute-pr-line-counts test-design-pause-resume test-render-cost-line test-audit-edit-write test-github-remote-repo test-lib-submodule-prohibition
 
@@ -499,7 +499,7 @@ test-review-findings-classification:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_tally.py -k findings_classification
 
 test-plan-review-loop:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review.py -q -k 'loop_dedup or migrated_collector'
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review.py -q -k 'loop_dedup or migrated_collector or not_substantive_count'
 
 test-lib-design-round-artifacts:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review.py -q -k round_artifact
@@ -849,7 +849,7 @@ test-tally-code-votes:
 test-check-reviewer-failure-threshold:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_pipeline.py -k 'check_reviewer_failure_threshold or python_surface_does_not_import_agents_waterfall'
 
-.PHONY: test-dispatch-code-voters-happy test-dispatch-code-voters-edge-and-r3-claude test-dispatch-code-voters-retry-claude test-dispatch-code-voters-retry-codex-success test-dispatch-code-voters-retry-cursor test-dispatch-code-voters-retry-codex-fail-and-fallback test-dispatch-code-voters-regressions-r1-r2 test-dispatch-code-voters-regressions-r3-codex
+.PHONY: test-dispatch-code-voters-happy test-dispatch-code-voters-edge-and-r3-claude test-dispatch-code-voters-parse-rate-claude test-dispatch-code-voters-retry-codex-success test-dispatch-code-voters-retry-cursor test-dispatch-code-voters-retry-codex-fail-and-fallback test-dispatch-code-voters-regressions-r1-r2 test-dispatch-code-voters-regressions-r3-codex
 test-dispatch-code-voters-happy:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_agent_voters.py -k voter_happy
 
@@ -862,7 +862,7 @@ test-dispatch-code-voters-regressions-r1-r2:
 test-dispatch-code-voters-regressions-r3-codex:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_agent_voters.py -k voter_regressions_r3_codex
 
-test-dispatch-code-voters-retry-claude:
+test-dispatch-code-voters-parse-rate-claude:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_agent_voters.py -k voter_retry_claude
 
 test-dispatch-code-voters-retry-codex-success:

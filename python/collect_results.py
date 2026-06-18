@@ -758,9 +758,6 @@ def resolve_collector_stderr_tail_file(reviewer_file: str) -> str:
     retry_tail = f"{base}-retry.txt.stderr-tail"
     if Path(retry_tail).is_file() and Path(retry_tail).stat().st_size > 0:
         return retry_tail
-    ns_retry_tail = f"{base}-ns-retry.txt.stderr-tail"
-    if Path(ns_retry_tail).is_file() and Path(ns_retry_tail).stat().st_size > 0:
-        return ns_retry_tail
     for candidate in collector_stderr_tail_candidates(reviewer_file):
         launch_stderr = f"{candidate}.launch-stderr"
         if Path(launch_stderr).is_file() and Path(launch_stderr).stat().st_size > 0:

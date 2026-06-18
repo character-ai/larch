@@ -7,7 +7,7 @@ Cross-cutting regression harness that asserts structural invariants in rendered 
 | Script | Required markers |
 |---|---|
 | `python/review_pipeline.py` | `### In-Scope Findings` literal; "Begin your response with the literal line" directive; acceptable-output example block; focus-directive framing; absence of removed checklist items 2 and 3 |
-| `python/cli.py plan-review voter-dispatch` | `Verify silently`; `Output ONLY vote lines`; no `*plan-voter-prompt-retry.txt` artifact |
+| `python/cli.py plan-review voter-dispatch` | `Verify silently`; `Output ONLY vote lines`; no `*plan-voter-prompt-retry.txt` artifact; no Codex parse-retry stub branch |
 | `python/cli.py review-and-fix apply-findings` | `Output ONLY result lines`; acceptable-output example; `emit_submodule_prohibition` call |
 | `scripts/python/cli.py checks lint-fix` | `FIXED:` / `UNFIXABLE:` result-shape spec; acceptable final-line shapes example; `emit_submodule_prohibition` call |
 | `python/cli.py render plan-review` | TSV header literal; filled-in TSV example; anti-preamble directive; no-issues sentinel instruction |

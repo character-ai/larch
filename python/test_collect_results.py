@@ -227,9 +227,13 @@ def test_stderr_tail_resolution_prefers_retry_and_dedupes(capsys: pytest.Capture
     _write_done(a, "7\n")
     _write_done(b, "7\n")
     _ = (tmp_path / "cursor-a-retry.txt.stderr-tail").write_text("same failure at /tmp/path/123 line 9\n", encoding="utf-8")
+    ns_retry_tail = tmp_path / "cursor-a-ns-retry.txt.stderr-tail"
+    _ = ns_retry_tail.write_text("stale ns retry failure\n", encoding="utf-8")
     _ = b.with_suffix(b.suffix + ".stderr-tail").write_text("same failure at /tmp/path/456 line 10\n", encoding="utf-8")
 
-    assert collect_results.resolve_collector_stderr_tail_file(str(a)).endswith("cursor-a-retry.txt.stderr-tail")
+    resolved_tail = collect_results.resolve_collector_stderr_tail_file(str(a))
+    assert resolved_tail.endswith("cursor-a-retry.txt.stderr-tail")
+    assert resolved_tail != str(ns_retry_tail)
     assert collect_results.collect_results_main(["--timeout", "1", str(a), str(b)]) == 0
     err = capsys.readouterr().err
     assert "--- failed agent stderr tail ---" in err
