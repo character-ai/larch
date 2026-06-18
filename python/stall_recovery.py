@@ -380,7 +380,7 @@ def _classify_text(text: str, bail: str, step: str, phase: str, *, detail_log_va
     if any(x in lower for x in ("pytest", "jest", "vitest", "rspec", "go test", "test failed", "failing test", "tests failed", "failed with")):
         return "test-failure", "step2-impl", "test-output"
     if re.search(r"relevant-checks.*fail|lint.*failed", lower) or any(
-        x in lower for x in ("lint-fix", "shellcheck", "markdownlint", "pre-commit", "lint-fix-loop", "lint")
+        x in lower for x in ("lint-fix", "shellcheck", "markdownlint", "pre-commit", "lint-fix-loop")
     ):
         return "lint-failure", "step5-review", "lint-output"
     if bail in _DISPATCH_BAIL_TOKENS:

@@ -114,6 +114,26 @@ def test_classify_relevant_checks_failed_detail_log(tmp_path: Path, capsys: pyte
     assert "MATCHED_CLASSIFIER_PATTERN=lint-output" in out
 
 
+@pytest.mark.parametrize("word", ["flint", "splinter", "plint"])
+def test_classify_bare_lint_substring_false_positives(
+    word: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _ = (tmp_path / "ship-pr-state.sh").write_text(
+        "PHASE=review\nSTALL_TRACKING=true\nSTALL_STEP=5\nBAIL_REASON=\nEXIT_CODE=1\n",
+        encoding="utf-8",
+    )
+    log = tmp_path / "failure.log"
+    _ = log.write_text(f"error in {word} tool output\n", encoding="utf-8")
+    rc = stall_recovery.classify_main([
+        "--implement-tmpdir", str(tmp_path),
+        "--failure-detail-log", str(log),
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "FAILURE_CLASS=lint-failure" not in out
+    assert "MATCHED_CLASSIFIER_PATTERN=fallback" in out
+
+
 def test_record_escalation_writes_canonical_ledger(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     rc = stall_recovery.record_escalation_main([
         "--implement-tmpdir", str(tmp_path),
