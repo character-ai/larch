@@ -291,6 +291,92 @@ def test_close_equivalent_gating_reports_enabled_clusters(tmp_path: Path) -> Non
     assert "==b:[0:5]" in result.findings
 
 
+@pytest.mark.parametrize("jobs", [2])
+def test_disabled_duplicate_code_parallel_matches_serial(tmp_path: Path, jobs: int) -> None:
+    _write_rc(tmp_path, min_lines=4)
+    (tmp_path / "a.py").write_text(_module(5), encoding="utf-8")
+    (tmp_path / "b.py").write_text("# pylint: disable=duplicate-code\n" + _module(5), encoding="utf-8")
+
+    serial = _run(tmp_path, jobs=1)
+    parallel = _run(tmp_path, jobs=jobs)
+
+    assert serial.exit_code == parallel.exit_code == 0
+    assert serial.digest == parallel.digest == "[]"
+    assert serial.files == parallel.files == ("a.py", "b.py")
+
+
+@pytest.mark.parametrize("jobs", [2])
+def test_disable_all_parallel_matches_serial(tmp_path: Path, jobs: int) -> None:
+    _write_rc(tmp_path, min_lines=4)
+    (tmp_path / "a.py").write_text(_module(5), encoding="utf-8")
+    (tmp_path / "b.py").write_text("# pylint: disable=all\n" + _module(5), encoding="utf-8")
+
+    serial = _run(tmp_path, jobs=1)
+    parallel = _run(tmp_path, jobs=jobs)
+
+    assert serial.exit_code == parallel.exit_code == 0
+    assert serial.digest == parallel.digest == "[]"
+
+
+@pytest.mark.parametrize("jobs", [2])
+def test_block_level_disable_parallel_matches_serial(tmp_path: Path, jobs: int) -> None:
+    _write_rc(tmp_path, min_lines=4)
+    disabled_block = "HEADER = 1\n# pylint: disable=duplicate-code\n" + _module(5)
+    (tmp_path / "a.py").write_text(disabled_block, encoding="utf-8")
+    (tmp_path / "b.py").write_text(_module(5), encoding="utf-8")
+
+    serial = _run(tmp_path, jobs=1)
+    parallel = _run(tmp_path, jobs=jobs)
+
+    assert serial.exit_code == parallel.exit_code == 0
+    assert serial.digest == parallel.digest == "[]"
+    assert serial.files == parallel.files == ("a.py", "b.py")
+
+
+@pytest.mark.parametrize("jobs", [2])
+def test_close_equivalent_gating_parallel_matches_serial(tmp_path: Path, jobs: int) -> None:
+    _write_rc(tmp_path, min_lines=4)
+    (tmp_path / "a.py").write_text(_module(5), encoding="utf-8")
+    (tmp_path / "b.py").write_text("# pylint: disable=duplicate-code\n" + _module(5), encoding="utf-8")
+
+    serial = _run(tmp_path, jobs=1)
+    parallel = _run(tmp_path, jobs=jobs)
+
+    assert serial.exit_code == parallel.exit_code == 0
+    assert serial.digest == parallel.digest == "[]"
+    assert serial.pair_count == parallel.pair_count == 1
+
+
+@pytest.mark.parametrize("jobs", [2])
+def test_enabled_peers_with_disabled_peer_parallel_matches_serial(tmp_path: Path, jobs: int) -> None:
+    _write_rc(tmp_path, min_lines=4)
+    _write_modules(tmp_path, ["a.py", "b.py", "c.py"], _module(5))
+    (tmp_path / "c.py").write_text("# pylint: disable=duplicate-code\n" + _module(5), encoding="utf-8")
+
+    serial = _run(tmp_path, jobs=1)
+    parallel = _run(tmp_path, jobs=jobs)
+
+    assert serial.exit_code == parallel.exit_code == 1
+    assert serial.digest == parallel.digest
+    assert "==a:[0:5]" in serial.findings
+    assert "==b:[0:5]" in serial.findings
+    assert "==c:" not in serial.findings
+
+
+@pytest.mark.parametrize("jobs", [2])
+def test_close_equivalent_enabled_cluster_parallel_matches_serial(tmp_path: Path, jobs: int) -> None:
+    _write_rc(tmp_path, min_lines=4)
+    _write_modules(tmp_path, ["a.py", "b.py", "c.py"], _module(5))
+    (tmp_path / "c.py").write_text("# pylint: disable=all\n" + _module(5), encoding="utf-8")
+
+    serial = _run(tmp_path, jobs=1)
+    parallel = _run(tmp_path, jobs=jobs)
+
+    assert serial.exit_code == parallel.exit_code == 1
+    assert serial.digest == parallel.digest
+    assert serial.digest != "[]"
+
+
 def test_cross_file_shard_guard_detects_non_adjacent_duplicates_under_parallel_jobs(tmp_path: Path) -> None:
     _write_rc(tmp_path, min_lines=4)
     (tmp_path / "a.py").write_text(_module(5), encoding="utf-8")

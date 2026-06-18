@@ -19,7 +19,7 @@ import multiprocessing
 import os
 import sys
 from collections.abc import Callable, Generator, Iterable, Iterator, Sequence
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from types import MethodType
@@ -229,6 +229,8 @@ def _ingest_files(linter: Any, checker: Any, fileitems: Sequence[Any], backend: 
             raise DuplicateCodeError(f"astroid parse failed for {fileitem.filepath}: {exc}") from exc
         if ast_node is None:
             raise DuplicateCodeError(f"astroid parse failed for {fileitem.filepath}")
+        if not ast_node.pure_python:
+            continue
         linter._ignore_file = False
         linter.file_state = backend.FileState(fileitem.modpath, linter.msgs_store, ast_node)
         linter.current_file = ast_node.file
@@ -322,13 +324,25 @@ def _canonicalize_commonalities(commonalities: Sequence[Any], linesets: Sequence
     canonical LineSet per name restores serial dedup semantics.
     """
     canonical = {lineset.name: lineset for lineset in linesets}
-    return [
-        commonality._replace(
-            fst_lset=canonical.get(commonality.fst_lset.name, commonality.fst_lset),
-            snd_lset=canonical.get(commonality.snd_lset.name, commonality.snd_lset),
+    rebound: list[Any] = []
+    for commonality in commonalities:
+        fst_name = commonality.fst_lset.name
+        snd_name = commonality.snd_lset.name
+        if fst_name not in canonical:
+            raise DuplicateCodeError(
+                f"duplicate-code canonicalization failed: unknown lineset {fst_name!r}"
+            )
+        if snd_name not in canonical:
+            raise DuplicateCodeError(
+                f"duplicate-code canonicalization failed: unknown lineset {snd_name!r}"
+            )
+        rebound.append(
+            commonality._replace(
+                fst_lset=canonical[fst_name],
+                snd_lset=canonical[snd_name],
+            )
         )
-        for commonality in commonalities
-    ]
+    return rebound
 
 
 def _chunk_pairs(pairs: Sequence[tuple[int, int]], jobs: int) -> list[list[tuple[int, int]]]:
@@ -369,7 +383,7 @@ def _find_commonalities_fork(
                 futures = [executor.submit(_worker_find_common_chunk, chunk) for chunk in chunks]
                 return _collect_worker_results(futures)
         except PermissionError:
-            return _find_commonalities_threads(symilar, linesets, chunks, jobs)
+            return _find_common_chunk_with(symilar, linesets, _flatten_pair_chunks(chunks))
     finally:
         _worker_symilar = None
         _worker_linesets = None
@@ -384,18 +398,11 @@ def _find_commonalities_spawn(
             futures = [executor.submit(_spawn_worker_find_common_chunk, payload) for payload in payloads]
             return _collect_worker_results(futures)
     except PermissionError:
-        return _find_commonalities_threads(symilar, linesets, chunks, jobs)
+        return _find_common_chunk_with(symilar, linesets, _flatten_pair_chunks(chunks))
 
 
-def _find_commonalities_threads(
-    symilar: Any, linesets: Sequence[Any], chunks: Sequence[list[tuple[int, int]]], jobs: int
-) -> list[Any]:
-    with ThreadPoolExecutor(max_workers=jobs) as executor:
-        futures = [
-            executor.submit(_find_common_chunk_with, symilar, linesets, chunk)
-            for chunk in chunks
-        ]
-        return _collect_worker_results(futures)
+def _flatten_pair_chunks(chunks: Sequence[Sequence[tuple[int, int]]]) -> list[tuple[int, int]]:
+    return [pair for chunk in chunks for pair in chunk]
 
 
 def _collect_worker_results(futures: Sequence[Any]) -> list[Any]:

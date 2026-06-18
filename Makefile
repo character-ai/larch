@@ -61,6 +61,7 @@ py-lint-duplicate-code:
 	# lint pass parallelizes; this is the CI `python-lint-duplicate-code` job. See
 	# issue #4480.
 	$(PYTHON) python/cli.py lint duplicate-code --root python --rcfile python/.pylintrc
+	cd python && $(PYTHON) -c 'from pathlib import Path; from duplicate_code_parity import assert_parity; assert_parity(Path("."), Path(".pylintrc"))'
 
 py-test:
 	@$(PYTHON) -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' \
