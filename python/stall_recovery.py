@@ -375,13 +375,13 @@ def _classify_text(text: str, bail: str, step: str, phase: str, *, detail_log_va
         return "lint-failure", "step5-review", "lint-fix-bail-token"
     if "submodule-edit-required-out-of-scope" in lower:
         return "submodule-restricted", "none", "submodule-restricted-bail-token"
-    if "protected-path-edit-required-out-of-scope" in lower or (
-        "protected-path" in lower and "protected-path-edit-required-out-of-scope" not in lower
-    ):
+    if "protected-path-edit-required-out-of-scope" in lower:
         return "protected-path", "step2-impl", "protected-path-bail-token"
     if any(x in lower for x in ("pytest", "jest", "vitest", "rspec", "go test", "test failed", "failing test", "tests failed", "failed with")):
         return "test-failure", "step2-impl", "test-output"
-    if any(x in lower for x in ("lint-fix", "shellcheck", "markdownlint", "pre-commit", "lint-fix-loop", "lint")):
+    if re.search(r"relevant-checks.*fail|lint.*failed", lower) or any(
+        x in lower for x in ("lint-fix", "shellcheck", "markdownlint", "pre-commit", "lint-fix-loop", "lint")
+    ):
         return "lint-failure", "step5-review", "lint-output"
     if bail in _DISPATCH_BAIL_TOKENS:
         return "dispatch-failure", "step2-impl", "dispatch-bail-token"
@@ -401,8 +401,17 @@ def classify(args: argparse.Namespace) -> int:
     tmpdir = Path(args.implement_tmpdir)
     primary_state_file = getattr(args, "primary_state_file", "") or ""
     profile = getattr(args, "profile", "implement") or "implement"
-    if profile == "generic" and primary_state_file:
-        return _classify_generic_from_terminal_state(args, tmpdir, Path(primary_state_file))
+    prefix = getattr(args, "artifact_prefix", "") or ""
+    if prefix and not _validate_artifact_prefix(prefix):
+        print("stall-recovery: --artifact-prefix must be a simple dash token", file=sys.stderr)
+        return 2
+    if profile == "generic":
+        state_file = (
+            Path(primary_state_file)
+            if primary_state_file
+            else _artifact_path(tmpdir, "stall-recovery-terminal-state.env", prefix)
+        )
+        return _classify_generic_from_terminal_state(args, tmpdir, state_file)
 
     finalize_state_file = getattr(args, "finalize_state_file", "") or ""
     session_env_file = getattr(args, "session_env_file", "") or ""
@@ -699,6 +708,33 @@ def normalize_outcome(args: argparse.Namespace) -> int:
     return 0
 
 
+_ISSUE_STDOUT_KEY_RE = re.compile(
+    r"^(ISSUES_(CREATED|FAILED|DEDUPLICATED)|"
+    r"ISSUE_1_(FAILED|NUMBER|URL|DUPLICATE|DUPLICATE_OF_NUMBER|DUPLICATE_OF_URL))="
+)
+_ISSUE_STDOUT_KEY_LIKE_RE = re.compile(r"^[A-Z][A-Z0-9_]*=")
+
+
+def _filter_issue_stdout(text: str) -> dict[str, str]:
+    records: list[tuple[str, str]] = []
+    for raw in text.splitlines():
+        line = raw.replace("\r", " ")
+        if _ISSUE_STDOUT_KEY_RE.match(line):
+            key, value = line.split("=", 1)
+            records.append((key, value))
+        elif records and not _ISSUE_STDOUT_KEY_LIKE_RE.match(line):
+            key, value = records[-1]
+            records[-1] = (key, value + " " + line)
+    filtered: dict[str, str] = {}
+    for key, value in records:
+        filtered[key] = " ".join(value.replace("\r", " ").replace("\n", " ").split())
+    return filtered
+
+
+def _issue_value_is_url(url: str) -> bool:
+    return bool(re.match(r"https://github\.com/.+/.+/issues/\d+$", url or ""))
+
+
 def normalize_issue_env(args: argparse.Namespace) -> int:
     tmpdir = Path(args.implement_tmpdir)
     out = Path(args.issue_stdout_file)
@@ -714,22 +750,48 @@ def normalize_issue_env(args: argparse.Namespace) -> int:
         return 0
     if args.issue_exit_code is None:
         return fail("issue-exit-code-missing")
-    if str(args.issue_exit_code) != "0":
+    exit_code = str(args.issue_exit_code)
+    if not exit_code.isdigit():
+        print("stall-recovery: --issue-exit-code must be a non-negative integer", file=sys.stderr)
+        return 2
+    if exit_code != "0":
         return fail("issue-exit-code")
     text = out.read_text(encoding="utf-8", errors="replace") if out.is_file() else ""
-    if re.search(r"^ISSUES_FAILED=[1-9]", text, re.MULTILINE):
+    filtered = _filter_issue_stdout(text)
+    issues_failed = filtered.get("ISSUES_FAILED", "")
+    if issues_failed != "0":
+        if not issues_failed or not issues_failed.isdigit():
+            return fail("issues-failed-invalid")
         return fail("issues-failed-nonzero")
-    if re.search(r"^ISSUE_1_FAILED=true", text, re.MULTILINE):
+    if _truthy(filtered.get("ISSUE_1_FAILED", "")):
         return fail("issue-1-failed")
-    num = read_kv(out, "ISSUE_1_NUMBER") or read_kv(out, "ISSUE_1_DUPLICATE_OF_NUMBER")
-    url = read_kv(out, "ISSUE_1_URL") or read_kv(out, "ISSUE_1_DUPLICATE_OF_URL")
-    if not re.match(r"https://github\.com/.+/.+/issues/\d+$", url or ""):
+    issue_number = filtered.get("ISSUE_1_NUMBER", "")
+    issue_url = filtered.get("ISSUE_1_URL", "")
+    duplicate = filtered.get("ISSUE_1_DUPLICATE", "")
+    duplicate_number = filtered.get("ISSUE_1_DUPLICATE_OF_NUMBER", "")
+    duplicate_url = filtered.get("ISSUE_1_DUPLICATE_OF_URL", "")
+    if (
+        (_truthy(duplicate) or not issue_number)
+        and duplicate_number
+        and (_issue_value_is_url(duplicate_url) or not _issue_value_is_url(issue_url))
+    ):
+        issue_number = duplicate_number
+        issue_url = duplicate_url
+    if not issue_number or not issue_number.isdigit():
+        return fail("issue-number-missing")
+    if not _issue_value_is_url(issue_url):
         return fail("issue-url-missing")
-    write_kvs(env, {"ISSUE_NUMBER": num, "ISSUE_URL": url})
+    write_kvs(env, {"ISSUE_NUMBER": issue_number, "ISSUE_URL": issue_url})
     emit("NORMALIZED", "true")
-    emit("ISSUE_NUMBER", num)
-    emit("ISSUE_URL", url)
+    emit("ISSUE_NUMBER", issue_number)
+    emit("ISSUE_URL", issue_url)
     return 0
+
+
+def _validate_artifact_prefix(prefix: str) -> bool:
+    if not prefix:
+        return True
+    return bool(re.fullmatch(r"[A-Za-z0-9]+(-[A-Za-z0-9]+)*", prefix))
 
 
 def _artifact_path(tmpdir: Path, default_name: str, prefix: str) -> Path:
@@ -738,11 +800,32 @@ def _artifact_path(tmpdir: Path, default_name: str, prefix: str) -> Path:
     return tmpdir / (prefix + default_name.removeprefix("stall-recovery"))
 
 
+def _append_ledger_row_atomic(ledger: Path, row: str) -> bool:
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+    old = ledger.read_text(encoding="utf-8") if ledger.is_file() else ""
+    if old and not old.endswith("\n"):
+        old += "\n"
+    content = old + row
+    tmp = ledger.with_suffix(ledger.suffix + ".tmp")
+    try:
+        tmp.write_text(content, encoding="utf-8")
+        tmp.replace(ledger)
+        written = ledger.read_text(encoding="utf-8")
+        return row.rstrip("\n") in written
+    except OSError:
+        with contextlib.suppress(OSError):
+            tmp.unlink(missing_ok=True)
+        return False
+
+
 def record_escalation(args: argparse.Namespace) -> int:
     tmpdir = Path(args.implement_tmpdir)
     prefix = getattr(args, "artifact_prefix", "") or ""
     profile = getattr(args, "profile", "implement") or "implement"
     generic = profile == "generic"
+    if prefix and not _validate_artifact_prefix(prefix):
+        print("stall-recovery: --artifact-prefix must be a simple dash token", file=sys.stderr)
+        return 2
 
     def hard_fail(reason: str) -> int:
         _append_record_escalation_tool_failure(tmpdir, reason)
@@ -786,12 +869,13 @@ def record_escalation(args: argparse.Namespace) -> int:
         f"\tdispatcher={safe_dispatcher}\texit_code={safe_exit_code}\tfailure_detail_log={rel_log}\n"
     )
     try:
-        old = ledger.read_text(encoding="utf-8") if ledger.exists() else ""
-        if old and not old.endswith("\n"):
-            old += "\n"
-        ledger.write_text(old + row, encoding="utf-8")
-        emit("ESCALATION_RECORDED", "true")
-        emit("ESCALATION_LEDGER_FILE", ledger)
+        if ledger.is_file() and not os.access(ledger, os.W_OK):
+            raise OSError("canonical-ledger-not-writable")
+        if _append_ledger_row_atomic(ledger, row):
+            emit("ESCALATION_RECORDED", "true")
+            emit("ESCALATION_LEDGER_FILE", ledger)
+        else:
+            raise OSError("canonical-ledger-write-failed")
     except OSError:
         marker = _artifact_path(tmpdir, _DEFAULT_RECORD_FAILURE_MARKER, prefix)
         fallback = _artifact_path(tmpdir, _DEFAULT_ESCALATION_FALLBACK, prefix)
@@ -820,6 +904,9 @@ def compose_report(args: argparse.Namespace) -> int:
         return 1
 
     prefix = getattr(args, "artifact_prefix", "") or ""
+    if prefix and not _validate_artifact_prefix(prefix):
+        print("stall-recovery: --artifact-prefix must be a simple dash token", file=sys.stderr)
+        return 2
     profile = getattr(args, "profile", "implement") or "implement"
     class_file = _compose_path(args, "classification_file", tmpdir, _DEFAULT_CLASSIFICATION_FILE, prefix)
     attempts_file = _compose_path(args, "attempts_file", tmpdir, _DEFAULT_ATTEMPTS_FILE, prefix)
@@ -1043,15 +1130,30 @@ def dedup_tier_a_report(args: argparse.Namespace) -> int:
     return 0
 
 
+def _reject_rawish_token_value(value: str) -> bool:
+    if any(ch in value for ch in "\n\r "):
+        return True
+    if ".." in value or "/" in value:
+        return True
+    lower = value.lower()
+    return any(token in lower for token in ("http://", "https://", "github.com", "`", "<script", "<!--"))
+
+
 def validate_token(args: argparse.Namespace) -> int:
     token = args.token or ""
     kind = getattr(args, "token_kind", "") or ""
     profile = getattr(args, "profile", "implement") or "implement"
     generic = profile == "generic"
-    if not token or not re.fullmatch(r"[A-Za-z0-9._:-]+", token) or ".." in token or "/" in token:
+    if not token or _reject_rawish_token_value(token):
         emit("TOKEN_VALID", "false")
         return 1
-    if kind and not _safe_token(kind, token, generic=generic):
+    if kind == "bail":
+        valid = _safe_bail_reason_value(token, generic=generic)
+    elif kind:
+        valid = _safe_token(kind, token, generic=generic)
+    else:
+        valid = True
+    if kind and not valid:
         emit("TOKEN_VALID", "false")
         return 1
     emit("TOKEN_VALID", "true")
@@ -2204,39 +2306,102 @@ def lint_subcommand(rest: list[str]) -> int:
     return 0
 
 
+_GLOBAL_STALL_FLAGS = frozenset({
+    "--profile",
+    "--artifact-prefix",
+    "--implement-tmpdir",
+    "--primary-state-file",
+    "--finalize-state-file",
+    "--session-env-file",
+})
+
+
+def _parse_leading_global_flags(argv: list[str]) -> tuple[list[str], dict[str, str] | None]:
+    globals_dict: dict[str, str] = {}
+    idx = 0
+    while idx < len(argv) and argv[idx] in _GLOBAL_STALL_FLAGS:
+        flag = argv[idx]
+        if idx + 1 >= len(argv):
+            print(f"stall-recovery: {flag} requires a value", file=sys.stderr)
+            return argv, None
+        key = flag[2:].replace("-", "_")
+        globals_dict[key] = argv[idx + 1]
+        idx += 2
+    prefix = globals_dict.get("artifact_prefix", "")
+    if prefix and not _validate_artifact_prefix(prefix):
+        print("stall-recovery: --artifact-prefix must be a simple dash token", file=sys.stderr)
+        return argv[idx:], None
+    return argv[idx:], globals_dict
+
+
+def _global_default(globals_dict: dict[str, str] | None, key: str, fallback: str = "") -> str:
+    if globals_dict and key in globals_dict:
+        return globals_dict[key]
+    return fallback
+
+
+def _add_implement_tmpdir_arg(p: argparse.ArgumentParser, globals_dict: dict[str, str] | None) -> None:
+    p.add_argument(
+        "--implement-tmpdir",
+        default=_global_default(globals_dict, "implement_tmpdir", os.environ.get("IMPLEMENT_TMPDIR", ".")),
+    )
+
+
+def _add_compose_report_args(p: argparse.ArgumentParser, globals_dict: dict[str, str] | None) -> None:
+    p.add_argument("--report-kind", default="terminal-failure")
+    p.add_argument("--surface", default="chat-print")
+    p.add_argument("--attempts-file", default="")
+    p.add_argument("--classification-file", default="")
+    p.add_argument("--escalation-ledger-file", default="")
+    p.add_argument("--escalation-fallback-file", default="")
+    p.add_argument("--record-failure-marker", default="")
+    p.add_argument("--root-cause-file", default="")
+    p.add_argument("--bounded-root-cause-file", default="")
+    p.add_argument("--title-file", default="")
+    p.add_argument("--sensitive-corpus-file", default="")
+    p.add_argument("--output-file")
+    p.add_argument("--profile", default=_global_default(globals_dict, "profile", "implement"))
+    p.add_argument("--artifact-prefix", default=_global_default(globals_dict, "artifact_prefix", ""))
+    p.add_argument("--primary-state-file", default=_global_default(globals_dict, "primary_state_file", ""))
+    p.add_argument("--finalize-state-file", default=_global_default(globals_dict, "finalize_state_file", ""))
+    p.add_argument("--session-env-file", default=_global_default(globals_dict, "session_env_file", ""))
+
+
 def chat_print(args: argparse.Namespace) -> int:
-    if args.input_file and Path(args.input_file).is_file():
-        sys.stdout.write(Path(args.input_file).read_text(encoding="utf-8"))
-    return 0
+    args.surface = "chat-print"
+    return compose_report(args)
 
 
 def main(argv: list[str] | None = None) -> int:
-    argv = argv if argv is not None else sys.argv[1:]
-    if not argv:
+    argv = list(argv if argv is not None else sys.argv[1:])
+    rest, globals_dict = _parse_leading_global_flags(argv)
+    if globals_dict is None:
+        return 2
+    if not rest:
         print("stall-recovery: missing subcommand", file=sys.stderr)
         return 2
-    sub, rest = argv[0], argv[1:]
+    sub, sub_argv = rest[0], rest[1:]
     p = argparse.ArgumentParser(prog=f"cli.py stall-recovery {sub}")
-    p.add_argument("--implement-tmpdir", default=os.environ.get("IMPLEMENT_TMPDIR", "."))
+    _add_implement_tmpdir_arg(p, globals_dict)
     if sub == "classify":
         p.add_argument("--failure-detail-log")
         p.add_argument("--attempts-file")
         p.add_argument("--bail-reason", default="")
         p.add_argument("--in-memory-stall-tracking")
-        p.add_argument("--primary-state-file", default="")
-        p.add_argument("--finalize-state-file", default="")
-        p.add_argument("--session-env-file", default="")
-        p.add_argument("--artifact-prefix", default="")
-        p.add_argument("--profile", default="implement")
+        p.add_argument("--primary-state-file", default=_global_default(globals_dict, "primary_state_file", ""))
+        p.add_argument("--finalize-state-file", default=_global_default(globals_dict, "finalize_state_file", ""))
+        p.add_argument("--session-env-file", default=_global_default(globals_dict, "session_env_file", ""))
+        p.add_argument("--artifact-prefix", default=_global_default(globals_dict, "artifact_prefix", ""))
+        p.add_argument("--profile", default=_global_default(globals_dict, "profile", "implement"))
         p.add_argument("--stall-step", default="")
         p.add_argument("--phase", default="")
         p.add_argument("--exit-code", default="")
         p.add_argument("--dispatcher", default="")
-        ns, _ = p.parse_known_args(rest)
+        ns, _ = p.parse_known_args(sub_argv)
         return classify(ns)
     if sub == "init-attempts":
         p.add_argument("--attempts-file")
-        ns, _ = p.parse_known_args(rest)
+        ns, _ = p.parse_known_args(sub_argv)
         return init_attempts(ns)
     if sub == "record-attempt":
         p.add_argument("--attempts-file")
@@ -2244,20 +2409,20 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--signature", required=True)
         p.add_argument("--resume-hint", default="none")
         p.add_argument("--outcome", default="failed")
-        ns, _ = p.parse_known_args(rest)
+        ns, _ = p.parse_known_args(sub_argv)
         return record_attempt(ns)
     if sub == "retry-policy":
         p.add_argument("--class", dest="failure_class", required=True)
-        ns, _ = p.parse_known_args(rest)
+        ns, _ = p.parse_known_args(sub_argv)
         return retry_policy(ns)
     if sub == "normalize-outcome":
         p.add_argument("--in-memory-stall-tracking", default="")
-        ns, _ = p.parse_known_args(rest)
+        ns, _ = p.parse_known_args(sub_argv)
         return normalize_outcome(ns)
     if sub == "normalize-issue-env":
         p.add_argument("--issue-stdout-file", required=True)
         p.add_argument("--issue-exit-code")
-        ns, _ = p.parse_known_args(rest)
+        ns, _ = p.parse_known_args(sub_argv)
         return normalize_issue_env(ns)
     if sub == "record-escalation":
         p.add_argument("--site", required=True)
@@ -2267,79 +2432,63 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--dispatcher", required=True)
         p.add_argument("--exit-code", default="unknown")
         p.add_argument("--failure-detail-log", default="")
-        p.add_argument("--artifact-prefix", default="")
-        p.add_argument("--profile", default="implement")
-        ns, _ = p.parse_known_args(rest)
+        p.add_argument("--artifact-prefix", default=_global_default(globals_dict, "artifact_prefix", ""))
+        p.add_argument("--profile", default=_global_default(globals_dict, "profile", "implement"))
+        ns, _ = p.parse_known_args(sub_argv)
         return record_escalation(ns)
     if sub == "dedup-tier-a-report":
         p.add_argument("--body-file")
         p.add_argument("--attempts-file")
         p.add_argument("--escalation-ledger-file")
         p.add_argument("--root-cause-file")
-        ns, _ = p.parse_known_args(rest)
+        ns, _ = p.parse_known_args(sub_argv)
         return dedup_tier_a_report(ns)
     if sub == "compose-report":
-        p.add_argument("--report-kind", default="terminal-failure")
-        p.add_argument("--surface", default="chat-print")
-        p.add_argument("--attempts-file", default="")
-        p.add_argument("--classification-file", default="")
-        p.add_argument("--escalation-ledger-file", default="")
-        p.add_argument("--escalation-fallback-file", default="")
-        p.add_argument("--record-failure-marker", default="")
-        p.add_argument("--root-cause-file", default="")
-        p.add_argument("--bounded-root-cause-file", default="")
-        p.add_argument("--title-file", default="")
-        p.add_argument("--sensitive-corpus-file", default="")
-        p.add_argument("--output-file")
-        p.add_argument("--profile", default="implement")
-        p.add_argument("--artifact-prefix", default="")
-        p.add_argument("--primary-state-file", default="")
-        p.add_argument("--finalize-state-file", default="")
-        p.add_argument("--session-env-file", default="")
-        ns, _ = p.parse_known_args(rest)
+        _add_compose_report_args(p, globals_dict)
+        ns, _ = p.parse_known_args(sub_argv)
         return compose_report(ns)
     if sub == "validate-token":
         p.add_argument("--token", default="")
         p.add_argument("--value", default="")
         p.add_argument("--token-kind", default="")
-        p.add_argument("--profile", default="implement")
-        p.add_argument("--artifact-prefix", default="")
-        ns, _ = p.parse_known_args(rest)
+        p.add_argument("--profile", default=_global_default(globals_dict, "profile", "implement"))
+        p.add_argument("--artifact-prefix", default=_global_default(globals_dict, "artifact_prefix", ""))
+        ns, _ = p.parse_known_args(sub_argv)
         ns.token = ns.token or ns.value
         return validate_token(ns)
     if sub == "validate-terminal-state":
-        p.add_argument("--primary-state-file", default="")
-        p.add_argument("--profile", default="implement")
-        p.add_argument("--artifact-prefix", default="")
-        ns, _ = p.parse_known_args(rest)
+        p.add_argument("--primary-state-file", default=_global_default(globals_dict, "primary_state_file", ""))
+        p.add_argument("--profile", default=_global_default(globals_dict, "profile", "implement"))
+        p.add_argument("--artifact-prefix", default=_global_default(globals_dict, "artifact_prefix", ""))
+        ns, _ = p.parse_known_args(sub_argv)
         return validate_terminal_state(ns)
     if sub == "validate-tier-b-public-file":
         p.add_argument("--public-file", required=True)
         p.add_argument("--tmpdir")
         p.add_argument("--sensitive-corpus-file", default="")
-        p.add_argument("--profile", default="implement")
-        p.add_argument("--artifact-prefix", default="")
-        ns, _ = p.parse_known_args(rest)
+        p.add_argument("--profile", default=_global_default(globals_dict, "profile", "implement"))
+        p.add_argument("--artifact-prefix", default=_global_default(globals_dict, "artifact_prefix", ""))
+        ns, _ = p.parse_known_args(sub_argv)
         return validate_tier_b_public_file(ns)
     if sub == "clear-stall":
-        ns, _ = p.parse_known_args(rest)
+        ns, _ = p.parse_known_args(sub_argv)
         return clear_stall(ns)
     if sub == "seed-terminal-state":
         p.add_argument("--stall-step")
         p.add_argument("--phase")
-        ns, _ = p.parse_known_args(rest)
+        ns, _ = p.parse_known_args(sub_argv)
         return seed_terminal_state(ns)
     if sub == "chat-print":
-        p.add_argument("--input-file")
-        ns, _ = p.parse_known_args(rest)
+        _add_compose_report_args(p, globals_dict)
+        ns, _ = p.parse_known_args(sub_argv)
         return chat_print(ns)
     if sub == "is-larch-dev-clone":
         p.add_argument("--working-tree-root", default="")
-        ns, _ = p.parse_known_args(rest)
+        ns, _ = p.parse_known_args(sub_argv)
         return is_larch_dev_clone(ns)
     if sub == "normalize-file-failure-report-env":
         p.add_argument("--file-failure-report-env", required=True)
-        ns, _ = p.parse_known_args(rest)
+        ns, _ = p.parse_known_args(sub_argv)
         return normalize_file_failure_report_env(ns)
     if sub == "populate-sensitive-corpus":
         p.add_argument("--sensitive-corpus-file", default="")
@@ -2348,11 +2497,11 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--escalation-ledger-file", default="")
         p.add_argument("--escalation-fallback-file", default="")
         p.add_argument("--record-failure-marker", default="")
-        p.add_argument("--artifact-prefix", default="")
-        ns, _ = p.parse_known_args(rest)
+        p.add_argument("--artifact-prefix", default=_global_default(globals_dict, "artifact_prefix", ""))
+        ns, _ = p.parse_known_args(sub_argv)
         return populate_sensitive_corpus(ns)
     if sub == "lint":
-        return lint_subcommand(rest)
+        return lint_subcommand(sub_argv)
     print(f"stall-recovery: unknown subcommand: {sub}", file=sys.stderr)
     return 2
 
