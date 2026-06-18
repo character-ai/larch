@@ -963,7 +963,7 @@ When auto-repair does not resolve the defects, use **AskUserQuestion** with exac
 
 <!-- Retained migration inventory for agent-lint S030 while plan-quality callers move to python/cli.py plan verbs: lib-plan-optional-trailers.sh, lib-plan-optional-trailers.awk, test-auto-fix-plan-commands.sh. -->
 
-<!-- Retained migration inventory for agent-lint S030 while design Step 2 callers move to python/cli.py design verbs (retired wrappers routed by name through the design-run launcher; .sh wrappers stay name-referenced above, their siblings/harnesses retained on disk): design-step2a.md, design-step2b-drafter.md, design-step2b-postplan.md, design-step2b5.md, design-step-validator-autofix.md, design-step2b-prelude.sh, design-step2b-prelude.md, test-design-step2b-drafter.sh, test-design-step2b-drafter.md, test-design-step-validator-autofix.sh, test-design-step-validator-autofix.md. -->
+<!-- Retained migration inventory for agent-lint S030 while design Step 2 callers move to python/cli.py design verbs (launcher-routed retired names; on-disk wrappers deleted after pytest/structure harness green): none. -->
 
 <!-- compatibility grep note: `design-step2b-drafter.sh` now owns Step 2a exact sentinel validation through the launcher mapping to `python/cli.py design step2b-drafter`. -->
 <!-- compatibility grep note: `design-step2b-postplan.sh --site step2b --snapshot-original --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" --plugin-root "$CLAUDE_PLUGIN_ROOT"` maps to `python/cli.py design step2b-postplan --site step2b --snapshot-original`. -->

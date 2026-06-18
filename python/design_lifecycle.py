@@ -227,7 +227,7 @@ def _rehydrate_wrapper_env(parsed: WrapperArgs) -> dict[str, str]:
     merged = {key: os.environ.get(key, default) for key, default in _WRAPPER_ENV_DEFAULTS.items()}
     if os.environ.get("CLAUDE_PLUGIN_ROOT"):
         merged["CLAUDE_PLUGIN_ROOT"] = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
-    merged.update(_load_session_env(parsed.session_env_path))
+    merged.update(_load_source_env(parsed.session_env_path, allow_keys=_SESSION_ENV_ALLOWLIST, claude_pid=parsed.claude_pid))
     if parsed.plugin_root:
         merged["CLAUDE_PLUGIN_ROOT"] = parsed.plugin_root
     if parsed.mode:
@@ -290,7 +290,7 @@ def _write_text(path: Path, text: str) -> None:
 
 def _exact_line_file(path: Path, expected: str) -> bool:
     try:
-        return path.read_text(encoding="utf-8", errors="replace") == f"{expected}\n"
+        return path.read_text(encoding="utf-8", errors="replace").rstrip("\n") == expected
     except OSError:
         return False
 
@@ -803,7 +803,7 @@ def _plugin_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
-class WrapperArgs(argparse.Namespace):
+class Step0WrapperNs(argparse.Namespace):
     session_env_path: str
     claude_pid: str
     plugin_root: str
@@ -816,8 +816,8 @@ class WrapperArgs(argparse.Namespace):
     public_argv: list[str]
 
 
-def _parse_wrapper_args(argv: Sequence[str]) -> WrapperArgs:
-    ns = WrapperArgs()
+def _parse_wrapper_args(argv: Sequence[str]) -> Step0WrapperNs:
+    ns = Step0WrapperNs()
     ns.session_env_path = ""
     ns.claude_pid = ""
     ns.plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
@@ -1041,7 +1041,7 @@ def _base_env() -> dict[str, str]:
     return {key: os.environ.get(key, default) for key, default in COMMON_ENV_DEFAULTS.items()}
 
 
-def _load_wrapper_env(ns: WrapperArgs) -> dict[str, str]:
+def _load_wrapper_env(ns: Step0WrapperNs) -> dict[str, str]:
     data = _base_env()
     data.update(_load_source_env(ns.session_env_path, claude_pid=ns.claude_pid))
     if ns.plugin_root:
@@ -1097,7 +1097,7 @@ def _validate_parse_result(rc: int, data: dict[str, str], stderr_text: str) -> N
         raise SystemExit(1)
 
 
-def _parse_and_persist(ns: WrapperArgs, plugin_root: Path) -> tuple[Path, dict[str, str]]:
+def _parse_and_persist(ns: Step0WrapperNs, plugin_root: Path) -> tuple[Path, dict[str, str]]:
     rc, data, stderr_text = _run_parse_argv(ns.public_argv, plugin_root)
     _validate_parse_result(rc, data, stderr_text)
     for key in PARSED_ENV_KEYS:
@@ -1906,7 +1906,7 @@ def step2a_main(argv: Sequence[str]) -> int:
     if _exact_line_file(approach, no_sketches):
         pass
     else:
-        content = approach.read_text(encoding="utf-8", errors="replace") if approach.exists() else ""
+        content = approach.read_text(encoding="utf-8", errors="replace").rstrip("\n") if approach.exists() else ""
         if content in {"NO_SKETCHES_CLASSIFIED_SIMPLE", "NO_SKETCHES_DEGRADED_HARD"}:
             legacy_no_sketches = True
         artifacts_ok = False
@@ -2000,7 +2000,7 @@ def _shared_step2b_postplan_body(parsed: WrapperArgs) -> PostplanResult:
     if site != "step2b":
         _clear_scout_manifests(design_tmpdir)
     postplan_args = ["--design-tmpdir", str(design_tmpdir), "--with-plan-size"]
-    if site in {"", "step2b"} or parsed.snapshot_original:
+    if site in {"", "step2b"}:
         postplan_args.append("--snapshot-original")
     rc, captured = _capture_stdout(design_postplan.postplan_emit_main, postplan_args)
     out = io.StringIO()
@@ -2236,14 +2236,14 @@ def step2b_drafter_main(argv: Sequence[str]) -> int:
     req = _design_require_plugin_root()
     if req != 0:
         return req
-    if (design_tmpdir / ".step2b-postplan-inline-retry-done").is_file():
-        _write_text(design_tmpdir / ".step2b-postplan-fallback-used", "true\n")
-    else:
-        _write_text(design_tmpdir / ".step2b-postplan-fallback-used", "false\n")
     if (design_tmpdir / ".pause-requested").is_file():
         print("POSTPLAN_RC=11")
         print("POSTPLAN_STATUS=pause-save")
         return _call_pause_save(design_tmpdir)
+    if (design_tmpdir / ".step2b-postplan-inline-retry-done").is_file():
+        _write_text(design_tmpdir / ".step2b-postplan-fallback-used", "true\n")
+    else:
+        _write_text(design_tmpdir / ".step2b-postplan-fallback-used", "false\n")
     _maybe_timing_mark("design Step 2b — plan")
 
     plugin_root = Path(os.environ["CLAUDE_PLUGIN_ROOT"])

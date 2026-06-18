@@ -28,6 +28,7 @@ import plan_review
 from issue_wire import emit_untrusted_file_block
 from logging_util import diagnostic, emit, emit_kv, quiet_init
 from redact import redact_secrets_only
+import session_env
 from session_env import validate_design_tmpdir
 
 HEADER = "row_type\tsource_line\tscript_path\tflag\tflag_value\tnote\tcmd_uid"
@@ -149,12 +150,21 @@ def _parse_validator_wrapper_args(argv: list[str]) -> tuple[dict[str, str | bool
 def _rehydrate_validator_env(parsed: dict[str, str | bool]) -> dict[str, str]:
     merged = {key: os.environ.get(key, default) for key, default in _VALIDATOR_ENV_DEFAULTS.items()}
     path = str(parsed.get("session_env_path") or "")
-    source = Path(path) if path else None
-    if source is not None and source.is_file() and not source.is_symlink():
-        for raw in source.read_text(encoding="utf-8", errors="replace").splitlines():
-            pair = _parse_export_line(raw)
-            if pair is not None:
-                merged[pair[0]] = pair[1]
+    claude_pid = str(parsed.get("claude_pid") or "")
+    if path:
+        source = Path(path)
+        read_path: Path | None
+        if source.is_symlink():
+            read_path = session_env.resolve_trusted_design_session_env_source(source, claude_pid) if claude_pid else None
+        elif source.is_file():
+            read_path = source
+        else:
+            read_path = None
+        if read_path is not None:
+            for raw in read_path.read_text(encoding="utf-8", errors="replace").splitlines():
+                pair = _parse_export_line(raw)
+                if pair is not None:
+                    merged[pair[0]] = pair[1]
     plugin_root = str(parsed.get("plugin_root") or "")
     if plugin_root:
         merged["CLAUDE_PLUGIN_ROOT"] = plugin_root
