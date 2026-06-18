@@ -564,6 +564,30 @@ jobs:
   python-lint:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # CI forces all pylint workers; the Makefile sysconf fallback stays local.
+    env:
+      PYLINT_JOBS: "0"
+    strategy:
+      matrix:
+        python-version: ["3.11"]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: python/requirements-dev.txt
+      - name: Install Python lint dependencies
+        env:
+          PIP_RETRIES: "5"
+          PIP_DEFAULT_TIMEOUT: "30"
+        run: pip install -r python/requirements-dev.txt
+      - name: Run Python linters
+        run: make py-lint-main
+
+  python-pyright:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     strategy:
       matrix:
         python-version: ["3.11"]
@@ -575,13 +599,13 @@ jobs:
           cache: pip
           cache-dependency-path: python/requirements-dev.txt
       - uses: actions/setup-node@v5
-      - name: Install Python lint dependencies
+      - name: Install Python typecheck dependencies
         env:
           PIP_RETRIES: "5"
           PIP_DEFAULT_TIMEOUT: "30"
         run: pip install -r python/requirements-dev.txt
-      - name: Run Python linters
-        run: make py-lint
+      - name: Run Python typecheck
+        run: make py-typecheck
 
   # Duplicate-code (R0801) is split into its own job: pylint's similarities
   # checker is incorrect under -j>1 (workers each see only a slice of files), so

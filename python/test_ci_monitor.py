@@ -913,13 +913,15 @@ def test_poll_ci_suspend_not_charged() -> None:
 def test_classify_failed_jobs_matrix_and_fixable() -> None:
     jobs = (
         FailedJob(name="lint (1)", conclusion="failure"),
+        FailedJob(name="python-pyright", conclusion="failure"),
         FailedJob(name="gitleaks", conclusion="failure"),
         FailedJob(name="bad name!", conclusion="failure"),
     )
     classified = ci_monitor.classify_failed_jobs(jobs)
-    assert classified.count == 3
+    assert classified.count == 4
     assert classified.fixable[0].name == "lint"
     assert classified.fixable[0].shard == "1"
+    assert classified.fixable[1].name == "python-pyright"
     assert classified.unfixable[0].name == "gitleaks"
 
 
@@ -1046,7 +1048,8 @@ def test_rerun_failed_submitted_and_already_running() -> None:
     ("name", "shard", "expected"),
     [
         ("lint", "", ("env", "SKIP=agnix,lint-mermaid-fences,shellcheck", "make", "lint-only")),
-        ("python-lint", "", ("make", "py-lint")),
+        ("python-lint", "", ("make", "py-lint-main")),
+        ("python-pyright", "", ("make", "py-typecheck")),
         ("test-harnesses", "2", ("make", "test-harnesses-2")),
         ("unknown", "", None),
     ],
@@ -1062,23 +1065,48 @@ def test_per_job_command_table(
 def test_verify_job_locally_rc() -> None:
     runner = RecordingRunner(
         {
-            ("make", "py-lint"): _cr(("make", "py-lint"), 0),
+            ("make", "py-lint-main"): _cr(("make", "py-lint-main"), 0),
+            ("make", "py-typecheck"): _cr(("make", "py-typecheck"), 0),
         },
     )
     assert ci_monitor.verify_job_locally(runner, "python-lint", "", cwd="/tmp") is True
+    assert ci_monitor.verify_job_locally(runner, "python-pyright", "", cwd="/tmp") is True
 
 
-def _python_toolchain_stubs() -> dict[tuple[str, ...], CommandResult]:
+def _python_toolchain_stubs(name: str = "python-lint") -> dict[tuple[str, ...], CommandResult]:
     req_dev = str(REPO_ROOT / "python" / "requirements-dev.txt")
-    return {
-        ("command", "-v", "ruff"): _cr(("command", "-v", "ruff"), 0),
-        ("command", "-v", "pylint"): _cr(("command", "-v", "pylint"), 0),
-        ("command", "-v", "pyright"): _cr(("command", "-v", "pyright"), 0),
+    tools_by_name = {
+        "python-lint": ("ruff", "pylint"),
+        "python-pyright": ("pyright",),
+        "python-lint-duplicate-code": ("pylint",),
+    }
+    responses: dict[tuple[str, ...], CommandResult] = {
         ("python3", "-m", "pip", "install", "-q", "-r", req_dev): _cr(
             ("python3", "-m", "pip", "install"),
             0,
         ),
     }
+    for tool in tools_by_name[name]:
+        responses[("command", "-v", tool)] = _cr(("command", "-v", tool), 0)
+    return responses
+
+
+@pytest.mark.parametrize(
+    ("name", "expected_tools"),
+    [
+        ("python-lint", ("ruff", "pylint")),
+        ("python-pyright", ("pyright",)),
+        ("python-lint-duplicate-code", ("pylint",)),
+    ],
+)
+def test_prepare_python_toolchain_split_tools(
+    name: str,
+    expected_tools: tuple[str, ...],
+) -> None:
+    runner = RecordingRunner(_python_toolchain_stubs(name))
+    assert ci_monitor.prepare_python_toolchain(runner, name, cwd="/tmp") is True
+    tool_calls = tuple(call[-1] for call in runner.calls if call[:2] == ("command", "-v"))
+    assert tool_calls == expected_tools
 
 
 def _baseline_responses(head: str = "abc123") -> dict[tuple[str, ...], CommandResult]:
@@ -1122,7 +1150,7 @@ def test_run_ci_fix_non_pending_winning_tier_fails_closed(tmp_path: Any) -> None
         stdout="feature\n",
     )
     responses[("git", "push", "origin", "feature")] = _cr(("git", "push"), 0)
-    responses[("make", "py-lint")] = _cr(("make", "py-lint"), 0)
+    responses[("make", "py-lint-main")] = _cr(("make", "py-lint-main"), 0)
 
     runner = RecordingRunner(responses)
     # baseline captured before vendor runs (empty); vendor adds fixed.py; delta sees it
@@ -1168,7 +1196,7 @@ def test_stage_and_push_defer_rebase_uses_typed_rebase_push(tmp_path: Any) -> No
         ("git", "fetch", "origin", "main", "--quiet"): _cr(("git", "fetch"), 0),
         ("git", "merge-base", "--is-ancestor", "origin/main", "HEAD"): _cr(("git", "merge-base"), rc=1),
         ("git", "rebase", "origin/main"): _cr(("git", "rebase"), 0),
-        ("make", "py-lint"): _cr(("make", "py-lint"), 0),
+        ("make", "py-lint-main"): _cr(("make", "py-lint-main"), 0),
         ("git", "ls-remote", "--exit-code", "--heads", "origin", "feature"): _cr(
             ("git", "ls-remote"),
             stdout="remote\trefs/heads/feature\n",
@@ -1203,7 +1231,7 @@ def test_pending_retry_verifies_before_force_push(tmp_path: Any) -> None:
     responses = {
         ("git", "rev-parse", "HEAD"): _cr(("git", "rev-parse"), stdout="head\n"),
         ("git", "symbolic-ref", "--short", "HEAD"): _cr(("git", "symbolic-ref"), stdout="feature\n"),
-        ("make", "py-lint"): _cr(("make", "py-lint"), 1),
+        ("make", "py-lint-main"): _cr(("make", "py-lint-main"), 1),
     }
     classified = ci_monitor.classify_failed_jobs(
         (FailedJob(name="python-lint", conclusion="failure"),),
@@ -1219,6 +1247,30 @@ def test_pending_retry_verifies_before_force_push(tmp_path: Any) -> None:
     )
     assert pushed is False
     assert pending is False
+    assert not any("force-with-lease" in " ".join(call) for call in runner.calls)
+
+
+def test_pending_retry_verifies_pyright_before_force_push(tmp_path: Any) -> None:
+    responses = {
+        ("git", "rev-parse", "HEAD"): _cr(("git", "rev-parse"), stdout="head\n"),
+        ("git", "symbolic-ref", "--short", "HEAD"): _cr(("git", "symbolic-ref"), stdout="feature\n"),
+        ("make", "py-typecheck"): _cr(("make", "py-typecheck"), 1),
+    }
+    classified = ci_monitor.classify_failed_jobs(
+        (FailedJob(name="python-pyright", conclusion="failure"),),
+    )
+    runner = RecordingRunner(responses)
+    pushed, _head, _delta, _did_rebase, pending = ci_monitor.stage_and_push(
+        runner,
+        cwd=str(tmp_path),
+        commit_label="pending-retry",
+        delta_paths=(),
+        ci_fix_rebase_pending=True,
+        classified=classified,
+    )
+    assert pushed is False
+    assert pending is False
+    assert ("make", "py-typecheck") in runner.calls
     assert not any("force-with-lease" in " ".join(call) for call in runner.calls)
 
 
@@ -1247,7 +1299,7 @@ def test_pending_retry_missing_local_remote_ref_uses_ls_remote_lease(tmp_path: A
     responses = {
         ("git", "rev-parse", "HEAD"): _cr(("git", "rev-parse"), stdout="head\n"),
         ("git", "symbolic-ref", "--short", "HEAD"): _cr(("git", "symbolic-ref"), stdout="feature\n"),
-        ("make", "py-lint"): _cr(("make", "py-lint"), 0),
+        ("make", "py-lint-main"): _cr(("make", "py-lint-main"), 0),
         ("git", "ls-remote", "--exit-code", "--heads", "origin", "feature"): _cr(
             ("git", "ls-remote"),
             stdout="remoteoid\trefs/heads/feature\n",
@@ -1290,7 +1342,7 @@ def test_evaluate_failure_pending_reload_failed_jobs_before_force_push(
         ),
         ("git", "rev-parse", "HEAD"): _cr(("git", "rev-parse"), stdout="head\n"),
         ("git", "symbolic-ref", "--short", "HEAD"): _cr(("git", "symbolic-ref"), stdout="feature\n"),
-        ("make", "py-lint"): _cr(("make", "py-lint"), rc=1),
+        ("make", "py-lint-main"): _cr(("make", "py-lint-main"), rc=1),
     }
     runner = RecordingRunner(responses)
     fix = ci_monitor.evaluate_failure(
@@ -1305,7 +1357,7 @@ def test_evaluate_failure_pending_reload_failed_jobs_before_force_push(
         ci_fix_rebase_pending=True,
     )
     assert fix.ci_fix_rebase_pending is False
-    assert ("make", "py-lint") in runner.calls
+    assert ("make", "py-lint-main") in runner.calls
     assert not any("force-with-lease" in " ".join(call) for call in runner.calls)
 
 
@@ -1322,7 +1374,7 @@ def test_run_ci_fix_non_pending_after_stage_fails_closed(tmp_path: Any) -> None:
 
     responses = _baseline_responses(head)
     responses[("git", "add", "--", "fixed.py")] = _cr(("git", "add"), 0)
-    responses[("make", "py-lint")] = _cr(("make", "py-lint"), 0)
+    responses[("make", "py-lint-main")] = _cr(("make", "py-lint-main"), 0)
     commit_script = str(SCRIPTS_DIR / "git-commit.sh")
     responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (claude)")] = _cr(
         (commit_script,),
@@ -1375,7 +1427,7 @@ def test_run_ci_fix_non_pending_verify_case_fails_closed() -> None:
         )
 
     responses = _baseline_responses()
-    responses[("make", "py-lint")] = _cr(("make", "py-lint"), 1)
+    responses[("make", "py-lint-main")] = _cr(("make", "py-lint-main"), 1)
     runner = RecordingRunner(responses)
     classified = ci_monitor.classify_failed_jobs(
         (FailedJob(name="python-lint", conclusion="failure"),),
@@ -1599,7 +1651,7 @@ def test_evaluate_failure_exhausted_routes_needs_user_input() -> None:
         ("gh", "run", "view"),
         stdout=jobs_json,
     )
-    responses[("make", "py-lint")] = _cr(("make", "py-lint"), rc=1)
+    responses[("make", "py-lint-main")] = _cr(("make", "py-lint-main"), rc=1)
     launch_calls: list[str] = []
 
     def launch_fn(tier: str) -> TierAttempt:
@@ -1638,7 +1690,7 @@ def test_evaluate_failure_per_job_exhausted_routes_needs_user_input() -> None:
         ("gh", "run", "view"),
         stdout=jobs_json,
     )
-    responses[("make", "py-lint")] = _cr(("make", "py-lint"), rc=1)
+    responses[("make", "py-lint-main")] = _cr(("make", "py-lint-main"), rc=1)
     launch_calls: list[str] = []
 
     def launch_fn(tier: str) -> TierAttempt:
@@ -1658,7 +1710,7 @@ def test_evaluate_failure_per_job_exhausted_routes_needs_user_input() -> None:
         sleep_fn=lambda _s: None,
     )
     assert launch_calls
-    assert ("make", "py-lint") in runner.calls
+    assert ("make", "py-lint-main") in runner.calls
     assert fix.status == "fix-exhausted"
     assert fix.detail is not None
     assert fix.detail.startswith("ci-fix-exhausted")
@@ -1817,7 +1869,7 @@ def test_evaluate_failure_push_failed_routes_fix_exhausted(tmp_path: Any) -> Non
         ("gh", "run", "view"),
         stdout=jobs_json,
     )
-    responses[("make", "py-lint")] = _cr(("make", "py-lint"), 0)
+    responses[("make", "py-lint-main")] = _cr(("make", "py-lint-main"), 0)
     responses[("git", "add", "--", "fixed.py")] = _cr(("git", "add"), 0)
     commit_script = str(SCRIPTS_DIR / "git-commit.sh")
     responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (claude)")] = _cr(
@@ -1874,7 +1926,7 @@ def test_evaluate_failure_exhausted_surfaces_job_and_log_tail() -> None:
         ("gh", "run", "view"),
         stdout=jobs_json,
     )
-    responses[("make", "py-lint")] = _cr(("make", "py-lint"), rc=1)
+    responses[("make", "py-lint-main")] = _cr(("make", "py-lint-main"), rc=1)
 
     runner = RecordingRunner(responses)
     fix = ci_monitor.evaluate_failure(
@@ -2091,7 +2143,7 @@ def test_monitor_fix_exhausted_needs_user_input() -> None:
         stdout=jobs_json,
     )
     responses.update(_baseline_responses())
-    responses[("make", "py-lint")] = _cr(("make", "py-lint"), rc=1)
+    responses[("make", "py-lint-main")] = _cr(("make", "py-lint-main"), rc=1)
     runner = RecordingRunner(responses)
     result = ci_monitor.monitor(
         runner,
@@ -2202,7 +2254,7 @@ def test_run_ci_fix_non_pending_head_changed_fails_closed() -> None:
         return TierAttempt(tier=tier, wrapper_rc=0, launcher_exit=0, failure=LaunchFailure("none", ""))
 
     responses = _baseline_responses()
-    responses[("make", "py-lint")] = _cr(("make", "py-lint"), 0)
+    responses[("make", "py-lint-main")] = _cr(("make", "py-lint-main"), 0)
     runner = RecordingRunner(responses)
     runner.sequential[("git", "rev-parse", "HEAD")] = [
         _cr(("git", "rev-parse", "HEAD"), stdout=f"{baseline_head}\n"),
@@ -2313,10 +2365,10 @@ def test_evaluate_failure_verify_failed_then_pushed(tmp_path: Any) -> None:
         _cr(("git", "rev-parse", "HEAD"), stdout=f"{new_head}\n"),
         _cr(("git", "rev-parse", "HEAD"), stdout=f"{new_head}\n"),
     ]
-    # make py-lint: fail on attempt 1, pass on attempt 2
-    runner.sequential[("make", "py-lint")] = [
-        _cr(("make", "py-lint"), rc=1),
-        _cr(("make", "py-lint"), rc=0),
+    # make py-lint-main: fail on attempt 1, pass on attempt 2
+    runner.sequential[("make", "py-lint-main")] = [
+        _cr(("make", "py-lint-main"), rc=1),
+        _cr(("make", "py-lint-main"), rc=0),
     ]
 
     sleeps: list[float] = []
