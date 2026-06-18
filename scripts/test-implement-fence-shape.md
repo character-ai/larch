@@ -6,18 +6,18 @@ Structural harness for `/implement` prompt Bash fences. It parses `skills/implem
 
 - Exactly four pre-bootstrap call sites keep the old plugin-root guard shape:
   - the structured invocation pin for `scripts/extract-closes-issue-from-pr.sh`;
-  - the single Preflight `scripts/implement-preflight.sh` helper fence;
+  - the single Preflight `python/cli.py implement preflight` helper fence;
   - Step 0 initial bootstrap;
   - dirty-tree recovery resume.
 - The Preflight helper replaces the two prior direct `plan-block read` anchors.
 - The `preflight-helper` fence may use Bash 3.2 indexed-array argv construction.
 - The `preflight-helper` fence is exempt from the one-logical-command check but must contain exactly one helper invocation.
-- The helper is invoked through `bash "${CLAUDE_PLUGIN_ROOT}/scripts/implement-preflight.sh"`.
+- The helper is invoked through `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement preflight`.
 - Direct Preflight `python/cli.py plan-block read` and `gh issue view` Bash fences are forbidden.
 - Old-shape pre-bootstrap fences other than `preflight-helper` must contain exactly one logical command after the guard, allowed awk fallback, exports, comments, and blank lines are removed.
 - Every post-Step-0 fence is exactly one nonblank, noncomment physical line.
 - The harness expects exactly four old-shape fences and thirty new-shape launcher fences (Step 1.r is represented by the Step 0 bootstrap fence instead of its own prompt-side fence; legacy `step-0-degraded-gate.sh` is not an active Step 0 fence).
-- Post-Step-0 fences call `bash "$IMPLEMENT_TMPDIR/larch-run.sh" <relative .sh|.py target> ...`.
+- Post-Step-0 fences call `bash "$IMPLEMENT_TMPDIR/larch-run.sh" <relative .sh|.py target> ...`, except the terminal Step 16-17 direct Python CLI fence.
 - Launcher targets must be repo-relative and must not contain `..`.
 - Telemetry-only fences (`python3 python/cli.py timing telemetry-mark`, token/timing ledgers, token/timing reports) are banned; wrappers own telemetry internally.
 - Inline `session read-key` calls are banned from SKILL.md fences.

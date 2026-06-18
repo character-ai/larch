@@ -52,7 +52,7 @@ Called best-effort before each log commit / push:
 - `skills/implement/scripts/step-7a.sh` (pre-ship flush)
 - `python3 python/cli.py run-log flush` (commit-tail flush)
 - `python3 python/cli.py run-log refresh` (CI-retry / rebase pre-push refresh)
-- `scripts/implement-finalize.sh` teardown (safety net, mirrors
+- `python3 python/cli.py implement-finalize` teardown (safety net, mirrors
   `flush_execution_issues_safety_net`, F13)
 
 ## Invariants

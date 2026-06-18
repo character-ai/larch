@@ -63,7 +63,7 @@ def old_logical_commands(body):
 def old_target_kind(cmd):
     if 'scripts/extract-closes-issue-from-pr.sh' in cmd:
         return 'structured-invocation'
-    if 'scripts/implement-preflight.sh' in cmd:
+    if 'python/cli.py' in cmd and 'implement preflight' in cmd:
         return 'preflight-helper'
     if 'python/cli.py' in cmd and 'plan-block read' in cmd:
         return 'preflight-plan-direct'
@@ -112,10 +112,10 @@ def validate_preflight_helper(start, end, body, commands, cmd):
         errors.append(f'fence {start}-{end}: preflight-helper missing canonical plugin-root.env guard')
     if has_awk(body):
         errors.append(f'fence {start}-{end}: preflight-helper must not use session-env awk fallback')
-    if cmd.count('scripts/implement-preflight.sh') != 1:
-        errors.append(f'fence {start}-{end}: preflight-helper must invoke scripts/implement-preflight.sh exactly once')
+    if cmd.count('python/cli.py') != 1 or 'implement preflight' not in cmd:
+        errors.append(f'fence {start}-{end}: preflight-helper must invoke python/cli.py implement preflight exactly once')
     required = [
-        'bash "${CLAUDE_PLUGIN_ROOT}/scripts/implement-preflight.sh"',
+        'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement preflight',
         '--issue "$TARGET_ISSUE_NUMBER"',
         '--preflight-tmpdir "$PREFLIGHT_TMPDIR"',
         'preflight_args=(',
@@ -130,8 +130,6 @@ def validate_preflight_helper(start, end, body, commands, cmd):
         errors.append(f'fence {start}-{end}: preflight-helper must add --emergency only inside the emergency_requested=true branch')
     if '${emergency_requested:+--emergency}' in cmd:
         errors.append(f'fence {start}-{end}: preflight-helper must not use parameter-expansion emergency argv')
-    if re.search(r'(?<!bash )"\$\{CLAUDE_PLUGIN_ROOT\}/scripts/implement-preflight\.sh"', cmd):
-        errors.append(f'fence {start}-{end}: preflight-helper must invoke the helper through bash')
 
 def validate_new(start, end, body):
     global saw_py_launcher
@@ -146,8 +144,10 @@ def validate_new(start, end, body):
         return
     if stripped.endswith('\\'):
         errors.append(f'fence {start}-{end}: new-shape fence must not use a line continuation')
+    if stripped == 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement step-16-17':
+        return
     if not stripped.startswith(LAUNCHER_PREFIX):
-        errors.append(f'fence {start}-{end}: new-shape command must start with {LAUNCHER_PREFIX!r}: {stripped}')
+        errors.append(f'fence {start}-{end}: new-shape command must start with {LAUNCHER_PREFIX!r} or be the direct Step 16-17 Python CLI call: {stripped}')
         return
     try:
         tokens = shlex.split(stripped)
@@ -188,8 +188,6 @@ for start, end, body in fences:
         errors.append(f'fence {start}-{end}: direct Preflight plan-block read call is forbidden')
     if 'gh issue view' in body_text:
         errors.append(f'fence {start}-{end}: direct Preflight gh issue view call is forbidden')
-    if 'scripts/implement-preflight.sh' in body_text and 'bash "${CLAUDE_PLUGIN_ROOT}/scripts/implement-preflight.sh"' not in body_text:
-        errors.append(f'fence {start}-{end}: preflight helper must be executed through bash')
     commands = old_logical_commands(body)
     cmd = ' '.join(commands)
     kind = old_target_kind(cmd)

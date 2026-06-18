@@ -60,5 +60,5 @@ record composition, idempotent rerun, and `run-log` failure logging.
 Edit In Sync:
 
 - `scripts/lib-execution-issues.sh`
-- `scripts/implement-finalize.sh`
+- `python3 python/cli.py implement-finalize`
 - `skills/implement/SKILL.md`

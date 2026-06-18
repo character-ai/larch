@@ -65,4 +65,4 @@ When changing `scripts/git-force-push.sh`:
 - Update this file (`scripts/git-force-push.md`) in the same PR if any of the following changes: stdout contract (`BRANCH`/`PUSHED`/`STATUS` keys or their values), exit code semantics, retry logic or timing, dependency on `sleep-seconds.sh`.
 - Verify `scripts/create-pr.sh`'s escalation path still suppresses stdout and checks exit code correctly.
 - Verify `/implement` Step 8b's `STATUS` parsing in `skills/implement/SKILL.md`.
-- Verify the Python ship driver CI-fix rebase/force-push and `implement-finalize.sh postbump` invocation and exit-code handling.
+- Verify the Python ship driver CI-fix rebase/force-push and `implement-finalize postbump` invocation and exit-code handling.

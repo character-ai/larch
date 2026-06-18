@@ -16,6 +16,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
 import config
+import final_report
 import pr_body
 from errors import ShipError
 from proc import CommandResult
@@ -41,8 +42,8 @@ def test_stamp_skipped_steps_for_terminal_report_marks_ndjson_only_step9a1_false
         calls.append(argv)
         return CommandResult(tuple(argv), 0, "", "", 0.0)
 
-    monkeypatch.setattr(pr_body.subprocess, "run", fake_run)
-    rc, err = pr_body._stamp_skipped_steps_for_terminal_report(tmp_path, run_id="run-1", outcome="bailed")
+    monkeypatch.setattr(final_report.subprocess, "run", fake_run)
+    rc, err = final_report._stamp_skipped_steps_for_terminal_report(tmp_path, run_id="run-1", outcome="bailed")
     assert (rc, err) == (0, "")
     flat = [arg for call in calls for arg in call]
     assert "steps_ran.step9a1=false" in flat
@@ -62,8 +63,8 @@ def test_stamp_skipped_steps_for_terminal_report_run_statistics_suppresses_step9
         calls.append(argv)
         return CommandResult(tuple(argv), 0, "", "", 0.0)
 
-    monkeypatch.setattr(pr_body.subprocess, "run", fake_run)
-    rc, err = pr_body._stamp_skipped_steps_for_terminal_report(tmp_path, run_id="run-1", outcome="bailed")
+    monkeypatch.setattr(final_report.subprocess, "run", fake_run)
+    rc, err = final_report._stamp_skipped_steps_for_terminal_report(tmp_path, run_id="run-1", outcome="bailed")
     assert (rc, err) == (0, "")
     flat = [arg for call in calls for arg in call]
     assert "steps_ran.step9a1=false" not in flat
@@ -226,8 +227,8 @@ def test_write_final_report_counts_warnings_and_exec(tmp_path: Path, monkeypatch
         _ = (implement_tmpdir, run_id)
         return {"cost_unavailable": True}
 
-    monkeypatch.setattr(pr_body, "_final_report_token_fields", fake_final_report_token_fields)
-    rc, _url, _err = pr_body.write_final_report(tmp_path, comment_only=True)
+    monkeypatch.setattr(final_report, "_final_report_token_fields", fake_final_report_token_fields)
+    rc, _url, _err = final_report.write_final_report(tmp_path, comment_only=True)
     assert rc == 0
     body = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
     assert "**Exec issues**: 1" in body
@@ -257,8 +258,8 @@ def test_write_final_report_renders_panel_failed_merge_downgrade(
         _ = (implement_tmpdir, run_id)
         return {"cost_unavailable": True}
 
-    monkeypatch.setattr(pr_body, "_final_report_token_fields", fake_final_report_token_fields)
-    rc, _url, _err = pr_body.write_final_report(tmp_path, comment_only=True)
+    monkeypatch.setattr(final_report, "_final_report_token_fields", fake_final_report_token_fields)
+    rc, _url, _err = final_report.write_final_report(tmp_path, comment_only=True)
 
     assert rc == 0
     body = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
@@ -279,7 +280,7 @@ def _stub_final_report_cost(monkeypatch: pytest.MonkeyPatch) -> None:
         _ = (implement_tmpdir, run_id)
         return {"cost_unavailable": True}
 
-    monkeypatch.setattr(pr_body, "_final_report_token_fields", fake_final_report_token_fields)
+    monkeypatch.setattr(final_report, "_final_report_token_fields", fake_final_report_token_fields)
 
 
 def test_write_final_report_appends_review_detail_in_comment_only(
@@ -293,9 +294,9 @@ def test_write_final_report_appends_review_detail_in_comment_only(
         _ = (implement_tmpdir, run_id)
         return "## Review Phase Detail\nfrom helper\n"
 
-    monkeypatch.setattr(pr_body.review_phase_detail, "render_implement_review_detail", fake_render_implement_review_detail)
+    monkeypatch.setattr(final_report.review_phase_detail, "render_implement_review_detail", fake_render_implement_review_detail)
 
-    rc, _url, _err = pr_body.write_final_report(tmp_path, comment_only=True)
+    rc, _url, _err = final_report.write_final_report(tmp_path, comment_only=True)
 
     assert rc == 0
     body = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
@@ -314,9 +315,9 @@ def test_write_final_report_keeps_compact_summary_when_review_detail_empty(
         _ = (implement_tmpdir, run_id)
         return ""
 
-    monkeypatch.setattr(pr_body.review_phase_detail, "render_implement_review_detail", fake_render_implement_review_detail)
+    monkeypatch.setattr(final_report.review_phase_detail, "render_implement_review_detail", fake_render_implement_review_detail)
 
-    rc, _url, _err = pr_body.write_final_report(tmp_path, comment_only=True)
+    rc, _url, _err = final_report.write_final_report(tmp_path, comment_only=True)
 
     assert rc == 0
     body = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
@@ -335,9 +336,9 @@ def test_write_final_report_keeps_compact_summary_when_review_detail_raises(
         _ = (implement_tmpdir, run_id)
         raise RuntimeError("renderer boom")
 
-    monkeypatch.setattr(pr_body.review_phase_detail, "render_implement_review_detail", fake_render_implement_review_detail)
+    monkeypatch.setattr(final_report.review_phase_detail, "render_implement_review_detail", fake_render_implement_review_detail)
 
-    rc, _url, _err = pr_body.write_final_report(tmp_path, comment_only=True)
+    rc, _url, _err = final_report.write_final_report(tmp_path, comment_only=True)
 
     assert rc == 0
     body = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
@@ -380,9 +381,9 @@ def test_write_final_report_uses_run_log_root_for_review_detail(
             return subprocess.CompletedProcess(argv, 0, stdout="COMMENT_URL=https://github.com/o/r/issues/42#issuecomment-1\n", stderr="")
         return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
 
-    monkeypatch.setattr(pr_body.subprocess, "run", fake_run)
+    monkeypatch.setattr(final_report.subprocess, "run", fake_run)
 
-    rc, _url, _err = pr_body.write_final_report(tmp_path, comment_only=True)
+    rc, _url, _err = final_report.write_final_report(tmp_path, comment_only=True)
 
     assert rc == 0
     body = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
@@ -399,7 +400,7 @@ def test_refresh_issue_counts_counts_plain_markdown_bullets(tmp_path: Path) -> N
         encoding="utf-8",
     )
 
-    assert pr_body._refresh_issue_counts(tmp_path, "run1") == (2, 0)
+    assert final_report._refresh_issue_counts(tmp_path, "run1") == (2, 0)
 
 
 def test_refresh_issue_counts_counts_structured_rows_per_bullet(tmp_path: Path) -> None:
@@ -414,7 +415,7 @@ def test_refresh_issue_counts_counts_structured_rows_per_bullet(tmp_path: Path) 
         encoding="utf-8",
     )
 
-    assert pr_body._refresh_issue_counts(tmp_path, "run1") == (2, 2)
+    assert final_report._refresh_issue_counts(tmp_path, "run1") == (2, 2)
 
 
 def test_refresh_issue_counts_structured_row_without_bullets_counts_once(tmp_path: Path) -> None:
@@ -425,7 +426,7 @@ def test_refresh_issue_counts_structured_row_without_bullets_counts_once(tmp_pat
         encoding="utf-8",
     )
 
-    assert pr_body._refresh_issue_counts(tmp_path, "run1") == (1, 0)
+    assert final_report._refresh_issue_counts(tmp_path, "run1") == (1, 0)
 
 
 def test_refresh_issue_counts_ignores_fenced_diagnostic_bullets(tmp_path: Path) -> None:
@@ -437,7 +438,7 @@ def test_refresh_issue_counts_ignores_fenced_diagnostic_bullets(tmp_path: Path) 
     }
     _ = (run_dir / "execution-issues.ndjson").write_text(json.dumps(row) + "\n", encoding="utf-8")
 
-    assert pr_body._refresh_issue_counts(tmp_path, "run1") == (1, 0)
+    assert final_report._refresh_issue_counts(tmp_path, "run1") == (1, 0)
 
 
 def test_refresh_issue_counts_body_text_fallback_counts_plain_bullets(tmp_path: Path) -> None:
@@ -453,7 +454,7 @@ def test_refresh_issue_counts_body_text_fallback_counts_plain_bullets(tmp_path: 
         encoding="utf-8",
     )
 
-    assert pr_body._refresh_issue_counts(tmp_path, "run1") == (2, 1)
+    assert final_report._refresh_issue_counts(tmp_path, "run1") == (2, 1)
 
 
 def test_refresh_issue_counts_section_heading_inside_fence_is_boundary(tmp_path: Path) -> None:
@@ -462,7 +463,7 @@ def test_refresh_issue_counts_section_heading_inside_fence_is_boundary(tmp_path:
         encoding="utf-8",
     )
 
-    assert pr_body._refresh_issue_counts(tmp_path, "run1") == (1, 1)
+    assert final_report._refresh_issue_counts(tmp_path, "run1") == (1, 1)
 
 
 def test_step18b_emits_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
@@ -480,9 +481,9 @@ def test_step18b_emits_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
         _ = (tmp_path / "summary-final.md").write_text("# Summary\n", encoding="utf-8")
         return 0, "", ""
 
-    monkeypatch.setattr(pr_body, "_final_report_token_fields", fake_final_report_token_fields)
-    monkeypatch.setattr(pr_body, "write_final_report", fake_write_final_report)
-    rc = pr_body.step18b_final_report_main(["--implement-tmpdir", str(tmp_path)])
+    monkeypatch.setattr(final_report, "_final_report_token_fields", fake_final_report_token_fields)
+    monkeypatch.setattr(final_report, "write_final_report", fake_write_final_report)
+    rc = final_report.step18b_final_report_main(["--implement-tmpdir", str(tmp_path)])
     assert rc == 0
     out = capsys.readouterr().out
     assert "EMIT_BODY=" in out
@@ -493,8 +494,8 @@ def test_step18b_returns_write_failure_rc(tmp_path: Path, monkeypatch: pytest.Mo
     _ = (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=1\nRUN_ID=run1\n", encoding="utf-8")
     _ = (tmp_path / "session-env.sh").write_text("REPO=o/r\nMODE=N/A\n", encoding="utf-8")
 
-    monkeypatch.setattr(pr_body, "write_final_report", lambda _tmpdir: (1, "", "write failed"))  # type: ignore[arg-type]
-    rc = pr_body.step18b_final_report_main(["--implement-tmpdir", str(tmp_path)])
+    monkeypatch.setattr(final_report, "write_final_report", lambda _tmpdir: (1, "", "write failed"))  # type: ignore[arg-type]
+    rc = final_report.step18b_final_report_main(["--implement-tmpdir", str(tmp_path)])
     assert rc == 1
     out = capsys.readouterr().out
     assert "WFR_RC=1" in out
@@ -590,7 +591,7 @@ def test_derive_oos_fields_reads_json_body_filed_url(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    count, urls = pr_body._derive_oos_fields(tmp_path)
+    count, urls = final_report._derive_oos_fields(tmp_path)
 
     assert count == "1"
     assert urls == "https://github.com/acme/repo/issues/123"
@@ -603,27 +604,27 @@ def _write_tally(run_dir: Path, filename: str, payload: object) -> None:
 
 
 def test_derive_review_line_absent_tally_returns_na(tmp_path: Path) -> None:
-    assert pr_body._derive_review_line(tmp_path, "code-review-tally.json") == "N/A"
+    assert final_report._derive_review_line(tmp_path, "code-review-tally.json") == "N/A"
 
 
 def test_derive_review_line_malformed_tally_returns_na(tmp_path: Path) -> None:
     _write_tally(tmp_path, "code-review-tally.json", "{not valid json")
-    assert pr_body._derive_review_line(tmp_path, "code-review-tally.json") == "N/A"
+    assert final_report._derive_review_line(tmp_path, "code-review-tally.json") == "N/A"
 
 
 def test_derive_review_line_non_object_json_returns_na(tmp_path: Path) -> None:
     _write_tally(tmp_path, "code-review-tally.json", "[1, 2, 3]")
-    assert pr_body._derive_review_line(tmp_path, "code-review-tally.json") == "N/A"
+    assert final_report._derive_review_line(tmp_path, "code-review-tally.json") == "N/A"
 
 
 def test_derive_review_line_invalid_counts_return_na(tmp_path: Path) -> None:
     _write_tally(tmp_path, "code-review-tally.json", {"phase": "code-review", "accepted_count": "abc", "rejected_count": 0})
-    assert pr_body._derive_review_line(tmp_path, "code-review-tally.json") == "N/A"
+    assert final_report._derive_review_line(tmp_path, "code-review-tally.json") == "N/A"
 
 
 def test_derive_review_line_negative_counts_return_na(tmp_path: Path) -> None:
     _write_tally(tmp_path, "code-review-tally.json", {"phase": "code-review", "accepted_count": -1, "rejected_count": 0})
-    assert pr_body._derive_review_line(tmp_path, "code-review-tally.json") == "N/A"
+    assert final_report._derive_review_line(tmp_path, "code-review-tally.json") == "N/A"
 
 
 def test_derive_review_line_self_review_zero_findings(tmp_path: Path) -> None:
@@ -632,24 +633,24 @@ def test_derive_review_line_self_review_zero_findings(tmp_path: Path) -> None:
         "code-review-tally.json",
         {"phase": "code-review", "batch": "code-review-tally", "mode": "self-review", "accepted_count": 0, "rejected_count": 0},
     )
-    assert pr_body._derive_review_line(tmp_path, "code-review-tally.json") == "self-review: 0 findings"
+    assert final_report._derive_review_line(tmp_path, "code-review-tally.json") == "self-review: 0 findings"
 
 
 def test_derive_review_line_code_review_zero_findings(tmp_path: Path) -> None:
     _write_tally(tmp_path, "code-review-tally.json", {"phase": "code-review", "mode": "hard", "accepted_count": 0, "rejected_count": 0})
-    assert pr_body._derive_review_line(tmp_path, "code-review-tally.json") == "0 findings"
+    assert final_report._derive_review_line(tmp_path, "code-review-tally.json") == "0 findings"
 
 
 def test_derive_review_line_plan_review_zero_stays_na(tmp_path: Path) -> None:
     _write_tally(tmp_path, "plan-review-tally.json", {"phase": "plan-review", "mode": "hard", "accepted_count": 0, "rejected_count": 0})
-    assert pr_body._derive_review_line(tmp_path, "plan-review-tally.json") == "N/A"
+    assert final_report._derive_review_line(tmp_path, "plan-review-tally.json") == "N/A"
 
 
 def test_derive_review_line_non_code_review_phase_zero_stays_na(tmp_path: Path) -> None:
     _write_tally(tmp_path, "plan-review-tally.json", {"phase": "design-review", "accepted_count": 0, "rejected_count": 0})
-    assert pr_body._derive_review_line(tmp_path, "plan-review-tally.json") == "N/A"
+    assert final_report._derive_review_line(tmp_path, "plan-review-tally.json") == "N/A"
 
 
 def test_derive_review_line_positive_counts(tmp_path: Path) -> None:
     _write_tally(tmp_path, "code-review-tally.json", {"phase": "code-review", "mode": "hard", "accepted_count": 2, "rejected_count": 3})
-    assert pr_body._derive_review_line(tmp_path, "code-review-tally.json") == "2/5 accepted"
+    assert final_report._derive_review_line(tmp_path, "code-review-tally.json") == "2/5 accepted"

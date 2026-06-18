@@ -1,1 +1,0 @@
-Harness for `scripts/implement-finalize.sh`; covers postbump rebase/force-push, postmerge cleanup/verify, teardown rename/cleanup, state parsing, stalled-run stash/sentinel, and session-scoped background-process termination with ancestor PID skips. The behavioral contract lives in `scripts/implement-finalize.md`.

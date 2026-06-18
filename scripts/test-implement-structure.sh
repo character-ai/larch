@@ -52,15 +52,13 @@ for script in [
 
 # Collapsed Preflight helper surface.
 for path in [
-    'scripts/implement-preflight.sh',
-    'scripts/implement-preflight.md',
-    'scripts/test-implement-preflight.sh',
-    'scripts/test-implement-preflight.md',
+    'python/preflight.py',
+    'python/test_preflight.py',
 ]:
     if not Path(path).is_file():
         checks.append(f'missing {path}')
-require(skill, 'scripts/implement-preflight.sh', 'SKILL implement-preflight reference')
-require(skill, 'bash "${CLAUDE_PLUGIN_ROOT}/scripts/implement-preflight.sh"', 'SKILL implement-preflight bash invocation')
+require(skill, 'python/cli.py" implement preflight', 'SKILL implement preflight CLI reference')
+require(skill, 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement preflight', 'SKILL implement preflight Python invocation')
 require(skill, '$PREFLIGHT_TMPDIR/issue.json', 'SKILL preflight issue json path')
 require(skill, '$PREFLIGHT_TMPDIR/plan-from-issue.txt', 'SKILL preflight plan path')
 require(skill, 'PLAN_PATH', 'SKILL PLAN_PATH envelope binding')
@@ -72,16 +70,15 @@ require(skill, 'Do not accept `RESUME=empty`.', 'SKILL no resume empty token')
 require(skill, 'On non-zero exit, abort before item 4', 'SKILL nonzero preflight abort')
 require(skill, 'Do not parse or require an envelope on non-zero exit.', 'SKILL no exit2 envelope parse')
 require(skill, 'Run `admission fork-env`, then the preflight helper, then Step 0 bootstrap.', 'SKILL forked ordering')
-require('scripts/implement-preflight.md', 'Emit one `KEY=value` record per line.', 'preflight docs one-record envelope')
-require('scripts/implement-preflight.md', 'Emit `RESUME=true` only when admission stdout contains exactly `RESUME=true`.', 'preflight docs resume true')
-require('scripts/implement-preflight.md', 'Emit `RESUME=false` when admission stdout lacks `RESUME=`.', 'preflight docs resume false')
-require('scripts/implement-preflight.md', 'Emit the envelope only on successful exit `0`.', 'preflight docs success-only envelope')
-require('scripts/implement-preflight.md', 'Source the final success-envelope `TITLE` from `issue.json`, not admission stdout.', 'preflight docs title source')
-require('scripts/implement-preflight.md', 'Use Python stdlib `json`', 'preflight docs stdlib json')
-require('scripts/implement-preflight.md', 'Capture admission stdout before branching on the admission return code.', 'preflight docs admission parse before rc')
-require('scripts/implement-preflight.md', 'BLOCKERS=<value>', 'preflight docs blockers echo')
-require('scripts/implement-preflight.md', 'TITLE=<value>', 'preflight docs title echo')
-require('scripts/implement-preflight.md', '$PREFLIGHT_TMPDIR/emergency-bypass.log', 'preflight docs bypass log destination')
+require('python/preflight.py', 'ADMISSION_RESULT=', 'preflight emits admission result')
+require('python/preflight.py', 'RESUME=', 'preflight emits resume')
+require('python/preflight.py', 'PLAN_PATH=', 'preflight emits plan path')
+require('python/preflight.py', 'ISSUE_JSON_PATH=', 'preflight emits issue json path')
+require('python/preflight.py', 'BYPASS_COUNT=', 'preflight emits bypass count')
+require('python/preflight.py', 'emergency-bypass.log', 'preflight bypass log destination')
+require('python/preflight.py', 'json.load', 'preflight uses stdlib json')
+require('python/test_preflight.py', 'test_preflight_success_emits_kv_and_forwards_repo', 'preflight test success coverage')
+require('python/test_preflight.py', 'test_preflight_emergency_missing_plan_uses_raw_body', 'preflight test emergency coverage')
 forbid(skill, '${emergency_requested:+--emergency}', 'SKILL preflight emergency argv')
 forbid(skill, 'If `false` and `emergency_requested=false`, print `**❌ Issue #<N> has no larch:plan block', 'SKILL prompt-side missing-plan fallback prose')
 forbid(skill, 'If the script exits **1** and prints `MALFORMED=...`, then when `emergency_requested=false`', 'SKILL prompt-side malformed-plan fallback prose')
@@ -107,11 +104,12 @@ for script in [
     'skills/implement/scripts/step-8-seed-initial.sh',
     'skills/implement/scripts/step-8-ship.sh',
     'skills/implement/scripts/step-8-oos-checkpoint.sh',
-    'skills/implement/scripts/step-16-17.sh',
     'skills/implement/scripts/step-18.sh --phase gate --stall-tracking-memory "${STALL_TRACKING:-false}"',
     'skills/implement/scripts/step-18.sh --phase finalize --step17-emitted "${STEP17_EMITTED_FOR_STEP18:-false}"',
 ]:
     require(skill, launcher + script, f'SKILL launcher wrapper {script}')
+
+require(skill, 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement step-16-17', 'SKILL direct Step 16-17 Python CLI call')
 
 for needle in [
     'BASE_ARGS=()',
@@ -122,7 +120,7 @@ for needle in [
     forbid(skill, needle, 'wrapperized SKILL')
 
 # Script/md sibling and executable coverage for new wrappers.
-wrappers = ['step-0-bootstrap','step-0-degraded-gate','step-2-entry','step-2-post-dispatch','run-step-checks','step-5-review','step-5-resume','step-6-entry','step-8-python-guard','step-8-seed-initial','step-8-ship','step-8-oos-checkpoint','step-16','step-16-17','step-17','step-18']
+wrappers = ['step-0-bootstrap','step-0-degraded-gate','step-2-entry','step-2-post-dispatch','run-step-checks','step-5-review','step-5-resume','step-6-entry','step-8-python-guard','step-8-seed-initial','step-8-ship','step-8-oos-checkpoint','step-18']
 for name in wrappers:
     sh=Path(f'skills/implement/scripts/{name}.sh')
     md=Path(f'skills/implement/scripts/{name}.md')
@@ -240,8 +238,8 @@ if fence_has_marker:
     checks.append('SKILL.md bash fence must not reference LARCH_FINAL_SUMMARY_BEGIN or LARCH_FINAL_SUMMARY_END')
 
 # Step 17 marker handoff contract must exist.
-require('skills/implement/scripts/step-16-17.sh', '---LARCH-SUMMARY-FINAL-BEGIN---', 'step-16-17 begin marker literal')
-require('skills/implement/scripts/step-16-17.sh', '---LARCH-SUMMARY-FINAL-END---', 'step-16-17 end marker literal')
+require('python/closeout.py', '---LARCH-SUMMARY-FINAL-BEGIN---', 'step-16-17 begin marker literal')
+require('python/closeout.py', '---LARCH-SUMMARY-FINAL-END---', 'step-16-17 end marker literal')
 require(skill, 'extract the first balanced whole-line `---LARCH-SUMMARY-FINAL-BEGIN---` / `---LARCH-SUMMARY-FINAL-END---` pair from captured wrapper output', 'SKILL marker extraction contract')
 require(skill, 'emit the extracted body verbatim as plain chat markdown', 'SKILL marker body plain-chat emission')
 require(skill, 'do not Read that file on the Step 17 primary path', 'SKILL no Read-tool Step 17 primary path')
@@ -257,10 +255,10 @@ require(skill, '**Escalation recording owners.**', 'SKILL escalation recording o
 require(skill, 'Repeat any external reviewer warnings from earlier', 'SKILL Step 18b warnings preserved')
 require(skill, 'Cap the per-run token/timing ledgers **before** teardown removes them.', 'SKILL #3425 closing marks preserved')
 forbid(skill, 'When `EMIT_BODY=true` and `WFR_RC=0` and `[ -s "$IMPLEMENT_TMPDIR/summary-final.md" ]`', 'SKILL Step 18 Read fallback removed')
-require('skills/implement/scripts/step-16-17.sh', 'touch "$IMPLEMENT_TMPDIR/.step17-printed"', 'step-16-17 owns .step17-printed')
+require('python/closeout.py', '.step17-printed', 'step-16-17 owns .step17-printed')
 require(skill, 'Write `$IMPLEMENT_TMPDIR/.step17-emitted` only after that plain-chat emission.', 'SKILL Step 17 .step17-emitted orchestrator ownership')
 require(skill, 'The orchestrator does not write `.step17-emitted` after finalize returns.', 'SKILL Step 18 .step17-emitted wrapper ownership')
-require('skills/implement/scripts/step-16-17.sh', 'if [ "$STEP17_RC" -eq 0 ] && [ -s "$IMPLEMENT_TMPDIR/summary-final.md" ]; then', 'step-16-17 marker gate uses Step 17 rc and non-empty summary')
+require('python/closeout.py', 'step17_rc == 0 and _summary_nonempty(tmpdir)', 'step-16-17 marker gate uses Step 17 rc and non-empty summary')
 require(skill, 'Marker emission is gated on captured Step 17 render success and a non-empty `summary-final.md`, not `summary-final.md` presence alone.', 'SKILL stale-summary marker gate')
 forbid(skill, 'Do NOT use a Bash `cat` or Python tool call to print the summary body', 'retired Step 17 Bash-cat prohibition string')
 forbid(skill, 'via Bash `cat` whose output is then re-emitted as orchestrator text', 'SKILL must not sanction Bash cat for summary emit')

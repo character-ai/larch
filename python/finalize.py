@@ -846,7 +846,7 @@ def _cleanup_target_ok(ctx: RunContext, tmpdir: Path, *, cwd: str | None = None)
 
 
 def write_finalize_state(ctx: RunContext, path: str | Path) -> None:
-    """Write implement-finalize.sh-compatible state for prompt-side Step 18."""
+    """Write finalize state for prompt-side Step 18."""
     data = {
         "BRANCH_NAME": ctx.branch_name or ctx.branch,
         "PR_NUMBER": "" if ctx.pr_number is None else str(ctx.pr_number),
@@ -931,6 +931,145 @@ def _load_state_file_kv(path: Path) -> dict[str, str]:
     return out
 
 
+def _allowed_finalize_path(path: Path) -> bool:
+    try:
+        resolved = path.resolve(strict=False)
+    except OSError:
+        return False
+    allowed_roots = (
+        Path("/tmp").resolve(strict=False),  # noqa: S108 - parity allowlist for session tmpdirs.
+        Path("/private/tmp").resolve(strict=False),
+        Path("/var/folders").resolve(strict=False),
+        Path("/private/var/folders").resolve(strict=False),
+        cache_sessions_root().resolve(strict=False),
+    )
+    return any(resolved == root or root in resolved.parents for root in allowed_roots)
+
+
+def _load_state_file_checked(path: Path) -> dict[str, str]:
+    if not _allowed_finalize_path(path):
+        raise ValueError("--state-file must be under /tmp/, /private/tmp/, /var/folders/, or the larch cache sessions root")
+    if not path.is_file() or not os.access(path, os.R_OK):
+        raise ValueError("--state-file must exist and be readable")
+    data: dict[str, str] = {}
+    for line_no, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1):
+        if not line or line.startswith("#"):
+            continue
+        if not re.match(r"^[A-Z_][A-Z0-9_]*=", line):
+            raise ValueError(f"malformed state-file line {line_no}")
+        key, value = line.split("=", 1)
+        data[key] = value
+    return data
+
+
+def _require_state_keys(data: Mapping[str, str], keys: tuple[str, ...]) -> None:
+    for key in keys:
+        if key not in data:
+            raise ValueError(f"state-file missing required key: {key}")
+
+
+def _require_bool_state(data: Mapping[str, str], keys: tuple[str, ...]) -> None:
+    for key in keys:
+        value = data.get(key, "")
+        if value not in {"true", "false"}:
+            raise ValueError(f"state-file key {key} must be true or false")
+
+
+_COMMON_REQUIRED_KEYS = (
+    "BRANCH_NAME",
+    "PR_NUMBER",
+    "PR_TITLE",
+    "PR_URL",
+    "ISSUE_NUMBER",
+    "REPO",
+    "DRAFT",
+    "MERGE",
+    "DEFERRED",
+    "REPO_UNAVAILABLE",
+    "PR_CLOSED",
+    "DESIGN_ONLY_DONE",
+    "BAIL_NEEDS_USER_INPUT",
+    "STALL_TRACKING",
+    "DONE_RENAME_APPLIED",
+)
+_COMMON_BOOL_KEYS = (
+    "DRAFT",
+    "MERGE",
+    "DEFERRED",
+    "REPO_UNAVAILABLE",
+    "PR_CLOSED",
+    "DESIGN_ONLY_DONE",
+    "BAIL_NEEDS_USER_INPUT",
+    "STALL_TRACKING",
+    "DONE_RENAME_APPLIED",
+)
+_POSTBUMP_REQUIRED_KEYS = (
+    "BRANCH_NAME",
+    "ISSUE_NUMBER",
+    "PR_TITLE",
+    "REPO",
+    "REPO_UNAVAILABLE",
+    "FORKED_TARGET",
+    "BUMP_TYPE",
+    "NEW_VERSION",
+)
+_POSTBUMP_BOOL_KEYS = ("FORKED_TARGET", "REPO_UNAVAILABLE")
+
+
+def _validate_finalize_cli_args(
+    *,
+    phase: str,
+    state_file: str,
+    implement_tmpdir: str = "",
+    final_bail_reason_file: str = "",
+) -> None:
+    if not state_file:
+        raise ValueError("--state-file is required")
+    state_path = Path(state_file)
+    data = _load_state_file_checked(state_path)
+    if phase in {"postbump", "teardown"}:
+        if not implement_tmpdir:
+            raise ValueError("--implement-tmpdir is required")
+        tmpdir_path = Path(implement_tmpdir)
+        if not _allowed_finalize_path(tmpdir_path):
+            raise ValueError("--implement-tmpdir must be under /tmp/, /private/tmp/, /var/folders/, or the larch cache sessions root")
+        try:
+            state_resolved = state_path.resolve(strict=False)
+            tmp_resolved = tmpdir_path.resolve(strict=False)
+        except OSError as exc:
+            raise ValueError("state-file or implement-tmpdir resolution failed") from exc
+        if not (state_resolved == tmp_resolved or tmp_resolved in state_resolved.parents):
+            raise ValueError("--state-file must live under --implement-tmpdir for teardown")
+    if phase == "postmerge":
+        if not final_bail_reason_file:
+            raise ValueError("--final-bail-reason-file is required")
+        bail_path = Path(final_bail_reason_file)
+        if not _allowed_finalize_path(bail_path):
+            raise ValueError("--final-bail-reason-file must be under /tmp/, /private/tmp/, /var/folders/, or the larch cache sessions root")
+    if phase == "postbump":
+        _require_state_keys(data, _POSTBUMP_REQUIRED_KEYS)
+        _require_bool_state(data, _POSTBUMP_BOOL_KEYS)
+        if data.get("BUMP_TYPE") not in {"MAJOR", "MINOR", "PATCH", "NONE"}:
+            raise ValueError("state-file key BUMP_TYPE must be one of MAJOR, MINOR, PATCH, NONE")
+        branch = data.get("BRANCH_NAME", "")
+        if not branch:
+            raise ValueError("state-file key BRANCH_NAME must be non-empty for postbump")
+        if branch in {"main", "master"} and data.get("FORKED_TARGET") != "true":
+            raise ValueError("state-file key BRANCH_NAME must not be main or master")
+        bump_type = data.get("BUMP_TYPE", "")
+        new_version = data.get("NEW_VERSION", "")
+        if bump_type != "NONE" and not new_version:
+            raise ValueError("state-file key NEW_VERSION must be non-empty when BUMP_TYPE is not NONE")
+    else:
+        _require_state_keys(data, _COMMON_REQUIRED_KEYS)
+        _require_bool_state(data, _COMMON_BOOL_KEYS)
+
+
+def _finalize_usage_error(message: str) -> int:
+    print(f"implement-finalize: {message}", file=sys.stderr)
+    return 2
+
+
 def _ctx_from_tmpdir(tmpdir: str) -> RunContext:
     env = dict(os.environ)
     env["IMPLEMENT_TMPDIR"] = tmpdir
@@ -970,23 +1109,33 @@ def _ctx_from_state_file(
 
 def implement_finalize_main(argv: list[str] | None = None, phase: str = "") -> int:
     parser = argparse.ArgumentParser(prog=f"cli.py implement-finalize {phase}")
-    _ = parser.add_argument("--state-file")
-    _ = parser.add_argument("--implement-tmpdir")
-    _ = parser.add_argument("--final-bail-reason-file")
-    args, _unknown = parser.parse_known_args(argv)
-    if args.state_file:
-        ctx = _ctx_from_state_file(
-            args.state_file,
+    _ = parser.add_argument("--state-file", required=True)
+    if phase in {"postbump", "teardown"}:
+        _ = parser.add_argument("--implement-tmpdir", required=True)
+    else:
+        _ = parser.add_argument("--implement-tmpdir", default="")
+    if phase == "postmerge":
+        _ = parser.add_argument("--final-bail-reason-file", required=True)
+    else:
+        _ = parser.add_argument("--final-bail-reason-file", default="")
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as exc:
+        return int(exc.code or 2)
+    try:
+        _validate_finalize_cli_args(
+            phase=phase,
+            state_file=args.state_file,
             implement_tmpdir=args.implement_tmpdir,
             final_bail_reason_file=args.final_bail_reason_file,
         )
-    else:
-        tmpdir = args.implement_tmpdir or os.environ.get("IMPLEMENT_TMPDIR", "")
-        if not tmpdir:
-            print("STATUS=failed")
-            print("FINALIZE_WARNINGS=IMPLEMENT_TMPDIR is required")
-            return 2
-        ctx = _ctx_from_tmpdir(tmpdir)
+    except ValueError as exc:
+        return _finalize_usage_error(str(exc))
+    ctx = _ctx_from_state_file(
+        args.state_file,
+        implement_tmpdir=args.implement_tmpdir,
+        final_bail_reason_file=args.final_bail_reason_file,
+    )
     runner = _SubprocessRunner()
     cwd = str(Path.cwd())
     if phase == "postbump":
@@ -996,9 +1145,7 @@ def implement_finalize_main(argv: list[str] | None = None, phase: str = "") -> i
     elif phase == "teardown":
         result = teardown(runner, ctx, cwd=cwd)
     else:
-        print("STATUS=failed")
-        print("FINALIZE_WARNINGS=unknown phase")
-        return 2
+        return _finalize_usage_error("unknown phase")
     _emit_finalize_result(result, subcommand=phase)
     return 0
 

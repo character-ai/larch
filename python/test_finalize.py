@@ -1,4 +1,4 @@
-# pyright: reportPrivateUsage=false
+# pyright: reportPrivateUsage=false, reportUnusedCallResult=false
 """Tests for finalize.py."""
 
 from __future__ import annotations
@@ -617,3 +617,72 @@ def test_cleanup_main_removes_implement_tmpdir(
     assert rc == 0
     assert not tmp_path.exists()
     assert "CLEANED=true" in capsys.readouterr().out
+
+
+def test_implement_finalize_rejects_unknown_arg(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    state = tmp_path / "finalize-state.sh"
+    finalize.write_finalize_state(_ctx(tmp_path, no_logs_commit=True), state)
+    rc = finalize.implement_finalize_teardown_main([
+        "--state-file", str(state),
+        "--implement-tmpdir", str(tmp_path),
+        "--bogus",
+    ])
+    assert rc == 2
+    assert "unrecognized arguments" in capsys.readouterr().err
+
+
+def test_implement_finalize_requires_phase_specific_bail_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    state = tmp_path / "finalize-state.sh"
+    finalize.write_finalize_state(_ctx(tmp_path), state)
+    rc = finalize.implement_finalize_postmerge_main(["--state-file", str(state)])
+    assert rc == 2
+    assert "final-bail-reason-file" in capsys.readouterr().err
+
+
+def test_implement_finalize_rejects_missing_required_state_key(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    state = tmp_path / "finalize-state.sh"
+    finalize.write_finalize_state(_ctx(tmp_path), state)
+    text = state.read_text(encoding="utf-8").replace("MERGE=true\n", "")
+    state.write_text(text, encoding="utf-8")
+    rc = finalize.implement_finalize_teardown_main([
+        "--state-file", str(state),
+        "--implement-tmpdir", str(tmp_path),
+    ])
+    assert rc == 2
+    assert "state-file missing required key: MERGE" in capsys.readouterr().err
+
+
+def test_implement_finalize_rejects_malformed_bool(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    state = tmp_path / "finalize-state.sh"
+    finalize.write_finalize_state(_ctx(tmp_path), state)
+    state.write_text(state.read_text(encoding="utf-8").replace("DRAFT=false", "DRAFT=maybe"), encoding="utf-8")
+    rc = finalize.implement_finalize_teardown_main([
+        "--state-file", str(state),
+        "--implement-tmpdir", str(tmp_path),
+    ])
+    assert rc == 2
+    assert "state-file key DRAFT must be true or false" in capsys.readouterr().err
+
+
+def test_implement_finalize_accepts_cache_root_state_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
+    session_dir = finalize.cache_sessions_root() / "claude-implement-repo-abc"
+    session_dir.mkdir(parents=True)
+    state = session_dir / "finalize-state.sh"
+    finalize.write_finalize_state(_ctx(session_dir, no_logs_commit=True), state)
+
+    def fake_kill_session_background_processes(runner: object, ctx: RunContext) -> bool:
+        _ = (runner, ctx)
+        return False
+
+    monkeypatch.setattr(finalize, "kill_session_background_processes", fake_kill_session_background_processes)
+    rc = finalize.implement_finalize_teardown_main([
+        "--state-file", str(state),
+        "--implement-tmpdir", str(session_dir),
+    ])
+    assert rc == 0
+    assert "FINALIZE_SUBCOMMAND=teardown" in capsys.readouterr().out

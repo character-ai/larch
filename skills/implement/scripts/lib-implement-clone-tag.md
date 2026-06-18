@@ -14,4 +14,4 @@ It also exports `EXPECTED_TMPDIR_BASENAME_PREFIX="claude-implement-${CLONE_TAG_F
 
 ## Edit-in-sync
 
-Keep this helper aligned with `scripts/implement-finalize.sh` `clone_basename_prefix()`. Seeded `EXPECTED_TMPDIR_BASENAME_PREFIX` must match the Step 8 ship driver so Step 18 cleanup verification does not depend on fallback masking.
+Keep this helper aligned with `python3 python/cli.py implement-finalize` `clone_basename_prefix()`. Seeded `EXPECTED_TMPDIR_BASENAME_PREFIX` must match the Step 8 ship driver so Step 18 cleanup verification does not depend on fallback masking.
