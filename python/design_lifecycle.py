@@ -19,6 +19,7 @@ from pathlib import Path
 import design_pause
 import gh
 import proc
+import session_env
 from collections.abc import Iterable, Mapping, Sequence
 
 _SUBPROCESS_RUN = subprocess.run
@@ -599,30 +600,68 @@ def write_bash_quoted_env(path: Path, data: Mapping[str, str]) -> None:
     path.write_text("".join(lines), encoding="utf-8")
 
 
+def _decode_ansi_c_quoted(inner: str) -> str:
+    max_oct_digits = 3
+    short_hex_digits = 2
+    unicode_hex_digits = 4
+    long_unicode_hex_digits = 8
+    out: list[str] = []
+    i = 0
+    while i < len(inner):
+        ch = inner[i]
+        if ch != "\\" or i + 1 >= len(inner):
+            out.append(ch)
+            i += 1
+            continue
+        nxt = inner[i + 1]
+        escapes = {"n": "\n", "t": "\t", "r": "\r", "a": "\a", "b": "\b", "f": "\f", "v": "\v", "\\": "\\", "'": "'", '"': '"'}
+        if nxt in escapes:
+            out.append(escapes[nxt])
+            i += 2
+            continue
+        if nxt in "01234567":
+            j = i + 1
+            oct_digits = ""
+            while j < len(inner) and len(oct_digits) < max_oct_digits and inner[j] in "01234567":
+                oct_digits += inner[j]
+                j += 1
+            out.append(chr(int(oct_digits, 8)))
+            i = j
+            continue
+        if nxt == "x":
+            j = i + 2
+            hex_digits = ""
+            while j < len(inner) and len(hex_digits) < short_hex_digits and inner[j] in "0123456789abcdefABCDEF":
+                hex_digits += inner[j]
+                j += 1
+            if hex_digits:
+                out.append(chr(int(hex_digits, 16)))
+                i = j
+                continue
+        if nxt == "u" and i + 5 <= len(inner):
+            hex_digits = inner[i + 2 : i + 6]
+            if len(hex_digits) == unicode_hex_digits and all(c in "0123456789abcdefABCDEF" for c in hex_digits):
+                out.append(chr(int(hex_digits, 16)))
+                i += 6
+                continue
+        if nxt == "U" and i + 9 <= len(inner):
+            hex_digits = inner[i + 2 : i + 10]
+            if len(hex_digits) == long_unicode_hex_digits and all(c in "0123456789abcdefABCDEF" for c in hex_digits):
+                out.append(chr(int(hex_digits, 16)))
+                i += 10
+                continue
+        out.append(nxt)
+        i += 2
+    return "".join(out)
+
+
 def _decode_bash_percent_q(value: str) -> str:
     if value == "''":
         return ""
     if not value:
         return ""
     if value.startswith("$'") and value.endswith("'"):
-        inner = value[2:-1]
-        out: list[str] = []
-        i = 0
-        while i < len(inner):
-            ch = inner[i]
-            if ch != "\\" or i + 1 >= len(inner):
-                out.append(ch)
-                i += 1
-                continue
-            nxt = inner[i + 1]
-            escapes = {"n": "\n", "t": "\t", "r": "\r", "a": "\a", "b": "\b", "f": "\f", "v": "\v", "\\": "\\", "'": "'", '"': '"'}
-            if nxt in escapes:
-                out.append(escapes[nxt])
-                i += 2
-                continue
-            out.append(nxt)
-            i += 2
-        return "".join(out)
+        return _decode_ansi_c_quoted(value[2:-1])
     if value.startswith("'"):
         out = []
         i = 1
@@ -669,13 +708,25 @@ def load_bash_quoted_env(path: Path, allow_keys: Iterable[str]) -> dict[str, str
     return data
 
 
-def _load_source_env(path: str | Path, allow_keys: Iterable[str] = SOURCE_ENV_ALLOW) -> dict[str, str]:
+def _load_source_env(path: str | Path, allow_keys: Iterable[str] = SOURCE_ENV_ALLOW, *, claude_pid: str = "") -> dict[str, str]:
     source = Path(path)
-    if not str(path) or not source.is_file() or source.is_symlink():
+    if not str(path):
+        return {}
+    read_path: Path | None
+    if source.is_symlink():
+        if not claude_pid:
+            return {}
+        resolved = session_env.resolve_trusted_design_session_env_source(source, claude_pid)
+        if resolved is None:
+            return {}
+        read_path = resolved
+    elif source.is_file():
+        read_path = source
+    else:
         return {}
     allow = set(allow_keys)
     data: dict[str, str] = {}
-    for raw in source.read_text(encoding="utf-8", errors="replace").splitlines():
+    for raw in read_path.read_text(encoding="utf-8", errors="replace").splitlines():
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
@@ -696,7 +747,7 @@ def _base_env() -> dict[str, str]:
 
 def _load_wrapper_env(ns: WrapperArgs) -> dict[str, str]:
     data = _base_env()
-    data.update(_load_source_env(ns.session_env_path))
+    data.update(_load_source_env(ns.session_env_path, claude_pid=ns.claude_pid))
     if ns.plugin_root:
         data["CLAUDE_PLUGIN_ROOT"] = ns.plugin_root
     if ns.outcome:
@@ -937,6 +988,17 @@ def step0_session_main(argv: Sequence[str]) -> int:
         text=True,
         check=False,
     )
+    if gate.returncode != 0 or not any(line.startswith("DEGRADED=") for line in gate.stdout.splitlines()):
+        with contextlib.suppress(OSError):
+            with (design_path / "execution-issues.md").open("a", encoding="utf-8") as handle:
+                if gate.returncode != 0:
+                    handle.write(f"- Step 0 degraded-tools gate: subprocess exited {gate.returncode}\n")
+                else:
+                    handle.write("- Step 0 degraded-tools gate: stdout missing DEGRADED=\n")
+                if gate.stderr.strip():
+                    handle.write(f"  stderr: {gate.stderr.strip()}\n")
+        print("**⚠ /design: degraded-tools gate failed; aborting Step 0**", file=sys.stderr)
+        return gate.returncode if gate.returncode != 0 else 1
     state = relay_degraded_tools_gate_stdout(gate.stdout, design_path)
     print(f"STEP0_STATUS={state['STEP0_STATUS']}")
     print(f"DEGRADED={state['DEGRADED']}")
@@ -945,12 +1007,6 @@ def step0_session_main(argv: Sequence[str]) -> int:
         print("DEGRADED_HARD_FAIL=true")
     if state["STEP0_STATUS"] == "needs-degraded-decision":
         print("DEGRADED_PROMPT_REQUIRED=true")
-    if gate.returncode != 0:
-        with contextlib.suppress(OSError):
-            with (design_path / "execution-issues.md").open("a", encoding="utf-8") as handle:
-                handle.write(f"- Step 0 degraded-tools gate: subprocess exited {gate.returncode}\n")
-                if gate.stderr.strip():
-                    handle.write(f"  stderr: {gate.stderr.strip()}\n")
     return 0
 
 

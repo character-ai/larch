@@ -43,9 +43,11 @@ for retired in $retired_paths; do
   contains "$MIGRATED" "skills/design/scripts/$retired" "migrated-scripts.tsv missing $retired"
 done
 
+stdout_keys_block="$(awk '/^_DESIGN_LIFECYCLE_STDOUT_KEYS:/{flag=1;next}/^\)/{if(flag){flag=0}}flag' "$CLI_PY")"
 for verb in $ported_verbs; do
   contains "$CLI_PY" "(\"design\", \"$verb\")" "cli registry missing design $verb"
   contains "$SESSION_ENV" "$verb" "design launcher missing $verb allowlist token"
+  printf '%s' "$stdout_keys_block" | grep -Fq "(\"design\", \"$verb\")" || fail "cli _DESIGN_LIFECYCLE_STDOUT_KEYS missing design $verb"
 done
 
 contains "$SESSION_ENV" 'exec python3 "$PLUGIN_ROOT/python/cli.py" design "$script" --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"' 'launcher must dispatch ported verbs to python/cli.py'

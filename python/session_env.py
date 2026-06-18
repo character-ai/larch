@@ -770,6 +770,17 @@ def _validate_design_current_env_link(symlink_path: Path, pid: str) -> None:
         ancestor = ancestor.parent
 
 
+def resolve_trusted_design_session_env_source(path: Path, claude_pid: str) -> Path | None:
+    if not claude_pid or not path.is_symlink():
+        return None
+    try:
+        _validate_design_current_env_link(path, claude_pid)
+        resolved = path.resolve()
+    except (ValueError, OSError):
+        return None
+    return resolved if resolved.is_file() else None
+
+
 def write_design_env_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="session write-design-env", add_help=False)
     for flag in ("output", "design-tmpdir", "session-id", "codex-present", "cursor-present", "codex-available", "cursor-available", "codex-binary-found", "cursor-binary-found", "repo", "issue-number", "claude-pid"):

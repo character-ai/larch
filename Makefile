@@ -1149,7 +1149,7 @@ test-design-step3-entry:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-step3-entry.sh
 
 test-design-step0-init:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_design_lifecycle.py -k 'step0_parse or step0_session or step0_route or step0_init or step0_clarify or step0_abort or step0_ap or step0c or step1d7 or step1e or pause_save or bash_quoted or degraded_tools or relay_degraded or require_design'
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_design_lifecycle.py -k 'step0_parse or step0_session or step0_route or step0_init or step0_clarify or step0_abort or step0_ap or step0c or step1d7 or step1e or pause_save or bash_quoted or degraded_tools or relay_degraded or require_design or resolve_repo or design_route'
 
 test-design-step5c:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-step5c.sh
