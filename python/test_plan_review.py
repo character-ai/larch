@@ -119,6 +119,116 @@ def test_step3_state_non_numeric_round_count_falls_back_to_zero(tmp_path: Path) 
     assert "STEP3_STATE=direct-review-entry" in proc.stdout
 
 
+def _seed_step3_downstream(tmp_path: Path) -> None:
+    completed = tmp_path / ".completed"
+    completed.mkdir(parents=True, exist_ok=True)
+    for name in ("step-3", "step-3.5", "step-3-terminal", "step-3b", "step-4", "step-4b"):
+        (completed / name).touch()
+    (tmp_path / ".step3-terminal-persisted-this-run").touch()
+    (tmp_path / ".gate-b-postapply-ready-1").touch()
+    (tmp_path / ".gate-b-postapply-ready-2").touch()
+
+
+def test_step3_state_direct_review_entry_noop_without_reentry(tmp_path: Path) -> None:
+    _seed_step3_downstream(tmp_path)
+    proc = run_cli("plan-review", "step3-state", "--design-tmpdir", str(tmp_path), "--direct-review-entry")
+    assert proc.returncode == 0, proc.stderr
+    assert "STEP3_STATE=noop" in proc.stdout
+    assert "REVIEW_ROUND_COUNT=0" in proc.stdout
+    # No .step3-reentry breadcrumb -> nothing cleared.
+    assert (tmp_path / ".completed" / "step-3").is_file()
+    assert (tmp_path / ".completed" / "step-3-terminal").is_file()
+    assert (tmp_path / ".gate-b-postapply-ready-1").is_file()
+
+
+def test_step3_state_direct_review_entry_clears_restores_and_consumes(tmp_path: Path) -> None:
+    _seed_step3_downstream(tmp_path)
+    (tmp_path / ".step3-reentry").touch()
+    _ = (tmp_path / "review-round-count.txt").write_text("2\n", encoding="utf-8")
+    # Settled round artifacts (<= round 2) plus a future round 3 that must survive.
+    for n in (1, 2, 3):
+        _ = (tmp_path / f".step3-round-{n}.phase").write_text("done\n", encoding="utf-8")
+        _ = (tmp_path / f"plan-pre-apply-round-{n}.txt").write_text("x\n", encoding="utf-8")
+    for name in (
+        "accepted-plan-findings-all.md",
+        ".accepted-plan-findings-all.prev.md",
+        "oos-accepted-design.md",
+        ".oos-accepted-design.prev.md",
+    ):
+        _ = (tmp_path / name).write_text("x\n", encoding="utf-8")
+    proc = run_cli("plan-review", "step3-state", "--design-tmpdir", str(tmp_path), "--direct-review-entry")
+    assert proc.returncode == 0, proc.stderr
+    assert "STEP3_STATE=direct-review-entry" in proc.stdout
+    assert "REVIEW_ROUND_COUNT=2" in proc.stdout
+    # Downstream sentinels cleared.
+    for name in ("step-3", "step-3.5", "step-3-terminal", "step-3b", "step-4", "step-4b"):
+        assert not (tmp_path / ".completed" / name).exists()
+    assert not (tmp_path / ".step3-terminal-persisted-this-run").exists()
+    assert not (tmp_path / ".gate-b-postapply-ready-1").exists()
+    assert not (tmp_path / ".gate-b-postapply-ready-2").exists()
+    # Upstream package restored.
+    for name in ("step-1e", "step-2a", "step-2b", "step-2b.5"):
+        assert (tmp_path / ".completed" / name).is_file()
+    # Settled rounds (<= 2) dropped, future round 3 preserved.
+    assert not (tmp_path / ".step3-round-1.phase").exists()
+    assert not (tmp_path / ".step3-round-2.phase").exists()
+    assert not (tmp_path / "plan-pre-apply-round-2.txt").exists()
+    assert (tmp_path / ".step3-round-3.phase").is_file()
+    assert (tmp_path / "plan-pre-apply-round-3.txt").is_file()
+    # Accumulated artifacts and the re-entry breadcrumb consumed.
+    assert not (tmp_path / "accepted-plan-findings-all.md").exists()
+    assert not (tmp_path / "oos-accepted-design.md").exists()
+    assert not (tmp_path / ".step3-reentry").exists()
+
+
+def test_step3_state_pause_hygiene_clears_but_preserves_findings_and_reentry(tmp_path: Path) -> None:
+    _seed_step3_downstream(tmp_path)
+    (tmp_path / ".step3-reentry").touch()
+    _ = (tmp_path / "review-round-count.txt").write_text("1\n", encoding="utf-8")
+    _ = (tmp_path / ".step3-round-1.phase").write_text("done\n", encoding="utf-8")
+    _ = (tmp_path / "accepted-plan-findings-all.md").write_text("x\n", encoding="utf-8")
+    proc = run_cli("plan-review", "step3-state", "--design-tmpdir", str(tmp_path), "--direct-review-pause-hygiene")
+    assert proc.returncode == 0, proc.stderr
+    assert "STEP3_STATE=direct-review-pause-hygiene" in proc.stdout
+    # Clears downstream and restores upstream, same as direct-review-entry.
+    assert not (tmp_path / ".completed" / "step-3").exists()
+    assert not (tmp_path / ".step3-terminal-persisted-this-run").exists()
+    for name in ("step-1e", "step-2a", "step-2b", "step-2b.5"):
+        assert (tmp_path / ".completed" / name).is_file()
+    # But does NOT settle rounds, drop findings, or consume the breadcrumb.
+    assert (tmp_path / ".step3-round-1.phase").is_file()
+    assert (tmp_path / "accepted-plan-findings-all.md").is_file()
+    assert (tmp_path / ".step3-reentry").is_file()
+
+
+def test_step3_state_pause_hygiene_noop_without_reentry(tmp_path: Path) -> None:
+    _seed_step3_downstream(tmp_path)
+    proc = run_cli("plan-review", "step3-state", "--design-tmpdir", str(tmp_path), "--direct-review-pause-hygiene")
+    assert proc.returncode == 0, proc.stderr
+    assert "STEP3_STATE=noop" in proc.stdout
+    assert (tmp_path / ".completed" / "step-3").is_file()
+
+
+def test_step3_state_auto_continuation_clears_without_restore(tmp_path: Path) -> None:
+    _seed_step3_downstream(tmp_path)
+    _ = (tmp_path / "review-round-count.txt").write_text("1\n", encoding="utf-8")
+    _ = (tmp_path / ".step3-round-1.phase").write_text("done\n", encoding="utf-8")
+    _ = (tmp_path / ".step3-round-2.phase").write_text("pending\n", encoding="utf-8")
+    proc = run_cli("plan-review", "step3-state", "--design-tmpdir", str(tmp_path), "--auto-continuation-entry")
+    assert proc.returncode == 0, proc.stderr
+    assert "STEP3_STATE=auto-continuation-entry" in proc.stdout
+    assert "REVIEW_ROUND_COUNT=1" in proc.stdout
+    # Downstream cleared unconditionally (no .step3-reentry gate).
+    for name in ("step-3", "step-3.5", "step-3-terminal", "step-3b", "step-4", "step-4b"):
+        assert not (tmp_path / ".completed" / name).exists()
+    assert not (tmp_path / ".gate-b-postapply-ready-1").exists()
+    # Settled round 1 dropped, future round 2 preserved.
+    assert not (tmp_path / ".step3-round-1.phase").exists()
+    assert (tmp_path / ".step3-round-2.phase").is_file()
+    # Upstream package NOT restored by auto-continuation.
+    assert not (tmp_path / ".completed" / "step-2a").exists()
+
+
 def test_round_artifact_allowlist_and_drift_baseline(tmp_path: Path) -> None:
     assert plan_review.round_artifact_included("round-summary.env")
     assert not plan_review.round_artifact_included("debug.txt")

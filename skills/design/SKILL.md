@@ -126,8 +126,6 @@ The wrapper-only D3 surface uses these script contracts. Keep direct wrappers an
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-entry-preview.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-entry-state.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-entry-state.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-state.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-state.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-entry.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-entry.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-step3-entry.sh`
@@ -548,7 +546,7 @@ When `STEP3_REVIEW_LOOP_STATUS=postplan-failed`, set `SUMMARY_OUTCOME=failed-pos
 
 Print: `> **🔶 /design 3: plan review**`
 
-When control arrives from Gate A **Ready for review** (direct-to-Step-3) or Gate C **Re-run review panel** or other backward review re-entry, the Step 3 entry fence must pass `--reentry` so `.step3-reentry` exists before `design-step3-state.sh --direct-review-entry` can restore the direct-review bypass package. First-time Step 3 entry must not pass `--reentry`; it only sources env, honors pause, and records timing.
+When control arrives from Gate A **Ready for review** (direct-to-Step-3) or Gate C **Re-run review panel** or other backward review re-entry, the Step 3 entry fence must pass `--reentry` so `.step3-reentry` exists before `python/cli.py plan-review step3-state --direct-review-entry` can restore the direct-review bypass package. First-time Step 3 entry must not pass `--reentry`; it only sources env, honors pause, and records timing.
 
 **First-time Step 3 entry** — run when control arrives on the normal post-Step-2b.5 path (not from Gate A **Ready for review** or Gate C **Re-run review panel**):
 
