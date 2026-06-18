@@ -30,7 +30,7 @@ def _install_closeout_stub(
     summary_body: str = "# Summary\n",
 ) -> None:
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path.cwd()))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
     monkeypatch.setenv("STEP16_FAIL", "true" if step16_fail else "false")
     monkeypatch.setenv("SLACK_STATUS", slack_status)
     monkeypatch.setenv("STEP17_MODE", step17_mode)
