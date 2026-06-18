@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import config
+import execution_issues
 import git
 import issue_query
 import logging_util
@@ -547,13 +548,21 @@ def _teardown_log_flush(runner: Runner, ctx: RunContext, *, cwd: str | None) -> 
     writer = logging_util.BreadcrumbWriter()
     try:
         run_dir.mkdir(parents=True, exist_ok=True)
-        run_logs.render_execution_issues_batch(
-            ctx,
-            run_dir,
+        issue_log = Path(ctx.tmpdir) / "execution-issues.md"
+        log_root = Path(ctx.tmpdir) / "larch-logs"
+        rc, _status, _records, _append_log = execution_issues.flush_execution_issues_safety_net(
+            log_root=log_root,
+            run_id=run_id,
+            issue_log=issue_log,
             step_label="teardown",
             source_label="execution-issues.md teardown safety-net",
         )
-    except (OSError, ShipError) as exc:
+        if rc != 0:
+            writer.emit(
+                f"teardown log flush: execution-issues safety net failed: exit {rc}",
+                quiet=False,
+            )
+    except OSError as exc:
         writer.emit(f"teardown log flush: execution-issues safety net failed: {exc}", quiet=False)
     try:
         recovery = run_logs.load_or_recover_manifest_checked(ctx)

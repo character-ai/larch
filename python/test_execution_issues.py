@@ -106,3 +106,40 @@ def test_flush_execution_issues_main_emits_kv_contract(
     out = capsys.readouterr().out
     assert "FLUSH_STATUS=" in out
     assert "RECORDS=" in out
+
+
+def test_flush_execution_issues_safety_net_preserves_source_log(tmp_path: Path) -> None:
+    issue_log = tmp_path / "execution-issues.md"
+    _ = issue_log.write_text("### Warnings\n- one\n", encoding="utf-8")
+    log_root = tmp_path / "larch-logs"
+
+    rc, status, records, _append_log = execution_issues.flush_execution_issues_safety_net(
+        log_root=log_root.resolve(),
+        run_id="run-4",
+        issue_log=issue_log,
+    )
+
+    assert rc == 0
+    assert status in {"ok", "no-records"}
+    assert records >= 0
+    assert issue_log.read_text(encoding="utf-8") == "### Warnings\n- one\n"
+
+
+def test_flush_execution_issues_safety_net_main_emits_kv_contract(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    issue_log = tmp_path / "execution-issues.md"
+    _ = issue_log.write_text("### Warnings\n- one\n", encoding="utf-8")
+
+    rc = execution_issues.flush_execution_issues_safety_net_main([
+        "--log-root", str((tmp_path / "larch-logs").resolve()),
+        "--run-id", "run-5",
+        "--issue-log", str(issue_log),
+    ])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "FLUSH_STATUS=" in out
+    assert "RECORDS=" in out
+    assert issue_log.read_text(encoding="utf-8") == "### Warnings\n- one\n"

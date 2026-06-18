@@ -71,6 +71,14 @@ If `EMIT_BODY=true` and `WFR_RC=0` but markers are absent or invalid, the orches
 ## Closing marks, restore, and teardown
 
 Closing token and timing reports and `Step 18 — done` marks run before teardown because teardown removes `$IMPLEMENT_TMPDIR`, which is the ledger root (#3425).
+After the closing marks, the wrapper runs the Step 18 execution-issues safety net when a run id is available:
+
+```bash
+python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" execution-issues flush-safety-net --log-root "$IMPLEMENT_TMPDIR/larch-logs" --run-id "$RUN_ID" --issue-log "$IMPLEMENT_TMPDIR/execution-issues.md"
+```
+
+The safety net is best effort and append-only.
+It never truncates `execution-issues.md`; Step 7a remains the primary pre-ship truncating checkpoint.
 Then the copied `_restore_finalize=false` gate compares `ship-pr-state.sh` and `finalize-state.sh`.
 It invokes `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" session restore-finalize-state --implement-tmpdir "$IMPLEMENT_TMPDIR"` when `finalize-state.sh` is missing, ship stall or bail state is truthy, or `STALL_STEP` differs.
 
@@ -90,7 +98,7 @@ Stall KVs, `STALL_RECOVERY_REQUIRED`, Step 18b KVs, marker lines, and teardown t
 
 ## Harness
 
-`test-step-18.sh` covers gate predicates, Step 18b failure tolerance, marker non-abort behavior, marker emission, sentinel ownership, `_restore_finalize`, exact teardown argv, ordering, post-terminal continuation, stream output, and no Read fallback.
+`test-step-18.sh` covers gate predicates, Step 18b failure tolerance, marker non-abort behavior, marker emission, sentinel ownership, `_restore_finalize`, the execution-issues safety net, exact teardown argv, ordering, post-terminal continuation, stream output, and no Read fallback.
 Shell-wrapper cases previously housed in `test-write-final-report.sh` moved to this harness.
 
 ## Edit in sync

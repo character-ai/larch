@@ -106,6 +106,9 @@ def main() -> int:
     if args[:2] == ["timing", "mark"]:
         log("timing mark " + " ".join(args[2:]))
         return 0
+    if args[:2] == ["execution-issues", "flush-safety-net"]:
+        log("flush-safety-net " + " ".join(args[2:]))
+        return 0
     if args[:2] == ["session", "restore-finalize-state"]:
         log("restore-finalize-state " + " ".join(args[2:]))
         return 0
