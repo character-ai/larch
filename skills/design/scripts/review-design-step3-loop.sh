@@ -284,7 +284,16 @@ step3_loop_persist_envelope() {
         step3_loop_record_result_env_write_failure "$status" "$loop_status" "$round_num" "$result_env"
         emit "**⚠ step3_loop_persist_envelope: failed to write result env (${result_env##*/}); loop status may be unrecoverable**"
         emit_kv WARN "step3_loop_persist_envelope: phase_driver_write_result_env failed"
+    else
+        step3_loop_write_terminal_step3
     fi
+}
+
+step3_loop_write_terminal_step3() {
+    mkdir -p "$DESIGN_TMPDIR/.completed"
+    rm -f "$DESIGN_TMPDIR/.completed/step-3-terminal" "$DESIGN_TMPDIR/.step3-terminal-persisted-this-run"
+    : >"$DESIGN_TMPDIR/.completed/step-3-terminal"
+    : >"$DESIGN_TMPDIR/.step3-terminal-persisted-this-run"
 }
 
 step3_loop_write_completed_step3() {

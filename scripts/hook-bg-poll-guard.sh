@@ -80,7 +80,7 @@ marker_step_completed() {
   local dir="$1" step="$2" sentinel=""
   [ -n "$dir" ] || return 1
   case "$step" in
-    design-step3-review)       sentinel="$dir/.completed/step-3"  ;;
+    design-step3-review)       sentinel="$dir/.completed/step-3-terminal"  ;;
     design-step5c)             sentinel="$dir/.completed/step-5c-terminal" ;;
     design-step-final-summary) sentinel="$dir/.completed/step-final-summary" ;;
     *) return 1 ;;
@@ -254,11 +254,52 @@ bash_is_step3_recovery_waiter() {
   # variable is already exported. The `&&`/`||` and probe-verb guards above still
   # reject compound or probing tails appended after the assignment.
   # shellcheck disable=SC2016 # Match literal $DESIGN_TMPDIR in the candidate Bash command.
-  printf '%s' "$normalized" | grep -Eq '^(DESIGN_TMPDIR=[^;]+;[[:space:]]*)?until[[:space:]]+\[[[:space:]]+-f[[:space:]]+"?(\$DESIGN_TMPDIR/\.completed/step-3|\$\{DESIGN_TMPDIR\}/\.completed/step-3)"?[[:space:]]+\];[[:space:]]+do[[:space:]]+sleep[[:space:]]+[0-9]+[[:space:]]*;[[:space:]]+done$'
+  printf '%s' "$normalized" | grep -Eq '^(DESIGN_TMPDIR=[^;]+;[[:space:]]*)?until[[:space:]]+\[[[:space:]]+-f[[:space:]]+"?(\$DESIGN_TMPDIR/\.completed/step-3-terminal|\$\{DESIGN_TMPDIR\}/\.completed/step-3-terminal)"?[[:space:]]+\];[[:space:]]+do[[:space:]]+sleep[[:space:]]+[0-9]+[[:space:]]*;[[:space:]]+done$'
+}
+
+bash_is_terminal_sentinel_foreground_probe() {
+  local cmd="$1" normalized sentinel_path sentinel_name dir sentinel_abs
+  local probe_target_re echo_tail_re test_re bracket_re
+  normalized=$(printf '%s' "$cmd" | tr '\n' ' ' | sed 's/[[:space:]][[:space:]]*/ /g')
+  normalized=$(bash_trim "$normalized")
+  case "$normalized" in
+    *sleep*|*while*|*until*|*for*|*.step3-review-result.env*|*.design-publish-result.env*|*final-summary.md*|*plan-review/*|*tasks/*.output*) return 1 ;;
+    *.completed/step-3\"*|*.completed/step-3\'*|*.completed/step-3[[:space:]]*|*.completed/step-5c\"*|*.completed/step-5c\'*|*.completed/step-5c[[:space:]]*) return 1 ;;
+  esac
+  # shellcheck disable=SC2016 # Match literal $DESIGN_TMPDIR in the candidate Bash command.
+  probe_target_re='(\$DESIGN_TMPDIR/\.completed/(step-3-terminal|step-5c-terminal|step-final-summary)|\$\{DESIGN_TMPDIR\}/\.completed/(step-3-terminal|step-5c-terminal|step-final-summary))'
+  echo_tail_re='([[:space:]]+&&[[:space:]]+echo[[:space:]]+[^;&|[:space:]]+([[:space:]]+[^;&|[:space:]]+)*[[:space:]]+\|\|[[:space:]]+echo[[:space:]]+[^;&|[:space:]]+([[:space:]]+[^;&|[:space:]]+)*)?'
+  test_re='^(DESIGN_TMPDIR=[^;]+;[[:space:]]*)?test[[:space:]]+-f[[:space:]]+"?'"$probe_target_re"'"?'"$echo_tail_re"'$'
+  bracket_re='^(DESIGN_TMPDIR=[^;]+;[[:space:]]*)?\[[[:space:]]+-f[[:space:]]+"?'"$probe_target_re"'"?[[:space:]]+\]'"$echo_tail_re"'$'
+  if printf '%s' "$normalized" | grep -Eq "$test_re"; then
+    :
+  elif printf '%s' "$normalized" | grep -Eq "$bracket_re"; then
+    :
+  else
+    return 1
+  fi
+  # shellcheck disable=SC2016 # Match literal $DESIGN_TMPDIR in the candidate Bash command.
+  sentinel_path=$(printf '%s' "$normalized" | sed -E 's/.*(\$DESIGN_TMPDIR|\$\{DESIGN_TMPDIR\})\/\.completed\/(step-3-terminal|step-5c-terminal|step-final-summary).*/\2/')
+  sentinel_name="$sentinel_path"
+  [ -n "$sentinel_name" ] || return 1
+  if [ -n "${live_dirs_file:-}" ] && [ -f "$live_dirs_file" ]; then
+    while IFS= read -r dir || [ -n "$dir" ]; do
+      [ -n "$dir" ] || continue
+      sentinel_abs="$dir/.completed/$sentinel_name"
+      if [ -L "$sentinel_abs" ]; then
+        return 1
+      fi
+    done <"$live_dirs_file"
+  fi
+  return 0
 }
 
 bash_has_probe_verb() {
   printf '%s' "$1" | grep -Eq "(^|[^[:alnum:]_])${_PROBE_VERB_RE}([^[:alnum:]_]|$)"
+}
+
+bash_has_bracket_file_test() {
+  printf '%s' "$1" | tr '\n' ' ' | grep -Eq '(^|[;&|[:space:]])\[[[:space:]]+!?[[:space:]]*-f[[:space:]]+'
 }
 
 bash_has_probe_target() {
@@ -286,6 +327,11 @@ bash_is_sleep_probe() {
 bash_is_watcher_loop() {
   local cmd="$1"
   printf '%s' "$cmd" | tr '\n' ' ' | grep -Eq "(while|until|for)[[:space:]].*sleep[[:space:]]+[0-9]+.*${_PROBE_VERB_RE}"
+}
+
+bash_is_control_loop() {
+  local cmd="$1"
+  printf '%s' "$cmd" | tr '\n' ' ' | grep -Eq "(^|[^[:alnum:]_])(while|until|for)([^[:alnum:]_]|$)"
 }
 
 bash_is_filetest_sleep_loop() {
@@ -339,15 +385,22 @@ cmd=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""' 2>/dev/null) || e
 [ -n "$cmd" ] || exit 0
 bash_is_strict_wrapper_only "$cmd" && exit 0
 bash_is_step3_recovery_waiter "$cmd" && exit 0
+bash_is_terminal_sentinel_foreground_probe "$cmd" && exit 0
 while IFS= read -r dir || [ -n "$dir" ]; do
   [ -n "$dir" ] || continue
   if bash_has_probe_verb "$cmd" && bash_has_probe_target "$cmd" "$dir" "$cwd_canon"; then
+    deny_if_needed "$dir"
+  fi
+  if bash_has_bracket_file_test "$cmd" && bash_has_probe_target "$cmd" "$dir" "$cwd_canon"; then
     deny_if_needed "$dir"
   fi
   if bash_is_sleep_probe "$cmd" && bash_has_probe_target "$cmd" "$dir" "$cwd_canon"; then
     deny_if_needed "$dir"
   fi
   if bash_is_watcher_loop "$cmd" && bash_has_probe_target "$cmd" "$dir" "$cwd_canon"; then
+    deny_if_needed "$dir"
+  fi
+  if bash_is_control_loop "$cmd" && bash_has_probe_target "$cmd" "$dir" "$cwd_canon"; then
     deny_if_needed "$dir"
   fi
   if bash_is_filetest_sleep_loop "$cmd" && bash_has_probe_target "$cmd" "$dir" "$cwd_canon"; then

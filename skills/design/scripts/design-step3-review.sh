@@ -298,6 +298,7 @@ else
   [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design pause-save --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
 fi
 # Marker step id: STEP=design-step3-review
+rm -f "$DESIGN_TMPDIR/.completed/step-3-terminal" "$DESIGN_TMPDIR/.step3-terminal-persisted-this-run" 2>/dev/null || true
 design_bg_wait_marker_start design-step3-review || true
 _plan_review_stdout_file="$(mktemp "${TMPDIR:-/tmp}/larch-step3-review-stdout.XXXXXX")" || {
   printf '%s\n' "**⚠ Step 3: could not allocate plan-review stdout capture; aborting plan review**" >&2
@@ -313,11 +314,11 @@ _step3_review_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 . "$_step3_review_script_dir/lib-step3-prelaunch-failure.sh"
 
 # #4489: Guarantee the Step 3 completion sentinel on every terminal exit of this
-# background entrypoint. hook-bg-poll-guard.sh gates on .completed/step-3 only and
-# releases a live design-step3-review marker as soon as it exists; terminal paths
-# that skip the inner loop's sentinel write (postplan-failed, the post-loop
-# config/panel-init-failed exits, or a process abandoned mid-continuation) would
-# otherwise leave the guard blocked until the slower dead-process race clears it.
+# background entrypoint. hook-bg-poll-guard.sh gates on .completed/step-3-terminal
+# and releases a live design-step3-review marker as soon as the current wrapper
+# pass has persisted .step3-review-result.env. The wrapper clears stale terminal
+# sentinels before marker start; this trap may recreate step-3-terminal only when
+# the loop wrote the current-pass persist sidecar.
 # Writes ONLY step-3, never step-3.5: step-3.5 is a deferred Gate C / pause-resume
 # gate (design_pause.py step resolution, the Gate B post-apply idempotency guard,
 # design-step3b-entry.sh). Creating it here would skip Gate B on apply-pending
@@ -327,6 +328,9 @@ _step3_review_guarantee_completed_sentinels() {
   [ -n "${DESIGN_TMPDIR:-}" ] && [ -d "${DESIGN_TMPDIR:-}" ] || return 0
   mkdir -p "$DESIGN_TMPDIR/.completed" 2>/dev/null || return 0
   [ -e "$DESIGN_TMPDIR/.completed/step-3" ] || : >"$DESIGN_TMPDIR/.completed/step-3" 2>/dev/null || true
+  if [ -f "$DESIGN_TMPDIR/.step3-terminal-persisted-this-run" ] && [ ! -L "$DESIGN_TMPDIR/.step3-terminal-persisted-this-run" ] && [ -r "$DESIGN_TMPDIR/.step3-terminal-persisted-this-run" ]; then
+    [ -e "$DESIGN_TMPDIR/.completed/step-3-terminal" ] || : >"$DESIGN_TMPDIR/.completed/step-3-terminal" 2>/dev/null || true
+  fi
   return 0
 }
 
@@ -420,8 +424,9 @@ _loop_pid=""
 trap - EXIT
 # #4489: loop teardown is done; from here every terminal exit (config-error,
 # postplan-failed, panel-init-failed, or the normal complete/cap-hit/main-agent
-# fall-through) must leave .completed/step-3 in place so the poll guard releases
-# on the first notification instead of waiting out the dead-process race.
+# fall-through) must leave .completed/step-3 in place. The hook-release sentinel
+# .completed/step-3-terminal is written only after the current wrapper pass
+# persists the result envelope.
 trap '_step3_review_guarantee_completed_sentinels' EXIT
 if [[ "${_step3_review_monitor_enabled_by_wrapper:-0}" -eq 1 ]]; then
   set +m 2>/dev/null || true

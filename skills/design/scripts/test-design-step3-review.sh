@@ -78,6 +78,9 @@ if grep -Fq '**⚠ Step 3: postplan failed' "$WRAPPER"; then
 fi
 grep -Fq 'SUMMARY_OUTCOME=failed-postplan' "$WRAPPER" || fail 'postplan-failed summary KV missing'
 grep -Fq 'SUMMARY_OUTCOME=failed-judge-panel' "$WRAPPER" || fail 'panel-init-failed summary KV missing'
+grep -Fq 'step3_loop_write_terminal_step3' "$LOOP" || fail 'Step 3 loop terminal sentinel helper missing'
+grep -Fq '.step3-terminal-persisted-this-run' "$LOOP" || fail 'Step 3 loop persist sidecar missing'
+grep -Fq '.step3-terminal-persisted-this-run' "$WRAPPER" || fail 'Step 3 wrapper must key terminal trap fallback on current-pass sidecar'
 
 D_STEP3=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-stage.XXXXXX")
 trap 'rm -rf "$D_STEP3"' EXIT
@@ -366,6 +369,9 @@ REVIEW_ROUND_COUNT=1
 RESULT'
 printf 'anchor\n' >"$D_SENTINEL/plan-review-scope-anchor.txt"
 [ ! -e "$D_SENTINEL/.completed/step-3" ] || fail 'precondition: step-3 sentinel must be absent before run'
+mkdir -p "$D_SENTINEL/.completed"
+: >"$D_SENTINEL/.completed/step-3-terminal"
+: >"$D_SENTINEL/.step3-terminal-persisted-this-run"
 set +e
 sentinel_out=$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$FAKE_SENTINEL" DESIGN_TMPDIR="$D_SENTINEL" ISSUE_NUMBER=9 \
   LARCH_TEST_REAL_REPO_ROOT="$ROOT" "$WRAPPER" 2>"$D_SENTINEL/stderr.log")
@@ -374,9 +380,36 @@ set -e
 [[ "$sentinel_rc" -eq 0 ]] || fail "sentinel-guarantee wrapper rc=$sentinel_rc stdout=$sentinel_out stderr=$(cat "$D_SENTINEL/stderr.log")"
 grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=complete' <<<"$sentinel_out" || fail 'sentinel-guarantee path should preserve complete envelope'
 [ -f "$D_SENTINEL/.completed/step-3" ] || fail '#4489: terminal exit must guarantee .completed/step-3'
+[ ! -e "$D_SENTINEL/.completed/step-3-terminal" ] || fail 'stale step-3-terminal must be cleared and not recreated from result env alone'
+[ ! -e "$D_SENTINEL/.step3-terminal-persisted-this-run" ] || fail 'stale step3 terminal persist sidecar must be cleared at wrapper entry'
 [ ! -e "$D_SENTINEL/.completed/step-3.5" ] || fail '#4489: guarantee must not write deferred .completed/step-3.5 (Gate C / pause-resume gate)'
 rm -rf "$D_SENTINEL"
-pass 'Step 3 wrapper guarantees step-3 sentinel and defers step-3.5 on terminal exit (#4489)'
+pass 'Step 3 wrapper clears stale terminal sentinels and does not mint terminal from stale result env'
+
+D_FRESH_TERMINAL=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-terminal.XXXXXX")
+FAKE_FRESH_TERMINAL="$D_FRESH_TERMINAL/fake-plugin"
+# shellcheck disable=SC2016 # fake plugin body must preserve runtime $DESIGN_TMPDIR.
+make_fake_step3_plugin "$FAKE_FRESH_TERMINAL" 'cat > "$DESIGN_TMPDIR/.step3-review-result.env" <<RESULT
+STEP3_REVIEW_LOOP_STATUS=complete
+LOOP_STATUS=complete
+TALLY_PLAN_REVIEW_STATUS=ok
+STEP3_REVIEW_CAP_REACHED=false
+ROUNDS_COMPLETED=1
+REVIEW_ROUND_COUNT=1
+RESULT
+: >"$DESIGN_TMPDIR/.step3-terminal-persisted-this-run"'
+printf 'anchor\n' >"$D_FRESH_TERMINAL/plan-review-scope-anchor.txt"
+set +e
+fresh_terminal_out=$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$FAKE_FRESH_TERMINAL" DESIGN_TMPDIR="$D_FRESH_TERMINAL" ISSUE_NUMBER=9 \
+  LARCH_TEST_REAL_REPO_ROOT="$ROOT" "$WRAPPER" 2>"$D_FRESH_TERMINAL/stderr.log")
+fresh_terminal_rc=$?
+set -e
+[[ "$fresh_terminal_rc" -eq 0 ]] || fail "fresh-terminal wrapper rc=$fresh_terminal_rc stdout=$fresh_terminal_out stderr=$(cat "$D_FRESH_TERMINAL/stderr.log")"
+grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=complete' <<<"$fresh_terminal_out" || fail 'fresh-terminal path should preserve complete envelope'
+[ -f "$D_FRESH_TERMINAL/.completed/step-3-terminal" ] || fail 'current-pass persist sidecar must permit terminal sentinel fallback'
+[ -f "$D_FRESH_TERMINAL/.step3-terminal-persisted-this-run" ] || fail 'current-pass persist sidecar must remain inspectable'
+rm -rf "$D_FRESH_TERMINAL"
+pass 'Step 3 wrapper writes step-3-terminal only when current-pass persist sidecar exists'
 
 D_NO_ANCHOR=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-no-anchor.XXXXXX")
 FAKE_NO_ANCHOR="$D_NO_ANCHOR/fake-plugin"
