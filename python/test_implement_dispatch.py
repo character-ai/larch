@@ -1251,6 +1251,258 @@ def test_step2_dispatch_undeclared_path_warning(repo: Path, tmp_path: Path, monk
     assert "- README.md" not in issues
 
 
+def test_step2_dispatch_plan_coverage_warns_for_untouched_plan_path(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    tmp = _session(tmp_path)
+    (tmp / "plan.txt").write_text(
+        "## Files to modify/create\n"
+        "### UPDATED: `README.md`\n"
+        "### UPDATED: `docs/expected.md`\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+
+    def fake_launcher(st: implement_dispatch.DispatchState):
+        (repo / "README.md").write_text("declared edit\n", encoding="utf-8")
+        st.manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        st.manifest_path.write_text(
+            json.dumps(_complete_manifest_payload(path="README.md", commit_message="stub: edit README only")),
+            encoding="utf-8",
+        )
+        return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
+
+    monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(implement_dispatch, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
+    monkeypatch.setattr(implement_dispatch, "_materialize_oos", lambda *_a, **_k: "")
+    rc = implement_dispatch.step2_dispatch_main([
+        "--tmpdir", str(tmp),
+        "--plan-file", str(tmp / "plan.txt"),
+        "--feature-file", str(tmp / "feature-description.txt"),
+        "--coder", "codex",
+    ])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "STATUS=complete" in out
+    assert "WARN_PLAN_FILES_UNTOUCHED=true" in out
+    assert "WARN_PLAN_FILES_UNTOUCHED_COUNT=1" in out
+    assert _git(repo, "log", "-1", "--pretty=%s").stdout.strip() == "stub: edit README only"
+    issues = (tmp / "execution-issues.md").read_text(encoding="utf-8")
+    assert "docs/expected.md" in issues
+
+
+def test_step2_dispatch_plan_coverage_no_warning_when_all_plan_paths_touched(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    tmp = _session(tmp_path)
+    (tmp / "plan.txt").write_text("## Files to modify/create\n### UPDATED: `README.md`\n", encoding="utf-8")
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+
+    def fake_launcher(st: implement_dispatch.DispatchState):
+        (repo / "README.md").write_text("declared edit\n", encoding="utf-8")
+        st.manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        st.manifest_path.write_text(
+            json.dumps(_complete_manifest_payload(path="README.md", commit_message="stub: edit README")),
+            encoding="utf-8",
+        )
+        return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
+
+    monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(implement_dispatch, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
+    monkeypatch.setattr(implement_dispatch, "_materialize_oos", lambda *_a, **_k: "")
+    rc = implement_dispatch.step2_dispatch_main([
+        "--tmpdir", str(tmp),
+        "--plan-file", str(tmp / "plan.txt"),
+        "--feature-file", str(tmp / "feature-description.txt"),
+        "--coder", "codex",
+    ])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "STATUS=complete" in out
+    assert "WARN_PLAN_FILES_UNTOUCHED" not in out
+    issues = (tmp / "execution-issues.md").read_text(encoding="utf-8") if (tmp / "execution-issues.md").is_file() else ""
+    assert "explicit plan-listed path" not in issues
+
+
+def test_step2_dispatch_plan_coverage_no_warning_without_explicit_scope(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    tmp = _session(tmp_path)
+    (tmp / "plan.txt").write_text("## Plan\n", encoding="utf-8")
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+
+    def fake_launcher(st: implement_dispatch.DispatchState):
+        (repo / "README.md").write_text("declared edit\n", encoding="utf-8")
+        st.manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        st.manifest_path.write_text(
+            json.dumps(_complete_manifest_payload(path="README.md", commit_message="stub: edit README")),
+            encoding="utf-8",
+        )
+        return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
+
+    monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(implement_dispatch, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
+    monkeypatch.setattr(implement_dispatch, "_materialize_oos", lambda *_a, **_k: "")
+    rc = implement_dispatch.step2_dispatch_main([
+        "--tmpdir", str(tmp),
+        "--plan-file", str(tmp / "plan.txt"),
+        "--feature-file", str(tmp / "feature-description.txt"),
+        "--coder", "codex",
+    ])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "STATUS=complete" in out
+    assert "WARN_PLAN_FILES_UNTOUCHED" not in out
+    issues = (tmp / "execution-issues.md").read_text(encoding="utf-8") if (tmp / "execution-issues.md").is_file() else ""
+    assert "skills/design/SKILL.md" not in issues
+    assert "explicit plan-listed path" not in issues
+
+
+def test_step2_dispatch_plan_coverage_no_warning_without_files_section_and_unrelated_heading(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    tmp = _session(tmp_path)
+    (tmp / "plan.txt").write_text(
+        "## Plan\n"
+        "### UPDATED: `docs/expected.md`\n"
+        "## Acceptance\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+
+    def fake_launcher(st: implement_dispatch.DispatchState):
+        (repo / "README.md").write_text("declared edit\n", encoding="utf-8")
+        st.manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        st.manifest_path.write_text(
+            json.dumps(_complete_manifest_payload(path="README.md", commit_message="stub: edit README")),
+            encoding="utf-8",
+        )
+        return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
+
+    monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(implement_dispatch, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
+    monkeypatch.setattr(implement_dispatch, "_materialize_oos", lambda *_a, **_k: "")
+    rc = implement_dispatch.step2_dispatch_main([
+        "--tmpdir", str(tmp),
+        "--plan-file", str(tmp / "plan.txt"),
+        "--feature-file", str(tmp / "feature-description.txt"),
+        "--coder", "codex",
+    ])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "STATUS=complete" in out
+    assert "WARN_PLAN_FILES_UNTOUCHED" not in out
+    issues = (tmp / "execution-issues.md").read_text(encoding="utf-8") if (tmp / "execution-issues.md").is_file() else ""
+    assert "docs/expected.md" not in issues
+    assert "explicit plan-listed path" not in issues
+
+
+def test_step2_dispatch_git_probe_failure_suppresses_plan_and_undeclared_warnings(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    tmp = _session(tmp_path)
+    (tmp / "plan.txt").write_text(
+        "## Files to modify/create\n"
+        "### UPDATED: `README.md`\n"
+        "### UPDATED: `docs/expected.md`\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+
+    def fake_launcher(st: implement_dispatch.DispatchState):
+        (repo / "README.md").write_text("declared edit\n", encoding="utf-8")
+        (repo / "undeclared.txt").write_text("undeclared edit\n", encoding="utf-8")
+        st.manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        st.manifest_path.write_text(
+            json.dumps(_complete_manifest_payload(path="README.md", commit_message="stub: edit README with undeclared side file")),
+            encoding="utf-8",
+        )
+        return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
+
+    real_git = implement_dispatch._git
+
+    def fake_git(repo_root: Path, *args: str, binary: bool = False):
+        if args == ("diff", "--name-only", "HEAD"):
+            return subprocess.CompletedProcess(["git", *args], 1, "", "boom")
+        return real_git(repo_root, *args, binary=binary)
+
+    monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(implement_dispatch, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
+    monkeypatch.setattr(implement_dispatch, "_materialize_oos", lambda *_a, **_k: "")
+    monkeypatch.setattr(implement_dispatch, "_git", fake_git)
+    rc = implement_dispatch.step2_dispatch_main([
+        "--tmpdir", str(tmp),
+        "--plan-file", str(tmp / "plan.txt"),
+        "--feature-file", str(tmp / "feature-description.txt"),
+        "--coder", "codex",
+    ])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "STATUS=complete" in out
+    assert "WARN_PLAN_FILES_UNTOUCHED" not in out
+    issues = (tmp / "execution-issues.md").read_text(encoding="utf-8")
+    assert "git probe(s) failed" in issues
+    assert "git diff --name-only HEAD" in issues
+    assert "docs/expected.md" not in issues
+    assert "not declared in manifest files_touched/tests_added_or_modified" not in issues
+    assert "undeclared.txt" not in issues
+
+
+def test_step2_dispatch_plan_read_failure_suppresses_coverage_kv(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    tmp = _session(tmp_path)
+    plan_path = tmp / "plan.txt"
+    plan_path.write_text(
+        "## Files to modify/create\n"
+        "### UPDATED: `README.md`\n"
+        "### UPDATED: `docs/expected.md`\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+
+    def fake_launcher(st: implement_dispatch.DispatchState):
+        (repo / "README.md").write_text("declared edit\n", encoding="utf-8")
+        st.manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        st.manifest_path.write_text(
+            json.dumps(_complete_manifest_payload(path="README.md", commit_message="stub: edit README")),
+            encoding="utf-8",
+        )
+        return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
+
+    real_read_text = Path.read_text
+
+    def fake_read_text(self: Path, encoding: str | None = None, errors: str | None = None) -> str:
+        if self == plan_path:
+            raise OSError("synthetic plan read failure")
+        return real_read_text(self, encoding=encoding, errors=errors)
+
+    monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(implement_dispatch, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
+    monkeypatch.setattr(implement_dispatch, "_materialize_oos", lambda *_a, **_k: "")
+    monkeypatch.setattr(Path, "read_text", fake_read_text)
+    rc = implement_dispatch.step2_dispatch_main([
+        "--tmpdir", str(tmp),
+        "--plan-file", str(plan_path),
+        "--feature-file", str(tmp / "feature-description.txt"),
+        "--coder", "codex",
+    ])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "STATUS=complete" in out
+    assert "WARN_PLAN_FILES_UNTOUCHED" not in out
+    issues = (tmp / "execution-issues.md").read_text(encoding="utf-8")
+    assert "could not read plan file for plan-file coverage" in issues
+    assert "synthetic plan read failure" in issues
+    assert "docs/expected.md" not in issues
+
+
 def test_materialize_oos_missing_helper_with_observations_bails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     plugin = tmp_path / "plugin"
     plugin.mkdir()
