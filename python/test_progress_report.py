@@ -1,11 +1,12 @@
 from __future__ import annotations
 # pyright: reportPrivateUsage=false, reportUnknownMemberType=false, reportUnknownLambdaType=false, reportUnusedCallResult=false, reportMissingParameterType=false, reportUnknownParameterType=false
 
+import json
 import os
+import subprocess
 import time
 from datetime import UTC, datetime
 from pathlib import Path
-import json
 
 import progress_report
 
@@ -1970,8 +1971,8 @@ def test_render_phase_detail_token_ledger_dual_window(tmp_path: Path, monkeypatc
 
 
 def test_render_phase_detail_best_effort_timeout(monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    def fake_render(*_args: object, **_kwargs: object) -> str:
-        raise TimeoutError("timeout")
+    def fake_run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        raise subprocess.TimeoutExpired(cmd=["test"], timeout=progress_report.RENDER_PHASE_DETAIL_TIMEOUT_SECONDS)
 
-    monkeypatch.setattr(progress_report, "render_phase_detail", fake_render)
+    monkeypatch.setattr(progress_report.subprocess, "run", fake_run)
     assert progress_report._render_phase_detail_best_effort(Path("/missing"), skill="implement") == ""

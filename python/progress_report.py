@@ -4,12 +4,14 @@
 from __future__ import annotations
 
 import argparse
-import concurrent.futures
 import contextlib
 import json
 import os
 import re
 import shlex
+import subprocess
+import sys
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -37,6 +39,7 @@ TIMING_VENDOR_STATUS_COL = 12
 SECONDS_PER_MINUTE = 60
 SECONDS_PER_HOUR = 3600
 RENDER_PHASE_DETAIL_TIMEOUT_SECONDS = 15
+_RENDER_PHASE_DETAIL_LOCK = threading.Lock()
 PROGRESS_GANTT_ROW_CAP = 25
 MIN_MARKDOWN_TABLE_PARTS = 4
 MIN_TSV_RESULT_COLS = 3
@@ -837,6 +840,39 @@ def render_phase_detail(
     return "\n".join(lines) + "\n"
 
 
+def _render_phase_detail_best_effort_cmd(
+    rounds_root: Path,
+    *,
+    skill: str,
+    timing_ledger: Path | None = None,
+    token_ledger: Path | None = None,
+    findings_file: Path | None = None,
+    top_n: int = 7,
+    gantt_enabled: bool = True,
+) -> list[str]:
+    cmd = [
+        sys.executable,
+        str(Path(__file__).resolve().parent / "cli.py"),
+        "progress",
+        "render-phase-detail",
+        "--rounds-root",
+        str(rounds_root),
+        "--skill",
+        skill,
+        "--top-n",
+        str(top_n),
+    ]
+    if not gantt_enabled:
+        cmd.append("--no-gantt")
+    if timing_ledger is not None:
+        cmd.extend(["--timing-ledger", str(timing_ledger)])
+    if token_ledger is not None:
+        cmd.extend(["--token-ledger", str(token_ledger)])
+    if findings_file is not None:
+        cmd.extend(["--findings-file", str(findings_file)])
+    return cmd
+
+
 def _render_phase_detail_best_effort(
     rounds_root: Path,
     *,
@@ -848,24 +884,29 @@ def _render_phase_detail_best_effort(
     gantt_enabled: bool = True,
 ) -> str:
     # Explicit CLI rendering is unbounded; live/final-summary callers use this 15s guard.
-    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    cmd = _render_phase_detail_best_effort_cmd(
+        rounds_root,
+        skill=skill,
+        timing_ledger=timing_ledger,
+        token_ledger=token_ledger,
+        findings_file=findings_file,
+        top_n=top_n,
+        gantt_enabled=gantt_enabled,
+    )
     try:
-        future = executor.submit(
-            lambda: render_phase_detail(
-                rounds_root,
-                skill,
-                timing_ledger=timing_ledger,
-                token_ledger=token_ledger,
-                findings_file=findings_file,
-                top_n=top_n,
-                gantt_enabled=gantt_enabled,
+        with _RENDER_PHASE_DETAIL_LOCK:
+            completed = subprocess.run(  # noqa: S603
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=RENDER_PHASE_DETAIL_TIMEOUT_SECONDS,
+                check=False,
             )
-        )
-        return future.result(timeout=RENDER_PHASE_DETAIL_TIMEOUT_SECONDS)
-    except Exception:  # pylint: disable=broad-except
+    except (subprocess.TimeoutExpired, OSError):
         return ""
-    finally:
-        executor.shutdown(wait=False, cancel_futures=True)
+    if completed.returncode != 0:
+        return ""
+    return completed.stdout
 
 
 def _call_render_phase_detail(
