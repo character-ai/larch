@@ -1,0 +1,4 @@
+Reading additional input from stdin...
+2026-06-18T18:01:27.072208Z ERROR codex_core::tools::router: error=write_stdin failed: stdin is closed for this session; rerun exec_command with tty=true to keep stdin open
+2026-06-18T18:02:12.051592Z ERROR codex_core::tools::router: error=write_stdin failed: stdin is closed for this session; rerun exec_command with tty=true to keep stdin open
+codex-status: ok (no stderr emitted during agent run)
