@@ -883,13 +883,20 @@ def _decode_ansi_c_quoted(inner: str) -> str:
     return "".join(out)
 
 
+def _decode_utf8_byte_escapes(value: str) -> str:
+    try:
+        return value.encode("latin-1").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return value
+
+
 def _decode_bash_percent_q(value: str) -> str:
     if value == "''":
         return ""
     if not value:
         return ""
     if value.startswith("$'") and value.endswith("'"):
-        return _decode_ansi_c_quoted(value[2:-1])
+        return _decode_utf8_byte_escapes(_decode_ansi_c_quoted(value[2:-1]))
     if value.startswith("'"):
         out = []
         i = 1
