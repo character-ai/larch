@@ -1,0 +1,24 @@
+## Structured collector record
+
+REVIEWER_FILE=<TMPDIR>/codex-plan-generic-output.txt|TOOL=codex|STATUS=NOT_SUBSTANTIVE|EXIT_CODE=0|FAILURE_REASON=structured records not found after repair
+
+## Reviewer output (<TMPDIR>/codex-plan-generic-output.txt)
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	out_of_scope	latent	requirements	python/audit_runs.py:804-809; skills/fluff-analysis/scripts/fluff-analysis.py:337-350	[OUT_OF_SCOPE] The approved tally-only scope leaves JSONL-only analysis surfaces blind to nonzero self-review findings	A self-review run with accepted_count > 0 and an empty review-findings-full.jsonl will show correct tally/final-summary, but audit category-stats and fluff-analysis still read zero structured findings	Track a follow-up to either populate self-review JSONL records or teach these consumers an explicit self-review tally-only path.
+## Reviewer stderr (<TMPDIR>/codex-plan-generic-output.txt.diag)
+
+(file missing: <TMPDIR>/codex-plan-generic-output.txt.diag)
+
+## Failed-agent stderr tail (<TMPDIR>/codex-plan-generic-output.txt.stderr-tail)
+
+(file missing: <TMPDIR>/codex-plan-generic-output.txt.stderr-tail)
+
+## Launcher stderr (<TMPDIR>/codex-plan-generic-output.txt.launch-stderr)
+
+⏳ codex agent: still running (1m elapsed)
+⏳ codex agent: still running (2m elapsed)
+⏳ codex agent: still running (3m elapsed)
+✓ codex agent: completed (exit code 0, output 659 bytes)
+
+
