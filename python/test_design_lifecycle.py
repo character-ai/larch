@@ -7,6 +7,8 @@ import json
 import os
 import subprocess
 import sys
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
 
 import pytest
@@ -17,6 +19,31 @@ from design_lifecycle import load_bash_quoted_env, phase_driver_read_result_env
 
 
 CLI = Path(__file__).with_name("cli.py")
+
+
+def _fake_parse_none(*_args: object, **_kwargs: object) -> tuple[int, dict[str, str], str]:
+    return (
+        0,
+        {
+            "POSITIONAL_KIND": "none",
+            "partition_requested": "false",
+            "brainstorm_requested": "false",
+            "approve_requested": "false",
+            "skip_approve_requested": "false",
+            "no_dedup_requested": "false",
+            "run_id": "",
+            "POSITIONAL_VALUE": "",
+        },
+        "",
+    )
+
+
+def _fake_read_json_issue_title(*_args: object, **_kwargs: object) -> tuple[str, str, str]:
+    return ("Title", "body", "false")
+
+
+def _fake_read_json_issue_t(*_args: object, **_kwargs: object) -> tuple[str, str, str]:
+    return ("T", "body", "false")
 
 
 def test_phase_driver_read_result_env_filters_allowlist_and_cr(tmp_path: Path) -> None:
@@ -197,3 +224,383 @@ def test_step1e_reentry_removes_expected_sentinels(tmp_path: Path) -> None:
     assert (completed / "step-keep").exists()
     assert not (completed / "step-2a.5").exists()
     assert not (design / ".gate-b-postapply-ready-x").exists()
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "hello world",
+        "Bob's \"quoted\"",
+        "dollar$sign",
+        "line1\nline2",
+        "tab\there",
+    ],
+)
+def test_bash_quoted_env_round_trips_metacharacters(tmp_path: Path, value: str) -> None:
+    cache = tmp_path / "parsed.env"
+    design_lifecycle.write_bash_quoted_env(cache, {"POSITIONAL_VALUE": value, "POSITIONAL_KIND": "verbal"})
+    loaded = load_bash_quoted_env(cache, ["POSITIONAL_VALUE"])
+    assert loaded["POSITIONAL_VALUE"] == value
+
+
+def test_step0_parse_allows_verbal_containing_public_argv_words_substring(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    result = run_design_cli(
+        "step0-parse",
+        "--claude-pid",
+        "123",
+        "--plugin-root",
+        str(CLI.parent.parent),
+        "--",
+        "feature about PUBLIC_ARGV_WORDS in description",
+        env={"HOME": str(home)},
+    )
+    assert result.returncode == 0, result.stderr
+    assert "POSITIONAL_KIND=verbal" in result.stdout
+
+
+def test_pause_save_main_accepts_wrapper_argv_without_cli_prefix(tmp_path: Path) -> None:
+    rc = design_pause.pause_save_main(["--design-tmpdir", str(tmp_path), "--issue", "0"])
+    assert rc == 0
+
+
+def test_pause_save_receives_only_flag_argv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / ".pause-requested").write_text("", encoding="utf-8")
+    env_path = tmp_path / "source-env.sh"
+    env_path.write_text(
+        f"export DESIGN_TMPDIR={design}\nexport ISSUE_NUMBER=42\nexport CLAUDE_PLUGIN_ROOT={CLI.parent.parent}\n",
+        encoding="utf-8",
+    )
+    captured: list[list[str]] = []
+
+    def capture_pause(argv: list[str]) -> int:
+        captured.append(list(argv))
+        return 0
+
+    monkeypatch.setattr(design_pause, "pause_save_main", capture_pause)
+    with pytest.raises(SystemExit) as exc:
+        design_lifecycle.step0c_main(["--session-env-path", str(env_path), "--claude-pid", "123", "--plugin-root", str(CLI.parent.parent)])
+    assert exc.value.code == 0
+    assert captured == [["--design-tmpdir", str(design), "--issue", "42"]]
+
+
+def test_require_design_tmpdir_rejects_missing(tmp_path: Path) -> None:
+    env_path = tmp_path / "source-env.sh"
+    env_path.write_text(f"export CLAUDE_PLUGIN_ROOT={CLI.parent.parent}\n", encoding="utf-8")
+    with pytest.raises(SystemExit) as exc:
+        design_lifecycle.step0c_main(["--session-env-path", str(env_path), "--claude-pid", "123", "--plugin-root", str(CLI.parent.parent)])
+    assert exc.value.code == 1
+
+
+def test_require_design_tmpdir_rejects_relative_path(tmp_path: Path) -> None:
+    env_path = tmp_path / "source-env.sh"
+    env_path.write_text("export DESIGN_TMPDIR=relative/path\n", encoding="utf-8")
+    with pytest.raises(SystemExit) as exc:
+        design_lifecycle.step0c_main(["--session-env-path", str(env_path), "--claude-pid", "123", "--plugin-root", str(CLI.parent.parent)])
+    assert exc.value.code == 1
+
+
+def test_relay_degraded_tools_gate_stdout_both_down_seen_guard(tmp_path: Path) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    stdout = "DEGRADED=true\nBOTH_DOWN=false\n"
+    state = design_lifecycle.relay_degraded_tools_gate_stdout(stdout, design)
+    assert state["BOTH_DOWN_SEEN"] == "true"
+    assert state["STEP0_STATUS"] == "needs-degraded-decision"
+
+
+def test_relay_degraded_tools_gate_stdout_degraded_one_down_with_prompt(tmp_path: Path) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / ".degraded-tools-gate-prompted").write_text("", encoding="utf-8")
+    stdout = "DEGRADED=true\nBOTH_DOWN=false\n"
+    state = design_lifecycle.relay_degraded_tools_gate_stdout(stdout, design)
+    assert state["STEP0_STATUS"] == "degraded-one-down"
+
+
+def test_step0_session_parse_kvs_precede_session_tmpdir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    design = tmp_path / "design"
+    design.mkdir()
+    stale = home / ".cache" / "larch" / "sessions" / "step0-parsed-123.env"
+    stale.parent.mkdir(parents=True)
+    stale.write_text("POSITIONAL_KIND=issue\nPOSITIONAL_VALUE=99\n", encoding="utf-8")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("DESIGN_TMPDIR", raising=False)
+
+    def fake_setup(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(cmd, 0, "SESSION_TMPDIR=" + str(design) + "\nSESSION_ID=run-1\nCODEX_BINARY_FOUND=false\nCURSOR_BINARY_FOUND=false\nCODEX_PRESENT=false\nCURSOR_PRESENT=false\n", "")
+
+    def fake_gate(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(cmd, 0, "DEGRADED=false\nBOTH_DOWN=false\n", "")
+
+    def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        joined = " ".join(cmd)
+        if "session" in joined and "setup" in joined:
+            return fake_setup(cmd, **kwargs)
+        if "degraded-tools-gate" in joined:
+            return fake_gate(cmd, **kwargs)
+        if "write-design-env" in joined:
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(design_lifecycle, "_run_parse_argv", _fake_parse_none)
+
+    buf = StringIO()
+    with redirect_stdout(buf):
+        rc = design_lifecycle.step0_session_main(["--claude-pid", "123", "--plugin-root", str(CLI.parent.parent), "--"])
+    stdout = buf.getvalue()
+    assert rc == 0
+    parse_idx = stdout.index("POSITIONAL_KIND=none")
+    session_idx = stdout.index("SESSION_TMPDIR=")
+    assert parse_idx < session_idx
+
+
+def _write_session_env(tmp_path: Path, design: Path, monkeypatch: pytest.MonkeyPatch | None = None, **extra: str) -> Path:
+    resolved = design.resolve()
+    if monkeypatch is not None:
+        monkeypatch.setenv("DESIGN_TMPDIR", str(resolved))
+    env_path = tmp_path / "source-env.sh"
+    lines = [
+        f"export DESIGN_TMPDIR={resolved}",
+        "export SESSION_ID=run-1",
+        f"export CLAUDE_PLUGIN_ROOT={CLI.parent.parent}",
+    ]
+    lines.extend(f"export {key}={value}" for key, value in extra.items())
+    env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return env_path
+
+
+def test_step0_route_cancel_pause_load_replays_errors_and_no_route_stdout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / ".design-step0-parsed.env").write_text("POSITIONAL_KIND=issue\nPOSITIONAL_VALUE=42\n", encoding="utf-8")
+    (design / "issue-body.txt").write_text("body\n", encoding="utf-8")
+    (design / ".design-route-result.env").write_text("ROUTE=cancel-pause-load\nERROR=pause-load-broken\nWARN=stale-marker\n", encoding="utf-8")
+    env_path = _write_session_env(tmp_path, design, monkeypatch, ISSUE_NUMBER="42", ISSUE_TITLE="Title", HAS_CLARIFY_LABEL="false", REPO="owner/repo")
+
+    def fake_route(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(cmd, 0, "ROUTE=cancel-pause-load\nERROR=pause-load-broken\nWARN=stale-marker\n", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_route)
+    monkeypatch.setattr(design_lifecycle, "_read_json_issue", _fake_read_json_issue_title)
+
+    rc = design_lifecycle.step0_route_main(["--session-env-path", str(env_path), "--claude-pid", "123", "--plugin-root", str(CLI.parent.parent)])
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "ERROR=pause-load-broken" in captured.out
+    assert "WARN=stale-marker" in captured.out
+    assert not any(line.startswith("ROUTE=") for line in captured.out.splitlines())
+
+
+def test_step0_route_relays_stderr_on_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / ".design-step0-parsed.env").write_text("POSITIONAL_KIND=none\n", encoding="utf-8")
+    env_path = _write_session_env(tmp_path, design, monkeypatch)
+
+    def fake_route(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(cmd, 2, "", "design-route.sh: issue-body-file must be a readable regular file\n")
+
+    monkeypatch.setattr(subprocess, "run", fake_route)
+
+    rc = design_lifecycle.step0_route_main(["--session-env-path", str(env_path), "--claude-pid", "123", "--plugin-root", str(CLI.parent.parent)])
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "issue-body-file must be a readable regular file" in captured.err
+
+
+def test_step0_init_preserves_spaced_issue_title(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / ".design-step0-parsed.env").write_text("POSITIONAL_KIND=none\n", encoding="utf-8")
+    (design / ".design-step0-route-state.env").write_text("ROUTE=proceed\nISSUE_TITLE=Add retry support\nISSUE_NUMBER=42\n", encoding="utf-8")
+    (design / ".design-route-result.env").write_text("ROUTE=proceed\n", encoding="utf-8")
+    (design / "issue-body.txt").write_text("body text\n", encoding="utf-8")
+    env_path = _write_session_env(tmp_path, design, monkeypatch, ISSUE_NUMBER="42")
+
+    def fake_init(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        (design / ".design-init-runparams-result.env").write_text("INIT_STATUS=ok\nRENAMED=false\nRUN_PARAMS_PATH=" + str(design / "run-params.json") + "\n", encoding="utf-8")
+        (design / "run-params.json").write_text("{}", encoding="utf-8")
+        return subprocess.CompletedProcess(cmd, 0, "INIT_STATUS=ok\nRENAMED=false\n", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_init)
+
+    assert design_lifecycle.step0_init_main(["--session-env-path", str(env_path), "--claude-pid", "123", "--plugin-root", str(CLI.parent.parent)]) == 0
+    feature = (design / "feature-description.txt").read_text(encoding="utf-8")
+    assert feature.startswith("# Add retry support\n\n")
+
+
+def test_step0_init_skips_feature_write_when_route_result_differs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / ".design-step0-parsed.env").write_text("POSITIONAL_KIND=none\n", encoding="utf-8")
+    (design / ".design-step0-route-state.env").write_text("ROUTE=proceed\nISSUE_TITLE=Stale\n", encoding="utf-8")
+    (design / ".design-route-result.env").write_text("ROUTE=clarify\n", encoding="utf-8")
+    (design / "issue-body.txt").write_text("body\n", encoding="utf-8")
+    env_path = _write_session_env(tmp_path, design, monkeypatch)
+
+    def fake_init(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        (design / ".design-init-runparams-result.env").write_text("INIT_STATUS=ok\nRENAMED=false\nRUN_PARAMS_PATH=" + str(design / "run-params.json") + "\n", encoding="utf-8")
+        (design / "run-params.json").write_text("{}", encoding="utf-8")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_init)
+
+    assert design_lifecycle.step0_init_main(["--session-env-path", str(env_path), "--claude-pid", "123", "--plugin-root", str(CLI.parent.parent)]) == 0
+    assert not (design / "feature-description.txt").exists()
+
+
+def test_step0_init_relays_stderr_on_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / ".design-step0-parsed.env").write_text("POSITIONAL_KIND=none\n", encoding="utf-8")
+    (design / ".design-route-result.env").write_text("ROUTE=proceed\n", encoding="utf-8")
+    env_path = _write_session_env(tmp_path, design, monkeypatch)
+
+    def fake_init(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        (design / ".design-init-runparams-result.env").write_text("INIT_STATUS=env-refresh-failed\nRUN_PARAMS_PATH=\n", encoding="utf-8")
+        return subprocess.CompletedProcess(cmd, 1, "", "design-init-runparams.sh: missing required arguments\n")
+
+    monkeypatch.setattr(subprocess, "run", fake_init)
+
+    rc = design_lifecycle.step0_init_main(["--session-env-path", str(env_path), "--claude-pid", "123", "--plugin-root", str(CLI.parent.parent)])
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "missing required arguments" in captured.err
+
+
+def test_step0_clarify_hard_halt_forwards_exit_code_and_detail_log(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    detail = design / "custom.failure.log"
+    detail.write_text("detail\n", encoding="utf-8")
+    env_path = _write_session_env(tmp_path, design, monkeypatch, ISSUE_NUMBER="42")
+    captured: list[list[str]] = []
+    real_run = subprocess.run
+
+    def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if cmd and "design-stage-terminal-state.sh" in cmd[0]:
+            captured.append(list(cmd))
+            return subprocess.CompletedProcess(cmd, 0, "STAGED=true\n", "")
+        return real_run(cmd, check=False, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    assert design_lifecycle.step0_clarify_hard_halt_main(
+        [
+            "--session-env-path",
+            str(env_path),
+            "--claude-pid",
+            "123",
+            "--plugin-root",
+            str(CLI.parent.parent),
+            "--exit-code",
+            "7",
+            "--failure-detail-log",
+            str(detail),
+        ]
+    ) == 0
+    argv = captured[0]
+    assert "--exit-code" in argv
+    assert argv[argv.index("--exit-code") + 1] == "7"
+    assert "--failure-detail-log" in argv
+    assert str(detail) in argv[argv.index("--failure-detail-log") + 1]
+
+
+def test_step0_route_forwards_router_flags(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / ".design-step0-parsed.env").write_text(
+        "POSITIONAL_KIND=issue\nPOSITIONAL_VALUE=42\npartition_requested=true\nbrainstorm_requested=true\napprove_requested=true\nskip_approve_requested=true\n",
+        encoding="utf-8",
+    )
+    (design / "issue-body.txt").write_text("body\n", encoding="utf-8")
+    env_path = _write_session_env(tmp_path, design, monkeypatch, ISSUE_NUMBER="42", ISSUE_TITLE="T", HAS_CLARIFY_LABEL="false", REPO="owner/repo", SESSION_ID="sid-1")
+    captured: list[list[str]] = []
+
+    def fake_route(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        captured.append(list(cmd))
+        (design / ".design-route-result.env").write_text("ROUTE=proceed\n", encoding="utf-8")
+        return subprocess.CompletedProcess(cmd, 0, "ROUTE=proceed\n", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_route)
+    monkeypatch.setattr(design_lifecycle, "_read_json_issue", _fake_read_json_issue_t)
+
+    assert design_lifecycle.step0_route_main(["--session-env-path", str(env_path), "--claude-pid", "123", "--plugin-root", str(CLI.parent.parent)]) == 0
+    route_cmd = captured[0]
+    for flag, value in (
+        ("--partition-requested", "true"),
+        ("--brainstorm-requested", "true"),
+        ("--approve-requested", "true"),
+        ("--skip-approve-requested", "true"),
+        ("--claude-pid", "123"),
+        ("--session-id", "sid-1"),
+        ("--repo", "owner/repo"),
+    ):
+        assert flag in route_cmd
+        assert route_cmd[route_cmd.index(flag) + 1] == value
+
+
+def test_step1d5_collect_pause_precedes_collect(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / ".pause-requested").write_text("", encoding="utf-8")
+    env_path = _write_session_env(tmp_path, design, monkeypatch, ISSUE_NUMBER="42")
+    order: list[str] = []
+
+    def fake_pause(_argv: list[str]) -> int:
+        order.append("pause")
+        return 3
+
+    def fake_collect(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        order.append("collect")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(design_pause, "pause_save_main", fake_pause)
+    monkeypatch.setattr(subprocess, "run", fake_collect)
+    out_path = design / "cursor-brainstorm-output.txt"
+    out_path.write_text("x\n", encoding="utf-8")
+    with pytest.raises(SystemExit) as exc:
+        design_lifecycle.step1d5_main(
+            ["--session-env-path", str(env_path), "--claude-pid", "123", "--plugin-root", str(CLI.parent.parent), "--mode", "collect", "--", str(out_path)]
+        )
+    assert exc.value.code == 3
+    assert order == ["pause"]
+
+
+def test_step1d5_collect_launch_failure_sentinel_idempotent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    env_path = _write_session_env(tmp_path, design, monkeypatch)
+    out_path = design / "cursor-brainstorm-output.txt"
+    out_path.write_text("x\n", encoding="utf-8")
+    sink = design / "cursor-brainstorm-launch.failure.log"
+    sink.write_text("LAUNCHER_EXIT=2\n", encoding="utf-8")
+    append_calls = 0
+
+    def fake_append(*_a: object, **_k: object) -> bool:
+        nonlocal append_calls
+        append_calls += 1
+        return True
+
+    def fake_collect(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    def fake_checkpoint(*_a: object, **_k: object) -> None:
+        return None
+
+    monkeypatch.setattr(design_lifecycle, "_append_failure", fake_append)
+    monkeypatch.setattr(subprocess, "run", fake_collect)
+    monkeypatch.setattr(design_lifecycle, "_brainstorm_dirty_checkpoint", fake_checkpoint)
+    args = ["--session-env-path", str(env_path), "--claude-pid", "123", "--plugin-root", str(CLI.parent.parent), "--mode", "collect", "--", str(out_path)]
+    assert design_lifecycle.step1d5_main(args) == 0
+    assert append_calls == 1
+    assert (design / ".brainstorm-cursor-brainstorm-launch.failure.log.runlog-appended").is_file()
+    assert design_lifecycle.step1d5_main(args) == 0
+    assert append_calls == 1

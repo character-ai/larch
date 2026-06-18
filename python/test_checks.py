@@ -2534,6 +2534,8 @@ def test_direct_targets_design_lifecycle_and_launcher_python_tests(tmp_path: Pat
     lifecycle_targets = _direct_targets_for(("python/design_lifecycle.py",), tmp_path)
     assert "test-design-step0-init" in lifecycle_targets
     assert "test-design-step1d5" in lifecycle_targets
+    assert "test-design-stage-terminal-state" in lifecycle_targets
+    assert "test-design-failure-report" in lifecycle_targets
     assert "test-design-structure" in lifecycle_targets
     session_targets = _direct_targets_for(("python/session_env.py",), tmp_path)
     assert "test-design-structure" in session_targets

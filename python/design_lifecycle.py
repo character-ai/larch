@@ -19,6 +19,8 @@ from pathlib import Path
 import design_pause
 from collections.abc import Iterable, Mapping, Sequence
 
+_SUBPROCESS_RUN = subprocess.run
+
 
 def _valid_var_name(value: str) -> bool:
     if not value or value[0].isdigit():
@@ -576,18 +578,17 @@ def require_plugin_root(value: str) -> Path:
 
 
 def _bash_percent_q(value: str) -> str:
+    proc = _SUBPROCESS_RUN(
+        ["bash", "-c", 'printf "%q" "$1"', "_", value],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode == 0:
+        return proc.stdout
     if value == "":
         return "''"
-    safe = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_@%+=:,./-")
-    out = []
-    for ch in value:
-        if ch in safe:
-            out.append(ch)
-        elif ch == "\n":
-            out.append("$'\\n'")
-        else:
-            out.append("\\" + ch)
-    return "".join(out)
+    return shlex.quote(value)
 
 
 def write_bash_quoted_env(path: Path, data: Mapping[str, str]) -> None:
@@ -599,6 +600,14 @@ def write_bash_quoted_env(path: Path, data: Mapping[str, str]) -> None:
 def _decode_shell_assignment_value(value: str) -> str:
     if value == "":
         return ""
+    proc = _SUBPROCESS_RUN(
+        ["bash", "-c", 'eval "v=$1"; printf "%s" "$v"', "_", value],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode == 0:
+        return proc.stdout
     try:
         parts = shlex.split("v=" + value, posix=True)
     except ValueError:
@@ -681,7 +690,8 @@ def _run_parse_argv(public_argv: Sequence[str], plugin_root: Path) -> tuple[int,
 
 
 def _validate_parse_result(rc: int, data: dict[str, str], stderr_text: str) -> None:
-    if "PUBLIC_ARGV_WORDS" in stderr_text or "PUBLIC_ARGV_WORDS" in data.get("POSITIONAL_VALUE", ""):
+    positional = data.get("POSITIONAL_VALUE", "")
+    if "PUBLIC_ARGV_WORDS" in stderr_text or positional in {"${PUBLIC_ARGV_WORDS}", "$PUBLIC_ARGV_WORDS"}:
         print("**⚠ /design: skill loader did not expand public argv words; aborting before session setup.**", file=sys.stderr)
         raise SystemExit(1)
     validation_error = data.get("VALIDATION_ERROR", "")
@@ -755,15 +765,33 @@ def _run_best_effort(command: Sequence[str], *, env: Mapping[str, str] | None = 
 
 
 def _pause_args(env: Mapping[str, str], design_tmpdir: str | Path) -> list[str]:
-    args = ["design", "pause-save", "--design-tmpdir", str(design_tmpdir), "--issue", env.get("ISSUE_NUMBER", "")]
+    args = ["--design-tmpdir", str(design_tmpdir), "--issue", env.get("ISSUE_NUMBER", "")]
     if env.get("REPO"):
         args.extend(["--repo", env["REPO"]])
     return args
 
 
+def _require_design_tmpdir(env: Mapping[str, str], design_tmpdir: str | Path | None = None) -> Path:
+    raw = str(design_tmpdir or env.get("DESIGN_TMPDIR", ""))
+    if not raw:
+        print("/design wrapper: DESIGN_TMPDIR required", file=sys.stderr)
+        raise SystemExit(1)
+    path = Path(raw)
+    if not path.is_absolute():
+        print("/design wrapper: DESIGN_TMPDIR must be an absolute path", file=sys.stderr)
+        raise SystemExit(1)
+    if not path.is_dir():
+        print(f"/design wrapper: DESIGN_TMPDIR is not an existing directory: {path}", file=sys.stderr)
+        raise SystemExit(1)
+    return path.resolve()
+
+
 def check_pause_and_exit(env: Mapping[str, str], design_tmpdir: str | Path | None = None) -> None:
-    tmpdir = Path(str(design_tmpdir or env.get("DESIGN_TMPDIR", "")))
-    if str(tmpdir) and (tmpdir / ".pause-requested").is_file():
+    raw = str(design_tmpdir or env.get("DESIGN_TMPDIR", ""))
+    if not raw:
+        return
+    tmpdir = _require_design_tmpdir(env, design_tmpdir)
+    if (tmpdir / ".pause-requested").is_file():
         rc = design_pause.pause_save_main(_pause_args(env, tmpdir))
         raise SystemExit(rc)
 
@@ -933,7 +961,7 @@ def step0_route_main(argv: Sequence[str]) -> int:
     ns = _parse_wrapper_args(argv)
     env = _load_wrapper_env(ns)
     plugin_root = require_plugin_root(env.get("CLAUDE_PLUGIN_ROOT", ns.plugin_root))
-    design_tmpdir = Path(env.get("DESIGN_TMPDIR", ""))
+    design_tmpdir = _require_design_tmpdir(env)
     check_pause_and_exit(env, design_tmpdir)
     parsed = load_bash_quoted_env(design_tmpdir / ".design-step0-parsed.env", PARSED_ENV_KEYS)
     env.update(parsed)
@@ -1003,9 +1031,13 @@ def step0_route_main(argv: Sequence[str]) -> int:
         proc = subprocess.run(route_cmd, capture_output=True, text=True, check=False)
         capture_path.write_text(proc.stdout, encoding="utf-8")
         if proc.returncode == CONFIGURATION_ERROR_RC:
+            if proc.stderr:
+                print(proc.stderr, end="" if proc.stderr.endswith("\n") else "\n", file=sys.stderr)
             print("**⚠ Step 0b: design-route.sh configuration error (exit 2); aborting /design**", file=sys.stderr)
             return 1
         if proc.returncode != 0:
+            if proc.stderr:
+                print(proc.stderr, end="" if proc.stderr.endswith("\n") else "\n", file=sys.stderr)
             print(f"**⚠ Step 0b: design-route.sh failed (exit {proc.returncode}); aborting /design**", file=sys.stderr)
             return 1
         route_env = _read_result_pairs(design_tmpdir / ".design-route-result.env", capture_path, ROUTE_RESULT_KEYS)
@@ -1020,6 +1052,9 @@ def step0_route_main(argv: Sequence[str]) -> int:
         env["brainstorm_requested"] = "true"
         print("**ℹ /design: detected Brainstorm title prefix — auto-enabling brainstorm mode (run-params `brainstorm_requested=true`) even though --brainstorm was not on argv.**")  # noqa: RUF001
     if route == "cancel-pause-load":
+        result_env_path = design_tmpdir / ".design-route-result.env"
+        if result_env_path.is_file():
+            _replay_warn_error(result_env_path)
         print("**⚠ /design: pause resume state could not be loaded safely; aborting before fresh routing. Inspect pause-load ERROR breadcrumbs above, fix the pause block, then re-invoke /design.**", file=sys.stderr)
         return 1
     resume_step = ""
@@ -1069,10 +1104,11 @@ def step0_init_main(argv: Sequence[str]) -> int:
     ns = _parse_wrapper_args(argv)
     env = _load_wrapper_env(ns)
     plugin_root = require_plugin_root(env.get("CLAUDE_PLUGIN_ROOT", ns.plugin_root))
-    design_tmpdir = Path(env.get("DESIGN_TMPDIR", ""))
+    design_tmpdir = _require_design_tmpdir(env)
     check_pause_and_exit(env, design_tmpdir)
     env.update(load_bash_quoted_env(design_tmpdir / ".design-step0-parsed.env", PARSED_ENV_KEYS))
-    env.update(load_bash_quoted_env(design_tmpdir / ".design-step0-route-state.env", ROUTE_STATE_KEYS))
+    with contextlib.suppress(OSError):
+        env.update(dict(phase_driver_read_result_env(design_tmpdir / ".design-step0-route-state.env", ROUTE_STATE_KEYS)))
     init_route = _load_route_result_route(design_tmpdir)
     if init_route in {"proceed", "already-planned"}:
         issue_body = design_tmpdir / "issue-body.txt"
@@ -1110,9 +1146,13 @@ def step0_init_main(argv: Sequence[str]) -> int:
         proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
         capture_path.write_text(proc.stdout, encoding="utf-8")
         if proc.returncode == CONFIGURATION_ERROR_RC:
+            if proc.stderr:
+                print(proc.stderr, end="" if proc.stderr.endswith("\n") else "\n", file=sys.stderr)
             print("**⚠ Step 0b: design-init-runparams.sh configuration error (exit 2); aborting /design**", file=sys.stderr)
             return 1
         if proc.returncode not in {0, 1}:
+            if proc.stderr:
+                print(proc.stderr, end="" if proc.stderr.endswith("\n") else "\n", file=sys.stderr)
             print(f"**⚠ Step 0b: design-init-runparams.sh failed (exit {proc.returncode}); aborting /design**", file=sys.stderr)
             return 1
         result = _read_result_pairs(design_tmpdir / ".design-init-runparams-result.env", capture_path, INIT_RESULT_KEYS)
@@ -1127,6 +1167,8 @@ def step0_init_main(argv: Sequence[str]) -> int:
         print("**⚠ Step 0b: design-init-runparams.sh exited 0 without INIT_STATUS=ok and run-params.json; aborting /design**", file=sys.stderr)
         return 1
     if proc.returncode == 1:
+        if proc.stderr:
+            print(proc.stderr, end="" if proc.stderr.endswith("\n") else "\n", file=sys.stderr)
         print(f"**⚠ Step 0b: design-init-runparams.sh failed (INIT_STATUS={init_status or 'unknown'}); aborting /design**", file=sys.stderr)
         return 1
     return 0
@@ -1196,11 +1238,12 @@ def step0_ap_continue_main(argv: Sequence[str]) -> int:
     ns = _parse_wrapper_args(argv)
     env = _load_wrapper_env(ns)
     require_plugin_root(env.get("CLAUDE_PLUGIN_ROOT", ns.plugin_root))
-    completed = Path(env.get("DESIGN_TMPDIR", "")) / ".completed"
+    design_tmpdir = _require_design_tmpdir(env)
+    completed = design_tmpdir / ".completed"
     completed.mkdir(parents=True, exist_ok=True)
     for name in ("step-1c", "step-1d", "step-1d.5"):
         (completed / name).write_text("", encoding="utf-8")
-    check_pause_and_exit(env)
+    check_pause_and_exit(env, design_tmpdir)
     return 0
 
 
@@ -1209,8 +1252,8 @@ def step0c_main(argv: Sequence[str]) -> int:
     env = _load_wrapper_env(ns)
     plugin_root = require_plugin_root(env.get("CLAUDE_PLUGIN_ROOT", ns.plugin_root))
     _derive_binary_found(env)
-    check_pause_and_exit(env)
-    design_tmpdir = Path(env.get("DESIGN_TMPDIR", ""))
+    design_tmpdir = _require_design_tmpdir(env)
+    check_pause_and_exit(env, design_tmpdir)
     completed = design_tmpdir / ".completed"
     completed.mkdir(parents=True, exist_ok=True)
     (completed / "step-0c").write_text("", encoding="utf-8")
@@ -1286,17 +1329,17 @@ def step1d5_main(argv: Sequence[str]) -> int:
     ns = _parse_wrapper_args(argv)
     env = _load_wrapper_env(ns)
     plugin_root = require_plugin_root(env.get("CLAUDE_PLUGIN_ROOT", ns.plugin_root))
-    design_tmpdir = Path(env.get("DESIGN_TMPDIR", ""))
+    design_tmpdir = _require_design_tmpdir(env)
     if ns.mode == "entry":
         completed = design_tmpdir / ".completed"
         completed.mkdir(parents=True, exist_ok=True)
         for name in ("step-1c", "step-1d"):
             (completed / name).write_text("", encoding="utf-8")
-        check_pause_and_exit(env)
+        check_pause_and_exit(env, design_tmpdir)
         _run_best_effort(_cli_cmd(plugin_root, "timing", "mark", "design Step 1d.5 — brainstorm"), env={**os.environ, "LARCH_TIMING_SKILL": "design"})
         return 0
     if ns.mode == "collect":
-        check_pause_and_exit(env)
+        check_pause_and_exit(env, design_tmpdir)
         if not ns.public_argv:
             print("design-step1d5.sh: --mode collect requires at least one output path after --", file=sys.stderr)
             return 2
@@ -1320,7 +1363,7 @@ def step1d5_main(argv: Sequence[str]) -> int:
         completed = design_tmpdir / ".completed"
         completed.mkdir(parents=True, exist_ok=True)
         (completed / "step-1d.5").write_text("", encoding="utf-8")
-        check_pause_and_exit(env)
+        check_pause_and_exit(env, design_tmpdir)
         return 0
     print("design-step1d5.sh: --mode required", file=sys.stderr)
     return 2
@@ -1331,10 +1374,11 @@ def step1d7_main(argv: Sequence[str]) -> int:
     env = _load_wrapper_env(ns)
     require_plugin_root(env.get("CLAUDE_PLUGIN_ROOT", ns.plugin_root))
     _derive_binary_found(env)
-    check_pause_and_exit(env)
+    design_tmpdir = _require_design_tmpdir(env)
+    check_pause_and_exit(env, design_tmpdir)
     skip = False
     try:
-        data = json.loads((Path(env.get("DESIGN_TMPDIR", "")) / "run-params.json").read_text(encoding="utf-8"))
+        data = json.loads((design_tmpdir / "run-params.json").read_text(encoding="utf-8"))
         skip = bool(data.get("skip_approve_requested")) if isinstance(data, dict) else False
     except (OSError, json.JSONDecodeError):
         skip = False
@@ -1346,14 +1390,14 @@ def step1e_reentry_main(argv: Sequence[str]) -> int:
     ns = _parse_wrapper_args(argv)
     env = _load_wrapper_env(ns)
     require_plugin_root(env.get("CLAUDE_PLUGIN_ROOT", ns.plugin_root))
-    design_tmpdir = Path(env.get("DESIGN_TMPDIR", ""))
+    design_tmpdir = _require_design_tmpdir(env)
     for name in ("step-1e", "step-2a", "step-2a.5", "step-2b", "step-2b.5", "step-3", "step-3.5", "step-3b", "step-4", "step-4b"):
         with contextlib.suppress(FileNotFoundError):
             (design_tmpdir / ".completed" / name).unlink()
     for path in design_tmpdir.glob(".gate-b-postapply-ready-*"):
         with contextlib.suppress(FileNotFoundError):
             path.unlink()
-    check_pause_and_exit(env)
+    check_pause_and_exit(env, design_tmpdir)
     return 0
 
 def driver_main(argv: Sequence[str]) -> int:
