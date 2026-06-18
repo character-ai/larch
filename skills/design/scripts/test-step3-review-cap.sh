@@ -7,7 +7,6 @@ ROOT="$(cd "$(dirname "$0")/../../.." && pwd -P)"
 SKILL_MD="$ROOT/skills/design/SKILL.md"
 APPROVAL_GATES="$ROOT/skills/design/references/approval-gates.md"
 CLI="$ROOT/python/cli.py"
-CONTINUATION="$ROOT/skills/design/scripts/plan-review-continuation.sh"
 
 fail() {
     printf 'FAIL: %s\n' "$1" >&2
@@ -51,7 +50,8 @@ grep -Fq 'design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --phase 
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 grep -Fq 'Legacy `--mode single` only' "$APPROVAL_GATES" \
     || fail 'approval-gates missing legacy-only continuation branch'
-[[ -x "$CONTINUATION" ]] || fail 'plan-review-continuation.sh must be executable'
+grep -Fq 'plan-review continuation' "$ROOT/python/plan_review.py" \
+    || fail 'plan_review.py missing native continuation entry point'
 
 TMP_PARENT="${TMPDIR:-/tmp}"
 if mkdir -p "${HOME}/.cache/larch/sessions" 2>/dev/null && [[ -w "${HOME}/.cache/larch/sessions" ]]; then
@@ -182,7 +182,7 @@ printf '%s\n' "$driver_out" | grep -q 'LOOP_STATUS=cap-reached' || fail 'expecte
 
 run_continuation() {
     local design_tmpdir="$1" approve="$2"
-    CLAUDE_PLUGIN_ROOT="$ROOT" "$CONTINUATION" --design-tmpdir "$design_tmpdir" --approve-requested "$approve"
+    CLAUDE_PLUGIN_ROOT="$ROOT" python3 "$CLI" plan-review continuation --design-tmpdir "$design_tmpdir" --approve-requested "$approve"
 }
 
 echo "=== continuation helper stops before cap cleanup ==="
@@ -383,6 +383,9 @@ printf '%s\n' "$cont_out" | grep -q '^DEGRADED_PANEL=0$' || fail 'successful ret
 echo "=== chained continuation launches second review and preserves round-1 artifacts ==="
 DCHAIN="$TMPROOT/continuation-chain"
 write_common_inputs "$DCHAIN"
+# Use approve_requested=true so the second run returns per-round-approval-required
+# after launching round 2, without writing .completed/step-3.5
+printf '{"schema_version":3,"partition_requested":false,"brainstorm_requested":false,"approve_requested":true}\n' >"$DCHAIN/run-params.json"
 chain_stub="$DCHAIN/chain-loop-stub.sh"
 cat >"$chain_stub" <<'STUBEOF'
 #!/usr/bin/env bash

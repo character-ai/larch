@@ -14,8 +14,15 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-# shellcheck source=skills/design/scripts/lib-step3-prelaunch-failure.sh
-source "$SCRIPT_DIR/lib-step3-prelaunch-failure.sh"
+
+_step3_entry_panel_init_failed_exit() {
+  local _reason="${1:-panel-init-failed}"
+  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review prelaunch-failure \
+    --design-tmpdir "$DESIGN_TMPDIR" \
+    --reason "$_reason"
+  printf '%s\n' 'SUMMARY_OUTCOME=failed-judge-panel'
+  exit 1
+}
 DESIGN_TMPDIR="${DESIGN_TMPDIR:-}"
 if [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
   # shellcheck source=/dev/null

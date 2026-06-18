@@ -230,6 +230,45 @@ def test_panel_dispatch_dynamic_scout_rows(tmp_path: Path) -> None:
     assert "dyn-codex-plan-beta" in manifest_text
 
 
+def test_panel_dispatch_prunes_round_three_empty_panel(tmp_path: Path) -> None:
+    design = tmp_path / "design-pruned"
+    design.mkdir()
+    _ = (design / "plan.txt").write_text("Plan body.\n", encoding="utf-8")
+    _ = (design / "feature-description.txt").write_text("feat\n", encoding="utf-8")
+    rows = [
+        ("cursor", "cursor-plan-arch"),
+        ("cursor", "cursor-plan-innovation"),
+        ("cursor", "cursor-plan-pragmatic"),
+        ("cursor", "cursor-plan-requirements"),
+        ("codex", "codex-plan-generic"),
+    ]
+    ledger_lines = ["round\ttool\tslot\tlabel\taccepted_count"]
+    for round_num in (1, 2):
+        ledger_lines.extend(f"{round_num}\t{tool}\t{slot}\t{slot}\t0" for tool, slot in rows)
+    _ = (design / "reviewer-prune-ledger.tsv").write_text("\n".join(ledger_lines) + "\n", encoding="utf-8")
+    proc = run_cli(
+        "plan-review",
+        "panel-dispatch",
+        "--design-tmpdir",
+        str(design),
+        "--round-num",
+        "3",
+        "--codex-present",
+        "true",
+        "--cursor-present",
+        "true",
+        "--plan-file",
+        str(design / "plan.txt"),
+        "--feature-file",
+        str(design / "feature-description.txt"),
+        env={"LARCH_QUIET_DISABLE": "1"},
+    )
+    assert proc.returncode == 0, proc.stderr + proc.stdout
+    assert "PANEL_PRUNED_EMPTY=true" in proc.stdout
+    assert (design / "plan-review-slots.pre-prune.ndjson").is_file()
+    assert not (design / "plan-review-slots.ndjson").read_text(encoding="utf-8").strip()
+
+
 def test_voter_dispatch_absent_externals_falls_back_to_claude(tmp_path: Path) -> None:
     design = tmp_path / "absent"
     design.mkdir()

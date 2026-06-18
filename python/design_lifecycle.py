@@ -31,6 +31,54 @@ from session_env import validate_design_tmpdir
 
 _SUBPROCESS_RUN = subprocess.run
 
+PHASE_RESULT_ENV_ALLOW_KEYS = {
+    "ACCEPTED_COUNT",
+    "AGGREGATOR_STATUS",
+    "BASELINE_DIFF_LINES",
+    "BASELINE_PLAN_LINES",
+    "DEDUP_RC",
+    "DEGRADED_PANEL",
+    "DIFF_ADDED",
+    "DIFF_DELETED",
+    "DIFF_LINES",
+    "DRIFT_DIFF_RATIO",
+    "DRIFT_MULTIPLE",
+    "DRIFT_PLAN_RATIO",
+    "DRIFT_TRIGGER_FIRED",
+    "EMIT_PLAN_STATUS",
+    "ERROR",
+    "FINAL_ROUND_NUM",
+    "IMPORTANT_ACCEPTED_COUNT",
+    "LOOP_STATUS",
+    "MECHANICAL_CHURN",
+    "PANEL_PRUNED_EMPTY",
+    "PARTITION_REQUESTED",
+    "PLAN_LINES",
+    "PLAN_REVIEW_CONTINUE_REASON",
+    "PLAN_SIZE_STATUS",
+    "POSTPLAN_EMIT_STATUS",
+    "POSTPLAN_RC",
+    "REASON",
+    "REVIEW_ROUND_COUNT",
+    "ROUND_NUM",
+    "ROUNDS_COMPLETED",
+    "SCOPE_ANCHOR_FILE",
+    "SIZE_TRIGGER_FIRED",
+    "SNAPSHOT_STATUS",
+    "SOFT_ADVISORY",
+    "STEP3_REVIEW_LOOP_STATUS",
+    "STEP3_REVIEW_ROUND_NUM",
+    "TALLY_PLAN_REVIEW_STATUS",
+    "TRIGGER_REASONS",
+    "VALIDATE_DEFECT_COUNT",
+    "VALIDATE_LOG_FILE",
+    "VALIDATE_SKIPPED_COUNT",
+    "VALIDATE_STATUS",
+    "VALIDATE_UNSAFE_TOKEN_COUNT",
+    "VOTING_TALLY_FILE",
+    "WARN",
+}
+
 
 _WRAPPER_ENV_DEFAULTS: dict[str, str] = {
     "CLAUDE_PLUGIN_ROOT": "",
@@ -295,6 +343,80 @@ def phase_driver_read_result_env(path: str | Path, allow_keys: Iterable[str]) ->
             continue
         pairs.append((key, value))
     return pairs
+
+
+def phase_driver_write_result_env(path: str | Path, kvs: Iterable[tuple[str, str] | str]) -> None:
+    """Atomically write allowlisted KEY=VALUE records to a result-env file.
+
+    The trust boundary mirrors the shell phase driver: symlink targets are
+    refused, keys must be allowlisted shell variable names, and values may not
+    contain CR/LF bytes.
+    """
+    dest = Path(path)
+    if dest.is_symlink():
+        raise OSError(f"refusing to write symlink result env: {dest}")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    rows: list[tuple[str, str]] = []
+    for item in kvs:
+        if isinstance(item, str):
+            if "=" not in item:
+                raise ValueError(f"result env row is missing '=': {item}")
+            key, value = item.split("=", 1)
+        else:
+            key, value = item
+        if key not in PHASE_RESULT_ENV_ALLOW_KEYS or not _valid_var_name(key):
+            raise ValueError(f"result env key is not allowlisted: {key}")
+        if "\n" in value or "\r" in value:
+            raise ValueError(f"result env value contains newline: {key}")
+        rows.append((key, value))
+
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    tmp = dest.with_name(f".{dest.name}.{os.getpid()}.tmp")
+    fd = -1
+    try:
+        if tmp.exists() or tmp.is_symlink():
+            tmp.unlink()
+        fd = os.open(tmp, flags, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            fd = -1
+            for key, value in rows:
+                handle.write(f"{key}={value}\n")  # pyright: ignore[reportUnusedCallResult]
+        if dest.is_symlink():
+            raise OSError(f"refusing to replace symlink result env: {dest}")
+        tmp.replace(dest)  # pyright: ignore[reportUnusedCallResult]
+    finally:
+        if fd >= 0:
+            os.close(fd)
+        with contextlib.suppress(FileNotFoundError):
+            tmp.unlink()
+
+
+def json_get_bool(path: str | Path, key: str, *, default: bool = False) -> bool:
+    source = Path(path)
+    if source.is_symlink() or not source.is_file():
+        return default
+    try:
+        data = json.loads(source.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return default
+    if not isinstance(data, dict):
+        return default
+    typed_data: dict[str, object] = data  # type: ignore[assignment]
+    value = typed_data.get(key, default)
+    return value if isinstance(value, bool) else default
+
+
+def json_get_bool_main(argv: Sequence[str]) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py plan-review json-get-bool")
+    parser.add_argument("--path", required=True)  # pyright: ignore[reportUnusedCallResult]
+    parser.add_argument("--key", required=True)  # pyright: ignore[reportUnusedCallResult]
+    parser.add_argument("--default", choices=("true", "false"), default="false")  # pyright: ignore[reportUnusedCallResult]
+    ns = parser.parse_args(list(argv))
+    value = json_get_bool(ns.path, ns.key, default=ns.default == "true")
+    print("true" if value else "false")
+    return 0
 
 
 def _replay_warn_error(path: Path) -> None:

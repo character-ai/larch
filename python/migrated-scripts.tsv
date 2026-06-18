@@ -1067,3 +1067,9 @@ skills/implement/scripts/test-stall-recovery-report-2.sh	#4636
 skills/implement/scripts/test-stall-recovery-report-2.md	#4636
 skills/implement/scripts/test-stall-recovery-report-3.sh	#4636
 skills/implement/scripts/test-stall-recovery-report-3.md	#4636
+skills/design/scripts/review-design-step3-loop.sh	#4632
+skills/design/scripts/review-design-step3-loop.md	#4632
+skills/design/scripts/plan-review-continuation.sh	#4632
+skills/design/scripts/plan-review-continuation.md	#4632
+skills/design/scripts/lib-step3-prelaunch-failure.sh	#4632
+skills/design/scripts/lib-step3-prelaunch-failure.md	#4632

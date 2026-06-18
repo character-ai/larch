@@ -1,171 +1,60 @@
 from __future__ import annotations
 
-import contextlib
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import plan_review
+import pytest
 from test_support import ROOT, run_cli
 
-if TYPE_CHECKING:
-    import pytest
+
+def test_legacy_assets_removed_from_plan_review_module() -> None:
+    assert not hasattr(plan_review, "_LEGACY_ASSETS")
+    assert not hasattr(plan_review, "run_legacy_script")
 
 
-def test_embedded_review_design_step3_loop_matches_live_script() -> None:
-    live = (ROOT / "skills" / "design" / "scripts" / "review-design-step3-loop.sh").read_bytes()
-    embedded = plan_review.legacy_asset_bytes("skills/design/scripts/review-design-step3-loop.sh")
-    assert live == embedded
-
-
-def test_embedded_design_step3_state_matches_live_script() -> None:
-    live = (ROOT / "skills" / "design" / "scripts" / "design-step3-state.sh").read_bytes()
-    embedded = plan_review.legacy_asset_bytes("skills/design/scripts/design-step3-state.sh")
-    assert live == embedded
-
-
-def test_embedded_review_design_step3_loop_persists_round_start() -> None:
-    body = plan_review.legacy_asset_bytes("skills/design/scripts/review-design-step3-loop.sh").decode("utf-8")
-    helper = body[body.index("step3_loop_persist_round_start_s() {"):body.index("step3_loop_phase_file() {")]
-    assert 'python3 "$PLUGIN_ROOT/python/cli.py" plan-review persist-round-start-s' in helper
-    assert '--design-tmpdir "$DESIGN_TMPDIR" --round-num "$round_num" --start-s "$start_s"' in helper
-    round_start_idx = body.index('round_start_s="$(step3_loop_now_s)"')
-    persist_idx = body.index('step3_loop_persist_round_start_s "$round_num" "$round_start_s"', round_start_idx)
-    body_idx = body.index("run_step3_round_body", persist_idx)
-    assert round_start_idx < persist_idx < body_idx
-
-
-def test_embedded_plan_review_loop_uses_migrated_collector() -> None:
-    # Regression for #4417: the results-collector port retired the Bash collector
-    # wrapper but left the embedded plan-review loop still invoking it, so every
-    # /design Step 3 collect step failed and the panel was always recorded as
-    # panel-failed. The embedded loop must call the migrated
-    # `cli.py agent collect-results` collector, not the retired wrapper. The asset
-    # key and retired path are assembled from tuple parts (not written as full
-    # repo-relative literals) so this test does not itself trip the retired-script
-    # lint, which flags full path substrings.
-    loop_parts = ("skills", "design", "scripts", "plan-review-loop.sh")
-    collector_parts = ("scripts", "collect-agent-results.sh")
-    body = plan_review.legacy_asset_bytes("/".join(loop_parts)).decode("utf-8")
-    assert "/".join(collector_parts) not in body
-    assert "agent collect-results" in body
-    assert "collector-results.env" in body
-    assert "NOT_SUBSTANTIVE and other non-OK" in body
-    assert "COLLECT_FAILURE_COUNT" in body
-
-
-
-def test_embedded_plan_review_reviewer_prune_uses_review_cli() -> None:
-    panel_name = "dispatch-plan-review-" + "panel.sh"
-    loop_name = "plan-review-" + "loop.sh"
-    assets = (
-        f"skills/design/scripts/{panel_name}",
-        f"skills/design/scripts/{loop_name}",
+def test_step3_loop_persist_envelope_merges_and_strips_reason(tmp_path: Path) -> None:
+    _ = (tmp_path / ".step3-review-result.env").write_text(
+        "TALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nPLAN_REVIEW_CONTINUE_REASON=again\r\n",
+        encoding="utf-8",
     )
-    retired_helper = "reviewer-" + "prune.sh"
-    retired_lib = "lib-prune-" + "decision.sh"
-    for rel_path in assets:
-        body = plan_review.legacy_asset_bytes(rel_path).decode("utf-8")
-        assert retired_helper not in body
-        assert retired_lib not in body
-        assert "review reviewer-prune" in body
-        assert "PRUNE_STATUS" in body
-        assert "PANEL_PRUNED_EMPTY" in body
-        assert "PRUNED_COUNT" in body
-        assert "PRUNED_COMBOS" in body
+    plan_review.step3_loop_persist_envelope(
+        tmp_path,
+        "main-agent-vote-required",
+        2,
+        2,
+        2,
+        values={"ACCEPTED_COUNT": "1"},
+    )
+    text = (tmp_path / ".step3-review-result.env").read_text(encoding="utf-8")
+    assert "LOOP_STATUS=main-agent-vote-required" in text
+    assert "TALLY_PLAN_REVIEW_STATUS=ok" in text
+    assert "PLAN_REVIEW_CONTINUE_REASON=again" in text
 
 
+def test_step3_loop_persist_envelope_writes_terminal_sentinels(tmp_path: Path) -> None:
+    # #4688 hook-release contract: persisting the result env writes the
+    # step-3-terminal sentinel pair so hook-bg-poll-guard.sh releases the marker.
+    plan_review.step3_loop_persist_envelope(tmp_path, "complete", 1, 1, 1, values={})
+    assert (tmp_path / ".completed" / "step-3-terminal").is_file()
+    assert (tmp_path / ".step3-terminal-persisted-this-run").is_file()
 
 
-def test_embedded_plan_review_prune_nit_uses_review_cli() -> None:
-    loop_name = "plan-review-" + "loop.sh"
-    body = plan_review.legacy_asset_bytes(f"skills/design/scripts/{loop_name}").decode("utf-8")
-    retired = "prune-nit-" + "findings.sh"
-    assert retired not in body
-    assert "review prune-nit-findings" in body
-    assert "PLAN_REVIEW_PRUNE_NITS_CLI" in body
-    assert '"${PLAN_REVIEW_PRUNE_NITS_CLI[@]}"' in body
-    assert '"$PLAN_REVIEW_PRUNE_NITS_SH"' not in body
-    assert "LARCH_PLAN_REVIEW_PRUNE_NITS_SH" in body
-    assert "PRUNED_COUNT" in body
-    assert "INSCOPE_REMAINING" in body
-    assert "STATUS" in body
+def test_step3_loop_persist_envelope_terminal_without_step3_on_midloop_bail(tmp_path: Path) -> None:
+    # Mid-loop bail-outs write step-3-terminal (hook release) but not step-3
+    # (the pause / Gate B milestone), per the split-sentinel contract.
+    plan_review.step3_loop_persist_envelope(tmp_path, "main-agent-apply-required", 2, 2, 2, values={})
+    assert (tmp_path / ".completed" / "step-3-terminal").is_file()
+    assert (tmp_path / ".step3-terminal-persisted-this-run").is_file()
+    assert not (tmp_path / ".completed" / "step-3").exists()
 
 
-def test_embedded_plan_review_prune_nit_fail_open_persistence() -> None:
-    loop_name = "plan-review-" + "loop.sh"
-    body = plan_review.legacy_asset_bytes(f"skills/design/scripts/{loop_name}").decode("utf-8")
-    prune_start = body.index('_plan_prune_out="$DESIGN_TMPDIR/plan-review-prune-nit.env"')
-    prune_end = body.index('mkdir -p "$DESIGN_TMPDIR/plan-review/round-${round_num}"', prune_start)
-    prune_region = body[prune_start:prune_end]
-    assert 'LARCH_QUIET_DISABLE=1 "${PLAN_REVIEW_PRUNE_NITS_CLI[@]}"' in prune_region
-    assert '! -s "$_plan_prune_out"' in prune_region
-    assert "PRUNED_COUNT=0" in prune_region
-    assert "INSCOPE_REMAINING=0" in prune_region
-    assert "STATUS=skipped" in prune_region
-
-
-def test_embedded_plan_review_loop_not_substantive_count_emitted() -> None:
-    loop_parts = ("skills", "design", "scripts", "plan-review-loop.sh")
-    body = plan_review.legacy_asset_bytes("/".join(loop_parts)).decode("utf-8")
-    assert "COLLECT_FAILURE_COUNT=0" in body
-
-    summary_start = body.index("_write_round_summary() {")
-    summary_end = body.find("\n}", summary_start)
-    assert summary_end != -1
-    summary_region = body[summary_start:summary_end]
-    assert "round-summary.env" in summary_region
-    assert "COLLECT_FAILURE_COUNT=%s" in summary_region
-
-    count_start = body.index("_count_collector_evidence() {")
-    count_end = body.index("_parse_collect_records() {", count_start)
-    count_region = body[count_start:count_end]
-    assert "*) collect_failure_count=$((collect_failure_count + 1)) ;;" in count_region
-    assert "COLLECT_FAILURE_COUNT=$collect_failure_count" in count_region
-
-
-def test_embedded_run_step3_review_routes_from_binary_found() -> None:
-    # Keep the path assembled so this test does not trip retired-script lint,
-    # which intentionally flags full repo-relative retired path literals.
-    asset_name = "run-" + "step3-review.sh"
-    asset_parts = ("skills", "design", "scripts", asset_name)
-    body = plan_review.legacy_asset_bytes("/".join(asset_parts)).decode("utf-8")
-    assert "CODEX_BINARY_FOUND" in body
-    assert "CURSOR_BINARY_FOUND" in body
-    assert "CODEX_PRESENT:-false" not in body
-    assert "CURSOR_PRESENT:-false" not in body
-
-
-def test_embedded_review_quiet_init_follows_design_tmpdir_validation() -> None:
-    asset_keys = tuple(plan_review._LEGACY_ASSETS)  # pyright: ignore[reportPrivateUsage]
-    for rel_path in asset_keys:
-        body = plan_review.legacy_asset_bytes(rel_path).decode("utf-8")
-        if "larch_quiet_init" not in body:
-            continue
-        validate_index = body.find("session validate-design-tmpdir")
-        quiet_index = body.find("larch_quiet_init")
-        assert validate_index != -1, f"{rel_path} initializes quiet logging without validating design tmpdir"
-        assert validate_index < quiet_index, f"{rel_path} validates design tmpdir after quiet logging"
-
-
-def test_embedded_run_step3_review_round_paths_validate_before_quiet() -> None:
-    asset_name = "run-" + "step3-review.sh"
-    asset_parts = ("skills", "design", "scripts", asset_name)
-    rel_path = "/".join(asset_parts)
-    body = plan_review.legacy_asset_bytes(rel_path).decode("utf-8")
-
-    single_start = body.index("run_step3_round_body() {")
-    single_end = body.index("validate_step3_loop_starting_round()")
-    loop_start = body.index('if [[ "$STEP3_MODE" == loop ]]; then')
-    regions = {
-        "single": body[single_start:single_end],
-        "loop": body[loop_start:],
-    }
-    for label, region in regions.items():
-        validate_index = region.find("session validate-design-tmpdir")
-        quiet_index = region.find("larch_quiet_init")
-        assert validate_index != -1, f"{rel_path} {label} path does not validate design tmpdir"
-        assert quiet_index != -1, f"{rel_path} {label} path does not initialize quiet logging"
-        assert validate_index < quiet_index, f"{rel_path} {label} path initializes quiet before validation"
+def test_phase_driver_write_result_env_refuses_symlink(tmp_path: Path) -> None:
+    target = tmp_path / "target.env"
+    _ = target.write_text("", encoding="utf-8")
+    link = tmp_path / ".step3-review-result.env"
+    link.symlink_to(target)
+    with pytest.raises(OSError, match="symlink"):
+        plan_review.step3_loop_persist_envelope(tmp_path, "complete", 1, 1, 1, values={})
 
 
 def test_emit_plan_persists_diff_lines(tmp_path: Path) -> None:
@@ -228,43 +117,6 @@ def test_step3_state_non_numeric_round_count_falls_back_to_zero(tmp_path: Path) 
     )
     assert proc.returncode == 0, proc.stderr
     assert "STEP3_STATE=direct-review-entry" in proc.stdout
-
-
-def test_step3_state_direct_review_entry_clears_terminal_sentinels(tmp_path: Path) -> None:
-    completed = tmp_path / ".completed"
-    completed.mkdir()
-    (tmp_path / ".step3-reentry").touch()
-    (completed / "step-3-terminal").touch()
-    (tmp_path / ".step3-terminal-persisted-this-run").touch()
-    proc = run_cli(
-        "plan-review",
-        "step3-state",
-        "--design-tmpdir",
-        str(tmp_path),
-        "--direct-review-entry",
-    )
-    assert proc.returncode == 0, proc.stderr
-    assert "STEP3_STATE=direct-review-entry" in proc.stdout
-    assert not (completed / "step-3-terminal").exists()
-    assert not (tmp_path / ".step3-terminal-persisted-this-run").exists()
-
-
-def test_step3_state_auto_continuation_entry_clears_terminal_sentinels(tmp_path: Path) -> None:
-    completed = tmp_path / ".completed"
-    completed.mkdir()
-    (completed / "step-3-terminal").touch()
-    (tmp_path / ".step3-terminal-persisted-this-run").touch()
-    proc = run_cli(
-        "plan-review",
-        "step3-state",
-        "--design-tmpdir",
-        str(tmp_path),
-        "--auto-continuation-entry",
-    )
-    assert proc.returncode == 0, proc.stderr
-    assert "STEP3_STATE=auto-continuation-entry" in proc.stdout
-    assert not (completed / "step-3-terminal").exists()
-    assert not (tmp_path / ".step3-terminal-persisted-this-run").exists()
 
 
 def test_round_artifact_allowlist_and_drift_baseline(tmp_path: Path) -> None:
@@ -994,115 +846,3 @@ def test_preview_small_plan_full_body_without_large_note(tmp_path: Path) -> None
     assert proc.returncode == 0
     assert "Hello" in proc.stdout
     assert "very large" not in proc.stdout
-
-
-class _Completed:
-    returncode = 0
-
-
-def test_run_legacy_exposes_consumer_repo_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    # issue #4509: embedded scripts run with cwd=_REPO_ROOT (the plugin cache, not
-    # a git repo). _run_legacy must expose the consumer repo (this process's CWD)
-    # via LARCH_CONSUMER_REPO so child `dirty-tree checkpoint` calls target a real
-    # git repo instead of mapping a failing `git status` to STATUS=unknown.
-    captured: dict[str, object] = {}
-
-    @contextlib.contextmanager
-    def fake_root():
-        yield str(tmp_path)
-
-    def fake_run(argv: list[str], **kwargs: object) -> _Completed:
-        _ = argv
-        captured["env"] = kwargs.get("env")
-        captured["cwd"] = kwargs.get("cwd")
-        return _Completed()
-
-    monkeypatch.delenv("LARCH_CONSUMER_REPO", raising=False)
-    monkeypatch.setattr(plan_review, "_materialize_legacy_root", fake_root)  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(plan_review.subprocess, "run", fake_run)
-    monkeypatch.chdir(tmp_path)
-    expected_cwd = str(Path.cwd())
-    rc = plan_review.run_legacy_script(("skills", "design", "scripts", "x.sh"), [])
-    assert rc == 0
-    env = captured["env"]
-    assert isinstance(env, dict)
-    assert env["LARCH_CONSUMER_REPO"] == expected_cwd
-    # The subprocess still runs from the plugin-cache root, not the consumer repo.
-    assert captured["cwd"] == str(plan_review._REPO_ROOT)  # pyright: ignore[reportPrivateUsage]
-
-
-def test_run_legacy_consumer_repo_env_override_wins(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    captured: dict[str, object] = {}
-
-    @contextlib.contextmanager
-    def fake_root():
-        yield str(tmp_path)
-
-    def fake_run(argv: list[str], **kwargs: object) -> _Completed:
-        _ = argv
-        captured["env"] = kwargs.get("env")
-        return _Completed()
-
-    monkeypatch.setattr(plan_review, "_materialize_legacy_root", fake_root)  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(plan_review.subprocess, "run", fake_run)
-    monkeypatch.setenv("LARCH_CONSUMER_REPO", "/explicit/consumer")
-    rc = plan_review.run_legacy_script(("skills", "design", "scripts", "x.sh"), [])
-    assert rc == 0
-    env = captured["env"]
-    assert isinstance(env, dict)
-    assert env["LARCH_CONSUMER_REPO"] == "/explicit/consumer"
-
-
-def test_embedded_waterfall_dispatchers_call_agent_verb() -> None:
-    retired = "dispatch-with-" + "waterfall.sh"
-    dispatch_voters = "dispatch-plan-" + "voters.sh"
-    review_panel = "dispatch-plan-review-" + "panel.sh"
-    keys = (
-        f"scripts/{dispatch_voters}",
-        f"skills/design/scripts/{review_panel}",
-    )
-    for key in keys:
-        body = plan_review.legacy_asset_bytes(key).decode("utf-8")
-        assert "agent dispatch-waterfall" in body
-        assert retired not in body
-        if key.endswith("dispatch-plan-review-panel.sh"):
-            assert "DISPATCH_WATERFALL_CMD=(python3" in body
-            assert '"${DISPATCH_WATERFALL_CMD[@]}"' in body
-            assert "codex-plan-generic" in body
-            assert "Output only the shared TSV header block" in body
-            assert "Do not write lens summaries" in body
-            assert "--require-first-line-pattern" not in body
-        else:
-            assert 'python3 "$PLUGIN_ROOT/python/cli.py" agent dispatch-waterfall' in body
-            assert "plan-voter-prompt-retry" not in body
-            assert "--prompt-file" not in _parse_rate_retry_lines(body)
-            assert "--retry-prefix-kind" not in _parse_rate_retry_lines(body)
-            assert "--launch-mode" not in _parse_rate_retry_lines(body)
-
-
-def _parse_rate_retry_lines(body: str) -> str:
-    return "\n".join(line for line in body.splitlines() if "voting parse-rate-retry" in line or "VPR_ARGS=" in line)
-
-
-def test_embedded_waterfall_dispatchers_preserve_raw_retired_markers() -> None:
-    retired = "dispatch-with-" + "waterfall.sh"
-    dispatch_voters = "dispatch-plan-" + "voters.sh"
-    review_panel = "dispatch-plan-review-" + "panel.sh"
-    dispatch_parts = ("scripts", dispatch_voters)
-    panel_parts = ("skills", "design", "scripts", review_panel)
-    keys = (
-        "/".join(dispatch_parts),
-        "/".join(panel_parts),
-    )
-    for key in keys:
-        body = plan_review._decode_asset(  # pyright: ignore[reportPrivateUsage]
-            plan_review._LEGACY_ASSETS[key]  # pyright: ignore[reportPrivateUsage]
-        ).decode("utf-8")
-        assert retired in body, key
-        if key.endswith(review_panel):
-            assignment = (
-                'DISPATCH_WATERFALL_SH="${DISPATCH_PLAN_REVIEW_WATERFALL_SH:-$PLUGIN_ROOT/scripts/'
-                + retired
-                + '}"'
-            )
-            assert assignment in body, key
