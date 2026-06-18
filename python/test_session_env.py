@@ -264,6 +264,12 @@ def test_write_design_env_source_safe_and_home_symlink(tmp_path: Path) -> None:
     assert '--session-env-path "$SESSION_ENV_PATH"' in launcher_text
     assert '--claude-pid "$CLAUDE_PID"' in launcher_text
     assert "skills/design/scripts/$script" in launcher_text
+    assert "design-step2a.sh)" in launcher_text
+    assert 'design step2a --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"' in launcher_text
+    assert 'design step2b-drafter --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"' in launcher_text
+    assert 'design step2b-postplan --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"' in launcher_text
+    assert 'design step2b5 --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"' in launcher_text
+    assert 'plan validator-autofix --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"' in launcher_text
 
 
 def test_write_design_env_requires_plugin_root_with_claude_pid(tmp_path: Path) -> None:
@@ -424,6 +430,59 @@ def test_design_run_launcher_dispatches_verb(tmp_path: Path) -> None:
     assert dispatch.returncode == 0, dispatch.stderr
     assert "cliargv=design step0-route --session-env-path " in dispatch.stdout
     assert "current-design-env-12345.sh --claude-pid 12345 --issue-number 42" in dispatch.stdout
+
+
+def test_design_run_launcher_maps_retired_step2_wrappers_to_cli_with_tail(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    plugin_root = tmp_path / "plugin"
+    cli_py = plugin_root / "python" / "cli.py"
+    cli_py.parent.mkdir(parents=True)
+    cli_py.write_text(
+        "#!/usr/bin/env python3\n"
+        "import sys\n"
+        "print('ARGV=' + ' '.join(sys.argv[1:]))\n",
+        encoding="utf-8",
+    )
+    cli_py.chmod(0o755)
+    design = tmp_path / "design"
+    design.mkdir()
+    out = tmp_path / "source-env.sh"
+    env = {"HOME": str(home), "XDG_CACHE_HOME": str(tmp_path / "xdg"), "CLAUDE_PLUGIN_ROOT": str(plugin_root)}
+    result = run_cli(
+        "write-design-env",
+        "--output",
+        str(out),
+        "--design-tmpdir",
+        str(design),
+        "--session-id",
+        "sid-1",
+        "--claude-pid",
+        "12345",
+        env=env,
+    )
+    assert result.returncode == 0, result.stderr
+    launcher = home / ".cache" / "larch" / "sessions" / "design-run-12345.sh"
+    postplan = subprocess.run(
+        [str(launcher), "design-step2b-postplan.sh", "--site", "gate-b", "--snapshot-original"],
+        text=True,
+        capture_output=True,
+        env={**os.environ, "HOME": str(home)},
+        check=False,
+    )
+    assert postplan.returncode == 0, postplan.stderr
+    assert "ARGV=design step2b-postplan --session-env-path" in postplan.stdout
+    assert "--site gate-b --snapshot-original" in postplan.stdout
+    validator = subprocess.run(
+        [str(launcher), "design-step-validator-autofix.sh", "--validator-target-file", "target.md", "--validate-defect-count", "3"],
+        text=True,
+        capture_output=True,
+        env={**os.environ, "HOME": str(home)},
+        check=False,
+    )
+    assert validator.returncode == 0, validator.stderr
+    assert "ARGV=plan validator-autofix --session-env-path" in validator.stdout
+    assert "--validator-target-file target.md --validate-defect-count 3" in validator.stdout
 
 
 def test_design_run_launcher_dispatches_non_hyphenated_verbs(tmp_path: Path) -> None:

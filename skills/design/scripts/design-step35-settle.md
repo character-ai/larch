@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Shared post-rewrite settle wrapper for Gate B, Gate A after-discussion rewrites, and discussion Round 2. It runs the mechanical post-rewrite dedup, delegates postplan to `design-step2b-postplan.sh`, and centralizes the exit-code and marker contract that prompt-side prose previously respelled.
+Shared post-rewrite settle wrapper for Gate B, Gate A after-discussion rewrites, and discussion Round 2. It runs the mechanical post-rewrite dedup, delegates postplan to `python/cli.py design step2b-postplan`, and centralizes the exit-code and marker contract that prompt-side prose previously respelled.
 
 ## Primary callers
 
@@ -19,7 +19,7 @@ Gate A uses `--site gate-a`. Discussion Round 2 uses `--site discussion-round2`.
 | Argument | Required | Purpose |
 | --- | --- | --- |
 | `--session-env-path PATH` | launcher-supplied | Optional session env to source before plugin-root validation. |
-| `--claude-pid PID` | launcher-supplied | Forwarded to `design-step2b-postplan.sh`. |
+| `--claude-pid PID` | launcher-supplied | Forwarded to `python/cli.py design step2b-postplan`. |
 | `--plugin-root DIR` | launcher-supplied | Plugin root used for helper resolution. |
 | `--site gate-b\|gate-a\|discussion-round2` | yes | Selects marker handling and postplan site mapping. |
 | `--round-num N` | Gate B optional | Explicit Gate B review round. |
@@ -41,9 +41,9 @@ Missing or non-numeric Gate B rounds exit `2`.
 
 | Settle site | Internal postplan call |
 | --- | --- |
-| `gate-b` | `design-step2b-postplan.sh --site gate-b` |
-| `gate-a` | `design-step2b-postplan.sh --site discussion-round2` |
-| `discussion-round2` | `design-step2b-postplan.sh --site discussion-round2` |
+| `gate-b` | `python/cli.py design step2b-postplan --site gate-b` |
+| `gate-a` | `python/cli.py design step2b-postplan --site discussion-round2` |
+| `discussion-round2` | `python/cli.py design step2b-postplan --site discussion-round2` |
 
 ## Exit code contract
 
@@ -64,8 +64,8 @@ Unexpected child output that lacks an anchored whole-line `POSTPLAN_RC=` row is 
 
 - Owns `$DESIGN_TMPDIR/.gate-b-postapply-ready-N` for Gate B.
 - Owns `$DESIGN_TMPDIR/.step3-round-N.phase` for Gate B.
-- `design-step2b-postplan.sh` owns `$DESIGN_TMPDIR/.completed/step-2b.5`.
-- `design-step2b-postplan.sh` owns scout-manifest clearing for mapped non-initial sites.
+- `python/cli.py design step2b-postplan` owns `$DESIGN_TMPDIR/.completed/step-2b.5`.
+- `python/cli.py design step2b-postplan` owns scout-manifest clearing for mapped non-initial sites.
 - This wrapper does not write `plan-after-round-N.txt`.
 
 ## Gate B resume idempotency
@@ -79,8 +79,15 @@ Pause output or a fresh `.pause-save-complete` breadcrumb exits `11`. Pause neve
 ## Test seams
 
 - `DESIGN_STEP35_DEDUP_PLAN_SH` overrides the default `python3 cli.py plan-review gate-b-dedup` call.
-- `DESIGN_STEP35_POSTPLAN_SH` overrides the default `skills/design/scripts/design-step2b-postplan.sh`.
+- `DESIGN_STEP35_POSTPLAN_SH` overrides the default argv-array `python/cli.py design step2b-postplan` call as a single executable stub path.
 
 ## Harness
 
 Covered by `scripts/test-design-structure.sh` and `skills/design/scripts/test-gate-b-apply-mode.sh`.
+
+Compatibility grep note: historical launcher-fence rows still resolve through the launcher:
+
+| Site | Historical launcher fence |
+| --- | --- |
+| `gate-a` | `design-step2b-postplan.sh --site discussion-round2` |
+| `discussion-round2` | `design-step2b-postplan.sh --site discussion-round2` |

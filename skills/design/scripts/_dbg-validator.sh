@@ -16,7 +16,7 @@ set +e
 out=$(AUTOFIX_TEST_MODE=never-fix CLAUDE_PLUGIN_ROOT="$ROOT" DESIGN_TMPDIR="$D" SITE='design Step 2b' \
   CODEX_BINARY_FOUND=true CURSOR_BINARY_FOUND=true \
   LARCH_AUTOFIX_DISPATCH_SH="$DISPATCH_STUB" LARCH_AUTOFIX_VALIDATE_PLAN_SH="$VALIDATE_STUB" \
-  "$ROOT/skills/design/scripts/design-step-validator-autofix.sh" \
+  python3 "$ROOT/python/cli.py" plan validator-autofix \
   --validator-target-file "$D/plan.txt" --validate-log-file "$D/validate-plan-commands.log" \
   --validate-defect-count 1 --validate-unsafe-token-count 0 --validate-skipped-count 0 2>"$TMP/err")
 rc=$?
