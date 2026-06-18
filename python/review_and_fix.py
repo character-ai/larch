@@ -831,12 +831,13 @@ def _finalize_failed_cleanup(round_dir: Path, *, pre_head: str, mode: str, reaso
         _run(["git", "restore", "--staged", "."])
         _remove_untracked_delta_paths(_round_attempt_untracked_delta_paths(round_dir))
         _restore_attempt_baseline_tracked_state(round_dir, pre_head)
-    restore = _run(["git", "restore", "--staged", "."])
-    if restore.returncode != 0:
-        _append_text(log, "git restore --staged failed:\n" + restore.stderr + restore.stdout)
-    tracked = _run(["git", "restore", "."])
-    if tracked.returncode != 0:
-        _append_text(log, "git restore failed:\n" + tracked.stderr + tracked.stdout)
+    elif mode == "missing":
+        restore = _run(["git", "restore", "--staged", "."])
+        if restore.returncode != 0:
+            _append_text(log, "git restore --staged failed:\n" + restore.stderr + restore.stdout)
+        tracked = _run(["git", "restore", "."])
+        if tracked.returncode != 0:
+            _append_text(log, "git restore failed:\n" + tracked.stderr + tracked.stdout)
     ok, detail = _verify_post_cleanup_state(round_dir, pre_head=pre_head, mode=mode)
     if not ok and detail:
         _append_text(log, "post-finalize verification failed:\n" + detail + "\n")
@@ -1831,6 +1832,12 @@ def apply_findings_with_coder(input_file: Path, round_dir: Path, result_file: Pa
             round_dir / "coder-cleanup.log",
             f"stale pre-coder snapshot: pre_head={pre_head} current={current_head}\n",
         )
+        _finalize_failed_cleanup(
+            round_dir,
+            pre_head=pre_head,
+            mode=mode,
+            reason="stale pre-coder snapshot",
+        )
         result = CoderResult(2, "none", "failed", str(tool_log), scrubbed_count, scrub_count, 0)
         _write_env(result_file, _coder_env(result))
         return result
@@ -1838,6 +1845,7 @@ def apply_findings_with_coder(input_file: Path, round_dir: Path, result_file: Pa
         ("cursor", _run_coder_cursor),
         ("codex", _run_coder_codex),
     ]
+    commit_failed = False
     for tool, runner in attempts:
         _write_attempt_pre_tracked_paths(round_dir, pre_head, mode=mode)
         if not runner(round_dir, prompt_body, tool_log):
@@ -1850,7 +1858,7 @@ def apply_findings_with_coder(input_file: Path, round_dir: Path, result_file: Pa
         revert_count = _post_dispatch_submodule_revert(round_dir, submodules)
         if revert_count > 0:
             if not _cleanup_failed_coder_attempt(round_dir):
-                result = CoderResult(3, tool, "submodule-violation", str(tool_log), scrubbed_count, scrub_count, revert_count)
+                result = CoderResult(2, tool, "failed", str(tool_log), scrubbed_count, scrub_count, revert_count)
                 _write_env(result_file, _coder_env(result))
                 return result
             result = CoderResult(3, tool, "submodule-violation", str(tool_log), scrubbed_count, scrub_count, revert_count)
@@ -1858,6 +1866,8 @@ def apply_findings_with_coder(input_file: Path, round_dir: Path, result_file: Pa
             return result
         stage_paths = _collect_round_stage_paths(round_dir)
         if not stage_paths:
+            if commit_failed:
+                continue
             result = CoderResult(0, tool, "no-changes", str(tool_log), scrubbed_count, scrub_count, 0)
             _write_env(result_file, _coder_env(result))
             return result
@@ -1869,6 +1879,7 @@ def apply_findings_with_coder(input_file: Path, round_dir: Path, result_file: Pa
                     result = CoderResult(2, tool, "failed", str(tool_log), scrubbed_count, scrub_count, 0)
                     _write_env(result_file, _coder_env(result))
                     return result
+                commit_failed = True
                 continue
         result = CoderResult(0, tool, "applied", str(tool_log), scrubbed_count, scrub_count, 0, commit_sha)
         _write_env(result_file, _coder_env(result))
@@ -2564,7 +2575,7 @@ def step5(argv: list[str] | None = None) -> int:
                 stall_tracking = True
                 stall_reason = (
                     "submodule-violation"
-                    if result.coder.status == "submodule-violation" or result.coder.revert_count > 0
+                    if result.coder.status == "submodule-violation"
                     else "coder-failed"
                 )
             elif result.status == "prune-skipped":

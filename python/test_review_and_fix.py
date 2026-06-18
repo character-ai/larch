@@ -1388,9 +1388,9 @@ def test_apply_findings_with_coder_commit_failure_cleans_and_falls_through(
         round_num=1,
     )
 
-    assert result.rc == 0
-    assert result.tool == "codex"
-    assert result.status == "no-changes"
+    assert result.rc == 4
+    assert result.tool == "none"
+    assert result.status == "main-agent-required"
     assert _git_porcelain(repo) == ""
     assert (repo / "tracked.txt").read_text(encoding="utf-8") == "initial\n"
 
@@ -1652,6 +1652,58 @@ def test_apply_findings_with_coder_cleanup_verification_failure_stops_without_st
     assert result.status == "failed"
     assert _git_cached_names(repo) == ""
     assert _git_porcelain(repo) == ""
+
+
+@MARK_DISPATCH
+def test_apply_findings_with_coder_finalize_preserves_staged_carryover(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _mk_git_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    _patch_coder_basics(monkeypatch)
+    (repo / "carry.txt").write_text("staged\n", encoding="utf-8")
+    review_and_fix._run(["git", "add", "carry.txt"])
+    round_dir = tmp_path / "impl" / "round-1"
+
+    def cursor(_round_dir: Path, _prompt: str, _tool_log: Path) -> bool:
+        (repo / "carry.txt").write_text("coder overwrite\n", encoding="utf-8")
+        return False
+
+    monkeypatch.setattr(review_and_fix, "_run_coder_cursor", cursor)
+    monkeypatch.setattr(review_and_fix, "_run_coder_codex", lambda *_a, **_k: True)
+    monkeypatch.setattr(review_and_fix, "_verify_post_cleanup_state", lambda *_a, **_k: (False, "forced failure"))
+
+    result = review_and_fix.apply_findings_with_coder(_coder_findings(tmp_path), round_dir, round_dir / "coder.env")
+
+    assert result.rc == 2
+    assert result.status == "failed"
+    assert (repo / "carry.txt").read_text(encoding="utf-8") == "staged\n"
+    assert _git_cached_names(repo) == "carry.txt\n"
+
+
+@MARK_DISPATCH
+def test_apply_findings_with_coder_stale_snapshot_entry_finalizes_before_failed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _mk_git_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    _patch_coder_basics(monkeypatch)
+    round_dir = tmp_path / "impl" / "round-1"
+    review_and_fix._write_pre_coder_snapshot(round_dir)
+    (repo / "tracked.txt").write_text("committed advance\n", encoding="utf-8")
+    review_and_fix._run(["git", "add", "tracked.txt"])
+    review_and_fix._run(["git", "commit", "--quiet", "-m", "advance head"])
+    (repo / "tracked.txt").write_text("staged residue\n", encoding="utf-8")
+    review_and_fix._run(["git", "add", "tracked.txt"])
+
+    result = review_and_fix.apply_findings_with_coder(_coder_findings(tmp_path), round_dir, round_dir / "coder.env")
+
+    assert result.rc == 2
+    assert result.tool == "none"
+    assert result.status == "failed"
+    assert "cleanup failure: stale pre-coder snapshot" in (round_dir / "coder-cleanup.log").read_text(encoding="utf-8")
 
 
 @MARK_DISPATCH
