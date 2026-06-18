@@ -267,7 +267,7 @@ bash_is_step3_recovery_waiter() {
 }
 
 bash_is_terminal_sentinel_foreground_probe() {
-  local cmd="$1" normalized sentinel_path sentinel_name dir sentinel_abs assigned_tmpdir canon assigned_canon
+  local cmd="$1" normalized sentinel_path sentinel_name dir sentinel_abs assigned_tmpdir assigned_canon
   local probe_target_re test_re bracket_re live_dir_count=0 matched_live_dir=0
   normalized=$(printf '%s' "$cmd" | tr '\n' ' ' | sed 's/[[:space:]][[:space:]]*/ /g')
   normalized=$(bash_trim "$normalized")
