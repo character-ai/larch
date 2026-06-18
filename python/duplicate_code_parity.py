@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import itertools
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -41,7 +42,7 @@ def legacy_pylint_exit(root: Path, rcfile: Path) -> int:
 
 
 def legacy_cluster_digest(root: Path, rcfile: Path) -> str:
-    """Extract a reportable-cluster digest via pylint's native ``_iter_sims`` path."""
+    """Extract a reportable-cluster digest via combinations + ``_find_common``."""
     config = duplicate_code.DuplicateCodeConfig.load(root=root.resolve(), rcfile=rcfile.resolve())
     backend = duplicate_code._import_pylint_backend()
     if not config.root.is_dir():
@@ -49,7 +50,9 @@ def legacy_cluster_digest(root: Path, rcfile: Path) -> str:
     with duplicate_code._pushd(config.root):
         linter, checker, fileitems = duplicate_code._bootstrap_linter(config, backend)
         _ = duplicate_code._ingest_files(linter, checker, fileitems, backend)
-        commonalities = list(checker._iter_sims())
+        linesets = tuple(checker.linesets)
+        pairs = list(itertools.combinations(range(len(linesets)), 2))
+        commonalities = duplicate_code._find_commonalities(checker, linesets, pairs, 1)
         clusters = duplicate_code._clusters_from_commonalities(checker, commonalities)
     return duplicate_code._render_digest(clusters)
 

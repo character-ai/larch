@@ -486,6 +486,101 @@ def test_digest_changes_when_cluster_is_added(tmp_path: Path) -> None:
     assert before != after
 
 
+def test_empty_python_tree_passes(tmp_path: Path) -> None:
+    _write_rc(tmp_path, min_lines=4)
+
+    result = _run(tmp_path)
+
+    assert result.exit_code == 0
+    assert result.digest == "[]"
+    assert result.files == ()
+    assert result.pair_count == 0
+
+
+def test_single_file_passes(tmp_path: Path) -> None:
+    _write_rc(tmp_path, min_lines=4)
+    (tmp_path / "a.py").write_text(_module(5), encoding="utf-8")
+
+    result = _run(tmp_path)
+
+    assert result.exit_code == 0
+    assert result.pair_count == 0
+    assert result.digest == "[]"
+
+
+def test_astroid_parse_failure_exits_2(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _write_rc(tmp_path, min_lines=4)
+    (tmp_path / "broken.py").write_text("def broken(\n", encoding="utf-8")
+
+    rc = duplicate_code.duplicate_code_main(
+        ["--root", str(tmp_path), "--rcfile", str(tmp_path / ".pylintrc")]
+    )
+
+    captured = capsys.readouterr()
+    assert rc == 2
+    assert "astroid parse failed" in captured.err
+
+
+def test_jobs_zero_auto_matches_serial(tmp_path: Path) -> None:
+    _write_rc(tmp_path, min_lines=4)
+    _write_modules(tmp_path, ["a.py", "b.py"], _module(5))
+
+    serial = _run(tmp_path, jobs=1)
+    auto = duplicate_code.run_duplicate_code(root=tmp_path, rcfile=tmp_path / ".pylintrc", jobs=0)
+
+    assert serial.exit_code == auto.exit_code == 1
+    assert serial.digest == auto.digest
+
+
+def test_invalid_jobs_exits_2(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _write_rc(tmp_path, min_lines=4)
+    _write_modules(tmp_path, ["a.py", "b.py"], _module(5))
+
+    rc = duplicate_code.duplicate_code_main(
+        [
+            "--root",
+            str(tmp_path),
+            "--rcfile",
+            str(tmp_path / ".pylintrc"),
+            "--jobs",
+            "-1",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert rc == 2
+    assert "invalid --jobs" in captured.err
+
+
+def test_worker_failure_exits_2(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _write_rc(tmp_path, min_lines=4)
+    _write_modules(tmp_path, ["a.py", "b.py", "c.py"], _module(5))
+
+    def fail_collect(_futures: object) -> list[object]:
+        raise duplicate_code.DuplicateCodeError("duplicate-code worker failed: simulated")
+
+    monkeypatch.setattr(duplicate_code, "_collect_worker_results", fail_collect)
+
+    rc = duplicate_code.duplicate_code_main(
+        [
+            "--root",
+            str(tmp_path),
+            "--rcfile",
+            str(tmp_path / ".pylintrc"),
+            "--jobs",
+            "2",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert rc == 2
+    assert "worker failed" in captured.err
+
+
 def test_import_failure_exits_2(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
