@@ -1,0 +1,2 @@
+# Speed up python-lint CI job (possibly by parallelization), currently the bottleneck in CI at > 3 minutes long
+
