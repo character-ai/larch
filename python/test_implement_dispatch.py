@@ -57,6 +57,11 @@ def test_cli_registry_has_implement_and_launcher_verbs() -> None:
     assert _REGISTRY[("implement", "run-dispatch")] == ("implement_dispatch", "run_dispatch_main")
     assert _REGISTRY[("implement", "recovery-paths")] == ("implement_dispatch", "recovery_paths_main")
     assert _REGISTRY[("implement", "commit")] == ("implement_dispatch", "commit_main")
+    assert _REGISTRY[("implement", "step-2-entry")] == ("implement_dispatch", "step2_entry_main")
+    assert _REGISTRY[("implement", "step-5-review")] == ("implement_dispatch", "step5_review_main")
+    assert _REGISTRY[("implement", "step-8-ship")] == ("implement_dispatch", "step8_ship_main")
+    assert _REGISTRY[("implement", "run-step-checks")] == ("implement_dispatch", "run_step_checks_main")
+    assert _REGISTRY[("execution-issues", "flush-safety-net")] == ("execution_issues", "flush_execution_issues_safety_net_main")
     assert _REGISTRY[("agent", "launch-codex-implement")] == ("agents", "launch_codex_implement_main")
     assert _REGISTRY[("agent", "launch-cursor-implement")] == ("agents", "launch_cursor_implement_main")
 
@@ -106,6 +111,22 @@ def test_step2_dispatch_claude_fallback(tmp_path: Path, capsys: pytest.CaptureFi
     out = capsys.readouterr().out
     assert "STATUS=claude_fallback" in out
     assert "ORCHESTRATOR_EDIT_AUTHORITY=allowed" in out
+
+
+def test_step2_entry_marks_claude_without_shell(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
+    calls: list[list[str]] = []
+
+    def fake_invoke(args, **_kwargs):  # type: ignore[no-untyped-def]
+        calls.append(list(args))
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(implement_dispatch, "_invoke_cli", fake_invoke)
+    monkeypatch.setattr(implement_dispatch.subprocess, "run", lambda *a, **_kwargs: subprocess.CompletedProcess(a[0], 0, "", ""))
+
+    assert implement_dispatch.step2_entry_main(["--coder", "claude"]) == 0
+    assert ["token", "mark", "Step 2 — implementation"] in calls
 
 
 def _legacy_malformed_manifest() -> str:

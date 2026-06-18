@@ -106,6 +106,9 @@ def main() -> int:
     if args[:2] == ["timing", "mark"]:
         log("timing mark " + " ".join(args[2:]))
         return 0
+    if args[:2] == ["execution-issues", "flush-safety-net"]:
+        log("flush-safety-net " + " ".join(args[2:]))
+        return 0
     if args[:2] == ["session", "restore-finalize-state"]:
         log("restore-finalize-state " + " ".join(args[2:]))
         return 0
@@ -211,6 +214,19 @@ assert_contains 'FINALIZE_SUBCOMMAND=teardown' "$text" 'teardown subcommand rela
 assert_contains 'FINALIZE_WARNINGS=none' "$text" 'teardown warnings relay'
 assert_contains 'step18b sentinel=false argv=final-report step18b --implement-tmpdir' "$(cat "$log")" 'finalize step18b invocation'
 assert_contains 'teardown sentinel=before argv=implement-finalize teardown --state-file' "$(cat "$log")" 'finalize teardown invocation'
+
+# Execution-issues safety net runs before restore/teardown when a run id is available.
+impl=$(make_impl safety-net)
+printf 'run-safety
+' >"$impl/session-id"
+printf '### Warnings
+- pending
+' >"$impl/execution-issues.md"
+out="$TMP_ROOT/safety-net.out"; log="$TMP_ROOT/safety-net.log"
+STEP18_STUB_EMIT_BODY=false run_step18 "$impl" "$out" "$log" --phase finalize --step17-emitted false || fail 'safety-net finalize exited non-zero'
+assert_contains 'flush-safety-net --log-root' "$(cat "$log")" 'safety net invocation'
+assert_contains '--run-id run-safety' "$(cat "$log")" 'safety net run id'
+assert_contains '--issue-log' "$(cat "$log")" 'safety net issue log'
 
 # --step17-emitted true creates sentinel before step18b and can suppress body.
 impl=$(make_impl step17-present)

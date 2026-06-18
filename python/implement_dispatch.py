@@ -12,6 +12,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,6 +20,8 @@ from typing import Any
 
 import issue_wire
 import logging_util
+import phantom
+import proc
 import redact
 
 _PLUGIN_ROOT = Path(__file__).resolve().parents[1]
@@ -28,7 +31,7 @@ RESUME_CAP = 5
 SUMMARY_BULLETS_MAX = 5
 PORCELAIN_MIN_PARTS = 2
 GIT_BIN = shutil.which("git") or "git"
-BASH_BIN = shutil.which("bash") or "bash"
+TIMING_LEDGER_MIN_COLUMNS = 7
 
 
 def _err(message: str) -> None:
@@ -115,6 +118,488 @@ def _current_cli_path() -> Path:
 
 def _invoke_cli(args: Sequence[str], *, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
     return _run([sys.executable, str(_current_cli_path()), *args], cwd=cwd)
+
+
+
+def _forward_result(result: subprocess.CompletedProcess[str]) -> int:
+    if result.stdout:
+        sys.stdout.write(result.stdout)
+        sys.stdout.flush()
+    if result.stderr:
+        sys.stderr.write(result.stderr)
+        sys.stderr.flush()
+    return result.returncode
+
+
+def _tmpdir_from_env() -> Path:
+    raw = os.environ.get("IMPLEMENT_TMPDIR", "")
+    if not raw:
+        print("IMPLEMENT_TMPDIR required", file=sys.stderr)
+        raise SystemExit(2)
+    return Path(raw)
+
+
+def _rehydrate_plugin_root(implement_tmpdir: Path | None = None) -> Path:
+    root = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
+    if not root and implement_tmpdir:
+        plugin_env = implement_tmpdir / "plugin-root.env"
+        if plugin_env.is_file():
+            value = _session_get(plugin_env, "CLAUDE_PLUGIN_ROOT", "")
+            if value:
+                root = value
+        if not root:
+            value = _session_get(implement_tmpdir / "session-env.sh", "LARCH_CLAUDE_PLUGIN_ROOT", "")
+            if value:
+                root = value
+    if not root:
+        root = str(_PLUGIN_ROOT)
+    os.environ["CLAUDE_PLUGIN_ROOT"] = root
+    return Path(root)
+
+
+def _read_session_key_default(implement_tmpdir: Path, key: str, default: str = "") -> str:
+    return _session_get(implement_tmpdir / "session-env.sh", key, default)
+
+
+def _rehydrate_larch_triplet(implement_tmpdir: Path) -> None:
+    for key in ("LARCH_TOKEN_SESSION_ID", "LARCH_CLAUDE_SOURCE_FILE", "LARCH_TIMING_LEDGER"):
+        if not os.environ.get(key):
+            value = _read_session_key_default(implement_tmpdir, key, "")
+            if value:
+                os.environ[key] = value
+
+
+def _read_kv_file(path: Path, key: str, default: str = "") -> str:
+    return _session_get(path, key, default)
+
+
+def _tracking_sentinel_values(sentinel: Path) -> dict[str, str]:
+    if not sentinel.is_file():
+        return {}
+    result = _invoke_cli(["tracking-issue", "read", "--sentinel", str(sentinel)])
+    return _parse_kv(result.stdout if result.returncode == 0 else "")
+
+
+def _first_nonempty(*values: str) -> str:
+    return next((value for value in values if value), "")
+
+
+def _clone_expected_tmpdir_prefix() -> str:
+    clone_tag = os.environ.get("CLONE_TAG", "")
+    if not clone_tag:
+        clone_tag = re.sub(r"[^A-Za-z0-9_-]", "_", Path.cwd().name)[:32] or "_"
+    return f"claude-implement-{clone_tag}-"
+
+
+def _run_cli_forward(args: Sequence[str], *, cwd: Path | None = None, env: dict[str, str] | None = None) -> int:
+    result = subprocess.run(
+        [sys.executable, str(_current_cli_path()), *args],
+        cwd=str(cwd) if cwd else None,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    return _forward_result(result)
+
+
+def _env_value(name: str, default: str = "") -> str:
+    return os.environ.get(name, default)
+
+
+def step0_bootstrap_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py implement step-0-bootstrap")
+    parser.add_argument("--mode", choices=("initial", "resume"), required=True)
+    parser.add_argument("--issue-number", default="")
+    parser.add_argument("--preflight-tmpdir", default="")
+    parser.add_argument("--coder", default="")
+    parser.add_argument("--emergency-requested", choices=("", "true", "false"), default="")
+    parser.add_argument("--self-review-requested", choices=("", "true", "false"), default="")
+    parser.add_argument("--forked-target", choices=("", "true", "false"), default="")
+    parser.add_argument("--merge-requested", choices=("", "true", "false"), default="")
+    parser.add_argument("--draft-requested", choices=("", "true", "false"), default="")
+    parser.add_argument("--no-admin-fallback", choices=("", "true", "false"), default="")
+    parser.add_argument("--no-logs-commit", choices=("", "true", "false"), default="")
+    parser.add_argument("--upstream-repo", default="")
+    parser.add_argument("--run-id", default="")
+    parser.add_argument("--caller-env", default="")
+    parser.add_argument("--session-env", default="")
+    parser.add_argument("--non-interactive", choices=("true", "false"), default="")
+    args = parser.parse_args(argv)
+    implement_tmpdir_raw = os.environ.get("IMPLEMENT_TMPDIR", "")
+    implement_tmpdir = Path(implement_tmpdir_raw) if implement_tmpdir_raw else None
+    _rehydrate_plugin_root(implement_tmpdir)
+    issue = args.issue_number or os.environ.get("TARGET_ISSUE_NUMBER", os.environ.get("ISSUE_NUMBER", ""))
+    preflight = args.preflight_tmpdir or os.environ.get("PREFLIGHT_TMPDIR", "")
+    coder = args.coder or _env_value("coder")
+    emergency = args.emergency_requested
+    self_review = args.self_review_requested
+    forked = args.forked_target
+    merge = args.merge_requested
+    draft = args.draft_requested
+    no_admin = args.no_admin_fallback
+    no_logs = args.no_logs_commit
+    upstream = args.upstream_repo or os.environ.get("UPSTREAM_REPO", "")
+    run_id = args.run_id or os.environ.get("RUN_ID", "")
+    caller_env = args.caller_env or args.session_env or os.environ.get("CALLER_ENV_PATH", os.environ.get("SESSION_ENV_PATH", ""))
+    if args.mode == "resume" and implement_tmpdir:
+        if not preflight and (implement_tmpdir / "preflight-tmpdir.env").is_file():
+            preflight = _session_get(implement_tmpdir / "preflight-tmpdir.env", "PREFLIGHT_TMPDIR", "")
+        if not forked:
+            forked = _read_session_key_default(implement_tmpdir, "FORKED_TARGET", "false")
+        emergency = _env_value("emergency_requested") if _env_value("emergency_requested") in {"true", "false"} else _session_get(implement_tmpdir / "run-flags.sh", "EMERGENCY_REQUESTED", emergency)
+        self_review = _env_value("self_review") if _env_value("self_review") in {"true", "false"} else _session_get(implement_tmpdir / "run-flags.sh", "SELF_REVIEW_REQUESTED", self_review)
+        seed = implement_tmpdir / "ship-seed-input.env"
+        merge = _env_value("merge") or _session_get(seed, "MERGE", merge)
+        draft = _env_value("draft") or _session_get(seed, "DRAFT", draft)
+        no_admin = _env_value("no_admin_fallback") or _session_get(seed, "NO_ADMIN_FALLBACK", no_admin)
+        no_logs = _env_value("no_logs_commit") or _session_get(seed, "NO_LOGS_COMMIT", no_logs)
+        if not issue:
+            sentinel_values = _tracking_sentinel_values(implement_tmpdir / "parent-issue.md")
+            issue = sentinel_values.get("ISSUE_NUMBER", "") or _read_session_key_default(implement_tmpdir, "ISSUE_NUMBER", "")
+            run_id = run_id or sentinel_values.get("RUN_ID", "")
+        run_id = run_id or _read_session_key_default(implement_tmpdir, "RUN_ID", "")
+    if forked == "true" and not upstream:
+        fork = _invoke_cli(["admission", "fork-env"])
+        if fork.stdout:
+            sys.stdout.write(fork.stdout)
+        if fork.returncode != 0:
+            return fork.returncode
+        values = _parse_kv(fork.stdout)
+        caller_env = values.get("CALLER_ENV_PATH", caller_env)
+        upstream = values.get("UPSTREAM_REPO", upstream)
+        os.environ["FORK_REPO"] = values.get("FORK_REPO", os.environ.get("FORK_REPO", ""))
+        os.environ["FORK_OWNER"] = values.get("FORK_OWNER", os.environ.get("FORK_OWNER", ""))
+        forked = values.get("FORKED_TARGET", forked)
+    if implement_tmpdir:
+        _rehydrate_larch_triplet(implement_tmpdir)
+        if preflight:
+            _write_text_atomic(implement_tmpdir / "preflight-tmpdir.env", f"PREFLIGHT_TMPDIR={preflight}\n")
+    non_interactive = args.non_interactive
+    if not non_interactive:
+        resolved = _invoke_cli(["bootstrap", "resolve-non-interactive"])
+        non_interactive = "true" if resolved.stdout.strip() == "true" else "false"
+    os.environ["LARCH_CLAUDE_PID"] = os.environ.get("LARCH_CLAUDE_PID", str(os.getppid()))
+    invoke_args = [
+        "bootstrap", "invoke", "--mode", args.mode,
+        "--issue-number", issue,
+        "--preflight-tmpdir", preflight,
+        "--coder", coder,
+        "--emergency-requested", emergency or "false",
+        "--self-review-requested", self_review or "false",
+        "--forked-target", forked or "false",
+        "--merge-requested", merge or "false",
+        "--draft-requested", draft or "false",
+        "--no-admin-fallback", no_admin or "false",
+        "--no-logs-commit", no_logs or "false",
+        "--upstream-repo", upstream,
+        "--run-id", run_id,
+        "--caller-env", caller_env,
+        "--non-interactive", non_interactive,
+    ]
+    result = _invoke_cli(invoke_args)
+    if result.returncode != 0:
+        return result.returncode
+    if args.mode != "resume":
+        print("progress: type p (or progress) at any time")
+    if result.stdout:
+        sys.stdout.write(result.stdout)
+    return 0
+
+
+def step0_degraded_gate_main(argv: list[str] | None = None) -> int:
+    argparse.ArgumentParser(prog="cli.py implement step-0-degraded-gate").parse_args(argv)
+    implement_tmpdir = _tmpdir_from_env()
+    _rehydrate_plugin_root(implement_tmpdir)
+    codex_binary_found = _read_session_key_default(implement_tmpdir, "CODEX_BINARY_FOUND", "")
+    cursor_binary_found = _read_session_key_default(implement_tmpdir, "CURSOR_BINARY_FOUND", "")
+    check_args = ["agent", "check-reviewers"]
+    if shutil.which("codex") is None:
+        check_args.append("--skip-codex-probe")
+    if shutil.which("cursor") is None:
+        check_args.append("--skip-cursor-probe")
+    probe = _invoke_cli(check_args)
+    if probe.returncode != 0:
+        probe = _invoke_cli(check_args)
+    values = _parse_kv(probe.stdout)
+    return _run_cli_forward([
+        "agent", "degraded-tools-gate", "--skill", "implement",
+        "--codex-present", values.get("CODEX_PRESENT", ""),
+        "--cursor-present", values.get("CURSOR_PRESENT", ""),
+        "--codex-binary-found", codex_binary_found,
+        "--cursor-binary-found", cursor_binary_found,
+    ])
+
+
+def step2_entry_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py implement step-2-entry")
+    parser.add_argument("--coder", choices=("claude", "codex", "cursor"), required=True)
+    args = parser.parse_args(argv)
+    implement_tmpdir = _tmpdir_from_env()
+    _rehydrate_plugin_root(implement_tmpdir)
+    _rehydrate_larch_triplet(implement_tmpdir)
+    codex_found = _read_session_key_default(implement_tmpdir, "CODEX_BINARY_FOUND", "false")
+    cursor_found = _read_session_key_default(implement_tmpdir, "CURSOR_BINARY_FOUND", "false")
+    if args.coder == "claude" or (args.coder == "codex" and codex_found != "true") or (args.coder == "cursor" and cursor_found != "true"):
+        _invoke_cli(["token", "mark", "Step 2 — implementation"])
+    subprocess.run([sys.executable, str(_current_cli_path()), "timing", "mark", "Step 2 — implementation"], env={**os.environ, "DESIGN_TMPDIR": "", "LARCH_TIMING_SKILL": "implement"}, check=False)
+    return 0
+
+
+def _persist_ship_seed_context(implement_tmpdir: Path) -> None:
+    seed_file = implement_tmpdir / "ship-seed-input.env"
+    lines = seed_file.read_text(encoding="utf-8", errors="replace").splitlines() if seed_file.is_file() and not seed_file.is_symlink() else []
+    keys = {line.split("=", 1)[0] for line in lines if "=" in line}
+    if "MANIFEST_PATH" not in keys:
+        manifest = ""
+        if (implement_tmpdir / "codex-step2-out" / "manifest.json").is_file():
+            manifest = str(implement_tmpdir / "codex-step2-out" / "manifest.json")
+        elif (implement_tmpdir / "manifest.json").is_file():
+            manifest = str(implement_tmpdir / "manifest.json")
+        lines.append(f"MANIFEST_PATH={manifest}")
+    if "TOOL_LABEL" not in keys:
+        coder_value = _read_kv_file(implement_tmpdir / "bootstrap-routing.env", "coder", "")
+        tool_label = "Codex" if coder_value == "codex" else "Cursor" if coder_value == "cursor" else "claude"
+        lines.append(f"TOOL_LABEL={tool_label}")
+    _write_text_atomic(seed_file, "\n".join(lines) + "\n")
+
+
+def _emit_phantom_probe_with_warn(step: str) -> None:
+    result = phantom.probe_with_warn(proc, step=step)
+    _emit_kv("PHANTOM_STATUS", result.dirty.status)
+    if result.dirty.reason:
+        _emit_kv("PHANTOM_REASON", result.dirty.reason)
+    if result.dirty.status == "phantom":
+        _emit_kv("PHANTOM_COUNT", result.dirty.count)
+        _emit_kv("PHANTOM_PATHS_FILE", result.dirty.paths_file)
+    if result.append_warn_error:
+        _emit_kv("PHANTOM_APPEND_WARN_ERROR", result.append_warn_error)
+
+
+def step2_post_dispatch_main(argv: list[str] | None = None) -> int:
+    argparse.ArgumentParser(prog="cli.py implement step-2-post-dispatch").parse_args(argv)
+    implement_tmpdir = _tmpdir_from_env()
+    _rehydrate_plugin_root(implement_tmpdir)
+    _emit_phantom_probe_with_warn("2-post-dispatch")
+    branch = _run([GIT_BIN, "symbolic-ref", "--short", "HEAD"])
+    if branch.returncode != 0 or not branch.stdout.strip():
+        _err("step-2-post-dispatch: not on a named branch (detached HEAD or not a git repo)")
+        return 1
+    _emit_kv("BRANCH", branch.stdout.strip())
+    commit = _run([GIT_BIN, "rev-parse", "--short", "HEAD"])
+    if commit.returncode == 0 and commit.stdout.strip():
+        _emit_kv("COMMIT_SHA", commit.stdout.strip())
+    _persist_ship_seed_context(implement_tmpdir)
+    return 0
+
+
+def step5_review_main(argv: list[str] | None = None) -> int:
+    argparse.ArgumentParser(prog="cli.py implement step-5-review").parse_args(argv)
+    implement_tmpdir = _tmpdir_from_env()
+    _rehydrate_plugin_root(implement_tmpdir)
+    _invoke_cli(["timing", "telemetry-mark", "--implement-tmpdir", str(implement_tmpdir), "--label", "Step 5 — code review"])
+    dynamic_cap = _read_session_key_default(implement_tmpdir, "LARCH_DYNAMIC_ARCHETYPES_MAX", "") or os.environ.get("LARCH_DYNAMIC_ARCHETYPES_MAX", "") or "3"
+    if dynamic_cap not in {"0", "1", "2", "3"}:
+        print(f"ERROR: Step 5 banner dynamic_archetypes_cap is non-integer or out of range: {dynamic_cap}", file=sys.stderr)
+        return 2
+    os.environ["LARCH_DYNAMIC_ARCHETYPES_MAX"] = dynamic_cap
+    round_cap = "5"
+    print(f"> **🔶 /implement 5: code review — review-and-fix step5 --mode loop, up to {round_cap} rounds; 3-judge panel on every round (three Cursor archetype voters; single-Claude fallback when Cursor is unavailable); review panel: specialists per vendor (mechanically pruned in rounds 3-4 when prior yield is zero); dynamic-archetypes cap={dynamic_cap}**")
+    return _run_cli_forward(["review-and-fix", "step5", "--implement-tmpdir", str(implement_tmpdir), "--mode", "loop", "--starting-round", "1"])
+
+
+def _step5_round_timing_row_exists(cols: list[str], *, round_decimal: str, start_s: str) -> bool:
+    return (
+        len(cols) >= TIMING_LEDGER_MIN_COLUMNS
+        and cols[1] == "round"
+        and cols[3] == "implement"
+        and cols[4] == "Step 5 — code review"
+        and cols[5] == round_decimal
+        and cols[6] == start_s
+    )
+
+
+def step5_resume_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py implement step-5-resume")
+    parser.add_argument("--final-round-num", required=True)
+    parser.add_argument("--ready-to-commit", action="store_true")
+    parser.add_argument("--record-only", action="store_true")
+    args = parser.parse_args(argv)
+    if not args.final_round_num.isdigit():
+        print("step-5-resume: --final-round-num must be numeric", file=sys.stderr)
+        return 2
+    implement_tmpdir = _tmpdir_from_env()
+    _rehydrate_plugin_root(implement_tmpdir)
+    _rehydrate_larch_triplet(implement_tmpdir)
+    subprocess.run([sys.executable, str(_current_cli_path()), "timing", "mark", "Step 5 — review handoff"], env={**os.environ, "DESIGN_TMPDIR": "", "LARCH_TIMING_SKILL": "implement"}, check=False)
+    round_start_file = implement_tmpdir / f"round-{args.final_round_num}" / "round-start-s"
+    if round_start_file.is_file():
+        start_s = round_start_file.read_text(encoding="utf-8", errors="replace").strip()
+        ledger = implement_tmpdir / "timing-ledger.tsv"
+        needs_record = start_s.isdigit()
+        if needs_record and ledger.is_file():
+            round_decimal = str(int(args.final_round_num))
+            for line in ledger.read_text(encoding="utf-8", errors="replace").splitlines():
+                cols = line.split("\t")
+                if _step5_round_timing_row_exists(cols, round_decimal=round_decimal, start_s=start_s):
+                    needs_record = False
+                    break
+        if needs_record and start_s.isdigit():
+            _invoke_cli(["review-and-fix", "record-round-timing", "--implement-tmpdir", str(implement_tmpdir), "--round", args.final_round_num, "--start-s", start_s, "--end-s", str(int(time.time()))])
+    if args.record_only:
+        return 0
+    if args.ready_to_commit or os.environ.get("STEP5_HANDOFF_READY_TO_COMMIT") == "true":
+        _invoke_cli(["review-and-fix", "commit-fixes", "--stage-all"])
+    print("progress: type p (or progress) at any time")
+    return _run_cli_forward(["review-and-fix", "step5", "--implement-tmpdir", str(implement_tmpdir), "--mode", "loop", "--starting-round", str(int(args.final_round_num) + 1)])
+
+
+def step6_entry_main(argv: list[str] | None = None) -> int:
+    argparse.ArgumentParser(prog="cli.py implement step-6-entry").parse_args(argv)
+    implement_tmpdir = _tmpdir_from_env()
+    _rehydrate_plugin_root(implement_tmpdir)
+    _rehydrate_larch_triplet(implement_tmpdir)
+    (implement_tmpdir / ".review-boundary-passed").touch(exist_ok=True)
+    return _run_cli_forward(["review-and-fix", "check-changes", "--baseline", str(implement_tmpdir / "pre-review-untracked.txt"), "--head-baseline", str(implement_tmpdir / "pre-review-head.txt")])
+
+
+def run_step_checks_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py implement run-step-checks")
+    parser.add_argument("--site", required=True)
+    args = parser.parse_args(argv)
+    implement_tmpdir = _tmpdir_from_env()
+    _rehydrate_plugin_root(implement_tmpdir)
+    _rehydrate_larch_triplet(implement_tmpdir)
+    return _run_cli_forward(["checks", "run-relevant", "--site", args.site, "--tmpdir", str(implement_tmpdir)])
+
+
+def step8_python_guard_main(argv: list[str] | None = None) -> int:
+    argparse.ArgumentParser(prog="cli.py implement step-8-python-guard").parse_args(argv)
+    if sys.version_info >= (3, 11):  # noqa: UP036
+        return 0
+    print("ERROR: Python ship driver requires Python 3.11 or newer", file=sys.stderr)
+    print('{"detail":"Python ship driver requires Python 3.11 or newer","failed_run_id":"","ledger_dispatcher":"","ledger_exit_code":null,"ledger_failure_detail_log":"","ledger_phase":"","ledger_ready":false,"ledger_site":"","ledger_step":"","ledger_trigger":"","merge_result":"","needs_user_reason":"","outcome":"STALLED","pr_number":null,"pr_url":""}')
+    return 4
+
+
+def step8_seed_initial_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py implement step-8-seed-initial")
+    for flag in ("merge", "draft", "no-admin-fallback", "no-logs-commit", "manifest-path", "tool-label", "stall-tracking", "stall-step", "bail-reason", "bail-failure-detail-log"):
+        parser.add_argument(f"--{flag}", default="")
+    args = parser.parse_args(argv)
+    implement_tmpdir = _tmpdir_from_env()
+    _rehydrate_plugin_root(implement_tmpdir)
+    state_file = implement_tmpdir / "ship-pr-state.sh"
+    if state_file.is_file() and state_file.stat().st_size > 0 and re.search(r"^[A-Za-z_][A-Za-z0-9_]*=", state_file.read_text(encoding="utf-8", errors="replace"), re.MULTILINE):
+        print("step-8-seed-initial: initial ship state is create-if-absent only; refusing to re-seed non-empty ship-pr-state.sh", file=sys.stderr)
+        return 2
+    bootstrap_file = implement_tmpdir / "bootstrap-routing.env"
+    seed_file = implement_tmpdir / "ship-seed-input.env"
+    parent_issue = implement_tmpdir / "parent-issue.md"
+    sentinel = _tracking_sentinel_values(parent_issue)
+    bootstrap_coder = _read_kv_file(bootstrap_file, "coder", "")
+    mapped_tool = "Codex" if bootstrap_coder == "codex" else "Cursor" if bootstrap_coder == "cursor" else "" if not bootstrap_coder else "claude"
+    branch = _first_nonempty(_read_kv_file(bootstrap_file, "BRANCH_NAME", ""), _read_kv_file(parent_issue, "BRANCH_NAME", ""), sentinel.get("BRANCH_NAME", ""))
+    issue = _first_nonempty(_read_kv_file(bootstrap_file, "ISSUE_NUMBER", ""), _read_kv_file(parent_issue, "ISSUE_NUMBER", ""), sentinel.get("ISSUE_NUMBER", ""))
+    run_id = _first_nonempty(_read_kv_file(bootstrap_file, "RUN_ID", ""), _read_session_key_default(implement_tmpdir, "LARCH_RUN_ID", ""), _read_kv_file(parent_issue, "RUN_ID", ""), sentinel.get("RUN_ID", ""))
+    repo = _first_nonempty(_read_kv_file(bootstrap_file, "REPO", ""), _read_session_key_default(implement_tmpdir, "REPO", ""))
+    if not branch:
+        print("step-8-seed-initial: BRANCH_NAME is required but missing from durable inputs", file=sys.stderr)
+        return 2
+    if not issue.isdigit():
+        print("step-8-seed-initial: ISSUE_NUMBER must be a non-empty digit value", file=sys.stderr)
+        return 2
+    if not run_id:
+        print("step-8-seed-initial: RUN_ID is required but missing from durable inputs", file=sys.stderr)
+        return 2
+    if not repo:
+        print("step-8-seed-initial: REPO is required but missing from durable inputs", file=sys.stderr)
+        return 2
+    expected_session_id = (implement_tmpdir / "session-id").read_text(encoding="utf-8", errors="replace").strip() if (implement_tmpdir / "session-id").is_file() else ""
+    return _run_cli_forward([
+        "ship", "seed-initial-state", "--tmpdir", str(implement_tmpdir), "--state-file", str(state_file),
+        "--branch", branch, "--issue", issue, "--repo", repo, "--run-id", run_id,
+        "--manifest-path", _first_nonempty(args.manifest_path, _read_kv_file(seed_file, "MANIFEST_PATH", "")),
+        "--tool-label", _first_nonempty(args.tool_label, _read_kv_file(seed_file, "TOOL_LABEL", ""), mapped_tool, "claude"),
+        "--merge", _first_nonempty(args.merge, _read_kv_file(seed_file, "MERGE", ""), "false"),
+        "--draft", _first_nonempty(args.draft, _read_kv_file(seed_file, "DRAFT", ""), "false"),
+        "--forked", _first_nonempty(_read_kv_file(seed_file, "FORKED_TARGET", ""), _read_session_key_default(implement_tmpdir, "FORKED_TARGET", ""), "false"),
+        "--repo-unavailable", _first_nonempty(_read_kv_file(bootstrap_file, "REPO_UNAVAILABLE", ""), _read_session_key_default(implement_tmpdir, "REPO_UNAVAILABLE", ""), "false"),
+        "--deferred", _first_nonempty(_read_kv_file(bootstrap_file, "DEFERRED", ""), _read_kv_file(seed_file, "DEFERRED", ""), "false"),
+        "--no-admin-fallback", _first_nonempty(args.no_admin_fallback, _read_kv_file(seed_file, "NO_ADMIN_FALLBACK", ""), "false"),
+        "--no-logs-commit", _first_nonempty(args.no_logs_commit, _read_kv_file(seed_file, "NO_LOGS_COMMIT", ""), "false"),
+        "--expected-session-id", expected_session_id,
+        "--expected-tmpdir-basename-prefix", _clone_expected_tmpdir_prefix(),
+        "--stall-tracking", args.stall_tracking or "false",
+        "--stall-step", args.stall_step,
+        "--bail-reason", args.bail_reason,
+        "--bail-failure-detail-log", args.bail_failure_detail_log,
+    ])
+
+
+def step8_ship_main(argv: list[str] | None = None) -> int:
+    argparse.ArgumentParser(prog="cli.py implement step-8-ship").parse_args(argv)
+    implement_tmpdir = _tmpdir_from_env()
+    _rehydrate_plugin_root(implement_tmpdir)
+    state_file = implement_tmpdir / "ship-pr-state.sh"
+    def state(key: str, default: str = "") -> str:
+        return _read_kv_file(state_file, key, default)
+    branch = os.environ.get("BRANCH_NAME", "") or state("BRANCH_NAME")
+    issue = os.environ.get("ISSUE_NUMBER", "") or state("ISSUE_NUMBER")
+    run_id = os.environ.get("RUN_ID", "") or state("RUN_ID")
+    repo = os.environ.get("REPO", "") or state("REPO")
+    merge = _env_value("merge") or state("MERGE", "false") or "false"
+    draft = _env_value("draft") or state("DRAFT", "false") or "false"
+    forked = _env_value("forked_target") or state("FORKED_TARGET", "false") or "false"
+    repo_unavailable = os.environ.get("REPO_UNAVAILABLE", "") or state("REPO_UNAVAILABLE", "false") or "false"
+    manifest = os.environ.get("MANIFEST_PATH", "") or state("MANIFEST_PATH")
+    tool = _env_value("coder") or state("TOOL_LABEL", "claude") or "claude"
+    no_admin = _env_value("no_admin_fallback") or state("NO_ADMIN_FALLBACK", "false") or "false"
+    no_logs = _env_value("no_logs_commit") or state("NO_LOGS_COMMIT", "false") or "false"
+    for name, value in (("BRANCH_NAME", branch), ("RUN_ID", run_id), ("REPO", repo)):
+        if not value:
+            print(f"step-8-ship: missing {name} (not exported and absent from ship-pr-state.sh)", file=sys.stderr)
+            return 2
+    guard_rc = step8_python_guard_main([])
+    if guard_rc != 0:
+        return guard_rc
+    print("→ phantom-probe: 8-pre-ship", file=sys.stderr)
+    with contextlib.redirect_stdout(sys.stderr):
+        _emit_phantom_probe_with_warn("8-pre-ship")
+    expected_session_id = (implement_tmpdir / "session-id").read_text(encoding="utf-8", errors="replace").strip() if (implement_tmpdir / "session-id").is_file() else ""
+    return _run_cli_forward([
+        "ship", "pr", "--branch", branch, "--issue", issue, "--repo", repo, "--run-id", run_id,
+        "--tmpdir", str(implement_tmpdir), "--manifest-path", manifest, "--state-file", str(state_file),
+        "--tool-label", tool, "--merge", merge, "--draft", draft, "--forked", forked,
+        "--repo-unavailable", repo_unavailable, "--no-admin-fallback", no_admin or "false", "--no-logs-commit", no_logs or "false",
+        "--expected-session-id", expected_session_id, "--expected-tmpdir-basename-prefix", _clone_expected_tmpdir_prefix(),
+    ])
+
+
+def step8_oos_checkpoint_main(argv: list[str] | None = None) -> int:
+    argparse.ArgumentParser(prog="cli.py implement step-8-oos-checkpoint").parse_args(argv)
+    implement_tmpdir = _tmpdir_from_env()
+    _rehydrate_plugin_root(implement_tmpdir)
+    err = implement_tmpdir / "oos-disposition-checkpoint.stderr.log"
+    err.write_text("", encoding="utf-8")
+    args = ["oos", "disposition-checkpoint", "--implement-tmpdir", str(implement_tmpdir)]
+    if os.environ.get("DESIGN_TMPDIR"):
+        args.extend(["--design-tmpdir", os.environ["DESIGN_TMPDIR"]])
+    result = subprocess.run([sys.executable, str(_current_cli_path()), *args], capture_output=True, text=True, check=False)
+    err.write_text(result.stderr, encoding="utf-8")
+    if result.stdout:
+        sys.stdout.write(result.stdout)
+    log_text = (implement_tmpdir / "execution-issues.md").read_text(encoding="utf-8", errors="replace") if (implement_tmpdir / "execution-issues.md").is_file() else ""
+    already = False
+    if result.returncode == 1:
+        already = "Step step-8-oos-checkpoint —" in log_text or ("step-8-oos-checkpoint" in log_text and "step-8-oos-checkpoint-validation" not in log_text)
+    else:
+        already = "step-8-oos-checkpoint-validation" in log_text
+    if result.returncode != 0 and not already:
+        site = "step-8-oos-checkpoint" if result.returncode == 1 else "step-8-oos-checkpoint-validation"
+        _invoke_cli(["run-log", "append-failure", "--log", str(implement_tmpdir / "execution-issues.md"), "--site", site, "--tool", "python/cli.py oos disposition-checkpoint", "--exit-code", str(result.returncode), "--category", "Tool Failures", "--output-file", str(err), "--redact"])
+    _emit_kv("OOS_CHECKPOINT_RC", result.returncode)
+    return result.returncode
 
 
 @dataclass
@@ -658,30 +1143,19 @@ def _oos_materialize_should_bail(*, count_rc: int, count_str: str, oos_nonempty:
 
 
 def _materialize_oos(st: DispatchState, *, oos_observations_nonempty: bool = False) -> str:
-    helper = st.plugin_root / "skills" / "implement" / "scripts" / "materialize-manifest-oos.sh"
     log = st.tmpdir / "materialize-manifest-oos.log"
-    count = subprocess.run(
-        [BASH_BIN, str(helper), "--count-only", "--manifest-path", str(st.manifest_path), "--implement-tmpdir", str(st.tmpdir)],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    count = _invoke_cli([
+        "oos", "materialize-manifest", "--count-only",
+        "--manifest-path", str(st.manifest_path),
+        "--implement-tmpdir", str(st.tmpdir),
+    ], cwd=st.repo_root)
     count_str = count.stdout.strip()
-    helper_runnable = helper.is_file() and os.access(helper, os.X_OK)
-    if not helper_runnable:
-        log.write_text(f"materialize helper missing or not executable: {helper}\n", encoding="utf-8")
-        _append_materialize_oos_failure(st, log, 127)
-        if _oos_materialize_should_bail(count_rc=count.returncode, count_str=count_str, oos_nonempty=oos_observations_nonempty, materialize_failed=True):
-            return "manifest-oos-materialization-failed"
-        return ""
-    result = subprocess.run(
-        [BASH_BIN, str(helper), "--manifest-path", str(st.manifest_path), "--implement-tmpdir", str(st.tmpdir)],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        check=False,
-    )
-    log.write_text(result.stdout, encoding="utf-8")
+    result = _invoke_cli([
+        "oos", "materialize-manifest",
+        "--manifest-path", str(st.manifest_path),
+        "--implement-tmpdir", str(st.tmpdir),
+    ], cwd=st.repo_root)
+    log.write_text(result.stdout + result.stderr, encoding="utf-8")
     if result.returncode != 0:
         _append_materialize_oos_failure(st, log, result.returncode)
         if _oos_materialize_should_bail(

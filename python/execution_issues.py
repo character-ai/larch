@@ -116,7 +116,16 @@ def flush_execution_issues(*, log_root: Path, run_id: str, issue_log: Path, batc
     sha = sha256_file(issue_log)
     sentinel = sentinel_dir / ".execution-issues-flushed.sha"
     batch_path = log_root / "implement" / run_id / "execution-issues.ndjson"
-    if (sentinel.is_file() and sentinel.read_text(encoding="utf-8", errors="replace").strip() == sha) or (batch_path.is_file() and (f'"source_sha256":"{sha}"' in batch_path.read_text(encoding="utf-8", errors="replace") or execution_issues_batch_contains_all_sections(issue_log, batch_path))):
+    sentinel_matches = sentinel.is_file() and sentinel.read_text(encoding="utf-8", errors="replace").strip() == sha
+    batch_matches = False
+    if batch_path.is_file():
+        batch_text = batch_path.read_text(encoding="utf-8", errors="replace")
+        batch_matches = f'"source_sha256":"{sha}"' in batch_text or execution_issues_batch_contains_all_sections(issue_log, batch_path)
+    if sentinel_matches:
+        sentinel.write_text(sha + "\n", encoding="utf-8")
+        issue_log.write_text("", encoding="utf-8")
+        return 0, "already-flushed", 0, ""
+    if batch_matches:
         sentinel.write_text(sha + "\n", encoding="utf-8")
         issue_log.write_text("", encoding="utf-8")
         return 0, "already-flushed", 0, ""
@@ -142,6 +151,67 @@ def flush_execution_issues(*, log_root: Path, run_id: str, issue_log: Path, batc
     finally:
         with suppress(OSError):
             record_path.unlink()
+
+
+
+
+def flush_execution_issues_safety_net(*, log_root: Path, run_id: str, issue_log: Path, batch: str = "execution-issues", step_label: str = "18", source_label: str = "execution-issues.md safety-net") -> tuple[int, str, int, str]:
+    """Append pending execution issues to the run log without truncating the source log."""
+    if not log_root.is_absolute():
+        return 2, "failed", 0, "--log-root must be absolute"
+    if not re.fullmatch(r"[A-Za-z0-9-]+", run_id or ""):
+        return 2, "failed", 0, "--run-id must contain only letters, numbers, and hyphens"
+    if batch != "execution-issues":
+        return 2, "failed", 0, "--batch must be execution-issues"
+    if not issue_log.is_file() or issue_log.stat().st_size == 0:
+        return 0, "skip", 0, ""
+    sentinel_dir = issue_log.parent
+    sha = sha256_file(issue_log)
+    batch_path = log_root / "implement" / run_id / "execution-issues.ndjson"
+    with tempfile.NamedTemporaryFile("w", delete=False, dir=str(sentinel_dir if sentinel_dir.is_dir() else Path(tempfile.gettempdir())), encoding="utf-8") as record_tmp:
+        record_path = Path(record_tmp.name)
+    append_log = sentinel_dir / f"flush-execution-issues-safety-net-append.{os.getpid()}.log"
+    try:
+        records = write_execution_issues_records(issue_log, record_path, sha, batch_path, step_label, source_label)
+        if records == 0:
+            return 0, "no-records", 0, str(append_log)
+        plugin_root = Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[1]))
+        cmd = [sys.executable, str(plugin_root / "python" / "cli.py"), "run-log", "append", "--log-root", str(log_root), "--skill", "implement", "--run-id", run_id, "--batch", "execution-issues", "--record-file", str(record_path)]
+        proc = subprocess.run(cmd, text=True, capture_output=True, check=False)
+        append_log.write_text(proc.stdout + proc.stderr, encoding="utf-8")
+        if proc.returncode == 0:
+            return 0, "ok", records, str(append_log)
+        _append_failure(issue_log, "flush-execution-issues-safety-net", f"run-log exited {proc.returncode}")
+        return 1, "failed", 0, str(append_log)
+    finally:
+        with suppress(OSError):
+            record_path.unlink()
+
+
+def flush_execution_issues_safety_net_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py execution-issues flush-safety-net")
+    parser.add_argument("--log-root", required=True)
+    parser.add_argument("--run-id", required=True)
+    parser.add_argument("--issue-log")
+    parser.add_argument("--batch", default="execution-issues")
+    parser.add_argument("--step-label", default="18")
+    parser.add_argument("--source-label", default="execution-issues.md safety-net")
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit:
+        emit_kv("FLUSH_STATUS", "failed")
+        emit_kv("RECORDS", 0)
+        emit_kv("ERROR", "usage")
+        return VALIDATION_FAILED_RC
+    issue_log = Path(args.issue_log) if args.issue_log else Path(os.environ.get("IMPLEMENT_TMPDIR", ".")) / "execution-issues.md"
+    rc, status, records, append_log = flush_execution_issues_safety_net(log_root=Path(args.log_root), run_id=args.run_id, issue_log=issue_log, batch=args.batch, step_label=args.step_label, source_label=args.source_label)
+    emit_kv("FLUSH_STATUS", status)
+    emit_kv("RECORDS", records)
+    if append_log:
+        emit_kv("APPEND_LOG_FILE", append_log)
+    if rc == VALIDATION_FAILED_RC:
+        emit_kv("ERROR", append_log or "validation failed")
+    return rc
 
 
 def flush_execution_issues_main(argv: list[str] | None = None) -> int:

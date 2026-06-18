@@ -214,6 +214,16 @@ run_finalize() {
     DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" timing report --since-last-mark --terse > /dev/null || true
     python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" token mark "Step 18 — done" || true
     DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" timing mark "Step 18 — done" || true
+    _run_id=$(read_key_from_file "$IMPLEMENT_TMPDIR/parent-issue.md" RUN_ID "")
+    if [ -z "$_run_id" ] && [ -f "$IMPLEMENT_TMPDIR/session-id" ]; then
+      _run_id=$(cat "$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || true)
+    fi
+    if [ -n "$_run_id" ]; then
+      python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" execution-issues flush-safety-net \
+        --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
+        --run-id "$_run_id" \
+        --issue-log "$IMPLEMENT_TMPDIR/execution-issues.md" >/dev/null 2>&1 || true
+    fi
     _restore_finalize=false
     if [ -f "$IMPLEMENT_TMPDIR/ship-pr-state.sh" ]; then
       if [ ! -f "$IMPLEMENT_TMPDIR/finalize-state.sh" ]; then
