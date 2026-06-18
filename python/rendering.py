@@ -8,7 +8,6 @@ import argparse
 import contextlib
 import difflib
 import hashlib
-import json
 import os
 import re
 import shutil
@@ -231,16 +230,7 @@ def render_findings_view(run_dir: Path, view: str = "all") -> tuple[int, str, st
         lines = jsonl.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError as exc:
         return 1, "", f"render findings-view: {exc}"
-    for line in lines:
-        if not line.strip():
-            continue
-        try:
-            parsed: object = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(parsed, dict):
-            continue
-        row = parsed
+    for row in logging_util.iter_jsonl_dicts(lines):
         outcome = str(row.get("outcome") or "")
         if view == "oos":
             if outcome != "out_of_scope":

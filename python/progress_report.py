@@ -637,16 +637,7 @@ def _phase_round_from_meta(
 
 def _accepted_reviewer_basenames(findings_file: Path | None) -> list[str]:
     names: list[str] = []
-    for line in _read_lines_best_effort(findings_file):
-        if not line.strip():
-            continue
-        try:
-            parsed: object = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(parsed, dict):
-            continue
-        row = cast("dict[str, object]", parsed)
+    for row in logging_util.iter_jsonl_dicts(_read_lines_best_effort(findings_file)):
         if row.get("outcome") != "accepted":
             continue
         slots = row.get("reviewer_slots")
@@ -890,16 +881,7 @@ def _progress_label_map_from_manifests(manifest_paths: list[Path]) -> dict[str, 
             lines = manifest.read_text(encoding="utf-8", errors="replace").splitlines()
         except OSError:
             continue
-        for line in lines:
-            if not line.strip():
-                continue
-            try:
-                parsed: object = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if not isinstance(parsed, dict):
-                continue
-            row = cast("dict[str, object]", parsed)
+        for row in logging_util.iter_jsonl_dicts(lines):
             output = row.get("output")
             tool = row.get("tool")
             slot = row.get("slot")
@@ -1226,16 +1208,7 @@ def _manifest_output_paths(manifest: Path) -> list[Path]:
         lines = manifest.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
         return paths
-    for line in lines:
-        if not line.strip():
-            continue
-        try:
-            parsed: object = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(parsed, dict):
-            continue
-        row = cast("dict[str, object]", parsed)
+    for row in logging_util.iter_jsonl_dicts(lines):
         output = row.get("output")
         if isinstance(output, str) and output:
             paths.append(Path(output))
@@ -1714,16 +1687,7 @@ def _materialize_design_panel_manifest(round_dir: Path) -> int:
     count = 0
     try:
         with panel_tmp.open("w", encoding="utf-8") as dst:
-            for line in _read_lines_best_effort(slots_src):
-                if not line.strip():
-                    continue
-                try:
-                    parsed: object = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if not isinstance(parsed, dict):
-                    continue
-                row = cast("dict[str, object]", parsed)
+            for row in logging_util.iter_jsonl_dicts(_read_lines_best_effort(slots_src)):
                 slot = str(row.get("slot") or "")
                 tool = str(row.get("tool") or "")
                 output = str(row.get("output") or "")
@@ -1741,14 +1705,8 @@ def _materialize_design_panel_manifest(round_dir: Path) -> int:
 
 def _count_panel_manifest(path: Path) -> int:
     count = 0
-    for line in _read_lines_best_effort(path):
-        if not line.strip():
-            continue
-        try:
-            parsed: object = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(parsed, dict) and any(cast("dict[str, object]", parsed).get(k) for k in ("slot", "tool", "output")):
+    for row in logging_util.iter_jsonl_dicts(_read_lines_best_effort(path)):
+        if any(row.get(k) for k in ("slot", "tool", "output")):
             count += 1
     return count
 
