@@ -756,6 +756,42 @@ def test_write_self_review_tally_emits_step5_artifacts(tmp_path, monkeypatch):
     assert findings_path.read_text(encoding="utf-8") == ""
 
 
+def test_write_self_review_tally_nonzero_counts(tmp_path, monkeypatch):
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = tmp_path / "impl"
+    impl.mkdir()
+    rc = review_and_fix.write_self_review_tally([
+        "--implement-tmpdir", str(impl),
+        "--run-id", "run-sr",
+        "--accepted", "2",
+        "--rejected", "1",
+    ])
+    assert rc == 0
+    run_dir = impl / "larch-logs" / "implement" / "run-sr"
+    tally_path = run_dir / "code-review-tally.json"
+    assert tally_path.is_file()
+    tally = json.loads(tally_path.read_text(encoding="utf-8"))
+    assert tally["mode"] == "self-review"
+    assert tally["rounds"] == 1
+    assert tally["accepted_count"] == 2
+    assert tally["rejected_count"] == 1
+    findings_path = run_dir / "review-findings-full.jsonl"
+    assert findings_path.is_file()
+    assert findings_path.read_text(encoding="utf-8") == ""
+
+
+def test_self_review_prompt_reconciles_tally_counts_from_artifacts():
+    skill = (Path(__file__).resolve().parents[1] / "skills" / "implement" / "SKILL.md").read_text(encoding="utf-8")
+    self_review_section = skill.split("### Self-review mode (`--self-review`)", 1)[1].split("### Scripted review loop", 1)[0]
+    assert "--accepted 0 --rejected 0" not in self_review_section
+    assert "$IMPLEMENT_TMPDIR/self-review-accepted.md" in self_review_section
+    assert "^### \\[Code Review\\] Self-review accepted" in self_review_section
+    assert "$IMPLEMENT_TMPDIR/rejected-findings.md" in self_review_section
+    assert "^### \\[Code Review\\] Self-review$" in self_review_section
+    assert "Substitute the two reconciled non-negative integer literals" in self_review_section
+    assert "--accepted <ACCEPTED_COUNT> --rejected <REJECTED_COUNT>" in self_review_section
+
+
 def test_flush_review_batches_rewrites_cumulative_tally_with_ignored_body_header(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
