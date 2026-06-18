@@ -1,0 +1,212 @@
+You are an expert engineer researching this repository and producing an implementation plan for /design Step 2b.
+
+You may use only side-effect-free repository discovery. Do not write repository files, design tmpdir files, or any other files. Return only the sentinel-delimited response requested below.
+
+Drafting requirements to follow:
+- Prefer minimum necessary change: avoid scope creep, unnecessary complexity, and additions not required for correctness.
+- Read approach-synthesis.txt: if it is exactly NO_SKETCHES, draft from direct codebase/doc inspection without fabricating planning-panel agreement.
+- Read discussion-round1.md when present for scope boundaries and strict constraints.
+- Read design-outline.md only when non-empty and .outline-approved exists; treat Goals, Non-goals, and Surfaces as binding scope.
+- Read brainstorm.md when present as additive ideation context for plan drafting.
+- Use a Files to modify/create section with per-file headings exactly one path each: ### NEW:, ### UPDATED:, or ### REWRITTEN: (at least one ASCII space after ### before the keyword).
+- Include Approach, Edge cases, Failure modes when non-trivial, Testing strategy, optional diff_added/diff_deleted/mechanical_churn trailers, and final diff_lines: <N>. mechanical_churn accepts only true or false; never write a number there.
+- The final plan body must end with a whole-line diff_lines: <N> trailer.
+- Optionally include up to three dynamic plan-review archetypes in a scout block after the plan. The launcher validates, filters, caps, and materializes this block; invalid post-plan scout output is ignored.
+- Scout sentinels inside the summary or plan are fatal format errors. Never put LARCH_SCOUT_* markers in the plan body.
+
+Readability style (trusted):
+# Readability Style
+
+**Consumer**: `/design` prompt surfaces that produce user-facing text, either through an external-agent prompt token or through inline orchestration prose.
+
+**Contract**: this file is the only source of truth for the `/design` readability preamble. External prompt files embed the literal `<READABILITY_STYLE>` token, and assembly code or orchestration expands it to this full file. Inline composition sites read this file before writing user-facing text.
+
+**When to load**: load only when a `/design` step is about to compose user-facing prose or render a prompt that asks another agent to compose such prose. Do not load during setup, pure validation, or byte-stable artifact handling.
+
+---
+
+## Style Axes
+
+Write in three styles at once:
+
+- **Strunk & White**: use active voice. Omit needless words. Prefer concrete nouns and verbs.
+- **Dyslexia-friendly**: use short sentences. Prefer simple words. Break dense ideas into headings and bullets.
+- **Brevity**: shorter is better. Minimize the total artifact length while preserving meaning.
+- **No em dashes**: never use em dashes; use periods, commas, colons, or semicolons instead.
+- **Hedge vs. direct**: hedge uncertain claims ("may contain", "can fail") instead of absolutes; keep directives imperative.
+
+## Precision Contract
+
+Keep these byte-stable unless the task explicitly edits them:
+
+- fenced code blocks
+- backticked tokens
+- file paths
+- identifiers
+- flag names
+- `### NEW:` / `### UPDATED:` / `### REWRITTEN:` plan grammar
+- the trailing `diff_lines: <N>` line
+
+Do not rewrite those items for style. Explain around them instead.
+
+## Plan-Drafting Reminders
+
+When `/design` Step 2b drafts a plan that adds, removes, or converts
+Bash fences in `skills/implement/SKILL.md`:
+
+- List `### UPDATED: scripts/test-implement-fence-shape.sh` in
+  **Files to modify/create**.
+- Note that `EXPECTED_OLD` / `EXPECTED_NEW` may need updates.
+
+This is a discoverability reminder only. Do not add plan grammar.
+
+## Precedence
+
+When rules conflict, use this order:
+
+`code references > meaning > brevity > dyslexia-friendly chunking > Strunk & White micro-rewrites`
+
+Apply it directly:
+
+- Preserve code references first.
+- Preserve exact meaning next.
+- Cut words before adding layout.
+- Add headings or bullets only when they improve scanning.
+- Polish grammar last.
+
+## Substitution Token
+
+External-agent prompt files MUST embed this literal token:
+
+`<READABILITY_STYLE>`
+
+Before launch, replace every literal `<READABILITY_STYLE>` token with the full contents of this file.
+
+## Examples
+
+Before: "It is recommended that the implementer should consider adding a validation step."
+
+After: "Add a validation step."
+
+Before: "The plan should make sure that users are not able to continue when the file cannot be read."
+
+After: "Block the flow when the file cannot be read."
+
+Before: "In order to avoid potential future confusion, documentation can be updated."
+
+After: "Update the docs to avoid confusion."
+
+Before: "The script performs an operation that checks if the path exists."
+
+After: "The script checks that the path exists."
+
+Before: "This could possibly be out of scope depending on how the team wants to proceed."
+
+After: "This may be out of scope."
+
+Required output format:
+[optional]
+LARCH_SUMMARY_BEGIN
+A concise summary for large-plan preview. Omit this whole summary block only when no useful summary is needed.
+LARCH_SUMMARY_END
+[/optional]
+LARCH_PLAN_BEGIN
+Full implementation plan body ending with diff_lines: <N>.
+LARCH_PLAN_END
+[optional]
+LARCH_SCOUT_BEGIN
+{"archetypes":[{"name":"slug","focus_area":"code-quality|risk-integration|correctness|architecture|security","weight":1,"rationale":"single-line reason","prompt_body":"2-6 sentence focus directive ending with the required citation sentence."}]}
+LARCH_SCOUT_END
+[/optional]
+
+Optional advisory status may be included between LARCH_STATUS_BEGIN and LARCH_STATUS_END, but the summary, plan, and optional scout sentinels above are the only parsed contract.
+
+Untrusted feature description:
+<feature_description encoding="literal-redacted">
+# [BUG] progress hook selects wrong session tmpdir when multiple live sessions share a repo
+
+## Summary
+
+The `p`/`progress` hook (`hook-progress-report.sh` → `python/cli.py progress report`) selects the wrong session's tmpdir when multiple `current-implement-env-*.sh` pointer files exist for the same repo. The selection uses `_path_mtime(tmpdir)` (directory mtime of each candidate tmpdir) as the sort key. An old failed session's tmpdir had a recent directory mtime (from when `copy-plan.stderr.log` was written to its root during bootstrap failure), beating the current active session's tmpdir whose directory mtime was stale (Step 0 wrote its root files ~2 hours earlier, and Step 5 hadn't yet created any `round-N/` directory directly in the root). The progress hook blocked the prompt and reported state from the wrong session: "Step 0 — preflight — started 3m ago" and "last artifact: copy-plan.stderr.log" — both from the failed session, not the active one.
+
+## Original report
+
+progress report request in "🔶 /implement 5: code review" output:
+```
+⏺ UserPromptSubmit operation blocked by hook:
+  implement: Step 0 — preflight — started 3m ago
+  last artifact: 2026-06-17 20:10:55 copy-plan.stderr.log
+
+  Original prompt: p
+```
+
+## Reproduction scenario
+
+1. Run `/implement` on a repo that has accumulated many prior session tmpdirs (pointer files in `~/.cache/larch/sessions/current-implement-env-*.sh` pointing to still-existing tmpdirs).
+2. Start a new `/implement` session. Step 0 writes `session-env.sh`, `plan.txt`, `larch-run.sh`, etc. directly to the tmpdir root, setting the tmpdir directory mtime.
+3. Run through Steps 2–4. No new files are written directly to the tmpdir root.
+4. Launch Step 5 `step-5-review.sh` in background. The review loop has not yet created `round-1/` in the tmpdir root.
+5. Type `p` (progress) before `round-1/` is created.
+6. `_discover_live_run` scans pointer files, builds a candidate list, and calls `max(candidates, key=lambda run: run.mtime)` where `run.mtime = _path_mtime(tmpdir)`.
+7. An old failed session's tmpdir (which wrote `copy-plan.stderr.log` directly to its root ~3 minutes ago) has a higher directory mtime than the current session's tmpdir (whose mtime is from Step 0, hours earlier).
+8. The wrong session is selected; the hook displays the failed session's stale step label and artifact.
+
+## Expected behavior
+
+`p` typed during Step 5 should display the current active session's Step 5 progress (reviewer counts, elapsed time, Gantt chart), not any prior session's state.
+
+## Observed behavior
+
+The hook blocked the prompt and displayed:
+- Step label: "Step 0 — preflight" (from the old failed session's only timing mark)
+- Last artifact: `copy-plan.stderr.log` (from the old failed session, which failed at plan copy)
+- Elapsed: "started 3m ago" (the old session's Step 0 mark was written ~3 minutes before `p` was typed)
+
+## Root cause analysis
+
+Two compounding defects in `python/progress_report.py` → `_discover_live_run`:
+
+**Defect 1 — Wrong sort key for session selection.**
+`_implement_candidate` returns `LiveRun(..., _path_mtime(tmpdir))` and `_discover_live_run` picks `max(candidates, key=lambda run: run.mtime)`. `_path_mtime(tmpdir)` is the OS mtime of the TMPDIR DIRECTORY itself, which is updated only when files or subdirectories are created/deleted DIRECTLY in that directory. During Step 5, the review loop writes to `round-N/` subdirectories, not to the tmpdir root. The tmpdir's own mtime stays at the Step 0 value (hours old). A concurrent old-session tmpdir whose root received any recent write (e.g., `copy-plan.stderr.log` from a failed bootstrap) has a more recent directory mtime and wins the `max`.
+
+The pointer file mtime (`_path_mtime(pointer)`) would be a better proxy: each `current-implement-env-*.sh` is written at session creation, so the most recently created pointer = the most recently started session = almost certainly the current one.
+
+**Defect 2 — Stale pointer and tmpdir accumulation.**
+768 `current-implement-env-*.sh` files have accumulated in `~/.cache/larch/sessions/`, with 60 live larch4 session tmpdirs still on disk. Session teardown (`python/cli.py session local-cleanup`, `scripts/cleanup.sh`) does not reliably remove the pointer file or the tmpdir. With dozens of live candidates per repo, even a small mtime race produces incorrect selection.
+
+## Evidence
+
+- Observed: 768 `current-implement-env-*.sh` files; 60 live larch4 tmpdirs still on disk.
+- Old failed session `claude-implement-larch4-diy6wnnw` (the selected one): dir mtime 13:10:55, contains `copy-plan.stderr.log`, timing ledger has only one mark: `v1\tmark\t1781727054\timplement\tStep 0 — preflight\t...`.
+- Current active session `claude-implement-larch4-0j1kl62w`: dir mtime was ~11:00 at the time `p` was typed (Step 5 hadn't created `round-1/` yet; dir mtime updated to 13:16 only after `round-1/` appeared). Its timing ledger correctly has "Step 5 — code review" as the latest mark.
+- `python/progress_report.py:145`: `return LiveRun("implement", tmpdir, cwd, pointer, _path_mtime(tmpdir))` — the mtime is the tmpdir dir mtime, not the pointer file mtime.
+- `python/progress_report.py:172`: `return max(candidates, key=lambda run: run.mtime)` — picks highest tmpdir mtime.
+
+## Affected files
+
+- `python/progress_report.py` — `_implement_candidate` (wrong sort key) and `_discover_live_run` (aggregation logic).
+- `python/session.py` / `scripts/cleanup.sh` / `skills/implement/scripts/step-18-finalize.sh` — session teardown should remove the `current-implement-env-*.sh` pointer file and/or the tmpdir.
+- `python/test_progress_report.py` — needs regression coverage for the wrong-session scenario.
+
+## Suggested fix(es)
+
+1. **Change sort key to pointer-file mtime** in `_implement_candidate`: replace `_path_mtime(tmpdir)` with `_path_mtime(pointer)` so that the most recently STARTED session (newest pointer file) wins, regardless of subsequent tmpdir directory mtime evolution.
+2. **Write a `session-start-s` epoch file** to the tmpdir root during Step 0 bootstrap, and use its mtime (or contents) as the authoritative session-start anchor in `_discover_live_run`.
+3. **Clean up pointer files on session end**: `step-18-finalize.sh` / `scripts/cleanup.sh` should remove `~/.cache/larch/sessions/current-implement-env-$PPID.sh` as part of teardown. The 768-file accumulation is a separate hygiene problem but makes the mtime-race much more likely.
+4. **Add a regression test** in `python/test_progress_report.py`: simulate two candidates for the same repo where the older session's tmpdir has a higher directory mtime than the active session, and assert the active session is still selected.
+
+## Open questions
+
+- Should `_discover_live_run` fail-safe to "no live run" rather than showing stale state when the best candidate's pointer file is older than some threshold (e.g., &gt;6 hours)?
+- Is the 768-pointer accumulation a separate cleanup bug (teardown not removing pointer files) or an expected side effect of dirty-tree recovery / session resume? Both are worth filing separately if so.
+
+
+</feature_description>
+
+
+Untrusted approach synthesis:
+<approach_synthesis encoding="literal-redacted">
+NO_SKETCHES
+
+</approach_synthesis>
+
