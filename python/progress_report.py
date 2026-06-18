@@ -895,7 +895,7 @@ def _render_phase_detail_best_effort(
     )
     try:
         with _RENDER_PHASE_DETAIL_LOCK:
-            completed = subprocess.run(  # noqa: S603
+            completed = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
