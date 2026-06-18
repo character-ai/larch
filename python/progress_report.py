@@ -142,7 +142,7 @@ def _implement_candidate(pointer: Path) -> LiveRun | None:
     tmpdir = Path(tmpdir_s)
     if not tmpdir.is_dir():
         return None
-    return LiveRun("implement", tmpdir, cwd, pointer, _path_mtime(tmpdir))
+    return LiveRun("implement", tmpdir, cwd, pointer, _path_mtime(pointer))
 
 
 def _discover_live_run(cwd: str) -> LiveRun | None:
