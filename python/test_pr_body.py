@@ -520,6 +520,59 @@ def test_render_run_summary_includes_merge_downgrade_warning() -> None:
     assert "panel-failed recovery shipped a PR without merging" in body
 
 
+@pytest.mark.parametrize(
+    "argv",
+    [
+        [],
+        ["--skill", "implement"],
+        ["--skill", "bad", "--outcome", "x", "--run-id", "r"],
+    ],
+)
+def test_render_run_summary_main_usage_errors(argv: list[str], capsys: pytest.CaptureFixture[str]) -> None:
+    rc = pr_body.render_run_summary_main(argv)
+    assert rc == 2
+    captured = capsys.readouterr()
+    assert "STATUS=ok" not in captured.err
+
+
+def test_render_run_summary_main_success(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    out_file = tmp_path / "summary.md"
+    rc = pr_body.render_run_summary_main([
+        "--skill",
+        "implement",
+        "--outcome",
+        "completed",
+        "--run-id",
+        "run-1",
+        "--output-file",
+        str(out_file),
+        "--cost-unavailable",
+    ])
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert "STATUS=ok" in captured.err
+    assert f"OUTPUT_FILE={out_file}" in captured.err
+    assert out_file.is_file()
+    assert "run-1" in out_file.read_text(encoding="utf-8")
+
+
+def test_render_run_summary_main_cost_unavailable(capsys: pytest.CaptureFixture[str]) -> None:
+    rc = pr_body.render_run_summary_main([
+        "--skill",
+        "design",
+        "--outcome",
+        "completed",
+        "--run-id",
+        "run-2",
+        "--print-stdout",
+        "--cost-unavailable",
+    ])
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert "STATUS=ok" in captured.err
+    assert "run-2" in captured.out
+
+
 def test_post_tracking_issue_writes_metadata(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _ = (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=42\nRUN_ID=run-z\n", encoding="utf-8")
     _ = (tmp_path / "session-env.sh").write_text("REPO=o/r\nAGENT=claude\nCODER=claude\n", encoding="utf-8")

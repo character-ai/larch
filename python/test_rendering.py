@@ -626,6 +626,19 @@ def test_render_findings_view_filters_and_handles_missing_body(tmp_path: Path, c
     assert "accepted body" not in oos_out
 
 
+def test_render_findings_view_preserves_empty_prose_body(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / "review-findings-full.jsonl").write_text(
+        '{"outcome":"accepted","round_num":1,"prose_body":""}\n',
+        encoding="utf-8",
+    )
+    assert rendering.render_findings_view_main([str(run_dir), "all"]) == 0
+    out = capsys.readouterr().out
+    assert "### FINDING (accepted) round-1\n\n" in out
+    assert "(no prose body)" not in out
+
+
 def test_render_findings_view_errors(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert rendering.render_findings_view_main([str(tmp_path), "all"]) == 1
     assert "not found" in capsys.readouterr().err

@@ -726,7 +726,14 @@ def _render_phase_gantt(
         if phase_round is None or phase_round.gantt_window is None:
             continue
         start_s, end_s = phase_round.gantt_window
-        rows = _progress_vendor_rows(timing_ledger, start_s, end_s, label_map, skip_ci=True)
+        rows = _progress_vendor_rows(
+            timing_ledger,
+            start_s,
+            end_s,
+            label_map,
+            skip_ci=True,
+            require_complete_status=False,
+        )
         sections.append(f"### Round {round_num} reviewer timing\n")
         if rows:
             chart = render_gantt(start_s, end_s, rows)
@@ -990,6 +997,7 @@ def _progress_vendor_rows(
     label_map: dict[str, str] | None = None,
     *,
     skip_ci: bool = False,
+    require_complete_status: bool = True,
 ) -> list[GanttRow]:
     if window_end_s <= window_start_s:
         return []
@@ -1003,7 +1011,7 @@ def _progress_vendor_rows(
         if len(cols) < TIMING_VENDOR_MIN_COLS or cols[0] != "v1" or cols[1] != "vendor":
             continue
         status = cols[TIMING_VENDOR_STATUS_COL]
-        if status not in {"complete", "OK"}:
+        if require_complete_status and status not in {"complete", "OK"}:
             continue
         try:
             start_s = int(cols[TIMING_VENDOR_START_COL])

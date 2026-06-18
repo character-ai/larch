@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 import json
 
@@ -1890,6 +1891,82 @@ def test_write_round_meta_helpers(tmp_path: Path) -> None:
     assert '"ACCEPTED_COUNT": "1"' in meta
     assert '"OOS_ACCEPTED_COUNT": "1"' in meta
     assert '"total_slot_count": 1' in meta
+
+
+def test_write_design_round_meta_security_oos_and_panel(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    round_dir = tmp_path / "plan-review" / "round-1"
+    round_dir.mkdir(parents=True)
+    (round_dir / "voting-tally.md").write_text(
+        "## Findings\n\n| Item | Result |\n|--|--|\n| OOS_SEC | accepted |\n",
+        encoding="utf-8",
+    )
+    (round_dir / "findings-oos.md").write_text(
+        "### OOS_SEC: security item\nfocus-area=security\n",
+        encoding="utf-8",
+    )
+    (round_dir / "plan-review-slots.ndjson").write_text(
+        '{"slot":"slot-1","tool":"codex","output":"codex-out.txt"}\n',
+        encoding="utf-8",
+    )
+    (round_dir / "round-summary.env").write_text("COLLECT_FAILURE_COUNT=2\n", encoding="utf-8")
+    (round_dir / "revise").mkdir()
+    (round_dir / "revise" / "revise.env").write_text("REVISE_STATUS=ok-fallback\nREVISE_TIER=primary\n", encoding="utf-8")
+    monkeypatch.setattr(progress_report.voting, "is_security_block", lambda _path: True)
+    assert progress_report.write_design_round_meta(round_dir) == 0
+    meta = json.loads((round_dir / "round-meta.json").read_text(encoding="utf-8"))
+    assert meta["tally"]["OOS_ACCEPTED_COUNT"] == "0"
+    assert meta["summary"]["panel"]["total_slot_count"] == 1
+    assert "collector-failure-1" in meta["collector"]
+    assert meta["revise"]["status"] == "ok-fallback"
+    assert meta["revise"]["tier"] == "primary"
+
+
+def test_render_phase_detail_gantt_includes_signal_vendor_rows(tmp_path: Path) -> None:
+    root = tmp_path / "rounds"
+    _write_round_meta(root / "round-1")
+    timing = tmp_path / "timing-ledger.tsv"
+    _write_round_timing(timing, skill="implement", round_num=1, start_s=100, end_s=200)
+    _write_vendor_timing(timing, "codex-output.txt", 120, 150, status="signal")
+    rendered = progress_report.render_phase_detail(root, "implement", timing_ledger=timing)
+    assert "### Round 1 reviewer timing" in rendered
+    assert "No reviewer timing tasks overlapped this round." not in rendered
+
+
+def test_render_phase_detail_token_ledger_dual_window(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    root = tmp_path / "rounds"
+    _write_round_meta(root / "round-1")
+    timing = tmp_path / "timing-ledger.tsv"
+    _write_round_timing(timing, skill="design", round_num=1, start_s=0, end_s=1800)
+    _write_round_timing(timing, skill="implement", round_num=1, start_s=100, end_s=200)
+    _write_vendor_timing(timing, "codex-specialist-arch-output.txt", 10, 500)
+    token_ledger = tmp_path / "tokens.jsonl"
+    in_window_ts = datetime.fromtimestamp(150, tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    out_window_ts = datetime.fromtimestamp(50, tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    token_ledger.write_text(
+        json.dumps({"type": "vendor", "vendor": "codex", "input": 1000, "output": 0, "cache_read": 0, "cache_create": 0, "ts": in_window_ts})
+        + "\n"
+        + json.dumps({"type": "vendor", "vendor": "codex", "input": 1_000_000, "output": 0, "cache_read": 0, "cache_create": 0, "ts": out_window_ts})
+        + "\n",
+        encoding="utf-8",
+    )
+    def fake_cost(argv: list[str], **_kwargs: object) -> str:
+        tokens = "0"
+        for index, arg in enumerate(argv[:-1]):
+            if arg == "--codex-input-tokens":
+                tokens = argv[index + 1]
+                break
+        return f"TOTAL_COST={tokens}\n"
+
+    monkeypatch.setattr(progress_report.report_tokens_cost, "token_cost_from_args", fake_cost)
+    rendered = progress_report.render_phase_detail(
+        root,
+        "implement",
+        timing_ledger=timing,
+        token_ledger=token_ledger,
+    )
+    assert "| 1 |" in rendered
+    assert "$1000" in rendered
+    assert "window 0:00-30:00 (1800s)" in rendered
 
 
 def test_render_phase_detail_best_effort_timeout(monkeypatch) -> None:  # type: ignore[no-untyped-def]

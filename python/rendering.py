@@ -249,7 +249,7 @@ def render_findings_view(run_dir: Path, view: str = "all") -> tuple[int, str, st
             continue
         round_num = row.get("round_num")
         prose = row.get("prose_body")
-        body = str(prose) if prose else "(no prose body)"
+        body = "(no prose body)" if prose is None else str(prose)
         out.append(f"### FINDING ({outcome}) round-{round_num}\n{body}\n")
     return 0, "".join(out), ""
 

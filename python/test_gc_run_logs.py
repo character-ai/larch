@@ -90,3 +90,93 @@ def test_gc_run_logs_skips_paused_and_slimmed(tmp_path: Path, monkeypatch: pytes
 def test_gc_run_logs_invalid_older_than(capsys: pytest.CaptureFixture[str]) -> None:
     assert gc_run_logs.run_main(["--older-than", "0"]) == 2
     assert "STATUS=error" in capsys.readouterr().out
+
+
+def test_gc_run_logs_naive_started_at_dry_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    repo = _repo(tmp_path)
+    _run_dir(repo, "naive-date", started_at="2020-01-01T00:00:00")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "run")
+    monkeypatch.chdir(repo)
+    assert gc_run_logs.run_main(["--dry-run", "--older-than", "90"]) == 0
+    out = capsys.readouterr().out
+    assert "DIRS_QUALIFYING=1" in out
+    assert "STATUS=ok" in out
+
+
+def test_gc_run_logs_skips_escape_symlink(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    repo = _repo(tmp_path)
+    run = _run_dir(repo, "escape")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "secret.txt").write_text("secret\n", encoding="utf-8")
+    (run / "escape-link").symlink_to(outside)
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "run")
+    monkeypatch.chdir(repo)
+    assert gc_run_logs.run_main(["--dry-run", "--older-than", "90"]) == 0
+    out = capsys.readouterr().out
+    assert "DIRS_QUALIFYING=0" in out
+    assert "DIRS_SKIPPED=1" in out
+
+
+def test_gc_run_logs_git_date_fallback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    repo = _repo(tmp_path)
+    run = repo / "larch-logs" / "implement" / "no-manifest"
+    run.mkdir(parents=True)
+    (run / "final-summary.md").write_text("summary\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "run", "--date", "2020-01-01T00:00:00Z")
+    monkeypatch.chdir(repo)
+    assert gc_run_logs.run_main(["--dry-run", "--older-than", "90"]) == 0
+    out = capsys.readouterr().out
+    assert "DIRS_QUALIFYING=1" in out
+
+
+def test_gc_run_logs_apply_failure_emits_recovery(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    repo = _repo(tmp_path)
+    _run_dir(repo, "old")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "run")
+    monkeypatch.chdir(repo)
+
+    def fail_apply(*_args: object, **_kwargs: object) -> str:
+        raise RuntimeError("apply failed")
+
+    monkeypatch.setattr(gc_run_logs, "_apply", fail_apply)
+    assert gc_run_logs.run_main(["--older-than", "90"]) == 2
+    err = capsys.readouterr().err
+    assert "git checkout main" in err
+
+
+def test_gc_run_logs_slim_apply_keeps_core_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = _repo(tmp_path)
+    run = _run_dir(repo, "old")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "run")
+    monkeypatch.chdir(repo)
+
+    def fake_apply(
+        _repo_root: Path,
+        _logs_root: Path,
+        plan: list[gc_run_logs.PlannedDir],
+        counters: gc_run_logs.Counters,
+        *,
+        older_than: int,
+        delete: bool,
+        cutoff_dt: str,
+    ) -> str:
+        _ = older_than, delete, cutoff_dt
+        for item in plan:
+            forensic = item.path / "forensic.txt"
+            if forensic.is_file():
+                forensic.unlink()
+            (item.path / "gc-slimmed").write_text(item.run_date + "\n", encoding="utf-8")
+            counters.slimmed += 1
+        return "https://example.invalid/pr/1"
+
+    monkeypatch.setattr(gc_run_logs, "_apply", fake_apply)
+    assert gc_run_logs.run_main(["--older-than", "90"]) == 0
+    assert (run / "final-summary.md").is_file()
+    assert (run / "gc-slimmed").is_file()
+    assert not (run / "forensic.txt").exists()

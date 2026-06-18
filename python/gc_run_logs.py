@@ -112,6 +112,21 @@ def _is_under(path: Path, root: Path) -> bool:
     return True
 
 
+def _has_escape_symlink(path: Path, logs_root: Path) -> bool:
+    if not _is_under(path, logs_root):
+        return True
+    try:
+        for root, dirs, files in os.walk(path, followlinks=False):
+            root_path = Path(root)
+            for name in list(dirs) + files:
+                child = root_path / name
+                if child.is_symlink() and not _is_under(child, logs_root):
+                    return True
+    except OSError:
+        return True
+    return False
+
+
 def _keep_file(filename: str, skill: str) -> bool:
     return filename in COMMON_KEEP or filename in SKILL_KEEP.get(skill, set())
 
@@ -156,9 +171,21 @@ def _plan(repo_root: Path, logs_root: Path, older_than: int, *, delete: bool = F
                 parsed_date = datetime.fromisoformat(run_date)
             except ValueError:
                 parsed_date = None
-            if parsed_date is not None and parsed_date >= cutoff:
+            is_recent = False
+            if parsed_date is not None:
+                if parsed_date.tzinfo is None:
+                    parsed_date = parsed_date.replace(tzinfo=UTC)
+                try:
+                    is_recent = parsed_date >= cutoff
+                except TypeError:
+                    is_recent = run_date >= cutoff_dt
+            else:
+                is_recent = run_date >= cutoff_dt
+            if is_recent:
                 continue
-            if parsed_date is None and run_date >= cutoff_dt:
+            if _has_escape_symlink(run_dir, logs_root):
+                counters.skipped += 1
+                _err(f"  skip (escape-symlink): {skill}/{run_name}")
                 continue
             counters.qualifying += 1
             plan.append(PlannedDir(skill, run_dir, run_date))
@@ -189,7 +216,7 @@ def _slim_dir(logs_root: Path, item: PlannedDir) -> int:
     for entry in entries:
         path = Path(entry.path)
         if not _is_under(path, logs_root):
-            raise RuntimeError(f"target escapes larch-logs: {path}")
+            continue
         if entry.is_dir(follow_symlinks=False):
             _remove_tree(path)
         elif entry.is_file(follow_symlinks=False) and not _keep_file(path.name, item.skill):
@@ -310,6 +337,7 @@ def run_main(argv: list[str] | None = None) -> int:
         pr_url = _apply(repo_root, logs_root, plan, counters, older_than=args.older_than, delete=args.delete, cutoff_dt=cutoff_dt)
     except Exception as exc:  # pylint: disable=broad-except
         _err(f"gc-run-logs: {exc}")
+        _err("gc-run-logs: recovery: run 'git checkout main' to abandon the partial GC branch")
         _emit_kv("STATUS", "error")
         return 2
     _emit_final(counters, dry_run=False, pr_url=pr_url, status="ok")
