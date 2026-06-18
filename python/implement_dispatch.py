@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import issue_wire
 import logging_util
 import redact
 
@@ -783,6 +784,47 @@ def _append_warning(st: DispatchState, text: str) -> None:
     _invoke_cli(["run-log", "append-entry", "--log", str(st.tmpdir / "execution-issues.md"), "--category", "Warnings", "--entry", text])
 
 
+def _working_tree_touched_paths_and_failures(repo_root: Path) -> tuple[set[str] | None, list[str]]:
+    probes = [
+        ("git diff --name-only HEAD", ("diff", "--name-only", "HEAD")),
+        ("git ls-files --others --exclude-standard", ("ls-files", "--others", "--exclude-standard")),
+    ]
+    touched: set[str] = set()
+    failures: list[str] = []
+    for label, args in probes:
+        result = _git(repo_root, *args)
+        if result.returncode != 0:
+            failures.append(label)
+            continue
+        touched.update(line for line in str(result.stdout).splitlines() if line)
+    if failures:
+        return None, failures
+    return touched, []
+
+
+def _working_tree_touched_paths(repo_root: Path) -> set[str] | None:
+    touched, _failures = _working_tree_touched_paths_and_failures(repo_root)
+    return touched
+
+
+def _explicit_plan_scope_paths(plan_text: str) -> list[str]:
+    return issue_wire.extract_scope_paths(plan_text, use_fallback=False)
+
+
+def _plan_coverage_uncovered_paths(st: DispatchState, touched: set[str] | None) -> list[str] | None:
+    if touched is None:
+        return None
+    try:
+        plan_text = st.plan_file.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        _append_warning(st, f"Step 7a.1 — could not read plan file for plan-file coverage: {st.plan_file}: {exc}")
+        return None
+    explicit = _explicit_plan_scope_paths(plan_text)
+    if not explicit:
+        return []
+    return sorted(path for path in explicit if path not in touched)
+
+
 def step2_dispatch_main(argv: list[str] | None = None) -> int:
     logging_util.quiet_init(argv0="cli.py")
     parser = argparse.ArgumentParser(prog="cli.py implement step2-dispatch")
@@ -996,16 +1038,24 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:
             return st.emit_bailed(reason)
         _normalize_scout(st)
 
+    uncovered_plan_path_count = 0
     if status == "complete":
         invalid = _validate_manifest_paths(st, raw_obj)
         if invalid:
             return st.emit_bailed(invalid)
-        # Diagnostic-only undeclared path warning.
-        wt = set(_git_stdout(repo_root, "diff", "--name-only", "HEAD").splitlines()) | set(_git_stdout(repo_root, "ls-files", "--others", "--exclude-standard").splitlines())
-        declared = {item.get("path") for item in raw_obj.get("files_touched", []) if isinstance(item, dict)} | {p for p in raw_obj.get("tests_added_or_modified", []) if isinstance(p, str)}
-        missing = sorted(p for p in wt if p and p not in declared)
-        if missing:
-            _append_warning(st, f"Step 7a.1 — {len(missing)} working-tree path(s) not declared in manifest files_touched/tests_added_or_modified (may include pre-existing dirty files). First 5:\n" + "\n".join(f"- {p}" for p in missing[:5]))
+        touched, touch_probe_failures = _working_tree_touched_paths_and_failures(repo_root)
+        if touched is None:
+            _append_warning(st, "Step 7a.1 — skipped working-tree touched-path diagnostics because git probe(s) failed: " + ", ".join(touch_probe_failures))
+        else:
+            # Diagnostic-only undeclared path warning.
+            declared = {item.get("path") for item in raw_obj.get("files_touched", []) if isinstance(item, dict)} | {p for p in raw_obj.get("tests_added_or_modified", []) if isinstance(p, str)}
+            missing = sorted(p for p in touched if p and p not in declared)
+            if missing:
+                _append_warning(st, f"Step 7a.1 — {len(missing)} working-tree path(s) not declared in manifest files_touched/tests_added_or_modified (may include pre-existing dirty files). First 5:\n" + "\n".join(f"- {p}" for p in missing[:5]))
+        uncovered = _plan_coverage_uncovered_paths(st, touched)
+        if uncovered:
+            uncovered_plan_path_count = len(uncovered)
+            _append_warning(st, f"Step 7a.1 — {len(uncovered)} explicit plan-listed path(s) untouched by the working-tree delta before dispatcher commit. First 10:\n" + "\n".join(f"- {p}" for p in uncovered[:10]))
         commit_msg = redact.redact_secrets_only(str(raw_obj["commit_message"]))
         commit_msg_file = st.tmpdir / f"{st.tool_tag}-commit-message.txt"
         _write_text_atomic(commit_msg_file, commit_msg)
@@ -1053,6 +1103,9 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:
         _emit_kv("SCOUT_CODER_STATUS", st.scout_status)
         if warn_nonzero and st.nonzero_exit_warn_token:
             _emit_kv(st.nonzero_exit_warn_token, "true")
+        if uncovered_plan_path_count:
+            _emit_kv("WARN_PLAN_FILES_UNTOUCHED", "true")
+            _emit_kv("WARN_PLAN_FILES_UNTOUCHED_COUNT", uncovered_plan_path_count)
         _emit_kv("ORCHESTRATOR_EDIT_AUTHORITY", "forbidden")
     elif status == "needs_qa":
         _emit_kv("STATUS", "needs_qa")

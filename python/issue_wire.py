@@ -32,6 +32,7 @@ ARCHIVAL_JQ_FILTER = 'select((.title // "" | ascii_downcase | sub("^[[:space:]]+
 ARCHIVAL_REPORT_RE = re.compile(r"^\[.*report\] ", re.IGNORECASE)
 LIFECYCLE_REJECT_RE = re.compile(r"^\[(IMPLEMENTING|DONE|DESIGNING|DESIGNED)\]", re.IGNORECASE)
 BRAINSTORM_RE = re.compile(r"^brainstorm([^A-Za-z]|$)", re.IGNORECASE)
+_SCOPE_PATH_FALLBACK = ["skills/design/SKILL.md"]
 _LIFECYCLE_INSERT_PREFIXES = (
     "DESIGNING",
     "DESIGNED",
@@ -357,7 +358,7 @@ def plan_block_strip_body_main(argv: list[str]) -> int:
     return 0
 
 
-def extract_scope_paths(plan_text: str) -> list[str]:
+def extract_scope_paths(plan_text: str, *, use_fallback: bool = True) -> list[str]:
     lines = plan_text.splitlines()
     has_scope_section = any(re.match(r"^##\s+Files to modify(?:/create)?\s*$", line) for line in lines)
     in_section = not has_scope_section
@@ -386,7 +387,11 @@ def extract_scope_paths(plan_text: str) -> list[str]:
                 token = re.sub(r"\(.*$", "", parts[0]).strip()
                 if token and not token.startswith("+") and "/" in token and token not in seen:
                     seen.append(token)
-    return seen or ["skills/design/SKILL.md"]
+    if seen:
+        return seen
+    if use_fallback:
+        return list(_SCOPE_PATH_FALLBACK)
+    return []
 
 
 def plan_scope_paths_main(argv: list[str]) -> int:
