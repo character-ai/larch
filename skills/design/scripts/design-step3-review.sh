@@ -298,6 +298,9 @@ else
   [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design pause-save --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
 fi
 # Marker step id: STEP=design-step3-review
+if [ "$STEP3_REVIEW_HAS_RESUME_STATE" = false ]; then
+  rm -f "$DESIGN_TMPDIR/.step3-review-result.env" "$DESIGN_TMPDIR/.completed/step-3" 2>/dev/null || true
+fi
 rm -f "$DESIGN_TMPDIR/.completed/step-3-terminal" "$DESIGN_TMPDIR/.step3-terminal-persisted-this-run" 2>/dev/null || true
 design_bg_wait_marker_start design-step3-review || true
 _plan_review_stdout_file="$(mktemp "${TMPDIR:-/tmp}/larch-step3-review-stdout.XXXXXX")" || {
@@ -338,7 +341,7 @@ _step3_review_should_guarantee_step3() {
     esac
   done <"$DESIGN_TMPDIR/.step3-review-result.env"
   case "$_status" in
-    complete|cap-hit|panel-failed|panel-init-failed|tally-error|degraded-empty-collector|main-agent-vote-required|postplan-failed)
+    complete|cap-hit|panel-failed|panel-init-failed|tally-error|degraded-empty-collector|postplan-failed)
       return 0
       ;;
     *)

@@ -238,6 +238,23 @@ touch_forgery="touch \"\$DESIGN_TMPDIR/.completed/step-3-terminal\""
 out=$(run_payload "$(payload_bash "$touch_forgery" "$D")")
 assert_deny "$out" 'live marker plus touch of terminal sentinel denies'
 
+for alt_forgery in \
+  ': >"\$DESIGN_TMPDIR/.completed/step-3-terminal"' \
+  'printf x > "\$DESIGN_TMPDIR/.completed/step-3-terminal"' \
+  'cp /etc/hosts "\$DESIGN_TMPDIR/.completed/step-3-terminal"' \
+  'mv /etc/hosts "\$DESIGN_TMPDIR/.completed/step-3-terminal"' \
+  'ln /etc/hosts "\$DESIGN_TMPDIR/.completed/step-3-terminal"' \
+  'tee "\$DESIGN_TMPDIR/.completed/step-3-terminal" </etc/hosts' \
+  'install /etc/hosts "\$DESIGN_TMPDIR/.completed/step-3-terminal"'
+do
+  out=$(run_payload "$(payload_bash "$alt_forgery" "$D")")
+  assert_deny "$out" "live marker plus alternate sentinel forgery denies: $alt_forgery"
+done
+
+sidecar_forgery=': >"\$DESIGN_TMPDIR/.step3-terminal-persisted-this-run"'
+out=$(run_payload "$(payload_bash "$sidecar_forgery" "$D")")
+assert_deny "$out" 'live marker plus sidecar forgery denies'
+
 mkdir -p "$D/.completed"
 write_marker $$ "$(date +%s)" 21600 design-step3-review
 rm -f "$D/.completed/step-3-terminal"

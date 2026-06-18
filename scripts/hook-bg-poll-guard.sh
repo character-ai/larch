@@ -329,7 +329,7 @@ bash_attempts_terminal_sentinel_mutation() {
     *step-3-terminal*|*step-5c-terminal*|*step-final-summary*|*step3-terminal-persisted-this-run*) ;;
     *) return 1 ;;
   esac
-  printf '%s' "$cmd" | grep -Eq '(^|[^[:alnum:]_])(touch|mkdir)([^[:alnum:]_]|$)|:[[:space:]]*>|(^|[^[:alnum:]_])echo[^|]*>' && return 0
+  printf '%s' "$cmd" | grep -Eq '(^|[^[:alnum:]_])(touch|mkdir|cp|mv|ln|tee|install)([^[:alnum:]_]|$)|:[[:space:]]*>|(^|[^[:alnum:]_])echo[^|]*>|(^|[^[:alnum:]_])printf[^|]*>|>[[:space:]]' && return 0
   return 1
 }
 

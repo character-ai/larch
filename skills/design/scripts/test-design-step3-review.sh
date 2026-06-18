@@ -81,6 +81,7 @@ grep -Fq 'SUMMARY_OUTCOME=failed-judge-panel' "$WRAPPER" || fail 'panel-init-fai
 grep -Fq 'step3_loop_write_terminal_step3' "$LOOP" || fail 'Step 3 loop terminal sentinel helper missing'
 grep -Fq '.step3-terminal-persisted-this-run' "$LOOP" || fail 'Step 3 loop persist sidecar missing'
 grep -Fq '.step3-terminal-persisted-this-run' "$WRAPPER" || fail 'Step 3 wrapper must key terminal trap fallback on current-pass sidecar'
+grep -Fq 'rm -f "$DESIGN_TMPDIR/.step3-review-result.env" "$DESIGN_TMPDIR/.completed/step-3"' "$WRAPPER" || fail 'Step 3 wrapper must clear stale result env and step-3 at non-resume entry'
 
 D_STEP3=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-stage.XXXXXX")
 trap 'rm -rf "$D_STEP3"' EXIT
@@ -539,7 +540,11 @@ chmod +x "$D_PERSIST_TERMINAL/run-persist.sh"
 [ -f "$D_PERSIST_TERMINAL/.completed/step-3-terminal" ] || fail 'persist success must write step-3-terminal'
 [ -f "$D_PERSIST_TERMINAL/.step3-terminal-persisted-this-run" ] || fail 'persist success must write persist sidecar'
 rm -rf "$D_PERSIST_TERMINAL/.completed" "$D_PERSIST_TERMINAL/.step3-review-result.env" "$D_PERSIST_TERMINAL/.step3-terminal-persisted-this-run"
+set +e
 "$D_PERSIST_TERMINAL/run-persist.sh" "$D_PERSIST_TERMINAL" "$ROOT" fail
+persist_fail_rc=$?
+set -e
+[[ "$persist_fail_rc" -ne 0 ]] || fail 'persist failure must return non-zero'
 [ ! -e "$D_PERSIST_TERMINAL/.completed/step-3-terminal" ] || fail 'persist failure must not write step-3-terminal'
 [ ! -e "$D_PERSIST_TERMINAL/.step3-terminal-persisted-this-run" ] || fail 'persist failure must not write persist sidecar'
 rm -rf "$D_PERSIST_TERMINAL"
@@ -572,6 +577,94 @@ grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=main-agent-apply-required' <<<"$apply_requir
 [ ! -e "$D_APPLY_REQUIRED/.completed/step-3" ] || fail 'apply-required mid-loop bail must not mint step-3'
 rm -rf "$D_APPLY_REQUIRED"
 pass 'Step 3 wrapper does not mint step-3 on main-agent-apply-required bail-out'
+
+D_MAV_VOTE=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-mav-vote.XXXXXX")
+FAKE_MAV="$D_MAV_VOTE/fake-plugin"
+# shellcheck disable=SC2016
+make_fake_step3_plugin "$FAKE_MAV" 'cat > "$DESIGN_TMPDIR/.step3-review-result.env" <<RESULT
+STEP3_REVIEW_LOOP_STATUS=main-agent-vote-required
+LOOP_STATUS=main-agent-vote-required
+TALLY_PLAN_REVIEW_STATUS=main-agent-vote-required
+STEP3_REVIEW_CAP_REACHED=false
+ROUNDS_COMPLETED=1
+REVIEW_ROUND_COUNT=1
+RESULT
+: >"$DESIGN_TMPDIR/.step3-terminal-persisted-this-run"
+mkdir -p "$DESIGN_TMPDIR/.completed"
+: >"$DESIGN_TMPDIR/.completed/step-3-terminal"'
+printf 'anchor\n' >"$D_MAV_VOTE/plan-review-scope-anchor.txt"
+set +e
+mav_vote_out=$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$FAKE_MAV" DESIGN_TMPDIR="$D_MAV_VOTE" ISSUE_NUMBER=9 \
+  LARCH_TEST_REAL_REPO_ROOT="$ROOT" "$WRAPPER" 2>"$D_MAV_VOTE/stderr.log")
+mav_vote_rc=$?
+set -e
+[[ "$mav_vote_rc" -eq 0 ]] || fail "mav-vote wrapper rc=$mav_vote_rc stdout=$mav_vote_out stderr=$(cat "$D_MAV_VOTE/stderr.log")"
+grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=main-agent-vote-required' <<<"$mav_vote_out" || fail 'mav-vote path should preserve envelope'
+[ -f "$D_MAV_VOTE/.completed/step-3-terminal" ] || fail 'mav-vote mid-loop bail must retain step-3-terminal'
+[ ! -e "$D_MAV_VOTE/.completed/step-3" ] || fail 'mav-vote mid-loop bail must not mint step-3'
+rm -rf "$D_MAV_VOTE"
+pass 'Step 3 wrapper does not mint step-3 on main-agent-vote-required bail-out'
+
+D_STALE_ENV=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-stale-env.XXXXXX")
+FAKE_STALE="$D_STALE_ENV/fake-plugin"
+cat >"$D_STALE_ENV/.step3-review-result.env" <<'RESULT'
+STEP3_REVIEW_LOOP_STATUS=complete
+LOOP_STATUS=complete
+TALLY_PLAN_REVIEW_STATUS=ok
+ROUNDS_COMPLETED=1
+REVIEW_ROUND_COUNT=1
+RESULT
+mkdir -p "$D_STALE_ENV/.completed"
+: >"$D_STALE_ENV/.completed/step-3"
+# shellcheck disable=SC2016
+make_fake_step3_plugin "$FAKE_STALE" 'if grep -Fq "STEP3_REVIEW_LOOP_STATUS=complete" "$DESIGN_TMPDIR/.step3-review-result.env" 2>/dev/null; then
+  : >"$DESIGN_TMPDIR/.stale-env-seen"
+fi
+exit 1'
+printf 'anchor\n' >"$D_STALE_ENV/plan-review-scope-anchor.txt"
+set +e
+stale_env_out=$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$FAKE_STALE" DESIGN_TMPDIR="$D_STALE_ENV" ISSUE_NUMBER=9 \
+  LARCH_TEST_REAL_REPO_ROOT="$ROOT" "$WRAPPER" 2>"$D_STALE_ENV/stderr.log")
+stale_env_rc=$?
+set -e
+[[ "$stale_env_rc" -ne 0 ]] || fail "stale-env wrapper should fail before loop (rc=$stale_env_rc)"
+[ ! -e "$D_STALE_ENV/.stale-env-seen" ] || fail 'stale complete result env must be cleared before loop dispatch'
+rm -rf "$D_STALE_ENV"
+pass 'Step 3 wrapper clears stale result env and step-3 at non-resume entry'
+
+D_PERSIST_EMIT=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-persist-emit.XXXXXX")
+# shellcheck disable=SC2016
+cat >"$D_PERSIST_EMIT/run-emit.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+export DESIGN_TMPDIR="$1"
+export PLUGIN_ROOT="$2"
+export mode="$3"
+emit() { printf '%s\n' "$*"; }
+emit_kv() { printf '%s=%s\n' "$1" "$2"; }
+larch_err() { :; }
+phase_driver_write_result_env() {
+  if [[ "$mode" == fail ]]; then
+    return 1
+  fi
+  printf '%s\n' "$@" >"$1"
+  return 0
+}
+# shellcheck source=/dev/null
+source "$PLUGIN_ROOT/skills/design/scripts/review-design-step3-loop.sh"
+step3_loop_emit_envelope complete 1 1 1
+SH
+chmod +x "$D_PERSIST_EMIT/run-emit.sh"
+mkdir -p "$D_PERSIST_EMIT/.completed"
+: >"$D_PERSIST_EMIT/.completed/step-3"
+emit_out=$("$D_PERSIST_EMIT/run-emit.sh" "$D_PERSIST_EMIT" "$ROOT" success)
+grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=complete' <<<"$emit_out" || fail 'persist success must emit terminal status KVs after persist'
+[ -f "$D_PERSIST_EMIT/.completed/step-3-terminal" ] || fail 'persist success must write step-3-terminal before stdout emit'
+emit_fail_out=$("$D_PERSIST_EMIT/run-emit.sh" "$D_PERSIST_EMIT" "$ROOT" fail 2>/dev/null || true)
+grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=complete' <<<"$emit_fail_out" && fail 'persist failure must not emit terminal STEP3_REVIEW_LOOP_STATUS'
+grep -Fq 'WARN=step3_loop_persist_envelope: phase_driver_write_result_env failed' <<<"$emit_fail_out" || fail 'persist failure must emit WARN KV'
+rm -rf "$D_PERSIST_EMIT"
+pass 'Step 3 loop emits terminal stdout only after persist success'
 
 D_PRELAUNCH=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-prelaunch-terminal.XXXXXX")
 FAKE_PRELAUNCH="$D_PRELAUNCH/fake-plugin"
