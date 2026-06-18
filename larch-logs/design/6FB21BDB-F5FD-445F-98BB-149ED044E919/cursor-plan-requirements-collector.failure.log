@@ -1,0 +1,23 @@
+## Structured collector record
+
+REVIEWER_FILE=<TMPDIR>/cursor-plan-requirements-output.txt|TOOL=cursor|STATUS=NOT_SUBSTANTIVE|EXIT_CODE=0|FAILURE_REASON=structured records not found after repair
+
+## Reviewer output (<TMPDIR>/cursor-plan-requirements-output.txt)
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	requirements	skills/design/SKILL.md:631-631	The plan lists Anti-pattern #4 and Step 3 post-loop branch edits but omits the duplicated Task tool notification boundary blocks that still require waiting for a second original-task notification after a premature one.	Those blocks still say the orchestrator MUST still wait for the original design-step3-review.sh notification and must not advance from .completed/step-3 alone. That is the prose path that drove foreground ps polling in the reported incident. If only the post-loop matrix is updated, contradictory instructions remain and recovery can stay blocked.	Add explicit plan steps to rewrite skills/design/SKILL.md:631 and the duplicate resume prose at :688 (and any other copies of MUST still wait for the original) to match the new contract: after a premature empty notification, use the one-shot terminal-sentinel foreground probe when the background recovery waiter is killed or unsuitable; when the terminal sentinel is present, proceed to normal post-notification parsing without waiting for a second notification.
+1	in_scope	important	requirements	skills/design/SKILL.md:351-365	The hook and AGENTS.md/orchestrator-never updates whitelist .completed/step-final-summary for foreground recovery, but the plan does not update the Final summary block immediate-background guidance for design-step-final-summary.sh.	Approved outline scoped all three guarded immediate-background fences (step-3, step-5c, final-summary). Final summary block prose still treats notification as the only resume trigger and forbids tmpdir reads before it, with no killed-waiter or premature-notification fallback. The same premature-notification plus blocked-sentinel-check failure mode can recur on cancellation and terminal-summary paths.	Add a brief Final summary block subsection mirroring Step 5c: primary background recovery waiter when viable; otherwise one foreground probe of .completed/step-final-summary per recovery turn; proceed to marker or Read fallback when present; yield without ps polling when absent; do not wait for a second notification after a premature one.
+## Reviewer stderr (<TMPDIR>/cursor-plan-requirements-output.txt.diag)
+
+(empty: <TMPDIR>/cursor-plan-requirements-output.txt.diag)
+
+## Failed-agent stderr tail (<TMPDIR>/cursor-plan-requirements-output.txt.stderr-tail)
+
+(file missing: <TMPDIR>/cursor-plan-requirements-output.txt.stderr-tail)
+
+## Launcher stderr (<TMPDIR>/cursor-plan-requirements-output.txt.launch-stderr)
+
+⏳ cursor agent: still running (1m elapsed)
+✓ cursor agent: completed (exit code 0, output 2562 bytes)
+
+

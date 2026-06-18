@@ -1,0 +1,3 @@
+STATUS=clean
+MODE=baseline
+REASON=codex-sandbox-read-only
