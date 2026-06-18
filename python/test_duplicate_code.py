@@ -493,7 +493,7 @@ def test_empty_python_tree_passes(tmp_path: Path) -> None:
 
     assert result.exit_code == 0
     assert result.digest == "[]"
-    assert result.files == ()
+    assert not result.files
     assert result.pair_count == 0
 
 

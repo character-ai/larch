@@ -64,7 +64,7 @@ def test_digest_mismatch_blocks_even_when_exit_codes_match(
     assert normalized_legacy == result.new_exit == 1
     assert result.new_digest != "[]"
 
-    def wrong_legacy_digest(root: Path, rcfile: Path) -> str:
+    def wrong_legacy_digest(_root: Path, _rcfile: Path) -> str:
         return "[]"
 
     monkeypatch.setattr(duplicate_code_parity, "legacy_cluster_digest", wrong_legacy_digest)
