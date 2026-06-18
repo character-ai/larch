@@ -222,8 +222,9 @@ def step_17(argv: list[str] | None = None) -> int:
             category="Tool Failures",
             output_file=log,
         )
-        if had_backup and _summary_nonempty(tmpdir):
-            backup.unlink(missing_ok=True)
+        if _summary_nonempty(tmpdir):
+            if had_backup:
+                backup.unlink(missing_ok=True)
             return 0
         if had_backup and backup.is_file():
             with suppress(OSError):

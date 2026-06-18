@@ -733,6 +733,83 @@ def test_cleanup_target_ok_legacy_basename_only(tmp_path: Path) -> None:
     assert finalize._cleanup_target_ok(ctx, target, cwd=str(tmp_path))
 
 
+def test_implement_finalize_teardown_rejects_disallowed_state_file_root(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    state = Path(__file__).resolve().parent / "disallowed-finalize-state.sh"
+    state.write_text("BRANCH_NAME=feat\n", encoding="utf-8")
+    try:
+        rc = finalize.implement_finalize_teardown_main([
+            "--state-file", str(state),
+            "--implement-tmpdir", "/tmp/claude-implement-larch5-test",
+        ])
+        assert rc == 2
+        assert "state-file must be under" in capsys.readouterr().err
+    finally:
+        state.unlink(missing_ok=True)
+
+
+def test_implement_finalize_teardown_rejects_disallowed_implement_tmpdir(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    state = tmp_path / "finalize-state.sh"
+    finalize.write_finalize_state(_ctx(tmp_path), state)
+    repo_root = Path(__file__).resolve().parents[1]
+    rc = finalize.implement_finalize_teardown_main([
+        "--state-file", str(state),
+        "--implement-tmpdir", str(repo_root),
+    ])
+    assert rc == 2
+    assert "implement-tmpdir must be under" in capsys.readouterr().err
+
+
+def test_implement_finalize_teardown_rejects_state_file_outside_tmpdir(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    session_dir = tmp_path / "session"
+    other_dir = tmp_path / "other"
+    session_dir.mkdir()
+    other_dir.mkdir()
+    state = other_dir / "finalize-state.sh"
+    finalize.write_finalize_state(_ctx(other_dir), state)
+    rc = finalize.implement_finalize_teardown_main([
+        "--state-file", str(state),
+        "--implement-tmpdir", str(session_dir),
+    ])
+    assert rc == 2
+    assert "state-file must live under --implement-tmpdir" in capsys.readouterr().err
+
+
+def test_implement_finalize_postbump_rejects_state_file_outside_tmpdir(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    session_dir = tmp_path / "session"
+    other_dir = tmp_path / "other"
+    session_dir.mkdir()
+    other_dir.mkdir()
+    state = other_dir / "finalize-state.sh"
+    state.write_text(
+        "BRANCH_NAME=feat\n"
+        "ISSUE_NUMBER=1\n"
+        "PR_TITLE=Implement thing\n"
+        "REPO=o/r\n"
+        "REPO_UNAVAILABLE=false\n"
+        "FORKED_TARGET=false\n"
+        "BUMP_TYPE=NONE\n"
+        "NEW_VERSION=\n",
+        encoding="utf-8",
+    )
+    rc = finalize.implement_finalize_postbump_main([
+        "--state-file", str(state),
+        "--implement-tmpdir", str(session_dir),
+    ])
+    assert rc == 2
+    assert "state-file must live under --implement-tmpdir" in capsys.readouterr().err
+
+
 def test_implement_finalize_accepts_cache_root_state_file(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

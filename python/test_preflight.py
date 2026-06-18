@@ -229,6 +229,83 @@ def test_preflight_refuses_malformed_plan_without_emergency(
     assert "MALFORMED=start-without-end" in capsys.readouterr().out
 
 
+def test_preflight_emergency_empty_body_uses_stripped_title(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        stdout = kwargs.get("stdout")
+        if "admission" in argv:
+            _write(stdout, "ADMISSION_RESULT=pass\n")
+        elif argv[:3] == ["gh", "issue", "view"]:
+            _write(stdout, json.dumps({"title": "[IMPLEMENTING] Foo", "body": ""}))
+        elif "plan-block" in argv:
+            _write(stdout, "BLOCK_PRESENT=false\n")
+        return _fake_completed(argv)
+
+    monkeypatch.setattr(preflight.subprocess, "run", fake_run)
+    rc = preflight.preflight_main(["--issue", "42", "--emergency", "--preflight-tmpdir", str(tmp_path)])
+    assert rc == 0
+    assert (tmp_path / "plan-from-issue.txt").read_text(encoding="utf-8") == "Foo"
+    out = capsys.readouterr().out
+    assert "using the issue title" in out
+    assert "BYPASS_COUNT=1" in out
+
+
+def test_preflight_emergency_empty_title_aborts_without_plan_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        stdout = kwargs.get("stdout")
+        if "admission" in argv:
+            _write(stdout, "ADMISSION_RESULT=pass\n")
+        elif argv[:3] == ["gh", "issue", "view"]:
+            _write(stdout, json.dumps({"title": "[IMPLEMENTING] ", "body": ""}))
+        elif "plan-block" in argv:
+            _write(stdout, "BLOCK_PRESENT=false\n")
+        return _fake_completed(argv)
+
+    monkeypatch.setattr(preflight.subprocess, "run", fake_run)
+    try:
+        preflight.preflight_main(["--issue", "42", "--emergency", "--preflight-tmpdir", str(tmp_path)])
+        rc = 0
+    except SystemExit as exc:
+        rc = int(exc.code or 0)
+    assert rc == 2
+    assert not (tmp_path / "plan-from-issue.txt").exists()
+    assert "issue title is empty" in capsys.readouterr().out
+
+
+def test_preflight_emergency_malformed_plan_empty_title_aborts_without_plan_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        stdout = kwargs.get("stdout")
+        if "admission" in argv:
+            _write(stdout, "ADMISSION_RESULT=pass\n")
+        elif argv[:3] == ["gh", "issue", "view"]:
+            _write(stdout, json.dumps({"title": "[DESIGNED]   ", "body": ""}))
+        elif "plan-block" in argv:
+            _write(stdout, "BLOCK_PRESENT=true\nMALFORMED=start-without-end\n")
+            return _fake_completed(argv, 1)
+        return _fake_completed(argv)
+
+    monkeypatch.setattr(preflight.subprocess, "run", fake_run)
+    try:
+        preflight.preflight_main(["--issue", "42", "--emergency", "--preflight-tmpdir", str(tmp_path)])
+        rc = 0
+    except SystemExit as exc:
+        rc = int(exc.code or 0)
+    assert rc == 2
+    assert not (tmp_path / "plan-from-issue.txt").exists()
+    assert "issue title is empty" in capsys.readouterr().out
+
+
 def test_preflight_emergency_malformed_plan_uses_body(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

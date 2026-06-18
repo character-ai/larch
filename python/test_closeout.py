@@ -168,6 +168,31 @@ def test_step_16_17_stale_failure_prints_no_markers(
     assert (tmp_path / "summary-final.md").read_text(encoding="utf-8") == "stale body\n"
 
 
+def test_step17_no_print_returns_zero_when_fresh_summary_written(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_closeout_stub(monkeypatch, tmp_path, step17_mode="fail-upsert", summary_body="fresh body\n")
+    rc = closeout.step_17_main(["--no-print-stdout"])
+    assert rc == 0
+    assert (tmp_path / "summary-final.md").read_text(encoding="utf-8") == "fresh body\n"
+
+
+def test_step_16_17_upsert_failure_without_prior_summary_emits_markers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _install_closeout_stub(monkeypatch, tmp_path, step17_mode="fail-upsert", summary_body="fresh body\n")
+    assert closeout.step_16_17_main([]) == 0
+    out = capsys.readouterr().out
+    assert closeout.SUMMARY_BEGIN in out
+    assert "fresh body" in out
+    assert (tmp_path / ".step17-printed").is_file()
+    issues = (tmp_path / "execution-issues.md").read_text(encoding="utf-8")
+    assert "CATEGORY=Tool Failures" in issues
+
+
 def test_step_16_17_upsert_failure_emits_markers_after_refresh(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
