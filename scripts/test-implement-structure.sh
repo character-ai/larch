@@ -135,7 +135,10 @@ retired_step5_entry_md = 'step-5-' + 'entry.md'
 forbid(skill, retired_step5_entry_sh, 'retired step-5-entry.sh call removed from SKILL')
 forbid(skill, retired_step5_entry_md, 'retired step-5-entry.md ref removed from SKILL')
 require('python/review_and_fix.py', '--stage-all', 'commit-fixes --stage-all')
-require('python/review_and_fix.py', '"git", "add", "-A"', 'commit-fixes stage all implementation')
+forbid(skill, 'review-and-fix commit-fixes <specific-files>', 'Step 7 must stage all review fixes')
+forbid('python/review_and_fix.py', '"git", "add", "-A"', 'commit-fixes must not stage unrelated paths')
+require('python/review_and_fix.py', '"git", "add", "--pathspec-from-file"', 'commit-fixes pathspec staging')
+require('python/review_and_fix.py', '"--only",\n            "--pathspec-from-file"', 'commit-fixes pathspec-only commit')
 require('python/implement_dispatch.py', 'LARCH_TIMING_LEDGER', 'commit-implementation telemetry self-rehydration')
 require('skills/implement/scripts/step-18.sh', '--phase gate', 'step-18 phase gate argv')
 require('skills/implement/scripts/step-18.sh', '--phase finalize', 'step-18 phase finalize argv')
@@ -318,8 +321,15 @@ for needle in [
     'read_session_key CODEX_BINARY_FOUND', 'read_session_key CURSOR_BINARY_FOUND',
 ]:
     require('skills/implement/scripts/step-0-degraded-gate.sh', needle, f'step-0-degraded-gate legacy {needle}')
-require('skills/implement/scripts/step-5-resume.sh', 'review-and-fix commit-fixes --stage-all || true', 'step-5-resume commit failure guard')
+require('skills/implement/scripts/step-5-resume.sh', 'set +e\n  commit_output="$(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" review-and-fix commit-fixes --stage-all)"', 'step-5-resume errexit-safe commit capture')
+require('skills/implement/scripts/step-5-resume.sh', 'awk -F= \'$1 == "COMMITTED" || $1 == "ERROR" || $1 == "SHA" { print }\'', 'step-5-resume KV relay')
+require('skills/implement/scripts/step-5-resume.sh', 'porcelain="$(git status --porcelain)"', 'step-5-resume porcelain probe after commit')
+require('skills/implement/scripts/step-5-resume.sh', 'if [ -n "$porcelain" ] && { [ "$committed" = false ] || [ -n "$error_value" ] || [ "$commit_rc" -ne 0 ]; }; then', 'step-5-resume dirty failure gate')
+forbid('skills/implement/scripts/step-5-resume.sh', 'review-and-fix commit-fixes --stage-all || true', 'step-5-resume must not mask commit failure')
 require('skills/implement/scripts/step-5-resume.sh', 'review-and-fix step5', 'step-5-resume review loop resume')
+require(skill, 'Use `resume-handoff-commit-failed` only when the handoff commit phase failed before the review loop resumed', 'SKILL narrowed resume handoff failure branch')
+require(skill, 'Do not classify clean-tree no-op (`COMMITTED=false`, empty porcelain) as failure.', 'SKILL clean-tree handoff no-op carve-out')
+require(skill, 'When stdout contains `STEP5_REVIEW_STATUS=`, branch on that envelope per the Step 5 status table.', 'SKILL review-loop envelope branch')
 require('skills/implement/scripts/step-8-ship.sh', '--state-file "$IMPLEMENT_TMPDIR/ship-pr-state.sh"', 'step-8 state file forwarding')
 exit_matrix = Path('skills/implement/references/ship-pr-exit-matrix.md')
 if exit_matrix.is_file():

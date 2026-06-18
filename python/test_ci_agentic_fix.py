@@ -66,6 +66,118 @@ def test_compose_exhausted_detail_includes_log_tail() -> None:
     assert "FAIL test_foo.py" in detail
 
 
+def _write_legacy_guard_fixture(repo: Path) -> None:
+    scripts = repo / "scripts"
+    scripts.mkdir(parents=True)
+    (scripts / "test-legacy-title-prefix-literals-scope.sh").write_text(
+        "#!/usr/bin/env bash\nALLOW=(\n  python/existing.py\n)\n",
+        encoding="utf-8",
+    )
+
+
+def test_legacy_prefix_helper_inserts_incident_path(tmp_path: Path) -> None:
+    repo = tmp_path
+    _write_legacy_guard_fixture(repo)
+    (repo / "python").mkdir()
+    (repo / "python" / "preflight.py").write_text('TITLE="[PLANNED] x"\n', encoding="utf-8")
+    changed, detail = ci_agentic_fix._apply_legacy_prefix_allow_fix(  # pyright: ignore[reportPrivateUsage]
+        repo,
+        "FAIL: legacy prefix literal in unexpected path: python/preflight.py (extend ALLOW= only when deliberate)\n",
+    )
+    assert changed is True
+    assert detail == "legacy-prefix-allow:python/preflight.py"
+    assert "  'python/preflight.py'\n)" in (repo / "scripts" / "test-legacy-title-prefix-literals-scope.sh").read_text(encoding="utf-8")
+
+
+def test_legacy_prefix_helper_ignores_other_paths(tmp_path: Path) -> None:
+    repo = tmp_path
+    _write_legacy_guard_fixture(repo)
+    (repo / "python").mkdir()
+    (repo / "python" / "other.py").write_text('TITLE="[PLANNED] x"\n', encoding="utf-8")
+    changed, detail = ci_agentic_fix._apply_legacy_prefix_allow_fix(  # pyright: ignore[reportPrivateUsage]
+        repo,
+        "FAIL: legacy prefix literal in unexpected path: python/other.py (extend ALLOW= only when deliberate)\n",
+    )
+    assert (changed, detail) == (False, "")
+
+
+def test_legacy_prefix_helper_requires_literal(tmp_path: Path) -> None:
+    repo = tmp_path
+    _write_legacy_guard_fixture(repo)
+    (repo / "python").mkdir()
+    (repo / "python" / "preflight.py").write_text("TITLE='plain'\n", encoding="utf-8")
+    changed, detail = ci_agentic_fix._apply_legacy_prefix_allow_fix(  # pyright: ignore[reportPrivateUsage]
+        repo,
+        "FAIL: legacy prefix literal in unexpected path: python/preflight.py (extend ALLOW= only when deliberate)\n",
+    )
+    assert (changed, detail) == (False, "")
+
+
+def test_finalize_cleanup_partition_helper_rewrites_target_only(tmp_path: Path) -> None:
+    makefile = tmp_path / "Makefile"
+    makefile.write_text(
+        "test-finalize-sanity-check:\n\tpython3 -m pytest python/test_finalize.py -q -k cleanup_target_ok\n\n"
+        "test-implement-cleanup-script:\n\tpython3 -m pytest python/test_finalize.py -q -k cleanup\n",
+        encoding="utf-8",
+    )
+    log = (
+        "harness pytest partition guard: FAILED\n"
+        "python/test_finalize.py: NOT a strict partition\n"
+        "cleanup_target_ok\n"
+    )
+    changed, detail = ci_agentic_fix._apply_finalize_cleanup_partition_fix(  # pyright: ignore[reportPrivateUsage]
+        tmp_path,
+        log,
+    )
+    assert changed is True
+    assert detail == "finalize-cleanup-partition"
+    text = makefile.read_text(encoding="utf-8")
+    assert "\tpython3 -m pytest python/test_finalize.py -q -k 'cleanup and not cleanup_target_ok'\n" in text
+    assert "-k cleanup_target_ok" in text
+
+
+def test_finalize_cleanup_partition_helper_noops_when_fixed(tmp_path: Path) -> None:
+    (tmp_path / "Makefile").write_text(
+        "test-implement-cleanup-script:\n\tpython3 -m pytest python/test_finalize.py -q -k 'cleanup and not cleanup_target_ok'\n",
+        encoding="utf-8",
+    )
+    changed, detail = ci_agentic_fix._apply_finalize_cleanup_partition_fix(  # pyright: ignore[reportPrivateUsage]
+        tmp_path,
+        "harness pytest partition guard: FAILED\npython/test_finalize.py: NOT a strict partition\ncleanup_target_ok\n",
+    )
+    assert (changed, detail) == (False, "")
+
+
+def test_finalize_cleanup_partition_helper_rejects_non_tab_recipe(tmp_path: Path) -> None:
+    (tmp_path / "Makefile").write_text(
+        "test-implement-cleanup-script:\n  python3 -m pytest python/test_finalize.py -q -k cleanup\n",
+        encoding="utf-8",
+    )
+    changed, detail = ci_agentic_fix._apply_finalize_cleanup_partition_fix(  # pyright: ignore[reportPrivateUsage]
+        tmp_path,
+        "harness pytest partition guard: FAILED\npython/test_finalize.py: NOT a strict partition\ncleanup_target_ok\n",
+    )
+    assert (changed, detail) == (False, "")
+
+
+def test_apply_known_harness_fix_applies_both_helpers(tmp_path: Path) -> None:
+    _write_legacy_guard_fixture(tmp_path)
+    (tmp_path / "python").mkdir()
+    (tmp_path / "python" / "preflight.py").write_text('TITLE="[IN PROGRESS] x"\n', encoding="utf-8")
+    (tmp_path / "Makefile").write_text(
+        "test-implement-cleanup-script:\n\tpython3 -m pytest python/test_finalize.py -q -k cleanup\n",
+        encoding="utf-8",
+    )
+    log = (
+        "FAIL: legacy prefix literal in unexpected path: python/preflight.py (extend ALLOW= only when deliberate)\n"
+        "harness pytest partition guard: FAILED\npython/test_finalize.py: NOT a strict partition\ncleanup_target_ok\n"
+    )
+    changed, detail = ci_agentic_fix._apply_known_harness_fix(tmp_path, log)  # pyright: ignore[reportPrivateUsage]
+    assert changed is True
+    assert "legacy-prefix-allow:python/preflight.py" in detail
+    assert "finalize-cleanup-partition" in detail
+
+
 def test_first_cycle_health_emits_ci_fix_exhausted(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -868,6 +980,106 @@ def _cycle_args(out_dir: Path) -> Namespace:
         base_ref="main",
         output_dir=str(out_dir),
     )
+
+
+def test_run_cycle_mechanical_fix_skips_delegate_and_pushes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    calls = {"push": 0, "launch": 0}
+
+    monkeypatch.setattr(ci_monitor, "read_failed_jobs", lambda *_a, **_kw: ((ci_monitor.FailedJob(name="python-lint", conclusion="failure"),), "ready"))
+    monkeypatch.setattr(ci_monitor, "collect_failed_logs", lambda *_a, **_kw: ci_monitor.LogCollectResult(text="known failure\n", state="ready"))
+    monkeypatch.setattr(ci_monitor, "_capture_baseline", lambda *_a, **_kw: ((), (), (), "abc123"))
+    monkeypatch.setattr(ci_monitor, "prepare_python_toolchain", lambda *_a, **_kw: True)
+    monkeypatch.setattr(ci_monitor, "verify_job_locally", lambda *_a, **_kw: True)
+    monkeypatch.setattr(ci_monitor, "_delta_paths", lambda *_a, **_kw: ("fixed.py",))
+    monkeypatch.setattr(ci_agentic_fix, "_apply_known_harness_fix", lambda *_a, **_kw: (True, "known"))
+    monkeypatch.setattr(ci_agentic_fix.coder_delta_guards, "coder_forbidden_paths", lambda *_a, **_kw: ())
+    monkeypatch.setattr(ci_agentic_fix.coder_delta_guards, "revert_forbidden_paths", lambda *_a, **_kw: 0)
+    monkeypatch.setattr(ci_agentic_fix, "_wait_for_ci", lambda *_a, **_kw: ({"ACTION": "merge"}, None))
+
+    def fake_launch(*_args: object, **_kwargs: object) -> proc.CommandResult:
+        calls["launch"] += 1
+        return proc.CommandResult(("cli",), 1, "", "", 0.01)
+
+    def fake_stage_and_push(*_args: object, **_kwargs: object) -> tuple[bool, str | None, tuple[str, ...], bool, bool]:
+        calls["push"] += 1
+        return True, "head", ("fixed.py",), False, False
+
+    monkeypatch.setattr(agents, "launch_tier", fake_launch)
+    monkeypatch.setattr(ci_monitor, "stage_and_push", fake_stage_and_push)
+
+    status, detail, attempted, delta, pending, next_run, _log = ci_agentic_fix._run_cycle(  # pyright: ignore[reportPrivateUsage]
+        proc,
+        args=_cycle_args(out_dir),
+        repo_root=repo,
+        ctx=_make_ctx(),
+        cycle=1,
+        run_id="42",
+    )
+    assert status == "passed"
+    assert detail == ""
+    assert attempted is True
+    assert delta == ("fixed.py",)
+    assert pending is False
+    assert next_run is None
+    assert calls == {"push": 1, "launch": 0}
+
+
+def test_run_cycle_mixed_mechanical_failure_rolls_back_then_delegates(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    calls = {"rollback": 0, "launch": 0, "verify": 0}
+
+    monkeypatch.setattr(ci_monitor, "read_failed_jobs", lambda *_a, **_kw: ((ci_monitor.FailedJob(name="python-lint", conclusion="failure"),), "ready"))
+    monkeypatch.setattr(ci_monitor, "collect_failed_logs", lambda *_a, **_kw: ci_monitor.LogCollectResult(text="known failure\n", state="ready"))
+    monkeypatch.setattr(ci_monitor, "_capture_baseline", lambda *_a, **_kw: ((), (), (), "abc123"))
+    monkeypatch.setattr(ci_monitor, "prepare_python_toolchain", lambda *_a, **_kw: True)
+    monkeypatch.setattr(ci_monitor, "_delta_paths", lambda *_a, **_kw: ("fixed.py",))
+    monkeypatch.setattr(ci_agentic_fix, "_apply_known_harness_fix", lambda *_a, **_kw: (True, "known"))
+    monkeypatch.setattr(ci_agentic_fix.coder_delta_guards, "capture_head", lambda *_a, **_kw: "abc123")
+    monkeypatch.setattr(ci_agentic_fix.coder_delta_guards, "head_changed_from_baseline", lambda *_a, **_kw: False)
+    monkeypatch.setattr(ci_agentic_fix.coder_delta_guards, "coder_forbidden_paths", lambda *_a, **_kw: ())
+    monkeypatch.setattr(ci_agentic_fix.coder_delta_guards, "revert_forbidden_paths", lambda *_a, **_kw: 0)
+    monkeypatch.setattr(agents, "resolve_launcher_exit", lambda *_a, **_kw: 0)
+    monkeypatch.setattr(agents, "classify_launch_failure", lambda *_a, **_kw: agents.LaunchFailure("none", ""))
+    monkeypatch.setattr(ci_agentic_fix, "_wait_for_ci", lambda *_a, **_kw: ({"ACTION": "merge"}, None))
+    monkeypatch.setattr(ci_agentic_fix, "_rollback", lambda *_a, **_kw: calls.__setitem__("rollback", calls["rollback"] + 1))
+    monkeypatch.setattr(ci_monitor, "stage_and_push", lambda *_a, **_kw: (True, "head", ("fixed.py",), False, False))
+
+    def fake_verify(*_args: object, **_kwargs: object) -> bool:
+        calls["verify"] += 1
+        return calls["verify"] > 1
+
+    def fake_launch(*_args: object, **_kwargs: object) -> proc.CommandResult:
+        calls["launch"] += 1
+        return proc.CommandResult(("cli",), 0, "LAUNCHER_EXIT=0\n", "", 0.01)
+
+    monkeypatch.setattr(ci_monitor, "verify_job_locally", fake_verify)
+    monkeypatch.setattr(agents, "launch_tier", fake_launch)
+
+    status, _detail, attempted, _delta, _pending, _next_run, _log = ci_agentic_fix._run_cycle(  # pyright: ignore[reportPrivateUsage]
+        proc,
+        args=_cycle_args(out_dir),
+        repo_root=repo,
+        ctx=_make_ctx(),
+        cycle=1,
+        run_id="42",
+    )
+    assert status == "passed"
+    assert attempted is True
+    assert calls["rollback"] == 1
+    assert calls["launch"] == 1
 
 
 def test_run_cycle_wait_error_fails_closed_without_reusing_run_id(

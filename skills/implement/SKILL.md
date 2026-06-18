@@ -636,7 +636,7 @@ Before leaving the main-agent handoff path, route timing through `${CLAUDE_PLUGI
 bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-5-resume.sh --final-round-num "$FINAL_ROUND_NUM" --record-only
 ```
 
-Only on the successful resume path, set `STEP5_HANDOFF_READY_TO_COMMIT=true`, then stage and commit the main-agent-applied fixes before re-invoking the loop wrapper — the review diff is computed from `git diff MERGE_BASE...HEAD` (committed only), so unstaged changes are invisible to the next round's reviewers and must land in a commit first. `git add -A` stages the working-tree edits; `review-and-fix commit-fixes` commits them:
+Only on the successful resume path, set `STEP5_HANDOFF_READY_TO_COMMIT=true`, then stage and commit the main-agent-applied fixes before re-invoking the loop wrapper — the review diff is computed from `git diff MERGE_BASE...HEAD` (committed only), so unstaged changes are invisible to the next round's reviewers and must land in a commit first. `review-and-fix commit-fixes --stage-all` stages review delta paths only via pathspec-from-file, matching coder round commits; it must not use `git add -A`.
 
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 21600000`.**
 
@@ -645,6 +645,8 @@ bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-5-resume.sh 
 ```
 
 On resume, the loop evaluates substantiality and bulk-skip against the round-`FINAL_ROUND_NUM` artifacts before scheduling additional rounds. If `FINAL_ROUND_NUM == EFFECTIVE_ROUND_CAP`, the wrapper returns `STEP5_REVIEW_STATUS=mav-resume-past-cap`.
+
+After the `--ready-to-commit` immediate-background fence returns, parse the wrapper exit code and stdout with token-aware KV extraction for `COMMITTED=`, `ERROR=`, `SHA=`, and `STEP5_REVIEW_STATUS=` before assuming resume succeeded or advancing to Step 6. Use `resume-handoff-commit-failed` only when the handoff commit phase failed before the review loop resumed: stdout lacks `STEP5_REVIEW_STATUS=`, and porcelain is non-empty after the commit phase because `COMMITTED=false` with a dirty tree or wrapper exit was non-zero with commit-phase `ERROR=` present. Do not classify clean-tree no-op (`COMMITTED=false`, empty porcelain) as failure. On commit-phase failure, log `Step 5 — resume handoff commit failed: $ERROR` to `$IMPLEMENT_TMPDIR/execution-issues.md` under `Tool Failures`, set `STALL_TRACKING=true`, `STALL_STEP=5`, `STALL_REASON=resume-handoff-commit-failed`, seed or key-rewrite `$IMPLEMENT_TMPDIR/ship-pr-state.sh` with the same durable-bail pattern as the `stall` branch in `step5-review-branches.md`, and skip to Step 16. Do not proceed to Cross-Skill Presence Propagation, Track Rejected Code Review Findings, Step 6, or Step 8 on this failure path. When stdout contains `STEP5_REVIEW_STATUS=`, branch on that envelope per the Step 5 status table. Do not map a normal Step 5 stall to `resume-handoff-commit-failed` solely because the wrapper exited non-zero. When porcelain is clean, including clean-tree `COMMITTED=false` no-op, and `STEP5_REVIEW_STATUS` indicates non-stall continuation, continue existing resume semantics.
 
 <!-- # intentionally non-stable: step-5-resume.sh captures wall-clock time for round duration -->
 - **`mav-resume-past-cap`**: follow the `mav-resume-past-cap` branch body in the Step 5 review-branches reference, then follow the same post-Step-5 chain as `complete`.
@@ -692,10 +694,10 @@ Print: `> **🔶 /implement 7: commit (review)**`
 If any files changed during review / checks (Steps 5–6):
 
 ```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py review-and-fix commit-fixes <specific-files>
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py review-and-fix commit-fixes --stage-all
 ```
 
-If no files changed, skip. Note: `review-and-fix CLI` commits each round's accepted-fixes inline (commit message `Address code review feedback (round N)`), so on the common path the working tree is already clean here and Step 7's commit is a no-op. Step 7's commit still fires when the main agent landed manual edits — typically after the `main-agent-vote-required` adjudication branch of `review-and-fix CLI`, where the coder dispatch did not run.
+If no files changed, skip. Note: `review-and-fix CLI` commits each round's accepted-fixes inline (commit message `Address code review feedback (round N)`), so on the common path the working tree is already clean here and Step 7's commit is a no-op. Step 7's `--stage-all` stages review delta paths only via pathspec-from-file, with the same discipline as coder round commits. It does not use `git add -A`, because the ship driver needs a clean tree before push without sweeping unrelated dirty or staged hunks. Step 7's commit still fires when the main agent or lint-fix review loop landed manual edits not already committed by Step 5.
 
 ### Rebase onto latest main (after review fixes commit)
 

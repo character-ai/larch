@@ -31,6 +31,13 @@ If `git status --porcelain` is non-empty (uncommitted changes) on a FIRST invoca
 
 On a RESUME invocation (`<ANSWERS_FILE>` provided), the working tree may already contain partial edits from your prior `needs_qa` cycle that the dispatcher did NOT commit. Read the working tree as-is, decide whether your prior partial edits remain consistent with the new answers, and either continue editing on top or bail with `resume-incompatible`. Do NOT `git checkout` or `git restore` to throw the partial work away — leave the operator a clean inspection target.
 
+## Harness-awareness checklist
+
+These reminders are preventive checks, not hard guards:
+
+- When adding a file that deliberately contains legacy lifecycle title-prefix literals such as `[IN PROGRESS]` or `[PLANNED]`, run or account for `scripts/test-legacy-title-prefix-literals-scope.sh` and extend `ALLOW=` in the same change.
+- When adding tests to a file split across Makefile harness targets, keep `-k` selectors disjoint for files enforced by `scripts/lint-harness-pytest-partition.py`.
+
 ## Hard guards
 
 These rules are non-negotiable. Violating any of them MUST cause you to abort with `status=bailed`.

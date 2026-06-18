@@ -987,6 +987,87 @@ def _ensure_pre_coder_snapshot(round_dir: Path) -> None:
         _write_pre_coder_snapshot(round_dir)
 
 
+def _lint_fix_snapshot_dir(round_dir: Path) -> Path:
+    return round_dir / "lint-fix-snapshot"
+
+
+def _write_pre_lint_snapshot(round_dir: Path) -> str:
+    snap_dir = _lint_fix_snapshot_dir(round_dir)
+    snap_dir.mkdir(parents=True, exist_ok=True)
+    for name in ("pre-lint-head.txt", "pre-lint-tracked-paths.txt"):
+        with contextlib.suppress(FileNotFoundError):
+            (snap_dir / name).unlink()
+    diffs_dir = snap_dir / "pre-lint-path-diffs"
+    if diffs_dir.is_dir():
+        shutil.rmtree(diffs_dir, ignore_errors=True)
+    head = _git_head()
+    if not head:
+        return ""
+    _write_text(snap_dir / "pre-lint-head.txt", head + "\n")
+    tracked = _capture_round_tracked_paths()
+    _write_text(snap_dir / "pre-lint-tracked-paths.txt", "\n".join(tracked) + ("\n" if tracked else ""))
+    diffs_dir.mkdir(parents=True, exist_ok=True)
+    for path in tracked:
+        safe = path.replace("/", "__").replace("\\", "__")
+        (diffs_dir / f"{safe}.patch").write_text(_git_output(["diff", head, "--", path]), encoding="utf-8")
+        (diffs_dir / f"{safe}.cached.patch").write_text(
+            _git_output(["diff", "--cached", head, "--", path]),
+            encoding="utf-8",
+        )
+    return head
+
+
+def _path_matches_pre_lint_snapshot(round_dir: Path, pre_lint_head: str, path: str) -> bool:
+    snap_dir = _lint_fix_snapshot_dir(round_dir)
+    safe = path.replace("/", "__").replace("\\", "__")
+    wt_snap = snap_dir / "pre-lint-path-diffs" / f"{safe}.patch"
+    idx_snap = snap_dir / "pre-lint-path-diffs" / f"{safe}.cached.patch"
+    if not wt_snap.is_file() or not idx_snap.is_file():
+        return False
+    wt_diff = _git_output(["diff", pre_lint_head, "--", path])
+    idx_diff = _git_output(["diff", "--cached", pre_lint_head, "--", path])
+    return wt_diff == _read_text(wt_snap) and idx_diff == _read_text(idx_snap)
+
+
+def _lint_fix_delta_paths(
+    round_dir: Path,
+    pre_lint_head: str,
+    unioned_delta_paths: tuple[str, ...],
+) -> tuple[str, ...]:
+    paths: set[str] = {path for path in unioned_delta_paths if path}
+    snap_dir = _lint_fix_snapshot_dir(round_dir)
+    pre_tracked = snap_dir / "pre-lint-tracked-paths.txt"
+    pre_tracked_set = {line for line in _read_text(pre_tracked).splitlines() if line}
+    for path in _git_output(["diff", "--name-only", pre_lint_head]).splitlines():
+        if not path:
+            continue
+        if path in pre_tracked_set and _path_matches_pre_lint_snapshot(round_dir, pre_lint_head, path):
+            continue
+        paths.add(path)
+    return tuple(sorted(paths))
+
+
+def _commit_lint_fix_delta_paths(round_num: int, round_dir: Path, commit_paths: tuple[str, ...], reason: str) -> str:
+    stage_file = round_dir / "lint-fix-stage-paths.txt"
+    _write_text(stage_file, "\n".join(commit_paths) + ("\n" if commit_paths else ""))
+    if not commit_paths:
+        return ""
+    _run(["git", "add", "--pathspec-from-file", str(stage_file)])
+    msg = f"Address lint fixes after review round {round_num}: {reason}"
+    commit = _run([
+        str(_plugin_root() / "scripts" / "git-commit.sh"),
+        "--only",
+        "--pathspec-from-file",
+        str(stage_file),
+        "-m",
+        msg,
+    ])
+    _append_text(round_dir / "lint-fix-commit.log", commit.stdout + commit.stderr)
+    if commit.returncode != 0:
+        return ""
+    return _git_head()
+
+
 def _structural_loc(pre_head_file: Path, post_head_file: Path) -> int:
     if not pre_head_file.is_file() or not post_head_file.is_file():
         return 0
@@ -1551,6 +1632,10 @@ def _run_lint_fix_loop(implement_tmpdir: Path, checks_log: str) -> dict[str, str
         allowed_tmpdir=str(implement_tmpdir),
     )
     values = {"LINT_FIX_STATUS": outcome.status}
+    if outcome.delta_paths:
+        values["LINT_FIX_DELTA_PATHS"] = ",".join(outcome.delta_paths)
+    if outcome.commit_sha:
+        values["LINT_FIX_COMMIT_SHA"] = outcome.commit_sha
     if outcome.stderr_tail_path:
         values["STDERR_TAIL_PATH"] = outcome.stderr_tail_path
     elif outcome.ledger_failure_detail_log:
@@ -1574,22 +1659,51 @@ def _step5_post_round_gates(
             return "stall", f"relevant-checks-{checks.get('FAILURE_REASON', 'unknown')}", False
         lint_max = _lint_fix_max_attempts()
         lint_attempts = 0
+        pre_lint_head = _write_pre_lint_snapshot(result.round_dir) if _git_status_porcelain().strip() else ""
+        lint_applied_ever = False
+        lint_delta_paths: set[str] = set()
+
+        def _lint_loop_successful_break(reason: str) -> tuple[str | None, str | None]:
+            if not lint_applied_ever or not _git_status_porcelain().strip():
+                return None, None
+            if not pre_lint_head:
+                return None, None
+            commit_paths = _lint_fix_delta_paths(result.round_dir, pre_lint_head, tuple(sorted(lint_delta_paths)))
+            commit_sha = _commit_lint_fix_delta_paths(round_num, result.round_dir, commit_paths, reason)
+            if not commit_sha and _git_status_porcelain().strip():
+                return "stall", "lint-fix-commit-failed"
+            return None, None
+
         while True:
             lint = _run_lint_fix_loop(implement_tmpdir, checks["REDACTED_LOG_FILE"])
             lint_status = lint.get("LINT_FIX_STATUS", "")
             if lint_status == "applied":
+                lint_applied_ever = True
+                lint_delta_paths.update(path for path in lint.get("LINT_FIX_DELTA_PATHS", "").split(",") if path)
                 lint_attempts += 1
                 if lint_attempts >= lint_max:
                     recheck = _run_relevant_checks_captured(implement_tmpdir)
                     if recheck.get("RELEVANT_CHECKS_SKIPPED") == "true" or recheck.get("RELEVANT_CHECKS_OK") == "true":
+                        terminal, reason = _lint_loop_successful_break("cap-success")
+                        if terminal:
+                            return terminal, reason, False
                         break
                     if recheck.get("STATUS") != "fail":
+                        terminal, reason = _lint_loop_successful_break("cap-nonfail")
+                        if terminal:
+                            return terminal, reason, False
                         break
                     return "stall", "lint-fix-attempt-cap", False
                 recheck = _run_relevant_checks_captured(implement_tmpdir)
                 if recheck.get("RELEVANT_CHECKS_SKIPPED") == "true" or recheck.get("RELEVANT_CHECKS_OK") == "true":
+                    terminal, reason = _lint_loop_successful_break("recheck-pass")
+                    if terminal:
+                        return terminal, reason, False
                     break
                 if recheck.get("STATUS") != "fail":
+                    terminal, reason = _lint_loop_successful_break("recheck-nonfail")
+                    if terminal:
+                        return terminal, reason, False
                     break
                 continue
             if lint_status == "main-agent-required":
@@ -1598,6 +1712,9 @@ def _step5_post_round_gates(
                 if lint_status == "no-changes":
                     recheck = _run_relevant_checks_captured(implement_tmpdir)
                     if recheck.get("RELEVANT_CHECKS_SKIPPED") == "true" or recheck.get("RELEVANT_CHECKS_OK") == "true":
+                        terminal, reason = _lint_loop_successful_break("no-changes-pass")
+                        if terminal:
+                            return terminal, reason, False
                         break
                 return "stall", "lint-fix-failed", False
             return "stall", "lint-fix-failed", False
@@ -1798,6 +1915,22 @@ def _stage_and_commit_round(round_num: int, round_dir: Path) -> str:
     if commit.returncode != 0:
         return ""
     return _git_head()
+
+
+def _collect_review_fix_stage_paths(implement_tmpdir: Path) -> list[str]:
+    paths: list[str] = []
+    seen: set[str] = set()
+    for round_dir in sorted(implement_tmpdir.glob("round-*")):
+        if not round_dir.is_dir():
+            continue
+        pre_head_file = pre_coder_snapshot_dir(round_dir) / "pre-coder-head.txt"
+        if not pre_head_file.is_file() or not pre_head_file.stat().st_size:
+            continue
+        for path in _collect_round_stage_paths(round_dir):
+            if path not in seen:
+                seen.add(path)
+                paths.append(path)
+    return paths
 
 
 def apply_findings_with_coder(input_file: Path, round_dir: Path, result_file: Path, round_num: int | None = None) -> CoderResult:
@@ -2781,8 +2914,42 @@ def commit_fixes(argv: list[str] | None = None) -> int:
     _run(["python3", str(cli), "token", "mark", "Step 7 — commit review fixes"])
     _run(["python3", str(cli), "timing", "mark", "Step 7 — commit review fixes"], env={**os.environ, "LARCH_TIMING_SKILL": "implement"})
     if args.stage_all:
-        _run(["git", "add", "-A"])
-    result = _run([str(_plugin_root() / "scripts" / "git-commit.sh"), "-m", args.message, *args.files])
+        if not _git_status_porcelain().strip():
+            _emit_kv("COMMITTED", "false")
+            _emit_kv("SHA", "")
+            _emit_kv("ERROR", "")
+            return 0
+        raw_implement_tmpdir = os.environ.get("IMPLEMENT_TMPDIR", "")
+        if not raw_implement_tmpdir:
+            _emit_kv("COMMITTED", "false")
+            _emit_kv("SHA", "")
+            _emit_kv("ERROR", "IMPLEMENT_TMPDIR required")
+            return 2
+        implement_tmpdir = Path(raw_implement_tmpdir)
+        paths = _collect_review_fix_stage_paths(implement_tmpdir)
+        stage_file = implement_tmpdir / "review-fix-stage-paths.txt"
+        _write_text(stage_file, "\n".join(paths) + ("\n" if paths else ""))
+        if not paths:
+            _emit_kv("COMMITTED", "false")
+            _emit_kv("SHA", "")
+            _emit_kv("ERROR", "no review delta paths")
+            return 1
+        add_result = _run(["git", "add", "--pathspec-from-file", str(stage_file)])
+        if add_result.returncode != 0:
+            _emit_kv("COMMITTED", "false")
+            _emit_kv("SHA", "")
+            _emit_kv("ERROR", (add_result.stderr or add_result.stdout).replace("\n", " ")[:500])
+            return add_result.returncode
+        result = _run([
+            str(_plugin_root() / "scripts" / "git-commit.sh"),
+            "--only",
+            "--pathspec-from-file",
+            str(stage_file),
+            "-m",
+            args.message,
+        ])
+    else:
+        result = _run([str(_plugin_root() / "scripts" / "git-commit.sh"), "-m", args.message, *args.files])
     if result.returncode == 0:
         _emit_kv("COMMITTED", "true")
         _emit_kv("SHA", _git_head())

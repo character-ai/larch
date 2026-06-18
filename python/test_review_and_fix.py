@@ -926,6 +926,50 @@ def test_commit_fixes_replaces_empty_session_backed_env(tmp_path, monkeypatch):
     assert timing_calls[0][1].get("LARCH_TIMING_LEDGER") == "/tmp/ledger.tsv"
 
 
+@pytest.mark.commit_fixes
+def test_commit_fixes_stage_all_clean_tree_noops(tmp_path, monkeypatch, capsys):
+    impl = _tmp_impl(tmp_path)
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+    monkeypatch.setattr(review_and_fix, "_git_status_porcelain", lambda: "")
+    monkeypatch.setattr(review_and_fix, "_run", lambda argv, **_kw: review_and_fix.proc.CommandResult(argv, 0, "", "", 0.0))
+    rc = review_and_fix.commit_fixes(["--stage-all"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "COMMITTED=false" in out
+    assert "SHA=" in out
+    assert "ERROR=" in out
+
+
+@pytest.mark.commit_fixes
+def test_commit_fixes_stage_all_uses_review_delta_pathspec(tmp_path, monkeypatch, capsys):
+    impl = _tmp_impl(tmp_path)
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+    monkeypatch.setattr(review_and_fix, "_git_status_porcelain", lambda: " M a.py\n M unrelated.py\n")
+    monkeypatch.setattr(review_and_fix, "_collect_review_fix_stage_paths", lambda _impl: ["a.py"])
+    monkeypatch.setattr(review_and_fix, "_git_head", lambda: "deadbeef")
+    calls: list[list[str]] = []
+
+    def fake_run(argv, **_kwargs):
+        calls.append(list(argv))
+        return review_and_fix.proc.CommandResult(argv, 0, "", "", 0.0)
+
+    monkeypatch.setattr(review_and_fix, "_run", fake_run)
+    rc = review_and_fix.commit_fixes(["--stage-all", "--message", "fix review"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "COMMITTED=true" in out
+    stage_file = impl / "review-fix-stage-paths.txt"
+    assert stage_file.read_text(encoding="utf-8") == "a.py\n"
+    assert ["git", "add", "--pathspec-from-file", str(stage_file)] in calls
+    commit_calls = [argv for argv in calls if argv and argv[0].endswith("git-commit.sh")]
+    assert commit_calls
+    assert "--only" in commit_calls[0]
+    assert "--pathspec-from-file" in commit_calls[0]
+    assert "unrelated.py" not in " ".join(commit_calls[0])
+
+
 @MARK_DISPATCH
 def test_apply_findings_rehydrates_session_env_before_coder(tmp_path, monkeypatch):
     monkeypatch.delenv("LARCH_TOKEN_SESSION_ID", raising=False)
@@ -1826,6 +1870,167 @@ def test_step5_post_round_gates_lint_fix_attempt_cap(tmp_path, monkeypatch):
     assert status == "stall"
     assert reason == "lint-fix-attempt-cap"
     assert cont is False
+
+
+def _round_result_for_lint_fix(impl: Path) -> review_and_fix.RoundResult:
+    round_dir = impl / "round-1"
+    round_dir.mkdir(parents=True, exist_ok=True)
+    accepted = round_dir / "accepted-findings.md"
+    accepted.write_text("### FINDING_1: a\n", encoding="utf-8")
+    return review_and_fix.RoundResult(
+        0, "fix-applied", "fix-required", 1, 1, 0, 0, 0, 1, 0, 0, 0,
+        accepted, round_dir / "rejected-findings.md", round_dir,
+        impl / "review-and-fix-summary.json", impl / "accumulated-oos.jsonl",
+        review_and_fix.CoderResult(0, input_count=1, status="applied"),
+    )
+
+
+@MARK_CONVERGENCE
+def test_step5_lint_fix_commits_union_paths_before_complete(tmp_path, monkeypatch):
+    impl = _tmp_impl(tmp_path)
+    result = _round_result_for_lint_fix(impl)
+    checks_calls = {"n": 0}
+    committed: dict[str, object] = {}
+
+    def fake_checks(_impl):
+        checks_calls["n"] += 1
+        if checks_calls["n"] == 1:
+            return {"STATUS": "fail", "REDACTED_LOG_FILE": str(impl / "checks.log")}
+        return {"STATUS": "pass", "RELEVANT_CHECKS_OK": "true"}
+
+    monkeypatch.setattr(review_and_fix, "_run_relevant_checks_captured", fake_checks)
+    monkeypatch.setattr(review_and_fix, "_git_status_porcelain", lambda: " M linted.py\n")
+    monkeypatch.setattr(review_and_fix, "_write_pre_lint_snapshot", lambda _round: "head")
+    monkeypatch.setattr(review_and_fix, "_run_lint_fix_loop", lambda _impl, _log: {"LINT_FIX_STATUS": "applied", "LINT_FIX_DELTA_PATHS": "reported.py"})
+    monkeypatch.setattr(review_and_fix, "_lint_fix_delta_paths", lambda _round, _head, paths: ("linted.py", *paths))
+
+    def fake_commit(round_num, round_dir, commit_paths, reason):
+        committed.update(round_num=round_num, round_dir=round_dir, commit_paths=commit_paths, reason=reason)
+        return "sha"
+
+    monkeypatch.setattr(review_and_fix, "_commit_lint_fix_delta_paths", fake_commit)
+    monkeypatch.setattr(review_and_fix, "_structural_loc", lambda *_a: 0)
+    monkeypatch.setattr(review_and_fix, "_high_severity_count", lambda *_a: 0)
+    status, reason, cont = review_and_fix._step5_post_round_gates(result, 1, 5, impl)
+    assert (status, reason, cont) == ("complete", "", False)
+    assert committed["commit_paths"] == ("linted.py", "reported.py")
+
+
+@MARK_CONVERGENCE
+def test_step5_lint_fix_commit_failure_stalls_when_dirty(tmp_path, monkeypatch):
+    impl = _tmp_impl(tmp_path)
+    result = _round_result_for_lint_fix(impl)
+    checks_calls = {"n": 0}
+
+    def fake_checks(_impl):
+        checks_calls["n"] += 1
+        if checks_calls["n"] == 1:
+            return {"STATUS": "fail", "REDACTED_LOG_FILE": str(impl / "checks.log")}
+        return {"STATUS": "pass", "RELEVANT_CHECKS_OK": "true"}
+
+    monkeypatch.setattr(review_and_fix, "_run_relevant_checks_captured", fake_checks)
+    monkeypatch.setattr(review_and_fix, "_git_status_porcelain", lambda: " M linted.py\n")
+    monkeypatch.setattr(review_and_fix, "_write_pre_lint_snapshot", lambda _round: "head")
+    monkeypatch.setattr(review_and_fix, "_run_lint_fix_loop", lambda _impl, _log: {"LINT_FIX_STATUS": "applied", "LINT_FIX_DELTA_PATHS": "linted.py"})
+    monkeypatch.setattr(review_and_fix, "_lint_fix_delta_paths", lambda *_a: ("linted.py",))
+    monkeypatch.setattr(review_and_fix, "_commit_lint_fix_delta_paths", lambda *_a: "")
+    status, reason, cont = review_and_fix._step5_post_round_gates(result, 1, 5, impl)
+    assert (status, reason, cont) == ("stall", "lint-fix-commit-failed", False)
+
+
+@MARK_CONVERGENCE
+def test_step5_lint_fix_noop_does_not_commit(tmp_path, monkeypatch):
+    impl = _tmp_impl(tmp_path)
+    result = _round_result_for_lint_fix(impl)
+    checks_calls = {"n": 0}
+    commit_calls = {"n": 0}
+
+    def fake_checks(_impl):
+        checks_calls["n"] += 1
+        if checks_calls["n"] == 1:
+            return {"STATUS": "fail", "REDACTED_LOG_FILE": str(impl / "checks.log")}
+        return {"STATUS": "pass", "RELEVANT_CHECKS_OK": "true"}
+
+    monkeypatch.setattr(review_and_fix, "_run_relevant_checks_captured", fake_checks)
+    monkeypatch.setattr(review_and_fix, "_git_status_porcelain", lambda: " M preexisting.py\n")
+    monkeypatch.setattr(review_and_fix, "_write_pre_lint_snapshot", lambda _round: "head")
+    monkeypatch.setattr(review_and_fix, "_run_lint_fix_loop", lambda _impl, _log: {"LINT_FIX_STATUS": "no-changes"})
+    monkeypatch.setattr(review_and_fix, "_commit_lint_fix_delta_paths", lambda *_a: commit_calls.__setitem__("n", 1) or "sha")
+    monkeypatch.setattr(review_and_fix, "_structural_loc", lambda *_a: 0)
+    monkeypatch.setattr(review_and_fix, "_high_severity_count", lambda *_a: 0)
+    status, reason, cont = review_and_fix._step5_post_round_gates(result, 1, 5, impl)
+    assert (status, reason, cont) == ("complete", "", False)
+    assert commit_calls["n"] == 0
+
+
+@MARK_CONVERGENCE
+def test_step5_lint_fix_clean_baseline_inline_commit_noops_post_loop(tmp_path, monkeypatch):
+    impl = _tmp_impl(tmp_path)
+    result = _round_result_for_lint_fix(impl)
+    checks_calls = {"n": 0}
+    commit_calls = {"n": 0}
+
+    def fake_checks(_impl):
+        checks_calls["n"] += 1
+        if checks_calls["n"] == 1:
+            return {"STATUS": "fail", "REDACTED_LOG_FILE": str(impl / "checks.log")}
+        return {"STATUS": "pass", "RELEVANT_CHECKS_OK": "true"}
+
+    monkeypatch.setattr(review_and_fix, "_run_relevant_checks_captured", fake_checks)
+    monkeypatch.setattr(review_and_fix, "_git_status_porcelain", lambda: "")
+    monkeypatch.setattr(review_and_fix, "_run_lint_fix_loop", lambda _impl, _log: {"LINT_FIX_STATUS": "applied", "LINT_FIX_COMMIT_SHA": "sha"})
+    monkeypatch.setattr(review_and_fix, "_commit_lint_fix_delta_paths", lambda *_a: commit_calls.__setitem__("n", 1) or "sha")
+    monkeypatch.setattr(review_and_fix, "_structural_loc", lambda *_a: 0)
+    monkeypatch.setattr(review_and_fix, "_high_severity_count", lambda *_a: 0)
+    status, reason, cont = review_and_fix._step5_post_round_gates(result, 1, 5, impl)
+    assert (status, reason, cont) == ("complete", "", False)
+    assert commit_calls["n"] == 0
+
+
+@MARK_CONVERGENCE
+def test_commit_lint_fix_delta_paths_uses_pathspec_file(tmp_path, monkeypatch):
+    impl = _tmp_impl(tmp_path)
+    round_dir = impl / "round-1"
+    round_dir.mkdir()
+    calls: list[list[str]] = []
+
+    def fake_run(argv, **_kwargs):
+        calls.append(list(argv))
+        return review_and_fix.proc.CommandResult(argv, 0, "", "", 0.0)
+
+    monkeypatch.setattr(review_and_fix, "_run", fake_run)
+    monkeypatch.setattr(review_and_fix, "_git_head", lambda: "deadbeef")
+    sha = review_and_fix._commit_lint_fix_delta_paths(1, round_dir, ("linted.py",), "recheck-pass")
+    stage_file = round_dir / "lint-fix-stage-paths.txt"
+    assert sha == "deadbeef"
+    assert stage_file.read_text(encoding="utf-8") == "linted.py\n"
+    assert ["git", "add", "--pathspec-from-file", str(stage_file)] in calls
+    commit_calls = [argv for argv in calls if argv and argv[0].endswith("git-commit.sh")]
+    assert commit_calls
+    assert "--only" in commit_calls[0]
+    assert "--pathspec-from-file" in commit_calls[0]
+
+
+@MARK_CONVERGENCE
+def test_lint_fix_delta_paths_excludes_unchanged_pre_dirty_file(tmp_path, monkeypatch):
+    impl = _tmp_impl(tmp_path)
+    round_dir = impl / "round-1"
+    snap = review_and_fix._lint_fix_snapshot_dir(round_dir)
+    snap.mkdir(parents=True)
+    (snap / "pre-lint-tracked-paths.txt").write_text("preexisting.py\nlinted.py\n", encoding="utf-8")
+
+    def fake_git_output(args):
+        if args == ["diff", "--name-only", "head"]:
+            return "preexisting.py\nlinted.py\n"
+        return ""
+
+    def fake_matches(_round_dir, _head, path):
+        return path == "preexisting.py"
+
+    monkeypatch.setattr(review_and_fix, "_git_output", fake_git_output)
+    monkeypatch.setattr(review_and_fix, "_path_matches_pre_lint_snapshot", fake_matches)
+    paths = review_and_fix._lint_fix_delta_paths(round_dir, "head", ())
+    assert paths == ("linted.py",)
 
 
 @MARK_CONVERGENCE

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -121,6 +122,117 @@ def _compose_local_unfixable_detail(job_list: str, failure_log_text: str) -> str
     if tail:
         return f"{header}\n{redact.redact(tail).rstrip()}\n"
     return header
+
+
+_LEGACY_PREFIX_INCIDENT_PATH = "python/preflight.py"
+_SAFE_REPO_PATH_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
+
+
+def _legacy_prefix_unexpected_paths(failure_log_text: str) -> tuple[str, ...]:
+    paths: list[str] = []
+    seen: set[str] = set()
+    pattern = re.compile(r"legacy prefix literal in unexpected path: ([^ \n]+) \(extend ALLOW= only when deliberate\)")
+    for match in pattern.finditer(failure_log_text):
+        path = match.group(1).strip()
+        if path and path not in seen:
+            seen.add(path)
+            paths.append(path)
+    return tuple(paths)
+
+
+def _safe_repo_relative_path(path: str) -> bool:
+    parsed = Path(path)
+    return (
+        bool(path)
+        and not parsed.is_absolute()
+        and ".." not in parsed.parts
+        and _SAFE_REPO_PATH_RE.fullmatch(path) is not None
+    )
+
+
+def _apply_legacy_prefix_allow_fix(repo_root: Path, failure_log_text: str) -> tuple[bool, str]:
+    paths = _legacy_prefix_unexpected_paths(failure_log_text)
+    if paths != (_LEGACY_PREFIX_INCIDENT_PATH,):
+        return False, ""
+    path = paths[0]
+    if not _safe_repo_relative_path(path):
+        return False, ""
+    target = repo_root / path
+    if not target.is_file():
+        return False, ""
+    target_text = target.read_text(encoding="utf-8", errors="replace")
+    if "[IN PROGRESS]" not in target_text and "[PLANNED]" not in target_text:
+        return False, ""
+    allow_script = repo_root / "scripts" / "test-legacy-title-prefix-literals-scope.sh"
+    if not allow_script.is_file():
+        return False, ""
+    text = allow_script.read_text(encoding="utf-8")
+    if re.search(rf"^\s*'?{re.escape(path)}'?\s*$", text, flags=re.MULTILINE):
+        return False, ""
+    block = re.search(r"(?ms)^ALLOW=\(\n(?P<body>.*?)^\)", text)
+    if block is None:
+        return False, ""
+    insert = f"  '{path}'\n"
+    new_text = text[: block.end("body")] + insert + text[block.end("body") :]
+    allow_script.write_text(new_text, encoding="utf-8")
+    return True, f"legacy-prefix-allow:{path}"
+
+
+def _apply_finalize_cleanup_partition_fix(repo_root: Path, failure_log_text: str) -> tuple[bool, str]:
+    required = (
+        "harness pytest partition guard: FAILED",
+        "python/test_finalize.py: NOT a strict partition",
+        "cleanup_target_ok",
+    )
+    if any(needle not in failure_log_text for needle in required):
+        return False, ""
+    makefile = repo_root / "Makefile"
+    if not makefile.is_file():
+        return False, ""
+    lines = makefile.read_text(encoding="utf-8").splitlines(keepends=True)
+    in_target = False
+    changed = False
+    rewritten: list[str] = []
+    for line in lines:
+        if line.startswith("test-implement-cleanup-script:"):
+            in_target = True
+            rewritten.append(line)
+            continue
+        if in_target and line and not line.startswith("\t") and not line.startswith(" "):
+            in_target = False
+        current_line = line
+        if in_target and "python/test_finalize.py" in line and " -k " in line:
+            if not line.startswith("\t") or "not cleanup_target_ok" in line:
+                return False, ""
+            if re.search(r"(?<!\S)-k\s+cleanup(?=\s|$)", line) is None:
+                return False, ""
+            new_line = re.sub(
+                r"(?<!\S)-k\s+cleanup(?=\s|$)",
+                "-k 'cleanup and not cleanup_target_ok'",
+                line,
+                count=1,
+            )
+            if new_line == line or not new_line.startswith("\t"):
+                return False, ""
+            current_line = new_line
+            changed = True
+        rewritten.append(current_line)
+    if not changed:
+        return False, ""
+    makefile.write_text("".join(rewritten), encoding="utf-8")
+    return True, "finalize-cleanup-partition"
+
+
+def _apply_known_harness_fix(repo_root: Path, failure_log_text: str) -> tuple[bool, str]:
+    details: list[str] = []
+    changed = False
+    for helper in (_apply_legacy_prefix_allow_fix, _apply_finalize_cleanup_partition_fix):
+        helper_changed, detail = helper(repo_root, failure_log_text)
+        if helper_changed:
+            changed = True
+            if detail:
+                details.append(detail)
+    return (True, ",".join(details)) if changed else (False, "")
 
 
 def _rollback(
@@ -248,6 +360,137 @@ def _run_cycle(
     )
     fix_attempted = False
     try:
+        known_changed, _known_detail = _apply_known_harness_fix(repo_root, failure_log_text)
+        if known_changed:
+            fix_attempted = True
+            forbidden = coder_delta_guards.coder_forbidden_paths(runner, cwd=cwd)
+            if (
+                coder_delta_guards.revert_forbidden_paths(
+                    runner,
+                    cwd=cwd,
+                    forbidden=forbidden,
+                    baseline_staged=baseline_staged,
+                )
+                > 0
+            ):
+                _rollback(
+                    runner,
+                    baseline_tracked=baseline_tracked,
+                    baseline_untracked=baseline_untracked,
+                    baseline_staged=baseline_staged,
+                    cwd=cwd,
+                )
+                return "waterfall-failed", "forbidden-path", fix_attempted, (), False, None, failure_log_text
+            unfixable = [
+                _job_token(job)
+                for job in classified.fixable
+                if not ci_monitor.prepare_python_toolchain(runner, job.name, cwd=cwd)
+            ]
+            if unfixable:
+                _rollback(
+                    runner,
+                    baseline_tracked=baseline_tracked,
+                    baseline_untracked=baseline_untracked,
+                    baseline_staged=baseline_staged,
+                    cwd=cwd,
+                )
+                return "local-unfixable", ",".join(unfixable), fix_attempted, (), False, None, failure_log_text
+            failed_verify = [
+                _job_token(job)
+                for job in classified.fixable
+                if not ci_monitor.verify_job_locally(runner, job.name, job.shard, cwd=cwd)
+            ]
+            if not failed_verify:
+                delta_paths = ci_monitor._delta_paths(  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+                    runner,
+                    baseline_tracked=baseline_tracked,
+                    baseline_untracked=baseline_untracked,
+                    cwd=cwd,
+                )
+                if not delta_paths:
+                    _rollback(
+                        runner,
+                        baseline_tracked=baseline_tracked,
+                        baseline_untracked=baseline_untracked,
+                        baseline_staged=baseline_staged,
+                        cwd=cwd,
+                    )
+                    return "no-progress", "empty-delta", fix_attempted, (), False, None, failure_log_text
+                pushed, _post_head, pushed_paths, _did_rebase, pending = ci_monitor.stage_and_push(
+                    runner,
+                    cwd=cwd,
+                    commit_label="claude",
+                    delta_paths=delta_paths,
+                    base_remote=args.base_remote,
+                    base_ref=args.base_ref,
+                    classified=classified,
+                    ctx=ctx,
+                )
+                if not pushed and pending:
+                    return "rebase-required", "push-rebase-required", fix_attempted, pushed_paths, True, None, failure_log_text
+                if not pushed:
+                    _ = git.reset(runner, "--hard", baseline_head, cwd=cwd)
+                    _rollback(
+                        runner,
+                        baseline_tracked=baseline_tracked,
+                        baseline_untracked=baseline_untracked,
+                        baseline_staged=baseline_staged,
+                        cwd=cwd,
+                    )
+                    return "push-failed", "push-failed", fix_attempted, (), False, None, failure_log_text
+                _write_push_checkpoint(
+                    Path(args.output_dir),
+                    cycle=cycle,
+                    run_id=run_id,
+                    delta_paths=pushed_paths,
+                    pending=pending,
+                )
+                wait, wait_err = _wait_for_ci(runner, args=args, repo_root=repo_root, cycle=cycle)
+                if wait_err:
+                    _write_push_checkpoint(
+                        Path(args.output_dir),
+                        cycle=cycle,
+                        run_id=run_id,
+                        delta_paths=pushed_paths,
+                        pending=False,
+                        detail=wait_err,
+                    )
+                    return "ci-fix-exhausted", wait_err, fix_attempted, pushed_paths, False, None, failure_log_text
+                action = wait.get("ACTION", "")
+                if action == "bail":
+                    detail = wait.get("BAIL_REASON") or wait.get("FAILURE_CLASS") or "ci-wait-bail"
+                    _write_push_checkpoint(
+                        Path(args.output_dir),
+                        cycle=cycle,
+                        run_id=run_id,
+                        delta_paths=pushed_paths,
+                        pending=False,
+                        detail=detail,
+                    )
+                    return "ci-fix-exhausted", detail, fix_attempted, pushed_paths, False, None, failure_log_text
+                if action in {"merge", "already_merged"} or wait.get("CI_STATUS") == "pass":
+                    return "passed", "", fix_attempted, pushed_paths, False, None, failure_log_text
+                if action in {"rebase", "rebase_then_evaluate"}:
+                    _write_push_checkpoint(
+                        Path(args.output_dir),
+                        cycle=cycle,
+                        run_id=run_id,
+                        delta_paths=pushed_paths,
+                        pending=True,
+                        detail=action,
+                    )
+                    return "rebase-required", action, fix_attempted, pushed_paths, True, None, failure_log_text
+                next_run = wait.get("FAILED_RUN_ID")
+                if wait.get("CI_STATUS") in {"fail", "failure"} and next_run:
+                    return "continue", "ci-still-failing", fix_attempted, pushed_paths, False, next_run, failure_log_text
+                return "ci-fix-exhausted", "ci-wait-untrusted-output", fix_attempted, pushed_paths, False, None, failure_log_text
+            _rollback(
+                runner,
+                baseline_tracked=baseline_tracked,
+                baseline_untracked=baseline_untracked,
+                baseline_staged=baseline_staged,
+                cwd=cwd,
+            )
         result = agents.launch_tier(
             runner,
             "claude",

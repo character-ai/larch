@@ -91,7 +91,8 @@ CI_DECIDE_BAIL_REASON_TOKENS: Final[tuple[str, ...]] = (
     CI_DECIDE_BAIL_TOO_MANY_REBASES,
     CI_DECIDE_BAIL_FIX_ATTEMPTS_EXHAUSTED,
 )
-# Step 5 lint-fix-loop terminal bail tokens. Single source of truth for the
+# Step 5 review-loop terminal bail tokens, covering lint-fix loop failures and
+# MAV/coder resume handoff commit failures. Single source of truth for the
 # render-safe set below, the python/stall_recovery._classify_text lint-fix-bail-token
 # check, and the bash safe_bail_reason_value() allowlist (kept in sync via
 # scripts/python/cli.py stall-recovery lint_runtime_bail_tokens).
@@ -99,6 +100,8 @@ LINT_FIX_BAIL_REASON_TOKENS: Final[tuple[str, ...]] = (
     "lint-fix-failed",
     "lint-fix-attempt-cap",
     "lint-fix-main-agent-required",
+    "lint-fix-commit-failed",
+    "resume-handoff-commit-failed",
 )
 STALL_RECOVERY_BAIL_REASON_TOKENS: Final[tuple[str, ...]] = tuple(dict.fromkeys((
     *CI_WAIT_BAIL_REASON_TOKENS,

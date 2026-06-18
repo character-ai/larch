@@ -10,7 +10,11 @@ cd "$REPO_ROOT"
 
 ALLOW=(
   .claude/skills/combine-issues/SKILL.md
+  agents/_implementer-base.md
+  agents/codex-implementer.md
+  agents/cursor-implementer.md
   python/combine_issues.py
+  python/ci_agentic_fix.py
   python/test_combine_issues.py
   SECURITY.md
   docs/linting.md
@@ -19,6 +23,7 @@ ALLOW=(
   python/issue_wire.py
   python/tracking_issue.py
   python/test_admission.py
+  python/test_ci_agentic_fix.py
   scripts/test-legacy-title-prefix-literals-scope.sh
   python/test_issue_wire.py
   python/test_tracking_issue.py
