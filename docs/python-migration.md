@@ -167,3 +167,11 @@ The C3c slice moves /design decomposition helpers to `python/decompose.py`, dyna
 - POSIX ERE patterns are translated for Python `re`.
 - Per-phase launch-all-then-collect-once concurrency, phase-3 failure finalization, and tail `collect-results` replay are preserved.
 - `python/test_agent_waterfall.py` pins the aggregate alternation gate and grouped-reuse artifact guard.
+
+### G5 design Step 2 drafter and validator cutover
+
+- Step 2a, Step 2b drafter/prelude, Step 2b postplan, Step 2b.5, and validator-autofix bodies now run in-process through `python/cli.py design ...` and `python/cli.py plan validator-autofix`.
+- The design launcher maps the retired wrapper names to CLI verbs with `"$@"` forwarding so launcher-owned session rehydration and caller flags are preserved.
+- The shared postplan helper calls `postplan_emit_main` and `pause_save_main` in-process. Rehydration exports merged session keys to `os.environ` before those calls.
+- The thin-wrapper rc contract is preserved: nonfatal postplan outcomes emit stdout rows and exit 0, fatal emit rc `1` or `2` maps to process exit 1, and pause paths `sys.exit` after pause-save.
+- Structure and pytest harnesses now target the Python authorities while the launcher remains the compatibility fence for prompt-side calls.

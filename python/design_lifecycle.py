@@ -1,10 +1,12 @@
 """Python CLI entrypoints and shared helpers for /design lifecycle phases."""
-# pyright: reportUnusedCallResult=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnusedFunction=false
+# pyright: reportUnusedCallResult=false, reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnusedFunction=false
+# ruff: noqa: PLR2004,S607
 
 from __future__ import annotations
 
 import argparse
 import contextlib
+import io
 import json
 import os
 import re
@@ -14,6 +16,7 @@ import subprocess
 import time
 import sys
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 
 import design_pause
@@ -24,6 +27,96 @@ from collections.abc import Iterable, Mapping, Sequence
 
 _SUBPROCESS_RUN = subprocess.run
 
+import design_pause
+import design_postplan
+import issue_wire
+import plan_quality
+from session_env import validate_design_tmpdir
+
+
+_WRAPPER_ENV_DEFAULTS: dict[str, str] = {
+    "CLAUDE_PLUGIN_ROOT": "",
+    "MODE": "",
+    "SITE": "",
+    "SUMMARY_OUTCOME": "",
+    "SKIP_VALIDATE": "",
+    "DESIGN_TMPDIR": "",
+    "SESSION_TMPDIR": "",
+    "SESSION_ID": "",
+    "ISSUE_NUMBER": "",
+    "ISSUE_TITLE": "",
+    "HAS_CLARIFY_LABEL": "false",
+    "REPO": "",
+    "CODEX_BINARY_FOUND": "",
+    "CURSOR_BINARY_FOUND": "",
+    "IMPLEMENT_TMPDIR": "",
+    "POSITIONAL_KIND": "",
+    "POSITIONAL_VALUE": "",
+    "partition_requested": "false",
+    "brainstorm_requested": "false",
+    "approve_requested": "false",
+    "skip_approve_requested": "false",
+    "no_dedup_requested": "false",
+    "run_id": "",
+    "STEP3_REVIEW_LOOP_STATUS": "",
+    "LOOP_STATUS": "",
+    "VALIDATE_STATUS": "",
+    "VALIDATE_DEFECT_COUNT": "",
+    "VALIDATE_UNSAFE_TOKEN_COUNT": "",
+    "VALIDATE_SKIPPED_COUNT": "",
+    "VALIDATE_LOG_FILE": "",
+    "_validator_target_file": "",
+    "PUBLISH_OK": "",
+    "PLAN_WRITE_OK": "",
+    "STANDALONE_HEAVY_FAILED": "",
+}
+
+_SESSION_ENV_ALLOWLIST = frozenset(_WRAPPER_ENV_DEFAULTS) | {
+    "LARCH_AUTO_MODE",
+    "LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT",
+    "LARCH_TIMING_LEDGER",
+    "LARCH_TOKEN_SESSION_ID",
+    "LARCH_CLAUDE_SOURCE_FILE",
+    "PREV_IMPLEMENT_TMPDIR",
+    "LARCH_DYNAMIC_ARCHETYPES_MAX",
+    "LARCH_RUN_ID",
+    "LARCH_CLAUDE_PLUGIN_ROOT",
+    "LARCH_DESIGN_DRAFTER",
+    "LARCH_DESIGN_PLAN_MODEL",
+    "LARCH_DESIGN_DRIFT_MULTIPLE",
+}
+
+
+@dataclass
+class WrapperArgs:
+    session_env_path: str = ""
+    claude_pid: str = ""
+    plugin_root: str = ""
+    mode: str = ""
+    site: str = ""
+    snapshot_original: bool = False
+    outcome: str = ""
+    skip_validate: bool = False
+    write_completion_only: bool = False
+    include_step2b: bool = False
+    write_step2b_completion_only: bool = False
+    step3_review_loop_status: str = ""
+    loop_status: str = ""
+    validator_target_file: str = ""
+    validate_log_file: str = ""
+    validate_defect_count: str = ""
+    validate_unsafe_token_count: str = ""
+    validate_skipped_count: str = ""
+    operator_cancel: bool = False
+    public_argv_words: list[str] | None = None
+
+
+@dataclass(frozen=True)
+class PostplanResult:
+    postplan_rc: int
+    stdout_lines: str
+    status: str
+
 
 def _valid_var_name(value: str) -> bool:
     if not value or value[0].isdigit():
@@ -33,6 +126,209 @@ def _valid_var_name(value: str) -> bool:
 
 def _quote_single(value: str) -> str:
     return "'" + value.replace("'", "'\"'\"'") + "'"
+
+
+def _parse_common_wrapper_args(argv: Sequence[str]) -> WrapperArgs:
+    args = list(argv)
+    out = WrapperArgs(public_argv_words=[])
+    value_flags: dict[str, str] = {
+        "--session-env-path": "session_env_path",
+        "--claude-pid": "claude_pid",
+        "--plugin-root": "plugin_root",
+        "--mode": "mode",
+        "--site": "site",
+        "--outcome": "outcome",
+        "--step3-review-loop-status": "step3_review_loop_status",
+        "--loop-status": "loop_status",
+        "--validator-target-file": "validator_target_file",
+        "--validate-log-file": "validate_log_file",
+        "--validate-defect-count": "validate_defect_count",
+        "--validate-unsafe-token-count": "validate_unsafe_token_count",
+        "--validate-skipped-count": "validate_skipped_count",
+    }
+    bool_flags: dict[str, str] = {
+        "--snapshot-original": "snapshot_original",
+        "--skip-validate": "skip_validate",
+        "--write-completion-only": "write_completion_only",
+        "--include-step2b": "include_step2b",
+        "--write-step2b-completion-only": "write_step2b_completion_only",
+        "--operator-cancel": "operator_cancel",
+    }
+    i = 0
+    while i < len(args):
+        token = args[i]
+        if token == "--":
+            out.public_argv_words = args[i + 1 :]
+            break
+        if token in value_flags:
+            if i + 1 >= len(args):
+                raise ValueError(f"{token} requires a value")
+            setattr(out, value_flags[token], args[i + 1])
+            i += 2
+            continue
+        if token in bool_flags:
+            setattr(out, bool_flags[token], True)
+            i += 1
+            continue
+        # Forward-compatible no-op parsing for retired generated wrapper args.
+        # Unknown flags with a following value consume that value; bare flags are
+        # ignored. Behavior-bearing flags above are bound explicitly.
+        if token.startswith("--") and i + 1 < len(args) and not args[i + 1].startswith("--"):
+            i += 2
+        else:
+            i += 1
+    return out
+
+
+def _parse_session_env_line(raw: str) -> tuple[str, str] | None:
+    line = raw.strip()
+    if not line or line.startswith("#"):
+        return None
+    line = line.removeprefix("export ")
+    if "=" not in line:
+        return None
+    key, rhs = line.split("=", 1)
+    key = key.strip()
+    if key not in _SESSION_ENV_ALLOWLIST or not _valid_var_name(key):
+        return None
+    if "\n" in rhs or "\r" in rhs:
+        return None
+    try:
+        parts = shlex.split(rhs, posix=True)
+    except ValueError:
+        return None
+    if len(parts) > 1:
+        return None
+    value = parts[0] if parts else ""
+    if "\n" in value or "\r" in value:
+        return None
+    return key, value
+
+
+def _load_session_env(path: str) -> dict[str, str]:
+    if not path:
+        return {}
+    source = Path(path)
+    if source.is_symlink() or not source.is_file():
+        return {}
+    env: dict[str, str] = {}
+    try:
+        text = source.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return env
+    for raw in text.splitlines():
+        pair = _parse_session_env_line(raw)
+        if pair is not None:
+            env[pair[0]] = pair[1]
+    return env
+
+
+def _rehydrate_wrapper_env(parsed: WrapperArgs) -> dict[str, str]:
+    merged = {key: os.environ.get(key, default) for key, default in _WRAPPER_ENV_DEFAULTS.items()}
+    if os.environ.get("CLAUDE_PLUGIN_ROOT"):
+        merged["CLAUDE_PLUGIN_ROOT"] = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
+    merged.update(_load_session_env(parsed.session_env_path))
+    if parsed.plugin_root:
+        merged["CLAUDE_PLUGIN_ROOT"] = parsed.plugin_root
+    if parsed.mode:
+        merged["MODE"] = parsed.mode
+    if parsed.site:
+        merged["SITE"] = parsed.site
+    if parsed.outcome:
+        merged["SUMMARY_OUTCOME"] = parsed.outcome
+    if parsed.skip_validate:
+        merged["SKIP_VALIDATE"] = "1"
+    if parsed.step3_review_loop_status:
+        merged["STEP3_REVIEW_LOOP_STATUS"] = parsed.step3_review_loop_status
+    if parsed.loop_status:
+        merged["LOOP_STATUS"] = parsed.loop_status
+    if parsed.validator_target_file:
+        merged["_validator_target_file"] = parsed.validator_target_file
+    if parsed.validate_log_file:
+        merged["VALIDATE_LOG_FILE"] = parsed.validate_log_file
+    if parsed.validate_defect_count:
+        merged["VALIDATE_DEFECT_COUNT"] = parsed.validate_defect_count
+    if parsed.validate_unsafe_token_count:
+        merged["VALIDATE_UNSAFE_TOKEN_COUNT"] = parsed.validate_unsafe_token_count
+    if parsed.validate_skipped_count:
+        merged["VALIDATE_SKIPPED_COUNT"] = parsed.validate_skipped_count
+    if not merged.get("CODEX_BINARY_FOUND"):
+        merged["CODEX_BINARY_FOUND"] = "true" if shutil.which("codex") else "false"
+    if not merged.get("CURSOR_BINARY_FOUND"):
+        merged["CURSOR_BINARY_FOUND"] = "true" if shutil.which("cursor") else "false"
+    for key, value in merged.items():
+        os.environ[key] = value
+    return merged
+
+
+def _design_require_plugin_root() -> int:
+    literal = "${CLAUDE_PLUGIN_ROOT}"
+    value = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
+    if not value:
+        print("/design wrapper: CLAUDE_PLUGIN_ROOT is empty; abort", file=sys.stderr)
+        return 1
+    if value == literal:
+        print(f"/design wrapper: CLAUDE_PLUGIN_ROOT is the unexpanded template literal {literal}; abort", file=sys.stderr)
+        return 1
+    os.environ["CLAUDE_PLUGIN_ROOT"] = value
+    return 0
+
+
+def _design_tmpdir() -> Path:
+    return Path(os.environ.get("DESIGN_TMPDIR", ""))
+
+
+def _touch(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.touch()
+
+
+def _write_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
+
+def _exact_line_file(path: Path, expected: str) -> bool:
+    try:
+        return path.read_text(encoding="utf-8", errors="replace") == f"{expected}\n"
+    except OSError:
+        return False
+
+
+def _call_pause_save(design_tmpdir: Path) -> int:
+    args = ["--design-tmpdir", str(design_tmpdir), "--issue", os.environ.get("ISSUE_NUMBER", "")]
+    repo = os.environ.get("REPO", "")
+    if repo:
+        args.extend(["--repo", repo])
+    return design_pause.pause_save_main(args)
+
+
+def _maybe_timing_mark(label: str) -> None:
+    plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
+    if not plugin_root or plugin_root == "${CLAUDE_PLUGIN_ROOT}":
+        return
+    env = os.environ.copy()
+    env["LARCH_TIMING_SKILL"] = "design"
+    with contextlib.suppress(OSError):
+        subprocess.run(
+            [sys.executable, str(Path(plugin_root) / "python" / "cli.py"), "timing", "mark", label],
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+
+
+def _capture_stdout(callable_obj, argv: Sequence[str]) -> tuple[int, str]:
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc = callable_obj(list(argv))
+    return int(rc), buf.getvalue()
+
+
+def _print_text(text: str) -> None:
+    if text:
+        print(text, end="" if text.endswith("\n") else "\n")
 
 
 def phase_driver_read_result_env(path: str | Path, allow_keys: Iterable[str]) -> list[tuple[str, str]]:
@@ -1502,7 +1798,7 @@ def driver_main(argv: Sequence[str]) -> int:
     completed = design_tmpdir / ".completed"
     completed.mkdir(parents=True, exist_ok=True)
     root = Path(__file__).resolve().parents[1]
-    consumer_repo_root = subprocess.run(["git", "-C", str(Path.cwd()), "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False).stdout.strip() or str(root)  # noqa: S607
+    consumer_repo_root = subprocess.run(["git", "-C", str(Path.cwd()), "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False).stdout.strip() or str(root)
 
     action_lines: list[str]
     if ns.action_file:
@@ -1580,6 +1876,577 @@ def driver_main(argv: Sequence[str]) -> int:
             _ = sentinel.write_text("", encoding="utf-8")
         print(f"STEP_COMPLETED={action}")
     return 0
+
+
+def step2a_main(argv: Sequence[str]) -> int:
+    try:
+        parsed = _parse_common_wrapper_args(argv)
+    except ValueError as exc:
+        print(f"design-step2a.sh: {exc}", file=sys.stderr)
+        return 2
+    _rehydrate_wrapper_env(parsed)
+    design_tmpdir = _design_tmpdir()
+
+    brainstorm_requested = False
+    run_params = design_tmpdir / "run-params.json"
+    if run_params.is_file():
+        try:
+            data = json.loads(run_params.read_text(encoding="utf-8"))
+            brainstorm_requested = data.get("brainstorm_requested") is True
+        except (OSError, json.JSONDecodeError):
+            brainstorm_requested = False
+
+    no_sketches = "NO_SKETCHES"
+    no_contested = "NO_CONTESTED_DECISIONS"
+    legacy_no_sketches = False
+    artifacts_ok = True
+    approach = design_tmpdir / "approach-synthesis.txt"
+    contested = design_tmpdir / "contested-decisions.md"
+    dialectic = design_tmpdir / "dialectic-resolutions.md"
+    if _exact_line_file(approach, no_sketches):
+        pass
+    else:
+        content = approach.read_text(encoding="utf-8", errors="replace") if approach.exists() else ""
+        if content in {"NO_SKETCHES_CLASSIFIED_SIMPLE", "NO_SKETCHES_DEGRADED_HARD"}:
+            legacy_no_sketches = True
+        artifacts_ok = False
+    if not _exact_line_file(contested, no_contested):
+        artifacts_ok = False
+    if not dialectic.is_file():
+        artifacts_ok = False
+
+    artifact_conflict = False
+    if approach.exists() and approach.stat().st_size > 0 and not _exact_line_file(approach, no_sketches) and not legacy_no_sketches:
+        artifact_conflict = True
+    if contested.exists() and contested.stat().st_size > 0 and not _exact_line_file(contested, no_contested):
+        artifact_conflict = True
+    if dialectic.exists() and dialectic.stat().st_size > 0:
+        artifact_conflict = True
+    if artifact_conflict:
+        print("**⚠ Step 2a: sentinel repair refused: non-sentinel artifacts already exist. Inspect before continuing.**", file=sys.stderr)
+        return 1
+
+    completed = design_tmpdir / ".completed"
+    completed.mkdir(parents=True, exist_ok=True)
+    for name in ("step-1c", "step-1d", "step-1d.7", "step-1e"):
+        _touch(completed / name)
+    if not brainstorm_requested:
+        _touch(completed / "step-1d.5")
+    if not artifacts_ok:
+        _write_text(approach, f"{no_sketches}\n")
+        _write_text(contested, f"{no_contested}\n")
+        _write_text(dialectic, "")
+    _touch(completed / "step-2a")
+
+    if (design_tmpdir / ".pause-requested").is_file():
+        req = _design_require_plugin_root()
+        if req != 0:
+            return req
+        return _call_pause_save(design_tmpdir)
+    _maybe_timing_mark("design Step 2a — sentinel prep")
+    return 0
+
+
+def _postplan_status_for_rc(rc: int) -> str:
+    return {
+        0: "ok",
+        10: "validate-failed",
+        11: "pause-save",
+        12: "plan-size-trigger",
+        13: "partition-requested",
+    }.get(rc, "fatal")
+
+
+def _read_simple_env(path: Path, allow: set[str]) -> dict[str, str]:
+    out: dict[str, str] = {}
+    if path.is_symlink() or not path.is_file():
+        return out
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return out
+    for line in lines:
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        if key in allow and "\n" not in value and "\r" not in value:
+            out[key] = value
+    return out
+
+
+def _postplan_dirty_recovery(design_tmpdir: Path) -> bool:
+    env = _read_simple_env(design_tmpdir / "dirty-tree-detected.env", {"RECOVERY_REQUIRED"})
+    return env.get("RECOVERY_REQUIRED") == "true"
+
+
+def _clear_scout_manifests(design_tmpdir: Path) -> None:
+    for pattern in (
+        "scout-plan-manifest.json",
+        "scout-plan-manifest.json.candidate.*",
+        "scout-plan-manifest.json.filtered.*",
+    ):
+        for match in design_tmpdir.glob(pattern):
+            with contextlib.suppress(FileNotFoundError):
+                match.unlink()
+
+
+def _shared_step2b_postplan_body(parsed: WrapperArgs) -> PostplanResult:
+    design_tmpdir = _design_tmpdir()
+    site = parsed.site or "step2b"
+    if (design_tmpdir / ".pause-requested").is_file():
+        print("POSTPLAN_RC=11")
+        print("POSTPLAN_STATUS=pause-save")
+        raise SystemExit(_call_pause_save(design_tmpdir))
+    if site != "step2b":
+        _clear_scout_manifests(design_tmpdir)
+    postplan_args = ["--design-tmpdir", str(design_tmpdir), "--with-plan-size"]
+    if site in {"", "step2b"} or parsed.snapshot_original:
+        postplan_args.append("--snapshot-original")
+    rc, captured = _capture_stdout(design_postplan.postplan_emit_main, postplan_args)
+    out = io.StringIO()
+    out.write(captured)
+    if rc == 0:
+        out.write(f"POSTPLAN_RC={rc}\n")
+        out.write("POSTPLAN_STATUS=ok\n")
+        completed = design_tmpdir / ".completed"
+        completed.mkdir(parents=True, exist_ok=True)
+        _touch(completed / "step-2b.5")
+        if site in {"", "step2b"}:
+            _touch(completed / "step-2b")
+        return PostplanResult(rc, out.getvalue(), "ok")
+    if rc == 10:
+        out.write("POSTPLAN_RC=10\n")
+        out.write("POSTPLAN_STATUS=validate-failed\n")
+        validate = _read_simple_env(
+            design_tmpdir / ".design-postplan-emit-result.env",
+            {"VALIDATE_STATUS", "VALIDATE_DEFECT_COUNT", "VALIDATE_SKIPPED_COUNT", "VALIDATE_UNSAFE_TOKEN_COUNT", "VALIDATE_LOG_FILE"},
+        )
+        plan_source = ""
+        source_path = design_tmpdir / ".step2b-plan-source"
+        if source_path.is_file():
+            plan_source = source_path.read_text(encoding="utf-8", errors="replace").strip()
+        fallback_used = "false"
+        fallback_path = design_tmpdir / ".step2b-postplan-fallback-used"
+        if fallback_path.is_file():
+            fallback_used = fallback_path.read_text(encoding="utf-8", errors="replace").strip() or "false"
+        if plan_source == "drafter" and fallback_used != "true" and not _postplan_dirty_recovery(design_tmpdir):
+            _touch(design_tmpdir / ".step2b-postplan-inline-retry-done")
+            _write_text(fallback_path, "true\n")
+            _write_text(source_path, "inline\n")
+            with contextlib.suppress(FileNotFoundError):
+                (design_tmpdir / "plan-summary.md").unlink()
+            _clear_scout_manifests(design_tmpdir)
+            out.write("SCOUT_STALE_CLEARED=true\n")
+            _touch(design_tmpdir / ".step2b-postplan-inline-retry-pending")
+            out.write("**⚠ 2b: drafter plan failed postplan validation — re-entering inline drafting once**\n")
+        for key in ("VALIDATE_STATUS", "VALIDATE_DEFECT_COUNT", "VALIDATE_SKIPPED_COUNT", "VALIDATE_UNSAFE_TOKEN_COUNT", "VALIDATE_LOG_FILE"):
+            if validate.get(key):
+                out.write(f"{key}={validate[key]}\n")
+        return PostplanResult(rc, out.getvalue(), "validate-failed")
+    if rc == 11:
+        out.write("POSTPLAN_RC=11\n")
+        out.write("POSTPLAN_STATUS=pause-save\n")
+        _print_text(out.getvalue())
+        raise SystemExit(_call_pause_save(design_tmpdir))
+    if rc == 12:
+        out.write("POSTPLAN_RC=12\n")
+        out.write("POSTPLAN_STATUS=plan-size-trigger\n")
+        completed = design_tmpdir / ".completed"
+        completed.mkdir(parents=True, exist_ok=True)
+        _touch(completed / "step-2b")
+        return PostplanResult(rc, out.getvalue(), "plan-size-trigger")
+    if rc == 13:
+        out.write("POSTPLAN_RC=13\n")
+        out.write("POSTPLAN_STATUS=partition-requested\n")
+        completed = design_tmpdir / ".completed"
+        completed.mkdir(parents=True, exist_ok=True)
+        _touch(completed / "step-2b")
+        return PostplanResult(rc, out.getvalue(), "partition-requested")
+    _print_text(captured)
+    if rc == 2:
+        print("**⚠ Step 2b: design-postplan-emit.sh configuration error (exit 2); aborting /design.**", file=sys.stderr)
+    elif rc == 1:
+        print("**⚠ Step 2b: design-postplan-emit.sh failed (exit 1); aborting /design.**", file=sys.stderr)
+    else:
+        print(f"**⚠ Step 2b: design-postplan-emit.sh unexpected exit ({rc}); aborting /design.**", file=sys.stderr)
+    return PostplanResult(rc, captured, "fatal")
+
+
+def step2b_postplan_main(argv: Sequence[str]) -> int:
+    try:
+        parsed = _parse_common_wrapper_args(argv)
+    except ValueError as exc:
+        print(f"design-step2b-postplan.sh: {exc}", file=sys.stderr)
+        return 2
+    _rehydrate_wrapper_env(parsed)
+    req = _design_require_plugin_root()
+    if req != 0:
+        return req
+    if not os.environ.get("DESIGN_TMPDIR"):
+        print("/design Step 2b postplan: DESIGN_TMPDIR required", file=sys.stderr)
+        return 1
+    ok, err = validate_design_tmpdir(os.environ["DESIGN_TMPDIR"])
+    if not ok:
+        print(f"ERROR={err}", file=sys.stderr)
+        return 2
+    design_tmpdir = Path(os.environ["DESIGN_TMPDIR"]).resolve()
+    os.environ["DESIGN_TMPDIR"] = str(design_tmpdir)
+    if parsed.write_completion_only and parsed.write_step2b_completion_only:
+        print("design-step2b-postplan.sh: completion-only modes are mutually exclusive", file=sys.stderr)
+        return 2
+    if parsed.include_step2b and not parsed.write_completion_only:
+        print("design-step2b-postplan.sh: --include-step2b requires --write-completion-only", file=sys.stderr)
+        return 2
+    if parsed.write_step2b_completion_only:
+        _touch(design_tmpdir / ".completed" / "step-2b")
+        if (design_tmpdir / ".pause-requested").is_file():
+            print("POSTPLAN_RC=11")
+            print("POSTPLAN_STATUS=pause-save")
+            return _call_pause_save(design_tmpdir)
+        return 0
+    if parsed.write_completion_only:
+        _touch(design_tmpdir / ".completed" / "step-2b.5")
+        if parsed.include_step2b:
+            _touch(design_tmpdir / ".completed" / "step-2b")
+        if (design_tmpdir / ".pause-requested").is_file():
+            print("POSTPLAN_RC=11")
+            print("POSTPLAN_STATUS=pause-save")
+            return _call_pause_save(design_tmpdir)
+        return 0
+    result = _shared_step2b_postplan_body(parsed)
+    _print_text(result.stdout_lines)
+    return 0 if result.postplan_rc in {0, 10, 12, 13} else 1
+
+
+def _valid_step2b_sentinels(design_tmpdir: Path) -> bool:
+    return (
+        bool(str(design_tmpdir))
+        and design_tmpdir.is_dir()
+        and _exact_line_file(design_tmpdir / "approach-synthesis.txt", "NO_SKETCHES")
+        and _exact_line_file(design_tmpdir / "contested-decisions.md", "NO_CONTESTED_DECISIONS")
+        and (design_tmpdir / "dialectic-resolutions.md").is_file()
+        and (design_tmpdir / "dialectic-resolutions.md").stat().st_size == 0
+    )
+
+
+def _repo_root() -> str:
+    result = subprocess.run(["git", "-C", str(Path.cwd()), "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False)
+    return result.stdout.strip() if result.returncode == 0 and result.stdout.strip() else str(Path(__file__).resolve().parents[1])
+
+
+def _compose_drafter_prompt(design_tmpdir: Path, plugin_root: Path) -> None:
+    lines: list[str] = [
+        "You are an expert engineer researching this repository and producing an implementation plan for /design Step 2b.",
+        "",
+        "You may use only side-effect-free repository discovery. Do not write repository files, design tmpdir files, or any other files. Return only the sentinel-delimited response requested below.",
+        "",
+        "Drafting requirements to follow:",
+        "- Prefer minimum necessary change: avoid scope creep, unnecessary complexity, and additions not required for correctness.",
+        "- Read approach-synthesis.txt: if it is exactly NO_SKETCHES, draft from direct codebase/doc inspection without fabricating planning-panel agreement.",
+        "- Read discussion-round1.md when present for scope boundaries and strict constraints.",
+        "- Read design-outline.md only when non-empty and .outline-approved exists; treat Goals, Non-goals, and Surfaces as binding scope.",
+        "- Read brainstorm.md when present as additive ideation context for plan drafting.",
+        "- Use a Files to modify/create section with per-file headings exactly one path each: ### NEW:, ### UPDATED:, or ### REWRITTEN: (at least one ASCII space after ### before the keyword).",
+        "- Include Approach, Edge cases, Failure modes when non-trivial, Testing strategy, optional diff_added/diff_deleted/mechanical_churn trailers, and final diff_lines: <N>. mechanical_churn accepts only true or false; never write a number there.",
+        "- The final plan body must end with a whole-line diff_lines: <N> trailer.",
+        "- Optionally include up to three dynamic plan-review archetypes in a scout block after the plan. The launcher validates, filters, caps, and materializes this block; invalid post-plan scout output is ignored.",
+        "- Scout sentinels inside the summary or plan are fatal format errors. Never put LARCH_SCOUT_* markers in the plan body.",
+        "",
+        "Readability style (trusted):",
+    ]
+    readability = plugin_root / "skills" / "design" / "references" / "readability-style.md"
+    if readability.is_file():
+        lines.append(readability.read_text(encoding="utf-8", errors="replace").rstrip("\n"))
+    lines.extend(
+        [
+            "",
+            "Required output format:",
+            "[optional]",
+            "LARCH_SUMMARY_BEGIN",
+            "A concise summary for large-plan preview. Omit this whole summary block only when no useful summary is needed.",
+            "LARCH_SUMMARY_END",
+            "[/optional]",
+            "LARCH_PLAN_BEGIN",
+            "Full implementation plan body ending with diff_lines: <N>.",
+            "LARCH_PLAN_END",
+            "[optional]",
+            "LARCH_SCOUT_BEGIN",
+            '{"archetypes":[{"name":"slug","focus_area":"code-quality|risk-integration|correctness|architecture|security","weight":1,"rationale":"single-line reason","prompt_body":"2-6 sentence focus directive ending with the required citation sentence."}]}',
+            "LARCH_SCOUT_END",
+            "[/optional]",
+            "",
+            "Optional advisory status may be included between LARCH_STATUS_BEGIN and LARCH_STATUS_END, but the summary, plan, and optional scout sentinels above are the only parsed contract.",
+        ]
+    )
+    blocks = [
+        ("feature-description.txt", "Untrusted feature description:", "feature_description"),
+        ("approach-synthesis.txt", "Untrusted approach synthesis:", "approach_synthesis"),
+        ("discussion-round1.md", "Untrusted discussion round 1:", "discussion_round1"),
+        ("brainstorm.md", "Untrusted brainstorm:", "brainstorm"),
+    ]
+    for filename, heading, tag in blocks:
+        path = design_tmpdir / filename
+        if path.is_file() and path.stat().st_size > 0:
+            lines.extend(["", heading, issue_wire.emit_untrusted_file_block(tag, path).rstrip("\n")])
+    outline = design_tmpdir / "design-outline.md"
+    if outline.is_file() and outline.stat().st_size > 0 and (design_tmpdir / ".outline-approved").is_file():
+        lines.extend(["", "Untrusted approved design outline:", issue_wire.emit_untrusted_file_block("design_outline", outline).rstrip("\n")])
+    _write_text(design_tmpdir / "step2b-drafter-prompt.txt", "\n".join(lines) + "\n")
+
+
+def _append_codex_token_sidecars(design_tmpdir: Path, plugin_root: Path) -> None:
+    token_record = design_tmpdir / "step2b-drafter-status.txt.token-record"
+    if not token_record.is_file() or token_record.stat().st_size == 0:
+        return
+    append = subprocess.run(
+        [sys.executable, str(plugin_root / "python" / "cli.py"), "token", "append-record", "--input", str(token_record), "--tmpdir", str(design_tmpdir)],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    if append.returncode != 0:
+        print("**⚠ 2b: codex drafter token-report append failed; continuing.**", file=sys.stderr)
+    env = os.environ.copy()
+    for key in ("LARCH_TOKEN_LEDGER", "LARCH_TOKEN_SESSION_ID", "IMPLEMENT_TMPDIR", "RESEARCH_TMPDIR", "SESSION_ENV_PATH"):
+        env.pop(key, None)
+    env["DESIGN_TMPDIR"] = str(design_tmpdir)
+    sidecar = subprocess.run(
+        [sys.executable, str(plugin_root / "python" / "cli.py"), "token", "record-vendor-sidecar", "--input", str(token_record)],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        env=env,
+        check=False,
+    )
+    if sidecar.returncode != 0:
+        print("**⚠ 2b: codex drafter active-ledger token append failed; continuing.**", file=sys.stderr)
+
+
+def step2b_drafter_main(argv: Sequence[str]) -> int:
+    try:
+        parsed = _parse_common_wrapper_args(argv)
+    except ValueError as exc:
+        print(f"design-step2b-drafter.sh: {exc}", file=sys.stderr)
+        return 2
+    _rehydrate_wrapper_env(parsed)
+    design_tmpdir = _design_tmpdir()
+    if not _valid_step2b_sentinels(design_tmpdir):
+        print("**⚠ Step 2b: Step 2a sentinel artifacts are missing or invalid. Re-run Step 2a before drafting.**", file=sys.stderr)
+        return 1
+    _touch(design_tmpdir / ".completed" / "step-2a")
+    req = _design_require_plugin_root()
+    if req != 0:
+        return req
+    if (design_tmpdir / ".step2b-postplan-inline-retry-done").is_file():
+        _write_text(design_tmpdir / ".step2b-postplan-fallback-used", "true\n")
+    else:
+        _write_text(design_tmpdir / ".step2b-postplan-fallback-used", "false\n")
+    if (design_tmpdir / ".pause-requested").is_file():
+        print("POSTPLAN_RC=11")
+        print("POSTPLAN_STATUS=pause-save")
+        return _call_pause_save(design_tmpdir)
+    _maybe_timing_mark("design Step 2b — plan")
+
+    plugin_root = Path(os.environ["CLAUDE_PLUGIN_ROOT"])
+    vendor = os.environ.get("LARCH_DESIGN_DRAFTER", "")
+    if not vendor:
+        vendor = "codex" if os.environ.get("CODEX_BINARY_FOUND") == "true" or shutil.which("codex") else "claude"
+    model = os.environ.get("LARCH_DESIGN_PLAN_MODEL", "claude-opus-4-8") if vendor == "claude" else ""
+    skip_reason = ""
+    if vendor not in {"codex", "claude"} or any(ch.isspace() for ch in vendor) or not vendor:
+        skip_reason = "invalid-vendor" if any(ch.isspace() for ch in vendor) or not vendor else "unknown-vendor"
+    if vendor == "claude" and not skip_reason and (not model or any(ch.isspace() for ch in model)):
+        skip_reason = "invalid-model"
+    for name in (
+        "plan.txt",
+        "plan-summary.md",
+        "step2b-drafter-status.txt",
+        "step2b-drafter-status.txt.done",
+        "step2b-drafter-status.txt.dirty-tree",
+        "step2b-drafter-status.txt.meta",
+        "step2b-drafter-status.txt.stderr",
+        "step2b-drafter-status.txt.stderr-tail",
+        "step2b-drafter-status.txt.failure-diag",
+        "step2b-drafter-status.txt.token-record",
+        "step2b-drafter-status.txt.json",
+        "scout-plan-manifest.json",
+        "step2b-drafter-baseline.porcelain",
+    ):
+        with contextlib.suppress(FileNotFoundError):
+            (design_tmpdir / name).unlink()
+    _clear_scout_manifests(design_tmpdir)
+    if not (design_tmpdir / "feature-description.txt").is_file() or (design_tmpdir / "feature-description.txt").stat().st_size == 0:
+        print("**⚠ 2b: feature-description.txt missing or empty; repair Step 0 init before drafting the plan.**", file=sys.stderr)
+        return 1
+    drafter_rc = 2
+    if not skip_reason:
+        baseline_arg: list[str] = []
+        baseline = design_tmpdir / "step2b-drafter-baseline.porcelain"
+        status = subprocess.run(["git", "-C", str(Path.cwd()), "status", "--porcelain"], text=True, capture_output=True, check=False)
+        if status.returncode == 0:
+            _write_text(baseline, status.stdout)
+            baseline_arg = ["--baseline-porcelain", str(baseline)]
+        else:
+            with contextlib.suppress(FileNotFoundError):
+                baseline.unlink()
+        _compose_drafter_prompt(design_tmpdir, plugin_root)
+        repo_root = _repo_root()
+        if vendor == "codex":
+            cmd = [
+                str(plugin_root / "scripts" / "launch-codex-drafter.sh"),
+                "--prompt-file",
+                str(design_tmpdir / "step2b-drafter-prompt.txt"),
+                "--output-file",
+                str(design_tmpdir / "step2b-drafter-status.txt"),
+                *baseline_arg,
+                "--timeout",
+                "1800",
+                "--timing-task-kind",
+                "codex-plan-draft",
+                "--design-tmpdir",
+                str(design_tmpdir),
+                "--repo-root",
+                repo_root,
+            ]
+        else:
+            cmd = [
+                str(plugin_root / "scripts" / "launch-claude-drafter.sh"),
+                "--model",
+                model,
+                "--prompt-file",
+                str(design_tmpdir / "step2b-drafter-prompt.txt"),
+                "--output-file",
+                str(design_tmpdir / "step2b-drafter-status.txt"),
+                *baseline_arg,
+                "--timeout",
+                "1800",
+                "--timing-task-kind",
+                "claude-plan-draft",
+                "--design-tmpdir",
+                str(design_tmpdir),
+                "--repo-root",
+                repo_root,
+            ]
+        launch = subprocess.run(cmd, check=False)
+        drafter_rc = int(launch.returncode)
+    if vendor == "codex":
+        _append_codex_token_sidecars(design_tmpdir, plugin_root)
+    plan_path = design_tmpdir / "plan.txt"
+    plan_lines = len(plan_path.read_text(encoding="utf-8", errors="replace").splitlines()) if plan_path.is_file() else 0
+    structural_ok = False
+    if drafter_rc == 0 and plan_path.is_file() and plan_path.stat().st_size > 0:
+        lines = plan_path.read_text(encoding="utf-8", errors="replace").splitlines()
+        status_text = (design_tmpdir / "step2b-drafter-status.txt").read_text(encoding="utf-8", errors="replace") if (design_tmpdir / "step2b-drafter-status.txt").is_file() else ""
+        structural_ok = bool(lines and lines[-1].startswith("diff_lines: ") and lines[-1].removeprefix("diff_lines: ").isdigit() and "PLAN_WRITTEN=true" in status_text)
+    dirty_block = False
+    dirty_reason = "unknown"
+    dirty_sidecar = design_tmpdir / "step2b-drafter-status.txt.dirty-tree"
+    if dirty_sidecar.is_file():
+        dirty_env = _read_simple_env(dirty_sidecar, {"STATUS", "MODE"})
+        if dirty_env.get("STATUS") == "dirty" and dirty_env.get("MODE") == "baseline-delta":
+            dirty_block = True
+            dirty_reason = "confirmed-baseline-delta"
+    elif (design_tmpdir / "step2b-drafter-baseline.porcelain").is_file() and (design_tmpdir / "step2b-drafter-baseline.porcelain").stat().st_size > 0:
+        current = subprocess.run(["git", "-C", str(Path.cwd()), "status", "--porcelain"], text=True, capture_output=True, check=False)
+        if current.returncode == 0 and current.stdout != (design_tmpdir / "step2b-drafter-baseline.porcelain").read_text(encoding="utf-8", errors="replace"):
+            dirty_block = True
+            dirty_reason = "missing-sidecar-positive-baseline-delta"
+    if structural_ok and not dirty_block:
+        _write_text(design_tmpdir / ".step2b-plan-source", "drafter\n")
+        diff_lines = plan_path.read_text(encoding="utf-8", errors="replace").splitlines()[-1].removeprefix("diff_lines: ")
+        env = os.environ.copy()
+        env["LARCH_QUIET_DISABLE"] = "1"
+        preview = subprocess.run(
+            [sys.executable, str(plugin_root / "python" / "cli.py"), "plan-review", "preview", "--design-tmpdir", str(design_tmpdir), "--variant", "step2b"],
+            capture_output=True,
+            text=True,
+            env=env,
+            check=False,
+        )
+        for line in preview.stdout.splitlines():
+            print(f"[plan-preview] {line}")
+        print(f"✅ 2b: drafter subprocess succeeded (vendor={vendor} plan_lines={plan_lines} diff_lines={diff_lines})")
+        postplan = _shared_step2b_postplan_body(
+            WrapperArgs(
+                session_env_path=parsed.session_env_path,
+                claude_pid=parsed.claude_pid,
+                plugin_root=parsed.plugin_root,
+                site="step2b",
+                snapshot_original=True,
+            )
+        )
+        if postplan.postplan_rc in {0, 10, 12, 13}:
+            print("STEP2B_DRAFTER_WRAPPER_ROWS_BEGIN=1")
+            print("DRAFTER_STATUS=succeeded")
+            print(f"DRAFTER_VENDOR={vendor}")
+            _print_text(postplan.stdout_lines)
+            return 0
+        _print_text(postplan.stdout_lines)
+        return 1
+    if dirty_block:
+        _write_text(design_tmpdir / "dirty-tree-detected.env", f"STATUS=dirty\nSTAGE=step-2b-drafter\nRECOVERY_REQUIRED=true\nREASON={dirty_reason}\n")
+        print("**⚠ 2b: drafter subprocess may have introduced working-tree mutations; dirty-tree recovery is required before fallback.**")
+        print("DRAFTER_STATUS=dirty-tree")
+        print(f"DRAFTER_VENDOR={vendor}")
+        return 0
+    with contextlib.suppress(FileNotFoundError):
+        (design_tmpdir / "plan-summary.md").unlink()
+    _clear_scout_manifests(design_tmpdir)
+    _write_text(design_tmpdir / ".step2b-plan-source", "inline\n")
+    print(f"**⚠ 2b: drafter subprocess failed — falling back to inline drafting (vendor={vendor})**")
+    print("DRAFTER_STATUS=fallback")
+    print(f"DRAFTER_VENDOR={vendor}")
+    _write_text(design_tmpdir / "step2b-drafter-fallback.log", f"Step 2b drafter fallback: {skip_reason or f'rc-{drafter_rc}'}\n")
+    subprocess.run(
+        [
+            sys.executable,
+            str(plugin_root / "python" / "cli.py"),
+            "run-log",
+            "append-failure",
+            "--log",
+            str(design_tmpdir / "execution-issues.md"),
+            "--site",
+            "design Step 2b drafter",
+            "--tool",
+            f"launch-{vendor}-drafter.sh",
+            "--exit-code",
+            str(drafter_rc),
+            "--category",
+            "Warnings",
+            "--output-file",
+            str(design_tmpdir / "step2b-drafter-fallback.log"),
+            "--redact",
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    return 0
+
+
+def step2b5_main(argv: Sequence[str]) -> int:
+    try:
+        parsed = _parse_common_wrapper_args(argv)
+    except ValueError as exc:
+        print(f"design-step2b5.sh: {exc}", file=sys.stderr)
+        return 2
+    _rehydrate_wrapper_env(parsed)
+    req = _design_require_plugin_root()
+    if req != 0:
+        return req
+    design_tmpdir = _design_tmpdir()
+    if (design_tmpdir / ".pause-requested").is_file():
+        return _call_pause_save(design_tmpdir)
+    old_quiet = os.environ.get("LARCH_QUIET_DISABLE")
+    os.environ["LARCH_QUIET_DISABLE"] = "1"
+    try:
+        rc, out = _capture_stdout(plan_quality.check_plan_size_main, ["--design-tmpdir", str(design_tmpdir)])
+    finally:
+        if old_quiet is None:
+            os.environ.pop("LARCH_QUIET_DISABLE", None)
+        else:
+            os.environ["LARCH_QUIET_DISABLE"] = old_quiet
+    _print_text(out)
+    return rc
 
 
 def _write_kv_file(path: Path, rows: list[tuple[str, str]]) -> bool:

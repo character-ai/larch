@@ -1112,3 +1112,84 @@ def test_bash_quoted_env_round_trips_non_ascii_verbal(tmp_path: Path) -> None:
     design_lifecycle.write_bash_quoted_env(cache, {"POSITIONAL_VALUE": value, "POSITIONAL_KIND": "verbal"})
     loaded = load_bash_quoted_env(cache, ["POSITIONAL_VALUE"])
     assert loaded["POSITIONAL_VALUE"] == value
+
+
+def test_step2a_repairs_sentinels_without_plugin_root(tmp_path: Path) -> None:
+    (tmp_path / "run-params.json").write_text('{"brainstorm_requested": false}\n', encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, str(CLI), "design", "step2a"],
+        capture_output=True,
+        text=True,
+        env={"DESIGN_TMPDIR": str(tmp_path), "CLAUDE_PLUGIN_ROOT": ""},
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert (tmp_path / "approach-synthesis.txt").read_text(encoding="utf-8") == "NO_SKETCHES\n"
+    assert (tmp_path / "contested-decisions.md").read_text(encoding="utf-8") == "NO_CONTESTED_DECISIONS\n"
+    assert (tmp_path / "dialectic-resolutions.md").read_text(encoding="utf-8") == ""
+    assert (tmp_path / ".completed" / "step-2a").is_file()
+    assert (tmp_path / ".completed" / "step-1d.5").is_file()
+
+
+def test_step2a_refuses_conflicting_sentinel_artifacts(tmp_path: Path) -> None:
+    (tmp_path / "approach-synthesis.txt").write_text("real sketch\n", encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, str(CLI), "design", "step2a"],
+        capture_output=True,
+        text=True,
+        env={"DESIGN_TMPDIR": str(tmp_path), "CLAUDE_PLUGIN_ROOT": ""},
+        check=False,
+    )
+    assert result.returncode == 1
+    assert "sentinel repair refused" in result.stderr
+
+
+def test_wrapper_session_env_parser_exports_quoted_paths(tmp_path: Path) -> None:
+    design = tmp_path / "design dir"
+    design.mkdir()
+    session_env = tmp_path / "session-env.sh"
+    session_env.write_text(
+        f"export DESIGN_TMPDIR={str(design)!r}\nexport ISSUE_NUMBER='42'\nexport CLAUDE_PLUGIN_ROOT={str(Path.cwd())!r}\n",
+        encoding="utf-8",
+    )
+    parsed = design_lifecycle._parse_common_wrapper_args(["--session-env-path", str(session_env)])  # pyright: ignore[reportPrivateUsage]
+    merged = design_lifecycle._rehydrate_wrapper_env(parsed)  # pyright: ignore[reportPrivateUsage]
+    assert merged["DESIGN_TMPDIR"] == str(design)
+    assert os.environ["ISSUE_NUMBER"] == "42"
+
+
+def test_step2b_postplan_nonfatal_rc_10_exits_zero_and_emits_rows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    (tmp_path / "plan.txt").write_text("bad\n", encoding="utf-8")
+    (tmp_path / ".step2b-plan-source").write_text("drafter\n", encoding="utf-8")
+
+    def fake_emit(_argv: list[str]) -> int:
+        (tmp_path / ".design-postplan-emit-result.env").write_text(
+            "VALIDATE_STATUS=defects-found\nVALIDATE_DEFECT_COUNT=1\nVALIDATE_SKIPPED_COUNT=0\nVALIDATE_UNSAFE_TOKEN_COUNT=0\nVALIDATE_LOG_FILE=log\n",
+            encoding="utf-8",
+        )
+        print("POSTPLAN_EMIT_STATUS=ok")
+        return 10
+
+    monkeypatch.setattr(design_lifecycle.design_postplan, "postplan_emit_main", fake_emit)
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path.cwd()))
+    rc = design_lifecycle.step2b_postplan_main(["--site", "step2b"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "POSTPLAN_RC=10" in out
+    assert "POSTPLAN_STATUS=validate-failed" in out
+    assert "SCOUT_STALE_CLEARED=true" in out
+    assert (tmp_path / ".step2b-postplan-inline-retry-done").is_file()
+
+
+def test_step2b5_echoes_check_size_stdout_and_rc(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    def fake_check(_argv: list[str]) -> int:
+        print("PLAN_SIZE_STATUS=failed")
+        return 7
+
+    monkeypatch.setattr(design_lifecycle.plan_quality, "check_plan_size_main", fake_check)
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path.cwd()))
+    rc = design_lifecycle.step2b5_main([])
+    assert rc == 7
+    assert "PLAN_SIZE_STATUS=failed" in capsys.readouterr().out

@@ -710,6 +710,21 @@ def _design_run_launcher_text(pid: str, plugin_root: str) -> str:
         "    printf '%s\\n' 'ERROR=ported design wrapper must use bare verb name, not .sh' >&2\n"
         "    exit 2\n"
         "    ;;\n"
+        '  design-step2a.sh)\n'
+        '    exec python3 "$PLUGIN_ROOT/python/cli.py" design step2a --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
+        '    ;;\n'
+        '  design-step2b-drafter.sh)\n'
+        '    exec python3 "$PLUGIN_ROOT/python/cli.py" design step2b-drafter --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
+        '    ;;\n'
+        '  design-step2b-postplan.sh)\n'
+        '    exec python3 "$PLUGIN_ROOT/python/cli.py" design step2b-postplan --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
+        '    ;;\n'
+        '  design-step2b5.sh)\n'
+        '    exec python3 "$PLUGIN_ROOT/python/cli.py" design step2b5 --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
+        '    ;;\n'
+        '  design-step-validator-autofix.sh)\n'
+        '    exec python3 "$PLUGIN_ROOT/python/cli.py" plan validator-autofix --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
+        '    ;;\n'
         "  *.sh)\n"
         '    exec "$PLUGIN_ROOT/skills/design/scripts/$script" --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
         "    ;;\n"
