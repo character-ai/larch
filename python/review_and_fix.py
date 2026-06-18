@@ -516,14 +516,22 @@ def _restore_path_to_ref(pre_head: str, path: str) -> None:
             target.unlink()
 
 
-def _apply_patch_file(path: Path, *, cached: bool = False) -> None:
+def _apply_patch_file(path: Path, *, cached: bool = False, log: Path | None = None) -> bool:
     if not path.is_file() or not path.stat().st_size:
-        return
+        return True
     argv = ["git", "apply"]
     if cached:
         argv.append("--cached")
     argv.append(str(path))
-    _run(argv)
+    result = _run(argv)
+    if result.returncode != 0:
+        if log is not None:
+            _append_text(
+                log,
+                f"git apply failed ({path.name}): {result.stderr}{result.stdout}\n",
+            )
+        return False
+    return True
 
 
 def _remove_untracked_delta_paths(paths: list[str]) -> None:
@@ -532,18 +540,23 @@ def _remove_untracked_delta_paths(paths: list[str]) -> None:
     for raw in paths:
         if not raw:
             continue
-        path = Path(raw)
+        rel = Path(raw)
+        if rel.is_absolute():
+            try:
+                rel = rel.relative_to(repo)
+            except ValueError:
+                continue
+        if not rel.parts or ".git" in rel.parts:
+            continue
+        candidate = repo / rel
         try:
-            resolved = path.resolve()
-            resolved.relative_to(repo)
+            candidate.parent.resolve().relative_to(repo)
         except (OSError, ValueError):
             continue
-        if resolved == repo or ".git" in resolved.relative_to(repo).parts:
-            continue
-        if resolved.exists() or resolved.is_symlink():
+        if candidate.is_symlink() or candidate.exists():
             with contextlib.suppress(OSError):
-                resolved.unlink()
-        parent = resolved.parent
+                candidate.unlink()
+        parent = candidate.parent
         while parent != repo and repo in (parent, *parent.parents):
             parents.add(parent)
             parent = parent.parent
@@ -671,7 +684,14 @@ def _round_attempt_tracked_delta_paths(round_dir: Path, pre_head: str) -> list[s
     return deltas
 
 
-def _restore_path_from_patches(pre_head: str, path: str, wt_patch: Path, idx_patch: Path) -> None:
+def _restore_path_from_patches(
+    pre_head: str,
+    path: str,
+    wt_patch: Path,
+    idx_patch: Path,
+    *,
+    log: Path | None = None,
+) -> bool:
     try:
         if _path_exists_at_ref(pre_head, path):
             _run(["git", "checkout", pre_head, "--", path])
@@ -681,14 +701,20 @@ def _restore_path_from_patches(pre_head: str, path: str, wt_patch: Path, idx_pat
             if target.exists() or target.is_symlink():
                 with contextlib.suppress(OSError):
                     target.unlink()
-        _apply_patch_file(idx_patch, cached=True)
-        _apply_patch_file(wt_patch)
+        ok = _apply_patch_file(idx_patch, cached=True, log=log)
+        ok = _apply_patch_file(wt_patch, log=log) and ok
+        if not ok and log is not None:
+            _append_text(log, f"patch restore failed: {path}\n")
+        return ok
     except OSError:
-        pass
+        if log is not None:
+            _append_text(log, f"patch restore OSError: {path}\n")
+        return False
 
 
 def _restore_pre_coder_tracked_state(round_dir: Path, pre_head: str) -> None:
     snap_dir = pre_coder_snapshot_dir(round_dir)
+    log = round_dir / "coder-cleanup.log"
     for path in _round_coder_delta_paths(round_dir, pre_head):
         with contextlib.suppress(OSError):
             _restore_path_to_ref(pre_head, path)
@@ -702,6 +728,7 @@ def _restore_pre_coder_tracked_state(round_dir: Path, pre_head: str) -> None:
             path,
             snap_dir / "pre-coder-path-diffs" / f"{safe}.patch",
             snap_dir / "pre-coder-path-diffs" / f"{safe}.cached.patch",
+            log=log,
         )
 
 
@@ -711,16 +738,18 @@ def _restore_attempt_baseline_tracked_state(round_dir: Path, pre_head: str) -> N
     attempt_paths: set[str] = (
         {line for line in _read_text(paths_file).splitlines() if line} if paths_file.is_file() else set()
     )
-    for path in sorted(attempt_paths):
-        safe = _safe_patch_name(path)
-        _restore_path_from_patches(
-            pre_head,
-            path,
-            snap_dir / "attempt-pre-path-diffs" / f"{safe}.patch",
-            snap_dir / "attempt-pre-path-diffs" / f"{safe}.cached.patch",
-        )
-    for path in _tracked_paths_vs_ref(pre_head):
-        if path not in attempt_paths:
+    log = round_dir / "coder-cleanup.log"
+    for path in _round_attempt_tracked_delta_paths(round_dir, pre_head):
+        if path in attempt_paths:
+            safe = _safe_patch_name(path)
+            _restore_path_from_patches(
+                pre_head,
+                path,
+                snap_dir / "attempt-pre-path-diffs" / f"{safe}.patch",
+                snap_dir / "attempt-pre-path-diffs" / f"{safe}.cached.patch",
+                log=log,
+            )
+        else:
             with contextlib.suppress(OSError):
                 _restore_path_to_ref(pre_head, path)
 
@@ -773,7 +802,11 @@ def _verify_post_cleanup_state(round_dir: Path, *, pre_head: str, mode: str) -> 
         untracked = _round_attempt_untracked_delta_paths(round_dir)
         if untracked:
             details.append("attempt untracked deltas remain: " + ", ".join(untracked))
-        outside = [path for path in _tracked_paths_vs_ref(pre_head) if path not in attempt_paths]
+        outside = [
+            path
+            for path in _round_attempt_tracked_delta_paths(round_dir, pre_head)
+            if path not in attempt_paths
+        ]
         if outside:
             details.append("tracked deltas outside attempt remain: " + ", ".join(outside))
         return (not details, "\n".join(details))
@@ -801,6 +834,12 @@ def _finalize_failed_cleanup(round_dir: Path, *, pre_head: str, mode: str, reaso
     restore = _run(["git", "restore", "--staged", "."])
     if restore.returncode != 0:
         _append_text(log, "git restore --staged failed:\n" + restore.stderr + restore.stdout)
+    tracked = _run(["git", "restore", "."])
+    if tracked.returncode != 0:
+        _append_text(log, "git restore failed:\n" + tracked.stderr + tracked.stdout)
+    ok, detail = _verify_post_cleanup_state(round_dir, pre_head=pre_head, mode=mode)
+    if not ok and detail:
+        _append_text(log, "post-finalize verification failed:\n" + detail + "\n")
     status = _git_status_porcelain()
     if status:
         _append_text(log, "remaining porcelain after finalize:\n" + status + "\n")
@@ -811,6 +850,18 @@ def _cleanup_failed_coder_attempt(round_dir: Path) -> bool:
     mode = _snapshot_mode(round_dir)
     snap_dir = pre_coder_snapshot_dir(round_dir)
     pre_head = _read_text(snap_dir / "pre-coder-head.txt").strip()
+    current_head = _git_head()
+    if pre_head and current_head and current_head != pre_head:
+        _append_text(
+            round_dir / "coder-cleanup.log",
+            f"stale pre-coder snapshot: pre_head={pre_head} current={current_head}\n",
+        )
+        return _finalize_failed_cleanup(
+            round_dir,
+            pre_head=pre_head,
+            mode=mode,
+            reason="stale pre-coder snapshot",
+        )
     if mode == "missing" or not pre_head:
         return _finalize_failed_cleanup(round_dir, pre_head=pre_head, mode=mode, reason="missing pre-coder snapshot")
     _ensure_pre_coder_untracked_baseline(round_dir, mode=mode)
@@ -1774,6 +1825,15 @@ def apply_findings_with_coder(input_file: Path, round_dir: Path, result_file: Pa
     mode = _snapshot_mode(round_dir)
     snap_dir = pre_coder_snapshot_dir(round_dir)
     pre_head = _read_text(snap_dir / "pre-coder-head.txt").strip()
+    current_head = _git_head()
+    if pre_head and current_head and current_head != pre_head:
+        _append_text(
+            round_dir / "coder-cleanup.log",
+            f"stale pre-coder snapshot: pre_head={pre_head} current={current_head}\n",
+        )
+        result = CoderResult(2, "none", "failed", str(tool_log), scrubbed_count, scrub_count, 0)
+        _write_env(result_file, _coder_env(result))
+        return result
     attempts: list[tuple[str, Callable[[Path, str, Path], bool]]] = [
         ("cursor", _run_coder_cursor),
         ("codex", _run_coder_codex),
@@ -1790,7 +1850,7 @@ def apply_findings_with_coder(input_file: Path, round_dir: Path, result_file: Pa
         revert_count = _post_dispatch_submodule_revert(round_dir, submodules)
         if revert_count > 0:
             if not _cleanup_failed_coder_attempt(round_dir):
-                result = CoderResult(2, tool, "failed", str(tool_log), scrubbed_count, scrub_count, revert_count)
+                result = CoderResult(3, tool, "submodule-violation", str(tool_log), scrubbed_count, scrub_count, revert_count)
                 _write_env(result_file, _coder_env(result))
                 return result
             result = CoderResult(3, tool, "submodule-violation", str(tool_log), scrubbed_count, scrub_count, revert_count)
@@ -2502,7 +2562,11 @@ def step5(argv: list[str] | None = None) -> int:
             elif result.status == "coder-failed":
                 terminal_status = "stall"
                 stall_tracking = True
-                stall_reason = "submodule-violation" if result.coder.status == "submodule-violation" else "coder-failed"
+                stall_reason = (
+                    "submodule-violation"
+                    if result.coder.status == "submodule-violation" or result.coder.revert_count > 0
+                    else "coder-failed"
+                )
             elif result.status == "prune-skipped":
                 if round_num < round_cap:
                     round_num += 1

@@ -1651,6 +1651,37 @@ def test_apply_findings_with_coder_cleanup_verification_failure_stops_without_st
     assert result.rc == 2
     assert result.status == "failed"
     assert _git_cached_names(repo) == ""
+    assert _git_porcelain(repo) == ""
+
+
+@MARK_DISPATCH
+def test_apply_findings_with_coder_head_untracked_preserves_staged_carryover(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _mk_git_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    _patch_coder_basics(monkeypatch)
+    (repo / "carry.txt").write_text("staged\n", encoding="utf-8")
+    review_and_fix._run(["git", "add", "carry.txt"])
+    round_dir = tmp_path / "impl" / "round-1"
+    snap = review_and_fix.pre_coder_snapshot_dir(round_dir)
+    snap.mkdir(parents=True)
+    (snap / "pre-coder-head.txt").write_text(review_and_fix._git_head() + "\n", encoding="utf-8")
+
+    def cursor(_round_dir: Path, _prompt: str, _tool_log: Path) -> bool:
+        (repo / "carry.txt").write_text("coder overwrite\n", encoding="utf-8")
+        review_and_fix._run(["git", "add", "carry.txt"])
+        return False
+
+    monkeypatch.setattr(review_and_fix, "_run_coder_cursor", cursor)
+    monkeypatch.setattr(review_and_fix, "_run_coder_codex", lambda *_a, **_k: False)
+
+    result = review_and_fix.apply_findings_with_coder(_coder_findings(tmp_path), round_dir, round_dir / "coder.env")
+
+    assert result.rc == 4
+    assert (repo / "carry.txt").read_text(encoding="utf-8") == "staged\n"
+    assert _git_cached_names(repo) == "carry.txt\n"
 
 
 @MARK_CHECK_CHANGES
