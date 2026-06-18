@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from review_pipeline import run_legacy
+from review_legacy import run_review_shell
 
 
 def aggregate_findings(argv: list[str]) -> int:
-    return run_legacy("aggregate-findings.sh", argv)
+    return run_review_shell("aggregate-findings.sh", argv)
 
 
 def aggregate_findings_main(argv: list[str]) -> int:

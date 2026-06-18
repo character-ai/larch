@@ -1622,3 +1622,20 @@ def test_step5_checks_wiring_passes_repo_site_and_binary_presence(tmp_path: Path
     assert captured_fix["cursor_present"] is False
     assert captured_fix["claude_present"] is False
     assert captured_fix["allowed_tmpdir"] == str(impl)
+
+
+def test_clear_reviewer_prune_round_uses_python_helper(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[Path, int, Path, Path]] = []
+
+    def fake_record(ledger: Path, round_num: int, manifest: Path, classification: Path) -> None:
+        calls.append((ledger, round_num, manifest, classification))
+
+    monkeypatch.setattr(review_and_fix.review_pipeline, "reviewer_prune_record", fake_record)
+    ledger = tmp_path / "ledger.tsv"
+    work_dir = tmp_path / "work"
+
+    review_and_fix._clear_reviewer_prune_round(ledger, 3, work_dir)
+
+    assert calls == [(ledger, 3, work_dir / "reviewer-prune-clear-empty.ndjson", work_dir / "reviewer-prune-clear-classification.tsv")]
+    assert (work_dir / "reviewer-prune-clear-empty.ndjson").read_text(encoding="utf-8") == ""
+    assert "reviewer_slots" in (work_dir / "reviewer-prune-clear-classification.tsv").read_text(encoding="utf-8")

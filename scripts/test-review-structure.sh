@@ -70,9 +70,10 @@ review_verbs=(
   emit-tally
   log-phase
   check-reviewer-failure-threshold
+  reviewer-prune
 )
-[[ "${#review_verbs[@]}" -eq 8 ]] \
-  || fail "(1) internal harness error: expected review verb list must contain 8 entries"
+[[ "${#review_verbs[@]}" -eq 9 ]] \
+  || fail "(1) internal harness error: expected review verb list must contain 9 entries"
 for verb in "${review_verbs[@]}"; do
   grep -Fq -- '("review", "'"$verb"'")' "$REPO_ROOT/python/cli.py" \
     || fail "(1) missing python/cli.py review $verb registry entry"
@@ -311,9 +312,7 @@ grep -Fq '**⚠ /review requires either --diff (branch diff review) or a descrip
 #      line granularity. A future edit that drops either flag, or splits the
 #      invocation across multiple lines, fails closed under `set -o pipefail`.
 # ---------------------------------------------------------------------------
-grep -Fq 'run_legacy("collect-findings.sh"' "$REPO_ROOT/python/review_pipeline.py" \
-  || fail "(13) python/review_pipeline.py does not delegate review collect-findings to collect-findings.sh"
-COLLECT_FINDINGS_IMPL="$REPO_ROOT/python/legacy_review_shell/collect-findings.sh"
+COLLECT_FINDINGS_IMPL="$REPO_ROOT/python/review_pipeline.py"
 grep 'agent collect-results' "$COLLECT_FINDINGS_IMPL" \
   | grep -F -- '--timeout 1860' \
   | grep -F -- '--substantive-validation' \
@@ -359,8 +358,6 @@ done
 #      '### In-Scope Findings', AND '### Out-of-Scope Observations' together —
 #      pinning the parser-side mode-conditional wording in Step 3a item 2.
 # ---------------------------------------------------------------------------
-grep -Fq 'run_legacy("collect-findings.sh"' "$REPO_ROOT/python/review_pipeline.py" \
-  || fail "(16) python/review_pipeline.py does not delegate review collect-findings to collect-findings.sh"
 grep 'In description mode' "$COLLECT_FINDINGS_IMPL" \
   | grep -F 'dual-list output' \
   | grep -F '### In-Scope Findings' \

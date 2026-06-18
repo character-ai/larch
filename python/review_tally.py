@@ -2,19 +2,19 @@
 
 from __future__ import annotations
 
-from review_pipeline import run_legacy
+from review_legacy import run_review_shell
 
 
 def tally_code_votes(argv: list[str]) -> int:
-    return run_legacy("tally-code-votes.sh", argv)
+    return run_review_shell("tally-code-votes.sh", argv)
 
 
 def emit_tally(argv: list[str]) -> int:
-    return run_legacy("emit-tally.sh", argv)
+    return run_review_shell("emit-tally.sh", argv)
 
 
 def log_phase(argv: list[str]) -> int:
-    return run_legacy("log-phase.sh", argv)
+    return run_review_shell("log-phase.sh", argv)
 
 
 def tally_code_votes_main(argv: list[str]) -> int:

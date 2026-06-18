@@ -1,24 +1,17 @@
+# pyright: reportUnusedCallResult=false
 from __future__ import annotations
 
 import json
 import os
-import re
 import shutil
 import subprocess
-from typing import TYPE_CHECKING
 from pathlib import Path
 
-import config
-import logging_util
-import review_pipeline
 import review_test_support as rts
-
-if TYPE_CHECKING:
-    import pytest
 
 ROOT = rts.ROOT
 CLI = rts.CLI
-REVIEW_CORE = ROOT / "python" / "legacy_review_shell" / "review-core.sh"
+REVIEW_PIPELINE = ROOT / "python" / "review_pipeline.py"
 PRUNE_NITS = ROOT / "skills" / "review" / "scripts" / "prune-nit-findings.sh"
 
 
@@ -81,7 +74,7 @@ def test_gather_context_help_routes_through_review_cli() -> None:
     result = run_review("gather-context", "--help")
 
     assert result.returncode == 0
-    assert "Usage: gather-context.sh" in result.stderr
+    assert "Usage: review gather-context" in result.stderr
 
 
 _GIT_IDENTITY = (
@@ -248,15 +241,9 @@ def test_dispatch_panel_python_surface_does_not_import_agents_waterfall() -> Non
     assert "agents.run_waterfall" not in text
 
 
-def test_review_core_default_prune_nits_sh_points_at_skills_script() -> None:
-    text = REVIEW_CORE.read_text(encoding="utf-8")
-    match = re.search(
-        r'PRUNE_NITS_SH="\$\{REVIEW_CORE_PRUNE_NITS_SH:-([^}]+)\}"',
-        text,
-    )
-    assert match is not None
-    default = match.group(1)
-    assert "skills/review/scripts/prune-nit-findings.sh" in default
+def test_review_core_default_prune_nits_points_at_skills_script() -> None:
+    text = REVIEW_PIPELINE.read_text(encoding="utf-8")
+    assert "skills/review/scripts/prune-nit-findings.sh" in text
     assert PRUNE_NITS.is_file()
 
 
@@ -481,62 +468,45 @@ def test_review_core_fix_required_emits_accepted_path(tmp_path: Path) -> None:
     assert f"ACCEPTED_FINDINGS_FILE={outdir}/accepted-findings.md" in result.stdout
 
 
-def test_run_legacy_relays_stdout_kv_without_quiet_disable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    script = tmp_path / "emit-kv.sh"
-    _write_executable(script, """#!/usr/bin/env bash
-printf 'PIPELINE_KV=relayed\\n'
-""")
-    logging_util.reset_quiet_state()
-    monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(tmp_path))
-    monkeypatch.delenv(config.ENV_LARCH_QUIET_DISABLE, raising=False)
-    monkeypatch.setattr(
-        review_pipeline,
-        "_LEGACY_DIR",
-        tmp_path,
-        raising=False,
+def test_reviewer_prune_record_and_filter_round_three(tmp_path: Path) -> None:
+    manifest = tmp_path / "panel.ndjson"
+    manifest.write_text(
+        '{"slot":"correctness","tool":"cursor","output":"/tmp/cursor-specialist-correctness-output.txt"}\n',
+        encoding="utf-8",
     )
-    captured: list[str] = []
-
-    def fake_emit(line: str) -> None:
-        captured.append(line)
-
-    monkeypatch.setattr(review_pipeline.logging_util, "emit", fake_emit)
-    rc = review_pipeline.run_legacy("emit-kv.sh", [])
-
-    assert rc == 0
-    assert captured == ["PIPELINE_KV=relayed"]
-
-
-def test_run_legacy_relays_lib_quiet_emit_kv_without_quiet_disable(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    script = tmp_path / "quiet-emit.sh"
-    lib_quiet = ROOT / "scripts" / "lib-quiet.sh"
-    _write_executable(
-        script,
-        f"""#!/usr/bin/env bash
-set -euo pipefail
-# shellcheck source=scripts/lib-quiet.sh
-source "{lib_quiet}"
-larch_quiet_init
-emit_kv QUIET_RELAY_TEST relayed-quiet-value
-""",
+    classification = tmp_path / "class.tsv"
+    classification.write_text("finding_id\treviewer_slots\tvoting_result\n", encoding="utf-8")
+    ledger = tmp_path / "ledger.tsv"
+    for round_num in (1, 2):
+        result = run_review(
+            "reviewer-prune",
+            "record",
+            "--ledger",
+            str(ledger),
+            "--round",
+            str(round_num),
+            "--manifest",
+            str(manifest),
+            "--classification",
+            str(classification),
+        )
+        assert result.returncode == 0, result.stderr
+    out = tmp_path / "filtered.ndjson"
+    result = run_review(
+        "reviewer-prune",
+        "filter",
+        "--ledger",
+        str(ledger),
+        "--round",
+        "3",
+        "--manifest",
+        str(manifest),
+        "--out",
+        str(out),
     )
-    logging_util.reset_quiet_state()
-    monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(tmp_path))
-    monkeypatch.delenv(config.ENV_LARCH_QUIET_DISABLE, raising=False)
-    captured: list[str] = []
-
-    def fake_emit(line: str) -> None:
-        captured.append(line)
-
-    monkeypatch.setattr(review_pipeline.logging_util, "emit", fake_emit)
-    monkeypatch.setattr(review_pipeline, "_LEGACY_DIR", tmp_path, raising=False)
-    rc = review_pipeline.run_legacy("quiet-emit.sh", [])
-
-    assert rc == 0
-    assert captured == ["QUIET_RELAY_TEST=relayed-quiet-value"]
+    assert result.returncode == 0, result.stderr
+    assert "PRUNED_COUNT=1" in result.stdout
+    assert "PANEL_PRUNED_EMPTY=true" in result.stdout
 
 
 def test_dispatch_panel_pre_scouted_valid_dynamic_slots(tmp_path: Path) -> None:

@@ -97,8 +97,8 @@ chmod +x "$run_external_stub"
 
 # ── review dispatch-panel prompt source assertions ───────────────────────────
 
-DISPATCH_PANEL="$REPO_ROOT/python/legacy_review_shell/dispatch-panel.sh"
-panel_out="$TMP/dispatch-panel.sh"
+DISPATCH_PANEL="$REPO_ROOT/python/review_pipeline.py"
+panel_out="$TMP/dispatch-panel.py"
 cp "$DISPATCH_PANEL" "$panel_out"
 
 assert_contains "dispatch-panel anti-preamble directive" \

@@ -47,6 +47,27 @@ def test_embedded_plan_review_loop_uses_migrated_collector() -> None:
     assert "COLLECT_FAILURE_COUNT" in body
 
 
+
+def test_embedded_plan_review_reviewer_prune_uses_review_cli() -> None:
+    panel_name = "dispatch-plan-review-" + "panel.sh"
+    loop_name = "plan-review-" + "loop.sh"
+    assets = (
+        f"skills/design/scripts/{panel_name}",
+        f"skills/design/scripts/{loop_name}",
+    )
+    retired_helper = "reviewer-" + "prune.sh"
+    retired_lib = "lib-prune-" + "decision.sh"
+    for rel_path in assets:
+        body = plan_review.legacy_asset_bytes(rel_path).decode("utf-8")
+        assert retired_helper not in body
+        assert retired_lib not in body
+        assert "review reviewer-prune" in body
+        assert "PRUNE_STATUS" in body
+        assert "PANEL_PRUNED_EMPTY" in body
+        assert "PRUNED_COUNT" in body
+        assert "PRUNED_COMBOS" in body
+
+
 def test_embedded_run_step3_review_routes_from_binary_found() -> None:
     # Keep the path assembled so this test does not trip retired-script lint,
     # which intentionally flags full repo-relative retired path literals.

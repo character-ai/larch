@@ -201,6 +201,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("review", "emit-tally"): ("review_tally", "emit_tally_main"),
     ("review", "log-phase"): ("review_tally", "log_phase_main"),
     ("review", "core"): ("review_pipeline", "review_core_main"),
+    ("review", "reviewer-prune"): ("review_pipeline", "reviewer_prune_main"),
     ("review", "compose-findings"): ("compose_review", "compose_findings_main"),
     ("review-and-fix", "apply-findings"): ("review_and_fix", "apply_findings"),
     ("review-and-fix", "step5"): ("review_and_fix", "step5"),

@@ -276,22 +276,10 @@ exclude = [
   # skill prose, matching the same Makefile-only pattern as the other
   # run-log test-* harnesses above.
   "python/test_redact.py",
-  # scripts/reviewer-prune.sh is reached through Bash-to-Bash calls from
-  # review dispatchers; agent-lint does not follow those variable-expanded edges.
-  "scripts/reviewer-prune.sh",
-  "scripts/reviewer-prune.md",
   # scripts/implement-finalize.sh invokes these Step 8b / teardown helpers
   # through Bash-to-Bash edges; agent-lint does not follow those calls.
   "scripts/check-remote-branch.sh",
   "scripts/flush-vendor-failure-diagnostics.sh",
-  # scripts/test-reviewer-prune.sh is the Makefile-only regression harness for
-  # scripts/reviewer-prune.sh conditional-spawning ledger/filter behavior.
-  "scripts/test-reviewer-prune.sh",
-  "scripts/test-reviewer-prune.md",
-  # scripts/test-lib-prune-decision.sh is the Makefile-only regression harness
-  # for scripts/lib-prune-decision.sh prune-status derivation.
-  "scripts/test-lib-prune-decision.sh",
-  "scripts/lib-prune-decision.md",
   # Step 1 launcher split: compose-goals-test is now invoked by
   # python/cli.py plan step1-log rather than directly from SKILL.md, and
   # agent-lint does not follow Python-to-Python launcher edges. The launcher

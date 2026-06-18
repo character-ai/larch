@@ -154,10 +154,10 @@ test-redact-tmpdir-paths:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_redact.py -k 'tmpdir or operator'
 
 test-reviewer-prune:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-reviewer-prune.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_pipeline.py -k reviewer_prune
 
 test-lib-prune-decision:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-lib-prune-decision.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_pipeline.py -k prune
 
 test-append-tool-failure:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_run_logs.py -k execution_issues
@@ -517,7 +517,7 @@ test-run-step3-review:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review.py -q -k record_report_evidence
 
 test-review-design-step3-loop:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review.py -q -k 'embedded_review or embedded_run_step3_review or embedded_waterfall or run_legacy'
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review.py -q -k 'embedded_review or embedded_run_step3_review or embedded_waterfall or reviewer_prune'
 
 test-step3-orchestrator-fence:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-step3-orchestrator-fence.sh
@@ -847,7 +847,7 @@ test-tally-code-votes:
 
 .PHONY: test-check-reviewer-failure-threshold
 test-check-reviewer-failure-threshold:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_pipeline.py -k 'check_reviewer_failure_threshold or python_surface_does_not_import_agents_waterfall or run_legacy_relays'
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_pipeline.py -k 'check_reviewer_failure_threshold or python_surface_does_not_import_agents_waterfall or reviewer_prune'
 
 .PHONY: test-dispatch-code-voters-happy test-dispatch-code-voters-edge-and-r3-claude test-dispatch-code-voters-retry-claude test-dispatch-code-voters-retry-codex-success test-dispatch-code-voters-retry-cursor test-dispatch-code-voters-retry-codex-fail-and-fallback test-dispatch-code-voters-regressions-r1-r2 test-dispatch-code-voters-regressions-r3-codex
 test-dispatch-code-voters-happy:
