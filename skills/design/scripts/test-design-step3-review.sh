@@ -83,6 +83,7 @@ grep -Fq '.step3-terminal-persisted-this-run' "$LOOP" || fail 'Step 3 loop persi
 grep -Fq '.step3-terminal-persisted-this-run' "$WRAPPER" || fail 'Step 3 wrapper must key terminal trap fallback and step-3 guarantee on current-pass sidecar'
 # shellcheck disable=SC2016 # literal $DESIGN_TMPDIR must match wrapper source text.
 grep -Fq 'rm -f "$DESIGN_TMPDIR/.step3-review-result.env" "$DESIGN_TMPDIR/.completed/step-3"' "$WRAPPER" || fail 'Step 3 wrapper must clear stale result env and step-3 at non-resume entry'
+# shellcheck disable=SC2016 # literal $DESIGN_TMPDIR must match wrapper source text.
 grep -Fq 'rm -f "$DESIGN_TMPDIR/.completed/step-3"' "$WRAPPER" || fail 'Step 3 wrapper must clear stale step-3 on mid-loop resume entry'
 
 D_STEP3=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-stage.XXXXXX")
