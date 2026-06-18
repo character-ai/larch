@@ -1,0 +1,7 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	.claude/rules/topology-generation.md:11; skills/design/scripts/_dbg-validator.sh:19	Plan retires wrapper paths but omits two live full-path references	After adding the retired paths to python/migrated-scripts.tsv and deleting the wrappers, make lint-retired-scripts will fail on these references; _dbg-validator.sh will also invoke a deleted validator wrapper	Update the plan to cover these two files: replace the topology rule path with the new Python authority or remove it, and retarget or delete _dbg-validator.sh so it calls python/cli.py plan validator-autofix or no longer ships
+
+1. **[correctness] `.claude/rules/topology-generation.md:11`; `skills/design/scripts/_dbg-validator.sh:19`**
+   - **Concern:** The plan deletes and manifests retired wrapper paths but misses two remaining full-path references.
+   - **Breakage:** `make lint-retired-scripts` will fail. `_dbg-validator.sh` will call a deleted file.
+   - **Suggested revision:** Add both files to the plan. Retarget the rule path to the Python authority or remove it. Retarget or delete `_dbg-validator.sh`.

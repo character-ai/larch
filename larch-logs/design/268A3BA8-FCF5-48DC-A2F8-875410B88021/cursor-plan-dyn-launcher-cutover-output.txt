@@ -1,0 +1,28 @@
+Reviewing the plan and tracing launcher cutover contracts in the codebase.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	blocking	correctness	python/session_env.py:687-716	Launcher cutover spec omits forwarding orchestrator argv tail (`"$@"`) after `--session-env-path` and `--claude-pid`	Post-cutover calls like `design-step2b-postplan.sh --site step2b --snapshot-original`, `--write-completion-only`, and `design-step-validator-autofix.sh --site ... --validator-target-file ...` would reach Python with only transport flags; site/completion/validator args would be dropped and Step 2b/2b.5/validator flows would mis-route or exit 2	Specify each retired-name case as `exec python3 "$PLUGIN_ROOT/python/cli.py" <verb> --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"` and add launcher tests asserting `--site` / `--snapshot-original` survive for postplan and validator flags for autofix
+2	in_scope	important	correctness	python/session_env.py:687-716; python/design_lifecycle.py (planned shared helper)	Launcher mapping documents only `--session-env-path` and `--claude-pid`; it does not pin `CLAUDE_PLUGIN_ROOT` resolution order matching today's bash contract (`export` from launcher, then session-env overrides)	Today's launcher exports `CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"` before exec; wrappers then `source` session env and may override. Python that requires an explicit `--plugin-root` flag (or reads only the flag) can abort or use the wrong plugin root when fences invoke only `design-run-$PPID.sh <retired-name>.sh`	Document and implement resolution order `--plugin-root` flag > allowlisted session-env keys > inherited `CLAUDE_PLUGIN_ROOT` from launcher export; optionally also pass `--plugin-root "$PLUGIN_ROOT"` in each launcher case for parity with `design-step35-settle.sh`
+3	in_scope	blocking	risk-integration	scripts/test-design-structure.sh:232-331,546-563,836-910,926	`scripts/test-design-structure.sh` update list is too narrow; many checks still grep deleted wrappers	After deleting `design-step2a.sh`, `design-step2b-drafter.sh`, `design-step2b-postplan.sh`, and `design-step-validator-autofix.sh`, `make test-design-structure` will still fail on `assert_wrapper_contract_pins`, `assert_reference_updates`, `assert_step2b_drafter_folded_postplan_contract`, and `assert_postplan_thin_fence`	Extend the plan's `scripts/test-design-structure.sh` section to retire/replace all Step 2/validator bash pins: launcher→CLI map assertions, `design step2b-postplan` authority in settle/reference docs, pytest-backed pause-order checks for ported verbs, and drop `assert_postplan_thin_fence` on the deleted bash file (or retarget it to `python/design_lifecycle.py`)
+4	in_scope	important	risk-integration	python/checks.py:472-476	`checks.py` retarget plan drops `design-step2b5.sh` but does not replace its `test-check-plan-size` mapping	Editing `design step2b5` in `python/design_lifecycle.py` may no longer run `make test-check-plan-size` via relevant-checks, letting plan-size regressions slip through	Replace the `design-step2b5.sh` rule with `python/design_lifecycle.py` + `python/test_design_lifecycle.py` mapped to `test-check-plan-size` (and/or fold explicit step2b5 coverage into the new lifecycle pytest list)
+5	in_scope	important	correctness	skills/design/scripts/design-step2b5.sh:84-90; plan Step 2b5 port (lines 78-81)	Current `design-step2b5.sh` captures `plan check-size` output but never prints it or exits with the helper rc; Step 2b.5 SKILL parsing depends on wrapper stdout	Until the Python `design step2b5` verb ships, standalone Step 2b.5 is already non-functional; a port that only subprocesses without echoing the KV stream and returning the child rc would preserve the breakage	Require `design step2b5` to print the captured `plan check-size` contract stream to stdout unchanged and `sys.exit` with the same rc as today’s intended bash wrapper (plan already hints at this; make it an explicit acceptance criterion)
+
+**1. Launcher `$@` forwarding (blocking)**  
+Plan lines 120-125 show Python exec with only transport flags. Current launcher at `python/session_env.py:715` is:
+
+```715:715:python/session_env.py
+        'exec "$PLUGIN_ROOT/skills/design/scripts/$script" --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
+```
+
+Without `"$@"` in the Python branches, postplan sites, completion-only flags, and validator autofix args from SKILL fences will not reach the new verbs.
+
+**2. `CLAUDE_PLUGIN_ROOT` resolution (important)**  
+Most SKILL fences call only `design-run-$PPID.sh <wrapper>.sh` (no `--plugin-root`). `design-step35-settle.sh` is the exception and passes `--plugin-root` explicitly when calling postplan. The shared Python helper must mirror bash: launcher export first, then session-env overrides.
+
+**3. Structure harness gap (blocking)**  
+Plan lines 193-200 list partial `test-design-structure.sh` edits but miss `assert_wrapper_contract_pins` (lines 239-331), `assert_reference_updates` (546-563), `assert_step2b_drafter_folded_postplan_contract` (836-910), and `assert_postplan_thin_fence` on the deleted postplan script (926). Those will fail once bash files are removed.
+
+**4. `checks.py` step2b5 mapping (important)**  
+Line 476 still ties `design-step2b5.sh` to `test-check-plan-size`. Plan retargets drafter/validator mappings but not this row.
+
+**5. Step 2b.5 stdout/rc contract (important)**  
+`design-step2b5.sh` ends after capturing check-size output without printing or exiting with the child rc. The port must treat echo+exit as mandatory, not optional polish.
