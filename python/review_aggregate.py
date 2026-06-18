@@ -458,7 +458,7 @@ def _plan_scope_reduction_parity_ok(merged_path: Path, tagged_path: Path | None,
             if idx in used:
                 continue
             br = _reviewer_tokens(block)
-            if sr and br and not (sr & br):
+            if sr and br and not sr & br:
                 continue
             candidates.append((_problem_score(src, block), idx))
         candidates.sort(reverse=True)
