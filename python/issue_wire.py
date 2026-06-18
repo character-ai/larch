@@ -361,6 +361,8 @@ def plan_block_strip_body_main(argv: list[str]) -> int:
 def extract_scope_paths(plan_text: str, *, use_fallback: bool = True) -> list[str]:
     lines = plan_text.splitlines()
     has_scope_section = any(re.match(r"^##\s+Files to modify(?:/create)?\s*$", line) for line in lines)
+    if not use_fallback and not has_scope_section:
+        return []
     in_section = not has_scope_section
     seen: list[str] = []
     for line in lines:

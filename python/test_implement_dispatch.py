@@ -1361,6 +1361,46 @@ def test_step2_dispatch_plan_coverage_no_warning_without_explicit_scope(
     assert "explicit plan-listed path" not in issues
 
 
+def test_step2_dispatch_plan_coverage_no_warning_without_files_section_and_unrelated_heading(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    tmp = _session(tmp_path)
+    (tmp / "plan.txt").write_text(
+        "## Plan\n"
+        "### UPDATED: `docs/expected.md`\n"
+        "## Acceptance\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+
+    def fake_launcher(st: implement_dispatch.DispatchState):
+        (repo / "README.md").write_text("declared edit\n", encoding="utf-8")
+        st.manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        st.manifest_path.write_text(
+            json.dumps(_complete_manifest_payload(path="README.md", commit_message="stub: edit README")),
+            encoding="utf-8",
+        )
+        return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
+
+    monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(implement_dispatch, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
+    monkeypatch.setattr(implement_dispatch, "_materialize_oos", lambda *_a, **_k: "")
+    rc = implement_dispatch.step2_dispatch_main([
+        "--tmpdir", str(tmp),
+        "--plan-file", str(tmp / "plan.txt"),
+        "--feature-file", str(tmp / "feature-description.txt"),
+        "--coder", "codex",
+    ])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "STATUS=complete" in out
+    assert "WARN_PLAN_FILES_UNTOUCHED" not in out
+    issues = (tmp / "execution-issues.md").read_text(encoding="utf-8") if (tmp / "execution-issues.md").is_file() else ""
+    assert "docs/expected.md" not in issues
+    assert "explicit plan-listed path" not in issues
+
+
 def test_step2_dispatch_git_probe_failure_suppresses_plan_and_undeclared_warnings(
     repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
