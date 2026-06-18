@@ -7,5 +7,6 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
 
 cd "$REPO_ROOT"
-grep -Fq "env LARCH_QUIET_DISABLE=1 python3 \"\$CLAUDE_PLUGIN_ROOT/python/cli.py\" plan auto-fix-commands" "$REPO_ROOT/skills/design/scripts/design-step-validator-autofix.sh"
+grep -Fq "auto_fix_plan_commands_main" "$REPO_ROOT/python/plan_quality.py"
+grep -Fq "validator_autofix_main" "$REPO_ROOT/python/plan_quality.py"
 exec pytest -q python/test_plan_quality.py -k auto_fix

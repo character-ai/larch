@@ -8,7 +8,7 @@ paths:
   - "python/plan_scout.py"
   - "python/test_decompose.py"
   - "python/test_plan_scout.py"
-  - "skills/design/scripts/design-step2a.sh"
+  - "python/design_lifecycle.py"
   - "skills/design/references/flags.md"
   - "skills/design/references/plan-review.md"
   - "skills/design/references/decompose-panel.md"

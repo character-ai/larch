@@ -151,7 +151,12 @@ case "${SITE:-}" in
   *) printf '%s\n' "design-step35-settle.sh: --site must be gate-b, gate-a, or discussion-round2" >&2; exit 2 ;;
 esac
 
-POSTPLAN_SH="${DESIGN_STEP35_POSTPLAN_SH:-$CLAUDE_PLUGIN_ROOT/skills/design/scripts/design-step2b-postplan.sh}"
+# Retired launcher fence: design-step2b-postplan.sh now maps to the Python CLI.
+if [ -n "${DESIGN_STEP35_POSTPLAN_SH:-}" ]; then
+  POSTPLAN_CMD=("$DESIGN_STEP35_POSTPLAN_SH")
+else
+  POSTPLAN_CMD=(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design step2b-postplan)
+fi
 GATE_B_ROUND=""
 
 if [ "$SITE" = gate-b ]; then
@@ -204,11 +209,12 @@ fi
 
 rm -f "$DESIGN_TMPDIR/.pause-save-complete"
 set +e
-postplan_out=$("$POSTPLAN_SH" \
+postplan_out=$("${POSTPLAN_CMD[@]}" \
   --session-env-path "$SESSION_ENV_PATH" \
   --claude-pid "$CLAUDE_PID" \
   --plugin-root "$CLAUDE_PLUGIN_ROOT" \
-  --site "$POSTPLAN_SITE")
+  --site "$POSTPLAN_SITE" \
+  ${PUBLIC_ARGV_WORDS[@]+"${PUBLIC_ARGV_WORDS[@]}"})
 postplan_child_rc=$?
 set -e
 printf '%s\n' "${postplan_out:-}"

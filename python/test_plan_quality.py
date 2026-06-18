@@ -269,6 +269,85 @@ def test_auto_fix_unavailable_contract(tmp_path: Path) -> None:
     assert out["ATTEMPTS"] == "0"
 
 
+def test_validator_autofix_calls_helper_in_process(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    plan = tmp_path / "plan.txt"
+    plan.write_text("## Plan\nbody\ndiff_lines: 1\n", encoding="utf-8")
+    calls: list[list[str]] = []
+
+    def fake_auto_fix(argv: list[str]) -> int:
+        calls.append(argv)
+        print("AUTOFIX_STATUS=ok")
+        print("FIXED_BY=codex")
+        print(f"ORIGINAL_VALIDATE_LOG_FILE={tmp_path / 'validate-plan-commands.log'}")
+        return 0
+
+    monkeypatch.setattr(plan_quality, "auto_fix_plan_commands_main", fake_auto_fix)
+    monkeypatch.setattr(plan_quality, "_validator_require_plugin_root", lambda: 1)
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(REPO_ROOT))
+    rc = plan_quality.validator_autofix_main(["--site", "design Step 2b", "--validator-target-file", str(plan)])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert calls
+    assert "--plan-file" in calls[0]
+    assert "AUTOFIX_STATUS=ok" in out
+    assert "FIXED_BY=codex" in out
+
+
+def test_validator_autofix_cycle_cap(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    plan = tmp_path / "plan.txt"
+    plan.write_text("## Plan\nbody\ndiff_lines: 1\n", encoding="utf-8")
+    log = tmp_path / "validate.log"
+    log.write_text("defect\n", encoding="utf-8")
+
+    def fake_auto_fix(_argv: list[str]) -> int:
+        print("AUTOFIX_STATUS=exhausted")
+        print("FIXED_BY=")
+        print(f"ORIGINAL_VALIDATE_LOG_FILE={log}")
+        return 0
+
+    def fake_record(_status: str, _rc: int, _log_file: str) -> None:
+        return None
+
+    monkeypatch.setattr(plan_quality, "auto_fix_plan_commands_main", fake_auto_fix)
+    monkeypatch.setattr(plan_quality, "_record_validator_escalation", fake_record)
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(REPO_ROOT))
+    args = [
+        "--site",
+        "design Step 2b",
+        "--validator-target-file",
+        str(plan),
+        "--validate-log-file",
+        str(log),
+        "--validate-defect-count",
+        "1",
+        "--validate-unsafe-token-count",
+        "0",
+        "--validate-skipped-count",
+        "0",
+    ]
+    assert plan_quality.validator_autofix_main(args) == 0
+    _ = capsys.readouterr()
+    assert plan_quality.validator_autofix_main(args) == 0
+    assert "AUTOFIX_STATUS=skipped-cycle-cap" in capsys.readouterr().out
+
+
+def test_validator_autofix_pause_short_circuits(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    (tmp_path / ".pause-requested").write_text("", encoding="utf-8")
+    called = False
+
+    def fake_pause() -> int:
+        nonlocal called
+        called = True
+        return 11
+
+    monkeypatch.setattr(plan_quality, "_validator_pause_save", fake_pause)
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
+    assert plan_quality.validator_autofix_main([]) == 11
+    assert called
+
+
 def test_revise_plan_with_waterfall_records_failed_no_patch(tmp_path: Path) -> None:
     plan = tmp_path / "plan.txt"
     plan.write_text("## Plan\n### UPDATED: file.txt\nbody\ndiff_lines: 1\n")

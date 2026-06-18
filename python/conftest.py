@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import time
+from collections.abc import Iterator
 
 import pytest
 import config
@@ -27,7 +28,7 @@ def _quiet_test_isolation(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
-def _session_routing_isolation(monkeypatch: pytest.MonkeyPatch) -> None:
+def _session_routing_isolation() -> Iterator[None]:
     """Scrub larch session-routing env vars so the suite stays hermetic when
     `make py-test` runs inside a live /implement or /design session (issue #4495).
 
@@ -36,8 +37,9 @@ def _session_routing_isolation(monkeypatch: pytest.MonkeyPatch) -> None:
     they are unset, so standalone CI never writes to them; inside a session they
     point at the real session tmpdir, so simulated CI-fixer failures leaked into
     the committed run log and the tracking issue's execution-issues summary.
-    Tests that need a routing var set provide their own via monkeypatch.setenv;
-    the autouse delenv runs first, so per-test setenv still wins.
+    Some wrapper helpers assign process env directly, bypassing monkeypatch.
+    Scrub before and after each test so those mutations cannot leak into later
+    subprocess tests.
     """
     for name in (
         "IMPLEMENT_TMPDIR",
@@ -45,8 +47,21 @@ def _session_routing_isolation(monkeypatch: pytest.MonkeyPatch) -> None:
         "REVIEW_TMPDIR",
         "SESSION_ENV_PATH",
         "LARCH_EXECUTION_ISSUES_LOG",
+        "CLAUDE_PLUGIN_ROOT",
+        "LARCH_CLAUDE_PLUGIN_ROOT",
     ):
-        monkeypatch.delenv(name, raising=False)
+        os.environ.pop(name, None)
+    yield
+    for name in (
+        "IMPLEMENT_TMPDIR",
+        "DESIGN_TMPDIR",
+        "REVIEW_TMPDIR",
+        "SESSION_ENV_PATH",
+        "LARCH_EXECUTION_ISSUES_LOG",
+        "CLAUDE_PLUGIN_ROOT",
+        "LARCH_CLAUDE_PLUGIN_ROOT",
+    ):
+        os.environ.pop(name, None)
 
 
 @pytest.fixture(autouse=True)

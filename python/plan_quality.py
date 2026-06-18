@@ -1,4 +1,4 @@
-# pyright: reportUnusedCallResult=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportOperatorIssue=false, reportArgumentType=false
+# pyright: reportUnusedCallResult=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportOperatorIssue=false, reportArgumentType=false, reportUnknownParameterType=false, reportMissingParameterType=false
 """Plan-quality helpers for /design plan validation and revision flows.
 
 Topology row design.plan_commands.validate: Tier2+opt-in Tier3.
@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import hashlib
+import io
 import os
 import re
 import shlex
@@ -22,10 +23,12 @@ from pathlib import Path
 from collections.abc import Iterable
 
 import agents
+import design_pause
 import plan_review
 from issue_wire import emit_untrusted_file_block
 from logging_util import diagnostic, emit, emit_kv, quiet_init
 from redact import redact_secrets_only
+import session_env
 from session_env import validate_design_tmpdir
 
 HEADER = "row_type\tsource_line\tscript_path\tflag\tflag_value\tnote\tcmd_uid"
@@ -35,6 +38,124 @@ def _binary_arg(value: str, binary: str) -> str:
     if value in {"true", "false"}:
         return value
     return "true" if shutil.which(binary) is not None else "false"
+
+
+_VALIDATOR_ENV_DEFAULTS: dict[str, str] = {
+    "CLAUDE_PLUGIN_ROOT": "",
+    "SUMMARY_OUTCOME": "",
+    **session_env.COMMON_DESIGN_ENV_DEFAULTS,
+    **session_env.VALIDATOR_STATUS_ENV_DEFAULTS,
+}
+_VALIDATOR_ENV_ALLOWLIST = frozenset(_VALIDATOR_ENV_DEFAULTS) | {
+    "LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT",
+    "LARCH_TOKEN_SESSION_ID",
+    "LARCH_CLAUDE_SOURCE_FILE",
+    "LARCH_TIMING_LEDGER",
+}
+
+
+def _parse_export_line(raw: str) -> tuple[str, str] | None:
+    return session_env.parse_allowlisted_env_line(raw, _VALIDATOR_ENV_ALLOWLIST)
+
+
+def _parse_validator_wrapper_args(argv: list[str]) -> tuple[dict[str, str | bool], int]:
+    parsed: dict[str, str | bool] = {
+        "session_env_path": "",
+        "claude_pid": "",
+        "plugin_root": "",
+        "site": "",
+        "outcome": "",
+        "operator_cancel": False,
+        "validator_target_file": "",
+        "validate_log_file": "",
+        "validate_defect_count": "",
+        "validate_unsafe_token_count": "",
+        "validate_skipped_count": "",
+    }
+    values = session_env.WRAPPER_VALUE_FLAGS
+    booleans = {"--snapshot-original", "--skip-validate", "--operator-cancel"}
+    i = 0
+    while i < len(argv):
+        token = argv[i]
+        if token == "--":
+            break
+        if token in values:
+            if i + 1 >= len(argv):
+                print(f"design-step-validator-autofix.sh: {token} requires a value", file=sys.stderr)
+                return parsed, 2
+            parsed[values[token]] = argv[i + 1]
+            i += 2
+            continue
+        if token in booleans:
+            if token == "--operator-cancel":
+                parsed["operator_cancel"] = True
+            i += 1
+            continue
+        if token.startswith("--") and i + 1 < len(argv) and not argv[i + 1].startswith("--"):
+            i += 2
+        else:
+            i += 1
+    return parsed, 0
+
+
+def _rehydrate_validator_env(parsed: dict[str, str | bool]) -> dict[str, str]:
+    merged = {key: os.environ.get(key, default) for key, default in _VALIDATOR_ENV_DEFAULTS.items()}
+    path = str(parsed.get("session_env_path") or "")
+    claude_pid = str(parsed.get("claude_pid") or "")
+    if path:
+        source = Path(path)
+        read_path: Path | None
+        if source.is_symlink():
+            read_path = session_env.resolve_trusted_design_session_env_source(source, claude_pid) if claude_pid else None
+        elif source.is_file():
+            read_path = source
+        else:
+            read_path = None
+        if read_path is not None:
+            for raw in read_path.read_text(encoding="utf-8", errors="replace").splitlines():
+                pair = _parse_export_line(raw)
+                if pair is not None:
+                    merged[pair[0]] = pair[1]
+    plugin_root = str(parsed.get("plugin_root") or "")
+    if plugin_root:
+        merged["CLAUDE_PLUGIN_ROOT"] = plugin_root
+    site = str(parsed.get("site") or "")
+    if site:
+        merged["SITE"] = site
+    outcome = str(parsed.get("outcome") or "")
+    if outcome:
+        merged["SUMMARY_OUTCOME"] = outcome
+    for key, env_key in (
+        ("validator_target_file", "_validator_target_file"),
+        ("validate_log_file", "VALIDATE_LOG_FILE"),
+        ("validate_defect_count", "VALIDATE_DEFECT_COUNT"),
+        ("validate_unsafe_token_count", "VALIDATE_UNSAFE_TOKEN_COUNT"),
+        ("validate_skipped_count", "VALIDATE_SKIPPED_COUNT"),
+    ):
+        value = str(parsed.get(key) or "")
+        if value:
+            merged[env_key] = value
+    return session_env.finalize_wrapper_env(merged)
+
+
+def _validator_require_plugin_root() -> int:
+    return session_env.require_plugin_root()
+
+
+def _validator_pause_save() -> int:
+    design_tmpdir = Path(os.environ.get("DESIGN_TMPDIR", ""))
+    args = ["--design-tmpdir", str(design_tmpdir), "--issue", os.environ.get("ISSUE_NUMBER", "")]
+    repo = os.environ.get("REPO", "")
+    if repo:
+        args.extend(["--repo", repo])
+    return design_pause.pause_save_main(args)
+
+
+def _capture_main(callable_obj, argv: list[str]) -> tuple[int, str]:
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc = callable_obj(argv)
+    return int(rc), buf.getvalue()
 
 
 @dataclass(frozen=True)
@@ -2017,6 +2138,211 @@ def auto_fix_plan_commands_main(argv: list[str]) -> int:
     emit_kv("FIXED_BY", fixed_by)
     emit_kv("FINAL_VALIDATE_STATUS", final_status)
     emit_kv("ORIGINAL_VALIDATE_LOG_FILE", str(original_log))
+    return 0
+
+
+def _parse_kv_stdout(text: str) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for line in text.splitlines():
+        if "=" in line:
+            key, value = line.split("=", 1)
+            out[key] = value
+    return out
+
+
+def _validator_operator_cancel_audit(*, forced: bool = False) -> None:
+    outcome = os.environ.get("SUMMARY_OUTCOME", "")
+    if not forced and not outcome.startswith("cancelled-"):
+        return
+    if _validator_require_plugin_root() != 0:
+        return
+    design_tmpdir = Path(os.environ.get("DESIGN_TMPDIR", ""))
+    if not design_tmpdir.is_dir():
+        return
+    sentinel = design_tmpdir / "design-failure-operator-action.env"
+    chat = design_tmpdir / "design-failure-operator-action-chat.md"
+    detail = design_tmpdir / "design-failure-validator-cancel-audit.log"
+    if sentinel.exists():
+        return
+    actual = outcome or "operator-action"
+    sentinel.write_text(f"DESIGN_FAILURE_OPERATOR_ACTION=true\nREASON=validator-operator-cancel\nOUTCOME={actual}\n", encoding="utf-8")
+    chat.write_text(
+        f"**ℹ /design auto-report skipped:** operator action or cancellation outcome `{actual}`.\n\n"  # noqa: RUF001
+        "No public larch bug was filed. The skip was recorded in the run log.\n",
+        encoding="utf-8",
+    )
+    detail.write_text(f"design validator autofix operator cancel: {actual}\n", encoding="utf-8")
+    subprocess.run(
+        [
+            sys.executable,
+            str(Path(os.environ["CLAUDE_PLUGIN_ROOT"]) / "python" / "cli.py"),
+            "run-log",
+            "append-failure",
+            "--log",
+            str(design_tmpdir / "execution-issues.md"),
+            "--site",
+            "design validator autofix",
+            "--tool",
+            "design-step-validator-autofix.sh",
+            "--exit-code",
+            "0",
+            "--category",
+            "Warnings",
+            "--output-file",
+            str(detail),
+            "--redact",
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+
+
+def _autofix_site_token(site: str) -> str:
+    if "Step 5c" in site:
+        return "step5c"
+    if "Gate B" in site or "Step 3.5" in site:
+        return "gate-b"
+    if "discussion-round2" in site:
+        return "discussion-round2"
+    if "Step 2b" in site:
+        return "step2b"
+    return "validator"
+
+
+def _record_validator_escalation(status: str, rc: int, log_file: str) -> None:
+    if status not in {"exhausted", "failed", "unavailable", "skipped-cycle-cap"}:
+        return
+    if _validator_require_plugin_root() != 0:
+        return
+    design_tmpdir = Path(os.environ.get("DESIGN_TMPDIR", ""))
+    if not design_tmpdir.is_dir():
+        return
+    args = [
+        sys.executable,
+        str(Path(os.environ["CLAUDE_PLUGIN_ROOT"]) / "python" / "cli.py"),
+        "stall-recovery",
+        "record-escalation",
+        "--profile",
+        "generic",
+        "--artifact-prefix",
+        "design-failure",
+        "--implement-tmpdir",
+        str(design_tmpdir),
+        "--site",
+        _autofix_site_token(os.environ.get("SITE", "")),
+        "--trigger",
+        status,
+        "--step",
+        "validator",
+        "--phase",
+        "validation",
+        "--dispatcher",
+        "design-step-validator-autofix",
+        "--exit-code",
+        str(rc),
+    ]
+    if log_file.startswith(str(design_tmpdir) + os.sep):
+        path = Path(log_file)
+        if path.is_file() and not path.is_symlink():
+            args.extend(["--failure-detail-log", log_file])
+    subprocess.run(
+        args,
+        stdout=(design_tmpdir / "validator-autofix-record-escalation.stdout.log").open("w", encoding="utf-8"),
+        stderr=(design_tmpdir / "validator-autofix-record-escalation.stderr.log").open("w", encoding="utf-8"),
+        check=False,
+    )
+
+
+def validator_autofix_main(argv: list[str]) -> int:
+    parsed, parse_rc = _parse_validator_wrapper_args(argv)
+    if parse_rc != 0:
+        return parse_rc
+    _rehydrate_validator_env(parsed)
+    design_tmpdir = Path(os.environ.get("DESIGN_TMPDIR", ""))
+    if (design_tmpdir / ".pause-requested").is_file():
+        return _validator_pause_save()
+    if parsed.get("operator_cancel") is True:
+        _validator_operator_cancel_audit(forced=True)
+        return 0
+    site = os.environ.get("SITE", "")
+    target = os.environ.get("_validator_target_file", "")  # noqa: SIM112
+    if not target:
+        target = str(design_tmpdir / ("composed-plan.md" if site == "design Step 5c" or site.startswith("design Step 5c ") else "plan.txt"))
+    site_key = re.sub(r"[^A-Za-z0-9._-]+", "_", site).strip("_") or "site"
+    target_key = re.sub(r"[^A-Za-z0-9._-]+", "_", Path(target).name).strip("_") or "target"
+    evidence_key = f"{os.environ.get('VALIDATE_DEFECT_COUNT','unknown')}-{os.environ.get('VALIDATE_UNSAFE_TOKEN_COUNT','unknown')}-{os.environ.get('VALIDATE_SKIPPED_COUNT','unknown')}"
+    validate_log = os.environ.get("VALIDATE_LOG_FILE", "")
+    validate_log_path = Path(validate_log) if validate_log else None
+    if validate_log_path is not None and validate_log_path.is_file() and not validate_log_path.is_symlink():
+        evidence_key = f"{evidence_key}-{_sha256_file(validate_log_path)}"
+    cycle_key = re.sub(r"[^A-Za-z0-9._-]+", "_", f"{site_key}-{target_key}-{evidence_key}").strip("_") or "site"
+    attempted = design_tmpdir / f".plan-command-autofix-{cycle_key}.attempted"
+    if attempted.exists():
+        autofix_rc = 0
+        autofix_out = "AUTOFIX_STATUS=skipped-cycle-cap\n"
+    else:
+        attempted.parent.mkdir(parents=True, exist_ok=True)
+        attempted.touch()
+        repo_root = subprocess.run(["git", "-C", str(Path.cwd()), "rev-parse", "--show-toplevel"], text=True, capture_output=True, check=False)
+        repo = repo_root.stdout.strip() if repo_root.returncode == 0 and repo_root.stdout.strip() else os.environ.get("CLAUDE_PLUGIN_ROOT", "")
+        autofix_rc, autofix_out = _capture_main(
+            auto_fix_plan_commands_main,
+            [
+                "--design-tmpdir",
+                str(design_tmpdir),
+                "--plan-file",
+                target,
+                "--repo-root",
+                repo,
+                "--codex-binary-found",
+                os.environ.get("CODEX_BINARY_FOUND", ""),
+                "--cursor-binary-found",
+                os.environ.get("CURSOR_BINARY_FOUND", ""),
+                "--site",
+                site,
+            ],
+        )
+    kv = _parse_kv_stdout(autofix_out)
+    status = kv.get("AUTOFIX_STATUS", "")
+    fixed_by = kv.get("FIXED_BY", "") or "unknown"
+    log_file = kv.get("ORIGINAL_VALIDATE_LOG_FILE", "") or str(design_tmpdir / "validate-plan-commands.log")
+    if status not in {"ok", "exhausted", "unavailable", "skipped-cycle-cap"}:
+        status = "failed"
+    if autofix_rc != 0:
+        status = "failed"
+        attempted.unlink(missing_ok=True)
+    if status == "ok" and _validator_require_plugin_root() == 0 and design_tmpdir.is_dir():
+        append = subprocess.run(
+            [
+                sys.executable,
+                str(Path(os.environ["CLAUDE_PLUGIN_ROOT"]) / "python" / "cli.py"),
+                "run-log",
+                "append-failure",
+                "--log",
+                str(design_tmpdir / "execution-issues.md"),
+                "--site",
+                site or "design validator autofix",
+                "--tool",
+                f"validate-plan-commands(auto-fixed:{fixed_by})",
+                "--exit-code",
+                "0",
+                "--category",
+                "Warnings",
+                "--output-file",
+                log_file,
+                "--redact",
+            ],
+            check=False,
+        )
+        if append.returncode != 0:
+            status = "failed"
+            attempted.unlink(missing_ok=True)
+    print(f"AUTOFIX_STATUS={status}")
+    print(f"FIXED_BY={fixed_by}")
+    print(f"ORIGINAL_VALIDATE_LOG_FILE={log_file}")
+    _record_validator_escalation(status, autofix_rc, log_file)
+    _validator_operator_cancel_audit()
     return 0
 
 
