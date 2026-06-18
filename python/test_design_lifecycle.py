@@ -604,3 +604,295 @@ def test_step1d5_collect_launch_failure_sentinel_idempotent(tmp_path: Path, monk
     assert (design / ".brainstorm-cursor-brainstorm-launch.failure.log.runlog-appended").is_file()
     assert design_lifecycle.step1d5_main(args) == 0
     assert append_calls == 1
+
+
+def test_step0_parse_rejects_rc3_validation_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+    def fake_parse(*_args: object, **_kwargs: object) -> tuple[int, dict[str, str], str]:
+        return (3, {"VALIDATION_ERROR": "bad flag", "POSITIONAL_KIND": "none"}, "")
+
+    monkeypatch.setattr(design_lifecycle, "_run_parse_argv", fake_parse)
+    with pytest.raises(SystemExit) as exc:
+        design_lifecycle.step0_parse_main(["--claude-pid", "123", "--plugin-root", str(CLI.parent.parent), "--"])
+    assert exc.value.code == 1
+    assert "unrecognized or disallowed public flag" in capsys.readouterr().err
+    assert not (home / ".cache" / "larch" / "sessions" / "step0-parsed-123.env").exists()
+
+
+def test_step0_parse_rejects_rc0_with_validation_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+    def fake_parse(*_args: object, **_kwargs: object) -> tuple[int, dict[str, str], str]:
+        return (0, {"VALIDATION_ERROR": "stale", "POSITIONAL_KIND": "none"}, "")
+
+    monkeypatch.setattr(design_lifecycle, "_run_parse_argv", fake_parse)
+    with pytest.raises(SystemExit) as exc:
+        design_lifecycle.step0_parse_main(["--claude-pid", "123", "--plugin-root", str(CLI.parent.parent), "--"])
+    assert exc.value.code == 1
+    assert "VALIDATION_ERROR but exited 0" in capsys.readouterr().err
+
+
+def test_step0_parse_rejects_invalid_positional_kind(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+    def fake_parse(*_args: object, **_kwargs: object) -> tuple[int, dict[str, str], str]:
+        return (0, {"POSITIONAL_KIND": "bogus", "POSITIONAL_VALUE": ""}, "")
+
+    monkeypatch.setattr(design_lifecycle, "_run_parse_argv", fake_parse)
+    with pytest.raises(SystemExit) as exc:
+        design_lifecycle.step0_parse_main(["--claude-pid", "123", "--plugin-root", str(CLI.parent.parent), "--"])
+    assert exc.value.code == 1
+    assert "invalid POSITIONAL_KIND" in capsys.readouterr().err
+
+
+def test_step0_abort_cleanup_appends_failure_and_cleans(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    env_path = tmp_path / "source-env.sh"
+    env_path.write_text(f"export DESIGN_TMPDIR={design}\nexport CLAUDE_PLUGIN_ROOT={CLI.parent.parent}\n", encoding="utf-8")
+    calls: list[str] = []
+
+    def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        joined = " ".join(cmd)
+        calls.append(joined)
+        if "append-failure" in joined:
+            (design / "execution-issues.md").write_text("### Warnings\n- degraded-tools-gate\n", encoding="utf-8")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    rc = design_lifecycle.step0_abort_cleanup_main(["--session-env-path", str(env_path), "--claude-pid", "123", "--plugin-root", str(CLI.parent.parent)])
+    assert rc == 0
+    assert "aborted by operator" in capsys.readouterr().out
+    assert any("append-failure" in call for call in calls)
+    assert any("cleanup-tmpdir" in call for call in calls)
+    assert (design / "execution-issues.md").is_file()
+
+
+def test_step0_ap_continue_writes_sentinels_before_pause(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / ".pause-requested").write_text("", encoding="utf-8")
+    env_path = _write_session_env(tmp_path, design, monkeypatch)
+
+    def fake_pause(_argv: list[str]) -> int:
+        completed = design / ".completed"
+        for name in ("step-1c", "step-1d", "step-1d.5"):
+            assert (completed / name).is_file(), f"missing sentinel {name} before pause"
+        return 5
+
+    monkeypatch.setattr(design_pause, "pause_save_main", fake_pause)
+    with pytest.raises(SystemExit) as exc:
+        design_lifecycle.step0_ap_continue_main(["--session-env-path", str(env_path), "--claude-pid", "123", "--plugin-root", str(CLI.parent.parent)])
+    assert exc.value.code == 5
+
+
+@pytest.mark.parametrize(
+    ("run_params", "expected"),
+    [
+        ('{"skip_approve_requested": true}', "true"),
+        ('{"skip_approve_requested": false}', "false"),
+        ("{}", "false"),
+        ("not-json", "false"),
+    ],
+)
+def test_step1d7_emits_skip_approve_requested(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    run_params: str,
+    expected: str,
+) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / "run-params.json").write_text(run_params + "\n", encoding="utf-8")
+    env_path = _write_session_env(tmp_path, design, monkeypatch)
+    buf = StringIO()
+    with redirect_stdout(buf):
+        rc = design_lifecycle.step1d7_main(["--session-env-path", str(env_path), "--claude-pid", "123", "--plugin-root", str(CLI.parent.parent)])
+    assert rc == 0
+    assert f"SKIP_APPROVE_REQUESTED={expected}" in buf.getvalue()
+
+
+def test_step0_session_ignores_degraded_gate_nonzero_rc(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    design = tmp_path / "design"
+    design.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+    def fake_setup(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(cmd, 0, "SESSION_TMPDIR=" + str(design) + "\nSESSION_ID=run-1\nCODEX_BINARY_FOUND=false\nCURSOR_BINARY_FOUND=false\nCODEX_PRESENT=false\nCURSOR_PRESENT=false\n", "")
+
+    def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        joined = " ".join(cmd)
+        if "session" in joined and "setup" in joined:
+            return fake_setup(cmd, **kwargs)
+        if "degraded-tools-gate" in joined:
+            return subprocess.CompletedProcess(cmd, 9, "", "argparse: bad flag")
+        if "write-design-env" in joined:
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(design_lifecycle, "_run_parse_argv", _fake_parse_none)
+
+    buf = StringIO()
+    with redirect_stdout(buf):
+        rc = design_lifecycle.step0_session_main(["--claude-pid", "123", "--plugin-root", str(CLI.parent.parent), "--"])
+    assert rc == 0
+    issues = (design / "execution-issues.md").read_text(encoding="utf-8")
+    assert "degraded-tools gate: subprocess exited 9" in issues
+
+
+def test_step1d5_collect_rejects_missing_paths(tmp_path: Path) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    env_path = _write_session_env(tmp_path, design)
+    rc = design_lifecycle.step1d5_main(["--session-env-path", str(env_path), "--claude-pid", "123", "--plugin-root", str(CLI.parent.parent), "--mode", "collect", "--"])
+    assert rc == 2
+
+
+def test_step1d5_collect_relays_per_slot_stdout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    env_path = _write_session_env(tmp_path, design)
+    framing = design / "cursor-brainstorm-output.txt"
+    scope = design / "codex-brainstorm-output.txt"
+    framing.write_text("framing text", encoding="utf-8")
+    scope.write_text("scope text", encoding="utf-8")
+    captured_paths: list[str] = []
+
+    def fake_collect(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        paths = [part for part in cmd if part.endswith(".txt")]
+        captured_paths.extend(paths)
+        stdout = "\n".join(f"COLLECTED:{Path(path).name}:{Path(path).read_text(encoding='utf-8')}" for path in paths)
+        return subprocess.CompletedProcess(cmd, 0, stdout + "\n", "")
+
+    def fake_checkpoint(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(cmd, 0, "STATUS=clean\n", "")
+
+    def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        joined = " ".join(cmd)
+        if "collect-results" in joined:
+            return fake_collect(cmd, **kwargs)
+        if "dirty-tree" in joined and "checkpoint" in joined:
+            return fake_checkpoint(cmd, **kwargs)
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    assert design_lifecycle.step1d5_main(
+        ["--session-env-path", str(env_path), "--claude-pid", "123", "--plugin-root", str(CLI.parent.parent), "--mode", "collect", "--", str(framing), str(scope)]
+    ) == 0
+    assert captured_paths == [str(framing), str(scope)]
+    out = capsys.readouterr().out
+    assert "COLLECTED:cursor-brainstorm-output.txt:framing text" in out
+    assert "COLLECTED:codex-brainstorm-output.txt:scope text" in out
+
+
+def test_step1d5_collect_records_nonzero_collector_failures(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    env_path = _write_session_env(tmp_path, design)
+    out_path = design / "cursor-brainstorm-output.txt"
+    out_path.write_text("collector input", encoding="utf-8")
+    append_calls: list[tuple[str, int | str]] = []
+
+    def fake_append(_plugin_root: Path, design_tmpdir: Path, _site: str, tool: str, exit_code: int | str, category: str, _output_file: Path) -> bool:
+        append_calls.append((tool, exit_code))
+        (design_tmpdir / "execution-issues.md").write_text(f"### {category}\n- {tool} exited {exit_code}\n", encoding="utf-8")
+        return True
+
+    def fake_collect(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(cmd, 23, "collector stdout fixture\n", "collector stderr fixture\n")
+
+    def fake_checkpoint(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(cmd, 0, "STATUS=clean\n", "")
+
+    def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        joined = " ".join(cmd)
+        if "collect-results" in joined:
+            return fake_collect(cmd, **kwargs)
+        if "dirty-tree" in joined and "checkpoint" in joined:
+            return fake_checkpoint(cmd, **kwargs)
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(design_lifecycle, "_append_failure", fake_append)
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    assert design_lifecycle.step1d5_main(
+        ["--session-env-path", str(env_path), "--claude-pid", "123", "--plugin-root", str(CLI.parent.parent), "--mode", "collect", "--", str(out_path)]
+    ) == 0
+    failure_log = (design / "brainstorm-collect.failure.log").read_text(encoding="utf-8")
+    assert "collector stdout fixture" in failure_log
+    assert "collector stderr fixture" in failure_log
+    assert append_calls == [("agent collect-results", 23)]
+    issues = (design / "execution-issues.md").read_text(encoding="utf-8")
+    assert "agent collect-results exited 23" in issues
+
+
+def test_step1d5_collect_merges_dirty_tree_sidecars(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    env_path = _write_session_env(tmp_path, design)
+    dirty_a = design / "cursor-brainstorm-output.txt"
+    dirty_b = design / "codex-brainstorm-output.txt"
+    dirty_a.write_text("", encoding="utf-8")
+    dirty_b.write_text("", encoding="utf-8")
+    dirty_a.with_name(dirty_a.name + ".dirty-tree").write_text("STATUS=clean\n", encoding="utf-8")
+    dirty_b.with_name(dirty_b.name + ".dirty-tree").write_text("STATUS=dirty\n", encoding="utf-8")
+
+    def fake_collect(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    def fake_checkpoint(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(cmd, 0, "STATUS=clean\n", "")
+
+    monkeypatch.setattr(subprocess, "run", lambda cmd, **kwargs: fake_collect(cmd, **kwargs) if "collect-results" in " ".join(cmd) else fake_checkpoint(cmd, **kwargs))
+    assert design_lifecycle.step1d5_main(
+        ["--session-env-path", str(env_path), "--claude-pid", "123", "--plugin-root", str(CLI.parent.parent), "--mode", "collect", "--", str(dirty_a), str(dirty_b)]
+    ) == 0
+    detected = (design / "dirty-tree-detected.env").read_text(encoding="utf-8")
+    assert "STAGE=brainstorm-collection" in detected
+    assert "RECOVERY_REQUIRED=true" in detected
+    assert "DIRTY_TREE_STATUS=dirty" in detected
+
+
+def test_step1d5_collect_records_clean_dirty_tree_checkpoint(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    env_path = _write_session_env(tmp_path, design)
+    clean_a = design / "cursor-brainstorm-output.txt"
+    clean_a.write_text("", encoding="utf-8")
+
+    def fake_collect(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    def fake_checkpoint(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(cmd, 0, "STATUS=clean\n", "")
+
+    monkeypatch.setattr(subprocess, "run", lambda cmd, **kwargs: fake_collect(cmd, **kwargs) if "collect-results" in " ".join(cmd) else fake_checkpoint(cmd, **kwargs))
+    assert design_lifecycle.step1d5_main(
+        ["--session-env-path", str(env_path), "--claude-pid", "123", "--plugin-root", str(CLI.parent.parent), "--mode", "collect", "--", str(clean_a)]
+    ) == 0
+    detected = (design / "dirty-tree-detected.env").read_text(encoding="utf-8")
+    assert "RECOVERY_REQUIRED=false" in detected
+    assert "DIRTY_TREE_STATUS=" not in detected
+
+
+def test_resolve_repo_parses_ssh_url_remote(monkeypatch: pytest.MonkeyPatch) -> None:
+    import proc as proc_module
+
+    def fake_run(argv: list[str], **_kwargs: object) -> object:
+        if argv[:2] == ["gh", "repo"]:
+            return type("R", (), {"returncode": 1, "stdout": "", "stderr": ""})()
+        if argv[:3] == ["git", "remote", "get-url"]:
+            return type("R", (), {"returncode": 0, "stdout": "ssh://git@github.com/org/repo.git\n", "stderr": ""})()
+        raise AssertionError(f"unexpected argv: {argv}")
+
+    monkeypatch.setattr(proc_module, "run", fake_run)
+    assert design_lifecycle.resolve_repo() == "org/repo"

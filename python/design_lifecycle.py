@@ -17,6 +17,8 @@ import tempfile
 from pathlib import Path
 
 import design_pause
+import gh
+import proc
 from collections.abc import Iterable, Mapping, Sequence
 
 _SUBPROCESS_RUN = subprocess.run
@@ -597,25 +599,60 @@ def write_bash_quoted_env(path: Path, data: Mapping[str, str]) -> None:
     path.write_text("".join(lines), encoding="utf-8")
 
 
+def _decode_bash_percent_q(value: str) -> str:
+    if value == "''":
+        return ""
+    if not value:
+        return ""
+    if value.startswith("$'") and value.endswith("'"):
+        inner = value[2:-1]
+        out: list[str] = []
+        i = 0
+        while i < len(inner):
+            ch = inner[i]
+            if ch != "\\" or i + 1 >= len(inner):
+                out.append(ch)
+                i += 1
+                continue
+            nxt = inner[i + 1]
+            escapes = {"n": "\n", "t": "\t", "r": "\r", "a": "\a", "b": "\b", "f": "\f", "v": "\v", "\\": "\\", "'": "'", '"': '"'}
+            if nxt in escapes:
+                out.append(escapes[nxt])
+                i += 2
+                continue
+            out.append(nxt)
+            i += 2
+        return "".join(out)
+    if value.startswith("'"):
+        out = []
+        i = 1
+        while i < len(value):
+            if value[i] != "'":
+                out.append(value[i])
+                i += 1
+                continue
+            if value.startswith("'\"'\"'", i):
+                out.append("'")
+                i += 5
+                continue
+            break
+        return "".join(out)
+    out = []
+    i = 0
+    while i < len(value):
+        if value[i] == "\\" and i + 1 < len(value):
+            out.append(value[i + 1])
+            i += 2
+        else:
+            out.append(value[i])
+            i += 1
+    return "".join(out)
+
+
 def _decode_shell_assignment_value(value: str) -> str:
     if value == "":
         return ""
-    proc = _SUBPROCESS_RUN(
-        ["bash", "-c", 'eval "v=$1"; printf "%s" "$v"', "_", value],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if proc.returncode == 0:
-        return proc.stdout
-    try:
-        parts = shlex.split("v=" + value, posix=True)
-    except ValueError:
-        return value
-    if not parts:
-        return ""
-    first = parts[0]
-    return first.split("=", 1)[1] if "=" in first else ""
+    return _decode_bash_percent_q(value)
 
 
 def load_bash_quoted_env(path: Path, allow_keys: Iterable[str]) -> dict[str, str]:
@@ -908,23 +945,17 @@ def step0_session_main(argv: Sequence[str]) -> int:
         print("DEGRADED_HARD_FAIL=true")
     if state["STEP0_STATUS"] == "needs-degraded-decision":
         print("DEGRADED_PROMPT_REQUIRED=true")
-    return gate.returncode
+    if gate.returncode != 0:
+        with contextlib.suppress(OSError):
+            with (design_path / "execution-issues.md").open("a", encoding="utf-8") as handle:
+                handle.write(f"- Step 0 degraded-tools gate: subprocess exited {gate.returncode}\n")
+                if gate.stderr.strip():
+                    handle.write(f"  stderr: {gate.stderr.strip()}\n")
+    return 0
 
 
 def resolve_repo() -> str:
-    gh = subprocess.run(["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"], capture_output=True, text=True, check=False)  # noqa: S607
-    if gh.returncode == 0 and gh.stdout.strip():
-        return gh.stdout.strip()
-    origin = subprocess.run(["git", "remote", "get-url", "origin"], capture_output=True, text=True, check=False)  # noqa: S607
-    url = origin.stdout.strip()
-    if not url:
-        return ""
-    url = url.removesuffix(".git")
-    if ":" in url and not url.startswith("http"):
-        tail = url.split(":", 1)[1]
-    else:
-        tail = url.rstrip("/").split("github.com/", 1)[-1]
-    return tail if re.match(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", tail) else ""
+    return gh.resolve_repo(proc) or ""
 
 
 def _read_json_issue(issue_number: str, repo: str) -> tuple[str, str, str]:
