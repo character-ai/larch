@@ -330,7 +330,7 @@ Default `2` (positive integer). `/design` Step 2b.5 compares the current plan an
 
 #### Per-vendor rates (`/implement` final summary)
 
-[`python/report_tokens_cost.py`](../python/report_tokens_cost.py) (used by [`scripts/render-run-summary.sh`](../scripts/render-run-summary.md)) computes USD estimates per lane:
+[`python/report_tokens_cost.py`](../python/report_tokens_cost.py) (used by [`python/cli.py render run-summary`](../python/pr_body.py)) computes USD estimates per lane:
 
 - **Claude bucket env vars**: `LARCH_CLAUDE_INPUT_RATE_PER_M`, `LARCH_CLAUDE_CACHE_READ_RATE_PER_M`, `LARCH_CLAUDE_CACHE_WRITE_5M_RATE_PER_M`, `LARCH_CLAUDE_CACHE_WRITE_1H_RATE_PER_M`, and `LARCH_CLAUDE_OUTPUT_RATE_PER_M`.
 - **Codex bucket env vars**: `LARCH_CODEX_INPUT_RATE_PER_M`, `LARCH_CODEX_CACHED_INPUT_RATE_PER_M`, and `LARCH_CODEX_OUTPUT_RATE_PER_M`.

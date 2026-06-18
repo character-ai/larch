@@ -16,7 +16,7 @@ issue-scoped rather than run-scoped, jointly written by `/design` (Architecture)
 and `/implement` (Code Flow). All other markers remain run-scoped.
 
 The `larch:final-summary` body is rich markdown produced by
-`scripts/render-run-summary.sh`: it opens with a `## /…` header and bullet lines,
+`python/cli.py render run-summary`: it opens with a `## /…` header and bullet lines,
 including optional `- Emergency: true` when `/implement --emergency` was
 requested, then emits the `<!-- larch:run-summary v=1 -->` sentinel **before** any optional
 note lines from `--note-lines-file` (sentinel is the last line of the

@@ -105,7 +105,7 @@ def compose_summary_bullets(
     plan_goals_file: str,
     cwd: str | None = None,
 ) -> str:
-    """Port compose-pr-summary.sh goal + test/cross-dir bullets."""
+    """Render PR summary goal + test/cross-dir bullets."""
     _ = runner
     if cwd is None:
         msg = f"plan-goals path escapes repo root: {plan_goals_file}"
@@ -428,8 +428,12 @@ def render_run_summary(**kwargs: object) -> str:
 
 def render_run_summary_main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cli.py render run-summary")
-    for name in ("skill", "outcome", "run-id", "mode", "workflow-path", "duration", "issue-number", "issue-url", "pr-number", "pr-url", "plan-review-line", "code-review-line", "code-added", "code-deleted", "logs-added", "logs-deleted", "oos-count", "oos-urls", "exec-issues", "warnings", "run-logs-path", "emergency-requested", "merge-downgraded"):
+    parser.add_argument("--skill", required=True, choices=("implement", "design"))
+    parser.add_argument("--outcome", required=True)
+    parser.add_argument("--run-id", required=True)
+    for name in ("mode", "workflow-path", "duration", "issue-number", "issue-url", "pr-number", "pr-url", "plan-review-line", "code-review-line", "code-added", "code-deleted", "logs-added", "logs-deleted", "oos-count", "oos-urls", "exec-issues", "warnings", "run-logs-path", "merge-downgraded"):
         parser.add_argument(f"--{name}")
+    parser.add_argument("--emergency-requested", choices=("true", "false"))
     parser.add_argument("--output-file")
     parser.add_argument("--note-lines-file")
     parser.add_argument("--print-stdout", action="store_true")

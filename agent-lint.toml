@@ -620,10 +620,10 @@ exclude = [
   # SKILL.md fences; sibling contract below.
   "scripts/phantom-probe-with-warn.sh",
   "scripts/phantom-probe-with-warn.md",
-  # scripts/render-findings-view.sh — ad-hoc operator CLI to reconstruct
+  # python/cli.py render findings-view — ad-hoc operator CLI to reconstruct
   # dropped markdown views from review-findings-full.jsonl; no automated caller.
-  "scripts/render-findings-view.sh",
-  "scripts/render-findings-view.md",
+  "python/cli.py render findings-view",
+  "python/rendering.py",
   # scripts/test-check-phantom-dirty.sh is the regression harness for
   # scripts/check-phantom-dirty.sh. Referenced only from Makefile
   # (test-check-phantom-dirty target) and its sibling contract.
@@ -700,12 +700,12 @@ exclude = [
   # same Makefile-only pattern as the other test-* harnesses above.
   "scripts/test-harness-shards-coverage.sh",
   "scripts/test-harness-shards-coverage.md",
-  # scripts/test-render-run-summary.sh is the offline harness for
-  # scripts/render-run-summary.sh. Referenced from Makefile
-  # (test-render-run-summary target) and scripts/test-render-run-summary.md
+  # python/test_pr_body.py is the offline harness for
+  # python/cli.py render run-summary. Referenced from Makefile
+  # (test-render-run-summary target) and python/test_pr_body.py
   # (sibling contract).
-  "scripts/test-render-run-summary.sh",
-  "scripts/test-render-run-summary.md",
+  "python/test_pr_body.py",
+  "python/test_pr_body.py",
   # python/cli.py session persist-run-flags. Referenced from Makefile
   # python/cli.py agent parse-codex-usage is invoked by Codex launchers through
   # $PLUGIN_ROOT path composition, which agent-lint's dead-script graph does
@@ -1010,8 +1010,8 @@ exclude = [
   # sibling contracts.
   "scripts/test-token-vendor-scrapers.sh",
   "scripts/test-render-cost-line-callsites.sh",
-  "scripts/test-render-run-summary-callsites.sh",
-  "scripts/test-render-run-summary-format.sh",
+  "python/test_pr_body.py",
+  "python/test_pr_body.py",
   # offline regression harnesses for the /implement timing-reporting PoC
   # (parallel to the token-reporting harnesses above). They are referenced
   # only from Makefile targets, docs/linting.md, and sibling contracts.
@@ -1095,9 +1095,9 @@ exclude = [
   # and python/test_release.py (sibling contract). G004 cannot discover
   # the Makefile edge.
   "python/test_release.py",
-  # #2714); dollar-primary summaries flow through render-run-summary.sh. G004
+  # #2714); dollar-primary summaries flow through python render run-summary. G004
   # would flag it without an explicit SKILL.md literal path.
-  "scripts/render-run-summary.sh",
+  "python/cli.py render run-summary",
   # tmpdir-corruption hardening (#1339): redact-tmpdir-paths.sh is invoked
   # via shell variable indirection ($REDACT_TMPDIR_HELPER) — agent-lint's
   # G004/dead-script rule scans SKILL.md/hooks.json/settings.json for
@@ -1212,44 +1212,44 @@ exclude = [
   "python/test_agents.py",
   # python/cli.py cleanup run. Not cited from SKILL.md by design
   # (contributors discover it by editing the sibling .sh).
-  # scripts/test-compose-pr-summary.sh is the regression harness for the
+  # python/test_pr_body.py is the regression harness for the
   # PR-body summary composer. It is referenced from Makefile and from the
   # primary script's sibling contract, but NOT from SKILL.md runtime prose —
   # same Makefile-only pattern as the other test-* harnesses above.
-  "scripts/compose-pr-summary.sh",
-  "scripts/test-compose-pr-summary.sh",
-  "scripts/test-compose-pr-summary.md",
+  "python/cli.py pr compose-summary",
+  "python/test_pr_body.py",
+  "python/test_pr_body.py",
   # line-count helper. It is referenced from Makefile and from the primary
   # script's sibling contract, but NOT from SKILL.md runtime prose — same
   # Makefile-only pattern as the other test-* harnesses above.
   # skills/implement/scripts/write-final-report.sh via a variable-expanded shell
   # edge that G004 dead-script reachability cannot discover.
-  # scripts/render-review-phase-detail.sh (issue #3774) renders the per-round
+  # python/cli.py progress render-phase-detail (issue #3774) renders the per-round
   # review-phase detail section. It is invoked at runtime from
   # skills/implement/scripts/write-final-report.sh and
   # python/design_summary.py (design render-final-summary) via subprocess
   # edges that G004 dead-script reachability cannot discover.
-  "scripts/render-review-phase-detail.sh",
-  "scripts/render-review-phase-detail.md",
-  # scripts/write-design-round-meta.sh synthesizes per-round round-meta.json and
+  "python/cli.py progress render-phase-detail",
+  "python/progress_report.py",
+  # python/cli.py progress write-design-round-meta synthesizes per-round round-meta.json and
   # panel-manifest.ndjson for /design plan-review. It is invoked at runtime only
   # from python/plan_review.py and
   # python/plan_review.py via variable-expanded
   # $PLUGIN_ROOT/scripts/... edges that G004 cannot discover.
-  "scripts/write-design-round-meta.sh",
-  "scripts/write-design-round-meta.md",
-  # scripts/write-implement-round-meta.sh synthesizes per-round round-meta.json
+  "python/cli.py progress write-design-round-meta",
+  "python/progress_report.py",
+  # python/cli.py progress write-implement-round-meta synthesizes per-round round-meta.json
   # for /implement code-review rounds. It is invoked at runtime only from
   # python/cli.py review-and-fix apply-findings via variable-expanded
   # $PLUGIN_ROOT/scripts/... edges that G004 cannot discover (issue #4038).
-  "scripts/write-implement-round-meta.sh",
-  "scripts/write-implement-round-meta.md",
-  # scripts/test-render-review-phase-detail.sh is the regression harness for the
+  "python/cli.py progress write-implement-round-meta",
+  "python/progress_report.py",
+  # python/test_progress_report.py is the regression harness for the
   # review-phase detail renderer. It is referenced from Makefile and from the
   # primary script's sibling contract, not from SKILL.md runtime prose — same
   # Makefile-only pattern as the other test-* harnesses above.
-  "scripts/test-render-review-phase-detail.sh",
-  "scripts/test-render-review-phase-detail.md",
+  "python/test_progress_report.py",
+  "python/test_progress_report.py",
   # scripts/test-python/cli.py diagrams upsert is the offline harness for the
   # shared larch:diagrams helper. It is referenced from Makefile and from the
   # helper's sibling contract rather than from SKILL.md runtime prose.

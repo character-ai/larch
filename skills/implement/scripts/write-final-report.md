@@ -2,7 +2,7 @@
 
 Builds the **rich markdown** final run summary, writes the committed `final-summary.md` (unless `--comment-only`), upserts the tracking-issue `larch:final-summary` comment, and optionally mirrors the body to the renderer print stream via `--print-stdout`. Top-chat visibility is owned by the `/implement` orchestrator, which emits the persisted `summary-final.md` body verbatim after the Bash call per `skills/implement/SKILL.md`.
 
-The markdown body is produced by [`scripts/render-run-summary.sh`](../../../scripts/render-run-summary.md): a `## /<skill> run <run-id> — <outcome>` heading, the normalized bullet list, then the `<!-- larch:run-summary v=1 -->` sentinel (see that script’s contract). The renderer emits `- **Outcome**:` for outcomes matching `bailed*`, `stalled`, `cancelled-*`, or `failed-*`, emits `- Emergency: true` when `run-flags.sh` has `EMERGENCY_REQUESTED=true`, and omits `- **PR**:` when the normalized display would be `N/A`. Optional per-lane USD lines use [`python/report_tokens_cost.py`](../../../python/report_tokens_cost.py) and the env vars documented under **Per-vendor rates** in [`docs/configuration-and-permissions.md`](../../../docs/configuration-and-permissions.md). The cost line includes the spawned-process Claude lane (`Claude (subprocess)` / machine name `claude_sub`, issue #3637): this script reads `.claude_sub.totals.total` and `BUCKETS_claude_sub` from `token-report.json` and forwards `--claude-sub-*` token flags to the renderer.
+The markdown body is produced by [`python/cli.py render run-summary`](../../../python/pr_body.py): a `## /<skill> run <run-id> — <outcome>` heading, the normalized bullet list, then the `<!-- larch:run-summary v=1 -->` sentinel (see that script’s contract). The renderer emits `- **Outcome**:` for outcomes matching `bailed*`, `stalled`, `cancelled-*`, or `failed-*`, emits `- Emergency: true` when `run-flags.sh` has `EMERGENCY_REQUESTED=true`, and omits `- **PR**:` when the normalized display would be `N/A`. Optional per-lane USD lines use [`python/report_tokens_cost.py`](../../../python/report_tokens_cost.py) and the env vars documented under **Per-vendor rates** in [`docs/configuration-and-permissions.md`](../../../docs/configuration-and-permissions.md). The cost line includes the spawned-process Claude lane (`Claude (subprocess)` / machine name `claude_sub`, issue #3637): this script reads `.claude_sub.totals.total` and `BUCKETS_claude_sub` from `token-report.json` and forwards `--claude-sub-*` token flags to the renderer.
 
 ## Implement outcome enum (`**Outcome**:` / `--outcome` display)
 
@@ -79,7 +79,7 @@ GitHub file-list calls during `--comment-only` refreshes.
 
 When `LINES_STATUS=ok` and all four counters are non-empty integers, both
 `run_body_render` branches forward `--code-added`, `--code-deleted`,
-`--logs-added`, and `--logs-deleted` to `render-run-summary.sh` using the
+`--logs-added`, and `--logs-deleted` to `python/cli.py render run-summary` using the
 Bash 3.2-safe `${line_args[@]+"${line_args[@]}"}` expansion. Otherwise the
 renderer omits those flags and the bullet shows `N/A`.
 
@@ -89,7 +89,7 @@ renderer omits those flags and the bullet shows `N/A`.
 ## Review phase detail (per-round, issue #3774)
 
 Before composing the note appendix, the script runs
-[`scripts/render-review-phase-detail.sh`](../../../scripts/render-review-phase-detail.md)
+`python/cli.py progress render-phase-detail`
 with `--rounds-root "$run_dir"`,
 `--findings-file "$run_dir/review-findings-full.jsonl"`,
 `--timing-ledger "$IMPLEMENT_TMPDIR/timing-ledger.tsv"`, the resolved
@@ -97,7 +97,7 @@ with `--rounds-root "$run_dir"`,
 when absent), and `--skill implement`, capturing the rendered **Review Phase
 Detail** markdown to a temp file. That file is `cat` into the note block (after
 the existing notes), so the section lands in the `--note-lines-file` appendix that
-`render-run-summary.sh` emits after the `<!-- larch:run-summary v=1 -->` sentinel.
+`python/cli.py render run-summary` emits after the `<!-- larch:run-summary v=1 -->` sentinel.
 
 The section is a per-round table (suggestions made/accepted, OOS proposed/accepted,
 time, cost, reviewers launched), a Total row, optional reviewer timing ASCII
@@ -110,7 +110,7 @@ plain text.
 The Cost column is the per-round **vendor** cost (Codex + Cursor + Claude subprocess),
 attributed by token-ledger timestamp window and priced via `python/report_tokens_cost.py`; it
 excludes main-agent Claude, so it is a distinct datum from (and less than) the
-single-source dollar-primary `- **Cost**:` line that `render-run-summary.sh` owns.
+single-source dollar-primary `- **Cost**:` line that `python/cli.py render run-summary` owns.
 
 The helper is best-effort. For a valid selected rounds root with zero completed
 rounds (for example `--self-review` runs, where Step 5 does no panel review), it
@@ -127,45 +127,15 @@ helper's `.md` for the `/design` contract.
 
 ## Token-data-missing primary path
 
-When no usable token JSON exists, or the JSON is unparseable / lacks
-`.claude.totals`, the primary `render-run-summary.sh` call passes
-`--cost-unavailable` and omits token count flags. The rendered body therefore
-uses `- **Cost**: N/A` instead of the misleading all-zero dollar line.
+When no usable token JSON exists, the JSON is unparseable, `.claude.totals` is
+absent, or every available token bucket is zero, the in-process writer passes
+`cost_unavailable` to the renderer. The rendered body therefore uses
+`- **Cost**: N/A` instead of a misleading all-zero dollar line.
 
-When `token-report.json` contains structurally present multi-vendor sections
-whose reported totals are all zero, the script treats the report as corrupt
-token data. Claude-only all-zero reports are exempt from that corrupt-data
-warning path as a legitimate single-agent/no-usage case, but still render
-`- **Cost**: N/A` because there is no positive token usage data. The
-corrupt-data path keeps the same
-`- **Cost**: N/A` rendering path, appends
-`**⚠ token-report.json appears corrupt; reporting Cost: N/A**` to the rendered
-summary body, and repeats that warning on stderr for operators.
+## Render failure behavior
 
-## Degraded render — two-stage fallback
-
-If `render-run-summary.sh` fails or produces an empty file, the script appends a
-Warning to `execution-issues.md`, refreshes warning counts, and re-invokes the
-renderer with `--cost-unavailable`. That Stage 1 fallback preserves the full
-renderer schema while forcing `- **Cost**: N/A`.
-
-If Stage 1 also fails, Stage 2 writes a self-composed markdown body that mirrors
-the renderer's `/implement` schema: conditional `- **Outcome**:` only for
-`bailed*` / `stalled` / `cancelled-*` / `failed-*`, conditional `- **PR**:` only
-when a PR display exists, always includes `- **Code review**:`, always includes
-`- **Cost**: N/A`, and ends with `<!-- larch:run-summary v=1 -->`. The body still
-surfaces through `--print-stdout`.
-
-Only this terminal self-composed fallback is marked as degraded. It places
-`**⚠ Degraded fallback — full renderer failed; warning recorded in execution
-issues.**` immediately after the `## /implement run ...` heading, with one
-blank line on each side, and emits
-`<!-- larch:final-summary-fallback v1 -->` directly after the existing
-`<!-- larch:run-summary v=1 -->` marker. The heading remains the first
-non-empty line for first-line outcome parsers. Exit code behavior is unchanged:
-the fallback still exits 0 after recording Warnings in `execution-issues.md`
-(published as `execution-issues.ndjson` in run logs).
-
-The Stage 1 `--cost-unavailable` retry is a real renderer body and must not
-carry the degraded-fallback banner or marker; the harness regression-guards
-that distinction.
+The wrapper delegates to `python/cli.py final-report write`, which renders the
+summary in process via `python/cli.py render run-summary` helpers. There is no
+separate Bash self-composed renderer fallback. Tracking-comment failures still
+return `STATUS=failed` after writing `summary-final.md`; repo-unavailable runs
+skip the tracking upsert and return `STATUS=ok` with an empty `COMMENT_URL`.

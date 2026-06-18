@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import json
 import re
-import shutil
 import subprocess
 from pathlib import Path
 
@@ -346,7 +345,6 @@ def test_write_final_report_keeps_compact_summary_when_review_detail_raises(
     assert "## Review Phase Detail" not in body
 
 
-@pytest.mark.skipif(shutil.which("jq") is None, reason="render-review-phase-detail.sh requires jq")
 def test_write_final_report_uses_run_log_root_for_review_detail(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -362,19 +360,9 @@ def test_write_final_report_uses_run_log_root_for_review_detail(
         '{"tally":{"ACCEPTED_COUNT":"2","REJECTED_COUNT":"0","EXONERATED_COUNT":"0","NEUTRAL_COUNT":"0","OOS_ACCEPTED_COUNT":"0","OOS_REJECTED_COUNT":"0"},"summary":{"panel":{"total_slot_count":2}}}\n',
         encoding="utf-8",
     )
-    original_run = subprocess.run
     upsert_bodies: list[str] = []
 
-    def fake_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-        if argv and argv[0].endswith("render-review-phase-detail.sh"):
-            timeout = kwargs.get("timeout")
-            return original_run(
-                argv,
-                text=True,
-                capture_output=True,
-                timeout=timeout if isinstance(timeout, (int, float)) else None,
-                check=False,
-            )
+    def fake_run(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
         if "tracking-issue" in argv and "upsert-summary" in argv:
             content_file = Path(argv[argv.index("--content-file") + 1])
             upsert_bodies.append(content_file.read_text(encoding="utf-8"))

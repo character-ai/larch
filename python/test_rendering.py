@@ -601,3 +601,36 @@ def test_render_voter_archetype_lens_blocks(tmp_path: Path, capsys: pytest.Captu
     assert "missing plan context is not an automatic NO" in plan
     pragmatic = _render_voter_text(tmp_path, capsys, "--archetype", "pragmatism-cost")
     assert "never trade correctness or security away for simplicity" in pragmatic
+
+
+def test_render_findings_view_filters_and_handles_missing_body(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / "review-findings-full.jsonl").write_text(
+        '{"outcome":"accepted","round_num":1,"prose_body":"accepted body"}\n'
+        '{"outcome":"rejected","round_num":2}\n'
+        '{"outcome":"out_of_scope","round_num":3,"prose_body":"oos body"}\n'
+        'not json\n',
+        encoding="utf-8",
+    )
+    assert rendering.render_findings_view_main([str(run_dir), "all"]) == 0
+    all_out = capsys.readouterr().out
+    assert "### FINDING (accepted) round-1" in all_out
+    assert "accepted body" in all_out
+    assert "### FINDING (rejected) round-2" in all_out
+    assert "(no prose body)" in all_out
+    assert "### FINDING (out_of_scope) round-3" in all_out
+    assert rendering.render_findings_view_main([str(run_dir), "oos"]) == 0
+    oos_out = capsys.readouterr().out
+    assert "out_of_scope" in oos_out
+    assert "accepted body" not in oos_out
+
+
+def test_render_findings_view_errors(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    assert rendering.render_findings_view_main([str(tmp_path), "all"]) == 1
+    assert "not found" in capsys.readouterr().err
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / "review-findings-full.jsonl").write_text("", encoding="utf-8")
+    assert rendering.render_findings_view_main([str(run_dir), "bad"]) == 1
+    assert "unknown view" in capsys.readouterr().err
