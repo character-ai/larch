@@ -614,7 +614,10 @@ case "${STEP3_REVIEW_LOOP_STATUS:-}" in
   panel-failed|panel-init-failed|tally-error|degraded-empty-collector|postplan-failed)
     if [[ ! -f "$DESIGN_TMPDIR/.step3-review-result.env" || -L "$DESIGN_TMPDIR/.step3-review-result.env" || ! -r "$DESIGN_TMPDIR/.step3-review-result.env" ]]; then
       larch_err "**⚠ Step 3: ${STEP3_REVIEW_LOOP_STATUS} without a persisted result env; synthesizing terminal result env so the Step 3 completion sentinel is written**"
-      _step3_review_write_result_env "${STEP3_REVIEW_LOOP_STATUS}" "${REASON:-result-env-missing-after-loop}" "$_step3_rounds_completed_dec"
+      # Best-effort, per the sentinel contract: a synthesis failure (e.g. mktemp)
+      # must not abort under set -e before the KV emission below, so the
+      # orchestrator still receives the terminal status on stdout.
+      _step3_review_write_result_env "${STEP3_REVIEW_LOOP_STATUS}" "${REASON:-result-env-missing-after-loop}" "$_step3_rounds_completed_dec" || true
     fi
     ;;
 esac
