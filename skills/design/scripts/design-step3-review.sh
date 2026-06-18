@@ -315,8 +315,74 @@ case $- in *m*) _step3_review_monitor_was_enabled=1 ;; esac
 _step3_review_monitor_enabled_by_wrapper=0
 
 _step3_review_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-# shellcheck source=skills/design/scripts/lib-step3-prelaunch-failure.sh
-. "$_step3_review_script_dir/lib-step3-prelaunch-failure.sh"
+
+_step3_review_write_prelaunch_failure() {
+  local _status="${1:-panel-init-failed}"
+  local _reason="${2:-prelaunch-failure}"
+  _status="${_status:-panel-init-failed}"
+  _reason="${_reason:-prelaunch-failure}"
+  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review prelaunch-failure \
+    --design-tmpdir "$DESIGN_TMPDIR" \
+    --reason "$_reason"
+}
+
+_step3_review_stage_panel_init_failed() {
+  :
+}
+
+# #4688 terminal-sentinel contract: the bash zero-coverage fallback that writes
+# .step3-review-result.env directly (not via python cli.py plan-review run) must
+# also write the hook-release sentinel pair, or the EXIT trap's current-pass
+# guard never fires and the poll guard waits out the dead-process race.
+_step3_review_write_terminal_sentinels() {
+  mkdir -p "$DESIGN_TMPDIR/.completed" 2>/dev/null || return 0
+  rm -f "$DESIGN_TMPDIR/.completed/step-3-terminal" "$DESIGN_TMPDIR/.step3-terminal-persisted-this-run" 2>/dev/null || true
+  : >"$DESIGN_TMPDIR/.completed/step-3-terminal" 2>/dev/null || true
+  : >"$DESIGN_TMPDIR/.step3-terminal-persisted-this-run" 2>/dev/null || true
+}
+
+_step3_review_write_result_env() {
+  local _status="${1:-panel-init-failed}"
+  local _reason="${2:-prelaunch-failure}"
+  local _rounds="${3:-0}"
+  local _result_env="$DESIGN_TMPDIR/.step3-review-result.env"
+  local _tmp=""
+  rm -f "$_result_env" 2>/dev/null || true
+  _tmp="$(mktemp "$DESIGN_TMPDIR/.step3-review-result.env.XXXXXX" 2>/dev/null || true)"
+  if [[ -n "$_tmp" ]]; then
+    if {
+      printf 'STEP3_REVIEW_LOOP_STATUS=%s\n' "$_status"
+      printf 'LOOP_STATUS=%s\n' "$_status"
+      printf 'REASON=%s\n' "$_reason"
+      printf 'TALLY_PLAN_REVIEW_STATUS=%s\n' "$_status"
+      printf '%s\n' 'STEP3_REVIEW_CAP_REACHED=false'
+      printf '%s\n' 'STEP3_REVIEW_ROUND_NUM='
+      printf '%s\n' 'ROUND_NUM='
+      printf 'ROUNDS_COMPLETED=%s\n' "$_rounds"
+      printf 'REVIEW_ROUND_COUNT=%s\n' "$_rounds"
+    } >"$_tmp"; then
+      mv "$_tmp" "$_result_env" 2>/dev/null || {
+        rm -f "$_tmp" "$_result_env" 2>/dev/null || true
+      }
+      if [[ -f "$_result_env" && ! -L "$_result_env" && -r "$_result_env" ]]; then
+        _step3_review_write_terminal_sentinels
+      fi
+    else
+      rm -f "$_tmp" "$_result_env" 2>/dev/null || true
+    fi
+  fi
+}
+
+_step3_review_zero_round_coverage_missing() {
+  local _rounds_dec="${1:-0}"
+  local _r1="$DESIGN_TMPDIR/plan-review/round-1"
+  if [[ "$_rounds_dec" -eq 0 ]]; then
+    return 0
+  fi
+  [[ -d "$_r1" ]] || return 0
+  [[ -z "$(find "$_r1" -mindepth 1 -maxdepth 1 -type f -print -quit 2>/dev/null)" ]] && return 0
+  return 1
+}
 
 # #4489: Guarantee the Step 3 completion sentinel on every terminal exit of this
 # background entrypoint. hook-bg-poll-guard.sh gates on .completed/step-3-terminal

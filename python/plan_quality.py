@@ -24,7 +24,6 @@ from collections.abc import Iterable
 
 import agents
 import design_pause
-import plan_review
 from issue_wire import emit_untrusted_file_block
 from logging_util import diagnostic, emit, emit_kv, quiet_init, reset_quiet_state
 from redact import redact_secrets_only
@@ -1204,9 +1203,29 @@ def _unreadable_marker(design_tmpdir: Path) -> Path:
 
 
 def _drift_baseline_write_once(design_tmpdir: Path, plan_lines: int, diff_lines: int) -> bool:
-    return (
-        plan_review.drift_baseline_write_once(design_tmpdir, str(plan_lines), str(diff_lines)) == 0
+    # Invoke the drift-baseline CLI verb instead of importing plan_review, to avoid the
+    # design_lifecycle -> plan_quality -> plan_review import cycle (#4632 adds
+    # plan_review -> design_lifecycle; main added design_lifecycle -> plan_quality).
+    cli_py = Path(__file__).resolve().parent / "cli.py"
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(cli_py),
+            "plan-review",
+            "drift-baseline",
+            "write-once",
+            "--design-tmpdir",
+            str(design_tmpdir),
+            "--plan-lines",
+            str(plan_lines),
+            "--diff-lines",
+            str(diff_lines),
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
     )
+    return proc.returncode == 0
 
 
 def _ratio_token(current: int, baseline: int) -> str:
