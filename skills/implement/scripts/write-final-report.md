@@ -6,7 +6,7 @@ The markdown body is produced by [`scripts/render-run-summary.sh`](../../../scri
 
 ## Implement outcome enum (`**Outcome**:` / `--outcome` display)
 
-These values are emitted by the shared `stall-recovery-report.sh normalize-outcome` helper. `write-final-report.sh` consumes that helper, and Step 18a.5 uses the same API for escalation-success reporting. The harness `test-write-final-report.sh` is expected to stay aligned with the helper.
+These values are emitted by the shared `python/cli.py stall-recovery normalize-outcome` helper. `write-final-report.sh` consumes that helper, and Step 18a.5 uses the same API for escalation-success reporting. The harness `test-write-final-report.sh` is expected to stay aligned with the helper.
 
 1. `stalled` — any observed `STALL_TRACKING=true` in ship-pr state, finalize state, or session env.
 2. `forked-dry-run` — `FORKED_TARGET=true`.

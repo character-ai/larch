@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import contextlib
 import gzip
 import os
 import re
@@ -21,6 +22,7 @@ from collections.abc import Callable, Sequence
 
 import logging_util
 import plan_review_tally
+import stall_recovery
 from session_env import validate_design_tmpdir
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -1312,41 +1314,26 @@ def step3_record_report_evidence(
     sentinel = tmpdir / f".step3-report-{status}.recorded"
     if sentinel.exists() or sentinel.is_symlink():
         return 0
-    helper = _REPO_ROOT / "skills" / "implement" / "scripts" / "stall-recovery-report.sh"
-    if not helper.exists():
-        return 0
     try:
         tmpdir.mkdir(parents=True, exist_ok=True)
         stdout = tmpdir / f"step3-record-escalation-{status}.stdout.log"
         stderr = tmpdir / f"step3-record-escalation-{status}.stderr.log"
+        ns = argparse.Namespace(
+            implement_tmpdir=str(tmpdir),
+            artifact_prefix="design-failure",
+            profile="generic",
+            site="step3-review",
+            trigger=status,
+            step="step3",
+            phase=phase,
+            dispatcher="design-step3-review",
+            exit_code="unknown",
+            failure_detail_log="",
+        )
         with stdout.open("w", encoding="utf-8") as out, stderr.open("w", encoding="utf-8") as err:
-            proc = subprocess.run(
-                [
-                    str(helper),
-                    "--profile",
-                    "generic",
-                    "--artifact-prefix",
-                    "design-failure",
-                    "--implement-tmpdir",
-                    str(tmpdir),
-                    "record-escalation",
-                    "--site",
-                    "step3-review",
-                    "--trigger",
-                    status,
-                    "--step",
-                    "step3",
-                    "--phase",
-                    phase,
-                    "--dispatcher",
-                    "design-step3-review",
-                ],
-                cwd=str(_REPO_ROOT),
-                stdout=out,
-                stderr=err,
-                check=False,
-            )
-        if proc.returncode == 0:
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                rc = stall_recovery.record_escalation(ns)
+        if rc == 0:
             sentinel.touch()
             return 0
     except OSError:

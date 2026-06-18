@@ -94,7 +94,7 @@ CI_DECIDE_BAIL_REASON_TOKENS: Final[tuple[str, ...]] = (
 # Step 5 lint-fix-loop terminal bail tokens. Single source of truth for the
 # render-safe set below, the python/stall_recovery._classify_text lint-fix-bail-token
 # check, and the bash safe_bail_reason_value() allowlist (kept in sync via
-# scripts/stall-recovery-report.sh lint_runtime_bail_tokens).
+# scripts/python/cli.py stall-recovery lint_runtime_bail_tokens).
 LINT_FIX_BAIL_REASON_TOKENS: Final[tuple[str, ...]] = (
     "lint-fix-failed",
     "lint-fix-attempt-cap",

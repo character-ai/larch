@@ -211,15 +211,32 @@ def test_retry_policy_lint_failure_cap(capsys: pytest.CaptureFixture[str]) -> No
     assert "MAX_ATTEMPTS=8" in capsys.readouterr().out
 
 
-def test_record_attempt_writes_count(tmp_path: Path) -> None:
-    rc = stall_recovery.record_attempt_main([
+def test_record_attempt_appends_history(tmp_path: Path) -> None:
+    first = stall_recovery.record_attempt_main([
         "--implement-tmpdir", str(tmp_path),
         "--class", "transient-infra",
         "--signature", "abc",
         "--outcome", "failed",
     ])
-    assert rc == 0
-    assert "attempt_count=1" in (tmp_path / "stall-recovery-attempts.env").read_text(encoding="utf-8")
+    second = stall_recovery.record_attempt_main([
+        "--implement-tmpdir", str(tmp_path),
+        "--class", "lint-failure",
+        "--signature", "def",
+        "--resume-hint", "step5-review",
+        "--outcome", "success",
+    ])
+
+    assert first == 0
+    assert second == 0
+    text = (tmp_path / "stall-recovery-attempts.env").read_text(encoding="utf-8")
+    assert "attempt_count=2" in text
+    assert "attempt.1.class=transient-infra" in text
+    assert "attempt.1.signature=abc" in text
+    assert "attempt.2.class=lint-failure" in text
+    assert "attempt.2.signature=def" in text
+    assert "attempt.2.resume_hint=step5-review" in text
+    assert "attempt.2.outcome=success" in text
+    assert "last_signature=def" in text
 
 
 def test_validate_tier_b_public_file_rejects_sensitive_token(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -343,6 +360,42 @@ def test_classify_design_state_file_merge(tmp_path: Path, capsys: pytest.Capture
     out = capsys.readouterr().out
     assert "STALL_TRACKING=true" in out
     assert "MATCHED_CLASSIFIER_PATTERN=" in out
+    assert (tmp_path / "design-failure-classification.env").is_file()
+
+
+def test_classify_generic_terminal_state_matches_design_contract(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    primary = tmp_path / "design-failure-terminal-state.env"
+    _ = primary.write_text(
+        "DESIGN_FAILURE_VERSION=1\n"
+        "DESIGN_FAILURE_KIND=terminal\n"
+        "FAILURE_OUTCOME=failed-judge-panel\n"
+        "STALL_STEP=judge-panel\n"
+        "PHASE=judge-panel\n"
+        "SITE=decompose-panel\n"
+        "TRIGGER=decompose-panel-retry-exhausted\n"
+        "BAIL_REASON=decompose-panel-retry-exhausted\n"
+        "EXIT_CODE=1\n"
+        "FAILURE_DETAIL_LOG=\n"
+        "SOURCE_SCRIPT=split-path\n",
+        encoding="utf-8",
+    )
+
+    rc = stall_recovery.classify_main([
+        "--implement-tmpdir", str(tmp_path),
+        "--profile", "generic",
+        "--artifact-prefix", "design-failure",
+        "--primary-state-file", str(primary),
+    ])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "STALL_TRACKING=true" in out
+    assert "RESUME_HINT=none" in out
+    assert "STALL_STEP=judge-panel" in out
+    assert "PHASE=judge-panel" in out
+    assert "BAIL_REASON=decompose-panel-retry-exhausted" in out
+    assert "DISPATCHER=split-path" in out
+    assert "CLASSIFICATION_FILE=" in out
     assert (tmp_path / "design-failure-classification.env").is_file()
 
 

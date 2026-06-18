@@ -19,4 +19,4 @@ At the `fix_attempts >= 10` cap, `ci-decide.sh` emits `ACTION=bail` with **`BAIL
 
 ## Report-safe bail tokens
 
-`ci-decide.sh` emits report-safe bail tokens for Tier B parity: `ci-status-error`, `ci-timeout`, `ci-too-many-rebases`, and `fix-attempts-exhausted`. `stall-recovery-report.sh lint` keeps those tokens aligned with the Tier B bail-token union used by report rendering.
+`ci-decide.sh` emits report-safe bail tokens for Tier B parity: `ci-status-error`, `ci-timeout`, `ci-too-many-rebases`, and `fix-attempts-exhausted`. `python/cli.py stall-recovery lint` keeps those tokens aligned with the Tier B bail-token union used by report rendering.

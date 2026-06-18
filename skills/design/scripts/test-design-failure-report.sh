@@ -170,10 +170,9 @@ done
 
 assert_sensitive_leak_blocked() {
   local label=$1 leak_file=$2 marker=$3
-  local d consumer report
+  local d consumer
   d=$(mktemp -d)
   consumer=$(mktemp -d)
-  report="$ROOT/skills/implement/scripts/stall-recovery-report.sh"
   stage_terminal "$d" failed-clarify clarify clarify-loop clarify-loop failed clarify-hard-halt clarify-loop
   printf '%s\n' "$marker" >"$d/$leak_file"
   : >"$d/design-failure-classification.seed.env"
@@ -186,8 +185,8 @@ summary=bounded summary includes $marker
 Bounded root cause only.
 EOF2
   cp "$d/design-failure-root-cause.md" "$d/design-failure-bounded-root-cause.md"
-  if CLAUDE_PROJECT_DIR="$consumer" "$report" --profile generic --artifact-prefix design-failure \
-    --implement-tmpdir "$d" populate-sensitive-corpus \
+  if CLAUDE_PROJECT_DIR="$consumer" python3 "$ROOT/python/cli.py" stall-recovery populate-sensitive-corpus --profile generic --artifact-prefix design-failure \
+    --implement-tmpdir "$d" \
     --sensitive-corpus-file "$d/design-failure-sensitive-corpus.env" \
     --classification-file "$d/design-failure-classification.seed.env" \
     --attempts-file "$d/design-failure-attempts.env" >/dev/null 2>"$d/populate.stderr"; then
@@ -195,9 +194,9 @@ EOF2
   else
     fail "$label: populate-sensitive-corpus failed"
   fi
-  if CLAUDE_PROJECT_DIR="$consumer" "$report" --profile generic --artifact-prefix design-failure \
+  if CLAUDE_PROJECT_DIR="$consumer" python3 "$ROOT/python/cli.py" stall-recovery compose-report --profile generic --artifact-prefix design-failure \
     --implement-tmpdir "$d" --primary-state-file "$d/design-failure-terminal-state.env" \
-    compose-report --report-kind terminal-failure --surface chat-print \
+    --report-kind terminal-failure --surface chat-print \
     --classification-file "$d/design-failure-classification.seed.env" \
     --attempts-file "$d/design-failure-attempts.env" \
     --root-cause-file "$d/design-failure-root-cause.md" \

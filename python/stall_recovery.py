@@ -22,6 +22,7 @@ ALLOWLIST_TABLE_COLUMNS = 4
 RETRY_POLICY_TABLE_COLUMNS = 3
 CONTROL_CHAR_ORDINAL_LIMIT = 32
 SAFE_SMALL_INTEGER_DIGITS = 4
+MAX_OPTIONAL_EVIDENCE_BYTES = 65_536
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _DEFAULT_CLASSIFICATION_FILE = "stall-recovery-classification.env"
@@ -159,6 +160,38 @@ def write_kvs(path: Path, values: Mapping[str, object]) -> None:
     tmp.replace(path)
 
 
+def _latest_attempt_signature(path: Path) -> str:
+    if not path.is_file():
+        return ""
+    count = read_kv(path, "attempt_count", "0")
+    if not count.isdigit() or count == "0":
+        return ""
+    return read_kv(path, f"attempt.{count}.signature", "") or read_kv(path, "last_signature", "")
+
+
+def _safe_matched_pattern_value(value: str) -> str:
+    allowed = {
+        "no-stall", "no-match", "step-contract", "terminal-step", "rebase-transient",
+        "protected-path-bail-token", "submodule-restricted-bail-token", "terminal-bail",
+        "recovery-out-of-scope", "test-output", "lint-output", "dispatch-output",
+        "dispatch-bail-token", "transient-output", "ci-fix-exhausted-with-detail",
+        "same-cause-repeat", "fallback", "bail-token", "lint-fix-bail-token",
+    }
+    return value if value in allowed else "redacted"
+
+
+
+def _read_optional_evidence(path: Path) -> str:
+    if not path.exists() or path.is_symlink() or not path.is_file():
+        return ""
+    try:
+        if path.stat().st_size > MAX_OPTIONAL_EVIDENCE_BYTES:
+            return ""
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
 def _read_state_file(path: Path) -> dict[str, str]:
     out: dict[str, str] = {}
     if path.is_file():
@@ -229,6 +262,10 @@ def _classify_text(text: str, bail: str, step: str, phase: str, *, detail_log_va
 def classify(args: argparse.Namespace) -> int:
     tmpdir = Path(args.implement_tmpdir)
     primary_state_file = getattr(args, "primary_state_file", "") or ""
+    profile = getattr(args, "profile", "implement") or "implement"
+    if profile == "generic" and primary_state_file:
+        return _classify_generic_from_terminal_state(args, tmpdir, Path(primary_state_file))
+
     finalize_state_file = getattr(args, "finalize_state_file", "") or ""
     session_env_file = getattr(args, "session_env_file", "") or ""
     st = _merged_state(
@@ -257,8 +294,7 @@ def classify(args: argparse.Namespace) -> int:
     if not detail_log_valid:
         for name in ("ship-pr-state.sh", "finalize-state.sh", "session-env.sh"):
             state_file = tmpdir / name
-            if state_file.is_file():
-                evidence = f"{evidence}\n{state_file.read_text(encoding='utf-8', errors='replace')}"
+            evidence = f"{evidence}\n{_read_optional_evidence(state_file)}"
     if not any_stall:
         klass, hint, pattern = ("unrecoverable", "none", "no-stall")
     else:
@@ -268,10 +304,13 @@ def classify(args: argparse.Namespace) -> int:
         f"class={klass}\nhint={hint}\nstep={step}\nphase={phase}\nbail={bail}\nevidence={evidence_digest}\n".encode(),
     ).hexdigest()
     attempts = Path(args.attempts_file) if args.attempts_file else tmpdir / _DEFAULT_ATTEMPTS_FILE
-    if attempts.is_file() and read_kv(attempts, "last_signature") == signature and read_kv(attempts, "last_outcome") == "failed":
+    if attempts.is_file() and klass not in {"contract-failure", "unrecoverable"} and _latest_attempt_signature(attempts) == signature:
         klass = "same-cause-repeat"
         hint = "none"
+        pattern = "same-cause-repeat"
     classification_file = _artifact_path(tmpdir, _DEFAULT_CLASSIFICATION_FILE, getattr(args, "artifact_prefix", "") or "")
+    raw_exit_code = args.exit_code or st.get("EXIT_CODE", "unknown")
+    exit_code = raw_exit_code if re.fullmatch(r"[0-9]+|unknown", raw_exit_code or "") else "unknown"
     values = {
         "FAILURE_CLASS": klass,
         "FAILURE_SIGNATURE": signature,
@@ -279,11 +318,11 @@ def classify(args: argparse.Namespace) -> int:
         "STALL_STEP": step,
         "PHASE": phase,
         "STALL_TRACKING": "true" if any_stall else "false",
-        "BAIL_REASON": bail,
+        "BAIL_REASON": _render_safe_bail_reason_value(bail, generic=False),
         "BAIL_REASON_RAW": bail_raw,
         "FAILURE_DETAIL_LOG": args.failure_detail_log if detail_log_valid else "",
-        "EXIT_CODE": args.exit_code or st.get("EXIT_CODE", "unknown"),
-        "MATCHED_CLASSIFIER_PATTERN": pattern,
+        "EXIT_CODE": exit_code,
+        "MATCHED_CLASSIFIER_PATTERN": _safe_matched_pattern_value(pattern),
         "DISPATCHER": args.dispatcher or st.get("DISPATCHER", "") or st.get("CODER_TOOL", ""),
     }
     for k, v in values.items():
@@ -293,18 +332,121 @@ def classify(args: argparse.Namespace) -> int:
     return 0
 
 
+def _classify_generic_from_terminal_state(args: argparse.Namespace, tmpdir: Path, state_file: Path) -> int:
+    prefix = getattr(args, "artifact_prefix", "") or ""
+    found = _validated_terminal_state_values(tmpdir, state_file, generic=True)
+    if found is None:
+        emit("VALID", "false")
+        return 1
+    stall_step = found.get("STALL_STEP", "")
+    phase = found.get("PHASE", "")
+    bail_reason = found.get("BAIL_REASON", "")
+    exit_code = found.get("EXIT_CODE", "")
+    source_script = found.get("SOURCE_SCRIPT", "")
+    detail_log = found.get("FAILURE_DETAIL_LOG", "")
+    evidence = ""
+    failure_detail_log_value = ""
+    detail_log_valid = False
+    if detail_log:
+        detail_path = Path(detail_log)
+        if _validate_tmpdir_local_file(tmpdir, detail_path):
+            evidence = detail_path.read_text(encoding="utf-8", errors="replace")[:MAX_OPTIONAL_EVIDENCE_BYTES]
+            failure_detail_log_value = detail_log
+            detail_log_valid = True
+    if not detail_log_valid:
+        evidence = _read_optional_evidence(state_file)
+    klass, _hint, pattern = _classify_text(evidence, bail_reason, stall_step, phase, detail_log_valid=detail_log_valid)
+    resume_hint = "none"
+    evidence_digest = hashlib.sha256(evidence[:2048].encode()).hexdigest()[:16] if evidence else ""
+    skill_label = _report_skill_label("generic", prefix)
+    signature = hashlib.sha256(
+        (
+            f"profile=generic\nskill={skill_label}\nclass={klass}\nhint={resume_hint}\n"
+            f"step={stall_step}\nphase={phase}\nbail={bail_reason}\nevidence={evidence_digest}\n"
+        ).encode(),
+    ).hexdigest()
+    attempts = Path(args.attempts_file) if args.attempts_file else _artifact_path(tmpdir, _DEFAULT_ATTEMPTS_FILE, prefix)
+    if attempts.is_file() and klass not in {"contract-failure", "unrecoverable"} and _latest_attempt_signature(attempts) == signature:
+        klass = "same-cause-repeat"
+        pattern = "same-cause-repeat"
+    exit_code = exit_code if re.fullmatch(r"[0-9]+|unknown", exit_code or "") else "unknown"
+    values = {
+        "FAILURE_CLASS": klass,
+        "FAILURE_SIGNATURE": signature,
+        "RESUME_HINT": resume_hint,
+        "STALL_STEP": _safe_step_value(stall_step),
+        "PHASE": _safe_phase_value(phase),
+        "STALL_TRACKING": "true",
+        "BAIL_REASON": _render_safe_bail_reason_value(bail_reason, generic=True),
+        "BAIL_REASON_RAW": bail_reason,
+        "FAILURE_DETAIL_LOG": failure_detail_log_value,
+        "EXIT_CODE": exit_code,
+        "MATCHED_CLASSIFIER_PATTERN": _safe_matched_pattern_value(pattern),
+        "DISPATCHER": _render_safe_source_script_value(source_script, generic=True),
+    }
+    classification_file = _artifact_path(tmpdir, _DEFAULT_CLASSIFICATION_FILE, prefix)
+    for key, value in values.items():
+        emit(key, value)
+    write_kvs(classification_file, values)
+    emit("CLASSIFICATION_FILE", classification_file)
+    return 0
+
+
 def init_attempts(args: argparse.Namespace) -> int:
-    path = Path(args.attempts_file or Path(args.implement_tmpdir) / "stall-recovery-attempts.env")
+    tmpdir = Path(args.implement_tmpdir)
+    path = Path(args.attempts_file) if args.attempts_file else tmpdir / "stall-recovery-attempts.env"
+    if not _validate_tmpdir_write_path(tmpdir, path):
+        print("stall-recovery: --attempts-file outside implement tmpdir", file=sys.stderr)
+        return 1
     if not path.exists():
         write_kvs(path, {"version": 1, "created_utc": datetime.now(UTC).isoformat(), "attempt_count": 0})
     return 0
 
 
 def record_attempt(args: argparse.Namespace) -> int:
-    path = Path(args.attempts_file or Path(args.implement_tmpdir) / "stall-recovery-attempts.env")
-    count = int(read_kv(path, "attempt_count", "0") or 0) + 1
-    values = {"version": 1, "created_utc": read_kv(path, "created_utc", datetime.now(UTC).isoformat()), "attempt_count": count, "last_class": args.failure_class, "last_signature": args.signature, "last_resume_hint": args.resume_hint, "last_outcome": args.outcome}
-    write_kvs(path, values)
+    tmpdir = Path(args.implement_tmpdir)
+    path = Path(args.attempts_file) if args.attempts_file else tmpdir / "stall-recovery-attempts.env"
+    if not _validate_tmpdir_write_path(tmpdir, path):
+        print("stall-recovery: --attempts-file outside implement tmpdir", file=sys.stderr)
+        return 1
+    now = datetime.now(UTC).isoformat()
+    if path.exists():
+        raw_count = read_kv(path, "attempt_count", "0")
+        if not raw_count.isdigit():
+            print("stall-recovery: attempt_count is malformed", file=sys.stderr)
+            return 1
+        count = int(raw_count)
+        text = path.read_text(encoding="utf-8", errors="replace")
+        lines: list[str] = []
+        replaced = False
+        for line in text.splitlines():
+            if line.startswith("attempt_count="):
+                lines.append(f"attempt_count={count + 1}")
+                replaced = True
+            else:
+                lines.append(line)
+        if not replaced:
+            lines.append(f"attempt_count={count + 1}")
+    else:
+        count = 0
+        lines = ["version=1", f"created_utc={now}", "attempt_count=1"]
+    next_count = count + 1
+    lines.extend([
+        f"attempt.{next_count}.class={args.failure_class}",
+        f"attempt.{next_count}.signature={args.signature}",
+        f"attempt.{next_count}.resume_hint={args.resume_hint}",
+        f"attempt.{next_count}.outcome={args.outcome}",
+        f"attempt.{next_count}.utc={now}",
+        f"last_class={args.failure_class}",
+        f"last_signature={args.signature}",
+        f"last_resume_hint={args.resume_hint}",
+        f"last_outcome={args.outcome}",
+    ])
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text("\n".join(lines).rstrip("\n") + "\n", encoding="utf-8")
+    tmp.replace(path)
+    emit("ATTEMPT_COUNT", next_count)
     return 0
 
 
@@ -769,6 +911,18 @@ def _safe_source_script_value(value: str, *, generic: bool) -> bool:
     return generic and value in _GENERIC_SOURCE_SCRIPTS
 
 
+def _render_safe_bail_reason_value(value: str, *, generic: bool) -> str:
+    if not value:
+        return ""
+    return value if _safe_bail_reason_value(value, generic=generic) else "redacted"
+
+
+def _render_safe_source_script_value(value: str, *, generic: bool) -> str:
+    if not value:
+        return "unknown"
+    return value if _safe_source_script_value(value, generic=generic) else "redacted"
+
+
 def _terminal_state_value_valid(key: str, value: str, tmpdir: Path, *, generic: bool) -> bool:
     if key == "DESIGN_FAILURE_VERSION":
         return value == "1"
@@ -801,49 +955,45 @@ def _terminal_state_value_valid(key: str, value: str, tmpdir: Path, *, generic: 
     return False
 
 
-def validate_terminal_state(args: argparse.Namespace) -> int:
-    tmpdir = Path(args.implement_tmpdir)
-    profile = getattr(args, "profile", "implement") or "implement"
-    generic = profile == "generic"
-    if not tmpdir.is_dir():
-        emit("VALID", "false")
-        return 1
-    state_file = Path(getattr(args, "primary_state_file", None) or tmpdir / "design-failure-terminal-state.env")
-    if not state_file.is_file():
-        emit("VALID", "false")
-        return 1
+def _validated_terminal_state_values(tmpdir: Path, state_file: Path, *, generic: bool) -> dict[str, str] | None:
+    if not tmpdir.is_dir() or not state_file.is_file():
+        return None
     found: dict[str, str] = {}
     for raw in state_file.read_text(encoding="utf-8", errors="replace").splitlines():
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
         if "=" not in line:
-            emit("VALID", "false")
-            return 1
+            return None
         k, v = line.split("=", 1)
         if k not in _TERMINAL_STATE_ALLOWED_KEYS:
-            emit("VALID", "false")
-            return 1
+            return None
         found[k] = v
     for required in _TERMINAL_STATE_REQUIRED_KEYS:
         if required not in found:
-            emit("VALID", "false")
-            return 1
+            return None
         if required != "FAILURE_DETAIL_LOG" and not found[required]:
-            emit("VALID", "false")
-            return 1
+            return None
     for key, value in found.items():
         if key == "FAILURE_DETAIL_LOG":
             if not _terminal_state_value_valid(key, value, tmpdir, generic=generic):
-                emit("VALID", "false")
-                return 1
+                return None
             continue
         if _reject_rawish_terminal_value(value):
-            emit("VALID", "false")
-            return 1
+            return None
         if not _terminal_state_value_valid(key, value, tmpdir, generic=generic):
-            emit("VALID", "false")
-            return 1
+            return None
+    return found
+
+
+def validate_terminal_state(args: argparse.Namespace) -> int:
+    tmpdir = Path(args.implement_tmpdir)
+    profile = getattr(args, "profile", "implement") or "implement"
+    generic = profile == "generic"
+    state_file = Path(getattr(args, "primary_state_file", None) or tmpdir / "design-failure-terminal-state.env")
+    if _validated_terminal_state_values(tmpdir, state_file, generic=generic) is None:
+        emit("VALID", "false")
+        return 1
     emit("VALID", "true")
     return 0
 
@@ -1334,7 +1484,7 @@ def _safe_simple_token(value: str, *, fallback: str = "redacted") -> str:
 def _read_source_env_export(path: Path, key: str) -> str:
     """Read an ``export KEY=value`` assignment from a shell source-env file.
 
-    Mirrors stall-recovery-report.sh ``source_env_export_get``: only honors a
+    Mirrors the retired stall-recovery report helper ``source_env_export_get``: only honors a
     line whose first token is ``export``, strips matching surrounding single or
     double quotes, and refuses to follow symlinks.
     """
@@ -1708,7 +1858,7 @@ def _retry_policy_lines() -> list[str]:
 
 
 def _doc_allowlist_lines() -> list[str]:
-    contract = _REPO_ROOT / "skills" / "implement" / "scripts" / "stall-recovery-report.md"
+    contract = _REPO_ROOT / "python" / "stall-recovery-report.md"
     if not contract.is_file():
         return []
     lines: list[str] = []
@@ -1728,7 +1878,7 @@ def _doc_allowlist_lines() -> list[str]:
 
 
 def _doc_retry_policy_lines() -> list[str]:
-    contract = _REPO_ROOT / "skills" / "implement" / "scripts" / "stall-recovery-report.md"
+    contract = _REPO_ROOT / "python" / "stall-recovery-report.md"
     if not contract.is_file():
         return []
     lines: list[str] = []
@@ -1751,7 +1901,7 @@ def _doc_retry_policy_lines() -> list[str]:
 
 def lint_subcommand(rest: list[str]) -> int:
     _ = rest
-    tsv_path = _REPO_ROOT / "skills" / "implement" / "scripts" / "stall-recovery-report-allowlists.tsv"
+    tsv_path = _REPO_ROOT / "python" / "stall-recovery-report-allowlists.tsv"
     if not tsv_path.is_file():
         print(f"stall-recovery: missing allowlist TSV: {tsv_path}", file=sys.stderr)
         return 1
@@ -1805,6 +1955,7 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--finalize-state-file", default="")
         p.add_argument("--session-env-file", default="")
         p.add_argument("--artifact-prefix", default="")
+        p.add_argument("--profile", default="implement")
         p.add_argument("--stall-step", default="")
         p.add_argument("--phase", default="")
         p.add_argument("--exit-code", default="")

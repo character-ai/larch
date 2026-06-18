@@ -1058,3 +1058,12 @@ skills/implement/scripts/step-17.md	#3692
 skills/implement/scripts/step-17.sh	#3692
 skills/implement/scripts/test-step-16-17.md	#3692
 skills/implement/scripts/test-step-16-17.sh	#3692
+skills/implement/scripts/stall-recovery-report.sh	#4636
+skills/implement/scripts/stall-recovery-report.md	#4636
+skills/implement/scripts/stall-recovery-report-allowlists.tsv	#4636
+skills/implement/scripts/test-stall-recovery-report-1.sh	#4636
+skills/implement/scripts/test-stall-recovery-report-1.md	#4636
+skills/implement/scripts/test-stall-recovery-report-2.sh	#4636
+skills/implement/scripts/test-stall-recovery-report-2.md	#4636
+skills/implement/scripts/test-stall-recovery-report-3.sh	#4636
+skills/implement/scripts/test-stall-recovery-report-3.md	#4636

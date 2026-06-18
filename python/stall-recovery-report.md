@@ -1,6 +1,6 @@
-# stall-recovery-report.sh
+# python/cli.py stall-recovery
 
-`stall-recovery-report.sh` is the deterministic `/implement` stall recovery helper. It classifies terminal stalls, records script-to-main-agent escalation handoffs, normalizes final outcomes, and composes exactly one public report only on terminal failure or escalation-success teardown.
+`python/cli.py stall-recovery` is the deterministic `/implement` stall recovery helper. It classifies terminal stalls, records script-to-main-agent escalation handoffs, normalizes final outcomes, and composes exactly one public report only on terminal failure or escalation-success teardown.
 
 ## Canonical `/implement` artifacts
 
@@ -58,7 +58,7 @@ Escalation-success uses durable ledger evidence with `compose-report --report-ki
 
 `clear-stall` clears every present durable stall layer: `ship-pr-state.sh`, `finalize-state.sh`, and `session-env.sh`. It rejects symlinks and malformed state before any rewrite, skips absent layers, writes each present layer atomically, and emits `CLEARED=true` only after all present layers read back with `STALL_TRACKING=false` and an empty `STALL_STEP`. It never writes `IMPLEMENT_STALL_TRACKING`.
 
-`bug-body`, `bug-comment`, and `issue-input-file` are no longer public report surfaces. Compatibility is gated behind `LARCH_STALL_RECOVERY_TEST_LEGACY_SURFACES=1` for older harness fixtures only.
+``bug-body`, `bug-comment`, and `issue-input-file` are retired report surfaces.
 
 ## Outcome normalization
 
