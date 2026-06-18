@@ -701,6 +701,8 @@ def aggregate_findings(argv: list[str]) -> int:
         return 0
     dispatch = _kv_parse(proc.stdout)
     if dispatch.get("DISPATCH_OK") != "true":
+        dispatch_ok = dispatch.get("DISPATCH_OK", "")
+        _append_warning(review_tmpdir, args.session_env_path, f"- **findings aggregator**: DISPATCH_OK={dispatch_ok}; leaving {findings_file} unchanged. {_failure_see_phrase(dispatch_err, review_tmpdir, args.session_env_path)}")
         _emit_aggregate_result(aggregated=False, input_count=input_count, merged_count=merged_count, reason="dispatch-failed", failure_log=str(dispatch_err))
         return 0
     candidate = ""

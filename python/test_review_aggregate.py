@@ -568,7 +568,11 @@ def test_prune_nit_plan_mode_moves_to_oos_and_renumbers(tmp_path: Path) -> None:
     assert "### OOS_2: Move nit" in oos_text
 
 
-def test_prune_nit_plan_oos_replace_failure_restores_findings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_prune_nit_plan_oos_replace_failure_restores_findings(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     findings = tmp_path / "findings.md"
     oos = tmp_path / "oos.md"
     original_findings = "### FINDING_1: Nit\n- **Severity**: nit\n- **Concern**: move\n"
@@ -584,6 +588,7 @@ def test_prune_nit_plan_oos_replace_failure_restores_findings(tmp_path: Path, mo
             raise OSError("simulated oos move failure")
         return real_move(src, dst)
 
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     monkeypatch.setattr(review_aggregate.shutil, "move", flaky_move)
 
     rc = review_aggregate.prune_nit_findings([
@@ -595,7 +600,11 @@ def test_prune_nit_plan_oos_replace_failure_restores_findings(tmp_path: Path, mo
         "plan",
     ])
 
+    stdout = capsys.readouterr().out
     assert rc == 0
+    assert "STATUS=skipped" in stdout
+    assert "PRUNED_COUNT=0" in stdout
+    assert "INSCOPE_REMAINING=0" in stdout
     assert findings.read_text(encoding="utf-8") == original_findings
     assert oos.read_text(encoding="utf-8") == original_oos
 
