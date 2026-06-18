@@ -1,18 +1,19 @@
 # design-clarify.sh
 
-Two-phase `/design` Step 0b clarify helper.
+Thin wrapper for the two-phase `/design` Step 0b clarify helper.
 
 ## Purpose
 
-Moves the prompt-side clarify shell sequence behind the design launcher while
-leaving the LLM-owned `AskUserQuestion` and artifact composition in
-`skills/design/SKILL.md`.
+Validates wrapper argv, sources the optional session env, rebuilds
+`_delegate_args`, and delegates to `python/cli.py design clarify`. The Python
+entrypoint owns route-state fallback, pause-save termination, fetch, publish,
+result env writes, and failure routing.
 
 ## Phases
 
 - `--phase fetch --issue N`: verifies `clarify state` is `awaiting-response`,
-  fetches the matching request comment with `python/cli.py clarify
-  comment-fetch`, writes `$DESIGN_TMPDIR/clarify-request.md`, and emits
+  fetches the matching request comment in process, writes
+  `$DESIGN_TMPDIR/clarify-request.md`, and emits
   `CLARIFY_FETCH_STATUS=ok` plus durable file paths.
 - `--phase publish --issue N`: reads `$DESIGN_TMPDIR/clarify-plan.md` and
   `$DESIGN_TMPDIR/clarify-response.md`, redacts and writes the plan block,
@@ -25,13 +26,22 @@ leaving the LLM-owned `AskUserQuestion` and artifact composition in
 - Invoked through `design-run-$PPID.sh`, which supplies `--session-env-path`
   and `--claude-pid`.
 - Accepts the current issue explicitly through `--issue`.
-- Falls back to `.design-step0-route-state.env` for `REPO` when the session env
-  lacks it.
+- The wrapper validates `--phase`, `--issue`, and `--claude-pid` before
+  delegating. It does not forward consumed `"$@"`.
+- Python falls back to `.design-step0-route-state.env` for `REPO` when the
+  session env lacks it. Missing route state is benign. Present unreadable route
+  state emits `route-state-read-failed`; fetch stages `failed-clarify`, publish
+  does not.
+- Fetch failures emit `SUMMARY_OUTCOME=failed-clarify` with the fetch status.
+  `state-read-failed` and `fetch-read-failed` are legacy subprocess-only tokens
+  and are not emitted by `python/cli.py design clarify`.
 - Never prints request or response bodies on stdout. Bodies move through files.
 - Does not emit `--state designed`; clarify-only updates are not terminal
   design completion.
 
 ## Harness
 
-Covered by `skills/design/scripts/test-design-clarify.sh` and structural pins in
+Wrapper delegation and argv validation are covered by
+`skills/design/scripts/test-design-clarify.sh`. Phase behavior is covered by
+`python/test_clarify.py`. Structural pins live in
 `scripts/test-design-structure.sh`.

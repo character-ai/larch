@@ -4,15 +4,16 @@ Offline harness for `design-clarify.sh`.
 
 ## Coverage
 
-- Fetch happy path writes `clarify-request.md` and emits durable handoff paths.
-- Publish happy path writes the plan, publishes logs, posts the response,
-  removes the label, and renames with `--state designing`.
-- Plan-write failure stops before publish, response post, label removal, and
-  rename.
-- Non-zero publish forces `PUBLISH_OK=false`, appends a warning, and still posts
-  the response plus removes the label.
-- Empty `SESSION_ID` skips publish and rename while preserving response and
-  label cleanup.
+- Valid wrapper argv delegates to `python/cli.py design clarify`.
+- Delegation rebuilds `_delegate_args` with `--session-env-path`,
+  `--claude-pid`, `--phase`, and `--issue` instead of forwarding consumed
+  `"$@"`.
+- Invalid `--phase`, `--issue`, and `--claude-pid` are rejected before
+  delegation with exit 2.
+
+Python phase behavior, result env trust boundaries, fetch failure tokens,
+pause-save termination, publish redaction, and publish failure routing are
+covered by `python/test_clarify.py`.
 
 ## Invocation
 

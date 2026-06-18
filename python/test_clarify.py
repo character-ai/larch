@@ -682,3 +682,408 @@ def test_success_outputs_go_through_emit_kv(monkeypatch: pytest.MonkeyPatch, tmp
         ("COMMENT_URL", "url#issuecomment-9"),
         ("MARKER", "<!-- larch:clarify-request id=1 -->"),
     ]
+
+
+class DesignRunner:
+    def __init__(self, responses: list[CommandResult] | None = None) -> None:
+        self.responses = responses or []
+        self.calls: list[list[str]] = []
+
+    def run(
+        self,
+        argv: Sequence[str],
+        *,
+        timeout: float | None = None,  # pylint: disable=unused-argument
+        cwd: str | None = None,  # pylint: disable=unused-argument
+        env: Mapping[str, str] | None = None,  # pylint: disable=unused-argument
+        check: bool = False,  # pylint: disable=unused-argument
+        stdout: int | None = None,  # pylint: disable=unused-argument
+        stderr: int | None = None,  # pylint: disable=unused-argument
+    ) -> CommandResult:
+        self.calls.append(list(argv))
+        if self.responses:
+            return self.responses.pop(0)
+        return _result(tuple(argv))
+
+
+def _write_source_env(path: Path, design_tmpdir: Path, *, session_id: str = "RUN1", repo: str = "") -> None:
+    rows = [
+        f"export DESIGN_TMPDIR='{design_tmpdir}'",
+        f"export SESSION_ID='{session_id}'",
+    ]
+    if repo:
+        rows.append(f"export REPO='{repo}'")
+    path.write_text("\n".join(rows) + "\n", encoding="utf-8")
+
+
+def _design_args(source_env: Path, phase: str = "fetch") -> list[str]:
+    return ["--session-env-path", str(source_env), "--claude-pid", "123", "--phase", phase, "--issue", "7"]
+
+
+def test_design_clarify_env_merge_and_fetch_happy_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    source_env = tmp_path / "source-env.sh"
+    _write_source_env(source_env, tmp_path, repo="owner/from-file")
+    monkeypatch.setenv("REPO", "owner/from-env")
+    runner = DesignRunner()
+    monkeypatch.setattr(clarify, "proc", runner)
+
+    def fake_state(_runner: object, issue: str, *, repo: str | None, cwd: str | None = None) -> clarify.ClarifyState:
+        assert issue == "7"
+        assert repo == "owner/from-file"
+        assert cwd is None
+        return clarify.ClarifyState("awaiting-response", "4", "")
+
+    def fake_fetch(
+        _runner: object,
+        issue: str,
+        comment_id: str,
+        out_file: str,
+        *,
+        repo: str | None,
+        cwd: str | None = None,
+    ) -> clarify.ClarifyCommentFetchResult:
+        assert issue == "7"
+        assert comment_id == "4"
+        assert repo == "owner/from-file"
+        assert cwd is None
+        Path(out_file).write_text("question\n", encoding="utf-8")
+        return clarify.ClarifyCommentFetchResult(fetched=True, comment_id="44", body_file=out_file)
+
+    monkeypatch.setattr(clarify, "clarify_state", fake_state)
+    monkeypatch.setattr(clarify, "clarify_comment_fetch", fake_fetch)
+    assert clarify.design_clarify_main(_design_args(source_env)) == 0
+    out = capsys.readouterr().out
+    assert "CLARIFY_FETCH_STATUS=ok" in out
+    assert "REQUEST_ID=4" in out
+    assert "REPO=owner/from-file" in out
+    result_env = (tmp_path / ".design-clarify-fetch-result.env").read_text(encoding="utf-8")
+    assert "CLARIFY_FETCH_STATUS=ok\n" in result_env
+    assert (tmp_path / "clarify-request.md").read_text(encoding="utf-8") == "question\n"
+
+
+def test_design_clarify_absent_route_state_is_benign(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_env = tmp_path / "source-env.sh"
+    _write_source_env(source_env, tmp_path, repo="")
+    monkeypatch.setattr(
+        clarify,
+        "clarify_state",
+        lambda *_args, **_kwargs: clarify.ClarifyState("awaiting-response", "1", ""),
+    )
+
+    def fake_fetch(
+        _runner: object,
+        _issue: str,
+        _comment_id: str,
+        out_file: str,
+        **_kwargs: object,
+    ) -> clarify.ClarifyCommentFetchResult:
+        Path(out_file).write_text("question", encoding="utf-8")
+        return clarify.ClarifyCommentFetchResult(fetched=True, comment_id="11", body_file=out_file)
+
+    monkeypatch.setattr(clarify, "clarify_comment_fetch", fake_fetch)
+    assert clarify.design_clarify_main(_design_args(source_env)) == 0
+    assert "REPO=" not in (tmp_path / ".design-clarify-fetch-result.env").read_text(encoding="utf-8")
+
+
+def test_design_clarify_route_state_failure_is_phase_split(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_env = tmp_path / "source-env.sh"
+    _write_source_env(source_env, tmp_path, repo="")
+    (tmp_path / "target.env").write_text("REPO=owner/repo\n", encoding="utf-8")
+    (tmp_path / ".design-step0-route-state.env").symlink_to(tmp_path / "target.env")
+    runner = DesignRunner()
+    monkeypatch.setattr(clarify, "proc", runner)
+
+    assert clarify.design_clarify_main(_design_args(source_env, "fetch")) == 1
+    assert "CLARIFY_FETCH_STATUS=route-state-read-failed" in (
+        tmp_path / ".design-clarify-fetch-result.env"
+    ).read_text(encoding="utf-8")
+    assert any(call and call[0].endswith("design-stage-terminal-state.sh") for call in runner.calls)
+
+    runner.calls.clear()
+    assert clarify.design_clarify_main(_design_args(source_env, "publish")) == 1
+    assert "CLARIFY_PUBLISH_STATUS=route-state-read-failed" in (
+        tmp_path / ".design-clarify-publish-result.env"
+    ).read_text(encoding="utf-8")
+    assert not any(call and call[0].endswith("design-stage-terminal-state.sh") for call in runner.calls)
+
+
+@pytest.mark.parametrize(
+    ("state", "request_id", "expected"),
+    [
+        ("clean", "", "unexpected-state"),
+        ("awaiting-response", "", "unexpected-state"),
+    ],
+)
+def test_design_clarify_fetch_failure_tokens_include_summary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    state: str,
+    request_id: str,
+    expected: str,
+) -> None:
+    source_env = tmp_path / "source-env.sh"
+    _write_source_env(source_env, tmp_path, repo="owner/repo")
+    monkeypatch.setattr(clarify, "proc", DesignRunner())
+    monkeypatch.setattr(
+        clarify,
+        "clarify_state",
+        lambda *_args, **_kwargs: clarify.ClarifyState(state, request_id, ""),
+    )
+    assert clarify.design_clarify_main(_design_args(source_env)) == 1
+    result = (tmp_path / ".design-clarify-fetch-result.env").read_text(encoding="utf-8")
+    assert f"CLARIFY_FETCH_STATUS={expected}\n" in result
+    assert "SUMMARY_OUTCOME=failed-clarify\n" in result
+
+
+def test_design_clarify_fetch_direct_call_maps_state_and_fetch_failures(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_env = tmp_path / "source-env.sh"
+    _write_source_env(source_env, tmp_path, repo="owner/repo")
+    monkeypatch.setattr(clarify, "proc", DesignRunner())
+    monkeypatch.setattr(clarify, "clarify_state", lambda *_args, **_kwargs: (_ for _ in ()).throw(ShipError("boom")))
+    assert clarify.design_clarify_main(_design_args(source_env)) == 1
+    assert "CLARIFY_FETCH_STATUS=state-failed" in (
+        tmp_path / ".design-clarify-fetch-result.env"
+    ).read_text(encoding="utf-8")
+
+    monkeypatch.setattr(
+        clarify,
+        "clarify_state",
+        lambda *_args, **_kwargs: clarify.ClarifyState("awaiting-response", "1", ""),
+    )
+    monkeypatch.setattr(
+        clarify,
+        "clarify_comment_fetch",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(clarify._ClarifyValidationError("bad")),  # pyright: ignore[reportPrivateUsage]
+    )
+    assert clarify.design_clarify_main(_design_args(source_env)) == 1
+    assert "CLARIFY_FETCH_STATUS=fetch-failed" in (
+        tmp_path / ".design-clarify-fetch-result.env"
+    ).read_text(encoding="utf-8")
+
+
+def test_design_clarify_pause_terminates_before_fetch_work(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    source_env = tmp_path / "source-env.sh"
+    _write_source_env(source_env, tmp_path, repo="owner/repo")
+    (tmp_path / ".pause-requested").write_text("", encoding="utf-8")
+
+    def fail_state(*_args: object, **_kwargs: object) -> clarify.ClarifyState:
+        raise AssertionError("clarify_state should not run after pause")
+
+    def fake_pause(argv: Sequence[str]) -> int:
+        assert "--design-tmpdir" in argv
+        print("PAUSE_OK=true")
+        return 0
+
+    monkeypatch.setattr(clarify, "clarify_state", fail_state)
+    monkeypatch.setattr(clarify.design_pause, "pause_save_main", fake_pause)
+    assert clarify.design_clarify_main(_design_args(source_env)) == 0
+    assert "PAUSE_OK=true" in capsys.readouterr().out
+
+
+def test_design_clarify_write_result_env_trust_boundaries(tmp_path: Path) -> None:
+    target = tmp_path / "result.env"
+    link = tmp_path / "link.env"
+    link.symlink_to(target)
+    with pytest.raises(clarify._ClarifyValidationError):  # pyright: ignore[reportPrivateUsage]
+        clarify._write_result_env(link, [("A", "1")])  # pyright: ignore[reportPrivateUsage]
+    with pytest.raises(clarify._ClarifyValidationError):  # pyright: ignore[reportPrivateUsage]
+        clarify._write_result_env(target, [("A", "bad\nvalue")])  # pyright: ignore[reportPrivateUsage]
+    clarify._write_result_env(target, [("A", "1"), ("B", "2")])  # pyright: ignore[reportPrivateUsage]
+    assert target.read_text(encoding="utf-8") == "A=1\nB=2\n"
+    assert not list(tmp_path.glob(".result.env.*"))
+
+
+def test_design_clarify_read_result_env_trust_boundaries(tmp_path: Path) -> None:
+    source = tmp_path / "state.env"
+    source.write_text("REQUEST_ID=2\nIGNORED=x\nPLAN_FILE=plan.md\n", encoding="utf-8")
+    assert clarify._read_result_env(source, clarify.REQUEST_STATE_ALLOW) == {  # pyright: ignore[reportPrivateUsage]
+        "REQUEST_ID": "2",
+        "PLAN_FILE": "plan.md",
+    }
+    link = tmp_path / "link.env"
+    link.symlink_to(source)
+    with pytest.raises(OSError, match="regular file"):
+        clarify._read_result_env(link, clarify.REQUEST_STATE_ALLOW)  # pyright: ignore[reportPrivateUsage]
+    with pytest.raises(OSError, match="regular file"):
+        clarify._read_result_env(tmp_path / "missing.env", clarify.REQUEST_STATE_ALLOW)  # pyright: ignore[reportPrivateUsage]
+
+
+def _seed_publish(tmp_path: Path, *, request_id: str = "2", session_id: str = "RUN1") -> Path:
+    source_env = tmp_path / "source-env.sh"
+    _write_source_env(source_env, tmp_path, session_id=session_id, repo="owner/repo")
+    plan = tmp_path / "clarify-plan.md"
+    response = tmp_path / "clarify-response.md"
+    plan.write_text("## Plan\n\nDo it.\n", encoding="utf-8")
+    response.write_text("Response.\n", encoding="utf-8")
+    (tmp_path / ".design-clarify-request.env").write_text(
+        "\n".join(
+            [
+                f"REQUEST_ID={request_id}",
+                f"REQUEST_BODY_FILE={tmp_path / 'clarify-request.md'}",
+                f"PLAN_FILE={plan}",
+                f"RESPONSE_FILE={response}",
+                "ISSUE_NUMBER=7",
+                "REPO=owner/repo",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    return source_env
+
+
+def test_design_clarify_publish_happy_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    source_env = _seed_publish(tmp_path)
+    runner = DesignRunner(
+        [
+            _result(stdout="PLAN_WRITE_OK=true\n"),
+            _result(stdout="PUBLISH_OK=true\n"),
+            _result(stdout="RENAMED=true\n"),
+        ]
+    )
+    monkeypatch.setattr(clarify, "proc", runner)
+    monkeypatch.setattr(
+        clarify,
+        "clarify_comment_post",
+        lambda *_args, **_kwargs: clarify.ClarifyCommentResult(
+            posted=True,
+            comment_id="123",
+            comment_url="url",
+            marker="marker",
+        ),
+    )
+    monkeypatch.setattr(
+        clarify,
+        "clarify_label",
+        lambda *_args, **_kwargs: clarify.ClarifyLabelResult(
+            changed=True,
+            action="remove",
+            label=clarify.LABEL_NAME,
+        ),
+    )
+    assert clarify.design_clarify_main(_design_args(source_env, "publish")) == 0
+    out = capsys.readouterr().out
+    assert "CLARIFY_PUBLISH_STATUS=ok" in out
+    assert "PUBLISH_OK=true" in out
+    assert "RENAMED=true" in out
+    assert any(call[2:4] == ["named-block", "write"] for call in runner.calls)
+    assert any(call[2:4] == ["design", "log-publish"] for call in runner.calls)
+    assert any(call[2:4] == ["tracking-issue", "rename"] for call in runner.calls)
+    assert "<REDACTED-TOKEN>" not in (tmp_path / "clarify-plan.redacted.md").read_text(encoding="utf-8")
+
+
+def test_design_clarify_publish_empty_session_warns_and_skips_publish(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    source_env = _seed_publish(tmp_path, session_id="")
+    runner = DesignRunner([_result(stdout="PLAN_WRITE_OK=true\n")])
+    monkeypatch.setattr(clarify, "proc", runner)
+    monkeypatch.setattr(
+        clarify,
+        "clarify_comment_post",
+        lambda *_args, **_kwargs: clarify.ClarifyCommentResult(
+            posted=True,
+            comment_id="123",
+            comment_url="url",
+            marker="marker",
+        ),
+    )
+    monkeypatch.setattr(
+        clarify,
+        "clarify_label",
+        lambda *_args, **_kwargs: clarify.ClarifyLabelResult(
+            changed=True,
+            action="remove",
+            label=clarify.LABEL_NAME,
+        ),
+    )
+    assert clarify.design_clarify_main(_design_args(source_env, "publish")) == 0
+    out = capsys.readouterr().out
+    assert "SESSION_ID missing" in out
+    assert "PUBLISH_OK=false" in out
+    assert not any(call[2:4] == ["design", "log-publish"] for call in runner.calls)
+    assert not any(call[2:4] == ["tracking-issue", "rename"] for call in runner.calls)
+
+
+def test_design_clarify_publish_invalid_request_id_exits_2_without_result_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    source_env = _seed_publish(tmp_path, request_id="0")
+    runner = DesignRunner()
+    monkeypatch.setattr(clarify, "proc", runner)
+    assert clarify.design_clarify_main(_design_args(source_env, "publish")) == 2
+    captured = capsys.readouterr()
+    assert "REQUEST_ID must be a positive integer" in captured.err
+    assert not (tmp_path / ".design-clarify-publish-result.env").exists()
+    assert not runner.calls
+
+
+def test_design_clarify_publish_failure_paths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_env = _seed_publish(tmp_path)
+    (tmp_path / "clarify-plan.md").unlink()
+    assert clarify.design_clarify_main(_design_args(source_env, "publish")) == 1
+    assert "CLARIFY_PUBLISH_STATUS=missing-artifact" in (
+        tmp_path / ".design-clarify-publish-result.env"
+    ).read_text(encoding="utf-8")
+
+    source_env = _seed_publish(tmp_path)
+    runner = DesignRunner([_result(rc=1, stderr="plan failed\n")])
+    monkeypatch.setattr(clarify, "proc", runner)
+    assert clarify.design_clarify_main(_design_args(source_env, "publish")) == 1
+    assert "CLARIFY_PUBLISH_STATUS=plan-write-failed" in (
+        tmp_path / ".design-clarify-publish-result.env"
+    ).read_text(encoding="utf-8")
+
+    source_env = _seed_publish(tmp_path)
+    runner = DesignRunner([_result(stdout=""), _result(rc=9, stderr="publish failed\n"), _result(stdout="")])
+    monkeypatch.setattr(clarify, "proc", runner)
+    monkeypatch.setattr(
+        clarify,
+        "clarify_comment_post",
+        lambda *_args, **_kwargs: clarify.ClarifyCommentResult(
+            posted=True,
+            comment_id="123",
+            comment_url="url",
+            marker="marker",
+        ),
+    )
+    monkeypatch.setattr(
+        clarify,
+        "clarify_label",
+        lambda *_args, **_kwargs: clarify.ClarifyLabelResult(
+            changed=True,
+            action="remove",
+            label=clarify.LABEL_NAME,
+        ),
+    )
+    assert clarify.design_clarify_main(_design_args(source_env, "publish")) == 0
+    assert "PUBLISH_OK=false" in (tmp_path / ".design-clarify-publish-result.env").read_text(encoding="utf-8")
+    assert any(call[2:4] == ["run-log", "append-failure"] for call in runner.calls)

@@ -14,6 +14,7 @@ EXPECTED = {
         ("step2b5", "design_lifecycle", "step2b5_main"),
         ("postplan-emit", "design_postplan", "postplan_emit_main"),
         ("publish", "design_publish", "publish_main"),
+        ("clarify", "clarify", "design_clarify_main"),
         ("log-publish", "design_log_publish_flow", "log_publish_main"),
         ("pause-save", "design_pause", "pause_save_main"),
         ("pause-load", "design_pause", "pause_load_main"),
