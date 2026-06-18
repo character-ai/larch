@@ -344,7 +344,7 @@ By default, `/research` creates a GitHub issue at the end of each successful run
 
 **Transitive callers**: `python/cli.py eval research` passes `--no-issue` to suppress auto-issue when `/research` is invoked as an intermediate step rather than a user-facing research task.
 
-**`implement-finalize.sh postbump` session-local inputs**: `/implement` Step 8 invokes `scripts/implement-finalize.sh postbump` with a session-local state file under `$IMPLEMENT_TMPDIR`. Phase 1 removed per-PR bump and changelog inputs from this path; `postbump` no longer reads bump reasoning or fallback changelog bullet files. The remaining state is limited to branch, issue, repo, fork, and version-placeholder keys needed to run the Step 8b rebase plus force-push gate. The state file follows the same no-source parsing, tmpdir containment, symlink rejection, and size guards documented for finalize state files.
+**`implement-finalize postbump` session-local inputs**: `/implement` Step 8 invokes `python3 python/cli.py implement-finalize postbump` with a session-local state file under `$IMPLEMENT_TMPDIR`. Phase 1 removed per-PR bump and changelog inputs from this path; `postbump` no longer reads bump reasoning or fallback changelog bullet files. The remaining state is limited to branch, issue, repo, fork, and version-placeholder keys needed to run the Step 8b rebase plus force-push gate. The state file follows the same no-source parsing, tmpdir containment, symlink rejection, and size guards documented for finalize state files.
 
 ## Breadcrumb stream redaction
 

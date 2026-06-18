@@ -276,7 +276,7 @@ exclude = [
   # skill prose, matching the same Makefile-only pattern as the other
   # run-log test-* harnesses above.
   "python/test_redact.py",
-  # scripts/implement-finalize.sh invokes these Step 8b / teardown helpers
+  # python3 python/cli.py implement-finalize invokes these Step 8b / teardown helpers
   # through Bash-to-Bash edges; agent-lint does not follow those calls.
   "scripts/check-remote-branch.sh",
   "scripts/flush-vendor-failure-diagnostics.sh",
@@ -534,7 +534,7 @@ exclude = [
   # Python retry callers use python/retry.py instead.
   "scripts/lib-net.sh",
   # scripts/lib-execution-issues.sh is a sourced-only shell library shared by
-  # scripts/implement-finalize.sh and skills/implement/scripts/flush-execution-issues.sh.
+  # python3 python/cli.py implement-finalize and skills/implement/scripts/flush-execution-issues.sh.
   "scripts/lib-execution-issues.sh",
   # python/cli.py agent cursor-auth-preflight is a small executable that prints the
   # conditional --api-key argv elements for runtime skill markdown blocks.
@@ -675,7 +675,7 @@ exclude = [
   # as a tiny future amend primitive with a sibling contract.
   "scripts/git-amend-add.sh",
   "scripts/git-amend-add.md",
-  # by implement-finalize.sh and the Python ship driver. Its harness is Makefile-only
+  # by implement-finalize and the Python ship driver. Its harness is Makefile-only
   # (test-commit-release notes target) and its sibling docs own the contract.
   "scripts/commit-release notes.md",
   "scripts/test-commit-release notes.md",
@@ -883,7 +883,7 @@ exclude = [
   # scripts/test-implement-cleanup-roundtrip.sh is the round-trip integration
   # test for the EXPECTED_TMPDIR_BASENAME_PREFIX state-file convention used by
   # skills/implement/SKILL.md Steps 13.5 and 14 and validated by
-  # scripts/implement-finalize.sh::verify_cleanup_target (closes #1572).
+  # python3 python/cli.py implement-finalize::verify_cleanup_target (closes #1572).
   # Referenced only from Makefile (test-implement-cleanup-roundtrip target)
   # and scripts/test-implement-cleanup-roundtrip.md (sibling contract),
   # matching the same Makefile-only pattern as other test-implement-* harnesses.
@@ -937,14 +937,21 @@ exclude = [
   # Phase 2 wires /implement tracking adoption as its first consumer.
   # (itself excluded above), so the reachability graph treats it as dead too.
   # Phase 3 (skills/implement/SKILL.md wiring) removes both exclusions.
-  # scripts/test-implement-finalize.sh is the regression harness for
-  # scripts/implement-finalize.sh, wired into Makefile test-implement-finalize
+  # python/test_finalize.py is the regression harness for
+  # python3 python/cli.py implement-finalize, wired into Makefile test-implement-finalize
   # target only (no SKILL.md invocation). Same Makefile-only shape as the
   # other test-* harnesses above.
-  "scripts/implement-finalize.sh",
-  "scripts/test-implement-finalize.sh",
-  # python/cli.py session restore-finalize-state, wired into Makefile
-  # the other test-* harnesses above.
+  "python/test_finalize.py",
+  # python/test_closeout.py is the regression harness for python/closeout.py
+  # Step 16/17 helpers, wired into Makefile test-step-16-17 target only.
+  "python/test_closeout.py",
+  # python/test_preflight.py is the regression harness for python/cli.py
+  # implement preflight, wired into Makefile test-preflight target only.
+  "python/test_preflight.py",
+  # python/test_final_report.py is the regression harness for python/cli.py
+  # final-report write, wired into Makefile test-write-final-report and
+  # test-step-18b targets only.
+  "python/test_final_report.py",
   # scripts/test-python/cli.py render lane-status is the regression harness for
   # python/cli.py render lane-status (the /research lane-attribution formatter
   # added by #421). Wired only via Makefile test-render-lane-status target;
@@ -1106,8 +1113,6 @@ exclude = [
   "scripts/test-cache-key-discipline.md",
   "scripts/test-cache-key-runtime-audit.sh",
   "scripts/test-cache-key-runtime-audit.md",
-  "scripts/test-finalize-sanity-check.sh",
-  "scripts/test-finalize-sanity-check.md",
   # scripts/github-remote-repo.sh is the one-URL/one-remote-name parser used
   # by python/cli.py admission fork-env (forked-target-only pre-Step-0 helper)
   # via shell variable indirection: `"$HELPER_ROOT/scripts/github-remote-repo.sh"`.
@@ -1272,8 +1277,6 @@ exclude = [
   "python/test_review_and_fix.py",
   "skills/implement/scripts/test-slack-issue-announce.sh",
   "skills/implement/scripts/test-slack-issue-announce.md",
-  "skills/implement/scripts/test-step-16-17.sh",
-  "skills/implement/scripts/test-step-16-17.md",
   "skills/implement/scripts/test-write-final-report.sh",
   "skills/implement/scripts/test-write-final-report.md",
   "skills/implement/scripts/test-step-18.sh",

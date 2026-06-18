@@ -1,7 +1,7 @@
 # lib-execution-issues.sh
 
 `scripts/lib-execution-issues.sh` is a sourced-only Bash library shared by
-`scripts/implement-finalize.sh` and
+`python3 python/cli.py implement-finalize` and
 `skills/implement/scripts/flush-execution-issues.sh`.
 
 Exported functions:

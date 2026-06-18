@@ -1,6 +1,6 @@
 # scripts/test-implement-cleanup-roundtrip.sh — contract
 
-Round-trip integration test for the `EXPECTED_TMPDIR_BASENAME_PREFIX` state-file convention used by `skills/implement/SKILL.md` Steps 13.5 and 14, and validated by `scripts/implement-finalize.sh::verify_cleanup_target`.
+Round-trip integration test for the `EXPECTED_TMPDIR_BASENAME_PREFIX` state-file convention used by `skills/implement/SKILL.md` Steps 13.5 and 14, and validated by `python3 python/cli.py implement-finalize::verify_cleanup_target`.
 
 ## Purpose
 
@@ -23,9 +23,9 @@ None — standalone offline test. Referenced by `make lint` via the `test-implem
 ## Invariants
 
 - The test creates its own sandbox under `/tmp` and cleans it up via `trap`.
-- The awk extractor replicated here must stay in sync with `implement-finalize.sh::read_state`.
-- The case-glob replicated here must stay in sync with `implement-finalize.sh::verify_cleanup_target`.
-- Edit in sync with: `scripts/implement-finalize.sh` (when `read_state` or `verify_cleanup_target` changes), `scripts/test-implement-structure.sh` assertion `(31e)` / `(31g)`, and `skills/implement/SKILL.md` Steps 13.5 / 14.
+- The awk extractor replicated here must stay in sync with `implement-finalize::read_state`.
+- The case-glob replicated here must stay in sync with `implement-finalize::verify_cleanup_target`.
+- Edit in sync with: `python3 python/cli.py implement-finalize` (when `read_state` or `verify_cleanup_target` changes), `scripts/test-implement-structure.sh` assertion `(31e)` / `(31g)`, and `skills/implement/SKILL.md` Steps 13.5 / 14.
 
 ## Makefile wiring
 

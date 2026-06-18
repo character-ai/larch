@@ -61,7 +61,7 @@ When `EMIT_BODY=true`, `WFR_RC=0`, and `summary-final.md` is non-empty, `print_s
 - `---LARCH-SUMMARY-FINAL-BEGIN---`
 - `---LARCH-SUMMARY-FINAL-END---`
 
-The marker helper mirrors `step-16-17.sh` and runs under `set +e`.
+The marker helper mirrors `implement step-16-17` and runs under `set +e`.
 A failed `cat` of `summary-final.md` must not prevent closing marks, restore-finalize-state, or teardown (#3425).
 On successful marker emission, the wrapper touches `$IMPLEMENT_TMPDIR/.step17-emitted` for harness parity.
 The orchestrator owns top-chat emission by parsing captured finalize stdout only.

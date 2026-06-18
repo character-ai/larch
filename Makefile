@@ -263,7 +263,7 @@ test-cache-key-discipline:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-cache-key-discipline.sh
 
 test-finalize-sanity-check:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-finalize-sanity-check.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_finalize.py -q -k cleanup_target_ok
 
 
 test-audit-edit-write:
@@ -619,7 +619,7 @@ test-plan-adequacy-audit:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-plan-adequacy-audit.sh
 
 test-implement-preflight:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-implement-preflight.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_preflight.py -q
 
 test-implement-positional-issue:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-implement-positional-issue.sh
@@ -676,7 +676,7 @@ test-step-18:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-step-18.sh
 
 test-step-18b-final-report:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_pr_body.py -q -k step18b
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_final_report.py python/test_pr_body.py -q -k step18b
 
 test-cursor-implementer:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_implement_dispatch.py -q -k cursor_launcher
@@ -762,10 +762,10 @@ test-slack-issue-announce:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-slack-issue-announce.sh
 
 test-step-16-17:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-step-16-17.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_closeout.py -q
 
 test-write-final-report:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_pr_body.py -q -k 'write_final_report or step18b or render_run_summary or post_tracking or generate_code_flow'
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_final_report.py python/test_pr_body.py -q -k 'write_final_report or step18b or render_run_summary or post_tracking or generate_code_flow'
 
 test-render-run-summary:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_pr_body.py -q -k 'render_run_summary'
@@ -785,7 +785,7 @@ test-render-cost-line:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_report_tokens_cost.py -q -k render_cost_line
 
 test-implement-cleanup-script:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_finalize.py -q -k cleanup
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_finalize.py -q -k 'cleanup and not cleanup_target_ok'
 
 test-harness-shards-coverage:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-harness-shards-coverage.sh

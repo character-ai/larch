@@ -55,7 +55,7 @@ below.
 | `skills/implement/scripts/step-7a.sh` | — | — | ✅ | **D** | Pre-ship flush of the vendor-failure batch. |
 | `python/cli.py run-log flush` | — | — | ✅ | **D** | Commit-tail flush. |
 | `python/cli.py run-log refresh` | — | — | ✅ | **D** | CI-retry / rebase pre-push flush. |
-| `scripts/implement-finalize.sh` (teardown) | — | — | ✅ | **D** | Safety-net flush mirroring `flush_execution_issues_safety_net` (F13). |
+| `python3 python/cli.py implement-finalize` (teardown) | — | — | ✅ | **D** | Safety-net flush mirroring `flush_execution_issues_safety_net` (F13). |
 | `python/cli.py agent launch-codex-implement` | ✅ inherit | ✅ backstop | ✅ batch | **I/D** | Step 2 implementer routes through the Python external-agent helper (carrier saved); `append_launch_failure` now appends the diagnostic source to the durable batch. |
 | `python/cli.py agent launch-cursor-implement` | ✅ inherit | ✅ backstop | ✅ batch | **I/D** | As codex implementer (launcher parity). |
 | `python/cli.py agent launch-codex-ci` | ✅ inherit | ✅ backstop | R batch | **I/R** | CI-fix launcher routes through `python3 python/cli.py agent run-external-agent`. |

@@ -5,7 +5,7 @@ set -euo pipefail
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 CLEANUP=(python3 "$REPO_ROOT/python/cli.py" session cleanup-tmpdir)
-FINALIZE="$REPO_ROOT/scripts/implement-finalize.sh"
+FINALIZE=(python3 "$REPO_ROOT/python/cli.py" implement-finalize)
 TOKEN_CLI=(python3 "$REPO_ROOT/python/cli.py" token)
 
 PASS=0
@@ -43,7 +43,7 @@ write_state() {
         printf 'STALL_TRACKING=false\n'
         printf 'STALL_STEP=\n'
         printf 'DONE_RENAME_APPLIED=false\n'
-        printf 'EXPECTED_SESSION_ID=session-cache\n'
+        printf 'EXPECTED_SESSION_ID=session-cache-mismatch\n'
         printf 'EXPECTED_TMPDIR_BASENAME_PREFIX=%s\n' "$(basename "$dir")"
     } > "$dir/finalize-state.sh"
     printf 'session-cache\n' > "$dir/session-id"
@@ -62,8 +62,8 @@ FINALIZE_TARGET="$CACHE_ROOT/claude-implement-cache-finalize"
 mkdir -p "$FINALIZE_TARGET"
 write_state "$FINALIZE_TARGET"
 rc=0
-XDG_CACHE_HOME="$TMPROOT/cache" "$FINALIZE" teardown --state-file "$FINALIZE_TARGET/finalize-state.sh" --implement-tmpdir "$FINALIZE_TARGET" >/dev/null 2>&1 || rc=$?
-assert_rc "$rc" 0 "implement-finalize accepts cache sessions root"
+XDG_CACHE_HOME="$TMPROOT/cache" "${FINALIZE[@]}" teardown --state-file "$FINALIZE_TARGET/finalize-state.sh" --implement-tmpdir "$FINALIZE_TARGET" >/dev/null 2>&1 || rc=$?
+assert_rc "$rc" 0 "python implement-finalize accepts cache sessions root"
 
 TOKEN_DIR="$CACHE_ROOT/larch-research-token-tally"
 rc=0
