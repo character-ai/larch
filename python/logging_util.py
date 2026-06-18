@@ -5,11 +5,12 @@ from __future__ import annotations
 import json
 import os
 import sys
+from collections.abc import Iterable, Iterator
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, TextIO
+from typing import Any, TextIO, cast
 
 import config
 import redact
@@ -179,6 +180,24 @@ class BreadcrumbWriter:
         stream = self.stream or sys.stderr
         _ = stream.write(line)
         _ = stream.flush()
+
+
+def iter_jsonl_dicts(lines: Iterable[str]) -> Iterator[dict[str, object]]:
+    """Yield JSON object rows from JSONL ``lines``, skipping blank or non-object lines.
+
+    Shared by progress_report and rendering so the parse loop has one definition
+    (avoids pylint R0801 duplicate-code across the two modules).
+    """
+    for line in lines:
+        if not line.strip():
+            continue
+        try:
+            parsed: object = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(parsed, dict):
+            continue
+        yield cast("dict[str, object]", parsed)
 
 
 @dataclass

@@ -38,10 +38,10 @@ This preserves `/report-tokens` cost-trend history indefinitely while shedding r
 
 <!-- step:1 — Run gc-run-logs -->
 
-Script contract: `${CLAUDE_PLUGIN_ROOT}/skills/gc-run-logs/scripts/gc-run-logs.md`.
+Script contract: `python/cli.py gc-run-logs run`.
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/gc-run-logs/scripts/gc-run-logs.sh" <flags>
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" gc-run-logs run <flags>
 ```
 
 Parse `STATUS`, `DIRS_SCANNED`, `DIRS_QUALIFYING`, `DIRS_SLIMMED`, `DIRS_DELETED`, `DIRS_SKIPPED`, `BYTES_FREED`, `DRY_RUN`, and `PR_URL` from stdout and relay them to the user.

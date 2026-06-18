@@ -23,6 +23,7 @@ import agents
 import checks
 import logging_util
 import proc
+import progress_report
 import redact
 import review_pipeline
 import run_logs
@@ -1767,7 +1768,8 @@ def _run_round(args: argparse.Namespace, *, suppress_emit: bool, review_core_imp
         "TOTAL_ACCEPTED_COUNT": total_accepted,
         "TOTAL_REJECTED_COUNT": total_rejected,
     })
-    _run([str(_plugin_root() / "scripts" / "write-implement-round-meta.sh"), "--round-dir", str(round_dir)])
+    with contextlib.suppress(Exception):
+        _ = progress_report.write_implement_round_meta(round_dir)
     run_id = getattr(args, "run_id", "")
     if run_id:
         flush_round_log_after_coder(implement_tmpdir, run_id, round_num, round_dir)

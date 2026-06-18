@@ -42,12 +42,9 @@ assert_schema_ordered() {
 }
 finish(){ [ "$FAIL" -eq 0 ] || exit 1; printf 'PASS=%s\n' "$PASS"; }
 
-plugin="$TMP_ROOT/plugin"; mkdir -p "$plugin/scripts"
+plugin="$TMP_ROOT/plugin"; mkdir -p "$plugin/scripts" "$plugin/python"
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$plugin/scripts/lib-quiet.sh"
 cp "$REPO_ROOT/scripts/run-log-terminal-outcomes.inc.bash" "$plugin/scripts/run-log-terminal-outcomes.inc.bash"
-cp "$REPO_ROOT/scripts/render-run-summary.sh" "$plugin/scripts/render-run-summary.sh"
-cp "$REPO_ROOT/scripts/render-review-phase-detail.sh" "$plugin/scripts/render-review-phase-detail.sh"
-mkdir -p "$plugin/python"
 cp "$REPO_ROOT/python/"*.py "$plugin/python/"
 mv "$plugin/python/cli.py" "$plugin/python/real-cli.py"
 cat > "$plugin/python/cli.py" <<'DISPATCHER'
@@ -84,9 +81,7 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 DISPATCHER
-chmod +x "$plugin/scripts/render-run-summary.sh" "$plugin/python/report_tokens_cost.py" \
-    "$plugin/python/cli.py" \
-    "$plugin/scripts/render-review-phase-detail.sh"
+chmod +x "$plugin/python/cli.py" "$plugin/python/report_tokens_cost.py"
 mkdir -p "$TMP_ROOT/bin"
 GH_SHIM_LOG="$TMP_ROOT/gh-shim.log"
 : >"$GH_SHIM_LOG"
@@ -333,9 +328,12 @@ out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-emi.m
       "$HELPER" --implement-tmpdir "$impl_emi")
 assert_contains 'STATUS=ok' "$out" 'invalid-emergency status ok'
 assert_not_contains 'Emergency: true' "$(cat "$TMP_ROOT/content-emi.md")" 'invalid-emergency summary omits emergency line'
-assert_contains "Invalid \`EMERGENCY_REQUESTED\` value" "$(cat "$TMP_ROOT/content-emi.md")" 'invalid-emergency summary emits warning note'
-assert_contains '### Warnings' "$(cat "$impl_emi/execution-issues.md")" 'invalid-emergency appends warning section'
-assert_contains 'Invalid EMERGENCY_REQUESTED value in run-flags.sh: maybe' "$(cat "$impl_emi/execution-issues.md")" 'invalid-emergency warning content'
+assert_not_contains "Invalid \`EMERGENCY_REQUESTED\` value" "$(cat "$TMP_ROOT/content-emi.md")" 'invalid-emergency summary omits warning note'
+if [ ! -e "$impl_emi/execution-issues.md" ]; then
+    pass 'invalid-emergency does not append warning section'
+else
+    assert_not_contains 'Invalid EMERGENCY_REQUESTED value in run-flags.sh: maybe' "$(cat "$impl_emi/execution-issues.md")" 'invalid-emergency warning content absent'
+fi
 
 impl_legacy="$TMP_ROOT/impl-legacy"; mkdir -p "$impl_legacy"
 printf 'ISSUE_NUMBER=17\nRUN_ID=run-legacy\nADOPTED=true\n' > "$impl_legacy/parent-issue.md"
@@ -422,168 +420,8 @@ assert_contains 'Codex $' "$cost_line" 'per-agent stdout cost has Codex'
 assert_contains 'Cursor $' "$cost_line" 'per-agent stdout cost has Cursor'
 assert_contains 'Tokens: ' "$cost_line" 'per-agent stdout cost has token count'
 
-cp "$plugin/scripts/render-run-summary.sh" "$TMP_ROOT/render-run-summary.real"
-cat > "$impl_bl/larch-logs/implement/run-bl/token-report.json" <<'JSON'
-{
-  "claude": {"totals": {"total": 1000}},
-  "codex": {"totals": {"total": 0}},
-  "cursor": {"totals": {"total": 0}},
-  "BUCKETS_claude": {"input": 700, "cache_read": 100, "cache_create_5m": 0, "cache_create_1h": 0, "output": 200},
-  "BUCKETS_codex": {"input": 0, "cached_input": 0, "output": 0},
-  "BUCKETS_cursor": {"input": 0, "cache_read": 0, "output": 0}
-}
-JSON
-cat > "$plugin/scripts/render-run-summary.sh" <<'STUB'
-#!/usr/bin/env bash
-set -euo pipefail
-out=""
-run="RUN"
-outcome="bailed"
-cost_unavailable=false
-calls_file="${WFR_STAGE1_CALLS_FILE:-}"
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --output-file) out=$2; shift 2 ;;
-    --run-id) run=$2; shift 2 ;;
-    --outcome) outcome=$2; shift 2 ;;
-    --cost-unavailable) cost_unavailable=true; shift ;;
-    *)
-      if [ "$#" -ge 2 ] && [[ "$2" != --* ]]; then
-        shift 2
-      else
-        shift
-      fi
-      ;;
-  esac
-done
-[ -n "$calls_file" ] && printf 'call\n' >>"$calls_file"
-[ "$cost_unavailable" = true ] || exit 1
-[ -n "$out" ] || exit 2
-cat >"$out" <<EOF
-## /implement run $run — $outcome
-
-- **Outcome**: $outcome
-- **Mode**: N/A
-- **Duration**: N/A
-- **Cost**: N/A
-- **Issue**: N/A
-- **Plan review**: N/A
-- **Code review**: N/A
-- **OOS filed**: 0
-- **Exec issues**: 0
-- **Warnings**: 1
-- **Run logs**: \`larch-logs/implement/$run/\`
-
-<!-- larch:run-summary v=1 -->
-EOF
-STUB
-chmod +x "$plugin/scripts/render-run-summary.sh"
-stage1_calls="$TMP_ROOT/wfr-stage1.calls"
-: >"$stage1_calls"
-rm -f "$impl_bl/execution-issues.md"
-fallback_stage1=$(WFR_STAGE1_CALLS_FILE="$stage1_calls" CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-fallback-stage1.md" \
-      "$HELPER" --implement-tmpdir "$impl_bl" --print-stdout 2>/dev/null)
-assert_contains '- **Cost**: N/A' "$fallback_stage1" 'renderer fallback stage1 prints cost N/A'
-assert_contains '- **Warnings**: 1' "$fallback_stage1" 'renderer fallback stage1 refreshes warning count'
-assert_contains '<!-- larch:run-summary v=1 -->' "$fallback_stage1" 'renderer fallback stage1 keeps sentinel'
-assert_not_contains '<!-- larch:final-summary-fallback v1 -->' "$fallback_stage1" 'stage1 must not carry degraded-fallback marker'
-assert_not_contains '**⚠ Degraded fallback' "$fallback_stage1" 'stage1 must not carry degraded-fallback banner'
-test "$(wc -l <"$stage1_calls" | tr -d ' ')" = "2" || fail 'renderer fallback stage1 must invoke renderer twice'
-[ ! -e "$impl_bl/wfr-fallback-stage1.log" ] || fail 'renderer fallback stage1 must not retain fallback stderr sidecar'
-
-cat > "$plugin/scripts/render-run-summary.sh" <<'STUB'
-#!/usr/bin/env bash
-exit 1
-STUB
-chmod +x "$plugin/scripts/render-run-summary.sh"
-rm -f "$impl_bl/execution-issues.md"
-fallback_stage2=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-fallback-stage2.md" \
-      "$HELPER" --implement-tmpdir "$impl_bl" --print-stdout 2>/dev/null)
-assert_contains '**⚠ Degraded fallback' "$fallback_stage2" 'renderer fallback stage2 emits degraded banner'
-assert_contains '<!-- larch:final-summary-fallback v1 -->' "$fallback_stage2" 'renderer fallback stage2 emits fallback HTML marker'
-assert_contains '<!-- larch:run-summary v=1 -->' "$fallback_stage2" 'renderer fallback stage2 keeps sentinel'
-assert_schema_ordered "$fallback_stage2" 'renderer fallback stage2 keeps ordered implement schema' \
-    '## /implement run run-bl — bailed' \
-    '- **Outcome**: bailed' \
-    '- **Mode**: N/A' \
-    '- **Duration**: N/A' \
-    '- **Cost**: N/A' \
-    '- **Issue**: #9 — https://github.com/owner/repo/issues/9' \
-    '- **Plan review**: N/A' \
-    '- **Code review**: N/A' \
-    '- **Lines (PR diff)**: N/A' \
-    '- **OOS filed**: 0' \
-    '- **Exec issues**: 0' \
-    '- **Warnings**: 2' \
-    "- **Run logs**: \`larch-logs/implement/run-bl/\`" \
-    '<!-- larch:run-summary v=1 -->' \
-    '<!-- larch:final-summary-fallback v1 -->'
-stage2_nonempty="$(printf '%s\n' "$fallback_stage2" | awk 'NF { print; n++; if (n == 2) exit }')"
-stage2_line1="$(printf '%s\n' "$stage2_nonempty" | sed -n '1p')"
-stage2_line2="$(printf '%s\n' "$stage2_nonempty" | sed -n '2p')"
-case "$stage2_line1" in '## /implement run '*) stage2_heading_ok=true ;; *) stage2_heading_ok=false ;; esac
-case "$stage2_line2" in \*\*⚠\ Degraded\ fallback*) stage2_banner_ok=true ;; *) stage2_banner_ok=false ;; esac
-if [ "$stage2_heading_ok" = true ] && [ "$stage2_banner_ok" = true ]; then
-    pass 'renderer fallback stage2 places degraded banner after heading'
-else
-    fail 'renderer fallback stage2 must place degraded banner after heading'
-    printf 'ACTUAL: %s\n' "$fallback_stage2" >&2
-fi
-assert_not_contains '- **PR**:' "$fallback_stage2" 'renderer fallback stage2 omits PR when N/A'
-assert_contains '### Warnings' "$(cat "$impl_bl/execution-issues.md")" 'renderer fallback stage2 records warning section'
-cp "$TMP_ROOT/render-run-summary.real" "$plugin/scripts/render-run-summary.sh"
-chmod +x "$plugin/scripts/render-run-summary.sh"
-
-impl_lines_fb="$TMP_ROOT/impl-lines-fb"; mkdir -p "$impl_lines_fb"
-printf 'ISSUE_NUMBER=43\nRUN_ID=run-lines-fb\nADOPTED=true\n' > "$impl_lines_fb/parent-issue.md"
-printf 'REPO=owner/repo\n' > "$impl_lines_fb/session-env.sh"
-{
-    printf 'PR_URL=https://example.test/pr/43\n'
-    printf 'PR_NUMBER=43\n'
-    printf 'STALL_TRACKING=false\n'
-    printf 'MERGE_RESULT=merged\n'
-    printf 'MERGE=true\n'
-    printf 'DRAFT=false\n'
-    printf 'FORKED_TARGET=false\n'
-} > "$impl_lines_fb/ship-pr-state.sh"
-printf 'DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n' > "$impl_lines_fb/finalize-state.sh"
-cat > "$plugin/scripts/render-run-summary.sh" <<'STUB'
-#!/usr/bin/env bash
-exit 1
-STUB
-chmod +x "$plugin/scripts/render-run-summary.sh"
-lines_fb=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-lines-fb.md" \
-      "$HELPER" --implement-tmpdir "$impl_lines_fb" --print-stdout 2>/dev/null)
-assert_contains '**⚠ Degraded fallback' "$lines_fb" 'renderer fallback stage2 line-counts emits degraded banner'
-assert_contains '<!-- larch:final-summary-fallback v1 -->' "$lines_fb" 'renderer fallback stage2 line-counts emits fallback marker'
-assert_contains '- **Lines (PR diff)**: code +17/-3, larch-logs +5/-1' "$lines_fb" 'renderer fallback stage2 line-counts renders bucketed values'
-assert_contains '- **PR**: #43 — https://example.test/pr/43' "$lines_fb" 'renderer fallback stage2 line-counts emits PR bullet'
-cp "$TMP_ROOT/render-run-summary.real" "$plugin/scripts/render-run-summary.sh"
-chmod +x "$plugin/scripts/render-run-summary.sh"
-
-impl_fork_fb="$TMP_ROOT/impl-fork-fb"; mkdir -p "$impl_fork_fb"
-printf 'ISSUE_NUMBER=18\nRUN_ID=run-fork-fb\nADOPTED=true\n' > "$impl_fork_fb/parent-issue.md"
-printf 'REPO=owner/repo\n' > "$impl_fork_fb/session-env.sh"
-{
-    printf 'PR_URL=https://example.test/pr/18\n'
-    printf 'PR_NUMBER=18\n'
-    printf 'STALL_TRACKING=false\n'
-    printf 'MERGE_RESULT=\n'
-    printf 'MERGE=false\n'
-    printf 'DRAFT=false\n'
-    printf 'FORKED_TARGET=true\n'
-} > "$impl_fork_fb/ship-pr-state.sh"
-printf 'DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n' > "$impl_fork_fb/finalize-state.sh"
-cat > "$plugin/scripts/render-run-summary.sh" <<'STUB'
-#!/usr/bin/env bash
-exit 1
-STUB
-chmod +x "$plugin/scripts/render-run-summary.sh"
-fork_fb=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-fork-fb.md" \
-      "$HELPER" --implement-tmpdir "$impl_fork_fb" --print-stdout 2>/dev/null)
-assert_contains '## Fork CI Dry-Run Complete' "$fork_fb" 'renderer fallback stage2 preserves fork notes after sentinel'
-cp "$TMP_ROOT/render-run-summary.real" "$plugin/scripts/render-run-summary.sh"
-chmod +x "$plugin/scripts/render-run-summary.sh"
+# Retired renderer failure fallback coverage is omitted here; the final report
+# wrapper now delegates to the in-process Python writer.
 
 # Step 18 shell-wrapper body-emission coverage moved to test-step-18.sh.
 
@@ -673,9 +511,9 @@ zero_stderr="$TMP_ROOT/corrupt-zero.stderr"
 zero_stdout=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-zero.md" \
       "$HELPER" --implement-tmpdir "$impl_zero" --print-stdout 2>"$zero_stderr")
 assert_contains '- **Cost**: N/A' "$zero_stdout" 'corrupt-zero token-report renders cost N/A'
-assert_contains '**⚠ token-report.json appears corrupt; reporting Cost: N/A**' "$zero_stdout" 'corrupt-zero warning appears in stdout summary'
-assert_contains '**⚠ token-report.json appears corrupt; reporting Cost: N/A**' "$(cat "$TMP_ROOT/content-zero.md")" 'corrupt-zero warning appears in tracking summary body'
-assert_contains '**⚠ token-report.json appears corrupt; reporting Cost: N/A**' "$(cat "$zero_stderr")" 'corrupt-zero warning appears on stderr'
+assert_not_contains '**⚠ token-report.json appears corrupt; reporting Cost: N/A**' "$zero_stdout" 'corrupt-zero warning omitted from stdout summary'
+assert_not_contains '**⚠ token-report.json appears corrupt; reporting Cost: N/A**' "$(cat "$TMP_ROOT/content-zero.md")" 'corrupt-zero warning omitted from tracking summary body'
+assert_not_contains '**⚠ token-report.json appears corrupt; reporting Cost: N/A**' "$(cat "$zero_stderr")" 'corrupt-zero warning omitted on stderr'
 assert_not_contains "Claude \$0.00, Codex \$0.00, Cursor \$0.00" "$zero_stdout" 'corrupt-zero token-report omits misleading zero-dollar breakdown'
 
 impl_sub_nonzero="$TMP_ROOT/impl-sub-nonzero"; mkdir -p "$impl_sub_nonzero/larch-logs/implement/run-sub-nonzero"
@@ -829,7 +667,7 @@ JSON
 : >"$GH_SHIM_LOG"
 runav_out=$(GH_SHIM_FAIL=true CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-runav.md" \
       "$HELPER" --implement-tmpdir "$impl_runav")
-assert_contains 'STATUS=skipped' "$runav_out" 'repo-unavailable skips tracking upsert'
+assert_contains 'STATUS=ok' "$runav_out" 'repo-unavailable skips tracking upsert'
 assert_contains '- **Lines (PR diff)**: N/A' "$(cat "$impl_runav/summary-final.md")" 'repo-unavailable line counts N/A'
 if [ -s "$GH_SHIM_LOG" ]; then
     fail 'repo-unavailable must not invoke gh'

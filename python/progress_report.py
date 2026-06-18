@@ -1,13 +1,15 @@
 """On-demand progress reports for live larch runs."""
+# pyright: reportUnknownVariableType=false, reportUnusedCallResult=false
 
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
+import contextlib
 import json
 import os
 import re
 import shlex
-import subprocess
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -16,6 +18,9 @@ from pathlib import Path
 from typing import cast
 
 from gantt import GanttRow, format_mss, render_gantt
+import logging_util
+import report_tokens_cost
+import voting
 
 TIMING_MARK_MIN_COLS = 5
 TIMING_ROUND_MIN_COLS = 8
@@ -33,6 +38,10 @@ SECONDS_PER_MINUTE = 60
 SECONDS_PER_HOUR = 3600
 RENDER_PHASE_DETAIL_TIMEOUT_SECONDS = 15
 PROGRESS_GANTT_ROW_CAP = 25
+MIN_MARKDOWN_TABLE_PARTS = 4
+MIN_TSV_RESULT_COLS = 3
+MD_RESULT_COL_FROM_END = 2
+MD_FALLBACK_RESULT_COL_FROM_END = 3
 
 _MD_TABLE_SEP_RE = re.compile(r"^\|[ :\-|]+\|$")
 _MD_BOLD_RE = re.compile(r"\*\*([^*\n]+)\*\*")
@@ -399,33 +408,470 @@ def _latest_token_ledger(tmpdir: Path) -> Path | None:
     return token_ledgers[-1] if token_ledgers else None
 
 
-def _call_render_phase_detail_script(
+def _read_json_object(path: Path) -> dict[str, object]:
+    try:
+        parsed: object = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if isinstance(parsed, dict):
+        return cast("dict[str, object]", parsed)
+    return {}
+
+
+def _as_int(value: object) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(float(value))
+        except ValueError:
+            return 0
+    return 0
+
+
+def _nested_dict(data: dict[str, object], key: str) -> dict[str, object]:
+    value = data.get(key)
+    if isinstance(value, dict):
+        return cast("dict[str, object]", value)
+    return {}
+
+
+def _fmt_hms(seconds: int | None) -> str:
+    if seconds is None or seconds <= 0:
+        return "—"
+    hours = seconds // SECONDS_PER_HOUR
+    minutes = (seconds % SECONDS_PER_HOUR) // SECONDS_PER_MINUTE
+    secs = seconds % SECONDS_PER_MINUTE
+    if hours > 0:
+        return f"{hours}h {minutes:02d}m {secs:02d}s"
+    if minutes > 0:
+        return f"{minutes}m {secs:02d}s"
+    return f"{secs}s"
+
+
+def _read_lines_best_effort(path: Path | None) -> list[str]:
+    if path is None:
+        return []
+    try:
+        return path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return []
+
+
+def _timing_round_windows(
+    timing_ledger: Path | None,
+    *,
+    skill: str,
+    round_num: int,
+    skill_filtered: bool,
+) -> tuple[int, int] | None:
+    starts: list[int] = []
+    ends: list[int] = []
+    round_s = str(round_num)
+    for line in _read_lines_best_effort(timing_ledger):
+        cols = line.split("\t")
+        if len(cols) < TIMING_ROUND_MIN_COLS or cols[0] != "v1" or cols[1] != "round":
+            continue
+        if skill_filtered and cols[TIMING_ROUND_SKILL_COL] != skill:
+            continue
+        if cols[TIMING_ROUND_ROUND_NUM_COL] != round_s:
+            continue
+        try:
+            starts.append(int(cols[6]))
+            ends.append(int(cols[TIMING_ROUND_END_COL]))
+        except ValueError:
+            continue
+    if not starts or not ends:
+        return None
+    return min(starts), max(ends)
+
+
+def _round_vendor_cost(token_ledger: Path | None, start_s: int | None, end_s: int | None) -> str:
+    if token_ledger is None or not token_ledger.is_file() or start_s is None or end_s is None:
+        return "—"
+    sums: dict[str, dict[str, int]] = {}
+    for line in _read_lines_best_effort(token_ledger):
+        if not line.strip():
+            continue
+        try:
+            row: object = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(row, dict):
+            continue
+        data = cast("dict[str, object]", row)
+        if data.get("type") != "vendor":
+            continue
+        ts_raw = data.get("ts")
+        if not isinstance(ts_raw, str):
+            continue
+        try:
+            ts = int(datetime.fromisoformat(ts_raw).timestamp())
+        except ValueError:
+            continue
+        if ts < start_s or ts > end_s:
+            continue
+        vendor = str(data.get("vendor") or "")
+        if vendor not in {"codex", "cursor", "claude_sub"}:
+            continue
+        bucket = sums.setdefault(vendor, {"input": 0, "cache_read": 0, "cache_create": 0, "output": 0})
+        bucket["input"] += _as_int(data.get("input"))
+        bucket["cache_read"] += _as_int(data.get("cache_read"))
+        bucket["cache_create"] += _as_int(data.get("cache_create"))
+        bucket["output"] += _as_int(data.get("output"))
+    if not sums:
+        return "$0.00"
+    argv: list[str] = []
+    for vendor, bucket in sums.items():
+        if vendor == "codex":
+            argv.extend([
+                "--codex-input-tokens",
+                str(bucket["input"]),
+                "--codex-cached-input-tokens",
+                str(bucket["cache_read"]),
+                "--codex-output-tokens",
+                str(bucket["output"]),
+            ])
+        elif vendor == "cursor":
+            argv.extend([
+                "--cursor-input-tokens",
+                str(bucket["input"]),
+                "--cursor-cache-read-tokens",
+                str(bucket["cache_read"]),
+                "--cursor-output-tokens",
+                str(bucket["output"]),
+            ])
+        elif vendor == "claude_sub":
+            argv.extend([
+                "--claude-sub-input-tokens",
+                str(bucket["input"]),
+                "--claude-sub-cache-read-tokens",
+                str(bucket["cache_read"]),
+                "--claude-sub-cache-write-5m-tokens",
+                str(bucket["cache_create"]),
+                "--claude-sub-output-tokens",
+                str(bucket["output"]),
+            ])
+    try:
+        out = report_tokens_cost.token_cost_from_args(argv)
+    except Exception:  # pylint: disable=broad-except
+        return "—"
+    for line in out.splitlines():
+        key, sep, value = line.partition("=")
+        if sep and key == "TOTAL_COST" and re.fullmatch(r"[0-9]+(?:\.[0-9]+)?", value):
+            return f"${value}"
+    return "—"
+
+
+@dataclass(frozen=True)
+class _PhaseRound:
+    number: int
+    suggestions: int
+    accepted: int
+    oos_proposed: int
+    oos_accepted: int
+    reviewers: int
+    seconds: int | None
+    cost: str
+    gantt_window: tuple[int, int] | None
+
+
+def _completed_round_dirs(rounds_root: Path) -> list[Path]:
+    if not rounds_root.is_dir() or not os.access(rounds_root, os.R_OK | os.X_OK):
+        return []
+    try:
+        candidates = [p for p in rounds_root.iterdir() if p.is_dir() and (p / "round-meta.json").is_file()]
+    except OSError:
+        return []
+    return sorted([p for p in candidates if _round_number(p) is not None], key=lambda p: _round_number(p) or 0)
+
+
+def _phase_round_from_meta(
+    round_dir: Path,
+    *,
+    skill: str,
+    timing_ledger: Path | None,
+    token_ledger: Path | None,
+) -> _PhaseRound:
+    meta = _read_json_object(round_dir / "round-meta.json")
+    tally = _nested_dict(meta, "tally")
+    summary = _nested_dict(meta, "summary")
+    counts = _nested_dict(summary, "finding_counts")
+    panel = _nested_dict(summary, "panel")
+    accepted = _as_int(tally.get("ACCEPTED_COUNT", counts.get("total_accepted")))
+    rejected = _as_int(tally.get("REJECTED_COUNT", counts.get("total_rejected")))
+    exonerated = _as_int(tally.get("EXONERATED_COUNT", counts.get("total_exonerated")))
+    neutral = _as_int(tally.get("NEUTRAL_COUNT", counts.get("total_neutral")))
+    oos_accepted = _as_int(tally.get("OOS_ACCEPTED_COUNT"))
+    oos_rejected = _as_int(tally.get("OOS_REJECTED_COUNT"))
+    reviewers = _as_int(panel.get("total_slot_count"))
+    if reviewers == 0:
+        reviewers = _as_int(panel.get("static_slot_count")) + _as_int(panel.get("dynamic_slot_count"))
+    round_num = _round_number(round_dir) or 0
+    table_window = _timing_round_windows(timing_ledger, skill=skill, round_num=round_num, skill_filtered=True)
+    gantt_window = _timing_round_windows(timing_ledger, skill=skill, round_num=round_num, skill_filtered=False)
+    seconds = None
+    if table_window is not None and table_window[1] > table_window[0]:
+        seconds = table_window[1] - table_window[0]
+    cost = _round_vendor_cost(
+        token_ledger,
+        table_window[0] if table_window else None,
+        table_window[1] if table_window else None,
+    )
+    return _PhaseRound(
+        number=round_num,
+        suggestions=accepted + rejected + exonerated + neutral,
+        accepted=accepted,
+        oos_proposed=oos_accepted + oos_rejected,
+        oos_accepted=oos_accepted,
+        reviewers=reviewers,
+        seconds=seconds,
+        cost=cost,
+        gantt_window=gantt_window if gantt_window is not None and gantt_window[1] > gantt_window[0] else None,
+    )
+
+
+def _accepted_reviewer_basenames(findings_file: Path | None) -> list[str]:
+    names: list[str] = []
+    for row in logging_util.iter_jsonl_dicts(_read_lines_best_effort(findings_file)):
+        if row.get("outcome") != "accepted":
+            continue
+        slots = row.get("reviewer_slots")
+        if isinstance(slots, list):
+            names.extend(Path(item).name for item in slots if isinstance(item, str) and item)
+        else:
+            reviewer = row.get("reviewer")
+            if isinstance(reviewer, str) and reviewer:
+                names.append(Path(reviewer).name)
+    return names
+
+
+def _top_reviewers(
+    findings_file: Path | None,
+    *,
+    label_map: dict[str, str],
+    top_n: int,
+) -> list[tuple[str, int]]:
+    counts: dict[str, int] = {}
+    for basename in _accepted_reviewer_basenames(findings_file):
+        label = label_map.get(basename) or _progress_derived_label(basename)
+        counts[label] = counts.get(label, 0) + 1
+    return list(sorted(counts.items(), key=lambda item: (-item[1], item[0]))[:top_n])
+
+
+def _collector_failure_records(collector: str) -> list[tuple[str, str]]:
+    records: list[tuple[str, str]] = []
+    for block in re.split(r"\n\s*\n", collector):
+        tool = ""
+        status = ""
+        reviewer_file = ""
+        for line in block.splitlines():
+            key, sep, value = line.partition("=")
+            if not sep:
+                continue
+            if key == "TOOL":
+                tool = value
+            elif key == "STATUS":
+                status = value
+            elif key == "REVIEWER_FILE":
+                reviewer_file = value
+        if status and status != "OK":
+            records.append((tool, Path(reviewer_file).name))
+    return records
+
+
+def _failed_reviewers(round_dirs: list[Path], *, label_map: dict[str, str]) -> tuple[int, list[tuple[str, int]]]:
+    counts: dict[str, int] = {}
+    total = 0
+    for round_dir in round_dirs:
+        collector = str(_read_json_object(round_dir / "round-meta.json").get("collector") or "")
+        for tool, basename in _collector_failure_records(collector):
+            label = label_map.get(basename)
+            if not label:
+                label = _progress_derived_label(basename)
+                if tool and "/" in label:
+                    label = tool + label[label.index("/") :]
+            counts[label] = counts.get(label, 0) + 1
+            total += 1
+    return total, sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+
+
+def _render_phase_gantt(
+    round_dirs: list[Path],
+    *,
+    timing_ledger: Path | None,
+    rounds: list[_PhaseRound],
+    label_map: dict[str, str],
+) -> str:
+    if timing_ledger is None or not timing_ledger.is_file():
+        return ""
+    sections: list[str] = []
+    round_by_num = {row.number: row for row in rounds}
+    for round_dir in round_dirs:
+        round_num = _round_number(round_dir) or 0
+        phase_round = round_by_num.get(round_num)
+        if phase_round is None or phase_round.gantt_window is None:
+            continue
+        start_s, end_s = phase_round.gantt_window
+        rows = _progress_vendor_rows(
+            timing_ledger,
+            start_s,
+            end_s,
+            label_map,
+            skip_ci=True,
+            require_complete_status=False,
+        )
+        sections.append(f"### Round {round_num} reviewer timing\n")
+        if rows:
+            chart = render_gantt(start_s, end_s, rows)
+            if chart:
+                span = end_s - start_s
+                sections.append(
+                    "```\n"
+                    f"Round {round_num} reviewer timing  ·  window 0:00-{format_mss(span)} ({span}s)\n"
+                    f"{chart}\n"
+                    "```\n"
+                )
+            else:
+                sections.append("No reviewer timing tasks overlapped this round.\n")
+        else:
+            sections.append("No reviewer timing tasks overlapped this round.\n")
+    return "\n".join(sections).strip("\n") + ("\n\n" if sections else "")
+
+
+def render_phase_detail(
+    rounds_root: Path,
+    skill: str,
+    *,
+    timing_ledger: Path | None = None,
+    token_ledger: Path | None = None,
+    findings_file: Path | None = None,
+    top_n: int = 7,
+    gantt_enabled: bool = True,
+) -> str:
+    if skill not in {"implement", "design"}:
+        raise ValueError("skill must be implement or design")
+    if not rounds_root.is_dir() or not os.access(rounds_root, os.R_OK | os.X_OK):
+        return ""
+    top_n = top_n if top_n > 0 else 7
+    round_dirs = _completed_round_dirs(rounds_root)
+    if not round_dirs:
+        return "## Review Phase Detail\n\nNo review rounds completed.\n"
+    label_map = _progress_label_map(round_dirs)
+    phase_rounds = [
+        _phase_round_from_meta(
+            round_dir,
+            skill=skill,
+            timing_ledger=timing_ledger if timing_ledger is not None and timing_ledger.is_file() else None,
+            token_ledger=token_ledger if token_ledger is not None and token_ledger.is_file() else None,
+        )
+        for round_dir in round_dirs
+    ]
+    total_time = sum(row.seconds or 0 for row in phase_rounds)
+    any_time = any(row.seconds is not None for row in phase_rounds)
+    costs = [float(row.cost[1:]) for row in phase_rounds if row.cost.startswith("$")]
+    top_reviewers = _top_reviewers(findings_file, label_map=label_map, top_n=top_n)
+    fail_total, failures = _failed_reviewers(round_dirs, label_map=label_map)
+    lines = [
+        "## Review Phase Detail",
+        "",
+        "| Round | Suggestions | Accepted | OOS proposed | OOS accepted | Time | Cost | Reviewers |",
+        "|--:|--:|--:|--:|--:|:--|--:|--:|",
+    ]
+    lines.extend(
+        (
+            f"| {row.number} | {row.suggestions} | {row.accepted} | {row.oos_proposed} | "
+            f"{row.oos_accepted} | {_fmt_hms(row.seconds)} | {row.cost} | {row.reviewers} |"
+        )
+        for row in phase_rounds
+    )
+    total_cost = f"${sum(costs):.2f}" if costs else "—"
+    lines.append(
+        f"| **Total** | **{sum(row.suggestions for row in phase_rounds)}** | "
+        f"**{sum(row.accepted for row in phase_rounds)}** | "
+        f"**{sum(row.oos_proposed for row in phase_rounds)}** | "
+        f"**{sum(row.oos_accepted for row in phase_rounds)}** | "
+        f"**{_fmt_hms(total_time if any_time else None)}** | **{total_cost}** | "
+        f"**{sum(row.reviewers for row in phase_rounds)}** |"
+    )
+    lines.append("")
+    if gantt_enabled:
+        gantt = _render_phase_gantt(
+            round_dirs,
+            timing_ledger=timing_ledger if timing_ledger is not None and timing_ledger.is_file() else None,
+            rounds=phase_rounds,
+            label_map=label_map,
+        )
+        if gantt:
+            lines.extend(gantt.rstrip("\n").splitlines())
+            lines.append("")
+    lines.append("**Top reviewers** (by suggestions accepted, whole run):")
+    if top_reviewers:
+        for index, (label, count) in enumerate(top_reviewers, start=1):
+            lines.append(f"{index}. {label} — {count}")
+    else:
+        lines.append("- (no accepted suggestions attributed to a reviewer slot)")
+    lines.append("")
+    lines.append(f"**Reviewer slot failures**: {fail_total}")
+    for label, count in failures:
+        lines.append(f"- {label}: {count}")
+    lines.append("")
+    lines.append(
+        "_Cost is the per-round vendor cost (Codex + Cursor + Claude subprocess), attributed by "
+        "token-ledger timestamp window; it excludes main-agent Claude, so it is less than the run "
+        "Cost line above. Rendered as an em dash when per-round timing or the token ledger is unavailable._"
+    )
+    return "\n".join(lines) + "\n"
+
+
+def _render_phase_detail_best_effort(
+    rounds_root: Path,
+    *,
+    skill: str,
+    timing_ledger: Path | None = None,
+    token_ledger: Path | None = None,
+    findings_file: Path | None = None,
+    top_n: int = 7,
+    gantt_enabled: bool = True,
+) -> str:
+    # In-process render under a 15s wall-clock guard for live/final-summary callers;
+    # explicit CLI rendering (render_phase_detail_main) calls render_phase_detail unbounded.
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    try:
+        future = executor.submit(
+            render_phase_detail,
+            rounds_root,
+            skill,
+            timing_ledger=timing_ledger,
+            token_ledger=token_ledger,
+            findings_file=findings_file,
+            top_n=top_n,
+            gantt_enabled=gantt_enabled,
+        )
+        return future.result(timeout=RENDER_PHASE_DETAIL_TIMEOUT_SECONDS)
+    except Exception:  # pylint: disable=broad-except
+        return ""
+    finally:
+        executor.shutdown(wait=False)
+
+
+def _call_render_phase_detail(
     rounds_root: Path,
     skill: str,
     timing_ledger: Path | None,
     token_ledger: Path | None,
 ) -> str:
-    script = Path(__file__).resolve().parent.parent / "scripts" / "render-review-phase-detail.sh"
-    if not script.is_file():
-        return ""
-    argv = [str(script), "--rounds-root", str(rounds_root), "--skill", skill]
-    if timing_ledger is not None and timing_ledger.is_file():
-        argv.extend(["--timing-ledger", str(timing_ledger)])
-    if token_ledger is not None and token_ledger.is_file():
-        argv.extend(["--token-ledger", str(token_ledger)])
-    try:
-        result = subprocess.run(
-            argv,
-            text=True,
-            capture_output=True,
-            timeout=RENDER_PHASE_DETAIL_TIMEOUT_SECONDS,
-            check=False,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return ""
-    if result.returncode != 0:
-        return ""
-    return _strip_md_for_terminal(result.stdout.strip())
+    text = _render_phase_detail_best_effort(
+        rounds_root,
+        skill=skill,
+        timing_ledger=timing_ledger,
+        token_ledger=token_ledger,
+    )
+    return _strip_md_for_terminal(text.strip()) if text.strip() else ""
 
 
 def _progress_label_map_from_manifests(manifest_paths: list[Path]) -> dict[str, str]:
@@ -435,16 +881,7 @@ def _progress_label_map_from_manifests(manifest_paths: list[Path]) -> dict[str, 
             lines = manifest.read_text(encoding="utf-8", errors="replace").splitlines()
         except OSError:
             continue
-        for line in lines:
-            if not line.strip():
-                continue
-            try:
-                parsed: object = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if not isinstance(parsed, dict):
-                continue
-            row = cast("dict[str, object]", parsed)
+        for row in logging_util.iter_jsonl_dicts(lines):
             output = row.get("output")
             tool = row.get("tool")
             slot = row.get("slot")
@@ -542,6 +979,7 @@ def _progress_vendor_rows(
     label_map: dict[str, str] | None = None,
     *,
     skip_ci: bool = False,
+    require_complete_status: bool = True,
 ) -> list[GanttRow]:
     if window_end_s <= window_start_s:
         return []
@@ -555,7 +993,7 @@ def _progress_vendor_rows(
         if len(cols) < TIMING_VENDOR_MIN_COLS or cols[0] != "v1" or cols[1] != "vendor":
             continue
         status = cols[TIMING_VENDOR_STATUS_COL]
-        if status not in {"complete", "OK"}:
+        if require_complete_status and status not in {"complete", "OK"}:
             continue
         try:
             start_s = int(cols[TIMING_VENDOR_START_COL])
@@ -650,7 +1088,7 @@ def _render_inflight_gantt(
 
 def _render_review_detail(implement_tmpdir: Path, run_id: str) -> str:
     timing = implement_tmpdir / "timing-ledger.tsv"
-    return _call_render_phase_detail_script(
+    return _call_render_phase_detail(
         _review_rounds_root(implement_tmpdir, run_id),
         "implement",
         timing if timing.is_file() else None,
@@ -770,16 +1208,7 @@ def _manifest_output_paths(manifest: Path) -> list[Path]:
         lines = manifest.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
         return paths
-    for line in lines:
-        if not line.strip():
-            continue
-        try:
-            parsed: object = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(parsed, dict):
-            continue
-        row = cast("dict[str, object]", parsed)
+    for row in logging_util.iter_jsonl_dicts(lines):
         output = row.get("output")
         if isinstance(output, str) and output:
             paths.append(Path(output))
@@ -980,7 +1409,7 @@ def _design_elapsed(round_dir: Path, step_start_s: int | None) -> str:
 
 def _render_design_review_detail(design_tmpdir: Path) -> str:
     timing = design_tmpdir / "timing-ledger.tsv"
-    return _call_render_phase_detail_script(
+    return _call_render_phase_detail(
         design_tmpdir / "plan-review",
         "design",
         timing if timing.is_file() else None,
@@ -1093,7 +1522,329 @@ def _report(cwd: str) -> str:
     return _render_design(run)
 
 
+def _parse_tally_md(path: Path) -> tuple[int, int, int, int, int, int]:
+    accepted = rejected = neutral = exonerated = oos_accepted = oos_rejected = 0
+    in_findings = False
+    for line in _read_lines_best_effort(path):
+        if line.startswith("## Findings"):
+            in_findings = True
+            continue
+        if in_findings and line.startswith("## "):
+            in_findings = False
+        if not in_findings or "|" not in line:
+            continue
+        parts = [part.strip() for part in line.split("|")]
+        if len(parts) < MIN_MARKDOWN_TABLE_PARTS:
+            continue
+        item = parts[1] if len(parts) > 1 else ""
+        result = parts[-2] if len(parts) >= MD_RESULT_COL_FROM_END else ""
+        if not result or set(result) <= {"-"}:
+            result = parts[-3] if len(parts) >= MD_FALLBACK_RESULT_COL_FROM_END else ""
+        invalid_item = not item or item == "Item" or set(item) <= {"-"}
+        invalid_result = not result or result == "Result" or set(result) <= {"-"}
+        if invalid_item or invalid_result:
+            continue
+        if re.fullmatch(r"FINDING_[0-9A-Za-z_]+", item):
+            if result == "accepted":
+                accepted += 1
+            elif result == "rejected":
+                rejected += 1
+            elif result == "neutral":
+                neutral += 1
+            elif result == "exonerated":
+                exonerated += 1
+        elif re.fullmatch(r"OOS_[0-9A-Za-z_]+", item):
+            if result == "accepted":
+                oos_accepted += 1
+            else:
+                oos_rejected += 1
+    return accepted, rejected, neutral, exonerated, oos_accepted, oos_rejected
+
+
+def _parse_classification_tsv(path: Path) -> tuple[int, int, int, int, int, int]:
+    accepted = rejected = neutral = exonerated = oos_accepted = oos_rejected = 0
+    lines = _read_lines_best_effort(path)
+    for line in lines[1:]:
+        cols = [col.strip() for col in line.split("\t")]
+        if len(cols) < MIN_TSV_RESULT_COLS:
+            continue
+        item, result = cols[0], cols[2]
+        if re.fullmatch(r"FINDING_[0-9A-Za-z_]+", item):
+            if result == "accepted":
+                accepted += 1
+            elif result == "rejected":
+                rejected += 1
+            elif result == "neutral":
+                neutral += 1
+            elif result == "exonerated":
+                exonerated += 1
+        elif re.fullmatch(r"OOS_[0-9A-Za-z_]+", item):
+            if result == "accepted":
+                oos_accepted += 1
+            elif result:
+                oos_rejected += 1
+    return accepted, rejected, neutral, exonerated, oos_accepted, oos_rejected
+
+
+def _tsv_has_data_rows(path: Path) -> bool:
+    return any(line.strip() for line in _read_lines_best_effort(path)[1:])
+
+
+def _round_counts(round_dir: Path) -> tuple[tuple[int, int, int, int, int, int], str]:
+    counts: tuple[int, int, int, int, int, int] | None = None
+    source = ""
+    tally = round_dir / "voting-tally.md"
+    classification = round_dir / "findings-classification.tsv"
+    md_counts = (0, 0, 0, 0, 0, 0)
+    if tally.is_file():
+        md_counts = _parse_tally_md(tally)
+        counts = md_counts
+        source = "md"
+    if classification.is_file():
+        tsv_counts = _parse_classification_tsv(classification)
+        if counts is None or (md_counts == (0, 0, 0, 0, 0, 0) and _tsv_has_data_rows(classification)):
+            counts = tsv_counts
+            source = "tsv"
+    return counts or (0, 0, 0, 0, 0, 0), source
+
+
+def _oos_result_rows(round_dir: Path, source: str) -> list[tuple[str, str]]:
+    rows: list[tuple[str, str]] = []
+    if source == "md":
+        in_findings = False
+        for line in _read_lines_best_effort(round_dir / "voting-tally.md"):
+            if line.startswith("## Findings"):
+                in_findings = True
+                continue
+            if in_findings and line.startswith("## "):
+                in_findings = False
+            if not in_findings or "|" not in line:
+                continue
+            parts = [part.strip() for part in line.split("|")]
+            if len(parts) < MIN_MARKDOWN_TABLE_PARTS:
+                continue
+            item = parts[1]
+            result = parts[-2] if parts[-2] and set(parts[-2]) != {"-"} else parts[-3]
+            if re.fullmatch(r"OOS_[0-9A-Za-z_]+", item) and result:
+                rows.append((item, result))
+    elif source == "tsv":
+        for line in _read_lines_best_effort(round_dir / "findings-classification.tsv")[1:]:
+            cols = [col.strip() for col in line.split("\t")]
+            if len(cols) >= MIN_TSV_RESULT_COLS and re.fullmatch(r"OOS_[0-9A-Za-z_]+", cols[0]) and cols[2]:
+                rows.append((cols[0], cols[2]))
+    return rows
+
+
+def _extract_oos_block(round_dir: Path, oos_id: str) -> str:
+    pattern = re.compile(rf"(?ms)^### {re.escape(oos_id)}:.*?(?=^### |\Z)")
+    for name in ("findings-oos.md", "findings.md", "oos.md", "findings-in-scope.md"):
+        path = round_dir / name
+        if not path.is_file():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        match = pattern.search(text)
+        if match:
+            return match.group(0)
+    return ""
+
+
+def _adjust_design_security_oos(
+    round_dir: Path,
+    counts: tuple[int, int, int, int, int, int],
+    source: str,
+) -> tuple[int, int, int, int, int, int]:
+    accepted, rejected, neutral, exonerated, oos_accepted, oos_rejected = counts
+    for oos_id, result in _oos_result_rows(round_dir, source):
+        block = _extract_oos_block(round_dir, oos_id)
+        if not block:
+            continue
+        tmp = round_dir / f".oos-sec-{oos_id}.tmp"
+        try:
+            tmp.write_text(block, encoding="utf-8")
+            is_security = voting.is_security_block(tmp)
+        except Exception:  # pylint: disable=broad-except
+            is_security = False
+        finally:
+            with contextlib.suppress(OSError):
+                tmp.unlink()
+        if not is_security:
+            continue
+        if result == "accepted":
+            oos_accepted = max(0, oos_accepted - 1)
+        else:
+            oos_rejected = max(0, oos_rejected - 1)
+    return accepted, rejected, neutral, exonerated, oos_accepted, oos_rejected
+
+
+def _materialize_design_panel_manifest(round_dir: Path) -> int:
+    slots_src = round_dir / "plan-review-slots.ndjson"
+    if not slots_src.is_file():
+        slots_src = round_dir.parent.parent / "plan-review-slots.ndjson"
+    panel_tmp = round_dir / "panel-manifest.ndjson.tmp"
+    count = 0
+    try:
+        with panel_tmp.open("w", encoding="utf-8") as dst:
+            for row in logging_util.iter_jsonl_dicts(_read_lines_best_effort(slots_src)):
+                slot = str(row.get("slot") or "")
+                tool = str(row.get("tool") or "")
+                output = str(row.get("output") or "")
+                if not (slot or tool or output):
+                    continue
+                dst.write(json.dumps({"slot": slot, "tool": tool, "output": output}, separators=(",", ":")) + "\n")
+                count += 1
+        panel_tmp.replace(round_dir / "panel-manifest.ndjson")
+    except OSError:
+        with contextlib.suppress(OSError):
+            panel_tmp.unlink()
+        return 0
+    return count
+
+
+def _count_panel_manifest(path: Path) -> int:
+    count = 0
+    for row in logging_util.iter_jsonl_dicts(_read_lines_best_effort(path)):
+        if any(row.get(k) for k in ("slot", "tool", "output")):
+            count += 1
+    return count
+
+
+def _read_simple_env(path: Path) -> dict[str, str]:
+    data: dict[str, str] = {}
+    for line in _read_lines_best_effort(path):
+        key, sep, value = line.partition("=")
+        if sep:
+            data[key] = value
+    return data
+
+
+def _round_meta_object(
+    counts: tuple[int, int, int, int, int, int],
+    panel_count: int,
+    *,
+    collector: str = "",
+    revise: dict[str, str | None] | None = None,
+) -> dict[str, object]:
+    accepted, rejected, neutral, exonerated, oos_accepted, oos_rejected = counts
+    obj: dict[str, object] = {
+        "tally": {
+            "ACCEPTED_COUNT": str(accepted),
+            "REJECTED_COUNT": str(rejected),
+            "EXONERATED_COUNT": str(exonerated),
+            "NEUTRAL_COUNT": str(neutral),
+            "OOS_ACCEPTED_COUNT": str(oos_accepted),
+            "OOS_REJECTED_COUNT": str(oos_rejected),
+        },
+        "summary": {"panel": {"total_slot_count": panel_count}},
+        "collector": collector,
+    }
+    if revise is not None:
+        obj["revise"] = revise
+    return obj
+
+
+def write_design_round_meta(round_dir: Path) -> int:
+    if not round_dir.is_dir():
+        return 0
+    try:
+        counts, source = _round_counts(round_dir)
+        if source:
+            counts = _adjust_design_security_oos(round_dir, counts, source)
+        panel_count = _materialize_design_panel_manifest(round_dir)
+        env = _read_simple_env(round_dir / "round-summary.env")
+        failures = _as_int(env.get("COLLECT_FAILURE_COUNT"))
+        collector = "\n\n".join(
+            f"TOOL=unknown\nSTATUS=FAILED\nREVIEWER_FILE=collector-failure-{index}.txt"
+            for index in range(1, failures + 1)
+        )
+        revise_env = _read_simple_env(round_dir / "revise" / "revise.env")
+        meta = _round_meta_object(
+            counts,
+            panel_count,
+            collector=collector,
+            revise={
+                "status": revise_env.get("REVISE_STATUS") or None,
+                "tier": revise_env.get("REVISE_TIER") or None,
+            },
+        )
+        tmp = round_dir / "round-meta.json.tmp"
+        tmp.write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
+        tmp.replace(round_dir / "round-meta.json")
+    except Exception:  # pylint: disable=broad-except
+        return 1
+    return 0
+
+
+def write_implement_round_meta(round_dir: Path) -> int:
+    if not round_dir.is_dir():
+        return 0
+    try:
+        counts, _source = _round_counts(round_dir)
+        panel_count = _count_panel_manifest(round_dir / "panel-manifest.ndjson")
+        meta = _round_meta_object(counts, panel_count)
+        tmp = round_dir / "round-meta.json.tmp"
+        tmp.write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
+        tmp.replace(round_dir / "round-meta.json")
+    except Exception:  # pylint: disable=broad-except
+        return 1
+    return 0
+
+
+def render_phase_detail_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py progress render-phase-detail")
+    parser.add_argument("--rounds-root", required=True)
+    parser.add_argument("--findings-file")
+    parser.add_argument("--timing-ledger")
+    parser.add_argument("--token-ledger")
+    parser.add_argument("--skill", choices=("implement", "design"), default="implement")
+    parser.add_argument("--top-n", default="7")
+    parser.add_argument("--no-gantt", action="store_true")
+    parser.add_argument("--output")
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as exc:
+        return int(exc.code) if isinstance(exc.code, int) else 2
+    top_n = int(args.top_n) if str(args.top_n).isdigit() else 7
+    text = render_phase_detail(
+        Path(args.rounds_root),
+        args.skill,
+        timing_ledger=Path(args.timing_ledger) if args.timing_ledger else None,
+        token_ledger=Path(args.token_ledger) if args.token_ledger else None,
+        findings_file=Path(args.findings_file) if args.findings_file else None,
+        top_n=top_n,
+        gantt_enabled=not args.no_gantt,
+    )
+    if args.output:
+        Path(args.output).write_text(text, encoding="utf-8")
+    else:
+        print(text, end="")
+    return 0
+
+
+def write_design_round_meta_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py progress write-design-round-meta")
+    parser.add_argument("--round-dir", required=True)
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as exc:
+        return int(exc.code) if isinstance(exc.code, int) else 2
+    return write_design_round_meta(Path(args.round_dir))
+
+
+def write_implement_round_meta_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py progress write-implement-round-meta")
+    parser.add_argument("--round-dir", required=True)
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as exc:
+        return int(exc.code) if isinstance(exc.code, int) else 2
+    return write_implement_round_meta(Path(args.round_dir))
+
+
 def report_main(argv: list[str]) -> int:
+    logging_util.quiet_init(argv0="cli.py")
     parser = argparse.ArgumentParser(prog="progress report", add_help=True)
     _ = parser.add_argument("--cwd", default="")
     try:

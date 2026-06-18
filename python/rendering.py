@@ -1,6 +1,6 @@
 """Prompt rendering, Mermaid sanitizing, diagram upsert, and generators."""
 # ruff: noqa: S608
-# pyright: reportUnusedCallResult=false
+# pyright: reportUnusedCallResult=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false
 
 from __future__ import annotations
 
@@ -217,6 +217,47 @@ def escape_issue_body_lines(body: str) -> str:
         else:
             out.append(line)
     return "\n".join(out)
+
+
+def render_findings_view(run_dir: Path, view: str = "all") -> tuple[int, str, str]:
+    if view not in {"accepted", "rejected", "oos", "all"}:
+        return 1, "", f"render findings-view: unknown view {view} (accepted|rejected|oos|all)"
+    jsonl = run_dir / "review-findings-full.jsonl"
+    if not jsonl.is_file():
+        return 1, "", f"render findings-view: review-findings-full.jsonl not found in {run_dir}"
+    out: list[str] = []
+    try:
+        lines = jsonl.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError as exc:
+        return 1, "", f"render findings-view: {exc}"
+    for row in logging_util.iter_jsonl_dicts(lines):
+        outcome = str(row.get("outcome") or "")
+        if view == "oos":
+            if outcome != "out_of_scope":
+                continue
+        elif view not in ("all", outcome):
+            continue
+        round_num = row.get("round_num")
+        prose = row.get("prose_body")
+        body = "(no prose body)" if prose is None else str(prose)
+        out.append(f"### FINDING ({outcome}) round-{round_num}\n{body}\n")
+    return 0, "".join(out), ""
+
+
+def render_findings_view_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py render findings-view")
+    parser.add_argument("run_dir")
+    parser.add_argument("view", nargs="?", default="all")
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as exc:
+        return int(exc.code) if isinstance(exc.code, int) else 1
+    rc, stdout, stderr = render_findings_view(Path(args.run_dir), args.view)
+    if stdout:
+        sys.stdout.write(stdout)
+    if stderr:
+        print(stderr, file=sys.stderr)
+    return rc
 
 
 def render_issue_batch_items(

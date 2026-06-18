@@ -3321,3 +3321,47 @@ def test_parity_classify_success() -> None:
     )
     assert py.failure_class == bash_cls
     assert py.reason == bash_reason
+
+
+def test_status_check_emits_contract_keys(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setattr(agents, "_read_plugin_version_best_effort", lambda: "1.2.3")
+    monkeypatch.setattr(
+        agents,
+        "check_reviewers",
+        lambda: agents.CheckReviewersResult(
+            codex_binary_found=True,
+            cursor_binary_found=False,
+            codex_present=True,
+            cursor_present=False,
+        ),
+    )
+    rc = agents.status_check_main([])
+    assert rc == 0
+    out = capsys.readouterr().out
+    for key in (
+        "LARCH_PLUGIN_VERSION=1.2.3",
+        "CODEX_BINARY_FOUND=true",
+        "CURSOR_BINARY_FOUND=false",
+        "CODEX_PRESENT=true",
+        "CURSOR_PRESENT=false",
+        "CODEX_STATE=ok",
+        "CURSOR_STATE=binary-missing",
+        "DEGRADED=true",
+    ):
+        assert key in out
+    assert "CODING_BINARY_FOUND" not in out
+
+
+def test_status_check_version_and_probe_fallback(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setattr(agents, "_read_plugin_version_best_effort", lambda: "unknown")
+
+    def raise_probe() -> agents.CheckReviewersResult:
+        raise RuntimeError("probe failed")
+
+    monkeypatch.setattr(agents, "check_reviewers", raise_probe)
+    assert agents.status_check_main([]) == 0
+    out = capsys.readouterr().out
+    assert "LARCH_PLUGIN_VERSION=unknown" in out
+    assert "CODEX_STATE=binary-missing" in out
+    assert "CURSOR_STATE=binary-missing" in out
+    assert "DEGRADED=true" in out

@@ -1024,9 +1024,14 @@ def _run_apply(tmpdir: Path, round_num: int, values: dict[str, str]) -> int:
     if proc.returncode != 0 or revise_status not in {"ok", "ok-fallback"}:
         _write_phase(tmpdir, round_num, "awaiting-apply")
         return 21
-    round_meta = os.environ.get("WRITE_DESIGN_ROUND_META_SH") or str(_plugin_root() / "scripts" / "write-design-round-meta.sh")
-    if Path(round_meta).exists() and os.access(round_meta, os.X_OK):
-        _ = _run_command([round_meta, "--round-dir", str(tmpdir / "plan-review" / f"round-{round_num}")])
+    round_dir = str(tmpdir / "plan-review" / f"round-{round_num}")
+    round_meta_override = os.environ.get("WRITE_DESIGN_ROUND_META_SH")
+    if round_meta_override:
+        # Test/harness override only; production uses the migrated Python CLI verb below.
+        if Path(round_meta_override).exists() and os.access(round_meta_override, os.X_OK):
+            _ = _run_command([round_meta_override, "--round-dir", round_dir])
+    else:
+        _ = _run_command([sys.executable, str(_plugin_root() / "python" / "cli.py"), "progress", "write-design-round-meta", "--round-dir", round_dir])
     _write_phase(tmpdir, round_num, "awaiting-post-apply")
     return _run_dedup(tmpdir, round_num, values)
 

@@ -1,11 +1,12 @@
 """Shared best-effort review phase detail rendering for final reports."""
+# pyright: reportPrivateUsage=false
 
 from __future__ import annotations
 
 import os
-import subprocess
 from pathlib import Path
 
+import progress_report
 import redact
 
 RENDER_PHASE_DETAIL_TIMEOUT_SECONDS = 15
@@ -38,31 +39,21 @@ def _invoke_renderer(
     token_ledger: Path | None = None,
     findings_file: Path | None = None,
 ) -> str:
-    script = Path(__file__).resolve().parent.parent / "scripts" / "render-review-phase-detail.sh"
-    if not script.is_file() or not _readable_dir(rounds_root):
+    if not _readable_dir(rounds_root):
         return ""
-
-    argv = [str(script), "--rounds-root", str(rounds_root), "--skill", skill]
-    if timing_ledger is not None and timing_ledger.is_file():
-        argv.extend(["--timing-ledger", str(timing_ledger)])
-    if token_ledger is not None and token_ledger.is_file():
-        argv.extend(["--token-ledger", str(token_ledger)])
-    if findings_file is not None and findings_file.is_file():
-        argv.extend(["--findings-file", str(findings_file)])
-
     try:
-        result = subprocess.run(
-            argv,
-            text=True,
-            capture_output=True,
-            timeout=RENDER_PHASE_DETAIL_TIMEOUT_SECONDS,
-            check=False,
+        stdout = progress_report._render_phase_detail_best_effort(  # noqa: SLF001 - shared best-effort renderer.
+            rounds_root,
+            skill=skill,
+            timing_ledger=timing_ledger if timing_ledger is not None and timing_ledger.is_file() else None,
+            token_ledger=token_ledger if token_ledger is not None and token_ledger.is_file() else None,
+            findings_file=findings_file if findings_file is not None and findings_file.is_file() else None,
         )
-    except (OSError, subprocess.TimeoutExpired, subprocess.SubprocessError):
+    except Exception:  # pylint: disable=broad-except
         return ""
-    if result.returncode != 0 or not result.stdout.strip():
+    if not stdout.strip():
         return ""
-    text = redact.redact_outbound(result.stdout)
+    text = redact.redact_outbound(stdout)
     if "[content truncated" in text:
         return ""
     return text

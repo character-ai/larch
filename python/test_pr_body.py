@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import json
 import re
-import shutil
 import subprocess
 from pathlib import Path
 
@@ -346,7 +345,6 @@ def test_write_final_report_keeps_compact_summary_when_review_detail_raises(
     assert "## Review Phase Detail" not in body
 
 
-@pytest.mark.skipif(shutil.which("jq") is None, reason="render-review-phase-detail.sh requires jq")
 def test_write_final_report_uses_run_log_root_for_review_detail(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -362,19 +360,9 @@ def test_write_final_report_uses_run_log_root_for_review_detail(
         '{"tally":{"ACCEPTED_COUNT":"2","REJECTED_COUNT":"0","EXONERATED_COUNT":"0","NEUTRAL_COUNT":"0","OOS_ACCEPTED_COUNT":"0","OOS_REJECTED_COUNT":"0"},"summary":{"panel":{"total_slot_count":2}}}\n',
         encoding="utf-8",
     )
-    original_run = subprocess.run
     upsert_bodies: list[str] = []
 
-    def fake_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-        if argv and argv[0].endswith("render-review-phase-detail.sh"):
-            timeout = kwargs.get("timeout")
-            return original_run(
-                argv,
-                text=True,
-                capture_output=True,
-                timeout=timeout if isinstance(timeout, (int, float)) else None,
-                check=False,
-            )
+    def fake_run(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
         if "tracking-issue" in argv and "upsert-summary" in argv:
             content_file = Path(argv[argv.index("--content-file") + 1])
             upsert_bodies.append(content_file.read_text(encoding="utf-8"))
@@ -530,6 +518,59 @@ def test_render_run_summary_includes_merge_downgrade_warning() -> None:
 
     assert "**⚠ Merge downgraded**" in body
     assert "panel-failed recovery shipped a PR without merging" in body
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        [],
+        ["--skill", "implement"],
+        ["--skill", "bad", "--outcome", "x", "--run-id", "r"],
+    ],
+)
+def test_render_run_summary_main_usage_errors(argv: list[str], capsys: pytest.CaptureFixture[str]) -> None:
+    rc = pr_body.render_run_summary_main(argv)
+    assert rc == 2
+    captured = capsys.readouterr()
+    assert "STATUS=ok" not in captured.err
+
+
+def test_render_run_summary_main_success(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    out_file = tmp_path / "summary.md"
+    rc = pr_body.render_run_summary_main([
+        "--skill",
+        "implement",
+        "--outcome",
+        "completed",
+        "--run-id",
+        "run-1",
+        "--output-file",
+        str(out_file),
+        "--cost-unavailable",
+    ])
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert "STATUS=ok" in captured.err
+    assert f"OUTPUT_FILE={out_file}" in captured.err
+    assert out_file.is_file()
+    assert "run-1" in out_file.read_text(encoding="utf-8")
+
+
+def test_render_run_summary_main_cost_unavailable(capsys: pytest.CaptureFixture[str]) -> None:
+    rc = pr_body.render_run_summary_main([
+        "--skill",
+        "design",
+        "--outcome",
+        "completed",
+        "--run-id",
+        "run-2",
+        "--print-stdout",
+        "--cost-unavailable",
+    ])
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert "STATUS=ok" in captured.err
+    assert "run-2" in captured.out
 
 
 def test_post_tracking_issue_writes_metadata(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

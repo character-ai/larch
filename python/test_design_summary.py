@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 from pathlib import Path
 
-import pytest
+import pytest  # noqa: TC002
 
 import design_summary
-import review_phase_detail
+import progress_report
 from test_design_cli_ports import test_design_port_registry_entries_are_machine_stdout  # noqa: F401  # pylint: disable=unused-import  # pyright: ignore[reportUnusedImport]
 
 
@@ -127,7 +126,6 @@ def _write_design_round_fixture(tmp_path: Path, *, with_timing: bool) -> None:
         )
 
 
-@pytest.mark.skipif(shutil.which("jq") is None, reason="render-review-phase-detail.sh requires jq")
 def test_render_final_summary_appends_review_detail_to_stdout_and_upsert(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -150,7 +148,6 @@ def test_render_final_summary_appends_review_detail_to_stdout_and_upsert(
     assert "## Review Phase Detail" in upsert_bodies[0]
 
 
-@pytest.mark.skipif(shutil.which("jq") is None, reason="render-review-phase-detail.sh requires jq")
 def test_render_final_summary_missing_timing_keeps_table_without_gantt(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -175,10 +172,10 @@ def test_render_final_summary_redacts_spliced_detail(
     (tmp_path / "plan-review").mkdir()
     raw_secret = "sk-" + "a" * 32
 
-    def fake_run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
-        return subprocess.CompletedProcess(["renderer"], 0, stdout=f"## Review Phase Detail\n{raw_secret}\n", stderr="")
+    def fake_render(*_args: object, **_kwargs: object) -> str:
+        return f"## Review Phase Detail\n{raw_secret}\n"
 
-    monkeypatch.setattr(review_phase_detail.subprocess, "run", fake_run)
+    monkeypatch.setattr(progress_report, "_render_phase_detail_best_effort", fake_render)
 
     rc = design_summary.render_final_summary_main(["--outcome", "approved"])
 
@@ -195,10 +192,10 @@ def test_render_final_summary_swallows_renderer_failure(
     _ = _install_final_summary_env(tmp_path, monkeypatch, issue_number="0")
     (tmp_path / "plan-review").mkdir()
 
-    def fake_run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
-        return subprocess.CompletedProcess(["renderer"], 1, stdout="", stderr="boom")
+    def fake_render(*_args: object, **_kwargs: object) -> str:
+        return ""
 
-    monkeypatch.setattr(review_phase_detail.subprocess, "run", fake_run)
+    monkeypatch.setattr(progress_report, "_render_phase_detail_best_effort", fake_render)
 
     rc = design_summary.render_final_summary_main(["--outcome", "approved"])
 

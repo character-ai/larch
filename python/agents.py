@@ -1127,6 +1127,60 @@ def degraded_tools_gate_main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def _read_plugin_version_best_effort() -> str:
+    root = _plugin_root()
+    try:
+        parsed: object = json.loads((root / config.PLUGIN_JSON_PATH).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return "unknown"
+    if isinstance(parsed, dict):
+        value = parsed.get("version")
+        if value is not None:
+            version = str(value).splitlines()[0].strip("\r")
+            if version and version != "null":
+                return version
+    return "unknown"
+
+
+def status_check_main(argv: list[str] | None = None) -> int:
+    logging_util.quiet_init(argv0="cli.py")
+    parser = argparse.ArgumentParser(prog="cli.py status check")
+    try:
+        parser.parse_args(argv)
+    except SystemExit as exc:
+        return int(exc.code) if isinstance(exc.code, int) else 2
+    version = _read_plugin_version_best_effort()
+    try:
+        reviewer_result = check_reviewers()
+    except Exception:  # pylint: disable=broad-except
+        reviewer_result = CheckReviewersResult(
+            codex_binary_found=False,
+            cursor_binary_found=False,
+            codex_present=False,
+            cursor_present=False,
+        )
+    codex_binary_found = str(reviewer_result.codex_binary_found).lower()
+    cursor_binary_found = str(reviewer_result.cursor_binary_found).lower()
+    codex_present = str(reviewer_result.codex_present).lower()
+    cursor_present = str(reviewer_result.cursor_present).lower()
+    degraded = degraded_tools_result(
+        codex_binary_found=codex_binary_found,
+        codex_present=codex_present,
+        cursor_binary_found=cursor_binary_found,
+        cursor_present=cursor_present,
+        skill="status",
+    )
+    _emit_kv("LARCH_PLUGIN_VERSION", version)
+    _emit_kv("CODEX_BINARY_FOUND", codex_binary_found)
+    _emit_kv("CURSOR_BINARY_FOUND", cursor_binary_found)
+    _emit_kv("CODEX_PRESENT", codex_present)
+    _emit_kv("CURSOR_PRESENT", cursor_present)
+    _emit_kv("CODEX_STATE", degraded.codex_state)
+    _emit_kv("CURSOR_STATE", degraded.cursor_state)
+    _emit_kv("DEGRADED", str(degraded.degraded).lower())
+    return 0
+
+
 def _num(value: object) -> int:
     if value is None:
         return 0
