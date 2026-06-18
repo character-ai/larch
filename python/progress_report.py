@@ -663,6 +663,48 @@ def _top_reviewers(
     return list(sorted(counts.items(), key=lambda item: (-item[1], item[0]))[:top_n])
 
 
+def _accepted_reviewers_from_classification(classification: Path) -> list[str]:
+    """In-scope accepted-finding reviewer attribution from a findings-classification.tsv.
+
+    The reviewer column is ``finding_reviewers`` for /design and ``reviewer_slots``
+    for /implement; both share a ``voting_result`` column. This is the same per-round
+    attribution behind the Reviewer Competition Scoreboard. OOS rows are skipped so
+    the count matches the table's in-scope ``Accepted`` column.
+    """
+    lines = _read_lines_best_effort(classification)
+    if not lines:
+        return []
+    header = [col.strip() for col in lines[0].split("\t")]
+    reviewer_idx = next((i for i, name in enumerate(header) if name in {"finding_reviewers", "reviewer_slots"}), -1)
+    result_idx = header.index("voting_result") if "voting_result" in header else -1
+    if reviewer_idx < 0 or result_idx < 0:
+        return []
+    names: list[str] = []
+    for line in lines[1:]:
+        cols = line.split("\t")
+        if len(cols) <= max(reviewer_idx, result_idx):
+            continue
+        if cols[result_idx].strip() != "accepted" or cols[0].strip().startswith("OOS_"):
+            continue
+        reviewer = cols[reviewer_idx].strip()
+        if reviewer:
+            names.append(reviewer)
+    return names
+
+
+def _top_reviewers_from_classification(round_dirs: list[Path], *, top_n: int) -> list[tuple[str, int]]:
+    """Whole-run Top-reviewers fallback aggregated from per-round findings-classification.tsv.
+
+    Used when no review-findings-full.jsonl is available (the /design path), so the
+    section reflects per-round attribution instead of rendering structurally empty.
+    """
+    counts: dict[str, int] = {}
+    for round_dir in round_dirs:
+        for reviewer in _accepted_reviewers_from_classification(round_dir / "findings-classification.tsv"):
+            counts[reviewer] = counts.get(reviewer, 0) + 1
+    return list(sorted(counts.items(), key=lambda item: (-item[1], item[0]))[:top_n])
+
+
 def _collector_failure_records(collector: str) -> list[tuple[str, str]]:
     records: list[tuple[str, str]] = []
     for block in re.split(r"\n\s*\n", collector):
@@ -775,6 +817,8 @@ def render_phase_detail(
     any_time = any(row.seconds is not None for row in phase_rounds)
     costs = [float(row.cost[1:]) for row in phase_rounds if row.cost.startswith("$")]
     top_reviewers = _top_reviewers(findings_file, label_map=label_map, top_n=top_n)
+    if not top_reviewers:
+        top_reviewers = _top_reviewers_from_classification(round_dirs, top_n=top_n)
     fail_total, failures = _failed_reviewers(round_dirs, label_map=label_map)
     lines = [
         "## Review Phase Detail",
@@ -1745,6 +1789,35 @@ def _round_meta_object(
     return obj
 
 
+def _design_collector_field(round_dir: Path, failure_count: int) -> str:
+    """Build round-meta.json's ``collector`` field from real per-slot collector records.
+
+    The collector writes ``collector-results.env`` (0x1f-delimited
+    ``REVIEWER_FILE TOOL STATUS ...`` records) at the design tmpdir root; mirror
+    ``_materialize_design_panel_manifest`` by checking the round dir first, then the
+    design root. Each non-OK record becomes a ``TOOL``/``STATUS``/``REVIEWER_FILE``
+    block carrying the real failing slot's tool and output basename, so the renderer
+    resolves the true vendor/archetype instead of ``unknown/collector-failure-N``.
+    Falls back to count-based placeholders only when no per-slot records are available.
+    """
+    collector_env = round_dir / "collector-results.env"
+    if not collector_env.is_file():
+        collector_env = round_dir.parent.parent / "collector-results.env"
+    records: list[str] = []
+    for line in _read_lines_best_effort(collector_env):
+        if "\x1f" not in line:
+            continue
+        reviewer_file, tool, status = (line.split("\x1f") + [""] * 3)[:3]
+        if status and status != "OK":
+            records.append(f"TOOL={tool}\nSTATUS={status}\nREVIEWER_FILE={Path(reviewer_file).name}")
+    if records:
+        return "\n\n".join(records)
+    return "\n\n".join(
+        f"TOOL=unknown\nSTATUS=FAILED\nREVIEWER_FILE=collector-failure-{index}.txt"
+        for index in range(1, failure_count + 1)
+    )
+
+
 def write_design_round_meta(round_dir: Path) -> int:
     if not round_dir.is_dir():
         return 0
@@ -1755,10 +1828,7 @@ def write_design_round_meta(round_dir: Path) -> int:
         panel_count = _materialize_design_panel_manifest(round_dir)
         env = _read_simple_env(round_dir / "round-summary.env")
         failures = _as_int(env.get("COLLECT_FAILURE_COUNT"))
-        collector = "\n\n".join(
-            f"TOOL=unknown\nSTATUS=FAILED\nREVIEWER_FILE=collector-failure-{index}.txt"
-            for index in range(1, failures + 1)
-        )
+        collector = _design_collector_field(round_dir, failures)
         revise_env = _read_simple_env(round_dir / "revise" / "revise.env")
         meta = _round_meta_object(
             counts,

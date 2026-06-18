@@ -1922,6 +1922,87 @@ def test_write_design_round_meta_security_oos_and_panel(tmp_path: Path, monkeypa
     assert meta["revise"]["tier"] == "primary"
 
 
+def test_render_phase_detail_top_reviewers_from_classification(tmp_path: Path) -> None:
+    # Issue #4733 Bug 1: /design records per-round attribution in findings-classification.tsv
+    # but never emits review-findings-full.jsonl, so Top reviewers must aggregate from the TSV
+    # (the same data behind the Reviewer Competition Scoreboard) instead of rendering empty.
+    root = tmp_path / "plan-review"
+    r1 = root / "round-1"
+    _write_round_meta(r1)
+    header = progress_report.voting.findings_classification_header()
+    (r1 / "findings-classification.tsv").write_text(
+        header + "\n"
+        "FINDING_1\tCursor-Requirements\taccepted\n"
+        "FINDING_2\tCursor-Requirements\taccepted\n"
+        "FINDING_3\tCodex-Generic\taccepted\n"
+        "FINDING_4\tCodex-Generic\trejected\n"
+        "OOS_1\tCursor-Arch\taccepted\n",
+        encoding="utf-8",
+    )
+    rendered = progress_report.render_phase_detail(root, "design")
+    assert "1. Cursor-Requirements — 2" in rendered
+    assert "2. Codex-Generic — 1" in rendered
+    assert "- (no accepted suggestions attributed to a reviewer slot)" not in rendered
+    # OOS rows are excluded so Top reviewers matches the in-scope Accepted column.
+    assert "Cursor-Arch" not in rendered
+
+
+def test_write_design_round_meta_collector_from_real_records(tmp_path: Path) -> None:
+    # Issue #4733 Bug 2: the collector field is built from real per-slot collector-results.env
+    # records (\x1f-delimited REVIEWER_FILE/TOOL/STATUS), not count-based placeholders.
+    design = tmp_path
+    round_dir = design / "plan-review" / "round-1"
+    round_dir.mkdir(parents=True)
+    (round_dir / "voting-tally.md").write_text(
+        "## Findings\n\n| Item | Result |\n|--|--|\n| FINDING_1 | accepted |\n",
+        encoding="utf-8",
+    )
+    (round_dir / "plan-review-slots.ndjson").write_text(
+        '{"slot":"cursor-plan-requirements","tool":"cursor","output":"cursor-plan-requirements-output.txt"}\n',
+        encoding="utf-8",
+    )
+    (round_dir / "round-summary.env").write_text("COLLECT_FAILURE_COUNT=1\n", encoding="utf-8")
+    # collector-results.env is written at the design tmpdir root (round_dir.parent.parent).
+    (design / "collector-results.env").write_text(
+        "ok-output.txt\x1fcursor\x1fOK\x1f0\x1f\x1f\n"
+        "cursor-plan-requirements-output.txt\x1fcursor\x1fFAILED\x1f1\x1ftimeout\x1f\n",
+        encoding="utf-8",
+    )
+    assert progress_report.write_design_round_meta(round_dir) == 0
+    collector = json.loads((round_dir / "round-meta.json").read_text(encoding="utf-8"))["collector"]
+    assert "TOOL=cursor" in collector
+    assert "REVIEWER_FILE=cursor-plan-requirements-output.txt" in collector
+    assert "collector-failure" not in collector
+    assert "ok-output.txt" not in collector  # OK records are not failures.
+
+
+def test_design_failure_label_resolves_real_slot_end_to_end(tmp_path: Path) -> None:
+    # Issue #4733 Bug 2: a failed cursor-plan-requirements slot renders as cursor/...,
+    # not unknown/collector-failure-N, once the writer emits real records.
+    design = tmp_path
+    root = design / "plan-review"
+    round_dir = root / "round-1"
+    round_dir.mkdir(parents=True)
+    (round_dir / "voting-tally.md").write_text(
+        "## Findings\n\n| Item | Result |\n|--|--|\n| FINDING_1 | accepted |\n",
+        encoding="utf-8",
+    )
+    (round_dir / "plan-review-slots.ndjson").write_text(
+        '{"slot":"cursor-plan-requirements","tool":"cursor","output":"cursor-plan-requirements-output.txt"}\n',
+        encoding="utf-8",
+    )
+    (round_dir / "round-summary.env").write_text("COLLECT_FAILURE_COUNT=1\n", encoding="utf-8")
+    (design / "collector-results.env").write_text(
+        "cursor-plan-requirements-output.txt\x1fcursor\x1fFAILED\x1f1\x1ftimeout\x1f\n",
+        encoding="utf-8",
+    )
+    assert progress_report.write_design_round_meta(round_dir) == 0
+    rendered = progress_report.render_phase_detail(root, "design")
+    assert "**Reviewer slot failures**: 1" in rendered
+    assert "unknown/collector-failure" not in rendered
+    assert "cursor/" in rendered
+
+
 def test_render_phase_detail_gantt_includes_signal_vendor_rows(tmp_path: Path) -> None:
     root = tmp_path / "rounds"
     _write_round_meta(root / "round-1")
