@@ -19,7 +19,7 @@ import multiprocessing
 import os
 import sys
 from collections.abc import Callable, Generator, Iterable, Iterator, Sequence
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from types import MethodType
@@ -306,8 +306,29 @@ def _find_commonalities(
         return _find_common_chunk_with(symilar, linesets, pairs)
     chunks = _chunk_pairs(pairs, jobs)
     if "fork" in multiprocessing.get_all_start_methods():
-        return _find_commonalities_fork(symilar, linesets, chunks, jobs)
-    return _find_commonalities_spawn(symilar, linesets, chunks, jobs)
+        commonalities = _find_commonalities_fork(symilar, linesets, chunks, jobs)
+    else:
+        commonalities = _find_commonalities_spawn(symilar, linesets, chunks, jobs)
+    return _canonicalize_commonalities(commonalities, linesets)
+
+
+def _canonicalize_commonalities(commonalities: Sequence[Any], linesets: Sequence[Any]) -> list[Any]:
+    """Rebind worker-returned commonalities to the parent's LineSet objects.
+
+    Workers return commonalities whose LineSet objects are unpickled copies.
+    ``Symilar._compute_sims`` deduplicates couples in a set keyed by LineSet
+    identity (``LineSet.__hash__`` is ``id``-based), so copies of the same file
+    from different chunks never collapse. Rebinding every commonality to the one
+    canonical LineSet per name restores serial dedup semantics.
+    """
+    canonical = {lineset.name: lineset for lineset in linesets}
+    return [
+        commonality._replace(
+            fst_lset=canonical.get(commonality.fst_lset.name, commonality.fst_lset),
+            snd_lset=canonical.get(commonality.snd_lset.name, commonality.snd_lset),
+        )
+        for commonality in commonalities
+    ]
 
 
 def _chunk_pairs(pairs: Sequence[tuple[int, int]], jobs: int) -> list[list[tuple[int, int]]]:
@@ -379,7 +400,7 @@ def _find_commonalities_threads(
 
 def _collect_worker_results(futures: Sequence[Any]) -> list[Any]:
     commonalities: list[Any] = []
-    for future in as_completed(futures):
+    for future in futures:
         try:
             commonalities.extend(future.result())
         except Exception as exc:
