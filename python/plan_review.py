@@ -857,7 +857,7 @@ derive_prune_status() {
 
 ensure_reviewer_prune_ledger() {
     python3 "$PLUGIN_ROOT/python/cli.py" review reviewer-prune --help >/dev/null 2>&1 || return 1
-    python3 - "$1" <<'PY'
+    PYTHONPATH="$PLUGIN_ROOT/python${PYTHONPATH:+:$PYTHONPATH}" python3 - "$1" <<'PY'
 from pathlib import Path
 import sys
 import review_pipeline
@@ -867,7 +867,7 @@ PY
 
 write_prune_decision_env() {
     python3 "$PLUGIN_ROOT/python/cli.py" review reviewer-prune --help >/dev/null 2>&1 || return 1
-    python3 - "$@" <<'PY'
+    PYTHONPATH="$PLUGIN_ROOT/python${PYTHONPATH:+:$PYTHONPATH}" python3 - "$@" <<'PY'
 from pathlib import Path
 import sys
 import review_pipeline
