@@ -1,0 +1,23 @@
+Reviewing the plan and tracing the self-review tally path in the codebase.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/implement/SKILL.md:30-37	[SCOPE-REDUCTION] Step 8.5 leaves accepted/rejected literals to agent substitution instead of mechanical derivation	The issue requires deterministic self-review accounting; replacing hardcoded 0/0 with agent-computed integers preserves the same nondeterminism class (runs still report 0/0 when the agent skips headings or miscounts)	Teach write_self_review_tally() to derive counts from $IMPLEMENT_TMPDIR/self-review-accepted.md and rejected-findings.md (or add a tiny review-and-fix count-self-review verb the existing one-line fence calls); drop Step 8.5 manual substitution prose
+2	in_scope	important	risk-integration	skills/implement/SKILL.md:16-23	Step 4 accepted-heading discipline has no commit cross-check before tally	Agent can run step 7 commit-fixes after applying edits but omit self-review-accepted.md headings; tally still emits accepted_count=0 and final-summary under-reports real work	Before item 9, require: if step 7 commit-fixes ran (or FILES_CHANGED_HINT=true), accepted heading count must be >=1; otherwise halt with a visible repair instruction instead of writing 0/0
+3	out_of_scope	latent	architecture	python/review_and_fix.py:2446-2453	write_self_review_tally docstring still says observability-only empty/zero tallies	Docs imply intentional 0/0 even after the fix ships; future readers may reintroduce hardcoded zeros	Update the docstring when Python is next touched (no change required for this tally-only SKILL fix)
+
+## Findings
+
+**1. [correctness] Agent-substituted counts do not deliver determinism** (`skills/implement/SKILL.md`, Step 8.5)
+
+The binding issue asks for self-review accounting that does not depend on the orchestrator deviating from scripted literals. Step 8.5 still makes the agent grep-count headings and hand-type integers into the lone Bash fence. That swaps one optional step (ignore `0 0`) for another (skip headings or substitute wrong counts). Run-log evidence already shows non-uniform real counts under the current hardcoded fence.
+
+A smaller, stronger fix: keep the `self-review-accepted.md` artifact if you want, but let `write_self_review_tally()` (or a one-line helper it calls) count the canonical heading regexes internally and ignore orchestrator-supplied counts unless explicitly overridden. That removes Step 8.5 prose and matches how panel review already treats tally writes as mechanical.
+
+**2. [risk-integration] No guard when fixes were committed but accepted count is zero** (`skills/implement/SKILL.md`, Step 4 vs item 9)
+
+Step 4 tells the agent to append an accepted heading per finding, but nothing ties that to step 7 `commit-fixes`. The failure mode section names forgotten headings yet still allows item 9 to proceed with `0/0`. When step 7 actually committed self-review fixes, emitting a zero accepted tally repeats the reported bug.
+
+Add a lightweight reconciliation gate before item 9: if fixes were committed, accepted heading count must be at least 1; otherwise block tally emission and instruct the agent to backfill `self-review-accepted.md`.
+
+**3. [OUT_OF_SCOPE] Stale Python docstring** (`python/review_and_fix.py:2446-2453`)
+
+`write_self_review_tally()` still documents intentional empty/zero output as observability-only. Not blocking for a SKILL-only plan, but worth a docstring touch the next time that function is edited.
