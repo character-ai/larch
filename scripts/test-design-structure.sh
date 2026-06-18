@@ -16,13 +16,15 @@ contains() {
   file="$1"
   literal="$2"
   label="$3"
-  ( command grep -Fq "$literal" "$file" ) || fail "$label"
+  # -e marks the literal as the pattern so values starting with '-' (e.g.
+  # '--with-plan-size') are not parsed as grep options.
+  ( command grep -Fq -e "$literal" "$file" ) || fail "$label"
 }
 not_contains() {
   file="$1"
   literal="$2"
   label="$3"
-  if ( command grep -Fq "$literal" "$file" ); then
+  if ( command grep -Fq -e "$literal" "$file" ); then
     fail "$label"
   fi
 }

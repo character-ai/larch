@@ -16,7 +16,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 
 import agents
 import config
@@ -113,6 +113,118 @@ CALLER_ENV_KEYS = frozenset({
     "PREV_IMPLEMENT_TMPDIR",
     "LARCH_DYNAMIC_ARCHETYPES_MAX",
 })
+# Shared /design wrapper-env defaults. design_lifecycle and plan_quality both
+# build wrapper-env dicts that overlap on this common core; defining it once
+# keeps the two literals from re-introducing a duplicate-code run (R0801).
+COMMON_DESIGN_ENV_DEFAULTS: dict[str, str] = {
+    "DESIGN_TMPDIR": "",
+    "SESSION_TMPDIR": "",
+    "SESSION_ID": "",
+    "ISSUE_NUMBER": "",
+    "ISSUE_TITLE": "",
+    "HAS_CLARIFY_LABEL": "false",
+    "REPO": "",
+    "CODEX_BINARY_FOUND": "",
+    "CURSOR_BINARY_FOUND": "",
+    "IMPLEMENT_TMPDIR": "",
+}
+# Validator status keys shared by the Step 2b postplan and validator wrappers.
+VALIDATOR_STATUS_ENV_DEFAULTS: dict[str, str] = {
+    "STEP3_REVIEW_LOOP_STATUS": "",
+    "LOOP_STATUS": "",
+    "VALIDATE_STATUS": "",
+    "VALIDATE_DEFECT_COUNT": "",
+    "VALIDATE_UNSAFE_TOKEN_COUNT": "",
+    "VALIDATE_SKIPPED_COUNT": "",
+    "VALIDATE_LOG_FILE": "",
+    "_validator_target_file": "",
+}
+# CLI flag -> attribute/key name map shared by the design step2 wrapper parser
+# (design_lifecycle) and the validator wrapper parser (plan_quality).
+WRAPPER_VALUE_FLAGS: dict[str, str] = {
+    "--session-env-path": "session_env_path",
+    "--claude-pid": "claude_pid",
+    "--plugin-root": "plugin_root",
+    "--mode": "mode",
+    "--site": "site",
+    "--outcome": "outcome",
+    "--step3-review-loop-status": "step3_review_loop_status",
+    "--loop-status": "loop_status",
+    "--validator-target-file": "validator_target_file",
+    "--validate-log-file": "validate_log_file",
+    "--validate-defect-count": "validate_defect_count",
+    "--validate-unsafe-token-count": "validate_unsafe_token_count",
+    "--validate-skipped-count": "validate_skipped_count",
+}
+
+
+def parse_allowlisted_env_line(
+    raw: str,
+    allowlist: frozenset[str] | set[str],
+    *,
+    name_validator: Callable[[str], bool] | None = None,
+    reject_newline_rhs: bool = False,
+) -> tuple[str, str] | None:
+    """Parse one ``KEY=value`` (or ``export KEY=value``) line against an allowlist.
+
+    Returns ``(key, value)`` when the line names an allowlisted key whose value
+    is a single shell token, else ``None``. ``name_validator`` adds a syntactic
+    key check; ``reject_newline_rhs`` rejects raw newlines before shell-splitting.
+    """
+    line = raw.strip()
+    if not line or line.startswith("#"):
+        return None
+    line = line.removeprefix("export ")
+    if "=" not in line:
+        return None
+    key, rhs = line.split("=", 1)
+    key = key.strip()
+    if key not in allowlist:
+        return None
+    if name_validator is not None and not name_validator(key):
+        return None
+    if reject_newline_rhs and ("\n" in rhs or "\r" in rhs):
+        return None
+    try:
+        parts = shlex.split(rhs, posix=True)
+    except ValueError:
+        return None
+    if len(parts) > 1:
+        return None
+    value = parts[0] if parts else ""
+    if "\n" in value or "\r" in value:
+        return None
+    return key, value
+
+
+def finalize_wrapper_env(merged: dict[str, str]) -> dict[str, str]:
+    """Default codex/cursor binary detection, export ``merged`` into the process
+    environment, and return it. Shared tail of the design and validator wrapper
+    env resolvers.
+    """
+    if not merged.get("CODEX_BINARY_FOUND"):
+        merged["CODEX_BINARY_FOUND"] = "true" if shutil.which("codex") else "false"
+    if not merged.get("CURSOR_BINARY_FOUND"):
+        merged["CURSOR_BINARY_FOUND"] = "true" if shutil.which("cursor") else "false"
+    for key, value in merged.items():
+        os.environ[key] = value
+    return merged
+
+
+def require_plugin_root() -> int:
+    """Return 0 when CLAUDE_PLUGIN_ROOT is set to an expanded path, else 1 after
+    printing a wrapper diagnostic. Shared plugin-root guard for the design and
+    validator wrappers.
+    """
+    literal = "${CLAUDE_PLUGIN_ROOT}"
+    value = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
+    if not value:
+        print("/design wrapper: CLAUDE_PLUGIN_ROOT is empty; abort", file=sys.stderr)
+        return 1
+    if value == literal:
+        print(f"/design wrapper: CLAUDE_PLUGIN_ROOT is the unexpanded template literal {literal}; abort", file=sys.stderr)
+        return 1
+    return 0
 
 
 @dataclass(frozen=True)

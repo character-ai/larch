@@ -43,24 +43,8 @@ def _binary_arg(value: str, binary: str) -> str:
 _VALIDATOR_ENV_DEFAULTS: dict[str, str] = {
     "CLAUDE_PLUGIN_ROOT": "",
     "SUMMARY_OUTCOME": "",
-    "DESIGN_TMPDIR": "",
-    "SESSION_TMPDIR": "",
-    "SESSION_ID": "",
-    "ISSUE_NUMBER": "",
-    "ISSUE_TITLE": "",
-    "HAS_CLARIFY_LABEL": "false",
-    "REPO": "",
-    "CODEX_BINARY_FOUND": "",
-    "CURSOR_BINARY_FOUND": "",
-    "IMPLEMENT_TMPDIR": "",
-    "STEP3_REVIEW_LOOP_STATUS": "",
-    "LOOP_STATUS": "",
-    "VALIDATE_STATUS": "",
-    "VALIDATE_DEFECT_COUNT": "",
-    "VALIDATE_UNSAFE_TOKEN_COUNT": "",
-    "VALIDATE_SKIPPED_COUNT": "",
-    "VALIDATE_LOG_FILE": "",
-    "_validator_target_file": "",
+    **session_env.COMMON_DESIGN_ENV_DEFAULTS,
+    **session_env.VALIDATOR_STATUS_ENV_DEFAULTS,
 }
 _VALIDATOR_ENV_ALLOWLIST = frozenset(_VALIDATOR_ENV_DEFAULTS) | {
     "LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT",
@@ -71,26 +55,7 @@ _VALIDATOR_ENV_ALLOWLIST = frozenset(_VALIDATOR_ENV_DEFAULTS) | {
 
 
 def _parse_export_line(raw: str) -> tuple[str, str] | None:
-    line = raw.strip()
-    if not line or line.startswith("#"):
-        return None
-    line = line.removeprefix("export ")
-    if "=" not in line:
-        return None
-    key, rhs = line.split("=", 1)
-    key = key.strip()
-    if key not in _VALIDATOR_ENV_ALLOWLIST:
-        return None
-    try:
-        parts = shlex.split(rhs, posix=True)
-    except ValueError:
-        return None
-    if len(parts) > 1:
-        return None
-    value = parts[0] if parts else ""
-    if "\n" in value or "\r" in value:
-        return None
-    return key, value
+    return session_env.parse_allowlisted_env_line(raw, _VALIDATOR_ENV_ALLOWLIST)
 
 
 def _parse_validator_wrapper_args(argv: list[str]) -> tuple[dict[str, str | bool], int]:
@@ -107,21 +72,7 @@ def _parse_validator_wrapper_args(argv: list[str]) -> tuple[dict[str, str | bool
         "validate_unsafe_token_count": "",
         "validate_skipped_count": "",
     }
-    values = {
-        "--session-env-path": "session_env_path",
-        "--claude-pid": "claude_pid",
-        "--plugin-root": "plugin_root",
-        "--mode": "mode",
-        "--site": "site",
-        "--outcome": "outcome",
-        "--step3-review-loop-status": "step3_review_loop_status",
-        "--loop-status": "loop_status",
-        "--validator-target-file": "validator_target_file",
-        "--validate-log-file": "validate_log_file",
-        "--validate-defect-count": "validate_defect_count",
-        "--validate-unsafe-token-count": "validate_unsafe_token_count",
-        "--validate-skipped-count": "validate_skipped_count",
-    }
+    values = session_env.WRAPPER_VALUE_FLAGS
     booleans = {"--snapshot-original", "--skip-validate", "--operator-cancel"}
     i = 0
     while i < len(argv):
@@ -184,25 +135,11 @@ def _rehydrate_validator_env(parsed: dict[str, str | bool]) -> dict[str, str]:
         value = str(parsed.get(key) or "")
         if value:
             merged[env_key] = value
-    if not merged.get("CODEX_BINARY_FOUND"):
-        merged["CODEX_BINARY_FOUND"] = "true" if shutil.which("codex") else "false"
-    if not merged.get("CURSOR_BINARY_FOUND"):
-        merged["CURSOR_BINARY_FOUND"] = "true" if shutil.which("cursor") else "false"
-    for key, value in merged.items():
-        os.environ[key] = value
-    return merged
+    return session_env.finalize_wrapper_env(merged)
 
 
 def _validator_require_plugin_root() -> int:
-    literal = "${CLAUDE_PLUGIN_ROOT}"
-    value = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
-    if not value:
-        print("/design wrapper: CLAUDE_PLUGIN_ROOT is empty; abort", file=sys.stderr)
-        return 1
-    if value == literal:
-        print(f"/design wrapper: CLAUDE_PLUGIN_ROOT is the unexpanded template literal {literal}; abort", file=sys.stderr)
-        return 1
-    return 0
+    return session_env.require_plugin_root()
 
 
 def _validator_pause_save() -> int:

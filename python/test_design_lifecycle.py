@@ -1257,7 +1257,7 @@ def test_step2b_drafter_pause_before_fallback_seed(tmp_path: Path, monkeypatch: 
     monkeypatch.setenv("DESIGN_TMPDIR", str(design))
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(CLI.parent.parent))
     monkeypatch.setenv("ISSUE_NUMBER", "42")
-    monkeypatch.setattr(design_lifecycle, "_call_pause_save", lambda _d: 11)
+    monkeypatch.setattr(design_lifecycle, "_call_pause_save", lambda _d: 11)  # type: ignore[arg-type]
     rc = design_lifecycle.step2b_drafter_main([])
     out = capsys.readouterr().out
     assert rc == 11
@@ -1281,7 +1281,7 @@ def test_step2b5_pause_short_circuit_skips_check_size(tmp_path: Path, monkeypatc
         return 0
 
     monkeypatch.setattr(design_lifecycle.plan_quality, "check_plan_size_main", fake_check)
-    monkeypatch.setattr(design_lifecycle, "_call_pause_save", lambda _d: 11)
+    monkeypatch.setattr(design_lifecycle, "_call_pause_save", lambda _d: 11)  # type: ignore[arg-type]
     rc = design_lifecycle.step2b5_main([])
     assert rc == 11
     assert called is False
@@ -1293,7 +1293,7 @@ def test_step2b_postplan_rc_11_raises_system_exit(tmp_path: Path, monkeypatch: p
     (design / ".pause-requested").write_text("", encoding="utf-8")
     monkeypatch.setenv("DESIGN_TMPDIR", str(design))
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(CLI.parent.parent))
-    monkeypatch.setattr(design_lifecycle, "_call_pause_save", lambda _d: 11)
+    monkeypatch.setattr(design_lifecycle, "_call_pause_save", lambda _d: 11)  # type: ignore[arg-type]
     with pytest.raises(SystemExit) as exc:
         design_lifecycle._shared_step2b_postplan_body(design_lifecycle.WrapperArgs(site="step2b"))  # pyright: ignore[reportPrivateUsage]
     assert exc.value.code == 11

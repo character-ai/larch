@@ -20,18 +20,16 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import design_pause
+import design_postplan
 import gh
+import issue_wire
+import plan_quality
 import proc
 import session_env
 from collections.abc import Iterable, Mapping, Sequence
+from session_env import validate_design_tmpdir
 
 _SUBPROCESS_RUN = subprocess.run
-
-import design_pause
-import design_postplan
-import issue_wire
-import plan_quality
-from session_env import validate_design_tmpdir
 
 
 _WRAPPER_ENV_DEFAULTS: dict[str, str] = {
@@ -40,16 +38,7 @@ _WRAPPER_ENV_DEFAULTS: dict[str, str] = {
     "SITE": "",
     "SUMMARY_OUTCOME": "",
     "SKIP_VALIDATE": "",
-    "DESIGN_TMPDIR": "",
-    "SESSION_TMPDIR": "",
-    "SESSION_ID": "",
-    "ISSUE_NUMBER": "",
-    "ISSUE_TITLE": "",
-    "HAS_CLARIFY_LABEL": "false",
-    "REPO": "",
-    "CODEX_BINARY_FOUND": "",
-    "CURSOR_BINARY_FOUND": "",
-    "IMPLEMENT_TMPDIR": "",
+    **session_env.COMMON_DESIGN_ENV_DEFAULTS,
     "POSITIONAL_KIND": "",
     "POSITIONAL_VALUE": "",
     "partition_requested": "false",
@@ -58,14 +47,7 @@ _WRAPPER_ENV_DEFAULTS: dict[str, str] = {
     "skip_approve_requested": "false",
     "no_dedup_requested": "false",
     "run_id": "",
-    "STEP3_REVIEW_LOOP_STATUS": "",
-    "LOOP_STATUS": "",
-    "VALIDATE_STATUS": "",
-    "VALIDATE_DEFECT_COUNT": "",
-    "VALIDATE_UNSAFE_TOKEN_COUNT": "",
-    "VALIDATE_SKIPPED_COUNT": "",
-    "VALIDATE_LOG_FILE": "",
-    "_validator_target_file": "",
+    **session_env.VALIDATOR_STATUS_ENV_DEFAULTS,
     "PUBLISH_OK": "",
     "PLAN_WRITE_OK": "",
     "STANDALONE_HEAVY_FAILED": "",
@@ -131,21 +113,7 @@ def _quote_single(value: str) -> str:
 def _parse_common_wrapper_args(argv: Sequence[str]) -> WrapperArgs:
     args = list(argv)
     out = WrapperArgs(public_argv_words=[])
-    value_flags: dict[str, str] = {
-        "--session-env-path": "session_env_path",
-        "--claude-pid": "claude_pid",
-        "--plugin-root": "plugin_root",
-        "--mode": "mode",
-        "--site": "site",
-        "--outcome": "outcome",
-        "--step3-review-loop-status": "step3_review_loop_status",
-        "--loop-status": "loop_status",
-        "--validator-target-file": "validator_target_file",
-        "--validate-log-file": "validate_log_file",
-        "--validate-defect-count": "validate_defect_count",
-        "--validate-unsafe-token-count": "validate_unsafe_token_count",
-        "--validate-skipped-count": "validate_skipped_count",
-    }
+    value_flags = session_env.WRAPPER_VALUE_FLAGS
     bool_flags: dict[str, str] = {
         "--snapshot-original": "snapshot_original",
         "--skip-validate": "skip_validate",
@@ -181,28 +149,12 @@ def _parse_common_wrapper_args(argv: Sequence[str]) -> WrapperArgs:
 
 
 def _parse_session_env_line(raw: str) -> tuple[str, str] | None:
-    line = raw.strip()
-    if not line or line.startswith("#"):
-        return None
-    line = line.removeprefix("export ")
-    if "=" not in line:
-        return None
-    key, rhs = line.split("=", 1)
-    key = key.strip()
-    if key not in _SESSION_ENV_ALLOWLIST or not _valid_var_name(key):
-        return None
-    if "\n" in rhs or "\r" in rhs:
-        return None
-    try:
-        parts = shlex.split(rhs, posix=True)
-    except ValueError:
-        return None
-    if len(parts) > 1:
-        return None
-    value = parts[0] if parts else ""
-    if "\n" in value or "\r" in value:
-        return None
-    return key, value
+    return session_env.parse_allowlisted_env_line(
+        raw,
+        _SESSION_ENV_ALLOWLIST,
+        name_validator=_valid_var_name,
+        reject_newline_rhs=True,
+    )
 
 
 def _load_session_env(path: str) -> dict[str, str]:
@@ -252,25 +204,14 @@ def _rehydrate_wrapper_env(parsed: WrapperArgs) -> dict[str, str]:
         merged["VALIDATE_UNSAFE_TOKEN_COUNT"] = parsed.validate_unsafe_token_count
     if parsed.validate_skipped_count:
         merged["VALIDATE_SKIPPED_COUNT"] = parsed.validate_skipped_count
-    if not merged.get("CODEX_BINARY_FOUND"):
-        merged["CODEX_BINARY_FOUND"] = "true" if shutil.which("codex") else "false"
-    if not merged.get("CURSOR_BINARY_FOUND"):
-        merged["CURSOR_BINARY_FOUND"] = "true" if shutil.which("cursor") else "false"
-    for key, value in merged.items():
-        os.environ[key] = value
-    return merged
+    return session_env.finalize_wrapper_env(merged)
 
 
 def _design_require_plugin_root() -> int:
-    literal = "${CLAUDE_PLUGIN_ROOT}"
-    value = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
-    if not value:
-        print("/design wrapper: CLAUDE_PLUGIN_ROOT is empty; abort", file=sys.stderr)
-        return 1
-    if value == literal:
-        print(f"/design wrapper: CLAUDE_PLUGIN_ROOT is the unexpanded template literal {literal}; abort", file=sys.stderr)
-        return 1
-    os.environ["CLAUDE_PLUGIN_ROOT"] = value
+    rc = session_env.require_plugin_root()
+    if rc != 0:
+        return rc
+    os.environ["CLAUDE_PLUGIN_ROOT"] = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
     return 0
 
 
@@ -734,16 +675,7 @@ def init_runparams_main(argv: Sequence[str]) -> int:
 
 
 COMMON_ENV_DEFAULTS: dict[str, str] = {
-    "DESIGN_TMPDIR": "",
-    "SESSION_TMPDIR": "",
-    "SESSION_ID": "",
-    "ISSUE_NUMBER": "",
-    "ISSUE_TITLE": "",
-    "HAS_CLARIFY_LABEL": "false",
-    "REPO": "",
-    "CODEX_BINARY_FOUND": "",
-    "CURSOR_BINARY_FOUND": "",
-    "IMPLEMENT_TMPDIR": "",
+    **session_env.COMMON_DESIGN_ENV_DEFAULTS,
     "POSITIONAL_KIND": "",
     "POSITIONAL_VALUE": "",
     "partition_requested": "false",

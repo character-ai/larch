@@ -6,18 +6,21 @@ import cli
 
 
 EXPECTED = {
-    ("design", "step2a"): ("design_lifecycle", "step2a_main"),
-    ("design", "step2b-drafter"): ("design_lifecycle", "step2b_drafter_main"),
-    ("design", "step2b-postplan"): ("design_lifecycle", "step2b_postplan_main"),
-    ("design", "step2b5"): ("design_lifecycle", "step2b5_main"),
-    ("design", "postplan-emit"): ("design_postplan", "postplan_emit_main"),
-    ("design", "publish"): ("design_publish", "publish_main"),
-    ("design", "log-publish"): ("design_log_publish_flow", "log_publish_main"),
-    ("design", "pause-save"): ("design_pause", "pause_save_main"),
-    ("design", "pause-load"): ("design_pause", "pause_load_main"),
-    ("design", "render-final-summary"): ("design_summary", "render_final_summary_main"),
-    ("design", "file-oos-prepare"): ("design_oos", "file_oos_prepare_main"),
-    ("design", "file-oos-annotate"): ("design_oos", "file_oos_annotate_main"),
+    ("design", verb): (module, func)
+    for verb, module, func in (
+        ("step2a", "design_lifecycle", "step2a_main"),
+        ("step2b-drafter", "design_lifecycle", "step2b_drafter_main"),
+        ("step2b-postplan", "design_lifecycle", "step2b_postplan_main"),
+        ("step2b5", "design_lifecycle", "step2b5_main"),
+        ("postplan-emit", "design_postplan", "postplan_emit_main"),
+        ("publish", "design_publish", "publish_main"),
+        ("log-publish", "design_log_publish_flow", "log_publish_main"),
+        ("pause-save", "design_pause", "pause_save_main"),
+        ("pause-load", "design_pause", "pause_load_main"),
+        ("render-final-summary", "design_summary", "render_final_summary_main"),
+        ("file-oos-prepare", "design_oos", "file_oos_prepare_main"),
+        ("file-oos-annotate", "design_oos", "file_oos_annotate_main"),
+    )
 }
 PLAN_EXPECTED = {
     ("plan", "validator-autofix"): ("plan_quality", "validator_autofix_main"),
