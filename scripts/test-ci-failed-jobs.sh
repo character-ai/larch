@@ -152,7 +152,7 @@ write_subject "$T7"
 write_gh_lines "$T7"
 write_lines_file "$T7/lines.txt" \
     "lint" "lint-mermaid" "shellcheck" "test-harnesses (4)" "agent-lint" "agent-sync" \
-    "gitleaks" "bash32-check"
+    "gitleaks" "bash32-check" "python-pyright"
 GH_LINES_FILE="$T7/lines.txt"
 rc=$(run_subject "$T7" "$T7/out" "$T7/err" "$T7/jobs.tsv")
 assert_rc "table-driven mapping exits 0" "$rc" 0
@@ -164,6 +164,7 @@ for row in \
     $'agent-lint\t\tfixable' \
     $'agent-sync\t\tfixable' \
     $'gitleaks\t\tno-local-equivalent' \
+    $'python-pyright\t\tfixable' \
     $'bash32-check\t\tfixable'
 do
     assert_file_contains "table-driven row $row" "$T7/jobs.tsv" "$row"
@@ -237,7 +238,7 @@ workflow_jobs=$(awk '
 ' "$REPO_ROOT/.github/workflows/ci.yaml")
 for job in $workflow_jobs; do
     case "$job" in
-        lint|lint-local|lint-mermaid|shellcheck|test-harnesses|agent-lint|agent-sync|gitleaks|python-lint|python-lint-duplicate-code|python-tests|bash32-check)
+        lint|lint-local|lint-mermaid|shellcheck|test-harnesses|agent-lint|agent-sync|gitleaks|python-lint|python-pyright|python-lint-duplicate-code|python-tests|bash32-check)
             ok "workflow job mapped: $job"
             ;;
         *-gate)

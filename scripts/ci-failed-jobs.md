@@ -69,7 +69,8 @@ boundaries for `gh` stderr and stdout.
 
 Fixable jobs are `lint`, `lint-local`, `lint-mermaid`, `shellcheck`,
 `test-harnesses`, `agent-lint`, `agnix`, `agent-sync`, `python-lint`,
-`python-lint-duplicate-code`, `python-tests`, and `bash32-check`.
+`python-pyright`, `python-lint-duplicate-code`, `python-tests`, and
+`bash32-check`.
 `gitleaks` and `trufflehog` are `no-local-equivalent` because CI runs
 history scans.
 
