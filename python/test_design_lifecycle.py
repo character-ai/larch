@@ -1,15 +1,19 @@
 """Tests for Python /design lifecycle helpers."""
+# pyright: reportUnusedCallResult=false
 
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
-from design_lifecycle import phase_driver_read_result_env
+import design_lifecycle
+import design_pause
+from design_lifecycle import load_bash_quoted_env, phase_driver_read_result_env
 
 
 CLI = Path(__file__).with_name("cli.py")
@@ -129,3 +133,67 @@ def test_design_driver_emit_plan_is_rerunnable(tmp_path: Path) -> None:
     assert second.returncode == 0
     assert "STEP_STARTED=EMIT_PLAN" in second.stdout
     assert "STEP_SKIPPED=FINALIZE REASON=already-completed" in second.stdout
+
+
+
+def run_design_cli(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    merged = {**os.environ, "LARCH_QUIET_DISABLE": "1", "CLAUDE_PLUGIN_ROOT": str(CLI.parent.parent)}
+    if env:
+        merged.update(env)
+    return subprocess.run([sys.executable, str(CLI), "design", *args], capture_output=True, text=True, check=False, env=merged)
+
+
+def test_step0_parse_writes_bash_quoted_cache_and_round_trips_verbal(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    result = run_design_cli("step0-parse", "--claude-pid", "123", "--plugin-root", str(CLI.parent.parent), "--", "--brainstorm", "hello world", env={"HOME": str(home)})
+    assert result.returncode == 0, result.stderr
+    assert "BRAINSTORM_REQUESTED=true" in result.stdout
+    assert "POSITIONAL_KIND=verbal" in result.stdout
+    assert "POSITIONAL_VALUE=hello world" in result.stdout
+    cache = home / ".cache" / "larch" / "sessions" / "step0-parsed-123.env"
+    text = cache.read_text(encoding="utf-8")
+    assert "POSITIONAL_VALUE=hello\\ world" in text
+    assert load_bash_quoted_env(cache, ["POSITIONAL_VALUE"])["POSITIONAL_VALUE"] == "hello world"
+
+
+def test_step0_parse_rejects_template_literal(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    result = run_design_cli("step0-parse", "--claude-pid", "123", "--plugin-root", str(CLI.parent.parent), "--", "${PUBLIC_ARGV_WORDS}", env={"HOME": str(home)})
+    assert result.returncode == 1
+    assert "skill loader did not expand public argv words" in result.stderr
+
+
+def test_step0c_pause_save_precedes_sentinel(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / ".pause-requested").write_text("", encoding="utf-8")
+    env_path = tmp_path / "source-env.sh"
+    env_path.write_text(f"export DESIGN_TMPDIR={design}\nexport ISSUE_NUMBER=42\nexport CLAUDE_PLUGIN_ROOT={CLI.parent.parent}\n", encoding="utf-8")
+
+    def fake_pause(argv: list[str]) -> int:
+        (design / "pause-called").write_text(" ".join(argv), encoding="utf-8")
+        return 11
+
+    monkeypatch.setattr(design_pause, "pause_save_main", fake_pause)
+    with pytest.raises(SystemExit) as exc:
+        design_lifecycle.step0c_main(["--session-env-path", str(env_path), "--claude-pid", "123", "--plugin-root", str(CLI.parent.parent)])
+    assert exc.value.code == 11
+    assert (design / "pause-called").is_file()
+    assert not (design / ".completed" / "step-0c").exists()
+
+
+def test_step1e_reentry_removes_expected_sentinels(tmp_path: Path) -> None:
+    design = tmp_path / "design"
+    completed = design / ".completed"
+    completed.mkdir(parents=True)
+    for name in ("step-1e", "step-2a", "step-2a.5", "step-2b", "step-2b.5", "step-3", "step-3.5", "step-3b", "step-4", "step-4b", "step-keep"):
+        (completed / name).write_text("", encoding="utf-8")
+    (design / ".gate-b-postapply-ready-x").write_text("", encoding="utf-8")
+    env_path = tmp_path / "source-env.sh"
+    env_path.write_text(f"export DESIGN_TMPDIR={design}\nexport CLAUDE_PLUGIN_ROOT={CLI.parent.parent}\n", encoding="utf-8")
+    assert design_lifecycle.step1e_reentry_main(["--session-env-path", str(env_path), "--claude-pid", "123", "--plugin-root", str(CLI.parent.parent)]) == 0
+    assert (completed / "step-keep").exists()
+    assert not (completed / "step-2a.5").exists()
+    assert not (design / ".gate-b-postapply-ready-x").exists()

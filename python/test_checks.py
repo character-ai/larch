@@ -2530,12 +2530,14 @@ def test_direct_targets_implement_skill_focused_targets(tmp_path: Path) -> None:
     assert "test-render-cost-line-callsites" in targets
 
 
-def test_direct_targets_design_step1d5_wrapper_and_harness(tmp_path: Path) -> None:
-    for path in (
-        "skills/design/scripts/design-step1d5.sh",
-        "skills/design/scripts/test-design-step1d5.sh",
-    ):
-        assert "test-design-step1d5" in _direct_targets_for((path,), tmp_path)
+def test_direct_targets_design_lifecycle_and_launcher_python_tests(tmp_path: Path) -> None:
+    lifecycle_targets = _direct_targets_for(("python/design_lifecycle.py",), tmp_path)
+    assert "test-design-step0-init" in lifecycle_targets
+    assert "test-design-step1d5" in lifecycle_targets
+    assert "test-design-structure" in lifecycle_targets
+    session_targets = _direct_targets_for(("python/session_env.py",), tmp_path)
+    assert "test-design-structure" in session_targets
+    assert "py-test" in session_targets
 
 
 @pytest.mark.parametrize(
@@ -2543,7 +2545,7 @@ def test_direct_targets_design_step1d5_wrapper_and_harness(tmp_path: Path) -> No
     [
         ("python/design_argv.py", "test-parse-design-argv"),
         ("python/design_lifecycle.py", "test-design-driver"),
-        ("python/design_lifecycle.py", "test-step0b-router-flag-recovery"),
+        ("python/design_lifecycle.py", "test-design-step0-init"),
         ("python/design_log_publish_flow.py", "test-design-log-publish"),
         ("python/design_log_ship.py", "test-design-log-ship"),
         ("python/design_oos.py", "test-file-design-oos"),

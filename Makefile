@@ -1149,7 +1149,7 @@ test-design-step3-entry:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-step3-entry.sh
 
 test-design-step0-init:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-step0-init.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_design_lifecycle.py
 
 test-design-step5c:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-step5c.sh
@@ -1161,7 +1161,7 @@ test-design-step-validator-autofix:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-step-validator-autofix.sh
 
 test-design-step1d5:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-step1d5.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_design_lifecycle.py
 
 test-design-log-ship:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_design_log_ship.py
