@@ -78,4 +78,56 @@ not_contains "$BRAINSTORM_MD" '## Post-collection dirty-tree checkpoint' 'Brains
 
 contains "$MAKEFILE" 'python3 -m pytest python/test_design_lifecycle.py' 'Make targets must route retired shell harnesses to pytest'
 
+step2_verbs='step2a step2b-drafter step2b-postplan step2b5'
+step2_retired_paths='design-step2a.sh design-step2a.md design-step2b-drafter.sh design-step2b-drafter.md design-step2b-postplan.sh design-step2b-postplan.md design-step2b5.sh design-step2b5.md design-step-validator-autofix.sh design-step-validator-autofix.md design-step2b-prelude.sh design-step2b-prelude.md test-design-step2b-drafter.sh test-design-step2b-drafter.md test-design-step-validator-autofix.sh test-design-step-validator-autofix.md'
+SETTLE_SH="$ROOT/skills/design/scripts/design-step35-settle.sh"
+SETTLE_MD="$ROOT/skills/design/scripts/design-step35-settle.md"
+DESIGN_POSTPLAN="$ROOT/python/design_postplan.py"
+
+for verb in $step2_verbs; do
+  contains "$CLI_PY" "(\"design\", \"$verb\")" "cli registry missing design $verb"
+  printf '%s' "$stdout_keys_block" | grep -Fq "(\"design\", \"$verb\")" || fail "cli _DESIGN_LIFECYCLE_STDOUT_KEYS missing design $verb"
+done
+contains "$CLI_PY" '("plan", "validator-autofix")' 'cli registry missing plan validator-autofix'
+
+for retired in $step2_retired_paths; do
+  [ ! -e "$ROOT/skills/design/scripts/$retired" ] || fail "retired Step 2 script still exists: $retired"
+  contains "$MIGRATED" "skills/design/scripts/$retired" "migrated-scripts.tsv missing $retired"
+done
+
+contains "$SESSION_ENV" 'design-step2a.sh)' 'launcher must map design-step2a.sh'
+contains "$SESSION_ENV" 'design step2a --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"' 'launcher must forward step2a to python/cli.py'
+contains "$SESSION_ENV" 'design-step2b-drafter.sh)' 'launcher must map design-step2b-drafter.sh'
+contains "$SESSION_ENV" 'design step2b-drafter --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"' 'launcher must forward step2b-drafter to python/cli.py'
+contains "$SESSION_ENV" 'design-step2b-postplan.sh)' 'launcher must map design-step2b-postplan.sh'
+contains "$SESSION_ENV" 'design step2b-postplan --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"' 'launcher must forward step2b-postplan to python/cli.py'
+contains "$SESSION_ENV" 'design-step2b5.sh)' 'launcher must map design-step2b5.sh'
+contains "$SESSION_ENV" 'design step2b5 --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"' 'launcher must forward step2b5 to python/cli.py'
+contains "$SESSION_ENV" 'design-step-validator-autofix.sh)' 'launcher must map design-step-validator-autofix.sh'
+contains "$SESSION_ENV" 'plan validator-autofix --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"' 'launcher must forward validator-autofix to python/cli.py'
+
+contains "$DESIGN_LIFECYCLE" '_shared_step2b_postplan_body' 'Step 2 postplan must use shared body helper'
+contains "$DESIGN_LIFECYCLE" 'postplan_emit_main' 'Step 2 postplan must delegate to postplan_emit_main'
+contains "$DESIGN_LIFECYCLE" '--with-plan-size' 'Step 2 postplan must call with-plan-size'
+contains "$DESIGN_LIFECYCLE" 'POSTPLAN_RC=' 'Step 2 postplan must emit POSTPLAN_RC rows'
+contains "$DESIGN_LIFECYCLE" 'POSTPLAN_STATUS=' 'Step 2 postplan must emit POSTPLAN_STATUS rows'
+contains "$DESIGN_LIFECYCLE" '_call_pause_save' 'Step 2 postplan must thread pause-save helper'
+contains "$DESIGN_LIFECYCLE" '.step2b-postplan-fallback-used' 'Step 2 drafter must seed fallback-used sentinel'
+contains "$DESIGN_LIFECYCLE" 'drafter subprocess succeeded' 'Step 2 drafter must emit human success line'
+contains "$DESIGN_LIFECYCLE" 'DRAFTER_STATUS=succeeded' 'Step 2 drafter must emit DRAFTER_STATUS=succeeded after postplan'
+contains "$DESIGN_LIFECYCLE" 'snapshot_original=True' 'Step 2 drafter must delegate postplan with snapshot-original'
+contains "$DESIGN_LIFECYCLE" '_valid_step2b_sentinels' 'Step 2 drafter must validate Step 2a sentinels in-process'
+contains "$DESIGN_POSTPLAN" 'DRIFT_TRIGGER_FIRED' 'design_postplan must parse drift trigger'
+contains "$DESIGN_POSTPLAN" 'BASELINE_PLAN_LINES' 'design_postplan must parse drift baseline'
+
+contains "$SETTLE_SH" 'python/cli.py" design step2b-postplan' 'settle must default to python/cli.py design step2b-postplan'
+contains "$SETTLE_SH" '--site "$POSTPLAN_SITE"' 'settle must pass mapped postplan site'
+contains "$SETTLE_SH" '"${PUBLIC_ARGV_WORDS[@]}"' 'settle must forward caller tail after --'
+contains "$SETTLE_MD" 'python/cli.py design step2b-postplan --site gate-b' 'settle doc must name gate-b postplan authority'
+contains "$SETTLE_MD" 'python/cli.py design step2b-postplan --site discussion-round2' 'settle doc must name discussion postplan authority'
+contains "$SETTLE_MD" 'python/test_design_lifecycle.py' 'settle doc must name pytest structure coverage'
+
+contains "$SKILL_MD" 'python/cli.py design step2b-drafter' 'SKILL must name step2b-drafter Python authority'
+contains "$SKILL_MD" 'python/cli.py design step2b-postplan' 'SKILL must name step2b-postplan Python authority'
+
 printf '%s\n' 'test-design-structure: ok'

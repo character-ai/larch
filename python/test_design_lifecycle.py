@@ -1193,3 +1193,161 @@ def test_step2b5_echoes_check_size_stdout_and_rc(tmp_path: Path, monkeypatch: py
     rc = design_lifecycle.step2b5_main([])
     assert rc == 7
     assert "PLAN_SIZE_STATUS=failed" in capsys.readouterr().out
+
+
+def test_step2_launcher_argv_rehydrates_wrapper_env(tmp_path: Path) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    session_env = tmp_path / "session-env.sh"
+    session_env.write_text(
+        f"export DESIGN_TMPDIR={str(design)!r}\nexport ISSUE_NUMBER='42'\n",
+        encoding="utf-8",
+    )
+    rc = design_lifecycle.step2a_main(["--session-env-path", str(session_env), "--claude-pid", "123"])
+    assert rc == 0
+    assert os.environ["DESIGN_TMPDIR"] == str(design)
+    assert os.environ["ISSUE_NUMBER"] == "42"
+
+
+def test_rehydrate_wrapper_env_resolves_trusted_design_symlink(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    home = tmp_path / "home"
+    sessions = home / ".cache" / "larch" / "sessions"
+    sessions.mkdir(parents=True)
+    source = sessions / "design-env-123.sh"
+    design = tmp_path / "design"
+    design.mkdir()
+    source.write_text(f"export DESIGN_TMPDIR={str(design)!r}\nexport ISSUE_NUMBER='7'\n", encoding="utf-8")
+    link = sessions / "current-design-env-123.sh"
+    link.symlink_to(source)
+    monkeypatch.setenv("HOME", str(home))
+    parsed = design_lifecycle._parse_common_wrapper_args(["--session-env-path", str(link), "--claude-pid", "123"])  # pyright: ignore[reportPrivateUsage]
+    merged = design_lifecycle._rehydrate_wrapper_env(parsed)  # pyright: ignore[reportPrivateUsage]
+    assert merged["DESIGN_TMPDIR"] == str(design)
+    assert merged["ISSUE_NUMBER"] == "7"
+
+
+def test_step2a_accepts_sentinel_without_trailing_newline(tmp_path: Path) -> None:
+    (tmp_path / "approach-synthesis.txt").write_text("NO_SKETCHES", encoding="utf-8")
+    (tmp_path / "contested-decisions.md").write_text("NO_CONTESTED_DECISIONS\n", encoding="utf-8")
+    (tmp_path / "dialectic-resolutions.md").write_text("", encoding="utf-8")
+    assert design_lifecycle._valid_step2b_sentinels(tmp_path)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_step2a_accepts_legacy_sentinel_with_newline(tmp_path: Path) -> None:
+    (tmp_path / "run-params.json").write_text('{"brainstorm_requested": false}\n', encoding="utf-8")
+    (tmp_path / "approach-synthesis.txt").write_text("NO_SKETCHES_CLASSIFIED_SIMPLE\n", encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, str(CLI), "design", "step2a"],
+        capture_output=True,
+        text=True,
+        env={"DESIGN_TMPDIR": str(tmp_path), "CLAUDE_PLUGIN_ROOT": ""},
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_step2b_drafter_pause_before_fallback_seed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / "approach-synthesis.txt").write_text("NO_SKETCHES\n", encoding="utf-8")
+    (design / "contested-decisions.md").write_text("NO_CONTESTED_DECISIONS\n", encoding="utf-8")
+    (design / "dialectic-resolutions.md").write_text("", encoding="utf-8")
+    (design / "feature-description.txt").write_text("feature\n", encoding="utf-8")
+    (design / ".pause-requested").write_text("", encoding="utf-8")
+    monkeypatch.setenv("DESIGN_TMPDIR", str(design))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(CLI.parent.parent))
+    monkeypatch.setenv("ISSUE_NUMBER", "42")
+    monkeypatch.setattr(design_lifecycle, "_call_pause_save", lambda _d: 11)
+    rc = design_lifecycle.step2b_drafter_main([])
+    out = capsys.readouterr().out
+    assert rc == 11
+    assert "POSTPLAN_RC=11" in out
+    assert "POSTPLAN_STATUS=pause-save" in out
+    assert not (design / ".step2b-postplan-fallback-used").exists()
+
+
+def test_step2b5_pause_short_circuit_skips_check_size(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / ".pause-requested").write_text("", encoding="utf-8")
+    monkeypatch.setenv("DESIGN_TMPDIR", str(design))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(CLI.parent.parent))
+    monkeypatch.setenv("ISSUE_NUMBER", "42")
+    called = False
+
+    def fake_check(_argv: list[str]) -> int:
+        nonlocal called
+        called = True
+        return 0
+
+    monkeypatch.setattr(design_lifecycle.plan_quality, "check_plan_size_main", fake_check)
+    monkeypatch.setattr(design_lifecycle, "_call_pause_save", lambda _d: 11)
+    rc = design_lifecycle.step2b5_main([])
+    assert rc == 11
+    assert called is False
+
+
+def test_step2b_postplan_rc_11_raises_system_exit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / ".pause-requested").write_text("", encoding="utf-8")
+    monkeypatch.setenv("DESIGN_TMPDIR", str(design))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(CLI.parent.parent))
+    monkeypatch.setattr(design_lifecycle, "_call_pause_save", lambda _d: 11)
+    with pytest.raises(SystemExit) as exc:
+        design_lifecycle._shared_step2b_postplan_body(design_lifecycle.WrapperArgs(site="step2b"))  # pyright: ignore[reportPrivateUsage]
+    assert exc.value.code == 11
+
+
+def test_step2b_postplan_rc_12_exits_zero(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    def fake_emit(_argv: list[str]) -> int:
+        return 12
+
+    monkeypatch.setattr(design_lifecycle.design_postplan, "postplan_emit_main", fake_emit)
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(CLI.parent.parent))
+    rc = design_lifecycle.step2b_postplan_main(["--site", "step2b"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "POSTPLAN_RC=12" in out
+    assert "POSTPLAN_STATUS=plan-size-trigger" in out
+    assert (tmp_path / ".completed" / "step-2b").is_file()
+
+
+def test_step2b_postplan_rc_13_exits_zero(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    def fake_emit(_argv: list[str]) -> int:
+        return 13
+
+    monkeypatch.setattr(design_lifecycle.design_postplan, "postplan_emit_main", fake_emit)
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(CLI.parent.parent))
+    rc = design_lifecycle.step2b_postplan_main(["--site", "step2b"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "POSTPLAN_RC=13" in out
+    assert "POSTPLAN_STATUS=partition-requested" in out
+
+
+def test_step2b_postplan_fatal_emit_exits_one(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_emit(_argv: list[str]) -> int:
+        return 2
+
+    monkeypatch.setattr(design_lifecycle.design_postplan, "postplan_emit_main", fake_emit)
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(CLI.parent.parent))
+    rc = design_lifecycle.step2b_postplan_main(["--site", "step2b"])
+    assert rc == 1
+
+
+def test_step2b_postplan_gate_b_ignores_snapshot_original_flag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[str] = []
+
+    def fake_emit(argv: list[str]) -> int:
+        seen.extend(argv)
+        return 0
+
+    monkeypatch.setattr(design_lifecycle.design_postplan, "postplan_emit_main", fake_emit)
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(CLI.parent.parent))
+    design_lifecycle.step2b_postplan_main(["--site", "gate-b", "--snapshot-original"])
+    assert "--snapshot-original" not in seen

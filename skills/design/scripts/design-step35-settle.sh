@@ -213,7 +213,8 @@ postplan_out=$("${POSTPLAN_CMD[@]}" \
   --session-env-path "$SESSION_ENV_PATH" \
   --claude-pid "$CLAUDE_PID" \
   --plugin-root "$CLAUDE_PLUGIN_ROOT" \
-  --site "$POSTPLAN_SITE")
+  --site "$POSTPLAN_SITE" \
+  "${PUBLIC_ARGV_WORDS[@]}")
 postplan_child_rc=$?
 set -e
 printf '%s\n' "${postplan_out:-}"
