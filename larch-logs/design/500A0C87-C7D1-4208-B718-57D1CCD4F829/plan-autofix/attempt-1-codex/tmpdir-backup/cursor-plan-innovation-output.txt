@@ -1,0 +1,27 @@
+Reviewing the plan and tracing cited code paths for minimum-change and contract gaps.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	python/clarify.py:79-81	[SCOPE-REDUCTION] Publish redaction calls redact.redact() instead of the bash parity surface redact secrets / redact_secrets_only()	Bash pipes the plan through python/cli.py redact secrets (secrets-only). redact() also strips session tmpdir literals, so ported publish can rewrite plan paths/content differently and change the larch:plan block written to the issue	Use redact_secrets_only() (or subprocess python/cli.py redact secrets) and keep the existing empty-file / non-zero exit checks only
+2	in_scope	important	correctness	python/clarify.py:37-40	Session env loading text contradicts --session-env-path and points at source-env.sh	Launcher passes current-design-env-$PPID.sh via --session-env-path. Reading only DESIGN_TMPDIR/source-env.sh can miss SESSION_ID/REPO and break log-publish skip/rename semantics on publish	Load allowlisted keys from --session-env-path with design_lifecycle._load_source_env(session_env_path, claude_pid=...) (same contract as other design lifecycle drivers)
+3	in_scope	important	correctness	python/clarify.py:74-95	Publish-phase route-state-read-failed behavior is unspecified	Bash stages terminal state only on fetch route-state failure; on publish it writes CLARIFY_PUBLISH_STATUS=route-state-read-failed and exits 1 without stage_failed_clarify	Document and implement publish route-state failure as result-env + stdout only; call stage_failed_clarify only on fetch-phase hard failures
+4	in_scope	important	risk-integration	python/clarify.py:68-71	stage_failed_clarify subprocess log targets are unspecified	Bash redirects design-stage-terminal-state.sh to design-clarify-stage.stdout.log / design-clarify-stage.stderr.log. Reusing design-stage-terminal-state.* paths (as step0-clarify-hard-halt does) breaks log parity and failure append-failure site wiring	Pin subprocess stdout/stderr to design-clarify-stage.stdout.log and design-clarify-stage.stderr.log before append-failure on staging failure
+5	in_scope	important	correctness	skills/design/scripts/design-clarify.sh:417-425	Publish success path does not specify how RENAMED is derived	Bash parses RENAMED= from tracking-issue rename stdout (sed tail -1); omitting this leaves RENAMED empty/wrong in .design-clarify-publish-result.env and SKILL consumers	Parse RENAMED= from rename subprocess stdout the same way as bash; default RENAMED=false on non-zero rename rc
+6	out_of_scope	latent	architecture	python/clarify.py:21-33	[SCOPE-REDUCTION] Plan adds many private env/result-env helpers that duplicate design_lifecycle	phase_driver_read_result_env, _read_result_pairs, _load_source_env, _append_failure, and _write_kv_file patterns already exist; reimplementing raises drift risk without new feature value	Import/reuse existing design_lifecycle helpers (or a thin shared module) instead of _load_session_env_file, _read_result_env, _write_result_env, and bespoke route-state parsing
+7	out_of_scope	nit	architecture	python/checks.py:449-485	[SCOPE-REDUCTION] No relevant-checks mapping for design-clarify / python/clarify.py edits	Other design wrappers map to Make harness targets; clarify changes can ship without auto-running test-design-clarify during run-relevant (pre-existing gap)	Optional follow-up: add a _DIRECT_TARGET_RULES row for design-clarify.sh and python/clarify.py -> test-design-clarify / py-test
+
+## Findings
+
+1. **correctness** (`python/clarify.py:79-81`): Publish redaction must stay on `redact secrets` / `redact_secrets_only()`, not `redact()`. Tmpdir stripping would change issue plan content versus today.
+
+2. **correctness** (`python/clarify.py:37-40`): Load session context from `--session-env-path` via `_load_source_env`, not `DESIGN_TMPDIR/source-env.sh`. Wrong file breaks `SESSION_ID` / `REPO` on publish.
+
+3. **correctness** (`python/clarify.py:74-95`): Publish route-state failure must not call `stage_failed_clarify`. Only fetch hard failures stage terminal state in the current bash driver.
+
+4. **risk-integration** (`python/clarify.py:68-71`): Stage subprocess logs must land in `design-clarify-stage.*`, not `design-stage-terminal-state.*`, so warning append-failure sites stay aligned.
+
+5. **correctness** (`skills/design/scripts/design-clarify.sh:417-425`): Parse `RENAMED=` from rename stdout on success; the plan lists the KV but not the extraction step.
+
+## [OUT_OF_SCOPE]
+
+6. **architecture** (`python/clarify.py:21-33`): Reuse `design_lifecycle` env/result-env helpers instead of a parallel private stack.
+
+7. **architecture** (`python/checks.py:449-485`): Optional `relevant-checks` wiring so clarify edits auto-run `test-design-clarify` / `py-test`.

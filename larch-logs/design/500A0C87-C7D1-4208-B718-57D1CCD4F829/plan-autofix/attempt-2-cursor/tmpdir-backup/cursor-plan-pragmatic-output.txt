@@ -1,0 +1,29 @@
+Reviewing the plan and tracing cited code paths for contract and integration risks.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/scripts/design-clarify.sh:167-206	Thin wrapper drops argv validation before pause-save	Current driver rejects missing/invalid --issue and --phase before pause-save; the wrapper plan pause branch can run with empty ISSUE or skip phase checks, changing exit codes and pause-save inputs versus today	Keep current ordering: parse and validate --phase and --issue (and --claude-pid when present) before the .pause-requested branch; only then exec design pause-save or delegate to python/cli.py design clarify
+2	in_scope	important	correctness	python/clarify.py:37-49	--claude-pid accepted but not wired to session-env trust boundary	Plan parses --session-env-path without passing --claude-pid into symlink-aware loading; design_lifecycle._load_source_env returns {} for symlinked session env when claude_pid is empty, so DESIGN_TMPDIR/REPO/SESSION_ID can be missing under the normal launcher symlink path	Mirror design_lifecycle._load_source_env / _load_wrapper_env: pass claude_pid into trusted session-env resolution, or import and reuse those helpers directly
+3	in_scope	important	risk-integration	python/clarify.py:26-33	[SCOPE-REDUCTION] Plan reimplements lifecycle helpers already in design_lifecycle.py	New _load_session_env_file, _read_result_env, _stage_failed_clarify, and _append_clarify_failure duplicate tested code (phase_driver_read_result_env, _load_source_env, check_pause_and_exit, _append_failure, stage-terminal-state subprocess) and can drift on allowlists, symlink refusal, and failure logging	Import/reuse design_lifecycle helpers instead of parallel copies; keep clarify.py focused on fetch/publish sequencing only
+4	in_scope	important	risk-integration	python/clarify.py:26-33	_write_result_env parity with bash atomic write not specified	Bash write_result_env uses temp file plus rename and refuses symlink targets and newline values; a direct in-place write can leave a partial .design-clarify-*.env that orchestrators read as malformed mid-crash	Implement _write_result_env with the same mktemp-plus-rename, symlink refusal, and newline rejection contract as design-clarify.sh write_result_env
+5	in_scope	latent	correctness	python/clarify.py:74-102	Publish route-state failure staging not pinned to bash parity	Fetch failures call design-stage-terminal-state.sh; current bash publish path on route-state-read-failed only writes .design-clarify-publish-result.env and exits 1 with no staging	State explicitly that publish-phase route-state-read-failed follows lines 198-200 of the current script: emit CLARIFY_PUBLISH_STATUS=route-state-read-failed and exit non-zero without stage_failed_clarify
+6	in_scope	important	correctness	python/clarify.py:74-90	Publish omits REQUEST_ID positive-integer validation	Current publish path validates REQUEST_ID before comment-post; the plan validates plan/response artifacts only, so malformed request env could reach clarify_comment_post with empty or invalid id	Add the same positive-integer REQUEST_ID check as design-clarify.sh before posting the response
+7	in_scope	important	correctness	python/clarify.py:90-94	SESSION_ID-missing operator warning dropped from publish path	Current bash prints **⚠ /design: SESSION_ID missing; skipping design log publish** and test-design-clarify.sh asserts it; the plan only says to skip publish/rename	Preserve that exact warning line when SESSION_ID is empty after a successful plan write
+
+## Findings
+
+1. **correctness** (`skills/design/scripts/design-clarify.sh:167-206`): The thin wrapper must not run `design pause-save` before the same `--phase` / `--issue` validation the current script performs. Otherwise pause can run with bad argv and error semantics change.
+
+2. **correctness** (`python/clarify.py:37-49`): `--claude-pid` must feed trusted session-env loading. Without it, symlinked `source-env.sh` can load as empty and break `DESIGN_TMPDIR` / `REPO` resolution on the normal launcher path.
+
+3. **risk-integration** (`python/clarify.py:26-33`): **[SCOPE-REDUCTION]** Reuse `design_lifecycle.py` helpers instead of reimplementing env parsing, result-env reads, pause exit, and failure append/staging. That keeps the port smaller and aligned with existing tests.
+
+4. **risk-integration** (`python/clarify.py:26-33`): Result env writes need the bash driver's atomic, symlink-safe contract. In-place writes risk partial env files on crash.
+
+5. **correctness** (`python/clarify.py:74-102`): Publish route-state failures must stay non-terminal. Only fetch failures should call `design-stage-terminal-state.sh`.
+
+6. **correctness** (`python/clarify.py:74-90`): Add `REQUEST_ID` positive-integer validation on publish before `clarify_comment_post`.
+
+7. **correctness** (`python/clarify.py:90-94`): Keep the `SESSION_ID missing` warning on publish skip for harness and operator parity.
+
+## Out of scope
+
+- **[OUT_OF_SCOPE]** `python/clarify.py:79-81` — Failing publish on redaction truncation sentinel goes beyond current bash parity (bash only checks empty output). Worth a follow-up hardening issue, not required for this port.

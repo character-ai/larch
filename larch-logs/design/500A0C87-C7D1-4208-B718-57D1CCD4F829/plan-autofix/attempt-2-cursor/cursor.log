@@ -1,0 +1,1 @@
+Removed the fenced `bash skills/design/scripts/test-design-clarify.sh` line from the testing block. That script is not in the repo yet, which triggered the `missing-script` defect, and the same coverage is already listed as `make test-design-clarify` in the next fenced block.
