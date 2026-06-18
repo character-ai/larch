@@ -1,0 +1,27 @@
+Reading the plan and relevant hook/guard code to verify completeness against the issue scope.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/scripts/review-design-step3-loop.sh:833	Auto-continuation still shells out to a missing on-disk design-step3-state.sh instead of the plan-review step3-state CLI	On PLAN_REVIEW_CONTINUE=true the loop calls skills/design/scripts/design-step3-state.sh which is not present in the repo (embed-only). The call is suffixed with || true so stale .completed/step-3-terminal and .step3-terminal-persisted-this-run are never cleared on multi-round continuation despite FINDING_3/4	Repoint the continuation branch to python3 "$PLUGIN_ROOT/python/cli.py" plan-review step3-state --design-tmpdir "$DESIGN_TMPDIR" --auto-continuation-entry (matching design-step3-continuation-entry.sh) and add a loop harness assertion that pre-seeded terminal sentinels are removed
+2	in_scope	important	risk-integration	python/plan_review.py:615-823	Plan updates live review-design-step3-loop.sh but omits re-syncing its gzip embed in _LEGACY_ASSETS	test_embedded_review_design_step3_loop_matches_live_script byte-matches live skills/design/scripts/review-design-step3-loop.sh to the embedded blob; plan-review run materializes the embed (script is in _RETIRE_DESIGN_SKIPS) so loop changes without regenerating the blob fail CI and leave production on stale logic	Add ### UPDATED: python/plan_review.py with explicit regenerate/re-embed steps for review-design-step3-loop.sh after editing the live script; keep test_embedded_review_design_step3_loop_matches_live_script green
+3	in_scope	important	correctness	python/plan_review.py:106-123	Files section lists skills/design/scripts/design-step3-state.sh as UPDATED but that path does not exist on disk; authority is only the gzip embed	Implementers may add a divergent on-disk shell file or edit the wrong surface while Gate re-entry wrappers already call python/cli.py plan-review step3-state	Reframe the file entry as embed-only authority in python/plan_review.py _LEGACY_ASSETS; state that there is no live skills/design/scripts/design-step3-state.sh and document the embed regeneration workflow beside the new pytest cases
+4	in_scope	important	testing	scripts/test-hook-bg-poll-guard.sh:201-238	Step 3 marker_step_completed retarget to .completed/step-3-terminal lacks the paired regression that early .completed/step-3 alone must not release a live design-step3-review marker	Plan adds the Step 5c analogue (touch step-5c only → deny) but not the Step 3 case; retargeting marker_step_completed to step-3-terminal is the core FINDING_12 fix and regression here would re-open premature guard release on cap-hit/panel-failed paths that write step-3 before envelope persist	Add a live-marker test mirroring the Step 5c regression: with design-step3-review marker live touch only .completed/step-3 then assert deny on session-dir Read/Bash; touch .completed/step-3-terminal then assert allow
+5	out_of_scope	latent	architecture	plan.txt:13-22	[SCOPE-REDUCTION] Approved outline non-goals forbid review-loop rework but the plan adds step-3-terminal across loop wrapper state and docs (~358 diff_lines)	Outline sketched hook+SKILL-only changes; expanded scope is justified by FINDING_12 but outline readers may expect a smaller PR	No implementation change required; update the issue approved-outline / acceptance narrative to record why step-3-terminal split supersedes the hook-only sketch
+
+### 1. correctness — `review-design-step3-loop.sh:833`
+
+The plan adds `step-3-terminal` cleanup to `plan-review step3-state --auto-continuation-entry` in the embed, but the live loop still calls a shell path that does not exist in the repo. The call is ignored (`|| true`), so continuation hygiene for the new terminal sentinel never runs on the live-script test path.
+
+### 2. risk-integration — `python/plan_review.py` embed sync
+
+`plan-review run` executes the gzip-embedded `review-design-step3-loop.sh`, not the live file alone. CI enforces byte equality via `test_embedded_review_design_step3_loop_matches_live_script`. The plan edits the live loop but does not list re-embedding the blob.
+
+### 3. correctness — embed-only `design-step3-state.sh`
+
+`design-step3-state.sh` is only in `_LEGACY_ASSETS`; there is no on-disk script. The plan’s Files heading implies a normal shell edit surface.
+
+### 4. testing — Step 3 early-sentinel release regression
+
+Retargeting `marker_step_completed` to `.completed/step-3-terminal` is the main guard fix. The plan tests foreground probes and Step 5c early-vs-terminal release, but not the symmetric Step 3 case: early `.completed/step-3` must not release the live marker.
+
+### 5. [OUT_OF_SCOPE] — outline vs expanded scope
+
+The step-3-terminal split exceeds the approved hook-only sketch but addresses a real defect (early `step-3` before envelope persist). Track as documentation reconciliation, not a blocking code gap.

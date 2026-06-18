@@ -1,0 +1,1 @@
+Fix the guard in `scripts/hook-bg-poll-guard.sh`: align `design-step5c` release with `.completed/step-5c`, add a strict foreground sentinel-probe allowlist, update tests and docs, and adjust `/design` recovery guidance.
