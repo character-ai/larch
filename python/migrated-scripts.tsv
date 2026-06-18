@@ -977,3 +977,15 @@ skills/implement/scripts/step-18b-final-report.sh	#4018
 skills/implement/scripts/step-18b-final-report.md	#4018
 skills/implement/scripts/step-18-finalize.sh	#4018
 skills/implement/scripts/step-18-finalize.md	#4018
+python/legacy_review_shell/review-core.sh	#3692
+python/legacy_review_shell/dispatch-panel.sh	#3692
+python/legacy_review_shell/collect-findings.sh	#3692
+python/legacy_review_shell/gather-context.sh	#3692
+python/legacy_review_shell/check-reviewer-failure-threshold.sh	#3692
+scripts/reviewer-prune.sh	#3692
+scripts/reviewer-prune.md	#3692
+scripts/lib-prune-decision.sh	#3692
+scripts/lib-prune-decision.md	#3692
+scripts/test-reviewer-prune.sh	#3692
+scripts/test-reviewer-prune.md	#3692
+scripts/test-lib-prune-decision.sh	#3692

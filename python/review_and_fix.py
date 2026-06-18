@@ -623,24 +623,17 @@ def _reviewer_prune_status_records(core_status: str) -> bool:
 
 
 def _clear_reviewer_prune_round(ledger: Path, round_num: int, work_dir: Path) -> None:
-    helper = _plugin_root() / "scripts" / "reviewer-prune.sh"
-    if not ledger or not helper.is_file():
+    if not ledger:
         return
     work_dir.mkdir(parents=True, exist_ok=True)
     empty_manifest = work_dir / "reviewer-prune-clear-empty.ndjson"
     empty_classification = work_dir / "reviewer-prune-clear-classification.tsv"
     _write_text(empty_manifest, "")
     _write_text(empty_classification, "finding_id\treviewer_slots\tvoting_result\n")
-    result = _run([
-        str(helper), "record",
-        "--ledger", str(ledger),
-        "--round", str(round_num),
-        "--manifest", str(empty_manifest),
-        "--classification", str(empty_classification),
-    ])
-    if result.returncode != 0:
-        tail = (result.stderr or result.stdout).strip().splitlines()
-        _err(f"WARN: reviewer-prune clear failed for round {round_num}: {tail[-1] if tail else result.returncode}")
+    try:
+        review_pipeline.reviewer_prune_record(ledger, round_num, empty_manifest, empty_classification)
+    except Exception as exc:
+        _err(f"WARN: reviewer-prune clear failed for round {round_num}: {exc}")
 
 
 def _append_round_oos_artifact(round_num: int, round_oos: Path, oos_jsonl: Path, oos_markdown: Path) -> None:

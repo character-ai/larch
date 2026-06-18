@@ -830,6 +830,82 @@ def _decode_asset(data: str) -> bytes:
     return gzip.decompress(base64.b64decode(data.encode("ascii")))
 
 
+def _prune_shell_helpers() -> str:
+    return r"""
+prune_window_evaluated() {
+    case "${1:-}" in 3|4) printf 'true\n' ;; *) printf 'false\n' ;; esac
+}
+
+_prune_nonneg_int() {
+    case "${1:-}" in ''|*[!0-9]*) printf '0' ;; *) printf '%s' "$((10#$1))" ;; esac
+}
+
+normalize_prune_eligible() {
+    if [[ "${1:-false}" != "true" ]]; then printf '0\n'; else _prune_nonneg_int "${2:-0}"; printf '\n'; fi
+}
+
+derive_prune_status() {
+    local prune_active="${1:-false}" filter_rc="${2:-0}" prune_fail_open="${3:-false}" pruned_count="${4:-0}" panel_pruned_empty="${5:-false}" prune_evaluated="${6:-false}"
+    pruned_count="$(_prune_nonneg_int "$pruned_count")"
+    case "$filter_rc" in ''|*[!0-9]*) filter_rc=1 ;; *) filter_rc=$((10#$filter_rc)) ;; esac
+    if [[ "$filter_rc" -ne 0 || "$prune_fail_open" == "true" ]]; then printf 'failed\n'
+    elif [[ "$panel_pruned_empty" == "true" ]]; then printf 'pruned-empty\n'
+    elif [[ "$prune_active" != "true" || "$prune_evaluated" != "true" ]]; then printf 'skipped\n'
+    elif [[ "$pruned_count" -gt 0 ]]; then printf 'active-dropped\n'
+    else printf 'active-kept-all\n'; fi
+}
+
+ensure_reviewer_prune_ledger() {
+    python3 "$PLUGIN_ROOT/python/cli.py" review reviewer-prune --help >/dev/null 2>&1 || return 1
+    PYTHONPATH="$PLUGIN_ROOT/python${PYTHONPATH:+:$PYTHONPATH}" python3 - "$1" <<'PY'
+from pathlib import Path
+import sys
+import review_pipeline
+review_pipeline.ensure_reviewer_prune_ledger(Path(sys.argv[1]))
+PY
+}
+
+write_prune_decision_env() {
+    python3 "$PLUGIN_ROOT/python/cli.py" review reviewer-prune --help >/dev/null 2>&1 || return 1
+    PYTHONPATH="$PLUGIN_ROOT/python${PYTHONPATH:+:$PYTHONPATH}" python3 - "$@" <<'PY'
+from pathlib import Path
+import sys
+import review_pipeline
+review_pipeline.write_prune_decision_env(Path(sys.argv[1]), *sys.argv[2:])
+PY
+}
+"""
+
+
+def _rewrite_prune_asset(text: str) -> str:
+    text = text.replace(
+        '    || [[ ! -f "$PLUGIN_ROOT/scripts/lib-prune-'
+        'decision.sh" ]] \\\n',
+        "",
+    )
+    text = text.replace(
+        '# shellcheck source=scripts/lib-prune-'
+        'decision.sh\nsource "$PLUGIN_ROOT/scripts/lib-prune-'
+        'decision.sh"',
+        _prune_shell_helpers(),
+    )
+    text = text.replace(
+        'REVIEWER_PRUNE_SH="${REVIEWER_PRUNE_SH:-$PLUGIN_ROOT/scripts/reviewer-'
+        'prune.sh}"',
+        'REVIEWER_PRUNE_CLI=(python3 "$PLUGIN_ROOT/python/cli.py" review reviewer-prune)',
+    )
+    text = text.replace(
+        'LARCH_QUIET_DISABLE=1 "$REVIEWER_PRUNE_SH" filter',
+        'LARCH_QUIET_DISABLE=1 "${REVIEWER_PRUNE_CLI[@]}" filter',
+    )
+    text = text.replace(
+        '"$PLUGIN_ROOT/scripts/reviewer-'
+        'prune.sh" record',
+        'python3 "$PLUGIN_ROOT/python/cli.py" review reviewer-prune record',
+    )
+    return text  # noqa: RET504
+
+
 def _decode_legacy_asset(rel_path: str, data: str) -> bytes:
     body = _decode_asset(data)
     retired_waterfall = "dispatch-with-" + "waterfall.sh"
@@ -863,7 +939,10 @@ def _decode_legacy_asset(rel_path: str, data: str) -> bytes:
             "dispatch-with-waterfall exited rc=$_waterfall_rc",
             "agent dispatch-waterfall exited rc=$_waterfall_rc",
         )
+        text = _rewrite_prune_asset(text)
         return text.encode("utf-8")
+    if rel_path == _p("skills", "design", "scripts", "plan-review-" + "loop.sh"):
+        return _rewrite_prune_asset(body.decode("utf-8")).encode("utf-8")
     return body
 
 

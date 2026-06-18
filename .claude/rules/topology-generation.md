@@ -17,7 +17,6 @@ paths:
   - "skills/research/references/research-phase.md"
   - "skills/research/references/validation-phase.md"
   - "python/review_pipeline.py"
-  - "python/legacy_review_shell/dispatch-panel.sh"
   - "python/plan_review.py"
   - "python/plan_review_panel.py"
 ---
