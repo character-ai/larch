@@ -21,27 +21,12 @@ from pathlib import Path
 
 import logging_util
 import proc
+from plan_scout import REVIEW_RESERVED as RESERVED_DYNAMIC_NAMES
 
 _PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 CLI = _PLUGIN_ROOT / "python" / "cli.py"
 STATIC_REVIEWERS = ("correctness", "edge-cases", "testing")
 FOCUS_AREAS = {"code-quality", "risk-integration", "correctness", "architecture", "security"}
-RESERVED_DYNAMIC_NAMES = {
-    "generic",
-    "structure",
-    "correctness",
-    "testing",
-    "security",
-    "edge-cases",
-    "plan-fidelity",
-    "code-reviewer",
-    "reviewer-structure",
-    "reviewer-correctness",
-    "reviewer-testing",
-    "reviewer-security",
-    "reviewer-edge-cases",
-    "reviewer-plan-fidelity",
-}
 
 
 @dataclass(frozen=True)
