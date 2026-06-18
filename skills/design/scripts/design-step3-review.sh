@@ -454,12 +454,15 @@ set -e
 _step3_review_teardown_loop_group "$_loop_pid"
 _step3_review_kill_tmpdir_processes
 _loop_pid=""
-trap - EXIT
-# #4489: loop teardown is done; from here every terminal exit (config-error,
+# #4489 / #4724: loop teardown is done; from here every terminal exit (config-error,
 # postplan-failed, panel-init-failed, or the normal complete/cap-hit/main-agent
 # fall-through) must leave .completed/step-3 in place. The hook-release sentinel
 # .completed/step-3-terminal is written only after the current wrapper pass
-# persists the result envelope.
+# persists the result envelope. Replace the loop-cleanup trap with the guarantee
+# trap in a single atomic assignment: bash overwrites the active EXIT handler in
+# one step, so there is no window where no EXIT trap is registered. The earlier
+# two-step `trap - EXIT` removal followed by a re-arm left a gap in which a crash
+# or signal could skip the completion sentinel (#4724).
 trap '_step3_review_guarantee_completed_sentinels' EXIT
 if [[ "${_step3_review_monitor_enabled_by_wrapper:-0}" -eq 1 ]]; then
   set +m 2>/dev/null || true
@@ -597,6 +600,24 @@ if [[ "${STEP3_REVIEW_LOOP_STATUS:-}" == panel-failed ]]; then
     _step3_review_write_result_env panel-init-failed panel-failed-zero-coverage 0
   fi
 fi
+# #4724: A terminal failure status can reach this point without a persisted
+# .step3-review-result.env when the plan-review loop launched reviewers but died
+# before its round-persist step (e.g. the collector failed mid-run). The
+# guarantee EXIT trap mints .completed/step-3 only when BOTH the result env and
+# the .step3-terminal-persisted-this-run marker exist, so a missing result env
+# leaves the completion sentinel unwritten and the orchestrator's Step 3 recovery
+# waiter hangs. Synthesize the result env (the helper also writes the terminal
+# persist marker) for terminal failure statuses so the guarantee trap can release
+# the orchestrator. Apply-pending / vote / operator statuses are intentionally
+# excluded: minting step-3 / step-3-terminal for them would skip Gate B.
+case "${STEP3_REVIEW_LOOP_STATUS:-}" in
+  panel-failed|panel-init-failed|tally-error|degraded-empty-collector|postplan-failed)
+    if [[ ! -f "$DESIGN_TMPDIR/.step3-review-result.env" || -L "$DESIGN_TMPDIR/.step3-review-result.env" || ! -r "$DESIGN_TMPDIR/.step3-review-result.env" ]]; then
+      larch_err "**⚠ Step 3: ${STEP3_REVIEW_LOOP_STATUS} without a persisted result env; synthesizing terminal result env so the Step 3 completion sentinel is written**"
+      _step3_review_write_result_env "${STEP3_REVIEW_LOOP_STATUS}" "${REASON:-result-env-missing-after-loop}" "$_step3_rounds_completed_dec"
+    fi
+    ;;
+esac
 # Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
 [[ -n "${STEP3_REVIEW_LOOP_STATUS:-}" ]] && printf 'STEP3_REVIEW_LOOP_STATUS=%s\n' "$STEP3_REVIEW_LOOP_STATUS"
 [[ -n "${LOOP_STATUS:-}" ]] && printf 'LOOP_STATUS=%s\n' "$LOOP_STATUS"

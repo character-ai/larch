@@ -281,8 +281,37 @@ set -e
 [[ "$legacy_rc" -eq 0 ]] || fail "legacy loop wrapper rc=$legacy_rc stdout=$legacy_out stderr=$(cat "$D_LEGACY/stderr.log")"
 grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=panel-failed' <<<"$legacy_out" || fail 'legacy LOOP_STATUS=panel-failed should back-map STEP3_REVIEW_LOOP_STATUS'
 grep -Fxq 'LOOP_STATUS=panel-failed' <<<"$legacy_out" || fail 'legacy LOOP_STATUS=panel-failed should survive normalization'
+# #4724: panel-failed with launched reviewer rounds but no loop-persisted result
+# env must still synthesize the result env and mint the completion sentinel so the
+# orchestrator's Step 3 recovery waiter is released instead of hanging.
+[ -f "$D_LEGACY/.step3-review-result.env" ] || fail '#4724: panel-failed without a persisted result env must synthesize one'
+grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=panel-failed' "$D_LEGACY/.step3-review-result.env" || fail '#4724: synthesized result env must carry the terminal failure status'
+[ -e "$D_LEGACY/.completed/step-3" ] || fail '#4724: panel-failed with launched rounds but no persisted result env must still mint the step-3 completion sentinel'
 rm -rf "$D_LEGACY"
 pass 'Step 3 wrapper back-maps legacy LOOP_STATUS=panel-failed'
+
+# #4724: same release guarantee for degraded-empty-collector (the other terminal
+# status the original report observed) — launched rounds, no loop-persisted result
+# env, so the wrapper must synthesize it and write the completion sentinel.
+D_SYNTH=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-synth-result.XXXXXX")
+FAKE_SYNTH="$D_SYNTH/fake-plugin"
+# shellcheck disable=SC2016
+make_fake_step3_plugin "$FAKE_SYNTH" 'mkdir -p "$DESIGN_TMPDIR/plan-review/round-1"; printf "reviewer\n" >"$DESIGN_TMPDIR/plan-review/round-1/reviewer-output.txt"; printf "%s\n" "LOOP_STATUS=degraded-empty-collector" "ROUNDS_COMPLETED=1" "REVIEW_ROUND_COUNT=1"'
+printf 'anchor\n' >"$D_SYNTH/plan-review-scope-anchor.txt"
+[ ! -e "$D_SYNTH/.step3-review-result.env" ] || fail 'precondition: synth result env must be absent before run'
+set +e
+synth_out=$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$FAKE_SYNTH" DESIGN_TMPDIR="$D_SYNTH" ISSUE_NUMBER=9 \
+  LARCH_TEST_REAL_REPO_ROOT="$ROOT" "$WRAPPER" 2>"$D_SYNTH/stderr.log")
+synth_rc=$?
+set -e
+[[ "$synth_rc" -eq 0 ]] || fail "synth-result wrapper rc=$synth_rc stdout=$synth_out stderr=$(cat "$D_SYNTH/stderr.log")"
+grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=degraded-empty-collector' <<<"$synth_out" || fail 'synth path should preserve degraded-empty-collector envelope'
+[ -f "$D_SYNTH/.step3-review-result.env" ] || fail '#4724: terminal failure without persisted result env must synthesize one'
+grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=degraded-empty-collector' "$D_SYNTH/.step3-review-result.env" || fail '#4724: synthesized result env must carry the terminal failure status'
+[ -f "$D_SYNTH/.step3-terminal-persisted-this-run" ] || fail '#4724: synthesis must write the terminal persist marker'
+[ -e "$D_SYNTH/.completed/step-3" ] || fail '#4724: guarantee trap must mint step-3 after result env synthesis so the orchestrator is released'
+rm -rf "$D_SYNTH"
+pass 'Step 3 wrapper synthesizes result env + completion sentinel on terminal failure without persisted env (#4724)'
 
 D_ZFDP=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-legacy-zfdp.XXXXXX")
 FAKE_ZFDP="$D_ZFDP/fake-plugin"
