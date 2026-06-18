@@ -1,0 +1,10 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	SECURITY.md:196; docs/run-logs.md:345,359	Plan retires compose-review-findings.sh but omits tracked docs that still reference that exact retired path	After python/migrated-scripts.tsv gains python/legacy_review_shell/compose-review-findings.sh, make lint-retired-scripts will flag SECURITY.md and docs/run-logs.md, so the required migration lint cannot pass	Add SECURITY.md and docs/run-logs.md to the plan and replace those producer references with the Python review compose-findings entrypoint/module, keeping the redaction contract wording
+
+1. **[risk-integration] `SECURITY.md:196`; `docs/run-logs.md:345,359`**
+
+   **Concern:** The plan appends `python/legacy_review_shell/compose-review-findings.sh` to `python/migrated-scripts.tsv`, but it does not update tracked docs that still cite that exact path.
+
+   **Breakage:** `make lint-retired-scripts` will flag those references after the manifest update. That blocks the stated DoD.
+
+   **Suggested revision:** Add **`SECURITY.md`** and **`docs/run-logs.md`** to the plan. Replace the retired producer path with the Python `review compose-findings` CLI/module wording. Keep the existing redaction-contract details.
