@@ -12,6 +12,8 @@ EXPECTED = {
         ("step2b-drafter", "design_lifecycle", "step2b_drafter_main"),
         ("step2b-postplan", "design_lifecycle", "step2b_postplan_main"),
         ("step2b5", "design_lifecycle", "step2b5_main"),
+        ("step5b-prepare", "design_lifecycle", "step5b_prepare_main"),
+        ("step5b-annotate", "design_lifecycle", "step5b_annotate_main"),
         ("postplan-emit", "design_postplan", "postplan_emit_main"),
         ("publish", "design_publish", "publish_main"),
         ("clarify", "clarify", "design_clarify_main"),

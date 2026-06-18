@@ -911,14 +911,9 @@ def run_plan_review_round(argv: Sequence[str]) -> int:
     ns, _extra = parser.parse_known_args(list(argv))
     tmpdir = _require_tmpdir(parser, ns.design_tmpdir)
     round_num = ns.round_num
-    if _read_count(tmpdir) >= ROUND_CAP:
-        _emit_kv("LOOP_STATUS", "cap-reached")
-        _emit_kv("TALLY_PLAN_REVIEW_STATUS", "skipped-cap-reached")
-        return 0
-    _write_count(tmpdir, round_num)
     plan_file = tmpdir / "plan.txt"
     feature_file = tmpdir / "feature-description.txt"
-    rc, values = plan_review_round.execute_round(
+    rc, _ = plan_review_round.execute_round(
         tmpdir,
         round_num=round_num,
         prune_round_num=ns.prune_round_num or round_num,
@@ -927,10 +922,6 @@ def run_plan_review_round(argv: Sequence[str]) -> int:
         plan_file=plan_file,
         feature_file=feature_file,
     )
-    loop_status = values.get("LOOP_STATUS", "panel-failed")
-    if loop_status in {"tally-error", "degraded-empty-collector"}:
-        prior = max(0, round_num - 1)
-        _write_count(tmpdir, prior)
     return rc
 
 
