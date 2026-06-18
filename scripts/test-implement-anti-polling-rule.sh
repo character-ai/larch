@@ -133,13 +133,25 @@ check "$DESIGN_MD" \
     "/design Anti-patterns pins foreground terminal-sentinel fallback" \
     'Foreground terminal-sentinel fallback: after a premature empty notification and a killed or unsuitable recovery waiter'
 
-check "$DESIGN_MD" \
-    "/design Step 3 complete route requires completed sentinel" \
-    '`STEP3_REVIEW_LOOP_STATUS=complete` — before routing to Step 3b, require `[ -f "$DESIGN_TMPDIR/.completed/step-3" ]`.'
+check "$AGENTS_MD" \
+    "AGENTS.md pins DESIGN_TMPDIR prefix for foreground probes" \
+    'prefix the probe with a single `DESIGN_TMPDIR=<absolute-path>;` assignment'
+
+check "$ORCH_NEVER_MD" \
+    "shared orchestrator NEVER pins DESIGN_TMPDIR prefix for foreground probes" \
+    'prefix the probe with a single `DESIGN_TMPDIR=<absolute-path>;` assignment'
 
 check "$DESIGN_MD" \
-    "/design Step 3 cap-hit route requires completed sentinel" \
-    '`STEP3_REVIEW_LOOP_STATUS=cap-hit` — cap reached; before routing to Step 3b, require `[ -f "$DESIGN_TMPDIR/.completed/step-3" ]`.'
+    "/design Anti-patterns pins DESIGN_TMPDIR prefix for foreground probes" \
+    'prefix the waiter or foreground probe with a single `DESIGN_TMPDIR=<absolute-path>;` assignment'
+
+check "$DESIGN_MD" \
+    "/design Step 3 complete route requires terminal sentinel before envelope parse" \
+    '`STEP3_REVIEW_LOOP_STATUS=complete` — before parsing the envelope after notification, require `[ -f "$DESIGN_TMPDIR/.completed/step-3-terminal" ]`'
+
+check "$DESIGN_MD" \
+    "/design Step 3 cap-hit route requires terminal sentinel before envelope parse" \
+    '`STEP3_REVIEW_LOOP_STATUS=cap-hit` — cap reached; before parsing the envelope after notification, require `[ -f "$DESIGN_TMPDIR/.completed/step-3-terminal" ]`'
 
 check "$DESIGN_MD" \
     "/design Anti-patterns tells orchestrator not to fall back to Monitor" \

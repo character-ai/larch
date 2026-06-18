@@ -80,9 +80,10 @@ grep -Fq 'SUMMARY_OUTCOME=failed-postplan' "$WRAPPER" || fail 'postplan-failed s
 grep -Fq 'SUMMARY_OUTCOME=failed-judge-panel' "$WRAPPER" || fail 'panel-init-failed summary KV missing'
 grep -Fq 'step3_loop_write_terminal_step3' "$LOOP" || fail 'Step 3 loop terminal sentinel helper missing'
 grep -Fq '.step3-terminal-persisted-this-run' "$LOOP" || fail 'Step 3 loop persist sidecar missing'
-grep -Fq '.step3-terminal-persisted-this-run' "$WRAPPER" || fail 'Step 3 wrapper must key terminal trap fallback on current-pass sidecar'
+grep -Fq '.step3-terminal-persisted-this-run' "$WRAPPER" || fail 'Step 3 wrapper must key terminal trap fallback and step-3 guarantee on current-pass sidecar'
 # shellcheck disable=SC2016 # literal $DESIGN_TMPDIR must match wrapper source text.
 grep -Fq 'rm -f "$DESIGN_TMPDIR/.step3-review-result.env" "$DESIGN_TMPDIR/.completed/step-3"' "$WRAPPER" || fail 'Step 3 wrapper must clear stale result env and step-3 at non-resume entry'
+grep -Fq 'rm -f "$DESIGN_TMPDIR/.completed/step-3"' "$WRAPPER" || fail 'Step 3 wrapper must clear stale step-3 on mid-loop resume entry'
 
 D_STEP3=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-stage.XXXXXX")
 trap 'rm -rf "$D_STEP3"' EXIT
@@ -381,12 +382,12 @@ sentinel_rc=$?
 set -e
 [[ "$sentinel_rc" -eq 0 ]] || fail "sentinel-guarantee wrapper rc=$sentinel_rc stdout=$sentinel_out stderr=$(cat "$D_SENTINEL/stderr.log")"
 grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=complete' <<<"$sentinel_out" || fail 'sentinel-guarantee path should preserve complete envelope'
-[ -f "$D_SENTINEL/.completed/step-3" ] || fail '#4489: terminal exit must guarantee .completed/step-3'
+[ ! -e "$D_SENTINEL/.completed/step-3" ] || fail 'stale result env without current-pass sidecar must not mint step-3'
 [ ! -e "$D_SENTINEL/.completed/step-3-terminal" ] || fail 'stale step-3-terminal must be cleared and not recreated from result env alone'
 [ ! -e "$D_SENTINEL/.step3-terminal-persisted-this-run" ] || fail 'stale step3 terminal persist sidecar must be cleared at wrapper entry'
 [ ! -e "$D_SENTINEL/.completed/step-3.5" ] || fail '#4489: guarantee must not write deferred .completed/step-3.5 (Gate C / pause-resume gate)'
 rm -rf "$D_SENTINEL"
-pass 'Step 3 wrapper clears stale terminal sentinels and does not mint terminal from stale result env'
+pass 'Step 3 wrapper clears stale terminal sentinels and does not mint step-3 from stale result env alone'
 
 D_FRESH_TERMINAL=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-terminal.XXXXXX")
 FAKE_FRESH_TERMINAL="$D_FRESH_TERMINAL/fake-plugin"
@@ -632,6 +633,25 @@ set -e
 [ ! -e "$D_STALE_ENV/.stale-env-seen" ] || fail 'stale complete result env must be cleared before loop dispatch'
 rm -rf "$D_STALE_ENV"
 pass 'Step 3 wrapper clears stale result env and step-3 at non-resume entry'
+
+D_STALE_STEP3=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-stale-step3.XXXXXX")
+FAKE_STALE_STEP3="$D_STALE_STEP3/fake-plugin"
+mkdir -p "$D_STALE_STEP3/.completed"
+: >"$D_STALE_STEP3/.completed/step-3"
+cat >"$D_STALE_STEP3/.step3-round-1.phase" <<'PHASE'
+awaiting-continuation
+PHASE
+make_fake_step3_plugin "$FAKE_STALE_STEP3" 'printf "%s\n" "STEP3_REVIEW_LOOP_STATUS=main-agent-vote-required" "LOOP_STATUS=main-agent-vote-required" "ROUNDS_COMPLETED=1" "REVIEW_ROUND_COUNT=1"'
+printf 'anchor\n' >"$D_STALE_STEP3/plan-review-scope-anchor.txt"
+set +e
+env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$FAKE_STALE_STEP3" DESIGN_TMPDIR="$D_STALE_STEP3" ISSUE_NUMBER=9 \
+  LARCH_TEST_REAL_REPO_ROOT="$ROOT" "$WRAPPER" --starting-round 1 --phase awaiting-continuation >/dev/null 2>"$D_STALE_STEP3/stderr.log"
+stale_step3_rc=$?
+set -e
+[[ "$stale_step3_rc" -eq 0 ]] || fail "stale-step3 resume wrapper rc=$stale_step3_rc"
+[ ! -e "$D_STALE_STEP3/.completed/step-3" ] || fail 'mid-loop resume must clear stale step-3 milestone'
+rm -rf "$D_STALE_STEP3"
+pass 'Step 3 wrapper clears stale step-3 on mid-loop resume entry'
 
 D_PERSIST_EMIT=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-persist-emit.XXXXXX")
 # shellcheck disable=SC2016

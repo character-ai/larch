@@ -275,12 +275,12 @@ bash_is_terminal_sentinel_foreground_probe() {
   printf '%s' "$normalized" | grep -Eq '(^|[^[:alnum:]_])sleep([^[:alnum:]_]|$)' && return 1
   case "$normalized" in
     *.step3-review-result.env*|*.design-publish-result.env*|*final-summary.md*|*plan-review/*|*tasks/*.output*) return 1 ;;
-    *.completed/step-3\"*|*.completed/step-3\'*|*.completed/step-3[[:space:]]*|*.completed/step-5c\"*|*.completed/step-5c\'*|*.completed/step-5c[[:space:]]*) return 1 ;;
+    *.completed/step-3\"*|*.completed/step-3\'*|*.completed/step-3[[:space:]]*|*.completed/step-3.5\"*|*.completed/step-3.5\'*|*.completed/step-3.5[[:space:]]*|*.completed/step-5c\"*|*.completed/step-5c\'*|*.completed/step-5c[[:space:]]*) return 1 ;;
   esac
   # shellcheck disable=SC2016 # Match literal $DESIGN_TMPDIR in the candidate Bash command.
   probe_target_re='(\$DESIGN_TMPDIR/\.completed/(step-3-terminal|step-5c-terminal|step-final-summary)|\$\{DESIGN_TMPDIR\}/\.completed/(step-3-terminal|step-5c-terminal|step-final-summary))'
   test_re='^(DESIGN_TMPDIR=[^;]+;[[:space:]]*)?test[[:space:]]+-f[[:space:]]+"?'"$probe_target_re"'"?( && echo DONE \|\| echo WAIT)?$'
-  bracket_re='^(DESIGN_TMPDIR=[^;]+;[[:space:]]*)?\[[[:space:]]+-f[[:space:]]+"?'"$probe_target_re"'"?[[:space:]]+\]( && echo DONE \|\| echo WAIT)?$'
+  bracket_re='^(DESIGN_TMPDIR=[^;]+;[[:space:]]*)?(\[\[|\[)[[:space:]]+-f[[:space:]]+"?'"$probe_target_re"'"?[[:space:]]+(\]\]|\])( && echo DONE \|\| echo WAIT)?$'
   if printf '%s' "$normalized" | grep -Eq "$test_re"; then
     :
   elif printf '%s' "$normalized" | grep -Eq "$bracket_re"; then
@@ -338,7 +338,7 @@ bash_has_probe_verb() {
 }
 
 bash_has_bracket_file_test() {
-  printf '%s' "$1" | tr '\n' ' ' | grep -Eq '(^|[;&|[:space:]])\[[[:space:]]+!?[[:space:]]*-f[[:space:]]+'
+  printf '%s' "$1" | tr '\n' ' ' | grep -Eq '(^|[;&|[:space:]])(\[\[|\[)[[:space:]]+!?[[:space:]]*-f[[:space:]]+'
 }
 
 bash_has_probe_target() {

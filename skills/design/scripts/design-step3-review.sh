@@ -300,6 +300,8 @@ fi
 # Marker step id: STEP=design-step3-review
 if [ "$STEP3_REVIEW_HAS_RESUME_STATE" = false ]; then
   rm -f "$DESIGN_TMPDIR/.step3-review-result.env" "$DESIGN_TMPDIR/.completed/step-3" 2>/dev/null || true
+else
+  rm -f "$DESIGN_TMPDIR/.completed/step-3" 2>/dev/null || true
 fi
 rm -f "$DESIGN_TMPDIR/.completed/step-3-terminal" "$DESIGN_TMPDIR/.step3-terminal-persisted-this-run" 2>/dev/null || true
 design_bg_wait_marker_start design-step3-review || true
@@ -330,6 +332,9 @@ _step3_review_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 _step3_review_should_guarantee_step3() {
   if [ -e "$DESIGN_TMPDIR/.completed/step-3" ]; then
     return 0
+  fi
+  if [[ ! -f "$DESIGN_TMPDIR/.step3-terminal-persisted-this-run" || -L "$DESIGN_TMPDIR/.step3-terminal-persisted-this-run" || ! -r "$DESIGN_TMPDIR/.step3-terminal-persisted-this-run" ]]; then
+    return 1
   fi
   if [[ ! -f "$DESIGN_TMPDIR/.step3-review-result.env" || -L "$DESIGN_TMPDIR/.step3-review-result.env" || ! -r "$DESIGN_TMPDIR/.step3-review-result.env" ]]; then
     return 1

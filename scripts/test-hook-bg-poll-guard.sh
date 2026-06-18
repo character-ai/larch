@@ -189,6 +189,26 @@ nonterminal_step3_probe='test -f "${DESIGN_TMPDIR}/.completed/step-3" && echo DO
 out=$(run_payload "$(payload_bash "$nonterminal_step3_probe" "$D")")
 assert_deny "$out" 'foreground probe of non-terminal Step 3 sentinel denies'
 
+write_marker $$ "$(date +%s)" 21600 design-step3-review
+nonterminal_step35_probe='[[ -f "${DESIGN_TMPDIR}/.completed/step-3.5" ]] && echo DONE || echo WAIT'
+out=$(run_payload "$(payload_bash "$nonterminal_step35_probe" "$D")")
+assert_deny "$out" 'foreground probe of Step 3.5 sentinel denies'
+
+write_marker $$ "$(date +%s)" 21600 design-step3-review
+rm -f "$D/.completed/step-3-terminal"
+terminal_probe_step3_dbl='[[ -f "$DESIGN_TMPDIR/.completed/step-3-terminal" ]] && echo DONE || echo WAIT'
+out=$(run_payload "$(payload_bash "$terminal_probe_step3_dbl" "$D")")
+assert_allow "$out" 'double-bracket Step 3 terminal sentinel foreground probe allows'
+
+write_marker $$ "$(date +%s)" 21600 design-step3-review
+mkdir -p "$D/.completed"
+: >"$D/.completed/step-3"
+rm -f "$D/.completed/step-3-terminal"
+out=$(run_payload "$(payload_bash "$design_tmpdir_ls")")
+assert_deny "$out" 'stale step-3 milestone without step-3-terminal does not release marker'
+rm -f "$D/.completed/step-3"
+write_marker $$ "$(date +%s)" 21600 design-step3-review
+
 sentinel_probe_sleep='test -f "${DESIGN_TMPDIR}/.completed/step-3-terminal" && sleep 1'
 out=$(run_payload "$(payload_bash "$sentinel_probe_sleep" "$D")")
 assert_deny "$out" 'foreground terminal sentinel probe plus sleep denies'
