@@ -34,6 +34,11 @@ the `/research` skill under the simplified fixed-shape topology
 11. `research-phase.md` pins `python/cli.py research run-planner` in §1.1.b and the §1.1.c edit loop.
 12. `citation-validation-phase.md` and `SKILL.md` pin `python/cli.py research validate-citations`.
 13. `research-phase.md` pins `python/cli.py research banner` at Step 1.5 and `SKILL.md` pins `python/cli.py research render-findings-batch` at Step 3.
+14. `research-phase.md` pins terminal `STATUS=NOT_SUBSTANTIVE` handling:
+    no Claude replacement, no narrative synthesis input, and no
+    non-substantive retry artifacts.
+15. `research-phase.md` pins synthesis-header ownership and the
+    `[lane dropped: collector NOT_SUBSTANTIVE]` exclusion marker.
 
 ## Wiring
 

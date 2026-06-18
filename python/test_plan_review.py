@@ -68,6 +68,25 @@ def test_embedded_plan_review_reviewer_prune_uses_review_cli() -> None:
         assert "PRUNED_COMBOS" in body
 
 
+def test_embedded_plan_review_loop_not_substantive_count_emitted() -> None:
+    loop_parts = ("skills", "design", "scripts", "plan-review-loop.sh")
+    body = plan_review.legacy_asset_bytes("/".join(loop_parts)).decode("utf-8")
+    assert "COLLECT_FAILURE_COUNT=0" in body
+
+    summary_start = body.index("_write_round_summary() {")
+    summary_end = body.find("\n}", summary_start)
+    assert summary_end != -1
+    summary_region = body[summary_start:summary_end]
+    assert "round-summary.env" in summary_region
+    assert "COLLECT_FAILURE_COUNT=%s" in summary_region
+
+    count_start = body.index("_count_collector_evidence() {")
+    count_end = body.index("_parse_collect_records() {", count_start)
+    count_region = body[count_start:count_end]
+    assert "*) collect_failure_count=$((collect_failure_count + 1)) ;;" in count_region
+    assert "COLLECT_FAILURE_COUNT=$collect_failure_count" in count_region
+
+
 def test_embedded_run_step3_review_routes_from_binary_found() -> None:
     # Keep the path assembled so this test does not trip retired-script lint,
     # which intentionally flags full repo-relative retired path literals.

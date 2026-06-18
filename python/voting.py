@@ -408,6 +408,7 @@ def _darwin_path_aliases(path: str | Path) -> set[str]:
 
 
 def voter_parse_rate_diag_matches_output(voter_path: str | Path) -> bool:
+    # tally-code-votes.sh no longer reads this sidecar; it calls parse-rate-check directly.
     path = Path(voter_path)
     diag_file = voter_parse_rate_diag_path(path)
     if not diag_file.is_file() or not path.is_file():

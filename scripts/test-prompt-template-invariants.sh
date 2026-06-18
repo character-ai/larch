@@ -56,11 +56,7 @@ for arg in "$@"; do
   last="$arg"
 done
 [[ -n "$out" ]] || exit 9
-if [[ "$out" == *parse-retry* ]]; then
-  printf 'FINDING_1: YES\nOOS_1: NO -- retry ok\n' > "$out"
-else
-  printf 'Narrative output.\n' > "$out"
-fi
+printf 'Narrative output.\n' > "$out"
 STUB
 cat > "$stub_bin/cursor" <<'STUB'
 #!/usr/bin/env bash

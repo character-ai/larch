@@ -258,6 +258,18 @@ contains "$SKILL_MD" 'python/cli.py" research validate-citations' '[python cli] 
 contains "$RESEARCH_MD" 'python/cli.py" research banner' '[python cli] research-phase.md must pin research banner at Step 1.5'
 contains "$SKILL_MD" 'python/cli.py research render-findings-batch' '[python cli] SKILL.md must pin research render-findings-batch at Step 3'
 
+# ---------- Check 14: NOT_SUBSTANTIVE terminal behavior ----------
+
+contains "$RESEARCH_MD" 'STATUS=NOT_SUBSTANTIVE' '[not-substantive] research-phase.md must pin terminal NOT_SUBSTANTIVE status'
+contains "$RESEARCH_MD" 'do not launch a Claude replacement' '[not-substantive] research-phase.md must block Claude replacement'
+contains "$RESEARCH_MD" 'do not pass the narrative file to synthesis' '[not-substantive] research-phase.md must exclude narrative output from synthesis'
+contains "$RESEARCH_MD" 'No non-substantive retry artifacts are created' '[not-substantive] research-phase.md must pin absent retry artifacts'
+
+# ---------- Check 15: synthesis gating and STATUS-gated input exclusion ----------
+
+contains "$RESEARCH_MD" "Do NOT emit a \`## Research Synthesis\` header" '[synthesis gating] research-phase.md must pin orchestrator-owned synthesis header'
+contains "$RESEARCH_MD" '[lane dropped: collector NOT_SUBSTANTIVE]' '[synthesis gating] research-phase.md must pin NOT_SUBSTANTIVE dropped-lane marker'
+
 # ---------- Summary ----------
 
 if (( FAIL > 0 )); then
