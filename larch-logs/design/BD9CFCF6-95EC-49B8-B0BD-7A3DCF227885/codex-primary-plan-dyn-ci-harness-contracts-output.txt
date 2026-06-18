@@ -1,0 +1,8 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	<TMPDIR>/plan.txt:7-9,74-80; scripts/test-legacy-title-prefix-literals-scope.sh:11-24,41-45	[SCOPE-REDUCTION] Legacy-prefix self-heal can auto-allow any reported path	The current guard makes ALLOW the explicit anti-sprawl contract and tells authors to extend it only when deliberate. The plan parses any unexpected path, checks only that the file exists and still contains the literal, then inserts it into ALLOW. A future accidental [PLANNED] or [IN PROGRESS] literal would be blessed by CI instead of blocked.	Limit the mechanical fix to the exact known incident signature/path, or skip mechanical ALLOW edits for arbitrary unexpected paths and fall back to the delegated fixer/manual review path.
+
+1. **[risk-integration] Over-broad ALLOW self-heal weakens the guard.**
+   - **Where:** `<TMPDIR>/plan.txt:7-9,74-80`; `scripts/test-legacy-title-prefix-literals-scope.sh:11-24,41-45`.
+   - **Concern:** The plan turns the explicit `ALLOW=` contract into an automatic CI mutation for any path reported by the guard.
+   - **Breakage:** Accidental literal sprawl can pass after CI self-heal commits a new allow-list entry.
+   - **Suggested revision:** Restrict the helper to the exact known incident path/signature, or delegate all other unexpected paths without editing `ALLOW=`.

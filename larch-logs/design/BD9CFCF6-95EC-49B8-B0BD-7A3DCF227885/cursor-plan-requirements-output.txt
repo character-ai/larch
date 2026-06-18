@@ -1,0 +1,27 @@
+Reviewing the plan against the issue scope and validating cited integration points in the codebase.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	python/review_and_fix.py:144-148	_lint_fix_snapshot_paths porcelain union rule is underspecified versus the no-unrelated-dirty edge case	The second union member says paths lint-fix may have touched without defining that set; a broad porcelain diff against the pre-lint snapshot can stage unrelated pre-existing dirty files or still miss in-place edits, recreating the #4712 ship dirty-tree stall or committing out-of-scope hunks	Define commit candidates as paths in delta_paths union (git diff --name-only pre_lint_head) only; drop or tighten the vague porcelain-diff bullet so it cannot include files outside that union
+2	in_scope	important	completeness	python/review_and_fix.py:160-173	_run_lint_fix_loop omits commit_sha even though post-loop no-op logic depends on it	Plan tests require a no-op when run_lint_fix already committed on a clean baseline (commit_sha set), but _run_lint_fix_loop only specifies LINT_FIX_DELTA_PATHS; _step5_post_round_gates has no commit_sha signal and may re-commit or mis-handle an already-committed lint pass	Also propagate FixOutcome.commit_sha (e.g. LINT_FIX_COMMIT_SHA) from each applied iteration; treat any non-empty commit_sha in the loop as satisfying the post-loop commit requirement
+3	out_of_scope	latent	risk-integration	skills/implement/SKILL.md:568-574	--self-review Step 5 lint-fix path lacks the dirty-baseline snapshot commit the plan adds only to _step5_post_round_gates	If checks fail after self-review edits and prompt-side lint-fix applies on a dirty tree, Step 7 commits only when self-review fixes were applied in step 4, not when lint-fix alone changed the tree; ship can still see porcelain (same class as #4712, different entrypoint)	Track as follow-up; mirror the snapshot pathspec commit in the self-review lint-fix branch only if recurrence is observed
+
+## Findings
+
+**1. [correctness] `python/review_and_fix.py` — `_lint_fix_snapshot_paths` ambiguity**
+
+The plan’s edge cases forbid committing unrelated pre-existing dirty hunks, but the helper spec’s second union member (“paths lint-fix may have touched”) is not mechanically defined. An implementer could diff all porcelain against the pre-lint snapshot and stage files that were dirty before lint-fix ran, which violates the stated constraint and risks scope creep in the commit.
+
+**Suggested revision:** Restrict candidates to the union of per-iteration `delta_paths` and `git diff --name-only <pre_lint_head>` (for in-place edits on already-dirty tracked files). Remove or replace the open-ended porcelain-diff clause.
+
+**2. [completeness] `python/review_and_fix.py` — missing `commit_sha` handoff from `_run_lint_fix_loop`**
+
+`checks.FixOutcome` already carries `commit_sha`, and `run_lint_fix` commits inline when the pre-lint baseline is clean (`python/checks.py:2108-2139`). The plan’s post-loop no-op rule and tests depend on detecting that case, but the only explicit `_run_lint_fix_loop` extension is `LINT_FIX_DELTA_PATHS`. `_step5_post_round_gates` cannot distinguish “lint already committed” from “lint applied on dirty tree, still needs commit.”
+
+**Suggested revision:** Propagate `commit_sha` from each `applied` outcome through `_run_lint_fix_loop`; skip `_commit_lint_fix_delta_paths` when the loop already produced a commit and porcelain is clean.
+
+**3. [OUT_OF_SCOPE] [risk-integration] `skills/implement/SKILL.md` — `--self-review` lint-fix gap**
+
+Gap #3 work targets the scripted review loop (`_step5_post_round_gates`, `step-5-resume.sh`, Step 7). Self-review already commits with `--stage-all` after inline fixes, but its prompt-side lint-fix repair path does not get the new snapshot commit logic. That is a parallel dirty-tree risk, not part of the #4712 incident or the approved outline surfaces.
+
+---
+
+**Coverage note (no finding):** Goals #1/#2 (implementer checklist, pre-commit fast-lane, narrow `ci_agentic_fix` self-heal) and the core #3 locus (`step-5-resume.sh` fail-closed, lint-fix delta commit, `config.py` / `step5-review-branches.md` durable bail tokens) align with the issue and approved outline. The Makefile partition target already carries the incident fix (`Makefile:787-788`), so the partition helper correctly no-ops on current HEAD while still covering regression.

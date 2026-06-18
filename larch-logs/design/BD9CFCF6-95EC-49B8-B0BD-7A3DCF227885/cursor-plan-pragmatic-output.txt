@@ -1,0 +1,22 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	blocking	risk-integration	skills/implement/scripts/step-5-resume.sh:85-90	Dropping `|| true` without an rc-tolerant wrapper conflicts with `set -euo pipefail`	`review-and-fix commit-fixes --stage-all` returns non-zero on a clean tree (`git commit` with nothing staged after `git add -A`); the script exits before parsing `COMMITTED=` / porcelain and never reaches `review-and-fix step5`, so MAV/coder resume breaks on the common no-op handoff	In `step-5-resume.sh`, capture commit-fixes rc without aborting (subshell or `set +e` block), relay KV stdout, then branch: exit non-zero only when porcelain is non-empty after `COMMITTED=false`; otherwise continue to `step5`. Optionally add a matching clean-tree no-op in `commit_fixes` (exit 0, `COMMITTED=false`) and pin it in tests
+2	in_scope	important	correctness	python/review_and_fix.py:144-148	Porcelain snapshot union rule for lint-fix commits is underspecified	`_lint_fix_snapshot_paths` second bullet ("paths lint-fix may have touched") can be read as all porcelain deltas since loop entry, which would stage pre-existing dirty files the loop never touched and reintroduce the #4712 dirty-tree class via wrong commits	Define commit candidates as `sorted(set(delta_paths) | git_diff_names(pre_lint_head))` only; drop or narrow the porcelain bullet to untracked paths newly appearing in `delta_paths`, and explicitly exclude paths whose porcelain entry is byte-identical to `pre_lint_porcelain`
+3	out_of_scope	latent	risk-integration	python/review_and_fix.py:2325-2335	Step 7 `commit-fixes --stage-all` still uses `git add -A` without `--only`	Widening Step 7 from path-scoped commits increases the chance unrelated pre-staged or dirty files ride into the review-fix commit if the tree is not fully clean before Step 7; lower priority once Step 5 commit gates land	Consider a follow-up issue to mirror the lint-fix pathspec-only pattern for Step 7, or document that Step 7 assumes a clean tree after Step 5/6 gates
+
+## Findings
+
+**1. [risk-integration / blocking]** `skills/implement/scripts/step-5-resume.sh:85-90`
+
+The plan drops `|| true` from `commit-fixes --stage-all` but keeps `set -euo pipefail`. Today `commit_fixes` calls `git-commit.sh -m` after `git add -A` with no `--only` and no empty-tree short-circuit. On a clean handoff tree that commit exits non-zero, so the wrapper dies before KV relay or `review-and-fix step5`. The edge case ("`COMMITTED=false` on a clean tree is not failure") is stated but not wired to survive `set -e`.
+
+**Suggested revision:** Capture rc without triggering `set -e`, then branch on `COMMITTED=` plus porcelain; or teach `commit_fixes --stage-all` to exit 0 when porcelain is empty after add.
+
+**2. [correctness / important]** `python/review_and_fix.py` (proposed `_lint_fix_snapshot_paths`)
+
+Gap #3 needs in-place edits on pre-dirty tracked files via `git diff --name-only <pre_lint_head>`. The extra porcelain bullet is ambiguous. A literal reading can union every porcelain change since loop entry and commit unrelated pre-existing dirty paths, defeating "never unrelated pre-existing dirty hunks."
+
+**Suggested revision:** Commit set = `delta_paths ∪ names from pre_lint_head diff`; exclude paths whose porcelain line matches the entry snapshot; add a test where a pre-dirty untouched file must not be staged.
+
+**3. [OUT_OF_SCOPE / latent]** `python/review_and_fix.py:2325-2335`
+
+Step 7 `--stage-all` still uses `git add -A` and a non-`--only` commit. That is a pre-existing widening vs path-scoped Step 7; worth a follow-up once Step 5 stall gates are in place, not required for this issue's three gaps.
