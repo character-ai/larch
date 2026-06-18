@@ -817,7 +817,7 @@ def render_phase_detail(
     any_time = any(row.seconds is not None for row in phase_rounds)
     costs = [float(row.cost[1:]) for row in phase_rounds if row.cost.startswith("$")]
     top_reviewers = _top_reviewers(findings_file, label_map=label_map, top_n=top_n)
-    if not top_reviewers:
+    if not top_reviewers and skill == "design":
         top_reviewers = _top_reviewers_from_classification(round_dirs, top_n=top_n)
     fail_total, failures = _failed_reviewers(round_dirs, label_map=label_map)
     lines = [
