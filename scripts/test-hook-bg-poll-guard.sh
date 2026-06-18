@@ -215,6 +215,29 @@ for verb in cat ls stat jq; do
   assert_deny "$out" "foreground terminal sentinel probe with appended $verb denies"
 done
 
+cmd_sub_probe='[ -f "$DESIGN_TMPDIR/.completed/step-3-terminal" ] && echo DONE || echo $(cat "$DESIGN_TMPDIR/.step3-review-result.env")'
+out=$(run_payload "$(payload_bash "$cmd_sub_probe" "$D")")
+assert_deny "$out" 'foreground terminal sentinel probe with command substitution in echo tail denies'
+
+informal_probe="DESIGN_TMPDIR=/tmp/informal-design; [ -f \"\$DESIGN_TMPDIR/.completed/step-3-terminal\" ] && echo DONE || echo WAIT"
+out=$(run_payload "$(payload_bash "$informal_probe" "$D")")
+assert_deny "$out" 'foreground probe with DESIGN_TMPDIR outside live marker dir denies'
+
+D_INFORMAL="$TMP/informal-design"
+mkdir -p "$D_INFORMAL"
+MARKER_SAVE="$MARKER"
+MARKER="$D_INFORMAL/.bg-wait-active"
+write_marker $$ "$(date +%s)" 21600 design-step3-review
+informal_allow="DESIGN_TMPDIR=$D_INFORMAL; [ -f \"\$DESIGN_TMPDIR/.completed/step-3-terminal\" ] && echo DONE || echo WAIT"
+out=$(printf '%s' "$(payload_bash "$informal_allow" "$D_INFORMAL")" | LARCH_BG_POLL_GUARD_MARKER="$MARKER" "$HOOK")
+assert_allow "$out" 'foreground probe allows DESIGN_TMPDIR path containing informal substring when bound to live dir'
+MARKER="$MARKER_SAVE"
+rm -rf "$D_INFORMAL"
+
+touch_forgery="touch \"\$DESIGN_TMPDIR/.completed/step-3-terminal\""
+out=$(run_payload "$(payload_bash "$touch_forgery" "$D")")
+assert_deny "$out" 'live marker plus touch of terminal sentinel denies'
+
 mkdir -p "$D/.completed"
 write_marker $$ "$(date +%s)" 21600 design-step3-review
 rm -f "$D/.completed/step-3-terminal"
@@ -279,10 +302,18 @@ fi
 mkdir -p "$D/.completed"
 write_marker $$ "$(date +%s)" 21600 design-step3-review
 : >"$D/.completed/step-3-terminal"
+: >"$D/.step3-terminal-persisted-this-run"
 out=$(run_payload "$(payload_read "$D/.step3-review-result.env")")
 assert_allow "$out" 'step3 terminal completion sentinel releases Read of result env'
 out=$(run_payload "$(payload_bash "$design_tmpdir_ls")")
 assert_allow "$out" 'step3 terminal completion sentinel releases Bash probe'
+
+write_marker $$ "$(date +%s)" 21600 design-step3-review
+: >"$D/.completed/step-3-terminal"
+rm -f "$D/.step3-terminal-persisted-this-run"
+out=$(run_payload "$(payload_bash "$design_tmpdir_ls")")
+assert_deny "$out" 'step3 terminal sentinel without persist sidecar does not release marker'
+rm -f "$D/.completed/step-3-terminal" "$MARKER"
 
 write_marker $$ "$(date +%s)" 21600 design-step5c
 out=$(run_payload "$(payload_bash "$design_tmpdir_ls")")

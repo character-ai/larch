@@ -512,4 +512,80 @@ grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=' <<<"$rre_missing_out" || fail '--read-resu
 rm -rf "$RRE_PLUGIN" "$D_RRE" "$D_RRE_MISSING"
 pass 'Step 3 --read-result-env recovers loop status (hook-safe fallback)'
 
+D_PERSIST_TERMINAL=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-persist-terminal.XXXXXX")
+# shellcheck disable=SC2016
+cat >"$D_PERSIST_TERMINAL/run-persist.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+export DESIGN_TMPDIR="$1"
+export PLUGIN_ROOT="$2"
+export mode="$3"
+emit() { :; }
+emit_kv() { :; }
+larch_err() { :; }
+phase_driver_write_result_env() {
+  if [[ "$mode" == fail ]]; then
+    return 1
+  fi
+  printf '%s\n' "$@" >"$1"
+  return 0
+}
+# shellcheck source=/dev/null
+source "$PLUGIN_ROOT/skills/design/scripts/review-design-step3-loop.sh"
+step3_loop_persist_envelope main-agent-apply-required 1 1 1 "" ""
+SH
+chmod +x "$D_PERSIST_TERMINAL/run-persist.sh"
+"$D_PERSIST_TERMINAL/run-persist.sh" "$D_PERSIST_TERMINAL" "$ROOT" success
+[ -f "$D_PERSIST_TERMINAL/.completed/step-3-terminal" ] || fail 'persist success must write step-3-terminal'
+[ -f "$D_PERSIST_TERMINAL/.step3-terminal-persisted-this-run" ] || fail 'persist success must write persist sidecar'
+rm -rf "$D_PERSIST_TERMINAL/.completed" "$D_PERSIST_TERMINAL/.step3-review-result.env" "$D_PERSIST_TERMINAL/.step3-terminal-persisted-this-run"
+"$D_PERSIST_TERMINAL/run-persist.sh" "$D_PERSIST_TERMINAL" "$ROOT" fail
+[ ! -e "$D_PERSIST_TERMINAL/.completed/step-3-terminal" ] || fail 'persist failure must not write step-3-terminal'
+[ ! -e "$D_PERSIST_TERMINAL/.step3-terminal-persisted-this-run" ] || fail 'persist failure must not write persist sidecar'
+rm -rf "$D_PERSIST_TERMINAL"
+pass 'Step 3 loop writes terminal sentinel only after persist success'
+
+D_APPLY_REQUIRED=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-apply-required.XXXXXX")
+FAKE_APPLY="$D_APPLY_REQUIRED/fake-plugin"
+# shellcheck disable=SC2016
+make_fake_step3_plugin "$FAKE_APPLY" 'cat > "$DESIGN_TMPDIR/.step3-review-result.env" <<RESULT
+STEP3_REVIEW_LOOP_STATUS=main-agent-apply-required
+LOOP_STATUS=complete
+TALLY_PLAN_REVIEW_STATUS=main-agent-apply-required
+STEP3_REVIEW_CAP_REACHED=false
+ROUNDS_COMPLETED=1
+REVIEW_ROUND_COUNT=1
+RESULT
+mkdir -p "$DESIGN_TMPDIR/.completed"
+: >"$DESIGN_TMPDIR/.completed/step-3-terminal"
+: >"$DESIGN_TMPDIR/.step3-terminal-persisted-this-run"'
+printf 'anchor\n' >"$D_APPLY_REQUIRED/plan-review-scope-anchor.txt"
+set +e
+apply_required_out=$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$FAKE_APPLY" DESIGN_TMPDIR="$D_APPLY_REQUIRED" ISSUE_NUMBER=9 \
+  LARCH_TEST_REAL_REPO_ROOT="$ROOT" "$WRAPPER" 2>"$D_APPLY_REQUIRED/stderr.log")
+apply_required_rc=$?
+set -e
+[[ "$apply_required_rc" -eq 0 ]] || fail "apply-required wrapper rc=$apply_required_rc stdout=$apply_required_out stderr=$(cat "$D_APPLY_REQUIRED/stderr.log")"
+grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=main-agent-apply-required' <<<"$apply_required_out" || fail 'apply-required path should preserve envelope'
+[ -f "$D_APPLY_REQUIRED/.completed/step-3-terminal" ] || fail 'apply-required mid-loop bail must retain step-3-terminal'
+[ -f "$D_APPLY_REQUIRED/.step3-terminal-persisted-this-run" ] || fail 'apply-required mid-loop bail must retain persist sidecar'
+[ ! -e "$D_APPLY_REQUIRED/.completed/step-3" ] || fail 'apply-required mid-loop bail must not mint step-3'
+rm -rf "$D_APPLY_REQUIRED"
+pass 'Step 3 wrapper does not mint step-3 on main-agent-apply-required bail-out'
+
+D_PRELAUNCH=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-prelaunch-terminal.XXXXXX")
+FAKE_PRELAUNCH="$D_PRELAUNCH/fake-plugin"
+make_fake_step3_plugin "$FAKE_PRELAUNCH" 'exit 0'
+set +e
+prelaunch_out=$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$FAKE_PRELAUNCH" DESIGN_TMPDIR="$D_PRELAUNCH" ISSUE_NUMBER=9 \
+  LARCH_TEST_REAL_REPO_ROOT="$ROOT" "$WRAPPER" 2>"$D_PRELAUNCH/stderr.log")
+prelaunch_rc=$?
+set -e
+[[ "$prelaunch_rc" -eq 1 ]] || fail "prelaunch wrapper rc=$prelaunch_rc stdout=$prelaunch_out"
+grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=panel-init-failed' <<<"$prelaunch_out" || fail 'prelaunch failure should emit panel-init-failed'
+[ -f "$D_PRELAUNCH/.completed/step-3-terminal" ] || fail 'prelaunch failure must write step-3-terminal'
+[ -f "$D_PRELAUNCH/.step3-terminal-persisted-this-run" ] || fail 'prelaunch failure must write persist sidecar'
+rm -rf "$D_PRELAUNCH"
+pass 'Step 3 prelaunch failure writes terminal sentinel after result env persist'
+
 pass 'design-step3-review.sh checks passed'

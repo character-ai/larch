@@ -77,15 +77,24 @@ marker_step_completed() {
   # process exits on terminal paths, and exits before the notification fires.
   # Covers design-step3-review, design-step5c, and design-step-final-summary;
   # other guarded steps rely on the wrapper-routed read allowance.
-  local dir="$1" step="$2" sentinel=""
+  local dir="$1" step="$2" sentinel="" sidecar=""
   [ -n "$dir" ] || return 1
   case "$step" in
-    design-step3-review)       sentinel="$dir/.completed/step-3-terminal"  ;;
-    design-step5c)             sentinel="$dir/.completed/step-5c-terminal" ;;
-    design-step-final-summary) sentinel="$dir/.completed/step-final-summary" ;;
+    design-step3-review)
+      sentinel="$dir/.completed/step-3-terminal"
+      sidecar="$dir/.step3-terminal-persisted-this-run"
+      [ -f "$sentinel" ] && [ ! -L "$sentinel" ] && [ -f "$sidecar" ] && [ ! -L "$sidecar" ] && [ -r "$sidecar" ]
+      ;;
+    design-step5c)
+      sentinel="$dir/.completed/step-5c-terminal"
+      [ -f "$sentinel" ] && [ ! -L "$sentinel" ]
+      ;;
+    design-step-final-summary)
+      sentinel="$dir/.completed/step-final-summary"
+      [ -f "$sentinel" ] && [ ! -L "$sentinel" ]
+      ;;
     *) return 1 ;;
   esac
-  [ -f "$sentinel" ] && [ ! -L "$sentinel" ]
 }
 
 marker_is_live() {
@@ -258,19 +267,20 @@ bash_is_step3_recovery_waiter() {
 }
 
 bash_is_terminal_sentinel_foreground_probe() {
-  local cmd="$1" normalized sentinel_path sentinel_name dir sentinel_abs
-  local probe_target_re echo_tail_re test_re bracket_re
+  local cmd="$1" normalized sentinel_path sentinel_name dir sentinel_abs assigned_tmpdir canon assigned_canon
+  local probe_target_re test_re bracket_re live_dir_count=0 matched_live_dir=0
   normalized=$(printf '%s' "$cmd" | tr '\n' ' ' | sed 's/[[:space:]][[:space:]]*/ /g')
   normalized=$(bash_trim "$normalized")
+  bash_is_control_loop "$normalized" && return 1
+  printf '%s' "$normalized" | grep -Eq '(^|[^[:alnum:]_])sleep([^[:alnum:]_]|$)' && return 1
   case "$normalized" in
-    *sleep*|*while*|*until*|*for*|*.step3-review-result.env*|*.design-publish-result.env*|*final-summary.md*|*plan-review/*|*tasks/*.output*) return 1 ;;
+    *.step3-review-result.env*|*.design-publish-result.env*|*final-summary.md*|*plan-review/*|*tasks/*.output*) return 1 ;;
     *.completed/step-3\"*|*.completed/step-3\'*|*.completed/step-3[[:space:]]*|*.completed/step-5c\"*|*.completed/step-5c\'*|*.completed/step-5c[[:space:]]*) return 1 ;;
   esac
   # shellcheck disable=SC2016 # Match literal $DESIGN_TMPDIR in the candidate Bash command.
   probe_target_re='(\$DESIGN_TMPDIR/\.completed/(step-3-terminal|step-5c-terminal|step-final-summary)|\$\{DESIGN_TMPDIR\}/\.completed/(step-3-terminal|step-5c-terminal|step-final-summary))'
-  echo_tail_re='([[:space:]]+&&[[:space:]]+echo[[:space:]]+[^;&|[:space:]]+([[:space:]]+[^;&|[:space:]]+)*[[:space:]]+\|\|[[:space:]]+echo[[:space:]]+[^;&|[:space:]]+([[:space:]]+[^;&|[:space:]]+)*)?'
-  test_re='^(DESIGN_TMPDIR=[^;]+;[[:space:]]*)?test[[:space:]]+-f[[:space:]]+"?'"$probe_target_re"'"?'"$echo_tail_re"'$'
-  bracket_re='^(DESIGN_TMPDIR=[^;]+;[[:space:]]*)?\[[[:space:]]+-f[[:space:]]+"?'"$probe_target_re"'"?[[:space:]]+\]'"$echo_tail_re"'$'
+  test_re='^(DESIGN_TMPDIR=[^;]+;[[:space:]]*)?test[[:space:]]+-f[[:space:]]+"?'"$probe_target_re"'"?( && echo DONE \|\| echo WAIT)?$'
+  bracket_re='^(DESIGN_TMPDIR=[^;]+;[[:space:]]*)?\[[[:space:]]+-f[[:space:]]+"?'"$probe_target_re"'"?[[:space:]]+\]( && echo DONE \|\| echo WAIT)?$'
   if printf '%s' "$normalized" | grep -Eq "$test_re"; then
     :
   elif printf '%s' "$normalized" | grep -Eq "$bracket_re"; then
@@ -278,13 +288,32 @@ bash_is_terminal_sentinel_foreground_probe() {
   else
     return 1
   fi
-  # shellcheck disable=SC2016 # Match literal $DESIGN_TMPDIR in the candidate Bash command.
-  sentinel_path=$(printf '%s' "$normalized" | sed -E 's/.*(\$DESIGN_TMPDIR|\$\{DESIGN_TMPDIR\})\/\.completed\/(step-3-terminal|step-5c-terminal|step-final-summary).*/\2/')
-  sentinel_name="$sentinel_path"
-  [ -n "$sentinel_name" ] || return 1
   if [ -n "${live_dirs_file:-}" ] && [ -f "$live_dirs_file" ]; then
+    assigned_tmpdir=""
+    if printf '%s' "$normalized" | grep -Eq '^DESIGN_TMPDIR=[^;]+;'; then
+      assigned_tmpdir=$(printf '%s' "$normalized" | sed -E 's/^DESIGN_TMPDIR=([^;]+);.*/\1/' | tr -d '"' | tr -d "'")
+      assigned_canon=$(canonical_dir "$assigned_tmpdir" 2>/dev/null) || return 1
+      while IFS= read -r dir || [ -n "$dir" ]; do
+        [ -n "$dir" ] || continue
+        live_dir_count=$((live_dir_count + 1))
+        if [ "$assigned_canon" = "$dir" ]; then
+          matched_live_dir=1
+        fi
+      done <"$live_dirs_file"
+      [ "$matched_live_dir" -eq 1 ] || return 1
+    else
+      while IFS= read -r dir || [ -n "$dir" ]; do
+        [ -n "$dir" ] || continue
+        live_dir_count=$((live_dir_count + 1))
+      done <"$live_dirs_file"
+      [ "$live_dir_count" -eq 1 ] || return 1
+    fi
     while IFS= read -r dir || [ -n "$dir" ]; do
       [ -n "$dir" ] || continue
+      # shellcheck disable=SC2016 # Match literal $DESIGN_TMPDIR in the candidate Bash command.
+      sentinel_path=$(printf '%s' "$normalized" | sed -E 's/.*(\$DESIGN_TMPDIR|\$\{DESIGN_TMPDIR\})\/\.completed\/(step-3-terminal|step-5c-terminal|step-final-summary).*/\2/')
+      sentinel_name="$sentinel_path"
+      [ -n "$sentinel_name" ] || return 1
       sentinel_abs="$dir/.completed/$sentinel_name"
       if [ -L "$sentinel_abs" ]; then
         return 1
@@ -292,6 +321,16 @@ bash_is_terminal_sentinel_foreground_probe() {
     done <"$live_dirs_file"
   fi
   return 0
+}
+
+bash_attempts_terminal_sentinel_mutation() {
+  local cmd="$1"
+  case "$cmd" in
+    *step-3-terminal*|*step-5c-terminal*|*step-final-summary*|*step3-terminal-persisted-this-run*) ;;
+    *) return 1 ;;
+  esac
+  printf '%s' "$cmd" | grep -Eq '(^|[^[:alnum:]_])(touch|mkdir)([^[:alnum:]_]|$)|:[[:space:]]*>|(^|[^[:alnum:]_])echo[^|]*>' && return 0
+  return 1
 }
 
 bash_has_probe_verb() {
@@ -404,6 +443,9 @@ while IFS= read -r dir || [ -n "$dir" ]; do
     deny_if_needed "$dir"
   fi
   if bash_is_filetest_sleep_loop "$cmd" && bash_has_probe_target "$cmd" "$dir" "$cwd_canon"; then
+    deny_if_needed "$dir"
+  fi
+  if bash_attempts_terminal_sentinel_mutation "$cmd" && bash_has_probe_target "$cmd" "$dir" "$cwd_canon"; then
     deny_if_needed "$dir"
   fi
 done <"$live_dirs_file"

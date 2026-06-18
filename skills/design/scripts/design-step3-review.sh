@@ -324,10 +324,35 @@ _step3_review_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # design-step3b-entry.sh). Creating it here would skip Gate B on apply-pending
 # exits (main-agent-apply-required, per-round-approval-required). Idempotent and
 # best-effort: only creates a missing sentinel and never alters $?.
+_step3_review_should_guarantee_step3() {
+  if [ -e "$DESIGN_TMPDIR/.completed/step-3" ]; then
+    return 0
+  fi
+  if [[ ! -f "$DESIGN_TMPDIR/.step3-review-result.env" || -L "$DESIGN_TMPDIR/.step3-review-result.env" || ! -r "$DESIGN_TMPDIR/.step3-review-result.env" ]]; then
+    return 1
+  fi
+  local _status=""
+  while IFS= read -r _line || [[ -n "$_line" ]]; do
+    case "$_line" in
+      STEP3_REVIEW_LOOP_STATUS=*) _status="${_line#STEP3_REVIEW_LOOP_STATUS=}" ;;
+    esac
+  done <"$DESIGN_TMPDIR/.step3-review-result.env"
+  case "$_status" in
+    complete|cap-hit|panel-failed|panel-init-failed|tally-error|degraded-empty-collector|main-agent-vote-required|postplan-failed)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 _step3_review_guarantee_completed_sentinels() {
   [ -n "${DESIGN_TMPDIR:-}" ] && [ -d "${DESIGN_TMPDIR:-}" ] || return 0
   mkdir -p "$DESIGN_TMPDIR/.completed" 2>/dev/null || return 0
-  [ -e "$DESIGN_TMPDIR/.completed/step-3" ] || : >"$DESIGN_TMPDIR/.completed/step-3" 2>/dev/null || true
+  if _step3_review_should_guarantee_step3; then
+    [ -e "$DESIGN_TMPDIR/.completed/step-3" ] || : >"$DESIGN_TMPDIR/.completed/step-3" 2>/dev/null || true
+  fi
   if [ -f "$DESIGN_TMPDIR/.step3-terminal-persisted-this-run" ] && [ ! -L "$DESIGN_TMPDIR/.step3-terminal-persisted-this-run" ] && [ -r "$DESIGN_TMPDIR/.step3-terminal-persisted-this-run" ]; then
     [ -e "$DESIGN_TMPDIR/.completed/step-3-terminal" ] || : >"$DESIGN_TMPDIR/.completed/step-3-terminal" 2>/dev/null || true
   fi
