@@ -903,6 +903,40 @@ def _rewrite_prune_asset(text: str) -> str:
         'prune.sh" record',
         'python3 "$PLUGIN_ROOT/python/cli.py" review reviewer-prune record',
     )
+    text = text.replace(
+        'PLAN_REVIEW_PRUNE_NITS_SH="${LARCH_PLAN_REVIEW_PRUNE_NITS_SH:-$PLUGIN_ROOT/skills/review/scripts/'
+        'prune-nit-findings.sh}"',
+        'if [[ -n "${LARCH_PLAN_REVIEW_PRUNE_NITS_SH:-}" ]]; then\n'
+        '    PLAN_REVIEW_PRUNE_NITS_CLI=("$LARCH_PLAN_REVIEW_PRUNE_NITS_SH")\n'
+        'else\n'
+        '    PLAN_REVIEW_PRUNE_NITS_CLI=(python3 "$PLUGIN_ROOT/python/cli.py" review prune-nit-findings)\n'
+        'fi',
+    )
+    text = text.replace(
+        '"$PLAN_REVIEW_PRUNE_NITS_SH"',
+        '"${PLAN_REVIEW_PRUNE_NITS_CLI[@]}"',
+    )
+    text = text.replace(
+        '"${PLAN_REVIEW_PRUNE_NITS_SH}"',
+        '"${PLAN_REVIEW_PRUNE_NITS_CLI[@]}"',
+    )
+    text = text.replace(
+        '"${PLAN_REVIEW_PRUNE_NITS_CLI[@]}" \\\n'
+        '    --findings-file "$DESIGN_TMPDIR/findings-in-scope.md"',
+        'LARCH_QUIET_DISABLE=1 "${PLAN_REVIEW_PRUNE_NITS_CLI[@]}" \\\n'
+        '    --findings-file "$DESIGN_TMPDIR/findings-in-scope.md"',
+    )
+    text = text.replace(
+        'if [[ "$_plan_prune_rc" -ne 0 ]]; then\n'
+        '    emit_kv WARN "plan-review-prune-nit: subprocess exited with rc=$_plan_prune_rc (failing open)"\n'
+        'fi',
+        'if [[ "$_plan_prune_rc" -ne 0 ]]; then\n'
+        '    emit_kv WARN "plan-review-prune-nit: subprocess exited with rc=$_plan_prune_rc (failing open)"\n'
+        'fi\n'
+        'if [[ "$_plan_prune_rc" -ne 0 || ! -s "$_plan_prune_out" ]]; then\n'
+        "    printf 'PRUNED_COUNT=0\\nINSCOPE_REMAINING=0\\nSTATUS=skipped\\n' > \"$_plan_prune_out\"\n"
+        'fi',
+    )
     return text  # noqa: RET504
 
 

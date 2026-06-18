@@ -517,7 +517,7 @@ test-run-step3-review:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review.py -q -k record_report_evidence
 
 test-review-design-step3-loop:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review.py -q -k 'embedded_review or embedded_run_step3_review or embedded_waterfall or reviewer_prune or run_legacy'
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review.py -q -k 'embedded_review or embedded_run_step3_review or embedded_waterfall or reviewer_prune or prune_nit or run_legacy'
 
 test-step3-orchestrator-fence:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-step3-orchestrator-fence.sh
@@ -840,7 +840,7 @@ test-aggregate-findings:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_aggregate.py
 
 test-prune-nit-findings:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/review/scripts/test-prune-nit-findings.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_aggregate.py -k 'prune_nit'
 
 test-tally-code-votes:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_tally.py -k 'tally_ and not emit'

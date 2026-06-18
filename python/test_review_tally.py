@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import os
 import subprocess
 import sys
@@ -934,3 +935,187 @@ def test_tally_three_slot_claude_fallback_single_quorum(tmp_path: Path) -> None:
     assert row["v1_tool"] == "claude"
     assert row["v2_tool"] == "cursor-plan-fidelity"
     assert row["v3_tool"] == "cursor-pragmatism"
+
+
+def test_emit_tally_refuses_destructive_oos_rebuild_mismatch(tmp_path: Path) -> None:
+    case = tmp_path / "oos-mismatch"
+    case.mkdir()
+    tally = case / "tally.env"
+    _ = tally.write_text("ACCEPTED_COUNT=0\nREJECTED_COUNT=0\nOOS_ACCEPTED_COUNT=2\n", encoding="utf-8")
+    accepted = case / "accepted.md"
+    _ = accepted.write_text("", encoding="utf-8")
+    oos = case / "oos.md"
+    _ = oos.write_text("", encoding="utf-8")
+    _ = (case / "oos-accepted-review.md").write_text("### OOS_1: Existing\n- **Concern**: keep\n", encoding="utf-8")
+
+    result = run_review(
+        "emit-tally",
+        "--tally-file",
+        str(tally),
+        "--accepted-findings-file",
+        str(accepted),
+        "--oos-file",
+        str(oos),
+        "--review-tmpdir",
+        str(case),
+        "--round",
+        "1",
+        "--mode",
+        "description",
+    )
+
+    assert result.returncode == 1
+    assert "refusing destructive rebuild" in result.stderr
+
+
+def test_emit_tally_fallback_counts_legacy_rows(tmp_path: Path) -> None:
+    case = tmp_path / "legacy-tally"
+    case.mkdir()
+    tally = case / "review-tally.env"
+    _ = tally.write_text(
+        "FINDING_1_ACCEPTED=true\nFINDING_1_OUTCOME=accepted\n"
+        "FINDING_2_ACCEPTED=false\nFINDING_2_OUTCOME=rejected\nFINDING_2_REJECTED_SUBTYPE=true_rejected\n",
+        encoding="utf-8",
+    )
+    accepted = case / "accepted-findings.md"
+    _ = accepted.write_text("### FINDING_1: kept\n", encoding="utf-8")
+    oos = case / "oos.md"
+    _ = oos.write_text("", encoding="utf-8")
+
+    result = run_review(
+        "emit-tally",
+        "--tally-file",
+        str(tally),
+        "--accepted-findings-file",
+        str(accepted),
+        "--oos-file",
+        str(oos),
+        "--review-tmpdir",
+        str(case),
+        "--round",
+        "1",
+        "--mode",
+        "description",
+    )
+
+    assert result.returncode == 0, result.stderr
+    summary = json.loads((case / "review-summary.json").read_text(encoding="utf-8"))
+    assert summary["accepted_count"] == 1
+    assert summary["rejected_count"] == 1
+    assert "1 accepted, 1 rejected" in (case / "review-round-summary.md").read_text(encoding="utf-8")
+
+
+def test_tally_not_substantive_warning_in_voting_tally(tmp_path: Path) -> None:
+    case = tmp_path / "not-substantive"
+    case.mkdir()
+    _mk_ballot(case / "ballot.md")
+    _ = (case / "cursor-vote-output.txt").write_text("FINDING_1: YES\nFINDING_2: YES\nFINDING_3: YES\n", encoding="utf-8")
+
+    result = run_review(
+        "tally-code-votes",
+        "--ballot-file",
+        str(case / "ballot.md"),
+        "--voter-files",
+        str(case / "cursor-vote-output.txt"),
+        "--review-tmpdir",
+        str(case),
+        "--not-substantive-count",
+        "2",
+    )
+
+    assert result.returncode == 0, result.stderr
+    tally = (case / "voting-tally.md").read_text(encoding="utf-8")
+    assert "NOT_SUBSTANTIVE" in tally
+
+
+def test_tally_manifest_yield_and_dead_scoreboard_rows(tmp_path: Path) -> None:
+    case = tmp_path / "manifest-yield"
+    case.mkdir()
+    _ = (case / "ballot.md").write_text(
+        """### FINDING_1: In-scope issue
+- **Reviewer**: cursor-specialist-correctness-output.txt
+- **Concern**: real bug
+- **Suggested revision**: fix it
+""",
+        encoding="utf-8",
+    )
+    _ = (case / "cursor-specialist-correctness-output.txt").write_text("FINDING_1: YES\n", encoding="utf-8")
+    dead = case / "cursor-specialist-testing-output.txt"
+    _ = dead.write_text("narrative only\n", encoding="utf-8")
+    manifest = case / "panel.ndjson"
+    _ = manifest.write_text(
+        '{"slot":"correctness","tool":"cursor","output":"'
+        + str(case / "cursor-specialist-correctness-output.txt")
+        + '","focus_area":"correctness","weight":1}\n'
+        '{"slot":"testing","tool":"cursor","output":"'
+        + str(dead)
+        + '","focus_area":"risk-integration","weight":1}\n',
+        encoding="utf-8",
+    )
+    _ = (case / "collector-results.env").write_text(
+        f"REVIEWER_FILE={dead}\nSTATUS=NOT_SUBSTANTIVE\n\n",
+        encoding="utf-8",
+    )
+
+    result = run_review(
+        "tally-code-votes",
+        "--ballot-file",
+        str(case / "ballot.md"),
+        "--voter-files",
+        str(case / "cursor-specialist-correctness-output.txt"),
+        "--review-tmpdir",
+        str(case),
+        "--manifest-file",
+        str(manifest),
+        "--collector-results-file",
+        str(case / "collector-results.env"),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert rts.kv_get(result.stdout, "YIELD_TSV_FILE")
+    yield_rows = list(csv.DictReader((case / "scout-archetype-yield.tsv").open(encoding="utf-8"), delimiter="\t"))
+    assert len(yield_rows) == 2
+    correctness = next(row for row in yield_rows if row["archetype_name"] == "correctness")
+    assert correctness["findings_total"] == "1"
+    assert correctness["findings_accepted"] == "1"
+    tally = (case / "voting-tally.md").read_text(encoding="utf-8")
+    assert "cursor-specialist-testing" in tally
+    assert "STATUS=NOT_SUBSTANTIVE" in tally
+
+
+def test_tally_oos_seq_seeded_from_accumulated_oos(tmp_path: Path) -> None:
+    parent = tmp_path / "impl-parent"
+    round_dir = parent / "round-2"
+    round_dir.mkdir(parents=True)
+    _ = (parent / "accumulated-oos.md").write_text(
+        """### OOS_1: [OUT_OF_SCOPE] prior round
+- **Reviewer**: prior.txt
+- **Concern**: already filed
+""",
+        encoding="utf-8",
+    )
+    _ = (round_dir / "ballot.md").write_text(
+        """### OOS_1: [OUT_OF_SCOPE] new accepted
+- **Reviewer**: cursor-oos-output.txt
+- **Concern**: new follow-up
+""",
+        encoding="utf-8",
+    )
+    _ = (round_dir / "cursor-oos-output.txt").write_text("OOS_1: YES\n", encoding="utf-8")
+
+    result = run_review(
+        "tally-code-votes",
+        "--ballot-file",
+        str(round_dir / "ballot.md"),
+        "--review-tmpdir",
+        str(round_dir),
+        "--session-env-path",
+        str(parent / "session-env.sh"),
+        "--voter-files",
+        str(round_dir / "cursor-oos-output.txt"),
+    )
+
+    assert result.returncode == 0, result.stderr
+    accepted = (round_dir / "oos-accepted-review.md").read_text(encoding="utf-8")
+    assert "### OOS_2:" in accepted
+    assert "### OOS_1:" not in accepted

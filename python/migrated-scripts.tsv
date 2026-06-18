@@ -1030,3 +1030,13 @@ skills/design/scripts/test-design-step2b-drafter.sh	#4634
 skills/design/scripts/test-design-step2b-drafter.md	#4634
 skills/design/scripts/test-design-step-validator-autofix.sh	#4634
 skills/design/scripts/test-design-step-validator-autofix.md	#4634
+python/legacy_review_shell/aggregate-findings.sh	#3692
+python/legacy_review_shell/aggregate-findings-phrases.inc.bash	#3692
+python/legacy_review_shell/compose-review-findings.sh	#3692
+python/legacy_review_shell/tally-code-votes.sh	#3692
+python/legacy_review_shell/emit-tally.sh	#3692
+python/legacy_review_shell/log-phase.sh	#3692
+skills/review/scripts/prune-nit-findings.sh	#3692
+skills/review/scripts/prune-nit-findings.md	#3692
+skills/review/scripts/test-prune-nit-findings.sh	#3692
+skills/review/scripts/test-prune-nit-findings.md	#3692

@@ -1,28 +1,884 @@
+# pyright: reportUnusedCallResult=false, reportUnknownMemberType=false, reportUnknownArgumentType=false
 """Review vote tally, tally emission, and log-phase CLI entry points."""
 
 from __future__ import annotations
 
-from review_legacy import run_review_shell
+import argparse
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+from contextlib import suppress
+from collections import defaultdict
+from pathlib import Path
+from typing import NoReturn
+
+import logging_util
+import voting
+
+_PLUGIN_ROOT = Path(__file__).resolve().parent.parent
+_THREE_SLOT_COUNT = 3
+_CLASSIFICATION_HEADER = (
+    "finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain"
+)
+
+
+def _error(message: str) -> int:
+    print(message, file=sys.stderr)
+    return 2
+
+
+def _die(message: str) -> NoReturn:
+    print(message, file=sys.stderr)
+    raise SystemExit(2)
+
+
+def _read(path: Path) -> str:
+    return path.read_text(encoding="utf-8", errors="replace")
+
+
+def _write(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
+
+def _append(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(text)
+
+
+def _kv_parse(text: str) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for line in text.splitlines():
+        if "=" in line:
+            key, value = line.split("=", 1)
+            values[key] = value
+    return values
+
+
+def _parse_multi(argv: list[str], flag: str) -> tuple[list[str], list[str]]:
+    out: list[str] = []
+    rest: list[str] = []
+    i = 0
+    while i < len(argv):
+        if argv[i] == flag:
+            i += 1
+            while i < len(argv) and not argv[i].startswith("--"):
+                out.append(argv[i])
+                i += 1
+        else:
+            rest.append(argv[i])
+            i += 1
+    return rest, out
+
+
+def _parse_tally_args(argv: list[str]) -> argparse.Namespace:
+    rest, voter_files = _parse_multi(argv, "--voter-files")
+    rest, voter_tools = _parse_multi(rest, "--voter-tools")
+    parser = argparse.ArgumentParser(prog="tally-code-votes")
+    parser.add_argument("--ballot-file", required=True)
+    parser.add_argument("--review-tmpdir", required=True)
+    parser.add_argument("--session-env-path", default="")
+    parser.add_argument("--scope-files", default="")
+    parser.add_argument("--plan-file", default="")
+    parser.add_argument("--manifest-file", default="")
+    parser.add_argument("--collector-results-file", default="")
+    parser.add_argument("--not-substantive-count", default="0")
+    parser.add_argument("--cursor-available", default="")
+    parser.add_argument("--codex-available", default="")
+    parser.add_argument("--round-num", default="1")
+    parser.add_argument("--both-down", default="false")
+    args = parser.parse_args(rest)
+    args.voter_files = voter_files
+    args.voter_tools = voter_tools
+    return args
+
+
+def _nested_implement_round(review_tmpdir: Path, session_env_path: str) -> bool:
+    try:
+        review_real = review_tmpdir.resolve()
+    except OSError:
+        return False
+    if not re.match(r"round-[0-9]+$", review_real.name):
+        return False
+    parent = review_real.parent
+    impl = os.environ.get("IMPLEMENT_TMPDIR", "")
+    if impl:
+        try:
+            if Path(impl).resolve() == parent:
+                return True
+        except OSError:
+            return False
+    if session_env_path:
+        try:
+            return Path(session_env_path).parent.resolve() == parent
+        except OSError:
+            return False
+    return False
+
+
+def _sanitize_classification_text_cell(cell: str) -> str:
+    cleaned = re.sub(r"[\t\r\n]", " ", cell)
+    cleaned = re.sub(r"\s*\|\s*", "|", cleaned)
+    if cleaned.startswith(("=", "+", "-", "@")):
+        return "'" + cleaned
+    return cleaned
+
+
+def _reviewer_slots_for_tsv(reviewer: str) -> str:
+    return "|".join(part.strip() for part in reviewer.split(",") if part.strip())
+
+
+def _sanitize_vote(vote: str) -> str:
+    return vote if vote in {"YES", "NO", "JUDGE_ERROR"} else ""
+
+
+def _sanitize_correctness(value: str) -> str:
+    return value if value in {"true", "partially-true", "false-positive", "uncertain"} else ""
+
+
+def _sanitize_severity(value: str) -> str:
+    return value if value in {"blocker", "major", "minor", "nit", "uncertain"} else ""
+
+
+def _sanitize_quality(value: str) -> str:
+    return value if value in {"excellent", "good", "adequate", "weak", "no-fix", "uncertain"} else ""
+
+
+def _sanitize_uncertain(value: str) -> str:
+    return value if value in {"true", "false"} else "true"
+
+
+def _sanitize_result(value: str) -> str:
+    return value if value in {"accepted", "rejected", "neutral"} else ""
+
+
+def _classification_row(item_id: str, reviewer: str, result: str, cells: list[tuple[str, str, str, str, str, str | None]], *, three_slot: bool) -> str:
+    row = [item_id, _sanitize_classification_text_cell(_reviewer_slots_for_tsv(reviewer)), _sanitize_result(result)]
+    for idx in range(3):
+        vote = correctness = severity = quality = uncertain = ""
+        tool: str | None = None
+        if idx < len(cells):
+            vote, correctness, severity, quality, uncertain, tool = cells[idx]
+        has_rating = bool(vote or correctness or severity or quality or uncertain)
+        if three_slot and not has_rating:
+            row.extend(["", "", "", "", "", _sanitize_classification_text_cell(tool or "")])
+            continue
+        clean_vote = _sanitize_vote(vote or "JUDGE_ERROR") if has_rating else ""
+        clean_correctness = _sanitize_correctness(correctness)
+        clean_severity = _sanitize_severity(severity)
+        clean_quality = _sanitize_quality(quality)
+        clean_uncertain = uncertain
+        if has_rating and (not clean_correctness or not clean_severity or not clean_quality):
+            clean_uncertain = "true"
+        row.extend([clean_vote, clean_correctness, clean_severity, clean_quality, _sanitize_uncertain(clean_uncertain) if has_rating else ""])
+        if three_slot:
+            row.append(_sanitize_classification_text_cell(tool or ""))
+    return "\t".join(row)
+
+
+def _block_files(ballot_file: Path) -> list[Path]:
+    block_dir = Path(tempfile.mkdtemp(prefix="larch-tally-blocks-"))
+    try:
+        voting.split_ballot(ballot_file, block_dir)
+    except SystemExit as exc:
+        raise RuntimeError("duplicate or malformed FINDING/OOS headings in ballot") from exc
+    return sorted(block_dir.glob("*.md"), key=lambda p: (0 if p.stem.startswith("FINDING_") else 1, int(p.stem.split("_", 1)[1]) if p.stem.split("_", 1)[1].isdigit() else 0))
+
+
+def _parse_rate_ok(voter_file: str, ballot_file: Path, review_tmpdir: Path, tool: str, slot: str = "") -> bool:
+    if not voter_file or not Path(voter_file).is_file() or Path(voter_file).stat().st_size == 0:
+        return False
+    cmd = [
+        "python3",
+        str(_PLUGIN_ROOT / "python" / "cli.py"),
+        "voting",
+        "parse-rate-check",
+        "--voter-file",
+        voter_file,
+        "--ballot-file",
+        str(ballot_file),
+        "--id-grammar",
+        "finding-oos",
+        "--review-tmpdir",
+        str(review_tmpdir),
+        "--log-mode",
+        "none",
+        "--voter-tool",
+        tool,
+    ]
+    if slot:
+        cmd.extend(["--slot", slot])
+    proc = subprocess.run(cmd, text=True, capture_output=True, check=False)
+    if proc.returncode != 0:
+        _die(f"tally-code-votes: voter parse-rate check failed for {voter_file}")
+    status = _kv_parse(proc.stdout).get("PARSE_RATE_STATUS", "")
+    if not status:
+        _die(f"tally-code-votes: voter parse-rate check emitted no PARSE_RATE_STATUS for {voter_file}")
+    return status == "OK"
+
+
+def _scope_drift(block: Path, scope_files: str, plan_file: str) -> bool:
+    if not scope_files or not Path(scope_files).is_file() or Path(scope_files).stat().st_size == 0:
+        return False
+    heading = _read(block).splitlines()[0] if _read(block).splitlines() else ""
+    heading = heading.replace("`", "").replace("*", "").replace("_", "")
+    paths = [re.sub(r":[0-9]+$", "", p) for p in re.findall(r"[a-zA-Z0-9_./-]+\.[a-zA-Z0-9]+:[0-9]+", heading)]
+    if not paths:
+        return False
+    scope_text = _read(Path(scope_files))
+    plan_text = _read(Path(plan_file)) if plan_file and Path(plan_file).is_file() else ""
+    return all(path not in scope_text.splitlines() and path not in plan_text for path in paths)
+
+
+def _not_substantive_warning(count: int) -> str:
+    return (
+        f"**⚠ Degraded code-review panel: {count} reviewer slot(s) emitted narrative-only output "
+        "(NOT_SUBSTANTIVE). Dead slots are shown in the scoreboard below.**"
+    )
+
+
+def _seed_oos_seq(session_env_path: str) -> int:
+    if not session_env_path:
+        return 0
+    accumulated = Path(session_env_path).parent / "accumulated-oos.md"
+    if not accumulated.is_file() or accumulated.stat().st_size == 0:
+        return 0
+    count = 0
+    in_block = False
+    for line in _read(accumulated).splitlines():
+        if re.match(r"^###[ \t]+(OOS_[0-9]+:|FINDING_[0-9]+:)", line):
+            if in_block:
+                count += 1
+            in_block = True
+    if in_block:
+        count += 1
+    return count
+
+
+def _normalize_reviewer_basename(base: str) -> str:
+    base = base.rsplit("/", 1)[-1]
+    if base.endswith(".txt"):
+        stem, ext = base[:-4], ".txt"
+    else:
+        stem, ext = base, ""
+    while True:
+        for suffix in ("-phase2", "-phase3", "-retry"):
+            if stem.endswith(suffix):
+                stem = stem[: -len(suffix)]
+                break
+        else:
+            break
+    return stem + ext
+
+
+def _static_focus_area(slug: str) -> str:
+    return {
+        "structure": "code-quality",
+        "correctness": "correctness",
+        "testing": "risk-integration",
+        "security": "security",
+        "edge-cases": "correctness",
+        "plan-fidelity": "architecture",
+    }.get(slug, "code-quality")
+
+
+def _write_archetype_map(manifest_file: Path) -> dict[str, tuple[str, str, str]]:
+    mapping: dict[str, tuple[str, str, str]] = {}
+    order: list[str] = []
+    if not manifest_file.is_file():
+        return mapping
+    for line in _read(manifest_file).splitlines():
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        output = str(row.get("output") or "")
+        base = _normalize_reviewer_basename(output.rsplit("/", 1)[-1] if output else "")
+        slot = str(row.get("slot") or "")
+        focus = str(row.get("focus_area") or "")
+        weight = str(row.get("weight") or "1")
+        if base == "codex-generalist-output.txt":
+            archetype, focus, weight = "generic", "code-quality", "1"
+        elif base.startswith("dyn-") and base.endswith("-output.txt"):
+            archetype = slot if slot.startswith("dyn-") else base.removesuffix("-output.txt")
+            focus = focus or "code-quality"
+        elif re.match(r"^(cursor|codex)-specialist-.+-output\.txt$", base):
+            static_slug = base.removeprefix("cursor-specialist-").removeprefix("codex-specialist-").removesuffix("-output.txt")
+            archetype = static_slug
+            focus = _static_focus_area(static_slug)
+            weight = "1"
+        else:
+            archetype = slot or base.removesuffix("-output.txt")
+            focus = focus or "code-quality"
+            weight = "1"
+        if not weight.isdigit():
+            weight = "1"
+        if base not in mapping:
+            order.append(base)
+        mapping[base] = (archetype, focus, weight)
+    return {base: mapping[base] for base in order}
+
+
+def _parse_collector_status(collector_file: str) -> dict[str, str]:
+    if not collector_file or not Path(collector_file).is_file():
+        return {}
+    status_map: dict[str, str] = {}
+    cr_file = ""
+    cr_status = ""
+    for line in _read(Path(collector_file)).splitlines():
+        if not line:
+            if cr_file and cr_status:
+                status_map[_normalize_reviewer_basename(cr_file)] = cr_status
+            cr_file = ""
+            cr_status = ""
+        elif line.startswith("REVIEWER_FILE="):
+            cr_file = line[len("REVIEWER_FILE=") :]
+        elif line.startswith("STATUS="):
+            cr_status = line[len("STATUS=") :]
+    if cr_file and cr_status:
+        status_map[_normalize_reviewer_basename(cr_file)] = cr_status
+    return status_map
+
+
+def _append_manifest_dead_rows(
+    tally_lines: list[str],
+    *,
+    manifest_file: Path,
+    collector_file: str,
+    score_rows: list[tuple[str, str, str]],
+) -> None:
+    collector_status = _parse_collector_status(collector_file)
+    seen = {_normalize_reviewer_basename(reviewer) for reviewer, _kind, _result in score_rows}
+    for line in _read(manifest_file).splitlines():
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        output = str(row.get("output") or "")
+        base = _normalize_reviewer_basename(output.rsplit("/", 1)[-1] if output else "")
+        if not base or base in seen:
+            continue
+        status = collector_status.get(base, "OK")
+        label = re.sub(r"(?:-output)?\.txt$", "", base)
+        tally_lines.append(f"| {label} | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | STATUS={status} |\n")
+
+
+def _write_yield_tsv(
+    yield_path: Path,
+    archetype_map: dict[str, tuple[str, str, str]],
+    score_rows: list[tuple[str, str, str]],
+) -> list[str]:
+    totals: dict[str, list[int]] = defaultdict(lambda: [0, 0, 0])
+    for reviewer, kind, result in score_rows:
+        if kind != "finding":
+            continue
+        base = _normalize_reviewer_basename(reviewer)
+        totals[base][0] += 1
+        if result == "accepted":
+            totals[base][1] += 1
+        elif result == "rejected":
+            totals[base][2] += 1
+    lines = ["archetype_name\tfocus_area\tweight\tfindings_total\tfindings_accepted\tfindings_rejected\tyield_ratio\n"]
+    for base, (archetype, focus, weight) in archetype_map.items():
+        total, accepted, rejected = totals.get(base, [0, 0, 0])
+        ratio = "n/a" if total == 0 else f"{accepted / total:.6f}"
+        lines.append(f"{archetype}\t{focus}\t{weight}\t{total}\t{accepted}\t{rejected}\t{ratio}\n")
+    _write(yield_path, "".join(lines))
+    orphans: list[str] = []
+    for reviewer, _kind, _result in score_rows:
+        base = _normalize_reviewer_basename(reviewer)
+        if base not in archetype_map and base not in orphans:
+            orphans.append(base)
+    return orphans
+
+
+def _record_tally(tally_file: Path, item_id: str, *, accepted: bool, outcome: str) -> None:
+    prefix, number = item_id.split("_", 1)
+    _append(tally_file, f"{prefix}_{number}_ACCEPTED={'true' if accepted else 'false'}\n")
+    if outcome == "accepted":
+        _append(tally_file, f"{prefix}_{number}_OUTCOME=accepted\n")
+    else:
+        _append(tally_file, f"{prefix}_{number}_OUTCOME=rejected\n")
+        subtype = "true_rejected" if outcome == "rejected" else "neutral"
+        _append(tally_file, f"{prefix}_{number}_REJECTED_SUBTYPE={subtype}\n")
+
+
+def _normalize_oos_header(block: Path, seq: int) -> str:
+    text = _read(block)
+    return re.sub(r"^### (?:FINDING|OOS)_[0-9]+:", f"### OOS_{seq}:", text, count=1, flags=re.MULTILINE)
+
+
+def _security_block(block: Path) -> bool:
+    try:
+        return voting.is_security_block(block)
+    except SystemExit as exc:
+        raise RuntimeError("security classifier failed") from exc
 
 
 def tally_code_votes(argv: list[str]) -> int:
-    return run_review_shell("tally-code-votes.sh", argv)
-
-
-def emit_tally(argv: list[str]) -> int:
-    return run_review_shell("emit-tally.sh", argv)
-
-
-def log_phase(argv: list[str]) -> int:
-    return run_review_shell("log-phase.sh", argv)
+    logging_util.quiet_init(argv0="tally-code-votes")
+    try:
+        args = _parse_tally_args(argv)
+    except SystemExit as exc:
+        return int(exc.code) if isinstance(exc.code, int) else 2
+    ballot_file = Path(args.ballot_file)
+    review_tmpdir = Path(args.review_tmpdir)
+    if not ballot_file.is_file():
+        return _error("tally-code-votes: --ballot-file must name a file")
+    if args.manifest_file and not Path(args.manifest_file).is_file():
+        return _error("tally-code-votes: --manifest-file must name a file")
+    if not str(args.round_num).isdigit() or int(args.round_num) <= 0:
+        return _error("tally-code-votes: --round-num must be a positive integer")
+    review_tmpdir.mkdir(parents=True, exist_ok=True)
+    three_slot = bool(args.voter_tools)
+    if three_slot and (len(args.voter_files) != _THREE_SLOT_COUNT or len(args.voter_tools) != _THREE_SLOT_COUNT):
+        return _error("tally-code-votes: --voter-tools requires exactly three --voter-files and three tool labels")
+    accepted_file = review_tmpdir / "accepted-findings.md"
+    rejected_file = review_tmpdir / "rejected-findings.md"
+    oos_accepted_file = review_tmpdir / "oos-accepted-review.md"
+    oos_file = review_tmpdir / "oos.md"
+    voting_tally_file = review_tmpdir / "voting-tally.md"
+    tally_env = review_tmpdir / "review-tally.env"
+    yield_tsv = review_tmpdir / "scout-archetype-yield.tsv"
+    class_tsv = review_tmpdir / "findings-classification.tsv" if _nested_implement_round(review_tmpdir, args.session_env_path) else review_tmpdir / f"findings-classification-round-{args.round_num}.tsv"
+    for path in (accepted_file, rejected_file, oos_accepted_file, oos_file, tally_env):
+        _write(path, "")
+    oos_accepted_out = Path(args.session_env_path).parent / "oos-accepted-review.md" if args.session_env_path else oos_accepted_file
+    if oos_accepted_out != oos_accepted_file:
+        _write(oos_accepted_out, "")
+    try:
+        blocks = _block_files(ballot_file)
+    except RuntimeError:
+        return _error("tally-code-votes: duplicate or malformed FINDING/OOS headings in ballot")
+    _write(class_tsv, voting.code_review_classification_header() + "\n" if three_slot else _CLASSIFICATION_HEADER + "\n")
+    eligible = 0
+    effective_files: list[str] = []
+    effective_slot = [False, False, False]
+    parse_failed = 0
+    if three_slot:
+        for idx, voter_file in enumerate(args.voter_files):
+            if voter_file and Path(voter_file).is_file() and Path(voter_file).stat().st_size > 0:
+                eligible += 1
+                if _parse_rate_ok(voter_file, ballot_file, review_tmpdir, args.voter_tools[idx], str(idx)):
+                    effective_slot[idx] = True
+                    effective_files.append(voter_file)
+                else:
+                    parse_failed += 1
+    else:
+        eligible = 0 if args.both_down == "true" else len(args.voter_files)
+        for voter_file in args.voter_files:
+            tool = Path(voter_file).name.removesuffix("-vote-output.txt") if voter_file else "claude"
+            if _parse_rate_ok(voter_file, ballot_file, review_tmpdir, tool):
+                effective_files.append(voter_file)
+            else:
+                parse_failed += 1
+    effective = max(0, eligible - parse_failed)
+    not_substantive_count = int(args.not_substantive_count) if str(args.not_substantive_count).isdigit() else 0
+    accepted = rejected = exonerated = neutral = oos_accepted = oos_rejected = drift = 0
+    if effective == 0:
+        for block in blocks:
+            reviewer = voting.reviewer_for_block(block)
+            empty_cells = [("", "", "", "", "", args.voter_tools[idx] if three_slot else None) for idx in range(3)] if three_slot else []
+            _append(class_tsv, _classification_row(block.stem, reviewer, "rejected", empty_cells, three_slot=three_slot) + "\n")
+        warning = "**⚠ Degraded code-review panel: 0 judges available. Panel tier: main-agent-required. Manual adjudication needed.**"
+        zero_lines = ["# Code Review Voting Tally\n\n", f"{warning}\n\n"]
+        if not_substantive_count > 0:
+            zero_lines.append(f"{_not_substantive_warning(not_substantive_count)}\n\n")
+        if parse_failed and eligible > 0:
+            zero_lines.append(
+                f"**⚠ Degraded code-review panel: {parse_failed} voter slot(s) emitted narrative-only output "
+                "(parse-rate ≥80% JUDGE_ERROR) and were removed from the effective quorum.**\n\n"
+            )
+        _write(voting_tally_file, "".join(zero_lines))
+        for key, value in {
+            "TALLY_STATUS": "main-agent-vote-required",
+            "ACCEPTED_COUNT": "0",
+            "REJECTED_COUNT": "0",
+            "EXONERATED_COUNT": "0",
+            "NEUTRAL_COUNT": "0",
+            "OOS_ACCEPTED_COUNT": "0",
+            "OOS_REJECTED_COUNT": "0",
+            "OUT_OF_SCOPE_DRIFT_COUNT": "0",
+            "VOTING_TALLY_FILE": str(voting_tally_file),
+            "TALLY_FILE": str(tally_env),
+            "ACCEPTED_FINDINGS_FILE": str(accepted_file),
+            "REJECTED_FINDINGS_FILE": str(rejected_file),
+            "OOS_ACCEPTED_FILE": str(oos_accepted_out),
+            "OOS_FILE": str(oos_file),
+            "TALLY_OK": "true",
+            "ELIGIBLE_VOTER_COUNT": str(eligible),
+            "VOTER_COUNT": "0",
+            "VOTING_SKIPPED_WARNING": warning,
+            "FINDINGS_CLASSIFICATION_TSV_FILE": str(class_tsv),
+        }.items():
+            logging_util.emit_kv(key, value)
+        return 0
+    score_rows: list[tuple[str, str, str]] = []
+    tally_lines = ["# Code Review Voting Tally\n\n"]
+    expected = 3 if three_slot and args.cursor_available == "true" else (1 if three_slot else 1 + (1 if args.codex_available == "true" else 0) + (1 if args.cursor_available == "true" else 0))
+    if effective < expected:
+        tally_lines.append(f"**⚠ Degraded code-review panel: {effective} judge(s) available. Panel tier: {voting.panel_tier(effective)}.**\n\n")
+    if parse_failed:
+        tally_lines.append(f"**⚠ Degraded code-review panel: {parse_failed} voter slot(s) emitted narrative-only output (parse-rate ≥80% JUDGE_ERROR) and were removed from the effective quorum.**\n\n")
+    if not_substantive_count > 0:
+        tally_lines.append(f"{_not_substantive_warning(not_substantive_count)}\n\n")
+    tally_lines.append("## Per-finding vote breakdown\n\n| Item | YES | NO | JERR | Result |\n|---|---:|---:|---:|---|\n")
+    oos_seq = _seed_oos_seq(args.session_env_path)
+    for block in blocks:
+        item_id = block.stem
+        yes = no = judge_error = 0
+        cells: list[tuple[str, str, str, str, str, str | None]] = []
+        if three_slot:
+            for idx in range(3):
+                tool = args.voter_tools[idx]
+                if not effective_slot[idx]:
+                    cells.append(("", "", "", "", "", tool))
+                    continue
+                vote, correctness, severity, quality, uncertain = voting.parse_judge_vote(args.voter_files[idx], item_id)
+                if not vote:
+                    vote = "JUDGE_ERROR"
+                cells.append((vote, correctness, severity, quality, uncertain, tool))
+                if vote == "YES":
+                    yes += 1
+                elif vote == "NO":
+                    no += 1
+                else:
+                    judge_error += 1
+        else:
+            for voter_file in effective_files:
+                try:
+                    vote, correctness, severity, quality, uncertain = voting.parse_judge_vote(voter_file, item_id)
+                except FileNotFoundError:
+                    vote, correctness, severity, quality, uncertain = "JUDGE_ERROR", "", "", "", "true"
+                if not vote:
+                    vote = "JUDGE_ERROR"
+                cells.append((vote, correctness, severity, quality, uncertain, None))
+                if vote == "YES":
+                    yes += 1
+                elif vote == "NO":
+                    no += 1
+                else:
+                    judge_error += 1
+        result = voting.classify_result(yes, no, 0, effective)
+        tally_lines.append(f"| {item_id} | {yes} | {no} | {judge_error} | {result} |\n")
+        reviewer = voting.reviewer_for_block(block)
+        _append(class_tsv, _classification_row(item_id, reviewer, result, cells, three_slot=three_slot) + "\n")
+        text = _read(block)
+        is_oos = item_id.startswith("OOS_") or bool(re.search(r"\[(OUT_OF_SCOPE|OOS)\]", text.splitlines()[0] if text.splitlines() else ""))
+        if not is_oos and _scope_drift(block, args.scope_files, args.plan_file):
+            is_oos = True
+            drift += 1
+        kind = "oos" if is_oos else "finding"
+        score_rows.extend((reviewer_slot, kind, result) for reviewer_slot in [part.strip() for part in reviewer.split(",") if part.strip()])
+        try:
+            security = _security_block(block)
+        except RuntimeError:
+            return _error(f"tally-code-votes: security classifier failed for {item_id}")
+        if kind == "finding":
+            if result == "accepted":
+                _append(accepted_file, text + "\n")
+                accepted += 1
+                _record_tally(tally_env, item_id, accepted=True, outcome="accepted")
+            elif re.search(r"(?mi)^-\s*\*\*Severity\*\*:\s*latent\s*$", text):
+                _append(oos_file, text + f"\nVote tally: YES={yes} NO={no} JUDGE_ERROR={judge_error} Result={result} (latent-rerouted)\n\n")
+                oos_rejected += 1
+                _record_tally(tally_env, item_id, accepted=False, outcome=result)
+            else:
+                rejected += 1
+                if result == "neutral":
+                    neutral += 1
+                subtype = "dismissed (0 YES)" if result == "rejected" else "neutral (YES below acceptance threshold)"
+                _append(rejected_file, f"### [rejected] {item_id}\n\n**Rejected subtype:** {subtype}\n\n{text}\nVote tally: YES={yes} NO={no} JUDGE_ERROR={judge_error}\n\n")
+                _record_tally(tally_env, item_id, accepted=False, outcome=result)
+        else:
+            _append(oos_file, text + f"\nVote tally: YES={yes} NO={no} JUDGE_ERROR={judge_error} Result={result}\n\n")
+            if result == "accepted":
+                if not security:
+                    oos_seq += 1
+                    normalized = _normalize_oos_header(block, oos_seq)
+                    _append(oos_accepted_file, normalized + "\n")
+                    if oos_accepted_out != oos_accepted_file:
+                        _append(oos_accepted_out, normalized + "\n")
+                    oos_accepted += 1
+                _record_tally(tally_env, item_id, accepted=True, outcome="accepted")
+            else:
+                oos_rejected += 1
+                _record_tally(tally_env, item_id, accepted=False, outcome=result)
+    tally_lines.append("\n## Reviewer Competition Scoreboard\n\n")
+    tally_lines.append("| Reviewer | Proposed | Accepted | Neutral | Rejected | OOS-Proposed | OOS-Accepted | OOS-Neutral | OOS-Rejected | Score | Status |\n")
+    tally_lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|\n")
+    stats: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    for reviewer, kind, result in score_rows:
+        if kind == "finding":
+            stats[reviewer]["proposed"] += 1
+            stats[reviewer][result] += 1
+        else:
+            stats[reviewer]["oos_proposed"] += 1
+            stats[reviewer][f"oos_{result}"] += 1
+    for reviewer in sorted(stats):
+        row = stats[reviewer]
+        label = re.sub(r"(?:-output)?\.txt$", "", reviewer)
+        score = row["accepted"] + row["oos_accepted"] - row["rejected"] - row["oos_rejected"]
+        tally_lines.append(f"| {label} | {row['proposed']} | {row['accepted']} | {row['neutral']} | {row['rejected']} | {row['oos_proposed']} | {row['oos_accepted']} | {row['oos_neutral']} | {row['oos_rejected']} | {score} | STATUS=OK |\n")
+    if args.manifest_file:
+        _append_manifest_dead_rows(
+            tally_lines,
+            manifest_file=Path(args.manifest_file),
+            collector_file=args.collector_results_file,
+            score_rows=score_rows,
+        )
+    _write(voting_tally_file, "".join(tally_lines))
+    if args.manifest_file:
+        archetype_map = _write_archetype_map(Path(args.manifest_file))
+        for orphan in _write_yield_tsv(yield_tsv, archetype_map, score_rows):
+            logging_util.emit_kv("WARN", f"yield TSV missing manifest entry for reviewer basename: {orphan}")
+    _append(tally_env, f"ACCEPTED_COUNT={accepted}\nREJECTED_COUNT={rejected}\nEXONERATED_COUNT={exonerated}\nNEUTRAL_COUNT={neutral}\nOOS_ACCEPTED_COUNT={oos_accepted}\nOOS_REJECTED_COUNT={oos_rejected}\n")
+    for key, value in {
+        "TALLY_STATUS": "ok",
+        "ACCEPTED_COUNT": str(accepted),
+        "REJECTED_COUNT": str(rejected),
+        "EXONERATED_COUNT": str(exonerated),
+        "NEUTRAL_COUNT": str(neutral),
+        "OOS_ACCEPTED_COUNT": str(oos_accepted),
+        "OOS_REJECTED_COUNT": str(oos_rejected),
+        "OUT_OF_SCOPE_DRIFT_COUNT": str(drift),
+        "VOTING_TALLY_FILE": str(voting_tally_file),
+        "TALLY_FILE": str(tally_env),
+        "ACCEPTED_FINDINGS_FILE": str(accepted_file),
+        "REJECTED_FINDINGS_FILE": str(rejected_file),
+        "OOS_ACCEPTED_FILE": str(oos_accepted_out),
+        "OOS_FILE": str(oos_file),
+        "TALLY_OK": "true",
+        "ELIGIBLE_VOTER_COUNT": str(eligible),
+        "VOTER_COUNT": str(effective),
+        "FINDINGS_CLASSIFICATION_TSV_FILE": str(class_tsv),
+    }.items():
+        logging_util.emit_kv(key, value)
+    if args.manifest_file:
+        logging_util.emit_kv("YIELD_TSV_FILE", str(yield_tsv))
+    return 0
 
 
 def tally_code_votes_main(argv: list[str]) -> int:
     return tally_code_votes(argv)
 
 
+def _parse_emit_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(prog="emit-tally")
+    parser.add_argument("--tally-file", required=True)
+    parser.add_argument("--accepted-findings-file", required=True)
+    parser.add_argument("--oos-file", required=True)
+    parser.add_argument("--review-tmpdir", required=True)
+    parser.add_argument("--session-env-path", default="")
+    parser.add_argument("--round", default="1")
+    parser.add_argument("--mode", required=True, choices=("diff", "description"))
+    parser.add_argument("--implement-tmpdir", default="")
+    parser.add_argument("--scout-status", default="na")
+    parser.add_argument("--dynamic-slots", default="0")
+    parser.add_argument("--static-slot-count", default="0")
+    return parser.parse_args(argv)
+
+
+def _count_from_tally(tally: dict[str, str], key: str) -> int:
+    value = tally.get(key, "")
+    return int(value) if value.isdigit() else 0
+
+
+def _fallback_counts_from_tally_text(text: str) -> tuple[int, int, int]:
+    tally = _kv_parse(text)
+    accepted = _count_from_tally(tally, "ACCEPTED_COUNT")
+    rejected = _count_from_tally(tally, "REJECTED_COUNT")
+    neutral = _count_from_tally(tally, "NEUTRAL_COUNT")
+    if accepted == 0 and "ACCEPTED=true" in text:
+        accepted = len(re.findall(r"(?m)^[A-Z_]+_[0-9]+_ACCEPTED=true$", text))
+    if rejected == 0:
+        if re.search(r"(?m)^[A-Z_]+_[0-9]+_REJECTED_SUBTYPE=", text) or "_OUTCOME=" in text:
+            rejected = len(re.findall(r"(?m)^[A-Z_]+_[0-9]+_OUTCOME=rejected$", text))
+        else:
+            rejected = len(re.findall(r"(?m)^[A-Z_]+_[0-9]+_ACCEPTED=false$", text))
+    if neutral == 0 and "NEUTRAL_COUNT" not in tally:
+        neutral = 0
+    return accepted, rejected, neutral
+
+
+def _non_security_oos_count(path: Path) -> int:
+    if not path.is_file() or path.stat().st_size == 0:
+        return 0
+    count = 0
+    for block in re.split(r"(?m)^(?=### OOS_[0-9]+:)", _read(path)):
+        if not block.startswith("### OOS_"):
+            continue
+        fd, tmp_name = tempfile.mkstemp()
+        os.close(fd)
+        tmp = Path(tmp_name)
+        try:
+            tmp.write_text(block, encoding="utf-8")
+            if not voting.is_security_block(tmp):
+                count += 1
+        finally:
+            with suppress(OSError):
+                tmp.unlink()
+    return count
+
+
+def emit_tally(argv: list[str]) -> int:
+    logging_util.quiet_init(argv0="emit-tally")
+    try:
+        args = _parse_emit_args(argv)
+    except SystemExit as exc:
+        return int(exc.code) if isinstance(exc.code, int) else 2
+    tally_file = Path(args.tally_file)
+    accepted_file = Path(args.accepted_findings_file)
+    review_tmpdir = Path(args.review_tmpdir)
+    if not tally_file.is_file():
+        return _error("emit-tally: --tally-file must name a file")
+    if not accepted_file.is_file():
+        return _error("emit-tally: --accepted-findings-file must name a file")
+    if not args.dynamic_slots.isdigit() or not args.static_slot_count.isdigit():
+        return _error("emit-tally: --dynamic-slots and --static-slot-count must be non-negative integers")
+    review_tmpdir.mkdir(parents=True, exist_ok=True)
+    tally_text = _read(tally_file)
+    tally = _kv_parse(tally_text)
+    accepted = _count_from_tally(tally, "ACCEPTED_COUNT")
+    rejected = _count_from_tally(tally, "REJECTED_COUNT")
+    neutral = _count_from_tally(tally, "NEUTRAL_COUNT")
+    if not tally.get("ACCEPTED_COUNT") or not tally.get("REJECTED_COUNT"):
+        fb_accepted, fb_rejected, fb_neutral = _fallback_counts_from_tally_text(tally_text)
+        if not tally.get("ACCEPTED_COUNT"):
+            accepted = fb_accepted
+        if not tally.get("REJECTED_COUNT"):
+            rejected = fb_rejected
+        if not tally.get("NEUTRAL_COUNT"):
+            neutral = fb_neutral
+    oos_accepted_count = _count_from_tally(tally, "OOS_ACCEPTED_COUNT")
+    round_summary = review_tmpdir / "review-round-summary.md"
+    review_summary = review_tmpdir / "review-summary.json"
+    rejected_file = review_tmpdir / "rejected-findings.md"
+    rejected_full = review_tmpdir / "rejected-findings-full.md"
+    oos_accepted_file = review_tmpdir / "oos-accepted-review.md"
+    body = f"# Review Round {args.round}\n\n- Mode: `{args.mode}`\n- {accepted} accepted, {rejected} rejected ({neutral} neutral)\n\n"
+    if accepted_file.stat().st_size > 0:
+        body += "## Accepted Findings\n\n" + _read(accepted_file)
+    _write(round_summary, body)
+    if rejected_file.is_file():
+        shutil.copyfile(rejected_file, rejected_full)
+    else:
+        _write(rejected_full, "")
+    compact = "# Rejected Findings\n\n"
+    has_outcome_rows = "_OUTCOME=" in tally_text
+    for idx, line in enumerate(tally_text.splitlines(), start=1):
+        if line.endswith("_OUTCOME=rejected") or (not has_outcome_rows and line.endswith("_ACCEPTED=false")):
+            compact += f"{idx}:{line}\n"
+    _write(rejected_file, compact)
+    reviewer_paths = sorted(str(path) for path in review_tmpdir.glob("*-output.txt"))
+    _write(
+        review_summary,
+        json.dumps(
+            {
+                "schema_version": 3,
+                "rounds_completed": int(args.round) if str(args.round).isdigit() else 1,
+                "reviewer_output_paths": reviewer_paths,
+                "panel": {
+                    "scout_status": args.scout_status,
+                    "static_slot_count": int(args.static_slot_count),
+                    "dynamic_slot_count": int(args.dynamic_slots),
+                    "total_slot_count": int(args.static_slot_count) + int(args.dynamic_slots),
+                },
+                "finding_counts": {
+                    "total_accepted": accepted,
+                    "total_rejected": rejected,
+                    "total_neutral": neutral,
+                    "total_exonerated": 0,
+                },
+                "accepted_count": accepted,
+                "rejected_count": rejected,
+                "neutral_count": neutral,
+                "exonerated_count": 0,
+            },
+            sort_keys=True,
+        )
+        + "\n",
+    )
+    sink_count = _non_security_oos_count(oos_accepted_file)
+    if oos_accepted_count > 0 and sink_count == oos_accepted_count:
+        pass
+    elif sink_count > 0 and sink_count != oos_accepted_count:
+        print(f"emit-tally: OOS_ACCEPTED_COUNT={oos_accepted_count} but accepted sink has {sink_count} non-security block(s); refusing destructive rebuild", file=sys.stderr)
+        return 1
+    elif Path(args.oos_file).is_file():
+        if oos_accepted_count > 0:
+            proc = subprocess.run([sys.executable, str(_PLUGIN_ROOT / "python" / "cli.py"), "oos", "serialize", "--findings-file", args.oos_file, "--output-file", str(oos_accepted_file), *( ["--session-env-path", args.session_env_path] if args.session_env_path else [] )], text=True, capture_output=True, check=False)
+            if proc.returncode != 0:
+                print(proc.stderr, file=sys.stderr, end="")
+                return proc.returncode
+            rebuilt_count = _non_security_oos_count(oos_accepted_file)
+            if rebuilt_count != oos_accepted_count:
+                print(f"emit-tally: OOS_ACCEPTED_COUNT={oos_accepted_count} but rebuild produced {rebuilt_count} non-security block(s)", file=sys.stderr)
+                return 1
+    elif oos_accepted_count > 0:
+        print("emit-tally: OOS_ACCEPTED_COUNT but oos.md is absent", file=sys.stderr)
+        return 1
+    else:
+        _write(oos_accepted_file, "")
+    for dest_dir in ([Path(args.session_env_path).parent] if args.session_env_path else []) + ([Path(args.implement_tmpdir)] if args.implement_tmpdir and Path(args.implement_tmpdir).is_dir() else []):
+        for src, name in ((round_summary, "review-round-summary.md"), (review_summary, "review-summary.json"), (rejected_full, "rejected-findings-full.md")):
+            with suppress(OSError):
+                shutil.copyfile(src, dest_dir / name)
+    logging_util.emit_kv("EMIT_OK", "true")
+    logging_util.emit_kv("ROUND_SUMMARY_FILE", str(round_summary))
+    logging_util.emit_kv("REVIEW_SUMMARY_FILE", str(review_summary))
+    return 0
+
+
 def emit_tally_main(argv: list[str]) -> int:
     return emit_tally(argv)
+
+
+def _parse_log_phase_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(prog="log-phase")
+    parser.add_argument("--run-id", required=True)
+    parser.add_argument("--batch", required=True)
+    parser.add_argument("--action", required=True, choices=("write", "append"))
+    parser.add_argument("--payload-file", required=True)
+    parser.add_argument("--log-root", default=os.environ.get("LARCH_LOG_ROOT", ""))
+    return parser.parse_args(argv)
+
+
+def log_phase(argv: list[str]) -> int:
+    logging_util.quiet_init(argv0="log-phase")
+    try:
+        args = _parse_log_phase_args(argv)
+    except SystemExit as exc:
+        return int(exc.code) if isinstance(exc.code, int) else 2
+    if not Path(args.payload_file).is_file():
+        return _error("log-phase: --payload-file must name a file")
+    if not re.fullmatch(r"review-context|review-panel-manifest|review-findings|review-tally|review-scout-manifest|review-round-summary|review-findings-classification-round-[1-5]", args.batch):
+        return _error(f"log-phase: unregistered review batch: {args.batch}")
+    base = [sys.executable, str(_PLUGIN_ROOT / "python" / "cli.py"), "run-log"]
+    if args.action == "write":
+        cmd = [*base, "write"]
+        file_args = ["--input-file", args.payload_file]
+    else:
+        cmd = [*base, "append"]
+        file_args = ["--record-file", args.payload_file]
+    log_args = ["--skill", "review", "--run-id", args.run_id, "--batch", args.batch]
+    if args.log_root:
+        log_args = ["--log-root", args.log_root, *log_args]
+    proc = subprocess.run([*cmd, *log_args, *file_args], text=True, capture_output=True, check=False)
+    if proc.stderr:
+        print(proc.stderr, file=sys.stderr, end="")
+    for line in proc.stdout.splitlines():
+        logging_util.emit(line)
+    return proc.returncode
 
 
 def log_phase_main(argv: list[str]) -> int:

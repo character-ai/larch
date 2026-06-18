@@ -68,6 +68,36 @@ def test_embedded_plan_review_reviewer_prune_uses_review_cli() -> None:
         assert "PRUNED_COMBOS" in body
 
 
+
+
+def test_embedded_plan_review_prune_nit_uses_review_cli() -> None:
+    loop_name = "plan-review-" + "loop.sh"
+    body = plan_review.legacy_asset_bytes(f"skills/design/scripts/{loop_name}").decode("utf-8")
+    retired = "prune-nit-" + "findings.sh"
+    assert retired not in body
+    assert "review prune-nit-findings" in body
+    assert "PLAN_REVIEW_PRUNE_NITS_CLI" in body
+    assert '"${PLAN_REVIEW_PRUNE_NITS_CLI[@]}"' in body
+    assert '"$PLAN_REVIEW_PRUNE_NITS_SH"' not in body
+    assert "LARCH_PLAN_REVIEW_PRUNE_NITS_SH" in body
+    assert "PRUNED_COUNT" in body
+    assert "INSCOPE_REMAINING" in body
+    assert "STATUS" in body
+
+
+def test_embedded_plan_review_prune_nit_fail_open_persistence() -> None:
+    loop_name = "plan-review-" + "loop.sh"
+    body = plan_review.legacy_asset_bytes(f"skills/design/scripts/{loop_name}").decode("utf-8")
+    prune_start = body.index('_plan_prune_out="$DESIGN_TMPDIR/plan-review-prune-nit.env"')
+    prune_end = body.index('mkdir -p "$DESIGN_TMPDIR/plan-review/round-${round_num}"', prune_start)
+    prune_region = body[prune_start:prune_end]
+    assert 'LARCH_QUIET_DISABLE=1 "${PLAN_REVIEW_PRUNE_NITS_CLI[@]}"' in prune_region
+    assert '! -s "$_plan_prune_out"' in prune_region
+    assert "PRUNED_COUNT=0" in prune_region
+    assert "INSCOPE_REMAINING=0" in prune_region
+    assert "STATUS=skipped" in prune_region
+
+
 def test_embedded_plan_review_loop_not_substantive_count_emitted() -> None:
     loop_parts = ("skills", "design", "scripts", "plan-review-loop.sh")
     body = plan_review.legacy_asset_bytes("/".join(loop_parts)).decode("utf-8")
