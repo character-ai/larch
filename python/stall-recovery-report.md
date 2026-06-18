@@ -58,7 +58,7 @@ Escalation-success uses durable ledger evidence with `compose-report --report-ki
 
 `clear-stall` clears every present durable stall layer: `ship-pr-state.sh`, `finalize-state.sh`, and `session-env.sh`. It rejects symlinks and malformed state before any rewrite, skips absent layers, writes each present layer atomically, and emits `CLEARED=true` only after all present layers read back with `STALL_TRACKING=false` and an empty `STALL_STEP`. It never writes `IMPLEMENT_STALL_TRACKING`.
 
-``bug-body`, `bug-comment`, and `issue-input-file` are retired report surfaces.
+`bug-body`, `bug-comment`, and `issue-input-file` are retired report surfaces.
 
 ## Outcome normalization
 
