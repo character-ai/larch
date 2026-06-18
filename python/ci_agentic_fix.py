@@ -174,7 +174,7 @@ def _apply_legacy_prefix_allow_fix(repo_root: Path, failure_log_text: str) -> tu
         return False, ""
     insert = f"  '{path}'\n"
     new_text = text[: block.end("body")] + insert + text[block.end("body") :]
-    allow_script.write_text(new_text, encoding="utf-8")
+    _ = allow_script.write_text(new_text, encoding="utf-8")
     return True, f"legacy-prefix-allow:{path}"
 
 
@@ -219,7 +219,7 @@ def _apply_finalize_cleanup_partition_fix(repo_root: Path, failure_log_text: str
         rewritten.append(current_line)
     if not changed:
         return False, ""
-    makefile.write_text("".join(rewritten), encoding="utf-8")
+    _ = makefile.write_text("".join(rewritten), encoding="utf-8")
     return True, "finalize-cleanup-partition"
 
 
