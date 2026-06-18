@@ -1,0 +1,24 @@
+Reviewing the plan and tracing cited code paths for contract gaps.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	python/test_agents.py:24-51,320-332,1884-1885,3309-3310	Deleting lib-external-launcher-common.sh while LIB_COMMON skipif parity tests remain	Those tests use @pytest.mark.skipif(not LIB_COMMON.is_file()); after the lib is deleted they skip instead of failing, so startup-lock and classify_launch_failure parity can regress with a green py-test run	Require explicit removal or Python replacement of every LIB_COMMON/bash-source parity branch in test_agents.py before migrated-scripts.tsv append; add a fail-closed assertion that no test_agents.py skipif references deleted script paths
+2	in_scope	important	correctness	scripts/launch-claude-drafter.sh:206-318; plan.txt:87-88	Claude drafter TOKEN_RAW bucketing from --timing-task-kind is not pinned in the plan	Retired launcher maps *draft*/*scout*/*voter* suffixes to claude_draft/claude_scout/claude_vote/claude_review before token record-vendor claude_sub; a vague derived-from-timing-kind port can mis-bucket claude-plan-draft usage in timing/token reports	Add an explicit TOKEN_RAW case table (matching launch-claude-drafter.sh) plus a pytest that launches with --timing-task-kind claude-plan-draft and asserts the recorded raw label is claude_draft
+3	in_scope	important	correctness	python/agents.py:2369-2500; scripts/launch-codex-drafter.sh:214-215; plan.txt:62-63	Codex drafter LAUNCHER_EXIT binding after launch_codex_exec_main refactor is underspecified	Bash scrapes LAUNCHER_EXIT from launch-codex-exec stdout; an in-process refactor that still shells out, drops token-record copy, or reads the wrong exit field can mis-classify exec failures and break design_lifecycle structural_ok/fallback	Specify that launch_codex_drafter calls an internal launch_codex_exec helper returning (launcher_exit, raw_output_path) directly; add a test that exec failure sets launcher_exit from the helper return, copies ${raw}.token-record when present, and never depends on stdout KV scraping
+4	out_of_scope	latent	architecture	.claude/rules/launcher-argv-test-coverage.md:15-20	Drafter CLI verbs missing from launcher argv harness table	After launch-*-drafter.sh deletion the rule still lists only scripts/launch-*.sh harnesses; future argv edits to agent launch-codex-drafter may ship without the documented test_agents.py pairing	File a follow-up to add agent launch-codex-drafter and agent launch-claude-drafter rows pointing at python/test_agents.py
+5	out_of_scope	nit	architecture	python/design_lifecycle.py:2232-2268; plan.txt:156-158	[SCOPE-REDUCTION] design_lifecycle could import launch_*_drafter_main directly	Spawning sys.executable + cli.py adds an extra interpreter hop while already inside Python; feature works either way	Consider calling launch_codex_drafter_main/launch_claude_drafter_main directly from design_lifecycle with the same argv list unless cli.py boundary is mandatory
+
+**1. Silent test skips after lib deletion** (`python/test_agents.py`)
+
+Several tests still gate on `LIB_COMMON.is_file()` and source `lib-external-launcher-common.sh`. Deleting that lib makes them skip, not fail. The plan says replace Bash parity tests but does not require clearing these skipifs before manifest append.
+
+**2. Claude token raw-label mapping** (`scripts/launch-claude-drafter.sh`)
+
+The retired launcher derives `TOKEN_RAW` from `--timing-task-kind` suffix patterns before `token record-vendor claude_sub`. The plan only says "raw label derived from timing kind" without the case table.
+
+**3. Codex in-process exit binding** (`python/agents.py` / `launch-codex-drafter.sh`)
+
+Bash parses `LAUNCHER_EXIT` from `launch-codex-exec` stdout. The plan calls for in-process `launch_codex_exec` but does not pin return-value semantics versus stdout scraping or token-record copy.
+
+**Out-of-scope**
+
+- Update `.claude/rules/launcher-argv-test-coverage.md` with drafter verb harness rows.
+- Optional direct import in `design_lifecycle.py` instead of subprocess to `cli.py` (works today via cli boundary; smaller hop only).
