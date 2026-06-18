@@ -26,7 +26,7 @@ import agents
 import design_pause
 import plan_review
 from issue_wire import emit_untrusted_file_block
-from logging_util import diagnostic, emit, emit_kv, quiet_init
+from logging_util import diagnostic, emit, emit_kv, quiet_init, reset_quiet_state
 from redact import redact_secrets_only
 import session_env
 from session_env import validate_design_tmpdir
@@ -152,10 +152,19 @@ def _validator_pause_save() -> int:
 
 
 def _capture_main(callable_obj, argv: list[str]) -> tuple[int, str]:
+    old_quiet = os.environ.get("LARCH_QUIET_DISABLE")
+    os.environ["LARCH_QUIET_DISABLE"] = "1"
+    reset_quiet_state()
     buf = io.StringIO()
-    with contextlib.redirect_stdout(buf):
-        rc = callable_obj(argv)
-    return int(rc), buf.getvalue()
+    try:
+        with contextlib.redirect_stdout(buf):
+            rc = callable_obj(argv)
+        return int(rc), buf.getvalue()
+    finally:
+        if old_quiet is None:
+            os.environ.pop("LARCH_QUIET_DISABLE", None)
+        else:
+            os.environ["LARCH_QUIET_DISABLE"] = old_quiet
 
 
 @dataclass(frozen=True)
@@ -2259,7 +2268,16 @@ def validator_autofix_main(argv: list[str]) -> int:
     if parse_rc != 0:
         return parse_rc
     _rehydrate_validator_env(parsed)
-    design_tmpdir = Path(os.environ.get("DESIGN_TMPDIR", ""))
+    raw_tmpdir = os.environ.get("DESIGN_TMPDIR", "")
+    if not raw_tmpdir:
+        print("design-step-validator-autofix.sh: DESIGN_TMPDIR required", file=sys.stderr)
+        return 1
+    ok, err = validate_design_tmpdir(raw_tmpdir)
+    if not ok:
+        print(f"ERROR={err}", file=sys.stderr)
+        return 2
+    design_tmpdir = Path(raw_tmpdir).resolve()
+    os.environ["DESIGN_TMPDIR"] = str(design_tmpdir)
     if (design_tmpdir / ".pause-requested").is_file():
         return _validator_pause_save()
     if parsed.get("operator_cancel") is True:

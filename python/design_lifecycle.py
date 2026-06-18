@@ -1817,7 +1817,7 @@ def step2a_main(argv: Sequence[str]) -> int:
         print(f"design-step2a.sh: {exc}", file=sys.stderr)
         return 2
     _rehydrate_wrapper_env(parsed)
-    design_tmpdir = _design_tmpdir()
+    design_tmpdir = _require_design_tmpdir(os.environ)
 
     brainstorm_requested = False
     run_params = design_tmpdir / "run-params.json"

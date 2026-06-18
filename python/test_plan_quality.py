@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+import logging_util
 import plan_quality
 
 CLI = Path(__file__).with_name("cli.py")
@@ -346,6 +347,42 @@ def test_validator_autofix_pause_short_circuits(tmp_path: Path, monkeypatch: pyt
     monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
     assert plan_quality.validator_autofix_main([]) == 11
     assert called
+
+
+def test_validator_autofix_rejects_missing_design_tmpdir(capsys: pytest.CaptureFixture[str]) -> None:
+    rc = plan_quality.validator_autofix_main([])
+    err = capsys.readouterr().err
+    assert rc == 1
+    assert "DESIGN_TMPDIR required" in err
+
+
+def test_validator_autofix_rejects_relative_design_tmpdir(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setenv("DESIGN_TMPDIR", "relative/path")
+    rc = plan_quality.validator_autofix_main([])
+    err = capsys.readouterr().err
+    assert rc == 2
+    assert "ERROR=" in err
+
+
+def test_validator_autofix_captures_emit_kv_with_quiet_active(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    plan = tmp_path / "plan.txt"
+    plan.write_text("## Plan\nbody\ndiff_lines: 1\n", encoding="utf-8")
+
+    def fake_auto_fix(_argv: list[str]) -> int:
+        logging_util.emit_kv("AUTOFIX_STATUS", "ok")
+        logging_util.emit_kv("FIXED_BY", "codex")
+        return 0
+
+    monkeypatch.setattr(plan_quality, "auto_fix_plan_commands_main", fake_auto_fix)
+    monkeypatch.setattr(plan_quality, "_validator_require_plugin_root", lambda: 1)
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
+    monkeypatch.delenv("LARCH_QUIET_DISABLE", raising=False)
+    logging_util.quiet_init(argv0="parent-quiet")
+    rc = plan_quality.validator_autofix_main(["--site", "design Step 2b", "--validator-target-file", str(plan)])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "AUTOFIX_STATUS=ok" in out
+    assert "FIXED_BY=codex" in out
 
 
 def test_revise_plan_with_waterfall_records_failed_no_patch(tmp_path: Path) -> None:
