@@ -9,6 +9,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -243,7 +244,13 @@ def _apply(repo_root: Path, logs_root: Path, plan: list[PlannedDir], counters: C
             f"**Bytes freed (approx)**: {counters.bytes_freed}\n\n"
             "Consumer-core keep set preserved per `docs/run-logs.md` Retention section. Slimmed dirs carry a `gc-slimmed` marker. Operator must review and merge."
         )
-    gh = _run(["gh", "pr", "create", "--title", title, "--body", body, "--base", "main", "--head", branch], cwd=repo_root)
+    body_file = tempfile.NamedTemporaryFile("w", encoding="utf-8", prefix="gc-run-logs-body-", dir="/tmp", delete=False)
+    body_file.write(body)
+    body_file.close()
+    try:
+        gh = _run(["gh", "pr", "create", "--title", title, "--body-file", body_file.name, "--base", "main", "--head", branch], cwd=repo_root)
+    finally:
+        os.unlink(body_file.name)
     if gh.returncode != 0:
         raise RuntimeError("failed to create PR")
     return gh.stdout.strip()
