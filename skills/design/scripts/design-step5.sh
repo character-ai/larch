@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deprecated compatibility wrapper. Live /design Step 5 enters through design-step5b-prepare.sh.
+# Deprecated compatibility wrapper. Live /design Step 5 enters through python/cli.py design step5b-prepare.
 # shellcheck disable=SC1090,SC1091,SC2016,SC2034,SC2086,SC2154,SC2164,SC2312,SC2317,SC2329,SC2206,SC2207
 set -euo pipefail
 
@@ -86,4 +86,4 @@ design_require_plugin_root
 _delegate_args=()
 [ -z "${SESSION_ENV_PATH:-}" ] || _delegate_args+=(--session-env-path "$SESSION_ENV_PATH")
 [ -z "${CLAUDE_PID:-}" ] || _delegate_args+=(--claude-pid "$CLAUDE_PID")
-exec "$CLAUDE_PLUGIN_ROOT/skills/design/scripts/design-step5b-prepare.sh" "${_delegate_args[@]}"
+exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design step5b-prepare "${_delegate_args[@]}"

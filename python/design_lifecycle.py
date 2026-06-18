@@ -13,12 +13,14 @@ import re
 import shlex
 import shutil
 import subprocess
-import time
 import sys
 import tempfile
+import time
+import traceback
 from dataclasses import dataclass
 from pathlib import Path
 
+import design_oos
 import design_pause
 import design_postplan
 import gh
@@ -313,6 +315,20 @@ def _capture_stdout(callable_obj, argv: Sequence[str]) -> tuple[int, str]:
     with contextlib.redirect_stdout(buf):
         rc = callable_obj(list(argv))
     return int(rc), buf.getvalue()
+
+
+def _capture_stdout_stderr(callable_obj, argv: Sequence[str], *, stderr_path: Path) -> tuple[int, str]:
+    buf = io.StringIO()
+    with stderr_path.open("w", encoding="utf-8") as err, contextlib.redirect_stdout(buf), contextlib.redirect_stderr(err):
+        try:
+            rc = callable_obj(list(argv))
+            return int(rc), buf.getvalue()
+        except SystemExit as exc:
+            code = exc.code if isinstance(exc.code, int) else 1
+            return code, buf.getvalue()
+        except BaseException:
+            err.write(traceback.format_exc())
+            return 1, buf.getvalue()
 
 
 def _print_text(text: str) -> None:
@@ -1229,6 +1245,14 @@ def _require_design_tmpdir(env: Mapping[str, str], design_tmpdir: str | Path | N
         print(f"/design wrapper: DESIGN_TMPDIR is not an existing directory: {path}", file=sys.stderr)
         raise SystemExit(1)
     return path.resolve()
+
+
+def _require_design_tmpdir_nonempty(env: Mapping[str, str], *, site: str) -> Path:
+    raw = env.get("DESIGN_TMPDIR", "")
+    if not raw:
+        print(f"/design Step 5b {site}: DESIGN_TMPDIR required", file=sys.stderr)
+        raise SystemExit(1)
+    return Path(raw)
 
 
 def check_pause_and_exit(env: Mapping[str, str], design_tmpdir: str | Path | None = None) -> None:
@@ -2508,6 +2532,160 @@ def step2b5_main(argv: Sequence[str]) -> int:
             os.environ["LARCH_QUIET_DISABLE"] = old_quiet
     _print_text(out)
     return rc
+
+
+def _step5b_mark_complete(design_tmpdir: Path) -> None:
+    completed = design_tmpdir / ".completed"
+    completed.mkdir(parents=True, exist_ok=True)
+    (completed / "step-5b").touch()
+
+
+def _step5b_issue_args(env: Mapping[str, str]) -> list[str]:
+    issue_number = env.get("ISSUE_NUMBER", "")
+    return ["--issue-number", issue_number] if issue_number else []
+
+
+def _path_nonempty(path: Path) -> bool:
+    try:
+        return path.is_file() and path.stat().st_size > 0
+    except OSError:
+        return False
+
+
+def _step5b_append_failure_if_stderr(plugin_root: Path, design_tmpdir: Path, *, tool: str, exit_code: int, stderr_path: Path) -> None:
+    if _path_nonempty(stderr_path):
+        _append_failure(plugin_root, design_tmpdir, "design Step 5b", tool, exit_code, "Tool Failures", stderr_path)
+
+
+def _step5b_issues_failed(path: Path) -> bool:
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    return any(re.match(r"^ISSUES_FAILED=[1-9][0-9]*$", line) for line in text.splitlines())
+
+
+def step5b_prepare_main(argv: Sequence[str]) -> int:
+    try:
+        parsed = _parse_common_wrapper_args(argv)
+    except ValueError as exc:
+        print(f"design-step5b-prepare.sh: {exc}", file=sys.stderr)
+        return 2
+    env = _rehydrate_wrapper_env(parsed)
+    req = _design_require_plugin_root()
+    if req != 0:
+        return req
+    plugin_root = Path(os.environ["CLAUDE_PLUGIN_ROOT"])
+    design_tmpdir = _require_design_tmpdir_nonempty(env, site="prepare")
+    completed = design_tmpdir / ".completed"
+    completed.mkdir(parents=True, exist_ok=True)
+    (completed / "step-4b").touch()
+    if (design_tmpdir / ".pause-requested").is_file():
+        return _call_pause_save(design_tmpdir)
+    _maybe_timing_mark("design Step 5 — finalize")
+
+    stderr_path = design_tmpdir / "oos-filing-prepare.stderr.log"
+    prep_args = ["--design-tmpdir", str(design_tmpdir), *_step5b_issue_args(env)]
+    prep_rc, stdout_text = _capture_stdout_stderr(design_oos.file_oos_prepare_main, prep_args, stderr_path=stderr_path)
+    _write_text(design_tmpdir / "oos-filing-prepare.env", stdout_text)
+    oos_issue_stdout = design_tmpdir / "oos-issue.stdout.txt"
+
+    if prep_rc != 0:
+        _step5b_append_failure_if_stderr(
+            plugin_root,
+            design_tmpdir,
+            tool="file-design-oos.sh prepare",
+            exit_code=prep_rc,
+            stderr_path=stderr_path,
+        )
+        print("**⚠ /design: OOS filing prepare failed — skipping /larch:issue; continuing to Step 5c**")
+        print(f"STEP5B_STATUS=prepare-failed-continue\nOOS_PREP_RC={prep_rc}\nOOS_ISSUE_STDOUT_PATH={oos_issue_stdout}")
+        _step5b_mark_complete(design_tmpdir)
+        return 0
+
+    kv = _parse_stdout_kv(stdout_text)
+    for line in stdout_text.splitlines():
+        if line.startswith(("FILE_DESIGN_OOS_", "WARN=")):
+            print(line)
+    status = kv.get("FILE_DESIGN_OOS_STATUS", [""])[-1]
+    combined = kv.get("FILE_DESIGN_OOS_COMBINED", [""])[-1]
+    deps_tsv = kv.get("FILE_DESIGN_OOS_DEPS_TSV", [""])[-1]
+    deps_available = kv.get("FILE_DESIGN_OOS_DEPS_AVAILABLE", [""])[-1]
+    print(f"STEP5B_STATUS={status}\nOOS_PREP_RC=0\nOOS_ISSUE_STDOUT_PATH={oos_issue_stdout}")
+    if combined:
+        print(f"FILE_DESIGN_OOS_COMBINED={combined}")
+    if deps_tsv:
+        print(f"FILE_DESIGN_OOS_DEPS_TSV={deps_tsv}")
+    if deps_available:
+        print(f"FILE_DESIGN_OOS_DEPS_AVAILABLE={deps_available}")
+    if status in {"ready", "skip-already-filed-sentinel"}:
+        print("STEP5B_NEEDS_ANNOTATE=true")
+    elif status in {"skip-sentinel", "skip-no-items", "skip-all-security"}:
+        _step5b_mark_complete(design_tmpdir)
+    return 0
+
+
+def step5b_annotate_main(argv: Sequence[str]) -> int:
+    try:
+        parsed = _parse_common_wrapper_args(argv)
+    except ValueError as exc:
+        print(f"design-step5b-annotate.sh: {exc}", file=sys.stderr)
+        return 2
+    env = _rehydrate_wrapper_env(parsed)
+    req = _design_require_plugin_root()
+    if req != 0:
+        return req
+    plugin_root = Path(os.environ["CLAUDE_PLUGIN_ROOT"])
+    design_tmpdir = _require_design_tmpdir_nonempty(env, site="annotate")
+    oos_issue_stdout = design_tmpdir / "oos-issue.stdout.txt"
+    if (design_tmpdir / ".pause-requested").is_file():
+        return _call_pause_save(design_tmpdir)
+
+    stderr_path = design_tmpdir / "oos-filing-annotate.stderr.log"
+    ann_args = [
+        "--design-tmpdir",
+        str(design_tmpdir),
+        "--issue-stdout-file",
+        str(oos_issue_stdout),
+        *_step5b_issue_args(env),
+    ]
+    ann_rc, stdout_text = _capture_stdout_stderr(design_oos.file_oos_annotate_main, ann_args, stderr_path=stderr_path)
+    _write_text(design_tmpdir / "oos-filing-annotate.stdout.txt", stdout_text)
+    _print_text(stdout_text)
+    print(f"OOS_ANN_RC={ann_rc}")
+
+    kv = _parse_stdout_kv(stdout_text)
+    status = kv.get("FILE_DESIGN_OOS_STATUS", [""])[-1]
+    warn = kv.get("WARN", [""])[-1]
+
+    if ann_rc != 0:
+        _step5b_append_failure_if_stderr(
+            plugin_root,
+            design_tmpdir,
+            tool="file-design-oos.sh annotate",
+            exit_code=ann_rc,
+            stderr_path=stderr_path,
+        )
+        if _step5b_issues_failed(oos_issue_stdout):
+            print("**⚠ /design: OOS filing completed with ISSUES_FAILED>0 — see execution-issues and oos-issue.stdout.txt**")
+        print("STEP5B_STATUS=annotate-failed")
+        return ann_rc
+
+    if status == "annotate-skipped-empty-stdout" and warn:
+        _append_failure(
+            plugin_root,
+            design_tmpdir,
+            "design Step 5b annotate-skip",
+            "file-design-oos.sh annotate",
+            0,
+            "Warnings",
+            stderr_path,
+        )
+        print("**⚠ /design: annotate skipped (empty issue stdout) — OOS filing status unclear; see execution-issues**")
+
+    _step5b_mark_complete(design_tmpdir)
+    print("STEP5B_STATUS=annotate-complete")
+    return 0
 
 
 def _write_kv_file(path: Path, rows: list[tuple[str, str]]) -> bool:

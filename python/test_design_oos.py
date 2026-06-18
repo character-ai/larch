@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 from pathlib import Path
+from collections.abc import Sequence
 
 import pytest  # noqa: TC002
 
+import design_lifecycle
 import design_oos
 from test_design_cli_ports import test_design_port_registry_entries_are_machine_stdout  # noqa: F401  # pylint: disable=unused-import  # pyright: ignore[reportUnusedImport]
 
@@ -140,3 +143,271 @@ def test_annotate_empty_stdout_fails(tmp_path: Path, capsys: pytest.CaptureFixtu
     assert rc == 1
     kv = _kv(capsys.readouterr().out)
     assert kv["FILE_DESIGN_OOS_STATUS"] == "annotate-failed-empty-stdout"
+
+
+def _plugin_root() -> str:
+    return str(Path(__file__).resolve().parents[1])
+
+
+def _step5b_argv() -> list[str]:
+    return ["--plugin-root", _plugin_root()]
+
+
+def test_step5b_prepare_ready_orchestration(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
+    monkeypatch.setattr(design_lifecycle, "_maybe_timing_mark", _noop_timing_mark)
+
+    def fake_prepare(argv: Sequence[str]) -> int:
+        assert argv[:2] == ["--design-tmpdir", str(tmp_path)]
+        print("FILE_DESIGN_OOS_DEPS_AVAILABLE=true")
+        print("FILE_DESIGN_OOS_STATUS=ready")
+        print(f"FILE_DESIGN_OOS_COMBINED={tmp_path / 'oos-combined.md'}")
+        print(f"FILE_DESIGN_OOS_DEPS_TSV={tmp_path / 'oos-intra-batch-deps.tsv'}")
+        return 0
+
+    monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_prepare_main", fake_prepare)
+
+    rc = design_lifecycle.step5b_prepare_main(_step5b_argv())
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    assert (tmp_path / "oos-filing-prepare.env").is_file()
+    assert "STEP5B_STATUS=ready" in out
+    assert "STEP5B_NEEDS_ANNOTATE=true" in out
+    assert not (tmp_path / ".completed" / "step-5b").exists()
+
+
+def test_step5b_prepare_skip_marks_complete(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
+    monkeypatch.setattr(design_lifecycle, "_maybe_timing_mark", _noop_timing_mark)
+
+    def fake_prepare(_argv: Sequence[str]) -> int:
+        print("FILE_DESIGN_OOS_STATUS=skip-no-items")
+        return 0
+
+    monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_prepare_main", fake_prepare)
+
+    rc = design_lifecycle.step5b_prepare_main(_step5b_argv())
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    assert "STEP5B_STATUS=skip-no-items" in out
+    assert (tmp_path / ".completed" / "step-5b").is_file()
+
+
+def test_step5b_prepare_failure_continues_and_marks_complete(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
+    monkeypatch.setattr(design_lifecycle, "_maybe_timing_mark", _noop_timing_mark)
+    appended: list[tuple[str, int, Path]] = []
+
+    def fake_prepare(_argv: Sequence[str]) -> int:
+        print("prepare failed", file=sys.stderr)
+        return 2
+
+    def fake_append(_plugin_root: Path, _design_tmpdir: Path, _site: str, tool: str, exit_code: int, _category: str, output_file: Path) -> bool:
+        appended.append((tool, exit_code, output_file))
+        return True
+
+    monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_prepare_main", fake_prepare)
+    monkeypatch.setattr(design_lifecycle, "_append_failure", fake_append)
+
+    rc = design_lifecycle.step5b_prepare_main(_step5b_argv())
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    assert "OOS filing prepare failed" in out
+    assert "STEP5B_STATUS=prepare-failed-continue" in out
+    assert "OOS_PREP_RC=2" in out
+    assert appended == [("file-design-oos.sh prepare", 2, tmp_path / "oos-filing-prepare.stderr.log")]
+    assert (tmp_path / ".completed" / "step-5b").is_file()
+
+
+def test_step5b_prepare_allows_relative_missing_tmpdir(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DESIGN_TMPDIR", "relative-missing")
+    monkeypatch.setattr(design_lifecycle, "_maybe_timing_mark", _noop_timing_mark)
+    seen_step4b = False
+
+    def fake_prepare(_argv: Sequence[str]) -> int:
+        nonlocal seen_step4b
+        seen_step4b = (tmp_path / "relative-missing" / ".completed" / "step-4b").is_file()
+        print("FILE_DESIGN_OOS_STATUS=skip-no-items")
+        return 0
+
+    monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_prepare_main", fake_prepare)
+
+    rc = design_lifecycle.step5b_prepare_main(_step5b_argv())
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    assert "STEP5B_STATUS=skip-no-items" in out
+    assert seen_step4b
+    assert (tmp_path / "relative-missing" / ".completed").is_dir()
+
+
+def test_step5b_prepare_pause_returns_pause_save_rc(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
+    _ = (tmp_path / ".pause-requested").write_text("", encoding="utf-8")
+    called = False
+
+    def fake_prepare(_argv: Sequence[str]) -> int:
+        nonlocal called
+        called = True
+        return 0
+
+    def fake_pause(_design_tmpdir: Path) -> int:
+        return 7
+
+    monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_prepare_main", fake_prepare)
+    monkeypatch.setattr(design_lifecycle, "_call_pause_save", fake_pause)
+
+    rc = design_lifecycle.step5b_prepare_main(_step5b_argv())
+
+    assert rc == 7
+    assert not called
+
+
+def test_step5b_prepare_callable_crash_continues(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
+    monkeypatch.setattr(design_lifecycle, "_maybe_timing_mark", _noop_timing_mark)
+    monkeypatch.setattr(design_lifecycle, "_append_failure", _fake_append_success)
+
+    def fake_prepare(_argv: Sequence[str]) -> int:
+        raise RuntimeError("prepare boom")
+
+    monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_prepare_main", fake_prepare)
+
+    rc = design_lifecycle.step5b_prepare_main(_step5b_argv())
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    assert "STEP5B_STATUS=prepare-failed-continue" in out
+    assert "RuntimeError: prepare boom" in (tmp_path / "oos-filing-prepare.stderr.log").read_text(encoding="utf-8")
+    assert (tmp_path / ".completed" / "step-5b").is_file()
+
+
+def test_step5b_annotate_success_marks_complete(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
+
+    def fake_annotate(_argv: Sequence[str]) -> int:
+        print("FILE_DESIGN_OOS_STATUS=annotate-complete")
+        return 0
+
+    monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_annotate_main", fake_annotate)
+
+    rc = design_lifecycle.step5b_annotate_main(_step5b_argv())
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    assert (tmp_path / "oos-filing-annotate.stdout.txt").is_file()
+    assert (tmp_path / ".completed" / "step-5b").is_file()
+    assert "STEP5B_STATUS=annotate-complete" in out
+
+
+def test_step5b_annotate_failure_does_not_mark_complete(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
+    monkeypatch.setattr(design_lifecycle, "_append_failure", _fake_append_success)
+
+    def fake_annotate(_argv: Sequence[str]) -> int:
+        print("annotate failed", file=sys.stderr)
+        return 3
+
+    monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_annotate_main", fake_annotate)
+
+    rc = design_lifecycle.step5b_annotate_main(_step5b_argv())
+    out = capsys.readouterr().out
+
+    assert rc == 3
+    assert "STEP5B_STATUS=annotate-failed" in out
+    assert not (tmp_path / ".completed" / "step-5b").exists()
+
+
+def test_step5b_annotate_failure_with_partial_issue_stdout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
+    monkeypatch.setattr(design_lifecycle, "_append_failure", _fake_append_success)
+    issue_stdout = tmp_path / "oos-issue.stdout.txt"
+    _ = issue_stdout.write_text("ISSUES_FAILED=1\n", encoding="utf-8")
+    seen_stdout_file = ""
+
+    def fake_annotate(argv: Sequence[str]) -> int:
+        nonlocal seen_stdout_file
+        seen_stdout_file = argv[argv.index("--issue-stdout-file") + 1]
+        print("annotate failed", file=sys.stderr)
+        return 4
+
+    monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_annotate_main", fake_annotate)
+
+    rc = design_lifecycle.step5b_annotate_main(_step5b_argv())
+    out = capsys.readouterr().out
+
+    assert rc == 4
+    assert "OOS filing completed with ISSUES_FAILED>0" in out
+    assert seen_stdout_file == str(issue_stdout)
+
+
+def test_step5b_annotate_pause_returns_pause_save_rc(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
+    _ = (tmp_path / ".pause-requested").write_text("", encoding="utf-8")
+    called = False
+
+    def fake_annotate(_argv: Sequence[str]) -> int:
+        nonlocal called
+        called = True
+        return 0
+
+    def fake_pause(_design_tmpdir: Path) -> int:
+        return 9
+
+    monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_annotate_main", fake_annotate)
+    monkeypatch.setattr(design_lifecycle, "_call_pause_save", fake_pause)
+
+    rc = design_lifecycle.step5b_annotate_main(_step5b_argv())
+
+    assert rc == 9
+    assert not called
+
+
+def test_step5b_annotate_callable_crash_fails_without_completion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
+    monkeypatch.setattr(design_lifecycle, "_append_failure", _fake_append_success)
+
+    def fake_annotate(_argv: Sequence[str]) -> int:
+        raise RuntimeError("annotate boom")
+
+    monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_annotate_main", fake_annotate)
+
+    rc = design_lifecycle.step5b_annotate_main(_step5b_argv())
+    out = capsys.readouterr().out
+
+    assert rc == 1
+    assert "STEP5B_STATUS=annotate-failed" in out
+    assert "RuntimeError: annotate boom" in (tmp_path / "oos-filing-annotate.stderr.log").read_text(encoding="utf-8")
+    assert not (tmp_path / ".completed" / "step-5b").exists()
+
+
+def _noop_timing_mark(_label: str) -> None:
+    return None
+
+
+def _fake_append_success(
+    _plugin_root: Path,
+    _design_tmpdir: Path,
+    _site: str,
+    _tool: str,
+    _exit_code: int,
+    _category: str,
+    _output_file: Path,
+) -> bool:
+    return True
