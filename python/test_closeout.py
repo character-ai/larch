@@ -122,6 +122,15 @@ def test_step17_no_print_restores_stale_summary_on_failure(
     assert (tmp_path / "summary-final.md").read_text(encoding="utf-8") == "old\n"
 
 
+def test_step_16_17_slack_skipped_no_warnings(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_closeout_stub(monkeypatch, tmp_path, slack_status="skipped")
+    assert closeout.step_16_17_main([]) == 0
+    assert not (tmp_path / "execution-issues.md").exists()
+
+
 def test_step16_17_records_failed_slack_as_warning(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

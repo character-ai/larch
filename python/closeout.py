@@ -35,6 +35,14 @@ def _plugin_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
+def _validate_plugin_root(plugin_root: Path) -> int | None:
+    cli_path = plugin_root / "python" / "cli.py"
+    if not plugin_root.is_dir() or not cli_path.is_file():
+        print("**❌ /implement closeout: cannot resolve CLAUDE_PLUGIN_ROOT/python/cli.py.**", file=sys.stderr)
+        return 2
+    return None
+
+
 def _read_key(path: Path, key: str, default: str = "") -> str:
     if not path.is_file():
         return default
@@ -116,18 +124,19 @@ def _summary_nonempty(tmpdir: Path) -> bool:
 
 def _print_summary_markers(tmpdir: Path, *, sentinel: str = ".step17-printed") -> int:
     summary = tmpdir / "summary-final.md"
-    print(SUMMARY_BEGIN)
     try:
         data = summary.read_bytes()
     except OSError:
+        print("closeout: cannot read summary-final.md", file=sys.stderr)
         return 1
-    sys.stdout.write(data.decode("utf-8", errors="replace"))
+    body = data.decode("utf-8", errors="replace")
     if data and not data.endswith(b"\n"):
-        sys.stdout.write("\n")
-    print(SUMMARY_END)
+        body += "\n"
     try:
+        sys.stdout.write(f"{SUMMARY_BEGIN}\n{body}{SUMMARY_END}\n")
         (tmpdir / sentinel).touch()
     except OSError:
+        print("closeout: cannot emit summary markers", file=sys.stderr)
         return 1
     return 0
 
@@ -142,6 +151,8 @@ def step_16(argv: list[str] | None = None) -> int:
         print(str(exc), file=sys.stderr)
         return 2
     plugin_root = _plugin_root()
+    if (rc := _validate_plugin_root(plugin_root)) is not None:
+        return rc
     env = _env_for(tmpdir, plugin_root)
     run_id = _read_key(tmpdir / "session-env.sh", "LARCH_RUN_ID", env.get("RUN_ID", ""))
     if not run_id:
@@ -169,6 +180,8 @@ def step_17(argv: list[str] | None = None) -> int:
         print(str(exc), file=sys.stderr)
         return 2
     plugin_root = _plugin_root()
+    if (rc := _validate_plugin_root(plugin_root)) is not None:
+        return rc
     env = _env_for(tmpdir, plugin_root)
     cli = str(plugin_root / "python" / "cli.py")
     _run([sys.executable, cli, "timing", "telemetry-mark", "--implement-tmpdir", str(tmpdir), "--label", "Step 17 — final report"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -187,7 +200,8 @@ def step_17(argv: list[str] | None = None) -> int:
                 shutil.move(str(summary), str(backup))
                 had_backup = True
             except OSError:
-                had_backup = False
+                print("closeout: cannot backup summary-final.md before Step 17 write", file=sys.stderr)
+                return 2
         completed: subprocess.CompletedProcess[str] | None = None
         with suppress(OSError):
             with log.open("w", encoding="utf-8") as handle:
@@ -208,9 +222,8 @@ def step_17(argv: list[str] | None = None) -> int:
             category="Tool Failures",
             output_file=log,
         )
-        if _summary_nonempty(tmpdir):
-            if had_backup:
-                backup.unlink(missing_ok=True)
+        if had_backup and _summary_nonempty(tmpdir):
+            backup.unlink(missing_ok=True)
             return 0
         if had_backup and backup.is_file():
             with suppress(OSError):
@@ -257,6 +270,8 @@ def step_16_17(argv: list[str] | None = None) -> int:
         print(str(exc), file=sys.stderr)
         return 2
     plugin_root = _plugin_root()
+    if (rc := _validate_plugin_root(plugin_root)) is not None:
+        return rc
     env = _env_for(tmpdir, plugin_root)
     cli = str(plugin_root / "python" / "cli.py")
     with suppress(Exception):
@@ -299,8 +314,8 @@ def step_16_17(argv: list[str] | None = None) -> int:
     step17_rc = 1
     with suppress(Exception):
         step17_rc = step_17(["--implement-tmpdir", str(tmpdir), "--no-print-stdout"])
-    if step17_rc == 0 and _summary_nonempty(tmpdir):
-        _print_summary_markers(tmpdir, sentinel=".step17-printed")
+    if step17_rc == 0 and _summary_nonempty(tmpdir) and _print_summary_markers(tmpdir, sentinel=".step17-printed") != 0:
+        print("closeout: failed to emit summary markers", file=sys.stderr)
     return 0
 
 

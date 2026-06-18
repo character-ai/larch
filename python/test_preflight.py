@@ -101,6 +101,63 @@ def test_preflight_refuses_admission_failure(
     assert "ADMISSION_RESULT=managed-prefix" in capsys.readouterr().out
 
 
+def test_preflight_allows_footer_rounds_completed_despite_body_prose(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        stdout = kwargs.get("stdout")
+        if "admission" in argv:
+            _write(stdout, "ADMISSION_RESULT=pass\n")
+        elif argv[:3] == ["gh", "issue", "view"]:
+            _write(stdout, json.dumps({"title": "Title", "body": "body"}))
+        elif "plan-block" in argv:
+            out_path = Path(argv[argv.index("--output") + 1])
+            out_path.write_text(
+                "Illustrative example: rounds_completed: 0\n\n"
+                "review_status: complete\n"
+                "rounds_completed: 2\n"
+                "diff_lines: 12\n",
+                encoding="utf-8",
+            )
+            _write(stdout, "BLOCK_PRESENT=true\n")
+        return _fake_completed(argv)
+
+    monkeypatch.setattr(preflight.subprocess, "run", fake_run)
+    rc = preflight.preflight_main(["--issue", "5", "--preflight-tmpdir", str(tmp_path)])
+    assert rc == 0
+    assert "rounds_completed=0" not in capsys.readouterr().out
+
+
+def test_preflight_refuses_malformed_rounds_completed_metadata(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        stdout = kwargs.get("stdout")
+        if "admission" in argv:
+            _write(stdout, "ADMISSION_RESULT=pass\n")
+        elif argv[:3] == ["gh", "issue", "view"]:
+            _write(stdout, json.dumps({"title": "Title", "body": "body"}))
+        elif "plan-block" in argv:
+            out_path = Path(argv[argv.index("--output") + 1])
+            out_path.write_text(
+                "review_status: complete\nrounds_completed: nope\ndiff_lines: 8\n",
+                encoding="utf-8",
+            )
+            _write(stdout, "BLOCK_PRESENT=true\n")
+        return _fake_completed(argv)
+
+    monkeypatch.setattr(preflight.subprocess, "run", fake_run)
+    rc = preflight.preflight_main(["--issue", "5", "--preflight-tmpdir", str(tmp_path)])
+    assert rc == 2
+    out = capsys.readouterr().out
+    assert "malformed plan review metadata" in out
+    assert "rounds_completed=nope" in out
+
+
 def test_preflight_refuses_zero_review_provenance(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
