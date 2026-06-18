@@ -1,0 +1,2 @@
+Reviewing the plan and tracing cited code paths for contract and integration issues.
+{"no_issues_found": true}

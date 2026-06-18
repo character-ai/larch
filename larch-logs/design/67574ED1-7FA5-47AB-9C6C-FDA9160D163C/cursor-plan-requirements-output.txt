@@ -1,0 +1,2 @@
+Reviewing the plan against the issue scope and tracing cited code paths.
+{"no_issues_found": true}
