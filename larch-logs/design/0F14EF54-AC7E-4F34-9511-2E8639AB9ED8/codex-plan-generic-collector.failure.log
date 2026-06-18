@@ -1,0 +1,26 @@
+## Structured collector record
+
+REVIEWER_FILE=<TMPDIR>/codex-plan-generic-output.txt|TOOL=codex|STATUS=NOT_SUBSTANTIVE|EXIT_CODE=0|FAILURE_REASON=structured records not found after repair
+
+## Reviewer output (<TMPDIR>/codex-plan-generic-output.txt)
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	requirements/completeness	python/migrated-scripts.tsv:992	Deleted python/review_legacy.py is missing from the retired-path manifest plan	The plan deletes python/review_legacy.py, but the migrated-scripts.tsv append list omits it, so the sh-to-py retirement manifest is incomplete and retired-reference lint will not guard the deleted facade	Add python/review_legacy.py with the G2 issue number to the migrated-scripts.tsv append list
+1	in_scope	important	requirements/completeness	docs/python-migration.md:18	Plan leaves the migration playbook status stale	After this PR deletes the retained aggregate tally emit compose log-phase shell bodies, docs/python-migration.md would still say review_aggregate.py, review_tally.py, and compose_review.py remain CLI facades for retained shell bodies under python/legacy_review_shell	Add docs/python-migration.md to the plan and update the G1 review pipeline status to reflect the G2 in-process ports and removal of the retained shell bodies
+## Reviewer stderr (<TMPDIR>/codex-plan-generic-output.txt.diag)
+
+(file missing: <TMPDIR>/codex-plan-generic-output.txt.diag)
+
+## Failed-agent stderr tail (<TMPDIR>/codex-plan-generic-output.txt.stderr-tail)
+
+(file missing: <TMPDIR>/codex-plan-generic-output.txt.stderr-tail)
+
+## Launcher stderr (<TMPDIR>/codex-plan-generic-output.txt.launch-stderr)
+
+⏳ codex agent: still running (1m elapsed)
+⏳ codex agent: still running (2m elapsed)
+⏳ codex agent: still running (3m elapsed)
+⏳ codex agent: still running (4m elapsed)
+✓ codex agent: completed (exit code 0, output 1092 bytes)
+
+

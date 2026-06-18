@@ -1,0 +1,7 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	SECURITY.md:196; docs/run-logs.md:345,359	Plan deletes and manifests python/legacy_review_shell/compose-review-findings.sh but omits remaining tracked references	After migrated-scripts.tsv gains that retired path, make lint-retired-scripts will scan tracked files and fail on these exact literals, so the port cannot meet the lint-green definition of done	Add SECURITY.md and docs/run-logs.md to the plan and replace those producer-contract references with python/compose_review.py or python/cli.py review compose-findings while preserving the redaction and JSONL contracts
+
+1. **correctness**: `SECURITY.md:196` and `docs/run-logs.md:345,359` still name `python/legacy_review_shell/compose-review-findings.sh`.
+   - **Concern**: The plan retires that path and appends it to `python/migrated-scripts.tsv`, but does not update these tracked references.
+   - **Breakage**: `make lint-retired-scripts` will fail after the manifest update.
+   - **Suggested revision**: Add both docs to the plan. Replace the retired path with `python/compose_review.py` or `python/cli.py review compose-findings`.

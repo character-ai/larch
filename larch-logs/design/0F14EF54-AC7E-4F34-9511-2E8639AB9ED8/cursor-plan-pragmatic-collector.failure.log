@@ -1,0 +1,37 @@
+## Structured collector record
+
+REVIEWER_FILE=<TMPDIR>/cursor-plan-pragmatic-output.txt|TOOL=cursor|STATUS=NOT_SUBSTANTIVE|EXIT_CODE=0|FAILURE_REASON=structured records not found after repair
+
+## Reviewer output (<TMPDIR>/cursor-plan-pragmatic-output.txt)
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	completeness	Makefile:519-520	The embedded prune-nit rewrite guard test is not wired into any `make lint` harness shard	The plan adds `test_embedded_plan_review_prune_nit_uses_review_cli` but only lists a manual `pytest -k embedded_plan_review_prune_nit` run. `test-review-design-step3-loop` still filters with `embedded_review or embedded_run_step3_review or embedded_waterfall or reviewer_prune or run_legacy`, which does not match `embedded_plan_review_prune_nit`. CI can merge a broken `_rewrite_prune_asset` and deleted shell without catching rc 127 / fail-open ballot drift on `/design` plan-review.	Extend `test-review-design-step3-loop` `-k` to include `embedded_plan_review_prune_nit` or `prune_nit` (mirror how `reviewer_prune` selects the reviewer-prune guard), and mention that harness in Testing strategy.
+2	in_scope	important	risk-integration	python/plan_review.py:880-906	The plan tells `_rewrite_prune_asset` to mirror reviewer-prune string replace while also preserving `LARCH_PLAN_REVIEW_PRUNE_NITS_SH`	Embedded `plan-review-loop.sh` binds `PLAN_REVIEW_PRUNE_NITS_SH="${LARCH_PLAN_REVIEW_PRUNE_NITS_SH:-…/prune-nit-findings.sh}"` and invokes it as a single executable. The reviewer-prune rewrite drops `${VAR:-default}` and swaps to a multi-token CLI array. A literal mirror leaves either a deleted default path or a one-string `python3 … review prune-nit-findings` invocation that cannot run.	Specify rewrite as: if `LARCH_PLAN_REVIEW_PRUNE_NITS_SH` is set, keep a one-entry command array from that override; else default to `(python3 "$PLUGIN_ROOT/python/cli.py" review prune-nit-findings)`; invoke with `"${PLAN_REVIEW_PRUNE_NITS_CMD[@]}"` on both decoded assets.
+
+**1. completeness — `Makefile:519-520`**
+
+The plan adds `test_embedded_plan_review_prune_nit_uses_review_cli` but does not attach it to a lint harness. `test-review-design-step3-loop` (shard 16) will not select that test name. A missed `_rewrite_prune_asset` edit can ship with green `make lint`.
+
+**Suggested revision:** Extend the `test-review-design-step3-loop` `-k` filter and document it under Testing strategy.
+
+**2. risk-integration — `python/plan_review.py:880-906`**
+
+The plan mixes “mirror reviewer-prune rewrite” with “preserve `LARCH_PLAN_REVIEW_PRUNE_NITS_SH`”. The embedded loop uses a single-path default plus override; the CLI default is multi-argument. Literal string replace is not enough.
+
+**Suggested revision:** Add an explicit override branch and array invocation contract in the `python/plan_review.py` plan section, not only in Failure modes.
+## Reviewer stderr (<TMPDIR>/cursor-plan-pragmatic-output.txt.diag)
+
+(empty: <TMPDIR>/cursor-plan-pragmatic-output.txt.diag)
+
+## Failed-agent stderr tail (<TMPDIR>/cursor-plan-pragmatic-output.txt.stderr-tail)
+
+(file missing: <TMPDIR>/cursor-plan-pragmatic-output.txt.stderr-tail)
+
+## Launcher stderr (<TMPDIR>/cursor-plan-pragmatic-output.txt.launch-stderr)
+
+⏳ cursor agent: still running (1m elapsed)
+⏳ cursor agent: still running (2m elapsed)
+⏳ cursor agent: still running (3m elapsed)
+✓ cursor agent: completed (exit code 0, output 3036 bytes)
+
+
