@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import argparse
+import subprocess
 import tempfile
 import pytest
 
@@ -1318,6 +1319,68 @@ def test_dedup_tier_a_report_rejects_outside_body_file(tmp_path: Path, capsys: p
         assert "--body-file outside implement tmpdir" in capsys.readouterr().err
     finally:
         Path(outside).unlink(missing_ok=True)
+
+
+def test_dedup_tier_a_report_uses_prefixed_compose_slices(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("LARCH_STALL_RECOVERY_DRY_RUN", "1")
+    monkeypatch.setenv("LARCH_STALL_RECOVERY_TEST_LEGACY_SURFACES", "1")
+    (tmp_path / "skills" / "implement").mkdir(parents=True)
+    _ = (tmp_path / "skills" / "implement" / "SKILL.md").write_text("# implement\n", encoding="utf-8")
+    _ = (tmp_path / "design-failure-classification.env").write_text(
+        "FAILURE_CLASS=unrecoverable\nFAILURE_SIGNATURE=abc\nSTALL_STEP=judge-panel\nPHASE=judge-panel\n"
+        "BAIL_REASON=decompose-panel-retry-exhausted\nEXIT_CODE=1\n",
+        encoding="utf-8",
+    )
+    _ = (tmp_path / "design-failure-root-cause.md").write_text(
+        "verdict=larch-defect\nconfidence=high\nsummary=design summary\n\nProse.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
+    body_file = tmp_path / "design-failure-issue-input.md"
+    rc = stall_recovery.compose_report_main([
+        "--implement-tmpdir", str(tmp_path),
+        "--profile", "generic",
+        "--artifact-prefix", "design-failure",
+        "--surface", "issue-input",
+        "--report-kind", "terminal-failure",
+        "--output-file", str(body_file),
+    ])
+    assert rc == 0
+    prefixed_attempts = tmp_path / "design-failure-tier-a-attempts.md"
+    prefixed_escalation = tmp_path / "design-failure-tier-a-escalation.md"
+    prefixed_root = tmp_path / "design-failure-tier-a-root-cause.md"
+    assert prefixed_attempts.is_file()
+    assert prefixed_escalation.is_file()
+    assert prefixed_root.is_file()
+    _ = (tmp_path / "stall-recovery-tier-a-attempts.md").write_text("", encoding="utf-8")
+    _ = (tmp_path / "stall-recovery-tier-a-escalation.md").write_text("", encoding="utf-8")
+    _ = (tmp_path / "stall-recovery-tier-a-root-cause.md").write_text("", encoding="utf-8")
+    captured: list[list[str]] = []
+
+    def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        if cmd and cmd[0] == "gh":
+            return subprocess.CompletedProcess(cmd, 0, stdout="owner/repo\n", stderr="")
+        captured.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(stall_recovery.subprocess, "run", fake_run)
+    monkeypatch.setenv("LARCH_STALL_RECOVERY_DRY_RUN", "")
+    rc = stall_recovery.dedup_tier_a_report_main([
+        "--implement-tmpdir", str(tmp_path),
+        "--profile", "generic",
+        "--artifact-prefix", "design-failure",
+        "--body-file", str(body_file),
+    ])
+    assert rc == 0
+    helper_calls = [cmd for cmd in captured if "file-failure-report-cross-repo.sh" in cmd[0]]
+    assert len(helper_calls) == 1
+    cmd = helper_calls[0]
+    assert str(prefixed_attempts) in cmd
+    assert str(prefixed_escalation) in cmd
+    assert str(prefixed_root) in cmd
 
 
 def test_redact_text_strips_ghp_token() -> None:

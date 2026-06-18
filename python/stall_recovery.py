@@ -1071,10 +1071,14 @@ def dedup_tier_a_report(args: argparse.Namespace) -> int:
     if os.environ.get("LARCH_STALL_RECOVERY_DRY_RUN"):
         emit("STALL_RECOVERY_REPORT_STATUS", "dry-run")
         return 0
-    body_file = Path(args.body_file) if args.body_file else tmpdir / "stall-recovery-issue-input.md"
-    attempts_file = Path(args.attempts_file) if args.attempts_file else tmpdir / "stall-recovery-tier-a-attempts.md"
-    escalation_file = Path(args.escalation_ledger_file) if args.escalation_ledger_file else tmpdir / "stall-recovery-tier-a-escalation.md"
-    root_file = Path(args.root_cause_file) if args.root_cause_file else tmpdir / "stall-recovery-tier-a-root-cause.md"
+    prefix = getattr(args, "artifact_prefix", "") or ""
+    if prefix and not _validate_artifact_prefix(prefix):
+        print("stall-recovery: --artifact-prefix must be a simple dash token", file=sys.stderr)
+        return 2
+    body_file = _compose_path(args, "body_file", tmpdir, _DEFAULT_ISSUE_INPUT, prefix)
+    attempts_file = _compose_path(args, "attempts_file", tmpdir, _DEFAULT_TIER_A_ATTEMPTS_SLICE, prefix)
+    escalation_file = _compose_path(args, "escalation_ledger_file", tmpdir, _DEFAULT_TIER_A_ESCALATION_SLICE, prefix)
+    root_file = _compose_path(args, "root_cause_file", tmpdir, _DEFAULT_TIER_A_ROOT_CAUSE_SLICE, prefix)
     if not _validate_tmpdir_local_file(tmpdir, body_file):
         print("stall-recovery: --body-file outside implement tmpdir", file=sys.stderr)
         return 1
@@ -1674,29 +1678,44 @@ def normalize_file_failure_report_env(args: argparse.Namespace) -> int:
 def populate_sensitive_corpus(args: argparse.Namespace) -> int:
     tmpdir = Path(args.implement_tmpdir)
     prefix = getattr(args, "artifact_prefix", "") or ""
+    if prefix and not _validate_artifact_prefix(prefix):
+        print("stall-recovery: --artifact-prefix must be a simple dash token", file=sys.stderr)
+        return 2
     sensitive_file = Path(args.sensitive_corpus_file) if getattr(args, "sensitive_corpus_file", "") else _artifact_path(tmpdir, _DEFAULT_SENSITIVE_CORPUS, prefix)
     class_file = Path(args.classification_file) if getattr(args, "classification_file", "") else _artifact_path(tmpdir, _DEFAULT_CLASSIFICATION_FILE, prefix)
     attempts_file = Path(args.attempts_file) if getattr(args, "attempts_file", "") else _artifact_path(tmpdir, _DEFAULT_ATTEMPTS_FILE, prefix)
     ledger = Path(args.escalation_ledger_file) if getattr(args, "escalation_ledger_file", "") else _artifact_path(tmpdir, _DEFAULT_ESCALATION_LEDGER, prefix)
     fallback = Path(args.escalation_fallback_file) if getattr(args, "escalation_fallback_file", "") else _artifact_path(tmpdir, _DEFAULT_ESCALATION_FALLBACK, prefix)
     marker = Path(args.record_failure_marker) if getattr(args, "record_failure_marker", "") else _artifact_path(tmpdir, _DEFAULT_RECORD_FAILURE_MARKER, prefix)
-    effective = tmpdir / f"{(prefix or 'stall-recovery')}-sensitive-corpus.effective"
-    build_sensitive_corpus_from_evidence(
-        tmpdir=tmpdir,
-        sensitive_file=sensitive_file,
-        class_file=class_file,
-        attempts_file=attempts_file,
-        ledger=ledger,
-        fallback=fallback,
-        marker=marker,
-        out_file=effective,
-    )
     if not _validate_tmpdir_write_path(tmpdir, sensitive_file):
         print("stall-recovery: --sensitive-corpus-file outside implement tmpdir", file=sys.stderr)
         return 1
-    sensitive_file.write_text(effective.read_text(encoding="utf-8", errors="replace"), encoding="utf-8")
-    with contextlib.suppress(OSError):
-        effective.unlink()
+    for label, path in (
+        ("--classification-file", class_file),
+        ("--attempts-file", attempts_file),
+        ("--escalation-ledger-file", ledger),
+        ("--escalation-fallback-file", fallback),
+        ("--record-failure-marker", marker),
+    ):
+        if path.is_file() and not _validate_tmpdir_local_file(tmpdir, path):
+            print(f"stall-recovery: {label} outside implement tmpdir", file=sys.stderr)
+            return 1
+    effective = tmpdir / f"{(prefix or 'stall-recovery')}-sensitive-corpus.effective"
+    try:
+        build_sensitive_corpus_from_evidence(
+            tmpdir=tmpdir,
+            sensitive_file=sensitive_file,
+            class_file=class_file,
+            attempts_file=attempts_file,
+            ledger=ledger,
+            fallback=fallback,
+            marker=marker,
+            out_file=effective,
+        )
+        sensitive_file.write_text(effective.read_text(encoding="utf-8", errors="replace"), encoding="utf-8")
+    finally:
+        with contextlib.suppress(OSError):
+            effective.unlink()
     emit("SENSITIVE_CORPUS_FILE", sensitive_file)
     return 0
 
@@ -2437,10 +2456,11 @@ def main(argv: list[str] | None = None) -> int:
         ns, _ = p.parse_known_args(sub_argv)
         return record_escalation(ns)
     if sub == "dedup-tier-a-report":
-        p.add_argument("--body-file")
-        p.add_argument("--attempts-file")
-        p.add_argument("--escalation-ledger-file")
-        p.add_argument("--root-cause-file")
+        p.add_argument("--body-file", default="")
+        p.add_argument("--attempts-file", default="")
+        p.add_argument("--escalation-ledger-file", default="")
+        p.add_argument("--root-cause-file", default="")
+        p.add_argument("--artifact-prefix", default=_global_default(globals_dict, "artifact_prefix", ""))
         ns, _ = p.parse_known_args(sub_argv)
         return dedup_tier_a_report(ns)
     if sub == "compose-report":
