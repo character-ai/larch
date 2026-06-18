@@ -1,4 +1,5 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportPrivateUsage=false
+# ruff: noqa: S607, SLF001
 """Legacy vs new duplicate-code parity helpers."""
 
 from __future__ import annotations
@@ -47,7 +48,7 @@ def legacy_cluster_digest(root: Path, rcfile: Path) -> str:
         raise duplicate_code.DuplicateCodeError(f"missing root: {config.root}")
     with duplicate_code._pushd(config.root):
         linter, checker, fileitems = duplicate_code._bootstrap_linter(config, backend)
-        duplicate_code._ingest_files(linter, checker, fileitems, backend)
+        _ = duplicate_code._ingest_files(linter, checker, fileitems, backend)
         commonalities = list(checker._iter_sims())
         clusters = duplicate_code._clusters_from_commonalities(checker, commonalities)
     return duplicate_code._render_digest(clusters)
