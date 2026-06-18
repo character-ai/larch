@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -60,8 +59,7 @@ def test_digest_mismatch_blocks_even_when_exit_codes_match(
     (tmp_path / "b.py").write_text(_module(5), encoding="utf-8")
 
     result = duplicate_code_parity.run_parity(tmp_path, rcfile)
-    normalized_legacy = duplicate_code_parity.parity_exit_code(result.legacy_exit, legacy=True)
-    assert normalized_legacy == result.new_exit == 1
+    assert result.legacy_exit == result.new_exit == duplicate_code.REFACTOR_MSG_STATUS
     assert result.new_digest != "[]"
 
     def wrong_legacy_digest(_root: Path, _rcfile: Path) -> str:
@@ -98,14 +96,10 @@ def test_cli_digest_matches_internal_digest(tmp_path: Path) -> None:
         check=False,
     )
 
-    assert result.returncode == 1
+    assert result.returncode == duplicate_code.REFACTOR_MSG_STATUS
     assert result.stdout.strip() == internal
 
 
-@pytest.mark.skipif(
-    os.environ.get("LARCH_DUPLICATE_CODE_FULL_TREE_PARITY") != "1",
-    reason="full-tree legacy/new parity is opt-in via LARCH_DUPLICATE_CODE_FULL_TREE_PARITY=1",
-)
 def test_full_python_tree_legacy_new_parity() -> None:
     root = Path(__file__).resolve().parent
     rcfile = root / ".pylintrc"

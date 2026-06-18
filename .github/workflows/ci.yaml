@@ -630,7 +630,12 @@ jobs:
           PIP_DEFAULT_TIMEOUT: "30"
         run: pip install -r python/requirements-dev.txt
       - name: Run pylint duplicate-code check
-        run: make py-lint-duplicate-code
+        run: |
+          SECONDS=0
+          make py-lint-duplicate-code
+          echo "duplicate-code wall time: ${SECONDS}s"
+      - name: Run duplicate-code legacy/new parity gate
+        run: make py-lint-duplicate-code-parity
 
   # Python unit tests, sharded across a matrix to speed up CI. conftest.py
   # round-robins the collected tests by index using PYTEST_SHARD_ID /

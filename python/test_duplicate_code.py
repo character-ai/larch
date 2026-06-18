@@ -110,7 +110,7 @@ def test_global_duplicate_code_enablement_overrides_rcfile_disable(tmp_path: Pat
 
     result = _run(tmp_path)
 
-    assert result.exit_code == 1
+    assert result.exit_code == duplicate_code.REFACTOR_MSG_STATUS
     assert "a" in result.findings
     assert "b" in result.findings
 
@@ -138,7 +138,7 @@ def test_process_tokens_runs_before_process_module_with_astroid_module(
 
     result = _run(tmp_path)
 
-    assert result.exit_code == 1
+    assert result.exit_code == duplicate_code.REFACTOR_MSG_STATUS
     assert events[:2] == ["tokens", "module"]
 
 
@@ -197,12 +197,12 @@ def test_above_threshold_fails_and_prints_both_modules(tmp_path: Path) -> None:
 
     result = _run(tmp_path)
 
-    assert result.exit_code == 1
+    assert result.exit_code == duplicate_code.REFACTOR_MSG_STATUS
     assert "==a:[0:5]" in result.findings
     assert "==b:[0:5]" in result.findings
 
 
-@pytest.mark.parametrize(("line_count", "expected"), [(3, 0), (4, 0), (5, 1)])
+@pytest.mark.parametrize(("line_count", "expected"), [(3, 0), (4, 0), (5, duplicate_code.REFACTOR_MSG_STATUS)])
 def test_threshold_guard(tmp_path: Path, line_count: int, expected: int) -> None:
     _write_rc(tmp_path, min_lines=4)
     _write_modules(tmp_path, ["a.py", "b.py"], _module(line_count))
@@ -246,7 +246,7 @@ def test_enabled_peers_still_fail_when_disabled_peer_is_present(tmp_path: Path) 
 
     result = _run(tmp_path)
 
-    assert result.exit_code == 1
+    assert result.exit_code == duplicate_code.REFACTOR_MSG_STATUS
     assert result.pair_count == 3
     assert "==a:[0:5]" in result.findings
     assert "==b:[0:5]" in result.findings
@@ -285,7 +285,7 @@ def test_close_equivalent_gating_reports_enabled_clusters(tmp_path: Path) -> Non
 
     result = _run(tmp_path)
 
-    assert result.exit_code == 1
+    assert result.exit_code == duplicate_code.REFACTOR_MSG_STATUS
     assert result.digest != "[]"
     assert "==a:[0:5]" in result.findings
     assert "==b:[0:5]" in result.findings
@@ -356,7 +356,7 @@ def test_enabled_peers_with_disabled_peer_parallel_matches_serial(tmp_path: Path
     serial = _run(tmp_path, jobs=1)
     parallel = _run(tmp_path, jobs=jobs)
 
-    assert serial.exit_code == parallel.exit_code == 1
+    assert serial.exit_code == parallel.exit_code == duplicate_code.REFACTOR_MSG_STATUS
     assert serial.digest == parallel.digest
     assert "==a:[0:5]" in serial.findings
     assert "==b:[0:5]" in serial.findings
@@ -372,7 +372,7 @@ def test_close_equivalent_enabled_cluster_parallel_matches_serial(tmp_path: Path
     serial = _run(tmp_path, jobs=1)
     parallel = _run(tmp_path, jobs=jobs)
 
-    assert serial.exit_code == parallel.exit_code == 1
+    assert serial.exit_code == parallel.exit_code == duplicate_code.REFACTOR_MSG_STATUS
     assert serial.digest == parallel.digest
     assert serial.digest != "[]"
 
@@ -386,7 +386,7 @@ def test_cross_file_shard_guard_detects_non_adjacent_duplicates_under_parallel_j
     serial = _run(tmp_path, jobs=1)
     parallel = _run(tmp_path, jobs=2)
 
-    assert serial.exit_code == parallel.exit_code == 1
+    assert serial.exit_code == parallel.exit_code == duplicate_code.REFACTOR_MSG_STATUS
     assert serial.digest == parallel.digest
     assert "==a:[0:5]" in serial.findings
     assert "==c:[0:5]" in serial.findings
@@ -433,7 +433,7 @@ def test_pair_enumeration_uses_instance_bound_find_common_without_iter_sims_pres
 
     result = _run(tmp_path, jobs=1)
 
-    assert result.exit_code == 1
+    assert result.exit_code == duplicate_code.REFACTOR_MSG_STATUS
     assert result.pair_count == 3
     assert len(find_common_calls) == 3
     assert len({checker_id for checker_id, _, _ in find_common_calls}) == 1
@@ -469,7 +469,7 @@ def test_cluster_digest_is_stable_between_serial_and_parallel_paths(tmp_path: Pa
     serial = _run(tmp_path, jobs=1)
     parallel = _run(tmp_path, jobs=2)
 
-    assert serial.exit_code == parallel.exit_code == 1
+    assert serial.exit_code == parallel.exit_code == duplicate_code.REFACTOR_MSG_STATUS
     assert serial.digest == parallel.digest
     assert serial.pair_count == parallel.pair_count == 3
 
@@ -530,7 +530,7 @@ def test_jobs_zero_auto_matches_serial(tmp_path: Path) -> None:
     serial = _run(tmp_path, jobs=1)
     auto = duplicate_code.run_duplicate_code(root=tmp_path, rcfile=tmp_path / ".pylintrc", jobs=0)
 
-    assert serial.exit_code == auto.exit_code == 1
+    assert serial.exit_code == auto.exit_code == duplicate_code.REFACTOR_MSG_STATUS
     assert serial.digest == auto.digest
 
 

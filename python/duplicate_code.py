@@ -26,6 +26,9 @@ from types import MethodType
 from typing import Any, TextIO
 
 MESSAGE_ID = "R0801"
+# pylint ``Run`` returns ``linter.msg_status`` when score is below fail-under;
+# R0801 sets the refactor bit (8).
+REFACTOR_MSG_STATUS = 8
 DEFAULT_ROOT = "python"
 DEFAULT_RCFILE = "python/.pylintrc"
 SIMILARITY_FLAGS = (
@@ -264,12 +267,13 @@ def run_duplicate_code(
         pairs = list(itertools.combinations(range(len(linesets)), 2))
         commonalities = _find_commonalities(checker, linesets, pairs, _resolve_jobs(jobs, len(pairs)))
         clusters = _clusters_from_commonalities(checker, commonalities)
+        exit_code = _exit_code_like_pylint(linter, checker)
     digest = _render_digest(clusters)
     findings = _render_findings(clusters)
     if stdout is not None and findings:
         stdout.write(findings)
     return DuplicateCodeResult(
-        exit_code=1 if clusters else 0,
+        exit_code=exit_code,
         clusters=tuple(clusters),
         digest=digest,
         findings=findings,
@@ -427,6 +431,10 @@ def _clusters_from_commonalities(symilar: Any, commonalities: Sequence[Any]) -> 
     finally:
         symilar._iter_sims = original_iter_sims
 
+    return _clusters_from_sims(sims)
+
+
+def _clusters_from_sims(sims: Sequence[tuple[int, set[Any]]]) -> list[DuplicateCluster]:
     clusters: list[DuplicateCluster] = []
     for line_count, couples in sims:
         spans = tuple(
@@ -437,6 +445,21 @@ def _clusters_from_commonalities(symilar: Any, commonalities: Sequence[Any]) -> 
         )
         clusters.append(DuplicateCluster(lines=int(line_count), spans=spans))
     return sorted(clusters, key=lambda cluster: cluster.spans)
+
+
+def _exit_code_like_pylint(linter: Any, checker: Any) -> int:
+    """Mirror pylint ``Run`` exit semantics after ``SimilaritiesChecker.close()``."""
+    checker.close()
+    score_value = linter.generate_reports(verbose=False)
+    if linter.config.exit_zero:
+        return 0
+    if linter.any_fail_on_issues():
+        return int(linter.msg_status or 1)
+    if score_value is not None:
+        if score_value >= linter.config.fail_under:
+            return 0
+        return int(linter.msg_status or 1)
+    return int(linter.msg_status)
 
 
 def _render_digest(clusters: Sequence[DuplicateCluster]) -> str:

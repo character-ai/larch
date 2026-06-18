@@ -4,7 +4,6 @@
 
 from __future__ import annotations
 
-import itertools
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -42,7 +41,7 @@ def legacy_pylint_exit(root: Path, rcfile: Path) -> int:
 
 
 def legacy_cluster_digest(root: Path, rcfile: Path) -> str:
-    """Extract a reportable-cluster digest via combinations + ``_find_common``."""
+    """Extract reportable clusters via pylint's native ``close()`` / ``_compute_sims`` path."""
     config = duplicate_code.DuplicateCodeConfig.load(root=root.resolve(), rcfile=rcfile.resolve())
     backend = duplicate_code._import_pylint_backend()
     if not config.root.is_dir():
@@ -50,10 +49,7 @@ def legacy_cluster_digest(root: Path, rcfile: Path) -> str:
     with duplicate_code._pushd(config.root):
         linter, checker, fileitems = duplicate_code._bootstrap_linter(config, backend)
         _ = duplicate_code._ingest_files(linter, checker, fileitems, backend)
-        linesets = tuple(checker.linesets)
-        pairs = list(itertools.combinations(range(len(linesets)), 2))
-        commonalities = duplicate_code._find_commonalities(checker, linesets, pairs, 1)
-        clusters = duplicate_code._clusters_from_commonalities(checker, commonalities)
+        clusters = duplicate_code._clusters_from_sims(checker._compute_sims())
     return duplicate_code._render_digest(clusters)
 
 
@@ -83,12 +79,10 @@ def run_parity(root: Path, rcfile: Path, *, jobs: int = 1) -> ParityResult:
 
 def assert_parity(root: Path, rcfile: Path, *, jobs: int = 1) -> None:
     result = run_parity(root, rcfile, jobs=jobs)
-    normalized_legacy = parity_exit_code(result.legacy_exit, legacy=True)
-    if normalized_legacy != result.new_exit:
+    if result.legacy_exit != result.new_exit:
         raise AssertionError(
             "exit-code mismatch: "
-            f"legacy={result.legacy_exit} (normalized={normalized_legacy}) "
-            f"new={result.new_exit}"
+            f"legacy={result.legacy_exit} new={result.new_exit}"
         )
     if result.legacy_digest != result.new_digest:
         raise AssertionError(
