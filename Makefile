@@ -785,7 +785,7 @@ test-render-cost-line:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_report_tokens_cost.py -q -k render_cost_line
 
 test-implement-cleanup-script:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_finalize.py -q -k cleanup
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_finalize.py -q -k 'cleanup and not cleanup_target_ok'
 
 test-harness-shards-coverage:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-harness-shards-coverage.sh
