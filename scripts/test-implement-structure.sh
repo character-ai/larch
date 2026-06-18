@@ -109,7 +109,7 @@ for script in [
 ]:
     require(skill, launcher + script, f'SKILL launcher wrapper {script}')
 
-require(skill, 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement step-16-17', 'SKILL direct Step 16-17 Python CLI call')
+require(skill, 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement step-16-17 --implement-tmpdir "$IMPLEMENT_TMPDIR"', 'SKILL direct Step 16-17 Python CLI call')
 
 for needle in [
     'BASE_ARGS=()',

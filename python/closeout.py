@@ -188,8 +188,12 @@ def step_17(argv: list[str] | None = None) -> int:
                 had_backup = True
             except OSError:
                 had_backup = False
-        with log.open("w", encoding="utf-8") as handle:
-            completed = _run(cmd, env=env, stdout=handle, stderr=subprocess.STDOUT)
+        completed: subprocess.CompletedProcess[str] | None = None
+        with suppress(OSError):
+            with log.open("w", encoding="utf-8") as handle:
+                completed = _run(cmd, env=env, stdout=handle, stderr=subprocess.STDOUT)
+        if completed is None:
+            completed = _run(cmd, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         if completed.returncode == 0:
             if had_backup:
                 backup.unlink(missing_ok=True)
@@ -212,8 +216,13 @@ def step_17(argv: list[str] | None = None) -> int:
             with suppress(OSError):
                 shutil.move(str(backup), str(summary))
         return completed.returncode
-    with log.open("w", encoding="utf-8") as handle:
-        completed = _run([*cmd, "--print-stdout"], env=env, stdout=handle, stderr=subprocess.STDOUT)
+    completed_print: subprocess.CompletedProcess[str] | None = None
+    with suppress(OSError):
+        with log.open("w", encoding="utf-8") as handle:
+            completed_print = _run([*cmd, "--print-stdout"], env=env, stdout=handle, stderr=subprocess.STDOUT)
+    if completed_print is None:
+        completed_print = _run([*cmd, "--print-stdout"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    completed = completed_print
     if completed.returncode == 0:
         with suppress(OSError):
             sys.stdout.write(log.read_text(encoding="utf-8", errors="replace"))
@@ -246,7 +255,7 @@ def step_16_17(argv: list[str] | None = None) -> int:
         tmpdir = _resolve_tmpdir(args.implement_tmpdir)
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
-        return 0
+        return 2
     plugin_root = _plugin_root()
     env = _env_for(tmpdir, plugin_root)
     cli = str(plugin_root / "python" / "cli.py")
@@ -256,8 +265,21 @@ def step_16_17(argv: list[str] | None = None) -> int:
     with suppress(OSError):
         slack_log.write_text("", encoding="utf-8")
     slack_rc = 0
-    with slack_log.open("w", encoding="utf-8") as handle:
-        completed = _run([sys.executable, cli, "slack", "issue-announce", "--implement-tmpdir", str(tmpdir), "--best-effort"], env=env, stdout=handle, stderr=subprocess.STDOUT)
+    try:
+        with slack_log.open("w", encoding="utf-8") as handle:
+            completed = _run(
+                [sys.executable, cli, "slack", "issue-announce", "--implement-tmpdir", str(tmpdir), "--best-effort"],
+                env=env,
+                stdout=handle,
+                stderr=subprocess.STDOUT,
+            )
+    except OSError:
+        completed = _run(
+            [sys.executable, cli, "slack", "issue-announce", "--implement-tmpdir", str(tmpdir), "--best-effort"],
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
     slack_rc = completed.returncode
     try:
         slack_text = slack_log.read_text(encoding="utf-8", errors="replace")
@@ -274,7 +296,9 @@ def step_16_17(argv: list[str] | None = None) -> int:
             category="Warnings",
             output_file=slack_log,
         )
-    step17_rc = step_17(["--implement-tmpdir", str(tmpdir), "--no-print-stdout"])
+    step17_rc = 1
+    with suppress(Exception):
+        step17_rc = step_17(["--implement-tmpdir", str(tmpdir), "--no-print-stdout"])
     if step17_rc == 0 and _summary_nonempty(tmpdir):
         _print_summary_markers(tmpdir, sentinel=".step17-printed")
     return 0

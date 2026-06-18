@@ -263,7 +263,7 @@ test-cache-key-discipline:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-cache-key-discipline.sh
 
 test-finalize-sanity-check:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_finalize.py -q -k implement_finalize
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_finalize.py -q -k cleanup_target_ok
 
 
 test-audit-edit-write:

@@ -664,6 +664,75 @@ def test_implement_finalize_rejects_malformed_bool(tmp_path: Path, capsys: pytes
     assert "state-file key DRAFT must be true or false" in capsys.readouterr().err
 
 
+def test_implement_finalize_postbump_rejects_invalid_new_version(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    state = tmp_path / "finalize-state.sh"
+    state.write_text(
+        "BRANCH_NAME=feat\n"
+        "ISSUE_NUMBER=1\n"
+        "PR_TITLE=Implement thing\n"
+        "REPO=o/r\n"
+        "REPO_UNAVAILABLE=false\n"
+        "FORKED_TARGET=false\n"
+        "BUMP_TYPE=PATCH\n"
+        "NEW_VERSION=not-a-version\n",
+        encoding="utf-8",
+    )
+    rc = finalize.implement_finalize_postbump_main([
+        "--state-file", str(state),
+        "--implement-tmpdir", str(tmp_path),
+    ])
+    assert rc == 2
+    assert "NEW_VERSION must be semver" in capsys.readouterr().err
+
+
+def _cleanup_ctx(**overrides: object) -> RunContext:
+    return make_run_context(
+        expected_session_id="session-ok",
+        expected_tmpdir_basename_prefix="claude-implement-larch5-",
+        **overrides,
+    )
+
+
+def test_cleanup_target_ok_happy_path(tmp_path: Path) -> None:
+    target = tmp_path / "claude-implement-larch5-happy"
+    target.mkdir()
+    _ = (target / "session-id").write_text("session-ok\n", encoding="utf-8")
+    assert finalize._cleanup_target_ok(_cleanup_ctx(), target, cwd=str(tmp_path))
+
+
+def test_cleanup_target_ok_prefix_mismatch_session_match(tmp_path: Path) -> None:
+    target = tmp_path / "claude-implement-foreign"
+    target.mkdir()
+    _ = (target / "session-id").write_text("session-ok\n", encoding="utf-8")
+    assert finalize._cleanup_target_ok(_cleanup_ctx(), target, cwd=str(tmp_path))
+
+
+def test_cleanup_target_ok_session_id_mismatch(tmp_path: Path) -> None:
+    target = tmp_path / "claude-implement-larch5-sessionbad"
+    target.mkdir()
+    _ = (target / "session-id").write_text("wrong-session-id\n", encoding="utf-8")
+    assert not finalize._cleanup_target_ok(_cleanup_ctx(), target, cwd=str(tmp_path))
+
+
+def test_cleanup_target_ok_missing_session_id(tmp_path: Path) -> None:
+    target = tmp_path / "claude-implement-larch5-missingid"
+    target.mkdir()
+    assert not finalize._cleanup_target_ok(_cleanup_ctx(), target, cwd=str(tmp_path))
+
+
+def test_cleanup_target_ok_legacy_basename_only(tmp_path: Path) -> None:
+    target = tmp_path / "claude-implement-larch5-legacy"
+    target.mkdir()
+    ctx = make_run_context(
+        expected_session_id="",
+        expected_tmpdir_basename_prefix="claude-implement-larch5-",
+    )
+    assert finalize._cleanup_target_ok(ctx, target, cwd=str(tmp_path))
+
+
 def test_implement_finalize_accepts_cache_root_state_file(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

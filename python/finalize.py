@@ -32,6 +32,7 @@ POSTBUMP_CHECKPOINT_MAX_BYTES = 64
 LS_REMOTE_NOT_FOUND_RC = 2
 KILL_BACKGROUND_PARSE_ERROR_STATUS = 2
 _TITLE_PR_SUFFIX_RE = re.compile(r"\s+\(#([0-9]+)\)$")
+_SEMVER_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
 
 
 @dataclass(frozen=True)
@@ -608,7 +609,15 @@ def teardown(
         rename_status = _rename_issue(runner, ctx, "done", cwd=cwd)
 
     tmpdir = Path(ctx.tmpdir)
-    _ = (tmpdir / ".run-cleaned-up").write_text("", encoding="utf-8")
+    sentinel_detail = ""
+    try:
+        _ = (tmpdir / ".run-cleaned-up").write_text("", encoding="utf-8")
+    except (OSError, ShipError) as exc:
+        sentinel_detail = f"run-cleaned-up sentinel write failed: {exc}"
+        logging_util.BreadcrumbWriter().emit(
+            f"teardown: {sentinel_detail}",
+            quiet=False,
+        )
     stash_ref = ""
     sentinel_written = False
     if run_logs.effective_run_id(ctx):
@@ -631,6 +640,7 @@ def teardown(
         return FinalizeResult(
             Outcome.OK,
             "stalled-preserved",
+            detail=sentinel_detail,
             rename_branch=rename_branch,
             rename_status=rename_status,
             sentinel_written=sentinel_written,
@@ -647,6 +657,7 @@ def teardown(
     return FinalizeResult(
         Outcome.OK,
         status,
+        detail=sentinel_detail,
         rename_branch=rename_branch,
         rename_status=rename_status,
         cleanup_removed=removed,
@@ -1060,6 +1071,8 @@ def _validate_finalize_cli_args(
         new_version = data.get("NEW_VERSION", "")
         if bump_type != "NONE" and not new_version:
             raise ValueError("state-file key NEW_VERSION must be non-empty when BUMP_TYPE is not NONE")
+        if bump_type != "NONE" and not _SEMVER_RE.match(new_version):
+            raise ValueError("state-file key NEW_VERSION must be semver when BUMP_TYPE is not NONE")
     else:
         _require_state_keys(data, _COMMON_REQUIRED_KEYS)
         _require_bool_state(data, _COMMON_BOOL_KEYS)

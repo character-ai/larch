@@ -835,7 +835,7 @@ Print: `> **🔶 /implement 17: final report**`
 Run the composed wrapper for rejected findings, best-effort Slack notification, and the terminal `larch:final-summary` projection. Do not branch around this call on early bailouts that still have a tracking issue to update.
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement step-16-17
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement step-16-17 --implement-tmpdir "$IMPLEMENT_TMPDIR"
 ```
 
 The markdown body is produced by `${CLAUDE_PLUGIN_ROOT}/python/cli.py render run-summary` (optional per-lane USD via `${CLAUDE_PLUGIN_ROOT}/python/report_tokens_cost.py`). The dollar-primary cost line lives in the `larch:final-summary` block produced by `python/cli.py render run-summary` and written to `summary-final.md` by `final-report write` without `--print-stdout` on the active path inside `python/cli.py implement step-16-17`.
