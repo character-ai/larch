@@ -699,20 +699,32 @@ def _design_run_launcher_text(pid: str, plugin_root: str) -> str:
         'script=$1\n'
         "shift\n"
         'case "$script" in\n'
-        '  ""|*/*|*..*)\n'
+        r'  ""|*/*|*..*|*\\*|*\;*|*\&*|*\|*|*\$*|*\`*|*\(*|*\)*|*\<*|*\>*|*[[:space:]]*)' "\n"
         "    printf '%s\\n' 'ERROR=invalid design wrapper script name' >&2\n"
         "    exit 2\n"
         "    ;;\n"
         "esac\n"
+        'export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"\n'
         'case "$script" in\n'
-        "  *.sh) ;;\n"
+        "  step0-*.sh|step0c.sh|step1d5.sh|step1d7.sh|step1e-reentry.sh|design-step0-parse.sh|design-step0-session.sh|design-step0-route.sh|design-step0-clarify-hard-halt.sh|design-step0-init.sh|design-step0-abort-cleanup.sh|design-step0-ap-continue.sh|design-step0c.sh|design-step1d5.sh|design-step1d7.sh|design-step1e-reentry.sh)\n"
+        "    printf '%s\\n' 'ERROR=ported design wrapper must use bare verb name, not .sh' >&2\n"
+        "    exit 2\n"
+        "    ;;\n"
+        "  *.sh)\n"
+        '    exec "$PLUGIN_ROOT/skills/design/scripts/$script" --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
+        "    ;;\n"
+        "  step0-parse|step0-session|step0-route|step0-clarify-hard-halt|step0-init|step0-abort-cleanup|step0-ap-continue|step0c|step1d5|step1d7|step1e-reentry)\n"
+        '    exec python3 "$PLUGIN_ROOT/python/cli.py" design "$script" --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
+        "    ;;\n"
+        "  *.*)\n"
+        "    printf '%s\\n' 'ERROR=design verb must be bare and must not end in .sh' >&2\n"
+        "    exit 2\n"
+        "    ;;\n"
         "  *)\n"
-        "    printf '%s\\n' 'ERROR=design wrapper script name must end in .sh' >&2\n"
+        "    printf '%s\\n' 'ERROR=unknown design wrapper verb' >&2\n"
         "    exit 2\n"
         "    ;;\n"
         "esac\n"
-        'export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"\n'
-        'exec "$PLUGIN_ROOT/skills/design/scripts/$script" --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
     )
 
 
@@ -756,6 +768,17 @@ def _validate_design_current_env_link(symlink_path: Path, pid: str) -> None:
         if ancestor == ancestor.parent:
             break
         ancestor = ancestor.parent
+
+
+def resolve_trusted_design_session_env_source(path: Path, claude_pid: str) -> Path | None:
+    if not claude_pid or not path.is_symlink():
+        return None
+    try:
+        _validate_design_current_env_link(path, claude_pid)
+        resolved = path.resolve()
+    except (ValueError, OSError):
+        return None
+    return resolved if resolved.is_file() else None
 
 
 def write_design_env_main(argv: list[str]) -> int:

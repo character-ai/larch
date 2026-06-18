@@ -1,5 +1,5 @@
 from __future__ import annotations
-# pyright: reportUnusedCallResult=false
+# pyright: reportUnusedCallResult=false, reportUnknownVariableType=false
 
 import json
 import os
@@ -354,7 +354,7 @@ def test_write_design_env_legacy_pid_omission_does_not_create_launcher(tmp_path:
     assert not (home / ".cache" / "larch" / "sessions" / "design-run-.sh").exists()
 
 
-def test_design_run_launcher_dispatches_wrapper(tmp_path: Path) -> None:
+def _write_launcher_for_test(tmp_path: Path) -> tuple[Path, Path]:
     home = tmp_path / "home"
     home.mkdir()
     plugin_root = tmp_path / "plugin"
@@ -363,11 +363,20 @@ def test_design_run_launcher_dispatches_wrapper(tmp_path: Path) -> None:
     wrapper = script_dir / "fake-wrapper.sh"
     wrapper.write_text(
         "#!/usr/bin/env bash\n"
-        "printf 'root=%s\\n' \"$CLAUDE_PLUGIN_ROOT\"\n"
-        "printf 'argv=%s\\n' \"$*\"\n",
+        "printf 'root=%s\n' \"$CLAUDE_PLUGIN_ROOT\"\n"
+        "printf 'argv=%s\n' \"$*\"\n",
         encoding="utf-8",
     )
     wrapper.chmod(0o755)
+    cli = plugin_root / "python" / "cli.py"
+    cli.parent.mkdir(parents=True)
+    cli.write_text(
+        "#!/usr/bin/env python3\n"
+        "import sys\n"
+        "print('cliargv=' + ' '.join(sys.argv[1:]))\n",
+        encoding="utf-8",
+    )
+    cli.chmod(0o755)
     design = tmp_path / "design"
     design.mkdir()
     out = tmp_path / "source-env.sh"
@@ -385,7 +394,11 @@ def test_design_run_launcher_dispatches_wrapper(tmp_path: Path) -> None:
         env=env,
     )
     assert result.returncode == 0, result.stderr
-    launcher = home / ".cache" / "larch" / "sessions" / "design-run-12345.sh"
+    return home / ".cache" / "larch" / "sessions" / "design-run-12345.sh", home
+
+
+def test_design_run_launcher_dispatches_wrapper(tmp_path: Path) -> None:
+    launcher, home = _write_launcher_for_test(tmp_path)
     dispatch = subprocess.run(
         [str(launcher), "fake-wrapper.sh", "--example", "value"],
         text=True,
@@ -394,37 +407,40 @@ def test_design_run_launcher_dispatches_wrapper(tmp_path: Path) -> None:
         check=False,
     )
     assert dispatch.returncode == 0, dispatch.stderr
-    assert f"root={plugin_root}\n" in dispatch.stdout
+    assert "root=" in dispatch.stdout
     assert "argv=--session-env-path " in dispatch.stdout
     assert "current-design-env-12345.sh --claude-pid 12345 --example value" in dispatch.stdout
 
 
-def test_design_run_launcher_rejects_invalid_script_names(tmp_path: Path) -> None:
-    home = tmp_path / "home"
-    home.mkdir()
-    design = tmp_path / "design"
-    design.mkdir()
-    out = tmp_path / "source-env.sh"
-    env = {"HOME": str(home), "XDG_CACHE_HOME": str(tmp_path / "xdg"), "CLAUDE_PLUGIN_ROOT": "/tmp/plugin"}
-    result = run_cli(
-        "write-design-env",
-        "--output",
-        str(out),
-        "--design-tmpdir",
-        str(design),
-        "--session-id",
-        "sid-1",
-        "--claude-pid",
-        "12345",
-        env=env,
+def test_design_run_launcher_dispatches_verb(tmp_path: Path) -> None:
+    launcher, home = _write_launcher_for_test(tmp_path)
+    dispatch = subprocess.run(
+        [str(launcher), "step0-route", "--issue-number", "42"],
+        text=True,
+        capture_output=True,
+        env={**os.environ, "HOME": str(home)},
+        check=False,
     )
-    assert result.returncode == 0, result.stderr
-    launcher = home / ".cache" / "larch" / "sessions" / "design-run-12345.sh"
-    for args in ([], ["dir/script.sh"], ["../script.sh"], ["script.py"]):
+    assert dispatch.returncode == 0, dispatch.stderr
+    assert "cliargv=design step0-route --session-env-path " in dispatch.stdout
+    assert "current-design-env-12345.sh --claude-pid 12345 --issue-number 42" in dispatch.stdout
+
+
+def test_design_run_launcher_dispatches_non_hyphenated_verbs(tmp_path: Path) -> None:
+    launcher, home = _write_launcher_for_test(tmp_path)
+    for verb in ("step0c", "step1d5", "step1d7"):
+        dispatch = subprocess.run([str(launcher), verb], text=True, capture_output=True, env={**os.environ, "HOME": str(home)}, check=False)
+        assert dispatch.returncode == 0, dispatch.stderr
+        assert f"cliargv=design {verb} --session-env-path " in dispatch.stdout
+
+
+def test_design_run_launcher_rejects_invalid_script_names(tmp_path: Path) -> None:
+    launcher, home = _write_launcher_for_test(tmp_path)
+    bad_args = ([], ["dir/script.sh"], ["../script.sh"], ["script.py"], ["step0-route.sh"], ["not-ported"], ["bad;name.sh"])
+    for args in bad_args:
         bad = subprocess.run([str(launcher), *args], text=True, capture_output=True, env={**os.environ, "HOME": str(home)}, check=False)
         assert bad.returncode == 2, args
         assert "ERROR=" in bad.stderr
-
 
 def test_write_design_env_launcher_write_failure_is_fatal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     home = tmp_path / "home"

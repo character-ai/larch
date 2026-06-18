@@ -63,7 +63,7 @@ Icons: ✅ done (with elapsed time since launch), ⏳ pending/in-progress, ❌ f
 
 ### Bash block prelude
 
-The Claude Code Bash tool does NOT preserve shell state between calls. Step 0a writes `$DESIGN_TMPDIR/source-env.sh` containing `DESIGN_TMPDIR`, `SESSION_TMPDIR`, `SESSION_ID`, `CLAUDE_PLUGIN_ROOT`, and reviewer presence/availability booleans; Step 0b refreshes the same file once `ISSUE_NUMBER` are known so later Bash blocks do not need to re-read argv. The writer refresh also updates the stable symlink at `~/.cache/larch/sessions/current-design-env-$PPID.sh` and writes `~/.cache/larch/sessions/design-run-$PPID.sh` (keyed on `$PPID` from the **root** Bash-tool subshell for that call; in normal `/design` orchestration this matches the Claude Code process for the session). Do not nest the Step 0 writer or launcher inside an extra `bash` / `bash -c` layer without an explicit `--claude-pid` re-handoff, because `$PPID` would then name an intermediate shell instead. **After Step 0a, every Bash fence invokes `"$HOME/.cache/larch/sessions/design-run-$PPID.sh" <wrapper>.sh ...`; the launcher supplies `--session-env-path` and `--claude-pid`, and wrappers own session rehydration plus pause checks.**
+The Claude Code Bash tool does NOT preserve shell state between calls. Step 0a writes `$DESIGN_TMPDIR/source-env.sh` containing `DESIGN_TMPDIR`, `SESSION_TMPDIR`, `SESSION_ID`, `CLAUDE_PLUGIN_ROOT`, and reviewer presence/availability booleans; Step 0b refreshes the same file once `ISSUE_NUMBER` are known so later Bash blocks do not need to re-read argv. The writer refresh also updates the stable symlink at `~/.cache/larch/sessions/current-design-env-$PPID.sh` and writes `~/.cache/larch/sessions/design-run-$PPID.sh` (keyed on `$PPID` from the **root** Bash-tool subshell for that call; in normal `/design` orchestration this matches the Claude Code process for the session). Do not nest the Step 0 writer or launcher inside an extra `bash` / `bash -c` layer without an explicit `--claude-pid` re-handoff, because `$PPID` would then name an intermediate shell instead. **After Step 0a, ported Step 0/1 Bash fences invoke `"$HOME/.cache/larch/sessions/design-run-$PPID.sh" <verb> ...` with bare Python verb names. Unported clarify and Step 2+ fences keep `*.sh` launcher basenames. The launcher supplies `--session-env-path` and `--claude-pid`, and wrappers own session rehydration plus pause checks.**
 
 ```bash
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step-prelude.sh
@@ -115,34 +115,10 @@ The wrapper-only D3 surface uses these script contracts. Keep direct wrappers an
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-step-validator-autofix.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-step-validator-autofix.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/_dbg-validator.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step0-ap-continue.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step0-ap-continue.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-clarify.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-clarify.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-clarify.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-clarify.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step0-clarify-hard-halt.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step0-clarify-hard-halt.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step0-abort-cleanup.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step0-init.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step0-init.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step0-parse.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step0-parse.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step0-route.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step0-route.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step0-session.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step0-session.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-step0-init.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step0c.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step0c.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step1d5.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step1d5.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-step1d5.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-step1d5.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step1d7.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step1d7.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step1e-reentry.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step1e-reentry.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2a.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2a.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2b-drafter.sh`
@@ -235,7 +211,7 @@ Read `skills/design/references/readability-style.md` as the single source of sty
 
 2. **NEVER mechanically dedupe plan-review findings by string-key clustering** (for example, grouping by the tuple `(focus_area, location, what-prefix)` or writing a Python/shell helper to bucket findings by these fields). **Why:** reviewers routinely phrase the same concern differently across slots — different `file:line` citations, different prefix wording, different `focus_area` assignment — so string-key clustering produces near-zero dedup and inflates ballot size with semantic duplicates. The `/review` code-review path uses an LLM-based aggregator (`python/cli.py review aggregate-findings`); the `/design` plan-review path has no such helper and the dedup is owned by the orchestrator's main-agent judgment. **How to apply:** read each finding's `what`, `scenario_or_breakage`, and `suggested_fix` fields semantically and group by meaning. If the orchestrator is tempted to write a Python/shell helper to mechanically cluster findings, that temptation itself signals the wrong approach — proceed by reading.
 
-3. **NEVER bypass launcher-owned rehydration and pause checks after Step 0a.** **Why:** pause/resume relies on wrappers self-terminating at the next Bash boundary; bypassing the launcher can silently drop a pause request or lose the baked current-env path. **How to apply:** every post-Step-0a Bash fence invokes `"$HOME/.cache/larch/sessions/design-run-$PPID.sh" <wrapper>.sh ...`. The launcher supplies the source-env path and Claude PID. Wrappers own source-env and pause-check behavior internally, including folded sentinel ordering before real work and the Step 6 cleanup exception. The `scripts/test-design-structure.sh` harness enforces wrapper-internal ordering with `assert_wrapper_pause_before_work`.
+3. **NEVER bypass launcher-owned rehydration and pause checks after Step 0a.** **Why:** pause/resume relies on wrappers self-terminating at the next Bash boundary; bypassing the launcher can silently drop a pause request or lose the baked current-env path. **How to apply:** every post-Step-0a Bash fence invokes the launcher with either a bare ported Step 0/1 verb or an unported `*.sh` basename. The launcher supplies the source-env path and Claude PID. Wrappers own source-env and pause-check behavior internally, including folded sentinel ordering before real work and the Step 6 cleanup exception. The `scripts/test-design-structure.sh` harness enforces wrapper-internal ordering with `assert_wrapper_pause_before_work`.
 
 4. **NEVER use the `Monitor` tool anywhere within the `/design` orchestrator.** **Why:** Monitor fires one turn per log line; it is for event streams only. Using it to wait for a background task to complete burns tokens on spurious turns. **How to apply:** use `Bash run_in_background` with `run_in_background: true` and wait for `<task-notification>` for one-shot completion on all Step 3 and Step 5c fences. When a `<task-notification>` fires prematurely with empty output and the underlying process is still running, the only sanctioned exception to the Bash polling-loop ban is one re-launched immediate-background completion waiter: exactly one `Bash run_in_background` task with `until <completion-condition>; do sleep N; done`. Step 3-specific recovery note: the completion condition MUST be `[ -f "$DESIGN_TMPDIR/.completed/step-3" ]`; it MUST NOT be `.step3-review-result.env`.
 
@@ -259,7 +235,7 @@ Print: `> **🔶 /design 0: setup**`
 
 **When**: immediately after reading `references/flags.md` and before invoking the Step 0a Bash block. No `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session setup`, no `DESIGN_TMPDIR`, and no Final summary block on this path.
 
-Run `python/cli.py design parse-argv` as the single authoritative Step 0-pre parser. Render the public `/design` argv as one shell-quoted word per original argv token at `<PUBLIC_ARGV_WORDS>`; keep verbal tails as positional argv, not as a re-tokenized string. The Step 0a session wrapper below invokes `design-step0-parse.sh` with that argv tail before `session setup`; do not invoke a separate parse fence. On parse failure, abort before session setup.
+Run `python/cli.py design parse-argv` as the single authoritative Step 0-pre parser. Render the public `/design` argv as one shell-quoted word per original argv token at `<PUBLIC_ARGV_WORDS>`; keep verbal tails as positional argv, not as a re-tokenized string. The Step 0a Python session verb runs the parser with that argv tail before `session setup`; do not invoke a separate parse fence. On parse failure, abort before session setup.
 
 On success, Step 0b consumes the bound mental booleans, optional `run_id`, `POSITIONAL_KIND`, and `POSITIONAL_VALUE`.
 
@@ -268,8 +244,7 @@ On success, Step 0b consumes the bound mental booleans, optional `run_id`, `POSI
 `/design` no longer creates or checks a feature branch — `/implement` owns the feature-branch lifecycle. Run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session setup` with `--skip-branch-check` unconditionally. **Use a single Bash block below** so `session setup` stdout is parsed and `session write-design-env` runs in the same subshell as the emitted `SESSION_TMPDIR=` / `SESSION_ID=` / reviewer KV lines — do not split setup and writer across separate Bash invocations with bare `$DESIGN_TMPDIR` expansion (Anti-pattern: subshells lose unexported state; a paste can collapse paths to `/source-env.sh`). Parse printed output for `SESSION_TMPDIR`, `SESSION_ID`, `CODEX_BINARY_FOUND`, `CURSOR_BINARY_FOUND`, `CODEX_PRESENT`, and `CURSOR_PRESENT`. Set `DESIGN_TMPDIR` = `SESSION_TMPDIR`. Use the presence keys only for the immediate degraded-tools gate; use binary-found keys for later vendor launch guards. Execution-issues logging always targets `$DESIGN_TMPDIR/execution-issues.md`.
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step0-session.sh" \
-  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" design step0-session \
   --claude-pid "$PPID" \
   --plugin-root "${CLAUDE_PLUGIN_ROOT}" \
   -- <PUBLIC_ARGV_WORDS>
@@ -291,7 +266,7 @@ Parse `STEP0_STATUS`, `DEGRADED`, `BOTH_DOWN`, optional `DEGRADED_HARD_FAIL`, an
 - **`needs-degraded-decision`**: this must be accompanied by `DEGRADED_PROMPT_REQUIRED=true`; the wrapper already printed the explanation block. Fire `AskUserQuestion` with **Continue (reduced panel — unavailable tools dropped, no cross-tool or Claude padding)** / **Abort**; on **Continue**, write `$DESIGN_TMPDIR/.degraded-tools-gate-prompted` and proceed with reduced-panel dispatch; on **Abort**, run:
 
 ```bash
-"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step0-abort-cleanup.sh
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" step0-abort-cleanup
 ```
 
 and stop (run no further steps). **`degraded-both-down-hard-fail`** stops the skill in every mode with no Continue path. The `.degraded-tools-gate-prompted` sentinel is created only after an explicit Continue on the one-down path, and stale sentinels never permit both-down continuation.
@@ -302,10 +277,10 @@ and stop (run no further steps). **`degraded-both-down-hard-fail`** stops the sk
    - `POSITIONAL_KIND=issue` → route with `POSITIONAL_VALUE` as the numeric issue id.
    - `POSITIONAL_KIND=verbal` → invoke **`/larch:issue`** via the Skill tool with `POSITIONAL_VALUE` as the feature text (forward `--no-dedup` when `no_dedup_requested=true`). Parse the created issue number into `ISSUE_NUMBER`, then pass it to the route wrapper. The route driver still applies title-eligibility once the issue is fetched; if verbal text matches reject grammar (e.g. `[IMPLEMENTING] foo`), the freshly created issue is rejected and the operator must rename before retrying.
    - `POSITIONAL_KIND=none` → preserve today's empty-invocation / no-positional behavior; this refactor does not add a new usage error.
-2. **Route driver**: the `design-step0-route.sh` wrapper owns issue fetch with retry, `issue-body.txt` write, `ISSUE_TITLE` binding, `HAS_CLARIFY_LABEL`, `REPO` resolution, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/python/cli.py design route` execution (contract: `design-route.md`), route-state sidecar write, and allowlisted route-result stdout. Resume detection (via `${CLAUDE_PLUGIN_ROOT}/scripts/python/cli.py design pause-load` when the body carries a pause marker), title-eligibility, re-entry guard, cancel reject banners, cancel Final summary rendering, resume env refresh, and `ROUTE=` verdict run inside the wrapper/driver; `AskUserQuestion` gates stay here. `cancel-pause-load` still aborts inside the fence.
+2. **Route driver**: the `design step0-route` verb owns issue fetch with retry, `issue-body.txt` write, `ISSUE_TITLE` binding, `HAS_CLARIFY_LABEL`, `REPO` resolution, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/python/cli.py design route` execution (contract: `design-route.md`), route-state sidecar write, and allowlisted route-result stdout. Resume detection (via `${CLAUDE_PLUGIN_ROOT}/scripts/python/cli.py design pause-load` when the body carries a pause marker), title-eligibility, re-entry guard, cancel reject banners, cancel Final summary rendering, resume env refresh, and `ROUTE=` verdict run inside the wrapper/driver; `AskUserQuestion` gates stay here. `cancel-pause-load` still aborts inside the fence.
 
 ```bash
-"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step0-route.sh --issue-number "${ISSUE_NUMBER:-}"
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" step0-route --issue-number "${ISSUE_NUMBER:-}"
 ```
 
    Parse `ROUTE`, optional `RESUME_STEP`, optional `MARKER_CLEARED`, `ISSUE_NUMBER`, `ISSUE_TITLE`, `HAS_CLARIFY_LABEL`, and optional `REPO` from the wrapper stdout. If `ROUTE` is `cancel-title-filter` or `cancel-reentry-guard`, cancel routes expect fence exit 0: when `[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]`, use the Read tool on that file and write the Read result as plain orchestrator text — emit its full body verbatim as plain chat markdown. Do NOT use a Bash tool call, Python script, or any other tool invocation to extract or print the final-summary body — tool output lands in a collapsible block invisible by default; write the content directly as your own orchestrator text response. Then always terminate `/design` before sub-step 3. Summary emit is mandatory when the file is non-empty; abort happens after emit, not before. Cancel routes always terminate before sub-step 3 even if the summary file is empty/missing or render failed.
@@ -333,7 +308,7 @@ and stop (run no further steps). **`degraded-both-down-hard-fail`** stops the sk
 **Sub-step 4. Already-planned branch** when `ROUTE=already-planned`: `AskUserQuestion` **(a)** replace via full flow, **(b)** ad-hoc Q&A only, **(c)** cancel — on **(c) cancel**, export `SUMMARY_OUTCOME=cancelled-already-planned` and run the **Final summary block** fenced bash block in `### Final summary block` below, then print `**ℹ /design cancelled by operator.**` and exit **0**. On **(b) ad-hoc Q&A only** when mental `brainstorm_requested=true` (from argv or the Step 0b Brainstorm title-prefix auto-enable): ensure `$DESIGN_TMPDIR/run-params.json` exists and contains `brainstorm_requested: true` (write via `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session write-run-params` or `jq` merge without dropping unrelated keys), conduct the Q&A session, then **MANDATORY** execute Step **1d.5** per `${CLAUDE_PLUGIN_ROOT}/skills/design/references/brainstorm.md`. Before the terminal already-planned hygiene / **Final summary block** / exit **0**, write the contiguous completion prefix through `.completed/step-1d.5` (not only the non-contiguous `step-1d.5` marker):
 
 ```bash
-"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step0-ap-continue.sh
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" step0-ap-continue
 ```
 
 Step 1d.7 outline-approval is NOT invoked on the ad-hoc Q&A-only branch because no new plan is being produced; the every-run outline contract applies only to runs that proceed past Step 1d to plan production.
@@ -345,7 +320,7 @@ Debug harness: `skills/design/scripts/_debug-step5c.sh`.
 **Sub-step 6. Write** `$DESIGN_TMPDIR/feature-description.txt` from issue title+body (or verbal prompt) when `ROUTE=proceed` or the operator selected **replace via full flow** from the `ROUTE=already-planned` branch, then invoke `${CLAUDE_PLUGIN_ROOT}/python/cli.py` `design init-runparams` (contract: `design-init-runparams.md`) for env refresh (before rename), `[DESIGNING]` rename, `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session write-run-params`, and router-flag jq-merge. If the design proceeds to Step 2b without a non-empty `feature-description.txt`, stop and repair Step 0 instead of drafting from missing input.
 
 ```bash
-"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step0-init.sh
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" step0-init
 ```
 
 ### Final summary block
@@ -385,7 +360,7 @@ Before plan drafting, run one codebase `Grep` pass for salient symbols from the 
 After the Step 0c grep pass succeeds, run the folded discussion block fence below before continuing to Step 1c.
 
 ```bash
-"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step0c.sh
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" step0c
 ```
 
 <!-- step:1c — Clarifying Questions -->
@@ -407,7 +382,7 @@ Execute the Step 1d body in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/disc
 <!-- step:1d.5 — Brainstorm Panel -->
 
 ```bash
-"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step1d5.sh --mode entry
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" step1d5 --mode entry
 ```
 
 **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/brainstorm.md` completely. Execute the Step 1d.5 body in that file (entry guard prints skip breadcrumbs when brainstorm is off or already complete; the `> **🔶 /design 1d.5: brainstorm**` banner prints **only** from that file after guards pass — not on skip paths).
@@ -415,7 +390,7 @@ Execute the Step 1d body in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/disc
 When Step 1d.5 finishes or is skipped by its entry guard, run:
 
 ```bash
-"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step1d5.sh --mode complete
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" step1d5 --mode complete
 ```
 
 before continuing to Step 1e.
@@ -423,7 +398,7 @@ before continuing to Step 1e.
 <!-- step:1d.7 — Design Outline (Outline-Approval Gate) -->
 
 ```bash
-"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step1d7.sh
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" step1d7
 ```
 
 Bind `skip_approve_requested` from the `SKIP_APPROVE_REQUESTED=` line above. When `skip_approve_requested=true`, auto-approve the Step 1d.7 outline gate: check the entry guard from `references/design-outline.md` as usual (skip when `.outline-approved` exists per the guard), then — when the gate would fire — instead write `$DESIGN_TMPDIR/.outline-approved`, print `⏩ 1d.7: outline — auto-approved (--skip-approve)`, and proceed to Step 2a **without** calling `AskUserQuestion`. When `skip_approve_requested=false`, proceed normally per `references/design-outline.md`.
@@ -437,7 +412,7 @@ Bind `skip_approve_requested` from the `SKIP_APPROVE_REQUESTED=` line above. Whe
 **Gate B(c) / Gate C(b) re-entry only** — when control arrives from backward discussion loops, run this fence **before** Step 1e prose:
 
 ```bash
-"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step1e-reentry.sh
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" step1e-reentry
 ```
 
 Print: `> **🔶 /design 1e: gate A**`

@@ -86,42 +86,30 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent launch-review --tool codex -
 
 ---
 
-## Collection (`python/cli.py agent collect-results`) — externals only
+## Collection (`design-run-$PPID.sh step1d5 --mode collect`) - externals only
 
-**Do not copy-paste a fence verbatim.** The argv below is illustrative only: list **only** the canonical staging paths (`cursor-brainstorm-output.txt` / `codex-brainstorm-output.txt`) for slots you **actually launched as externals** this wave (parent-only / Agent-text fallbacks are **not** launches). Use dynamic argv: one path when a single external ran, two when both ran. Use `timeout: 1260000` on a foreground `python/cli.py agent collect-results` Bash tool call.
+**Do not copy-paste a fence verbatim.** The argv below is illustrative only: list **only** the canonical staging paths (`cursor-brainstorm-output.txt` / `codex-brainstorm-output.txt`) for slots you **actually launched as externals** this wave (parent-only / Agent-text fallbacks are **not** launches). Use dynamic argv: one path when a single external ran, two when both ran. Use `timeout: 1260000` on the foreground Bash tool call so the orchestrator does not kill collection before `agent collect-results --timeout 1260` finishes inside the launcher.
 
 **Example — one external** (e.g. Cursor framing ran; Codex scope was parent-written in-session):
 
 ```bash
-[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent collect-results --timeout 1260 \
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" step1d5 --mode collect -- \
   "$DESIGN_TMPDIR/cursor-brainstorm-output.txt"
 ```
 
 **Example — two externals** (both Cursor framing and Codex scope launched as externals):
 
 ```bash
-[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent collect-results --timeout 1260 \
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" step1d5 --mode collect -- \
   "$DESIGN_TMPDIR/cursor-brainstorm-output.txt" \
   "$DESIGN_TMPDIR/codex-brainstorm-output.txt"
 ```
 
-Guard this call by launched external paths: **omit paths** for slots that were not launched as externals (tool unavailable with parent-written Agent fallback is **not** an external launch). **Never** invoke `python/cli.py agent collect-results` with zero paths.
-
-## Post-collection dirty-tree checkpoint
-
-After the collector returns for whichever externals actually ran, consult `${OUTPUT}.dirty-tree` sidecars, then run:
-
-```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" dirty-tree checkpoint
-```
-
-If dirty/unknown: write `$DESIGN_TMPDIR/dirty-tree-detected.env` with `STAGE=brainstorm-collection` and `RECOVERY_REQUIRED=true`, prompt once per boundary using `$DESIGN_TMPDIR/.dirty-tree-prompted-brainstorm-collection` as the idempotency sentinel.
+Guard this call by launched external paths: **omit paths** for slots that were not launched as externals (tool unavailable with parent-written Agent fallback is **not** an external launch). **Never** invoke collect mode with zero paths. The launcher-owned collect call ingests dirty-tree sidecars, runs the post-collection checkpoint, writes `dirty-tree-detected.env`, and appends external launch failures idempotently.
 
 ## Post-collection dirty-tree recovery
 
-Immediately after `design-step1d5.sh --mode collect` returns:
+Immediately after `design-run-$PPID.sh step1d5 --mode collect` returns:
 
 1. Consult `${OUTPUT}.dirty-tree` sidecars for each canonical staging path you supplied to `--mode collect`.
 2. Read `$DESIGN_TMPDIR/dirty-tree-detected.env`.
