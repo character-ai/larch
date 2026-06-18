@@ -17,7 +17,8 @@ from datetime import datetime, UTC
 from pathlib import Path
 
 import config
-import run_logs
+# run_logs is used only in a function-scoped helper; this closes a benign cycle.
+import run_logs  # pylint: disable=cyclic-import
 
 MAX_PUBLIC_FILE_BYTES = 256_000
 ALLOWLIST_TABLE_COLUMNS = 4

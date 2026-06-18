@@ -1459,7 +1459,7 @@ def test_report_dedup_signature_differs_generic_vs_implement(
         "--artifact-prefix", "design-failure",
         "--primary-state-file", str(state),
     ])
-    capsys.readouterr()
+    _ = capsys.readouterr()
     rc_design = stall_recovery.compose_report_main([
         "--implement-tmpdir", str(design),
         "--profile", "generic",
