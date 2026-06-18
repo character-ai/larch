@@ -25,15 +25,27 @@ def _write_waterfall_stub(tmp_path: Path) -> Path:
         """#!/usr/bin/env bash
 set -euo pipefail
 slots=""
+mode=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --slots-file) slots="${2:?}"; shift 2 ;;
+    --mode) mode="${2:?}"; shift 2 ;;
     --plan-file|--feature-file) shift 2 ;;
-    --codex-present|--cursor-present|--mode|--timeout|--require-first-line-pattern|--no-fallback) shift 2 ;;
+    --codex-present|--cursor-present|--timeout|--require-first-line-pattern|--no-fallback) shift 2 ;;
     *) shift 1 ;;
   esac
 done
 [[ -n "$slots" ]] || exit 2
+# Mirror agent_waterfall.py's accepted set so a regressed dispatcher mode (issue
+# #4747: the unsupported "plan-review") is rejected here exactly as the real
+# waterfall would, instead of being silently accepted.
+case "$mode" in
+  diff|description) ;;
+  *) printf 'dispatch-with-waterfall.sh: --mode must be diff or description\\n' >&2; exit 2 ;;
+esac
+if [[ -n "${WATERFALL_STUB_MODE_OUT:-}" ]]; then
+  printf '%s' "$mode" >"${WATERFALL_STUB_MODE_OUT}"
+fi
 n=$(grep -c . "$slots" || echo 0)
 printf 'DISPATCH_OK=true\\n'
 printf 'FALLBACK_COUNT=0\\n'
@@ -341,3 +353,92 @@ def test_voter_dispatch_stdout_key_order(tmp_path: Path) -> None:
         "DISPATCH_OK",
     ]
     assert _stdout_key_order(proc.stdout) == expected
+
+
+def test_panel_dispatch_passes_waterfall_supported_mode(tmp_path: Path) -> None:
+    # Regression for issue #4747: dispatch_panel must pass a --mode the waterfall
+    # accepts ({diff, description}). It previously passed the unsupported
+    # "plan-review", which the waterfall rejected (exit 2) before launching any
+    # reviewer, silently degrading every /design plan review to panel-failed.
+    design = tmp_path / "design-mode"
+    design.mkdir()
+    _ = (design / "plan.txt").write_text("Plan body.\n", encoding="utf-8")
+    _ = (design / "feature-description.txt").write_text("feat\n", encoding="utf-8")
+    _ = (design / "scout-plan-manifest.json").write_text(json.dumps({"archetypes": []}), encoding="utf-8")
+    log = design / "wf.log"
+    _ = log.write_text("", encoding="utf-8")
+    mode_out = design / "mode.seen"
+    stub = _write_waterfall_stub(tmp_path)
+    proc = run_cli(
+        "plan-review",
+        "panel-dispatch",
+        "--design-tmpdir",
+        str(design),
+        "--codex-present",
+        "true",
+        "--cursor-present",
+        "true",
+        "--plan-file",
+        str(design / "plan.txt"),
+        "--feature-file",
+        str(design / "feature-description.txt"),
+        "--timeout",
+        "60",
+        env={
+            "LARCH_QUIET_DISABLE": "1",
+            "DISPATCH_PLAN_REVIEW_WATERFALL_SH": str(stub),
+            "WATERFALL_STUB_LOG": str(log),
+            "WATERFALL_STUB_PATHS_OUT": str(design / "paths.out"),
+            "WATERFALL_STUB_MODE_OUT": str(mode_out),
+        },
+    )
+    assert proc.returncode == 0, proc.stderr + proc.stdout
+    assert mode_out.read_text(encoding="utf-8") == "description"
+
+
+def test_panel_dispatch_surfaces_waterfall_failure(tmp_path: Path) -> None:
+    # Regression for issue #4747: when dispatch-waterfall exits non-zero, the panel
+    # must surface the real exit code and stderr (durable failure-detail log + KV)
+    # rather than discarding proc.stderr and reporting exit_code=unknown.
+    design = tmp_path / "design-fail"
+    design.mkdir()
+    _ = (design / "plan.txt").write_text("Plan body.\n", encoding="utf-8")
+    _ = (design / "feature-description.txt").write_text("feat\n", encoding="utf-8")
+    _ = (design / "scout-plan-manifest.json").write_text(json.dumps({"archetypes": []}), encoding="utf-8")
+    failing_stub = tmp_path / "waterfall-fail-stub.sh"
+    _ = failing_stub.write_text(
+        "#!/usr/bin/env bash\n"
+        "printf 'dispatch-with-waterfall.sh: --mode must be diff or description\\n' >&2\n"
+        "exit 7\n",
+        encoding="utf-8",
+    )
+    failing_stub.chmod(0o755)
+    proc = run_cli(
+        "plan-review",
+        "panel-dispatch",
+        "--design-tmpdir",
+        str(design),
+        "--codex-present",
+        "true",
+        "--cursor-present",
+        "true",
+        "--plan-file",
+        str(design / "plan.txt"),
+        "--feature-file",
+        str(design / "feature-description.txt"),
+        "--timeout",
+        "60",
+        env={
+            "LARCH_QUIET_DISABLE": "1",
+            "DISPATCH_PLAN_REVIEW_WATERFALL_SH": str(failing_stub),
+        },
+    )
+    assert proc.returncode == 7, proc.stderr + proc.stdout
+    assert "PANEL_DISPATCH_EXIT_CODE=7" in proc.stdout
+    kv = {line.split("=", 1)[0]: line.split("=", 1)[1] for line in proc.stdout.splitlines() if "=" in line}
+    detail_log = Path(kv["PANEL_FAILURE_DETAIL_LOG"])
+    assert detail_log.is_file()
+    detail_text = detail_log.read_text(encoding="utf-8")
+    assert "exited 7" in detail_text
+    assert "--mode must be diff or description" in detail_text
+    assert "--mode must be diff or description" in proc.stderr

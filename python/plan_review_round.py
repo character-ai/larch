@@ -322,6 +322,11 @@ def execute_round(
     panel = _run_cli(panel_args, env={"LARCH_QUIET_DISABLE": "1"})
     out_lines.append(panel.stdout)
     if panel.returncode != 0:
+        # Do not swallow the panel dispatcher's stderr (issue #4747): re-surface it so
+        # the real waterfall failure reaches operator-visible output instead of being
+        # captured and dropped by _run_cli.
+        if panel.stderr:
+            print(panel.stderr, end="" if panel.stderr.endswith("\n") else "\n", file=sys.stderr)
         values.update(
             {
                 "LOOP_STATUS": "panel-failed",

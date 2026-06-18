@@ -307,7 +307,7 @@ def dispatch_panel(argv: Sequence[str]) -> int:
             "--cursor-present",
             ns.cursor_present,
             "--mode",
-            "plan-review",
+            "description",
             "--timeout",
             ns.timeout,
         ],
@@ -317,6 +317,26 @@ def dispatch_panel(argv: Sequence[str]) -> int:
         check=False,
     )
     print(proc.stdout, end="")
+    if proc.returncode != 0:
+        # Stop swallowing the waterfall's error (issue #4747). When dispatch-waterfall
+        # exits non-zero, persist its stderr plus the real exit code to a durable log,
+        # re-surface them on stderr, and emit them as KV so panel-failed is never
+        # diagnostic-free. proc.stderr was previously captured and discarded, leaving
+        # operators with exit_code=unknown and an empty failure_detail_log.
+        failure_log = design / "plan-review-panel-failure.log"
+        detail = proc.stderr or ""
+        _ = failure_log.write_text(
+            f"agent dispatch-waterfall exited {proc.returncode}\n{detail}",
+            encoding="utf-8",
+        )
+        if detail:
+            print(detail, end="" if detail.endswith("\n") else "\n", file=sys.stderr)
+        _emit("PANEL_DISPATCH_EXIT_CODE", proc.returncode)
+        _emit("PANEL_FAILURE_DETAIL_LOG", str(failure_log))
+        _emit("STATIC_SLOT_COUNT", static_count)
+        _emit("DYNAMIC_SLOT_COUNT", len(dynamic))
+        _emit("PANEL_PRUNED_EMPTY", prune_kv.get("PANEL_PRUNED_EMPTY", "false"))
+        return proc.returncode
     kv = _parse_kv(proc.stdout)
     paths_file = kv.get("ALL_OUTPUT_FILES_PATH", "") or str(design / "plan-review-panel-paths.txt")
     _emit("STATIC_SLOT_COUNT", static_count)
