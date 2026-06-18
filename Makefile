@@ -41,7 +41,7 @@ py-lint-main:
 	# pylint runs with all cores when the host supports the required process-pool
 	# semaphore query. Some restricted local sandboxes deny that query, so they
 	# fall back to a single worker. duplicate-code is disabled here (.pylintrc)
-	# and runs single-process in py-lint-duplicate-code.
+	# and runs in the dedicated py-lint-duplicate-code target.
 	cd python && ruff check . && pylint -j $(PYLINT_JOBS) .
 
 py-typecheck:
@@ -52,12 +52,15 @@ py-typecheck:
 py-lint-duplicate-code:
 	@$(PYTHON) -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' \
 		|| (printf '%s\n' "ERROR: make py-lint-duplicate-code requires Python 3.11 or newer (PYTHON=$(PYTHON))" >&2; exit 1)
-	# Duplicate-code (R0801) runs as a dedicated single-process pass: pylint's
-	# similarities checker is incorrect under -j>1 (each worker sees only a slice
-	# of files), so it must run with -j 1. Kept out of `py-lint` (which disables
-	# duplicate-code via .pylintrc) so the main lint pass parallelizes; this is
-	# the CI `python-lint-duplicate-code` job. See issue #4480.
-	cd python && pylint --disable=all --enable=duplicate-code -j 1 .
+	# Duplicate-code (R0801) runs through the larch runner. It uses Pylint
+	# 4.0.5's symilar engine via PyLinter plus SimilaritiesChecker.process_module
+	# ingestion with astroid Module nodes, then parallelizes pair comparisons by
+	# explicit combinations indices on the configured checker-owned Symilar
+	# instance. It does not shard file slices or pre-scan through _iter_sims. Kept
+	# out of `py-lint` (which disables duplicate-code via .pylintrc) so the main
+	# lint pass parallelizes; this is the CI `python-lint-duplicate-code` job. See
+	# issue #4480.
+	$(PYTHON) python/cli.py lint duplicate-code --root python --rcfile python/.pylintrc
 
 py-test:
 	@$(PYTHON) -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' \

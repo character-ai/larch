@@ -14,6 +14,10 @@ RUNTIME_MODULES = sorted(
     if p.name != "__init__.py" and not p.name.startswith("test_") and p.name != "conftest.py"
 )
 
+NON_STDLIB_ALLOWLIST: dict[str, frozenset[str]] = {
+    "duplicate_code": frozenset({"astroid", "pylint"}),
+}
+
 
 def _resolve_import(module_name: str, *, package: str | None) -> str:
     if package and not module_name.startswith("."):
@@ -79,6 +83,8 @@ def test_runtime_modules_are_stdlib_only() -> None:
         path = PYTHON_DIR / f"{mod}.py"
         for lineno, root in _collect_imports(path):
             if root in stdlib or root in sibling:
+                continue
+            if root in NON_STDLIB_ALLOWLIST.get(mod, frozenset()):
                 continue
             violations.append(f"{mod}.py:{lineno}: {root}")
     assert not violations, "non-stdlib imports:\n" + "\n".join(violations)

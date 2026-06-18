@@ -160,6 +160,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("untrusted", "redact-stream"): ("issue_wire", "untrusted_redact_stream_main"),
     ("untrusted", "xml-escape-attr"): ("issue_wire", "untrusted_xml_escape_attr_main"),
     ("lint", "p3119-fence-absence"): ("issue_wire", "lint_p3119_main"),
+    ("lint", "duplicate-code"): ("duplicate_code", "duplicate_code_main"),
     ("issue", "parse-input"): ("issue_create", "parse_input_main"),
     ("issue", "create-one"): ("issue_create", "create_one_main"),
     ("issue", "allocate-candidates"): ("issue_create", "allocate_candidates_main"),
