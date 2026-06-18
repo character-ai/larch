@@ -975,10 +975,51 @@ def test_commit_fixes_stage_all_uses_review_delta_pathspec(tmp_path, monkeypatch
 def test_collect_review_fix_stage_paths_self_review_fallback(tmp_path, monkeypatch):
     impl = _tmp_impl(tmp_path)
     (impl / "self-review-accepted.md").write_text("### [Code Review] Self-review accepted\n", encoding="utf-8")
-    monkeypatch.setattr(review_and_fix, "_capture_round_tracked_paths", lambda: ["fixed.py"])
-    monkeypatch.setattr(review_and_fix, "_capture_round_untracked_paths", lambda: ["new.py"])
+    snap = review_and_fix._self_review_snapshot_dir(impl)
+    snap.mkdir(parents=True)
+    (snap / "pre-self-review-head.txt").write_text("abc123\n", encoding="utf-8")
+    (snap / "pre-self-review-tracked-paths.txt").write_text("notes.txt\n", encoding="utf-8")
+    (snap / "pre-self-review-untracked-paths.txt").write_text("", encoding="utf-8")
+    monkeypatch.setattr(
+        review_and_fix,
+        "_self_review_delta_paths",
+        lambda _impl, _head: ["fixed.py"],
+    )
+    monkeypatch.setattr(
+        review_and_fix,
+        "_self_review_untracked_delta_paths",
+        lambda _impl: ["new.py"],
+    )
     paths = review_and_fix._collect_review_fix_stage_paths(impl)
     assert paths == ["fixed.py", "new.py"]
+
+
+@pytest.mark.commit_fixes
+def test_collect_self_review_stage_paths_excludes_preexisting_dirty(tmp_path, monkeypatch):
+    impl = _tmp_impl(tmp_path)
+    (impl / "self-review-accepted.md").write_text("### [Code Review] Self-review accepted\n", encoding="utf-8")
+    snap = review_and_fix._self_review_snapshot_dir(impl)
+    snap.mkdir(parents=True)
+    (snap / "pre-self-review-head.txt").write_text("abc123\n", encoding="utf-8")
+    (snap / "pre-self-review-tracked-paths.txt").write_text("notes.txt\n", encoding="utf-8")
+    (snap / "pre-self-review-untracked-paths.txt").write_text("", encoding="utf-8")
+    monkeypatch.setattr(
+        review_and_fix,
+        "_self_review_delta_paths",
+        lambda _impl, _head: ["fixed.py"],
+    )
+    monkeypatch.setattr(review_and_fix, "_self_review_untracked_delta_paths", lambda _impl: [])
+    paths = review_and_fix._collect_self_review_stage_paths(impl)
+    assert paths == ["fixed.py"]
+    assert "notes.txt" not in paths
+
+
+@pytest.mark.commit_fixes
+def test_collect_self_review_stage_paths_without_snapshot_returns_empty(tmp_path):
+    impl = _tmp_impl(tmp_path)
+    (impl / "self-review-accepted.md").write_text("### [Code Review] Self-review accepted\n", encoding="utf-8")
+    paths = review_and_fix._collect_self_review_stage_paths(impl)
+    assert not paths
 
 
 @pytest.mark.commit_fixes

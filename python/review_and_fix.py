@@ -936,16 +936,100 @@ def _collect_round_stage_paths(round_dir: Path, *, since_committed: bool = False
     return paths
 
 
+def _self_review_snapshot_dir(implement_tmpdir: Path) -> Path:
+    return implement_tmpdir / "self-review-snapshot"
+
+
+def _write_pre_self_review_snapshot(implement_tmpdir: Path) -> str:
+    snap_dir = _self_review_snapshot_dir(implement_tmpdir)
+    snap_dir.mkdir(parents=True, exist_ok=True)
+    for name in (
+        "pre-self-review-head.txt",
+        "pre-self-review-tracked-paths.txt",
+        "pre-self-review-untracked-paths.txt",
+    ):
+        with contextlib.suppress(FileNotFoundError):
+            (snap_dir / name).unlink()
+    diffs_dir = snap_dir / "pre-self-review-path-diffs"
+    if diffs_dir.is_dir():
+        shutil.rmtree(diffs_dir, ignore_errors=True)
+    head = _git_head()
+    if not head:
+        return ""
+    _write_text(snap_dir / "pre-self-review-head.txt", head + "\n")
+    tracked = _capture_round_tracked_paths()
+    _write_text(snap_dir / "pre-self-review-tracked-paths.txt", "\n".join(tracked) + ("\n" if tracked else ""))
+    untracked = _capture_round_untracked_paths()
+    _write_text(
+        snap_dir / "pre-self-review-untracked-paths.txt",
+        "\n".join(untracked) + ("\n" if untracked else ""),
+    )
+    diffs_dir.mkdir(parents=True, exist_ok=True)
+    for path in tracked:
+        safe = path.replace("/", "__").replace("\\", "__")
+        (diffs_dir / f"{safe}.patch").write_text(_git_output(["diff", head, "--", path]), encoding="utf-8")
+        (diffs_dir / f"{safe}.cached.patch").write_text(
+            _git_output(["diff", "--cached", head, "--", path]),
+            encoding="utf-8",
+        )
+    return head
+
+
+def _path_matches_pre_self_review_snapshot(implement_tmpdir: Path, pre_head: str, path: str) -> bool:
+    snap_dir = _self_review_snapshot_dir(implement_tmpdir)
+    safe = path.replace("/", "__").replace("\\", "__")
+    wt_snap = snap_dir / "pre-self-review-path-diffs" / f"{safe}.patch"
+    idx_snap = snap_dir / "pre-self-review-path-diffs" / f"{safe}.cached.patch"
+    if not wt_snap.is_file() or not idx_snap.is_file():
+        return False
+    wt_diff = _git_output(["diff", pre_head, "--", path])
+    idx_diff = _git_output(["diff", "--cached", pre_head, "--", path])
+    return wt_diff == _read_text(wt_snap) and idx_diff == _read_text(idx_snap)
+
+
+def _self_review_delta_paths(implement_tmpdir: Path, pre_head: str) -> list[str]:
+    snap_dir = _self_review_snapshot_dir(implement_tmpdir)
+    pre_tracked = snap_dir / "pre-self-review-tracked-paths.txt"
+    pre_tracked_set: set[str] = (
+        {line for line in _read_text(pre_tracked).splitlines() if line} if pre_tracked.is_file() else set()
+    )
+    deltas: list[str] = []
+    seen: set[str] = set()
+    for path in _git_output(["diff", "--name-only", pre_head]).splitlines():
+        if not path or path in seen:
+            continue
+        if path in pre_tracked_set and _path_matches_pre_self_review_snapshot(implement_tmpdir, pre_head, path):
+            continue
+        seen.add(path)
+        deltas.append(path)
+    return deltas
+
+
+def _self_review_untracked_delta_paths(implement_tmpdir: Path) -> list[str]:
+    snap_dir = _self_review_snapshot_dir(implement_tmpdir)
+    pre_untracked = {
+        line for line in _read_text(snap_dir / "pre-self-review-untracked-paths.txt").splitlines() if line
+    }
+    return [path for path in _capture_round_untracked_paths() if path not in pre_untracked]
+
+
 def _collect_self_review_stage_paths(implement_tmpdir: Path) -> list[str]:
     if not (implement_tmpdir / "self-review-accepted.md").is_file():
         return []
+    snap_dir = _self_review_snapshot_dir(implement_tmpdir)
+    pre_head_file = snap_dir / "pre-self-review-head.txt"
+    if not pre_head_file.is_file() or not pre_head_file.stat().st_size:
+        return []
+    pre_head = _read_text(pre_head_file).strip()
+    if not pre_head:
+        return []
     paths: list[str] = []
     seen: set[str] = set()
-    for path in _capture_round_tracked_paths():
+    for path in _self_review_delta_paths(implement_tmpdir, pre_head):
         if path not in seen:
             seen.add(path)
             paths.append(path)
-    for path in _capture_round_untracked_paths():
+    for path in _self_review_untracked_delta_paths(implement_tmpdir):
         if path not in seen:
             seen.add(path)
             paths.append(path)
@@ -3152,4 +3236,18 @@ def write_self_review_tally(argv: list[str] | None = None) -> int:
             "Warnings",
             "Step 5 self-review tally emission failed; final report may fall back to Code review: N/A.",
         )
+    return 0
+
+
+def write_pre_self_review_snapshot(argv: list[str] | None = None) -> int:
+    logging_util.quiet_init(argv0="review-and-fix-write-pre-self-review-snapshot")
+    parser = argparse.ArgumentParser(prog="cli.py review-and-fix write-pre-self-review-snapshot")
+    parser.add_argument("--implement-tmpdir", required=True)
+    args = parser.parse_args(argv)
+    implement_tmpdir = Path(args.implement_tmpdir)
+    if not implement_tmpdir.is_dir():
+        _err("write-pre-self-review-snapshot: --implement-tmpdir must name a directory")
+        return 2
+    head = _write_pre_self_review_snapshot(implement_tmpdir)
+    _emit_kv("PRE_SELF_REVIEW_HEAD", head)
     return 0
