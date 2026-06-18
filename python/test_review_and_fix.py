@@ -351,7 +351,7 @@ def test_step5_resume_past_cap_with_prior_artifact(tmp_path, monkeypatch, capsys
 
 
 @MARK_STEP5
-def test_mav_apply_writes_relocated_pre_coder_head_only(tmp_path, monkeypatch):
+def test_mav_apply_writes_relocated_head_and_untracked_snapshot(tmp_path, monkeypatch):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
     findings = impl / "accepted.md"
@@ -364,8 +364,9 @@ def test_mav_apply_writes_relocated_pre_coder_head_only(tmp_path, monkeypatch):
     snap = review_and_fix.pre_coder_snapshot_dir(impl / "round-1")
     assert rc == 0
     assert (snap / "pre-coder-head.txt").is_file()
+    assert (snap / "pre-coder-untracked-paths.txt").is_file()
     assert not (snap / "pre-coder-tracked-paths.txt").exists()
-    assert not (snap / "pre-coder-untracked-paths.txt").exists()
+    assert not (snap / "pre-coder-path-diffs").exists()
     assert not (impl / "round-1" / "pre-coder-head.txt").exists()
 
 
@@ -1298,6 +1299,441 @@ def _mk_git_repo(tmp_path: Path) -> Path:
     review_and_fix._run(["git", "add", "tracked.txt"], cwd=repo)
     review_and_fix._run(["git", "commit", "--quiet", "-m", "initial"], cwd=repo)
     return repo
+
+
+def _coder_findings(tmp_path: Path) -> Path:
+    findings = tmp_path / "findings.md"
+    findings.write_text("### FINDING_1: fix\n- **Severity**: nit\n", encoding="utf-8")
+    return findings
+
+
+def _patch_coder_basics(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_scrub(input_file: Path, output_file: Path, _log_file: Path) -> tuple[bool, int]:
+        shutil.copyfile(input_file, output_file)
+        return True, 0
+
+    monkeypatch.setattr(review_and_fix, "_scrub_findings", fake_scrub)
+    monkeypatch.setattr(review_and_fix, "_submodule_paths", list)
+
+
+def _git_porcelain(repo: Path) -> str:
+    return review_and_fix._run(["git", "status", "--porcelain"], cwd=repo).stdout
+
+
+def _git_cached_names(repo: Path) -> str:
+    return review_and_fix._run(["git", "diff", "--cached", "--name-only"], cwd=repo).stdout
+
+
+@MARK_DISPATCH
+def test_apply_findings_with_coder_failed_cursor_cleans_and_falls_through_to_codex(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _mk_git_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    _patch_coder_basics(monkeypatch)
+    round_dir = tmp_path / "impl" / "round-1"
+
+    def cursor(_round_dir: Path, _prompt: str, _tool_log: Path) -> bool:
+        (repo / "tracked.txt").write_text("cursor\n", encoding="utf-8")
+        review_and_fix._run(["git", "add", "tracked.txt"])
+        return False
+
+    def codex(_round_dir: Path, _prompt: str, tool_log: Path) -> bool:
+        (repo / "tracked.txt").write_text("codex\n", encoding="utf-8")
+        tool_log.write_text("codex\n", encoding="utf-8")
+        return True
+
+    monkeypatch.setattr(review_and_fix, "_run_coder_cursor", cursor)
+    monkeypatch.setattr(review_and_fix, "_run_coder_codex", codex)
+    result = review_and_fix.apply_findings_with_coder(_coder_findings(tmp_path), round_dir, round_dir / "coder.env")
+
+    assert result.rc == 0
+    assert result.tool == "codex"
+    assert result.status == "applied"
+    assert (repo / "tracked.txt").read_text(encoding="utf-8") == "codex\n"
+
+
+@MARK_DISPATCH
+def test_apply_findings_with_coder_commit_failure_cleans_and_falls_through(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _mk_git_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    _patch_coder_basics(monkeypatch)
+    round_dir = tmp_path / "impl" / "round-1"
+
+    def cursor(_round_dir: Path, _prompt: str, tool_log: Path) -> bool:
+        (repo / "tracked.txt").write_text("cursor\n", encoding="utf-8")
+        tool_log.write_text("cursor\n", encoding="utf-8")
+        return True
+
+    def codex(_round_dir: Path, _prompt: str, tool_log: Path) -> bool:
+        tool_log.write_text("codex noop\n", encoding="utf-8")
+        return True
+
+    def fail_commit(_round_num: int, _round_dir: Path) -> str:
+        review_and_fix._run(["git", "add", "tracked.txt"])
+        return ""
+
+    monkeypatch.setattr(review_and_fix, "_run_coder_cursor", cursor)
+    monkeypatch.setattr(review_and_fix, "_run_coder_codex", codex)
+    monkeypatch.setattr(review_and_fix, "_stage_and_commit_round", fail_commit)
+
+    result = review_and_fix.apply_findings_with_coder(
+        _coder_findings(tmp_path),
+        round_dir,
+        round_dir / "coder.env",
+        round_num=1,
+    )
+
+    assert result.rc == 4
+    assert result.tool == "none"
+    assert result.status == "main-agent-required"
+    assert _git_porcelain(repo) == ""
+    assert (repo / "tracked.txt").read_text(encoding="utf-8") == "initial\n"
+
+
+@MARK_DISPATCH
+def test_apply_findings_with_coder_all_coders_exhausted_returns_main_agent_required_clean(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _mk_git_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    _patch_coder_basics(monkeypatch)
+    round_dir = tmp_path / "impl" / "round-1"
+
+    def cursor(_round_dir: Path, _prompt: str, _tool_log: Path) -> bool:
+        (repo / "tracked.txt").write_text("cursor\n", encoding="utf-8")
+        review_and_fix._run(["git", "add", "tracked.txt"])
+        (repo / "newdir").mkdir()
+        (repo / "newdir" / "file.py").write_text("x\n", encoding="utf-8")
+        return False
+
+    monkeypatch.setattr(review_and_fix, "_run_coder_cursor", cursor)
+    monkeypatch.setattr(review_and_fix, "_run_coder_codex", lambda *_a, **_k: False)
+
+    result = review_and_fix.apply_findings_with_coder(_coder_findings(tmp_path), round_dir, round_dir / "coder.env")
+
+    assert result.rc == 4
+    assert result.status == "main-agent-required"
+    assert _git_porcelain(repo) == ""
+    assert not (repo / "newdir").exists()
+
+
+@MARK_DISPATCH
+def test_apply_findings_with_coder_submodule_violation_terminal_but_clean(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _mk_git_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    _patch_coder_basics(monkeypatch)
+    monkeypatch.setattr(review_and_fix, "_submodule_paths", lambda: ["vendor"])
+    round_dir = tmp_path / "impl" / "round-1"
+
+    def cursor(_round_dir: Path, _prompt: str, tool_log: Path) -> bool:
+        (repo / "vendor").mkdir()
+        (repo / "vendor" / "file.txt").write_text("bad\n", encoding="utf-8")
+        tool_log.write_text("cursor\n", encoding="utf-8")
+        return True
+
+    monkeypatch.setattr(review_and_fix, "_run_coder_cursor", cursor)
+    monkeypatch.setattr(review_and_fix, "_run_coder_codex", lambda *_a, **_k: False)
+
+    result = review_and_fix.apply_findings_with_coder(_coder_findings(tmp_path), round_dir, round_dir / "coder.env")
+
+    assert result.rc == 3
+    assert result.status == "submodule-violation"
+    assert _git_porcelain(repo) == ""
+
+
+@MARK_DISPATCH
+def test_apply_findings_with_coder_unavailable_preserves_preexisting_tracked_edit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _mk_git_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    _patch_coder_basics(monkeypatch)
+    (repo / "tracked.txt").write_text("user edit\n", encoding="utf-8")
+    round_dir = tmp_path / "impl" / "round-1"
+
+    monkeypatch.setattr(review_and_fix, "_run_coder_cursor", lambda *_a, **_k: False)
+    monkeypatch.setattr(review_and_fix, "_run_coder_codex", lambda *_a, **_k: False)
+
+    result = review_and_fix.apply_findings_with_coder(_coder_findings(tmp_path), round_dir, round_dir / "coder.env")
+
+    assert result.rc == 4
+    assert (repo / "tracked.txt").read_text(encoding="utf-8") == "user edit\n"
+    assert " M tracked.txt" in _git_porcelain(repo)
+
+
+@MARK_DISPATCH
+def test_apply_findings_with_coder_full_snapshot_preserves_staged_carryover(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _mk_git_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    _patch_coder_basics(monkeypatch)
+    (repo / "carry.txt").write_text("staged\n", encoding="utf-8")
+    review_and_fix._run(["git", "add", "carry.txt"])
+    round_dir = tmp_path / "impl" / "round-1"
+
+    def cursor(_round_dir: Path, _prompt: str, _tool_log: Path) -> bool:
+        (repo / "carry.txt").write_text("coder overwrite\n", encoding="utf-8")
+        return False
+
+    monkeypatch.setattr(review_and_fix, "_run_coder_cursor", cursor)
+    monkeypatch.setattr(review_and_fix, "_run_coder_codex", lambda *_a, **_k: False)
+
+    result = review_and_fix.apply_findings_with_coder(_coder_findings(tmp_path), round_dir, round_dir / "coder.env")
+
+    assert result.rc == 4
+    assert (repo / "carry.txt").read_text(encoding="utf-8") == "staged\n"
+    assert _git_cached_names(repo) == "carry.txt\n"
+
+
+@MARK_DISPATCH
+def test_apply_findings_with_coder_legacy_head_only_not_upgraded_to_full(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _mk_git_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    _patch_coder_basics(monkeypatch)
+    round_dir = tmp_path / "impl" / "round-1"
+    snap = review_and_fix.pre_coder_snapshot_dir(round_dir)
+    snap.mkdir(parents=True)
+    (snap / "pre-coder-head.txt").write_text(review_and_fix._git_head() + "\n", encoding="utf-8")
+
+    monkeypatch.setattr(review_and_fix, "_run_coder_cursor", lambda *_a, **_k: False)
+    monkeypatch.setattr(review_and_fix, "_run_coder_codex", lambda *_a, **_k: False)
+
+    result = review_and_fix.apply_findings_with_coder(_coder_findings(tmp_path), round_dir, round_dir / "coder.env")
+
+    assert result.rc == 4
+    assert not (snap / "pre-coder-tracked-paths.txt").exists()
+    assert (snap / "pre-coder-untracked-paths.txt").is_file()
+
+
+@MARK_DISPATCH
+def test_apply_findings_with_coder_head_only_no_edit_preserves_preexisting_untracked(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _mk_git_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    _patch_coder_basics(monkeypatch)
+    (repo / "stray.txt").write_text("user\n", encoding="utf-8")
+    round_dir = tmp_path / "impl" / "round-1"
+    snap = review_and_fix.pre_coder_snapshot_dir(round_dir)
+    snap.mkdir(parents=True)
+    (snap / "pre-coder-head.txt").write_text(review_and_fix._git_head() + "\n", encoding="utf-8")
+
+    monkeypatch.setattr(review_and_fix, "_run_coder_cursor", lambda *_a, **_k: False)
+    monkeypatch.setattr(review_and_fix, "_run_coder_codex", lambda *_a, **_k: False)
+
+    result = review_and_fix.apply_findings_with_coder(_coder_findings(tmp_path), round_dir, round_dir / "coder.env")
+
+    assert result.rc == 4
+    assert (repo / "stray.txt").read_text(encoding="utf-8") == "user\n"
+
+
+@MARK_DISPATCH
+def test_apply_findings_with_coder_successful_noop_with_baseline_dirt_returns_no_changes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _mk_git_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    _patch_coder_basics(monkeypatch)
+    (repo / "tracked.txt").write_text("user edit\n", encoding="utf-8")
+    round_dir = tmp_path / "impl" / "round-1"
+
+    def cursor(_round_dir: Path, _prompt: str, tool_log: Path) -> bool:
+        tool_log.write_text("noop\n", encoding="utf-8")
+        return True
+
+    monkeypatch.setattr(review_and_fix, "_run_coder_cursor", cursor)
+    monkeypatch.setattr(review_and_fix, "_run_coder_codex", lambda *_a, **_k: False)
+
+    result = review_and_fix.apply_findings_with_coder(_coder_findings(tmp_path), round_dir, round_dir / "coder.env")
+
+    assert result.rc == 0
+    assert result.status == "no-changes"
+    assert (repo / "tracked.txt").read_text(encoding="utf-8") == "user edit\n"
+
+
+@MARK_DISPATCH
+def test_apply_findings_with_coder_failed_coder_new_untracked_directory_removed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _mk_git_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    _patch_coder_basics(monkeypatch)
+    round_dir = tmp_path / "impl" / "round-1"
+
+    def cursor(_round_dir: Path, _prompt: str, _tool_log: Path) -> bool:
+        (repo / "newdir").mkdir()
+        (repo / "newdir" / "file.py").write_text("x\n", encoding="utf-8")
+        return False
+
+    monkeypatch.setattr(review_and_fix, "_run_coder_cursor", cursor)
+    monkeypatch.setattr(review_and_fix, "_run_coder_codex", lambda *_a, **_k: False)
+
+    result = review_and_fix.apply_findings_with_coder(_coder_findings(tmp_path), round_dir, round_dir / "coder.env")
+
+    assert result.rc == 4
+    assert not (repo / "newdir").exists()
+    assert _git_porcelain(repo) == ""
+
+
+@MARK_DISPATCH
+def test_apply_findings_with_coder_head_only_successful_noedit_does_not_stage_preexisting_untracked(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _mk_git_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    _patch_coder_basics(monkeypatch)
+    (repo / "stray.txt").write_text("user\n", encoding="utf-8")
+    round_dir = tmp_path / "impl" / "round-1"
+    snap = review_and_fix.pre_coder_snapshot_dir(round_dir)
+    snap.mkdir(parents=True)
+    (snap / "pre-coder-head.txt").write_text(review_and_fix._git_head() + "\n", encoding="utf-8")
+
+    def cursor(_round_dir: Path, _prompt: str, tool_log: Path) -> bool:
+        tool_log.write_text("noop\n", encoding="utf-8")
+        return True
+
+    monkeypatch.setattr(review_and_fix, "_run_coder_cursor", cursor)
+    monkeypatch.setattr(review_and_fix, "_run_coder_codex", lambda *_a, **_k: False)
+
+    result = review_and_fix.apply_findings_with_coder(
+        _coder_findings(tmp_path),
+        round_dir,
+        round_dir / "coder.env",
+        round_num=1,
+    )
+
+    assert result.rc == 0
+    assert result.status == "no-changes"
+    assert (repo / "stray.txt").is_file()
+    assert _git_cached_names(repo) == ""
+
+
+@MARK_DISPATCH
+def test_apply_findings_with_coder_cleanup_verification_failure_stops_without_staged_residue(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _mk_git_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    _patch_coder_basics(monkeypatch)
+    round_dir = tmp_path / "impl" / "round-1"
+
+    def cursor(_round_dir: Path, _prompt: str, _tool_log: Path) -> bool:
+        (repo / "tracked.txt").write_text("cursor\n", encoding="utf-8")
+        review_and_fix._run(["git", "add", "tracked.txt"])
+        return False
+
+    monkeypatch.setattr(review_and_fix, "_run_coder_cursor", cursor)
+    monkeypatch.setattr(review_and_fix, "_run_coder_codex", lambda *_a, **_k: True)
+    monkeypatch.setattr(review_and_fix, "_verify_post_cleanup_state", lambda *_a, **_k: (False, "forced failure"))
+
+    result = review_and_fix.apply_findings_with_coder(_coder_findings(tmp_path), round_dir, round_dir / "coder.env")
+
+    assert result.rc == 2
+    assert result.status == "failed"
+    assert _git_cached_names(repo) == ""
+    assert _git_porcelain(repo) == ""
+
+
+@MARK_DISPATCH
+def test_apply_findings_with_coder_finalize_preserves_staged_carryover(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _mk_git_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    _patch_coder_basics(monkeypatch)
+    (repo / "carry.txt").write_text("staged\n", encoding="utf-8")
+    review_and_fix._run(["git", "add", "carry.txt"])
+    round_dir = tmp_path / "impl" / "round-1"
+
+    def cursor(_round_dir: Path, _prompt: str, _tool_log: Path) -> bool:
+        (repo / "carry.txt").write_text("coder overwrite\n", encoding="utf-8")
+        return False
+
+    monkeypatch.setattr(review_and_fix, "_run_coder_cursor", cursor)
+    monkeypatch.setattr(review_and_fix, "_run_coder_codex", lambda *_a, **_k: True)
+    monkeypatch.setattr(review_and_fix, "_verify_post_cleanup_state", lambda *_a, **_k: (False, "forced failure"))
+
+    result = review_and_fix.apply_findings_with_coder(_coder_findings(tmp_path), round_dir, round_dir / "coder.env")
+
+    assert result.rc == 2
+    assert result.status == "failed"
+    assert (repo / "carry.txt").read_text(encoding="utf-8") == "staged\n"
+    assert _git_cached_names(repo) == "carry.txt\n"
+
+
+@MARK_DISPATCH
+def test_apply_findings_with_coder_stale_snapshot_entry_finalizes_before_failed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _mk_git_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    _patch_coder_basics(monkeypatch)
+    round_dir = tmp_path / "impl" / "round-1"
+    review_and_fix._write_pre_coder_snapshot(round_dir)
+    (repo / "tracked.txt").write_text("committed advance\n", encoding="utf-8")
+    review_and_fix._run(["git", "add", "tracked.txt"])
+    review_and_fix._run(["git", "commit", "--quiet", "-m", "advance head"])
+    (repo / "tracked.txt").write_text("staged residue\n", encoding="utf-8")
+    review_and_fix._run(["git", "add", "tracked.txt"])
+
+    result = review_and_fix.apply_findings_with_coder(_coder_findings(tmp_path), round_dir, round_dir / "coder.env")
+
+    assert result.rc == 2
+    assert result.tool == "none"
+    assert result.status == "failed"
+    assert "cleanup failure: stale pre-coder snapshot" in (round_dir / "coder-cleanup.log").read_text(encoding="utf-8")
+
+
+@MARK_DISPATCH
+def test_apply_findings_with_coder_head_untracked_preserves_staged_carryover(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _mk_git_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    _patch_coder_basics(monkeypatch)
+    (repo / "carry.txt").write_text("staged\n", encoding="utf-8")
+    review_and_fix._run(["git", "add", "carry.txt"])
+    round_dir = tmp_path / "impl" / "round-1"
+    snap = review_and_fix.pre_coder_snapshot_dir(round_dir)
+    snap.mkdir(parents=True)
+    (snap / "pre-coder-head.txt").write_text(review_and_fix._git_head() + "\n", encoding="utf-8")
+
+    def cursor(_round_dir: Path, _prompt: str, _tool_log: Path) -> bool:
+        (repo / "carry.txt").write_text("coder overwrite\n", encoding="utf-8")
+        review_and_fix._run(["git", "add", "carry.txt"])
+        return False
+
+    monkeypatch.setattr(review_and_fix, "_run_coder_cursor", cursor)
+    monkeypatch.setattr(review_and_fix, "_run_coder_codex", lambda *_a, **_k: False)
+
+    result = review_and_fix.apply_findings_with_coder(_coder_findings(tmp_path), round_dir, round_dir / "coder.env")
+
+    assert result.rc == 4
+    assert (repo / "carry.txt").read_text(encoding="utf-8") == "staged\n"
+    assert _git_cached_names(repo) == "carry.txt\n"
 
 
 @MARK_CHECK_CHANGES
