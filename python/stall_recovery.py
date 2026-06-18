@@ -9,6 +9,7 @@ import contextlib
 import hashlib
 import os
 import re
+import stat
 import subprocess
 import sys
 from collections.abc import Mapping
@@ -192,6 +193,95 @@ def _read_optional_evidence(path: Path) -> str:
         return ""
 
 
+def validate_failure_detail_log(tmpdir: Path, path: Path, *, flag: str = "--failure-detail-log") -> bool:
+    if not path.is_absolute():
+        print(f"stall-recovery: {flag} must be absolute", file=sys.stderr)
+        return False
+    if path.is_symlink():
+        print(f"stall-recovery: {flag} must not be a symlink", file=sys.stderr)
+        return False
+    try:
+        _ = path.resolve().relative_to(tmpdir.resolve())
+    except ValueError:
+        print(f"stall-recovery: {flag} outside implement tmpdir", file=sys.stderr)
+        return False
+    except OSError:
+        print(f"stall-recovery: {flag} outside implement tmpdir", file=sys.stderr)
+        return False
+    if not path.is_file():
+        print(f"stall-recovery: {flag} outside implement tmpdir", file=sys.stderr)
+        return False
+    try:
+        if path.stat().st_size > MAX_OPTIONAL_EVIDENCE_BYTES:
+            print(f"stall-recovery: {flag} exceeds 64KiB", file=sys.stderr)
+            return False
+    except OSError:
+        print(f"stall-recovery: {flag} unreadable", file=sys.stderr)
+        return False
+    return True
+
+
+def _read_validated_failure_detail_log(tmpdir: Path, path: Path) -> tuple[str, bool]:
+    if not validate_failure_detail_log(tmpdir, path):
+        return "", False
+    flags = os.O_RDONLY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    fd: int | None = None
+    try:
+        fd = os.open(path, flags)
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode):
+            print("stall-recovery: --failure-detail-log must be regular", file=sys.stderr)
+            return "", False
+        if st.st_size > MAX_OPTIONAL_EVIDENCE_BYTES:
+            print("stall-recovery: --failure-detail-log exceeds 64KiB", file=sys.stderr)
+            return "", False
+        with os.fdopen(fd, "rb") as handle:
+            fd = None
+            return handle.read(MAX_OPTIONAL_EVIDENCE_BYTES).decode("utf-8", errors="replace"), True
+    except OSError as exc:
+        if exc.errno == getattr(os, "ELOOP", 40):
+            print("stall-recovery: --failure-detail-log must not be a symlink", file=sys.stderr)
+        else:
+            print("stall-recovery: --failure-detail-log unreadable", file=sys.stderr)
+        return "", False
+    finally:
+        if fd is not None:
+            os.close(fd)
+
+
+def _validate_attempts_file_path(tmpdir: Path, path: Path) -> bool:
+    if not path.is_absolute():
+        print("stall-recovery: --attempts-file must be absolute", file=sys.stderr)
+        return False
+    if path.is_symlink():
+        print("stall-recovery: --attempts-file must not be a symlink", file=sys.stderr)
+        return False
+    try:
+        _ = path.resolve().relative_to(tmpdir.resolve())
+    except ValueError:
+        print("stall-recovery: --attempts-file outside implement tmpdir", file=sys.stderr)
+        return False
+    except OSError:
+        print("stall-recovery: --attempts-file outside implement tmpdir", file=sys.stderr)
+        return False
+    if path.exists() and not path.is_file():
+        print("stall-recovery: --attempts-file outside implement tmpdir", file=sys.stderr)
+        return False
+    return True
+
+
+def _check_implement_primary_state_preflight(state_file: Path) -> bool:
+    if state_file.is_symlink():
+        print("stall-recovery: symlinked ship-pr-state.sh", file=sys.stderr)
+        return False
+    if state_file.is_file() and not _state_file_syntax_ok(state_file):
+        print("stall-recovery: malformed ship-pr-state.sh", file=sys.stderr)
+        return False
+    return True
+
+
 def _read_state_file(path: Path) -> dict[str, str]:
     out: dict[str, str] = {}
     if path.is_file():
@@ -268,6 +358,9 @@ def classify(args: argparse.Namespace) -> int:
 
     finalize_state_file = getattr(args, "finalize_state_file", "") or ""
     session_env_file = getattr(args, "session_env_file", "") or ""
+    state_file = Path(primary_state_file) if primary_state_file else tmpdir / "ship-pr-state.sh"
+    if not _check_implement_primary_state_preflight(state_file):
+        return 3
     st = _merged_state(
         tmpdir,
         primary_state_file=primary_state_file,
@@ -280,21 +373,22 @@ def classify(args: argparse.Namespace) -> int:
     bail_raw = (bail.splitlines()[0] if bail else "")
     detail = ""
     detail_log_valid = False
+    failure_detail_log_value = ""
     if args.failure_detail_log:
         detail_path = Path(args.failure_detail_log)
-        if detail_path.is_file() and _validate_tmpdir_local_file(tmpdir, detail_path):
-            detail = detail_path.read_text(encoding="utf-8", errors="replace")[:8192]
-            detail_log_valid = True
+        detail, detail_log_valid = _read_validated_failure_detail_log(tmpdir, detail_path)
+        if detail_log_valid:
+            failure_detail_log_value = args.failure_detail_log
     memory_stall = getattr(args, "in_memory_stall_tracking", "")
-    primary_stall = _read_state_file(Path(primary_state_file) if primary_state_file else tmpdir / "ship-pr-state.sh").get("STALL_TRACKING", "false")
+    primary_stall = _read_state_file(state_file).get("STALL_TRACKING", "false")
     finalize_stall = _read_state_file(Path(finalize_state_file) if finalize_state_file else tmpdir / "finalize-state.sh").get("STALL_TRACKING", "false")
     session_stall = _read_state_file(Path(session_env_file) if session_env_file else tmpdir / "session-env.sh").get("STALL_TRACKING", "false")
     any_stall = _truthy(memory_stall) or _truthy(primary_stall) or _truthy(finalize_stall) or _truthy(session_stall)
     evidence = detail
     if not detail_log_valid:
         for name in ("ship-pr-state.sh", "finalize-state.sh", "session-env.sh"):
-            state_file = tmpdir / name
-            evidence = f"{evidence}\n{_read_optional_evidence(state_file)}"
+            state_path = tmpdir / name
+            evidence = f"{evidence}\n{_read_optional_evidence(state_path)}"
     if not any_stall:
         klass, hint, pattern = ("unrecoverable", "none", "no-stall")
     else:
@@ -303,27 +397,31 @@ def classify(args: argparse.Namespace) -> int:
     signature = hashlib.sha256(
         f"class={klass}\nhint={hint}\nstep={step}\nphase={phase}\nbail={bail}\nevidence={evidence_digest}\n".encode(),
     ).hexdigest()
-    attempts = Path(args.attempts_file) if args.attempts_file else tmpdir / _DEFAULT_ATTEMPTS_FILE
-    if attempts.is_file() and klass not in {"contract-failure", "unrecoverable"} and _latest_attempt_signature(attempts) == signature:
-        klass = "same-cause-repeat"
-        hint = "none"
-        pattern = "same-cause-repeat"
+    if args.attempts_file:
+        attempts = Path(args.attempts_file)
+        if not _validate_attempts_file_path(tmpdir, attempts):
+            return 1
+        if attempts.is_file() and klass not in {"contract-failure", "unrecoverable"} and _latest_attempt_signature(attempts) == signature:
+            klass = "same-cause-repeat"
+            hint = "none"
+            pattern = "same-cause-repeat"
     classification_file = _artifact_path(tmpdir, _DEFAULT_CLASSIFICATION_FILE, getattr(args, "artifact_prefix", "") or "")
     raw_exit_code = args.exit_code or st.get("EXIT_CODE", "unknown")
     exit_code = raw_exit_code if re.fullmatch(r"[0-9]+|unknown", raw_exit_code or "") else "unknown"
+    raw_dispatcher = args.dispatcher or st.get("DISPATCHER", "") or st.get("CODER_TOOL", "")
     values = {
         "FAILURE_CLASS": klass,
         "FAILURE_SIGNATURE": signature,
         "RESUME_HINT": hint,
-        "STALL_STEP": step,
-        "PHASE": phase,
+        "STALL_STEP": _safe_step_value(step),
+        "PHASE": _safe_phase_value(phase),
         "STALL_TRACKING": "true" if any_stall else "false",
         "BAIL_REASON": _render_safe_bail_reason_value(bail, generic=False),
         "BAIL_REASON_RAW": bail_raw,
-        "FAILURE_DETAIL_LOG": args.failure_detail_log if detail_log_valid else "",
+        "FAILURE_DETAIL_LOG": failure_detail_log_value,
         "EXIT_CODE": exit_code,
         "MATCHED_CLASSIFIER_PATTERN": _safe_matched_pattern_value(pattern),
-        "DISPATCHER": args.dispatcher or st.get("DISPATCHER", "") or st.get("CODER_TOOL", ""),
+        "DISPATCHER": _safe_dispatcher_value(raw_dispatcher, generic=False),
     }
     for k, v in values.items():
         emit(k, v)
@@ -349,10 +447,9 @@ def _classify_generic_from_terminal_state(args: argparse.Namespace, tmpdir: Path
     detail_log_valid = False
     if detail_log:
         detail_path = Path(detail_log)
-        if _validate_tmpdir_local_file(tmpdir, detail_path):
-            evidence = detail_path.read_text(encoding="utf-8", errors="replace")[:MAX_OPTIONAL_EVIDENCE_BYTES]
+        evidence, detail_log_valid = _read_validated_failure_detail_log(tmpdir, detail_path)
+        if detail_log_valid:
             failure_detail_log_value = detail_log
-            detail_log_valid = True
     if not detail_log_valid:
         evidence = _read_optional_evidence(state_file)
     klass, _hint, pattern = _classify_text(evidence, bail_reason, stall_step, phase, detail_log_valid=detail_log_valid)
@@ -365,10 +462,13 @@ def _classify_generic_from_terminal_state(args: argparse.Namespace, tmpdir: Path
             f"step={stall_step}\nphase={phase}\nbail={bail_reason}\nevidence={evidence_digest}\n"
         ).encode(),
     ).hexdigest()
-    attempts = Path(args.attempts_file) if args.attempts_file else _artifact_path(tmpdir, _DEFAULT_ATTEMPTS_FILE, prefix)
-    if attempts.is_file() and klass not in {"contract-failure", "unrecoverable"} and _latest_attempt_signature(attempts) == signature:
-        klass = "same-cause-repeat"
-        pattern = "same-cause-repeat"
+    if args.attempts_file:
+        attempts = Path(args.attempts_file)
+        if not _validate_attempts_file_path(tmpdir, attempts):
+            return 1
+        if attempts.is_file() and klass not in {"contract-failure", "unrecoverable"} and _latest_attempt_signature(attempts) == signature:
+            klass = "same-cause-repeat"
+            pattern = "same-cause-repeat"
     exit_code = exit_code if re.fullmatch(r"[0-9]+|unknown", exit_code or "") else "unknown"
     values = {
         "FAILURE_CLASS": klass,
@@ -395,6 +495,8 @@ def _classify_generic_from_terminal_state(args: argparse.Namespace, tmpdir: Path
 def init_attempts(args: argparse.Namespace) -> int:
     tmpdir = Path(args.implement_tmpdir)
     path = Path(args.attempts_file) if args.attempts_file else tmpdir / "stall-recovery-attempts.env"
+    if not _validate_attempts_file_path(tmpdir, path):
+        return 1
     if not _validate_tmpdir_write_path(tmpdir, path):
         print("stall-recovery: --attempts-file outside implement tmpdir", file=sys.stderr)
         return 1
@@ -406,6 +508,8 @@ def init_attempts(args: argparse.Namespace) -> int:
 def record_attempt(args: argparse.Namespace) -> int:
     tmpdir = Path(args.implement_tmpdir)
     path = Path(args.attempts_file) if args.attempts_file else tmpdir / "stall-recovery-attempts.env"
+    if not _validate_attempts_file_path(tmpdir, path):
+        return 1
     if not _validate_tmpdir_write_path(tmpdir, path):
         print("stall-recovery: --attempts-file outside implement tmpdir", file=sys.stderr)
         return 1
@@ -547,6 +651,9 @@ def normalize_outcome(args: argparse.Namespace) -> int:
 def normalize_issue_env(args: argparse.Namespace) -> int:
     tmpdir = Path(args.implement_tmpdir)
     out = Path(args.issue_stdout_file)
+    if not _validate_tmpdir_local_file(tmpdir, out):
+        print("stall-recovery: --issue-stdout-file outside implement tmpdir", file=sys.stderr)
+        return 1
     env = tmpdir / "stall-recovery-issue.env"
     def fail(reason: str) -> int:
         with contextlib.suppress(OSError):
@@ -601,7 +708,7 @@ def record_escalation(args: argparse.Namespace) -> int:
     detail_log = getattr(args, "failure_detail_log", "") or ""
     if detail_log:
         detail_path = Path(detail_log)
-        if not _validate_tmpdir_local_file(tmpdir, detail_path):
+        if not validate_failure_detail_log(tmpdir, detail_path):
             print("stall-recovery: --failure-detail-log invalid", file=sys.stderr)
             return 1
         try:
@@ -610,6 +717,11 @@ def record_escalation(args: argparse.Namespace) -> int:
         except ValueError:
             rel_log = "redacted"
     ledger = _artifact_path(tmpdir, "stall-recovery-escalation-ledger.tsv", prefix)
+    fallback = _artifact_path(tmpdir, _DEFAULT_ESCALATION_FALLBACK, prefix)
+    marker = _artifact_path(tmpdir, _DEFAULT_RECORD_FAILURE_MARKER, prefix)
+    if not _validate_tmpdir_write_path(tmpdir, ledger):
+        print("stall-recovery: record-escalation ledger path invalid", file=sys.stderr)
+        return 1
     row = (
         f"utc={datetime.now(UTC).isoformat()}\tsite={site}\ttrigger={trigger}\tstep={step}\tphase={phase}"
         f"\tdispatcher={dispatcher}\texit_code={exit_code}\tfailure_detail_log={rel_log}\n"
@@ -624,6 +736,9 @@ def record_escalation(args: argparse.Namespace) -> int:
     except OSError:
         marker = _artifact_path(tmpdir, _DEFAULT_RECORD_FAILURE_MARKER, prefix)
         fallback = _artifact_path(tmpdir, _DEFAULT_ESCALATION_FALLBACK, prefix)
+        if not _validate_tmpdir_write_path(tmpdir, fallback) or not _validate_tmpdir_write_path(tmpdir, marker):
+            print("stall-recovery: record-escalation fallback path invalid", file=sys.stderr)
+            return 1
         marker.write_text("RECORD_ESCALATION_FAILED=true\nREASON=canonical-ledger-not-writable\n", encoding="utf-8")
         fallback.write_text(row, encoding="utf-8")
         emit("ESCALATION_RECORDED", "false")
@@ -958,6 +1073,8 @@ def _terminal_state_value_valid(key: str, value: str, tmpdir: Path, *, generic: 
 def _validated_terminal_state_values(tmpdir: Path, state_file: Path, *, generic: bool) -> dict[str, str] | None:
     if not tmpdir.is_dir() or not state_file.is_file():
         return None
+    if not _validate_tmpdir_local_file(tmpdir, state_file):
+        return None
     found: dict[str, str] = {}
     for raw in state_file.read_text(encoding="utf-8", errors="replace").splitlines():
         line = raw.strip()
@@ -1007,6 +1124,22 @@ _SENSITIVE_TOKEN_ALLOWLIST = frozenset({
 })
 
 
+_SENSITIVE_ASSIGNMENT_RE = re.compile(r"(?:^|[\s(])([A-Z][A-Z0-9_]{2,})=([^\s]{3,})")
+
+
+def _candidate_has_sensitive_assignment(candidate_text: str) -> bool:
+    for match in _SENSITIVE_ASSIGNMENT_RE.finditer(candidate_text):
+        value = match.group(2).rstrip(".,;:)")
+        key = match.group(1)
+        if key in {"RUN_ID", "LARCH_TOKEN_SESSION_ID"} and re.fullmatch(r"[A-Za-z0-9._:-]+", value):
+            continue
+        if key in {"LARCH_PLUGIN_VERSION", "LARCH_VERSION"} and re.fullmatch(r"[A-Za-z0-9._+-]+", value):
+            continue
+        if not _sensitive_value_is_allowlisted(value):
+            return True
+    return False
+
+
 def _sensitive_token_rejects_file(corpus_path: Path, candidate_path: Path) -> bool:
     if not corpus_path.is_file():
         return False
@@ -1035,7 +1168,11 @@ def _sensitive_token_rejects_file(corpus_path: Path, candidate_path: Path) -> bo
             return True
     if re.search(r"https?://|git@github\.com:|github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", candidate_text):
         return True
-    return bool(re.search(r"(^|[\s`(])/(Users|home|private|tmp|var|Volumes)/[^\s`)]+", candidate_text))
+    if re.search(r"(^|[\s`(])/(Users|home|private|tmp|var|Volumes)/[^\s`)]+", candidate_text):
+        return True
+    if re.search(r"(^|[\s`(])[A-Za-z0-9_.-]{2,}/[A-Za-z0-9_./-]{2,}", candidate_text):
+        return True
+    return _candidate_has_sensitive_assignment(candidate_text)
 
 
 def _sensitive_value_is_allowlisted(value: str) -> bool:
@@ -1100,7 +1237,8 @@ def build_sensitive_corpus_from_evidence(
     detail_log = read_kv(class_file, "FAILURE_DETAIL_LOG", "")
     if detail_log:
         detail_path = Path(detail_log)
-        if _validate_tmpdir_local_file(tmpdir, detail_path):
+        _, detail_valid = _read_validated_failure_detail_log(tmpdir, detail_path)
+        if detail_valid:
             sources.append(detail_path)
     lines: list[str] = []
     for src in sources:
@@ -1471,6 +1609,16 @@ def _safe_phase_value(value: str) -> str:
     return value if value == "unknown" else "unknown"
 
 
+def _safe_dispatcher_value(value: str, *, generic: bool = False) -> str:
+    if not value:
+        return "unknown"
+    if value in {"codex", "cursor", "claude", "bash", "python", "ship-pr", "lint-fix-loop", "run-step5-review"}:
+        return value
+    if generic and value in _GENERIC_SOURCE_SCRIPTS:
+        return value
+    return "redacted"
+
+
 def _safe_bail_value(value: str) -> str:
     if not value:
         return "none"
@@ -1655,9 +1803,11 @@ def _compose_tier_a_issue(
     ]
     if _record_escalation_tool_failure_present(tmpdir):
         body.append("\n## Record-escalation Tool Failure\n\n- tagged record-escalation Tool Failure present\n")
-    detail = read_kv(class_file, "FAILURE_DETAIL_LOG", "")
-    if detail and _validate_tmpdir_local_file(tmpdir, Path(detail)):
-        body.append("\n## Validated failure-detail log\n\n" + Path(detail).read_text(encoding="utf-8", errors="replace") + "\n")
+    detail_log = read_kv(class_file, "FAILURE_DETAIL_LOG", "")
+    if detail_log:
+        detail_content, detail_valid = _read_validated_failure_detail_log(tmpdir, Path(detail_log))
+        if detail_valid:
+            body.append("\n## Validated failure-detail log\n\n" + detail_content + "\n")
     body.append(_append_file_section("Run-log pointer", tmpdir / "run-log-pointer.txt"))
     return "\n".join(part for part in body if part)
 
