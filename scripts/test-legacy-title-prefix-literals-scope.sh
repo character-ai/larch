@@ -15,11 +15,11 @@ ALLOW=(
   SECURITY.md
   docs/linting.md
   python/admission.py
+  python/preflight.py
   python/issue_wire.py
   python/tracking_issue.py
   python/test_admission.py
   scripts/test-legacy-title-prefix-literals-scope.sh
-  python/preflight.py
   python/test_issue_wire.py
   python/test_tracking_issue.py
 )

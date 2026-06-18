@@ -68,7 +68,10 @@ WRITE_DESIGN_ENV_KEYS = frozenset({
     "CLAUDE_PLUGIN_ROOT",
 })
 RUN_FLAG_KEYS = frozenset({"QUICK_MODE", "NO_ISSUES", "EMERGENCY_REQUESTED", "SELF_REVIEW_REQUESTED"})
-RESTORE_FINALIZE_KEYS = (
+# Core finalize state-file keys shared with finalize._COMMON_REQUIRED_KEYS.
+# Single source of truth so the two lists cannot drift (and to avoid
+# duplicate-code, pylint R0801).
+FINALIZE_STATE_CORE_KEYS = (
     "BRANCH_NAME",
     "PR_NUMBER",
     "PR_TITLE",
@@ -83,6 +86,9 @@ RESTORE_FINALIZE_KEYS = (
     "DESIGN_ONLY_DONE",
     "BAIL_NEEDS_USER_INPUT",
     "STALL_TRACKING",
+)
+RESTORE_FINALIZE_KEYS = (
+    *FINALIZE_STATE_CORE_KEYS,
     "STALL_STEP",
     "DONE_RENAME_APPLIED",
     "RUN_ID",

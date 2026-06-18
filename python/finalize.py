@@ -987,20 +987,7 @@ def _require_bool_state(data: Mapping[str, str], keys: tuple[str, ...]) -> None:
 
 
 _COMMON_REQUIRED_KEYS = (
-    "BRANCH_NAME",
-    "PR_NUMBER",
-    "PR_TITLE",
-    "PR_URL",
-    "ISSUE_NUMBER",
-    "REPO",
-    "DRAFT",
-    "MERGE",
-    "DEFERRED",
-    "REPO_UNAVAILABLE",
-    "PR_CLOSED",
-    "DESIGN_ONLY_DONE",
-    "BAIL_NEEDS_USER_INPUT",
-    "STALL_TRACKING",
+    *session_env.FINALIZE_STATE_CORE_KEYS,
     "DONE_RENAME_APPLIED",
 )
 _COMMON_BOOL_KEYS = (

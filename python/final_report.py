@@ -28,18 +28,11 @@ _EXEC_ISSUE_HEADINGS = frozenset({"### Tool Failures", "### External Reviewer Is
 _OOS_FILED_URL_LINE_RE = re.compile(r"^[ \t]*-[ \t]+\*\*Filed[ \t]URL\*\*[ \t]*:[ \t]+(https://[^\s]+/issues/\d+)", re.MULTILINE)
 
 
-def _emit_kv(key: str, value: object) -> None:
-    print(f"{key}={value}")
+# Reuse pr_body's KV helpers: final_report was extracted from pr_body, so a
+# second definition here would trip duplicate-code (pylint R0801).
+_emit_kv = pr_body._emit_kv  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+_read_kv = pr_body._read_kv  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
 
-
-def _read_kv(path: Path, key: str, default: str = "") -> str:
-    if not path.is_file():
-        return default
-    prefix = key + "="
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-        if line.startswith(prefix):
-            return line[len(prefix):].strip("\r")
-    return default
 
 def _safe_int(value: object) -> int:
     try:
