@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
+import threading
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -1971,8 +1971,17 @@ def test_render_phase_detail_token_ledger_dual_window(tmp_path: Path, monkeypatc
 
 
 def test_render_phase_detail_best_effort_timeout(monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    def fake_run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
-        raise subprocess.TimeoutExpired(cmd=["test"], timeout=progress_report.RENDER_PHASE_DETAIL_TIMEOUT_SECONDS)
+    # Block the core renderer past the wall-clock budget via a real Event wait
+    # (conftest no-ops time.sleep, so a sleep-based block would not actually block).
+    release = threading.Event()
 
-    monkeypatch.setattr(progress_report.subprocess, "run", fake_run)
-    assert progress_report._render_phase_detail_best_effort(Path("/missing"), skill="implement") == ""
+    def blocking_render(*_args: object, **_kwargs: object) -> str:
+        release.wait(timeout=10)
+        return "should never be returned"
+
+    monkeypatch.setattr(progress_report, "render_phase_detail", blocking_render)
+    monkeypatch.setattr(progress_report, "RENDER_PHASE_DETAIL_TIMEOUT_SECONDS", 0.05)
+    try:
+        assert progress_report._render_phase_detail_best_effort(Path("/missing"), skill="implement") == ""
+    finally:
+        release.set()
