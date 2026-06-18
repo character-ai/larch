@@ -7,6 +7,13 @@ if [[ "${LARCH_LIB_STEP3_PRELAUNCH_FAILURE_LOADED:-}" == "1" ]]; then
 fi
 LARCH_LIB_STEP3_PRELAUNCH_FAILURE_LOADED=1
 
+_step3_review_write_terminal_sentinels() {
+  mkdir -p "$DESIGN_TMPDIR/.completed" 2>/dev/null || return 0
+  rm -f "$DESIGN_TMPDIR/.completed/step-3-terminal" "$DESIGN_TMPDIR/.step3-terminal-persisted-this-run" 2>/dev/null || true
+  : >"$DESIGN_TMPDIR/.completed/step-3-terminal" 2>/dev/null || true
+  : >"$DESIGN_TMPDIR/.step3-terminal-persisted-this-run" 2>/dev/null || true
+}
+
 _step3_review_write_result_env() {
     local _status="${1:-panel-init-failed}"
     local _reason="${2:-prelaunch-failure}"
@@ -30,6 +37,9 @@ _step3_review_write_result_env() {
             mv "$_tmp" "$_result_env" 2>/dev/null || {
                 rm -f "$_tmp" "$_result_env" 2>/dev/null || true
             }
+            if [[ -f "$_result_env" && ! -L "$_result_env" && -r "$_result_env" ]]; then
+                _step3_review_write_terminal_sentinels
+            fi
         else
             rm -f "$_tmp" "$_result_env" 2>/dev/null || true
         fi

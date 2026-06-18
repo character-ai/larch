@@ -78,6 +78,13 @@ if grep -Fq '**⚠ Step 3: postplan failed' "$WRAPPER"; then
 fi
 grep -Fq 'SUMMARY_OUTCOME=failed-postplan' "$WRAPPER" || fail 'postplan-failed summary KV missing'
 grep -Fq 'SUMMARY_OUTCOME=failed-judge-panel' "$WRAPPER" || fail 'panel-init-failed summary KV missing'
+grep -Fq 'step3_loop_write_terminal_step3' "$LOOP" || fail 'Step 3 loop terminal sentinel helper missing'
+grep -Fq '.step3-terminal-persisted-this-run' "$LOOP" || fail 'Step 3 loop persist sidecar missing'
+grep -Fq '.step3-terminal-persisted-this-run' "$WRAPPER" || fail 'Step 3 wrapper must key terminal trap fallback and step-3 guarantee on current-pass sidecar'
+# shellcheck disable=SC2016 # literal $DESIGN_TMPDIR must match wrapper source text.
+grep -Fq 'rm -f "$DESIGN_TMPDIR/.step3-review-result.env" "$DESIGN_TMPDIR/.completed/step-3"' "$WRAPPER" || fail 'Step 3 wrapper must clear stale result env and step-3 at non-resume entry'
+# shellcheck disable=SC2016 # literal $DESIGN_TMPDIR must match wrapper source text.
+grep -Fq 'rm -f "$DESIGN_TMPDIR/.completed/step-3"' "$WRAPPER" || fail 'Step 3 wrapper must clear stale step-3 on mid-loop resume entry'
 
 D_STEP3=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-stage.XXXXXX")
 trap 'rm -rf "$D_STEP3"' EXIT
@@ -366,6 +373,9 @@ REVIEW_ROUND_COUNT=1
 RESULT'
 printf 'anchor\n' >"$D_SENTINEL/plan-review-scope-anchor.txt"
 [ ! -e "$D_SENTINEL/.completed/step-3" ] || fail 'precondition: step-3 sentinel must be absent before run'
+mkdir -p "$D_SENTINEL/.completed"
+: >"$D_SENTINEL/.completed/step-3-terminal"
+: >"$D_SENTINEL/.step3-terminal-persisted-this-run"
 set +e
 sentinel_out=$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$FAKE_SENTINEL" DESIGN_TMPDIR="$D_SENTINEL" ISSUE_NUMBER=9 \
   LARCH_TEST_REAL_REPO_ROOT="$ROOT" "$WRAPPER" 2>"$D_SENTINEL/stderr.log")
@@ -373,10 +383,37 @@ sentinel_rc=$?
 set -e
 [[ "$sentinel_rc" -eq 0 ]] || fail "sentinel-guarantee wrapper rc=$sentinel_rc stdout=$sentinel_out stderr=$(cat "$D_SENTINEL/stderr.log")"
 grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=complete' <<<"$sentinel_out" || fail 'sentinel-guarantee path should preserve complete envelope'
-[ -f "$D_SENTINEL/.completed/step-3" ] || fail '#4489: terminal exit must guarantee .completed/step-3'
+[ ! -e "$D_SENTINEL/.completed/step-3" ] || fail 'stale result env without current-pass sidecar must not mint step-3'
+[ ! -e "$D_SENTINEL/.completed/step-3-terminal" ] || fail 'stale step-3-terminal must be cleared and not recreated from result env alone'
+[ ! -e "$D_SENTINEL/.step3-terminal-persisted-this-run" ] || fail 'stale step3 terminal persist sidecar must be cleared at wrapper entry'
 [ ! -e "$D_SENTINEL/.completed/step-3.5" ] || fail '#4489: guarantee must not write deferred .completed/step-3.5 (Gate C / pause-resume gate)'
 rm -rf "$D_SENTINEL"
-pass 'Step 3 wrapper guarantees step-3 sentinel and defers step-3.5 on terminal exit (#4489)'
+pass 'Step 3 wrapper clears stale terminal sentinels and does not mint step-3 from stale result env alone'
+
+D_FRESH_TERMINAL=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-terminal.XXXXXX")
+FAKE_FRESH_TERMINAL="$D_FRESH_TERMINAL/fake-plugin"
+# shellcheck disable=SC2016 # fake plugin body must preserve runtime $DESIGN_TMPDIR.
+make_fake_step3_plugin "$FAKE_FRESH_TERMINAL" 'cat > "$DESIGN_TMPDIR/.step3-review-result.env" <<RESULT
+STEP3_REVIEW_LOOP_STATUS=complete
+LOOP_STATUS=complete
+TALLY_PLAN_REVIEW_STATUS=ok
+STEP3_REVIEW_CAP_REACHED=false
+ROUNDS_COMPLETED=1
+REVIEW_ROUND_COUNT=1
+RESULT
+: >"$DESIGN_TMPDIR/.step3-terminal-persisted-this-run"'
+printf 'anchor\n' >"$D_FRESH_TERMINAL/plan-review-scope-anchor.txt"
+set +e
+fresh_terminal_out=$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$FAKE_FRESH_TERMINAL" DESIGN_TMPDIR="$D_FRESH_TERMINAL" ISSUE_NUMBER=9 \
+  LARCH_TEST_REAL_REPO_ROOT="$ROOT" "$WRAPPER" 2>"$D_FRESH_TERMINAL/stderr.log")
+fresh_terminal_rc=$?
+set -e
+[[ "$fresh_terminal_rc" -eq 0 ]] || fail "fresh-terminal wrapper rc=$fresh_terminal_rc stdout=$fresh_terminal_out stderr=$(cat "$D_FRESH_TERMINAL/stderr.log")"
+grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=complete' <<<"$fresh_terminal_out" || fail 'fresh-terminal path should preserve complete envelope'
+[ -f "$D_FRESH_TERMINAL/.completed/step-3-terminal" ] || fail 'current-pass persist sidecar must permit terminal sentinel fallback'
+[ -f "$D_FRESH_TERMINAL/.step3-terminal-persisted-this-run" ] || fail 'current-pass persist sidecar must remain inspectable'
+rm -rf "$D_FRESH_TERMINAL"
+pass 'Step 3 wrapper writes step-3-terminal only when current-pass persist sidecar exists'
 
 D_NO_ANCHOR=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-no-anchor.XXXXXX")
 FAKE_NO_ANCHOR="$D_NO_ANCHOR/fake-plugin"
@@ -478,5 +515,192 @@ grep -Fxq 'READ_RESULT_ENV_STATUS=missing' <<<"$rre_missing_out" || fail '--read
 grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=' <<<"$rre_missing_out" || fail '--read-result-env must emit empty STEP3_REVIEW_LOOP_STATUS when result env absent'
 rm -rf "$RRE_PLUGIN" "$D_RRE" "$D_RRE_MISSING"
 pass 'Step 3 --read-result-env recovers loop status (hook-safe fallback)'
+
+D_PERSIST_TERMINAL=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-persist-terminal.XXXXXX")
+# shellcheck disable=SC2016
+cat >"$D_PERSIST_TERMINAL/run-persist.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+export DESIGN_TMPDIR="$1"
+export PLUGIN_ROOT="$2"
+export mode="$3"
+emit() { :; }
+emit_kv() { :; }
+larch_err() { :; }
+phase_driver_write_result_env() {
+  if [[ "$mode" == fail ]]; then
+    return 1
+  fi
+  printf '%s\n' "$@" >"$1"
+  return 0
+}
+# shellcheck source=/dev/null
+source "$PLUGIN_ROOT/skills/design/scripts/review-design-step3-loop.sh"
+step3_loop_persist_envelope main-agent-apply-required 1 1 1 "" ""
+SH
+chmod +x "$D_PERSIST_TERMINAL/run-persist.sh"
+"$D_PERSIST_TERMINAL/run-persist.sh" "$D_PERSIST_TERMINAL" "$ROOT" success
+[ -f "$D_PERSIST_TERMINAL/.completed/step-3-terminal" ] || fail 'persist success must write step-3-terminal'
+[ -f "$D_PERSIST_TERMINAL/.step3-terminal-persisted-this-run" ] || fail 'persist success must write persist sidecar'
+rm -rf "$D_PERSIST_TERMINAL/.completed" "$D_PERSIST_TERMINAL/.step3-review-result.env" "$D_PERSIST_TERMINAL/.step3-terminal-persisted-this-run"
+set +e
+"$D_PERSIST_TERMINAL/run-persist.sh" "$D_PERSIST_TERMINAL" "$ROOT" fail
+persist_fail_rc=$?
+set -e
+[[ "$persist_fail_rc" -ne 0 ]] || fail 'persist failure must return non-zero'
+[ ! -e "$D_PERSIST_TERMINAL/.completed/step-3-terminal" ] || fail 'persist failure must not write step-3-terminal'
+[ ! -e "$D_PERSIST_TERMINAL/.step3-terminal-persisted-this-run" ] || fail 'persist failure must not write persist sidecar'
+rm -rf "$D_PERSIST_TERMINAL"
+pass 'Step 3 loop writes terminal sentinel only after persist success'
+
+D_APPLY_REQUIRED=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-apply-required.XXXXXX")
+FAKE_APPLY="$D_APPLY_REQUIRED/fake-plugin"
+# shellcheck disable=SC2016
+make_fake_step3_plugin "$FAKE_APPLY" 'cat > "$DESIGN_TMPDIR/.step3-review-result.env" <<RESULT
+STEP3_REVIEW_LOOP_STATUS=main-agent-apply-required
+LOOP_STATUS=complete
+TALLY_PLAN_REVIEW_STATUS=main-agent-apply-required
+STEP3_REVIEW_CAP_REACHED=false
+ROUNDS_COMPLETED=1
+REVIEW_ROUND_COUNT=1
+RESULT
+mkdir -p "$DESIGN_TMPDIR/.completed"
+: >"$DESIGN_TMPDIR/.completed/step-3-terminal"
+: >"$DESIGN_TMPDIR/.step3-terminal-persisted-this-run"'
+printf 'anchor\n' >"$D_APPLY_REQUIRED/plan-review-scope-anchor.txt"
+set +e
+apply_required_out=$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$FAKE_APPLY" DESIGN_TMPDIR="$D_APPLY_REQUIRED" ISSUE_NUMBER=9 \
+  LARCH_TEST_REAL_REPO_ROOT="$ROOT" "$WRAPPER" 2>"$D_APPLY_REQUIRED/stderr.log")
+apply_required_rc=$?
+set -e
+[[ "$apply_required_rc" -eq 0 ]] || fail "apply-required wrapper rc=$apply_required_rc stdout=$apply_required_out stderr=$(cat "$D_APPLY_REQUIRED/stderr.log")"
+grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=main-agent-apply-required' <<<"$apply_required_out" || fail 'apply-required path should preserve envelope'
+[ -f "$D_APPLY_REQUIRED/.completed/step-3-terminal" ] || fail 'apply-required mid-loop bail must retain step-3-terminal'
+[ -f "$D_APPLY_REQUIRED/.step3-terminal-persisted-this-run" ] || fail 'apply-required mid-loop bail must retain persist sidecar'
+[ ! -e "$D_APPLY_REQUIRED/.completed/step-3" ] || fail 'apply-required mid-loop bail must not mint step-3'
+rm -rf "$D_APPLY_REQUIRED"
+pass 'Step 3 wrapper does not mint step-3 on main-agent-apply-required bail-out'
+
+D_MAV_VOTE=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-mav-vote.XXXXXX")
+FAKE_MAV="$D_MAV_VOTE/fake-plugin"
+# shellcheck disable=SC2016
+make_fake_step3_plugin "$FAKE_MAV" 'cat > "$DESIGN_TMPDIR/.step3-review-result.env" <<RESULT
+STEP3_REVIEW_LOOP_STATUS=main-agent-vote-required
+LOOP_STATUS=main-agent-vote-required
+TALLY_PLAN_REVIEW_STATUS=main-agent-vote-required
+STEP3_REVIEW_CAP_REACHED=false
+ROUNDS_COMPLETED=1
+REVIEW_ROUND_COUNT=1
+RESULT
+: >"$DESIGN_TMPDIR/.step3-terminal-persisted-this-run"
+mkdir -p "$DESIGN_TMPDIR/.completed"
+: >"$DESIGN_TMPDIR/.completed/step-3-terminal"'
+printf 'anchor\n' >"$D_MAV_VOTE/plan-review-scope-anchor.txt"
+set +e
+mav_vote_out=$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$FAKE_MAV" DESIGN_TMPDIR="$D_MAV_VOTE" ISSUE_NUMBER=9 \
+  LARCH_TEST_REAL_REPO_ROOT="$ROOT" "$WRAPPER" 2>"$D_MAV_VOTE/stderr.log")
+mav_vote_rc=$?
+set -e
+[[ "$mav_vote_rc" -eq 0 ]] || fail "mav-vote wrapper rc=$mav_vote_rc stdout=$mav_vote_out stderr=$(cat "$D_MAV_VOTE/stderr.log")"
+grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=main-agent-vote-required' <<<"$mav_vote_out" || fail 'mav-vote path should preserve envelope'
+[ -f "$D_MAV_VOTE/.completed/step-3-terminal" ] || fail 'mav-vote mid-loop bail must retain step-3-terminal'
+[ ! -e "$D_MAV_VOTE/.completed/step-3" ] || fail 'mav-vote mid-loop bail must not mint step-3'
+rm -rf "$D_MAV_VOTE"
+pass 'Step 3 wrapper does not mint step-3 on main-agent-vote-required bail-out'
+
+D_STALE_ENV=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-stale-env.XXXXXX")
+FAKE_STALE="$D_STALE_ENV/fake-plugin"
+cat >"$D_STALE_ENV/.step3-review-result.env" <<'RESULT'
+STEP3_REVIEW_LOOP_STATUS=complete
+LOOP_STATUS=complete
+TALLY_PLAN_REVIEW_STATUS=ok
+ROUNDS_COMPLETED=1
+REVIEW_ROUND_COUNT=1
+RESULT
+mkdir -p "$D_STALE_ENV/.completed"
+: >"$D_STALE_ENV/.completed/step-3"
+# shellcheck disable=SC2016
+make_fake_step3_plugin "$FAKE_STALE" 'if grep -Fq "STEP3_REVIEW_LOOP_STATUS=complete" "$DESIGN_TMPDIR/.step3-review-result.env" 2>/dev/null; then
+  : >"$DESIGN_TMPDIR/.stale-env-seen"
+fi
+exit 1'
+printf 'anchor\n' >"$D_STALE_ENV/plan-review-scope-anchor.txt"
+set +e
+env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$FAKE_STALE" DESIGN_TMPDIR="$D_STALE_ENV" ISSUE_NUMBER=9 \
+  LARCH_TEST_REAL_REPO_ROOT="$ROOT" "$WRAPPER" >/dev/null 2>"$D_STALE_ENV/stderr.log"
+stale_env_rc=$?
+set -e
+[[ "$stale_env_rc" -ne 0 ]] || fail "stale-env wrapper should fail before loop (rc=$stale_env_rc)"
+[ ! -e "$D_STALE_ENV/.stale-env-seen" ] || fail 'stale complete result env must be cleared before loop dispatch'
+rm -rf "$D_STALE_ENV"
+pass 'Step 3 wrapper clears stale result env and step-3 at non-resume entry'
+
+D_STALE_STEP3=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-stale-step3.XXXXXX")
+FAKE_STALE_STEP3="$D_STALE_STEP3/fake-plugin"
+mkdir -p "$D_STALE_STEP3/.completed"
+: >"$D_STALE_STEP3/.completed/step-3"
+cat >"$D_STALE_STEP3/.step3-round-1.phase" <<'PHASE'
+awaiting-continuation
+PHASE
+make_fake_step3_plugin "$FAKE_STALE_STEP3" 'printf "%s\n" "STEP3_REVIEW_LOOP_STATUS=main-agent-vote-required" "LOOP_STATUS=main-agent-vote-required" "ROUNDS_COMPLETED=1" "REVIEW_ROUND_COUNT=1"'
+printf 'anchor\n' >"$D_STALE_STEP3/plan-review-scope-anchor.txt"
+set +e
+env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$FAKE_STALE_STEP3" DESIGN_TMPDIR="$D_STALE_STEP3" ISSUE_NUMBER=9 \
+  LARCH_TEST_REAL_REPO_ROOT="$ROOT" "$WRAPPER" --starting-round 1 --phase awaiting-continuation >/dev/null 2>"$D_STALE_STEP3/stderr.log"
+stale_step3_rc=$?
+set -e
+[[ "$stale_step3_rc" -eq 0 ]] || fail "stale-step3 resume wrapper rc=$stale_step3_rc"
+[ ! -e "$D_STALE_STEP3/.completed/step-3" ] || fail 'mid-loop resume must clear stale step-3 milestone'
+rm -rf "$D_STALE_STEP3"
+pass 'Step 3 wrapper clears stale step-3 on mid-loop resume entry'
+
+D_PERSIST_EMIT=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-persist-emit.XXXXXX")
+# shellcheck disable=SC2016
+cat >"$D_PERSIST_EMIT/run-emit.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+export DESIGN_TMPDIR="$1"
+export PLUGIN_ROOT="$2"
+export mode="$3"
+emit() { printf '%s\n' "$*"; }
+emit_kv() { printf '%s=%s\n' "$1" "$2"; }
+larch_err() { :; }
+phase_driver_write_result_env() {
+  if [[ "$mode" == fail ]]; then
+    return 1
+  fi
+  printf '%s\n' "$@" >"$1"
+  return 0
+}
+# shellcheck source=/dev/null
+source "$PLUGIN_ROOT/skills/design/scripts/review-design-step3-loop.sh"
+step3_loop_emit_envelope complete 1 1 1
+SH
+chmod +x "$D_PERSIST_EMIT/run-emit.sh"
+mkdir -p "$D_PERSIST_EMIT/.completed"
+: >"$D_PERSIST_EMIT/.completed/step-3"
+emit_out=$("$D_PERSIST_EMIT/run-emit.sh" "$D_PERSIST_EMIT" "$ROOT" success)
+grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=complete' <<<"$emit_out" || fail 'persist success must emit terminal status KVs after persist'
+[ -f "$D_PERSIST_EMIT/.completed/step-3-terminal" ] || fail 'persist success must write step-3-terminal before stdout emit'
+emit_fail_out=$("$D_PERSIST_EMIT/run-emit.sh" "$D_PERSIST_EMIT" "$ROOT" fail 2>/dev/null || true)
+grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=complete' <<<"$emit_fail_out" && fail 'persist failure must not emit terminal STEP3_REVIEW_LOOP_STATUS'
+grep -Fq 'WARN=step3_loop_persist_envelope: phase_driver_write_result_env failed' <<<"$emit_fail_out" || fail 'persist failure must emit WARN KV'
+rm -rf "$D_PERSIST_EMIT"
+pass 'Step 3 loop emits terminal stdout only after persist success'
+
+D_PRELAUNCH=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-prelaunch-terminal.XXXXXX")
+FAKE_PRELAUNCH="$D_PRELAUNCH/fake-plugin"
+make_fake_step3_plugin "$FAKE_PRELAUNCH" 'exit 0'
+set +e
+prelaunch_out=$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$FAKE_PRELAUNCH" DESIGN_TMPDIR="$D_PRELAUNCH" ISSUE_NUMBER=9 \
+  LARCH_TEST_REAL_REPO_ROOT="$ROOT" "$WRAPPER" 2>"$D_PRELAUNCH/stderr.log")
+prelaunch_rc=$?
+set -e
+[[ "$prelaunch_rc" -eq 1 ]] || fail "prelaunch wrapper rc=$prelaunch_rc stdout=$prelaunch_out"
+grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=panel-init-failed' <<<"$prelaunch_out" || fail 'prelaunch failure should emit panel-init-failed'
+[ -f "$D_PRELAUNCH/.completed/step-3-terminal" ] || fail 'prelaunch failure must write step-3-terminal'
+[ -f "$D_PRELAUNCH/.step3-terminal-persisted-this-run" ] || fail 'prelaunch failure must write persist sidecar'
+rm -rf "$D_PRELAUNCH"
+pass 'Step 3 prelaunch failure writes terminal sentinel after result env persist'
 
 pass 'design-step3-review.sh checks passed'

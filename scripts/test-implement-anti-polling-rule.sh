@@ -6,7 +6,8 @@
 # in four files:
 #   (1) AGENTS.md: the Monitor / Bash-polling-loop bullet must mention BOTH
 #       Monitor and Bash run_in_background polling loops, plus the narrow
-#       single-waiter premature-notification recovery guidance.
+#       single-waiter premature-notification recovery guidance and the
+#       foreground terminal-sentinel fallback.
 #   (2) skills/implement/SKILL.md: Step 5 delegates reviewer waiting to
 #       skills/implement/scripts/step-5-review.sh (no ad-hoc polling loops), and
 #       the NEVER list bans Monitor fallback for one-shot completion.
@@ -14,8 +15,8 @@
 #       the result-file sleep-loop ban and consequence prose, and the
 #       Anti-patterns list bans Monitor fallback for one-shot completion.
 #   (4) skills/shared/orchestrator-never.md: the shared NEVER list carries the
-#       run_in_background result-file sleep-loop ban and narrow single-waiter
-#       premature-notification recovery guidance.
+#       run_in_background result-file sleep-loop ban, narrow single-waiter
+#       premature-notification recovery guidance, and foreground fallback.
 #
 # Wired into `make lint` via the `test-implement-anti-polling-rule` target.
 # Runtime enforcement is the model-level reading of the prose; this harness
@@ -89,12 +90,20 @@ check "$ORCH_NEVER_MD" \
     "$ORCH_NEVER_LITERAL"
 
 check "$ORCH_NEVER_MD" \
-    "shared orchestrator NEVER pins premature-notification recovery as narrow single-waiter guidance" \
-    'only sanctioned exception to the Bash polling-loop ban is one re-launched immediate-background completion waiter'
+    "shared orchestrator NEVER pins premature-notification recovery as primary single-waiter guidance" \
+    'the primary recovery path is one re-launched immediate-background completion waiter'
+
+check "$ORCH_NEVER_MD" \
+    "shared orchestrator NEVER pins foreground terminal-sentinel fallback" \
+    'one foreground terminal-sentinel probe per explicit recovery turn'
 
 check "$AGENTS_MD" \
-    "AGENTS.md covers premature-notification recovery with narrow single-waiter guidance" \
-    'only sanctioned exception to the Bash polling-loop ban is one re-launched immediate-background completion waiter'
+    "AGENTS.md covers premature-notification recovery with primary single-waiter guidance" \
+    'the primary recovery path is one re-launched immediate-background completion waiter'
+
+check "$AGENTS_MD" \
+    "AGENTS.md pins foreground terminal-sentinel fallback" \
+    'one foreground non-sleeping `[ -f … ]` or `test -f …` probe against the relevant terminal completion sentinel'
 
 check "$IMPL_MD" \
     "SKILL.md NEVER list explicitly bans Monitor tool in /implement orchestrator" \
@@ -113,20 +122,36 @@ check "$DESIGN_MD" \
     'NEVER use the `Monitor` tool anywhere within the `/design` orchestrator'
 
 check "$DESIGN_MD" \
-    "/design Anti-patterns pins premature-notification recovery as narrow single-waiter guidance" \
-    'only sanctioned exception to the Bash polling-loop ban is one re-launched immediate-background completion waiter'
+    "/design Anti-patterns pins premature-notification recovery as primary single-waiter guidance" \
+    'the primary recovery path is one re-launched immediate-background completion waiter'
 
 check "$DESIGN_MD" \
-    "/design Anti-patterns pins Step 3 completed sentinel for recovery waiters" \
-    'Step 3-specific recovery note: the completion condition MUST be `[ -f "$DESIGN_TMPDIR/.completed/step-3" ]`; it MUST NOT be `.step3-review-result.env`.'
+    "/design Anti-patterns pins Step 3 terminal sentinel for recovery waiters" \
+    'Step 3-specific recovery note: the completion condition MUST be `[ -f "$DESIGN_TMPDIR/.completed/step-3-terminal" ]`; it MUST NOT be `.step3-review-result.env`.'
 
 check "$DESIGN_MD" \
-    "/design Step 3 complete route requires completed sentinel" \
-    '`STEP3_REVIEW_LOOP_STATUS=complete` — before routing to Step 3b, require `[ -f "$DESIGN_TMPDIR/.completed/step-3" ]`.'
+    "/design Anti-patterns pins foreground terminal-sentinel fallback" \
+    'Foreground terminal-sentinel fallback: after a premature empty notification and a killed or unsuitable recovery waiter'
+
+check "$AGENTS_MD" \
+    "AGENTS.md pins DESIGN_TMPDIR prefix for foreground probes" \
+    'prefix the probe with a single `DESIGN_TMPDIR=<absolute-path>;` assignment'
+
+check "$ORCH_NEVER_MD" \
+    "shared orchestrator NEVER pins DESIGN_TMPDIR prefix for foreground probes" \
+    'prefix the probe with a single `DESIGN_TMPDIR=<absolute-path>;` assignment'
 
 check "$DESIGN_MD" \
-    "/design Step 3 cap-hit route requires completed sentinel" \
-    '`STEP3_REVIEW_LOOP_STATUS=cap-hit` — cap reached; before routing to Step 3b, require `[ -f "$DESIGN_TMPDIR/.completed/step-3" ]`.'
+    "/design Anti-patterns pins DESIGN_TMPDIR prefix for foreground probes" \
+    'prefix the waiter or foreground probe with a single `DESIGN_TMPDIR=<absolute-path>;` assignment'
+
+check "$DESIGN_MD" \
+    "/design Step 3 complete route requires terminal sentinel before envelope parse" \
+    '`STEP3_REVIEW_LOOP_STATUS=complete` — before parsing the envelope after notification, require `[ -f "$DESIGN_TMPDIR/.completed/step-3-terminal" ]`'
+
+check "$DESIGN_MD" \
+    "/design Step 3 cap-hit route requires terminal sentinel before envelope parse" \
+    '`STEP3_REVIEW_LOOP_STATUS=cap-hit` — cap reached; before parsing the envelope after notification, require `[ -f "$DESIGN_TMPDIR/.completed/step-3-terminal" ]`'
 
 check "$DESIGN_MD" \
     "/design Anti-patterns tells orchestrator not to fall back to Monitor" \

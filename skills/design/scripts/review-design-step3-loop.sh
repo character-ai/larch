@@ -117,16 +117,9 @@ step3_loop_scope_anchor_single_line_or_empty() {
     esac
 }
 
-step3_loop_emit_envelope() {
+step3_loop_emit_envelope_stdout() {
     local status="$1" round_num="$2" rounds_completed="$3" final_round="$4"
-    if [[ "$status" == postplan-failed ]]; then
-        step3_stage_postplan_failed
-    else
-        step3_record_report_evidence "$status"
-    fi
-    local safe_plan_review_continue_reason safe_scope_anchor_file
-    safe_plan_review_continue_reason="$(step3_loop_strip_crlf_value "${PLAN_REVIEW_CONTINUE_REASON:-}")"
-    safe_scope_anchor_file="$(step3_loop_scope_anchor_single_line_or_empty "${SCOPE_ANCHOR_FILE:-}")"
+    local safe_plan_review_continue_reason="$5" safe_scope_anchor_file="$6"
     emit_kv STEP3_REVIEW_LOOP_STATUS "$status"
     emit_kv ROUNDS_COMPLETED "${rounds_completed:-0}"
     emit_kv FINAL_ROUND_NUM "${final_round:-$round_num}"
@@ -146,7 +139,25 @@ step3_loop_emit_envelope() {
             esac
         done <"$DESIGN_TMPDIR/.design-postplan-emit-result.env"
     fi
-    step3_loop_persist_envelope "$status" "$round_num" "${rounds_completed:-0}" "${final_round:-$round_num}" "$safe_plan_review_continue_reason" "$safe_scope_anchor_file"
+}
+
+step3_loop_emit_envelope() {
+    local status="$1" round_num="$2" rounds_completed="$3" final_round="$4"
+    if [[ "$status" == postplan-failed ]]; then
+        step3_stage_postplan_failed
+    else
+        step3_record_report_evidence "$status"
+    fi
+    local safe_plan_review_continue_reason safe_scope_anchor_file
+    safe_plan_review_continue_reason="$(step3_loop_strip_crlf_value "${PLAN_REVIEW_CONTINUE_REASON:-}")"
+    safe_scope_anchor_file="$(step3_loop_scope_anchor_single_line_or_empty "${SCOPE_ANCHOR_FILE:-}")"
+    if step3_loop_persist_envelope "$status" "$round_num" "${rounds_completed:-0}" "${final_round:-$round_num}" "$safe_plan_review_continue_reason" "$safe_scope_anchor_file"; then
+        step3_loop_emit_envelope_stdout "$status" "$round_num" "${rounds_completed:-0}" "${final_round:-$round_num}" "$safe_plan_review_continue_reason" "$safe_scope_anchor_file"
+    else
+        emit "**⚠ step3_loop_persist_envelope: failed to write result env (.step3-review-result.env); loop status may be unrecoverable**"
+        emit_kv WARN "step3_loop_persist_envelope: phase_driver_write_result_env failed"
+        return 1
+    fi
 }
 
 step3_loop_read_review_round_count() {
@@ -282,9 +293,17 @@ step3_loop_persist_envelope() {
     fi
     if ! phase_driver_write_result_env "$result_env" "${kvs[@]}"; then
         step3_loop_record_result_env_write_failure "$status" "$loop_status" "$round_num" "$result_env"
-        emit "**⚠ step3_loop_persist_envelope: failed to write result env (${result_env##*/}); loop status may be unrecoverable**"
-        emit_kv WARN "step3_loop_persist_envelope: phase_driver_write_result_env failed"
+        return 1
     fi
+    step3_loop_write_terminal_step3
+    return 0
+}
+
+step3_loop_write_terminal_step3() {
+    mkdir -p "$DESIGN_TMPDIR/.completed"
+    rm -f "$DESIGN_TMPDIR/.completed/step-3-terminal" "$DESIGN_TMPDIR/.step3-terminal-persisted-this-run"
+    : >"$DESIGN_TMPDIR/.completed/step-3-terminal"
+    : >"$DESIGN_TMPDIR/.step3-terminal-persisted-this-run"
 }
 
 step3_loop_write_completed_step3() {

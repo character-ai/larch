@@ -17,6 +17,12 @@ def test_embedded_review_design_step3_loop_matches_live_script() -> None:
     assert live == embedded
 
 
+def test_embedded_design_step3_state_matches_live_script() -> None:
+    live = (ROOT / "skills" / "design" / "scripts" / "design-step3-state.sh").read_bytes()
+    embedded = plan_review.legacy_asset_bytes("skills/design/scripts/design-step3-state.sh")
+    assert live == embedded
+
+
 def test_embedded_review_design_step3_loop_persists_round_start() -> None:
     body = plan_review.legacy_asset_bytes("skills/design/scripts/review-design-step3-loop.sh").decode("utf-8")
     helper = body[body.index("step3_loop_persist_round_start_s() {"):body.index("step3_loop_phase_file() {")]
@@ -222,6 +228,43 @@ def test_step3_state_non_numeric_round_count_falls_back_to_zero(tmp_path: Path) 
     )
     assert proc.returncode == 0, proc.stderr
     assert "STEP3_STATE=direct-review-entry" in proc.stdout
+
+
+def test_step3_state_direct_review_entry_clears_terminal_sentinels(tmp_path: Path) -> None:
+    completed = tmp_path / ".completed"
+    completed.mkdir()
+    (tmp_path / ".step3-reentry").touch()
+    (completed / "step-3-terminal").touch()
+    (tmp_path / ".step3-terminal-persisted-this-run").touch()
+    proc = run_cli(
+        "plan-review",
+        "step3-state",
+        "--design-tmpdir",
+        str(tmp_path),
+        "--direct-review-entry",
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "STEP3_STATE=direct-review-entry" in proc.stdout
+    assert not (completed / "step-3-terminal").exists()
+    assert not (tmp_path / ".step3-terminal-persisted-this-run").exists()
+
+
+def test_step3_state_auto_continuation_entry_clears_terminal_sentinels(tmp_path: Path) -> None:
+    completed = tmp_path / ".completed"
+    completed.mkdir()
+    (completed / "step-3-terminal").touch()
+    (tmp_path / ".step3-terminal-persisted-this-run").touch()
+    proc = run_cli(
+        "plan-review",
+        "step3-state",
+        "--design-tmpdir",
+        str(tmp_path),
+        "--auto-continuation-entry",
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "STEP3_STATE=auto-continuation-entry" in proc.stdout
+    assert not (completed / "step-3-terminal").exists()
+    assert not (tmp_path / ".step3-terminal-persisted-this-run").exists()
 
 
 def test_round_artifact_allowlist_and_drift_baseline(tmp_path: Path) -> None:
