@@ -219,3 +219,62 @@ def test_compose_findings_invalid_issue_failure_envelope(tmp_path: Path) -> None
     assert result.returncode == 2
     assert "FAILED=true" in result.stdout
     assert "invalid value for --issue" in result.stdout
+
+
+def test_compose_findings_strict_plan_category(tmp_path: Path) -> None:
+    design = tmp_path / "design-strict"
+    design.mkdir()
+    _ = (design / "accepted-plan-findings.md").write_text(
+        """### FINDING_1: **Important** — `not-a-real-category` — `docs/plan.md:1`
+- **Reviewer**: Cursor-Arch
+- **Concern**: category should be empty under strict plan mode
+""",
+        encoding="utf-8",
+    )
+    output = tmp_path / "strict-plan.jsonl"
+    result = run_review(
+        "compose-findings",
+        "--design-artifacts-dir",
+        str(design),
+        "--issue",
+        "1",
+        "--output",
+        str(output),
+    )
+    assert result.returncode == 0, result.stderr
+    assert _record_field_by_id(output, "FINDING_1", "category") == ""
+
+
+def test_compose_findings_prune_label_map_normalizes_reviewer_slots(tmp_path: Path) -> None:
+    design = tmp_path / "design-map"
+    design.mkdir()
+    output_file = design / "Cursor-Arch-output.txt"
+    _ = output_file.write_text("reviewer output\n", encoding="utf-8")
+    _ = (design / "plan-review-slots.ndjson").write_text(
+        json.dumps({"slot": "cursor-plan-arch", "tool": "cursor", "output": str(output_file)}) + "\n",
+        encoding="utf-8",
+    )
+    _ = (design / "plan-review-prune-label-map.tsv").write_text(
+        "cursor-plan-arch\tCursor-Arch\n",
+        encoding="utf-8",
+    )
+    _ = (design / "accepted-plan-findings.md").write_text(
+        """### FINDING_1: Plan issue
+- **Reviewer**: Cursor-Arch
+- **Concern**: reviewer label should normalize via prune label map
+""",
+        encoding="utf-8",
+    )
+    output = tmp_path / "mapped.jsonl"
+    result = run_review(
+        "compose-findings",
+        "--design-artifacts-dir",
+        str(design),
+        "--issue",
+        "1",
+        "--output",
+        str(output),
+    )
+    assert result.returncode == 0, result.stderr
+    slots = json.loads(_record_field_by_id(output, "FINDING_1", "reviewer_slots").replace("'", '"'))
+    assert slots == ["Cursor-Arch-output.txt"]

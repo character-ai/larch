@@ -231,6 +231,245 @@ def _drop_impure_empty_merge_attestation_lines(text: str) -> str:
     return out
 
 
+_REVISION_SUBLIST_END_HEADING = re.compile(
+    r"^-\s*\*\*(?:Reviewer(?:\(s\))?|Reviewers?|Concern|Justification|Suggested revisions?)\*\*:",
+    re.IGNORECASE,
+)
+_SCOPE_REDUCTION_UNTAGGED_MATCH = 0.6
+_SCOPE_REDUCTION_TAGGED_MATCH = 0.5
+_REVISION_TRACE_PREFIX_MIN_WORDS = 2
+
+
+def _input_blocks_by_slot(text: str) -> dict[str, list[str]]:
+    slot_map: dict[str, list[str]] = {}
+    for block in _input_blocks(text):
+        _raw, slots = _reviewer_line_slots(block)
+        for slot in slots:
+            slot_map.setdefault(_normalize_slot(slot), []).append(block)
+    return slot_map
+
+
+def _suggested_revisions_bullets(block: str, bid: str = "?") -> tuple[list[tuple[str, str]], list[str]]:
+    lines = block.splitlines()
+    in_revisions = False
+    bullets: list[tuple[str, str]] = []
+    parse_warnings: list[str] = []
+    pending_from: tuple[str, list[str]] | None = None
+    for line in lines:
+        stripped = line.strip()
+        if re.match(r"^-\s*\*\*Suggested revisions", stripped, re.IGNORECASE):
+            in_revisions = True
+            continue
+        if not in_revisions:
+            continue
+        match_from = re.match(r"^-\s+From\s+(.+?):\s+(.+)$", stripped, re.IGNORECASE)
+        if match_from:
+            if pending_from:
+                bullets.append((pending_from[0], " ".join(pending_from[1]).strip()))
+            pending_from = (match_from.group(1).strip(), [match_from.group(2).strip()])
+            continue
+        if _REVISION_SUBLIST_END_HEADING.match(stripped):
+            if pending_from:
+                pending_from[1].append(stripped)
+                continue
+            parse_warnings.append(
+                f"field-like line in Suggested revisions before first 'From:' bullet in {bid} ({stripped[:120]!r})"
+            )
+            break
+        if pending_from:
+            pending_from[1].append(stripped)
+            continue
+        if stripped:
+            parse_warnings.append(
+                f"unexpected line in Suggested revisions sub-list before first 'From:' bullet in {bid} ({stripped[:120]!r})"
+            )
+    if pending_from:
+        bullets.append((pending_from[0], " ".join(pending_from[1]).strip()))
+    return bullets, parse_warnings
+
+
+def _singular_suggested_revision(block: str) -> str | None:
+    for line in block.splitlines():
+        stripped = line.strip()
+        match = re.match(r"^-\s*\*\*Suggested revision\*\*:\s*(.+)$", stripped, re.IGNORECASE)
+        if match:
+            return match.group(1).strip()
+    return None
+
+
+def _normalize_for_match(text: str) -> str:
+    return re.sub(r"[^\w\s]", " ", text.lower())
+
+
+def _output_reviewer_slots_norm(block: str) -> set[str]:
+    _raw, slots = _reviewer_line_slots(block)
+    return {_normalize_slot(slot) for slot in slots}
+
+
+def _scope_input_blocks_for_merge(norm_slot: str, output_slots_norm: set[str], slot_map: dict[str, list[str]]) -> list[str]:
+    candidates = slot_map.get(norm_slot, [])
+    if not output_slots_norm:
+        return list(candidates)
+    scoped: list[str] = []
+    for in_block in candidates:
+        _il, islots = _reviewer_line_slots(in_block)
+        in_norms = {_normalize_slot(slot) for slot in islots}
+        if in_norms & output_slots_norm:
+            scoped.append(in_block)
+    return scoped
+
+
+def _revision_traceable_in_blocks(revision_text: str, in_blocks: list[str]) -> bool:
+    if not in_blocks:
+        return False
+    rev_norm = _normalize_for_match(revision_text).strip()
+    if not rev_norm:
+        return False
+    use_prefix = os.environ.get("LARCH_AGGREGATE_REVISION_TRACE_PREFIX_FALLBACK") == "1"
+    words = rev_norm.split()
+    window = min(6, len(words)) if len(words) >= _REVISION_TRACE_PREFIX_MIN_WORDS else 0
+    needle = " ".join(words[:window]) if window else ""
+    for block in in_blocks:
+        corp_norm = _normalize_for_match(block)
+        if rev_norm in corp_norm:
+            return True
+        if use_prefix and needle and needle in corp_norm:
+            return True
+    return False
+
+
+def _check_revision_traceability(input_text: str, output_blocks_list: list[str]) -> list[str]:
+    slot_map = _input_blocks_by_slot(input_text)
+    warnings: list[str] = []
+    for block in output_blocks_list:
+        if "[OUT_OF_SCOPE]" in _heading_line(block):
+            continue
+        output_slots_norm = _output_reviewer_slots_norm(block)
+        block_id = _finding_id_from_block(block) or "?"
+        bullets, parse_warnings = _suggested_revisions_bullets(block, block_id)
+        warnings.extend(parse_warnings)
+        singular = _singular_suggested_revision(block)
+        if singular and bullets:
+            warnings.append(
+                f"both legacy singular Suggested revision and multi-reviewer revision bullets present in {block_id}"
+            )
+        if not bullets and not singular:
+            continue
+        trace_items: list[tuple[str, str]] = []
+        if bullets:
+            trace_items.extend(bullets)
+        if singular:
+            trace_items.append(
+                ("(legacy singular Suggested revision)", singular)
+                if bullets
+                else ("(merged reviewers)", singular)
+            )
+        for slot_label, revision_text in trace_items:
+            norm_slot = (
+                None
+                if slot_label in ("(merged reviewers)", "(legacy singular Suggested revision)")
+                else _normalize_slot(slot_label)
+            )
+            if norm_slot is not None and norm_slot not in slot_map:
+                warnings.append(
+                    f"unknown From slot label {slot_label!r} in {block_id} (not present on any input finding)"
+                )
+                continue
+            if norm_slot is None:
+                scoped = []
+                for in_block in _input_blocks(input_text):
+                    _il, islots = _reviewer_line_slots(in_block)
+                    in_norms = {_normalize_slot(slot) for slot in islots}
+                    if in_norms & output_slots_norm:
+                        scoped.append(in_block)
+            else:
+                scoped = _scope_input_blocks_for_merge(norm_slot, output_slots_norm, slot_map)
+            if not _revision_traceable_in_blocks(revision_text, scoped):
+                warnings.append(
+                    f"fix text for slot {slot_label!r} in {block_id} not traceable to scoped input "
+                    f"(first 80 chars: {revision_text[:80]!r})"
+                )
+    return warnings
+
+
+def _problem_text(block: str) -> str:
+    parts: list[str] = []
+    lines = block.splitlines()
+    if lines:
+        parts.append(re.sub(r"^### FINDING_[0-9]+:\s*", "", lines[0]))
+    match = re.search(
+        r"(?mi)^\s*-\s*(?:\*\*)?Concern(?:\*\*)?:\s*(.+?)(?:\.\s*Scenario:|\s*Scenario:|(?=\n\s*-\s*(?:\*\*)?[A-Z][A-Za-z ()?]*(?:\*\*)?:)|\Z)",
+        block,
+        re.DOTALL,
+    )
+    if match:
+        parts.append(match.group(1))
+    parts.extend(dm.group(1) for dm in re.finditer(r"(?mi)^\s*description:\s*(.+)$", block))
+    parts.extend(wm.group(1) for wm in re.finditer(r"(?mi)^\s*what:\s*(.+)$", block))
+    text = "\n".join(parts) if parts else re.sub(r"^### FINDING_[0-9]+:\s*", "", block, count=1, flags=re.MULTILINE)
+    text = re.sub(r"```.*?```", "", text, flags=re.DOTALL)
+    text = re.sub(r"`[^`\n]*`", "", text)
+    while re.match(r"^\s*\[[A-Za-z0-9_-]+\]\s*", text) and not re.match(
+        r"^\s*\[SCOPE-REDUCTION\]", text, re.IGNORECASE
+    ):
+        text = re.sub(r"^\s*\[[A-Za-z0-9_-]+\]\s*", "", text)
+    return re.sub(r"^\s*\[SCOPE-REDUCTION\]\s*", "", text, flags=re.IGNORECASE)
+
+
+def _problem_tokens(block: str) -> set[str]:
+    return set(re.findall(r"[A-Za-z0-9_]+", _problem_text(block).lower()))
+
+
+def _reviewer_tokens(block: str) -> set[str]:
+    for pattern in (
+        r"(?mi)^\s*-\s*\*\*Reviewer\(s\)\*\*:\s*([^\n]+)",
+        r"(?mi)^\s*-\s*\*\*Reviewers?\*\*:\s*([^\n]+)",
+        r"(?mi)^\s*(?:-\s*)?Reviewer\(s\):\s*([^\n]+)",
+        r"(?mi)^\s*(?:-\s*)?Reviewers?:\s*([^\n]+)",
+    ):
+        match = re.search(pattern, block)
+        if match:
+            return {part.strip().lower() for part in match.group(1).split(",") if part.strip()}
+    return set()
+
+
+def _problem_score(a: str, b: str) -> float:
+    at = _problem_tokens(a)
+    bt = _problem_tokens(b)
+    return (len(at & bt) / len(at | bt)) if at and bt else 0.0
+
+
+def _plan_scope_reduction_parity_ok(merged_path: Path, tagged_path: Path | None, combined_text: str) -> bool:
+    blocks = _finding_blocks(combined_text)
+    tagged_inputs = _finding_blocks(_read_text(tagged_path)) if tagged_path and tagged_path.is_file() else []
+    combined_tagged = [block for block in blocks if _run_scope_marker(block)]
+    if len(combined_tagged) < len(tagged_inputs):
+        return False
+    merged_untagged = [block for block in _finding_blocks(_read_text(merged_path)) if not _run_scope_marker(block)]
+    for untagged in merged_untagged:
+        for tagged_block in tagged_inputs:
+            if _problem_score(untagged, tagged_block) >= _SCOPE_REDUCTION_UNTAGGED_MATCH:
+                return False
+    used: set[int] = set()
+    for src in sorted(tagged_inputs, key=lambda block: len(_problem_tokens(block)), reverse=True):
+        sr = _reviewer_tokens(src)
+        candidates: list[tuple[float, int]] = []
+        for idx, block in enumerate(combined_tagged):
+            if idx in used:
+                continue
+            br = _reviewer_tokens(block)
+            if sr and br and not (sr & br):
+                continue
+            candidates.append((_problem_score(src, block), idx))
+        candidates.sort(reverse=True)
+        matched = bool(candidates and candidates[0][0] >= _SCOPE_REDUCTION_TAGGED_MATCH)
+        if matched:
+            used.add(candidates[0][1])
+        if not matched:
+            return False
+    return True
+
+
 def _validate_aggregate_output(input_path: Path, output_path: Path, input_mode: str) -> tuple[int, str]:
     intext = _read_text(input_path)
     outtext = _drop_impure_empty_merge_attestation_lines(_read_text(output_path))
@@ -288,7 +527,11 @@ def _validate_aggregate_output(input_path: Path, output_path: Path, input_mode: 
     missing = sorted(input_slot_set - all_out_slots)
     if missing:
         return 2, f"input reviewers missing from merge output: {missing!r}\n"
-    return 0, ""
+    rev_warnings = _check_revision_traceability(intext, blocks)
+    warning_lines = "".join(f"warning: {warning}\n" for warning in rev_warnings)
+    if os.environ.get("LARCH_AGGREGATE_REVISION_TRACE_STRICT") == "1" and rev_warnings:
+        return 1, warning_lines
+    return 0, warning_lines
 
 
 def _strip_attestation(output_path: Path) -> str:
@@ -348,8 +591,14 @@ def _apply_aggregate_candidate(candidate: Path, source_file: Path, findings_file
         combined = _read_text(findings_file)
         if tagged_file and tagged_file.is_file() and tagged_file.stat().st_size > 0:
             combined += "\n" + _read_text(tagged_file)
+        renumbered = _renumber_findings(combined)
+        if not _plan_scope_reduction_parity_ok(findings_file, tagged_file, renumbered):
+            _atomic_write(findings_file, original)
+            parity_log = review_tmpdir / "aggregator-scope-parity.stderr"
+            _write_text(parity_log, "plan scope-reduction parity validation failed\n")
+            return 2, str(parity_log)
         try:
-            _atomic_write(findings_file, _renumber_findings(combined))
+            _atomic_write(findings_file, renumbered)
         except Exception:
             _atomic_write(findings_file, original)
             return 2, str(validate_log)

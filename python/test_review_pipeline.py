@@ -235,6 +235,50 @@ def test_check_reviewer_failure_threshold_preserves_not_substantive_against_raw_
     assert "FAILED_SLOTS=1" in result.stdout
     assert "NOT_SUBSTANTIVE_SLOTS=1" in result.stdout
 
+def test_review_core_prune_nits_override_invokes_stub(tmp_path: Path) -> None:
+    stubs = _write_review_core_stubs(tmp_path / "prune-override-stubs")
+    prune_stub = tmp_path / "prune-override.sh"
+    marker = tmp_path / "prune-stub-ran"
+    rts.write_executable(
+        prune_stub,
+        f"""#!/usr/bin/env bash
+set -euo pipefail
+printf 'invoked\\n' > "{marker}"
+echo "PRUNED_COUNT=0"
+echo "INSCOPE_REMAINING=0"
+echo "STATUS=ok"
+""",
+    )
+    outdir = tmp_path / "prune-override-run"
+    outdir.mkdir()
+    env = rts.build_review_core_env(
+        tmp_path / "prune-override-stubs",
+        stubs,
+        TEST_ACCEPTED="0",
+        TEST_FINDINGS="1",
+        REVIEW_CORE_PRUNE_NITS_SH=str(prune_stub),
+    )
+    result = run_review(
+        "core",
+        "--mode",
+        "diff",
+        "--output-dir",
+        str(outdir),
+        "--codex-available",
+        "true",
+        "--cursor-available",
+        "true",
+        "--panel",
+        "simple",
+        "--round-num",
+        "1",
+        env=env,
+    )
+    assert result.returncode == 0, result.stderr
+    assert marker.is_file()
+    assert (outdir / "prune-nit.env").read_text(encoding="utf-8").startswith("PRUNED_COUNT=0")
+
+
 def test_dispatch_panel_python_surface_does_not_import_agents_waterfall() -> None:
     text = (ROOT / "python" / "review_pipeline.py").read_text(encoding="utf-8")
     assert "agents.run_waterfall" not in text

@@ -235,6 +235,172 @@ def _scope_drift(block: Path, scope_files: str, plan_file: str) -> bool:
     return all(path not in scope_text.splitlines() and path not in plan_text for path in paths)
 
 
+def _not_substantive_warning(count: int) -> str:
+    return (
+        f"**⚠ Degraded code-review panel: {count} reviewer slot(s) emitted narrative-only output "
+        "(NOT_SUBSTANTIVE). Dead slots are shown in the scoreboard below.**"
+    )
+
+
+def _seed_oos_seq(session_env_path: str) -> int:
+    if not session_env_path:
+        return 0
+    accumulated = Path(session_env_path).parent / "accumulated-oos.md"
+    if not accumulated.is_file() or accumulated.stat().st_size == 0:
+        return 0
+    count = 0
+    in_block = False
+    for line in _read(accumulated).splitlines():
+        if re.match(r"^###[ \t]+(OOS_[0-9]+:|FINDING_[0-9]+:)", line):
+            if in_block:
+                count += 1
+            in_block = True
+    if in_block:
+        count += 1
+    return count
+
+
+def _normalize_reviewer_basename(base: str) -> str:
+    base = base.rsplit("/", 1)[-1]
+    if base.endswith(".txt"):
+        stem, ext = base[:-4], ".txt"
+    else:
+        stem, ext = base, ""
+    while True:
+        for suffix in ("-phase2", "-phase3", "-retry"):
+            if stem.endswith(suffix):
+                stem = stem[: -len(suffix)]
+                break
+        else:
+            break
+    return stem + ext
+
+
+def _static_focus_area(slug: str) -> str:
+    return {
+        "structure": "code-quality",
+        "correctness": "correctness",
+        "testing": "risk-integration",
+        "security": "security",
+        "edge-cases": "correctness",
+        "plan-fidelity": "architecture",
+    }.get(slug, "code-quality")
+
+
+def _write_archetype_map(manifest_file: Path) -> dict[str, tuple[str, str, str]]:
+    mapping: dict[str, tuple[str, str, str]] = {}
+    order: list[str] = []
+    if not manifest_file.is_file():
+        return mapping
+    for line in _read(manifest_file).splitlines():
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        output = str(row.get("output") or "")
+        base = _normalize_reviewer_basename(output.rsplit("/", 1)[-1] if output else "")
+        slot = str(row.get("slot") or "")
+        focus = str(row.get("focus_area") or "")
+        weight = str(row.get("weight") or "1")
+        if base == "codex-generalist-output.txt":
+            archetype, focus, weight = "generic", "code-quality", "1"
+        elif base.startswith("dyn-") and base.endswith("-output.txt"):
+            archetype = slot if slot.startswith("dyn-") else base.removesuffix("-output.txt")
+            focus = focus or "code-quality"
+        elif re.match(r"^(cursor|codex)-specialist-.+-output\.txt$", base):
+            static_slug = base.removeprefix("cursor-specialist-").removeprefix("codex-specialist-").removesuffix("-output.txt")
+            archetype = static_slug
+            focus = _static_focus_area(static_slug)
+            weight = "1"
+        else:
+            archetype = slot or base.removesuffix("-output.txt")
+            focus = focus or "code-quality"
+            weight = "1"
+        if not weight.isdigit():
+            weight = "1"
+        if base not in mapping:
+            order.append(base)
+        mapping[base] = (archetype, focus, weight)
+    return {base: mapping[base] for base in order}
+
+
+def _parse_collector_status(collector_file: str) -> dict[str, str]:
+    if not collector_file or not Path(collector_file).is_file():
+        return {}
+    status_map: dict[str, str] = {}
+    cr_file = ""
+    cr_status = ""
+    for line in _read(Path(collector_file)).splitlines():
+        if not line:
+            if cr_file and cr_status:
+                status_map[_normalize_reviewer_basename(cr_file)] = cr_status
+            cr_file = ""
+            cr_status = ""
+        elif line.startswith("REVIEWER_FILE="):
+            cr_file = line[len("REVIEWER_FILE=") :]
+        elif line.startswith("STATUS="):
+            cr_status = line[len("STATUS=") :]
+    if cr_file and cr_status:
+        status_map[_normalize_reviewer_basename(cr_file)] = cr_status
+    return status_map
+
+
+def _append_manifest_dead_rows(
+    tally_lines: list[str],
+    *,
+    manifest_file: Path,
+    collector_file: str,
+    score_rows: list[tuple[str, str, str]],
+) -> None:
+    collector_status = _parse_collector_status(collector_file)
+    seen = {_normalize_reviewer_basename(reviewer) for reviewer, _kind, _result in score_rows}
+    for line in _read(manifest_file).splitlines():
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        output = str(row.get("output") or "")
+        base = _normalize_reviewer_basename(output.rsplit("/", 1)[-1] if output else "")
+        if not base or base in seen:
+            continue
+        status = collector_status.get(base, "OK")
+        label = re.sub(r"(?:-output)?\.txt$", "", base)
+        tally_lines.append(f"| {label} | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | STATUS={status} |\n")
+
+
+def _write_yield_tsv(
+    yield_path: Path,
+    archetype_map: dict[str, tuple[str, str, str]],
+    score_rows: list[tuple[str, str, str]],
+) -> list[str]:
+    totals: dict[str, list[int]] = defaultdict(lambda: [0, 0, 0])
+    for reviewer, kind, result in score_rows:
+        if kind != "finding":
+            continue
+        base = _normalize_reviewer_basename(reviewer)
+        totals[base][0] += 1
+        if result == "accepted":
+            totals[base][1] += 1
+        elif result == "rejected":
+            totals[base][2] += 1
+    lines = ["archetype_name\tfocus_area\tweight\tfindings_total\tfindings_accepted\tfindings_rejected\tyield_ratio\n"]
+    for base, (archetype, focus, weight) in archetype_map.items():
+        total, accepted, rejected = totals.get(base, [0, 0, 0])
+        ratio = "n/a" if total == 0 else f"{accepted / total:.6f}"
+        lines.append(f"{archetype}\t{focus}\t{weight}\t{total}\t{accepted}\t{rejected}\t{ratio}\n")
+    _write(yield_path, "".join(lines))
+    orphans: list[str] = []
+    for reviewer, _kind, _result in score_rows:
+        base = _normalize_reviewer_basename(reviewer)
+        if base not in archetype_map and base not in orphans:
+            orphans.append(base)
+    return orphans
+
+
 def _record_tally(tally_file: Path, item_id: str, *, accepted: bool, outcome: str) -> None:
     prefix, number = item_id.split("_", 1)
     _append(tally_file, f"{prefix}_{number}_ACCEPTED={'true' if accepted else 'false'}\n")
@@ -316,6 +482,7 @@ def tally_code_votes(argv: list[str]) -> int:
             else:
                 parse_failed += 1
     effective = max(0, eligible - parse_failed)
+    not_substantive_count = int(args.not_substantive_count) if str(args.not_substantive_count).isdigit() else 0
     accepted = rejected = exonerated = neutral = oos_accepted = oos_rejected = drift = 0
     if effective == 0:
         for block in blocks:
@@ -323,7 +490,15 @@ def tally_code_votes(argv: list[str]) -> int:
             empty_cells = [("", "", "", "", "", args.voter_tools[idx] if three_slot else None) for idx in range(3)] if three_slot else []
             _append(class_tsv, _classification_row(block.stem, reviewer, "rejected", empty_cells, three_slot=three_slot) + "\n")
         warning = "**⚠ Degraded code-review panel: 0 judges available. Panel tier: main-agent-required. Manual adjudication needed.**"
-        _write(voting_tally_file, f"# Code Review Voting Tally\n\n{warning}\n\n")
+        zero_lines = ["# Code Review Voting Tally\n\n", f"{warning}\n\n"]
+        if not_substantive_count > 0:
+            zero_lines.append(f"{_not_substantive_warning(not_substantive_count)}\n\n")
+        if parse_failed and eligible > 0:
+            zero_lines.append(
+                f"**⚠ Degraded code-review panel: {parse_failed} voter slot(s) emitted narrative-only output "
+                "(parse-rate ≥80% JUDGE_ERROR) and were removed from the effective quorum.**\n\n"
+            )
+        _write(voting_tally_file, "".join(zero_lines))
         for key, value in {
             "TALLY_STATUS": "main-agent-vote-required",
             "ACCEPTED_COUNT": "0",
@@ -354,8 +529,10 @@ def tally_code_votes(argv: list[str]) -> int:
         tally_lines.append(f"**⚠ Degraded code-review panel: {effective} judge(s) available. Panel tier: {voting.panel_tier(effective)}.**\n\n")
     if parse_failed:
         tally_lines.append(f"**⚠ Degraded code-review panel: {parse_failed} voter slot(s) emitted narrative-only output (parse-rate ≥80% JUDGE_ERROR) and were removed from the effective quorum.**\n\n")
+    if not_substantive_count > 0:
+        tally_lines.append(f"{_not_substantive_warning(not_substantive_count)}\n\n")
     tally_lines.append("## Per-finding vote breakdown\n\n| Item | YES | NO | JERR | Result |\n|---|---:|---:|---:|---|\n")
-    oos_seq = 0
+    oos_seq = _seed_oos_seq(args.session_env_path)
     for block in blocks:
         item_id = block.stem
         yes = no = judge_error = 0
@@ -452,9 +629,18 @@ def tally_code_votes(argv: list[str]) -> int:
         label = re.sub(r"(?:-output)?\.txt$", "", reviewer)
         score = row["accepted"] + row["oos_accepted"] - row["rejected"] - row["oos_rejected"]
         tally_lines.append(f"| {label} | {row['proposed']} | {row['accepted']} | {row['neutral']} | {row['rejected']} | {row['oos_proposed']} | {row['oos_accepted']} | {row['oos_neutral']} | {row['oos_rejected']} | {score} | STATUS=OK |\n")
+    if args.manifest_file:
+        _append_manifest_dead_rows(
+            tally_lines,
+            manifest_file=Path(args.manifest_file),
+            collector_file=args.collector_results_file,
+            score_rows=score_rows,
+        )
     _write(voting_tally_file, "".join(tally_lines))
     if args.manifest_file:
-        _write(yield_tsv, "archetype_name\tfocus_area\tweight\tfindings_total\tfindings_accepted\tfindings_rejected\tyield_ratio\n")
+        archetype_map = _write_archetype_map(Path(args.manifest_file))
+        for orphan in _write_yield_tsv(yield_tsv, archetype_map, score_rows):
+            logging_util.emit_kv("WARN", f"yield TSV missing manifest entry for reviewer basename: {orphan}")
     _append(tally_env, f"ACCEPTED_COUNT={accepted}\nREJECTED_COUNT={rejected}\nEXONERATED_COUNT={exonerated}\nNEUTRAL_COUNT={neutral}\nOOS_ACCEPTED_COUNT={oos_accepted}\nOOS_REJECTED_COUNT={oos_rejected}\n")
     for key, value in {
         "TALLY_STATUS": "ok",
@@ -507,6 +693,23 @@ def _count_from_tally(tally: dict[str, str], key: str) -> int:
     return int(value) if value.isdigit() else 0
 
 
+def _fallback_counts_from_tally_text(text: str) -> tuple[int, int, int]:
+    tally = _kv_parse(text)
+    accepted = _count_from_tally(tally, "ACCEPTED_COUNT")
+    rejected = _count_from_tally(tally, "REJECTED_COUNT")
+    neutral = _count_from_tally(tally, "NEUTRAL_COUNT")
+    if accepted == 0 and "ACCEPTED=true" in text:
+        accepted = len(re.findall(r"(?m)^[A-Z_]+_[0-9]+_ACCEPTED=true$", text))
+    if rejected == 0:
+        if re.search(r"(?m)^[A-Z_]+_[0-9]+_REJECTED_SUBTYPE=", text) or "_OUTCOME=" in text:
+            rejected = len(re.findall(r"(?m)^[A-Z_]+_[0-9]+_OUTCOME=rejected$", text))
+        else:
+            rejected = len(re.findall(r"(?m)^[A-Z_]+_[0-9]+_ACCEPTED=false$", text))
+    if neutral == 0 and "NEUTRAL_COUNT" not in tally:
+        neutral = 0
+    return accepted, rejected, neutral
+
+
 def _non_security_oos_count(path: Path) -> int:
     if not path.is_file() or path.stat().st_size == 0:
         return 0
@@ -543,10 +746,19 @@ def emit_tally(argv: list[str]) -> int:
     if not args.dynamic_slots.isdigit() or not args.static_slot_count.isdigit():
         return _error("emit-tally: --dynamic-slots and --static-slot-count must be non-negative integers")
     review_tmpdir.mkdir(parents=True, exist_ok=True)
-    tally = _kv_parse(_read(tally_file))
+    tally_text = _read(tally_file)
+    tally = _kv_parse(tally_text)
     accepted = _count_from_tally(tally, "ACCEPTED_COUNT")
     rejected = _count_from_tally(tally, "REJECTED_COUNT")
     neutral = _count_from_tally(tally, "NEUTRAL_COUNT")
+    if not tally.get("ACCEPTED_COUNT") or not tally.get("REJECTED_COUNT"):
+        fb_accepted, fb_rejected, fb_neutral = _fallback_counts_from_tally_text(tally_text)
+        if not tally.get("ACCEPTED_COUNT"):
+            accepted = fb_accepted
+        if not tally.get("REJECTED_COUNT"):
+            rejected = fb_rejected
+        if not tally.get("NEUTRAL_COUNT"):
+            neutral = fb_neutral
     oos_accepted_count = _count_from_tally(tally, "OOS_ACCEPTED_COUNT")
     round_summary = review_tmpdir / "review-round-summary.md"
     review_summary = review_tmpdir / "review-summary.json"
@@ -562,8 +774,9 @@ def emit_tally(argv: list[str]) -> int:
     else:
         _write(rejected_full, "")
     compact = "# Rejected Findings\n\n"
-    for idx, line in enumerate(_read(tally_file).splitlines(), start=1):
-        if line.endswith("_OUTCOME=rejected") or "ACCEPTED=false" in line:
+    has_outcome_rows = "_OUTCOME=" in tally_text
+    for idx, line in enumerate(tally_text.splitlines(), start=1):
+        if line.endswith("_OUTCOME=rejected") or (not has_outcome_rows and line.endswith("_ACCEPTED=false")):
             compact += f"{idx}:{line}\n"
     _write(rejected_file, compact)
     reviewer_paths = sorted(str(path) for path in review_tmpdir.glob("*-output.txt"))

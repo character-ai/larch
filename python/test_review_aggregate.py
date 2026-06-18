@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -597,3 +598,184 @@ def test_prune_nit_plan_oos_replace_failure_restores_findings(tmp_path: Path, mo
     assert rc == 0
     assert findings.read_text(encoding="utf-8") == original_findings
     assert oos.read_text(encoding="utf-8") == original_oos
+
+
+def test_aggregate_default_dispatch_argv_uses_python_cli(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    findings = tmp_path / "findings.md"
+    _ = findings.write_text(
+        """### FINDING_1: Dup A
+- **Reviewer**: cursor-a-output.txt
+- **Concern**: same bug
+- **Suggested revision**: fix
+
+### FINDING_2: Dup B
+- **Reviewer**: cursor-b-output.txt
+- **Concern**: same bug other words
+- **Suggested revision**: fix
+""",
+        encoding="utf-8",
+    )
+    captured: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        captured.append(list(argv))
+        return subprocess.CompletedProcess(argv, 0, "DISPATCH_OK=false\n", "")
+
+    monkeypatch.delenv("AGGREGATE_DISPATCH_SH", raising=False)
+    monkeypatch.setattr(review_aggregate.subprocess, "run", fake_run)
+    monkeypatch.setattr(review_aggregate, "_PLUGIN_ROOT", ROOT)
+
+    _ = review_aggregate.aggregate_findings(
+        [
+            "--findings-file",
+            str(findings),
+            "--review-tmpdir",
+            str(tmp_path),
+            "--codex-present",
+            "false",
+            "--cursor-present",
+            "false",
+            "--mode",
+            "description",
+        ]
+    )
+
+    assert captured
+    dispatch_argv = captured[0]
+    assert dispatch_argv[:4] == [sys.executable, str(ROOT / "python" / "cli.py"), "agent", "dispatch-waterfall"]
+
+
+def test_aggregate_revision_traceability_strict_fails(tmp_path: Path) -> None:
+    findings = tmp_path / "trace.md"
+    _ = findings.write_text(
+        """### FINDING_1: Dup A
+- **Reviewer**: cursor-a-output.txt
+- **Concern**: same bug
+- **Suggested revision**: fix
+
+### FINDING_2: Dup B
+- **Reviewer**: cursor-b-output.txt
+- **Concern**: same bug other words
+- **Suggested revision**: fix
+""",
+        encoding="utf-8",
+    )
+    dispatch = tmp_path / "stub-dispatch.sh"
+    rts.write_executable(
+        dispatch,
+        """#!/usr/bin/env bash
+set -euo pipefail
+slots=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --slots-file) slots="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+out=$(jq -r '.output' "$slots")
+cat >"$out" <<'OUT'
+### FINDING_1: merged
+- **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt
+- **Severity**: important
+- **Concern**: same bug
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-a-output.txt: invented fix text not in any input
+OUT
+printf 'DISPATCH_OK=true\\nALL_OUTPUT_FILES=%s\\nALL_OUTPUT_FILES_PATH=%s.output-files\\n' "$out" "$slots"
+printf '%s\\n' "$out" > "${slots}.output-files"
+""",
+    )
+
+    result = run_review(
+        "aggregate-findings",
+        "--findings-file",
+        str(findings),
+        "--review-tmpdir",
+        str(tmp_path),
+        "--codex-present",
+        "true",
+        "--cursor-present",
+        "true",
+        "--mode",
+        "diff",
+        env=_aggregate_env(tmp_path, AGGREGATE_DISPATCH_SH=str(dispatch), LARCH_AGGREGATE_REVISION_TRACE_STRICT="1"),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "AGGREGATED=false" in result.stdout
+    assert "REASON=validation-exhausted" in result.stdout
+    validate_stderr = (tmp_path / "aggregator-validate.stderr").read_text(encoding="utf-8")
+    assert "not traceable" in validate_stderr
+
+
+def test_aggregate_plan_scope_reduction_parity_rejects_accidental_merge(tmp_path: Path) -> None:
+    findings = tmp_path / "plan-parity" / "in.md"
+    findings.parent.mkdir(parents=True)
+    _ = findings.write_text(
+        """### FINDING_1:
+- **Reviewer(s)**: scope-slot
+- **Severity**: important
+- **Concern**: [SCOPE-REDUCTION] remove unrelated scope. Scenario: bloat
+- **Proposed resolution**: remove it
+
+### FINDING_2:
+- **Reviewer(s)**: merge-a
+- **Severity**: important
+- **Concern**: add missing regression test. Scenario: bug returns
+- **Proposed resolution**: add test
+
+### FINDING_3:
+- **Reviewer(s)**: merge-b
+- **Severity**: important
+- **Concern**: add missing regression test duplicate. Scenario: bug returns
+- **Proposed resolution**: add test
+""",
+        encoding="utf-8",
+    )
+    original = findings.read_text(encoding="utf-8")
+    dispatch = findings.parent / "dispatch.sh"
+    rts.write_executable(
+        dispatch,
+        """#!/usr/bin/env bash
+set -euo pipefail
+slots=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --slots-file) slots="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+out=$(jq -r '.output' "$slots")
+cat >"$out" <<'OUT'
+### FINDING_1:
+- **Reviewer(s)**: merge-a, merge-b
+- **Concern**: remove unrelated scope. Scenario: bloat
+- **Proposed resolution**: remove it
+OUT
+printf 'DISPATCH_OK=true\\nALL_OUTPUT_FILES=%s\\nALL_OUTPUT_FILES_PATH=%s.output-files\\n' "$out" "$slots"
+printf '%s\\n' "$out" > "${slots}.output-files"
+""",
+    )
+
+    result = run_review(
+        "aggregate-findings",
+        "--findings-file",
+        str(findings),
+        "--review-tmpdir",
+        str(findings.parent),
+        "--codex-present",
+        "true",
+        "--cursor-present",
+        "false",
+        "--mode",
+        "description",
+        "--input-mode",
+        "plan",
+        "--allow-findings-outside-tmpdir",
+        "true",
+        env=_aggregate_env(tmp_path, AGGREGATE_DISPATCH_SH=str(dispatch)),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "AGGREGATED=false" in result.stdout
+    assert findings.read_text(encoding="utf-8") == original
