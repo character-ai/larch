@@ -15,6 +15,7 @@ import pytest
 
 import design_lifecycle
 import design_pause
+import proc as proc_module
 from design_lifecycle import load_bash_quoted_env, phase_driver_read_result_env
 
 
@@ -852,7 +853,7 @@ def test_step1d5_collect_merges_dirty_tree_sidecars(tmp_path: Path, monkeypatch:
     def fake_checkpoint(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(cmd, 0, "STATUS=clean\n", "")
 
-    monkeypatch.setattr(subprocess, "run", lambda cmd, **kwargs: fake_collect(cmd, **kwargs) if "collect-results" in " ".join(cmd) else fake_checkpoint(cmd, **kwargs))
+    monkeypatch.setattr(subprocess, "run", lambda cmd, **kwargs: fake_collect(cmd, **kwargs) if "collect-results" in " ".join(cmd) else fake_checkpoint(cmd, **kwargs))  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     assert design_lifecycle.step1d5_main(
         ["--session-env-path", str(env_path), "--claude-pid", "123", "--plugin-root", str(CLI.parent.parent), "--mode", "collect", "--", str(dirty_a), str(dirty_b)]
     ) == 0
@@ -875,7 +876,7 @@ def test_step1d5_collect_records_clean_dirty_tree_checkpoint(tmp_path: Path, mon
     def fake_checkpoint(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(cmd, 0, "STATUS=clean\n", "")
 
-    monkeypatch.setattr(subprocess, "run", lambda cmd, **kwargs: fake_collect(cmd, **kwargs) if "collect-results" in " ".join(cmd) else fake_checkpoint(cmd, **kwargs))
+    monkeypatch.setattr(subprocess, "run", lambda cmd, **kwargs: fake_collect(cmd, **kwargs) if "collect-results" in " ".join(cmd) else fake_checkpoint(cmd, **kwargs))  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     assert design_lifecycle.step1d5_main(
         ["--session-env-path", str(env_path), "--claude-pid", "123", "--plugin-root", str(CLI.parent.parent), "--mode", "collect", "--", str(clean_a)]
     ) == 0
@@ -885,8 +886,6 @@ def test_step1d5_collect_records_clean_dirty_tree_checkpoint(tmp_path: Path, mon
 
 
 def test_resolve_repo_parses_ssh_url_remote(monkeypatch: pytest.MonkeyPatch) -> None:
-    import proc as proc_module
-
     def fake_run(argv: list[str], **_kwargs: object) -> object:
         if argv[:2] == ["gh", "repo"]:
             return type("R", (), {"returncode": 1, "stdout": "", "stderr": ""})()
