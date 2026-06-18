@@ -11,7 +11,7 @@ Offline regression harness for `scripts/hook-bg-poll-guard.sh`.
 ## Invariants
 
 - Exercises the shipped `hooks/hooks.json` registration and the guard's allow, deny, fail-open, stale-marker, wrapper-routed, Step 3 recovery-waiter, foreground terminal-sentinel probe, and telemetry paths.
-- Covers positive `.completed/step-3-terminal` recovery waiters, the braced `${DESIGN_TMPDIR}` form, appended-probe denial, and continued `.step3-review-result.env` waiter denial.
+- Covers `.completed/step-3-terminal` recovery-waiter denial across the bare, braced `${DESIGN_TMPDIR}`, and `DESIGN_TMPDIR=<abs>;`-prefixed forms (#4725, flipped from allow); the co-located foreground-probe replacement that stays allowed; appended-probe denial; and continued `.step3-review-result.env` waiter denial.
 - Covers live-marker foreground probes where terminal sentinels are absent and the expected result is `WAIT`.
 - Pins symlink denial, non-terminal `step-3` / `step-5c` denial, result-env denial, sleep-loop denial, and appended `cat` / `ls` / `stat` / `jq` denial.
 - Pins the Step 5c release split: `.completed/step-5c` does not release the marker, and `.completed/step-5c-terminal` does.

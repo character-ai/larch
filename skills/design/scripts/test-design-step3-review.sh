@@ -257,7 +257,8 @@ grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=panel-failed' <<<"$legacy_out" || fail 'lega
 grep -Fxq 'LOOP_STATUS=panel-failed' <<<"$legacy_out" || fail 'legacy LOOP_STATUS=panel-failed should survive normalization'
 # #4724: panel-failed with launched reviewer rounds but no loop-persisted result
 # env must still synthesize the result env and mint the completion sentinel so the
-# orchestrator's Step 3 recovery waiter is released instead of hanging.
+# orchestrator's Step 3 foreground recovery probe resolves instead of the
+# orchestrator yielding forever.
 [ -f "$D_LEGACY/.step3-review-result.env" ] || fail '#4724: panel-failed without a persisted result env must synthesize one'
 grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=panel-failed' "$D_LEGACY/.step3-review-result.env" || fail '#4724: synthesized result env must carry the terminal failure status'
 [ -e "$D_LEGACY/.completed/step-3" ] || fail '#4724: panel-failed with launched rounds but no persisted result env must still mint the step-3 completion sentinel'

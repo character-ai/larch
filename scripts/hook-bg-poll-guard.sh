@@ -257,11 +257,15 @@ bash_is_step3_recovery_waiter() {
   if bash_has_probe_verb "$normalized"; then
     return 1
   fi
-  # #4489: accept an optional leading `DESIGN_TMPDIR=<abs>;` assignment. Bash tool
-  # calls do not persist $DESIGN_TMPDIR, so the orchestrator must set it inline for
-  # the waiter to resolve the sentinel; the bare `until` form still matches when the
-  # variable is already exported. The `&&`/`||` and probe-verb guards above still
-  # reject compound or probing tails appended after the assignment.
+  # #4725: this matcher now drives a DENY at the call site (it previously allowed
+  # the waiter). The bare background sleep-loop waiter amplifies premature
+  # notifications, so it is blocked; the orchestrator must use the foreground,
+  # non-sleeping terminal-sentinel probe instead.
+  # #4489: still match an optional leading `DESIGN_TMPDIR=<abs>;` assignment. Bash
+  # tool calls do not persist $DESIGN_TMPDIR; the bare `until` form also matches
+  # when the variable is already exported. The `&&`/`||` and probe-verb guards
+  # above keep compound or probing tails from matching this exact-waiter shape;
+  # those route through the generic deny loop below instead.
   # shellcheck disable=SC2016 # Match literal $DESIGN_TMPDIR in the candidate Bash command.
   printf '%s' "$normalized" | grep -Eq '^(DESIGN_TMPDIR=[^;]+;[[:space:]]*)?until[[:space:]]+\[[[:space:]]+-f[[:space:]]+"?(\$DESIGN_TMPDIR/\.completed/step-3-terminal|\$\{DESIGN_TMPDIR\}/\.completed/step-3-terminal)"?[[:space:]]+\];[[:space:]]+do[[:space:]]+sleep[[:space:]]+[0-9]+[[:space:]]*;[[:space:]]+done$'
 }
@@ -423,7 +427,17 @@ fi
 cmd=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""' 2>/dev/null) || exit 0
 [ -n "$cmd" ] || exit 0
 bash_is_strict_wrapper_only "$cmd" && exit 0
-bash_is_step3_recovery_waiter "$cmd" && exit 0
+# #4725: the background sleep-loop Step 3 recovery waiter is itself a zero-output
+# background task, so it fires its own premature <task-notification> within
+# seconds and breeds a re-engagement loop. Deny it (it used to be allowed here),
+# forcing the foreground, non-sleeping terminal-sentinel probe path that stays
+# allowed just below. deny_if_needed exits 0 after the first live marker dir.
+if bash_is_step3_recovery_waiter "$cmd"; then
+  while IFS= read -r dir || [ -n "$dir" ]; do
+    [ -n "$dir" ] || continue
+    deny_if_needed "$dir"
+  done <"$live_dirs_file"
+fi
 bash_is_terminal_sentinel_foreground_probe "$cmd" && exit 0
 while IFS= read -r dir || [ -n "$dir" ]; do
   [ -n "$dir" ] || continue
