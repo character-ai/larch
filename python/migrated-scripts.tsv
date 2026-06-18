@@ -805,6 +805,8 @@ skills/design/scripts/test-record-plan-review-round-timing.sh	#3680
 skills/design/scripts/test-record-plan-review-round-timing.md	#3680
 skills/design/scripts/test-persist-retally-step3-env.sh	#3680
 skills/design/scripts/test-persist-retally-step3-env.md	#3680
+skills/design/scripts/design-step3-state.sh	#4731
+skills/design/scripts/design-step3-state.md	#4731
 skills/design/scripts/test-design-step3-state.sh	#3680
 skills/design/scripts/test-design-step3-state.md	#3680
 skills/design/scripts/test-gate-b-dedup-plan.sh	#3680

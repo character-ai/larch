@@ -13,7 +13,7 @@ Wrapper for the legacy heuristic Step 3 continuation entry path.
 - Accepts `--session-env-path` from the prompt-side Bash call.
 - Validates `DESIGN_TMPDIR` after sourcing env.
 - Clears `$DESIGN_TMPDIR/.step3-entry-plan-printed` before pause-save so legacy heuristic continuation owns preview cleanup.
-- Delegates state hygiene to `design-step3-state.sh --auto-continuation-entry` after pause-save.
+- Delegates state hygiene to `python/cli.py plan-review step3-state --auto-continuation-entry` after pause-save.
 - Does not derive the root Claude PID from `$PPID` internally.
 
 ## Harness

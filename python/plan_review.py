@@ -667,15 +667,58 @@ def persist_retally_step3_env(argv: Sequence[str]) -> int:
     return 0
 
 
+def _step3_clear_downstream_sentinels(tmpdir: Path) -> None:
+    """Remove the downstream Step 3 completion sentinels and per-round
+    gate-b-postapply markers. Shared by direct-review, pause-hygiene, and
+    auto-continuation re-entry (port of design-step3-state.sh's rm -f set).
+    """
+    for rel in (
+        ".completed/step-3",
+        ".completed/step-3.5",
+        ".completed/step-3-terminal",
+        ".step3-terminal-persisted-this-run",
+        ".completed/step-3b",
+        ".completed/step-4",
+        ".completed/step-4b",
+    ):
+        (tmpdir / rel).unlink(missing_ok=True)
+    for path in tmpdir.glob(".gate-b-postapply-ready-*"):
+        path.unlink(missing_ok=True)
+
+
+def _step3_cleanup_settled_loop_state(tmpdir: Path, max_round: int) -> None:
+    """Drop settled per-round phase / pre-apply artifacts for rounds at or below
+    max_round (port of design-step3-state.sh cleanup_settled_step3_loop_state).
+    Symlinks are skipped, matching the legacy guard.
+    """
+    for pattern, prefix, suffix in (
+        (".step3-round-*.phase", ".step3-round-", ".phase"),
+        ("plan-pre-apply-round-*.txt", "plan-pre-apply-round-", ".txt"),
+    ):
+        for path in tmpdir.glob(pattern):
+            if path.is_symlink():
+                continue
+            stem = path.name[len(prefix):-len(suffix)]
+            if re.fullmatch(r"[0-9]+", stem) and int(stem, 10) <= max_round:
+                path.unlink(missing_ok=True)
+
+
 def step3_state(argv: Sequence[str]) -> int:
     parser = argparse.ArgumentParser(prog="cli.py plan-review step3-state")
     parser.add_argument("--design-tmpdir", required=True)  # pyright: ignore[reportUnusedCallResult]
     parser.add_argument("--direct-review-entry", action="store_true")  # pyright: ignore[reportUnusedCallResult]
+    parser.add_argument("--direct-review-pause-hygiene", action="store_true")  # pyright: ignore[reportUnusedCallResult]
     parser.add_argument("--auto-continuation-entry", action="store_true")  # pyright: ignore[reportUnusedCallResult]
     parser.add_argument("--gate-b-bypass", action="store_true")  # pyright: ignore[reportUnusedCallResult]
     ns = parser.parse_args(list(argv))
     tmpdir = _require_tmpdir(parser, ns.design_tmpdir)
+    (tmpdir / ".completed").mkdir(parents=True, exist_ok=True)
+    count = _read_count(tmpdir)
     if ns.auto_continuation_entry:
+        # Auto-continuation clears downstream state and settles prior rounds, but
+        # is unconditional (no .step3-reentry gate) and does not restore step-2a/2b.
+        _step3_clear_downstream_sentinels(tmpdir)
+        _step3_cleanup_settled_loop_state(tmpdir, count)
         state = "auto-continuation-entry"
     elif ns.gate_b_bypass:
         # Port of legacy design-step3-state.sh gate-b-bypass: refuse when the
@@ -686,12 +729,35 @@ def step3_state(argv: Sequence[str]) -> int:
         else:
             step3_loop_write_completed_step3(tmpdir)
             state = "gate-b-bypass"
-    elif ns.direct_review_entry:
-        state = "direct-review-entry"
+    elif ns.direct_review_entry or ns.direct_review_pause_hygiene:
+        # Direct-review / pause-hygiene re-entry only mutates state when the
+        # .step3-reentry breadcrumb is present (set by the Step 3 entry fence on
+        # backward re-entry); first-time entry is a no-op.
+        action = "direct-review-entry" if ns.direct_review_entry else "direct-review-pause-hygiene"
+        if not (tmpdir / ".step3-reentry").is_file():
+            state = "noop"
+        else:
+            _step3_clear_downstream_sentinels(tmpdir)
+            for name in ("step-1e", "step-2a", "step-2b", "step-2b.5"):
+                (tmpdir / ".completed" / name).touch()
+            if ns.direct_review_entry:
+                # direct-review-entry (not pause-hygiene) also settles prior rounds,
+                # drops the accumulated finding/OOS artifacts, and consumes the
+                # re-entry breadcrumb.
+                _step3_cleanup_settled_loop_state(tmpdir, count)
+                for rel in (
+                    "accepted-plan-findings-all.md",
+                    ".accepted-plan-findings-all.prev.md",
+                    "oos-accepted-design.md",
+                    ".oos-accepted-design.prev.md",
+                    ".step3-reentry",
+                ):
+                    (tmpdir / rel).unlink(missing_ok=True)
+            state = action
     else:
         state = "ok"
     _emit_kv("STEP3_STATE", state)
-    _emit_kv("REVIEW_ROUND_COUNT", _read_count(tmpdir))
+    _emit_kv("REVIEW_ROUND_COUNT", count)
     return 0
 
 
