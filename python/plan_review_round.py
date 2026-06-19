@@ -13,6 +13,8 @@ import sys
 from pathlib import Path
 from typing import cast
 
+import collect_results
+
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _COLLECT_TIMEOUT = "1860"
 _PANEL_TIMEOUT = "1860"
@@ -166,10 +168,13 @@ def _compose_findings_from_collector(
     finding_i = 1
     oos_i = 1
 
-    for line in collect_text.splitlines():
-        if not line.strip() or "\x1f" not in line:
-            continue
-        rf, tool, status, xc, fr, sidecar = (line.split("\x1f") + [""] * 6)[:6]
+    for record in collect_results.parse_collector_records(collect_text):
+        rf = record.get("REVIEWER_FILE", "")
+        tool = record.get("TOOL", "")
+        status = record.get("STATUS", "")
+        xc = record.get("EXIT_CODE", "")
+        fr = record.get("FAILURE_REASON", "")
+        sidecar = record.get("STRUCTURED_SIDECAR", "")
         slot_name = slot_by_output.get(rf, Path(rf).stem.replace("-output", ""))
         human = _slot_human_label(slot_name)
         if status != "OK":
@@ -279,6 +284,28 @@ def _write_round_summary(
     _ = tmp.replace(dest)
 
 
+def _classify_round_loop_status(
+    *,
+    accepted: int,
+    ok_count: int,
+    degraded: bool,
+    panel_pruned_empty: bool,
+    tally_status: str,
+) -> str:
+    """Decide ``LOOP_STATUS`` for a completed (non-error) plan-review round.
+
+    A zero-OK collector means no reviewer record parsed and no finding reached the
+    ballot. When the panel was not pruned empty, that is always the loud
+    ``degraded-empty-collector`` outcome, regardless of voter-dispatch health: a real
+    empty collection must never be reported as a clean ``complete`` (issue #4790).
+    """
+    if accepted == 0 and ok_count == 0 and not panel_pruned_empty:
+        return "degraded-empty-collector"
+    if accepted == 0 and (degraded or tally_status == "skipped-empty-findings"):
+        return "zero-findings-degraded-panel"
+    return "complete"
+
+
 def execute_round(
     design: Path,
     *,
@@ -379,7 +406,7 @@ def execute_round(
         collect_rc = collect.returncode
         _ = (design / "collector-results.env").write_text(collect_out + ("\n" if collect_out and not collect_out.endswith("\n") else ""), encoding="utf-8")
 
-    if collect_rc != 0 and not any("\x1f" in line for line in collect_out.splitlines()):
+    if collect_rc != 0 and not collect_results.parse_collector_records(collect_out):
         values.update(
             {
                 "LOOP_STATUS": "panel-failed",
@@ -499,7 +526,14 @@ def execute_round(
     degraded = voter_kv.get("DISPATCH_OK", "true") != "true" or int(voter_kv.get("DEGRADED_PANEL", "0") or "0") == 1
     values["DEGRADED_PANEL"] = "1" if degraded else "0"
 
-    if accepted == 0 and ok_count == 0 and degraded:
+    loop_status = _classify_round_loop_status(
+        accepted=accepted,
+        ok_count=ok_count,
+        degraded=degraded,
+        panel_pruned_empty=values.get("PANEL_PRUNED_EMPTY") == "true",
+        tally_status=tally_status,
+    )
+    if loop_status == "degraded-empty-collector":
         values["LOOP_STATUS"] = "degraded-empty-collector"
         values["DEGRADED_PANEL"] = "1"
         _write_round_summary(design, round_num, loop_status="degraded-empty-collector", collect_ok=ok_count, collect_fail=fail_count, values=values)
@@ -507,11 +541,9 @@ def execute_round(
             _emit(k, v)
         return 0, values
 
-    if accepted == 0 and (degraded or tally_status == "skipped-empty-findings"):
-        values["LOOP_STATUS"] = "zero-findings-degraded-panel"
+    values["LOOP_STATUS"] = loop_status
+    if loop_status == "zero-findings-degraded-panel":
         values["REASON"] = values.get("REASON", "zero-findings-degraded-panel")
-    else:
-        values["LOOP_STATUS"] = "complete"
 
     values["ROUNDS_COMPLETED"] = str(round_num)
     _write_round_summary(design, round_num, loop_status=values["LOOP_STATUS"], collect_ok=ok_count, collect_fail=fail_count, values=values)

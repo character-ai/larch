@@ -86,6 +86,38 @@ class CollectorRecord:
         return fields
 
 
+def parse_collector_records(text: str) -> list[dict[str, str]]:
+    r"""Parse collector stdout / ``collector-results.env`` into per-reviewer dicts.
+
+    The collector emits one ``KEY=VALUE`` per line (see ``CollectorRecord.fields``),
+    with records separated by a blank line. Records are anchored on ``REVIEWER_FILE``:
+    diagnostic ``KEY=VALUE`` lines emitted before the first record are ignored, a new
+    ``REVIEWER_FILE`` opens the next record, and a blank line closes the current one.
+
+    This is the single reader for that wire format. Consumers must not re-implement
+    delimiter parsing: a stale ``\x1f`` split here silently dropped every reviewer
+    finding (issue #4790).
+    """
+    records: list[dict[str, str]] = []
+    current: dict[str, str] | None = None
+    for line in text.splitlines():
+        if "=" not in line:
+            if not line.strip() and current is not None:
+                records.append(current)
+                current = None
+            continue
+        key, value = line.split("=", 1)
+        if key == "REVIEWER_FILE":
+            if current is not None:
+                records.append(current)
+            current = {key: value}
+        elif current is not None:
+            current[key] = value
+    if current is not None:
+        records.append(current)
+    return records
+
+
 @dataclass(frozen=True)
 class RetryMeta:
     tool: str = ""
