@@ -95,6 +95,14 @@ def test_dispatch_lint_retired_scripts() -> None:
     assert rc == 0
 
 
+def test_dispatch_lint_duplicate_code() -> None:
+    mock_main = MagicMock(return_value=0)
+    with patch.dict("sys.modules", {"duplicate_code": MagicMock(duplicate_code_main=mock_main)}):
+        rc = cli.main(["lint", "duplicate-code", "--root", "python"])
+    mock_main.assert_called_once_with(["--root", "python"])
+    assert rc == 0
+
+
 def test_dispatch_oos_serialize() -> None:
     mock_main = MagicMock(return_value=0)
     with patch.dict("sys.modules", {"oos": MagicMock(oos_serialize_main=mock_main)}):
