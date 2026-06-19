@@ -4,7 +4,7 @@ Offline harness for `scripts/phantom-probe-with-warn.sh` (see sibling `.md`).
 
 ## Stubbing
 
-Same `SCRIPT_DIR` sibling pattern as `scripts/test-rebase-checkpoint-probe.md`: copy `phantom-probe-with-warn.sh`, `lib-quiet.sh`, `lib-phantom-probe.sh`, and stub `check-phantom-dirty.sh` / `append-execution-issue.sh` into a per-case temp directory.
+Use the same `SCRIPT_DIR` sibling pattern as the historical checkpoint probe harness: copy `phantom-probe-with-warn.sh`, `lib-quiet.sh`, `lib-phantom-probe.sh`, and stub `check-phantom-dirty.sh` / `append-execution-issue.sh` into a per-case temp directory.
 
 ## Cases (10)
 

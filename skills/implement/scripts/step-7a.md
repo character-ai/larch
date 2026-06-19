@@ -26,7 +26,7 @@ skills/implement/scripts/step-7a.sh \
 | `LOG_FLUSH_STATUS` | `ok`, `degraded`, `skipped-no-logs-commit`, or `skipped-rebase-checkpoint` |
 | `STEP_7A_BAIL_REASON` | Empty on non-argv paths; `argv` on usage errors |
 
-The helper re-emits the `rebase-checkpoint-probe.sh` and `run-log capture-transcript` KV envelopes onto the caller-visible contract stream before its final KV tail.
+The helper re-emits the `python/cli.py push checkpoint-probe` and `run-log capture-transcript` KV envelopes onto the caller-visible contract stream before its final KV tail.
 
 ## Exit Codes
 

@@ -119,7 +119,7 @@ class MonitorResult:
 
 
 def _conflicted_from_merge_state(merge_state: str | None) -> bool:
-    """Mirror ci-status.sh CONFLICTED derivation (conservative for UNKNOWN/empty)."""
+    """Mirror ci status CONFLICTED derivation (conservative for UNKNOWN/empty)."""
     if not merge_state:
         return True
     if merge_state == "DIRTY":
@@ -138,7 +138,7 @@ def decide(
     rebase_count: int,
     fix_attempts: int,
 ) -> Decision:
-    """Pure port of ci-decide.sh decision matrix."""
+    """Pure port of ci decide decision matrix."""
     if status.status == "merged":
         return Decision(action="already_merged")
     if status.status == "error":
@@ -239,7 +239,7 @@ def behind_count(
     fetch: bool = True,
     cwd: str | None = None,
 ) -> int:
-    """Public ci-behind-count parity: validate labels, fail open to 0."""
+    """Public ci behind-count parity: validate labels, fail open to 0."""
     if git.validate_base_remote_ref(base_remote, base_ref) is not None:
         return 0
     if fetch:
@@ -403,7 +403,7 @@ def _resolve_checks_status(
     cwd: str | None,
     required: bool = False,
 ) -> tuple[str, str | None]:
-    """Classify PR checks with JSON-first and text fallback (ci-status.sh parity)."""
+    """Classify PR checks with JSON-first and text fallback (ci status parity)."""
     checks = _gh_pr_checks(runner, pr=pr, repo=repo, cwd=cwd, required=required)
     checks_json = _checks_json_from_result(checks)
 
@@ -467,7 +467,7 @@ def gather_status(
     cwd: str | None = None,
     required: bool = False,
 ) -> CiStatus:
-    """Port of ci-status.sh."""
+    """Port of ci status."""
     conflicted = True
     pr_view_ok = True
     try:
@@ -543,7 +543,7 @@ def poll_ci(
     cwd: str | None = None,
     required: bool = False,  # Callers that restrict to required checks must pass required=True.
 ) -> tuple[CiStatus, Decision]:
-    """Port of ci-wait.sh poll loop."""
+    """Port of ci wait poll loop."""
     max_polls = max(1, math.ceil(timeout / config.CI_WAIT_POLL_INTERVAL_SEC))
     checks = 0
     ci_failures = 0
@@ -642,7 +642,7 @@ def _parse_job_name_shard(raw_name: str) -> tuple[str, str, bool]:
 
 
 def classify_failed_jobs(jobs: tuple[FailedJob, ...]) -> ClassifiedJobs:
-    """Port of ci-failed-jobs.sh classification."""
+    """Port of ci failed-jobs classification."""
     parsed: list[JobClass] = []
     fixable: list[JobClass] = []
     unfixable: list[JobClass] = []
@@ -706,7 +706,7 @@ def collect_failed_logs(
     repo: str,
     cwd: str | None = None,
 ) -> LogCollectResult:
-    """Port of gh-run-logs.sh."""
+    """Port of gh run-logs."""
     pointer = (
         f"--- CI log (run {run_id}, repo {repo}) — last "
         f"{config.CI_MONITOR_LOG_TAIL_LINES} lines shown. "
@@ -743,7 +743,7 @@ def rerun_failed(
     repo: str,
     cwd: str | None = None,
 ) -> RerunResult:
-    """Port of ci-rerun-failed.sh."""
+    """Port of ci rerun-failed."""
     result = gh.run_rerun(runner, int(run_id), repo=repo, failed_only=True, cwd=cwd)
     if result.returncode == 0:
         return RerunResult(submitted=True, already_running=False, error=None)

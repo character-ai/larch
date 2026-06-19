@@ -43,7 +43,7 @@ def assert_clean_worktree(runner: Runner, *, cwd: str | None = None) -> None:
 
 
 def select_push_remote(_runner: Runner, _ctx: RunContext, *, cwd: str | None = None) -> str:
-    """Fork-aware push always targets origin (parity with create-pr.sh / git-push.sh)."""
+    """Fork-aware push always targets origin (parity with pr create / git-push.sh)."""
     _ = cwd
     return "origin"
 
@@ -169,7 +169,9 @@ def _rebase_sanitize(text: str) -> str:
 def _conflict_files_csv(result: rebase.RebasePushResult) -> str:
     if result.conflict_files:
         return result.conflict_files
-    files = [item.path for item in git.try_conflict_files(proc)]
+    files = git.try_unmerged_paths(proc)
+    if not files:
+        files = [item.path for item in git.try_conflict_files(proc)]
     return ",".join(files)
 
 
@@ -180,27 +182,160 @@ def _emit_rebase_checkpoint_keys(result: rebase.RebasePushResult) -> int:
         _emit_kv("SKIPPED_ALREADY_FRESH", "true")
     if result.conflict_files:
         _emit_kv("CONFLICT_FILES", result.conflict_files)
-    if result.rebase_error:
-        _emit_kv("REBASE_ERROR", result.rebase_error)
+    if result.rebase_error and result.exit_code != _REBASE_FAILED_EXIT:
+        _emit_kv("REBASE_ERROR", _rebase_sanitize(result.rebase_error))
 
     if result.exit_code == 0:
         if result.skipped_already_pushed or result.skipped_already_fresh:
             _emit_kv("REBASE_OUTCOME", "skipped")
         else:
             _emit_kv("REBASE_OUTCOME", "ok")
+        _emit_kv("ROUTE", "continue")
         return 0
     if result.exit_code == 1:
         _emit_kv("REBASE_OUTCOME", "conflict")
         _emit_kv("CONFLICT_FILES", _conflict_files_csv(result))
+        _emit_kv("ROUTE", "conflict")
         return 1
     if result.exit_code == _REBASE_FAILED_EXIT:
         _emit_kv("REBASE_OUTCOME", "failed")
         err = result.rebase_error or "rebase-failed"
         _emit_kv("REBASE_ERROR", _rebase_sanitize(err))
+        _emit_kv("ROUTE", "bail")
         return 3
     _emit_kv("REBASE_OUTCOME", "failed")
     _emit_kv("REBASE_ERROR", f"unexpected-rc-{result.exit_code}")
+    _emit_kv("ROUTE", "bail")
     return result.exit_code
+
+
+def _is_trivial_conflict_file(path: str) -> bool:
+    return path.startswith("larch-logs/")
+
+
+def _split_conflict_csv(value: str) -> list[str]:
+    return [item for item in value.split(",") if item]
+
+
+def _current_unmerged_conflict_files() -> str:
+    files = git.try_unmerged_paths(proc)
+    if files:
+        return ",".join(files)
+    return ",".join(item.path for item in git.try_conflict_files(proc))
+
+
+def _conflict_upstream_deleted(path: str) -> bool:
+    for item in git.try_conflict_files(proc):
+        if item.path == path:
+            return not item.stage_2
+    return False
+
+
+def _resolve_trivial_conflict_file(path: str) -> bool:
+    checkout = git.checkout_ours(proc, path)
+    if checkout.returncode != 0:
+        if not _conflict_upstream_deleted(path):
+            print(f"WARN rebase-probe: failed to resolve trivial conflict {path}", file=sys.stderr)
+            return False
+        removed = git.rm(proc, path, force=True)
+        if removed.returncode != 0:
+            print(f"WARN rebase-probe: failed to resolve trivial conflict {path}", file=sys.stderr)
+            return False
+        return True
+    staged = git.add(proc, path)
+    if staged.returncode != 0:
+        print(f"WARN rebase-probe: failed to stage trivial conflict {path}", file=sys.stderr)
+        return False
+    return True
+
+
+def _empty_continue_result(result: rebase.RebasePushResult) -> bool:
+    return _is_empty_or_already_applied_rebase_error(result.rebase_error)
+
+
+def _is_empty_or_already_applied_rebase_error(text: str) -> bool:
+    lowered = text.lower()
+    if "nothing to commit" in lowered:
+        return True
+    if "no changes" in lowered:
+        return True
+    return "all merge conflicts were fixed" in lowered
+
+
+def _continue_checkpoint_rebase() -> rebase.RebasePushResult:
+    return rebase.rebase_push(
+        proc,
+        continue_mode=True,
+        no_push=True,
+        keep_on_conflict=True,
+    )
+
+
+def _handle_empty_continue_rc3(result: rebase.RebasePushResult) -> rebase.RebasePushResult | None:
+    while True:
+        unmerged = _current_unmerged_conflict_files()
+        if unmerged:
+            return rebase.RebasePushResult(exit_code=1, conflict_files=unmerged)
+        if not _empty_continue_result(result):
+            return None
+        skipped = git.rebase_skip(proc)
+        if skipped.returncode != 0:
+            print("WARN rebase-probe: git rebase --skip failed after empty continue", file=sys.stderr)
+            return None
+        if not git.rebase_in_progress(proc):
+            return rebase.RebasePushResult(exit_code=0)
+        result = _continue_checkpoint_rebase()
+        if result.exit_code != _REBASE_FAILED_EXIT:
+            return result
+
+
+def _checkpoint_rebase_result(
+    *,
+    base_remote: str,
+    base_ref: str,
+) -> rebase.RebasePushResult:
+    result = rebase.rebase_push(
+        proc,
+        no_push=True,
+        skip_if_pushed=True,
+        keep_on_conflict=True,
+        base_remote=base_remote,
+        base_ref=base_ref,
+    )
+    if result.exit_code != 1:
+        return result
+
+    for _iteration in range(50):
+        cf = _conflict_files_csv(result)
+        if not cf:
+            return rebase.RebasePushResult(exit_code=1, conflict_files="")
+        conflicts = _split_conflict_csv(cf)
+        trivial = [path for path in conflicts if _is_trivial_conflict_file(path)]
+        nontrivial = [path for path in conflicts if not _is_trivial_conflict_file(path)]
+        if not trivial:
+            return rebase.RebasePushResult(exit_code=1, conflict_files=cf)
+        for path in trivial:
+            if not _resolve_trivial_conflict_file(path):
+                return rebase.RebasePushResult(
+                    exit_code=1,
+                    conflict_files=_current_unmerged_conflict_files(),
+                )
+        if nontrivial:
+            cf_now = _current_unmerged_conflict_files()
+            return rebase.RebasePushResult(exit_code=1, conflict_files=cf_now or ",".join(nontrivial))
+        result = _continue_checkpoint_rebase()
+        if result.exit_code == _REBASE_FAILED_EXIT:
+            handled = _handle_empty_continue_rc3(result)
+            if handled is None:
+                return result
+            result = handled
+        if result.exit_code != 1:
+            return result
+    print(
+        "WARN rebase-probe: trivial conflict pre-pass hit iteration cap; surfacing current conflicts",
+        file=sys.stderr,
+    )
+    return rebase.RebasePushResult(exit_code=1, conflict_files=_current_unmerged_conflict_files())
 
 
 def branch_main(argv: list[str]) -> int:
@@ -275,19 +410,18 @@ def checkpoint_probe_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="cli.py push checkpoint-probe")
     parser.add_argument("step_prefix")
     parser.add_argument("short_name")
-    parser.add_argument("--base-remote", default="origin")
-    parser.add_argument("--base-ref", default="main")
+    parser.add_argument("--base-remote", default=None)
+    parser.add_argument("--base-ref", default=None)
+    parser.add_argument("--forked-target", choices=("true", "false"), default="false")
     args = _parse(parser, argv)
     if args is None:
         return 2
     print(f"→ rebase-probe: {args.step_prefix} {args.short_name}", file=sys.stderr)
-    result = rebase.rebase_push(
-        proc,
-        no_push=True,
-        skip_if_pushed=True,
-        keep_on_conflict=True,
-        base_remote=args.base_remote,
-        base_ref=args.base_ref,
+    base_remote = args.base_remote or ("upstream" if args.forked_target == "true" else "origin")
+    base_ref = args.base_ref or "main"
+    result = _checkpoint_rebase_result(
+        base_remote=base_remote,
+        base_ref=base_ref,
     )
     rc = _emit_rebase_checkpoint_keys(result)
     if rc != 0:

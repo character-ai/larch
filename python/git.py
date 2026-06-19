@@ -194,7 +194,7 @@ def try_log_subjects(
     *,
     cwd: str | None = None,
 ) -> LogSubjects:
-    """Non-throwing log subjects (merge flush recovery parity with merge-pr.sh)."""
+    """Non-throwing log subjects (merge flush recovery parity with merge pr)."""
     result = _run(runner, ["git", "log", "--format=%s", rev_range], cwd=cwd)
     if result.returncode != 0:
         return LogSubjects(subjects=())
@@ -324,6 +324,15 @@ def add(runner: Runner, *paths: str, cwd: str | None = None) -> CommandResult:
     return _run(runner, argv, cwd=cwd)
 
 
+def rm(runner: Runner, *paths: str, force: bool = False, cwd: str | None = None) -> CommandResult:
+    argv = ["git", "rm"]
+    if force:
+        argv.append("-f")
+    if paths:
+        argv.extend(["--", *paths])
+    return _run(runner, argv, cwd=cwd)
+
+
 def add_pathspec_file(
     runner: Runner,
     pathspec_from_file: str,
@@ -428,7 +437,7 @@ def unmerged_paths(runner: Runner, *, cwd: str | None = None) -> list[str]:
 
 
 def try_unmerged_paths(runner: Runner, *, cwd: str | None = None) -> list[str]:
-    """Non-raising unmerged-path probe (rebase-push.sh / conflict CLI parity)."""
+    """Non-raising unmerged-path probe (push rebase / conflict CLI parity)."""
     result = _run(
         runner,
         ["git", "diff", "--name-only", "--diff-filter=U"],
@@ -827,7 +836,7 @@ def resolve_branch_push_remote(
     *,
     cwd: str | None = None,
 ) -> str:
-    """Resolve topic-branch push remote (rebase-push.sh parity)."""
+    """Resolve topic-branch push remote (push rebase parity)."""
     for key in (f"branch.{branch}.pushRemote", f"branch.{branch}.remote"):
         result = _run(runner, ["git", "config", "--get", key], cwd=cwd)
         if result.returncode == 0:
@@ -838,7 +847,7 @@ def resolve_branch_push_remote(
 
 
 def rebase_in_progress(runner: Runner, *, cwd: str | None = None) -> bool:
-    """True when git reports an active rebase (rebase-push.sh --continue guard)."""
+    """True when git reports an active rebase (push rebase --continue guard)."""
     git_dir = _run(runner, ["git", "rev-parse", "--git-dir"], cwd=cwd)
     if git_dir.returncode != 0:
         return False

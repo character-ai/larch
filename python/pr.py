@@ -1,5 +1,5 @@
 # pyright: reportUnusedCallResult=false
-"""Idempotent PR ensure flow (parity with create-pr.sh)."""
+"""Idempotent PR ensure flow (parity with pr create)."""
 
 from __future__ import annotations
 
@@ -137,7 +137,7 @@ def check_branch_state(
     *,
     cwd: str | None = None,
 ) -> CreateBranchResult:
-    """Report current branch state (create-branch.sh --check parity)."""
+    """Report current branch state (pr create-branch --check parity)."""
     user_prefix = _derive_user_prefix(runner, cwd=cwd)
     current = git.try_current_branch(runner, cwd=cwd) or ""
     is_main = not current or current == "main"
@@ -285,7 +285,7 @@ def create_pr_parity(
     push_result = runner.run(["git", "push", "-u", "origin", "HEAD"], cwd=cwd)
     if push_result.returncode != 0:
         return PrResult(0, "", "push_failed", title, exit_code=1)
-    # Parity with create-pr.sh / compose_pr_body: redact the body fail-closed
+    # Parity with pr create / compose_pr_body: redact the body fail-closed
     # before it leaves the process. `cli.py pr create` is dormant today (the
     # live ship path uses compose_pr_body/ensure_pr), but a future caller wiring
     # it as the create path must not exfiltrate secrets or session tmpdir paths.

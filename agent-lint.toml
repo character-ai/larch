@@ -290,21 +290,18 @@ exclude = [
   "python/test_design_step_log.py",
   # Python bootstrap invokes these Step 0 shell helpers through subprocess;
   # agent-lint does not follow Python-to-Bash edges.
-  "scripts/create-branch.sh",
-  "scripts/create-branch.md",
+  "python/cli.py pr create-branch",
+  "python/pr.py",
   "python/design_step_log.py",
   "scripts/snapshot-untracked.sh",
   # Step 5 launcher harness is Makefile-only; runtime reachability is through
   # the SKILL.md invocation of python/cli.py review-and-fix step5.
   "python/test_review_and_fix.py",
   "python/test_review_and_fix.py",
-  # Makefile/ship-pr-only CI recovery helpers. ci-failed-jobs.sh is invoked
-  # is invoked by the Makefile's agent-sync target, which mirrors the CI job.
-  # Their harnesses are Makefile-only, so G004 cannot discover the edges.
-  "scripts/ci-failed-jobs.sh",
-  "scripts/ci-failed-jobs.md",
-  "scripts/test-ci-failed-jobs.sh",
-  "scripts/test-ci-failed-jobs.md",
+  # The failed-jobs classifier is invoked by ship-pr and Makefile-only tests;
+  # agent-lint does not follow those Python CLI edges.
+  "python/cli.py ci failed-jobs",
+  "python/ci_monitor.py",
   "python/test_compose_review.py",
   # Makefile-only harness for metadata summary publication. Runtime reachability
   # is through Step 0 helpers, not direct SKILL.md invocation.
@@ -485,7 +482,6 @@ exclude = [
   # (script-md-siblings / G004).
   "scripts/lib-sparse-dirs.md",
   # scripts/lib-phantom-probe.sh is a sourced-only shell library (no shebang,
-  # not invokable directly) shared by rebase-checkpoint-probe.sh and
   # phantom-probe-with-warn.sh; agent-lint does not follow source directives.
   "scripts/lib-phantom-probe.sh",
   # scripts/lib-phantom-probe.md — sibling contract for lib-phantom-probe.sh
@@ -566,11 +562,11 @@ exclude = [
   # dirty-tree detector. Referenced only from Makefile
   # (test-check-mid-run-dirty-tree target) and its sibling contract.
   "python/test_dirty_tree.py",
-  # scripts/rebase-checkpoint-probe.sh — combined /implement rebase checkpoint +
+  # python/cli.py push checkpoint-probe — combined /implement rebase checkpoint +
   # post-rebase phantom probe; invoked only from skills/implement/SKILL.md
   # foreground fences (G004 does not follow markdown invocations).
-  "scripts/rebase-checkpoint-probe.sh",
-  "scripts/rebase-checkpoint-probe.md",
+  "python/cli.py push checkpoint-probe",
+  "skills/implement/references/rebase-checkpoint-routing.md",
   # scripts/phantom-probe-with-warn.sh — standalone phantom probe wrapper for
   # SKILL.md fences; sibling contract below.
   "scripts/phantom-probe-with-warn.sh",
@@ -615,11 +611,9 @@ exclude = [
   # python/cli.py render voter (Makefile test-render-voter-prompt
   # target +  sibling contract).
   "scripts/test-python/cli.py render voter",
-  # scripts/test-rebase-push.sh is the regression harness for
-  # scripts/rebase-push.sh (#856). It is referenced only from Makefile
+  # python/cli.py push rebase (#856). It is referenced only from Makefile
   # (sibling contract), matching the same Makefile-only pattern as the other
   # test-* harnesses above.
-  "scripts/test-rebase-push.sh",
   # Makefile (test-drop-release notes-commit target) and the sibling .md stub,
   # matching the same Makefile-only pattern as the other test-* harnesses above.
   # scripts/git-amend-add.sh has no current primary callers after release notes
@@ -631,19 +625,15 @@ exclude = [
   "scripts/commit-release notes.md",
   "scripts/test-commit-release notes.md",
   # (acceptance criterion #6, issue #2852).
-  # scripts/test-ci-wait-exit-trap.sh is the regression harness for
-  # scripts/ci-wait.sh's EXIT-trap-writes-.done behavior under SIGTERM and
+  # python/cli.py ci wait's EXIT-trap-writes-.done behavior under SIGTERM and
   # the backward-compat default-mode (stdout) contract. Closes #842 (leaked
   # polling-loop on signal-kill). Two sub-tests exercise file-mode and
   # default-mode invariants. Referenced only from Makefile
-  # (test-ci-wait-exit-trap target) and scripts/test-ci-wait-exit-trap.md
-  # (sibling contract). scripts/ci-wait.md is the sibling contract for
-  # scripts/ci-wait.sh, referenced from skills/implement/SKILL.md (Steps 10
+  # (sibling contract). python/ci_monitor.py is the sibling contract for
+  # python/cli.py ci wait, referenced from skills/implement/SKILL.md (Steps 10
   # and 12a) and skills/implement/references/conflict-resolution.md
   # via prose pointers — agent-lint reachability follows the harness pattern.
-  "scripts/test-ci-wait-exit-trap.sh",
-  "scripts/test-ci-wait-exit-trap.md",
-  "scripts/ci-wait.md",
+  "python/ci_monitor.py",
   # scripts/test-harness-shards-coverage.sh is the partition-invariant
   # regression harness for the Makefile `test-harnesses-N` shard lists. It is
   # referenced only from Makefile (test-harness-shards-coverage target) and
@@ -779,37 +769,17 @@ exclude = [
   # pr-prep materialize failure with manifest OOS (Makefile
   # test-ship-pr-oos-pr-prep target). Same Makefile-only pattern as
   # test-ship-pr-rebase.sh.
-  # scripts/test-rebase-checkpoint-probe.sh — offline harness for
-  # scripts/rebase-checkpoint-probe.sh (Makefile test-rebase-checkpoint-probe).
-  "scripts/test-rebase-checkpoint-probe.sh",
-  "scripts/test-rebase-checkpoint-probe.md",
   # scripts/test-phantom-probe-with-warn.sh — offline harness for
   # scripts/phantom-probe-with-warn.sh (Makefile test-phantom-probe-with-warn).
   "scripts/test-phantom-probe-with-warn.sh",
   "scripts/test-phantom-probe-with-warn.md",
-  # scripts/test-rebase-push-keep-on-conflict.sh is the offline regression
-  # harness for scripts/rebase-push.sh's --keep-on-conflict local-only rebase
-  # path. Referenced only from Makefile (test-rebase-push-keep-on-conflict
-  # target) and the sibling scripts/test-rebase-push-keep-on-conflict.md.
+  # harness for python/cli.py push rebase's --keep-on-conflict local-only rebase
   # Same Makefile-only pattern as other test-* harnesses.
-  "scripts/test-rebase-push-keep-on-conflict.sh",
-  # scripts/test-rebase-push-force-lease.sh is the offline regression harness
-  # for scripts/rebase-push.sh's force-with-lease race-recovery path.
-  # Referenced only from Makefile (test-rebase-push-force-lease target) and
-  # the sibling scripts/test-rebase-push-force-lease.md. Same Makefile-only
+  # for python/cli.py push rebase's force-with-lease race-recovery path.
   # pattern as other test-* harnesses.
-  "scripts/test-rebase-push-force-lease.sh",
-  # scripts/test-rebase-push-fork-mode.sh is the offline regression harness
-  # for scripts/rebase-push.sh's fork-mode lease snapshot (issue #2322).
-  # Referenced only from Makefile (test-rebase-push-fork-mode target) and the
-  # sibling scripts/test-rebase-push-fork-mode.md. Same Makefile-only pattern
+  # for python/cli.py push rebase's fork-mode lease snapshot (issue #2322).
   # as other test-* harnesses.
-  "scripts/test-rebase-push-fork-mode.sh",
-  # scripts/test-rebase-push-no-push-fetch-retry.sh is the offline regression
-  # harness for scripts/rebase-push.sh's --no-push fetch transient-retry path.
-  # Referenced only from Makefile (test-rebase-push-no-push-fetch-retry target)
-  # and the sibling scripts/test-rebase-push-no-push-fetch-retry.md.
-  "scripts/test-rebase-push-no-push-fetch-retry.sh",
+  # harness for python/cli.py push rebase's --no-push fetch transient-retry path.
   "scripts/test-implement-structure.sh",
   # scripts/test-implement-step8-exit3-first-fixer.sh — structural pins for the
   # first-fixer-non-health autonomous CI-fix path in skills/implement/SKILL.md.
@@ -934,17 +904,12 @@ exclude = [
   # target, test-harnesses-7 shard) and its sibling .md, matching the Makefile-only
   # harness pattern above.
   "scripts/test-flush-vendor-failure-diagnostics.sh",
-  # scripts/test-merge-pr.sh is the offline regression harness for
-  # scripts/merge-pr.sh's admin-first / plain-fallback ordering, safety gates,
+  # python/cli.py merge pr's admin-first / plain-fallback ordering, safety gates,
   # same-version bump race gate, and --no-admin-fallback opt-out. It stubs `gh`
   # and `git` via PATH and asserts merge outcomes plus the same-version cases
   # (version_already_published, no-op fallthrough, stale/unsafe input failures).
-  # The harness is referenced only from Makefile (test-merge-pr target) and
-  # scripts/test-merge-pr.md (sibling contract) — same Makefile-only shape as
   # the other test-* harnesses above.
-  "scripts/test-merge-pr.sh",
   # dev-only release apply script's pre-commit same-version probe and
-  # Makefile-only harness pattern as test-merge-pr.sh.
   # scripts/test-git-push.sh is the offline regression harness for
   # scripts/git-push.sh retry exit propagation. It is referenced only from
   # Makefile (test-git-push target) and scripts/test-git-push.md (sibling
@@ -1026,10 +991,6 @@ exclude = [
   "python/test_plan_review_panel.py",
   "python/test_design_summary.py",
   "skills/pause/scripts/test-pause-skill.md",
-  "scripts/test-rebase-push-keep-on-conflict.md",
-  "scripts/test-rebase-push-force-lease.md",
-  "scripts/test-rebase-push-fork-mode.md",
-  "scripts/test-rebase-push-no-push-fetch-retry.md",
   "scripts/test-implement-timing-rehydration.md",
   "scripts/test-git-push.md",
   # a GitHub Release to "Latest". It is not invoked by any SKILL.md — operators
@@ -1058,97 +1019,25 @@ exclude = [
   "scripts/test-cache-key-discipline.md",
   "scripts/test-cache-key-runtime-audit.sh",
   "scripts/test-cache-key-runtime-audit.md",
-  # scripts/github-remote-repo.sh is the one-URL/one-remote-name parser used
+  # python/cli.py gh remote-repo is the one-URL/one-remote-name parser used
   # by python/cli.py admission fork-env (forked-target-only pre-Step-0 helper)
-  # via shell variable indirection: `"$HELPER_ROOT/scripts/github-remote-repo.sh"`.
+  # via shell variable indirection: `"$HELPER_ROOT/python/cli.py gh remote-repo"`.
   # agent-lint's G004/dead-script rule scans for literal-path references in
   # SKILL.md / hooks.json / settings.json and does not follow shell-variable
   # indirection (same exclusion shape as python/cli.py agent launch-codex-implement
-  # above). Sibling contract: scripts/github-remote-repo.md.
-  "scripts/github-remote-repo.sh",
-  # scripts/test-github-remote-repo.sh is the offline regression harness for
-  # the GitHub remote-URL / remote-name parser. Referenced only from Makefile
-  # (test-github-remote-repo target), docs/linting.md, and the sibling
-  # contract scripts/test-github-remote-repo.md, matching the same
-  # Makefile-only pattern as the other test-* harnesses above.
-  "scripts/test-github-remote-repo.sh",
-  "scripts/test-github-remote-repo.md",
-  # harness for session-setup.sh's gh-first / origin-fallback repository
-  # target), docs/linting.md, and the sibling contract
-  # Makefile-only pattern as the other test-* harnesses above.
-  # for the session-env script pair (issue #1513): read-session-env-key.sh's
-  # awk extraction of values containing `=`, plus write-session-env.sh's
-  # --timing-ledger regex/length guard. Referenced only from Makefile
-  # docs/linting.md, the read-session-env-key.md sibling contract, and the
-  # same Makefile-only pattern as the other test-* harnesses above.
-  # python/cli.py session write-run-params (the /design run-params.json writer).
-  # Makefile-only pattern as the other test-* harnesses above.
-  # for python/cli.py session read-classification (the /design tier reader).
-  # docs/linting.md, python/session_env.py (session read-classification), and the sibling
-  # Makefile-only pattern as the other test-* harnesses above.
+  # above). Sibling contract: python/gh.py.
+  "python/cli.py gh remote-repo",
   # python/test_admission.py is the offline regression harness for
   # python/cli.py admission fork-env (the pre-Step-0 fork bootstrap helper used
   # by /implement --forked). Referenced only from Makefile
   # (test-implement-fork-env target) and the sibling contract
   # python/test_admission.py.
   "python/test_admission.py",
-  # scripts/test-create-pr.sh is the offline PATH-stub regression harness
-  # asserting --repo threading into every gh pr view/create/edit invocation
-  # in scripts/create-pr.sh. Referenced only from Makefile (test-create-pr
-  # target) and the sibling contract scripts/test-create-pr.md.
-  "scripts/test-create-pr.sh",
-  "scripts/test-create-pr.md",
-  # scripts/test-resolve-repo.sh is the offline PATH-stub regression harness
-  # for scripts/resolve-repo.sh. Referenced only from Makefile
-  # (test-resolve-repo target) and the sibling contract
-  # scripts/test-resolve-repo.md.
-  "scripts/test-resolve-repo.sh",
-  "scripts/test-resolve-repo.md",
-  # scripts/test-gh-pr-body-update.sh is the offline PATH-stub regression
-  # harness asserting --repo threading into gh pr edit/view in
-  # scripts/gh-pr-body-update.sh. Referenced only from Makefile
-  # (test-gh-pr-body-update target) and the sibling contract
-  # scripts/test-gh-pr-body-update.md.
-  "scripts/test-gh-pr-body-update.sh",
-  "scripts/test-gh-pr-body-update.md",
-  # scripts/test-ci-rerun-failed.sh is the offline regression harness for
-  # scripts/ci-rerun-failed.sh's "already running" success path. Referenced
-  # only from Makefile (test-ci-rerun-failed target) and the sibling contract
-  # scripts/test-ci-rerun-failed.md.
-  "scripts/test-ci-rerun-failed.sh",
-  "scripts/test-ci-rerun-failed.md",
-  # scripts/test-ci-status.sh is the offline regression harness for
-  # scripts/ci-status.sh's --empty-checks-grace flag and STATUS=NO_CHECKS
-  # exit (added for /implement --forked fork-CI dry-run). Referenced only
-  # from Makefile (test-ci-status target) and the sibling contract
-  # scripts/test-ci-status.md.
-  "scripts/test-ci-status.sh",
-  "scripts/test-ci-status.md",
-  # scripts/test-ci-behind-count.sh is the offline regression harness for
-  # scripts/ci-behind-count.sh (shared behind-count helper for ci-status and
-  # ship-pr CI-fix push). Referenced only from Makefile (test-ci-behind-count
-  # target) and the sibling contract scripts/test-ci-behind-count.md.
-  "scripts/test-ci-behind-count.sh",
-  "scripts/test-ci-behind-count.md",
-  # scripts/test-ci-decide.sh is the offline regression harness for
-  # scripts/ci-decide.sh's report-safe bail-token contract. It has only a
-  # sibling contract and no runtime skill-prose invocation edge.
-  "scripts/test-ci-decide.sh",
-  "scripts/test-ci-decide.md",
+  # The pr/gh/ci Python CLI regression tests for --repo threading, rerun,
+  # status, behind-count, and decide are Makefile-only pytest shards with no
+  # direct skill-prose invocation edge.
   # python/cli.py checks lint-fix dispatch safety and helper-owned commit rollback.
   # Referenced from Makefile (test-lint-fix-loop target), docs/linting.md,
-  # scripts/test-gh-run-logs.sh is the offline regression harness for the
-  # gh-run-logs.sh exit-code contract (exit 2 on in-progress polling). It is
-  # referenced only from Makefile (test-gh-run-logs target) and the sibling
-  # contract scripts/test-gh-run-logs.md, not from runtime skill prose.
-  "scripts/test-gh-run-logs.sh",
-  "scripts/test-gh-run-logs.md",
-  # scripts/test-ci-wait.sh is the offline regression harness for the
-  # poll-count budget and suspend-resilience in ci-wait.sh. Referenced only
-  # from Makefile (test-ci-wait target) and the sibling contract
-  # scripts/test-ci-wait.md.
-  "scripts/test-ci-wait.sh",
-  "scripts/test-ci-wait.md",
   "python/test_agents.py",
   "python/test_agents.py",
   "python/test_agents.py",
@@ -1252,14 +1141,18 @@ exclude = [
   "skills/implement/scripts/lib-implement-clone-tag.md",
   # Python ship driver owns these legacy shell helpers now; agent-lint does not
   # follow the Python CLI call graph for G004 reachability.
-  "scripts/ci-rerun-failed.sh",
-  "scripts/gh-pr-body-update.sh",
-  "scripts/merge-pr.sh",
-  "scripts/create-pr.sh",
+  "python/cli.py ci rerun-failed",
+  "python/cli.py pr body-update",
+  "python/cli.py merge pr",
+  "python/cli.py pr create",
   "scripts/git-sync-local-main.sh",
-  "scripts/ci-wait.sh",
-  "scripts/ci-status.sh",
-  "scripts/ci-decide.sh",
-  "scripts/ci-behind-count.sh",
+  # scripts/git-force-push.sh — force-with-lease helper retained as deferred
+  # bash; its create-pr/merge-pr callers migrated to python/cli.py pr create /
+  # merge pr, so G004 no longer sees a structured invocation edge.
+  "scripts/git-force-push.sh",
+  "python/cli.py ci wait",
+  "python/cli.py ci status",
+  "python/cli.py ci decide",
+  "python/cli.py ci behind-count",
 
 ]

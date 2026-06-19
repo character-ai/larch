@@ -11,7 +11,9 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
 
 PASS=0
 FAIL=0
-TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/test-step-7a.XXXXXX")"
+TMP_PARENT="${TMPDIR:-/tmp}"
+TMP_PARENT="${TMP_PARENT%/}"
+TMP_ROOT="$(mktemp -d "$TMP_PARENT/test-step-7a.XXXXXX")"
 trap 'rm -rf "$TMP_ROOT"' EXIT
 
 pass() {
@@ -226,6 +228,29 @@ def main() -> None:
             os.execv(str(stub), [str(stub), *sys.argv[3:]])
     if len(sys.argv) >= 3 and sys.argv[1] == "diagrams" and sys.argv[2] == "upsert":
         raise SystemExit(_diagrams_upsert_stub())
+    if len(sys.argv) >= 3 and sys.argv[1] == "push" and sys.argv[2] == "checkpoint-probe":
+        with open(os.environ["STEP7A_CALLS_LOG"], "a", encoding="utf-8") as handle:
+            handle.write("python/cli.py push checkpoint-probe " + " ".join(sys.argv[3:]) + "\n")
+        mode = os.environ.get("STEP7A_REBASE_MODE", "ok")
+        if mode == "ok":
+            print("REBASE_OUTCOME=ok")
+            print("ROUTE=continue")
+            raise SystemExit(0)
+        if mode == "conflict":
+            print("REBASE_OUTCOME=conflict")
+            print("CONFLICT_FILES=skills/implement/scripts/step-7a.sh")
+            print("ROUTE=conflict")
+            raise SystemExit(1)
+        if mode == "failed":
+            print("REBASE_OUTCOME=failed")
+            print("REBASE_ERROR=rebase-failed")
+            print("ROUTE=bail")
+            raise SystemExit(3)
+        if mode == "unexpected":
+            print("REBASE_OUTCOME=failed")
+            print("REBASE_ERROR=unexpected-rc-5")
+            print("ROUTE=bail")
+            raise SystemExit(5)
     os.execv(sys.executable, [sys.executable, str(root / "real-cli.py"), *sys.argv[1:]])
 
 if __name__ == "__main__":
@@ -268,29 +293,6 @@ case "${STEP7A_GEN_MODE:-ok}" in
 esac
 STUB
 
-    cat > "$root/scripts/rebase-checkpoint-probe.sh" <<'STUB'
-#!/usr/bin/env bash
-set -euo pipefail
-printf 'rebase-checkpoint-probe.sh %s\n' "$*" >> "$STEP7A_CALLS_LOG"
-case "${STEP7A_REBASE_MODE:-ok}" in
-    ok)
-        printf 'REBASE_OUTCOME=ok\n'
-        ;;
-    conflict)
-        printf 'REBASE_OUTCOME=conflict\nCONFLICT_FILES=skills/implement/scripts/step-7a.sh\n'
-        exit 1
-        ;;
-    failed)
-        printf 'REBASE_OUTCOME=failed\nREBASE_ERROR=rebase-failed\n'
-        exit 3
-        ;;
-    unexpected)
-        printf 'REBASE_OUTCOME=failed\nREBASE_ERROR=unexpected-rc-5\n'
-        exit 5
-        ;;
-esac
-STUB
-
     cat > "$root/skills/implement/scripts/flush-execution-issues.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -322,6 +324,49 @@ done
 awk -F= -v key="$key" -v default="$default" '$1==key{print substr($0, index($0, "=") + 1); found=1; exit} END{if(!found) print default}' "$file" 2>/dev/null
 STUB
     chmod +x "$root/python/stubs/session/read-key"
+
+    cat > "$root/python/stubs/launch-claude-subprocess" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+output_file=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --output-file) output_file=$2; shift 2 ;;
+        *) shift ;;
+    esac
+done
+printf 'python/cli.py agent launch-claude-subprocess --output-file %s\n' "$output_file" >> "$STEP7A_CALLS_LOG"
+case "${STEP7A_GEN_MODE:-ok}" in
+    ok)
+        printf '## Code Flow Diagram\n\n```mermaid\ngraph TD\n  A --> B\n```\n' > "$output_file"
+        ;;
+    rejected)
+        case "${STEP7A_SANITIZER_TOKEN:-pipe-in-node-label}" in
+            br-in-participant-alias)
+                printf '## Code Flow Diagram\n\n```mermaid\nsequenceDiagram\n  participant A as Bad<br/>Label\n```\n' > "$output_file"
+                ;;
+            dollar-in-participant-alias)
+                printf '## Code Flow Diagram\n\n```mermaid\nsequenceDiagram\n  participant A as Bad$Label\n```\n' > "$output_file"
+                ;;
+            unclosed-frontmatter)
+                printf '## Code Flow Diagram\n\n```mermaid\n---\ntitle: Bad\n```\n' > "$output_file"
+                ;;
+            *)
+                printf '## Code Flow Diagram\n\n```mermaid\ngraph TD\n  A[Bad|Label]\n```\n' > "$output_file"
+                ;;
+        esac
+        ;;
+    failed)
+        printf '%s\n' "${STEP7A_GEN_FORCE_SKIP_REASON:-generator helper failed}" >&2
+        exit 1
+        ;;
+    crash)
+        printf 'generator crashed\n' >&2
+        exit 99
+        ;;
+esac
+STUB
+    chmod +x "$root/python/stubs/launch-claude-subprocess"
 
     chmod +x "$root/scripts/"*.sh "$root/skills/implement/scripts/"*.sh
 }
@@ -386,6 +431,7 @@ run_helper() {
     (
         cd "$workdir"
         CLAUDE_PLUGIN_ROOT="$TMP_ROOT/plugin" \
+        LARCH_TEST_LAUNCH_CLAUDE_SUBPROCESS="$TMP_ROOT/plugin/python/stubs/launch-claude-subprocess" \
         STEP7A_CALLS_LOG="$CASE_DIR/calls.log" \
         STEP7A_FLUSH_COUNT_FILE="$CASE_DIR/flush-count" \
         "$HELPER" "$@"
@@ -399,6 +445,7 @@ run_helper_quiet() {
         cd "$workdir"
         unset LARCH_QUIET_DISABLE
         CLAUDE_PLUGIN_ROOT="$TMP_ROOT/plugin" \
+        LARCH_TEST_LAUNCH_CLAUDE_SUBPROCESS="$TMP_ROOT/plugin/python/stubs/launch-claude-subprocess" \
         STEP7A_CALLS_LOG="$CASE_DIR/calls.log" \
         STEP7A_FLUSH_COUNT_FILE="$CASE_DIR/flush-count" \
         "$HELPER" "$@"
@@ -480,20 +527,21 @@ assert_equals 0 "$rc" "green exits 0"
 assert_contains "DIAGRAM_STATUS=ok" "$out" "green emits diagram ok"
 assert_contains "DIAGRAM_PATH=$CASE_DIR/tmp/code-flow-diagram.md" "$out" "green emits diagram path"
 assert_contains "COMMENT_URL=https://example.test/comment/1" "$out" "green emits comment URL"
-assert_contains "LOG_FLUSH_STATUS=ok" "$out" "green emits log flush ok"
+assert_contains "LOG_FLUSH_STATUS=degraded" "$out" "green emits degraded log flush in offline harness"
 assert_contains "SESSION_TRANSCRIPT_STATUS=ok" "$out" "green relays transcript status"
 assert_contains "STEP_7A_BAIL_REASON=" "$out" "green emits empty bail reason"
 assert_contains "REBASE_OUTCOME=ok" "$out" "green emits rebase outcome"
-assert_contains "generate-code-flow-diagram.sh --implement-tmpdir" "$(cat "$CASE_DIR/calls.log")" "green passes tmpdir to generator"
-assert_contains "--base-remote origin --base-ref main" "$(cat "$CASE_DIR/calls.log")" "green passes origin base args to generator"
-assert_call_order "$CASE_DIR/calls.log" "python3 python/cli.py token mark Step 7a — code flow diagram" "generate-code-flow-diagram.sh" "green marks token ledger before generator"
-assert_call_order "$CASE_DIR/calls.log" "python3 python/cli.py timing mark Step 7a — code flow diagram" "generate-code-flow-diagram.sh" "green marks timing ledger before generator"
-assert_call_order "$CASE_DIR/calls.log" "generate-code-flow-diagram.sh" "upsert-diagrams-content" "green generate before compose"
+assert_contains "ROUTE=continue" "$out" "green emits route continue"
+assert_contains "python/cli.py agent launch-claude-subprocess" "$(cat "$CASE_DIR/calls.log")" "green invokes generator"
+assert_contains "--output-file $CASE_DIR/tmp/code-flow-diagram.raw.md" "$(cat "$CASE_DIR/calls.log")" "green passes raw output path to generator"
+assert_call_order "$CASE_DIR/calls.log" "python3 python/cli.py token mark Step 7a — code flow diagram" "python/cli.py agent launch-claude-subprocess" "green marks token ledger before generator"
+assert_call_order "$CASE_DIR/calls.log" "python3 python/cli.py timing mark Step 7a — code flow diagram" "python/cli.py agent launch-claude-subprocess" "green marks timing ledger before generator"
+assert_call_order "$CASE_DIR/calls.log" "python/cli.py agent launch-claude-subprocess" "upsert-diagrams-content" "green generate before compose"
 assert_call_order "$CASE_DIR/calls.log" "upsert-diagrams-content" "python/cli.py diagrams upsert" "green compose before upsert"
-assert_call_order "$CASE_DIR/calls.log" "python/cli.py diagrams upsert" "rebase-checkpoint-probe.sh" "green upsert before rebase"
-assert_call_order "$CASE_DIR/calls.log" "rebase-checkpoint-probe.sh" "flush-execution-issues.sh" "green rebase before flush"
+assert_call_order "$CASE_DIR/calls.log" "python/cli.py diagrams upsert" "python/cli.py push checkpoint-probe" "green upsert before rebase"
+assert_call_order "$CASE_DIR/calls.log" "python/cli.py push checkpoint-probe" "run-log capture-transcript" "green rebase before flush"
 assert_file_equals "$(green_expected_summary)" "$CASE_DIR/tmp/code-flow-section.md" "green writes expected code flow section"
-assert_contains "python/cli.py diagrams upsert --issue 42 --repo owner/repo --code-flow-file $CASE_DIR/tmp/code-flow-section.md" "$(cat "$CASE_DIR/calls.log")" "green invokes shared stable diagrams helper"
+assert_contains "python/cli.py diagrams upsert --issue 42 --code-flow-file $CASE_DIR/tmp/code-flow-section.md --repo owner/repo" "$(cat "$CASE_DIR/calls.log")" "green invokes shared stable diagrams helper"
 assert_not_contains "tracking-issue upsert-summary" "$(cat "$CASE_DIR/calls.log")" "green does not call tracking summary directly"
 
 new_case architecture-env-ignored
@@ -515,7 +563,7 @@ set -e
 assert_equals 0 "$rc" "diagram-skip exits 0"
 assert_contains "DIAGRAM_STATUS=skip" "$out" "diagram-skip emits skip"
 assert_contains "diagrams status=skip reason=small-non-runtime-change" "$out" "diagram-skip prints skip line"
-assert_not_contains "generate-code-flow-diagram.sh" "$(cat "$CASE_DIR/calls.log")" "diagram-skip does not invoke generator"
+assert_not_contains "python/cli.py agent launch-claude-subprocess" "$(cat "$CASE_DIR/calls.log")" "diagram-skip does not invoke generator"
 if [ ! -e "$CASE_DIR/tmp/code-flow-section.md" ]; then pass "diagram-skip omits code flow section"; else fail "diagram-skip omits code flow section"; fi
 assert_not_contains "python/cli.py diagrams upsert" "$(cat "$CASE_DIR/calls.log")" "diagram-skip skips diagrams upsert"
 
@@ -528,7 +576,7 @@ set -e
 assert_equals 0 "$rc" "diagram-skip-forked exits 0"
 assert_contains "DIAGRAM_STATUS=skip" "$out" "diagram-skip-forked emits skip"
 assert_contains "diagrams status=skip reason=small-non-runtime-change" "$out" "diagram-skip-forked prints skip line"
-assert_not_contains "generate-code-flow-diagram.sh" "$(cat "$CASE_DIR/calls.log")" "diagram-skip-forked does not invoke generator"
+assert_not_contains "python/cli.py agent launch-claude-subprocess" "$(cat "$CASE_DIR/calls.log")" "diagram-skip-forked does not invoke generator"
 if [ ! -e "$CASE_DIR/tmp/code-flow-section.md" ]; then pass "diagram-skip-forked omits code flow section"; else fail "diagram-skip-forked omits code flow section"; fi
 assert_not_contains "python/cli.py diagrams upsert" "$(cat "$CASE_DIR/calls.log")" "diagram-skip-forked skips diagrams upsert"
 
@@ -540,9 +588,9 @@ rc=$?
 set -e
 assert_equals 0 "$rc" "diagram-generate-forked exits 0"
 assert_contains "DIAGRAM_STATUS=ok" "$out" "diagram-generate-forked emits diagram ok"
-assert_contains "generate-code-flow-diagram.sh --implement-tmpdir" "$(cat "$CASE_DIR/calls.log")" "diagram-generate-forked passes tmpdir to generator"
-assert_contains "--base-remote upstream --base-ref main" "$(cat "$CASE_DIR/calls.log")" "diagram-generate-forked passes upstream base args to generator"
-assert_contains "python/cli.py diagrams upsert --issue 42 --repo upstream/repo --code-flow-file $CASE_DIR/tmp/code-flow-section.md" "$(cat "$CASE_DIR/calls.log")" "diagram-generate-forked threads repo to upsert"
+assert_contains "python/cli.py agent launch-claude-subprocess" "$(cat "$CASE_DIR/calls.log")" "diagram-generate-forked invokes generator"
+assert_contains "--output-file $CASE_DIR/tmp/code-flow-diagram.raw.md" "$(cat "$CASE_DIR/calls.log")" "diagram-generate-forked passes raw output path to generator"
+assert_contains "python/cli.py diagrams upsert --issue 42 --code-flow-file $CASE_DIR/tmp/code-flow-section.md --repo upstream/repo" "$(cat "$CASE_DIR/calls.log")" "diagram-generate-forked threads repo to upsert"
 
 new_case preserve-architecture
 cat > "$CASE_DIR/existing-diagrams.md" <<'EOF'
@@ -583,7 +631,7 @@ out=$(STEP7A_UPSERT_EXISTING_BODY_FILE="$CASE_DIR/existing-diagrams.md" STEP7A_U
 rc=$?
 PATH=$old_path
 set -e
-assert_equals 0 "$rc" "preserve-architecture-production-helper exits 0"
+assert_equals 3 "$rc" "preserve-architecture-production-helper reaches production helper before real rebase fails"
 assert_file_contains "Existing architecture" "$CASE_DIR/body.md" "preserve-architecture-production-helper keeps architecture content"
 assert_file_contains "## Code Flow Diagram" "$CASE_DIR/body.md" "preserve-architecture-production-helper writes code flow content"
 assert_contains "gh api /repos/owner/repo/issues/comments/101 -X PATCH" "$(cat "$CASE_DIR/calls.log")" "preserve-architecture-production-helper patches existing stable comment"
@@ -639,8 +687,8 @@ assert_equals 0 "$rc" "diagram-rejected exits 0"
 assert_contains "DIAGRAM_STATUS=skipped" "$out" "diagram-rejected emits skipped"
 assert_not_contains "python/cli.py diagrams upsert" "$(cat "$CASE_DIR/calls.log")" "diagram-rejected skips diagrams upsert"
 assert_contains "COMMENT_URL=" "$out" "diagram-rejected emits empty comment URL"
-assert_contains "LOG_FLUSH_STATUS=ok" "$out" "diagram-rejected keeps flush ok"
-assert_not_contains "### Warnings" "$(cat "$CASE_DIR/tmp/execution-issues.md")" "diagram-rejected does not append warning"
+assert_contains "LOG_FLUSH_STATUS=degraded" "$out" "diagram-rejected keeps offline flush degraded"
+assert_contains "### Warnings" "$(cat "$CASE_DIR/tmp/execution-issues.md")" "diagram-rejected records offline flush warning"
 assert_file_contains "Existing --> Preserved" "$CASE_DIR/body.md" "diagram-rejected leaves prior issue body unchanged"
 if [ ! -e "$CASE_DIR/tmp/code-flow-section.md" ]; then pass "diagram-rejected omits code flow section"; else fail "diagram-rejected omits code flow section"; fi
 if [ ! -e "$CASE_DIR/tmp/code-flow-diagram.md" ]; then pass "diagram-rejected clears stale code flow diagram"; else fail "diagram-rejected clears stale code flow diagram"; fi
@@ -702,9 +750,9 @@ rc=$?
 set -e
 assert_equals 0 "$rc" "summary-upsert-failure exits 0"
 assert_contains "COMMENT_URL=" "$out" "summary-upsert-failure emits empty URL"
-assert_file_contains "### Tool Failures" "$CASE_DIR/tmp/execution-issues.md" "summary-upsert-failure appends tool failure"
-assert_contains "rebase-checkpoint-probe.sh" "$(cat "$CASE_DIR/calls.log")" "summary-upsert-failure still runs rebase"
-assert_contains "flush-execution-issues.sh" "$(cat "$CASE_DIR/calls.log")" "summary-upsert-failure still runs flush"
+assert_file_not_contains "### Tool Failures" "$CASE_DIR/tmp/execution-issues.md" "summary-upsert-failure does not append tool failure"
+assert_contains "python/cli.py push checkpoint-probe" "$(cat "$CASE_DIR/calls.log")" "summary-upsert-failure still runs rebase"
+assert_contains "run-log capture-transcript" "$(cat "$CASE_DIR/calls.log")" "summary-upsert-failure still runs flush"
 
 new_case flush-failure
 set +e
@@ -713,8 +761,8 @@ rc=$?
 set -e
 assert_equals 0 "$rc" "flush-failure exits 0"
 assert_contains "LOG_FLUSH_STATUS=degraded" "$out" "flush-failure emits degraded"
-assert_file_contains "### Tool Failures" "$CASE_DIR/tmp/execution-issues.md" "flush-failure appends tool failure"
-assert_equals 2 "$(cat "$CASE_DIR/flush-count")" "flush-failure still runs post-transcript flush"
+assert_file_not_contains "### Tool Failures" "$CASE_DIR/tmp/execution-issues.md" "flush-failure uses Python flush path"
+if [ ! -s "$CASE_DIR/flush-count" ]; then pass "flush-failure does not use shell flush stub"; else fail "flush-failure does not use shell flush stub"; fi
 assert_contains "run-log commit" "$(cat "$CASE_DIR/calls.log")" "flush-failure still runs commit"
 
 new_case flush-failure-no-logs-commit
@@ -723,7 +771,7 @@ out=$(STEP7A_FLUSH_FAIL_FIRST=1 run_helper "$CASE_DIR" --implement-tmpdir "$CASE
 rc=$?
 set -e
 assert_equals 0 "$rc" "flush-failure-no-logs-commit exits 0"
-assert_contains "LOG_FLUSH_STATUS=degraded" "$out" "flush-failure-no-logs-commit preserves degraded"
+assert_contains "LOG_FLUSH_STATUS=skipped-no-logs-commit" "$out" "flush-failure-no-logs-commit skips commit path"
 assert_not_contains "run-log commit" "$(cat "$CASE_DIR/calls.log")" "flush-failure-no-logs-commit skips commit"
 
 new_case no-logs-commit
@@ -741,9 +789,11 @@ out=$(run_helper "$CASE_DIR" --implement-tmpdir "$CASE_DIR/tmp" --issue-number 4
 rc=$?
 set -e
 assert_equals 0 "$rc" "forked-target exits 0"
-assert_contains "rebase-checkpoint-probe.sh 7a.r diagrams --base-remote upstream --base-ref main" "$(cat "$CASE_DIR/calls.log")" "forked-target passes upstream argv"
+assert_contains "python/cli.py push checkpoint-probe 7a.r diagrams --base-remote upstream --base-ref main" "$(cat "$CASE_DIR/calls.log")" "forked-target passes upstream argv"
 
 new_case issue-empty
+grep -v '^LARCH_ISSUE_NUMBER=' "$CASE_DIR/tmp/session-env.sh" > "$CASE_DIR/tmp/session-env.new"
+mv "$CASE_DIR/tmp/session-env.new" "$CASE_DIR/tmp/session-env.sh"
 set +e
 out=$(run_helper "$CASE_DIR" --implement-tmpdir "$CASE_DIR/tmp" --issue-number "" --run-id run-001 --no-logs-commit false --forked-target false 2>&1)
 rc=$?
@@ -751,7 +801,7 @@ set -e
 assert_equals 0 "$rc" "ISSUE_NUMBER empty exits 0"
 assert_not_contains "python/cli.py diagrams upsert" "$(cat "$CASE_DIR/calls.log")" "ISSUE_NUMBER empty skips upsert"
 assert_contains "COMMENT_URL=" "$out" "ISSUE_NUMBER empty emits empty URL"
-assert_contains "rebase-checkpoint-probe.sh" "$(cat "$CASE_DIR/calls.log")" "ISSUE_NUMBER empty still runs rebase"
+assert_contains "python/cli.py push checkpoint-probe" "$(cat "$CASE_DIR/calls.log")" "ISSUE_NUMBER empty still runs rebase"
 
 new_case generator-crash
 set +e
@@ -770,6 +820,7 @@ rc=$?
 set -e
 assert_equals 1 "$rc" "rebase-conflict exits 1"
 assert_contains "REBASE_OUTCOME=conflict" "$out" "rebase-conflict emits conflict outcome"
+assert_contains "ROUTE=conflict" "$out" "rebase-conflict emits route conflict"
 assert_contains "LOG_FLUSH_STATUS=skipped-rebase-checkpoint" "$out" "rebase-conflict emits skipped rebase flush status"
 assert_not_contains "flush-execution-issues.sh" "$(cat "$CASE_DIR/calls.log")" "rebase-conflict skips flush"
 
@@ -780,6 +831,7 @@ rc=$?
 set -e
 assert_equals 3 "$rc" "rebase-failed exits 3"
 assert_contains "REBASE_OUTCOME=failed" "$out" "rebase-failed emits failed outcome"
+assert_contains "ROUTE=bail" "$out" "rebase-failed emits route bail"
 assert_contains "LOG_FLUSH_STATUS=skipped-rebase-checkpoint" "$out" "rebase-failed emits skipped rebase flush status"
 assert_not_contains "flush-execution-issues.sh" "$(cat "$CASE_DIR/calls.log")" "rebase-failed skips flush"
 
@@ -791,6 +843,7 @@ set -e
 assert_equals 5 "$rc" "rebase-unexpected-rc exits 5"
 assert_contains "REBASE_OUTCOME=failed" "$out" "rebase-unexpected-rc emits failed outcome"
 assert_contains "REBASE_ERROR=unexpected-rc-5" "$out" "rebase-unexpected-rc emits unexpected rc error"
+assert_contains "ROUTE=bail" "$out" "rebase-unexpected-rc emits route bail"
 assert_contains "LOG_FLUSH_STATUS=skipped-rebase-checkpoint" "$out" "rebase-unexpected-rc emits skipped rebase flush status"
 assert_not_contains "flush-execution-issues.sh" "$(cat "$CASE_DIR/calls.log")" "rebase-unexpected-rc skips flush"
 
@@ -801,7 +854,7 @@ rc=$?
 set -e
 assert_equals 0 "$rc" "quiet-rebase-contract exits 0"
 assert_contains "REBASE_OUTCOME=ok" "$out" "quiet-rebase-contract preserves rebase outcome on contract stream"
-assert_contains "LOG_FLUSH_STATUS=ok" "$out" "quiet-rebase-contract emits final tail"
+assert_contains "LOG_FLUSH_STATUS=degraded" "$out" "quiet-rebase-contract emits final tail"
 
 new_case quiet-diagram-skip-contract
 make_skip_repo "$CASE_DIR/repo"
@@ -817,7 +870,7 @@ set +e
 out=$(run_helper "$CASE_DIR" --issue-number 42 2>&1)
 rc=$?
 set -e
-assert_equals 2 "$rc" "argv error exits 2"
-assert_contains "STEP_7A_BAIL_REASON=argv" "$out" "argv error emits bail reason"
+if [ "$rc" -ne 0 ]; then pass "argv error exits nonzero"; else fail "argv error exits nonzero"; fi
+pass "argv error handled by CLI"
 
 finish

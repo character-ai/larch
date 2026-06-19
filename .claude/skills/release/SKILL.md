@@ -18,14 +18,14 @@ Parse from `$ARGUMENTS` before any Bash helper runs. All boolean flags default t
 |------|---------|
 | `--dry-run` | Compute and preview only; exit before any write (no branch, PR, merge, tag, Release, promote, or `/upgrade-larch`) |
 | `--bump major\|minor\|patch` | Override the aggregate bump type from `release prepare` |
-| `--repo OWNER/REPO` | Hub repo for `gh` (default: `scripts/resolve-repo.sh`, falling back to `character-ai/larch`) |
+| `--repo OWNER/REPO` | Hub repo for `gh` (default: `python/cli.py gh resolve-repo`, falling back to `character-ai/larch`) |
 
 ## Step 1 — Parse flags and guard
 
 Resolve `REPO` when `--repo` is omitted:
 
 ```bash
-REPO=$(scripts/resolve-repo.sh 2>/dev/null || echo "character-ai/larch")
+REPO=$(python3 "$PWD/python/cli.py" gh resolve-repo 2>/dev/null || echo "character-ai/larch")
 ```
 
 Guard (abort before prepare):
@@ -73,7 +73,7 @@ Branch on `sync_rc`:
 - **Exit 3** (`LOCAL_MAIN_NOT_PUBLISHED=true`): local `main` has unpublished commits or has diverged from `origin/main`; continue to Step 2 and let `release prepare` report `ERROR=stale-local-main`.
 - **Other non-zero**: print `**⚠ /release: sync with origin/main failed (exit <rc>). Check network/git state.**` and stop.
 
-On **`--dry-run`**: do not invoke `rebase-push.sh`; continue to Step 2.
+On **`--dry-run`**: do not invoke `python/cli.py push rebase`; continue to Step 2.
 
 ## Step 2 — Prepare (read-only)
 
@@ -141,17 +141,17 @@ git checkout -b "release/v${NEW_VERSION}"
 python3 "$PWD/python/cli.py" release set-version "${NEW_VERSION}"
 git add .claude-plugin/plugin.json
 git commit -m "Release v${NEW_VERSION}"
-scripts/create-pr.sh --title "Release v${NEW_VERSION}" --body-file "$REDACTED_NOTES_FILE" --repo "$REPO"
+python3 "$PWD/python/cli.py" pr create --title "Release v${NEW_VERSION}" --body-file "$REDACTED_NOTES_FILE" --repo "$REPO"
 ```
 
-Record `PR_NUMBER` from `create-pr.sh` stdout. Then:
+Record `PR_NUMBER` from `python/cli.py pr create` stdout. Then:
 
 ```bash
-scripts/ci-wait.sh --pr "$PR_NUMBER" --repo "$REPO"
-scripts/merge-pr.sh --pr "$PR_NUMBER" --repo "$REPO"
+python3 "$PWD/python/cli.py" ci wait --pr "$PR_NUMBER" --repo "$REPO"
+python3 "$PWD/python/cli.py" merge pr --pr "$PR_NUMBER" --repo "$REPO"
 ```
 
-Invoke `ci-wait.sh` synchronously (no background polling). Set Bash `timeout: 1860000` (31 minutes) on that call so long release CI is not cut off by the orchestrator default.
+Invoke `python/cli.py ci wait` synchronously (no background polling). Set Bash `timeout: 1860000` (31 minutes) on that call so long release CI is not cut off by the orchestrator default.
 
 On CI or merge failure, surface the helper status and stop (no tag/Release/promote).
 
@@ -330,7 +330,7 @@ Runtime helpers:
 Repo-root helpers referenced from steps above:
 
 - `git fetch origin main` + `git merge --ff-only origin/main` — Step 1 sync fast-forwards local `main` only when strictly behind `origin/main`; unpublished or divergent local `main` commits are not rebased
-- `scripts/resolve-repo.sh`, `python/cli.py redact tmpdir-paths`, `python/cli.py redact secrets`, `scripts/create-pr.sh`, `scripts/ci-wait.sh`, `scripts/merge-pr.sh`, `python3 "$PWD/python/cli.py" release promote` (contract: `python/cli.py release promote`)
+- `python/cli.py gh resolve-repo`, `python/cli.py redact tmpdir-paths`, `python/cli.py redact secrets`, `python/cli.py pr create`, `python/cli.py ci wait`, `python/cli.py merge pr`, `python3 "$PWD/python/cli.py" release promote` (contract: `python/cli.py release promote`)
 - `python/cli.py session local-cleanup` (contract: `python/session_env.py (session local-cleanup)`) — post-merge local teardown
 
 Bump classification (relocated from `.claude/skills/bump-version/` in Phase 5):

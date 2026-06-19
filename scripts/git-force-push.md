@@ -33,7 +33,7 @@ STATUS=pushed|noop_same_ref|diverged_retry_failed|dirty_worktree
 
 ## Pre-push clean-tree guard
 
-After branch detection, `git-force-push.sh` runs `git status --porcelain` and aborts with exit 1 if the working tree is dirty. This is defense-in-depth against data loss (issue #2434): `create-pr.sh` runs the same check before calling this helper, so in normal operation the guard here catches only direct callers (`merge-pr.sh`, `/implement` Step 8b). The `BRANCH=` key is emitted before the guard so callers still see the branch even on dirty-tree failure; the script also emits `PUSHED=false` and `STATUS=dirty_worktree` before exiting so callers can distinguish the guard from a lease-divergence failure.
+After branch detection, `git-force-push.sh` runs `git status --porcelain` and aborts with exit 1 if the working tree is dirty. This is defense-in-depth against data loss (issue #2434): `python/cli.py pr create` runs the same check before calling this helper, so in normal operation the guard here catches only direct callers (`python/cli.py merge pr`, `/implement` Step 8b). The `BRANCH=` key is emitted before the guard so callers still see the branch even on dirty-tree failure; the script also emits `PUSHED=false` and `STATUS=dirty_worktree` before exiting so callers can distinguish the guard from a lease-divergence failure.
 
 ## Exit codes
 
@@ -49,20 +49,20 @@ After branch detection, `git-force-push.sh` runs `git status --porcelain` and ab
 
 ## Callers
 
-- `scripts/create-pr.sh` — existing-PR fast-path escalation when a plain `git push` fails (non-fast-forward after rebase). Stdout is suppressed (`>/dev/null`) so the `PR_*` contract stays clean; exit code drives success/failure.
-- `scripts/merge-pr.sh` — flush-only PR-head recovery path. Passes `--expected-remote-oid "$PR_HEAD_OID"` so the recovery push fails closed if the remote head changed after the initial PR metadata read.
+- `python/cli.py pr create` — existing-PR fast-path escalation when a plain `git push` fails (non-fast-forward after rebase). Stdout is suppressed (`>/dev/null`) so the `PR_*` contract stays clean; exit code drives success/failure.
+- `python/cli.py merge pr` — flush-only PR-head recovery path. Passes `--expected-remote-oid "$PR_HEAD_OID"` so the recovery push fails closed if the remote head changed after the initial PR metadata read.
 - `/implement` Step 8b force-push gate — force-pushes after a rebase when the feature branch already exists on origin. `STATUS` is parsed to decide whether to proceed to Step 9 or bail to Step 18.
 - `/implement` Step 8b postbump and the Python ship driver CI-fix rebase/force-push paths — force-push after a verified local rebase during Step 10/12 CI+merge iterations. Exit code and `STATUS` drive the caller failure semantics (Step 12 hard-bail vs Step 10 best-effort).
 
 ## Test harness
 
-No dedicated test harness. Real-world coverage comes from `/implement`'s CI+rebase+merge loop (the sub-procedure step 5 path runs on every rebase iteration) and `create-pr.sh`'s existing-PR fast-path (runs on every PR resumption where history was rewritten).
+No dedicated test harness. Real-world coverage comes from `/implement`'s CI+rebase+merge loop (the sub-procedure step 5 path runs on every rebase iteration) and `python/cli.py pr create`'s existing-PR fast-path (runs on every PR resumption where history was rewritten).
 
 ## Edit-in-sync rules
 
 When changing `scripts/git-force-push.sh`:
 
 - Update this file (`scripts/git-force-push.md`) in the same PR if any of the following changes: stdout contract (`BRANCH`/`PUSHED`/`STATUS` keys or their values), exit code semantics, retry logic or timing, dependency on `sleep-seconds.sh`.
-- Verify `scripts/create-pr.sh`'s escalation path still suppresses stdout and checks exit code correctly.
+- Verify `python/cli.py pr create`'s escalation path still suppresses stdout and checks exit code correctly.
 - Verify `/implement` Step 8b's `STATUS` parsing in `skills/implement/SKILL.md`.
 - Verify the Python ship driver CI-fix rebase/force-push and `implement-finalize postbump` invocation and exit-code handling.

@@ -18,6 +18,7 @@ import retry
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _SCRIPTS = _REPO_ROOT / "scripts"
+_PY_CLI = Path(__file__).with_name("cli.py")
 _PROBE_ERROR_EXIT = 2
 _TMP_FALLBACK = "/tmp"  # noqa: S108 - parity fallback for larch bootstrap tmpdirs.
 _transient_retry_sleeper = retry.default_sleeper
@@ -292,7 +293,7 @@ def preflight_main(argv: list[str]) -> int:
 
 
 def _github_remote_repo(remote: str) -> tuple[int, str, str]:
-    result = _run([str(_SCRIPTS / "github-remote-repo.sh"), remote])
+    result = _run([sys.executable, str(_PY_CLI), "gh", "remote-repo", remote])
     return result.returncode, result.stdout.strip(), result.stderr
 
 

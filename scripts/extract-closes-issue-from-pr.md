@@ -11,7 +11,7 @@ testable location (per `.claude/rules/script-md-siblings.md`).
 
 ## Inputs
 
-None. The script reads PR state from `gh` against the current branch. It first resolves the current repo with `scripts/resolve-repo.sh` and passes `--repo` to `gh pr view` when resolution succeeds; if resolution fails, it preserves the prior ambient-repo fallback.
+None. The script reads PR state from `gh` against the current branch. It first resolves the current repo with `python3 "$SCRIPT_DIR/../python/cli.py" gh resolve-repo` and passes `--repo` to `gh pr view` when resolution succeeds; if resolution fails, it preserves the prior ambient-repo fallback.
 
 ## Outputs
 

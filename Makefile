@@ -4,7 +4,7 @@
 PYTHON ?= python3
 PYLINT_JOBS ?= $(shell $(PYTHON) -c 'import os; print(0 if os.sysconf("SC_SEM_NSEMS_MAX") >= 0 else 1)' 2>/dev/null || printf '1')
 
-.PHONY: py-lint py-lint-main py-typecheck py-lint-duplicate-code py-test lint lint-only test-harnesses test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 test-harnesses-6 test-harnesses-7 test-harnesses-8 test-harnesses-9 test-harnesses-10 test-harnesses-11 test-harnesses-12 test-harnesses-13 test-harnesses-14 test-harnesses-15 test-harnesses-16 test-harnesses-17 test-harnesses-18 test-harnesses-19 test-harnesses-20 shellcheck markdownlint jsonlint actionlint agent-lint agnix gitleaks trufflehog setup test-pipe-sigpipe-safety test-redact test-scrub-log-secrets test-redact-tmpdir-paths test-append-tool-failure test-flush-vendor-failure-diagnostics test-append-execution-issue test-validate-research-output test-render-final-summary-bash32 test-collect-agent-results test-blocker test-issue-query test-anti-improvised-wakeup test-audit-runs test-sessionstart test-check-clean-tree test-check-main-sync test-check-scope-reduction-marker test-plan-review-scope-anchor test-persist-retally-step3-env test-lib-scope-anchor-handoff test-clarify-comment test-clarify-state test-check-stale-plugin test-preflight-args test-cache-root-validation test-cache-key-discipline test-finalize-sanity-check test-audit-edit-write test-block-submodule test-deny-edit-write test-verify-skill-called test-hook-anti-read-poll test-hook-bg-poll-guard test-hook-progress-report test-classify-bump test-ci-wait-exit-trap test-ci-rerun-failed test-ci-status test-merge-pr test-git-push test-lint-skill-invocations test-lint-skill-md-flag-signature test-lint-codex-exec-auth test-lint-literal-counts test-lint-no-raw-stderr-after-quiet-init test-lint-readability-preamble test-lint-bare-grep-probe test-anti-halt test-orchestrator-scope-sync test-alias-structure test-design-structure test-decompose-panel-dispatch test-decompose-aggregator test-decompose-file-issues test-design-driver test-design-clarify test-design-publish test-design-postplan-emit test-invoke-plan-validator test-file-design-oos test-emit-plan test-gate-b-dedup-plan test-trailer-helpers test-emit-design-plan-preview test-check-plan-size test-parse-plan-commands test-validate-plan-commands test-step3-review-cap test-run-step3-review test-plan-review-loop test-tally-plan-review test-finalize-plan test-step0b-router-flag-recovery test-brainstorm-prompts test-scout-plan-archetypes-wrapper test-dispatch-plan-review-panel test-render-final-summary test-implement-rebase-macro test-rebase-checkpoint-probe test-phantom-probe-with-warn test-implement-step2-routing test-rebase-push-keep-on-conflict test-rebase-push-force-lease test-rebase-push-fork-mode test-rebase-push-no-push-fetch-retry test-implement-structure test-implement-step8-exit3-first-fixer test-oos-disposition-gate test-plan-adequacy-audit test-implement-preflight test-implement-positional-issue test-implement-fence-shape test-implement-timing-rehydration test-implement-cleanup-roundtrip test-implement-anti-polling-rule test-implement-relevant-checks-anti-halt test-implement-anti-halt test-implement-review-token-propagation test-step2-dispatch test-cursor-implementer test-codex-implementer test-gh-run-logs test-refresh-run-logs test-ci-wait test-launch-cursor-ci test-launch-claude-ci test-launch-codex-ci test-run-negotiation-round test-launch-claude-subprocess test-launch-claude-review test-dispatch-with-waterfall test-revise-plan-with-waterfall test-run-external-agent test-run-external-agent-args test-quick-mode-docs-sync test-implement-bootstrap test-implement-bootstrap-invoke test-implement-finalize test-flush-execution-issues test-post-tracking-issue test-commit-implementation test-review-and-fix-commit-fixes test-generate-code-flow-diagram test-refresh-execution-issues test-review-and-fix-write-rejected test-slack-issue-announce test-step-16-17 test-write-final-report test-step-18 test-step-18b-final-report test-token-cost test-render-cost-line test-implement-cleanup-script test-harness-shards-coverage test-harness-timer test-references-headers test-research-structure test-review-structure test-gather-context test-gather-branch-context test-review-core test-dispatch-panel-core test-dispatch-panel-core-dynamic test-dispatch-panel-reuse test-dispatch-panel-limits test-scout-dynamic-archetypes test-dispatch-plan-voters test-collect-findings test-aggregate-findings test-prune-nit-findings test-tally-code-votes test-check-reviewer-failure-threshold test-dispatch-code-voters-happy test-dispatch-code-voters-edge-and-r3-claude test-dispatch-code-voters-regressions-r1-r2 test-dispatch-code-voters-regressions-r3-codex test-emit-tally test-log-phase test-review-and-fix test-review-and-fix-dispatch test-review-and-fix-convergence test-review-and-fix-parsers test-render-findings-batch test-synthesis-subagent test-research-angle-prompts test-subskill-anchors test-tracking-issue-write test-larch-log test-capture-session-transcript test-larch-logs-manifest test-larch-logs-batches test-compose-plan-goals-test test-compose-collector-failure-log test-tracking-issue-summary test-tracking-issue-read-sentinel test-compose-review-findings test-token-tally test-token-ledger test-token-report test-timing-ledger test-timing-report test-parse-codex-usage test-token-vendor-scrapers test-token-claude-source test-review-and-fix-check-changes test-check-mid-run-dirty-tree test-check-phantom-dirty test-check-reviewers test-degraded-tools-gate test-check-topology-rule-paths test-external-tool-registry test-agent-model-args test-effort-prose test-launch-review test-lib-design-tmpdir test-lib-quiet test-github-remote-repo test-implement-fork-env test-get-issue-context test-create-pr test-resolve-repo test-gh-pr-body-update eval-research test-eval-set-structure test-eval-research-baseline-flag test-oos-file-conflict-deps test-oos-issue-cap test-materialize-manifest-oos test-wait-for-reviewers test-classify-diff-mode test-analyze test-compute-pr-line-counts test-review-and-fix-step5 test-run-step1-plan-log test-run-step2-dispatch test-prompt-template-invariants test-lib-submodule-prohibition test-verify-run-log-completeness test-design-log-publish test-fetch-combinable-issues-filter test-legacy-title-prefix-literals-scope test-implement-admission test-pause-skill test-fluff-analysis
+.PHONY: py-lint py-lint-main py-typecheck py-lint-duplicate-code py-test lint lint-only test-harnesses test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 test-harnesses-6 test-harnesses-7 test-harnesses-8 test-harnesses-9 test-harnesses-10 test-harnesses-11 test-harnesses-12 test-harnesses-13 test-harnesses-14 test-harnesses-15 test-harnesses-16 test-harnesses-17 test-harnesses-18 test-harnesses-19 test-harnesses-20 shellcheck markdownlint jsonlint actionlint agent-lint agnix gitleaks trufflehog setup test-pipe-sigpipe-safety test-redact test-scrub-log-secrets test-redact-tmpdir-paths test-append-tool-failure test-flush-vendor-failure-diagnostics test-append-execution-issue test-validate-research-output test-render-final-summary-bash32 test-collect-agent-results test-blocker test-issue-query test-anti-improvised-wakeup test-audit-runs test-sessionstart test-check-clean-tree test-check-main-sync test-check-scope-reduction-marker test-plan-review-scope-anchor test-persist-retally-step3-env test-lib-scope-anchor-handoff test-clarify-comment test-clarify-state test-check-stale-plugin test-preflight-args test-cache-root-validation test-cache-key-discipline test-finalize-sanity-check test-audit-edit-write test-block-submodule test-deny-edit-write test-verify-skill-called test-hook-anti-read-poll test-hook-bg-poll-guard test-hook-progress-report test-classify-bump test-git-push test-lint-skill-invocations test-lint-skill-md-flag-signature test-lint-codex-exec-auth test-lint-literal-counts test-lint-no-raw-stderr-after-quiet-init test-lint-readability-preamble test-lint-bare-grep-probe test-anti-halt test-orchestrator-scope-sync test-alias-structure test-design-structure test-decompose-panel-dispatch test-decompose-aggregator test-decompose-file-issues test-design-driver test-design-clarify test-design-publish test-design-postplan-emit test-invoke-plan-validator test-file-design-oos test-emit-plan test-gate-b-dedup-plan test-trailer-helpers test-emit-design-plan-preview test-check-plan-size test-parse-plan-commands test-validate-plan-commands test-step3-review-cap test-run-step3-review test-plan-review-loop test-tally-plan-review test-finalize-plan test-step0b-router-flag-recovery test-brainstorm-prompts test-scout-plan-archetypes-wrapper test-dispatch-plan-review-panel test-render-final-summary test-implement-rebase-macro test-phantom-probe-with-warn test-implement-step2-routing test-implement-structure test-implement-step8-exit3-first-fixer test-oos-disposition-gate test-plan-adequacy-audit test-implement-preflight test-implement-positional-issue test-implement-fence-shape test-implement-timing-rehydration test-implement-cleanup-roundtrip test-implement-anti-polling-rule test-implement-relevant-checks-anti-halt test-implement-anti-halt test-implement-review-token-propagation test-step2-dispatch test-cursor-implementer test-codex-implementer test-refresh-run-logs test-launch-cursor-ci test-launch-claude-ci test-launch-codex-ci test-run-negotiation-round test-launch-claude-subprocess test-launch-claude-review test-dispatch-with-waterfall test-revise-plan-with-waterfall test-run-external-agent test-run-external-agent-args test-quick-mode-docs-sync test-implement-bootstrap test-implement-bootstrap-invoke test-implement-finalize test-flush-execution-issues test-post-tracking-issue test-commit-implementation test-review-and-fix-commit-fixes test-generate-code-flow-diagram test-refresh-execution-issues test-review-and-fix-write-rejected test-slack-issue-announce test-step-16-17 test-write-final-report test-step-18 test-step-18b-final-report test-token-cost test-render-cost-line test-implement-cleanup-script test-harness-shards-coverage test-harness-timer test-references-headers test-research-structure test-review-structure test-gather-context test-gather-branch-context test-review-core test-dispatch-panel-core test-dispatch-panel-core-dynamic test-dispatch-panel-reuse test-dispatch-panel-limits test-scout-dynamic-archetypes test-dispatch-plan-voters test-collect-findings test-aggregate-findings test-prune-nit-findings test-tally-code-votes test-check-reviewer-failure-threshold test-dispatch-code-voters-happy test-dispatch-code-voters-edge-and-r3-claude test-dispatch-code-voters-regressions-r1-r2 test-dispatch-code-voters-regressions-r3-codex test-emit-tally test-log-phase test-review-and-fix test-review-and-fix-dispatch test-review-and-fix-convergence test-review-and-fix-parsers test-render-findings-batch test-synthesis-subagent test-research-angle-prompts test-subskill-anchors test-tracking-issue-write test-larch-log test-capture-session-transcript test-larch-logs-manifest test-larch-logs-batches test-compose-plan-goals-test test-compose-collector-failure-log test-tracking-issue-summary test-tracking-issue-read-sentinel test-compose-review-findings test-token-tally test-token-ledger test-token-report test-timing-ledger test-timing-report test-parse-codex-usage test-token-vendor-scrapers test-token-claude-source test-review-and-fix-check-changes test-check-mid-run-dirty-tree test-check-phantom-dirty test-check-reviewers test-degraded-tools-gate test-check-topology-rule-paths test-external-tool-registry test-agent-model-args test-effort-prose test-launch-review test-lib-design-tmpdir test-lib-quiet test-implement-fork-env test-get-issue-context eval-research test-eval-set-structure test-eval-research-baseline-flag test-oos-file-conflict-deps test-oos-issue-cap test-materialize-manifest-oos test-wait-for-reviewers test-classify-diff-mode test-analyze test-compute-pr-line-counts test-review-and-fix-step5 test-run-step1-plan-log test-run-step2-dispatch test-prompt-template-invariants test-lib-submodule-prohibition test-verify-run-log-completeness test-design-log-publish test-fetch-combinable-issues-filter test-legacy-title-prefix-literals-scope test-implement-admission test-pause-skill test-fluff-analysis
 
 .PHONY: test-findings-classification test-review-findings-classification test-review-and-fix-step5-starting-round test-lib-net test-bug-structure
 .PHONY: test-prompt-template-invariants test-lib-submodule-prohibition
@@ -15,7 +15,7 @@ PYLINT_JOBS ?= $(shell $(PYTHON) -c 'import os; print(0 if os.sysconf("SC_SEM_NS
 .PHONY: test-promote-release test-release-finish test-release-prepare test-release-set-version
 .PHONY: test-auto-fix-plan-commands test-design-step2b-drafter test-gate-b-apply-mode
 .PHONY: test-token-report-dedup test-token-cost-per-bucket test-render-cost-line-realism test-render-cost-line-callsites test-token-report-summary-format test-parse-bootstrap-routing-envelope test-step-telemetry-mark lint-retired-scripts
-.PHONY: lint-bash32 test-lint-bash32 lint-gh-body-inline lint-mermaid agent-sync test-ci-failed-jobs test-ci-behind-count test-ci-decide
+.PHONY: lint-bash32 test-lint-bash32 lint-gh-body-inline lint-mermaid agent-sync
 .PHONY: test-step-7a test-step-8-ship
 .PHONY: test-stall-recovery-report test-stall-recovery-report-1 test-stall-recovery-report-2 test-stall-recovery-report-3 test-step-18 test-step-18b-final-report
 .PHONY: test-resolve-upstream-larch-repo test-file-failure-report-cross-repo
@@ -121,35 +121,35 @@ test-harnesses-4: test-harness-shards-coverage test-review-and-fix-write-rejecte
 
 test-harnesses-5: test-launch-review test-revise-plan-with-waterfall test-design-step1d5 test-lib-scope-anchor-handoff test-review-and-fix-record-timing test-release-set-version test-implement-finalize test-post-tracking-issue test-clarify-comment test-implement-admission test-timing-ledger test-oos-disposition-gate test-lint-readability-preamble test-audit-edit-write test-implement-anti-polling-rule test-implement-positional-issue
 
-test-harnesses-6: test-design-stage-terminal-state test-rebase-checkpoint-probe test-dispatch-code-voters-regressions-r1-r2 test-validate-plan-commands test-cursor-implementer test-launch-claude-review test-reviewer-prune test-clarify-state test-refresh-run-logs test-render-final-summary-bash32 test-append-tool-failure test-redact test-deny-edit-write test-hook-progress-report test-research-angle-prompts
+test-harnesses-6: test-design-stage-terminal-state test-dispatch-code-voters-regressions-r1-r2 test-validate-plan-commands test-cursor-implementer test-launch-claude-review test-reviewer-prune test-clarify-state test-refresh-run-logs test-render-final-summary-bash32 test-append-tool-failure test-redact test-deny-edit-write test-hook-progress-report test-research-angle-prompts
 
-test-harnesses-7: test-design-step3-review test-check-plan-size test-sessionstart test-design-step0-init test-design-multi-round-integration test-block-submodule test-resolve-upstream-larch-repo test-implement-cleanup-script test-lint-bare-grep-probe test-capture-session-transcript test-check-clean-tree test-token-claude-source test-token-report test-scrub-log-secrets test-slack-issue-announce test-rebase-push-force-lease test-synthesis-subagent
+test-harnesses-7: test-design-step3-review test-check-plan-size test-sessionstart test-design-step0-init test-design-multi-round-integration test-block-submodule test-resolve-upstream-larch-repo test-implement-cleanup-script test-lint-bare-grep-probe test-capture-session-transcript test-check-clean-tree test-token-claude-source test-token-report test-scrub-log-secrets test-slack-issue-announce test-synthesis-subagent
 
 test-harnesses-8: test-design-step3-mav test-run-external-agent test-collect-agent-results test-validate-research-output test-design-step2b-drafter test-record-plan-review-round-timing test-run-external-agent-args test-agent-model-args test-design-step5c test-larch-logs-batches test-dispatch-panel-limits test-review-design-step3-loop test-implement-fork-env test-references-headers test-plan-adequacy-audit test-legacy-title-prefix-literals-scope
 
 test-harnesses-9: test-step2-dispatch test-auto-fix-plan-commands test-file-failure-report-cross-repo test-design-step3-entry test-lint-literal-counts test-launch-claude-subprocess test-plan-review-scope-anchor test-step0b-router-flag-recovery test-external-tool-registry test-larch-log test-token-report-summary-format test-flush-vendor-failure-diagnostics test-file-design-oos test-append-execution-issue test-lint-skill-md-flag-signature test-lib-net test-implement-anti-halt test-implement-cleanup-roundtrip
 
-test-harnesses-10: test-dispatch-plan-review-panel test-dispatch-code-voters-regressions-r3-codex test-dispatch-panel-reuse test-review-core test-design-step3-state test-compose-review-findings test-step-7a test-emit-tally test-stall-recovery-report-1 test-ci-behind-count test-research-structure test-check-reviewer-failure-threshold test-preflight-args test-step-telemetry-mark test-verify-skill-called test-git-push test-implement-step8-exit3-first-fixer
+test-harnesses-10: test-dispatch-plan-review-panel test-dispatch-code-voters-regressions-r3-codex test-dispatch-panel-reuse test-review-core test-design-step3-state test-compose-review-findings test-step-7a test-emit-tally test-stall-recovery-report-1 test-research-structure test-check-reviewer-failure-threshold test-preflight-args test-step-telemetry-mark test-verify-skill-called test-git-push test-implement-step8-exit3-first-fixer
 
-test-harnesses-11: test-render-findings-batch test-review-findings-classification test-read-result-env test-implement-review-token-propagation test-launch-claude-ci test-ci-decide test-larch-log-write-round test-persist-retally-step3-env test-compose-plan-goals-test test-audit-runs test-step-8-ship test-classify-bump test-compose-collector-failure-log test-degraded-tools-gate test-design-structure test-lint-renderer-substitution-safety test-orchestrator-scope-sync
+test-harnesses-11: test-render-findings-batch test-review-findings-classification test-read-result-env test-implement-review-token-propagation test-launch-claude-ci test-larch-log-write-round test-persist-retally-step3-env test-compose-plan-goals-test test-audit-runs test-step-8-ship test-classify-bump test-compose-collector-failure-log test-degraded-tools-gate test-design-structure test-lint-renderer-substitution-safety test-orchestrator-scope-sync
 
 test-harnesses-12: test-dispatch-code-voters-edge-and-r3-claude test-dispatch-panel-core-dynamic test-trailer-helpers test-review-and-fix-step5-loop-timing test-commit-implementation test-check-reviewers test-parse-design-argv test-larch-logs-manifest test-render-cost-line-realism test-phantom-probe-with-warn test-promote-release test-oos-issue-cap test-run-negotiation-round test-analyze test-redact-tmpdir-paths test-implement-structure test-design-clarify test-effort-prose
 
-test-harnesses-13: test-review-and-fix-step5 test-aggregate-findings test-dispatch-code-voters-retry-codex-fail-and-fallback test-tally-plan-review test-design-publish test-flush-execution-issues test-ci-wait-exit-trap test-launch-codex-ci test-fetch-combinable-issues-filter test-release-finish test-design-log-ship test-resolve-repo test-check-mid-run-dirty-tree test-classify-diff-mode test-rebase-push-fork-mode test-ci-rerun-failed
+test-harnesses-13: test-review-and-fix-step5 test-aggregate-findings test-dispatch-code-voters-retry-codex-fail-and-fallback test-tally-plan-review test-design-publish test-flush-execution-issues test-launch-codex-ci test-fetch-combinable-issues-filter test-release-finish test-design-log-ship test-check-mid-run-dirty-tree test-classify-diff-mode
 
-test-harnesses-14: test-dispatch-code-voters-happy test-ci-wait test-dispatch-code-voters-retry-cursor test-dispatch-plan-voters test-codex-implementer test-review-and-fix-convergence test-cache-root-validation test-finalize-plan test-decompose-aggregator test-review-and-fix-check-changes test-verify-run-log-completeness test-ci-failed-jobs test-design-pause-resume test-harness-timer test-ci-status test-check-stale-plugin test-lib-submodule-prohibition test-implement-relevant-checks-anti-halt
+test-harnesses-14: test-dispatch-code-voters-happy test-dispatch-code-voters-retry-cursor test-dispatch-plan-voters test-codex-implementer test-review-and-fix-convergence test-cache-root-validation test-finalize-plan test-decompose-aggregator test-review-and-fix-check-changes test-verify-run-log-completeness test-design-pause-resume test-harness-timer test-check-stale-plugin test-lib-submodule-prohibition test-implement-relevant-checks-anti-halt
 
-test-harnesses-15: test-gh-pr-body-update test-gate-b-apply-mode test-review-and-fix-dispatch test-gate-b-dedup-plan test-invoke-plan-validator test-run-step2-dispatch test-issue-query test-check-main-sync test-fluff-analysis test-plan-review-panel test-launch-codex-exec test-materialize-manifest-oos test-render-final-summary test-token-tally test-lint-no-raw-stderr-after-quiet-init test-implement-fence-shape test-alias-structure test-anti-improvised-wakeup
+test-harnesses-15: test-gate-b-apply-mode test-review-and-fix-dispatch test-gate-b-dedup-plan test-invoke-plan-validator test-run-step2-dispatch test-issue-query test-check-main-sync test-fluff-analysis test-plan-review-panel test-launch-codex-exec test-materialize-manifest-oos test-render-final-summary test-token-tally test-lint-no-raw-stderr-after-quiet-init test-implement-fence-shape test-alias-structure test-anti-improvised-wakeup
 
-test-harnesses-16: test-implement-bootstrap-invoke test-hook-bg-poll-guard test-dispatch-code-voters-retry-codex-success test-dispatch-code-voters-parse-rate-claude test-parse-bootstrap-routing-envelope test-run-step3-review test-launch-cursor-ci test-review-and-fix-commit-fixes test-decompose-file-issues test-design-postplan-emit test-log-phase test-gather-branch-context test-implement-preflight test-timing-report test-rebase-push-no-push-fetch-retry test-pause-skill test-git-commit-only
+test-harnesses-16: test-implement-bootstrap-invoke test-hook-bg-poll-guard test-dispatch-code-voters-retry-codex-success test-dispatch-code-voters-parse-rate-claude test-parse-bootstrap-routing-envelope test-run-step3-review test-launch-cursor-ci test-review-and-fix-commit-fixes test-decompose-file-issues test-design-postplan-emit test-log-phase test-gather-branch-context test-implement-preflight test-timing-report test-pause-skill test-git-commit-only
 
-test-harnesses-17: test-step3-orchestrator-fence test-create-pr test-tally-code-votes test-review-and-fix-parsers test-wait-for-reviewers test-check-phantom-dirty test-gather-context test-parse-codex-usage test-plan-review test-step-18b-final-report test-stall-recovery-report-3 test-review-structure test-run-step1-plan-log test-token-report-dedup test-refresh-execution-issues test-gh-run-logs test-subskill-anchors
+test-harnesses-17: test-step3-orchestrator-fence test-tally-code-votes test-review-and-fix-parsers test-wait-for-reviewers test-check-phantom-dirty test-gather-context test-parse-codex-usage test-plan-review test-step-18b-final-report test-stall-recovery-report-3 test-review-structure test-run-step1-plan-log test-token-report-dedup test-refresh-execution-issues test-subskill-anchors
 
 test-harnesses-18: test-hook-anti-read-poll test-prompt-template-invariants test-design-log-publish test-token-vendor-scrapers test-check-topology-rule-paths test-decompose-panel-dispatch test-plan-review-loop test-scout-plan-archetypes-wrapper test-prune-nit-findings test-implement-bootstrap test-generate-code-flow-diagram test-release-prepare test-cache-key-discipline test-lint-skill-invocations test-lib-design-round-artifacts test-render-cost-line-callsites test-implement-rebase-macro
 
-test-harnesses-19: test-merge-pr test-step3-review-cap test-collect-findings test-stall-recovery-report-2 test-emit-design-plan-preview test-write-final-report test-emit-plan test-dispatch-panel-core test-lib-quiet test-design-step-validator-autofix test-lint-bash32 test-blocker test-oos-file-conflict-deps test-token-cost test-render-cost-line test-implement-timing-rehydration test-implement-step2-routing
+test-harnesses-19: test-step3-review-cap test-collect-findings test-stall-recovery-report-2 test-emit-design-plan-preview test-write-final-report test-emit-plan test-dispatch-panel-core test-lib-quiet test-design-step-validator-autofix test-lint-bash32 test-blocker test-oos-file-conflict-deps test-token-cost test-render-cost-line test-implement-timing-rehydration test-implement-step2-routing
 
-test-harnesses-20: test-findings-classification test-step-18 test-review-and-fix-step5-starting-round test-step-16-17 test-design-driver test-lib-prune-decision test-lint-awk-multibyte-regex test-pipe-sigpipe-safety test-scout-dynamic-archetypes test-parse-plan-commands test-finalize-sanity-check test-rebase-push-keep-on-conflict test-no-grouped-reuse-guard test-token-cost-per-bucket test-check-scope-reduction-marker test-quick-mode-docs-sync test-github-remote-repo test-anti-halt
+test-harnesses-20: test-findings-classification test-step-18 test-review-and-fix-step5-starting-round test-step-16-17 test-design-driver test-lib-prune-decision test-lint-awk-multibyte-regex test-pipe-sigpipe-safety test-scout-dynamic-archetypes test-parse-plan-commands test-finalize-sanity-check test-no-grouped-reuse-guard test-token-cost-per-bucket test-check-scope-reduction-marker test-quick-mode-docs-sync test-anti-halt
 
 test-pipe-sigpipe-safety:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-pipe-sigpipe-safety.sh
@@ -367,24 +367,6 @@ test-promote-release:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_release.py -q -k 'promote and not release_finish'
 
 
-test-ci-wait-exit-trap:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-ci-wait-exit-trap.sh
-
-test-ci-rerun-failed:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-ci-rerun-failed.sh
-
-test-ci-status:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-ci-status.sh
-
-test-ci-behind-count:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-ci-behind-count.sh
-
-test-ci-decide:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-ci-decide.sh
-
-test-merge-pr:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-merge-pr.sh
-
 test-git-push:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-git-push.sh
 
@@ -580,27 +562,11 @@ test-render-final-summary-bash32:
 test-implement-rebase-macro:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-implement-rebase-macro.sh
 
-test-rebase-checkpoint-probe:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-rebase-checkpoint-probe.sh
-
 test-phantom-probe-with-warn:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-phantom-probe-with-warn.sh
 
 test-implement-step2-routing:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-implement-step2-routing.sh
-
-test-rebase-push-keep-on-conflict:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-rebase-push-keep-on-conflict.sh
-
-
-test-rebase-push-force-lease:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-rebase-push-force-lease.sh
-
-test-rebase-push-fork-mode:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-rebase-push-fork-mode.sh
-
-test-rebase-push-no-push-fetch-retry:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-rebase-push-no-push-fetch-retry.sh
 
 test-implement-structure:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-implement-structure.sh
@@ -692,15 +658,6 @@ test-git-commit-only:
 
 test-refresh-run-logs:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_run_logs.py -k refresh_run_logs
-
-test-gh-run-logs:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-gh-run-logs.sh
-
-test-ci-failed-jobs:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-ci-failed-jobs.sh
-
-test-ci-wait:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-ci-wait.sh
 
 test-launch-cursor-ci:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_agents.py -q -k launch_cursor_ci
@@ -1007,20 +964,8 @@ test-lib-quiet:
 test-lib-design-tmpdir:
 	@:
 
-test-github-remote-repo:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-github-remote-repo.sh
-
 test-implement-fork-env:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_admission.py -x -q -k 'fork_env'
-
-test-create-pr:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-create-pr.sh
-
-test-resolve-repo:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-resolve-repo.sh
-
-test-gh-pr-body-update:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-gh-pr-body-update.sh
 
 test-wait-for-reviewers:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_dispatch.py -k wait

@@ -11,12 +11,9 @@ paths:
   - "python/audit_runs.py"
   - "python/release_finish.py"
   - "python/tracking_issue.py"
-  - "scripts/create-pr.md"
-  - "scripts/create-pr.sh"
+  - "python/pr.py"
   - "python/design_log_publish_flow.py"
   - "python/issue_wire.py"
-  - "scripts/gh-pr-body-update.md"
-  - "scripts/gh-pr-body-update.sh"
   - "skills/design/SKILL.md"
   - "skills/design/references/l3-velocity-deferral-comment.txt"
   - "python/decompose.py"
@@ -99,7 +96,7 @@ variant so authors do not have to reason about which body is "safe enough".
 For `gh pr create` in this repository, the default path is:
 
 ```bash
-scripts/create-pr.sh --title "$title" --body-file "$body_file"
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" pr create --title "$title" --body-file "$body_file"
 ```
 
 The wrapper handles push, redaction, existing-PR detection, diagnostics, and
@@ -136,7 +133,7 @@ the content may contain local tmpdir paths) before writing it to the body file.
 The shell-layer redaction inside larch scripts does not automatically protect
 prompt-assembled bodies. See `SECURITY.md` for the outbound-redaction policy.
 
-For PR creation specifically, use `scripts/create-pr.sh`; it applies both
+For PR creation specifically, use `python/cli.py pr create`; it applies both
 redaction passes internally.
 
 ## Scope

@@ -26,7 +26,7 @@ Flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3.11 for
 - **Phase 5** (live via default Python ship driver): `run_logs.py`, `tokens.py`, `tracking_issue.py`,
   `pr_body.py`, `push.py`, `pr.py`, `file_oos.py`, `merge.py` — PR/merge/logging ports with split
   `flush_logs_pre` (may commit log batches) vs `flush_logs_post` (tmpdir-only). `merge.py`
-  classifies the eight `merge-pr.sh` `MERGE_RESULT` literals; driver-only `already_merged` is
+  classifies the eight `python/cli.py merge pr` `MERGE_RESULT` literals; driver-only `already_merged` is
   documented in `config.MERGE_RESULT_DRIVER_ALREADY_MERGED` for `flush_logs_pre` skip parity.
   Tool-failure batch capture remains deferred to Phase 7 wiring; bash launchers still own
   `append-tool-failure.sh` calls on the live path.

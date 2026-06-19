@@ -72,10 +72,10 @@ def _origin_repo(repo_root: Path) -> str | None:
     override = __import__("os").environ.get("LARCH_RELEASE_PREPARE_ORIGIN_REPO", "")
     if override:
         return override
-    helper = repo_root / "scripts/github-remote-repo.sh"
-    if not helper.is_file():
-        return None
-    res = proc.run(["bash", str(helper), "origin"], cwd=str(repo_root))
+    res = proc.run(
+        ["python3", str(repo_root / "python" / "cli.py"), "gh", "remote-repo", "origin"],
+        cwd=str(repo_root),
+    )
     return res.stdout.strip() if res.returncode == 0 else None
 
 

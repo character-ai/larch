@@ -1,6 +1,6 @@
 # scripts/check-remote-branch.sh — contract
 
-`scripts/check-remote-branch.sh` is the wrapper around `git ls-remote --exit-code --heads <remote> <branch>` that `/implement` Step 8b uses to decide between force-pushing a locally-rebased feature branch (branch already on origin) and letting `create-pr.sh` perform the initial push (branch absent on origin). The wrapper also surfaces transport / auth / network failures distinctly so Step 8b can bail to cleanup instead of silently degrading to a stale-remote path — see issue #818 for the historical failure mode that motivated the trichotomy.
+`scripts/check-remote-branch.sh` is the wrapper around `git ls-remote --exit-code --heads <remote> <branch>` that `/implement` Step 8b uses to decide between force-pushing a locally-rebased feature branch (branch already on origin) and letting `python/cli.py pr create` perform the initial push (branch absent on origin). The wrapper also surfaces transport / auth / network failures distinctly so Step 8b can bail to cleanup instead of silently degrading to a stale-remote path — see issue #818 for the historical failure mode that motivated the trichotomy.
 
 ## Inputs
 
@@ -19,7 +19,7 @@ The exit-0-always rule keeps callers parsing the envelope rather than `$?`. Step
 
 ## Why this trichotomy
 
-`git ls-remote --exit-code` overloads `2` with "ref not found" and other transport errors with `128` / `129` etc. Conflating them led to the bug described in issue #818: a transient GitHub API outage caused `gh pr view` (the previous implementation) to behave as if the PR existed, and `create-pr.sh` then swallowed the subsequent non-fast-forward push failure under its existing-PR fast-path. Step 8b's correct response is "bail to cleanup" on transport error — never silently degrade.
+`git ls-remote --exit-code` overloads `2` with "ref not found" and other transport errors with `128` / `129` etc. Conflating them led to the bug described in issue #818: a transient GitHub API outage caused `gh pr view` (the previous implementation) to behave as if the PR existed, and `python/cli.py pr create` then swallowed the subsequent non-fast-forward push failure under its existing-PR fast-path. Step 8b's correct response is "bail to cleanup" on transport error — never silently degrade.
 
 ## When to update
 

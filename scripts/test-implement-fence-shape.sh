@@ -353,7 +353,7 @@ with tempfile.TemporaryDirectory(prefix="larch-run-partial-upgrade-test.") as tm
 
     def fake_run(argv: list[str], *, env: dict[str, str] | None = None, cwd: str | None = None) -> subprocess.CompletedProcess[str]:
         joined = " ".join(argv)
-        if "create-branch.sh --check" in joined:
+        if "pr create-branch --check" in joined:
             return completed(argv, "CURRENT_BRANCH=feature/resume\nIS_MAIN=false\nIS_USER_BRANCH=true\nUSER_PREFIX=user\n")
         if "git-current-branch.sh" in joined:
             return completed(argv, "BRANCH=feature/resume\n")
@@ -362,6 +362,8 @@ with tempfile.TemporaryDirectory(prefix="larch-run-partial-upgrade-test.") as tm
         return completed(argv, "")
 
     def fake_cli(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+        if args[:3] == ("pr", "create-branch", "--check"):
+            return completed(args, "CURRENT_BRANCH=feature/resume\nIS_MAIN=false\nIS_USER_BRANCH=true\nUSER_PREFIX=user\n")
         if args[:3] == ("session", "read-key", "--file"):
             path = Path(args[3])
             key = args[args.index("--key") + 1]

@@ -58,7 +58,7 @@ append-forensics behavior documented in `python/logging_util.py` and
   `LARCH_QUIET_DISABLE=1` before calling it, because their data stream is
   ordinary stdout rather than contract output.
 
-Long-running quiet scripts and Python commands (for example the Python ship driver, `ci-wait.sh`, and
+Long-running quiet scripts and Python commands (for example the Python ship driver, `python/cli.py ci wait`, and
 `python/cli.py agent collect-results`) surface progress via quiet-compatible diagnostic helpers on the
 operator-visible stderr channel (FD 4 after quiet initialization).
 

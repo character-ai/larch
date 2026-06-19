@@ -281,8 +281,9 @@ def test_live_same_basename_not_flagged(tmp_path: Path) -> None:
 
 def test_script_dir_basename_reference_flagged(tmp_path: Path) -> None:
     repo = _make_git_repo(tmp_path)
-    retired = "scripts/resolve-repo.sh"
-    _ = _add_file(repo, "scripts/caller.sh", 'REPO=$("$SCRIPT_DIR/resolve-repo.sh")\n')
+    retired = "scripts/" + "resolve" + "-repo.sh"
+    basename = retired.rsplit("/", 1)[1]
+    _ = _add_file(repo, "scripts/caller.sh", f'REPO=$("$SCRIPT_DIR/{basename}")\n')
     manifest = _make_manifest(repo, [(retired, "#test")])
     rc = migration_lint.main([
         "--manifest", str(manifest),
@@ -293,8 +294,9 @@ def test_script_dir_basename_reference_flagged(tmp_path: Path) -> None:
 
 def test_cross_directory_bare_basename_not_flagged(tmp_path: Path) -> None:
     repo = _make_git_repo(tmp_path)
-    retired = "scripts/resolve-repo.sh"
-    _ = _add_file(repo, "docs/consumer.md", "See helpers/resolve-repo.sh for examples.\n")
+    retired = "scripts/" + "resolve" + "-repo.sh"
+    basename = retired.rsplit("/", 1)[1]
+    _ = _add_file(repo, "docs/consumer.md", f"See helpers/{basename} for examples.\n")
     manifest = _make_manifest(repo, [(retired, "#test")])
     rc = migration_lint.main([
         "--manifest", str(manifest),
@@ -305,11 +307,11 @@ def test_cross_directory_bare_basename_not_flagged(tmp_path: Path) -> None:
 
 def test_ship_pr_record_failure_label_is_stale_ref(tmp_path: Path) -> None:
     repo = _make_git_repo(tmp_path)
-    retired = "scripts/ci-wait.sh"
+    retired = "python/cli.py ci wait"
     _ = _add_file(
         repo,
         "scripts/ship-driver.txt",
-        'record_failure checks "scripts/ci-wait.sh exited unexpectedly" "$rc"\n',
+        'record_failure checks "python/cli.py ci wait exited unexpectedly" "$rc"\n',
     )
     manifest = _make_manifest(repo, [(retired, "#test")])
     rc = migration_lint.main([

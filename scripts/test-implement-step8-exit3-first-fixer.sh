@@ -16,7 +16,7 @@ else:
     ref=ref_path.read_text()
 if 'skills/implement/references/ship-pr-exit-matrix.md' not in skill:
     errors.append('SKILL.md must point to ship-pr-exit-matrix.md')
-for needle in ['first-fixer-non-health', 'ci-fix-exhausted', 'autonomous main-agent CI-fix sub-procedure', 'main-agent-ci-fix.count', 'scripts/gh-run-logs.sh', 'scripts/git-push.sh']:
+for needle in ['first-fixer-non-health', 'ci-fix-exhausted', 'autonomous main-agent CI-fix sub-procedure', 'main-agent-ci-fix.count', 'gh run-logs', 'scripts/git-push.sh']:
     if needle not in ref:
         errors.append(f'ship-pr exit matrix missing {needle}')
 for n in range(1,13):

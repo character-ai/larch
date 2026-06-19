@@ -500,7 +500,7 @@ def _rebase_push_force_with_lease(
     sleep_fn: Callable[[float], None] | None = None,
     rng: random.Random | None = None,
 ) -> tuple[bool, str]:
-    """Three-attempt force-with-lease loop (rebase-push.sh parity)."""
+    """Three-attempt force-with-lease loop (push rebase parity)."""
     if sleep_fn is None:
         sleep_fn = time.sleep
     if rng is None:
@@ -548,7 +548,7 @@ def rebase_push(
     base_ref: str = "main",
     cwd: str | None = None,
 ) -> RebasePushResult:
-    """CLI parity primitive for ``rebase-push.sh``."""
+    """CLI parity primitive for ``push rebase``."""
     base_err = git.validate_base_remote_ref(base_remote, base_ref)
     if base_err is not None:
         return RebasePushResult(exit_code=3, rebase_error=base_err)
