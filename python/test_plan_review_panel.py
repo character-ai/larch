@@ -442,3 +442,74 @@ def test_panel_dispatch_surfaces_waterfall_failure(tmp_path: Path) -> None:
     assert "exited 7" in detail_text
     assert "--mode must be diff or description" in detail_text
     assert "--mode must be diff or description" in proc.stderr
+
+
+def test_panel_dispatch_rows_launchable_by_waterfall(tmp_path: Path) -> None:
+    # Regression for issue #4765: every plan-review slot row the panel emits must be
+    # accepted by the agent_waterfall consumer. The producer previously emitted an
+    # inline "prompt" key and never set "prompt_file"/"agent", so _load_slots raised
+    # "slot '...' must set either agent or prompt_file" on the first row and the panel
+    # launched zero reviewers, silently degrading every /design plan review to
+    # panel-failed. Feed a producer-built manifest (static + dynamic rows) through the
+    # real slot validator and assert each row sets exactly one of agent/prompt_file
+    # with a readable prompt file.
+    import agent_waterfall  # noqa: PLC0415
+
+    design = tmp_path / "design-contract"
+    design.mkdir()
+    _ = (design / "plan.txt").write_text("Plan body.\n", encoding="utf-8")
+    _ = (design / "feature-description.txt").write_text("feat\n", encoding="utf-8")
+    _ = (design / "scout-plan-manifest.json").write_text(
+        json.dumps(
+            {
+                "archetypes": [
+                    {
+                        "name": "alpha",
+                        "focus_area": "correctness",
+                        "weight": 2,
+                        "rationale": "r1",
+                        "prompt_body": "Check contracts.",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    log = design / "wf.log"
+    _ = log.write_text("", encoding="utf-8")
+    stub = _write_waterfall_stub(tmp_path)
+    proc = run_cli(
+        "plan-review",
+        "panel-dispatch",
+        "--design-tmpdir",
+        str(design),
+        "--codex-present",
+        "true",
+        "--cursor-present",
+        "true",
+        "--plan-file",
+        str(design / "plan.txt"),
+        "--feature-file",
+        str(design / "feature-description.txt"),
+        "--timeout",
+        "60",
+        env={
+            "LARCH_QUIET_DISABLE": "1",
+            "DISPATCH_PLAN_REVIEW_WATERFALL_SH": str(stub),
+            "WATERFALL_STUB_LOG": str(log),
+            "WATERFALL_STUB_PATHS_OUT": str(design / "paths.out"),
+        },
+    )
+    assert proc.returncode == 0, proc.stderr + proc.stdout
+    manifest = design / "plan-review-slots.ndjson"
+    rows = [json.loads(line) for line in manifest.read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert rows, "panel must emit at least one slot row"
+    for row in rows:
+        has_agent = bool(row.get("agent"))
+        has_prompt_file = bool(row.get("prompt_file"))
+        assert has_agent != has_prompt_file, f"row must set exactly one of agent/prompt_file: {row}"
+        if has_prompt_file:
+            assert Path(str(row["prompt_file"])).is_file(), f"prompt_file must be readable: {row}"
+    # The real consumer parser must accept the producer's manifest without raising.
+    slots = agent_waterfall._load_slots(str(manifest))  # pyright: ignore[reportPrivateUsage]
+    assert len(slots) == len(rows)
