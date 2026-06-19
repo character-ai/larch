@@ -688,9 +688,11 @@ def _accepted_reviewers_from_classification(classification: Path) -> list[str]:
             continue
         reviewer_cell = cols[reviewer_idx].strip()
         if reviewer_cell:
-            for reviewer in (name.strip() for name in reviewer_cell.split(",")):
-                if reviewer:
-                    names.append(reviewer)
+            names.extend(
+                reviewer
+                for reviewer in (name.strip() for name in reviewer_cell.split(","))
+                if reviewer
+            )
     return names
 
 
