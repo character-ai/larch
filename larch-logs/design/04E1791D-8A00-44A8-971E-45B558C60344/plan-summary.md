@@ -1,0 +1,1 @@
+Fix the confirmed external-tool defects, add opt-in timeout retries, bound diagnostic reads, lock Darwin Cursor keychain reads, redact panel failure stderr, and add focused tests. Drop `/research` changes unless implementation finds a concrete gap beyond the current per-lane fallback contract.
