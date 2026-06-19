@@ -312,3 +312,100 @@ def test_redact_outbound_covers_cursor_cli_key() -> None:
     out = redact.redact_outbound(f"publish {token}")
     assert "<REDACTED-TOKEN>" in out
     assert token not in out
+
+
+def _fake_submodule_paths(_cwd: Path) -> set[str]:
+    return {"vendor/libfoo"}
+
+
+def test_scrub_submodule_paths_bold_label_and_exact_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Production findings use the markdown-bold `- **Location**:` / `- **File**:`
+    # form, and reference submodules as a bare directory, a `:line` suffix, or a
+    # path inside the submodule -- none of which the trailing-slash-only match
+    # caught (issue #4780).
+    monkeypatch.setattr(redact, "discover_submodule_paths", _fake_submodule_paths)
+    findings = (
+        "### FINDING_1:\n"
+        "- **Location**: vendor/libfoo:120\n"
+        "- **Concern**: bare submodule dir with :line suffix\n\n"
+        "### FINDING_2:\n"
+        "- **Location**: vendor/libfoo\n"
+        "- **Concern**: bare submodule dir, no trailing slash\n\n"
+        "### FINDING_3:\n"
+        "- **File**: vendor/libfoo/src/x.py\n"
+        "- **Concern**: path inside the submodule\n\n"
+        "### FINDING_4:\n"
+        "- **Location**: python/redact.py:553\n"
+        "- **Concern**: not a submodule path; must survive\n\n"
+    )
+    input_path = tmp_path / "findings.md"
+    output_path = tmp_path / "scrubbed.md"
+    log_path = tmp_path / "audit.log"
+    _ = input_path.write_text(findings, encoding="utf-8")
+    count, ok = redact.scrub_submodule_paths(input_path, output_path, log_path)
+    assert ok
+    assert count == 3
+    out = output_path.read_text(encoding="utf-8")
+    assert "FINDING_1" not in out
+    assert "FINDING_2" not in out
+    assert "FINDING_3" not in out
+    assert "FINDING_4" in out
+    assert "python/redact.py" in out
+
+
+def test_scrub_submodule_paths_plain_label_still_matches(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The non-bold `Location:` form remains supported for backward compatibility.
+    monkeypatch.setattr(redact, "discover_submodule_paths", _fake_submodule_paths)
+    findings = "### FINDING_1:\nLocation: vendor/libfoo\n- **Concern**: plain label\n\n"
+    input_path = tmp_path / "findings.md"
+    output_path = tmp_path / "scrubbed.md"
+    log_path = tmp_path / "audit.log"
+    _ = input_path.write_text(findings, encoding="utf-8")
+    count, ok = redact.scrub_submodule_paths(input_path, output_path, log_path)
+    assert ok
+    assert count == 1
+    assert "FINDING_1" not in output_path.read_text(encoding="utf-8")
+
+
+def test_scrub_submodule_paths_does_not_overmatch_sibling(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A sibling path that merely shares the submodule-name prefix must not match.
+    monkeypatch.setattr(redact, "discover_submodule_paths", _fake_submodule_paths)
+    findings = (
+        "### FINDING_1:\n"
+        "- **Location**: vendor/libfoobar/x.py:9\n"
+        "- **Concern**: sibling sharing the submodule name prefix\n\n"
+    )
+    input_path = tmp_path / "findings.md"
+    output_path = tmp_path / "scrubbed.md"
+    log_path = tmp_path / "audit.log"
+    _ = input_path.write_text(findings, encoding="utf-8")
+    count, ok = redact.scrub_submodule_paths(input_path, output_path, log_path)
+    assert ok
+    assert count == 0
+    out = output_path.read_text(encoding="utf-8")
+    assert "FINDING_1" in out
+    assert "vendor/libfoobar/x.py" in out
+
+
+def test_scrub_submodule_paths_inline_mention_without_label(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A submodule path referenced outside a Location/File label line is still
+    # scrubbed by the inline match alone -- exercises the broadened inline branch
+    # independently of the label branch (the trailing-slash-only match missed it).
+    monkeypatch.setattr(redact, "discover_submodule_paths", _fake_submodule_paths)
+    findings = "### FINDING_1:\n- **Concern**: the helper in vendor/libfoo breaks on empty input\n\n"
+    input_path = tmp_path / "findings.md"
+    output_path = tmp_path / "scrubbed.md"
+    log_path = tmp_path / "audit.log"
+    _ = input_path.write_text(findings, encoding="utf-8")
+    count, ok = redact.scrub_submodule_paths(input_path, output_path, log_path)
+    assert ok
+    assert count == 1
+    assert "FINDING_1" not in output_path.read_text(encoding="utf-8")
