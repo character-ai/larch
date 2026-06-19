@@ -417,6 +417,20 @@ def publish_main(argv: Sequence[str]) -> int:
             kvs.append((key, publish_kv[key]))
             if key == "RECOVERY_BRANCH":
                 kvs.append(("LOG_RECOVERY_BRANCH", publish_kv[key]))
+    # Re-surface the dropped secret-rotation warning: the design log is scrubbed
+    # before commit, and a non-zero SECRET_SCRUB_VIOLATIONS count from log-publish
+    # means a secret-shaped value was redacted from the committed logs. Warn the
+    # operator to rotate it (the scrub itself prevents the leak; the operator was
+    # no longer being told to rotate after the #3681 port).
+    scrub_violations = publish_kv.get("SECRET_SCRUB_VIOLATIONS", "0")
+    if scrub_violations.isdigit() and int(scrub_violations) > 0:
+        print(
+            f"**⚠ SECURITY: redact scrub-log-secrets redacted {scrub_violations} "
+            "secret-shaped value(s) from this /design run's logs before flush. "
+            "A credential was almost certainly exposed in the session; ROTATE it now "
+            "and check chat/PRs for the same value.**",
+            flush=True,
+        )
     _ = result_env.write_text("\n".join(f"{k}={v}" for k, v in kvs) + "\n", encoding="utf-8")
     _emit_rows(kvs)
     return 0
