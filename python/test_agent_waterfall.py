@@ -52,7 +52,12 @@ if [[ -n "${CODEX_STUB_COUNTER:-}" ]]; then
 fi
 if [[ -n "${CODEX_STUB_FAIL_OUTPUT_CONTAINS:-}" && "$out" == *"${CODEX_STUB_FAIL_OUTPUT_CONTAINS}"* ]]; then exit 7; fi
 if [[ "${CODEX_STUB_FAIL:-false}" == "true" ]]; then exit 7; fi
-printf '%s\n' "${CODEX_STUB_RESULT_CONTENT:-codex ok}" > "$out"
+if [[ -n "${CODEX_STUB_EMPTY_OUTPUT_CONTAINS:-}" && "$out" == *"${CODEX_STUB_EMPTY_OUTPUT_CONTAINS}"* ]]; then : > "$out"; exit 0; fi
+if [[ -n "${CODEX_STUB_ALT_OUTPUT_CONTAINS:-}" && "$out" == *"${CODEX_STUB_ALT_OUTPUT_CONTAINS}"* ]]; then
+  printf '%s\n' "${CODEX_STUB_ALT_RESULT_CONTENT:-codex alt}" > "$out"
+else
+  printf '%s\n' "${CODEX_STUB_RESULT_CONTENT:-codex ok}" > "$out"
+fi
 """,
     )
     _write(
@@ -107,6 +112,21 @@ def _slot(tmp_path: Path, *, name: str = "s1", tool: str = "codex", output_name:
     output = tmp_path / output_name
     manifest.write_text(json.dumps({"slot": name, "tool": tool, "output": str(output), "prompt_file": str(prompt)}) + "\n", encoding="utf-8")
     return manifest, output
+
+
+def _slots_manifest(tmp_path: Path, rows: Sequence[tuple[str, str, str]]) -> Path:
+    prompt = tmp_path / "multi.prompt"
+    prompt.write_text("review\n", encoding="utf-8")
+    manifest = tmp_path / "multi.ndjson"
+    manifest.write_text(
+        "\n".join(
+            json.dumps({"slot": name, "tool": tool, "output": str(tmp_path / output_name), "prompt_file": str(prompt)})
+            for name, tool, output_name in rows
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return manifest
 
 
 def _run(manifest: Path, env: dict[str, str], *extra: str) -> subprocess.CompletedProcess[str]:
@@ -368,6 +388,195 @@ def test_two_slot_phase1_order_and_default_paths_file(tmp_path: Path, stub_env: 
     lines = paths_file.read_text(encoding="utf-8").splitlines()
     assert lines == [str(out1), str(out2)]
     assert kvs["ALL_OUTPUT_TOOLS"] == "codex cursor"
+
+
+@pytest.mark.parametrize("no_fallback", [False, True])
+def test_straggler_cutoff_drops_slow_slot_without_fallback(
+    tmp_path: Path,
+    stub_env: dict[str, str],
+    no_fallback: bool,
+) -> None:
+    manifest = _slots_manifest(
+        tmp_path,
+        [
+            ("fast-one", "codex", "fast-one.txt"),
+            ("slow", "cursor", "slow.txt"),
+        ],
+    )
+    args = ["--straggler-cutoff"]
+    if no_fallback:
+        args.append("--no-fallback")
+    proc = _run(
+        manifest,
+        {
+            **stub_env,
+            "CODEX_STUB_RESULT_CONTENT": "ACCEPT fast",
+            "CURSOR_STUB_DELAY": "5",
+            "CURSOR_STUB_RESULT_CONTENT": "ACCEPT slow",
+            "LARCH_REVIEWER_STRAGGLER_MULTIPLE": "0.01",
+            "LARCH_REVIEWER_STRAGGLER_FLOOR_SECONDS": "0",
+        },
+        *args,
+    )
+    assert proc.returncode == 0, proc.stderr
+    kvs = _kv(proc.stdout)
+    assert kvs["STRAGGLER_DROPPED_COUNT"] == "1"
+    assert kvs["WARN"] == "reviewer-straggler-dropped"
+    assert str(tmp_path / "fast-one.txt") in kvs["ALL_OUTPUT_FILES"]
+    assert str(tmp_path / "slow.txt") not in kvs["ALL_OUTPUT_FILES"]
+    assert Path(kvs["ALL_OUTPUT_FILES_PATH"]).read_text(encoding="utf-8").splitlines() == [str(tmp_path / "fast-one.txt")]
+    drop_file = Path(kvs["DROPPED_SLOTS_FILE"])
+    assert drop_file.read_text(encoding="utf-8").split("\t")[:3] == ["slow", "cursor", "straggler-dropped"]
+    assert not (tmp_path / "slow-phase2.txt").exists()
+    assert not (tmp_path / "slow-phase3.txt").exists()
+
+
+def test_straggler_anchor_requires_collector_validated_half_mark(tmp_path: Path, stub_env: dict[str, str]) -> None:
+    manifest = _slots_manifest(
+        tmp_path,
+        [
+            ("good", "codex", "good.txt"),
+            ("empty", "codex", "empty.txt"),
+            ("crash", "codex", "crash.txt"),
+            ("malformed", "codex", "malformed.txt"),
+            ("slow", "cursor", "slow.txt"),
+        ],
+    )
+    proc = _run(
+        manifest,
+        {
+            **stub_env,
+            "CODEX_STUB_RESULT_CONTENT": "ACCEPT good",
+            "CODEX_STUB_EMPTY_OUTPUT_CONTAINS": "empty",
+            "CODEX_STUB_FAIL_OUTPUT_CONTAINS": "crash",
+            "CODEX_STUB_ALT_OUTPUT_CONTAINS": "malformed",
+            "CODEX_STUB_ALT_RESULT_CONTENT": "narration only",
+            "CURSOR_STUB_DELAY": "0.2",
+            "CURSOR_STUB_RESULT_CONTENT": "ACCEPT slow",
+            "LARCH_REVIEWER_STRAGGLER_MULTIPLE": "0.01",
+            "LARCH_REVIEWER_STRAGGLER_FLOOR_SECONDS": "0",
+        },
+        "--straggler-cutoff",
+        "--no-fallback",
+        "--require-result-pattern",
+        "ACCEPT",
+    )
+    assert proc.returncode == 0, proc.stderr
+    kvs = _kv(proc.stdout)
+    assert kvs["STRAGGLER_DROPPED_COUNT"] == "0"
+    assert "DROPPED_SLOTS_FILE" in kvs
+    drop_text = Path(kvs["DROPPED_SLOTS_FILE"]).read_text(encoding="utf-8")
+    assert "empty\tcodex\tcollector-failure" in drop_text
+    assert "crash\tcodex\tcollector-failure" in drop_text
+    assert "malformed\tcodex\tresult-gate-miss" in drop_text
+    assert "slow\tcursor\tstraggler-dropped" not in drop_text
+    assert str(tmp_path / "slow.txt") in kvs["ALL_OUTPUT_FILES"]
+
+
+def test_caphit_counts_toward_straggler_half_mark(tmp_path: Path, stub_env: dict[str, str]) -> None:
+    manifest = _slots_manifest(tmp_path, [("cap", "codex", "cap.txt"), ("slow", "cursor", "slow.txt")])
+    proc = _run(
+        manifest,
+        {
+            **stub_env,
+            "CODEX_STUB_RESULT_CONTENT": "STATUS=cap_hit\nbudget",
+            "CURSOR_STUB_DELAY": "5",
+            "LARCH_REVIEWER_STRAGGLER_MULTIPLE": "0.01",
+            "LARCH_REVIEWER_STRAGGLER_FLOOR_SECONDS": "0",
+        },
+        "--straggler-cutoff",
+    )
+    assert proc.returncode == 0, proc.stderr
+    kvs = _kv(proc.stdout)
+    assert kvs["STRAGGLER_DROPPED_COUNT"] == "1"
+    assert str(tmp_path / "cap.txt") in kvs["ALL_OUTPUT_FILES"]
+    assert str(tmp_path / "slow.txt") not in kvs["ALL_OUTPUT_FILES"]
+
+
+@pytest.mark.parametrize(
+    ("extra_args", "env_overrides"),
+    [
+        ([], {}),
+        (["--straggler-cutoff"], {"LARCH_REVIEWER_STRAGGLER_MULTIPLE": "0"}),
+    ],
+)
+def test_straggler_cutoff_disabled_paths_wait_for_slow_slot(
+    tmp_path: Path,
+    stub_env: dict[str, str],
+    extra_args: list[str],
+    env_overrides: dict[str, str],
+) -> None:
+    manifest = _slots_manifest(tmp_path, [("fast", "codex", "fast.txt"), ("slow", "cursor", "slow.txt")])
+    proc = _run(
+        manifest,
+        {
+            **stub_env,
+            **env_overrides,
+            "CODEX_STUB_RESULT_CONTENT": "fast",
+            "CURSOR_STUB_DELAY": "0.2",
+            "CURSOR_STUB_RESULT_CONTENT": "slow",
+            "LARCH_REVIEWER_STRAGGLER_FLOOR_SECONDS": "0",
+        },
+        *extra_args,
+    )
+    assert proc.returncode == 0, proc.stderr
+    kvs = _kv(proc.stdout)
+    assert kvs["STRAGGLER_DROPPED_COUNT"] == "0"
+    assert str(tmp_path / "slow.txt") in kvs["ALL_OUTPUT_FILES"]
+
+
+def test_straggler_floor_prevents_early_cut(tmp_path: Path, stub_env: dict[str, str]) -> None:
+    manifest = _slots_manifest(tmp_path, [("fast", "codex", "fast.txt"), ("slow", "cursor", "slow.txt")])
+    proc = _run(
+        manifest,
+        {
+            **stub_env,
+            "CURSOR_STUB_DELAY": "0.2",
+            "LARCH_REVIEWER_STRAGGLER_MULTIPLE": "0.01",
+            "LARCH_REVIEWER_STRAGGLER_FLOOR_SECONDS": "3",
+        },
+        "--straggler-cutoff",
+    )
+    assert proc.returncode == 0, proc.stderr
+    kvs = _kv(proc.stdout)
+    assert kvs["STRAGGLER_DROPPED_COUNT"] == "0"
+    assert str(tmp_path / "slow.txt") in kvs["ALL_OUTPUT_FILES"]
+
+
+def test_straggler_deadline_clamps_to_timeout_ceiling(tmp_path: Path, stub_env: dict[str, str]) -> None:
+    manifest = _slots_manifest(tmp_path, [("fast", "codex", "fast.txt"), ("slow", "cursor", "slow.txt")])
+    proc = _run(
+        manifest,
+        {
+            **stub_env,
+            "CURSOR_STUB_DELAY": "5",
+            "LARCH_REVIEWER_STRAGGLER_MULTIPLE": "100",
+            "LARCH_REVIEWER_STRAGGLER_FLOOR_SECONDS": "999",
+        },
+        "--timeout",
+        "1",
+        "--straggler-cutoff",
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert _kv(proc.stdout)["STRAGGLER_DROPPED_COUNT"] == "1"
+
+
+def test_single_slot_phase_never_uses_straggler_cutoff(tmp_path: Path, stub_env: dict[str, str]) -> None:
+    manifest, output = _slot(tmp_path, tool="cursor", output_name="single-slow.txt")
+    proc = _run(
+        manifest,
+        {
+            **stub_env,
+            "CURSOR_STUB_DELAY": "0.2",
+            "LARCH_REVIEWER_STRAGGLER_MULTIPLE": "0.01",
+            "LARCH_REVIEWER_STRAGGLER_FLOOR_SECONDS": "0",
+        },
+        "--straggler-cutoff",
+    )
+    assert proc.returncode == 0, proc.stderr
+    kvs = _kv(proc.stdout)
+    assert kvs["STRAGGLER_DROPPED_COUNT"] == "0"
+    assert str(output) in kvs["ALL_OUTPUT_FILES"]
 
 
 def test_warn_threshold_emits_cost_fallback_warning(tmp_path: Path, stub_env: dict[str, str]) -> None:

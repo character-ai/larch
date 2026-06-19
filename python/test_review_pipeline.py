@@ -235,6 +235,88 @@ def test_check_reviewer_failure_threshold_preserves_not_substantive_against_raw_
     assert "FAILED_SLOTS=1" in result.stdout
     assert "NOT_SUBSTANTIVE_SLOTS=1" in result.stdout
 
+
+def test_check_reviewer_failure_threshold_ignores_straggler_drops(tmp_path: Path) -> None:
+    collector = tmp_path / "collector-results.env"
+    _ = collector.write_text("", encoding="utf-8")
+    dropped = tmp_path / "dropped.tsv"
+    _ = dropped.write_text("testing\tcodex\tstraggler-dropped\tcut\n", encoding="utf-8")
+    result = run_review(
+        "check-reviewer-failure-threshold",
+        "--collector-results-file",
+        str(collector),
+        "--panel",
+        "hard",
+        "--intended-slots",
+        "1",
+        "--launched-slots",
+        "1",
+        "--dropped-slots-file",
+        str(dropped),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "THRESHOLD_OK=true" in result.stdout
+    assert "FAILED_SLOTS=0" in result.stdout
+    assert "DROPPED_STATIC_SLOTS=0" in result.stdout
+
+    _ = dropped.write_text("testing\tcodex\tcollector-failure\tSTATUS=ERROR\n", encoding="utf-8")
+    result = run_review(
+        "check-reviewer-failure-threshold",
+        "--collector-results-file",
+        str(collector),
+        "--panel",
+        "hard",
+        "--intended-slots",
+        "1",
+        "--launched-slots",
+        "1",
+        "--dropped-slots-file",
+        str(dropped),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "THRESHOLD_OK=false" in result.stdout
+    assert "FAILED_SLOTS=1" in result.stdout
+    assert "DROPPED_STATIC_SLOTS=1" in result.stdout
+
+
+def test_static_coverage_reason_excuses_straggler_dropped_static_slot(tmp_path: Path) -> None:
+    collector = tmp_path / "collector-results.env"
+    arch = tmp_path / "codex-specialist-arch-output.txt"
+    _ = arch.write_text("review\n", encoding="utf-8")
+    _ = collector.write_text(f"REVIEWER_FILE={arch}\nSTATUS=OK\n\n", encoding="utf-8")
+    manifest = tmp_path / "manifest.ndjson"
+    _ = manifest.write_text(
+        "\n".join(
+            [
+                json.dumps({"slot": "arch", "tool": "codex", "output": str(arch), "agent": "agents/reviewer-arch.md"}),
+                json.dumps(
+                    {
+                        "slot": "testing",
+                        "tool": "cursor",
+                        "output": str(tmp_path / "cursor-specialist-testing-output.txt"),
+                        "agent": "agents/reviewer-testing.md",
+                    }
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    dropped = tmp_path / "dropped.tsv"
+    _ = dropped.write_text("testing\tcursor\tstraggler-dropped\tcut\n", encoding="utf-8")
+
+    import review_pipeline  # noqa: PLC0415
+
+    assert (
+        review_pipeline._static_coverage_reason(  # pyright: ignore[reportPrivateUsage]
+            collector, manifest, [str(arch)], dropped_slots_file=str(dropped)
+        )
+        == ""
+    )
+
+
 def test_review_core_prune_nits_override_invokes_stub(tmp_path: Path) -> None:
     stubs = _write_review_core_stubs(tmp_path / "prune-override-stubs")
     prune_stub = tmp_path / "prune-override.sh"
@@ -452,6 +534,73 @@ def test_review_core_panel_failed_on_missing_static_archetype(tmp_path: Path) ->
     assert "REVIEW_CORE_STATUS=panel-failed" in result.stdout
     threshold_env = (tmp_path / "coverage-failed" / "review-core-threshold.env").read_text(encoding="utf-8")
     assert "COVERAGE_GATE_REASON=no successful static reviewer for archetype(s): testing" in threshold_env
+
+
+def test_review_core_static_coverage_excuses_straggler_dropped_archetype(tmp_path: Path) -> None:
+    stubs = _write_review_core_stubs(tmp_path / "coverage-excused-stubs")
+    dispatch_stub = tmp_path / "coverage-excused-dispatch.sh"
+    _write_executable(
+        dispatch_stub,
+        """#!/usr/bin/env bash
+set -euo pipefail
+tmp=""
+panel="simple"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --review-tmpdir) tmp="$2"; shift 2 ;;
+    --panel) panel="$2"; shift 2 ;;
+    *) shift 2 ;;
+  esac
+done
+mkdir -p "$tmp"
+correctness="$tmp/codex-specialist-correctness-output.txt"
+edge="$tmp/codex-specialist-edge-cases-output.txt"
+printf 'correctness review\\n' > "$correctness"
+printf 'edge review\\n' > "$edge"
+dropped="$tmp/panel.dropped-slots"
+printf 'testing\\tcursor\\tstraggler-dropped\\tcut\\n' > "$dropped"
+cat > "$tmp/panel-manifest.ndjson" <<EOF
+{"slot":"correctness","tool":"codex","output":"$correctness","agent":"agents/reviewer-correctness.md"}
+{"slot":"edge-cases","tool":"codex","output":"$edge","agent":"agents/reviewer-edge-cases.md"}
+{"slot":"testing","tool":"cursor","output":"$tmp/cursor-specialist-testing-output.txt","agent":"agents/reviewer-testing.md"}
+EOF
+printf 'EXTERNAL_OUTPUT_FILES=%s %s\\n' "$correctness" "$edge"
+printf 'CLAUDE_OUTPUT_FILES=\\nPANEL_MODE=waterfall\\nPANEL_SHAPE=%s\\n' "$panel"
+printf 'SCOUT_STATUS=na\\nDYNAMIC_SLOTS=0\\nSTATIC_SLOT_COUNT=3\\nSLOT_COUNT=3\\n'
+printf 'PANEL_MANIFEST=%s/panel-manifest.ndjson\\nDISPATCH_OK=true\\nDROPPED_SLOTS_FILE=%s\\n' "$tmp" "$dropped"
+""",
+    )
+    outdir = tmp_path / "coverage-excused"
+    outdir.mkdir()
+    env = rts.build_review_core_env(
+        tmp_path / "coverage-excused-stubs",
+        stubs,
+        REVIEW_CORE_DISPATCH_PANEL_SH=str(dispatch_stub),
+        TEST_COLLECTOR_VARIANT="missing-testing",
+        TEST_STATIC_SLOT_COUNT="3",
+        TEST_FINDINGS="1",
+        TEST_ACCEPTED="1",
+    )
+    result = run_review(
+        "core",
+        "--mode",
+        "diff",
+        "--output-dir",
+        str(outdir),
+        "--codex-available",
+        "true",
+        "--cursor-available",
+        "true",
+        "--panel",
+        "simple",
+        env=env,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "REVIEW_CORE_STATUS=panel-failed" not in result.stdout
+    threshold_env = (outdir / "review-core-threshold.env").read_text(encoding="utf-8")
+    assert "THRESHOLD_OK=true" in threshold_env
+    assert "COVERAGE_GATE_OK=true" in threshold_env
 
 
 def test_review_core_panel_failed_on_threshold_failure(tmp_path: Path) -> None:
@@ -735,6 +884,7 @@ printf 'DISPATCH_OK=true\\nALL_OUTPUT_FILES=\\nALL_OUTPUT_FILES_PATH=\\nALL_OUTP
     assert result.returncode == 0, result.stderr
     argv_text = argv_log.read_text(encoding="utf-8")
     assert "--no-fallback" in argv_text
+    assert "--straggler-cutoff" in argv_text
     assert "--codex-present true" in argv_text
     assert "--cursor-present true" in argv_text
 
