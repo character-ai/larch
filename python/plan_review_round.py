@@ -559,6 +559,8 @@ def execute_round(
     if loop_status == "degraded-empty-collector":
         values["LOOP_STATUS"] = "degraded-empty-collector"
         values["DEGRADED_PANEL"] = "1"
+        if classification.is_file():
+            _record_plan_review_prune_round(design, round_num, manifest, classification)
         _write_round_summary(design, round_num, loop_status="degraded-empty-collector", collect_ok=ok_count, collect_fail=fail_count, values=values)
         for k, v in values.items():
             _emit(k, v)

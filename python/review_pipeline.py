@@ -362,7 +362,7 @@ def _read_classification_counts(path: Path, labels: Iterable[str], *, plan_mode:
                 continue
             cell = row.get(attr_col) or ""
             if plan_mode:
-                tokens = {token.strip() for token in re.split(r"[,\s]+", cell.strip()) if token.strip()}
+                tokens = {token.strip() for token in cell.split(",") if token.strip()}
             else:
                 tokens = {_normalize_code_label(token) for token in cell.split("|") if token.strip()}
             for label, key in label_keys.items():
@@ -2167,7 +2167,6 @@ def review_core(argv: list[str], *, runner: proc.Runner | None = None) -> int:
         _write_text(review_tmpdir / "rejected-findings.md", "")
         emit_args = ["--tally-file", tally.get("TALLY_FILE", str(review_tmpdir / "review-tally.env")), "--accepted-findings-file", tally.get("ACCEPTED_FINDINGS_FILE", str(review_tmpdir / "accepted-findings.md")), "--oos-file", str(review_tmpdir / "oos.md"), "--review-tmpdir", str(review_tmpdir), "--round", str(round_num), "--mode", mode, "--scout-status", scout_status, "--dynamic-slots", dynamic_slots, "--static-slot-count", static_slot_count]
         _emit_tally(commands, emit_args, review_tmpdir / "review-core-main-agent-emit.env", runner=runner)
-        _record_prune_round(prune_ledger, round_num, panel_manifest, classification)
         _flush_round_log(review_tmpdir, run_id, round_num)
         _emit_core_common("main-agent-vote-required", round_num, review_tmpdir, panel_mode, panel_shape, oos_drift=tally.get("OUT_OF_SCOPE_DRIFT_COUNT", "0"))
         if classification:

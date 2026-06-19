@@ -247,6 +247,7 @@ def _install_execute_round_fake(
     *,
     tally_status: str = "ok",
     panel_pruned_empty: bool = False,
+    empty_collector: bool = False,
 ) -> None:
     def fake_run_cli(argv: list[str], *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
         del env
@@ -267,6 +268,8 @@ def _install_execute_round_fake(
             _ = paths_file.write_text(str(reviewer_file) + "\n", encoding="utf-8")
             return subprocess.CompletedProcess(argv, 0, f"PANEL_PRUNED_EMPTY=false\nPANEL_PATHS_FILE={paths_file}\n", "")
         if argv[:2] == ["agent", "collect-results"]:
+            if empty_collector:
+                return subprocess.CompletedProcess(argv, 0, "", "")
             sidecar = design / "cursor-plan-arch.sidecar.tsv"
             _write_sidecar(
                 sidecar,
@@ -313,12 +316,18 @@ def _install_execute_round_fake(
         if argv[:2] == ["plan-review", "tally"]:
             classification = Path(argv[argv.index("--findings-classification-out") + 1])
             classification.parent.mkdir(parents=True, exist_ok=True)
-            _ = classification.write_text(
-                "finding_id\tfinding_reviewers\tvoting_result\n"
-                "FINDING_1\tCursor-Arch\taccepted\n",
-                encoding="utf-8",
-            )
-            if tally_status != "main-agent-vote-required":
+            if empty_collector:
+                _ = classification.write_text(
+                    "finding_id\tfinding_reviewers\tvoting_result\n",
+                    encoding="utf-8",
+                )
+            else:
+                _ = classification.write_text(
+                    "finding_id\tfinding_reviewers\tvoting_result\n"
+                    "FINDING_1\tCursor-Arch\taccepted\n",
+                    encoding="utf-8",
+                )
+            if tally_status != "main-agent-vote-required" and not empty_collector:
                 _ = (design / "accepted-plan-findings.md").write_text("### FINDING_1:\n", encoding="utf-8")
             return subprocess.CompletedProcess(argv, 0, f"TALLY_PLAN_REVIEW_STATUS={tally_status}\n", "")
         raise AssertionError(f"unexpected argv: {argv}")
@@ -394,3 +403,27 @@ def test_execute_round_main_agent_vote_required_does_not_record_prune_ledger(tmp
     assert rc == 0
     assert values["LOOP_STATUS"] == "main-agent-vote-required"
     assert not (tmp_path / "reviewer-prune-ledger.tsv").exists()
+
+
+def test_execute_round_degraded_empty_collector_records_prune_ledger(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    plan_file = tmp_path / "plan.txt"
+    feature_file = tmp_path / "feature.txt"
+    _ = plan_file.write_text("plan\n", encoding="utf-8")
+    _ = feature_file.write_text("feature\n", encoding="utf-8")
+    _install_execute_round_fake(monkeypatch, tmp_path, empty_collector=True)
+
+    rc, values = plan_review_round.execute_round(
+        tmp_path,
+        round_num=2,
+        prune_round_num=2,
+        codex_present="false",
+        cursor_present="true",
+        plan_file=plan_file,
+        feature_file=feature_file,
+    )
+
+    assert rc == 0
+    assert values["LOOP_STATUS"] == "degraded-empty-collector"
+    ledger_lines = (tmp_path / "reviewer-prune-ledger.tsv").read_text(encoding="utf-8").splitlines()
+    assert ledger_lines[0] == "round\ttool\tslot\tlabel\taccepted_count\trejected_count\ttotal_count"
+    assert ledger_lines[1] == "2\tcursor\tcursor-plan-arch\tCursor-Arch\t0\t0\t0"

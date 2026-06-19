@@ -681,6 +681,81 @@ def test_review_core_main_agent_vote_required(tmp_path: Path) -> None:
     assert "ACCEPTED_COUNT=0" in result.stdout
 
 
+def test_reviewer_prune_record_plan_mode_preserves_spaced_dynamic_label(tmp_path: Path) -> None:
+    manifest = tmp_path / "panel.ndjson"
+    manifest.write_text(
+        '{"slot":"dyn-cursor-plan-api-contract","tool":"cursor","output":"/tmp/cursor-dyn-api-contract-output.txt"}\n',
+        encoding="utf-8",
+    )
+    label_map = tmp_path / "label-map.tsv"
+    label_map.write_text("dyn-cursor-plan-api-contract\tCursor-dyn-Api Contract\n", encoding="utf-8")
+    classification = tmp_path / "class.tsv"
+    classification.write_text(
+        "finding_id\tfinding_reviewers\tvoting_result\n"
+        "FINDING_1\tCursor-dyn-Api Contract\taccepted\n",
+        encoding="utf-8",
+    )
+    ledger = tmp_path / "ledger.tsv"
+    result = run_review(
+        "reviewer-prune",
+        "record",
+        "--ledger",
+        str(ledger),
+        "--round",
+        "1",
+        "--manifest",
+        str(manifest),
+        "--classification",
+        str(classification),
+        "--label-map",
+        str(label_map),
+    )
+    assert result.returncode == 0, result.stderr
+    assert ledger.read_text(encoding="utf-8").splitlines()[1].endswith("\t1\t0\t1")
+
+
+def test_review_core_main_agent_vote_required_skips_prune_ledger_and_preserves_round_three(tmp_path: Path) -> None:
+    stubs = _write_review_core_stubs(tmp_path / "mav-prune-stubs")
+    ledger = tmp_path / "reviewer-prune-ledger.tsv"
+    manifest: Path | None = None
+    for round_num, extra_env in (
+        (1, {"TEST_FINDINGS": "1", "TEST_ACCEPTED": "1", "TEST_ROUND_NUM": "1"}),
+        (2, {"TEST_FINDINGS": "1", "TEST_ACCEPTED": "0", "TEST_ROUND_NUM": "2", "TEST_TALLY_STATUS": "main-agent-vote-required"}),
+    ):
+        outdir = tmp_path / f"mav-prune-{round_num}"
+        outdir.mkdir()
+        env = rts.build_review_core_env(tmp_path / "mav-prune-stubs", stubs, **extra_env)
+        result = run_review(
+            "core",
+            "--mode",
+            "diff",
+            "--output-dir",
+            str(outdir),
+            "--codex-available",
+            "true",
+            "--cursor-available",
+            "true",
+            "--panel",
+            "simple",
+            "--round-num",
+            str(round_num),
+            "--prune-ledger",
+            str(ledger),
+            env=env,
+        )
+        assert result.returncode == 0, result.stderr
+        manifest = outdir / "panel-manifest.ndjson"
+
+    assert manifest is not None
+    ledger_lines = ledger.read_text(encoding="utf-8").splitlines()
+    assert len(ledger_lines) == 2
+    assert ledger_lines[1].startswith("1\t")
+    result = _filter_prune_round(tmp_path, manifest, ledger, 3)
+    assert result.returncode == 0, result.stderr
+    assert "PRUNED_COUNT=0" in result.stdout
+    assert "PANEL_PRUNED_EMPTY=false" in result.stdout
+
+
 def test_review_core_aggregator_validation_exhausted(tmp_path: Path) -> None:
     stubs = _write_review_core_stubs(tmp_path / "stubs")
     result = _run_review_core(
