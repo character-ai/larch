@@ -533,9 +533,15 @@ def test_straggler_floor_prevents_early_cut(tmp_path: Path, stub_env: dict[str, 
             **stub_env,
             "CURSOR_STUB_DELAY": "0.2",
             "LARCH_REVIEWER_STRAGGLER_MULTIPLE": "0.01",
-            "LARCH_REVIEWER_STRAGGLER_FLOOR_SECONDS": "3",
+            # Floor dominates the tiny multiple, so the slow slot is never cut. Keep the
+            # floor (and the --timeout ceiling it is clamped against) far above the slow
+            # slot's real subprocess-chain latency so saturated parallel CI cannot force a
+            # false straggler cut. The happy path still exits on slot completion (~0.3s).
+            "LARCH_REVIEWER_STRAGGLER_FLOOR_SECONDS": "30",
         },
         "--straggler-cutoff",
+        "--timeout",
+        "60",
     )
     assert proc.returncode == 0, proc.stderr
     kvs = _kv(proc.stdout)
