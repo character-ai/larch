@@ -2934,17 +2934,19 @@ def _filter_drafter_scout(design_tmpdir: Path, candidate: Path, filtered: Path) 
     return False, "filter_failed"
 
 
-def _launcher_stdout_value(text: str, key: str) -> str:
-    for line in text.splitlines():
-        if line.startswith(key + "="):
-            return line.split("=", 1)[1].strip()
-    return ""
-
-
 def _launch_codex_exec_inprocess(argv: list[str], stdout_path: Path, stderr_path: Path) -> int:
     with stdout_path.open("w", encoding="utf-8") as out, stderr_path.open("w", encoding="utf-8") as err:
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-            return launch_codex_exec_main(argv)
+            wrapper_rc = launch_codex_exec_main(argv)
+    output_path: Path | None = None
+    with contextlib.suppress(ValueError, IndexError):
+        output_path = Path(argv[argv.index("--output") + 1])
+    launcher_exit = resolve_launcher_exit("", output_file=output_path, process_rc=wrapper_rc)
+    with stdout_path.open("a", encoding="utf-8") as out:
+        _ = out.write(f"LAUNCHER_EXIT={launcher_exit}\n")
+        if output_path is not None:
+            _ = out.write(f"OUTPUT={output_path}\n")
+    return wrapper_rc
 
 
 def _drafter_token_raw(kind: str) -> str:
@@ -3033,8 +3035,7 @@ def launch_codex_drafter(
         ]
         wrapper_rc = _launch_codex_exec_inprocess(exec_args, launcher_stdout, output.with_suffix(output.suffix + ".stderr"))
         launcher_text = launcher_stdout.read_text(encoding="utf-8", errors="replace") if launcher_stdout.is_file() else ""
-        launcher_exit_raw = _launcher_stdout_value(launcher_text, "LAUNCHER_EXIT")
-        launcher_exit = int(launcher_exit_raw) if launcher_exit_raw.isdigit() else 1
+        launcher_exit = resolve_launcher_exit(launcher_text, raw, process_rc=wrapper_rc)
         token_src = raw.with_suffix(raw.suffix + ".token-record")
         if token_src.is_file() and token_src.stat().st_size > 0:
             shutil.copyfile(token_src, output.with_suffix(output.suffix + ".token-record"))

@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -17,6 +18,7 @@ import pytest
 
 import agents
 import config
+import logging_util
 from agents import LaunchFailure, TierAttempt
 from proc import CommandResult
 
@@ -3466,6 +3468,81 @@ def test_launch_codex_drafter_failure_uses_sidecar_for_stderr_tail(
     assert "sidecar failure" in tail
     assert "stderr fallback" not in tail
     assert output.with_suffix(output.suffix + ".done").read_text(encoding="utf-8") == "13\n"
+
+
+def test_launch_codex_drafter_main_succeeds_when_exec_exit_on_done_under_quiet(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    design = tmp_path / "design"
+    repo = tmp_path / "repo"
+    design.mkdir()
+    repo.mkdir()
+    prompt = design / "prompt.txt"
+    _ = prompt.write_text("prompt body", encoding="utf-8")
+    output = design / "status.txt"
+
+    logging_util.reset_quiet_state()
+    monkeypatch.delenv(config.ENV_LARCH_QUIET_DISABLE, raising=False)
+    monkeypatch.setenv(config.ENV_DESIGN_TMPDIR, str(design))
+
+    def fake_launch_codex_exec_main(argv: list[str] | None = None) -> int:
+        argv = list(argv or [])
+        raw = Path(argv[argv.index("--output") + 1])
+        _ = raw.write_text("LARCH_PLAN_BEGIN\nquiet plan\ndiff_lines: 2\nLARCH_PLAN_END\n", encoding="utf-8")
+        _ = raw.with_suffix(raw.suffix + ".token-record").write_text('{"tokens":1}\n', encoding="utf-8")
+        _ = raw.with_suffix(raw.suffix + ".done").write_text("0\n", encoding="utf-8")
+        agents._emit_kv("LAUNCHER_EXIT", 0)
+        agents._emit_kv("OUTPUT", str(raw))
+        return 0
+
+    def fake_proc_run(cmd: Sequence[str], **kwargs: object) -> agents.CommandResult:
+        _ = (cmd, kwargs)
+        return agents.CommandResult((), 0, "", "", 0.0)
+
+    monkeypatch.setattr(agents, "launch_codex_exec_main", fake_launch_codex_exec_main)
+    monkeypatch.setattr(agents.proc, "run", fake_proc_run)
+
+    read_fd, write_fd = os.pipe()
+    backup_fd3: int | None = None
+    with contextlib.suppress(OSError):
+        backup_fd3 = os.dup(3)
+    try:
+        _ = os.dup2(write_fd, 3)
+        os.close(write_fd)
+        monkeypatch.setenv(config.ENV_LARCH_QUIET_ACTIVE, "1")
+        monkeypatch.setenv(config.ENV_LARCH_QUIET_PID, str(os.getpid()))
+        rc = agents.launch_codex_drafter_main(
+            [
+                "--prompt-file",
+                str(prompt),
+                "--output-file",
+                str(output),
+                "--timeout",
+                "9",
+                "--design-tmpdir",
+                str(design),
+                "--repo-root",
+                str(repo),
+                "--timing-task-kind",
+                "codex-plan-draft",
+            ],
+        )
+        contract = os.read(read_fd, 4096).decode("utf-8")
+    finally:
+        if backup_fd3 is not None:
+            _ = os.dup2(backup_fd3, 3)
+            os.close(backup_fd3)
+        else:
+            with contextlib.suppress(OSError):
+                os.close(3)
+        os.close(read_fd)
+        logging_util.reset_quiet_state()
+
+    assert rc == 0
+    assert "STATUS=OK" in output.read_text(encoding="utf-8")
+    assert (design / "plan.txt").read_text(encoding="utf-8") == "quiet plan\ndiff_lines: 2\n"
+    assert "STATUS=OK" in contract
 
 
 def test_launch_claude_drafter_uses_exact_argv_without_timeout_wrapper(
