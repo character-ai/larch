@@ -124,7 +124,7 @@ def sanitize_diagnostic_line(text: str) -> str:
 
 
 def sanitize_list(text: str) -> str:
-    """Keep only safe characters for comma-separated job KV lists (ci-failed-jobs.sh)."""
+    """Keep only safe characters for comma-separated job KV lists (ci failed-jobs)."""
     return "".join(ch for ch in text if ch.isalnum() or ch in "_,=:-")
 
 

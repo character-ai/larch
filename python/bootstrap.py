@@ -364,7 +364,7 @@ def _persist_run_flags(st: BootstrapState) -> bool:
 
 
 def _phase_infra(st: BootstrapState) -> None:
-    branch = _run([str(_SCRIPTS / "create-branch.sh"), "--check"])
+    branch = _cli("pr", "create-branch", "--check")
     if branch.returncode != 0:
         st.emit_step_failed("create-branch")
     bkv = _parse_kv(branch.stdout)
@@ -773,7 +773,7 @@ def _phase_plan(st: BootstrapState) -> None:
         slug = re.sub(r"-+", "-", re.sub(r"[^a-z0-9]", "-", raw.lower())).strip("-")[:40].rstrip("-") or "issue"
         branch_name = f"{st.user_prefix}/{slug}-{st.issue_number_resolved}" if st.user_prefix and st.issue_number_resolved else ""
         if branch_name:
-            created = _run([str(_SCRIPTS / "create-branch.sh"), "--branch", branch_name])
+            created = _cli("pr", "create-branch", "--branch", branch_name)
             if created.returncode != 0:
                 st.stall_tracking = "true"
                 st.implement_bail_reason = "branch-create-failed"
@@ -1433,10 +1433,18 @@ def _refresh_gate_probe(st: BootstrapState) -> str | None:
     return None
 
 def _run_1r_probe(st: BootstrapState, *, forked_target: str) -> tuple[dict[str, str], list[str], int]:
-    probe = _SCRIPTS / "rebase-checkpoint-probe.sh"
     env = {**os.environ, "IMPLEMENT_TMPDIR": st.implement_tmpdir}
     result = _run(
-        [str(probe), "1.r", "plan materialization", "--forked-target", forked_target if forked_target in {"true", "false"} else "false"],
+        [
+            sys.executable,
+            str(_PY_CLI),
+            "push",
+            "checkpoint-probe",
+            "1.r",
+            "plan materialization",
+            "--forked-target",
+            forked_target if forked_target in {"true", "false"} else "false",
+        ],
         env=env,
         cwd=str(_resolve_probe_cwd()),
     )

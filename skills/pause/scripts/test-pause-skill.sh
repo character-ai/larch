@@ -63,14 +63,12 @@ HOME3="$TMP/home-live"
 PLUGIN3="$TMP/plugin-live"
 DESIGN3="$TMP/design-live"
 mkdir -p "$HOME3/.cache/larch/sessions" "$PLUGIN3/scripts" "$PLUGIN3/python" "$DESIGN3"
-cat >"$PLUGIN3/scripts/resolve-repo.sh" <<'EOF_REPO3'
-#!/usr/bin/env bash
-set -euo pipefail
-printf 'owner/repo\n'
-EOF_REPO3
-chmod +x "$PLUGIN3/scripts/resolve-repo.sh"
 cat >"$PLUGIN3/python/cli.py" <<'EOF_SAVE3'
 #!/usr/bin/env python3
+import sys
+if sys.argv[1:3] == ["gh", "resolve-repo"]:
+    print("owner/repo")
+    raise SystemExit(0)
 print("PAUSE_OK=true")
 print("STEP=2b")
 print("RUN_ID=RUNPAUSE3")
@@ -94,14 +92,12 @@ HOME4="$TMP/home-fail"
 PLUGIN4="$TMP/plugin-fail"
 DESIGN4="$TMP/design-fail"
 mkdir -p "$HOME4/.cache/larch/sessions" "$PLUGIN4/scripts" "$PLUGIN4/python" "$DESIGN4"
-cat >"$PLUGIN4/scripts/resolve-repo.sh" <<'EOF_REPO4'
-#!/usr/bin/env bash
-set -euo pipefail
-printf 'owner/repo\n'
-EOF_REPO4
-chmod +x "$PLUGIN4/scripts/resolve-repo.sh"
 cat >"$PLUGIN4/python/cli.py" <<'EOF_SAVE4'
 #!/usr/bin/env python3
+import sys
+if sys.argv[1:3] == ["gh", "resolve-repo"]:
+    print("owner/repo")
+    raise SystemExit(0)
 print("PAUSE_OK=false")
 print("ERROR=publish-and-recovery-failed")
 EOF_SAVE4

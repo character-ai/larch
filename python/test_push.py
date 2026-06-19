@@ -175,6 +175,269 @@ def test_checkpoint_probe_emits_rebase_outcome_on_skip(monkeypatch: pytest.Monke
     assert "PHANTOM_STATUS=clean" in out
 
 
+def _stub_clean_phantom(monkeypatch: pytest.MonkeyPatch, calls: list[str] | None = None) -> None:
+    @dataclass
+    class _ProbeResult:
+        dirty: object
+        append_warn_error: str = ""
+
+    @dataclass
+    class _Dirty:
+        status: str = "clean"
+        reason: str = ""
+        count: int = 0
+        paths_file: str = ""
+
+    def _stub_probe_with_warn(*_args: object, **_kwargs: object) -> _ProbeResult:
+        if calls is not None:
+            calls.append("phantom")
+        return _ProbeResult(dirty=_Dirty())
+
+    monkeypatch.setattr(phantom, "probe_with_warn", _stub_probe_with_warn)
+
+
+def _cr(argv: tuple[str, ...] = ("git",), rc: int = 0) -> CommandResult:
+    return CommandResult(argv, rc, "", "", 0.01)
+
+
+def test_checkpoint_probe_emits_route_continue_on_success(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(rebase, "rebase_push", lambda *_args, **_kwargs: rebase.RebasePushResult(exit_code=0))  # type: ignore[arg-type]
+    _stub_clean_phantom(monkeypatch)
+    assert push.checkpoint_probe_main(["1.r", "plan"]) == 0
+    out = capsys.readouterr().out
+    assert "REBASE_OUTCOME=ok" in out
+    assert "ROUTE=continue" in out
+
+
+def test_checkpoint_probe_emits_route_conflict_without_phantom(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    phantom_calls: list[str] = []
+    monkeypatch.setattr(
+        rebase,
+        "rebase_push",
+        lambda *_args, **_kwargs: rebase.RebasePushResult(exit_code=1, conflict_files="src/app.py"),  # type: ignore[arg-type]
+    )
+    _stub_clean_phantom(monkeypatch, phantom_calls)
+    assert push.checkpoint_probe_main(["4.r", "impl"]) == 1
+    out = capsys.readouterr().out
+    assert "REBASE_OUTCOME=conflict" in out
+    assert "CONFLICT_FILES=src/app.py" in out
+    assert "ROUTE=conflict" in out
+    assert not phantom_calls
+
+
+def test_checkpoint_probe_emits_route_bail_on_rebase_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        rebase,
+        "rebase_push",
+        lambda *_args, **_kwargs: rebase.RebasePushResult(exit_code=3, rebase_error="bad\nerror"),  # type: ignore[arg-type]
+    )
+    _stub_clean_phantom(monkeypatch)
+    assert push.checkpoint_probe_main(["7.r", "review"]) == 3
+    out = capsys.readouterr().out
+    assert "REBASE_OUTCOME=failed" in out
+    assert "REBASE_ERROR=bad error" in out
+    assert "ROUTE=bail" in out
+
+
+def test_checkpoint_probe_forked_target_defaults_to_upstream_main(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, object] = {}
+
+    def _stub_rebase_push(*_args: object, **kwargs: object) -> rebase.RebasePushResult:
+        seen.update(kwargs)
+        return rebase.RebasePushResult(exit_code=0, skipped_already_fresh=True)
+
+    monkeypatch.setattr(rebase, "rebase_push", _stub_rebase_push)
+    _stub_clean_phantom(monkeypatch)
+    assert push.checkpoint_probe_main(["1.r", "plan", "--forked-target", "true"]) == 0
+    assert seen["base_remote"] == "upstream"
+    assert seen["base_ref"] == "main"
+
+
+def test_checkpoint_probe_explicit_base_overrides_fork_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, object] = {}
+
+    def _stub_rebase_push(*_args: object, **kwargs: object) -> rebase.RebasePushResult:
+        seen.update(kwargs)
+        return rebase.RebasePushResult(exit_code=0, skipped_already_fresh=True)
+
+    monkeypatch.setattr(rebase, "rebase_push", _stub_rebase_push)
+    _stub_clean_phantom(monkeypatch)
+    assert (
+        push.checkpoint_probe_main(
+            ["1.r", "plan", "--forked-target", "true", "--base-remote", "origin", "--base-ref", "develop"]
+        )
+        == 0
+    )
+    assert seen["base_remote"] == "origin"
+    assert seen["base_ref"] == "develop"
+
+
+def test_checkpoint_probe_resolves_larch_log_only_conflict(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    results = iter([
+        rebase.RebasePushResult(exit_code=1, conflict_files="larch-logs/run/log.md"),
+        rebase.RebasePushResult(exit_code=0),
+    ])
+    calls: list[str] = []
+    monkeypatch.setattr(rebase, "rebase_push", lambda *_args, **_kwargs: next(results))  # type: ignore[arg-type]
+    monkeypatch.setattr(git, "checkout_ours", lambda *_args, **_kwargs: calls.append("checkout") or _cr())  # type: ignore[arg-type]
+    monkeypatch.setattr(git, "add", lambda *_args, **_kwargs: calls.append("add") or _cr())  # type: ignore[arg-type]
+    _stub_clean_phantom(monkeypatch, calls)
+    assert push.checkpoint_probe_main(["4.r", "impl"]) == 0
+    out = capsys.readouterr().out
+    assert "ROUTE=continue" in out
+    assert calls == ["checkout", "add", "phantom"]
+
+
+def test_checkpoint_probe_resolves_consecutive_larch_log_conflicts(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    results = iter([
+        rebase.RebasePushResult(exit_code=1, conflict_files="larch-logs/a.md"),
+        rebase.RebasePushResult(exit_code=1, conflict_files="larch-logs/b.md"),
+        rebase.RebasePushResult(exit_code=0),
+    ])
+    calls: list[str] = []
+    monkeypatch.setattr(rebase, "rebase_push", lambda *_args, **_kwargs: next(results))  # type: ignore[arg-type]
+    monkeypatch.setattr(git, "checkout_ours", lambda *_args, **_kwargs: calls.append("checkout") or _cr())  # type: ignore[arg-type]
+    monkeypatch.setattr(git, "add", lambda *_args, **_kwargs: calls.append("add") or _cr())  # type: ignore[arg-type]
+    _stub_clean_phantom(monkeypatch, calls)
+    assert push.checkpoint_probe_main(["4.r", "impl"]) == 0
+    assert "ROUTE=continue" in capsys.readouterr().out
+    assert calls == ["checkout", "add", "checkout", "add", "phantom"]
+
+
+def test_checkpoint_probe_mixed_conflict_resolves_only_larch_logs(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    phantom_calls: list[str] = []
+    monkeypatch.setattr(
+        rebase,
+        "rebase_push",
+        lambda *_args, **_kwargs: rebase.RebasePushResult(  # type: ignore[arg-type]
+            exit_code=1,
+            conflict_files="larch-logs/a.md,src/app.py",
+        ),
+    )
+    monkeypatch.setattr(git, "checkout_ours", lambda *_args, **_kwargs: _cr())  # type: ignore[arg-type]
+    monkeypatch.setattr(git, "add", lambda *_args, **_kwargs: _cr())  # type: ignore[arg-type]
+    monkeypatch.setattr(git, "try_unmerged_paths", lambda *_args, **_kwargs: ["src/app.py"])  # type: ignore[arg-type]
+    _stub_clean_phantom(monkeypatch, phantom_calls)
+    assert push.checkpoint_probe_main(["4.r", "impl"]) == 1
+    out = capsys.readouterr().out
+    assert "CONFLICT_FILES=src/app.py" in out
+    assert "ROUTE=conflict" in out
+    assert not phantom_calls
+
+
+def test_checkpoint_probe_trivial_then_nontrivial_continue_conflict(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    results = iter([
+        rebase.RebasePushResult(exit_code=1, conflict_files="larch-logs/a.md"),
+        rebase.RebasePushResult(exit_code=1, conflict_files="src/app.py"),
+    ])
+    monkeypatch.setattr(rebase, "rebase_push", lambda *_args, **_kwargs: next(results))  # type: ignore[arg-type]
+    monkeypatch.setattr(git, "checkout_ours", lambda *_args, **_kwargs: _cr())  # type: ignore[arg-type]
+    monkeypatch.setattr(git, "add", lambda *_args, **_kwargs: _cr())  # type: ignore[arg-type]
+    _stub_clean_phantom(monkeypatch, [])
+    assert push.checkpoint_probe_main(["4.r", "impl"]) == 1
+    assert "CONFLICT_FILES=src/app.py" in capsys.readouterr().out
+
+
+def test_checkpoint_probe_trivial_continue_failure_routes_bail(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    results = iter([
+        rebase.RebasePushResult(exit_code=1, conflict_files="larch-logs/a.md"),
+        rebase.RebasePushResult(exit_code=3, rebase_error="continue failed"),
+    ])
+    monkeypatch.setattr(rebase, "rebase_push", lambda *_args, **_kwargs: next(results))  # type: ignore[arg-type]
+    monkeypatch.setattr(git, "checkout_ours", lambda *_args, **_kwargs: _cr())  # type: ignore[arg-type]
+    monkeypatch.setattr(git, "add", lambda *_args, **_kwargs: _cr())  # type: ignore[arg-type]
+    _stub_clean_phantom(monkeypatch)
+    assert push.checkpoint_probe_main(["4.r", "impl"]) == 3
+    out = capsys.readouterr().out
+    assert "REBASE_ERROR=continue failed" in out
+    assert "ROUTE=bail" in out
+
+
+def test_checkpoint_probe_resolve_failure_rederives_conflicts(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        rebase,
+        "rebase_push",
+        lambda *_args, **_kwargs: rebase.RebasePushResult(exit_code=1, conflict_files="larch-logs/a.md"),  # type: ignore[arg-type]
+    )
+    monkeypatch.setattr(git, "checkout_ours", lambda *_args, **_kwargs: _cr(rc=1))  # type: ignore[arg-type]
+    monkeypatch.setattr(
+        git,
+        "try_conflict_files",
+        lambda *_args, **_kwargs: (  # type: ignore[arg-type]
+            git.ConflictFile(path="larch-logs/a.md", stage_1=True, stage_2=True, stage_3=True),
+        ),
+    )
+    monkeypatch.setattr(git, "try_unmerged_paths", lambda *_args, **_kwargs: ["larch-logs/a.md"])  # type: ignore[arg-type]
+    _stub_clean_phantom(monkeypatch)
+    assert push.checkpoint_probe_main(["4.r", "impl"]) == 1
+    assert "CONFLICT_FILES=larch-logs/a.md" in capsys.readouterr().out
+
+
+def test_checkpoint_probe_empty_conflict_files_skips_trivial_loop(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    calls: list[str] = []
+    monkeypatch.setattr(rebase, "rebase_push", lambda *_args, **_kwargs: rebase.RebasePushResult(exit_code=1))  # type: ignore[arg-type]
+    monkeypatch.setattr(git, "try_unmerged_paths", lambda *_args, **_kwargs: [])  # type: ignore[arg-type]
+    monkeypatch.setattr(git, "try_conflict_files", lambda *_args, **_kwargs: ())  # type: ignore[arg-type]
+    monkeypatch.setattr(git, "checkout_ours", lambda *_args, **_kwargs: calls.append("checkout") or _cr())  # type: ignore[arg-type]
+    _stub_clean_phantom(monkeypatch)
+    assert push.checkpoint_probe_main(["4.r", "impl"]) == 1
+    out = capsys.readouterr().out
+    assert "CONFLICT_FILES=" in out
+    assert not calls
+
+
+def test_checkpoint_probe_empty_continue_after_larch_log_uses_skip(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    results = iter([
+        rebase.RebasePushResult(exit_code=1, conflict_files="larch-logs/a.md"),
+        rebase.RebasePushResult(exit_code=3, rebase_error="nothing to commit"),
+        rebase.RebasePushResult(exit_code=0),
+    ])
+    calls: list[str] = []
+    monkeypatch.setattr(rebase, "rebase_push", lambda *_args, **_kwargs: next(results))  # type: ignore[arg-type]
+    monkeypatch.setattr(git, "checkout_ours", lambda *_args, **_kwargs: _cr())  # type: ignore[arg-type]
+    monkeypatch.setattr(git, "add", lambda *_args, **_kwargs: _cr())  # type: ignore[arg-type]
+    monkeypatch.setattr(git, "try_unmerged_paths", lambda *_args, **_kwargs: [])  # type: ignore[arg-type]
+    monkeypatch.setattr(git, "try_conflict_files", lambda *_args, **_kwargs: ())  # type: ignore[arg-type]
+    monkeypatch.setattr(git, "rebase_skip", lambda *_args, **_kwargs: calls.append("skip") or _cr())  # type: ignore[arg-type]
+    _stub_clean_phantom(monkeypatch, calls)
+    assert push.checkpoint_probe_main(["4.r", "impl"]) == 0
+    assert "ROUTE=continue" in capsys.readouterr().out
+    assert calls == ["skip", "phantom"]
+
+
 def test_branch_push_dedupes_stderr(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     runner = RecordingRunner(responses=[_res(stdout="feature\n"), _res(stdout="feature\n"), _res(1, stderr="nope\n"), _res(stdout="feature\n"), _res(1, stderr="nope\n"), _res(stdout="feature\n"), _res(1, stderr="nope\n")])
     monkeypatch.setattr(push, "proc", runner)

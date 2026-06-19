@@ -1478,7 +1478,7 @@ def _repo_from_gh_or_git(runner: Runner) -> str:
         gh = proc.CommandResult(("gh",), 127, "", "", 0.0)
     if gh.returncode == 0 and gh.stdout.strip():
         return gh.stdout.strip()
-    helper = runner.run([str(_scripts_dir() / "github-remote-repo.sh"), "origin"])
+    helper = runner.run([sys.executable, str(Path(__file__).with_name("cli.py")), "gh", "remote-repo", "origin"])
     return helper.stdout.strip() if helper.returncode == 0 else ""
 
 

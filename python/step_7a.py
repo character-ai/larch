@@ -288,19 +288,15 @@ def run_step7a(
                 comment_url = m.group(1)
 
     rebase_out = implement_tmpdir / "rebase-checkpoint-probe.stdout"
-    probe = subprocess.run(
-        [
-            str(_plugin_root() / "scripts" / "rebase-checkpoint-probe.sh"),
-            "7a.r",
-            "diagrams",
-            "--base-remote",
-            base_remote,
-            "--base-ref",
-            base_ref,
-        ],
-        text=True,
-        capture_output=True,
-        check=False,
+    probe = _run_cli(
+        "push",
+        "checkpoint-probe",
+        "7a.r",
+        "diagrams",
+        "--base-remote",
+        base_remote,
+        "--base-ref",
+        base_ref,
     )
     rebase_out.write_text(probe.stdout, encoding="utf-8")
     for line in probe.stdout.splitlines():

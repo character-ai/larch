@@ -492,7 +492,7 @@ Content: the Architecture Diagram (from `/design`) and Code Flow Diagram (genera
 
 For `/implement`, written in two phases for full runs: first during Step 8+
 PR creation, where the active Step 8+ driver renders and commits `final-summary.md` with
-placeholder PR fields before `create-pr.sh` pushes the branch, and later
+placeholder PR fields before `python/cli.py pr create` pushes the branch, and later
 refreshed during Step 18 terminal cleanup. The tracking-issue comment may also
 be refreshed immediately after PR creation with the live URL, without a second
 log commit. Runs that never reach PR creation still run terminal cleanup and may refresh the tracking summary with `PR: N/A` when no PR exists.

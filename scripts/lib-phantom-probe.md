@@ -1,6 +1,6 @@
 # lib-phantom-probe.sh
 
-Sourced-only library loaded by `scripts/rebase-checkpoint-probe.sh` and `scripts/phantom-probe-with-warn.sh`.
+Sourced-only library loaded by `python/cli.py push checkpoint-probe` and `scripts/phantom-probe-with-warn.sh`.
 
 ## `phantom_probe_with_warn <step-token>`
 

@@ -4,7 +4,7 @@
 # Wraps the inline `git ls-remote --exit-code --heads origin <branch>` probe
 # that /implement Step 8b uses to decide whether the feature branch needs a
 # force-push (rebase rewrote local history that origin still points at) or
-# whether create-pr.sh will perform the initial push.
+# whether python/cli.py pr create will perform the initial push.
 #
 # `git ls-remote --exit-code` returns 0 when the named ref is present, 2
 # when it is positively confirmed absent, and other non-zero (typically

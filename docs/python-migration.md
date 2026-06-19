@@ -122,6 +122,12 @@ Override them per-run with environment variables documented in
 
 Release, audit-runs, combine-issues fetch/apply, and analyze-issues helper surfaces now live behind `python/cli.py`. `classify-bump.md` remains the release classification authority. Runtime hooks and runtime OOS gates remain bash. `.claude/skills/combine-issues/scripts/search-implementing-issue.sh` remains bash and out of scope. Audit scan OOS disposition lives in `python/oos_disposition.py`; git-log inline-triage fallback remains runtime-gate-only.
 
+## Decision log — G13 ci/pr/merge/push/gh hard cutover
+
+- Live ci/pr/merge/push/gh consumers now call `python3 python/cli.py <domain> <verb>` directly.
+- The checkpoint probe behavior lives in `python/cli.py push checkpoint-probe`, including fork defaulting, `ROUTE=` routing, and larch-log conflict recovery.
+- Retired helper and harness paths are recorded in `python/migrated-scripts.tsv` with `#4642`; treat those rows as history, not active runtime surfaces.
+
 ## Decision log — F3e tracking issue lifecycle
 
 - Tracking issue read/write/summary helpers now live behind `python3 python/cli.py tracking-issue ...` verbs.

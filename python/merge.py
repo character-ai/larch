@@ -1,5 +1,5 @@
 # pyright: reportUnusedCallResult=false
-"""PR merge orchestration (parity with merge-pr.sh)."""
+"""PR merge orchestration (parity with merge pr)."""
 
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ _MERGE_CONFLICT_SIGNALS = (
 
 
 def redact_merge_diagnostic(text: str) -> str:
-    """Port merge-pr.sh redact_merge_diagnostic."""
+    """Port merge pr redact_merge_diagnostic."""
     if not text:
         return ""
     redacted = redact.redact_outbound(text)
@@ -62,7 +62,7 @@ def merge_pr(
     sleeper: Callable[[float], None] | None = None,
     post_flush: bool = True,
 ) -> MergeResult:
-    """Classify merge into one of eight merge-pr.sh MERGE_RESULT literals."""
+    """Classify merge into one of eight merge pr MERGE_RESULT literals."""
     if sleeper is None:
         sleeper = time.sleep
     if not ctx.merge:

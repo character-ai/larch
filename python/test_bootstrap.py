@@ -919,13 +919,13 @@ def test_write_implement_env_failure_logs_warning_and_continues(tmp_path, monkey
 
     def fake_run(argv, *, env=None, cwd=None):
         _ = env, cwd
-        if "create-branch.sh" in str(argv[0]):
-            return subprocess.CompletedProcess(argv, 0, "CURRENT_BRANCH=feature\nIS_MAIN=false\nIS_USER_BRANCH=true\nUSER_PREFIX=user\n", "")
         return subprocess.CompletedProcess(argv, 0, "", "")
 
     def fake_cli(*args: str, env=None):
         _ = env
         calls.append(args)
+        if args[:3] == ("pr", "create-branch", "--check"):
+            return subprocess.CompletedProcess(["cli", *args], 0, "CURRENT_BRANCH=feature\nIS_MAIN=false\nIS_USER_BRANCH=true\nUSER_PREFIX=user\n", "")
         if args[:2] == ("session", "entry-gate"):
             return subprocess.CompletedProcess(["cli", *args], 0, "ENTRY_GATE=user-branch\nSKIP_BRANCH_CHECK=true\n", "")
         if args[:2] == ("session", "setup"):
@@ -996,7 +996,7 @@ def gate_and_probe(monkeypatch: pytest.MonkeyPatch) -> None:
 
     def fake_run(argv, *, env=None, cwd=None):
         _ = env, cwd
-        if "rebase-checkpoint-probe.sh" in str(argv[0]):
+        if "checkpoint-probe" in " ".join(map(str, argv)):
             return subprocess.CompletedProcess(argv, 0, _probe_stdout(), "")
         return subprocess.CompletedProcess(argv, 0, "", "")
 
@@ -1451,7 +1451,7 @@ def test_invoke_resume_runs_absorbed_tail_for_symlinked_routing_file(
 
     def fake_run(argv, *, env=None, cwd=None):
         _ = env, cwd
-        if "rebase-checkpoint-probe.sh" in str(argv[0]):
+        if "checkpoint-probe" in " ".join(map(str, argv)):
             return subprocess.CompletedProcess(argv, 0, _probe_stdout(), "")
         return subprocess.CompletedProcess(argv, 0, "", "")
 

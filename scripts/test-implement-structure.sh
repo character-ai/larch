@@ -218,8 +218,8 @@ phantom_ref = Path('skills/implement/references/phantom-probe.md').read_text()
 for needle in ['2-post-dispatch', 'step-2-post-dispatch.sh', '8-pre-ship', 'Do not probe when `STATUS=claude_fallback`']:
     if needle not in phantom_ref:
         checks.append(f'phantom-probe.md missing {needle!r}')
-require('scripts/rebase-checkpoint-probe.sh', '--forked-target', 'rebase probe forked target flag')
-require('scripts/rebase-checkpoint-probe.md', '--forked-target true|false', 'rebase probe docs')
+require('python/push.py', '--forked-target', 'rebase probe forked target flag')
+require('skills/implement/references/rebase-checkpoint-routing.md', '--forked-target true|false', 'rebase probe docs')
 require('Makefile', 'test-implement-fence-shape:', 'Makefile fence-shape target')
 require('docs/linting.md', 'make test-implement-fence-shape', 'linting docs fence-shape target')
 
@@ -310,7 +310,7 @@ require('skills/implement/scripts/step-0-bootstrap.sh', 'set +e', 'step-0 bootst
 require('python/bootstrap.py', 'preserve_coder=args.resume == "true"', 'bootstrap parse-routing resume preserves coder')
 forbid(skill, launcher + 'skills/implement/scripts/step-0-degraded-gate.sh', 'SKILL active flow must not call step-0-degraded-gate.sh')
 require('python/bootstrap.py', 'degraded-tools-gate', 'bootstrap absorbed degraded gate')
-require('python/bootstrap.py', 'rebase-checkpoint-probe.sh', 'bootstrap absorbed 1.r probe')
+require('python/bootstrap.py', 'checkpoint-probe', 'bootstrap absorbed 1.r probe')
 require('python/bootstrap.py', 'DEGRADED_PROMPT_REQUIRED', 'bootstrap degraded prompt routing')
 require('python/bootstrap.py', 'REBASE_RC', 'bootstrap rebase rc synthesis')
 require('python/bootstrap.py', '_ADVISORY_STDOUT_PREFIXES', 'bootstrap phantom advisory allowlist')
