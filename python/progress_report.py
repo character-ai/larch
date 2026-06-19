@@ -17,6 +17,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
+import collect_results
 from gantt import GanttRow, format_mss, render_gantt
 import logging_util
 import report_tokens_cost
@@ -1796,8 +1797,9 @@ def _round_meta_object(
 def _design_collector_field(round_dir: Path, failure_count: int) -> str:
     """Build round-meta.json's ``collector`` field from real per-slot collector records.
 
-    The collector writes ``collector-results.env`` (0x1f-delimited
-    ``REVIEWER_FILE TOOL STATUS ...`` records) at the design tmpdir root; mirror
+    The collector writes ``collector-results.env`` (blank-line-separated
+    ``KEY=VALUE`` records: ``REVIEWER_FILE``/``TOOL``/``STATUS``/...) at the design
+    tmpdir root; mirror
     ``_materialize_design_panel_manifest`` by checking the round dir first, then the
     design root. Each non-OK record becomes a ``TOOL``/``STATUS``/``REVIEWER_FILE``
     block carrying the real failing slot's tool and output basename, so the renderer
@@ -1810,11 +1812,12 @@ def _design_collector_field(round_dir: Path, failure_count: int) -> str:
     if not collector_env.is_file():
         collector_env = round_dir.parent.parent / "collector-results.env"
     records: list[str] = []
-    for line in _read_lines_best_effort(collector_env):
-        if "\x1f" not in line:
-            continue
-        reviewer_file, tool, status = (line.split("\x1f") + [""] * 3)[:3]
+    collector_text = "\n".join(_read_lines_best_effort(collector_env))
+    for record in collect_results.parse_collector_records(collector_text):
+        status = record.get("STATUS", "")
         if status and status != "OK":
+            tool = record.get("TOOL", "")
+            reviewer_file = record.get("REVIEWER_FILE", "")
             records.append(f"TOOL={tool}\nSTATUS={status}\nREVIEWER_FILE={Path(reviewer_file).name}")
     if records:
         return "\n\n".join(records)

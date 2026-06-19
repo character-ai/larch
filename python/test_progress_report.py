@@ -1949,7 +1949,7 @@ def test_render_phase_detail_top_reviewers_from_classification(tmp_path: Path) -
 
 def test_write_design_round_meta_collector_from_real_records(tmp_path: Path) -> None:
     # Issue #4733 Bug 2: the collector field is built from real per-slot collector-results.env
-    # records (\x1f-delimited REVIEWER_FILE/TOOL/STATUS), not count-based placeholders.
+    # records (KEY=VALUE blocks: REVIEWER_FILE/TOOL/STATUS/...), not count-based placeholders.
     design = tmp_path
     round_dir = design / "plan-review" / "round-1"
     round_dir.mkdir(parents=True)
@@ -1964,8 +1964,9 @@ def test_write_design_round_meta_collector_from_real_records(tmp_path: Path) -> 
     (round_dir / "round-summary.env").write_text("COLLECT_FAILURE_COUNT=1\n", encoding="utf-8")
     # collector-results.env is written at the design tmpdir root (round_dir.parent.parent).
     (design / "collector-results.env").write_text(
-        "ok-output.txt\x1fcursor\x1fOK\x1f0\x1f\x1f\n"
-        "cursor-plan-requirements-output.txt\x1fcursor\x1fFAILED\x1f1\x1ftimeout\x1f\n",
+        "REVIEWER_FILE=ok-output.txt\nTOOL=cursor\nSTATUS=OK\nEXIT_CODE=0\nSTRUCTURED_SIDECAR=\nFAILURE_REASON=\n"
+        "\n"
+        "REVIEWER_FILE=cursor-plan-requirements-output.txt\nTOOL=cursor\nSTATUS=FAILED\nEXIT_CODE=1\nSTRUCTURED_SIDECAR=\nFAILURE_REASON=timeout\n",
         encoding="utf-8",
     )
     assert progress_report.write_design_round_meta(round_dir) == 0
@@ -1993,7 +1994,7 @@ def test_design_failure_label_resolves_real_slot_end_to_end(tmp_path: Path) -> N
     )
     (round_dir / "round-summary.env").write_text("COLLECT_FAILURE_COUNT=1\n", encoding="utf-8")
     (design / "collector-results.env").write_text(
-        "cursor-plan-requirements-output.txt\x1fcursor\x1fFAILED\x1f1\x1ftimeout\x1f\n",
+        "REVIEWER_FILE=cursor-plan-requirements-output.txt\nTOOL=cursor\nSTATUS=FAILED\nEXIT_CODE=1\nSTRUCTURED_SIDECAR=\nFAILURE_REASON=timeout\n",
         encoding="utf-8",
     )
     assert progress_report.write_design_round_meta(round_dir) == 0
