@@ -134,12 +134,17 @@ outside the resolved `plan-review` root.
 **`/design` pause/resume marker binding**: `python/cli.py design pause-save --repo` and `python/cli.py design pause-load --repo` are validated as `OWNER/REPO`; malformed values return `invalid-repo` before `gh issue view`, publish, or pause marker writes. `python/cli.py design pause-save` writes
 `ISSUE_NUMBER=` and, when resolvable, `REPO=` into the
 `<!-- larch:design-pause -->` marker payload before a pause snapshot becomes
-resumable. `python/cli.py design pause-load` fails closed unless those bindings
+resumable. `pause-save` also validates `--design-tmpdir` against the
+session-tmpdir allowlist (`tmpdir-not-allowed` on a path outside it) and redacts
+the local `pause-state.txt` payload through `redact secrets` before publish.
+`python/cli.py design pause-load` fails closed unless those bindings
 match the caller issue/repo, validates the remaining marker fields before any
 fetch, restores into a staging directory first with export-ignore-independent
 `git ls-tree -r -z` enumeration plus per-file `git show`, rejects paths outside
-the snapshot subtree, and verifies required artifacts before installing into the
-caller tmpdir. This prevents an edited issue body from silently retargeting
+the snapshot subtree, verifies required artifacts before installing into the
+caller tmpdir, and cross-checks the restored `manifest.json` `issue_number` /
+`run_id` against the caller issue and marker run id (`manifest-mismatch` on a
+binding conflict). This prevents an edited issue body from silently retargeting
 resume to another run or leaving a partially-restored local state behind. The
 loader keeps the marker on retryable restore, extract, and snapshot-content
 failures such as `snapshot-not-found`, `snapshot-extract-failed`, and
@@ -151,8 +156,11 @@ marker deletion failure is non-fatal and surfaces as `MARKER_CLEARED=false` plus
 `WARN=marker-delete-failed` with `LOAD_OK=true`; `design-route.sh` refuses
 `resume@*` until the stale marker is removed manually. Successful marker deletion
 surfaces `MARKER_CLEARED=true`.
-Supported recovery-branch prefixes are both `larch-log-design-<RUN_ID>` and
-`larch-log-design-recovery-<RUN_ID>`. Remote recovery fetches the branch, then
+The only supported recovery branch is the exact name the design-log publisher
+emits for a run, `larch-logs/design-<RUN_ID>`; `pause-load` rejects any other
+`LOG_RECOVERY_BRANCH` marker value with `invalid-recovery-branch` before fetch, so
+an edited marker field cannot flow as an arbitrary token into `git fetch`. Remote
+recovery fetches that branch, then
 pins `FETCH_HEAD` to an immutable commit SHA via `git rev-parse --verify
 '<ref>^{commit}'` before `git ls-tree` / `git show` enumeration and extraction;
 the loader never passes mutable `FETCH_HEAD` directly into extraction. Recovery-branch restore reads committed blobs from the resolved commit with `git show`, rather than relying on `git archive`, so committed `larch-logs/ export-ignore` attributes do not hide pause snapshots from the loader. Residual risk: collaborators with issue body

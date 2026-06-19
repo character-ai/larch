@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 import shutil
@@ -11,9 +12,12 @@ import sys
 import tempfile
 from pathlib import Path
 from collections.abc import Sequence
+from typing import cast
 
 import gh
 import proc
+import redact
+from session_env import validate_design_tmpdir
 
 
 _PAUSE_START = "<!-- larch:design-pause:start -->"
@@ -122,12 +126,47 @@ def _emit(kv: list[tuple[str, str]]) -> None:
         print(f"{key}={value}")
 
 
+def _clear_design_pause_marker(issue: str, repo: str) -> bool:
+    """Delete the design-pause marker from the issue body. Best effort; returns True on success."""
+    plugin_root = Path(__file__).resolve().parents[1]
+    cmd = [
+        sys.executable,
+        str(plugin_root / "python" / "cli.py"),
+        "named-block",
+        "write",
+        "--marker",
+        "design-pause",
+        "--delete",
+        "--issue",
+        issue,
+        *(["--repo", repo] if repo else []),
+    ]
+    return subprocess.run(cmd, check=False).returncode == 0
+
+
+def _load_fail_clear(issue: str, repo: str, error: str) -> int:
+    """Permanent load validation/binding failure: clear the stale marker, then emit LOAD_OK=false.
+
+    Permanent failures (a marker that can never resolve on retry) clear the binding marker so a
+    stale collaborator-editable marker cannot wedge resume. Retryable snapshot-content failures
+    (snapshot-not-found / snapshot-extract-failed / missing-restored-artifact / unsafe-restored-path)
+    keep the marker and do NOT route through this helper.
+    """
+    _ = _clear_design_pause_marker(issue, repo)
+    _emit([("LOAD_OK", "false"), ("ERROR", error)])
+    return 0
+
+
 def pause_save_main(argv: Sequence[str]) -> int:
     parsed = _parse_args(argv)
     if parsed is None:
         print("Usage: design-pause-save.sh --design-tmpdir PATH --issue N [--repo OWNER/REPO]")
         return 1
     if parsed == {}:
+        return 0
+    tmpdir_ok = validate_design_tmpdir(parsed["--design-tmpdir"])[0]
+    if not tmpdir_ok:
+        _emit([("PAUSE_OK", "false"), ("ERROR", "tmpdir-not-allowed")])
         return 0
     design_tmpdir = Path(parsed["--design-tmpdir"])
     if not design_tmpdir.is_dir():
@@ -163,7 +202,9 @@ def pause_save_main(argv: Sequence[str]) -> int:
         f"BODY_HASH={body_hash}",
     ]
     state_file = design_tmpdir / "pause-state.txt"
-    _ = state_file.write_text("\n".join(state_lines) + "\n", encoding="utf-8")
+    _ = state_file.write_text(
+        redact.redact_secrets_only("\n".join(state_lines) + "\n"), encoding="utf-8"
+    )
 
     publish = subprocess.run(
         [
@@ -244,16 +285,16 @@ def pause_load_main(argv: Sequence[str]) -> int:
         _emit([("LOAD_OK", "false"), ("ERROR", "no-pause-marker")])
         return 0
     if payload == {}:
-        _emit([("LOAD_OK", "false"), ("ERROR", "malformed-pause-marker")])
-        return 0
+        return _load_fail_clear(issue, repo, "malformed-pause-marker")
     run_id = payload.get("RUN_ID", "")
     step = payload.get("STEP", "")
     if payload.get("ISSUE_NUMBER") != issue:
-        _emit([("LOAD_OK", "false"), ("ERROR", "issue-mismatch")])
-        return 0
+        return _load_fail_clear(issue, repo, "issue-mismatch")
+    marker_repo = payload.get("REPO", "")
+    if marker_repo and repo and marker_repo != repo:
+        return _load_fail_clear(issue, repo, "repo-mismatch")
     if not _RUN_RE.fullmatch(run_id):
-        _emit([("LOAD_OK", "false"), ("ERROR", "invalid-run-id")])
-        return 0
+        return _load_fail_clear(issue, repo, "invalid-run-id")
 
     repo_top = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False).stdout.strip()  # noqa: S607
     if not repo_top:
@@ -261,6 +302,13 @@ def pause_load_main(argv: Sequence[str]) -> int:
         return 0
     recovery_branch = payload.get("LOG_RECOVERY_BRANCH", "")
     if recovery_branch:
+        # The design-log publisher only ever emits this exact recovery-branch name for a run
+        # (python/design_log_publish_flow.py). Pin to that exact value: it binds the snapshot to
+        # the marker's run and closes the argument-injection vector of feeding an unvalidated
+        # marker field into `git fetch origin <value>`. This supersedes the historical
+        # prefix + check-ref-format guard because the emitted name is fully determined by run_id.
+        if recovery_branch != f"larch-logs/design-{run_id}":
+            return _load_fail_clear(issue, repo, "invalid-recovery-branch")
         fetch = subprocess.run(["git", "-C", repo_top, "fetch", "origin", recovery_branch], check=False)  # noqa: S607
         if fetch.returncode != 0:
             _emit([("LOAD_OK", "false"), ("ERROR", "snapshot-not-found")])
@@ -278,11 +326,26 @@ def pause_load_main(argv: Sequence[str]) -> int:
             return 0
         snapshot_ref = f"origin/{default}"
 
+    # Pin the fetched ref to an immutable commit SHA before extraction so a mutable ref
+    # (FETCH_HEAD / origin/<default>) cannot be swapped between enumeration and per-file `git show`.
+    pinned = subprocess.run(
+        ["git", "-C", repo_top, "rev-parse", "--verify", f"{snapshot_ref}^{{commit}}"],  # noqa: S607
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    snapshot_sha = pinned.stdout.strip()
+    if pinned.returncode != 0 or not snapshot_sha:
+        _emit([("LOAD_OK", "false"), ("ERROR", "snapshot-not-found")])
+        return 0
+
     restore_tmp = Path(tempfile.mkdtemp(prefix="design-pause-load-restore."))
     try:
         prefix = f"larch-logs/design/{run_id}/"
+        # NUL-delimited enumeration (-z) so a snapshot path containing a newline cannot be
+        # mis-split into a spoofed second entry; export-ignore-independent vs `git archive`.
         ls = subprocess.run(
-            ["git", "-C", repo_top, "ls-tree", "-r", "--name-only", snapshot_ref, "--", prefix],  # noqa: S607
+            ["git", "-C", repo_top, "ls-tree", "-r", "--name-only", "-z", snapshot_sha, "--", prefix],  # noqa: S607
             capture_output=True,
             text=True,
             check=False,
@@ -290,16 +353,26 @@ def pause_load_main(argv: Sequence[str]) -> int:
         if ls.returncode != 0:
             _emit([("LOAD_OK", "false"), ("ERROR", "snapshot-extract-failed")])
             return 0
-        files = [line.strip() for line in ls.stdout.splitlines() if line.strip()]
+        files = [entry for entry in ls.stdout.split("\x00") if entry]
         if not files:
             _emit([("LOAD_OK", "false"), ("ERROR", "snapshot-not-found")])
             return 0
+        restore_root = restore_tmp.resolve()
         for full_path in files:
             rel = full_path[len(prefix):]
+            # Reject paths that would escape the snapshot subtree before any write. git tree paths
+            # cannot normally contain '..', so this is defense-in-depth against a tampered listing.
+            if not rel or rel.startswith("/") or ".." in Path(rel).parts:
+                _emit([("LOAD_OK", "false"), ("ERROR", "unsafe-restored-path")])
+                return 0
             dest = restore_tmp / rel
+            resolved_dest = dest.resolve()
+            if resolved_dest != restore_root and restore_root not in resolved_dest.parents:
+                _emit([("LOAD_OK", "false"), ("ERROR", "unsafe-restored-path")])
+                return 0
             dest.parent.mkdir(parents=True, exist_ok=True)
             blob = subprocess.run(
-                ["git", "-C", repo_top, "show", f"{snapshot_ref}:{full_path}"],  # noqa: S607
+                ["git", "-C", repo_top, "show", f"{snapshot_sha}:{full_path}"],  # noqa: S607
                 capture_output=True,
                 text=True,
                 check=False,
@@ -312,9 +385,22 @@ def pause_load_main(argv: Sequence[str]) -> int:
             if not (restore_tmp / required).is_file():
                 _emit([("LOAD_OK", "false"), ("ERROR", "missing-restored-artifact")])
                 return 0
+        # Bind the restored run manifest to the same issue/run as the marker (defense-in-depth
+        # beyond the marker's own ISSUE_NUMBER/REPO bindings). Tolerate absent fields on older
+        # manifests; fail closed only on an explicit mismatch or an unparseable manifest.
+        try:
+            parsed_manifest = json.loads((restore_tmp / "manifest.json").read_text(encoding="utf-8", errors="replace"))
+        except (ValueError, OSError):
+            return _load_fail_clear(issue, repo, "manifest-mismatch")
+        if not isinstance(parsed_manifest, dict):
+            return _load_fail_clear(issue, repo, "manifest-mismatch")
+        manifest = cast("dict[str, object]", parsed_manifest)
+        manifest_issue = str(manifest.get("issue_number", ""))
+        manifest_run = str(manifest.get("run_id", ""))
+        if (manifest_issue and manifest_issue != issue) or (manifest_run and manifest_run != run_id):
+            return _load_fail_clear(issue, repo, "manifest-mismatch")
         if step not in {"1", "1d", "2", "2b", "3", "3.5", "3b", "4", "5", "5c", "6"}:
-            _emit([("LOAD_OK", "false"), ("ERROR", "invalid-step")])
-            return 0
+            return _load_fail_clear(issue, repo, "invalid-step")
         _ = (restore_tmp / ".resume-loaded").write_text("", encoding="utf-8")
         for child in restore_tmp.iterdir():
             target = design_tmpdir / child.name
@@ -323,9 +409,14 @@ def pause_load_main(argv: Sequence[str]) -> int:
             else:
                 _ = shutil.copy2(child, target)
         (design_tmpdir / ".pause-save-complete").unlink(missing_ok=True)
+        (design_tmpdir / ".pause-requested").unlink(missing_ok=True)
     finally:
         shutil.rmtree(restore_tmp, ignore_errors=True)
 
+    # Delete the marker only after a successful install + .resume-loaded write. A post-success
+    # deletion failure is non-fatal (LOAD_OK stays true) and surfaces MARKER_CLEARED=false so the
+    # route layer can refuse resume@* until the stale marker is removed manually.
+    marker_cleared = _clear_design_pause_marker(issue, repo)
     out: list[tuple[str, str]] = [
         ("LOAD_OK", "true"),
         ("STEP", step),
@@ -335,5 +426,8 @@ def pause_load_main(argv: Sequence[str]) -> int:
     ]
     if repo:
         out.append(("REPO", repo))
+    out.append(("MARKER_CLEARED", "true" if marker_cleared else "false"))
+    if not marker_cleared:
+        out.append(("WARN", "marker-delete-failed"))
     _emit(out)
     return 0
