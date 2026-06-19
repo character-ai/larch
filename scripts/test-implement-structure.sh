@@ -289,6 +289,7 @@ if conflict_ref.is_file():
         if needle not in conflict_text:
             checks.append(f'conflict-resolution.md missing {needle!r}')
     for needle in [
+        'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" push rebase --continue --no-push --keep-on-conflict',
         '${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh',
         'run_in_background: true',
         'timeout: 21600000',

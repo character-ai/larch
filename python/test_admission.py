@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 
 import pytest
 
@@ -346,13 +347,26 @@ def test_gate_resume_blocker_failure_fails_closed(tmp_path, monkeypatch, capsys)
 
 
 def test_fork_env_success(tmp_path, monkeypatch, capsys) -> None:
-    monkeypatch.setattr(admission, "_run", lambda argv, **_kwargs: subprocess.CompletedProcess(argv, 0, "git@github.com:user/fork.git\n", ""))  # pyright: ignore[reportPrivateUsage]
+    gh_calls: list[list[str]] = []
 
-    def fake_remote(remote: str) -> tuple[int, str, str]:
-        return (0, "user/fork" if remote == "origin" else "upstream/repo", "")
+    def fake_run(argv, **_kwargs):  # pyright: ignore[reportMissingParameterType, reportUnknownParameterType]
+        if argv[:3] == ["git", "remote", "get-url"]:
+            return subprocess.CompletedProcess(argv, 0, "https://github.com/upstream/repo.git\n", "")
+        if len(argv) >= 4 and list(argv[-3:]) == ["gh", "remote-repo", "origin"]:
+            gh_calls.append(list(argv))
+            return subprocess.CompletedProcess(argv, 0, "user/fork\n", "")
+        if len(argv) >= 4 and list(argv[-3:]) == ["gh", "remote-repo", "upstream"]:
+            gh_calls.append(list(argv))
+            return subprocess.CompletedProcess(argv, 0, "upstream/repo\n", "")
+        return subprocess.CompletedProcess(argv, 1, "", "unexpected\n")
 
-    monkeypatch.setattr(admission, "_github_remote_repo", fake_remote)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(admission, "_run", fake_run)  # pyright: ignore[reportPrivateUsage]
     assert admission.fork_env_main(["--tmpdir", str(tmp_path)]) == 0
+    expected_argv = [sys.executable, str(admission._PY_CLI), "gh", "remote-repo"]  # pyright: ignore[reportPrivateUsage]
+    assert gh_calls == [
+        [*expected_argv, "origin"],
+        [*expected_argv, "upstream"],
+    ]
     out = capsys.readouterr().out
     assert f"CALLER_ENV_PATH={tmp_path / 'caller-env.sh'}" in out
     assert "FORK_REPO=user/fork" in out
@@ -368,15 +382,29 @@ def test_fork_env_no_upstream(monkeypatch, capsys) -> None:
 
 
 def test_fork_env_parse_failure(monkeypatch, capsys) -> None:
-    monkeypatch.setattr(admission, "_run", lambda argv, **_kwargs: subprocess.CompletedProcess(argv, 0, "ok\n", ""))  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(admission, "_github_remote_repo", lambda _remote: (2, "", "parse failed\n"))  # pyright: ignore[reportPrivateUsage]
+    def fake_run(argv, **_kwargs):  # pyright: ignore[reportMissingParameterType, reportUnknownParameterType]
+        if argv[:3] == ["git", "remote", "get-url"]:
+            return subprocess.CompletedProcess(argv, 0, "https://github.com/upstream/repo.git\n", "")
+        if len(argv) >= 4 and list(argv[-3:]) == ["gh", "remote-repo", "origin"]:
+            return subprocess.CompletedProcess(argv, 2, "", "parse failed\n")
+        return subprocess.CompletedProcess(argv, 1, "", "unexpected\n")
+
+    monkeypatch.setattr(admission, "_run", fake_run)  # pyright: ignore[reportPrivateUsage]
     assert admission.fork_env_main([]) == 2
     assert "parse failed" in capsys.readouterr().err
 
 
 def test_fork_env_caller_env_atomic_failure(tmp_path, monkeypatch, capsys) -> None:
-    monkeypatch.setattr(admission, "_run", lambda argv, **_kwargs: subprocess.CompletedProcess(argv, 0, "ok\n", ""))  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(admission, "_github_remote_repo", lambda remote: (0, "user/fork" if remote == "origin" else "upstream/repo", ""))  # pyright: ignore[reportPrivateUsage]
+    def fake_run(argv, **_kwargs):  # pyright: ignore[reportMissingParameterType, reportUnknownParameterType]
+        if argv[:3] == ["git", "remote", "get-url"]:
+            return subprocess.CompletedProcess(argv, 0, "https://github.com/upstream/repo.git\n", "")
+        if len(argv) >= 4 and list(argv[-3:]) == ["gh", "remote-repo", "origin"]:
+            return subprocess.CompletedProcess(argv, 0, "user/fork\n", "")
+        if len(argv) >= 4 and list(argv[-3:]) == ["gh", "remote-repo", "upstream"]:
+            return subprocess.CompletedProcess(argv, 0, "upstream/repo\n", "")
+        return subprocess.CompletedProcess(argv, 1, "", "unexpected\n")
+
+    monkeypatch.setattr(admission, "_run", fake_run)  # pyright: ignore[reportPrivateUsage]
 
     def fail_atomic(_path, _text) -> None:
         raise OSError("disk full")
