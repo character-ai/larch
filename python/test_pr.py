@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import git as git_module
 import gh
@@ -422,6 +423,47 @@ def test_create_pr_parity_race_existing_uses_existing_title() -> None:
     )
     assert result.status == "existing"
     assert result.title == "Actual title"
+
+
+def test_create_pr_parity_redacts_body_before_create(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, str] = {}
+
+    def fake_pr_create(
+        _runner: Runner,
+        *,
+        body: str,
+        **_kwargs: object,
+    ) -> tuple[object, bool]:
+        captured["body"] = body
+        return (
+            SimpleNamespace(number=9, url="https://github.com/o/r/pull/9", title="t"),
+            True,
+        )
+
+    def fake_redact_pr_body(_body: str) -> str:
+        return "REDACTED-PR-BODY\n"
+
+    monkeypatch.setattr(pr_module.gh, "pr_create", fake_pr_create)
+    monkeypatch.setattr(pr_module.pr_body, "redact_pr_body", fake_redact_pr_body)
+    runner = RecordingRunner(
+        responses=[
+            _HEAD_FEAT,
+            _PORCELAIN_CLEAN,
+            CommandResult(("gh", "pr", "list"), 0, "[]", "", 0.01),
+            CommandResult(("git", "push", "-u", "origin", "HEAD"), 0, "", "", 0.01),
+        ],
+    )
+    result = pr_module.create_pr_parity(
+        runner,
+        repo="o/r",
+        branch="feat",
+        title="t",
+        body="raw body with secret",
+    )
+    assert result.exit_code == 0
+    assert captured["body"] == "REDACTED-PR-BODY\n"
 
 
 def test_create_branch_ignores_tag_with_same_name() -> None:

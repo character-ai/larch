@@ -2037,6 +2037,41 @@ def larch_log_commit_main(argv: list[str]) -> int:
     return 0
 
 
+_BREADCRUMB_SOURCE_TMPDIR_ENV: tuple[str, ...] = (
+    "IMPLEMENT_TMPDIR",
+    "DESIGN_TMPDIR",
+    "REVIEW_TMPDIR",
+    "RESEARCH_TMPDIR",
+)
+
+
+def _breadcrumb_source_confined(source_root: Path) -> bool:
+    """Defense-in-depth: is the breadcrumb source under a session tmpdir?
+
+    Backs the SECURITY.md guarantee that a breadcrumbs hint outside the active
+    session tmpdir is a publish-nothing no-op. The live caller always derives
+    ``--source-dir`` from ``log_root.parent`` (the session tmpdir), so this
+    never trips on the supported path; it guards a future caller that passes an
+    operator-controlled or escaped ``--source-dir``. When no session tmpdir env
+    var is set there is no reference root, so legacy behavior is preserved
+    (treated as confined).
+    """
+    roots: list[Path] = []
+    for key in _BREADCRUMB_SOURCE_TMPDIR_ENV:
+        raw = os.environ.get(key, "").strip()
+        if not raw:
+            continue
+        with suppress(OSError):
+            roots.append(Path(raw).resolve())
+    if not roots:
+        return True
+    try:
+        resolved = source_root.resolve()
+    except OSError:
+        return False
+    return any(resolved == root or root in resolved.parents for root in roots)
+
+
 def publish_breadcrumbs_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="cli.py run-log publish-breadcrumbs", add_help=False)
     parser.add_argument("--source-dir", required=True)
@@ -2051,6 +2086,13 @@ def publish_breadcrumbs_main(argv: list[str]) -> int:
         print(f"publish-breadcrumbs: source directory not found: {src}", file=sys.stderr)
         return 1
     source_root = src.parent
+    if not _breadcrumb_source_confined(source_root):
+        # Per SECURITY.md: a breadcrumbs hint whose session root falls outside
+        # every active session tmpdir is a publish-nothing no-op (defense-in-depth;
+        # live callers always derive --source-dir from log_root.parent). This is a
+        # no-op, not the removed source-directory-wide rejection — the per-file
+        # symlink/hardlink/redaction guards below remain the fail-closed surface.
+        return 0
     quiet_logs = sorted(
         item for item in source_root.iterdir() if _QUIET_LOG_RE.fullmatch(item.name)
     )
@@ -2515,6 +2557,16 @@ def _verify_condition_reached(
             )
         )
     if condition == "step9a1":
+        # Intentional divergence from the retired bash verify-completeness, which
+        # OR-ed run-statistics.md / oos-issues.ndjson / PR-number / status=done /
+        # final-summary.md. Step 9a.1 completion is authoritative ONLY via
+        # run-statistics.md plus explicit steps_ran.step9a1 markers (#4427): an
+        # oos-issues.ndjson alone is provisional disposition evidence and must
+        # NOT count, and a steps_ran.step9a1=true without run-statistics.md is a
+        # stale or corrupt marker that must fail the scan. See the "bail-time
+        # steps_ran invariant" in skills/implement/SKILL.md and the asserting
+        # tests test_verify_completeness_stale_step9a1_true_without_stats_fails
+        # and test_flush_logs_pre_downgrades_stale_step9a1_true_with_ndjson_only.
         if _manifest_step9a1_explicitly_skipped(manifest_data):
             return False
         if _manifest_step9a1_explicitly_ran(manifest_data):

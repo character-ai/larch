@@ -285,12 +285,18 @@ def create_pr_parity(
     push_result = runner.run(["git", "push", "-u", "origin", "HEAD"], cwd=cwd)
     if push_result.returncode != 0:
         return PrResult(0, "", "push_failed", title, exit_code=1)
+    # Parity with create-pr.sh / compose_pr_body: redact the body fail-closed
+    # before it leaves the process. `cli.py pr create` is dormant today (the
+    # live ship path uses compose_pr_body/ensure_pr), but a future caller wiring
+    # it as the create path must not exfiltrate secrets or session tmpdir paths.
+    # A redaction-truncation ShipError propagates to create_main's except
+    # handler, which fails closed with PR_STATUS=error.
     created, was_created = gh.pr_create(
         runner,
         repo=repo,
         branch=branch,
         title=title,
-        body=body,
+        body=pr_body.redact_pr_body(body),
         base=base,
         draft=draft,
         cwd=cwd,

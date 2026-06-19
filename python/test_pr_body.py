@@ -178,6 +178,24 @@ def test_compose_pr_body_fail_closed_on_truncation(
         _ = pr_body.compose_pr_body(summary="- x")
 
 
+def test_redact_pr_body_delegates_to_redact() -> None:
+    raw = "See /tmp/claude-implement-abc123/plan.txt now"
+    out = pr_body.redact_pr_body(raw)
+    assert "claude-implement-abc123" not in out
+    assert out == pr_body.redact.redact(raw)
+
+
+def test_redact_pr_body_fail_closed_on_truncation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_redact(_text: str) -> str:
+        return "x [content truncated — safety]"
+
+    monkeypatch.setattr(pr_body.redact, "redact", fake_redact)
+    with pytest.raises(ShipError, match="redaction failed"):
+        _ = pr_body.redact_pr_body("x")
+
+
 def test_update_pr_body_rejects_unsafe_mermaid() -> None:
     bad = "```mermaid\nflowchart LR\n  A[x|y] --> B\n```\n"
     with pytest.raises(ShipError, match="mermaid in PR body rejected"):

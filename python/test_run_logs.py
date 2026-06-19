@@ -1536,3 +1536,42 @@ def test_init_run_writes_manifest_v2(tmp_path: Path) -> None:
     data = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert data["schema_version"] == 2
     assert data["skill"] == "implement"
+
+
+def test_publish_breadcrumbs_noops_source_outside_session_tmpdir(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = tmp_path / "session"
+    outside = tmp_path / "outside"
+    (outside / "breadcrumbs").mkdir(parents=True)
+    # A quiet log present outside the session tmpdir must NOT be published.
+    _ = (outside / "larch-quiet-implement-1.log").write_text("hi\n", encoding="utf-8")
+    for key in ("DESIGN_TMPDIR", "REVIEW_TMPDIR", "RESEARCH_TMPDIR"):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(session))
+    dest = tmp_path / "dest"
+    rc = run_logs.publish_breadcrumbs_main(
+        ["--source-dir", str(outside / "breadcrumbs"), "--dest-dir", str(dest / "breadcrumbs")]
+    )
+    assert rc == 0
+    assert not (dest / "breadcrumbs").exists()
+
+
+def test_publish_breadcrumbs_allows_source_under_session_tmpdir(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = tmp_path / "session"
+    (session / "breadcrumbs").mkdir(parents=True)
+    _ = (session / "larch-quiet-implement-1.log").write_text("hello\n", encoding="utf-8")
+    for key in ("DESIGN_TMPDIR", "REVIEW_TMPDIR", "RESEARCH_TMPDIR"):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(session))
+    dest = tmp_path / "dest"
+    dest.mkdir()
+    rc = run_logs.publish_breadcrumbs_main(
+        ["--source-dir", str(session / "breadcrumbs"), "--dest-dir", str(dest / "breadcrumbs")]
+    )
+    assert rc == 0
+    assert (dest / "breadcrumbs").is_dir()
