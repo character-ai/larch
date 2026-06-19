@@ -731,6 +731,100 @@ def test_code_review_classification_header_is_21_column_schema() -> None:
     assert design[-1] == "body_severity"
 
 
+_ATTRIBUTED_BALLOT = """### FINDING_1: Codex path issue
+- **Reviewer**: Codex-Structure
+- **Concern**: Codex, Cursor, and Claude tools disagree on severity.
+- **Suggested revision**: Fix it.
+
+### OOS_1: [OUT_OF_SCOPE] Drift
+- **Reviewer(s)**: cursor-testing-output.txt
+- **Concern**: The Reviewer field name appears here in prose only.
+- **Suggested revision**: File follow-up.
+
+- Plain line mentioning Reviewer without structured label form.
+"""
+
+
+def test_neutralize_reviewer_attribution_preserves_body_and_labels() -> None:
+    neutral = voting.neutralize_reviewer_attribution(_ATTRIBUTED_BALLOT)
+    assert "- **Reviewer**: anonymous" in neutral
+    assert "- **Reviewer(s)**: anonymous" in neutral
+    assert "Codex, Cursor, and Claude" in neutral
+    assert "The Reviewer field name appears here" in neutral
+    assert "Plain line mentioning Reviewer" in neutral
+    assert "Codex-Structure" not in neutral
+    assert "cursor-testing-output.txt" not in neutral
+
+
+def test_proposer_map_from_ballot_finding_and_oos() -> None:
+    proposer_map = voting.proposer_map_from_ballot(_ATTRIBUTED_BALLOT)
+    assert set(proposer_map) == {"FINDING_1", "OOS_1"}
+    assert proposer_map["FINDING_1"][0] == "Codex-Structure"
+    assert proposer_map["OOS_1"][0] == "cursor-testing-output.txt"
+
+
+def test_validate_proposer_map_coverage_raises_on_missing() -> None:
+    proposer_map = voting.proposer_map_from_ballot(_ATTRIBUTED_BALLOT)
+    del proposer_map["OOS_1"]
+    with pytest.raises(ValueError, match="missing item"):
+        voting.validate_proposer_map_coverage(_ATTRIBUTED_BALLOT, proposer_map)
+
+
+def test_restore_reviewer_attribution_replaces_anonymous_line() -> None:
+    neutral_block = voting.neutralize_reviewer_attribution(
+        "### FINDING_1: Codex path issue\n- **Reviewer**: anonymous\n- **Concern**: c\n"
+    )
+    _, reviewer_line = voting.proposer_map_from_ballot(_ATTRIBUTED_BALLOT)["FINDING_1"]
+    restored = voting.restore_reviewer_attribution(neutral_block, reviewer_line)
+    assert "- **Reviewer**: Codex-Structure" in restored
+
+
+def test_proposer_for_item_fail_closed_without_map_entry(tmp_path: Path) -> None:
+    block = tmp_path / "FINDING_1.md"
+    _ = block.write_text(
+        "### FINDING_1: x\n- **Reviewer**: anonymous\n- **Concern**: c\n",
+        encoding="utf-8",
+    )
+    map_file = tmp_path / "proposer-map.tsv"
+    _ = map_file.write_text("item_id\treviewer\treviewer_line\n", encoding="utf-8")
+    with pytest.raises(voting.TallyError, match="missing proposer map"):
+        voting.proposer_for_item("FINDING_1", block, map_file, sidecar_required=True)
+
+
+def test_proposer_for_item_fallback_without_sidecar(tmp_path: Path) -> None:
+    block = tmp_path / "FINDING_1.md"
+    _ = block.write_text(
+        "### FINDING_1: x\n- **Reviewer**: Codex-Structure\n",
+        encoding="utf-8",
+    )
+    assert voting.proposer_for_item("FINDING_1", block, "", sidecar_required=False) == "Codex-Structure"
+
+
+def test_proposer_for_item_uses_sidecar_for_neutralized_block(tmp_path: Path) -> None:
+    attributed = tmp_path / "attributed.md"
+    _ = attributed.write_text(_ATTRIBUTED_BALLOT, encoding="utf-8")
+    map_file = tmp_path / "proposer-map.tsv"
+    voting.write_proposer_map(attributed, map_file)
+    neutral_block = tmp_path / "FINDING_1.md"
+    _ = neutral_block.write_text(
+        voting.neutralize_reviewer_attribution(
+            "### FINDING_1: Codex path issue\n- **Reviewer**: anonymous\n- **Concern**: c\n"
+        ),
+        encoding="utf-8",
+    )
+    assert voting.proposer_for_item("FINDING_1", neutral_block, map_file, sidecar_required=True) == "Codex-Structure"
+
+
+def test_write_proposer_map_roundtrip(tmp_path: Path) -> None:
+    ballot = tmp_path / "ballot.md"
+    _ = ballot.write_text(_ATTRIBUTED_BALLOT, encoding="utf-8")
+    map_file = tmp_path / "proposer-map.tsv"
+    voting.write_proposer_map(ballot, map_file)
+    rows = voting.read_proposer_map(map_file)
+    assert rows["FINDING_1"][0] == "Codex-Structure"
+    assert rows["OOS_1"][0] == "cursor-testing-output.txt"
+
+
 def test_voter_launcher_tool_normalizes_cursor_archetypes() -> None:
     # launch_voter_retry was removed with the parse-rate retry subsystem (main
     # #4547); the surviving contract is that cursor-* archetype voter labels
