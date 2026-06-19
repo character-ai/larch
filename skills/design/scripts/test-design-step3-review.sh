@@ -61,8 +61,15 @@ pass 'Step 3 loop persists round-start-s before round body with symlink guards'
 for status in panel-failed tally-error degraded-empty-collector; do
   grep -Fq "$status" "$MODULE" || fail "$status missing"
 done
-if grep -Fq 'failed-judge-panel' "$MODULE"; then
-  fail 'Step 3 must not handle Step 2b.5 failed-judge-panel retry exhaustion'
+# Step 3 stages panel-init-failed under the shared failed-judge-panel summary
+# outcome: the orchestrator maps panel-init-failed to SUMMARY_OUTCOME=failed-judge-panel
+# and the terminal-failure report requires the staged outcome to match it, so the
+# canonical staging in plan_review.py carries failed-judge-panel (restored after the
+# sh-to-py port regressed it to panel-init-failed). What Step 3 must NOT own is the
+# Step 2b.5 decompose-panel retry exhaustion, whose Split-path staging is uniquely
+# marked by the decompose-panel site/trigger.
+if grep -Fq 'decompose-panel' "$MODULE"; then
+  fail 'Step 3 must not handle Step 2b.5 decompose-panel retry exhaustion'
 fi
 if grep -Fq 'render-final-summary.sh' "$WRAPPER"; then
   fail 'design-step3-review.sh must not render final summary'
