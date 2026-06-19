@@ -91,8 +91,9 @@ for retired in $g6_terminal_retired_paths; do
   [ ! -e "$ROOT/skills/design/scripts/$retired" ] || fail "retired G6.2 script still exists: $retired"
   contains "$MIGRATED" "skills/design/scripts/$retired" "migrated-scripts.tsv missing $retired"
 done
-[ ! -e "$ROOT/scripts/debug-step5c-once.sh" ] || fail 'retired G6.2 script still exists: scripts/debug-step5c-once.sh'
-contains "$MIGRATED" 'scripts/debug-step5c-once.sh' 'migrated-scripts.tsv missing scripts/debug-step5c-once.sh'
+debug_step5c_once='debug-step5c-once.sh'
+[ ! -e "$ROOT/scripts/$debug_step5c_once" ] || fail "retired G6.2 script still exists: scripts/$debug_step5c_once"
+contains "$MIGRATED" "scripts/$debug_step5c_once" "migrated-scripts.tsv missing scripts/$debug_step5c_once"
 
 step2_verbs='step2a step2b-drafter step2b-postplan step2b5'
 step2_retired_paths='design-step2a.sh design-step2a.md design-step2b-drafter.sh design-step2b-drafter.md design-step2b-postplan.sh design-step2b-postplan.md design-step2b5.sh design-step2b5.md design-step-validator-autofix.sh design-step-validator-autofix.md design-step2b-prelude.sh design-step2b-prelude.md test-design-step2b-drafter.sh test-design-step2b-drafter.md test-design-step-validator-autofix.sh test-design-step-validator-autofix.md'
