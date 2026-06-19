@@ -251,12 +251,20 @@ def _ballot_blocks(text: str) -> dict[str, str]:
 
 def neutralize_reviewer_attribution(text: str, token: str = "anonymous") -> str:  # noqa: S107
     lines: list[str] = []
+    in_block = False
+    block_attribution_done = False
     for raw in text.splitlines(keepends=True):
         line = raw.removesuffix("\n")
         newline = "\n" if raw.endswith("\n") else ""
+        if BALLOT_HEADING_RE.match(line):
+            in_block = True
+            block_attribution_done = False
+            lines.append(raw)
+            continue
         match = REVIEWER_ATTRIBUTION_RE.match(line)
-        if match:
+        if in_block and match and not block_attribution_done:
             lines.append(f"{match.group('prefix')}{token}{match.group('trailing')}{newline}")
+            block_attribution_done = True
         else:
             lines.append(raw)
     return "".join(lines)

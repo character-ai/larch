@@ -1220,6 +1220,53 @@ def test_compose_attributed_ballot_uses_post_aggregate_findings_not_stale_ballot
     assert "FINDING_1" not in text
 
 
+def test_compose_attributed_ballot_ignores_stale_findings_oos_md(tmp_path: Path) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    _ = (design / "findings-in-scope.md").write_text(
+        "### FINDING_1: in scope\n- **Reviewer**: Codex\n- **Concern**: c\n",
+        encoding="utf-8",
+    )
+    _ = (design / "findings-oos.md").write_text(
+        "### OOS_1: [OUT_OF_SCOPE] stale\n- **Reviewer**: stale-reviewer\n- **Concern**: old\n",
+        encoding="utf-8",
+    )
+    current_oos = """### OOS_2: [OUT_OF_SCOPE] current
+- **Reviewer**: cursor-pragmatic
+- **Concern**: fresh oos
+"""
+    text = plan_review_round._compose_attributed_ballot(design, current_oos)  # pyright: ignore[reportPrivateUsage]
+    assert "OOS_2" in text
+    assert "cursor-pragmatic" in text
+    assert "OOS_1" not in text
+    assert "stale-reviewer" not in text
+
+
+def test_aggregation_ok_for_voting_accepts_ok_and_intentional_skips() -> None:
+    assert plan_review_round._aggregation_ok_for_voting({"REASON": "ok", "AGGREGATED": "true"})  # pyright: ignore[reportPrivateUsage]
+    assert plan_review_round._aggregation_ok_for_voting({"REASON": "insufficient-input", "AGGREGATED": "false"})  # pyright: ignore[reportPrivateUsage]
+    assert plan_review_round._aggregation_ok_for_voting({"REASON": "disabled", "AGGREGATED": "false"})  # pyright: ignore[reportPrivateUsage]
+    assert not plan_review_round._aggregation_ok_for_voting({"REASON": "validation-failed", "AGGREGATED": "false"})  # pyright: ignore[reportPrivateUsage]
+    assert not plan_review_round._aggregation_ok_for_voting({"REASON": "ok", "AGGREGATED": "false"})  # pyright: ignore[reportPrivateUsage]
+
+
+def test_aggregator_status_from_kv_records_failed_merge() -> None:
+    assert (
+        plan_review_round._aggregator_status_from_kv(  # pyright: ignore[reportPrivateUsage]
+            {"REASON": "validation-failed", "AGGREGATED": "false"},
+            returncode=0,
+        )
+        == "validation-failed"
+    )
+    assert (
+        plan_review_round._aggregator_status_from_kv(  # pyright: ignore[reportPrivateUsage]
+            {"REASON": "ok", "AGGREGATED": "true"},
+            returncode=0,
+        )
+        == "ok"
+    )
+
+
 def test_plan_review_ballot_neutralization_writes_sidecar_and_anonymous_ballot(tmp_path: Path) -> None:
     design = tmp_path / "design"
     design.mkdir()

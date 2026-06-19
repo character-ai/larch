@@ -417,6 +417,42 @@ def _normalize_oos_header_text(text: str, seq: int) -> str:
     return re.sub(r"^### (?:FINDING|OOS)_[0-9]+:", f"### OOS_{seq}:", text, count=1, flags=re.MULTILINE)
 
 
+def _ballot_is_neutralized(ballot_file: Path) -> bool:
+    try:
+        text = ballot_file.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    in_block = False
+    for line in text.splitlines():
+        if voting.BALLOT_HEADING_RE.match(line):
+            in_block = True
+            continue
+        if not in_block:
+            continue
+        match = voting.REVIEWER_ATTRIBUTION_RE.match(line)
+        if match:
+            value = match.group("value").replace("*", "").strip().lower()
+            return value == "anonymous"
+    return False
+
+
+def _resolve_proposer_map(
+    ballot_file: Path,
+    review_tmpdir: Path,
+    explicit_map: str,
+) -> tuple[str, bool]:
+    proposer_map_file = explicit_map or ""
+    proposer_sidecar_required = bool(proposer_map_file)
+    if not proposer_map_file:
+        default_map = review_tmpdir / "proposer-map.tsv"
+        if default_map.is_file():
+            proposer_map_file = str(default_map)
+            proposer_sidecar_required = True
+    if not proposer_sidecar_required and _ballot_is_neutralized(ballot_file):
+        proposer_sidecar_required = True
+    return proposer_map_file, proposer_sidecar_required
+
+
 def _proposer_for_item(item_id: str, block: Path, map_file: str, *, sidecar_required: bool) -> str:
     return voting.proposer_for_item(item_id, block, map_file, sidecar_required=sidecar_required)
 
@@ -448,8 +484,11 @@ def tally_code_votes(argv: list[str]) -> int:
         return _error("tally-code-votes: --manifest-file must name a file")
     if not str(args.round_num).isdigit() or int(args.round_num) <= 0:
         return _error("tally-code-votes: --round-num must be a positive integer")
-    proposer_map_file = str(args.proposer_map_file or "")
-    proposer_sidecar_required = bool(proposer_map_file)
+    proposer_map_file, proposer_sidecar_required = _resolve_proposer_map(
+        ballot_file,
+        review_tmpdir,
+        str(args.proposer_map_file or ""),
+    )
     review_tmpdir.mkdir(parents=True, exist_ok=True)
     three_slot = bool(args.voter_tools)
     if three_slot and (len(args.voter_files) != _THREE_SLOT_COUNT or len(args.voter_tools) != _THREE_SLOT_COUNT):

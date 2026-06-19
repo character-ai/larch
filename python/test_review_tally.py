@@ -1275,3 +1275,62 @@ def test_attributed_ballot_without_sidecar_keeps_legacy_reviewer_fallback(tmp_pa
     assert result.returncode == 0, result.stderr
     row = _tsv_rows(Path(rts.kv_get(result.stdout, "FINDINGS_CLASSIFICATION_TSV_FILE") or ""))["FINDING_1"]
     assert row["reviewer_slots"] == "Codex-Structure"
+
+
+def test_neutralized_tally_auto_binds_default_sidecar(tmp_path: Path) -> None:
+    attributed = """### FINDING_1: First in-scope finding
+- **Reviewer**: Codex-Structure
+- **Concern**: Codex and Cursor disagree; Claude agrees.
+- **Suggested revision**: Revision 1.
+"""
+    case = tmp_path / "auto-bind-sidecar"
+    case.mkdir()
+    ballot, map_file = _prepare_neutralized_ballot(case, attributed)
+    voter = case / "v1.txt"
+    _ = voter.write_text(
+        "FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n",
+        encoding="utf-8",
+    )
+    result = run_review(
+        "tally-code-votes",
+        "--ballot-file",
+        str(ballot),
+        "--review-tmpdir",
+        str(case),
+        "--round-num",
+        "1",
+        "--voter-files",
+        str(voter),
+        env={"IMPLEMENT_TMPDIR": ""},
+    )
+    assert result.returncode == 0, result.stderr
+    row = _tsv_rows(Path(rts.kv_get(result.stdout, "FINDINGS_CLASSIFICATION_TSV_FILE") or ""))["FINDING_1"]
+    assert row["reviewer_slots"] == "Codex-Structure"
+    assert map_file.is_file()
+
+
+def test_neutralized_tally_without_sidecar_fails_closed(tmp_path: Path) -> None:
+    attributed = """### FINDING_1: First
+- **Reviewer**: Codex-Structure
+- **Concern**: one.
+"""
+    case = tmp_path / "neutral-no-sidecar"
+    case.mkdir()
+    ballot = case / "ballot.md"
+    _ = ballot.write_text(voting.neutralize_reviewer_attribution(attributed), encoding="utf-8")
+    voter = case / "v1.txt"
+    _ = voter.write_text("FINDING_1: YES\n", encoding="utf-8")
+    result = run_review(
+        "tally-code-votes",
+        "--ballot-file",
+        str(ballot),
+        "--review-tmpdir",
+        str(case),
+        "--round-num",
+        "1",
+        "--voter-files",
+        str(voter),
+        env={"IMPLEMENT_TMPDIR": ""},
+    )
+    assert result.returncode != 0
+    assert "missing proposer map entry" in result.stderr

@@ -331,10 +331,26 @@ def _write_round_summary(
 def _compose_attributed_ballot(design: Path, oos_md: str) -> str:
     in_scope_path = design / "findings-in-scope.md"
     in_scope = in_scope_path.read_text(encoding="utf-8", errors="replace") if in_scope_path.is_file() else ""
-    oos_path = design / "findings-oos.md"
-    current_oos = oos_path.read_text(encoding="utf-8", errors="replace") if oos_path.is_file() else oos_md
-    parts = [part for part in (in_scope.strip(), current_oos.strip()) if part]
+    parts = [part for part in (in_scope.strip(), oos_md.strip()) if part]
     return "\n\n".join(parts) + ("\n" if parts else "")
+
+
+def _aggregation_ok_for_voting(agg_kv: dict[str, str]) -> bool:
+    reason = agg_kv.get("REASON", "")
+    if reason in {"insufficient-input", "disabled"}:
+        return True
+    return reason == "ok" and agg_kv.get("AGGREGATED", "false") == "true"
+
+
+def _aggregator_status_from_kv(agg_kv: dict[str, str], *, returncode: int) -> str:
+    if returncode != 0:
+        return "aggregator-failed"
+    reason = agg_kv.get("REASON", "")
+    if reason == "ok" and agg_kv.get("AGGREGATED", "false") == "true":
+        return "ok"
+    if reason in {"insufficient-input", "disabled"}:
+        return reason
+    return reason or "aggregator-failed"
 
 
 def _classify_round_loop_status(
@@ -480,6 +496,7 @@ def execute_round(
     in_scope, oos_md, ok_count, fail_count = _compose_findings_from_collector(design, collect_out, manifest)
     _ = (design / "findings-in-scope.pre-dedup.md").write_text(in_scope, encoding="utf-8")
     _ = (design / "findings-oos.pre-dedup.md").write_text(oos_md, encoding="utf-8")
+    _ = (design / "findings-oos.md").write_text(oos_md, encoding="utf-8")
     findings_path = design / "findings-in-scope.md"
     _ = findings_path.write_text(in_scope, encoding="utf-8")
 
@@ -506,10 +523,23 @@ def execute_round(
         ],
         env={"LARCH_QUIET_DISABLE": "1"},
     )
-    agg_status = "ok" if agg.returncode == 0 else "aggregator-failed"
+    agg_kv = _parse_kv(agg.stdout)
+    agg_status = _aggregator_status_from_kv(agg_kv, returncode=agg.returncode)
     values["AGGREGATOR_STATUS"] = agg_status
     ballot = design / "ballot.txt"
     proposer_map = design / "proposer-map.tsv"
+    if not _aggregation_ok_for_voting(agg_kv):
+        values.update(
+            {
+                "LOOP_STATUS": "panel-failed",
+                "TALLY_PLAN_REVIEW_STATUS": "panel-failed",
+                "DEGRADED_PANEL": "1",
+            }
+        )
+        _write_round_summary(design, round_num, loop_status="panel-failed", collect_ok=ok_count, collect_fail=fail_count, values=values)
+        for k, v in values.items():
+            _emit(k, v)
+        return 1, values
     try:
         ballot_text = _compose_attributed_ballot(design, oos_md)
         _ = ballot.write_text(ballot_text, encoding="utf-8")

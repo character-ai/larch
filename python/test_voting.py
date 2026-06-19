@@ -756,6 +756,20 @@ def test_neutralize_reviewer_attribution_preserves_body_and_labels() -> None:
     assert "cursor-testing-output.txt" not in neutral
 
 
+def test_neutralize_reviewer_attribution_preserves_quoted_reviewer_in_body() -> None:
+    ballot = """### FINDING_1: Example ballot line in body
+- **Reviewer**: Codex-Structure
+- **Concern**: Bodies may quote ballot examples.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From codex-generic-output.txt: Neutralize only the first reviewer attribution line inside each `FINDING_N` / `OOS_N` block, or use the proposer-map extraction to identify the exact attribution line to rewrite.
+"""
+    neutral = voting.neutralize_reviewer_attribution(ballot)
+    assert neutral.count("anonymous") == 1
+    assert "- **Reviewer**: anonymous" in neutral
+    assert "From codex-generic-output.txt:" in neutral
+    assert "Neutralize only the first reviewer attribution line" in neutral
+
+
 def test_proposer_map_from_ballot_finding_and_oos() -> None:
     proposer_map = voting.proposer_map_from_ballot(_ATTRIBUTED_BALLOT)
     assert set(proposer_map) == {"FINDING_1", "OOS_1"}
