@@ -425,8 +425,11 @@ def test_straggler_cutoff_drops_slow_slot_without_fallback(
     assert str(tmp_path / "fast-one.txt") in kvs["ALL_OUTPUT_FILES"]
     assert str(tmp_path / "slow.txt") not in kvs["ALL_OUTPUT_FILES"]
     assert Path(kvs["ALL_OUTPUT_FILES_PATH"]).read_text(encoding="utf-8").splitlines() == [str(tmp_path / "fast-one.txt")]
-    drop_file = Path(kvs["DROPPED_SLOTS_FILE"])
-    assert drop_file.read_text(encoding="utf-8").split("\t")[:3] == ["slow", "cursor", "straggler-dropped"]
+    if no_fallback:
+        drop_file = Path(kvs["DROPPED_SLOTS_FILE"])
+        assert drop_file.read_text(encoding="utf-8").split("\t")[:3] == ["slow", "cursor", "straggler-dropped"]
+    else:
+        assert "DROPPED_SLOTS_FILE" not in kvs
     assert not (tmp_path / "slow-phase2.txt").exists()
     assert not (tmp_path / "slow-phase3.txt").exists()
 

@@ -399,7 +399,7 @@ def test_panel_dispatch_passes_waterfall_supported_mode(tmp_path: Path) -> None:
     )
     assert proc.returncode == 0, proc.stderr + proc.stdout
     assert mode_out.read_text(encoding="utf-8") == "description"
-    assert "--straggler-cutoff" in log.read_text(encoding="utf-8")
+    assert "--skip-invalid-slots" in log.read_text(encoding="utf-8")
 
 
 def test_panel_dispatch_passes_skip_invalid_slots_to_waterfall(tmp_path: Path) -> None:
@@ -481,7 +481,7 @@ def test_panel_dispatch_surfaces_invalid_slot_degradation(tmp_path: Path) -> Non
 
     assert proc.returncode == 0, proc.stderr + proc.stdout
     assert "PANEL_PATHS_FILE=" in proc.stdout
-    assert "DEGRADED_PANEL_WARNING=**⚠ Degraded plan-review panel: 1 invalid slot row(s) dropped" in proc.stdout
+    assert "INVALID_SLOT_PANEL_WARNING=**⚠ Degraded plan-review panel: 1 invalid slot row(s) dropped" in proc.stdout
     assert "bad-slot" in proc.stdout
 
 

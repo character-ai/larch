@@ -258,7 +258,7 @@ def test_execute_round_propagates_degraded_warning_with_mixed_manifest(
             return subprocess.CompletedProcess(
                 argv,
                 0,
-                f"PANEL_PRUNED_EMPTY=false\nPANEL_PATHS_FILE={paths}\nDEGRADED_PANEL_WARNING=panel degraded\n",
+                f"PANEL_PRUNED_EMPTY=false\nPANEL_PATHS_FILE={paths}\nINVALID_SLOT_PANEL_WARNING=panel degraded\n",
                 "",
             )
         if argv[:2] == ["agent", "collect-results"]:
@@ -298,7 +298,7 @@ def test_execute_round_propagates_degraded_warning_with_mixed_manifest(
     )
 
     assert rc == 0
-    assert values["DEGRADED_PANEL_WARNING"] == "panel degraded"
+    assert values["INVALID_SLOT_PANEL_WARNING"] == "panel degraded"
 
 
 def test_parse_collector_records_keyvalue_anchored() -> None:

@@ -36,10 +36,12 @@ MERGE_KEYS = (
     "VOTING_TALLY_FILE",
     "PANEL_PRUNED_EMPTY",
     "DEGRADED_PANEL_WARNING",
+    "INVALID_SLOT_PANEL_WARNING",
     "ROUND_NUM",
     "PLAN_REVIEW_CONTINUE_REASON",
     "REASON",
 )
+_STEP3_ROUND_CARRY_KEYS = ("DEGRADED_PANEL_WARNING", "INVALID_SLOT_PANEL_WARNING")
 POSTPLAN_EMIT_KEYS = {
     "POSTPLAN_EMIT_STATUS",
     "EMIT_PLAN_STATUS",
@@ -95,6 +97,12 @@ def _read_kv_file(path: Path) -> dict[str, str]:
 
 def _strip_crlf(value: str) -> str:
     return value.replace("\r", "").replace("\n", "")
+
+
+def _step3_round_carry_values(*, degraded_exit: bool, degraded_values: dict[str, str]) -> dict[str, str]:
+    if degraded_exit:
+        return dict(degraded_values)
+    return {key: degraded_values[key] for key in _STEP3_ROUND_CARRY_KEYS if degraded_values.get(key)}
 
 
 def _write_atomic(path: Path, content: str) -> None:
@@ -410,7 +418,9 @@ def step3_loop_persist_envelope(
     )
     rows.extend((opt, vals[opt]) for opt in ("POSTPLAN_RC", "DEDUP_RC") if vals.get(opt))
     if vals.get("DEGRADED_PANEL_WARNING"):
-        rows.append(("DEGRADED_PANEL_WARNING", vals["DEGRADED_PANEL_WARNING"]))
+        rows.append(("DEGRADED_PANEL_WARNING", _strip_crlf(vals["DEGRADED_PANEL_WARNING"])))
+    if vals.get("INVALID_SLOT_PANEL_WARNING"):
+        rows.append(("INVALID_SLOT_PANEL_WARNING", _strip_crlf(vals["INVALID_SLOT_PANEL_WARNING"])))
     if safe_reason:
         rows.append(("PLAN_REVIEW_CONTINUE_REASON", safe_reason))
     if safe_scope:
@@ -446,7 +456,9 @@ def step3_loop_emit_envelope(tmpdir: Path, status: str, round_num: int, rounds_c
     _emit_kv("ACCEPTED_COUNT", values.get("ACCEPTED_COUNT", "0"))
     _emit_kv("DEGRADED_PANEL", values.get("DEGRADED_PANEL", "0"))
     if values.get("DEGRADED_PANEL_WARNING"):
-        _emit_kv("DEGRADED_PANEL_WARNING", values["DEGRADED_PANEL_WARNING"])
+        _emit_kv("DEGRADED_PANEL_WARNING", _strip_crlf(values["DEGRADED_PANEL_WARNING"]))
+    if values.get("INVALID_SLOT_PANEL_WARNING"):
+        _emit_kv("INVALID_SLOT_PANEL_WARNING", _strip_crlf(values["INVALID_SLOT_PANEL_WARNING"]))
     if scope_anchor and "\n" not in scope_anchor and "\r" not in scope_anchor:
         _emit_kv("SCOPE_ANCHOR_FILE", scope_anchor)
     _emit_kv("PLAN_REVIEW_CONTINUE_REASON", reason)
@@ -1303,6 +1315,7 @@ def run_step3_review(argv: Sequence[str]) -> int:
             "ACCEPTED_COUNT",
             "DEGRADED_PANEL",
             "DEGRADED_PANEL_WARNING",
+            "INVALID_SLOT_PANEL_WARNING",
             "REASON",
         ]):
             _emit_kv(key, value)
@@ -1354,6 +1367,9 @@ def run_step3_review(argv: Sequence[str]) -> int:
             if loop_status in {"complete", "zero-findings-degraded-panel"}:
                 accepted = _count_accepted(tmpdir) or int(values.get("ACCEPTED_COUNT", "0") or "0")
                 values["ACCEPTED_COUNT"] = str(accepted)
+                for key in _STEP3_ROUND_CARRY_KEYS:
+                    if values.get(key):
+                        degraded_values[key] = values[key]
                 if loop_status == "zero-findings-degraded-panel":
                     phase_driver_write_result_env(
                         tmpdir / ".step3-review-result.env",
@@ -1364,6 +1380,7 @@ def run_step3_review(argv: Sequence[str]) -> int:
                             ("ACCEPTED_COUNT", str(accepted)),
                             ("DEGRADED_PANEL", values.get("DEGRADED_PANEL", "0")),
                             ("DEGRADED_PANEL_WARNING", values.get("DEGRADED_PANEL_WARNING", "")),
+                            ("INVALID_SLOT_PANEL_WARNING", values.get("INVALID_SLOT_PANEL_WARNING", "")),
                             ("REASON", values.get("REASON", "")),
                         ],
                     )
@@ -1412,16 +1429,16 @@ def run_step3_review(argv: Sequence[str]) -> int:
                         sentinel.unlink()
                     _write_phase(tmpdir, round_num, "awaiting-continuation")
                     continue
-                step3_loop_emit_envelope(tmpdir, "postplan-operator-required", round_num, round_num, round_num, degraded_values if degraded_exit else {})
+                step3_loop_emit_envelope(tmpdir, "postplan-operator-required", round_num, round_num, round_num, _step3_round_carry_values(degraded_exit=degraded_exit, degraded_values=degraded_values))
                 return 0
             postapply_ready = tmpdir / f".gate-b-postapply-ready-{round_num}"
             if not postapply_ready.is_file():
-                values = degraded_values if degraded_exit else {}
+                values = _step3_round_carry_values(degraded_exit=degraded_exit, degraded_values=degraded_values)
                 dedup_rc = _run_dedup(tmpdir, round_num, values)
                 if dedup_rc != 0:
                     step3_loop_emit_envelope(tmpdir, "main-agent-apply-required", round_num, round_num, round_num, values)
                     return 0
-            values = degraded_values if degraded_exit else {}
+            values = _step3_round_carry_values(degraded_exit=degraded_exit, degraded_values=degraded_values)
             post_rc = _run_post_apply(tmpdir, round_num, values)
             if post_rc == 0:
                 continue
@@ -1463,13 +1480,14 @@ def run_step3_review(argv: Sequence[str]) -> int:
                     "ACCEPTED_COUNT",
                     "DEGRADED_PANEL",
                     "DEGRADED_PANEL_WARNING",
+                    "INVALID_SLOT_PANEL_WARNING",
                     "REASON",
                 ):
                     if degraded_values.get(key):
                         _emit_kv(key, degraded_values[key])
                 return 0
             complete_values = dict(degraded_values)
-            complete_values.update({k: v for k, v in cont.items() if k in {"PLAN_REVIEW_CONTINUE_REASON", "ACCEPTED_COUNT", "DEGRADED_PANEL"}})
+            complete_values.update({k: v for k, v in cont.items() if k in {"PLAN_REVIEW_CONTINUE_REASON", "ACCEPTED_COUNT", "DEGRADED_PANEL", "DEGRADED_PANEL_WARNING", "INVALID_SLOT_PANEL_WARNING"}})
             step3_loop_write_completed_step3(tmpdir)
             _write_atomic(
                 tmpdir / ".step3-review-cap.env",
