@@ -890,6 +890,7 @@ def _round_diff_base(round_dir: Path, *, since_committed: bool) -> str:
         post_head_file = round_dir / "post-coder-head.txt"
         if post_head_file.is_file() and post_head_file.stat().st_size:
             return _read_text(post_head_file).strip()
+        return ""
     pre_head_file = snap_dir / "pre-coder-head.txt"
     if pre_head_file.is_file() and pre_head_file.stat().st_size:
         return _read_text(pre_head_file).strip()
@@ -906,6 +907,13 @@ def _round_has_full_pre_coder_snapshot(round_dir: Path) -> bool:
 
 def _collect_round_stage_paths(round_dir: Path, *, since_committed: bool = False) -> list[str]:
     diff_base = _round_diff_base(round_dir, since_committed=since_committed)
+    if not diff_base:
+        return []
+    mode = _snapshot_mode(round_dir)
+    if mode not in {"full", "head_untracked"}:
+        return []
+    if mode == "full" and not _round_has_full_pre_coder_snapshot(round_dir):
+        return []
     snap_dir = pre_coder_snapshot_dir(round_dir)
     pre_head_file = snap_dir / "pre-coder-head.txt"
     snapshot_head = _read_text(pre_head_file).strip() if pre_head_file.is_file() and pre_head_file.stat().st_size else ""
@@ -914,28 +922,20 @@ def _collect_round_stage_paths(round_dir: Path, *, since_committed: bool = False
         snapshot_kw["snapshot_head"] = snapshot_head
     paths: list[str] = []
     seen: set[str] = set()
-    mode = _snapshot_mode(round_dir)
-    if mode in {"full", "head_untracked"} and diff_base:
-        tracked = (
-            _round_coder_delta_paths(round_dir, diff_base, **snapshot_kw)
-            if mode == "full"
-            else _round_attempt_tracked_delta_paths(round_dir, diff_base)
-        )
-        for path in tracked:
-            if path not in seen:
-                seen.add(path)
-                paths.append(path)
-    else:
-        for path in _capture_round_tracked_paths():
-            if path not in seen:
-                seen.add(path)
-                paths.append(path)
-    if mode == "full":
-        untracked = _round_coder_untracked_delta_paths(round_dir)
-    elif mode == "head_untracked":
-        untracked = _round_attempt_untracked_delta_paths(round_dir)
-    else:
-        untracked = _capture_round_untracked_paths()
+    tracked = (
+        _round_coder_delta_paths(round_dir, diff_base, **snapshot_kw)
+        if mode == "full"
+        else _round_attempt_tracked_delta_paths(round_dir, diff_base)
+    )
+    for path in tracked:
+        if path not in seen:
+            seen.add(path)
+            paths.append(path)
+    untracked = (
+        _round_coder_untracked_delta_paths(round_dir)
+        if mode == "full"
+        else _round_attempt_untracked_delta_paths(round_dir)
+    )
     for path in untracked:
         if path not in seen:
             seen.add(path)
@@ -1141,14 +1141,19 @@ def _lint_fix_delta_paths(
     pre_lint_head: str,
     unioned_delta_paths: tuple[str, ...],
 ) -> tuple[str, ...]:
-    paths: set[str] = {path for path in unioned_delta_paths if path}
+    reported_paths = {path for path in unioned_delta_paths if path}
+    if not reported_paths or not pre_lint_head:
+        return ()
     snap_dir = _lint_fix_snapshot_dir(round_dir)
     pre_tracked = snap_dir / "pre-lint-tracked-paths.txt"
     pre_tracked_set = {line for line in _read_text(pre_tracked).splitlines() if line}
-    for path in _git_output(["diff", "--name-only", pre_lint_head]).splitlines():
-        if not path:
-            continue
+    current_diff_paths = set(_tracked_paths_vs_ref(pre_lint_head))
+    current_untracked_paths = set(_capture_round_untracked_paths())
+    paths: set[str] = set()
+    for path in reported_paths:
         if path in pre_tracked_set and _path_matches_pre_lint_snapshot(round_dir, pre_lint_head, path):
+            continue
+        if path not in current_diff_paths and path not in current_untracked_paths:
             continue
         paths.add(path)
     return tuple(sorted(paths))
