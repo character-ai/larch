@@ -1,0 +1,151 @@
+Searching the repo for the plan and shell/Python contract surfaces you named.
+Comparing the G6.2 draft plan (#4675) against current shell contracts and test coverage.
+**Verdict:** The G6.2 draft plan on [#4675](https://github.com/character-ai/larch/issues/4675) (`[DESIGNING] sh-to-py G6.2: Terminal reporting and final-summary port`) names the right contracts, but several stdout/stderr splits and failure-report branches lack explicit Python parity tests before the shell harnesses are deleted.
+
+Plan source: issue #4675 draft (`## Approach` / `## Files to modify/create`), preserved in the issue body under “Drafted plan (Codex drafter; validated; NOT yet reviewed)”.
+
+---
+
+### FINDING_1: Failure-report decision matrix is not fully mapped to pytest
+
+- **Severity:** important  
+- **Plan section:** `### UPDATED: python/test_design_lifecycle.py` (terminal staging bullets only); `### UPDATED: Makefile` (retire `test-design-failure-report`)  
+- **Concern:** The plan retires `skills/design/scripts/test-design-failure-report.sh` but only vaguely says to update lifecycle pytest. That shell harness pins **12+ distinct `DESIGN_FAILURE_REPORT_DECISION` / `DESIGN_FAILURE_REPORT_REASON` branches** (missing state, outcome mismatch, escalation-success, operator-action skip, terminal-wins-over-escalation, environment hint + Run ID, invalid state, operator blocks escalation-only, five terminal outcome tokens, sensitive-corpus leak blocks). None of those are enumerated for port to `python/test_design_lifecycle.py` or a dedicated `test_design_failure_report.py`.  
+- **Evidence:** Shell contract at `skills/design/scripts/test-design-failure-report.sh` lines 27–216; compose branches at `skills/design/scripts/design-failure-report.sh` lines 181–209.
+
+---
+
+### FINDING_2: `REPORT_GATE_SIDECARS_FILE=` has no real pytest coverage today; plan assertion is aspirational
+
+- **Severity:** important  
+- **Plan section:** `### UPDATED: python/test_design_summary.py` — “Keep coverage for stdout sidecar handoff”  
+- **Concern:** Current `python/test_design_summary.py` **mocks out** `_run_design_failure_report_gate` and never asserts `REPORT_GATE_SIDECARS_FILE=` emission. The only sidecar handoff test lives in the shell harness `skills/design/scripts/test-design-step5c.sh` lines 81–84, 205–206. Deleting bash harnesses without adding an explicit pytest that seeds `design-failure-operator-action-chat.md` and asserts the KV line will drop coverage.  
+- **Evidence:**
+
+```266:279:python/design_summary.py
+def _emit_report_gate_sidecars_file(design_tmpdir: Path) -> None:
+    ...
+    print(f"REPORT_GATE_SIDECARS_FILE={handoff}")
+```
+
+```90:101:python/test_design_summary.py
+    def fake_run_design_failure_report_gate(...):
+        _ = (design_tmpdir, phase, outcome, repo, issue, run_id)
+    monkeypatch.setattr(design_summary, "_run_design_failure_report_gate", fake_run_design_failure_report_gate)
+```
+
+---
+
+### FINDING_3: In-process `step_final_summary_main` risks breaking the stdout/stderr/marker split
+
+- **Severity:** important  
+- **Plan section:** `### UPDATED: python/design_lifecycle.py` — `step_final_summary_main` (“call `design_summary.render_final_summary_main` in-process”, then emit markers + sidecars)  
+- **Concern:** Today `design-step-final-summary.sh` **captures** render stdout to a log and emits markers/sidecars separately on wrapper stdout:
+
+```113:145:skills/design/scripts/design-step-final-summary.sh
+  python3 ... design render-final-summary ... >"$DESIGN_TMPDIR/render-final-summary.stdout.log"
+...
+emit_final_summary_marked_from_disk
+emit_report_gate_sidecars_from_disk
+...
+: >"$DESIGN_TMPDIR/.completed/step-final-summary"
+```
+
+`render_final_summary_main` also writes the summary body to stdout and may print `REPORT_GATE_SIDECARS_FILE=` (`python/design_summary.py` lines 372–389). An in-process call without an explicit capture/suppress contract can duplicate the summary body, leak `REPORT_GATE` into the wrong stream, or break orchestrator marker extraction. The plan does not specify a capture layer equivalent to the bash redirect.  
+- **Same pattern on Step 5c success path:** `design-step5c.sh` lines 327–334 redirect render; markers on wrapper stdout.
+
+---
+
+### FINDING_4: `STAGED=false` preservation contract is under-specified in pytest
+
+- **Severity:** important  
+- **Plan section:** `### UPDATED: python/test_design_lifecycle.py` — “preserved existing state”  
+- **Concern:** Shell contract: on outcome/site/trigger mismatch, emit `STAGED=false`, `PRESERVED=true`, `TERMINAL_STATE_FILE=...`, **exit 0** (not exit 1):
+
+```97:101:skills/design/scripts/design-stage-terminal-state.sh
+        emit_kv STAGED false
+        emit_kv PRESERVED true
+        emit_kv TERMINAL_STATE_FILE "$STATE_FILE"
+        exit 0
+```
+
+Callers treat `STAGED=false` as a **warning**, not hard failure (`design-step5c.sh` lines 176–184; `python/design_lifecycle.py` lines 1687–1688). The plan lists preservation in pytest, but existing coverage only mocks `STAGED=true` (`python/test_design_lifecycle.py` line 491). Shell harness has the preservation case (`test-design-stage-terminal-state.sh` lines 48–51). No plan bullet covers **exit 0 + STAGED=false + append-failure with exit-code 0** parity for Step 5c and clarify paths.
+
+---
+
+### FINDING_5: Quiet-mode KV registration incomplete for failure-report stdout
+
+- **Severity:** important  
+- **Plan section:** `### UPDATED: python/cli.py` — add verbs to `_DESIGN_LIFECYCLE_STDOUT_KEYS`  
+- **Concern:** `design-failure-report.sh` emits orchestrator-parsed KVs (`DESIGN_FAILURE_REPORT_DECISION`, `DESIGN_FAILURE_REPORT_REASON`, `DESIGN_FAILURE_REPORT_ARTIFACT`) on the contract stream. The plan registers the verb but does not list these keys. Under quiet wrappers, unstated keys can be swallowed (plan’s own failure mode: “Missing `_MACHINE_STDOUT_KEYS` entries silently swallow KV stdout”). `STAGED` / `PRESERVED` / `TERMINAL_STATE_FILE` need the same explicit treatment for `design stage-terminal-state`.  
+- **Evidence:** Current registry at `python/cli.py` lines 470–503 has no `stage-terminal-state`, `failure-report`, or `step-final-summary`.
+
+---
+
+### FINDING_6: Final-summary marker edge cases not pinned in planned tests
+
+- **Severity:** moderate  
+- **Plan section:** `### UPDATED: python/test_design_lifecycle.py` — “final-summary marker emission”  
+- **Concern:** Shell marker helper skips empty files, uses whole-line markers, and preserves trailing newline before `LARCH_FINAL_SUMMARY_END` via `tail -c 1` (`design-step5c.sh` lines 125–133; `design-step-final-summary.sh` lines 120–128). Planned pytest mentions markers but not: empty-file no-op, marker-like text inside summary body (first balanced pair), or newline-before-END parity. Shell harness `test-design-step5c.sh` `assert_marked_summary_matches` (lines 168–189) covers balanced-pair + body match; plan does not say to port that helper into pytest before deleting the harness.
+
+---
+
+### FINDING_7: In-process failure gate must preserve log capture, not stdout interleaving
+
+- **Severity:** moderate  
+- **Plan section:** `### UPDATED: python/design_summary.py` — replace subprocess with `failure_report_main` in-process  
+- **Concern:** Today the gate subprocess stdout/stderr go to dedicated logs (`design-failure-report.stdout.log` / `.stderr.log`) at `python/design_summary.py` lines 227–248. Failure-report decision KVs must **not** interleave with final-summary body on the render stdout stream. The plan says “in-process call” but does not require a capture/redirect contract mirroring the subprocess boundary.  
+- **Related:** Gate is skipped when `phase != "post"` (`design_summary.py` line 218); plan should pin that in pytest.
+
+---
+
+### FINDING_8: Sentinel write ordering for final-summary wrapper
+
+- **Severity:** moderate  
+- **Plan section:** `### UPDATED: python/design_lifecycle.py` — “create `.completed/step-final-summary` after marked output is ready”  
+- **Concern:** Matches current bash (sentinel after markers, line 144–145). Good. But plan should also pin **`.bg-wait-active` with `STEP=design-step-final-summary`** before render (`design-step-final-summary.sh` lines 109–110) and pause-save `exec` semantics; these affect hook-bg-poll-guard / premature-notification recovery (#4450). Not listed in planned pytest.
+
+---
+
+### FINDING_9: `test-design-step5c.sh` STAGED=false branch absent from plan
+
+- **Severity:** moderate  
+- **Plan section:** `### UPDATED: skills/design/scripts/test-design-step5c.sh` — stub CLI stage-terminal-state only  
+- **Concern:** Step 5c publish-tail path appends a Warnings row when staging returns `STAGED=false` with **tool exit-code 0** (`design-step5c.sh` lines 176–184). Planned harness update does not add a case where the stage stub prints `STAGED=false` and asserts `execution-issues.md` gets the warning row. Deleting bash-only coverage without a pytest equivalent leaves a regression hole tied to #725A2C3E-class publish-preservation bugs.
+
+---
+
+### FINDING_10: Failure-report `handle_compose_outcome` operator-action branch must stay decision-exact
+
+- **Severity:** moderate  
+- **Plan section:** `### UPDATED: python/design_lifecycle.py` — failure reporting port bullets  
+- **Concern:** Prior review flagged that treating compose exit 0 without parsing `STALL_RECOVERY_REPORT_STATUS=skipped_operator_action` files incorrect terminal reports (`larch-logs/implement/B1935C06-5C82-402B-BC64-DB95673204FB/round-1/review-round-summary.md`). Shell already branches at `design-failure-report.sh` lines 196–200. Plan says “port … fallback chat, operator-action chat” but does not explicitly require pytest for `skipped_operator_action` → `DESIGN_FAILURE_REPORT_DECISION=operator-action-skip` vs `terminal-failure` conflation. Shell harness D9 (lines 144–155) is the pin.
+
+---
+
+## Shell contract → planned Python test matrix (gaps highlighted)
+
+| Shell contract | Current pin | Plan pytest equivalent | Gap? |
+|---|---|---|---|
+| `STAGED=true/false`, `PRESERVED=true`, exit 0 on preserve | `test-design-stage-terminal-state.sh` | `test_design_lifecycle.py` (listed) | **STAGED=false + caller warning paths missing** |
+| `DESIGN_FAILURE_REPORT_DECISION=*` (12+ branches) | `test-design-failure-report.sh` | lifecycle pytest (vague) | **Yes — no enumerated port** |
+| `LARCH_FINAL_SUMMARY_BEGIN/END` + body match | `test-design-step5c.sh` | lifecycle pytest (listed) | **Partial — no port of assert helper** |
+| `REPORT_GATE_SIDECARS_FILE=` when sidecars exist | `test-design-step5c.sh` | `test_design_summary.py` (listed) | **Yes — currently mocked away** |
+| Render stdout captured; markers on wrapper stdout | `design-step-final-summary.sh` | `step_final_summary_main` in-process | **Yes — capture contract unspecified** |
+| `.completed/step-final-summary` sentinel | bash only | lifecycle pytest (listed) | OK if ordering test added |
+| In-process gate logs, not mixed stdout | `design_summary.py` subprocess | `failure_report_main` in-process | **Capture contract unspecified** |
+
+---
+
+## Recommendations (plan edits only; no implementation)
+
+1. Add a **`### NEW: python/test_design_failure_report.py`** (or an explicit subsection) that maps **each** `test-design-failure-report.sh` case to a named pytest (decision, reason, artifact paths).  
+2. In `step_final_summary_main` / `failure_report_main` design notes, require a **`_capture_contract_stdout` helper** (or `io.StringIO` + log files) mirroring bash `>render-final-summary.stdout.log` and `design-failure-report.*.log`.  
+3. Extend `python/test_design_summary.py` with a **non-mocked** test: seed sidecar files → assert `REPORT_GATE_SIDECARS_FILE=` and no summary duplication when called from wrapper context.  
+4. Register **all emitted KV keys** for the three new verbs in `_DESIGN_LIFECYCLE_STDOUT_KEYS` / `_MACHINE_STDOUT_KEYS` (document the key list in the plan).  
+5. Add explicit pytest for **`STAGED=false` + exit 0** and Step 5c/clarify append-failure with `--exit-code 0`.  
+6. Do **not** delete `test-design-failure-report.sh` / `test-design-stage-terminal-state.sh` until the matrix above is green in pytest (plan acceptance criterion).
+
+---
+
+**Note:** This plan is still **unreviewed** per issue #4675 status; the live code already routes through `python/cli.py design render-final-summary` while the three G6.2 bodies remain bash. The risks above are plan completeness gaps, not implementation defects.

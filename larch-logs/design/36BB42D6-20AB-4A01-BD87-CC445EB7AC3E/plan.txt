@@ -1,0 +1,348 @@
+## Approach
+
+Port only the three G6.2 helpers:
+
+- `design-stage-terminal-state.sh`
+- `design-failure-report.sh`
+- `design-step-final-summary.sh`
+
+Use full in-process Python ports. Do not add thin wrappers or shims.
+
+Preserve existing contracts:
+
+- `LARCH_FINAL_SUMMARY_BEGIN`
+- `LARCH_FINAL_SUMMARY_END`
+- `REPORT_GATE_SIDECARS_FILE=`
+- `design-failure-terminal-state.env`
+- terminal and escalation sentinels
+- fallback chat artifacts
+- existing run-log tool labels unless tests prove they are private
+
+Cut Python callers to imports and direct function calls. Use launcher mappings only for prompt-side `.sh` basenames that must remain in `skills/design/SKILL.md`.
+
+## Files to modify/create
+
+### UPDATED: python/design_lifecycle.py
+
+- Add `stage_terminal_state_main(argv)`.
+- Add `failure_report_main(argv)`.
+- Add `step_final_summary_main(argv)`.
+- Port `design-stage-terminal-state.sh` behavior:
+  - validate `--design-tmpdir` before quiet/log behavior or writes
+  - canonicalize `DESIGN_TMPDIR`
+  - validate generic tokens in-process through `python/stall_recovery.py`
+  - validate `--exit-code` as integer or `unknown`
+  - validate `--failure-detail-log` is under `DESIGN_TMPDIR`, regular, readable, and not a symlink
+  - reject unsafe `--evidence-ref`
+  - preserve `STAGED=false`, `PRESERVED=true`, and `TERMINAL_STATE_FILE=...`
+  - write candidate terminal state and replace atomically
+  - validate the candidate terminal state before replacement
+- Port `design-failure-report.sh` behavior:
+  - keep cancellation and operator-action skip paths
+  - keep terminal-failure allowlist
+  - keep escalation-success allowlist for `approved` and `approved-partition`
+  - keep sentinel precedence
+  - keep fallback chat generation
+  - keep issue-input versus chat-print surface selection
+  - keep `scripts/file-failure-report-cross-repo.sh` as the external filing helper
+  - call stall-recovery functions in-process where practical
+  - keep existing stdout KV rows
+- Port `design-step-final-summary.sh` behavior:
+  - parse the same wrapper args
+  - source session env when supplied
+  - require `CLAUDE_PLUGIN_ROOT`
+  - validate `DESIGN_TMPDIR`
+  - handle `.pause-requested` through `design_pause.pause_save_main`
+  - write `.bg-wait-active` with `STEP=design-step-final-summary`
+  - call `design_summary.render_final_summary_main` in-process
+  - emit marked final summary from `${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}`
+  - add the newline before `LARCH_FINAL_SUMMARY_END` when needed
+  - emit report-gate sidecar handoff
+  - create `.completed/step-final-summary` only after output and sidecar handoff are ready
+- Replace Step 0b clarify hard-halt subprocess staging with the new in-process terminal staging helper.
+- Keep stdout and stderr log file names for staging call sites.
+
+### UPDATED: python/cli.py
+
+- Register:
+  - `("design", "stage-terminal-state")`
+  - `("design", "failure-report")`
+  - `("design", "step-final-summary")`
+- Add all three to `_DESIGN_LIFECYCLE_STDOUT_KEYS`.
+
+### UPDATED: python/design_summary.py
+
+- Replace `_run_design_failure_report_gate` shell execution with an in-process call to `design_lifecycle.failure_report_main`.
+- Capture the gate stdout and stderr into:
+  - `design-failure-report.stdout.log`
+  - `design-failure-report.stderr.log`
+- Keep append-failure behavior when the gate returns non-zero.
+- Keep `REPORT_GATE_SIDECARS_FILE=` behavior unchanged.
+
+### UPDATED: python/session_env.py
+
+- Add launcher mappings for prompt-side compatibility:
+  - `design-stage-terminal-state.sh` to `python3 "$PLUGIN_ROOT/python/cli.py" design stage-terminal-state ...`
+  - `design-failure-report.sh` to `python3 "$PLUGIN_ROOT/python/cli.py" design failure-report ...`
+  - `design-step-final-summary.sh` to `python3 "$PLUGIN_ROOT/python/cli.py" design step-final-summary ...`
+- Keep `.sh` basename support only for these launcher mappings and other still-live wrappers.
+- Do not add a generic fallback for deleted helpers.
+
+### UPDATED: python/plan_review.py
+
+- Replace `design-stage-terminal-state.sh` subprocess calls with in-process staging.
+- Preserve:
+  - sentinel behavior
+  - stdout and stderr log paths
+  - warning KV behavior
+  - `source-script` values
+  - outcome tokens
+
+### UPDATED: python/clarify.py
+
+- Replace `_stage_failed_clarify` shell execution with in-process staging.
+- Preserve:
+  - `design-clarify-stage.stdout.log`
+  - `design-clarify-stage.stderr.log`
+  - failure append behavior
+  - historical `design-stage-terminal-state.sh` tool label
+
+### UPDATED: skills/design/scripts/design-step5c.sh
+
+- Change only the failed publish-tail staging call.
+- Invoke `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design stage-terminal-state ...`.
+- Keep existing stdout and stderr redirects.
+- Keep historical run-log tool labels.
+
+### UPDATED: skills/design/SKILL.md
+
+- Remove retired helper, sibling doc, and shell harness entries from maintained-file lists.
+- Update prose for the ported helpers to reference the Python CLI verbs.
+- Keep the prompt-side final summary fence using `design-step-final-summary.sh` through the launcher mapping.
+- Update Split-path and failure-report prose so deleted absolute helper paths are not required.
+- Preserve marker extraction instructions.
+
+### UPDATED: skills/design/references/decompose-panel.md
+
+- Replace the absolute `design-stage-terminal-state.sh` invocation with the direct Python CLI verb or launcher-compatible form.
+- Keep the same arguments, capture behavior, retry exhaustion behavior, and fallback path.
+
+### UPDATED: scripts/test-design-structure.sh
+
+- Replace assertions that require the deleted shell helpers.
+- Assert the new CLI registry rows.
+- Assert launcher mappings for the three `.sh` basenames.
+- Assert migrated-script rows for the deleted helper, doc, and harness paths.
+
+### UPDATED: python/test_design_cli_ports.py
+
+- Add registry coverage for the three new verbs.
+- Add machine-stdout coverage for the three new verbs.
+
+### UPDATED: python/test_design_lifecycle.py
+
+- Add terminal staging coverage for:
+  - valid staging
+  - token rejection
+  - preserved existing state mismatch
+  - unsafe existing terminal-state file
+  - unsafe `--failure-detail-log`
+  - `--exit-code` validation
+  - unsafe `--evidence-ref`
+- Add failure-report coverage for:
+  - missing terminal state fallback
+  - invalid terminal state fallback
+  - cancellation operator-action skip
+  - terminal report sentinel
+  - escalation-success sentinel
+- Add final-summary coverage for:
+  - marker emission
+  - newline before end marker
+  - sidecar handoff
+  - pause handling
+  - `.bg-wait-active`
+  - `.completed/step-final-summary`
+- Update Step 0b hard-halt coverage to assert in-process staging.
+
+### UPDATED: python/test_design_summary.py
+
+- Add coverage that `render_final_summary_main` calls the failure-report gate in-process.
+- Keep coverage for stdout sidecar handoff.
+- Assert failure-report stdout and stderr logs are still written.
+
+### UPDATED: python/test_clarify.py
+
+- Replace assertions that expect a command ending in `design-stage-terminal-state.sh`.
+- Assert staged artifacts, logs, and append-failure behavior instead.
+
+### UPDATED: python/test_checks.py
+
+- Update relevant-check expectations after shell harness deletion.
+- Remove expectations that `test-design-stage-terminal-state` and `test-design-failure-report` remain shell harnesses.
+- Keep focused pytest targets for changed Python surfaces.
+
+### UPDATED: python/test_session_env.py
+
+- Add launcher-text coverage for the three `.sh` basename mappings.
+- Add a smoke case for `design-step-final-summary.sh` mapping when feasible without network.
+
+### UPDATED: skills/design/scripts/test-design-step5c.sh
+
+- Replace the symlinked staging shell helper stub.
+- Stub or assert the new `python/cli.py design stage-terminal-state` command shape.
+
+### UPDATED: skills/design/scripts/test-design-step3-review.sh
+
+- Replace `STAGE_HELPER` shell-helper setup.
+- Exercise staging through the new Python CLI verb.
+
+### UPDATED: Makefile
+
+- Retarget `test-design-stage-terminal-state` to focused pytest coverage.
+- Retarget `test-design-failure-report` to focused pytest coverage.
+- Remove shell harness assumptions from `test-harnesses-4` and `test-harnesses-11`.
+- Keep targets only if the repo convention prefers stable target names for migrated harnesses.
+
+### UPDATED: python/checks.py
+
+- Remove direct rows for deleted shell helper and harness paths.
+- Map affected Python files and tests to focused pytest or `py-test`.
+- Keep relevant-check coverage for:
+  - `python/design_lifecycle.py`
+  - `python/design_summary.py`
+  - `python/plan_review.py`
+  - `python/clarify.py`
+  - `python/session_env.py`
+  - `skills/design/SKILL.md`
+  - `skills/design/references/decompose-panel.md`
+
+### UPDATED: docs/linting.md
+
+- Replace shell harness descriptions for `test-design-stage-terminal-state` and `test-design-failure-report` with Python pytest coverage.
+- Fix stale shard references.
+
+### UPDATED: SECURITY.md
+
+- Update the `/design --design-tmpdir allowlist` paragraph.
+- State that the ported Python entrypoints validate `DESIGN_TMPDIR` before quiet/log routing or artifact writes.
+- Remove language that implies `design-stage-terminal-state.sh` and `design-failure-report.sh` still exist as quiet wrappers.
+
+### UPDATED: python/migrated-scripts.tsv
+
+- Append rows for:
+  - `skills/design/scripts/design-stage-terminal-state.sh`
+  - `skills/design/scripts/design-stage-terminal-state.md`
+  - `skills/design/scripts/test-design-stage-terminal-state.sh`
+  - `skills/design/scripts/test-design-stage-terminal-state.md`
+  - `skills/design/scripts/design-failure-report.sh`
+  - `skills/design/scripts/design-failure-report.md`
+  - `skills/design/scripts/test-design-failure-report.sh`
+  - `skills/design/scripts/test-design-failure-report.md`
+  - `skills/design/scripts/design-step-final-summary.sh`
+  - `skills/design/scripts/design-step-final-summary.md`
+  - `skills/design/scripts/_dbg-stage.sh`
+  - `skills/design/scripts/_debug-step5c.sh`
+  - `scripts/debug-step5c-once.sh`
+- Use the existing issue convention for G6 migrations.
+
+### UPDATED: skills/design/scripts/design-stage-terminal-state.sh
+
+- Delete this file after all callers move.
+
+### UPDATED: skills/design/scripts/design-stage-terminal-state.md
+
+- Delete this sibling doc.
+
+### UPDATED: skills/design/scripts/test-design-stage-terminal-state.sh
+
+- Delete this shell harness after Python tests cover the contract.
+
+### UPDATED: skills/design/scripts/test-design-stage-terminal-state.md
+
+- Delete this sibling doc.
+
+### UPDATED: skills/design/scripts/design-failure-report.sh
+
+- Delete this file after all callers move.
+
+### UPDATED: skills/design/scripts/design-failure-report.md
+
+- Delete this sibling doc.
+
+### UPDATED: skills/design/scripts/test-design-failure-report.sh
+
+- Delete this shell harness after Python tests cover the contract.
+
+### UPDATED: skills/design/scripts/test-design-failure-report.md
+
+- Delete this sibling doc.
+
+### UPDATED: skills/design/scripts/design-step-final-summary.sh
+
+- Delete this file after the launcher mapping and Python verb work.
+
+### UPDATED: skills/design/scripts/design-step-final-summary.md
+
+- Delete this sibling doc.
+
+### UPDATED: skills/design/scripts/_dbg-stage.sh
+
+- Delete this debug scaffold.
+
+### UPDATED: skills/design/scripts/_debug-step5c.sh
+
+- Delete this debug scaffold.
+
+### UPDATED: scripts/debug-step5c-once.sh
+
+- Delete this debug scaffold.
+
+## Edge cases
+
+- Existing terminal state with a different outcome, site, or trigger must preserve the old state and emit `STAGED=false`.
+- Existing terminal state that is a symlink or non-regular file must fail.
+- `--failure-detail-log` must stay under `DESIGN_TMPDIR`.
+- `--failure-detail-log` must be regular, readable, and not a symlink.
+- `--evidence-ref` must reject unsafe tokens, absolute paths, URLs, spaces, backticks, and traversal.
+- Missing terminal state for terminal-failure outcomes must produce fallback chat.
+- Cancellation outcomes must produce operator-action skip artifacts.
+- Final-summary output must preserve marker shape and newline behavior.
+- `.completed/step-final-summary` must be written after marked output and sidecar handoff.
+- The hook-bg-poll-guard step name `design-step-final-summary` must remain unchanged.
+
+## Failure modes
+
+- In-process ports may leak helper stdout. Capture helper output where the shell version wrote logs or env files.
+- A partial caller cutover may leave deleted helper paths dangling in prompt or tests.
+- Calling `cli.py` from Python callers may violate the no-shell-out route. Use direct imports for Python-to-Python calls.
+- Changing historical tool labels may break run-log audits. Keep labels stable unless tests require a change.
+- Removing shell files before adding launcher mappings may break prompt-side final-summary fences.
+
+## Testing strategy
+
+Run focused tests first:
+
+- `python3 -m pytest python/test_design_cli_ports.py`
+- `python3 -m pytest python/test_design_lifecycle.py`
+- `python3 -m pytest python/test_design_summary.py`
+- `python3 -m pytest python/test_clarify.py`
+- `python3 -m pytest python/test_session_env.py`
+- `python3 -m pytest python/test_checks.py`
+
+Run affected harness targets:
+
+- `make test-design-step5c`
+- `make test-design-step3-review`
+- `make test-design-structure`
+- `make test-hook-bg-poll-guard`
+
+Run required repo checks:
+
+- `make lint`
+- `make py-lint`
+- `make py-test`
+
+diff_added: 850
+diff_deleted: 1212
+mechanical_churn: false
+diff_lines: 2062

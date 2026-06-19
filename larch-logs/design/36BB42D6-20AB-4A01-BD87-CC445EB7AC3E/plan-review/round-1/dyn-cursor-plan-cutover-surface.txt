@@ -1,0 +1,41 @@
+Searching the repo for the deletion plan and the three helpers to audit callers and references.
+The three helpers are in `lib-quiet.sh`. Searching for the plan and auditing all references.
+**Plan reviewed:** `larch-logs/design/0CCC4140-F308-4574-93AC-E3EAF4151F83/plan.txt` (Stage 2: delete `larch_quiet_write_breadcrumb_record`, `emit_breadcrumb`, `emit_breadcrumb_stderr` from `scripts/lib-quiet.sh`).
+
+**Current tree:** No live `emit_breadcrumb*` shell callers remain; helpers are already gone from `scripts/lib-quiet.sh`. Several plan targets (`scripts/lib-larch-log.sh`, `scripts/test-ship-pr.sh`, `scripts/breadcrumb-monitor.sh`, sibling `*.md` contracts) no longer exist because later work moved coverage to Python/pytest.
+
+### In-Scope Findings
+
+- **completeness** Plan `### UPDATED: scripts/test-lib-quiet.sh` (lines 18–23) vs `scripts/test-lib-quiet.sh:135–143` — The plan deletes `emit_breadcrumb_stderr` cases but does not require a replacement `larch_errf` formatting case (no implicit newline, multi-line). That gap was flagged in implement review and is only fixed in the tree via case **10b**, not in the plan text. **Suggested fix:** Add one bullet under `### UPDATED: scripts/test-lib-quiet.sh`: pin `larch_errf` stderr/newline behavior (mirror current `10b`).
+
+- **completeness** Plan `Testing strategy` (lines 187–194) vs Makefile — The plan still names bash harnesses (`scripts/test-ship-pr.sh`, `skills/implement/scripts/test-implement-bootstrap.sh`, `scripts/test-apply-bump.sh`, `scripts/test-larch-log.sh`, `scripts/test-design-log-publish.sh`) that are now pytest-backed (`python/test_ship.py`, `python/test_bootstrap.py`, `python/test_run_logs.py`, `python/test_design_log_publish_flow.py`; see `Makefile:461–462`, `727–731`, `912–913`). **Suggested fix:** Add a short `### UPDATED: Makefile` note: retarget breadcrumb assertions in those pytest modules, not deleted bash harness paths.
+
+- **completeness** Plan `### UPDATED: scripts/lib-larch-log.sh` / `scripts/lib-larch-log.md` / `scripts/larch-log.md` (lines 28–42) vs `python/run_logs.py:2040–2063` — Breadcrumb publish now lives in `publish_breadcrumbs_main()` (quiet-log-only), not bash `larch_log_publish_breadcrumbs_shared`. The plan’s ndjson-loop deletion is correct in intent but points at retired bash surfaces. **Suggested fix:** Replace those three `UPDATED` blocks with `### UPDATED: python/run_logs.py` + `python/test_run_logs.py` (quiet-log staging, symlink/hardlink guards).
+
+- **completeness** Plan `Testing strategy` (line 190) vs repo — `bash scripts/test-breadcrumb-monitor.sh` is listed, but `scripts/breadcrumb-monitor.sh` / `scripts/breadcrumb-monitor.md` are gone and `.gitleaks.toml:22–23` still allowlists the deleted harness. **Suggested fix:** Either drop the monitor test from Stage 2 (Piece 3 owns monitor removal) or add `### UPDATED: .gitleaks.toml` to remove `test-breadcrumb-monitor` allowlist rows when the harness is deleted.
+
+- **completeness** Plan `Approach` final grep (line 196) vs `skills/implement/scripts/test-implement-review-token-propagation.sh:14–15` and `scripts/test-rebase-checkpoint-probe.sh:6–7` — The grep gate only covers `emit_breadcrumb|larch_quiet_write_breadcrumb_record`, not obsolete env hygiene (`LARCH_QUIET_BREADCRUMBS`, `LARCH_QUIET_BREADCRUMB_FD`) left in harness `unset` blocks and comments. **Suggested fix:** Add two one-line `### UPDATED:` entries to drop dead env unsets/comments, or extend the close checklist grep.
+
+- **completeness** Plan script migration list (lines 50–125) vs sibling docs — Several `.sh` migrations lack matching `.md` rows (e.g. `.claude/skills/bump-version/scripts/apply-bump.md`, `skills/review/scripts/dispatch-panel.md`, `skills/implement/scripts/implement-bootstrap.md` were called out in implement review). Plan only lists some sibling docs (`ship-pr.md`, `ci-wait.md`, etc.), many of which no longer exist. **Suggested fix:** Add a single rule under `Approach`: “every migrated `*.sh` with a sibling contract `*.md` gets a matching doc trim,” instead of enumerating only a subset.
+
+- **completeness** Plan harness coverage (lines 127–152) vs `scripts/test-phantom-probe-with-warn.sh:158–177` and `scripts/test-rebase-checkpoint-probe.sh:106,511–534` — Both harnesses assert breadcrumb text via `2>&1` merged capture (compatible with `larch_err`), but neither is named in the plan. **Suggested fix:** Add one line under `Testing strategy`: verify `test-phantom-probe-with-warn` and `test-rebase-checkpoint-probe` breadcrumb-count cases still pass after `phantom-probe-with-warn.sh` / `rebase-checkpoint-probe.sh` migration (no stdout-only assumption).
+
+- **risk-integration** Plan `Edge cases` / `Failure modes` (lines 167–183) vs post-migration breadcrumb durability — The plan removes ndjson staging and routes former `emit_breadcrumb` traffic to `larch_err` (FD4), which does not write `larch-quiet-*.log` lines that `publish_breadcrumbs_main` stages (`python/run_logs.py:2054–2056`). **Suggested fix:** State explicitly in `Approach` that Stage 2 accepts loss of committed `breadcrumbs/quiet.log` content for progress migrated to `larch_err` until Piece 3 removes monitor expectations entirely (already implied in FINDING_7; make it an explicit edge-case bullet).
+
+- **completeness** Plan `### UPDATED: SECURITY.md` / `### UPDATED: docs/run-logs.md` (lines 44–48) vs `docs/linting.md:199–200` — `docs/linting.md` still describes “breadcrumb count” harness contracts for rebase/phantom probes; not listed for post-migration stderr routing. **Suggested fix:** Add `### UPDATED: docs/linting.md` (one sentence: progress diagnostics are stderr/`larch_err`, not `emit_breadcrumb` stdout).
+
+### Out-of-Scope Observations
+
+- **Runtime callers:** Grep across `scripts/`, `skills/`, `.claude/`, and `docs/` shows **zero** remaining `emit_breadcrumb` / `emit_breadcrumb_stderr` / `larch_quiet_write_breadcrumb_record` references outside `larch-logs/`. No missed shell runtime callers in the current tree.
+
+- **Launcher mappings / `checks run-relevant`:** No prompt-fence or `python/cli.py checks run-relevant` rows reference the deleted helpers.
+
+- **Harness shards:** `make test-lib-quiet` remains on `test-harnesses-7` (`Makefile:126`); `test-ci-wait` on `test-harnesses-16` (`Makefile:702–703`). Shard assignments include `test_ship.py::test_quiet_init_routes_contract_and_breadcrumb_fds` (`python/shard-assignments.json:764`) for the Python ship path, not the deleted bash helpers.
+
+- **Piece 3 deferrals:** Plan correctly defers `breadcrumb-monitor.sh`, `lint-foreground-markers.sh` Family-B, `BASH_AUTHORING.md` §4, and `AGENTS.md` emit API prose (`Approach` line 165). Current `AGENTS.md:43` already lists only `emit`/`emit_kv`; `scripts/lib-quiet.md` has no `emit_breadcrumb` API section.
+
+- **Python breadcrumb surface:** `python/logging_util.py::BreadcrumbWriter` is a separate Python progress channel; it is not a caller of the three deleted bash helpers and is outside this plan’s deletion scope.
+
+- **Debug scaffolds:** `_debug-step5c.sh` and similar design debug scripts symlink `lib-quiet.sh` only; no `emit_breadcrumb` usage.
+
+**Bottom line:** The revised plan (post round-1) covers the main callsite census, `test-lib-quiet` case deletions, `test-ci-wait` stderr retarget, and `ci-wait.sh` no-newline fidelity (FINDING_9). Minimum additions before implementation: pytest/Makefile retarget rows, `python/run_logs.py` instead of `lib-larch-log.sh`, harness env-hygiene paths, `.gitleaks.toml` cleanup, explicit `larch_errf` test pin, and `docs/linting.md`. No additional shell runtime callers need listing in the current tree.

@@ -1,0 +1,2 @@
+Reading the ballot and verifying findings against the codebase.
+The ballot at `<TMPDIR>/ballot.txt` is still empty (0 bytes), so there are no `FINDING_N` or `OOS_N` rows to vote on. Per the output contract, that means no vote lines.

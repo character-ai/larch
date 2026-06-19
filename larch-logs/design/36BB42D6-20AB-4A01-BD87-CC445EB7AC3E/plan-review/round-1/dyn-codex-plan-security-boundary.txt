@@ -1,0 +1,24 @@
+Found **3 plan issues**. I did not find a new **shell injection** path.
+
+- **[important] Symlink-safe writes are underspecified.**
+  - **Plan:** `<TMPDIR>/plan.txt:30-39`, `56-61`, `300-310`
+  - **Files:** `skills/design/scripts/design-stage-terminal-state.sh:105-125`, `skills/design/scripts/design-step-final-summary.sh:85-96`, `120-145`, `python/design_summary.py:266-279`
+  - **Issue:** The plan validates `DESIGN_TMPDIR`, but it does not require symlink-safe leaf writes for terminal-state candidates, `.bg-wait-active`, sidecar handoff, or completion markers.
+  - **Risk:** A planted symlink under an otherwise valid `DESIGN_TMPDIR` can turn a ported `write_text`, `touch`, or redirect-equivalent into an arbitrary same-UID overwrite.
+  - **Fix:** Require no-follow, exclusive temp creation, target symlink refusal, same-directory atomic replace, and tests for symlinked candidate, final state, sidecar handoff, and marker paths.
+
+- **[important] `--failure-detail-log` validation is weaker than the report boundary.**
+  - **Plan:** `<TMPDIR>/plan.txt:31-36`, `144-151`, `304-305`
+  - **Files:** `SECURITY.md:74-80`, `python/stall_recovery.py:207-228`, `235-253`, `1231-1254`, `1625-1632`
+  - **Issue:** The plan requires under-`DESIGN_TMPDIR`, regular, readable, and non-symlink. It omits **absolute path**, **physical canonical containment**, and the **64 KiB cap** required by the stall-recovery evidence boundary.
+  - **Risk:** Staging can accept a log that later classification rejects or ignores. That can create stale or missing evidence in terminal reports.
+  - **Fix:** Reuse `stall_recovery.validate_failure_detail_log` semantics for the design staging path. Store the canonical absolute path. Add oversize, relative, symlink, and canonical-outside tests.
+
+- **[medium] `FINAL_SUMMARY_PATH` remains an unconstrained read surface.**
+  - **Plan:** `<TMPDIR>/plan.txt:50-61`, `158-164`, `307-310`
+  - **Files:** `skills/design/scripts/design-step-final-summary.sh:120-128`
+  - **Issue:** The plan preserves `${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}` without requiring containment under `DESIGN_TMPDIR`.
+  - **Risk:** A hostile or stale environment value can make the final-summary port emit an arbitrary readable file into chat.
+  - **Fix:** Ignore `FINAL_SUMMARY_PATH`, or require absolute canonical containment under `DESIGN_TMPDIR`, regular file, non-symlink, and a size cap.
+
+**Verified:** The report filing helper path does not show a new shell-injection route in the plan. The existing helper validates repo shape and uses argv-style `gh` calls. See `scripts/file-failure-report-cross-repo.sh:24-35`, `190-204`, `313-326`.

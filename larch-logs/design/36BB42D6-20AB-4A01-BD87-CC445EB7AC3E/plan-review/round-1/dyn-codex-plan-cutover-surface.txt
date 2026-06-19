@@ -1,0 +1,11 @@
+### In-Scope Findings
+
+1. **Important** `risk-integration` — **Plan `plan.txt:230-298` / `agent-lint.toml:398-400`**: The plan deletes `scripts/debug-step5c-once.sh`, but it does not add `agent-lint.toml`. That file still has a dead-script exemption for the debug helper. Add a minimal `### UPDATED: agent-lint.toml` section to remove that exemption and comment.
+
+2. **Important** `correctness` — **Plan `plan.txt:117-123,288-298` / `skills/design/SKILL.md:165,303`**: The plan deletes `_dbg-stage.sh` and `_debug-step5c.sh`, but the SKILL.md plan section only calls out maintained helper/doc/harness entries and ported-helper prose. SKILL.md has two debug-scaffold references outside that narrow wording. Add explicit bullets to remove the `_dbg-stage.sh` inventory entry and the `_debug-step5c.sh` “Debug harness” prose.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	plan.txt:230-298; agent-lint.toml:398-400	Plan omits agent-lint.toml while deleting scripts/debug-step5c-once.sh.	The deleted debug helper remains in the dead-script exemption list as stale scaffold metadata.	Add ### UPDATED: agent-lint.toml and remove the debug-step5c-once exemption/comment.
+1	in_scope	important	correctness	plan.txt:117-123,288-298; skills/design/SKILL.md:165,303	SKILL.md debug-scaffold references are not explicitly covered.	Deleting _dbg-stage.sh and _debug-step5c.sh can leave shipped prompt references to missing files.	Extend the skills/design/SKILL.md plan section to remove both debug scaffold references.
+```

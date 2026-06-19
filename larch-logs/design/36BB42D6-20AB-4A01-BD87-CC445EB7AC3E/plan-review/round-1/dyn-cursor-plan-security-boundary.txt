@@ -1,0 +1,195 @@
+Searching the repo for the plan and related surfaces you named.
+Comparing the plan to the implementation for the security surfaces you listed.
+**Verdict:** The plan’s core confinement model is sound, but it has stale surface names, omits `panel-init-failed` terminal vocabulary, and several migrated Python call sites do not match the plan’s staging and validation contracts.
+
+---
+
+### FINDING_1: `panel-init-failed` terminal vocabulary is missing from the plan KV contract
+- **Severity:** blocking
+- **Plan section:** `## Terminal-state KV contract` (`larch-logs/design/F8DC327A-D9AA-4BE8-A025-7DA4CA0402B4/plan.txt`, lines 81–116); `## Failure, escalation, and teardown surface` → **Terminal failure report** (lines 21–29)
+- **Concern:** The plan allows only `failed-*` values in `FAILURE_OUTCOME` / `SUMMARY_OUTCOME`. Live Step 3 `panel-init-failed` is terminal with `SUMMARY_OUTCOME=failed-judge-panel` (`skills/design/SKILL.md`, line 543), but the plan never maps that path into the KV contract or teardown gate.
+- **Implementation impact:** `stage_panel_init_failed` writes `FAILURE_OUTCOME=panel-init-failed`, which `_safe_outcome` rejects:
+
+```51:54:python/stall_recovery.py
+_OUTCOMES = frozenset({
+    "failed-plan-write", "failed-publish", "failed-postplan", "failed-clarify",
+    "failed-judge-panel", "failed-publish-tail", "approved", "approved-partition",
+})
+```
+
+```262:279:python/plan_review.py
+            "--outcome",
+            "panel-init-failed",
+            ...
+            "--summary-outcome",
+            "panel-init-failed",
+```
+
+The harness expects `failed-judge-panel` with `panel-init-failed` only as trigger/bail (`skills/design/scripts/test-design-stage-terminal-state.sh`, lines 94–100). Teardown then fails closed on outcome mismatch:
+
+```365:373:skills/design/scripts/design-failure-report.sh
+        if [ -n "$state_outcome" ] && [ "$state_outcome" != "$OUTCOME" ]; then
+            append_run_log_audit terminal-state-outcome-mismatch
+            write_fallback_chat terminal-state-outcome-mismatch
+            exit 0
+        fi
+        if [ -n "$state_summary" ] && [ "$state_summary" != "$OUTCOME" ]; then
+```
+
+---
+
+### FINDING_2: Loop `panel-init-failed` path does not stage terminal state
+- **Severity:** blocking
+- **Plan section:** `UPDATED: skills/design/scripts/design-step3-review.sh` (plan lines 603–626); `UPDATED: skills/design/SKILL.md` Step 3 branch matrix (lines 726–733)
+- **Concern:** The plan says Step 3 stages terminal state and the orchestrator routes `failed-judge-panel`. The loop exit calls a no-op stager:
+
+```329:331:skills/design/scripts/design-step3-review.sh
+_step3_review_stage_panel_init_failed() {
+  :
+}
+```
+
+```722:725:skills/design/scripts/design-step3-review.sh
+if [[ "${STEP3_REVIEW_LOOP_STATUS:-}" == panel-init-failed ]]; then
+  _step3_review_stage_panel_init_failed "${REASON:-panel-init-failed}"
+  printf '%s\n' 'SUMMARY_OUTCOME=failed-judge-panel'
+  exit 1
+fi
+```
+
+Only `prelaunch-failure` stages via Python (`python/plan_review.py`, lines 1378–1386), and that staging uses the wrong outcome (FINDING_1).
+
+---
+
+### FINDING_3: `design publish` terminal staging from the plan is not implemented in the Python port
+- **Severity:** important
+- **Plan section:** `UPDATED: skills/design/scripts/design-publish.sh` (plan lines 566–576); `## Failure modes` → hard publish exits (lines 980–981)
+- **Concern:** The plan requires staging `design-failure-terminal-state.env` on plan-write and publish hard failures. `python/design_publish.py` exits on block failure without staging:
+
+```295:297:python/design_publish.py
+    if block.returncode != 0:
+        _emit_rows(kvs)
+        return 1
+```
+
+No `design-stage-terminal-state` call exists anywhere in that module.
+
+---
+
+### FINDING_4: `render-final-summary` Python port skips `DESIGN_TMPDIR` allowlist validation
+- **Severity:** important
+- **Plan section:** `UPDATED: skills/design/scripts/render-final-summary.sh` (plan lines 533–553); `UPDATED: SECURITY.md` (plan lines 909–917)
+- **Concern:** The plan pins path confinement on every generic helper via validated `$DESIGN_TMPDIR`. `python/design_summary.py` writes token/timing reports and invokes the report gate using env `DESIGN_TMPDIR` with only a directory-exists check:
+
+```309:316:python/design_summary.py
+    design_tmpdir_str = os.environ.get("DESIGN_TMPDIR", "")
+    if not design_tmpdir_str:
+        print("design render-final-summary: DESIGN_TMPDIR unset", file=sys.stderr)
+        return 2
+    design_tmpdir = Path(design_tmpdir_str)
+    if not design_tmpdir.is_dir():
+        print("design render-final-summary: DESIGN_TMPDIR not a directory", file=sys.stderr)
+        return 2
+```
+
+```331:344:python/design_summary.py
+    _run_cli("token", "report", ... "--output", str(design_tmpdir / "token-report-final.json"))
+    ...
+    _run_design_failure_report_gate(design_tmpdir, phase, outcome, repo, issue, run_id)
+```
+
+`design-failure-report.sh` validates inside the child (lines 40–42), but parent-side writes happen first without allowlist validation.
+
+---
+
+### FINDING_5: Plan still references retired `lib-design-tmpdir.sh` and bash `stall-recovery-report.sh`
+- **Severity:** latent
+- **Plan section:** `NEW: skills/design/scripts/design-stage-terminal-state.sh` (line 328); `NEW: skills/design/scripts/design-failure-report.sh` (line 387); `Shared validation API` (lines 118–154)
+- **Concern:** Live code uses `python/cli.py session validate-design-tmpdir` and `python/cli.py stall-recovery` (`skills/design/scripts/design-stage-terminal-state.sh`, lines 53–61; `design-failure-report.sh`, line 7). The plan’s stale names risk reintroducing deleted bash surfaces or skipping Python validation on new callers.
+
+---
+
+### FINDING_6: Quiet-log ordering is specified for new bash helpers but not for migrated Python plan verbs
+- **Severity:** latent
+- **Plan section:** `NEW: skills/design/scripts/design-stage-terminal-state.sh` (lines 326–338); `UPDATED: SECURITY.md` (lines 913–917)
+- **Concern:** New helpers correctly defer `larch_quiet_init` until after validation (`design-stage-terminal-state.sh`, lines 53–55). Migrated Python verbs still init quiet before validation:
+
+```1009:1033:python/plan_quality.py
+def validate_plan_main(argv: list[str]) -> int:
+    quiet_init(argv0="plan validate")
+    ...
+    if design_tmpdir_raw:
+        ok, _message = validate_design_tmpdir(design_tmpdir_raw)
+```
+
+```1253:1259:python/plan_quality.py
+def check_plan_size_main(argv: list[str]) -> int:
+    quiet_init(argv0="plan check-size")
+    ...
+    ok, message = validate_design_tmpdir(args.design_tmpdir)
+```
+
+The plan does not extend the quiet-before-allowlist rule to these surfaces.
+
+---
+
+### FINDING_7: `design-step3-review.sh` skips tmpdir allowlist when plugin root is unset
+- **Severity:** latent
+- **Plan section:** `UPDATED: skills/design/scripts/design-step3-review.sh` (plan lines 603–626); `Shared validation API` → **Rules** (lines 148–154)
+- **Concern:** Validation is conditional:
+
+```257:259:skills/design/scripts/design-step3-review.sh
+if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -f "${CLAUDE_PLUGIN_ROOT}/python/cli.py" ]; then
+  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session validate-design-tmpdir "$DESIGN_TMPDIR" || exit 2
+fi
+```
+
+The plan requires all generic helper calls to pin validated `$DESIGN_TMPDIR` but does not require unconditional allowlist validation at Step 3 entry.
+
+---
+
+### FINDING_8: `--failure-detail-log` 64 KiB cap is absent from the plan terminal contract
+- **Severity:** latent
+- **Plan section:** `## Terminal-state KV contract` → **Rules** (plan lines 106–109); `NEW: design-stage-terminal-state.sh` (lines 334–335)
+- **Concern:** The plan requires under-tmpdir and non-symlink only. `SECURITY.md` and `validate_failure_detail_log` also enforce absolute path, regular file, and 64 KiB (`python/stall_recovery.py`, lines 207–232). The bash staging helper does not pre-check size (lines 75–86); it relies on downstream `validate-terminal-state`. The plan should state the cap so implementers do not add a bash-only path that skips Python validation.
+
+---
+
+### FINDING_9: `--evidence-ref` lacks shared `validate-token` in the plan and staging helper
+- **Severity:** nit
+- **Plan section:** `## Terminal-state KV contract` optional keys (plan line 104); `NEW: design-stage-terminal-state.sh` (line 324)
+- **Concern:** Other tokens go through `validate-token`; `EVIDENCE_REF` uses only a bash `case` guard:
+
+```87:87:skills/design/scripts/design-stage-terminal-state.sh
+case "$EVIDENCE_REF" in *$'\n'*|*$'\r'*|http://*|https://*|/*|*'..'*|*' '*|*'`'*) fail '--evidence-ref is not a safe token' ;; esac
+```
+
+Python allows relative path-like tokens without `..` (`python/stall_recovery.py`, lines 1258–1259). Low risk because values are redacted KVs, not shell-expanded, but the plan overpromises “shared validation API” coverage for this field.
+
+---
+
+### FINDING_10: Clarify publish `failed-plan-write` does not stage terminal state per plan
+- **Severity:** important
+- **Plan section:** `## Failure, escalation, and teardown surface` → `PLAN_WRITE_OK=false` (plan line 23); `In Step 0b clarify handling` (plan lines 715–721)
+- **Concern:** Hard clarify halts call `_stage_failed_clarify` (`python/clarify.py`, lines 826–838). Clarify publish plan-write failure only calls `_publish_failure` with `summary="failed-plan-write"` (lines 1069–1074) and never stages `design-failure-terminal-state.env`, so the teardown gate hits `missing-terminal-state` (`design-failure-report.sh`, lines 347–349).
+
+---
+
+## Surfaces that look correct
+
+| Surface | Assessment |
+|---|---|
+| **`DESIGN_TMPDIR` allowlist before quiet init** | Correct in `design-stage-terminal-state.sh` (53–55) and `design-failure-report.sh` (40–42); tested (`test-design-stage-terminal-state.sh`, 78–89). |
+| **`--failure-detail-log` confinement** | Bash rejects outside-tmpdir and symlinks (75–85); Python enforces absolute, resolved-under-tmpdir, non-symlink, 64 KiB (`stall_recovery.py`, 207–232). |
+| **Terminal-state replacement** | Plan line 336 matches impl: preserve on outcome/site/trigger mismatch (`design-stage-terminal-state.sh`, 97–102). |
+| **`failed-publish-tail` staging** | `design-step5c.sh` (154–200) matches plan. |
+| **`failed-postplan` staging** | `plan_review.py` `step3_stage_postplan_failed` (201–244) uses `failed-postplan`. |
+| **Report filing sentinel precedence** | `design-failure-report.sh` (327–343, 345–405) matches plan teardown gate order. |
+| **Shell injection** | Tokens passed as quoted argv to `python3`; no unquoted expansion of operator tokens in reviewed paths. |
+| **KV stdout isolation** | Plan requirement preserved; helpers capture sidecars (`design_summary.py`, 227–248). |
+
+---
+
+## Summary
+
+The plan’s security model (validated `$DESIGN_TMPDIR`, pinned `--implement-tmpdir`, symlink rejection, shared token validation, sentinel-gated filing) is directionally right for the new bash helpers. The highest-risk gaps are **`panel-init-failed` vocabulary and staging** (FINDING_1–2), **missing publish terminal staging in the Python port** (FINDING_3), and **unvalidated `DESIGN_TMPDIR` in `design_summary.py`** (FINDING_4). No new arbitrary host write or shell-injection path appears in the planned bash helpers themselves; risks concentrate in plan–implementation drift on migrated Python surfaces and the unstaged / mismatched `panel-init-failed` terminal path.

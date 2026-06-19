@@ -1,0 +1,1 @@
+Port the three `/design` terminal reporting helpers into Python, register the new `design` verbs, cut runtime and prompt callers, preserve output contracts, and delete the retired shell helpers, docs, harnesses, and debug scaffolds.

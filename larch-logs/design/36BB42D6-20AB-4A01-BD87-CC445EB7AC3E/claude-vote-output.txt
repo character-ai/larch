@@ -1,0 +1,3 @@
+The ballot file at `<TMPDIR>/ballot.txt` is empty (0 bytes). There are no `FINDING_N` or `OOS_N` items to vote on.
+
+The review panel ran (6 reviewer slots returned `OK`, 6 returned `NOT_SUBSTANTIVE` due to JSON parse failures on structured output), but the aggregator produced no findings requiring a vote. The plan passed this review round with an empty ballot.
