@@ -2488,6 +2488,30 @@ def test_append_implement_launch_failure_composes_sidecar_and_regenerates_tail(
     assert "launcher stderr detail" in tail.read_text(encoding="utf-8")
 
 
+def test_append_implement_launch_failure_uses_retry_failure_diag_and_auth_verdict(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = tmp_path / "codex-impl.txt"
+    sidecar = tmp_path / "codex-impl.log"
+    retry_diag = tmp_path / "codex-impl-retry.txt.failure-diag"
+    _ = retry_diag.write_text("not logged in\n", encoding="utf-8")
+    _ = sidecar.write_text("", encoding="utf-8")
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    captured: dict[str, str] = {}
+
+    def fake_run(argv: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        if "append-failure" in argv:
+            captured["source"] = argv[argv.index("--output-file") + 1]
+            captured["verdict"] = argv[argv.index("--verdict") + 1]
+        return subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(agents.subprocess, "run", fake_run)
+    agents._append_implement_launch_failure("codex", output, sidecar, 1)  # pylint: disable=protected-access
+    assert Path(captured["source"]) == retry_diag
+    assert captured["verdict"] == "auth-retries-exhausted"
+
+
 def test_launch_codex_exec_preflight_model_args_writes_bundle(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

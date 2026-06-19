@@ -2796,7 +2796,7 @@ def append_failure_main(argv: list[str]) -> int:
     else:
         body = f"no diagnostics captured (exit {args.exit_code})\n"
     if args.redact:
-        body = redact.redact_secrets_only(body)
+        body = redact.redact_secrets_only(redact.redact_tmpdir_paths(body))
     suffix = ""
     if args.verdict:
         suffix += f" — {args.verdict}"

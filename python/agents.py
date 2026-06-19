@@ -1497,6 +1497,49 @@ def _compose_failure_diag(output: Path, *, sink: str = "", history: str = "", ev
         _write(carrier, capped)
 
 
+def _failure_diag_populated(output: Path) -> bool:
+    carrier = output.with_suffix(output.suffix + ".failure-diag")
+    return carrier.is_file() and carrier.stat().st_size > 0
+
+
+def _ensure_failure_diag_composed(output: Path, *, sink: str = "", history: str = "", events: str = "") -> None:
+    if _failure_diag_populated(output):
+        return
+    _compose_failure_diag(output, sink=sink, history=history, events=events)
+
+
+def _review_failure_auth_paths(output: Path, source: Path, *, stderr_sink: str = "") -> tuple[Path | str, ...]:
+    stem = str(output).removesuffix(".txt")
+    paths: list[Path | str] = [
+        source,
+        Path(stderr_sink) if stderr_sink else "",
+        output.with_suffix(output.suffix + ".failure-diag"),
+        Path(f"{stem}-retry.txt.failure-diag"),
+        Path(f"{stem}-ns-retry.txt.failure-diag"),
+        output.with_suffix(output.suffix + ".diag"),
+        output.with_suffix(output.suffix + ".sidecar"),
+        output.with_suffix(output.suffix + ".events.jsonl"),
+        output,
+    ]
+    return tuple(path for path in paths if path)
+
+
+def _implement_failure_auth_paths(tool: str, output: Path, sidecar: Path, source: Path) -> tuple[Path | str, ...]:
+    stem = str(output).removesuffix(".txt")
+    paths: list[Path | str] = [
+        source,
+        sidecar,
+        output.with_suffix(output.suffix + ".failure-diag"),
+        Path(f"{stem}-retry.txt.failure-diag"),
+        Path(f"{stem}-ns-retry.txt.failure-diag"),
+        output.with_suffix(output.suffix + ".diag"),
+    ]
+    if tool == "codex":
+        paths.append(output.with_suffix(output.suffix + ".events.jsonl"))
+    paths.append(output)
+    return tuple(path for path in paths if path)
+
+
 def external_stream_reset(target: Path, history: Path | None = None, label: str = "attempt") -> None:
     if str(target) == "/dev/null":
         return
@@ -4064,18 +4107,12 @@ def _review_append_launch_failure(
 ) -> None:
     if exit_code == 0:
         return
-    _compose_failure_diag(output, sink=stderr_sink)
+    _ensure_failure_diag_composed(output, sink=stderr_sink)
     source = _review_failure_source(output, sink=stderr_sink)
-    sidecars = [
-        output.with_suffix(output.suffix + ".sidecar"),
-        output.with_suffix(output.suffix + ".diag"),
-        output.with_suffix(output.suffix + ".events.jsonl"),
-        output,
-    ]
     failure = classify_launch_failure(
         exit_code,
         source,
-        auth_verdict=external_auth_verdict(tool, *sidecars),
+        auth_verdict=external_auth_verdict(tool, *_review_failure_auth_paths(output, source, stderr_sink=stderr_sink)),
         tool=tool,
         output_file=output,
     )
@@ -4280,12 +4317,12 @@ def _review_run_with_retries(
 
 def _review_emit_launcher_result(output: Path, tool: str, launcher_exit: int, *, stderr_sink: str = "") -> None:
     if launcher_exit != 0:
-        _compose_failure_diag(output, sink=stderr_sink)
+        _ensure_failure_diag_composed(output, sink=stderr_sink)
     sidecar = _review_failure_source(output, sink=stderr_sink)
     failure = classify_launch_failure(
         launcher_exit,
         sidecar,
-        auth_verdict=external_auth_verdict(tool, sidecar, Path(stderr_sink) if stderr_sink else "", output.with_suffix(output.suffix + ".diag"), output),
+        auth_verdict=external_auth_verdict(tool, *_review_failure_auth_paths(output, sidecar, stderr_sink=stderr_sink)),
         tool=tool,
         output_file=output,
     )
@@ -4878,11 +4915,14 @@ def _implement_token_budget_hit(args: argparse.Namespace, tool: str, default_kin
     return False
 
 
-def _append_implement_launch_failure(tool: str, output: Path, sidecar: Path, launcher_exit: int, *, verdict: str = "", retry_count: int = 0) -> None:
+def _append_implement_launch_failure(tool: str, output: Path, sidecar: Path, launcher_exit: int, *, retry_count: int = 0) -> None:
     if launcher_exit == 0:
         return
-    _compose_failure_diag(output, sink=str(sidecar))
+    _ensure_failure_diag_composed(output, sink=str(sidecar))
     source = resolve_failure_diagnostic_source(output, sink=str(sidecar)) or sidecar
+    verdict = external_auth_verdict(tool, *_implement_failure_auth_paths(tool, output, sidecar, source))
+    if verdict == "auth":
+        verdict = "auth-retries-exhausted"
     args = [sys.executable, str(_PY_CLI), "run-log", "append-failure", "--log", str(Path(os.environ.get("IMPLEMENT_TMPDIR", ".")) / "execution-issues.md"), "--site", "2", "--tool", f"{tool}-implement", "--exit-code", str(launcher_exit), "--category", "Tool Failures", "--output-file", str(source), "--redact"]
     if verdict:
         args.extend(["--verdict", verdict])
@@ -4892,7 +4932,13 @@ def _append_implement_launch_failure(tool: str, output: Path, sidecar: Path, lau
         subprocess.run(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
         _append_vendor_failure_diagnostics(source, site=f"2 {tool}-implement", exit_code=launcher_exit)
     tail = output.with_suffix(output.suffix + ".stderr-tail")
-    rendered = render_failed_agent_stderr_tail(source) if source.is_file() and source.stat().st_size > 0 else ""
+    tail_source = select_failed_agent_stderr_source(
+        output,
+        capture_stdout=False,
+        capture_stdout_only=tool == "cursor",
+        stderr_sink=str(sidecar),
+    )
+    rendered = render_failed_agent_stderr_tail(tail_source) if tail_source is not None and tail_source.is_file() and tail_source.stat().st_size > 0 else ""
     existing = tail.read_text(encoding="utf-8", errors="replace") if tail.is_file() else ""
     if rendered and existing != rendered:
         _write(tail, rendered)
@@ -5018,10 +5064,7 @@ def launch_codex_implement_main(argv: list[str] | None = None) -> int:
     _record_usage_from_events(events, sidecar, "codex_implement")
     _append(output.with_suffix(output.suffix + ".meta"), f"OUTER_LAUNCHER=agent launch-codex-implement\nOUTER_LAUNCHER_PROMPT_FILE={output}.prompt\nOUTER_LAUNCHER_WORKDIR={workdir}\nOUTER_LAUNCHER_KIND=codex-implement\nOUTER_LAUNCHER_ADD_DIRS_JSON={_json_array([str(session_tmpdir), workdir])}\n")
     if result.exit_code != 0:
-        verdict = external_auth_verdict("codex", sidecar, events, output)
-        if verdict == "auth":
-            verdict = "auth-retries-exhausted"
-        _append_implement_launch_failure("codex", output, sidecar, result.exit_code, verdict=verdict)
+        _append_implement_launch_failure("codex", output, sidecar, result.exit_code)
     _promote_inner_done(output)
     _emit_implement_launcher_envelope(args, result.exit_code)
     return 0
@@ -5128,10 +5171,7 @@ def launch_cursor_implement_main(argv: list[str] | None = None) -> int:
     _record_implement_timing("cursor", task_kind, start, output, result.exit_code)
     _record_cursor_implement_usage(output)
     if result.exit_code != 0:
-        verdict_text = external_auth_verdict("cursor", sidecar, output.with_suffix(output.suffix + ".diag"), output)
-        if verdict_text == "auth":
-            verdict_text = "auth-retries-exhausted"
-        _append_implement_launch_failure("cursor", output, sidecar, result.exit_code, verdict=verdict_text)
+        _append_implement_launch_failure("cursor", output, sidecar, result.exit_code)
     _promote_inner_done(output)
     _emit_implement_launcher_envelope(args, result.exit_code)
     return 0
