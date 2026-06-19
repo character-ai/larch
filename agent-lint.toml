@@ -1146,6 +1146,10 @@ exclude = [
   "python/cli.py merge pr",
   "python/cli.py pr create",
   "scripts/git-sync-local-main.sh",
+  # scripts/git-force-push.sh — force-with-lease helper retained as deferred
+  # bash; its create-pr/merge-pr callers migrated to python/cli.py pr create /
+  # merge pr, so G004 no longer sees a structured invocation edge.
+  "scripts/git-force-push.sh",
   "python/cli.py ci wait",
   "python/cli.py ci status",
   "python/cli.py ci decide",
