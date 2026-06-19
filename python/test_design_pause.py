@@ -266,3 +266,22 @@ def test_pause_load_success_marker_delete_failure_warns(tmp_path: Path, monkeypa
     assert "LOAD_OK=true" in out
     assert "MARKER_CLEARED=false" in out
     assert "WARN=marker-delete-failed" in out
+
+
+def test_pause_load_tolerates_manifest_without_issue_number(tmp_path: Path, monkeypatch: object, capsys: object) -> None:
+    # Guard 3b tolerance: a restored manifest missing issue_number must not fail closed (null/absent
+    # folds to absent, not a spurious "None" mismatch).
+    body = _pause_marker_body(run_id="RUN1", issue="9", step="3", repo="owner/repo")
+    base = "larch-logs/design/RUN1/"
+    files = [base + "manifest.json", base + "run-params.json", base + "pause-state.txt"]
+    blobs = {
+        base + "manifest.json": json.dumps({"run_id": "RUN1"}),
+        base + "run-params.json": "{}",
+        base + "pause-state.txt": "STEP=3\n",
+    }
+    fake = _FakeGit(files=files, blobs=blobs)
+    _patch_load(monkeypatch, body, fake)
+    rc = design_pause.pause_load_main(["--design-tmpdir", str(tmp_path / "d"), "--issue", "9", "--repo", "owner/repo"])
+    out = capsys.readouterr().out  # type: ignore[attr-defined]
+    assert rc == 0
+    assert "LOAD_OK=true" in out

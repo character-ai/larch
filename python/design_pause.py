@@ -395,8 +395,10 @@ def pause_load_main(argv: Sequence[str]) -> int:
         if not isinstance(parsed_manifest, dict):
             return _load_fail_clear(issue, repo, "manifest-mismatch")
         manifest = cast("dict[str, object]", parsed_manifest)
-        manifest_issue = str(manifest.get("issue_number", ""))
-        manifest_run = str(manifest.get("run_id", ""))
+        # `or ""` folds JSON null / missing into "absent" so an unset field is tolerated rather
+        # than stringified to "None" and treated as a spurious mismatch.
+        manifest_issue = str(manifest.get("issue_number") or "")
+        manifest_run = str(manifest.get("run_id") or "")
         if (manifest_issue and manifest_issue != issue) or (manifest_run and manifest_run != run_id):
             return _load_fail_clear(issue, repo, "manifest-mismatch")
         if step not in {"1", "1d", "2", "2b", "3", "3.5", "3b", "4", "5", "5c", "6"}:
