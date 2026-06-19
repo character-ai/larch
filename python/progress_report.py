@@ -686,9 +686,11 @@ def _accepted_reviewers_from_classification(classification: Path) -> list[str]:
             continue
         if cols[result_idx].strip() != "accepted" or cols[0].strip().startswith("OOS_"):
             continue
-        reviewer = cols[reviewer_idx].strip()
-        if reviewer:
-            names.append(reviewer)
+        reviewer_cell = cols[reviewer_idx].strip()
+        if reviewer_cell:
+            for reviewer in (name.strip() for name in reviewer_cell.split(",")):
+                if reviewer:
+                    names.append(reviewer)
     return names
 
 
@@ -1800,6 +1802,8 @@ def _design_collector_field(round_dir: Path, failure_count: int) -> str:
     resolves the true vendor/archetype instead of ``unknown/collector-failure-N``.
     Falls back to count-based placeholders only when no per-slot records are available.
     """
+    if failure_count <= 0:
+        return ""
     collector_env = round_dir / "collector-results.env"
     if not collector_env.is_file():
         collector_env = round_dir.parent.parent / "collector-results.env"
