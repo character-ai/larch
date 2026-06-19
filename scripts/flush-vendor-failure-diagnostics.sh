@@ -5,7 +5,7 @@
 #
 # Producers append redacted per-slot part files under
 # `$tmpdir/vendor-failure-diagnostics.parts/` via
-# `append_vendor_failure_diagnostics` (scripts/lib-failed-agent-stderr-tail.sh).
+# `append_vendor_failure_diagnostics` (`python/agents.py`).
 # This helper derives the canonical `$tmpdir/vendor-failure-diagnostics.txt` by
 # overwriting it from the full parts set on every flush, so repeated pre-commit
 # flushes (step-7a pre-ship, larch-log-flush, refresh-run-logs, implement-finalize

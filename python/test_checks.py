@@ -1525,10 +1525,8 @@ def test_run_lint_fix_cursor_argv_and_wrap_cwd(tmp_path: Path) -> None:
         _ok("main\n"),  # branch
         _ok(""),  # submodule foreach (prompt)
         _ok(""),  # submodule foreach (forbidden paths)
-        _ok("\0__DELIM__\0"),  # cursor model/auth argv loader
         _ok("wrapped promptX"),  # cursor-wrap-prompt.sh
         _ok("", rc=1),  # cursor dispatch fails
-        _ok(""),  # stderr-tail helper
     ])
     outcome = checks.run_lint_fix(
         runner,
@@ -1543,7 +1541,7 @@ def test_run_lint_fix_cursor_argv_and_wrap_cwd(tmp_path: Path) -> None:
     )
     assert outcome.status == "main-agent-required"
     flat = " ".join(arg for call, _kw in runner.calls for arg in call)
-    assert "lib-external-launcher-common.sh" in flat
+    assert "lib-external-launcher-common.sh" not in flat
     assert "--tool" in flat
     assert "cursor" in flat
     wrap_call, wrap_kwargs = next(

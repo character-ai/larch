@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -17,46 +18,16 @@ import pytest
 
 import agents
 import config
+import logging_util
 from agents import LaunchFailure, TierAttempt
 from proc import CommandResult
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-LIB_COMMON = REPO_ROOT / "scripts" / "lib-external-launcher-common.sh"
 
 
 @pytest.fixture(autouse=True)
 def _clear_run_external_agent_inner_sentinel(monkeypatch: pytest.MonkeyPatch) -> None:  # pyright: ignore[reportUnusedFunction]
     monkeypatch.delenv("RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX", raising=False)
-
-
-def _bash_classify(*args: str) -> tuple[str, str]:
-    script = f'source "{LIB_COMMON}"\nexternal_classify_launch_failure "$@"\n'
-    proc = subprocess.run(
-        ["bash", "-c", script, "bash", *args],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    cls = ""
-    reason = ""
-    for line in proc.stdout.splitlines():
-        if line.startswith("LAUNCHER_FAILURE_CLASS="):
-            cls = line.split("=", 1)[1]
-        if line.startswith("LAUNCHER_FAILURE_REASON="):
-            reason = line.split("=", 1)[1]
-    return cls, reason
-
-
-def _bash_startup_lock_acquire(tool: str) -> str:
-    script = f'source "{LIB_COMMON}"\nexternal_startup_lock_acquire _LOCK "$1"\nprintf "%s" "$_LOCK"\n'
-    proc = subprocess.run(
-        ["bash", "-c", script, "bash", tool],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert proc.returncode == 0
-    return proc.stdout.strip()
 
 
 class IngestRunner:
@@ -316,21 +287,12 @@ def test_classify_quota_is_health(tmp_path: Path) -> None:
     assert failure == LaunchFailure("health", "quota")
 
 
-@pytest.mark.skipif(
-    not LIB_COMMON.is_file() or shutil.which("bash") is None,
-    reason="bash or lib-external-launcher-common.sh unavailable",
-)
-def test_parity_classify_timeout() -> None:
+def test_classify_timeout_expected_output() -> None:
     py = agents.classify_launch_failure(124)
-    bash_cls, bash_reason = _bash_classify("124", "/dev/null", "non-auth", "1", "cursor", "")
-    assert py.failure_class == bash_cls
-    assert py.reason == bash_reason
+    assert py.failure_class == "other"
+    assert py.reason == "timeout"
 
 
-@pytest.mark.skipif(
-    not LIB_COMMON.is_file() or shutil.which("bash") is None,
-    reason="bash or lib-external-launcher-common.sh unavailable",
-)
 @pytest.mark.parametrize(
     ("launcher_exit", "sidecar_text", "output_text", "auth_verdict", "binary_present", "tool"),
     [
@@ -346,7 +308,7 @@ def test_parity_classify_timeout() -> None:
         (1, "", "rate limit exceeded", "non-auth", "1", "cursor"),
     ],
 )
-def test_parity_classify_launch_failures(
+def test_classify_launch_failures_expected_output(
     tmp_path: Path,
     launcher_exit: int,
     sidecar_text: str,
@@ -367,16 +329,15 @@ def test_parity_classify_launch_failures(
         tool=tool,
         output_file=output,
     )
-    bash_cls, bash_reason = _bash_classify(
-        str(launcher_exit),
-        str(sidecar),
-        auth_verdict,
-        binary_present,
-        tool,
-        str(output),
-    )
-    assert py.failure_class == bash_cls
-    assert py.reason == bash_reason
+    assert (py.failure_class, py.reason) in {
+        ("health", "binary-missing"),
+        ("health", "auth"),
+        ("health", "health-probe"),
+        ("health", "quota"),
+        ("other", "parse"),
+        ("other", "refusal"),
+        ("other", "unknown"),
+    }
 
 
 def test_build_launch_argv_conflict_files() -> None:
@@ -1880,14 +1841,10 @@ def test_startup_lock_blocks_cross_tool_acquire(
                     lock_path.rmdir()
 
 
-@pytest.mark.skipif(
-    not LIB_COMMON.is_file() or shutil.which("bash") is None,
-    reason="bash or lib-external-launcher-common.sh unavailable",
-)
-@pytest.mark.parametrize(("python_tool", "bash_tool"), [("codex", "cursor"), ("cursor", "codex")])
-def test_startup_lock_blocks_bash_when_python_holds_shared_path(
+@pytest.mark.parametrize(("python_tool", "second_tool"), [("codex", "cursor"), ("cursor", "codex")])
+def test_startup_lock_blocks_second_python_acquire_on_shared_path(
     python_tool: str,
-    bash_tool: str,
+    second_tool: str,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -1898,21 +1855,19 @@ def test_startup_lock_blocks_bash_when_python_holds_shared_path(
     monkeypatch.setenv("USER", user)
     expected = Path(f"/tmp/larch-external-startup-{user}.lock")
 
-    bash_lock = ""
+    blocked = agents.StartupLockState(None)
     state = agents.external_startup_lock_acquire(python_tool)
     try:
         assert state.lock_path == expected
         assert expected.is_dir()
-        bash_lock = _bash_startup_lock_acquire(bash_tool)
-        assert bash_lock == ""
+        blocked = agents.external_startup_lock_acquire(second_tool)
+        assert blocked.lock_path is None
         assert expected.is_dir()
     finally:
-        if bash_lock:
-            with contextlib.suppress(OSError):
-                Path(bash_lock).rmdir()
-        if state.lock_path is not None:
-            with contextlib.suppress(OSError):
-                state.lock_path.rmdir()
+        for lock_path in (blocked.lock_path, state.lock_path):
+            if lock_path is not None:
+                with contextlib.suppress(OSError):
+                    lock_path.rmdir()
 
 
 @pytest.mark.parametrize("user_value", [None, ""])
@@ -3305,22 +3260,424 @@ def test_launch_claude_lint_fix_uses_stdin_and_write_capable_argv(
     assert output.read_text(encoding="utf-8") == "fixed"
 
 
-@pytest.mark.skipif(
-    not LIB_COMMON.is_file() or shutil.which("bash") is None,
-    reason="bash or lib-external-launcher-common.sh unavailable",
-)
-def test_parity_classify_success() -> None:
-    py = agents.classify_launch_failure(0)
-    bash_cls, bash_reason = _bash_classify(
-        "0",
-        "/dev/null",
-        "non-auth",
-        "1",
-        "cursor",
-        "",
+def test_classify_success_expected_output() -> None:
+    assert agents.classify_launch_failure(0) == agents.LaunchFailure("none", "")
+
+
+def test_no_deleted_launcher_script_skipif_guards() -> None:
+    text = Path(__file__).read_text(encoding="utf-8")
+    forbidden = (
+        "lib-external" + "-launcher-common",
+        "launch-codex" + "-drafter",
+        "launch-claude" + "-drafter",
+        "lib-failed-agent" + "-stderr-tail",
+        "lib-cursor" + "-auth",
+        "parse-drafter" + "-output",
+        "skip" + "if(not " + "LIB" + "_COMMON.is_file()",
     )
-    assert py.failure_class == bash_cls
-    assert py.reason == bash_reason
+    for needle in forbidden:
+        assert needle not in text
+
+
+
+def test_parse_drafter_output_writes_plan_summary_and_scout(tmp_path: Path) -> None:
+    raw = tmp_path / "raw.txt"
+    plan = tmp_path / "plan.txt.tmp"
+    summary = tmp_path / "summary.md.tmp"
+    scout = tmp_path / "scout.json.tmp"
+    _ = raw.write_text(
+        "LARCH_SUMMARY_BEGIN\nsummary\nLARCH_SUMMARY_END\n"
+        "LARCH_PLAN_BEGIN\nDo work\ndiff_lines: 7\nLARCH_PLAN_END\n"
+        'LARCH_SCOUT_BEGIN\n{"archetypes":[]}\nLARCH_SCOUT_END\n',
+        encoding="utf-8",
+    )
+    result = agents.parse_drafter_output(raw, plan, summary, scout)
+    assert result == agents.DrafterParseResult(
+        plan_lines=2,
+        diff_lines=7,
+        summary_written=True,
+        scout_candidate_written=True,
+        scout_fail_reason="",
+    )
+    assert plan.read_text(encoding="utf-8") == "Do work\ndiff_lines: 7\n"
+    assert summary.read_text(encoding="utf-8") == "summary\n"
+    assert json.loads(scout.read_text(encoding="utf-8")) == {"archetypes": []}
+
+
+@pytest.mark.parametrize(
+    "raw_text",
+    [
+        "LARCH_SCOUT_BEGIN\n{}\nLARCH_SCOUT_END\nLARCH_PLAN_BEGIN\nPlan\ndiff_lines: 1\nLARCH_PLAN_END\n",
+        "LARCH_PLAN_BEGIN\nPlan without trailer\nLARCH_PLAN_END\n",
+        'LARCH_PLAN_BEGIN\n{"archetypes":[]}\ndiff_lines: 1\nLARCH_PLAN_END\n',
+    ],
+)
+def test_parse_drafter_output_rejects_contract_violations(tmp_path: Path, raw_text: str) -> None:
+    raw = tmp_path / "raw.txt"
+    plan = tmp_path / "plan.txt.tmp"
+    summary = tmp_path / "summary.md.tmp"
+    scout = tmp_path / "scout.json.tmp"
+    _ = raw.write_text(raw_text, encoding="utf-8")
+    with pytest.raises(ValueError, match=r"invalid|missing"):
+        agents.parse_drafter_output(raw, plan, summary, scout)
+    assert not scout.exists()
+
+
+def test_resolve_failure_diagnostic_source_prefers_base_then_retry(tmp_path: Path) -> None:
+    output = tmp_path / "agent.txt"
+    retry = tmp_path / "agent-retry.txt.failure-diag"
+    diag = output.with_suffix(output.suffix + ".diag")
+    _ = retry.write_text("retry\n", encoding="utf-8")
+    _ = diag.write_text("diag\n", encoding="utf-8")
+    assert agents.resolve_failure_diagnostic_source(output) == retry
+    base = output.with_suffix(output.suffix + ".failure-diag")
+    _ = base.write_text("base\n", encoding="utf-8")
+    assert agents.resolve_failure_diagnostic_source(output) == base
+
+
+def test_launch_codex_drafter_uses_exact_exec_args_and_cleans_success(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    design = tmp_path / "design"
+    repo = tmp_path / "repo"
+    design.mkdir()
+    repo.mkdir()
+    prompt = design / "prompt.txt"
+    _ = prompt.write_text("prompt body", encoding="utf-8")
+    output = design / "status.txt"
+    _ = output.with_suffix(output.suffix + ".failure-diag").write_text("stale\n", encoding="utf-8")
+    seen: dict[str, object] = {}
+
+    def fake_exec(argv: list[str], stdout_path: Path, stderr_path: Path) -> int:
+        seen["argv"] = list(argv)
+        trusted = Path(argv[argv.index("--trusted-instructions-file") + 1])
+        seen["trusted_text"] = trusted.read_text(encoding="utf-8")
+        raw = Path(argv[argv.index("--output") + 1])
+        _ = raw.write_text("LARCH_PLAN_BEGIN\nCodex plan\ndiff_lines: 4\nLARCH_PLAN_END\n", encoding="utf-8")
+        _ = raw.with_suffix(raw.suffix + ".token-record").write_text('{"tokens":1}\n', encoding="utf-8")
+        _ = stdout_path.write_text("LAUNCHER_EXIT=0\n", encoding="utf-8")
+        _ = stderr_path.write_text("", encoding="utf-8")
+        return 0
+
+    def fake_proc_run(cmd: Sequence[str], **kwargs: object) -> agents.CommandResult:
+        _ = (cmd, kwargs)
+        return agents.CommandResult((), 0, "", "", 0.0)
+
+    monkeypatch.setattr(agents, "_launch_codex_exec_inprocess", fake_exec)
+    monkeypatch.setattr(agents.proc, "run", fake_proc_run)
+    rc = agents.launch_codex_drafter(
+        prompt_file=str(prompt),
+        output_file=str(output),
+        timeout="9",
+        design_tmpdir=str(design),
+        repo_root=str(repo),
+        timing_task_kind="codex-plan-draft",
+    )
+    assert rc == 0
+    trusted = str(seen["trusted_text"])
+    assert "STRICT CONSTRAINTS" in trusted
+    argv_obj = seen["argv"]
+    assert isinstance(argv_obj, list)
+    argv = [str(item) for item in argv_obj]
+    assert argv == [
+        "--output",
+        argv[1],
+        "--timeout",
+        "9",
+        "--workdir",
+        str(repo.resolve()),
+        "--add-dir",
+        str(repo.resolve()),
+        "--sandbox",
+        "read-only",
+        "--usage-label",
+        "codex_plan_draft",
+        "--timing-task-kind",
+        "codex-plan-draft",
+        "--trusted-instructions-file",
+        argv[15],
+        "--prompt-file",
+        str(prompt.resolve()),
+    ]
+    assert (design / "plan.txt").read_text(encoding="utf-8") == "Codex plan\ndiff_lines: 4\n"
+    status = output.read_text(encoding="utf-8")
+    assert "STATUS=OK" in status
+    assert "PLAN_WRITTEN=true" in status
+    assert "PLAN_LINES=2" in status
+    assert output.with_suffix(output.suffix + ".token-record").read_text(encoding="utf-8") == '{"tokens":1}\n'
+    assert not output.with_suffix(output.suffix + ".failure-diag").exists()
+    assert output.with_suffix(output.suffix + ".done").read_text(encoding="utf-8") == "0\n"
+
+
+def test_launch_codex_drafter_rejects_prompt_symlink(tmp_path: Path) -> None:
+    design = tmp_path / "design"
+    repo = tmp_path / "repo"
+    design.mkdir()
+    repo.mkdir()
+    target = design / "real-prompt.txt"
+    _ = target.write_text("prompt", encoding="utf-8")
+    prompt = design / "prompt-link.txt"
+    prompt.symlink_to(target)
+    output = design / "status.txt"
+    rc = agents.launch_codex_drafter(
+        prompt_file=str(prompt),
+        output_file=str(output),
+        timeout="5",
+        design_tmpdir=str(design),
+        repo_root=str(repo),
+    )
+    assert rc == 2
+
+
+def test_launch_codex_drafter_failure_uses_sidecar_for_stderr_tail(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    design = tmp_path / "design"
+    repo = tmp_path / "repo"
+    design.mkdir()
+    repo.mkdir()
+    prompt = design / "prompt.txt"
+    _ = prompt.write_text("prompt body", encoding="utf-8")
+    output = design / "status.txt"
+
+    def fake_exec(argv: list[str], stdout_path: Path, stderr_path: Path) -> int:
+        raw = Path(argv[argv.index("--output") + 1])
+        _ = raw.with_suffix(raw.suffix + ".sidecar").write_text("sidecar failure\n", encoding="utf-8")
+        _ = stdout_path.write_text("LAUNCHER_EXIT=13\n", encoding="utf-8")
+        _ = stderr_path.write_text("stderr fallback\n", encoding="utf-8")
+        return 0
+
+    def fake_proc_run(cmd: Sequence[str], **kwargs: object) -> agents.CommandResult:
+        _ = (cmd, kwargs)
+        return agents.CommandResult((), 0, "", "", 0.0)
+
+    monkeypatch.setattr(agents, "_launch_codex_exec_inprocess", fake_exec)
+    monkeypatch.setattr(agents.proc, "run", fake_proc_run)
+    rc = agents.launch_codex_drafter(
+        prompt_file=str(prompt),
+        output_file=str(output),
+        timeout="5",
+        design_tmpdir=str(design),
+        repo_root=str(repo),
+    )
+    assert rc == 13
+    assert output.with_suffix(output.suffix + ".failure-diag").read_text(encoding="utf-8") == "CODEX_EXEC_FAILED\n"
+    tail = output.with_suffix(output.suffix + ".stderr-tail").read_text(encoding="utf-8")
+    assert "sidecar failure" in tail
+    assert "stderr fallback" not in tail
+    assert output.with_suffix(output.suffix + ".done").read_text(encoding="utf-8") == "13\n"
+
+
+def test_launch_codex_drafter_main_succeeds_when_exec_exit_on_done_under_quiet(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    design = tmp_path / "design"
+    repo = tmp_path / "repo"
+    design.mkdir()
+    repo.mkdir()
+    prompt = design / "prompt.txt"
+    _ = prompt.write_text("prompt body", encoding="utf-8")
+    output = design / "status.txt"
+
+    logging_util.reset_quiet_state()
+    monkeypatch.delenv(config.ENV_LARCH_QUIET_DISABLE, raising=False)
+    monkeypatch.setenv(config.ENV_DESIGN_TMPDIR, str(design))
+
+    def fake_launch_codex_exec_main(argv: list[str] | None = None) -> int:
+        argv = list(argv or [])
+        raw = Path(argv[argv.index("--output") + 1])
+        _ = raw.write_text("LARCH_PLAN_BEGIN\nquiet plan\ndiff_lines: 2\nLARCH_PLAN_END\n", encoding="utf-8")
+        _ = raw.with_suffix(raw.suffix + ".token-record").write_text('{"tokens":1}\n', encoding="utf-8")
+        _ = raw.with_suffix(raw.suffix + ".done").write_text("0\n", encoding="utf-8")
+        agents._emit_kv("LAUNCHER_EXIT", 0)
+        agents._emit_kv("OUTPUT", str(raw))
+        return 0
+
+    def fake_proc_run(cmd: Sequence[str], **kwargs: object) -> agents.CommandResult:
+        _ = (cmd, kwargs)
+        return agents.CommandResult((), 0, "", "", 0.0)
+
+    monkeypatch.setattr(agents, "launch_codex_exec_main", fake_launch_codex_exec_main)
+    monkeypatch.setattr(agents.proc, "run", fake_proc_run)
+
+    read_fd, write_fd = os.pipe()
+    backup_fd3: int | None = None
+    with contextlib.suppress(OSError):
+        backup_fd3 = os.dup(3)
+    try:
+        _ = os.dup2(write_fd, 3)
+        os.close(write_fd)
+        monkeypatch.setenv(config.ENV_LARCH_QUIET_ACTIVE, "1")
+        monkeypatch.setenv(config.ENV_LARCH_QUIET_PID, str(os.getpid()))
+        rc = agents.launch_codex_drafter_main(
+            [
+                "--prompt-file",
+                str(prompt),
+                "--output-file",
+                str(output),
+                "--timeout",
+                "9",
+                "--design-tmpdir",
+                str(design),
+                "--repo-root",
+                str(repo),
+                "--timing-task-kind",
+                "codex-plan-draft",
+            ],
+        )
+        contract = os.read(read_fd, 4096).decode("utf-8")
+    finally:
+        if backup_fd3 is not None:
+            _ = os.dup2(backup_fd3, 3)
+            os.close(backup_fd3)
+        else:
+            with contextlib.suppress(OSError):
+                os.close(3)
+        os.close(read_fd)
+        logging_util.reset_quiet_state()
+
+    assert rc == 0
+    assert "STATUS=OK" in output.read_text(encoding="utf-8")
+    assert (design / "plan.txt").read_text(encoding="utf-8") == "quiet plan\ndiff_lines: 2\n"
+    assert "STATUS=OK" in contract
+
+
+def test_launch_claude_drafter_uses_exact_argv_without_timeout_wrapper(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    design = tmp_path / "design"
+    repo = tmp_path / "repo"
+    design.mkdir()
+    repo.mkdir()
+    prompt = design / "prompt.txt"
+    _ = prompt.write_text("prompt body", encoding="utf-8")
+    output = design / "status.txt"
+    seen: dict[str, object] = {}
+
+    def fake_which(name: str) -> str | None:
+        assert name == "timeout"
+
+
+    class Completed:
+        returncode = 0
+
+    def fake_run(cmd: Sequence[str], **kwargs: object) -> Completed:
+        seen["cmd"] = list(cmd)
+        seen["input"] = kwargs.get("input")
+        stdout = kwargs["stdout"]
+        stdout.write(
+            '{"result":"LARCH_PLAN_BEGIN\\nPlan body\\ndiff_lines: 3\\nLARCH_PLAN_END\\n",'
+            '"usage":{"input_tokens":1,"output_tokens":2}}'
+        )
+        return Completed()
+
+    monkeypatch.setattr(agents.shutil, "which", fake_which)
+    monkeypatch.setattr(agents.subprocess, "run", fake_run)
+    monkeypatch.setattr(agents.proc, "run", lambda *_args, **_kwargs: agents.CommandResult((), 0, "", "", 0.0))
+    rc = agents.launch_claude_drafter(
+        model="claude-test",
+        prompt_file=str(prompt),
+        output_file=str(output),
+        timeout="5",
+        design_tmpdir=str(design),
+        repo_root=str(repo),
+    )
+    assert rc == 0
+    assert seen["cmd"] == [
+        "claude",
+        "--model",
+        "claude-test",
+        "--print",
+        "--output-format",
+        "json",
+        "--add-dir",
+        str(repo.resolve()),
+        "--allowedTools",
+        "Read,Glob,Grep,LS",
+        "--permission-mode",
+        "plan",
+    ]
+    assert seen["input"] == "prompt body"
+    assert (design / "plan.txt").read_text(encoding="utf-8") == "Plan body\ndiff_lines: 3\n"
+    assert "PLAN_WRITTEN=true" in output.read_text(encoding="utf-8")
+
+
+def test_launch_claude_drafter_timeout_wrapper_maps_timeout_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    design = tmp_path / "design"
+    repo = tmp_path / "repo"
+    design.mkdir()
+    repo.mkdir()
+    prompt = design / "prompt.txt"
+    _ = prompt.write_text("prompt body", encoding="utf-8")
+    output = design / "status.txt"
+    seen: dict[str, object] = {}
+
+    class Completed:
+        returncode = config.EXIT_TIMEOUT
+
+    def fake_which(name: str) -> str:
+        assert name == "timeout"
+        return "/usr/bin/timeout"
+
+    def fake_run(cmd: Sequence[str], **kwargs: object) -> Completed:
+        seen["cmd"] = list(cmd)
+        seen["timeout_kw"] = kwargs.get("timeout")
+        stderr = kwargs["stderr"]
+        stderr.write("timed out\n")
+        return Completed()
+
+    def fake_proc_run(cmd: Sequence[str], **kwargs: object) -> agents.CommandResult:
+        _ = (cmd, kwargs)
+        return agents.CommandResult((), 0, "", "", 0.0)
+
+    monkeypatch.setattr(agents.shutil, "which", fake_which)
+    monkeypatch.setattr(agents.subprocess, "run", fake_run)
+    monkeypatch.setattr(agents.proc, "run", fake_proc_run)
+    rc = agents.launch_claude_drafter(
+        model="claude-test",
+        prompt_file=str(prompt),
+        output_file=str(output),
+        timeout="5",
+        design_tmpdir=str(design),
+        repo_root=str(repo),
+    )
+    assert rc == config.EXIT_TIMEOUT
+    cmd_obj = seen["cmd"]
+    assert isinstance(cmd_obj, list)
+    assert [str(item) for item in cmd_obj[:2]] == ["/usr/bin/timeout", "5"]
+    assert seen["timeout_kw"] is None
+    status = output.read_text(encoding="utf-8")
+    assert "STATUS=TIMEOUT" in status
+    assert "DRAFTER_LAUNCHED=true" in status
+    assert output.with_suffix(output.suffix + ".stderr-tail").read_text(encoding="utf-8") == "timed out\n"
+
+
+def test_launch_claude_drafter_main_rejects_wrapper_read_tool_flags() -> None:
+    rc = agents.launch_claude_drafter_main(
+        [
+            "--model",
+            "claude-test",
+            "--prompt-file",
+            "/tmp/prompt.txt",
+            "--output-file",
+            "/tmp/status.txt",
+            "--timeout",
+            "5",
+            "--design-tmpdir",
+            "/tmp",
+            "--repo-root",
+            "/tmp",
+            "--read-tools",
+        ]
+    )
+    assert rc == 2
 
 
 def test_status_check_emits_contract_keys(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:

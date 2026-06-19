@@ -321,22 +321,6 @@ exclude = [
   # prose and is covered by the test-launch-claude-subprocess target.
   "python/test_agents.py",
   "python/test_agents.py",
-  # scripts/launch-claude-drafter.sh is invoked from /design SKILL.md through
-  # a plugin-root variable path, and its harness is Makefile-only. Agent-lint's
-  # dead-script graph does not resolve that variable indirection.
-  "scripts/launch-claude-drafter.sh",
-  "scripts/launch-claude-drafter.md",
-  "scripts/test-launch-claude-drafter.sh",
-  "scripts/test-launch-claude-drafter.md",
-  # scripts/launch-codex-drafter.sh is invoked from /design SKILL.md through
-  # a plugin-root variable path (same pattern as launch-claude-drafter.sh).
-  # Agent-lint's dead-script graph does not resolve that variable indirection.
-  "scripts/launch-codex-drafter.sh",
-  "scripts/launch-codex-drafter.md",
-  "scripts/test-launch-codex-drafter.sh",
-  "scripts/test-launch-codex-drafter.md",
-  "scripts/test-parse-drafter-output.sh",
-  "scripts/test-parse-drafter-output.md",
   "python/cli.py plugin read-version",
   # python/test_implement_dispatch.py is the offline regression
   # harness for python/cli.py implement step2-dispatch (the /implement
@@ -492,18 +476,6 @@ exclude = [
   "scripts/test-hook-anti-read-poll.sh",
   "scripts/test-hook-bg-poll-guard.sh",
   "scripts/test-hook-progress-report.sh",
-  # scripts/lib-cursor-auth.sh is a sourced-only shell library (no shebang,
-  # not invokable directly). It is referenced from shell consumers via source
-  # directives only, which agent-lint does not follow.
-  "scripts/lib-cursor-auth.sh",
-  # scripts/lib-cursor-launcher-common.sh is a sourced-only shell library (no
-  # shebang, not invokable directly). It is referenced from the Cursor launchers
-  # via source directives only, which agent-lint does not follow.
-  "scripts/lib-cursor-launcher-common.sh",
-  # scripts/lib-codex-launcher-common.sh is a sourced-only shell library (no
-  # shebang, not invokable directly). It is referenced from the Codex launcher
-  # via source directives only, which agent-lint does not follow.
-  "scripts/lib-codex-launcher-common.sh",
   # scripts/lib-sparse-dirs.sh is a sourced-only shell library (no shebang,
   # not invokable directly) carrying the canonical plugin sparse install
   # allowlist for upgrade-larch run and SessionStart probes. Referenced via
@@ -512,15 +484,6 @@ exclude = [
   # scripts/lib-sparse-dirs.md — sibling contract for lib-sparse-dirs.sh
   # (script-md-siblings / G004).
   "scripts/lib-sparse-dirs.md",
-  # not invokable directly). dispatch-plan-voters.sh sources it; agent-lint does not follow source directives.
-  # scripts/lib-external-launcher-common.sh is a sourced-only shell library (no
-  # shebang, not invokable directly) carrying the canonical bodies shared
-  # between lib-codex-launcher-common.sh and lib-cursor-launcher-common.sh
-  # (issue #1502 dedup). Referenced via source directives only, which
-  # agent-lint does not follow.
-  "scripts/lib-external-launcher-common.sh",
-  # by the four *-structure.sh Stage-4 (#3119) harnesses via source directives
-  # only; agent-lint does not follow source directives.
   # scripts/lib-phantom-probe.sh is a sourced-only shell library (no shebang,
   # not invokable directly) shared by rebase-checkpoint-probe.sh and
   # phantom-probe-with-warn.sh; agent-lint does not follow source directives.
@@ -568,11 +531,8 @@ exclude = [
   # and run-log cost analysis. They have no Skill or hook caller by design, so
   # agent-lint's G004/dead-script graph cannot discover a structured
   # invocation reference.
-  # scripts/lib-failed-agent-stderr-tail.sh is a sourced-only shell library (no
   # shebang, not invokable directly). Referenced from shell consumers via source
   # directives only, which agent-lint does not follow.
-  "scripts/lib-failed-agent-stderr-tail.sh",
-  "scripts/test-lib-failed-agent-stderr-tail.sh",
   # scripts/test-external-tool-registry.sh is the regression harness for the
   # external-tool registry. Referenced only from Makefile
   # (test-external-tool-registry target) and scripts/test-external-tool-registry.md
@@ -602,11 +562,6 @@ exclude = [
   # Codex and Cursor review launcher paths. Referenced only from
   # Makefile (test-launch-review target).
   "python/test_launch_review.py",
-  # scripts/test-lib-external-launcher-common.sh is the unit-test harness for
-  # scripts/lib-external-launcher-common.sh. Referenced only from
-  # Makefile (test-lib-external-launcher-common target) and
-  # scripts/test-lib-external-launcher-common.md (sibling contract).
-  "scripts/test-lib-external-launcher-common.sh",
   # python/test_dirty_tree.py is the regression harness for the
   # dirty-tree detector. Referenced only from Makefile
   # (test-check-mid-run-dirty-tree target) and its sibling contract.
@@ -637,11 +592,7 @@ exclude = [
   # (issue #2109). Referenced only from Makefile (test-lib-quiet target) and
   # scripts/test-lib-quiet.md (sibling contract).
   "scripts/test-lib-quiet.sh",
-  # scripts/test-lib-cursor-auth.sh is the hermetic regression harness for
-  # scripts/lib-cursor-auth.sh and python/cli.py agent cursor-auth-preflight (issue #1358).
   # Referenced only from Makefile (test-lib-cursor-auth target) and
-  # scripts/test-lib-cursor-auth.md (sibling contract).
-  "scripts/test-lib-cursor-auth.sh",
   # python/test_agents.py is the regression harness for
   # python/cli.py agent run-external-agent. Referenced only from Makefile
   # (test-run-external-agent target) and python/test_agents.py
@@ -1046,13 +997,7 @@ exclude = [
   "scripts/hook-progress-report.md",
   "scripts/test-lib-quiet.md",
   "scripts/lib-quiet.md",
-  "scripts/test-lib-cursor-auth.md",
-  "scripts/lib-cursor-auth.md",
-  "scripts/lib-cursor-launcher-common.md",
-  "scripts/lib-codex-launcher-common.md",
   "python/agents.py",
-  "scripts/lib-failed-agent-stderr-tail.md",
-  "scripts/test-lib-failed-agent-stderr-tail.md",
   "python/test_agents.py",
   "python/test_agents.py",
   "scripts/test-lib-net.md",

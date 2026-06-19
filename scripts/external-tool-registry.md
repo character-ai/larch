@@ -39,6 +39,8 @@ Update this list whenever a new consumer sources the registry.
 
 ## Non-goals
 
+Per-tool model defaults and plugin `userConfig` environment variables stay in `python/agents.py`; this shell registry only names tool taxonomy.
+
 ## Adding a new external tool
 
 1. Append the new id to `LARCH_EXTERNAL_TOOLS` and to `LARCH_IMPLEMENTER_CODERS` if it is also an implementer.

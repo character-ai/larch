@@ -202,7 +202,7 @@ The model used by the always-on Claude voter when `python3 python/cli.py agent l
 The vendor used by `/design` Step 2b's drafter subprocess.
 
 **When set:**
-- Accepted values: `codex`, `claude`. Step 2b dispatches to `scripts/launch-codex-drafter.sh` or `scripts/launch-claude-drafter.sh` accordingly. Any other value causes the drafter to skip and fall back to inline drafting.
+- Accepted values: `codex`, `claude`. Step 2b dispatches to `python3 python/cli.py agent launch-codex-drafter` or `python3 python/cli.py agent launch-claude-drafter` accordingly. Any other value causes the drafter to skip and fall back to inline drafting.
 
 **When not set:**
 - Defaults to `claude`. Set `LARCH_DESIGN_DRAFTER=codex` to use the Codex drafter.
@@ -212,7 +212,7 @@ The vendor used by `/design` Step 2b's drafter subprocess.
 The Claude model used by `/design` Step 2b's drafter subprocess on the default Claude path or when `LARCH_DESIGN_DRAFTER=claude`.
 
 **When set:**
-- Step 2b uses this model for the subprocess-first plan drafting path via `scripts/launch-claude-drafter.sh`. The launcher validates it as one non-empty token with no whitespace or control characters before invoking Claude.
+- Step 2b uses this model for the subprocess-first plan drafting path via `python3 python/cli.py agent launch-claude-drafter`. The launcher validates it as one non-empty token with no whitespace or control characters before invoking Claude.
 
 **When not set:**
 - Defaults to `claude-opus-4-8`. Empty values also use this default. Has no effect when `LARCH_DESIGN_DRAFTER=codex`.
@@ -301,7 +301,7 @@ On non-zero codex/cursor/claude subprocess exits in review/collector batches (an
 - **Collector dedup:** within one `python/cli.py agent collect-results` batch, duplicate same-root-cause failures collapse to one suppression line; the first occurrence prints the full tail.
 - **Claude panel fallback:** `launch-claude-review.sh` clamps `--timeout` greater than **1800** to **1800** with a warning (subprocess cap in `launch-claude-subprocess.sh`).
 
-See `scripts/lib-failed-agent-stderr-tail.md`.
+See `python/agents.py`.
 
 ### `LARCH_TOKEN_RATE_PER_M`
 

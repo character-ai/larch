@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
+import agents
 import config
 import coder_delta_guards
 import git
@@ -468,13 +469,12 @@ _DIRECT_TARGET_RULES: Final[tuple[tuple[tuple[str, ...], tuple[str, ...], bool, 
     (("skills/design/scripts/test-step3-review-cap.sh", "skills/design/scripts/test-step3-review-cap.md"), ("test-step3-review-cap",), False, False),
     (("python/plan_review.py", "python/test_plan_review.py"), ("test-plan-review", "test-design-multi-round-integration", "test-design-log-publish"), False, False),
     (("python/plan_review_panel.py", "python/test_plan_review_panel.py"), ("test-plan-review-panel", "test-dispatch-plan-review-panel", "test-dispatch-plan-voters"), False, False),
-    (("scripts/launch-codex-drafter.sh", "scripts/launch-codex-drafter.md", "scripts/test-launch-codex-drafter.sh", "scripts/test-launch-codex-drafter.md", "scripts/parse-drafter-output.py", "scripts/parse-drafter-output.md", "scripts/test-parse-drafter-output.sh", "scripts/test-parse-drafter-output.md"), ("test-launch-codex-drafter", "test-parse-drafter-output"), False, False),
     (("python/plan_quality.py", "python/test_plan_quality.py", "skills/design/scripts/test-auto-fix-plan-commands.sh"), ("test-auto-fix-plan-commands", "test-design-step-validator-autofix", "test-design-failure-report"), False, False),
     (("python/plan_quality.py", "python/test_plan_quality.py"), ("test-design-postplan-emit",), False, False),
     (("python/plan_quality.py", "python/test_plan_quality.py"), ("test-design-driver", "test-step0b-router-flag-recovery"), False, False),
     (("python/design_lifecycle.py", "python/test_design_lifecycle.py"), ("test-check-plan-size",), False, False),
     (("python/plan_quality.py", "python/test_plan_quality.py"), ("test-run-step1-plan-log",), False, False),
-    (("python/agents.py", "python/test_agents.py"), ("test-launch-codex-exec", "test-launch-codex-ci", "test-launch-cursor-ci", "test-parse-codex-usage", "test-token-vendor-scrapers", "test-degraded-tools-gate", "test-run-external-agent"), False, False),
+    (("python/agents.py", "python/test_agents.py", "python/checks.py"), ("py-test", "test-launch-codex-exec", "test-launch-codex-ci", "test-launch-cursor-ci", "test-parse-codex-usage", "test-token-vendor-scrapers", "test-degraded-tools-gate", "test-run-external-agent"), False, False),
     (("skills/design/scripts/design-stage-terminal-state.sh", "skills/design/scripts/design-stage-terminal-state.md", "skills/design/scripts/test-design-stage-terminal-state.sh", "skills/design/scripts/test-design-stage-terminal-state.md"), ("test-design-stage-terminal-state", "test-stall-recovery-report"), False, False),
     (("skills/design/scripts/design-failure-report.sh", "skills/design/scripts/design-failure-report.md", "skills/design/scripts/test-design-failure-report.sh", "skills/design/scripts/test-design-failure-report.md"), ("test-design-failure-report", "test-stall-recovery-report", "test-file-failure-report-cross-repo"), False, False),
     (("python/plan_review.py", "skills/design/scripts/design-step3-review.sh", "skills/design/scripts/design-step3-review.md", "skills/design/scripts/test-design-step3-review.sh", "skills/design/scripts/test-design-step3-review.md"), ("test-design-step3-review", "test-plan-review"), False, False),
@@ -494,7 +494,6 @@ _DIRECT_TARGET_RULES: Final[tuple[tuple[tuple[str, ...], tuple[str, ...], bool, 
     (("scripts/resolve-upstream-larch-repo.sh", "scripts/resolve-upstream-larch-repo.md", "scripts/test-resolve-upstream-larch-repo.sh", "scripts/test-resolve-upstream-larch-repo.md"), ("test-resolve-upstream-larch-repo",), False, False),
     (("scripts/file-failure-report-cross-repo.sh", "scripts/file-failure-report-cross-repo.md", "scripts/test-file-failure-report-cross-repo.sh", "scripts/test-file-failure-report-cross-repo.md"), ("test-file-failure-report-cross-repo", "test-design-failure-report"), False, False),
     (("python/stall_recovery.py", "python/stall-recovery-report.md", "python/stall-recovery-report-allowlists.tsv", "python/test_stall_recovery.py", "skills/implement/references/stall-recovery.md"), ("test-stall-recovery-report", "test-design-stage-terminal-state", "test-design-failure-report"), False, False),
-    (("scripts/lib-external-launcher-common.sh", "scripts/lib-external-launcher-common.md", "scripts/test-lib-external-launcher-common.sh", "scripts/test-lib-external-launcher-common.md"), ("test-lib-external-launcher-common",), False, False),
     (("python/blocker.py", "python/test_blocker.py"), ("test-blocker",), True, True),
     (("python/issue_query.py", "python/test_issue_query.py"), ("test-issue-query",), True, True),
     (("python/admission.py", "python/test_admission.py"), ("test-implement-admission",), False, False),
@@ -1346,21 +1345,10 @@ def _run_with_startup_lock(
     argv: list[str],
     cwd: str | None,
 ) -> CommandResult:
-    delay = os.environ.get("LARCH_EXTERNAL_STARTUP_LOCK_DELAY", "0.5")
-    if not re.fullmatch(r"[0-9]+(?:\.[0-9]+)?", delay):
-        delay = "0.5"
-    lib = scripts_dir / "lib-external-launcher-common.sh"
-    wrapper = (
-        'source "$1"\n'
-        'external_startup_lock_acquire _STARTUP_LOCK "$2"\n'
-        'external_startup_lock_release_after "$_STARTUP_LOCK" "$3"\n'
-        'shift 3\n'
-        'exec "$@"\n'
-    )
-    return runner.run(
-        ["bash", "-c", wrapper, "bash", str(lib), tool, delay, *argv],
-        cwd=cwd,
-    )
+    _ = scripts_dir
+    state = agents.external_startup_lock_acquire(tool)
+    agents.external_startup_lock_release_after(state)
+    return runner.run(argv, cwd=cwd)
 
 
 def _build_codex_argv(
@@ -1399,29 +1387,22 @@ def _load_cursor_launch_argv(
     scripts_dir: Path,
     preflight_log: Path,
 ) -> tuple[tuple[str, ...], tuple[str, ...]] | None:
-    lib = scripts_dir / "lib-cursor-launcher-common.sh"
-    script = """
-set -euo pipefail
-SCRIPT_DIR="$(cd "$(dirname "$1")" && pwd)"
-source "$1"
-cursor_launcher_load_model_args 2>>"$2"
-cursor_launcher_setup_auth_argv 2>>"$2"
-printf '%s\\0' "${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"}"
-printf '\\0__DELIM__\\0'
-printf '%s\\0' "${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"}"
-"""
-    result = runner.run(
-        ["bash", "-c", script, "bash", str(lib), str(preflight_log)],
-        cwd=str(scripts_dir.parent),
-    )
-    if result.returncode != 0:
+    _ = (runner, scripts_dir)
+    try:
+        model = agents.resolve_model_args("cursor", with_effort=True).argv
+    except ValueError as exc:
+        with preflight_log.open("a", encoding="utf-8") as handle:
+            _ = handle.write(f"cursor model args failed: {exc}\n")
         return None
-    parts = result.stdout.split("\0__DELIM__\0")
-    if len(parts) != 2:  # noqa: PLR2004
+    verdict = agents.cursor_auth_preflight(caller="checks lint-fix")
+    if not verdict.ok:
+        with preflight_log.open("a", encoding="utf-8") as handle:
+            _ = handle.write(verdict.message + "\n")
         return None
-    model = tuple(p for p in parts[0].split("\0") if p)
-    auth = tuple(p for p in parts[1].split("\0") if p)
-    return model, auth
+    if sys.platform == "darwin" and not os.environ.get("CURSOR_API_KEY", "").strip():
+        agents.cursor_preread_service_token()
+    agents.cursor_auth_export_env()
+    return tuple(model), ()
 
 
 def _build_cursor_argv(
@@ -1529,10 +1510,7 @@ def _run_codex(
     for path in (codex_events, codex_wrapper_log, codex_sidecar):
         if path.exists():
             _ = path.unlink(missing_ok=True)
-    result = runner.run(
-        argv,
-        cwd=repo_root,
-    )
+    result = runner.run(argv, cwd=repo_root)
     launcher_exit = _parse_launcher_exit(result.stdout)
     if launcher_exit is None:
         launcher_exit = _read_done_exit(codex_log) or result.returncode
@@ -1540,29 +1518,13 @@ def _run_codex(
     if token_record.is_file() and token_record.stat().st_size > 0:
         _ = _run_token_command(
             runner,
-            [
-                "python3",
-                str(agent_cli),
-                "token",
-                "append-record",
-                "--input",
-                str(token_record),
-                "--tmpdir",
-                str(implement_tmpdir),
-            ],
+            ["python3", str(agent_cli), "token", "append-record", "--input", str(token_record), "--tmpdir", str(implement_tmpdir)],
             purpose="token append-record",
             cwd=repo_root,
         )
         _ = _run_token_command(
             runner,
-            [
-                "python3",
-                str(agent_cli),
-                "token",
-                "record-vendor-sidecar",
-                "--input",
-                str(token_record),
-            ],
+            ["python3", str(agent_cli), "token", "record-vendor-sidecar", "--input", str(token_record)],
             purpose="token record-vendor-sidecar",
             cwd=repo_root,
             env=_lint_fix_token_env(implement_tmpdir),
@@ -1634,19 +1596,8 @@ def _write_failed_agent_stderr_tail(
     output: Path,
     cwd: str,
 ) -> None:
-    script = 'source "$1"\nwrite_failed_agent_stderr_tail "$2" "$3" || true\n'
-    _ = runner.run(
-        [
-            "bash",
-            "-c",
-            script,
-            "bash",
-            str(scripts_dir / "lib-failed-agent-stderr-tail.sh"),
-            str(source),
-            str(output),
-        ],
-        cwd=cwd,
-    )
+    _ = (runner, scripts_dir, cwd)
+    _ = agents.write_failed_agent_stderr_tail(source, output)
 
 
 def _run_cursor(

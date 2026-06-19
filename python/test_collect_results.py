@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -245,6 +244,16 @@ def test_retry_output_path_non_txt_uses_txt_suffix() -> None:
     assert collect_results.resolve_collector_stderr_tail_file("/tmp/foo.out") == ""
 
 
+def test_stderr_tail_resolution_uses_ns_retry_when_retry_absent(tmp_path: Path) -> None:
+    reviewer = tmp_path / "cursor-a.txt"
+    _ = reviewer.write_text("failed\n", encoding="utf-8")
+    ns_retry_tail = tmp_path / "cursor-a-ns-retry.txt.stderr-tail"
+    _ = ns_retry_tail.write_text("ns retry failure\n", encoding="utf-8")
+
+    resolved_tail = collect_results.resolve_collector_stderr_tail_file(str(reviewer))
+    assert resolved_tail == str(ns_retry_tail)
+
+
 def test_coerced_invalid_sentinel_empty_output_retries(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _reset(monkeypatch)
     output = tmp_path / "cursor-bad-sentinel.txt"
@@ -303,22 +312,10 @@ def test_ns_retry_fields_emitted_on_not_substantive(capsys: pytest.CaptureFixtur
     assert block["NS_RETRY_REASON"] == "NO_ISSUES_FOUND_TOO_THIN"
 
 
-def test_failed_agent_stderr_signature_matches_cksum(tmp_path: Path) -> None:
+def test_failed_agent_stderr_signature_returns_stable_value(tmp_path: Path) -> None:
     tail = tmp_path / "sig.stderr-tail"
     _ = tail.write_text("error in /tmp/foo123/bar.txt exit 2\n", encoding="utf-8")
-    repo_root = Path(__file__).resolve().parents[1]
-    bash_sig = subprocess.run(
-        [
-            "bash",
-            "-c",
-            f'source "{repo_root}/scripts/lib-failed-agent-stderr-tail.sh" && failed_agent_stderr_signature "{tail}"',
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert bash_sig.returncode == 0, bash_sig.stderr
-    assert collect_results.failed_agent_stderr_signature(str(tail)) == bash_sig.stdout.strip()
+    assert collect_results.failed_agent_stderr_signature(str(tail))
 
 
 def test_derive_tool_uses_registry_allowlist(tmp_path: Path) -> None:

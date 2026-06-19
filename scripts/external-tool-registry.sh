@@ -20,6 +20,9 @@
 #
 # Non-goals: per-tool model defaults, probe argv templates, launcher paths,
 # capture-mode policy, runtime-failure tokens. Those stay with their owners.
+# UserConfig env surface for Python model helpers: CLAUDE_PLUGIN_OPTION_CODEX_EFFORT,
+# CLAUDE_PLUGIN_OPTION_CODEX_MODEL, and CLAUDE_PLUGIN_OPTION_CURSOR_MODEL are
+# consumed in python/agents.py, not in this sourced taxonomy file.
 #
 # Canonical ordering rule: external-tool error strings use codex, cursor
 # order; implementer-coder error strings use claude, codex, cursor order.

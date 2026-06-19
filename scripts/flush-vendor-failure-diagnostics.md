@@ -7,7 +7,7 @@ larch-log batch. Part of the #3713 vendor-agent diagnostics carrier work.
 ## Why
 
 Vendor-agent launch failures compose a bounded `${OUTPUT}.failure-diag` carrier
-(see `scripts/lib-failed-agent-stderr-tail.md`). Site-aware callers append the
+(see `python/agents.py`). Site-aware callers append the
 resolved carrier to a durable implement batch via
 `append_vendor_failure_diagnostics`, which writes a redacted **per-slot part
 file** under `$IMPLEMENT_TMPDIR/vendor-failure-diagnostics.parts/`. Per-slot
@@ -69,7 +69,7 @@ Called best-effort before each log commit / push:
 
 ## Edit-in-sync
 
-Keep aligned with `scripts/lib-failed-agent-stderr-tail.sh`
+Keep aligned with `python/agents.py`
 (`append_vendor_failure_diagnostics` part-file layout),
 `docs/run-log-batches.md` (the `vendor-failure-diagnostics` slug), and
 `docs/vendor-agent-diagnostics-audit.md`.
