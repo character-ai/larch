@@ -33,7 +33,7 @@ import plan_quality
 import proc
 import session_env
 import stall_recovery
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from session_env import validate_design_tmpdir
 
 _SUBPROCESS_RUN = subprocess.run
@@ -41,12 +41,6 @@ _SUBPROCESS_RUN = subprocess.run
 
 class _CoreUsageError(Exception):
     """User-facing argument or validation error for ported design helpers."""
-
-
-@dataclass(frozen=True)
-class _CoreResult:
-    rc: int
-    kv_lines: tuple[tuple[str, str], ...] = ()
 
 
 def _validate_design_tmpdir_arg(candidate: str) -> Path:
@@ -60,11 +54,11 @@ def _validate_design_tmpdir_arg(candidate: str) -> Path:
 
 
 def _capture_contract_stream_to_paths(
-    callable_obj,
+    callable_obj: Callable[..., int | tuple[int, list[str]]],
     stdout_path: str | Path,
     stderr_path: str | Path,
-    *args,
-    **kwargs,
+    *args: object,
+    **kwargs: object,
 ) -> int:
     """Run ``callable_obj`` while capturing fd 1, fd 2, and fd 3 contracts.
 

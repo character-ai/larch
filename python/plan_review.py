@@ -18,7 +18,7 @@ import logging_util
 import plan_review_tally
 import plan_review_round
 from design_lifecycle import (
-    _capture_contract_stream_to_paths,
+    capture_contract_stream_to_paths,
     json_get_bool,
     json_get_bool_main as design_json_get_bool_main,
     phase_driver_read_result_env,
@@ -221,7 +221,7 @@ def step3_stage_postplan_failed(design_tmpdir: str | Path, postplan_rc: str = "u
         return 0
     stdout = tmpdir / "step3-stage-terminal-state.stdout.log"
     stderr = tmpdir / "step3-stage-terminal-state.stderr.log"
-    rc = _capture_contract_stream_to_paths(
+    rc = capture_contract_stream_to_paths(
         stage_terminal_state_core,
         stdout,
         stderr,
@@ -262,7 +262,7 @@ def stage_panel_init_failed(design_tmpdir: str | Path, trigger: str = "panel-ini
         return 0
     stdout = tmpdir / "step3-panel-init-terminal-state.stdout.log"
     stderr = tmpdir / "step3-panel-init-terminal-state.stderr.log"
-    rc = _capture_contract_stream_to_paths(
+    rc = capture_contract_stream_to_paths(
         stage_terminal_state_core,
         stdout,
         stderr,

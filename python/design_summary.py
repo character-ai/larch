@@ -217,7 +217,7 @@ def _run_design_failure_report_gate(
 ) -> None:
     if phase != "post":
         return
-    from design_lifecycle import _capture_contract_stream_to_paths, failure_report_core  # noqa: PLC0415
+    from design_lifecycle import capture_contract_stream_to_paths, failure_report_core  # noqa: PLC0415
 
     ex_log = design_tmpdir / "execution-issues.md"
     ex_before = ex_log.stat().st_size if ex_log.is_file() else 0
@@ -234,7 +234,7 @@ def _run_design_failure_report_gate(
     if run_id:
         cmd += ["--run-id", run_id]
 
-    gate_rc = _capture_contract_stream_to_paths(failure_report_core, out_file, err_file, cmd)
+    gate_rc = capture_contract_stream_to_paths(failure_report_core, out_file, err_file, cmd)
     if gate_rc != 0:
         _run_cli(  # pyright: ignore[reportUnusedCallResult]
             "run-log", "append-failure",

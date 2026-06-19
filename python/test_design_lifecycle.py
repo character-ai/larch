@@ -572,7 +572,7 @@ def test_capture_contract_stream_restores_parent_stdout_stderr(tmp_path: Path) -
         print("stderr-row", file=sys.stderr)
         return 0
 
-    assert design_lifecycle._capture_contract_stream_to_paths(emit_contract, out, err) == 0
+    assert design_lifecycle.capture_contract_stream_to_paths(emit_contract, out, err) == 0
     os.write(1, b"")
     os.write(2, b"")
     assert "CAPTURED=true" in out.read_text(encoding="utf-8")
