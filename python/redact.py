@@ -550,10 +550,21 @@ def scrub_submodule_paths(input_path: Path, output_path: Path, log_path: Path) -
             continue
         matched = False
         for sub in sorted(submodules, key=len, reverse=True):
-            if re.search(rf"(?m)^(Location|File):\s*{re.escape(sub)}(?:/|$)", block) or re.search(
-                rf"(?<![A-Za-z0-9_.-]){re.escape(sub)}/",
+            escaped = re.escape(sub)
+            # Label match: production findings use the markdown-bold
+            # `- **Location**:` / `- **File**:` form (the plain `Location:` form
+            # is also tolerated). The path may be the bare submodule dir, carry a
+            # `:line` suffix, or point inside the submodule, so require only a
+            # non-path-token boundary after it rather than a trailing slash.
+            label_match = re.search(
+                rf"(?m)^\s*-?\s*(?:\*\*)?(Location|File)(?:\*\*)?:\s*{escaped}(?![A-Za-z0-9_.-])",
                 block,
-            ):
+            )
+            # Inline match: the submodule path appearing as a complete path token
+            # anywhere in the block (bare dir, `:line` suffix, or deeper path),
+            # not only when followed by a trailing slash.
+            inline_match = re.search(rf"(?<![A-Za-z0-9_.-]){escaped}(?![A-Za-z0-9_.-])", block)
+            if label_match or inline_match:
                 matched = True
                 break
         if matched:
