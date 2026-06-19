@@ -27,7 +27,7 @@ MIN_STRAGGLER_PHASE_SLOTS = 2
 
 _USAGE = (
     "Usage: dispatch-with-waterfall.sh --slots-file FILE --codex-present true|false "
-    "--cursor-present true|false --mode diff|description [--paths-file FILE] [context flags]. "
+    "--cursor-present true|false --mode diff|description [--paths-file FILE] [--skip-invalid-slots] [context flags]. "
     "Default paths-file is SLOTS_FILE.output-files; its parent directory must already exist. "
     "--straggler-cutoff enables the adaptive reviewer straggler deadline for this dispatch. "
     "Stdout KVs include ALL_OUTPUT_FILES_PATH, ALL_OUTPUT_FILES, ALL_OUTPUT_TOOLS, DISPATCH_OK, WARN, …"
@@ -59,6 +59,14 @@ class Slot:
 
 
 @dataclass(frozen=True)
+class InvalidSlotDrop:
+    line: int
+    slot: str
+    snippet: str
+    message: str
+
+
+@dataclass(frozen=True)
 class Options:
     slots_file: str
     codex_present: bool
@@ -79,6 +87,7 @@ class Options:
     require_first_line_pattern: str = ""
     no_fallback: bool = False
     straggler_cutoff: bool = False
+    skip_invalid_slots: bool = False
 
 
 @dataclass
@@ -157,6 +166,7 @@ def _parse_args(argv: Sequence[str]) -> Options | int:
         "require_first_line_pattern": "",
         "no_fallback": False,
         "straggler_cutoff": False,
+        "skip_invalid_slots": False,
     }
     idx = 0
     while idx < len(argv):
@@ -201,6 +211,9 @@ def _parse_args(argv: Sequence[str]) -> Options | int:
         elif arg == "--straggler-cutoff":
             values["straggler_cutoff"] = True
             idx += 1
+        elif arg == "--skip-invalid-slots":
+            values["skip_invalid_slots"] = True
+            idx += 1
         elif arg == "--help":
             _usage()
             return 0
@@ -239,50 +252,78 @@ def _parse_args(argv: Sequence[str]) -> Options | int:
         require_first_line_pattern=str(values["require_first_line_pattern"]),
         no_fallback=bool(values["no_fallback"]),
         straggler_cutoff=bool(values["straggler_cutoff"]),
+        skip_invalid_slots=bool(values["skip_invalid_slots"]),
     )
 
 
-def _load_slots(slots_file: str) -> list[Slot]:
+def _invalid_drop_for_row(line_no: int, row: str, message: str) -> InvalidSlotDrop:
+    slot = ""
+    with contextlib.suppress(json.JSONDecodeError):
+        parsed = json.loads(row)
+        if isinstance(parsed, dict):
+            slot_value = parsed.get("slot")
+            if isinstance(slot_value, str) and slot_value:
+                slot = slot_value
+    snippet = _flatten_field(row)[:200]
+    return InvalidSlotDrop(line=line_no, slot=slot, snippet=snippet, message=message)
+
+
+def _parse_slot_row(row: str) -> Slot:
+    try:
+        data = json.loads(row)
+    except json.JSONDecodeError as exc:
+        raise ValidationError(f"dispatch-with-waterfall.sh: invalid slot row: {row}") from exc
+    if not isinstance(data, dict):
+        raise ValidationError(f"dispatch-with-waterfall.sh: invalid slot row: {row}")
+    slot = data.get("slot")
+    tool = data.get("tool")
+    output = data.get("output")
+    agent = data.get("agent", "")
+    prompt_file = data.get("prompt_file", "")
+    if not isinstance(slot, str) or not slot:
+        raise ValidationError(f"dispatch-with-waterfall.sh: invalid slot row: {row}")
+    if not isinstance(tool, str) or tool not in {"codex", "cursor"}:
+        raise ValidationError(f"dispatch-with-waterfall.sh: invalid slot row: {row}")
+    tool_value = tool
+    if not isinstance(output, str) or not output:
+        raise ValidationError(f"dispatch-with-waterfall.sh: invalid slot row: {row}")
+    if "\n" in output or "\r" in output:
+        raise ValidationError(
+            "dispatch-with-waterfall.sh: slot "
+            f"'{slot}' output path contains a newline or carriage return (line-oriented paths-file contract)"
+        )
+    if agent is None:
+        agent = ""
+    if prompt_file is None:
+        prompt_file = ""
+    if not isinstance(agent, str) or not isinstance(prompt_file, str):
+        raise ValidationError(f"dispatch-with-waterfall.sh: invalid slot row: {row}")
+    if agent and prompt_file:
+        raise ValidationError(f"dispatch-with-waterfall.sh: slot '{slot}' must not set both agent and prompt_file")
+    if not agent and not prompt_file:
+        raise ValidationError(f"dispatch-with-waterfall.sh: slot '{slot}' must set either agent or prompt_file")
+    return Slot(slot, tool_value, output, agent, prompt_file)
+
+
+def _load_slots_with_invalid_drops(slots_file: str, *, skip_invalid: bool) -> tuple[list[Slot], list[InvalidSlotDrop]]:
     slots: list[Slot] = []
-    for row in Path(slots_file).read_text(encoding="utf-8", errors="replace").splitlines():
+    invalid_drops: list[InvalidSlotDrop] = []
+    for line_no, row in enumerate(Path(slots_file).read_text(encoding="utf-8", errors="replace").splitlines(), start=1):
         if not row:
             continue
         try:
-            data = json.loads(row)
-        except json.JSONDecodeError as exc:
-            raise ValidationError(f"dispatch-with-waterfall.sh: invalid slot row: {row}") from exc
-        if not isinstance(data, dict):
-            raise ValidationError(f"dispatch-with-waterfall.sh: invalid slot row: {row}")
-        slot = data.get("slot")
-        tool = data.get("tool")
-        output = data.get("output")
-        agent = data.get("agent", "")
-        prompt_file = data.get("prompt_file", "")
-        if not isinstance(slot, str) or not slot:
-            raise ValidationError(f"dispatch-with-waterfall.sh: invalid slot row: {row}")
-        if not isinstance(tool, str) or tool not in {"codex", "cursor"}:
-            raise ValidationError(f"dispatch-with-waterfall.sh: invalid slot row: {row}")
-        tool_value = tool
-        if not isinstance(output, str) or not output:
-            raise ValidationError(f"dispatch-with-waterfall.sh: invalid slot row: {row}")
-        if "\n" in output or "\r" in output:
-            raise ValidationError(
-                "dispatch-with-waterfall.sh: slot "
-                f"'{slot}' output path contains a newline or carriage return (line-oriented paths-file contract)"
-            )
-        if agent is None:
-            agent = ""
-        if prompt_file is None:
-            prompt_file = ""
-        if not isinstance(agent, str) or not isinstance(prompt_file, str):
-            raise ValidationError(f"dispatch-with-waterfall.sh: invalid slot row: {row}")
-        if agent and prompt_file:
-            raise ValidationError(f"dispatch-with-waterfall.sh: slot '{slot}' must not set both agent and prompt_file")
-        if not agent and not prompt_file:
-            raise ValidationError(f"dispatch-with-waterfall.sh: slot '{slot}' must set either agent or prompt_file")
-        slots.append(Slot(slot, tool_value, output, agent, prompt_file))
-    if not slots:
+            slots.append(_parse_slot_row(row))
+        except ValidationError as exc:
+            if not skip_invalid:
+                raise
+            invalid_drops.append(_invalid_drop_for_row(line_no, row, str(exc)))
+    if not slots and (not skip_invalid or not invalid_drops):
         raise ValidationError("dispatch-with-waterfall.sh: slots file contains no slot rows")
+    return slots, invalid_drops
+
+
+def _load_slots(slots_file: str) -> list[Slot]:  # pyright: ignore[reportUnusedFunction]
+    slots, _invalid_drops = _load_slots_with_invalid_drops(slots_file, skip_invalid=False)
     return slots
 
 
@@ -700,6 +741,30 @@ def _write_drops(path: str, slots: Sequence[Slot], final_outputs: Sequence[str],
         raise ValidationError(f"dispatch-with-waterfall.sh: dropped-slots sidecar not writable: {path}") from exc
 
 
+def _write_invalid_slot_drops(path: str, invalid_drops: Sequence[InvalidSlotDrop]) -> str:
+    invalid_slots_file = f"{path}.invalid-slots"
+    paths_dir = Path(path).parent
+    tmp = ""
+    try:
+        fd, tmp = tempfile.mkstemp(prefix=".dispatch-waterfall-invalid-slots.", dir=str(paths_dir))
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            for drop in invalid_drops:
+                record = {
+                    "line": drop.line,
+                    "slot": drop.slot,
+                    "snippet": drop.snippet,
+                    "message": drop.message,
+                }
+                _ = handle.write(json.dumps(record, separators=(",", ":")) + "\n")
+        _ = Path(tmp).replace(invalid_slots_file)
+        return invalid_slots_file
+    except OSError as exc:
+        if tmp:
+            with contextlib.suppress(OSError):
+                Path(tmp).unlink()
+        raise ValidationError(f"dispatch-with-waterfall.sh: invalid-slots sidecar not writable: {invalid_slots_file}") from exc
+
+
 def _write_paths_file(path: str, final_outputs: Sequence[str]) -> None:
     paths_dir = Path(path).parent
     tmp = ""
@@ -727,7 +792,16 @@ def dispatch_waterfall(opts: Options) -> int:
     _DISPATCH_LAUNCHES.clear()
     result_pattern = _compile_pattern(opts.require_result_pattern, "--require-result-pattern")
     first_line_pattern = _compile_pattern(opts.require_first_line_pattern, "--require-first-line-pattern")
-    slots = _load_slots(opts.slots_file)
+    slots, invalid_drops = _load_slots_with_invalid_drops(opts.slots_file, skip_invalid=opts.skip_invalid_slots)
+    if opts.skip_invalid_slots and not slots:
+        raise ValidationError("dispatch-with-waterfall.sh: slots file contains no valid slot rows")
+    resolved_paths_file = opts.paths_file or f"{opts.slots_file}.output-files"
+    paths_dir = Path(resolved_paths_file).parent
+    if not paths_dir.is_dir():
+        raise ValidationError(f"dispatch-with-waterfall.sh: paths-file parent directory does not exist: {paths_dir}")
+    invalid_slots_file = ""
+    if invalid_drops:
+        invalid_slots_file = _write_invalid_slot_drops(resolved_paths_file, invalid_drops)
     final_outputs = [""] * len(slots)
     final_tools = [""] * len(slots)
     drops = [DropState() for _ in slots]
@@ -823,10 +897,6 @@ def dispatch_waterfall(opts: Options) -> int:
     threshold = int(threshold_raw, 10) if threshold_raw.isdigit() else 3
     warn = "cost-fallback-exceeded-threshold" if combined_fallback > threshold else ""
 
-    resolved_paths_file = opts.paths_file or f"{opts.slots_file}.output-files"
-    paths_dir = Path(resolved_paths_file).parent
-    if not paths_dir.is_dir():
-        raise ValidationError(f"dispatch-with-waterfall.sh: paths-file parent directory does not exist: {paths_dir}")
     for idx, output in enumerate(final_outputs):
         if "\n" in output or "\r" in output:
             raise ValidationError(
@@ -861,6 +931,10 @@ def dispatch_waterfall(opts: Options) -> int:
         logging_util.emit_kv("WARN", warn)
     if straggler_dropped_count > 0:
         logging_util.emit_kv("WARN", "reviewer-straggler-dropped")
+    if invalid_drops:
+        logging_util.emit_kv("INVALID_SLOT_DROP_COUNT", str(len(invalid_drops)))
+        logging_util.emit_kv("INVALID_SLOT_DROPS_FILE", invalid_slots_file)
+        logging_util.emit_kv("WARN", "invalid-slots-dropped")
     _emit_bool("DISPATCH_OK", value=dispatch_ok)
     _emit_bool("STATIC_DISPATCH_OK", value=static_dispatch_ok)
     _emit_bool("DYNAMIC_DISPATCH_OK", value=dynamic_dispatch_ok)

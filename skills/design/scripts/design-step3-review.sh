@@ -34,6 +34,7 @@ no_dedup_requested="${no_dedup_requested:-false}"
 run_id="${run_id:-}"
 STEP3_REVIEW_LOOP_STATUS="${STEP3_REVIEW_LOOP_STATUS:-}"
 LOOP_STATUS="${LOOP_STATUS:-}"
+DEGRADED_PANEL_WARNING="${DEGRADED_PANEL_WARNING:-}"
 VALIDATE_STATUS="${VALIDATE_STATUS:-}"
 VALIDATE_DEFECT_COUNT="${VALIDATE_DEFECT_COUNT:-}"
 VALIDATE_UNSAFE_TOKEN_COUNT="${VALIDATE_UNSAFE_TOKEN_COUNT:-}"
@@ -269,6 +270,7 @@ if [ "$READ_RESULT_ENV" = true ]; then
   _rre_rounds_completed=""
   _rre_final_round_num=""
   _rre_accepted_count=""
+  _rre_degraded_panel_warning=""
   if [ -f "$_rre_file" ] && [ ! -L "$_rre_file" ]; then
     while IFS= read -r _rre_line || [ -n "$_rre_line" ]; do
       case "$_rre_line" in
@@ -277,6 +279,7 @@ if [ "$READ_RESULT_ENV" = true ]; then
         ROUNDS_COMPLETED=*) _rre_rounds_completed="${_rre_line#*=}" ;;
         FINAL_ROUND_NUM=*) _rre_final_round_num="${_rre_line#*=}" ;;
         ACCEPTED_COUNT=*) _rre_accepted_count="${_rre_line#*=}" ;;
+        DEGRADED_PANEL_WARNING=*) _rre_degraded_panel_warning="${_rre_line#*=}" ;;
       esac
     done <"$_rre_file"
     printf 'READ_RESULT_ENV_STATUS=ok\n'
@@ -288,6 +291,7 @@ if [ "$READ_RESULT_ENV" = true ]; then
   printf 'ROUNDS_COMPLETED=%s\n' "$_rre_rounds_completed"
   printf 'FINAL_ROUND_NUM=%s\n' "$_rre_final_round_num"
   printf 'ACCEPTED_COUNT=%s\n' "$_rre_accepted_count"
+  printf 'DEGRADED_PANEL_WARNING=%s\n' "$_rre_degraded_panel_warning"
   exit 0
 fi
 step3_review_validate_resume_state
@@ -558,6 +562,7 @@ _step3_read_result_env() {
     --allow ACCEPTED_COUNT \
     --allow IMPORTANT_ACCEPTED_COUNT \
     --allow DEGRADED_PANEL \
+    --allow DEGRADED_PANEL_WARNING \
     --allow ROUNDS_COMPLETED \
     --allow TALLY_PLAN_REVIEW_STATUS \
     --allow AGGREGATOR_STATUS \
@@ -599,7 +604,7 @@ fi
 while IFS= read -r _line || [[ -n "$_line" ]]; do
   _key="${_line%%=*}"; _value="${_line#*=}"
   case "$_key" in
-    LOOP_STATUS|STEP3_REVIEW_LOOP_STATUS|POSTPLAN_RC|DEDUP_RC|PLAN_REVIEW_CONTINUE_REASON|FINAL_ROUND_NUM|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|TALLY_PLAN_REVIEW_STATUS|AGGREGATOR_STATUS|VOTING_TALLY_FILE|SCOPE_ANCHOR_FILE|STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|ROUND_NUM|REVIEW_ROUND_COUNT)
+    LOOP_STATUS|STEP3_REVIEW_LOOP_STATUS|POSTPLAN_RC|DEDUP_RC|PLAN_REVIEW_CONTINUE_REASON|FINAL_ROUND_NUM|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|DEGRADED_PANEL_WARNING|ROUNDS_COMPLETED|TALLY_PLAN_REVIEW_STATUS|AGGREGATOR_STATUS|VOTING_TALLY_FILE|SCOPE_ANCHOR_FILE|STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|ROUND_NUM|REVIEW_ROUND_COUNT)
       [[ -n "$_value" ]] && printf -v "$_key" '%s' "$_value"
       ;;
     WARN)
@@ -705,6 +710,7 @@ esac
 [[ -n "${AGGREGATOR_STATUS:-}" ]] && printf 'AGGREGATOR_STATUS=%s\n' "$AGGREGATOR_STATUS"
 [[ -n "${VOTING_TALLY_FILE:-}" ]] && printf 'VOTING_TALLY_FILE=%s\n' "$VOTING_TALLY_FILE"
 [[ -n "${DEGRADED_PANEL:-}" ]] && printf 'DEGRADED_PANEL=%s\n' "$DEGRADED_PANEL"
+[[ -n "${DEGRADED_PANEL_WARNING:-}" ]] && printf 'DEGRADED_PANEL_WARNING=%s\n' "$DEGRADED_PANEL_WARNING"
 [[ -n "${PLAN_REVIEW_CONTINUE_REASON:-}" ]] && printf 'PLAN_REVIEW_CONTINUE_REASON=%s\n' "$PLAN_REVIEW_CONTINUE_REASON"
 case "${STEP3_REVIEW_LOOP_STATUS:-}" in
   panel-failed|panel-init-failed|tally-error|degraded-empty-collector|main-agent-vote-required|main-agent-apply-required|postplan-operator-required)

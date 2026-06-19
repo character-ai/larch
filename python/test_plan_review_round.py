@@ -157,6 +157,150 @@ def test_compose_findings_counts_failures_without_dropping_ok(tmp_path: Path, mo
     assert "Missing nil guard" in in_scope
 
 
+def test_load_manifest_slots_ignores_non_dict_rows(tmp_path: Path) -> None:
+    manifest = tmp_path / "plan-review-slots.ndjson"
+    _ = manifest.write_text(
+        '"scalar"\n{"slot":"cursor-plan-arch","output":"out.txt"}\n["array"]\n',
+        encoding="utf-8",
+    )
+
+    assert plan_review_round._load_manifest_slots(manifest) == ["cursor-plan-arch"]
+
+
+def test_compose_findings_tolerates_non_dict_manifest_rows(tmp_path: Path) -> None:
+    sidecar = tmp_path / "cursor-plan-arch.sidecar.tsv"
+    _write_sidecar(
+        sidecar,
+        [
+            {
+                "scope": "in_scope",
+                "severity": "high",
+                "focus_area": "correctness",
+                "location": "python/x.py:10",
+                "what": "Preserve mixed manifests",
+                "scenario_or_breakage": "non-dict rows used to crash",
+                "suggested_fix": "skip non-dict rows",
+            }
+        ],
+    )
+    reviewer_file = tmp_path / "cursor-plan-arch-output.txt"
+    manifest = tmp_path / "plan-review-slots.ndjson"
+    _ = manifest.write_text(
+        "\n".join(
+            [
+                '"scalar"',
+                f'{{"slot":"cursor-plan-arch","output":"{reviewer_file}"}}',
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    records = [
+        collect_results.CollectorRecord(
+            reviewer_file=str(reviewer_file),
+            tool="cursor",
+            status="OK",
+            exit_code="0",
+            structured_sidecar=str(sidecar),
+        )
+    ]
+
+    in_scope, _oos, ok_count, fail_count = plan_review_round._compose_findings_from_collector(
+        tmp_path, _collector_text(records), manifest
+    )
+
+    assert ok_count == 1
+    assert fail_count == 0
+    assert "Preserve mixed manifests" in in_scope
+
+
+def test_execute_round_propagates_degraded_warning_with_mixed_manifest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    design = tmp_path
+    plan = design / "plan.txt"
+    feature = design / "feature-description.txt"
+    _ = plan.write_text("plan\n", encoding="utf-8")
+    _ = feature.write_text("feature\n", encoding="utf-8")
+    paths = design / "panel-paths.txt"
+    reviewer_file = design / "cursor-plan-arch-output.txt"
+    sidecar = design / "cursor-plan-arch.sidecar.tsv"
+    _write_sidecar(
+        sidecar,
+        [
+            {
+                "scope": "in_scope",
+                "severity": "nit",
+                "focus_area": "correctness",
+                "location": "python/x.py:1",
+                "what": "Carry degraded warning",
+                "scenario_or_breakage": "warning dropped before collection",
+                "suggested_fix": "copy panel warning into values",
+            }
+        ],
+    )
+
+    def fake_run_cli(argv: list[str], *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+        _ = env
+        if argv[:2] == ["plan-review", "panel-dispatch"]:
+            _ = paths.write_text(str(reviewer_file) + "\n", encoding="utf-8")
+            _ = (design / "plan-review-slots.ndjson").write_text(
+                "\n".join(
+                    [
+                        '"scalar"',
+                        f'{{"slot":"cursor-plan-arch","output":"{reviewer_file}"}}',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            return subprocess.CompletedProcess(
+                argv,
+                0,
+                f"PANEL_PRUNED_EMPTY=false\nPANEL_PATHS_FILE={paths}\nDEGRADED_PANEL_WARNING=panel degraded\n",
+                "",
+            )
+        if argv[:2] == ["agent", "collect-results"]:
+            record = collect_results.CollectorRecord(
+                reviewer_file=str(reviewer_file),
+                tool="cursor",
+                status="OK",
+                exit_code="0",
+                structured_sidecar=str(sidecar),
+            )
+            return subprocess.CompletedProcess(argv, 0, _collector_text([record]), "")
+        if argv[:2] == ["review", "aggregate-findings"]:
+            _ = (design / "ballot.txt").write_text("### FINDING_1:\n", encoding="utf-8")
+            return subprocess.CompletedProcess(argv, 0, "AGGREGATOR_STATUS=ok\n", "")
+        if argv[:2] == ["plan-review", "voter-dispatch"]:
+            return subprocess.CompletedProcess(
+                argv,
+                0,
+                f"DISPATCH_OK=true\nVOTER_1_PATH={design / 'vote.txt'}\nVOTER_1_TOOL=claude\nVOTER_1_STATUS=launched\n",
+                "",
+            )
+        if argv[:2] == ["plan-review", "tally"]:
+            _ = (design / "accepted-plan-findings.md").write_text("", encoding="utf-8")
+            return subprocess.CompletedProcess(argv, 0, "TALLY_PLAN_REVIEW_STATUS=ok\n", "")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
+
+    rc, values = plan_review_round.execute_round(
+        design,
+        round_num=1,
+        prune_round_num=1,
+        codex_present="true",
+        cursor_present="true",
+        plan_file=plan,
+        feature_file=feature,
+    )
+
+    assert rc == 0
+    assert values["DEGRADED_PANEL_WARNING"] == "panel degraded"
+
+
 def test_parse_collector_records_keyvalue_anchored() -> None:
     """parse_collector_records reads KEY=VALUE blocks by key and ignores leading diagnostics."""
     rec_a = collect_results.CollectorRecord(

@@ -35,6 +35,7 @@ MERGE_KEYS = (
     "AGGREGATOR_STATUS",
     "VOTING_TALLY_FILE",
     "PANEL_PRUNED_EMPTY",
+    "DEGRADED_PANEL_WARNING",
     "ROUND_NUM",
     "PLAN_REVIEW_CONTINUE_REASON",
     "REASON",
@@ -408,6 +409,8 @@ def step3_loop_persist_envelope(
         ]
     )
     rows.extend((opt, vals[opt]) for opt in ("POSTPLAN_RC", "DEDUP_RC") if vals.get(opt))
+    if vals.get("DEGRADED_PANEL_WARNING"):
+        rows.append(("DEGRADED_PANEL_WARNING", vals["DEGRADED_PANEL_WARNING"]))
     if safe_reason:
         rows.append(("PLAN_REVIEW_CONTINUE_REASON", safe_reason))
     if safe_scope:
@@ -442,6 +445,8 @@ def step3_loop_emit_envelope(tmpdir: Path, status: str, round_num: int, rounds_c
     _emit_kv("FINAL_ROUND_NUM", final_round or round_num)
     _emit_kv("ACCEPTED_COUNT", values.get("ACCEPTED_COUNT", "0"))
     _emit_kv("DEGRADED_PANEL", values.get("DEGRADED_PANEL", "0"))
+    if values.get("DEGRADED_PANEL_WARNING"):
+        _emit_kv("DEGRADED_PANEL_WARNING", values["DEGRADED_PANEL_WARNING"])
     if scope_anchor and "\n" not in scope_anchor and "\r" not in scope_anchor:
         _emit_kv("SCOPE_ANCHOR_FILE", scope_anchor)
     _emit_kv("PLAN_REVIEW_CONTINUE_REASON", reason)
@@ -1297,6 +1302,7 @@ def run_step3_review(argv: Sequence[str]) -> int:
             "FINAL_ROUND_NUM",
             "ACCEPTED_COUNT",
             "DEGRADED_PANEL",
+            "DEGRADED_PANEL_WARNING",
             "REASON",
         ]):
             _emit_kv(key, value)
@@ -1357,6 +1363,7 @@ def run_step3_review(argv: Sequence[str]) -> int:
                             ("TALLY_PLAN_REVIEW_STATUS", values.get("TALLY_PLAN_REVIEW_STATUS", "ok")),
                             ("ACCEPTED_COUNT", str(accepted)),
                             ("DEGRADED_PANEL", values.get("DEGRADED_PANEL", "0")),
+                            ("DEGRADED_PANEL_WARNING", values.get("DEGRADED_PANEL_WARNING", "")),
                             ("REASON", values.get("REASON", "")),
                         ],
                     )
@@ -1450,7 +1457,14 @@ def run_step3_review(argv: Sequence[str]) -> int:
                 continue
             if degraded_exit:
                 _emit_kv("LOOP_STATUS", "zero-findings-degraded-panel")
-                for key in ("PANEL_PRUNED_EMPTY", "TALLY_PLAN_REVIEW_STATUS", "ACCEPTED_COUNT", "DEGRADED_PANEL", "REASON"):
+                for key in (
+                    "PANEL_PRUNED_EMPTY",
+                    "TALLY_PLAN_REVIEW_STATUS",
+                    "ACCEPTED_COUNT",
+                    "DEGRADED_PANEL",
+                    "DEGRADED_PANEL_WARNING",
+                    "REASON",
+                ):
                     if degraded_values.get(key):
                         _emit_kv(key, degraded_values[key])
                 return 0

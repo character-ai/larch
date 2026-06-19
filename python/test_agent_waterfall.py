@@ -684,6 +684,114 @@ def test_load_slots_validation_rejects_bad_rows(tmp_path: Path, stub_env: dict[s
         assert not Path(str(manifest) + ".output-files").exists(), name
 
 
+def test_skip_invalid_slots_launches_valid_rows_and_writes_sidecar(tmp_path: Path, stub_env: dict[str, str]) -> None:
+    prompt = tmp_path / "valid.prompt"
+    prompt.write_text("review\n", encoding="utf-8")
+    valid_out = tmp_path / "valid.txt"
+    invalid_out = tmp_path / "invalid.txt"
+    manifest = tmp_path / "mixed-invalid.ndjson"
+    manifest.write_text(
+        "\n".join(
+            [
+                json.dumps({"slot": "valid-slot", "tool": "codex", "output": str(valid_out), "prompt_file": str(prompt)}),
+                json.dumps({"slot": "bad-slot", "tool": "codex", "output": str(invalid_out)}),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    codex_log = tmp_path / "codex-skip-invalid.log"
+
+    proc = _run(manifest, {**stub_env, "CODEX_STUB_LOG": str(codex_log)}, "--skip-invalid-slots")
+
+    assert proc.returncode == 0, proc.stderr
+    assert valid_out.read_text(encoding="utf-8").strip() == "codex ok"
+    assert not invalid_out.exists()
+    kvs = _kv(proc.stdout)
+    assert kvs["INVALID_SLOT_DROP_COUNT"] == "1"
+    assert kvs["WARN"] == "invalid-slots-dropped"
+    sidecar = Path(kvs["INVALID_SLOT_DROPS_FILE"])
+    assert sidecar.is_file()
+    sidecar_text = sidecar.read_text(encoding="utf-8")
+    assert "bad-slot" in sidecar_text
+    assert "must set either agent or prompt_file" in sidecar_text
+    assert str(valid_out) in Path(kvs["ALL_OUTPUT_FILES_PATH"]).read_text(encoding="utf-8")
+    assert str(invalid_out) not in codex_log.read_text(encoding="utf-8")
+
+
+def test_skip_invalid_slots_all_invalid_fails_before_launch(tmp_path: Path, stub_env: dict[str, str]) -> None:
+    manifest = tmp_path / "all-invalid.ndjson"
+    output = tmp_path / "invalid.txt"
+    manifest.write_text(json.dumps({"slot": "bad-slot", "tool": "codex", "output": str(output)}) + "\n", encoding="utf-8")
+    codex_log = tmp_path / "codex-all-invalid.log"
+
+    proc = _run(manifest, {**stub_env, "CODEX_STUB_LOG": str(codex_log)}, "--skip-invalid-slots")
+
+    assert proc.returncode == 2
+    assert "contains no valid slot rows" in proc.stderr
+    assert not codex_log.exists()
+    assert not output.exists()
+    assert not Path(str(manifest) + ".output-files").exists()
+
+
+def test_skip_invalid_slots_sidecar_failure_happens_before_launch(
+    tmp_path: Path,
+    stub_env: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prompt = tmp_path / "valid.prompt"
+    prompt.write_text("review\n", encoding="utf-8")
+    valid_out = tmp_path / "valid.txt"
+    manifest = tmp_path / "sidecar-failure.ndjson"
+    manifest.write_text(
+        "\n".join(
+            [
+                json.dumps({"slot": "valid-slot", "tool": "codex", "output": str(valid_out), "prompt_file": str(prompt)}),
+                json.dumps({"slot": "bad-slot", "tool": "codex", "output": str(tmp_path / "bad.txt")}),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    real_mkstemp = agent_waterfall.tempfile.mkstemp
+    launch_argv: list[Sequence[str]] = []
+
+    def failing_invalid_sidecar_mkstemp(*args: object, **kwargs: object) -> tuple[int, str]:
+        prefix = str(kwargs.get("prefix") or (args[0] if args else ""))
+        if prefix.startswith(".dispatch-waterfall-invalid-slots."):
+            raise OSError("sidecar denied")
+        return real_mkstemp(*args, **kwargs)  # type: ignore[arg-type]
+
+    def recording_popen(argv: Sequence[str], **_kwargs: object) -> subprocess.Popen[bytes]:
+        launch_argv.append(argv)
+        raise AssertionError("sidecar failure must happen before launch")
+
+    monkeypatch.setattr(agent_waterfall.tempfile, "mkstemp", failing_invalid_sidecar_mkstemp)
+    monkeypatch.setattr(agent_waterfall.subprocess, "Popen", recording_popen)
+
+    rc, _stdout = _run_direct(manifest, stub_env, monkeypatch, "--skip-invalid-slots")
+
+    assert rc == 2
+    assert not launch_argv
+    assert not valid_out.exists()
+    assert not Path(str(manifest) + ".output-files").exists()
+
+
+def test_load_slots_accepts_missing_prompt_file_until_launch_time(tmp_path: Path) -> None:
+    manifest = tmp_path / "missing-prompt.ndjson"
+    missing_prompt = tmp_path / "does-not-exist.prompt"
+    output = tmp_path / "out.txt"
+    manifest.write_text(
+        json.dumps({"slot": "missing-prompt", "tool": "codex", "output": str(output), "prompt_file": str(missing_prompt)}) + "\n",
+        encoding="utf-8",
+    )
+
+    slots = agent_waterfall._load_slots(str(manifest))  # pyright: ignore[reportPrivateUsage]
+
+    assert len(slots) == 1
+    assert slots[0].prompt_file == str(missing_prompt)
+
+
 def test_static_dynamic_dispatch_ok_split_on_partial_failure(tmp_path: Path, stub_env: dict[str, str]) -> None:
     manifest = tmp_path / "mixed.ndjson"
     static_out = tmp_path / "static.txt"

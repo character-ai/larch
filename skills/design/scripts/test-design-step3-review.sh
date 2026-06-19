@@ -469,6 +469,7 @@ LOOP_STATUS=tally-error
 ROUNDS_COMPLETED=1
 FINAL_ROUND_NUM=1
 ACCEPTED_COUNT=0
+DEGRADED_PANEL_WARNING=panel degraded
 RESULT
 set +e
 rre_out=$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$RRE_PLUGIN" DESIGN_TMPDIR="$D_RRE" ISSUE_NUMBER=9 \
@@ -479,6 +480,7 @@ set -e
 grep -Fxq 'READ_RESULT_ENV_STATUS=ok' <<<"$rre_out" || fail '--read-result-env must report ok when result env present'
 grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=tally-error' <<<"$rre_out" || fail '--read-result-env must emit STEP3_REVIEW_LOOP_STATUS from result env'
 grep -Fxq 'ROUNDS_COMPLETED=1' <<<"$rre_out" || fail '--read-result-env must emit ROUNDS_COMPLETED from result env'
+grep -Fxq 'DEGRADED_PANEL_WARNING=panel degraded' <<<"$rre_out" || fail '--read-result-env must emit DEGRADED_PANEL_WARNING from result env'
 [ ! -f "$D_RRE/.bg-wait-active" ] || fail '--read-result-env must not start the bg-wait marker'
 [ ! -d "$D_RRE/plan-review" ] || fail '--read-result-env must not dispatch the review'
 [ ! -e "$D_RRE/.completed/step-3" ] || fail '--read-result-env must not write the completion sentinel (#4489)'

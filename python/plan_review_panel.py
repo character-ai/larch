@@ -224,6 +224,47 @@ def _parse_kv(text: str) -> dict[str, str]:
     return out
 
 
+def _invalid_slot_drop_summary(path: str) -> str:
+    if not path:
+        return ""
+    drop_path = Path(path)
+    try:
+        lines = drop_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return ""
+    labels: list[str] = []
+    for line in lines:
+        if not line.strip():
+            continue
+        try:
+            data = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(data, dict):
+            continue
+        row = cast("dict[str, object]", data)
+        slot = str(row.get("slot") or "").strip()
+        if slot:
+            labels.append(slot)
+            continue
+        line_no = str(row.get("line") or "").strip()
+        if line_no:
+            labels.append(f"line {line_no}")
+    if not labels:
+        return ""
+    shown = labels[:3]
+    suffix = "" if len(labels) <= len(shown) else f", +{len(labels) - len(shown)} more"
+    return f" Dropped: {', '.join(shown)}{suffix}."
+
+
+def _degraded_invalid_slot_warning(kv: dict[str, str]) -> str:
+    count = int(kv.get("INVALID_SLOT_DROP_COUNT", "0") or "0") if (kv.get("INVALID_SLOT_DROP_COUNT", "0") or "0").isdigit() else 0
+    if count <= 0:
+        return ""
+    summary = _invalid_slot_drop_summary(kv.get("INVALID_SLOT_DROPS_FILE", ""))
+    return f"**⚠ Degraded plan-review panel: {count} invalid slot row(s) dropped; continuing with remaining reviewers.**{summary}"
+
+
 def _filter_pruned(design: Path, manifest: Path, prune_round_num: int) -> tuple[Path, dict[str, str]]:
     if prune_round_num not in {3, 4}:
         return manifest, {"PANEL_PRUNED_EMPTY": "false", "PRUNED_COUNT": "0"}
@@ -321,6 +362,7 @@ def dispatch_panel(argv: Sequence[str]) -> int:
             "--timeout",
             ns.timeout,
             "--straggler-cutoff",
+            "--skip-invalid-slots",
         ],
         cwd=str(_REPO_ROOT),
         text=True,
@@ -354,6 +396,9 @@ def dispatch_panel(argv: Sequence[str]) -> int:
     _emit("DYNAMIC_SLOT_COUNT", len(dynamic))
     _emit("PANEL_PRUNED_EMPTY", prune_kv.get("PANEL_PRUNED_EMPTY", "false"))
     _emit("PANEL_PATHS_FILE", paths_file)
+    degraded_warning = _degraded_invalid_slot_warning(kv)
+    if degraded_warning:
+        _emit("DEGRADED_PANEL_WARNING", degraded_warning)
     return proc.returncode
 
 
