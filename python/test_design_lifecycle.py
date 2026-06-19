@@ -1638,6 +1638,18 @@ def test_stage_terminal_state_rejects_unknown_outcome_and_vocab(tmp_path: Path) 
     assert design_lifecycle.stage_terminal_state_core(bad_step)[0] == 2
 
 
+def test_stage_terminal_state_rejects_non_numeric_exit_code(tmp_path: Path) -> None:
+    rc, _ = design_lifecycle.stage_terminal_state_core(_stage_args(tmp_path, "--exit-code", "abc"))
+    assert rc == 2
+
+
+def test_stage_terminal_state_accepts_unknown_exit_code(tmp_path: Path) -> None:
+    rc, _ = design_lifecycle.stage_terminal_state_core(_stage_args(tmp_path, "--exit-code", "unknown"))
+    assert rc == 0
+    state = (tmp_path / "design-failure-terminal-state.env").read_text(encoding="utf-8")
+    assert "EXIT_CODE=unknown" in state
+
+
 def test_stage_terminal_state_rejects_outside_and_symlink_detail_log(tmp_path: Path) -> None:
     outside_dir = Path(tempfile.mkdtemp(dir="/var/tmp"))
     try:
@@ -1738,6 +1750,73 @@ def test_failure_report_terminal_success_and_sentinel_skip(tmp_path: Path, monke
     assert "DESIGN_FAILURE_REPORT_REASON=terminal-sentinel-present" in second
 
 
+def test_failure_report_terminal_compose_failed_fallback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _stage_terminal_for_report(tmp_path)
+    real_run_stall: Callable[..., int] = design_lifecycle._run_stall_main  # pyright: ignore[reportPrivateUsage, reportUnknownMemberType, reportUnknownVariableType]
+
+    def fake_stall(
+        callable_obj: object,
+        argv: list[str],
+        *,
+        stdout_path: Path | None = None,
+        stderr_path: Path | None = None,
+    ) -> int:
+        if callable_obj is stall_recovery.compose_report_main:
+            return 1
+        if callable_obj is stall_recovery.populate_sensitive_corpus_main:
+            return 0
+        if callable_obj is stall_recovery.validate_terminal_state_main:
+            return real_run_stall(callable_obj, argv, stdout_path=stdout_path, stderr_path=stderr_path)
+        if callable_obj is stall_recovery.init_attempts_main:
+            return 0
+        if callable_obj is stall_recovery.classify_main and stdout_path is not None:
+            stdout_path.write_text("", encoding="utf-8")
+            return 0
+        return real_run_stall(callable_obj, argv, stdout_path=stdout_path, stderr_path=stderr_path)
+
+    monkeypatch.setattr(design_lifecycle, "_run_stall_main", fake_stall)  # pyright: ignore[reportPrivateUsage]
+    _, stdout, _ = _capture_failure_report(tmp_path, "failed-clarify")
+    assert "DESIGN_FAILURE_REPORT_DECISION=fallback-print-required" in stdout
+    assert "DESIGN_FAILURE_REPORT_REASON=terminal-compose-failed" in stdout
+    audit = tmp_path / "design-failure-audit.log"
+    assert audit.is_file()
+    assert "terminal-compose-failed" in audit.read_text(encoding="utf-8")
+
+
+def test_failure_report_compose_status_reads_last_matching_line(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _stage_terminal_for_report(tmp_path)
+    real_run_stall: Callable[..., int] = design_lifecycle._run_stall_main  # pyright: ignore[reportPrivateUsage, reportUnknownMemberType, reportUnknownVariableType]
+
+    def fake_stall(
+        callable_obj: object,
+        argv: list[str],
+        *,
+        stdout_path: Path | None = None,
+        stderr_path: Path | None = None,
+    ) -> int:
+        if callable_obj is stall_recovery.compose_report_main:
+            if stdout_path is not None:
+                stdout_path.write_text(
+                    "STALL_RECOVERY_REPORT_STATUS=printed\nSTALL_RECOVERY_REPORT_STATUS=filed\nSTALL_RECOVERY_REPORT_ARTIFACT=artifact.md\n",
+                    encoding="utf-8",
+                )
+            return 0
+        if callable_obj is stall_recovery.populate_sensitive_corpus_main:
+            return 0
+        if callable_obj is stall_recovery.validate_terminal_state_main:
+            return real_run_stall(callable_obj, argv, stdout_path=stdout_path, stderr_path=stderr_path)
+        if callable_obj is stall_recovery.init_attempts_main:
+            return 0
+        if callable_obj is stall_recovery.classify_main and stdout_path is not None:
+            stdout_path.write_text("", encoding="utf-8")
+            return 0
+        return real_run_stall(callable_obj, argv, stdout_path=stdout_path, stderr_path=stderr_path)
+
+    monkeypatch.setattr(design_lifecycle, "_run_stall_main", fake_stall)  # pyright: ignore[reportPrivateUsage]
+    _, stdout, _ = _capture_failure_report(tmp_path, "failed-clarify")
+    assert "DESIGN_FAILURE_REPORT_DECISION=terminal-failure" in stdout
+
+
 def test_failure_report_outcome_mismatch_fallback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _stage_terminal_for_report(tmp_path, "failed-clarify")
     _, stdout, _ = _capture_failure_report(tmp_path, "failed-publish", monkeypatch)
@@ -1801,7 +1880,7 @@ def test_step_final_summary_marker_failure_still_emits_sentinel(tmp_path: Path, 
     assert "bg-wait marker setup failed" in (tmp_path / "execution-issues.md").read_text(encoding="utf-8")
 
 
-def test_step_final_summary_render_exception_still_emits_sentinel(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_step_final_summary_render_exception_skips_sentinel_and_marked_emit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     env_path = _write_session_env(tmp_path, tmp_path, monkeypatch, ISSUE_NUMBER="0", SUMMARY_OUTCOME="approved")
     (tmp_path / "final-summary.md").write_text("summary\n", encoding="utf-8")
 
@@ -1813,10 +1892,11 @@ def test_step_final_summary_render_exception_still_emits_sentinel(tmp_path: Path
     monkeypatch.setattr(design_summary, "render_final_summary_main", boom)
     rc, _ = design_lifecycle.step_final_summary_core(["--session-env-path", str(env_path), "--claude-pid", "123", "--outcome", "approved"])
     assert rc == 1
-    assert (tmp_path / ".completed" / "step-final-summary").is_file()
+    assert not (tmp_path / ".completed" / "step-final-summary").is_file()
+    assert "LARCH_FINAL_SUMMARY_BEGIN" not in capsys.readouterr().out
 
 
-def test_step_final_summary_main_returns_zero_after_render_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_step_final_summary_main_returns_failure_without_sentinel_after_render_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     env_path = _write_session_env(tmp_path, tmp_path, monkeypatch, ISSUE_NUMBER="0", SUMMARY_OUTCOME="approved")
     (tmp_path / "final-summary.md").write_text("summary\n", encoding="utf-8")
 
@@ -1827,8 +1907,8 @@ def test_step_final_summary_main_returns_zero_after_render_failure(tmp_path: Pat
 
     monkeypatch.setattr(design_summary, "render_final_summary_main", render_fail)
     rc = design_lifecycle.step_final_summary_main(["--session-env-path", str(env_path), "--claude-pid", "123", "--outcome", "approved"])
-    assert rc == 0
-    assert (tmp_path / ".completed" / "step-final-summary").is_file()
+    assert rc == 1
+    assert not (tmp_path / ".completed" / "step-final-summary").is_file()
 
 
 def test_step_final_summary_bg_marker_records_claude_pid(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

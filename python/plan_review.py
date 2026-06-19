@@ -270,7 +270,7 @@ def stage_panel_init_failed(design_tmpdir: str | Path, trigger: str = "panel-ini
             "--design-tmpdir",
             str(tmpdir),
             "--outcome",
-            "panel-init-failed",
+            "failed-judge-panel",
             "--step",
             "step3",
             "--phase",
@@ -286,7 +286,7 @@ def stage_panel_init_failed(design_tmpdir: str | Path, trigger: str = "panel-ini
             "--source-script",
             "design-step3-review",
             "--summary-outcome",
-            "panel-init-failed",
+            "failed-judge-panel",
         ],
     )
     if rc == 0:

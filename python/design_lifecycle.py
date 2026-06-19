@@ -199,6 +199,22 @@ def _read_env_value(path: Path, key: str, default: str = "") -> str:
     return default
 
 
+def _read_env_value_last(path: Path, key: str, default: str = "") -> str:
+    if path.is_symlink() or not path.is_file():
+        return default
+    prefix = f"{key}="
+    value = default
+    try:
+        for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            if raw.startswith(prefix):
+                candidate = raw[len(prefix):]
+                if candidate:
+                    value = candidate
+    except OSError:
+        return default
+    return value
+
+
 def _read_env_values(path: Path, defaults: Mapping[str, str]) -> dict[str, str]:
     out = dict(defaults)
     if path.is_symlink() or not path.is_file():
@@ -894,6 +910,8 @@ def failure_report_core(argv: Sequence[str]) -> tuple[int, list[str]]:
     compose_env = design_tmpdir / "design-failure-compose.env"
 
     def compose_env_key(key: str, default: str = "") -> str:
+        if key == "STALL_RECOVERY_REPORT_STATUS":
+            return _read_env_value_last(compose_env, key, default)
         return _read_env_value(compose_env, key, default)
 
     def helper_common() -> list[str]:
@@ -1269,14 +1287,16 @@ def step_final_summary_core(argv: Sequence[str]) -> tuple[int, list[str]]:
                 render_rc = 1
                 traceback.print_exc(file=sys.stderr)
                 _append_execution_issue(design_tmpdir, f"Warning: render_final_summary_main failed: {exc}")
-            _emit_final_summary_marked_from_disk(design_tmpdir)
-            _emit_report_gate_sidecars_from_disk(design_tmpdir)
+            if render_rc == 0:
+                _emit_final_summary_marked_from_disk(design_tmpdir)
+                _emit_report_gate_sidecars_from_disk(design_tmpdir)
             sys.stdout.flush()
             with contextlib.suppress(OSError):
                 _final_summary_stream().flush()
-            completed = design_tmpdir / ".completed"
-            completed.mkdir(parents=True, exist_ok=True)
-            (completed / "step-final-summary").touch()
+            if render_rc == 0:
+                completed = design_tmpdir / ".completed"
+                completed.mkdir(parents=True, exist_ok=True)
+                (completed / "step-final-summary").touch()
             return int(render_rc), []
     except ValueError as exc:
         print(f"design-step-final-summary.sh: {exc}", file=sys.stderr)
