@@ -71,6 +71,7 @@ def _static_slot_rows(
                 f"cursor-plan-{archetype}",
                 archetype,
                 round_dir / f"cursor-plan-{archetype}-output.txt",
+                prompt_path,
                 prompt,
             )
         )
@@ -96,13 +97,13 @@ def _static_slot_rows(
                 check=False,
             )
             codex_prompt = proc.stdout if proc.returncode == 0 else ""
-            _ = prompt_path, codex_prompt_path
             rows.append(
                 _slot_row(
                     "codex",
                     f"codex-plan-{archetype}",
                     archetype,
                     round_dir / f"codex-primary-plan-{archetype}-output.txt",
+                    codex_prompt_path,
                     codex_prompt,
                 )
             )
@@ -132,6 +133,7 @@ def _static_slot_rows(
                 "codex-plan-generic",
                 "architecture",
                 design / "codex-plan-generic-output.txt",
+                design / "render-plan-codex-generic.prompt",
                 proc.stdout if proc.returncode == 0 else "",
             )
         )
@@ -159,13 +161,20 @@ def _validate_tmpdir(parser: argparse.ArgumentParser, value: str, *, create: boo
     return path.resolve()
 
 
-def _slot_row(tool: str, slot: str, focus: str, output: Path, prompt: str = "") -> dict[str, object]:
+def _slot_row(tool: str, slot: str, focus: str, output: Path, prompt_file: Path, prompt: str = "") -> dict[str, object]:
+    # Write the rendered prompt (or the one-line fallback when the render was empty or
+    # non-zero) to its own file and reference it via "prompt_file", matching the voter
+    # manifest pattern below. agent_waterfall._load_slots accepts only "agent" or
+    # "prompt_file"; an inline "prompt" key is ignored, so the consumer rejected the
+    # first row and the panel launched zero reviewers (#4765).
+    prompt_text = prompt or f"Review the design plan with a {focus} lens."
+    _ = prompt_file.write_text(prompt_text, encoding="utf-8")
     return {
         "tool": tool,
         "slot": slot,
         "name": slot,
         "focus_area": focus,
-        "prompt": prompt or f"Review the design plan with a {focus} lens.",
+        "prompt_file": str(prompt_file),
         "output": str(output),
     }
 
@@ -278,7 +287,7 @@ def dispatch_panel(argv: Sequence[str]) -> int:
     static_count = len(rows)
     dynamic = _load_dynamic_rows(design)
     for tool, slot, focus, prompt in dynamic:
-        rows.append(_slot_row(tool, slot, focus, round_dir / f"{slot}.txt", prompt))
+        rows.append(_slot_row(tool, slot, focus, round_dir / f"{slot}.txt", round_dir / f"{slot}.prompt", prompt))
     manifest = design / "plan-review-slots.ndjson"
     _write_manifest(rows, manifest)
     manifest, prune_kv = _filter_pruned(design, manifest, ns.prune_round_num or ns.round_num)
