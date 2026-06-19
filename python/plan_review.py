@@ -1174,7 +1174,7 @@ def plan_review_continuation(argv: Sequence[str]) -> int:
     elif panel_pruned_empty == "true":
         cont = True
         reason = "pruned-empty"
-    elif degraded and accepted > 0:
+    elif degraded and (high_new > 0 or non_nit_new > NON_NIT_CONTINUE_THRESHOLD):
         cont = True
         reason = "degraded-panel"
     elif high_new > 0:

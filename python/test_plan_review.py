@@ -1110,6 +1110,51 @@ def test_continuation_continues_when_a_new_finding_appears(tmp_path: Path) -> No
     assert "NEW_HIGH_ACCEPTED_COUNT=1" in proc2.stdout
 
 
+def test_continuation_degraded_panel_converges_on_duplicate_findings(tmp_path: Path) -> None:
+    # Degraded-panel continuation must not bypass cross-round dedup (#4808).
+    findings = _high_finding_block(
+        1,
+        severity="important",
+        location="python/plan_review.py:1163",
+        concern="degraded panel re-triggers on duplicates. Scenario: round 2 re-raises round 1.",
+    )
+    _ = (tmp_path / "accepted-plan-findings.md").write_text(findings, encoding="utf-8")
+    _ = (tmp_path / ".step3-review-result.env").write_text(
+        "DEGRADED_PANEL=1\nTALLY_PLAN_REVIEW_STATUS=ok\n",
+        encoding="utf-8",
+    )
+
+    _ = (tmp_path / "review-round-count.txt").write_text("1\n", encoding="utf-8")
+    proc1 = run_cli(
+        "plan-review",
+        "continuation",
+        "--design-tmpdir",
+        str(tmp_path),
+        "--approve-requested",
+        "false",
+        env={"LARCH_QUIET_DISABLE": "1"},
+    )
+    assert proc1.returncode == 0, proc1.stderr
+    assert "PLAN_REVIEW_CONTINUE=true" in proc1.stdout
+    assert "PLAN_REVIEW_CONTINUE_REASON=degraded-panel" in proc1.stdout
+
+    _ = (tmp_path / "review-round-count.txt").write_text("2\n", encoding="utf-8")
+    proc2 = run_cli(
+        "plan-review",
+        "continuation",
+        "--design-tmpdir",
+        str(tmp_path),
+        "--approve-requested",
+        "false",
+        env={"LARCH_QUIET_DISABLE": "1"},
+    )
+    assert proc2.returncode == 0, proc2.stderr
+    assert "PLAN_REVIEW_CONTINUE=false" in proc2.stdout
+    assert "PLAN_REVIEW_CONTINUE_REASON=converged-no-new-findings" in proc2.stdout
+    assert "DUPLICATE_ACCEPTED_COUNT=1" in proc2.stdout
+    assert "NEW_HIGH_ACCEPTED_COUNT=0" in proc2.stdout
+
+
 def test_step3_state_direct_review_entry_resets_applied_finding_ledger(tmp_path: Path) -> None:
     ledger = tmp_path / ".step3-applied-finding-keys.tsv"
     _ = ledger.write_text("1\tpython/plan_review.py:1039\x1fconcern\n", encoding="utf-8")
