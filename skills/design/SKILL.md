@@ -294,7 +294,6 @@ and stop (run no further steps). **`degraded-both-down-hard-fail`** stops the sk
 
 Step 1d.7 outline-approval is NOT invoked on the ad-hoc Q&A-only branch because no new plan is being produced; the every-run outline contract applies only to runs that proceed past Step 1d to plan production.
 
-
 **Sub-step 5. Flag binding** (only when `ROUTE=proceed`): source router booleans from Step 0-pre bindings: keep `partition_requested=true` only when the Step 0-pre binding is true; set `brainstorm_requested=true` when the Step 0-pre binding is true **or** when the route driver auto-enabled `BRAINSTORM_PREFIX`, else `false`; keep `approve_requested=true` only when the Step 0-pre binding is true, else `false`; keep `skip_approve_requested=true` only when the Step 0-pre binding is true, else `false`. No `AskUserQuestion` on this sub-step.
 
 **Sub-step 6. Write** `$DESIGN_TMPDIR/feature-description.txt` from issue title+body (or verbal prompt) when `ROUTE=proceed` or the operator selected **replace via full flow** from the `ROUTE=already-planned` branch, then invoke `${CLAUDE_PLUGIN_ROOT}/python/cli.py` `design init-runparams` (contract: `design-init-runparams.md`) for env refresh (before rename), `[DESIGNING]` rename, `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session write-run-params`, and router-flag jq-merge. If the design proceeds to Step 2b without a non-empty `feature-description.txt`, stop and repair Step 0 instead of drafting from missing input.
