@@ -1903,6 +1903,7 @@ def test_apply_findings_with_coder_full_snapshot_partial_cleanup_verification_mi
     assert result.status == "failed"
     assert not codex_calls
     assert _git_cached_names(repo) == ""
+    assert (repo / "tracked.txt").read_text(encoding="utf-8") == "user edit\n"
     cleanup_log = (round_dir / "coder-cleanup.log").read_text(encoding="utf-8")
     assert "pre-coder snapshot mismatch: tracked.txt" in cleanup_log
 
@@ -2316,6 +2317,30 @@ def test_lint_fix_delta_paths_excludes_reported_path_reverted_before_commit(tmp_
     monkeypatch.setattr(review_and_fix, "_capture_round_untracked_paths", list)
 
     paths = review_and_fix._lint_fix_delta_paths(round_dir, "head", ("linted.py", "reverted.py"))
+
+    assert paths == ("linted.py",)
+
+
+@MARK_CONVERGENCE
+def test_lint_fix_delta_paths_includes_staged_only_reported_path(tmp_path, monkeypatch):
+    impl = _tmp_impl(tmp_path)
+    round_dir = impl / "round-1"
+    snap = review_and_fix._lint_fix_snapshot_dir(round_dir)
+    snap.mkdir(parents=True)
+    (snap / "pre-lint-tracked-paths.txt").write_text("linted.py\n", encoding="utf-8")
+
+    def fake_git_output(args: list[str]) -> str:
+        if args == ["diff", "--name-only", "head"]:
+            return ""
+        if args == ["diff", "--cached", "--name-only", "head"]:
+            return "linted.py\n"
+        return ""
+
+    monkeypatch.setattr(review_and_fix, "_git_output", fake_git_output)
+    monkeypatch.setattr(review_and_fix, "_path_matches_pre_lint_snapshot", lambda *_a: False)
+    monkeypatch.setattr(review_and_fix, "_capture_round_untracked_paths", list)
+
+    paths = review_and_fix._lint_fix_delta_paths(round_dir, "head", ("linted.py",))
 
     assert paths == ("linted.py",)
 

@@ -912,6 +912,8 @@ def _collect_round_stage_paths(round_dir: Path, *, since_committed: bool = False
     mode = _snapshot_mode(round_dir)
     if mode not in {"full", "head_untracked"}:
         return []
+    if mode == "full" and not _round_has_full_pre_coder_snapshot(round_dir):
+        return []
     snap_dir = pre_coder_snapshot_dir(round_dir)
     pre_head_file = snap_dir / "pre-coder-head.txt"
     snapshot_head = _read_text(pre_head_file).strip() if pre_head_file.is_file() and pre_head_file.stat().st_size else ""
@@ -1145,9 +1147,7 @@ def _lint_fix_delta_paths(
     snap_dir = _lint_fix_snapshot_dir(round_dir)
     pre_tracked = snap_dir / "pre-lint-tracked-paths.txt"
     pre_tracked_set = {line for line in _read_text(pre_tracked).splitlines() if line}
-    current_diff_paths = {
-        path for path in _git_output(["diff", "--name-only", pre_lint_head]).splitlines() if path
-    }
+    current_diff_paths = set(_tracked_paths_vs_ref(pre_lint_head))
     current_untracked_paths = set(_capture_round_untracked_paths())
     paths: set[str] = set()
     for path in reported_paths:
