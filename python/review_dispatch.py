@@ -13,8 +13,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Callable, Sequence
 
+import agents
 import logging_util
-import redact
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 GENERATORS_TSV = REPO_ROOT / "scripts" / "generators.tsv"
@@ -23,8 +23,6 @@ WAIT_DEFAULT_TIMEOUT = 1860
 WAIT_DEFAULT_POLL_INTERVAL = "5"
 SUSPEND_REFUND_SECONDS = 60
 GENERATORS_TSV_COLUMNS = 2
-_FAILED_AGENT_TAIL_LINES = 30
-_FAILED_AGENT_TAIL_BYTES = 5120
 
 
 @dataclass
@@ -363,32 +361,8 @@ def gather_branch_context_main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def _tail_lines(path: Path, max_lines: int) -> list[str]:
-    try:
-        return path.read_text(encoding="utf-8", errors="replace").splitlines()[-max_lines:]
-    except OSError:
-        return []
-
-
-def _truncate_utf8(text: str, max_bytes: int) -> str:
-    data = text.encode("utf-8")[:max_bytes]
-    while data:
-        try:
-            return data.decode("utf-8")
-        except UnicodeDecodeError:
-            data = data[:-1]
-    return ""
-
-
 def render_failed_agent_stderr_tail(path: str) -> str:
-    source = Path(path)
-    if not source.is_file() or source.stat().st_size <= 0:
-        return ""
-    text = "\n".join(_tail_lines(source, _FAILED_AGENT_TAIL_LINES))
-    if text:
-        text += "\n"
-    redacted = redact.redact_secrets_only(redact.redact_tmpdir_paths(text))
-    return _truncate_utf8(redacted, _FAILED_AGENT_TAIL_BYTES)
+    return agents.render_failed_agent_stderr_tail(Path(path))
 
 
 def _redacted_launch_stderr_body(path: str) -> str:

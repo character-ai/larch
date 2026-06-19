@@ -20,7 +20,7 @@ non-zero exit it composes a bounded, content-filtered `${OUTPUT}.failure-diag`
 carrier inside its `EXIT` trap **before** writing `${OUTPUT}.done`, so a visible
 `.done` always implies the carrier exists for failures. A retry that later
 SUCCEEDS clears the carrier (entry-clear + success-clear), so retry-then-success
-commits nothing. The carrier library (`scripts/lib-failed-agent-stderr-tail.sh`)
+commits nothing. The carrier library (`python/agents.py`)
 exposes `write_failure_diag`, `resolve_failure_diagnostic_source`,
 `external_stream_reset` (per-attempt history archive), `append_vendor_failure_diagnostics`
 (durable per-slot implement batch), and `resolve_execution_issues_log`.
@@ -42,7 +42,7 @@ below.
 | Call site | Saved | Logged | Flushed | Class | Notes |
 |---|---|---|---|---|---|
 | `python/cli.py agent run-external-agent` | ✅ | n/a (callers log) | ✅ batch+publish | **D** | Central carrier producer; health-gate fast-fail echoes stderr. |
-| `scripts/lib-failed-agent-stderr-tail.sh` | ✅ | — | — | **D** | Carrier library: compose / resolve / reset / append / log-resolver. |
+| `python/agents.py` | ✅ | — | — | **D** | Carrier library: compose / resolve / reset / append / log-resolver. |
 | `python/cli.py run-log append-failure` | — | ✅ never-empty | — | **D** | Fail-closed backstop synthesizes a line for missing/zero-byte input. |
 | `python/cli.py agent launch-review` (codex) | ✅ | ✅ | ✅ | **D** | `external_stream_reset` at truncations; verdict-before-reset; give-up resolves carrier + `append_vendor_failure_diagnostics`. |
 | `python/cli.py agent launch-review` (cursor) | ✅ | ✅ | ✅ | **D** | Same as codex lane; `.diag` archived before truncation. |

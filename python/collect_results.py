@@ -763,7 +763,7 @@ def resolve_collector_stderr_tail_file(reviewer_file: str) -> str:
         if Path(launch_stderr).is_file() and Path(launch_stderr).stat().st_size > 0:
             fd, tmp_tail = tempfile.mkstemp(prefix="larch-launch-stderr-tail.", dir=os.environ.get("TMPDIR") or None)
             os.close(fd)
-            rendered = review_dispatch.render_failed_agent_stderr_tail(launch_stderr)
+            rendered = agents.render_failed_agent_stderr_tail(Path(launch_stderr))
             if rendered:
                 _ = Path(tmp_tail).write_text(rendered, encoding="utf-8")
                 return tmp_tail
@@ -822,7 +822,7 @@ def _emit_failed_agent_stderr_tails(records: Sequence[CollectorRecord]) -> None:
             continue
         if sig:
             seen[sig] = base
-        rendered = review_dispatch.render_failed_agent_stderr_tail(tail_file)
+        rendered = agents.render_failed_agent_stderr_tail(Path(tail_file))
         if rendered:
             _diagnostic("--- failed agent stderr tail ---")
             for line in rendered.splitlines():

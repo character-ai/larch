@@ -35,6 +35,8 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("agent", "launch-codex-ci"): ("agents", "launch_codex_ci_main"),
     ("agent", "launch-codex-implement"): ("agents", "launch_codex_implement_main"),
     ("agent", "launch-codex-exec"): ("agents", "launch_codex_exec_main"),
+    ("agent", "launch-codex-drafter"): ("agents", "launch_codex_drafter_main"),
+    ("agent", "launch-claude-drafter"): ("agents", "launch_claude_drafter_main"),
     ("agent", "launch-cursor-ci"): ("agents", "launch_cursor_ci_main"),
     ("agent", "launch-cursor-implement"): ("agents", "launch_cursor_implement_main"),
     ("agent", "launch-claude-ci"): ("agents", "launch_claude_ci_main"),

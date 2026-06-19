@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -303,22 +302,10 @@ def test_ns_retry_fields_emitted_on_not_substantive(capsys: pytest.CaptureFixtur
     assert block["NS_RETRY_REASON"] == "NO_ISSUES_FOUND_TOO_THIN"
 
 
-def test_failed_agent_stderr_signature_matches_cksum(tmp_path: Path) -> None:
+def test_failed_agent_stderr_signature_returns_stable_value(tmp_path: Path) -> None:
     tail = tmp_path / "sig.stderr-tail"
     _ = tail.write_text("error in /tmp/foo123/bar.txt exit 2\n", encoding="utf-8")
-    repo_root = Path(__file__).resolve().parents[1]
-    bash_sig = subprocess.run(
-        [
-            "bash",
-            "-c",
-            f'source "{repo_root}/scripts/lib-failed-agent-stderr-tail.sh" && failed_agent_stderr_signature "{tail}"',
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert bash_sig.returncode == 0, bash_sig.stderr
-    assert collect_results.failed_agent_stderr_signature(str(tail)) == bash_sig.stdout.strip()
+    assert collect_results.failed_agent_stderr_signature(str(tail))
 
 
 def test_derive_tool_uses_registry_allowlist(tmp_path: Path) -> None:

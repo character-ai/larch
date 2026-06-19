@@ -2380,7 +2380,10 @@ def step2b_drafter_main(argv: Sequence[str]) -> int:
         repo_root = _repo_root()
         if vendor == "codex":
             cmd = [
-                str(plugin_root / "scripts" / "launch-codex-drafter.sh"),
+                sys.executable,
+                str(plugin_root / "python" / "cli.py"),
+                "agent",
+                "launch-codex-drafter",
                 "--prompt-file",
                 str(design_tmpdir / "step2b-drafter-prompt.txt"),
                 "--output-file",
@@ -2397,7 +2400,10 @@ def step2b_drafter_main(argv: Sequence[str]) -> int:
             ]
         else:
             cmd = [
-                str(plugin_root / "scripts" / "launch-claude-drafter.sh"),
+                sys.executable,
+                str(plugin_root / "python" / "cli.py"),
+                "agent",
+                "launch-claude-drafter",
                 "--model",
                 model,
                 "--prompt-file",
@@ -2495,7 +2501,7 @@ def step2b_drafter_main(argv: Sequence[str]) -> int:
             "--site",
             "design Step 2b drafter",
             "--tool",
-            f"launch-{vendor}-drafter.sh",
+            f"agent launch-{vendor}-drafter",
             "--exit-code",
             str(drafter_rc),
             "--category",
