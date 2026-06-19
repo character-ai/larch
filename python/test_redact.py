@@ -391,3 +391,21 @@ def test_scrub_submodule_paths_does_not_overmatch_sibling(
     out = output_path.read_text(encoding="utf-8")
     assert "FINDING_1" in out
     assert "vendor/libfoobar/x.py" in out
+
+
+def test_scrub_submodule_paths_inline_mention_without_label(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A submodule path referenced outside a Location/File label line is still
+    # scrubbed by the inline match alone -- exercises the broadened inline branch
+    # independently of the label branch (the trailing-slash-only match missed it).
+    monkeypatch.setattr(redact, "discover_submodule_paths", _fake_submodule_paths)
+    findings = "### FINDING_1:\n- **Concern**: the helper in vendor/libfoo breaks on empty input\n\n"
+    input_path = tmp_path / "findings.md"
+    output_path = tmp_path / "scrubbed.md"
+    log_path = tmp_path / "audit.log"
+    _ = input_path.write_text(findings, encoding="utf-8")
+    count, ok = redact.scrub_submodule_paths(input_path, output_path, log_path)
+    assert ok
+    assert count == 1
+    assert "FINDING_1" not in output_path.read_text(encoding="utf-8")
