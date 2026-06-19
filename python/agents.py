@@ -1551,9 +1551,9 @@ def external_stream_reset(target: Path, history: Path | None = None, label: str 
         _write(target, "")
 
 
-def resolve_failure_diagnostic_source(output: Path, *, sink: str = "", history: str = "", events: str = "") -> Path | None:
+def _failure_diagnostic_source_candidates(output: Path, *, sink: str = "", history: str = "", events: str = "") -> list[Path]:
     stem = str(output).removesuffix(".txt")
-    candidates = [
+    ordered: list[Path | None] = [
         output.with_suffix(output.suffix + ".failure-diag"),
         Path(f"{stem}-retry.txt.failure-diag"),
         Path(f"{stem}-ns-retry.txt.failure-diag"),
@@ -1569,10 +1569,26 @@ def resolve_failure_diagnostic_source(output: Path, *, sink: str = "", history: 
         output.with_suffix(output.suffix + ".launcher-stderr"),
         output,
     ]
-    for candidate in candidates:
-        if candidate is not None and candidate.is_file() and candidate.stat().st_size > 0:
+    return [candidate for candidate in ordered if candidate is not None]
+
+
+def resolve_failure_diagnostic_source(output: Path, *, sink: str = "", history: str = "", events: str = "") -> Path | None:
+    for candidate in _failure_diagnostic_source_candidates(output, sink=sink, history=history, events=events):
+        if candidate.is_file() and candidate.stat().st_size > 0:
             return candidate
     return None
+
+
+def _stderr_tail_from_less_specific_carrier(output: Path, existing: str, source: Path, *, sink: str = "") -> bool:
+    candidates = _failure_diagnostic_source_candidates(output, sink=sink)
+    try:
+        source_idx = candidates.index(source)
+    except ValueError:
+        return True
+    for candidate in candidates[source_idx + 1 :]:
+        if candidate.is_file() and candidate.stat().st_size > 0 and existing == render_failed_agent_stderr_tail(candidate):
+            return True
+    return False
 
 
 def _positive_int_env(name: str, default: int) -> int:
@@ -4918,7 +4934,7 @@ def _implement_token_budget_hit(args: argparse.Namespace, tool: str, default_kin
 def _append_implement_launch_failure(tool: str, output: Path, sidecar: Path, launcher_exit: int, *, retry_count: int = 0) -> None:
     if launcher_exit == 0:
         return
-    _ensure_failure_diag_composed(output, sink=str(sidecar))
+    _compose_failure_diag(output, sink=str(sidecar))
     source = resolve_failure_diagnostic_source(output, sink=str(sidecar)) or sidecar
     verdict = external_auth_verdict(tool, *_implement_failure_auth_paths(tool, output, sidecar, source))
     if verdict == "auth":
@@ -4932,16 +4948,12 @@ def _append_implement_launch_failure(tool: str, output: Path, sidecar: Path, lau
         subprocess.run(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
         _append_vendor_failure_diagnostics(source, site=f"2 {tool}-implement", exit_code=launcher_exit)
     tail = output.with_suffix(output.suffix + ".stderr-tail")
-    tail_source = select_failed_agent_stderr_source(
-        output,
-        capture_stdout=False,
-        capture_stdout_only=tool == "cursor",
-        stderr_sink=str(sidecar),
-    )
-    rendered = render_failed_agent_stderr_tail(tail_source) if tail_source is not None and tail_source.is_file() and tail_source.stat().st_size > 0 else ""
-    existing = tail.read_text(encoding="utf-8", errors="replace") if tail.is_file() else ""
-    if rendered and existing != rendered:
-        _write(tail, rendered)
+    rendered = render_failed_agent_stderr_tail(source) if source.is_file() and source.stat().st_size > 0 else ""
+    if rendered:
+        existing = tail.read_text(encoding="utf-8", errors="replace") if tail.is_file() else ""
+        if not existing or _stderr_tail_from_less_specific_carrier(output, existing, source, sink=str(sidecar)):
+            if existing != rendered:
+                _write(tail, rendered)
 
 
 def _record_implement_timing(tool: str, task_kind: str, start: float, output: Path, exit_code: int) -> None:
