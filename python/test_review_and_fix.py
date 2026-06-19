@@ -1061,6 +1061,56 @@ def test_collect_review_fix_stage_paths_uses_post_coder_head(tmp_path, monkeypat
 
 
 @pytest.mark.commit_fixes
+def test_collect_round_stage_paths_without_snapshot_returns_empty(tmp_path, monkeypatch):
+    round_dir = _tmp_impl(tmp_path) / "round-1"
+    round_dir.mkdir()
+
+    monkeypatch.setattr(review_and_fix, "_capture_round_tracked_paths", lambda: ["stale.py"])
+    monkeypatch.setattr(review_and_fix, "_capture_round_untracked_paths", lambda: ["stale-untracked.py"])
+
+    assert not review_and_fix._collect_round_stage_paths(round_dir)
+
+
+@pytest.mark.commit_fixes
+def test_collect_round_stage_paths_with_empty_baseline_returns_empty(tmp_path, monkeypatch):
+    round_dir = _tmp_impl(tmp_path) / "round-1"
+    round_dir.mkdir()
+    snap = review_and_fix.pre_coder_snapshot_dir(round_dir)
+    snap.mkdir(parents=True)
+    (snap / "pre-coder-head.txt").write_text("", encoding="utf-8")
+
+    monkeypatch.setattr(review_and_fix, "_capture_round_tracked_paths", lambda: ["stale.py"])
+    monkeypatch.setattr(review_and_fix, "_capture_round_untracked_paths", lambda: ["stale-untracked.py"])
+
+    assert not review_and_fix._collect_round_stage_paths(round_dir)
+
+
+@pytest.mark.commit_fixes
+def test_collect_round_stage_paths_since_committed_requires_post_coder_head(tmp_path, monkeypatch):
+    round_dir = _tmp_impl(tmp_path) / "round-1"
+    round_dir.mkdir()
+    snap = review_and_fix.pre_coder_snapshot_dir(round_dir)
+    snap.mkdir(parents=True)
+    (snap / "pre-coder-head.txt").write_text("pre\n", encoding="utf-8")
+    (snap / "pre-coder-tracked-paths.txt").write_text("fixed.py\n", encoding="utf-8")
+    (snap / "pre-coder-untracked-paths.txt").write_text("", encoding="utf-8")
+    (round_dir / "post-coder-head.txt").write_text("", encoding="utf-8")
+    delta_calls: list[str] = []
+
+    def fake_delta(_round_dir: Path, diff_base: str, **_kwargs) -> list[str]:
+        delta_calls.append(diff_base)
+        return ["stale.py"]
+
+    monkeypatch.setattr(review_and_fix, "_capture_round_tracked_paths", lambda: ["stale.py"])
+    monkeypatch.setattr(review_and_fix, "_capture_round_untracked_paths", lambda: ["stale-untracked.py"])
+    monkeypatch.setattr(review_and_fix, "_round_coder_delta_paths", fake_delta)
+    monkeypatch.setattr(review_and_fix, "_round_coder_untracked_delta_paths", lambda _round: ["stale-new.py"])
+
+    assert not review_and_fix._collect_round_stage_paths(round_dir, since_committed=True)
+    assert not delta_calls
+
+
+@pytest.mark.commit_fixes
 def test_collect_round_stage_paths_excludes_pre_dirty_unrelated_since_committed(tmp_path, monkeypatch):
     round_dir = _tmp_impl(tmp_path) / "round-1"
     round_dir.mkdir()
@@ -1815,6 +1865,49 @@ def test_apply_findings_with_coder_cleanup_verification_failure_stops_without_st
 
 
 @MARK_DISPATCH
+def test_apply_findings_with_coder_full_snapshot_partial_cleanup_verification_mismatch_stops_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _mk_git_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    _patch_coder_basics(monkeypatch)
+    (repo / "tracked.txt").write_text("user edit\n", encoding="utf-8")
+    round_dir = tmp_path / "impl" / "round-1"
+    review_and_fix._write_pre_coder_snapshot(round_dir)
+    assert review_and_fix._snapshot_mode(round_dir) == "full"
+    codex_calls: list[bool] = []
+    original_matches = review_and_fix._path_matches_pre_coder_snapshot
+
+    def cursor(_round_dir: Path, _prompt: str, _tool_log: Path) -> bool:
+        (repo / "tracked.txt").write_text("cursor\n", encoding="utf-8")
+        review_and_fix._run(["git", "add", "tracked.txt"])
+        return False
+
+    def codex(_round_dir: Path, _prompt: str, _tool_log: Path) -> bool:
+        codex_calls.append(True)
+        return True
+
+    def path_matches(round_arg: Path, pre_head: str, path: str) -> bool:
+        if path == "tracked.txt":
+            return False
+        return original_matches(round_arg, pre_head, path)
+
+    monkeypatch.setattr(review_and_fix, "_run_coder_cursor", cursor)
+    monkeypatch.setattr(review_and_fix, "_run_coder_codex", codex)
+    monkeypatch.setattr(review_and_fix, "_path_matches_pre_coder_snapshot", path_matches)
+
+    result = review_and_fix.apply_findings_with_coder(_coder_findings(tmp_path), round_dir, round_dir / "coder.env")
+
+    assert result.rc == 2
+    assert result.status == "failed"
+    assert not codex_calls
+    assert _git_cached_names(repo) == ""
+    cleanup_log = (round_dir / "coder-cleanup.log").read_text(encoding="utf-8")
+    assert "pre-coder snapshot mismatch: tracked.txt" in cleanup_log
+
+
+@MARK_DISPATCH
 def test_apply_findings_with_coder_finalize_preserves_staged_carryover(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2172,8 +2265,108 @@ def test_lint_fix_delta_paths_excludes_unchanged_pre_dirty_file(tmp_path, monkey
 
     monkeypatch.setattr(review_and_fix, "_git_output", fake_git_output)
     monkeypatch.setattr(review_and_fix, "_path_matches_pre_lint_snapshot", fake_matches)
-    paths = review_and_fix._lint_fix_delta_paths(round_dir, "head", ())
+    monkeypatch.setattr(review_and_fix, "_capture_round_untracked_paths", list)
+    paths = review_and_fix._lint_fix_delta_paths(round_dir, "head", ("linted.py",))
     assert paths == ("linted.py",)
+
+
+@MARK_CONVERGENCE
+def test_lint_fix_delta_paths_ignores_unreported_non_lint_drift(tmp_path, monkeypatch):
+    impl = _tmp_impl(tmp_path)
+    round_dir = impl / "round-1"
+    snap = review_and_fix._lint_fix_snapshot_dir(round_dir)
+    snap.mkdir(parents=True)
+    (snap / "pre-lint-tracked-paths.txt").write_text("preexisting.py\nlinted.py\n", encoding="utf-8")
+
+    def fake_git_output(args: list[str]) -> str:
+        if args == ["diff", "--name-only", "head"]:
+            return "preexisting.py\nlinted.py\n"
+        return ""
+
+    def fake_matches(_round_dir: Path, _head: str, _path: str) -> bool:
+        return False
+
+    monkeypatch.setattr(review_and_fix, "_git_output", fake_git_output)
+    monkeypatch.setattr(review_and_fix, "_path_matches_pre_lint_snapshot", fake_matches)
+    monkeypatch.setattr(review_and_fix, "_capture_round_untracked_paths", list)
+
+    paths = review_and_fix._lint_fix_delta_paths(round_dir, "head", ("linted.py",))
+
+    assert paths == ("linted.py",)
+
+
+@MARK_CONVERGENCE
+def test_lint_fix_delta_paths_excludes_reported_path_reverted_before_commit(tmp_path, monkeypatch):
+    impl = _tmp_impl(tmp_path)
+    round_dir = impl / "round-1"
+    snap = review_and_fix._lint_fix_snapshot_dir(round_dir)
+    snap.mkdir(parents=True)
+    (snap / "pre-lint-tracked-paths.txt").write_text("linted.py\nreverted.py\n", encoding="utf-8")
+
+    def fake_git_output(args: list[str]) -> str:
+        if args == ["diff", "--name-only", "head"]:
+            return "linted.py\n"
+        return ""
+
+    def fake_matches(_round_dir: Path, _head: str, _path: str) -> bool:
+        return False
+
+    monkeypatch.setattr(review_and_fix, "_git_output", fake_git_output)
+    monkeypatch.setattr(review_and_fix, "_path_matches_pre_lint_snapshot", fake_matches)
+    monkeypatch.setattr(review_and_fix, "_capture_round_untracked_paths", list)
+
+    paths = review_and_fix._lint_fix_delta_paths(round_dir, "head", ("linted.py", "reverted.py"))
+
+    assert paths == ("linted.py",)
+
+
+@MARK_CONVERGENCE
+def test_step5_lint_fix_commits_only_reported_current_paths(tmp_path, monkeypatch):
+    impl = _tmp_impl(tmp_path)
+    result = _round_result_for_lint_fix(impl)
+    snap = review_and_fix._lint_fix_snapshot_dir(result.round_dir)
+    snap.mkdir(parents=True)
+    (snap / "pre-lint-tracked-paths.txt").write_text("preexisting.py\nlinted.py\n", encoding="utf-8")
+    checks_calls = {"n": 0}
+    committed: dict[str, object] = {}
+
+    def fake_checks(_impl: Path) -> dict[str, str]:
+        checks_calls["n"] += 1
+        if checks_calls["n"] == 1:
+            return {"STATUS": "fail", "REDACTED_LOG_FILE": str(impl / "checks.log")}
+        return {"STATUS": "pass", "RELEVANT_CHECKS_OK": "true"}
+
+    def fake_git_output(args: list[str]) -> str:
+        if args == ["diff", "--name-only", "head"]:
+            return "preexisting.py\nlinted.py\n"
+        return ""
+
+    def fake_matches(_round_dir: Path, _head: str, _path: str) -> bool:
+        return False
+
+    def fake_commit(round_num: int, round_dir: Path, commit_paths: tuple[str, ...], reason: str) -> str:
+        committed.update(round_num=round_num, round_dir=round_dir, commit_paths=commit_paths, reason=reason)
+        return "sha"
+
+    monkeypatch.setattr(review_and_fix, "_run_relevant_checks_captured", fake_checks)
+    monkeypatch.setattr(review_and_fix, "_git_status_porcelain", lambda: " M preexisting.py\n M linted.py\n")
+    monkeypatch.setattr(review_and_fix, "_write_pre_lint_snapshot", lambda _round: "head")
+    monkeypatch.setattr(
+        review_and_fix,
+        "_run_lint_fix_loop",
+        lambda _impl, _log: {"LINT_FIX_STATUS": "applied", "LINT_FIX_DELTA_PATHS": "linted.py"},
+    )
+    monkeypatch.setattr(review_and_fix, "_git_output", fake_git_output)
+    monkeypatch.setattr(review_and_fix, "_path_matches_pre_lint_snapshot", fake_matches)
+    monkeypatch.setattr(review_and_fix, "_capture_round_untracked_paths", list)
+    monkeypatch.setattr(review_and_fix, "_commit_lint_fix_delta_paths", fake_commit)
+    monkeypatch.setattr(review_and_fix, "_structural_loc", lambda *_a: 0)
+    monkeypatch.setattr(review_and_fix, "_high_severity_count", lambda *_a: 0)
+
+    status, reason, cont = review_and_fix._step5_post_round_gates(result, 1, 5, impl)
+
+    assert (status, reason, cont) == ("complete", "", False)
+    assert committed["commit_paths"] == ("linted.py",)
 
 
 @MARK_CONVERGENCE
