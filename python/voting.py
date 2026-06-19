@@ -80,6 +80,17 @@ CODE_REVIEW_FINDINGS_CLASSIFICATION_HEADER = (
     "finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool"
 )
 
+BALLOT_HEADING_RE = re.compile(r"^### (FINDING_[0-9]+|OOS_[0-9]+):")
+REVIEWER_ATTRIBUTION_RE = re.compile(
+    r"^(?P<prefix>[\s-]*(?:\*\*Reviewer\(s\)\*\*|\*\*Reviewers?\*\*|Reviewer\(s\)|Reviewers?)\s*:\s*)"
+    r"(?P<value>.*?)"
+    r"(?P<trailing>[ \t]*)$"
+)
+
+
+class TallyError(ValueError):
+    """Raised when tally attribution sidecars cannot score neutralized ballots."""
+
 
 def findings_classification_header() -> str:
     return FINDINGS_CLASSIFICATION_HEADER
@@ -191,18 +202,14 @@ def vote_for_id_main(argv: list[str]) -> int:
 
 
 def reviewer_for_block(block_file: str | Path) -> str:
-    label_re = re.compile(
-        r"^[\s-]*(?:\*\*Reviewer\(s\)\*\*|\*\*Reviewers?\*\*|Reviewer\(s\)|Reviewers?)\s*:"
-    )
     try:
         lines = Path(block_file).read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
         return "unknown"
     for line in lines:
-        if label_re.search(line):
-            value = re.sub(r"^[\s-]*", "", line)
-            value = re.sub(r"^[^:]*:\s*", "", value)
-            value = value.replace("*", "").strip()
+        match = REVIEWER_ATTRIBUTION_RE.match(line)
+        if match:
+            value = _normalize_reviewer_value(match.group("value"))
             return value or "unknown"
     return "unknown"
 
@@ -212,6 +219,149 @@ def reviewer_for_block_main(argv: list[str]) -> int:
         return _error("usage: reviewer-for-block <block-file>")
     sys.stdout.write(reviewer_for_block(argv[0]))
     return 0
+
+
+def _normalize_reviewer_value(value: str) -> str:
+    return value.replace("*", "").strip()
+
+
+def _safe_tsv_cell(value: str) -> str:
+    return re.sub(r"[\t\r\n]+", " ", value).strip()
+
+
+def _ballot_blocks(text: str) -> dict[str, str]:
+    blocks: dict[str, str] = {}
+    current_id = ""
+    current_lines: list[str] = []
+    for raw in text.splitlines(keepends=True):
+        match = BALLOT_HEADING_RE.match(raw.rstrip("\n"))
+        if match:
+            if current_id:
+                blocks[current_id] = "".join(current_lines)
+            current_id = match.group(1)
+            if current_id in blocks:
+                raise ValueError(f"duplicate ballot heading {current_id}")
+            current_lines = [raw]
+        elif current_id:
+            current_lines.append(raw)
+    if current_id:
+        blocks[current_id] = "".join(current_lines)
+    return blocks
+
+
+def neutralize_reviewer_attribution(text: str, token: str = "anonymous") -> str:  # noqa: S107
+    lines: list[str] = []
+    for raw in text.splitlines(keepends=True):
+        line = raw.removesuffix("\n")
+        newline = "\n" if raw.endswith("\n") else ""
+        match = REVIEWER_ATTRIBUTION_RE.match(line)
+        if match:
+            lines.append(f"{match.group('prefix')}{token}{match.group('trailing')}{newline}")
+        else:
+            lines.append(raw)
+    return "".join(lines)
+
+
+def proposer_map_from_ballot(text: str) -> dict[str, tuple[str, str]]:
+    proposer_map: dict[str, tuple[str, str]] = {}
+    for item_id, block in _ballot_blocks(text).items():
+        for line in block.splitlines():
+            match = REVIEWER_ATTRIBUTION_RE.match(line)
+            if match:
+                proposer_map[item_id] = (_normalize_reviewer_value(match.group("value")) or "unknown", line)
+                break
+    return proposer_map
+
+
+def validate_proposer_map_coverage(
+    ballot_text: str,
+    proposer_map: dict[str, tuple[str, str]],
+) -> None:
+    missing = [item_id for item_id in _ballot_blocks(ballot_text) if item_id not in proposer_map]
+    if missing:
+        raise ValueError(f"proposer map missing item(s): {', '.join(missing)}")
+
+
+def write_proposer_map(ballot_file: Path, map_file: Path) -> None:
+    text = ballot_file.read_text(encoding="utf-8", errors="replace")
+    proposer_map = proposer_map_from_ballot(text)
+    validate_proposer_map_coverage(text, proposer_map)
+    map_file.parent.mkdir(parents=True, exist_ok=True)
+    lines = ["item_id\treviewer\treviewer_line\n"]
+    for item_id in _ballot_blocks(text):
+        reviewer, reviewer_line = proposer_map[item_id]
+        lines.append(f"{item_id}\t{_safe_tsv_cell(reviewer)}\t{_safe_tsv_cell(reviewer_line)}\n")
+    tmp = map_file.with_name(f"{map_file.name}.{os.getpid()}.tmp")
+    _ = tmp.write_text("".join(lines), encoding="utf-8")
+    _ = tmp.replace(map_file)
+
+
+def read_proposer_map(map_file: str | Path) -> dict[str, tuple[str, str]]:
+    path = Path(map_file)
+    if not path.is_file():
+        return {}
+    proposer_map: dict[str, tuple[str, str]] = {}
+    try:
+        rows = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return {}
+    for row in rows[1:] if rows and rows[0].split("\t")[:3] == ["item_id", "reviewer", "reviewer_line"] else rows:
+        parts = row.split("\t")
+        if len(parts) != 3:  # noqa: PLR2004
+            continue
+        item_id, reviewer, reviewer_line = (part.strip() for part in parts)
+        if not BALLOT_HEADING_RE.match(f"### {item_id}:") or not reviewer or not reviewer_line:
+            continue
+        proposer_map[item_id] = (reviewer, reviewer_line)
+    return proposer_map
+
+
+def _is_neutral_reviewer(value: str) -> bool:
+    return value.strip().lower() == "anonymous"
+
+
+def proposer_for_item(
+    item_id: str,
+    block_file: str | Path,
+    map_file: str | Path = "",
+    *,
+    sidecar_required: bool = False,
+) -> str:
+    reviewer = reviewer_for_block(block_file)
+    sidecar_present = bool(map_file) and Path(map_file).is_file()
+    if sidecar_present or sidecar_required:
+        row = read_proposer_map(map_file).get(item_id) if map_file else None
+        if row and row[0]:
+            return row[0]
+        if _is_neutral_reviewer(reviewer):
+            raise TallyError(f"missing proposer map entry for neutralized item {item_id}")
+    return reviewer
+
+
+def reviewer_line_for_item(item_id: str, map_file: str | Path = "") -> str:
+    if not map_file:
+        return ""
+    row = read_proposer_map(map_file).get(item_id)
+    return row[1] if row else ""
+
+
+def restore_reviewer_attribution(block_text: str, reviewer_line: str) -> str:
+    if not reviewer_line:
+        return block_text
+    lines = block_text.splitlines(keepends=True)
+    for idx, raw in enumerate(lines):
+        line = raw.removesuffix("\n")
+        newline = "\n" if raw.endswith("\n") else ""
+        match = REVIEWER_ATTRIBUTION_RE.match(line)
+        if match:
+            if _is_neutral_reviewer(_normalize_reviewer_value(match.group("value"))):
+                lines[idx] = reviewer_line + newline
+            return "".join(lines)
+    for idx, raw in enumerate(lines):
+        if BALLOT_HEADING_RE.match(raw.rstrip("\n")):
+            lines.insert(idx + 1, reviewer_line + "\n")
+            return "".join(lines)
+    return reviewer_line + "\n" + block_text
 
 
 def is_security_block(block_file: str | Path) -> bool:
@@ -307,11 +457,10 @@ def split_ballot(ballot_file: str | Path, out_dir: str | Path) -> None:
     out_path.mkdir(parents=True, exist_ok=True)
     seen: set[str] = set()
     current: Path | None = None
-    heading_re = re.compile(r"^### (FINDING_[0-9]+|OOS_[0-9]+):")
     with Path(ballot_file).open(encoding="utf-8", errors="replace") as handle:
         for raw in handle:
             line = raw.rstrip("\n")
-            match = heading_re.match(line)
+            match = BALLOT_HEADING_RE.match(line)
             if match:
                 item_id = match.group(1)
                 if item_id in seen:

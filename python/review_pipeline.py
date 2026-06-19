@@ -21,6 +21,7 @@ from pathlib import Path
 
 import logging_util
 import proc
+import voting
 from plan_scout import REVIEW_RESERVED as RESERVED_DYNAMIC_NAMES
 
 _PLUGIN_ROOT = Path(__file__).resolve().parent.parent
@@ -127,6 +128,12 @@ def _append_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
         handle.write(text)
+
+
+def _write_proposer_sidecar_and_neutralize(ballot_file: Path, proposer_map: Path) -> None:
+    voting.write_proposer_map(ballot_file, proposer_map)
+    ballot_text = ballot_file.read_text(encoding="utf-8", errors="replace")
+    _write_text(ballot_file, voting.neutralize_reviewer_attribution(ballot_text))
 
 
 def _atomic_write(path: Path, text: str) -> None:
@@ -2090,7 +2097,15 @@ def review_core(argv: list[str], *, runner: proc.Runner | None = None) -> int:
     _write_text(aggregate_out, aggregate_result.stdout)
     aggregate = _kv_parse(aggregate_result.stdout)
     if aggregate.get("REASON") == "validation-exhausted":
+        proposer_map = review_tmpdir / "proposer-map.tsv"
+        try:
+            _write_proposer_sidecar_and_neutralize(review_tmpdir / "findings.md", proposer_map)
+        except (OSError, ValueError) as exc:
+            _diag(f"→ review: proposer map preparation failed: {exc}")
+            _emit_core_common("panel-failed", round_num, review_tmpdir, panel_mode, panel_shape, threshold_reason="proposer-map-failed")
+            return 2
         tally_args = ["--ballot-file", str(review_tmpdir / "findings.md"), "--review-tmpdir", str(review_tmpdir), "--cursor-available", cursor_available, "--codex-available", codex_available, "--round-num", str(round_num)]
+        tally_args.extend(["--proposer-map-file", str(proposer_map)])
         if session_env_path:
             tally_args.extend(["--session-env-path", session_env_path])
         if panel_manifest and Path(panel_manifest).is_file():
@@ -2100,6 +2115,9 @@ def review_core(argv: list[str], *, runner: proc.Runner | None = None) -> int:
         tally_result = _run_command_string(commands.tally, tally_args, runner=runner) if commands.tally else _call_review_command("tally-code-votes", tally_args, runner=runner)
         tally = _kv_parse(tally_result.stdout)
         _write_text(review_tmpdir / "review-core-aggregator-exhaust-tally.env", tally_result.stdout)
+        if tally_result.returncode != 0 and not tally.get("TALLY_STATUS"):
+            _emit_core_common("panel-failed", round_num, review_tmpdir, panel_mode, panel_shape, threshold_reason="tally-code-votes failed")
+            return 2
         classification = tally.get("FINDINGS_CLASSIFICATION_TSV_FILE", "")
         _record_classification(review_tmpdir, round_num, classification)
         emit_args = ["--tally-file", str(review_tmpdir / "review-core-aggregator-exhaust-tally.env"), "--accepted-findings-file", str(review_tmpdir / "accepted-findings.md"), "--oos-file", str(review_tmpdir / "oos.md"), "--review-tmpdir", str(review_tmpdir), "--round", str(round_num), "--mode", mode, "--scout-status", scout_status, "--dynamic-slots", dynamic_slots, "--static-slot-count", static_slot_count]
@@ -2118,6 +2136,14 @@ def review_core(argv: list[str], *, runner: proc.Runner | None = None) -> int:
     _write_text(review_tmpdir / "prune-nit.env", prune_result.stdout or "PRUNED_COUNT=0\nINSCOPE_REMAINING=0\nSTATUS=skipped\n")
     if _kv_parse(prune_result.stdout).get("PRUNED_COUNT", "0") != "0":
         _diag(f"→ review: nit post-aggregate filter marked {_kv_parse(prune_result.stdout).get('PRUNED_COUNT')} finding(s) as [OUT_OF_SCOPE]")
+
+    proposer_map = review_tmpdir / "proposer-map.tsv"
+    try:
+        _write_proposer_sidecar_and_neutralize(review_tmpdir / "findings.md", proposer_map)
+    except (OSError, ValueError) as exc:
+        _diag(f"→ review: proposer map preparation failed: {exc}")
+        _emit_core_common("panel-failed", round_num, review_tmpdir, panel_mode, panel_shape, threshold_reason="proposer-map-failed")
+        return 2
 
     voter_args = ["--ballot-file", str(review_tmpdir / "findings.md"), "--review-tmpdir", str(review_tmpdir), "--codex-available", codex_available, "--cursor-available", cursor_available, "--round-num", str(round_num)]
     if session_env_path:
@@ -2141,7 +2167,7 @@ def review_core(argv: list[str], *, runner: proc.Runner | None = None) -> int:
             _emit_kv(f"VOTER_{idx}_TOOL", voters[f"VOTER_{idx}_TOOL"])
         if status:
             _emit_kv(f"VOTER_{idx}_STATUS", status)
-    tally_args = ["--ballot-file", str(review_tmpdir / "findings.md"), "--review-tmpdir", str(review_tmpdir), "--cursor-available", cursor_available, "--codex-available", codex_available, "--round-num", str(round_num)]
+    tally_args = ["--ballot-file", str(review_tmpdir / "findings.md"), "--review-tmpdir", str(review_tmpdir), "--cursor-available", cursor_available, "--codex-available", codex_available, "--round-num", str(round_num), "--proposer-map-file", str(proposer_map)]
     if session_env_path:
         tally_args.extend(["--session-env-path", session_env_path])
     if scope_files and Path(scope_files).is_file() and Path(scope_files).stat().st_size:
@@ -2158,6 +2184,9 @@ def review_core(argv: list[str], *, runner: proc.Runner | None = None) -> int:
     tally_result = _run_command_string(commands.tally, tally_args, runner=runner) if commands.tally else _call_review_command("tally-code-votes", tally_args, runner=runner)
     tally = _kv_parse(tally_result.stdout)
     _write_text(review_tmpdir / "review-core-tally.env", tally_result.stdout)
+    if tally_result.returncode != 0 and not tally.get("TALLY_STATUS"):
+        _emit_core_common("panel-failed", round_num, review_tmpdir, panel_mode, panel_shape, threshold_reason="tally-code-votes failed")
+        return 2
     for key in ("VOTING_SKIPPED_WARNING", "YIELD_TSV_FILE", "VOTING_TALLY_FILE"):
         if tally.get(key):
             _emit_kv(key, tally[key])

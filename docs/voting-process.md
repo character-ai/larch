@@ -47,18 +47,27 @@ Legacy callers that omit `--voter-tools` keep compacted semantics for one to thr
 
 ## Ballot Format
 
-Before voting, each deduplicated finding receives a stable sequential ID. The ballot is formatted as:
+Before voting, each deduplicated finding receives a stable sequential ID. Voter-facing ballots keep the reviewer field shape but replace proposer labels with `anonymous`:
 
-```text
-FINDING_1: <reviewer attribution> — <finding description>
-FINDING_2: <reviewer attribution> — <finding description>
+```markdown
+### FINDING_1: <short title>
+- **Reviewer**: anonymous
+- **Concern**: <finding description>
+
+### FINDING_2: <short title>
+- **Reviewer(s)**: anonymous
+- **Concern**: <finding description>
 ```
 
-Out-of-scope observations are included on the same ballot with an `[OUT_OF_SCOPE]` prefix:
+Out-of-scope observations are included on the same ballot with anonymous reviewer lines:
 
-```text
-OOS_1: [OUT_OF_SCOPE] Code — <description of pre-existing issue>
+```markdown
+### OOS_1: [OUT_OF_SCOPE] <short title>
+- **Reviewer**: anonymous
+- **Concern**: <description of pre-existing issue>
 ```
+
+The original proposer labels are stored in `proposer-map.tsv`. Tally restores them for `findings-classification.tsv`, reviewer scoreboards, and accepted, rejected, and OOS audit artifacts. The MainAgent fallback reads the same neutralized ballot as automated voters. Plan-review ballots are rebuilt after aggregation on every round and include both in-scope `FINDING_N` and OOS `OOS_N` blocks.
 
 ## Voter Output Format
 
@@ -74,7 +83,7 @@ FINDING_2: NO — <one-line reason>
 ```text
 3 reviewers submit findings
   -> Deduplicate findings
-  -> Format ballot with stable IDs
+  -> Format neutralized ballot with stable IDs
   -> Launch available voters
   -> Collect votes
   -> Tally per finding using the active tier
@@ -85,9 +94,9 @@ Tier outcomes:
   1 eligible: YES accepts, NO rejects
   0 eligible: main agent adjudicates the ballot as untrusted data
 
-Accepted in-scope findings -> implement accepted findings -> score reviewers
-Accepted OOS observations -> file GitHub issues -> score reviewers
-Neutral and rejected findings -> score reviewers
+Accepted in-scope findings -> restore attribution -> implement accepted findings -> score reviewers
+Accepted OOS observations -> restore attribution -> file GitHub issues -> score reviewers
+Neutral and rejected findings -> restore attribution for audit artifacts -> score reviewers
 ```
 
 ## Out-of-Scope Observations

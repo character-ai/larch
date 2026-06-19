@@ -15,6 +15,7 @@ from typing import cast
 
 import collect_results
 import logging_util
+import voting
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _COLLECT_TIMEOUT = "1860"
@@ -327,6 +328,15 @@ def _write_round_summary(
     _ = tmp.replace(dest)
 
 
+def _compose_attributed_ballot(design: Path, oos_md: str) -> str:
+    in_scope_path = design / "findings-in-scope.md"
+    in_scope = in_scope_path.read_text(encoding="utf-8", errors="replace") if in_scope_path.is_file() else ""
+    oos_path = design / "findings-oos.md"
+    current_oos = oos_path.read_text(encoding="utf-8", errors="replace") if oos_path.is_file() else oos_md
+    parts = [part for part in (in_scope.strip(), current_oos.strip()) if part]
+    return "\n\n".join(parts) + ("\n" if parts else "")
+
+
 def _classify_round_loop_status(
     *,
     accepted: int,
@@ -499,11 +509,25 @@ def execute_round(
     agg_status = "ok" if agg.returncode == 0 else "aggregator-failed"
     values["AGGREGATOR_STATUS"] = agg_status
     ballot = design / "ballot.txt"
-    if ballot.is_file():
-        ballot_text = ballot.read_text(encoding="utf-8", errors="replace")
-    else:
-        ballot_text = in_scope
+    proposer_map = design / "proposer-map.tsv"
+    try:
+        ballot_text = _compose_attributed_ballot(design, oos_md)
         _ = ballot.write_text(ballot_text, encoding="utf-8")
+        voting.write_proposer_map(ballot, proposer_map)
+        _ = ballot.write_text(voting.neutralize_reviewer_attribution(ballot_text), encoding="utf-8")
+    except (OSError, ValueError) as exc:
+        print(f"plan-review round: proposer map preparation failed: {exc}", file=sys.stderr)
+        values.update(
+            {
+                "LOOP_STATUS": "tally-error",
+                "TALLY_PLAN_REVIEW_STATUS": "tally-error",
+                "DEGRADED_PANEL": "1",
+            }
+        )
+        _write_round_summary(design, round_num, loop_status="tally-error", collect_ok=ok_count, collect_fail=fail_count, values=values)
+        for k, v in values.items():
+            _emit(k, v)
+        return 2, values
 
     voter = _run_cli(
         [
@@ -536,7 +560,16 @@ def execute_round(
             _emit(k, v)
         return 1, values
 
-    voter_args = ["plan-review", "tally", "--ballot-file", str(ballot), "--design-tmpdir", str(design)]
+    voter_args = [
+        "plan-review",
+        "tally",
+        "--ballot-file",
+        str(ballot),
+        "--design-tmpdir",
+        str(design),
+        "--proposer-map-file",
+        str(proposer_map),
+    ]
     for slot, key in (("1", "VOTER_1"), ("2", "VOTER_2"), ("3", "VOTER_3")):
         path = voter_kv.get(f"{key}_PATH", "")
         tool = voter_kv.get(f"{key}_TOOL", "")
