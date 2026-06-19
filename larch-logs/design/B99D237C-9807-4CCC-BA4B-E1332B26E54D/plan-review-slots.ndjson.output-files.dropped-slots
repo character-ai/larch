@@ -1,7 +1,0 @@
-cursor-plan-arch	cursor	collector-failure	STATUS=FAILED
-cursor-plan-edge	cursor	collector-failure	STATUS=FAILED
-cursor-plan-innovation	cursor	collector-failure	STATUS=FAILED
-cursor-plan-pragmatic	cursor	collector-failure	STATUS=FAILED
-cursor-plan-requirements	cursor	collector-failure	STATUS=FAILED
-dyn-cursor-plan-state-contract-drift	cursor	collector-failure	STATUS=FAILED
-dyn-cursor-plan-write-site-coverage	cursor	collector-failure	STATUS=FAILED

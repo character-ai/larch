@@ -1,2 +1,0 @@
-Reviewing the plan against the codebase and reading the cited files.
-{"no_issues_found": true}

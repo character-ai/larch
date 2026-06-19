@@ -1,8 +1,0 @@
-===== sidecar =====
-Reading additional input from stdin...
-Not inside a trusted directory and --skip-git-repo-check was not specified.
-===== diag =====
-Failed with exit code 1. Output size: 0 bytes.
-===== launch-stderr =====
-health-probe fast-fail: codex unhealthy before launch
-❌ codex agent: FAILED (exit code 1, output 0 bytes)

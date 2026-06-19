@@ -1,4 +1,0 @@
-Reading additional input from stdin...
-2026-06-18T00:05:37.666103Z ERROR codex_core::tools::router: error=write_stdin failed: stdin is closed for this session; rerun exec_command with tty=true to keep stdin open
-2026-06-18T00:06:11.343028Z ERROR codex_core::tools::router: error=write_stdin failed: stdin is closed for this session; rerun exec_command with tty=true to keep stdin open
-codex-quota: usage limit / quota reported on the codex exec --json events stream

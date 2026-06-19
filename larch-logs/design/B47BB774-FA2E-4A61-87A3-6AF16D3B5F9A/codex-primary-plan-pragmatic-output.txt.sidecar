@@ -1,3 +1,0 @@
-Reading additional input from stdin...
-2026-06-17T17:54:04.912788Z ERROR codex_core::tools::router: error=failed to parse function arguments: missing field `cmd` at line 1 column 14
-codex-status: ok (no stderr emitted during agent run)

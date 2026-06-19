@@ -1,5 +1,0 @@
-timing-ledger.sh: WARNING: unknown task-kind: codex-phase1-aggregator
-rm: /tmp/larch-codex-review-home-NOQY4K/.tmp/plugins-clone-mswUtI/plugins: Permission denied
-rm: /tmp/larch-codex-review-home-NOQY4K/.tmp/plugins-clone-mswUtI: Permission denied
-rm: /tmp/larch-codex-review-home-NOQY4K/.tmp: Permission denied
-rm: /tmp/larch-codex-review-home-NOQY4K: Permission denied

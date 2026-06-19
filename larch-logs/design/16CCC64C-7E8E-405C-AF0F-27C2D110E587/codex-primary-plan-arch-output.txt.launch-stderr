@@ -1,5 +1,0 @@
-health-probe fast-fail: codex unhealthy before launch
-health-probe fast-fail: codex unhealthy before launch
-health-probe fast-fail: codex unhealthy before launch
-⏳ codex agent: still running (1m elapsed)
-✓ codex agent: completed (exit code 0, output 25 bytes)

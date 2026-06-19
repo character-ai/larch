@@ -1,7 +1,0 @@
-schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
-1	in_scope	important	architecture	.claude/rules/python-first-scripts.md:1-4	[SCOPE-REDUCTION] Rule paths include .github/workflows/**/* even though the scope asks for a point-of-edit reminder when .sh files are edited	This broadens the new rule to workflow YAML and requirements files, adding non-.sh trigger surface beyond the approved doc-only minimum-change plan	Remove .github/workflows/**/* from the frontmatter paths. Keep the CI/pre-commit exception in the rule text only.
-
-1. **architecture, `.claude/rules/python-first-scripts.md:1-4`**
-   - **Concern:** The plan adds `.github/workflows/**/*` to the rule trigger paths.
-   - **Breakage:** This expands the rule beyond the approved `.sh` edit reminder.
-   - **Suggested revision:** Remove that glob. Keep CI/pre-commit glue as an exception in prose.

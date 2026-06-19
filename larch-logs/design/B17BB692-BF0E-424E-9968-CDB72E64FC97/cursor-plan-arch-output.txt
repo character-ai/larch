@@ -1,2 +1,0 @@
-Reviewing the plan and tracing the cited CI/Makefile paths in the repo.
-{"no_issues_found": true}

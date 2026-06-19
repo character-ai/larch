@@ -1,8 +1,0 @@
-schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
-1	in_scope	important	architecture	.claude/rules/script-md-siblings.md:7-13; scripts/lint-fix-loop.md:82-84; scripts/ship-pr.md:120-144; skills/design/scripts/design-step2b-drafter.md:16-21	Script behavior changes omit required sibling contract updates	The plan edits runtime scripts but does not update sibling .md contracts required by the repo rule; implementers following it can leave token-ingestion env hygiene and TOKEN_RECORD_MISSING behavior undocumented	 Add minimal UPDATED entries for affected sibling docs, especially scripts/lint-fix-loop.md, scripts/launch-codex-drafter.md, scripts/ship-pr.md, and skills/design/scripts/design-step2b-drafter.md
-
-1. **[architecture] Script contract docs are missing from the plan.**
-   - **Location:** `.claude/rules/script-md-siblings.md:7-13`; affected docs include `scripts/lint-fix-loop.md:82-84`, `scripts/ship-pr.md:120-144`, and `skills/design/scripts/design-step2b-drafter.md:16-21`.
-   - **Concern:** The plan changes runtime script behavior and stdout/token-ingestion contracts, but omits required sibling `.md` updates.
-   - **Scenario:** An implementer follows the plan exactly. Runtime behavior changes, but sibling docs still describe older token env and ingestion behavior. This violates the repository script-doc standard.
-   - **Suggested revision:** Add minimal `### UPDATED` entries for the affected sibling contracts. Keep them narrow. Document only the token sidecar/env-cleanup and `TOKEN_RECORD_MISSING` contract changes.

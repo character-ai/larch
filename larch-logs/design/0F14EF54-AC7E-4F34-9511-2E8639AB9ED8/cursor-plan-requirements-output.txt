@@ -1,2 +1,0 @@
-Reviewing the plan against the issue scope and validating cited paths in the codebase.
-{"no_issues_found": true}

@@ -1,4 +1,0 @@
-Reading additional input from stdin...
-2026-06-16T21:05:27.672721Z ERROR codex_core::tools::router: error=failed to parse function arguments: missing field `cmd` at line 1 column 83
-2026-06-16T21:05:30.658453Z ERROR codex_core::tools::router: error=write_stdin failed: stdin is closed for this session; rerun exec_command with tty=true to keep stdin open
-codex-status: ok (no stderr emitted during agent run)

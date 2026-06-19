@@ -1,2 +1,0 @@
-I'll read the plan and the CI/Makefile files it cites to validate the proposed changes.
-{"no_issues_found": true}

@@ -1,2 +1,0 @@
-Reading the plan and tracing the cited codebase paths to validate the proposed port.
-{"no_issues_found": true}

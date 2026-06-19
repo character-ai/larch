@@ -1,2 +1,0 @@
-schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
-1	in_scope	important	correctness	skills/bug/SKILL.md:62-63	Plan does not require $BUG_TMPDIR under canonical /tmp	Step 2 only says setup $BUG_TMPDIR while frontmatter adds deny-edit-write.sh; Write to $BUG_TMPDIR/bug-issue-body.md is denied if tmpdir is under ~/.cache or the repo	In Step 2 mandate mktemp -d under /tmp (mirror skills/issue/SKILL.md ISSUE_TMPDIR pattern) and state all Write paths must stay under that directory

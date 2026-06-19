@@ -1,6 +1,0 @@
-TOOL=codex
-TIMEOUT=1860
-CAPTURE_STDOUT=false
-CAPTURE_STDOUT_ONLY=false
-OUTPUT_FILE=<TMPDIR>/codex-plan-generic-output-ns-retry.txt
-NS_RETRY_REASON=OUTPUT_EMPTY
