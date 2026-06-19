@@ -1067,6 +1067,7 @@ def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int
         mode,
         "--timeout",
         "1800",
+        "--straggler-cutoff",
     ]
     if mode == "diff" and diff_file:
         waterfall_args.extend(["--diff-file", diff_file, "--commit-count", _get(parsed, "--commit-count", "0")])
@@ -1458,7 +1459,9 @@ def check_reviewer_failure_threshold(argv: list[str]) -> int:
             _usage("review check-reviewer-failure-threshold: --dropped-slots-file must name a file")
             return 2
         for line in dropped_file.read_text(encoding="utf-8", errors="replace").splitlines():
-            slot, tool, *_rest = [*line.split("\t"), "", ""]
+            slot, tool, reason, *_rest = [*line.split("\t"), "", "", ""]
+            if reason == "straggler-dropped":
+                continue
             if not slot or slot.startswith("dyn-") or tool not in {"codex", "cursor"}:
                 continue
             base = _normalize_output_base(f"{tool}-specialist-{slot}-output.txt")
@@ -1570,7 +1573,29 @@ def _static_slug_for_file(file: str) -> str | None:
     return match.group(1) if match else None
 
 
-def _static_coverage_reason(collector: Path, manifest: Path, outputs: Sequence[str]) -> str:
+def _straggler_excused_static_slugs(dropped_file: Path) -> set[str]:
+    straggler_slugs: set[str] = set()
+    genuine_failure_slugs: set[str] = set()
+    if not dropped_file.is_file():
+        return set()
+    for line in dropped_file.read_text(encoding="utf-8", errors="replace").splitlines():
+        slot, tool, reason, *_rest = [*line.split("\t"), "", "", ""]
+        if not slot or slot.startswith("dyn-") or tool not in {"codex", "cursor"}:
+            continue
+        if reason == "straggler-dropped":
+            straggler_slugs.add(slot)
+        else:
+            genuine_failure_slugs.add(slot)
+    return straggler_slugs - genuine_failure_slugs
+
+
+def _static_coverage_reason(
+    collector: Path,
+    manifest: Path,
+    outputs: Sequence[str],
+    *,
+    dropped_slots_file: str = "",
+) -> str:
     success: set[str] = set()
     rejected: set[str] = set()
     for record in _collector_records(collector):
@@ -1597,7 +1622,8 @@ def _static_coverage_reason(collector: Path, manifest: Path, outputs: Sequence[s
                 expected.add(slug)
     else:
         expected.update(STATIC_REVIEWERS)
-    missing = sorted(expected - success)
+    excused = _straggler_excused_static_slugs(Path(dropped_slots_file)) if dropped_slots_file else set()
+    missing = sorted((expected - success) - excused)
     return f"no successful static reviewer for archetype(s): {','.join(missing)}" if missing else ""
 
 
@@ -1932,6 +1958,7 @@ def review_core(argv: list[str], *, runner: proc.Runner | None = None) -> int:
     threshold_ok = threshold.get("THRESHOLD_OK", "true")
     threshold_reason = threshold.get("THRESHOLD_REASON", "")
     not_substantive = int(threshold.get("NOT_SUBSTANTIVE_SLOTS", "0") or "0") if threshold.get("NOT_SUBSTANTIVE_SLOTS", "0").isdigit() else 0
+    coverage_recorded = False
     if threshold_ok != "false":
         success_count = _collector_success_count(collector_results)
         parseable = (review_tmpdir / "findings.md").stat().st_size > 0 if (review_tmpdir / "findings.md").is_file() else False
@@ -1940,14 +1967,20 @@ def review_core(argv: list[str], *, runner: proc.Runner | None = None) -> int:
             threshold_ok = "false"
             threshold_reason = "no successful launched reviewer output"
             _append_text(threshold_out, f"COVERAGE_GATE_OK=false\nCOVERAGE_GATE_REASON={threshold_reason}\n")
+            coverage_recorded = True
         elif success_count == 0:
             _append_text(threshold_out, "COVERAGE_GATE_OK=true\nCOVERAGE_GATE_REASON=parseable reviewer output present\n")
+            coverage_recorded = True
     if threshold_ok != "false":
-        reason = _static_coverage_reason(collector_results, Path(panel_manifest), external_array + claude_array)
+        reason = _static_coverage_reason(
+            collector_results, Path(panel_manifest), external_array + claude_array, dropped_slots_file=dropped
+        )
         if reason:
             threshold_ok = "false"
             threshold_reason = reason
             _append_text(threshold_out, f"COVERAGE_GATE_OK=false\nCOVERAGE_GATE_REASON={reason}\n")
+        elif not coverage_recorded:
+            _append_text(threshold_out, "COVERAGE_GATE_OK=true\nCOVERAGE_GATE_REASON=static reviewer coverage satisfied\n")
     if threshold_ok == "false":
         for name in ("accepted-findings.md", "rejected-findings.md", "oos-accepted-review.md"):
             _write_text(review_tmpdir / name, "")

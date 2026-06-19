@@ -12,6 +12,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Sequence
@@ -22,11 +23,13 @@ import proc
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PY_CLI = REPO_ROOT / "python" / "cli.py"
 TIMING_KIND_MAX = 64
+MIN_STRAGGLER_PHASE_SLOTS = 2
 
 _USAGE = (
     "Usage: dispatch-with-waterfall.sh --slots-file FILE --codex-present true|false "
     "--cursor-present true|false --mode diff|description [--paths-file FILE] [context flags]. "
     "Default paths-file is SLOTS_FILE.output-files; its parent directory must already exist. "
+    "--straggler-cutoff enables the adaptive reviewer straggler deadline for this dispatch. "
     "Stdout KVs include ALL_OUTPUT_FILES_PATH, ALL_OUTPUT_FILES, ALL_OUTPUT_TOOLS, DISPATCH_OK, WARN, …"
 )
 _POSIX_CLASS_REPLACEMENTS = {
@@ -75,6 +78,7 @@ class Options:
     require_result_pattern: str = ""
     require_first_line_pattern: str = ""
     no_fallback: bool = False
+    straggler_cutoff: bool = False
 
 
 @dataclass
@@ -152,6 +156,7 @@ def _parse_args(argv: Sequence[str]) -> Options | int:
         "require_result_pattern": "",
         "require_first_line_pattern": "",
         "no_fallback": False,
+        "straggler_cutoff": False,
     }
     idx = 0
     while idx < len(argv):
@@ -193,6 +198,9 @@ def _parse_args(argv: Sequence[str]) -> Options | int:
         elif arg == "--no-fallback":
             values["no_fallback"] = True
             idx += 1
+        elif arg == "--straggler-cutoff":
+            values["straggler_cutoff"] = True
+            idx += 1
         elif arg == "--help":
             _usage()
             return 0
@@ -230,6 +238,7 @@ def _parse_args(argv: Sequence[str]) -> Options | int:
         require_result_pattern=str(values["require_result_pattern"]),
         require_first_line_pattern=str(values["require_first_line_pattern"]),
         no_fallback=bool(values["no_fallback"]),
+        straggler_cutoff=bool(values["straggler_cutoff"]),
     )
 
 
@@ -409,22 +418,74 @@ def _sigterm_handler(_signum: int, _frame: object) -> None:
     raise SystemExit(143)
 
 
-def _reap_phase(launches: Sequence[PhaseLaunch]) -> None:
-    for launch in launches:
-        while True:
-            try:
-                rc = launch.process.wait(timeout=0.05)
-                break
-            except subprocess.TimeoutExpired:
+def _straggler_multiple() -> float:
+    raw = os.environ.get("LARCH_REVIEWER_STRAGGLER_MULTIPLE", "2.5")
+    try:
+        return float(raw)
+    except ValueError:
+        return 2.5
+
+
+def _straggler_floor() -> int:
+    raw = os.environ.get("LARCH_REVIEWER_STRAGGLER_FLOOR_SECONDS", "300")
+    try:
+        return int(raw)
+    except ValueError:
+        return 300
+
+
+def _finish_launch(launch: PhaseLaunch, rc: int | None) -> None:
+    with contextlib.suppress(OSError):
+        launch.stderr_handle.close()  # type: ignore[attr-defined]
+    if not Path(f"{launch.output}.done").is_file():
+        _ = Path(f"{launch.output}.done").write_text(f"{rc if rc is not None else -signal.SIGTERM}\n", encoding="utf-8")
+    if launch in _ACTIVE_LAUNCHES:
+        _ACTIVE_LAUNCHES.remove(launch)
+    if launch in _DISPATCH_LAUNCHES:
+        _DISPATCH_LAUNCHES.remove(launch)
+
+
+def _reap_phase(
+    launches: Sequence[PhaseLaunch],
+    opts: Options,
+    result_pattern: re.Pattern[str] | None,
+    first_line_pattern: re.Pattern[str] | None,
+) -> set[int]:
+    pending = list(launches)
+    stragglers: set[int] = set()
+    multiple = _straggler_multiple()
+    cutoff_enabled = opts.straggler_cutoff and multiple > 0 and len(launches) >= MIN_STRAGGLER_PHASE_SLOTS
+    floor = float(_straggler_floor())
+    ceiling = float(int(opts.timeout))
+    needed = (len(launches) + 1) // 2
+    accepted = 0
+    deadline: float | None = None
+    start = time.monotonic()
+    while pending:
+        finished: list[PhaseLaunch] = []
+        for launch in pending:
+            rc = launch.process.poll()
+            if rc is None:
                 continue
-        with contextlib.suppress(OSError):
-            launch.stderr_handle.close()  # type: ignore[attr-defined]
-        if not Path(f"{launch.output}.done").is_file():
-            _ = Path(f"{launch.output}.done").write_text(f"{rc}\n", encoding="utf-8")
-        if launch in _ACTIVE_LAUNCHES:
-            _ACTIVE_LAUNCHES.remove(launch)
-        if launch in _DISPATCH_LAUNCHES:
-            _DISPATCH_LAUNCHES.remove(launch)
+            _finish_launch(launch, rc)
+            finished.append(launch)
+            if cutoff_enabled and deadline is None and _slot_collector_accepted(launch, opts, result_pattern, first_line_pattern):
+                accepted += 1
+                if accepted >= needed:
+                    anchor = time.monotonic() - start
+                    deadline = min(ceiling, max(multiple * anchor, floor))
+        for launch in finished:
+            pending.remove(launch)
+        if deadline is not None and pending and time.monotonic() - start >= deadline:
+            for launch in pending:
+                _terminate_launch(launch)
+                _finish_launch(launch, launch.process.poll())
+                stragglers.add(launch.idx)
+            pending.clear()
+            break
+        if pending:
+            time.sleep(0.05)
+    return stragglers
 
 
 def _split_summary_blocks(stdout: str) -> list[str]:
@@ -495,6 +556,67 @@ def _salvage_first_line(check_file: str, pattern: re.Pattern[str]) -> bool:
     return False
 
 
+def _apply_collector_block(
+    output: str,
+    status: str,
+    reviewer_file: str,
+    result_pattern: re.Pattern[str] | None,
+    first_line_pattern: re.Pattern[str] | None,
+) -> tuple[bool, str, DropState]:
+    if status not in {"OK", "cap_hit"}:
+        stderr_snippet = _snippet_from_file(f"{output}.launch-stderr")
+        detail = f"STATUS={status or 'unknown'}"
+        if stderr_snippet:
+            detail = f"{detail} {stderr_snippet}"
+        return False, "", DropState("collector-failure", detail)
+    if status == "OK" and result_pattern is not None:
+        check_file = reviewer_file or output
+        if not Path(check_file).is_file():
+            _err(
+                "dispatch-with-waterfall.sh: result file not readable for --require-result-pattern check: "
+                f"{check_file}"
+            )
+            return False, "", DropState("result-unreadable", f"result file not readable: {check_file}")
+        content = Path(check_file).read_text(encoding="utf-8", errors="replace")
+        if not result_pattern.search(content):
+            return False, "", DropState("result-gate-miss", _snippet_from_file(check_file))
+    if status == "OK" and first_line_pattern is not None:
+        check_file = reviewer_file or output
+        if not Path(check_file).is_file():
+            _err(
+                "dispatch-with-waterfall.sh: result file not readable for --require-first-line-pattern check: "
+                f"{check_file}"
+            )
+            return False, "", DropState("result-unreadable", f"result file not readable: {check_file}")
+        content = Path(check_file).read_text(encoding="utf-8", errors="replace")
+        first_nonblank = _first_nonblank_trimmed(content)
+        if not first_line_pattern.search(first_nonblank):
+            if not first_nonblank:
+                return False, "", DropState("empty", "")
+            if not _salvage_first_line(check_file, first_line_pattern):
+                return False, "", DropState("format-gate-miss", _snippet_from_file(check_file))
+    return True, reviewer_file or output, DropState()
+
+
+def _slot_collector_accepted(
+    launch: PhaseLaunch,
+    opts: Options,
+    result_pattern: re.Pattern[str] | None,
+    first_line_pattern: re.Pattern[str] | None,
+) -> bool:
+    result = proc.run(
+        [sys.executable, str(PY_CLI), "agent", "collect-results", "--timeout", opts.timeout, "--summary-only", launch.output]
+    )
+    if result.returncode != 0:
+        return False
+    blocks = _split_summary_blocks(result.stdout)
+    status, reviewer_file = _parse_block(blocks[0] if blocks else "")
+    accepted, _final_output, _drop = _apply_collector_block(
+        launch.output, status, reviewer_file, result_pattern, first_line_pattern
+    )
+    return accepted
+
+
 def _collect_phase(
     launches: Sequence[PhaseLaunch],
     opts: Options,
@@ -506,7 +628,7 @@ def _collect_phase(
 ) -> list[int]:
     if not launches:
         return []
-    _reap_phase(launches)
+    straggler_idxs = _reap_phase(launches, opts, result_pattern, first_line_pattern)
     outputs = [launch.output for launch in launches]
     result = proc.run(
         [sys.executable, str(PY_CLI), "agent", "collect-results", "--timeout", opts.timeout, "--summary-only", *outputs]
@@ -516,53 +638,17 @@ def _collect_phase(
     for pos, launch in enumerate(launches):
         idx = launch.idx
         output = launch.output
+        if idx in straggler_idxs:
+            drops[idx] = DropState("straggler-dropped", "cut at adaptive straggler deadline")
+            continue
         status, reviewer_file = _parse_block(blocks[pos] if pos < len(blocks) else "")
-        if status in {"OK", "cap_hit"}:
-            if status == "OK" and result_pattern is not None:
-                check_file = reviewer_file or output
-                if not Path(check_file).is_file():
-                    _err(
-                        "dispatch-with-waterfall.sh: result file not readable for --require-result-pattern check: "
-                        f"{check_file}"
-                    )
-                    drops[idx] = DropState("result-unreadable", f"result file not readable: {check_file}")
-                    failed.append(idx)
-                    continue
-                content = Path(check_file).read_text(encoding="utf-8", errors="replace")
-                if not result_pattern.search(content):
-                    drops[idx] = DropState("result-gate-miss", _snippet_from_file(check_file))
-                    failed.append(idx)
-                    continue
-            if status == "OK" and first_line_pattern is not None:
-                check_file = reviewer_file or output
-                if not Path(check_file).is_file():
-                    _err(
-                        "dispatch-with-waterfall.sh: result file not readable for --require-first-line-pattern check: "
-                        f"{check_file}"
-                    )
-                    drops[idx] = DropState("result-unreadable", f"result file not readable: {check_file}")
-                    failed.append(idx)
-                    continue
-                content = Path(check_file).read_text(encoding="utf-8", errors="replace")
-                first_nonblank = _first_nonblank_trimmed(content)
-                if not first_line_pattern.search(first_nonblank):
-                    if not first_nonblank:
-                        drops[idx] = DropState("empty", "")
-                        failed.append(idx)
-                        continue
-                    if not _salvage_first_line(check_file, first_line_pattern):
-                        drops[idx] = DropState("format-gate-miss", _snippet_from_file(check_file))
-                        failed.append(idx)
-                        continue
-            final_outputs[idx] = reviewer_file or output
+        accepted, final_output, drop = _apply_collector_block(output, status, reviewer_file, result_pattern, first_line_pattern)
+        if accepted:
+            final_outputs[idx] = final_output
             final_tools[idx] = launch.tool
             drops[idx] = DropState()
         else:
-            stderr_snippet = _snippet_from_file(f"{output}.launch-stderr")
-            detail = f"STATUS={status or 'unknown'}"
-            if stderr_snippet:
-                detail = f"{detail} {stderr_snippet}"
-            drops[idx] = DropState("collector-failure", detail)
+            drops[idx] = drop
             failed.append(idx)
     return failed
 
@@ -614,14 +700,14 @@ def _write_drops(path: str, slots: Sequence[Slot], final_outputs: Sequence[str],
         raise ValidationError(f"dispatch-with-waterfall.sh: dropped-slots sidecar not writable: {path}") from exc
 
 
-def _write_paths_file(path: str, final_outputs: Sequence[str], *, no_fallback: bool) -> None:
+def _write_paths_file(path: str, final_outputs: Sequence[str]) -> None:
     paths_dir = Path(path).parent
     tmp = ""
     try:
         fd, tmp = tempfile.mkstemp(prefix=".dispatch-waterfall-paths.", dir=str(paths_dir))
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             for output in final_outputs:
-                if no_fallback and not output:
+                if not output:
                     continue
                 _ = handle.write(f"{output}\n")
         _ = Path(tmp).replace(path)
@@ -751,15 +837,16 @@ def dispatch_waterfall(opts: Options) -> int:
     all_output_files: list[str] = []
     all_output_tools: list[str] = []
     for idx, output in enumerate(final_outputs):
-        if opts.no_fallback and not output:
+        if not output:
             continue
         all_output_files.append(output)
         all_output_tools.append(final_tools[idx])
 
     dropped_slots_file = ""
-    if opts.no_fallback:
+    if any(drop.reason for drop in drops):
         dropped_slots_file = _write_drops(resolved_paths_file, slots, final_outputs, drops)
-    _write_paths_file(resolved_paths_file, final_outputs, no_fallback=opts.no_fallback)
+    _write_paths_file(resolved_paths_file, final_outputs)
+    straggler_dropped_count = sum(1 for drop in drops if drop.reason == "straggler-dropped")
 
     logging_util.emit_kv("PHASE1_SLOTS", " ".join(phase1_outputs))
     logging_util.emit_kv("PHASE2_SLOTS", " ".join(phase2_outputs))
@@ -769,8 +856,11 @@ def dispatch_waterfall(opts: Options) -> int:
     logging_util.emit_kv("ALL_OUTPUT_TOOLS", " ".join(all_output_tools))
     logging_util.emit_kv("FALLBACK_COUNT", str(fallback_count))
     logging_util.emit_kv("COMBINED_FALLBACK_COUNT", str(combined_fallback))
+    logging_util.emit_kv("STRAGGLER_DROPPED_COUNT", str(straggler_dropped_count))
     if warn:
         logging_util.emit_kv("WARN", warn)
+    if straggler_dropped_count > 0:
+        logging_util.emit_kv("WARN", "reviewer-straggler-dropped")
     _emit_bool("DISPATCH_OK", value=dispatch_ok)
     _emit_bool("STATIC_DISPATCH_OK", value=static_dispatch_ok)
     _emit_bool("DYNAMIC_DISPATCH_OK", value=dynamic_dispatch_ok)

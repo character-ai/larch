@@ -26,12 +26,14 @@ def _write_waterfall_stub(tmp_path: Path) -> Path:
 set -euo pipefail
 slots=""
 mode=""
+[[ -n "${WATERFALL_STUB_LOG:-}" ]] && printf '%s\n' "$*" >>"${WATERFALL_STUB_LOG}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --slots-file) slots="${2:?}"; shift 2 ;;
     --mode) mode="${2:?}"; shift 2 ;;
     --plan-file|--feature-file) shift 2 ;;
-    --codex-present|--cursor-present|--timeout|--require-first-line-pattern|--no-fallback) shift 2 ;;
+    --codex-present|--cursor-present|--timeout|--require-first-line-pattern) shift 2 ;;
+    --no-fallback|--straggler-cutoff) shift 1 ;;
     *) shift 1 ;;
   esac
 done
@@ -394,6 +396,7 @@ def test_panel_dispatch_passes_waterfall_supported_mode(tmp_path: Path) -> None:
     )
     assert proc.returncode == 0, proc.stderr + proc.stdout
     assert mode_out.read_text(encoding="utf-8") == "description"
+    assert "--straggler-cutoff" in log.read_text(encoding="utf-8")
 
 
 def test_panel_dispatch_surfaces_waterfall_failure(tmp_path: Path) -> None:

@@ -319,6 +319,7 @@ def dispatch_panel(argv: Sequence[str]) -> int:
             "description",
             "--timeout",
             ns.timeout,
+            "--straggler-cutoff",
         ],
         cwd=str(_REPO_ROOT),
         text=True,
