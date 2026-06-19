@@ -1,0 +1,1 @@
+Hard-cut the listed git/phantom helper consumers to existing Python CLI verbs, keep `lib-phantom-probe.sh` as a repointed survivor for `rebase-checkpoint-probe.sh`, delete the retired scripts/docs/harnesses, append every deleted path to `python/migrated-scripts.tsv`, and cover parity gaps in pytest before removing bash harnesses.

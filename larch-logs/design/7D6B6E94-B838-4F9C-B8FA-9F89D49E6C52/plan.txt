@@ -1,0 +1,520 @@
+## Approach
+
+- Treat `NO_SKETCHES` as binding. Draft from direct repository inspection only.
+- Use existing CLI owners:
+  - `python/cli.py git ...` for git plumbing verbs in `python/git.py`.
+  - `python/cli.py git phantom-probe` and `git check-phantom-dirty` for phantom probes.
+  - `python/cli.py push branch` and `push force` for the retired `git-push.sh` and `git-force-push.sh` surfaces, since `python/cli.py` currently exposes those through `python/push.py`.
+- Resolve the `lib-phantom-probe.sh` question by keeping it. It is not in the retire list, and `scripts/rebase-checkpoint-probe.sh` still needs a sourced helper function. Repoint its internals to `python3 "$_phantom_plugin_root/python/cli.py" git phantom-probe --step ...`.
+- Do not add shim `.sh` replacements for deleted helpers.
+- Preserve old stdout keys, stderr prefixes, and exit-code contracts unless the parity audit finds a real gap. Fix those gaps in `python/git.py`, `python/phantom.py`, or `python/push.py` before deletion.
+
+## Files to modify/create
+
+### UPDATED: python/git.py
+
+- Audit each retired `scripts/git-*.sh`, `check-*.sh`, and `snapshot-untracked.sh` behavior against the existing `git` domain entrypoints.
+- Fix parity gaps found during the audit, with special attention to:
+  - `git commit -m` missing-value error text.
+  - `git show-stage` invalid stage error text.
+  - `sync-local-main` output and refusal behavior.
+  - `check-main-sync` `logs_only` behavior when the diff is empty.
+  - `snapshot-untracked` usage errors that intentionally exit 0.
+- Keep helper-prefix stderr strings where tests and callers rely on them.
+
+### UPDATED: python/phantom.py
+
+- Keep `check_phantom_dirty` and `probe_with_warn` as the source of truth for the deleted phantom scripts.
+- Verify it preserves `PHANTOM_STATUS`, `PHANTOM_REASON`, `PHANTOM_COUNT`, `PHANTOM_PATHS_FILE`, and `PHANTOM_APPEND_WARN_ERROR`.
+
+### UPDATED: python/push.py
+
+- Treat `push branch` as the replacement for `scripts/git-push.sh`.
+- Treat `push force` as the replacement for `scripts/git-force-push.sh`.
+- Preserve retry count, stderr deduplication, dirty-tree guard, lease semantics, and exit-code mapping.
+
+### UPDATED: python/bootstrap.py
+
+- Replace `scripts/snapshot-untracked.sh` with `sys.executable, python/cli.py, git, snapshot-untracked`.
+- Replace `scripts/git-current-branch.sh` with `sys.executable, python/cli.py, git, current-branch`.
+- Keep branch-capture failure handling unchanged.
+
+### UPDATED: python/admission.py
+
+- Replace `scripts/check-clean-tree.sh --fail-closed` with `python/cli.py git clean-tree --fail-closed`.
+- Replace `scripts/check-main-sync.sh` with `python/cli.py git check-main-sync`.
+- Preserve preflight fail-closed behavior and `PREFLIGHT_ERROR` text.
+
+### UPDATED: python/implement_dispatch.py
+
+- Replace the Step 4 commit subprocess path with `python/cli.py git commit`.
+- Preserve token and timing marks before the commit.
+- Preserve `--only --pathspec-from-file` and `--pathspec-file-nul` forwarding.
+
+### UPDATED: python/review_and_fix.py
+
+- Replace all `scripts/git-commit.sh` calls with `python/cli.py git commit`.
+- Replace `scripts/snapshot-untracked.sh` with `python/cli.py git snapshot-untracked`.
+- Keep existing `git add --pathspec-from-file` calls unless the parity audit chooses to route them through `git stage`.
+
+### UPDATED: scripts/create-pr.sh
+
+- Replace the existing-PR force-push escalation from `$SCRIPT_DIR/git-force-push.sh` to `python3 "$SCRIPT_DIR/../python/cli.py" push force`.
+- Keep helper stdout suppressed on the `PR_*` contract path.
+- Keep stderr capture and redaction behavior.
+
+### UPDATED: scripts/create-pr.md
+
+- Replace `git-force-push.sh` prose with `python/cli.py push force`.
+- Keep the existing-PR fast-path contract and dirty-tree warning semantics.
+
+### UPDATED: scripts/merge-pr.sh
+
+- Replace `$SCRIPT_DIR/git-force-push.sh --expected-remote-oid ...` with `python3 "$SCRIPT_DIR/../python/cli.py" push force --expected-remote-oid ...`.
+- Keep parsing of `PUSHED=` and `STATUS=` unchanged.
+
+### UPDATED: scripts/merge-pr.md
+
+- Replace `git-force-push.sh` prose with `python/cli.py push force`.
+- Keep force-push OID recovery semantics.
+
+### UPDATED: scripts/rebase-checkpoint-probe.sh
+
+- Replace the `git-rebase-skip.sh` call with `python3 "$SCRIPT_DIR/../python/cli.py" git rebase-skip`.
+- Keep `lib-phantom-probe.sh` sourced.
+- Keep direct git conflict inspection in place unless parity requires a small targeted change.
+
+### UPDATED: scripts/rebase-checkpoint-probe.md
+
+- Update helper references:
+  - `lib-phantom-probe.sh` survives.
+  - `git-rebase-skip.sh` becomes `python/cli.py git rebase-skip`.
+  - `check-phantom-dirty.sh` becomes internal Python CLI behavior.
+
+### UPDATED: scripts/lib-phantom-probe.sh
+
+- Keep the sourced function surface.
+- Replace calls to `check-phantom-dirty.sh` and manual warning append logic with `python3 "$_phantom_plugin_root/python/cli.py" git phantom-probe --step "$step_token"`.
+- Preserve idempotent double-source behavior.
+- Preserve `IMPLEMENT_TMPDIR` handling through the Python command.
+
+### UPDATED: scripts/lib-phantom-probe.md
+
+- Document the survivor status.
+- State that the library is now a thin sourced caller for `python/cli.py git phantom-probe`, not a retired helper.
+
+### UPDATED: skills/implement/scripts/step-2-post-dispatch.sh
+
+- Replace sourced phantom probe use with the surviving `lib-phantom-probe.sh` or direct `python/cli.py git phantom-probe`.
+- Replace branch/SHA collection with `python/cli.py git branch-info` if that keeps the wrapper simpler.
+- Preserve emitted `PHANTOM_*`, `BRANCH=`, and `COMMIT_SHA=` keys.
+
+### UPDATED: skills/implement/scripts/step-2-post-dispatch.md
+
+- Remove stale references to deleted phantom scripts.
+- Name the Python CLI surface.
+
+### UPDATED: skills/implement/scripts/step-8-ship.sh
+
+- Replace `scripts/phantom-probe-with-warn.sh --step 8-pre-ship` with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git phantom-probe --step 8-pre-ship >&2`.
+- Preserve the driver JSON stdout isolation.
+
+### UPDATED: skills/implement/scripts/test-step-8-ship.sh
+
+- Update the static assertion and larch-run stub from `scripts/phantom-probe-with-warn.sh` to the Python CLI probe command.
+- Keep the ordering assertion that the phantom probe runs before `ship pr`.
+
+### UPDATED: skills/implement/SKILL.md
+
+- Replace mentions of `git-current-branch.sh` with `python/cli.py git current-branch` or `git branch-info`.
+- Keep the existing Step 0 and Step 2 branch enforcement meaning.
+- Do not rewrite unrelated `/implement` prose.
+
+### UPDATED: skills/implement/references/conflict-resolution.md
+
+- Replace:
+  - `git-conflict-files.sh` with `python/cli.py git conflict-files`.
+  - `git-checkout-ours.sh` with `python/cli.py git checkout-ours`.
+  - `git-stage.sh` with `python/cli.py git stage`.
+  - `git-show-stage.sh` with `python/cli.py git show-stage`.
+  - `git-rebase-abort.sh` with `python/cli.py git rebase-abort`.
+  - `git-rebase-skip.sh` with `python/cli.py git rebase-skip`.
+- Preserve the upstream/main vs feature-branch terminology.
+
+### UPDATED: skills/implement/references/rebase-checkpoint-routing.md
+
+- Replace `git-rebase-abort.sh` references with `python/cli.py git rebase-abort`.
+- Keep routing semantics unchanged.
+
+### UPDATED: skills/implement/references/ship-pr-exit-matrix.md
+
+- Replace `git-commit.sh` with `python/cli.py git commit`.
+- Replace `git-push.sh` with `python/cli.py push branch`.
+
+### UPDATED: skills/implement/references/phantom-probe.md
+
+- Update runtime entrypoints to the Python CLI.
+- Note that `rebase-checkpoint-probe.sh` still bundles the post-rebase probe through the survivor library.
+- Remove references to deleted `check-phantom-dirty.sh` and `phantom-probe-with-warn.sh`.
+
+### UPDATED: skills/implement/references/step2-dispatch.md
+
+- Replace `scripts/git-commit.sh` prose with `python/cli.py git commit`.
+- Keep `--only`, `--pathspec-from-file`, and `--pathspec-file-nul` details.
+
+### UPDATED: skills/research/SKILL.md
+
+- Replace `scripts/git-branch-info.sh` with `python/cli.py git branch-info`.
+
+### UPDATED: .claude/skills/audit-runs/SKILL.md
+
+- Replace `scripts/check-main-sync.sh` with `python/cli.py git check-main-sync`.
+
+### UPDATED: docs/linting.md
+
+- Remove rows for deleted bash harness targets.
+- Keep `lint-retired-scripts`.
+- If pytest targets replace deleted harnesses, document the new pytest coverage only when it is a stable `make` target.
+
+### UPDATED: docs/workflow-lifecycle.md
+
+- Replace `git-force-push.sh` and `git-push.sh` mentions with `python/cli.py push force` and `python/cli.py push branch`.
+- Preserve the clean-tree guard explanation.
+
+### UPDATED: Makefile
+
+- Remove deleted bash harness targets:
+  - `test-check-clean-tree`
+  - `test-check-main-sync`
+  - `test-check-phantom-dirty`
+  - `test-phantom-probe-with-warn`
+  - `test-git-push`
+  - `test-git-commit-only`
+- Remove them from harness shards.
+- Add pytest coverage targets only if an existing shard lacks an equivalent Python test target.
+
+### UPDATED: agent-lint.toml
+
+- Remove exceptions for deleted scripts, docs, and harnesses.
+- Keep or adjust the exception for surviving `scripts/lib-phantom-probe.sh`.
+
+### UPDATED: python/migrated-scripts.tsv
+
+- Append every deleted path with `#3692`.
+
+### UPDATED: python/test_git.py
+
+- Add or extend tests for every deleted `git` domain helper contract not already covered:
+  - commit argument validation and pathspec behavior.
+  - stage/amend no-arg failures.
+  - current branch detached failure.
+  - conflict files block formatting.
+  - checkout-ours no-arg failure.
+  - show-stage usage and invalid stage.
+  - rebase-abort idempotent success.
+  - rebase-skip passthrough.
+  - sync-local-main result keys.
+  - clean-tree fail-open and fail-closed.
+  - snapshot-untracked sorted NUL output and usage exit 0.
+  - check-main-sync statuses.
+  - check-remote-branch trichotomy.
+  - check-phantom-dirty CLI output.
+  - phantom-probe CLI output.
+
+### UPDATED: python/test_phantom.py
+
+- Cover `probe_with_warn` branches that were previously only in `test-phantom-probe-with-warn.sh`.
+- Include append-failure parsing and bad step behavior.
+
+### UPDATED: python/test_push.py
+
+- Cover `push branch` parity for retry count, stderr deduplication, detached HEAD, and final non-zero exit.
+- Cover `push force` parity for dirty worktree, detached HEAD, expected remote OID, noop same-ref, and diverged retry failure.
+
+### UPDATED: python/test_admission.py
+
+- Update command expectations from deleted check scripts to `python/cli.py git clean-tree` and `git check-main-sync`.
+
+### UPDATED: python/test_bootstrap.py
+
+- Update stubs that expect `snapshot-untracked.sh` or `git-current-branch.sh`.
+- Use the Python CLI command shape.
+
+### UPDATED: python/test_implement_dispatch.py
+
+- Update Step 4 commit expectations from `git-commit.sh` to `python/cli.py git commit`.
+- Preserve pathspec and exit-code assertions.
+
+### UPDATED: python/test_review_and_fix.py
+
+- Update commit and snapshot expectations from deleted scripts to Python CLI commands.
+
+### UPDATED: python/test_ci_monitor.py
+
+- Remove full retired-path literals from fixtures.
+- Build any remaining path strings dynamically or update expectations to Python CLI commands.
+
+### UPDATED: python/test_lint_skill_md_flag_signature.py
+
+- Avoid a full `scripts/git-commit.sh` retired literal in fixtures.
+- Use a non-retired dummy script path or construct fixture paths dynamically.
+
+### UPDATED: python/test_migration_lint.py
+
+- Avoid using a real newly retired path literal such as `scripts/git-current-branch.sh` in source fixtures.
+- Keep the lint behavior test with a synthetic retired path.
+
+### UPDATED: scripts/test-rebase-checkpoint-probe.sh
+
+- Update fixtures that copy `git-rebase-skip.sh`.
+- Stub the Python CLI `git rebase-skip` command path instead.
+- Keep phantom fixture behavior through surviving `lib-phantom-probe.sh`.
+
+### UPDATED: scripts/test-implement-fence-shape.sh
+
+- Update bootstrap fakes that look for `git-current-branch.sh`.
+- Match the new `python/cli.py git current-branch` or `git branch-info` command.
+
+### UPDATED: scripts/test-implement-structure.sh
+
+- If needed, extend retired-surface checks so `skills/implement/SKILL.md` cannot retain the deleted helper paths.
+- Keep the existing `implement commit` prose check.
+
+### UPDATED: scripts/git-commit.sh
+
+- Delete this file.
+
+### UPDATED: scripts/git-commit.md
+
+- Delete this file.
+
+### UPDATED: scripts/git-stage.sh
+
+- Delete this file.
+
+### UPDATED: scripts/git-stage.md
+
+- Delete this file.
+
+### UPDATED: scripts/git-amend-add.sh
+
+- Delete this file.
+
+### UPDATED: scripts/git-amend-add.md
+
+- Delete this file.
+
+### UPDATED: scripts/git-current-branch.sh
+
+- Delete this file.
+
+### UPDATED: scripts/git-current-branch.md
+
+- Delete this file.
+
+### UPDATED: scripts/git-branch-info.sh
+
+- Delete this file.
+
+### UPDATED: scripts/git-branch-info.md
+
+- Delete this file.
+
+### UPDATED: scripts/git-checkout-ours.sh
+
+- Delete this file.
+
+### UPDATED: scripts/git-checkout-ours.md
+
+- Delete this file.
+
+### UPDATED: scripts/git-conflict-files.sh
+
+- Delete this file.
+
+### UPDATED: scripts/git-conflict-files.md
+
+- Delete this file.
+
+### UPDATED: scripts/git-rebase-abort.sh
+
+- Delete this file.
+
+### UPDATED: scripts/git-rebase-abort.md
+
+- Delete this file.
+
+### UPDATED: scripts/git-rebase-skip.sh
+
+- Delete this file.
+
+### UPDATED: scripts/git-rebase-skip.md
+
+- Delete this file.
+
+### UPDATED: scripts/git-show-stage.sh
+
+- Delete this file.
+
+### UPDATED: scripts/git-show-stage.md
+
+- Delete this file.
+
+### UPDATED: scripts/git-force-push.sh
+
+- Delete this file.
+
+### UPDATED: scripts/git-force-push.md
+
+- Delete this file.
+
+### UPDATED: scripts/git-push.sh
+
+- Delete this file.
+
+### UPDATED: scripts/git-push.md
+
+- Delete this file.
+
+### UPDATED: scripts/git-sync-local-main.sh
+
+- Delete this file.
+
+### UPDATED: scripts/git-sync-local-main.md
+
+- Delete this file.
+
+### UPDATED: scripts/snapshot-untracked.sh
+
+- Delete this file.
+
+### UPDATED: scripts/snapshot-untracked.md
+
+- Delete this file.
+
+### UPDATED: scripts/check-main-sync.sh
+
+- Delete this file.
+
+### UPDATED: scripts/check-main-sync.md
+
+- Delete this file.
+
+### UPDATED: scripts/check-phantom-dirty.sh
+
+- Delete this file.
+
+### UPDATED: scripts/check-phantom-dirty.md
+
+- Delete this file.
+
+### UPDATED: scripts/check-clean-tree.sh
+
+- Delete this file.
+
+### UPDATED: scripts/check-clean-tree.md
+
+- Delete this file.
+
+### UPDATED: scripts/check-remote-branch.sh
+
+- Delete this file.
+
+### UPDATED: scripts/check-remote-branch.md
+
+- Delete this file.
+
+### UPDATED: scripts/phantom-probe-with-warn.sh
+
+- Delete this file.
+
+### UPDATED: scripts/phantom-probe-with-warn.md
+
+- Delete this file.
+
+### UPDATED: scripts/test-check-clean-tree.sh
+
+- Delete this file after pytest coverage is confirmed.
+
+### UPDATED: scripts/test-check-clean-tree.md
+
+- Delete this file.
+
+### UPDATED: scripts/test-check-main-sync.sh
+
+- Delete this file after pytest coverage is confirmed.
+
+### UPDATED: scripts/test-check-main-sync.md
+
+- Delete this file.
+
+### UPDATED: scripts/test-check-phantom-dirty.sh
+
+- Delete this file after pytest coverage is confirmed.
+
+### UPDATED: scripts/test-check-phantom-dirty.md
+
+- Delete this file.
+
+### UPDATED: scripts/test-git-push.sh
+
+- Delete this file after pytest coverage is confirmed.
+
+### UPDATED: scripts/test-git-push.md
+
+- Delete this file.
+
+### UPDATED: scripts/test-git-commit-only.sh
+
+- Delete this file after pytest coverage is confirmed.
+
+### UPDATED: scripts/test-git-commit-only.md
+
+- Delete this file.
+
+### UPDATED: scripts/test-phantom-probe-with-warn.sh
+
+- Delete this file after pytest coverage is confirmed.
+
+### UPDATED: scripts/test-phantom-probe-with-warn.md
+
+- Delete this file.
+
+## Edge cases
+
+- `push force` must still emit `BRANCH=` before dirty-worktree failure when a branch exists.
+- `push force --expected-remote-oid` must keep the same lease target as the deleted helper.
+- `push branch` must preserve final non-zero push exit codes after all retries fail.
+- `git rebase-abort` must still exit 0 when no rebase is in progress.
+- `git snapshot-untracked` must still fail open and remove stale output on probe failures.
+- `git check-remote-branch` must distinguish present, absent, and transport error.
+- `git show-stage` stdout is raw file content. Do not route it through quiet logging.
+- `git phantom-probe` in `step-8-ship.sh` must not contaminate the ship driver JSON stdout.
+
+## Failure modes
+
+- Retired path literals in tests or docs will break `make lint-retired-scripts`.
+- Repointing `git-force-push.sh` to the wrong domain would fail because the existing CLI owner is `push force`, not `git force-push`.
+- Deleting `lib-phantom-probe.sh` would break `rebase-checkpoint-probe.sh`; keep it unless a separate slice retires that script.
+- Removing bash harness targets before pytest parity exists can lose regression coverage.
+
+## Testing strategy
+
+- Run focused pytest first:
+  - `python3 -m pytest python/test_git.py python/test_phantom.py python/test_push.py -q`
+  - `python3 -m pytest python/test_admission.py python/test_bootstrap.py python/test_implement_dispatch.py python/test_review_and_fix.py -q`
+- Run script/structure tests touched by consumer rewrites:
+  - `bash scripts/test-rebase-checkpoint-probe.sh`
+  - `bash scripts/test-implement-fence-shape.sh`
+  - `bash scripts/test-implement-structure.sh`
+  - `bash skills/implement/scripts/test-step-8-ship.sh`
+- Run migration and lint gates:
+  - `make lint-retired-scripts`
+  - `make py-lint`
+  - `make py-test`
+  - `make lint`
+
+diff_added: 650
+diff_deleted: 2850
+mechanical_churn: true
+diff_lines: 3500

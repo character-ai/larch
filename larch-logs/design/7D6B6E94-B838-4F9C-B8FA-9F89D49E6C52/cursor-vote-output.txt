@@ -1,0 +1,1 @@
+The ballot at `<TMPDIR>/ballot.txt` is empty (0 bytes), so there are no `FINDING_N` or `OOS_N` items to vote on. Per the voter contract, only vote lines matching ballot IDs are accepted; with an empty ballot, no vote lines apply.
