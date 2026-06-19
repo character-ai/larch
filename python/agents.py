@@ -1497,17 +1497,6 @@ def _compose_failure_diag(output: Path, *, sink: str = "", history: str = "", ev
         _write(carrier, capped)
 
 
-def _failure_diag_populated(output: Path) -> bool:
-    carrier = output.with_suffix(output.suffix + ".failure-diag")
-    return carrier.is_file() and carrier.stat().st_size > 0
-
-
-def _ensure_failure_diag_composed(output: Path, *, sink: str = "", history: str = "", events: str = "") -> None:
-    if _failure_diag_populated(output):
-        return
-    _compose_failure_diag(output, sink=sink, history=history, events=events)
-
-
 def _review_failure_auth_paths(output: Path, source: Path, *, stderr_sink: str = "") -> tuple[Path | str, ...]:
     stem = str(output).removesuffix(".txt")
     paths: list[Path | str] = [
