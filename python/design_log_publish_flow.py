@@ -110,16 +110,36 @@ _PUBLISH_EXCLUDE_DIRS = frozenset({
     ".completed",
 })
 
+# GitHub-redundant snapshots: top-level duplicates of content already on GitHub.
+# issue-body.txt / issue.json snapshot the issue body; architecture-diagram.md is
+# upserted into the shared larch:diagrams comment by the publish tail; a top-level
+# panel-manifest.ndjson duplicates the per-round panel manifests. Unlike the sets
+# above (matched by basename at every tree depth), these are dropped at the TOP
+# LEVEL ONLY: panel-manifest.ndjson is a curated file under plan-review/round-N/,
+# so a blanket basename rule would wrongly drop the kept subtree copies. Restores
+# the pre-#3681 bash filter (Phase 3d / #3721 / #3929).
+_PUBLISH_EXCLUDE_TOPLEVEL_NAMES = frozenset({
+    "issue-body.txt",
+    "issue.json",
+    "architecture-diagram.md",
+    "panel-manifest.ndjson",
+})
 
-def _publish_excluded(name: str, *, is_dir: bool) -> bool:
+
+def _publish_excluded(name: str, *, is_dir: bool, top_level: bool = False) -> bool:
     """Return True for raw machine sidecars/transcripts that must not be committed.
 
     ``name`` is a single path component (basename). Directory names are matched
     against ``_PUBLISH_EXCLUDE_DIRS``; files against the exact-name, suffix, and
-    glob sets.
+    glob sets. When ``top_level`` is set (``name`` sits directly under the design
+    tmpdir root), GitHub-redundant snapshots in ``_PUBLISH_EXCLUDE_TOPLEVEL_NAMES``
+    are also dropped; nested copies of those basenames are kept so curated subtree
+    files survive.
     """
     if is_dir:
         return name in _PUBLISH_EXCLUDE_DIRS
+    if top_level and name in _PUBLISH_EXCLUDE_TOPLEVEL_NAMES:
+        return True
     if name in _PUBLISH_EXCLUDE_NAMES:
         return True
     if name.endswith(_PUBLISH_EXCLUDE_SUFFIXES):
@@ -207,16 +227,32 @@ def _spawn_detached_admin_merge(cli: str, pr_number: str, repo: str, repo_root: 
         )
 
 
+def _scrub_violations(commit_stdout: str) -> str:
+    """Return the SECRET_SCRUB_VIOLATIONS count from ``run-log commit`` stdout.
+
+    Mirrors the retired design-publish.sh parse: the last occurrence wins and a
+    missing or non-numeric value defaults to ``"0"``. The committed design log is
+    scrubbed before commit, so a non-zero count means a secret-shaped value was
+    redacted from the logs and the operator must rotate the exposed credential.
+    """
+    value = "0"
+    for line in commit_stdout.splitlines():
+        if line.startswith("SECRET_SCRUB_VIOLATIONS="):
+            candidate = line.split("=", 1)[1].strip()
+            value = candidate if candidate.isdigit() else "0"
+    return value
+
+
 def _publish_design_logs(
     plugin_root: Path,
     design_tmpdir: Path,
     run_id: str,
     issue: str,
     repo: str,
-) -> tuple[bool, str, str, str]:
+) -> tuple[bool, str, str, str, str]:
     """Commit the design run tree on a dedicated branch via a disposable worktree, push it, and open a PR.
 
-    Returns ``(publish_ok, pr_number, pr_url, recovery_branch)``. The operator
+    Returns ``(publish_ok, pr_number, pr_url, recovery_branch, scrub_violations)``. The operator
     working tree is never touched: every write lands inside the worktree, so the
     next ``/implement`` preflight stays clean even if this fails (issue #4395).
     ``recovery_branch`` is set only when a commit exists but could not be turned
@@ -225,7 +261,7 @@ def _publish_design_logs(
     top = _run(["git", "rev-parse", "--show-toplevel"])
     repo_root = top.stdout.strip()
     if top.returncode != 0 or not repo_root:
-        return (False, "", "", "")
+        return (False, "", "", "", "0")
     branch = f"larch-logs/design-{run_id}"
     cli = str(plugin_root / "python" / "cli.py")
     repo_args = ["--repo", repo] if repo else []
@@ -237,7 +273,7 @@ def _publish_design_logs(
         add = _run(["git", "worktree", "add", "-b", branch, str(worktree), "HEAD"], cwd=repo_root)
         if add.returncode != 0:
             print(f"design log-publish: worktree add failed: {add.stderr.strip()}", file=sys.stderr)
-            return (False, "", "", "")
+            return (False, "", "", "", "0")
         branch_created = True
         wt_log_root = worktree / "larch-logs"
         run_dest = wt_log_root / "design" / run_id
@@ -247,14 +283,14 @@ def _publish_design_logs(
              "--skill", "design", "--run-id", run_id, "--issue", issue],
         )
         if init.returncode != 0:
-            return (False, "", "", "")
+            return (False, "", "", "", "0")
         for child in design_tmpdir.iterdir():
             if child.name == ".design-log-publish-metadata.env":
                 continue
-            if _publish_excluded(child.name, is_dir=child.is_dir()):
+            if _publish_excluded(child.name, is_dir=child.is_dir(), top_level=True):
                 continue
             if not _copy_tree_redacted(plugin_root, child, run_dest / child.name):
-                return (False, "", "", "")
+                return (False, "", "", "", "0")
         base_sha = _run(["git", "rev-parse", "HEAD"], cwd=str(worktree)).stdout.strip()
         commit = _run(
             [sys.executable, cli, "run-log", "commit", "--log-root", str(wt_log_root),
@@ -264,12 +300,13 @@ def _publish_design_logs(
         head_sha = _run(["git", "rev-parse", "HEAD"], cwd=str(worktree)).stdout.strip()
         if commit.returncode != 0 or not head_sha or head_sha == base_sha:
             print(f"design log-publish: run-log commit produced no commit: {commit.stderr.strip()}", file=sys.stderr)
-            return (False, "", "", "")
+            return (False, "", "", "", "0")
+        scrub_violations = _scrub_violations(commit.stdout)
         push = _run(["git", "push", "-u", "origin", branch], cwd=str(worktree))
         if push.returncode != 0:
             print(f"design log-publish: push failed; local branch {branch} kept for recovery: {push.stderr.strip()}", file=sys.stderr)
             keep_branch_for_recovery = True
-            return (False, "", "", branch)
+            return (False, "", "", branch, scrub_violations)
         body_file = wt_parent / "pr-body.txt"
         _ = body_file.write_text(
             f"Automated design log directory for run {run_id}. Merged once required CI checks pass.\n",
@@ -282,7 +319,7 @@ def _publish_design_logs(
         )
         if pr.returncode != 0:
             print(f"design log-publish: gh pr create failed; pushed branch {branch} kept for recovery: {pr.stderr.strip()}", file=sys.stderr)
-            return (False, "", "", branch)
+            return (False, "", "", branch, scrub_violations)
         pr_url = pr.stdout.strip().splitlines()[-1] if pr.stdout.strip() else ""
         match = _PR_URL_RE.search(pr_url)
         pr_number = match.group(1) if match else ""
@@ -298,7 +335,7 @@ def _publish_design_logs(
         # clean either way.
         if pr_number:
             _spawn_detached_admin_merge(cli, pr_number, repo, repo_root)
-        return (True, pr_number, pr_url, "")
+        return (True, pr_number, pr_url, "", scrub_violations)
     finally:
         _ = _run(["git", "worktree", "remove", "--force", str(worktree)], cwd=repo_root)
         if branch_created and not keep_branch_for_recovery:
@@ -372,7 +409,7 @@ def log_publish_main(argv: Sequence[str]) -> int:
         return 0
 
     plugin_root = Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[1]))
-    publish_ok, pr_number, pr_url, recovery_branch = _publish_design_logs(
+    publish_ok, pr_number, pr_url, recovery_branch, scrub_violations = _publish_design_logs(
         plugin_root,
         design_tmpdir,
         parsed["--run-id"],
@@ -385,4 +422,5 @@ def log_publish_main(argv: Sequence[str]) -> int:
     _emit("PR_URL", pr_url)
     if recovery_branch:
         _emit("RECOVERY_BRANCH", recovery_branch)
+    _emit("SECRET_SCRUB_VIOLATIONS", scrub_violations)
     return 0

@@ -33,9 +33,13 @@ if args[:2] == ["tracking-issue","rename"]:
     print("NEW_TITLE=[DESIGNED] Example")
     raise SystemExit(0)
 if args[:3] == ["design","log-publish","--design-tmpdir"] or args[:2] == ["design","log-publish"]:
+    import os
     print("PUBLISH_OK=true")
     print("PR_NUMBER=99")
     print("PR_URL=https://github.com/owner/repo/pull/99")
+    _scrub = os.environ.get("FAKE_CLI_SCRUB_VIOLATIONS")
+    if _scrub:
+        print("SECRET_SCRUB_VIOLATIONS=" + _scrub)
     raise SystemExit(0)
 if args[:2] == ["diagrams","upsert"]:
     import json, os
@@ -412,3 +416,79 @@ def test_publish_nonfatal_when_architecture_upsert_fails(tmp_path: Path) -> None
     assert result.returncode == 0, result.stderr
     assert "UPSERT_STATUS=failed" in result.stdout
     assert "PLAN_WRITE_OK=true" in result.stdout
+
+
+def test_publish_warns_rotate_on_secret_scrub_violations(tmp_path: Path) -> None:
+    # A non-zero SECRET_SCRUB_VIOLATIONS from log-publish means a secret-shaped
+    # value was scrubbed from the committed design logs; the publish tail must warn
+    # the operator to rotate the exposed credential (#4782).
+    plugin_root = tmp_path / "plugin"
+    _write_fake_cli(plugin_root / "python" / "cli.py")
+    design = tmp_path / "design"
+    (design / ".completed").mkdir(parents=True)
+    _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
+    cli_py = Path(__file__).with_name("cli.py")
+    env = os.environ.copy()
+    env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
+    env["FAKE_CLI_SCRUB_VIOLATIONS"] = "2"
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(cli_py),
+            "design",
+            "publish",
+            "--design-tmpdir",
+            str(design),
+            "--issue",
+            "9",
+            "--session-id",
+            "RUN1",
+            "--claude-pid",
+            "11",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "ROTATE it now" in result.stdout
+    assert "redacted 2 secret-shaped value(s)" in result.stdout
+    assert "PLAN_WRITE_OK=true" in result.stdout
+
+
+def test_publish_no_rotate_warning_when_zero_violations(tmp_path: Path) -> None:
+    # Zero violations (the common case) emits no rotate warning (#4782).
+    plugin_root = tmp_path / "plugin"
+    _write_fake_cli(plugin_root / "python" / "cli.py")
+    design = tmp_path / "design"
+    (design / ".completed").mkdir(parents=True)
+    _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
+    cli_py = Path(__file__).with_name("cli.py")
+    env = os.environ.copy()
+    env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
+    env["FAKE_CLI_SCRUB_VIOLATIONS"] = "0"
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(cli_py),
+            "design",
+            "publish",
+            "--design-tmpdir",
+            str(design),
+            "--issue",
+            "9",
+            "--session-id",
+            "RUN1",
+            "--claude-pid",
+            "11",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "ROTATE it now" not in result.stdout

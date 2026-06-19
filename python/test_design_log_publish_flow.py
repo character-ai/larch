@@ -118,6 +118,9 @@ def test_log_publish_commits_pushes_and_opens_pr(tmp_path: Path) -> None:
     assert "PUBLISH_OK=true" in result.stdout, result.stderr
     assert "PR_NUMBER=77" in result.stdout
     assert "PR_URL=https://github.com/o/r/pull/77" in result.stdout
+    # The publish surfaces the scrub-violation count so the design tail can warn
+    # the operator to rotate; a clean run reports zero (#4782).
+    assert "SECRET_SCRUB_VIOLATIONS=0" in result.stdout
     # The operator working tree is never polluted, so the next /implement passes preflight.
     status = subprocess.run(["git", "status", "--porcelain"], cwd=repo, capture_output=True, text=True, check=False)
     assert status.stdout.strip() == "", status.stdout
@@ -315,6 +318,71 @@ def test_log_publish_excludes_sidecar_crud(tmp_path: Path) -> None:
     assert "plan-autofix" not in tree, tree
     assert "/.completed/" not in tree, tree
     assert "step2b-codex-raw" not in tree, tree
+
+
+def test_scrub_violations_parses_last_numeric() -> None:
+    # Mirrors the retired design-publish.sh parse: last occurrence wins, and a
+    # missing or non-numeric value defaults to "0" (#4782).
+    assert design_log_publish_flow._scrub_violations("<sha>\nSECRET_SCRUB_VIOLATIONS=3\n") == "3"
+    assert (
+        design_log_publish_flow._scrub_violations(
+            "SECRET_SCRUB_VIOLATIONS=1\nSECRET_SCRUB_VIOLATIONS=5\n"
+        )
+        == "5"
+    )
+    assert design_log_publish_flow._scrub_violations("no marker here\n") == "0"
+    assert design_log_publish_flow._scrub_violations("SECRET_SCRUB_VIOLATIONS=oops\n") == "0"
+    assert design_log_publish_flow._scrub_violations("<sha>\nSECRET_SCRUB_VIOLATIONS=0\n") == "0"
+
+
+def test_publish_excluded_github_redundant_top_level_only() -> None:
+    # GitHub-redundant snapshots duplicate the issue body / larch:diagrams comment
+    # and are dropped at the top level only, so a curated subtree copy (e.g.
+    # plan-review/round-N/panel-manifest.ndjson) is never collaterally dropped (#4782).
+    redundant = ["issue-body.txt", "issue.json", "architecture-diagram.md", "panel-manifest.ndjson"]
+    for name in redundant:
+        assert design_log_publish_flow._publish_excluded(name, is_dir=False, top_level=True), name
+        assert not design_log_publish_flow._publish_excluded(name, is_dir=False), name
+    # Universal carriers stay excluded at every depth regardless of top_level.
+    carrier = "codex-primary-plan-arch-output.txt.events.jsonl"
+    assert design_log_publish_flow._publish_excluded(carrier, is_dir=False, top_level=False)
+    assert design_log_publish_flow._publish_excluded(carrier, is_dir=False, top_level=True)
+
+
+def test_log_publish_drops_github_redundant_top_level_keeps_subtree(tmp_path: Path) -> None:
+    # GitHub-redundant snapshots (issue body, issue.json, the architecture diagram
+    # already upserted to larch:diagrams, the top-level panel manifest) are dropped
+    # at the top level, while the curated plan-review/round-N/ copies of the same
+    # basenames survive. Restores the pre-#3681 bash exclusions (#4782).
+    repo = _operator_repo_with_remote(tmp_path)
+    design = tmp_path / "design"
+    design.mkdir()
+    _ = (design / "plan.txt").write_text("PLAN", encoding="utf-8")
+    for name in ("issue-body.txt", "issue.json", "architecture-diagram.md", "panel-manifest.ndjson"):
+        _ = (design / name).write_text("REDUNDANT", encoding="utf-8")
+    pr_round = design / "plan-review" / "round-1"
+    pr_round.mkdir(parents=True)
+    _ = (pr_round / "panel-manifest.ndjson").write_text('{"tool":"codex"}', encoding="utf-8")
+    _ = (pr_round / "architecture-diagram.md").write_text("CURATED", encoding="utf-8")
+
+    bin_dir = tmp_path / "bin"
+    _write_gh_stub(bin_dir / "gh", pr_create_rc=0)
+    result = _run_publish(repo, design, bin_dir)
+    assert result.returncode == 0, result.stderr
+    assert "PUBLISH_OK=true" in result.stdout, result.stderr
+
+    origin = tmp_path / "origin.git"
+    ls = subprocess.run(
+        ["git", "ls-tree", "-r", "--name-only", LOG_BRANCH],
+        cwd=origin, capture_output=True, text=True, check=False,
+    )
+    tree = ls.stdout
+    base = f"larch-logs/design/{RUN_ID}"
+    for name in ("issue-body.txt", "issue.json", "architecture-diagram.md", "panel-manifest.ndjson"):
+        assert f"{base}/{name}" not in tree, f"expected top-level drop: {name}\n{tree}"
+    assert f"{base}/plan-review/round-1/panel-manifest.ndjson" in tree, tree
+    assert f"{base}/plan-review/round-1/architecture-diagram.md" in tree, tree
+    assert f"{base}/plan.txt" in tree, tree
 
 
 def test_spawn_detached_admin_merge_swallows_launch_failure(monkeypatch: pytest.MonkeyPatch) -> None:
