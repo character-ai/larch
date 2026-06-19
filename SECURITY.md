@@ -35,7 +35,10 @@ session-local monitor sidecars (`.quiet`, `.done`, `.status`, `.surfaced`,
 `larch-logs/.../breadcrumbs/`; attempted quiet-log publication still fails
 closed on staged-file symlinks, hardlinks, or redaction errors. The shared
 helper now treats its input as a breadcrumbs-directory hint only: a hint outside
-the active session tmpdir is a no-op, and the fail-closed enforcement happens at
+the active session tmpdir is a no-op (enforced by a defense-in-depth
+confinement check that resolves the derived source root against the active
+`IMPLEMENT/DESIGN/REVIEW/RESEARCH_TMPDIR` roots and publishes nothing when it
+matches none), and the fail-closed enforcement happens at
 per-file staging/redaction time for matched `larch-quiet-*-*.log` files rather
 than by applying the removed source-directory-wide rejection rules.
 

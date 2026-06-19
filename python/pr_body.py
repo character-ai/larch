@@ -276,6 +276,18 @@ def _fail_closed_body(redacted: str) -> str:
     return redacted
 
 
+def redact_pr_body(body: str) -> str:
+    """Redact a PR body fail-closed: tmpdir paths then secrets.
+
+    Single source of truth for outbound PR-body redaction, shared by
+    ``compose_pr_body`` (the live ship path) and ``pr.create_pr_parity``
+    (``cli.py pr create``). Mirrors the retired ``create-pr.sh``, which piped
+    the body through ``redact tmpdir-paths`` then ``redact secrets`` and failed
+    closed. Raises :class:`ShipError` when redaction truncates the body.
+    """
+    return _fail_closed_body(redact.redact(body))
+
+
 def compose_pr_body(
     *,
     summary: str,
@@ -299,7 +311,7 @@ def compose_pr_body(
     if mermaid_body.status != "ok":
         msg = f"mermaid in PR body rejected: {','.join(mermaid_body.reason_tokens)}"
         raise ShipError(msg)
-    redacted = _fail_closed_body(redact.redact(body))
+    redacted = redact_pr_body(body)
     return redacted.rstrip("\n") + "\n"
 
 
