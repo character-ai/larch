@@ -2463,6 +2463,57 @@ def test_review_emit_launcher_result_composes_sink_before_classification(
     assert "LAUNCHER_FAILURE_REASON=auth" in stdout
 
 
+def test_review_emit_launcher_result_merges_sink_into_existing_failure_diag(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    output = tmp_path / "review.txt"
+    sink = tmp_path / "launcher.log"
+    failure_diag = output.with_suffix(output.suffix + ".failure-diag")
+    _ = output.with_suffix(output.suffix + ".diag").write_text("STATUS=FAILED\n", encoding="utf-8")
+    _ = failure_diag.write_text("===== diag =====\nstale generic failure\n", encoding="utf-8")
+    _ = sink.write_text("authentication failed in sink\n", encoding="utf-8")
+    seen: dict[str, Path] = {}
+
+    def fake_classify(
+        _launcher_exit: int,
+        sidecar: Path,
+        **_kwargs: object,
+    ) -> agents.LaunchFailure:
+        seen["sidecar"] = sidecar
+        return agents.LaunchFailure("health", "auth")
+
+    monkeypatch.setattr(agents, "classify_launch_failure", fake_classify)
+    agents._review_emit_launcher_result(output, "cursor", 2, stderr_sink=str(sink))  # pylint: disable=protected-access
+    assert seen["sidecar"] == failure_diag
+    assert "authentication failed in sink" in failure_diag.read_text(encoding="utf-8")
+    stdout = capsys.readouterr().out
+    assert "LAUNCHER_FAILURE_CLASS=health" in stdout
+    assert "LAUNCHER_FAILURE_REASON=auth" in stdout
+
+
+def test_review_append_launch_failure_merges_sink_into_existing_failure_diag(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = tmp_path / "codex-review.txt"
+    sink = tmp_path / "codex-review.log"
+    failure_diag = output.with_suffix(output.suffix + ".failure-diag")
+    diag = output.with_suffix(output.suffix + ".diag")
+    _ = diag.write_text("generic failure\n", encoding="utf-8")
+    _ = failure_diag.write_text("===== diag =====\ngeneric failure\n", encoding="utf-8")
+    _ = sink.write_text("launcher stderr detail\n", encoding="utf-8")
+    monkeypatch.setattr(agents, "_resolve_execution_issues_log", lambda: None)
+    agents._review_append_launch_failure(  # pylint: disable=protected-access
+        output=output,
+        tool="codex",
+        exit_code=1,
+        stderr_sink=str(sink),
+    )
+    assert "launcher stderr detail" in failure_diag.read_text(encoding="utf-8")
+
+
 def test_append_implement_launch_failure_composes_sidecar_and_regenerates_tail(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

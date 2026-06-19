@@ -4123,7 +4123,7 @@ def _review_append_launch_failure(
 ) -> None:
     if exit_code == 0:
         return
-    _ensure_failure_diag_composed(output, sink=stderr_sink)
+    _compose_failure_diag(output, sink=stderr_sink)
     source = _review_failure_source(output, sink=stderr_sink)
     failure = classify_launch_failure(
         exit_code,
@@ -4333,7 +4333,7 @@ def _review_run_with_retries(
 
 def _review_emit_launcher_result(output: Path, tool: str, launcher_exit: int, *, stderr_sink: str = "") -> None:
     if launcher_exit != 0:
-        _ensure_failure_diag_composed(output, sink=stderr_sink)
+        _compose_failure_diag(output, sink=stderr_sink)
     sidecar = _review_failure_source(output, sink=stderr_sink)
     failure = classify_launch_failure(
         launcher_exit,
