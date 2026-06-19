@@ -297,6 +297,74 @@ def publish_main(argv: Sequence[str]) -> int:
         return 1
     kvs[0] = ("PLAN_WRITE_OK", "true")
 
+    # Upsert the architecture diagram into the shared larch:diagrams comment.
+    # Mirrors the retired design-publish.sh tail: publish the generated
+    # architecture-diagram.md, or clear the section when /design Step 3b
+    # intentionally skipped the diagram (DIAGRAM_REQUIRED=false leaves the
+    # architecture-diagram.skipped marker). Runs after the plan block is
+    # written and before the [DESIGNED] rename.
+    arch_file = design_tmpdir / "architecture-diagram.md"
+    arch_skipped = design_tmpdir / "architecture-diagram.skipped"
+    upsert_args: list[str] = ["--issue", parsed["--issue"]]
+    if parsed["--repo"]:
+        upsert_args += ["--repo", parsed["--repo"]]
+    run_upsert = False
+    if arch_file.is_file() and arch_file.stat().st_size > 0:
+        run_upsert = True
+        upsert_args += ["--architecture-file", str(arch_file)]
+    elif arch_skipped.is_file():
+        run_upsert = True
+        upsert_args += ["--clear-architecture"]
+    if run_upsert:
+        upsert = subprocess.run(
+            [
+                sys.executable,
+                str(plugin_root / "python" / "cli.py"),
+                "diagrams",
+                "upsert",
+                *upsert_args,
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        upsert_stderr_file = design_tmpdir / "diagrams-architecture-upsert.stderr"
+        _ = upsert_stderr_file.write_text(upsert.stderr or "", encoding="utf-8")
+        _ = (design_tmpdir / "diagrams-architecture-upsert.stdout").write_text(
+            upsert.stdout or "", encoding="utf-8"
+        )
+        upsert_kv = _parse_kv(upsert.stdout)
+        upsert_status = upsert_kv.get("UPSERT_STATUS", "")
+        if upsert_status:
+            kvs.append(("UPSERT_STATUS", upsert_status))
+        if upsert_kv.get("ARCHITECTURE_SOURCE"):
+            kvs.append(("ARCHITECTURE_SOURCE", upsert_kv["ARCHITECTURE_SOURCE"]))
+        if upsert_status == "failed" or upsert.returncode != 0:
+            _ = subprocess.run(
+                [
+                    sys.executable,
+                    str(plugin_root / "python" / "cli.py"),
+                    "run-log",
+                    "append-failure",
+                    "--log",
+                    str(design_tmpdir / "execution-issues.md"),
+                    "--site",
+                    "design Step 5c.5",
+                    "--tool",
+                    "python/cli.py diagrams upsert architecture",
+                    "--exit-code",
+                    str(upsert.returncode),
+                    "--category",
+                    "Warnings",
+                    "--output-file",
+                    str(upsert_stderr_file),
+                    "--redact",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
     rename = subprocess.run(
         [
             sys.executable,
