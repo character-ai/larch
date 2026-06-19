@@ -1574,14 +1574,19 @@ def _static_slug_for_file(file: str) -> str | None:
 
 
 def _straggler_excused_static_slugs(dropped_file: Path) -> set[str]:
-    excused: set[str] = set()
+    straggler_slugs: set[str] = set()
+    genuine_failure_slugs: set[str] = set()
     if not dropped_file.is_file():
-        return excused
+        return set()
     for line in dropped_file.read_text(encoding="utf-8", errors="replace").splitlines():
         slot, tool, reason, *_rest = [*line.split("\t"), "", "", ""]
-        if reason == "straggler-dropped" and slot and not slot.startswith("dyn-") and tool in {"codex", "cursor"}:
-            excused.add(slot)
-    return excused
+        if not slot or slot.startswith("dyn-") or tool not in {"codex", "cursor"}:
+            continue
+        if reason == "straggler-dropped":
+            straggler_slugs.add(slot)
+        else:
+            genuine_failure_slugs.add(slot)
+    return straggler_slugs - genuine_failure_slugs
 
 
 def _static_coverage_reason(
