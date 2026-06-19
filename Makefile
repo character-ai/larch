@@ -121,7 +121,7 @@ test-harnesses-4: test-harness-shards-coverage test-review-and-fix-write-rejecte
 
 test-harnesses-5: test-launch-review test-revise-plan-with-waterfall test-design-step1d5 test-lib-scope-anchor-handoff test-review-and-fix-record-timing test-release-set-version test-implement-finalize test-post-tracking-issue test-clarify-comment test-implement-admission test-timing-ledger test-oos-disposition-gate test-lint-readability-preamble test-audit-edit-write test-implement-anti-polling-rule test-implement-positional-issue
 
-test-harnesses-6: test-design-stage-terminal-state test-dispatch-code-voters-regressions-r1-r2 test-validate-plan-commands test-cursor-implementer test-launch-claude-review test-reviewer-prune test-clarify-state test-refresh-run-logs test-render-final-summary-bash32 test-append-tool-failure test-redact test-deny-edit-write test-hook-progress-report test-research-angle-prompts
+test-harnesses-6: test-design-stage-terminal-state test-design-step-final-summary test-dispatch-code-voters-regressions-r1-r2 test-validate-plan-commands test-cursor-implementer test-launch-claude-review test-reviewer-prune test-clarify-state test-refresh-run-logs test-render-final-summary-bash32 test-append-tool-failure test-redact test-deny-edit-write test-hook-progress-report test-research-angle-prompts
 
 test-harnesses-7: test-design-step3-review test-check-plan-size test-sessionstart test-design-step0-init test-design-multi-round-integration test-block-submodule test-resolve-upstream-larch-repo test-implement-cleanup-script test-lint-bare-grep-probe test-capture-session-transcript test-check-clean-tree test-token-claude-source test-token-report test-scrub-log-secrets test-slack-issue-announce test-synthesis-subagent
 
@@ -1062,13 +1062,16 @@ trufflehog:
 setup:
 	pre-commit install
 
-.PHONY: test-design-stage-terminal-state test-design-failure-report test-design-step3-review test-design-step3-entry test-design-step0-init test-design-step5c test-design-step6 test-design-step-validator-autofix
+.PHONY: test-design-stage-terminal-state test-design-failure-report test-design-step-final-summary test-design-step3-review test-design-step3-entry test-design-step0-init test-design-step5c test-design-step6 test-design-step-validator-autofix
 
 test-design-stage-terminal-state:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_design_lifecycle.py -k stage_terminal_state
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_design_lifecycle.py -k 'stage_terminal_state or capture_contract'
 
 test-design-failure-report:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_design_lifecycle.py -k failure_report
+
+test-design-step-final-summary:
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_design_lifecycle.py -k step_final_summary
 
 test-design-step3-review:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-step3-review.sh

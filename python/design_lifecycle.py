@@ -74,10 +74,18 @@ def _capture_contract_stream_to_paths(
     sys.stderr.flush()
     os.write(1, b"")
     os.write(2, b"")
+    had_contract_fd = False
     try:
         saved_contract = fcntl.fcntl(3, fcntl.F_DUPFD, 10)
+        had_contract_fd = True
     except OSError:
         saved_contract = None
+    had_quiet_fd = False
+    try:
+        saved_quiet = fcntl.fcntl(4, fcntl.F_DUPFD, 10)
+        had_quiet_fd = True
+    except OSError:
+        saved_quiet = None
     saved_stdout = fcntl.fcntl(1, fcntl.F_DUPFD, 10)
     saved_stderr = fcntl.fcntl(2, fcntl.F_DUPFD, 10)
     out_fd = os.open(out_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
@@ -103,11 +111,13 @@ def _capture_contract_stream_to_paths(
             sys.stderr.flush()
             os.dup2(saved_stdout, 1)
             os.dup2(saved_stderr, 2)
-            if saved_contract is None:
+            if had_contract_fd and saved_contract is not None:
+                os.dup2(saved_contract, 3)
+            else:
                 with contextlib.suppress(OSError):
                     os.close(3)
-            else:
-                os.dup2(saved_contract, 3)
+            if had_quiet_fd and saved_quiet is not None:
+                os.dup2(saved_quiet, 4)
             os.write(1, b"")
             os.write(2, b"")
     finally:
@@ -122,34 +132,51 @@ def _capture_contract_stream_to_paths(
         if saved_contract is not None:
             with contextlib.suppress(OSError):
                 os.close(saved_contract)
+        if saved_quiet is not None:
+            with contextlib.suppress(OSError):
+                os.close(saved_quiet)
 
 
 capture_contract_stream_to_paths = _capture_contract_stream_to_paths
 
 
+def _append_execution_issue(design_tmpdir: Path, message: str) -> None:
+    path = design_tmpdir / "execution-issues.md"
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(message if message.endswith("\n") else message + "\n")
+
+
 @contextlib.contextmanager
-def _bg_wait_marker_context(design_tmpdir: str | Path, step: str):
+def _bg_wait_marker_context(design_tmpdir: str | Path, step: str, *, claude_pid: str = ""):
     tmpdir = Path(design_tmpdir)
     marker = tmpdir / ".bg-wait-active"
     tmp = tmpdir / f".bg-wait-active.tmp.{os.getpid()}"
-    text = "\n".join(
-        [
-            f"PID={os.getpid()}",
-            f"CLAUDE_PID={os.environ.get('CLAUDE_PID', '')}",
-            f"START_EPOCH={int(time.time())}",
-            f"STEP={step}",
-            "TIMEOUT_S=21600",
-            "",
-        ]
-    )
-    tmp.write_text(text, encoding="utf-8")
-    tmp.replace(marker)
+    active = False
+    try:
+        text = "\n".join(
+            [
+                f"PID={os.getpid()}",
+                f"CLAUDE_PID={claude_pid or os.environ.get('CLAUDE_PID', '')}",
+                f"START_EPOCH={int(time.time())}",
+                f"STEP={step}",
+                "TIMEOUT_S=21600",
+                "",
+            ]
+        )
+        tmp.write_text(text, encoding="utf-8")
+        tmp.replace(marker)
+        active = True
+    except OSError as exc:
+        with contextlib.suppress(OSError):
+            tmp.unlink()
+        _append_execution_issue(tmpdir, f"Warning: bg-wait marker setup failed for {step}: {exc}")
     try:
         yield
     finally:
-        with contextlib.suppress(FileNotFoundError):
-            marker.unlink()
-        with contextlib.suppress(FileNotFoundError):
+        if active:
+            with contextlib.suppress(OSError, FileNotFoundError):
+                marker.unlink()
+        with contextlib.suppress(OSError, FileNotFoundError):
             tmp.unlink()
 
 
@@ -621,10 +648,16 @@ def _stall_args(design_tmpdir: Path) -> list[str]:
 
 
 def _run_stall_main(callable_obj, argv: Sequence[str], *, stdout_path: Path | None = None, stderr_path: Path | None = None) -> int:
-    stdout_cm = stdout_path.open("w", encoding="utf-8") if stdout_path is not None else contextlib.redirect_stdout(io.StringIO())
-    stderr_cm = stderr_path.open("w", encoding="utf-8") if stderr_path is not None else contextlib.redirect_stderr(io.StringIO())
     try:
-        with stdout_cm as out, stderr_cm as err, contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        with contextlib.ExitStack() as stack:
+            if stdout_path is not None:
+                out = stack.enter_context(stdout_path.open("w", encoding="utf-8"))
+                stack.enter_context(contextlib.redirect_stdout(out))
+            else:
+                stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+            if stderr_path is not None:
+                err = stack.enter_context(stderr_path.open("w", encoding="utf-8"))
+                stack.enter_context(contextlib.redirect_stderr(err))
             try:
                 return int(callable_obj(list(argv)))
             except SystemExit as exc:
@@ -1219,7 +1252,7 @@ def step_final_summary_core(argv: Sequence[str]) -> tuple[int, list[str]]:
             if env.get("REPO"):
                 args.extend(["--repo", env["REPO"]])
             return design_pause.pause_save_main(args), []
-        with _bg_wait_marker_context(design_tmpdir, "design-step-final-summary"):
+        with _bg_wait_marker_context(design_tmpdir, "design-step-final-summary", claude_pid=parsed.claude_pid):
             # Local import is deliberate to avoid a design_summary <-> design_lifecycle
             # top-level import cycle while preserving the in-process port.
             from design_summary import render_final_summary_main  # noqa: PLC0415
@@ -1228,8 +1261,14 @@ def step_final_summary_core(argv: Sequence[str]) -> tuple[int, list[str]]:
             if env.get("REPO"):
                 render_args.extend(["--repo", env["REPO"]])
             render_stdout = design_tmpdir / "render-final-summary.stdout.log"
-            with render_stdout.open("w", encoding="utf-8") as out, contextlib.redirect_stdout(out):
-                render_rc = render_final_summary_main(render_args)
+            render_rc = 0
+            try:
+                with render_stdout.open("w", encoding="utf-8") as out, contextlib.redirect_stdout(out):
+                    render_rc = render_final_summary_main(render_args)
+            except BaseException as exc:
+                render_rc = 1
+                traceback.print_exc(file=sys.stderr)
+                _append_execution_issue(design_tmpdir, f"Warning: render_final_summary_main failed: {exc}")
             _emit_final_summary_marked_from_disk(design_tmpdir)
             _emit_report_gate_sidecars_from_disk(design_tmpdir)
             sys.stdout.flush()
@@ -1298,6 +1337,10 @@ def step_final_summary_main(argv: Sequence[str]) -> int:
     os.environ["DESIGN_TMPDIR"] = str(design_tmpdir)
     logging_util.quiet_init(argv0="design-step-final-summary.sh")
     rc, _ = step_final_summary_core(argv)
+    if rc in {2, 3}:
+        return rc
+    if (design_tmpdir / ".completed" / "step-final-summary").is_file():
+        return 0
     return rc
 
 

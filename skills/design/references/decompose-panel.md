@@ -65,7 +65,9 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" design stage-terminal-state \
   --bail-reason decompose-panel-retry-exhausted \
   --exit-code 1 \
   --source-script split-path \
-  --summary-outcome failed-judge-panel
+  --summary-outcome failed-judge-panel \
+  >"$DESIGN_TMPDIR/design-stage-terminal-state.stdout.log" \
+  2>"$DESIGN_TMPDIR/design-stage-terminal-state.stderr.log"
 ```
 
 - `PANEL_STATUS=degraded` or `DEGRADED_PANEL=true` — include **degraded vendor counts** in option labels where it helps the operator (mirror Step 3 plan-review degraded presentation).

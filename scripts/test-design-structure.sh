@@ -86,6 +86,14 @@ not_contains "$BRAINSTORM_MD" '## Post-collection dirty-tree checkpoint' 'Brains
 
 contains "$MAKEFILE" 'python3 -m pytest python/test_design_lifecycle.py' 'Make targets must route retired shell harnesses to pytest'
 
+g6_terminal_retired_paths='design-stage-terminal-state.sh design-stage-terminal-state.md test-design-stage-terminal-state.sh test-design-stage-terminal-state.md design-failure-report.sh design-failure-report.md test-design-failure-report.sh test-design-failure-report.md design-step-final-summary.sh design-step-final-summary.md _dbg-stage.sh _debug-step5c.sh'
+for retired in $g6_terminal_retired_paths; do
+  [ ! -e "$ROOT/skills/design/scripts/$retired" ] || fail "retired G6.2 script still exists: $retired"
+  contains "$MIGRATED" "skills/design/scripts/$retired" "migrated-scripts.tsv missing $retired"
+done
+[ ! -e "$ROOT/scripts/debug-step5c-once.sh" ] || fail 'retired G6.2 script still exists: scripts/debug-step5c-once.sh'
+contains "$MIGRATED" 'scripts/debug-step5c-once.sh' 'migrated-scripts.tsv missing scripts/debug-step5c-once.sh'
+
 step2_verbs='step2a step2b-drafter step2b-postplan step2b5'
 step2_retired_paths='design-step2a.sh design-step2a.md design-step2b-drafter.sh design-step2b-drafter.md design-step2b-postplan.sh design-step2b-postplan.md design-step2b5.sh design-step2b5.md design-step-validator-autofix.sh design-step-validator-autofix.md design-step2b-prelude.sh design-step2b-prelude.md test-design-step2b-drafter.sh test-design-step2b-drafter.md test-design-step-validator-autofix.sh test-design-step-validator-autofix.md'
 SETTLE_SH="$ROOT/skills/design/scripts/design-step35-settle.sh"
