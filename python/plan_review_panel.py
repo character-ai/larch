@@ -15,6 +15,7 @@ from pathlib import Path
 from collections.abc import Sequence
 from typing import cast
 
+import redact
 from session_env import validate_design_tmpdir
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -334,7 +335,7 @@ def dispatch_panel(argv: Sequence[str]) -> int:
         # diagnostic-free. proc.stderr was previously captured and discarded, leaving
         # operators with exit_code=unknown and an empty failure_detail_log.
         failure_log = design / "plan-review-panel-failure.log"
-        detail = proc.stderr or ""
+        detail = redact.redact_secrets_only(redact.redact_tmpdir_paths(proc.stderr or ""))
         _ = failure_log.write_text(
             f"agent dispatch-waterfall exited {proc.returncode}\n{detail}",
             encoding="utf-8",

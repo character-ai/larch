@@ -1,4 +1,4 @@
-# pyright: reportUnusedCallResult=false
+# pyright: reportPrivateUsage=false, reportUnusedCallResult=false
 # pyright: reportMissingParameterType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportArgumentType=false
 from __future__ import annotations
 
@@ -1291,6 +1291,41 @@ def test_prod_shape_codex_parse_retry_appends_issues_log(tmp_path: Path) -> None
     issues_text = issues.read_text(encoding="utf-8")
     assert "agent dispatch-voters cursor-validity" in issues_text
     assert "agent launch-review --tool cursor (voter parse-rate check; label cursor-validity)" in issues_text
+
+
+def test_append_voter1_failure_uses_bounded_prefix_reads(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    review = tmp_path / "review"
+    review.mkdir()
+    output = review / "voter1.txt"
+    _ = output.write_text("A" * 1000, encoding="utf-8")
+    _ = Path(f"{output}.diag").write_text("B" * 1000, encoding="utf-8")
+    _ = Path(f"{output}.launcher-stderr").write_text("C" * 1000, encoding="utf-8")
+
+    def forbidden_read_bytes(_path: Path) -> bytes:
+        raise AssertionError("read_bytes should not be used for diagnostic snippets")
+
+    def fake_run(_argv: Sequence[str], **_kwargs: Any) -> proc.CommandResult:
+        return _result(["run-log", "append-failure"], 0)
+
+    monkeypatch.setattr(Path, "read_bytes", forbidden_read_bytes)
+    monkeypatch.setattr(agent_voters.proc, "run", fake_run)
+    opts = agent_voters.Options(
+        ballot_file=str(tmp_path / "ballot.tsv"),
+        review_tmpdir=str(review),
+        codex_available="false",
+        cursor_available="false",
+    )
+    agent_voters._append_voter1_failure(opts, review, str(output), 7)  # pylint: disable=protected-access
+    diag = (review / "voter1-diag.txt").read_text(encoding="utf-8")
+    assert "--- first 200 bytes of voter output ---\n" + ("A" * 200) in diag
+    assert "--- first 200 bytes of .diag ---\n" + ("B" * 200) in diag
+    assert "--- launcher stderr (first 500 bytes) ---\n" + ("C" * 500) in diag
+    assert "A" * 201 not in diag
+    assert "B" * 201 not in diag
+    assert "C" * 501 not in diag
 
 
 def _kv(output: str, key: str) -> str:

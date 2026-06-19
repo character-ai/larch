@@ -1185,6 +1185,164 @@ def test_check_reviewers_probe_no_retry_rc_one_shot(
     assert calls == 1
 
 
+def test_check_reviewers_codex_timeout_one_shot_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    codex = bin_dir / "codex"
+    _ = codex.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    codex.chmod(0o755)
+    calls = 0
+
+    def fake_probe(_timeout: int) -> int:
+        nonlocal calls
+        calls += 1
+        return config.EXIT_TIMEOUT
+
+    monkeypatch.setattr(agents, "_run_one_codex_probe", fake_probe)
+    result = agents.check_reviewers(
+        skip_cursor_probe=True,
+        env={"PATH": str(bin_dir), "TMPDIR": str(tmp_path), "LARCH_PROBE_TTL_SECONDS": "0"},
+    )
+    assert result.codex_present is False
+    assert result.codex_probe_timed_out is True
+    assert calls == 1
+
+
+def test_check_reviewers_codex_timeout_retry_can_succeed(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    codex = bin_dir / "codex"
+    _ = codex.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    codex.chmod(0o755)
+    calls = 0
+
+    def fake_probe(_timeout: int) -> int:
+        nonlocal calls
+        calls += 1
+        return 0 if calls == 2 else config.EXIT_TIMEOUT
+
+    monkeypatch.setattr(agents, "_run_one_codex_probe", fake_probe)
+    result = agents.check_reviewers(
+        skip_cursor_probe=True,
+        env={
+            "PATH": str(bin_dir),
+            "TMPDIR": str(tmp_path),
+            "LARCH_PROBE_TIMEOUT_RETRIES": "1",
+            "LARCH_PROBE_TTL_SECONDS": "0",
+        },
+    )
+    assert result.codex_present is True
+    assert result.codex_probe_timed_out is False
+    assert calls == 2
+
+
+def test_check_reviewers_cursor_timeout_retry_can_succeed(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    cursor = bin_dir / "cursor"
+    _ = cursor.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    cursor.chmod(0o755)
+    cfg_dir = tmp_path / "larch-cursor-cfg-test"
+    calls = 0
+
+    def fake_probe(_timeout: int) -> int:
+        nonlocal calls
+        calls += 1
+        return 0 if calls == 2 else config.EXIT_TIMEOUT
+
+    def fake_setup() -> agents._CursorProbeSetup:
+        cfg_dir.mkdir()
+        return agents._CursorProbeSetup(cfg_tmp=cfg_dir, old_cfg=None)  # pylint: disable=protected-access
+
+    monkeypatch.setattr(agents, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(ok=True, rc=0, message=""))
+    monkeypatch.setattr(agents, "_cursor_probe_setup_chain", fake_setup)
+    monkeypatch.setattr(agents, "_run_one_cursor_probe", fake_probe)
+    result = agents.check_reviewers(
+        skip_codex_probe=True,
+        env={
+            "PATH": str(bin_dir),
+            "TMPDIR": str(tmp_path),
+            "LARCH_PROBE_TIMEOUT_RETRIES": "1",
+            "LARCH_PROBE_TTL_SECONDS": "0",
+        },
+    )
+    assert result.cursor_present is True
+    assert result.cursor_probe_timed_out is False
+    assert calls == 2
+    assert not cfg_dir.exists()
+
+
+def test_check_reviewers_invalid_timeout_retry_env_is_one_shot(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    codex = bin_dir / "codex"
+    _ = codex.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    codex.chmod(0o755)
+    calls = 0
+
+    def fake_probe(_timeout: int) -> int:
+        nonlocal calls
+        calls += 1
+        return config.EXIT_TIMEOUT
+
+    monkeypatch.setattr(agents, "_run_one_codex_probe", fake_probe)
+    result = agents.check_reviewers(
+        skip_cursor_probe=True,
+        env={
+            "PATH": str(bin_dir),
+            "TMPDIR": str(tmp_path),
+            "LARCH_PROBE_TIMEOUT_RETRIES": "bad",
+            "LARCH_PROBE_TTL_SECONDS": "0",
+        },
+    )
+    assert result.codex_present is False
+    assert result.codex_probe_timed_out is True
+    assert calls == 1
+
+
+def test_check_reviewers_timeout_budget_is_independent(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    codex = bin_dir / "codex"
+    _ = codex.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    codex.chmod(0o755)
+    rcs = [config.EXIT_TIMEOUT, agents._AUTH_RETRY_RC, config.EXIT_TIMEOUT, 1, 0]
+
+    def fake_probe(_timeout: int) -> int:
+        return rcs.pop(0)
+
+    monkeypatch.setattr(agents, "_run_one_codex_probe", fake_probe)
+    result = agents.check_reviewers(
+        skip_cursor_probe=True,
+        env={
+            "PATH": str(bin_dir),
+            "TMPDIR": str(tmp_path),
+            "LARCH_EXTERNAL_AUTH_RETRIES": "2",
+            "LARCH_PROBE_RETRIES": "1",
+            "LARCH_PROBE_TIMEOUT_RETRIES": "2",
+            "LARCH_PROBE_TTL_SECONDS": "0",
+        },
+    )
+    assert result.codex_present is True
+    assert result.codex_probe_timed_out is False
+    assert not rcs
+
+
 def test_check_reviewers_health_gate_unset_probe_retries_one_shot(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -1905,6 +2063,79 @@ def test_cursor_auth_prereads_darwin_keychain_token(monkeypatch: pytest.MonkeyPa
     assert agents.os.environ["CURSOR_API_KEY"] == "crsr_from_keychain"
 
 
+def test_cursor_auth_preflight_keychain_uses_startup_lock(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, str]] = []
+
+    def fake_acquire(tool: str) -> agents.StartupLockState:
+        calls.append(("acquire", tool))
+        return agents.StartupLockState(None)
+
+    def fake_release(_state: agents.StartupLockState, delay: float | None = None) -> None:
+        calls.append(("release", str(delay)))
+
+    monkeypatch.setenv("CURSOR_API_KEY", "")
+    monkeypatch.setenv("LARCH_LIB_CURSOR_AUTH_TEST_MODE", "1")
+    monkeypatch.setenv("LIB_CURSOR_AUTH_TEST_UNAME", "Darwin")
+    monkeypatch.setenv("LIB_CURSOR_AUTH_TEST_SECURITY_RC", "0")
+    monkeypatch.setattr(agents, "external_startup_lock_acquire", fake_acquire)
+    monkeypatch.setattr(agents, "external_startup_lock_release_after", fake_release)
+    assert agents.cursor_auth_preflight(caller="test").ok is True
+    assert calls == [("acquire", "cursor"), ("release", "0")]
+
+
+def test_cursor_preread_keychain_uses_startup_lock(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, str]] = []
+
+    def fake_acquire(tool: str) -> agents.StartupLockState:
+        calls.append(("acquire", tool))
+        return agents.StartupLockState(None)
+
+    def fake_release(_state: agents.StartupLockState, delay: float | None = None) -> None:
+        calls.append(("release", str(delay)))
+
+    monkeypatch.setenv("CURSOR_API_KEY", "")
+    monkeypatch.setenv("LARCH_LIB_CURSOR_AUTH_TEST_MODE", "1")
+    monkeypatch.setenv("LIB_CURSOR_AUTH_TEST_UNAME", "Darwin")
+    monkeypatch.setenv("LIB_CURSOR_AUTH_TEST_PREREAD_TOKEN", "crsr_from_keychain")
+    monkeypatch.setattr(agents, "external_startup_lock_acquire", fake_acquire)
+    monkeypatch.setattr(agents, "external_startup_lock_release_after", fake_release)
+    agents.cursor_preread_service_token()
+    assert agents.os.environ["CURSOR_API_KEY"] == "crsr_from_keychain"
+    assert calls == [("acquire", "cursor"), ("release", "0")]
+
+
+def test_cursor_auth_usable_env_key_skips_keychain_lock(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+
+    def fake_acquire(tool: str) -> agents.StartupLockState:
+        calls.append(tool)
+        return agents.StartupLockState(None)
+
+    monkeypatch.setenv("CURSOR_API_KEY", "  crsr_existing_key  ")
+    monkeypatch.setenv("LARCH_LIB_CURSOR_AUTH_TEST_MODE", "1")
+    monkeypatch.setenv("LIB_CURSOR_AUTH_TEST_UNAME", "Darwin")
+    monkeypatch.setattr(agents, "external_startup_lock_acquire", fake_acquire)
+    assert agents.cursor_auth_preflight(caller="test").ok is True
+    agents.cursor_preread_service_token()
+    assert not calls
+
+
+def test_cursor_auth_non_darwin_skips_keychain_lock(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+
+    def fake_acquire(tool: str) -> agents.StartupLockState:
+        calls.append(tool)
+        return agents.StartupLockState(None)
+
+    monkeypatch.setenv("CURSOR_API_KEY", "")
+    monkeypatch.setenv("LARCH_LIB_CURSOR_AUTH_TEST_MODE", "1")
+    monkeypatch.setenv("LIB_CURSOR_AUTH_TEST_UNAME", "Linux")
+    monkeypatch.setattr(agents, "external_startup_lock_acquire", fake_acquire)
+    assert agents.cursor_auth_preflight(caller="test").ok is True
+    agents.cursor_preread_service_token()
+    assert not calls
+
+
 def test_auth_retries_acquire_startup_lock_each_attempt(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     output = tmp_path / "cursor.out"
     calls: list[str] = []
@@ -2177,6 +2408,84 @@ def test_launch_codex_exec_preflight_missing_trusted_instructions_writes_bundle(
     assert output.with_suffix(output.suffix + ".done").read_text(encoding="utf-8") == "2\n"
     assert "trusted-instructions-file not found" in output.with_suffix(output.suffix + ".diag").read_text(encoding="utf-8")
     assert "LAUNCHER_FAILURE_CLASS=other" in capsys.readouterr().out
+
+
+def test_review_failure_source_uses_common_resolver_order(tmp_path: Path) -> None:
+    output = tmp_path / "review.txt"
+    sink = tmp_path / "sink.log"
+    ordered = [
+        output.with_suffix(output.suffix + ".failure-diag"),
+        tmp_path / "review-retry.txt.failure-diag",
+        tmp_path / "review-ns-retry.txt.failure-diag",
+        sink,
+        output.with_suffix(output.suffix + ".sidecar"),
+        output.with_suffix(output.suffix + ".diag"),
+    ]
+    for path in ordered:
+        _ = path.write_text(path.name, encoding="utf-8")
+    assert agents._review_failure_source(output, sink=str(sink)) == ordered[0]  # pylint: disable=protected-access
+    ordered[0].unlink()
+    assert agents._review_failure_source(output, sink=str(sink)) == ordered[1]  # pylint: disable=protected-access
+    ordered[1].unlink()
+    assert agents._review_failure_source(output, sink=str(sink)) == ordered[2]  # pylint: disable=protected-access
+    ordered[2].unlink()
+    assert agents._review_failure_source(output, sink=str(sink)) == sink  # pylint: disable=protected-access
+    sink.unlink()
+    assert agents._review_failure_source(output, sink=str(sink)) == output.with_suffix(output.suffix + ".sidecar")  # pylint: disable=protected-access
+
+
+def test_review_emit_launcher_result_composes_sink_before_classification(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    output = tmp_path / "review.txt"
+    sink = tmp_path / "launcher.log"
+    _ = output.with_suffix(output.suffix + ".diag").write_text("STATUS=FAILED\n", encoding="utf-8")
+    _ = sink.write_text("authentication failed in sink\n", encoding="utf-8")
+    seen: dict[str, Path] = {}
+
+    def fake_classify(
+        _launcher_exit: int,
+        sidecar: Path,
+        **_kwargs: object,
+    ) -> agents.LaunchFailure:
+        seen["sidecar"] = sidecar
+        return agents.LaunchFailure("health", "auth")
+
+    monkeypatch.setattr(agents, "classify_launch_failure", fake_classify)
+    agents._review_emit_launcher_result(output, "cursor", 2, stderr_sink=str(sink))  # pylint: disable=protected-access
+    failure_diag = output.with_suffix(output.suffix + ".failure-diag")
+    assert seen["sidecar"] == failure_diag
+    assert "authentication failed in sink" in failure_diag.read_text(encoding="utf-8")
+    stdout = capsys.readouterr().out
+    assert "LAUNCHER_FAILURE_CLASS=health" in stdout
+    assert "LAUNCHER_FAILURE_REASON=auth" in stdout
+
+
+def test_append_implement_launch_failure_composes_sidecar_and_regenerates_tail(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = tmp_path / "codex-impl.txt"
+    sidecar = tmp_path / "codex-impl.log"
+    diag = output.with_suffix(output.suffix + ".diag")
+    tail = output.with_suffix(output.suffix + ".stderr-tail")
+    _ = diag.write_text("generic failure\n", encoding="utf-8")
+    _ = sidecar.write_text("launcher stderr detail\n", encoding="utf-8")
+    agents._write_stderr_tail(diag, output)  # pylint: disable=protected-access
+    assert "generic failure" in tail.read_text(encoding="utf-8")
+
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+
+    def fake_run(_argv: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(agents.subprocess, "run", fake_run)
+    agents._append_implement_launch_failure("codex", output, sidecar, 1)  # pylint: disable=protected-access
+    failure_diag = output.with_suffix(output.suffix + ".failure-diag")
+    assert "launcher stderr detail" in failure_diag.read_text(encoding="utf-8")
+    assert "launcher stderr detail" in tail.read_text(encoding="utf-8")
 
 
 def test_launch_codex_exec_preflight_model_args_writes_bundle(

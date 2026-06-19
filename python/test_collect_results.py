@@ -254,6 +254,77 @@ def test_stderr_tail_resolution_uses_ns_retry_when_retry_absent(tmp_path: Path) 
     assert resolved_tail == str(ns_retry_tail)
 
 
+def test_stderr_tail_resolution_uses_phase2_ns_retry_for_phase3(tmp_path: Path) -> None:
+    reviewer = tmp_path / "cursor-a-phase3.txt"
+    _ = reviewer.write_text("failed\n", encoding="utf-8")
+    phase2_ns = tmp_path / "cursor-a-phase2-ns-retry.txt.stderr-tail"
+    _ = phase2_ns.write_text("phase2 ns retry failure\n", encoding="utf-8")
+
+    resolved_tail = collect_results.resolve_collector_stderr_tail_file(str(reviewer))
+    assert resolved_tail == str(phase2_ns)
+
+
+def test_stderr_tail_resolution_uses_base_ns_retry_for_phase2(tmp_path: Path) -> None:
+    reviewer = tmp_path / "cursor-a-phase2.txt"
+    _ = reviewer.write_text("failed\n", encoding="utf-8")
+    base_ns = tmp_path / "cursor-a-ns-retry.txt.stderr-tail"
+    _ = base_ns.write_text("base ns retry failure\n", encoding="utf-8")
+
+    resolved_tail = collect_results.resolve_collector_stderr_tail_file(str(reviewer))
+    assert resolved_tail == str(base_ns)
+
+
+def test_stderr_tail_resolution_phase_retry_tails_beat_launch_stderr(tmp_path: Path) -> None:
+    reviewer = tmp_path / "cursor-a-phase3.txt"
+    _ = reviewer.write_text("failed\n", encoding="utf-8")
+    phase2_ns = tmp_path / "cursor-a-phase2-ns-retry.txt.stderr-tail"
+    _ = phase2_ns.write_text("phase2 ns retry failure\n", encoding="utf-8")
+    _ = (tmp_path / "cursor-a-phase2.txt.launch-stderr").write_text("launch stderr\n", encoding="utf-8")
+
+    resolved_tail = collect_results.resolve_collector_stderr_tail_file(str(reviewer))
+    assert resolved_tail == str(phase2_ns)
+
+
+def test_stderr_tail_resolution_primary_retry_beats_primary_ns_retry(tmp_path: Path) -> None:
+    reviewer = tmp_path / "cursor-a.txt"
+    _ = reviewer.write_text("failed\n", encoding="utf-8")
+    retry = tmp_path / "cursor-a-retry.txt.stderr-tail"
+    ns_retry = tmp_path / "cursor-a-ns-retry.txt.stderr-tail"
+    _ = retry.write_text("retry failure\n", encoding="utf-8")
+    _ = ns_retry.write_text("ns retry failure\n", encoding="utf-8")
+
+    resolved_tail = collect_results.resolve_collector_stderr_tail_file(str(reviewer))
+    assert resolved_tail == str(retry)
+
+
+def test_stderr_tail_resolution_renders_retry_launch_stderr_after_tails_absent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reviewer = tmp_path / "cursor-a.txt"
+    _ = reviewer.write_text("failed\n", encoding="utf-8")
+    _ = (tmp_path / "cursor-a-retry.txt.launch-stderr").write_text("launch stderr\n", encoding="utf-8")
+
+    def fake_render(_path: Path) -> str:
+        return "rendered retry launch\n"
+
+    monkeypatch.setattr(collect_results.agents, "render_failed_agent_stderr_tail", fake_render)
+
+    resolved_tail = collect_results.resolve_collector_stderr_tail_file(str(reviewer))
+    assert Path(resolved_tail).read_text(encoding="utf-8") == "rendered retry launch\n"
+
+
+def test_stderr_tail_resolution_ignores_empty_launch_stderr(tmp_path: Path) -> None:
+    reviewer = tmp_path / "cursor-a.txt"
+    _ = reviewer.write_text("failed\n", encoding="utf-8")
+    _ = (tmp_path / "cursor-a.txt.launch-stderr").write_text("", encoding="utf-8")
+    tail = tmp_path / "cursor-a.txt.stderr-tail"
+    _ = tail.write_text("plain stderr tail\n", encoding="utf-8")
+
+    resolved_tail = collect_results.resolve_collector_stderr_tail_file(str(reviewer))
+    assert resolved_tail == str(tail)
+
+
 def test_coerced_invalid_sentinel_empty_output_retries(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _reset(monkeypatch)
     output = tmp_path / "cursor-bad-sentinel.txt"

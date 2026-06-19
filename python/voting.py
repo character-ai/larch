@@ -89,6 +89,14 @@ def code_review_classification_header() -> str:
     return CODE_REVIEW_FINDINGS_CLASSIFICATION_HEADER
 
 
+def _bounded_prefix_text(path: Path, limit: int) -> str:
+    try:
+        with path.open("rb") as handle:
+            return handle.read(limit).decode("utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
 def findings_classification_header_main(argv: list[str]) -> int:
     if argv:
         return _error("usage: findings-classification-header")
@@ -524,7 +532,7 @@ def check_voter_parse_rate(
         if one == "JUDGE_ERROR":
             judge_error_count += 1
     if judge_error_count / len(ids) >= 0.8:  # noqa: PLR2004
-        first_bytes = voter_path.read_bytes()[:200].decode("utf-8", errors="replace")
+        first_bytes = _bounded_prefix_text(voter_path, 200)
         voter_file_aliases = sorted(_darwin_path_aliases(voter_file), key=lambda alias: (alias.startswith("/private/var/"), alias))
         lines: list[str] = []
         if slot:
