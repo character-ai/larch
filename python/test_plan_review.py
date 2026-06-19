@@ -49,6 +49,22 @@ def test_step3_loop_persist_envelope_persists_and_emits_degraded_panel_warning(t
     assert "DEGRADED_PANEL_WARNING=**⚠ Degraded plan-review panel: 1 invalid slot row(s) dropped.**" in out.getvalue()
 
 
+def test_step3_loop_persist_envelope_persists_and_emits_invalid_slot_panel_warning(tmp_path: Path) -> None:
+    values = {
+        "LOOP_STATUS": "complete",
+        "INVALID_SLOT_PANEL_WARNING": "**⚠ Degraded plan-review panel: 1 invalid slot row(s) dropped.**",
+    }
+    plan_review.step3_loop_persist_envelope(tmp_path, "complete", 1, 1, 1, values=values)
+    text = (tmp_path / ".step3-review-result.env").read_text(encoding="utf-8")
+    assert "INVALID_SLOT_PANEL_WARNING=**⚠ Degraded plan-review panel: 1 invalid slot row(s) dropped.**" in text
+
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        plan_review.step3_loop_emit_envelope(tmp_path, "complete", 1, 1, 1, values)
+
+    assert "INVALID_SLOT_PANEL_WARNING=**⚠ Degraded plan-review panel: 1 invalid slot row(s) dropped.**" in out.getvalue()
+
+
 def test_step3_loop_persist_envelope_writes_terminal_sentinels(tmp_path: Path) -> None:
     # #4688 hook-release contract: persisting the result env writes the
     # step-3-terminal sentinel pair so hook-bg-poll-guard.sh releases the marker.
