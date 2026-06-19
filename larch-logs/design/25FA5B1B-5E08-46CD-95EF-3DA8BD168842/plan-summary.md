@@ -1,0 +1,1 @@
+Add an opt-in, quorum-anchored reviewer straggler cutoff in `agent_waterfall.py`. Pass it only from `/design` plan-review and `/review` / `/implement` code-review panels. Keep voting, decomposition, and aggregation on wait-for-all behavior.

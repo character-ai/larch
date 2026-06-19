@@ -1,0 +1,21 @@
+{
+  "attempt": 1,
+  "effort": "max",
+  "flags": {},
+  "issue_number": 4658,
+  "larch_version": "51.1.6",
+  "model_roster": {
+    "main": "unknown"
+  },
+  "operator_cwd": "<OPERATOR_CWD>",
+  "operator_repo_root": "<REPO_ROOT>",
+  "parent_skill": null,
+  "run_id": "25FA5B1B-5E08-46CD-95EF-3DA8BD168842",
+  "schema_version": 2,
+  "skill": "design",
+  "stalled_at_step": null,
+  "started_at": "2026-06-19T07:43:55Z",
+  "steps_ran": {},
+  "superseded_by": null,
+  "updated_at": "2026-06-19T07:44:02Z"
+}

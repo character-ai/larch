@@ -1,0 +1,54 @@
+Example of the problem scenario:
+```
+Round 1 reviewer timing
+
+Round 1 reviewer timing  ·  window 0:00-37:30 (2250s)
+                                    0:00                                               37:30
+                                   ┌────────────────────────────────────────────────────────┐
+codex/dyn-conflict-guard-codex     │███                                                     │  115s
+codex/dyn-ci-monitor-trim-codex    │████                                                    │  149s
+cursor/dyn-conflict-guard          │████                                                    │  167s
+cursor/dyn-ci-monitor-trim         │██████                                                  │  216s
+codex/dyn-ci-wait-failclosed-codex │███████                                                 │  273s
+codex/testing                      │███████                                                 │  277s
+cursor/dyn-ci-wait-failclosed      │███████                                                 │  277s
+cursor/correctness                 │███████                                                 │  296s
+codex/edge-cases                   │████                                                    │  143s
+cursor/testing                     │██████                                                  │  229s
+cursor/edge-cases                  │██████                                                  │  232s
+codex/correctness                  │██████████████████████████████████████████              │ 1674s
+aggregator                         │                                          ██            │   91s
+cursor/vote                        │                                            ███         │   93s
+codex/vote                         │                                            █████       │  194s
+claude/vote                        │                                            ████████    │  304s
+cursor/apply                       │                                                    ████│  154s
+                                   └────────────────────────────────────────────────────────┘
+```
+
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Cap reviewer-panel wall time so one or two stragglers cannot hold up a round; drop slots that exceed a quorum-anchored deadline.
+- Make the cutoff opt-in per panel and env-tunable (multiple, floor, quorum); `multiple=0` restores today's wait-for-all.
+
+### Non-goals
+- No cutoff for non-reviewer waterfall panels (voting, decompose, aggregator); they keep wait-for-all.
+- No fallback cascade for dropped stragglers; genuine-crash / empty-output fallback is unchanged.
+- No change to the per-reviewer `--timeout` ceiling values.
+
+### Approach sketch
+- Add a quorum-anchored straggler deadline inside the shared reaper, engaged only when an opt-in flag is passed.
+- Rewrite `_reap_phase` from per-launch blocking waits into one concurrent poll loop: once a quorum fraction of slots exit successfully, anchor on the quorum-th (slowest-of-quorum) elapsed, set `deadline = clamp(multiple * anchor, floor, ceiling)`, then SIGTERM remaining slots.
+- Return straggler-dropped indexes so `_collect_phase` marks them dropped and never feeds them to the fallback queue.
+- Pass the opt-in flag only from reviewer-panel callers; leave voters/decompose/aggregator untouched.
+
+### Surfaces in scope
+- `python/agent_waterfall.py` (reaper rewrite + opt-in flag + env readers; core change)
+- `python/plan_review_panel.py`, `python/review_pipeline.py` (pass the opt-in flag)
+- `python/test_agent_waterfall.py` (tests); `docs/configuration-and-permissions.md` (env-var docs)
+
+### Open questions
+- None.

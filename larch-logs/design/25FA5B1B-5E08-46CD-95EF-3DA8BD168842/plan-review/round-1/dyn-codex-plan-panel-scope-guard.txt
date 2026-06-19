@@ -1,0 +1,37 @@
+**Findings:** None.
+
+**Confirmed placement:**
+
+- **Plan-review panel passes opt-in flags.**
+  - Plan section: `skills/design/references/plan-review.md:119-131`
+  - Runtime: `python/plan_review_round.py:363-375`
+  - Flags: `--substantive-validation --validation-mode --structured-reviewer-validation`
+
+- **Code-review panel passes opt-in flags.**
+  - Plan section: `docs/external-reviewers.md:69-78`
+  - Runtime: `python/review_pipeline.py:1291-1296`
+  - Flags: `--substantive-validation --validation-mode`
+
+- **Voting does not pass the opt-in flag.**
+  - Plan section: `docs/voting-process.md:37-44`
+  - Runtime: `python/agent_voters.py:416-417`, `python/agent_voters.py:466-477`, `python/plan_review_panel.py:595-604`
+  - Voting uses sentinel wait plus parse-rate classification, not substantive collector validation.
+
+- **Decompose does not pass the opt-in flag.**
+  - Plan section: `skills/design/references/decompose-panel.md:30-32`
+  - Runtime: `python/decompose.py:461-468`
+  - It uses `agent dispatch-waterfall` with `--require-result-pattern`, not collector substantive validation.
+
+- **Aggregation does not pass the opt-in flag.**
+  - Plan section: `skills/design/references/decompose-panel.md:110-126`
+  - Runtime: `python/decompose.py:612-619`, `python/review_aggregate.py:680-687`
+  - Both use waterfall result-pattern gates, not substantive collector validation.
+
+**Global behavior check:**
+
+- **No accidental global opt-in found.**
+  - Collector default remains opt-out: `python/collect_results.py:987-1008`, `python/collect_results.py:1049-1054`
+  - Validation only runs when explicitly requested: `python/collect_results.py:940-945`
+  - Waterfall’s internal collector stays summary-only without the flag: `python/agent_waterfall.py:511-513`
+
+**Tests:** Not run. Read-only review only.

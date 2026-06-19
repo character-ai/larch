@@ -1,0 +1,128 @@
+Searching the codebase for opt-in flag usage across plan-review, code-review, voting, decompose, and aggregation surfaces.
+**Verdict:** Partial match. Code-review panel forwards the launch-chain opt-in flag (`--competition-notice`) when `competition-notice.md` exists. Plan-review panel does not forward it on the waterfall argv (competition text is supposed to come from prompt rendering instead, but `render plan-review` does not inject it). Voting, decompose, and aggregation correctly omit the flag. Two global launcher behaviors affect every `launch-review` caller regardless of surface.
+
+---
+
+## Caller-surface matrix (`--competition-notice` / `--competition-notice-file`)
+
+| Surface | Passes flag? | Evidence |
+|---|---|---|
+| **Code-review panel** | **Yes** (when file exists) | `review_pipeline.py` forwards to `dispatch-panel`, which adds `--competition-notice` to waterfall |
+| **Plan-review panel** | **No** | `plan_review_panel.py` waterfall argv has no competition flags |
+| **Voting** (plan + code) | **No** | `plan_review_panel.py` voter waterfall; `agent_voters.py` code voter waterfall |
+| **Decompose panel** | **No** | `decompose.py` panel waterfall |
+| **Aggregation** | **No** | `review_aggregate.py` aggregator waterfall |
+
+**Code-review panel (correct):**
+
+```1079:1081:python/review_pipeline.py
+    competition = _get(parsed, "--competition-notice-file")
+    if competition and Path(competition).is_file():
+        waterfall_args.extend(["--competition-notice", "--competition-notice-file", competition])
+```
+
+Upstream wiring in `review_core`:
+
+```1855:1857:python/review_pipeline.py
+    competition = review_tmpdir / "competition-notice.md"
+    if competition.is_file():
+        dispatch_args.extend(["--competition-notice-file", str(competition)])
+```
+
+Waterfall forwards to `launch-review`:
+
+```350:354:python/agent_waterfall.py
+    if tool != "claude":
+        if opts.competition_notice:
+            argv.append("--competition-notice")
+        if opts.competition_notice_file:
+            argv.extend(["--competition-notice-file", opts.competition_notice_file])
+```
+
+**Plan-review panel (gap vs contract):**
+
+```305:322:python/plan_review_panel.py
+    proc = subprocess.run(
+        [
+            *cmd,
+            "--slots-file",
+            str(manifest),
+            "--plan-file",
+            ns.plan_file,
+            "--feature-file",
+            ns.feature_file,
+            "--codex-present",
+            ns.codex_present,
+            "--cursor-present",
+            ns.cursor_present,
+            "--mode",
+            "description",
+            "--timeout",
+            ns.timeout,
+        ],
+```
+
+No `--competition-notice` here. **Plan contract** (`skills/design/references/plan-review.md`, § Competition notice, line 97) says to append the competition block to every reviewer prompt. `render plan-review` does not include that block in the rendered prompt (`python/rendering.py` `render_plan_review_main`, ~1156–1178). So plan-review neither passes the launch flag nor embeds the notice in rendered prompts.
+
+**Voting / decompose / aggregation (correctly omit flag):**
+
+- Plan voters: `plan_review_panel.py` 550–567 (waterfall argv has no competition flags)
+- Code voters: `agent_voters.py` 186–202
+- Decompose: `decompose.py` 465
+- Aggregator: `review_aggregate.py` 680–685
+
+---
+
+## Collector opt-in flags (`--substantive-validation --validation-mode`)
+
+Separate from launch flags; both review panels opt in at collect time; other surfaces do not.
+
+| Surface | Opts in? |
+|---|---|
+| Plan-review panel collect | **Yes** — `plan_review_round.py` 370–371 (+ `--structured-reviewer-validation` plan-only) |
+| Code-review panel collect | **Yes** — `review_pipeline.py` 1293 |
+| Voting / decompose / aggregation | **No** collector substantive-validation on those paths |
+
+Authoritative list: `docs/external-reviewers.md` § Opt-in substantive-content check (lines 63–76).
+
+---
+
+## Global behavior changes (issues)
+
+### FINDING_1: STRICT read-only preamble is unconditional in `launch-review`
+
+**Plan/doc:** `docs/configuration-and-permissions.md` § `LARCH_CURSOR_MODEL` describes risk-gated max-mode; `skills/design/references/plan-review.md` § Competition notice describes panel-scoped scoring injection. Neither describes voters/decompose/aggregator getting launcher hardening.
+
+**Issue:** Every `agent launch-review` invocation prepends `_CURSOR_REVIEW_STRICT_PREAMBLE` / injects `_CODEX_REVIEW_STRICT_PREAMBLE` with no caller opt-in flag:
+
+```4581:4582:python/agents.py
+    prompt = f"{_CURSOR_REVIEW_STRICT_PREAMBLE}\n\n{original_prompt}"
+    wrapped = f" /max-mode on. Prompt: {prompt}"
+```
+
+```4342:4343:python/agents.py
+        instr_path = Path(home) / "trusted-instructions.txt"
+        instr_path.write_text(_CODEX_REVIEW_STRICT_PREAMBLE, encoding="utf-8")
+```
+
+Voters, decompose, and aggregation all reach `launch-review` via `dispatch-waterfall`, so they inherit this preamble and `/max-mode on` even though their dispatchers pass no opt-in flag. That is broader than “panels only.”
+
+### FINDING_2: `--risk low` is documented but not wired at any caller surface
+
+**Plan/doc:** `docs/configuration-and-permissions.md` § `LARCH_CURSOR_MODEL` (line 187): low risk from `classify-diff` should suppress max-mode; Codex should omit `--with-effort`.
+
+**Issue:** No dispatcher passes `--risk` to `launch-review` (grep shows only `collect_results.py` retry replay at line 552). Launch always uses `resolve_model_args(..., with_effort=True)` and always wraps Cursor with `/max-mode on` (`agents.py` 4355, 4548, 4582). Docs describe opt-in low-risk behavior; implementation is globally high-effort/max-mode for all `launch-review` callers.
+
+### FINDING_3: Plan-review panel missing competition-notice parity with code-review
+
+**Plan section:** `skills/design/references/plan-review.md` § Competition notice (lines 28–32, 97).
+
+**Issue:** Code-review achieves competition notice via the opt-in launch flag chain. Plan-review panel does not pass `--competition-notice` on waterfall (Finding above) and `render plan-review` does not embed the block. If the intended contract is “panels pass the flag,” plan-review fails; if the intended contract is “panels inject competition text,” plan-review also fails on the native Python render path.
+
+---
+
+## Summary
+
+- **Confirmed correct:** Code-review panel passes `--competition-notice` when `competition-notice.md` exists; voting, decompose, and aggregation omit it.
+- **Not confirmed:** Plan-review panel does not pass `--competition-notice` on waterfall, and rendered plan-review prompts lack the competition block.
+- **Accidental globals:** STRICT CONSTRAINTS preamble + `/max-mode on` + Codex `with_effort=True` apply to every `launch-review` caller (including voters, decompose, aggregator), not only reviewer panels. Documented `--risk low` suppression is not implemented at any caller surface.
