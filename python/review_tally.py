@@ -413,11 +413,6 @@ def _record_tally(tally_file: Path, item_id: str, *, accepted: bool, outcome: st
         _append(tally_file, f"{prefix}_{number}_REJECTED_SUBTYPE={subtype}\n")
 
 
-def _normalize_oos_header(block: Path, seq: int) -> str:
-    text = _read(block)
-    return re.sub(r"^### (?:FINDING|OOS)_[0-9]+:", f"### OOS_{seq}:", text, count=1, flags=re.MULTILINE)
-
-
 def _normalize_oos_header_text(text: str, seq: int) -> str:
     return re.sub(r"^### (?:FINDING|OOS)_[0-9]+:", f"### OOS_{seq}:", text, count=1, flags=re.MULTILINE)
 
