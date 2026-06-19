@@ -43,6 +43,10 @@ if args[:2] == ["diagrams","upsert"]:
     if log:
         with open(log, "w", encoding="utf-8") as f:
             json.dump(args, f)
+    if os.environ.get("FAKE_CLI_UPSERT_FAIL"):
+        sys.stderr.write("simulated upsert failure\\n")
+        print("UPSERT_STATUS=failed")
+        raise SystemExit(1)
     print("UPSERT_STATUS=ok")
     print("ARCHITECTURE_SOURCE=cleared" if "--clear-architecture" in args else "ARCHITECTURE_SOURCE=new")
     raise SystemExit(0)
@@ -367,3 +371,44 @@ def test_publish_skips_upsert_when_no_diagram(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     assert not upsert_log.exists()
     assert "UPSERT_STATUS=" not in result.stdout
+
+
+def test_publish_nonfatal_when_architecture_upsert_fails(tmp_path: Path) -> None:
+    plugin_root = tmp_path / "plugin"
+    _write_fake_cli(plugin_root / "python" / "cli.py")
+    design = tmp_path / "design"
+    (design / ".completed").mkdir(parents=True)
+    _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
+    _ = (design / "architecture-diagram.md").write_text(
+        "## Architecture Diagram\n```mermaid\ngraph TD; A-->B;\n```\n", encoding="utf-8"
+    )
+    cli_py = Path(__file__).with_name("cli.py")
+    env = os.environ.copy()
+    env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
+    env["FAKE_CLI_UPSERT_FAIL"] = "1"
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(cli_py),
+            "design",
+            "publish",
+            "--design-tmpdir",
+            str(design),
+            "--issue",
+            "9",
+            "--session-id",
+            "RUN1",
+            "--claude-pid",
+            "11",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+    # A failed architecture upsert is non-fatal: the plan block was already
+    # written, so publish still completes and reports the failed status.
+    assert result.returncode == 0, result.stderr
+    assert "UPSERT_STATUS=failed" in result.stdout
+    assert "PLAN_WRITE_OK=true" in result.stdout
