@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import fnmatch
 import os
 import re
 import shutil
@@ -35,6 +36,97 @@ def _persist_metadata(design_tmpdir: Path, pr_number: str, pr_url: str, recovery
         )
 
 
+# Raw machine sidecars/transcripts the /design lanes drop into $DESIGN_TMPDIR.
+# They are launch carriers, not human-facing run content: a single Codex
+# `.events.jsonl` event stream is ~770 KB per lane, and the committed design log
+# ballooned ~40x (8.6 MB/run vs ~0.2 MB/run before) once that capture landed and
+# the publish copied them. The pre-port bash publisher (`design-log-publish.sh`,
+# `design_artifact_excluded`) excluded exactly this class; the Python port
+# (#3681 / #4404) dropped the filter and copied the whole tmpdir, regressing the
+# behavior SECURITY.md still documents. This restores that exclusion.
+#
+# The filter is applied by basename at every tree depth (top level and inside
+# `plan-review/round-N/`), so it intentionally lists ONLY universal-crud carriers
+# that never appear as curated content. The bash predicate also deduped
+# human-readable top-level copies (`findings.md`, `voting-tally.md`,
+# `*-vote-output.txt`, `round-meta.json`) that are canonical in the subtree;
+# those are NOT listed here because a basename rule cannot tell the top-level
+# duplicate from the curated subtree copy, and keeping the small duplicate is
+# harmless. Curated forensics (plan.txt, findings.md, voting-tally.md,
+# `*-vote-output.txt`, the plan-review/round-N/ subtree) are preserved.
+_PUBLISH_EXCLUDE_SUFFIXES = (
+    ".events.jsonl",
+    ".events.history",
+    ".prompt",
+    ".meta",
+    ".sidecar",
+    ".sidecar.history",
+    ".token-record",
+    ".dirty-tree",
+    ".untracked-baseline",
+    ".diag",
+    ".done",
+    ".cap-hit",
+    ".launch-stderr",
+    ".launcher-stderr",
+    ".stderr-tail",
+    ".porcelain",
+    ".txt.json",
+    ".txt.tsv",
+)
+
+# Glob-matched basenames. `*-plan-*-output*.txt` is the raw per-lane reviewer /
+# voter / drafter transcript (cursor-plan-*, codex-primary-plan-*, claude-plan-*,
+# their dyn-* and -phase/-retry variants); it deliberately spares
+# `aggregator-output.txt` (no `-plan-`) and the curated `*-vote-output.txt` (no
+# `-plan-`). `*-plan-*-output*.txt.*` sweeps any sidecar of those transcripts not
+# already caught by suffix. The rest are prompt carriers, the step2b drafter raw
+# family, slot-named collector failure logs, and raw scout stems.
+_PUBLISH_EXCLUDE_GLOBS = (
+    "*-plan-*-output*.txt",
+    "*-plan-*-output*.txt.*",
+    "*-prompt.txt",
+    "*-prompt.md",
+    "step2b-codex-raw.*",
+    "*-collector.failure.log",
+    "*.raw.cursor",
+    "*.raw.claude",
+)
+
+# Exact basenames: the aggregate plan-review collector stderr, the dropped-slot
+# diagnostic sidecar (both documented in SECURITY.md), and the pre-redaction
+# duplicate of composed-plan.md (the publish redacts on copy, so the `.redacted`
+# twin adds nothing).
+_PUBLISH_EXCLUDE_NAMES = frozenset({
+    "plan-review-collector.stderr",
+    "plan-review-slots.ndjson.output-files.dropped-slots",
+    "composed-plan.redacted.md",
+})
+
+# Whole subtrees of raw transcripts (plan-autofix drafts) or internal step
+# sentinels (.completed) that carry no committed-log value.
+_PUBLISH_EXCLUDE_DIRS = frozenset({
+    "plan-autofix",
+    ".completed",
+})
+
+
+def _publish_excluded(name: str, *, is_dir: bool) -> bool:
+    """Return True for raw machine sidecars/transcripts that must not be committed.
+
+    ``name`` is a single path component (basename). Directory names are matched
+    against ``_PUBLISH_EXCLUDE_DIRS``; files against the exact-name, suffix, and
+    glob sets.
+    """
+    if is_dir:
+        return name in _PUBLISH_EXCLUDE_DIRS
+    if name in _PUBLISH_EXCLUDE_NAMES:
+        return True
+    if name.endswith(_PUBLISH_EXCLUDE_SUFFIXES):
+        return True
+    return any(fnmatch.fnmatchcase(name, glob) for glob in _PUBLISH_EXCLUDE_GLOBS)
+
+
 def _copy_tree_redacted(plugin_root: Path, source: Path, dest: Path) -> bool:
     if source.is_symlink():
         return False
@@ -63,6 +155,8 @@ def _copy_tree_redacted(plugin_root: Path, source: Path, dest: Path) -> bool:
     if source.is_dir():
         for child in source.iterdir():
             if child.is_symlink():
+                continue
+            if _publish_excluded(child.name, is_dir=child.is_dir()):
                 continue
             if not _copy_tree_redacted(plugin_root, child, dest / child.name):
                 return False
@@ -156,6 +250,8 @@ def _publish_design_logs(
             return (False, "", "", "")
         for child in design_tmpdir.iterdir():
             if child.name == ".design-log-publish-metadata.env":
+                continue
+            if _publish_excluded(child.name, is_dir=child.is_dir()):
                 continue
             if not _copy_tree_redacted(plugin_root, child, run_dest / child.name):
                 return (False, "", "", "")

@@ -59,7 +59,15 @@ Claude prompts (`claude-plan-*.prompt`) and rendered plan-review prompts
 collector failure logs, dropped-slot diagnostics
 (`plan-review-slots.ndjson.output-files.dropped-slots`), and aggregate
 `plan-review-collector.stderr`; `findings.md` / `voting-tally.md` remain
-canonical.
+canonical. This exclusion is enforced by
+`design_log_publish_flow._publish_excluded`, matched by basename at every depth
+of the copied run tree (top level and `plan-review/round-N/`); it also drops the
+`plan-autofix/` draft subtree, `.completed/` step sentinels, the
+`step2b-codex-raw.*` drafter family, and per-launch `.token-record` /
+`.porcelain` carriers. The 2026-06 Python port of the publish flow
+(`design-log-publish.sh` to `design_log_publish_flow.py`) regressed this filter:
+it copied the whole `$DESIGN_TMPDIR` unfiltered and committed the raw streams,
+inflating committed design logs roughly 40x until the filter was restored.
 
 ## Stall recovery sanitization
 
