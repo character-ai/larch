@@ -1,0 +1,1 @@
+Plan fixes the confirmed external-tool and diagnostics defects with opt-in timeout retries, bounded diagnostic reads, Cursor keychain locking, diagnostic resolver parity, redacted panel waterfall stderr, focused tests, and lightweight docs updates.

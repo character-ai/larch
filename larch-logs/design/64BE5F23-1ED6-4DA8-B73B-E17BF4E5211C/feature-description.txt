@@ -1,0 +1,311 @@
+# [OOS] External-tool health probes, voting, auth & failure diagnostics — 10 items
+
+Combined from #4722, #4753 by `/combine-issues --oos` (tightening pass). External-tool health-probe retry, voting-panel diagnostics, Cursor auth ordering, failure diagnostic source selection, stderr-tail resolution, and panel/voter redaction. Aggressive-mode grouping: external-tool plumbing and failure-diagnostic capture/redaction packed into one host to reduce issue count. Items are independent and may be implemented piecemeal. All items re-verified against the working tree at combine time; cited line numbers that drifted since filing are flagged with the current symbol/anchor — navigate by symbol, not the stale line range.
+
+Provenance: #4722 was itself combined from #4654, #4614 (so this issue transitively supersedes those). #4753 is an auto-filed per-run rollup whose reviewer/concern text was truncated by `skills/implement/scripts/oos-issue-cap.sh`; truncated items preserve the location, reviewer list, and partial concern, and are flagged for concern re-derivation at implementation time.
+
+### Item 1 — Probe timeout exits are non-retryable, and health-gate latency is unbounded
+- **Location**: `python/agents.py` — `_run_codex_probes` (def at 863; `EXIT_TIMEOUT` early return at 868), `_run_cursor_probes` (def at 887; `EXIT_TIMEOUT` early return at 896); `LARCH_PROBE_RETRIES` read at 632-633
+- **Source**: #4722 Item 1 (orig #4654 item 1, orig #4624) — **folds in #4654 item 2 (orig #4643)**, a near-duplicate restating the same probe path with an added health-gate-latency angle
+- **Severity**: latent (risk-integration)
+- **Description**: `rc == config.EXIT_TIMEOUT` (exit code 124) returns immediately with no retry in both `_run_codex_probes` and `_run_cursor_probes`. The `LARCH_PROBE_RETRIES` budget (added in #4613) only covers non-auth `rc == 1`; the timeout branch (`return False, True`) is not retried. A cold-start Codex exec with `high` reasoning effort that grazes the 30s `LARCH_PROBE_TIMEOUT_SECONDS` still produces `probe-failed` with no retry. Verified present at combine time. Fix: consider raising `LARCH_PROBE_TIMEOUT_SECONDS`, giving timeout exits a small retry budget (same `LARCH_PROBE_RETRIES` flag or a new env var), or downgrading probe model effort to avoid cold-start timeouts. **Folded sub-concern (orig #4643):** when adding a timeout retry, also assess whether probe retries add unacceptable health-gate latency and pin a gate-latency budget. Close the latency angle as covered-by-this-item if no distinct latency defect is found.
+
+### Item 2 — Voter failure diagnostics use unbounded read_bytes() before slicing
+- **Location**: `python/agent_voters.py:219,222,225` (`_append_voter1_failure`, def at 209), `python/voting.py:527`
+- **Source**: #4722 Item 2 (orig #4614 item 2, orig #4582)
+- **Severity**: latent (resource)
+- **Description**: Both sites call `read_bytes()[:200]` / `[:500]` — the whole file is read into memory, then sliced. For a pathologically large voter output / `.diag` / launcher-stderr file this loads the entire file just to show a short prefix. **Re-confirmed present at combine time (this run):** `agent_voters.py:219` (`read_bytes()[:200]` of voter output), `:222` (`read_bytes()[:200]` of `.diag`), and `:225` (`read_bytes()[:500]` of launcher-stderr). Fix: read only the needed prefix (e.g. open the file and `handle.read(N)`), mirroring the bounded-copy pattern already used by `_make_bounded_context_copy`; consider extending the no-whole-file-read test to cover the diagnostics path.
+
+### Item 3 — Cursor keychain preflight/preread run outside the unified external-startup mutex
+- **Location**: `python/agents.py` — `cursor_auth_preflight` (def at 515), `cursor_preread_service_token` (def at 565); `scripts/lib-cursor-auth.sh:47-73,157-203`
+- **Source**: #4722 Item 3 (orig #4614 item 4, orig #4578 / #4563)
+- **Severity**: latent (risk-integration)
+- **Description**: On Darwin with empty `CURSOR_API_KEY`, the Cursor `security find-generic-password` keychain calls in preflight and preread can overlap with a Codex startup holding the shared external-startup lock; the keychain reads sit outside the startup mutex. Fix: bring the Cursor keychain preflight/preread inside the unified external-startup mutex (or document why intentionally excluded), keeping Python (`python/agents.py`) and Bash (`scripts/lib-cursor-auth.sh`) parity per `.claude/rules/external-tool-launcher-parity.md`.
+
+### Item 4 — /research lanes route on a session-wide codex availability flag
+- **Location**: `skills/research/references/research-phase.md` (the `codex_binary_available` branch)
+- **Source**: #4722 Item 4 (orig #4614 item 5, orig #4578 / #4475)
+- **Severity**: latent
+- **Description**: `/research` Codex lanes route on a session-wide `codex_binary_available` flag; all four lanes fall back to Claude together when it is false. Keying on binary presence mitigates the original single-probe-failure concern, but per-lane / binary-presence re-probing is still not implemented. Fix: consider per-lane re-probing instead of one session-wide flag, or **drop this item** if binary-presence keying is deemed sufficient.
+
+### Item 5 — External reviewer and degraded-tools gate docs — stale and incomplete
+- **Location**: likely `docs/external-reviewers.md`, `docs/configuration-and-permissions.md` (degraded-tools gate docs) — inferred at combine time, not named in the source issue
+- **Source**: #4722 Item 5 (orig #4654 item 3, orig #4645 — source body empty; title only)
+- **Severity**: nit (docs / contract drift)
+- **Description**: The source issue had an empty body; only the title was captured: "external reviewer and degraded-tools gate docs — stale and incomplete gate documentation." Action: audit the external-reviewer and degraded-tools gate documentation for staleness/gaps and sync it with current gate behavior. Confirm the concrete doc surfaces and line ranges at implementation time.
+
+### Item 6 — `resolve_collector_stderr_tail_file` omits NS-retry stderr-tail candidate
+- **Location**: `python/collect_results.py:756-775` (`resolve_collector_stderr_tail_file`). The co-cited `scripts/lib-failed-agent-stderr-tail.sh` was retired in the sh-to-py migration and no longer exists; the resolver logic lives in the Python surface.
+- **Source**: #4753 OOS_1 (auto-filed rollup; reviewer/concern text truncated by `oos-issue-cap.sh`). Reviewers: cursor-specialist-correctness, codex-specialist-testing, dyn-diagnostics-parity.
+- **Severity**: unspecified (diagnostics)
+- **Description**: Original concern: the collector stderr-tail resolver omits the NS-retry stderr-tail candidate. **Combine-time note (this run):** the `ns_retry_tail` branch IS present at `collect_results.py:761-763` (checks `{base}-ns-retry.txt.stderr-tail` for a non-empty file), so the bare "omits NS-retry candidate" framing may be partially addressed. Re-derive at implementation whether a subtler gap remains — e.g. the NS-retry candidate is not expanded through `collector_stderr_tail_candidates` phase variants (lines 746-753) or through the `.launch-stderr` rendering path (lines 764-774). Pin a concrete defect or close as no-defect.
+
+### Item 7 — Implement and review failure paths still use legacy diagnostic source selection
+- **Location**: `python/agents.py:4868`, `python/agents.py:4016-4027` (implement/review failure paths)
+- **Source**: #4753 OOS_2 (rollup; reviewer/concern text truncated). Reviewer: dyn-diagnostics-parity. Severity: important. Truncated concern: `_append_implement_launch_failu…`.
+- **Severity**: important (diagnostics parity)
+- **Description**: The implement and review failure paths still use legacy diagnostic source selection rather than the newer resolver, flagged by the dynamic diagnostics-parity reviewer (original concern text truncated by the rollup cap). Action: re-derive the concern at the cited symbols, align implement/review failure-diagnostic source selection with the current resolver, and pin a concrete defect or close as no-defect.
+
+### Item 8 — Missing plan-mandated diagnostic and stderr-tail pytest coverage
+- **Location**: `python/test_agents.py` (`[Files:]` hints: tmpdir/repo-root, a 50/8000 size bound)
+- **Source**: #4753 OOS_3 (rollup; reviewer/concern text truncated). Reviewers: cursor-specialist-correctness, cursor-specialist-edge-cases, cursor-specialist-testing.
+- **Severity**: unspecified (test coverage)
+- **Description**: Missing plan-mandated pytest coverage for the diagnostic and stderr-tail surfaces. Action: add the plan-mandated coverage in `test_agents.py` for the diagnostic source selection and stderr-tail resolution paths (pairs with Items 6 and 7). Confirm the concrete coverage gap and the tmpdir/repo-root and size-bound assertions at implementation.
+
+### Item 9 — Missing design drafter integration tests for new Python CLI argv shape
+- **Location**: `python/test_design_lifecycle.py`, `python/test_design_cli_ports.py`
+- **Source**: #4753 OOS_4 (rollup; reviewer/concern text truncated). Reviewer: cursor-specialist-edge-cases. Severity: important. Truncated concern: "The plan called for Step 2b tests…".
+- **Severity**: important (test coverage)
+- **Description**: Missing design-drafter integration tests for the new Python CLI argv shape; the originating plan called for Step 2b tests. Action: add the Step 2b design-drafter integration tests covering the new `cli.py` argv shape in `test_design_lifecycle.py` / `test_design_cli_ports.py`. Confirm the concrete argv surface at implementation.
+
+### Item 10 — `plan_review_panel.py` writes unredacted vendor stderr on waterfall failure
+- **Location**: `python/plan_review_panel.py:326-333` (the `proc.returncode != 0` waterfall-failure branch)
+- **Source**: #4753 OOS_5 (rollup; reviewer/concern text truncated). Reviewer: cursor-specialist-edge-cases. Severity: important. Truncated concern: "On waterfall failure, dispatch…".
+- **Severity**: important (redaction / risk-integration)
+- **Description**: `plan_review_panel.py` writes unredacted vendor stderr on waterfall failure. **Re-confirmed real and reinforced at combine time (this run):** issue #4747 (just merged) added the durable-log write and stderr re-surface at `plan_review_panel.py:326-333` — `detail = proc.stderr or ""` is written raw to `plan-review-panel-failure.log` (lines 328-331) and re-printed to stderr (lines 332-333) with **no redaction**. Fix: route the waterfall `proc.stderr` through the redactor before writing the failure log and before re-surfacing it on stderr, mirroring the redaction applied to other vendor output surfaces.
+
+---
+*Combined by the larch `/combine-issues --oos` workflow. Sources: #4722 (combined from #4654, #4614), #4753.*
+
+<!-- larch:plan:start -->
+> **Status: DRAFT — `/design` aborted before plan review.** The plan-review panel is currently broken (a `/design` slot-schema bug: `python/plan_review_panel.py` emits static reviewer slots with an inline `prompt` field, but `python/agent_waterfall.py` `_parse_slots` requires `prompt_file` or `agent`, so `agent dispatch-waterfall` rejects every static slot). This plan is the Codex drafter output. It passed plan-command validation and is under size thresholds, but no review panel or voting ran. Re-run `/design 4756` after the panel bug is fixed to vet it. The title is intentionally left without `[DESIGNED]` so `/implement` will not consume it yet.
+
+## Round 1 scope decisions (operator Q&A)
+- **Grouping**: one combined plan; do not partition the 10 items (honors the `/combine-issues --oos` intent).
+- **Self-flagged items 4, 6, 7**: verify against the working tree, then pin or drop with evidence. Item 4 dropped; items 6 and 7 pinned (see Approach).
+- **Docs item 5**: in scope; lightweight staleness sync.
+
+## Plan
+
+## Approach
+
+- Use **NO_SKETCHES** mode. Draft from direct repository inspection.
+- Keep the approved scope:
+  - Fix items **1, 2, 3, 10**.
+  - Verify and either pin or drop items **4, 6, 7**.
+  - Add tests for items **8, 9**.
+  - Sync docs for item **5**.
+- Preserve default behavior where discussion required it.
+  - Add timeout retry as an opt-in knob.
+  - Do not change default probe latency.
+- Record verified drops:
+  - **Item 4 drop:** `skills/research/references/research-phase.md` already keys pre-launch on binary availability, launches all Codex lanes when the binary is present, and has per-lane runtime Claude fallback through collector status. No distinct session-wide probe failure defect remains.
+  - **Bash parity note for item 3:** `scripts/lib-cursor-auth.sh` is retired per `python/migrated-scripts.tsv`. Keep parity across current Python launcher surfaces and docs. (NOTE: this drafter claim was not panel-verified; re-confirm at implementation.)
+
+## Files to modify/create
+
+### UPDATED: python/agents.py
+
+- Add a non-negative env parser for **`LARCH_PROBE_TIMEOUT_RETRIES`**.
+  - Default: `0`.
+  - Invalid, empty, or negative values fall back to `0`.
+  - Meaning: extra attempts after the first `EXIT_TIMEOUT`.
+- Extend `_run_codex_probes` and `_run_cursor_probes` to accept the timeout retry budget.
+  - Retry `config.EXIT_TIMEOUT` until the timeout retry budget is exhausted.
+  - Return `(False, True)` only after the final timeout attempt fails.
+  - Return `(True, False)` if a later timeout retry succeeds.
+  - Keep auth retry and transient `rc == 1` retry counters independent.
+- Pass the new budget from `check_reviewers`.
+- Keep `LARCH_PROBE_RETRIES` scoped to transient non-auth `rc == 1`.
+- Put Darwin Cursor keychain reads under the shared external startup lock:
+  - `cursor_auth_preflight` wraps the `security find-generic-password ...` loop.
+  - `cursor_preread_service_token` wraps the `security ... -w` read.
+  - Use a keychain-only critical section with immediate release after the read.
+  - Do not lock when `CURSOR_API_KEY` is already a usable non-empty value.
+  - Do not lock Linux or non-Darwin test paths.
+- Align review failure diagnostic source selection:
+  - Make `_review_failure_source` delegate to `resolve_failure_diagnostic_source`.
+  - Include `sink` when present.
+  - Preserve fallback to `.diag`.
+  - Use the same resolver in `_review_emit_launcher_result`.
+- Align implement failure diagnostic source selection:
+  - In `_append_implement_launch_failure`, use `resolve_failure_diagnostic_source(output, sink=str(sidecar))`.
+  - Fall back to `sidecar` only when the resolver finds nothing.
+  - Keep `run-log append-failure --redact`.
+  - Keep stderr-tail writing bounded and redacted through existing helpers.
+
+### UPDATED: python/agent_voters.py
+
+- Replace `_append_voter1_failure` whole-file reads:
+  - `output_path.read_bytes()[:200]`
+  - `diag_path.read_bytes()[:200]`
+  - `stderr_path.read_bytes()[:500]`
+- Add a small local bounded binary prefix helper.
+  - Open with `path.open("rb")`.
+  - Read only `limit` bytes.
+  - Decode with `errors="replace"`.
+  - Return an empty string on `OSError`.
+- Preserve existing diagnostic headings and byte caps.
+
+### UPDATED: python/voting.py
+
+- Replace `voter_path.read_bytes()[:200]` with the same bounded-prefix pattern.
+- Keep parse-rate diagnostics unchanged except for the safer read.
+
+### UPDATED: python/collect_results.py
+
+- Expand `resolve_collector_stderr_tail_file` without changing its public return type.
+- Preserve current priority for the primary output:
+  - primary retry stderr tail
+  - primary NS-retry stderr tail
+- Extend phase-aware lookup for `collector_stderr_tail_candidates`.
+  - For phase candidates such as `*-phase3.txt`, also check the derived phase2 and base retry / NS-retry stderr-tail files.
+  - Include retry and NS-retry `.launch-stderr` candidates when present, rendered through `agents.render_failed_agent_stderr_tail`.
+  - Keep temporary launch-stderr tail cleanup behavior.
+- Keep empty-file candidates ignored.
+
+### UPDATED: python/plan_review_panel.py
+
+- Import `redact`.
+- In the non-zero waterfall branch:
+  - Redact `proc.stderr` with `redact.redact` before writing `plan-review-panel-failure.log`.
+  - Re-surface only the redacted detail on stderr.
+  - Keep the real dispatch exit code and `PANEL_FAILURE_DETAIL_LOG` KV.
+- Preserve the durable log shape and stdout KV contract from issue #4747.
+
+### UPDATED: python/test_agents.py
+
+Add focused tests for:
+
+- **Probe timeout retries:**
+  - Codex timeout remains one-shot by default.
+  - Codex retries and succeeds when `LARCH_PROBE_TIMEOUT_RETRIES=1`.
+  - Cursor retries and succeeds when `LARCH_PROBE_TIMEOUT_RETRIES=1`.
+  - Invalid `LARCH_PROBE_TIMEOUT_RETRIES` falls back to one-shot.
+  - Timeout retry count stays independent from `LARCH_PROBE_RETRIES` and auth retries.
+- **Cursor keychain locking:**
+  - `cursor_auth_preflight` acquires the startup lock around Darwin keychain checks when env auth is absent.
+  - `cursor_preread_service_token` acquires the startup lock around Darwin token pre-read.
+  - Env-key fast paths do not acquire the lock.
+  - Use typed monkeypatch helpers, not untyped lambdas.
+- **Diagnostic source parity:**
+  - `_review_failure_source` prefers base `.failure-diag`, then retry, then NS-retry, then sink and sidecars through the shared resolver.
+  - `_append_implement_launch_failure` uses retry or NS-retry `.failure-diag` when present instead of stale `.diag` or sidecar.
+  - Stderr-tail generation uses the selected source.
+
+### UPDATED: python/test_agent_voters.py
+
+- Add a regression test for `_append_voter1_failure`.
+  - Create large voter output, `.diag`, and `.launcher-stderr` files.
+  - Monkeypatch `Path.read_bytes` to raise.
+  - Assert the helper still writes `voter1-diag.txt`.
+  - Assert captured snippets are capped to the expected prefix sizes.
+
+### UPDATED: python/test_voting.py
+
+- Add a parse-rate diagnostic regression test.
+  - Use a voter file large enough to make whole-file reads visible.
+  - Monkeypatch `Path.read_bytes` to raise.
+  - Trigger the high `JUDGE_ERROR` path.
+  - Assert the first-bytes diagnostic is still emitted and capped.
+
+### UPDATED: python/test_collect_results.py
+
+- Add NS-retry phase resolution coverage:
+  - A `*-phase3.txt` reviewer file resolves a non-empty `*-phase2-ns-retry.txt.stderr-tail` when primary retry/NS-retry files are absent.
+  - Base-output NS-retry tail is considered after phase candidates in the intended order.
+- Add `.launch-stderr` coverage:
+  - A retry or NS-retry `.launch-stderr` candidate is rendered through `agents.render_failed_agent_stderr_tail`.
+  - Empty launch-stderr files are ignored.
+- Keep existing tests that prove primary retry beats primary NS-retry.
+
+### UPDATED: python/test_plan_review_panel.py
+
+- Extend the waterfall failure test.
+  - Make the failing stub print a Cursor-shaped secret, for example `crsr_...`.
+  - Assert the raw secret is absent from `proc.stderr`.
+  - Assert the raw secret is absent from `plan-review-panel-failure.log`.
+  - Assert the redaction token is present.
+  - Keep assertions for exit code and failure-detail KV.
+
+### UPDATED: python/test_design_lifecycle.py
+
+- Add Step 2b drafter integration tests for Python CLI argv shape.
+  - Force `LARCH_DESIGN_DRAFTER=codex`.
+  - Monkeypatch `subprocess.run` with a typed helper that captures the launcher argv and simulates a successful status/plan write.
+  - Assert the command starts with `sys.executable`, `python/cli.py`, `agent`, `launch-codex-drafter`.
+  - Assert required flags are present:
+    - `--prompt-file`
+    - `--output-file`
+    - `--baseline-porcelain` when baseline exists
+    - `--timeout`
+    - `--timing-task-kind`
+    - `--design-tmpdir`
+    - `--repo-root`
+  - Repeat for `LARCH_DESIGN_DRAFTER=claude` and assert `--model` is present.
+  - Assert no retired shell wrapper name appears in the captured argv.
+
+### UPDATED: python/test_design_cli_ports.py
+
+- Add registry assertions for drafter launcher surfaces used by Step 2b:
+  - `("agent", "launch-codex-drafter")`
+  - `("agent", "launch-claude-drafter")`
+- Keep the file as a CLI port smoke surface, not a full launcher behavior harness.
+
+### UPDATED: docs/external-reviewers.md
+
+- Lightly sync degraded-tools gate and external reviewer probe docs.
+- Mention that timeout exits can be retried only when `LARCH_PROBE_TIMEOUT_RETRIES` is set.
+- Clarify that default timeout retry count is zero, so default health-gate latency is unchanged.
+- Clarify that current Cursor keychain preflight and preread run under the shared Darwin external startup lock.
+- Avoid line-number references.
+
+### UPDATED: docs/configuration-and-permissions.md
+
+- Add `LARCH_PROBE_TIMEOUT_RETRIES` under external reviewer probe tuning.
+  - Document default `0`.
+  - Document `N` as up to `N+1` total timeout attempts.
+  - Document worst-case latency as `(N + 1) * LARCH_PROBE_TIMEOUT_SECONDS` for repeated timeouts.
+- Keep `LARCH_PROBE_RETRIES` documented as transient `rc == 1` only.
+- Fix the stale Codex effort wording so the Codex health probe description matches current `resolve_model_args("codex", with_effort=True)` behavior.
+- Update the startup-lock paragraph to include Cursor keychain preflight/preread and to avoid references to retired Bash surfaces.
+
+### UPDATED: SECURITY.md
+
+- Add a narrow note to the existing failed-agent stderr / vendor diagnostics redaction area.
+- State that plan-review panel waterfall failure stderr is redacted before it is written to the design failure-detail log or re-surfaced to stderr.
+- Keep residual-risk language pattern-based and concise.
+
+## Edge cases
+
+- **Timeout retry success:** A first timeout followed by success must mark the tool present and must not set the timed-out flag.
+- **Health gate latency:** Default latency must not increase. Operators who set timeout retries accept the documented added latency.
+- **Auth and timeout interplay:** Auth-classified failures still use auth retry limits. Timeout retry must not consume auth retry budget.
+- **Cursor auth env key:** A valid `CURSOR_API_KEY` must skip Darwin keychain lock work.
+- **Darwin lock release:** Keychain-only lock release should not leave delayed lock directories that slow the immediate external spawn path.
+- **Large diagnostics:** Voter diagnostics must not read entire pathological files before slicing.
+- **Missing diagnostics:** Resolver changes must keep returning `""` when no tail source exists.
+- **Redaction newline:** `redact.redact` may add a trailing newline. Preserve readable stderr output without double-printing extra blank lines.
+
+## Failure modes
+
+- A bad `LARCH_PROBE_TIMEOUT_RETRIES` value may silently fall back to zero. Tests should pin this.
+- Phase-tail ordering changes may alter which stderr tail appears first. Tests should pin primary retry and NS-retry precedence.
+- Redaction can over-redact stderr detail. That is acceptable for this security surface.
+- If `redact.redact` raises unexpectedly, let the panel fail rather than write raw stderr.
+
+## Testing strategy
+
+- Run targeted pytest first:
+  - `python3 -m pytest python/test_agents.py`
+  - `python3 -m pytest python/test_agent_voters.py python/test_voting.py`
+  - `python3 -m pytest python/test_collect_results.py`
+  - `python3 -m pytest python/test_plan_review_panel.py`
+  - `python3 -m pytest python/test_design_lifecycle.py python/test_design_cli_ports.py`
+- Run required repo checks:
+  - `make py-lint`
+  - `make py-test`
+  - `make lint`
+
+## Acceptance
+- Items 1, 2, 3, 10 implemented as described; defaults preserved (timeout retry is opt-in via `LARCH_PROBE_TIMEOUT_RETRIES`; default probe latency unchanged).
+- Items 6 and 7 implemented at their pinned defects; item 4 dropped with the recorded rationale.
+- Item 5 docs synced (`docs/external-reviewers.md`, `docs/configuration-and-permissions.md`); SECURITY.md note added for item 10.
+- New pytest coverage for items 8 and 9 (and the added regression tests) passes.
+- `make py-lint`, `make py-test`, and `make lint` are green.
+
+diff_added: 430
+diff_deleted: 95
+mechanical_churn: false
+diff_lines: 525
+<!-- larch:plan:end -->
