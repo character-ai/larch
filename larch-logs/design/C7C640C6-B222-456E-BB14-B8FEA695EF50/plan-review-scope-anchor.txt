@@ -1,0 +1,67 @@
+## Problem
+
+The finding-adjudication voting panels used by `/design` plan review, `/review` code review, and `/implement` Step 5 code review present each voter/judge a ballot that includes the proposing reviewer's attribution (the `- **Reviewer**:` field in the `### FINDING_N:` / `### OOS_N:` blocks). Voters can therefore see which vendor/model proposed each finding.
+
+Because the protocol applies "no self-voting exclusion" (`skills/shared/voting-protocol.md`), a voter from vendor X also votes on findings proposed by vendor X. This exposes the panel to a documented LLM self-preference bias: a judge may favor proposals authored by its own vendor/model.
+
+### Where it bites
+
+- **`/design` plan review**: voter panel = Claude + Codex + Cursor; reviewers = the same three vendors. Direct self-vendor voting on every finding.
+- **`/review` and `/implement` Step 5 code review**: voter panel = 3 Cursor archetypes (validity / plan-fidelity / pragmatism). Cursor-proposed findings are judged by same-vendor voters.
+
+Current mitigation is prompt-level only: voters are instructed to "evaluate each finding on its merits regardless of who proposed it" (`skills/shared/voting-protocol.md`). That is a model-level convention, not a structural guarantee.
+
+## Proposed change
+
+Strip author / vendor / model attribution from the ballot text fed to voters and judges across all three skills. The voter-facing ballot must carry no vendor-identifying `- **Reviewer**:` label (omit it, or replace with a neutral token). Retain the finding-to-proposer mapping out of band, in the tally / classification layer, so reviewer competition scoring (`docs/point-competition.md`) is unaffected.
+
+Reuse the existing in-repo pattern: the dialectic protocol (`skills/shared/dialectic-protocol.md`, "Attribution stripping" section) already does exactly this for design-decision adjudication. It emits content under neutral "Defense A / Defense B" labels, keeps the role-to-choice mapping for audit, and additionally strips vendor/model substrings (`Anthropic`, `Sonnet`, `Opus`, `Haiku`, case-insensitive) from the body so attribution cannot leak through wording. Apply the same approach to finding ballots.
+
+## Scope (surfaces to update)
+
+- `skills/shared/voting-protocol.md` — ballot format (`- **Reviewer**:` field) plus the "Include the reviewer attribution so voters have context" instruction (flip to strip-attribution).
+- `docs/voting-process.md` and `docs/point-competition.md` — ballot-format and attribution docs.
+- Plan review ballot builder / tally: `python/plan_review.py`, `python/plan_review_tally.py`; `skills/design/references/plan-review.md` (Step 3 ballot construction and the main-agent-vote re-tally path).
+- Code review ballot builder / tally: `review collect-findings` and `review tally-code-votes` (`python/review_pipeline.py`); `agent dispatch-voters`; `skills/review/SKILL.md` Step 3a; `skills/implement/references/step5-review-branches.md` (Step 5 and its MAV path).
+
+## Implementation considerations
+
+- Decouple voter-facing attribution from scoring attribution: the proposer must still be recorded in `findings-classification.tsv` (proposer column) for the scoreboard; only the ballot text shown to voters is stripped.
+- Also strip model/vendor self-identification leakage from the finding body text (mirror the dialectic vendor-substring scrub), since a finding's wording could reveal its author.
+- The main-agent-vote (MAV) fallback path reads the same `ballot.txt` and must receive the stripped ballot.
+- Out-of-scope (OOS) ballot rows carry the same `- **Reviewer**:` field and need identical treatment.
+
+## Notes
+
+This is a structural bias mitigation justified on first principles (self-preference is a documented LLM-judge failure mode). An empirical pass over committed run logs (`findings-classification.tsv` per-voter `vN` votes vs proposer vendor) is underway and may be attached as a follow-up comment with measured self-vs-other YES-rate deltas.
+
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Remove vendor/model attribution from voter-facing ballots across `/design` plan review, `/review`, and `/implement` Step 5 code review, so judges cannot favor same-vendor proposals.
+- Preserve proposer attribution out of band for scoring, the competition scoreboard, and accepted/rejected/OOS audit and issue-filing artifacts.
+- Stay backward-compatible: legacy ballots with no sidecar still tally via the existing reviewer parser.
+
+### Non-goals
+- No body-text scrubbing. Legitimate `Codex`/`Cursor`/`Claude` references in finding bodies survive unchanged.
+- No change to vote thresholds, scoring math, or the "no self-voting exclusion" rule.
+- No empirical self-vs-other measurement pass (deferred to a follow-up comment per the issue).
+
+### Approach sketch
+- Add shared helpers to `python/voting.py`: neutralize the `- **Reviewer**:` line to a fixed neutral token (keep the line, drop the vendor value), build/read a proposer-map sidecar keyed by `FINDING_N`/`OOS_N`, and resolve proposer (sidecar first, `reviewer_for_block` fallback).
+- `/design`: write `proposer-map.tsv` from the unstripped ballot, then neutralize `$DESIGN_TMPDIR/ballot.txt` before voter dispatch; pass the sidecar to tally. MAV reads the same neutralized ballot.
+- `/review` + `/implement` Step 5: after collect/aggregate/prune and before voter dispatch, write the sidecar and neutralize `findings.md`; pass the sidecar to every tally call.
+- Tallies read proposer from the sidecar for classification + scoreboard and restore the original reviewer line for accepted/rejected/OOS artifacts.
+
+### Surfaces in scope
+- `python/voting.py` (shared helpers).
+- `/design`: `python/plan_review_round.py`, `python/plan_review_tally.py`.
+- `/review` + Step 5: `python/review_pipeline.py`, `python/review_tally.py`.
+- Docs/refs: `skills/shared/voting-protocol.md`, `docs/voting-process.md`, `docs/point-competition.md`, `skills/design/references/plan-review.md`, `skills/review/SKILL.md`, `skills/implement/references/step5-review-branches.md`.
+- Tests: `python/test_voting.py`, `python/test_plan_review.py`, `python/test_review_tally.py`, `python/test_review_pipeline.py`, `python/test_agent_voters.py`.
+
+### Open questions
+- Exact neutral token value (e.g. `Reviewer` vs `anonymous`). Plan drafting will pick one fixed token.

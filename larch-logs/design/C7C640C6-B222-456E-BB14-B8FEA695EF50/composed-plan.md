@@ -1,0 +1,287 @@
+## Plan
+
+## Approach
+
+- **Neutralize attribution lines.**
+  - Keep the structured reviewer line in voter-facing ballots.
+  - Replace only the reviewer value with the fixed token `anonymous`.
+  - Preserve body text unchanged.
+
+- **Store proposer attribution out of band.**
+  - Write `proposer-map.tsv` before neutralizing each ballot.
+  - Use the sidecar for classification, scoreboards, and accepted/rejected/OOS artifacts.
+  - Fall back to `voting.reviewer_for_block` for legacy unstripped ballots when no sidecar exists.
+
+- **Use one canonical ballot per path.**
+  - `/design`: neutralize `$DESIGN_TMPDIR/ballot.txt` before `plan-review voter-dispatch`.
+  - `/review` and `/implement` Step 5: neutralize the round `findings.md` before `agent dispatch-voters`.
+  - MAV reads the same neutralized file.
+
+## Files to modify/create
+
+### UPDATED: python/voting.py
+
+Add shared helpers:
+
+- `ANONYMOUS_REVIEWER = "anonymous"`.
+- `REVIEWER_ATTRIBUTION_RE`.
+  - Match only whole-line reviewer attribution forms:
+    - `- **Reviewer**: ...`
+    - `- **Reviewer(s)**: ...`
+    - `- **Reviewers**: ...`
+    - legacy plain `Reviewer:` / `Reviewer(s):` / `Reviewers:` forms already accepted by `reviewer_for_block`.
+- `neutralize_reviewer_attribution(text: str) -> str`.
+  - Replace the matched line value with `anonymous`.
+  - Preserve the original label shape where practical.
+  - Preserve all non-matching lines byte-for-byte.
+- `proposer_map_from_ballot(text: str) -> dict[str, tuple[str, str]]`.
+  - Key by `FINDING_N` / `OOS_N`.
+  - Store normalized proposer label plus the original reviewer line.
+- `write_proposer_map(ballot_file: Path, map_file: Path)`.
+  - Write TSV header: `item_id\treviewer\treviewer_line`.
+  - Sanitize tabs and newlines.
+- `read_proposer_map(map_file: Path)`.
+- `proposer_for_item(item_id: str, block_file: Path, map_file: Path | str = "")`.
+  - Prefer the map entry.
+  - Fall back to `reviewer_for_block(block_file)`.
+- `restore_reviewer_attribution(block_text: str, reviewer_line: str) -> str`.
+  - Replace an existing neutral reviewer line with the original line.
+  - Insert after the heading if no reviewer line exists.
+  - Use only for post-vote artifacts.
+
+Keep `reviewer_for_block` unchanged.
+
+### UPDATED: python/plan_review_round.py
+
+In `execute_round`:
+
+- After the final `ballot_text` source is chosen and before `plan-review voter-dispatch`:
+  - write `$DESIGN_TMPDIR/proposer-map.tsv` from the unmodified ballot,
+  - rewrite `$DESIGN_TMPDIR/ballot.txt` with `voting.neutralize_reviewer_attribution(ballot_text)`.
+- Treat sidecar write or ballot rewrite failure as a hard error before voter dispatch.
+- Pass `--proposer-map-file "$DESIGN_TMPDIR/proposer-map.tsv"` to `plan-review tally`.
+- Leave the `main-agent-vote-required` branch pointed at the same neutralized `ballot.txt`.
+
+### UPDATED: python/plan_review_tally.py
+
+Add `--proposer-map-file`.
+
+Use the sidecar in:
+
+- `_write_findings_classification`.
+- `_render` score rows.
+- accepted, rejected, OOS, and accepted-OOS artifact output.
+
+When writing artifacts:
+
+- read the neutralized block from the split ballot,
+- restore the original reviewer line from the sidecar,
+- keep scoring based on the sidecar proposer label.
+
+If `--proposer-map-file` is omitted, use current legacy behavior.
+
+### UPDATED: python/review_pipeline.py
+
+Add a small internal helper that:
+
+- reads `findings.md`,
+- writes `$REVIEW_TMPDIR/proposer-map.tsv`,
+- rewrites `findings.md` with neutral reviewer values.
+
+Call it:
+
+- after `aggregate-findings` when `REASON=validation-exhausted`, before the immediate tally,
+- after `prune-nit-findings`, before `agent dispatch-voters`.
+
+Pass `--proposer-map-file "$REVIEW_TMPDIR/proposer-map.tsv"` to every `review tally-code-votes` call that uses the round findings file.
+
+Keep `FINDINGS_FILE` pointed at the neutralized `findings.md`.
+
+### UPDATED: python/review_tally.py
+
+Add `--proposer-map-file`.
+
+Use `voting.proposer_for_item(...)` instead of direct `voting.reviewer_for_block(...)` for:
+
+- zero-effective classification rows,
+- normal classification rows,
+- reviewer competition score rows,
+- archetype yield rows.
+
+When appending accepted/rejected/OOS artifacts:
+
+- restore the original reviewer line from the sidecar before writing.
+- Keep OOS header normalization and security classification behavior unchanged.
+
+If `--proposer-map-file` is omitted, preserve legacy behavior.
+
+### UPDATED: skills/shared/voting-protocol.md
+
+Update the ballot contract:
+
+- Show voter-facing examples with `- **Reviewer**: anonymous`.
+- Replace reviewer-context prose with:
+  - voter-facing ballots use neutral reviewer attribution,
+  - proposer attribution is retained out of band for scoring and audit,
+  - body text is not scrubbed.
+- Keep the no-self-voting rule.
+- Note that neutralized ballots are the structural mitigation.
+
+### UPDATED: docs/voting-process.md
+
+Update ballot examples and process prose:
+
+- Show anonymous `FINDING_N` / `OOS_N` blocks.
+- State that proposer labels live in `proposer-map.tsv`.
+- State that `findings-classification.tsv` still records proposer attribution.
+
+### UPDATED: docs/point-competition.md
+
+Clarify:
+
+- Voters do not see proposer labels.
+- Scoreboards still use out-of-band proposer attribution.
+- Scoring rules do not change.
+
+### UPDATED: skills/design/references/plan-review.md
+
+Update Step 3 references:
+
+- Ballot construction writes a proposer sidecar before voter dispatch.
+- Voter-facing `ballot.txt` keeps `Reviewer` structure but uses `anonymous`.
+- MAV reads the same neutralized `ballot.txt`.
+- Scoring and artifacts use the sidecar.
+
+### UPDATED: skills/review/SKILL.md
+
+Add a compact note near the Step 3 `review core` ownership prose:
+
+- `review core` neutralizes reviewer attribution before voting.
+- Normal voters and MAV read the same neutralized findings file.
+- Tally uses out-of-band proposer attribution for scoring.
+
+### UPDATED: skills/implement/references/step5-review-branches.md
+
+Update `main-agent-vote-required`:
+
+- State that `FINDINGS_FILE` is already neutralized.
+- Re-run `review tally-code-votes` with `--proposer-map-file "$IMPLEMENT_TMPDIR/round-$FINAL_ROUND_NUM/proposer-map.tsv"` when present.
+- Keep the voting rubric unchanged.
+
+### UPDATED: python/test_voting.py
+
+Add unit tests for:
+
+- neutralizing reviewer values while keeping reviewer lines present,
+- preserving body text that mentions `Codex`, `Cursor`, or `Claude`,
+- parsing proposer maps for `FINDING_N` and `OOS_N`,
+- restoring original reviewer lines,
+- legacy fallback when no sidecar exists,
+- non-matching `Reviewer` prose inside body text.
+
+### UPDATED: python/test_plan_review.py
+
+Add or adjust tests for:
+
+- generated `ballot.txt` has `Reviewer: anonymous` before voter dispatch,
+- proposer map records original proposers,
+- classification TSV and scoreboard still show proposer labels,
+- accepted/OOS artifacts restore reviewer attribution,
+- `main-agent-vote-required` leaves the ballot neutralized.
+
+### UPDATED: python/test_review_tally.py
+
+Add or adjust tests for:
+
+- neutralized ballot plus sidecar preserves `reviewer_slots`,
+- scoreboard points are unchanged,
+- accepted/rejected/OOS artifacts restore reviewer lines,
+- omitted sidecar keeps legacy behavior,
+- `OOS_N` and legacy `[OUT_OF_SCOPE]` rows still work.
+
+### UPDATED: python/test_review_pipeline.py
+
+Add pipeline coverage:
+
+- normal voter dispatch receives neutralized `findings.md`,
+- `proposer-map.tsv` exists and is passed to tally,
+- validation-exhausted tally receives the sidecar,
+- MAV handoff uses the same neutralized findings file,
+- body text vendor names remain unchanged.
+
+### UPDATED: python/test_agent_voters.py
+
+Adjust voter-dispatch prompt expectations if fixtures assert proposer labels in ballot text.
+
+## Edge cases
+
+- **Multiple proposers**:
+  - Preserve the full comma-separated proposer label in the sidecar.
+  - Continue splitting only where existing scoreboard logic already splits labels.
+
+- **Legacy ballots**:
+  - Tallies without a sidecar still parse reviewer lines from the ballot.
+
+- **Sidecar missing one item**:
+  - Fall back for that item only.
+
+- **Vendor names in body text**:
+  - Do not change them.
+
+- **OOS rows**:
+  - Neutralize reviewer values before voting.
+  - Restore original reviewer lines in OOS artifacts.
+
+## Failure modes
+
+- **Sidecar write fails**:
+  - Abort before voter dispatch.
+  - Do not launch voters with proposer-visible ballots.
+
+- **Neutralizer removes too much**:
+  - Tests must cover body lines that contain “Reviewer” outside the structured attribution form.
+
+- **Aggregation still needs reviewer labels**:
+  - Neutralize only after aggregation and prune.
+
+- **MAV bypass leak**:
+  - Keep the canonical on-disk ballot neutralized before any MAV branch reads it.
+
+## Testing strategy
+
+Run targeted tests:
+
+```bash
+python3 -m pytest python/test_voting.py python/test_plan_review.py python/test_review_tally.py python/test_review_pipeline.py python/test_agent_voters.py
+```
+
+Run required checks:
+
+```bash
+make py-lint
+make py-test
+make lint
+```
+
+Manual checks:
+
+- Confirm voter-facing prompts contain `Reviewer: anonymous`, not proposer labels.
+- Confirm `findings-classification.tsv` contains original proposer labels.
+- Confirm accepted/rejected/OOS artifacts restore original reviewer lines.
+- Confirm scoreboards match pre-change expectations for equivalent votes.
+
+## Acceptance
+
+- Voter-facing and MAV-facing ballots keep reviewer structure but show only `anonymous`.
+- Finding and OOS bodies are unchanged.
+- `proposer-map.tsv` preserves attribution for classification, scoreboards, and artifacts.
+- Tallies still support legacy unstripped ballots without a sidecar.
+- Docs describe the neutral ballot plus sidecar scoring contract.
+- `make py-lint`, `make py-test`, and `make lint` pass.
+
+review_status: complete
+rounds_completed: 1
+diff_added: 500
+diff_deleted: 150
+mechanical_churn: false
+diff_lines: 650

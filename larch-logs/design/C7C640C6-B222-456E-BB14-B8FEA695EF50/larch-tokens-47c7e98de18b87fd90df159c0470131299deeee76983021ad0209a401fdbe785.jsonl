@@ -1,0 +1,14 @@
+{"type":"mark","step":"design Step 0 \u2014 session setup","ts":"2026-06-19T07:01:32Z"}
+{"type":"vendor","vendor":"codex","input":75409,"output":5023,"cache_read":182016,"cache_create":0,"total":262448,"raw":"codex_plan_draft","ts":"2026-06-19T07:15:13Z","model":"gpt-5.5"}
+{"type":"vendor","vendor":"codex","input":142391,"output":7674,"cache_read":817408,"cache_create":0,"total":967473,"raw":"codex_review","ts":"2026-06-19T07:19:17Z","model":"gpt-5.5"}
+{"type":"vendor","vendor":"cursor","input":119899,"output":9663,"cache_read":2149238,"cache_create":0,"total":2278800,"raw":"cursor_review","ts":"2026-06-19T07:19:33Z"}
+{"type":"vendor","vendor":"codex","input":122671,"output":9475,"cache_read":1157248,"cache_create":0,"total":1289394,"raw":"codex_review","ts":"2026-06-19T07:19:37Z","model":"gpt-5.5"}
+{"type":"vendor","vendor":"codex","input":90376,"output":8610,"cache_read":1056384,"cache_create":0,"total":1155370,"raw":"codex_review","ts":"2026-06-19T07:19:37Z","model":"gpt-5.5"}
+{"type":"vendor","vendor":"cursor","input":149413,"output":11314,"cache_read":3419809,"cache_create":0,"total":3580536,"raw":"cursor_review","ts":"2026-06-19T07:20:06Z"}
+{"type":"vendor","vendor":"cursor","input":129129,"output":10982,"cache_read":2431286,"cache_create":0,"total":2571397,"raw":"cursor_review","ts":"2026-06-19T07:20:28Z"}
+{"type":"vendor","vendor":"cursor","input":138949,"output":12395,"cache_read":2526651,"cache_create":0,"total":2677995,"raw":"cursor_review","ts":"2026-06-19T07:20:37Z"}
+{"type":"vendor","vendor":"codex","input":96787,"output":8862,"cache_read":1164544,"cache_create":0,"total":1270193,"raw":"codex_review","ts":"2026-06-19T07:23:55Z","model":"gpt-5.5"}
+{"type":"vendor","vendor":"codex","input":24947,"output":807,"cache_read":60288,"cache_create":0,"total":86042,"raw":"codex_review","ts":"2026-06-19T07:24:16Z","model":"gpt-5.5"}
+{"type":"vendor","vendor":"claude_sub","input":5,"output":440,"cache_read":126203,"cache_create":23128,"total":149776,"raw":"claude_vote","ts":"2026-06-19T07:24:26Z"}
+{"type":"vendor","vendor":"cursor","input":91833,"output":2559,"cache_read":746360,"cache_create":0,"total":840752,"raw":"cursor_review","ts":"2026-06-19T07:26:12Z"}
+{"type":"vendor","vendor":"codex","input":19139,"output":874,"cache_read":90368,"cache_create":0,"total":110381,"raw":"codex_review","ts":"2026-06-19T07:27:03Z","model":"gpt-5.5"}
