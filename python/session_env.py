@@ -843,6 +843,15 @@ def _design_run_launcher_text(pid: str, plugin_root: str) -> str:
         '  design-step-validator-autofix.sh)\n'
         '    exec python3 "$PLUGIN_ROOT/python/cli.py" plan validator-autofix --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
         '    ;;\n'
+        '  design-stage-terminal-state.sh)\n'
+        '    exec python3 "$PLUGIN_ROOT/python/cli.py" design stage-terminal-state "$@"\n'
+        '    ;;\n'
+        '  design-failure-report.sh)\n'
+        '    exec python3 "$PLUGIN_ROOT/python/cli.py" design failure-report "$@"\n'
+        '    ;;\n'
+        '  design-step-final-summary.sh)\n'
+        '    exec python3 "$PLUGIN_ROOT/python/cli.py" design step-final-summary --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
+        '    ;;\n'
         "  *.sh)\n"
         '    exec "$PLUGIN_ROOT/skills/design/scripts/$script" --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
         "    ;;\n"

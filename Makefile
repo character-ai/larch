@@ -1065,10 +1065,10 @@ setup:
 .PHONY: test-design-stage-terminal-state test-design-failure-report test-design-step3-review test-design-step3-entry test-design-step0-init test-design-step5c test-design-step6 test-design-step-validator-autofix
 
 test-design-stage-terminal-state:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-stage-terminal-state.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_design_lifecycle.py -k stage_terminal_state
 
 test-design-failure-report:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-failure-report.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_design_lifecycle.py -k failure_report
 
 test-design-step3-review:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-step3-review.sh

@@ -217,17 +217,13 @@ def _run_design_failure_report_gate(
 ) -> None:
     if phase != "post":
         return
-    root = _plugin_root()
-    helper = root / "skills" / "design" / "scripts" / "design-failure-report.sh"
-    if not helper.is_file() or not os.access(helper, os.X_OK):
-        return
+    from design_lifecycle import _capture_contract_stream_to_paths, failure_report_core  # noqa: PLC0415
 
     ex_log = design_tmpdir / "execution-issues.md"
     ex_before = ex_log.stat().st_size if ex_log.is_file() else 0
     out_file = design_tmpdir / "design-failure-report.stdout.log"
     err_file = design_tmpdir / "design-failure-report.stderr.log"
     cmd = [
-        str(helper),
         "--design-tmpdir", str(design_tmpdir),
         "--outcome", outcome,
     ]
@@ -238,15 +234,7 @@ def _run_design_failure_report_gate(
     if run_id:
         cmd += ["--run-id", run_id]
 
-    gate = subprocess.run(
-        cmd,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    _ = out_file.write_text(gate.stdout, encoding="utf-8")
-    _ = err_file.write_text(gate.stderr, encoding="utf-8")
-    gate_rc = gate.returncode
+    gate_rc = _capture_contract_stream_to_paths(failure_report_core, out_file, err_file, cmd)
     if gate_rc != 0:
         _run_cli(  # pyright: ignore[reportUnusedCallResult]
             "run-log", "append-failure",

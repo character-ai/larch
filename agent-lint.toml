@@ -392,9 +392,6 @@ exclude = [
   # contract), matching the same Makefile-only pattern as other test-* harnesses.
   "scripts/test-effort-prose.sh",
   "scripts/test-effort-prose.md",
-  # One-shot Step 5 debug helper. It is operator-invoked outside skill prose,
-  # so agent-lint cannot discover a structured runtime edge.
-  "scripts/debug-step5c-once.sh",
   # python/session_env.py invokes python/cli.py admission preflight through proc.Runner for session setup.
   "python/admission.py",
   # python/test_admission.py is the regression harness for

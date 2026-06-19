@@ -16,6 +16,7 @@ import pytest
 
 import design_lifecycle
 import design_pause
+import logging_util
 import proc as proc_module
 from design_lifecycle import load_bash_quoted_env, phase_driver_read_result_env
 
@@ -484,15 +485,13 @@ def test_step0_clarify_hard_halt_forwards_exit_code_and_detail_log(tmp_path: Pat
     detail.write_text("detail\n", encoding="utf-8")
     env_path = _write_session_env(tmp_path, design, monkeypatch, ISSUE_NUMBER="42")
     captured: list[list[str]] = []
-    real_run = subprocess.run
 
-    def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-        if cmd and "design-stage-terminal-state.sh" in cmd[0]:
-            captured.append(list(cmd))
-            return subprocess.CompletedProcess(cmd, 0, "STAGED=true\n", "")
-        return real_run(cmd, check=False, **kwargs)  # type: ignore[arg-type]
+    def fake_stage(argv: list[str]) -> tuple[int, list[str]]:
+        captured.append(list(argv))
+        print("STAGED=true")
+        return 0, ["STAGED=true"]
 
-    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(design_lifecycle, "stage_terminal_state_core", fake_stage)
 
     assert design_lifecycle.step0_clarify_hard_halt_main(
         [
@@ -513,6 +512,101 @@ def test_step0_clarify_hard_halt_forwards_exit_code_and_detail_log(tmp_path: Pat
     assert argv[argv.index("--exit-code") + 1] == "7"
     assert "--failure-detail-log" in argv
     assert str(detail) in argv[argv.index("--failure-detail-log") + 1]
+    assert "STAGED=true" in (design / "design-stage-terminal-state.stdout.log").read_text(encoding="utf-8")
+
+
+def _stage_args(design: Path, *extra: str) -> list[str]:
+    return [
+        "--design-tmpdir",
+        str(design.resolve()),
+        "--outcome",
+        "failed-clarify",
+        "--step",
+        "clarify",
+        "--phase",
+        "clarify-loop",
+        "--site",
+        "clarify-loop",
+        "--trigger",
+        "failed",
+        "--bail-reason",
+        "clarify-hard-halt",
+        "--exit-code",
+        "1",
+        "--source-script",
+        "clarify-loop",
+        "--summary-outcome",
+        "failed-clarify",
+        *extra,
+    ]
+
+
+def test_stage_terminal_state_core_writes_state_and_rejects_bad_tokens(tmp_path: Path) -> None:
+    rc, _ = design_lifecycle.stage_terminal_state_core(_stage_args(tmp_path))
+    assert rc == 0
+    state = tmp_path / "design-failure-terminal-state.env"
+    assert state.is_file()
+    assert "FAILURE_OUTCOME=failed-clarify" in state.read_text(encoding="utf-8")
+
+    bad_rc, _ = design_lifecycle.stage_terminal_state_core(_stage_args(tmp_path / "missing", "--evidence-ref", "../unsafe"))
+    assert bad_rc == 2
+
+
+def test_stage_terminal_state_preserves_mismatched_existing_state(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    state = tmp_path / "design-failure-terminal-state.env"
+    state.write_text(
+        "DESIGN_FAILURE_VERSION=1\nDESIGN_FAILURE_KIND=terminal\nFAILURE_OUTCOME=failed-publish\nSTALL_STEP=publish\nPHASE=publish\nSITE=design-publish\nTRIGGER=publish-tail-failed\nBAIL_REASON=publish-tail-failed\nEXIT_CODE=1\nFAILURE_DETAIL_LOG=\nSOURCE_SCRIPT=design-step5c\nOCCURRED_AT=2026-01-01T00:00:00Z\n",
+        encoding="utf-8",
+    )
+    rc, _ = design_lifecycle.stage_terminal_state_core(_stage_args(tmp_path))
+    assert rc == 0
+    assert "PRESERVED=true" in capsys.readouterr().out
+
+
+def test_capture_contract_stream_restores_parent_stdout_stderr(tmp_path: Path) -> None:
+    out = tmp_path / "stdout.log"
+    err = tmp_path / "stderr.log"
+
+    def emit_contract() -> int:
+        logging_util.emit_kv("CAPTURED", "true")
+        print("stderr-row", file=sys.stderr)
+        return 0
+
+    assert design_lifecycle._capture_contract_stream_to_paths(emit_contract, out, err) == 0
+    os.write(1, b"")
+    os.write(2, b"")
+    assert "CAPTURED=true" in out.read_text(encoding="utf-8")
+    assert "stderr-row" in err.read_text(encoding="utf-8")
+
+
+def test_failure_report_core_sentinel_and_cancellation_paths(tmp_path: Path) -> None:
+    (tmp_path / "design-failure-terminal-report.env").write_text("", encoding="utf-8")
+    rc, _ = design_lifecycle.failure_report_core(["--design-tmpdir", str(tmp_path.resolve()), "--outcome", "failed-clarify"])
+    assert rc == 0
+    (tmp_path / "design-failure-terminal-report.env").unlink()
+    rc, _ = design_lifecycle.failure_report_core(["--design-tmpdir", str(tmp_path.resolve()), "--outcome", "cancelled-user"])
+    assert rc == 0
+    assert (tmp_path / "design-failure-operator-action-chat.md").is_file()
+
+
+def test_step_final_summary_core_emits_markers_and_cleans_bg_marker(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    env_path = _write_session_env(tmp_path, tmp_path, monkeypatch, ISSUE_NUMBER="0", SUMMARY_OUTCOME="approved")
+    (tmp_path / "final-summary.md").write_text("summary without newline", encoding="utf-8")
+
+    def fake_render(argv: list[str]) -> int:
+        assert "--post-publish-only" in argv
+        return 0
+
+    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+
+    monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
+    rc, _ = design_lifecycle.step_final_summary_core(["--session-env-path", str(env_path), "--claude-pid", "123", "--outcome", "approved"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "LARCH_FINAL_SUMMARY_BEGIN" in out
+    assert "summary without newline\nLARCH_FINAL_SUMMARY_END" in out
+    assert not (tmp_path / ".bg-wait-active").exists()
+    assert (tmp_path / ".completed" / "step-final-summary").is_file()
 
 
 def test_step0_route_forwards_router_flags(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

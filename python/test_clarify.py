@@ -232,7 +232,7 @@ def test_invalid_repo_state_cli_has_no_comments_call(
     assert rc == 1
     assert "FAILED=true" in out
     assert "ERROR=invalid-repo" in out
-    assert not runner.calls
+    assert not any("stage-terminal-state" in " ".join(call) for call in runner.calls)
 
 
 @dataclass
@@ -807,14 +807,15 @@ def test_design_clarify_route_state_failure_is_phase_split(
     assert "CLARIFY_FETCH_STATUS=route-state-read-failed" in (
         tmp_path / ".design-clarify-fetch-result.env"
     ).read_text(encoding="utf-8")
-    assert any(call and call[0].endswith("design-stage-terminal-state.sh") for call in runner.calls)
+    assert (tmp_path / "design-clarify-stage.stdout.log").is_file()
+    assert (tmp_path / "design-failure-terminal-state.env").is_file()
 
     runner.calls.clear()
     assert clarify.design_clarify_main(_design_args(source_env, "publish")) == 1
     assert "CLARIFY_PUBLISH_STATUS=route-state-read-failed" in (
         tmp_path / ".design-clarify-publish-result.env"
     ).read_text(encoding="utf-8")
-    assert not any(call and call[0].endswith("design-stage-terminal-state.sh") for call in runner.calls)
+    assert not runner.calls
 
 
 @pytest.mark.parametrize(

@@ -75,8 +75,7 @@ grep -Fq 'SUMMARY_OUTCOME=failed-judge-panel' "$WRAPPER" || fail 'panel-init-fai
 
 D_STEP3=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-stage.XXXXXX")
 trap 'rm -rf "$D_STEP3"' EXIT
-STAGE_HELPER="$ROOT/skills/design/scripts/design-stage-terminal-state.sh"
-env -u CLAUDE_PLUGIN_ROOT "$STAGE_HELPER" --design-tmpdir "$D_STEP3" \
+CLAUDE_PLUGIN_ROOT="$ROOT" python3 "$ROOT/python/cli.py" design stage-terminal-state --design-tmpdir "$D_STEP3" \
   --outcome failed-postplan --step postplan --phase postplan --site step3-review \
   --trigger postplan-failed --bail-reason postplan-failed --exit-code 10 \
   --source-script design-step3-review --summary-outcome failed-postplan >/dev/null
