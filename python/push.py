@@ -282,6 +282,8 @@ def _handle_empty_continue_rc3(result: rebase.RebasePushResult) -> rebase.Rebase
         if skipped.returncode != 0:
             print("WARN rebase-probe: git rebase --skip failed after empty continue", file=sys.stderr)
             return None
+        if not git.rebase_in_progress(proc):
+            return rebase.RebasePushResult(exit_code=0)
         result = _continue_checkpoint_rebase()
         if result.exit_code != _REBASE_FAILED_EXIT:
             return result
