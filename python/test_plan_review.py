@@ -855,6 +855,63 @@ printf 'REVISE_STATUS=ok\\n'
     assert (tmp_path / "plan.txt").read_text(encoding="utf-8") == snapshot.read_text(encoding="utf-8")
 
 
+def test_terminal_zero_accepted_round_writes_round_meta(tmp_path: Path) -> None:
+    # Regression for #4811: a plan-review run that stops on a 0-accepted final
+    # round must still write round-meta.json for that round, so the Review Phase
+    # Detail table includes it and the table row count matches the header count.
+    _write_run_params(tmp_path)
+    meta_stub = tmp_path / "write-meta-stub.sh"
+    _ = meta_stub.write_text(
+        """#!/usr/bin/env bash
+set -euo pipefail
+round_dir=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in --round-dir) round_dir="${2:?}"; shift 2 ;; *) shift ;; esac
+done
+mkdir -p "$round_dir"
+printf '{"tally":{"ACCEPTED_COUNT":0}}\\n' >"$round_dir/round-meta.json"
+""",
+        encoding="utf-8",
+    )
+    meta_stub.chmod(0o755)
+    continuation_stub = tmp_path / "continuation-stub.sh"
+    _ = continuation_stub.write_text(
+        """#!/usr/bin/env bash
+set -euo pipefail
+printf 'PLAN_REVIEW_CONTINUE=false\\nPLAN_REVIEW_CONTINUE_REASON=small-clean\\n'
+""",
+        encoding="utf-8",
+    )
+    continuation_stub.chmod(0o755)
+    round_stub = _write_loop_stub(
+        tmp_path,
+        (
+            "printf 'LOOP_STATUS=complete\\nACCEPTED_COUNT=0\\nDEGRADED_PANEL=0\\n"
+            "ROUNDS_COMPLETED=1\\nTALLY_PLAN_REVIEW_STATUS=ok\\n"
+            "AGGREGATOR_STATUS=ok\\nVOTING_TALLY_FILE=\\n'"
+        ),
+    )
+    proc = run_cli(
+        "plan-review",
+        "run",
+        "--design-tmpdir",
+        str(tmp_path),
+        "--mode",
+        "loop",
+        env={
+            "LARCH_QUIET_DISABLE": "1",
+            "RUN_STEP3_PLAN_REVIEW_LOOP_SH": str(round_stub),
+            "RUN_STEP3_CONTINUATION_SH": str(continuation_stub),
+            "WRITE_DESIGN_ROUND_META_SH": str(meta_stub),
+        },
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "STEP3_REVIEW_LOOP_STATUS=complete" in proc.stdout
+    # The terminal 0-accepted round now has round-meta.json, so _completed_round_dirs
+    # (the Review Phase Detail source set) includes it. Before the fix it was absent.
+    assert (tmp_path / "plan-review" / "round-1" / "round-meta.json").is_file(), proc.stdout
+
+
 def test_record_round_timing_idempotent_and_round_snapshot_counts(tmp_path: Path) -> None:
     _ = (tmp_path / "accepted-plan-findings.md").write_text("### FINDING_1:\n### FINDING_2:\n", encoding="utf-8")
     _ = (tmp_path / "rejected-findings.md").write_text("### [Plan Review] FINDING_1\n", encoding="utf-8")

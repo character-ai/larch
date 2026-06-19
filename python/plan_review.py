@@ -956,11 +956,31 @@ def _run_dedup(tmpdir: Path, round_num: int, values: dict[str, str]) -> int:
     return 0
 
 
+def _write_design_round_meta(tmpdir: Path, round_num: int) -> None:
+    """Persist ``round-meta.json`` for a completed plan-review round.
+
+    Every round that ran a full panel+vote must write ``round-meta.json`` so the
+    Review Phase Detail table (``progress_report._completed_round_dirs``) counts
+    it. The terminal 0-accepted stop round never enters the apply/revise path, so
+    without an explicit write here it is dropped from the table while the
+    run-summary header still counts it (header vs table round-count mismatch).
+    """
+    round_dir = str(tmpdir / "plan-review" / f"round-{round_num}")
+    round_meta_override = os.environ.get("WRITE_DESIGN_ROUND_META_SH")
+    if round_meta_override:
+        # Test/harness override only; production uses the migrated Python CLI verb below.
+        if Path(round_meta_override).exists() and os.access(round_meta_override, os.X_OK):
+            _ = _run_command([round_meta_override, "--round-dir", round_dir])
+    else:
+        _ = _run_command([sys.executable, str(_plugin_root() / "python" / "cli.py"), "progress", "write-design-round-meta", "--round-dir", round_dir])
+
+
 def _run_apply(tmpdir: Path, round_num: int, values: dict[str, str]) -> int:
     accepted = _count_accepted(tmpdir)
     values["ACCEPTED_COUNT"] = str(accepted)
     if accepted == 0:
         _consume_approval_env(tmpdir, round_num)
+        _write_design_round_meta(tmpdir, round_num)
         _write_phase(tmpdir, round_num, "awaiting-continuation")
         return 0
     findings_file = _resolve_findings_file(tmpdir, round_num)
@@ -969,6 +989,7 @@ def _run_apply(tmpdir: Path, round_num: int, values: dict[str, str]) -> int:
     if not findings_file.is_file() or findings_file.is_symlink() or findings_file.stat().st_size == 0:
         _write_atomic(tmpdir / "accepted-plan-findings.md", "")
         _consume_approval_env(tmpdir, round_num)
+        _write_design_round_meta(tmpdir, round_num)
         _write_phase(tmpdir, round_num, "awaiting-continuation")
         return 0
     snapshot = _snapshot_plan(tmpdir, round_num)
@@ -1024,14 +1045,7 @@ def _run_apply(tmpdir: Path, round_num: int, values: dict[str, str]) -> int:
     if proc.returncode != 0 or revise_status not in {"ok", "ok-fallback"}:
         _write_phase(tmpdir, round_num, "awaiting-apply")
         return 21
-    round_dir = str(tmpdir / "plan-review" / f"round-{round_num}")
-    round_meta_override = os.environ.get("WRITE_DESIGN_ROUND_META_SH")
-    if round_meta_override:
-        # Test/harness override only; production uses the migrated Python CLI verb below.
-        if Path(round_meta_override).exists() and os.access(round_meta_override, os.X_OK):
-            _ = _run_command([round_meta_override, "--round-dir", round_dir])
-    else:
-        _ = _run_command([sys.executable, str(_plugin_root() / "python" / "cli.py"), "progress", "write-design-round-meta", "--round-dir", round_dir])
+    _write_design_round_meta(tmpdir, round_num)
     _write_phase(tmpdir, round_num, "awaiting-post-apply")
     return _run_dedup(tmpdir, round_num, values)
 
@@ -1267,6 +1281,7 @@ def run_step3_review(argv: Sequence[str]) -> int:
                     degraded_exit = True
                     degraded_values = dict(values)
                 if accepted == 0:
+                    _write_design_round_meta(tmpdir, round_num)
                     _write_phase(tmpdir, round_num, "awaiting-continuation")
                 elif approve_requested:
                     _write_phase(tmpdir, round_num, "awaiting-apply")
