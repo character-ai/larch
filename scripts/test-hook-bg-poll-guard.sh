@@ -127,23 +127,37 @@ compound_wrapper_probe="\"\$HOME/.cache/larch/sessions/design-run-123.sh\" desig
 out=$(run_payload "$(payload_bash "$compound_wrapper_probe")")
 assert_deny "$out" 'compound wrapper plus appended probe denies'
 
+# #4725: the bare background sleep-loop Step 3 recovery waiter is now DENIED (it
+# used to be allowed). It is a zero-output background task that breeds its own
+# premature notifications, so the guard forces the foreground, non-sleeping
+# terminal-sentinel probe path instead.
 step3_recovery_waiter="until [ -f \"\$DESIGN_TMPDIR/.completed/step-3-terminal\" ]; do sleep 30; done"
 out=$(run_payload "$(payload_bash "$step3_recovery_waiter" "$D")")
-assert_allow "$out" 'exact Step 3 recovery waiter allows'
+assert_deny "$out" 'exact Step 3 recovery waiter denies'
 
 step3_recovery_waiter_braced="until [ -f \"\${DESIGN_TMPDIR}/.completed/step-3-terminal\" ]; do sleep 30; done"
 out=$(run_payload "$(payload_bash "$step3_recovery_waiter_braced" "$D")")
-assert_allow "$out" 'braced Step 3 recovery waiter allows'
+assert_deny "$out" 'braced Step 3 recovery waiter denies'
 
-# #4489: a single leading DESIGN_TMPDIR=<abs>; assignment is accepted so the
-# waiter resolves when the shell has not exported $DESIGN_TMPDIR.
+# #4489 / #4725: a single leading DESIGN_TMPDIR=<abs>; assignment still matches the
+# exact-waiter shape, so the prefixed waiter is denied too.
 step3_recovery_waiter_prefixed="DESIGN_TMPDIR=/tmp/larch-design-xyz; until [ -f \"\$DESIGN_TMPDIR/.completed/step-3-terminal\" ]; do sleep 30; done"
 out=$(run_payload "$(payload_bash "$step3_recovery_waiter_prefixed" "$D")")
-assert_allow "$out" 'DESIGN_TMPDIR-prefixed Step 3 recovery waiter allows'
+assert_deny "$out" 'DESIGN_TMPDIR-prefixed Step 3 recovery waiter denies'
 
 step3_recovery_waiter_prefixed_braced="DESIGN_TMPDIR=/tmp/larch-design-xyz; until [ -f \"\${DESIGN_TMPDIR}/.completed/step-3-terminal\" ]; do sleep 30; done"
 out=$(run_payload "$(payload_bash "$step3_recovery_waiter_prefixed_braced" "$D")")
-assert_allow "$out" 'DESIGN_TMPDIR-prefixed braced Step 3 recovery waiter allows'
+assert_deny "$out" 'DESIGN_TMPDIR-prefixed braced Step 3 recovery waiter denies'
+
+# #4725: the sanctioned replacement for the denied waiter is the foreground,
+# non-sleeping terminal-sentinel probe, which stays allowed when the sentinel is
+# absent (WAIT branch). Co-located here to pin the deny-the-loop / allow-the-probe
+# contract at the flip site.
+write_marker $$ "$(date +%s)" 21600 design-step3-review
+rm -f "$D/.completed/step-3-terminal"
+step3_foreground_probe_alt="[ -f \"\$DESIGN_TMPDIR/.completed/step-3-terminal\" ] && echo DONE || echo WAIT"
+out=$(run_payload "$(payload_bash "$step3_foreground_probe_alt" "$D")")
+assert_allow "$out" 'foreground terminal-sentinel probe (sanctioned waiter replacement) allows'
 
 step3_recovery_waiter_prefixed_probe="DESIGN_TMPDIR=/tmp/larch-design-xyz; until [ -f \"\$DESIGN_TMPDIR/.completed/step-3-terminal\" ]; do sleep 30; done && cat \"\$DESIGN_TMPDIR/.step3-review-result.env\""
 out=$(run_payload "$(payload_bash "$step3_recovery_waiter_prefixed_probe" "$D")")

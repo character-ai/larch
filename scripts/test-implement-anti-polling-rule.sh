@@ -5,9 +5,9 @@
 # Pins the anti-polling-loop, Monitor-ban, and recovery-contract literals
 # in four files:
 #   (1) AGENTS.md: the Monitor / Bash-polling-loop bullet must mention BOTH
-#       Monitor and Bash run_in_background polling loops, plus the narrow
-#       single-waiter premature-notification recovery guidance and the
-#       foreground terminal-sentinel fallback.
+#       Monitor and Bash run_in_background polling loops, plus the
+#       foreground-terminal-sentinel-probe primary recovery guidance and the
+#       background-recovery-waiter ban (#4725).
 #   (2) skills/implement/SKILL.md: Step 5 delegates reviewer waiting to
 #       skills/implement/scripts/step-5-review.sh (no ad-hoc polling loops), and
 #       the NEVER list bans Monitor fallback for one-shot completion.
@@ -15,8 +15,9 @@
 #       the result-file sleep-loop ban and consequence prose, and the
 #       Anti-patterns list bans Monitor fallback for one-shot completion.
 #   (4) skills/shared/orchestrator-never.md: the shared NEVER list carries the
-#       run_in_background result-file sleep-loop ban, narrow single-waiter
-#       premature-notification recovery guidance, and foreground fallback.
+#       run_in_background result-file sleep-loop ban, foreground-terminal-
+#       sentinel-probe primary recovery guidance, and the background-recovery-
+#       waiter ban (#4725).
 #
 # Wired into `make lint` via the `test-implement-anti-polling-rule` target.
 # Runtime enforcement is the model-level reading of the prose; this harness
@@ -90,19 +91,27 @@ check "$ORCH_NEVER_MD" \
     "$ORCH_NEVER_LITERAL"
 
 check "$ORCH_NEVER_MD" \
-    "shared orchestrator NEVER pins premature-notification recovery as primary single-waiter guidance" \
-    'the primary recovery path is one re-launched immediate-background completion waiter'
+    "shared orchestrator NEVER pins foreground-probe primary recovery guidance" \
+    'the sanctioned recovery path is one foreground terminal-sentinel probe per explicit recovery turn'
 
 check "$ORCH_NEVER_MD" \
-    "shared orchestrator NEVER pins foreground terminal-sentinel fallback" \
-    'one foreground terminal-sentinel probe per explicit recovery turn'
+    "shared orchestrator NEVER bans the background recovery waiter (#4725)" \
+    'NEVER launch a background recovery waiter'
 
 check "$AGENTS_MD" \
-    "AGENTS.md covers premature-notification recovery with primary single-waiter guidance" \
-    'the primary recovery path is one re-launched immediate-background completion waiter'
+    "AGENTS.md pins foreground-probe primary recovery guidance" \
+    'the sanctioned recovery path is one foreground non-sleeping'
 
 check "$AGENTS_MD" \
-    "AGENTS.md pins foreground terminal-sentinel fallback" \
+    "AGENTS.md bans the background recovery waiter (#4725)" \
+    'NEVER launch a background recovery waiter'
+
+check "$AGENTS_MD" \
+    "AGENTS.md documents the notification-refire platform assumption" \
+    'the backgrounded task reliably re-fires a `<task-notification>` on completion'
+
+check "$AGENTS_MD" \
+    "AGENTS.md pins foreground terminal-sentinel probe form" \
     'one foreground non-sleeping `[ -f … ]` or `test -f …` probe against the relevant terminal completion sentinel'
 
 check "$IMPL_MD" \
@@ -110,8 +119,12 @@ check "$IMPL_MD" \
     'NEVER use the `Monitor` tool anywhere within the `/implement` orchestrator'
 
 check "$IMPL_MD" \
-    "SKILL.md NEVER list pins /implement premature-notification recovery as narrow single-waiter guidance" \
-    'only sanctioned exception to the Bash polling-loop ban is one re-launched immediate-background completion waiter'
+    "SKILL.md NEVER list pins /implement foreground-probe recovery as the only sanctioned exception" \
+    'only sanctioned exception to the Bash polling-loop ban is one foreground, non-sleeping terminal-sentinel probe'
+
+check "$IMPL_MD" \
+    "SKILL.md NEVER list bans the background recovery waiter (#4725)" \
+    'NEVER launch a background recovery waiter'
 
 check "$IMPL_MD" \
     "SKILL.md NEVER list tells /implement not to fall back to Monitor" \
@@ -122,16 +135,20 @@ check "$DESIGN_MD" \
     'NEVER use the `Monitor` tool anywhere within the `/design` orchestrator'
 
 check "$DESIGN_MD" \
-    "/design Anti-patterns pins premature-notification recovery as primary single-waiter guidance" \
-    'the primary recovery path is one re-launched immediate-background completion waiter'
+    "/design Anti-patterns pins foreground-probe primary recovery guidance" \
+    'the sanctioned recovery path is one foreground, non-sleeping terminal-sentinel probe per recovery turn'
 
 check "$DESIGN_MD" \
-    "/design Anti-patterns pins Step 3 terminal sentinel for recovery waiters" \
+    "/design Anti-patterns bans the background recovery waiter (#4725)" \
+    'NEVER launch a background recovery waiter'
+
+check "$DESIGN_MD" \
+    "/design Anti-patterns pins Step 3 terminal sentinel for the foreground recovery probe" \
     'Step 3-specific recovery note: the completion condition MUST be `[ -f "$DESIGN_TMPDIR/.completed/step-3-terminal" ]`; it MUST NOT be `.step3-review-result.env`.'
 
 check "$DESIGN_MD" \
-    "/design Anti-patterns pins foreground terminal-sentinel fallback" \
-    'Foreground terminal-sentinel fallback: after a premature empty notification and a killed or unsuitable recovery waiter'
+    "/design Anti-patterns pins foreground terminal-sentinel probe" \
+    'Foreground terminal-sentinel probe: after a premature empty notification'
 
 check "$AGENTS_MD" \
     "AGENTS.md pins DESIGN_TMPDIR prefix for foreground probes" \
@@ -143,7 +160,7 @@ check "$ORCH_NEVER_MD" \
 
 check "$DESIGN_MD" \
     "/design Anti-patterns pins DESIGN_TMPDIR prefix for foreground probes" \
-    'prefix the waiter or foreground probe with a single `DESIGN_TMPDIR=<absolute-path>;` assignment'
+    'prefix the foreground probe with a single `DESIGN_TMPDIR=<absolute-path>;` assignment'
 
 check "$DESIGN_MD" \
     "/design Step 3 complete route requires terminal sentinel before envelope parse" \
