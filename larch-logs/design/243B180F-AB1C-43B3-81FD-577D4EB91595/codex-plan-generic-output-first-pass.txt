@@ -1,2 +1,0 @@
-schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
-1	in_scope	important	requirements	<TMPDIR>/plan.txt:100-108	Testing strategy makes the repo-mandated relevant-checks run optional	AGENTS.md requires bash scripts/relevant-checks.sh or make lint after any change, but the plan allows stopping after the first two tests when time is tight	Remove the optional fallback, or state that skipping bash scripts/relevant-checks.sh must be reported as an unrun required check

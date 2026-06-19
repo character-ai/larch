@@ -1,7 +1,0 @@
-schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
-1	in_scope	important	correctness	skills/implement/SKILL.md:58-60,768-792	Plan changes Python Step 9a.1 completion semantics but omits the shipped /implement prompt contract	After a checkpoint-failed Python OOS filing leaves provisional oos-issues.ndjson, the unchanged prompt text still says ndjson suppresses step9a1=false and describes checkpoint only on the bash path	Add skills/implement/SKILL.md to the plan and update the Python oos file and bail-time invariant text so only post-checkpoint run-statistics.md or explicit steps_ran.step9a1=true marks Step 9a.1 complete
-
-1. **[correctness / risk-integration]** `skills/implement/SKILL.md:58-60,768-792`
-   - **Concern:** The plan updates code and docs for provisional `oos-issues.ndjson`, but not the shipped `/implement` prompt.
-   - **Breakage:** A checkpoint failure can leave `oos-issues.ndjson` without `run-statistics.md`. The current prompt still treats that as suppressing `steps_ran.step9a1=false`.
-   - **Suggested revision:** Add `skills/implement/SKILL.md` to the plan. Update the Python OOS hook and bail-time invariant to match the new checkpoint-gated completion rule.

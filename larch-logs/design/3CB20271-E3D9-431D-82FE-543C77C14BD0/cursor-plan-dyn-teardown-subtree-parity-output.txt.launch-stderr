@@ -1,8 +1,0 @@
-health-probe fast-fail: cursor unhealthy before launch
-❌ cursor agent: FAILED (exit code 1, output 0 bytes)
-⏳ cursor agent: still running (1m elapsed)
-⏳ cursor agent: still running (2m elapsed)
-⏳ cursor agent: still running (3m elapsed)
-⏳ cursor agent: still running (4m elapsed)
-⏳ cursor agent: still running (5m elapsed)
-✓ cursor agent: completed (exit code 0, output 463 bytes)

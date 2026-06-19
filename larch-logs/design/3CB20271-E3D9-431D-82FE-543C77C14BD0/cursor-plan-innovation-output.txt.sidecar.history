@@ -1,8 +1,0 @@
-===== attempt diag =====
-health-probe fast-fail: cursor unhealthy before launch
-health-probe timed out after 30s
-
-===== cursor auth attempt diag =====
-Error: Security command failed: Security process exited with code: 45
-Failed with exit code 1. Output size: 0 bytes.
-

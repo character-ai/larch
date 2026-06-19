@@ -1,2 +1,0 @@
-schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
-1	in_scope	important	correctness	scripts/test-render-run-summary.sh:27-62	Plan adds grep for `Lines (PR diff): code +` but not the argv setup that produces it	The primary implement fixture never passes `--code-added`/`--code-deleted`/`--logs-added`/`--logs-deleted`, so the new assertion cannot pass as written	In the same plan section, require extending the full-input implement invocation (and any other positive case) with the four line-count flags before adding the `code +` grep

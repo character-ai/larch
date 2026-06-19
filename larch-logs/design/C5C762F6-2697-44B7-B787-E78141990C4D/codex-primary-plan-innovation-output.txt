@@ -1,7 +1,0 @@
-schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
-1	in_scope	important	correctness	python/pytest_ci_timing.py (new); python/harness_ci_timing.py:148-152	Pytest shard totals deliberately skip retry-attempt dedup	The plan says successful verification runs make harness-style attempt dedup out of scope, but the existing harness parser handles successful gh run view --log output that may include retried matrix job attempts. A rerun python-tests shard would have both attempts summed, so Python verification can fail on a false spread or compute bad shard medians.	Mirror the harness latest-attempt handling for pytest rows before shard_totals_per_run sums a run/shard; keep only the latest attempt.
-
-1. **[correctness]** `python/pytest_ci_timing.py` **omits retry dedup**.
-   - **Concern:** The plan rejects the harness `_split_shard_attempts` logic.
-   - **Breakage:** A successful workflow can still include retried matrix job output in `gh run view --log`.
-   - **Suggested revision:** Sum only the latest attempt per `(run_id, shard)`, matching the harness parser contract.

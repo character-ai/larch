@@ -1,2 +1,0 @@
-schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
-1	in_scope	important	architecture	python/agents.py:2514-2529,4797-4839	[SCOPE-REDUCTION] Planned per-tier launcher args widen the CI launcher surface unnecessarily	ci agentic-fix already owns --pr, --base-remote, --base-ref, and --max-cycles; passing them through agent launch-claude-ci either forces unrelated parser churn or fails argparse if parser support is missed	Keep those args only on ci agentic-fix; keep build_launch_argv limited to fields the tier prompt actually consumes

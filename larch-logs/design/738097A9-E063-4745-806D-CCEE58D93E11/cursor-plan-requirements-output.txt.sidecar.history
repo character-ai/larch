@@ -1,8 +1,0 @@
-===== cursor auth attempt diag =====
-Error: Password not found for account 'cursor-user' and service 'cursor-access-token'
-Failed with exit code 1. Output size: 0 bytes.
-
-===== cursor auth attempt diag =====
-Error: Security command failed: Security process exited with code: 45
-Failed with exit code 1. Output size: 0 bytes.
-

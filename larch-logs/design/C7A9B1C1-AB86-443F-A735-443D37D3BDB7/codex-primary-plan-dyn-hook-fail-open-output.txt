@@ -1,9 +1,0 @@
-schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
-1	in_scope	important	correctness	scripts/test-sessionstart-health.sh:145-153	Planned SessionStart no-spawn regression is not observable	A failing python3 stub with no claude-implement-* dirs still passes if the hook incorrectly spawns python3 and then swallows the non-zero exit, so the explicit no-spawn gate is not pinned	Make the stub write a marker or counter and assert it is absent, or add a small structural check that the claude-implement-* pre-check occurs before the python3 CLI call
-
-1. **[correctness] `scripts/test-sessionstart-health.sh:145-153`**
-
-- **Concern:** The plan's SessionStart no-spawn test is not observable.
-- **Why:** Plan line 122 says to use a failing `python3` stub with no `claude-implement-*` dirs.
-- **Breakage:** If the hook still spawns Python before the pre-check, the fail-open wrapper would swallow the stub's non-zero exit. The test would still see exit 0 and no advisory.
-- **Suggested revision:** Add a marker-writing stub and assert the marker is absent. Keep this as a minimal single-case check.

@@ -1,2 +1,0 @@
-schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
-1	in_scope	important	risk-integration	scripts/dispatch-with-waterfall.sh:262-280	EXIT trap kill loop can abort on a raced-away PID	With multiple launcher PIDs, one PID can exit between copying pids and sending TERM. Under set -e, a bare failed kill exits the trap before TERM reaches remaining live launchers, leaving the orphan class this feature is meant to clean.	Make each kill best-effort, for example kill -TERM "$pid" 2>/dev/null || true, then keep the existing best-effort wait loop.

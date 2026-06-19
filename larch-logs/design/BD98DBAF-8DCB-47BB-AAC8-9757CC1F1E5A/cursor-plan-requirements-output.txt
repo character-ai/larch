@@ -1,2 +1,0 @@
-Reading the plan and validating it against the eight issue items.
-{"no_issues_found": true}

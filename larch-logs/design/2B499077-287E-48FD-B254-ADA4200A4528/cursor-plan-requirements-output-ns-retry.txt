@@ -1,2 +1,0 @@
-Reviewing the plan against the feature scope and inspecting the cited scripts.
-{"no_issues_found": true}

@@ -1,2 +1,0 @@
-Reading the plan and the CI/Makefile surfaces it cites to check requirements coverage.
-{"no_issues_found": true}
