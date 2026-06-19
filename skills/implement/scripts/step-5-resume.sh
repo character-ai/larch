@@ -83,7 +83,18 @@ if [ "$RECORD_ONLY" = true ]; then
   exit 0
 fi
 if [ "$READY" = true ] || [ "${STEP5_HANDOFF_READY_TO_COMMIT:-false}" = true ]; then
-  python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" review-and-fix commit-fixes --stage-all || true
+  set +e
+  commit_output="$(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" review-and-fix commit-fixes --stage-all)"
+  commit_rc=$?
+  set -e
+  printf '%s\n' "$commit_output" | awk -F= '$1 == "COMMITTED" || $1 == "ERROR" || $1 == "SHA" { print }'
+  porcelain="$(git status --porcelain)"
+  if [ -n "$porcelain" ]; then
+    if [ "$commit_rc" -ne 0 ]; then
+      exit "$commit_rc"
+    fi
+    exit 1
+  fi
 fi
 printf '%s
 ' 'progress: type p (or progress) at any time'

@@ -628,18 +628,19 @@ def _path_matches_attempt_snapshot(round_dir: Path, pre_head: str, path: str) ->
     return wt_diff == _read_text(wt_snap) and idx_diff == _read_text(idx_snap)
 
 
-def _round_coder_delta_paths(round_dir: Path, pre_head: str) -> list[str]:
+def _round_coder_delta_paths(round_dir: Path, diff_base: str, *, snapshot_head: str | None = None) -> list[str]:
     snap_dir = pre_coder_snapshot_dir(round_dir)
     pre_tracked = snap_dir / "pre-coder-tracked-paths.txt"
     pre_tracked_set: set[str] = (
         {line for line in _read_text(pre_tracked).splitlines() if line} if pre_tracked.is_file() else set()
     )
+    compare_head = snapshot_head if snapshot_head is not None else diff_base
     deltas: list[str] = []
     seen: set[str] = set()
-    for path in _tracked_paths_vs_ref(pre_head):
+    for path in _tracked_paths_vs_ref(diff_base):
         if not path or path in seen:
             continue
-        if path in pre_tracked_set and _path_matches_pre_coder_snapshot(round_dir, pre_head, path):
+        if path in pre_tracked_set and _path_matches_pre_coder_snapshot(round_dir, compare_head, path):
             continue
         seen.add(path)
         deltas.append(path)
@@ -883,18 +884,42 @@ def _cleanup_failed_coder_attempt(round_dir: Path) -> bool:
     return _finalize_failed_cleanup(round_dir, pre_head=pre_head, mode=mode, reason="verification failed")
 
 
-def _collect_round_stage_paths(round_dir: Path) -> list[str]:
+def _round_diff_base(round_dir: Path, *, since_committed: bool) -> str:
+    snap_dir = pre_coder_snapshot_dir(round_dir)
+    if since_committed:
+        post_head_file = round_dir / "post-coder-head.txt"
+        if post_head_file.is_file() and post_head_file.stat().st_size:
+            return _read_text(post_head_file).strip()
+    pre_head_file = snap_dir / "pre-coder-head.txt"
+    if pre_head_file.is_file() and pre_head_file.stat().st_size:
+        return _read_text(pre_head_file).strip()
+    return ""
+
+
+def _round_has_full_pre_coder_snapshot(round_dir: Path) -> bool:
+    snap_dir = pre_coder_snapshot_dir(round_dir)
+    return (
+        (snap_dir / "pre-coder-tracked-paths.txt").is_file()
+        and (snap_dir / "pre-coder-untracked-paths.txt").is_file()
+    )
+
+
+def _collect_round_stage_paths(round_dir: Path, *, since_committed: bool = False) -> list[str]:
+    diff_base = _round_diff_base(round_dir, since_committed=since_committed)
     snap_dir = pre_coder_snapshot_dir(round_dir)
     pre_head_file = snap_dir / "pre-coder-head.txt"
+    snapshot_head = _read_text(pre_head_file).strip() if pre_head_file.is_file() and pre_head_file.stat().st_size else ""
+    snapshot_kw: dict[str, str] = {}
+    if snapshot_head and snapshot_head != diff_base:
+        snapshot_kw["snapshot_head"] = snapshot_head
     paths: list[str] = []
     seen: set[str] = set()
     mode = _snapshot_mode(round_dir)
-    if mode in {"full", "head_untracked"} and pre_head_file.is_file() and pre_head_file.stat().st_size:
-        pre_head = _read_text(pre_head_file).strip()
+    if mode in {"full", "head_untracked"} and diff_base:
         tracked = (
-            _round_coder_delta_paths(round_dir, pre_head)
+            _round_coder_delta_paths(round_dir, diff_base, **snapshot_kw)
             if mode == "full"
-            else _round_attempt_tracked_delta_paths(round_dir, pre_head)
+            else _round_attempt_tracked_delta_paths(round_dir, diff_base)
         )
         for path in tracked:
             if path not in seen:
@@ -912,6 +937,106 @@ def _collect_round_stage_paths(round_dir: Path) -> list[str]:
     else:
         untracked = _capture_round_untracked_paths()
     for path in untracked:
+        if path not in seen:
+            seen.add(path)
+            paths.append(path)
+    return paths
+
+
+def _self_review_snapshot_dir(implement_tmpdir: Path) -> Path:
+    return implement_tmpdir / "self-review-snapshot"
+
+
+def _write_pre_self_review_snapshot(implement_tmpdir: Path) -> str:
+    snap_dir = _self_review_snapshot_dir(implement_tmpdir)
+    snap_dir.mkdir(parents=True, exist_ok=True)
+    for name in (
+        "pre-self-review-head.txt",
+        "pre-self-review-tracked-paths.txt",
+        "pre-self-review-untracked-paths.txt",
+    ):
+        with contextlib.suppress(FileNotFoundError):
+            (snap_dir / name).unlink()
+    diffs_dir = snap_dir / "pre-self-review-path-diffs"
+    if diffs_dir.is_dir():
+        shutil.rmtree(diffs_dir, ignore_errors=True)
+    head = _git_head()
+    if not head:
+        return ""
+    _write_text(snap_dir / "pre-self-review-head.txt", head + "\n")
+    tracked = _capture_round_tracked_paths()
+    _write_text(snap_dir / "pre-self-review-tracked-paths.txt", "\n".join(tracked) + ("\n" if tracked else ""))
+    untracked = _capture_round_untracked_paths()
+    _write_text(
+        snap_dir / "pre-self-review-untracked-paths.txt",
+        "\n".join(untracked) + ("\n" if untracked else ""),
+    )
+    diffs_dir.mkdir(parents=True, exist_ok=True)
+    for path in tracked:
+        safe = path.replace("/", "__").replace("\\", "__")
+        (diffs_dir / f"{safe}.patch").write_text(_git_output(["diff", head, "--", path]), encoding="utf-8")
+        (diffs_dir / f"{safe}.cached.patch").write_text(
+            _git_output(["diff", "--cached", head, "--", path]),
+            encoding="utf-8",
+        )
+    return head
+
+
+def _path_matches_pre_self_review_snapshot(implement_tmpdir: Path, pre_head: str, path: str) -> bool:
+    snap_dir = _self_review_snapshot_dir(implement_tmpdir)
+    safe = path.replace("/", "__").replace("\\", "__")
+    wt_snap = snap_dir / "pre-self-review-path-diffs" / f"{safe}.patch"
+    idx_snap = snap_dir / "pre-self-review-path-diffs" / f"{safe}.cached.patch"
+    if not wt_snap.is_file() or not idx_snap.is_file():
+        return False
+    wt_diff = _git_output(["diff", pre_head, "--", path])
+    idx_diff = _git_output(["diff", "--cached", pre_head, "--", path])
+    return wt_diff == _read_text(wt_snap) and idx_diff == _read_text(idx_snap)
+
+
+def _self_review_delta_paths(implement_tmpdir: Path, pre_head: str) -> list[str]:
+    snap_dir = _self_review_snapshot_dir(implement_tmpdir)
+    pre_tracked = snap_dir / "pre-self-review-tracked-paths.txt"
+    pre_tracked_set: set[str] = (
+        {line for line in _read_text(pre_tracked).splitlines() if line} if pre_tracked.is_file() else set()
+    )
+    deltas: list[str] = []
+    seen: set[str] = set()
+    for path in _git_output(["diff", "--name-only", pre_head]).splitlines():
+        if not path or path in seen:
+            continue
+        if path in pre_tracked_set and _path_matches_pre_self_review_snapshot(implement_tmpdir, pre_head, path):
+            continue
+        seen.add(path)
+        deltas.append(path)
+    return deltas
+
+
+def _self_review_untracked_delta_paths(implement_tmpdir: Path) -> list[str]:
+    snap_dir = _self_review_snapshot_dir(implement_tmpdir)
+    pre_untracked = {
+        line for line in _read_text(snap_dir / "pre-self-review-untracked-paths.txt").splitlines() if line
+    }
+    return [path for path in _capture_round_untracked_paths() if path not in pre_untracked]
+
+
+def _collect_self_review_stage_paths(implement_tmpdir: Path) -> list[str]:
+    if not (implement_tmpdir / "self-review-accepted.md").is_file():
+        return []
+    snap_dir = _self_review_snapshot_dir(implement_tmpdir)
+    pre_head_file = snap_dir / "pre-self-review-head.txt"
+    if not pre_head_file.is_file() or not pre_head_file.stat().st_size:
+        return []
+    pre_head = _read_text(pre_head_file).strip()
+    if not pre_head:
+        return []
+    paths: list[str] = []
+    seen: set[str] = set()
+    for path in _self_review_delta_paths(implement_tmpdir, pre_head):
+        if path not in seen:
+            seen.add(path)
+            paths.append(path)
+    for path in _self_review_untracked_delta_paths(implement_tmpdir):
         if path not in seen:
             seen.add(path)
             paths.append(path)
@@ -947,24 +1072,6 @@ def _post_dispatch_submodule_revert(round_dir: Path, submodules: list[str]) -> i
     return revert_count
 
 
-def _write_mav_pre_coder_head_snapshot(round_dir: Path) -> str:
-    snap_dir = pre_coder_snapshot_dir(round_dir)
-    snap_dir.mkdir(parents=True, exist_ok=True)
-    _clear_stale_pre_coder_snapshot_artifacts(snap_dir)
-    head = _git_head()
-    pre_head = snap_dir / "pre-coder-head.txt"
-    if head:
-        _write_text(pre_head, head + "\n")
-        untracked = _capture_round_untracked_paths()
-        _write_text(snap_dir / "pre-coder-untracked-paths.txt", "\n".join(untracked) + ("\n" if untracked else ""))
-        pre_head.chmod(0o444)
-        _harden_pre_coder_snapshot_perms(snap_dir)
-    else:
-        with contextlib.suppress(FileNotFoundError):
-            pre_head.unlink()
-    return head
-
-
 def _write_pre_coder_snapshot(round_dir: Path) -> str:
     snap_dir = pre_coder_snapshot_dir(round_dir)
     snap_dir.mkdir(parents=True, exist_ok=True)
@@ -985,6 +1092,87 @@ def _write_pre_coder_snapshot(round_dir: Path) -> str:
 def _ensure_pre_coder_snapshot(round_dir: Path) -> None:
     if _snapshot_mode(round_dir) == "missing":
         _write_pre_coder_snapshot(round_dir)
+
+
+def _lint_fix_snapshot_dir(round_dir: Path) -> Path:
+    return round_dir / "lint-fix-snapshot"
+
+
+def _write_pre_lint_snapshot(round_dir: Path) -> str:
+    snap_dir = _lint_fix_snapshot_dir(round_dir)
+    snap_dir.mkdir(parents=True, exist_ok=True)
+    for name in ("pre-lint-head.txt", "pre-lint-tracked-paths.txt"):
+        with contextlib.suppress(FileNotFoundError):
+            (snap_dir / name).unlink()
+    diffs_dir = snap_dir / "pre-lint-path-diffs"
+    if diffs_dir.is_dir():
+        shutil.rmtree(diffs_dir, ignore_errors=True)
+    head = _git_head()
+    if not head:
+        return ""
+    _write_text(snap_dir / "pre-lint-head.txt", head + "\n")
+    tracked = _capture_round_tracked_paths()
+    _write_text(snap_dir / "pre-lint-tracked-paths.txt", "\n".join(tracked) + ("\n" if tracked else ""))
+    diffs_dir.mkdir(parents=True, exist_ok=True)
+    for path in tracked:
+        safe = path.replace("/", "__").replace("\\", "__")
+        (diffs_dir / f"{safe}.patch").write_text(_git_output(["diff", head, "--", path]), encoding="utf-8")
+        (diffs_dir / f"{safe}.cached.patch").write_text(
+            _git_output(["diff", "--cached", head, "--", path]),
+            encoding="utf-8",
+        )
+    return head
+
+
+def _path_matches_pre_lint_snapshot(round_dir: Path, pre_lint_head: str, path: str) -> bool:
+    snap_dir = _lint_fix_snapshot_dir(round_dir)
+    safe = path.replace("/", "__").replace("\\", "__")
+    wt_snap = snap_dir / "pre-lint-path-diffs" / f"{safe}.patch"
+    idx_snap = snap_dir / "pre-lint-path-diffs" / f"{safe}.cached.patch"
+    if not wt_snap.is_file() or not idx_snap.is_file():
+        return False
+    wt_diff = _git_output(["diff", pre_lint_head, "--", path])
+    idx_diff = _git_output(["diff", "--cached", pre_lint_head, "--", path])
+    return wt_diff == _read_text(wt_snap) and idx_diff == _read_text(idx_snap)
+
+
+def _lint_fix_delta_paths(
+    round_dir: Path,
+    pre_lint_head: str,
+    unioned_delta_paths: tuple[str, ...],
+) -> tuple[str, ...]:
+    paths: set[str] = {path for path in unioned_delta_paths if path}
+    snap_dir = _lint_fix_snapshot_dir(round_dir)
+    pre_tracked = snap_dir / "pre-lint-tracked-paths.txt"
+    pre_tracked_set = {line for line in _read_text(pre_tracked).splitlines() if line}
+    for path in _git_output(["diff", "--name-only", pre_lint_head]).splitlines():
+        if not path:
+            continue
+        if path in pre_tracked_set and _path_matches_pre_lint_snapshot(round_dir, pre_lint_head, path):
+            continue
+        paths.add(path)
+    return tuple(sorted(paths))
+
+
+def _commit_lint_fix_delta_paths(round_num: int, round_dir: Path, commit_paths: tuple[str, ...], reason: str) -> str:
+    stage_file = round_dir / "lint-fix-stage-paths.txt"
+    _write_text(stage_file, "\n".join(commit_paths) + ("\n" if commit_paths else ""))
+    if not commit_paths:
+        return ""
+    _run(["git", "add", "--pathspec-from-file", str(stage_file)])
+    msg = f"Address lint fixes after review round {round_num}: {reason}"
+    commit = _run([
+        str(_plugin_root() / "scripts" / "git-commit.sh"),
+        "--only",
+        "--pathspec-from-file",
+        str(stage_file),
+        "-m",
+        msg,
+    ])
+    _append_text(round_dir / "lint-fix-commit.log", commit.stdout + commit.stderr)
+    if commit.returncode != 0:
+        return ""
+    return _git_head()
 
 
 def _structural_loc(pre_head_file: Path, post_head_file: Path) -> int:
@@ -1551,6 +1739,10 @@ def _run_lint_fix_loop(implement_tmpdir: Path, checks_log: str) -> dict[str, str
         allowed_tmpdir=str(implement_tmpdir),
     )
     values = {"LINT_FIX_STATUS": outcome.status}
+    if outcome.delta_paths:
+        values["LINT_FIX_DELTA_PATHS"] = ",".join(outcome.delta_paths)
+    if outcome.commit_sha:
+        values["LINT_FIX_COMMIT_SHA"] = outcome.commit_sha
     if outcome.stderr_tail_path:
         values["STDERR_TAIL_PATH"] = outcome.stderr_tail_path
     elif outcome.ledger_failure_detail_log:
@@ -1574,22 +1766,55 @@ def _step5_post_round_gates(
             return "stall", f"relevant-checks-{checks.get('FAILURE_REASON', 'unknown')}", False
         lint_max = _lint_fix_max_attempts()
         lint_attempts = 0
+        pre_lint_head = _write_pre_lint_snapshot(result.round_dir) if _git_status_porcelain().strip() else ""
+        lint_delta_paths: set[str] = set()
+        lint_applied_ever = False
+
+        def _lint_loop_successful_break(reason: str) -> tuple[str | None, str | None]:
+            if not lint_applied_ever:
+                return None, None
+            if not _git_status_porcelain().strip():
+                return None, None
+            if not pre_lint_head:
+                return None, None
+            commit_paths = _lint_fix_delta_paths(result.round_dir, pre_lint_head, tuple(sorted(lint_delta_paths)))
+            if not commit_paths:
+                return None, None
+            commit_sha = _commit_lint_fix_delta_paths(round_num, result.round_dir, commit_paths, reason)
+            if not commit_sha and _git_status_porcelain().strip():
+                return "stall", "lint-fix-commit-failed"
+            return None, None
+
         while True:
             lint = _run_lint_fix_loop(implement_tmpdir, checks["REDACTED_LOG_FILE"])
             lint_status = lint.get("LINT_FIX_STATUS", "")
             if lint_status == "applied":
+                lint_applied_ever = True
+                lint_delta_paths.update(path for path in lint.get("LINT_FIX_DELTA_PATHS", "").split(",") if path)
                 lint_attempts += 1
                 if lint_attempts >= lint_max:
                     recheck = _run_relevant_checks_captured(implement_tmpdir)
                     if recheck.get("RELEVANT_CHECKS_SKIPPED") == "true" or recheck.get("RELEVANT_CHECKS_OK") == "true":
+                        terminal, reason = _lint_loop_successful_break("cap-success")
+                        if terminal:
+                            return terminal, reason, False
                         break
                     if recheck.get("STATUS") != "fail":
+                        terminal, reason = _lint_loop_successful_break("cap-nonfail")
+                        if terminal:
+                            return terminal, reason, False
                         break
                     return "stall", "lint-fix-attempt-cap", False
                 recheck = _run_relevant_checks_captured(implement_tmpdir)
                 if recheck.get("RELEVANT_CHECKS_SKIPPED") == "true" or recheck.get("RELEVANT_CHECKS_OK") == "true":
+                    terminal, reason = _lint_loop_successful_break("recheck-pass")
+                    if terminal:
+                        return terminal, reason, False
                     break
                 if recheck.get("STATUS") != "fail":
+                    terminal, reason = _lint_loop_successful_break("recheck-nonfail")
+                    if terminal:
+                        return terminal, reason, False
                     break
                 continue
             if lint_status == "main-agent-required":
@@ -1598,6 +1823,9 @@ def _step5_post_round_gates(
                 if lint_status == "no-changes":
                     recheck = _run_relevant_checks_captured(implement_tmpdir)
                     if recheck.get("RELEVANT_CHECKS_SKIPPED") == "true" or recheck.get("RELEVANT_CHECKS_OK") == "true":
+                        terminal, reason = _lint_loop_successful_break("no-changes-pass")
+                        if terminal:
+                            return terminal, reason, False
                         break
                 return "stall", "lint-fix-failed", False
             return "stall", "lint-fix-failed", False
@@ -1798,6 +2026,29 @@ def _stage_and_commit_round(round_num: int, round_dir: Path) -> str:
     if commit.returncode != 0:
         return ""
     return _git_head()
+
+
+def _collect_review_fix_stage_paths(implement_tmpdir: Path) -> list[str]:
+    paths: list[str] = []
+    seen: set[str] = set()
+    for round_dir in sorted(implement_tmpdir.glob("round-*")):
+        if not round_dir.is_dir():
+            continue
+        pre_head_file = pre_coder_snapshot_dir(round_dir) / "pre-coder-head.txt"
+        if not pre_head_file.is_file() or not pre_head_file.stat().st_size:
+            continue
+        if not _round_has_full_pre_coder_snapshot(round_dir):
+            continue
+        for path in _collect_round_stage_paths(round_dir, since_committed=True):
+            if path not in seen:
+                seen.add(path)
+                paths.append(path)
+    if not paths:
+        for path in _collect_self_review_stage_paths(implement_tmpdir):
+            if path not in seen:
+                seen.add(path)
+                paths.append(path)
+    return paths
 
 
 def apply_findings_with_coder(input_file: Path, round_dir: Path, result_file: Path, round_num: int | None = None) -> CoderResult:
@@ -2488,7 +2739,7 @@ def step5(argv: list[str] | None = None) -> int:
             args.round_num = str(_positive_int(args.round_num, "--round-num"))
             round_dir = implement_tmpdir / f"round-{args.round_num}"
             round_dir.mkdir(parents=True, exist_ok=True)
-            _write_mav_pre_coder_head_snapshot(round_dir)
+            _write_pre_coder_snapshot(round_dir)
             coder = apply_findings_with_coder(Path(args.findings_file), round_dir, round_dir / "coder.env", int(args.round_num))
             if coder.rc == 0 and coder.status == "applied":
                 with contextlib.suppress(FileNotFoundError):
@@ -2781,8 +3032,42 @@ def commit_fixes(argv: list[str] | None = None) -> int:
     _run(["python3", str(cli), "token", "mark", "Step 7 — commit review fixes"])
     _run(["python3", str(cli), "timing", "mark", "Step 7 — commit review fixes"], env={**os.environ, "LARCH_TIMING_SKILL": "implement"})
     if args.stage_all:
-        _run(["git", "add", "-A"])
-    result = _run([str(_plugin_root() / "scripts" / "git-commit.sh"), "-m", args.message, *args.files])
+        if not _git_status_porcelain().strip():
+            _emit_kv("COMMITTED", "false")
+            _emit_kv("SHA", "")
+            _emit_kv("ERROR", "")
+            return 0
+        raw_implement_tmpdir = os.environ.get("IMPLEMENT_TMPDIR", "")
+        if not raw_implement_tmpdir:
+            _emit_kv("COMMITTED", "false")
+            _emit_kv("SHA", "")
+            _emit_kv("ERROR", "IMPLEMENT_TMPDIR required")
+            return 2
+        implement_tmpdir = Path(raw_implement_tmpdir)
+        paths = _collect_review_fix_stage_paths(implement_tmpdir)
+        stage_file = implement_tmpdir / "review-fix-stage-paths.txt"
+        _write_text(stage_file, "\n".join(paths) + ("\n" if paths else ""))
+        if not paths:
+            _emit_kv("COMMITTED", "false")
+            _emit_kv("SHA", "")
+            _emit_kv("ERROR", "no review delta paths")
+            return 1
+        add_result = _run(["git", "add", "--pathspec-from-file", str(stage_file)])
+        if add_result.returncode != 0:
+            _emit_kv("COMMITTED", "false")
+            _emit_kv("SHA", "")
+            _emit_kv("ERROR", (add_result.stderr or add_result.stdout).replace("\n", " ")[:500])
+            return add_result.returncode
+        result = _run([
+            str(_plugin_root() / "scripts" / "git-commit.sh"),
+            "--only",
+            "--pathspec-from-file",
+            str(stage_file),
+            "-m",
+            args.message,
+        ])
+    else:
+        result = _run([str(_plugin_root() / "scripts" / "git-commit.sh"), "-m", args.message, *args.files])
     if result.returncode == 0:
         _emit_kv("COMMITTED", "true")
         _emit_kv("SHA", _git_head())
@@ -2962,4 +3247,18 @@ def write_self_review_tally(argv: list[str] | None = None) -> int:
             "Warnings",
             "Step 5 self-review tally emission failed; final report may fall back to Code review: N/A.",
         )
+    return 0
+
+
+def write_pre_self_review_snapshot(argv: list[str] | None = None) -> int:
+    logging_util.quiet_init(argv0="review-and-fix-write-pre-self-review-snapshot")
+    parser = argparse.ArgumentParser(prog="cli.py review-and-fix write-pre-self-review-snapshot")
+    parser.add_argument("--implement-tmpdir", required=True)
+    args = parser.parse_args(argv)
+    implement_tmpdir = Path(args.implement_tmpdir)
+    if not implement_tmpdir.is_dir():
+        _err("write-pre-self-review-snapshot: --implement-tmpdir must name a directory")
+        return 2
+    head = _write_pre_self_review_snapshot(implement_tmpdir)
+    _emit_kv("PRE_SELF_REVIEW_HEAD", head)
     return 0

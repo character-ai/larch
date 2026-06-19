@@ -5,6 +5,7 @@ import subprocess
 import tempfile
 import pytest
 
+import config
 import stall_recovery
 
 
@@ -698,7 +699,7 @@ def test_seed_terminal_state_fresh_seeds_defaults(tmp_path: Path, capsys: pytest
     assert "SEED_MODE=seed" in out
 
 
-_LINT_FIX_BAIL_TOKENS = ("lint-fix-failed", "lint-fix-attempt-cap", "lint-fix-main-agent-required")
+_LINT_FIX_BAIL_TOKENS = config.LINT_FIX_BAIL_REASON_TOKENS
 
 # A timeout-only detail log would classify as transient-infra without the Step 5 lint-fix
 # bail handoff; the bail token must beat the timeout scan (issue #4402).

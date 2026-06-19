@@ -207,6 +207,13 @@ repos:
         pass_filenames: false
         always_run: true
 
+      - id: test-legacy-title-prefix-literals-scope
+        name: Check legacy title-prefix literal scope
+        entry: bash scripts/test-legacy-title-prefix-literals-scope.sh
+        language: system
+        pass_filenames: false
+        always_run: true
+
   - repo: local
     hooks:
       - id: lint-retired-scripts
