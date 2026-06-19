@@ -748,6 +748,7 @@ def step3_state(argv: Sequence[str]) -> int:
                 for rel in (
                     "accepted-plan-findings-all.md",
                     ".accepted-plan-findings-all.prev.md",
+                    ".step3-applied-finding-keys.tsv",
                     "oos-accepted-design.md",
                     ".oos-accepted-design.prev.md",
                     ".step3-reentry",
@@ -1050,6 +1051,63 @@ def _run_apply(tmpdir: Path, round_num: int, values: dict[str, str]) -> int:
     return _run_dedup(tmpdir, round_num, values)
 
 
+def _finding_dedup_key(block: str) -> str:
+    """Stable cross-round identity for an accepted FINDING block, keyed on
+    Location + Concern (falls back to the block body without its numbered header
+    when both are absent). Normalized so trivial whitespace differences between
+    rounds do not defeat the dedup.
+    """
+
+    def _field(label: str) -> str:
+        match = re.search(rf"(?mi)^- \*\*{label}\*\*:\s*(.*?)\s*$", block)
+        return match.group(1) if match else ""
+
+    location = _field("Location")
+    concern = _field("Concern")
+    if location or concern:
+        raw = f"{location}\x1f{concern}"
+    else:
+        raw = re.sub(r"(?m)^### FINDING_[0-9]+:.*$", "", block)
+    return re.sub(r"\s+", " ", raw).strip().lower()
+
+
+def _read_applied_finding_keys(tmpdir: Path, *, before_round: int) -> set[str]:
+    """Finding keys recorded in rounds strictly before ``before_round``."""
+    path = tmpdir / ".step3-applied-finding-keys.tsv"
+    if not path.is_file() or path.is_symlink():
+        return set()
+    keys: set[str] = set()
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if "\t" not in line:
+            continue
+        round_field, key = line.split("\t", 1)
+        if key and re.fullmatch(r"[0-9]+", round_field) and int(round_field, 10) < before_round:
+            keys.add(key)
+    return keys
+
+
+def _record_applied_finding_keys(tmpdir: Path, round_num: int, keys: Sequence[str]) -> None:
+    """Record this round's accepted finding keys in the applied-finding ledger,
+    idempotently (rows for ``round_num`` are rewritten, not duplicated).
+    """
+    path = tmpdir / ".step3-applied-finding-keys.tsv"
+    rows: list[str] = []
+    if path.is_file() and not path.is_symlink():
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            if "\t" not in line:
+                continue
+            round_field = line.split("\t", 1)[0]
+            if re.fullmatch(r"[0-9]+", round_field) and int(round_field, 10) != round_num:
+                rows.append(line)
+    seen: set[str] = set()
+    for key in keys:
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        rows.append(f"{round_num}\t{key}")
+    _write_atomic(path, "".join(f"{row}\n" for row in rows))
+
+
 def plan_review_continuation(argv: Sequence[str]) -> int:
     parser = argparse.ArgumentParser(prog="cli.py plan-review continuation")
     parser.add_argument("--design-tmpdir", required=True)  # pyright: ignore[reportUnusedCallResult]
@@ -1081,6 +1139,22 @@ def plan_review_continuation(argv: Sequence[str]) -> int:
         high = sum(1 for sev in severities if sev in {"blocking", "important"})
     else:
         high = sum(1 for block in blocks if re.search(r"critical|\bhigh\b|data loss|regression|missing required", block, re.IGNORECASE))
+    # Cross-round convergence (#4808): a finding accepted and applied in a prior
+    # round, when re-raised and re-accepted, must not keep the loop going. Key
+    # each accepted block on Location + Concern, compare against the
+    # applied-finding ledger from earlier rounds, and drive continuation off the
+    # genuinely new findings only. The totals above stay reported as-is.
+    prior_keys = _read_applied_finding_keys(tmpdir, before_round=review_count)
+    block_keys = [_finding_dedup_key(block) for block in blocks]
+    new_flags = [key not in prior_keys for key in block_keys]
+    duplicate_accepted = sum(1 for is_new in new_flags if not is_new)
+    new_count = sum(1 for is_new in new_flags if is_new)
+    nit_new = sum(1 for sev, is_new in zip(severities, new_flags, strict=True) if is_new and sev == "nit")
+    non_nit_new = max(0, new_count - nit_new)
+    if structured:
+        high_new = sum(1 for sev, is_new in zip(severities, new_flags, strict=True) if is_new and sev in {"blocking", "important"})
+    else:
+        high_new = sum(1 for block, is_new in zip(blocks, new_flags, strict=True) if is_new and re.search(r"critical|\bhigh\b|data loss|regression|missing required", block, re.IGNORECASE))
     plan_text = (tmpdir / "plan.txt").read_text(encoding="utf-8", errors="replace") if (tmpdir / "plan.txt").is_file() else ""
     diff_lines = 0
     for match in re.finditer(r"(?mi)^diff_lines:\s*([0-9]+)\s*$", plan_text):
@@ -1100,18 +1174,23 @@ def plan_review_continuation(argv: Sequence[str]) -> int:
     elif panel_pruned_empty == "true":
         cont = True
         reason = "pruned-empty"
-    elif degraded and accepted > 0:
+    elif degraded and (high_new > 0 or non_nit_new > NON_NIT_CONTINUE_THRESHOLD):
         cont = True
         reason = "degraded-panel"
-    elif high > 0:
+    elif high_new > 0:
         cont = True
         reason = "high-accepted"
-    elif non_nit > NON_NIT_CONTINUE_THRESHOLD:
+    elif non_nit_new > NON_NIT_CONTINUE_THRESHOLD:
         cont = True
         reason = "non-nit-accepted"
     elif structural_large and non_nit > 0 and review_count < STRUCTURAL_MIN_REVIEW_ROUNDS:
         cont = True
         reason = "structural-or-large-change"
+    no_new_material_findings = high_new == 0 and non_nit_new <= NON_NIT_CONTINUE_THRESHOLD
+    has_material_findings = high > 0 or non_nit > NON_NIT_CONTINUE_THRESHOLD
+    if not cont and reason == "small-clean" and duplicate_accepted > 0 and no_new_material_findings and has_material_findings:
+        reason = "converged-no-new-findings"
+    _record_applied_finding_keys(tmpdir, review_count, block_keys)
     for key, value in (
         ("PLAN_REVIEW_CONTINUE", "true" if cont else "false"),
         ("PLAN_REVIEW_CONTINUE_REASON", reason),
@@ -1121,6 +1200,9 @@ def plan_review_continuation(argv: Sequence[str]) -> int:
         ("NIT_ACCEPTED_COUNT", str(nit)),
         ("NON_NIT_ACCEPTED_COUNT", str(non_nit)),
         ("HIGH_ACCEPTED_COUNT", str(high)),
+        ("NEW_HIGH_ACCEPTED_COUNT", str(high_new)),
+        ("NEW_NON_NIT_ACCEPTED_COUNT", str(non_nit_new)),
+        ("DUPLICATE_ACCEPTED_COUNT", str(duplicate_accepted)),
         ("DEGRADED_PANEL", str(degraded)),
         ("STRUCTURAL_OR_LARGE_CHANGE", "true" if structural_large else "false"),
     ):

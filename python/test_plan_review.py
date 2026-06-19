@@ -1013,3 +1013,156 @@ def test_preview_small_plan_full_body_without_large_note(tmp_path: Path) -> None
     assert proc.returncode == 0
     assert "Hello" in proc.stdout
     assert "very large" not in proc.stdout
+
+
+def _high_finding_block(num: int, *, severity: str, location: str, concern: str) -> str:
+    return (
+        f"### FINDING_{num}:\n"
+        f"- **Reviewer(s)**: Cursor-arch\n"
+        f"- **Severity**: {severity}\n"
+        f"- **Focus area**: architecture\n"
+        f"- **Location**: {location}\n"
+        f"- **Concern**: {concern}\n"
+        f"- **Proposed resolution**: dedupe across rounds\n\n"
+    )
+
+
+def test_continuation_converges_when_round_reraises_applied_findings(tmp_path: Path) -> None:
+    # Regression for the non-converging plan-review loop (#4808): a finding
+    # accepted and applied in a prior round, when re-raised and re-accepted,
+    # must not keep the loop going.
+    findings = (
+        _high_finding_block(
+            1,
+            severity="important",
+            location="python/plan_review.py:1039",
+            concern="continuation re-triggers on duplicate findings. Scenario: round 2 re-raises round 1.",
+        )
+        + _high_finding_block(
+            2,
+            severity="blocking",
+            location="python/plan_review_round.py:144",
+            concern="collector re-emits identical findings. Scenario: stable reviewer output.",
+        )
+    )
+    _ = (tmp_path / "accepted-plan-findings.md").write_text(findings, encoding="utf-8")
+
+    # Round 1: both findings are genuinely new -> loop continues.
+    _ = (tmp_path / "review-round-count.txt").write_text("1\n", encoding="utf-8")
+    proc1 = run_cli(
+        "plan-review",
+        "continuation",
+        "--design-tmpdir",
+        str(tmp_path),
+        "--approve-requested",
+        "false",
+        env={"LARCH_QUIET_DISABLE": "1"},
+    )
+    assert proc1.returncode == 0, proc1.stderr
+    assert "PLAN_REVIEW_CONTINUE=true" in proc1.stdout
+    assert "PLAN_REVIEW_CONTINUE_REASON=high-accepted" in proc1.stdout
+
+    # Round 2: re-raises the same findings byte-for-byte -> nothing new -> stop.
+    _ = (tmp_path / "review-round-count.txt").write_text("2\n", encoding="utf-8")
+    proc2 = run_cli(
+        "plan-review",
+        "continuation",
+        "--design-tmpdir",
+        str(tmp_path),
+        "--approve-requested",
+        "false",
+        env={"LARCH_QUIET_DISABLE": "1"},
+    )
+    assert proc2.returncode == 0, proc2.stderr
+    assert "PLAN_REVIEW_CONTINUE=false" in proc2.stdout
+    assert "PLAN_REVIEW_CONTINUE_REASON=converged-no-new-findings" in proc2.stdout
+    assert "DUPLICATE_ACCEPTED_COUNT=2" in proc2.stdout
+    assert "NEW_HIGH_ACCEPTED_COUNT=0" in proc2.stdout
+    # Totals stay reported for backward compatibility.
+    assert "HIGH_ACCEPTED_COUNT=2" in proc2.stdout
+
+
+def test_continuation_continues_when_a_new_finding_appears(tmp_path: Path) -> None:
+    round1 = _high_finding_block(
+        1, severity="important", location="a.py:1", concern="alpha. Scenario: x."
+    )
+    _ = (tmp_path / "accepted-plan-findings.md").write_text(round1, encoding="utf-8")
+    _ = (tmp_path / "review-round-count.txt").write_text("1\n", encoding="utf-8")
+    proc1 = run_cli(
+        "plan-review", "continuation", "--design-tmpdir", str(tmp_path),
+        "--approve-requested", "false", env={"LARCH_QUIET_DISABLE": "1"},
+    )
+    assert "PLAN_REVIEW_CONTINUE=true" in proc1.stdout
+
+    # Round 2: re-raises round-1 finding (duplicate) plus a brand-new high one.
+    round2 = round1 + _high_finding_block(
+        2, severity="blocking", location="b.py:2", concern="beta. Scenario: y."
+    )
+    _ = (tmp_path / "accepted-plan-findings.md").write_text(round2, encoding="utf-8")
+    _ = (tmp_path / "review-round-count.txt").write_text("2\n", encoding="utf-8")
+    proc2 = run_cli(
+        "plan-review", "continuation", "--design-tmpdir", str(tmp_path),
+        "--approve-requested", "false", env={"LARCH_QUIET_DISABLE": "1"},
+    )
+    assert "PLAN_REVIEW_CONTINUE=true" in proc2.stdout
+    assert "PLAN_REVIEW_CONTINUE_REASON=high-accepted" in proc2.stdout
+    assert "DUPLICATE_ACCEPTED_COUNT=1" in proc2.stdout
+    assert "NEW_HIGH_ACCEPTED_COUNT=1" in proc2.stdout
+
+
+def test_continuation_degraded_panel_converges_on_duplicate_findings(tmp_path: Path) -> None:
+    # Degraded-panel continuation must not bypass cross-round dedup (#4808).
+    findings = _high_finding_block(
+        1,
+        severity="important",
+        location="python/plan_review.py:1163",
+        concern="degraded panel re-triggers on duplicates. Scenario: round 2 re-raises round 1.",
+    )
+    _ = (tmp_path / "accepted-plan-findings.md").write_text(findings, encoding="utf-8")
+    _ = (tmp_path / ".step3-review-result.env").write_text(
+        "DEGRADED_PANEL=1\nTALLY_PLAN_REVIEW_STATUS=ok\n",
+        encoding="utf-8",
+    )
+
+    _ = (tmp_path / "review-round-count.txt").write_text("1\n", encoding="utf-8")
+    proc1 = run_cli(
+        "plan-review",
+        "continuation",
+        "--design-tmpdir",
+        str(tmp_path),
+        "--approve-requested",
+        "false",
+        env={"LARCH_QUIET_DISABLE": "1"},
+    )
+    assert proc1.returncode == 0, proc1.stderr
+    assert "PLAN_REVIEW_CONTINUE=true" in proc1.stdout
+    assert "PLAN_REVIEW_CONTINUE_REASON=degraded-panel" in proc1.stdout
+
+    _ = (tmp_path / "review-round-count.txt").write_text("2\n", encoding="utf-8")
+    proc2 = run_cli(
+        "plan-review",
+        "continuation",
+        "--design-tmpdir",
+        str(tmp_path),
+        "--approve-requested",
+        "false",
+        env={"LARCH_QUIET_DISABLE": "1"},
+    )
+    assert proc2.returncode == 0, proc2.stderr
+    assert "PLAN_REVIEW_CONTINUE=false" in proc2.stdout
+    assert "PLAN_REVIEW_CONTINUE_REASON=converged-no-new-findings" in proc2.stdout
+    assert "DUPLICATE_ACCEPTED_COUNT=1" in proc2.stdout
+    assert "NEW_HIGH_ACCEPTED_COUNT=0" in proc2.stdout
+
+
+def test_step3_state_direct_review_entry_resets_applied_finding_ledger(tmp_path: Path) -> None:
+    ledger = tmp_path / ".step3-applied-finding-keys.tsv"
+    _ = ledger.write_text("1\tpython/plan_review.py:1039\x1fconcern\n", encoding="utf-8")
+    _ = (tmp_path / ".step3-reentry").write_text("1\n", encoding="utf-8")
+    proc = run_cli(
+        "plan-review", "step3-state", "--design-tmpdir", str(tmp_path),
+        "--direct-review-entry", env={"LARCH_QUIET_DISABLE": "1"},
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "STEP3_STATE=direct-review-entry" in proc.stdout
+    assert not ledger.exists()
