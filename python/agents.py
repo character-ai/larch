@@ -4951,9 +4951,8 @@ def _append_implement_launch_failure(tool: str, output: Path, sidecar: Path, lau
     rendered = render_failed_agent_stderr_tail(source) if source.is_file() and source.stat().st_size > 0 else ""
     if rendered:
         existing = tail.read_text(encoding="utf-8", errors="replace") if tail.is_file() else ""
-        if not existing or _stderr_tail_from_less_specific_carrier(output, existing, source, sink=str(sidecar)):
-            if existing != rendered:
-                _write(tail, rendered)
+        if (not existing or _stderr_tail_from_less_specific_carrier(output, existing, source, sink=str(sidecar))) and existing != rendered:
+            _write(tail, rendered)
 
 
 def _record_implement_timing(tool: str, task_kind: str, start: float, output: Path, exit_code: int) -> None:
