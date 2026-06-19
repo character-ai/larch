@@ -84,6 +84,29 @@ def _load_manifest_slots(manifest: Path) -> list[str]:
     return slots
 
 
+def _write_plan_review_prune_label_map(design: Path, manifest: Path) -> Path:
+    label_map = design / "plan-review-prune-label-map.tsv"
+    lines = [f"{slot}\t{_slot_human_label(slot)}" for slot in _load_manifest_slots(manifest)]
+    _ = label_map.write_text("".join(f"{line}\n" for line in lines), encoding="utf-8")
+    return label_map
+
+
+def _record_plan_review_prune_round(design: Path, round_num: int, manifest: Path, classification: Path) -> None:
+    try:
+        import review_pipeline  # noqa: PLC0415
+
+        label_map = _write_plan_review_prune_label_map(design, manifest)
+        review_pipeline.reviewer_prune_record(
+            design / "reviewer-prune-ledger.tsv",
+            round_num,
+            manifest,
+            classification,
+            label_map,
+        )
+    except Exception as exc:  # fail open by contract
+        _emit("WARN", f"plan-review reviewer-prune record failed for round {round_num}: {exc}")
+
+
 def _compose_finding_block(
     slot: str,
     *,
@@ -547,6 +570,8 @@ def execute_round(
 
     values["ROUNDS_COMPLETED"] = str(round_num)
     _write_round_summary(design, round_num, loop_status=values["LOOP_STATUS"], collect_ok=ok_count, collect_fail=fail_count, values=values)
+    if classification.is_file():
+        _record_plan_review_prune_round(design, round_num, manifest, classification)
     round_status = design / "plan-review" / f"round-{round_num}" / "reviewer-status.tsv"
     latest = design / "latest-reviewer-status.tsv"
     if round_status.is_file() and not round_status.is_symlink():

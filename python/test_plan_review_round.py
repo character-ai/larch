@@ -10,14 +10,14 @@ as a clean ``complete``.
 
 from __future__ import annotations
 
+import subprocess
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import collect_results
 import plan_review_round
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     import pytest
 
 
@@ -239,3 +239,158 @@ def test_classify_zero_accepted_with_findings_is_zero_findings_degraded() -> Non
         )
         == "zero-findings-degraded-panel"
     )
+
+
+def _install_execute_round_fake(
+    monkeypatch: pytest.MonkeyPatch,
+    design: Path,
+    *,
+    tally_status: str = "ok",
+    panel_pruned_empty: bool = False,
+) -> None:
+    def fake_run_cli(argv: list[str], *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+        del env
+        if argv[:2] == ["plan-review", "panel-dispatch"]:
+            if panel_pruned_empty:
+                return subprocess.CompletedProcess(argv, 0, "PANEL_PRUNED_EMPTY=true\n", "")
+            manifest = design / "plan-review-slots.ndjson"
+            paths_file = design / "plan-review-panel-paths.txt"
+            reviewer_file = design / "cursor-plan-arch-output.txt"
+            _ = manifest.write_text(
+                '{"slot":"cursor-plan-arch","tool":"cursor","output":"'
+                + str(reviewer_file)
+                + '","prompt_file":"'
+                + str(design / "cursor-plan-arch.prompt")
+                + '"}\n',
+                encoding="utf-8",
+            )
+            _ = paths_file.write_text(str(reviewer_file) + "\n", encoding="utf-8")
+            return subprocess.CompletedProcess(argv, 0, f"PANEL_PRUNED_EMPTY=false\nPANEL_PATHS_FILE={paths_file}\n", "")
+        if argv[:2] == ["agent", "collect-results"]:
+            sidecar = design / "cursor-plan-arch.sidecar.tsv"
+            _write_sidecar(
+                sidecar,
+                [
+                    {
+                        "scope": "in_scope",
+                        "severity": "high",
+                        "focus_area": "correctness",
+                        "location": "plan.md",
+                        "what": "Missing requirement",
+                        "scenario_or_breakage": "plan omits the requirement",
+                        "suggested_fix": "add it",
+                    }
+                ],
+            )
+            return subprocess.CompletedProcess(
+                argv,
+                0,
+                _collector_text(
+                    [
+                        collect_results.CollectorRecord(
+                            reviewer_file=str(design / "cursor-plan-arch-output.txt"),
+                            tool="cursor",
+                            status="OK",
+                            exit_code="0",
+                            structured_sidecar=str(sidecar),
+                        )
+                    ]
+                ),
+                "",
+            )
+        if argv[:2] == ["review", "aggregate-findings"]:
+            return subprocess.CompletedProcess(argv, 0, "AGGREGATOR_STATUS=ok\n", "")
+        if argv[:2] == ["plan-review", "voter-dispatch"]:
+            return subprocess.CompletedProcess(
+                argv,
+                0,
+                "DISPATCH_OK=true\n"
+                f"VOTER_1_PATH={design / 'claude-vote-output.txt'}\n"
+                "VOTER_1_TOOL=claude\n"
+                "VOTER_1_STATUS=launched\n",
+                "",
+            )
+        if argv[:2] == ["plan-review", "tally"]:
+            classification = Path(argv[argv.index("--findings-classification-out") + 1])
+            classification.parent.mkdir(parents=True, exist_ok=True)
+            _ = classification.write_text(
+                "finding_id\tfinding_reviewers\tvoting_result\n"
+                "FINDING_1\tCursor-Arch\taccepted\n",
+                encoding="utf-8",
+            )
+            if tally_status != "main-agent-vote-required":
+                _ = (design / "accepted-plan-findings.md").write_text("### FINDING_1:\n", encoding="utf-8")
+            return subprocess.CompletedProcess(argv, 0, f"TALLY_PLAN_REVIEW_STATUS={tally_status}\n", "")
+        raise AssertionError(f"unexpected argv: {argv}")
+
+    monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
+
+
+def test_execute_round_records_plan_review_prune_ledger(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    design = tmp_path
+    plan_file = design / "plan.txt"
+    feature_file = design / "feature.txt"
+    _ = plan_file.write_text("plan\n", encoding="utf-8")
+    _ = feature_file.write_text("feature\n", encoding="utf-8")
+    _install_execute_round_fake(monkeypatch, design)
+
+    rc, values = plan_review_round.execute_round(
+        design,
+        round_num=1,
+        prune_round_num=1,
+        codex_present="false",
+        cursor_present="true",
+        plan_file=plan_file,
+        feature_file=feature_file,
+    )
+
+    assert rc == 0
+    assert values["LOOP_STATUS"] == "complete"
+    assert (design / "plan-review-prune-label-map.tsv").read_text(encoding="utf-8") == "cursor-plan-arch\tCursor-Arch\n"
+    ledger_lines = (design / "reviewer-prune-ledger.tsv").read_text(encoding="utf-8").splitlines()
+    assert ledger_lines[0] == "round\ttool\tslot\tlabel\taccepted_count\trejected_count\ttotal_count"
+    assert ledger_lines[1] == "1\tcursor\tcursor-plan-arch\tCursor-Arch\t1\t0\t1"
+
+
+def test_execute_round_pruned_empty_does_not_record_prune_ledger(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    plan_file = tmp_path / "plan.txt"
+    feature_file = tmp_path / "feature.txt"
+    _ = plan_file.write_text("plan\n", encoding="utf-8")
+    _ = feature_file.write_text("feature\n", encoding="utf-8")
+    _install_execute_round_fake(monkeypatch, tmp_path, panel_pruned_empty=True)
+
+    rc, values = plan_review_round.execute_round(
+        tmp_path,
+        round_num=3,
+        prune_round_num=3,
+        codex_present="false",
+        cursor_present="true",
+        plan_file=plan_file,
+        feature_file=feature_file,
+    )
+
+    assert rc == 0
+    assert values["PANEL_PRUNED_EMPTY"] == "true"
+    assert not (tmp_path / "reviewer-prune-ledger.tsv").exists()
+
+
+def test_execute_round_main_agent_vote_required_does_not_record_prune_ledger(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    plan_file = tmp_path / "plan.txt"
+    feature_file = tmp_path / "feature.txt"
+    _ = plan_file.write_text("plan\n", encoding="utf-8")
+    _ = feature_file.write_text("feature\n", encoding="utf-8")
+    _install_execute_round_fake(monkeypatch, tmp_path, tally_status="main-agent-vote-required")
+
+    rc, values = plan_review_round.execute_round(
+        tmp_path,
+        round_num=1,
+        prune_round_num=1,
+        codex_present="false",
+        cursor_present="true",
+        plan_file=plan_file,
+        feature_file=feature_file,
+    )
+
+    assert rc == 0
+    assert values["LOOP_STATUS"] == "main-agent-vote-required"
+    assert not (tmp_path / "reviewer-prune-ledger.tsv").exists()

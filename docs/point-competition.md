@@ -69,4 +69,4 @@ Skills that use the negotiation protocol (`/research`) do not use competition sc
 
 ## Conditional spawning
 
-The same accepted-finding attribution that awards reviewer points also feeds per-run conditional spawning. From review round 3, reviewer combos with zero accepted findings in their last two launched rounds may be skipped for rounds 3-4; round 5 re-probes the full panel. This pruning history is run-local and does not affect the persistent scoreboard.
+The same finding attribution that awards reviewer points also feeds per-run conditional spawning. In rounds 3-4, reviewer combos may be skipped when their last two launched rounds have net score ≤ 0 or an acceptance rate below 1/3. Net score is accepted findings minus rejected findings. Neutral findings count in the acceptance-rate denominator, but they do not change net score. Round 5 re-probes the full panel. This pruning history is run-local and does not affect the persistent scoreboard.

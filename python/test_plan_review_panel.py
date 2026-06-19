@@ -256,9 +256,9 @@ def test_panel_dispatch_prunes_round_three_empty_panel(tmp_path: Path) -> None:
         ("cursor", "cursor-plan-requirements"),
         ("codex", "codex-plan-generic"),
     ]
-    ledger_lines = ["round\ttool\tslot\tlabel\taccepted_count"]
+    ledger_lines = ["round\ttool\tslot\tlabel\taccepted_count\trejected_count\ttotal_count"]
     for round_num in (1, 2):
-        ledger_lines.extend(f"{round_num}\t{tool}\t{slot}\t{slot}\t0" for tool, slot in rows)
+        ledger_lines.extend(f"{round_num}\t{tool}\t{slot}\t{slot}\t0\t0\t0" for tool, slot in rows)
     _ = (design / "reviewer-prune-ledger.tsv").write_text("\n".join(ledger_lines) + "\n", encoding="utf-8")
     proc = run_cli(
         "plan-review",

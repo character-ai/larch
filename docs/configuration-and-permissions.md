@@ -265,7 +265,7 @@ and the test-only **`LARCH_EXTERNAL_STARTUP_LOCK_FORCE_UNAME`**.
 
 ### `LARCH_REVIEWER_PRUNE`
 
-Controls per-run conditional reviewer spawning in `/design`, `/implement` Step 5, and `/review --diff`. Exact value `off` disables pruning and keeps the round's unpruned reviewer manifest. Any other value, including unset or empty, leaves pruning enabled: rounds 1-2 and 5 use the unpruned manifest, while rounds 3-4 skip combos that produced zero accepted findings in their last two launched rounds. Non-empty values other than `off` emit a warning because `off` is the only supported override.
+Controls per-run conditional reviewer spawning in `/design`, `/implement` Step 5, and `/review --diff`. Exact value `off` disables pruning and keeps the round's unpruned reviewer manifest. Any other value, including unset or empty, leaves pruning enabled: rounds 1-2 and 5 use the unpruned manifest, while rounds 3-4 skip combos whose trailing two launched rounds have net score ≤ 0 or an acceptance rate below 1/3. Net score is accepted findings minus rejected findings. Neutral findings count toward the rate denominator only. Non-empty values other than `off` emit a warning because `off` is the only supported override.
 
 ### Reviewer straggler cutoff
 
