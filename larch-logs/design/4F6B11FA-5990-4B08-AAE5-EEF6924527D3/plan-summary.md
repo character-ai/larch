@@ -1,0 +1,1 @@
+Plan centralizes guarded stale `.git/index.lock` handling in `python/git.py`, adds a distinct Step 5 stale-lock token in `python/review_and_fix.py`, and covers retry, refusal, and stall-surface tests.
