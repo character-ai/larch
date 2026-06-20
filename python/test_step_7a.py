@@ -156,6 +156,22 @@ def test_step7a_diagram_failure_emits_diagram_reason_on_rebase_failure(tmp_path:
     mock_flush.assert_called_once()
 
 
+def test_step7a_rebase_failure_defers_git_commit_flush(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
+
+    with patch.object(step_7a, "_is_small_non_runtime_change", return_value=True), patch.object(
+        step_7a,
+        "_run_log_flush",
+        return_value="ok",
+    ) as mock_flush, patch.object(step_7a, "subprocess") as mock_subprocess:
+        mock_subprocess.run.return_value.returncode = 1
+        mock_subprocess.run.return_value.stdout = "REBASE_OUTCOME=conflict\n"
+        rc = step_7a.run_step7a(tmp_path)
+
+    assert rc == 1
+    assert mock_flush.call_args.kwargs["defer_git_commit"] is True
+
+
 def test_step7a_rebase_failure_flushes_and_preserves_probe_rc(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
 

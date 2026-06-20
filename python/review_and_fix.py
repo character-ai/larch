@@ -1771,7 +1771,7 @@ def _step5_post_round_gates(
             return "stall", f"relevant-checks-{checks.get('FAILURE_REASON', 'unknown')}", False
         lint_max = _lint_fix_max_attempts()
         lint_attempts = 0
-        pre_lint_head = _write_pre_lint_snapshot(result.round_dir) if _git_status_porcelain().strip() else ""
+        pre_lint_head = _write_pre_lint_snapshot(result.round_dir)
         lint_delta_paths: set[str] = set()
         lint_applied_ever = False
 

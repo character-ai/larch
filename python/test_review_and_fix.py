@@ -2306,6 +2306,49 @@ def test_step5_lint_fix_main_agent_required_commits_applied_delta_before_stall(t
 
 
 @MARK_CONVERGENCE
+def test_step5_lint_fix_clean_baseline_main_agent_required_commits_applied_delta(tmp_path, monkeypatch):
+    impl = _tmp_impl(tmp_path)
+    result = _round_result_for_lint_fix(impl)
+    lint_calls = {"n": 0}
+    committed: dict[str, object] = {}
+    porcelain = {"text": ""}
+
+    def fake_checks(_impl):
+        return {"STATUS": "fail", "REDACTED_LOG_FILE": str(impl / "checks.log")}
+
+    def fake_lint(_impl, _log):
+        lint_calls["n"] += 1
+        if lint_calls["n"] == 1:
+            porcelain["text"] = " M linted.py\n"
+            return {"LINT_FIX_STATUS": "applied", "LINT_FIX_DELTA_PATHS": "linted.py"}
+        return {"LINT_FIX_STATUS": "main-agent-required"}
+
+    def fake_commit(round_num, round_dir, commit_paths, reason):
+        committed.update(round_num=round_num, round_dir=round_dir, commit_paths=commit_paths, reason=reason)
+        return "sha"
+
+    snapshot_calls = {"n": 0}
+
+    def fake_snapshot(_round):
+        snapshot_calls["n"] += 1
+        return "head"
+
+    monkeypatch.setattr(review_and_fix, "_run_relevant_checks_captured", fake_checks)
+    monkeypatch.setattr(review_and_fix, "_git_status_porcelain", lambda: porcelain["text"])
+    monkeypatch.setattr(review_and_fix, "_write_pre_lint_snapshot", fake_snapshot)
+    monkeypatch.setattr(review_and_fix, "_run_lint_fix_loop", fake_lint)
+    monkeypatch.setattr(review_and_fix, "_lint_fix_delta_paths", lambda _round, _head, paths: tuple(paths))
+    monkeypatch.setattr(review_and_fix, "_commit_lint_fix_delta_paths", fake_commit)
+
+    status, reason, cont = review_and_fix._step5_post_round_gates(result, 1, 5, impl)
+
+    assert (status, reason, cont) == ("stall", "lint-fix-main-agent-required", False)
+    assert snapshot_calls["n"] == 1
+    assert committed["commit_paths"] == ("linted.py",)
+    assert committed["reason"] == "main-agent-required"
+
+
+@MARK_CONVERGENCE
 def test_step5_lint_fix_main_agent_required_commit_failure_uses_commit_reason(tmp_path, monkeypatch):
     impl = _tmp_impl(tmp_path)
     result = _round_result_for_lint_fix(impl)

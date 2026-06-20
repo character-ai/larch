@@ -112,6 +112,7 @@ def _run_log_flush(
     run_id: str,
     no_logs_commit: bool,
     claude_source_file: str,
+    defer_git_commit: bool = False,
 ) -> str:
     log_flush_status = "ok"
     _run_cli("token", "mark", "Step 8 — version bump")
@@ -186,7 +187,7 @@ def _run_log_flush(
     )
     if rc2 != 0 or status2 not in {"ok", "skip", "already-flushed", "no-records"}:
         log_flush_status = "degraded"
-    if not no_logs_commit:
+    if not no_logs_commit and not defer_git_commit:
         refresh = run_logs.flush_logs_pre(run_logs.proc, with_context, cwd=str(Path.cwd()))
         if refresh.skipped and refresh.reason not in {"no-repo-cwd", "no-logs-commit", "volatile-only"}:
             log_flush_status = "degraded"
@@ -307,6 +308,7 @@ def run_step7a(
         run_id=run_id,
         no_logs_commit=no_logs_commit,
         claude_source_file=claude_source,
+        defer_git_commit=probe.returncode != 0,
     )
     if probe.returncode != 0:
         emit("DIAGRAM_STATUS", diagram_status)
