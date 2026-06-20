@@ -835,34 +835,14 @@ def _stage_failed_clarify(
         detail_log.write_text("clarify failure\n", encoding="utf-8")
     stdout_log = design_tmpdir / "design-clarify-stage.stdout.log"
     stderr_log = design_tmpdir / "design-clarify-stage.stderr.log"
+    # Single-line argv avoids an R0801 duplicate-code collision with
+    # test_design_lifecycle._stage_args's multi-line form (mirrors the
+    # _append_clarify_failure single-line convention above).
     rc = design_lifecycle.capture_contract_stream_to_paths(
         design_lifecycle.stage_terminal_state_core,
         stdout_log,
         stderr_log,
-        [
-            "--design-tmpdir",
-            str(design_tmpdir),
-            "--outcome",
-            "failed-clarify",
-            "--step",
-            "clarify",
-            "--phase",
-            "clarify-loop",
-            "--site",
-            "clarify-loop",
-            "--trigger",
-            "failed",
-            "--bail-reason",
-            "clarify-hard-halt",
-            "--exit-code",
-            str(exit_code),
-            "--source-script",
-            "clarify-loop",
-            "--summary-outcome",
-            "failed-clarify",
-            "--failure-detail-log",
-            str(detail_log),
-        ],
+        ["--design-tmpdir", str(design_tmpdir), "--outcome", "failed-clarify", "--step", "clarify", "--phase", "clarify-loop", "--site", "clarify-loop", "--trigger", "failed", "--bail-reason", "clarify-hard-halt", "--exit-code", str(exit_code), "--source-script", "clarify-loop", "--summary-outcome", "failed-clarify", "--failure-detail-log", str(detail_log)],
     )
     if rc != 0:
         _append_clarify_failure(

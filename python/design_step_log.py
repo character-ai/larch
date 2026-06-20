@@ -20,14 +20,17 @@ def _fail(msg: str) -> int:
 def _session_get(path: Path, key: str, default: str = "") -> str:
     if not path.is_file():
         return default
-    prefix = f"{key}="
+    # Read inside the try, scan outside it: narrows the OSError scope and keeps
+    # this helper structurally distinct from design_lifecycle._read_env_value
+    # (avoids pylint R0801 duplicate-code across the two modules).
     try:
-        for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
-            if raw.startswith(prefix):
-                value = raw[len(prefix):]
-                return value or default
+        text = path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return default
+    prefix = f"{key}="
+    for raw in text.splitlines():
+        if raw.startswith(prefix):
+            return raw[len(prefix):] or default
     return default
 
 
