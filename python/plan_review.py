@@ -14,10 +14,10 @@ import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
-import design_postplan
 import logging_util
 import plan_review_tally
 import plan_review_round
+from repo_roots import consumer_repo_root
 from design_lifecycle import (
     capture_contract_stream_to_paths,
     json_get_bool,
@@ -862,13 +862,13 @@ def _run_post_apply(tmpdir: Path, round_num: int, values: dict[str, str]) -> int
     else:
         base = [sys.executable, str(_plugin_root() / "python" / "cli.py"), "design", "postplan-emit"]
     # #4847: run the postplan validator from the consumer-repo cwd so it derives
-    # the consumer repo (design_postplan.consumer_repo_root) and resolves
+    # the consumer repo (repo_roots.consumer_repo_root) and resolves
     # plan-command script paths against it. Without this override _run_command
     # forces the plugin-cache cwd, the consumer-root derivation collapses, and
     # consumer-only scripts absent from a lagging plugin cache are false-flagged
     # missing-script (#4490 recurrence). cwd=None falls back to _REPO_ROOT when
     # cwd is not a git tree (no consumer repo to target), preserving prior behavior.
-    proc = _run_command([*base, "--design-tmpdir", str(tmpdir), "--with-plan-size"], cwd=design_postplan.consumer_repo_root())
+    proc = _run_command([*base, "--design-tmpdir", str(tmpdir), "--with-plan-size"], cwd=consumer_repo_root())
     rc = proc.returncode
     if rc == 0:
         _write_phase(tmpdir, round_num, "awaiting-continuation")

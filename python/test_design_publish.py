@@ -84,6 +84,79 @@ raise SystemExit(0)
     path.chmod(path.stat().st_mode | stat.S_IXUSR)
 
 
+def _write_recording_cli(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _ = path.write_text(
+        """#!/usr/bin/env python3
+import json
+import os
+import sys
+args = sys.argv[1:]
+if args[:2] == ["plan","validate"]:
+    repo_root = ""
+    for i, arg in enumerate(args):
+        if arg == "--repo-root" and i + 1 < len(args):
+            repo_root = args[i + 1]
+    with open(os.environ["RECORD_FILE"], "w", encoding="utf-8") as f:
+        f.write("REPO_ROOT=" + repo_root + "\\n")
+        f.write("CLAUDE_PLUGIN_ROOT=" + os.environ.get("CLAUDE_PLUGIN_ROOT", "") + "\\n")
+    print("VALIDATE_STATUS=ok")
+    print("VALIDATE_DEFECT_COUNT=0")
+    print("VALIDATE_SKIPPED_COUNT=0")
+    print("VALIDATE_UNSAFE_TOKEN_COUNT=0")
+    print("VALIDATE_LOG_FILE=/tmp/validate.log")
+    raise SystemExit(0)
+if args[:2] == ["redact","secrets"]:
+    sys.stdout.write(sys.stdin.read())
+    raise SystemExit(0)
+if args[:2] == ["named-block","write"]:
+    raise SystemExit(0)
+if args[:2] == ["tracking-issue","rename"]:
+    print("RENAMED=true")
+    print("NEW_TITLE=[DESIGNED] Example")
+    raise SystemExit(0)
+if args[:3] == ["design","log-publish","--design-tmpdir"] or args[:2] == ["design","log-publish"]:
+    print("PUBLISH_OK=true")
+    print("PR_NUMBER=99")
+    print("PR_URL=https://github.com/owner/repo/pull/99")
+    raise SystemExit(0)
+if args[:2] == ["diagrams","upsert"]:
+    print("UPSERT_STATUS=ok")
+    print("ARCHITECTURE_SOURCE=cleared" if "--clear-architecture" in args else "ARCHITECTURE_SOURCE=new")
+    raise SystemExit(0)
+raise SystemExit(0)
+""",
+        encoding="utf-8",
+    )
+    path.chmod(path.stat().st_mode | stat.S_IXUSR)
+
+
+def _write_missing_script_cli(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _ = path.write_text(
+        """#!/usr/bin/env python3
+import os
+import sys
+args = sys.argv[1:]
+if args[:2] == ["plan","validate"]:
+    log = os.environ["VALIDATE_LOG"]
+    with open(log, "w", encoding="utf-8") as f:
+        f.write("DEFECT script=scripts/a.sh kind=missing-script\\n")
+        f.write("DEFECT script=scripts/b.sh kind=missing-script\\n")
+        f.write("DEFECT script=scripts/c.sh kind=unsafe-token token=<redacted>\\n")
+    print("VALIDATE_STATUS=defects-found")
+    print("VALIDATE_DEFECT_COUNT=3")
+    print("VALIDATE_SKIPPED_COUNT=0")
+    print("VALIDATE_UNSAFE_TOKEN_COUNT=1")
+    print("VALIDATE_LOG_FILE=" + log)
+    raise SystemExit(1)
+raise SystemExit(0)
+""",
+        encoding="utf-8",
+    )
+    path.chmod(path.stat().st_mode | stat.S_IXUSR)
+
+
 def _run_publish_with_fake_cli(
     tmp_path: Path,
     env_overrides: dict[str, str],
@@ -148,6 +221,103 @@ def test_publish_requires_composed_plan(tmp_path: Path) -> None:
     assert result.returncode == 4
     assert "PLAN_WRITE_OK=false" in result.stdout
     assert "VALIDATE_STATUS=defects-found" in result.stdout
+
+
+def test_publish_passes_consumer_repo_root_and_preserves_plugin_root(tmp_path: Path) -> None:
+    plugin_root = tmp_path / "plugin"
+    _write_recording_cli(plugin_root / "python" / "cli.py")
+    recorder = tmp_path / "validate-invocation.env"
+
+    consumer = tmp_path / "consumer"
+    consumer.mkdir()
+    _ = subprocess.run(["git", "init", "-q", str(consumer)], check=True)
+    script = consumer / "scripts" / "consumer-only.sh"
+    script.parent.mkdir()
+    _ = script.write_text("#!/usr/bin/env bash\necho ok\n", encoding="utf-8")
+    script.chmod(0o755)
+
+    design = consumer / "design"
+    (design / ".completed").mkdir(parents=True)
+    _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    _ = (design / "composed-plan.md").write_text(
+        "## Plan\n\n```bash\nbash scripts/consumer-only.sh\n```\n\ndiff_lines: 1\n",
+        encoding="utf-8",
+    )
+
+    cli_py = Path(__file__).with_name("cli.py")
+    env = os.environ.copy()
+    env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
+    env["RECORD_FILE"] = str(recorder)
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(cli_py),
+            "design",
+            "publish",
+            "--design-tmpdir",
+            str(design),
+            "--issue",
+            "9",
+            "--session-id",
+            "RUN1",
+            "--claude-pid",
+            "11",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+        cwd=str(consumer),
+    )
+
+    assert result.returncode == 0, result.stderr
+    recorded = dict(
+        line.split("=", 1) for line in recorder.read_text(encoding="utf-8").splitlines() if "=" in line
+    )
+    assert Path(recorded["REPO_ROOT"]).resolve() == consumer.resolve()
+    assert Path(recorded["CLAUDE_PLUGIN_ROOT"]).resolve() == plugin_root.resolve()
+    assert "PLAN_WRITE_OK=true" in result.stdout
+    assert "VALIDATE_STATUS=ok" in result.stdout
+    assert "PUBLISH_RC=4" not in result.stdout
+
+
+def test_publish_reports_missing_script_count_from_validate_log(tmp_path: Path) -> None:
+    plugin_root = tmp_path / "plugin"
+    _write_missing_script_cli(plugin_root / "python" / "cli.py")
+    design = tmp_path / "design"
+    (design / ".completed").mkdir(parents=True)
+    _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
+    log = tmp_path / "validate-plan-commands.log"
+    cli_py = Path(__file__).with_name("cli.py")
+    env = os.environ.copy()
+    env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
+    env["VALIDATE_LOG"] = str(log)
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(cli_py),
+            "design",
+            "publish",
+            "--design-tmpdir",
+            str(design),
+            "--issue",
+            "9",
+            "--session-id",
+            "RUN1",
+            "--claude-pid",
+            "11",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+
+    assert result.returncode == 4
+    assert "VALIDATE_MISSING_SCRIPT_COUNT=2" in result.stdout
+    result_env = (design / ".design-publish-result.env").read_text(encoding="utf-8")
+    assert "VALIDATE_MISSING_SCRIPT_COUNT=2" in result_env
 
 
 def test_publish_success_writes_result_env(tmp_path: Path) -> None:

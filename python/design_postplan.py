@@ -8,6 +8,8 @@ import sys
 from pathlib import Path
 from collections.abc import Sequence
 
+from repo_roots import consumer_repo_root
+
 
 # Drift-detection keys read from drift-baseline.env
 _KEY_BASELINE_PLAN_LINES = "BASELINE_PLAN_LINES"
@@ -21,30 +23,6 @@ def _plugin_root() -> Path:
     if env:
         return Path(env)
     return Path(__file__).resolve().parents[1]
-
-
-def consumer_repo_root() -> Path | None:
-    """Git toplevel of the current working directory, or ``None`` when cwd is
-    not inside a git work tree.
-
-    /design post-plan validation runs from the plugin cache, but plan-command
-    fences reference scripts by repo-relative path. Passing the consumer repo as
-    ``--repo-root`` lets scripts that exist in the consumer repo but not the
-    plugin cache pass the validator's existence check (#4490).
-    """
-    try:
-        result = subprocess.run(
-            ["git", "-C", str(Path.cwd()), "rev-parse", "--show-toplevel"],  # noqa: S607
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except OSError:
-        return None
-    out = result.stdout.strip()
-    if result.returncode == 0 and out:
-        return Path(out).resolve()
-    return None
 
 
 def _parse_kv(text: str) -> dict[str, str]:

@@ -9,6 +9,8 @@ import sys
 from pathlib import Path
 from collections.abc import Sequence
 
+from repo_roots import consumer_repo_root
+
 
 def _emit_rows(rows: list[tuple[str, str]]) -> None:
     for key, value in rows:
@@ -39,6 +41,21 @@ def _replace_kv(rows: list[tuple[str, str]], key: str, value: str) -> None:
             rows[idx] = (key, value)
             return
     rows.append((key, value))
+
+
+def _count_missing_script_defects(log_file: str) -> str:
+    path = Path(log_file) if log_file else None
+    if path is None or not path.is_file() or path.is_symlink():
+        return "0"
+    try:
+        count = sum(
+            1
+            for line in path.read_text(encoding="utf-8", errors="replace").splitlines()
+            if "kind=missing-script" in line
+        )
+    except OSError:
+        return "0"
+    return str(count)
 
 
 def _is_repo(value: str) -> bool:
@@ -186,6 +203,7 @@ def publish_core(argv: Sequence[str]) -> int:
         ("VALIDATE_DEFECT_COUNT", "0"),
         ("VALIDATE_SKIPPED_COUNT", "0"),
         ("VALIDATE_UNSAFE_TOKEN_COUNT", "0"),
+        ("VALIDATE_MISSING_SCRIPT_COUNT", "0"),
         ("VALIDATE_LOG_FILE", ""),
         ("FINAL_SUMMARY_PATH", str(final_summary_path)),
         ("DESIGNED_ADMISSION_READY", "false"),
@@ -196,7 +214,7 @@ def publish_core(argv: Sequence[str]) -> int:
     if not composed_plan.is_file() or composed_plan.stat().st_size == 0:
         kvs[1] = ("VALIDATE_STATUS", "defects-found")
         kvs[2] = ("VALIDATE_DEFECT_COUNT", "1")
-        kvs[5] = ("VALIDATE_LOG_FILE", str(design_tmpdir / "validate-plan-commands.log"))
+        kvs[6] = ("VALIDATE_LOG_FILE", str(design_tmpdir / "validate-plan-commands.log"))
         _emit_rows(kvs)
         _ = _write_result_env(result_env, kvs)
         return 4
@@ -250,6 +268,13 @@ def publish_core(argv: Sequence[str]) -> int:
     if skip_validate:
         kvs[1] = ("VALIDATE_STATUS", "skipped")
     else:
+        validate_env = {
+            **os.environ,
+            "DESIGN_TMPDIR": str(design_tmpdir),
+            "LARCH_QUIET_DISABLE": "1",
+            "CLAUDE_PLUGIN_ROOT": str(plugin_root),
+        }
+        repo_root_arg = consumer_repo_root() or plugin_root
         validate = subprocess.run(
             [
                 sys.executable,
@@ -263,19 +288,20 @@ def publish_core(argv: Sequence[str]) -> int:
                 "--design-tmpdir",
                 str(design_tmpdir),
                 "--repo-root",
-                str(plugin_root),
+                str(repo_root_arg),
             ],
             capture_output=True,
             text=True,
             check=False,
-            env={**os.environ, "DESIGN_TMPDIR": str(design_tmpdir), "LARCH_QUIET_DISABLE": "1"},
+            env=validate_env,
         )
         parsed_validate = _parse_kv((validate.stdout or "") + "\n" + (validate.stderr or ""))
         kvs[1] = ("VALIDATE_STATUS", parsed_validate.get("VALIDATE_STATUS", "not-run"))
         kvs[2] = ("VALIDATE_DEFECT_COUNT", parsed_validate.get("VALIDATE_DEFECT_COUNT", "0"))
         kvs[3] = ("VALIDATE_SKIPPED_COUNT", parsed_validate.get("VALIDATE_SKIPPED_COUNT", "0"))
         kvs[4] = ("VALIDATE_UNSAFE_TOKEN_COUNT", parsed_validate.get("VALIDATE_UNSAFE_TOKEN_COUNT", "0"))
-        kvs[5] = ("VALIDATE_LOG_FILE", parsed_validate.get("VALIDATE_LOG_FILE", ""))
+        kvs[6] = ("VALIDATE_LOG_FILE", parsed_validate.get("VALIDATE_LOG_FILE", ""))
+        kvs[5] = ("VALIDATE_MISSING_SCRIPT_COUNT", _count_missing_script_defects(kvs[6][1]))
         if kvs[1][1] == "defects-found":
             _emit_rows(kvs)
             _ = _write_result_env(result_env, kvs)
