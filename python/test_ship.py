@@ -431,6 +431,113 @@ def test_straight_merge_post_ensure_committed_snapshot(
     assert manifest.get("pr_number") == 12
 
 
+def test_straight_merge_post_ensure_green_ci_committed_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(run_logs, "flush_logs_pre", _REAL_FLUSH_LOGS_PRE)
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", _REAL_FLUSH_LOGS_PRE)
+    _ = (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=0\nRUN_ID=run-abc\n", encoding="utf-8")
+    _ = (tmp_path / "session-env.sh").write_text("REPO=o/r\nMODE=N/A\n", encoding="utf-8")
+    _ = (tmp_path / "run-flags.sh").write_text("EMERGENCY_REQUESTED=false\n", encoding="utf-8")
+    _ = (tmp_path / "finalize-state.sh").write_text("", encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    _ = run_logs.init_run(ctx)
+    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
+    post_ensure: dict[str, object] = {}
+
+    def fake_token_fields(implement_tmpdir: Path, run_id: str) -> dict[str, object]:
+        _ = (implement_tmpdir, run_id)
+        return {"cost_unavailable": True}
+
+    monkeypatch.setattr(final_report, "_final_report_token_fields", fake_token_fields)
+    monkeypatch.setattr(run_logs, "_render_ledger_reports", lambda *_a, **_k: None)
+    monkeypatch.setattr(run_logs, "capture_session_transcript", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        run_logs,
+        "_commit_run",
+        lambda *_a, **_k: CommandResult(("git", "commit"), 0, "a" * 40 + "\n", "", 0.0),
+    )
+
+    real_flush = _REAL_FLUSH_LOGS_PRE
+
+    def capturing_flush(
+        runner: RecordingRunner,
+        flush_ctx: RunContext,
+        *,
+        cwd: str | None = None,
+        strict_final_report: bool = False,
+    ) -> run_logs.RefreshSkip:
+        result = real_flush(runner, flush_ctx, cwd=cwd, strict_final_report=strict_final_report)
+        if strict_final_report:
+            manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+            final_summary = (run_dir / "final-summary.md").read_text(encoding="utf-8")
+            heading = final_summary.split("—", 1)[-1].split("\n", 1)[0].strip()
+            post_ensure["heading"] = heading
+            post_ensure["manifest"] = manifest
+        return result
+
+    monkeypatch.setattr(run_logs, "flush_logs_pre", capturing_flush)
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", capturing_flush)
+    monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: type("P", (), {"number": 12, "url": "https://example.test/pr/12", "status": "created"})(),
+    )
+    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
+    monkeypatch.setattr(
+        ship.ci_monitor,
+        "monitor",
+        lambda *_a, **_k: type(
+            "M",
+            (),
+            {
+                "result": StepResult(Outcome.OK),
+                "action": "merge",
+                "goto_rebase": False,
+                "did_fixing": False,
+                "failed_run_id": None,
+                "transient_rerun_attempted": False,
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        ship.merge,
+        "merge_pr",
+        lambda *_a, **_k: type("MR", (), {"result": config.MERGE_RESULT_MERGED, "error": ""})(),
+    )
+    monkeypatch.setattr(
+        ship.finalize,
+        "postmerge",
+        lambda *_a, **_k: type("PM", (), {"outcome": Outcome.OK, "detail": "", "status": "ok"})(),
+    )
+    monkeypatch.setattr(
+        ship.run_logs,
+        "flush_logs_post",
+        lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""),
+    )
+    monkeypatch.setattr(ship.run_logs, "load_or_recover_manifest", lambda *_a, **_k: object())
+    monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
+
+    result = ship.run_ship(
+        _ctx(tmp_path, state_file=str(tmp_path / "ship-pr-state.sh")),
+        runner=RecordingRunner(),
+        cwd=str(tmp_path),
+    )
+
+    assert result.outcome is Outcome.OK
+    assert post_ensure["heading"] == "pr-created"
+    post_manifest = post_ensure["manifest"]
+    assert isinstance(post_manifest, dict)
+    assert post_manifest["status"] == config.MANIFEST_STATUS_IN_PROGRESS
+    steps_ran = post_manifest["steps_ran"]
+    assert isinstance(steps_ran, dict)
+    assert steps_ran.get("step8") is True
+
+
 def test_merge_review_required_exits_as_needs_user_input(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

@@ -464,7 +464,7 @@ def test_normalize_outcome_post_pr_stalled_guard_not_pr_created(
     assert "IMPLEMENT_NORMALIZED_OUTCOME=stalled" in capsys.readouterr().out
 
 
-def test_normalize_outcome_finalize_stalled_overrides_ship_ci_initial(
+def test_normalize_outcome_ignores_stale_finalize_stalled_on_resume(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -477,7 +477,7 @@ def test_normalize_outcome_finalize_stalled_overrides_ship_ci_initial(
     rc = stall_recovery.normalize_outcome_main(["--implement-tmpdir", str(tmp_path)])
 
     assert rc == 0
-    assert "IMPLEMENT_NORMALIZED_OUTCOME=stalled" in capsys.readouterr().out
+    assert "IMPLEMENT_NORMALIZED_OUTCOME=pr-created" in capsys.readouterr().out
 
 
 def test_normalize_outcome_exit_code_guard_not_pr_created(

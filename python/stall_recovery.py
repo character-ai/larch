@@ -657,6 +657,37 @@ def _is_nonzero_exit_code(value: str) -> bool:
         return False
 
 
+_IN_FLIGHT_SHIP_PHASES = frozenset({"ci-initial", "rebase", "pr-create"})
+
+
+def _finalize_phase_is_stale_stall_overlay(
+    ship: Mapping[str, str],
+    fin: Mapping[str, str],
+    *,
+    any_stall: bool,
+) -> bool:
+    if any_stall:
+        return False
+    ship_phase = ship.get("PHASE", "").strip()
+    fin_phase = fin.get("PHASE", "").strip()
+    return fin_phase == "stalled" and ship_phase in _IN_FLIGHT_SHIP_PHASES
+
+
+def _phase_counts_as_stalled(
+    ship: Mapping[str, str],
+    fin: Mapping[str, str],
+    *,
+    any_stall: bool,
+) -> bool:
+    ship_phase = ship.get("PHASE", "").strip()
+    fin_phase = fin.get("PHASE", "").strip()
+    if ship_phase == "stalled":
+        return True
+    if fin_phase != "stalled":
+        return False
+    return not _finalize_phase_is_stale_stall_overlay(ship, fin, any_stall=any_stall)
+
+
 def _is_healthy_pre_terminal_pr_snapshot(ship: Mapping[str, str], fin: Mapping[str, str]) -> bool:
     if _state_value(ship, fin, "BAIL_REASON").strip():
         return False
@@ -679,7 +710,7 @@ def normalized_outcome_values(args: argparse.Namespace) -> dict[str, str]:
     fin_stall = fin.get("STALL_TRACKING", "false")
     ses_stall = ses.get("STALL_TRACKING", "false")
     any_stall = _truthy(memory_stall) or _truthy(ship_stall) or _truthy(fin_stall) or _truthy(ses_stall)
-    phase_stalled = ship.get("PHASE", "").strip() == "stalled" or fin.get("PHASE", "").strip() == "stalled"
+    phase_stalled = _phase_counts_as_stalled(ship, fin, any_stall=any_stall)
     merge_result = ship.get("MERGE_RESULT") or fin.get("MERGE_RESULT", "")
     merge = ship.get("MERGE") or fin.get("MERGE", "")
     draft = ship.get("DRAFT") or fin.get("DRAFT", "false")

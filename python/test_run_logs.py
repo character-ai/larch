@@ -13,6 +13,7 @@ from typing import cast
 import pytest
 
 import config
+import final_report
 import run_logs
 import timing
 import tokens
@@ -701,6 +702,54 @@ def test_flush_logs_pre_downgrades_stale_step9a1_true_with_ndjson_only(
     assert not skip.skipped
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert manifest["steps_ran"]["step9a1"] is False
+
+
+def test_flush_logs_pre_multi_flush_bailed_then_pr_created(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _ = (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=0\nRUN_ID=run-abc\n", encoding="utf-8")
+    _ = (tmp_path / "session-env.sh").write_text("REPO=o/r\nMODE=N/A\n", encoding="utf-8")
+    _ = (tmp_path / "run-flags.sh").write_text("EMERGENCY_REQUESTED=false\n", encoding="utf-8")
+    _ = (tmp_path / "finalize-state.sh").write_text("", encoding="utf-8")
+    state = tmp_path / "ship-pr-state.sh"
+    _ = state.write_text(
+        "RUN_ID=run-abc\nSTALL_TRACKING=false\nMERGE=true\nPR_NUMBER=\nMERGE_RESULT=\nDRAFT=false\n",
+        encoding="utf-8",
+    )
+    ctx = _ctx(tmp_path, str(state))
+    _ = run_logs.init_run(ctx)
+    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
+
+    monkeypatch.setattr(final_report, "_final_report_token_fields", lambda *_a: {"cost_unavailable": True})
+    monkeypatch.setattr(run_logs, "_render_ledger_reports", lambda *_a, **_k: None)
+    monkeypatch.setattr(run_logs, "capture_session_transcript", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        run_logs,
+        "_commit_run",
+        lambda *_a, **_k: CommandResult(("git", "commit"), 0, "a" * 40 + "\n", "", 0.0),
+    )
+
+    skip1 = run_logs.flush_logs_pre(RecordingRunner(), ctx, cwd=str(tmp_path))
+    assert not skip1.skipped
+    final1 = (run_dir / "final-summary.md").read_text(encoding="utf-8")
+    heading1 = final1.split("—", 1)[-1].split("\n", 1)[0].strip()
+    assert heading1 == "bailed"
+
+    _ = state.write_text(
+        "RUN_ID=run-abc\nSTALL_TRACKING=false\nMERGE=true\nPR_NUMBER=12\nPR_URL=https://example.test/pr/12\n"
+        "PHASE=ci-initial\nMERGE_RESULT=\nDRAFT=false\n",
+        encoding="utf-8",
+    )
+
+    skip2 = run_logs.flush_logs_pre(RecordingRunner(), ctx, cwd=str(tmp_path), strict_final_report=True)
+    assert not skip2.skipped
+    final2 = (run_dir / "final-summary.md").read_text(encoding="utf-8")
+    heading2 = final2.split("—", 1)[-1].split("\n", 1)[0].strip()
+    assert heading2 == "pr-created"
+    manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["status"] == config.MANIFEST_STATUS_IN_PROGRESS
+    assert manifest["steps_ran"].get("step8") is True
 
 
 def test_flush_logs_pre_retains_reloaded_step8_after_final_report_reconcile(
