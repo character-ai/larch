@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest  # noqa: TC002
 
 import design_summary
+import design_lifecycle
 import progress_report
 from test_design_cli_ports import test_design_port_registry_entries_are_machine_stdout  # noqa: F401  # pylint: disable=unused-import  # pyright: ignore[reportUnusedImport]
 
@@ -124,6 +125,23 @@ def _write_design_round_fixture(tmp_path: Path, *, with_timing: bool) -> None:
             "v1\tvendor\t1700000010\timplement\t-\tclaude\treview\t1700000010\t1700000060\t50\tclaude-plan-generic-output.txt\t0\tcomplete\n",
             encoding="utf-8",
         )
+
+
+def test_failure_report_gate_uses_in_process_core(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[list[str]] = []
+
+    def fake_core(argv: list[str]) -> tuple[int, list[str]]:
+        calls.append(list(argv))
+        print("DESIGN_FAILURE_REPORT_DECISION=skip")
+        return 0, []
+
+    monkeypatch.setattr(design_lifecycle, "failure_report_core", fake_core)
+    design_summary._run_design_failure_report_gate(tmp_path, "post", "approved", "o/r", "42", "run-1")  # pyright: ignore[reportPrivateUsage]
+    assert calls
+    assert "--outcome" in calls[0]
+    assert calls[0][calls[0].index("--outcome") + 1] == "approved"
+    assert "DESIGN_FAILURE_REPORT_DECISION=skip" in (tmp_path / "design-failure-report.stdout.log").read_text(encoding="utf-8")
+    assert (tmp_path / "design-failure-report.stderr.log").is_file()
 
 
 def test_render_final_summary_appends_review_detail_to_stdout_and_upsert(

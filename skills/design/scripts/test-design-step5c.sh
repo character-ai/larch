@@ -16,7 +16,6 @@ STUB="$FAKE_PLUGIN/skills/design/scripts"
 mkdir -p "$STUB" "$FAKE_PLUGIN/scripts" "$FAKE_PLUGIN/bin" "$FAKE_PLUGIN/python"
 ln -sf "$ROOT/python"/* "$FAKE_PLUGIN/python/"
 # lib-phase-driver.sh ported to python/design_lifecycle.py; python/ symlink provides it
-ln -sf "$ROOT/skills/design/scripts/design-stage-terminal-state.sh" "$STUB/design-stage-terminal-state.sh"
 ln -sf "$ROOT/scripts/lib-quiet.sh" "$FAKE_PLUGIN/scripts/lib-quiet.sh"
 ln -sf "$ROOT/scripts/lib-larch-dev-clone.sh" "$FAKE_PLUGIN/scripts/lib-larch-dev-clone.sh"
 ln -sf "$ROOT/scripts/read-result-env.sh" "$FAKE_PLUGIN/scripts/read-result-env.sh"
@@ -82,6 +81,22 @@ case "\$cmd1 \$cmd2" in
     if [ -s "\$sidecar" ]; then
       printf 'REPORT_GATE_SIDECARS_FILE=%s\n' "\$sidecar"
     fi
+    exit 0
+    ;;
+  "design stage-terminal-state")
+    tmp=""
+    outcome=""
+    while [ "\$#" -gt 0 ]; do
+      case "\$1" in
+        --design-tmpdir) tmp="\$2"; shift 2 ;;
+        --outcome) outcome="\$2"; shift 2 ;;
+        *) shift ;;
+      esac
+    done
+    [ -n "\$tmp" ] || tmp="\${DESIGN_TMPDIR:-}"
+    [ -n "\$outcome" ] || outcome=unknown
+    printf 'STAGED=true\n'
+    printf 'FAILURE_OUTCOME=%s\n' "\$outcome" >"\$tmp/design-failure-terminal-state.env"
     exit 0
     ;;
   "design read-result-env")

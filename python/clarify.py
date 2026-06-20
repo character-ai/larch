@@ -833,9 +833,13 @@ def _stage_failed_clarify(
 ) -> None:
     if not detail_log.is_file():
         detail_log.write_text("clarify failure\n", encoding="utf-8")
-    stage = proc.run(
+    stdout_log = design_tmpdir / "design-clarify-stage.stdout.log"
+    stderr_log = design_tmpdir / "design-clarify-stage.stderr.log"
+    rc = design_lifecycle.capture_contract_stream_to_paths(
+        design_lifecycle.stage_terminal_state_core,
+        stdout_log,
+        stderr_log,
         [
-            str(plugin_root / "skills" / "design" / "scripts" / "design-stage-terminal-state.sh"),
             "--design-tmpdir",
             str(design_tmpdir),
             "--outcome",
@@ -859,19 +863,16 @@ def _stage_failed_clarify(
             "--failure-detail-log",
             str(detail_log),
         ],
-        env={**os.environ, **env},
     )
-    (design_tmpdir / "design-clarify-stage.stdout.log").write_text(stage.stdout, encoding="utf-8")
-    (design_tmpdir / "design-clarify-stage.stderr.log").write_text(stage.stderr, encoding="utf-8")
-    if stage.returncode != 0:
+    if rc != 0:
         _append_clarify_failure(
             plugin_root,
             design_tmpdir,
             env,
             site="design Step 0b clarify fetch",
             tool="design-stage-terminal-state.sh",
-            exit_code=stage.returncode,
-            output_file=design_tmpdir / "design-clarify-stage.stderr.log",
+            exit_code=rc,
+            output_file=stderr_log,
         )
 
 

@@ -3,20 +3,26 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
+import shutil
 import subprocess
 import sys
-from collections.abc import Sequence
+import tempfile
+from collections.abc import Callable, Sequence
 from contextlib import redirect_stdout
 from io import StringIO
 from pathlib import Path
 
 import pytest
 
+import config
 import design_lifecycle
 import design_pause
+import logging_util
 import proc as proc_module
+import stall_recovery
 from design_lifecycle import load_bash_quoted_env, phase_driver_read_result_env
 
 
@@ -484,15 +490,13 @@ def test_step0_clarify_hard_halt_forwards_exit_code_and_detail_log(tmp_path: Pat
     detail.write_text("detail\n", encoding="utf-8")
     env_path = _write_session_env(tmp_path, design, monkeypatch, ISSUE_NUMBER="42")
     captured: list[list[str]] = []
-    real_run = subprocess.run
 
-    def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-        if cmd and "design-stage-terminal-state.sh" in cmd[0]:
-            captured.append(list(cmd))
-            return subprocess.CompletedProcess(cmd, 0, "STAGED=true\n", "")
-        return real_run(cmd, check=False, **kwargs)  # type: ignore[arg-type]
+    def fake_stage(argv: list[str]) -> tuple[int, list[str]]:
+        captured.append(list(argv))
+        print("STAGED=true")
+        return 0, ["STAGED=true"]
 
-    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(design_lifecycle, "stage_terminal_state_core", fake_stage)
 
     assert design_lifecycle.step0_clarify_hard_halt_main(
         [
@@ -513,6 +517,101 @@ def test_step0_clarify_hard_halt_forwards_exit_code_and_detail_log(tmp_path: Pat
     assert argv[argv.index("--exit-code") + 1] == "7"
     assert "--failure-detail-log" in argv
     assert str(detail) in argv[argv.index("--failure-detail-log") + 1]
+    assert "STAGED=true" in (design / "design-stage-terminal-state.stdout.log").read_text(encoding="utf-8")
+
+
+def _stage_args(design: Path, *extra: str) -> list[str]:
+    return [
+        "--design-tmpdir",
+        str(design.resolve()),
+        "--outcome",
+        "failed-clarify",
+        "--step",
+        "clarify",
+        "--phase",
+        "clarify-loop",
+        "--site",
+        "clarify-loop",
+        "--trigger",
+        "failed",
+        "--bail-reason",
+        "clarify-hard-halt",
+        "--exit-code",
+        "1",
+        "--source-script",
+        "clarify-loop",
+        "--summary-outcome",
+        "failed-clarify",
+        *extra,
+    ]
+
+
+def test_stage_terminal_state_core_writes_state_and_rejects_bad_tokens(tmp_path: Path) -> None:
+    rc, _ = design_lifecycle.stage_terminal_state_core(_stage_args(tmp_path))
+    assert rc == 0
+    state = tmp_path / "design-failure-terminal-state.env"
+    assert state.is_file()
+    assert "FAILURE_OUTCOME=failed-clarify" in state.read_text(encoding="utf-8")
+
+    bad_rc, _ = design_lifecycle.stage_terminal_state_core(_stage_args(tmp_path / "missing", "--evidence-ref", "../unsafe"))
+    assert bad_rc == 2
+
+
+def test_stage_terminal_state_preserves_mismatched_existing_state(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    state = tmp_path / "design-failure-terminal-state.env"
+    state.write_text(
+        "DESIGN_FAILURE_VERSION=1\nDESIGN_FAILURE_KIND=terminal\nFAILURE_OUTCOME=failed-publish\nSTALL_STEP=publish\nPHASE=publish\nSITE=design-publish\nTRIGGER=publish-tail-failed\nBAIL_REASON=publish-tail-failed\nEXIT_CODE=1\nFAILURE_DETAIL_LOG=\nSOURCE_SCRIPT=design-step5c\nOCCURRED_AT=2026-01-01T00:00:00Z\n",
+        encoding="utf-8",
+    )
+    rc, _ = design_lifecycle.stage_terminal_state_core(_stage_args(tmp_path))
+    assert rc == 0
+    assert "PRESERVED=true" in capsys.readouterr().out
+
+
+def test_capture_contract_stream_restores_parent_stdout_stderr(tmp_path: Path) -> None:
+    out = tmp_path / "stdout.log"
+    err = tmp_path / "stderr.log"
+
+    def emit_contract() -> int:
+        logging_util.emit_kv("CAPTURED", "true")
+        print("stderr-row", file=sys.stderr)
+        return 0
+
+    assert design_lifecycle.capture_contract_stream_to_paths(emit_contract, out, err) == 0
+    os.write(1, b"")
+    os.write(2, b"")
+    assert "CAPTURED=true" in out.read_text(encoding="utf-8")
+    assert "stderr-row" in err.read_text(encoding="utf-8")
+
+
+def test_failure_report_core_sentinel_and_cancellation_paths(tmp_path: Path) -> None:
+    (tmp_path / "design-failure-terminal-report.env").write_text("", encoding="utf-8")
+    rc, _ = design_lifecycle.failure_report_core(["--design-tmpdir", str(tmp_path.resolve()), "--outcome", "failed-clarify"])
+    assert rc == 0
+    (tmp_path / "design-failure-terminal-report.env").unlink()
+    rc, _ = design_lifecycle.failure_report_core(["--design-tmpdir", str(tmp_path.resolve()), "--outcome", "cancelled-user"])
+    assert rc == 0
+    assert (tmp_path / "design-failure-operator-action-chat.md").is_file()
+
+
+def test_step_final_summary_core_emits_markers_and_cleans_bg_marker(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    env_path = _write_session_env(tmp_path, tmp_path, monkeypatch, ISSUE_NUMBER="0", SUMMARY_OUTCOME="approved")
+    (tmp_path / "final-summary.md").write_text("summary without newline", encoding="utf-8")
+
+    def fake_render(argv: list[str]) -> int:
+        assert "--post-publish-only" in argv
+        return 0
+
+    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+
+    monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
+    rc, _ = design_lifecycle.step_final_summary_core(["--session-env-path", str(env_path), "--claude-pid", "123", "--outcome", "approved"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "LARCH_FINAL_SUMMARY_BEGIN" in out
+    assert "summary without newline\nLARCH_FINAL_SUMMARY_END" in out
+    assert not (tmp_path / ".bg-wait-active").exists()
+    assert (tmp_path / ".completed" / "step-final-summary").is_file()
 
 
 def test_step0_route_forwards_router_flags(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1434,3 +1533,449 @@ def test_step2b_postplan_gate_b_ignores_snapshot_original_flag(tmp_path: Path, m
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(CLI.parent.parent))
     design_lifecycle.step2b_postplan_main(["--site", "gate-b", "--snapshot-original"])
     assert "--snapshot-original" not in seen
+
+
+def _judge_panel_stage_args(design: Path, *extra: str) -> list[str]:
+    return [
+        "--design-tmpdir",
+        str(design.resolve()),
+        "--outcome",
+        "failed-judge-panel",
+        "--step",
+        "judge-panel",
+        "--phase",
+        "judge-panel",
+        "--site",
+        "decompose-panel",
+        "--trigger",
+        "decompose-panel-retry-exhausted",
+        "--bail-reason",
+        "decompose-panel-retry-exhausted",
+        "--exit-code",
+        "1",
+        "--source-script",
+        "split-path",
+        "--summary-outcome",
+        "failed-judge-panel",
+        *extra,
+    ]
+
+
+def _panel_init_stage_args(design: Path, detail_log: Path) -> list[str]:
+    return [
+        "--design-tmpdir",
+        str(design.resolve()),
+        "--outcome",
+        "failed-judge-panel",
+        "--step",
+        "judge-panel",
+        "--phase",
+        "judge-panel",
+        "--site",
+        "step3-review",
+        "--trigger",
+        "panel-init-failed",
+        "--bail-reason",
+        "panel-init-failed",
+        "--exit-code",
+        "1",
+        "--source-script",
+        "design-step3-review",
+        "--failure-detail-log",
+        str(detail_log),
+        "--summary-outcome",
+        "failed-judge-panel",
+    ]
+
+
+def _stage_terminal_for_report(tmp_path: Path, outcome: str = "failed-clarify") -> None:
+    rc, _ = design_lifecycle.stage_terminal_state_core(_stage_args(tmp_path, "--outcome", outcome, "--summary-outcome", outcome))
+    assert rc == 0
+
+
+def _capture_failure_report(tmp_path: Path, outcome: str, monkeypatch: pytest.MonkeyPatch | None = None) -> tuple[int, str, str]:
+    if monkeypatch is not None:
+        real_run_stall: Callable[..., int] = design_lifecycle._run_stall_main  # pyright: ignore[reportPrivateUsage, reportUnknownMemberType, reportUnknownVariableType]
+
+        def fake_stall(
+            callable_obj: object,
+            argv: list[str],
+            *,
+            stdout_path: Path | None = None,
+            stderr_path: Path | None = None,
+        ) -> int:
+            if callable_obj is stall_recovery.compose_report_main:
+                if stdout_path is not None:
+                    stdout_path.write_text("STALL_RECOVERY_REPORT_STATUS=filed\nSTALL_RECOVERY_REPORT_ARTIFACT=artifact.md\n", encoding="utf-8")
+                return 0
+            if callable_obj is stall_recovery.populate_sensitive_corpus_main:
+                return 0
+            if callable_obj is stall_recovery.validate_terminal_state_main:
+                return real_run_stall(callable_obj, argv, stdout_path=stdout_path, stderr_path=stderr_path)
+            if callable_obj is stall_recovery.init_attempts_main:
+                return 0
+            if callable_obj is stall_recovery.classify_main and stdout_path is not None:
+                stdout_path.write_text("", encoding="utf-8")
+                return 0
+            return real_run_stall(callable_obj, argv, stdout_path=stdout_path, stderr_path=stderr_path)
+
+        monkeypatch.setattr(design_lifecycle, "_run_stall_main", fake_stall)  # pyright: ignore[reportPrivateUsage]
+    out = tmp_path / "failure-report.stdout.log"
+    err = tmp_path / "failure-report.stderr.log"
+    rc = design_lifecycle.capture_contract_stream_to_paths(
+        design_lifecycle.failure_report_core,
+        out,
+        err,
+        ["--design-tmpdir", str(tmp_path.resolve()), "--outcome", outcome],
+    )
+    return rc, out.read_text(encoding="utf-8"), err.read_text(encoding="utf-8")
+
+
+def test_stage_terminal_state_rejects_unknown_outcome_and_vocab(tmp_path: Path) -> None:
+    bad_outcome = _stage_args(tmp_path, "--outcome", "bad-outcome")
+    assert design_lifecycle.stage_terminal_state_core(bad_outcome)[0] == 2
+    bad_step = _stage_args(tmp_path, "--step", "nope")
+    assert design_lifecycle.stage_terminal_state_core(bad_step)[0] == 2
+
+
+def test_stage_terminal_state_rejects_non_numeric_exit_code(tmp_path: Path) -> None:
+    rc, _ = design_lifecycle.stage_terminal_state_core(_stage_args(tmp_path, "--exit-code", "abc"))
+    assert rc == 2
+
+
+def test_stage_terminal_state_accepts_unknown_exit_code(tmp_path: Path) -> None:
+    rc, _ = design_lifecycle.stage_terminal_state_core(_stage_args(tmp_path, "--exit-code", "unknown"))
+    assert rc == 0
+    state = (tmp_path / "design-failure-terminal-state.env").read_text(encoding="utf-8")
+    assert "EXIT_CODE=unknown" in state
+
+
+def test_stage_terminal_state_rejects_outside_and_symlink_detail_log(tmp_path: Path) -> None:
+    outside_dir = Path(tempfile.mkdtemp(dir="/var/tmp"))
+    try:
+        outside = outside_dir / "outside.log"
+        outside.write_text("safe\n", encoding="utf-8")
+        rc, _ = design_lifecycle.stage_terminal_state_core(_stage_args(tmp_path, "--failure-detail-log", str(outside)))
+        assert rc == 2
+    finally:
+        shutil.rmtree(outside_dir, ignore_errors=True)
+    inside = tmp_path / "evidence.log"
+    inside.write_text("safe\n", encoding="utf-8")
+    link = tmp_path / "evidence.link"
+    link.symlink_to(inside)
+    rc, _ = design_lifecycle.stage_terminal_state_core(_stage_args(tmp_path, "--failure-detail-log", str(link)))
+    assert rc == 2
+
+
+def test_stage_terminal_state_rejects_symlink_existing_state(tmp_path: Path) -> None:
+    target = tmp_path / "state.env"
+    target.write_text("DESIGN_FAILURE_VERSION=1\nFAILURE_OUTCOME=failed-clarify\nSITE=clarify-loop\nTRIGGER=failed\n", encoding="utf-8")
+    link = tmp_path / "design-failure-terminal-state.env"
+    link.symlink_to(target)
+    rc, _ = design_lifecycle.stage_terminal_state_core(_stage_args(tmp_path))
+    assert rc == 2
+
+
+def test_stage_terminal_state_stages_failed_judge_panel_decompose(tmp_path: Path) -> None:
+    rc, _ = design_lifecycle.stage_terminal_state_core(_judge_panel_stage_args(tmp_path))
+    assert rc == 0
+    state = (tmp_path / "design-failure-terminal-state.env").read_text(encoding="utf-8")
+    assert "SITE=decompose-panel" in state
+    assert "TRIGGER=decompose-panel-retry-exhausted" in state
+
+
+def test_stage_terminal_state_stages_panel_init_failed_bail(tmp_path: Path) -> None:
+    detail = tmp_path / "step3-panel-init-failed.log"
+    detail.write_text("panel init failed\n", encoding="utf-8")
+    rc, _ = design_lifecycle.stage_terminal_state_core(_panel_init_stage_args(tmp_path, detail))
+    assert rc == 0
+    state = (tmp_path / "design-failure-terminal-state.env").read_text(encoding="utf-8")
+    assert "BAIL_REASON=panel-init-failed" in state
+
+
+def test_stage_terminal_state_main_rejects_disallowed_tmpdir(capsys: pytest.CaptureFixture[str]) -> None:
+    try:
+        disallowed = Path(tempfile.mkdtemp(prefix="larch-test-terminal-disallowed.", dir="/var/tmp"))
+    except OSError:
+        pytest.skip("/var/tmp unavailable for disallowed tmpdir case")
+    try:
+        rc = design_lifecycle.stage_terminal_state_main(_stage_args(disallowed))
+        captured = capsys.readouterr()
+        assert rc == 2
+        assert "allowlist" in captured.err.lower()
+    finally:
+        shutil.rmtree(disallowed, ignore_errors=True)
+
+
+def test_capture_contract_stream_restores_fd3_for_quiet_init(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    out = tmp_path / "stdout.log"
+    err = tmp_path / "stderr.log"
+    monkeypatch.delenv(config.ENV_LARCH_QUIET_DISABLE, raising=False)
+    monkeypatch.setenv(config.ENV_DESIGN_TMPDIR, str(tmp_path))
+
+    def emit_contract() -> int:
+        logging_util.emit_kv("CAPTURED", "true")
+        return 0
+
+    assert design_lifecycle.capture_contract_stream_to_paths(emit_contract, out, err) == 0
+    logging_util.reset_quiet_state()
+    read_fd, write_fd = os.pipe()
+    saved_stdout = os.dup(1)
+    try:
+        os.dup2(write_fd, 1)
+        os.close(write_fd)
+        logging_util.quiet_init(argv0="parent-quiet")
+        logging_util.emit_kv("POST_CAPTURE", "ok")
+        os.dup2(saved_stdout, 1)
+        contract = os.read(read_fd, 4096).decode("utf-8")
+    finally:
+        os.close(read_fd)
+        os.close(saved_stdout)
+        logging_util.reset_quiet_state()
+    assert "POST_CAPTURE=ok" in contract
+
+
+def test_failure_report_missing_terminal_state_fallback(tmp_path: Path) -> None:
+    _, stdout, _ = _capture_failure_report(tmp_path, "failed-clarify")
+    assert "DESIGN_FAILURE_REPORT_DECISION=fallback-print-required" in stdout
+    assert (tmp_path / "design-failure-chat-print.md").is_file()
+
+
+def test_failure_report_terminal_success_and_sentinel_skip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _stage_terminal_for_report(tmp_path)
+    _, stdout, _ = _capture_failure_report(tmp_path, "failed-clarify", monkeypatch)
+    assert "DESIGN_FAILURE_REPORT_DECISION=terminal-failure" in stdout
+    assert (tmp_path / "design-failure-terminal-report.env").is_file()
+    _, second, _ = _capture_failure_report(tmp_path, "failed-clarify", monkeypatch)
+    assert "DESIGN_FAILURE_REPORT_REASON=terminal-sentinel-present" in second
+
+
+def test_failure_report_terminal_compose_failed_fallback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _stage_terminal_for_report(tmp_path)
+    real_run_stall: Callable[..., int] = design_lifecycle._run_stall_main  # pyright: ignore[reportPrivateUsage, reportUnknownMemberType, reportUnknownVariableType]
+
+    def fake_stall(
+        callable_obj: object,
+        argv: list[str],
+        *,
+        stdout_path: Path | None = None,
+        stderr_path: Path | None = None,
+    ) -> int:
+        if callable_obj is stall_recovery.compose_report_main:
+            return 1
+        if callable_obj is stall_recovery.populate_sensitive_corpus_main:
+            return 0
+        if callable_obj is stall_recovery.validate_terminal_state_main:
+            return real_run_stall(callable_obj, argv, stdout_path=stdout_path, stderr_path=stderr_path)
+        if callable_obj is stall_recovery.init_attempts_main:
+            return 0
+        if callable_obj is stall_recovery.classify_main and stdout_path is not None:
+            stdout_path.write_text("", encoding="utf-8")
+            return 0
+        return real_run_stall(callable_obj, argv, stdout_path=stdout_path, stderr_path=stderr_path)
+
+    monkeypatch.setattr(design_lifecycle, "_run_stall_main", fake_stall)  # pyright: ignore[reportPrivateUsage]
+    _, stdout, _ = _capture_failure_report(tmp_path, "failed-clarify")
+    assert "DESIGN_FAILURE_REPORT_DECISION=fallback-print-required" in stdout
+    assert "DESIGN_FAILURE_REPORT_REASON=terminal-compose-failed" in stdout
+    audit = tmp_path / "design-failure-audit.log"
+    assert audit.is_file()
+    assert "terminal-compose-failed" in audit.read_text(encoding="utf-8")
+
+
+def test_failure_report_compose_status_reads_last_matching_line(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _stage_terminal_for_report(tmp_path)
+    real_run_stall: Callable[..., int] = design_lifecycle._run_stall_main  # pyright: ignore[reportPrivateUsage, reportUnknownMemberType, reportUnknownVariableType]
+
+    def fake_stall(
+        callable_obj: object,
+        argv: list[str],
+        *,
+        stdout_path: Path | None = None,
+        stderr_path: Path | None = None,
+    ) -> int:
+        if callable_obj is stall_recovery.compose_report_main:
+            if stdout_path is not None:
+                stdout_path.write_text(
+                    "STALL_RECOVERY_REPORT_STATUS=printed\nSTALL_RECOVERY_REPORT_STATUS=filed\nSTALL_RECOVERY_REPORT_ARTIFACT=artifact.md\n",
+                    encoding="utf-8",
+                )
+            return 0
+        if callable_obj is stall_recovery.populate_sensitive_corpus_main:
+            return 0
+        if callable_obj is stall_recovery.validate_terminal_state_main:
+            return real_run_stall(callable_obj, argv, stdout_path=stdout_path, stderr_path=stderr_path)
+        if callable_obj is stall_recovery.init_attempts_main:
+            return 0
+        if callable_obj is stall_recovery.classify_main and stdout_path is not None:
+            stdout_path.write_text("", encoding="utf-8")
+            return 0
+        return real_run_stall(callable_obj, argv, stdout_path=stdout_path, stderr_path=stderr_path)
+
+    monkeypatch.setattr(design_lifecycle, "_run_stall_main", fake_stall)  # pyright: ignore[reportPrivateUsage]
+    _, stdout, _ = _capture_failure_report(tmp_path, "failed-clarify")
+    assert "DESIGN_FAILURE_REPORT_DECISION=terminal-failure" in stdout
+
+
+def test_failure_report_outcome_mismatch_fallback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _stage_terminal_for_report(tmp_path, "failed-clarify")
+    _, stdout, _ = _capture_failure_report(tmp_path, "failed-publish", monkeypatch)
+    assert "DESIGN_FAILURE_REPORT_DECISION=fallback-print-required" in stdout
+    assert "DESIGN_FAILURE_REPORT_REASON=terminal-state-outcome-mismatch" in stdout
+
+
+def test_failure_report_invalid_terminal_state_fallback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _stage_terminal_for_report(tmp_path)
+    state = tmp_path / "design-failure-terminal-state.env"
+    state.write_text(state.read_text(encoding="utf-8") + "INVALID=not-a-token\n", encoding="utf-8")
+    _, stdout, _ = _capture_failure_report(tmp_path, "failed-clarify", monkeypatch)
+    assert "DESIGN_FAILURE_REPORT_DECISION=fallback-print-required" in stdout
+    assert "DESIGN_FAILURE_REPORT_REASON=invalid-terminal-state" in stdout
+
+
+def test_failure_report_escalation_success_from_ledger(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    ledger = tmp_path / "design-failure-escalation-ledger.tsv"
+    ledger.write_text(
+        "utc=2026-01-01T00:00:00Z\tsite=step3-review\ttrigger=main-agent-vote-required\tstep=step3\tphase=validation\tdispatcher=design-step3-review\texit_code=unknown\tfailure_detail_log=\n",
+        encoding="utf-8",
+    )
+    _, stdout, _ = _capture_failure_report(tmp_path, "approved", monkeypatch)
+    assert "DESIGN_FAILURE_REPORT_DECISION=escalation-success" in stdout
+
+
+def test_failure_report_failed_judge_panel_terminal_gate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    rc, _ = design_lifecycle.stage_terminal_state_core(_judge_panel_stage_args(tmp_path))
+    assert rc == 0
+    _, stdout, _ = _capture_failure_report(tmp_path, "failed-judge-panel", monkeypatch)
+    assert "DESIGN_FAILURE_REPORT_DECISION=terminal-failure" in stdout
+
+
+def test_step_final_summary_pause_skips_bg_marker(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    env_path = _write_session_env(tmp_path, tmp_path, monkeypatch, ISSUE_NUMBER="42")
+    (tmp_path / ".pause-requested").write_text("", encoding="utf-8")
+
+    def fake_pause(_argv: list[str]) -> int:
+        return 3
+
+    monkeypatch.setattr(design_pause, "pause_save_main", fake_pause)
+    rc, _ = design_lifecycle.step_final_summary_core(["--session-env-path", str(env_path), "--claude-pid", "123", "--outcome", "approved"])
+    assert rc == 3
+    assert not (tmp_path / ".bg-wait-active").exists()
+
+
+def test_step_final_summary_marker_failure_still_emits_sentinel(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    env_path = _write_session_env(tmp_path, tmp_path, monkeypatch, ISSUE_NUMBER="0", SUMMARY_OUTCOME="approved")
+    (tmp_path / "final-summary.md").write_text("summary\n", encoding="utf-8")
+    (tmp_path / ".bg-wait-active").mkdir()
+
+    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+
+    def render_ok_marker(_argv: list[str]) -> int:
+        return 0
+
+    monkeypatch.setattr(design_summary, "render_final_summary_main", render_ok_marker)
+    rc, _ = design_lifecycle.step_final_summary_core(["--session-env-path", str(env_path), "--claude-pid", "456", "--outcome", "approved"])
+    assert rc == 0
+    assert (tmp_path / ".completed" / "step-final-summary").is_file()
+    assert "bg-wait marker setup failed" in (tmp_path / "execution-issues.md").read_text(encoding="utf-8")
+
+
+def test_step_final_summary_render_exception_skips_sentinel_and_marked_emit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    env_path = _write_session_env(tmp_path, tmp_path, monkeypatch, ISSUE_NUMBER="0", SUMMARY_OUTCOME="approved")
+    (tmp_path / "final-summary.md").write_text("summary\n", encoding="utf-8")
+
+    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+
+    def boom(_argv: list[str]) -> int:
+        raise RuntimeError("render broke")
+
+    monkeypatch.setattr(design_summary, "render_final_summary_main", boom)
+    rc, _ = design_lifecycle.step_final_summary_core(["--session-env-path", str(env_path), "--claude-pid", "123", "--outcome", "approved"])
+    assert rc == 1
+    assert not (tmp_path / ".completed" / "step-final-summary").is_file()
+    assert "LARCH_FINAL_SUMMARY_BEGIN" not in capsys.readouterr().out
+
+
+def test_step_final_summary_main_returns_failure_without_sentinel_after_render_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    env_path = _write_session_env(tmp_path, tmp_path, monkeypatch, ISSUE_NUMBER="0", SUMMARY_OUTCOME="approved")
+    (tmp_path / "final-summary.md").write_text("summary\n", encoding="utf-8")
+
+    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+
+    def render_fail(_argv: list[str]) -> int:
+        return 1
+
+    monkeypatch.setattr(design_summary, "render_final_summary_main", render_fail)
+    rc = design_lifecycle.step_final_summary_main(["--session-env-path", str(env_path), "--claude-pid", "123", "--outcome", "approved"])
+    assert rc == 1
+    assert not (tmp_path / ".completed" / "step-final-summary").is_file()
+
+
+def test_step_final_summary_bg_marker_records_claude_pid(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    env_path = _write_session_env(tmp_path, tmp_path, monkeypatch, ISSUE_NUMBER="0", SUMMARY_OUTCOME="approved")
+    (tmp_path / "final-summary.md").write_text("summary\n", encoding="utf-8")
+    seen: list[str] = []
+
+    @contextlib.contextmanager
+    def capture_marker(_design_tmpdir: object, _step: str, *, claude_pid: str = ""):
+        seen.append(claude_pid)
+        yield
+
+    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+
+    def render_ok(_argv: list[str]) -> int:
+        return 0
+
+    monkeypatch.setattr(design_lifecycle, "_bg_wait_marker_context", capture_marker)
+    monkeypatch.setattr(design_summary, "render_final_summary_main", render_ok)
+    design_lifecycle.step_final_summary_core(["--session-env-path", str(env_path), "--claude-pid", "789", "--outcome", "approved"])
+    assert seen == ["789"]
+
+
+def test_step_final_summary_emits_report_gate_sidecars(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    env_path = _write_session_env(tmp_path, tmp_path, monkeypatch, ISSUE_NUMBER="0", SUMMARY_OUTCOME="approved")
+    (tmp_path / "final-summary.md").write_text("summary\n", encoding="utf-8")
+    (tmp_path / "design-failure-chat-print.md").write_text("chat sidecar\n", encoding="utf-8")
+
+    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+
+    def render_ok_sidecar(_argv: list[str]) -> int:
+        return 0
+
+    monkeypatch.setattr(design_summary, "render_final_summary_main", render_ok_sidecar)
+    design_lifecycle.step_final_summary_core(["--session-env-path", str(env_path), "--claude-pid", "123", "--outcome", "approved"])
+    out = capsys.readouterr().out
+    handoff = tmp_path / "design-report-gate-sidecars.md"
+    assert handoff.is_file()
+    assert "REPORT_GATE_SIDECARS_FILE=" in out
+    assert str(handoff) in out
+
+
+def test_step_final_summary_cli_subprocess_emits_markers_on_stdout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    env_path = _write_session_env(tmp_path, tmp_path, monkeypatch, ISSUE_NUMBER="0", SUMMARY_OUTCOME="approved")
+    (tmp_path / "final-summary.md").write_text("cli summary\n", encoding="utf-8")
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(CLI.parent)
+    env[config.ENV_DESIGN_TMPDIR] = str(tmp_path.resolve())
+    env.pop(config.ENV_LARCH_QUIET_DISABLE, None)
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(CLI),
+            "design",
+            "step-final-summary",
+            "--session-env-path",
+            str(env_path),
+            "--claude-pid",
+            "123",
+            "--outcome",
+            "approved",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+    assert result.returncode == 0
+    assert "LARCH_FINAL_SUMMARY_BEGIN" in result.stdout
+    assert "LARCH_FINAL_SUMMARY_END" in result.stdout

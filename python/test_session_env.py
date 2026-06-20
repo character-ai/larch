@@ -270,6 +270,9 @@ def test_write_design_env_source_safe_and_home_symlink(tmp_path: Path) -> None:
     assert 'design step2b-postplan --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"' in launcher_text
     assert 'design step2b5 --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"' in launcher_text
     assert 'plan validator-autofix --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"' in launcher_text
+    assert 'design stage-terminal-state "$@"' in launcher_text
+    assert 'design failure-report "$@"' in launcher_text
+    assert 'design step-final-summary --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"' in launcher_text
 
 
 def test_write_design_env_requires_plugin_root_with_claude_pid(tmp_path: Path) -> None:
@@ -483,6 +486,34 @@ def test_design_run_launcher_maps_retired_step2_wrappers_to_cli_with_tail(tmp_pa
     assert validator.returncode == 0, validator.stderr
     assert "ARGV=plan validator-autofix --session-env-path" in validator.stdout
     assert "--validator-target-file target.md --validate-defect-count 3" in validator.stdout
+    stage = subprocess.run(
+        [str(launcher), "design-stage-terminal-state.sh", "--design-tmpdir", str(design), "--outcome", "failed-clarify"],
+        text=True,
+        capture_output=True,
+        env={**os.environ, "HOME": str(home)},
+        check=False,
+    )
+    assert stage.returncode == 0, stage.stderr
+    assert "ARGV=design stage-terminal-state --design-tmpdir" in stage.stdout
+    failure = subprocess.run(
+        [str(launcher), "design-failure-report.sh", "--design-tmpdir", str(design), "--outcome", "approved"],
+        text=True,
+        capture_output=True,
+        env={**os.environ, "HOME": str(home)},
+        check=False,
+    )
+    assert failure.returncode == 0, failure.stderr
+    assert "ARGV=design failure-report --design-tmpdir" in failure.stdout
+    final = subprocess.run(
+        [str(launcher), "design-step-final-summary.sh", "--outcome", "approved"],
+        text=True,
+        capture_output=True,
+        env={**os.environ, "HOME": str(home)},
+        check=False,
+    )
+    assert final.returncode == 0, final.stderr
+    assert "ARGV=design step-final-summary --session-env-path" in final.stdout
+    assert "--claude-pid 12345 --outcome approved" in final.stdout
 
 
 def test_design_run_launcher_dispatches_non_hyphenated_verbs(tmp_path: Path) -> None:

@@ -1195,3 +1195,16 @@ scripts/test-github-remote-repo.sh	#4642
 scripts/test-github-remote-repo.md	#4642
 scripts/test-resolve-repo.sh	#4642
 scripts/test-resolve-repo.md	#4642
+skills/design/scripts/design-stage-terminal-state.sh	#3692
+skills/design/scripts/design-stage-terminal-state.md	#3692
+skills/design/scripts/test-design-stage-terminal-state.sh	#3692
+skills/design/scripts/test-design-stage-terminal-state.md	#3692
+skills/design/scripts/design-failure-report.sh	#3692
+skills/design/scripts/design-failure-report.md	#3692
+skills/design/scripts/test-design-failure-report.sh	#3692
+skills/design/scripts/test-design-failure-report.md	#3692
+skills/design/scripts/design-step-final-summary.sh	#3692
+skills/design/scripts/design-step-final-summary.md	#3692
+skills/design/scripts/_dbg-stage.sh	#3692
+skills/design/scripts/_debug-step5c.sh	#3692
+scripts/debug-step5c-once.sh	#3692

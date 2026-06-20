@@ -21,6 +21,9 @@ EXPECTED = {
         ("pause-save", "design_pause", "pause_save_main"),
         ("pause-load", "design_pause", "pause_load_main"),
         ("render-final-summary", "design_summary", "render_final_summary_main"),
+        ("stage-terminal-state", "design_lifecycle", "stage_terminal_state_main"),
+        ("failure-report", "design_lifecycle", "failure_report_main"),
+        ("step-final-summary", "design_lifecycle", "step_final_summary_main"),
         ("file-oos-prepare", "design_oos", "file_oos_prepare_main"),
         ("file-oos-annotate", "design_oos", "file_oos_annotate_main"),
     )

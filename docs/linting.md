@@ -330,8 +330,8 @@ Renderer and generator coverage now lives in `python/test_rendering.py`; the ret
 
 Focused harnesses cover the /design auto-reporting port:
 
-- `test-design-stage-terminal-state` validates strict terminal-state staging and shared generic-token validation (`test-harnesses-6`).
-- `test-design-failure-report` validates the teardown gate, operator-action skips, fallback chat prints, and escalation-success reports (`test-harnesses-6`).
+- `test-design-stage-terminal-state` runs focused pytest coverage for the Python terminal-state staging port and shared generic-token validation (`test-harnesses-6`).
+- `test-design-failure-report` runs focused pytest coverage for the Python teardown gate, operator-action skips, fallback chat prints, and escalation-success reports (`test-harnesses-1`).
 - `test-design-step3-review` validates Step 3 terminal and escalation evidence ownership (`test-harnesses-4`).
 - `test-file-failure-report-cross-repo` includes design-prefix Tier B corpus coverage.
 - `test-stall-recovery-report` includes generic-profile `/design` validation, prefixed artifacts, and skill-aware dedup signatures.

@@ -17,7 +17,14 @@ from pathlib import Path
 import logging_util
 import plan_review_tally
 import plan_review_round
-from design_lifecycle import json_get_bool, json_get_bool_main as design_json_get_bool_main, phase_driver_read_result_env, phase_driver_write_result_env
+from design_lifecycle import (
+    capture_contract_stream_to_paths,
+    json_get_bool,
+    json_get_bool_main as design_json_get_bool_main,
+    phase_driver_read_result_env,
+    phase_driver_write_result_env,
+    stage_terminal_state_core,
+)
 from session_env import validate_design_tmpdir
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -212,14 +219,13 @@ def step3_stage_postplan_failed(design_tmpdir: str | Path, postplan_rc: str = "u
     sentinel = tmpdir / ".step3-postplan-terminal-state.recorded"
     if sentinel.exists() or sentinel.is_symlink():
         return 0
-    helper = _plugin_root() / "skills" / "design" / "scripts" / "design-stage-terminal-state.sh"
-    if not helper.exists():
-        return 0
     stdout = tmpdir / "step3-stage-terminal-state.stdout.log"
     stderr = tmpdir / "step3-stage-terminal-state.stderr.log"
-    proc = subprocess.run(
+    rc = capture_contract_stream_to_paths(
+        stage_terminal_state_core,
+        stdout,
+        stderr,
         [
-            str(helper),
             "--design-tmpdir",
             str(tmpdir),
             "--outcome",
@@ -241,12 +247,8 @@ def step3_stage_postplan_failed(design_tmpdir: str | Path, postplan_rc: str = "u
             "--summary-outcome",
             "failed-postplan",
         ],
-        cwd=str(_REPO_ROOT),
-        stdout=stdout.open("w", encoding="utf-8"),
-        stderr=stderr.open("w", encoding="utf-8"),
-        check=False,
     )
-    if proc.returncode == 0:
+    if rc == 0:
         sentinel.touch()
         return 0
     logging_util.emit_kv("WARN", "Step 3: failed to stage failed-postplan terminal state")
@@ -258,18 +260,17 @@ def stage_panel_init_failed(design_tmpdir: str | Path, trigger: str = "panel-ini
     sentinel = tmpdir / ".step3-panel-init-terminal-state.recorded"
     if sentinel.exists() or sentinel.is_symlink():
         return 0
-    helper = _plugin_root() / "skills" / "design" / "scripts" / "design-stage-terminal-state.sh"
-    if not helper.exists():
-        return 0
     stdout = tmpdir / "step3-panel-init-terminal-state.stdout.log"
     stderr = tmpdir / "step3-panel-init-terminal-state.stderr.log"
-    proc = subprocess.run(
+    rc = capture_contract_stream_to_paths(
+        stage_terminal_state_core,
+        stdout,
+        stderr,
         [
-            str(helper),
             "--design-tmpdir",
             str(tmpdir),
             "--outcome",
-            "panel-init-failed",
+            "failed-judge-panel",
             "--step",
             "step3",
             "--phase",
@@ -285,14 +286,10 @@ def stage_panel_init_failed(design_tmpdir: str | Path, trigger: str = "panel-ini
             "--source-script",
             "design-step3-review",
             "--summary-outcome",
-            "panel-init-failed",
+            "failed-judge-panel",
         ],
-        cwd=str(_REPO_ROOT),
-        stdout=stdout.open("w", encoding="utf-8"),
-        stderr=stderr.open("w", encoding="utf-8"),
-        check=False,
     )
-    if proc.returncode == 0:
+    if rc == 0:
         sentinel.touch()
         return 0
     logging_util.emit_kv("WARN", "Step 3: failed to stage panel-init-failed terminal state")
