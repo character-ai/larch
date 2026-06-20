@@ -53,8 +53,8 @@ def test_refresh_issue_counts_counts_ndjson_urls_separately(tmp_path: Path) -> N
 
 def test_write_final_report_reconciles_step8_and_in_progress_for_pr_created(
     tmp_path: Path,
-    monkeypatch,
-) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch,  # type: ignore[no-untyped-def]
+) -> None:
     _write_minimal_state(tmp_path)
     run_dir = tmp_path / "larch-logs" / "implement" / "run1"
     run_dir.mkdir(parents=True)
@@ -75,8 +75,8 @@ def test_write_final_report_reconciles_step8_and_in_progress_for_pr_created(
 
 def test_write_final_report_bailed_does_not_set_in_progress(
     tmp_path: Path,
-    monkeypatch,
-) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch,  # type: ignore[no-untyped-def]
+) -> None:
     _write_minimal_state(tmp_path)
     _ = (tmp_path / "ship-pr-state.sh").write_text("PR_NUMBER=\nPR_URL=N/A\n", encoding="utf-8")
     run_dir = tmp_path / "larch-logs" / "implement" / "run1"
@@ -98,8 +98,8 @@ def test_write_final_report_bailed_does_not_set_in_progress(
 
 def test_write_final_report_skip_tracking_upsert_does_not_call_upsert(
     tmp_path: Path,
-    monkeypatch,
-) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch,  # type: ignore[no-untyped-def]
+) -> None:
     _write_minimal_state(tmp_path)
     _ = (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=1\nRUN_ID=run1\n", encoding="utf-8")
     calls: list[list[str]] = []

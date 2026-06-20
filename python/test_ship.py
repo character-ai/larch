@@ -40,7 +40,7 @@ def _ctx(tmp_path: Path, **kwargs: object) -> RunContext:
 
 
 @pytest.fixture(autouse=True)
-def _default_post_ensure_flush_and_push(monkeypatch: pytest.MonkeyPatch) -> None:
+def _default_post_ensure_flush_and_push(monkeypatch: pytest.MonkeyPatch) -> None:  # pyright: ignore[reportUnusedFunction]
     real_flush = ship.run_logs.flush_logs_pre
 
     def fake_flush_logs_pre(

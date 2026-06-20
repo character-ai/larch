@@ -727,7 +727,7 @@ def test_flush_logs_pre_retains_reloaded_step8_after_final_report_reconcile(
     monkeypatch.setattr(run_logs, "_write_final_report", fake_write_final_report)
     monkeypatch.setattr(run_logs, "capture_session_transcript", noop)
     monkeypatch.setattr(run_logs, "_render_ledger_reports", noop)
-    monkeypatch.setattr(run_logs, "_commit_run", lambda *_a, **_k: CommandResult(("git", "commit"), 0, "", "", 0.0))
+    monkeypatch.setattr(run_logs, "_commit_run", lambda *_a, **_k: CommandResult(("git", "commit"), 0, "", "", 0.0))  # type: ignore[arg-type]
 
     skip = run_logs.flush_logs_pre(RecordingRunner(), ctx, cwd=str(tmp_path))
 
@@ -782,7 +782,7 @@ def test_flush_logs_pre_strict_final_report_skips_tracking_upsert(
     monkeypatch.setattr(run_logs, "_write_final_report", fake_write_final_report)
     monkeypatch.setattr(run_logs, "capture_session_transcript", noop)
     monkeypatch.setattr(run_logs, "_render_ledger_reports", noop)
-    monkeypatch.setattr(run_logs, "_commit_run", lambda *_a, **_k: CommandResult(("git", "commit"), 0, "", "", 0.0))
+    monkeypatch.setattr(run_logs, "_commit_run", lambda *_a, **_k: CommandResult(("git", "commit"), 0, "", "", 0.0))  # type: ignore[arg-type]
 
     skip = run_logs.flush_logs_pre(RecordingRunner(), ctx, cwd=str(tmp_path), strict_final_report=True)
 
@@ -1699,7 +1699,7 @@ def test_verify_completeness_bailed_heading_with_pr_number_does_not_bail_skip(
     monkeypatch.setattr(run_logs, "_REPO_ROOT", tmp_path)
     run_dir = tmp_path / "larch-logs" / "implement" / "RUN1"
     run_dir.mkdir(parents=True)
-    manifest = {
+    manifest: dict[str, object] = {
         "schema_version": 2,
         "skill": "implement",
         "run_id": "RUN1",
@@ -1725,7 +1725,7 @@ def test_verify_completeness_bailed_heading_without_pr_number_keeps_bail_skip(
     monkeypatch.setattr(run_logs, "_REPO_ROOT", tmp_path)
     run_dir = tmp_path / "larch-logs" / "implement" / "RUN1"
     run_dir.mkdir(parents=True)
-    manifest = {
+    manifest: dict[str, object] = {
         "schema_version": 2,
         "skill": "implement",
         "run_id": "RUN1",
