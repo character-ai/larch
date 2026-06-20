@@ -328,6 +328,25 @@ def _is_neutral_reviewer(value: str) -> bool:
     return value.strip().lower() == "anonymous"
 
 
+def ballot_is_neutralized(ballot_file: str | Path) -> bool:
+    try:
+        text = Path(ballot_file).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    in_block = False
+    for line in text.splitlines():
+        if BALLOT_HEADING_RE.match(line):
+            in_block = True
+            continue
+        if not in_block:
+            continue
+        match = REVIEWER_ATTRIBUTION_RE.match(line)
+        if match:
+            value = match.group("value").replace("*", "").strip().lower()
+            return value == "anonymous"
+    return False
+
+
 def proposer_for_item(
     item_id: str,
     block_file: str | Path,
@@ -336,13 +355,14 @@ def proposer_for_item(
     sidecar_required: bool = False,
 ) -> str:
     reviewer = reviewer_for_block(block_file)
+    if not _is_neutral_reviewer(reviewer):
+        return reviewer
     sidecar_present = bool(map_file) and Path(map_file).is_file()
     if sidecar_present or sidecar_required:
         row = read_proposer_map(map_file).get(item_id) if map_file else None
         if row and row[0]:
             return row[0]
-        if _is_neutral_reviewer(reviewer):
-            raise TallyError(f"missing proposer map entry for neutralized item {item_id}")
+        raise TallyError(f"missing proposer map entry for neutralized item {item_id}")
     return reviewer
 
 

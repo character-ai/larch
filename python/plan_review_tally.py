@@ -379,11 +379,14 @@ class _Tally:
             self.findings_out = str(
                 Path(self.design_tmpdir, "plan-review", "round-1", "findings-classification.tsv")
             )
+        ballot_path = Path(self.ballot_file)
         if not self.proposer_map_file:
             default_map = Path(self.design_tmpdir) / "proposer-map.tsv"
-            if default_map.is_file():
+            if default_map.is_file() and voting.ballot_is_neutralized(ballot_path):
                 self.proposer_map_file = str(default_map)
                 self.proposer_sidecar_required = True
+        if not self.proposer_sidecar_required and voting.ballot_is_neutralized(ballot_path):
+            self.proposer_sidecar_required = True
 
         ok, message = validate_design_tmpdir(self.design_tmpdir)
         if not ok:

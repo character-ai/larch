@@ -417,25 +417,6 @@ def _normalize_oos_header_text(text: str, seq: int) -> str:
     return re.sub(r"^### (?:FINDING|OOS)_[0-9]+:", f"### OOS_{seq}:", text, count=1, flags=re.MULTILINE)
 
 
-def _ballot_is_neutralized(ballot_file: Path) -> bool:
-    try:
-        text = ballot_file.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return False
-    in_block = False
-    for line in text.splitlines():
-        if voting.BALLOT_HEADING_RE.match(line):
-            in_block = True
-            continue
-        if not in_block:
-            continue
-        match = voting.REVIEWER_ATTRIBUTION_RE.match(line)
-        if match:
-            value = match.group("value").replace("*", "").strip().lower()
-            return value == "anonymous"
-    return False
-
-
 def _resolve_proposer_map(
     ballot_file: Path,
     review_tmpdir: Path,
@@ -445,10 +426,10 @@ def _resolve_proposer_map(
     proposer_sidecar_required = bool(proposer_map_file)
     if not proposer_map_file:
         default_map = review_tmpdir / "proposer-map.tsv"
-        if default_map.is_file():
+        if default_map.is_file() and voting.ballot_is_neutralized(ballot_file):
             proposer_map_file = str(default_map)
             proposer_sidecar_required = True
-    if not proposer_sidecar_required and _ballot_is_neutralized(ballot_file):
+    if not proposer_sidecar_required and voting.ballot_is_neutralized(ballot_file):
         proposer_sidecar_required = True
     return proposer_map_file, proposer_sidecar_required
 

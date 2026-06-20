@@ -1334,3 +1334,41 @@ def test_neutralized_tally_without_sidecar_fails_closed(tmp_path: Path) -> None:
     )
     assert result.returncode != 0
     assert "missing proposer map entry" in result.stderr
+
+
+def test_attributed_ballot_ignores_stale_sidecar(tmp_path: Path) -> None:
+    stale_attributed = """### FINDING_1: Old round
+- **Reviewer**: Codex-Structure
+- **Concern**: stale.
+"""
+    current_attributed = """### FINDING_1: Current round
+- **Reviewer**: Cursor-Testing
+- **Concern**: current.
+"""
+    case = tmp_path / "stale-sidecar"
+    case.mkdir()
+    stale_ballot = case / "stale.md"
+    _ = stale_ballot.write_text(stale_attributed, encoding="utf-8")
+    voting.write_proposer_map(stale_ballot, case / "proposer-map.tsv")
+    ballot = case / "ballot.md"
+    _ = ballot.write_text(current_attributed, encoding="utf-8")
+    voter = case / "v1.txt"
+    _ = voter.write_text(
+        "FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n",
+        encoding="utf-8",
+    )
+    result = run_review(
+        "tally-code-votes",
+        "--ballot-file",
+        str(ballot),
+        "--review-tmpdir",
+        str(case),
+        "--round-num",
+        "1",
+        "--voter-files",
+        str(voter),
+        env={"IMPLEMENT_TMPDIR": ""},
+    )
+    assert result.returncode == 0, result.stderr
+    row = _tsv_rows(Path(rts.kv_get(result.stdout, "FINDINGS_CLASSIFICATION_TSV_FILE") or ""))["FINDING_1"]
+    assert row["reviewer_slots"] == "Cursor-Testing"

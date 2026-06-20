@@ -276,12 +276,17 @@ run_post_phase() {
         retally_rc=0
     else
         set +e
-        python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" plan-review tally \
-            --ballot-file "$DESIGN_TMPDIR/ballot.txt" \
-            --design-tmpdir "$DESIGN_TMPDIR" \
-            --voter "MainAgent:$DESIGN_TMPDIR/voter-main-agent.txt" \
-            --findings-classification-out "$DESIGN_TMPDIR/plan-review/round-${artifact_round}/findings-classification.tsv" \
-            >"$retally_stdout"
+        retally_args=(
+            plan-review tally
+            --ballot-file "$DESIGN_TMPDIR/ballot.txt"
+            --design-tmpdir "$DESIGN_TMPDIR"
+            --voter "MainAgent:$DESIGN_TMPDIR/voter-main-agent.txt"
+            --findings-classification-out "$DESIGN_TMPDIR/plan-review/round-${artifact_round}/findings-classification.tsv"
+        )
+        if [ -r "$DESIGN_TMPDIR/proposer-map.tsv" ]; then
+            retally_args+=(--proposer-map-file "$DESIGN_TMPDIR/proposer-map.tsv")
+        fi
+        python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" "${retally_args[@]}" >"$retally_stdout"
         retally_rc=$?
         set -e
     fi

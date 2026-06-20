@@ -1358,3 +1358,29 @@ def test_tally_plan_review_missing_sidecar_entry_fails_closed(tmp_path: Path) ->
     )
     assert proc.returncode != 0
     assert "missing proposer map entry" in proc.stderr
+
+
+def test_tally_plan_review_neutralized_without_sidecar_fails_closed(tmp_path: Path) -> None:
+    attributed = """### FINDING_1: Fix parser
+- **Reviewer**: Cursor-Arch
+- **Concern**: parser misses bad input.
+"""
+    design = tmp_path / "design-neutral-no-sidecar"
+    design.mkdir()
+    ballot = design / "ballot.txt"
+    _ = ballot.write_text(voting.neutralize_reviewer_attribution(attributed), encoding="utf-8")
+    voter = tmp_path / "v1.txt"
+    _ = voter.write_text("FINDING_1: YES\n", encoding="utf-8")
+    proc = run_cli(
+        "plan-review",
+        "tally",
+        "--ballot-file",
+        str(ballot),
+        "--voter-files",
+        str(voter),
+        "--design-tmpdir",
+        str(design),
+        env={"LARCH_QUIET_DISABLE": "1"},
+    )
+    assert proc.returncode != 0
+    assert "missing proposer map entry" in proc.stderr

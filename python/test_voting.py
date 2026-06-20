@@ -829,6 +829,28 @@ def test_proposer_for_item_uses_sidecar_for_neutralized_block(tmp_path: Path) ->
     assert voting.proposer_for_item("FINDING_1", neutral_block, map_file, sidecar_required=True) == "Codex-Structure"
 
 
+def test_proposer_for_item_ignores_stale_sidecar_for_attributed_block(tmp_path: Path) -> None:
+    stale_attributed = """### FINDING_1: Old round
+- **Reviewer**: Codex-Structure
+- **Concern**: stale.
+"""
+    current_attributed = tmp_path / "current.md"
+    _ = current_attributed.write_text(
+        "### FINDING_1: Current round\n- **Reviewer**: Cursor-Testing\n- **Concern**: current.\n",
+        encoding="utf-8",
+    )
+    stale_ballot = tmp_path / "stale.md"
+    _ = stale_ballot.write_text(stale_attributed, encoding="utf-8")
+    map_file = tmp_path / "proposer-map.tsv"
+    voting.write_proposer_map(stale_ballot, map_file)
+    current_block = tmp_path / "FINDING_1.md"
+    _ = current_block.write_text(
+        "### FINDING_1: Current round\n- **Reviewer**: Cursor-Testing\n- **Concern**: current.\n",
+        encoding="utf-8",
+    )
+    assert voting.proposer_for_item("FINDING_1", current_block, map_file, sidecar_required=False) == "Cursor-Testing"
+
+
 def test_write_proposer_map_roundtrip(tmp_path: Path) -> None:
     ballot = tmp_path / "ballot.md"
     _ = ballot.write_text(_ATTRIBUTED_BALLOT, encoding="utf-8")
