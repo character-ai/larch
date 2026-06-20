@@ -1860,7 +1860,7 @@ def test_render_phase_detail_table_top_failures_and_gantt(tmp_path: Path) -> Non
     _write_vendor_timing(timing, "codex-specialist-arch-output.txt", 110, 190)
     rendered = progress_report.render_phase_detail(root, "implement", timing_ledger=timing, findings_file=findings)
     assert "| 1 | 4 | 2 | 2 | 1 | 1m 40s | — | 3 |" in rendered
-    assert "| **Total** | **4** | **2** | **2** | **1** | **1m 40s** | **—** | **3** |" in rendered
+    assert "| **Total (round-sum)** | **4** | **2** | **2** | **1** | **1m 40s** | **—** | **3** |" in rendered
     assert "1. codex/slot-1 — 1" in rendered
     assert "**Reviewer slot failures**: 1" in rendered
     assert "- codex/slot-1: 1" in rendered
@@ -1945,6 +1945,35 @@ def test_render_phase_detail_top_reviewers_from_classification(tmp_path: Path) -
     assert "- (no accepted suggestions attributed to a reviewer slot)" not in rendered
     # OOS rows are excluded so Top reviewers matches the in-scope Accepted column.
     assert "Cursor-Arch" not in rendered
+
+
+def test_render_phase_detail_total_relabeled_round_sum_under_recurrence(tmp_path: Path) -> None:
+    # Issue #4809: when the plan-review loop re-raises and re-accepts the same finding across
+    # rounds (the #4808 non-convergence condition), the Total Suggestions/Accepted is a naive
+    # per-round sum that exceeds the distinct-finding count, and Top reviewers inflates the same
+    # way. The per-round artifacts carry no stable cross-round finding identity (only per-round
+    # FINDING_N), so distinct-finding dedup is not reliably achievable; instead the Total stays a
+    # round-sum but is labeled and captioned so it cannot be misread as a distinct-finding count.
+    root = tmp_path / "plan-review"
+    header = progress_report.voting.findings_classification_header()
+    for round_num in (1, 2, 3):
+        round_dir = root / f"round-{round_num}"
+        _write_round_meta(round_dir)
+        # Identical single finding accepted every round: the #4808 recurrence signature.
+        (round_dir / "findings-classification.tsv").write_text(
+            header + "\nFINDING_1\tCursor-Arch\taccepted\n",
+            encoding="utf-8",
+        )
+    rendered = progress_report.render_phase_detail(root, "design")
+    # The Total row is explicitly labeled a round-sum, never a bare "Total" implying distinct work.
+    assert "| **Total (round-sum)** |" in rendered
+    assert "| **Total** |" not in rendered
+    # The caption spells out the round-sum semantics so the inflated numbers cannot silently mislead.
+    assert "round-sum" in rendered
+    assert "counted once per round" in rendered
+    # One finding accepted in all three rounds is counted once per round (round-sum => "— 3"),
+    # not deduplicated to 1; the label and caption are what prevent misreading it as distinct work.
+    assert "1. Cursor-Arch — 3" in rendered
 
 
 def test_write_design_round_meta_collector_from_real_records(tmp_path: Path) -> None:

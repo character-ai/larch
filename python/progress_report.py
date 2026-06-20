@@ -840,12 +840,19 @@ def render_phase_detail(
     )
     total_cost = f"${sum(costs):.2f}" if costs else "—"
     lines.append(
-        f"| **Total** | **{sum(row.suggestions for row in phase_rounds)}** | "
+        f"| **Total (round-sum)** | **{sum(row.suggestions for row in phase_rounds)}** | "
         f"**{sum(row.accepted for row in phase_rounds)}** | "
         f"**{sum(row.oos_proposed for row in phase_rounds)}** | "
         f"**{sum(row.oos_accepted for row in phase_rounds)}** | "
         f"**{_fmt_hms(total_time if any_time else None)}** | **{total_cost}** | "
         f"**{sum(row.reviewers for row in phase_rounds)}** |"
+    )
+    lines.append("")
+    lines.append(
+        "_The Total (round-sum) row adds up the per-round Suggestions and Accepted: when the "
+        "review loop re-raises the same finding across rounds, that finding is counted once per "
+        "round, so the round-sum can exceed the number of distinct findings. Top reviewers counts "
+        "per-round accepted suggestions the same way._"
     )
     lines.append("")
     if gantt_enabled:
@@ -858,7 +865,7 @@ def render_phase_detail(
         if gantt:
             lines.extend(gantt.rstrip("\n").splitlines())
             lines.append("")
-    lines.append("**Top reviewers** (by suggestions accepted, whole run):")
+    lines.append("**Top reviewers** (by per-round accepted suggestions, whole run):")
     if top_reviewers:
         for index, (label, count) in enumerate(top_reviewers, start=1):
             lines.append(f"{index}. {label} — {count}")
