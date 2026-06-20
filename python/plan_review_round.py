@@ -165,6 +165,34 @@ def _rows_from_structured(path: Path) -> list[dict[str, str]]:
         return []
 
 
+def _normalize_reviewer_output_basename(path: str) -> str:
+    """Normalize retry and waterfall suffixes so manifest phase-1 paths match collector files."""
+    base = Path(path).name
+    if base.endswith(".txt"):
+        stem, ext = base[:-4], ".txt"
+    else:
+        stem, ext = base, ""
+    while True:
+        for suffix in ("-phase2", "-phase3", "-retry"):
+            if stem.endswith(suffix):
+                stem = stem[: -len(suffix)]
+                break
+        else:
+            break
+    return stem + ext
+
+
+def sync_latest_reviewer_status(design: Path, round_status: Path) -> None:
+    """Copy per-round reviewer-status.tsv to latest-reviewer-status.tsv (#4848)."""
+    latest = design / "latest-reviewer-status.tsv"
+    if not round_status.is_file() or round_status.is_symlink():
+        return
+    if latest.is_symlink():
+        return
+    with contextlib.suppress(OSError):
+        _ = shutil.copyfile(round_status, latest)
+
+
 def _valid_manifest_slot_row(row: dict[str, object]) -> bool:
     slot = row.get("slot")
     tool = row.get("tool")
@@ -325,13 +353,20 @@ def write_reviewer_status_tsv(design: Path, round_num: int) -> Path | None:
     if not slot_rows:
         return None
     status_by_output: dict[str, str] = {}
+    status_by_norm_basename: dict[str, str] = {}
     collector = design / "collector-results.env"
     if collector.is_file() and not collector.is_symlink():
         text = collector.read_text(encoding="utf-8", errors="replace")
         for record in collect_results.parse_collector_records(text):
             reviewer_file = record.get("REVIEWER_FILE", "")
             if reviewer_file:
-                status_by_output[reviewer_file] = record.get("STATUS", "")
+                status = record.get("STATUS", "")
+                status_by_output[reviewer_file] = status
+                status_by_norm_basename[_normalize_reviewer_output_basename(reviewer_file)] = status
+                with contextlib.suppress(OSError):
+                    resolved = os.path.realpath(reviewer_file)
+                    if resolved != reviewer_file:
+                        status_by_output[resolved] = status
     round_dir = design / "plan-review" / f"round-{round_num}"
     round_dir.mkdir(parents=True, exist_ok=True)
     out = round_dir / "reviewer-status.tsv"
@@ -341,12 +376,19 @@ def write_reviewer_status_tsv(design: Path, round_num: int) -> Path | None:
     for row in slot_rows:
         slot = str(row.get("slot") or "")
         output = str(row.get("output") or "")
-        if output in status_by_output:
-            status = "done" if status_by_output[output] == "OK" else "failed"
+        raw_status = status_by_output.get(output)
+        if raw_status is None:
+            raw_status = status_by_norm_basename.get(_normalize_reviewer_output_basename(output))
+        if raw_status is None:
+            with contextlib.suppress(OSError):
+                raw_status = status_by_output.get(os.path.realpath(output))
+        if raw_status is not None:
+            status = "done" if raw_status == "OK" else "failed"
         else:
             status = "skipped"
         lines.append(f"{_slot_human_label(slot)}\t{status}\t")
     _ = out.write_text("".join(f"{line}\n" for line in lines), encoding="utf-8")
+    sync_latest_reviewer_status(design, out)
     return out
 
 
@@ -550,7 +592,7 @@ def execute_round(
     # Producer for the SKILL.md Step 3 post-notification reviewer-status table (#4848).
     # Written once here, after collection, so every post-collection terminal (success,
     # panel-failed, tally-error, main-agent-vote-required, degraded-empty-collector) has
-    # the per-round file; the success tail below copies it to latest-reviewer-status.tsv.
+    # the per-round file and latest-reviewer-status.tsv stays in sync.
     with contextlib.suppress(OSError):
         _ = write_reviewer_status_tsv(design, round_num)
     _ = (design / "findings-in-scope.pre-dedup.md").write_text(in_scope, encoding="utf-8")
@@ -722,11 +764,6 @@ def execute_round(
     _write_round_summary(design, round_num, loop_status=values["LOOP_STATUS"], collect_ok=ok_count, collect_fail=fail_count, values=values)
     if classification.is_file():
         _record_plan_review_prune_round(design, round_num, manifest, classification)
-    round_status = design / "plan-review" / f"round-{round_num}" / "reviewer-status.tsv"
-    latest = design / "latest-reviewer-status.tsv"
-    if round_status.is_file() and not round_status.is_symlink():
-        with contextlib.suppress(OSError):
-            _ = shutil.copyfile(round_status, latest)
 
     print("".join(out_lines), end="")
     for k, v in values.items():

@@ -604,7 +604,6 @@ def test_execute_round_writes_reviewer_status_tsv(tmp_path: Path, monkeypatch: p
     latest = tmp_path / "latest-reviewer-status.tsv"
     assert round_status.is_file()
     assert latest.is_file()
-    # The success tail copies the per-round file to latest verbatim.
     assert round_status.read_text(encoding="utf-8") == latest.read_text(encoding="utf-8")
     lines = round_status.read_text(encoding="utf-8").splitlines()
     assert lines[0] == "slot\tstatus\telapsed"
@@ -657,3 +656,138 @@ def test_write_reviewer_status_tsv_maps_status_per_slot(tmp_path: Path) -> None:
 def test_write_reviewer_status_tsv_no_manifest_returns_none(tmp_path: Path) -> None:
     """No launched-slot manifest -> nothing to render, returns None (issue #4848)."""
     assert plan_review_round.write_reviewer_status_tsv(tmp_path, 1) is None
+
+
+def test_write_reviewer_status_tsv_retry_path_maps_to_done(tmp_path: Path) -> None:
+    """Collector retry paths join to manifest phase-1 output paths (issue #4848)."""
+    design = tmp_path
+    round_dir = design / "plan-review" / "round-1"
+    round_dir.mkdir(parents=True)
+    manifest_output = round_dir / "cursor-plan-arch-output.txt"
+    retry_output = round_dir / "cursor-plan-arch-output-retry.txt"
+    rows = [
+        {
+            "tool": "cursor",
+            "slot": "cursor-plan-arch",
+            "output": str(manifest_output),
+            "prompt_file": str(design / "p1"),
+        }
+    ]
+    _ = (design / "plan-review-slots.ndjson").write_text(json.dumps(rows[0]) + "\n", encoding="utf-8")
+    _ = (design / "collector-results.env").write_text(
+        _collector_text(
+            [
+                collect_results.CollectorRecord(
+                    reviewer_file=str(retry_output),
+                    tool="cursor",
+                    status="OK",
+                    exit_code="0",
+                )
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    out = plan_review_round.write_reviewer_status_tsv(design, 1)
+
+    assert out is not None
+    assert out.read_text(encoding="utf-8").splitlines() == [
+        "slot\tstatus\telapsed",
+        "Cursor-Arch\tdone\t",
+    ]
+    latest = design / "latest-reviewer-status.tsv"
+    assert latest.is_file()
+    assert latest.read_text(encoding="utf-8") == out.read_text(encoding="utf-8")
+
+
+def test_write_reviewer_status_tsv_phase3_path_maps_to_done(tmp_path: Path) -> None:
+    """Collector waterfall phase-3 paths join to manifest phase-1 output paths (issue #4848)."""
+    design = tmp_path
+    round_dir = design / "plan-review" / "round-1"
+    round_dir.mkdir(parents=True)
+    manifest_output = round_dir / "cursor-plan-arch-output.txt"
+    phase3_output = round_dir / "cursor-plan-arch-output-phase3.txt"
+    rows = [
+        {
+            "tool": "cursor",
+            "slot": "cursor-plan-arch",
+            "output": str(manifest_output),
+            "prompt_file": str(design / "p1"),
+        }
+    ]
+    _ = (design / "plan-review-slots.ndjson").write_text(json.dumps(rows[0]) + "\n", encoding="utf-8")
+    _ = (design / "collector-results.env").write_text(
+        _collector_text(
+            [
+                collect_results.CollectorRecord(
+                    reviewer_file=str(phase3_output),
+                    tool="cursor",
+                    status="OK",
+                    exit_code="0",
+                )
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    out = plan_review_round.write_reviewer_status_tsv(design, 1)
+
+    assert out is not None
+    assert out.read_text(encoding="utf-8").splitlines()[1] == "Cursor-Arch\tdone\t"
+
+
+def test_execute_round_tally_error_syncs_latest_reviewer_status(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Non-success terminals still refresh latest-reviewer-status.tsv (issue #4848)."""
+    plan_file = tmp_path / "plan.txt"
+    feature_file = tmp_path / "feature.txt"
+    _ = plan_file.write_text("plan\n", encoding="utf-8")
+    _ = feature_file.write_text("feature\n", encoding="utf-8")
+    _install_execute_round_fake(monkeypatch, tmp_path, tally_status="tally-error")
+
+    rc, values = plan_review_round.execute_round(
+        tmp_path,
+        round_num=2,
+        prune_round_num=2,
+        codex_present="false",
+        cursor_present="true",
+        plan_file=plan_file,
+        feature_file=feature_file,
+    )
+
+    assert rc == 2
+    assert values["LOOP_STATUS"] == "tally-error"
+    round_status = tmp_path / "plan-review" / "round-2" / "reviewer-status.tsv"
+    latest = tmp_path / "latest-reviewer-status.tsv"
+    assert round_status.is_file()
+    assert latest.is_file()
+    assert round_status.read_text(encoding="utf-8") == latest.read_text(encoding="utf-8")
+
+
+def test_execute_round_degraded_empty_collector_syncs_latest_reviewer_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """degraded-empty-collector refreshes latest-reviewer-status.tsv (issue #4848)."""
+    plan_file = tmp_path / "plan.txt"
+    feature_file = tmp_path / "feature.txt"
+    _ = plan_file.write_text("plan\n", encoding="utf-8")
+    _ = feature_file.write_text("feature\n", encoding="utf-8")
+    _install_execute_round_fake(monkeypatch, tmp_path, empty_collector=True)
+    stale_latest = tmp_path / "latest-reviewer-status.tsv"
+    _ = stale_latest.write_text("slot\tstatus\telapsed\nStale\tskipped\t\n", encoding="utf-8")
+
+    rc, values = plan_review_round.execute_round(
+        tmp_path,
+        round_num=2,
+        prune_round_num=2,
+        codex_present="false",
+        cursor_present="true",
+        plan_file=plan_file,
+        feature_file=feature_file,
+    )
+
+    assert rc == 0
+    assert values["LOOP_STATUS"] == "degraded-empty-collector"
+    round_status = tmp_path / "plan-review" / "round-2" / "reviewer-status.tsv"
+    assert round_status.is_file()
+    assert stale_latest.read_text(encoding="utf-8") == round_status.read_text(encoding="utf-8")
+    assert "Stale" not in stale_latest.read_text(encoding="utf-8")
