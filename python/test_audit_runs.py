@@ -664,6 +664,32 @@ def test_scan_run_absent_review_findings_self_review_tally_populates_blank_stats
     assert stats["mangled"] == 0
 
 
+def test_scan_run_outcome_less_review_findings_uses_self_review_tally(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    run = tmp_path / "run"
+    run.mkdir()
+    lines = [
+        json.dumps({"id": "FINDING_1", "phase": "retroactive-backfill", "outcome": "accepted"}),
+        json.dumps({"id": "FINDING_2", "phase": "code-review"}),
+    ]
+    (run / "review-findings-full.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    (run / "code-review-tally.json").write_text(
+        '{"mode":"self-review","accepted_count":2,"rejected_count":1}\n',
+        encoding="utf-8",
+    )
+    scans = tmp_path / "scans.tsv"
+    scans.write_text("name\ttype\noos-category-mangle\tjsonl-field\n", encoding="utf-8")
+
+    stats = _scan_category_stats(run, scans, capsys)
+
+    assert stats["partial_data"] is False
+    assert stats["blank"] == 3
+    assert stats["canonical"] == 0
+    assert stats["mangled"] == 0
+
+
 def test_scan_run_malformed_review_findings_does_not_use_self_review_tally(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

@@ -94,6 +94,17 @@ cat > "$IMPL_SELF/code-review-tally.json" <<'JSON'
 {"schema_version":2,"phase":"code-review","mode":"self-review","accepted_count":2,"rejected_count":1}
 JSON
 
+# ---- implement malformed JSONL fixture: must not fall back to self-review tally ----
+IMPL_MALFORM="$FIX/larch-logs/implement/RUN-IMPL-MALFORM"
+mkdir -p "$IMPL_MALFORM"
+cat > "$IMPL_MALFORM/manifest.json" <<'JSON'
+{"started_at":"2026-05-27T10:00:00Z","larch_version":"49.0.0","skill":"implement"}
+JSON
+printf '{not json\n' > "$IMPL_MALFORM/review-findings-full.jsonl"
+cat > "$IMPL_MALFORM/code-review-tally.json" <<'JSON'
+{"schema_version":2,"phase":"code-review","mode":"self-review","accepted_count":5,"rejected_count":3}
+JSON
+
 # ---- implement 21-column TSV fixture: voter severities stay aligned with vN_tool columns ----
 IMPL_TSV21="$FIX/larch-logs/implement/RUN-IMPL-TSV21"
 mkdir -p "$IMPL_TSV21/round-1"
@@ -252,6 +263,21 @@ assert [r["outcome"] for r in rows] == ["accepted", "accepted", "rejected"], row
 PY
 PASS=$((PASS + 1))
 echo "  ok: self-review tally fallback extracted"
+
+echo "== malformed implement JSONL does not fall back to self-review tally =="
+python3 - "$ANALYZER" "$FIX/larch-logs" <<'PY'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("fluff_analysis", sys.argv[1])
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+records = mod.extract(sys.argv[2], "", False, None, None, None)
+rows = [r for r in records if r.get("run_id") == "RUN-IMPL-MALFORM"]
+assert rows == [], rows
+tally = [r for r in records if r.get("source") == "committed-self-review-tally" and r.get("run_id") == "RUN-IMPL-MALFORM"]
+assert tally == [], tally
+PY
+PASS=$((PASS + 1))
+echo "  ok: malformed JSONL skips self-review tally fallback"
 
 echo "== missing log root exits 2 =="
 set +e

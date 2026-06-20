@@ -590,6 +590,17 @@ def _int_count(value: object) -> int:
         return 0
 
 
+def _eligible_review_rows(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    eligible: list[dict[str, object]] = []
+    for row in rows:
+        phase = str(row.get("phase") or "")
+        outcome = str(row.get("outcome") or "")
+        if phase == "retroactive-backfill" or not outcome:
+            continue
+        eligible.append(row)
+    return eligible
+
+
 def _self_review_tally_rows(run_dir: Path) -> list[dict[str, object]]:
     data = _read_json_file(run_dir / "code-review-tally.json")
     if not isinstance(data, dict) or data.get("mode") != "self-review":
@@ -711,8 +722,12 @@ def scan_run_main(argv: list[str] | None = None) -> int:
         return 1
     required = Path(args.required_files_tsv) if args.required_files_tsv else None
     rows, jsonl_err = _iter_ndjson(run_dir / "review-findings-full.jsonl")
-    if args.skill == "implement" and not jsonl_err and not rows:
-        rows = _self_review_tally_rows(run_dir)
+    if args.skill == "implement":
+        eligible_rows = _eligible_review_rows(rows)
+        if not jsonl_err and not eligible_rows:
+            rows = _self_review_tally_rows(run_dir)
+        else:
+            rows = eligible_rows
     has_review_rows = bool(rows)
     mangled_cache: list[dict[str, object]] | None = None
     signals_any, signals = _round_meta_signals(run_dir)
