@@ -23,6 +23,7 @@ import design_pause
 import design_publish
 import logging_util
 import proc as proc_module
+import session_env
 import stall_recovery
 from design_lifecycle import load_bash_quoted_env, phase_driver_read_result_env
 
@@ -2531,3 +2532,394 @@ def test_step5c_main_machine_rows_visible_under_inherited_quiet(
         logging_util.reset_quiet_state()
     assert rc == 0
     assert "PUBLISH_RC=0" in contract
+
+
+def _write_step5c_status(
+    design: Path,
+    *,
+    plan_write_ok: str = "true",
+    publish_ok: str = "true",
+    standalone_heavy_failed: str = "false",
+    session_id: str = "",
+    cleanup_eligible: str = "true",
+) -> None:
+    (design / ".design-step5c-status.env").write_text(
+        "\n".join(
+            [
+                f"PLAN_WRITE_OK={plan_write_ok}",
+                f"PUBLISH_OK={publish_ok}",
+                f"STANDALONE_HEAVY_FAILED={standalone_heavy_failed}",
+                f"SESSION_ID={session_id}",
+                "PUBLISH_RC=0",
+                "PUBLISH_STDOUT_FALLBACK=false",
+                f"CLEANUP_ELIGIBLE={cleanup_eligible}",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
+def _step6_args(env_path: Path) -> list[str]:
+    return ["--session-env-path", str(env_path), "--claude-pid", "123"]
+
+
+def _step6_design(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, **extra: str) -> tuple[Path, Path]:
+    design = tmp_path / "design"
+    design.mkdir()
+    env_path = _write_session_env(tmp_path, design, monkeypatch, **extra)
+    return design, env_path
+
+
+def _step6_env_without_plugin_root(tmp_path: Path, design: Path, monkeypatch: pytest.MonkeyPatch | None = None, *, design_tmpdir: str | None = None, **extra: str) -> Path:
+    raw_tmpdir = str(design.resolve()) if design_tmpdir is None else design_tmpdir
+    if monkeypatch is not None:
+        if raw_tmpdir:
+            monkeypatch.setenv("DESIGN_TMPDIR", raw_tmpdir)
+        else:
+            monkeypatch.delenv("DESIGN_TMPDIR", raising=False)
+        monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+    env_path = tmp_path / "source-env.sh"
+    lines = [
+        f"export DESIGN_TMPDIR={raw_tmpdir}",
+        "export SESSION_ID=run-1",
+    ]
+    lines.extend(f"export {key}={value}" for key, value in extra.items())
+    env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return env_path
+
+
+def test_step6_prelude_in_flight_guard(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    design, env_path = _step6_design(tmp_path, monkeypatch)
+    (design / ".bg-wait-active").write_text("", encoding="utf-8")
+    rc = design_lifecycle.step6_prelude_core(_step6_args(env_path))
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "appears still in-flight" in captured.err
+    assert "STEP6_PRELUDE_STATUS=skipped" not in captured.out
+
+
+def test_step6_cleanup_in_flight_guard(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    design, env_path = _step6_design(tmp_path, monkeypatch)
+    (design / ".bg-wait-active").write_text("", encoding="utf-8")
+    rc = design_lifecycle.step6_cleanup_core(_step6_args(env_path))
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "appears still in-flight" in captured.err
+    assert "CLEANUP_STATUS=preserved" not in captured.out
+
+
+def test_step6_missing_sidecar_skips_without_plugin_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    env_path = _step6_env_without_plugin_root(tmp_path, design, monkeypatch)
+
+    assert design_lifecycle.step6_prelude_core(_step6_args(env_path)) == 0
+    prelude = capsys.readouterr()
+    assert "STEP6_PRELUDE_STATUS=skipped" in prelude.out
+    assert "appears still in-flight" not in prelude.err
+
+    assert design_lifecycle.step6_cleanup_core(_step6_args(env_path)) == 0
+    cleanup = capsys.readouterr()
+    assert "CLEANUP_STATUS=preserved" in cleanup.out
+    assert "appears still in-flight" not in cleanup.err
+
+
+def test_step6_sidecar_overrides_stale_bg_marker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    design, env_path = _step6_design(tmp_path, monkeypatch)
+    (design / ".bg-wait-active").write_text("", encoding="utf-8")
+    _write_step5c_status(design, plan_write_ok="false")
+    cleanup_calls = 0
+
+    def fake_cleanup(_argv: list[str]) -> int:
+        nonlocal cleanup_calls
+        cleanup_calls += 1
+        return 0
+
+    monkeypatch.setattr(session_env, "cleanup_tmpdir_main", fake_cleanup)
+
+    assert design_lifecycle.step6_prelude_core(_step6_args(env_path)) == 0
+    prelude = capsys.readouterr()
+    assert "STEP6_PRELUDE_STATUS=skipped" in prelude.out
+    assert "appears still in-flight" not in prelude.err
+
+    assert design_lifecycle.step6_cleanup_core(_step6_args(env_path)) == 0
+    cleanup = capsys.readouterr()
+    assert "CLEANUP_STATUS=preserved" in cleanup.out
+    assert "plan write did not succeed" in cleanup.out
+    assert "appears still in-flight" not in cleanup.err
+    assert cleanup_calls == 0
+
+
+def test_step6_pause_wins_over_in_flight(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    design, env_path = _step6_design(tmp_path, monkeypatch, ISSUE_NUMBER="42", REPO="owner/repo")
+    (design / ".pause-requested").write_text("", encoding="utf-8")
+    (design / ".bg-wait-active").write_text("", encoding="utf-8")
+    calls: list[list[str]] = []
+
+    def fake_pause(argv: list[str]) -> int:
+        calls.append(argv)
+        return 0
+
+    monkeypatch.setattr(design_pause, "pause_save_main", fake_pause)
+    assert design_lifecycle.step6_prelude_core(_step6_args(env_path)) == 0
+    assert design_lifecycle.step6_cleanup_core(_step6_args(env_path)) == 0
+    captured = capsys.readouterr()
+    assert len(calls) == 2
+    assert all(call == ["--design-tmpdir", str(design), "--issue", "42", "--repo", "owner/repo"] for call in calls)
+    assert "appears still in-flight" not in captured.err
+
+
+def test_step6_prelude_writes_step5d_before_second_pause(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    design, env_path = _step6_design(tmp_path, monkeypatch)
+    _write_step5c_status(design)
+    original_touch = design_lifecycle._touch  # pyright: ignore[reportPrivateUsage]
+    calls: list[list[str]] = []
+
+    def fake_touch(path: Path) -> None:
+        original_touch(path)
+        if path == design / ".completed" / "step-5d":
+            (design / ".pause-requested").write_text("", encoding="utf-8")
+
+    def fake_pause(argv: list[str]) -> int:
+        assert (design / ".completed" / "step-5d").is_file()
+        calls.append(argv)
+        return 7
+
+    monkeypatch.setattr(design_lifecycle, "_touch", fake_touch)
+    monkeypatch.setattr(design_pause, "pause_save_main", fake_pause)
+    assert design_lifecycle.step6_prelude_core(_step6_args(env_path)) == 7
+    assert len(calls) == 1
+
+
+def test_step6_cleanup_deletion_path_validates_requires_and_writes_sentinel_before_cleanup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    design, env_path = _step6_design(tmp_path, monkeypatch)
+    _write_step5c_status(design)
+    order: list[str] = []
+
+    def fake_validate(candidate: str) -> Path:
+        assert candidate == str(design)
+        order.append("validate")
+        return design
+
+    def fake_require() -> int:
+        assert order == ["validate"]
+        order.append("require")
+        return 0
+
+    def fake_cleanup(argv: list[str]) -> int:
+        assert order == ["validate", "require"]
+        assert argv == ["--dir", str(design)]
+        assert (design / ".completed" / "step-6").is_file()
+        order.append("cleanup")
+        return 0
+
+    monkeypatch.setattr(design_lifecycle, "_validate_design_tmpdir_arg", fake_validate)
+    monkeypatch.setattr(design_lifecycle, "_design_require_plugin_root", fake_require)
+    monkeypatch.setattr(session_env, "cleanup_tmpdir_main", fake_cleanup)
+
+    assert design_lifecycle.step6_cleanup_core(_step6_args(env_path)) == 0
+    assert order == ["validate", "require", "cleanup"]
+
+
+def test_step6_combined_skips_cleanup_when_prelude_saves_pause(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    design, env_path = _step6_design(tmp_path, monkeypatch)
+    monkeypatch.setenv(config.ENV_LARCH_QUIET_DISABLE, "1")
+
+    def fake_prelude(_argv: Sequence[str]) -> int:
+        (design / ".pause-save-complete").write_text("", encoding="utf-8")
+        return 0
+
+    def fail_cleanup(_argv: Sequence[str]) -> int:
+        raise AssertionError("cleanup should not run after pause-save")
+
+    monkeypatch.setattr(design_lifecycle, "step6_prelude_core", fake_prelude)
+    monkeypatch.setattr(design_lifecycle, "step6_cleanup_core", fail_cleanup)
+    assert design_lifecycle.step6_main(_step6_args(env_path)) == 0
+
+
+def test_step6_combined_removes_stale_pause_marker_after_rehydrate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    env_path = _write_session_env(tmp_path, design, None)
+    (design / ".pause-save-complete").write_text("stale\n", encoding="utf-8")
+    monkeypatch.delenv("DESIGN_TMPDIR", raising=False)
+    monkeypatch.setenv(config.ENV_LARCH_QUIET_DISABLE, "1")
+    calls: list[str] = []
+
+    def fake_prelude(_argv: Sequence[str]) -> int:
+        calls.append("prelude")
+        assert not (design / ".pause-save-complete").exists()
+        return 0
+
+    def fake_cleanup(_argv: Sequence[str]) -> int:
+        calls.append("cleanup")
+        return 0
+
+    monkeypatch.setattr(design_lifecycle, "step6_prelude_core", fake_prelude)
+    monkeypatch.setattr(design_lifecycle, "step6_cleanup_core", fake_cleanup)
+    assert design_lifecycle.step6_main(_step6_args(env_path)) == 0
+    assert calls == ["prelude", "cleanup"]
+
+
+def test_step6_sidecar_has_authority_over_session_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    design, env_path = _step6_design(tmp_path, monkeypatch, PLAN_WRITE_OK="true", CLEANUP_ELIGIBLE="true")
+    _write_step5c_status(design, plan_write_ok="false")
+
+    assert design_lifecycle.step6_prelude_core(_step6_args(env_path)) == 0
+    assert "plan write did not succeed" in capsys.readouterr().out
+    assert design_lifecycle.step6_cleanup_core(_step6_args(env_path)) == 0
+    assert "plan write did not succeed" in capsys.readouterr().out
+    assert not (design / ".completed" / "step-5d").exists()
+    assert not (design / ".completed" / "step-6").exists()
+
+
+def test_step6_cleanup_preserves_publish_failure_from_sidecar(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    design, env_path = _step6_design(tmp_path, monkeypatch)
+    _write_step5c_status(design, publish_ok="false", session_id="run-1")
+    assert design_lifecycle.step6_cleanup_core(_step6_args(env_path)) == 0
+    out = capsys.readouterr().out
+    assert "publish did not complete" in out
+    assert "CLEANUP_STATUS=preserved" in out
+    assert not (design / ".completed" / "step-6").exists()
+
+
+def test_step6_cleanup_preserves_cleanup_ineligible_from_sidecar(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    design, env_path = _step6_design(tmp_path, monkeypatch)
+    _write_step5c_status(design, cleanup_eligible="false")
+    assert design_lifecycle.step6_cleanup_core(_step6_args(env_path)) == 0
+    assert "cleanup not eligible" in capsys.readouterr().out
+    assert not (design / ".completed" / "step-6").exists()
+
+
+def test_step6_cleanup_preserves_standalone_heavy_before_later_gates(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    design, env_path = _step6_design(tmp_path, monkeypatch)
+    _write_step5c_status(design, standalone_heavy_failed="true", publish_ok="false", session_id="run-1", cleanup_eligible="false")
+    assert design_lifecycle.step6_cleanup_core(_step6_args(env_path)) == 0
+    out = capsys.readouterr().out
+    assert "standalone heavy failed" in out
+    assert "publish did not complete" not in out
+    assert "cleanup not eligible" not in out
+
+
+def test_step6_empty_design_tmpdir_defers_validation_and_preserves(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    env_path = _step6_env_without_plugin_root(tmp_path, tmp_path, monkeypatch, design_tmpdir="")
+
+    def fail_validate(_candidate: str) -> Path:
+        raise AssertionError("empty tmpdir skip/preserve paths must not validate")
+
+    monkeypatch.setattr(design_lifecycle, "_validate_design_tmpdir_arg", fail_validate)
+    assert design_lifecycle.step6_prelude_core(_step6_args(env_path)) == 0
+    assert "STEP6_PRELUDE_STATUS=skipped" in capsys.readouterr().out
+    assert design_lifecycle.step6_cleanup_core(_step6_args(env_path)) == 0
+    assert "CLEANUP_STATUS=preserved" in capsys.readouterr().out
+
+
+def test_step6_empty_tmpdir_ignores_cwd_bg_marker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".bg-wait-active").write_text("", encoding="utf-8")
+    env_path = _step6_env_without_plugin_root(tmp_path, tmp_path, monkeypatch, design_tmpdir="")
+
+    assert design_lifecycle._step6_in_flight("") is False  # pyright: ignore[reportPrivateUsage]
+    assert design_lifecycle.step6_prelude_core(_step6_args(env_path)) == 0
+    prelude = capsys.readouterr()
+    assert "STEP6_PRELUDE_STATUS=skipped" in prelude.out
+    assert "appears still in-flight" not in prelude.err
+    assert design_lifecycle.step6_cleanup_core(_step6_args(env_path)) == 0
+    cleanup = capsys.readouterr()
+    assert "CLEANUP_STATUS=preserved" in cleanup.out
+    assert "appears still in-flight" not in cleanup.err
+
+
+def test_step6_nonempty_tmpdir_bg_marker_remains_in_flight(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    design, env_path = _step6_design(tmp_path, monkeypatch)
+    (design / ".bg-wait-active").write_text("", encoding="utf-8")
+    assert design_lifecycle.step6_prelude_core(_step6_args(env_path)) == 1
+    assert "appears still in-flight" in capsys.readouterr().err
+    assert design_lifecycle.step6_cleanup_core(_step6_args(env_path)) == 1
+    assert "appears still in-flight" in capsys.readouterr().err
+
+
+def test_step6_main_machine_rows_visible_under_inherited_quiet(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _design, env_path = _step6_design(tmp_path, monkeypatch)
+    monkeypatch.delenv(config.ENV_LARCH_QUIET_DISABLE, raising=False)
+    monkeypatch.setenv(config.ENV_LARCH_QUIET_ACTIVE, "1")
+    monkeypatch.setenv(config.ENV_LARCH_QUIET_PID, "999999")
+    logging_util.reset_quiet_state()
+    read_fd, write_fd = os.pipe()
+    saved_stdout = os.dup(1)
+    try:
+        os.dup2(write_fd, 1)
+        os.close(write_fd)
+        rc = design_lifecycle.step6_prelude_main(_step6_args(env_path))
+        os.dup2(saved_stdout, 1)
+        contract = os.read(read_fd, 65536).decode("utf-8")
+    finally:
+        os.close(read_fd)
+        os.close(saved_stdout)
+        logging_util.reset_quiet_state()
+    assert rc == 0
+    assert "STEP6_PRELUDE_STATUS=skipped" in contract

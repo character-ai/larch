@@ -147,4 +147,27 @@ contains "$SETTLE_MD" 'python/test_design_lifecycle.py' 'settle doc must name py
 contains "$SKILL_MD" 'python/cli.py design step2b-drafter' 'SKILL must name step2b-drafter Python authority'
 contains "$SKILL_MD" 'python/cli.py design step2b-postplan' 'SKILL must name step2b-postplan Python authority'
 
+step6_verbs='step6 step6-prelude step6-cleanup'
+step6_retired_paths='design-step6.sh design-step6.md design-step6-prelude.sh design-step6-prelude.md design-step6-cleanup.sh design-step6-cleanup.md test-design-step6.sh _dbg-validator.sh _dbg5c2.sh'
+
+for verb in $step6_verbs; do
+  contains "$CLI_PY" "(\"design\", \"$verb\")" "cli registry missing design $verb"
+  printf '%s' "$stdout_keys_block" | grep -Fq "(\"design\", \"$verb\")" || fail "cli _DESIGN_LIFECYCLE_STDOUT_KEYS missing design $verb"
+  contains "$SESSION_ENV" "$verb" "design launcher missing $verb allowlist token"
+done
+
+for retired in $step6_retired_paths; do
+  [ ! -e "$ROOT/skills/design/scripts/$retired" ] || fail "retired Step 6 script still exists: $retired"
+  contains "$MIGRATED" "skills/design/scripts/$retired" "migrated-scripts.tsv missing $retired"
+  not_contains "$SKILL_MD" "$retired" "SKILL.md still references retired $retired"
+done
+
+contains "$SESSION_ENV" 'design-step6.sh)' 'launcher must map design-step6.sh'
+contains "$SESSION_ENV" 'design step6 --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"' 'launcher must forward step6 to python/cli.py'
+contains "$SESSION_ENV" 'design-step6-prelude.sh)' 'launcher must map design-step6-prelude.sh'
+contains "$SESSION_ENV" 'design step6-prelude --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"' 'launcher must forward step6-prelude to python/cli.py'
+contains "$SESSION_ENV" 'design-step6-cleanup.sh)' 'launcher must map design-step6-cleanup.sh'
+contains "$SESSION_ENV" 'design step6-cleanup --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"' 'launcher must forward step6-cleanup to python/cli.py'
+contains "$SKILL_MD" '"$HOME/.cache/larch/sessions/design-run-$PPID.sh" step6' 'SKILL Step 6 fence must use bare launcher verb'
+
 printf '%s\n' 'test-design-structure: ok'

@@ -1,0 +1,3 @@
+{"slot":"voter-1","tool":"cursor","output":"<TMPDIR>/round-1/cursor-validity-vote-output.txt","prompt_file":"<TMPDIR>/round-1/validity-vote-prompt.txt"}
+{"slot":"voter-2","tool":"cursor","output":"<TMPDIR>/round-1/cursor-plan-fidelity-vote-output.txt","prompt_file":"<TMPDIR>/round-1/plan-fidelity-vote-prompt.txt"}
+{"slot":"voter-3","tool":"cursor","output":"<TMPDIR>/round-1/cursor-pragmatism-vote-output.txt","prompt_file":"<TMPDIR>/round-1/pragmatism-vote-prompt.txt"}
