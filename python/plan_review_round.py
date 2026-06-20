@@ -165,6 +165,61 @@ def _rows_from_structured(path: Path) -> list[dict[str, str]]:
         return []
 
 
+def _normalize_reviewer_output_basename(path: str) -> str:
+    """Normalize retry and waterfall suffixes so manifest phase-1 paths match collector files."""
+    base = Path(path).name
+    if base.endswith(".txt"):
+        stem, ext = base[:-4], ".txt"
+    else:
+        stem, ext = base, ""
+    while True:
+        for suffix in ("-phase2", "-phase3", "-retry"):
+            if stem.endswith(suffix):
+                stem = stem[: -len(suffix)]
+                break
+        else:
+            break
+    return stem + ext
+
+
+def _log_reviewer_status_failure(design: Path, exc: OSError, *, tool: str) -> None:
+    fail_log = design / "reviewer-status-write.failure.log"
+    with contextlib.suppress(OSError):
+        _ = fail_log.write_text(str(exc), encoding="utf-8")
+    _ = _run_cli(
+        [
+            "run-log",
+            "append-failure",
+            "--log",
+            str(design / "execution-issues.md"),
+            "--site",
+            "design Step 3",
+            "--tool",
+            tool,
+            "--exit-code",
+            "1",
+            "--category",
+            "Warnings",
+            "--output-file",
+            str(fail_log),
+            "--redact",
+        ]
+    )
+
+
+def sync_latest_reviewer_status(design: Path, round_status: Path) -> None:
+    """Copy per-round reviewer-status.tsv to latest-reviewer-status.tsv (#4848)."""
+    latest = design / "latest-reviewer-status.tsv"
+    if not round_status.is_file() or round_status.is_symlink():
+        return
+    if latest.is_symlink():
+        return
+    try:
+        _ = shutil.copyfile(round_status, latest)
+    except OSError as exc:
+        _log_reviewer_status_failure(design, exc, tool="sync_latest_reviewer_status")
+
+
 def _valid_manifest_slot_row(row: dict[str, object]) -> bool:
     slot = row.get("slot")
     tool = row.get("tool")
@@ -301,6 +356,114 @@ def _compose_findings_from_collector(
     return in_scope, oos_md, ok_count, failure_count
 
 
+def write_reviewer_status_tsv(
+    design: Path,
+    round_num: int,
+    *,
+    collect_text: str | None = None,
+) -> Path | None:
+    """Materialize ``round-N/reviewer-status.tsv`` from the launched-slot manifest and
+    collector records (issue #4848).
+
+    The SKILL.md Step 3 post-notification reviewer-status table reads
+    ``latest-reviewer-status.tsv`` (or this per-round file as fallback), but nothing
+    produced it: two sites only *copy* it to ``latest`` when it already exists, so
+    neither file was ever created. This writes one row per launched slot as
+    ``slot<TAB>status<TAB>elapsed`` (one header row, then one row per slot):
+
+    - ``status`` is ``done`` when the collector recorded ``STATUS=OK`` for that slot's
+      output file (the same ``OK`` predicate ``_compose_findings_from_collector`` uses),
+      ``failed`` for any other collected status, and ``skipped`` when the slot produced
+      no collector record.
+    - ``elapsed`` is left blank: ``collect_results.CollectorRecord`` carries no
+      per-reviewer duration, so per-slot elapsed is not currently captured.
+
+    Returns the written path, or ``None`` when there is no valid launched slot.
+    """
+    manifest = design / "plan-review-slots.ndjson"
+    slot_rows = [row for row in _iter_manifest_dict_rows(manifest) if _valid_manifest_slot_row(row)]
+    if not slot_rows:
+        return None
+    status_by_output: dict[str, str] = {}
+    status_by_norm_basename: dict[str, str] = {}
+    if collect_text is not None:
+        text = collect_text
+    else:
+        collector = design / "collector-results.env"
+        text = collector.read_text(encoding="utf-8", errors="replace") if collector.is_file() and not collector.is_symlink() else ""
+    if text:
+        for record in collect_results.parse_collector_records(text):
+            reviewer_file = record.get("REVIEWER_FILE", "")
+            if reviewer_file:
+                status = record.get("STATUS", "")
+                status_by_output[reviewer_file] = status
+                norm = _normalize_reviewer_output_basename(reviewer_file)
+                if status_by_norm_basename.get(norm) != "OK":
+                    status_by_norm_basename[norm] = status
+                with contextlib.suppress(OSError):
+                    resolved = os.path.realpath(reviewer_file)
+                    if resolved != reviewer_file:
+                        status_by_output[resolved] = status
+    round_dir = design / "plan-review" / f"round-{round_num}"
+    round_dir.mkdir(parents=True, exist_ok=True)
+    out = round_dir / "reviewer-status.tsv"
+    if out.is_symlink():
+        return None
+    lines = ["slot\tstatus\telapsed"]
+    for row in slot_rows:
+        slot = str(row.get("slot") or "")
+        output = str(row.get("output") or "")
+        norm = _normalize_reviewer_output_basename(output)
+        raw_status = status_by_norm_basename.get(norm)
+        if raw_status is None:
+            raw_status = status_by_output.get(output)
+        if raw_status is None:
+            with contextlib.suppress(OSError):
+                raw_status = status_by_output.get(os.path.realpath(output))
+        if raw_status is not None:
+            status = "done" if raw_status == "OK" else "failed"
+        else:
+            status = "skipped"
+        lines.append(f"{_slot_human_label(slot)}\t{status}\t")
+    _ = out.write_text("".join(f"{line}\n" for line in lines), encoding="utf-8")
+    sync_latest_reviewer_status(design, out)
+    return out
+
+
+def _write_header_only_reviewer_status_fallback(design: Path, round_num: int) -> None:
+    round_dir = design / "plan-review" / f"round-{round_num}"
+    round_dir.mkdir(parents=True, exist_ok=True)
+    out = round_dir / "reviewer-status.tsv"
+    if out.is_symlink():
+        return
+    _ = out.write_text("slot\tstatus\telapsed\n", encoding="utf-8")
+    sync_latest_reviewer_status(design, out)
+
+
+def try_write_reviewer_status_tsv(
+    design: Path,
+    round_num: int,
+    *,
+    collect_text: str | None = None,
+    header_fallback: bool = False,
+) -> Path | None:
+    """Write reviewer-status.tsv, logging disk failures and optionally falling back to header-only."""
+    try:
+        wrote = write_reviewer_status_tsv(design, round_num, collect_text=collect_text)
+    except OSError as exc:
+        _log_reviewer_status_failure(design, exc, tool="write_reviewer_status_tsv")
+        wrote = None
+    if wrote is None and header_fallback:
+        try:
+            _write_header_only_reviewer_status_fallback(design, round_num)
+            candidate = design / "plan-review" / f"round-{round_num}" / "reviewer-status.tsv"
+            wrote = candidate if candidate.is_file() else None
+        except OSError as exc:
+            _log_reviewer_status_failure(design, exc, tool="write_reviewer_status_tsv header fallback")
+            wrote = None
+    return wrote
+
+
 def _write_round_summary(
     design: Path,
     round_num: int,
@@ -435,6 +598,7 @@ def execute_round(
                 "DEGRADED_PANEL": "1",
             }
         )
+        _ = try_write_reviewer_status_tsv(design, round_num, collect_text="", header_fallback=True)
         for k, v in values.items():
             _emit(k, v)
         return panel.returncode or 1, values
@@ -456,6 +620,7 @@ def execute_round(
             }
         )
         _write_round_summary(design, round_num, loop_status="zero-findings-degraded-panel", collect_ok=0, collect_fail=0, values=values)
+        _ = try_write_reviewer_status_tsv(design, round_num, collect_text="", header_fallback=True)
         for k, v in values.items():
             _emit(k, v)
         return 0, values
@@ -482,6 +647,8 @@ def execute_round(
         collect_out = collect.stdout
         collect_rc = collect.returncode
         _ = (design / "collector-results.env").write_text(collect_out + ("\n" if collect_out and not collect_out.endswith("\n") else ""), encoding="utf-8")
+    else:
+        _ = (design / "collector-results.env").write_text("", encoding="utf-8")
 
     if collect_rc != 0 and not collect_results.parse_collector_records(collect_out):
         values.update(
@@ -492,12 +659,18 @@ def execute_round(
                 "DEGRADED_PANEL": "1",
             }
         )
+        _ = try_write_reviewer_status_tsv(design, round_num, collect_text=collect_out)
         for k, v in values.items():
             _emit(k, v)
         return 1, values
 
     manifest = design / "plan-review-slots.ndjson"
     in_scope, oos_md, ok_count, fail_count = _compose_findings_from_collector(design, collect_out, manifest)
+    # Producer for the SKILL.md Step 3 post-notification reviewer-status table (#4848).
+    # Written once here, after collection, so every post-collection terminal (success,
+    # panel-failed, tally-error, main-agent-vote-required, degraded-empty-collector) has
+    # the per-round file and latest-reviewer-status.tsv stays in sync.
+    _ = try_write_reviewer_status_tsv(design, round_num, collect_text=collect_out)
     _ = (design / "findings-in-scope.pre-dedup.md").write_text(in_scope, encoding="utf-8")
     _ = (design / "findings-oos.pre-dedup.md").write_text(oos_md, encoding="utf-8")
     _ = (design / "findings-oos.md").write_text(oos_md, encoding="utf-8")
@@ -667,11 +840,6 @@ def execute_round(
     _write_round_summary(design, round_num, loop_status=values["LOOP_STATUS"], collect_ok=ok_count, collect_fail=fail_count, values=values)
     if classification.is_file():
         _record_plan_review_prune_round(design, round_num, manifest, classification)
-    round_status = design / "plan-review" / f"round-{round_num}" / "reviewer-status.tsv"
-    latest = design / "latest-reviewer-status.tsv"
-    if round_status.is_file() and not round_status.is_symlink():
-        with contextlib.suppress(OSError):
-            _ = shutil.copyfile(round_status, latest)
 
     print("".join(out_lines), end="")
     for k, v in values.items():
