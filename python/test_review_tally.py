@@ -343,7 +343,7 @@ def test_tally_excludes_narrative_only_voter_parse_rate_check(tmp_path: Path) ->
         voting.voter_agreement_rows_from_tsv(class_text, panel_kind="code-review").rows
     )
     for record in tsv_records:
-        rate = "n/a" if record["agreement_rate"] is None else f"{float(record['agreement_rate']):.3f}"
+        rate = "n/a" if record["agreement_rate"] is None else f"{float(record['agreement_rate']):.3f}"  # pyright: ignore[reportArgumentType]
         line = (
             f"| code-review | {record['voter']} | {record['eligible']} | {record['agree']} | "
             f"{record['disagree']} | {record['missing']} | {rate} | "
