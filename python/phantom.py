@@ -61,10 +61,10 @@ def _baseline_dirty_probe(
         cwd=cwd,
     )
     if result.returncode != 0:
-        return "unknown", "dirty-tree-baseline-failed", ""
+        return "unknown", "check-mid-run-dirty-tree-failed", ""
     output = result.stdout
     if not output.strip():
-        return "unknown", "dirty-tree-baseline-failed", ""
+        return "unknown", "unparseable-check-output", ""
 
     fields = _parse_kv_output(output)
     status = fields.get("STATUS", "")
@@ -88,7 +88,7 @@ def check_phantom_dirty(
     phantom_paths_dir: str | None = None,
     cwd: str | None = None,
 ) -> PhantomDirtyResult:
-    """Baseline phantom probe (check-phantom-dirty.sh parity without shell delegation)."""
+    """Baseline phantom probe for ``cli.py git check-phantom-dirty``."""
     implement_tmpdir = os.environ.get("IMPLEMENT_TMPDIR", "")
     paths_dir = phantom_paths_dir or implement_tmpdir
     if not paths_dir:

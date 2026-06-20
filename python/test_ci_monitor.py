@@ -23,7 +23,6 @@ from proc import CommandResult
 from run_context import RunContext
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SCRIPTS_DIR = REPO_ROOT / "scripts"
 
 
 def _new_response_map() -> dict[tuple[str, ...], CommandResult]:
@@ -1140,7 +1139,7 @@ def test_run_ci_fix_non_pending_winning_tier_fails_closed(tmp_path: Any) -> None
     responses = _baseline_responses(baseline_head)
     del responses[("git", "rev-parse", "HEAD")]
     responses[("git", "add", "--", "fixed.py")] = _cr(("git", "add"), 0)
-    commit_script = str(SCRIPTS_DIR / "git-commit.sh")
+    commit_script = "cli.py git commit"
     responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (claude)")] = _cr(
         (commit_script,),
         0,
@@ -1186,7 +1185,7 @@ def test_run_ci_fix_non_pending_winning_tier_fails_closed(tmp_path: Any) -> None
 
 
 def test_stage_and_push_defer_rebase_uses_typed_rebase_push(tmp_path: Any) -> None:
-    commit_script = str(SCRIPTS_DIR / "git-commit.sh")
+    commit_script = "cli.py git commit"
     responses = {
         ("git", "add", "--", "fixed.py"): _cr(("git", "add"), 0),
         (commit_script, "--no-trailer", "-m", "Apply CI fixes (claude)"): _cr((commit_script,), 0),
@@ -1375,7 +1374,7 @@ def test_run_ci_fix_non_pending_after_stage_fails_closed(tmp_path: Any) -> None:
     responses = _baseline_responses(head)
     responses[("git", "add", "--", "fixed.py")] = _cr(("git", "add"), 0)
     responses[("make", "py-lint-main")] = _cr(("make", "py-lint-main"), 0)
-    commit_script = str(SCRIPTS_DIR / "git-commit.sh")
+    commit_script = "cli.py git commit"
     responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (claude)")] = _cr(
         (commit_script,),
         0,
@@ -1811,7 +1810,7 @@ def test_evaluate_failure_vendor_only_push_failed_stalls(tmp_path: Any) -> None:
         stdout=jobs_json,
     )
     responses[("git", "add", "--", "fixed.py")] = _cr(("git", "add"), 0)
-    commit_script = str(SCRIPTS_DIR / "git-commit.sh")
+    commit_script = "cli.py git commit"
     responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (claude)")] = _cr(
         (commit_script,),
         0,
@@ -1871,7 +1870,7 @@ def test_evaluate_failure_push_failed_routes_fix_exhausted(tmp_path: Any) -> Non
     )
     responses[("make", "py-lint-main")] = _cr(("make", "py-lint-main"), 0)
     responses[("git", "add", "--", "fixed.py")] = _cr(("git", "add"), 0)
-    commit_script = str(SCRIPTS_DIR / "git-commit.sh")
+    commit_script = "cli.py git commit"
     responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (claude)")] = _cr(
         (commit_script,),
         0,
@@ -2091,7 +2090,7 @@ def test_monitor_push_failed_stalls(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     responses.update(_baseline_responses(baseline_head))
     responses[("git", "add", "--", "fixed.py")] = _cr(("git", "add"), 0)
-    commit_script = str(SCRIPTS_DIR / "git-commit.sh")
+    commit_script = "cli.py git commit"
     responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (claude)")] = _cr(
         (commit_script,),
         0,
@@ -2327,7 +2326,7 @@ def test_evaluate_failure_verify_failed_then_pushed(tmp_path: Any) -> None:
     new_head = "efgh" * 10
     jobs_json = json.dumps({"jobs": [{"name": "python-lint", "conclusion": "failure"}]})
 
-    commit_script = str(SCRIPTS_DIR / "git-commit.sh")
+    commit_script = "cli.py git commit"
     responses: dict[tuple[str, ...], CommandResult] = {
         ("git", "symbolic-ref", "--quiet", "HEAD"): _cr(("git", "symbolic-ref"), 0),
         ("gh", "run", "view", "77", "--repo", "o/r", "--log-failed"): _cr(
@@ -2418,7 +2417,7 @@ def test_monitor_pushed_goto_rebase(tmp_path: Any) -> None:
     responses[("git", "diff", "--name-only", "--cached")] = _cr(("git", "diff"), stdout="")
     responses[("env", "SKIP=agnix,lint-mermaid-fences,shellcheck", "make", "lint-only")] = _cr(("env",), 0)
     responses[("git", "add", "--", "fixed.sh")] = _cr(("git", "add"), 0)
-    commit_script = str(SCRIPTS_DIR / "git-commit.sh")
+    commit_script = "cli.py git commit"
     responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (claude)")] = _cr((commit_script,), 0)
     responses[("git", "symbolic-ref", "--short", "HEAD")] = _cr(("git", "symbolic-ref"), stdout="feat\n")
     responses[("git", "push", "origin", "feat")] = _cr(("git", "push"), 0)

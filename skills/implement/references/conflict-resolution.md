@@ -14,7 +14,7 @@ When `python/cli.py push rebase` exits with code 1, the rebase is paused with co
 - `caller_kind=early_rebase`: run Phase 1, Phase 2, skip Phase 3 entirely, then run Phase 4 in local-only mode. Bail paths abort the rebase, set `STALL_TRACKING=true`, and skip to Step 18. No reviewer panel and no push occurs at early checkpoints; Step 5's normal review panel covers correctness later, and no version bump exists yet.
 - `caller_kind=ship_pr_pre_push`: same Phase 1 / Phase 2 / Phase 3 skip / Phase 4 local-only shape as `early_rebase` (no reviewer panel; no push in Phase 4). **Phase 4 exit 0 re-invokes the active Step 8+ selector** through `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh` with `run_in_background: true`, `timeout: 21600000`, and a `<task-notification>` wait. The Python driver then continues `run_rebase_rebump` post-rebase verification and CI-fix force-push. **Phase 4 bail** matches `early_rebase`: abort the rebase, set `STALL_TRACKING=true`, skip to Step 18.
 
-**Bail invariant**: Any bail from any phase below must call `${CLAUDE_PLUGIN_ROOT}/scripts/git-rebase-abort.sh` before proceeding to the caller-family bail destination, since the rebase is in progress throughout all phases.
+**Bail invariant**: Any bail from any phase below must call `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git rebase-abort` before proceeding to the caller-family bail destination, since the rebase is in progress throughout all phases.
 
 ## Phase 1 — Conflict Classification and Resolution
 
@@ -22,24 +22,24 @@ The caller supplies `CONFLICT_FILES` as a comma-separated list. For `caller_kind
 
 For each file in `CONFLICT_FILES`:
 
-1. Run `${CLAUDE_PLUGIN_ROOT}/scripts/git-conflict-files.sh` to determine the conflict type per file. Parse the output — each file is a block of `FILE=<path>`, `STAGE_1=<bool>`, `STAGE_2=<bool>`, `STAGE_3=<bool>` lines separated by blank lines.
+1. Run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git conflict-files` to determine the conflict type per file. Parse the output — each file is a block of `FILE=<path>`, `STAGE_1=<bool>`, `STAGE_2=<bool>`, `STAGE_3=<bool>` lines separated by blank lines.
 2. **Unsupported conflict types** — If any stage is missing (modify/delete, rename/delete conflicts — indicated by one of `STAGE_1`/`STAGE_2`/`STAGE_3` being `false` when the conflict type requires that stage) or the file is binary (check via `file --mime-type` or absence of text markers), classify as **uncertain**. Do not attempt auto-resolution.
-3. **Generated files** — If the file is auto-generated and both sides are obvious, classify as **trivial** and auto-resolve immediately. When the correct resolution is the upstream (main) side, run `${CLAUDE_PLUGIN_ROOT}/scripts/git-checkout-ours.sh <file>` before staging. During rebase, this wrapper selects upstream (main) because `ours` maps to the base being rebased onto. Stage with `${CLAUDE_PLUGIN_ROOT}/scripts/git-stage.sh <file>`. Version files are treated like ordinary conflicts in ship-pr; `/release` owns version bumps.
+3. **Generated files** — If the file is auto-generated and both sides are obvious, classify as **trivial** and auto-resolve immediately. When the correct resolution is the upstream (main) side, run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git checkout-ours <file>` before staging. During rebase, this wrapper selects upstream (main) because `ours` maps to the base being rebased onto. Stage with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git stage <file>`. Version files are treated like ordinary conflicts in ship-pr; `/release` owns version bumps.
 4. **Text conflicts with both sides available** — Read both sides using explicit labels via the wrapper:
-   - `${CLAUDE_PLUGIN_ROOT}/scripts/git-show-stage.sh --stage 2 --file <file>` → **upstream (main)** version. If this command fails (exit 1), classify as uncertain.
-   - `${CLAUDE_PLUGIN_ROOT}/scripts/git-show-stage.sh --stage 3 --file <file>` → **feature branch commit** version. If this command fails, classify as uncertain.
+   - `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git show-stage --stage 2 --file <file>` → **upstream (main)** version. If this command fails (exit 1), classify as uncertain.
+   - `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git show-stage --stage 3 --file <file>` → **feature branch commit** version. If this command fails, classify as uncertain.
    - Also read the conflict markers in the working tree file for context.
 5. **Classify confidence**:
    - **High-confidence**: Changes are in non-overlapping regions (both sides added content in different locations), or the conflict markers show only whitespace, import-order, or formatting differences. Both sides' intent is clear and composable.
    - **Uncertain**: Overlapping semantic changes to the same function/block, any file where correctness cannot be verified without domain knowledge, any file where stage 2 or stage 3 reads failed, any non-text/binary conflict.
-6. Auto-resolve trivial and high-confidence files. Stage resolved files with `${CLAUDE_PLUGIN_ROOT}/scripts/git-stage.sh <file>`.
+6. Auto-resolve trivial and high-confidence files. Stage resolved files with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git stage <file>`.
 7. **IMPORTANT**: Always use "upstream (main)" and "feature branch commit" labels when describing the two sides of a conflict — never use "ours"/"theirs" which have inverted semantics during rebase and will cause confusion.
 
 ## Phase 2 — User Escalation (for uncertain conflicts)
 
 **If there are no uncertain conflicts**, skip to Phase 4 for `caller_kind=early_rebase` or `caller_kind=ship_pr_pre_push`.
 
-Call `AskUserQuestion` with the upstream (main) version, the feature branch commit version, and a proposed resolution for each uncertain file, batched into a single call. Use explicit "upstream (main)" and "feature branch commit" labels. Incorporate the user's answer, write the resolved file, and stage with `${CLAUDE_PLUGIN_ROOT}/scripts/git-stage.sh <file>`. If the user indicates the conflict cannot be resolved or asks to abort, run `${CLAUDE_PLUGIN_ROOT}/scripts/git-rebase-abort.sh` and **bail out** with `STALL_TRACKING=true` + Step 18.
+Call `AskUserQuestion` with the upstream (main) version, the feature branch commit version, and a proposed resolution for each uncertain file, batched into a single call. Use explicit "upstream (main)" and "feature branch commit" labels. Incorporate the user's answer, write the resolved file, and stage with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git stage <file>`. If the user indicates the conflict cannot be resolved or asks to abort, run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git rebase-abort` and **bail out** with `STALL_TRACKING=true` + Step 18.
 
 ## Phase 3 — Reviewer Panel on Conflict Resolution
 
@@ -58,10 +58,10 @@ Call `AskUserQuestion` with the upstream (main) version, the feature branch comm
 ### <file-path>
 **Conflict type**: <text overlap / import reorder / etc.>
 **Upstream (main) version** (relevant section):
-<content from `git-show-stage.sh --stage 2 --file <file>`, focused on the conflicting region>
+<content from `cli.py git show-stage --stage 2 --file <file>`, focused on the conflicting region>
 
 **Feature branch commit version** (relevant section):
-<content from `git-show-stage.sh --stage 3 --file <file>`, focused on the conflicting region>
+<content from `cli.py git show-stage --stage 3 --file <file>`, focused on the conflicting region>
 
 **Proposed resolution**:
 <the resolved content that was staged>
@@ -91,7 +91,7 @@ If fewer than 2 voters are available: skip voting, accept all reviewer findings 
 
 If voting **accepts findings** (2+ YES votes): re-resolve the affected files incorporating the accepted suggestions, re-stage, and re-run review (3c through 3e). Allow up to **2 total resolution-review rounds**.
 
-After 2 rounds with unresolved findings still being raised: run `${CLAUDE_PLUGIN_ROOT}/scripts/git-rebase-abort.sh` and **bail out** with `STALL_TRACKING=true` + Step 18.
+After 2 rounds with unresolved findings still being raised: run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git rebase-abort` and **bail out** with `STALL_TRACKING=true` + Step 18.
 
 If the reviewer panel finds no issues or all findings are addressed: proceed to Phase 4.
 
@@ -102,6 +102,6 @@ If the reviewer panel finds no issues or all findings are addressed: proceed to 
 For `caller_kind=early_rebase`, run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" push rebase --continue --no-push --keep-on-conflict` and handle exit codes:
 - **Exit 0**: Local-only rebase succeeded. Return to the Rebase Checkpoint Macro's success path (M3). Do NOT push.
 - **Exit 1**: A later commit in the rebase conflicted. Loop back to **Phase 1** for the new conflict; supply a **fresh** `CONFLICT_FILES` from this invocation's stdout (see Phase 1 — multi-hop / Phase 4 exit 1).
-- **Exit 3**: Check the `REBASE_ERROR` output. If it indicates an empty or already-applied commit (e.g., "nothing to commit", "No changes"), run `${CLAUDE_PLUGIN_ROOT}/scripts/git-rebase-skip.sh` (if it exits non-zero, run `${CLAUDE_PLUGIN_ROOT}/scripts/git-rebase-abort.sh`, set `STALL_TRACKING=true`, and **bail out** to Step 18) and then `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" push rebase --continue --no-push --keep-on-conflict` again (handle the same exit codes). Otherwise, run `${CLAUDE_PLUGIN_ROOT}/scripts/git-rebase-abort.sh`, set `STALL_TRACKING=true`, and **bail out** to Step 18.
+- **Exit 3**: Check the `REBASE_ERROR` output. If it indicates an empty or already-applied commit (e.g., "nothing to commit", "No changes"), run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git rebase-skip` (if it exits non-zero, run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git rebase-abort`, set `STALL_TRACKING=true`, and **bail out** to Step 18) and then `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" push rebase --continue --no-push --keep-on-conflict` again (handle the same exit codes). Otherwise, run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git rebase-abort`, set `STALL_TRACKING=true`, and **bail out** to Step 18.
 
 For `caller_kind=ship_pr_pre_push`, run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" push rebase --continue --no-push --keep-on-conflict` and handle the **same exit codes** as `early_rebase` above, except **Exit 0**: local-only rebase succeeded. Re-invoke the active Step 8+ selector through `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh` with the Step 8+ immediate-background `Invoke:` contract: `run_in_background: true`, `timeout: 21600000`, and wait for `<task-notification>` before routing stdout/exit status per `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/ship-pr-exit-matrix.md`. Pass no resume phase; the Python driver reads scoped state internally. Do NOT invoke the retired Rebase + Re-bump Sub-procedure; the active selector continues `run_rebase_rebump` after the in-progress rebase is finished.

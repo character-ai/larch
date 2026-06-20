@@ -278,7 +278,6 @@ exclude = [
   "python/test_redact.py",
   # python3 python/cli.py implement-finalize invokes these Step 8b / teardown helpers
   # through Bash-to-Bash edges; agent-lint does not follow those calls.
-  "scripts/check-remote-branch.sh",
   "scripts/flush-vendor-failure-diagnostics.sh",
   # Step 1 launcher split: compose-goals-test is now invoked by
   # python/cli.py plan step1-log rather than directly from SKILL.md, and
@@ -293,7 +292,6 @@ exclude = [
   "python/cli.py pr create-branch",
   "python/pr.py",
   "python/design_step_log.py",
-  "scripts/snapshot-untracked.sh",
   # Step 5 launcher harness is Makefile-only; runtime reachability is through
   # the SKILL.md invocation of python/cli.py review-and-fix step5.
   "python/test_review_and_fix.py",
@@ -401,22 +399,8 @@ exclude = [
   # Makefile-only pattern as scripts/test-sessionstart-health.sh above.
   "python/test_admission.py",
   # python/session_env.py invokes these preflight dependencies through python/cli.py admission preflight.
-  "scripts/check-clean-tree.sh",
-  "scripts/check-clean-tree.md",
-  "scripts/check-main-sync.sh",
-  "scripts/check-main-sync.md",
-  # scripts/test-check-clean-tree.sh is the regression harness for
-  # scripts/check-clean-tree.sh. Referenced only from Makefile
-  # (test-check-clean-tree target) and scripts/test-check-clean-tree.md
   # (sibling contract), matching the same Makefile-only pattern.
-  "scripts/test-check-clean-tree.sh",
-  "scripts/test-check-clean-tree.md",
-  # scripts/test-check-main-sync.sh is the regression harness for
-  # scripts/check-main-sync.sh. Referenced only from Makefile
-  # (test-check-main-sync target) and scripts/test-check-main-sync.md
   # (sibling contract), matching the same Makefile-only pattern.
-  "scripts/test-check-main-sync.sh",
-  "scripts/test-check-main-sync.md",
   # python/test_plan_review.py and
   # scripts/test-design-multi-round-integration.sh are Makefile-only
   # regression harnesses for the /design plan-review round-artifact
@@ -434,8 +418,6 @@ exclude = [
   # Recovery/helper harnesses introduced for manifest-schema recovery are
   # Makefile-only regression tests. They are documented in docs/linting.md and
   # their sibling contracts, but not invoked by skill runtime prose.
-  "scripts/test-git-commit-only.sh",
-  "scripts/test-git-commit-only.md",
   # Issue-anchored plan helpers (#2484): runtime scripts + harnesses are
   # listed under "## Issue-anchored plan helpers (machine reachability)"
   # in skills/implement/SKILL.md for agent-lint G004 reachability.
@@ -443,7 +425,6 @@ exclude = [
   # scripts/check-stale-plugin.sh (version-skew detection). Referenced only
   # from Makefile (test-check-stale-plugin target) and
   # scripts/test-check-stale-plugin.md (sibling contract), matching the same
-  # Makefile-only pattern as scripts/test-check-clean-tree.sh above.
   "scripts/test-check-stale-plugin.sh",
   "scripts/test-check-stale-plugin.md",
   # python/cli.py session cleanup-tmpdir's invoke-time audit log. Referenced only from
@@ -478,8 +459,8 @@ exclude = [
   # scripts/lib-sparse-dirs.md — sibling contract for lib-sparse-dirs.sh
   # (script-md-siblings / G004).
   "scripts/lib-sparse-dirs.md",
-  # scripts/lib-phantom-probe.sh is a sourced-only shell library (no shebang,
-  # phantom-probe-with-warn.sh; agent-lint does not follow source directives.
+  # scripts/lib-phantom-probe.sh is a sourced-only shell library (no shebang);
+  # agent-lint does not follow source directives.
   "scripts/lib-phantom-probe.sh",
   # scripts/lib-phantom-probe.md — sibling contract for lib-phantom-probe.sh
   # (script-md-siblings / G004).
@@ -564,18 +545,11 @@ exclude = [
   # foreground fences (G004 does not follow markdown invocations).
   "python/cli.py push checkpoint-probe",
   "skills/implement/references/rebase-checkpoint-routing.md",
-  # scripts/phantom-probe-with-warn.sh — standalone phantom probe wrapper for
   # SKILL.md fences; sibling contract below.
-  "scripts/phantom-probe-with-warn.sh",
-  "scripts/phantom-probe-with-warn.md",
   # python/cli.py render findings-view — ad-hoc operator CLI to reconstruct
   # dropped markdown views from review-findings-full.jsonl; no automated caller.
   "python/cli.py render findings-view",
   "python/rendering.py",
-  # scripts/test-check-phantom-dirty.sh is the regression harness for
-  # scripts/check-phantom-dirty.sh. Referenced only from Makefile
-  # (test-check-phantom-dirty target) and its sibling contract.
-  "scripts/test-check-phantom-dirty.sh",
   # python/test_agents.py is the regression harness for
   # python/cli.py agent model-args's line-token argv contract. Referenced only
   # from Makefile (test-agent-model-args target) and
@@ -613,10 +587,7 @@ exclude = [
   # test-* harnesses above.
   # Makefile (test-drop-release notes-commit target) and the sibling .md stub,
   # matching the same Makefile-only pattern as the other test-* harnesses above.
-  # scripts/git-amend-add.sh has no current primary callers after release notes
   # as a tiny future amend primitive with a sibling contract.
-  "scripts/git-amend-add.sh",
-  "scripts/git-amend-add.md",
   # by implement-finalize and the Python ship driver. Its harness is Makefile-only
   # (test-commit-release notes target) and its sibling docs own the contract.
   "scripts/commit-release notes.md",
@@ -766,10 +737,6 @@ exclude = [
   # pr-prep materialize failure with manifest OOS (Makefile
   # test-ship-pr-oos-pr-prep target). Same Makefile-only pattern as
   # test-ship-pr-rebase.sh.
-  # scripts/test-phantom-probe-with-warn.sh — offline harness for
-  # scripts/phantom-probe-with-warn.sh (Makefile test-phantom-probe-with-warn).
-  "scripts/test-phantom-probe-with-warn.sh",
-  "scripts/test-phantom-probe-with-warn.md",
   # harness for python/cli.py push rebase's --keep-on-conflict local-only rebase
   # Same Makefile-only pattern as other test-* harnesses.
   # for python/cli.py push rebase's force-with-lease race-recovery path.
@@ -907,11 +874,7 @@ exclude = [
   # (version_already_published, no-op fallthrough, stale/unsafe input failures).
   # the other test-* harnesses above.
   # dev-only release apply script's pre-commit same-version probe and
-  # scripts/test-git-push.sh is the offline regression harness for
-  # scripts/git-push.sh retry exit propagation. It is referenced only from
-  # Makefile (test-git-push target) and scripts/test-git-push.md (sibling
   # contract), matching the same Makefile-only harness pattern as
-  "scripts/test-git-push.sh",
   # /research; closes #518). The token-tally helper is invoked from
   # skills/research/SKILL.md (Step 4 token-spend report) and from the phase
   # references (research-phase.md / validation-phase.md), so
@@ -946,9 +909,6 @@ exclude = [
   "agents/_implementer-base.md",
   "python/dirty_tree.py",
   "python/test_dirty_tree.py",
-  "scripts/check-phantom-dirty.md",
-  "scripts/test-check-phantom-dirty.md",
-  "scripts/check-clean-tree.md",
   "scripts/check-stale-plugin.sh",
   "scripts/check-stale-plugin.md",
   "scripts/test-hook-anti-read-poll.md",
@@ -989,7 +949,6 @@ exclude = [
   "python/test_design_summary.py",
   "skills/pause/scripts/test-pause-skill.md",
   "scripts/test-implement-timing-rehydration.md",
-  "scripts/test-git-push.md",
   # a GitHub Release to "Latest". It is not invoked by any SKILL.md — operators
   # call it directly from the terminal. Its sibling contract
   # python/cli.py release promote is excluded for the same reason.
@@ -1142,11 +1101,8 @@ exclude = [
   "python/cli.py pr body-update",
   "python/cli.py merge pr",
   "python/cli.py pr create",
-  "scripts/git-sync-local-main.sh",
-  # scripts/git-force-push.sh — force-with-lease helper retained as deferred
   # bash; its create-pr/merge-pr callers migrated to python/cli.py pr create /
   # merge pr, so G004 no longer sees a structured invocation edge.
-  "scripts/git-force-push.sh",
   "python/cli.py ci wait",
   "python/cli.py ci status",
   "python/cli.py ci decide",

@@ -200,8 +200,8 @@ require('skills/implement/references/step5-review-branches.md', '--merge false -
 require('python/bootstrap.py', 'ship-seed-input.env', 'bootstrap ship seed input writer')
 require(skill, launcher + 'skills/implement/scripts/step-2-post-dispatch.sh', 'phantom 2-post-dispatch probe')
 require(skill, 'regardless of wrapper exit code', 'post-dispatch phantom parse before wrapper routing')
-require('skills/implement/scripts/step-8-ship.sh', 'phantom-probe-with-warn.sh --step 8-pre-ship', 'phantom 8-pre-ship probe moved into ship wrapper')
-forbid(skill, launcher + 'scripts/phantom-probe-with-warn.sh --step 8-pre-ship', 'standalone orchestrator 8-pre-ship fence removed')
+require('skills/implement/scripts/step-8-ship.sh', 'python/cli.py" git phantom-probe --step 8-pre-ship', 'phantom 8-pre-ship probe moved into ship wrapper')
+forbid(skill, launcher + 'scripts/' + 'phantom-probe-with-warn.sh --step 8-pre-ship', 'standalone orchestrator 8-pre-ship fence removed')
 rebase_ref = Path('skills/implement/references/rebase-checkpoint-routing.md').read_text()
 for needle in [
     '**Orchestrator contract — absorbed `1.r` (Step 0 envelope only)**',
@@ -386,14 +386,15 @@ require('skills/implement/scripts/step-8-oos-checkpoint.sh', 'OOS_CHECKPOINT_RC'
 # Step 4 skip prose must reference implement commit, not git-commit.sh.
 require(skill, 'Skip the `implement commit` invocation.', 'Step 4 skip prose references implement commit')
 forbid(skill, 'Skip the `git-commit.sh` invocation.', 'Step 4 skip prose must not reference git-commit.sh')
-# The fabricated path skills/implement/scripts/git-commit.sh must not appear under skills/implement/.
+# The fabricated skill-local commit helper path must not appear under skills/implement/.
 import subprocess
+fabricated_commit_helper = 'skills/implement/scripts/' + 'git-commit.sh'
 r = subprocess.run(
-    ['git', 'grep', '-rl', 'skills/implement/scripts/git-commit.sh', '--', 'skills/implement/'],
+    ['git', 'grep', '-rl', fabricated_commit_helper, '--', 'skills/implement/'],
     capture_output=True, text=True
 )
 if r.stdout.strip():
-    checks.append(f'fabricated path skills/implement/scripts/git-commit.sh referenced under skills/implement/: {r.stdout.strip()}')
+    checks.append(f'fabricated commit helper path referenced under skills/implement/: {r.stdout.strip()}')
 
 for raw in Path('python/migrated-scripts.tsv').read_text(encoding='utf-8').splitlines():
     line = raw.strip()

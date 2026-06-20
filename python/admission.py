@@ -16,8 +16,6 @@ from pathlib import Path
 import logging_util
 import retry
 
-_REPO_ROOT = Path(__file__).resolve().parents[1]
-_SCRIPTS = _REPO_ROOT / "scripts"
 _PY_CLI = Path(__file__).with_name("cli.py")
 _PROBE_ERROR_EXIT = 2
 _TMP_FALLBACK = "/tmp"  # noqa: S108 - parity fallback for larch bootstrap tmpdirs.
@@ -217,7 +215,7 @@ def gate_main(argv: list[str]) -> int:
 
 
 def _clean_tree() -> str:
-    result = _run([str(_SCRIPTS / "check-clean-tree.sh"), "--fail-closed"])
+    result = _run([sys.executable, str(_PY_CLI), "git", "clean-tree", "--fail-closed"])
     if result.stderr:
         sys.stderr.write(result.stderr)
     for line in result.stdout.splitlines():
@@ -262,7 +260,7 @@ def preflight_main(argv: list[str]) -> int:
         _emit_kv("PREFLIGHT_ERROR", "git fetch origin main failed.")
         return 3
     if not args.skip_branch_check:
-        sync = _run([str(_SCRIPTS / "check-main-sync.sh")])
+        sync = _run([sys.executable, str(_PY_CLI), "git", "check-main-sync"])
         fields = dict(line.split("=", 1) for line in sync.stdout.splitlines() if "=" in line)
         sync_status = fields.get("SYNC_STATUS", "")
         sync_error = fields.get("ERROR", "")
@@ -272,7 +270,7 @@ def preflight_main(argv: list[str]) -> int:
             return 3
         if not (sync.returncode == _PROBE_ERROR_EXIT and sync_status == "probe-error") and sync.returncode != 0:
             _emit_kv("PREFLIGHT", "fail")
-            _emit_kv("PREFLIGHT_ERROR", sync_error or f"check-main-sync.sh exited unexpectedly (exit {sync.returncode})")
+            _emit_kv("PREFLIGHT_ERROR", sync_error or f"cli.py git check-main-sync exited unexpectedly (exit {sync.returncode})")
             return 3
     if not args.skip_branch_check and not args.skip_clean_check:
         rebase = _run(["git", "rebase", "origin/main", "--quiet"])

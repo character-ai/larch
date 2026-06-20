@@ -323,8 +323,8 @@ def test_ship_pr_record_failure_label_is_stale_ref(tmp_path: Path) -> None:
 
 def test_ship_pr_comment_is_stale_ref(tmp_path: Path) -> None:
     repo = _make_git_repo(tmp_path)
-    retired = "scripts/git-current-branch.sh"
-    _ = _add_file(repo, "scripts/ship-driver.txt", "# prose mentions scripts/git-current-branch.sh only\n")
+    retired = "scripts/synthetic-retired-helper.sh"
+    _ = _add_file(repo, "scripts/ship-driver.txt", "# prose mentions scripts/synthetic-retired-helper.sh only\n")
     manifest = _make_manifest(repo, [(retired, "#test")])
     rc = migration_lint.main([
         "--manifest", str(manifest),

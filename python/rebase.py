@@ -73,7 +73,7 @@ def _sync_local_main(
             cwd=cwd,
         )
         if rc != 0 and result == "refusing to update local 'main' while checked out on main":
-            raise Stalled(_redact_outbound(f"git-sync-local-main.sh: {result}"))
+            raise Stalled(_redact_outbound(f"cli.py git sync-local-main: {result}"))
         return
 
     if git.try_rev_parse(runner, "main", cwd=cwd) is not None:
@@ -88,7 +88,7 @@ def _sync_local_main(
         cwd=cwd,
     )
     if rc != 0 and result == "refusing to update local 'main' while checked out on main":
-        raise Stalled(_redact_outbound(f"git-sync-local-main.sh: {result}"))
+        raise Stalled(_redact_outbound(f"cli.py git sync-local-main: {result}"))
 
 
 def _is_empty_or_already_applied_rebase_error(text: str) -> bool:

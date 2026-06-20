@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from collections.abc import Callable
 from pathlib import Path
 
@@ -553,7 +554,7 @@ def test_commit_main_git_commit_failure_preserves_exit_code(repo: Path, monkeypa
     (repo / "file.txt").write_text("x\n", encoding="utf-8")
 
     def fake_run(argv, **_kwargs):  # type: ignore[no-untyped-def]
-        if str(argv[0]).endswith("git-commit.sh"):
+        if list(argv[:4]) == [sys.executable, str(implement_dispatch._current_cli_path()), "git", "commit"]:  # pyright: ignore[reportPrivateUsage]
             return subprocess.CompletedProcess(argv, 7, "", "hook rejected commit")
         return subprocess.CompletedProcess(argv, 0, "", "")
 

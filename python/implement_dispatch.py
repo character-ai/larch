@@ -755,8 +755,7 @@ def commit_main(argv: list[str] | None = None) -> int:
     env["LARCH_TIMING_SKILL"] = "implement"
     subprocess.run([sys.executable, str(_current_cli_path()), "timing", "mark", "Step 4 — commit implementation"], env=env, check=False)
 
-    git_commit = Path(os.environ.get("CLAUDE_PLUGIN_ROOT", str(_PLUGIN_ROOT))) / "scripts" / "git-commit.sh"
-    commit_args = [str(git_commit), "-m", args.message]
+    commit_args = [sys.executable, str(_current_cli_path()), "git", "commit", "-m", args.message]
     if args.pathspec_from_file:
         commit_args.extend(["--only", "--pathspec-from-file", args.pathspec_from_file])
         if args.pathspec_file_nul:

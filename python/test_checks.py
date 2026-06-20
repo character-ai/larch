@@ -1331,7 +1331,7 @@ def test_run_lint_fix_git_commit_applied_path(tmp_path: Path) -> None:
         _ok(""),  # current cached diff
         _ok(""),  # current untracked status
         _ok(""),  # git add
-        _ok(""),  # git-commit.sh
+        _ok(""),  # cli.py git commit
         _ok(commit + "\n"),  # commit SHA
     ])
     outcome = checks.run_lint_fix(
@@ -1869,7 +1869,7 @@ def test_run_lint_fix_dispatches_claude_before_codex(
         _ok(""),  # current cached diff
         _ok(""),  # untracked status
         _ok(""),  # git add
-        _ok(""),  # git-commit.sh
+        _ok(""),  # cli.py git commit
         _ok("def456\n"),  # commit SHA
     ])
     outcome = checks.run_lint_fix(
@@ -1931,7 +1931,7 @@ def test_run_lint_fix_codex_fail_cursor_success(tmp_path: Path, monkeypatch: pyt
         _ok(""),  # current cached diff
         _ok(""),  # untracked status
         _ok(""),  # git add
-        _ok(""),  # git-commit.sh
+        _ok(""),  # cli.py git commit
         _ok("def456\n"),  # commit SHA
     ])
     outcome = checks.run_lint_fix(

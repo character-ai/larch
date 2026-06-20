@@ -218,7 +218,7 @@ def test_bash_flush_recovery_k1_emits_admin_merged(tmp_path: Path) -> None:
     for helper in ("lib-quiet.sh", "lib-net.sh"):
         source = REPO_ROOT / "scripts" / helper
         _ = (script_dir / helper).write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
-    force_push = script_dir / "git-force-push.sh"
+    force_push = script_dir / "push-force-stub.sh"
     _ = force_push.write_text(
         "#!/usr/bin/env bash\nprintf 'PUSHED=true\\nSTATUS=ok\\n'\n",
         encoding="utf-8",

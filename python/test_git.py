@@ -760,3 +760,58 @@ def test_phantom_probe_clean_omits_optional_keys(monkeypatch: pytest.MonkeyPatch
     assert "PHANTOM_STATUS=clean" in out
     assert "PHANTOM_COUNT=" not in out
     assert "PHANTOM_PATHS_FILE=" not in out
+
+
+def test_commit_pathspec_file_nul_only_cli_argv(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    pathspec = tmp_path / "paths.z"
+    _ = pathspec.write_bytes(b"space name.txt\0")
+    runner = RecordingRunner()
+    monkeypatch.setattr(git, "proc", runner)
+    assert (
+        git.commit_main(
+            [
+                "--only",
+                "--pathspec-from-file",
+                str(pathspec),
+                "--pathspec-file-nul",
+                "-m",
+                "Commit selected paths",
+            ],
+        )
+        == 0
+    )
+    assert [
+        "git",
+        "add",
+        f"--pathspec-from-file={pathspec}",
+        "--pathspec-file-nul",
+    ] in runner.calls
+    commit_calls = [call for call in runner.calls if call[:3] == ["git", "commit", "--file"]]
+    assert commit_calls
+    assert "--only" in commit_calls[0]
+    assert f"--pathspec-from-file={pathspec}" in commit_calls[0]
+    assert "--pathspec-file-nul" in commit_calls[0]
+
+
+def test_show_stage_invalid_stage_emits_legacy_error(capsys: pytest.CaptureFixture[str]) -> None:
+    assert git.show_stage_main(["--stage", "4", "--file", "conflict.txt"]) == 1
+    assert "git-show-stage.sh: --stage must be 1, 2, or 3 (got: 4)" in capsys.readouterr().err
+
+
+def test_check_main_sync_not_main_cli(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("git", "symbolic-ref"), 0, "feature\n", "", 0.01),
+        ],
+    )
+    monkeypatch.setattr(git, "proc", runner)
+    assert git.check_main_sync_main([]) == 0
+    assert "SYNC_STATUS=not-main" in capsys.readouterr().out
+
+
+def test_check_remote_branch_parse_error_fail_open(capsys: pytest.CaptureFixture[str]) -> None:
+    assert git.check_remote_branch_main([]) == 0
+    out = capsys.readouterr().out
+    assert "STATE=error" in out
+    assert "RC=1" in out
+    assert "ERROR=--branch is required" in out

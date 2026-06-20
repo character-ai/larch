@@ -40,7 +40,7 @@ def test_check_phantom_dirty_side_effect_free_shape(monkeypatch, tmp_path) -> No
     assert result.status == "phantom"
     assert result.count == 2
     assert result.paths_file == str(impl / "phantom-paths-s1.z")
-    assert not any("check-phantom-dirty.sh" in str(call) for call in runner.calls)
+    assert not any("git check-phantom-dirty" in str(call) for call in runner.calls)
 
 
 def test_baseline_dirty_probe_reports_detector_unknown(tmp_path) -> None:

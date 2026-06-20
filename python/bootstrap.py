@@ -21,7 +21,6 @@ import dirty_tree
 import logging_util
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
-_SCRIPTS = _REPO_ROOT / "scripts"
 _PY_CLI = Path(__file__).with_name("cli.py")
 _PS = shutil.which("ps") or "/bin/ps"
 BOOTSTRAP_CONTRACT_FAILURE = 2
@@ -733,7 +732,7 @@ def _phase_plan(st: BootstrapState) -> None:
     else:
         snapshot = Path(st.implement_tmpdir) / "untracked-baseline.z"
         if not snapshot.exists():
-            _run([str(_SCRIPTS / "snapshot-untracked.sh"), "--output", str(snapshot), "--nul"])
+            _run([sys.executable, str(_PY_CLI), "git", "snapshot-untracked", "--output", str(snapshot), "--nul"])
         if not _append_emergency_bypass(st):
             st.emit_tmp_step_failed("emergency-bypass-log")
         plan_src = Path(st.opts.preflight_tmpdir) / "plan-from-issue.txt"
@@ -779,7 +778,7 @@ def _phase_plan(st: BootstrapState) -> None:
                 st.implement_bail_reason = "branch-create-failed"
                 return
             st.branch_action = _parse_kv(created.stdout).get("ACTION", "")
-    branch = _run([str(_SCRIPTS / "git-current-branch.sh")])
+    branch = _run([sys.executable, str(_PY_CLI), "git", "current-branch"])
     if branch.returncode == 0:
         st.branch_name = _parse_kv(branch.stdout).get("BRANCH", "")
     if not st.branch_name:
