@@ -1,10 +1,10 @@
-## /implement run 4802CF1A-EA01-41DA-83C2-42D2756DD97B — bailed
+## /implement run 4802CF1A-EA01-41DA-83C2-42D2756DD97B — stalled
 
-- **Outcome**: bailed
+- **Outcome**: stalled
 - **Mode**: N/A
 - Emergency: true
 - **Duration**: 02:07:29
-- **Cost**: 💰 TOTAL ~$32.95 — Claude $14.90, Codex $11.76, Cursor $2.93, Claude (subprocess) $3.36  |  Tokens: 47429k
+- **Cost**: 💰 TOTAL ~$34.04 — Claude $15.99, Codex $11.76, Cursor $2.93, Claude (subprocess) $3.36  |  Tokens: 49276k
 - **Issue**: #4847 — https://github.com/character-ai/larch/issues/4847
 - **Plan review**: N/A
 - **Code review**: 1/5 accepted
