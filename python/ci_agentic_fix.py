@@ -298,6 +298,8 @@ def _wait_for_ci(
             str(cycle),
             "--output-file",
             str(output),
+            "--empty-checks-grace",
+            str(config.CI_WAIT_POST_FIX_EMPTY_CHECKS_GRACE_SEC),
         ],
         cwd=str(repo_root),
         timeout=float(config.CI_WAIT_TIMEOUT_SEC),

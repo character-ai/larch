@@ -2614,6 +2614,39 @@ def test_direct_targets_rule_targets_before_py_lint(
     assert targets.index("test-review-and-fix") < targets.index("py-lint")
 
 
+def _write_partition_guard(repo: Path, enforced: tuple[str, ...]) -> None:
+    scripts_dir = repo / "scripts"
+    scripts_dir.mkdir(parents=True, exist_ok=True)
+    lines = ["ENFORCED = ("]
+    lines.extend(f'    "{path}",' for path in enforced)
+    lines.append(")")
+    _ = (scripts_dir / "lint-harness-pytest-partition.py").write_text(
+        "\n".join(lines) + "\n", encoding="utf-8",
+    )
+
+
+def test_enforced_partition_files_reads_guard_tuple(tmp_path: Path) -> None:
+    _write_partition_guard(tmp_path, ("python/test_plan_review.py", "python/test_agents.py"))
+    enforced = checks._enforced_partition_files(tmp_path)  # pyright: ignore[reportPrivateUsage]
+    assert enforced == frozenset({"python/test_plan_review.py", "python/test_agents.py"})
+
+
+def test_enforced_partition_files_missing_guard_is_empty(tmp_path: Path) -> None:
+    assert checks._enforced_partition_files(tmp_path) == frozenset()  # pyright: ignore[reportPrivateUsage]
+
+
+def test_direct_targets_enforced_test_file_adds_partition_guard(tmp_path: Path) -> None:
+    _write_partition_guard(tmp_path, ("python/test_plan_review.py",))
+    targets = _direct_targets_for(("python/test_plan_review.py",), tmp_path)
+    assert "test-harness-shards-coverage" in targets
+
+
+def test_direct_targets_non_enforced_test_file_skips_partition_guard(tmp_path: Path) -> None:
+    _write_partition_guard(tmp_path, ("python/test_plan_review.py",))
+    targets = _direct_targets_for(("python/test_ship.py",), tmp_path)
+    assert "test-harness-shards-coverage" not in targets
+
+
 def test_existing_regular_files_includes_symlink_to_file(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()

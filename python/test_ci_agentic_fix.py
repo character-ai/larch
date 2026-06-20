@@ -14,6 +14,8 @@ import proc
 from run_context import RunContext
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     import pytest
 
 
@@ -634,6 +636,41 @@ def test_wait_for_ci_accepts_action_bail(tmp_path: Path) -> None:
     )
     assert err is None
     assert parsed.get("ACTION") == "bail"
+
+
+def test_wait_for_ci_passes_post_fix_empty_checks_grace(tmp_path: Path) -> None:
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    wait_out = out_dir / "ci-agentic-wait-1.out"
+    _ = wait_out.write_text("ACTION=merge\n", encoding="utf-8")
+    seen_args: list[list[str]] = []
+
+    class _Runner:
+        def run(self, argv: Sequence[str], **_kwargs: object) -> proc.CommandResult:
+            seen_args.append(list(argv))
+            return proc.CommandResult(("cli",), 0, "", "", 0.01)
+
+    args = Namespace(
+        pr=1,
+        repo="o/r",
+        base_remote="origin",
+        base_ref="main",
+        output_dir=str(out_dir),
+    )
+    parsed, err = ci_agentic_fix._wait_for_ci(  # pyright: ignore[reportPrivateUsage]
+        _Runner(),
+        args=args,
+        repo_root=repo,
+        cycle=1,
+    )
+    assert err is None
+    assert parsed.get("ACTION") == "merge"
+    assert seen_args
+    cli_args = seen_args[0]
+    grace_idx = cli_args.index("--empty-checks-grace")
+    assert cli_args[grace_idx + 1] == str(config.CI_WAIT_POST_FIX_EMPTY_CHECKS_GRACE_SEC)
 
 
 def test_first_cycle_quota_emits_ci_fix_exhausted(

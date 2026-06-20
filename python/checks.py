@@ -8,6 +8,7 @@ launch maps to ``main-agent-required`` with ``failure_reason=dispatch-failed``;
 from __future__ import annotations
 
 import argparse
+import ast
 import contextlib
 import fnmatch
 import os
@@ -569,6 +570,63 @@ def _append_py_test_target(
     _append_once(targets, "py-test")
 
 
+_HARNESS_PARTITION_TARGET: Final = "test-harness-shards-coverage"
+
+
+def _enforced_partition_files(repo: Path) -> frozenset[str]:
+    """Read the strict-partition ENFORCED tuple from the harness guard.
+
+    Single source of truth is ``scripts/lint-harness-pytest-partition.py``; parse
+    it with ``ast`` (no code execution). Return an empty set on any read/parse
+    failure so a missing or malformed guard never blocks relevant checks.
+    """
+    guard = repo / "scripts" / "lint-harness-pytest-partition.py"
+    try:
+        tree = ast.parse(guard.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, ValueError, SyntaxError):
+        return frozenset()
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(isinstance(target, ast.Name) and target.id == "ENFORCED" for target in node.targets):
+            continue
+        if not isinstance(node.value, (ast.Tuple, ast.List)):
+            return frozenset()
+        files: set[str] = set()
+        for elt in node.value.elts:
+            if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                files.add(elt.value)
+        return frozenset(files)
+    return frozenset()
+
+
+def _append_partition_guard_target(
+    runner: Runner,
+    targets: list[str],
+    *,
+    cwd: str,
+    env: dict[str, str],
+    log_fd: int,
+    warned: set[str],
+) -> None:
+    """Append the harness partition guard target (gated on py3.11 + pytest).
+
+    The guard runs ``pytest --co`` per harness selection, so it needs the same
+    toolchain as ``py-test``; gate identically to avoid spurious local failures.
+    """
+    if not _python311_available(runner, cwd=cwd, env=env):
+        if "harness-partition" not in warned:
+            _write_log(log_fd, "WARNING: python3 >= 3.11 not found — skipping test-harness-shards-coverage relevant target\n")
+            warned.add("harness-partition")
+        return
+    if not _pytest_available(runner, cwd=cwd, env=env):
+        if "harness-partition" not in warned:
+            _write_log(log_fd, "WARNING: python3 pytest not found — skipping test-harness-shards-coverage relevant target\n")
+            warned.add("harness-partition")
+        return
+    _append_once(targets, _HARNESS_PARTITION_TARGET)
+
+
 def _direct_targets(
     runner: Runner,
     changed: tuple[str, ...],
@@ -589,6 +647,12 @@ def _direct_targets(
                 _append_py_lint_target(runner, targets, cwd=cwd, env=env, log_fd=log_fd, warned=warned)
             if wants_py_test:
                 _append_py_test_target(runner, targets, cwd=cwd, env=env, log_fd=log_fd, warned=warned)
+    # An ENFORCED multi-target pytest file changed: run the strict-partition guard
+    # locally so an uncovered new test fails before CI rather than only in CI and
+    # forcing the autonomous CI-fix loop (issue #4867 secondary).
+    enforced = _enforced_partition_files(Path(cwd))
+    if enforced and any(path in enforced for path in changed):
+        _append_partition_guard_target(runner, targets, cwd=cwd, env=env, log_fd=log_fd, warned=warned)
     return tuple(targets)
 
 
