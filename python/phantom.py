@@ -170,6 +170,10 @@ def probe_with_warn(
     cwd: str | None = None,
 ) -> PhantomProbeResult:
     """Probe and append execution-issue warnings on dirty/inconclusive results."""
+    if not os.environ.get("IMPLEMENT_TMPDIR"):
+        return PhantomProbeResult(
+            dirty=PhantomDirtyResult(status="unknown", reason="IMPLEMENT_TMPDIR-unset"),
+        )
     dirty = check_phantom_dirty(runner, step=step, baseline_file=baseline_file, cwd=cwd)
     append_error = ""
     implement_tmpdir = os.environ.get("IMPLEMENT_TMPDIR", "")

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,7 +12,7 @@ import pytest
 
 import git
 from errors import ShipError
-from proc import CommandResult
+from proc import CommandResult, ProcRunner
 import phantom
 from test_support import RecordingRunner
 
@@ -707,6 +708,86 @@ def test_clean_tree_fail_closed_probe_error(monkeypatch: pytest.MonkeyPatch, cap
     assert "PROBE_ERROR=git exited 128" in out
 
 
+def test_clean_tree_clean_repo(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    runner = RecordingRunner(responses=[CommandResult(("git", "status", "--porcelain"), 0, "", "", 0.01)])
+    monkeypatch.setattr(git, "proc", runner)
+    assert git.clean_tree_main([]) == 0
+    out = capsys.readouterr().out
+    assert "CLEAN=true" in out
+    assert "DIRTY_OUT=" not in out
+
+
+def test_clean_tree_dirty_default(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    runner = RecordingRunner(
+        responses=[CommandResult(("git", "status", "--porcelain"), 0, "?? untracked.txt\n", "", 0.01)],
+    )
+    monkeypatch.setattr(git, "proc", runner)
+    assert git.clean_tree_main([]) == 0
+    out = capsys.readouterr().out
+    assert "CLEAN=false" in out
+    assert "DIRTY_OUT=" in out
+
+
+def test_clean_tree_dirty_fail_closed(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    runner = RecordingRunner(
+        responses=[CommandResult(("git", "status", "--porcelain"), 0, "?? untracked.txt\n", "", 0.01)],
+    )
+    monkeypatch.setattr(git, "proc", runner)
+    assert git.clean_tree_main(["--fail-closed"]) == 0
+    out = capsys.readouterr().out
+    assert "CLEAN=false" in out
+    assert "DIRTY_OUT=" in out
+
+
+def test_clean_tree_probe_failure_default_fail_open(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("git", "status", "--porcelain"),
+                1,
+                "",
+                "fatal: shim status failed\nsecond line\twith tab\n",
+                0.01,
+            ),
+        ],
+    )
+    monkeypatch.setattr(git, "proc", runner)
+    assert git.clean_tree_main([]) == 0
+    out = capsys.readouterr().out
+    assert "CLEAN=true" in out
+
+
+def test_clean_tree_probe_failure_fail_closed_sanitizes_summary(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("git", "status", "--porcelain"),
+                1,
+                "",
+                "fatal: shim status failed\nsecond line\twith tab\n",
+                0.01,
+            ),
+        ],
+    )
+    monkeypatch.setattr(git, "proc", runner)
+    assert git.clean_tree_main(["--fail-closed"]) == 1
+    out = capsys.readouterr().out
+    assert "CLEAN=unknown" in out
+    assert "PROBE_ERROR=git exited 1" in out
+    assert "\t" not in out
+
+
+def test_clean_tree_bad_arg_exit_two(capsys: pytest.CaptureFixture[str]) -> None:
+    assert git.clean_tree_main(["--unknown-flag"]) == 2
+    assert "unknown" in capsys.readouterr().err.lower()
+
+
 def test_check_phantom_dirty_clean_omits_optional_keys(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     runner = RecordingRunner()
     monkeypatch.setattr(git, "proc", runner)
@@ -791,6 +872,67 @@ def test_commit_pathspec_file_nul_only_cli_argv(monkeypatch: pytest.MonkeyPatch,
     assert "--only" in commit_calls[0]
     assert f"--pathspec-from-file={pathspec}" in commit_calls[0]
     assert "--pathspec-file-nul" in commit_calls[0]
+
+
+def test_commit_pathspec_file_nul_only_leaves_unrelated_staged(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _ = subprocess.run(["git", "init", "-b", "main"], cwd=repo, check=True, capture_output=True)
+    _ = subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo, check=True)
+    _ = subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
+    _ = (repo / "staged.txt").write_text("base\n", encoding="utf-8")
+    _ = (repo / "recovered.txt").write_text("base\n", encoding="utf-8")
+    _ = subprocess.run(["git", "add", "staged.txt", "recovered.txt"], cwd=repo, check=True)
+    _ = subprocess.run(["git", "commit", "-m", "init"], cwd=repo, check=True, capture_output=True)
+
+    _ = (repo / "staged.txt").write_text("pre-existing staged\n", encoding="utf-8")
+    _ = subprocess.run(["git", "add", "staged.txt"], cwd=repo, check=True)
+    _ = (repo / "recovered.txt").write_text("recovered change\n", encoding="utf-8")
+    spaced_dir = repo / "dir with space"
+    spaced_dir.mkdir()
+    _ = (spaced_dir / "new file.txt").write_text("new recovered\n", encoding="utf-8")
+
+    pathspec = tmp_path / "paths.nul"
+    _ = pathspec.write_bytes(b"recovered.txt\0dir with space/new file.txt\0")
+
+    monkeypatch.chdir(repo)
+    monkeypatch.setattr(git, "proc", ProcRunner())
+    assert (
+        git.commit_main(
+            [
+                "--only",
+                "--pathspec-from-file",
+                str(pathspec),
+                "--pathspec-file-nul",
+                "-m",
+                "recover exact paths",
+            ],
+        )
+        == 0
+    )
+
+    show = subprocess.run(
+        ["git", "show", "--name-only", "--format=", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    assert "recovered.txt" in show
+    assert "dir with space/new file.txt" in show
+    assert "staged.txt" not in show
+
+    cached = subprocess.run(
+        ["git", "diff", "--cached", "--name-only"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    assert cached == ["staged.txt"]
 
 
 def test_show_stage_invalid_stage_emits_legacy_error(capsys: pytest.CaptureFixture[str]) -> None:

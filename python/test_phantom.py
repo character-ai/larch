@@ -94,3 +94,13 @@ def test_probe_with_warn_folds_append_failure(monkeypatch, tmp_path) -> None:
     result = phantom.probe_with_warn(runner, step="1.r-post-rebase")
     assert result.append_warn_error == "boom"
     assert len(runner.calls) == 2
+
+
+def test_probe_with_warn_implement_tmpdir_unset(monkeypatch) -> None:
+    monkeypatch.delenv("IMPLEMENT_TMPDIR", raising=False)
+    runner = RecordingRunner()
+    result = phantom.probe_with_warn(runner, step="s1")
+    assert result.dirty.status == "unknown"
+    assert result.dirty.reason == "IMPLEMENT_TMPDIR-unset"
+    assert result.append_warn_error == ""
+    assert not runner.calls

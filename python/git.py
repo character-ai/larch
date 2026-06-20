@@ -999,7 +999,7 @@ def check_main_sync(runner: Runner, *, cwd: str | None = None) -> MainSyncResult
     if diff.returncode != 0:
         return MainSyncResult(status="probe-error", ahead_count=ahead, error=f"git diff --name-only failed (exit {diff.returncode})", exit_code=2)
     paths = [line for line in diff.stdout.splitlines() if line]
-    logs_only = bool(paths) and all(path.startswith("larch-logs/") for path in paths)
+    logs_only = not paths or all(path.startswith("larch-logs/") for path in paths)
     if all_flushes and logs_only:
         clean = _run(runner, ["git", "status", "--porcelain"], cwd=cwd)
         if clean.returncode != 0 or clean.stdout.strip():

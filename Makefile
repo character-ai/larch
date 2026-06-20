@@ -235,7 +235,7 @@ test-check-clean-tree:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_git.py -q -k 'clean_tree'
 
 test-check-main-sync:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_git.py -q -k 'check_main_sync'
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_check_main_sync.py python/test_git.py -q -k 'check_main_sync'
 
 
 
@@ -368,7 +368,7 @@ test-promote-release:
 
 
 test-git-push:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_push.py -q -k 'branch_push or branch_main'
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_push.py -q -k 'branch_push or branch_main or propagates_final_exit'
 
 
 test-lint-literal-counts:
