@@ -28,6 +28,7 @@ Family B background+monitor pairing assertions were removed in breadcrumbs Stage
 - `AGENTS.md` carries the background-recovery-waiter ban `NEVER launch a background recovery waiter` and the platform-assumption wording `the backgrounded task reliably re-fires a <task-notification> on completion` (#4725).
 - `skills/implement/SKILL.md` carries the exact Monitor-ban literal ``NEVER use the `Monitor` tool anywhere within the `/implement` orchestrator``.
 - `skills/implement/SKILL.md` tells operators to `end the turn and wait for the next <task-notification>` instead of probing `$DESIGN_TMPDIR` or design-only sentinels, and it documents that `/implement` does not write `$IMPLEMENT_TMPDIR/.completed/*-terminal` sentinels today.
+- `skills/implement/SKILL.md` states that `/implement` notification-only recovery and `/design` foreground terminal-sentinel probing are intentionally different contracts, not contradictory guidance.
 - `skills/implement/SKILL.md` carries the background-recovery-waiter ban `NEVER launch a background recovery waiter` (#4725).
 - `skills/implement/SKILL.md` carries the exact fallback ban `Do NOT fall back to Monitor`.
 - `skills/design/SKILL.md` carries the exact Monitor-ban literal ``NEVER use the `Monitor` tool anywhere within the `/design` orchestrator``.

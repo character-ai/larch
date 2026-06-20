@@ -128,6 +128,10 @@ check "$IMPL_MD" \
     '/implement` does not write `$IMPLEMENT_TMPDIR/.completed/*-terminal` sentinels today'
 
 check "$IMPL_MD" \
+    "SKILL.md NEVER list pins intentional /implement vs /design recovery asymmetry" \
+    '/implement` notification-only recovery and `/design` foreground terminal-sentinel probing are intentionally different contracts, not contradictory guidance.'
+
+check "$IMPL_MD" \
     "SKILL.md NEVER list bans the background recovery waiter (#4725)" \
     'NEVER launch a background recovery waiter'
 

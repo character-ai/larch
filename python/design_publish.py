@@ -33,6 +33,14 @@ def _parse_kv(text: str) -> dict[str, str]:
     return out
 
 
+def _replace_kv(rows: list[tuple[str, str]], key: str, value: str) -> None:
+    for idx in range(len(rows) - 1, -1, -1):
+        if rows[idx][0] == key:
+            rows[idx] = (key, value)
+            return
+    rows.append((key, value))
+
+
 def _is_repo(value: str) -> bool:
     return bool(re.fullmatch(r"[A-Za-z0-9._-]+/[A-Za-z0-9._-]+", value))
 
@@ -430,6 +438,14 @@ def publish_core(argv: Sequence[str]) -> int:
                 kvs.append((key, publish_kv[key]))
                 if key == "RECOVERY_BRANCH":
                     kvs.append(("LOG_RECOVERY_BRANCH", publish_kv[key]))
+        if publish.returncode != 0 and not publish_kv.get("RECOVERY_BRANCH"):
+            _replace_kv(kvs, "PUBLISH_OK", "false")
+            _emit_rows(kvs)
+            _ = _write_result_env(result_env, kvs)
+            return 5
+        if publish.returncode == 0 and publish_kv.get("PUBLISH_OK") == "false":
+            _emit_rows(kvs)
+            return 0 if _write_result_env(result_env, kvs) else 3
         # Re-surface the dropped secret-rotation warning: the design log is scrubbed
         # before commit, and a non-zero SECRET_SCRUB_VIOLATIONS count from log-publish
         # means a secret-shaped value was redacted from the committed logs. Warn the

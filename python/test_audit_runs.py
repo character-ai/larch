@@ -664,6 +664,40 @@ def test_scan_run_absent_review_findings_self_review_tally_populates_blank_stats
     assert stats["mangled"] == 0
 
 
+def test_self_review_tally_rows_preserve_audit_output_shape(tmp_path: Path) -> None:
+    run = tmp_path / "run"
+    run.mkdir()
+    (run / "code-review-tally.json").write_text(
+        '{"mode":"self-review","accepted_count":"bad","rejected_count":2}\n',
+        encoding="utf-8",
+    )
+
+    rows = audit_runs._self_review_tally_rows(run)
+
+    assert rows == [
+        {
+            "id": "SELF_REVIEW_REJECTED_1",
+            "source": "committed-self-review-tally",
+            "phase": "code-review",
+            "outcome": "rejected",
+            "category": "",
+            "severity": "(none)",
+            "body_severity": "",
+            "focus_area": "",
+        },
+        {
+            "id": "SELF_REVIEW_REJECTED_2",
+            "source": "committed-self-review-tally",
+            "phase": "code-review",
+            "outcome": "rejected",
+            "category": "",
+            "severity": "(none)",
+            "body_severity": "",
+            "focus_area": "",
+        },
+    ]
+
+
 def test_scan_run_outcome_less_review_findings_uses_self_review_tally(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

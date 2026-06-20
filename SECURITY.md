@@ -72,6 +72,15 @@ of the copied run tree (top level and `plan-review/round-N/`); it also drops the
 it copied the whole `$DESIGN_TMPDIR` unfiltered and committed the raw streams,
 inflating committed design logs roughly 40x until the filter was restored.
 
+Design log publish and implement run-log commit fail closed when scrubber
+execution fails or a detected secret survives scrubbing. Successful scrubbing
+still proceeds with a loud rotation warning, because the redacted credential was
+already exposed in the session and must be rotated. Scrub failures abort the
+publish tail with fatal rc `5`, distinct from recoverable log-PR push/create
+misses that leave `PUBLISH_OK=false` recovery breadcrumbs. This preserves the
+distinction between failed scrubbing and successful redaction of an already
+exposed credential.
+
 ## Stall recovery sanitization
 
 `/implement` Step 18a stall recovery has two current public-boundary surfaces: the Tier A `/larch:issue --input-file` artifact (`issue-input`) and the Tier B upstream larch report artifact (`chat-print`). `python/stall-recovery-report-allowlists.tsv` is the mechanical allowlist for Tier B report fields; `python/cli.py stall-recovery lint` verifies TSV, code, and `python/stall-recovery-report.md` parity.

@@ -47,6 +47,18 @@ assert_eq() {
     fi
 }
 
+echo "== bootstrap path resolves repo python directory =="
+(
+    cd "$SCRIPT_DIR"
+    python3 - <<'PY'
+from pathlib import Path
+
+assert (Path(__file__).resolve().parents[3] / "python" / "self_review_tally.py").is_file()
+PY
+)
+PASS=$((PASS + 1))
+echo "  ok: script-dir bootstrap path reaches repo python helper"
+
 FIX=$(mktemp -d "${TMPDIR:-/tmp}/fluff-fixture-XXXXXX")
 trap 'rm -rf "$FIX"' EXIT
 
@@ -165,6 +177,13 @@ assert_contains "$REPORT" "## Recommendations" "recommendations section"
 assert_contains "$REPORT" "theme:refactor/dry" "refactor group surfaced"
 # severity table should separate important from nit
 assert_contains "$REPORT" "reviewer-authored body severity" "implement severity table"
+
+echo "== direct run from script directory can import shared helper =="
+REPORT_FROM_DIR=$(
+    cd "$SCRIPT_DIR"
+    python3 fluff-analysis.py --log-root "$FIX/larch-logs" --min-group 1
+)
+assert_contains "$REPORT_FROM_DIR" "# Review Fluff Analysis" "script-dir invocation succeeded"
 
 echo "== --cutoff enables pre/post section =="
 REPORT_CUT=$(python3 "$ANALYZER" --log-root "$FIX/larch-logs" --min-group 1 --cutoff 2026-05-21T00:00:00Z)

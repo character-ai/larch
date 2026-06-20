@@ -963,6 +963,31 @@ def test_scrub_run_tree_fail_closed_on_residual(
         _ = run_logs._scrub_run_tree(run_dir)  # pyright: ignore[reportPrivateUsage]
 
 
+def test_scrub_run_tree_propagates_scrubber_exception(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
+    run_dir.mkdir(parents=True)
+    _ = (run_dir / "findings.md").write_text("plain\n", encoding="utf-8")
+
+    def _boom(_text: str) -> tuple[str, dict[str, int]]:
+        raise RuntimeError("scrubber unavailable")
+
+    monkeypatch.setattr(run_logs.redact, "scrub_log_secrets", _boom)
+    with pytest.raises(RuntimeError, match="scrubber unavailable"):
+        _ = run_logs._scrub_run_tree(run_dir)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_warn_secret_scrub_remains_warning_only(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    run_logs._warn_secret_scrub(2, 1, tmp_path)  # pyright: ignore[reportPrivateUsage]
+
+    assert "SECRETS DETECTED AND SCRUBBED" in capsys.readouterr().err
+
+
 def test_larch_log_commit_skips_volatile_refresh_only_and_cleans(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
