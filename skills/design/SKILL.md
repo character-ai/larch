@@ -56,7 +56,8 @@ Design an implementation plan for a feature and review it with the mechanical pl
    - **Fallback when `latest-reviewer-status.tsv` is missing**: bind the round number before choosing the per-round file:
      - First, scan the completed task-notification stdout for `FINAL_ROUND_NUM=`, `STEP3_REVIEW_ROUND_NUM=`, or `ROUNDS_COMPLETED=` KVs.
      - If still unbound, read **only** those same round-binding keys from `$DESIGN_TMPDIR/.step3-review-result.env` (minimal key scan; not a full routing parse).
-     - Then read `$DESIGN_TMPDIR/plan-review/round-${FINAL_ROUND_NUM:-${STEP3_REVIEW_ROUND_NUM:-${ROUNDS_COMPLETED:-1}}}/reviewer-status.tsv`.
+     - Bind `_bound_round="${FINAL_ROUND_NUM:-${STEP3_REVIEW_ROUND_NUM:-${ROUNDS_COMPLETED:-}}}"`. If `_bound_round` is empty or non-numeric, print `**⚠ Reviewer status table omitted: round number unbound after fallback key scan.**` and skip the table; do not default to round 1.
+     - When bound, read `$DESIGN_TMPDIR/plan-review/round-${_bound_round}/reviewer-status.tsv`.
    - This minimal env read for round binding is allowed **only** inside the fallback branch and **only** for round selection; it is not the loop-routing parse.
 3. **Loop routing parse (after the table)**: fully parse `$DESIGN_TMPDIR/.step3-review-result.env` for Step 3 resume / branch routing.
 
@@ -598,7 +599,8 @@ After the completion gate, execute this authoritative sequence:
    - **Fallback when `latest-reviewer-status.tsv` is missing**: bind the round number before choosing the per-round file:
      - First, scan the completed task-notification stdout for `FINAL_ROUND_NUM=`, `STEP3_REVIEW_ROUND_NUM=`, or `ROUNDS_COMPLETED=` KVs.
      - If still unbound, read **only** those same round-binding keys from `$DESIGN_TMPDIR/.step3-review-result.env` (minimal key scan; not a full routing parse).
-     - Then read `$DESIGN_TMPDIR/plan-review/round-${FINAL_ROUND_NUM:-${STEP3_REVIEW_ROUND_NUM:-${ROUNDS_COMPLETED:-1}}}/reviewer-status.tsv`.
+     - Bind `_bound_round="${FINAL_ROUND_NUM:-${STEP3_REVIEW_ROUND_NUM:-${ROUNDS_COMPLETED:-}}}"`. If `_bound_round` is empty or non-numeric, print `**⚠ Reviewer status table omitted: round number unbound after fallback key scan.**` and skip the table; do not default to round 1.
+     - When bound, read `$DESIGN_TMPDIR/plan-review/round-${_bound_round}/reviewer-status.tsv`.
    - This minimal env read for round binding is allowed **only** inside the fallback branch and **only** for round selection; it is not the loop-routing parse.
 3. **Loop routing parse (after the table)**: fully parse `$DESIGN_TMPDIR/.step3-review-result.env` for Step 3 resume / branch routing.
 
@@ -667,7 +669,8 @@ After the completion gate, execute this authoritative sequence:
    - **Fallback when `latest-reviewer-status.tsv` is missing**: bind the round number before choosing the per-round file:
      - First, scan the completed task-notification stdout for `FINAL_ROUND_NUM=`, `STEP3_REVIEW_ROUND_NUM=`, or `ROUNDS_COMPLETED=` KVs.
      - If still unbound, read **only** those same round-binding keys from `$DESIGN_TMPDIR/.step3-review-result.env` (minimal key scan; not a full routing parse).
-     - Then read `$DESIGN_TMPDIR/plan-review/round-${FINAL_ROUND_NUM:-${STEP3_REVIEW_ROUND_NUM:-${ROUNDS_COMPLETED:-1}}}/reviewer-status.tsv`.
+     - Bind `_bound_round="${FINAL_ROUND_NUM:-${STEP3_REVIEW_ROUND_NUM:-${ROUNDS_COMPLETED:-}}}"`. If `_bound_round` is empty or non-numeric, print `**⚠ Reviewer status table omitted: round number unbound after fallback key scan.**` and skip the table; do not default to round 1.
+     - When bound, read `$DESIGN_TMPDIR/plan-review/round-${_bound_round}/reviewer-status.tsv`.
    - This minimal env read for round binding is allowed **only** inside the fallback branch and **only** for round selection; it is not the loop-routing parse.
 3. **Loop routing parse (after the table)**: fully parse `$DESIGN_TMPDIR/.step3-review-result.env` for Step 3 resume / branch routing.
 
