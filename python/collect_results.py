@@ -785,6 +785,19 @@ def collector_stderr_tail_candidates(reviewer_file: str) -> list[str]:
     return candidates
 
 
+def _render_launch_stderr_tail(launch_stderr: str) -> str:
+    if Path(launch_stderr).is_file() and Path(launch_stderr).stat().st_size > 0:
+        fd, tmp_tail = tempfile.mkstemp(prefix="larch-launch-stderr-tail.", dir=os.environ.get("TMPDIR") or None)
+        os.close(fd)
+        rendered = agents.render_failed_agent_stderr_tail(Path(launch_stderr))
+        if rendered:
+            _ = Path(tmp_tail).write_text(rendered, encoding="utf-8")
+            return tmp_tail
+        with contextlib.suppress(FileNotFoundError):
+            Path(tmp_tail).unlink()
+    return ""
+
+
 def resolve_collector_stderr_tail_file(reviewer_file: str) -> str:
     base = reviewer_file.removesuffix(".txt")
     retry_tail = f"{base}-retry.txt.stderr-tail"
@@ -794,16 +807,21 @@ def resolve_collector_stderr_tail_file(reviewer_file: str) -> str:
     if Path(ns_retry_tail).is_file() and Path(ns_retry_tail).stat().st_size > 0:
         return ns_retry_tail
     for candidate in collector_stderr_tail_candidates(reviewer_file):
-        launch_stderr = f"{candidate}.launch-stderr"
-        if Path(launch_stderr).is_file() and Path(launch_stderr).stat().st_size > 0:
-            fd, tmp_tail = tempfile.mkstemp(prefix="larch-launch-stderr-tail.", dir=os.environ.get("TMPDIR") or None)
-            os.close(fd)
-            rendered = agents.render_failed_agent_stderr_tail(Path(launch_stderr))
-            if rendered:
-                _ = Path(tmp_tail).write_text(rendered, encoding="utf-8")
-                return tmp_tail
-            with contextlib.suppress(FileNotFoundError):
-                Path(tmp_tail).unlink()
+        candidate_base = candidate.removesuffix(".txt")
+        retry_tail = f"{candidate_base}-retry.txt.stderr-tail"
+        if Path(retry_tail).is_file() and Path(retry_tail).stat().st_size > 0:
+            return retry_tail
+        ns_retry_tail = f"{candidate_base}-ns-retry.txt.stderr-tail"
+        if Path(ns_retry_tail).is_file() and Path(ns_retry_tail).stat().st_size > 0:
+            return ns_retry_tail
+        for launch_stderr in (
+            f"{candidate_base}-retry.txt.launch-stderr",
+            f"{candidate_base}-ns-retry.txt.launch-stderr",
+            f"{candidate}.launch-stderr",
+        ):
+            rendered_tail = _render_launch_stderr_tail(launch_stderr)
+            if rendered_tail:
+                return rendered_tail
         tail = f"{candidate}.stderr-tail"
         if Path(tail).is_file() and Path(tail).stat().st_size > 0:
             return tail

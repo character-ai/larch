@@ -8,6 +8,7 @@ import json
 import os
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, cast
 
@@ -300,6 +301,63 @@ def test_preflight_meta_writes_stderr_sink_for_collector_retry(tmp_path: Path, m
     meta = out.with_suffix(out.suffix + ".meta").read_text(encoding="utf-8")
     assert f"STDERR_SINK={sink}" in meta
     assert "OUTER_LAUNCHER_STDERR_SINK" not in meta
+
+
+def _codex_preflight_auth_setup_failed(monkeypatch: pytest.MonkeyPatch) -> None:
+    def prepare_failed(*_args: object, **_kwargs: object) -> tuple[int, str]:
+        return (1, "preflight setup failed")
+
+    monkeypatch.setattr(agents, "_prepare_codex_home", prepare_failed)
+
+
+def _cursor_preflight_auth_setup_failed(monkeypatch: pytest.MonkeyPatch) -> None:
+    def auth_failed(**_kwargs: object) -> agents.AuthVerdict:
+        return agents.AuthVerdict(ok=False, rc=1, message="preflight failed")
+
+    monkeypatch.setattr(agents, "cursor_auth_preflight", auth_failed)
+
+
+@pytest.mark.parametrize(
+    ("tool", "setup", "expected_rc"),
+    [
+        ("codex", _codex_preflight_auth_setup_failed, 0),
+        ("cursor", _cursor_preflight_auth_setup_failed, 1),
+    ],
+)
+def test_review_preflight_failure_auth_from_retry_diag_with_stderr_sink(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tool: str,
+    setup: Callable[[pytest.MonkeyPatch], None],
+    expected_rc: int,
+) -> None:
+    out = tmp_path / "review.txt"
+    sink = tmp_path / "launcher.log"
+    retry_diag = tmp_path / "review-retry.txt.failure-diag"
+    auth_text = "not logged in\n" if tool == "codex" else "authentication failed\n"
+    _ = retry_diag.write_text(auth_text, encoding="utf-8")
+    _ = sink.write_text("benign launcher noise\n", encoding="utf-8")
+    setup(monkeypatch)
+    if tool == "codex":
+        args = _codex_review_args(tmp_path, out_name="review.txt", stderr_sink=str(sink))
+        assert agents._review_launch_codex(args, "hi") == expected_rc
+    else:
+        args = argparse.Namespace(
+            output=str(out),
+            timeout="2",
+            risk="",
+            stderr_sink=str(sink),
+            timing_task_kind="cursor-review",
+            token_budget_cap="",
+        )
+        assert agents._review_launch_cursor(args, "hi") == expected_rc
+    stdout = capsys.readouterr().out
+    assert "LAUNCHER_FAILURE_CLASS=health" in stdout
+    assert "LAUNCHER_FAILURE_REASON=auth" in stdout
+    failure_diag = out.with_suffix(out.suffix + ".failure-diag")
+    assert failure_diag.is_file()
+    assert "benign launcher noise" in failure_diag.read_text(encoding="utf-8")
 
 
 def test_codex_sentinel_replays_with_ns_retry_header_prefix(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

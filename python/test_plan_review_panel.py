@@ -412,6 +412,7 @@ def test_panel_dispatch_surfaces_waterfall_failure(tmp_path: Path) -> None:
     _ = failing_stub.write_text(
         "#!/usr/bin/env bash\n"
         "printf 'dispatch-with-waterfall.sh: --mode must be diff or description\\n' >&2\n"
+        "printf 'cursor token crsr_abcdefghijklmnopqrstuvwxyz\\n' >&2\n"
         "exit 7\n",
         encoding="utf-8",
     )
@@ -444,6 +445,10 @@ def test_panel_dispatch_surfaces_waterfall_failure(tmp_path: Path) -> None:
     detail_text = detail_log.read_text(encoding="utf-8")
     assert "exited 7" in detail_text
     assert "--mode must be diff or description" in detail_text
+    assert "crsr_abcdefghijklmnopqrstuvwxyz" not in detail_text
+    assert "crsr_abcdefghijklmnopqrstuvwxyz" not in proc.stderr
+    assert "<REDACTED-TOKEN>" in detail_text
+    assert "<REDACTED-TOKEN>" in proc.stderr
     assert "--mode must be diff or description" in proc.stderr
 
 

@@ -389,6 +389,35 @@ def test_parse_rate_failure_is_not_substantive_and_suppressed(tmp_path: Path) ->
     assert not append_log.exists()
 
 
+def test_parse_rate_diag_uses_bounded_prefix_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ballot = tmp_path / "ballot.md"
+    ballot.write_text("### FINDING_1: bug\n### FINDING_2: bug\n", encoding="utf-8")
+    voter = tmp_path / "voter.txt"
+    voter.write_text("X" * 1000, encoding="utf-8")
+
+    def forbidden_read_bytes(_path: Path) -> bytes:
+        raise AssertionError("read_bytes should not be used for parse-rate snippets")
+
+    monkeypatch.setattr(Path, "read_bytes", forbidden_read_bytes)
+    assert (
+        voting.check_voter_parse_rate(
+            voter_file=str(voter),
+            voter_tool="cursor",
+            ballot_file=str(ballot),
+            id_grammar="finding-only",
+            review_tmpdir=str(tmp_path),
+            log_mode="quiet",
+        )
+        == "NOT_SUBSTANTIVE"
+    )
+    diag = (tmp_path / "voter-parse-rate-diag.txt").read_text(encoding="utf-8")
+    assert "--- first 200 bytes of voter output ---\n" + ("X" * 200) in diag
+    assert "X" * 201 not in diag
+
+
 def test_is_harness_review_path_matches_agent_voters_pytest_segment(tmp_path: Path) -> None:
     base = tmp_path / "test_agent_voters.tmp" / "review"
     voter = base / "voter.txt"

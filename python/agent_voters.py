@@ -61,6 +61,14 @@ class ValidationError(RuntimeError):
     pass
 
 
+def _bounded_prefix_text(path: Path, limit: int) -> str:
+    try:
+        with path.open("rb") as handle:
+            return handle.read(limit).decode("utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
 def _plugin_root() -> Path:
     return Path(os.environ.get("CLAUDE_PLUGIN_ROOT", str(_PLUGIN_ROOT))).resolve()
 
@@ -216,13 +224,13 @@ def _append_voter1_failure(opts: Options, review_tmpdir: Path, voter_1_path: str
         output_bytes = 0
     lines = [f"voter1_rc={voter1_rc}", f"output_bytes={output_bytes}"]
     if voter1_rc != 0 and output_path.is_file() and output_path.stat().st_size > 0:
-        lines.extend(["--- first 200 bytes of voter output ---", output_path.read_bytes()[:200].decode("utf-8", errors="replace")])
+        lines.extend(["--- first 200 bytes of voter output ---", _bounded_prefix_text(output_path, 200)])
     diag_path = Path(f"{voter_1_path}.diag")
     if diag_path.is_file() and diag_path.stat().st_size > 0:
-        lines.extend(["--- first 200 bytes of .diag ---", diag_path.read_bytes()[:200].decode("utf-8", errors="replace")])
+        lines.extend(["--- first 200 bytes of .diag ---", _bounded_prefix_text(diag_path, 200)])
     stderr_path = Path(f"{voter_1_path}.launcher-stderr")
     if stderr_path.is_file() and stderr_path.stat().st_size > 0:
-        lines.extend(["--- launcher stderr (first 500 bytes) ---", stderr_path.read_bytes()[:500].decode("utf-8", errors="replace")])
+        lines.extend(["--- launcher stderr (first 500 bytes) ---", _bounded_prefix_text(stderr_path, 500)])
     with diag.open("w", encoding="utf-8") as handle:
         _ = handle.write("\n".join(lines) + "\n")
 

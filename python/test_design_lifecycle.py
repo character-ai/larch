@@ -7,6 +7,7 @@ import json
 import os
 import subprocess
 import sys
+from collections.abc import Sequence
 from contextlib import redirect_stdout
 from io import StringIO
 from pathlib import Path
@@ -1280,6 +1281,72 @@ def test_step2b_drafter_pause_before_fallback_seed(tmp_path: Path, monkeypatch: 
     assert "POSTPLAN_RC=11" in out
     assert "POSTPLAN_STATUS=pause-save" in out
     assert not (design / ".step2b-postplan-fallback-used").exists()
+
+
+@pytest.mark.parametrize("vendor", ["codex", "claude"])
+def test_step2b_drafter_launcher_uses_python_cli_argv(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    vendor: str,
+) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / "approach-synthesis.txt").write_text("NO_SKETCHES\n", encoding="utf-8")
+    (design / "contested-decisions.md").write_text("NO_CONTESTED_DECISIONS\n", encoding="utf-8")
+    (design / "dialectic-resolutions.md").write_text("", encoding="utf-8")
+    (design / "feature-description.txt").write_text("feature\n", encoding="utf-8")
+    monkeypatch.setenv("DESIGN_TMPDIR", str(design))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(CLI.parent.parent))
+    monkeypatch.setenv("ISSUE_NUMBER", "42")
+    monkeypatch.setenv("LARCH_DESIGN_DRAFTER", vendor)
+    monkeypatch.setenv("LARCH_DESIGN_PLAN_MODEL", "claude-test-model")
+    captured: list[list[str]] = []
+
+    def fake_run(
+        argv: Sequence[object],
+        *,
+        text: bool = False,
+        capture_output: bool = False,
+        check: bool = False,
+        **_kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        del text, capture_output, check
+        args = [str(item) for item in argv]
+        if args[:3] == ["git", "-C", str(Path.cwd())] and args[3:] == ["status", "--porcelain"]:
+            return subprocess.CompletedProcess(args=args, returncode=0, stdout=" M existing.txt\n", stderr="")
+        if args[:3] == ["git", "-C", str(Path.cwd())] and args[3:] == ["rev-parse", "--show-toplevel"]:
+            return subprocess.CompletedProcess(args=args, returncode=0, stdout=str(CLI.parent.parent) + "\n", stderr="")
+        if args[2:4] == ["agent", f"launch-{vendor}-drafter"]:
+            captured.append(args)
+            (design / "plan.txt").write_text("## Plan\n\ndiff_lines: 1\n", encoding="utf-8")
+            (design / "step2b-drafter-status.txt").write_text("STATUS=ok\nPLAN_WRITTEN=true\n", encoding="utf-8")
+        return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+
+    def fake_postplan(_args: design_lifecycle.WrapperArgs) -> design_lifecycle.PostplanResult:
+        return design_lifecycle.PostplanResult(0, "", "ok")
+
+    monkeypatch.setattr(design_lifecycle.subprocess, "run", fake_run)
+    monkeypatch.setattr(design_lifecycle, "_shared_step2b_postplan_body", fake_postplan)
+    assert design_lifecycle.step2b_drafter_main([]) == 0
+    assert len(captured) == 1
+    argv = captured[0]
+    expected_verb = f"launch-{vendor}-drafter"
+    assert argv[:4] == [sys.executable, str(CLI), "agent", expected_verb]
+    for flag in (
+        "--prompt-file",
+        "--output-file",
+        "--baseline-porcelain",
+        "--timeout",
+        "--timing-task-kind",
+        "--design-tmpdir",
+        "--repo-root",
+    ):
+        assert flag in argv
+    if vendor == "claude":
+        assert "--model" in argv
+    else:
+        assert "--model" not in argv
+    assert not any(token.endswith(".sh") for token in argv)
 
 
 def test_step2b5_pause_short_circuit_skips_check_size(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

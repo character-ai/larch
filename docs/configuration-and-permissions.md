@@ -244,8 +244,9 @@ These knobs apply to the Step 0 runtime probes emitted into session-env via `ses
 - **`LARCH_PROBE_TTL_SECONDS`** — positive integer seconds for USER-scoped stamp freshness (default `60`). Non-numeric / empty falls back to `60`. `0` disables the stamp cache (always re-probe when the binary exists and the probe is not skipped).
 - **`LARCH_PROBE_NEGATIVE_TTL_SECONDS`** — non-negative integer seconds for reusing cached negative reviewer-probe stamps (default `0`). Leave at `0` to avoid transient Cursor or Codex failures excluding a tool for the session. Set a positive integer only when deliberately restoring bounded negative caching.
 - **`LARCH_PROBE_TIMEOUT_SECONDS`** — per-attempt wall-clock timeout while waiting on the background probe PID (default `30`). Non-numeric, empty, or `0` falls back to `30`.
-- **`LARCH_PROBE_RETRIES`** — additional retries after the first transient non-auth probe failure (default `2`). Non-negative integer; `0` disables transient retry. Non-numeric or empty values fall back to `2`. `N` allows up to `N+1` total probe calls on repeated `rc==1` failures. When unset and `LARCH_EXTERNAL_AUTH_RETRIES=1`, transient retries are forced to `0` for health-gate fast-fail compatibility; setting `LARCH_PROBE_RETRIES` explicitly overrides that suppression.
-- **`LARCH_EXTERNAL_AUTH_RETRIES`** — maximum total probe invocations on repeated auth-classified failures before treating the tool as absent for this session (default `5`; `0` or invalid → `5`). This controls auth-classified failures only; transient `rc==1` retries use `LARCH_PROBE_RETRIES`.
+- **`LARCH_PROBE_TIMEOUT_RETRIES`** — additional retries after a timeout exit (default `0`). Non-negative integer; invalid, empty, or negative values fall back to `0`. `N` allows up to `N + 1` total timeout attempts, so worst-case repeated-timeout latency is `(N + 1) * LARCH_PROBE_TIMEOUT_SECONDS`. The default keeps health-gate timeout latency unchanged.
+- **`LARCH_PROBE_RETRIES`** — additional retries after the first transient non-auth probe failure (default `2`). Non-negative integer; `0` disables transient retry. Non-numeric or empty values fall back to `2`. `N` allows up to `N + 1` total probe calls on repeated `rc == 1` failures. When unset and `LARCH_EXTERNAL_AUTH_RETRIES=1`, transient retries are forced to `0` for health-gate fast-fail compatibility; setting `LARCH_PROBE_RETRIES` explicitly overrides that suppression. Timeout exits use `LARCH_PROBE_TIMEOUT_RETRIES` instead.
+- **`LARCH_EXTERNAL_AUTH_RETRIES`** — maximum total probe invocations on repeated auth-classified failures before treating the tool as absent for this session (default `5`; `0` or invalid → `5`). This controls auth-classified failures only; transient `rc == 1` retries use `LARCH_PROBE_RETRIES`, and timeout exits use `LARCH_PROBE_TIMEOUT_RETRIES`.
 - **`LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT`** — launch-time health-gate timeout for `python3 python/cli.py agent run-external-agent`. Every Codex/Cursor launch via that CLI gets the gate on by default (`30` via the resolver fallback when nothing else resolves); set `0` to opt out; a positive value overrides the default. Resolution order is the process environment, `$SESSION_ENV_PATH`, then `$IMPLEMENT_TMPDIR/session-env.sh`. When enabled, launches first reuse `agent check-reviewers` with the other tool skipped and `LARCH_EXTERNAL_AUTH_RETRIES=1`; unhealthy probes fast-fail as `health-probe` instead of waiting for the full launch `--timeout`.
 
 `LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT` is auto-on for all callers via the resolver
@@ -261,7 +262,10 @@ lock is a reliability mechanism, not an authorization boundary. Unset and empty
 **`LARCH_EXTERNAL_STARTUP_LOCK_DELAY`** (default `0.5` seconds) via
 `external_startup_lock_release_after`. Other operator knobs are
 **`LARCH_EXTERNAL_STARTUP_LOCK_TTL`**, **`LARCH_EXTERNAL_STARTUP_LOCK_TRIES`**,
-and the test-only **`LARCH_EXTERNAL_STARTUP_LOCK_FORCE_UNAME`**.
+and the test-only **`LARCH_EXTERNAL_STARTUP_LOCK_FORCE_UNAME`**. Cursor's
+Darwin keychain preflight and preread sections also use this shared lock when
+`CURSOR_API_KEY` is not already usable, and they release it immediately after
+the keychain read.
 
 ### `LARCH_REVIEWER_PRUNE`
 
@@ -290,12 +294,12 @@ Per-process random delay (milliseconds) applied once before the cursor auth/retr
 
 Codex reasoning effort for all Codex launches (reviews, sketches, voting). Accepted values: `minimal`, `low`, `medium`, `high`. Default `high` (matches the plugin's `codex_effort` userConfig default).
 
-**When set at launch sites (design sketches, plan review, code review, conflict-resolution review, voting panel):**
+**When set at launch sites (design sketches, plan review, code review, conflict-resolution review, voting panel, and the Codex reviewer health probe):**
 - `python3 python/cli.py agent model-args --with-effort` emits `-c` and `model_reasoning_effort="$LARCH_CODEX_EFFORT"` as separate line-token argv entries, raising Codex reasoning to the configured level.
 
 **When not set (or set to empty string):**
 - `--with-effort` falls back to the plugin userConfig value (`codex_effort`, default `high`).
-- Setting `LARCH_CODEX_EFFORT=""` explicitly does NOT disable emission; to suppress effort flags entirely, the callers already omit the `--with-effort` flag (e.g., `agent check-reviewers` Codex probe does not use max effort regardless of env var setting).
+- Setting `LARCH_CODEX_EFFORT=""` explicitly does NOT disable emission; to suppress effort flags entirely, a caller must omit `--with-effort`. The Codex reviewer health probe currently uses `--with-effort`, so it follows the same effort resolution as review launchers.
 
 **Scope**: Claude and Cursor agents run at their defaults. Only Codex is bumped to `high` by default. This is deliberate — Claude's sonnet default is already well-suited to review work, and Cursor has no dedicated reasoning-effort CLI flag today.
 

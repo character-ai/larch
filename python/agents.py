@@ -542,23 +542,27 @@ def cursor_auth_preflight(*, caller: str = "agent cursor-auth-preflight") -> Aut
     seq_values = seq.split(",") if seq else []
     test_rc = os.environ.get("LIB_CURSOR_AUTH_TEST_SECURITY_RC", "") if os.environ.get("LARCH_LIB_CURSOR_AUTH_TEST_MODE") == "1" else ""
     last_rc = seq_values[-1] if seq_values else test_rc
-    for attempt in range(_CURSOR_AUTH_MAX_ATTEMPTS):
-        if seq_values:
-            rc_text = seq_values[attempt] if attempt < len(seq_values) else last_rc
-            rc = int(rc_text or "1")
-        elif test_rc:
-            rc = int(test_rc)
-        else:
-            rc = subprocess.run(
-                [shutil.which("security") or "/usr/bin/security", "find-generic-password", "-a", "cursor-user", "-s", "cursor-access-token"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                check=False,
-            ).returncode
-        if rc == 0:
-            return AuthVerdict(ok=True, rc=0)
-        if attempt < _CURSOR_AUTH_MAX_ATTEMPTS - 1:
-            time.sleep(0.2)
+    state = external_startup_lock_acquire("cursor")
+    try:
+        for attempt in range(_CURSOR_AUTH_MAX_ATTEMPTS):
+            if seq_values:
+                rc_text = seq_values[attempt] if attempt < len(seq_values) else last_rc
+                rc = int(rc_text or "1")
+            elif test_rc:
+                rc = int(test_rc)
+            else:
+                rc = subprocess.run(
+                    [shutil.which("security") or "/usr/bin/security", "find-generic-password", "-a", "cursor-user", "-s", "cursor-access-token"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                ).returncode
+            if rc == 0:
+                return AuthVerdict(ok=True, rc=0)
+            if attempt < _CURSOR_AUTH_MAX_ATTEMPTS - 1:
+                time.sleep(0.2)
+    finally:
+        external_startup_lock_release_after(state, delay=0)
     msg = (
         f"{caller}: cursor-auth-preflight failed.\n"
         "  CURSOR_API_KEY is unset/empty AND no `cursor-user` / `cursor-access-token`\n"
@@ -575,23 +579,27 @@ def cursor_auth_preflight(*, caller: str = "agent cursor-auth-preflight") -> Aut
 def cursor_preread_service_token() -> None:
     raw_key = os.environ.get("CURSOR_API_KEY", "")
     key = raw_key.strip()
-    if key:
+    if key and "\n" not in raw_key and "\r" not in raw_key:
         return
     uname_out = os.environ.get("LIB_CURSOR_AUTH_TEST_UNAME", "") if os.environ.get("LARCH_LIB_CURSOR_AUTH_TEST_MODE") == "1" else ""
     if not uname_out:
         uname_out = platform.system() or "unknown"
     if uname_out != "Darwin":
         return
-    if os.environ.get("LARCH_LIB_CURSOR_AUTH_TEST_MODE") == "1":
-        token = os.environ.get("LIB_CURSOR_AUTH_TEST_PREREAD_TOKEN", "")
-    else:
-        result = subprocess.run(
-            [shutil.which("security") or "/usr/bin/security", "find-generic-password", "-a", "cursor-user", "-s", "cursor-access-token", "-w"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        token = result.stdout if result.returncode == 0 else ""
+    state = external_startup_lock_acquire("cursor")
+    try:
+        if os.environ.get("LARCH_LIB_CURSOR_AUTH_TEST_MODE") == "1":
+            token = os.environ.get("LIB_CURSOR_AUTH_TEST_PREREAD_TOKEN", "")
+        else:
+            result = subprocess.run(
+                [shutil.which("security") or "/usr/bin/security", "find-generic-password", "-a", "cursor-user", "-s", "cursor-access-token", "-w"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            token = result.stdout if result.returncode == 0 else ""
+    finally:
+        external_startup_lock_release_after(state, delay=0)
     if token:
         os.environ["CURSOR_API_KEY"] = token
 
@@ -644,6 +652,10 @@ def _max_transient_probe_retries(max_auth_retries: int) -> int:
     if max_auth_retries == 1:
         return 0
     return 2
+
+
+def _max_timeout_probe_retries() -> int:
+    return _env_int("LARCH_PROBE_TIMEOUT_RETRIES", 0)
 
 
 def _probe_tmpdir() -> Path:
@@ -870,12 +882,16 @@ def _run_one_codex_probe(timeout: int) -> int:
                     path.unlink()
 
 
-def _run_codex_probes(max_auth_retries: int, max_transient_retries: int, timeout: int) -> tuple[bool, bool]:
+def _run_codex_probes(max_auth_retries: int, max_transient_retries: int, max_timeout_retries: int, timeout: int) -> tuple[bool, bool]:
     auth_failures = 0
     transient_retries_used = 0
+    timeout_retries_used = 0
     while True:
         rc = _run_one_codex_probe(timeout)
         if rc == config.EXIT_TIMEOUT:
+            if timeout_retries_used < max_timeout_retries:
+                timeout_retries_used += 1
+                continue
             return False, True
         if rc == 0:
             return True, False
@@ -894,16 +910,20 @@ def _run_codex_probes(max_auth_retries: int, max_transient_retries: int, timeout
         return False, False
 
 
-def _run_cursor_probes(max_auth_retries: int, max_transient_retries: int, timeout: int) -> tuple[bool, bool]:
+def _run_cursor_probes(max_auth_retries: int, max_transient_retries: int, max_timeout_retries: int, timeout: int) -> tuple[bool, bool]:
     setup = _cursor_probe_setup_chain()
     if setup is None:
         return False, False
     try:
         auth_failures = 0
         transient_retries_used = 0
+        timeout_retries_used = 0
         while True:
             rc = _run_one_cursor_probe(timeout)
             if rc == config.EXIT_TIMEOUT:
+                if timeout_retries_used < max_timeout_retries:
+                    timeout_retries_used += 1
+                    continue
                 return False, True
             if rc == 0:
                 return True, False
@@ -936,6 +956,7 @@ def check_reviewers(
         timeout = probe_timeout_seconds or _env_int("LARCH_PROBE_TIMEOUT_SECONDS", 30, zero_allowed=False)
         max_auth_retries = _env_int("LARCH_EXTERNAL_AUTH_RETRIES", 5, zero_allowed=False)
         max_transient_retries = _max_transient_probe_retries(max_auth_retries)
+        max_timeout_retries = _max_timeout_probe_retries()
 
         codex_binary_found = shutil.which("codex") is not None
         cursor_binary_found = shutil.which("cursor") is not None
@@ -955,6 +976,7 @@ def check_reviewers(
                 cursor_present, cursor_probe_timed_out = _run_cursor_probes(
                     cursor_auth_retries,
                     cursor_transient_retries,
+                    max_timeout_retries,
                     timeout,
                 )
                 _write_probe_stamp(_probe_stamp_path("cursor"), cursor_present)
@@ -968,6 +990,7 @@ def check_reviewers(
                 codex_present, codex_probe_timed_out = _run_codex_probes(
                     max_auth_retries,
                     max_transient_retries,
+                    max_timeout_retries,
                     timeout,
                 )
                 _write_probe_stamp(stamp, codex_present)
@@ -1474,6 +1497,38 @@ def _compose_failure_diag(output: Path, *, sink: str = "", history: str = "", ev
         _write(carrier, capped)
 
 
+def _review_failure_auth_paths(output: Path, source: Path, *, stderr_sink: str = "") -> tuple[Path | str, ...]:
+    stem = str(output).removesuffix(".txt")
+    paths: list[Path | str] = [
+        source,
+        Path(stderr_sink) if stderr_sink else "",
+        output.with_suffix(output.suffix + ".failure-diag"),
+        Path(f"{stem}-retry.txt.failure-diag"),
+        Path(f"{stem}-ns-retry.txt.failure-diag"),
+        output.with_suffix(output.suffix + ".diag"),
+        output.with_suffix(output.suffix + ".sidecar"),
+        output.with_suffix(output.suffix + ".events.jsonl"),
+        output,
+    ]
+    return tuple(path for path in paths if path)
+
+
+def _implement_failure_auth_paths(tool: str, output: Path, sidecar: Path, source: Path) -> tuple[Path | str, ...]:
+    stem = str(output).removesuffix(".txt")
+    paths: list[Path | str] = [
+        source,
+        sidecar,
+        output.with_suffix(output.suffix + ".failure-diag"),
+        Path(f"{stem}-retry.txt.failure-diag"),
+        Path(f"{stem}-ns-retry.txt.failure-diag"),
+        output.with_suffix(output.suffix + ".diag"),
+    ]
+    if tool == "codex":
+        paths.append(output.with_suffix(output.suffix + ".events.jsonl"))
+    paths.append(output)
+    return tuple(path for path in paths if path)
+
+
 def external_stream_reset(target: Path, history: Path | None = None, label: str = "attempt") -> None:
     if str(target) == "/dev/null":
         return
@@ -1485,9 +1540,9 @@ def external_stream_reset(target: Path, history: Path | None = None, label: str 
         _write(target, "")
 
 
-def resolve_failure_diagnostic_source(output: Path, *, sink: str = "", history: str = "", events: str = "") -> Path | None:
+def _failure_diagnostic_source_candidates(output: Path, *, sink: str = "", history: str = "", events: str = "") -> list[Path]:
     stem = str(output).removesuffix(".txt")
-    candidates = [
+    ordered: list[Path | None] = [
         output.with_suffix(output.suffix + ".failure-diag"),
         Path(f"{stem}-retry.txt.failure-diag"),
         Path(f"{stem}-ns-retry.txt.failure-diag"),
@@ -1503,10 +1558,26 @@ def resolve_failure_diagnostic_source(output: Path, *, sink: str = "", history: 
         output.with_suffix(output.suffix + ".launcher-stderr"),
         output,
     ]
-    for candidate in candidates:
-        if candidate is not None and candidate.is_file() and candidate.stat().st_size > 0:
+    return [candidate for candidate in ordered if candidate is not None]
+
+
+def resolve_failure_diagnostic_source(output: Path, *, sink: str = "", history: str = "", events: str = "") -> Path | None:
+    for candidate in _failure_diagnostic_source_candidates(output, sink=sink, history=history, events=events):
+        if candidate.is_file() and candidate.stat().st_size > 0:
             return candidate
     return None
+
+
+def _stderr_tail_from_less_specific_carrier(output: Path, existing: str, source: Path, *, sink: str = "") -> bool:
+    candidates = _failure_diagnostic_source_candidates(output, sink=sink)
+    try:
+        source_idx = candidates.index(source)
+    except ValueError:
+        return True
+    for candidate in candidates[source_idx + 1 :]:
+        if candidate.is_file() and candidate.stat().st_size > 0 and existing == render_failed_agent_stderr_tail(candidate):
+            return True
+    return False
 
 
 def _positive_int_env(name: str, default: int) -> int:
@@ -4015,17 +4086,7 @@ def _review_write_cursor_dirty_tree_from_baseline(output: Path, baseline: Path) 
 
 
 def _review_failure_source(output: Path, *, sink: str = "") -> Path:
-    for path in (
-        output.with_suffix(output.suffix + ".failure-diag"),
-        Path(sink) if sink else output.with_suffix(output.suffix + ".missing-sink"),
-        output.with_suffix(output.suffix + ".sidecar"),
-        output.with_suffix(output.suffix + ".diag"),
-        output.with_suffix(output.suffix + ".events.jsonl"),
-        output,
-    ):
-        if path.is_file() and path.stat().st_size > 0:
-            return path
-    return output.with_suffix(output.suffix + ".diag")
+    return resolve_failure_diagnostic_source(output, sink=sink) or output.with_suffix(output.suffix + ".diag")
 
 
 def _review_brainstorm_failure_uses_sink(timing_kind: str, stderr_sink: str) -> bool:
@@ -4053,16 +4114,10 @@ def _review_append_launch_failure(
         return
     _compose_failure_diag(output, sink=stderr_sink)
     source = _review_failure_source(output, sink=stderr_sink)
-    sidecars = [
-        output.with_suffix(output.suffix + ".sidecar"),
-        output.with_suffix(output.suffix + ".diag"),
-        output.with_suffix(output.suffix + ".events.jsonl"),
-        output,
-    ]
     failure = classify_launch_failure(
         exit_code,
         source,
-        auth_verdict=external_auth_verdict(tool, *sidecars),
+        auth_verdict=external_auth_verdict(tool, *_review_failure_auth_paths(output, source, stderr_sink=stderr_sink)),
         tool=tool,
         output_file=output,
     )
@@ -4265,12 +4320,14 @@ def _review_run_with_retries(
         return result, auth_attempt, transient_attempt
 
 
-def _review_emit_launcher_result(output: Path, tool: str, launcher_exit: int) -> None:
-    sidecar = _review_failure_source(output)
+def _review_emit_launcher_result(output: Path, tool: str, launcher_exit: int, *, stderr_sink: str = "") -> None:
+    if launcher_exit != 0:
+        _compose_failure_diag(output, sink=stderr_sink)
+    sidecar = _review_failure_source(output, sink=stderr_sink)
     failure = classify_launch_failure(
         launcher_exit,
         sidecar,
-        auth_verdict=external_auth_verdict(tool, sidecar, output.with_suffix(output.suffix + ".diag"), output),
+        auth_verdict=external_auth_verdict(tool, *_review_failure_auth_paths(output, sidecar, stderr_sink=stderr_sink)),
         tool=tool,
         output_file=output,
     )
@@ -4349,7 +4406,7 @@ def _review_launch_codex(args: argparse.Namespace, prompt: str) -> int:
             _review_write_preflight_done(output, auth_rc)
             if _review_brainstorm_failure_uses_sink(timing_kind, args.stderr_sink):
                 _review_write_failure_sink(output, args.stderr_sink, auth_rc)
-            _review_emit_launcher_result(output, "codex", auth_rc)
+            _review_emit_launcher_result(output, "codex", auth_rc, stderr_sink=args.stderr_sink)
             return 0
         try:
             model_args = list(resolve_model_args("codex", with_effort=True).argv)
@@ -4358,7 +4415,7 @@ def _review_launch_codex(args: argparse.Namespace, prompt: str) -> int:
             _review_write_preflight_bundle(output, args, f"agent model-args failed (exit 1): {exc}", tool="codex", prompt_sidecar=prompt_sidecar)
             _review_write_unknown_dirty_tree(output, "model-args-preflight-no-agent-ran")
             _review_write_preflight_done(output, 1)
-            _review_emit_launcher_result(output, "codex", 1)
+            _review_emit_launcher_result(output, "codex", 1, stderr_sink=args.stderr_sink)
             return 1
         workdir = _resolve_review_codex_workdir(str(Path.cwd()))
         cmd = [
@@ -4428,7 +4485,7 @@ def _review_launch_codex(args: argparse.Namespace, prompt: str) -> int:
         )
     _review_write_clean_readonly_dirty_tree(output)
     _promote_inner_done(output)
-    _review_emit_launcher_result(output, "codex", result.exit_code)
+    _review_emit_launcher_result(output, "codex", result.exit_code, stderr_sink=args.stderr_sink)
     return result.exit_code
 
 
@@ -4558,7 +4615,7 @@ def _review_launch_cursor(args: argparse.Namespace, original_prompt: str) -> int
         )
         _review_write_unknown_dirty_tree(output, "model-args-preflight-no-agent-ran")
         _review_write_preflight_done(output, 1)
-        _review_emit_launcher_result(output, "cursor", 1)
+        _review_emit_launcher_result(output, "cursor", 1, stderr_sink=args.stderr_sink)
         return 1
     baseline = _review_capture_cursor_dirty_baseline(output)
     verdict = cursor_auth_preflight(caller="agent launch-review")
@@ -4574,7 +4631,7 @@ def _review_launch_cursor(args: argparse.Namespace, original_prompt: str) -> int
         )
         _review_write_unknown_dirty_tree(output, "preflight-short-circuit-no-agent-ran")
         _review_write_preflight_done(output, verdict.rc)
-        _review_emit_launcher_result(output, "cursor", verdict.rc)
+        _review_emit_launcher_result(output, "cursor", verdict.rc, stderr_sink=args.stderr_sink)
         return verdict.rc
     cursor_preread_service_token()
     cursor_auth_export_env()
@@ -4630,7 +4687,7 @@ def _review_launch_cursor(args: argparse.Namespace, original_prompt: str) -> int
     _review_write_cursor_dirty_tree_from_baseline(output, baseline)
     _review_record_timing("cursor", timing_kind, start, output, result.exit_code)
     _promote_inner_done(output)
-    _review_emit_launcher_result(output, "cursor", result.exit_code)
+    _review_emit_launcher_result(output, "cursor", result.exit_code, stderr_sink=args.stderr_sink)
     return result.exit_code
 
 
@@ -4863,10 +4920,14 @@ def _implement_token_budget_hit(args: argparse.Namespace, tool: str, default_kin
     return False
 
 
-def _append_implement_launch_failure(tool: str, output: Path, sidecar: Path, launcher_exit: int, *, verdict: str = "", retry_count: int = 0) -> None:
+def _append_implement_launch_failure(tool: str, output: Path, sidecar: Path, launcher_exit: int, *, retry_count: int = 0) -> None:
     if launcher_exit == 0:
         return
-    source = output.with_suffix(output.suffix + ".diag") if output.with_suffix(output.suffix + ".diag").is_file() and output.with_suffix(output.suffix + ".diag").stat().st_size > 0 else sidecar
+    _compose_failure_diag(output, sink=str(sidecar))
+    source = resolve_failure_diagnostic_source(output, sink=str(sidecar)) or sidecar
+    verdict = external_auth_verdict(tool, *_implement_failure_auth_paths(tool, output, sidecar, source))
+    if verdict == "auth":
+        verdict = "auth-retries-exhausted"
     args = [sys.executable, str(_PY_CLI), "run-log", "append-failure", "--log", str(Path(os.environ.get("IMPLEMENT_TMPDIR", ".")) / "execution-issues.md"), "--site", "2", "--tool", f"{tool}-implement", "--exit-code", str(launcher_exit), "--category", "Tool Failures", "--output-file", str(source), "--redact"]
     if verdict:
         args.extend(["--verdict", verdict])
@@ -4875,8 +4936,12 @@ def _append_implement_launch_failure(tool: str, output: Path, sidecar: Path, lau
     if os.environ.get("IMPLEMENT_TMPDIR"):
         subprocess.run(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
         _append_vendor_failure_diagnostics(source, site=f"2 {tool}-implement", exit_code=launcher_exit)
-    if not output.with_suffix(output.suffix + ".stderr-tail").is_file() and source.is_file() and source.stat().st_size > 0:
-        _write_stderr_tail(source, output)
+    tail = output.with_suffix(output.suffix + ".stderr-tail")
+    rendered = render_failed_agent_stderr_tail(source) if source.is_file() and source.stat().st_size > 0 else ""
+    if rendered:
+        existing = tail.read_text(encoding="utf-8", errors="replace") if tail.is_file() else ""
+        if (not existing or _stderr_tail_from_less_specific_carrier(output, existing, source, sink=str(sidecar))) and existing != rendered:
+            _write(tail, rendered)
 
 
 def _record_implement_timing(tool: str, task_kind: str, start: float, output: Path, exit_code: int) -> None:
@@ -4999,10 +5064,7 @@ def launch_codex_implement_main(argv: list[str] | None = None) -> int:
     _record_usage_from_events(events, sidecar, "codex_implement")
     _append(output.with_suffix(output.suffix + ".meta"), f"OUTER_LAUNCHER=agent launch-codex-implement\nOUTER_LAUNCHER_PROMPT_FILE={output}.prompt\nOUTER_LAUNCHER_WORKDIR={workdir}\nOUTER_LAUNCHER_KIND=codex-implement\nOUTER_LAUNCHER_ADD_DIRS_JSON={_json_array([str(session_tmpdir), workdir])}\n")
     if result.exit_code != 0:
-        verdict = external_auth_verdict("codex", sidecar, events, output)
-        if verdict == "auth":
-            verdict = "auth-retries-exhausted"
-        _append_implement_launch_failure("codex", output, sidecar, result.exit_code, verdict=verdict)
+        _append_implement_launch_failure("codex", output, sidecar, result.exit_code)
     _promote_inner_done(output)
     _emit_implement_launcher_envelope(args, result.exit_code)
     return 0
@@ -5109,10 +5171,7 @@ def launch_cursor_implement_main(argv: list[str] | None = None) -> int:
     _record_implement_timing("cursor", task_kind, start, output, result.exit_code)
     _record_cursor_implement_usage(output)
     if result.exit_code != 0:
-        verdict_text = external_auth_verdict("cursor", sidecar, output.with_suffix(output.suffix + ".diag"), output)
-        if verdict_text == "auth":
-            verdict_text = "auth-retries-exhausted"
-        _append_implement_launch_failure("cursor", output, sidecar, result.exit_code, verdict=verdict_text)
+        _append_implement_launch_failure("cursor", output, sidecar, result.exit_code)
     _promote_inner_done(output)
     _emit_implement_launcher_envelope(args, result.exit_code)
     return 0
