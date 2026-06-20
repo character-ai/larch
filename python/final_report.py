@@ -416,6 +416,12 @@ def _reconcile_manifest_for_terminal_report(
         fields.append("steps_ran.step7a=false")
     if outcome in {"pr-created", "pr-created-draft"}:
         fields.append(f"status={config.MANIFEST_STATUS_IN_PROGRESS}")
+    pr_number = _read_kv(implement_tmpdir / "ship-pr-state.sh", "PR_NUMBER") or _read_kv(
+        implement_tmpdir / "finalize-state.sh",
+        "PR_NUMBER",
+    )
+    if pr_number.strip().isdigit() and int(pr_number.strip()) > 0:
+        fields.append(f"pr_number={pr_number.strip()}")
     if not fields:
         return 0, ""
     cmd = [
@@ -506,7 +512,12 @@ def write_final_report(
         detail = ""
     body = review_phase_detail.append_review_phase_detail(body, detail)
     summary = implement_tmpdir / "summary-final.md"
-    summary.write_text(body, encoding="utf-8")
+    try:
+        summary.write_text(body, encoding="utf-8")
+    except OSError as exc:
+        if print_stdout:
+            sys.stdout.write(body)
+        return 1, "", f"summary-final write failed: {exc}"
     if not comment_only:
         try:
             run_dir.mkdir(parents=True, exist_ok=True)
@@ -515,15 +526,16 @@ def write_final_report(
             if print_stdout:
                 sys.stdout.write(body)
             return 1, "", f"final-summary write failed: {exc}"
-        reconcile_rc, reconcile_err = _reconcile_manifest_for_terminal_report(
-            implement_tmpdir,
-            run_id=run_id or "unknown",
-            outcome=outcome,
-        )
-        if reconcile_rc != 0:
-            if print_stdout:
-                sys.stdout.write(body)
-            return reconcile_rc, "", reconcile_err
+        if not skip_tracking_upsert:
+            reconcile_rc, reconcile_err = _reconcile_manifest_for_terminal_report(
+                implement_tmpdir,
+                run_id=run_id or "unknown",
+                outcome=outcome,
+            )
+            if reconcile_rc != 0:
+                if print_stdout:
+                    sys.stdout.write(body)
+                return reconcile_rc, "", reconcile_err
         if skip_tracking_upsert:
             if print_stdout:
                 sys.stdout.write(body)

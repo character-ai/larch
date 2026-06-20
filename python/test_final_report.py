@@ -21,6 +21,26 @@ def _write_minimal_state(tmp_path: Path) -> None:
     (tmp_path / "run-flags.sh").write_text("EMERGENCY_REQUESTED=false\n", encoding="utf-8")
 
 
+def test_write_final_report_summary_final_write_failure_returns_error(
+    tmp_path: Path,
+    monkeypatch,  # type: ignore[no-untyped-def]
+) -> None:
+    _write_minimal_state(tmp_path)
+    original_write_text = Path.write_text
+
+    def patched_write_text(self: Path, data: str, *args: object, **kwargs: object) -> int:
+        if self.name == "summary-final.md":
+            raise OSError("disk full")
+        return original_write_text(self, data, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(Path, "write_text", patched_write_text)
+
+    rc, _url, err = final_report.write_final_report(tmp_path, comment_only=True)
+
+    assert rc == 1
+    assert "summary-final write failed" in err
+
+
 def test_write_final_report_module_renders_summary(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     _write_minimal_state(tmp_path)
 

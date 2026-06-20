@@ -77,6 +77,7 @@ def test_reconcile_manifest_for_terminal_report_marks_present_summary_and_pr_cre
     run_dir.mkdir(parents=True)
     _ = (run_dir / "manifest.json").write_text('{"steps_ran":{}}\n', encoding="utf-8")
     _ = (run_dir / "final-summary.md").write_text("## /implement run run-1 — pr-created\n", encoding="utf-8")
+    _ = (tmp_path / "ship-pr-state.sh").write_text("PR_NUMBER=42\n", encoding="utf-8")
     calls: list[list[str]] = []
 
     def fake_run(argv: list[str], **_: object) -> CommandResult:
@@ -89,6 +90,7 @@ def test_reconcile_manifest_for_terminal_report_marks_present_summary_and_pr_cre
     flat = [arg for call in calls for arg in call]
     assert "steps_ran.step8=true" in flat
     assert f"status={config.MANIFEST_STATUS_IN_PROGRESS}" in flat
+    assert "pr_number=42" in flat
 
 def test_sanitize_rejects_pipe_in_node() -> None:
     fragment = "flowchart LR\n  A[foo|bar] --> B\n"

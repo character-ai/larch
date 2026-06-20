@@ -1717,6 +1717,32 @@ def test_verify_completeness_bailed_heading_with_pr_number_does_not_bail_skip(
     assert "run-statistics.md" in capsys.readouterr().out
 
 
+def test_verify_completeness_stalled_heading_with_pr_number_keeps_bail_skip(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(run_logs, "_REPO_ROOT", tmp_path)
+    run_dir = tmp_path / "larch-logs" / "implement" / "RUN1"
+    run_dir.mkdir(parents=True)
+    manifest: dict[str, object] = {
+        "schema_version": 2,
+        "skill": "implement",
+        "run_id": "RUN1",
+        "steps_ran": {},
+        "status": "partial",
+        "pr_number": 7,
+    }
+    _ = (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    _ = (run_dir / "final-summary.md").write_text("## /implement run RUN1 — stalled\n", encoding="utf-8")
+    tsv = tmp_path / "required.tsv"
+    _ = tsv.write_text("relative_path\tcondition\nrun-statistics.md\tstep9a1\n", encoding="utf-8")
+    monkeypatch.setenv("LARCH_VERIFY_MANIFEST", str(tsv))
+
+    assert run_logs.verify_completeness_main([str(run_dir)]) == 0
+    assert "OK" in capsys.readouterr().out
+
+
 def test_verify_completeness_bailed_heading_without_pr_number_keeps_bail_skip(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

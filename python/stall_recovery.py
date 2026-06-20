@@ -679,7 +679,7 @@ def normalized_outcome_values(args: argparse.Namespace) -> dict[str, str]:
     fin_stall = fin.get("STALL_TRACKING", "false")
     ses_stall = ses.get("STALL_TRACKING", "false")
     any_stall = _truthy(memory_stall) or _truthy(ship_stall) or _truthy(fin_stall) or _truthy(ses_stall)
-    phase_stalled = (ship.get("PHASE") or fin.get("PHASE", "")).strip() == "stalled"
+    phase_stalled = ship.get("PHASE", "").strip() == "stalled" or fin.get("PHASE", "").strip() == "stalled"
     merge_result = ship.get("MERGE_RESULT") or fin.get("MERGE_RESULT", "")
     merge = ship.get("MERGE") or fin.get("MERGE", "")
     draft = ship.get("DRAFT") or fin.get("DRAFT", "false")
@@ -1590,7 +1590,16 @@ def clear_stall(args: argparse.Namespace) -> int:
     for path in _state_layer_paths(tmpdir):
         if not path.is_file():
             continue
-        if not _rewrite_state_keys(path, {"STALL_TRACKING": "false", "STALL_STEP": ""}):
+        if not _rewrite_state_keys(
+            path,
+            {
+                "STALL_TRACKING": "false",
+                "STALL_STEP": "",
+                "BAIL_REASON": "",
+                "IMPLEMENT_BAIL_REASON": "",
+                "EXIT_CODE": "unknown",
+            },
+        ):
             emit("CLEARED", "false")
             return 1
         if read_kv(path, "STALL_TRACKING") != "false" or read_kv(path, "STALL_STEP") != "":

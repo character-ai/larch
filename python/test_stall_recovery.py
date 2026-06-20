@@ -464,6 +464,22 @@ def test_normalize_outcome_post_pr_stalled_guard_not_pr_created(
     assert "IMPLEMENT_NORMALIZED_OUTCOME=stalled" in capsys.readouterr().out
 
 
+def test_normalize_outcome_finalize_stalled_overrides_ship_ci_initial(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _ = (tmp_path / "ship-pr-state.sh").write_text(
+        "STALL_TRACKING=false\nMERGE=true\nPR_NUMBER=12\nPHASE=ci-initial\nMERGE_RESULT=\nDRAFT=false\n",
+        encoding="utf-8",
+    )
+    _ = (tmp_path / "finalize-state.sh").write_text("PHASE=stalled\n", encoding="utf-8")
+
+    rc = stall_recovery.normalize_outcome_main(["--implement-tmpdir", str(tmp_path)])
+
+    assert rc == 0
+    assert "IMPLEMENT_NORMALIZED_OUTCOME=stalled" in capsys.readouterr().out
+
+
 def test_normalize_outcome_exit_code_guard_not_pr_created(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -734,8 +750,9 @@ def test_clear_stall_clears_tracking_and_preserves_keys(tmp_path: Path, capsys: 
     assert "STALL_TRACKING=false" in text
     assert "STALL_STEP=" in text
     assert "PHASE=ci-initial" in text
-    assert "EXIT_CODE=4" in text
-    assert "BAIL_REASON=adopted-issue-closed" in text
+    assert "EXIT_CODE=unknown" in text
+    assert "BAIL_REASON=" in text
+    assert "BAIL_FAILURE_DETAIL_LOG=/tmp/failure.log" in text
     assert "CLEARED=true" in capsys.readouterr().out
 
 

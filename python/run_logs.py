@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import config
+import final_report
 import git
 import logging_util
 import pr_body
@@ -27,7 +28,9 @@ import proc
 import redact
 import timing
 import tokens
+import stall_recovery
 from errors import ShipError
+from run_log_tolerance import terminal_bail_skip_signal
 from proc import CommandResult, Runner
 from run_context import RunContext
 
@@ -1114,6 +1117,27 @@ def _execution_issue_record(
     return json.dumps(payload, sort_keys=True)
 
 
+def _reconcile_terminal_manifest_from_ctx(ctx: RunContext) -> None:
+    run_id = effective_run_id(ctx)
+    if not run_id:
+        return
+    run_dir = _run_log_dir(ctx)
+    if not (run_dir / "final-summary.md").is_file():
+        return
+    outcome_values = stall_recovery.normalized_outcome_values(
+        argparse.Namespace(implement_tmpdir=ctx.tmpdir, in_memory_stall_tracking=""),
+    )
+    outcome = outcome_values.get("IMPLEMENT_NORMALIZED_OUTCOME", "bailed")
+    rc, err = final_report._reconcile_manifest_for_terminal_report(  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+        Path(ctx.tmpdir),
+        run_id=run_id,
+        outcome=outcome,
+    )
+    if rc != 0:
+        msg = err or "manifest reconcile failed"
+        raise ShipError(msg)
+
+
 def _write_final_report(
     runner: Runner,
     ctx: RunContext,
@@ -1205,6 +1229,8 @@ def _stage_pre_commit(
             step_label="pre-push-post-transcript",
             source_label="execution-issues.md post-transcript refresh",
         )
+        if (run_dir / "final-summary.md").is_file():
+            _reconcile_terminal_manifest_from_ctx(ctx)
 
 
 def flush_logs_pre(
@@ -1310,6 +1336,11 @@ def flush_logs_post(
     except ShipError as exc:
         reason = "redaction-failed" if "redaction" in str(exc).lower() else "post-merge-refresh-failed"
         return RefreshSkip(skipped=True, reason=reason)
+    if (_run_log_dir(ctx) / "final-summary.md").is_file():
+        try:
+            _reconcile_terminal_manifest_from_ctx(ctx)
+        except ShipError:
+            return RefreshSkip(skipped=True, reason=REFRESH_SKIP_RECOVERY_FAILED)
     updated = Manifest(
         status=status,
         version=manifest.version,
@@ -2532,8 +2563,16 @@ def _final_summary_heading_bail_signal(run_dir: Path) -> bool:
     return False
 
 
-def _final_summary_bail_signal_without_pr_evidence(run_dir: Path, manifest_pr_number: str) -> bool:
-    return _final_summary_heading_bail_signal(run_dir) and not manifest_pr_number
+def _final_summary_bail_signal_without_pr_evidence(
+    run_dir: Path,
+    manifest_pr_number: str,
+    manifest_data: dict[str, Any] | None = None,
+) -> bool:
+    manifest: object | None = manifest_data
+    if manifest is None and manifest_pr_number.strip().isdigit():
+        manifest = {"pr_number": int(manifest_pr_number)}
+    pr = int(manifest_pr_number) if manifest_pr_number.strip().isdigit() else 0
+    return terminal_bail_skip_signal(run_dir, manifest, pr)
 
 
 def _verify_has_file(run_dir: Path, relative_path: str) -> bool:
@@ -2566,7 +2605,11 @@ def _verify_condition_reached(
     if condition == "step7a":
         if (
             _manifest_steps_ran_empty(manifest_data)
-            and _final_summary_bail_signal_without_pr_evidence(run_dir, manifest_pr_number)
+            and _final_summary_bail_signal_without_pr_evidence(
+                run_dir,
+                manifest_pr_number,
+                manifest_data,
+            )
             and not (
                 _verify_has_file(run_dir, "token-report.json")
                 or _verify_has_file(run_dir, "timing-report.json")
@@ -2591,14 +2634,17 @@ def _verify_condition_reached(
     if condition == "step8":
         if (
             _manifest_steps_ran_empty(manifest_data)
-            and _final_summary_bail_signal_without_pr_evidence(run_dir, manifest_pr_number)
+            and _final_summary_bail_signal_without_pr_evidence(
+                run_dir,
+                manifest_pr_number,
+                manifest_data,
+            )
             and not _verify_has_file(run_dir, "version-bump-reasoning.md")
         ):
             return False
         return (
             _verify_has_file(run_dir, "version-bump-reasoning.md")
             or _verify_has_file(run_dir, "final-summary.md")
-            or bool(manifest_pr_number)
             or _verify_condition_reached(
                 "step9a1",
                 run_dir,
@@ -2625,12 +2671,20 @@ def _verify_condition_reached(
             return True
         if (
             _manifest_steps_ran_empty(manifest_data)
-            and _final_summary_bail_signal_without_pr_evidence(run_dir, manifest_pr_number)
+            and _final_summary_bail_signal_without_pr_evidence(
+                run_dir,
+                manifest_pr_number,
+                manifest_data,
+            )
             and not _verify_has_file(run_dir, "run-statistics.md")
         ):
             return False
         if (
-            _final_summary_bail_signal_without_pr_evidence(run_dir, manifest_pr_number)
+            _final_summary_bail_signal_without_pr_evidence(
+                run_dir,
+                manifest_pr_number,
+                manifest_data,
+            )
             and not _verify_has_file(run_dir, "run-statistics.md")
             and _manifest_steps_ran_nonempty_without_step9a1(manifest_data)
         ):
