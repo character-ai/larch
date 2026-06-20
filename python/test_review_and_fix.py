@@ -1043,7 +1043,7 @@ def test_commit_fixes_stage_all_uses_review_delta_pathspec(tmp_path, monkeypatch
     assert "COMMITTED=true" in out
     stage_file = impl / "review-fix-stage-paths.txt"
     assert stage_file.read_text(encoding="utf-8") == "a.py\n"
-    assert ["git", "add", "--pathspec-from-file", str(stage_file)] in calls
+    assert ["git", "add", "--pathspec-from-file", str(stage_file)] not in calls
     commit_calls = [
         argv
         for argv in calls
@@ -1705,9 +1705,9 @@ def test_apply_findings_with_coder_commit_failure_cleans_and_falls_through(
         tool_log.write_text("codex noop\n", encoding="utf-8")
         return True
 
-    def fail_commit(_round_num: int, _round_dir: Path) -> str:
+    def fail_commit(_round_num: int, _round_dir: Path) -> review_and_fix.RoundCommitResult:
         review_and_fix._run(["git", "add", "tracked.txt"])
-        return ""
+        return review_and_fix.RoundCommitResult()
 
     monkeypatch.setattr(review_and_fix, "_run_coder_cursor", cursor)
     monkeypatch.setattr(review_and_fix, "_run_coder_codex", codex)
@@ -1725,6 +1725,41 @@ def test_apply_findings_with_coder_commit_failure_cleans_and_falls_through(
     assert result.status == "main-agent-required"
     assert _git_porcelain(repo) == ""
     assert (repo / "tracked.txt").read_text(encoding="utf-8") == "initial\n"
+
+
+@MARK_DISPATCH
+def test_apply_findings_with_coder_stale_index_lock_status_skips_cleanup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _mk_git_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    _patch_coder_basics(monkeypatch)
+    round_dir = tmp_path / "impl" / "round-1"
+    result_file = round_dir / "coder.env"
+
+    def cursor(_round_dir: Path, _prompt: str, tool_log: Path) -> bool:
+        (repo / "tracked.txt").write_text("cursor\n", encoding="utf-8")
+        tool_log.write_text("cursor\n", encoding="utf-8")
+        return True
+
+    def stale_commit(_round_num: int, _round_dir: Path) -> review_and_fix.RoundCommitResult:
+        return review_and_fix.RoundCommitResult(failure_reason="stale-index-lock")
+
+    monkeypatch.setattr(review_and_fix, "_run_coder_cursor", cursor)
+    monkeypatch.setattr(review_and_fix, "_stage_and_commit_round", stale_commit)
+
+    result = review_and_fix.apply_findings_with_coder(
+        _coder_findings(tmp_path),
+        round_dir,
+        result_file,
+        round_num=1,
+    )
+
+    assert result.rc == 2
+    assert result.status == "stale-index-lock"
+    assert "CODER_STATUS=stale-index-lock" in result_file.read_text(encoding="utf-8")
+    assert (repo / "tracked.txt").read_text(encoding="utf-8") == "cursor\n"
 
 
 @MARK_DISPATCH
@@ -2488,7 +2523,7 @@ def test_commit_lint_fix_delta_paths_uses_pathspec_file(tmp_path, monkeypatch):
     stage_file = round_dir / "lint-fix-stage-paths.txt"
     assert sha == "deadbeef"
     assert stage_file.read_text(encoding="utf-8") == "linted.py\n"
-    assert ["git", "add", "--pathspec-from-file", str(stage_file)] in calls
+    assert ["git", "add", "--pathspec-from-file", str(stage_file)] not in calls
     commit_calls = [
         argv
         for argv in calls
