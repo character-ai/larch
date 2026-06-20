@@ -1341,7 +1341,8 @@ def test_tally_plan_review_missing_sidecar_entry_fails_closed(tmp_path: Path) ->
     map_file = design / "proposer-map.tsv"
     voting.write_proposer_map(ballot, map_file)
     rows = map_file.read_text(encoding="utf-8").splitlines()
-    _ = map_file.write_text("\n".join(rows[:2]) + "\n", encoding="utf-8")
+    header_idx = next(i for i, row in enumerate(rows) if row.startswith("item_id\t"))
+    _ = map_file.write_text("\n".join(rows[: header_idx + 1]) + "\n", encoding="utf-8")
     _ = ballot.write_text(voting.neutralize_reviewer_attribution(attributed), encoding="utf-8")
     voter = tmp_path / "v1.txt"
     _ = voter.write_text("FINDING_1: YES\nFINDING_2: YES\n", encoding="utf-8")
@@ -1357,7 +1358,7 @@ def test_tally_plan_review_missing_sidecar_entry_fails_closed(tmp_path: Path) ->
         env={"LARCH_QUIET_DISABLE": "1"},
     )
     assert proc.returncode != 0
-    assert "missing proposer map entry" in proc.stderr
+    assert "missing proposer map entry" in proc.stderr or "proposer map item mismatch" in proc.stderr
 
 
 def test_tally_plan_review_neutralized_without_sidecar_fails_closed(tmp_path: Path) -> None:

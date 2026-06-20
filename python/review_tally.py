@@ -431,6 +431,8 @@ def _resolve_proposer_map(
             proposer_sidecar_required = True
     if not proposer_sidecar_required and voting.ballot_is_neutralized(ballot_file):
         proposer_sidecar_required = True
+    if proposer_map_file and voting.ballot_is_neutralized(ballot_file):
+        voting.validate_proposer_map_for_neutralized_ballot(ballot_file, proposer_map_file)
     return proposer_map_file, proposer_sidecar_required
 
 
@@ -465,11 +467,14 @@ def tally_code_votes(argv: list[str]) -> int:
         return _error("tally-code-votes: --manifest-file must name a file")
     if not str(args.round_num).isdigit() or int(args.round_num) <= 0:
         return _error("tally-code-votes: --round-num must be a positive integer")
-    proposer_map_file, proposer_sidecar_required = _resolve_proposer_map(
-        ballot_file,
-        review_tmpdir,
-        str(args.proposer_map_file or ""),
-    )
+    try:
+        proposer_map_file, proposer_sidecar_required = _resolve_proposer_map(
+            ballot_file,
+            review_tmpdir,
+            str(args.proposer_map_file or ""),
+        )
+    except voting.TallyError as exc:
+        return _error(f"tally-code-votes: {exc}")
     review_tmpdir.mkdir(parents=True, exist_ok=True)
     three_slot = bool(args.voter_tools)
     if three_slot and (len(args.voter_files) != _THREE_SLOT_COUNT or len(args.voter_tools) != _THREE_SLOT_COUNT):

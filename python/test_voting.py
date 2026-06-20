@@ -859,6 +859,62 @@ def test_write_proposer_map_roundtrip(tmp_path: Path) -> None:
     rows = voting.read_proposer_map(map_file)
     assert rows["FINDING_1"][0] == "Codex-Structure"
     assert rows["OOS_1"][0] == "cursor-testing-output.txt"
+    text = map_file.read_text(encoding="utf-8")
+    assert voting.PROPOSER_MAP_NEUTRAL_HASH_PREFIX in text
+
+
+def test_proposer_map_from_ballot_rejects_anonymous() -> None:
+    ballot = """### FINDING_1: x
+- **Reviewer**: anonymous
+- **Concern**: c
+"""
+    with pytest.raises(ValueError, match="neutral reviewer"):
+        voting.proposer_map_from_ballot(ballot)
+
+
+def test_write_proposer_map_rejects_neutralized_ballot(tmp_path: Path) -> None:
+    ballot = tmp_path / "ballot.md"
+    _ = ballot.write_text(
+        voting.neutralize_reviewer_attribution(_ATTRIBUTED_BALLOT),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="neutralized ballot"):
+        voting.write_proposer_map(ballot, tmp_path / "proposer-map.tsv")
+
+
+def test_proposer_for_item_rejects_anonymous_sidecar_row(tmp_path: Path) -> None:
+    block = tmp_path / "FINDING_1.md"
+    _ = block.write_text(
+        "### FINDING_1: x\n- **Reviewer**: anonymous\n- **Concern**: c\n",
+        encoding="utf-8",
+    )
+    map_file = tmp_path / "proposer-map.tsv"
+    _ = map_file.write_text(
+        "item_id\treviewer\treviewer_line\n"
+        "FINDING_1\tanonymous\t- **Reviewer**: anonymous\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(voting.TallyError, match="missing proposer map"):
+        voting.proposer_for_item("FINDING_1", block, map_file, sidecar_required=True)
+
+
+def test_validate_proposer_map_for_neutralized_ballot_rejects_stale_hash(tmp_path: Path) -> None:
+    attributed = """### FINDING_1: Old round
+- **Reviewer**: Codex-Structure
+- **Concern**: stale.
+"""
+    current_attributed = """### FINDING_1: Current round
+- **Reviewer**: Cursor-Testing
+- **Concern**: current.
+"""
+    stale_ballot = tmp_path / "stale.md"
+    _ = stale_ballot.write_text(attributed, encoding="utf-8")
+    map_file = tmp_path / "proposer-map.tsv"
+    voting.write_proposer_map(stale_ballot, map_file)
+    neutral_ballot = tmp_path / "neutral.md"
+    _ = neutral_ballot.write_text(voting.neutralize_reviewer_attribution(current_attributed), encoding="utf-8")
+    with pytest.raises(voting.TallyError, match="stale for current ballot"):
+        voting.validate_proposer_map_for_neutralized_ballot(neutral_ballot, map_file)
 
 
 def test_voter_launcher_tool_normalizes_cursor_archetypes() -> None:

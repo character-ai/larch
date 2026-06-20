@@ -81,6 +81,8 @@ CODE_REVIEW_FINDINGS_CLASSIFICATION_HEADER = (
 )
 
 BALLOT_HEADING_RE = re.compile(r"^### (FINDING_[0-9]+|OOS_[0-9]+):")
+PROPOSER_MAP_ATTRIBUTED_HASH_PREFIX = "# attributed_ballot_sha256="
+PROPOSER_MAP_NEUTRAL_HASH_PREFIX = "# neutral_ballot_sha256="
 REVIEWER_ATTRIBUTION_RE = re.compile(
     r"^(?P<prefix>[\s-]*(?:\*\*Reviewer\(s\)\*\*|\*\*Reviewers?\*\*|Reviewer\(s\)|Reviewers?)\s*:\s*)"
     r"(?P<value>.*?)"
@@ -270,13 +272,27 @@ def neutralize_reviewer_attribution(text: str, token: str = "anonymous") -> str:
     return "".join(lines)
 
 
+def _ballot_sha256(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _usable_proposer_value(value: str) -> str:
+    normalized = _normalize_reviewer_value(value)
+    if not normalized or _is_neutral_reviewer(normalized):
+        return ""
+    return normalized
+
+
 def proposer_map_from_ballot(text: str) -> dict[str, tuple[str, str]]:
     proposer_map: dict[str, tuple[str, str]] = {}
     for item_id, block in _ballot_blocks(text).items():
         for line in block.splitlines():
             match = REVIEWER_ATTRIBUTION_RE.match(line)
             if match:
-                proposer_map[item_id] = (_normalize_reviewer_value(match.group("value")) or "unknown", line)
+                reviewer = _usable_proposer_value(match.group("value"))
+                if not reviewer:
+                    raise ValueError(f"ballot item {item_id} has missing or neutral reviewer attribution")
+                proposer_map[item_id] = (reviewer, line)
                 break
     return proposer_map
 
@@ -292,10 +308,18 @@ def validate_proposer_map_coverage(
 
 def write_proposer_map(ballot_file: Path, map_file: Path) -> None:
     text = ballot_file.read_text(encoding="utf-8", errors="replace")
+    if ballot_text_is_neutralized(text):
+        raise ValueError("cannot write proposer map from neutralized ballot")
     proposer_map = proposer_map_from_ballot(text)
     validate_proposer_map_coverage(text, proposer_map)
     map_file.parent.mkdir(parents=True, exist_ok=True)
-    lines = ["item_id\treviewer\treviewer_line\n"]
+    attributed_hash = _ballot_sha256(text)
+    neutral_hash = _ballot_sha256(neutralize_reviewer_attribution(text))
+    lines = [
+        f"{PROPOSER_MAP_ATTRIBUTED_HASH_PREFIX}{attributed_hash}\n",
+        f"{PROPOSER_MAP_NEUTRAL_HASH_PREFIX}{neutral_hash}\n",
+        "item_id\treviewer\treviewer_line\n",
+    ]
     for item_id in _ballot_blocks(text):
         reviewer, reviewer_line = proposer_map[item_id]
         lines.append(f"{item_id}\t{_safe_tsv_cell(reviewer)}\t{_safe_tsv_cell(reviewer_line)}\n")
@@ -328,11 +352,7 @@ def _is_neutral_reviewer(value: str) -> bool:
     return value.strip().lower() == "anonymous"
 
 
-def ballot_is_neutralized(ballot_file: str | Path) -> bool:
-    try:
-        text = Path(ballot_file).read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return False
+def ballot_text_is_neutralized(text: str) -> bool:
     in_block = False
     for line in text.splitlines():
         if BALLOT_HEADING_RE.match(line):
@@ -345,6 +365,60 @@ def ballot_is_neutralized(ballot_file: str | Path) -> bool:
             value = match.group("value").replace("*", "").strip().lower()
             return value == "anonymous"
     return False
+
+
+def ballot_is_neutralized(ballot_file: str | Path) -> bool:
+    try:
+        text = Path(ballot_file).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    return ballot_text_is_neutralized(text)
+
+
+def _proposer_map_hashes(rows: list[str]) -> tuple[str, str]:
+    attributed_hash = ""
+    neutral_hash = ""
+    for row in rows:
+        if row.startswith(PROPOSER_MAP_ATTRIBUTED_HASH_PREFIX):
+            attributed_hash = row.removeprefix(PROPOSER_MAP_ATTRIBUTED_HASH_PREFIX).strip()
+        elif row.startswith(PROPOSER_MAP_NEUTRAL_HASH_PREFIX):
+            neutral_hash = row.removeprefix(PROPOSER_MAP_NEUTRAL_HASH_PREFIX).strip()
+    return attributed_hash, neutral_hash
+
+
+def validate_proposer_map_for_neutralized_ballot(ballot_file: str | Path, map_file: str | Path) -> None:
+    ballot_path = Path(ballot_file)
+    map_path = Path(map_file)
+    if not map_path.is_file():
+        raise TallyError(f"proposer map file missing: {map_file}")
+    try:
+        ballot_text = ballot_path.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        raise TallyError(f"ballot file unreadable: {ballot_file}") from exc
+    try:
+        rows = map_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError as exc:
+        raise TallyError(f"proposer map unreadable: {map_file}") from exc
+    _, neutral_hash = _proposer_map_hashes(rows)
+    if not neutral_hash:
+        raise TallyError("proposer map missing neutral_ballot_sha256 stamp")
+    if _ballot_sha256(ballot_text) != neutral_hash:
+        raise TallyError("proposer map stale for current ballot")
+    proposer_map = read_proposer_map(map_file)
+    ballot_ids = set(_ballot_blocks(ballot_text))
+    map_ids = set(proposer_map)
+    if ballot_ids != map_ids:
+        missing = sorted(ballot_ids - map_ids)
+        extra = sorted(map_ids - ballot_ids)
+        details: list[str] = []
+        if missing:
+            details.append(f"missing item(s): {', '.join(missing)}")
+        if extra:
+            details.append(f"extra item(s): {', '.join(extra)}")
+        raise TallyError(f"proposer map item mismatch ({'; '.join(details)})")
+    for item_id, (reviewer, _) in proposer_map.items():
+        if not _usable_proposer_value(reviewer):
+            raise TallyError(f"proposer map has neutral or empty reviewer for {item_id}")
 
 
 def proposer_for_item(
@@ -360,7 +434,7 @@ def proposer_for_item(
     sidecar_present = bool(map_file) and Path(map_file).is_file()
     if sidecar_present or sidecar_required:
         row = read_proposer_map(map_file).get(item_id) if map_file else None
-        if row and row[0]:
+        if row and _usable_proposer_value(row[0]):
             return row[0]
         raise TallyError(f"missing proposer map entry for neutralized item {item_id}")
     return reviewer

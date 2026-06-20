@@ -387,6 +387,14 @@ class _Tally:
                 self.proposer_sidecar_required = True
         if not self.proposer_sidecar_required and voting.ballot_is_neutralized(ballot_path):
             self.proposer_sidecar_required = True
+        if self.proposer_map_file and voting.ballot_is_neutralized(ballot_path):
+            try:
+                voting.validate_proposer_map_for_neutralized_ballot(ballot_path, self.proposer_map_file)
+            except voting.TallyError as exc:
+                self._error_exit(
+                    f"tally-plan-review.sh: {exc}",
+                    "**⚠ Tally aborted: proposer map validation failed; no votes tallied.**",
+                )
 
         ok, message = validate_design_tmpdir(self.design_tmpdir)
         if not ok:
