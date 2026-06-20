@@ -247,6 +247,68 @@ def test_panel_dispatch_dynamic_scout_rows(tmp_path: Path) -> None:
     assert "dyn-codex-plan-beta" in manifest_text
 
 
+def test_panel_dispatch_dynamic_rows_render_full_scaffold(tmp_path: Path) -> None:
+    # #4841: a rendered dynamic slot prompt must carry the full render plan-review
+    # scaffold (explicit plan-file path + TSV/sentinel output contract), not just the raw
+    # scout prompt_body. Before the fix the rendered dynamic .prompt was a single
+    # sentence, so reviewers reviewed an unrelated committed plan.txt and were dropped
+    # NOT_SUBSTANTIVE.
+    design = tmp_path / "design-dynamic-scaffold"
+    design.mkdir()
+    _ = (design / "plan.txt").write_text("Plan body.\n", encoding="utf-8")
+    _ = (design / "feature-description.txt").write_text("feat\n", encoding="utf-8")
+    _ = (design / "scout-plan-manifest.json").write_text(
+        json.dumps(
+            {
+                "archetypes": [
+                    {
+                        "name": "alpha",
+                        "focus_area": "correctness",
+                        "weight": 2,
+                        "rationale": "r1",
+                        "prompt_body": "You are a contract-guard reviewer. Check contracts.",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    log = design / "wf.log"
+    _ = log.write_text("", encoding="utf-8")
+    stub = _write_waterfall_stub(tmp_path)
+    proc = run_cli(
+        "plan-review",
+        "panel-dispatch",
+        "--design-tmpdir",
+        str(design),
+        "--codex-present",
+        "true",
+        "--cursor-present",
+        "true",
+        "--plan-file",
+        str(design / "plan.txt"),
+        "--feature-file",
+        str(design / "feature-description.txt"),
+        "--timeout",
+        "60",
+        env={
+            "LARCH_QUIET_DISABLE": "1",
+            "DISPATCH_PLAN_REVIEW_WATERFALL_SH": str(stub),
+            "WATERFALL_STUB_LOG": str(log),
+            "WATERFALL_STUB_PATHS_OUT": str(design / "paths.out"),
+        },
+    )
+    assert proc.returncode == 0, proc.stderr + proc.stdout
+    rendered = (design / "plan-review" / "round-1" / "dyn-cursor-plan-alpha.prompt").read_text(encoding="utf-8")
+    # Scout body is present...
+    assert "You are a contract-guard reviewer. Check contracts." in rendered
+    # ...but it is no longer the ENTIRE prompt — the scaffold now wraps it.
+    assert "Review the implementation plan file at " in rendered
+    assert str((design / "plan.txt").resolve()) in rendered
+    assert "schema_version\tscope\tseverity" in rendered
+    assert '{"no_issues_found": true}' in rendered
+
+
 def test_panel_dispatch_prunes_round_three_empty_panel(tmp_path: Path) -> None:
     design = tmp_path / "design-pruned"
     design.mkdir()

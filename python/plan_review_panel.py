@@ -211,6 +211,51 @@ def _load_dynamic_rows(design: Path) -> list[tuple[str, str, str, str]]:
     return rows
 
 
+def _dynamic_slot_rows(
+    design: Path,
+    round_dir: Path,
+    dynamic: list[tuple[str, str, str, str]],
+    *,
+    plan_file: str,
+    feature_file: str,
+) -> list[dict[str, object]]:
+    # Route dynamic scout slots through the same `render plan-review` scaffold as static
+    # slots (#4841). Before the fix the raw scout prompt_body was the entire prompt, so
+    # dynamic reviewers had no plan-file path (they grepped the repo and reviewed an
+    # unrelated committed larch-logs/design/*/plan.txt) and no TSV/sentinel output
+    # contract (their prose was dropped NOT_SUBSTANTIVE). The prompt_body is written to a
+    # body-file and substituted for the fixed role line, inheriting the rest of the
+    # scaffold. On a render miss `_slot_row` keeps the existing one-line fallback, exactly
+    # as the static path does.
+    cli = [sys.executable, str(_plugin_root() / "python" / "cli.py"), "render", "plan-review"]
+    rows: list[dict[str, object]] = []
+    for tool, slot, focus, prompt in dynamic:
+        body_file = round_dir / f"{slot}.body"
+        _ = body_file.write_text(prompt, encoding="utf-8")
+        proc = subprocess.run(
+            [
+                *cli,
+                "--vendor",
+                tool,
+                "--plan-file",
+                plan_file,
+                "--design-tmpdir",
+                str(design),
+                "--feature-file",
+                feature_file,
+                "--body-file",
+                str(body_file),
+            ],
+            cwd=str(_REPO_ROOT),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        rendered = proc.stdout if proc.returncode == 0 else ""
+        rows.append(_slot_row(tool, slot, focus, round_dir / f"{slot}.txt", round_dir / f"{slot}.prompt", rendered))
+    return rows
+
+
 def _write_manifest(rows: list[dict[str, object]], path: Path) -> None:
     with path.open("w", encoding="utf-8") as handle:
         for row in rows:
@@ -341,8 +386,7 @@ def dispatch_panel(argv: Sequence[str]) -> int:
     )
     static_count = len(rows)
     dynamic = _load_dynamic_rows(design)
-    for tool, slot, focus, prompt in dynamic:
-        rows.append(_slot_row(tool, slot, focus, round_dir / f"{slot}.txt", round_dir / f"{slot}.prompt", prompt))
+    rows.extend(_dynamic_slot_rows(design, round_dir, dynamic, plan_file=ns.plan_file, feature_file=ns.feature_file))
     manifest = design / "plan-review-slots.ndjson"
     _write_manifest(rows, manifest)
     manifest, prune_kv = _filter_pruned(design, manifest, ns.prune_round_num or ns.round_num)
