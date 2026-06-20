@@ -2003,7 +2003,6 @@ def write_implement_round_meta_main(argv: list[str] | None = None) -> int:
 
 
 def report_main(argv: list[str]) -> int:
-    logging_util.quiet_init(argv0="cli.py")
     parser = argparse.ArgumentParser(prog="progress report", add_help=True)
     _ = parser.add_argument("--cwd", default="")
     try:
