@@ -620,7 +620,10 @@ def tally_code_votes(argv: list[str]) -> int:
                 for idx in range(3)
             ]
         else:
-            voter_votes = [(f"v{idx}", cell[0]) for idx, cell in enumerate(cells, start=1)]
+            voter_votes = [
+                (f"v{pos}", cells[pos - 1][0] if pos - 1 < len(cells) else "")
+                for pos in range(1, 4)
+            ]
         agreement_row = voting.voter_agreement_row_from_panel(
             voting_result=result,
             voter_votes=voter_votes,

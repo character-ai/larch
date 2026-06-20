@@ -13,7 +13,11 @@ python_path = str(plugin_root / "python")
 if python_path not in sys.path:
     sys.path.insert(0, python_path)
 
-from voting import compute_voter_agreement, voter_agreement_rows_from_tsv  # noqa: E402
+from voting import (  # noqa: E402
+    classification_tsv_schema_supported,
+    compute_voter_agreement,
+    voter_agreement_rows_from_tsv,
+)
 
 
 def _git_toplevel() -> Path | None:
@@ -159,7 +163,10 @@ def main(argv: list[str]) -> int:
         text = _read_text(path)
         parsed = voter_agreement_rows_from_tsv(text, panel_kind=panel)
         first_line = text.splitlines()[0] if text.splitlines() else ""
-        if not parsed and "voting_result" not in first_line:
+        if not parsed and (
+            "voting_result" not in first_line
+            or not classification_tsv_schema_supported(text, panel_kind=panel)
+        ):
             skipped_files += 1
         rows.extend(parsed)
 

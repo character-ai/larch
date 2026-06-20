@@ -106,6 +106,8 @@ def _normalize_panel_kind(panel_kind: str) -> str:
 
 def _normalize_vote_cell(value: str) -> str:
     vote = (value or "").strip().upper()
+    if vote == "EXONERATE":
+        return "NO"
     return vote if vote in _YES_NO else ""
 
 
@@ -173,6 +175,19 @@ def _voter_label(row: dict[str, str], pos: int, panel: str, *, compact: bool = F
     if compact:
         return f"v{pos}"
     return _CODE_REVIEW_VOTER_FALLBACKS[pos]
+
+
+def classification_tsv_schema_supported(text: str, *, panel_kind: str) -> bool:
+    panel = _normalize_panel_kind(panel_kind)
+    header, _ = _dict_rows_from_tsv(text)
+    if not header:
+        return False
+    header_set = set(header)
+    if panel == "design":
+        return "finding_reviewers" in header_set
+    if panel == "code-review":
+        return "reviewer_slots" in header_set
+    return False
 
 
 def voter_agreement_rows_from_tsv(text: str, *, panel_kind: str) -> list[dict[str, object]]:

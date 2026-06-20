@@ -409,6 +409,38 @@ def test_voter_agreement_tsv_and_panel_parity() -> None:
     assert voting.compute_voter_agreement(from_tsv) == voting.compute_voter_agreement(from_panel)
 
 
+def test_normalize_vote_cell_maps_exonerate_to_no() -> None:
+    tsv = (
+        voting.findings_classification_header()
+        + "\nFINDING_1\tR\trejected\tEXONERATE\t\t\t\t\tClaude\tYES\t\t\t\t\tCodex\tNO\t\t\t\t\tCursor\tmajor\n"
+    )
+    rows = voting.voter_agreement_rows_from_tsv(tsv, panel_kind="design")
+    assert len(rows) == 1
+    voters = cast("list[dict[str, object]]", rows[0]["voters"])
+    claude = next(voter for voter in voters if voter["voter"] == "Claude")
+    assert claude["vote"] == "NO"
+    assert claude["agree"] == 1
+    records = voting.compute_voter_agreement(rows, min_votes=1)
+    assert next(record for record in records if record["voter"] == "Claude")["agree"] == 1
+
+
+def test_classification_tsv_schema_supported() -> None:
+    design_header = voting.findings_classification_header()
+    code_header = voting.code_review_classification_header()
+    assert voting.classification_tsv_schema_supported(
+        design_header + "\n", panel_kind="design"
+    )
+    assert not voting.classification_tsv_schema_supported(
+        code_header + "\n", panel_kind="design"
+    )
+    assert voting.classification_tsv_schema_supported(
+        code_header + "\n", panel_kind="code-review"
+    )
+    assert not voting.classification_tsv_schema_supported(
+        design_header + "\n", panel_kind="code-review"
+    )
+
+
 def test_parse_rate_retry_classify_only_dispatch_shaped_argv(tmp_path: Path) -> None:
     root = tmp_path / "root"
     (root / "python").mkdir(parents=True)

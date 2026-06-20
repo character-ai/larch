@@ -513,7 +513,8 @@ class _Tally:
             _ = Path(self.tally_file).write_text(
                 "# Plan Review Voting Tally\n\n"
                 "**⚠ Degraded plan-review panel: 0 judges available. "
-                "Panel tier: main-agent-required.**\n\n",
+                "Panel tier: main-agent-required.**\n\n"
+                + voting.render_voter_scoreboard([]),
                 encoding="utf-8",
             )
             self._write_findings_classification(sorted_ids)
@@ -595,16 +596,11 @@ class _Tally:
             buf += f"| {item_id} | {yes} | {no} | {judge_error} | {result} |\n"
             voter_votes: list[tuple[str, str]] = []
             if self.eligible > 0 and not self.tally_voter_file:
+                fallback = {1: "Claude", 2: "Codex", 3: "Cursor"}
                 for pos in (1, 2, 3):
                     voter_file = self.slot_file[pos]
-                    if not voter_file:
-                        continue
-                    voter_votes.append(
-                        (
-                            self.slot_tool[pos] or {1: "Claude", 2: "Codex", 3: "Cursor"}[pos],
-                            voting.vote_for_id(item_id, voter_file),
-                        )
-                    )
+                    vote = voting.vote_for_id(item_id, voter_file) if voter_file else ""
+                    voter_votes.append((self.slot_tool[pos] or fallback[pos], vote))
             agreement_row = voting.voter_agreement_row_from_panel(
                 voting_result=result,
                 voter_votes=voter_votes,
