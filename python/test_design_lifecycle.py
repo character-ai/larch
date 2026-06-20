@@ -2066,6 +2066,28 @@ def test_step5c_core_pause_requested_skips_publish_and_marker(
     assert rc == 12
     assert called == [["--design-tmpdir", str(design), "--issue", "42", "--repo", "owner/repo"]]
     assert not (design / ".bg-wait-active").exists()
+    assert not (design / ".completed" / "step-5c-terminal").exists()
+
+
+def test_step5c_core_pause_requested_emits_step5c_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    design, env_path = _setup_step5c_design(tmp_path, monkeypatch, ISSUE_NUMBER="42", REPO="owner/repo")
+    (design / ".pause-requested").write_text("", encoding="utf-8")
+
+    def fake_pause(_argv: list[str]) -> int:
+        logging_util.emit_kv("PAUSE_OK", "true")
+        return 0
+
+    monkeypatch.setattr(design_pause, "pause_save_main", fake_pause)
+    rc, _ = design_lifecycle.step5c_core(["--session-env-path", str(env_path), "--claude-pid", "123"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "STEP5C_STATUS=pause-save" in out
+    assert "PAUSE_OK=true" in out
+    assert not (design / ".completed" / "step-5c-terminal").exists()
 
 
 def test_step5c_core_assembles_publish_argv_and_cleans_bg_marker(
@@ -2247,16 +2269,42 @@ def test_step5c_core_publish_tail_abort_stages_renders_and_writes_terminal(
     assert rc == 1
     assert (design / "design-failure-terminal-state.env").is_file()
     assert "FAILURE_OUTCOME=failed-publish-tail" in (design / "design-failure-terminal-state.env").read_text(encoding="utf-8")
+    stdout_log = design / "design-stage-terminal-state.stdout.log"
+    stderr_log = design / "design-stage-terminal-state.stderr.log"
+    assert stdout_log.is_file()
+    assert stderr_log.is_file()
+    assert stdout_log.stat().st_size > 0
     assert (design / ".completed" / "step-5c-terminal").is_file()
     assert "LARCH_FINAL_SUMMARY_BEGIN\nabort summary\nLARCH_FINAL_SUMMARY_END" in out
     assert "REPORT_GATE_SIDECARS_FILE=" in out
 
 
-def test_step5c_core_cleanup_eligibility_matrix(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    design, env_path = _setup_step5c_design(tmp_path, monkeypatch, ISSUE_NUMBER="42", SESSION_ID="", STANDALONE_HEAVY_FAILED="false")
+@pytest.mark.parametrize(
+    ("session_id", "publish_ok", "expected_cleanup"),
+    [
+        ("", "", "true"),
+        ("run-abc", "true", "true"),
+        ("run-abc", "false", "false"),
+        ("run-abc", "", "false"),
+    ],
+)
+def test_step5c_core_cleanup_eligibility_matrix(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    session_id: str,
+    publish_ok: str,
+    expected_cleanup: str,
+) -> None:
+    design, env_path = _setup_step5c_design(
+        tmp_path,
+        monkeypatch,
+        ISSUE_NUMBER="42",
+        SESSION_ID=session_id,
+        STANDALONE_HEAVY_FAILED="false",
+    )
 
     def fake_publish(_argv: list[str]) -> int:
-        print(_step5c_rows(design, publish_ok=""), end="")
+        print(_step5c_rows(design, publish_ok=publish_ok), end="")
         return 0
 
     def fake_render(_argv: list[str]) -> int:
@@ -2269,13 +2317,123 @@ def test_step5c_core_cleanup_eligibility_matrix(tmp_path: Path, monkeypatch: pyt
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
     rc, _ = design_lifecycle.step5c_core(["--session-env-path", str(env_path), "--claude-pid", "123"])
     assert rc == 0
-    assert "CLEANUP_ELIGIBLE=true" in (design / ".design-step5c-status.env").read_text(encoding="utf-8")
+    assert f"CLEANUP_ELIGIBLE={expected_cleanup}" in (design / ".design-step5c-status.env").read_text(encoding="utf-8")
+
+
+def test_step5c_core_publish_tail_abort_rc5_stages_and_writes_terminal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    design, env_path = _setup_step5c_design(tmp_path, monkeypatch, ISSUE_NUMBER="42")
+
+    def fake_publish(_argv: list[str]) -> int:
+        return 5
+
+    def fake_render(_argv: list[str]) -> int:
+        (design / "final-summary.md").write_text("abort summary\n", encoding="utf-8")
+        return 0
+
+    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+
+    monkeypatch.setattr(design_publish, "publish_core", fake_publish)
+    monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
+    rc, _ = design_lifecycle.step5c_core(["--session-env-path", str(env_path), "--claude-pid", "123"])
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert (design / "design-failure-terminal-state.env").is_file()
+    stdout_log = design / "design-stage-terminal-state.stdout.log"
+    stderr_log = design / "design-stage-terminal-state.stderr.log"
+    assert stdout_log.is_file()
+    assert stderr_log.is_file()
+    assert stdout_log.stat().st_size > 0
+    assert (design / ".completed" / "step-5c-terminal").is_file()
+    assert "LARCH_FINAL_SUMMARY_BEGIN\nabort summary\nLARCH_FINAL_SUMMARY_END" in out
+
+
+def test_step5c_core_success_without_final_summary_skips_markers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    design, env_path = _setup_step5c_design(tmp_path, monkeypatch, ISSUE_NUMBER="42")
+    stale = design / "final-summary.md"
+    stale.write_text("stale summary\n", encoding="utf-8")
+
+    def fake_publish(_argv: list[str]) -> int:
+        print(_step5c_rows(design, final_summary=design / "missing-summary.md"), end="")
+        return 0
+
+    def fake_render(_argv: list[str]) -> int:
+        stale.unlink()
+        return 0
+
+    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+
+    monkeypatch.setattr(design_publish, "publish_core", fake_publish)
+    monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
+    rc, _ = design_lifecycle.step5c_core(["--session-env-path", str(env_path), "--claude-pid", "123"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "LARCH_FINAL_SUMMARY_BEGIN" not in out
+
+
+def test_step5c_core_render_failure_skips_stale_summary_markers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    design, env_path = _setup_step5c_design(tmp_path, monkeypatch, ISSUE_NUMBER="42")
+    (design / "final-summary.md").write_text("stale summary\n", encoding="utf-8")
+
+    def fake_publish(_argv: list[str]) -> int:
+        print(_step5c_rows(design), end="")
+        return 0
+
+    def fake_render(_argv: list[str]) -> int:
+        return 1
+
+    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+
+    monkeypatch.setattr(design_publish, "publish_core", fake_publish)
+    monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
+    rc, _ = design_lifecycle.step5c_core(["--session-env-path", str(env_path), "--claude-pid", "123"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "LARCH_FINAL_SUMMARY_BEGIN" not in out
+
+
+def test_step5c_core_captures_subprocess_stdout_from_publish_tail(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    design, env_path = _setup_step5c_design(tmp_path, monkeypatch, ISSUE_NUMBER="42")
+
+    def fake_publish(_argv: list[str]) -> int:
+        os.write(1, b"WRITTEN=true\nMODE=write\n")
+        print(_step5c_rows(design), end="")
+        return 0
+
+    def fake_render(_argv: list[str]) -> int:
+        (design / "final-summary.md").write_text("summary\n", encoding="utf-8")
+        return 0
+
+    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+
+    monkeypatch.setattr(design_publish, "publish_core", fake_publish)
+    monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
+    rc, _ = design_lifecycle.step5c_core(["--session-env-path", str(env_path), "--claude-pid", "123"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "PUBLISH_RC=0" in out
+    assert "WRITTEN=true" not in out
+    assert "MODE=write" not in out
 
 
 def test_step5c_main_machine_rows_visible_under_inherited_quiet(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
 ) -> None:
     design, env_path = _setup_step5c_design(tmp_path, monkeypatch, ISSUE_NUMBER="42")
 
@@ -2289,8 +2447,23 @@ def test_step5c_main_machine_rows_visible_under_inherited_quiet(
 
     import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     monkeypatch.setattr(design_publish, "publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
-    assert design_lifecycle.step5c_main(["--session-env-path", str(env_path), "--claude-pid", "123"]) == 0
-    assert "PUBLISH_RC=0" in capsys.readouterr().out
+    monkeypatch.delenv(config.ENV_LARCH_QUIET_DISABLE, raising=False)
+    monkeypatch.setenv(config.ENV_LARCH_QUIET_ACTIVE, "1")
+    monkeypatch.setenv(config.ENV_LARCH_QUIET_PID, "999999")
+    logging_util.reset_quiet_state()
+    read_fd, write_fd = os.pipe()
+    saved_stdout = os.dup(1)
+    try:
+        os.dup2(write_fd, 1)
+        os.close(write_fd)
+        rc = design_lifecycle.step5c_main(["--session-env-path", str(env_path), "--claude-pid", "123"])
+        os.dup2(saved_stdout, 1)
+        contract = os.read(read_fd, 65536).decode("utf-8")
+    finally:
+        os.close(read_fd)
+        os.close(saved_stdout)
+        logging_util.reset_quiet_state()
+    assert rc == 0
+    assert "PUBLISH_RC=0" in contract

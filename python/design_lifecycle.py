@@ -3533,19 +3533,22 @@ def _step5c_safe_publish_env(
                 primary.unlink()
 
 
-def _step5c_render_final_summary(design_tmpdir: Path, env: Mapping[str, str], outcome: str) -> None:
+def _step5c_render_final_summary(design_tmpdir: Path, env: Mapping[str, str], outcome: str) -> bool:
     from design_summary import render_final_summary_main  # noqa: PLC0415
 
     args = ["--outcome", outcome, "--mode", env.get("MODE", "") or "N/A", "--post-publish-only"]
     if env.get("REPO"):
         args.extend(["--repo", env["REPO"]])
     out_path = design_tmpdir / f"render-final-summary.{outcome}.stdout.log"
+    render_rc = 0
     try:
         with out_path.open("w", encoding="utf-8") as out, contextlib.redirect_stdout(out):
-            _ = render_final_summary_main(args)
+            render_rc = int(render_final_summary_main(args))
     except BaseException as exc:
+        render_rc = 1
         _core_print_exc()
         _append_execution_issue(design_tmpdir, f"Warning: render_final_summary_main failed: {exc}")
+    return render_rc == 0
 
 
 def _step5c_stage_failed_publish_tail(design_tmpdir: Path, plugin_root: Path, publish_rc: int) -> None:
@@ -3631,9 +3634,22 @@ def _step5c_write_status(
     (design_tmpdir / ".design-step5c-status.env").write_text(text, encoding="utf-8")
 
 
+def _step5c_invoke_publish_core(publish_args: list[str]) -> int:
+    from design_publish import publish_core  # noqa: PLC0415
+
+    try:
+        return int(publish_core(publish_args))
+    except SystemExit as exc:
+        return int(exc.code) if isinstance(exc.code, int) else 5
+    except BaseException:
+        _core_print_exc()
+        return 5
+
+
 def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
     old_environ = os.environ.copy()
     design_tmpdir: Path | None = None
+    write_terminal_sentinel = False
     try:
         try:
             parsed = _parse_common_wrapper_args(argv)
@@ -3657,15 +3673,17 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
             _core_diagnostic(f"design-step5c.sh: {exc}")
             return 1, []
         os.environ["DESIGN_TMPDIR"] = str(design_tmpdir)
+        write_terminal_sentinel = True
         if not (design_tmpdir / ".completed" / "step-5b").is_file():
             _core_diagnostic("**⚠ Step 5c: missing .completed/step-5b — OOS filing incomplete; repair Step 5b before publish**")
             return 1, []
         if (design_tmpdir / ".pause-requested").is_file():
-            return design_pause.pause_save_main(_pause_args(env, design_tmpdir)), []
+            write_terminal_sentinel = False
+            pause_rc = design_pause.pause_save_main(_pause_args(env, design_tmpdir))
+            logging_util.emit_kv("STEP5C_STATUS", "pause-save")
+            return pause_rc, []
 
         with _bg_wait_marker_context(design_tmpdir, "design-step5c", claude_pid=parsed.claude_pid):
-            from design_publish import publish_core  # noqa: PLC0415
-
             publish_args = [
                 "--design-tmpdir",
                 str(design_tmpdir),
@@ -3684,16 +3702,17 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
             publish_fd, publish_stdout_name = tempfile.mkstemp(prefix="larch-publish-stdout.", dir=os.environ.get("TMPDIR") or None)
             os.close(publish_fd)
             publish_stdout_file = Path(publish_stdout_name)
+            publish_stderr_fd, publish_stderr_name = tempfile.mkstemp(prefix="larch-publish-stderr.", dir=os.environ.get("TMPDIR") or None)
+            os.close(publish_stderr_fd)
+            publish_stderr_file = Path(publish_stderr_name)
             publish_rc = 5
             try:
-                with publish_stdout_file.open("w", encoding="utf-8") as out, contextlib.redirect_stdout(out):
-                    try:
-                        publish_rc = int(publish_core(publish_args))
-                    except SystemExit as exc:
-                        publish_rc = int(exc.code) if isinstance(exc.code, int) else 5
-                    except BaseException:
-                        _core_print_exc()
-                        publish_rc = 5
+                publish_rc = _capture_contract_stream_to_paths(
+                    _step5c_invoke_publish_core,
+                    publish_stdout_file,
+                    publish_stderr_file,
+                    publish_args,
+                )
 
                 if publish_rc == 2 or publish_rc not in {0, 1, 3, 4}:
                     _step5c_write_status(
@@ -3706,8 +3725,8 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
                         cleanup_eligible=False,
                     )
                     _step5c_stage_failed_publish_tail(design_tmpdir, plugin_root, publish_rc)
-                    _step5c_render_final_summary(design_tmpdir, env, "failed-publish-tail")
-                    _emit_final_summary_marked_from_disk(design_tmpdir)
+                    if _step5c_render_final_summary(design_tmpdir, env, "failed-publish-tail"):
+                        _emit_final_summary_marked_from_disk(design_tmpdir)
                     _emit_report_gate_sidecars_from_disk(design_tmpdir)
                     if publish_rc == 2:
                         _core_diagnostic("**⚠ Step 5c: design-publish.sh configuration error (exit 2); aborting /design**")
@@ -3762,15 +3781,17 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
                     _emit_report_gate_sidecars_from_disk(design_tmpdir)
                     return 0, []
                 outcome = "approved" if plan_write_ok == "true" else "failed-plan-write"
-                _step5c_render_final_summary(design_tmpdir, env, outcome)
-                _emit_final_summary_marked_from_disk(design_tmpdir)
+                if _step5c_render_final_summary(design_tmpdir, env, outcome):
+                    _emit_final_summary_marked_from_disk(design_tmpdir)
                 _emit_report_gate_sidecars_from_disk(design_tmpdir)
                 return 0, []
             finally:
                 with contextlib.suppress(FileNotFoundError):
                     publish_stdout_file.unlink()
+                with contextlib.suppress(FileNotFoundError):
+                    publish_stderr_file.unlink()
     finally:
-        if design_tmpdir is not None:
+        if design_tmpdir is not None and write_terminal_sentinel:
             with contextlib.suppress(OSError):
                 _touch(design_tmpdir / ".completed" / "step-5c-terminal")
         os.environ.clear()
