@@ -310,7 +310,7 @@ def test_voter_agreement_rows_from_tsv_schema_shapes() -> None:
         design_header
         + "\nFINDING_1\tR\taccepted\tYES\t\t\t\t\tClaude\tNO\t\t\t\t\tCodex\tYES\t\t\t\t\tCursor\tmajor\n"
     )
-    design_rows = voting.voter_agreement_rows_from_tsv(design22, panel_kind="design")
+    design_rows = voting.voter_agreement_rows_from_tsv(design22, panel_kind="design").rows
     assert len(design_rows) == 1
     design_voters = cast("list[dict[str, object]]", design_rows[0]["voters"])
     assert [voter["voter"] for voter in design_voters] == ["Claude", "Codex", "Cursor"]
@@ -320,7 +320,7 @@ def test_voter_agreement_rows_from_tsv_schema_shapes() -> None:
         design21_header
         + "\nFINDING_2\tR\trejected\tNO\t\t\t\t\tClaude\tYES\t\t\t\t\tCodex\tNO\t\t\t\t\tCursor\n"
     )
-    design21_rows = voting.voter_agreement_rows_from_tsv(design21, panel_kind="design")
+    design21_rows = voting.voter_agreement_rows_from_tsv(design21, panel_kind="design").rows
     assert len(design21_rows) == 1
     design21_voters = cast("list[dict[str, object]]", design21_rows[0]["voters"])
     assert [voter["voter"] for voter in design21_voters] == ["Claude", "Codex", "Cursor"]
@@ -329,7 +329,7 @@ def test_voter_agreement_rows_from_tsv_schema_shapes() -> None:
         voting.code_review_classification_header()
         + "\nFINDING_1\tR\taccepted\tYES\t\t\t\t\tcursor-validity\tNO\t\t\t\t\tcursor-plan-fidelity\tYES\t\t\t\t\tcursor-pragmatism\n"
     )
-    code_rows = voting.voter_agreement_rows_from_tsv(code21, panel_kind="code-review")
+    code_rows = voting.voter_agreement_rows_from_tsv(code21, panel_kind="code-review").rows
     code_voters = cast("list[dict[str, object]]", code_rows[0]["voters"])
     assert [voter["voter"] for voter in code_voters] == [
         "cursor-validity",
@@ -342,9 +342,18 @@ def test_voter_agreement_rows_from_tsv_schema_shapes() -> None:
         "v2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\n"
         "FINDING_1\tR\taccepted\tNO\t\t\t\t\tYES\t\t\t\t\tYES\t\t\t\t\n"
     )
-    compact_rows = voting.voter_agreement_rows_from_tsv(compact, panel_kind="code-review")
+    compact_rows = voting.voter_agreement_rows_from_tsv(compact, panel_kind="code-review").rows
     compact_voters = cast("list[dict[str, object]]", compact_rows[0]["voters"])
     assert [voter["voter"] for voter in compact_voters] == ["v1", "v2", "v3"]
+
+    code21_severity_only_header = voting.code_review_classification_header().replace("\tv1_tool", "").replace("\tv2_tool", "").replace("\tv3_tool", "")
+    code21_severity_only = (
+        code21_severity_only_header
+        + "\nFINDING_1\tR\taccepted\tYES\t\t\t\t\tNO\t\t\t\t\tYES\t\t\t\t\n"
+    )
+    severity_only_rows = voting.voter_agreement_rows_from_tsv(code21_severity_only, panel_kind="code-review").rows
+    severity_only_voters = cast("list[dict[str, object]]", severity_only_rows[0]["voters"])
+    assert [voter["voter"] for voter in severity_only_voters] == ["v1", "v2", "v3"]
 
 
 def test_compute_voter_agreement_outlier_threshold() -> None:
@@ -389,7 +398,7 @@ def test_voter_agreement_tsv_and_panel_parity() -> None:
         + "\nFINDING_1\tR\taccepted\tYES\t\t\t\t\tClaude\tNO\t\t\t\t\tCodex\tYES\t\t\t\t\tCursor\tmajor\n"
         + "FINDING_2\tR\trejected\tNO\t\t\t\t\tClaude\tYES\t\t\t\t\tCodex\tNO\t\t\t\t\tCursor\tminor\n"
     )
-    from_tsv = voting.voter_agreement_rows_from_tsv(tsv, panel_kind="design")
+    from_tsv = voting.voter_agreement_rows_from_tsv(tsv, panel_kind="design").rows
     from_panel = [
         row
         for row in [
@@ -414,7 +423,7 @@ def test_normalize_vote_cell_maps_exonerate_to_no() -> None:
         voting.findings_classification_header()
         + "\nFINDING_1\tR\trejected\tEXONERATE\t\t\t\t\tClaude\tYES\t\t\t\t\tCodex\tNO\t\t\t\t\tCursor\tmajor\n"
     )
-    rows = voting.voter_agreement_rows_from_tsv(tsv, panel_kind="design")
+    rows = voting.voter_agreement_rows_from_tsv(tsv, panel_kind="design").rows
     assert len(rows) == 1
     voters = cast("list[dict[str, object]]", rows[0]["voters"])
     claude = next(voter for voter in voters if voter["voter"] == "Claude")

@@ -903,7 +903,7 @@ def test_tally_plan_review_mixed_votes_and_artifacts(tmp_path: Path) -> None:
     assert class_rows["OOS_1"]["scope"] == "oos"
     class_tsv = design / "plan-review" / "round-1" / "findings-classification.tsv"
     records = voting.compute_voter_agreement(
-        voting.voter_agreement_rows_from_tsv(class_tsv.read_text(encoding="utf-8"), panel_kind="design")
+        voting.voter_agreement_rows_from_tsv(class_tsv.read_text(encoding="utf-8"), panel_kind="design").rows
     )
     assert next(record for record in records if record["voter"] == "Codex")["disagree"] == 1
 
@@ -954,7 +954,7 @@ def test_tally_plan_review_degraded_two_judge_voter_agreement_parity(tmp_path: P
     assert proc.returncode == 0, proc.stderr
     class_tsv = design / "plan-review" / "round-1" / "findings-classification.tsv"
     records = voting.compute_voter_agreement(
-        voting.voter_agreement_rows_from_tsv(class_tsv.read_text(encoding="utf-8"), panel_kind="design")
+        voting.voter_agreement_rows_from_tsv(class_tsv.read_text(encoding="utf-8"), panel_kind="design").rows
     )
     tally = (design / "voting-tally.md").read_text(encoding="utf-8")
     cursor = next(record for record in records if record["voter"] == "Cursor")

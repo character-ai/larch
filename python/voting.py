@@ -15,7 +15,7 @@ import tempfile
 from collections.abc import Iterable
 from contextlib import suppress
 from pathlib import Path
-from typing import NoReturn, cast
+from typing import NamedTuple, NoReturn, cast
 
 import logging_util
 import proc
@@ -190,34 +190,46 @@ def classification_tsv_schema_supported(text: str, *, panel_kind: str) -> bool:
     return False
 
 
-def voter_agreement_rows_from_tsv(text: str, *, panel_kind: str) -> list[dict[str, object]]:
+class VoterAgreementTsvParse(NamedTuple):
+    rows: list[dict[str, object]]
+    malformed_rows: int
+    ineligible_rows: int
+
+
+def voter_agreement_rows_from_tsv(text: str, *, panel_kind: str) -> VoterAgreementTsvParse:
     panel = _normalize_panel_kind(panel_kind)
     header, rows = _dict_rows_from_tsv(text)
     if not header:
-        return []
+        return VoterAgreementTsvParse([], 0, 0)
     header_set = set(header)
     if panel == "design":
         if "finding_reviewers" not in header_set:
-            return []
+            return VoterAgreementTsvParse([], 0, 0)
         compact = False
     elif panel == "code-review":
         if "reviewer_slots" not in header_set:
-            return []
-        compact = not all(f"v{pos}_severity" in header_set and f"v{pos}_tool" in header_set for pos in (1, 2, 3))
+            return VoterAgreementTsvParse([], 0, 0)
+        compact = not all(f"v{pos}_severity" in header_set for pos in (1, 2, 3))
         if compact:
             header, rows = _legacy_compact_rows_from_tsv(text)
             header_set = set(header)
             if "reviewer_slots" not in header_set:
-                return []
+                return VoterAgreementTsvParse([], 0, 0)
     else:
-        return []
+        return VoterAgreementTsvParse([], 0, 0)
 
     out: list[dict[str, object]] = []
+    malformed_rows = 0
+    ineligible_rows = 0
+    label_compact = compact or (
+        panel == "code-review" and not any(f"v{pos}_tool" in header_set for pos in (1, 2, 3))
+    )
     for row in rows:
         voter_votes = [
-            (_voter_label(row, pos, panel, compact=compact), row.get(f"v{pos}_vote") or "")
+            (_voter_label(row, pos, panel, compact=label_compact), row.get(f"v{pos}_vote") or "")
             for pos in (1, 2, 3)
         ]
+        result = (row.get("voting_result") or "").strip().lower()
         agreement_row = voter_agreement_row_from_panel(
             voting_result=row.get("voting_result") or "",
             voter_votes=voter_votes,
@@ -225,7 +237,15 @@ def voter_agreement_rows_from_tsv(text: str, *, panel_kind: str) -> list[dict[st
         )
         if agreement_row is not None:
             out.append(agreement_row)
-    return out
+            continue
+        parseable = [(label, vote) for label, vote in voter_votes if _normalize_vote_cell(vote)]
+        if result == "neutral" or (
+            result in {"accepted", "rejected"} and len(parseable) < 2  # noqa: PLR2004
+        ):
+            ineligible_rows += 1
+        else:
+            malformed_rows += 1
+    return VoterAgreementTsvParse(out, malformed_rows, ineligible_rows)
 
 
 def compute_voter_agreement(

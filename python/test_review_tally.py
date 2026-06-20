@@ -335,6 +335,21 @@ def test_tally_excludes_narrative_only_voter_parse_rate_check(tmp_path: Path) ->
     assert "## Voter Agreement Scoreboard" in tally
     assert "| code-review | v1 |" in tally
     assert "| code-review | v2 |" in tally
+    class_file = Path(rts.kv_get(result.stdout, "FINDINGS_CLASSIFICATION_TSV_FILE") or "")
+    assert class_file.is_file()
+    class_text = class_file.read_text(encoding="utf-8")
+    assert class_text.splitlines()[0] == _CLASSIFICATION_HEADER
+    tsv_records = voting.compute_voter_agreement(
+        voting.voter_agreement_rows_from_tsv(class_text, panel_kind="code-review").rows
+    )
+    for record in tsv_records:
+        rate = "n/a" if record["agreement_rate"] is None else f"{float(record['agreement_rate']):.3f}"
+        line = (
+            f"| code-review | {record['voter']} | {record['eligible']} | {record['agree']} | "
+            f"{record['disagree']} | {record['missing']} | {rate} | "
+            f"{str(bool(record['outlier'])).lower()} |"
+        )
+        assert line in tally
 
 
 def test_tally_security_oos_holdback(tmp_path: Path) -> None:
@@ -698,7 +713,7 @@ def test_tally_code_review_voter_agreement_scoreboard_three_slot(tmp_path: Path)
     assert "| Codex-Structure |" in tally
     class_file = Path(rts.kv_get(result.stdout, "FINDINGS_CLASSIFICATION_TSV_FILE") or "")
     records = voting.compute_voter_agreement(
-        voting.voter_agreement_rows_from_tsv(class_file.read_text(encoding="utf-8"), panel_kind="code-review")
+        voting.voter_agreement_rows_from_tsv(class_file.read_text(encoding="utf-8"), panel_kind="code-review").rows
     )
     assert next(record for record in records if record["voter"] == "cursor-pragmatism")["disagree"] == 1
 

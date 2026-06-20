@@ -31,6 +31,11 @@ write(root / "design/run-b/plan-review/round-1/findings-classification.tsv", des
     ["FINDING_3", "R", "rejected", "NO", "", "", "", "", "Claude", "YES", "", "", "", "", "Codex", "NO", "", "", "", "", "Cursor"],
 ])
 
+write(root / "design/run-corrupt/plan-review/round-1/findings-classification.tsv", design22, [
+    ["FINDING_BAD", "R", "bogus", "YES", "", "", "", "", "Claude", "YES", "", "", "", "", "Codex", "NO", "", "", "", "", "Cursor", "major"],
+    ["FINDING_NEUTRAL", "R", "neutral", "YES", "", "", "", "", "Claude", "NO", "", "", "", "", "Codex", "YES", "", "", "", "", "Cursor", "minor"],
+])
+
 code21 = "finding_id reviewer_slots voting_result v1_vote v1_correctness v1_severity v1_quality v1_uncertain v1_tool v2_vote v2_correctness v2_severity v2_quality v2_uncertain v2_tool v3_vote v3_correctness v3_severity v3_quality v3_uncertain v3_tool".split()
 write(root / "implement/run-c/round-1/findings-classification.tsv", code21, [
     ["FINDING_1", "R", "accepted", "YES", "", "", "", "", "cursor-validity", "NO", "", "", "", "", "cursor-plan-fidelity", "YES", "", "", "", "", "cursor-pragmatism"],
@@ -52,6 +57,16 @@ grep -Fq '| design | Cursor |' "$run_out"
 grep -Fq '| code-review | cursor-validity |' "$run_out"
 grep -Fq '| code-review | v1 | 4 | 0 | 4 | 0 | 0.000 | true |' "$run_out"
 grep -Fq 'Single-voter and zero-voter panels are excluded' "$run_out"
+grep -Fq 'Malformed data rows dropped: 1' "$run_out"
+grep -Fq 'Ineligible panels excluded: 3' "$run_out"
+
+run_b_only="$FIX/run-b-only"
+mkdir -p "$run_b_only/design/run-b/plan-review/round-1"
+cp "$FIX/larch-logs/design/run-b/plan-review/round-1/findings-classification.tsv" "$run_b_only/design/run-b/plan-review/round-1/"
+run_b_out="$FIX/report-run-b.md"
+env -u CLAUDE_PLUGIN_ROOT python3 "$ANALYZER" --log-root "$run_b_only" --min-votes 2 --outlier-threshold 0.50 > "$run_b_out"
+grep -Fq '| design | Codex | 1 | 0 | 1 | 0 | 0.000 | false |' "$run_b_out"
+grep -Fq '| design | Cursor | 1 | 1 | 0 | 0 | 1.000 | false |' "$run_b_out"
 
 out_file="$FIX/out/report.md"
 stdout=$(env -u CLAUDE_PLUGIN_ROOT python3 "$ANALYZER" --log-root "$FIX/larch-logs" --out "$out_file")

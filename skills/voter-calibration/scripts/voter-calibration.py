@@ -93,6 +93,8 @@ def _render(
     log_root: Path,
     files_seen: int,
     skipped_files: int,
+    malformed_rows: int,
+    ineligible_rows: int,
     rows: list[dict[str, object]],
     min_votes: int,
     outlier_threshold: float,
@@ -110,6 +112,8 @@ def _render(
         f"- Log root: `{log_root}`",
         f"- Classification TSV files scanned: {files_seen}",
         f"- Malformed or unsupported TSV files skipped: {skipped_files}",
+        f"- Malformed data rows dropped: {malformed_rows}",
+        f"- Ineligible panels excluded: {ineligible_rows}",
         f"- Qualifying accepted/rejected panels: {len(rows)}",
         "",
         "## Agreement Table",
@@ -158,22 +162,28 @@ def main(argv: list[str]) -> int:
 
     rows: list[dict[str, object]] = []
     skipped_files = 0
+    malformed_rows = 0
+    ineligible_rows = 0
     discovered = _discover(log_root)
     for panel, path in discovered:
         text = _read_text(path)
         parsed = voter_agreement_rows_from_tsv(text, panel_kind=panel)
         first_line = text.splitlines()[0] if text.splitlines() else ""
-        if not parsed and (
+        if not parsed.rows and (
             "voting_result" not in first_line
             or not classification_tsv_schema_supported(text, panel_kind=panel)
         ):
             skipped_files += 1
-        rows.extend(parsed)
+        malformed_rows += parsed.malformed_rows
+        ineligible_rows += parsed.ineligible_rows
+        rows.extend(parsed.rows)
 
     report = _render(
         log_root=log_root,
         files_seen=len(discovered),
         skipped_files=skipped_files,
+        malformed_rows=malformed_rows,
+        ineligible_rows=ineligible_rows,
         rows=rows,
         min_votes=args.min_votes,
         outlier_threshold=args.outlier_threshold,
