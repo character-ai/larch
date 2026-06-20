@@ -303,6 +303,8 @@ def _lock_held_by_lsof(runner: Runner, lock_path: Path, *, cwd: str | None = Non
     if result.returncode == _COMMAND_NOT_FOUND_EXIT:
         return None
     if result.returncode != 0 and not result.stdout.strip():
+        if result.stderr.strip():
+            return None
         return False
     current_pid = os.getpid()
     for line in result.stdout.splitlines()[1:]:
