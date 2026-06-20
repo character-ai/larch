@@ -13,6 +13,7 @@ Combined `/design` wrapper for Step 4 rejected-findings output and Gate C previe
 - Accepts launcher-owned `--session-env-path` and `--claude-pid` arguments.
 - Does not derive the root Claude PID from `$PPID` internally.
 - Emits rejected findings between `---LARCH-REJECTED-BEGIN---` and `---LARCH-REJECTED-END---` markers.
+- Filters the rejected-findings body through `python3 cli.py plan-review emit-rejected` so findings already applied in an earlier plan-review round are not reported as "unimplemented" (issue #4849); falls back to the raw `rejected-findings.md` on any non-zero exit. The on-disk file is never mutated (still committed to the run log for audit).
 - Owns the Step 4 compatibility FINALIZE guard for paused sessions missing `.completed/finalize`.
 - Owns the Gate C preview call and `skip_approve_requested` read.
 - Exits early after the Gate C preview when `.pause-save-complete` exists.

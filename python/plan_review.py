@@ -1108,6 +1108,27 @@ def _read_applied_finding_keys(tmpdir: Path, *, before_round: int) -> set[str]:
     return keys
 
 
+def _read_all_applied_finding_keys(tmpdir: Path) -> set[str]:
+    """Every finding key in the applied-finding ledger, across all rounds.
+
+    Unlike :func:`_read_applied_finding_keys` (which filters to rounds before a
+    cutoff for the continuation decision), this returns the cumulative set so the
+    Step 4 rejected-findings report can drop a finding that was applied in any
+    earlier round but re-raised and rejected in a later round (issue #4849).
+    """
+    path = tmpdir / ".step3-applied-finding-keys.tsv"
+    if not path.is_file() or path.is_symlink():
+        return set()
+    keys: set[str] = set()
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if "\t" not in line:
+            continue
+        round_field, key = line.split("\t", 1)
+        if key and re.fullmatch(r"[0-9]+", round_field):
+            keys.add(key)
+    return keys
+
+
 def _record_applied_finding_keys(tmpdir: Path, round_num: int, keys: Sequence[str]) -> None:
     """Record this round's accepted finding keys in the applied-finding ledger,
     idempotently (rows for ``round_num`` are rewritten, not duplicated).
@@ -1128,6 +1149,80 @@ def _record_applied_finding_keys(tmpdir: Path, round_num: int, keys: Sequence[st
         seen.add(key)
         rows.append(f"{round_num}\t{key}")
     _write_atomic(path, "".join(f"{row}\n" for row in rows))
+
+
+def _filter_rejected_findings_body(text: str, applied: set[str], marker_re: str) -> tuple[str, bool]:
+    """Filter ``text`` blocks starting with ``marker_re``, dropping applied keys.
+
+    Returns ``(filtered_body, had_blocks)`` where ``had_blocks`` is true when at
+    least one block header matched ``marker_re``.
+    """
+    matches = list(re.finditer(marker_re, text))
+    if not matches:
+        return "", False
+    kept: list[str] = []
+    prefix = text[: matches[0].start()]
+    if prefix:
+        kept.append(prefix)
+    for idx, match in enumerate(matches):
+        end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
+        block = text[match.start():end]
+        key = _finding_dedup_key(block)
+        if key and key in applied:
+            continue
+        kept.append(block)
+    return "".join(kept), True
+
+
+def emit_rejected_findings(argv: Sequence[str]) -> int:
+    """Emit the Step 4 rejected-findings body with already-applied findings removed.
+
+    The per-round tally overwrites ``rejected-findings.md`` with only the final
+    round's not-accepted findings. When a later round re-raises a finding that an
+    earlier round already accepted and applied, that finding lands here and would
+    otherwise be reported to the operator under "Unimplemented Plan Review
+    Suggestions" — even though it was implemented (issue #4849). Reuse the
+    cross-round dedup keying (#4808) to drop any block whose finding key is in the
+    cumulative applied-finding ledger.
+
+    The on-disk ``rejected-findings.md`` is left untouched (still committed to the
+    run log for audit); only this Step 4 emit surface is filtered. Output is the
+    filtered body written verbatim to stdout, byte-faithful to the tally's block
+    concatenation.
+    """
+    parser = argparse.ArgumentParser(prog="cli.py plan-review emit-rejected")
+    parser.add_argument("--design-tmpdir", required=True)  # pyright: ignore[reportUnusedCallResult]
+    ns = parser.parse_args(list(argv))
+    tmpdir = _require_tmpdir(parser, ns.design_tmpdir)
+    path = tmpdir / "rejected-findings.md"
+    if path.is_symlink() or not path.is_file():
+        return 0
+    text = path.read_text(encoding="utf-8", errors="replace")
+    if not text.strip():
+        return 0
+    applied = _read_all_applied_finding_keys(tmpdir)
+    if not applied:
+        print(text, end="")
+        return 0
+    filtered, had_blocks = _filter_rejected_findings_body(
+        text, applied, r"(?m)^### \[Plan Review\] "
+    )
+    if had_blocks:
+        print(filtered, end="")
+        return 0
+    filtered, had_blocks = _filter_rejected_findings_body(
+        text, applied, r"(?m)^### FINDING_[0-9]+:"
+    )
+    if had_blocks:
+        print(filtered, end="")
+        return 0
+    print(
+        "WARN=emit-rejected: applied-finding ledger present but rejected-findings.md "
+        "has no recognizable blocks; emitting empty body",
+        file=sys.stderr,
+    )
+    print(end="")
+    return 0
 
 
 def plan_review_continuation(argv: Sequence[str]) -> int:
@@ -1776,6 +1871,10 @@ def step3b_sanitize_main(argv: list[str] | None = None) -> int:
 
 def step3b_tail_main(argv: list[str] | None = None) -> int:
     return _delegate_step3_script("design-step3b-tail.sh", argv or [])
+
+
+def emit_rejected_main(argv: list[str] | None = None) -> int:
+    return emit_rejected_findings(argv or [])
 
 
 def round_artifact_included_main(argv: list[str] | None = None) -> int:
