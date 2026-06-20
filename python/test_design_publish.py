@@ -8,6 +8,12 @@ import stat
 import subprocess
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+import design_publish
+
+if TYPE_CHECKING:
+    import pytest
 
 
 def _write_fake_cli(path: Path) -> None:
@@ -27,6 +33,9 @@ if args[:2] == ["redact","secrets"]:
     sys.stdout.write(sys.stdin.read())
     raise SystemExit(0)
 if args[:2] == ["named-block","write"]:
+    import os
+    if os.environ.get("FAKE_CLI_NAMED_BLOCK_FAIL"):
+        raise SystemExit(1)
     raise SystemExit(0)
 if args[:2] == ["tracking-issue","rename"]:
     print("RENAMED=true")
@@ -492,3 +501,75 @@ def test_publish_no_rotate_warning_when_zero_violations(tmp_path: Path) -> None:
     )
     assert result.returncode == 0, result.stderr
     assert "ROTATE it now" not in result.stdout
+
+
+def test_review_provenance_remains_importable() -> None:
+    from design_publish import review_provenance  # noqa: PLC0415
+
+    assert callable(review_provenance)
+
+
+def test_publish_main_delegates_to_core_usage_rc() -> None:
+    assert design_publish.publish_main([]) == design_publish.publish_core([]) == 5
+
+
+def test_publish_result_env_write_failure_returns_3_with_stdout_rows(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    plugin_root = tmp_path / "plugin"
+    _write_fake_cli(plugin_root / "python" / "cli.py")
+    design = tmp_path / "design"
+    (design / ".completed").mkdir(parents=True)
+    _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
+    (design / ".design-publish-result.env").mkdir()
+    old_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
+    old_fail = os.environ.get("FAKE_CLI_NAMED_BLOCK_FAIL")
+    os.environ["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
+    os.environ["FAKE_CLI_NAMED_BLOCK_FAIL"] = "1"
+    try:
+        rc = design_publish.publish_core(
+            [
+                "--design-tmpdir",
+                str(design),
+                "--issue",
+                "9",
+                "--session-id",
+                "RUN1",
+                "--claude-pid",
+                "11",
+            ]
+        )
+    finally:
+        if old_root is None:
+            _ = os.environ.pop("CLAUDE_PLUGIN_ROOT", None)
+        else:
+            os.environ["CLAUDE_PLUGIN_ROOT"] = old_root
+        if old_fail is None:
+            _ = os.environ.pop("FAKE_CLI_NAMED_BLOCK_FAIL", None)
+        else:
+            os.environ["FAKE_CLI_NAMED_BLOCK_FAIL"] = old_fail
+    out = capsys.readouterr().out
+    assert rc == 3
+    assert "PLAN_WRITE_OK=false" in out
+    assert "VALIDATE_STATUS=ok" in out
+
+
+def test_publish_validator_defects_keep_rc4_when_result_env_write_fails(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    design = tmp_path / "design"
+    (design / ".completed").mkdir(parents=True)
+    _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    (design / ".design-publish-result.env").mkdir()
+    rc = design_publish.publish_core(
+        [
+            "--design-tmpdir",
+            str(design),
+            "--issue",
+            "9",
+            "--session-id",
+            "RUN1",
+            "--claude-pid",
+            "11",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert rc == 4
+    assert "VALIDATE_STATUS=defects-found" in out

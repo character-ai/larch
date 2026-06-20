@@ -15,6 +15,14 @@ def _emit_rows(rows: list[tuple[str, str]]) -> None:
         print(f"{key}={value}")
 
 
+def _write_result_env(path: Path, rows: list[tuple[str, str]]) -> bool:
+    try:
+        _ = path.write_text("\n".join(f"{k}={v}" for k, v in rows) + "\n", encoding="utf-8")
+    except OSError:
+        return False
+    return True
+
+
 def _parse_kv(text: str) -> dict[str, str]:
     out: dict[str, str] = {}
     for line in text.splitlines():
@@ -122,7 +130,7 @@ def _splice_plan_provenance(text: str, review_status: str, rounds_completed: int
     )
 
 
-def publish_main(argv: Sequence[str]) -> int:
+def publish_core(argv: Sequence[str]) -> int:
     args = list(argv)
     parsed = {
         "--design-tmpdir": "",
@@ -179,7 +187,7 @@ def publish_main(argv: Sequence[str]) -> int:
         kvs[2] = ("VALIDATE_DEFECT_COUNT", "1")
         kvs[5] = ("VALIDATE_LOG_FILE", str(design_tmpdir / "validate-plan-commands.log"))
         _emit_rows(kvs)
-        _ = result_env.write_text("\n".join(f"{k}={v}" for k, v in kvs) + "\n", encoding="utf-8")
+        _ = _write_result_env(result_env, kvs)
         return 4
 
     review_status, rounds_completed, provenance_present = review_provenance(design_tmpdir)
@@ -201,7 +209,7 @@ def publish_main(argv: Sequence[str]) -> int:
         kvs[1] = ("VALIDATE_STATUS", "defects-found")
         kvs[2] = ("VALIDATE_DEFECT_COUNT", "1")
         _emit_rows(kvs)
-        _ = result_env.write_text("\n".join(f"{k}={v}" for k, v in kvs) + "\n", encoding="utf-8")
+        _ = _write_result_env(result_env, kvs)
         return 4
 
     if (design_tmpdir / ".pause-requested").is_file():
@@ -259,7 +267,7 @@ def publish_main(argv: Sequence[str]) -> int:
         kvs[5] = ("VALIDATE_LOG_FILE", parsed_validate.get("VALIDATE_LOG_FILE", ""))
         if kvs[1][1] == "defects-found":
             _emit_rows(kvs)
-            _ = result_env.write_text("\n".join(f"{k}={v}" for k, v in kvs) + "\n", encoding="utf-8")
+            _ = _write_result_env(result_env, kvs)
             return 4
         if validate.returncode != 0 or kvs[1][1] != "ok":
             return 5
@@ -294,7 +302,7 @@ def publish_main(argv: Sequence[str]) -> int:
     )
     if block.returncode != 0:
         _emit_rows(kvs)
-        return 1
+        return 1 if _write_result_env(result_env, kvs) else 3
     kvs[0] = ("PLAN_WRITE_OK", "true")
 
     # Upsert the architecture diagram into the shared larch:diagrams comment.
@@ -431,6 +439,9 @@ def publish_main(argv: Sequence[str]) -> int:
             "and check chat/PRs for the same value.**",
             flush=True,
         )
-    _ = result_env.write_text("\n".join(f"{k}={v}" for k, v in kvs) + "\n", encoding="utf-8")
     _emit_rows(kvs)
-    return 0
+    return 0 if _write_result_env(result_env, kvs) else 3
+
+
+def publish_main(argv: Sequence[str]) -> int:
+    return publish_core(argv)
