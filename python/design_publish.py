@@ -443,14 +443,12 @@ def publish_core(argv: Sequence[str]) -> int:
             _emit_rows(kvs)
             _ = _write_result_env(result_env, kvs)
             return 5
-        if publish.returncode == 0 and publish_kv.get("PUBLISH_OK") == "false":
-            _emit_rows(kvs)
-            return 0 if _write_result_env(result_env, kvs) else 3
         # Re-surface the dropped secret-rotation warning: the design log is scrubbed
         # before commit, and a non-zero SECRET_SCRUB_VIOLATIONS count from log-publish
         # means a secret-shaped value was redacted from the committed logs. Warn the
         # operator to rotate it (the scrub itself prevents the leak; the operator was
-        # no longer being told to rotate after the #3681 port).
+        # no longer being told to rotate after the #3681 port). Emit on recoverable
+        # PUBLISH_OK=false paths too; only scrub-fatal rc 5 above suppresses it.
         scrub_violations = publish_kv.get("SECRET_SCRUB_VIOLATIONS", "0")
         if scrub_violations.isdigit() and int(scrub_violations) > 0:
             print(
@@ -460,6 +458,9 @@ def publish_core(argv: Sequence[str]) -> int:
                 "and check chat/PRs for the same value.**",
                 flush=True,
             )
+        if publish.returncode == 0 and publish_kv.get("PUBLISH_OK") == "false":
+            _emit_rows(kvs)
+            return 0 if _write_result_env(result_env, kvs) else 3
     _emit_rows(kvs)
     return 0 if _write_result_env(result_env, kvs) else 3
 

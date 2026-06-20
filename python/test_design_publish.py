@@ -736,6 +736,23 @@ def test_publish_recoverable_push_or_pr_failure_returns_zero_with_recovery_branc
     assert "ROTATE it now" not in result.stdout
 
 
+def test_publish_recoverable_failure_still_warns_rotate_on_scrub_violations(tmp_path: Path) -> None:
+    result, _design = _run_publish_with_fake_cli(
+        tmp_path,
+        {
+            "FAKE_CLI_LOG_PUBLISH_OK": "false",
+            "FAKE_CLI_LOG_PUBLISH_RECOVERY_BRANCH": "larch-logs/design-RUN1",
+            "FAKE_CLI_SCRUB_VIOLATIONS": "1",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "PUBLISH_OK=false" in result.stdout
+    assert "RECOVERY_BRANCH=larch-logs/design-RUN1" in result.stdout
+    assert "ROTATE it now" in result.stdout
+    assert "redacted 1 secret-shaped value(s)" in result.stdout
+
+
 def test_review_provenance_remains_importable() -> None:
     from design_publish import review_provenance  # noqa: PLC0415
 
