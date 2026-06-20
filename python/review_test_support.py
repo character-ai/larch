@@ -533,6 +533,54 @@ esac
     )
 
 
+def write_aggregate_counting_dispatch_stub(
+    path: Path,
+    *,
+    counter_file: Path,
+    fail_attempts: int,
+    fail_body: str,
+    success_body: str,
+) -> None:
+    """Dispatch stub that emits ``fail_body`` for the first ``fail_attempts`` invocations, then
+    ``success_body``. Each invocation increments ``counter_file`` so a test can assert how many
+    aggregator dispatches the bounded validation-retry loop performed.
+    """
+    write_executable(
+        path,
+        f"""#!/usr/bin/env bash
+set -euo pipefail
+slots=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --slots-file) slots="${{2:?}}"; shift 2 ;;
+    --require-result-pattern) shift 2 ;;
+    --codex-present|--cursor-present|--mode|--diff-file|--plan-file|--feature-file|--scope-files|--description-text) shift 2 ;;
+    *) shift 1 ;;
+  esac
+done
+[[ -n "$slots" && -f "$slots" ]] || exit 2
+out=$(jq -r '.output' "$slots")
+counter="{counter_file}"
+n=0
+[[ -f "$counter" ]] && n=$(cat "$counter")
+n=$((n + 1))
+printf '%s' "$n" > "$counter"
+if [[ "$n" -le {fail_attempts} ]]; then
+  cat > "$out" <<'FAILBODY'
+{fail_body}
+FAILBODY
+else
+  cat > "$out" <<'OKBODY'
+{success_body}
+OKBODY
+fi
+paths_out="${{slots}}.output-files"
+printf '%s\\n' "$out" > "$paths_out"
+printf 'DISPATCH_OK=true\\nALL_OUTPUT_FILES=%s\\nALL_OUTPUT_FILES_PATH=%s\\nALL_OUTPUT_TOOLS=cursor\\n' "$out" "$paths_out"
+""",
+    )
+
+
 def init_git_repo(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
     _ = subprocess.run([GIT, "init", "-q"], cwd=path, check=True)
