@@ -1,0 +1,1 @@
+Test-only plan. Make duplicate-code worker-failure deterministic with a no-spawn executor fake. Make launch-review subprocess stub tests use one shared larger inner timeout. Leave production behavior unchanged.
