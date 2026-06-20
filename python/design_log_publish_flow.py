@@ -16,6 +16,14 @@ from collections.abc import Sequence
 import redact
 
 _PR_URL_RE = re.compile(r"/pull/([0-9]+)")
+_RUN_LOG_COMMIT_SCRUB_FAILURE_RE = re.compile(
+    r"(secret survived scrubbing|scrub_log_secrets|scrub-log-secrets|scrubber|scrub_error)",
+    re.IGNORECASE,
+)
+
+
+class SecretScrubFailure(RuntimeError):
+    """Raised when a publish path cannot prove secret scrubbing succeeded."""
 
 
 def _emit(k: str, v: str) -> None:
@@ -162,16 +170,24 @@ def _copy_tree_redacted(plugin_root: Path, source: Path, dest: Path) -> tuple[bo
             check=False,
         )
         if red.returncode != 0:
-            return False, 0
-        scrubbed, findings = redact.scrub_log_secrets(red.stdout)
+            raise SecretScrubFailure(
+                f"redact tmpdir-paths failed for {source}: {red.stderr.strip()}"
+            )
+        try:
+            scrubbed, findings = redact.scrub_log_secrets(red.stdout)
+        except Exception as exc:
+            raise SecretScrubFailure(f"secret scrubber failed for {source}") from exc
         if findings:
-            _, residual = redact.scrub_log_secrets(scrubbed)
+            try:
+                _, residual = redact.scrub_log_secrets(scrubbed)
+            except Exception as exc:
+                raise SecretScrubFailure(f"secret scrubber failed for {source}") from exc
             if residual:
                 print(
                     f"design log-publish: secret survived scrubbing in {source}",
                     file=sys.stderr,
                 )
-                return False, 0
+                raise SecretScrubFailure(f"secret survived scrubbing in {source}")
         if scrubbed and not scrubbed.endswith("\n"):
             scrubbed += "\n"
         _ = dest.write_text(scrubbed, encoding="utf-8")
@@ -250,6 +266,11 @@ def _scrub_violations(commit_stdout: str) -> str:
     return value
 
 
+def _run_log_commit_scrub_failed(commit: subprocess.CompletedProcess[str]) -> bool:
+    text = f"{commit.stdout}\n{commit.stderr}"
+    return bool(_RUN_LOG_COMMIT_SCRUB_FAILURE_RE.search(text))
+
+
 def _publish_design_logs(
     plugin_root: Path,
     design_tmpdir: Path,
@@ -309,6 +330,8 @@ def _publish_design_logs(
         )
         head_sha = _run(["git", "rev-parse", "HEAD"], cwd=str(worktree)).stdout.strip()
         if commit.returncode != 0 or not head_sha or head_sha == base_sha:
+            if commit.returncode != 0 and _run_log_commit_scrub_failed(commit):
+                raise SecretScrubFailure("run-log commit scrub failure")
             print(f"design log-publish: run-log commit produced no commit: {commit.stderr.strip()}", file=sys.stderr)
             return (False, "", "", "", "0")
         scrub_violations = _scrub_violations(commit.stdout)
@@ -419,13 +442,21 @@ def log_publish_main(argv: Sequence[str]) -> int:
         return 0
 
     plugin_root = Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[1]))
-    publish_ok, pr_number, pr_url, recovery_branch, scrub_violations = _publish_design_logs(
-        plugin_root,
-        design_tmpdir,
-        parsed["--run-id"],
-        parsed["--issue"],
-        parsed["--repo"],
-    )
+    try:
+        publish_ok, pr_number, pr_url, recovery_branch, scrub_violations = _publish_design_logs(
+            plugin_root,
+            design_tmpdir,
+            parsed["--run-id"],
+            parsed["--issue"],
+            parsed["--repo"],
+        )
+    except SecretScrubFailure as exc:
+        print(f"design log-publish: secret scrub failed: {exc}", file=sys.stderr)
+        _emit("PUBLISH_OK", "false")
+        _emit("PR_NUMBER", "")
+        _emit("PR_URL", "")
+        _emit("SECRET_SCRUB_VIOLATIONS", "0")
+        return 1
     _persist_metadata(design_tmpdir, pr_number, pr_url, recovery_branch)
     _emit("PUBLISH_OK", "true" if publish_ok else "false")
     _emit("PR_NUMBER", pr_number)

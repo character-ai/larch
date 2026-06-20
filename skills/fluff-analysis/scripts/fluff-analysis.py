@@ -23,6 +23,14 @@ import os
 import re
 import subprocess
 import sys
+from pathlib import Path
+
+repo_root = Path(__file__).resolve().parents[3]
+python_dir = repo_root / "python"
+if str(python_dir) not in sys.path:
+    sys.path.insert(0, str(python_dir))
+
+from self_review_tally import self_review_tally_items  # noqa: E402
 
 # --------------------------------------------------------------------------
 # semantic-group classifier — a finding may carry many tags (multi-label)
@@ -211,13 +219,6 @@ def period_of_version(since_version, larch_ver):
     if parsed is None:
         return "unknown"
     return "post" if parsed >= since_version else "pre"
-
-
-def int_count(value):
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return 0
 
 
 # --------------------------------------------------------------------------
@@ -411,31 +412,25 @@ def _self_review_tally_records(run_dir, run_id, larch_version, period):
         data = json.loads(read_text(os.path.join(run_dir, "code-review-tally.json")) or "{}")
     except (ValueError, TypeError):
         return []
-    if not isinstance(data, dict) or data.get("mode") != "self-review":
-        return []
     rows = []
-    for outcome, count, prefix in (
-        ("accepted", int_count(data.get("accepted_count")), "SELF_REVIEW_ACCEPTED"),
-        ("rejected", int_count(data.get("rejected_count")), "SELF_REVIEW_REJECTED"),
-    ):
-        for idx in range(1, max(count, 0) + 1):
-            rows.append({
-                "skill": "implement", "source": "committed-self-review-tally", "run_id": run_id,
-                "round": "", "phase": "code-review", "finding_id": f"{prefix}_{idx}",
-                "larch_version": larch_version,
-                "outcome": outcome, "is_oos_id": False,
-                "title": "",
-                "focus_area": "",
-                "body_severity": "",
-                "severity": "(none)",
-                "reviewers": "", "tools": [], "is_dynamic": False,
-                "v_severities": [],
-                "v_qualities": [],
-                "v_correctness": [],
-                "v_uncertain": [],
-                "period": period,
-                "text": "",
-            })
+    for item in self_review_tally_items(data):
+        rows.append({
+            "skill": "implement", "source": "committed-self-review-tally", "run_id": run_id,
+            "round": "", "phase": "code-review", "finding_id": item.finding_id,
+            "larch_version": larch_version,
+            "outcome": item.outcome, "is_oos_id": False,
+            "title": "",
+            "focus_area": "",
+            "body_severity": "",
+            "severity": "(none)",
+            "reviewers": "", "tools": [], "is_dynamic": False,
+            "v_severities": [],
+            "v_qualities": [],
+            "v_correctness": [],
+            "v_uncertain": [],
+            "period": period,
+            "text": "",
+        })
     return rows
 
 

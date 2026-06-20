@@ -50,13 +50,20 @@ if args[:2] == ["tracking-issue","rename"]:
     print("NEW_TITLE=[DESIGNED] Example")
     raise SystemExit(0)
 if args[:3] == ["design","log-publish","--design-tmpdir"] or args[:2] == ["design","log-publish"]:
-    print("PUBLISH_OK=true")
-    print("PR_NUMBER=99")
-    print("PR_URL=https://github.com/owner/repo/pull/99")
+    import os
+    _rc = int(os.environ.get("FAKE_CLI_LOG_PUBLISH_RC", "0"))
+    if os.environ.get("FAKE_CLI_LOG_PUBLISH_PARTIAL") != "1":
+        print("PUBLISH_OK=" + os.environ.get("FAKE_CLI_LOG_PUBLISH_OK", "true"))
+        if os.environ.get("FAKE_CLI_LOG_PUBLISH_PR", "1") == "1":
+            print("PR_NUMBER=99")
+            print("PR_URL=https://github.com/owner/repo/pull/99")
+        _recovery = os.environ.get("FAKE_CLI_LOG_PUBLISH_RECOVERY_BRANCH")
+        if _recovery:
+            print("RECOVERY_BRANCH=" + _recovery)
     _scrub = os.environ.get("FAKE_CLI_SCRUB_VIOLATIONS")
     if _scrub:
         print("SECRET_SCRUB_VIOLATIONS=" + _scrub)
-    raise SystemExit(0)
+    raise SystemExit(_rc)
 if args[:2] == ["diagrams","upsert"]:
     import json, os
     log = os.environ.get("FAKE_CLI_UPSERT_LOG")
@@ -75,6 +82,43 @@ raise SystemExit(0)
         encoding="utf-8",
     )
     path.chmod(path.stat().st_mode | stat.S_IXUSR)
+
+
+def _run_publish_with_fake_cli(
+    tmp_path: Path,
+    env_overrides: dict[str, str],
+) -> tuple[subprocess.CompletedProcess[str], Path]:
+    plugin_root = tmp_path / "plugin"
+    _write_fake_cli(plugin_root / "python" / "cli.py")
+    design = tmp_path / "design"
+    (design / ".completed").mkdir(parents=True)
+    _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
+    cli_py = Path(__file__).with_name("cli.py")
+    env = os.environ.copy()
+    env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
+    env.update(env_overrides)
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(cli_py),
+            "design",
+            "publish",
+            "--design-tmpdir",
+            str(design),
+            "--issue",
+            "9",
+            "--session-id",
+            "RUN1",
+            "--claude-pid",
+            "11",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+    return result, design
 
 
 def test_publish_requires_composed_plan(tmp_path: Path) -> None:
@@ -626,6 +670,87 @@ def test_publish_no_rotate_warning_when_zero_violations(tmp_path: Path) -> None:
     )
     assert result.returncode == 0, result.stderr
     assert "ROTATE it now" not in result.stdout
+
+
+def test_publish_scrub_failure_explicit_kvs_returns_rc5_without_rotate_warning(tmp_path: Path) -> None:
+    result, design = _run_publish_with_fake_cli(
+        tmp_path,
+        {
+            "FAKE_CLI_LOG_PUBLISH_RC": "1",
+            "FAKE_CLI_LOG_PUBLISH_OK": "false",
+            "FAKE_CLI_SCRUB_VIOLATIONS": "2",
+        },
+    )
+
+    assert result.returncode == 5
+    assert "PUBLISH_OK=false" in result.stdout
+    assert "ROTATE it now" not in result.stdout
+    assert "PUBLISH_OK=false" in (design / ".design-publish-result.env").read_text(encoding="utf-8")
+    assert 5 not in {0, 1, 3, 4}
+
+
+def test_publish_scrub_failure_partial_stdout_returns_rc5(tmp_path: Path) -> None:
+    result, _design = _run_publish_with_fake_cli(
+        tmp_path,
+        {
+            "FAKE_CLI_LOG_PUBLISH_RC": "1",
+            "FAKE_CLI_LOG_PUBLISH_PARTIAL": "1",
+        },
+    )
+
+    assert result.returncode == 5
+    assert "PUBLISH_OK=false" in result.stdout
+    assert "ROTATE it now" not in result.stdout
+
+
+def test_publish_recoverable_non_push_failure_returns_zero_without_rotate_warning(tmp_path: Path) -> None:
+    result, design = _run_publish_with_fake_cli(
+        tmp_path,
+        {
+            "FAKE_CLI_LOG_PUBLISH_OK": "false",
+            "FAKE_CLI_LOG_PUBLISH_PR": "0",
+            "FAKE_CLI_SCRUB_VIOLATIONS": "0",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "PUBLISH_OK=false" in result.stdout
+    assert "ROTATE it now" not in result.stdout
+    result_env = (design / ".design-publish-result.env").read_text(encoding="utf-8")
+    assert "PUBLISH_OK=false" in result_env
+
+
+def test_publish_recoverable_push_or_pr_failure_returns_zero_with_recovery_branch(tmp_path: Path) -> None:
+    result, _design = _run_publish_with_fake_cli(
+        tmp_path,
+        {
+            "FAKE_CLI_LOG_PUBLISH_OK": "false",
+            "FAKE_CLI_LOG_PUBLISH_RECOVERY_BRANCH": "larch-logs/design-RUN1",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "PUBLISH_OK=false" in result.stdout
+    assert "RECOVERY_BRANCH=larch-logs/design-RUN1" in result.stdout
+    assert "LOG_RECOVERY_BRANCH=larch-logs/design-RUN1" in result.stdout
+    assert "ROTATE it now" not in result.stdout
+
+
+def test_publish_recoverable_failure_still_warns_rotate_on_scrub_violations(tmp_path: Path) -> None:
+    result, _design = _run_publish_with_fake_cli(
+        tmp_path,
+        {
+            "FAKE_CLI_LOG_PUBLISH_OK": "false",
+            "FAKE_CLI_LOG_PUBLISH_RECOVERY_BRANCH": "larch-logs/design-RUN1",
+            "FAKE_CLI_SCRUB_VIOLATIONS": "1",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "PUBLISH_OK=false" in result.stdout
+    assert "RECOVERY_BRANCH=larch-logs/design-RUN1" in result.stdout
+    assert "ROTATE it now" in result.stdout
+    assert "redacted 1 secret-shaped value(s)" in result.stdout
 
 
 def test_review_provenance_remains_importable() -> None:

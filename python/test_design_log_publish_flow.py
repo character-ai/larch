@@ -8,12 +8,9 @@ import stat
 import subprocess
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
 
+import pytest
 import design_log_publish_flow
-
-if TYPE_CHECKING:
-    import pytest
 
 RUN_ID = "ABCDEF01-2345-6789-ABCD-EF0123456789"
 LOG_BRANCH = f"larch-logs/design-{RUN_ID}"
@@ -378,10 +375,50 @@ def test_copy_tree_redacted_fail_closed_on_residual(
         return text, {"cursor-api-key": 1}
 
     monkeypatch.setattr(design_log_publish_flow.redact, "scrub_log_secrets", _never_scrubs)
-    ok, count = design_log_publish_flow._copy_tree_redacted(plugin_root, source, dest)
+    with pytest.raises(design_log_publish_flow.SecretScrubFailure, match="secret survived"):
+        _ = design_log_publish_flow._copy_tree_redacted(plugin_root, source, dest)
+    assert not dest.exists()
+
+
+def test_copy_tree_redacted_redact_tmpdir_failure_is_secret_scrub_failure(tmp_path: Path) -> None:
+    plugin_root = tmp_path / "plugin"
+    cli = plugin_root / "python" / "cli.py"
+    cli.parent.mkdir(parents=True)
+    _ = cli.write_text("import sys\nsys.exit(1)\n", encoding="utf-8")
+    source = tmp_path / "source.txt"
+    _ = source.write_text("plain\n", encoding="utf-8")
+
+    with pytest.raises(design_log_publish_flow.SecretScrubFailure, match="redact tmpdir-paths"):
+        _ = design_log_publish_flow._copy_tree_redacted(plugin_root, source, tmp_path / "dest.txt")
+
+
+def test_copy_tree_redacted_scrubber_exception_is_secret_scrub_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plugin_root = Path(__file__).resolve().parents[1]
+    source = tmp_path / "source.txt"
+    _ = source.write_text("plain\n", encoding="utf-8")
+
+    def _boom(_text: str) -> tuple[str, dict[str, int]]:
+        raise RuntimeError("scrubber unavailable")
+
+    monkeypatch.setattr(design_log_publish_flow.redact, "scrub_log_secrets", _boom)
+    with pytest.raises(design_log_publish_flow.SecretScrubFailure, match="secret scrubber failed"):
+        _ = design_log_publish_flow._copy_tree_redacted(plugin_root, source, tmp_path / "dest.txt")
+
+
+def test_copy_tree_redacted_symlink_skip_is_not_secret_scrub_failure(tmp_path: Path) -> None:
+    plugin_root = Path(__file__).resolve().parents[1]
+    target = tmp_path / "target.txt"
+    _ = target.write_text("plain\n", encoding="utf-8")
+    source = tmp_path / "source-link.txt"
+    source.symlink_to(target)
+
+    ok, count = design_log_publish_flow._copy_tree_redacted(plugin_root, source, tmp_path / "dest.txt")
+
     assert not ok
     assert count == 0
-    assert not dest.exists()
 
 
 def test_copy_tree_redacted_writes_same_scrubbed_text_used_for_count(tmp_path: Path) -> None:
@@ -403,6 +440,74 @@ def test_copy_tree_redacted_writes_same_scrubbed_text_used_for_count(tmp_path: P
     assert ok
     assert count == sum(findings.values()) == 1
     assert dest.read_text(encoding="utf-8") == expected
+
+
+def test_log_publish_main_returns_nonzero_on_secret_scrub_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+
+    def _fail(*_args: object, **_kwargs: object) -> tuple[bool, str, str, str, str]:
+        raise design_log_publish_flow.SecretScrubFailure("scrub failed")
+
+    monkeypatch.setattr(design_log_publish_flow, "_publish_design_logs", _fail)
+
+    rc = design_log_publish_flow.log_publish_main(
+        ["--design-tmpdir", str(design), "--run-id", "RUN1", "--issue", "12"]
+    )
+
+    assert rc != 0
+    out = capsys.readouterr().out
+    assert "PUBLISH_OK=false" in out
+    assert "SECRET_SCRUB_VIOLATIONS=0" in out
+
+
+def test_publish_design_logs_classifies_run_log_commit_scrub_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    _ = (design / "artifact.txt").write_text("plain\n", encoding="utf-8")
+    calls: list[list[str]] = []
+
+    def _completed(argv: list[str], returncode: int, stdout: str = "", stderr: str = "") -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(argv, returncode, stdout, stderr)
+
+    def _fake_run(argv: list[str], *, cwd: str | None = None) -> subprocess.CompletedProcess[str]:
+        del cwd
+        calls.append(argv)
+        if argv[:3] == ["git", "rev-parse", "--show-toplevel"]:
+            return _completed(argv, 0, str(tmp_path))
+        if argv[:3] == ["git", "worktree", "add"]:
+            return _completed(argv, 0)
+        if len(argv) >= 4 and argv[2:4] == ["run-log", "init"]:
+            return _completed(argv, 0)
+        if argv[:3] == ["git", "rev-parse", "HEAD"]:
+            return _completed(argv, 0, "base\n")
+        if len(argv) >= 4 and argv[2:4] == ["run-log", "commit"]:
+            return _completed(argv, 1, "", "secret survived scrubbing in larch-logs/design/RUN1/a.txt\n")
+        return _completed(argv, 0)
+
+    def _copy_ok(*_args: object, **_kwargs: object) -> tuple[bool, int]:
+        return True, 0
+
+    monkeypatch.setattr(design_log_publish_flow, "_run", _fake_run)
+    monkeypatch.setattr(design_log_publish_flow, "_copy_tree_redacted", _copy_ok)
+
+    with pytest.raises(design_log_publish_flow.SecretScrubFailure, match="run-log commit"):
+        _ = design_log_publish_flow._publish_design_logs(
+            tmp_path,
+            design,
+            "RUN1",
+            "12",
+            "",
+        )
+
+    assert any(len(call) >= 4 and call[2:4] == ["run-log", "commit"] for call in calls)
 
 
 def test_publish_excluded_github_redundant_top_level_only() -> None:

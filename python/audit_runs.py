@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import oos_disposition
 import proc
+from self_review_tally import self_review_tally_items
 
 _CANONICAL = {"code-quality", "risk-integration", "correctness", "architecture", "security"}
 _DESIGN_RUN_TITLE_RE = re.compile(r"^chore\(larch-logs\): design run [0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$")
@@ -583,13 +584,6 @@ def _iter_ndjson(path: Path) -> tuple[list[dict[str, object]], bool]:
     return rows, err
 
 
-def _int_count(value: object) -> int:
-    try:
-        return int(str(value))
-    except (TypeError, ValueError):
-        return 0
-
-
 def _eligible_review_rows(rows: list[dict[str, object]]) -> list[dict[str, object]]:
     eligible: list[dict[str, object]] = []
     for row in rows:
@@ -603,26 +597,20 @@ def _eligible_review_rows(rows: list[dict[str, object]]) -> list[dict[str, objec
 
 def _self_review_tally_rows(run_dir: Path) -> list[dict[str, object]]:
     data = _read_json_file(run_dir / "code-review-tally.json")
-    if not isinstance(data, dict) or data.get("mode") != "self-review":
-        return []
     rows: list[dict[str, object]] = []
-    for outcome, count, prefix in (
-        ("accepted", _int_count(data.get("accepted_count")), "SELF_REVIEW_ACCEPTED"),
-        ("rejected", _int_count(data.get("rejected_count")), "SELF_REVIEW_REJECTED"),
-    ):
-        for idx in range(1, max(count, 0) + 1):
-            rows.append(
-                {
-                    "id": f"{prefix}_{idx}",
-                    "source": "committed-self-review-tally",
-                    "phase": "code-review",
-                    "outcome": outcome,
-                    "category": "",
-                    "severity": "(none)",
-                    "body_severity": "",
-                    "focus_area": "",
-                }
-            )
+    for item in self_review_tally_items(data):
+        rows.append(
+            {
+                "id": item.finding_id,
+                "source": "committed-self-review-tally",
+                "phase": "code-review",
+                "outcome": item.outcome,
+                "category": "",
+                "severity": "(none)",
+                "body_severity": "",
+                "focus_area": "",
+            }
+        )
     return rows
 
 
