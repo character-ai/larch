@@ -1,5 +1,5 @@
 # pyright: reportUnusedCallResult=false, reportUnusedFunction=false, reportUnknownArgumentType=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportOptionalIterable=false, reportArgumentType=false
-# ruff: noqa: PLR2004,PTH105,PTH108,N801,FBT001,ARG001,PLW2901,PIE810,SIM103,C420
+# ruff: noqa: PLR2004,PTH105,PTH108,N801,FBT001,ARG001,PLW2901,PIE810,SIM103
 # pylint: disable=too-many-lines,too-many-branches,too-many-statements,too-many-locals,too-many-arguments,import-outside-toplevel,unused-argument,too-many-boolean-expressions
 """Native review pipeline CLI entry points.
 
@@ -27,6 +27,15 @@ _PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 CLI = _PLUGIN_ROOT / "python" / "cli.py"
 STATIC_REVIEWERS = ("correctness", "edge-cases", "testing")
 FOCUS_AREAS = {"code-quality", "risk-integration", "correctness", "architecture", "security"}
+REVIEWER_PRUNE_ACCEPTANCE_FLOOR_NUMERATOR = 1
+REVIEWER_PRUNE_ACCEPTANCE_FLOOR_DENOMINATOR = 3
+
+
+@dataclass(frozen=True)
+class PruneRoundCounts:
+    accepted: int = 0
+    rejected: int = 0
+    total: int = 0
 
 
 @dataclass(frozen=True)
@@ -338,26 +347,58 @@ def _read_label_map(path: Path | None) -> dict[str, str]:
     return mapping
 
 
-def _read_classification_counts(path: Path, labels: Iterable[str], *, plan_mode: bool) -> dict[str, int]:
-    counts = {label: 0 for label in labels}
+def _read_classification_counts(path: Path, labels: Iterable[str], *, plan_mode: bool) -> dict[str, PruneRoundCounts]:
+    label_list = list(labels)
+    mutable_counts = {label: {"accepted": 0, "rejected": 0, "total": 0} for label in label_list}
+    label_keys = {label: label if plan_mode else _normalize_code_label(label) for label in label_list}
     with path.open(encoding="utf-8", errors="replace", newline="") as handle:
         reader = csv.DictReader(handle, delimiter="\t")
         if not reader.fieldnames:
-            return counts
+            return {label: PruneRoundCounts() for label in label_list}
         attr_col = "finding_reviewers" if "finding_reviewers" in reader.fieldnames else "reviewer_slots"
         for row in reader:
-            if (row.get("voting_result") or "").strip() != "accepted":
+            voting_result = (row.get("voting_result") or "").strip()
+            if voting_result not in {"accepted", "rejected", "neutral"}:
                 continue
             cell = row.get(attr_col) or ""
             if plan_mode:
-                tokens = {token.strip() for token in re.split(r"[,\s]+", cell.strip()) if token.strip()}
+                tokens = {token.strip() for token in cell.split(",") if token.strip()}
             else:
                 tokens = {_normalize_code_label(token) for token in cell.split("|") if token.strip()}
-            for label in counts:
-                key = label if plan_mode else _normalize_code_label(label)
-                if key in tokens:
-                    counts[label] += 1
-    return counts
+            for label, key in label_keys.items():
+                if key not in tokens:
+                    continue
+                mutable_counts[label]["total"] += 1
+                if voting_result == "accepted":
+                    mutable_counts[label]["accepted"] += 1
+                elif voting_result == "rejected":
+                    mutable_counts[label]["rejected"] += 1
+    return {
+        label: PruneRoundCounts(
+            accepted=counts["accepted"],
+            rejected=counts["rejected"],
+            total=counts["total"],
+        )
+        for label, counts in mutable_counts.items()
+    }
+
+
+
+def _prune_ledger_header() -> list[str]:
+    return ["round", "tool", "slot", "label", "accepted_count", "rejected_count", "total_count"]
+
+
+def _well_formed_prune_ledger_row(row: list[str]) -> bool:
+    if len(row) != len(_prune_ledger_header()):
+        return False
+    try:
+        int(row[0])
+        int(row[4])
+        int(row[5])
+        int(row[6])
+    except ValueError:
+        return False
+    return True
 
 
 def _rewrite_prune_ledger(path: Path, round_num: int, new_rows: list[list[str]]) -> None:
@@ -369,18 +410,16 @@ def _rewrite_prune_ledger(path: Path, round_num: int, new_rows: list[list[str]])
             for row in reader:
                 if not row or row[0] == "round":
                     continue
-                try:
-                    if int(row[0]) == round_num:
-                        continue
-                except ValueError:
+                if not _well_formed_prune_ledger_row(row):
                     continue
-                if len(row) >= 5:
-                    old_rows.append(row[:5])
+                if int(row[0]) == round_num:
+                    continue
+                old_rows.append(row)
     fd, tmp = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=str(path.parent))
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
             writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
-            writer.writerow(["round", "tool", "slot", "label", "accepted_count"])
+            writer.writerow(_prune_ledger_header())
             writer.writerows(old_rows)
             writer.writerows(new_rows)
         os.replace(tmp, path)
@@ -389,35 +428,59 @@ def _rewrite_prune_ledger(path: Path, round_num: int, new_rows: list[list[str]])
             os.unlink(tmp)
 
 
+
 def reviewer_prune_record(ledger: Path, round_num: int, manifest: Path, classification: Path, label_map: Path | None = None) -> None:
     rows = _manifest_rows(manifest)
     label_mp = _read_label_map(label_map)
     plan_mode = bool(label_mp)
     slot_labels = [(row, label_mp.get(str(row.get("slot") or ""), _output_label(row))) for row in rows]
     counts = _read_classification_counts(classification, [label for _, label in slot_labels], plan_mode=plan_mode)
-    ledger_rows = [
-        [str(round_num), str(row.get("tool") or ""), str(row.get("slot") or ""), label, str(counts.get(label, 0))]
-        for row, label in slot_labels
-    ]
+    ledger_rows = []
+    for row, label in slot_labels:
+        count = counts.get(label, PruneRoundCounts())
+        ledger_rows.append(
+            [
+                str(round_num),
+                str(row.get("tool") or ""),
+                str(row.get("slot") or ""),
+                label,
+                str(count.accepted),
+                str(count.rejected),
+                str(count.total),
+            ]
+        )
     _rewrite_prune_ledger(ledger, round_num, ledger_rows)
 
 
-def _ledger_history(path: Path, round_num: int) -> dict[str, dict[int, int]]:
-    hist: dict[str, dict[int, int]] = {}
+def _ledger_history(path: Path, round_num: int) -> dict[str, dict[int, PruneRoundCounts]]:
+    hist: dict[str, dict[int, PruneRoundCounts]] = {}
     with path.open(encoding="utf-8", errors="replace", newline="") as handle:
         reader = csv.DictReader(handle, delimiter="\t")
-        required = {"round", "tool", "slot", "accepted_count"}
+        required = set(_prune_ledger_header())
         if not reader.fieldnames or not required.issubset(set(reader.fieldnames)):
             raise ValueError("missing ledger columns")
         for row in reader:
             r = int((row.get("round") or "").strip())
-            count = int((row.get("accepted_count") or "").strip())
+            counts = PruneRoundCounts(
+                accepted=int((row.get("accepted_count") or "").strip()),
+                rejected=int((row.get("rejected_count") or "").strip()),
+                total=int((row.get("total_count") or "").strip()),
+            )
             if r >= round_num:
                 continue
             key = f"{row.get('tool', '')}:{row.get('slot', '')}"
             per = hist.setdefault(key, {})
-            per[r] = max(per.get(r, count), count)
+            existing = per.get(r)
+            if existing is None:
+                per[r] = counts
+            else:
+                per[r] = PruneRoundCounts(
+                    accepted=max(existing.accepted, counts.accepted),
+                    rejected=max(existing.rejected, counts.rejected),
+                    total=max(existing.total, counts.total),
+                )
     return hist
+
 
 
 def reviewer_prune_filter(ledger: Path, round_num: int, manifest: Path, out: Path) -> PruneFilterResult:
@@ -445,10 +508,20 @@ def reviewer_prune_filter(ledger: Path, round_num: int, manifest: Path, out: Pat
     for row in rows:
         key = _manifest_combo(row)
         recent = sorted(hist.get(key, {}).items())[-2:]
-        if len(recent) >= 2 and all(count == 0 for _, count in recent):
-            pruned.append(key)
-        else:
-            eligible.append(row)
+        if len(recent) >= 2:
+            accepted_sum = sum(count.accepted for _, count in recent)
+            rejected_sum = sum(count.rejected for _, count in recent)
+            total_sum = sum(count.total for _, count in recent)
+            net_prunable = accepted_sum - rejected_sum <= 0
+            floor_prunable = (
+                total_sum > 0
+                and accepted_sum * REVIEWER_PRUNE_ACCEPTANCE_FLOOR_DENOMINATOR
+                < total_sum * REVIEWER_PRUNE_ACCEPTANCE_FLOOR_NUMERATOR
+            )
+            if net_prunable or floor_prunable:
+                pruned.append(key)
+                continue
+        eligible.append(row)
     out.parent.mkdir(parents=True, exist_ok=True)
     with out.open("w", encoding="utf-8") as handle:
         for row in eligible:
@@ -501,16 +574,19 @@ def prune_window_evaluated(round_num: int | str) -> str:
 def ensure_reviewer_prune_ledger(ledger: Path) -> None:
     if not str(ledger):
         return
-    header = "round\ttool\tslot\tlabel\taccepted_count"
+    header = "\t".join(_prune_ledger_header())
     ledger.parent.mkdir(parents=True, exist_ok=True)
     if not ledger.exists() or ledger.stat().st_size == 0:
         ledger.write_text(header + "\n", encoding="utf-8")
         return
+    preserved: list[str] = []
     lines = ledger.read_text(encoding="utf-8", errors="replace").splitlines()
-    if lines and lines[0] == header:
-        return
-    preserved = [line for line in lines[1:] if re.match(r"^[0-9]+", line)] if len(lines) > 1 else []
+    for line in lines[1:]:
+        row = line.split("\t")
+        if _well_formed_prune_ledger_row(row):
+            preserved.append(line)
     ledger.write_text(header + "\n" + "".join(f"{line}\n" for line in preserved), encoding="utf-8")
+
 
 
 def write_prune_decision_env(
@@ -1641,7 +1717,7 @@ def _record_classification(review_tmpdir: Path, round_num: int, classification_f
     _emit_kv(round_key, classification_file)
 
 
-def _record_prune_round(prune_ledger: str, round_num: int, panel_manifest: str, classification_file: str) -> None:
+def _record_prune_round(prune_ledger: str, round_num: int, panel_manifest: str, classification_file: str, label_map: Path | None = None) -> None:
     if not prune_ledger or not panel_manifest or not classification_file:
         return
     manifest = Path(panel_manifest)
@@ -1649,7 +1725,7 @@ def _record_prune_round(prune_ledger: str, round_num: int, panel_manifest: str, 
     if not manifest.is_file() or not classification.is_file():
         return
     try:
-        reviewer_prune_record(Path(prune_ledger), round_num, manifest, classification)
+        reviewer_prune_record(Path(prune_ledger), round_num, manifest, classification, label_map)
     except Exception as exc:
         _emit_kv("WARN", f"reviewer-prune record failed for round {round_num}: {exc}")
 
@@ -1717,6 +1793,7 @@ def _zero_findings_branch(
     dynamic_slots: str,
     static_slot_count: str,
     run_id: str,
+    prune_ledger: str,
     *,
     runner: proc.Runner | None = None,
 ) -> None:
@@ -1751,6 +1828,8 @@ def _zero_findings_branch(
     tally = _kv_parse(tally_result.stdout)
     classification = tally.get("FINDINGS_CLASSIFICATION_TSV_FILE", "")
     _record_classification(review_tmpdir, round_num, classification)
+    if classification and Path(classification).is_file():
+        _record_prune_round(prune_ledger, round_num, panel_manifest, classification)
     _write_text(review_tmpdir / "accepted-findings.md", "")
     _write_text(review_tmpdir / "rejected-findings.md", "")
     _write_text(review_tmpdir / "oos-accepted-review.md", "")
@@ -1996,7 +2075,7 @@ def review_core(argv: list[str], *, runner: proc.Runner | None = None) -> int:
 
     findings_count = collect.get("FINDINGS_COUNT", "0")
     if findings_count == "0":
-        _zero_findings_branch(commands, review_tmpdir, round_num, mode, cursor_available, codex_available, session_env_path, panel_manifest, collector_results, not_substantive, panel_mode, panel_shape, scout_status, dynamic_slots, static_slot_count, run_id, runner=runner)
+        _zero_findings_branch(commands, review_tmpdir, round_num, mode, cursor_available, codex_available, session_env_path, panel_manifest, collector_results, not_substantive, panel_mode, panel_shape, scout_status, dynamic_slots, static_slot_count, run_id, prune_ledger, runner=runner)
         return 0
 
     aggregate_args = ["--findings-file", str(review_tmpdir / "findings.md"), "--review-tmpdir", str(review_tmpdir), "--codex-present", codex_available, "--cursor-present", cursor_available, "--mode", mode]
@@ -2031,7 +2110,7 @@ def review_core(argv: list[str], *, runner: proc.Runner | None = None) -> int:
             _emit_kv("FINDINGS_CLASSIFICATION_TSV_FILE", classification)
         return 2
     if aggregate.get("REASON") == "ok" and aggregate.get("MERGED_COUNT") == "0":
-        _zero_findings_branch(commands, review_tmpdir, round_num, mode, cursor_available, codex_available, session_env_path, panel_manifest, collector_results, not_substantive, panel_mode, panel_shape, scout_status, dynamic_slots, static_slot_count, run_id, runner=runner)
+        _zero_findings_branch(commands, review_tmpdir, round_num, mode, cursor_available, codex_available, session_env_path, panel_manifest, collector_results, not_substantive, panel_mode, panel_shape, scout_status, dynamic_slots, static_slot_count, run_id, prune_ledger, runner=runner)
         return 0
 
     prune_result = _call_maybe_override(commands.prune_nits, "prune-nit-findings", ["--findings-file", str(review_tmpdir / "findings.md"), "--input-mode", "code"], runner=runner)
@@ -2088,7 +2167,6 @@ def review_core(argv: list[str], *, runner: proc.Runner | None = None) -> int:
         _write_text(review_tmpdir / "rejected-findings.md", "")
         emit_args = ["--tally-file", tally.get("TALLY_FILE", str(review_tmpdir / "review-tally.env")), "--accepted-findings-file", tally.get("ACCEPTED_FINDINGS_FILE", str(review_tmpdir / "accepted-findings.md")), "--oos-file", str(review_tmpdir / "oos.md"), "--review-tmpdir", str(review_tmpdir), "--round", str(round_num), "--mode", mode, "--scout-status", scout_status, "--dynamic-slots", dynamic_slots, "--static-slot-count", static_slot_count]
         _emit_tally(commands, emit_args, review_tmpdir / "review-core-main-agent-emit.env", runner=runner)
-        _record_prune_round(prune_ledger, round_num, panel_manifest, classification)
         _flush_round_log(review_tmpdir, run_id, round_num)
         _emit_core_common("main-agent-vote-required", round_num, review_tmpdir, panel_mode, panel_shape, oos_drift=tally.get("OUT_OF_SCOPE_DRIFT_COUNT", "0"))
         if classification:

@@ -297,6 +297,9 @@ fi
 printf '# tally\\n' > "$tmp/voting-tally.md"
 if [[ "$emit_classification" == "true" ]]; then
   printf 'finding_id\\treviewer_slots\\tvoting_result\\n' > "$tmp/findings-classification-round-${round_num}.tsv"
+  if [[ "$status" == "main-agent-vote-required" && "${TEST_FINDINGS:-0}" -gt 0 ]]; then
+    printf 'FINDING_1\\t%s/codex-specialist-correctness-output.txt\\trejected\\n' "$tmp" >> "$tmp/findings-classification-round-${round_num}.tsv"
+  fi
 fi
 printf 'TALLY_STATUS=%s\\nACCEPTED_COUNT=%s\\nREJECTED_COUNT=%s\\nTALLY_FILE=%s/review-tally.env\\n' "$status" "$accepted" "$rejected" "$tmp"
 printf 'ACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\\n' "$tmp" "$tmp"
