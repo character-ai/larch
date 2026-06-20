@@ -27,6 +27,7 @@ import design_pause
 from issue_wire import emit_untrusted_file_block
 from logging_util import diagnostic, emit, emit_kv, quiet_init, reset_quiet_state
 from redact import redact_secrets_only
+from repo_roots import consumer_repo_root
 import session_env
 from session_env import validate_design_tmpdir
 
@@ -214,18 +215,7 @@ class ValidationSummary:
 
 
 def _git_repo_root(path: Path) -> Path | None:
-    try:
-        result = subprocess.run(
-            ["git", "-C", str(path), "rev-parse", "--show-toplevel"],
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            return Path(result.stdout.strip()).resolve()
-    except OSError:
-        pass
-    return None
+    return consumer_repo_root(path)
 
 
 def _repo_root_from(path: Path | None = None) -> Path:
@@ -2321,8 +2311,8 @@ def validator_autofix_main(argv: list[str]) -> int:
     else:
         attempted.parent.mkdir(parents=True, exist_ok=True)
         attempted.touch()
-        repo_root = subprocess.run(["git", "-C", str(Path.cwd()), "rev-parse", "--show-toplevel"], text=True, capture_output=True, check=False)
-        repo = repo_root.stdout.strip() if repo_root.returncode == 0 and repo_root.stdout.strip() else os.environ.get("CLAUDE_PLUGIN_ROOT", "")
+        repo_path = consumer_repo_root()
+        repo = str(repo_path) if repo_path is not None else os.environ.get("CLAUDE_PLUGIN_ROOT", "")
         autofix_rc, autofix_out = _capture_main(
             auto_fix_plan_commands_main,
             [

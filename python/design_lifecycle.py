@@ -32,6 +32,7 @@ import logging_util
 import redact
 import plan_quality
 import proc
+from repo_roots import consumer_repo_root
 import session_env
 import stall_recovery
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -298,6 +299,7 @@ PHASE_RESULT_ENV_ALLOW_KEYS = {
     "TRIGGER_REASONS",
     "VALIDATE_DEFECT_COUNT",
     "VALIDATE_LOG_FILE",
+    "VALIDATE_MISSING_SCRIPT_COUNT",
     "VALIDATE_SKIPPED_COUNT",
     "VALIDATE_STATUS",
     "VALIDATE_UNSAFE_TOKEN_COUNT",
@@ -2814,7 +2816,7 @@ def driver_main(argv: Sequence[str]) -> int:
     completed = design_tmpdir / ".completed"
     completed.mkdir(parents=True, exist_ok=True)
     root = Path(__file__).resolve().parents[1]
-    consumer_repo_root = subprocess.run(["git", "-C", str(Path.cwd()), "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False).stdout.strip() or str(root)
+    consumer_root = consumer_repo_root() or root
 
     action_lines: list[str]
     if ns.action_file:
@@ -2871,7 +2873,7 @@ def driver_main(argv: Sequence[str]) -> int:
         else:
             env = os.environ.copy()
             env["DESIGN_TMPDIR"] = str(design_tmpdir)
-            command = [sys.executable, str(root / "python" / "cli.py"), "plan", "validate", "--design-tmpdir", str(design_tmpdir), "--repo-root", consumer_repo_root, *action_args]
+            command = [sys.executable, str(root / "python" / "cli.py"), "plan", "validate", "--design-tmpdir", str(design_tmpdir), "--repo-root", str(consumer_root), *action_args]
             proc_out = subprocess.run(command, capture_output=True, text=True, check=False, env=env)
             if proc_out.stdout:
                 print(proc_out.stdout, end="")
@@ -3146,8 +3148,7 @@ def _valid_step2b_sentinels(design_tmpdir: Path) -> bool:
 
 
 def _repo_root() -> str:
-    result = subprocess.run(["git", "-C", str(Path.cwd()), "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False)
-    return result.stdout.strip() if result.returncode == 0 and result.stdout.strip() else str(Path(__file__).resolve().parents[1])
+    return str(consumer_repo_root() or Path(__file__).resolve().parents[1])
 
 
 def _compose_drafter_prompt(design_tmpdir: Path, plugin_root: Path) -> None:
@@ -3483,6 +3484,7 @@ STEP5C_PUBLISH_RESULT_ALLOW_KEYS = (
     "VALIDATE_DEFECT_COUNT",
     "VALIDATE_SKIPPED_COUNT",
     "VALIDATE_UNSAFE_TOKEN_COUNT",
+    "VALIDATE_MISSING_SCRIPT_COUNT",
     "VALIDATE_LOG_FILE",
     "PUBLISH_OK",
     "RENAMED",
@@ -3790,6 +3792,7 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
                     ("VALIDATE_DEFECT_COUNT", result_env.get("VALIDATE_DEFECT_COUNT", "")),
                     ("VALIDATE_SKIPPED_COUNT", result_env.get("VALIDATE_SKIPPED_COUNT", "")),
                     ("VALIDATE_UNSAFE_TOKEN_COUNT", result_env.get("VALIDATE_UNSAFE_TOKEN_COUNT", "")),
+                    ("VALIDATE_MISSING_SCRIPT_COUNT", result_env.get("VALIDATE_MISSING_SCRIPT_COUNT", "")),
                     ("VALIDATE_LOG_FILE", result_env.get("VALIDATE_LOG_FILE", "")),
                     ("FINAL_SUMMARY_PATH", final_summary_path),
                     ("UPSERT_STATUS", result_env.get("UPSERT_STATUS", "")),
