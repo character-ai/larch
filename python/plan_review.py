@@ -1352,10 +1352,22 @@ def _round_args(tmpdir: Path, round_num: int) -> list[str]:
 _ROUND_DIR_PRESERVE = frozenset({"round-start-s"})
 
 
+def _is_pre_collection_terminal(values: dict[str, str]) -> bool:
+    loop_status = values.get("LOOP_STATUS", "")
+    agg = values.get("AGGREGATOR_STATUS", "")
+    if loop_status == "zero-findings-degraded-panel":
+        return True
+    return loop_status == "panel-failed" and agg in {"skipped", "skipped-pruned-empty"}
+
+
 def _clean_round_dir(tmpdir: Path, round_num: int) -> None:
     round_dir = tmpdir / "plan-review" / f"round-{round_num}"
     if not round_dir.is_dir() or round_dir.is_symlink():
         return
+    status_link = round_dir / "reviewer-status.tsv"
+    if status_link.is_symlink():
+        with contextlib.suppress(OSError):
+            status_link.unlink()
     for child in round_dir.iterdir():
         if child.name in _ROUND_DIR_PRESERVE:
             continue
@@ -1370,16 +1382,24 @@ def _run_round_body(tmpdir: Path, round_num: int) -> tuple[int, dict[str, str]]:
     _clean_round_dir(tmpdir, round_num)
     if os.environ.get("RUN_STEP3_PLAN_REVIEW_LOOP_SH"):
         body_rc, out_text = _run_round_subprocess(tmpdir, _round_args(tmpdir, round_num))
+        values_pre = _parse_kv_text(out_text)
         round_status = tmpdir / "plan-review" / f"round-{round_num}" / "reviewer-status.tsv"
         # The subprocess round body normally produces reviewer-status.tsv (#4848); if an
         # injected loop override did not, materialize it here from the on-disk manifest +
         # collector-results.env so the SKILL.md table still works.
         if not round_status.is_file():
-            with contextlib.suppress(OSError):
-                _ = plan_review_round.write_reviewer_status_tsv(tmpdir, round_num)
+            collect_override: str | None = None
+            if _is_pre_collection_terminal(values_pre):
+                collect_override = ""
+                _ = (tmpdir / "collector-results.env").write_text("", encoding="utf-8")
+            _ = plan_review_round.try_write_reviewer_status_tsv(
+                tmpdir,
+                round_num,
+                collect_text=collect_override,
+                header_fallback=True,
+            )
         else:
-            with contextlib.suppress(OSError):
-                plan_review_round.sync_latest_reviewer_status(tmpdir, round_status)
+            plan_review_round.sync_latest_reviewer_status(tmpdir, round_status)
     else:
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):

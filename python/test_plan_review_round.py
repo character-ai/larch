@@ -878,6 +878,38 @@ def test_write_reviewer_status_tsv_collect_text_overrides_stale_collector_file(t
     assert out.read_text(encoding="utf-8").splitlines()[1] == "Cursor-Arch\tskipped\t"
 
 
+def test_write_reviewer_status_tsv_basename_collision_prefers_ok(tmp_path: Path) -> None:
+    """Normalized basename collisions prefer OK over non-OK collector statuses (#4848)."""
+    design = tmp_path
+    round_dir = design / "plan-review" / "round-1"
+    round_dir.mkdir(parents=True)
+    manifest_output = round_dir / "cursor-plan-arch-output.txt"
+    retry_output = round_dir / "cursor-plan-arch-output-retry.txt"
+    rows = [
+        {
+            "tool": "cursor",
+            "slot": "cursor-plan-arch",
+            "output": str(manifest_output),
+            "prompt_file": str(design / "p1"),
+        }
+    ]
+    _ = (design / "plan-review-slots.ndjson").write_text(json.dumps(rows[0]) + "\n", encoding="utf-8")
+    for records in (
+        [
+            collect_results.CollectorRecord(reviewer_file=str(manifest_output), tool="cursor", status="EMPTY_OUTPUT", exit_code="4"),
+            collect_results.CollectorRecord(reviewer_file=str(retry_output), tool="cursor", status="OK", exit_code="0"),
+        ],
+        [
+            collect_results.CollectorRecord(reviewer_file=str(retry_output), tool="cursor", status="OK", exit_code="0"),
+            collect_results.CollectorRecord(reviewer_file=str(manifest_output), tool="cursor", status="EMPTY_OUTPUT", exit_code="4"),
+        ],
+    ):
+        _ = (design / "collector-results.env").write_text(_collector_text(records), encoding="utf-8")
+        out = plan_review_round.write_reviewer_status_tsv(design, 1)
+        assert out is not None
+        assert out.read_text(encoding="utf-8").splitlines()[1] == "Cursor-Arch\tdone\t"
+
+
 def test_execute_round_empty_paths_clears_stale_collector_for_status(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
