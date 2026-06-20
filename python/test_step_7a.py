@@ -156,7 +156,7 @@ def test_step7a_diagram_failure_emits_diagram_reason_on_rebase_failure(tmp_path:
     mock_flush.assert_called_once()
 
 
-def test_step7a_rebase_failure_defers_git_commit_flush(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_step7a_rebase_failure_defers_git_commit_flush(tmp_path: Path) -> None:
     _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
 
     with patch.object(step_7a, "_is_small_non_runtime_change", return_value=True), patch.object(
