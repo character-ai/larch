@@ -1154,8 +1154,8 @@ def _record_applied_finding_keys(tmpdir: Path, round_num: int, keys: Sequence[st
 def _filter_rejected_findings_body(text: str, applied: set[str], marker_re: str) -> tuple[str, bool]:
     """Filter ``text`` blocks starting with ``marker_re``, dropping applied keys.
 
-  Returns ``(filtered_body, had_blocks)`` where ``had_blocks`` is true when at
-  least one block header matched ``marker_re``.
+    Returns ``(filtered_body, had_blocks)`` where ``had_blocks`` is true when at
+    least one block header matched ``marker_re``.
     """
     matches = list(re.finditer(marker_re, text))
     if not matches:
@@ -1221,7 +1221,7 @@ def emit_rejected_findings(argv: Sequence[str]) -> int:
         "has no recognizable blocks; emitting empty body",
         file=sys.stderr,
     )
-    print("", end="")
+    print(end="")
     return 0
 
 
