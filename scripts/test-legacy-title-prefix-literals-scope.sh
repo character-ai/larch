@@ -16,8 +16,10 @@ ALLOW=(
   python/combine_issues.py
   python/ci_agentic_fix.py
   python/test_combine_issues.py
+  python/test_deps_audit.py
   SECURITY.md
   docs/linting.md
+  docs/skills.md
   python/admission.py
   python/preflight.py
   python/issue_wire.py
@@ -27,6 +29,7 @@ ALLOW=(
   scripts/test-legacy-title-prefix-literals-scope.sh
   python/test_issue_wire.py
   python/test_tracking_issue.py
+  skills/deps/SKILL.md
 )
 
 fail() {

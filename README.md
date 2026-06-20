@@ -77,6 +77,12 @@ larch ships **public skills** with the plugin (`skills/`); **private** skills li
     <tr><td colspan="2">Author or refresh an issue-anchored implementation plan in GitHub (plan markers in the issue body). <code>-p</code>/<code>--partition</code> routes Step 2b.5 directly to the decomposition panel when no plan-size threshold trips; size triggers show the <code>Override</code>/<code>Cancel</code> prompt. Optional <code>--brainstorm</code> runs Step 1d.5 ideation before the Step 1d.7 outline-approval gate (Gate A re-entry only post-plan) (see <a href="docs/skills.md#design">docs/skills.md</a>). Gate B auto-applies accepted findings by default; <code>--per-round-approval</code> restores the explicit per-round apply prompt. <code>--skip-approve</code>/<code>-s</code> auto-approves the Step 1d.7 outline and Gate C final plan without an <code>AskUserQuestion</code> (no other prompts are skipped). The old <code>--approve</code> and <code>--hard</code> flags are rejected; use <code>--per-round-approval</code> for explicit Gate B prompts. Finalize runs upstream <code>/larch:issue</code> batch filing for accepted non-security OOS (Step <strong>5b</strong>) before writing and publishing the <code>larch:plan</code> block (<strong>5c</strong>); tmpdir cleanup is Step <strong>6</strong>.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
+      <td><a href="docs/skills.md#deps"><code>/deps</code></a></td>
+      <td><code>[--repo owner/name] [--pair-cap N]</code></td>
+    </tr>
+    <tr><td colspan="2">Audit open issues by in-flight title prefix, conservatively refresh mutable REGULAR bodies, propose stale REGULAR closes, and infer dependencies with an explicit-ref scan plus latent semantic pass. Mutates only after <code>AskUserQuestion</code> approval. Dependency writes use <code>/block-issue</code>. <code>--pair-cap</code> is explicit partial-audit mode.</td></tr>
+    <tr><td colspan="2"><hr></td></tr>
+    <tr>
       <td><a href="docs/skills.md#pause"><code>/pause</code></a></td>
       <td></td>
     </tr>
