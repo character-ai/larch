@@ -8,7 +8,7 @@
 - **PR**: #4896 — https://github.com/character-ai/larch/pull/4896
 - **Plan review**: N/A
 - **Code review**: 1/2 accepted
-- **Lines (PR diff)**: code +534/-80, larch-logs +689/-0
+- **Lines (PR diff)**: code +535/-80, larch-logs +690/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 2
