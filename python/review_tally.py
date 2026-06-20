@@ -261,22 +261,6 @@ def _seed_oos_seq(session_env_path: str) -> int:
     return count
 
 
-def _normalize_reviewer_basename(base: str) -> str:
-    base = base.rsplit("/", 1)[-1]
-    if base.endswith(".txt"):
-        stem, ext = base[:-4], ".txt"
-    else:
-        stem, ext = base, ""
-    while True:
-        for suffix in ("-phase2", "-phase3", "-retry"):
-            if stem.endswith(suffix):
-                stem = stem[: -len(suffix)]
-                break
-        else:
-            break
-    return stem + ext
-
-
 def _static_focus_area(slug: str) -> str:
     return {
         "structure": "code-quality",
@@ -301,7 +285,7 @@ def _write_archetype_map(manifest_file: Path) -> dict[str, tuple[str, str, str]]
         except json.JSONDecodeError:
             continue
         output = str(row.get("output") or "")
-        base = _normalize_reviewer_basename(output.rsplit("/", 1)[-1] if output else "")
+        base = voting.normalize_reviewer_basename(output.rsplit("/", 1)[-1] if output else "")
         slot = str(row.get("slot") or "")
         focus = str(row.get("focus_area") or "")
         weight = str(row.get("weight") or "1")
@@ -336,7 +320,7 @@ def _parse_collector_status(collector_file: str) -> dict[str, str]:
     for line in _read(Path(collector_file)).splitlines():
         if not line:
             if cr_file and cr_status:
-                status_map[_normalize_reviewer_basename(cr_file)] = cr_status
+                status_map[voting.normalize_reviewer_basename(cr_file)] = cr_status
             cr_file = ""
             cr_status = ""
         elif line.startswith("REVIEWER_FILE="):
@@ -344,7 +328,7 @@ def _parse_collector_status(collector_file: str) -> dict[str, str]:
         elif line.startswith("STATUS="):
             cr_status = line[len("STATUS=") :]
     if cr_file and cr_status:
-        status_map[_normalize_reviewer_basename(cr_file)] = cr_status
+        status_map[voting.normalize_reviewer_basename(cr_file)] = cr_status
     return status_map
 
 
@@ -356,7 +340,7 @@ def _append_manifest_dead_rows(
     score_rows: list[tuple[str, str, str]],
 ) -> None:
     collector_status = _parse_collector_status(collector_file)
-    seen = {_normalize_reviewer_basename(reviewer) for reviewer, _kind, _result in score_rows}
+    seen = {voting.normalize_reviewer_basename(reviewer) for reviewer, _kind, _result in score_rows}
     for line in _read(manifest_file).splitlines():
         if not line.strip():
             continue
@@ -365,7 +349,7 @@ def _append_manifest_dead_rows(
         except json.JSONDecodeError:
             continue
         output = str(row.get("output") or "")
-        base = _normalize_reviewer_basename(output.rsplit("/", 1)[-1] if output else "")
+        base = voting.normalize_reviewer_basename(output.rsplit("/", 1)[-1] if output else "")
         if not base or base in seen:
             continue
         status = collector_status.get(base, "OK")
@@ -382,7 +366,7 @@ def _write_yield_tsv(
     for reviewer, kind, result in score_rows:
         if kind != "finding":
             continue
-        base = _normalize_reviewer_basename(reviewer)
+        base = voting.normalize_reviewer_basename(reviewer)
         totals[base][0] += 1
         if result == "accepted":
             totals[base][1] += 1
@@ -396,7 +380,7 @@ def _write_yield_tsv(
     _write(yield_path, "".join(lines))
     orphans: list[str] = []
     for reviewer, _kind, _result in score_rows:
-        base = _normalize_reviewer_basename(reviewer)
+        base = voting.normalize_reviewer_basename(reviewer)
         if base not in archetype_map and base not in orphans:
             orphans.append(base)
     return orphans

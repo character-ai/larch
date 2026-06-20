@@ -37,6 +37,14 @@ def test_vote_thresholds_and_panel_labels() -> None:
     assert voting.panel_tier(0) == "main-agent-required"
 
 
+def test_normalize_reviewer_basename_strips_path_and_waterfall_suffixes() -> None:
+    assert voting.normalize_reviewer_basename("structure.txt") == "structure.txt"
+    assert voting.normalize_reviewer_basename("out/dir/correctness-phase2.txt") == "correctness.txt"
+    assert voting.normalize_reviewer_basename("security-phase2-retry.txt") == "security.txt"
+    assert voting.normalize_reviewer_basename("edge-cases-phase3") == "edge-cases"
+    assert voting.normalize_reviewer_basename("plain") == "plain"
+
+
 def test_vote_for_id_last_match_and_exonerate(tmp_path: Path) -> None:
     voter = tmp_path / "voter.txt"
     voter.write_text(
