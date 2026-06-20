@@ -335,9 +335,13 @@ def _compose_attributed_ballot(design: Path, oos_md: str) -> str:
     return "\n\n".join(parts) + ("\n" if parts else "")
 
 
-def _aggregation_ok_for_voting(agg_kv: dict[str, str]) -> bool:
+def _aggregation_ok_for_voting(agg_kv: dict[str, str], *, returncode: int = 0) -> bool:
+    if returncode != 0:
+        return False
     reason = agg_kv.get("REASON", "")
     if reason in {"insufficient-input", "disabled"}:
+        return True
+    if reason in {"dispatch-failed", "validation-failed", "validation-exhausted"}:
         return True
     return reason == "ok" and agg_kv.get("AGGREGATED", "false") == "true"
 
@@ -528,7 +532,7 @@ def execute_round(
     values["AGGREGATOR_STATUS"] = agg_status
     ballot = design / "ballot.txt"
     proposer_map = design / "proposer-map.tsv"
-    if not _aggregation_ok_for_voting(agg_kv):
+    if not _aggregation_ok_for_voting(agg_kv, returncode=agg.returncode):
         values.update(
             {
                 "LOOP_STATUS": "panel-failed",

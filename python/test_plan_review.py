@@ -1246,7 +1246,10 @@ def test_aggregation_ok_for_voting_accepts_ok_and_intentional_skips() -> None:
     assert plan_review_round._aggregation_ok_for_voting({"REASON": "ok", "AGGREGATED": "true"})  # pyright: ignore[reportPrivateUsage]
     assert plan_review_round._aggregation_ok_for_voting({"REASON": "insufficient-input", "AGGREGATED": "false"})  # pyright: ignore[reportPrivateUsage]
     assert plan_review_round._aggregation_ok_for_voting({"REASON": "disabled", "AGGREGATED": "false"})  # pyright: ignore[reportPrivateUsage]
-    assert not plan_review_round._aggregation_ok_for_voting({"REASON": "validation-failed", "AGGREGATED": "false"})  # pyright: ignore[reportPrivateUsage]
+    assert plan_review_round._aggregation_ok_for_voting({"REASON": "validation-failed", "AGGREGATED": "false"}, returncode=0)  # pyright: ignore[reportPrivateUsage]
+    assert plan_review_round._aggregation_ok_for_voting({"REASON": "validation-exhausted", "AGGREGATED": "false"}, returncode=0)  # pyright: ignore[reportPrivateUsage]
+    assert plan_review_round._aggregation_ok_for_voting({"REASON": "dispatch-failed", "AGGREGATED": "false"}, returncode=0)  # pyright: ignore[reportPrivateUsage]
+    assert not plan_review_round._aggregation_ok_for_voting({"REASON": "validation-failed", "AGGREGATED": "false"}, returncode=1)  # pyright: ignore[reportPrivateUsage]
     assert not plan_review_round._aggregation_ok_for_voting({"REASON": "ok", "AGGREGATED": "false"})  # pyright: ignore[reportPrivateUsage]
 
 

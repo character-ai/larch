@@ -529,7 +529,10 @@ class _Tally:
 
             reviewer = self._proposer_for_item(item_id, block)
             kind = "oos" if item_id.startswith("OOS_") else "finding"
-            score_rows.append((reviewer, kind, result))
+            score_rows.extend(
+                (reviewer_slot, kind, result)
+                for reviewer_slot in [part.strip() for part in reviewer.split(",") if part.strip()]
+            )
             security = self._is_security(block)
             block_text = Path(block).read_text(encoding="utf-8", errors="replace")
             artifact_text = self._artifact_text_for_item(item_id, block)
