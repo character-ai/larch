@@ -92,6 +92,7 @@ _ALLOWED_SHIP_STATE_KEYS = frozenset({
     "MERGE_RESULT",
     "CI_FIX_REBASE_PENDING",
     "CI_FIX_REBASE_PENDING_HEAD",
+    "LAST_MONITORED_HEAD",
     "REBASE_COUNT",
     "FIX_ATTEMPTS",
     "ITERATION",
@@ -546,6 +547,7 @@ def _write_ship_state(
     caller_kind: str | None = None,
     extra_fields: dict[str, str] | None = None,
     ci_fix_rebase_pending_head: str = "",
+    last_monitored_head: str | None = None,
     terminal_outcome: Outcome | None = None,
     failed_run_id: str = "",
     bail_failure_detail_log: str = "",
@@ -624,6 +626,8 @@ def _write_ship_state(
         "RESUME_PHASE": resume_phase,
         "CALLER_KIND": caller_kind,
     })
+    if last_monitored_head is not None:
+        fields["LAST_MONITORED_HEAD"] = last_monitored_head
     if phase == "done":
         fields.update({
             "STALL_TRACKING": "false",
@@ -721,6 +725,34 @@ def _try_current_branch(runner: Runner, *, cwd: str | None) -> str:
         return git.current_branch(runner, cwd=cwd)
     except Exception:  # pylint: disable=broad-except
         return ""
+
+
+def _seed_last_monitored_head(
+    ctx: RunContext,
+    runner: Runner,
+    *,
+    cwd: str,
+    fix_attempts: int,
+) -> str | None:
+    """Resume seed for post-push empty-checks grace (issue #4867).
+
+    When the merge loop restarts after a head-changing push, the in-process
+    ``last_monitored_head`` is lost. Rehydrate from durable state so the first
+    monitor poll after resume still uses ``CI_WAIT_POST_FIX_EMPTY_CHECKS_GRACE_SEC``.
+    """
+    current = git.try_rev_parse(runner, "HEAD", cwd=cwd)
+    state = _state_file_kv(ctx.state_file)
+    persisted = state.get("LAST_MONITORED_HEAD", "")
+    pending_head = state.get("CI_FIX_REBASE_PENDING_HEAD", "")
+    if persisted and current and persisted != current:
+        return persisted
+    if ctx.ci_fix_rebase_pending and current:
+        if pending_head and pending_head != current:
+            return pending_head
+        return ""
+    if fix_attempts > 0 and persisted and current and persisted != current:
+        return persisted
+    return current
 
 
 def _fresh_resume_plan(
@@ -1423,9 +1455,14 @@ def run_ship(
         # Head observed by the previous monitor poll. When a loop iteration pushes
         # a new head (CI-fix or rebase) the next monitor expects a fresh CI run; if
         # none starts we must detect it within a bounded window rather than poll the
-        # full budget (issue #4867). Seed with the entry head so a phase14-resume
-        # push is also covered.
-        last_monitored_head = git.try_rev_parse(runner, "HEAD", cwd=repo_root)
+        # full budget (issue #4867). Seed from durable state on resume so a
+        # head-changing push before restart still gets bounded empty-checks grace.
+        last_monitored_head = _seed_last_monitored_head(
+            working,
+            runner,
+            cwd=repo_root,
+            fix_attempts=fix_attempts,
+        )
         while True:
             if iteration > config.SHIP_MERGE_LOOP_MAX_ITERATIONS:
                 _write_terminal_state(
@@ -1453,6 +1490,7 @@ def run_ship(
                 ci_fix_rebase_pending_head=(git.try_rev_parse(runner, "HEAD", cwd=repo_root) or "")
                 if working.ci_fix_rebase_pending
                 else "",
+                last_monitored_head=last_monitored_head or "",
             )
             phase14_flag = Path(working.tmpdir) / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME
             if phase14_flag.is_file():
@@ -1479,6 +1517,7 @@ def run_ship(
                         transient_retries=transient_retries,
                         resume_phase="",
                         caller_kind="",
+                        last_monitored_head=last_monitored_head or "",
                     )
                     continue
                 except PrePushConflictHandoff as exc:
@@ -1507,7 +1546,6 @@ def run_ship(
                 if current_head != last_monitored_head
                 else 0
             )
-            last_monitored_head = current_head
             monitor = ci_monitor.monitor(
                 runner,
                 pr=working.pr_number or 0,
@@ -1524,6 +1562,7 @@ def run_ship(
                 ctx=working,
                 cwd=repo_root,
             )
+            last_monitored_head = current_head
             monitor_pending = getattr(monitor, "ci_fix_rebase_pending", working.ci_fix_rebase_pending)
             if monitor_pending != working.ci_fix_rebase_pending:
                 working = working.with_(ci_fix_rebase_pending=monitor_pending)
@@ -1536,6 +1575,7 @@ def run_ship(
                     fix_attempts=fix_attempts,
                     transient_retries=transient_retries,
                     ci_fix_rebase_pending_head=pending_head or "",
+                    last_monitored_head=last_monitored_head or "",
                 )
             if monitor.result.outcome is not Outcome.OK:
                 persisted = _monitor_persisted_counters(
@@ -1680,6 +1720,7 @@ def run_ship(
                     rebase_count=rebase_count,
                     fix_attempts=fix_attempts,
                     transient_retries=transient_retries,
+                    last_monitored_head=last_monitored_head or "",
                 )
                 continue
 
