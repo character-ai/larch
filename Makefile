@@ -243,7 +243,7 @@ test-check-scope-reduction-marker:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_dirty_tree.py -x -q -k 'scope_check or scope_marker'
 
 test-plan-review:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review.py -q -k 'drift_baseline and not round_artifact'
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review.py -q -k '(drift_baseline and not round_artifact) or compose_attributed_ballot or ballot_neutralization or aggregation_ok or aggregator_status'
 
 test-plan-review-panel:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review_panel.py -q -k 'not ((panel_dispatch and not usage) or (voter_dispatch and not usage))'
@@ -760,7 +760,7 @@ test-gather-context:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_pipeline.py -k gather_context
 
 test-review-core:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_pipeline.py -k 'review_core and not prune'
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_pipeline.py -k '(review_core or write_proposer_sidecar) and not prune'
 
 test-dispatch-panel-core:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_pipeline.py -k dispatch_panel_core
@@ -796,7 +796,7 @@ test-prune-nit-findings:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_aggregate.py -k 'prune_nit'
 
 test-tally-code-votes:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_tally.py -k 'tally_ and not emit'
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_tally.py -k '(tally_ or attributed_ballot or neutralized_ballot) and not emit'
 
 .PHONY: test-check-reviewer-failure-threshold
 test-check-reviewer-failure-threshold:
