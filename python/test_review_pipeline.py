@@ -238,6 +238,43 @@ def test_check_reviewer_failure_threshold_preserves_not_substantive_against_raw_
     assert "NOT_SUBSTANTIVE_SLOTS=1" in result.stdout
 
 
+def test_check_reviewer_failure_threshold_ignores_not_substantive_prose_in_output(tmp_path: Path) -> None:
+    # Reviewer output that merely *discusses* NOT_SUBSTANTIVE in its findings prose
+    # must not downgrade a slot the collector already classified OK. Reproduces #4935:
+    # _output_file_success used a loose substring match that false-positived on prose.
+    reviewer = tmp_path / "cursor-specialist-correctness-output.txt"
+    _ = reviewer.write_text(
+        "FINDING_1: the slot is still classified as NOT_SUBSTANTIVE in that path\n",
+        encoding="utf-8",
+    )
+    collector = tmp_path / "collector-results.env"
+    _ = collector.write_text(
+        f"REVIEWER_FILE={reviewer}\n"
+        "TOOL=cursor\n"
+        "STATUS=OK\n"
+        "EXIT_CODE=0\n\n",
+        encoding="utf-8",
+    )
+    result = run_review(
+        "check-reviewer-failure-threshold",
+        "--collector-results-file",
+        str(collector),
+        "--panel",
+        "hard",
+        "--intended-slots",
+        "1",
+        "--launched-slots",
+        "1",
+        "--reviewer-output-files",
+        str(reviewer),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "SUCCEEDED_SLOTS=1" in result.stdout
+    assert "FAILED_SLOTS=0" in result.stdout
+    assert "THRESHOLD_OK=true" in result.stdout
+
+
 def test_check_reviewer_failure_threshold_ignores_straggler_drops(tmp_path: Path) -> None:
     collector = tmp_path / "collector-results.env"
     _ = collector.write_text("", encoding="utf-8")
