@@ -82,6 +82,36 @@ def _plugin_root() -> Path:
     return Path(os.environ.get("CLAUDE_PLUGIN_ROOT") or _REPO_ROOT)
 
 
+def _consumer_repo_root() -> Path | None:
+    """Git toplevel of the loop's working directory — the consumer repo being
+    designed — or ``None`` when cwd is not inside a git work tree.
+
+    ``_REPO_ROOT`` is the plugin cache (this module loads from
+    ``CLAUDE_PLUGIN_ROOT``), and ``_run_command`` forces every loop subprocess to
+    that cwd. The postplan validator (``design postplan-emit``) derives the
+    consumer repo from its *own* cwd to resolve plan-command script paths against
+    it (design_postplan ``_consumer_repo_root``, #4490). Running it under the
+    plugin-cache cwd collapses that derivation, so consumer-only scripts absent
+    from a lagging plugin cache are false-flagged ``missing-script`` and the loop
+    bails to ``postplan-operator-required`` (#4847, a #4490 recurrence). Capturing
+    the consumer root from the loop's own cwd lets the postplan-emit subprocess
+    run with the consumer-repo cwd, exactly as the Step 2b postplan does.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(Path.cwd()), "rev-parse", "--show-toplevel"],  # noqa: S607
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return None
+    out = result.stdout.strip()
+    if result.returncode == 0 and out:
+        return Path(out).resolve()
+    return None
+
+
 def _emit_kv(key: str, value: object = "") -> None:
     print(f"{key}={value}")
 
@@ -860,7 +890,14 @@ def _run_post_apply(tmpdir: Path, round_num: int, values: dict[str, str]) -> int
         base = [override]
     else:
         base = [sys.executable, str(_plugin_root() / "python" / "cli.py"), "design", "postplan-emit"]
-    proc = _run_command([*base, "--design-tmpdir", str(tmpdir), "--with-plan-size"])
+    # #4847: run the postplan validator from the consumer-repo cwd so it derives
+    # the consumer repo (design_postplan._consumer_repo_root) and resolves
+    # plan-command script paths against it. Without this override _run_command
+    # forces the plugin-cache cwd, the consumer-root derivation collapses, and
+    # consumer-only scripts absent from a lagging plugin cache are false-flagged
+    # missing-script (#4490 recurrence). cwd=None falls back to _REPO_ROOT when
+    # cwd is not a git tree (no consumer repo to target), preserving prior behavior.
+    proc = _run_command([*base, "--design-tmpdir", str(tmpdir), "--with-plan-size"], cwd=_consumer_repo_root())
     rc = proc.returncode
     if rc == 0:
         _write_phase(tmpdir, round_num, "awaiting-continuation")
@@ -883,8 +920,10 @@ def _run_command(
     env: dict[str, str] | None = None,
     capture: bool = True,
     stdin_text: str | None = None,
+    cwd: str | Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(argv, cwd=str(_REPO_ROOT), env=env, text=True, capture_output=capture, input=stdin_text, check=False)
+    run_cwd = str(cwd) if cwd is not None else str(_REPO_ROOT)
+    return subprocess.run(argv, cwd=run_cwd, env=env, text=True, capture_output=capture, input=stdin_text, check=False)
 
 
 def persist_design_round_start_s(design_tmpdir: str | Path, round_num: int, start_s: int) -> int:

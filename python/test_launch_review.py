@@ -36,7 +36,11 @@ def _run(args: list[str], env: dict[str, str] | None = None) -> subprocess.Compl
         text=True,
         capture_output=True,
         env=merged,
-        timeout=10,
+        # Generous outer cap: each call spawns a full cli.py + agents.py import whose
+        # cold-start wall time spikes under serial-suite load (observed ~10s in
+        # isolation), so a 10s cap raced TimeoutExpired. The inner agent run is bounded
+        # separately by the --timeout arg (typically 2s).
+        timeout=60,
         check=False,
     )
 
