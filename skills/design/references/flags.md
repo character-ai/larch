@@ -70,7 +70,7 @@ The helper emits comma-separated reason tokens in **fixed priority order** `plan
 
 ## Plan-command validator
 
-Post-plan validation for `plan.txt` is owned by `python/cli.py design postplan-emit` after each successful plan emit (initial Step 2b, Gate A re-entry, Gate B, and discussion-round2). Validation is unconditional: there is no quick-skip path and no force flag. Step 5c validates `composed-plan.md` inside `python/cli.py design publish` before redaction unless the operator has accepted the proceed-anyway path.
+Post-plan validation for `plan.txt` is owned by `python/cli.py design postplan-emit` after each successful plan emit (initial Step 2b, Gate A re-entry, Gate B, and discussion-round2). Validation is unconditional: there is no quick-skip path and no force flag. Step 5c validates `composed-plan.md` through `python/cli.py design step5c`, which calls the publish tail in-process before redaction unless the operator has accepted the proceed-anyway path.
 
 **Defect handling**: when machine output reports `VALIDATE_STATUS=defects-found`, use the shared auto-repair-then-escalate body in `SKILL.md` (**### Plan command validator failure (shared)**).
 
