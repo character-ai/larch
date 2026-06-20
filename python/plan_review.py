@@ -1184,6 +1184,23 @@ def _filter_rejected_findings_body(text: str, applied: set[str], marker_re: str)
     return "".join(kept), True
 
 
+REJECTED_FINDINGS_REPORT_HEADING = "## Considered Plan Review Suggestions (Not Adopted)"
+REJECTED_FINDINGS_REPORT_ANNOTATION = (
+    "These reviewer suggestions were considered but not adopted. Some may already "
+    "be addressed by the current plan; they are not automatically unimplemented gaps."
+)
+
+
+def _format_rejected_findings_report(body: str, *, report_framing: bool) -> str:
+    if not report_framing or not body:
+        return body
+    return (
+        f"{REJECTED_FINDINGS_REPORT_HEADING}\n\n"
+        f"{REJECTED_FINDINGS_REPORT_ANNOTATION}\n\n"
+        f"{body}"
+    )
+
+
 def emit_rejected_findings(argv: Sequence[str]) -> int:
     """Emit the Step 4 rejected-findings body with already-applied findings removed.
 
@@ -1202,6 +1219,7 @@ def emit_rejected_findings(argv: Sequence[str]) -> int:
     """
     parser = argparse.ArgumentParser(prog="cli.py plan-review emit-rejected")
     parser.add_argument("--design-tmpdir", required=True)  # pyright: ignore[reportUnusedCallResult]
+    parser.add_argument("--report-framing", action="store_true")  # pyright: ignore[reportUnusedCallResult]
     ns = parser.parse_args(list(argv))
     tmpdir = _require_tmpdir(parser, ns.design_tmpdir)
     path = tmpdir / "rejected-findings.md"
@@ -1212,19 +1230,19 @@ def emit_rejected_findings(argv: Sequence[str]) -> int:
         return 0
     applied = _read_all_applied_finding_keys(tmpdir)
     if not applied:
-        print(text, end="")
+        print(_format_rejected_findings_report(text, report_framing=ns.report_framing), end="")
         return 0
     filtered, had_blocks = _filter_rejected_findings_body(
         text, applied, r"(?m)^### \[Plan Review\] "
     )
     if had_blocks:
-        print(filtered, end="")
+        print(_format_rejected_findings_report(filtered, report_framing=ns.report_framing), end="")
         return 0
     filtered, had_blocks = _filter_rejected_findings_body(
         text, applied, r"(?m)^### FINDING_[0-9]+:"
     )
     if had_blocks:
-        print(filtered, end="")
+        print(_format_rejected_findings_report(filtered, report_framing=ns.report_framing), end="")
         return 0
     print(
         "WARN=emit-rejected: applied-finding ledger present but rejected-findings.md "

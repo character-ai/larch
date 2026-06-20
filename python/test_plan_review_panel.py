@@ -211,6 +211,8 @@ def test_panel_dispatch_static_slot_matrix(tmp_path: Path) -> None:
     assert "PANEL_PATHS_FILE=" in proc.stdout
     manifest_lines = (design / "plan-review-slots.ndjson").read_text(encoding="utf-8").splitlines()
     assert len([line for line in manifest_lines if line.strip()]) == 8
+    static_prompt = (design / "render-plan-cursor-arch.prompt").read_text(encoding="utf-8")
+    assert "verify the current plan does not already include the proposed fix" in static_prompt
 
 
 def test_panel_dispatch_dynamic_scout_rows(tmp_path: Path) -> None:
@@ -333,6 +335,7 @@ def test_panel_dispatch_dynamic_rows_render_full_scaffold(tmp_path: Path) -> Non
     # ...but it is no longer the ENTIRE prompt — the scaffold now wraps it.
     assert "Review the implementation plan file at " in rendered
     assert str((design / "plan.txt").resolve()) in rendered
+    assert "verify the current plan does not already include the proposed fix" in rendered
     assert "schema_version\tscope\tseverity" in rendered
     assert '{"no_issues_found": true}' in rendered
 
