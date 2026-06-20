@@ -1,0 +1,41 @@
+---
+name: voter-calibration
+description: "Use when analyzing voter agreement and chronic outlier voters from committed larch run logs; diagnostic only; does not affect spawning, thresholds, tokens, or reviewer points."
+allowed-tools: Bash, Read
+---
+
+# voter-calibration
+
+Analyze **voter agreement** and chronic outlier voters from committed larch run logs.
+
+The analyzer measures agreement only. It does **not** use realized outcomes, issue fate, reverts, or reviewer points. It does **not** affect spawning, thresholds, token allocation, or live voter rewards.
+
+## Usage
+
+`/voter-calibration [--log-root DIR] [--min-votes N] [--outlier-threshold R] [--out FILE]`
+
+## Run the Analysis
+
+Call the analyzer via the Bash tool, forwarding any flags, then relay its markdown stdout to the user:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/skills/voter-calibration/scripts/voter-calibration.py" [flags]
+```
+
+Do not re-tally or re-format the analysis in the main agent. The script owns extraction, shared agreement math, and rendering.
+
+Flags:
+
+- `--log-root DIR` - `larch-logs` directory. Default: `<git toplevel>/larch-logs`.
+- `--min-votes N` - minimum eligible votes before outlier flagging. Default: `20`.
+- `--outlier-threshold R` - flag chronic outliers below this agreement rate. Default: `0.50`.
+- `--out FILE` - write the report to `FILE` instead of stdout.
+
+Direct `python3 .../voter-calibration.py` and `make test-voter-calibration` runs do not require `CLAUDE_PLUGIN_ROOT`. The script bootstraps `python/` imports from its own path; see `scripts/voter-calibration.md`.
+
+## Implementation
+
+Logic lives in `scripts/`; SKILL.md is a thin coordinator.
+
+- `scripts/voter-calibration.py` (contract: `scripts/voter-calibration.md`) - the analyzer.
+- `scripts/test-voter-calibration.sh` (contract: `scripts/test-voter-calibration.md`) - synthetic offline harness.

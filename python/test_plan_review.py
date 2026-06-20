@@ -897,6 +897,19 @@ def test_tally_plan_review_mixed_votes_and_artifacts(tmp_path: Path) -> None:
     class_rows = _read_tsv(design / "plan-review" / "round-1" / "findings-classification.tsv") if (design / "plan-review" / "round-1" / "findings-classification.tsv").is_file() else _read_tsv(design / "findings-classification.tsv")
     assert class_rows["FINDING_1"]["scope"] == "in_scope"
     assert class_rows["OOS_1"]["scope"] == "oos"
+    class_tsv = design / "plan-review" / "round-1" / "findings-classification.tsv"
+    tsv_records = voting.compute_voter_agreement(
+        voting.voter_agreement_rows_from_tsv(class_tsv.read_text(encoding="utf-8"), panel_kind="design").rows
+    )
+    assert "## Voter Agreement Scoreboard" in tally
+    for record in tsv_records:
+        rate = "n/a" if record["agreement_rate"] is None else f"{float(record['agreement_rate']):.3f}"  # pyright: ignore[reportArgumentType]
+        line = (
+            f"| design | {record['voter']} | {record['eligible']} | {record['agree']} | "
+            f"{record['disagree']} | {record['missing']} | {rate} | "
+            f"{str(bool(record['outlier'])).lower()} |"
+        )
+        assert line in tally
 
 
 def test_tally_plan_review_zero_voters_requires_main_agent(tmp_path: Path) -> None:
@@ -915,6 +928,45 @@ def test_tally_plan_review_zero_voters_requires_main_agent(tmp_path: Path) -> No
     )
     assert "TALLY_PLAN_REVIEW_STATUS=main-agent-vote-required" in proc.stdout
     assert not (design / "accepted-plan-findings.md").read_text(encoding="utf-8").strip()
+    tally = (design / "voting-tally.md").read_text(encoding="utf-8")
+    assert "fake agreement" not in tally
+    assert "## Voter Agreement Scoreboard" in tally
+    assert "| undefined | n/a | 0 | 0 | 0 | 0 | n/a | false |" in tally
+
+
+def test_tally_plan_review_degraded_two_judge_voter_agreement_parity(tmp_path: Path) -> None:
+    ballot = tmp_path / "ballot.md"
+    _write_tally_ballot(ballot)
+    v1 = tmp_path / "claude-vote-output.txt"
+    v2 = tmp_path / "codex-vote-output.txt"
+    _ = v1.write_text("FINDING_1: YES\nFINDING_2: NO\nOOS_1: YES\nOOS_2: YES\n", encoding="utf-8")
+    _ = v2.write_text("FINDING_1: YES\nFINDING_2: YES\nOOS_1: NO\nOOS_2: YES\n", encoding="utf-8")
+    design = tmp_path / "design-two-judge"
+    design.mkdir()
+    proc = run_cli(
+        "plan-review",
+        "tally",
+        "--ballot-file",
+        str(ballot),
+        "--voter-files",
+        str(v1),
+        str(v2),
+        "--design-tmpdir",
+        str(design),
+        env={"LARCH_QUIET_DISABLE": "1"},
+    )
+    assert proc.returncode == 0, proc.stderr
+    class_tsv = design / "plan-review" / "round-1" / "findings-classification.tsv"
+    records = voting.compute_voter_agreement(
+        voting.voter_agreement_rows_from_tsv(class_tsv.read_text(encoding="utf-8"), panel_kind="design").rows
+    )
+    tally = (design / "voting-tally.md").read_text(encoding="utf-8")
+    cursor = next(record for record in records if record["voter"] == "Cursor")
+    assert cursor["missing"] > 0  # type: ignore[reportOperatorIssue]
+    assert (
+        f"| design | Cursor | {cursor['eligible']} | {cursor['agree']} | "
+        f"{cursor['disagree']} | {cursor['missing']} |"
+    ) in tally
 
 
 def test_tally_plan_review_single_yes_and_single_no(tmp_path: Path) -> None:

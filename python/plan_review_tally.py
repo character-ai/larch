@@ -513,7 +513,8 @@ class _Tally:
             _ = Path(self.tally_file).write_text(
                 "# Plan Review Voting Tally\n\n"
                 "**⚠ Degraded plan-review panel: 0 judges available. "
-                "Panel tier: main-agent-required.**\n\n",
+                "Panel tier: main-agent-required.**\n\n"
+                + voting.render_voter_scoreboard([]),
                 encoding="utf-8",
             )
             self._write_findings_classification(sorted_ids)
@@ -587,11 +588,26 @@ class _Tally:
         oos_accepted_chunks: list[str] = []
         score_rows: list[tuple[str, str, str, int]] = []
         attribution_labels = self._attribution_labels()
+        agreement_rows: list[dict[str, object]] = []
 
         for item_id in sorted_ids:
             block = Path(self.block_dir) / f"{item_id}.md"
             yes, no, judge_error, result = self._tally_votes_for_id(item_id)
             buf += f"| {item_id} | {yes} | {no} | {judge_error} | {result} |\n"
+            voter_votes: list[tuple[str, str]] = []
+            if self.eligible > 0 and not self.tally_voter_file:
+                fallback = {1: "Claude", 2: "Codex", 3: "Cursor"}
+                for pos in (1, 2, 3):
+                    voter_file = self.slot_file[pos]
+                    vote = voting.vote_for_id(item_id, voter_file) if voter_file else ""
+                    voter_votes.append((self.slot_tool[pos] or fallback[pos], vote))
+            agreement_row = voting.voter_agreement_row_from_panel(
+                voting_result=result,
+                voter_votes=voter_votes,
+                panel="design",
+            )
+            if agreement_row is not None:
+                agreement_rows.append(agreement_row)
 
             reviewer = self._proposer_for_item(item_id, block)
             kind = "oos" if item_id.startswith("OOS_") else "finding"
@@ -643,6 +659,7 @@ class _Tally:
         )
         buf += "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n"
         buf += self._scoreboard(score_rows)
+        buf += "\n" + voting.render_voter_scoreboard(voting.compute_voter_agreement(agreement_rows))
 
         _ = Path(self.tally_file).write_text(buf, encoding="utf-8")
         _append(accepted_plan, accepted_chunks)

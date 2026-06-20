@@ -27,7 +27,7 @@ PYLINT_JOBS ?= $(shell $(PYTHON) -c 'import os; print(0 if os.sysconf("SC_SEM_NS
 .PHONY: lint-renderer-substitution-safety lint-skill-md-flag-signature test-lint-renderer-substitution-safety test-lint-skill-md-flag-signature
 .PHONY: lint-bare-grep-probe test-lint-bare-grep-probe lint-codex-exec-auth test-lint-codex-exec-auth test-launch-codex-exec lint-awk-multibyte-regex test-lint-awk-multibyte-regex
 .PHONY: test-design-multi-round-integration test-lib-design-round-artifacts test-step3-orchestrator-fence test-design-step3-state test-design-step3-mav
-.PHONY: test-no-grouped-reuse-guard test-review-and-fix-record-timing test-review-and-fix-step5-loop-timing test-record-plan-review-round-timing test-reviewer-prune test-lib-prune-decision test-fluff-analysis-corpus
+.PHONY: test-no-grouped-reuse-guard test-review-and-fix-record-timing test-review-and-fix-step5-loop-timing test-record-plan-review-round-timing test-reviewer-prune test-lib-prune-decision test-fluff-analysis-corpus test-voter-calibration
 # CI splits `lint` into `lint-only` (pre-commit) and `test-harnesses`
 # (regression harnesses). `lint` remains the local-dev convenience target
 # that runs both, defined in terms of the two split targets to prevent drift.
@@ -139,7 +139,7 @@ test-harnesses-13: test-review-and-fix-step5 test-aggregate-findings test-dispat
 
 test-harnesses-14: test-dispatch-code-voters-happy test-dispatch-code-voters-retry-cursor test-dispatch-plan-voters test-codex-implementer test-review-and-fix-convergence test-cache-root-validation test-finalize-plan test-decompose-aggregator test-review-and-fix-check-changes test-verify-run-log-completeness test-design-pause-resume test-harness-timer test-check-stale-plugin test-lib-submodule-prohibition test-implement-relevant-checks-anti-halt
 
-test-harnesses-15: test-gate-b-apply-mode test-review-and-fix-dispatch test-gate-b-dedup-plan test-invoke-plan-validator test-run-step2-dispatch test-issue-query test-check-main-sync test-fluff-analysis test-plan-review-panel test-launch-codex-exec test-materialize-manifest-oos test-render-final-summary test-token-tally test-lint-no-raw-stderr-after-quiet-init test-implement-fence-shape test-alias-structure test-anti-improvised-wakeup
+test-harnesses-15: test-gate-b-apply-mode test-review-and-fix-dispatch test-gate-b-dedup-plan test-invoke-plan-validator test-run-step2-dispatch test-issue-query test-check-main-sync test-fluff-analysis test-voter-calibration test-plan-review-panel test-launch-codex-exec test-materialize-manifest-oos test-render-final-summary test-token-tally test-lint-no-raw-stderr-after-quiet-init test-implement-fence-shape test-alias-structure test-anti-improvised-wakeup
 
 test-harnesses-16: test-implement-bootstrap-invoke test-hook-bg-poll-guard test-dispatch-code-voters-retry-codex-success test-dispatch-code-voters-parse-rate-claude test-parse-bootstrap-routing-envelope test-run-step3-review test-launch-cursor-ci test-review-and-fix-commit-fixes test-decompose-file-issues test-design-postplan-emit test-log-phase test-gather-branch-context test-implement-preflight test-timing-report test-pause-skill test-git-commit-only
 
@@ -199,6 +199,9 @@ test-analyze:
 
 test-fluff-analysis:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/fluff-analysis/scripts/test-fluff-analysis.sh
+
+test-voter-calibration:
+	python3 python/cli.py timing harness-mark --label $@ -- bash skills/voter-calibration/scripts/test-voter-calibration.sh
 
 test-fluff-analysis-corpus:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/fluff-analysis/scripts/test-fluff-analysis-corpus.sh

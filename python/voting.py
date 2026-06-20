@@ -15,7 +15,7 @@ import tempfile
 from collections.abc import Iterable
 from contextlib import suppress
 from pathlib import Path
-from typing import NoReturn
+from typing import NamedTuple, NoReturn, cast
 
 import logging_util
 import proc
@@ -66,6 +66,7 @@ _ALLOWED_CODE_REVIEW_HEADERS = {
     "# Code Review Voting Tally",
     "## Per-finding vote breakdown",
     "## Reviewer Competition Scoreboard",
+    "## Voter Agreement Scoreboard",
 }
 
 _CORRECTNESS_VALUES = {"true", "partially-true", "false-positive", "uncertain"}
@@ -84,6 +85,251 @@ FINDINGS_CLASSIFICATION_HEADER = (
 CODE_REVIEW_FINDINGS_CLASSIFICATION_HEADER = (
     "finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool\tscope"
 )
+
+_CODE_REVIEW_COMPACT_CLASSIFICATION_HEADER = (
+    "finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain"
+)
+
+_DESIGN_CLASSIFICATION_REQUIRED = frozenset(
+    {"finding_id", "finding_reviewers", "voting_result", "v1_vote", "v2_vote", "v3_vote"}
+)
+_CODE_REVIEW_COMPACT_REQUIRED = frozenset(_CODE_REVIEW_COMPACT_CLASSIFICATION_HEADER.split("\t"))
+_CODE_REVIEW_TOOL_REQUIRED = frozenset(CODE_REVIEW_FINDINGS_CLASSIFICATION_HEADER.split("\t"))
+
+_DESIGN_VOTER_FALLBACKS = {1: "Claude", 2: "Codex", 3: "Cursor"}
+_CODE_REVIEW_VOTER_FALLBACKS = {
+    1: "cursor-validity",
+    2: "cursor-plan-fidelity",
+    3: "cursor-pragmatism",
+}
+_YES_NO = {"YES", "NO"}
+
+
+def _normalize_panel_kind(panel_kind: str) -> str:
+    value = (panel_kind or "").strip().lower()
+    if value in {"design", "plan-review", "plan_review"}:
+        return "design"
+    if value in {"code-review", "code_review", "implement", "review"}:
+        return "code-review"
+    return value or "unknown"
+
+
+def _normalize_vote_cell(value: str) -> str:
+    vote = (value or "").strip().upper()
+    if vote == "EXONERATE":
+        return "NO"
+    return vote if vote in _YES_NO else ""
+
+
+def voter_agreement_row_from_panel(
+    *,
+    voting_result: str,
+    voter_votes: list[tuple[str, str]],
+    panel: str = "",
+) -> dict[str, object] | None:
+    result = (voting_result or "").strip().lower()
+    if result not in {"accepted", "rejected"}:
+        return None
+    parseable = [(label, vote) for label, vote in voter_votes if _normalize_vote_cell(vote)]
+    if len(parseable) < 2:  # noqa: PLR2004
+        return None
+    voters: list[dict[str, object]] = []
+    for raw_label, raw_vote in voter_votes:
+        label = (raw_label or "").strip()
+        if not label:
+            continue
+        vote = _normalize_vote_cell(raw_vote)
+        agrees = (result == "accepted" and vote == "YES") or (result == "rejected" and vote == "NO")
+        voters.append(
+            {
+                "voter": label,
+                "vote": vote,
+                "agree": 1 if vote and agrees else 0,
+                "disagree": 1 if vote and not agrees else 0,
+                "missing": 0 if vote else 1,
+            }
+        )
+    if not voters:
+        return None
+    return {"panel": _normalize_panel_kind(panel), "voting_result": result, "voters": voters}
+
+
+def _dict_rows_from_tsv(text: str) -> tuple[list[str], list[dict[str, str]]]:
+    lines = [line for line in (text or "").splitlines() if line.strip()]
+    if not lines:
+        return [], []
+    reader = csv.DictReader(lines, delimiter="\t")
+    return list(reader.fieldnames or []), [dict(row) for row in reader]
+
+
+def _legacy_compact_rows_from_tsv(text: str) -> tuple[list[str], list[dict[str, str]]]:
+    lines = [line for line in (text or "").splitlines() if line.strip()]
+    if not lines:
+        return [], []
+    header = lines[0].split("\t")
+    rows: list[dict[str, str]] = []
+    for line in lines[1:]:
+        cells = line.split("\t")
+        row = {name: cells[idx] if idx < len(cells) else "" for idx, name in enumerate(header)}
+        rows.append(row)
+    return header, rows
+
+
+def _voter_label(row: dict[str, str], pos: int, panel: str, *, compact: bool = False) -> str:
+    if not compact:
+        tool = (row.get(f"v{pos}_tool") or "").strip()
+        if tool:
+            return tool
+    if panel == "design":
+        return _DESIGN_VOTER_FALLBACKS[pos]
+    if compact:
+        return f"v{pos}"
+    return _CODE_REVIEW_VOTER_FALLBACKS[pos]
+
+
+def classification_tsv_schema_supported(text: str, *, panel_kind: str) -> bool:
+    panel = _normalize_panel_kind(panel_kind)
+    header, _ = _dict_rows_from_tsv(text)
+    if not header:
+        return False
+    header_set = set(header)
+    if panel == "design":
+        return header_set >= _DESIGN_CLASSIFICATION_REQUIRED
+    if panel == "code-review":
+        return header_set >= _CODE_REVIEW_COMPACT_REQUIRED or header_set >= _CODE_REVIEW_TOOL_REQUIRED
+    return False
+
+
+class VoterAgreementTsvParse(NamedTuple):
+    rows: list[dict[str, object]]
+    malformed_rows: int
+    ineligible_rows: int
+
+
+def voter_agreement_rows_from_tsv(text: str, *, panel_kind: str) -> VoterAgreementTsvParse:
+    panel = _normalize_panel_kind(panel_kind)
+    if not classification_tsv_schema_supported(text, panel_kind=panel):
+        return VoterAgreementTsvParse([], 0, 0)
+    header, rows = _dict_rows_from_tsv(text)
+    if not header:
+        return VoterAgreementTsvParse([], 0, 0)
+    header_set = set(header)
+    if panel == "design":
+        compact = False
+    elif panel == "code-review":
+        compact = not all(f"v{pos}_severity" in header_set for pos in (1, 2, 3))
+        if compact:
+            header, rows = _legacy_compact_rows_from_tsv(text)
+            header_set = set(header)
+    else:
+        return VoterAgreementTsvParse([], 0, 0)
+
+    out: list[dict[str, object]] = []
+    malformed_rows = 0
+    ineligible_rows = 0
+    label_compact = compact or (
+        panel == "code-review" and not any(f"v{pos}_tool" in header_set for pos in (1, 2, 3))
+    )
+    for row in rows:
+        voter_votes = [
+            (_voter_label(row, pos, panel, compact=label_compact), row.get(f"v{pos}_vote") or "")
+            for pos in (1, 2, 3)
+        ]
+        result = (row.get("voting_result") or "").strip().lower()
+        agreement_row = voter_agreement_row_from_panel(
+            voting_result=row.get("voting_result") or "",
+            voter_votes=voter_votes,
+            panel=panel,
+        )
+        if agreement_row is not None:
+            out.append(agreement_row)
+            continue
+        parseable = [(label, vote) for label, vote in voter_votes if _normalize_vote_cell(vote)]
+        if result == "neutral" or (
+            result in {"accepted", "rejected"} and len(parseable) < 2  # noqa: PLR2004
+        ):
+            ineligible_rows += 1
+        else:
+            malformed_rows += 1
+    return VoterAgreementTsvParse(out, malformed_rows, ineligible_rows)
+
+
+def compute_voter_agreement(
+    rows: Iterable[dict[str, object]],
+    *,
+    min_votes: int = 20,
+    outlier_threshold: float = 0.50,
+) -> list[dict[str, object]]:
+    aggregate: dict[tuple[str, str], dict[str, object]] = {}
+    for row in rows:
+        panel = str(row.get("panel") or "unknown")
+        voters_obj = row.get("voters")
+        if not isinstance(voters_obj, list):
+            continue
+        voters = cast("list[object]", voters_obj)
+        for voter_obj in voters:
+            if not isinstance(voter_obj, dict):
+                continue
+            voter_row = cast("dict[str, object]", voter_obj)
+            voter = str(voter_row.get("voter") or "").strip()
+            if not voter:
+                continue
+            key = (panel, voter)
+            record = aggregate.setdefault(
+                key,
+                {
+                    "voter": voter,
+                    "panel": panel,
+                    "eligible": 0,
+                    "agree": 0,
+                    "disagree": 0,
+                    "missing": 0,
+                    "agreement_rate": None,
+                    "outlier": False,
+                },
+            )
+            agree = int(voter_row.get("agree") or 0)
+            disagree = int(voter_row.get("disagree") or 0)
+            missing = int(voter_row.get("missing") or 0)
+            record["agree"] = int(record["agree"]) + agree
+            record["disagree"] = int(record["disagree"]) + disagree
+            record["missing"] = int(record["missing"]) + missing
+            if agree or disagree:
+                record["eligible"] = int(record["eligible"]) + 1
+
+    records = list(aggregate.values())
+    for record in records:
+        denominator = int(record["agree"]) + int(record["disagree"])
+        rate = (int(record["agree"]) / denominator) if denominator else None
+        record["agreement_rate"] = rate
+        record["outlier"] = bool(
+            int(record["eligible"]) >= min_votes
+            and rate is not None
+            and rate < outlier_threshold
+        )
+    return sorted(records, key=lambda r: (str(r["panel"]), str(r["voter"])))
+
+
+def _format_rate(value: object) -> str:
+    return "n/a" if value is None else f"{float(value):.3f}"
+
+
+def render_voter_scoreboard(records: Iterable[dict[str, object]]) -> str:
+    rows = list(records)
+    buf = "## Voter Agreement Scoreboard\n\n"
+    buf += "| Panel | Voter | Eligible | Agree | Disagree | Missing | Agreement | Outlier |\n"
+    buf += "|---|---|---:|---:|---:|---:|---:|---|\n"
+    if not rows:
+        buf += "| undefined | n/a | 0 | 0 | 0 | 0 | n/a | false |\n"
+        buf += "\nAgreement is undefined when no accepted or rejected finding has at least two parseable YES/NO voter cells.\n"
+        return buf
+    for record in rows:
+        buf += (
+            f"| {record['panel']} | {record['voter']} | {record['eligible']} | "
+            f"{record['agree']} | {record['disagree']} | {record['missing']} | "
+            f"{_format_rate(record['agreement_rate'])} | {str(bool(record['outlier'])).lower()} |\n"
+        )
+    return buf
 
 BALLOT_HEADING_RE = re.compile(r"^### (FINDING_[0-9]+|OOS_[0-9]+):")
 PROPOSER_MAP_ATTRIBUTED_HASH_PREFIX = "# attributed_ballot_sha256="
