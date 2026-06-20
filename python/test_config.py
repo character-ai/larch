@@ -24,6 +24,14 @@ def test_retry_backoff_immutable() -> None:
     assert config.TRANSIENT_RETRY_BACKOFF_SEC == (2, 4)
 
 
+def test_post_fix_empty_checks_grace_is_bounded() -> None:
+    # Must be > 0 so a missing post-fix CI run surfaces as NO_CHECKS instead of
+    # polling "pending" for the full budget (issue #4867), and shorter than the
+    # full poll timeout so the bounded window is actually a shortcut.
+    assert config.CI_WAIT_POST_FIX_EMPTY_CHECKS_GRACE_SEC > 0
+    assert config.CI_WAIT_POST_FIX_EMPTY_CHECKS_GRACE_SEC < config.CI_WAIT_TIMEOUT_SEC
+
+
 def test_documented_constants_exist() -> None:
     names = (
         "EXIT_OK",

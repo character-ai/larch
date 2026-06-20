@@ -1498,6 +1498,78 @@ def test_terminal_counter_round_trip_reuses_persisted_fix_attempts(
     assert "FIX_ATTEMPTS=5\n" in state_file.read_text(encoding="utf-8")
 
 
+def test_post_push_reentry_uses_bounded_empty_checks_grace(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """After a head-changing CI-fix push, the merge loop re-enters monitor with a
+    bounded empty-checks grace so a missing fresh CI run surfaces as a recoverable
+    stall instead of polling the full budget (issue #4867). The initial poll uses
+    grace 0 (patient wait for the first run).
+    """
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\nMERGE=true\nDRAFT=false\n",
+        encoding="utf-8",
+    )
+    seen_grace: list[int] = []
+    head = {"sha": "h0"}
+    results: list[dict[str, object]] = [
+        {
+            "result": StepResult(Outcome.OK),
+            "action": "evaluate_failure",
+            "goto_rebase": False,
+            "did_fixing": True,
+            "transient_rerun_attempted": False,
+            "failed_run_id": "99",
+            "ci_fix_rebase_pending": False,
+        },
+        {
+            "result": StepResult(Outcome.STALLED, config.CI_WAIT_BAIL_NO_CHECKS_OBSERVED),
+            "action": "bail",
+            "goto_rebase": False,
+            "did_fixing": False,
+            "transient_rerun_attempted": False,
+            "failed_run_id": None,
+            "ci_fix_rebase_pending": False,
+        },
+    ]
+
+    def fake_rev_parse(*_a: object, **_k: object) -> str:
+        return head["sha"]
+
+    monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
+    monkeypatch.setattr(ship.git, "try_rev_parse", fake_rev_parse)
+    monkeypatch.setattr(
+        ship.gh,
+        "pr_view",
+        lambda *_a, **_k: type("PR", (), {"number": 7, "url": "https://example.test/pr/7", "state": "OPEN", "head_ref": "feat"})(),
+    )
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: type("P", (), {"number": 7, "url": "https://example.test/pr/7", "status": "existing"})(),
+    )
+
+    def monitor(*_args: object, **kwargs: object) -> object:
+        grace = kwargs.get("empty_checks_grace")
+        assert isinstance(grace, int)
+        seen_grace.append(grace)
+        spec = results.pop(0)
+        if spec["did_fixing"]:
+            head["sha"] = "h1"  # the CI-fix push advanced HEAD
+        return type("M", (), spec)()
+
+    monkeypatch.setattr(ship.ci_monitor, "monitor", monitor)
+    monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
+
+    result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.STALLED
+    assert seen_grace == [0, config.CI_WAIT_POST_FIX_EMPTY_CHECKS_GRACE_SEC]
+
+
 def test_fresh_fallback_hydrates_modes_and_preserves_counters(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

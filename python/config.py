@@ -69,6 +69,14 @@ SUBPROCESS_DEFAULT_TIMEOUT_SEC: Final = 1800
 CI_WAIT_TIMEOUT_SEC: Final = 1800
 CI_WAIT_POLL_INTERVAL_SEC: Final = 10
 CI_WAIT_EMPTY_CHECKS_GRACE_SEC: Final = 0
+# Bounded "did a fresh CI run start?" window for the ship merge loop after a
+# head-changing push (CI-fix or rebase). When the push triggers no fresh run
+# (observed: GitHub drops the `synchronize` event, issue #4867), zero checks on
+# the new head would otherwise classify as "pending" and the monitor would poll
+# the full CI_WAIT_TIMEOUT_SEC budget (~30 min) with no signal. Passing this
+# grace makes a missing run surface as NO_CHECKS within the window so the driver
+# fails loudly to a recoverable stall instead of hanging.
+CI_WAIT_POST_FIX_EMPTY_CHECKS_GRACE_SEC: Final = 120
 CI_WAIT_BAIL_POLL_BUDGET_EXHAUSTED: Final = "poll-budget-exhausted"
 CI_WAIT_BAIL_UNEXPECTED_EXIT: Final = "ci-wait-unexpected-exit"
 CI_WAIT_BAIL_NO_CHECKS_OBSERVED: Final = "no-ci-checks-observed"

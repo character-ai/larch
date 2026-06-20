@@ -1420,6 +1420,12 @@ def run_ship(
         rebase_count = resume.rebase_count if preserve_counters else 0
         fix_attempts = resume.fix_attempts if preserve_counters else 0
         transient_retries = resume.transient_retries if preserve_counters else 0
+        # Head observed by the previous monitor poll. When a loop iteration pushes
+        # a new head (CI-fix or rebase) the next monitor expects a fresh CI run; if
+        # none starts we must detect it within a bounded window rather than poll the
+        # full budget (issue #4867). Seed with the entry head so a phase14-resume
+        # push is also covered.
+        last_monitored_head = git.try_rev_parse(runner, "HEAD", cwd=repo_root)
         while True:
             if iteration > config.SHIP_MERGE_LOOP_MAX_ITERATIONS:
                 _write_terminal_state(
@@ -1491,6 +1497,17 @@ def run_ship(
                 except Exception:
                     phase14_flag.unlink(missing_ok=True)
                     raise
+            current_head = git.try_rev_parse(runner, "HEAD", cwd=repo_root)
+            # A changed head since the last poll means this iteration follows a
+            # push (CI-fix or rebase) that should have triggered a fresh CI run.
+            # Use a bounded empty-checks grace so a missing run surfaces as
+            # NO_CHECKS (→ recoverable stall) instead of polling to timeout.
+            post_push_grace = (
+                config.CI_WAIT_POST_FIX_EMPTY_CHECKS_GRACE_SEC
+                if current_head != last_monitored_head
+                else 0
+            )
+            last_monitored_head = current_head
             monitor = ci_monitor.monitor(
                 runner,
                 pr=working.pr_number or 0,
@@ -1501,6 +1518,7 @@ def run_ship(
                 transient_retries=transient_retries,
                 base_remote=base_remote,
                 base_ref=base_ref,
+                empty_checks_grace=post_push_grace,
                 plan_file=working.plan_file or None,
                 ci_fix_rebase_pending=working.ci_fix_rebase_pending,
                 ctx=working,
