@@ -716,6 +716,8 @@ def _validate_design_prompt_file(path: Path, label: str, design_tmpdir: Path) ->
     if canon != design_canon and design_canon not in canon.parents:
         if label == "--feature-file":
             raise UsageError("--feature-file must resolve under DESIGN_TMPDIR")
+        if label == "--body-file":
+            raise UsageError("--body-file must resolve under DESIGN_TMPDIR")
         raise UsageError("--plan-file must resolve under DESIGN_TMPDIR")
     return canon
 
@@ -1127,9 +1129,13 @@ def render_plan_review_main(argv: list[str]) -> int:
     parser.add_argument("--design-tmpdir", default="")
     parser.add_argument("--readability-style-file", default="")
     parser.add_argument("--feature-file", default="")
+    parser.add_argument("--body-file", default="")
     try:
         args = parser.parse_args(argv)
-        if args.archetype not in _PLAN_REVIEW_ROLES:
+        # Static slots pick a fixed role from _PLAN_REVIEW_ROLES; dynamic scout slots pass
+        # --body-file and supply their own role line (#4841). With --body-file the
+        # archetype is only a slot label, so it is not required to be a fixed role.
+        if not args.body_file and args.archetype not in _PLAN_REVIEW_ROLES:
             raise UsageError("--archetype is required" if not args.archetype else f"invalid --archetype '{args.archetype}'")
         if args.vendor not in {"codex", "cursor"}:
             raise UsageError("--vendor is required" if not args.vendor else f"invalid --vendor '{args.vendor}'")
@@ -1138,6 +1144,20 @@ def render_plan_review_main(argv: list[str]) -> int:
         design_tmpdir = Path(args.design_tmpdir or os.environ.get("DESIGN_TMPDIR", ""))
         _validate_design_tmpdir(design_tmpdir)
         plan_file = _validate_design_prompt_file(Path(args.plan_file), "--plan-file", design_tmpdir)
+        # The scout prompt_body substitutes for the fixed role line so dynamic reviewers
+        # inherit the rest of the scaffold (plan-file path, AFTER-PR framing, TSV/sentinel
+        # output contract, scope anchor) instead of receiving the raw prompt_body alone.
+        if args.body_file:
+            body_path = Path(args.body_file)
+            if not _scope_anchor_common_shape_ok(body_path):
+                raise UsageError(
+                    "--body-file must be a readable regular non-empty file (not a symlink) at most 64 KiB",
+                )
+            role_line = _read_text(_validate_design_prompt_file(body_path, "--body-file", design_tmpdir)).strip()
+            if not role_line:
+                raise UsageError("--body-file must contain a non-empty role line")
+        else:
+            role_line = _PLAN_REVIEW_ROLES[args.archetype]
         feature_file = None
         if args.feature_file:
             feature_path = Path(args.feature_file)
@@ -1154,7 +1174,7 @@ def render_plan_review_main(argv: list[str]) -> int:
         style_path = Path(args.readability_style_file or os.environ.get("READABILITY_STYLE_FILE", str(REPO_ROOT / "skills" / "design" / "references" / "readability-style.md")))
         style = _read_text(style_path).rstrip("\n") if style_path.is_file() else "Style requirements for finding text and OOS Descriptions: `<READABILITY_STYLE>`."
         prompt = (
-            f"""{_PLAN_REVIEW_ROLES[args.archetype]}
+            f"""{role_line}
 {tier}
 {rubric}
 Your response MUST begin with either the TSV header line (when you have findings) or the literal single-line JSON sentinel {{"no_issues_found": true}} (when you have none). Do not write any preamble, no "I'll review...", no "Examining the plan...", no "Looking at file X...". The first non-whitespace character of your response must be either `s` (start of `schema_version`) or `{{` (start of the sentinel). Any character emitted before that first `s` or `{{` — even a single "Reviewing…" line — risks your entire slot being salvaged or dropped by the format gate, so emit zero preamble.

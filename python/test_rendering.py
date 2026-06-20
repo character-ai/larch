@@ -355,6 +355,74 @@ def test_render_plan_review_inlines_strunk_and_white_readability(
     assert "<READABILITY_STYLE>" in out
 
 
+def test_render_plan_review_body_file_substitutes_role_line(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # #4841: dynamic scout slots pass --body-file; the scout prompt_body replaces the
+    # fixed role line while the slot still inherits the explicit plan-file path and the
+    # TSV/sentinel output contract. Before the fix dynamic slots got only the raw body,
+    # so they reviewed an unrelated plan.txt and were dropped NOT_SUBSTANTIVE.
+    _reset_quiet(monkeypatch)
+    design_tmpdir = tmp_path / "design"
+    design_tmpdir.mkdir()
+    plan = design_tmpdir / "plan.txt"
+    body = design_tmpdir / "dyn-cursor-plan-semantics-guard.body"
+    _ = plan.write_text("## Plan\n\nDo the thing.\n", encoding="utf-8")
+    _ = body.write_text("You are a Semantics-Guard reviewer. Verify contract semantics.\n", encoding="utf-8")
+    rc = rendering.render_plan_review_main(
+        [
+            "--vendor",
+            "cursor",
+            "--plan-file",
+            str(plan),
+            "--design-tmpdir",
+            str(design_tmpdir),
+            "--body-file",
+            str(body),
+        ],
+    )
+    out = capsys.readouterr().out
+    assert rc == 0
+    # Scout body lands in the role-line position (first line), not as the whole prompt.
+    assert out.splitlines()[0] == "You are a Semantics-Guard reviewer. Verify contract semantics."
+    # Inherits the rest of the scaffold: explicit plan path + structured-output contract.
+    assert "Review the implementation plan file at " in out
+    assert str(plan.resolve()) in out
+    assert "schema_version\tscope\tseverity" in out
+    assert '{"no_issues_found": true}' in out
+
+
+def test_render_plan_review_rejects_empty_body_file(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _reset_quiet(monkeypatch)
+    design_tmpdir = tmp_path / "design"
+    design_tmpdir.mkdir()
+    plan = design_tmpdir / "plan.txt"
+    body = design_tmpdir / "empty.body"
+    _ = plan.write_text("## Plan\n\nDo the thing.\n", encoding="utf-8")
+    _ = body.write_text("", encoding="utf-8")
+    rc = rendering.render_plan_review_main(
+        [
+            "--vendor",
+            "cursor",
+            "--plan-file",
+            str(plan),
+            "--design-tmpdir",
+            str(design_tmpdir),
+            "--body-file",
+            str(body),
+        ],
+    )
+    captured = capsys.readouterr()
+    assert rc == 2
+    assert "--body-file" in captured.err
+
+
 def test_render_voter_missing_required_exit_2(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
     _reset_quiet(monkeypatch)
     rc = rendering.render_voter_main(["--ballot-file", "/missing/ballot.txt"])
