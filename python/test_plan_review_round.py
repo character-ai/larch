@@ -272,7 +272,7 @@ def test_execute_round_propagates_degraded_warning_with_mixed_manifest(
             return subprocess.CompletedProcess(argv, 0, _collector_text([record]), "")
         if argv[:2] == ["review", "aggregate-findings"]:
             _ = (design / "ballot.txt").write_text("### FINDING_1:\n", encoding="utf-8")
-            return subprocess.CompletedProcess(argv, 0, "AGGREGATOR_STATUS=ok\n", "")
+            return subprocess.CompletedProcess(argv, 0, "REASON=ok\nAGGREGATED=true\n", "")
         if argv[:2] == ["plan-review", "voter-dispatch"]:
             return subprocess.CompletedProcess(
                 argv,
@@ -446,7 +446,7 @@ def _install_execute_round_fake(
                 "",
             )
         if argv[:2] == ["review", "aggregate-findings"]:
-            return subprocess.CompletedProcess(argv, 0, "AGGREGATOR_STATUS=ok\n", "")
+            return subprocess.CompletedProcess(argv, 0, "REASON=ok\nAGGREGATED=true\n", "")
         if argv[:2] == ["plan-review", "voter-dispatch"]:
             return subprocess.CompletedProcess(
                 argv,
