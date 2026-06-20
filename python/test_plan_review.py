@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import contextlib
 import io
+import os
+import stat
 import subprocess
+import sys
 from pathlib import Path
 
 import plan_review
@@ -1730,3 +1733,65 @@ def test_emit_rejected_ledger_without_recognizable_blocks_emits_empty(tmp_path: 
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout == ""
     assert "WARN=emit-rejected: applied-finding ledger present" in proc.stderr
+
+
+def test_step3_loop_postplan_validator_runs_from_consumer_cwd(tmp_path: Path) -> None:
+    # #4847: the Step 3 plan-review loop must invoke `design postplan-emit` from
+    # the consumer-repo cwd (not the plugin cache that `_run_command` otherwise
+    # forces), so the validator derives the consumer repo and consumer-only
+    # plan-command scripts are not false-flagged missing-script. End-to-end check
+    # mirroring the #4490 postplan test in test_design_postplan.py.
+    plugin_root = tmp_path / "plugin"
+    plugin_root.joinpath("python").mkdir(parents=True)
+    fake_cli = plugin_root / "python" / "cli.py"
+    _ = fake_cli.write_text(
+        """#!/usr/bin/env python3
+import os
+import sys
+args = sys.argv[1:]
+if args[:2] == ["design", "postplan-emit"]:
+    with open(os.environ["RECORD_FILE"], "w", encoding="utf-8") as fh:
+        print("POSTPLAN_CWD=" + os.getcwd(), file=fh)
+    print("POSTPLAN_EMIT_STATUS=ok")
+    raise SystemExit(0)
+if args[:2] == ["plan-review", "continuation"]:
+    print("PLAN_REVIEW_CONTINUE=false")
+    print("PLAN_REVIEW_CONTINUE_REASON=small-clean")
+    raise SystemExit(0)
+raise SystemExit(0)
+""",
+        encoding="utf-8",
+    )
+    fake_cli.chmod(fake_cli.stat().st_mode | stat.S_IXUSR)
+    recorder = tmp_path / "postplan-invocation.env"
+
+    consumer = tmp_path / "consumer"
+    consumer.mkdir()
+    _ = subprocess.run(["git", "init", "-q", str(consumer)], check=True)
+
+    design = tmp_path / "design"
+    design.mkdir()
+    _ = (design / "plan.txt").write_text("# Plan\n\ndiff_lines: 1\n", encoding="utf-8")
+    _ = (design / "run-params.json").write_text('{"approve_requested": false}\n', encoding="utf-8")
+    _ = (design / ".step3-round-1.phase").write_text("awaiting-post-apply\n", encoding="utf-8")
+    (design / ".gate-b-postapply-ready-1").touch()
+
+    cli_py = Path(__file__).with_name("cli.py")
+    env = os.environ.copy()
+    env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
+    env["RECORD_FILE"] = str(recorder)
+    result = subprocess.run(
+        [sys.executable, str(cli_py), "plan-review", "run", "--design-tmpdir", str(design), "--mode", "loop"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+        cwd=str(consumer),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert recorder.is_file(), f"postplan-emit not invoked; stdout={result.stdout!r} stderr={result.stderr!r}"
+    recorded = dict(
+        line.split("=", 1) for line in recorder.read_text(encoding="utf-8").splitlines() if "=" in line
+    )
+    assert Path(recorded["POSTPLAN_CWD"]).resolve() == consumer.resolve()
