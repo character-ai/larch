@@ -753,6 +753,14 @@ def test_weighted_finding_points_and_attribution_helpers() -> None:
     assert voting.split_classification_attribution("cursor-a|codex-b", column="reviewer_slots") == ["cursor-a", "codex-b"]
 
 
+def test_grow_attribution_labels_skips_whitespace_combined_cells() -> None:
+    labels = ["Cursor-Pragmatic", "Codex-Arch"]
+    seen = set(labels)
+    voting.grow_attribution_labels(labels, seen, "Cursor-Pragmatic Codex-Arch")
+    assert labels == ["Cursor-Pragmatic", "Codex-Arch"]
+    assert "Cursor-Pragmatic Codex-Arch" not in seen
+
+
 def test_scoreboard_main_weights_classification_tsv(tmp_path: Path) -> None:
     header = voting.findings_classification_header().split("\t")
 

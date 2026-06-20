@@ -709,14 +709,7 @@ def _human_attribution_labels(round_dirs: list[Path], *, reviewer_column: str) -
             cols = line.split("\t")
             if len(cols) <= reviewer_idx:
                 continue
-            for raw_segment in cols[reviewer_idx].split(","):
-                segment = raw_segment.strip()
-                if not segment:
-                    continue
-                add(segment)
-                for token in segment.split():
-                    if "-" in token:
-                        add(token)
+            voting.grow_attribution_labels(labels, seen, cols[reviewer_idx])
     return labels
 
 
@@ -748,11 +741,16 @@ def _accepted_reviewers_from_classification(
         if cols.get("voting_result") != "accepted" or not _classification_row_in_scope(cols, header):
             continue
         points = voting.accepted_points_from_classification_row(cols, header)
+        reviewer_cell = cols.get(reviewer_column, "")
         reviewers = voting.split_classification_attribution(
-            cols.get(reviewer_column, ""),
+            reviewer_cell,
             column=reviewer_column,
             labels=labels if reviewer_column == "finding_reviewers" else None,
         )
+        if not reviewers and reviewer_column == "finding_reviewers":
+            cell = reviewer_cell.strip()
+            if cell:
+                reviewers = [part.strip() for part in cell.split(",") if part.strip()]
         for reviewer in reviewers:
             label = reviewer
             if reviewer_column == "reviewer_slots":
@@ -1713,7 +1711,7 @@ def _parse_classification_tsv(path: Path) -> tuple[int, int, int, int, int, int]
         elif result:
             if result == "accepted":
                 oos_accepted += 1
-            elif result != "neutral":
+            else:
                 oos_rejected += 1
     return accepted, rejected, neutral, exonerated, oos_accepted, oos_rejected
 

@@ -266,16 +266,14 @@ class _Tally:
         if self.proposer_map_file:
             try:
                 for reviewer, _line in voting.read_proposer_map(self.proposer_map_file).values():
-                    for part in reviewer.split(","):
-                        add(part)
+                    voting.grow_attribution_labels(labels, seen, reviewer)
             except voting.TallyError:
                 pass
         block_root = Path(self.block_dir) if self.block_dir else None
         if block_root and block_root.is_dir():
             for block in block_root.glob("*.md"):
                 reviewer = voting.reviewer_for_block(block)
-                for part in reviewer.split(","):
-                    add(part)
+                voting.grow_attribution_labels(labels, seen, reviewer)
         return labels
 
     def _votes_and_severities_for_item(self, item_id: str) -> tuple[list[str], list[str]]:

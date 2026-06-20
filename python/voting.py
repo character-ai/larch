@@ -150,6 +150,32 @@ def tokenize_finding_reviewers(cell: str, labels: Iterable[str]) -> list[str]:
     return tokens
 
 
+def grow_attribution_labels(
+    labels: list[str],
+    seen: set[str],
+    *cells: str,
+) -> None:
+    """Extend *labels* with reviewer tokens mined from attribution cells."""
+
+    def add(label: str) -> None:
+        clean = label.strip()
+        if clean and clean not in seen:
+            labels.append(clean)
+            seen.add(clean)
+
+    for cell in cells:
+        for raw_segment in cell.split(","):
+            segment = raw_segment.strip()
+            if not segment:
+                continue
+            matched = tokenize_finding_reviewers(segment, labels)
+            if matched:
+                for token in matched:
+                    add(token)
+            elif " " not in segment and "\t" not in segment:
+                add(segment)
+
+
 def split_classification_attribution(
     reviewer_cell: str,
     *,

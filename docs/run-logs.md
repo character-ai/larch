@@ -145,16 +145,17 @@ sidecar into `larch-logs/`.
 
 `larch-logs/design/<RUN_ID>/plan-review/round-<N>/findings-classification.tsv`
 is the per-round forensic export produced by
-`python/cli.py plan-review tally`. The file always uses a 21-column,
+`python/cli.py plan-review tally`. The file always uses a 23-column,
 tab-separated schema:
 
 `finding_id`, `finding_reviewers`, `voting_result`, then three repeated slot
-groups of: `vote`, `correctness`, `severity`, `quality`, `uncertain`, `tool`.
+groups of: `vote`, `correctness`, `severity`, `quality`, `uncertain`, `tool`,
+then `body_severity` and `scope`.
 
 The canonical header is:
 
 ```text
-finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool
+finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool\tbody_severity\tscope
 ```
 
 Semantics:
@@ -167,6 +168,14 @@ Semantics:
 - `vN_correctness`, `vN_severity`, `vN_quality`, and `vN_uncertain` are the
   optional forensic rating axes parsed from the same voter line.
 - `vN_tool` is the runtime tool identity for that slot.
+- `body_severity` is the optional severity token parsed from the finding body
+  (`blocker`, `major`, `minor`, `nit`, or empty). It is forensic metadata only;
+  reviewer scoreboards weight accepted in-scope findings from YES-voter panel
+  severity, not from `body_severity`.
+- `scope` is `in_scope` or `oos`. Producers write `scope=oos` for direct
+  `OOS_*` rows, legacy `[OUT_OF_SCOPE]` or `[OOS]` rows, and scope-drift rows.
+  Consumers prefer explicit `scope=oos` over id prefixes; legacy TSVs without
+  `scope` remain readable with flat accepted +1 scoring and `OOS_` prefix fallback.
 
 Slot semantics:
 
@@ -179,7 +188,7 @@ Slot semantics:
   rejected / OOS artifact files reflect the MainAgent adjudication result.
 - For legacy `--voter-files`, slots are inferred from basename/tool heuristics.
 - Missing or degraded rounds preserve empty cells so every data row still has
-  the full schema width. <!-- lint-literal-counts: allow fixed TSV schema --> A 0-finding or tally-error round may therefore publish a
+  the full 23-column schema width. <!-- lint-literal-counts: allow fixed TSV schema --> A 0-finding or tally-error round may therefore publish a
   header-only TSV.
 
 See [python/plan_review.py](python/plan_review.py)

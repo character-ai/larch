@@ -2040,6 +2040,68 @@ def test_render_phase_detail_total_relabeled_round_sum_under_recurrence(tmp_path
     assert "1. Cursor-Arch — 3" in rendered
 
 
+def test_parse_classification_tsv_counts_neutral_oos(tmp_path: Path) -> None:
+    header = progress_report.voting.findings_classification_header().split("\t")
+
+    def row(finding_id: str, result: str, scope: str = "oos") -> str:
+        cols = dict.fromkeys(header, "")
+        cols.update({
+            "finding_id": finding_id,
+            "finding_reviewers": "Cursor-Arch",
+            "voting_result": result,
+            "scope": scope,
+        })
+        return "\t".join(cols[name] for name in header)
+
+    path = tmp_path / "findings-classification.tsv"
+    path.write_text(
+        "\t".join(header) + "\n"
+        + row("OOS_1", "accepted") + "\n"
+        + row("OOS_2", "neutral") + "\n"
+        + row("OOS_3", "rejected") + "\n",
+        encoding="utf-8",
+    )
+    accepted, rejected, neutral, exonerated, oos_accepted, oos_rejected = progress_report._parse_classification_tsv(path)
+    assert accepted == rejected == neutral == exonerated == 0
+    assert oos_accepted == 1
+    assert oos_rejected == 2
+
+
+def test_top_reviewers_whitespace_coproposers_and_comma_fallback(tmp_path: Path) -> None:
+    root = tmp_path / "plan-review"
+    r1 = root / "round-1"
+    _write_round_meta(r1)
+    (r1 / "plan-review-prune-label-map.tsv").write_text(
+        "slot\thuman_label\nplan-requirements\tCursor-Pragmatic\nplan-architecture\tCodex-Arch\n",
+        encoding="utf-8",
+    )
+    header = progress_report.voting.findings_classification_header().split("\t")
+
+    def row(finding_id: str, reviewer: str, result: str, severity: str = "major") -> str:
+        cols = dict.fromkeys(header, "")
+        cols.update({
+            "finding_id": finding_id,
+            "finding_reviewers": reviewer,
+            "voting_result": result,
+            "v1_vote": "YES" if result == "accepted" else "NO",
+            "v1_severity": severity,
+            "scope": "in_scope",
+        })
+        return "\t".join(cols[name] for name in header)
+
+    (r1 / "findings-classification.tsv").write_text(
+        "\t".join(header) + "\n"
+        + row("FINDING_1", "Cursor-Pragmatic Codex-Arch", "accepted") + "\n"
+        + row("FINDING_2", "Unknown-Label", "accepted") + "\n",
+        encoding="utf-8",
+    )
+    rendered = progress_report.render_phase_detail(root, "design")
+    assert "1. Codex-Arch — 2" in rendered
+    assert "2. Cursor-Pragmatic — 2" in rendered
+    assert "3. Unknown-Label — 2" in rendered
+    assert "Cursor-Pragmatic Codex-Arch" not in rendered
+
+
 def test_write_design_round_meta_collector_from_real_records(tmp_path: Path) -> None:
     # Issue #4733 Bug 2: the collector field is built from real per-slot collector-results.env
     # records (KEY=VALUE blocks: REVIEWER_FILE/TOOL/STATUS/...), not count-based placeholders.
