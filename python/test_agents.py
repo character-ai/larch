@@ -1067,7 +1067,7 @@ def test_check_reviewers_invalid_env_normalization(
         },
     )
     assert result.codex_present is True
-    assert seen_timeouts == [30, 30, 30]
+    assert seen_timeouts == [60, 60, 60]
 
 
 def test_check_reviewers_transient_failure_retries_until_exhausted(

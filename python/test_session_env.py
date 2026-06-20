@@ -156,6 +156,23 @@ def test_write_env_writer_guard_rejects_cr_lf_symlink_and_disallowed_keys(tmp_pa
     assert symlink.returncode == 1
 
 
+def test_external_timeout_default_invalid_empty_zero_and_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(config.ENV_LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT, raising=False)
+    assert session_env._external_timeout() == "60"  # pyright: ignore[reportPrivateUsage]
+
+    monkeypatch.setenv(config.ENV_LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT, "bad")
+    assert session_env._external_timeout() == "60"  # pyright: ignore[reportPrivateUsage]
+
+    monkeypatch.setenv(config.ENV_LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT, "")
+    assert session_env._external_timeout() == "60"  # pyright: ignore[reportPrivateUsage]
+
+    monkeypatch.setenv(config.ENV_LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT, "0")
+    assert session_env._external_timeout() == "0"  # pyright: ignore[reportPrivateUsage]
+
+    monkeypatch.setenv(config.ENV_LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT, "45")
+    assert session_env._external_timeout() == "45"  # pyright: ignore[reportPrivateUsage]
+
+
 def test_read_key_rejects_carriage_return_injection(tmp_path: Path) -> None:
     session = tmp_path / "session-env.sh"
     session.write_text("SAFE=value\rLARCH_TOKEN_SESSION_ID=attacker\n", encoding="utf-8")

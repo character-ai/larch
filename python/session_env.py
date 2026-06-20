@@ -272,8 +272,8 @@ def _is_bool(value: str) -> bool:
 
 
 def _external_timeout() -> str:
-    value = os.environ.get(config.ENV_LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT, "30")
-    return value if value.isdigit() else "30"
+    value = os.environ.get(config.ENV_LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT, "60")
+    return value if value.isdigit() else "60"
 
 
 def _validate_no_newlines(data: dict[str, str]) -> None:
