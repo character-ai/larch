@@ -953,6 +953,8 @@ def check_reviewers(
     with _temporary_environ(env):
         ttl = _env_int("LARCH_PROBE_TTL_SECONDS", 60)
         negative_ttl = _env_int("LARCH_PROBE_NEGATIVE_TTL_SECONDS", 0)
+        # The 60s probe timeout is intentional to avoid degraded-tools false
+        # negatives from slow probes; timeout retries default to 0.
         timeout = probe_timeout_seconds or _env_int("LARCH_PROBE_TIMEOUT_SECONDS", 60, zero_allowed=False)
         max_auth_retries = _env_int("LARCH_EXTERNAL_AUTH_RETRIES", 5, zero_allowed=False)
         max_transient_retries = _max_transient_probe_retries(max_auth_retries)

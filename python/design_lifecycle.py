@@ -3533,7 +3533,13 @@ def _step5c_safe_publish_env(
                 primary.unlink()
 
 
-def _step5c_render_final_summary(design_tmpdir: Path, env: Mapping[str, str], outcome: str) -> bool:
+def _step5c_render_final_summary(
+    design_tmpdir: Path,
+    env: Mapping[str, str],
+    outcome: str,
+    *,
+    plan_write_ok: str = "",
+) -> bool:
     from design_summary import render_final_summary_main  # noqa: PLC0415
 
     args = ["--outcome", outcome, "--mode", env.get("MODE", "") or "N/A", "--post-publish-only"]
@@ -3541,6 +3547,17 @@ def _step5c_render_final_summary(design_tmpdir: Path, env: Mapping[str, str], ou
         args.extend(["--repo", env["REPO"]])
     out_path = design_tmpdir / f"render-final-summary.{outcome}.stdout.log"
     render_rc = 0
+    if outcome == "approved" or plan_write_ok == "true":
+        summary_path = (
+            Path(os.environ["FINAL_SUMMARY_PATH"])
+            if os.environ.get("FINAL_SUMMARY_PATH")
+            else design_tmpdir / "final-summary.md"
+        )
+        with contextlib.suppress(OSError):
+            summary_resolved = summary_path.resolve()
+            tmpdir_resolved = design_tmpdir.resolve()
+            if summary_resolved.is_relative_to(tmpdir_resolved) and summary_resolved.is_file():
+                summary_resolved.unlink()
     try:
         with out_path.open("w", encoding="utf-8") as out, contextlib.redirect_stdout(out):
             render_rc = int(render_final_summary_main(args))
@@ -3784,7 +3801,7 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
                     _emit_report_gate_sidecars_from_disk(design_tmpdir)
                     return 0, []
                 outcome = "approved" if plan_write_ok == "true" else "failed-plan-write"
-                if _step5c_render_final_summary(design_tmpdir, env, outcome):
+                if _step5c_render_final_summary(design_tmpdir, env, outcome, plan_write_ok=plan_write_ok):
                     _emit_final_summary_marked_from_disk(design_tmpdir)
                 _emit_report_gate_sidecars_from_disk(design_tmpdir)
                 return 0, []

@@ -17,6 +17,7 @@ from collections.abc import Sequence
 from typing import cast
 
 import redact
+import run_logs
 from session_env import validate_design_tmpdir
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -218,7 +219,7 @@ def _dynamic_slot_rows(
     *,
     plan_file: str,
     feature_file: str,
-) -> list[dict[str, object]]:
+) -> tuple[list[dict[str, object]], list[tuple[str, str, int]]]:
     # Route dynamic scout slots through the same `render plan-review` scaffold as static
     # slots (#4841). Before the fix the raw scout prompt_body was the entire prompt, so
     # dynamic reviewers had no plan-file path (they grepped the repo and reviewed an
@@ -229,6 +230,7 @@ def _dynamic_slot_rows(
     # as the static path does.
     cli = [sys.executable, str(_plugin_root() / "python" / "cli.py"), "render", "plan-review"]
     rows: list[dict[str, object]] = []
+    failures: list[tuple[str, str, int]] = []
     for tool, slot, focus, prompt in dynamic:
         body_file = round_dir / f"{slot}.body"
         _ = body_file.write_text(prompt, encoding="utf-8")
@@ -252,8 +254,12 @@ def _dynamic_slot_rows(
             check=False,
         )
         rendered = proc.stdout if proc.returncode == 0 else ""
+        if proc.returncode != 0:
+            failures.append((slot, tool, proc.returncode))
+            with contextlib.suppress(OSError):
+                _append_dynamic_render_warning(design, slot, tool, proc.returncode, proc.stderr or proc.stdout or "")
         rows.append(_slot_row(tool, slot, focus, round_dir / f"{slot}.txt", round_dir / f"{slot}.prompt", rendered))
-    return rows
+    return rows, failures
 
 
 def _write_manifest(rows: list[dict[str, object]], path: Path) -> None:
@@ -278,6 +284,29 @@ def _sanitize_slot_label(label: str) -> str:
 
 def _sanitize_warning_text(text: str) -> str:
     return re.sub(r"[\r\n\t]+", " ", str(text or "")).strip()
+
+
+def _append_dynamic_render_warning(design: Path, slot: str, tool: str, return_code: int, diagnostics: str) -> None:
+    detail = _sanitize_warning_text(redact.redact_secrets_only(redact.redact_tmpdir_paths(diagnostics)))
+    entry = (
+        f"- **Dynamic plan-review render failed for {_sanitize_slot_label(slot)} "
+        f"({tool}, exit {return_code}); using fallback prompt.**"
+    )
+    if detail:
+        entry += f" {detail}"
+    run_logs.append_execution_issue(design / "execution-issues.md", "Warnings", entry)
+
+
+def _dynamic_render_panel_warning(failures: list[tuple[str, str, int]]) -> str:
+    if not failures:
+        return ""
+    names = [_sanitize_slot_label(slot) for slot, _tool, _rc in failures if _sanitize_slot_label(slot)]
+    shown = names[:3]
+    suffix = "" if len(names) <= len(shown) else f", +{len(names) - len(shown)} more"
+    detail = f" Fallback slots: {', '.join(shown)}{suffix}." if shown else ""
+    return _sanitize_warning_text(
+        f"**⚠ Degraded plan-review panel: {len(failures)} dynamic render failure(s); using fallback prompts.**{detail}"
+    )
 
 
 def _invalid_slot_drop_summary(path: str) -> str:
@@ -386,11 +415,21 @@ def dispatch_panel(argv: Sequence[str]) -> int:
     )
     static_count = len(rows)
     dynamic = _load_dynamic_rows(design)
-    rows.extend(_dynamic_slot_rows(design, round_dir, dynamic, plan_file=ns.plan_file, feature_file=ns.feature_file))
+    dynamic_rows, dynamic_failures = _dynamic_slot_rows(
+        design,
+        round_dir,
+        dynamic,
+        plan_file=ns.plan_file,
+        feature_file=ns.feature_file,
+    )
+    rows.extend(dynamic_rows)
     manifest = design / "plan-review-slots.ndjson"
     _write_manifest(rows, manifest)
     manifest, prune_kv = _filter_pruned(design, manifest, ns.prune_round_num or ns.round_num)
+    dynamic_warning = _dynamic_render_panel_warning(dynamic_failures)
     if prune_kv.get("PANEL_PRUNED_EMPTY") == "true":
+        if dynamic_warning:
+            _emit("DYNAMIC_RENDER_PANEL_WARNING", dynamic_warning)
         _emit("PANEL_PRUNED_EMPTY", "true")
         _emit("STATIC_SLOT_COUNT", static_count)
         _emit("DYNAMIC_SLOT_COUNT", len(dynamic))
@@ -445,6 +484,8 @@ def dispatch_panel(argv: Sequence[str]) -> int:
         _emit("STATIC_SLOT_COUNT", static_count)
         _emit("DYNAMIC_SLOT_COUNT", len(dynamic))
         _emit("PANEL_PRUNED_EMPTY", prune_kv.get("PANEL_PRUNED_EMPTY", "false"))
+        if dynamic_warning:
+            _emit("DYNAMIC_RENDER_PANEL_WARNING", dynamic_warning)
         return proc.returncode
     kv = _parse_kv(proc.stdout)
     paths_file = kv.get("ALL_OUTPUT_FILES_PATH", "") or str(design / "plan-review-panel-paths.txt")
@@ -455,6 +496,8 @@ def dispatch_panel(argv: Sequence[str]) -> int:
     degraded_warning = _degraded_invalid_slot_warning(kv)
     if degraded_warning:
         _emit("INVALID_SLOT_PANEL_WARNING", degraded_warning)
+    if dynamic_warning:
+        _emit("DYNAMIC_RENDER_PANEL_WARNING", dynamic_warning)
     return proc.returncode
 
 

@@ -140,12 +140,15 @@ def publish_core(argv: Sequence[str]) -> int:
         "--repo": "",
     }
     skip_validate = False
+    session_id_provided = False
     i = 0
     while i < len(args):
         token = args[i]
         if token in parsed:
             if i + 1 >= len(args):
                 return 5
+            if token == "--session-id":
+                session_id_provided = True
             parsed[token] = args[i + 1]
             i += 2
             continue
@@ -156,7 +159,7 @@ def publish_core(argv: Sequence[str]) -> int:
         if token in {"-h", "--help"}:
             return 0
         return 5
-    if not parsed["--design-tmpdir"] or not parsed["--issue"] or not parsed["--session-id"] or not parsed["--claude-pid"]:
+    if not parsed["--design-tmpdir"] or not parsed["--issue"] or not session_id_provided or not parsed["--claude-pid"]:
         return 5
     if not parsed["--issue"].isdigit() or parsed["--issue"] == "0":
         return 5
@@ -298,6 +301,7 @@ def publish_core(argv: Sequence[str]) -> int:
             str(redacted_plan),
             *(["--repo", parsed["--repo"]] if parsed["--repo"] else []),
         ],
+        stdout=subprocess.DEVNULL,
         check=False,
     )
     if block.returncode != 0:
@@ -399,46 +403,47 @@ def publish_core(argv: Sequence[str]) -> int:
     if renamed_value == "true" or new_title.startswith("[DESIGNED] "):
         kvs[-1] = ("DESIGNED_ADMISSION_READY", "true")
 
-    publish = subprocess.run(
-        [
-            sys.executable,
-            str(plugin_root / "python" / "cli.py"),
-            "design",
-            "log-publish",
-            "--design-tmpdir",
-            str(design_tmpdir),
-            "--run-id",
-            parsed["--session-id"],
-            "--issue",
-            parsed["--issue"],
-            *(["--repo", parsed["--repo"]] if parsed["--repo"] else []),
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    publish_kv = _parse_kv(publish.stdout)
-    if "PUBLISH_OK" in publish_kv:
-        kvs.append(("PUBLISH_OK", publish_kv["PUBLISH_OK"]))
-    for key in ("PR_NUMBER", "PR_URL", "RECOVERY_BRANCH"):
-        if publish_kv.get(key):
-            kvs.append((key, publish_kv[key]))
-            if key == "RECOVERY_BRANCH":
-                kvs.append(("LOG_RECOVERY_BRANCH", publish_kv[key]))
-    # Re-surface the dropped secret-rotation warning: the design log is scrubbed
-    # before commit, and a non-zero SECRET_SCRUB_VIOLATIONS count from log-publish
-    # means a secret-shaped value was redacted from the committed logs. Warn the
-    # operator to rotate it (the scrub itself prevents the leak; the operator was
-    # no longer being told to rotate after the #3681 port).
-    scrub_violations = publish_kv.get("SECRET_SCRUB_VIOLATIONS", "0")
-    if scrub_violations.isdigit() and int(scrub_violations) > 0:
-        print(
-            f"**⚠ SECURITY: redact scrub-log-secrets redacted {scrub_violations} "
-            "secret-shaped value(s) from this /design run's logs before flush. "
-            "A credential was almost certainly exposed in the session; ROTATE it now "
-            "and check chat/PRs for the same value.**",
-            flush=True,
+    if parsed["--session-id"]:
+        publish = subprocess.run(
+            [
+                sys.executable,
+                str(plugin_root / "python" / "cli.py"),
+                "design",
+                "log-publish",
+                "--design-tmpdir",
+                str(design_tmpdir),
+                "--run-id",
+                parsed["--session-id"],
+                "--issue",
+                parsed["--issue"],
+                *(["--repo", parsed["--repo"]] if parsed["--repo"] else []),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
         )
+        publish_kv = _parse_kv(publish.stdout)
+        if "PUBLISH_OK" in publish_kv:
+            kvs.append(("PUBLISH_OK", publish_kv["PUBLISH_OK"]))
+        for key in ("PR_NUMBER", "PR_URL", "RECOVERY_BRANCH"):
+            if publish_kv.get(key):
+                kvs.append((key, publish_kv[key]))
+                if key == "RECOVERY_BRANCH":
+                    kvs.append(("LOG_RECOVERY_BRANCH", publish_kv[key]))
+        # Re-surface the dropped secret-rotation warning: the design log is scrubbed
+        # before commit, and a non-zero SECRET_SCRUB_VIOLATIONS count from log-publish
+        # means a secret-shaped value was redacted from the committed logs. Warn the
+        # operator to rotate it (the scrub itself prevents the leak; the operator was
+        # no longer being told to rotate after the #3681 port).
+        scrub_violations = publish_kv.get("SECRET_SCRUB_VIOLATIONS", "0")
+        if scrub_violations.isdigit() and int(scrub_violations) > 0:
+            print(
+                f"**⚠ SECURITY: redact scrub-log-secrets redacted {scrub_violations} "
+                "secret-shaped value(s) from this /design run's logs before flush. "
+                "A credential was almost certainly exposed in the session; ROTATE it now "
+                "and check chat/PRs for the same value.**",
+                flush=True,
+            )
     _emit_rows(kvs)
     return 0 if _write_result_env(result_env, kvs) else 3
 

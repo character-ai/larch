@@ -2280,18 +2280,20 @@ def test_step5c_core_publish_tail_abort_stages_renders_and_writes_terminal(
 
 
 @pytest.mark.parametrize(
-    ("session_id", "publish_ok", "expected_cleanup"),
+    ("session_id", "standalone_heavy_failed", "publish_ok", "expected_cleanup"),
     [
-        ("", "", "true"),
-        ("run-abc", "true", "true"),
-        ("run-abc", "false", "false"),
-        ("run-abc", "", "false"),
+        ("", "false", "", "true"),
+        ("run-abc", "false", "true", "true"),
+        ("run-abc", "false", "false", "false"),
+        ("run-abc", "false", "", "false"),
+        ("run-abc", "true", "true", "false"),
     ],
 )
 def test_step5c_core_cleanup_eligibility_matrix(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     session_id: str,
+    standalone_heavy_failed: str,
     publish_ok: str,
     expected_cleanup: str,
 ) -> None:
@@ -2300,7 +2302,7 @@ def test_step5c_core_cleanup_eligibility_matrix(
         monkeypatch,
         ISSUE_NUMBER="42",
         SESSION_ID=session_id,
-        STANDALONE_HEAVY_FAILED="false",
+        STANDALONE_HEAVY_FAILED=standalone_heavy_failed,
     )
 
     def fake_publish(_argv: list[str]) -> int:
@@ -2318,6 +2320,38 @@ def test_step5c_core_cleanup_eligibility_matrix(
     rc, _ = design_lifecycle.step5c_core(["--session-env-path", str(env_path), "--claude-pid", "123"])
     assert rc == 0
     assert f"CLEANUP_ELIGIBLE={expected_cleanup}" in (design / ".design-step5c-status.env").read_text(encoding="utf-8")
+
+
+def test_step5c_core_empty_session_id_publish_success_is_cleanup_eligible(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    design, env_path = _setup_step5c_design(
+        tmp_path,
+        monkeypatch,
+        ISSUE_NUMBER="42",
+        SESSION_ID="",
+        STANDALONE_HEAVY_FAILED="false",
+    )
+    seen: list[list[str]] = []
+
+    def fake_publish(argv: list[str]) -> int:
+        seen.append(argv)
+        print(_step5c_rows(design, publish_ok=""), end="")
+        return 0
+
+    def fake_render(_argv: list[str]) -> int:
+        (design / "final-summary.md").write_text("summary\n", encoding="utf-8")
+        return 0
+
+    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+
+    monkeypatch.setattr(design_publish, "publish_core", fake_publish)
+    monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
+    rc, _ = design_lifecycle.step5c_core(["--session-env-path", str(env_path), "--claude-pid", "123"])
+    assert rc == 0
+    assert seen[0][seen[0].index("--session-id") : seen[0].index("--session-id") + 2] == ["--session-id", ""]
+    assert "CLEANUP_ELIGIBLE=true" in (design / ".design-step5c-status.env").read_text(encoding="utf-8")
 
 
 def test_step5c_core_publish_tail_abort_rc5_stages_and_writes_terminal(
@@ -2375,6 +2409,36 @@ def test_step5c_core_success_without_final_summary_skips_markers(
     rc, _ = design_lifecycle.step5c_core(["--session-env-path", str(env_path), "--claude-pid", "123"])
     out = capsys.readouterr().out
     assert rc == 0
+    assert "LARCH_FINAL_SUMMARY_BEGIN" not in out
+
+
+def test_step5c_core_success_clears_bound_stale_summary_before_render(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    design, env_path = _setup_step5c_design(tmp_path, monkeypatch, ISSUE_NUMBER="42")
+    summary = design / "summaries" / "current-summary.md"
+    summary.parent.mkdir()
+    summary.write_text("stale success summary\n", encoding="utf-8")
+
+    def fake_publish(_argv: list[str]) -> int:
+        print(_step5c_rows(design, final_summary=summary), end="")
+        return 0
+
+    def fake_render(_argv: list[str]) -> int:
+        assert not summary.exists()
+        return 0
+
+    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+
+    monkeypatch.setattr(design_publish, "publish_core", fake_publish)
+    monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
+    rc, _ = design_lifecycle.step5c_core(["--session-env-path", str(env_path), "--claude-pid", "123"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert not summary.exists()
+    assert "stale success summary" not in out
     assert "LARCH_FINAL_SUMMARY_BEGIN" not in out
 
 
