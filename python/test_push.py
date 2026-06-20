@@ -175,6 +175,8 @@ def test_checkpoint_probe_emits_rebase_outcome_on_skip(monkeypatch: pytest.Monke
     assert "REBASE_OUTCOME=skipped" in out
     assert "SKIPPED_ALREADY_FRESH=true" in out
     assert "PHANTOM_STATUS=clean" in out
+    assert "PHANTOM_COUNT=" not in out
+    assert "PHANTOM_PATHS_FILE=" not in out
 
 
 def _stub_clean_phantom(monkeypatch: pytest.MonkeyPatch, calls: list[str] | None = None) -> None:
@@ -652,6 +654,25 @@ def test_branch_push_dedupes_stderr(monkeypatch: pytest.MonkeyPatch, capsys: pyt
     captured = capsys.readouterr()
     assert "BRANCH=feature" in captured.out
     assert "(repeated 3 times)" in captured.err
+    assert "(repeated 3 times)" in captured.err
+
+
+def test_branch_push_propagates_final_exit_code(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    runner = RecordingRunner(
+        responses=[
+            _res(stdout="feature\n"),
+            _res(stdout="feature\n"),
+            _res(7, stderr="push failed\n"),
+            _res(stdout="feature\n"),
+            _res(7, stderr="push failed\n"),
+            _res(stdout="feature\n"),
+            _res(7, stderr="push failed\n"),
+        ],
+    )
+    monkeypatch.setattr(push, "proc", runner)
+    assert push.branch_main([]) == 7
+    captured = capsys.readouterr()
+    assert "BRANCH=feature" in captured.out
 
 
 def test_branch_main_unknown_argument_stderr_prefix(capsys: pytest.CaptureFixture[str]) -> None:

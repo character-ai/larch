@@ -27,6 +27,12 @@ def _run(args: list[str], env: dict[str, str] | None = None) -> subprocess.Compl
         "RUN_EXTERNAL_AGENT_POLL_INTERVAL": "0.05",
         "LARCH_TRANSIENT_RETRY_DELAY": "0",
         "LARCH_CURSOR_LAUNCH_JITTER_MS": "0",
+        # Disable the shared Darwin startup lock so these subprocess tests stay
+        # hermetic. The lock dir (/tmp/larch-external-startup-<user>.lock) is
+        # global; a sibling subprocess test killed before its release timer
+        # fires leaks it, and the next ~30s of lock-acquiring launches block
+        # until the _run timeout. Mirrors test_agent_waterfall.py.
+        "LARCH_EXTERNAL_STARTUP_LOCK_FORCE_UNAME": "Linux",
     })
     if env:
         merged.update(env)

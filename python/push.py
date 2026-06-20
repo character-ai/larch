@@ -1,5 +1,5 @@
 # pyright: reportUnusedCallResult=false
-"""Branch push orchestration (parity with scripts/git-push.sh)."""
+"""Branch push orchestration for ``cli.py push branch`` and ``push force``."""
 
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ def assert_clean_worktree(runner: Runner, *, cwd: str | None = None) -> None:
 
 
 def select_push_remote(_runner: Runner, _ctx: RunContext, *, cwd: str | None = None) -> str:
-    """Fork-aware push always targets origin (parity with pr create / git-push.sh)."""
+    """Fork-aware push always targets origin for ``cli.py push branch``."""
     _ = cwd
     return "origin"
 
@@ -89,7 +89,7 @@ def push_current_branch(
     cwd: str | None = None,
     sleeper: Callable[[float], None] | None = None,
 ) -> PushResult:
-    """No-arg ``git-push.sh`` parity: named-branch guard, retries, deduped stderr."""
+    """No-arg push parity: named-branch guard, retries, deduped stderr."""
     if sleeper is None:
         sleeper = time.sleep
     branch = git.try_current_branch(runner, cwd=cwd)
@@ -430,9 +430,10 @@ def checkpoint_probe_main(argv: list[str]) -> int:
     _emit_kv("PHANTOM_STATUS", probe.dirty.status)
     if probe.dirty.reason:
         _emit_kv("PHANTOM_REASON", probe.dirty.reason)
-    _emit_kv("PHANTOM_COUNT", probe.dirty.count)
-    if probe.dirty.paths_file:
-        _emit_kv("PHANTOM_PATHS_FILE", probe.dirty.paths_file)
+    if probe.dirty.status == "phantom":
+        _emit_kv("PHANTOM_COUNT", probe.dirty.count)
+        if probe.dirty.paths_file:
+            _emit_kv("PHANTOM_PATHS_FILE", probe.dirty.paths_file)
     if probe.append_warn_error:
         _emit_kv("PHANTOM_APPEND_WARN_ERROR", probe.append_warn_error)
     return 0

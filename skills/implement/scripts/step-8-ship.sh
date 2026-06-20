@@ -61,7 +61,7 @@ require_value REPO "$REPO_RESOLVED"
 # shellcheck source=skills/implement/scripts/lib-implement-clone-tag.sh
 . "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/lib-implement-clone-tag.sh"
 bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-8-python-guard.sh
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" scripts/phantom-probe-with-warn.sh --step 8-pre-ship >&2
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git phantom-probe --step 8-pre-ship >&2
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" ship pr \
   --branch "$BRANCH_NAME_RESOLVED" \
   --issue "$ISSUE_NUMBER_RESOLVED" \

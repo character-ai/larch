@@ -1044,7 +1044,11 @@ def test_commit_fixes_stage_all_uses_review_delta_pathspec(tmp_path, monkeypatch
     stage_file = impl / "review-fix-stage-paths.txt"
     assert stage_file.read_text(encoding="utf-8") == "a.py\n"
     assert ["git", "add", "--pathspec-from-file", str(stage_file)] in calls
-    commit_calls = [argv for argv in calls if argv and argv[0].endswith("git-commit.sh")]
+    commit_calls = [
+        argv
+        for argv in calls
+        if argv[:4] == [review_and_fix.sys.executable, str(review_and_fix._PY_CLI), "git", "commit"]
+    ]
     assert commit_calls
     assert "--only" in commit_calls[0]
     assert "--pathspec-from-file" in commit_calls[0]
@@ -2485,7 +2489,11 @@ def test_commit_lint_fix_delta_paths_uses_pathspec_file(tmp_path, monkeypatch):
     assert sha == "deadbeef"
     assert stage_file.read_text(encoding="utf-8") == "linted.py\n"
     assert ["git", "add", "--pathspec-from-file", str(stage_file)] in calls
-    commit_calls = [argv for argv in calls if argv and argv[0].endswith("git-commit.sh")]
+    commit_calls = [
+        argv
+        for argv in calls
+        if argv[:4] == [review_and_fix.sys.executable, str(review_and_fix._PY_CLI), "git", "commit"]
+    ]
     assert commit_calls
     assert "--only" in commit_calls[0]
     assert "--pathspec-from-file" in commit_calls[0]

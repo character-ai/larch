@@ -40,7 +40,7 @@ def test_preflight_without_skip_runs_branch_clean_fetch_and_sync(monkeypatch) ->
             return subprocess.CompletedProcess(argv, 0, "main\n", "")
         if argv[:3] == ["git", "fetch", "origin"]:
             return subprocess.CompletedProcess(argv, 0, "", "")
-        if "check-main-sync.sh" in str(argv[0]):
+        if argv[:4] == [sys.executable, str(admission._PY_CLI), "git", "check-main-sync"]:  # pyright: ignore[reportPrivateUsage]
             return subprocess.CompletedProcess(argv, 0, "SYNC_STATUS=ok\n", "")
         if argv[:2] == ["git", "rebase"]:
             return subprocess.CompletedProcess(argv, 0, "", "")
@@ -94,7 +94,9 @@ def test_preflight_skip_branch_skips_sync_and_rebase_but_fetches(monkeypatch) ->
     assert admission.preflight_main(["--skip-branch-check"]) == 0
     assert any(call[:3] == ["git", "fetch", "origin"] for call in calls)
     assert not any(call[:3] == ["git", "symbolic-ref", "--short"] for call in calls)
-    assert not any("check-main-sync.sh" in str(call[0]) for call in calls)
+    assert not any(
+        call[:4] == [sys.executable, str(admission._PY_CLI), "git", "check-main-sync"] for call in calls  # pyright: ignore[reportPrivateUsage]
+    )
     assert not any(call[:2] == ["git", "rebase"] for call in calls)
 
 
@@ -112,7 +114,7 @@ def test_preflight_retries_transient_fetch_once(monkeypatch) -> None:
             if fetch_count == 1:
                 return subprocess.CompletedProcess(argv, 128, "", "fatal: unable to access: HTTP 502\n")
             return subprocess.CompletedProcess(argv, 0, "", "")
-        if "check-main-sync.sh" in str(argv[0]):
+        if argv[:4] == [sys.executable, str(admission._PY_CLI), "git", "check-main-sync"]:  # pyright: ignore[reportPrivateUsage]
             return subprocess.CompletedProcess(argv, 0, "SYNC_STATUS=ok\n", "")
         if argv[:2] == ["git", "rebase"]:
             return subprocess.CompletedProcess(argv, 0, "", "")
@@ -160,7 +162,7 @@ def test_preflight_skip_clean_preserves_stalled_marker_when_status_dirty(monkeyp
             return subprocess.CompletedProcess(argv, 0, "main\n", "")
         if argv[:3] == ["git", "fetch", "origin"]:
             return subprocess.CompletedProcess(argv, 0, "", "")
-        if "check-main-sync.sh" in str(argv[0]):
+        if argv[:4] == [sys.executable, str(admission._PY_CLI), "git", "check-main-sync"]:  # pyright: ignore[reportPrivateUsage]
             return subprocess.CompletedProcess(argv, 0, "SYNC_STATUS=ok\n", "")
         if argv[:3] == ["git", "status", "--porcelain"]:
             return subprocess.CompletedProcess(argv, 0, " M kept.txt\n", "")
@@ -186,7 +188,7 @@ def test_preflight_skip_clean_clears_stalled_marker_when_status_clean(monkeypatc
             return subprocess.CompletedProcess(argv, 0, "main\n", "")
         if argv[:3] == ["git", "fetch", "origin"]:
             return subprocess.CompletedProcess(argv, 0, "", "")
-        if "check-main-sync.sh" in str(argv[0]):
+        if argv[:4] == [sys.executable, str(admission._PY_CLI), "git", "check-main-sync"]:  # pyright: ignore[reportPrivateUsage]
             return subprocess.CompletedProcess(argv, 0, "SYNC_STATUS=ok\n", "")
         if argv[:3] == ["git", "status", "--porcelain"]:
             return subprocess.CompletedProcess(argv, 0, "", "")
@@ -209,7 +211,7 @@ def test_preflight_rebase_failure_aborts(monkeypatch, capsys) -> None:
             return subprocess.CompletedProcess(argv, 0, "main\n", "")
         if argv[:3] == ["git", "fetch", "origin"]:
             return subprocess.CompletedProcess(argv, 0, "", "")
-        if "check-main-sync.sh" in str(argv[0]):
+        if argv[:4] == [sys.executable, str(admission._PY_CLI), "git", "check-main-sync"]:  # pyright: ignore[reportPrivateUsage]
             return subprocess.CompletedProcess(argv, 0, "SYNC_STATUS=ok\n", "")
         if argv[:3] == ["git", "rebase", "origin/main"]:
             return subprocess.CompletedProcess(argv, 1, "", "conflict\n")

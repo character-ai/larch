@@ -273,7 +273,7 @@ def commit_with_trailer(
     pathspec_file_nul: bool = False,
     cwd: str | None = None,
 ) -> CommandResult:
-    """Commit via temp file + interpret-trailers (parity with scripts/git-commit.sh)."""
+    """Commit via temp file + interpret-trailers for ``cli.py git commit``."""
     trailer = config.GIT_COMMIT_CO_AUTHORED_BY_TRAILER
     with tempfile.NamedTemporaryFile(
         mode="w",
@@ -673,7 +673,7 @@ def force_push_recovery(
     cwd: str | None = None,
     sleeper: Callable[[float], None] | None = None,
 ) -> ForcePushResult:
-    """Port git-force-push.sh: clean-tree guard, fetch, lease push, race noop, one retry."""
+    """Force-push recovery: clean-tree guard, fetch, lease push, race noop, one retry."""
     if sleeper is None:
         sleeper = time.sleep
 
@@ -823,7 +823,7 @@ def conflict_files(runner: Runner, *, cwd: str | None = None) -> tuple[ConflictF
 
 
 def try_conflict_files(runner: Runner, *, cwd: str | None = None) -> tuple[ConflictFile, ...]:
-    """Non-raising conflict-file probe (git-conflict-files.sh parity)."""
+    """Non-raising conflict-file probe for best-effort internal callers."""
     result = _run(runner, ["git", "ls-files", "-u"], cwd=cwd)
     if result.returncode != 0:
         return ()
@@ -999,7 +999,7 @@ def check_main_sync(runner: Runner, *, cwd: str | None = None) -> MainSyncResult
     if diff.returncode != 0:
         return MainSyncResult(status="probe-error", ahead_count=ahead, error=f"git diff --name-only failed (exit {diff.returncode})", exit_code=2)
     paths = [line for line in diff.stdout.splitlines() if line]
-    logs_only = bool(paths) and all(path.startswith("larch-logs/") for path in paths)
+    logs_only = not paths or all(path.startswith("larch-logs/") for path in paths)
     if all_flushes and logs_only:
         clean = _run(runner, ["git", "status", "--porcelain"], cwd=cwd)
         if clean.returncode != 0 or clean.stdout.strip():
@@ -1155,7 +1155,11 @@ def conflict_files_main(argv: list[str]) -> int:
     if argv:
         print(f"git-conflict-files.sh: unknown argument: {argv[0]}", file=sys.stderr)
         return 1
-    for item in try_conflict_files(proc):
+    result = _run(proc, ["git", "ls-files", "-u"])
+    if result.returncode != 0:
+        sys.stderr.write(result.stderr)
+        return result.returncode
+    for item in _parse_conflict_file_rows(result.stdout):
         _emit_kv("FILE", item.path)
         _emit_kv("STAGE_1", str(item.stage_1).lower())
         _emit_kv("STAGE_2", str(item.stage_2).lower())
@@ -1194,13 +1198,34 @@ def checkout_ours_main(argv: list[str]) -> int:
 
 
 def show_stage_main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py git show-stage")
-    parser.add_argument("--stage", required=True)
-    parser.add_argument("--file", required=True)
-    args = _parse(parser, argv)
-    if args is None or args.stage not in {"1", "2", "3"}:
+    stage = ""
+    file = ""
+    index = 0
+    while index < len(argv):
+        arg = argv[index]
+        if arg == "--stage":
+            if index + 1 >= len(argv):
+                print("git-show-stage.sh: --stage requires a value", file=sys.stderr)
+                return 1
+            stage = argv[index + 1]
+            index += 2
+            continue
+        if arg == "--file":
+            if index + 1 >= len(argv):
+                print("git-show-stage.sh: --file requires a value", file=sys.stderr)
+                return 1
+            file = argv[index + 1]
+            index += 2
+            continue
+        print(f"git-show-stage.sh: unknown argument: {arg}", file=sys.stderr)
         return 1
-    result = show_file(proc, f":{args.stage}:{args.file}")
+    if not stage or not file:
+        print("git-show-stage.sh: --stage and --file are required", file=sys.stderr)
+        return 1
+    if stage not in {"1", "2", "3"}:
+        print(f"git-show-stage.sh: --stage must be 1, 2, or 3 (got: {stage})", file=sys.stderr)
+        return 1
+    result = show_file(proc, f":{stage}:{file}")
     sys.stdout.write(result.stdout)
     sys.stderr.write(result.stderr)
     return result.returncode
@@ -1217,7 +1242,7 @@ def sync_local_main_main(argv: list[str]) -> int:
     if rc == 0:
         _emit_kv("RESULT", result)
     else:
-        print(f"git-sync-local-main.sh: {result}", file=sys.stderr)
+        print(f"cli.py git sync-local-main: {result}", file=sys.stderr)
     return rc
 
 
@@ -1237,14 +1262,28 @@ def clean_tree_main(argv: list[str]) -> int:
 
 
 def snapshot_untracked_main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py git snapshot-untracked", add_help=False)
-    parser.add_argument("--output", default="")
-    parser.add_argument("--nul", action="store_true")
-    args = _parse(parser, argv)
-    if args is None or not args.output:
+    output = ""
+    nul = False
+    index = 0
+    while index < len(argv):
+        arg = argv[index]
+        if arg == "--output":
+            if index + 1 >= len(argv) or not argv[index + 1]:
+                print("snapshot-untracked.sh: --output requires a value", file=sys.stderr)
+                return 0
+            output = argv[index + 1]
+            index += 2
+            continue
+        if arg == "--nul":
+            nul = True
+            index += 1
+            continue
+        print(f"snapshot-untracked.sh: unknown flag: {arg}", file=sys.stderr)
+        return 0
+    if not output:
         print("snapshot-untracked.sh: --output is required", file=sys.stderr)
         return 0
-    return snapshot_untracked(proc, args.output, nul=args.nul)
+    return snapshot_untracked(proc, output, nul=nul)
 
 
 def count_commits_main(argv: list[str]) -> int:
@@ -1279,16 +1318,29 @@ def check_main_sync_main(argv: list[str]) -> int:
 
 
 def check_remote_branch_main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py git check-remote-branch", add_help=False)
-    parser.add_argument("--branch", default="")
-    parser.add_argument("--remote", default="origin")
-    args = _parse(parser, argv)
-    if args is None or not args.branch:
+    branch = ""
+    remote = "origin"
+    index = 0
+    while index < len(argv):
+        arg = argv[index]
+        if arg == "--branch":
+            branch = argv[index + 1] if index + 1 < len(argv) else ""
+            index += 2
+            continue
+        if arg == "--remote":
+            remote = argv[index + 1] if index + 1 < len(argv) else ""
+            index += 2
+            continue
+        _emit_kv("STATE", "error")
+        _emit_kv("RC", 1)
+        _emit_kv("ERROR", f"unknown flag: {arg}")
+        return 0
+    if not branch:
         _emit_kv("STATE", "error")
         _emit_kv("RC", 1)
         _emit_kv("ERROR", "--branch is required")
         return 0
-    result = remote_branch_state(proc, args.branch, remote=args.remote)
+    result = remote_branch_state(proc, branch, remote=remote)
     _emit_kv("STATE", result.state)
     _emit_kv("RC", result.rc)
     if result.error:

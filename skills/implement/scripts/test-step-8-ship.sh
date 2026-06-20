@@ -23,7 +23,8 @@ assert_rc() { local a=$1 e=$2 l=$3; if [ "$a" -eq "$e" ]; then pass "$l"; else f
 helper_text=$(cat "$HELPER")
 assert_contains 'lib-implement-clone-tag.sh' "$helper_text" 'static: clone-tag helper sourced'
 assert_contains 'step-8-python-guard.sh' "$helper_text" 'static: shared python guard invoked'
-assert_contains 'phantom-probe-with-warn.sh --step 8-pre-ship >&2' "$helper_text" 'static: bundled phantom probe redirects stdout'
+# shellcheck disable=SC2016
+assert_contains 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git phantom-probe --step 8-pre-ship >&2' "$helper_text" 'static: bundled phantom probe redirects stdout'
 assert_not_contains 'sys.version_info >= (3, 11)' "$helper_text" 'static: inline python version guard absent from ship wrapper'
 # shellcheck disable=SC2016
 assert_not_contains 'claude-implement-${CLONE_TAG_FULL}-' "$helper_text" 'static: inline tmpdir prefix absent from ship wrapper'
@@ -51,7 +52,6 @@ cat >"$IMPL_TMP/larch-run.sh" <<EOF_RUN
 set -euo pipefail
 case "\$1" in
   skills/implement/scripts/step-8-python-guard.sh) printf '%s\n' guard >> "$TMP_ROOT/order.txt"; exit 0 ;;
-  scripts/phantom-probe-with-warn.sh) printf '%s\n' phantom >> "$TMP_ROOT/order.txt"; printf '%s\n' 'PHANTOM_STATUS=clean'; exit 0 ;;
   *) exec bash "$REPO_ROOT/\$1" "\${@:2}" ;;
 esac
 EOF_RUN
@@ -62,6 +62,11 @@ STUB_BIN="$TMP_ROOT/bin"
 mkdir -p "$STUB_BIN"
 cat >"$STUB_BIN/python3" <<EOF_STUB
 #!/usr/bin/env bash
+if [ "\$1" = "$REPO_ROOT/python/cli.py" ] && [ "\$2" = "git" ] && [ "\$3" = "phantom-probe" ]; then
+  printf '%s\n' phantom >> "$TMP_ROOT/order.txt"
+  printf '%s\n' 'PHANTOM_STATUS=clean'
+  exit 0
+fi
 if [ "\$1" = "$REPO_ROOT/python/cli.py" ] && [ "\$2" = "ship" ] && [ "\$3" = "pr" ]; then
   printf '%s\n' driver >> "$TMP_ROOT/order.txt"
   printf '%s\n' "\$@" > "$TMP_ROOT/ship-argv.txt"

@@ -1167,7 +1167,10 @@ def _commit_lint_fix_delta_paths(round_num: int, round_dir: Path, commit_paths: 
     _run(["git", "add", "--pathspec-from-file", str(stage_file)])
     msg = f"Address lint fixes after review round {round_num}: {reason}"
     commit = _run([
-        str(_plugin_root() / "scripts" / "git-commit.sh"),
+        sys.executable,
+        str(_PY_CLI),
+        "git",
+        "commit",
         "--only",
         "--pathspec-from-file",
         str(stage_file),
@@ -2048,7 +2051,7 @@ def _stage_and_commit_round(round_num: int, round_dir: Path) -> str:
         return ""
     _run(["git", "add", "--pathspec-from-file", str(stage_file)])
     msg = f"Address code review feedback (round {round_num})"
-    commit = _run([str(_plugin_root() / "scripts" / "git-commit.sh"), "--only", "--pathspec-from-file", str(stage_file), "-m", msg])
+    commit = _run([sys.executable, str(_PY_CLI), "git", "commit", "--only", "--pathspec-from-file", str(stage_file), "-m", msg])
     _append_text(round_dir / "coder-commit.log", commit.stdout + commit.stderr)
     if commit.returncode != 0:
         return ""
@@ -2325,7 +2328,7 @@ def _run_round(args: argparse.Namespace, *, suppress_emit: bool, review_core_imp
     round_dir = implement_tmpdir / f"round-{round_num}"
     round_dir.mkdir(parents=True, exist_ok=True)
     if round_num == 1:
-        _run([str(_plugin_root() / "scripts" / "snapshot-untracked.sh"), "--output", str(implement_tmpdir / "pre-review-untracked.txt")])
+        _run([sys.executable, str(_PY_CLI), "git", "snapshot-untracked", "--output", str(implement_tmpdir / "pre-review-untracked.txt")])
         head = _git_head()
         if head:
             _write_text(implement_tmpdir / "pre-review-head.txt", head + "\n")
@@ -3102,7 +3105,10 @@ def commit_fixes(argv: list[str] | None = None) -> int:
             _emit_kv("ERROR", (add_result.stderr or add_result.stdout).replace("\n", " ")[:500])
             return add_result.returncode
         result = _run([
-            str(_plugin_root() / "scripts" / "git-commit.sh"),
+            sys.executable,
+            str(_PY_CLI),
+            "git",
+            "commit",
             "--only",
             "--pathspec-from-file",
             str(stage_file),
@@ -3110,7 +3116,7 @@ def commit_fixes(argv: list[str] | None = None) -> int:
             args.message,
         ])
     else:
-        result = _run([str(_plugin_root() / "scripts" / "git-commit.sh"), "-m", args.message, *args.files])
+        result = _run([sys.executable, str(_PY_CLI), "git", "commit", "-m", args.message, *args.files])
     if result.returncode == 0:
         _emit_kv("COMMITTED", "true")
         _emit_kv("SHA", _git_head())

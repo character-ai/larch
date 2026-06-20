@@ -232,10 +232,10 @@ test-preflight-args:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_admission.py -x -q -k 'preflight'
 
 test-check-clean-tree:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-check-clean-tree.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_git.py -q -k 'clean_tree'
 
 test-check-main-sync:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-check-main-sync.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_check_main_sync.py python/test_git.py -q -k 'check_main_sync'
 
 
 
@@ -368,7 +368,7 @@ test-promote-release:
 
 
 test-git-push:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-git-push.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_push.py -q -k 'branch_push or branch_main or propagates_final_exit'
 
 
 test-lint-literal-counts:
@@ -563,7 +563,7 @@ test-implement-rebase-macro:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-implement-rebase-macro.sh
 
 test-phantom-probe-with-warn:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-phantom-probe-with-warn.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_phantom.py -q -k 'probe'
 
 test-implement-step2-routing:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-implement-step2-routing.sh
@@ -654,7 +654,7 @@ test-codex-implementer:
 
 
 test-git-commit-only:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-git-commit-only.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_git.py -q -k 'commit_pathspec_file_nul_only'
 
 test-refresh-run-logs:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_run_logs.py -k refresh_run_logs
@@ -912,7 +912,7 @@ test-check-mid-run-dirty-tree:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_dirty_tree.py -x -q -k 'not (scope_check or scope_marker)'
 
 test-check-phantom-dirty:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-check-phantom-dirty.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_phantom.py python/test_git.py -q -k 'check_phantom_dirty'
 
 test-check-reviewers:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_agents.py -q -k 'check_reviewers or health_gate'
