@@ -23,7 +23,7 @@ skills/implement/scripts/step-7a.sh \
 | `DIAGRAM_PATH` | Absolute path to `code-flow-diagram.md`, or empty |
 | `COMMENT_URL` | Tracking issue comment URL, or empty when upsert is gated, skipped, or failed |
 | `SESSION_TRANSCRIPT_STATUS` | Relayed `run-log capture-transcript` status lines, when emitted |
-| `LOG_FLUSH_STATUS` | `ok`, `degraded`, `skipped-no-logs-commit`, or `skipped-rebase-checkpoint` |
+| `LOG_FLUSH_STATUS` | `ok`, `degraded`, or `skipped-no-logs-commit`; rebase failure emits the same real flush status as success paths |
 | `STEP_7A_BAIL_REASON` | Empty on non-argv paths; `argv` on usage errors |
 
 The helper re-emits the `python/cli.py push checkpoint-probe` and `run-log capture-transcript` KV envelopes onto the caller-visible contract stream before its final KV tail.
@@ -52,7 +52,7 @@ The helper re-emits the `python/cli.py push checkpoint-probe` and `run-log captu
 - When generation is skipped or failed, Step 7a removes any stale local `code-flow-diagram.md` / `code-flow-section.md`, omits the upsert, and preserves any prior valid Code Flow section on the issue instead of replacing it with a placeholder.
 - Empty `ISSUE_NUMBER` still gates the tracking-issue upsert.
 - `larch:diagrams` uses the shared stable marker `<!-- larch:diagrams v1 -->`; Step 7a does not call `python3 python/cli.py tracking-issue upsert-summary` directly and does not use a `runid=` marker for diagrams.
-- Only `REBASE_OUTCOME=ok|skipped` reaches the pre-bump flush phase.
+- The pre-bump flush runs after the 7a.r rebase probe on every path. Probe failure preserves the probe rc for orchestrator routing while still flushing diagnostics when inputs allow.
 - The helper does not write a `diagrams` larch-log batch.
 
 ## Regression checklist

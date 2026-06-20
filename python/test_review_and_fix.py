@@ -719,6 +719,86 @@ def test_fix_applied_not_rewritten_to_converged_before_gates(tmp_path, monkeypat
     assert result.status == "fix-applied"
 
 
+@MARK_CONVERGENCE
+def test_run_round_tally_flush_failure_becomes_stall_status(tmp_path, monkeypatch):
+    impl = _tmp_impl(tmp_path)
+    round_dir = impl / "round-1"
+    round_dir.mkdir(parents=True)
+
+    def fake_capture(core_args, core_out, **_kwargs):
+        out_dir = Path(core_args[core_args.index("--output-dir") + 1])
+        (out_dir / "accepted-findings.md").write_text("", encoding="utf-8")
+        core_out.write_text(
+            "\n".join([
+                "REVIEW_CORE_STATUS=ok",
+                "ACCEPTED_COUNT=0",
+                "REJECTED_COUNT=0",
+                f"ACCEPTED_FINDINGS_FILE={out_dir / 'accepted-findings.md'}",
+                f"REJECTED_FINDINGS_FILE={out_dir / 'rejected-findings.md'}",
+            ]) + "\n",
+            encoding="utf-8",
+        )
+        return 0
+
+    monkeypatch.setattr(review_and_fix, "review_core_capture", fake_capture)
+    monkeypatch.setattr(review_and_fix, "_compose_review_findings_output", lambda *_a, **_k: False)
+    monkeypatch.setattr(review_and_fix, "flush_review_batches", lambda *_a, **_k: False)
+    monkeypatch.setattr(review_and_fix, "flush_round_log_after_coder", lambda *_a, **_k: None)
+    monkeypatch.setattr(review_and_fix, "_run", lambda argv, **_kw: review_and_fix.proc.CommandResult(argv, 0, "", "", 0.0))
+    args = review_and_fix._build_step5_parser().parse_args([
+        "--implement-tmpdir", str(impl), "--round-num", "1", "--mode", "single",
+        "--session-env-path", str(impl / "session-env.sh"),
+        "--plan-file", str(impl / "plan.txt"),
+        "--feature-file", str(impl / "feature-description.txt"),
+        "--run-id", "run-1",
+        "--codex-available", "false",
+        "--cursor-available", "false",
+    ])
+
+    result = review_and_fix._run_round(args, suppress_emit=True)
+
+    assert result.status == "tally-flush-failed"
+    assert result.rc == 2
+    summary = json.loads((impl / "review-and-fix-summary.json").read_text(encoding="utf-8"))
+    assert summary["status"] == "tally-flush-failed"
+
+
+@MARK_CONVERGENCE
+def test_step5_stalls_when_round_tally_flush_fails(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = _tmp_impl(tmp_path)
+    round_dir = impl / "round-1"
+    round_dir.mkdir(parents=True)
+    accepted = round_dir / "accepted-findings.md"
+    accepted.write_text("", encoding="utf-8")
+    result = review_and_fix.RoundResult(
+        2, "tally-flush-failed", "ok", 1, 0, 0, 0, 0, 0, 0, 0, 0,
+        accepted, round_dir / "rejected-findings.md", round_dir,
+        impl / "review-and-fix-summary.json", impl / "accumulated-oos.jsonl",
+        review_and_fix.CoderResult(0),
+    )
+    monkeypatch.setattr(review_and_fix, "_run_round", lambda *_a, **_k: result)
+    monkeypatch.setattr(review_and_fix, "record_round_timing", lambda *_a, **_k: 0)
+    monkeypatch.setattr(review_and_fix, "_run", lambda argv, **_kw: review_and_fix.proc.CommandResult(argv, 0, "", "", 0.0))
+
+    rc = review_and_fix.step5([
+        "--implement-tmpdir", str(impl),
+        "--mode", "loop",
+        "--round-cap", "1",
+        "--session-env-path", str(impl / "session-env.sh"),
+        "--plan-file", str(impl / "plan.txt"),
+        "--feature-file", str(impl / "feature-description.txt"),
+        "--run-id", "run-1",
+        "--codex-available", "false",
+        "--cursor-available", "false",
+    ])
+
+    out = capsys.readouterr().out
+    assert rc == 2
+    assert "STEP5_REVIEW_STATUS=stall" in out
+    assert "STALL_REASON=tally-flush-failed" in out
+
+
 @pytest.mark.record_timing
 def test_record_round_timing_writes_ledger_row(tmp_path, monkeypatch):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
@@ -1296,6 +1376,44 @@ def test_run_coder_cursor_acquires_external_startup_lock(tmp_path, monkeypatch):
     assert argv[argv.index("--end-s") + 1] == "125"
 
 
+@MARK_DISPATCH
+def test_run_coder_cursor_records_failure_vendor_task(tmp_path, monkeypatch):
+    monkeypatch.setenv("CURSOR_BINARY_FOUND", "true")
+    monkeypatch.setattr(review_and_fix, "_cursor_available", lambda: True)
+    monkeypatch.setattr(review_and_fix.time, "time", mock.Mock(side_effect=[200, 205]))
+    monkeypatch.setattr(
+        review_and_fix.agents,
+        "cursor_auth_preflight",
+        lambda **_kw: review_and_fix.agents.AuthVerdict(ok=True, rc=0),
+    )
+    monkeypatch.setattr(review_and_fix.agents, "cursor_auth_export_env", lambda: None)
+    monkeypatch.setattr(
+        review_and_fix.agents,
+        "resolve_model_args",
+        lambda *_a, **_k: review_and_fix.agents.ModelArgResult(argv=("--model", "test")),
+    )
+    monkeypatch.setattr(review_and_fix.agents, "external_startup_lock_acquire", lambda _tool: review_and_fix.agents.StartupLockState(None))
+    monkeypatch.setattr(review_and_fix.agents, "external_startup_lock_release_after", lambda _state: None)
+    run_calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_kwargs: object) -> review_and_fix.proc.CommandResult:
+        run_calls.append(argv)
+        if "cursor-wrap-prompt" in argv:
+            return review_and_fix.proc.CommandResult(tuple(argv), 0, "wrapped prompt", "", 0.0)
+        if "run-external-agent" in argv:
+            return review_and_fix.proc.CommandResult(tuple(argv), 7, "", "failed", 0.0)
+        return review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0)
+
+    monkeypatch.setattr(review_and_fix, "_run", fake_run)
+
+    assert review_and_fix._run_coder_cursor(tmp_path, "prompt", tmp_path / "tool.log") is False
+
+    timing_call = next(argv for argv in run_calls if argv[2:4] == ["timing", "record-vendor-task"])
+    assert timing_call[timing_call.index("--task-kind") + 1] == "cursor-review-fix"
+    assert timing_call[timing_call.index("--exit-code") + 1] == "7"
+    assert timing_call[timing_call.index("--status") + 1] == "signal"
+
+
 @MARK_CONVERGENCE
 def test_important_present_matches_concern_only_marker(tmp_path):
     findings = tmp_path / "findings.md"
@@ -1631,6 +1749,9 @@ def test_apply_findings_with_coder_all_coders_exhausted_returns_main_agent_requi
     assert result.status == "main-agent-required"
     assert _git_porcelain(repo) == ""
     assert not (repo / "newdir").exists()
+    assert (round_dir / "coder-main-agent-required.log").read_text(encoding="utf-8") == "main-agent-required\n"
+    ledger = round_dir.parent / "timing-ledger.tsv"
+    assert "\tclaude\tclaude-review-fix\t" in ledger.read_text(encoding="utf-8")
 
 
 @MARK_DISPATCH
@@ -2146,6 +2267,85 @@ def test_step5_lint_fix_commit_failure_stalls_when_dirty(tmp_path, monkeypatch):
     monkeypatch.setattr(review_and_fix, "_commit_lint_fix_delta_paths", lambda *_a: "")
     status, reason, cont = review_and_fix._step5_post_round_gates(result, 1, 5, impl)
     assert (status, reason, cont) == ("stall", "lint-fix-commit-failed", False)
+
+
+@MARK_CONVERGENCE
+def test_step5_lint_fix_main_agent_required_commits_applied_delta_before_stall(tmp_path, monkeypatch):
+    impl = _tmp_impl(tmp_path)
+    result = _round_result_for_lint_fix(impl)
+    checks_calls = {"n": 0}
+    lint_calls = {"n": 0}
+    committed: dict[str, object] = {}
+
+    def fake_checks(_impl):
+        checks_calls["n"] += 1
+        return {"STATUS": "fail", "REDACTED_LOG_FILE": str(impl / "checks.log")}
+
+    def fake_lint(_impl, _log):
+        lint_calls["n"] += 1
+        if lint_calls["n"] == 1:
+            return {"LINT_FIX_STATUS": "applied", "LINT_FIX_DELTA_PATHS": "linted.py"}
+        return {"LINT_FIX_STATUS": "main-agent-required"}
+
+    def fake_commit(round_num, round_dir, commit_paths, reason):
+        committed.update(round_num=round_num, round_dir=round_dir, commit_paths=commit_paths, reason=reason)
+        return "sha"
+
+    monkeypatch.setattr(review_and_fix, "_run_relevant_checks_captured", fake_checks)
+    monkeypatch.setattr(review_and_fix, "_git_status_porcelain", lambda: " M linted.py\n M carry.py\n")
+    monkeypatch.setattr(review_and_fix, "_write_pre_lint_snapshot", lambda _round: "head")
+    monkeypatch.setattr(review_and_fix, "_run_lint_fix_loop", fake_lint)
+    monkeypatch.setattr(review_and_fix, "_lint_fix_delta_paths", lambda _round, _head, paths: tuple(path for path in paths if path == "linted.py"))
+    monkeypatch.setattr(review_and_fix, "_commit_lint_fix_delta_paths", fake_commit)
+
+    status, reason, cont = review_and_fix._step5_post_round_gates(result, 1, 5, impl)
+
+    assert (status, reason, cont) == ("stall", "lint-fix-main-agent-required", False)
+    assert committed["commit_paths"] == ("linted.py",)
+    assert committed["reason"] == "main-agent-required"
+
+
+@MARK_CONVERGENCE
+def test_step5_lint_fix_main_agent_required_commit_failure_uses_commit_reason(tmp_path, monkeypatch):
+    impl = _tmp_impl(tmp_path)
+    result = _round_result_for_lint_fix(impl)
+    lint_calls = {"n": 0}
+
+    def fake_lint(_impl, _log):
+        lint_calls["n"] += 1
+        if lint_calls["n"] == 1:
+            return {"LINT_FIX_STATUS": "applied", "LINT_FIX_DELTA_PATHS": "linted.py"}
+        return {"LINT_FIX_STATUS": "main-agent-required"}
+
+    monkeypatch.setattr(review_and_fix, "_run_relevant_checks_captured", lambda _impl: {"STATUS": "fail", "REDACTED_LOG_FILE": str(impl / "checks.log")})
+    monkeypatch.setattr(review_and_fix, "_git_status_porcelain", lambda: " M linted.py\n")
+    monkeypatch.setattr(review_and_fix, "_write_pre_lint_snapshot", lambda _round: "head")
+    monkeypatch.setattr(review_and_fix, "_run_lint_fix_loop", fake_lint)
+    monkeypatch.setattr(review_and_fix, "_lint_fix_delta_paths", lambda *_a: ("linted.py",))
+    monkeypatch.setattr(review_and_fix, "_commit_lint_fix_delta_paths", lambda *_a: "")
+
+    status, reason, cont = review_and_fix._step5_post_round_gates(result, 1, 5, impl)
+
+    assert (status, reason, cont) == ("stall", "lint-fix-commit-failed", False)
+
+
+@MARK_CONVERGENCE
+def test_step5_lint_fix_main_agent_required_without_lint_work_does_not_commit(tmp_path, monkeypatch):
+    impl = _tmp_impl(tmp_path)
+    result = _round_result_for_lint_fix(impl)
+    commit_calls = {"n": 0}
+
+    monkeypatch.setattr(review_and_fix, "_run_relevant_checks_captured", lambda _impl: {"STATUS": "fail", "REDACTED_LOG_FILE": str(impl / "checks.log")})
+    monkeypatch.setattr(review_and_fix, "_git_status_porcelain", lambda: " M carry.py\n")
+    monkeypatch.setattr(review_and_fix, "_write_pre_lint_snapshot", lambda _round: "head")
+    monkeypatch.setattr(review_and_fix, "_run_lint_fix_loop", lambda _impl, _log: {"LINT_FIX_STATUS": "main-agent-required"})
+    monkeypatch.setattr(review_and_fix, "_lint_fix_delta_paths", lambda *_a: ("carry.py",))
+    monkeypatch.setattr(review_and_fix, "_commit_lint_fix_delta_paths", lambda *_a: commit_calls.__setitem__("n", 1) or "sha")
+
+    status, reason, cont = review_and_fix._step5_post_round_gates(result, 1, 5, impl)
+
+    assert (status, reason, cont) == ("stall", "lint-fix-main-agent-required", False)
+    assert commit_calls["n"] == 0
 
 
 @MARK_CONVERGENCE

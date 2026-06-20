@@ -302,22 +302,22 @@ def run_step7a(
     for line in probe.stdout.splitlines():
         if line.strip():
             print(line)
-    if probe.returncode != 0:
-        emit("DIAGRAM_STATUS", diagram_status)
-        emit("DIAGRAM_REASON", diagram_reason)
-        emit("DIAGRAM_PATH", diagram_path)
-        emit("COMMENT_URL", comment_url)
-        emit("LOG_FLUSH_STATUS", "skipped-rebase-checkpoint")
-        emit("STEP_7A_BAIL_REASON", bail)
-        emit("REBASE_OUTCOME", "conflict" if probe.returncode == 1 else "failed")
-        return probe.returncode
-
     log_flush_status = _run_log_flush(
         implement_tmpdir,
         run_id=run_id,
         no_logs_commit=no_logs_commit,
         claude_source_file=claude_source,
     )
+    if probe.returncode != 0:
+        emit("DIAGRAM_STATUS", diagram_status)
+        emit("DIAGRAM_REASON", diagram_reason)
+        emit("DIAGRAM_PATH", diagram_path)
+        emit("COMMENT_URL", comment_url)
+        emit("LOG_FLUSH_STATUS", log_flush_status)
+        emit("STEP_7A_BAIL_REASON", bail)
+        emit("REBASE_OUTCOME", "conflict" if probe.returncode == 1 else "failed")
+        return probe.returncode
+
     rebase_outcome = "skipped"
     for line in probe.stdout.splitlines():
         if line.startswith("REBASE_OUTCOME="):

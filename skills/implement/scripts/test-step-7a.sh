@@ -821,8 +821,8 @@ set -e
 assert_equals 1 "$rc" "rebase-conflict exits 1"
 assert_contains "REBASE_OUTCOME=conflict" "$out" "rebase-conflict emits conflict outcome"
 assert_contains "ROUTE=conflict" "$out" "rebase-conflict emits route conflict"
-assert_contains "LOG_FLUSH_STATUS=skipped-rebase-checkpoint" "$out" "rebase-conflict emits skipped rebase flush status"
-assert_not_contains "flush-execution-issues.sh" "$(cat "$CASE_DIR/calls.log")" "rebase-conflict skips flush"
+assert_contains "LOG_FLUSH_STATUS=degraded" "$out" "rebase-conflict emits real flush status"
+assert_contains "run-log commit" "$(cat "$CASE_DIR/calls.log")" "rebase-conflict invokes flush"
 
 new_case rebase-failed
 set +e
@@ -832,8 +832,8 @@ set -e
 assert_equals 3 "$rc" "rebase-failed exits 3"
 assert_contains "REBASE_OUTCOME=failed" "$out" "rebase-failed emits failed outcome"
 assert_contains "ROUTE=bail" "$out" "rebase-failed emits route bail"
-assert_contains "LOG_FLUSH_STATUS=skipped-rebase-checkpoint" "$out" "rebase-failed emits skipped rebase flush status"
-assert_not_contains "flush-execution-issues.sh" "$(cat "$CASE_DIR/calls.log")" "rebase-failed skips flush"
+assert_contains "LOG_FLUSH_STATUS=degraded" "$out" "rebase-failed emits real flush status"
+assert_contains "run-log commit" "$(cat "$CASE_DIR/calls.log")" "rebase-failed invokes flush"
 
 new_case rebase-unexpected-rc
 set +e
@@ -844,8 +844,8 @@ assert_equals 5 "$rc" "rebase-unexpected-rc exits 5"
 assert_contains "REBASE_OUTCOME=failed" "$out" "rebase-unexpected-rc emits failed outcome"
 assert_contains "REBASE_ERROR=unexpected-rc-5" "$out" "rebase-unexpected-rc emits unexpected rc error"
 assert_contains "ROUTE=bail" "$out" "rebase-unexpected-rc emits route bail"
-assert_contains "LOG_FLUSH_STATUS=skipped-rebase-checkpoint" "$out" "rebase-unexpected-rc emits skipped rebase flush status"
-assert_not_contains "flush-execution-issues.sh" "$(cat "$CASE_DIR/calls.log")" "rebase-unexpected-rc skips flush"
+assert_contains "LOG_FLUSH_STATUS=degraded" "$out" "rebase-unexpected-rc emits real flush status"
+assert_contains "run-log commit" "$(cat "$CASE_DIR/calls.log")" "rebase-unexpected-rc invokes flush"
 
 new_case quiet-rebase-contract
 set +e

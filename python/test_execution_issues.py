@@ -1,3 +1,5 @@
+import hashlib
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -73,6 +75,31 @@ def test_flush_execution_issues_idempotent_when_sentinel_matches(tmp_path: Path)
     assert issue_log.read_text(encoding="utf-8") == ""
 
 
+def test_flush_execution_issues_already_flushed_when_batch_contains_normalized_sections(tmp_path: Path) -> None:
+    issue_log = tmp_path / "execution-issues.md"
+    _ = issue_log.write_text("### Warnings\n- one\n\n### Tool Failures\n- two\n", encoding="utf-8")
+    log_root = tmp_path / "larch-logs"
+    batch = log_root / "implement" / "run-2" / "execution-issues.ndjson"
+    batch.parent.mkdir(parents=True)
+    records: list[str] = []
+    for body in ("- one\n", "- two\n"):
+        norm_sha = hashlib.sha256(execution_issues.normalize_body_for_hash(body).encode()).hexdigest()
+        records.append(f'{{"source_sha256":"{norm_sha}"}}')
+    _ = batch.write_text("\n".join(records) + "\n", encoding="utf-8")
+
+    rc, status, records_count, _append_log = execution_issues.flush_execution_issues(
+        log_root=log_root,
+        run_id="run-2",
+        issue_log=issue_log,
+    )
+
+    assert rc == 0
+    assert status == "already-flushed"
+    assert records_count == 0
+    assert (tmp_path / ".execution-issues-flushed.sha").is_file()
+    assert issue_log.read_text(encoding="utf-8") == ""
+
+
 def test_refresh_execution_issues_skips_when_issue_not_set(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -123,6 +150,33 @@ def test_flush_execution_issues_safety_net_preserves_source_log(tmp_path: Path) 
     assert status in {"ok", "no-records"}
     assert records >= 0
     assert issue_log.read_text(encoding="utf-8") == "### Warnings\n- one\n"
+
+
+def test_flush_execution_issues_safety_net_append_failure_preserves_source_log(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    issue_log = tmp_path / "execution-issues.md"
+    _ = issue_log.write_text("### Warnings\n- one\n", encoding="utf-8")
+
+    def fake_run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(["run-log"], 9, "out\n", "err\n")
+
+    monkeypatch.setattr(execution_issues.subprocess, "run", fake_run)
+
+    rc, status, records, _append_log = execution_issues.flush_execution_issues_safety_net(
+        log_root=(tmp_path / "larch-logs").resolve(),
+        run_id="run-6",
+        issue_log=issue_log,
+    )
+
+    text = issue_log.read_text(encoding="utf-8")
+    assert rc == 1
+    assert status == "failed"
+    assert records == 0
+    assert "- one" in text
+    assert "flush-execution-issues-safety-net" in text
+    assert "run-log exited 9" in text
 
 
 def test_flush_execution_issues_safety_net_main_emits_kv_contract(

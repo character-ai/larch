@@ -285,7 +285,7 @@ def test_timing_record_vendor_task_accepts_live_ci_task_kinds(
     assert "unknown task-kind" not in capsys.readouterr().err
 
 
-@pytest.mark.parametrize("task_kind", ["codex-review-fix", "cursor-review-fix"])
+@pytest.mark.parametrize("task_kind", ["codex-review-fix", "cursor-review-fix", "claude-review-fix"])
 def test_timing_record_vendor_task_accepts_review_fix_task_kinds(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

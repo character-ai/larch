@@ -143,7 +143,7 @@ def test_step7a_diagram_failure_emits_diagram_reason_on_rebase_failure(tmp_path:
         step_7a.pr_body,
         "generate_code_flow_diagram",
         return_value=(1, "failed", "", reason),
-    ), patch.object(step_7a, "subprocess") as mock_subprocess:
+    ), patch.object(step_7a, "_run_log_flush", return_value="ok") as mock_flush, patch.object(step_7a, "subprocess") as mock_subprocess:
         mock_subprocess.run.return_value.returncode = 1
         mock_subprocess.run.return_value.stdout = "REBASE_OUTCOME=conflict\n"
         rc = step_7a.run_step7a(tmp_path)
@@ -152,7 +152,45 @@ def test_step7a_diagram_failure_emits_diagram_reason_on_rebase_failure(tmp_path:
     out = capsys.readouterr().out
     assert "DIAGRAM_STATUS=failed" in out
     assert f"DIAGRAM_REASON={reason}" in out
-    assert "LOG_FLUSH_STATUS=skipped-rebase-checkpoint" in out
+    assert "LOG_FLUSH_STATUS=ok" in out
+    mock_flush.assert_called_once()
+
+
+def test_step7a_rebase_failure_flushes_and_preserves_probe_rc(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
+
+    with patch.object(step_7a, "_is_small_non_runtime_change", return_value=True), patch.object(
+        step_7a,
+        "_run_log_flush",
+        return_value="degraded",
+    ) as mock_flush, patch.object(step_7a, "subprocess") as mock_subprocess:
+        mock_subprocess.run.return_value.returncode = 3
+        mock_subprocess.run.return_value.stdout = "REBASE_OUTCOME=failed\n"
+        rc = step_7a.run_step7a(tmp_path)
+
+    out = capsys.readouterr().out
+    assert rc == 3
+    assert "REBASE_OUTCOME=failed" in out
+    assert "LOG_FLUSH_STATUS=degraded" in out
+    mock_flush.assert_called_once()
+
+
+def test_step7a_rebase_failure_no_logs_commit_emits_skipped_status(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
+
+    with patch.object(step_7a, "_is_small_non_runtime_change", return_value=True), patch.object(
+        step_7a,
+        "_run_log_flush",
+        return_value="skipped-no-logs-commit",
+    ) as mock_flush, patch.object(step_7a, "subprocess") as mock_subprocess:
+        mock_subprocess.run.return_value.returncode = 3
+        mock_subprocess.run.return_value.stdout = "REBASE_OUTCOME=failed\n"
+        rc = step_7a.run_step7a(tmp_path, no_logs_commit=True)
+
+    out = capsys.readouterr().out
+    assert rc == 3
+    assert "LOG_FLUSH_STATUS=skipped-no-logs-commit" in out
+    assert mock_flush.call_args.kwargs["no_logs_commit"] is True
 
 
 def test_step7a_no_logs_commit_emits_skipped_status(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

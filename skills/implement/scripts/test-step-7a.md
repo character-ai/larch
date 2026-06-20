@@ -26,7 +26,8 @@ Offline regression harness for `skills/implement/scripts/step-7a.sh`.
 20. `forked-target rebase argv`: `--forked-target true` passes `--base-remote upstream --base-ref main` to the rebase probe.
 21. `ISSUE_NUMBER empty gate`: empty issue number suppresses the summary upsert while the rest of the pipeline runs.
 22. `generator-crash`: a crashing diagram helper is treated like generation failure, skips the upsert, and logs a warning.
-23. `rebase-conflict`: `REBASE_OUTCOME=conflict` exits `1`, relays the probe KVs, and reports `LOG_FLUSH_STATUS=skipped-rebase-checkpoint` because pre-bump flush never ran.
-24. `rebase-failed`: `REBASE_OUTCOME=failed` exits `3`, relays the probe KVs, and reports `LOG_FLUSH_STATUS=skipped-rebase-checkpoint`.
-25. `quiet-rebase-contract`: with quiet mode enabled, the helper still relays `REBASE_OUTCOME` on the caller-visible contract stream.
-26. `argv error`: missing `--implement-tmpdir` exits `2` and emits `STEP_7A_BAIL_REASON=argv`.
+23. `rebase-conflict`: `REBASE_OUTCOME=conflict` exits `1`, relays the probe KVs, invokes the pre-bump flush, and reports the real `LOG_FLUSH_STATUS`.
+24. `rebase-failed`: `REBASE_OUTCOME=failed` exits `3`, relays the probe KVs, invokes the pre-bump flush, and reports the real `LOG_FLUSH_STATUS`.
+25. `rebase-unexpected-rc`: preserves probe rc `5`, relays `REBASE_OUTCOME=failed` / `ROUTE=bail`, invokes the flush, and emits the actual flush status.
+26. `quiet-rebase-contract`: with quiet mode enabled, the helper still relays `REBASE_OUTCOME` on the caller-visible contract stream.
+27. `argv error`: missing `--implement-tmpdir` exits `2` and emits `STEP_7A_BAIL_REASON=argv`.

@@ -715,7 +715,7 @@ def test_agentic_fix_result_timeout_reads_push_checkpoint(tmp_path: Path) -> Non
     checkpoint_dir = implement / "ci-agentic-fix"
     checkpoint_dir.mkdir()
     _ = (checkpoint_dir / "ci-agentic-push-checkpoint.latest").write_text(
-        "RUN_ID=99\nDELTA_PATHS=a.py\nCI_FIX_REBASE_PENDING=true\nDETAIL=wait-timeout\n",
+        "RUN_ID=42\nDELTA_PATHS=a.py\nCI_FIX_REBASE_PENDING=true\nDETAIL=wait-timeout\n",
         encoding="utf-8",
     )
 

@@ -414,9 +414,15 @@ def file_oos_annotate_main(argv: Sequence[str]) -> int:
             gh_urls.add(gh.group(0))
     _ = accepted.write_text(accepted_text, encoding="utf-8")
     sentinel_lines = [*map_lines, *sorted(gh_urls)]
-    _ = (design_tmpdir / "oos-issues-created.md").write_text("\n".join(sentinel_lines) + ("\n" if sentinel_lines else ""), encoding="utf-8")
-    _sync_cross_session_cache(design_tmpdir, design_tmpdir / "oos-issues-created.md", _issue_number_from(args.issue_number))
-    _emit_kv("FILE_DESIGN_OOS_STATUS", "annotate-complete")
+    sentinel_body = "\n".join(sentinel_lines) + ("\n" if sentinel_lines else "")
     if issues_failed_count > 0:
+        _ = (design_tmpdir / "oos-issues-created.partial.md").write_text(sentinel_body, encoding="utf-8")
+        (design_tmpdir / "oos-issues-created.md").unlink(missing_ok=True)
+        _emit_kv("FILE_DESIGN_OOS_STATUS", "annotate-partial-failed")
         return 1
+    complete_sentinel = design_tmpdir / "oos-issues-created.md"
+    _ = complete_sentinel.write_text(sentinel_body, encoding="utf-8")
+    (design_tmpdir / "oos-issues-created.partial.md").unlink(missing_ok=True)
+    _sync_cross_session_cache(design_tmpdir, complete_sentinel, _issue_number_from(args.issue_number))
+    _emit_kv("FILE_DESIGN_OOS_STATUS", "annotate-complete")
     return 0

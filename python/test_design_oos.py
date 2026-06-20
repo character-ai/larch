@@ -124,16 +124,22 @@ def test_annotate_updates_accepted_and_returns_nonzero_on_reported_failures(
     rc = design_oos.file_oos_annotate_main(["--design-tmpdir", str(tmp_path), "--issue-stdout-file", str(stdout_file), "--issue-number", "44"])
     assert rc == 1
     kv = _kv(capsys.readouterr().out)
-    assert kv["FILE_DESIGN_OOS_STATUS"] == "annotate-complete"
+    assert kv["FILE_DESIGN_OOS_STATUS"] == "annotate-partial-failed"
     accepted_text = accepted.read_text(encoding="utf-8")
     assert "### OOS_1: alpha" in accepted_text
     assert "- **Filed URL**: https://github.com/acme/repo/issues/101" in accepted_text
     assert "### OOS_2: beta" in accepted_text
     assert "- **Filed URL**: https://github.com/acme/repo/issues/102" not in accepted_text
-    sentinel_text = (tmp_path / "oos-issues-created.md").read_text(encoding="utf-8")
-    assert "OOS_FILE_MAP\t1\thttps://github.com/acme/repo/issues/101" in sentinel_text
-    assert "https://github.com/acme/repo/issues/101" in sentinel_text
-    assert cache.read_text(encoding="utf-8") == sentinel_text
+    assert not (tmp_path / "oos-issues-created.md").exists()
+    partial_text = (tmp_path / "oos-issues-created.partial.md").read_text(encoding="utf-8")
+    assert "OOS_FILE_MAP\t1\thttps://github.com/acme/repo/issues/101" in partial_text
+    assert "https://github.com/acme/repo/issues/101" in partial_text
+    assert not cache.exists()
+
+    rc_prepare = design_oos.file_oos_prepare_main(["--design-tmpdir", str(tmp_path), "--issue-number", "44"])
+    assert rc_prepare == 0
+    kv_prepare = _kv(capsys.readouterr().out)
+    assert kv_prepare["FILE_DESIGN_OOS_STATUS"] != "skip-sentinel"
 
 
 def test_annotate_empty_stdout_fails(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
