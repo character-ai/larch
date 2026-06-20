@@ -719,6 +719,64 @@ def test_panel_dispatch_surfaces_waterfall_failure(tmp_path: Path) -> None:
     assert "--mode must be diff or description" in proc.stderr
 
 
+def test_panel_dispatch_dynamic_render_warning_on_waterfall_failure(
+    tmp_path: Path,
+) -> None:
+    plugin_root = _write_render_failure_plugin(tmp_path)
+    design = tmp_path / "design-dynamic-render-waterfall-fail"
+    design.mkdir()
+    _ = (design / "plan.txt").write_text("Plan body.\n", encoding="utf-8")
+    _ = (design / "feature-description.txt").write_text("feat\n", encoding="utf-8")
+    _ = (design / "scout-plan-manifest.json").write_text(
+        json.dumps(
+            {
+                "archetypes": [
+                    {
+                        "name": "alpha",
+                        "focus_area": "correctness",
+                        "weight": 2,
+                        "rationale": "r1",
+                        "prompt_body": "Check dynamic rendering.",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    failing_stub = tmp_path / "waterfall-fail-stub.sh"
+    _ = failing_stub.write_text(
+        "#!/usr/bin/env bash\n"
+        "printf 'dispatch-with-waterfall.sh: waterfall failed after dynamic render degrade\\n' >&2\n"
+        "exit 7\n",
+        encoding="utf-8",
+    )
+    failing_stub.chmod(0o755)
+    proc = run_cli(
+        "plan-review",
+        "panel-dispatch",
+        "--design-tmpdir",
+        str(design),
+        "--codex-present",
+        "true",
+        "--cursor-present",
+        "true",
+        "--plan-file",
+        str(design / "plan.txt"),
+        "--feature-file",
+        str(design / "feature-description.txt"),
+        "--timeout",
+        "60",
+        env={
+            "CLAUDE_PLUGIN_ROOT": str(plugin_root),
+            "LARCH_QUIET_DISABLE": "1",
+            "DISPATCH_PLAN_REVIEW_WATERFALL_SH": str(failing_stub),
+        },
+    )
+    assert proc.returncode == 7, proc.stderr + proc.stdout
+    assert "PANEL_DISPATCH_EXIT_CODE=7" in proc.stdout
+    assert "DYNAMIC_RENDER_PANEL_WARNING=**⚠ Degraded plan-review panel: 2 dynamic render failure(s)" in proc.stdout
+
+
 def test_panel_dispatch_rows_launchable_by_waterfall(tmp_path: Path) -> None:
     # Regression for issue #4765: every plan-review slot row the panel emits must be
     # accepted by the agent_waterfall consumer. The producer previously emitted an

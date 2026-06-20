@@ -256,7 +256,8 @@ def _dynamic_slot_rows(
         rendered = proc.stdout if proc.returncode == 0 else ""
         if proc.returncode != 0:
             failures.append((slot, tool, proc.returncode))
-            _append_dynamic_render_warning(design, slot, tool, proc.returncode, proc.stderr or proc.stdout or "")
+            with contextlib.suppress(OSError):
+                _append_dynamic_render_warning(design, slot, tool, proc.returncode, proc.stderr or proc.stdout or "")
         rows.append(_slot_row(tool, slot, focus, round_dir / f"{slot}.txt", round_dir / f"{slot}.prompt", rendered))
     return rows, failures
 
@@ -483,6 +484,8 @@ def dispatch_panel(argv: Sequence[str]) -> int:
         _emit("STATIC_SLOT_COUNT", static_count)
         _emit("DYNAMIC_SLOT_COUNT", len(dynamic))
         _emit("PANEL_PRUNED_EMPTY", prune_kv.get("PANEL_PRUNED_EMPTY", "false"))
+        if dynamic_warning:
+            _emit("DYNAMIC_RENDER_PANEL_WARNING", dynamic_warning)
         return proc.returncode
     kv = _parse_kv(proc.stdout)
     paths_file = kv.get("ALL_OUTPUT_FILES_PATH", "") or str(design / "plan-review-panel-paths.txt")
