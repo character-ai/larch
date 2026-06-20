@@ -414,6 +414,45 @@ def _write_run_params(tmp_path: Path) -> None:
     _ = (tmp_path / "feature-description.txt").write_text("feature\n", encoding="utf-8")
 
 
+def test_run_round_body_subprocess_materializes_reviewer_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Subprocess stub omitting reviewer-status.tsv still materializes per-round + latest (#4848)."""
+    design = tmp_path
+    round_dir = design / "plan-review" / "round-1"
+    round_dir.mkdir(parents=True)
+    reviewer_file = round_dir / "cursor-plan-arch-output.txt"
+    _ = (design / "plan-review-slots.ndjson").write_text(
+        '{"slot":"cursor-plan-arch","tool":"cursor","output":"'
+        + str(reviewer_file)
+        + '","prompt_file":"'
+        + str(design / "cursor-plan-arch.prompt")
+        + '"}\n',
+        encoding="utf-8",
+    )
+    _ = (design / "collector-results.env").write_text(
+        f"REVIEWER_FILE={reviewer_file}\nTOOL=cursor\nSTATUS=OK\nEXIT_CODE=0\n\n",
+        encoding="utf-8",
+    )
+    stub = _write_loop_stub(
+        design,
+        "printf 'LOOP_STATUS=complete\\nTALLY_PLAN_REVIEW_STATUS=ok\\nAGGREGATOR_STATUS=ok\\n'; exit 0",
+    )
+    monkeypatch.setenv("RUN_STEP3_PLAN_REVIEW_LOOP_SH", str(stub))
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+
+    body_rc, _values = plan_review._run_round_body(design, 1)  # pyright: ignore[reportPrivateUsage]
+
+    round_status = round_dir / "reviewer-status.tsv"
+    latest = design / "latest-reviewer-status.tsv"
+    assert body_rc == 0
+    assert round_status.is_file()
+    assert latest.is_file()
+    lines = round_status.read_text(encoding="utf-8").splitlines()
+    assert lines[0] == "slot\tstatus\telapsed"
+    assert lines[1] == "Cursor-Arch\tdone\t"
+
+
 def test_cap_reached_short_circuit(tmp_path: Path) -> None:
     _write_run_params(tmp_path)
     _ = (tmp_path / "review-round-count.txt").write_text("5\n", encoding="utf-8")

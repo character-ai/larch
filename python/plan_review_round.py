@@ -547,6 +547,15 @@ def execute_round(
             }
         )
         _write_round_summary(design, round_num, loop_status="zero-findings-degraded-panel", collect_ok=0, collect_fail=0, values=values)
+        with contextlib.suppress(OSError):
+            wrote = write_reviewer_status_tsv(design, round_num)
+            if wrote is None:
+                round_dir = design / "plan-review" / f"round-{round_num}"
+                round_dir.mkdir(parents=True, exist_ok=True)
+                out = round_dir / "reviewer-status.tsv"
+                if not out.is_symlink():
+                    _ = out.write_text("slot\tstatus\telapsed\n", encoding="utf-8")
+                    sync_latest_reviewer_status(design, out)
         for k, v in values.items():
             _emit(k, v)
         return 0, values
@@ -583,6 +592,8 @@ def execute_round(
                 "DEGRADED_PANEL": "1",
             }
         )
+        with contextlib.suppress(OSError):
+            _ = write_reviewer_status_tsv(design, round_num)
         for k, v in values.items():
             _emit(k, v)
         return 1, values

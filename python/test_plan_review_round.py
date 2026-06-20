@@ -393,6 +393,7 @@ def _install_execute_round_fake(
     tally_status: str = "ok",
     panel_pruned_empty: bool = False,
     empty_collector: bool = False,
+    collect_failed: bool = False,
 ) -> None:
     def fake_run_cli(argv: list[str], *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
         del env
@@ -413,6 +414,8 @@ def _install_execute_round_fake(
             _ = paths_file.write_text(str(reviewer_file) + "\n", encoding="utf-8")
             return subprocess.CompletedProcess(argv, 0, f"PANEL_PRUNED_EMPTY=false\nPANEL_PATHS_FILE={paths_file}\n", "")
         if argv[:2] == ["agent", "collect-results"]:
+            if collect_failed:
+                return subprocess.CompletedProcess(argv, 1, "not-parseable-collector-output\n", "")
             if empty_collector:
                 return subprocess.CompletedProcess(argv, 0, "", "")
             sidecar = design / "cursor-plan-arch.sidecar.tsv"
@@ -504,6 +507,68 @@ def test_execute_round_records_plan_review_prune_ledger(tmp_path: Path, monkeypa
     ledger_lines = (design / "reviewer-prune-ledger.tsv").read_text(encoding="utf-8").splitlines()
     assert ledger_lines[0] == "round\ttool\tslot\tlabel\taccepted_count\trejected_count\ttotal_count"
     assert ledger_lines[1] == "1\tcursor\tcursor-plan-arch\tCursor-Arch\t1\t0\t1"
+
+
+def test_execute_round_collect_failed_syncs_latest_reviewer_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """collect-results failure with unparseable output still refreshes reviewer-status.tsv (#4848)."""
+    plan_file = tmp_path / "plan.txt"
+    feature_file = tmp_path / "feature.txt"
+    _ = plan_file.write_text("plan\n", encoding="utf-8")
+    _ = feature_file.write_text("feature\n", encoding="utf-8")
+    stale_latest = tmp_path / "latest-reviewer-status.tsv"
+    _ = stale_latest.write_text("slot\tstatus\telapsed\nStale\tskipped\t\n", encoding="utf-8")
+    _install_execute_round_fake(monkeypatch, tmp_path, collect_failed=True)
+
+    rc, values = plan_review_round.execute_round(
+        tmp_path,
+        round_num=2,
+        prune_round_num=2,
+        codex_present="false",
+        cursor_present="true",
+        plan_file=plan_file,
+        feature_file=feature_file,
+    )
+
+    assert rc == 1
+    assert values["LOOP_STATUS"] == "panel-failed"
+    round_status = tmp_path / "plan-review" / "round-2" / "reviewer-status.tsv"
+    assert round_status.is_file()
+    assert stale_latest.read_text(encoding="utf-8") == round_status.read_text(encoding="utf-8")
+    assert "Stale" not in stale_latest.read_text(encoding="utf-8")
+    assert round_status.read_text(encoding="utf-8").splitlines()[1] == "Cursor-Arch\tskipped\t"
+
+
+def test_execute_round_pruned_empty_syncs_latest_reviewer_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PANEL_PRUNED_EMPTY clears stale latest-reviewer-status.tsv (#4848)."""
+    plan_file = tmp_path / "plan.txt"
+    feature_file = tmp_path / "feature.txt"
+    _ = plan_file.write_text("plan\n", encoding="utf-8")
+    _ = feature_file.write_text("feature\n", encoding="utf-8")
+    stale_latest = tmp_path / "latest-reviewer-status.tsv"
+    _ = stale_latest.write_text("slot\tstatus\telapsed\nStale\tskipped\t\n", encoding="utf-8")
+    _install_execute_round_fake(monkeypatch, tmp_path, panel_pruned_empty=True)
+
+    rc, values = plan_review_round.execute_round(
+        tmp_path,
+        round_num=3,
+        prune_round_num=3,
+        codex_present="false",
+        cursor_present="true",
+        plan_file=plan_file,
+        feature_file=feature_file,
+    )
+
+    assert rc == 0
+    assert values["PANEL_PRUNED_EMPTY"] == "true"
+    round_status = tmp_path / "plan-review" / "round-3" / "reviewer-status.tsv"
+    assert round_status.is_file()
+    assert round_status.read_text(encoding="utf-8") == "slot\tstatus\telapsed\n"
+    assert stale_latest.read_text(encoding="utf-8") == "slot\tstatus\telapsed\n"
+    assert "Stale" not in stale_latest.read_text(encoding="utf-8")
 
 
 def test_execute_round_pruned_empty_does_not_record_prune_ledger(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
