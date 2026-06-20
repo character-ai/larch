@@ -4,8 +4,13 @@ import json
 import os
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
+import plan_review_panel
 from test_support import ROOT, run_cli
+
+if TYPE_CHECKING:
+    import pytest
 
 
 def _stdout_key_order(stdout: str) -> list[str]:
@@ -123,6 +128,29 @@ os.execv(real_python, [real_python, *args])
     )
     stub.chmod(0o755)
     return stub_dir
+
+
+def _write_render_failure_plugin(tmp_path: Path) -> Path:
+    plugin_root = tmp_path / "render-failure-plugin"
+    cli = plugin_root / "python" / "cli.py"
+    cli.parent.mkdir(parents=True)
+    _ = cli.write_text(
+        f"""#!{sys.executable}
+import sys
+
+args = sys.argv[1:]
+if args[:2] == ["render", "plan-review"]:
+    if "--body-file" in args:
+        sys.stderr.write("dynamic render failed\\nsecond line\\n")
+        raise SystemExit(9)
+    print("STATIC_RENDERED_PROMPT")
+    raise SystemExit(0)
+raise SystemExit(0)
+""",
+        encoding="utf-8",
+    )
+    cli.chmod(0o755)
+    return plugin_root
 
 
 def test_panel_dispatch_usage_failure() -> None:
@@ -307,6 +335,91 @@ def test_panel_dispatch_dynamic_rows_render_full_scaffold(tmp_path: Path) -> Non
     assert str((design / "plan.txt").resolve()) in rendered
     assert "schema_version\tscope\tseverity" in rendered
     assert '{"no_issues_found": true}' in rendered
+
+
+def test_panel_dispatch_dynamic_render_failures_warn_and_keep_fallback_rows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plugin_root = _write_render_failure_plugin(tmp_path)
+    design = tmp_path / "design-dynamic-render-failure"
+    design.mkdir()
+    _ = (design / "plan.txt").write_text("Plan body.\n", encoding="utf-8")
+    _ = (design / "feature-description.txt").write_text("feat\n", encoding="utf-8")
+    _ = (design / "scout-plan-manifest.json").write_text(
+        json.dumps(
+            {
+                "archetypes": [
+                    {
+                        "name": "alpha",
+                        "focus_area": "correctness",
+                        "weight": 2,
+                        "rationale": "r1",
+                        "prompt_body": "Check dynamic rendering.",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    round_dir = design / "plan-review" / "round-1"
+    round_dir.mkdir(parents=True)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
+
+    rows, failures = plan_review_panel._dynamic_slot_rows(  # pyright: ignore[reportPrivateUsage]
+        design,
+        round_dir,
+        [("cursor", "dyn-cursor-plan-alpha", "correctness", "Check dynamic rendering.")],
+        plan_file=str(design / "plan.txt"),
+        feature_file=str(design / "feature-description.txt"),
+    )
+
+    assert failures == [("dyn-cursor-plan-alpha", "cursor", 9)]
+    assert rows[0]["slot"] == "dyn-cursor-plan-alpha"
+    assert (round_dir / "dyn-cursor-plan-alpha.prompt").read_text(encoding="utf-8") == (
+        "Review the design plan with a correctness lens."
+    )
+    issues = (design / "execution-issues.md").read_text(encoding="utf-8")
+    assert "### Warnings" in issues
+    assert "dyn-cursor-plan-alpha" in issues
+    assert "dynamic render failed second line" in issues
+
+    log = design / "wf.log"
+    _ = log.write_text("", encoding="utf-8")
+    stub = _write_waterfall_stub(tmp_path)
+    proc = run_cli(
+        "plan-review",
+        "panel-dispatch",
+        "--design-tmpdir",
+        str(design),
+        "--codex-present",
+        "true",
+        "--cursor-present",
+        "true",
+        "--plan-file",
+        str(design / "plan.txt"),
+        "--feature-file",
+        str(design / "feature-description.txt"),
+        "--timeout",
+        "60",
+        env={
+            "CLAUDE_PLUGIN_ROOT": str(plugin_root),
+            "LARCH_QUIET_DISABLE": "1",
+            "DISPATCH_PLAN_REVIEW_WATERFALL_SH": str(stub),
+            "WATERFALL_STUB_LOG": str(log),
+            "WATERFALL_STUB_PATHS_OUT": str(design / "paths.out"),
+        },
+    )
+
+    assert proc.returncode == 0, proc.stderr + proc.stdout
+    assert "DYNAMIC_RENDER_PANEL_WARNING=**⚠ Degraded plan-review panel: 2 dynamic render failure(s)" in proc.stdout
+    manifest_text = (design / "plan-review-slots.ndjson").read_text(encoding="utf-8")
+    assert "dyn-cursor-plan-alpha" in manifest_text
+    assert "dyn-codex-plan-alpha" in manifest_text
+    assert (design / "render-plan-cursor-arch.prompt").read_text(encoding="utf-8") == "STATIC_RENDERED_PROMPT\n"
+    assert (round_dir / "dyn-cursor-plan-alpha.prompt").read_text(encoding="utf-8") == (
+        "Review the design plan with a correctness lens."
+    )
 
 
 def test_panel_dispatch_prunes_round_three_empty_panel(tmp_path: Path) -> None:

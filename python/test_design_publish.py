@@ -20,8 +20,14 @@ def _write_fake_cli(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     _ = path.write_text(
         """#!/usr/bin/env python3
+import json
+import os
 import sys
 args = sys.argv[1:]
+call_log = os.environ.get("FAKE_CLI_CALL_LOG")
+if call_log:
+    with open(call_log, "a", encoding="utf-8") as f:
+        f.write(json.dumps(args) + "\\n")
 if args[:2] == ["plan","validate"]:
     print("VALIDATE_STATUS=ok")
     print("VALIDATE_DEFECT_COUNT=0")
@@ -33,7 +39,9 @@ if args[:2] == ["redact","secrets"]:
     sys.stdout.write(sys.stdin.read())
     raise SystemExit(0)
 if args[:2] == ["named-block","write"]:
-    import os
+    noise = os.environ.get("FAKE_CLI_NAMED_BLOCK_STDOUT")
+    if noise:
+        print(noise)
     if os.environ.get("FAKE_CLI_NAMED_BLOCK_FAIL"):
         raise SystemExit(1)
     raise SystemExit(0)
@@ -42,7 +50,6 @@ if args[:2] == ["tracking-issue","rename"]:
     print("NEW_TITLE=[DESIGNED] Example")
     raise SystemExit(0)
 if args[:3] == ["design","log-publish","--design-tmpdir"] or args[:2] == ["design","log-publish"]:
-    import os
     print("PUBLISH_OK=true")
     print("PR_NUMBER=99")
     print("PR_URL=https://github.com/owner/repo/pull/99")
@@ -138,6 +145,124 @@ def test_publish_success_writes_result_env(tmp_path: Path) -> None:
     assert "review_status:" not in composed.split("diff_lines:")[0]
     result_env = (design / ".design-publish-result.env").read_text(encoding="utf-8")
     assert "PR_NUMBER=99" in result_env
+
+
+def test_publish_suppresses_named_block_stdout_noise(tmp_path: Path) -> None:
+    plugin_root = tmp_path / "plugin"
+    _write_fake_cli(plugin_root / "python" / "cli.py")
+    design = tmp_path / "design"
+    (design / ".completed").mkdir(parents=True)
+    _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
+    cli_py = Path(__file__).with_name("cli.py")
+    env = os.environ.copy()
+    env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
+    env["FAKE_CLI_NAMED_BLOCK_STDOUT"] = "NAMED_BLOCK_STDOUT_SENTINEL"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(cli_py),
+            "design",
+            "publish",
+            "--design-tmpdir",
+            str(design),
+            "--issue",
+            "9",
+            "--session-id",
+            "RUN1",
+            "--claude-pid",
+            "11",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "NAMED_BLOCK_STDOUT_SENTINEL" not in result.stdout
+    assert "PLAN_WRITE_OK=true" in result.stdout
+    assert "PUBLISH_OK=true" in result.stdout
+
+
+def test_publish_present_empty_session_id_skips_log_publish(tmp_path: Path) -> None:
+    plugin_root = tmp_path / "plugin"
+    _write_fake_cli(plugin_root / "python" / "cli.py")
+    design = tmp_path / "design"
+    (design / ".completed").mkdir(parents=True)
+    _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
+    call_log = tmp_path / "fake-cli-calls.ndjson"
+    cli_py = Path(__file__).with_name("cli.py")
+    env = os.environ.copy()
+    env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
+    env["FAKE_CLI_CALL_LOG"] = str(call_log)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(cli_py),
+            "design",
+            "publish",
+            "--design-tmpdir",
+            str(design),
+            "--issue",
+            "9",
+            "--session-id",
+            "",
+            "--claude-pid",
+            "11",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+
+    calls = [json.loads(line) for line in call_log.read_text(encoding="utf-8").splitlines()]
+    assert result.returncode == 0, result.stderr
+    assert "PLAN_WRITE_OK=true" in result.stdout
+    assert "PUBLISH_OK=true" not in result.stdout
+    assert all(call[:2] != ["design", "log-publish"] for call in calls)
+
+
+def test_publish_omitted_session_id_fails_closed_before_plan_write(tmp_path: Path) -> None:
+    plugin_root = tmp_path / "plugin"
+    _write_fake_cli(plugin_root / "python" / "cli.py")
+    design = tmp_path / "design"
+    (design / ".completed").mkdir(parents=True)
+    _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
+    call_log = tmp_path / "fake-cli-calls.ndjson"
+    cli_py = Path(__file__).with_name("cli.py")
+    env = os.environ.copy()
+    env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
+    env["FAKE_CLI_CALL_LOG"] = str(call_log)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(cli_py),
+            "design",
+            "publish",
+            "--design-tmpdir",
+            str(design),
+            "--issue",
+            "9",
+            "--claude-pid",
+            "11",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+
+    assert result.returncode == 5
+    assert not call_log.exists()
+    assert not (design / "composed-plan.redacted.md").exists()
+    assert not (design / ".design-publish-result.env").exists()
 
 
 def test_publish_refuses_cap_hit_without_step3_sentinel(tmp_path: Path) -> None:
