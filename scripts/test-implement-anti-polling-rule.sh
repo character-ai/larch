@@ -10,7 +10,8 @@
 #       background-recovery-waiter ban (#4725).
 #   (2) skills/implement/SKILL.md: Step 5 delegates reviewer waiting to
 #       skills/implement/scripts/step-5-review.sh (no ad-hoc polling loops), and
-#       the NEVER list bans Monitor fallback for one-shot completion.
+#       the NEVER list bans Monitor fallback for one-shot completion while
+#       keeping implement premature-notification recovery notification-driven.
 #   (3) skills/design/SKILL.md: both Step 3 immediate-background fences carry
 #       the result-file sleep-loop ban and consequence prose, and the
 #       Anti-patterns list bans Monitor fallback for one-shot completion.
@@ -119,8 +120,12 @@ check "$IMPL_MD" \
     'NEVER use the `Monitor` tool anywhere within the `/implement` orchestrator'
 
 check "$IMPL_MD" \
-    "SKILL.md NEVER list pins /implement foreground-probe recovery as the only sanctioned exception" \
-    'only sanctioned exception to the Bash polling-loop ban is one foreground, non-sleeping terminal-sentinel probe'
+    "SKILL.md NEVER list keeps implement premature-notification recovery notification-driven" \
+    'end the turn and wait for the next `<task-notification>`; do not probe `$DESIGN_TMPDIR` or design-only sentinels'
+
+check "$IMPL_MD" \
+    "SKILL.md NEVER list documents absent implement terminal sentinels" \
+    '/implement` does not write `$IMPLEMENT_TMPDIR/.completed/*-terminal` sentinels today'
 
 check "$IMPL_MD" \
     "SKILL.md NEVER list bans the background recovery waiter (#4725)" \

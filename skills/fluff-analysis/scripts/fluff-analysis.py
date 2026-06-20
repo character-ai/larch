@@ -213,6 +213,13 @@ def period_of_version(since_version, larch_ver):
     return "post" if parsed >= since_version else "pre"
 
 
+def int_count(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
 # --------------------------------------------------------------------------
 # parsers (defensive against format drift across the log corpus)
 # --------------------------------------------------------------------------
@@ -335,16 +342,18 @@ def _extract_one_implement_run(args):
     run_dir, cutoff, since_version = args
     records = []
     jf = os.path.join(run_dir, "review-findings-full.jsonl")
-    if not os.path.exists(jf):
-        return records
     run_id = os.path.basename(run_dir)
     started = manifest_started(run_dir)
     larch_version = manifest_larch_version(run_dir)
     period = period_of_version(since_version, larch_version) if since_version is not None else period_of(cutoff, started_at=started)
+    fallback_records = _self_review_tally_records(run_dir, run_id, larch_version, period)
     round_tsv = {}
     for tsv in glob.glob(os.path.join(run_dir, "round-*", "findings-classification.tsv")):
         match = re.search(r"round-(\d+)", tsv)
         round_tsv[match.group(1) if match else ""] = parse_impl_tsv(read_text(tsv))
+    malformed_jsonl = False
+    if not os.path.exists(jf):
+        return fallback_records
     for line in read_text(jf).splitlines():
         line = line.strip()
         if not line:
@@ -352,6 +361,7 @@ def _extract_one_implement_run(args):
         try:
             data = json.loads(line)
         except ValueError:
+            malformed_jsonl = True
             continue
         phase = data.get("phase", "")
         outcome = data.get("outcome", "") or ""
@@ -391,7 +401,42 @@ def _extract_one_implement_run(args):
             "period": period,
             "text": (title + "\n" + prose)[:2000],
         })
-    return records
+    if records or malformed_jsonl:
+        return records
+    return fallback_records
+
+
+def _self_review_tally_records(run_dir, run_id, larch_version, period):
+    try:
+        data = json.loads(read_text(os.path.join(run_dir, "code-review-tally.json")) or "{}")
+    except (ValueError, TypeError):
+        return []
+    if not isinstance(data, dict) or data.get("mode") != "self-review":
+        return []
+    rows = []
+    for outcome, count, prefix in (
+        ("accepted", int_count(data.get("accepted_count")), "SELF_REVIEW_ACCEPTED"),
+        ("rejected", int_count(data.get("rejected_count")), "SELF_REVIEW_REJECTED"),
+    ):
+        for idx in range(1, max(count, 0) + 1):
+            rows.append({
+                "skill": "implement", "source": "committed-self-review-tally", "run_id": run_id,
+                "round": "", "phase": "code-review", "finding_id": f"{prefix}_{idx}",
+                "larch_version": larch_version,
+                "outcome": outcome, "is_oos_id": False,
+                "title": "",
+                "focus_area": "",
+                "body_severity": "",
+                "severity": "(none)",
+                "reviewers": "", "tools": [], "is_dynamic": False,
+                "v_severities": [],
+                "v_qualities": [],
+                "v_correctness": [],
+                "v_uncertain": [],
+                "period": period,
+                "text": "",
+            })
+    return rows
 
 
 def _extract_implement(impl_root, cutoff, since_version=None):

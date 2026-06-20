@@ -1002,16 +1002,16 @@ def test_design_clarify_publish_empty_session_warns_and_skips_publish(
     source_env = _seed_publish(tmp_path, session_id="")
     runner = DesignRunner([_result(stdout="PLAN_WRITE_OK=true\n")])
     monkeypatch.setattr(clarify, "proc", runner)
-    monkeypatch.setattr(
-        clarify,
-        "clarify_comment_post",
-        lambda *_args, **_kwargs: clarify.ClarifyCommentResult(
+
+    def ok_comment_post(*_args: object, **_kwargs: object) -> clarify.ClarifyCommentResult:
+        return clarify.ClarifyCommentResult(
             posted=True,
             comment_id="123",
             comment_url="url",
             marker="marker",
-        ),
-    )
+        )
+
+    monkeypatch.setattr(clarify, "clarify_comment_post", ok_comment_post)
     monkeypatch.setattr(
         clarify,
         "clarify_label",
@@ -1088,3 +1088,41 @@ def test_design_clarify_publish_failure_paths(
     assert clarify.design_clarify_main(_design_args(source_env, "publish")) == 0
     assert "PUBLISH_OK=false" in (tmp_path / ".design-clarify-publish-result.env").read_text(encoding="utf-8")
     assert any(call[2:4] == ["run-log", "append-failure"] for call in runner.calls)
+
+    source_env = _seed_publish(tmp_path, session_id="")
+    runner = DesignRunner([_result(stdout="PLAN_WRITE_OK=true\n")])
+    monkeypatch.setattr(clarify, "proc", runner)
+
+    def fail_comment_post(*_args: object, **_kwargs: object) -> clarify.ClarifyCommentResult:
+        raise ShipError("comment post failed")
+
+    monkeypatch.setattr(clarify, "clarify_comment_post", fail_comment_post)
+    assert clarify.design_clarify_main(_design_args(source_env, "publish")) == 1
+    result = (tmp_path / ".design-clarify-publish-result.env").read_text(encoding="utf-8")
+    assert "CLARIFY_PUBLISH_STATUS=comment-post-failed\n" in result
+    assert "PLAN_WRITE_OK=true\n" in result
+    assert "SUMMARY_OUTCOME=failed-clarify\n" in result
+
+    source_env = _seed_publish(tmp_path, session_id="")
+    runner = DesignRunner([_result(stdout="PLAN_WRITE_OK=true\n")])
+    monkeypatch.setattr(clarify, "proc", runner)
+    monkeypatch.setattr(
+        clarify,
+        "clarify_comment_post",
+        lambda *_args, **_kwargs: clarify.ClarifyCommentResult(
+            posted=True,
+            comment_id="123",
+            comment_url="url",
+            marker="marker",
+        ),
+    )
+
+    def fail_label_remove(*_args: object, **_kwargs: object) -> clarify.ClarifyLabelResult:
+        raise ShipError("label remove failed")
+
+    monkeypatch.setattr(clarify, "clarify_label", fail_label_remove)
+    assert clarify.design_clarify_main(_design_args(source_env, "publish")) == 1
+    result = (tmp_path / ".design-clarify-publish-result.env").read_text(encoding="utf-8")
+    assert "CLARIFY_PUBLISH_STATUS=label-remove-failed\n" in result
+    assert "PLAN_WRITE_OK=true\n" in result
+    assert "SUMMARY_OUTCOME=failed-clarify\n" in result

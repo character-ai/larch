@@ -192,6 +192,18 @@ def test_step0_parse_writes_bash_quoted_cache_and_round_trips_verbal(tmp_path: P
     assert load_bash_quoted_env(cache, ["POSITIONAL_VALUE"])["POSITIONAL_VALUE"] == "hello world"
 
 
+def test_decode_bash_percent_q_decodes_utf8_byte_escaped_emoji() -> None:
+    assert design_lifecycle._decode_bash_percent_q("$'\\360\\237\\230\\200'") == "😀"  # pyright: ignore[reportPrivateUsage]
+
+
+def test_decode_bash_percent_q_decodes_utf8_byte_escaped_accent() -> None:
+    assert design_lifecycle._decode_bash_percent_q("$'caf\\303\\251'") == "café"  # pyright: ignore[reportPrivateUsage]
+
+
+def test_decode_bash_percent_q_malformed_utf8_byte_escape_is_safe() -> None:
+    assert design_lifecycle._decode_bash_percent_q("$'\\377'") == "ÿ"  # pyright: ignore[reportPrivateUsage]
+
+
 def test_step0_parse_rejects_template_literal(tmp_path: Path) -> None:
     home = tmp_path / "home"
     home.mkdir()
@@ -1651,7 +1663,7 @@ def test_stage_terminal_state_accepts_unknown_exit_code(tmp_path: Path) -> None:
 
 
 def test_stage_terminal_state_rejects_outside_and_symlink_detail_log(tmp_path: Path) -> None:
-    outside_dir = Path(tempfile.mkdtemp(dir="/var/tmp"))
+    outside_dir = Path(tempfile.mkdtemp())
     try:
         outside = outside_dir / "outside.log"
         outside.write_text("safe\n", encoding="utf-8")

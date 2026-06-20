@@ -583,6 +583,49 @@ def _iter_ndjson(path: Path) -> tuple[list[dict[str, object]], bool]:
     return rows, err
 
 
+def _int_count(value: object) -> int:
+    try:
+        return int(str(value))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _eligible_review_rows(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    eligible: list[dict[str, object]] = []
+    for row in rows:
+        phase = str(row.get("phase") or "")
+        outcome = str(row.get("outcome") or "")
+        if phase == "retroactive-backfill" or not outcome:
+            continue
+        eligible.append(row)
+    return eligible
+
+
+def _self_review_tally_rows(run_dir: Path) -> list[dict[str, object]]:
+    data = _read_json_file(run_dir / "code-review-tally.json")
+    if not isinstance(data, dict) or data.get("mode") != "self-review":
+        return []
+    rows: list[dict[str, object]] = []
+    for outcome, count, prefix in (
+        ("accepted", _int_count(data.get("accepted_count")), "SELF_REVIEW_ACCEPTED"),
+        ("rejected", _int_count(data.get("rejected_count")), "SELF_REVIEW_REJECTED"),
+    ):
+        for idx in range(1, max(count, 0) + 1):
+            rows.append(
+                {
+                    "id": f"{prefix}_{idx}",
+                    "source": "committed-self-review-tally",
+                    "phase": "code-review",
+                    "outcome": outcome,
+                    "category": "",
+                    "severity": "(none)",
+                    "body_severity": "",
+                    "focus_area": "",
+                }
+            )
+    return rows
+
+
 def _category_string(row: dict[str, object]) -> str:
     cat = row.get("category")
     if cat is None:
@@ -679,6 +722,13 @@ def scan_run_main(argv: list[str] | None = None) -> int:
         return 1
     required = Path(args.required_files_tsv) if args.required_files_tsv else None
     rows, jsonl_err = _iter_ndjson(run_dir / "review-findings-full.jsonl")
+    if args.skill == "implement":
+        eligible_rows = _eligible_review_rows(rows)
+        if not jsonl_err and not eligible_rows:
+            rows = _self_review_tally_rows(run_dir)
+        else:
+            rows = eligible_rows
+    has_review_rows = bool(rows)
     mangled_cache: list[dict[str, object]] | None = None
     signals_any, signals = _round_meta_signals(run_dir)
     exit_code = 0
@@ -696,13 +746,13 @@ def scan_run_main(argv: list[str] | None = None) -> int:
             count = sum(len(re.findall(r"\| FINDING_.* \| 0 \| 0 \| [1-9][0-9]* \|.*\| rejected \|", f.read_text(encoding="utf-8", errors="replace"))) for f in run_dir.glob("round-*/voting-tally.md"))
             obj = {"scan": name, "pr": pr, "result": "pass" if count == 0 else "fail", "count": count}
         elif name == "oos-category-mangle":
-            if not (run_dir / "review-findings-full.jsonl").is_file(): obj = {"scan": name, "pr": pr, "result": "skip", "detail": "review-findings-full.jsonl not found"}
+            if not (run_dir / "review-findings-full.jsonl").is_file() and not has_review_rows: obj = {"scan": name, "pr": pr, "result": "skip", "detail": "review-findings-full.jsonl not found"}
             elif jsonl_err: obj = {"scan": name, "pr": pr, "result": "error", "detail": "jq failed (oos-category-mangle): parse error"}
             else:
                 mangled_cache = _mangled_rows(rows); c=len(mangled_cache); obj={"scan":name,"pr":pr,"result":"pass" if c==0 else "fail","count":c};
                 if c: obj["detail"] = f"{c} plan-review accepted rows with prose category (not canonical)"
         elif name == "rej-category-blank":
-            if not (run_dir / "review-findings-full.jsonl").is_file(): obj={"scan":name,"pr":pr,"result":"skip","detail":"review-findings-full.jsonl not found"}
+            if not (run_dir / "review-findings-full.jsonl").is_file() and not has_review_rows: obj={"scan":name,"pr":pr,"result":"skip","detail":"review-findings-full.jsonl not found"}
             else:
                 c=sum(1 for r in rows if str(r.get("id") or "").startswith("REJ_") and not r.get("category") and re.search(r"###[ \t]+FINDING_[0-9A-Za-z_]+:[ \t]*(code-quality|risk-integration|correctness|architecture|security)(:|\n|$)", str(r.get("prose_body") or "")))
                 obj={"scan":name,"pr":pr,"result":"pass" if c==0 else "fail","count":c};
@@ -801,7 +851,7 @@ def scan_run_main(argv: list[str] | None = None) -> int:
             return 1
         _json_line(obj)
     # category-stats
-    if (run_dir/"review-findings-full.jsonl").is_file():
+    if (run_dir/"review-findings-full.jsonl").is_file() or has_review_rows:
         if jsonl_err:
             _json_line({"scan":"category-stats","pr":pr,"partial_data":True,"partial_reason":"malformed_review_findings_jsonl","detail":"jq failed (category-stats): parse error","canonical":0,"blank":0,"mangled":0,"oos_blank":0,"rej_blank":0})
         else:

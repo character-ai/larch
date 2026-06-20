@@ -664,6 +664,26 @@ def test_clear_stall_clears_tracking_and_preserves_keys(tmp_path: Path, capsys: 
     assert "CLEARED=true" in capsys.readouterr().out
 
 
+def test_clear_stall_rejects_malformed_state_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    state = tmp_path / "ship-pr-state.sh"
+    _ = state.write_text("not valid\n", encoding="utf-8")
+
+    rc = stall_recovery.clear_stall_main(["--implement-tmpdir", str(tmp_path)])
+
+    assert rc == 3
+    assert "CLEARED=false" in capsys.readouterr().out
+
+
+def test_clear_stall_rejects_dangling_state_symlink(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    state = tmp_path / "ship-pr-state.sh"
+    state.symlink_to(tmp_path / "missing-state.sh")
+
+    rc = stall_recovery.clear_stall_main(["--implement-tmpdir", str(tmp_path)])
+
+    assert rc == 3
+    assert "CLEARED=false" in capsys.readouterr().out
+
+
 def test_seed_terminal_state_rewrite_honors_stall_step(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     state = tmp_path / "ship-pr-state.sh"
     _ = state.write_text(
@@ -697,6 +717,26 @@ def test_seed_terminal_state_fresh_seeds_defaults(tmp_path: Path, capsys: pytest
     out = capsys.readouterr().out
     assert "SEEDED=true" in out
     assert "SEED_MODE=seed" in out
+
+
+def test_seed_terminal_state_rejects_malformed_state_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    state = tmp_path / "ship-pr-state.sh"
+    _ = state.write_text("not valid\n", encoding="utf-8")
+
+    rc = stall_recovery.seed_terminal_state_main(["--implement-tmpdir", str(tmp_path)])
+
+    assert rc == 3
+    assert "SEEDED=false" in capsys.readouterr().out
+
+
+def test_seed_terminal_state_rejects_dangling_state_symlink(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    state = tmp_path / "ship-pr-state.sh"
+    state.symlink_to(tmp_path / "missing-state.sh")
+
+    rc = stall_recovery.seed_terminal_state_main(["--implement-tmpdir", str(tmp_path)])
+
+    assert rc == 3
+    assert "SEEDED=false" in capsys.readouterr().out
 
 
 _LINT_FIX_BAIL_TOKENS = config.LINT_FIX_BAIL_REASON_TOKENS
