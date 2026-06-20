@@ -58,6 +58,34 @@ def _positive_int_value(value: Any) -> int | None:
     return None
 
 
+def _non_negative_int_value(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int) and value >= 0:
+        return value
+    return None
+
+
+def _strict_bool_true(value: Any) -> bool:
+    return value is True
+
+
+def _parse_partial_audit_fields(proposals: dict[str, Any], *, pair_cap: int | None) -> tuple[int, bool, bool]:
+    if pair_cap is not None and "skipped_latent_pairs" not in proposals:
+        raise ValueError("proposals: skipped_latent_pairs is required when --pair-cap is set")
+    skipped_raw = proposals.get("skipped_latent_pairs", 0)
+    skipped_latent_pairs = _non_negative_int_value(skipped_raw)
+    if skipped_latent_pairs is None:
+        raise ValueError("proposals: skipped_latent_pairs must be a non-negative integer")
+    partial_raw = proposals.get("partial_audit_approved", False)
+    if partial_raw is not False and not _strict_bool_true(partial_raw):
+        raise ValueError("proposals: partial_audit_approved must be boolean false or true")
+    partial_audit_approved = _strict_bool_true(partial_raw)
+    audit_complete = not (pair_cap is not None and skipped_latent_pairs > 0)
+    dependency_writes_allowed = audit_complete or partial_audit_approved
+    return skipped_latent_pairs, audit_complete, dependency_writes_allowed
+
+
 def _group_for_title(title: str) -> str:
     for group, prefix in _MANAGED_PREFIXES.items():
         if (title or "").startswith(prefix):
@@ -233,6 +261,7 @@ def _fetch_snapshot(repo: str, *, include_comments: bool, output_dir: Path | Non
             body_file.write_text("".join(chunks), encoding="utf-8")
             issue["body_file"] = str(body_file)
             corpus_blocks.append(issue_wire.emit_untrusted_file_block(f"deps_issue_{number}", body_file))
+    machine_fetch_path: Path | None = None
     if output_dir is not None:
         corpus_path = output_dir / "issues-corpus.xml"
         corpus_text = (
@@ -242,14 +271,41 @@ def _fetch_snapshot(repo: str, *, include_comments: bool, output_dir: Path | Non
             + "</deps_issues_corpus>\n"
         )
         corpus_path.write_text(corpus_text, encoding="utf-8")
+        machine_fetch_path = output_dir / "fetch-machine.json"
+        machine_fetch_path.write_text(
+            json.dumps(
+                {
+                    "status": "ok",
+                    "repo": repo,
+                    "issues": issues,
+                    "existing_edges": [[client, blocker_issue] for client, blocker_issue in sorted(existing_edges)],
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        if body_dir is not None:
+            for body_file in body_dir.glob("issue-*.md"):
+                body_file.unlink(missing_ok=True)
+            body_dir.rmdir()
+    operator_issues: list[dict[str, Any]] = []
+    for issue in issues:
+        operator_issue = {key: value for key, value in issue.items() if key not in {"body", "comments", "body_file"}}
+        operator_issue["comments"] = [
+            {"id": comment.get("id")} for comment in issue.get("comments", []) if isinstance(comment, dict)
+        ]
+        operator_issues.append(operator_issue)
     return {
         "status": "ok",
         "repo": repo,
-        "issues": issues,
+        "issues": operator_issues,
         "groups": {group: {"count": len(numbers), "issues": numbers} for group, numbers in groups.items()},
         "existing_edges": [[client, blocker_issue] for client, blocker_issue in sorted(existing_edges)],
         "warnings": warnings,
         "untrusted_corpus_file": str(corpus_path) if corpus_path else "",
+        "machine_fetch_file": str(machine_fetch_path) if machine_fetch_path else "",
     }, 0
 
 
@@ -308,7 +364,14 @@ def explicit_refs_main(argv: list[str] | None = None) -> int:
         fetch = _load_json_file(args.fetch_file, desc="fetch-file")
         if not isinstance(fetch, dict) or fetch.get("status") != "ok":
             raise ValueError("fetch-file: status is not ok")
-        issues = _issue_map(fetch)
+        machine_path = str(fetch.get("machine_fetch_file") or "").strip()
+        if machine_path:
+            machine = _load_json_file(machine_path, desc="machine-fetch-file")
+            if not isinstance(machine, dict) or machine.get("status") != "ok":
+                raise ValueError("machine-fetch-file: status is not ok")
+            issues = _issue_map(machine)
+        else:
+            issues = _issue_map(fetch)
     except ValueError as exc:
         print(f"ERROR={exc}", file=sys.stderr)
         return 1
@@ -484,23 +547,34 @@ def plan_main(argv: list[str] | None = None) -> int:
         if not isinstance(fetch, dict) or fetch.get("status") != "ok":
             raise ValueError("fetch-file: status is not ok")
         issues = _issue_map(fetch)
+        machine_path = str(fetch.get("machine_fetch_file") or "").strip()
+        if machine_path:
+            machine = _load_json_file(machine_path, desc="machine-fetch-file")
+            if isinstance(machine, dict) and machine.get("status") == "ok":
+                issues = _issue_map(machine)
         proposals = _load_proposals(args.proposals_file)
         _validate_snapshot_membership(proposals, set(issues))
         existing = {_normal_edge(edge) for edge in fetch.get("existing_edges", [])}
+        snapshot_issue_numbers = sorted(issues)
+        regular_refresh_allowed = _strict_bool_true(proposals.get("regular_refresh_allowed"))
     except (TypeError, ValueError) as exc:
         _emit_json({"status": "failed", "error": str(exc)})
         return 1
     rewrites: list[dict[str, Any]] = []
     closes: list[dict[str, Any]] = []
     try:
-        for item in _proposal_mutations(proposals, "rewrites"):
+        rewrite_proposals = _proposal_mutations(proposals, "rewrites")
+        close_proposals = _proposal_mutations(proposals, "closes")
+        if not regular_refresh_allowed and (rewrite_proposals or close_proposals):
+            raise ValueError("rewrites and closes are not allowed when regular_refresh_allowed is not true")
+        for item in rewrite_proposals:
             title = str(issues[int(item["issue"])].get("title") or "")
             if not _is_mutable_regular(title):
                 raise ValueError(f"rewrite target #{item['issue']} is not mutable REGULAR")
             if not str(item.get("body") or ""):
                 raise ValueError(f"rewrite target #{item['issue']} has empty body")
             rewrites.append({"issue": int(item["issue"]), "body": str(item.get("body") or ""), "reason": str(item.get("reason") or "body refresh")})
-        for item in _proposal_mutations(proposals, "closes"):
+        for item in close_proposals:
             title = str(issues[int(item["issue"])].get("title") or "")
             if not _is_mutable_regular(title):
                 raise ValueError(f"close target #{item['issue']} is not mutable REGULAR")
@@ -528,9 +602,14 @@ def plan_main(argv: list[str] | None = None) -> int:
     except (TypeError, ValueError) as exc:
         _emit_json({"status": "failed", "error": str(exc)})
         return 1
-    skipped_latent_pairs = int(proposals.get("skipped_latent_pairs") or 0) if isinstance(proposals.get("skipped_latent_pairs", 0), int) else 0
-    audit_complete = not (args.pair_cap is not None and skipped_latent_pairs > 0)
-    dependency_writes_allowed = audit_complete or bool(proposals.get("partial_audit_approved"))
+    try:
+        skipped_latent_pairs, audit_complete, dependency_writes_allowed = _parse_partial_audit_fields(
+            proposals,
+            pair_cap=args.pair_cap,
+        )
+    except ValueError as exc:
+        _emit_json({"status": "failed", "error": str(exc)})
+        return 1
     if not dependency_writes_allowed and edges_to_write:
         skipped_edges.extend({**edge, "reason": "partial-audit block"} for edge in edges_to_write)
         edges_to_write = []
@@ -539,6 +618,8 @@ def plan_main(argv: list[str] | None = None) -> int:
         "status": "ok",
         "audit_complete": audit_complete,
         "dependency_writes_allowed": dependency_writes_allowed,
+        "regular_refresh_allowed": regular_refresh_allowed,
+        "snapshot_issue_numbers": snapshot_issue_numbers,
         "rewrites": rewrites,
         "closes": closes,
         "edges_to_write": edges_to_write,
@@ -575,6 +656,32 @@ def _current_edges_for_issues(repo: str, issues: set[int]) -> set[tuple[int, int
         item_edges, _warnings = _read_existing_edges(repo, issue)
         edges.update(item_edges)
     return edges
+
+
+def _full_open_dependency_edges(repo: str) -> tuple[set[tuple[int, int]], list[dict[str, Any]]]:
+    issues, warnings, rc = _fetch_open_issue_rows(repo)
+    if rc != 0:
+        return set(), warnings
+    open_numbers = {int(issue["number"]) for issue in issues}
+    return _current_edges_for_issues(repo, open_numbers), warnings
+
+
+def _snapshot_issue_numbers(plan: dict[str, Any]) -> set[int] | None:
+    raw = plan.get("snapshot_issue_numbers")
+    if not isinstance(raw, list):
+        return None
+    numbers: set[int] = set()
+    for item in raw:
+        number = _positive_int_value(item)
+        if number is not None:
+            numbers.add(number)
+    if not numbers:
+        return None
+    return numbers
+
+
+def _issue_not_in_snapshot(snapshot_numbers: set[int] | None, issue: int) -> bool:
+    return snapshot_numbers is not None and issue not in snapshot_numbers
 
 
 def _revalidate_edge_before_write(edge: dict[str, Any], live_meta: dict[int, dict[str, Any]], live_edges: set[tuple[int, int]]) -> str | None:
@@ -635,47 +742,81 @@ def apply_main(argv: list[str] | None = None) -> int:
     skipped: list[dict[str, Any]] = []
     failed: list[dict[str, Any]] = []
     warnings: list[dict[str, Any]] = []
+    snapshot_numbers = _snapshot_issue_numbers(plan)
+    regular_refresh_allowed = plan.get("regular_refresh_allowed") is True
     mutation_issues = {int(item.get("issue")) for key in ("rewrites", "closes") for item in plan.get(key, []) if isinstance(item, dict) and _positive_int_value(item.get("issue")) is not None}
     if not args.edges_only:
-        for item in plan.get("rewrites", []):
-            if not isinstance(item, dict):
-                continue
-            issue = int(item.get("issue"))
-            meta = _live_issue_meta(args.repo, issue)
-            title = str((meta or {}).get("title") or "")
-            if meta is None or str(meta.get("state") or "").lower() != "open" or not _is_mutable_regular(title):
-                skipped.append({"kind": "rewrite", "issue": issue, "reason": "issue is no longer open mutable REGULAR"})
-                continue
-            ok, error = _apply_rewrite(args.repo, issue, str(item.get("body") or ""))
-            if ok:
-                applied.append({"kind": "rewrite", "issue": issue})
-            else:
-                failed.append({"kind": "rewrite", "issue": issue, "error": error})
-        for item in plan.get("closes", []):
-            if not isinstance(item, dict):
-                continue
-            issue = int(item.get("issue"))
-            meta = _live_issue_meta(args.repo, issue)
-            title = str((meta or {}).get("title") or "")
-            if meta is None or str(meta.get("state") or "").lower() != "open" or not _is_mutable_regular(title):
-                skipped.append({"kind": "close", "issue": issue, "reason": "issue is no longer open mutable REGULAR"})
-                continue
-            ok, error = _apply_close(args.repo, issue)
-            if ok:
-                applied.append({"kind": "close", "issue": issue})
-            else:
-                failed.append({"kind": "close", "issue": issue, "error": error})
+        if not regular_refresh_allowed and (plan.get("rewrites") or plan.get("closes")):
+            skipped.extend(
+                {"kind": "rewrite", "issue": int(item["issue"]), "reason": "regular refresh not allowed"}
+                for item in plan.get("rewrites", [])
+                if isinstance(item, dict) and _positive_int_value(item.get("issue")) is not None
+            )
+            skipped.extend(
+                {"kind": "close", "issue": int(item["issue"]), "reason": "regular refresh not allowed"}
+                for item in plan.get("closes", [])
+                if isinstance(item, dict) and _positive_int_value(item.get("issue")) is not None
+            )
+        else:
+            for item in plan.get("rewrites", []):
+                if not isinstance(item, dict):
+                    continue
+                issue = int(item.get("issue"))
+                if _issue_not_in_snapshot(snapshot_numbers, issue):
+                    skipped.append({"kind": "rewrite", "issue": issue, "reason": "issue was not in fetch snapshot"})
+                    continue
+                meta = _live_issue_meta(args.repo, issue)
+                title = str((meta or {}).get("title") or "")
+                if meta is None or str(meta.get("state") or "").lower() != "open" or not _is_mutable_regular(title):
+                    skipped.append({"kind": "rewrite", "issue": issue, "reason": "issue is no longer open mutable REGULAR"})
+                    continue
+                ok, error = _apply_rewrite(args.repo, issue, str(item.get("body") or ""))
+                if ok:
+                    applied.append({"kind": "rewrite", "issue": issue})
+                else:
+                    failed.append({"kind": "rewrite", "issue": issue, "error": error})
+            for item in plan.get("closes", []):
+                if not isinstance(item, dict):
+                    continue
+                issue = int(item.get("issue"))
+                if _issue_not_in_snapshot(snapshot_numbers, issue):
+                    skipped.append({"kind": "close", "issue": issue, "reason": "issue was not in fetch snapshot"})
+                    continue
+                meta = _live_issue_meta(args.repo, issue)
+                title = str((meta or {}).get("title") or "")
+                if meta is None or str(meta.get("state") or "").lower() != "open" or not _is_mutable_regular(title):
+                    skipped.append({"kind": "close", "issue": issue, "reason": "issue is no longer open mutable REGULAR"})
+                    continue
+                ok, error = _apply_close(args.repo, issue)
+                if ok:
+                    applied.append({"kind": "close", "issue": issue})
+                else:
+                    failed.append({"kind": "close", "issue": issue, "error": error})
     if not args.rewrites_only:
+        dependency_writes_allowed = plan.get("dependency_writes_allowed") is True
+        batch_edges: set[tuple[int, int]] = set()
         for edge in plan.get("edges_to_write", []):
             if not isinstance(edge, dict):
                 continue
             client, blocker_issue = _normal_edge(edge)
+            if not dependency_writes_allowed:
+                skipped.append({"kind": "edge", "client_issue": client, "blocker_issue": blocker_issue, "reason": "partial-audit block"})
+                warnings.append(_warning(
+                    f"Skipped dependency #{client} blocked by #{blocker_issue}: partial-audit block",
+                    code="partial_audit_block",
+                ))
+                continue
+            if _issue_not_in_snapshot(snapshot_numbers, client) or _issue_not_in_snapshot(snapshot_numbers, blocker_issue):
+                skipped.append({"kind": "edge", "client_issue": client, "blocker_issue": blocker_issue, "reason": "endpoint was not in fetch snapshot"})
+                continue
             live_meta: dict[int, dict[str, Any]] = {}
             for issue in {client, blocker_issue} | mutation_issues:
                 meta = _live_issue_meta(args.repo, issue)
                 if meta is not None:
                     live_meta[issue] = meta
-            live_edges = _current_edges_for_issues(args.repo, set(live_meta))
+            live_edges, edge_warnings = _full_open_dependency_edges(args.repo)
+            warnings.extend(edge_warnings)
+            live_edges |= batch_edges
             reason = _revalidate_edge_before_write(edge, live_meta, live_edges)
             if reason is not None:
                 skipped.append({"kind": "edge", "client_issue": client, "blocker_issue": blocker_issue, "reason": reason})
@@ -685,6 +826,7 @@ def apply_main(argv: list[str] | None = None) -> int:
             result = proc.run([sys.executable, str(cli_path), "block-issue", "add-blocked-by", str(client), str(blocker_issue), "--repo", args.repo])
             if result.returncode == 0:
                 applied.append({"kind": "edge", "client_issue": client, "blocker_issue": blocker_issue})
+                batch_edges.add((client, blocker_issue))
             else:
                 failed.append({"kind": "edge", "client_issue": client, "blocker_issue": blocker_issue, "error": _redacted_gh_error(result)})
     payload = {

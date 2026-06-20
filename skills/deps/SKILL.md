@@ -83,7 +83,9 @@ fi
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" deps fetch --repo "$REPO" --output-file "$DEPS_TMPDIR/fetch.json"
 ```
 
-Read `$DEPS_TMPDIR/fetch.json` and the `untrusted_corpus_file` it names.
+Read `$DEPS_TMPDIR/fetch.json` for metadata, group counts, and `existing_edges` only.
+Read the `untrusted_corpus_file` path named in `fetch.json` for issue titles, bodies, and comments.
+Do not use raw `body` or comment text from `fetch.json`; those fields are omitted from the operator-facing snapshot.
 
 Print display group counts for all open issues:
 
@@ -155,7 +157,7 @@ When latent pairs are skipped:
 
 ## Step 4: Plan mutations
 
-Write proposals under `$DEPS_TMPDIR`.
+Write proposals under `$DEPS_TMPDIR`. Include `regular_refresh_allowed` from Step 0 (`true` or `false`).
 
 Preferred helper path:
 
@@ -169,7 +171,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" deps plan "${PLAN_ARGS[@]}" > "$DE
 
 Read `$DEPS_TMPDIR/plan.json`. It contains `audit_complete`, `dependency_writes_allowed`, `rewrites`, `closes`, `edges_to_write`, `skipped_edges`, `warnings`, and `counts`.
 
-`deps plan` validates proposal endpoints against the fetch snapshot, rejects rewrite and close targets that are not mutable REGULAR, skips duplicate, self, and cycle edges, and enforces REGULAR-client-only dependency writes.
+`deps plan` validates proposal endpoints against the fetch snapshot, rejects rewrite and close targets that are not mutable REGULAR, rejects rewrites and closes when `regular_refresh_allowed` is not true, skips duplicate, self, and cycle edges, and enforces REGULAR-client-only dependency writes.
 
 ## Step 5: Present one approval gate
 
