@@ -22,7 +22,7 @@ import voting
 _PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 _THREE_SLOT_COUNT = 3
 _CLASSIFICATION_HEADER = (
-    "finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain"
+    "finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tscope"
 )
 
 
@@ -158,7 +158,15 @@ def _sanitize_result(value: str) -> str:
     return value if value in {"accepted", "rejected", "neutral"} else ""
 
 
-def _classification_row(item_id: str, reviewer: str, result: str, cells: list[tuple[str, str, str, str, str, str | None]], *, three_slot: bool) -> str:
+def _classification_row(
+    item_id: str,
+    reviewer: str,
+    result: str,
+    cells: list[tuple[str, str, str, str, str, str | None]],
+    *,
+    three_slot: bool,
+    is_oos: bool,
+) -> str:
     row = [item_id, _sanitize_classification_text_cell(_reviewer_slots_for_tsv(reviewer)), _sanitize_result(result)]
     for idx in range(3):
         vote = correctness = severity = quality = uncertain = ""
@@ -179,6 +187,7 @@ def _classification_row(item_id: str, reviewer: str, result: str, cells: list[tu
         row.extend([clean_vote, clean_correctness, clean_severity, clean_quality, _sanitize_uncertain(clean_uncertain) if has_rating else ""])
         if three_slot:
             row.append(_sanitize_classification_text_cell(tool or ""))
+    row.append("oos" if is_oos else "in_scope")
     return "\t".join(row)
 
 
@@ -337,10 +346,10 @@ def _append_manifest_dead_rows(
     *,
     manifest_file: Path,
     collector_file: str,
-    score_rows: list[tuple[str, str, str]],
+    score_rows: list[tuple[str, str, str, int]],
 ) -> None:
     collector_status = _parse_collector_status(collector_file)
-    seen = {voting.normalize_reviewer_basename(reviewer) for reviewer, _kind, _result in score_rows}
+    seen = {voting.normalize_reviewer_basename(reviewer) for reviewer, _kind, _result, _accepted_weight in score_rows}
     for line in _read(manifest_file).splitlines():
         if not line.strip():
             continue
@@ -360,10 +369,10 @@ def _append_manifest_dead_rows(
 def _write_yield_tsv(
     yield_path: Path,
     archetype_map: dict[str, tuple[str, str, str]],
-    score_rows: list[tuple[str, str, str]],
+    score_rows: list[tuple[str, str, str, int]],
 ) -> list[str]:
     totals: dict[str, list[int]] = defaultdict(lambda: [0, 0, 0])
-    for reviewer, kind, result in score_rows:
+    for reviewer, kind, result, _accepted_weight in score_rows:
         if kind != "finding":
             continue
         base = voting.normalize_reviewer_basename(reviewer)
@@ -379,7 +388,7 @@ def _write_yield_tsv(
         lines.append(f"{archetype}\t{focus}\t{weight}\t{total}\t{accepted}\t{rejected}\t{ratio}\n")
     _write(yield_path, "".join(lines))
     orphans: list[str] = []
-    for reviewer, _kind, _result in score_rows:
+    for reviewer, _kind, _result, _accepted_weight in score_rows:
         base = voting.normalize_reviewer_basename(reviewer)
         if base not in archetype_map and base not in orphans:
             orphans.append(base)
@@ -517,7 +526,11 @@ def tally_code_votes(argv: list[str]) -> int:
             except voting.TallyError as exc:
                 return _error(f"tally-code-votes: {exc}")
             empty_cells = [("", "", "", "", "", args.voter_tools[idx] if three_slot else None) for idx in range(3)] if three_slot else []
-            _append(class_tsv, _classification_row(block.stem, reviewer, "rejected", empty_cells, three_slot=three_slot) + "\n")
+            text = _read(block)
+            is_oos = block.stem.startswith("OOS_") or bool(re.search(r"\[(OUT_OF_SCOPE|OOS)\]", text.splitlines()[0] if text.splitlines() else ""))
+            if not is_oos and _scope_drift(block, args.scope_files, args.plan_file):
+                is_oos = True
+            _append(class_tsv, _classification_row(block.stem, reviewer, "rejected", empty_cells, three_slot=three_slot, is_oos=is_oos) + "\n")
         warning = "**⚠ Degraded code-review panel: 0 judges available. Panel tier: main-agent-required. Manual adjudication needed.**"
         zero_lines = ["# Code Review Voting Tally\n\n", f"{warning}\n\n"]
         if not_substantive_count > 0:
@@ -551,7 +564,7 @@ def tally_code_votes(argv: list[str]) -> int:
         }.items():
             logging_util.emit_kv(key, value)
         return 0
-    score_rows: list[tuple[str, str, str]] = []
+    score_rows: list[tuple[str, str, str, int]] = []
     tally_lines = ["# Code Review Voting Tally\n\n"]
     expected = 3 if three_slot and args.cursor_available == "true" else (1 if three_slot else 1 + (1 if args.codex_available == "true" else 0) + (1 if args.cursor_available == "true" else 0))
     if effective < expected:
@@ -608,15 +621,23 @@ def tally_code_votes(argv: list[str]) -> int:
             )
         except voting.TallyError as exc:
             return _error(f"tally-code-votes: {exc}")
-        _append(class_tsv, _classification_row(item_id, reviewer, result, cells, three_slot=three_slot) + "\n")
         text = _read(block)
         artifact_text = _artifact_text_for_item(item_id, block, proposer_map_file)
         is_oos = item_id.startswith("OOS_") or bool(re.search(r"\[(OUT_OF_SCOPE|OOS)\]", text.splitlines()[0] if text.splitlines() else ""))
         if not is_oos and _scope_drift(block, args.scope_files, args.plan_file):
             is_oos = True
             drift += 1
+        _append(class_tsv, _classification_row(item_id, reviewer, result, cells, three_slot=three_slot, is_oos=is_oos) + "\n")
         kind = "oos" if is_oos else "finding"
-        score_rows.extend((reviewer_slot, kind, result) for reviewer_slot in [part.strip() for part in reviewer.split(",") if part.strip()])
+        accepted_weight = (
+            voting.accepted_finding_points_from_severities(
+                [cell[2] for cell in cells],
+                votes=[cell[0] for cell in cells],
+            )
+            if kind == "finding" and result == "accepted"
+            else 0
+        )
+        score_rows.extend((reviewer_slot, kind, result, accepted_weight) for reviewer_slot in [part.strip() for part in reviewer.split(",") if part.strip()])
         try:
             security = _security_block(block)
         except RuntimeError:
@@ -655,17 +676,19 @@ def tally_code_votes(argv: list[str]) -> int:
     tally_lines.append("| Reviewer | Proposed | Accepted | Neutral | Rejected | OOS-Proposed | OOS-Accepted | OOS-Neutral | OOS-Rejected | Score | Status |\n")
     tally_lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|\n")
     stats: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
-    for reviewer, kind, result in score_rows:
+    for reviewer, kind, result, accepted_weight in score_rows:
         if kind == "finding":
             stats[reviewer]["proposed"] += 1
             stats[reviewer][result] += 1
+            if result == "accepted":
+                stats[reviewer]["accepted_weight"] += accepted_weight
         else:
             stats[reviewer]["oos_proposed"] += 1
             stats[reviewer][f"oos_{result}"] += 1
     for reviewer in sorted(stats):
         row = stats[reviewer]
         label = re.sub(r"(?:-output)?\.txt$", "", reviewer)
-        score = row["accepted"] + row["oos_accepted"] - row["rejected"] - row["oos_rejected"]
+        score = row["accepted_weight"] + row["oos_accepted"] - row["rejected"] - row["oos_rejected"]
         tally_lines.append(f"| {label} | {row['proposed']} | {row['accepted']} | {row['neutral']} | {row['rejected']} | {row['oos_proposed']} | {row['oos_accepted']} | {row['oos_neutral']} | {row['oos_rejected']} | {score} | STATUS=OK |\n")
     if args.manifest_file:
         _append_manifest_dead_rows(

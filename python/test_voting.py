@@ -725,18 +725,95 @@ def test_findings_classification_header_cli(capsys) -> None:
     assert capsys.readouterr().out == voting.FINDINGS_CLASSIFICATION_HEADER + "\n"
 
 
-def test_code_review_classification_header_is_21_column_schema() -> None:
+def test_code_review_classification_header_is_22_column_schema() -> None:
     code = voting.code_review_classification_header().split("\t")
     design = voting.findings_classification_header().split("\t")
-    assert len(code) == 21
+    assert len(code) == 22
     assert code[1] == "reviewer_slots"
     assert "body_severity" not in code
     assert code[8] == "v1_tool"
     assert code[14] == "v2_tool"
     assert code[20] == "v3_tool"
-    assert len(design) == 22
+    assert code[-1] == "scope"
+    assert len(design) == 23
     assert design[1] == "finding_reviewers"
-    assert design[-1] == "body_severity"
+    assert design[-1] == "scope"
+    assert design[-2] == "body_severity"
+
+
+def test_weighted_finding_points_and_attribution_helpers() -> None:
+    assert voting.accepted_finding_points_from_severities(["major"]) == 2
+    assert voting.accepted_finding_points_from_severities(["major", "blocker"]) == 2
+    assert voting.accepted_finding_points_from_severities(["major", "minor"], votes=["YES", "YES"]) == 2
+    assert voting.accepted_finding_points_from_severities(["minor", "nit", "uncertain"]) == 1
+    assert voting.accepted_finding_points_from_severities(["minor", "blocker"], votes=["YES", "NO"]) == 1
+    labels = ["Cursor-Pragmatic", "Codex-Arch"]
+    assert voting.tokenize_finding_reviewers("Cursor-Pragmatic Codex-Arch", labels) == labels
+    assert voting.split_classification_attribution("Cursor-Pragmatic, Codex-Arch", column="finding_reviewers", labels=labels) == labels
+    assert voting.split_classification_attribution("cursor-a|codex-b", column="reviewer_slots") == ["cursor-a", "codex-b"]
+
+
+def test_scoreboard_main_weights_classification_tsv(tmp_path: Path) -> None:
+    header = voting.findings_classification_header().split("\t")
+
+    def row(finding_id: str, reviewers: str, result: str, v1_vote: str, v1_severity: str, body: str, scope: str) -> str:
+        cols = dict.fromkeys(header, "")
+        cols.update({
+            "finding_id": finding_id,
+            "finding_reviewers": reviewers,
+            "voting_result": result,
+            "v1_vote": v1_vote,
+            "v1_severity": v1_severity,
+            "body_severity": body,
+            "scope": scope,
+        })
+        return "\t".join(cols[name] for name in header)
+
+    tsv = tmp_path / "classification.tsv"
+    tsv.write_text(
+        "\t".join(header) + "\n"
+        + row("FINDING_1", "Structure", "accepted", "YES", "major", "", "in_scope") + "\n"
+        + row("FINDING_2", "Testing", "accepted", "YES", "minor", "important", "in_scope") + "\n"
+        + row("FINDING_3", "Testing", "rejected", "NO", "major", "", "in_scope") + "\n"
+        + row("OOS_1", "Structure", "accepted", "YES", "blocker", "", "oos") + "\n",
+        encoding="utf-8",
+    )
+    score_file = tmp_path / "score.md"
+    result = run_cli(
+        "voting",
+        "scoreboard",
+        "--findings-classification-file",
+        str(tsv),
+        "--reviewer-labels",
+        "Structure, Testing",
+        "--output-file",
+        str(score_file),
+    )
+    assert result.returncode == 0
+    text = score_file.read_text(encoding="utf-8")
+    assert "| Structure | 3 |" in text
+    assert "| Testing | 0 |" in text
+
+    legacy_header = [name for name in header if name != "scope"]
+    legacy = tmp_path / "legacy.tsv"
+    legacy.write_text(
+        "\t".join(legacy_header) + "\n"
+        + "\t".join({**dict.fromkeys(legacy_header, ""), "finding_id": "FINDING_1", "finding_reviewers": "Structure", "voting_result": "accepted", "v1_vote": "YES", "v1_severity": "major"}[name] for name in legacy_header)
+        + "\n",
+        encoding="utf-8",
+    )
+    result = run_cli(
+        "voting",
+        "scoreboard",
+        "--findings-classification-file",
+        str(legacy),
+        "--reviewer-labels",
+        "Structure",
+        "--output-file",
+        str(score_file),
+    )
+    assert result.returncode == 0
+    assert "| Structure | 1 |" in score_file.read_text(encoding="utf-8")
 
 
 _ATTRIBUTED_BALLOT = """### FINDING_1: Codex path issue

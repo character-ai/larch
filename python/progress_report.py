@@ -20,6 +20,7 @@ from typing import cast
 import collect_results
 from gantt import GanttRow, format_mss, render_gantt
 import logging_util
+import plan_review_round
 import report_tokens_cost
 import voting
 
@@ -41,6 +42,7 @@ RENDER_PHASE_DETAIL_TIMEOUT_SECONDS = 15
 PROGRESS_GANTT_ROW_CAP = 25
 MIN_MARKDOWN_TABLE_PARTS = 4
 MIN_TSV_RESULT_COLS = 3
+LABEL_MAP_MIN_COLS = 2
 MD_RESULT_COL_FROM_END = 2
 MD_FALLBACK_RESULT_COL_FROM_END = 3
 
@@ -664,51 +666,118 @@ def _top_reviewers(
     return list(sorted(counts.items(), key=lambda item: (-item[1], item[0]))[:top_n])
 
 
-def _accepted_reviewers_from_classification(classification: Path) -> list[str]:
-    """In-scope accepted-finding reviewer attribution from a findings-classification.tsv.
+def _classification_tsv_available(round_dirs: list[Path]) -> bool:
+    return any(_tsv_has_data_rows(round_dir / "findings-classification.tsv") for round_dir in round_dirs)
 
-    The reviewer column is ``finding_reviewers`` for /design and ``reviewer_slots``
-    for /implement; both share a ``voting_result`` column. This is the same per-round
-    attribution behind the Reviewer Competition Scoreboard. OOS rows are skipped so
-    the count matches the table's in-scope ``Accepted`` column.
-    """
+
+def _human_attribution_labels(round_dirs: list[Path], *, reviewer_column: str) -> list[str]:
+    if reviewer_column != "finding_reviewers":
+        return []
+    labels: list[str] = []
+    seen: set[str] = set()
+
+    def add(label: str) -> None:
+        clean = label.strip()
+        if clean and clean not in seen:
+            labels.append(clean)
+            seen.add(clean)
+
+    for round_dir in round_dirs:
+        for label_map in (
+            round_dir / "plan-review-prune-label-map.tsv",
+            round_dir.parent.parent / "plan-review-prune-label-map.tsv",
+        ):
+            if not label_map.is_file():
+                continue
+            for line in _read_lines_best_effort(label_map):
+                parts = line.split("\t")
+                if len(parts) >= LABEL_MAP_MIN_COLS:
+                    add(parts[1])
+        for manifest in (round_dir / "panel-manifest.ndjson", round_dir / "plan-review-slots.ndjson"):
+            for row in logging_util.iter_jsonl_dicts(_read_lines_best_effort(manifest)):
+                slot = row.get("slot")
+                if isinstance(slot, str):
+                    add(plan_review_round._slot_human_label(slot))  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+        lines = _read_lines_best_effort(round_dir / "findings-classification.tsv")
+        if not lines:
+            continue
+        header = [col.strip() for col in lines[0].split("\t")]
+        if reviewer_column not in header:
+            continue
+        reviewer_idx = header.index(reviewer_column)
+        for line in lines[1:]:
+            cols = line.split("\t")
+            if len(cols) <= reviewer_idx:
+                continue
+            for raw_segment in cols[reviewer_idx].split(","):
+                segment = raw_segment.strip()
+                if not segment:
+                    continue
+                add(segment)
+                for token in segment.split():
+                    if "-" in token:
+                        add(token)
+    return labels
+
+
+def _classification_row_in_scope(cols: dict[str, str], header: list[str]) -> bool:
+    if "scope" in header:
+        return cols.get("scope", "").strip() == "in_scope"
+    return not cols.get("finding_id", "").strip().startswith("OOS_")
+
+
+def _accepted_reviewers_from_classification(
+    classification: Path,
+    *,
+    round_dirs: list[Path],
+    label_map: dict[str, str] | None = None,
+) -> list[tuple[str, int]]:
+    """Weighted in-scope accepted-finding reviewer attribution from classification TSV."""
     lines = _read_lines_best_effort(classification)
     if not lines:
         return []
     header = [col.strip() for col in lines[0].split("\t")]
-    reviewer_idx = next((i for i, name in enumerate(header) if name in {"finding_reviewers", "reviewer_slots"}), -1)
-    result_idx = header.index("voting_result") if "voting_result" in header else -1
-    if reviewer_idx < 0 or result_idx < 0:
+    reviewer_column = "finding_reviewers" if "finding_reviewers" in header else "reviewer_slots" if "reviewer_slots" in header else ""
+    if not reviewer_column or "voting_result" not in header:
         return []
-    names: list[str] = []
+    labels = _human_attribution_labels(round_dirs, reviewer_column=reviewer_column)
+    rows: list[tuple[str, int]] = []
     for line in lines[1:]:
-        cols = line.split("\t")
-        if len(cols) <= max(reviewer_idx, result_idx):
+        raw_cols = line.split("\t")
+        cols = {name: raw_cols[idx].strip() if idx < len(raw_cols) else "" for idx, name in enumerate(header)}
+        if cols.get("voting_result") != "accepted" or not _classification_row_in_scope(cols, header):
             continue
-        if cols[result_idx].strip() != "accepted" or cols[0].strip().startswith("OOS_"):
-            continue
-        reviewer_cell = cols[reviewer_idx].strip()
-        if reviewer_cell:
-            names.extend(
-                reviewer
-                for reviewer in (name.strip() for name in reviewer_cell.split(","))
-                if reviewer
-            )
-    return names
+        points = voting.accepted_points_from_classification_row(cols, header)
+        reviewers = voting.split_classification_attribution(
+            cols.get(reviewer_column, ""),
+            column=reviewer_column,
+            labels=labels if reviewer_column == "finding_reviewers" else None,
+        )
+        for reviewer in reviewers:
+            label = reviewer
+            if reviewer_column == "reviewer_slots":
+                maps = label_map or {}
+                label = maps.get(reviewer) or _progress_derived_label(reviewer)
+            rows.append((label, points))
+    return rows
 
 
-def _top_reviewers_from_classification(round_dirs: list[Path], *, top_n: int) -> list[tuple[str, int]]:
-    """Whole-run Top-reviewers fallback aggregated from per-round findings-classification.tsv.
-
-    Used when no review-findings-full.jsonl is available (the /design path), so the
-    section reflects per-round attribution instead of rendering structurally empty.
-    """
+def _top_reviewers_from_classification(
+    round_dirs: list[Path],
+    *,
+    top_n: int,
+    label_map: dict[str, str] | None = None,
+) -> list[tuple[str, int]]:
+    """Whole-run Top-reviewers aggregated from per-round findings-classification.tsv."""
     counts: dict[str, int] = {}
     for round_dir in round_dirs:
-        for reviewer in _accepted_reviewers_from_classification(round_dir / "findings-classification.tsv"):
-            counts[reviewer] = counts.get(reviewer, 0) + 1
+        for reviewer, points in _accepted_reviewers_from_classification(
+            round_dir / "findings-classification.tsv",
+            round_dirs=round_dirs,
+            label_map=label_map,
+        ):
+            counts[reviewer] = counts.get(reviewer, 0) + points
     return list(sorted(counts.items(), key=lambda item: (-item[1], item[0]))[:top_n])
-
 
 def _collector_failure_records(collector: str) -> list[tuple[str, str]]:
     records: list[tuple[str, str]] = []
@@ -821,9 +890,10 @@ def render_phase_detail(
     total_time = sum(row.seconds or 0 for row in phase_rounds)
     any_time = any(row.seconds is not None for row in phase_rounds)
     costs = [float(row.cost[1:]) for row in phase_rounds if row.cost.startswith("$")]
-    top_reviewers = _top_reviewers(findings_file, label_map=label_map, top_n=top_n)
-    if not top_reviewers and skill == "design":
-        top_reviewers = _top_reviewers_from_classification(round_dirs, top_n=top_n)
+    if _classification_tsv_available(round_dirs):
+        top_reviewers = _top_reviewers_from_classification(round_dirs, top_n=top_n, label_map=label_map)
+    else:
+        top_reviewers = _top_reviewers(findings_file, label_map=label_map, top_n=top_n)
     fail_total, failures = _failed_reviewers(round_dirs, label_map=label_map)
     lines = [
         "## Review Phase Detail",
@@ -852,7 +922,7 @@ def render_phase_detail(
         "_The Total (round-sum) row adds up the per-round Suggestions and Accepted: when the "
         "review loop re-raises the same finding across rounds, that finding is counted once per "
         "round, so the round-sum can exceed the number of distinct findings. Top reviewers counts "
-        "per-round accepted suggestions the same way._"
+        "per-round accepted-point scores the same way._"
     )
     lines.append("")
     if gantt_enabled:
@@ -865,12 +935,12 @@ def render_phase_detail(
         if gantt:
             lines.extend(gantt.rstrip("\n").splitlines())
             lines.append("")
-    lines.append("**Top reviewers** (by per-round accepted suggestions, whole run):")
+    lines.append("**Top reviewers** (by per-round accepted-point score, whole run):")
     if top_reviewers:
         for index, (label, count) in enumerate(top_reviewers, start=1):
             lines.append(f"{index}. {label} — {count}")
     else:
-        lines.append("- (no accepted suggestions attributed to a reviewer slot)")
+        lines.append("- (no accepted-point score attributed to a reviewer slot)")
     lines.append("")
     lines.append(f"**Reviewer slot failures**: {fail_total}")
     for label, count in failures:
@@ -1620,12 +1690,18 @@ def _parse_tally_md(path: Path) -> tuple[int, int, int, int, int, int]:
 def _parse_classification_tsv(path: Path) -> tuple[int, int, int, int, int, int]:
     accepted = rejected = neutral = exonerated = oos_accepted = oos_rejected = 0
     lines = _read_lines_best_effort(path)
+    if not lines:
+        return accepted, rejected, neutral, exonerated, oos_accepted, oos_rejected
+    header = [col.strip() for col in lines[0].split("\t")]
     for line in lines[1:]:
-        cols = [col.strip() for col in line.split("\t")]
-        if len(cols) < MIN_TSV_RESULT_COLS:
+        raw_cols = [col.strip() for col in line.split("\t")]
+        if len(raw_cols) < MIN_TSV_RESULT_COLS:
             continue
-        item, result = cols[0], cols[2]
-        if re.fullmatch(r"FINDING_[0-9A-Za-z_]+", item):
+        cols = {name: raw_cols[idx] if idx < len(raw_cols) else "" for idx, name in enumerate(header)}
+        item = cols.get("finding_id", raw_cols[0])
+        result = cols.get("voting_result", raw_cols[2] if len(raw_cols) >= MIN_TSV_RESULT_COLS else "")
+        in_scope = _classification_row_in_scope(cols, header)
+        if in_scope and re.fullmatch(r"FINDING_[0-9A-Za-z_]+", item):
             if result == "accepted":
                 accepted += 1
             elif result == "rejected":
@@ -1634,13 +1710,12 @@ def _parse_classification_tsv(path: Path) -> tuple[int, int, int, int, int, int]
                 neutral += 1
             elif result == "exonerated":
                 exonerated += 1
-        elif re.fullmatch(r"OOS_[0-9A-Za-z_]+", item):
+        elif result:
             if result == "accepted":
                 oos_accepted += 1
-            elif result:
+            elif result != "neutral":
                 oos_rejected += 1
     return accepted, rejected, neutral, exonerated, oos_accepted, oos_rejected
-
 
 def _tsv_has_data_rows(path: Path) -> bool:
     return any(line.strip() for line in _read_lines_best_effort(path)[1:])

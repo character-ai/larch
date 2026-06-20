@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import csv
 import io
 import os
 import stat
@@ -13,6 +14,11 @@ import plan_review_round
 import pytest
 import voting
 from test_support import ROOT, run_cli
+
+
+def _read_tsv(path: Path) -> dict[str, dict[str, str]]:
+    with path.open(newline="", encoding="utf-8") as fh:
+        return {row["finding_id"]: row for row in csv.DictReader(fh, delimiter="\t")}
 
 
 def test_legacy_assets_removed_from_plan_review_module() -> None:
@@ -860,9 +866,9 @@ def test_tally_plan_review_mixed_votes_and_artifacts(tmp_path: Path) -> None:
     v1 = tmp_path / "v1.txt"
     v2 = tmp_path / "v2.txt"
     v3 = tmp_path / "v3.txt"
-    _ = v1.write_text("FINDING_1: YES\nFINDING_2: NO\nOOS_1: YES\nOOS_2: YES\n", encoding="utf-8")
-    _ = v2.write_text("FINDING_1: YES\nFINDING_2: YES\nOOS_1: NO\nOOS_2: YES\n", encoding="utf-8")
-    _ = v3.write_text("FINDING_1: YES\nFINDING_2: NO\nOOS_1: YES\nOOS_2: YES\n", encoding="utf-8")
+    _ = v1.write_text("FINDING_1: YES SEVERITY=major\nFINDING_2: NO SEVERITY=major\nOOS_1: YES SEVERITY=major\nOOS_2: YES SEVERITY=major\n", encoding="utf-8")
+    _ = v2.write_text("FINDING_1: YES SEVERITY=minor\nFINDING_2: YES SEVERITY=minor\nOOS_1: NO SEVERITY=major\nOOS_2: YES SEVERITY=major\n", encoding="utf-8")
+    _ = v3.write_text("FINDING_1: YES SEVERITY=minor\nFINDING_2: NO SEVERITY=blocker\nOOS_1: YES SEVERITY=major\nOOS_2: YES SEVERITY=major\n", encoding="utf-8")
     design = tmp_path / "design"
     design.mkdir()
     proc = run_cli(
@@ -887,7 +893,10 @@ def test_tally_plan_review_mixed_votes_and_artifacts(tmp_path: Path) -> None:
     assert "FINDING_2" in rejected
     assert "OOS_1" in (design / "oos.md").read_text(encoding="utf-8")
     assert "OOS_2" not in (design / "oos.md").read_text(encoding="utf-8")
-    assert "| Cursor-Arch | 1 | 1 | 0 | 0 | 1 | 1 | 0 | 0 | 2 |" in tally
+    assert "| Cursor-Arch | 1 | 1 | 0 | 0 | 1 | 1 | 0 | 0 | 3 |" in tally
+    class_rows = _read_tsv(design / "plan-review" / "round-1" / "findings-classification.tsv") if (design / "plan-review" / "round-1" / "findings-classification.tsv").is_file() else _read_tsv(design / "findings-classification.tsv")
+    assert class_rows["FINDING_1"]["scope"] == "in_scope"
+    assert class_rows["OOS_1"]["scope"] == "oos"
 
 
 def test_tally_plan_review_zero_voters_requires_main_agent(tmp_path: Path) -> None:

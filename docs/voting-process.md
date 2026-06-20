@@ -41,7 +41,7 @@ The dispatchers emit loud degraded-panel warnings when effective judges drop bel
 | `/design` (plan review, normal mode) | Claude Code Reviewer subagent + Codex + Cursor — all 3 always launched |
 | `/review` and `/implement` Step 5 (code review) | Fixed slots: `v1` = `cursor-validity`, `v2` = `cursor-plan-fidelity`, `v3` = `cursor-pragmatism`. If Cursor is unavailable, slot 1 uses `claude` and slots 2-3 are empty placeholders. Dispatch surface: `python/cli.py agent dispatch-voters`. |
 
-On the three-slot code-review path, quorum counts only substantive non-empty voter files after parse-rate removal. Empty placeholders keep `vN_tool` attribution but do not inflate `ELIGIBLE_VOTERS` or `EFFECTIVE_VOTERS`. The code-review classification TSV has 21 columns: `reviewer_slots`, five rating cells plus `vN_tool` for each voter, and no `body_severity`. `/design` plan review keeps its separate 22-column `finding_reviewers` + `body_severity` schema.
+On the three-slot code-review path, quorum counts only substantive non-empty voter files after parse-rate removal. Empty placeholders keep `vN_tool` attribution but do not inflate `ELIGIBLE_VOTERS` or `EFFECTIVE_VOTERS`. The code-review classification TSV has 22 columns: `reviewer_slots`, five rating cells plus `vN_tool` for each voter, trailing `scope`, and no `body_severity`. `/design` plan review keeps its separate 23-column `finding_reviewers` + `body_severity` + `scope` schema. The `scope` column is `in_scope` or `oos`; tally producers write it for `OOS_*` ids, `[OUT_OF_SCOPE]` or `[OOS]` legacy rows, and `_scope_drift`. Top reviewers and weighted scoreboards skip `scope=oos` even when `finding_id` is `FINDING_N`.
 
 Legacy callers that omit `--voter-tools` keep compacted semantics for one to three `--voter-files`. This preserves MAV re-tally and zero-findings paths.
 
@@ -109,7 +109,7 @@ Reviewers may surface **out-of-scope (OOS) observations** — pre-existing issue
 - If an OOS item receives 2+ YES votes, it is **accepted** and filed as a GitHub issue by `/implement`
 - Non-accepted OOS items are collected and reported in the PR body for future attention
 - **OOS items are never implemented in the current PR** — accepted items result in issue creation only
-- OOS scoring mirrors in-scope scoring: accepted OOS earns +1, neutral OOS (≥1 YES, not accepted) scores 0, and rejected OOS (0 YES) costs -1 (see [Point Competition](point-competition.md)).
+- OOS scoring stays flat: accepted OOS earns +1, neutral OOS (≥1 YES, not accepted) scores 0, and rejected OOS (0 YES) costs -1. In-scope accepted findings earn +2 only when a YES voter assigns panel severity `blocker` or `major`; `body_severity` does not affect points.
 
 Claude subagent reviewers always produce OOS observations (via their dual-list output format). External reviewers (Codex, Cursor) **in diff mode** use a slot-kind–dependent output shape: specialist slots (`cursor-specialist-*` and `codex-specialist-*`) produce dual-list output matching the Claude subagent contract (contributing OOS observations via voting). **In `/review` description mode**, all external reviewers produce dual-list output matching the Claude subagent contract and contribute OOS observations via voting (see [skills/review/SKILL.md](../skills/review/SKILL.md) Step 3a).
 

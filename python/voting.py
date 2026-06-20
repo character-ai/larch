@@ -5,6 +5,7 @@ from __future__ import annotations
 # pyright: reportUnusedCallResult=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportArgumentType=false
 
 import argparse
+import csv
 import hashlib
 import json
 import os
@@ -68,16 +69,20 @@ _ALLOWED_CODE_REVIEW_HEADERS = {
 }
 
 _CORRECTNESS_VALUES = {"true", "partially-true", "false-positive", "uncertain"}
-_SEVERITY_VALUES = {"blocker", "major", "minor", "nit", "uncertain"}
+SEVERITY_BLOCKER = "blocker"
+SEVERITY_MAJOR = "major"
+
+_SEVERITY_VALUES = {SEVERITY_BLOCKER, SEVERITY_MAJOR, "minor", "nit", "uncertain"}
+HIGH_SEVERITIES = frozenset({SEVERITY_BLOCKER, SEVERITY_MAJOR})
 _QUALITY_VALUES = {"excellent", "good", "adequate", "weak", "no-fix", "uncertain"}
 _UNCERTAIN_VALUES = {"true", "false"}
 
 FINDINGS_CLASSIFICATION_HEADER = (
-    "finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool\tbody_severity"
+    "finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool\tbody_severity\tscope"
 )
 
 CODE_REVIEW_FINDINGS_CLASSIFICATION_HEADER = (
-    "finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool"
+    "finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool\tscope"
 )
 
 BALLOT_HEADING_RE = re.compile(r"^### (FINDING_[0-9]+|OOS_[0-9]+):")
@@ -100,6 +105,98 @@ def findings_classification_header() -> str:
 
 def code_review_classification_header() -> str:
     return CODE_REVIEW_FINDINGS_CLASSIFICATION_HEADER
+
+
+def valid_panel_severity(token: str) -> str | None:
+    normalized = token.strip().lower()
+    return normalized if normalized in _SEVERITY_VALUES else None
+
+
+def tokenize_finding_reviewers(cell: str, labels: Iterable[str]) -> list[str]:
+    label_list = [label for label in labels if label]
+    label_set = set(label_list)
+    sorted_labels = sorted(label_set, key=lambda label: (-len(label), label))
+    tokens: list[str] = []
+    seen: set[str] = set()
+    for raw_segment in cell.split(","):
+        segment = raw_segment.strip()
+        if not segment:
+            continue
+        if segment in label_set:
+            if segment not in seen:
+                tokens.append(segment)
+                seen.add(segment)
+            continue
+        pos = 0
+        while pos < len(segment):
+            if segment[pos].isspace():
+                pos += 1
+                continue
+            matched = ""
+            for label in sorted_labels:
+                if not segment.startswith(label, pos):
+                    continue
+                end = pos + len(label)
+                if end < len(segment) and not segment[end].isspace():
+                    continue
+                matched = label
+                break
+            if not matched:
+                break
+            if matched not in seen:
+                tokens.append(matched)
+                seen.add(matched)
+            pos += len(matched)
+    return tokens
+
+
+def split_classification_attribution(
+    reviewer_cell: str,
+    *,
+    column: str,
+    labels: Iterable[str] | None = None,
+) -> list[str]:
+    cell = reviewer_cell.strip()
+    if not cell:
+        return []
+    if column == "finding_reviewers":
+        return tokenize_finding_reviewers(cell, labels or [])
+    if column == "reviewer_slots":
+        return [part.strip() for part in cell.split("|") if part.strip()]
+    return [cell]
+
+
+def accepted_finding_points_from_severities(
+    severities: Iterable[str],
+    *,
+    votes: Iterable[str] | None = None,
+) -> int:
+    severity_values = list(severities)
+    if votes is not None:
+        severity_values = [severity for vote, severity in zip(votes, severity_values, strict=False) if vote.strip().upper() == "YES"]
+    for severity in severity_values:
+        valid = valid_panel_severity(severity)
+        if valid in HIGH_SEVERITIES:
+            return 2
+    return 1
+
+
+def accepted_points_from_classification_row(
+    cols: dict[str, str],
+    header: list[str],
+    *,
+    labels: Iterable[str] | None = None,
+) -> int:
+    del labels
+    if cols.get("voting_result", "").strip() != "accepted":
+        return 0
+    if "scope" not in header:
+        return 1
+    if cols.get("scope", "").strip() == "oos":
+        return 1
+    votes = [cols.get(f"v{idx}_vote", "") for idx in range(1, 4)]
+    severities = [cols.get(f"v{idx}_severity", "") for idx in range(1, 4)]
+    return accepted_finding_points_from_severities(severities, votes=votes)
 
 
 def _bounded_prefix_text(path: Path, limit: int) -> str:
@@ -1288,29 +1385,69 @@ def bash_printf_q(value: str) -> str:
     return "".join(ch if ch in safe else "\\" + ch for ch in value)
 
 
+def _scoreboard_points_from_classification(
+    classification_file: Path,
+    reviewer_labels: list[str],
+) -> dict[str, int]:
+    scores = dict.fromkeys(reviewer_labels, 0)
+    if not classification_file.is_file():
+        return scores
+    with classification_file.open(encoding="utf-8", errors="replace", newline="") as handle:
+        reader = csv.DictReader(handle, delimiter="\t")
+        header = list(reader.fieldnames or [])
+        reviewer_column = "finding_reviewers" if "finding_reviewers" in header else "reviewer_slots"
+        label_set = reviewer_labels if reviewer_column == "finding_reviewers" else None
+        for row in reader:
+            result = (row.get("voting_result") or "").strip()
+            if result not in {"accepted", "rejected", "neutral"}:
+                continue
+            reviewers = split_classification_attribution(
+                row.get(reviewer_column, ""),
+                column=reviewer_column,
+                labels=label_set,
+            )
+            if result == "accepted":
+                delta = accepted_points_from_classification_row(row, header)
+            elif result == "rejected":
+                delta = -1
+            else:
+                delta = 0
+            for reviewer in reviewers:
+                if reviewer in scores:
+                    scores[reviewer] += delta
+    return scores
+
+
 def scoreboard_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="scoreboard")
     parser.add_argument("--tally-file", default="")
+    parser.add_argument("--findings-classification-file", default="")
     parser.add_argument("--reviewer-labels", required=True)
     parser.add_argument("--output-file", required=True)
     args = parser.parse_args(argv)
     output_file = Path(args.output_file)
     output_file.parent.mkdir(parents=True, exist_ok=True)
+    reviewer_labels = [label.strip() for label in args.reviewer_labels.split(",") if label.strip()]
+    classification_file = Path(args.findings_classification_file) if args.findings_classification_file else None
+    classification_scores = (
+        _scoreboard_points_from_classification(classification_file, reviewer_labels)
+        if classification_file is not None and classification_file.is_file()
+        else None
+    )
     tally_text = Path(args.tally_file).read_text(encoding="utf-8", errors="replace") if args.tally_file and Path(args.tally_file).is_file() else ""
     rows = ["| Reviewer | Score |", "|---|---:|"]
-    for raw_label in args.reviewer_labels.split(","):
-        label = raw_label.strip()
-        if not label:
-            continue
+    for label in reviewer_labels:
         score = 0
-        for line in tally_text.splitlines():
-            if f"REVIEWER={label} " in line and "ACCEPTED=true" in line:
-                score += 1
+        if classification_scores is not None:
+            score = classification_scores.get(label, 0)
+        else:
+            for line in tally_text.splitlines():
+                if f"REVIEWER={label} " in line and "ACCEPTED=true" in line:
+                    score += 1
         rows.append(f"| {label} | {score} |")
     output_file.write_text("\n".join(rows) + "\n", encoding="utf-8")
     print(f"SCOREBOARD_FILE={bash_printf_q(str(output_file))}")
     return 0
-
 
 def lint_focus_area_enum_main(argv: list[str]) -> int:
     if argv:

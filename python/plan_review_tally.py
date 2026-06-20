@@ -19,6 +19,7 @@ skills/design/scripts/test-findings-classification.sh for the contract.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -27,6 +28,7 @@ from pathlib import Path
 from typing import NoReturn
 
 import logging_util
+import plan_review_round
 import voting
 from session_env import validate_design_tmpdir
 
@@ -36,6 +38,7 @@ _LATENT_BODY_SEVERITY = re.compile(
 )
 _BODY_SEVERITY_PREFIX = re.compile(r"^[\s-]*\*\*Severity\*\*:[ \t]*")
 _FULL_PANEL = 3
+LABEL_MAP_MIN_COLS = 2
 
 
 class _AbortTally(Exception):
@@ -232,6 +235,69 @@ class _Tally:
         except SystemExit:
             return False
 
+    def _attribution_labels(self) -> list[str]:
+        labels: list[str] = []
+        seen: set[str] = set()
+
+        def add(label: str) -> None:
+            clean = label.strip()
+            if clean and clean not in seen:
+                labels.append(clean)
+                seen.add(clean)
+
+        label_map = Path(self.design_tmpdir) / "plan-review-prune-label-map.tsv"
+        if label_map.is_file():
+            for line in label_map.read_text(encoding="utf-8", errors="replace").splitlines():
+                parts = line.split("\t")
+                if len(parts) >= LABEL_MAP_MIN_COLS:
+                    add(parts[1])
+        for value in self.slot_tool.values():
+            add(value)
+        manifest = Path(self.design_tmpdir) / "panel-manifest.ndjson"
+        if manifest.is_file():
+            for line in manifest.read_text(encoding="utf-8", errors="replace").splitlines():
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                slot = row.get("slot")
+                if isinstance(slot, str):
+                    add(plan_review_round._slot_human_label(slot))  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+        if self.proposer_map_file:
+            try:
+                for reviewer, _line in voting.read_proposer_map(self.proposer_map_file).values():
+                    for part in reviewer.split(","):
+                        add(part)
+            except voting.TallyError:
+                pass
+        block_root = Path(self.block_dir) if self.block_dir else None
+        if block_root and block_root.is_dir():
+            for block in block_root.glob("*.md"):
+                reviewer = voting.reviewer_for_block(block)
+                for part in reviewer.split(","):
+                    add(part)
+        return labels
+
+    def _votes_and_severities_for_item(self, item_id: str) -> tuple[list[str], list[str]]:
+        votes: list[str] = []
+        severities: list[str] = []
+        if self.tally_voter_file:
+            vote, _correctness, severity, _quality, _uncertain = voting.parse_judge_vote(self.tally_voter_file, item_id)
+            votes.append(vote)
+            severities.append(severity)
+            return votes, severities
+        for pos in (1, 2, 3):
+            voter_file = self.slot_file[pos]
+            if not voter_file or self.eligible <= 0:
+                continue
+            try:
+                vote, _correctness, severity, _quality, _uncertain = voting.parse_judge_vote(voter_file, item_id)
+            except (OSError, FileNotFoundError):
+                vote, severity = "", ""
+            votes.append(vote)
+            severities.append(severity)
+        return votes, severities
+
     # -- findings-classification TSV ----------------------------------------
     def _write_findings_classification(self, sorted_ids: list[str]) -> None:
         out = Path(self.findings_out)
@@ -266,6 +332,7 @@ class _Tally:
                 else:
                     row += ["", "", "", "", "", ""]
             row.append(body_severity)
+            row.append("oos" if item_id.startswith("OOS_") else "in_scope")
             buf += "\t".join(row) + "\n"
         tmp = out.with_name(f"{out.name}.{os.getpid()}.tmp")
         _ = tmp.write_text(buf, encoding="utf-8")
@@ -520,7 +587,8 @@ class _Tally:
         rejected_chunks: list[str] = []
         oos_chunks: list[str] = []
         oos_accepted_chunks: list[str] = []
-        score_rows: list[tuple[str, str, str]] = []
+        score_rows: list[tuple[str, str, str, int]] = []
+        attribution_labels = self._attribution_labels()
 
         for item_id in sorted_ids:
             block = Path(self.block_dir) / f"{item_id}.md"
@@ -529,10 +597,20 @@ class _Tally:
 
             reviewer = self._proposer_for_item(item_id, block)
             kind = "oos" if item_id.startswith("OOS_") else "finding"
-            score_rows.extend(
-                (reviewer_slot, kind, result)
-                for reviewer_slot in [part.strip() for part in reviewer.split(",") if part.strip()]
+            votes, severities = self._votes_and_severities_for_item(item_id)
+            accepted_weight = (
+                voting.accepted_finding_points_from_severities(severities, votes=votes)
+                if kind == "finding" and result == "accepted"
+                else 0
             )
+            split_reviewers = voting.split_classification_attribution(
+                reviewer,
+                column="finding_reviewers",
+                labels=attribution_labels,
+            )
+            if not split_reviewers:
+                split_reviewers = [part.strip() for part in reviewer.split(",") if part.strip()]
+            score_rows.extend((reviewer_slot, kind, result, accepted_weight) for reviewer_slot in split_reviewers)
             security = self._is_security(block)
             block_text = Path(block).read_text(encoding="utf-8", errors="replace")
             artifact_text = self._artifact_text_for_item(item_id, block)
@@ -575,18 +653,20 @@ class _Tally:
         _append(oos_accepted_local, oos_accepted_chunks)
 
     @staticmethod
-    def _scoreboard(score_rows: list[tuple[str, str, str]]) -> str:
+    def _scoreboard(score_rows: list[tuple[str, str, str, int]]) -> str:
         agg: dict[str, dict[str, int]] = {}
-        for reviewer, kind, result in score_rows:
+        for reviewer, kind, result, accepted_weight in score_rows:
             row = agg.setdefault(
                 reviewer,
                 {"proposed": 0, "accepted": 0, "neutral": 0, "rejected": 0,
-                 "oos_proposed": 0, "oos_accepted": 0, "oos_neutral": 0, "oos_rejected": 0},
+                 "oos_proposed": 0, "oos_accepted": 0, "oos_neutral": 0, "oos_rejected": 0,
+                 "accepted_weight": 0},
             )
             if kind == "finding":
                 row["proposed"] += 1
                 if result == "accepted":
                     row["accepted"] += 1
+                    row["accepted_weight"] += accepted_weight
                 elif result == "neutral":
                     row["neutral"] += 1
                 else:
@@ -601,7 +681,7 @@ class _Tally:
                     row["oos_rejected"] += 1
         lines: list[str] = []
         for reviewer, row in agg.items():
-            score = row["accepted"] + row["oos_accepted"] - row["rejected"] - row["oos_rejected"]
+            score = row["accepted_weight"] + row["oos_accepted"] - row["rejected"] - row["oos_rejected"]
             lines.append(
                 f"| {reviewer} | {row['proposed']} | {row['accepted']} | {row['neutral']} | "
                 f"{row['rejected']} | {row['oos_proposed']} | {row['oos_accepted']} | "

@@ -16,14 +16,14 @@ CLI = rts.CLI
 _CLASSIFICATION_HEADER = (
     "finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\t"
     "v1_quality\tv1_uncertain\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\t"
-    "v2_uncertain\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain"
+    "v2_uncertain\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tscope"
 )
 
 _CODE_REVIEW_CLASSIFICATION_HEADER = (
     "finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\t"
     "v1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\t"
     "v2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\t"
-    "v3_quality\tv3_uncertain\tv3_tool"
+    "v3_quality\tv3_uncertain\tv3_tool\tscope"
 )
 
 
@@ -482,7 +482,9 @@ def test_findings_classification_nested_impl_path_and_write_round(tmp_path: Path
     assert finding["reviewer_slots"] == "cursor-a-output.txt|codex-b-output.txt"
     assert finding["v1_vote"] == "YES"
     assert finding["v2_vote"] == "YES"
+    assert finding["scope"] == "in_scope"
     assert rows["OOS_1"]["voting_result"] == "neutral"
+    assert rows["OOS_1"]["scope"] == "oos"
     log_root = tmp_path / "logs"
     write_round = _run_cli(
         "run-log",
@@ -543,6 +545,7 @@ def test_findings_classification_standalone_lenient_missing_rating(tmp_path: Pat
     assert row["v2_vote"] == "YES"
     assert row["v2_correctness"] == ""
     assert row["v2_uncertain"] == "true"
+    assert row["scope"] == "in_scope"
 
 
 def test_findings_classification_standalone_session_env_round_scoped(tmp_path: Path) -> None:
@@ -887,7 +890,7 @@ def test_tally_three_slot_failed_middle_preserves_slot_columns(tmp_path: Path) -
     class_file = Path(rts.kv_get(result.stdout, "FINDINGS_CLASSIFICATION_TSV_FILE") or "")
     lines = class_file.read_text(encoding="utf-8").splitlines()
     assert lines[0] == _CODE_REVIEW_CLASSIFICATION_HEADER
-    assert all(len(line.split("\t")) == 21 for line in lines)
+    assert all(len(line.split("\t")) == 22 for line in lines)
     row = _tsv_rows(class_file)["FINDING_1"]
     assert row["v1_tool"] == "cursor-validity"
     assert row["v2_vote"] == ""

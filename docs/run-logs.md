@@ -239,11 +239,11 @@ Standalone `/review --diff` publishes flat per-round batches named
 The code-review TSV schema is:
 
 ```text
-finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain
+finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool\tscope
 ```
 
 `finding_id` is the ballot id (`FINDING_N` or `OOS_N`), `reviewer_slots` is the
-pipe-delimited proposer attribution, and `voting_result` is one of `accepted`, `neutral`, or `rejected`. On the three-slot code-review path, `v1` is `cursor-validity`, `v2` is `cursor-plan-fidelity`, and `v3` is `cursor-pragmatism`; `claude` appears in `v1_tool` on the fallback path. Empty or failed slots keep their `vN_tool` label with empty rating cells. Rating cells are enum-only; missing or invalid axis tokens are empty and force `vN_uncertain=true`. Older logs may lack `vN_tool` or use the compact 18-column layout. MAV re-tally rows may also use the legacy single-voter 18-column shape.
+pipe-delimited proposer attribution, `voting_result` is one of `accepted`, `neutral`, or `rejected`, and `scope` is `in_scope` or `oos`. Producers write `scope=oos` for direct `OOS_*` rows, legacy `[OUT_OF_SCOPE]` or `[OOS]` rows, and scope-drift rows. Consumers prefer explicit `scope=oos` over id prefixes; legacy TSVs without `scope` remain readable with flat accepted +1 scoring and `OOS_` prefix fallback. On the three-slot code-review path, `v1` is `cursor-validity`, `v2` is `cursor-plan-fidelity`, and `v3` is `cursor-pragmatism`; `claude` appears in `v1_tool` on the fallback path. Empty or failed slots keep their `vN_tool` label with empty rating cells. Rating cells are enum-only; missing or invalid axis tokens are empty and force `vN_uncertain=true`. Older logs may lack `vN_tool` or use the compact 18-column layout. MAV re-tally rows may also use the legacy single-voter 18-column shape.
 
 For 0-judge degraded rounds (`TALLY_STATUS=main-agent-vote-required`),
 `voting_result=rejected` is a placeholder TSV sentinel, not a literal panel
