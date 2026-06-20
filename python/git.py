@@ -823,7 +823,7 @@ def conflict_files(runner: Runner, *, cwd: str | None = None) -> tuple[ConflictF
 
 
 def try_conflict_files(runner: Runner, *, cwd: str | None = None) -> tuple[ConflictFile, ...]:
-    """Non-raising conflict-file probe for ``cli.py git conflict-files``."""
+    """Non-raising conflict-file probe for best-effort internal callers."""
     result = _run(runner, ["git", "ls-files", "-u"], cwd=cwd)
     if result.returncode != 0:
         return ()
@@ -1155,7 +1155,11 @@ def conflict_files_main(argv: list[str]) -> int:
     if argv:
         print(f"git-conflict-files.sh: unknown argument: {argv[0]}", file=sys.stderr)
         return 1
-    for item in try_conflict_files(proc):
+    result = _run(proc, ["git", "ls-files", "-u"])
+    if result.returncode != 0:
+        sys.stderr.write(result.stderr)
+        return result.returncode
+    for item in _parse_conflict_file_rows(result.stdout):
         _emit_kv("FILE", item.path)
         _emit_kv("STAGE_1", str(item.stage_1).lower())
         _emit_kv("STAGE_2", str(item.stage_2).lower())
