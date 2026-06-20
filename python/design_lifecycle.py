@@ -3683,6 +3683,9 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
             logging_util.emit_kv("STEP5C_STATUS", "pause-save")
             return pause_rc, []
 
+        with contextlib.suppress(OSError):
+            (design_tmpdir / ".completed" / "step-5c-terminal").unlink(missing_ok=True)
+
         with _bg_wait_marker_context(design_tmpdir, "design-step5c", claude_pid=parsed.claude_pid):
             publish_args = [
                 "--design-tmpdir",
