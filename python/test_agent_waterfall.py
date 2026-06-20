@@ -554,6 +554,12 @@ def test_straggler_floor_prevents_early_cut(tmp_path: Path, stub_env: dict[str, 
     assert str(tmp_path / "slow.txt") in kvs["ALL_OUTPUT_FILES"]
 
 
+def test_straggler_floor_clamps_negative_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_REVIEWER_STRAGGLER_FLOOR_SECONDS", "-50")
+
+    assert agent_waterfall._straggler_floor() == 0  # pyright: ignore[reportPrivateUsage]
+
+
 def test_straggler_deadline_clamps_to_timeout_ceiling(tmp_path: Path, stub_env: dict[str, str]) -> None:
     manifest = _slots_manifest(tmp_path, [("fast", "codex", "fast.txt"), ("slow", "cursor", "slow.txt")])
     proc = _run(

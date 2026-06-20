@@ -278,3 +278,43 @@ def test_compose_findings_prune_label_map_normalizes_reviewer_slots(tmp_path: Pa
     assert result.returncode == 0, result.stderr
     slots = json.loads(_record_field_by_id(output, "FINDING_1", "reviewer_slots").replace("'", '"'))
     assert slots == ["Cursor-Arch-output.txt"]
+
+
+def test_compose_findings_design_reviewer_map_skips_non_dict_rows(tmp_path: Path) -> None:
+    design = tmp_path / "design-map-shape"
+    design.mkdir()
+    output_file = design / "Cursor-Arch-output.txt"
+    _ = output_file.write_text("reviewer output\n", encoding="utf-8")
+    _ = (design / "plan-review-slots.ndjson").write_text(
+        "\n".join(
+            [
+                json.dumps(["not", "a", "dict"]),
+                json.dumps("not a dict"),
+                json.dumps({"slot": "cursor-plan-arch", "tool": "cursor", "output": str(output_file)}),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    _ = (design / "accepted-plan-findings.md").write_text(
+        """### FINDING_1: Plan issue
+- **Reviewer**: Cursor-Arch
+- **Concern**: non-dict slot rows should be ignored
+""",
+        encoding="utf-8",
+    )
+    output = tmp_path / "shape.jsonl"
+
+    result = run_review(
+        "compose-findings",
+        "--design-artifacts-dir",
+        str(design),
+        "--issue",
+        "1",
+        "--output",
+        str(output),
+    )
+
+    assert result.returncode == 0, result.stderr
+    slots = json.loads(_record_field_by_id(output, "FINDING_1", "reviewer_slots").replace("'", '"'))
+    assert slots == ["Cursor-Arch-output.txt"]

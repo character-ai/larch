@@ -840,6 +840,85 @@ def test_scrub_run_tree_redacts_cursor_key(tmp_path: Path) -> None:
     assert (run_dir / "clean.md").read_text(encoding="utf-8") == "clean prose\n"
 
 
+def test_commit_run_reports_copy_tree_scrub_count(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_git_repo_on_feature(repo)
+    _ = (repo / "README.md").write_text("seed\n", encoding="utf-8")
+    _ = subprocess.run(["git", "add", "README.md"], cwd=repo, check=True, capture_output=True)
+    _ = subprocess.run(["git", "commit", "-q", "-m", "seed"], cwd=repo, check=True, capture_output=True)
+    log_root = tmp_path / "larch-logs"
+    src = log_root / "implement" / "run-abc"
+    src.mkdir(parents=True)
+    _ = (src / "artifact.txt").write_text("clean\n", encoding="utf-8")
+
+    def fake_scrub(_directory: Path) -> tuple[int, int]:
+        return 2, 1
+
+    monkeypatch.setattr(run_logs, "_scrub_run_tree", fake_scrub)
+
+    result = run_logs._commit_run(  # pyright: ignore[reportPrivateUsage]
+        log_root,
+        "implement",
+        "run-abc",
+        cwd=str(repo),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "SECRET_SCRUB_VIOLATIONS=2" in result.stdout
+
+
+def test_commit_run_reports_pre_scrub_count_without_double_counting_same_tree(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_git_repo_on_feature(repo)
+    run_dir = repo / "larch-logs" / "design" / "run-abc"
+    run_dir.mkdir(parents=True)
+    _ = (run_dir / "artifact.txt").write_text("clean\n", encoding="utf-8")
+    _ = subprocess.run(["git", "add", "larch-logs"], cwd=repo, check=True, capture_output=True)
+    _ = subprocess.run(["git", "commit", "-q", "-m", "seed"], cwd=repo, check=True, capture_output=True)
+
+    def fail_scrub(_directory: Path) -> tuple[int, int]:
+        raise AssertionError("same-tree run-log commit must not re-scrub")
+
+    monkeypatch.setattr(run_logs, "_scrub_run_tree", fail_scrub)
+
+    result = run_logs._commit_run(  # pyright: ignore[reportPrivateUsage]
+        repo / "larch-logs",
+        "design",
+        "run-abc",
+        cwd=str(repo),
+        pre_scrub_violations=3,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.argv == ("true",)
+    assert "SECRET_SCRUB_VIOLATIONS=3" in result.stdout
+
+
+def test_larch_log_commit_rejects_bad_pre_scrub_violations(tmp_path: Path) -> None:
+    rc = run_logs.larch_log_commit_main(
+        [
+            "--log-root",
+            str(tmp_path / "larch-logs"),
+            "--skill",
+            "implement",
+            "--run-id",
+            "run-abc",
+            "--pre-scrub-violations",
+            "-1",
+        ]
+    )
+
+    assert rc == 1
+
+
 def test_write_round_commits_review_threshold_inputs(tmp_path: Path) -> None:
     source = tmp_path / "source-round"
     source.mkdir()

@@ -1741,10 +1741,11 @@ def _copy_tree_to_repo(
     repo_root: Path,
     skill: str,
     run_id: str,
-) -> tuple[list[str], Path, str | None]:
+) -> tuple[list[str], Path, int, str | None]:
     src = _run_dir(log_root, skill, run_id)
     dest = _repo_run_dir(repo_root, skill, run_id)
     rels: list[str] = []
+    scrub_violations = 0
     if src.is_dir():
         if src.resolve() != dest.resolve():
             dest.parent.mkdir(parents=True, exist_ok=True)
@@ -1752,9 +1753,10 @@ def _copy_tree_to_repo(
                 tmp_dest = Path(tmp) / run_id
                 _safe_copy_run_tree(src, tmp_dest)
                 try:
-                    _scrub_run_tree(tmp_dest)
+                    count, _files_scrubbed = _scrub_run_tree(tmp_dest)
                 except ShipError as exc:
-                    return [], dest, str(exc)
+                    return [], dest, scrub_violations, str(exc)
+                scrub_violations += count
                 if dest.exists():
                     shutil.rmtree(dest)
                 tmp_dest.replace(dest)
@@ -1774,11 +1776,12 @@ def _copy_tree_to_repo(
                     dest_item.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(item, dest_item)
             try:
-                _scrub_run_tree(shared_dest)
+                count, _files_scrubbed = _scrub_run_tree(shared_dest)
             except ShipError as exc:
-                return [], dest, str(exc)
+                return [], dest, scrub_violations, str(exc)
+            scrub_violations += count
         rels.append("larch-logs/shared")
-    return rels, dest, None
+    return rels, dest, scrub_violations, None
 
 
 def _git_stdout(argv: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
@@ -1796,7 +1799,7 @@ def _default_branches(repo_root: Path) -> set[str]:
     return branches
 
 
-def _commit_run(log_root: Path, skill: str, run_id: str, *, cwd: str | None) -> CommandResult:
+def _commit_run(log_root: Path, skill: str, run_id: str, *, cwd: str | None, pre_scrub_violations: int = 0) -> CommandResult:
     sentinel = log_root.parent / "post-merge-sentinel"
     if sentinel.exists():
         return CommandResult(
@@ -1823,18 +1826,18 @@ def _commit_run(log_root: Path, skill: str, run_id: str, *, cwd: str | None) -> 
     if manifest.is_file():
         with suppress(Exception):
             _update_manifest_v2(manifest, {})
-    rels, dest, scrub_error = _copy_tree_to_repo(log_root, repo_root, skill, run_id)
+    rels, dest, copy_tree_violations, scrub_error = _copy_tree_to_repo(log_root, repo_root, skill, run_id)
+    violations = pre_scrub_violations + copy_tree_violations
     if scrub_error:
         return CommandResult(("run-log", "commit"), 1, "", f"{scrub_error}\n", 0.0)
     if not rels:
-        return CommandResult(("true",), 0, "", "", 0.0)
+        return CommandResult(("true",), 0, f"SECRET_SCRUB_VIOLATIONS={violations}\n", "", 0.0)
     bread_src = log_root.parent / "breadcrumbs"
     if bread_src.is_dir() and log_root.name == "larch-logs":
         with suppress(Exception):
             _ = publish_breadcrumbs_main(
                 ["--source-dir", str(bread_src), "--dest-dir", str(dest / "breadcrumbs")],
             )
-    violations = 0
     status = _git_stdout(["git", "status", "--porcelain", "--", *rels], cwd=repo_root)
     if status.returncode != 0:
         return CommandResult(tuple(status.args), status.returncode, status.stdout, status.stderr, 0.0)
@@ -2006,11 +2009,20 @@ def larch_log_manifest_main(argv: list[str]) -> int:
 
 def larch_log_commit_main(argv: list[str]) -> int:
     parser = _common_parser("cli.py run-log commit")
+    parser.add_argument("--pre-scrub-violations", default="0")
     args = _parse_common(parser, argv)
     if args is None:
         return _larch_log_fail(1, "invalid commit arguments")
+    if not str(args.pre_scrub_violations).isdigit():
+        return _larch_log_fail(1, "invalid --pre-scrub-violations: expected non-negative integer")
     try:
-        result = _commit_run(args.log_root_path, args.skill, args.run_id, cwd=str(Path.cwd()))
+        result = _commit_run(
+            args.log_root_path,
+            args.skill,
+            args.run_id,
+            cwd=str(Path.cwd()),
+            pre_scrub_violations=int(args.pre_scrub_violations),
+        )
     except ShipError as exc:
         print(str(exc), file=sys.stderr)
         return 3

@@ -136,6 +136,33 @@ def test_log_publish_commits_pushes_and_opens_pr(tmp_path: Path) -> None:
     assert "DESIGN_LOG_PR_NUMBER=77" in meta
 
 
+def test_log_publish_reports_and_commits_scrubbed_secret(tmp_path: Path) -> None:
+    repo = _operator_repo_with_remote(tmp_path)
+    design = tmp_path / "design"
+    design.mkdir()
+    raw_token = "xoxb-1234567890abcdef"
+    _ = (design / "secret.txt").write_text(f"token={raw_token}\n", encoding="utf-8")
+    bin_dir = tmp_path / "bin"
+    _write_gh_stub(bin_dir / "gh", pr_create_rc=0)
+
+    result = _run_publish(repo, design, bin_dir)
+
+    assert result.returncode == 0, result.stderr
+    assert "PUBLISH_OK=true" in result.stdout, result.stderr
+    assert "SECRET_SCRUB_VIOLATIONS=1" in result.stdout
+    origin = tmp_path / "origin.git"
+    blob = subprocess.run(
+        ["git", "show", f"{LOG_BRANCH}:larch-logs/design/{RUN_ID}/secret.txt"],
+        cwd=origin,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert blob.returncode == 0, blob.stderr
+    assert raw_token not in blob.stdout
+    assert "<REDACTED-TOKEN>" in blob.stdout
+
+
 def test_log_publish_pr_failure_keeps_tree_clean_and_emits_recovery(tmp_path: Path) -> None:
     # If the PR cannot be opened, the operator tree still stays clean and the
     # pushed branch is surfaced as a recovery branch (PUBLISH_OK=false).
@@ -333,6 +360,27 @@ def test_scrub_violations_parses_last_numeric() -> None:
     assert design_log_publish_flow._scrub_violations("no marker here\n") == "0"
     assert design_log_publish_flow._scrub_violations("SECRET_SCRUB_VIOLATIONS=oops\n") == "0"
     assert design_log_publish_flow._scrub_violations("<sha>\nSECRET_SCRUB_VIOLATIONS=0\n") == "0"
+
+
+def test_copy_tree_redacted_writes_same_scrubbed_text_used_for_count(tmp_path: Path) -> None:
+    plugin_root = Path(__file__).resolve().parents[1]
+    source = tmp_path / "source.txt"
+    raw = "token=xoxb-1234567890abcdef"
+    _ = source.write_text(raw, encoding="utf-8")
+    dest = tmp_path / "dest.txt"
+
+    ok, count = design_log_publish_flow._copy_tree_redacted(  # pyright: ignore[reportPrivateUsage]
+        plugin_root,
+        source,
+        dest,
+    )
+
+    expected, findings = design_log_publish_flow.redact.scrub_log_secrets(raw)
+    if expected and not expected.endswith("\n"):
+        expected += "\n"
+    assert ok
+    assert count == sum(findings.values()) == 1
+    assert dest.read_text(encoding="utf-8") == expected
 
 
 def test_publish_excluded_github_redundant_top_level_only() -> None:

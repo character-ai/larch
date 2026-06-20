@@ -354,6 +354,39 @@ def _read_label_map(path: Path | None) -> dict[str, str]:
     return mapping
 
 
+def _tokenize_plan_finding_reviewers(cell: str, labels: Iterable[str]) -> set[str]:
+    label_list = [label for label in labels if label]
+    label_set = set(label_list)
+    sorted_labels = sorted(label_set, key=lambda label: (-len(label), label))
+    tokens: set[str] = set()
+    for raw_segment in cell.split(","):
+        segment = raw_segment.strip()
+        if not segment:
+            continue
+        if segment in label_set:
+            tokens.add(segment)
+            continue
+        pos = 0
+        while pos < len(segment):
+            if segment[pos].isspace():
+                pos += 1
+                continue
+            matched = ""
+            for label in sorted_labels:
+                if not segment.startswith(label, pos):
+                    continue
+                end = pos + len(label)
+                if end < len(segment) and not segment[end].isspace():
+                    continue
+                matched = label
+                break
+            if not matched:
+                break
+            tokens.add(matched)
+            pos += len(matched)
+    return tokens
+
+
 def _read_classification_counts(path: Path, labels: Iterable[str], *, plan_mode: bool) -> dict[str, PruneRoundCounts]:
     label_list = list(labels)
     mutable_counts = {label: {"accepted": 0, "rejected": 0, "total": 0} for label in label_list}
@@ -369,7 +402,7 @@ def _read_classification_counts(path: Path, labels: Iterable[str], *, plan_mode:
                 continue
             cell = row.get(attr_col) or ""
             if plan_mode:
-                tokens = {token.strip() for token in cell.split(",") if token.strip()}
+                tokens = _tokenize_plan_finding_reviewers(cell, label_list)
             else:
                 tokens = {_normalize_code_label(token) for token in cell.split("|") if token.strip()}
             for label, key in label_keys.items():

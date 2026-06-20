@@ -470,7 +470,7 @@ def _straggler_multiple() -> float:
 def _straggler_floor() -> int:
     raw = os.environ.get("LARCH_REVIEWER_STRAGGLER_FLOOR_SECONDS", "300")
     try:
-        return int(raw)
+        return max(int(raw), 0)
     except ValueError:
         return 300
 

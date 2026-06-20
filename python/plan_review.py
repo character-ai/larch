@@ -112,6 +112,14 @@ def _step3_round_carry_values(*, degraded_exit: bool, degraded_values: dict[str,
     return {key: degraded_values[key] for key in _STEP3_ROUND_CARRY_KEYS if degraded_values.get(key)}
 
 
+def _merge_step3_round_carry_warnings(values: dict[str, str], carry: dict[str, str]) -> dict[str, str]:
+    merged = dict(values)
+    for key in _STEP3_ROUND_CARRY_KEYS:
+        if not merged.get(key) and carry.get(key):
+            merged[key] = carry[key]
+    return merged
+
+
 def _write_atomic(path: Path, content: str) -> None:
     tmp = path.with_name(f"{path.name}.tmp.{os.getpid()}")
     _ = tmp.write_text(content, encoding="utf-8")
@@ -1362,6 +1370,7 @@ def run_step3_review(argv: Sequence[str]) -> int:
                 step3_loop_emit_envelope(tmpdir, "main-agent-vote-required", round_num, round_num, round_num, values)
                 return 0
             if loop_status in {"complete", "zero-findings-degraded-panel"}:
+                values = _merge_step3_round_carry_warnings(values, degraded_values)
                 accepted = _count_accepted(tmpdir) or int(values.get("ACCEPTED_COUNT", "0") or "0")
                 values["ACCEPTED_COUNT"] = str(accepted)
                 for key in _STEP3_ROUND_CARRY_KEYS:
@@ -1467,7 +1476,7 @@ def run_step3_review(argv: Sequence[str]) -> int:
                     (tmpdir / ".step3-entry-plan-printed").unlink()
                 round_num += 1
                 degraded_exit = False
-                degraded_values = {}
+                degraded_values = _step3_round_carry_values(degraded_exit=False, degraded_values=degraded_values)
                 continue
             if degraded_exit:
                 _emit_kv("LOOP_STATUS", "zero-findings-degraded-panel")

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import subprocess
 from pathlib import Path
 
 import plan_review
@@ -946,6 +947,118 @@ printf 'PLAN_REVIEW_CONTINUE=false\\nPLAN_REVIEW_CONTINUE_REASON=small-clean\\n'
     # The terminal 0-accepted round now has round-meta.json, so _completed_round_dirs
     # (the Review Phase Detail source set) includes it. Before the fix it was absent.
     assert (tmp_path / "plan-review" / "round-1" / "round-meta.json").is_file(), proc.stdout
+
+
+def test_step3_continuation_preserves_warning_keys_across_rounds(tmp_path: Path) -> None:
+    _write_run_params(tmp_path)
+    round_stub = tmp_path / "round-stub.sh"
+    _ = round_stub.write_text(
+        """#!/usr/bin/env bash
+set -euo pipefail
+round=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in --round-num) round="${2:?}"; shift 2 ;; *) shift ;; esac
+done
+if [[ "$round" == "1" ]]; then
+  printf 'LOOP_STATUS=complete\\nACCEPTED_COUNT=0\\nDEGRADED_PANEL=1\\n'
+  printf 'DEGRADED_PANEL_WARNING=first degraded warning\\n'
+  printf 'INVALID_SLOT_PANEL_WARNING=first invalid warning\\n'
+  printf 'TALLY_PLAN_REVIEW_STATUS=ok\\nAGGREGATOR_STATUS=ok\\n'
+else
+  printf 'LOOP_STATUS=complete\\nACCEPTED_COUNT=0\\nDEGRADED_PANEL=0\\n'
+  printf 'TALLY_PLAN_REVIEW_STATUS=ok\\nAGGREGATOR_STATUS=ok\\n'
+fi
+""",
+        encoding="utf-8",
+    )
+    round_stub.chmod(0o755)
+    continuation_stub = tmp_path / "continuation-stub.sh"
+    count_file = tmp_path / "continuation-count"
+    _ = continuation_stub.write_text(
+        f"""#!/usr/bin/env bash
+set -euo pipefail
+count=0
+if [[ -f "{count_file}" ]]; then count=$(cat "{count_file}"); fi
+count=$((count + 1))
+printf '%s\\n' "$count" >"{count_file}"
+if [[ "$count" == "1" ]]; then
+  printf 'PLAN_REVIEW_CONTINUE=true\\nPLAN_REVIEW_CONTINUE_REASON=high-accepted\\n'
+else
+  printf 'PLAN_REVIEW_CONTINUE=false\\nPLAN_REVIEW_CONTINUE_REASON=small-clean\\n'
+fi
+""",
+        encoding="utf-8",
+    )
+    continuation_stub.chmod(0o755)
+
+    proc = run_cli(
+        "plan-review",
+        "run",
+        "--design-tmpdir",
+        str(tmp_path),
+        "--mode",
+        "loop",
+        env={
+            "LARCH_QUIET_DISABLE": "1",
+            "RUN_STEP3_PLAN_REVIEW_LOOP_SH": str(round_stub),
+            "RUN_STEP3_CONTINUATION_SH": str(continuation_stub),
+        },
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "STEP3_REVIEW_LOOP_STATUS=complete" in proc.stdout
+    assert proc.stdout.count("DEGRADED_PANEL_WARNING=first degraded warning") >= 2
+    assert proc.stdout.count("INVALID_SLOT_PANEL_WARNING=first invalid warning") >= 2
+    result_env = (tmp_path / ".step3-review-result.env").read_text(encoding="utf-8")
+    assert "DEGRADED_PANEL_WARNING=first degraded warning" in result_env
+    assert "INVALID_SLOT_PANEL_WARNING=first invalid warning" in result_env
+
+
+def test_write_design_round_meta_production_invokes_progress_cli(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run_command(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(argv)
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.delenv("WRITE_DESIGN_ROUND_META_SH", raising=False)
+    monkeypatch.setattr(plan_review, "_run_command", fake_run_command)
+
+    plan_review._write_design_round_meta(tmp_path, 2)  # pyright: ignore[reportPrivateUsage]
+
+    assert calls == [
+        [
+            plan_review.sys.executable,
+            str(plan_review._plugin_root() / "python" / "cli.py"),  # pyright: ignore[reportPrivateUsage]
+            "progress",
+            "write-design-round-meta",
+            "--round-dir",
+            str(tmp_path / "plan-review" / "round-2"),
+        ]
+    ]
+
+
+def test_run_apply_zero_accepted_ignores_round_meta_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_run_params(tmp_path)
+
+    def failed_run_command(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(argv, 1, "", "boom")
+
+    monkeypatch.delenv("WRITE_DESIGN_ROUND_META_SH", raising=False)
+    monkeypatch.setattr(plan_review, "_run_command", failed_run_command)
+    values: dict[str, str] = {}
+
+    rc = plan_review._run_apply(tmp_path, 1, values)  # pyright: ignore[reportPrivateUsage]
+
+    assert rc == 0
+    assert values["ACCEPTED_COUNT"] == "0"
+    assert (tmp_path / ".step3-round-1.phase").read_text(encoding="utf-8") == "awaiting-continuation\n"
 
 
 def test_record_round_timing_idempotent_and_round_snapshot_counts(tmp_path: Path) -> None:
