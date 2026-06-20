@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import subprocess
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
@@ -11,6 +11,7 @@ from typing import cast
 import pytest
 
 import git
+import retry
 from errors import ShipError
 from proc import CommandResult, ProcRunner
 import phantom
@@ -37,6 +38,14 @@ class StubRunner:
             msg = f"unexpected argv: {argv}"
             raise AssertionError(msg)
         return self.responses[key]
+
+
+def _immediate_retry(
+    fn: Callable[[], tuple[CommandResult, int, str]],
+    **_kwargs: object,
+) -> retry.RetryResult[CommandResult]:
+    value, rc, _content = fn()
+    return retry.RetryResult(value=value, attempts=1, last_returncode=rc)
 
 
 def test_rev_parse_builds_argv() -> None:
@@ -957,3 +966,114 @@ def test_check_remote_branch_parse_error_fail_open(capsys: pytest.CaptureFixture
     assert "STATE=error" in out
     assert "RC=1" in out
     assert "ERROR=--branch is required" in out
+
+
+def test_check_remote_branch_unknown_flag_fail_open(capsys: pytest.CaptureFixture[str]) -> None:
+    assert git.check_remote_branch_main(["--bogus"]) == 0
+    out = capsys.readouterr().out
+    assert "STATE=error" in out
+    assert "RC=1" in out
+    assert "ERROR=unknown flag: --bogus" in out
+
+
+def test_rebase_abort_main_idempotent_on_failed_abort(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("git", "rebase", "--abort"),
+                128,
+                "",
+                "fatal: no rebase in progress\n",
+                0.01,
+            ),
+        ],
+    )
+    monkeypatch.setattr(git, "proc", runner)
+    assert git.rebase_abort_main([]) == 0
+
+
+def test_remote_branch_state_present() -> None:
+    runner = StubRunner(
+        {
+            ("git", "ls-remote", "--exit-code", "--heads", "origin", "feat"): CommandResult(
+                ("git", "ls-remote", "--exit-code", "--heads", "origin", "feat"),
+                0,
+                "abc\trefs/heads/feat\n",
+                "",
+                0.01,
+            ),
+        },
+    )
+    result = git.remote_branch_state(runner, "feat")
+    assert result.state == "present"
+    assert result.rc == 0
+
+
+def test_remote_branch_state_absent() -> None:
+    runner = StubRunner(
+        {
+            ("git", "ls-remote", "--exit-code", "--heads", "origin", "feat"): CommandResult(
+                ("git", "ls-remote", "--exit-code", "--heads", "origin", "feat"),
+                2,
+                "",
+                "",
+                0.01,
+            ),
+        },
+    )
+    result = git.remote_branch_state(runner, "feat")
+    assert result.state == "absent"
+    assert result.rc == 2
+
+
+def test_remote_branch_state_transport_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(git, "with_transient_retry", _immediate_retry)
+    runner = StubRunner(
+        {
+            ("git", "ls-remote", "--exit-code", "--heads", "origin", "feat"): CommandResult(
+                ("git", "ls-remote", "--exit-code", "--heads", "origin", "feat"),
+                128,
+                "",
+                "fatal: auth failed\n",
+                0.01,
+            ),
+        },
+    )
+    result = git.remote_branch_state(runner, "feat")
+    assert result.state == "error"
+    assert result.rc == 128
+    assert result.error
+    assert "\n" not in result.error
+
+
+def test_check_remote_branch_main_present_absent_error(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(git, "with_transient_retry", _immediate_retry)
+    cases = [
+        (0, "present", 0, ""),
+        (2, "absent", 2, ""),
+        (128, "error", 128, "fatal: network"),
+    ]
+    for rc, state, expected_rc, stderr in cases:
+        runner = RecordingRunner(
+            responses=[
+                CommandResult(
+                    ("git", "ls-remote", "--exit-code", "--heads", "origin", "feat"),
+                    rc,
+                    "abc\trefs/heads/feat\n" if rc == 0 else "",
+                    stderr,
+                    0.01,
+                ),
+            ],
+        )
+        monkeypatch.setattr(git, "proc", runner)
+        assert git.check_remote_branch_main(["--branch", "feat"]) == 0
+        out = capsys.readouterr().out
+        assert f"STATE={state}" in out
+        assert f"RC={expected_rc}" in out
+        if state == "error":
+            assert "ERROR=" in out

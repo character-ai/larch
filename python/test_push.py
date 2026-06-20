@@ -175,6 +175,8 @@ def test_checkpoint_probe_emits_rebase_outcome_on_skip(monkeypatch: pytest.Monke
     assert "REBASE_OUTCOME=skipped" in out
     assert "SKIPPED_ALREADY_FRESH=true" in out
     assert "PHANTOM_STATUS=clean" in out
+    assert "PHANTOM_COUNT=" not in out
+    assert "PHANTOM_PATHS_FILE=" not in out
 
 
 def _stub_clean_phantom(monkeypatch: pytest.MonkeyPatch, calls: list[str] | None = None) -> None:

@@ -430,9 +430,10 @@ def checkpoint_probe_main(argv: list[str]) -> int:
     _emit_kv("PHANTOM_STATUS", probe.dirty.status)
     if probe.dirty.reason:
         _emit_kv("PHANTOM_REASON", probe.dirty.reason)
-    _emit_kv("PHANTOM_COUNT", probe.dirty.count)
-    if probe.dirty.paths_file:
-        _emit_kv("PHANTOM_PATHS_FILE", probe.dirty.paths_file)
+    if probe.dirty.status == "phantom":
+        _emit_kv("PHANTOM_COUNT", probe.dirty.count)
+        if probe.dirty.paths_file:
+            _emit_kv("PHANTOM_PATHS_FILE", probe.dirty.paths_file)
     if probe.append_warn_error:
         _emit_kv("PHANTOM_APPEND_WARN_ERROR", probe.append_warn_error)
     return 0

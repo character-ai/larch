@@ -1314,16 +1314,29 @@ def check_main_sync_main(argv: list[str]) -> int:
 
 
 def check_remote_branch_main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py git check-remote-branch", add_help=False)
-    parser.add_argument("--branch", default="")
-    parser.add_argument("--remote", default="origin")
-    args = _parse(parser, argv)
-    if args is None or not args.branch:
+    branch = ""
+    remote = "origin"
+    index = 0
+    while index < len(argv):
+        arg = argv[index]
+        if arg == "--branch":
+            branch = argv[index + 1] if index + 1 < len(argv) else ""
+            index += 2
+            continue
+        if arg == "--remote":
+            remote = argv[index + 1] if index + 1 < len(argv) else ""
+            index += 2
+            continue
+        _emit_kv("STATE", "error")
+        _emit_kv("RC", 1)
+        _emit_kv("ERROR", f"unknown flag: {arg}")
+        return 0
+    if not branch:
         _emit_kv("STATE", "error")
         _emit_kv("RC", 1)
         _emit_kv("ERROR", "--branch is required")
         return 0
-    result = remote_branch_state(proc, args.branch, remote=args.remote)
+    result = remote_branch_state(proc, branch, remote=remote)
     _emit_kv("STATE", result.state)
     _emit_kv("RC", result.rc)
     if result.error:
