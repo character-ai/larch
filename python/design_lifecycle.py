@@ -29,6 +29,7 @@ import design_postplan
 import gh
 import issue_wire
 import logging_util
+import redact
 import plan_quality
 import proc
 import session_env
@@ -183,6 +184,29 @@ def _bg_wait_marker_context(design_tmpdir: str | Path, step: str, *, claude_pid:
 def _emit_core_kvs(rows: Iterable[tuple[str, str]]) -> None:
     for key, value in rows:
         logging_util.emit_kv(key, value)
+
+
+def _core_quiet_mirrors_to_fd4() -> bool:
+    pid = os.environ.get("LARCH_QUIET_PID", "")
+    active = os.environ.get("LARCH_QUIET_ACTIVE", "").lower() in {"1", "true", "yes", "on"}
+    return active and pid == str(os.getpid())
+
+
+def _core_diagnostic(message: str) -> None:
+    """Mirror bash larch_err for post-quiet_init *_core validation errors."""
+    line = redact.redact_outbound(logging_util.sanitize_diagnostic_line(message)).rstrip("\n") + "\n"
+    _ = sys.stderr.write(line)
+    _ = sys.stderr.flush()
+    if _core_quiet_mirrors_to_fd4():
+        with contextlib.suppress(OSError):
+            _ = os.write(4, line.encode("utf-8"))
+
+
+def _core_print_exc() -> None:
+    buf = io.StringIO()
+    traceback.print_exc(file=buf)
+    for line in buf.getvalue().splitlines():
+        _core_diagnostic(line)
 
 
 def _read_env_value(path: Path, key: str, default: str = "") -> str:
@@ -731,7 +755,7 @@ def stage_terminal_state_core(argv: Sequence[str]) -> tuple[int, list[str]]:
     except SystemExit:
         return 2, []
     if extra:
-        print(f"design-stage-terminal-state.sh: unknown option: {extra[0]}", file=sys.stderr)
+        _core_diagnostic(f"design-stage-terminal-state.sh: unknown option: {extra[0]}")
         return 2, []
     try:
         design_tmpdir = _validate_design_tmpdir_arg(ns.design_tmpdir)
@@ -826,7 +850,7 @@ def stage_terminal_state_core(argv: Sequence[str]) -> tuple[int, list[str]]:
         _emit_core_kvs(rows)
         return 0, [f"{k}={v}" for k, v in rows]
     except _CoreUsageError as exc:
-        print(f"design-stage-terminal-state.sh: {exc}", file=sys.stderr)
+        _core_diagnostic(f"design-stage-terminal-state.sh: {exc}")
         return 2, []
 
 
@@ -884,12 +908,12 @@ def failure_report_core(argv: Sequence[str]) -> tuple[int, list[str]]:
     except SystemExit:
         return 2, []
     if extra:
-        print(f"design-failure-report.sh: unknown option: {extra[0]}", file=sys.stderr)
+        _core_diagnostic(f"design-failure-report.sh: unknown option: {extra[0]}")
         return 2, []
     try:
         design_tmpdir = _validate_design_tmpdir_arg(ns.design_tmpdir)
     except _CoreUsageError as exc:
-        print(f"design-failure-report.sh: {exc}", file=sys.stderr)
+        _core_diagnostic(f"design-failure-report.sh: {exc}")
         return 2, []
     outcome = ns.outcome
     terminal_state = design_tmpdir / "design-failure-terminal-state.env"
@@ -1262,7 +1286,7 @@ def step_final_summary_core(argv: Sequence[str]) -> tuple[int, list[str]]:
         try:
             design_tmpdir = _validate_design_tmpdir_arg(env.get("DESIGN_TMPDIR", ""))
         except _CoreUsageError as exc:
-            print(f"design-step-final-summary.sh: {exc}", file=sys.stderr)
+            _core_diagnostic(f"design-step-final-summary.sh: {exc}")
             return 1, []
         os.environ["DESIGN_TMPDIR"] = str(design_tmpdir)
         if (design_tmpdir / ".pause-requested").is_file():
@@ -1285,7 +1309,7 @@ def step_final_summary_core(argv: Sequence[str]) -> tuple[int, list[str]]:
                     render_rc = render_final_summary_main(render_args)
             except BaseException as exc:
                 render_rc = 1
-                traceback.print_exc(file=sys.stderr)
+                _core_print_exc()
                 _append_execution_issue(design_tmpdir, f"Warning: render_final_summary_main failed: {exc}")
             if render_rc == 0:
                 _emit_final_summary_marked_from_disk(design_tmpdir)
@@ -1299,7 +1323,7 @@ def step_final_summary_core(argv: Sequence[str]) -> tuple[int, list[str]]:
                 (completed / "step-final-summary").touch()
             return int(render_rc), []
     except ValueError as exc:
-        print(f"design-step-final-summary.sh: {exc}", file=sys.stderr)
+        _core_diagnostic(f"design-step-final-summary.sh: {exc}")
         return 2, []
     finally:
         os.environ.clear()
