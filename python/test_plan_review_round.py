@@ -392,12 +392,16 @@ def _install_execute_round_fake(
     *,
     tally_status: str = "ok",
     panel_pruned_empty: bool = False,
+    panel_dispatch_failed: bool = False,
     empty_collector: bool = False,
     collect_failed: bool = False,
+    empty_paths: bool = False,
 ) -> None:
     def fake_run_cli(argv: list[str], *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
         del env
         if argv[:2] == ["plan-review", "panel-dispatch"]:
+            if panel_dispatch_failed:
+                return subprocess.CompletedProcess(argv, 7, "", "panel waterfall failed\n")
             if panel_pruned_empty:
                 return subprocess.CompletedProcess(argv, 0, "PANEL_PRUNED_EMPTY=true\n", "")
             manifest = design / "plan-review-slots.ndjson"
@@ -411,7 +415,10 @@ def _install_execute_round_fake(
                 + '"}\n',
                 encoding="utf-8",
             )
-            _ = paths_file.write_text(str(reviewer_file) + "\n", encoding="utf-8")
+            if empty_paths:
+                _ = paths_file.write_text("", encoding="utf-8")
+            else:
+                _ = paths_file.write_text(str(reviewer_file) + "\n", encoding="utf-8")
             return subprocess.CompletedProcess(argv, 0, f"PANEL_PRUNED_EMPTY=false\nPANEL_PATHS_FILE={paths_file}\n", "")
         if argv[:2] == ["agent", "collect-results"]:
             if collect_failed:
@@ -507,6 +514,46 @@ def test_execute_round_records_plan_review_prune_ledger(tmp_path: Path, monkeypa
     ledger_lines = (design / "reviewer-prune-ledger.tsv").read_text(encoding="utf-8").splitlines()
     assert ledger_lines[0] == "round\ttool\tslot\tlabel\taccepted_count\trejected_count\ttotal_count"
     assert ledger_lines[1] == "1\tcursor\tcursor-plan-arch\tCursor-Arch\t1\t0\t1"
+
+
+def test_execute_round_panel_dispatch_failed_syncs_latest_reviewer_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """panel-dispatch failure refreshes latest-reviewer-status.tsv (#4848)."""
+    plan_file = tmp_path / "plan.txt"
+    feature_file = tmp_path / "feature.txt"
+    _ = plan_file.write_text("plan\n", encoding="utf-8")
+    _ = feature_file.write_text("feature\n", encoding="utf-8")
+    stale_latest = tmp_path / "latest-reviewer-status.tsv"
+    _ = stale_latest.write_text("slot\tstatus\telapsed\nStale\tskipped\t\n", encoding="utf-8")
+    reviewer_file = tmp_path / "cursor-plan-arch-output.txt"
+    _ = (tmp_path / "plan-review-slots.ndjson").write_text(
+        '{"slot":"cursor-plan-arch","tool":"cursor","output":"'
+        + str(reviewer_file)
+        + '","prompt_file":"'
+        + str(tmp_path / "cursor-plan-arch.prompt")
+        + '"}\n',
+        encoding="utf-8",
+    )
+    _install_execute_round_fake(monkeypatch, tmp_path, panel_dispatch_failed=True)
+
+    rc, values = plan_review_round.execute_round(
+        tmp_path,
+        round_num=2,
+        prune_round_num=2,
+        codex_present="false",
+        cursor_present="true",
+        plan_file=plan_file,
+        feature_file=feature_file,
+    )
+
+    assert rc == 7
+    assert values["LOOP_STATUS"] == "panel-failed"
+    round_status = tmp_path / "plan-review" / "round-2" / "reviewer-status.tsv"
+    assert round_status.is_file()
+    assert stale_latest.read_text(encoding="utf-8") == round_status.read_text(encoding="utf-8")
+    assert "Stale" not in stale_latest.read_text(encoding="utf-8")
+    assert round_status.read_text(encoding="utf-8").splitlines()[1] == "Cursor-Arch\tskipped\t"
 
 
 def test_execute_round_collect_failed_syncs_latest_reviewer_status(
@@ -799,6 +846,77 @@ def test_write_reviewer_status_tsv_phase3_path_maps_to_done(tmp_path: Path) -> N
 
     assert out is not None
     assert out.read_text(encoding="utf-8").splitlines()[1] == "Cursor-Arch\tdone\t"
+
+
+def test_write_reviewer_status_tsv_collect_text_overrides_stale_collector_file(tmp_path: Path) -> None:
+    """In-memory collect_text wins over a stale on-disk collector-results.env (#4848)."""
+    design = tmp_path
+    round_dir = design / "plan-review" / "round-2"
+    round_dir.mkdir(parents=True)
+    arch = round_dir / "cursor-plan-arch-output.txt"
+    rows = [
+        {"tool": "cursor", "slot": "cursor-plan-arch", "output": str(arch), "prompt_file": str(design / "p1")},
+    ]
+    _ = (design / "plan-review-slots.ndjson").write_text(json.dumps(rows[0]) + "\n", encoding="utf-8")
+    _ = (design / "collector-results.env").write_text(
+        _collector_text(
+            [
+                collect_results.CollectorRecord(
+                    reviewer_file=str(arch),
+                    tool="cursor",
+                    status="OK",
+                    exit_code="0",
+                )
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    out = plan_review_round.write_reviewer_status_tsv(design, 2, collect_text="")
+
+    assert out is not None
+    assert out.read_text(encoding="utf-8").splitlines()[1] == "Cursor-Arch\tskipped\t"
+
+
+def test_execute_round_empty_paths_clears_stale_collector_for_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Skipped collection must not reuse a prior round's collector-results.env (#4848)."""
+    plan_file = tmp_path / "plan.txt"
+    feature_file = tmp_path / "feature.txt"
+    _ = plan_file.write_text("plan\n", encoding="utf-8")
+    _ = feature_file.write_text("feature\n", encoding="utf-8")
+    reviewer_file = tmp_path / "cursor-plan-arch-output.txt"
+    _ = (tmp_path / "collector-results.env").write_text(
+        _collector_text(
+            [
+                collect_results.CollectorRecord(
+                    reviewer_file=str(reviewer_file),
+                    tool="cursor",
+                    status="OK",
+                    exit_code="0",
+                )
+            ]
+        ),
+        encoding="utf-8",
+    )
+    _install_execute_round_fake(monkeypatch, tmp_path, empty_paths=True, empty_collector=True)
+
+    rc, values = plan_review_round.execute_round(
+        tmp_path,
+        round_num=2,
+        prune_round_num=2,
+        codex_present="false",
+        cursor_present="true",
+        plan_file=plan_file,
+        feature_file=feature_file,
+    )
+
+    assert rc == 0
+    assert values["LOOP_STATUS"] == "degraded-empty-collector"
+    round_status = tmp_path / "plan-review" / "round-2" / "reviewer-status.tsv"
+    assert round_status.read_text(encoding="utf-8").splitlines()[1] == "Cursor-Arch\tskipped\t"
+    assert (tmp_path / "collector-results.env").read_text(encoding="utf-8") == ""
 
 
 def test_execute_round_tally_error_syncs_latest_reviewer_status(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

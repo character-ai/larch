@@ -329,7 +329,12 @@ def _compose_findings_from_collector(
     return in_scope, oos_md, ok_count, failure_count
 
 
-def write_reviewer_status_tsv(design: Path, round_num: int) -> Path | None:
+def write_reviewer_status_tsv(
+    design: Path,
+    round_num: int,
+    *,
+    collect_text: str | None = None,
+) -> Path | None:
     """Materialize ``round-N/reviewer-status.tsv`` from the launched-slot manifest and
     collector records (issue #4848).
 
@@ -354,9 +359,12 @@ def write_reviewer_status_tsv(design: Path, round_num: int) -> Path | None:
         return None
     status_by_output: dict[str, str] = {}
     status_by_norm_basename: dict[str, str] = {}
-    collector = design / "collector-results.env"
-    if collector.is_file() and not collector.is_symlink():
-        text = collector.read_text(encoding="utf-8", errors="replace")
+    if collect_text is not None:
+        text = collect_text
+    else:
+        collector = design / "collector-results.env"
+        text = collector.read_text(encoding="utf-8", errors="replace") if collector.is_file() and not collector.is_symlink() else ""
+    if text:
         for record in collect_results.parse_collector_records(text):
             reviewer_file = record.get("REVIEWER_FILE", "")
             if reviewer_file:
@@ -526,6 +534,15 @@ def execute_round(
                 "DEGRADED_PANEL": "1",
             }
         )
+        with contextlib.suppress(OSError):
+            wrote = write_reviewer_status_tsv(design, round_num, collect_text="")
+            if wrote is None:
+                round_dir = design / "plan-review" / f"round-{round_num}"
+                round_dir.mkdir(parents=True, exist_ok=True)
+                out = round_dir / "reviewer-status.tsv"
+                if not out.is_symlink():
+                    _ = out.write_text("slot\tstatus\telapsed\n", encoding="utf-8")
+                    sync_latest_reviewer_status(design, out)
         for k, v in values.items():
             _emit(k, v)
         return panel.returncode or 1, values
@@ -548,7 +565,7 @@ def execute_round(
         )
         _write_round_summary(design, round_num, loop_status="zero-findings-degraded-panel", collect_ok=0, collect_fail=0, values=values)
         with contextlib.suppress(OSError):
-            wrote = write_reviewer_status_tsv(design, round_num)
+            wrote = write_reviewer_status_tsv(design, round_num, collect_text="")
             if wrote is None:
                 round_dir = design / "plan-review" / f"round-{round_num}"
                 round_dir.mkdir(parents=True, exist_ok=True)
@@ -582,6 +599,8 @@ def execute_round(
         collect_out = collect.stdout
         collect_rc = collect.returncode
         _ = (design / "collector-results.env").write_text(collect_out + ("\n" if collect_out and not collect_out.endswith("\n") else ""), encoding="utf-8")
+    else:
+        _ = (design / "collector-results.env").write_text("", encoding="utf-8")
 
     if collect_rc != 0 and not collect_results.parse_collector_records(collect_out):
         values.update(
@@ -593,7 +612,7 @@ def execute_round(
             }
         )
         with contextlib.suppress(OSError):
-            _ = write_reviewer_status_tsv(design, round_num)
+            _ = write_reviewer_status_tsv(design, round_num, collect_text=collect_out)
         for k, v in values.items():
             _emit(k, v)
         return 1, values
@@ -605,7 +624,7 @@ def execute_round(
     # panel-failed, tally-error, main-agent-vote-required, degraded-empty-collector) has
     # the per-round file and latest-reviewer-status.tsv stays in sync.
     with contextlib.suppress(OSError):
-        _ = write_reviewer_status_tsv(design, round_num)
+        _ = write_reviewer_status_tsv(design, round_num, collect_text=collect_out)
     _ = (design / "findings-in-scope.pre-dedup.md").write_text(in_scope, encoding="utf-8")
     _ = (design / "findings-oos.pre-dedup.md").write_text(oos_md, encoding="utf-8")
     _ = (design / "findings-oos.md").write_text(oos_md, encoding="utf-8")
