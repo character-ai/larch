@@ -2346,6 +2346,23 @@ def test_lint_fix_delta_paths_includes_staged_only_reported_path(tmp_path, monke
 
 
 @MARK_CONVERGENCE
+def test_lint_fix_delta_paths_includes_reported_untracked_path(tmp_path, monkeypatch):
+    impl = _tmp_impl(tmp_path)
+    round_dir = impl / "round-1"
+    snap = review_and_fix._lint_fix_snapshot_dir(round_dir)
+    snap.mkdir(parents=True)
+    (snap / "pre-lint-tracked-paths.txt").write_text("", encoding="utf-8")
+
+    monkeypatch.setattr(review_and_fix, "_git_output", lambda _args: "")
+    monkeypatch.setattr(review_and_fix, "_path_matches_pre_lint_snapshot", lambda *_a: False)
+    monkeypatch.setattr(review_and_fix, "_capture_round_untracked_paths", lambda: ["new_lint.py"])
+
+    paths = review_and_fix._lint_fix_delta_paths(round_dir, "head", ("new_lint.py",))
+
+    assert paths == ("new_lint.py",)
+
+
+@MARK_CONVERGENCE
 def test_step5_lint_fix_commits_only_reported_current_paths(tmp_path, monkeypatch):
     impl = _tmp_impl(tmp_path)
     result = _round_result_for_lint_fix(impl)

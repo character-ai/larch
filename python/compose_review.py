@@ -133,6 +133,8 @@ def _build_design_reviewer_map(design_dir: Path | None) -> dict[str, str]:
                 row = json.loads(line)
             except json.JSONDecodeError:
                 continue
+            if not isinstance(row, dict):
+                continue
             output = str(row.get("output") or "")
             base = Path(output).name
             slot = str(row.get("slot") or "")

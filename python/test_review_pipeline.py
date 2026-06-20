@@ -716,6 +716,68 @@ def test_reviewer_prune_record_plan_mode_preserves_spaced_dynamic_label(tmp_path
     assert ledger.read_text(encoding="utf-8").splitlines()[1].endswith("\t1\t0\t1")
 
 
+def test_reviewer_prune_record_plan_mode_splits_whitespace_slug_labels(tmp_path: Path) -> None:
+    manifest = tmp_path / "panel.ndjson"
+    manifest.write_text(
+        '{"slot":"cursor-plan-pragmatic","tool":"cursor","output":"/tmp/cursor-pragmatic-output.txt"}\n'
+        '{"slot":"codex-plan-arch","tool":"codex","output":"/tmp/codex-arch-output.txt"}\n',
+        encoding="utf-8",
+    )
+    label_map = tmp_path / "label-map.tsv"
+    label_map.write_text(
+        "cursor-plan-pragmatic\tCursor-Pragmatic\n"
+        "codex-plan-arch\tCodex-Arch\n",
+        encoding="utf-8",
+    )
+    classification = tmp_path / "class.tsv"
+    classification.write_text(
+        "finding_id\tfinding_reviewers\tvoting_result\n"
+        "FINDING_1\tCursor-Pragmatic Codex-Arch\taccepted\n",
+        encoding="utf-8",
+    )
+    ledger = tmp_path / "ledger.tsv"
+
+    result = run_review(
+        "reviewer-prune",
+        "record",
+        "--ledger",
+        str(ledger),
+        "--round",
+        "1",
+        "--manifest",
+        str(manifest),
+        "--classification",
+        str(classification),
+        "--label-map",
+        str(label_map),
+    )
+
+    assert result.returncode == 0, result.stderr
+    lines = ledger.read_text(encoding="utf-8").splitlines()
+    assert lines[1].endswith("Cursor-Pragmatic\t1\t0\t1")
+    assert lines[2].endswith("Codex-Arch\t1\t0\t1")
+
+
+def test_ensure_reviewer_prune_ledger_preserves_good_rows_and_drops_malformed(tmp_path: Path) -> None:
+    ledger = tmp_path / "ledger.tsv"
+    header = "round\ttool\tslot\tlabel\taccepted_count\trejected_count\ttotal_count"
+    ledger.write_text(
+        header
+        + "\n"
+        + "1\tcursor\tcorrectness\tCursor-Correctness\t1\t0\t1\n"
+        + "bad\tcursor\tcorrectness\tCursor-Correctness\t1\t0\t1\n"
+        + "2\tcodex\tarch\tCodex-Arch\t0\t1\t1\textra\n",
+        encoding="utf-8",
+    )
+
+    review_pipeline.ensure_reviewer_prune_ledger(ledger)
+
+    assert ledger.read_text(encoding="utf-8").splitlines() == [
+        header,
+        "1\tcursor\tcorrectness\tCursor-Correctness\t1\t0\t1",
+    ]
+
+
 def test_review_core_main_agent_vote_required_skips_prune_ledger_and_preserves_round_three(tmp_path: Path) -> None:
     stubs = _write_review_core_stubs(tmp_path / "mav-prune-stubs")
     ledger = tmp_path / "reviewer-prune-ledger.tsv"

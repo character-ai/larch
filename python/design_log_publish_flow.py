@@ -13,6 +13,8 @@ import tempfile
 from pathlib import Path
 from collections.abc import Sequence
 
+import redact
+
 _PR_URL_RE = re.compile(r"/pull/([0-9]+)")
 
 
@@ -147,9 +149,9 @@ def _publish_excluded(name: str, *, is_dir: bool, top_level: bool = False) -> bo
     return any(fnmatch.fnmatchcase(name, glob) for glob in _PUBLISH_EXCLUDE_GLOBS)
 
 
-def _copy_tree_redacted(plugin_root: Path, source: Path, dest: Path) -> bool:
+def _copy_tree_redacted(plugin_root: Path, source: Path, dest: Path) -> tuple[bool, int]:
     if source.is_symlink():
-        return False
+        return False, 0
     if source.is_file():
         dest.parent.mkdir(parents=True, exist_ok=True)
         red = subprocess.run(
@@ -160,28 +162,25 @@ def _copy_tree_redacted(plugin_root: Path, source: Path, dest: Path) -> bool:
             check=False,
         )
         if red.returncode != 0:
-            return False
-        sec = subprocess.run(
-            [sys.executable, str(plugin_root / "python" / "cli.py"), "redact", "secrets"],
-            input=red.stdout,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        if sec.returncode != 0:
-            return False
-        _ = dest.write_text(sec.stdout, encoding="utf-8")
-        return True
+            return False, 0
+        scrubbed, findings = redact.scrub_log_secrets(red.stdout)
+        if scrubbed and not scrubbed.endswith("\n"):
+            scrubbed += "\n"
+        _ = dest.write_text(scrubbed, encoding="utf-8")
+        return True, sum(findings.values())
     if source.is_dir():
+        total = 0
         for child in source.iterdir():
             if child.is_symlink():
                 continue
             if _publish_excluded(child.name, is_dir=child.is_dir()):
                 continue
-            if not _copy_tree_redacted(plugin_root, child, dest / child.name):
-                return False
-        return True
-    return True
+            ok, count = _copy_tree_redacted(plugin_root, child, dest / child.name)
+            if not ok:
+                return False, total
+            total += count
+        return True, total
+    return True, 0
 
 
 def _run(argv: list[str], *, cwd: str | None = None) -> subprocess.CompletedProcess[str]:
@@ -284,17 +283,20 @@ def _publish_design_logs(
         )
         if init.returncode != 0:
             return (False, "", "", "", "0")
+        pre_scrub_violations = 0
         for child in design_tmpdir.iterdir():
             if child.name == ".design-log-publish-metadata.env":
                 continue
             if _publish_excluded(child.name, is_dir=child.is_dir(), top_level=True):
                 continue
-            if not _copy_tree_redacted(plugin_root, child, run_dest / child.name):
+            ok, scrub_count = _copy_tree_redacted(plugin_root, child, run_dest / child.name)
+            if not ok:
                 return (False, "", "", "", "0")
+            pre_scrub_violations += scrub_count
         base_sha = _run(["git", "rev-parse", "HEAD"], cwd=str(worktree)).stdout.strip()
         commit = _run(
             [sys.executable, cli, "run-log", "commit", "--log-root", str(wt_log_root),
-             "--skill", "design", "--run-id", run_id],
+             "--skill", "design", "--run-id", run_id, "--pre-scrub-violations", str(pre_scrub_violations)],
             cwd=str(worktree),
         )
         head_sha = _run(["git", "rev-parse", "HEAD"], cwd=str(worktree)).stdout.strip()

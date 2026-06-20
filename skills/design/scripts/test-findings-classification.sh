@@ -137,6 +137,21 @@ assert_cell "$OUT" OOS_3 v2_vote NO
 assert_cell "$OUT" FINDING_1 finding_reviewers "Cursor-Pragmatic Codex-Arch"
 assert_all_rows_21_fields "$OUT"
 
+PRUNE_MANIFEST="$W1/prune-panel.ndjson"
+cat > "$PRUNE_MANIFEST" <<'EOF'
+{"slot":"cursor-plan-pragmatic","tool":"cursor","output":"/tmp/cursor-pragmatic-output.txt"}
+{"slot":"codex-plan-arch","tool":"codex","output":"/tmp/codex-arch-output.txt"}
+EOF
+PRUNE_LABELS="$W1/plan-review-prune-label-map.tsv"
+cat > "$PRUNE_LABELS" <<'EOF'
+cursor-plan-pragmatic	Cursor-Pragmatic
+codex-plan-arch	Codex-Arch
+EOF
+PRUNE_LEDGER="$W1/reviewer-prune-ledger.tsv"
+python3 "$CLI" review reviewer-prune record --ledger "$PRUNE_LEDGER" --round 1 --manifest "$PRUNE_MANIFEST" --classification "$OUT" --label-map "$PRUNE_LABELS" >/dev/null
+grep -Fq $'Cursor-Pragmatic	1	0	1' "$PRUNE_LEDGER" || fail "prune ledger missed Cursor-Pragmatic whitespace token"
+grep -Fq $'Codex-Arch	1	0	1' "$PRUNE_LEDGER" || fail "prune ledger missed Codex-Arch whitespace token"
+
 echo "=== parser axis order, partial row, casing, duplicates, delimiter ==="
 PV="$TMPROOT/parser-votes.txt"
 cat > "$PV" <<'EOF'

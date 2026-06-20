@@ -30,6 +30,7 @@ paths = [
     '''^python/test_redact\.py$''',
     '''^python/test_checks\.py$''',
     '''^python/test_run_logs\.py$''',
+    '''^python/test_design_log_publish_flow\.py$''',
     '''^python/\.venv/''',
     '''^python/\.pytest_cache/''',
     '''^python/__pycache__/''',
