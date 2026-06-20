@@ -17,7 +17,7 @@ Panel severity comes from YES voters on the ballot. The finding body's `body_sev
 
 If a deduplicated finding was proposed by multiple reviewers (merged during deduplication), all contributing reviewers receive the same weighted points for that finding.
 
-Voters do not see proposer labels. Ballots show stable reviewer lines with `anonymous`; scoring uses out-of-band proposer attribution from `proposer-map.tsv`. Legacy classification TSVs without a `scope` column still score accepted in-scope findings with the same weighted rules and treat `OOS_*` ids as out-of-scope.
+Voters do not see proposer labels. Ballots show stable reviewer lines with `anonymous`; scoring uses out-of-band proposer attribution from `proposer-map.tsv`. Legacy classification TSVs without a `scope` column score accepted rows flat +1 (no severity weighting), with `OOS_*` ids excluded from in-scope Top reviewers via prefix fallback, matching `voting-protocol.md` and the helper.
 
 ## Out-of-Scope Scoring
 
@@ -82,4 +82,4 @@ Skills that use the negotiation protocol (`/research`) do not use competition sc
 
 ## Conditional spawning
 
-The same finding attribution that awards reviewer points also feeds per-run conditional spawning. In rounds 3-4, reviewer combos may be skipped when their last two launched rounds have net score ≤ 0 or an acceptance rate below 1/3. Net score uses weighted accepted points minus rejected findings. Neutral findings count in the acceptance-rate denominator, but they do not change net score. Round 5 re-probes the full panel. This pruning history is run-local, uses unweighted accepted/rejected counts for the rate gate, and does not affect the persistent scoreboard.
+The same finding attribution that awards reviewer points also feeds per-run conditional spawning. In rounds 3-4, reviewer combos may be skipped when their last two launched rounds have net score ≤ 0 or an acceptance rate below 1/3. Net score is unweighted accepted-minus-rejected counts. Neutral findings count in the acceptance-rate denominator, but they do not change net score. Round 5 re-probes the full panel. Competition scoreboards and Top reviewers use weighted points separately. This pruning history is run-local, uses unweighted accepted/rejected counts for the rate gate, and does not affect the persistent scoreboard.

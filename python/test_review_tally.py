@@ -717,13 +717,19 @@ def test_findings_classification_zero_voters_tsv_rejected_rows(tmp_path: Path) -
     assert result.returncode == 0, result.stderr
     assert rts.kv_get(result.stdout, "TALLY_STATUS") == "main-agent-vote-required"
     class_file = Path(rts.kv_get(result.stdout, "FINDINGS_CLASSIFICATION_TSV_FILE") or "")
-    rows = list(csv.DictReader(class_file.read_text(encoding="utf-8").splitlines(), delimiter="\t"))
-    assert len(rows) == 2
-    for row in rows:
+    header = class_file.read_text(encoding="utf-8").splitlines()[0]
+    assert header == _CLASSIFICATION_HEADER
+    rows_by_id = _tsv_rows(class_file)
+    assert len(rows_by_id) == 2
+    expected_cols = set(_CLASSIFICATION_HEADER.split("\t"))
+    for row in rows_by_id.values():
+        assert set(row.keys()) == expected_cols
         assert row["voting_result"] == "rejected"
         for key, value in row.items():
             if len(key) > 2 and key[0] == "v" and key[1].isdigit() and key[2] == "_":
                 assert value == ""
+    assert rows_by_id["FINDING_1"]["scope"] == "in_scope"
+    assert rows_by_id["OOS_1"]["scope"] == "oos"
 
 
 def test_findings_classification_empty_ballot_header_only(tmp_path: Path) -> None:
