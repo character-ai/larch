@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 def test_consumer_repo_root_returns_git_toplevel_from_cwd(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
-    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    _ = subprocess.run(["git", "init", "-q", str(repo)], check=True)
 
     assert consumer_repo_root(repo) == repo.resolve()
 
@@ -25,7 +25,7 @@ def test_consumer_repo_root_resolves_explicit_nested_cwd(tmp_path: Path) -> None
     repo = tmp_path / "repo"
     nested = repo / "a" / "b"
     nested.mkdir(parents=True)
-    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    _ = subprocess.run(["git", "init", "-q", str(repo)], check=True)
 
     assert consumer_repo_root(nested) == repo.resolve()
 

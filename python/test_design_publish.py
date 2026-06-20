@@ -230,10 +230,10 @@ def test_publish_passes_consumer_repo_root_and_preserves_plugin_root(tmp_path: P
 
     consumer = tmp_path / "consumer"
     consumer.mkdir()
-    subprocess.run(["git", "init", "-q", str(consumer)], check=True)
+    _ = subprocess.run(["git", "init", "-q", str(consumer)], check=True)
     script = consumer / "scripts" / "consumer-only.sh"
     script.parent.mkdir()
-    script.write_text("#!/usr/bin/env bash\necho ok\n", encoding="utf-8")
+    _ = script.write_text("#!/usr/bin/env bash\necho ok\n", encoding="utf-8")
     script.chmod(0o755)
 
     design = consumer / "design"
