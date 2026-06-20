@@ -160,6 +160,7 @@ The wrapper-only D3 surface uses these script contracts. Keep direct wrappers an
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step5c.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step5c.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-step5c.sh`
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-step5c.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-step6.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/_dbg5c2.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step6-cleanup.sh`
