@@ -92,6 +92,7 @@ def _parse_tally_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--codex-available", default="")
     parser.add_argument("--round-num", default="1")
     parser.add_argument("--both-down", default="false")
+    parser.add_argument("--proposer-map-file", default="")
     args = parser.parse_args(rest)
     args.voter_files = voter_files
     args.voter_tools = voter_tools
@@ -412,9 +413,37 @@ def _record_tally(tally_file: Path, item_id: str, *, accepted: bool, outcome: st
         _append(tally_file, f"{prefix}_{number}_REJECTED_SUBTYPE={subtype}\n")
 
 
-def _normalize_oos_header(block: Path, seq: int) -> str:
-    text = _read(block)
+def _normalize_oos_header_text(text: str, seq: int) -> str:
     return re.sub(r"^### (?:FINDING|OOS)_[0-9]+:", f"### OOS_{seq}:", text, count=1, flags=re.MULTILINE)
+
+
+def _resolve_proposer_map(
+    ballot_file: Path,
+    review_tmpdir: Path,
+    explicit_map: str,
+) -> tuple[str, bool]:
+    proposer_map_file = explicit_map or ""
+    proposer_sidecar_required = bool(proposer_map_file)
+    if not proposer_map_file:
+        default_map = review_tmpdir / "proposer-map.tsv"
+        if default_map.is_file() and voting.ballot_is_neutralized(ballot_file):
+            proposer_map_file = str(default_map)
+            proposer_sidecar_required = True
+    if not proposer_sidecar_required and voting.ballot_is_neutralized(ballot_file):
+        proposer_sidecar_required = True
+    if proposer_map_file and voting.ballot_is_neutralized(ballot_file):
+        voting.validate_proposer_map_for_neutralized_ballot(ballot_file, proposer_map_file)
+    return proposer_map_file, proposer_sidecar_required
+
+
+def _proposer_for_item(item_id: str, block: Path, map_file: str, *, sidecar_required: bool) -> str:
+    return voting.proposer_for_item(item_id, block, map_file, sidecar_required=sidecar_required)
+
+
+def _artifact_text_for_item(item_id: str, block: Path, map_file: str) -> str:
+    text = _read(block)
+    reviewer_line = voting.reviewer_line_for_item(item_id, map_file)
+    return voting.restore_reviewer_attribution(text, reviewer_line)
 
 
 def _security_block(block: Path) -> bool:
@@ -438,6 +467,14 @@ def tally_code_votes(argv: list[str]) -> int:
         return _error("tally-code-votes: --manifest-file must name a file")
     if not str(args.round_num).isdigit() or int(args.round_num) <= 0:
         return _error("tally-code-votes: --round-num must be a positive integer")
+    try:
+        proposer_map_file, proposer_sidecar_required = _resolve_proposer_map(
+            ballot_file,
+            review_tmpdir,
+            str(args.proposer_map_file or ""),
+        )
+    except voting.TallyError as exc:
+        return _error(f"tally-code-votes: {exc}")
     review_tmpdir.mkdir(parents=True, exist_ok=True)
     three_slot = bool(args.voter_tools)
     if three_slot and (len(args.voter_files) != _THREE_SLOT_COUNT or len(args.voter_tools) != _THREE_SLOT_COUNT):
@@ -486,7 +523,15 @@ def tally_code_votes(argv: list[str]) -> int:
     accepted = rejected = exonerated = neutral = oos_accepted = oos_rejected = drift = 0
     if effective == 0:
         for block in blocks:
-            reviewer = voting.reviewer_for_block(block)
+            try:
+                reviewer = _proposer_for_item(
+                    block.stem,
+                    block,
+                    proposer_map_file,
+                    sidecar_required=proposer_sidecar_required,
+                )
+            except voting.TallyError as exc:
+                return _error(f"tally-code-votes: {exc}")
             empty_cells = [("", "", "", "", "", args.voter_tools[idx] if three_slot else None) for idx in range(3)] if three_slot else []
             _append(class_tsv, _classification_row(block.stem, reviewer, "rejected", empty_cells, three_slot=three_slot) + "\n")
         warning = "**⚠ Degraded code-review panel: 0 judges available. Panel tier: main-agent-required. Manual adjudication needed.**"
@@ -570,9 +615,18 @@ def tally_code_votes(argv: list[str]) -> int:
                     judge_error += 1
         result = voting.classify_result(yes, no, 0, effective)
         tally_lines.append(f"| {item_id} | {yes} | {no} | {judge_error} | {result} |\n")
-        reviewer = voting.reviewer_for_block(block)
+        try:
+            reviewer = _proposer_for_item(
+                item_id,
+                block,
+                proposer_map_file,
+                sidecar_required=proposer_sidecar_required,
+            )
+        except voting.TallyError as exc:
+            return _error(f"tally-code-votes: {exc}")
         _append(class_tsv, _classification_row(item_id, reviewer, result, cells, three_slot=three_slot) + "\n")
         text = _read(block)
+        artifact_text = _artifact_text_for_item(item_id, block, proposer_map_file)
         is_oos = item_id.startswith("OOS_") or bool(re.search(r"\[(OUT_OF_SCOPE|OOS)\]", text.splitlines()[0] if text.splitlines() else ""))
         if not is_oos and _scope_drift(block, args.scope_files, args.plan_file):
             is_oos = True
@@ -585,11 +639,11 @@ def tally_code_votes(argv: list[str]) -> int:
             return _error(f"tally-code-votes: security classifier failed for {item_id}")
         if kind == "finding":
             if result == "accepted":
-                _append(accepted_file, text + "\n")
+                _append(accepted_file, artifact_text + "\n")
                 accepted += 1
                 _record_tally(tally_env, item_id, accepted=True, outcome="accepted")
             elif re.search(r"(?mi)^-\s*\*\*Severity\*\*:\s*latent\s*$", text):
-                _append(oos_file, text + f"\nVote tally: YES={yes} NO={no} JUDGE_ERROR={judge_error} Result={result} (latent-rerouted)\n\n")
+                _append(oos_file, artifact_text + f"\nVote tally: YES={yes} NO={no} JUDGE_ERROR={judge_error} Result={result} (latent-rerouted)\n\n")
                 oos_rejected += 1
                 _record_tally(tally_env, item_id, accepted=False, outcome=result)
             else:
@@ -597,14 +651,14 @@ def tally_code_votes(argv: list[str]) -> int:
                 if result == "neutral":
                     neutral += 1
                 subtype = "dismissed (0 YES)" if result == "rejected" else "neutral (YES below acceptance threshold)"
-                _append(rejected_file, f"### [rejected] {item_id}\n\n**Rejected subtype:** {subtype}\n\n{text}\nVote tally: YES={yes} NO={no} JUDGE_ERROR={judge_error}\n\n")
+                _append(rejected_file, f"### [rejected] {item_id}\n\n**Rejected subtype:** {subtype}\n\n{artifact_text}\nVote tally: YES={yes} NO={no} JUDGE_ERROR={judge_error}\n\n")
                 _record_tally(tally_env, item_id, accepted=False, outcome=result)
         else:
-            _append(oos_file, text + f"\nVote tally: YES={yes} NO={no} JUDGE_ERROR={judge_error} Result={result}\n\n")
+            _append(oos_file, artifact_text + f"\nVote tally: YES={yes} NO={no} JUDGE_ERROR={judge_error} Result={result}\n\n")
             if result == "accepted":
                 if not security:
                     oos_seq += 1
-                    normalized = _normalize_oos_header(block, oos_seq)
+                    normalized = _normalize_oos_header_text(artifact_text, oos_seq)
                     _append(oos_accepted_file, normalized + "\n")
                     if oos_accepted_out != oos_accepted_file:
                         _append(oos_accepted_out, normalized + "\n")

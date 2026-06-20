@@ -1328,6 +1328,17 @@ def test_append_voter1_failure_uses_bounded_prefix_reads(
     assert "C" * 501 not in diag
 
 
+def test_dispatch_voters_accepts_neutralized_reviewer_ballot(tmp_path: Path) -> None:
+    ballot = tmp_path / "ballot.md"
+    _ = ballot.write_text(
+        "### FINDING_1: Bug\n- **Reviewer**: anonymous\n- **Concern**: issue\n",
+        encoding="utf-8",
+    )
+    review = tmp_path / "review"
+    review.mkdir()
+    assert agent_voters.dispatch_voters(_opts(ballot, review)) == 0
+
+
 def _kv(output: str, key: str) -> str:
     prefix = f"{key}="
     for line in output.splitlines():

@@ -12,17 +12,17 @@ Before sending to voters, assign each deduplicated finding a stable sequential I
 
 ```markdown
 ### FINDING_1: <short title>
-- **Reviewer**: <reviewer attribution>
+- **Reviewer**: anonymous
 - **Concern**: <finding description>
 - **Suggested revision**: <what to change>
 
 ### FINDING_2: <short title>
-- **Reviewer**: <reviewer attribution>
+- **Reviewer(s)**: anonymous
 - **Concern**: <finding description>
 - **Suggested revision**: <what to change>
 ```
 
-Prepend the voter instructions as free prose before the first `### FINDING_N:` block (they are ignored by the parsers). Include the reviewer attribution so voters have context, but instruct voters to evaluate each finding on its merits regardless of who proposed it. Attribution labels are skill-specific: `/design` uses `Code` / `Codex` / `Cursor`; `/review` uses specialist labels (`Correctness`, `Testing`, `Edge-cases`, `Codex-Correctness`, `Codex-Testing`, `Codex-Edge-cases`) for its hard panel. Simple panels add `Claude-Generic` and use a reduced external-specialist set. `/research` does not participate in voting — it uses the Negotiation Protocol instead.
+Prepend the voter instructions as free prose before the first `### FINDING_N:` block (they are ignored by the parsers). Voter-facing ballots must not reveal proposer identity. Reviewer lines keep the stable `Reviewer` / `Reviewer(s)` shape but use `anonymous`; proposer attribution is retained out of band in `proposer-map.tsv` for scoring and audit. Body text is not scrubbed. Attribution labels remain skill-specific after tally: `/design` uses `Code` / `Codex` / `Cursor`; `/review` uses specialist labels (`Correctness`, `Testing`, `Edge-cases`, `Codex-Correctness`, `Codex-Testing`, `Codex-Edge-cases`) for its hard panel. Simple panels add `Claude-Generic` and use a reduced external-specialist set. `/research` does not participate in voting. It uses the Negotiation Protocol instead.
 
 ## Voter Output Format
 
@@ -72,7 +72,7 @@ When Cursor is unavailable, the panel falls back to a **single Claude floor vote
 
 **MAV/legacy tally exception:** the fixed length-3 `--voter-files` + `--voter-tools` contract applies only on the normal three-slot dispatch path. When `--voter-tools` is omitted, `review tally-code-votes` keeps compacted multi-voter semantics for one to three `--voter-files` entries (main-agent-vote re-tally, zero-findings, and other legacy callers) and the legacy 18-column rows; those callers are unchanged.
 
-All voters vote on **all** findings — no self-voting exclusion. Voters are instructed to evaluate each finding objectively regardless of who proposed it.
+All voters vote on **all** findings. No self-voting exclusion. Neutralized ballots are the structural mitigation: voters see `anonymous` reviewer lines while tally code restores proposer attribution from the sidecar after voting.
 
 ## Voter Prompt Template
 
@@ -229,7 +229,7 @@ The ballot format for OOS items depends on the skill:
 
   ```markdown
   ### OOS_1: <short title of pre-existing issue>
-  - **Reviewer**: <reviewer attribution>
+  - **Reviewer**: anonymous
   - **Concern**: <description of pre-existing issue>
   ```
 

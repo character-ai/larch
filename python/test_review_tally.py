@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 import review_test_support as rts
+import voting
 
 ROOT = rts.ROOT
 CLI = rts.CLI
@@ -68,6 +69,17 @@ def run_review(
     quiet_disable: bool = True,
 ) -> subprocess.CompletedProcess[str]:
     return rts.run_review(*args, env=env, quiet_disable=quiet_disable)
+
+
+def _prepare_neutralized_ballot(tmp_path: Path, attributed_text: str) -> tuple[Path, Path]:
+    attributed = tmp_path / "attributed.md"
+    _ = attributed.write_text(attributed_text, encoding="utf-8")
+    ballot = tmp_path / "ballot.md"
+    _ = ballot.write_text(attributed_text, encoding="utf-8")
+    map_file = tmp_path / "proposer-map.tsv"
+    voting.write_proposer_map(ballot, map_file)
+    _ = ballot.write_text(voting.neutralize_reviewer_attribution(attributed_text), encoding="utf-8")
+    return ballot, map_file
 
 
 def _mk_ballot(path: Path) -> None:
@@ -1119,3 +1131,282 @@ def test_tally_oos_seq_seeded_from_accumulated_oos(tmp_path: Path) -> None:
     accepted = (round_dir / "oos-accepted-review.md").read_text(encoding="utf-8")
     assert "### OOS_2:" in accepted
     assert "### OOS_1:" not in accepted
+
+
+def test_neutralized_ballot_sidecar_preserves_reviewer_slots(tmp_path: Path) -> None:
+    attributed = """### FINDING_1: First in-scope finding
+- **Reviewer**: Codex-Structure
+- **Concern**: Concern 1.
+- **Suggested revision**: Revision 1.
+"""
+    case = tmp_path / "neutral-sidecar"
+    case.mkdir()
+    ballot, map_file = _prepare_neutralized_ballot(case, attributed)
+    attr_ballot = case / "attr.md"
+    _ = attr_ballot.write_text(attributed, encoding="utf-8")
+    voter = case / "v1.txt"
+    _ = voter.write_text(
+        "FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n",
+        encoding="utf-8",
+    )
+    result_attr = run_review(
+        "tally-code-votes",
+        "--ballot-file",
+        str(attr_ballot),
+        "--review-tmpdir",
+        str(case / "attr"),
+        "--round-num",
+        "1",
+        "--voter-files",
+        str(voter),
+        env={"IMPLEMENT_TMPDIR": ""},
+    )
+    result_neutral = run_review(
+        "tally-code-votes",
+        "--ballot-file",
+        str(ballot),
+        "--review-tmpdir",
+        str(case / "neutral"),
+        "--round-num",
+        "1",
+        "--voter-files",
+        str(voter),
+        "--proposer-map-file",
+        str(map_file),
+        env={"IMPLEMENT_TMPDIR": ""},
+    )
+    assert result_attr.returncode == 0, result_attr.stderr
+    assert result_neutral.returncode == 0, result_neutral.stderr
+    row_attr = _tsv_rows(Path(rts.kv_get(result_attr.stdout, "FINDINGS_CLASSIFICATION_TSV_FILE") or ""))["FINDING_1"]
+    row_neutral = _tsv_rows(Path(rts.kv_get(result_neutral.stdout, "FINDINGS_CLASSIFICATION_TSV_FILE") or ""))["FINDING_1"]
+    assert row_attr["reviewer_slots"] == row_neutral["reviewer_slots"] == "Codex-Structure"
+
+
+def test_neutralized_tally_restores_reviewer_in_accepted_artifact(tmp_path: Path) -> None:
+    attributed = """### FINDING_1: First in-scope finding
+- **Reviewer**: Codex-Structure
+- **Concern**: Codex and Cursor disagree; Claude agrees.
+- **Suggested revision**: Revision 1.
+"""
+    case = tmp_path / "restore-artifact"
+    case.mkdir()
+    ballot, map_file = _prepare_neutralized_ballot(case, attributed)
+    voter = case / "v1.txt"
+    _ = voter.write_text(
+        "FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n",
+        encoding="utf-8",
+    )
+    result = run_review(
+        "tally-code-votes",
+        "--ballot-file",
+        str(ballot),
+        "--review-tmpdir",
+        str(case),
+        "--round-num",
+        "1",
+        "--voter-files",
+        str(voter),
+        "--proposer-map-file",
+        str(map_file),
+        env={"IMPLEMENT_TMPDIR": ""},
+    )
+    assert result.returncode == 0, result.stderr
+    accepted = (case / "accepted-findings.md").read_text(encoding="utf-8")
+    assert "- **Reviewer**: Codex-Structure" in accepted
+    assert "Codex and Cursor disagree" in accepted
+    assert "anonymous" not in accepted
+
+
+def test_neutralized_tally_missing_sidecar_entry_fails_closed(tmp_path: Path) -> None:
+    attributed = """### FINDING_1: First
+- **Reviewer**: Codex-Structure
+- **Concern**: one.
+
+### FINDING_2: Second
+- **Reviewer**: Cursor-Security
+- **Concern**: two.
+"""
+    case = tmp_path / "missing-map-entry"
+    case.mkdir()
+    ballot, map_file = _prepare_neutralized_ballot(case, attributed)
+    rows = map_file.read_text(encoding="utf-8").splitlines()
+    header_idx = next(i for i, row in enumerate(rows) if row.startswith("item_id\t"))
+    _ = map_file.write_text("\n".join(rows[: header_idx + 1]) + "\n", encoding="utf-8")
+    voter = case / "v1.txt"
+    _ = voter.write_text("FINDING_1: YES\nFINDING_2: YES\n", encoding="utf-8")
+    result = run_review(
+        "tally-code-votes",
+        "--ballot-file",
+        str(ballot),
+        "--review-tmpdir",
+        str(case),
+        "--round-num",
+        "1",
+        "--voter-files",
+        str(voter),
+        "--proposer-map-file",
+        str(map_file),
+        env={"IMPLEMENT_TMPDIR": ""},
+    )
+    assert result.returncode != 0
+    assert "missing proposer map entry" in result.stderr or "proposer map item mismatch" in result.stderr
+
+
+def test_attributed_ballot_without_sidecar_keeps_legacy_reviewer_fallback(tmp_path: Path) -> None:
+    case = tmp_path / "legacy-attributed"
+    case.mkdir()
+    _mk_ballot(case / "ballot.md")
+    voter = case / "v1.txt"
+    _ = voter.write_text(
+        "FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n",
+        encoding="utf-8",
+    )
+    result = run_review(
+        "tally-code-votes",
+        "--ballot-file",
+        str(case / "ballot.md"),
+        "--review-tmpdir",
+        str(case),
+        "--round-num",
+        "1",
+        "--voter-files",
+        str(voter),
+        env={"IMPLEMENT_TMPDIR": ""},
+    )
+    assert result.returncode == 0, result.stderr
+    row = _tsv_rows(Path(rts.kv_get(result.stdout, "FINDINGS_CLASSIFICATION_TSV_FILE") or ""))["FINDING_1"]
+    assert row["reviewer_slots"] == "Codex-Structure"
+
+
+def test_neutralized_tally_auto_binds_default_sidecar(tmp_path: Path) -> None:
+    attributed = """### FINDING_1: First in-scope finding
+- **Reviewer**: Codex-Structure
+- **Concern**: Codex and Cursor disagree; Claude agrees.
+- **Suggested revision**: Revision 1.
+"""
+    case = tmp_path / "auto-bind-sidecar"
+    case.mkdir()
+    ballot, map_file = _prepare_neutralized_ballot(case, attributed)
+    voter = case / "v1.txt"
+    _ = voter.write_text(
+        "FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n",
+        encoding="utf-8",
+    )
+    result = run_review(
+        "tally-code-votes",
+        "--ballot-file",
+        str(ballot),
+        "--review-tmpdir",
+        str(case),
+        "--round-num",
+        "1",
+        "--voter-files",
+        str(voter),
+        env={"IMPLEMENT_TMPDIR": ""},
+    )
+    assert result.returncode == 0, result.stderr
+    row = _tsv_rows(Path(rts.kv_get(result.stdout, "FINDINGS_CLASSIFICATION_TSV_FILE") or ""))["FINDING_1"]
+    assert row["reviewer_slots"] == "Codex-Structure"
+    assert map_file.is_file()
+
+
+def test_neutralized_tally_without_sidecar_fails_closed(tmp_path: Path) -> None:
+    attributed = """### FINDING_1: First
+- **Reviewer**: Codex-Structure
+- **Concern**: one.
+"""
+    case = tmp_path / "neutral-no-sidecar"
+    case.mkdir()
+    ballot = case / "ballot.md"
+    _ = ballot.write_text(voting.neutralize_reviewer_attribution(attributed), encoding="utf-8")
+    voter = case / "v1.txt"
+    _ = voter.write_text("FINDING_1: YES\n", encoding="utf-8")
+    result = run_review(
+        "tally-code-votes",
+        "--ballot-file",
+        str(ballot),
+        "--review-tmpdir",
+        str(case),
+        "--round-num",
+        "1",
+        "--voter-files",
+        str(voter),
+        env={"IMPLEMENT_TMPDIR": ""},
+    )
+    assert result.returncode != 0
+    assert "missing proposer map entry" in result.stderr
+
+
+def test_attributed_ballot_ignores_stale_sidecar(tmp_path: Path) -> None:
+    stale_attributed = """### FINDING_1: Old round
+- **Reviewer**: Codex-Structure
+- **Concern**: stale.
+"""
+    current_attributed = """### FINDING_1: Current round
+- **Reviewer**: Cursor-Testing
+- **Concern**: current.
+"""
+    case = tmp_path / "stale-sidecar"
+    case.mkdir()
+    stale_ballot = case / "stale.md"
+    _ = stale_ballot.write_text(stale_attributed, encoding="utf-8")
+    voting.write_proposer_map(stale_ballot, case / "proposer-map.tsv")
+    ballot = case / "ballot.md"
+    _ = ballot.write_text(current_attributed, encoding="utf-8")
+    voter = case / "v1.txt"
+    _ = voter.write_text(
+        "FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n",
+        encoding="utf-8",
+    )
+    result = run_review(
+        "tally-code-votes",
+        "--ballot-file",
+        str(ballot),
+        "--review-tmpdir",
+        str(case),
+        "--round-num",
+        "1",
+        "--voter-files",
+        str(voter),
+        env={"IMPLEMENT_TMPDIR": ""},
+    )
+    assert result.returncode == 0, result.stderr
+    row = _tsv_rows(Path(rts.kv_get(result.stdout, "FINDINGS_CLASSIFICATION_TSV_FILE") or ""))["FINDING_1"]
+    assert row["reviewer_slots"] == "Cursor-Testing"
+
+
+def test_neutralized_ballot_rejects_stale_sidecar(tmp_path: Path) -> None:
+    stale_attributed = """### FINDING_1: Old round
+- **Reviewer**: Codex-Structure
+- **Concern**: stale.
+"""
+    current_attributed = """### FINDING_1: Current round
+- **Reviewer**: Cursor-Testing
+- **Concern**: current.
+"""
+    case = tmp_path / "stale-neutral-sidecar"
+    case.mkdir()
+    stale_ballot = case / "stale.md"
+    _ = stale_ballot.write_text(stale_attributed, encoding="utf-8")
+    voting.write_proposer_map(stale_ballot, case / "proposer-map.tsv")
+    ballot = case / "ballot.md"
+    _ = ballot.write_text(voting.neutralize_reviewer_attribution(current_attributed), encoding="utf-8")
+    voter = case / "v1.txt"
+    _ = voter.write_text(
+        "FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n",
+        encoding="utf-8",
+    )
+    result = run_review(
+        "tally-code-votes",
+        "--ballot-file",
+        str(ballot),
+        "--review-tmpdir",
+        str(case),
+        "--round-num",
+        "1",
+        "--voter-files",
+        str(voter),
+        env={"IMPLEMENT_TMPDIR": ""},
+    )
+    assert result.returncode != 0
+    assert "stale for current ballot" in result.stderr

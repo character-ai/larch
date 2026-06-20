@@ -5,7 +5,9 @@ import io
 from pathlib import Path
 
 import plan_review
+import plan_review_round
 import pytest
+import voting
 from test_support import ROOT, run_cli
 
 
@@ -1200,3 +1202,189 @@ def test_step3_state_direct_review_entry_resets_applied_finding_ledger(tmp_path:
     assert proc.returncode == 0, proc.stderr
     assert "STEP3_STATE=direct-review-entry" in proc.stdout
     assert not ledger.exists()
+
+
+def test_compose_attributed_ballot_uses_post_aggregate_findings_not_stale_ballot(tmp_path: Path) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    _ = (design / "findings-in-scope.md").write_text(
+        "### FINDING_2: fresh\n- **Reviewer**: Codex\n- **Concern**: c\n",
+        encoding="utf-8",
+    )
+    _ = (design / "ballot.txt").write_text(
+        "### FINDING_1: stale\n- **Reviewer**: anonymous\n- **Concern**: old\n",
+        encoding="utf-8",
+    )
+    text = plan_review_round._compose_attributed_ballot(design, "")  # pyright: ignore[reportPrivateUsage]
+    assert "FINDING_2" in text
+    assert "FINDING_1" not in text
+
+
+def test_compose_attributed_ballot_ignores_stale_findings_oos_md(tmp_path: Path) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    _ = (design / "findings-in-scope.md").write_text(
+        "### FINDING_1: in scope\n- **Reviewer**: Codex\n- **Concern**: c\n",
+        encoding="utf-8",
+    )
+    _ = (design / "findings-oos.md").write_text(
+        "### OOS_1: [OUT_OF_SCOPE] stale\n- **Reviewer**: stale-reviewer\n- **Concern**: old\n",
+        encoding="utf-8",
+    )
+    current_oos = """### OOS_2: [OUT_OF_SCOPE] current
+- **Reviewer**: cursor-pragmatic
+- **Concern**: fresh oos
+"""
+    text = plan_review_round._compose_attributed_ballot(design, current_oos)  # pyright: ignore[reportPrivateUsage]
+    assert "OOS_2" in text
+    assert "cursor-pragmatic" in text
+    assert "OOS_1" not in text
+    assert "stale-reviewer" not in text
+
+
+def test_aggregation_ok_for_voting_accepts_ok_and_intentional_skips() -> None:
+    assert plan_review_round._aggregation_ok_for_voting({"REASON": "ok", "AGGREGATED": "true"})  # pyright: ignore[reportPrivateUsage]
+    assert plan_review_round._aggregation_ok_for_voting({"REASON": "insufficient-input", "AGGREGATED": "false"})  # pyright: ignore[reportPrivateUsage]
+    assert plan_review_round._aggregation_ok_for_voting({"REASON": "disabled", "AGGREGATED": "false"})  # pyright: ignore[reportPrivateUsage]
+    assert plan_review_round._aggregation_ok_for_voting({"REASON": "validation-failed", "AGGREGATED": "false"}, returncode=0)  # pyright: ignore[reportPrivateUsage]
+    assert plan_review_round._aggregation_ok_for_voting({"REASON": "validation-exhausted", "AGGREGATED": "false"}, returncode=0)  # pyright: ignore[reportPrivateUsage]
+    assert plan_review_round._aggregation_ok_for_voting({"REASON": "dispatch-failed", "AGGREGATED": "false"}, returncode=0)  # pyright: ignore[reportPrivateUsage]
+    assert not plan_review_round._aggregation_ok_for_voting({"REASON": "validation-failed", "AGGREGATED": "false"}, returncode=1)  # pyright: ignore[reportPrivateUsage]
+    assert not plan_review_round._aggregation_ok_for_voting({"REASON": "ok", "AGGREGATED": "false"})  # pyright: ignore[reportPrivateUsage]
+
+
+def test_aggregator_status_from_kv_records_failed_merge() -> None:
+    assert (
+        plan_review_round._aggregator_status_from_kv(  # pyright: ignore[reportPrivateUsage]
+            {"REASON": "validation-failed", "AGGREGATED": "false"},
+            returncode=0,
+        )
+        == "validation-failed"
+    )
+    assert (
+        plan_review_round._aggregator_status_from_kv(  # pyright: ignore[reportPrivateUsage]
+            {"REASON": "ok", "AGGREGATED": "true"},
+            returncode=0,
+        )
+        == "ok"
+    )
+
+
+def test_plan_review_ballot_neutralization_writes_sidecar_and_anonymous_ballot(tmp_path: Path) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    in_scope = """### FINDING_1: Bug
+- **Reviewer**: Codex-Plan
+- **Concern**: concern
+"""
+    oos = """### OOS_1: [OUT_OF_SCOPE] drift
+- **Reviewer**: cursor-pragmatic
+- **Concern**: oos concern
+"""
+    _ = (design / "findings-in-scope.md").write_text(in_scope, encoding="utf-8")
+    ballot_text = plan_review_round._compose_attributed_ballot(design, oos)  # pyright: ignore[reportPrivateUsage]
+    ballot = design / "ballot.txt"
+    _ = ballot.write_text(ballot_text, encoding="utf-8")
+    proposer_map = design / "proposer-map.tsv"
+    voting.write_proposer_map(ballot, proposer_map)
+    _ = ballot.write_text(voting.neutralize_reviewer_attribution(ballot_text), encoding="utf-8")
+    neutral = ballot.read_text(encoding="utf-8")
+    assert "anonymous" in neutral
+    assert "Codex-Plan" not in neutral
+    rows = voting.read_proposer_map(proposer_map)
+    assert rows["FINDING_1"][0] == "Codex-Plan"
+    assert rows["OOS_1"][0] == "cursor-pragmatic"
+
+
+def test_tally_plan_review_neutralized_ballot_auto_binds_sidecar(tmp_path: Path) -> None:
+    attributed = """### FINDING_1: Fix parser
+- **Reviewer**: Cursor-Arch
+- **Concern**: parser misses bad input.
+"""
+    design = tmp_path / "design"
+    design.mkdir()
+    ballot = design / "ballot.txt"
+    _ = ballot.write_text(attributed, encoding="utf-8")
+    voting.write_proposer_map(ballot, design / "proposer-map.tsv")
+    _ = ballot.write_text(voting.neutralize_reviewer_attribution(attributed), encoding="utf-8")
+    voter = tmp_path / "v1.txt"
+    _ = voter.write_text("FINDING_1: YES\n", encoding="utf-8")
+    proc = run_cli(
+        "plan-review",
+        "tally",
+        "--ballot-file",
+        str(ballot),
+        "--voter-files",
+        str(voter),
+        "--design-tmpdir",
+        str(design),
+        env={"LARCH_QUIET_DISABLE": "1"},
+    )
+    assert proc.returncode == 0, proc.stderr
+    accepted = (design / "accepted-plan-findings.md").read_text(encoding="utf-8")
+    assert "- **Reviewer**: Cursor-Arch" in accepted
+    assert "anonymous" not in accepted
+    tally = (design / "voting-tally.md").read_text(encoding="utf-8")
+    assert "| Cursor-Arch |" in tally
+
+
+def test_tally_plan_review_missing_sidecar_entry_fails_closed(tmp_path: Path) -> None:
+    attributed = """### FINDING_1: Fix parser
+- **Reviewer**: Cursor-Arch
+- **Concern**: parser misses bad input.
+
+### FINDING_2: Optional cleanup
+- **Reviewer**: Codex-Pragmatic
+- **Concern**: cleanup could be smaller.
+"""
+    design = tmp_path / "design-missing-map"
+    design.mkdir()
+    ballot = design / "ballot.txt"
+    _ = ballot.write_text(attributed, encoding="utf-8")
+    map_file = design / "proposer-map.tsv"
+    voting.write_proposer_map(ballot, map_file)
+    rows = map_file.read_text(encoding="utf-8").splitlines()
+    header_idx = next(i for i, row in enumerate(rows) if row.startswith("item_id\t"))
+    _ = map_file.write_text("\n".join(rows[: header_idx + 1]) + "\n", encoding="utf-8")
+    _ = ballot.write_text(voting.neutralize_reviewer_attribution(attributed), encoding="utf-8")
+    voter = tmp_path / "v1.txt"
+    _ = voter.write_text("FINDING_1: YES\nFINDING_2: YES\n", encoding="utf-8")
+    proc = run_cli(
+        "plan-review",
+        "tally",
+        "--ballot-file",
+        str(ballot),
+        "--voter-files",
+        str(voter),
+        "--design-tmpdir",
+        str(design),
+        env={"LARCH_QUIET_DISABLE": "1"},
+    )
+    assert proc.returncode != 0
+    assert "missing proposer map entry" in proc.stderr or "proposer map item mismatch" in proc.stderr
+
+
+def test_tally_plan_review_neutralized_without_sidecar_fails_closed(tmp_path: Path) -> None:
+    attributed = """### FINDING_1: Fix parser
+- **Reviewer**: Cursor-Arch
+- **Concern**: parser misses bad input.
+"""
+    design = tmp_path / "design-neutral-no-sidecar"
+    design.mkdir()
+    ballot = design / "ballot.txt"
+    _ = ballot.write_text(voting.neutralize_reviewer_attribution(attributed), encoding="utf-8")
+    voter = tmp_path / "v1.txt"
+    _ = voter.write_text("FINDING_1: YES\n", encoding="utf-8")
+    proc = run_cli(
+        "plan-review",
+        "tally",
+        "--ballot-file",
+        str(ballot),
+        "--voter-files",
+        str(voter),
+        "--design-tmpdir",
+        str(design),
+        env={"LARCH_QUIET_DISABLE": "1"},
+    )
+    assert proc.returncode != 0
+    assert "missing proposer map entry" in proc.stderr

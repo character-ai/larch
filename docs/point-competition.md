@@ -14,6 +14,8 @@ Each finding's vote outcome determines the points awarded to the reviewer(s) who
 
 If a deduplicated finding was proposed by multiple reviewers (merged during deduplication), all contributing reviewers receive the same points for that finding.
 
+Voters do not see proposer labels. Ballots show stable reviewer lines with `anonymous`; scoring uses out-of-band proposer attribution from `proposer-map.tsv`. Accepted, neutral, rejected, and OOS point math is unchanged.
+
 ## Out-of-Scope Scoring
 
 Out-of-scope (OOS) observations use the same score shape as in-scope findings: accepted OOS earns +1, neutral OOS (≥1 YES, not accepted) earns 0, and rejected OOS (0 YES) costs -1. Accepted OOS follows the active voting tier (3 judges: 2+ YES; 2 judges: unanimous YES; 1 judge: single YES; 0 judges: main-agent adjudication), so degraded panels never auto-accept observations.
@@ -26,10 +28,12 @@ Out-of-scope (OOS) observations use the same score shape as in-scope findings: a
 
 ## OOS Issue Filing
 
-Out-of-scope items go on the same voting ballot as in-scope findings, labeled with `[OUT_OF_SCOPE]`:
+Out-of-scope items go on the same voting ballot as in-scope findings, with neutralized reviewer lines:
 
-```text
-OOS_1: [OUT_OF_SCOPE] Code — <description>
+```markdown
+### OOS_1: [OUT_OF_SCOPE] <short title>
+- **Reviewer**: anonymous
+- **Description**: <description>
 ```
 
 Voters decide whether each OOS item deserves a GitHub issue:
@@ -43,6 +47,8 @@ Voters decide whether each OOS item deserves a GitHub issue:
 ## Scoreboard
 
 After voting completes, a scoreboard is printed showing each reviewer's performance. Attribution labels are skill-specific — `/review` uses specialist players (`Correctness`, `Testing`, `Edge-cases`, `Codex-Correctness`, `Codex-Testing`, `Codex-Edge-cases`, `Claude-Generic`); `/design` uses `Code`, `Codex`, and `Cursor`. One row per independent reviewer:
+
+Accepted, rejected, and OOS artifacts restore reviewer attribution after voting for auditability. Voter-facing files remain neutralized.
 
 | Reviewer | Findings | Accepted | Neutral (≥1 YES) | Rejected (0 YES) | OOS Proposed | OOS Accepted | OOS-Neutral | OOS-Rejected | Score |
 |----------|----------|----------|------------------|-----------------|--------------|--------------|-------------|--------------|-------|

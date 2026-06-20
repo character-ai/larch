@@ -19,7 +19,9 @@ requires every script under `scripts/` to carry a neighboring
 `ENFORCED` (top of the script) is the allow-list. It currently holds:
 
 - `python/test_review_tally.py` — sliced into `findings_classification`,
-  `tally_ and not emit`, `emit_tally`, `log_phase` (Trick A1).
+  `(tally_ or attributed_ballot or neutralized_ballot) and not emit`,
+  `emit_tally`, `log_phase` (Trick A1). The tally slice folds in the
+  proposer-neutralization ballot tests alongside the `tally_` cases.
 - `python/test_review_pipeline.py` — seven pre-existing `-k` slices plus
   the orphan-4 slice narrowed onto `test-check-reviewer-failure-threshold`
   (Trick A2).

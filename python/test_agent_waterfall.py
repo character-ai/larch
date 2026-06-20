@@ -542,6 +542,8 @@ def test_straggler_floor_prevents_early_cut(tmp_path: Path, stub_env: dict[str, 
             # false straggler cut. The happy path still exits on slot completion (~0.3s).
             "LARCH_REVIEWER_STRAGGLER_FLOOR_SECONDS": "30",
         },
+        "--timeout",
+        "30",
         "--straggler-cutoff",
         "--timeout",
         "60",

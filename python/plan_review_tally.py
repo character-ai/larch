@@ -93,6 +93,8 @@ class _Tally:
         self.status_emitted = False
         self.block_dir = ""
         self.workdir = ""
+        self.proposer_map_file = ""
+        self.proposer_sidecar_required = False
 
     # -- usage / diagnostics -------------------------------------------------
     @staticmethod
@@ -237,7 +239,7 @@ class _Tally:
         buf = voting.findings_classification_header() + "\n"
         for item_id in sorted_ids:
             block = Path(self.block_dir) / f"{item_id}.md"
-            reviewer = _sanitize_tsv_cell(voting.reviewer_for_block(block))
+            reviewer = _sanitize_tsv_cell(self._proposer_for_item(item_id, block))
             body_severity = _sanitize_tsv_cell(_body_severity_for_block(block))
             _, _, _, result = self._tally_votes_for_id(item_id)
             tsv_result = "rejected" if self.main_agent_voter else result
@@ -283,6 +285,10 @@ class _Tally:
                 i += 2
             elif arg == "--findings-classification-out":
                 self.findings_out = self._value(argv, i, "--findings-classification-out requires a value")
+                i += 2
+            elif arg == "--proposer-map-file":
+                self.proposer_map_file = self._value(argv, i, "--proposer-map-file requires a value")
+                self.proposer_sidecar_required = True
                 i += 2
             elif arg == "--voter":
                 self.seen_voter = True
@@ -373,6 +379,22 @@ class _Tally:
             self.findings_out = str(
                 Path(self.design_tmpdir, "plan-review", "round-1", "findings-classification.tsv")
             )
+        ballot_path = Path(self.ballot_file)
+        if not self.proposer_map_file:
+            default_map = Path(self.design_tmpdir) / "proposer-map.tsv"
+            if default_map.is_file() and voting.ballot_is_neutralized(ballot_path):
+                self.proposer_map_file = str(default_map)
+                self.proposer_sidecar_required = True
+        if not self.proposer_sidecar_required and voting.ballot_is_neutralized(ballot_path):
+            self.proposer_sidecar_required = True
+        if self.proposer_map_file and voting.ballot_is_neutralized(ballot_path):
+            try:
+                voting.validate_proposer_map_for_neutralized_ballot(ballot_path, self.proposer_map_file)
+            except voting.TallyError as exc:
+                self._error_exit(
+                    f"tally-plan-review.sh: {exc}",
+                    "**⚠ Tally aborted: proposer map validation failed; no votes tallied.**",
+                )
 
         ok, message = validate_design_tmpdir(self.design_tmpdir)
         if not ok:
@@ -457,6 +479,25 @@ class _Tally:
         eligible = [i for i in ids if re.match(r"^(FINDING|OOS)_[0-9]+$", i)]
         return sorted(eligible, key=key)
 
+    def _proposer_for_item(self, item_id: str, block: Path) -> str:
+        try:
+            return voting.proposer_for_item(
+                item_id,
+                block,
+                self.proposer_map_file,
+                sidecar_required=self.proposer_sidecar_required,
+            )
+        except voting.TallyError as exc:
+            self._error_exit(
+                f"tally-plan-review.sh: {exc}",
+                f"**⚠ Tally aborted: missing proposer attribution for {item_id}; no votes tallied.**",
+            )
+
+    def _artifact_text_for_item(self, item_id: str, block: Path) -> str:
+        block_text = block.read_text(encoding="utf-8", errors="replace")
+        reviewer_line = voting.reviewer_line_for_item(item_id, self.proposer_map_file)
+        return voting.restore_reviewer_attribution(block_text, reviewer_line)
+
     def _render(
         self,
         sorted_ids: list[str],
@@ -486,34 +527,38 @@ class _Tally:
             yes, no, judge_error, result = self._tally_votes_for_id(item_id)
             buf += f"| {item_id} | {yes} | {no} | {judge_error} | {result} |\n"
 
-            reviewer = voting.reviewer_for_block(block)
+            reviewer = self._proposer_for_item(item_id, block)
             kind = "oos" if item_id.startswith("OOS_") else "finding"
-            score_rows.append((reviewer, kind, result))
+            score_rows.extend(
+                (reviewer_slot, kind, result)
+                for reviewer_slot in [part.strip() for part in reviewer.split(",") if part.strip()]
+            )
             security = self._is_security(block)
             block_text = Path(block).read_text(encoding="utf-8", errors="replace")
+            artifact_text = self._artifact_text_for_item(item_id, block)
 
             if kind == "finding":
                 if result == "accepted":
-                    accepted_chunks.append(block_text + "\n")
+                    accepted_chunks.append(artifact_text + "\n")
                 elif _LATENT_BODY_SEVERITY.search(block_text):
                     oos_chunks.append(
-                        block_text
+                        artifact_text
                         + f"\nVote tally: YES={yes} NO={no} JUDGE_ERROR={judge_error} "
                         f"Result={result} (latent-rerouted)\n\n"
                     )
                 else:
-                    rejected_chunks.append(f"### [Plan Review] {item_id}\n\n{block_text}\n")
+                    rejected_chunks.append(f"### [Plan Review] {item_id}\n\n{artifact_text}\n")
             else:
                 # An accepted security OOS is absorbed into the plan with no
                 # artifact; every other OOS is recorded on the OOS track.
                 absorbed = result == "accepted" and security
                 if not absorbed:
                     oos_chunks.append(
-                        block_text
+                        artifact_text
                         + f"\nVote tally: YES={yes} NO={no} JUDGE_ERROR={judge_error} Result={result}\n\n"
                     )
                     if result == "accepted":
-                        oos_accepted_chunks.append(block_text + "\n")
+                        oos_accepted_chunks.append(artifact_text + "\n")
 
         buf += "\n## Reviewer Competition Scoreboard\n\n"
         buf += (

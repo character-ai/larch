@@ -7,7 +7,9 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import review_pipeline
 import review_test_support as rts
+import voting
 
 ROOT = rts.ROOT
 CLI = rts.CLI
@@ -1438,3 +1440,72 @@ printf '# tally\\n' > "$tmp/voting-tally.md"
     assert "rejected parent handoff" in (parent / "rejected-findings.md").read_text(encoding="utf-8")
     assert (parent / "oos-accepted-review.md").is_file()
     assert "parent oos handoff" in (parent / "oos-accepted-review.md").read_text(encoding="utf-8")
+
+
+def test_write_proposer_sidecar_and_neutralize(tmp_path: Path) -> None:
+    findings = tmp_path / "findings.md"
+    _ = findings.write_text(
+        "### FINDING_1: Example\n- **Reviewer**: cursor-arch\n- **Concern**: concern\n",
+        encoding="utf-8",
+    )
+    sidecar = tmp_path / "proposer-map.tsv"
+    review_pipeline._write_proposer_sidecar_and_neutralize(findings, sidecar)  # pyright: ignore[reportPrivateUsage]
+    assert sidecar.is_file()
+    neutral = findings.read_text(encoding="utf-8")
+    assert "- **Reviewer**: anonymous" in neutral
+    assert voting.read_proposer_map(sidecar)["FINDING_1"][0] == "cursor-arch"
+
+
+def test_review_core_neutralizes_findings_before_voter_dispatch(tmp_path: Path) -> None:
+    ballot_snapshot = tmp_path / "ballot-snapshot.md"
+    stubs = _write_review_core_stubs(tmp_path / "stubs")
+    _write_executable(
+        stubs["dispatch_voters"],
+        f"""#!/usr/bin/env bash
+set -euo pipefail
+ballot=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --ballot-file) ballot="$2"; shift 2 ;;
+    --review-tmpdir) shift 2 ;;
+    --voter-files) shift; while [[ $# -gt 0 && "$1" != --* ]]; do shift; done ;;
+    *) shift 2 ;;
+  esac
+done
+cp "$ballot" "{ballot_snapshot}"
+printf 'VOTER_1_PATH=/dev/null\\nVOTER_1_TOOL=claude\\nVOTER_1_STATUS=failed\\n'
+printf 'VOTER_2_PATH=/dev/null\\nVOTER_2_TOOL=codex\\nVOTER_2_STATUS=failed\\n'
+printf 'VOTER_3_PATH=/dev/null\\nVOTER_3_TOOL=cursor\\nVOTER_3_STATUS=failed\\n'
+printf 'DISPATCH_OK=true\\n'
+""",
+    )
+    outdir = tmp_path / "neutralized-findings"
+    outdir.mkdir(parents=True, exist_ok=True)
+    env = rts.build_review_core_env(
+        tmp_path / "stubs",
+        stubs,
+        TEST_FINDINGS="1",
+        TEST_ACCEPTED="0",
+        TEST_ROUND_NUM="1",
+    )
+    result = run_review(
+        "core",
+        "--mode",
+        "diff",
+        "--output-dir",
+        str(outdir),
+        "--codex-available",
+        "true",
+        "--cursor-available",
+        "true",
+        "--panel",
+        "simple",
+        "--round-num",
+        "1",
+        env=env,
+    )
+    assert result.returncode == 0, result.stderr
+    assert ballot_snapshot.is_file()
+    snapshot = ballot_snapshot.read_text(encoding="utf-8")
+    assert "- **Reviewer**: anonymous" in snapshot
+    assert (outdir / "proposer-map.tsv").is_file()
