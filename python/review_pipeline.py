@@ -1473,7 +1473,12 @@ def _output_file_success(path: Path) -> bool:
     if not path.is_file() or path.stat().st_size == 0:
         return False
     text = path.read_text(encoding="utf-8", errors="replace")
-    return re.search(r"(^|[^A-Z_])NOT_SUBSTANTIVE([^A-Z_]|$)", text) is None
+    # Match only a structured STATUS=NOT_SUBSTANTIVE declaration, not incidental
+    # prose. A loose substring match false-positived when reviewers discussed the
+    # NOT_SUBSTANTIVE concept in their findings, downgrading collector-OK slots to
+    # ERROR (issue #4935). The collector remains the authoritative substantive
+    # validator; this output-file check only flags an explicit self-declaration.
+    return re.search(r"^STATUS=NOT_SUBSTANTIVE$", text, re.MULTILINE) is None
 
 
 def check_reviewer_failure_threshold(argv: list[str]) -> int:
