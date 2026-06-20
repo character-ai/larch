@@ -1573,3 +1573,45 @@ def test_emit_rejected_missing_file_emits_nothing(tmp_path: Path) -> None:
     proc = _emit_rejected(design)
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout == ""
+
+
+def _make_finding_only_rejected_block(item_id: str, location: str, concern: str, title: str) -> str:
+    """Rejected block without the ``[Plan Review]`` wrapper (marker drift / hand edit)."""
+    return (
+        f"### {item_id}: {title}\n"
+        f"- **Location**: {location}\n"
+        f"- **Concern**: {concern}\n"
+        f"- **Severity**: important\n\n"
+    )
+
+
+def test_emit_rejected_filters_finding_blocks_without_plan_review_markers(tmp_path: Path) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    applied = _make_finding_only_rejected_block(
+        "FINDING_1", "alpha.py:10-20", "Off-by-one in loop bound", "Loop bound"
+    )
+    fresh = _make_finding_only_rejected_block("FINDING_3", "beta.py:5", "Missing nil guard", "Nil guard")
+    body = applied + fresh
+    _ = (design / "rejected-findings.md").write_text(body, encoding="utf-8")
+    applied_key = plan_review._finding_dedup_key(applied)  # pyright: ignore[reportPrivateUsage]
+    _ = (design / ".step3-applied-finding-keys.tsv").write_text(f"1\t{applied_key}\n", encoding="utf-8")
+
+    proc = _emit_rejected(design)
+    assert proc.returncode == 0, proc.stderr
+    assert "FINDING_1" not in proc.stdout
+    assert proc.stdout == fresh
+
+
+def test_emit_rejected_ledger_without_recognizable_blocks_emits_empty(tmp_path: Path) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    _ = (design / "rejected-findings.md").write_text(
+        "Stale rejected prose with no FINDING blocks.\n", encoding="utf-8"
+    )
+    _ = (design / ".step3-applied-finding-keys.tsv").write_text("1\tsome-applied-key\n", encoding="utf-8")
+
+    proc = _emit_rejected(design)
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout == ""
+    assert "WARN=emit-rejected: applied-finding ledger present" in proc.stderr

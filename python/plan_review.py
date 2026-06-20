@@ -1151,6 +1151,29 @@ def _record_applied_finding_keys(tmpdir: Path, round_num: int, keys: Sequence[st
     _write_atomic(path, "".join(f"{row}\n" for row in rows))
 
 
+def _filter_rejected_findings_body(text: str, applied: set[str], marker_re: str) -> tuple[str, bool]:
+    """Filter ``text`` blocks starting with ``marker_re``, dropping applied keys.
+
+  Returns ``(filtered_body, had_blocks)`` where ``had_blocks`` is true when at
+  least one block header matched ``marker_re``.
+    """
+    matches = list(re.finditer(marker_re, text))
+    if not matches:
+        return "", False
+    kept: list[str] = []
+    prefix = text[: matches[0].start()]
+    if prefix:
+        kept.append(prefix)
+    for idx, match in enumerate(matches):
+        end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
+        block = text[match.start():end]
+        key = _finding_dedup_key(block)
+        if key and key in applied:
+            continue
+        kept.append(block)
+    return "".join(kept), True
+
+
 def emit_rejected_findings(argv: Sequence[str]) -> int:
     """Emit the Step 4 rejected-findings body with already-applied findings removed.
 
@@ -1178,23 +1201,27 @@ def emit_rejected_findings(argv: Sequence[str]) -> int:
     if not text.strip():
         return 0
     applied = _read_all_applied_finding_keys(tmpdir)
-    matches = list(re.finditer(r"(?m)^### \[Plan Review\] ", text))
-    if not applied or not matches:
-        # Nothing to reconcile against, or no recognizable blocks: emit verbatim.
+    if not applied:
         print(text, end="")
         return 0
-    kept: list[str] = []
-    prefix = text[: matches[0].start()]
-    if prefix:
-        kept.append(prefix)
-    for idx, match in enumerate(matches):
-        end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
-        block = text[match.start():end]
-        key = _finding_dedup_key(block)
-        if key and key in applied:
-            continue
-        kept.append(block)
-    print("".join(kept), end="")
+    filtered, had_blocks = _filter_rejected_findings_body(
+        text, applied, r"(?m)^### \[Plan Review\] "
+    )
+    if had_blocks:
+        print(filtered, end="")
+        return 0
+    filtered, had_blocks = _filter_rejected_findings_body(
+        text, applied, r"(?m)^### FINDING_[0-9]+:"
+    )
+    if had_blocks:
+        print(filtered, end="")
+        return 0
+    print(
+        "WARN=emit-rejected: applied-finding ledger present but rejected-findings.md "
+        "has no recognizable blocks; emitting empty body",
+        file=sys.stderr,
+    )
+    print("", end="")
     return 0
 
 
