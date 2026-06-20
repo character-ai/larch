@@ -21,6 +21,7 @@ from gh import FailedJob
 from outcomes import Outcome
 from proc import CommandResult
 from run_context import RunContext
+from test_support import make_run_context
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -2680,19 +2681,13 @@ def test_agentic_fix_delegate_timeout_includes_verify_budget(
 
 
 def _agentic_timeout_ctx(tmp_path: Path, run_id: str = "42") -> RunContext:
-    return RunContext(
-        branch="feat",
+    return make_run_context(
         issue="",
-        repo="o/r",
         run_id=run_id,
         tmpdir=str(tmp_path),
         merge=False,
-        draft=False,
-        forked=False,
         manifest_path="",
         tool_label="claude",
-        no_admin_fallback=False,
-        repo_unavailable=False,
         pr_number=1,
     )
 

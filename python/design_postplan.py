@@ -23,7 +23,7 @@ def _plugin_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
-def _consumer_repo_root() -> Path | None:
+def consumer_repo_root() -> Path | None:
     """Git toplevel of the current working directory, or ``None`` when cwd is
     not inside a git work tree.
 
@@ -214,7 +214,7 @@ def postplan_emit_main(argv: Sequence[str]) -> int:
     # plugin cache as CLAUDE_PLUGIN_ROOT so plugin-only scripts still pass the
     # dual-root existence check in `plan validate` (#4490).
     validate_env["CLAUDE_PLUGIN_ROOT"] = str(root)
-    repo_root_arg = _consumer_repo_root() or root
+    repo_root_arg = consumer_repo_root() or root
     validate = _run_cli(
         root,
         "plan",

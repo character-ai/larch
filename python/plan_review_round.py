@@ -165,23 +165,6 @@ def _rows_from_structured(path: Path) -> list[dict[str, str]]:
         return []
 
 
-def _normalize_reviewer_output_basename(path: str) -> str:
-    """Normalize retry and waterfall suffixes so manifest phase-1 paths match collector files."""
-    base = Path(path).name
-    if base.endswith(".txt"):
-        stem, ext = base[:-4], ".txt"
-    else:
-        stem, ext = base, ""
-    while True:
-        for suffix in ("-phase2", "-phase3", "-retry"):
-            if stem.endswith(suffix):
-                stem = stem[: -len(suffix)]
-                break
-        else:
-            break
-    return stem + ext
-
-
 def _log_reviewer_status_failure(design: Path, exc: OSError, *, tool: str) -> None:
     fail_log = design / "reviewer-status-write.failure.log"
     with contextlib.suppress(OSError):
@@ -397,7 +380,7 @@ def write_reviewer_status_tsv(
             if reviewer_file:
                 status = record.get("STATUS", "")
                 status_by_output[reviewer_file] = status
-                norm = _normalize_reviewer_output_basename(reviewer_file)
+                norm = voting.normalize_reviewer_basename(reviewer_file)
                 if status_by_norm_basename.get(norm) != "OK":
                     status_by_norm_basename[norm] = status
                 with contextlib.suppress(OSError):
@@ -413,7 +396,7 @@ def write_reviewer_status_tsv(
     for row in slot_rows:
         slot = str(row.get("slot") or "")
         output = str(row.get("output") or "")
-        norm = _normalize_reviewer_output_basename(output)
+        norm = voting.normalize_reviewer_basename(output)
         raw_status = status_by_norm_basename.get(norm)
         if raw_status is None:
             raw_status = status_by_output.get(output)

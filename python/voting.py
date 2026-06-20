@@ -227,6 +227,29 @@ def _normalize_reviewer_value(value: str) -> str:
     return value.replace("*", "").strip()
 
 
+def normalize_reviewer_basename(value: str) -> str:
+    """Reduce a reviewer output path to its basename with waterfall/retry
+    suffixes removed so manifest phase-1 paths match collector files.
+
+    Strips a trailing ``.txt`` (re-appended to the result) and any chained
+    ``-phase2`` / ``-phase3`` / ``-retry`` suffixes accreted by the reviewer
+    waterfall.
+    """
+    base = Path(value).name
+    if base.endswith(".txt"):
+        stem, ext = base[:-4], ".txt"
+    else:
+        stem, ext = base, ""
+    while True:
+        for suffix in ("-phase2", "-phase3", "-retry"):
+            if stem.endswith(suffix):
+                stem = stem[: -len(suffix)]
+                break
+        else:
+            break
+    return stem + ext
+
+
 def _safe_tsv_cell(value: str) -> str:
     return re.sub(r"[\t\r\n]+", " ", value).strip()
 

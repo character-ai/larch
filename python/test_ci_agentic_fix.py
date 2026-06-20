@@ -12,6 +12,7 @@ import agents
 import config
 import proc
 from run_context import RunContext
+from test_support import make_run_context
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -889,19 +890,13 @@ def test_run_cycle_empty_delta_returns_no_progress_without_push(
         base_ref="main",
         output_dir=str(out_dir),
     )
-    ctx = RunContext(
-        branch="feat",
+    ctx = make_run_context(
         issue="",
-        repo="o/r",
         run_id="42",
         tmpdir=str(tmp_path),
         merge=False,
-        draft=False,
-        forked=False,
         manifest_path="",
         tool_label="claude",
-        no_admin_fallback=False,
-        repo_unavailable=False,
         pr_number=1,
     )
     status, detail, attempted, _delta, _pending, _next_run, _log = ci_agentic_fix._run_cycle(  # pyright: ignore[reportPrivateUsage]
