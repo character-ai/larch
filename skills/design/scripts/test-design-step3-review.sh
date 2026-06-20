@@ -469,6 +469,8 @@ LOOP_STATUS=tally-error
 ROUNDS_COMPLETED=1
 FINAL_ROUND_NUM=1
 ACCEPTED_COUNT=0
+DEGRADED_PANEL_WARNING=panel degraded
+INVALID_SLOT_PANEL_WARNING=invalid slot dropped
 RESULT
 set +e
 rre_out=$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$RRE_PLUGIN" DESIGN_TMPDIR="$D_RRE" ISSUE_NUMBER=9 \
@@ -479,6 +481,8 @@ set -e
 grep -Fxq 'READ_RESULT_ENV_STATUS=ok' <<<"$rre_out" || fail '--read-result-env must report ok when result env present'
 grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=tally-error' <<<"$rre_out" || fail '--read-result-env must emit STEP3_REVIEW_LOOP_STATUS from result env'
 grep -Fxq 'ROUNDS_COMPLETED=1' <<<"$rre_out" || fail '--read-result-env must emit ROUNDS_COMPLETED from result env'
+grep -Fxq 'DEGRADED_PANEL_WARNING=panel degraded' <<<"$rre_out" || fail '--read-result-env must emit DEGRADED_PANEL_WARNING from result env'
+grep -Fxq 'INVALID_SLOT_PANEL_WARNING=invalid slot dropped' <<<"$rre_out" || fail '--read-result-env must emit INVALID_SLOT_PANEL_WARNING from result env'
 [ ! -f "$D_RRE/.bg-wait-active" ] || fail '--read-result-env must not start the bg-wait marker'
 [ ! -d "$D_RRE/plan-review" ] || fail '--read-result-env must not dispatch the review'
 [ ! -e "$D_RRE/.completed/step-3" ] || fail '--read-result-env must not write the completion sentinel (#4489)'
@@ -494,5 +498,33 @@ grep -Fxq 'READ_RESULT_ENV_STATUS=missing' <<<"$rre_missing_out" || fail '--read
 grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=' <<<"$rre_missing_out" || fail '--read-result-env must emit empty STEP3_REVIEW_LOOP_STATUS when result env absent'
 rm -rf "$RRE_PLUGIN" "$D_RRE" "$D_RRE_MISSING"
 pass 'Step 3 --read-result-env recovers loop status (hook-safe fallback)'
+
+# Invalid-slot degradation uses INVALID_SLOT_PANEL_WARNING in production; the wrapper
+# must replay it on the normal completion path, not only via --read-result-env.
+D_INVALID_SLOT=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-invalid-slot.XXXXXX")
+FAKE_INVALID_SLOT="$D_INVALID_SLOT/fake-plugin"
+# shellcheck disable=SC2016
+make_fake_step3_plugin "$FAKE_INVALID_SLOT" 'cat > "$DESIGN_TMPDIR/.step3-review-result.env" <<RESULT
+STEP3_REVIEW_LOOP_STATUS=complete
+LOOP_STATUS=complete
+TALLY_PLAN_REVIEW_STATUS=ok
+STEP3_REVIEW_CAP_REACHED=false
+ROUNDS_COMPLETED=1
+REVIEW_ROUND_COUNT=1
+INVALID_SLOT_PANEL_WARNING=invalid slot dropped
+RESULT'
+printf 'anchor\n' >"$D_INVALID_SLOT/plan-review-scope-anchor.txt"
+mkdir -p "$D_INVALID_SLOT/.completed"
+: >"$D_INVALID_SLOT/.completed/step-3-terminal"
+: >"$D_INVALID_SLOT/.step3-terminal-persisted-this-run"
+set +e
+invalid_slot_out=$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$FAKE_INVALID_SLOT" DESIGN_TMPDIR="$D_INVALID_SLOT" ISSUE_NUMBER=9 \
+  LARCH_TEST_REAL_REPO_ROOT="$ROOT" "$WRAPPER" 2>"$D_INVALID_SLOT/stderr.log")
+invalid_slot_rc=$?
+set -e
+[[ "$invalid_slot_rc" -eq 0 ]] || fail "invalid-slot wrapper rc=$invalid_slot_rc stdout=$invalid_slot_out stderr=$(cat "$D_INVALID_SLOT/stderr.log")"
+grep -Fxq 'INVALID_SLOT_PANEL_WARNING=invalid slot dropped' <<<"$invalid_slot_out" || fail 'wrapper stdout must replay INVALID_SLOT_PANEL_WARNING from result env'
+rm -rf "$D_INVALID_SLOT"
+pass 'Step 3 wrapper replays INVALID_SLOT_PANEL_WARNING on completion path'
 
 pass 'design-step3-review.sh checks passed'

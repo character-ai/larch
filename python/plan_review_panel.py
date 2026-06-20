@@ -9,6 +9,7 @@ import argparse
 import contextlib
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -23,6 +24,7 @@ _ARCHETYPES = ("arch", "innovation", "pragmatic", "requirements")
 _DISPATCH_LABEL = "plan-review voter-dispatch"
 _CODEX_GENERIC_MIN_ROUND = 2
 _PLAN_VOTER_PANEL_SIZE = 3
+_SLOT_LABEL_MAX_LEN = 200
 # launch-claude-review is spawned via PATH `python3`, not sys.executable, to match
 # the legacy dispatch-plan-voters.sh `python3 cli.py ...` contract and the panel
 # test harness's python3-agent stub that short-circuits the claude launch. In
@@ -224,6 +226,58 @@ def _parse_kv(text: str) -> dict[str, str]:
     return out
 
 
+def _sanitize_slot_label(label: str) -> str:
+    cleaned = re.sub(r"[\r\n\t]+", " ", str(label or "")).strip()
+    return cleaned[:_SLOT_LABEL_MAX_LEN] if len(cleaned) > _SLOT_LABEL_MAX_LEN else cleaned
+
+
+def _sanitize_warning_text(text: str) -> str:
+    return re.sub(r"[\r\n\t]+", " ", str(text or "")).strip()
+
+
+def _invalid_slot_drop_summary(path: str) -> str:
+    if not path:
+        return ""
+    drop_path = Path(path)
+    try:
+        lines = drop_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return ""
+    labels: list[str] = []
+    for line in lines:
+        if not line.strip():
+            continue
+        try:
+            data = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(data, dict):
+            continue
+        row = cast("dict[str, object]", data)
+        slot = _sanitize_slot_label(str(row.get("slot") or ""))
+        if slot:
+            labels.append(slot)
+            continue
+        line_no = str(row.get("line") or "").strip()
+        if line_no:
+            labels.append(f"line {line_no}")
+    if not labels:
+        return ""
+    shown = labels[:3]
+    suffix = "" if len(labels) <= len(shown) else f", +{len(labels) - len(shown)} more"
+    return f" Dropped: {', '.join(shown)}{suffix}."
+
+
+def _degraded_invalid_slot_warning(kv: dict[str, str]) -> str:
+    count = int(kv.get("INVALID_SLOT_DROP_COUNT", "0") or "0") if (kv.get("INVALID_SLOT_DROP_COUNT", "0") or "0").isdigit() else 0
+    if count <= 0:
+        return ""
+    summary = _invalid_slot_drop_summary(kv.get("INVALID_SLOT_DROPS_FILE", ""))
+    return _sanitize_warning_text(
+        f"**⚠ Degraded plan-review panel: {count} invalid slot row(s) dropped; continuing with remaining reviewers.**{summary}"
+    )
+
+
 def _filter_pruned(design: Path, manifest: Path, prune_round_num: int) -> tuple[Path, dict[str, str]]:
     if prune_round_num not in {3, 4}:
         return manifest, {"PANEL_PRUNED_EMPTY": "false", "PRUNED_COUNT": "0"}
@@ -320,7 +374,7 @@ def dispatch_panel(argv: Sequence[str]) -> int:
             "description",
             "--timeout",
             ns.timeout,
-            "--straggler-cutoff",
+            "--skip-invalid-slots",
         ],
         cwd=str(_REPO_ROOT),
         text=True,
@@ -354,6 +408,9 @@ def dispatch_panel(argv: Sequence[str]) -> int:
     _emit("DYNAMIC_SLOT_COUNT", len(dynamic))
     _emit("PANEL_PRUNED_EMPTY", prune_kv.get("PANEL_PRUNED_EMPTY", "false"))
     _emit("PANEL_PATHS_FILE", paths_file)
+    degraded_warning = _degraded_invalid_slot_warning(kv)
+    if degraded_warning:
+        _emit("INVALID_SLOT_PANEL_WARNING", degraded_warning)
     return proc.returncode
 
 

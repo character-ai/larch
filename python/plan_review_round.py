@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import cast
 
 import collect_results
+import logging_util
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _COLLECT_TIMEOUT = "1860"
@@ -68,16 +69,8 @@ def _slot_human_label(slot: str) -> str:
 
 
 def _load_manifest_slots(manifest: Path) -> list[str]:
-    if not manifest.is_file():
-        return []
     slots: list[str] = []
-    for line in manifest.read_text(encoding="utf-8", errors="replace").splitlines():
-        if not line.strip():
-            continue
-        try:
-            row = json.loads(line)
-        except json.JSONDecodeError:
-            continue
+    for row in _iter_manifest_dict_rows(manifest):
         slot = str(row.get("slot") or "").strip()
         if slot:
             slots.append(slot)
@@ -105,6 +98,13 @@ def _record_plan_review_prune_round(design: Path, round_num: int, manifest: Path
         )
     except Exception as exc:  # fail open by contract
         _emit("WARN", f"plan-review reviewer-prune record failed for round {round_num}: {exc}")
+
+
+def _iter_manifest_dict_rows(manifest: Path) -> list[dict[str, object]]:
+    if not manifest.is_file():
+        return []
+    lines = manifest.read_text(encoding="utf-8", errors="replace").splitlines()
+    return list(logging_util.iter_jsonl_dicts(lines))
 
 
 def _compose_finding_block(
@@ -164,6 +164,31 @@ def _rows_from_structured(path: Path) -> list[dict[str, str]]:
         return []
 
 
+def _valid_manifest_slot_row(row: dict[str, object]) -> bool:
+    slot = row.get("slot")
+    tool = row.get("tool")
+    output = row.get("output")
+    agent = row.get("agent", "")
+    prompt_file = row.get("prompt_file", "")
+    if not isinstance(slot, str) or not slot:
+        return False
+    if not isinstance(tool, str) or tool not in {"codex", "cursor"}:
+        return False
+    if not isinstance(output, str) or not output:
+        return False
+    if "\n" in output or "\r" in output:
+        return False
+    if agent is None:
+        agent = ""
+    if prompt_file is None:
+        prompt_file = ""
+    if not isinstance(agent, str) or not isinstance(prompt_file, str):
+        return False
+    if agent and prompt_file:
+        return False
+    return bool(agent or prompt_file)
+
+
 def _compose_findings_from_collector(
     design: Path,
     collect_text: str,
@@ -172,18 +197,13 @@ def _compose_findings_from_collector(
     """Return (in_scope_md, oos_md, ok_count, failure_count)."""
     manifest_slots = _load_manifest_slots(manifest)
     slot_by_output: dict[str, str] = {}
-    if manifest.is_file():
-        for line in manifest.read_text(encoding="utf-8", errors="replace").splitlines():
-            if not line.strip():
-                continue
-            try:
-                row = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            output = str(row.get("output") or "")
-            slot = str(row.get("slot") or "")
-            if output and slot:
-                slot_by_output[output] = slot
+    for row in _iter_manifest_dict_rows(manifest):
+        if not _valid_manifest_slot_row(row):
+            continue
+        output = str(row.get("output") or "")
+        slot = str(row.get("slot") or "")
+        if output and slot:
+            slot_by_output[output] = slot
 
     findings_parts: list[str] = []
     ok_count = 0
@@ -391,6 +411,10 @@ def execute_round(
 
     panel_kv = _parse_kv(panel.stdout)
     values["PANEL_PRUNED_EMPTY"] = panel_kv.get("PANEL_PRUNED_EMPTY", "false")
+    if panel_kv.get("INVALID_SLOT_PANEL_WARNING"):
+        values["INVALID_SLOT_PANEL_WARNING"] = panel_kv["INVALID_SLOT_PANEL_WARNING"]
+    elif panel_kv.get("DEGRADED_PANEL_WARNING"):
+        values["INVALID_SLOT_PANEL_WARNING"] = panel_kv["DEGRADED_PANEL_WARNING"]
     if panel_kv.get("PANEL_PRUNED_EMPTY") == "true":
         values.update(
             {
@@ -498,6 +522,8 @@ def execute_round(
     )
     out_lines.append(voter.stdout)
     voter_kv = _parse_kv(voter.stdout)
+    if voter_kv.get("DEGRADED_PANEL_WARNING"):
+        values["DEGRADED_PANEL_WARNING"] = voter_kv["DEGRADED_PANEL_WARNING"]
     if voter.returncode != 0 or voter_kv.get("DISPATCH_OK", "false") != "true":
         values.update(
             {

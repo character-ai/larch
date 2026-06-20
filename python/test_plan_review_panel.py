@@ -5,7 +5,7 @@ import os
 import sys
 from pathlib import Path
 
-from test_support import run_cli
+from test_support import ROOT, run_cli
 
 
 def _stdout_key_order(stdout: str) -> list[str]:
@@ -24,6 +24,9 @@ def _write_waterfall_stub(tmp_path: Path) -> Path:
     _ = stub.write_text(
         """#!/usr/bin/env bash
 set -euo pipefail
+if [[ -n "${WATERFALL_STUB_ARGS_OUT:-}" ]]; then
+  printf '%s\n' "$*" >"${WATERFALL_STUB_ARGS_OUT}"
+fi
 slots=""
 mode=""
 [[ -n "${WATERFALL_STUB_LOG:-}" ]] && printf '%s\n' "$*" >>"${WATERFALL_STUB_LOG}"
@@ -33,7 +36,7 @@ while [[ $# -gt 0 ]]; do
     --mode) mode="${2:?}"; shift 2 ;;
     --plan-file|--feature-file) shift 2 ;;
     --codex-present|--cursor-present|--timeout|--require-first-line-pattern) shift 2 ;;
-    --no-fallback|--straggler-cutoff) shift 1 ;;
+    --no-fallback|--straggler-cutoff|--skip-invalid-slots) shift 1 ;;
     *) shift 1 ;;
   esac
 done
@@ -396,7 +399,96 @@ def test_panel_dispatch_passes_waterfall_supported_mode(tmp_path: Path) -> None:
     )
     assert proc.returncode == 0, proc.stderr + proc.stdout
     assert mode_out.read_text(encoding="utf-8") == "description"
-    assert "--straggler-cutoff" in log.read_text(encoding="utf-8")
+    assert "--skip-invalid-slots" in log.read_text(encoding="utf-8")
+
+
+def test_panel_dispatch_passes_skip_invalid_slots_to_waterfall(tmp_path: Path) -> None:
+    design = tmp_path / "design-skip-flag"
+    design.mkdir()
+    _ = (design / "plan.txt").write_text("Plan body.\n", encoding="utf-8")
+    _ = (design / "feature-description.txt").write_text("feat\n", encoding="utf-8")
+    _ = (design / "scout-plan-manifest.json").write_text(json.dumps({"archetypes": []}), encoding="utf-8")
+    args_out = design / "waterfall.args"
+    stub = _write_waterfall_stub(tmp_path)
+
+    proc = run_cli(
+        "plan-review",
+        "panel-dispatch",
+        "--design-tmpdir",
+        str(design),
+        "--codex-present",
+        "true",
+        "--cursor-present",
+        "true",
+        "--plan-file",
+        str(design / "plan.txt"),
+        "--feature-file",
+        str(design / "feature-description.txt"),
+        "--timeout",
+        "60",
+        env={
+            "LARCH_QUIET_DISABLE": "1",
+            "DISPATCH_PLAN_REVIEW_WATERFALL_SH": str(stub),
+            "WATERFALL_STUB_LOG": str(design / "wf.log"),
+            "WATERFALL_STUB_PATHS_OUT": str(design / "paths.out"),
+            "WATERFALL_STUB_ARGS_OUT": str(args_out),
+        },
+    )
+
+    assert proc.returncode == 0, proc.stderr + proc.stdout
+    assert "--skip-invalid-slots" in args_out.read_text(encoding="utf-8")
+
+
+def test_panel_dispatch_surfaces_invalid_slot_degradation(tmp_path: Path) -> None:
+    design = tmp_path / "design-invalid-warning"
+    design.mkdir()
+    _ = (design / "plan.txt").write_text("Plan body.\n", encoding="utf-8")
+    _ = (design / "feature-description.txt").write_text("feat\n", encoding="utf-8")
+    _ = (design / "scout-plan-manifest.json").write_text(json.dumps({"archetypes": []}), encoding="utf-8")
+    paths = design / "panel-paths.txt"
+    drops = design / "panel-paths.txt.invalid-slots"
+    _ = paths.write_text(str(design / "reviewer-output.txt") + "\n", encoding="utf-8")
+    _ = drops.write_text(json.dumps({"line": 2, "slot": "bad-slot", "message": "invalid"}) + "\n", encoding="utf-8")
+    stub = tmp_path / "waterfall-invalid-drop-stub.sh"
+    _ = stub.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        "printf 'DISPATCH_OK=true\\n'\n"
+        f"printf 'ALL_OUTPUT_FILES_PATH={paths}\\n'\n"
+        "printf 'ALL_OUTPUT_FILES=reviewer-output.txt\\n'\n"
+        "printf 'ALL_OUTPUT_TOOLS=cursor\\n'\n"
+        "printf 'INVALID_SLOT_DROP_COUNT=1\\n'\n"
+        f"printf 'INVALID_SLOT_DROPS_FILE={drops}\\n'\n",
+        encoding="utf-8",
+    )
+    stub.chmod(0o755)
+
+    proc = run_cli(
+        "plan-review",
+        "panel-dispatch",
+        "--design-tmpdir",
+        str(design),
+        "--codex-present",
+        "true",
+        "--cursor-present",
+        "true",
+        "--plan-file",
+        str(design / "plan.txt"),
+        "--feature-file",
+        str(design / "feature-description.txt"),
+        env={"LARCH_QUIET_DISABLE": "1", "DISPATCH_PLAN_REVIEW_WATERFALL_SH": str(stub)},
+    )
+
+    assert proc.returncode == 0, proc.stderr + proc.stdout
+    assert "PANEL_PATHS_FILE=" in proc.stdout
+    assert "INVALID_SLOT_PANEL_WARNING=**⚠ Degraded plan-review panel: 1 invalid slot row(s) dropped" in proc.stdout
+    assert "bad-slot" in proc.stdout
+
+
+def test_voter_dispatch_does_not_pass_skip_invalid_slots() -> None:
+    source = (ROOT / "python" / "plan_review_panel.py").read_text(encoding="utf-8")
+    voter_body = source.split("def dispatch_voters", 1)[1].split("def dispatch_panel_main", 1)[0]
+    assert "--skip-invalid-slots" not in voter_body
 
 
 def test_panel_dispatch_surfaces_waterfall_failure(tmp_path: Path) -> None:
