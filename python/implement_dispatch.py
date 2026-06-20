@@ -1281,7 +1281,7 @@ def _working_tree_touched_paths(repo_root: Path) -> set[str] | None:
 
 
 def _explicit_plan_scope_paths(plan_text: str) -> list[str]:
-    return issue_wire.extract_scope_paths(plan_text, use_fallback=False)
+    return issue_wire.extract_scope_paths(plan_text, use_fallback=False, include_optional=False)
 
 
 def _plan_coverage_uncovered_paths(st: DispatchState, touched: set[str] | None) -> list[str] | None:

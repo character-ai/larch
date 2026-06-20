@@ -461,17 +461,24 @@ def test_extract_scope_paths_and_cli_errors(tmp_path: Path, capsys: pytest.Captu
     plan = """## Plan
 ### UPDATED: `outside.txt`
 ## Files to modify/create
+### MAY_UPDATE: `docs/optional.md`
+### MAY_UPDATE: `a/b.py`
 ### UPDATED: `a/b.py`, `c/d.md`
 ### REWRITTEN: skills/design/scripts/x.sh (legacy)
 ## Acceptance
 """
-    assert issue_wire.extract_scope_paths(plan) == ["a/b.py", "c/d.md", "skills/design/scripts/x.sh"]
+    assert issue_wire.extract_scope_paths(plan) == ["docs/optional.md", "a/b.py", "c/d.md", "skills/design/scripts/x.sh"]
+    assert issue_wire.extract_scope_paths(plan, include_optional=False) == ["a/b.py", "c/d.md", "skills/design/scripts/x.sh"]
     empty = tmp_path / "empty.md"
     _ = empty.write_text("## Files to modify/create\n\n## Acceptance\n", encoding="utf-8")
     assert issue_wire.extract_scope_paths(empty.read_text(encoding="utf-8")) == ["skills/design/SKILL.md"]
     assert issue_wire.extract_scope_paths(empty.read_text(encoding="utf-8"), use_fallback=False) == []
     scopeless = "## Plan\n### UPDATED: `docs/expected.md`\n## Acceptance\n"
     assert issue_wire.extract_scope_paths(scopeless, use_fallback=False) == []
+    optional = tmp_path / "optional.md"
+    _ = optional.write_text(plan, encoding="utf-8")
+    assert issue_wire.plan_scope_paths_main(["--plan-file", str(optional)]) == 0
+    assert capsys.readouterr().out.splitlines() == ["docs/optional.md", "a/b.py", "c/d.md", "skills/design/scripts/x.sh"]
     assert issue_wire.plan_scope_paths_main(["--plan-file", str(empty), "-z"]) == 0
     assert capsys.readouterr().out == "skills/design/SKILL.md\0"
     assert issue_wire.plan_scope_paths_main(["--plan-file", str(tmp_path / "missing.md")]) == 2

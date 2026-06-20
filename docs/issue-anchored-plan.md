@@ -81,6 +81,25 @@ Rules:
 - Malformed shapes are **rejected**: missing matching marker, multiple pairs,
   `start` without `end`, or `end` without `start`.
 
+### File-scope headings
+
+`/design` plans may include a `## Files to modify/create` section with
+per-file scope headings.
+
+**Firm headings** declare coverage commitments:
+
+- `### NEW:`
+- `### UPDATED:`
+- `### REWRITTEN:`
+
+**Optional headings** declare conditional file scope:
+
+- `### MAY_UPDATE:`
+
+`### MAY_UPDATE:` paths are included in normal scope extraction and dirty-tree
+scope checks. Dispatcher untouched-file coverage excludes `### MAY_UPDATE:`
+paths, so `WARN_PLAN_FILES_UNTOUCHED` compares only firm headings.
+
 ## Design Pause Block Format
 
 `/design` pause/resume uses a second paired issue-body marker:

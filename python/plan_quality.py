@@ -1397,7 +1397,7 @@ def _canonical_existing_file(path: Path) -> Path:
 
 
 def _heading_count(path: Path) -> int:
-    return sum(1 for line in path.read_text(encoding="utf-8", errors="replace").splitlines() if re.match(r"^###[ \t]+(NEW|UPDATED|REWRITTEN)[ \t]*:", line))
+    return sum(1 for line in path.read_text(encoding="utf-8", errors="replace").splitlines() if re.match(r"^###[ \t]+(NEW|UPDATED|REWRITTEN|MAY_UPDATE)[ \t]*:", line))
 
 
 def _extract_file_replacement(output: str) -> str:
@@ -1506,7 +1506,7 @@ def _compose_revise_prompt(plan: Path, findings: Path, feature: Path, keys_file:
         prompt += ["Emit ONLY a single unified diff in your final response, with no prose, no fences, no narration. Use the canonical form `--- a/plan.txt` / `+++ b/plan.txt` (relative paths, no directory prefix beyond `a/` / `b/`).", ""]
     else:
         prompt += ["Emit ONLY the complete replacement plan in your final response, beginning with `## Plan` and ending with `diff_lines: <N>`.", ""]
-    prompt += ["Hard rules: the revised plan must end with `diff_lines: <N>`. When the original plan has `### NEW:`, `### UPDATED:`, or `### REWRITTEN:` headings, preserve at least one such heading.", ""]
+    prompt += ["Hard rules: the revised plan must end with `diff_lines: <N>`. When the original plan has `### NEW:`, `### UPDATED:`, `### REWRITTEN:`, or `### MAY_UPDATE:` headings, preserve at least one such heading. Preserve `### MAY_UPDATE:` heading type when present; do not convert optional headings to `### NEW:`, `### UPDATED:`, or `### REWRITTEN:`.", ""]
     if keys_file.is_file() and keys_file.stat().st_size > 0:
         prompt += ["When the original plan has optional size trailers (`diff_added:`, `diff_deleted:`, `mechanical_churn:`) in the final metadata block immediately above `diff_lines:`, preserve each with strict trailer grammar or explicitly recompute the estimates — do not collapse to total-churn-only legacy behavior.", ""]
     prompt += [

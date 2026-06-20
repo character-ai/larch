@@ -27,7 +27,7 @@ Keep these byte-stable unless the task explicitly edits them:
 - file paths
 - identifiers
 - flag names
-- `### NEW:` / `### UPDATED:` / `### REWRITTEN:` plan grammar
+- `### NEW:` / `### UPDATED:` / `### REWRITTEN:` / `### MAY_UPDATE:` plan grammar
 - the trailing `diff_lines: <N>` line
 
 Do not rewrite those items for style. Explain around them instead.

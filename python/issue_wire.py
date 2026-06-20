@@ -358,7 +358,7 @@ def plan_block_strip_body_main(argv: list[str]) -> int:
     return 0
 
 
-def extract_scope_paths(plan_text: str, *, use_fallback: bool = True) -> list[str]:
+def extract_scope_paths(plan_text: str, *, use_fallback: bool = True, include_optional: bool = True) -> list[str]:
     lines = plan_text.splitlines()
     has_scope_section = any(re.match(r"^##\s+Files to modify(?:/create)?\s*$", line) for line in lines)
     if not use_fallback and not has_scope_section:
@@ -373,8 +373,10 @@ def extract_scope_paths(plan_text: str, *, use_fallback: bool = True) -> list[st
             break
         if not in_section:
             continue
-        match = re.match(r"^###\s+(NEW|UPDATED|REWRITTEN)\s*:\s*(.+)$", line)
+        match = re.match(r"^###\s+(NEW|UPDATED|REWRITTEN|MAY_UPDATE)\s*:\s*(.+)$", line)
         if not match:
+            continue
+        if match.group(1) == "MAY_UPDATE" and not include_optional:
             continue
         tail = match.group(2)
         backtick_matches = list(re.finditer(r"`([^`]+)`", tail))

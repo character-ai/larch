@@ -1,4 +1,4 @@
-# pyright: reportUnusedCallResult=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportOperatorIssue=false, reportArgumentType=false
+# pyright: reportUnusedCallResult=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportOperatorIssue=false, reportArgumentType=false, reportPrivateUsage=false
 from __future__ import annotations
 # ruff: noqa: UP022
 
@@ -843,6 +843,36 @@ def test_check_plan_size_non_file_baseline_recovers_without_crash(tmp_path: Path
     out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
     assert out["DRIFT_TRIGGER_FIRED"] == "false"
     assert any("drift baseline unreadable" in line for line in cp.stdout.splitlines())
+
+
+def test_heading_count_includes_optional_scope_and_rejects_malformed(tmp_path: Path) -> None:
+    plan = tmp_path / "plan.txt"
+    plan.write_text(
+        "## Files to modify/create\n"
+        "### NEW: a.txt\n"
+        "### UPDATED: b.txt\n"
+        "### REWRITTEN: c.txt\n"
+        "### MAY_UPDATE: d.txt\n"
+        "###MAY_UPDATE: malformed.txt\n",
+        encoding="utf-8",
+    )
+
+    assert plan_quality._heading_count(plan) == 4
+
+
+def test_compose_revise_prompt_preserves_optional_heading_type(tmp_path: Path) -> None:
+    plan = tmp_path / "plan.txt"
+    plan.write_text("## Plan\n### MAY_UPDATE: `docs/optional.md`\nbody\ndiff_lines: 1\n", encoding="utf-8")
+    findings = tmp_path / "findings.txt"
+    findings.write_text("finding\n", encoding="utf-8")
+    feature = tmp_path / "feature-description.txt"
+    feature.write_text("feature\n", encoding="utf-8")
+    keys_file = tmp_path / "keys.env"
+
+    prompt = plan_quality._compose_revise_prompt(plan, findings, feature, keys_file, "file-replacement")
+
+    assert "When the original plan has `### NEW:`, `### UPDATED:`, `### REWRITTEN:`, or `### MAY_UPDATE:` headings, preserve at least one such heading." in prompt
+    assert "Preserve `### MAY_UPDATE:` heading type when present; do not convert optional headings to `### NEW:`, `### UPDATED:`, or `### REWRITTEN:`." in prompt
 
 
 def test_revise_waterfall_heading_guard_restores_replacement(tmp_path: Path) -> None:

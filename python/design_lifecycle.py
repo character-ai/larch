@@ -3162,7 +3162,7 @@ def _compose_drafter_prompt(design_tmpdir: Path, plugin_root: Path) -> None:
         "- Read discussion-round1.md when present for scope boundaries and strict constraints.",
         "- Read design-outline.md only when non-empty and .outline-approved exists; treat Goals, Non-goals, and Surfaces as binding scope.",
         "- Read brainstorm.md when present as additive ideation context for plan drafting.",
-        "- Use a Files to modify/create section with per-file headings exactly one path each: ### NEW:, ### UPDATED:, or ### REWRITTEN: (at least one ASCII space after ### before the keyword).",
+        "- Use a Files to modify/create section with per-file headings exactly one path each: ### NEW:, ### UPDATED:, ### REWRITTEN:, or ### MAY_UPDATE: (at least one ASCII space after ### before the keyword). Use ### MAY_UPDATE: for conditional work such as prose saying only change if a condition is met. ### NEW:, ### UPDATED:, and ### REWRITTEN: are firm coverage commitments.",
         "- Include Approach, Edge cases, Failure modes when non-trivial, Testing strategy, optional diff_added/diff_deleted/mechanical_churn trailers, and final diff_lines: <N>. mechanical_churn accepts only true or false; never write a number there.",
         "- The final plan body must end with a whole-line diff_lines: <N> trailer.",
         "- Optionally include up to three dynamic plan-review archetypes in a scout block after the plan. The launcher validates, filters, caps, and materializes this block; invalid post-plan scout output is ignored.",
