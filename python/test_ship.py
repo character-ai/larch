@@ -533,9 +533,9 @@ def test_straight_merge_post_ensure_green_ci_committed_snapshot(
     post_manifest = post_ensure["manifest"]
     assert isinstance(post_manifest, dict)
     assert post_manifest["status"] == config.MANIFEST_STATUS_IN_PROGRESS
-    steps_ran = post_manifest["steps_ran"]
+    steps_ran = post_manifest["steps_ran"]  # type: ignore[reportUnknownVariableType]
     assert isinstance(steps_ran, dict)
-    assert steps_ran.get("step8") is True
+    assert steps_ran.get("step8") is True  # type: ignore[reportUnknownMemberType]
 
 
 def test_merge_review_required_exits_as_needs_user_input(

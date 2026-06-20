@@ -721,13 +721,13 @@ def test_flush_logs_pre_multi_flush_bailed_then_pr_created(
     _ = run_logs.init_run(ctx)
     run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
 
-    monkeypatch.setattr(final_report, "_final_report_token_fields", lambda *_a: {"cost_unavailable": True})
-    monkeypatch.setattr(run_logs, "_render_ledger_reports", lambda *_a, **_k: None)
-    monkeypatch.setattr(run_logs, "capture_session_transcript", lambda *_a, **_k: None)
+    monkeypatch.setattr(final_report, "_final_report_token_fields", lambda *_a: {"cost_unavailable": True})  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    monkeypatch.setattr(run_logs, "_render_ledger_reports", lambda *_a, **_k: None)  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    monkeypatch.setattr(run_logs, "capture_session_transcript", lambda *_a, **_k: None)  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     monkeypatch.setattr(
         run_logs,
         "_commit_run",
-        lambda *_a, **_k: CommandResult(("git", "commit"), 0, "a" * 40 + "\n", "", 0.0),
+        lambda *_a, **_k: CommandResult(("git", "commit"), 0, "a" * 40 + "\n", "", 0.0),  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     )
 
     skip1 = run_logs.flush_logs_pre(RecordingRunner(), ctx, cwd=str(tmp_path))
