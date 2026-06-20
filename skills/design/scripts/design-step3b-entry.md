@@ -13,7 +13,8 @@ Wrapper for `/design` Step 3b entry. It marks Step 3.5 complete, classifies `pla
 - Accepts `--session-env-path` from the prompt-side Bash call.
 - Accepts `--claude-pid` when the wrapped logic must refresh session state.
 - Does not derive the root Claude PID from `$PPID` internally.
-- Classifies only `### NEW:`, `### UPDATED:`, and `### REWRITTEN:` plan headings.
+- Classifies `### NEW:`, `### UPDATED:`, `### REWRITTEN:`, and `### MAY_UPDATE:` plan headings.
+- Treats `### MAY_UPDATE:` docs-only paths as non-architectural the same way as `### UPDATED:` docs-only paths.
 - Treats missing, empty, heading-free, script, Python, `SKILL.md`, extensionless, and unrecognized paths as architectural.
 - Runs FINALIZE and writes `.completed/step-3b` inside the non-architectural branch only after the driver succeeds.
 

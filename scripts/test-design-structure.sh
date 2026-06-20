@@ -10,6 +10,7 @@ DESIGN_LIFECYCLE="$ROOT/python/design_lifecycle.py"
 SESSION_ENV="$ROOT/python/session_env.py"
 MIGRATED="$ROOT/python/migrated-scripts.tsv"
 MAKEFILE="$ROOT/Makefile"
+STEP3B_ENTRY="$ROOT/skills/design/scripts/design-step3b-entry.sh"
 
 fail() { printf '%s\n' "$1" >&2; exit 1; }
 contains() {
@@ -27,6 +28,21 @@ not_contains() {
   if ( command grep -Fq -e "$literal" "$file" ); then
     fail "$label"
   fi
+}
+assert_step3b_classifier() {
+  expected="$1"
+  plan_text="$2"
+  label="$3"
+  tmpdir="$(mktemp -d)"
+  printf '%s\n' "$plan_text" > "$tmpdir/plan.txt"
+  sed '/^case "\${MODE:-}" in/,$d' "$STEP3B_ENTRY" > "$tmpdir/step3b-entry-source.sh"
+  actual="$(
+    DESIGN_TMPDIR="$tmpdir" CLAUDE_PLUGIN_ROOT="$ROOT" bash -c \
+      'set -euo pipefail; . "$1" --; classify_diagram_required' \
+      _ "$tmpdir/step3b-entry-source.sh"
+  )"
+  rm -rf "$tmpdir"
+  [ "$actual" = "$expected" ] || fail "$label: expected $expected got $actual"
 }
 
 ported_verbs='step0-parse step0-session step0-route step0-clarify-hard-halt step0-init step0-abort-cleanup step0-ap-continue step0c step1d5 step1d7 step1e-reentry'
@@ -136,6 +152,10 @@ contains "$DESIGN_LIFECYCLE" 'snapshot_original=True' 'Step 2 drafter must deleg
 contains "$DESIGN_LIFECYCLE" '_valid_step2b_sentinels' 'Step 2 drafter must validate Step 2a sentinels in-process'
 contains "$DESIGN_POSTPLAN" 'DRIFT_TRIGGER_FIRED' 'design_postplan must parse drift trigger'
 contains "$DESIGN_POSTPLAN" 'BASELINE_PLAN_LINES' 'design_postplan must parse drift baseline'
+
+assert_step3b_classifier false $'## Files to modify/create\n### MAY_UPDATE: docs/issue-anchored-plan.md' 'MAY_UPDATE docs path must not require diagram'
+assert_step3b_classifier false $'## Files to modify/create\n### MAY_UPDATE: `docs/issue-anchored-plan.md`' 'MAY_UPDATE backtick docs path must not require diagram'
+assert_step3b_classifier true $'## Files to modify/create\n### MAY_UPDATE: skills/design/scripts/foo.sh' 'MAY_UPDATE script path must require diagram'
 
 contains "$SETTLE_SH" 'python/cli.py" design step2b-postplan' 'settle must default to python/cli.py design step2b-postplan'
 contains "$SETTLE_SH" '--site "$POSTPLAN_SITE"' 'settle must pass mapped postplan site'
