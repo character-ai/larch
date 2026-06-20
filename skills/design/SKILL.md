@@ -49,7 +49,7 @@ Design an implementation plan for a feature and review it with the mechanical pl
 **Compact reviewer status table**: Use the twice-per-wait reviewer status cadence only for the Step 3 review fence and each Step 3 resume fence. Print a compact table exactly twice for those Step 3 waits:
 
 1. **Post-launch for Step 3 waits**: immediately after the background launch ack, show each known slot as pending (`⏳`) or skipped (`⊘`) when the skip is already known.
-2. **Post-notification for Step 3 waits**: after `<task-notification>`, parse `.step3-review-result.env` when present for round binding, then show final statuses from `$DESIGN_TMPDIR/latest-reviewer-status.tsv`; if that file is missing, fall back to `$DESIGN_TMPDIR/plan-review/round-${FINAL_ROUND_NUM:-${STEP3_REVIEW_ROUND_NUM:-${ROUNDS_COMPLETED:-1}}}/reviewer-status.tsv`.
+2. **Post-notification for Step 3 waits**: after `<task-notification>`, parse `.step3-review-result.env` when present for round binding, then show final statuses from `$DESIGN_TMPDIR/latest-reviewer-status.tsv`; if that file is missing, fall back to `$DESIGN_TMPDIR/plan-review/round-${FINAL_ROUND_NUM:-${STEP3_REVIEW_ROUND_NUM:-${ROUNDS_COMPLETED:-1}}}/reviewer-status.tsv`. Each `reviewer-status.tsv` has a header row with columns `slot`, `status`, `elapsed`, then one row per launched slot; `status` is `done`, `failed`, or `skipped`. The `elapsed` column may be blank because per-slot durations are not currently captured; render just the status icon when `elapsed` is empty.
 
 ```
 📊 Reviewers: | Cursor-Arch: ⏳ | Cursor-Innovation: ⏳ | Cursor-Pragmatic: ⏳ | Cursor-Requirements: ⏳ | Codex-Arch: ⏳ | Codex-Innovation: ⏳ | Codex-Pragmatic: ⏳ | Codex-Requirements: ⏳ |

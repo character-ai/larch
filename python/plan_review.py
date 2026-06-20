@@ -1372,6 +1372,12 @@ def _run_round_body(tmpdir: Path, round_num: int) -> tuple[int, dict[str, str]]:
         body_rc, out_text = _run_round_subprocess(tmpdir, _round_args(tmpdir, round_num))
         round_status = tmpdir / "plan-review" / f"round-{round_num}" / "reviewer-status.tsv"
         latest_status = tmpdir / "latest-reviewer-status.tsv"
+        # The subprocess round body normally produces reviewer-status.tsv (#4848); if an
+        # injected loop override did not, materialize it here from the on-disk manifest +
+        # collector-results.env so the copy below (and the SKILL.md table) still work.
+        if not round_status.is_file():
+            with contextlib.suppress(OSError):
+                _ = plan_review_round.write_reviewer_status_tsv(tmpdir, round_num)
         if round_status.is_file() and not round_status.is_symlink():
             with contextlib.suppress(OSError):
                 _ = shutil.copyfile(round_status, latest_status)

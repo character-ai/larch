@@ -10,6 +10,7 @@ as a clean ``complete``.
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -571,3 +572,88 @@ def test_execute_round_degraded_empty_collector_records_prune_ledger(tmp_path: P
     ledger_lines = (tmp_path / "reviewer-prune-ledger.tsv").read_text(encoding="utf-8").splitlines()
     assert ledger_lines[0] == "round\ttool\tslot\tlabel\taccepted_count\trejected_count\ttotal_count"
     assert ledger_lines[1] == "2\tcursor\tcursor-plan-arch\tCursor-Arch\t0\t0\t0"
+
+
+def test_execute_round_writes_reviewer_status_tsv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A settled round materializes round-N/reviewer-status.tsv and copies it to
+    latest-reviewer-status.tsv, one row per launched slot (issue #4848).
+
+    The producer is the missing half of the SKILL.md Step 3 post-notification
+    reviewer-status table: consumers only ever copied this file, so before the fix it
+    was never created and the table could not render.
+    """
+    plan_file = tmp_path / "plan.txt"
+    feature_file = tmp_path / "feature.txt"
+    _ = plan_file.write_text("plan\n", encoding="utf-8")
+    _ = feature_file.write_text("feature\n", encoding="utf-8")
+    _install_execute_round_fake(monkeypatch, tmp_path)
+
+    rc, values = plan_review_round.execute_round(
+        tmp_path,
+        round_num=1,
+        prune_round_num=1,
+        codex_present="false",
+        cursor_present="true",
+        plan_file=plan_file,
+        feature_file=feature_file,
+    )
+
+    assert rc == 0
+    assert values["LOOP_STATUS"] == "complete"
+    round_status = tmp_path / "plan-review" / "round-1" / "reviewer-status.tsv"
+    latest = tmp_path / "latest-reviewer-status.tsv"
+    assert round_status.is_file()
+    assert latest.is_file()
+    # The success tail copies the per-round file to latest verbatim.
+    assert round_status.read_text(encoding="utf-8") == latest.read_text(encoding="utf-8")
+    lines = round_status.read_text(encoding="utf-8").splitlines()
+    assert lines[0] == "slot\tstatus\telapsed"
+    # One row per launched slot (the fake launches exactly cursor-plan-arch, STATUS=OK).
+    assert lines[1] == "Cursor-Arch\tdone\t"
+    assert len(lines) == 2
+
+
+def test_write_reviewer_status_tsv_maps_status_per_slot(tmp_path: Path) -> None:
+    """write_reviewer_status_tsv joins the launched-slot manifest to collector status:
+    ``OK`` -> ``done``, any other collected status -> ``failed``, no record -> ``skipped``
+    (issue #4848).
+    """
+    design = tmp_path
+    round_dir = design / "plan-review" / "round-1"
+    round_dir.mkdir(parents=True)
+    arch = round_dir / "cursor-plan-arch-output.txt"
+    innovation = round_dir / "codex-primary-plan-innovation-output.txt"
+    pragmatic = round_dir / "cursor-plan-pragmatic-output.txt"
+    rows = [
+        {"tool": "cursor", "slot": "cursor-plan-arch", "output": str(arch), "prompt_file": str(design / "p1")},
+        {"tool": "codex", "slot": "codex-plan-innovation", "output": str(innovation), "prompt_file": str(design / "p2")},
+        {"tool": "cursor", "slot": "cursor-plan-pragmatic", "output": str(pragmatic), "prompt_file": str(design / "p3")},
+    ]
+    _ = (design / "plan-review-slots.ndjson").write_text(
+        "".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8"
+    )
+    _ = (design / "collector-results.env").write_text(
+        _collector_text(
+            [
+                collect_results.CollectorRecord(reviewer_file=str(arch), tool="cursor", status="OK", exit_code="0"),
+                collect_results.CollectorRecord(reviewer_file=str(innovation), tool="codex", status="EMPTY_OUTPUT", exit_code="4"),
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    out = plan_review_round.write_reviewer_status_tsv(design, 1)
+
+    assert out == round_dir / "reviewer-status.tsv"
+    assert out is not None
+    assert out.read_text(encoding="utf-8").splitlines() == [
+        "slot\tstatus\telapsed",
+        "Cursor-Arch\tdone\t",
+        "Codex-Innovation\tfailed\t",
+        "Cursor-Pragmatic\tskipped\t",
+    ]
+
+
+def test_write_reviewer_status_tsv_no_manifest_returns_none(tmp_path: Path) -> None:
+    """No launched-slot manifest -> nothing to render, returns None (issue #4848)."""
+    assert plan_review_round.write_reviewer_status_tsv(tmp_path, 1) is None

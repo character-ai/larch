@@ -301,6 +301,55 @@ def _compose_findings_from_collector(
     return in_scope, oos_md, ok_count, failure_count
 
 
+def write_reviewer_status_tsv(design: Path, round_num: int) -> Path | None:
+    """Materialize ``round-N/reviewer-status.tsv`` from the launched-slot manifest and
+    collector records (issue #4848).
+
+    The SKILL.md Step 3 post-notification reviewer-status table reads
+    ``latest-reviewer-status.tsv`` (or this per-round file as fallback), but nothing
+    produced it: two sites only *copy* it to ``latest`` when it already exists, so
+    neither file was ever created. This writes one row per launched slot as
+    ``slot<TAB>status<TAB>elapsed`` (one header row, then one row per slot):
+
+    - ``status`` is ``done`` when the collector recorded ``STATUS=OK`` for that slot's
+      output file (the same ``OK`` predicate ``_compose_findings_from_collector`` uses),
+      ``failed`` for any other collected status, and ``skipped`` when the slot produced
+      no collector record.
+    - ``elapsed`` is left blank: ``collect_results.CollectorRecord`` carries no
+      per-reviewer duration, so per-slot elapsed is not currently captured.
+
+    Returns the written path, or ``None`` when there is no valid launched slot.
+    """
+    manifest = design / "plan-review-slots.ndjson"
+    slot_rows = [row for row in _iter_manifest_dict_rows(manifest) if _valid_manifest_slot_row(row)]
+    if not slot_rows:
+        return None
+    status_by_output: dict[str, str] = {}
+    collector = design / "collector-results.env"
+    if collector.is_file() and not collector.is_symlink():
+        text = collector.read_text(encoding="utf-8", errors="replace")
+        for record in collect_results.parse_collector_records(text):
+            reviewer_file = record.get("REVIEWER_FILE", "")
+            if reviewer_file:
+                status_by_output[reviewer_file] = record.get("STATUS", "")
+    round_dir = design / "plan-review" / f"round-{round_num}"
+    round_dir.mkdir(parents=True, exist_ok=True)
+    out = round_dir / "reviewer-status.tsv"
+    if out.is_symlink():
+        return None
+    lines = ["slot\tstatus\telapsed"]
+    for row in slot_rows:
+        slot = str(row.get("slot") or "")
+        output = str(row.get("output") or "")
+        if output in status_by_output:
+            status = "done" if status_by_output[output] == "OK" else "failed"
+        else:
+            status = "skipped"
+        lines.append(f"{_slot_human_label(slot)}\t{status}\t")
+    _ = out.write_text("".join(f"{line}\n" for line in lines), encoding="utf-8")
+    return out
+
+
 def _write_round_summary(
     design: Path,
     round_num: int,
@@ -498,6 +547,12 @@ def execute_round(
 
     manifest = design / "plan-review-slots.ndjson"
     in_scope, oos_md, ok_count, fail_count = _compose_findings_from_collector(design, collect_out, manifest)
+    # Producer for the SKILL.md Step 3 post-notification reviewer-status table (#4848).
+    # Written once here, after collection, so every post-collection terminal (success,
+    # panel-failed, tally-error, main-agent-vote-required, degraded-empty-collector) has
+    # the per-round file; the success tail below copies it to latest-reviewer-status.tsv.
+    with contextlib.suppress(OSError):
+        _ = write_reviewer_status_tsv(design, round_num)
     _ = (design / "findings-in-scope.pre-dedup.md").write_text(in_scope, encoding="utf-8")
     _ = (design / "findings-oos.pre-dedup.md").write_text(oos_md, encoding="utf-8")
     _ = (design / "findings-oos.md").write_text(oos_md, encoding="utf-8")
