@@ -32,6 +32,15 @@ def test_post_fix_empty_checks_grace_is_bounded() -> None:
     assert config.CI_WAIT_POST_FIX_EMPTY_CHECKS_GRACE_SEC < config.CI_WAIT_TIMEOUT_SEC
 
 
+def test_initial_empty_checks_grace_is_ship_startup_deadline() -> None:
+    assert config.CI_WAIT_INITIAL_EMPTY_CHECKS_GRACE_SEC == 300
+    assert (
+        config.CI_WAIT_INITIAL_EMPTY_CHECKS_GRACE_SEC
+        > config.CI_WAIT_POST_FIX_EMPTY_CHECKS_GRACE_SEC
+    )
+    assert config.CI_WAIT_INITIAL_EMPTY_CHECKS_GRACE_SEC < config.CI_WAIT_TIMEOUT_SEC
+
+
 def test_documented_constants_exist() -> None:
     names = (
         "EXIT_OK",
