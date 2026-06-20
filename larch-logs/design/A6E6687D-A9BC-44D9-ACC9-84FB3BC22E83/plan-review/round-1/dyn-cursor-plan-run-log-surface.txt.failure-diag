@@ -1,0 +1,19 @@
+===== diag =====
+[31m✗ Failed to reach the Cursor API. If you are behind a corporate proxy, set the HTTPS_PROXY environment variable.[0m
+Failed with exit code 1. Output size: 0 bytes.
+===== launch-stderr =====
+❌ cursor agent: FAILED (exit code 1, output 0 bytes)
+
+===== additional failure diagnostics =====
+===== diag =====
+[31m✗ Failed to reach the Cursor API. If you are behind a corporate proxy, set the HTTPS_PROXY environment variable.[0m
+Failed with exit code 1. Output size: 0 bytes.
+===== launch-stderr =====
+❌ cursor agent: FAILED (exit code 1, output 0 bytes)
+
+===== additional failure diagnostics =====
+===== diag =====
+[31m✗ Failed to reach the Cursor API. If you are behind a corporate proxy, set the HTTPS_PROXY environment variable.[0m
+Failed with exit code 1. Output size: 0 bytes.
+===== launch-stderr =====
+❌ cursor agent: FAILED (exit code 1, output 0 bytes)
