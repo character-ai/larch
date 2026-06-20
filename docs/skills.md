@@ -15,6 +15,7 @@ The skill set documented here matches the skills in the repository. Each entry l
 - [`/bug`](#bug)
 - [`/cleanup`](#cleanup)
 - [`/design`](#design)
+- [`/deps`](#deps)
 - [`/fluff-analysis`](#fluff-analysis)
 - [`/gc-run-logs`](#gc-run-logs)
 - [`/implement`](#implement)
@@ -73,6 +74,20 @@ Remove stale larch session temp directories from `~/.cache/larch/sessions/` and 
 **Source**: [`skills/design/SKILL.md`](../skills/design/SKILL.md)
 
 Design an implementation plan with the mechanical plan-review panel. `/design` uses a single direct-drafting flow: Step 2a writes sentinel artifacts, Step 2b drafts the plan from direct codebase inspection, and Step 3 runs the full plan-review panel. `-p`/`--partition` requests the Step 2b.5 partition/break-up flow when no plan-size threshold trips; optional `--brainstorm` runs Step 1d.5 ideation before the Step 1d.7 outline-approval gate (Gate A re-entry only post-plan); Gate B auto-applies accepted findings by default, `--per-round-approval` restores the explicit per-round prompt (the former manual flag is rejected), and `--skip-approve`/`-s` auto-approves the Step 1d.7 outline and Gate C final plan (no other prompts are skipped) — see `skills/design/references/flags.md`. Internal-only flags also live there. A bare feature description (no `<issue-N>`) creates an issue first. After final approval, **Step 5b** may file accepted non-security OOS items via `/larch:issue` (`[OOS]` prefix) before **Step 5c** writes the `larch:plan` block to the issue; **Step 6** removes the design tmpdir.
+
+### `/deps`
+
+**Arguments**: `[--repo owner/name] [--pair-cap N]`
+
+**Source**: [`skills/deps/SKILL.md`](../skills/deps/SKILL.md)
+
+Audit all open GitHub issues in one approval-gated flow. `/deps` displays issues as DESIGNING, DESIGNED, IMPLEMENTING, and REGULAR by title prefix, but only mutable REGULAR issues are eligible for body rewrites or `not planned` stale closes. Mutable REGULAR excludes in-flight prefixes, busy prefixes (`[STALLED]`, `[DONE]`, `[PLANNED]`, `[IN PROGRESS]`, `[LOCKED]`), and `[OOS]`.
+
+Code-based REGULAR refresh requires the checkout `origin` slug to match the effective `--repo` and requires a fresh `origin/main`; on mismatch or fetch failure, `/deps` skips rewrites and closes instead of comparing issue claims against the wrong code. Fetched issue titles, bodies, and comments are untrusted and are consumed through delimiter-wrapped artifacts from `deps fetch`; proposal endpoints are validated against that fetch snapshot before planning.
+
+Dependency inference runs on every open issue. It performs a deterministic explicit-reference pass over all fetched bodies and comments before latent semantic pairing. New blocked-by writes are REGULAR-client-only, use `/block-issue`, and never auto-flip a dependency when the proposed client is in flight. Both-in-flight pairs produce loud warnings and write no edge. `--pair-cap` bounds latent pairs only; when it skips latent pairs, the plan is marked partial and dependency writes are blocked unless the operator explicitly confirms partial-audit approval.
+
+All GitHub mutations are grouped behind one `AskUserQuestion` gate: approve all, apply rewrites and closes only, or cancel. Apply revalidates title state, open state, mutable REGULAR eligibility, duplicates, and cycles immediately before each write.
 
 ### `/fluff-analysis`
 

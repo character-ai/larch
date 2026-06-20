@@ -10,6 +10,7 @@ paths:
   - "python/test_plan_scout.py"
   - "python/design_lifecycle.py"
   - "skills/design/references/flags.md"
+  - "skills/deps/SKILL.md"
   - "skills/design/references/plan-review.md"
   - "skills/design/references/decompose-panel.md"
   - "python/plan_quality.py"

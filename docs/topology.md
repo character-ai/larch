@@ -26,3 +26,4 @@ This document is a consumer-doc projection of runtime authorities. The runtime a
 | <a id="research.lanes"></a>`research.lanes` | four research lanes | architecture + edge cases + external comparisons + security | `skills/research/references/research-phase.md` |
 | <a id="research.validation_panel"></a>`research.validation_panel` | 3 reviewer lanes | Claude Code Reviewer subagent + Codex + Cursor | `skills/research/references/validation-phase.md` |
 | <a id="implement.review_and_fix.panel_hard"></a>`implement.review_and_fix.panel_hard` | specialists per vendor | Cursor + Codex | `python/review_pipeline.py` |
+| <a id="deps.issue_audit"></a>`deps.issue_audit` | one approval gate | open-issue grouping + REGULAR refresh + explicit and latent dependency audit | `skills/deps/SKILL.md` |
