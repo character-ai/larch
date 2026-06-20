@@ -1,0 +1,1 @@
+Add shared voter-agreement math, append live voter scoreboards to existing tally markdown, and add a new `/voter-calibration` analyzer over committed classification TSVs. Keep TSV schemas and acceptance rules unchanged.
