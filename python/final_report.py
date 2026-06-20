@@ -15,6 +15,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import cast
 
+import config
 import pr_body
 import report_tokens_cost
 import review_phase_detail
@@ -384,13 +385,13 @@ def _derive_final_report_fields(
     }
 
 
-def _stamp_skipped_steps_for_terminal_report(
+def _reconcile_manifest_for_terminal_report(
     implement_tmpdir: Path,
     *,
     run_id: str,
     outcome: str,
 ) -> tuple[int, str]:
-    if outcome == "merged" or not run_id or run_id == "unknown":
+    if not run_id or run_id == "unknown":
         return 0, ""
     run_dir = implement_tmpdir / "larch-logs" / "implement" / run_id
     manifest = run_dir / "manifest.json"
@@ -399,7 +400,9 @@ def _stamp_skipped_steps_for_terminal_report(
     fields: list[str] = []
     if not (run_dir / "run-statistics.md").is_file():
         fields.append("steps_ran.step9a1=false")
-    if not (run_dir / "final-summary.md").is_file() and not (run_dir / "version-bump-reasoning.md").is_file():
+    if (run_dir / "final-summary.md").is_file() or (run_dir / "version-bump-reasoning.md").is_file():
+        fields.append("steps_ran.step8=true")
+    else:
         fields.append("steps_ran.step8=false")
     if not any(
         (run_dir / name).is_file()
@@ -411,6 +414,8 @@ def _stamp_skipped_steps_for_terminal_report(
         )
     ):
         fields.append("steps_ran.step7a=false")
+    if outcome in {"pr-created", "pr-created-draft"}:
+        fields.append(f"status={config.MANIFEST_STATUS_IN_PROGRESS}")
     if not fields:
         return 0, ""
     cmd = [
@@ -430,11 +435,17 @@ def _stamp_skipped_steps_for_terminal_report(
     completed = subprocess.run(cmd, text=True, capture_output=True, check=False)
     if completed.returncode != 0:
         err = (completed.stderr or completed.stdout or "manifest update failed").strip()
-        return completed.returncode or 1, f"run-log manifest steps_ran update failed: {err[:300]}"
+        return completed.returncode or 1, f"run-log manifest reconcile failed: {err[:300]}"
     return 0, ""
 
 
-def write_final_report(implement_tmpdir: Path, *, comment_only: bool = False, print_stdout: bool = False) -> tuple[int, str, str]:
+def write_final_report(
+    implement_tmpdir: Path,
+    *,
+    comment_only: bool = False,
+    print_stdout: bool = False,
+    skip_tracking_upsert: bool = False,
+) -> tuple[int, str, str]:
     parent = implement_tmpdir / "parent-issue.md"
     session = implement_tmpdir / "session-env.sh"
     ship = implement_tmpdir / "ship-pr-state.sh"
@@ -497,19 +508,26 @@ def write_final_report(implement_tmpdir: Path, *, comment_only: bool = False, pr
     summary = implement_tmpdir / "summary-final.md"
     summary.write_text(body, encoding="utf-8")
     if not comment_only:
-        stamp_rc, stamp_err = _stamp_skipped_steps_for_terminal_report(
+        try:
+            run_dir.mkdir(parents=True, exist_ok=True)
+            (run_dir / "final-summary.md").write_text(body, encoding="utf-8")
+        except OSError as exc:
+            if print_stdout:
+                sys.stdout.write(body)
+            return 1, "", f"final-summary write failed: {exc}"
+        reconcile_rc, reconcile_err = _reconcile_manifest_for_terminal_report(
             implement_tmpdir,
             run_id=run_id or "unknown",
             outcome=outcome,
         )
-        if stamp_rc != 0:
+        if reconcile_rc != 0:
             if print_stdout:
                 sys.stdout.write(body)
-            return stamp_rc, "", stamp_err
-    if not comment_only:
-        run_dir.mkdir(parents=True, exist_ok=True)
-        with contextlib.suppress(OSError):
-            (run_dir / "final-summary.md").write_text(body, encoding="utf-8")
+            return reconcile_rc, "", reconcile_err
+        if skip_tracking_upsert:
+            if print_stdout:
+                sys.stdout.write(body)
+            return 0, "", ""
     comment_url = ""
     repo_unav = _read_kv(session, "REPO_UNAVAILABLE", "false") == "true"
     if issue and issue != "0" and not repo_unav:

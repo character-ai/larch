@@ -580,11 +580,18 @@ def _refresh_issue_counts(implement_tmpdir: Path, run_id: str) -> tuple[int, int
     return getattr(_final_report_module(), name)(implement_tmpdir, run_id)
 
 
-def write_final_report(implement_tmpdir: Path, *, comment_only: bool = False, print_stdout: bool = False) -> tuple[int, str, str]:
+def write_final_report(
+    implement_tmpdir: Path,
+    *,
+    comment_only: bool = False,
+    print_stdout: bool = False,
+    skip_tracking_upsert: bool = False,
+) -> tuple[int, str, str]:
     return _final_report_module().write_final_report(  # type: ignore[attr-defined]
         implement_tmpdir,
         comment_only=comment_only,
         print_stdout=print_stdout,
+        skip_tracking_upsert=skip_tracking_upsert,
     )
 
 

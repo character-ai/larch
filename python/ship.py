@@ -59,6 +59,7 @@ import merge
 import pr
 import pr_body
 import proc
+import push
 import redact
 import rebase
 import run_logs
@@ -1459,6 +1460,42 @@ def run_ship(
                 pr_number=working.pr_number,
                 pr_url=working.pr_url,
                 detail=ensured.status,
+            )
+
+        _breadcrumb("post-ensure-pr", "Flush+Push")
+        post_ensure_refresh = run_logs.flush_logs_pre(
+            runner,
+            working.with_(state_file=None),
+            cwd=repo_root,
+            strict_final_report=True,
+        )
+        if post_ensure_refresh.skipped:
+            if post_ensure_refresh.reason not in config.REFRESH_SKIP_POST_ENSURE_PR_OK:
+                _write_terminal_state(working, Outcome.STALLED, "post-ensure-pr")
+                return ShipResult(
+                    Outcome.STALLED,
+                    pr_number=working.pr_number,
+                    pr_url=working.pr_url,
+                    detail=f"post-ensure-pr flush skipped: {post_ensure_refresh.reason}",
+                )
+            _breadcrumb("warning", f"post-ensure-pr refresh skipped: {post_ensure_refresh.reason}")
+        try:
+            post_ensure_push = push.push_branch(runner, working, cwd=repo_root)
+        except ShipError as exc:
+            _write_terminal_state(working, Outcome.STALLED, "post-ensure-pr-push")
+            return ShipResult(
+                Outcome.STALLED,
+                pr_number=working.pr_number,
+                pr_url=working.pr_url,
+                detail=f"post-ensure-pr push failed: {str(exc).strip()}",
+            )
+        if post_ensure_push.status != "pushed":
+            _write_terminal_state(working, Outcome.STALLED, "post-ensure-pr-push")
+            return ShipResult(
+                Outcome.STALLED,
+                pr_number=working.pr_number,
+                pr_url=working.pr_url,
+                detail=f"post-ensure-pr push failed: {post_ensure_push.status}",
             )
 
         base_remote = "upstream" if working.forked or working.forked_target else "origin"

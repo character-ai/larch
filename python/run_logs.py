@@ -1114,9 +1114,17 @@ def _execution_issue_record(
     return json.dumps(payload, sort_keys=True)
 
 
-def _write_final_report(runner: Runner, ctx: RunContext) -> None:
+def _write_final_report(
+    runner: Runner,
+    ctx: RunContext,
+    *,
+    skip_tracking_upsert: bool = False,
+) -> None:
     _ = runner
-    rc, _comment_url, error = pr_body.write_final_report(Path(ctx.tmpdir))
+    rc, _comment_url, error = pr_body.write_final_report(
+        Path(ctx.tmpdir),
+        skip_tracking_upsert=skip_tracking_upsert,
+    )
     if rc != 0:
         msg = error or "final report write failed"
         raise ShipError(msg)
@@ -1159,6 +1167,7 @@ def _stage_pre_commit(
     log_root: Path,
     *,
     mode: str = "refresh",
+    strict_final_report: bool = False,
 ) -> None:
     run_dir = _run_log_dir(ctx)
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -1169,8 +1178,15 @@ def _stage_pre_commit(
             step_label="pre-push",
             source_label="execution-issues.md pre-push refresh",
         )
-        with suppress(ShipError):
-            _write_final_report(runner, ctx)
+        if strict_final_report:
+            _write_final_report(runner, ctx, skip_tracking_upsert=True)
+            final_summary = run_dir / "final-summary.md"
+            if not final_summary.is_file():
+                msg = "final-summary.md missing after final report write"
+                raise ShipError(msg)
+        else:
+            with suppress(ShipError):
+                _write_final_report(runner, ctx)
         _render_ledger_reports(runner, ctx, log_root)
         _render_token_timing_batches(ctx, log_root)
     else:
@@ -1196,6 +1212,7 @@ def flush_logs_pre(
     ctx: RunContext,
     *,
     cwd: str | None = None,
+    strict_final_report: bool = False,
 ) -> RefreshSkip:
     """Pre-push refresh: may git-commit log batches (caller owns push)."""
     skip = _pre_push_probe(ctx)
@@ -1206,7 +1223,24 @@ def flush_logs_pre(
         return RefreshSkip(skipped=True, reason=REFRESH_SKIP_RECOVERY_FAILED)
     manifest = recovery.manifest
     log_root = Path(ctx.tmpdir) / "larch-logs"
-    _stage_pre_commit(runner, ctx, log_root, mode="refresh")
+    try:
+        _stage_pre_commit(
+            runner,
+            ctx,
+            log_root,
+            mode="refresh",
+            strict_final_report=strict_final_report,
+        )
+    except ShipError as exc:
+        if strict_final_report:
+            return RefreshSkip(skipped=True, reason=REFRESH_SKIP_RECOVERY_FAILED, error=str(exc).strip())
+        raise
+    if strict_final_report and not (_run_log_dir(ctx) / "final-summary.md").is_file():
+        return RefreshSkip(skipped=True, reason=REFRESH_SKIP_RECOVERY_FAILED)
+    recovery = load_or_recover_manifest_checked(ctx)
+    if not recovery.recovery_ok:
+        return RefreshSkip(skipped=True, reason=REFRESH_SKIP_RECOVERY_FAILED)
+    manifest = recovery.manifest
     step9a1 = _step9a1_heuristic(ctx)
     steps_update = dict(manifest.steps_ran)
     if step9a1 is not None:
@@ -2498,6 +2532,10 @@ def _final_summary_heading_bail_signal(run_dir: Path) -> bool:
     return False
 
 
+def _final_summary_bail_signal_without_pr_evidence(run_dir: Path, manifest_pr_number: str) -> bool:
+    return _final_summary_heading_bail_signal(run_dir) and not manifest_pr_number
+
+
 def _verify_has_file(run_dir: Path, relative_path: str) -> bool:
     return (run_dir / relative_path).is_file()
 
@@ -2509,6 +2547,7 @@ def _verify_condition_reached(
     *,
     manifest_status: str,
     manifest_pr_number: str,
+    chain: bool = False,
 ) -> bool:
     if condition == "always":
         return True
@@ -2527,7 +2566,7 @@ def _verify_condition_reached(
     if condition == "step7a":
         if (
             _manifest_steps_ran_empty(manifest_data)
-            and _final_summary_heading_bail_signal(run_dir)
+            and _final_summary_bail_signal_without_pr_evidence(run_dir, manifest_pr_number)
             and not (
                 _verify_has_file(run_dir, "token-report.json")
                 or _verify_has_file(run_dir, "timing-report.json")
@@ -2552,7 +2591,7 @@ def _verify_condition_reached(
     if condition == "step8":
         if (
             _manifest_steps_ran_empty(manifest_data)
-            and _final_summary_heading_bail_signal(run_dir)
+            and _final_summary_bail_signal_without_pr_evidence(run_dir, manifest_pr_number)
             and not _verify_has_file(run_dir, "version-bump-reasoning.md")
         ):
             return False
@@ -2566,6 +2605,7 @@ def _verify_condition_reached(
                 manifest_data,
                 manifest_status=manifest_status,
                 manifest_pr_number=manifest_pr_number,
+                chain=True,
             )
         )
     if condition == "step9a1":
@@ -2585,17 +2625,17 @@ def _verify_condition_reached(
             return True
         if (
             _manifest_steps_ran_empty(manifest_data)
-            and _final_summary_heading_bail_signal(run_dir)
+            and _final_summary_bail_signal_without_pr_evidence(run_dir, manifest_pr_number)
             and not _verify_has_file(run_dir, "run-statistics.md")
         ):
             return False
         if (
-            _final_summary_heading_bail_signal(run_dir)
+            _final_summary_bail_signal_without_pr_evidence(run_dir, manifest_pr_number)
             and not _verify_has_file(run_dir, "run-statistics.md")
             and _manifest_steps_ran_nonempty_without_step9a1(manifest_data)
         ):
             return False
-        return _verify_has_file(run_dir, "run-statistics.md")
+        return _verify_has_file(run_dir, "run-statistics.md") if chain else True
     if condition == "exn-agg-validate-fail":
         path = run_dir / "execution-issues.ndjson"
         return path.is_file() and "merged output failed validation" in path.read_text(encoding="utf-8", errors="replace")

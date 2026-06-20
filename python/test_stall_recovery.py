@@ -404,6 +404,81 @@ def test_normalize_outcome_flags_panel_failed_merge_downgrade(
     assert "IMPLEMENT_MERGE_DOWNGRADED=true" in out
 
 
+def test_normalize_outcome_merge_with_pr_evidence_is_pr_created(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _ = (tmp_path / "ship-pr-state.sh").write_text(
+        "STALL_TRACKING=false\nMERGE=true\nPR_NUMBER=12\nPHASE=rebase\nMERGE_RESULT=\nDRAFT=false\n",
+        encoding="utf-8",
+    )
+
+    rc = stall_recovery.normalize_outcome_main(["--implement-tmpdir", str(tmp_path)])
+
+    assert rc == 0
+    assert "IMPLEMENT_NORMALIZED_OUTCOME=pr-created" in capsys.readouterr().out
+
+
+def test_normalize_outcome_draft_pr_evidence_is_pr_created_draft(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _ = (tmp_path / "ship-pr-state.sh").write_text(
+        "STALL_TRACKING=false\nMERGE=true\nPR_NUMBER=12\nMERGE_RESULT=\nDRAFT=true\n",
+        encoding="utf-8",
+    )
+
+    rc = stall_recovery.normalize_outcome_main(["--implement-tmpdir", str(tmp_path)])
+
+    assert rc == 0
+    assert "IMPLEMENT_NORMALIZED_OUTCOME=pr-created-draft" in capsys.readouterr().out
+
+
+def test_normalize_outcome_merge_without_pr_evidence_stays_bailed(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _ = (tmp_path / "ship-pr-state.sh").write_text(
+        "STALL_TRACKING=false\nMERGE=true\nPR_NUMBER=\nMERGE_RESULT=\nDRAFT=false\n",
+        encoding="utf-8",
+    )
+
+    rc = stall_recovery.normalize_outcome_main(["--implement-tmpdir", str(tmp_path)])
+
+    assert rc == 0
+    assert "IMPLEMENT_NORMALIZED_OUTCOME=bailed" in capsys.readouterr().out
+
+
+def test_normalize_outcome_post_pr_stalled_guard_not_pr_created(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _ = (tmp_path / "ship-pr-state.sh").write_text(
+        "STALL_TRACKING=false\nMERGE=true\nPR_NUMBER=12\nPHASE=stalled\nBAIL_REASON=ci-fix-exhausted\nMERGE_RESULT=\n",
+        encoding="utf-8",
+    )
+
+    rc = stall_recovery.normalize_outcome_main(["--implement-tmpdir", str(tmp_path)])
+
+    assert rc == 0
+    assert "IMPLEMENT_NORMALIZED_OUTCOME=stalled" in capsys.readouterr().out
+
+
+def test_normalize_outcome_exit_code_guard_not_pr_created(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _ = (tmp_path / "ship-pr-state.sh").write_text(
+        "STALL_TRACKING=false\nMERGE=true\nPR_NUMBER=12\nEXIT_CODE=4\nMERGE_RESULT=\n",
+        encoding="utf-8",
+    )
+
+    rc = stall_recovery.normalize_outcome_main(["--implement-tmpdir", str(tmp_path)])
+
+    assert rc == 0
+    assert "IMPLEMENT_NORMALIZED_OUTCOME=bailed" in capsys.readouterr().out
+
+
 def test_classify_design_state_file_merge(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     primary = tmp_path / "design-failure-terminal-state.env"
     _ = primary.write_text(

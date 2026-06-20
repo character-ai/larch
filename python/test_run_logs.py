@@ -703,6 +703,93 @@ def test_flush_logs_pre_downgrades_stale_step9a1_true_with_ndjson_only(
     assert manifest["steps_ran"]["step9a1"] is False
 
 
+def test_flush_logs_pre_retains_reloaded_step8_after_final_report_reconcile(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    ctx = _ctx(tmp_path, str(state))
+    _ = run_logs.init_run(ctx)
+    manifest_path = tmp_path / "larch-logs" / "implement" / "run-abc" / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["steps_ran"] = {"step8": False}
+    _ = manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    def fake_write_final_report(_runner: object, _ctx_obj: RunContext, **_kwargs: object) -> None:
+        loaded = json.loads(manifest_path.read_text(encoding="utf-8"))
+        loaded["steps_ran"]["step8"] = True
+        _ = manifest_path.write_text(json.dumps(loaded), encoding="utf-8")
+
+    def noop(*_a: object, **_k: object) -> None:
+        return None
+
+    monkeypatch.setattr(run_logs, "_write_final_report", fake_write_final_report)
+    monkeypatch.setattr(run_logs, "capture_session_transcript", noop)
+    monkeypatch.setattr(run_logs, "_render_ledger_reports", noop)
+    monkeypatch.setattr(run_logs, "_commit_run", lambda *_a, **_k: CommandResult(("git", "commit"), 0, "", "", 0.0))
+
+    skip = run_logs.flush_logs_pre(RecordingRunner(), ctx, cwd=str(tmp_path))
+
+    assert not skip.skipped
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["steps_ran"]["step8"] is True
+
+
+def test_flush_logs_pre_strict_final_report_error_returns_recovery_failed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    ctx = _ctx(tmp_path, str(state))
+    _ = run_logs.init_run(ctx)
+
+    def fail_report(*_a: object, **_k: object) -> None:
+        raise ShipError("reconcile failed")
+
+    monkeypatch.setattr(run_logs, "_write_final_report", fail_report)
+
+    skip = run_logs.flush_logs_pre(RecordingRunner(), ctx, cwd=str(tmp_path), strict_final_report=True)
+
+    assert skip.skipped
+    assert skip.reason == run_logs.REFRESH_SKIP_RECOVERY_FAILED
+
+
+def test_flush_logs_pre_strict_final_report_skips_tracking_upsert(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    ctx = _ctx(tmp_path, str(state))
+    _ = run_logs.init_run(ctx)
+    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
+    seen: list[bool] = []
+
+    def fake_write_final_report(
+        _runner: object,
+        _ctx_obj: RunContext,
+        *,
+        skip_tracking_upsert: bool = False,
+    ) -> None:
+        seen.append(skip_tracking_upsert)
+        _ = (run_dir / "final-summary.md").write_text("summary\n", encoding="utf-8")
+
+    def noop(*_a: object, **_k: object) -> None:
+        return None
+
+    monkeypatch.setattr(run_logs, "_write_final_report", fake_write_final_report)
+    monkeypatch.setattr(run_logs, "capture_session_transcript", noop)
+    monkeypatch.setattr(run_logs, "_render_ledger_reports", noop)
+    monkeypatch.setattr(run_logs, "_commit_run", lambda *_a, **_k: CommandResult(("git", "commit"), 0, "", "", 0.0))
+
+    skip = run_logs.flush_logs_pre(RecordingRunner(), ctx, cwd=str(tmp_path), strict_final_report=True)
+
+    assert not skip.skipped
+    assert seen == [True]
+
+
 def test_render_token_timing_batches_skips_missing_refresh_json(tmp_path: Path) -> None:
     state = tmp_path / "state.env"
     _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
@@ -1602,6 +1689,57 @@ def test_verify_completeness_stale_step9a1_true_without_stats_fails(
     monkeypatch.setenv("LARCH_VERIFY_MANIFEST", str(tsv))
     assert run_logs.verify_completeness_main([str(run_dir)]) == 1
     assert "run-statistics.md" in capsys.readouterr().out
+
+
+def test_verify_completeness_bailed_heading_with_pr_number_does_not_bail_skip(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(run_logs, "_REPO_ROOT", tmp_path)
+    run_dir = tmp_path / "larch-logs" / "implement" / "RUN1"
+    run_dir.mkdir(parents=True)
+    manifest = {
+        "schema_version": 2,
+        "skill": "implement",
+        "run_id": "RUN1",
+        "steps_ran": {},
+        "status": "partial",
+        "pr_number": 7,
+    }
+    _ = (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    _ = (run_dir / "final-summary.md").write_text("## /implement run RUN1 — bailed\n", encoding="utf-8")
+    tsv = tmp_path / "required.tsv"
+    _ = tsv.write_text("relative_path\tcondition\nrun-statistics.md\tstep9a1\n", encoding="utf-8")
+    monkeypatch.setenv("LARCH_VERIFY_MANIFEST", str(tsv))
+
+    assert run_logs.verify_completeness_main([str(run_dir)]) == 1
+    assert "run-statistics.md" in capsys.readouterr().out
+
+
+def test_verify_completeness_bailed_heading_without_pr_number_keeps_bail_skip(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(run_logs, "_REPO_ROOT", tmp_path)
+    run_dir = tmp_path / "larch-logs" / "implement" / "RUN1"
+    run_dir.mkdir(parents=True)
+    manifest = {
+        "schema_version": 2,
+        "skill": "implement",
+        "run_id": "RUN1",
+        "steps_ran": {},
+        "status": "partial",
+    }
+    _ = (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    _ = (run_dir / "final-summary.md").write_text("## /implement run RUN1 — bailed\n", encoding="utf-8")
+    tsv = tmp_path / "required.tsv"
+    _ = tsv.write_text("relative_path\tcondition\nrun-statistics.md\tstep9a1\n", encoding="utf-8")
+    monkeypatch.setenv("LARCH_VERIFY_MANIFEST", str(tsv))
+
+    assert run_logs.verify_completeness_main([str(run_dir)]) == 0
+    assert "OK" in capsys.readouterr().out
 
 
 def test_refresh_run_logs_main_skips_without_state_file(tmp_path: Path) -> None:

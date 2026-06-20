@@ -494,6 +494,31 @@ def _round_meta_signals(run_dir: Path) -> tuple[bool, list[dict[str, object]]]:
     return any_meta, signals
 
 
+def _first_nonempty_line(path: Path) -> str:
+    if not path.is_file():
+        return ""
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.strip():
+            return line.strip()
+    return ""
+
+
+def _manifest_pr_evidence_matches(manifest: object | None, pr: int) -> bool:
+    if not isinstance(manifest, dict):
+        return False
+    raw = str(manifest.get("pr_number") or "").strip()
+    if not raw or raw == "0":
+        return False
+    if raw.isdigit() and pr > 0:
+        return int(raw) == pr
+    return True
+
+
+def _stale_bail_heading_with_pr_evidence(run_dir: Path, manifest: object | None, pr: int) -> bool:
+    heading = _first_nonempty_line(run_dir / "final-summary.md")
+    return bool(re.search(r"bailed(-needs-user-input)?$", heading) and _manifest_pr_evidence_matches(manifest, pr))
+
+
 def _scan_required(run_dir: Path, pr: int, required: Path | None) -> dict[str, object] | tuple[dict[str, object], bool]:
     if required is None or not required.is_file():
         return {"scan": "required-file-presence", "pr": pr, "result": "skip", "detail": "required-files-tsv not provided"}
@@ -509,6 +534,8 @@ def _scan_required(run_dir: Path, pr: int, required: Path | None) -> dict[str, o
     def empty_steps() -> bool:
         return isinstance(manifest, dict) and (sr_raw is None or (isinstance(sr_raw, dict) and not sr_raw))
     def bail_signal() -> bool:
+        if _stale_bail_heading_with_pr_evidence(run_dir, manifest, pr):
+            return False
         fs = run_dir / "final-summary.md"
         if not fs.is_file():
             return False

@@ -635,6 +635,38 @@ def retry_policy(args: argparse.Namespace) -> int:
     return 0
 
 
+def _has_pr_evidence(ship: Mapping[str, str], fin: Mapping[str, str]) -> bool:
+    pr_number = (ship.get("PR_NUMBER") or fin.get("PR_NUMBER") or "").strip()
+    if pr_number and pr_number != "0":
+        return True
+    pr_url = (ship.get("PR_URL") or fin.get("PR_URL") or "").strip()
+    return bool(pr_url and pr_url != "N/A")
+
+
+def _state_value(ship: Mapping[str, str], fin: Mapping[str, str], key: str) -> str:
+    return ship.get(key) or fin.get(key, "")
+
+
+def _is_nonzero_exit_code(value: str) -> bool:
+    text = value.strip()
+    if not text or text == "unknown":
+        return False
+    try:
+        return int(text) != 0
+    except ValueError:
+        return False
+
+
+def _is_healthy_pre_terminal_pr_snapshot(ship: Mapping[str, str], fin: Mapping[str, str]) -> bool:
+    if _state_value(ship, fin, "BAIL_REASON").strip():
+        return False
+    if _state_value(ship, fin, "IMPLEMENT_BAIL_REASON").strip():
+        return False
+    if _state_value(ship, fin, "PHASE").strip() == "stalled":
+        return False
+    return not _is_nonzero_exit_code(_state_value(ship, fin, "EXIT_CODE"))
+
+
 def normalized_outcome_values(args: argparse.Namespace) -> dict[str, str]:
     tmpdir = Path(args.implement_tmpdir)
     ship = _read_state_file(tmpdir / "ship-pr-state.sh")
@@ -647,6 +679,7 @@ def normalized_outcome_values(args: argparse.Namespace) -> dict[str, str]:
     fin_stall = fin.get("STALL_TRACKING", "false")
     ses_stall = ses.get("STALL_TRACKING", "false")
     any_stall = _truthy(memory_stall) or _truthy(ship_stall) or _truthy(fin_stall) or _truthy(ses_stall)
+    phase_stalled = (ship.get("PHASE") or fin.get("PHASE", "")).strip() == "stalled"
     merge_result = ship.get("MERGE_RESULT") or fin.get("MERGE_RESULT", "")
     merge = ship.get("MERGE") or fin.get("MERGE", "")
     draft = ship.get("DRAFT") or fin.get("DRAFT", "false")
@@ -656,7 +689,7 @@ def normalized_outcome_values(args: argparse.Namespace) -> dict[str, str]:
     design_done = fin.get("DESIGN_ONLY_DONE", "false")
     bail_user = fin.get("BAIL_NEEDS_USER_INPUT", "false")
 
-    if any_stall:
+    if any_stall or phase_stalled:
         outcome = "stalled"
     elif _truthy(forked):
         outcome = "forked-dry-run"
@@ -666,10 +699,13 @@ def normalized_outcome_values(args: argparse.Namespace) -> dict[str, str]:
         outcome = "merged"
     elif merge_result == "already_merged":
         outcome = "force-merged-externally"
-    elif pr_number and pr_number != "0" and _truthy(draft):
-        outcome = "pr-created-draft"
-    elif pr_number and pr_number != "0" and not _truthy(draft) and not _truthy(merge):
-        outcome = "pr-created"
+    elif (
+        _has_pr_evidence(ship, fin)
+        and not merge_result
+        and _is_healthy_pre_terminal_pr_snapshot(ship, fin)
+        and not _truthy(bail_user)
+    ):
+        outcome = "pr-created-draft" if _truthy(draft) else "pr-created"
     else:
         outcome = "bailed"
     if _truthy(bail_user) and outcome == "bailed":

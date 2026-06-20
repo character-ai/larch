@@ -27,7 +27,7 @@ class _NoopRunner:
 
 
 
-def test_stamp_skipped_steps_for_terminal_report_marks_ndjson_only_step9a1_false(
+def test_reconcile_manifest_for_terminal_report_marks_ndjson_only_step9a1_false(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -42,13 +42,13 @@ def test_stamp_skipped_steps_for_terminal_report_marks_ndjson_only_step9a1_false
         return CommandResult(tuple(argv), 0, "", "", 0.0)
 
     monkeypatch.setattr(final_report.subprocess, "run", fake_run)
-    rc, err = final_report._stamp_skipped_steps_for_terminal_report(tmp_path, run_id="run-1", outcome="bailed")
+    rc, err = final_report._reconcile_manifest_for_terminal_report(tmp_path, run_id="run-1", outcome="bailed")
     assert (rc, err) == (0, "")
     flat = [arg for call in calls for arg in call]
     assert "steps_ran.step9a1=false" in flat
 
 
-def test_stamp_skipped_steps_for_terminal_report_run_statistics_suppresses_step9a1_false(
+def test_reconcile_manifest_for_terminal_report_run_statistics_suppresses_step9a1_false(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -63,10 +63,32 @@ def test_stamp_skipped_steps_for_terminal_report_run_statistics_suppresses_step9
         return CommandResult(tuple(argv), 0, "", "", 0.0)
 
     monkeypatch.setattr(final_report.subprocess, "run", fake_run)
-    rc, err = final_report._stamp_skipped_steps_for_terminal_report(tmp_path, run_id="run-1", outcome="bailed")
+    rc, err = final_report._reconcile_manifest_for_terminal_report(tmp_path, run_id="run-1", outcome="bailed")
     assert (rc, err) == (0, "")
     flat = [arg for call in calls for arg in call]
     assert "steps_ran.step9a1=false" not in flat
+
+
+def test_reconcile_manifest_for_terminal_report_marks_present_summary_and_pr_created_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_dir = tmp_path / "larch-logs" / "implement" / "run-1"
+    run_dir.mkdir(parents=True)
+    _ = (run_dir / "manifest.json").write_text('{"steps_ran":{}}\n', encoding="utf-8")
+    _ = (run_dir / "final-summary.md").write_text("## /implement run run-1 — pr-created\n", encoding="utf-8")
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_: object) -> CommandResult:
+        calls.append(argv)
+        return CommandResult(tuple(argv), 0, "", "", 0.0)
+
+    monkeypatch.setattr(final_report.subprocess, "run", fake_run)
+    rc, err = final_report._reconcile_manifest_for_terminal_report(tmp_path, run_id="run-1", outcome="pr-created")
+    assert (rc, err) == (0, "")
+    flat = [arg for call in calls for arg in call]
+    assert "steps_ran.step8=true" in flat
+    assert f"status={config.MANIFEST_STATUS_IN_PROGRESS}" in flat
 
 def test_sanitize_rejects_pipe_in_node() -> None:
     fragment = "flowchart LR\n  A[foo|bar] --> B\n"

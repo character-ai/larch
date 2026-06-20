@@ -39,6 +39,29 @@ def _ctx(tmp_path: Path, **kwargs: object) -> RunContext:
     return base.with_(**kwargs)
 
 
+@pytest.fixture(autouse=True)
+def _default_post_ensure_flush_and_push(monkeypatch: pytest.MonkeyPatch) -> None:
+    real_flush = ship.run_logs.flush_logs_pre
+
+    def fake_flush_logs_pre(
+        runner: RecordingRunner,
+        ctx: RunContext,
+        *,
+        cwd: str | None = None,
+        strict_final_report: bool = False,
+    ) -> run_logs.RefreshSkip:
+        if strict_final_report:
+            return run_logs.RefreshSkip(skipped=False, reason="")
+        return real_flush(runner, ctx, cwd=cwd)
+
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush_logs_pre)
+    monkeypatch.setattr(
+        ship.push,
+        "push_branch",
+        lambda *_a, **_k: ship.push.PushResult(remote="origin", attempts=1, status="pushed"),
+    )
+
+
 
 
 def _read_state(path: Path) -> dict[str, str]:
@@ -238,7 +261,7 @@ def test_happy_path_stage_order(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     order: list[str] = []
-    flush_args: list[tuple[str | None, str | None]] = []
+    flush_args: list[tuple[str | None, str | None, bool]] = []
 
     monkeypatch.setattr(
         ship.finalize,
@@ -250,12 +273,23 @@ def test_happy_path_stage_order(
         "compose_pr_body",
         lambda **_k: order.append("pr-body") or "body",
     )
-    def fake_flush(_runner: RecordingRunner, ctx: RunContext, *, cwd: str | None = None) -> run_logs.RefreshSkip:
+    def fake_flush(
+        _runner: RecordingRunner,
+        ctx: RunContext,
+        *,
+        cwd: str | None = None,
+        strict_final_report: bool = False,
+    ) -> run_logs.RefreshSkip:
         order.append("flush-pre")
-        flush_args.append((ctx.state_file, cwd))
+        flush_args.append((ctx.state_file, cwd, strict_final_report))
         return run_logs.RefreshSkip(skipped=False, reason="")
 
     monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush)
+    monkeypatch.setattr(
+        ship.push,
+        "push_branch",
+        lambda *_a, **_k: order.append("push") or ship.push.PushResult(remote="origin", attempts=1, status="pushed"),
+    )
     monkeypatch.setattr(
         ship.pr,
         "ensure_pr",
@@ -306,6 +340,8 @@ def test_happy_path_stage_order(
         "pr-body",
         "ensure-pr",
         "comment",
+        "flush-pre",
+        "push",
         "monitor",
         "merge",
         "postmerge",
@@ -314,7 +350,7 @@ def test_happy_path_stage_order(
     ]
     assert order.count("monitor") == 1
     assert order.count("merge") == 1
-    assert flush_args == [(None, str(tmp_path))]
+    assert flush_args == [(None, str(tmp_path), False), (None, str(tmp_path), True)]
     captured = capsys.readouterr()
     assert "ship.py: pr-prep:" in captured.err
     assert "ship.py: pr-prep:" in captured.err
@@ -370,6 +406,141 @@ def test_merge_review_required_exits_as_needs_user_input(
     assert result.outcome is Outcome.NEEDS_USER_INPUT
     assert result.needs_user_reason == config.NEEDS_USER_REVIEW_REQUIRED
     assert merge_calls["count"] == 1
+
+
+@pytest.mark.parametrize(
+    "skip_reason",
+    [config.REFRESH_SKIP_COMMIT_FAILED, run_logs.REFRESH_SKIP_RECOVERY_FAILED],
+)
+def test_post_ensure_flush_critical_skip_stalls_before_monitor(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    skip_reason: str,
+) -> None:
+    monitor_called = False
+
+    monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: type("P", (), {"number": 5, "url": "https://example.test/pr/7", "status": "created"})(),
+    )
+    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
+
+    def fake_flush(
+        *_a: object,
+        strict_final_report: bool = False,
+        **_k: object,
+    ) -> run_logs.RefreshSkip:
+        if strict_final_report:
+            return run_logs.RefreshSkip(skipped=True, reason=skip_reason)
+        return run_logs.RefreshSkip(skipped=False, reason="")
+
+    def fake_monitor(*_a: object, **_k: object) -> object:
+        nonlocal monitor_called
+        monitor_called = True
+        return object()
+
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush)
+    monkeypatch.setattr(ship.ci_monitor, "monitor", fake_monitor)
+
+    result = ship.run_ship(_ctx(tmp_path), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.STALLED
+    assert result.detail == f"post-ensure-pr flush skipped: {skip_reason}"
+    assert not monitor_called
+
+
+def test_post_ensure_no_logs_commit_skip_continues(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monitor_called = False
+
+    monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: type("P", (), {"number": 5, "url": "https://example.test/pr/7", "status": "created"})(),
+    )
+    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
+    monkeypatch.setattr(ship.merge, "merge_pr", lambda *_a, **_k: type("MR", (), {"result": config.MERGE_RESULT_MERGED, "error": ""})())
+    monkeypatch.setattr(ship.finalize, "postmerge", lambda *_a, **_k: type("PM", (), {"outcome": Outcome.OK, "detail": "", "status": "ok"})())
+    monkeypatch.setattr(ship.run_logs, "flush_logs_post", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    monkeypatch.setattr(ship.run_logs, "load_or_recover_manifest", lambda *_a, **_k: object())
+
+    def fake_flush(
+        *_a: object,
+        strict_final_report: bool = False,
+        **_k: object,
+    ) -> run_logs.RefreshSkip:
+        if strict_final_report:
+            return run_logs.RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_NO_LOGS_COMMIT)
+        return run_logs.RefreshSkip(skipped=False, reason="")
+
+    def fake_monitor(*_a: object, **_k: object) -> object:
+        nonlocal monitor_called
+        monitor_called = True
+        return type(
+            "M",
+            (),
+            {
+                "result": StepResult(Outcome.OK),
+                "action": "merge",
+                "goto_rebase": False,
+                "did_fixing": False,
+                "transient_rerun_attempted": False,
+                "failed_run_id": None,
+            },
+        )()
+
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush)
+    monkeypatch.setattr(ship.ci_monitor, "monitor", fake_monitor)
+
+    result = ship.run_ship(_ctx(tmp_path), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.OK
+    assert monitor_called
+
+
+def test_post_ensure_push_failure_stalls_before_monitor(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monitor_called = False
+
+    monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: type("P", (), {"number": 5, "url": "https://example.test/pr/7", "status": "created"})(),
+    )
+    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    monkeypatch.setattr(
+        ship.push,
+        "push_branch",
+        lambda *_a, **_k: ship.push.PushResult(remote="origin", attempts=3, status="failed"),
+    )
+
+    def fake_monitor(*_a: object, **_k: object) -> object:
+        nonlocal monitor_called
+        monitor_called = True
+        return object()
+
+    monkeypatch.setattr(ship.ci_monitor, "monitor", fake_monitor)
+
+    result = ship.run_ship(_ctx(tmp_path), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.STALLED
+    assert result.detail == "post-ensure-pr push failed: failed"
+    assert not monitor_called
 
 
 def test_merge_loop_iteration_cap_stalls(
