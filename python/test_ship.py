@@ -1505,14 +1505,14 @@ def test_post_push_reentry_uses_bounded_empty_checks_grace(
     """After a head-changing CI-fix push, the merge loop re-enters monitor with a
     bounded empty-checks grace so a missing fresh CI run surfaces as a recoverable
     stall instead of polling the full budget (issue #4867). The initial poll uses
-    grace 0 (patient wait for the first run).
+    a poll-based startup deadline instead of blocking grace.
     """
     state_file = tmp_path / "ship-pr-state.sh"
     _ = state_file.write_text(
         "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\nMERGE=true\nDRAFT=false\n",
         encoding="utf-8",
     )
-    seen_grace: list[int] = []
+    seen_params: list[tuple[int, int]] = []
     head = {"sha": "h0"}
     results: list[dict[str, object]] = [
         {
@@ -1554,8 +1554,10 @@ def test_post_push_reentry_uses_bounded_empty_checks_grace(
 
     def monitor(*_args: object, **kwargs: object) -> object:
         grace = kwargs.get("empty_checks_grace")
+        startup_deadline = kwargs.get("empty_checks_startup_deadline_sec")
         assert isinstance(grace, int)
-        seen_grace.append(grace)
+        assert isinstance(startup_deadline, int)
+        seen_params.append((grace, startup_deadline))
         spec = results.pop(0)
         if spec["did_fixing"]:
             head["sha"] = "h1"  # the CI-fix push advanced HEAD
@@ -1567,7 +1569,211 @@ def test_post_push_reentry_uses_bounded_empty_checks_grace(
     result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
 
     assert result.outcome is Outcome.STALLED
-    assert seen_grace == [0, config.CI_WAIT_POST_FIX_EMPTY_CHECKS_GRACE_SEC]
+    assert seen_params == [
+        (0, config.CI_WAIT_INITIAL_EMPTY_CHECKS_GRACE_SEC),
+        (config.CI_WAIT_POST_FIX_EMPTY_CHECKS_GRACE_SEC, 0),
+    ]
+    assert _read_state(state_file)["LAST_MONITORED_HEAD"] == "h0"
+
+
+def test_initial_ci_wait_uses_poll_based_startup_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\nMERGE=true\nDRAFT=false\n",
+        encoding="utf-8",
+    )
+    seen_params: list[tuple[int, int]] = []
+
+    monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
+    monkeypatch.setattr(ship.git, "try_rev_parse", lambda *_a, **_k: "h0")
+    monkeypatch.setattr(
+        ship.gh,
+        "pr_view",
+        lambda *_a, **_k: type(
+            "PR",
+            (),
+            {"number": 7, "url": "https://example.test/pr/7", "state": "OPEN", "head_ref": "feat"},
+        )(),
+    )
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: type(
+            "P",
+            (),
+            {"number": 7, "url": "https://example.test/pr/7", "status": "existing"},
+        )(),
+    )
+
+    def monitor(*_args: object, **kwargs: object) -> object:
+        grace = kwargs.get("empty_checks_grace")
+        startup_deadline = kwargs.get("empty_checks_startup_deadline_sec")
+        assert isinstance(grace, int)
+        assert isinstance(startup_deadline, int)
+        seen_params.append((grace, startup_deadline))
+        return type(
+            "M",
+            (),
+            {
+                "result": StepResult(Outcome.STALLED, config.CI_WAIT_BAIL_NO_CHECKS_OBSERVED),
+                "action": "bail",
+                "goto_rebase": False,
+                "did_fixing": False,
+                "transient_rerun_attempted": False,
+                "failed_run_id": None,
+                "ci_fix_rebase_pending": False,
+            },
+        )()
+
+    monkeypatch.setattr(ship.ci_monitor, "monitor", monitor)
+    monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
+
+    result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
+    state = _read_state(state_file)
+
+    assert result.outcome is Outcome.STALLED
+    assert result.detail == config.CI_WAIT_BAIL_NO_CHECKS_OBSERVED
+    assert seen_params == [(0, config.CI_WAIT_INITIAL_EMPTY_CHECKS_GRACE_SEC)]
+    assert state["PHASE"] == "stalled"
+    assert state["STALL_STEP"] == config.CI_WAIT_BAIL_NO_CHECKS_OBSERVED
+    assert state["LAST_MONITORED_HEAD"] == "h0"
+
+
+def test_initial_startup_deadline_cleared_after_first_monitor_ok(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\nMERGE=true\nDRAFT=false\n",
+        encoding="utf-8",
+    )
+    seen_params: list[tuple[int, int]] = []
+    results: list[dict[str, object]] = [
+        {
+            "result": StepResult(Outcome.OK),
+            "action": "evaluate_failure",
+            "goto_rebase": False,
+            "did_fixing": False,
+            "transient_rerun_attempted": False,
+            "failed_run_id": "99",
+            "ci_fix_rebase_pending": False,
+        },
+        {
+            "result": StepResult(Outcome.STALLED, config.CI_WAIT_BAIL_NO_CHECKS_OBSERVED),
+            "action": "bail",
+            "goto_rebase": False,
+            "did_fixing": False,
+            "transient_rerun_attempted": False,
+            "failed_run_id": None,
+            "ci_fix_rebase_pending": False,
+        },
+    ]
+
+    monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
+    monkeypatch.setattr(ship.git, "try_rev_parse", lambda *_a, **_k: "h0")
+    monkeypatch.setattr(
+        ship.gh,
+        "pr_view",
+        lambda *_a, **_k: type(
+            "PR",
+            (),
+            {"number": 7, "url": "https://example.test/pr/7", "state": "OPEN", "head_ref": "feat"},
+        )(),
+    )
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: type(
+            "P",
+            (),
+            {"number": 7, "url": "https://example.test/pr/7", "status": "existing"},
+        )(),
+    )
+
+    def monitor(*_args: object, **kwargs: object) -> object:
+        grace = kwargs.get("empty_checks_grace")
+        startup_deadline = kwargs.get("empty_checks_startup_deadline_sec")
+        assert isinstance(grace, int)
+        assert isinstance(startup_deadline, int)
+        seen_params.append((grace, startup_deadline))
+        return type("M", (), results.pop(0))()
+
+    monkeypatch.setattr(ship.ci_monitor, "monitor", monitor)
+    monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
+
+    result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.STALLED
+    assert seen_params == [(0, config.CI_WAIT_INITIAL_EMPTY_CHECKS_GRACE_SEC), (0, 0)]
+
+
+def test_cold_resume_zero_counters_still_gets_initial_startup_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\nMERGE=true\nDRAFT=false\n"
+        "LAST_MONITORED_HEAD=h0\n",
+        encoding="utf-8",
+    )
+    seen_params: list[tuple[int, int]] = []
+
+    monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
+    monkeypatch.setattr(ship.git, "try_rev_parse", lambda *_a, **_k: "h0")
+    monkeypatch.setattr(
+        ship.gh,
+        "pr_view",
+        lambda *_a, **_k: type(
+            "PR",
+            (),
+            {"number": 7, "url": "https://example.test/pr/7", "state": "OPEN", "head_ref": "feat"},
+        )(),
+    )
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: type(
+            "P",
+            (),
+            {"number": 7, "url": "https://example.test/pr/7", "status": "existing"},
+        )(),
+    )
+
+    def monitor(*_args: object, **kwargs: object) -> object:
+        grace = kwargs.get("empty_checks_grace")
+        startup_deadline = kwargs.get("empty_checks_startup_deadline_sec")
+        assert isinstance(grace, int)
+        assert isinstance(startup_deadline, int)
+        seen_params.append((grace, startup_deadline))
+        return type(
+            "M",
+            (),
+            {
+                "result": StepResult(Outcome.STALLED, config.CI_WAIT_BAIL_NO_CHECKS_OBSERVED),
+                "action": "bail",
+                "goto_rebase": False,
+                "did_fixing": False,
+                "transient_rerun_attempted": False,
+                "failed_run_id": None,
+                "ci_fix_rebase_pending": False,
+            },
+        )()
+
+    monkeypatch.setattr(ship.ci_monitor, "monitor", monitor)
+    monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
+
+    result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.STALLED
+    assert seen_params == [(0, config.CI_WAIT_INITIAL_EMPTY_CHECKS_GRACE_SEC)]
 
 
 def test_post_push_resume_rehydrates_empty_checks_grace(
@@ -1581,7 +1787,7 @@ def test_post_push_resume_rehydrates_empty_checks_grace(
         "FIX_ATTEMPTS=1\nLAST_MONITORED_HEAD=h0\n",
         encoding="utf-8",
     )
-    seen_grace: list[int] = []
+    seen_params: list[tuple[int, int]] = []
     head = {"sha": "h1"}
 
     def fake_rev_parse(*_a: object, **_k: object) -> str:
@@ -1603,8 +1809,10 @@ def test_post_push_resume_rehydrates_empty_checks_grace(
 
     def monitor(*_args: object, **kwargs: object) -> object:
         grace = kwargs.get("empty_checks_grace")
+        startup_deadline = kwargs.get("empty_checks_startup_deadline_sec")
         assert isinstance(grace, int)
-        seen_grace.append(grace)
+        assert isinstance(startup_deadline, int)
+        seen_params.append((grace, startup_deadline))
         return type(
             "M",
             (),
@@ -1625,7 +1833,7 @@ def test_post_push_resume_rehydrates_empty_checks_grace(
     result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
 
     assert result.outcome is Outcome.STALLED
-    assert seen_grace == [config.CI_WAIT_POST_FIX_EMPTY_CHECKS_GRACE_SEC]
+    assert seen_params == [(config.CI_WAIT_POST_FIX_EMPTY_CHECKS_GRACE_SEC, 0)]
 
 
 def test_post_push_resume_missing_last_monitored_head_uses_grace(
@@ -1639,7 +1847,7 @@ def test_post_push_resume_missing_last_monitored_head_uses_grace(
         "FIX_ATTEMPTS=1\n",
         encoding="utf-8",
     )
-    seen_grace: list[int] = []
+    seen_params: list[tuple[int, int]] = []
     head = {"sha": "h1"}
 
     def fake_rev_parse(*_a: object, **_k: object) -> str:
@@ -1661,8 +1869,10 @@ def test_post_push_resume_missing_last_monitored_head_uses_grace(
 
     def monitor(*_args: object, **kwargs: object) -> object:
         grace = kwargs.get("empty_checks_grace")
+        startup_deadline = kwargs.get("empty_checks_startup_deadline_sec")
         assert isinstance(grace, int)
-        seen_grace.append(grace)
+        assert isinstance(startup_deadline, int)
+        seen_params.append((grace, startup_deadline))
         return type(
             "M",
             (),
@@ -1683,7 +1893,7 @@ def test_post_push_resume_missing_last_monitored_head_uses_grace(
     result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
 
     assert result.outcome is Outcome.STALLED
-    assert seen_grace == [config.CI_WAIT_POST_FIX_EMPTY_CHECKS_GRACE_SEC]
+    assert seen_params == [(config.CI_WAIT_POST_FIX_EMPTY_CHECKS_GRACE_SEC, 0)]
 
 
 def test_post_push_resume_synced_head_uses_grace(
@@ -1697,7 +1907,7 @@ def test_post_push_resume_synced_head_uses_grace(
         "FIX_ATTEMPTS=1\nLAST_MONITORED_HEAD=h1\n",
         encoding="utf-8",
     )
-    seen_grace: list[int] = []
+    seen_params: list[tuple[int, int]] = []
     head = {"sha": "h1"}
 
     def fake_rev_parse(*_a: object, **_k: object) -> str:
@@ -1719,8 +1929,10 @@ def test_post_push_resume_synced_head_uses_grace(
 
     def monitor(*_args: object, **kwargs: object) -> object:
         grace = kwargs.get("empty_checks_grace")
+        startup_deadline = kwargs.get("empty_checks_startup_deadline_sec")
         assert isinstance(grace, int)
-        seen_grace.append(grace)
+        assert isinstance(startup_deadline, int)
+        seen_params.append((grace, startup_deadline))
         return type(
             "M",
             (),
@@ -1741,7 +1953,7 @@ def test_post_push_resume_synced_head_uses_grace(
     result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
 
     assert result.outcome is Outcome.STALLED
-    assert seen_grace == [config.CI_WAIT_POST_FIX_EMPTY_CHECKS_GRACE_SEC]
+    assert seen_params == [(config.CI_WAIT_POST_FIX_EMPTY_CHECKS_GRACE_SEC, 0)]
 
 
 def test_fresh_fallback_hydrates_modes_and_preserves_counters(

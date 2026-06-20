@@ -629,6 +629,60 @@ def test_gather_status_empty_checks_grace() -> None:
     assert sleeps == [5.0]
 
 
+def test_checks_rollup_empty_zero_row_json() -> None:
+    runner = RecordingRunner(_status(status="empty"))
+
+    assert ci_monitor._checks_rollup_empty(  # pylint: disable=protected-access
+        runner,
+        pr=1,
+        repo="o/r",
+        cwd=None,
+    )
+    assert (
+        "gh",
+        "pr",
+        "checks",
+        "1",
+        "--repo",
+        "o/r",
+    ) in runner.calls
+
+
+def test_checks_rollup_empty_pending_json_is_not_empty() -> None:
+    runner = RecordingRunner(_status(status="pending"))
+
+    assert not ci_monitor._checks_rollup_empty(  # pylint: disable=protected-access
+        runner,
+        pr=1,
+        repo="o/r",
+        cwd=None,
+    )
+    assert (
+        "gh",
+        "pr",
+        "checks",
+        "1",
+        "--repo",
+        "o/r",
+    ) not in runner.calls
+
+
+def test_checks_rollup_empty_uses_empty_text_fallback_after_empty_json() -> None:
+    responses = _status(status="empty")
+    responses[("gh", "pr", "checks", "1", "--repo", "o/r")] = _cr(
+        ("gh", "pr", "checks", "text"),
+        stdout="  \n",
+    )
+    runner = RecordingRunner(responses)
+
+    assert ci_monitor._checks_rollup_empty(  # pylint: disable=protected-access
+        runner,
+        pr=1,
+        repo="o/r",
+        cwd=None,
+    )
+
+
 def test_gather_status_squash_merge_race() -> None:
     responses = _status(status="pass", behind=2)
     responses[("git", "log", "--format=%s", "HEAD..origin/main")] = _cr(
@@ -674,6 +728,219 @@ def test_poll_ci_budget_exhaustion_bails() -> None:
         timeout=10.0,
         sleep_fn=lambda _s: None,
     )
+    assert decision.action == "bail"
+    assert decision.bail_reason == config.CI_WAIT_BAIL_POLL_BUDGET_EXHAUSTED
+
+
+def test_poll_ci_startup_deadline_empty_rollup_bails_no_blocking_sleep() -> None:
+    runner = RecordingRunner(_status(status="empty"))
+    now = {"value": 0.0}
+    sleeps: list[float] = []
+
+    def clock() -> float:
+        return now["value"]
+
+    def sleep_fn(sec: float) -> None:
+        sleeps.append(sec)
+        now["value"] += sec
+
+    status, decision = ci_monitor.poll_ci(
+        runner,
+        pr=1,
+        repo="o/r",
+        base_remote="origin",
+        base_ref="main",
+        empty_checks_grace=0,
+        empty_checks_startup_deadline_sec=20,
+        iteration=0,
+        rebase_count=0,
+        fix_attempts=0,
+        timeout=100.0,
+        sleep_fn=sleep_fn,
+        clock=clock,
+    )
+
+    assert status.status == "NO_CHECKS"
+    assert status.behind_count == 0
+    assert decision.action == "bail"
+    assert decision.bail_reason == config.CI_WAIT_BAIL_NO_CHECKS_OBSERVED
+    assert sleeps == [
+        float(config.CI_WAIT_POLL_INTERVAL_SEC),
+        float(config.CI_WAIT_POLL_INTERVAL_SEC),
+    ]
+
+
+def test_poll_ci_startup_deadline_clears_when_checks_appear() -> None:
+    responses = _status(status="empty")
+    json_key = (
+        "gh",
+        "pr",
+        "checks",
+        "1",
+        "--repo",
+        "o/r",
+        "--json",
+        "name,state,bucket,link",
+    )
+    empty = _cr(("gh", "pr", "checks"), stdout="[]")
+    pending = _cr(
+        ("gh", "pr", "checks"),
+        stdout=json.dumps(
+            [{"name": "lint", "state": "IN_PROGRESS", "bucket": "pending", "link": ""}],
+        ),
+    )
+    runner = RecordingRunner(responses)
+    runner.sequential[json_key] = [empty, empty, pending, pending, pending]
+    now = {"value": 0.0}
+    sleeps: list[float] = []
+
+    def clock() -> float:
+        return now["value"]
+
+    def sleep_fn(sec: float) -> None:
+        sleeps.append(sec)
+        now["value"] += sec
+
+    status, decision = ci_monitor.poll_ci(
+        runner,
+        pr=1,
+        repo="o/r",
+        base_remote="origin",
+        base_ref="main",
+        empty_checks_grace=0,
+        empty_checks_startup_deadline_sec=20,
+        iteration=0,
+        rebase_count=0,
+        fix_attempts=0,
+        timeout=30.0,
+        sleep_fn=sleep_fn,
+        clock=clock,
+    )
+
+    assert status.status == "pending"
+    assert decision.action == "bail"
+    assert decision.bail_reason == config.CI_WAIT_BAIL_POLL_BUDGET_EXHAUSTED
+    assert sleeps == [10.0, 10.0, 10.0]
+
+
+def test_poll_ci_startup_deadline_ignores_pending_in_flight_checks() -> None:
+    runner = RecordingRunner(_status(status="pending"))
+    now = {"value": 0.0}
+    sleeps: list[float] = []
+
+    def clock() -> float:
+        return now["value"]
+
+    def sleep_fn(sec: float) -> None:
+        sleeps.append(sec)
+        now["value"] += sec
+
+    status, decision = ci_monitor.poll_ci(
+        runner,
+        pr=1,
+        repo="o/r",
+        base_remote="origin",
+        base_ref="main",
+        empty_checks_grace=0,
+        empty_checks_startup_deadline_sec=10,
+        iteration=0,
+        rebase_count=0,
+        fix_attempts=0,
+        timeout=20.0,
+        sleep_fn=sleep_fn,
+        clock=clock,
+    )
+
+    assert status.status == "pending"
+    assert decision.action == "bail"
+    assert decision.bail_reason == config.CI_WAIT_BAIL_POLL_BUDGET_EXHAUSTED
+    assert sleeps == [10.0, 10.0]
+
+
+def test_poll_ci_startup_deadline_does_not_run_before_non_wait_decision(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_rollup_probe(*_args: object, **_kwargs: object) -> bool:
+        raise AssertionError("startup deadline probe must not run")
+
+    monkeypatch.setattr(ci_monitor, "_checks_rollup_empty", fail_rollup_probe)
+    runner = RecordingRunner(_status(status="pending", behind=1))
+
+    status, decision = ci_monitor.poll_ci(
+        runner,
+        pr=1,
+        repo="o/r",
+        base_remote="origin",
+        base_ref="main",
+        empty_checks_grace=0,
+        empty_checks_startup_deadline_sec=10,
+        iteration=0,
+        rebase_count=0,
+        fix_attempts=0,
+        timeout=100.0,
+        sleep_fn=lambda _s: None,
+    )
+
+    assert status.status == "pending"
+    assert decision.action == "rebase"
+
+
+def test_poll_ci_startup_deadline_expiry_returns_before_next_sleep(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    runner = RecordingRunner(_status(status="empty"))
+    now = {"value": 0.0}
+    sleeps: list[float] = []
+
+    def clock() -> float:
+        return now["value"]
+
+    def sleep_fn(sec: float) -> None:
+        sleeps.append(sec)
+        now["value"] += sec
+
+    _, decision = ci_monitor.poll_ci(
+        runner,
+        pr=1,
+        repo="o/r",
+        base_remote="origin",
+        base_ref="main",
+        empty_checks_grace=0,
+        empty_checks_startup_deadline_sec=10,
+        iteration=0,
+        rebase_count=0,
+        fix_attempts=0,
+        timeout=100.0,
+        sleep_fn=sleep_fn,
+        clock=clock,
+    )
+    captured = capsys.readouterr()
+
+    assert decision.bail_reason == config.CI_WAIT_BAIL_NO_CHECKS_OBSERVED
+    assert sleeps == [10.0]
+    assert "poll 1/" in captured.err
+    assert "poll 2/" not in captured.err
+
+
+def test_poll_ci_startup_deadline_zero_preserves_empty_pending_timeout() -> None:
+    runner = RecordingRunner(_status(status="empty"))
+
+    status, decision = ci_monitor.poll_ci(
+        runner,
+        pr=1,
+        repo="o/r",
+        base_remote="origin",
+        base_ref="main",
+        empty_checks_grace=0,
+        empty_checks_startup_deadline_sec=0,
+        iteration=0,
+        rebase_count=0,
+        fix_attempts=0,
+        timeout=10.0,
+        sleep_fn=lambda _s: None,
+    )
+
+    assert status.status == "pending"
     assert decision.action == "bail"
     assert decision.bail_reason == config.CI_WAIT_BAIL_POLL_BUDGET_EXHAUSTED
 

@@ -757,6 +757,19 @@ def _seed_last_monitored_head(
     return current
 
 
+def _empty_checks_params_for_monitor(
+    *,
+    current_head: str | None,
+    last_monitored_head: str | None,
+    initial_startup_deadline_available: bool,
+) -> tuple[int, int]:
+    if current_head != last_monitored_head:
+        return config.CI_WAIT_POST_FIX_EMPTY_CHECKS_GRACE_SEC, 0
+    if initial_startup_deadline_available:
+        return 0, config.CI_WAIT_INITIAL_EMPTY_CHECKS_GRACE_SEC
+    return 0, 0
+
+
 def _fresh_resume_plan(
     durable: run_logs.DurableFlags,
     *,
@@ -1454,6 +1467,9 @@ def run_ship(
         rebase_count = resume.rebase_count if preserve_counters else 0
         fix_attempts = resume.fix_attempts if preserve_counters else 0
         transient_retries = resume.transient_retries if preserve_counters else 0
+        initial_startup_deadline_available = (
+            iteration == rebase_count == fix_attempts == transient_retries == 0
+        )
         # Head observed by the previous monitor poll. When a loop iteration pushes
         # a new head (CI-fix or rebase) the next monitor expects a fresh CI run; if
         # none starts we must detect it within a bounded window rather than poll the
@@ -1540,14 +1556,12 @@ def run_ship(
                     raise
             pre_monitor_head = last_monitored_head
             current_head = git.try_rev_parse(runner, "HEAD", cwd=repo_root)
-            # A changed head since the last poll means this iteration follows a
-            # push (CI-fix or rebase) that should have triggered a fresh CI run.
-            # Use a bounded empty-checks grace so a missing run surfaces as
-            # NO_CHECKS (→ recoverable stall) instead of polling to timeout.
-            post_push_grace = (
-                config.CI_WAIT_POST_FIX_EMPTY_CHECKS_GRACE_SEC
-                if current_head != last_monitored_head
-                else 0
+            empty_checks_grace, empty_checks_startup_deadline_sec = (
+                _empty_checks_params_for_monitor(
+                    current_head=current_head,
+                    last_monitored_head=last_monitored_head,
+                    initial_startup_deadline_available=initial_startup_deadline_available,
+                )
             )
             monitor = ci_monitor.monitor(
                 runner,
@@ -1559,12 +1573,14 @@ def run_ship(
                 transient_retries=transient_retries,
                 base_remote=base_remote,
                 base_ref=base_ref,
-                empty_checks_grace=post_push_grace,
+                empty_checks_grace=empty_checks_grace,
+                empty_checks_startup_deadline_sec=empty_checks_startup_deadline_sec,
                 plan_file=working.plan_file or None,
                 ci_fix_rebase_pending=working.ci_fix_rebase_pending,
                 ctx=working,
                 cwd=repo_root,
             )
+            initial_startup_deadline_available = False
             last_monitored_head = current_head
             monitor_pending = getattr(monitor, "ci_fix_rebase_pending", working.ci_fix_rebase_pending)
             if monitor_pending != working.ci_fix_rebase_pending:
@@ -1620,9 +1636,12 @@ def run_ship(
                     _bail_detail_log = _write_ci_fix_detail_log(working, monitor.result.detail or "")
                     _bail_step = "10"
                 terminal_last_head: str | None = None
+                bounded_empty_checks = (
+                    empty_checks_grace > 0 or empty_checks_startup_deadline_sec > 0
+                )
                 if (
                     (monitor.result.detail or "") == config.CI_WAIT_BAIL_NO_CHECKS_OBSERVED
-                    and post_push_grace > 0
+                    and bounded_empty_checks
                 ):
                     terminal_last_head = pre_monitor_head or ""
                 _write_terminal_state(

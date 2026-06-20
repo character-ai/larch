@@ -433,6 +433,24 @@ def _resolve_checks_status(
     return "pending", None
 
 
+def _checks_rollup_empty(
+    runner: Runner,
+    *,
+    pr: int,
+    repo: str,
+    cwd: str | None,
+    required: bool = False,
+) -> bool:
+    checks = _gh_pr_checks(runner, pr=pr, repo=repo, cwd=cwd, required=required)
+    checks_json = _checks_json_from_result(checks)
+    if _checks_json_is_array(checks_json):
+        bucket_status, _run_id = _classify_checks_json(checks_json, required=required)
+        if bucket_status != "empty":
+            return False
+    text = _read_pr_checks_text(runner, pr=pr, repo=repo, cwd=cwd, required=required)
+    return not text.strip()
+
+
 def checks_status(
     runner: Runner,
     *,
@@ -537,6 +555,7 @@ def poll_ci(
     iteration: int,
     rebase_count: int,
     fix_attempts: int,
+    empty_checks_startup_deadline_sec: int = 0,
     timeout: float = config.CI_WAIT_TIMEOUT_SEC,
     sleep_fn: SleepFn = time.sleep,
     clock: ClockFn = time.monotonic,
@@ -550,6 +569,8 @@ def poll_ci(
     poll_interval = float(config.CI_WAIT_POLL_INTERVAL_SEC)
     started_at = clock()
     last_status = CiStatus(status="pending", behind_count=0, failed_run_id=None)
+    startup_deadline_active = empty_checks_startup_deadline_sec > 0
+    startup_empty_since: float | None = None
 
     while True:
         if checks >= max_polls:
@@ -612,6 +633,29 @@ def poll_ci(
         )
         if decision.action != "wait":
             return status, decision
+
+        if startup_deadline_active:
+            if _checks_rollup_empty(runner, pr=pr, repo=repo, cwd=cwd, required=required):
+                now = clock()
+                if startup_empty_since is None:
+                    startup_empty_since = now
+                if now - startup_empty_since >= empty_checks_startup_deadline_sec:
+                    return (
+                        CiStatus(
+                            status="NO_CHECKS",
+                            behind_count=status.behind_count,
+                            failed_run_id=status.failed_run_id,
+                            conflicted=status.conflicted,
+                            pr_view_ok=status.pr_view_ok,
+                        ),
+                        Decision(
+                            action="bail",
+                            bail_reason=config.CI_WAIT_BAIL_NO_CHECKS_OBSERVED,
+                        ),
+                    )
+            else:
+                startup_deadline_active = False
+                startup_empty_since = None
 
         checks += 1
         elapsed = max(0.0, clock() - started_at)
@@ -1584,6 +1628,7 @@ def monitor(
     base_remote: str = "origin",
     base_ref: str = "main",
     empty_checks_grace: int = 0,
+    empty_checks_startup_deadline_sec: int = 0,
     iteration: int = 0,
     rebase_count: int = 0,
     fix_attempts: int = 0,
@@ -1604,6 +1649,7 @@ def monitor(
         base_remote=base_remote,
         base_ref=base_ref,
         empty_checks_grace=empty_checks_grace,
+        empty_checks_startup_deadline_sec=empty_checks_startup_deadline_sec,
         iteration=iteration,
         rebase_count=rebase_count,
         fix_attempts=fix_attempts,

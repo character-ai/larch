@@ -77,6 +77,12 @@ CI_WAIT_EMPTY_CHECKS_GRACE_SEC: Final = 0
 # grace makes a missing run surface as NO_CHECKS within the window so the driver
 # fails loudly to a recoverable stall instead of hanging.
 CI_WAIT_POST_FIX_EMPTY_CHECKS_GRACE_SEC: Final = 120
+# Ship-driver-only poll-based startup deadline for the initial CI wait. First
+# PR runs can attach more slowly than post-fix synchronize runs, so this window
+# is longer than the post-fix grace but still avoids the full poll timeout for a
+# truly runless head. This is not passed through empty_checks_grace because that
+# path sleeps once for the whole grace period instead of probing every poll.
+CI_WAIT_INITIAL_EMPTY_CHECKS_GRACE_SEC: Final = 300
 CI_WAIT_BAIL_POLL_BUDGET_EXHAUSTED: Final = "poll-budget-exhausted"
 CI_WAIT_BAIL_UNEXPECTED_EXIT: Final = "ci-wait-unexpected-exit"
 CI_WAIT_BAIL_NO_CHECKS_OBSERVED: Final = "no-ci-checks-observed"
