@@ -6,6 +6,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from pathlib import Path
 from types import MethodType
+from typing import Self
 
 import pytest
 from astroid import nodes
@@ -560,9 +561,25 @@ def test_worker_failure_exits_2(
     _write_rc(tmp_path, min_lines=4)
     _write_modules(tmp_path, ["a.py", "b.py", "c.py"], _module(5))
 
+    class NoSpawnProcessPoolExecutor:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            pass
+
+        def submit(self, *_args: object, **_kwargs: object) -> object:
+            return object()
+
     def fail_collect(_futures: object) -> list[object]:
         raise duplicate_code.DuplicateCodeError("duplicate-code worker failed: simulated")
 
+    # Avoid sandbox spawn denial taking the PermissionError fallback before
+    # _collect_worker_results reaches the patched worker-failure path.
+    monkeypatch.setattr(duplicate_code, "ProcessPoolExecutor", NoSpawnProcessPoolExecutor)
     monkeypatch.setattr(duplicate_code, "_collect_worker_results", fail_collect)
 
     rc = duplicate_code.duplicate_code_main(
