@@ -958,7 +958,7 @@ def test_tally_plan_review_degraded_two_judge_voter_agreement_parity(tmp_path: P
     )
     tally = (design / "voting-tally.md").read_text(encoding="utf-8")
     cursor = next(record for record in records if record["voter"] == "Cursor")
-    assert cursor["missing"] > 0
+    assert cursor["missing"] > 0  # type: ignore[reportOperatorIssue]
     assert (
         f"| design | Cursor | {cursor['eligible']} | {cursor['agree']} | "
         f"{cursor['disagree']} | {cursor['missing']} |"
