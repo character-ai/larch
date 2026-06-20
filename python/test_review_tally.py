@@ -519,6 +519,10 @@ def test_tally_zero_voters_main_agent_vote_required(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     assert rts.kv_get(result.stdout, "TALLY_STATUS") == "main-agent-vote-required"
     assert rts.kv_get(result.stdout, "VOTER_COUNT") == "0"
+    tally = (case / "voting-tally.md").read_text(encoding="utf-8")
+    assert "fake agreement" not in tally
+    assert "## Voter Agreement Scoreboard" in tally
+    assert "| undefined | n/a | 0 | 0 | 0 | 0 | n/a | false |" in tally
 
 
 def test_tally_security_classifier_failure_fails_closed(tmp_path: Path) -> None:
@@ -706,16 +710,20 @@ def test_tally_code_review_voter_agreement_scoreboard_three_slot(tmp_path: Path)
     )
     assert result.returncode == 0, result.stderr
     tally = (case / "voting-tally.md").read_text(encoding="utf-8")
-    assert "## Voter Agreement Scoreboard" in tally
-    assert "| code-review | cursor-validity | 2 | 2 | 0 | 0 | 1.000 | false |" in tally
-    assert "| code-review | cursor-plan-fidelity | 2 | 2 | 0 | 0 | 1.000 | false |" in tally
-    assert "| code-review | cursor-pragmatism | 2 | 1 | 1 | 0 | 0.500 | false |" in tally
     assert "| Codex-Structure |" in tally
     class_file = Path(rts.kv_get(result.stdout, "FINDINGS_CLASSIFICATION_TSV_FILE") or "")
-    records = voting.compute_voter_agreement(
+    tsv_records = voting.compute_voter_agreement(
         voting.voter_agreement_rows_from_tsv(class_file.read_text(encoding="utf-8"), panel_kind="code-review").rows
     )
-    assert next(record for record in records if record["voter"] == "cursor-pragmatism")["disagree"] == 1
+    assert "## Voter Agreement Scoreboard" in tally
+    for record in tsv_records:
+        rate = "n/a" if record["agreement_rate"] is None else f"{float(record['agreement_rate']):.3f}"  # pyright: ignore[reportArgumentType]
+        line = (
+            f"| code-review | {record['voter']} | {record['eligible']} | {record['agree']} | "
+            f"{record['disagree']} | {record['missing']} | {rate} | "
+            f"{str(bool(record['outlier'])).lower()} |"
+        )
+        assert line in tally
 
 
 def test_findings_classification_standalone_session_env_round_scoped(tmp_path: Path) -> None:

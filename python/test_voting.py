@@ -448,6 +448,14 @@ def test_classification_tsv_schema_supported() -> None:
     assert not voting.classification_tsv_schema_supported(
         design_header + "\n", panel_kind="code-review"
     )
+    assert not voting.classification_tsv_schema_supported(
+        "finding_id\treviewer_slots\tvoting_result\tjudge1_vote\n",
+        panel_kind="code-review",
+    )
+    assert not voting.classification_tsv_schema_supported(
+        "finding_id\tfinding_reviewers\tvoting_result\n",
+        panel_kind="design",
+    )
 
 
 def test_parse_rate_retry_classify_only_dispatch_shaped_argv(tmp_path: Path) -> None:

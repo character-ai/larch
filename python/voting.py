@@ -86,6 +86,16 @@ CODE_REVIEW_FINDINGS_CLASSIFICATION_HEADER = (
     "finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool\tscope"
 )
 
+_CODE_REVIEW_COMPACT_CLASSIFICATION_HEADER = (
+    "finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain"
+)
+
+_DESIGN_CLASSIFICATION_REQUIRED = frozenset(
+    {"finding_id", "finding_reviewers", "voting_result", "v1_vote", "v2_vote", "v3_vote"}
+)
+_CODE_REVIEW_COMPACT_REQUIRED = frozenset(_CODE_REVIEW_COMPACT_CLASSIFICATION_HEADER.split("\t"))
+_CODE_REVIEW_TOOL_REQUIRED = frozenset(CODE_REVIEW_FINDINGS_CLASSIFICATION_HEADER.split("\t"))
+
 _DESIGN_VOTER_FALLBACKS = {1: "Claude", 2: "Codex", 3: "Cursor"}
 _CODE_REVIEW_VOTER_FALLBACKS = {
     1: "cursor-validity",
@@ -184,9 +194,9 @@ def classification_tsv_schema_supported(text: str, *, panel_kind: str) -> bool:
         return False
     header_set = set(header)
     if panel == "design":
-        return "finding_reviewers" in header_set
+        return header_set >= _DESIGN_CLASSIFICATION_REQUIRED
     if panel == "code-review":
-        return "reviewer_slots" in header_set
+        return header_set >= _CODE_REVIEW_COMPACT_REQUIRED or header_set >= _CODE_REVIEW_TOOL_REQUIRED
     return False
 
 
@@ -198,23 +208,19 @@ class VoterAgreementTsvParse(NamedTuple):
 
 def voter_agreement_rows_from_tsv(text: str, *, panel_kind: str) -> VoterAgreementTsvParse:
     panel = _normalize_panel_kind(panel_kind)
+    if not classification_tsv_schema_supported(text, panel_kind=panel):
+        return VoterAgreementTsvParse([], 0, 0)
     header, rows = _dict_rows_from_tsv(text)
     if not header:
         return VoterAgreementTsvParse([], 0, 0)
     header_set = set(header)
     if panel == "design":
-        if "finding_reviewers" not in header_set:
-            return VoterAgreementTsvParse([], 0, 0)
         compact = False
     elif panel == "code-review":
-        if "reviewer_slots" not in header_set:
-            return VoterAgreementTsvParse([], 0, 0)
         compact = not all(f"v{pos}_severity" in header_set for pos in (1, 2, 3))
         if compact:
             header, rows = _legacy_compact_rows_from_tsv(text)
             header_set = set(header)
-            if "reviewer_slots" not in header_set:
-                return VoterAgreementTsvParse([], 0, 0)
     else:
         return VoterAgreementTsvParse([], 0, 0)
 
