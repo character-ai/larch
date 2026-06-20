@@ -19,8 +19,8 @@
   "steps_ran": {
     "step7a": false,
     "step8": false,
-    "step9a1": false
+    "step9a1": true
   },
   "superseded_by": null,
-  "updated_at": "2026-06-20T00:54:27Z"
+  "updated_at": "2026-06-20T00:56:11Z"
 }
