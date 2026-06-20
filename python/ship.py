@@ -426,6 +426,7 @@ def _write_terminal_state(
     transient_retries: int = 0,
     failed_run_id: str = "",
     bail_failure_detail_log: str = "",
+    last_monitored_head: str | None = None,
 ) -> None:
     if not _tmpdir_under_allowed_root(ctx.tmpdir):
         return
@@ -448,6 +449,7 @@ def _write_terminal_state(
         terminal_outcome=result,
         failed_run_id=failed_run_id,
         bail_failure_detail_log=bail_failure_detail_log,
+        last_monitored_head=last_monitored_head,
     )
 
 
@@ -750,8 +752,8 @@ def _seed_last_monitored_head(
         if pending_head and pending_head != current:
             return pending_head
         return ""
-    if fix_attempts > 0 and persisted and current and persisted != current:
-        return persisted
+    if fix_attempts > 0 and current and (not persisted or persisted == current):
+        return ""
     return current
 
 
@@ -1536,6 +1538,7 @@ def run_ship(
                 except Exception:
                     phase14_flag.unlink(missing_ok=True)
                     raise
+            pre_monitor_head = last_monitored_head
             current_head = git.try_rev_parse(runner, "HEAD", cwd=repo_root)
             # A changed head since the last poll means this iteration follows a
             # push (CI-fix or rebase) that should have triggered a fresh CI run.
@@ -1616,6 +1619,12 @@ def run_ship(
                     _bail_ctx = working.with_(final_bail_reason=config.NEEDS_USER_CI_FIX_EXHAUSTED)
                     _bail_detail_log = _write_ci_fix_detail_log(working, monitor.result.detail or "")
                     _bail_step = "10"
+                terminal_last_head: str | None = None
+                if (
+                    (monitor.result.detail or "") == config.CI_WAIT_BAIL_NO_CHECKS_OBSERVED
+                    and post_push_grace > 0
+                ):
+                    terminal_last_head = pre_monitor_head or ""
                 _write_terminal_state(
                     _bail_ctx,
                     monitor.result.outcome,
@@ -1626,6 +1635,7 @@ def run_ship(
                     transient_retries=persisted[3],
                     failed_run_id=monitor.failed_run_id or "",
                     bail_failure_detail_log=_bail_detail_log,
+                    last_monitored_head=terminal_last_head,
                 )
                 return _step_result_to_ship(
                     monitor.result,
