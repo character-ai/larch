@@ -68,7 +68,7 @@ After the acceptance threshold, each finding is classified into one of three ope
 - **Voter 2** (`v2`): `cursor-plan-fidelity` — `render voter --archetype plan-fidelity-completeness`
 - **Voter 3** (`v3`): `cursor-pragmatism` — `render voter --archetype pragmatism-cost`
 
-When Cursor is unavailable, the panel falls back to a **single Claude floor voter** at slot 1 (`agent launch-claude-review --role voter`, binding-single tier); slots 2-3 are empty placeholders that keep their `vN_tool` attribution but do not count toward quorum. Codex availability never changes code-review voter composition. The active per-slot archetype label is recorded in the `vN_tool` cells (`cursor-validity`/`cursor-plan-fidelity`/`cursor-pragmatism`, or `claude` on fallback) even when a slot's vote file is empty or failed, and the code-review classification TSV has **21 columns** (`reviewer_slots` plus `vN_tool` after each voter's five rating cells; no `body_severity`). This differs from `/design` plan review, which still uses Claude + Codex + Cursor with back-fill and the separate 22-column schema (Voter 1/2/3 above).
+When Cursor is unavailable, the panel falls back to a **single Claude floor voter** at slot 1 (`agent launch-claude-review --role voter`, binding-single tier); slots 2-3 are empty placeholders that keep their `vN_tool` attribution but do not count toward quorum. Codex availability never changes code-review voter composition. The active per-slot archetype label is recorded in the `vN_tool` cells (`cursor-validity`/`cursor-plan-fidelity`/`cursor-pragmatism`, or `claude` on fallback) even when a slot's vote file is empty or failed. The code-review classification TSV has **22 columns** (`reviewer_slots`, three voter groups of five rating cells plus `vN_tool`, and trailing `scope`; no `body_severity`). `/design` plan review uses the separate **23-column** schema (`finding_reviewers`, the same voter groups, `body_severity`, and trailing `scope`). The canonical headers are `python/cli.py voting code-review-classification-header` and `python/cli.py voting findings-classification-header`. `scope` is `in_scope` or `oos`; consumers prefer explicit `scope=oos` over ballot id prefixes. Legacy TSVs without `scope` remain readable with flat accepted +1 scoring and `OOS_` prefix fallback.
 
 **MAV/legacy tally exception:** the fixed length-3 `--voter-files` + `--voter-tools` contract applies only on the normal three-slot dispatch path. When `--voter-tools` is omitted, `review tally-code-votes` keeps compacted multi-voter semantics for one to three `--voter-files` entries (main-agent-vote re-tally, zero-findings, and other legacy callers) and the legacy 18-column rows; those callers are unchanged.
 
@@ -188,11 +188,12 @@ After tallying votes, compute a score for each **original reviewer** (not voters
 
 | Vote pattern | Points | Description |
 |---|---|---|
-| Finding accepted (meets YES threshold for the tier) | +1 | Reviewer's finding was validated by the panel |
+| Accepted in-scope finding with any YES-voter panel severity `blocker` or `major` | +2 | High-impact finding validated by the panel |
+| Other accepted in-scope finding | +1 | Finding was validated by the panel |
 | Neutral (≥1 YES, not accepted) | 0 | Insufficient support, but not unanimously dismissed |
 | Rejected (0 YES) | −1 | Finding was unanimously dismissed by the panel |
 
-If a deduplicated finding was proposed by multiple reviewers (merged during deduplication), **all** contributing reviewers receive the same points for that finding.
+Severity for competition points comes from panel `vN_severity` cells attached to YES votes only. `body_severity` never affects points. If a deduplicated finding was proposed by multiple reviewers, **all** contributing reviewers receive the same weighted points for that finding. Reviewer pruning remains unweighted accepted-minus-rejected count math.
 
 ## Scoreboard
 
@@ -208,7 +209,7 @@ Full scoreboard format (used in standalone mode):
 
 | Reviewer | Findings | Accepted | Neutral | Rejected | OOS Proposed | OOS Accepted | OOS-Neutral | OOS-Rejected | Score |
 |----------|----------|----------|---------|----------|--------------|--------------|-------------|--------------|-------|
-| _label1_ | 3        | 2        | 1       | 0        | 1            | 0            | 1           | 0            | +2    |
+| _label1_ | 3        | 2        | 1       | 0        | 1            | 0            | 1           | 0            | +3    |
 | _label2_ | 2        | 1        | 1       | 0        | 0            | 0            | 0           | 0            | +1    |
 | _label3_ | 2        | 1        | 0       | 1        | 1            | 0            | 0           | 1            | 0     |
 ```
@@ -247,7 +248,7 @@ If an OOS item receives 2+ YES votes, it is **accepted** and will be filed as a 
 
 ### OOS Scoring
 
-Out-of-scope items use the same score shape as in-scope findings: accepted OOS earns +1, non-accepted OOS with a split-panel or exonerated vote pattern scores 0, and dismissed OOS costs −1:
+Out-of-scope items stay flat: accepted OOS earns +1, non-accepted OOS with a split-panel or exonerated vote pattern scores 0, and dismissed OOS costs −1:
 
 | OOS vote pattern | Points | Description |
 |---|---|---|

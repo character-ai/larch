@@ -1929,22 +1929,76 @@ def test_render_phase_detail_top_reviewers_from_classification(tmp_path: Path) -
     root = tmp_path / "plan-review"
     r1 = root / "round-1"
     _write_round_meta(r1)
-    header = progress_report.voting.findings_classification_header()
+    header = progress_report.voting.findings_classification_header().split("\t")
+
+    def row(finding_id: str, reviewer: str, result: str, severity: str = "minor", scope: str = "in_scope") -> str:
+        cols = dict.fromkeys(header, "")
+        cols.update({
+            "finding_id": finding_id,
+            "finding_reviewers": reviewer,
+            "voting_result": result,
+            "v1_vote": "YES" if result == "accepted" else "NO",
+            "v1_severity": severity,
+            "scope": scope,
+        })
+        return "\t".join(cols[name] for name in header)
+
     (r1 / "findings-classification.tsv").write_text(
-        header + "\n"
-        "FINDING_1\tCursor-Requirements\taccepted\n"
-        "FINDING_2\tCursor-Requirements\taccepted\n"
-        "FINDING_3\tCodex-Generic\taccepted\n"
-        "FINDING_4\tCodex-Generic\trejected\n"
-        "OOS_1\tCursor-Arch\taccepted\n",
+        "\t".join(header) + "\n"
+        + row("FINDING_1", "Cursor-Requirements", "accepted", "major") + "\n"
+        + row("FINDING_2", "Cursor-Requirements", "accepted") + "\n"
+        + row("FINDING_3", "Codex-Generic", "accepted") + "\n"
+        + row("FINDING_4", "Codex-Generic", "rejected") + "\n"
+        + row("OOS_1", "Cursor-Arch", "accepted", "major", "oos") + "\n",
         encoding="utf-8",
     )
     rendered = progress_report.render_phase_detail(root, "design")
-    assert "1. Cursor-Requirements — 2" in rendered
+    assert "1. Cursor-Requirements — 3" in rendered
     assert "2. Codex-Generic — 1" in rendered
-    assert "- (no accepted suggestions attributed to a reviewer slot)" not in rendered
+    assert "- (no accepted-point score attributed to a reviewer slot)" not in rendered
     # OOS rows are excluded so Top reviewers matches the in-scope Accepted column.
     assert "Cursor-Arch" not in rendered
+
+
+def test_render_phase_detail_top_reviewers_implement_from_classification(tmp_path: Path) -> None:
+    root = tmp_path / "review"
+    r1 = root / "round-1"
+    _write_round_meta(r1)
+    (r1 / "panel-manifest.ndjson").write_text(
+        '{"slot":"arch","tool":"cursor","output":"cursor-specialist-arch-output.txt"}\n'
+        '{"slot":"generalist","tool":"codex","output":"codex-generalist-output.txt"}\n',
+        encoding="utf-8",
+    )
+    (root / "review-findings-full.jsonl").write_text(
+        '{"outcome":"accepted","reviewer":"flat-jsonl-output.txt"}\n',
+        encoding="utf-8",
+    )
+    header = progress_report.voting.code_review_classification_header().split("\t")
+
+    def row(finding_id: str, reviewer: str, result: str, severity: str, scope: str) -> str:
+        cols = dict.fromkeys(header, "")
+        cols.update({
+            "finding_id": finding_id,
+            "reviewer_slots": reviewer,
+            "voting_result": result,
+            "v1_vote": "YES" if result == "accepted" else "NO",
+            "v1_severity": severity,
+            "scope": scope,
+        })
+        return "\t".join(cols[name] for name in header)
+
+    (r1 / "findings-classification.tsv").write_text(
+        "\t".join(header) + "\n"
+        + row("FINDING_1", "cursor-specialist-arch-output.txt", "accepted", "major", "in_scope") + "\n"
+        + row("FINDING_2", "codex-generalist-output.txt", "accepted", "minor", "in_scope") + "\n"
+        + row("FINDING_3", "cursor-specialist-oos-output.txt", "accepted", "major", "oos") + "\n",
+        encoding="utf-8",
+    )
+    rendered = progress_report.render_phase_detail(root, "implement", findings_file=root / "review-findings-full.jsonl")
+    assert "1. cursor/arch — 2" in rendered
+    assert "2. codex/generalist — 1" in rendered
+    assert "flat-jsonl" not in rendered
+    assert "cursor-specialist-oos" not in rendered
 
 
 def test_render_phase_detail_total_relabeled_round_sum_under_recurrence(tmp_path: Path) -> None:
@@ -1955,13 +2009,23 @@ def test_render_phase_detail_total_relabeled_round_sum_under_recurrence(tmp_path
     # FINDING_N), so distinct-finding dedup is not reliably achievable; instead the Total stays a
     # round-sum but is labeled and captioned so it cannot be misread as a distinct-finding count.
     root = tmp_path / "plan-review"
-    header = progress_report.voting.findings_classification_header()
+    header = progress_report.voting.findings_classification_header().split("\t")
+    cols = dict.fromkeys(header, "")
+    cols.update({
+        "finding_id": "FINDING_1",
+        "finding_reviewers": "Cursor-Arch",
+        "voting_result": "accepted",
+        "v1_vote": "YES",
+        "v1_severity": "minor",
+        "scope": "in_scope",
+    })
+    line = "\t".join(cols[name] for name in header)
     for round_num in (1, 2, 3):
         round_dir = root / f"round-{round_num}"
         _write_round_meta(round_dir)
         # Identical single finding accepted every round: the #4808 recurrence signature.
         (round_dir / "findings-classification.tsv").write_text(
-            header + "\nFINDING_1\tCursor-Arch\taccepted\n",
+            "\t".join(header) + "\n" + line + "\n",
             encoding="utf-8",
         )
     rendered = progress_report.render_phase_detail(root, "design")
@@ -1974,6 +2038,68 @@ def test_render_phase_detail_total_relabeled_round_sum_under_recurrence(tmp_path
     # One finding accepted in all three rounds is counted once per round (round-sum => "— 3"),
     # not deduplicated to 1; the label and caption are what prevent misreading it as distinct work.
     assert "1. Cursor-Arch — 3" in rendered
+
+
+def test_parse_classification_tsv_counts_neutral_oos(tmp_path: Path) -> None:
+    header = progress_report.voting.findings_classification_header().split("\t")
+
+    def row(finding_id: str, result: str, scope: str = "oos") -> str:
+        cols = dict.fromkeys(header, "")
+        cols.update({
+            "finding_id": finding_id,
+            "finding_reviewers": "Cursor-Arch",
+            "voting_result": result,
+            "scope": scope,
+        })
+        return "\t".join(cols[name] for name in header)
+
+    path = tmp_path / "findings-classification.tsv"
+    path.write_text(
+        "\t".join(header) + "\n"
+        + row("OOS_1", "accepted") + "\n"
+        + row("OOS_2", "neutral") + "\n"
+        + row("OOS_3", "rejected") + "\n",
+        encoding="utf-8",
+    )
+    accepted, rejected, neutral, exonerated, oos_accepted, oos_rejected = progress_report._parse_classification_tsv(path)
+    assert accepted == rejected == neutral == exonerated == 0
+    assert oos_accepted == 1
+    assert oos_rejected == 2
+
+
+def test_top_reviewers_whitespace_coproposers_and_comma_fallback(tmp_path: Path) -> None:
+    root = tmp_path / "plan-review"
+    r1 = root / "round-1"
+    _write_round_meta(r1)
+    (r1 / "plan-review-prune-label-map.tsv").write_text(
+        "slot\thuman_label\nplan-requirements\tCursor-Pragmatic\nplan-architecture\tCodex-Arch\n",
+        encoding="utf-8",
+    )
+    header = progress_report.voting.findings_classification_header().split("\t")
+
+    def row(finding_id: str, reviewer: str, result: str, severity: str = "major") -> str:
+        cols = dict.fromkeys(header, "")
+        cols.update({
+            "finding_id": finding_id,
+            "finding_reviewers": reviewer,
+            "voting_result": result,
+            "v1_vote": "YES" if result == "accepted" else "NO",
+            "v1_severity": severity,
+            "scope": "in_scope",
+        })
+        return "\t".join(cols[name] for name in header)
+
+    (r1 / "findings-classification.tsv").write_text(
+        "\t".join(header) + "\n"
+        + row("FINDING_1", "Cursor-Pragmatic Codex-Arch", "accepted") + "\n"
+        + row("FINDING_2", "Unknown-Label", "accepted") + "\n",
+        encoding="utf-8",
+    )
+    rendered = progress_report.render_phase_detail(root, "design")
+    assert "1. Codex-Arch — 2" in rendered
+    assert "2. Cursor-Pragmatic — 2" in rendered
+    assert "3. Unknown-Label — 2" in rendered
+    assert "Cursor-Pragmatic Codex-Arch" not in rendered
 
 
 def test_write_design_round_meta_collector_from_real_records(tmp_path: Path) -> None:

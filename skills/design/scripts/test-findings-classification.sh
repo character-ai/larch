@@ -11,7 +11,7 @@ export CLAUDE_PLUGIN_ROOT
 CLI="$CLAUDE_PLUGIN_ROOT/python/cli.py"
 TALLY=(python3 "$CLI" plan-review tally)
 run_parser() { python3 "$CLI" voting parse-judge-vote "$@"; }
-HEADER='finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool	body_severity'
+HEADER=$(python3 "$CLI" voting findings-classification-header)
 
 fail() {
     printf 'FAIL: %s\n' "$1" >&2
@@ -90,10 +90,10 @@ assert_cell() {
     [[ "$got" == "$want" ]] || fail "$id $col: expected [$want], got [$got]"
 }
 
-assert_all_rows_21_fields() {
+assert_all_rows_23_fields() {
     local path="$1" bad
-    bad=$(awk -F '\t' 'NR > 1 && NF != 22 { print NR ":" NF }' "$path")
-    [[ -z "$bad" ]] || fail "expected 21 fields in every data row for $path, got $bad"
+    bad=$(awk -F '\t' 'NR > 1 && NF != 23 { print NR ":" NF }' "$path")
+    [[ -z "$bad" ]] || fail "expected 23 fields in every data row for $path, got $bad"
 }
 
 parser_value() {
@@ -135,7 +135,9 @@ assert_cell "$OUT" FINDING_1 v3_tool Cursor
 assert_cell "$OUT" FINDING_1 v1_quality excellent
 assert_cell "$OUT" OOS_3 v2_vote NO
 assert_cell "$OUT" FINDING_1 finding_reviewers "Cursor-Pragmatic Codex-Arch"
-assert_all_rows_21_fields "$OUT"
+assert_cell "$OUT" FINDING_1 scope in_scope
+assert_cell "$OUT" OOS_1 scope oos
+assert_all_rows_23_fields "$OUT"
 
 PRUNE_MANIFEST="$W1/prune-panel.ndjson"
 cat > "$PRUNE_MANIFEST" <<'EOF'
@@ -190,7 +192,7 @@ cp "$CURSOR" "$W2/slot-3-looking-path.txt"
 assert_cell "$W2/out.tsv" FINDING_1 v1_tool Claude
 assert_cell "$W2/out.tsv" FINDING_1 v2_tool ""
 assert_cell "$W2/out.tsv" FINDING_1 v3_tool Cursor
-assert_all_rows_21_fields "$W2/out.tsv"
+assert_all_rows_23_fields "$W2/out.tsv"
 
 echo "=== waterfall fallback preserves slot index and runtime tool ==="
 W2W="$TMPROOT/case2-waterfall"
@@ -205,7 +207,7 @@ assert_cell "$W2W/out.tsv" FINDING_1 v2_tool Claude
 assert_cell "$W2W/out.tsv" FINDING_1 v3_tool Cursor
 assert_cell "$W2W/out.tsv" FINDING_1 v2_vote YES
 assert_cell "$W2W/out.tsv" FINDING_10 v2_vote NO
-assert_all_rows_21_fields "$W2W/out.tsv"
+assert_all_rows_23_fields "$W2W/out.tsv"
 
 echo "=== explicit slot beats misleading basename heuristic ==="
 W2E="$TMPROOT/case2-explicit"
@@ -252,7 +254,7 @@ printf 'FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=fa
 "${TALLY[@]}" --ballot-file "$W3/ballot.md" --design-tmpdir "$W3/design" --findings-classification-out "$W3/out.tsv" --voter "MainAgent:$W3/voter-main-agent.txt" >/dev/null
 assert_cell "$W3/out.tsv" FINDING_1 voting_result rejected
 assert_cell "$W3/out.tsv" FINDING_1 v1_tool ""
-assert_all_rows_21_fields "$W3/out.tsv"
+assert_all_rows_23_fields "$W3/out.tsv"
 : > "$W3/empty-ballot.md"
 "${TALLY[@]}" --ballot-file "$W3/empty-ballot.md" --design-tmpdir "$W3/empty-design" --findings-classification-out "$W3/empty.tsv" --voter "Claude:$CLAUDE" >/dev/null
 [[ "$(wc -l < "$W3/empty.tsv" | tr -d ' ')" == "1" ]] || fail "empty ballot should write header only"
@@ -326,7 +328,8 @@ printf '### FINDING_1: Sanitize finding\n- **Reviewer(s)**: Claude-Plan\n- **Sev
 printf 'FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false\n' > "$W4S/claude-vote-output.txt"
 "${TALLY[@]}" --ballot-file "$W4S/ballot.md" --design-tmpdir "$W4S/design" --findings-classification-out "$W4S/out.tsv" --voter "Claude:$W4S/claude-vote-output.txt" >/dev/null
 assert_cell "$W4S/out.tsv" FINDING_1 body_severity "high with tab"
-assert_all_rows_21_fields "$W4S/out.tsv"
+assert_cell "$W4S/out.tsv" FINDING_1 scope in_scope
+assert_all_rows_23_fields "$W4S/out.tsv"
 
 echo "=== duplicate position rejection and legacy fallback tool identity ==="
 W4="$TMPROOT/case4"
@@ -394,7 +397,7 @@ echo "=== legacy deprecation path ==="
 "${TALLY[@]}" --ballot-file "$W4/ballot.md" --design-tmpdir "$W4/legacy-design" --findings-classification-out "$W4/legacy.tsv" --voter-files "$CLAUDE" "$CODEX" "$CURSOR" 2>"$W4/legacy.err" >/dev/null
 grep -Fq 'deprecated: --voter-files; use --voter <SLOT>:<PATH>' "$W4/legacy.err" || fail "legacy deprecation warning missing"
 [[ -s "$W4/legacy.tsv" ]] || fail "legacy classification TSV missing"
-assert_all_rows_21_fields "$W4/legacy.tsv"
+assert_all_rows_23_fields "$W4/legacy.tsv"
 
 echo "=== reverse-order main-agent misuse and legacy header ==="
 set +e

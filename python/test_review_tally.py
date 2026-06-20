@@ -16,14 +16,14 @@ CLI = rts.CLI
 _CLASSIFICATION_HEADER = (
     "finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\t"
     "v1_quality\tv1_uncertain\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\t"
-    "v2_uncertain\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain"
+    "v2_uncertain\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tscope"
 )
 
 _CODE_REVIEW_CLASSIFICATION_HEADER = (
     "finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\t"
     "v1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\t"
     "v2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\t"
-    "v3_quality\tv3_uncertain\tv3_tool"
+    "v3_quality\tv3_uncertain\tv3_tool\tscope"
 )
 
 
@@ -195,6 +195,104 @@ def test_tally_three_voter_mixed_outcomes(tmp_path: Path) -> None:
     assert rts.kv_get(result.stdout, "OOS_ACCEPTED_COUNT") == "1"
     assert "FINDING_1: First in-scope finding" in (case / "accepted-findings.md").read_text(encoding="utf-8")
     assert "FINDING_2" in (case / "rejected-findings.md").read_text(encoding="utf-8")
+
+
+def test_tally_weighted_scoreboard_major_oos_and_coproposers(tmp_path: Path) -> None:
+    case = tmp_path / "weighted-scoreboard"
+    case.mkdir()
+    _ = (case / "ballot.md").write_text(
+        """### FINDING_1: Major in-scope
+- **Reviewer**: Codex-Correctness
+- **Concern**: Major bug.
+- **Suggested revision**: Fix.
+
+### FINDING_2: Minor in-scope
+- **Reviewer**: Cursor-Testing
+- **Concern**: Minor issue.
+- **Suggested revision**: Fix.
+
+### FINDING_3: Co-proposed blocker
+- **Reviewer(s)**: Codex-Arch, Cursor-Testing
+- **Concern**: Shared blocker.
+- **Suggested revision**: Fix.
+
+### OOS_1: [OUT_OF_SCOPE] High severity OOS
+- **Reviewer**: Codex-Edge
+- **Concern**: Future work.
+- **Suggested revision**: File it.
+""",
+        encoding="utf-8",
+    )
+    votes = (
+        "FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n"
+        "FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false\n"
+        "FINDING_3: YES CORRECTNESS=true SEVERITY=blocker QUALITY=good UNCERTAIN=false\n"
+        "OOS_1: YES CORRECTNESS=true SEVERITY=blocker QUALITY=good UNCERTAIN=false\n"
+    )
+    for name in ("cursor-vote-output.txt", "codex-vote-output.txt", "claude-vote-output.txt"):
+        _ = (case / name).write_text(votes, encoding="utf-8")
+
+    result = run_review(
+        "tally-code-votes",
+        "--ballot-file",
+        str(case / "ballot.md"),
+        "--voter-files",
+        str(case / "cursor-vote-output.txt"),
+        str(case / "codex-vote-output.txt"),
+        str(case / "claude-vote-output.txt"),
+        "--review-tmpdir",
+        str(case),
+    )
+
+    assert result.returncode == 0, result.stderr
+    tally = (case / "voting-tally.md").read_text(encoding="utf-8")
+    assert "| Codex-Correctness | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 2 |" in tally
+    assert "| Cursor-Testing | 2 | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 3 |" in tally
+    assert "| Codex-Arch | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 2 |" in tally
+    assert "| Codex-Edge | 0 | 0 | 0 | 0 | 1 | 1 | 0 | 0 | 1 |" in tally
+
+    class_file = Path(rts.kv_get(result.stdout, "FINDINGS_CLASSIFICATION_TSV_FILE") or "")
+    tsv_rows = _tsv_rows(class_file)
+    assert tsv_rows["OOS_1"]["scope"] == "oos"
+    assert tsv_rows["FINDING_1"]["scope"] == "in_scope"
+
+
+def test_tally_scope_drift_oos_scoring_stays_flat(tmp_path: Path) -> None:
+    case = tmp_path / "scope-drift-score"
+    case.mkdir()
+    _ = (case / "ballot.md").write_text(
+        """### FINDING_1: **Important** — `code-quality` — `docs/linting.md:22`
+- **Reviewer**: Cursor-Correctness
+- **Concern**: Out-of-diff docs drift.
+- **Suggested revision**: Update docs.
+""",
+        encoding="utf-8",
+    )
+    _ = (case / "scope-files.txt").write_text("python/cli.py\n", encoding="utf-8")
+    votes = "FINDING_1: YES CORRECTNESS=true SEVERITY=blocker QUALITY=good UNCERTAIN=false\n"
+    for name in ("cursor-vote-output.txt", "codex-vote-output.txt", "claude-vote-output.txt"):
+        _ = (case / name).write_text(votes, encoding="utf-8")
+
+    result = run_review(
+        "tally-code-votes",
+        "--ballot-file",
+        str(case / "ballot.md"),
+        "--voter-files",
+        str(case / "cursor-vote-output.txt"),
+        str(case / "codex-vote-output.txt"),
+        str(case / "claude-vote-output.txt"),
+        "--scope-files",
+        str(case / "scope-files.txt"),
+        "--review-tmpdir",
+        str(case),
+    )
+
+    assert result.returncode == 0, result.stderr
+    class_file = Path(rts.kv_get(result.stdout, "FINDINGS_CLASSIFICATION_TSV_FILE") or "")
+    tsv_rows = _tsv_rows(class_file)
+    assert tsv_rows["FINDING_1"]["scope"] == "oos"
+    tally = (case / "voting-tally.md").read_text(encoding="utf-8")
+    assert "| Cursor-Correctness | 0 | 0 | 0 | 0 | 1 | 1 | 0 | 0 | 1 |" in tally
 
 
 def test_tally_excludes_narrative_only_voter_parse_rate_check(tmp_path: Path) -> None:
@@ -482,7 +580,9 @@ def test_findings_classification_nested_impl_path_and_write_round(tmp_path: Path
     assert finding["reviewer_slots"] == "cursor-a-output.txt|codex-b-output.txt"
     assert finding["v1_vote"] == "YES"
     assert finding["v2_vote"] == "YES"
+    assert finding["scope"] == "in_scope"
     assert rows["OOS_1"]["voting_result"] == "neutral"
+    assert rows["OOS_1"]["scope"] == "oos"
     log_root = tmp_path / "logs"
     write_round = _run_cli(
         "run-log",
@@ -543,6 +643,7 @@ def test_findings_classification_standalone_lenient_missing_rating(tmp_path: Pat
     assert row["v2_vote"] == "YES"
     assert row["v2_correctness"] == ""
     assert row["v2_uncertain"] == "true"
+    assert row["scope"] == "in_scope"
 
 
 def test_findings_classification_standalone_session_env_round_scoped(tmp_path: Path) -> None:
@@ -616,13 +717,19 @@ def test_findings_classification_zero_voters_tsv_rejected_rows(tmp_path: Path) -
     assert result.returncode == 0, result.stderr
     assert rts.kv_get(result.stdout, "TALLY_STATUS") == "main-agent-vote-required"
     class_file = Path(rts.kv_get(result.stdout, "FINDINGS_CLASSIFICATION_TSV_FILE") or "")
-    rows = list(csv.DictReader(class_file.read_text(encoding="utf-8").splitlines(), delimiter="\t"))
-    assert len(rows) == 2
-    for row in rows:
+    header = class_file.read_text(encoding="utf-8").splitlines()[0]
+    assert header == _CLASSIFICATION_HEADER
+    rows_by_id = _tsv_rows(class_file)
+    assert len(rows_by_id) == 2
+    expected_cols = set(_CLASSIFICATION_HEADER.split("\t"))
+    for row in rows_by_id.values():
+        assert set(row.keys()) == expected_cols
         assert row["voting_result"] == "rejected"
         for key, value in row.items():
             if len(key) > 2 and key[0] == "v" and key[1].isdigit() and key[2] == "_":
                 assert value == ""
+    assert rows_by_id["FINDING_1"]["scope"] == "in_scope"
+    assert rows_by_id["OOS_1"]["scope"] == "oos"
 
 
 def test_findings_classification_empty_ballot_header_only(tmp_path: Path) -> None:
@@ -887,7 +994,7 @@ def test_tally_three_slot_failed_middle_preserves_slot_columns(tmp_path: Path) -
     class_file = Path(rts.kv_get(result.stdout, "FINDINGS_CLASSIFICATION_TSV_FILE") or "")
     lines = class_file.read_text(encoding="utf-8").splitlines()
     assert lines[0] == _CODE_REVIEW_CLASSIFICATION_HEADER
-    assert all(len(line.split("\t")) == 21 for line in lines)
+    assert all(len(line.split("\t")) == 22 for line in lines)
     row = _tsv_rows(class_file)["FINDING_1"]
     assert row["v1_tool"] == "cursor-validity"
     assert row["v2_vote"] == ""
