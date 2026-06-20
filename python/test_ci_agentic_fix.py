@@ -14,6 +14,8 @@ import proc
 from run_context import RunContext
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     import pytest
 
 
@@ -646,9 +648,8 @@ def test_wait_for_ci_passes_post_fix_empty_checks_grace(tmp_path: Path) -> None:
     seen_args: list[list[str]] = []
 
     class _Runner:
-        def run(self, args: object, **_kwargs: object) -> proc.CommandResult:
-            assert isinstance(args, (list, tuple))
-            seen_args.append(list(args))
+        def run(self, argv: Sequence[str], **_kwargs: object) -> proc.CommandResult:
+            seen_args.append(list(argv))
             return proc.CommandResult(("cli",), 0, "", "", 0.01)
 
     args = Namespace(
