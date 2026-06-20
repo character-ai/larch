@@ -106,7 +106,12 @@ fi
 
 printf '%s\n' '---LARCH-REJECTED-BEGIN---'
 if [ -s "$DESIGN_TMPDIR/rejected-findings.md" ]; then
-  cat "$DESIGN_TMPDIR/rejected-findings.md"
+  # Drop findings already applied in an earlier plan-review round so they are not
+  # mislabeled "unimplemented" (issue #4849); fall back to the raw file on any
+  # failure so Step 4 still emits something. The on-disk file is left unchanged.
+  if ! python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" plan-review emit-rejected --design-tmpdir "$DESIGN_TMPDIR"; then
+    cat "$DESIGN_TMPDIR/rejected-findings.md"
+  fi
 fi
 printf '%s\n' '---LARCH-REJECTED-END---'
 
