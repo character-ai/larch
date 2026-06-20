@@ -27,6 +27,42 @@ def _aggregate_env(tmp_path: Path, **extra: str) -> dict[str, str]:
     }
 
 
+# Issue #4868 reproduction fixtures: cursor-b-output.txt raises only an [OUT_OF_SCOPE]-tagged finding
+# (it is "exclusively out of scope"); cursor-a-output.txt raises an in-scope finding.
+_OOS_ATTR_INPUT = """### FINDING_1: In-scope bug
+- **Reviewer**: cursor-a-output.txt
+- **Severity**: important
+- **Concern**: real bug needing a fix
+- **Suggested revision**: fix it
+
+### FINDING_2: [OUT_OF_SCOPE] Style nit
+- **Reviewer**: cursor-b-output.txt
+- **Severity**: nit
+- **Concern**: unrelated style preference
+- **Suggested revision**: tidy later
+"""
+
+# Promotes the exclusively-OOS reviewer (cursor-b) into a non-OOS block -> rc=2 OOS-attribution failure.
+_OOS_ATTR_FAIL = """### FINDING_1: In-scope bug
+- **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt
+- **Severity**: important
+- **Concern**: real bug needing a fix
+- **Suggested revision**: fix it"""
+
+# Keeps the exclusively-OOS reviewer in its own [OUT_OF_SCOPE] block -> validation passes.
+_OOS_ATTR_SUCCESS = """### FINDING_1: In-scope bug
+- **Reviewer(s)**: cursor-a-output.txt
+- **Severity**: important
+- **Concern**: real bug needing a fix
+- **Suggested revision**: fix it
+
+### FINDING_2: [OUT_OF_SCOPE] Style nit
+- **Reviewer(s)**: cursor-b-output.txt
+- **Severity**: nit
+- **Concern**: unrelated style preference
+- **Suggested revision**: tidy later"""
+
+
 def test_aggregate_disabled_fast_path_preserves_findings(tmp_path: Path) -> None:
     findings = tmp_path / "findings.md"
     original = "### FINDING_1: keep me\n"
@@ -135,6 +171,118 @@ def test_aggregate_malformed_output_preserves_ballot(tmp_path: Path) -> None:
     assert "AGGREGATED=false" in result.stdout
     assert "REASON=validation-failed" in result.stdout
     assert findings.read_text(encoding="utf-8") == original
+
+
+def test_aggregate_oos_attribution_failure_retries_then_succeeds(tmp_path: Path) -> None:
+    findings = tmp_path / "in-retry.md"
+    _ = findings.write_text(_OOS_ATTR_INPUT, encoding="utf-8")
+    counter = tmp_path / "dispatch-count.txt"
+    dispatch = tmp_path / "counting-dispatch.sh"
+    rts.write_aggregate_counting_dispatch_stub(
+        dispatch,
+        counter_file=counter,
+        fail_attempts=1,
+        fail_body=_OOS_ATTR_FAIL,
+        success_body=_OOS_ATTR_SUCCESS,
+    )
+
+    result = run_review(
+        "aggregate-findings",
+        "--findings-file",
+        str(findings),
+        "--review-tmpdir",
+        str(tmp_path),
+        "--codex-present",
+        "true",
+        "--cursor-present",
+        "true",
+        "--mode",
+        "diff",
+        env=_aggregate_env(tmp_path, AGGREGATE_DISPATCH_SH=str(dispatch)),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "AGGREGATED=true" in result.stdout
+    assert "REASON=ok" in result.stdout
+    # First dispatch failed OOS-attribution validation; the bounded retry re-dispatched and recovered.
+    assert counter.read_text(encoding="utf-8") == "2"
+    merged = findings.read_text(encoding="utf-8")
+    assert "### FINDING_1: In-scope bug" in merged
+    assert "### FINDING_2: [OUT_OF_SCOPE] Style nit" in merged
+    # The retry prompt fed the validator error back to the aggregator.
+    prompt = (tmp_path / "aggregator-prompt.md").read_text(encoding="utf-8")
+    assert "Previous aggregation attempt rejected by validation" in prompt
+    assert "appears only on OOS-tagged input findings" in prompt
+
+
+def test_aggregate_validation_failure_exhausts_retry_budget(tmp_path: Path) -> None:
+    findings = tmp_path / "in-exhaust-retry.md"
+    _ = findings.write_text(_OOS_ATTR_INPUT, encoding="utf-8")
+    counter = tmp_path / "dispatch-count.txt"
+    dispatch = tmp_path / "counting-dispatch.sh"
+    rts.write_aggregate_counting_dispatch_stub(
+        dispatch,
+        counter_file=counter,
+        fail_attempts=99,
+        fail_body=_OOS_ATTR_FAIL,
+        success_body=_OOS_ATTR_SUCCESS,
+    )
+
+    result = run_review(
+        "aggregate-findings",
+        "--findings-file",
+        str(findings),
+        "--review-tmpdir",
+        str(tmp_path),
+        "--codex-present",
+        "true",
+        "--cursor-present",
+        "true",
+        "--mode",
+        "diff",
+        env=_aggregate_env(tmp_path, AGGREGATE_DISPATCH_SH=str(dispatch), LARCH_AGGREGATE_VALIDATION_RETRIES="2"),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "AGGREGATED=false" in result.stdout
+    assert "REASON=validation-failed" in result.stdout
+    # 1 initial dispatch + 2 retries, then a bounded degrade that preserves the original ballot.
+    assert counter.read_text(encoding="utf-8") == "3"
+    assert findings.read_text(encoding="utf-8") == _OOS_ATTR_INPUT
+
+
+def test_aggregate_validation_retries_disabled_is_single_shot(tmp_path: Path) -> None:
+    findings = tmp_path / "in-noretry.md"
+    _ = findings.write_text(_OOS_ATTR_INPUT, encoding="utf-8")
+    counter = tmp_path / "dispatch-count.txt"
+    dispatch = tmp_path / "counting-dispatch.sh"
+    rts.write_aggregate_counting_dispatch_stub(
+        dispatch,
+        counter_file=counter,
+        fail_attempts=99,
+        fail_body=_OOS_ATTR_FAIL,
+        success_body=_OOS_ATTR_SUCCESS,
+    )
+
+    result = run_review(
+        "aggregate-findings",
+        "--findings-file",
+        str(findings),
+        "--review-tmpdir",
+        str(tmp_path),
+        "--codex-present",
+        "true",
+        "--cursor-present",
+        "true",
+        "--mode",
+        "diff",
+        env=_aggregate_env(tmp_path, AGGREGATE_DISPATCH_SH=str(dispatch), LARCH_AGGREGATE_VALIDATION_RETRIES="0"),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "REASON=validation-failed" in result.stdout
+    assert counter.read_text(encoding="utf-8") == "1"
+    assert findings.read_text(encoding="utf-8") == _OOS_ATTR_INPUT
 
 
 def test_aggregate_dispatch_failure_preserves_ballot(tmp_path: Path) -> None:

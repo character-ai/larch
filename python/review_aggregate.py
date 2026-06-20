@@ -23,6 +23,8 @@ _SEVERITY_RE = re.compile(r"(?m)^-\s*\*\*Severity\*\*:\s*(blocking|important|lat
 _NIT_SEVERITY_RE = re.compile(r"(?m)^-\s*\*\*Severity\*\*:\s*nit\s*$", re.IGNORECASE)
 _MIN_AGGREGATE_INPUTS = 2
 _MOVE_FAILED_RC = 3
+_VALIDATION_FAILED_RC = 4
+_AGGREGATE_VALIDATION_RETRIES = 2
 
 
 def _error(message: str) -> int:
@@ -569,7 +571,7 @@ def _apply_aggregate_candidate(candidate: Path, source_file: Path, findings_file
     if validate_rc == 1:
         return 1, str(validate_log)
     if validate_rc != 0:
-        return 2, str(validate_log)
+        return _VALIDATION_FAILED_RC, str(validate_log)
     merged_text = _strip_attestation(candidate)
     if _count_finding_blocks(candidate) == 0:
         merged_text = "\n"
@@ -603,6 +605,32 @@ def _apply_aggregate_candidate(candidate: Path, source_file: Path, findings_file
             _atomic_write(findings_file, original)
             return 2, str(validate_log)
     return 0, ""
+
+
+def _validation_retry_budget() -> int:
+    raw = os.environ.get("LARCH_AGGREGATE_VALIDATION_RETRIES", "")
+    if not raw:
+        return _AGGREGATE_VALIDATION_RETRIES
+    try:
+        value = int(raw)
+    except ValueError:
+        return _AGGREGATE_VALIDATION_RETRIES
+    return max(value, 0)
+
+
+def _validation_retry_prompt(base_prompt: str, validator_error: str, attempt: int, max_attempts: int) -> str:
+    error_text = validator_error.strip() or "(validator produced no detail)"
+    return (
+        f"{base_prompt}"
+        f"\n\n## Previous aggregation attempt rejected by validation (attempt {attempt} of {max_attempts})\n\n"
+        "Your previous merged output failed mechanical validation with this error:\n\n"
+        f"{error_text}\n\n"
+        "Regenerate the structured finding list so it satisfies the validator. In particular, a merged "
+        "`### FINDING_N:` block that lists a reviewer whose input findings are all tagged `[OUT_OF_SCOPE]` "
+        "must keep `[OUT_OF_SCOPE]` on its heading: do not promote an exclusively-out-of-scope reviewer into "
+        "an in-scope block (either tag the block `[OUT_OF_SCOPE]` or omit that reviewer slot). Re-read the raw "
+        "reviewer findings above and emit a corrected merge.\n"
+    )
 
 
 def _parse_aggregate_args(argv: list[str]) -> argparse.Namespace:
@@ -673,7 +701,7 @@ def aggregate_findings(argv: list[str]) -> int:
             _append_warning(review_tmpdir, args.session_env_path, "- **findings aggregator**: invalid or stale scope-anchor path omitted from aggregation prompt.")
     if args.input_mode == "plan" and tagged_count > 0:
         prompt_parts.append("\n\nScope-reduction findings with a leading [SCOPE-REDUCTION] marker were withheld from LLM aggregation and will be appended verbatim after validation. Do not recreate or merge them.\n")
-    _write_text(prompt_file, "".join(prompt_parts))
+    base_prompt = "".join(prompt_parts)
     slots_file = review_tmpdir / "aggregator-slots.ndjson"
     output_file = review_tmpdir / "aggregator-output.txt"
     _write_text(slots_file, json.dumps({"slot": "aggregator", "tool": "cursor", "output": str(output_file), "prompt_file": str(prompt_file)}, separators=(",", ":")) + "\n")
@@ -687,41 +715,59 @@ def aggregate_findings(argv: list[str]) -> int:
     dispatch_argv = [override, *dispatch_args] if override else [sys.executable, str(_PLUGIN_ROOT / "python" / "cli.py"), "agent", "dispatch-waterfall", *dispatch_args]
     dispatch_out = review_tmpdir / "aggregator-dispatch.env"
     dispatch_err = review_tmpdir / "aggregator-dispatch.stderr"
-    try:
-        proc = subprocess.run(dispatch_argv, text=True, capture_output=True, check=False)
-    except OSError as exc:
-        _write_text(dispatch_err, str(exc))
-        _emit_aggregate_result(aggregated=False, input_count=input_count, merged_count=merged_count, reason="dispatch-failed", failure_log=str(dispatch_err))
-        return 0
-    _write_text(dispatch_out, proc.stdout)
-    _write_text(dispatch_err, proc.stderr)
-    if proc.returncode != 0:
-        _append_warning(review_tmpdir, args.session_env_path, f"- **findings aggregator**: agent dispatch-waterfall exited non-zero (rc={proc.returncode}); leaving {findings_file} unchanged. {_failure_see_phrase(dispatch_err, review_tmpdir, args.session_env_path)}")
-        _emit_aggregate_result(aggregated=False, input_count=input_count, merged_count=merged_count, reason="dispatch-failed", failure_log=str(dispatch_err))
-        return 0
-    dispatch = _kv_parse(proc.stdout)
-    if dispatch.get("DISPATCH_OK") != "true":
-        dispatch_ok = dispatch.get("DISPATCH_OK", "")
-        _append_warning(review_tmpdir, args.session_env_path, f"- **findings aggregator**: DISPATCH_OK={dispatch_ok}; leaving {findings_file} unchanged. {_failure_see_phrase(dispatch_err, review_tmpdir, args.session_env_path)}")
-        _emit_aggregate_result(aggregated=False, input_count=input_count, merged_count=merged_count, reason="dispatch-failed", failure_log=str(dispatch_err))
-        return 0
-    candidate = ""
-    output_list = dispatch.get("ALL_OUTPUT_FILES_PATH", "")
-    if output_list and Path(output_list).is_file():
-        candidate = Path(output_list).read_text(encoding="utf-8", errors="replace").splitlines()[0] if Path(output_list).read_text(encoding="utf-8", errors="replace").splitlines() else ""
-    if not candidate:
-        candidate = dispatch.get("ALL_OUTPUT_FILES", "").split(" ", 1)[0]
-    cand_path = Path(candidate) if candidate else Path()
-    if not candidate or not cand_path.is_file() or cand_path.stat().st_size == 0 or cand_path.is_symlink():
-        _append_warning(review_tmpdir, args.session_env_path, "- **findings aggregator**: missing or empty aggregator output file; leaving findings unchanged.")
-        _emit_aggregate_result(aggregated=False, input_count=input_count, merged_count=merged_count, reason="dispatch-failed")
-        return 0
-    cand_canon = cand_path.resolve()
-    if review_tmpdir not in (cand_canon, *cand_canon.parents):
-        _append_warning(review_tmpdir, args.session_env_path, "- **findings aggregator**: aggregator output path resolves outside --review-tmpdir; leaving findings unchanged.")
-        _emit_aggregate_result(aggregated=False, input_count=input_count, merged_count=merged_count, reason="dispatch-failed")
-        return 0
-    pipeline_rc, failure_log = _apply_aggregate_candidate(cand_path, source_file, findings_file, review_tmpdir, args.input_mode, tagged_file, allow_outside=allow_outside, session_env_path=args.session_env_path)
+    # Bounded re-dispatch on semantic-validation failure: a single non-deterministic LLM slip that
+    # produces a pattern-conforming but semantically-invalid merge (e.g. promoting an exclusively-OOS
+    # reviewer into an in-scope block) must not silently lose the round's dedup/merge with no recovery.
+    # Dispatch-level failures still degrade immediately; only _VALIDATION_FAILED_RC re-dispatches, with
+    # the validator error fed back into the prompt, until the retry budget is exhausted.
+    max_attempts = 1 + _validation_retry_budget()
+    pipeline_rc = _VALIDATION_FAILED_RC
+    failure_log = ""
+    feedback = ""
+    for attempt in range(1, max_attempts + 1):
+        _write_text(prompt_file, base_prompt if not feedback else _validation_retry_prompt(base_prompt, feedback, attempt, max_attempts))
+        try:
+            proc = subprocess.run(dispatch_argv, text=True, capture_output=True, check=False)
+        except OSError as exc:
+            _write_text(dispatch_err, str(exc))
+            _emit_aggregate_result(aggregated=False, input_count=input_count, merged_count=merged_count, reason="dispatch-failed", failure_log=str(dispatch_err))
+            return 0
+        _write_text(dispatch_out, proc.stdout)
+        _write_text(dispatch_err, proc.stderr)
+        if proc.returncode != 0:
+            _append_warning(review_tmpdir, args.session_env_path, f"- **findings aggregator**: agent dispatch-waterfall exited non-zero (rc={proc.returncode}); leaving {findings_file} unchanged. {_failure_see_phrase(dispatch_err, review_tmpdir, args.session_env_path)}")
+            _emit_aggregate_result(aggregated=False, input_count=input_count, merged_count=merged_count, reason="dispatch-failed", failure_log=str(dispatch_err))
+            return 0
+        dispatch = _kv_parse(proc.stdout)
+        if dispatch.get("DISPATCH_OK") != "true":
+            dispatch_ok = dispatch.get("DISPATCH_OK", "")
+            _append_warning(review_tmpdir, args.session_env_path, f"- **findings aggregator**: DISPATCH_OK={dispatch_ok}; leaving {findings_file} unchanged. {_failure_see_phrase(dispatch_err, review_tmpdir, args.session_env_path)}")
+            _emit_aggregate_result(aggregated=False, input_count=input_count, merged_count=merged_count, reason="dispatch-failed", failure_log=str(dispatch_err))
+            return 0
+        candidate = ""
+        output_list = dispatch.get("ALL_OUTPUT_FILES_PATH", "")
+        if output_list and Path(output_list).is_file():
+            out_lines = Path(output_list).read_text(encoding="utf-8", errors="replace").splitlines()
+            candidate = out_lines[0] if out_lines else ""
+        if not candidate:
+            candidate = dispatch.get("ALL_OUTPUT_FILES", "").split(" ", 1)[0]
+        cand_path = Path(candidate) if candidate else Path()
+        if not candidate or not cand_path.is_file() or cand_path.stat().st_size == 0 or cand_path.is_symlink():
+            _append_warning(review_tmpdir, args.session_env_path, "- **findings aggregator**: missing or empty aggregator output file; leaving findings unchanged.")
+            _emit_aggregate_result(aggregated=False, input_count=input_count, merged_count=merged_count, reason="dispatch-failed")
+            return 0
+        cand_canon = cand_path.resolve()
+        if review_tmpdir not in (cand_canon, *cand_canon.parents):
+            _append_warning(review_tmpdir, args.session_env_path, "- **findings aggregator**: aggregator output path resolves outside --review-tmpdir; leaving findings unchanged.")
+            _emit_aggregate_result(aggregated=False, input_count=input_count, merged_count=merged_count, reason="dispatch-failed")
+            return 0
+        pipeline_rc, failure_log = _apply_aggregate_candidate(cand_path, source_file, findings_file, review_tmpdir, args.input_mode, tagged_file, allow_outside=allow_outside, session_env_path=args.session_env_path)
+        if pipeline_rc == _VALIDATION_FAILED_RC and attempt < max_attempts:
+            failure_path = Path(failure_log)
+            feedback = _read_text(failure_path) if failure_path.is_file() else ""
+            logging_util.diagnostic(f"→ aggregate-findings: merged output failed validation (attempt {attempt}/{max_attempts}); re-dispatching aggregator with validator feedback")
+            continue
+        break
     if pipeline_rc == 0:
         _emit_aggregate_result(aggregated=True, input_count=input_count, merged_count=_count_finding_blocks(findings_file), reason="ok")
     elif pipeline_rc == 1:
