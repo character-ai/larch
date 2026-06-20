@@ -1087,7 +1087,7 @@ test-design-step5c:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_design_lifecycle.py -k step5c
 
 test-design-step6:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-step6.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_design_lifecycle.py -k step6
 
 test-design-step-validator-autofix:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_plan_quality.py -k validator_autofix

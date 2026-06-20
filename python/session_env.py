@@ -840,6 +840,15 @@ def _design_run_launcher_text(pid: str, plugin_root: str) -> str:
         '  design-step2b5.sh)\n'
         '    exec python3 "$PLUGIN_ROOT/python/cli.py" design step2b5 --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
         '    ;;\n'
+        '  design-step6.sh)\n'
+        '    exec python3 "$PLUGIN_ROOT/python/cli.py" design step6 --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
+        '    ;;\n'
+        '  design-step6-prelude.sh)\n'
+        '    exec python3 "$PLUGIN_ROOT/python/cli.py" design step6-prelude --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
+        '    ;;\n'
+        '  design-step6-cleanup.sh)\n'
+        '    exec python3 "$PLUGIN_ROOT/python/cli.py" design step6-cleanup --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
+        '    ;;\n'
         '  design-step-validator-autofix.sh)\n'
         '    exec python3 "$PLUGIN_ROOT/python/cli.py" plan validator-autofix --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
         '    ;;\n'
@@ -856,6 +865,9 @@ def _design_run_launcher_text(pid: str, plugin_root: str) -> str:
         '    exec "$PLUGIN_ROOT/skills/design/scripts/$script" --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
         "    ;;\n"
         "  step0-parse|step0-session|step0-route|step0-clarify-hard-halt|step0-init|step0-abort-cleanup|step0-ap-continue|step0c|step1d5|step1d7|step1e-reentry)\n"
+        '    exec python3 "$PLUGIN_ROOT/python/cli.py" design "$script" --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
+        "    ;;\n"
+        "  step6|step6-prelude|step6-cleanup)\n"
         '    exec python3 "$PLUGIN_ROOT/python/cli.py" design "$script" --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
         "    ;;\n"
         "  *.*)\n"

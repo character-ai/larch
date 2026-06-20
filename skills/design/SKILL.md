@@ -110,7 +110,6 @@ The wrapper-only D3 surface uses these script contracts. Keep direct wrappers an
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step-prelude.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step-prelude.md`
 - `${CLAUDE_PLUGIN_ROOT}/python/cli.py plan validator-autofix` (launcher-routed from retired `design-step-validator-autofix.sh`)
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/_dbg-validator.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-clarify.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-clarify.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-clarify.sh`
@@ -161,14 +160,9 @@ The wrapper-only D3 surface uses these script contracts. Keep direct wrappers an
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step5c.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-step5c.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-step5c.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-step6.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/_dbg5c2.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step6-cleanup.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step6-cleanup.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step6-prelude.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step6-prelude.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step6.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step6.md`
+- `${CLAUDE_PLUGIN_ROOT}/python/cli.py design step6` (Step 6 combined cleanup authority)
+- `${CLAUDE_PLUGIN_ROOT}/python/cli.py design step6-prelude` (Step 6 prelude authority)
+- `${CLAUDE_PLUGIN_ROOT}/python/cli.py design step6-cleanup` (Step 6 cleanup authority)
 - `${CLAUDE_PLUGIN_ROOT}/python/cli.py design stage-terminal-state` (launcher-routed from retired `design-stage-terminal-state.sh`)
 - `${CLAUDE_PLUGIN_ROOT}/python/cli.py design failure-report` (launcher-routed from retired `design-failure-report.sh`)
 - `${CLAUDE_PLUGIN_ROOT}/python/cli.py design step-final-summary` (launcher-routed from retired `design-step-final-summary.sh`)
@@ -879,7 +873,7 @@ When `PLAN_WRITE_OK=true`, `SESSION_ID` is non-empty, and `PUBLISH_OK=false`, th
 Print: `> **🔶 /design 6: cleanup**`
 
 ```bash
-"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step6.sh
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" step6
 ```
 
 Remove the session temp directory and all files within it. Run `session cleanup-tmpdir` **only after** the Step 5 machine footer when `PLAN_WRITE_OK=true`, and only when `STANDALONE_HEAVY_FAILED` is unset or `false` **and** either `SESSION_ID` is empty (no design log publish was attempted in Step 5c), or `PUBLISH_OK=true` after a Step 5c publish when `SESSION_ID` was non-empty; otherwise skip cleanup so `$DESIGN_TMPDIR` is preserved for inspection, manual `python/cli.py design log-publish` retry, or redaction diagnostics. When `PLAN_WRITE_OK=false` (plan-block-write failure), **skip** this cleanup (Step 5c item 7). When publish failed after a successful plan write, point operators at `$DESIGN_TMPDIR/design-log-publish.failure.log` (and `$DESIGN_TMPDIR/execution-issues.md` when populated) plus the recovery branch notes from `python/cli.py design log-publish` stderr/stdout. Do not run the cleanup fence below when `SESSION_ID` is non-empty and `PUBLISH_OK=false`.
