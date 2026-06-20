@@ -106,10 +106,13 @@ fi
 
 printf '%s\n' '---LARCH-REJECTED-BEGIN---'
 if [ -s "$DESIGN_TMPDIR/rejected-findings.md" ]; then
-  # Drop findings already applied in an earlier plan-review round so they are not
-  # mislabeled "unimplemented" (issue #4849); fall back to the raw file on any
-  # failure so Step 4 still emits something. The on-disk file is left unchanged.
-  if ! python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" plan-review emit-rejected --design-tmpdir "$DESIGN_TMPDIR"; then
+  # Drop findings already applied in an earlier plan-review round, then frame
+  # any remaining operator output as considered-not-adopted suggestions. Fall
+  # back to framed raw content on any failure so Step 4 still emits something.
+  # The on-disk file is left unchanged.
+  if ! python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" plan-review emit-rejected --design-tmpdir "$DESIGN_TMPDIR" --report-framing; then
+    printf '%s\n\n' '## Considered Plan Review Suggestions (Not Adopted)'
+    printf '%s\n\n' 'These reviewer suggestions were considered but not adopted. Some may already be addressed by the current plan; they are not automatically unimplemented gaps.'
     cat "$DESIGN_TMPDIR/rejected-findings.md"
   fi
 fi

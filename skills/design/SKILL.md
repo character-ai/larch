@@ -46,18 +46,25 @@ Design an implementation plan for a feature and review it with the mechanical pl
 
 **Suppressed output:** explanatory prose, script paths, rationale for decisions between tool calls, per-reviewer individual completion messages.
 
-**Compact reviewer status table**: Use the twice-per-wait reviewer status cadence only for the Step 3 review fence and each Step 3 resume fence. Print a compact table exactly twice for those Step 3 waits:
+**Compact reviewer status table**: Use the single post-notification reviewer status cadence only for the Step 3 review fence and each Step 3 resume fence. Print the compact table once for those Step 3 waits, only after confirmed completion.
 
-1. **Post-launch for Step 3 waits**: immediately after the background launch ack, show each known slot as pending (`⏳`) or skipped (`⊘`) when the skip is already known.
-2. **Post-notification for Step 3 waits**: after `<task-notification>`, parse `.step3-review-result.env` when present for round binding, then show final statuses from `$DESIGN_TMPDIR/latest-reviewer-status.tsv`; if that file is missing, fall back to `$DESIGN_TMPDIR/plan-review/round-${FINAL_ROUND_NUM:-${STEP3_REVIEW_ROUND_NUM:-${ROUNDS_COMPLETED:-1}}}/reviewer-status.tsv`. Each `reviewer-status.tsv` has a header row with columns `slot`, `status`, `elapsed`, then one row per launched slot; `status` is `done`, `failed`, or `skipped`. The `elapsed` column may be blank because per-slot durations are not currently captured; render just the status icon when `elapsed` is empty.
+**Post-notification for Step 3 waits**: execute this authoritative sequence after a confirmed `<task-notification>` or terminal-sentinel recovery:
+
+1. **Completion gate**: after a confirmed `<task-notification>` or a foreground probe that confirms `$DESIGN_TMPDIR/.completed/step-3-terminal` is present. Do not print before this gate.
+2. **Print the compact table once** using this data path:
+   - **Primary**: read `$DESIGN_TMPDIR/latest-reviewer-status.tsv` when present and render the table from it.
+   - **Fallback when `latest-reviewer-status.tsv` is missing**: bind the round number before choosing the per-round file:
+     - First, scan the completed task-notification stdout for `FINAL_ROUND_NUM=`, `STEP3_REVIEW_ROUND_NUM=`, or `ROUNDS_COMPLETED=` KVs.
+     - If still unbound, read **only** those same round-binding keys from `$DESIGN_TMPDIR/.step3-review-result.env` (minimal key scan; not a full routing parse).
+     - Then read `$DESIGN_TMPDIR/plan-review/round-${FINAL_ROUND_NUM:-${STEP3_REVIEW_ROUND_NUM:-${ROUNDS_COMPLETED:-1}}}/reviewer-status.tsv`.
+   - This minimal env read for round binding is allowed **only** inside the fallback branch and **only** for round selection; it is not the loop-routing parse.
+3. **Loop routing parse (after the table)**: fully parse `$DESIGN_TMPDIR/.step3-review-result.env` for Step 3 resume / branch routing.
 
 ```
-📊 Reviewers: | Cursor-Arch: ⏳ | Cursor-Innovation: ⏳ | Cursor-Pragmatic: ⏳ | Cursor-Requirements: ⏳ | Codex-Arch: ⏳ | Codex-Innovation: ⏳ | Codex-Pragmatic: ⏳ | Codex-Requirements: ⏳ |
-
 📊 Reviewers: | Cursor-Arch: ✅ 4m12s | Cursor-Innovation: ❌ 8m03s | Cursor-Pragmatic: ✅ 2m31s | Cursor-Requirements: ⊘ | Codex-Arch: ✅ 6m15s |
 ```
 
-Icons: ✅ done (with elapsed time since launch), ⏳ pending/in-progress, ❌ failed/timeout (with elapsed time since launch), ⊘ skipped (unavailable or pruned). This replaces individual per-agent completion messages. Do not invent live in-progress updates between the two permitted prints. → shared/progress-reporting.md
+Icons: ✅ done (with elapsed time since launch), ⏳ pending/in-progress, ❌ failed/timeout (with elapsed time since launch), ⊘ skipped (unavailable or pruned). This replaces individual per-agent completion messages. Print only after confirmed completion; do not invent in-progress updates, do not reprint mid-wait, and do not print a static all-pending table at launch. → shared/progress-reporting.md
 
 **Limitation**: Verbosity suppression is prompt-enforced and best-effort.
 
@@ -579,9 +586,21 @@ Step 3 invokes `design-step3-review.sh` with `run_in_background: true` (immediat
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-review.sh
 ```
 
-**Task tool notification boundary**: NEVER poll `.step3-review-result.env` with a sleep loop. Polling bypasses Claude Code task lifecycle. It can leave the task registered as running. It can block session exit until `TaskStop`. After the first `<task-notification>`, including a premature empty one, run one foreground, non-sleeping probe of `.completed/step-3-terminal` per recovery turn; never launch a background recovery waiter, which is denied (#4725). When `.completed/step-3-terminal` is present, parse stdout or `.step3-review-result.env` without waiting for another notification. Route to Step 3b or later only when `.completed/step-3` is also present, because that is the terminal loop-completion milestone. Mid-loop bail-outs may have `step-3-terminal` without `step-3`.
+**Task tool notification boundary**: NEVER poll `.step3-review-result.env` with a sleep loop. Polling bypasses Claude Code task lifecycle. It can leave the task registered as running. It can block session exit until `TaskStop`. After the first `<task-notification>`, including a premature empty one, run one foreground, non-sleeping probe of `.completed/step-3-terminal` per recovery turn; never launch a background recovery waiter, which is denied (#4725). When `.completed/step-3-terminal` is present, run the post-notification compact-table sequence and loop-routing parse without waiting for another notification. Route to Step 3b or later only when `.completed/step-3` is also present, because that is the terminal loop-completion milestone. Mid-loop bail-outs may have `step-3-terminal` without `step-3`.
 
-**Immediate-background wait rule**: After the `Command running in background` ack, print the Step 3 compact reviewer status table. Then **END THE TURN**. This yield is **not** a halt; yielding is NOT a halt for an in-flight immediate-background fence. Primary resume is `<task-notification>`; after a premature empty notification, one foreground probe of `.completed/step-3-terminal` per recovery turn may confirm envelope durability. Ignore the launch ack's "check interim output" suggestion; ignore the launch ack. Do not read tmpdir files, task outputs, stdout captures, result env files, or reviewer directories before the notification or confirmed terminal sentinel.
+**Immediate-background wait rule**: After the `Command running in background` ack, **END THE TURN** with no reviewer table. This yield is **not** a halt; yielding is NOT a halt for an in-flight immediate-background fence. Primary resume is `<task-notification>`; after a premature empty notification, one foreground probe of `.completed/step-3-terminal` per recovery turn may confirm envelope durability. Ignore the launch ack's "check interim output" suggestion; ignore the launch ack. Do not read tmpdir files, task outputs, stdout captures, result env files, or reviewer directories before the notification or confirmed terminal sentinel.
+
+After the completion gate, execute this authoritative sequence:
+
+1. **Completion gate**: after a confirmed `<task-notification>` or a foreground probe that confirms `$DESIGN_TMPDIR/.completed/step-3-terminal` is present. Do not print before this gate.
+2. **Print the compact table once** using this data path:
+   - **Primary**: read `$DESIGN_TMPDIR/latest-reviewer-status.tsv` when present and render the table from it.
+   - **Fallback when `latest-reviewer-status.tsv` is missing**: bind the round number before choosing the per-round file:
+     - First, scan the completed task-notification stdout for `FINAL_ROUND_NUM=`, `STEP3_REVIEW_ROUND_NUM=`, or `ROUNDS_COMPLETED=` KVs.
+     - If still unbound, read **only** those same round-binding keys from `$DESIGN_TMPDIR/.step3-review-result.env` (minimal key scan; not a full routing parse).
+     - Then read `$DESIGN_TMPDIR/plan-review/round-${FINAL_ROUND_NUM:-${STEP3_REVIEW_ROUND_NUM:-${ROUNDS_COMPLETED:-1}}}/reviewer-status.tsv`.
+   - This minimal env read for round binding is allowed **only** inside the fallback branch and **only** for round selection; it is not the loop-routing parse.
+3. **Loop routing parse (after the table)**: fully parse `$DESIGN_TMPDIR/.step3-review-result.env` for Step 3 resume / branch routing.
 
 Follow `plan-review.md` for interpreting `voting-tally.md`, accepted/rejected findings, and OOS artifacts after the driver returns.
 
@@ -636,9 +655,21 @@ The pre phase renders any readable scope anchor as escaped evidence, prints the 
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --phase awaiting-continuation
 ```
 
-Use the post-loop resume matrix for every Step 3 resume after `STEP3_REVIEW_LOOP_STATUS` handoff. The fence above shows the continuation form; apply, post-apply, findings-file, and postplan-operator resumes use their matching flag on the same wrapper call. NEVER poll `.step3-review-result.env` with a sleep loop. Polling bypasses Claude Code task lifecycle. It can leave the task registered as running. It can block session exit until `TaskStop`. After the first `<task-notification>`, including a premature empty one, run one foreground, non-sleeping probe of `.completed/step-3-terminal` per recovery turn; never launch a background recovery waiter, which is denied (#4725). When `.completed/step-3-terminal` is present, parse stdout or `.step3-review-result.env` without waiting for another notification. Route to Step 3b or later only when `.completed/step-3` is also present, because that is the terminal loop-completion milestone. Mid-loop bail-outs may have `step-3-terminal` without `step-3`.
+Use the post-loop resume matrix for every Step 3 resume after `STEP3_REVIEW_LOOP_STATUS` handoff. The fence above shows the continuation form; apply, post-apply, findings-file, and postplan-operator resumes use their matching flag on the same wrapper call. NEVER poll `.step3-review-result.env` with a sleep loop. Polling bypasses Claude Code task lifecycle. It can leave the task registered as running. It can block session exit until `TaskStop`. After the first `<task-notification>`, including a premature empty one, run one foreground, non-sleeping probe of `.completed/step-3-terminal` per recovery turn; never launch a background recovery waiter, which is denied (#4725). When `.completed/step-3-terminal` is present, run the post-notification compact-table sequence and loop-routing parse without waiting for another notification. Route to Step 3b or later only when `.completed/step-3` is also present, because that is the terminal loop-completion milestone. Mid-loop bail-outs may have `step-3-terminal` without `step-3`.
 
-**Immediate-background wait rule**: After the `Command running in background` ack, print the Step 3 compact reviewer status table. Then **END THE TURN**. This yield is **not** a halt; yielding is NOT a halt for an in-flight immediate-background fence. Primary resume is `<task-notification>`; after a premature empty notification, one foreground probe of `.completed/step-3-terminal` per recovery turn may confirm envelope durability. Ignore the launch ack's "check interim output" suggestion; ignore the launch ack. Do not read tmpdir files, task outputs, stdout captures, result env files, or reviewer directories before the notification or confirmed terminal sentinel.
+**Immediate-background wait rule**: After the `Command running in background` ack, **END THE TURN** with no reviewer table. This yield is **not** a halt; yielding is NOT a halt for an in-flight immediate-background fence. Primary resume is `<task-notification>`; after a premature empty notification, one foreground probe of `.completed/step-3-terminal` per recovery turn may confirm envelope durability. Ignore the launch ack's "check interim output" suggestion; ignore the launch ack. Do not read tmpdir files, task outputs, stdout captures, result env files, or reviewer directories before the notification or confirmed terminal sentinel.
+
+After the completion gate, execute this authoritative sequence:
+
+1. **Completion gate**: after a confirmed `<task-notification>` or a foreground probe that confirms `$DESIGN_TMPDIR/.completed/step-3-terminal` is present. Do not print before this gate.
+2. **Print the compact table once** using this data path:
+   - **Primary**: read `$DESIGN_TMPDIR/latest-reviewer-status.tsv` when present and render the table from it.
+   - **Fallback when `latest-reviewer-status.tsv` is missing**: bind the round number before choosing the per-round file:
+     - First, scan the completed task-notification stdout for `FINAL_ROUND_NUM=`, `STEP3_REVIEW_ROUND_NUM=`, or `ROUNDS_COMPLETED=` KVs.
+     - If still unbound, read **only** those same round-binding keys from `$DESIGN_TMPDIR/.step3-review-result.env` (minimal key scan; not a full routing parse).
+     - Then read `$DESIGN_TMPDIR/plan-review/round-${FINAL_ROUND_NUM:-${STEP3_REVIEW_ROUND_NUM:-${ROUNDS_COMPLETED:-1}}}/reviewer-status.tsv`.
+   - This minimal env read for round binding is allowed **only** inside the fallback branch and **only** for round selection; it is not the loop-routing parse.
+3. **Loop routing parse (after the table)**: fully parse `$DESIGN_TMPDIR/.step3-review-result.env` for Step 3 resume / branch routing.
 
 In loop mode, Step 3 no longer returns after every round. The happy path revises `$DESIGN_TMPDIR/plan.txt` inside the loop via `python/cli.py plan revise-waterfall`; prompt-side Gate B applies findings only on `main-agent-apply-required` or `per-round-approval-required` bail-outs. Whenever either path revises the plan, the shared post-apply pipeline runs `python/cli.py design postplan-emit` so `diff-lines.txt` reflects the final state and validation uses the shared result contract.
 
@@ -729,15 +760,13 @@ If diagram generation fails before a candidate is written, print `**⚠ 3b: arch
 
 Print: `> **🔶 /design 4: rejected findings**`
 
-**MANDATORY — READ ENTIRE FILE before composing rejected findings output: `skills/design/references/readability-style.md`.**
-
 Run the combined tail wrapper. It owns Step 4 compatibility FINALIZE, emits rejected findings between stable markers, emits the Gate C preview, reads `skip_approve_requested`, and writes `.completed/step-4` when no pause-save early exit occurs.
 
 ```bash
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3b-tail.sh
 ```
 
-If the wrapper output contains a non-empty body between `---LARCH-REJECTED-BEGIN---` and `---LARCH-REJECTED-END---`, re-emit that exact body verbatim under a `## Unimplemented Plan Review Suggestions` heading. If the body is empty, continue without printing that heading.
+If the wrapper output contains a non-empty body between `---LARCH-REJECTED-BEGIN---` and `---LARCH-REJECTED-END---`, re-emit that exact body verbatim with no extra heading or orchestrator-side prose. Do not add a second heading; the wrapper body is authoritative. If the body is empty, continue without printing rejected-findings output.
 
 After rejected findings are handled, IMMEDIATELY continue to Step 4b — do NOT halt or treat this as the end of the design.
 

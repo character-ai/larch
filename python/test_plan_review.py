@@ -1693,14 +1693,16 @@ def _make_rejected_block(item_id: str, location: str, concern: str, title: str) 
     )
 
 
-def _emit_rejected(design: Path) -> subprocess.CompletedProcess[str]:
-    return run_cli(
+def _emit_rejected(design: Path, *, report_framing: bool = False) -> subprocess.CompletedProcess[str]:
+    args = [
         "plan-review",
         "emit-rejected",
         "--design-tmpdir",
         str(design),
-        env={"LARCH_QUIET_DISABLE": "1"},
-    )
+    ]
+    if report_framing:
+        args.append("--report-framing")
+    return run_cli(*args, env={"LARCH_QUIET_DISABLE": "1"})
 
 
 def test_emit_rejected_excludes_already_applied_findings(tmp_path: Path) -> None:
@@ -1742,6 +1744,36 @@ def test_emit_rejected_all_applied_emits_empty(tmp_path: Path) -> None:
     key = plan_review._finding_dedup_key(block)  # pyright: ignore[reportPrivateUsage]
     _ = (design / ".step3-applied-finding-keys.tsv").write_text(f"2\t{key}\n", encoding="utf-8")
     proc = _emit_rejected(design)
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout == ""
+
+
+def test_emit_rejected_report_framing_wraps_operator_output(tmp_path: Path) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    body = _make_rejected_block("FINDING_1", "alpha.py:10", "Concern A", "Title A")
+    _ = (design / "rejected-findings.md").write_text(body, encoding="utf-8")
+
+    proc = _emit_rejected(design, report_framing=True)
+
+    assert proc.returncode == 0, proc.stderr
+    assert plan_review.REJECTED_FINDINGS_REPORT_HEADING in proc.stdout
+    assert plan_review.REJECTED_FINDINGS_REPORT_ANNOTATION in proc.stdout
+    assert "Unimplemented Plan Review Suggestions" not in proc.stdout
+    assert body in proc.stdout
+    assert (design / "rejected-findings.md").read_text(encoding="utf-8") == body
+
+
+def test_emit_rejected_report_framing_all_applied_emits_empty(tmp_path: Path) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    block = _make_rejected_block("FINDING_1", "alpha.py:10", "Concern A", "Title A")
+    _ = (design / "rejected-findings.md").write_text(block, encoding="utf-8")
+    key = plan_review._finding_dedup_key(block)  # pyright: ignore[reportPrivateUsage]
+    _ = (design / ".step3-applied-finding-keys.tsv").write_text(f"1\t{key}\n", encoding="utf-8")
+
+    proc = _emit_rejected(design, report_framing=True)
+
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout == ""
 
