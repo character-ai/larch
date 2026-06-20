@@ -362,6 +362,28 @@ def test_scrub_violations_parses_last_numeric() -> None:
     assert design_log_publish_flow._scrub_violations("<sha>\nSECRET_SCRUB_VIOLATIONS=0\n") == "0"
 
 
+def test_copy_tree_redacted_fail_closed_on_residual(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plugin_root = Path(__file__).resolve().parents[1]
+    source = tmp_path / "source.txt"
+    _ = source.write_text(
+        "crsr_1620abcdefghijklmnopqrstuvwxyz0123456789\n",
+        encoding="utf-8",
+    )
+    dest = tmp_path / "dest.txt"
+
+    def _never_scrubs(text: str) -> tuple[str, dict[str, int]]:
+        return text, {"cursor-api-key": 1}
+
+    monkeypatch.setattr(design_log_publish_flow.redact, "scrub_log_secrets", _never_scrubs)
+    ok, count = design_log_publish_flow._copy_tree_redacted(plugin_root, source, dest)
+    assert not ok
+    assert count == 0
+    assert not dest.exists()
+
+
 def test_copy_tree_redacted_writes_same_scrubbed_text_used_for_count(tmp_path: Path) -> None:
     plugin_root = Path(__file__).resolve().parents[1]
     source = tmp_path / "source.txt"

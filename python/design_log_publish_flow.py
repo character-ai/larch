@@ -164,6 +164,14 @@ def _copy_tree_redacted(plugin_root: Path, source: Path, dest: Path) -> tuple[bo
         if red.returncode != 0:
             return False, 0
         scrubbed, findings = redact.scrub_log_secrets(red.stdout)
+        if findings:
+            _, residual = redact.scrub_log_secrets(scrubbed)
+            if residual:
+                print(
+                    f"design log-publish: secret survived scrubbing in {source}",
+                    file=sys.stderr,
+                )
+                return False, 0
         if scrubbed and not scrubbed.endswith("\n"):
             scrubbed += "\n"
         _ = dest.write_text(scrubbed, encoding="utf-8")
