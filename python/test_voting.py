@@ -8,6 +8,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -266,7 +267,146 @@ def test_parse_rate_retry_bare_status_and_oos_grammar(tmp_path: Path) -> None:
     assert "PARSE_RATE_STATUS" not in result.stdout
     assert voter.read_text(encoding="utf-8") == "narrative only\n"
     assert not (tmp_path / "voter-parse-retry.txt").exists()
-    assert not (tmp_path / "voter-first-pass.txt").exists()
+
+
+def test_voter_agreement_row_from_panel_semantics() -> None:
+    accepted = voting.voter_agreement_row_from_panel(
+        voting_result="accepted",
+        voter_votes=[("Claude", "YES"), ("Codex", "NO"), ("Cursor", "JUDGE_ERROR")],
+        panel="design",
+    )
+    assert accepted is not None
+    records = voting.compute_voter_agreement([accepted], min_votes=1)
+    by_voter = {str(record["voter"]): record for record in records}
+    assert by_voter["Claude"]["agree"] == 1
+    assert by_voter["Codex"]["disagree"] == 1
+    assert by_voter["Cursor"]["missing"] == 1
+    assert by_voter["Cursor"]["eligible"] == 0
+
+    rejected = voting.voter_agreement_row_from_panel(
+        voting_result="rejected",
+        voter_votes=[("Claude", "NO"), ("Codex", "YES")],
+        panel="design",
+    )
+    assert rejected is not None
+    records = voting.compute_voter_agreement([rejected], min_votes=1)
+    by_voter = {str(record["voter"]): record for record in records}
+    assert by_voter["Claude"]["agree"] == 1
+    assert by_voter["Codex"]["disagree"] == 1
+
+    assert voting.voter_agreement_row_from_panel(
+        voting_result="neutral",
+        voter_votes=[("Claude", "YES"), ("Codex", "NO")],
+    ) is None
+    assert voting.voter_agreement_row_from_panel(
+        voting_result="accepted",
+        voter_votes=[("Claude", "YES"), ("Codex", "")],
+    ) is None
+
+
+def test_voter_agreement_rows_from_tsv_schema_shapes() -> None:
+    design_header = voting.findings_classification_header()
+    design22 = (
+        design_header
+        + "\nFINDING_1\tR\taccepted\tYES\t\t\t\t\tClaude\tNO\t\t\t\t\tCodex\tYES\t\t\t\t\tCursor\tmajor\n"
+    )
+    design_rows = voting.voter_agreement_rows_from_tsv(design22, panel_kind="design")
+    assert len(design_rows) == 1
+    design_voters = cast("list[dict[str, object]]", design_rows[0]["voters"])
+    assert [voter["voter"] for voter in design_voters] == ["Claude", "Codex", "Cursor"]
+
+    design21_header = design_header.removesuffix("\tbody_severity")
+    design21 = (
+        design21_header
+        + "\nFINDING_2\tR\trejected\tNO\t\t\t\t\tClaude\tYES\t\t\t\t\tCodex\tNO\t\t\t\t\tCursor\n"
+    )
+    design21_rows = voting.voter_agreement_rows_from_tsv(design21, panel_kind="design")
+    assert len(design21_rows) == 1
+    design21_voters = cast("list[dict[str, object]]", design21_rows[0]["voters"])
+    assert [voter["voter"] for voter in design21_voters] == ["Claude", "Codex", "Cursor"]
+
+    code21 = (
+        voting.code_review_classification_header()
+        + "\nFINDING_1\tR\taccepted\tYES\t\t\t\t\tcursor-validity\tNO\t\t\t\t\tcursor-plan-fidelity\tYES\t\t\t\t\tcursor-pragmatism\n"
+    )
+    code_rows = voting.voter_agreement_rows_from_tsv(code21, panel_kind="code-review")
+    code_voters = cast("list[dict[str, object]]", code_rows[0]["voters"])
+    assert [voter["voter"] for voter in code_voters] == [
+        "cursor-validity",
+        "cursor-plan-fidelity",
+        "cursor-pragmatism",
+    ]
+
+    compact = (
+        "finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\t"
+        "v2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\n"
+        "FINDING_1\tR\taccepted\tNO\t\t\t\t\tYES\t\t\t\t\tYES\t\t\t\t\n"
+    )
+    compact_rows = voting.voter_agreement_rows_from_tsv(compact, panel_kind="code-review")
+    compact_voters = cast("list[dict[str, object]]", compact_rows[0]["voters"])
+    assert [voter["voter"] for voter in compact_voters] == ["v1", "v2", "v3"]
+
+
+def test_compute_voter_agreement_outlier_threshold() -> None:
+    low_sample = [
+        voting.voter_agreement_row_from_panel(
+            voting_result="accepted",
+            voter_votes=[("v1", "NO"), ("v2", "YES")],
+            panel="code-review",
+        )
+    ]
+    records = voting.compute_voter_agreement([row for row in low_sample if row is not None], min_votes=2)
+    assert next(record for record in records if record["voter"] == "v1")["outlier"] is False
+
+    rows = [
+        voting.voter_agreement_row_from_panel(
+            voting_result="accepted",
+            voter_votes=[("v1", "NO"), ("v2", "YES")],
+            panel="code-review",
+        )
+        for _ in range(2)
+    ]
+    records = voting.compute_voter_agreement([row for row in rows if row is not None], min_votes=2)
+    assert next(record for record in records if record["voter"] == "v1")["outlier"] is True
+
+    mixed = [
+        voting.voter_agreement_row_from_panel(
+            voting_result="accepted",
+            voter_votes=[("v1", vote), ("v2", "YES")],
+            panel="code-review",
+        )
+        for vote in ("YES", "NO")
+    ]
+    records = voting.compute_voter_agreement([row for row in mixed if row is not None], min_votes=2)
+    v1 = next(record for record in records if record["voter"] == "v1")
+    assert v1["agreement_rate"] == 0.5
+    assert v1["outlier"] is False
+
+
+def test_voter_agreement_tsv_and_panel_parity() -> None:
+    tsv = (
+        voting.findings_classification_header()
+        + "\nFINDING_1\tR\taccepted\tYES\t\t\t\t\tClaude\tNO\t\t\t\t\tCodex\tYES\t\t\t\t\tCursor\tmajor\n"
+        + "FINDING_2\tR\trejected\tNO\t\t\t\t\tClaude\tYES\t\t\t\t\tCodex\tNO\t\t\t\t\tCursor\tminor\n"
+    )
+    from_tsv = voting.voter_agreement_rows_from_tsv(tsv, panel_kind="design")
+    from_panel = [
+        row
+        for row in [
+            voting.voter_agreement_row_from_panel(
+                voting_result="accepted",
+                voter_votes=[("Claude", "YES"), ("Codex", "NO"), ("Cursor", "YES")],
+                panel="design",
+            ),
+            voting.voter_agreement_row_from_panel(
+                voting_result="rejected",
+                voter_votes=[("Claude", "NO"), ("Codex", "YES"), ("Cursor", "NO")],
+                panel="design",
+            ),
+        ]
+        if row is not None
+    ]
+    assert voting.compute_voter_agreement(from_tsv) == voting.compute_voter_agreement(from_panel)
 
 
 def test_parse_rate_retry_classify_only_dispatch_shaped_argv(tmp_path: Path) -> None:

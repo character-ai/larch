@@ -99,6 +99,18 @@ Accepted OOS observations -> restore attribution -> file GitHub issues -> score 
 Neutral and rejected findings -> restore attribution for audit artifacts -> score reviewers
 ```
 
+## Voter Agreement Scoreboard
+
+`voting-tally.md` now includes a **Voter Agreement Scoreboard** after the reviewer scoreboard. It is diagnostic only. Verdict thresholds, vote outcomes, deduplication, reviewer points, token allocation, and spawning are unchanged.
+
+The scoreboard counts only `accepted` and `rejected` rows with at least two parseable `YES`/`NO` voter cells. Neutral outcomes, single-voter fallback panels, and zero-voter main-agent paths are excluded because agreement is undefined.
+
+A voter agrees when `accepted` pairs with `YES`, or `rejected` pairs with `NO`. Empty, missing, and `JUDGE_ERROR` cells count as missing, not disagreement. `agreement_rate` is `agree / (agree + disagree)`, so missing votes are excluded from the denominator.
+
+Chronic outliers are flagged when `eligible >= min_votes` and `agreement_rate < outlier_threshold`. The shared defaults are `min_votes=20` and `outlier_threshold=0.50`. Low-sample voters are never flagged.
+
+Live `voting-tally.md` scoreboards and `/voter-calibration` committed-log analysis use the same `voter_agreement_row_from_panel` and `compute_voter_agreement` math.
+
 ## Out-of-Scope Observations
 
 Reviewers may surface **out-of-scope (OOS) observations** — pre-existing issues or concerns beyond the PR's scope. These are handled alongside in-scope findings on the same ballot but with different vote semantics and outcomes:

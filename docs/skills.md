@@ -17,6 +17,7 @@ The skill set documented here matches the skills in the repository. Each entry l
 - [`/design`](#design)
 - [`/deps`](#deps)
 - [`/fluff-analysis`](#fluff-analysis)
+- [`/voter-calibration`](#voter-calibration)
 - [`/gc-run-logs`](#gc-run-logs)
 - [`/implement`](#implement)
 - [`/issue`](#issue)
@@ -96,6 +97,14 @@ All GitHub mutations are grouped behind one `AskUserQuestion` gate: approve all,
 **Source**: [`skills/fluff-analysis/SKILL.md`](../skills/fluff-analysis/SKILL.md)
 
 Characterize review **fluff** — suggestions that are *not accepted* (rejected or deferred to Out-of-Scope) or *accepted-but-low-value* — from committed `larch-logs/design/*/` and `larch-logs/implement/*/` run directories in the current repository. The analyzer normalizes every review finding (outcome, reviewer/voter severity, multi-label semantic tags) and prints a markdown report: acceptance baselines, low-acceptance semantic groups (distinguishing reject-heavy true fluff from OOS-heavy valid-but-deferred), a testing breakdown, severity/quality/uncertain correlations, reviewer-lane splits, an accepted-but-low-value proxy, optional pre/post comparison (`--cutoff` by timestamp or `--since-version` by `manifest.json.larch_version`), and data-driven recommendations. Keyword tags are directional; severity and outcome cuts are exact. `--include-in-progress` additionally reads un-flushed `/design` session temp dirs (racy snapshot, off by default; tunable with `--sessions-dir` / `--inprogress-since`). `--min-group N` sets the minimum findings for a semantic group to appear (default 20). `--out FILE` writes the report to a file instead of stdout. This is the standing tool behind `[Analysis Report]` issues; re-run it as the corpus grows to track whether necessity-gate changes (`skills/shared/review-acceptance-rubric.md`) move acceptance and findings-per-run. Skill-local Python is not covered by `make py-lint` (scoped to `python/`).
+
+### `/voter-calibration`
+
+**Arguments**: `[--log-root DIR] [--min-votes N] [--outlier-threshold R] [--out FILE]`
+
+**Source**: [`skills/voter-calibration/SKILL.md`](../skills/voter-calibration/SKILL.md)
+
+Measure voter agreement and chronic outlier voters from committed `larch-logs/design/*/`, `larch-logs/implement/*/`, and `larch-logs/review/*/` classification TSVs. The report aggregates accepted/rejected panels, excludes neutral and single/zero-voter panels, tracks missing votes separately, and flags outliers when `eligible >= min_votes` and `agreement_rate < outlier_threshold` (defaults `20` and `0.50`). It is diagnostic only. It does not use realized outcomes, issue fate, reverts, or reviewer points, and it does not affect spawning, thresholds, tokens, or live voter rewards.
 
 ### `/gc-run-logs`
 

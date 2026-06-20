@@ -540,6 +540,7 @@ def tally_code_votes(argv: list[str]) -> int:
                 f"**⚠ Degraded code-review panel: {parse_failed} voter slot(s) emitted narrative-only output "
                 "(parse-rate ≥80% JUDGE_ERROR) and were removed from the effective quorum.**\n\n"
             )
+        zero_lines.append(voting.render_voter_scoreboard([]))
         _write(voting_tally_file, "".join(zero_lines))
         for key, value in {
             "TALLY_STATUS": "main-agent-vote-required",
@@ -565,6 +566,7 @@ def tally_code_votes(argv: list[str]) -> int:
             logging_util.emit_kv(key, value)
         return 0
     score_rows: list[tuple[str, str, str, int]] = []
+    agreement_rows: list[dict[str, object]] = []
     tally_lines = ["# Code Review Voting Tally\n\n"]
     expected = 3 if three_slot and args.cursor_available == "true" else (1 if three_slot else 1 + (1 if args.codex_available == "true" else 0) + (1 if args.cursor_available == "true" else 0))
     if effective < expected:
@@ -612,6 +614,20 @@ def tally_code_votes(argv: list[str]) -> int:
                     judge_error += 1
         result = voting.classify_result(yes, no, 0, effective)
         tally_lines.append(f"| {item_id} | {yes} | {no} | {judge_error} | {result} |\n")
+        if three_slot:
+            voter_votes = [
+                (str(args.voter_tools[idx]), cells[idx][0] if idx < len(cells) else "")
+                for idx in range(3)
+            ]
+        else:
+            voter_votes = [(f"v{idx}", cell[0]) for idx, cell in enumerate(cells, start=1)]
+        agreement_row = voting.voter_agreement_row_from_panel(
+            voting_result=result,
+            voter_votes=voter_votes,
+            panel="code-review",
+        )
+        if agreement_row is not None:
+            agreement_rows.append(agreement_row)
         try:
             reviewer = _proposer_for_item(
                 item_id,
@@ -697,6 +713,8 @@ def tally_code_votes(argv: list[str]) -> int:
             collector_file=args.collector_results_file,
             score_rows=score_rows,
         )
+    tally_lines.append("\n")
+    tally_lines.append(voting.render_voter_scoreboard(voting.compute_voter_agreement(agreement_rows)))
     _write(voting_tally_file, "".join(tally_lines))
     if args.manifest_file:
         archetype_map = _write_archetype_map(Path(args.manifest_file))

@@ -113,6 +113,12 @@ larch ships **public skills** with the plugin (`skills/`); **private** skills li
     <tr><td colspan="2">Characterize review <strong>fluff</strong> from committed larch run logs — which <code>/design</code> and <code>/implement</code> review suggestions get rejected, deferred to OOS, or accepted-but-low-value — by acceptance baselines, low-acceptance semantic groups, severity cuts, and reviewer-lane splits, then print data-driven recommendations for tightening the reviewer self-filter and judge (voter) instructions.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
+      <td><a href="docs/skills.md#voter-calibration"><code>/voter-calibration</code></a></td>
+      <td><code>[--log-root DIR] [--min-votes N] [--outlier-threshold R] [--out FILE]</code></td>
+    </tr>
+    <tr><td colspan="2">Measure voter agreement and chronic outlier voters from committed larch run logs. Diagnostic only; does not affect spawning, thresholds, tokens, or reviewer points.</td></tr>
+    <tr><td colspan="2"><hr></td></tr>
+    <tr>
       <td><a href="docs/skills.md#research"><code>/research</code></a></td>
       <td><code>[--no-issue] &lt;research question or topic&gt;</code></td>
     </tr>

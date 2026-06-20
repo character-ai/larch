@@ -332,6 +332,9 @@ def test_tally_excludes_narrative_only_voter_parse_rate_check(tmp_path: Path) ->
     tally = (case / "voting-tally.md").read_text(encoding="utf-8")
     assert "narrative-only output" in tally
     assert "parse-rate" in tally
+    assert "## Voter Agreement Scoreboard" in tally
+    assert "| code-review | v1 |" in tally
+    assert "| code-review | v2 |" in tally
 
 
 def test_tally_security_oos_holdback(tmp_path: Path) -> None:
@@ -644,6 +647,60 @@ def test_findings_classification_standalone_lenient_missing_rating(tmp_path: Pat
     assert row["v2_correctness"] == ""
     assert row["v2_uncertain"] == "true"
     assert row["scope"] == "in_scope"
+
+
+def test_tally_code_review_voter_agreement_scoreboard_three_slot(tmp_path: Path) -> None:
+    case = tmp_path / "voter-scoreboard"
+    case.mkdir()
+    _mk_ballot(case / "ballot.md")
+    _ = (case / "v1.txt").write_text(
+        "FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n"
+        "FINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false\n"
+        "FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false\n",
+        encoding="utf-8",
+    )
+    _ = (case / "v2.txt").write_text(
+        "FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n"
+        "FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n"
+        "FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false\n",
+        encoding="utf-8",
+    )
+    _ = (case / "v3.txt").write_text(
+        "FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n"
+        "FINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false\n"
+        "FINDING_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false\n",
+        encoding="utf-8",
+    )
+    result = run_review(
+        "tally-code-votes",
+        "--ballot-file",
+        str(case / "ballot.md"),
+        "--review-tmpdir",
+        str(case),
+        "--cursor-available",
+        "true",
+        "--voter-files",
+        str(case / "v1.txt"),
+        str(case / "v2.txt"),
+        str(case / "v3.txt"),
+        "--voter-tools",
+        "cursor-validity",
+        "cursor-plan-fidelity",
+        "cursor-pragmatism",
+        env={"CLAUDE_PLUGIN_ROOT": str(ROOT)},
+    )
+    assert result.returncode == 0, result.stderr
+    tally = (case / "voting-tally.md").read_text(encoding="utf-8")
+    assert "## Voter Agreement Scoreboard" in tally
+    assert "| code-review | cursor-validity | 2 | 2 | 0 | 0 | 1.000 | false |" in tally
+    assert "| code-review | cursor-plan-fidelity | 2 | 2 | 0 | 0 | 1.000 | false |" in tally
+    assert "| code-review | cursor-pragmatism | 2 | 1 | 1 | 0 | 0.500 | false |" in tally
+    assert "| Codex-Structure |" in tally
+    class_file = Path(rts.kv_get(result.stdout, "FINDINGS_CLASSIFICATION_TSV_FILE") or "")
+    records = voting.compute_voter_agreement(
+        voting.voter_agreement_rows_from_tsv(class_file.read_text(encoding="utf-8"), panel_kind="code-review")
+    )
+    assert next(record for record in records if record["voter"] == "cursor-pragmatism")["disagree"] == 1
 
 
 def test_findings_classification_standalone_session_env_round_scoped(tmp_path: Path) -> None:
@@ -1020,6 +1077,41 @@ def test_tally_three_slot_mismatched_tools_fails(tmp_path: Path) -> None:
         "cursor-validity",
     )
     assert result.returncode == 2
+
+
+def test_write_tally_allows_voter_agreement_scoreboard_header(tmp_path: Path) -> None:
+    body = tmp_path / "body.md"
+    _ = body.write_text(
+        "# Code Review Voting Tally\n\n"
+        "## Per-finding vote breakdown\n\n"
+        "## Reviewer Competition Scoreboard\n\n"
+        "## Voter Agreement Scoreboard\n\n",
+        encoding="utf-8",
+    )
+    result = _run_cli(
+        "voting",
+        "write-tally",
+        "--log-root",
+        str(tmp_path / "logs"),
+        "--skill",
+        "review",
+        "--run-id",
+        "run-a",
+        "--phase",
+        "code-review",
+        "--mode",
+        "hard",
+        "--rounds",
+        "1",
+        "--accepted",
+        "0",
+        "--rejected",
+        "0",
+        "--body-file",
+        str(body),
+    )
+    assert result.returncode == 0, result.stderr
+    assert "unrecognized section header" not in result.stderr
 
 
 def test_tally_three_slot_claude_fallback_single_quorum(tmp_path: Path) -> None:

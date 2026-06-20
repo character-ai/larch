@@ -19,6 +19,8 @@ If a deduplicated finding was proposed by multiple reviewers (merged during dedu
 
 Voters do not see proposer labels. Ballots show stable reviewer lines with `anonymous`; scoring uses out-of-band proposer attribution from `proposer-map.tsv`. Legacy classification TSVs without a `scope` column score accepted rows flat +1 (no severity weighting), with `OOS_*` ids excluded from in-scope Top reviewers via prefix fallback, matching `voting-protocol.md` and the helper.
 
+Voter calibration is measured separately from reviewer points. The voter agreement scoreboard and `/voter-calibration` report do not change reviewer scoring, token allocation, or spawning.
+
 ## Out-of-Scope Scoring
 
 Out-of-scope (OOS) observations use flat scoring regardless of panel severity: accepted OOS earns +1, neutral OOS (≥1 YES, not accepted) earns 0, and rejected OOS (0 YES) costs -1. Accepted OOS follows the active voting tier (3 judges: 2+ YES; 2 judges: unanimous YES; 1 judge: single YES; 0 judges: main-agent adjudication), so degraded panels never auto-accept observations.

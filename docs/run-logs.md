@@ -177,6 +177,11 @@ Semantics:
   Consumers prefer explicit `scope=oos` over id prefixes; legacy TSVs without
   `scope` remain readable with flat accepted +1 scoring and `OOS_` prefix fallback.
 
+Older committed design TSVs may use the 21-column shape without
+`body_severity`. `/voter-calibration` keeps those readable through
+header-driven detection, so `v3_tool` is not shifted into the body-severity
+slot.
+
 Slot semantics:
 
 - For explicit `--voter` dispatch, non-`MainAgent` voters preserve canonical
@@ -212,6 +217,11 @@ Under `larch-logs/design/<RUN_ID>/plan-review/round-<N>/`, each single-pass Step
 - `ballot.txt` (session snapshot; excluded from committed log by publisher)
 - `voting-tally.md`
 
+`voting-tally.md` includes the per-finding vote table, reviewer competition
+scoreboard, and voter agreement scoreboard. The voter agreement section is a
+diagnostic view over the same classification rows. It does not introduce a new
+committed artifact.
+
 `accepted-plan-findings.md` and `rejected-findings.md` are excluded from committed round directories (#3721) — they are cumulative across rounds (round N's copy is a prefix-snapshot of round N+1's); only the top-level copies in the design run directory are kept. Per-round outcome attribution is preserved by each round's `findings-classification.tsv` joined with `findings.md`.
 
 #### Manifests and voter diagnostics
@@ -245,7 +255,7 @@ Standalone `/review --diff` publishes flat per-round batches named
 `review-findings-classification-round-N.tsv` under
 `larch-logs/review/<RUN_ID>/`.
 
-The code-review TSV schema is:
+New three-slot code-review TSV writes use this schema:
 
 ```text
 finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool\tscope
@@ -253,6 +263,10 @@ finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\
 
 `finding_id` is the ballot id (`FINDING_N` or `OOS_N`), `reviewer_slots` is the
 pipe-delimited proposer attribution, `voting_result` is one of `accepted`, `neutral`, or `rejected`, and `scope` is `in_scope` or `oos`. Producers write `scope=oos` for direct `OOS_*` rows, legacy `[OUT_OF_SCOPE]` or `[OOS]` rows, and scope-drift rows. Consumers prefer explicit `scope=oos` over id prefixes; legacy TSVs without `scope` remain readable with flat accepted +1 scoring and `OOS_` prefix fallback. On the three-slot code-review path, `v1` is `cursor-validity`, `v2` is `cursor-plan-fidelity`, and `v3` is `cursor-pragmatism`; `claude` appears in `v1_tool` on the fallback path. Empty or failed slots keep their `vN_tool` label with empty rating cells. Rating cells are enum-only; missing or invalid axis tokens are empty and force `vN_uncertain=true`. Older logs may lack `vN_tool` or use the compact 18-column layout. MAV re-tally rows may also use the legacy single-voter 18-column shape.
+
+The committed TSV schemas remain backward compatible for new writes. The
+analyzer reads older 21-column design TSVs without `body_severity` and older
+18-column compact code-review TSVs through header-driven detection.
 
 For 0-judge degraded rounds (`TALLY_STATUS=main-agent-vote-required`),
 `voting_result=rejected` is a placeholder TSV sentinel, not a literal panel
