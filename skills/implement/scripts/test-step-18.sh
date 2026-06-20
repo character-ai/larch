@@ -36,6 +36,9 @@ def read_key(args: list[str]) -> int:
     file_path = Path(args[args.index("--file") + 1])
     key = args[args.index("--key") + 1]
     default = args[args.index("--default") + 1] if "--default" in args else ""
+    fail_key = os.environ.get("STEP18_STUB_READ_KEY_FAIL_KEY") or ""
+    if fail_key and key == fail_key:
+        return 6
     try:
         for line in file_path.read_text(encoding="utf-8").splitlines():
             if line.startswith(key + "="):
@@ -152,7 +155,7 @@ run_step18() {
     local impl=$1 out=$2 log=$3
     shift 3
     set +e
-    IMPLEMENT_TMPDIR="$impl"       CLAUDE_PLUGIN_ROOT="$PLUGIN"       STEP18_STUB_LOG="$log"       STEP18_STUB_BODY="${STEP18_STUB_BODY:-}"       STEP18_STUB_EMIT_BODY="${STEP18_STUB_EMIT_BODY:-}"       STEP18_STUB_WFR_RC="${STEP18_STUB_WFR_RC:-}"       STEP18_STUB_WRITE_SUMMARY="${STEP18_STUB_WRITE_SUMMARY:-}"       STEP18_STUB_REMOVE_SUMMARY="${STEP18_STUB_REMOVE_SUMMARY:-}"       STEP18_STUB_CAT_FAIL="${STEP18_STUB_CAT_FAIL:-}"       PATH="$FAKEBIN:$PATH"       "$HELPER" "$@" >"$out" 2>"$out.err"
+    IMPLEMENT_TMPDIR="$impl"       CLAUDE_PLUGIN_ROOT="$PLUGIN"       STEP18_STUB_LOG="$log"       STEP18_STUB_BODY="${STEP18_STUB_BODY:-}"       STEP18_STUB_EMIT_BODY="${STEP18_STUB_EMIT_BODY:-}"       STEP18_STUB_WFR_RC="${STEP18_STUB_WFR_RC:-}"       STEP18_STUB_WRITE_SUMMARY="${STEP18_STUB_WRITE_SUMMARY:-}"       STEP18_STUB_REMOVE_SUMMARY="${STEP18_STUB_REMOVE_SUMMARY:-}"       STEP18_STUB_CAT_FAIL="${STEP18_STUB_CAT_FAIL:-}"       STEP18_STUB_READ_KEY_FAIL_KEY="${STEP18_STUB_READ_KEY_FAIL_KEY:-}"       PATH="$FAKEBIN:$PATH"       "$HELPER" "$@" >"$out" 2>"$out.err"
     rc=$?
     set -e
     return "$rc"
@@ -279,6 +282,14 @@ printf 'STALL_TRACKING=false\nSTALL_STEP=same\n' >"$impl/finalize-state.sh"
 out="$TMP_ROOT/restore-aligned.out"; log="$TMP_ROOT/restore-aligned.log"
 STEP18_STUB_EMIT_BODY=false run_step18 "$impl" "$out" "$log" --phase finalize --step17-emitted false || fail 'restore aligned exited non-zero'
 assert_not_contains 'restore-finalize-state' "$(cat "$log")" 'restore aligned should skip'
+
+impl=$(make_impl restore-read-key-failure)
+printf 'STALL_TRACKING=yes\nBAIL_NEEDS_USER_INPUT=true\nSTALL_STEP=ship\n' >"$impl/ship-pr-state.sh"
+printf 'STALL_TRACKING=false\nSTALL_STEP=ship\n' >"$impl/finalize-state.sh"
+out="$TMP_ROOT/restore-read-key-failure.out"; log="$TMP_ROOT/restore-read-key-failure.log"
+STEP18_STUB_EMIT_BODY=false STEP18_STUB_READ_KEY_FAIL_KEY=STALL_TRACKING run_step18 "$impl" "$out" "$log" --phase finalize --step17-emitted false || fail 'restore read-key failure exited non-zero'
+assert_contains 'teardown sentinel=' "$(cat "$log")" 'restore read-key failure still tears down'
+assert_contains 'restore-finalize-state --implement-tmpdir' "$(cat "$log")" 'restore read-key failure uses default and continues'
 
 # Ordering: closing marks before restore and teardown.
 mark_line=$(line_no 'token mark Step 18 — done' "$TMP_ROOT/restore-mismatch.log")

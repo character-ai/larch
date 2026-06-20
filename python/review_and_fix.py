@@ -15,7 +15,7 @@ import shutil
 import sys
 import time
 import zlib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal
 from collections.abc import Callable, Generator
@@ -1771,7 +1771,7 @@ def _step5_post_round_gates(
             return "stall", f"relevant-checks-{checks.get('FAILURE_REASON', 'unknown')}", False
         lint_max = _lint_fix_max_attempts()
         lint_attempts = 0
-        pre_lint_head = _write_pre_lint_snapshot(result.round_dir) if _git_status_porcelain().strip() else ""
+        pre_lint_head = _write_pre_lint_snapshot(result.round_dir)
         lint_delta_paths: set[str] = set()
         lint_applied_ever = False
 
@@ -1823,6 +1823,9 @@ def _step5_post_round_gates(
                     break
                 continue
             if lint_status == "main-agent-required":
+                terminal, reason = _lint_loop_successful_break("main-agent-required")
+                if terminal:
+                    return terminal, reason, False
                 return "stall", "lint-fix-main-agent-required", False
             if lint_status in {"failed", "no-changes", ""}:
                 if lint_status == "no-changes":
@@ -1932,6 +1935,25 @@ def _record_coder_vendor_task(
             "--exit-code", str(exit_code),
             "--status", status,
         ], env=_coder_timing_env(round_dir, ledger))
+
+
+def _record_main_agent_required_vendor_task(round_dir: Path) -> Path:
+    output = round_dir / "coder-main-agent-required.log"
+    _write_text(output, "main-agent-required\n")
+    ledger = _resolve_coder_timing_ledger(round_dir)
+    now_s = int(time.time())
+    _record_coder_vendor_task(
+        round_dir=round_dir,
+        ledger=ledger,
+        vendor="claude",
+        task_kind="claude-review-fix",
+        output=output,
+        start_s=now_s,
+        end_s=now_s,
+        exit_code=4,
+        status="signal",
+    )
+    return output
 
 
 def _run_coder_cursor(round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
@@ -2140,6 +2162,7 @@ def apply_findings_with_coder(input_file: Path, round_dir: Path, result_file: Pa
         result = CoderResult(0, tool, "applied", str(tool_log), scrubbed_count, scrub_count, 0, commit_sha)
         _write_env(result_file, _coder_env(result))
         return result
+    _record_main_agent_required_vendor_task(round_dir)
     result = CoderResult(4, "none", "main-agent-required", "", scrubbed_count, scrub_count, 0)
     _write_env(result_file, _coder_env(result))
     return result
@@ -2484,11 +2507,22 @@ def _run_round(args: argparse.Namespace, *, suppress_emit: bool, review_core_imp
         flush_scout_manifest(implement_tmpdir, run_id, round_num, round_dir, core)
         if exit_code == 0:
             source = composed_findings if composed_ok else None
-            flush_review_batches(
+            if not flush_review_batches(
                 implement_tmpdir, run_id, round_num,
                 total_accepted, total_rejected, total_exonerated, total_neutral,
                 source,
-            )
+            ):
+                result = replace(result, rc=2, status="tally-flush-failed")
+                _write_summary(summary_file, result, int(getattr(args, "round_cap", 0) or 0))
+                _write_env(round_dir / "review-and-fix.env", {
+                    "REVIEW_AND_FIX_STATUS": result.status,
+                    "REVIEW_CORE_STATUS": core_status,
+                    "IRF_LAST_ROUND_STATUS": result.status,
+                    "DEGRADED_ROUND": degraded_this_round,
+                    "HIGH_SEVERITY_COUNT": _high_severity_count(accepted_file),
+                    "FIX_COUNT": coder.input_count,
+                    "SKIPPED_FINDING_COUNT": skipped_finding_count,
+                })
         elif suppress_emit:
             with contextlib.suppress(Exception):
                 flush_review_batches(
@@ -2845,6 +2879,10 @@ def step5(argv: list[str] | None = None) -> int:
                 terminal_status = "stall"
                 stall_tracking = True
                 stall_reason = "classifier-failed"
+            elif result.status == "tally-flush-failed":
+                terminal_status = "stall"
+                stall_tracking = True
+                stall_reason = "tally-flush-failed"
             elif result.status == "fix-applied":
                 gate_status, gate_reason, gate_continue = _step5_post_round_gates(result, round_num, round_cap, implement_tmpdir)
                 if gate_continue:

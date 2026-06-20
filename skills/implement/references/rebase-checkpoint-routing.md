@@ -37,4 +37,4 @@
 | 7.r  | `7.r`           | `commit (review)`|
 | 7a.r | `7a.r`          | `diagrams`       |
 
-For `7a.r`, the registry row is reached via `python/cli.py implement step-7a`, not a standalone probe fence. The orchestrator must branch on `python/cli.py implement step-7a`'s process exit code plus the relayed `REBASE_*` keys, and the helper only runs the pre-ship log flush after wrapper-visible `REBASE_OUTCOME=ok|skipped`.
+For `7a.r`, the registry row is reached via `python/cli.py implement step-7a`, not a standalone probe fence. The orchestrator must branch on `python/cli.py implement step-7a`'s process exit code plus the relayed `REBASE_*` keys. The helper runs the pre-ship log flush after the probe on all paths, including rebase probe failure, so diagram diagnostics and execution-issues content can reach committed run logs before conflict or bail routing. The retired `LOG_FLUSH_STATUS=skipped-rebase-checkpoint` value is not emitted on rebase-failure paths; callers should expect the real flush status while preserving the probe exit code for macro routing.

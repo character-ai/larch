@@ -219,10 +219,10 @@ run_finalize() {
       if [ ! -f "$IMPLEMENT_TMPDIR/finalize-state.sh" ]; then
         _restore_finalize=true
       else
-        _ship_stall=$(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" session read-key --file "$IMPLEMENT_TMPDIR/ship-pr-state.sh" --key STALL_TRACKING --default "false")
-        _ship_bail=$(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" session read-key --file "$IMPLEMENT_TMPDIR/ship-pr-state.sh" --key BAIL_NEEDS_USER_INPUT --default "false")
-        _ship_step=$(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" session read-key --file "$IMPLEMENT_TMPDIR/ship-pr-state.sh" --key STALL_STEP --default "")
-        _final_step=$(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" session read-key --file "$IMPLEMENT_TMPDIR/finalize-state.sh" --key STALL_STEP --default "")
+        _ship_stall=$(read_key_from_file "$IMPLEMENT_TMPDIR/ship-pr-state.sh" STALL_TRACKING "false")
+        _ship_bail=$(read_key_from_file "$IMPLEMENT_TMPDIR/ship-pr-state.sh" BAIL_NEEDS_USER_INPUT "false")
+        _ship_step=$(read_key_from_file "$IMPLEMENT_TMPDIR/ship-pr-state.sh" STALL_STEP "")
+        _final_step=$(read_key_from_file "$IMPLEMENT_TMPDIR/finalize-state.sh" STALL_STEP "")
         _ship_stall_truthy=false
         _ship_bail_truthy=false
         case "$_ship_stall" in 1|true|TRUE|True|yes|YES|Yes|on|ON|On) _ship_stall_truthy=true ;; esac

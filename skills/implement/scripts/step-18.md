@@ -80,6 +80,7 @@ python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" execution-issues flush-safety-net --
 The safety net is best effort and append-only.
 It never truncates `execution-issues.md`; Step 7a remains the primary pre-ship truncating checkpoint.
 Then the copied `_restore_finalize=false` gate compares `ship-pr-state.sh` and `finalize-state.sh`.
+The compare reads use guarded `session read-key` defaults, so malformed or unreadable state files do not abort teardown under `set -e`.
 It invokes `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" session restore-finalize-state --implement-tmpdir "$IMPLEMENT_TMPDIR"` when `finalize-state.sh` is missing, ship stall or bail state is truthy, or `STALL_STEP` differs.
 
 Teardown uses the exact argv pin:

@@ -2680,6 +2680,115 @@ def test_agentic_fix_delegate_timeout_includes_verify_budget(
     assert ci_monitor._agentic_fix_delegate_timeout_sec() == 3 * per_cycle  # pyright: ignore[reportPrivateUsage]
 
 
+def _agentic_timeout_ctx(tmp_path: Path, run_id: str = "42") -> RunContext:
+    return RunContext(
+        branch="feat",
+        issue="",
+        repo="o/r",
+        run_id=run_id,
+        tmpdir=str(tmp_path),
+        merge=False,
+        draft=False,
+        forked=False,
+        manifest_path="",
+        tool_label="claude",
+        no_admin_fallback=False,
+        repo_unavailable=False,
+        pr_number=1,
+    )
+
+
+def test_agentic_fix_timeout_ignores_stale_push_checkpoint(tmp_path: Path) -> None:
+    checkpoint_dir = tmp_path / "ci-agentic-fix"
+    checkpoint_dir.mkdir()
+    _ = (checkpoint_dir / "ci-agentic-push-checkpoint.latest").write_text(
+        "RUN_ID=old-run\n"
+        "DELTA_PATHS=fixed.py\n"
+        "CI_FIX_REBASE_PENDING=false\n"
+        "DETAIL=delegate-timeout-after-push\n",
+        encoding="utf-8",
+    )
+
+    class _Runner:
+        def run(self, *_args: object, **_kwargs: object) -> CommandResult:
+            return _cr(("cli",), rc=config.EXIT_TIMEOUT)
+
+    fix = ci_monitor._agentic_fix_result(  # pyright: ignore[reportPrivateUsage]
+        _Runner(),
+        pr=1,
+        run_id="42",
+        repo="o/r",
+        plan_file=None,
+        cwd="/tmp/repo",
+        base_remote="origin",
+        base_ref="main",
+        ctx=_agentic_timeout_ctx(tmp_path),
+    )
+
+    assert fix.status == "fix-exhausted"
+    assert fix.detail == "ci-fix-exhausted: delegate-timeout"
+
+
+def test_agentic_fix_timeout_trusts_matching_push_checkpoint(tmp_path: Path) -> None:
+    checkpoint_dir = tmp_path / "ci-agentic-fix"
+    checkpoint_dir.mkdir()
+    _ = (checkpoint_dir / "ci-agentic-push-checkpoint.latest").write_text(
+        "RUN_ID=42\n"
+        "DELTA_PATHS=fixed.py,other.py\n"
+        "CI_FIX_REBASE_PENDING=true\n"
+        "DETAIL=delegate-timeout-after-push\n",
+        encoding="utf-8",
+    )
+
+    class _Runner:
+        def run(self, *_args: object, **_kwargs: object) -> CommandResult:
+            return _cr(("cli",), rc=config.EXIT_TIMEOUT)
+
+    fix = ci_monitor._agentic_fix_result(  # pyright: ignore[reportPrivateUsage]
+        _Runner(),
+        pr=1,
+        run_id="42",
+        repo="o/r",
+        plan_file=None,
+        cwd="/tmp/repo",
+        base_remote="origin",
+        base_ref="main",
+        ctx=_agentic_timeout_ctx(tmp_path),
+    )
+
+    assert fix.status == "pushed"
+    assert fix.delta_paths == ("fixed.py", "other.py")
+    assert fix.ci_fix_rebase_pending is True
+
+
+def test_agentic_fix_timeout_treats_missing_checkpoint_run_id_as_stale(tmp_path: Path) -> None:
+    checkpoint_dir = tmp_path / "ci-agentic-fix"
+    checkpoint_dir.mkdir()
+    _ = (checkpoint_dir / "ci-agentic-push-checkpoint.latest").write_text(
+        "DELTA_PATHS=fixed.py\n"
+        "CI_FIX_REBASE_PENDING=false\n",
+        encoding="utf-8",
+    )
+
+    class _Runner:
+        def run(self, *_args: object, **_kwargs: object) -> CommandResult:
+            return _cr(("cli",), rc=config.EXIT_TIMEOUT)
+
+    fix = ci_monitor._agentic_fix_result(  # pyright: ignore[reportPrivateUsage]
+        _Runner(),
+        pr=1,
+        run_id="42",
+        repo="o/r",
+        plan_file=None,
+        cwd="/tmp/repo",
+        base_remote="origin",
+        base_ref="main",
+        ctx=_agentic_timeout_ctx(tmp_path),
+    )
+
+    assert fix.status == "fix-exhausted"
+
+
 def test_agentic_fix_result_fix_attempted_local_unfixable_promotes_exhausted(tmp_path: Path) -> None:
     detail_file = tmp_path / "exhausted.detail"
     _ = detail_file.write_text(

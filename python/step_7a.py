@@ -112,6 +112,7 @@ def _run_log_flush(
     run_id: str,
     no_logs_commit: bool,
     claude_source_file: str,
+    defer_git_commit: bool = False,
 ) -> str:
     log_flush_status = "ok"
     _run_cli("token", "mark", "Step 8 — version bump")
@@ -186,7 +187,7 @@ def _run_log_flush(
     )
     if rc2 != 0 or status2 not in {"ok", "skip", "already-flushed", "no-records"}:
         log_flush_status = "degraded"
-    if not no_logs_commit:
+    if not no_logs_commit and not defer_git_commit:
         refresh = run_logs.flush_logs_pre(run_logs.proc, with_context, cwd=str(Path.cwd()))
         if refresh.skipped and refresh.reason not in {"no-repo-cwd", "no-logs-commit", "volatile-only"}:
             log_flush_status = "degraded"
@@ -302,22 +303,23 @@ def run_step7a(
     for line in probe.stdout.splitlines():
         if line.strip():
             print(line)
-    if probe.returncode != 0:
-        emit("DIAGRAM_STATUS", diagram_status)
-        emit("DIAGRAM_REASON", diagram_reason)
-        emit("DIAGRAM_PATH", diagram_path)
-        emit("COMMENT_URL", comment_url)
-        emit("LOG_FLUSH_STATUS", "skipped-rebase-checkpoint")
-        emit("STEP_7A_BAIL_REASON", bail)
-        emit("REBASE_OUTCOME", "conflict" if probe.returncode == 1 else "failed")
-        return probe.returncode
-
     log_flush_status = _run_log_flush(
         implement_tmpdir,
         run_id=run_id,
         no_logs_commit=no_logs_commit,
         claude_source_file=claude_source,
+        defer_git_commit=probe.returncode != 0,
     )
+    if probe.returncode != 0:
+        emit("DIAGRAM_STATUS", diagram_status)
+        emit("DIAGRAM_REASON", diagram_reason)
+        emit("DIAGRAM_PATH", diagram_path)
+        emit("COMMENT_URL", comment_url)
+        emit("LOG_FLUSH_STATUS", log_flush_status)
+        emit("STEP_7A_BAIL_REASON", bail)
+        emit("REBASE_OUTCOME", "conflict" if probe.returncode == 1 else "failed")
+        return probe.returncode
+
     rebase_outcome = "skipped"
     for line in probe.stdout.splitlines():
         if line.startswith("REBASE_OUTCOME="):

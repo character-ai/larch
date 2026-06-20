@@ -1303,7 +1303,7 @@ def _agentic_output_dir(ctx: RunContext | None) -> str:
     return str(path)
 
 
-def _read_push_checkpoint_from_ctx(ctx: RunContext | None) -> dict[str, str] | None:
+def _read_push_checkpoint_from_ctx(ctx: RunContext | None, expected_run_id: str = "") -> dict[str, str] | None:
     path = Path(_agentic_output_dir(ctx)) / "ci-agentic-push-checkpoint.latest"
     if not path.is_file():
         return None
@@ -1312,6 +1312,10 @@ def _read_push_checkpoint_from_ctx(ctx: RunContext | None) -> dict[str, str] | N
         key, sep, value = line.partition("=")
         if sep and key:
             values[key] = value.strip()
+    if expected_run_id:
+        checkpoint_run_id = values.get("RUN_ID", "")
+        if checkpoint_run_id != expected_run_id:
+            return None
     return values
 
 
@@ -1384,7 +1388,7 @@ def _agentic_fix_result(
         argv.append("--no-logs-commit")
     result = runner.run(argv, cwd=cwd, timeout=_agentic_fix_delegate_timeout_sec())
     if result.returncode == config.EXIT_TIMEOUT:
-        checkpoint = _read_push_checkpoint_from_ctx(ctx)
+        checkpoint = _read_push_checkpoint_from_ctx(ctx, run_id)
         if checkpoint is not None:
             pending = checkpoint.get("CI_FIX_REBASE_PENDING", "").lower() == "true"
             delta_paths = tuple(
