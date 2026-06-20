@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import cast
 
 _SELF_REVIEW_MODE = "self-review"
 _ACCEPTED_COUNT_KEY = "accepted_count"
@@ -29,13 +30,16 @@ def _count(value: object) -> int:
 
 def self_review_tally_items(data: object) -> list[SelfReviewTallyItem]:
     """Expand self-review accepted/rejected counts into ordered tally items."""
-    if not isinstance(data, dict) or data.get("mode") != _SELF_REVIEW_MODE:
+    if not isinstance(data, dict):
+        return []
+    typed = cast("dict[str, object]", data)
+    if typed.get("mode") != _SELF_REVIEW_MODE:
         return []
 
     items: list[SelfReviewTallyItem] = []
     for outcome, count, prefix in (
-        ("accepted", _count(data.get(_ACCEPTED_COUNT_KEY)), _SELF_REVIEW_ACCEPTED_PREFIX),
-        ("rejected", _count(data.get(_REJECTED_COUNT_KEY)), _SELF_REVIEW_REJECTED_PREFIX),
+        ("accepted", _count(typed.get(_ACCEPTED_COUNT_KEY)), _SELF_REVIEW_ACCEPTED_PREFIX),
+        ("rejected", _count(typed.get(_REJECTED_COUNT_KEY)), _SELF_REVIEW_REJECTED_PREFIX),
     ):
         items.extend(
             SelfReviewTallyItem(outcome=outcome, finding_id=f"{prefix}_{idx}", index=idx)
