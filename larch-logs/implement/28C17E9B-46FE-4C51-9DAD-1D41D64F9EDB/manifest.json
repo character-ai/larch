@@ -18,8 +18,8 @@
   "status": "partial",
   "steps_ran": {
     "step8": false,
-    "step9a1": false
+    "step9a1": true
   },
   "superseded_by": null,
-  "updated_at": "2026-06-20T00:26:55Z"
+  "updated_at": "2026-06-20T00:29:04Z"
 }
