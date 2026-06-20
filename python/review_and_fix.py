@@ -58,6 +58,12 @@ class CoderResult:
 
 
 @dataclass(frozen=True)
+class RoundCommitResult:
+    sha: str = ""
+    failure_reason: str = ""
+
+
+@dataclass(frozen=True)
 class RoundResult:
     rc: int
     status: str
@@ -1164,7 +1170,6 @@ def _commit_lint_fix_delta_paths(round_num: int, round_dir: Path, commit_paths: 
     _write_text(stage_file, "\n".join(commit_paths) + ("\n" if commit_paths else ""))
     if not commit_paths:
         return ""
-    _run(["git", "add", "--pathspec-from-file", str(stage_file)])
     msg = f"Address lint fixes after review round {round_num}: {reason}"
     commit = _run([
         sys.executable,
@@ -2043,19 +2048,20 @@ def _run_coder_codex(round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
     return False
 
 
-def _stage_and_commit_round(round_num: int, round_dir: Path) -> str:
+def _stage_and_commit_round(round_num: int, round_dir: Path) -> RoundCommitResult:
     paths = _collect_round_stage_paths(round_dir)
     stage_file = round_dir / "coder-stage-paths.txt"
     _write_text(stage_file, "\n".join(paths) + ("\n" if paths else ""))
     if not paths:
-        return ""
-    _run(["git", "add", "--pathspec-from-file", str(stage_file)])
+        return RoundCommitResult()
     msg = f"Address code review feedback (round {round_num})"
     commit = _run([sys.executable, str(_PY_CLI), "git", "commit", "--only", "--pathspec-from-file", str(stage_file), "-m", msg])
     _append_text(round_dir / "coder-commit.log", commit.stdout + commit.stderr)
     if commit.returncode != 0:
-        return ""
-    return _git_head()
+        if "larch: stale .git/index.lock not removed" in f"{commit.stdout}\n{commit.stderr}":
+            return RoundCommitResult(failure_reason="stale-index-lock")
+        return RoundCommitResult()
+    return RoundCommitResult(sha=_git_head())
 
 
 def _collect_review_fix_stage_paths(implement_tmpdir: Path) -> list[str]:
@@ -2152,17 +2158,21 @@ def apply_findings_with_coder(input_file: Path, round_dir: Path, result_file: Pa
             result = CoderResult(0, tool, "no-changes", str(tool_log), scrubbed_count, scrub_count, 0)
             _write_env(result_file, _coder_env(result))
             return result
-        commit_sha = ""
+        round_commit = RoundCommitResult()
         if round_num is not None and round_num > 0:
-            commit_sha = _stage_and_commit_round(round_num, round_dir)
-            if not commit_sha:
+            round_commit = _stage_and_commit_round(round_num, round_dir)
+            if round_commit.failure_reason == "stale-index-lock":
+                result = CoderResult(2, tool, "stale-index-lock", str(tool_log), scrubbed_count, scrub_count, 0)
+                _write_env(result_file, _coder_env(result))
+                return result
+            if not round_commit.sha:
                 if not _cleanup_failed_coder_attempt(round_dir):
                     result = CoderResult(2, tool, "failed", str(tool_log), scrubbed_count, scrub_count, 0)
                     _write_env(result_file, _coder_env(result))
                     return result
                 commit_failed = True
                 continue
-        result = CoderResult(0, tool, "applied", str(tool_log), scrubbed_count, scrub_count, 0, commit_sha)
+        result = CoderResult(0, tool, "applied", str(tool_log), scrubbed_count, scrub_count, 0, round_commit.sha)
         _write_env(result_file, _coder_env(result))
         return result
     _record_main_agent_required_vendor_task(round_dir)
@@ -3098,12 +3108,6 @@ def commit_fixes(argv: list[str] | None = None) -> int:
             _emit_kv("SHA", "")
             _emit_kv("ERROR", "no review delta paths")
             return 1
-        add_result = _run(["git", "add", "--pathspec-from-file", str(stage_file)])
-        if add_result.returncode != 0:
-            _emit_kv("COMMITTED", "false")
-            _emit_kv("SHA", "")
-            _emit_kv("ERROR", (add_result.stderr or add_result.stdout).replace("\n", " ")[:500])
-            return add_result.returncode
         result = _run([
             sys.executable,
             str(_PY_CLI),

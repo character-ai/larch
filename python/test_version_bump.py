@@ -193,6 +193,9 @@ def test_apply_git_add_failure_rolls_back(tmp_path: Path) -> None:
             ("git", "status", "--porcelain"): CommandResult(
                 ("git", "status", "--porcelain"), 0, "", "", 0.01
             ),
+            ("git", "rev-parse", "--absolute-git-dir"): CommandResult(
+                ("git", "rev-parse", "--absolute-git-dir"), 128, "", "not a git repository", 0.01
+            ),
             ("git", "add", "--", config.PLUGIN_JSON_PATH): CommandResult(
                 ("git", "add", "--", config.PLUGIN_JSON_PATH), 1, "", "fatal", 0.01
             ),

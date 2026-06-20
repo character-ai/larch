@@ -212,6 +212,225 @@ def test_commit_and_add_build_argv() -> None:
     )
 
 
+def _run_git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", *args],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
+def _init_repo(repo: Path) -> None:
+    repo.mkdir()
+    _ = _run_git(repo, "init", "-b", "main")
+    _ = _run_git(repo, "config", "user.email", "test@example.com")
+    _ = _run_git(repo, "config", "user.name", "Test")
+    _ = (repo / "file.txt").write_text("base\n", encoding="utf-8")
+    _ = _run_git(repo, "add", "file.txt")
+    _ = _run_git(repo, "commit", "-m", "init")
+
+
+def _not_held(
+    _runner: object,
+    _lock_path: Path,
+    *,
+    cwd: str | None = None,  # pylint: disable=unused-argument
+) -> bool:
+    _ = cwd
+    return False
+
+
+def _held(
+    _runner: object,
+    _lock_path: Path,
+    *,
+    cwd: str | None = None,  # pylint: disable=unused-argument
+) -> bool:
+    _ = cwd
+    return True
+
+
+def test_commit_removes_zero_byte_index_lock_and_retries(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    _ = (repo / "file.txt").write_text("changed\n", encoding="utf-8")
+    _ = _run_git(repo, "add", "file.txt")
+    lock = repo / ".git" / "index.lock"
+    lock.touch()
+    monkeypatch.setattr(git, "_index_lock_is_held", _not_held)
+
+    result = git.commit(ProcRunner(), "change", cwd=str(repo))
+
+    assert result.returncode == 0
+    assert not lock.exists()
+    assert _run_git(repo, "log", "-1", "--format=%s").stdout.strip() == "change"
+
+
+def test_commit_refuses_non_empty_index_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    _ = (repo / "file.txt").write_text("changed\n", encoding="utf-8")
+    _ = _run_git(repo, "add", "file.txt")
+    lock = repo / ".git" / "index.lock"
+    _ = lock.write_text("active\n", encoding="utf-8")
+    monkeypatch.setattr(git, "_index_lock_is_held", _not_held)
+
+    result = git.commit(ProcRunner(), "change", cwd=str(repo))
+
+    assert result.returncode != 0
+    assert lock.exists()
+    assert "non-empty lock" in result.stderr
+
+
+def test_commit_refuses_zero_byte_index_lock_when_lock_held(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    _ = (repo / "file.txt").write_text("changed\n", encoding="utf-8")
+    _ = _run_git(repo, "add", "file.txt")
+    lock = repo / ".git" / "index.lock"
+    lock.touch()
+    monkeypatch.setattr(git, "_index_lock_is_held", _held)
+
+    result = git.commit(ProcRunner(), "change", cwd=str(repo))
+
+    assert result.returncode != 0
+    assert lock.exists()
+    assert "lock held by process" in result.stderr
+
+
+def test_commit_retries_only_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    git_dir = tmp_path / ".git"
+    git_dir.mkdir()
+    lock = git_dir / "index.lock"
+    lock.touch()
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("git", "commit", "-m", "msg"), 128, "", "fatal: Unable to create index.lock\n", 0.01),
+            CommandResult(("git", "rev-parse", "--absolute-git-dir"), 0, str(git_dir) + "\n", "", 0.01),
+            CommandResult(("git", "rev-parse", "--absolute-git-dir"), 0, str(git_dir) + "\n", "", 0.01),
+            CommandResult(("git", "commit", "-m", "msg"), 128, "", "fatal: still failed\n", 0.01),
+        ],
+    )
+    monkeypatch.setattr(git, "_index_lock_is_held", _not_held)
+
+    result = git.commit(runner, "msg")
+
+    assert result.returncode == 128
+    assert not lock.exists()
+    assert [call[:3] for call in runner.calls].count(["git", "commit", "-m"]) == 2
+
+
+def test_try_remove_stale_index_lock_ignores_unrelated_git_process(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    lock = repo / ".git" / "index.lock"
+    lock.touch()
+    monkeypatch.setattr(git, "_index_lock_is_held", _not_held)
+
+    removed, diagnostic = git._try_remove_stale_index_lock(ProcRunner(), cwd=str(repo))  # pyright: ignore[reportPrivateUsage]
+
+    assert removed
+    assert "removed stale" in diagnostic
+    assert not lock.exists()
+
+
+def test_try_remove_stale_index_lock_refuses_when_lock_held(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    lock = repo / ".git" / "index.lock"
+    lock.touch()
+    monkeypatch.setattr(git, "_index_lock_is_held", _held)
+
+    removed, diagnostic = git._try_remove_stale_index_lock(ProcRunner(), cwd=str(repo))  # pyright: ignore[reportPrivateUsage]
+
+    assert not removed
+    assert "lock=" in diagnostic
+    assert lock.exists()
+
+
+def test_index_lock_is_held_false_when_lock_absent(tmp_path: Path) -> None:
+    lock = tmp_path / "repo" / ".git" / "index.lock"
+
+    assert git._index_lock_is_held(RecordingRunner(), lock) is False  # pyright: ignore[reportPrivateUsage]
+
+
+def test_add_removes_zero_byte_index_lock_and_retries(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    _ = (repo / "file.txt").write_text("changed\n", encoding="utf-8")
+    lock = repo / ".git" / "index.lock"
+    lock.touch()
+    monkeypatch.setattr(git, "_index_lock_is_held", _not_held)
+
+    result = git.add(ProcRunner(), "file.txt", cwd=str(repo))
+
+    assert result.returncode == 0
+    assert not lock.exists()
+    assert _run_git(repo, "diff", "--cached", "--name-only").stdout.splitlines() == ["file.txt"]
+
+
+def test_add_pathspec_file_removes_zero_byte_index_lock_and_retries(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    _ = (repo / "file.txt").write_text("changed\n", encoding="utf-8")
+    pathspec = tmp_path / "paths.txt"
+    _ = pathspec.write_text("file.txt\n", encoding="utf-8")
+    lock = repo / ".git" / "index.lock"
+    lock.touch()
+    monkeypatch.setattr(git, "_index_lock_is_held", _not_held)
+
+    result = git.add_pathspec_file(ProcRunner(), str(pathspec), cwd=str(repo))
+
+    assert result.returncode == 0
+    assert not lock.exists()
+    assert _run_git(repo, "diff", "--cached", "--name-only").stdout.splitlines() == ["file.txt"]
+
+
+def test_commit_main_pathspec_from_file_removes_zero_byte_index_lock_and_retries(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    _ = (repo / "file.txt").write_text("changed\n", encoding="utf-8")
+    pathspec = tmp_path / "paths.txt"
+    _ = pathspec.write_text("file.txt\n", encoding="utf-8")
+    lock = repo / ".git" / "index.lock"
+    lock.touch()
+    monkeypatch.chdir(repo)
+    monkeypatch.setattr(git, "proc", ProcRunner())
+    monkeypatch.setattr(git, "_index_lock_is_held", _not_held)
+
+    rc = git.commit_main(["--only", "--pathspec-from-file", str(pathspec), "-m", "msg"])
+
+    assert rc == 0
+    assert not lock.exists()
+    assert _run_git(repo, "log", "-1", "--format=%s").stdout.strip() == "msg"
+
+
 def test_fetch_and_show_file_argv() -> None:
     runner = StubRunner(
         {

@@ -137,7 +137,7 @@ forbid(skill, retired_step5_entry_md, 'retired step-5-entry.md ref removed from 
 require('python/review_and_fix.py', '--stage-all', 'commit-fixes --stage-all')
 forbid(skill, 'review-and-fix commit-fixes <specific-files>', 'Step 7 must stage all review fixes')
 forbid('python/review_and_fix.py', '"git", "add", "-A"', 'commit-fixes must not stage unrelated paths')
-require('python/review_and_fix.py', '"git", "add", "--pathspec-from-file"', 'commit-fixes pathspec staging')
+forbid('python/review_and_fix.py', '"git", "add", "--pathspec-from-file"', 'staging owned by commit_main only')
 require('python/review_and_fix.py', '"--only",\n            "--pathspec-from-file"', 'commit-fixes pathspec-only commit')
 require('python/implement_dispatch.py', 'LARCH_TIMING_LEDGER', 'commit-implementation telemetry self-rehydration')
 require('skills/implement/scripts/step-18.sh', '--phase gate', 'step-18 phase gate argv')

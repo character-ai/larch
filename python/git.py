@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 import tempfile
@@ -26,6 +27,9 @@ _GIT_REF_LABEL_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
 _GIT_STAGE_BASE = 1
 _GIT_STAGE_OURS = 2
 _GIT_STAGE_THEIRS = 3
+_COMMAND_NOT_FOUND_EXIT = 127
+_LSOF_MIN_COLUMNS = 2
+_PS_LINE_FIELDS = 2
 
 
 def validate_base_remote_ref(base_remote: str, base_ref: str) -> str | None:
@@ -240,6 +244,229 @@ def show_file(
     return _run(runner, ["git", "show", spec], cwd=cwd)
 
 
+def _output_mentions_index_lock(result: CommandResult) -> bool:
+    output = f"{result.stdout}\n{result.stderr}".lower()
+    return "index.lock" in output or ("unable to create" in output and "lock" in output)
+
+
+def _git_index_lock_path(runner: Runner, cwd: str | None = None) -> Path | None:
+    result = _run(runner, ["git", "rev-parse", "--absolute-git-dir"], cwd=cwd)
+    if result.returncode != 0:
+        return None
+    git_dir = result.stdout.strip()
+    if not git_dir:
+        return None
+    return Path(git_dir) / "index.lock"
+
+
+def _paths_same(left: Path, right: Path) -> bool:
+    try:
+        return left.resolve() == right.resolve()
+    except OSError:
+        return left.absolute() == right.absolute()
+
+
+def _lock_held_by_procfs(lock_path: Path) -> bool | None:
+    proc_root = Path("/proc")
+    if not proc_root.is_dir():
+        return None
+    try:
+        resolved_lock = lock_path.resolve()
+    except OSError:
+        resolved_lock = lock_path.absolute()
+    current_pid = os.getpid()
+    probe_error = False
+    for pid_dir in proc_root.iterdir():
+        if not pid_dir.name.isdigit() or int(pid_dir.name) == current_pid:
+            continue
+        fd_dir = pid_dir / "fd"
+        try:
+            fds = list(fd_dir.iterdir())
+        except FileNotFoundError:
+            continue
+        except OSError:
+            probe_error = True
+            continue
+        for fd_path in fds:
+            try:
+                if fd_path.resolve() == resolved_lock:
+                    return True
+            except FileNotFoundError:
+                continue
+            except OSError:
+                probe_error = True
+    return None if probe_error else False
+
+
+def _lock_held_by_lsof(runner: Runner, lock_path: Path, *, cwd: str | None = None) -> bool | None:
+    result = runner.run(["lsof", str(lock_path)], cwd=cwd)
+    if result.returncode == _COMMAND_NOT_FOUND_EXIT:
+        return None
+    if result.returncode != 0 and not result.stdout.strip():
+        if result.stderr.strip():
+            return None
+        return False
+    current_pid = os.getpid()
+    for line in result.stdout.splitlines()[1:]:
+        parts = line.split()
+        if len(parts) < _LSOF_MIN_COLUMNS:
+            continue
+        try:
+            pid = int(parts[1])
+        except ValueError:
+            continue
+        if pid != current_pid:
+            return True
+    if result.returncode == 0:
+        return False
+    return None
+
+
+def _argv0_is_git(argv0: str) -> bool:
+    name = Path(argv0).name
+    return name == "git" or name.startswith("git-")
+
+
+def _proc_git_process_matches_repo(pid: int, git_dir: Path, repo_root: Path | None) -> bool:
+    proc_dir = Path("/proc") / str(pid)
+    try:
+        raw_cmdline = (proc_dir / "cmdline").read_bytes()
+    except OSError:
+        return False
+    if not raw_cmdline:
+        return False
+    argv = [part.decode("utf-8", errors="replace") for part in raw_cmdline.split(b"\0") if part]
+    if not argv or not _argv0_is_git(argv[0]):
+        return False
+    text = "\n".join(argv)
+    resolved_git_dir = str(git_dir.resolve())
+    if resolved_git_dir in text:
+        return True
+    if repo_root is not None and str(repo_root.resolve()) in text:
+        return True
+    for arg in argv:
+        if arg.startswith("--git-dir=") and _paths_same(Path(arg.removeprefix("--git-dir=")), git_dir):
+            return True
+        if repo_root is not None and arg.startswith("--work-tree=") and _paths_same(
+            Path(arg.removeprefix("--work-tree=")),
+            repo_root,
+        ):
+            return True
+    if repo_root is not None:
+        with contextlib.suppress(OSError):
+            cwd_path = (proc_dir / "cwd").resolve()
+            if cwd_path == repo_root.resolve() or repo_root.resolve() in cwd_path.parents:
+                return True
+    return False
+
+
+def _ps_git_process_matches_repo(line: str, git_dir: Path, repo_root: Path | None) -> bool:
+    parts = line.strip().split(maxsplit=1)
+    if len(parts) != _PS_LINE_FIELDS or not parts[0].isdigit():
+        return False
+    args = parts[1]
+    argv0 = args.split(maxsplit=1)[0]
+    if not _argv0_is_git(argv0):
+        return False
+    resolved_git_dir = str(git_dir.resolve())
+    if resolved_git_dir in args:
+        return True
+    return repo_root is not None and str(repo_root.resolve()) in args
+
+
+def _repo_scoped_git_process_detected(runner: Runner, lock_path: Path, *, cwd: str | None = None) -> bool | None:
+    git_dir = lock_path.parent
+    root_result = _run(runner, ["git", "rev-parse", "--show-toplevel"], cwd=cwd)
+    repo_root = Path(root_result.stdout.strip()) if root_result.returncode == 0 and root_result.stdout.strip() else None
+    proc_root = Path("/proc")
+    if proc_root.is_dir():
+        try:
+            for pid_dir in proc_root.iterdir():
+                if not pid_dir.name.isdigit():
+                    continue
+                pid = int(pid_dir.name)
+                if pid == os.getpid():
+                    continue
+                if _proc_git_process_matches_repo(pid, git_dir, repo_root):
+                    return True
+            return False
+        except OSError:
+            pass
+    ps = runner.run(["ps", "-eo", "pid,args"], cwd=cwd)
+    if ps.returncode != 0:
+        return None
+    current_pid = str(os.getpid())
+    for line in ps.stdout.splitlines()[1:]:
+        if line.strip().startswith(current_pid + " "):
+            continue
+        if _ps_git_process_matches_repo(line, git_dir, repo_root):
+            return True
+    return False
+
+
+def _index_lock_is_held(runner: Runner, lock_path: Path, *, cwd: str | None = None) -> bool:
+    if not lock_path.exists():
+        return False
+    held = _lock_held_by_procfs(lock_path)
+    if held is None:
+        held = _lock_held_by_lsof(runner, lock_path, cwd=cwd)
+    if held is not None:
+        return held
+    repo_scoped = _repo_scoped_git_process_detected(runner, lock_path, cwd=cwd)
+    if repo_scoped is not None:
+        return repo_scoped
+    return True
+
+
+def _try_remove_stale_index_lock(runner: Runner, *, cwd: str | None = None) -> tuple[bool, str]:
+    lock_path = _git_index_lock_path(runner, cwd=cwd)
+    if lock_path is None:
+        return False, "larch: stale .git/index.lock not removed: git-dir probe failed"
+    lock_label = f"lock={lock_path}"
+    if not lock_path.exists():
+        return False, f"larch: stale .git/index.lock not removed: lock absent; {lock_label}"
+    try:
+        stat = lock_path.stat()
+    except OSError as exc:
+        return False, f"larch: stale .git/index.lock not removed: stat failed: {exc}; {lock_label}"
+    if stat.st_size != 0:
+        return False, f"larch: stale .git/index.lock not removed: non-empty lock; {lock_label}"
+    if _index_lock_is_held(runner, lock_path, cwd=cwd):
+        return False, f"larch: stale .git/index.lock not removed: lock held by process; {lock_label}"
+    try:
+        lock_path.unlink()
+    except OSError as exc:
+        return False, f"larch: stale .git/index.lock not removed: unlink failed: {exc}; {lock_label}"
+    return True, f"larch: removed stale .git/index.lock; {lock_label}"
+
+
+def _append_stderr(result: CommandResult, note: str) -> CommandResult:
+    suffix = note if note.endswith("\n") else f"{note}\n"
+    stderr = result.stderr
+    if stderr and not stderr.endswith("\n"):
+        stderr += "\n"
+    return CommandResult(result.argv, result.returncode, result.stdout, stderr + suffix, result.duration)
+
+
+def _run_with_stale_index_lock_retry(
+    runner: Runner,
+    argv: Sequence[str],
+    *,
+    cwd: str | None = None,
+) -> CommandResult:
+    result = _run(runner, argv, cwd=cwd)
+    if result.returncode == 0:
+        return result
+    lock_path = _git_index_lock_path(runner, cwd=cwd)
+    if not _output_mentions_index_lock(result) and (lock_path is None or not lock_path.exists()):
+        return result
+    removed, diagnostic = _try_remove_stale_index_lock(runner, cwd=cwd)
+    if not removed:
+        return _append_stderr(result, diagnostic)
+    retry = _run(runner, argv, cwd=cwd)
+    return _append_stderr(retry, f"{diagnostic}; retrying git command once")
+
+
 def commit(
     runner: Runner,
     message: str,
@@ -259,7 +486,7 @@ def commit(
             argv.append("--pathspec-file-nul")
     elif paths:
         argv.extend(["--", *paths])
-    return _run(runner, argv, cwd=cwd)
+    return _run_with_stale_index_lock_retry(runner, argv, cwd=cwd)
 
 
 def commit_with_trailer(
@@ -312,7 +539,7 @@ def commit_with_trailer(
                 argv.append("--pathspec-file-nul")
         elif paths:
             argv.extend(["--", *paths])
-        return _run(runner, argv, cwd=cwd)
+        return _run_with_stale_index_lock_retry(runner, argv, cwd=cwd)
     finally:
         Path(tmp_path).unlink()
 
@@ -321,7 +548,7 @@ def add(runner: Runner, *paths: str, cwd: str | None = None) -> CommandResult:
     argv = ["git", "add"]
     if paths:
         argv.extend(["--", *paths])
-    return _run(runner, argv, cwd=cwd)
+    return _run_with_stale_index_lock_retry(runner, argv, cwd=cwd)
 
 
 def rm(runner: Runner, *paths: str, force: bool = False, cwd: str | None = None) -> CommandResult:
@@ -343,7 +570,7 @@ def add_pathspec_file(
     argv = ["git", "add", f"--pathspec-from-file={pathspec_from_file}"]
     if pathspec_file_nul:
         argv.append("--pathspec-file-nul")
-    return _run(runner, argv, cwd=cwd)
+    return _run_with_stale_index_lock_retry(runner, argv, cwd=cwd)
 
 
 def amend_add(
@@ -1077,6 +1304,9 @@ def commit_main(argv: list[str]) -> int:
     if not args.message.strip():
         print("git-commit.sh: commit message must be non-empty", file=sys.stderr)
         return 1
+    removed, diagnostic = _try_remove_stale_index_lock(proc)
+    if removed:
+        print(diagnostic, file=sys.stderr)
     if args.pathspec_from_file:
         staged = add_pathspec_file(
             proc,
