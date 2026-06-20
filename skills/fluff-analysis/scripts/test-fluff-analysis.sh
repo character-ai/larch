@@ -83,6 +83,16 @@ cat > "$IMPL_BAD_VERSION/review-findings-full.jsonl" <<'JSONL'
 {"id":"FINDING_BAD","phase":"code-review","outcome":"accepted","reviewer_slots":["cursor-specialist-correctness-output.txt"],"round_num":"1","category":"Bad version run","body_severity":"important","prose_body":"## Bad version run"}
 JSONL
 
+# ---- implement self-review fixture: empty JSONL sentinel plus tally counts ----
+IMPL_SELF="$FIX/larch-logs/implement/RUN-IMPL-SELF"
+mkdir -p "$IMPL_SELF"
+cat > "$IMPL_SELF/manifest.json" <<'JSON'
+{"started_at":"2026-05-26T10:00:00Z","larch_version":"49.0.0","skill":"implement"}
+JSON
+: > "$IMPL_SELF/review-findings-full.jsonl"
+cat > "$IMPL_SELF/code-review-tally.json" <<'JSON'
+{"schema_version":2,"phase":"code-review","mode":"self-review","accepted_count":2,"rejected_count":1}
+JSON
 
 # ---- implement 21-column TSV fixture: voter severities stay aligned with vN_tool columns ----
 IMPL_TSV21="$FIX/larch-logs/implement/RUN-IMPL-TSV21"
@@ -132,8 +142,11 @@ echo "== running analyzer over fixture =="
 REPORT=$(python3 "$ANALYZER" --log-root "$FIX/larch-logs" --min-group 1)
 
 assert_contains "$REPORT" "# Review Fluff Analysis" "report header"
+assert_contains "$REPORT" "- Records: **14** total (implement code-review **11**, design in-scope **3**)" "self-review tally included in record counts"
+assert_contains "$REPORT" "committed-self-review-tally=3" "self-review tally source included"
 assert_contains "$REPORT" "## Baselines" "baselines section"
 assert_contains "$REPORT" "implement code-review" "implement baseline row"
+assert_contains "$REPORT" "| implement code-review | 11 |" "implement baseline includes self-review tally records"
 assert_contains "$REPORT" "design in-scope" "design baseline row"
 assert_contains "$REPORT" "## Q1 — Low-acceptance semantic groups" "Q1 section"
 assert_contains "$REPORT" "## Recommendations" "recommendations section"
@@ -220,6 +233,25 @@ assert rec["v_severities"] == ["major", "nit", "minor"], rec
 PY
 PASS=$((PASS + 1))
 echo "  ok: implement 21-column TSV severities parsed by header"
+
+echo "== empty implement JSONL falls back to self-review tally =="
+python3 - "$ANALYZER" "$FIX/larch-logs" <<'PY'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("fluff_analysis", sys.argv[1])
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+records = mod.extract(sys.argv[2], "", False, None, None, None)
+rows = [r for r in records if r.get("run_id") == "RUN-IMPL-SELF"]
+assert [r["finding_id"] for r in rows] == [
+    "SELF_REVIEW_ACCEPTED_1",
+    "SELF_REVIEW_ACCEPTED_2",
+    "SELF_REVIEW_REJECTED_1",
+], rows
+assert {r["source"] for r in rows} == {"committed-self-review-tally"}, rows
+assert [r["outcome"] for r in rows] == ["accepted", "accepted", "rejected"], rows
+PY
+PASS=$((PASS + 1))
+echo "  ok: self-review tally fallback extracted"
 
 echo "== missing log root exits 2 =="
 set +e

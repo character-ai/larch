@@ -1,5 +1,5 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnusedCallResult=false, reportOptionalSubscript=false, reportOptionalMemberAccess=false, reportPossiblyUnboundVariable=false, reportUnnecessaryComparison=false, reportUnknownLambdaType=false, reportArgumentType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnusedImport=false, reportUnusedFunction=false, reportPrivateUsage=false, reportUnusedVariable=false
-# ruff: noqa: E702, F401
+# ruff: noqa: E702
 # pylint: skip-file
 """Representative tests for audit run helpers."""
 
@@ -8,11 +8,13 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-
-import pytest
+from typing import TYPE_CHECKING
 
 import audit_runs
 from proc import CommandResult
+
+if TYPE_CHECKING:
+    import pytest
 
 
 def test_title_contiguous(capsys):
@@ -611,6 +613,76 @@ def test_scan_run_malformed_review_findings_category_stats_is_partial(tmp_path: 
     assert stats["partial_reason"] == "malformed_review_findings_jsonl"
     assert stats["detail"] == "jq failed (category-stats): parse error"
     assert stats["mangled"] == 0
+
+
+def _scan_category_stats(run: Path, scans: Path, capsys: pytest.CaptureFixture[str]) -> dict[str, object]:
+    assert audit_runs.scan_run_main(["--skill", "implement", "--run-dir", str(run), "--pr", "7", "--scans-tsv", str(scans)]) == 0
+    rows = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    return next(row for row in rows if row["scan"] == "category-stats")
+
+
+def test_scan_run_empty_review_findings_self_review_tally_populates_blank_stats(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    run = tmp_path / "run"
+    run.mkdir()
+    (run / "review-findings-full.jsonl").write_text("", encoding="utf-8")
+    (run / "code-review-tally.json").write_text(
+        '{"mode":"self-review","accepted_count":2,"rejected_count":1}\n',
+        encoding="utf-8",
+    )
+    scans = tmp_path / "scans.tsv"
+    scans.write_text("name\ttype\noos-category-mangle\tjsonl-field\n", encoding="utf-8")
+
+    stats = _scan_category_stats(run, scans, capsys)
+
+    assert stats["partial_data"] is False
+    assert stats["blank"] == 3
+    assert stats["canonical"] == 0
+    assert stats["mangled"] == 0
+
+
+def test_scan_run_absent_review_findings_self_review_tally_populates_blank_stats(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    run = tmp_path / "run"
+    run.mkdir()
+    (run / "code-review-tally.json").write_text(
+        '{"mode":"self-review","accepted_count":"bad","rejected_count":2}\n',
+        encoding="utf-8",
+    )
+    scans = tmp_path / "scans.tsv"
+    scans.write_text("name\ttype\noos-category-mangle\tjsonl-field\n", encoding="utf-8")
+
+    stats = _scan_category_stats(run, scans, capsys)
+
+    assert stats["partial_data"] is False
+    assert stats["blank"] == 2
+    assert stats["canonical"] == 0
+    assert stats["mangled"] == 0
+
+
+def test_scan_run_malformed_review_findings_does_not_use_self_review_tally(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    run = tmp_path / "run"
+    run.mkdir()
+    (run / "review-findings-full.jsonl").write_text("{not json\n", encoding="utf-8")
+    (run / "code-review-tally.json").write_text(
+        '{"mode":"self-review","accepted_count":2,"rejected_count":1}\n',
+        encoding="utf-8",
+    )
+    scans = tmp_path / "scans.tsv"
+    scans.write_text("name\ttype\noos-category-mangle\tjsonl-field\n", encoding="utf-8")
+
+    stats = _scan_category_stats(run, scans, capsys)
+
+    assert stats["partial_data"] is True
+    assert stats["partial_reason"] == "malformed_review_findings_jsonl"
+    assert stats["blank"] == 0
 
 
 def test_oos_silent_drop_malformed_oos_issues_ndjson_reports_error(tmp_path: Path, capsys):
