@@ -586,6 +586,18 @@ def test_parse_rate_failure_is_not_substantive_and_suppressed(tmp_path: Path) ->
     assert not append_log.exists()
 
 
+def test_judge_error_parse_threshold_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Issue #4880: the per-voter JUDGE_ERROR parse-rate threshold is tunable via env (default 0.8).
+    monkeypatch.delenv("LARCH_VOTER_JUDGE_ERROR_PARSE_THRESHOLD", raising=False)
+    assert voting._judge_error_parse_threshold() == 0.8  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setenv("LARCH_VOTER_JUDGE_ERROR_PARSE_THRESHOLD", "0.5")
+    assert voting._judge_error_parse_threshold() == 0.5  # pyright: ignore[reportPrivateUsage]
+    # Invalid, empty, or out-of-range values fall back to the default.
+    for bad in ("abc", "0", "-0.1", "1.5", ""):
+        monkeypatch.setenv("LARCH_VOTER_JUDGE_ERROR_PARSE_THRESHOLD", bad)
+        assert voting._judge_error_parse_threshold() == 0.8  # pyright: ignore[reportPrivateUsage]
+
+
 def test_parse_rate_diag_uses_bounded_prefix_read(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
