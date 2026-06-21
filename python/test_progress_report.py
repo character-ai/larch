@@ -2351,6 +2351,47 @@ def test_top_reviewers_whitespace_coproposers_and_comma_fallback(tmp_path: Path)
     assert "Cursor-Pragmatic Codex-Arch" not in rendered
 
 
+def test_top_reviewers_classification_unique_finder_bonus(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("LARCH_UNIQUE_FINDER_BONUS", "0.25")
+    root = tmp_path / "plan-review"
+    r1 = root / "round-1"
+    _write_round_meta(r1)
+    (r1 / "plan-review-prune-label-map.tsv").write_text(
+        "slot\thuman_label\nplan-requirements\tCursor-Pragmatic\nplan-architecture\tCodex-Arch\n",
+        encoding="utf-8",
+    )
+    header = progress_report.voting.findings_classification_header().split("\t")
+
+    def row(finding_id: str, reviewer: str, scope: str = "in_scope") -> str:
+        cols = dict.fromkeys(header, "")
+        cols.update({
+            "finding_id": finding_id,
+            "finding_reviewers": reviewer,
+            "voting_result": "accepted",
+            "v1_vote": "YES",
+            "v1_severity": "minor",
+            "scope": scope,
+        })
+        return "\t".join(cols[name] for name in header)
+
+    (r1 / "findings-classification.tsv").write_text(
+        "\t".join(header) + "\n"
+        + row("FINDING_SOLE", "Solo-Reviewer") + "\n"
+        + row("FINDING_MULTI", "Multi-A, Multi-B") + "\n"
+        + row("FINDING_WHITESPACE", "Cursor-Pragmatic Codex-Arch") + "\n"
+        + row("OOS_1", "Oos-Reviewer", "oos") + "\n",
+        encoding="utf-8",
+    )
+    rendered = progress_report.render_phase_detail(root, "design")
+    assert "1. Solo-Reviewer — 1.25" in rendered
+    assert "2. Codex-Arch — 1" in rendered
+    assert "3. Cursor-Pragmatic — 1" in rendered
+    assert "4. Multi-A — 1" in rendered
+    assert "5. Multi-B — 1" in rendered
+    assert "— 1.0" not in rendered
+    assert "Oos-Reviewer" not in rendered
+
+
 def test_write_design_round_meta_collector_from_real_records(tmp_path: Path) -> None:
     # Issue #4733 Bug 2: the collector field is built from real per-slot collector-results.env
     # records (KEY=VALUE blocks: REVIEWER_FILE/TOOL/STATUS/...), not count-based placeholders.

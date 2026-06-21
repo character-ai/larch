@@ -441,6 +441,25 @@ def split_classification_attribution(
     return [cell]
 
 
+def raw_sole_finder_attribution(
+    reviewer_cell: str,
+    *,
+    column: str,
+    corpus_labels: Iterable[str],
+) -> list[str]:
+    """Return raw attribution tokens for sole-finder bonus eligibility."""
+    cell = reviewer_cell.strip()
+    if not cell:
+        return []
+    if column != "finding_reviewers":
+        return split_classification_attribution(cell, column=column)
+    comma_parts = [part.strip() for part in cell.split(",") if part.strip()]
+    if len(comma_parts) > 1:
+        return []
+    tokens = tokenize_finding_reviewers(cell, corpus_labels)
+    return tokens or comma_parts
+
+
 def accepted_finding_points_from_severities(
     severities: Iterable[str],
     *,
@@ -1723,12 +1742,24 @@ def _scoreboard_points_from_classification(
     with classification_file.open(encoding="utf-8", errors="replace", newline="") as handle:
         reader = csv.DictReader(handle, delimiter="\t")
         header = list(reader.fieldnames or [])
+        rows = list(reader)
         reviewer_column = "finding_reviewers" if "finding_reviewers" in header else "reviewer_slots"
         label_set = reviewer_labels if reviewer_column == "finding_reviewers" else None
-        for row in reader:
+        corpus_labels = list(reviewer_labels)
+        corpus_seen = set(corpus_labels)
+        if reviewer_column == "finding_reviewers":
+            for row in rows:
+                grow_attribution_labels(corpus_labels, corpus_seen, row.get(reviewer_column, ""))
+        active_bonus = unique_finder_bonus_from_env()
+        for row in rows:
             result = (row.get("voting_result") or "").strip()
             if result not in {"accepted", "rejected", "neutral"}:
                 continue
+            raw_reviewers = raw_sole_finder_attribution(
+                row.get(reviewer_column, ""),
+                column=reviewer_column,
+                corpus_labels=corpus_labels,
+            )
             reviewers = split_classification_attribution(
                 row.get(reviewer_column, ""),
                 column=reviewer_column,
@@ -1736,6 +1767,8 @@ def _scoreboard_points_from_classification(
             )
             if result == "accepted":
                 delta = accepted_points_from_classification_row(row, header)
+                if active_bonus > 0 and not _classification_row_is_oos(row, header) and len(raw_reviewers) == 1:
+                    delta += active_bonus
             elif result == "rejected":
                 delta = -1
             elif _classification_row_is_oos(row, header):
