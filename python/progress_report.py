@@ -581,6 +581,11 @@ class _PhaseRound:
     seconds: int | None
     cost: str
     gantt_window: tuple[int, int] | None
+    # Issue #4882: canonical scope-aware decomposition (None when round-meta predates the field or
+    # has no classification data, e.g. design plan-review rounds).
+    inscope: int | None = None
+    oos_total: int | None = None
+    nit_pruned: int = 0
 
 
 def _completed_round_dirs(rounds_root: Path) -> list[Path]:
@@ -625,6 +630,17 @@ def _phase_round_from_meta(
         table_window[0] if table_window else None,
         table_window[1] if table_window else None,
     )
+    canonical = _nested_dict(meta, "tally_canonical")
+    inscope: int | None = None
+    oos_total: int | None = None
+    if canonical:
+        inscope = (
+            _as_int(canonical.get("ACCEPTED_COUNT"))
+            + _as_int(canonical.get("REJECTED_COUNT"))
+            + _as_int(canonical.get("NEUTRAL_COUNT"))
+            + _as_int(canonical.get("EXONERATED_COUNT"))
+        )
+        oos_total = _as_int(canonical.get("OOS_ACCEPTED_COUNT")) + _as_int(canonical.get("OOS_REJECTED_COUNT"))
     return _PhaseRound(
         number=round_num,
         suggestions=accepted + rejected + exonerated + neutral,
@@ -635,6 +651,9 @@ def _phase_round_from_meta(
         seconds=seconds,
         cost=cost,
         gantt_window=gantt_window if gantt_window is not None and gantt_window[1] > gantt_window[0] else None,
+        inscope=inscope,
+        oos_total=oos_total,
+        nit_pruned=_as_int(meta.get("nit_pruned_count")),
     )
 
 
@@ -923,6 +942,30 @@ def render_phase_detail(
         "per-round accepted-point scores the same way._"
     )
     lines.append("")
+    # Issue #4882: decompose the raw per-finding "Suggestions" count into the canonical scope-aware
+    # split so "18 suggestions" reconciles with the headline "X/Y accepted" (in-scope only).
+    decomp_segments: list[str] = []
+    for row in phase_rounds:
+        if row.inscope is None:
+            continue
+        oos = row.oos_total or 0
+        seg = (
+            f"round {row.number}: {row.inscope + oos} finding(s) = {row.inscope} in-scope "
+            f"(voted; matches the headline X/Y accepted) + {oos} out-of-scope"
+        )
+        if row.nit_pruned:
+            seg += f" (incl. {row.nit_pruned} nit-pruned)"
+        decomp_segments.append(seg)
+    if decomp_segments:
+        lines.append(
+            "_Finding decomposition (canonical, scope-aware): "
+            + "; ".join(decomp_segments)
+            + ". The Suggestions and OOS columns above count findings by finding id (raw per-finding) "
+            "and can disagree with this scope-aware split when findings are reclassified out-of-scope "
+            "after voting; round-meta.json records both raw (`tally`) and canonical (`tally_canonical`) "
+            "counts so downstream joins do not contradict._"
+        )
+        lines.append("")
     if gantt_enabled:
         gantt = _render_phase_gantt(
             round_dirs,
@@ -1855,6 +1898,8 @@ def _round_meta_object(
     *,
     collector: str = "",
     revise: dict[str, str | None] | None = None,
+    canonical: tuple[int, int, int, int, int, int] | None = None,
+    nit_pruned: int = 0,
 ) -> dict[str, object]:
     accepted, rejected, neutral, exonerated, oos_accepted, oos_rejected = counts
     obj: dict[str, object] = {
@@ -1869,9 +1914,45 @@ def _round_meta_object(
         "summary": {"panel": {"total_slot_count": panel_count}},
         "collector": collector,
     }
+    # Issue #4882: the raw `tally` above counts findings by id-prefix (FINDING_/OOS_), so a
+    # nit-pruned [OUT_OF_SCOPE] FINDING_N is miscounted as in-scope rejected. Record the canonical,
+    # scope-aware decomposition alongside it (matching code-review-tally.json) so the run-summary can
+    # reconcile the two and downstream joins do not see a contradiction.
+    if canonical is not None:
+        c_accepted, c_rejected, c_neutral, c_exonerated, c_oos_accepted, c_oos_rejected = canonical
+        obj["tally_canonical"] = {
+            "ACCEPTED_COUNT": str(c_accepted),
+            "REJECTED_COUNT": str(c_rejected),
+            "EXONERATED_COUNT": str(c_exonerated),
+            "NEUTRAL_COUNT": str(c_neutral),
+            "OOS_ACCEPTED_COUNT": str(c_oos_accepted),
+            "OOS_REJECTED_COUNT": str(c_oos_rejected),
+        }
+        obj["nit_pruned_count"] = str(nit_pruned)
     if revise is not None:
         obj["revise"] = revise
     return obj
+
+
+def _canonical_decomposition(round_dir: Path) -> tuple[tuple[int, int, int, int, int, int] | None, int]:
+    """Issue #4882: scope-aware in-scope/OOS counts from the classification TSV, plus nit-pruned.
+
+    The classification TSV carries the authoritative ``scope`` column, so it separates in-scope
+    findings from out-of-scope ones (including nit-pruned ``[OUT_OF_SCOPE] FINDING_N`` blocks that
+    keep a ``FINDING_`` id). Returns ``(None, 0)`` when no classification data is available (e.g.
+    design plan-review rounds), leaving the raw tally as the only recorded view.
+    """
+    tsv = round_dir / "findings-classification.tsv"
+    if not tsv.is_file() or not _tsv_has_data_rows(tsv):
+        return None, 0
+    canonical = _parse_classification_tsv(tsv)
+    nit_pruned = 0
+    prune_env = round_dir / "prune-nit.env"
+    if prune_env.is_file():
+        raw = _read_simple_env(prune_env).get("PRUNED_COUNT", "")
+        if raw.isdigit():
+            nit_pruned = int(raw)
+    return canonical, nit_pruned
 
 
 def _design_collector_field(round_dir: Path, failure_count: int) -> str:
@@ -1942,7 +2023,8 @@ def write_implement_round_meta(round_dir: Path) -> int:
     try:
         counts, _source = _round_counts(round_dir)
         panel_count = _count_panel_manifest(round_dir / "panel-manifest.ndjson")
-        meta = _round_meta_object(counts, panel_count)
+        canonical, nit_pruned = _canonical_decomposition(round_dir)
+        meta = _round_meta_object(counts, panel_count, canonical=canonical, nit_pruned=nit_pruned)
         tmp = round_dir / "round-meta.json.tmp"
         tmp.write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
         tmp.replace(round_dir / "round-meta.json")

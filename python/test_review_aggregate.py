@@ -62,6 +62,27 @@ _OOS_ATTR_SUCCESS = """### FINDING_1: In-scope bug
 - **Concern**: unrelated style preference
 - **Suggested revision**: tidy later"""
 
+# Issue #4881: both inputs are in-scope (no OOS-tagged reviewers), so a merge that omits the
+# required code-mode Severity line fails validation for a NON-OOS-attribution reason.
+_NON_OOS_INPUT = """### FINDING_1: In-scope bug A
+- **Reviewer**: cursor-a-output.txt
+- **Severity**: important
+- **Concern**: real bug A
+- **Suggested revision**: fix A
+
+### FINDING_2: In-scope bug B
+- **Reviewer**: cursor-b-output.txt
+- **Severity**: important
+- **Concern**: real bug B
+- **Suggested revision**: fix B
+"""
+
+# Lists both in-scope reviewers but omits "- **Severity**:" -> rc=2 non-OOS validation failure.
+_NON_OOS_FAIL = """### FINDING_1: Merged in-scope
+- **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt
+- **Concern**: merged concern
+- **Suggested revision**: fix"""
+
 
 def test_aggregate_disabled_fast_path_preserves_findings(tmp_path: Path) -> None:
     findings = tmp_path / "findings.md"
@@ -213,6 +234,13 @@ def test_aggregate_oos_attribution_failure_retries_then_succeeds(tmp_path: Path)
     prompt = (tmp_path / "aggregator-prompt.md").read_text(encoding="utf-8")
     assert "Previous aggregation attempt rejected by validation" in prompt
     assert "appears only on OOS-tagged input findings" in prompt
+    # Issue #4881: the retry-appended OOS guidance no longer suggests dropping a reviewer slot (which
+    # would re-fail the "every input reviewer must appear" check) and instead keeps all reviewers
+    # present. Scope the assertion to the retry-appended section so the base aggregator template's
+    # own (unchanged) wording does not mask the fix.
+    retry_section = prompt.split("## Previous aggregation attempt rejected by validation", 1)[1]
+    assert "omit that reviewer slot" not in retry_section
+    assert "every input reviewer must still appear" in retry_section
 
 
 def test_aggregate_validation_failure_exhausts_retry_budget(tmp_path: Path) -> None:
@@ -283,6 +311,66 @@ def test_aggregate_validation_retries_disabled_is_single_shot(tmp_path: Path) ->
     assert "REASON=validation-failed" in result.stdout
     assert counter.read_text(encoding="utf-8") == "1"
     assert findings.read_text(encoding="utf-8") == _OOS_ATTR_INPUT
+
+
+def test_aggregate_non_oos_validation_failure_is_single_shot(tmp_path: Path) -> None:
+    # Issue #4881: a non-OOS-attribution semantic failure (here a merged block missing the required
+    # code-mode Severity line) must degrade single-shot, not consume the retry budget.
+    findings = tmp_path / "in-nonoos.md"
+    _ = findings.write_text(_NON_OOS_INPUT, encoding="utf-8")
+    counter = tmp_path / "dispatch-count.txt"
+    dispatch = tmp_path / "counting-dispatch.sh"
+    rts.write_aggregate_counting_dispatch_stub(
+        dispatch,
+        counter_file=counter,
+        fail_attempts=99,
+        fail_body=_NON_OOS_FAIL,
+        success_body=_NON_OOS_FAIL,
+    )
+
+    result = run_review(
+        "aggregate-findings",
+        "--findings-file",
+        str(findings),
+        "--review-tmpdir",
+        str(tmp_path),
+        "--codex-present",
+        "true",
+        "--cursor-present",
+        "true",
+        "--mode",
+        "diff",
+        env=_aggregate_env(tmp_path, AGGREGATE_DISPATCH_SH=str(dispatch), LARCH_AGGREGATE_VALIDATION_RETRIES="2"),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "AGGREGATED=false" in result.stdout
+    assert "REASON=validation-failed" in result.stdout
+    # Single-shot despite a retry budget of 2, because this is not the OOS-attribution class.
+    assert counter.read_text(encoding="utf-8") == "1"
+    assert findings.read_text(encoding="utf-8") == _NON_OOS_INPUT
+    validate_stderr = (tmp_path / "aggregator-validate.stderr").read_text(encoding="utf-8")
+    assert "Severity" in validate_stderr
+    assert "appears only on OOS-tagged input findings" not in validate_stderr
+
+
+def test_validation_retry_prompt_is_failure_class_aware() -> None:
+    # Issue #4881: OOS-attribution errors get OOS-specific guidance; other semantic errors get
+    # generic guidance. Neither suggests dropping a reviewer slot (which would re-fail validation).
+    oos_err = (
+        "merged output lacks [OUT_OF_SCOPE] while listing reviewer 'cursor-b-output.txt' "
+        "that appears only on OOS-tagged input findings\n"
+    )
+    oos_prompt = review_aggregate._validation_retry_prompt("BASE", oos_err, 2, 3)  # pyright: ignore[reportPrivateUsage]
+    assert "[OUT_OF_SCOPE]" in oos_prompt
+    assert "every input reviewer must still appear" in oos_prompt
+    assert "omit that reviewer slot" not in oos_prompt
+
+    generic_err = "output block missing - **Severity**: blocking|important|latent|nit line\n"
+    generic_prompt = review_aggregate._validation_retry_prompt("BASE", generic_err, 2, 3)  # pyright: ignore[reportPrivateUsage]
+    assert "Fix exactly the error reported above" in generic_prompt
+    assert "preserving every input reviewer slot" in generic_prompt
+    assert "appears only on OOS-tagged input findings" not in generic_prompt
 
 
 def test_aggregate_dispatch_failure_preserves_ballot(tmp_path: Path) -> None:
