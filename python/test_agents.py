@@ -3780,7 +3780,6 @@ def test_no_deleted_launcher_script_skipif_guards() -> None:
         assert needle not in text
 
 
-
 def test_parse_drafter_output_writes_plan_summary_and_scout(tmp_path: Path) -> None:
     raw = tmp_path / "raw.txt"
     plan = tmp_path / "plan.txt.tmp"
@@ -3803,6 +3802,18 @@ def test_parse_drafter_output_writes_plan_summary_and_scout(tmp_path: Path) -> N
     assert plan.read_text(encoding="utf-8") == "Do work\ndiff_lines: 7\n"
     assert summary.read_text(encoding="utf-8") == "summary\n"
     assert json.loads(scout.read_text(encoding="utf-8")) == {"archetypes": []}
+
+
+def test_parse_drafter_output_missing_scout_block_sets_absent_reason(tmp_path: Path) -> None:
+    raw = tmp_path / "raw.txt"
+    plan = tmp_path / "plan.txt.tmp"
+    summary = tmp_path / "summary.md.tmp"
+    scout = tmp_path / "scout.json.tmp"
+    _ = raw.write_text("LARCH_PLAN_BEGIN\nDo work\ndiff_lines: 7\nLARCH_PLAN_END\n", encoding="utf-8")
+    result = agents.parse_drafter_output(raw, plan, summary, scout)
+    assert result.scout_candidate_written is False
+    assert result.scout_fail_reason == "absent"
+    assert not scout.exists()
 
 
 @pytest.mark.parametrize(

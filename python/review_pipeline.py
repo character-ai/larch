@@ -24,6 +24,7 @@ import proc
 import research_eval
 import voting
 from plan_scout import REVIEW_RESERVED as RESERVED_DYNAMIC_NAMES
+from plan_scout import filter_manifest as filter_scout_manifest
 
 _PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 CLI = _PLUGIN_ROOT / "python" / "cli.py"
@@ -751,6 +752,15 @@ def _scout_manifest_valid(path: Path, max_count: int) -> bool:
             tmp.unlink()
 
 
+def _raw_archetype_count(path: Path) -> int | None:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    archetypes = data.get("archetypes") if isinstance(data, dict) else None
+    return len(archetypes) if isinstance(archetypes, list) else None
+
+
 def _scout_archetypes(path: Path) -> list[dict[str, object]]:
     try:
         data = json.loads(path.read_text(encoding="utf-8", errors="replace"))
@@ -1037,33 +1047,42 @@ def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int
                 scout_status = "producer-invalid"
                 scout_fail_reason = "producer_status_" + producer_status
                 _write_scout_status(review_tmpdir, round_num, scout_status, scout_manifest, scout_fail_reason)
-            elif _normalize_scout_manifest(Path(pre_scouted), scout_manifest, dynamic_max):
-                archetypes = _scout_archetypes(scout_manifest)
-                raw_count = len(_scout_archetypes(Path(pre_scouted)))
-                if site == "implement Step 5" and raw_count > 0 and not archetypes:
-                    _write_empty_scout_manifest(scout_manifest)
-                    scout_status = "producer-invalid"
-                    scout_fail_reason = "pre_scouted_filtered_to_zero"
-                    _write_scout_status(review_tmpdir, round_num, scout_status, scout_manifest, scout_fail_reason)
-                else:
-                    scout_status = "pre-scouted-empty" if not archetypes else "pre-scouted"
-                    _write_scout_status(review_tmpdir, round_num, scout_status, scout_manifest)
-                if archetypes:
-                    context = {
-                        "diff_file": diff_file,
-                        "commit_count": _get(parsed, "--commit-count", "0"),
-                        "diff_mode": diff_mode,
-                        "description_text": _get(parsed, "--description-text"),
-                        "scope_files": _get(parsed, "--scope-files"),
-                        "plan_file": plan_file,
-                        "feature_file": _get(parsed, "--feature-file"),
-                    }
-                    _synthesize_dynamic_slots(scout_manifest, review_tmpdir, manifest, mode, context, codex_slots_enabled, runner=runner)
             else:
-                _write_empty_scout_manifest(scout_manifest)
-                scout_status = "producer-invalid" if site == "implement Step 5" else "parse-failed"
-                scout_fail_reason = "pre_scouted_manifest_validation"
-                _write_scout_status(review_tmpdir, round_num, scout_status, scout_manifest, scout_fail_reason)
+                pre_path = Path(pre_scouted)
+                raw_count = _raw_archetype_count(pre_path)
+                filter_status, filtered_count = filter_scout_manifest(
+                    pre_path,
+                    scout_manifest,
+                    max_archetypes=dynamic_max,
+                    mode="review",
+                )
+                filter_ok = filter_status in {"ok", "empty"} and raw_count is not None
+                if filter_ok:
+                    archetypes = _scout_archetypes(scout_manifest)
+                    if site == "implement Step 5" and raw_count > 0 and filtered_count == 0:
+                        _write_empty_scout_manifest(scout_manifest)
+                        scout_status = "producer-invalid"
+                        scout_fail_reason = "pre_scouted_filtered_to_zero"
+                        _write_scout_status(review_tmpdir, round_num, scout_status, scout_manifest, scout_fail_reason)
+                    else:
+                        scout_status = "pre-scouted-empty" if filtered_count == 0 else "pre-scouted"
+                        _write_scout_status(review_tmpdir, round_num, scout_status, scout_manifest)
+                    if archetypes:
+                        context = {
+                            "diff_file": diff_file,
+                            "commit_count": _get(parsed, "--commit-count", "0"),
+                            "diff_mode": diff_mode,
+                            "description_text": _get(parsed, "--description-text"),
+                            "scope_files": _get(parsed, "--scope-files"),
+                            "plan_file": plan_file,
+                            "feature_file": _get(parsed, "--feature-file"),
+                        }
+                        _synthesize_dynamic_slots(scout_manifest, review_tmpdir, manifest, mode, context, codex_slots_enabled, runner=runner)
+                else:
+                    _write_empty_scout_manifest(scout_manifest)
+                    scout_status = "producer-invalid" if site == "implement Step 5" else "parse-failed"
+                    scout_fail_reason = "pre_scouted_manifest_validation"
+                    _write_scout_status(review_tmpdir, round_num, scout_status, scout_manifest, scout_fail_reason)
         elif scout_status == "na":
             status_file = review_tmpdir / f"scout-round{round_num}-status.env"
             if site != "implement Step 5" and scout_manifest.exists() and scout_manifest.stat().st_size:

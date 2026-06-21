@@ -1225,7 +1225,7 @@ def test_dispatch_panel_pre_scouted_filtered_to_zero_is_producer_invalid(tmp_pat
     impl.mkdir()
     manifest = impl / "scout-coder-manifest.json"
     manifest.write_text(
-        '{"archetypes":[{"name":"dyn-api","focus_area":"correctness","weight":1.0,"rationale":"API changed.","prompt_body":"Check API."}]}\n',
+        '{"archetypes":[{"name":"correctness","focus_area":"correctness","weight":1,"rationale":"Check logic.","prompt_body":"Check logic."}]}\n',
         encoding="utf-8",
     )
     (impl / "step2-scout-coder-status.env").write_text("SCOUT_CODER_STATUS=ok\n", encoding="utf-8")
@@ -1280,6 +1280,79 @@ def test_dispatch_panel_implement_missing_producer_does_not_launch_scout(tmp_pat
     assert "SCOUT_STATUS=producer-missing" in result.stdout
     assert not list(tmp_path.glob("*.called"))
     assert (impl / ".producer-scout-warning-logged").is_file()
+
+
+def test_dispatch_panel_docs_only_skips_producer_scout_warning(tmp_path: Path) -> None:
+    case_dir = tmp_path / "docs-only-skip-warning"
+    case_dir.mkdir()
+    (case_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
+    (case_dir / "review.diff").write_text("diff --git a/docs/foo.md b/docs/foo.md\n", encoding="utf-8")
+    impl = tmp_path / "impl"
+    impl.mkdir()
+    classifier = tmp_path / "classify-docs-only.sh"
+    _write_executable(classifier, '#!/usr/bin/env bash\nprintf "DIFF_MODE=docs-only\\n"\n')
+    waterfall = tmp_path / "waterfall.sh"
+    _write_waterfall_noop(waterfall)
+    result = run_review(
+        "dispatch-panel",
+        "--mode", "diff",
+        "--diff-file", str(case_dir / "review.diff"),
+        "--review-tmpdir", str(case_dir),
+        "--codex-available", "false",
+        "--cursor-available", "false",
+        "--panel", "hard",
+        "--plan-file", str(case_dir / "plan.md"),
+        "--dynamic-archetypes", "3",
+        "--site", "implement Step 5",
+        env={
+            "CLAUDE_PLUGIN_ROOT": str(ROOT),
+            "LARCH_QUIET_DISABLE": "1",
+            "IMPLEMENT_TMPDIR": str(impl),
+            "CLASSIFY_DIFF_MODE_SH": str(classifier),
+            "DISPATCH_WATERFALL": str(waterfall),
+        },
+    )
+    assert result.returncode == 0, result.stderr
+    assert "SCOUT_STATUS=skipped-docs-only" in result.stdout
+    assert not (impl / ".producer-scout-warning-logged").exists()
+    assert not (impl / "execution-issues.md").exists()
+
+
+def test_dispatch_panel_producer_scout_warning_sentinel_prevents_duplicate(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    case_dir = tmp_path / "warning-sentinel"
+    case_dir.mkdir()
+    (case_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
+    (case_dir / "review.diff").write_text("diff --git a/foo b/foo\n", encoding="utf-8")
+    impl = tmp_path / "impl"
+    impl.mkdir()
+    (impl / ".producer-scout-warning-logged").write_text("logged\n", encoding="utf-8")
+    waterfall = tmp_path / "waterfall.sh"
+    _write_waterfall_noop(waterfall)
+    append_calls: list[list[str]] = []
+    original_run = review_pipeline._run_python_cli
+
+    def tracking_run(args, **kwargs):  # type: ignore[no-untyped-def]
+        if args[:3] == ["run-log", "append-entry"]:
+            append_calls.append(list(args))
+        return original_run(args, **kwargs)
+
+    monkeypatch.setattr(review_pipeline, "_run_python_cli", tracking_run)
+    result = run_review(
+        "dispatch-panel",
+        "--mode", "diff",
+        "--diff-file", str(case_dir / "review.diff"),
+        "--review-tmpdir", str(case_dir),
+        "--codex-available", "false",
+        "--cursor-available", "false",
+        "--panel", "hard",
+        "--plan-file", str(case_dir / "plan.md"),
+        "--dynamic-archetypes", "3",
+        "--site", "implement Step 5",
+        env={"CLAUDE_PLUGIN_ROOT": str(ROOT), "LARCH_QUIET_DISABLE": "1", "IMPLEMENT_TMPDIR": str(impl), "DISPATCH_WATERFALL": str(waterfall)},
+    )
+    assert result.returncode == 0, result.stderr
+    assert "SCOUT_STATUS=producer-missing" in result.stdout
+    assert append_calls == []
 
 
 def test_dispatch_panel_review_default_ignores_ambient_implement_tmpdir(tmp_path: Path) -> None:
