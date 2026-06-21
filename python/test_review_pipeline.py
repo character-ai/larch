@@ -1693,3 +1693,44 @@ printf 'DISPATCH_OK=true\\n'
     snapshot = ballot_snapshot.read_text(encoding="utf-8")
     assert "- **Reviewer**: anonymous" in snapshot
     assert (outdir / "proposer-map.tsv").is_file()
+
+
+def test_collect_findings_sentinel_plain_token(tmp_path: Path) -> None:
+    f = tmp_path / "r.md"
+    _ = f.write_text("NO_ISSUES_FOUND\n", encoding="utf-8")
+    assert review_pipeline._file_has_no_findings_sentinel(f) is True  # pyright: ignore[reportPrivateUsage]
+
+
+def test_collect_findings_sentinel_whole_file_json(tmp_path: Path) -> None:
+    f = tmp_path / "r.md"
+    _ = f.write_text('{"no_issues_found": true}\n', encoding="utf-8")
+    assert review_pipeline._file_has_no_findings_sentinel(f) is True  # pyright: ignore[reportPrivateUsage]
+
+
+def test_collect_findings_sentinel_standalone_json_after_prose(tmp_path: Path) -> None:
+    # Issue #4911 item 2: a lone {"no_issues_found": true} line after narration is
+    # a valid no-findings sentinel (parity with the #4891 collect-time validator).
+    f = tmp_path / "r.md"
+    _ = f.write_text(
+        "I reviewed the diff against the plan and found nothing actionable.\n"
+        '{"no_issues_found": true}\n',
+        encoding="utf-8",
+    )
+    assert review_pipeline._file_has_no_findings_sentinel(f) is True  # pyright: ignore[reportPrivateUsage]
+
+
+def test_collect_findings_sentinel_rejects_inline_json_in_prose(tmp_path: Path) -> None:
+    # Inline JSON embedded in a prose line must NOT count as a sentinel.
+    f = tmp_path / "r.md"
+    _ = f.write_text(
+        'The tool emitted {"no_issues_found": true} but I still found a bug.\n'
+        "- Off-by-one in the loop bound\n",
+        encoding="utf-8",
+    )
+    assert review_pipeline._file_has_no_findings_sentinel(f) is False  # pyright: ignore[reportPrivateUsage]
+
+
+def test_collect_findings_sentinel_real_findings_not_sentinel(tmp_path: Path) -> None:
+    f = tmp_path / "r.md"
+    _ = f.write_text("### In-Scope Findings\n- Something is wrong here\n", encoding="utf-8")
+    assert review_pipeline._file_has_no_findings_sentinel(f) is False  # pyright: ignore[reportPrivateUsage]
