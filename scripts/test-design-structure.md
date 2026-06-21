@@ -12,5 +12,4 @@ The harness pins the mixed Step 0/1 migration surface:
 
 It also pins the Python lifecycle strings for parsed argv persistence, degraded-tools relay, route/init result-env handling, pause-aware sentinel ordering, clarify hard halt staging, brainstorm collection idempotency, and re-entry cleanup.
 
-
 The harness also pins the post-approval Step 5b.5 architecture-diagram contract: Step 3b is finalize-only, Step 5b.5 owns diagram mode and bounded warning logging, sanitizer fail-closed paths write `architecture-diagram.skipped`, and chat diagram markers remain absent.

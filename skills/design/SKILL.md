@@ -834,7 +834,9 @@ Parse `DIAGRAM_REQUIRED=` from the entry wrapper output.
 
 If `DIAGRAM_REQUIRED=false`, the wrapper removed stale diagram files, wrote `architecture-diagram.skipped`, emitted the skip breadcrumb, and wrote `.completed/step-5b.5`. Continue to Step 5c. Do not print diagram content.
 
-If `DIAGRAM_REQUIRED=true`, the wrapper removed stale diagram files and exited for orchestrator authoring. Read `skills/design/references/readability-style.md`, generate a Mermaid Architecture Diagram from the finalized approved plan, and obey `${CLAUDE_PLUGIN_ROOT}/skills/shared/mermaid-safe-content.md`. Write `$DESIGN_TMPDIR/architecture-diagram.candidate.md` with a `## Architecture Diagram` heading and Mermaid fence. Do not print the candidate or final diagram body to chat.
+**MANDATORY — READ ENTIRE FILE before composing architecture diagram prose: `skills/design/references/readability-style.md`.**
+
+If `DIAGRAM_REQUIRED=true`, the wrapper removed stale diagram files and exited for orchestrator authoring. Generate a Mermaid Architecture Diagram from the finalized approved plan, and obey `${CLAUDE_PLUGIN_ROOT}/skills/shared/mermaid-safe-content.md`. Write `$DESIGN_TMPDIR/architecture-diagram.candidate.md` with a `## Architecture Diagram` heading and Mermaid fence. Do not print the candidate or final diagram body to chat.
 
 On generation failure before a candidate is written, print `**⚠ 5b.5: arch diagram — generation failed, proceeding without diagram (<elapsed>)**`. Optional full capture may be written to `$DESIGN_TMPDIR/architecture-diagram-generation.failure.log` for local repair only. Append only a bounded warning to `execution-issues.md` via `design_diagram_log.write_bounded_diagram_failure_log`; never append raw Mermaid, generator stdout/stderr, sanitizer stdout, or candidate bodies. Then invoke the sanitizer so it fails closed.
 
