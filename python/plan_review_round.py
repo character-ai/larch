@@ -15,6 +15,7 @@ from typing import cast
 
 import collect_results
 import logging_util
+import review_aggregate
 import voting
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -531,9 +532,13 @@ def _classify_round_loop_status(
 # plan-review/round-N/ -- where reviewer forensics already live and the committed-log publish keeps
 # them -- so an early-round aggregator failure stays diagnosable after a later round succeeds. The
 # snapshot runs only on aggregator failure, so a clean run adds no committed bytes.
+#
+# Issue #5004: source the round-stamped basenames from review_aggregate so this snapshot set and the
+# committed-pointer set cannot drift. They were hand-maintained in two modules and diverged, leaving the
+# empty-merge/scope-parity/mv failure pointers resolving to clobbered top-level paths. Append the dispatch
+# env and raw output for extra forensic context; those are snapshotted but never named by a committed pointer.
 _AGGREGATOR_FORENSIC_FILES = (
-    "aggregator-validate.stderr",
-    "aggregator-dispatch.stderr",
+    *sorted(review_aggregate.ROUND_STAMPED_FORENSICS),
     "aggregator-dispatch.env",
     "aggregator-output.txt",
 )
