@@ -7,8 +7,8 @@ Flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3.11 for
 - `config.py` — tunables (exit codes, timeouts, tier order, env-var names)
 - `proc.py` — injectable subprocess seam
 - `errors.py`, `outcomes.py`, `run_context.py` — typed errors and run context
-- `logging_util.py` — breadcrumbs + JSONL journal (observability only); `quiet_init()` mirrors `scripts/lib-quiet.sh` stream routing but intentionally opens quiet logs in append-forensics mode instead of bash's truncate-per-initialization behavior, and `contract_stream()` sends ship-driver JSON to fd 3 after self-initialized quiet
-- `redact.py`, `retry.py` — ports of `redact-secrets.sh` / `lib-net.sh`
+- `logging_util.py` — breadcrumbs + JSONL journal (observability only); `quiet_init()` owns Python stream routing, and `contract_stream()` sends ship-driver JSON to fd 3 after self-initialized quiet
+- `redact.py`, `retry.py` — secret redaction and transient retry helpers
 - `rendering.py` — prompt renderers, Mermaid sanitizer, diagrams upserter, and generated-artifact generators now exposed through `python/cli.py` (`render`, `mermaid`, `diagrams`, and `generate` domains).
 - `voting.py` — voting, tally, parse-rate, ballot parsing, scoreboard, and focus-area enum CLI surfaces.
 - `git.py`, `gh.py`, `agents.py` — typed `git` / `gh` / fixer launcher surfaces
@@ -99,3 +99,9 @@ The Phase 4 plan file list names `python/checks.py`, `python/test_checks.py`, an
 ## Orphan flush-reset parity note
 
 `finalize._local_cleanup` intentionally requires non-empty `git log` subject evidence before dropping local flush-only commits. Bash's empty-loop shape could reset with empty or malformed log output, but the Python port keeps the safer fail-closed behavior and pins it in `test_local_cleanup_does_not_reset_on_empty_orphan_evidence`.
+
+## Migration status
+
+Runtime logic is Python-first. Residual Bash is the explicit manifest inventory consumed by `python3 python/cli.py residual-bash paths`.
+
+`python3 python/cli.py pr closes-issue` is the PR-body `Closes #N` recovery surface. Terminal shared Bash libraries and verified orphan includes are retired through `python/migrated-scripts.tsv`.

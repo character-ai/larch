@@ -22,4 +22,4 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" upgrade-larch run
 
 See `${CLAUDE_PLUGIN_ROOT}/python/upgrade_larch.py` for script contract and failure recovery details. `/release` Step 7 sources `python/cli.py upgrade-larch release-step7-root` from the release working tree for side-effect-light cache-root resolution before executing the working-tree upgrade script.
 
-Edit-in-sync: sparse allowlist changes also touch `${CLAUDE_PLUGIN_ROOT}/scripts/lib-sparse-dirs.sh`, `.claude/skills/release/SKILL.md`, `docs/installation-and-setup.md`, `docs/skills.md`, `SECURITY.md`, and the intentional literal guard in `${CLAUDE_PLUGIN_ROOT}/python/test_upgrade_larch.py`.
+Edit-in-sync: sparse allowlist changes also touch `python/upgrade_larch.py`, `.claude/skills/release/SKILL.md`, `docs/installation-and-setup.md`, `docs/skills.md`, `SECURITY.md`, and the intentional literal guard in `${CLAUDE_PLUGIN_ROOT}/python/test_upgrade_larch.py`.

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import re
@@ -240,6 +241,13 @@ def resolve_release_step7_root(current_version: str = "") -> Path | None:
         return sole
     return None
 
+
+
+def sparse_dirs_main(argv: list[str] | None = None) -> int:
+    """Emit the normalized sparse checkout allowlist."""
+    argparse.ArgumentParser(prog="cli.py upgrade-larch sparse-dirs").parse_args(argv)
+    print(normalize_sparse_dirs())
+    return 0
 
 def release_step7_root_main(argv: list[str]) -> int:
     current_version = ""

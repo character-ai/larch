@@ -17,14 +17,26 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" && pwd -P)"
-# shellcheck source=scripts/lib-quiet.sh
-source "$SCRIPT_DIR/lib-quiet.sh"
 # SessionStart health deliberately runs under stripped PATHs in both tests and
-# real hook environments. lib-quiet's default log setup needs dirname/mkdir, so
-# only enable redirection when those basics are available; emit() remains safe
-# without init and writes to stdout directly.
+# real hook environments. When dirname/mkdir are unavailable, skip quiet
+# redirection and keep hook advisories on stdout.
 if command -v dirname >/dev/null 2>&1 && command -v mkdir >/dev/null 2>&1; then
-    larch_quiet_init
+    hook_log_base=${0##*/}
+    hook_log_dir=${IMPLEMENT_TMPDIR:-${DESIGN_TMPDIR:-${TMPDIR:-/tmp}}}
+    hook_log_file="${LARCH_QUIET_LOG_FILE:-$hook_log_dir/larch-quiet-${hook_log_base:-sessionstart-health.sh}-$$.log}"
+    hook_log_parent=$(dirname "$hook_log_file" 2>/dev/null || printf '%s' "${TMPDIR:-/tmp}")
+    if mkdir -p "$hook_log_parent" 2>/dev/null && : >"$hook_log_file" 2>/dev/null; then
+        exec 3>&1
+        hook_emit() { printf '%s
+' "$1" >&3; }
+        exec >>"$hook_log_file" 2>&1
+    else
+        hook_emit() { printf '%s
+' "$1"; }
+    fi
+else
+    hook_emit() { printf '%s
+' "$1"; }
 fi
 LC_ALL=C
 
@@ -87,16 +99,8 @@ probe_sparse_cone_drift() {
         return 0
     fi
 
-    # shellcheck source=scripts/lib-sparse-dirs.sh
-    source "$SCRIPT_DIR/lib-sparse-dirs.sh" 2>/dev/null || true
-    if ! declare -F normalize_sparse_dirs >/dev/null 2>&1; then
-        [[ "$restore_nounset" == "true" ]] && set -u
-        [[ "$restore_errexit" == "true" ]] && set -e
-        return 0
-    fi
-
     configured=$(git -C "$marketplace_clone" sparse-checkout list 2>/dev/null | sed '/^$/d' | sort || true)
-    expected=$(normalize_sparse_dirs 2>/dev/null || true)
+    expected=$(python3 "$SCRIPT_DIR/../python/cli.py" upgrade-larch sparse-dirs 2>/dev/null || true)
     if [[ -n "$configured" && -n "$expected" && "$configured" != "$expected" ]]; then
         append_msg "larch hook preflight: larch-local marketplace sparse checkout is out of date; run /upgrade-larch to repair it."
     fi
@@ -210,12 +214,12 @@ fi
 if [[ -n "$MSG" ]]; then
     if [[ "$JQ_AVAILABLE" == "true" ]]; then
         ADVISORY=$(jq -n --arg ctx "$MSG" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$ctx}}' 2>/dev/null) || ADVISORY=''
-        [ -n "$ADVISORY" ] && emit "$ADVISORY"
+        [ -n "$ADVISORY" ] && hook_emit "$ADVISORY"
     else
         if [[ "$GIT_AVAILABLE" == "true" ]]; then
-            emit '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"larch hook preflight: jq not on PATH (install jq for advisory hook output)."}}'
+            hook_emit '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"larch hook preflight: jq not on PATH (install jq for advisory hook output)."}}'
         else
-            emit '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"larch hook preflight: jq not on PATH and git not on PATH; install jq and git for advisory hook output."}}'
+            hook_emit '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"larch hook preflight: jq not on PATH and git not on PATH; install jq and git for advisory hook output."}}'
         fi
     fi
 fi

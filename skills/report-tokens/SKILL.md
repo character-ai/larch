@@ -33,7 +33,7 @@ where `[FLAGS]` are only `--no-issue` and/or `--no-plot`; `--run-id` is never in
 
 Plot subprocess contract: `${CLAUDE_PLUGIN_ROOT}/skills/report-tokens/scripts/plot-cost-over-time.md`; helper: `${CLAUDE_PLUGIN_ROOT}/skills/report-tokens/scripts/plot-cost-over-time.py`.
 
-Verify the CLI exited successfully. On a normal run, stdout includes `## Report Tokens Analysis` plus `Cache JSON: <path>`. If it exits non-zero, stop and surface the error; do not invent partial cost results. The CLI passes through `lib-quiet` routing via `quiet_init`, so scan warnings and issue-creation failures are visible to callers.
+Verify the CLI exited successfully. On a normal run, stdout includes `## Report Tokens Analysis` plus `Cache JSON: <path>`. If it exits non-zero, stop and surface the error; do not invent partial cost results. The CLI uses Python quiet routing via `quiet_init`, so scan warnings and issue-creation failures are visible to callers.
 
 ## NEVER
 

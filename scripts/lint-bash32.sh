@@ -48,17 +48,29 @@ TMP_FILES="$(mktemp "${TMPDIR:-/tmp}/lint-bash32-files.XXXXXX")"
 trap 'rm -f "$TMP_FILES"' EXIT
 
 list_shell_files() {
+    if command -v python3 >/dev/null 2>&1 && [ -f "$ROOT/scripts/residual-bash-paths.txt" ]; then
+        if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+            python3 "$REPO_ROOT/python/cli.py" residual-bash paths --root "$ROOT" --null-delimited --intersect-git
+        else
+            python3 "$REPO_ROOT/python/cli.py" residual-bash paths --root "$ROOT" --null-delimited
+        fi
+        return
+    fi
+    if [ -f "$ROOT/scripts/residual-bash-paths.txt" ]; then
+        while IFS= read -r rel || [ -n "$rel" ]; do
+            case "$rel" in
+                ""|\#*|larch-logs/*|node_modules/*) continue ;;
+                *.sh|*.inc.bash) printf '%s\0' "$rel" ;;
+            esac
+        done < "$ROOT/scripts/residual-bash-paths.txt"
+        return
+    fi
     if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
         git -C "$ROOT" ls-files --cached --others --exclude-standard -z -- '*.sh' '*.inc.bash'
     else
         (
             cd "$ROOT"
-            find . -type f \( -name '*.sh' -o -name '*.inc.bash' \) ! -path './.git/*' ! -path './node_modules/*' ! -path './.venv/*' ! -path './.agents/*' -print \
-                | sed 's#^\./##' \
-                | LC_ALL=C sort \
-                | while IFS= read -r path; do
-                    printf '%s\0' "$path"
-                done
+            find . -type f \( -name '*.sh' -o -name '*.inc.bash' \) ! -path './.git/*' ! -path './node_modules/*' ! -path './.venv/*' ! -path './.agents/*' -print                 | sed 's#^\./##'                 | LC_ALL=C sort                 | while IFS= read -r path; do printf '%s\0' "$path"; done
         )
     fi
 }

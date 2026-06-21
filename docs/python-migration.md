@@ -181,3 +181,15 @@ The C3c slice moves /design decomposition helpers to `python/decompose.py`, dyna
 - The shared postplan helper calls `postplan_emit_main` and `pause_save_main` in-process. Rehydration exports merged session keys to `os.environ` before those calls.
 - The thin-wrapper rc contract is preserved: nonfatal postplan outcomes emit stdout rows and exit 0, fatal emit rc `1` or `2` maps to process exit 1, and pause paths `sys.exit` after pause-save.
 - Structure and pytest harnesses now target the Python authorities while the launcher remains the compatibility fence for prompt-side calls.
+
+## E3 terminal Bash sweep
+
+E3 retires terminal shared Bash libraries after a strict runtime-consumer pass. A shell or include file outside the residual inventory must be ported to `python/cli.py`, deleted when it has no live runtime consumer, or recorded as a blocker before merge.
+
+The residual inventory is manifest-driven. `scripts/residual-bash-paths.txt` lists kept residual Bash only: hooks, bash-targeting linters and pre-commit wrappers, thin `python/cli.py` delegation fences, `scripts/sleep-seconds.sh`, the combine-issues helper, residual harnesses, and manifest-listed `*.inc.bash` when a live runtime consumer remains. Live orchestration bodies and sourced helper libraries are out of scope. `python/cli.py residual-bash paths [--root PATH]` reads that manifest; bash-targeting linters and CI shellcheck enumerate through it instead of rediscovering repo-wide shell files. Residual includes appear only when a kept residual executable still sources them.
+
+Retired terminal helpers, orphan includes, and the PR-body `Closes #N` helper are recorded in `python/migrated-scripts.tsv` after reference cleanup passes `make lint-retired-scripts`. `python/cli.py pr closes-issue` is the remaining `Closes #N` extraction authority.
+
+Contract-bearing hooks now own their stdout streams locally. `scripts/deny-edit-write.sh`, `scripts/sessionstart-health.sh`, and `skills/implement/scripts/hook-stop-fail-close.sh` emit hook JSON through per-hook `hook_emit` functions. `scripts/sessionstart-health.sh` keeps a stdout fallback when stripped PATH prevents quiet setup.
+
+`lint-awk-multibyte-regex` has dual discovery. It scans residual shell and include paths from the manifest, and it still scans tracked standalone `*.awk` files outside the manifest. CI shard rebalance is deferred to `/rebalance-tests` and is not part of this sweep.

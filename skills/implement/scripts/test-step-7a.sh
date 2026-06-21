@@ -257,9 +257,6 @@ if __name__ == "__main__":
     main()
 DISPATCHER
     chmod +x "$root/python/cli.py"
-    cp "$REPO_ROOT/scripts/lib-quiet.sh" "$root/scripts/lib-quiet.sh"
-    cp "$REPO_ROOT/scripts/lib-execution-issues.sh" "$root/scripts/lib-execution-issues.sh"
-    cp "$REPO_ROOT/scripts/lib-redact.sh" "$root/scripts/lib-redact.sh"
 
     cat > "$root/skills/implement/scripts/generate-code-flow-diagram.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -375,7 +372,6 @@ install_real_diagrams_helper() {
     local root=$1
     cp "$REPO_ROOT/python/cli.py" "$root/python/cli.py"
     : # redact + mermaid sanitize are handled by the copied Python CLI
-    cp "$REPO_ROOT/scripts/lib-net.sh" "$root/scripts/lib-net.sh"
     chmod +x \
         "$root/python/cli.py" \
         "$root/python/cli.py"

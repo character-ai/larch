@@ -148,4 +148,33 @@ prompt_body="${before}${readability_style}${after}"
 EOF
 assert_lint_ok pr3051-post "$pr3051_post"
 
+manifest_in="$TMPROOT/manifest-in"
+make_root "$manifest_in"
+cat > "$manifest_in/scripts/residual-bash-paths.txt" <<'EOF'
+scripts/render.sh
+EOF
+cat > "$manifest_in/scripts/render.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+out="${out//TOKEN/$rep}"
+EOF
+assert_lint_fails_for manifest-in "$manifest_in" "scripts/render.sh:3: $unsafe_fragment"
+
+manifest_out="$TMPROOT/manifest-out"
+make_root "$manifest_out"
+cat > "$manifest_out/scripts/residual-bash-paths.txt" <<'EOF'
+scripts/safe.sh
+EOF
+cat > "$manifest_out/scripts/safe.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' ok
+EOF
+cat > "$manifest_out/scripts/skipped-render.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+out="${out//TOKEN/$rep}"
+EOF
+assert_lint_ok manifest-out-safe "$manifest_out"
+
 printf '%s\n' "test-lint-renderer-substitution-safety: ok"

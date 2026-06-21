@@ -5,7 +5,7 @@ Structural harness for `/implement` prompt Bash fences. It parses `skills/implem
 ## Invariants
 
 - Exactly four pre-bootstrap call sites keep the old plugin-root guard shape:
-  - the structured invocation pin for `scripts/extract-closes-issue-from-pr.sh`;
+  - the structured invocation pin for `python/cli.py pr closes-issue`;
   - the single Preflight `python/cli.py implement preflight` helper fence;
   - Step 0 initial bootstrap;
   - dirty-tree recovery resume.

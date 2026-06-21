@@ -6,7 +6,7 @@
 
 At selected `/implement` boundaries, detect non-ignored untracked files that appeared after the Step 0 tracking adoption session baseline. This is advisory only: phantoms are logged to Execution Issues, never cleaned automatically.
 
-**Thin implementation** — shared logic lives in `${CLAUDE_PLUGIN_ROOT}/scripts/lib-phantom-probe.sh` (`phantom_probe_with_warn`; see `scripts/lib-phantom-probe.md`). Runtime entrypoints:
+**Thin implementation** — shared logic lives in `python/cli.py git phantom-probe` and `python/implement_dispatch.py`. Runtime entrypoints:
 
 - **Combined (4 sites)** — post-rebase probe is bundled into `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" push checkpoint-probe` for Steps **1.r**, **4.r**, **7.r**, and **7a.r** (uniform `<step-prefix>-post-rebase` tokens such as `1.r-post-rebase`; see `skills/implement/references/rebase-checkpoint-routing.md`). **Do not** duplicate `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git check-phantom-dirty` / `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" run-log append-entry` call blocks after those checkpoints — that would double-invoke the probe.
 - **Bundled standalone tokens (2 sites)** — Step 2 post-dispatch uses `skills/implement/scripts/step-2-post-dispatch.sh`, which bundles the probe token `2-post-dispatch` with branch and optional SHA reads. Step 8+ pre-ship uses `skills/implement/scripts/step-8-ship.sh`, which bundles `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git phantom-probe --step 8-pre-ship` before the ship driver and redirects probe stdout away from driver JSON stdout.

@@ -311,12 +311,10 @@ assert_contains "$(cat "$SCRIPT")" "IMPLEMENT_TMPDIR=\$(python3 \"\$PLUGIN_ROOT/
     "case 4a0: resolver capture is fail-open under set -e"
 
 EXPECTED_SPARSE_DIRS=()
-# shellcheck source=scripts/lib-sparse-dirs.sh
-source "$REPO_ROOT/scripts/lib-sparse-dirs.sh"
 while IFS= read -r sparse_dir; do
     [[ -n "$sparse_dir" ]] || continue
     EXPECTED_SPARSE_DIRS+=("$sparse_dir")
-done < <(normalize_sparse_dirs)
+done < <(python3 "$REPO_ROOT/python/cli.py" upgrade-larch sparse-dirs)
 if [[ "${#EXPECTED_SPARSE_DIRS[@]}" -eq 0 ]]; then
     echo "FAIL: expected sparse dir library returned no directories" >&2
     exit 1
@@ -349,10 +347,9 @@ assert_eq "$rc" "0" "case 4d: exit code 0"
 stdout=$(cat "$tmp/c4d.out")
 assert_empty "$stdout" "case 4d: stdout empty with no marketplace clone"
 
-echo "=== Case 4e: missing sparse library is silent ==="
+echo "=== Case 4e: missing Python sparse authority is silent ==="
 mkdir -p "$tmp/c4e/scripts" "$tmp/c4e-cwd"
 cp "$SCRIPT" "$tmp/c4e/scripts/sessionstart-health.sh"
-cp "$REPO_ROOT/scripts/lib-quiet.sh" "$tmp/c4e/scripts/lib-quiet.sh"
 home="$tmp/c4e-home"
 make_sparse_marketplace "$home" .claude scripts skills >/dev/null
 ORIGINAL_SCRIPT="$SCRIPT"
@@ -361,13 +358,13 @@ rc=$(run_from_dir "$tmp/real_bin" "$tmp/c4e-cwd" "$tmp/c4e.out" "$tmp/c4e.err" "
 SCRIPT="$ORIGINAL_SCRIPT"
 assert_eq "$rc" "0" "case 4e: exit code 0"
 stdout=$(cat "$tmp/c4e.out")
-assert_empty "$stdout" "case 4e: stdout empty when lib-sparse-dirs.sh is missing"
+assert_empty "$stdout" "case 4e: stdout empty when Python sparse authority is missing"
 
-echo "=== Case 4f: missing normalize_sparse_dirs is silent ==="
+echo "=== Case 4f: empty Python sparse authority is silent ==="
 mkdir -p "$tmp/c4f/scripts" "$tmp/c4f-cwd"
 cp "$SCRIPT" "$tmp/c4f/scripts/sessionstart-health.sh"
-cp "$REPO_ROOT/scripts/lib-quiet.sh" "$tmp/c4f/scripts/lib-quiet.sh"
-printf '%s\n' '# shellcheck shell=bash' 'LARCH_SPARSE_DIRS=".claude scripts skills"' > "$tmp/c4f/scripts/lib-sparse-dirs.sh"
+mkdir -p "$tmp/c4f/python"
+printf '%s\n' 'import sys' 'sys.exit(0)' > "$tmp/c4f/python/cli.py"
 home="$tmp/c4f-home"
 make_sparse_marketplace "$home" .claude scripts skills >/dev/null
 ORIGINAL_SCRIPT="$SCRIPT"
@@ -376,14 +373,13 @@ rc=$(run_from_dir "$tmp/real_bin" "$tmp/c4f-cwd" "$tmp/c4f.out" "$tmp/c4f.err" "
 SCRIPT="$ORIGINAL_SCRIPT"
 assert_eq "$rc" "0" "case 4f: exit code 0"
 stdout=$(cat "$tmp/c4f.out")
-assert_empty "$stdout" "case 4f: stdout empty when normalize_sparse_dirs is missing"
+assert_empty "$stdout" "case 4f: stdout empty when Python sparse authority emits nothing"
 
-echo "=== Case 4f2: sparse library source-time failure is fail-open ==="
+echo "=== Case 4f2: Python sparse authority failure is fail-open ==="
 mkdir -p "$tmp/c4f2/scripts" "$tmp/c4f2-cwd"
 cp "$SCRIPT" "$tmp/c4f2/scripts/sessionstart-health.sh"
-cp "$REPO_ROOT/scripts/lib-quiet.sh" "$tmp/c4f2/scripts/lib-quiet.sh"
-# shellcheck disable=SC2016 # fixture intentionally writes a literal unset-variable expansion
-printf '%s\n' '# shellcheck shell=bash' ': "${LARCH_TEST_UNSET}"' > "$tmp/c4f2/scripts/lib-sparse-dirs.sh"
+mkdir -p "$tmp/c4f2/python"
+printf '%s\n' 'import sys' 'sys.exit(1)' > "$tmp/c4f2/python/cli.py"
 home="$tmp/c4f2-home"
 make_sparse_marketplace "$home" .claude scripts skills >/dev/null
 ORIGINAL_SCRIPT="$SCRIPT"
@@ -443,14 +439,8 @@ assert_empty "$stdout" "case 4k: stdout empty when configured sparse list is emp
 echo "=== Case 4l: empty expected sparse list is silent ==="
 mkdir -p "$tmp/c4l/scripts" "$tmp/c4l-cwd"
 cp "$SCRIPT" "$tmp/c4l/scripts/sessionstart-health.sh"
-cp "$REPO_ROOT/scripts/lib-quiet.sh" "$tmp/c4l/scripts/lib-quiet.sh"
-cat > "$tmp/c4l/scripts/lib-sparse-dirs.sh" <<'LIB'
-# shellcheck shell=bash
-LARCH_SPARSE_DIRS=""
-normalize_sparse_dirs() {
-    tr ' ' '\n' <<< "$LARCH_SPARSE_DIRS" | sed '/^$/d' | sort
-}
-LIB
+mkdir -p "$tmp/c4l/python"
+printf '%s\n' 'import sys' 'sys.exit(0)' > "$tmp/c4l/python/cli.py"
 home="$tmp/c4l-home"
 make_sparse_marketplace "$home" .claude scripts skills >/dev/null
 ORIGINAL_SCRIPT="$SCRIPT"

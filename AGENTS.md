@@ -40,7 +40,6 @@ Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/
 - `docs/issue-anchored-plan.md` — **LIVE** wire format for /design ↔ /implement handoff, clarification round-trip, and `/design` pause pointer. `/implement` Preflight enforces plan gates; `/design` writes the plan block and clarify responses.
 - `python/tracking_issue.py`, `python/test_tracking_issue.py`, `python/cli.py tracking-issue ...` — tracking issue read/write/summary lifecycle surface.
 - `python/cli.py plan-block read`, `python/cli.py named-block write --marker plan`, `python/cli.py clarify {state,comment-post,label}`, `python/test_issue_wire.py`, `python/test_clarify.py` — helpers and offline harnesses for that wire format.
-- `scripts/lib-quiet.md` — quiet-by-default contract stream for larch scripts (FD 3, `emit`/`emit_kv` API, `LARCH_QUIET_DISABLE` escape hatch)
 - `docs/run-log-cli.md`, `docs/run-log-batches.md` — committed run-log CLI contract and batch table
 - `.claude/skills/release/scripts/classify-bump.md` — authoritative release classification rules
 - `skills/shared/topology.tsv` — projection rows for cross-doc topology counts; runtime authorities listed in the TSV remain source of truth
@@ -77,7 +76,7 @@ Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/
 ## Conventions
 
 - Follow recent commit history style.
-- New larch scripts are Python by default. Put new logic in `python/` behind `python3 python/cli.py`; Bash is allowed only for thin delegation wrappers that set up environment and call `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" <domain> <verb> [args...]`, Claude Code hooks, and pre-commit or CI glue. Thin wrappers are forward-looking glue only, not migration cutover shims. Migration and voluntary ports must repoint consumers to direct `cli.py` calls per [docs/python-migration.md](docs/python-migration.md) **No shims**; see also [.claude/rules/python-first-scripts.md](.claude/rules/python-first-scripts.md).
+- New larch scripts are Python by default. Put new logic in `python/` behind `python3 python/cli.py`. Residual Bash is deliberate and limited to `scripts/residual-bash-paths.txt`: hooks, bash-targeting linters, thin delegation wrappers, `scripts/sleep-seconds.sh`, the combine-issues helper, manifest-listed includes when needed, and harnesses. Do not add terminal shared Bash libraries, stray includes, or non-thin utilities. Migration and voluntary ports must repoint consumers to direct `cli.py` calls per [docs/python-migration.md](docs/python-migration.md) **No shims**; see also [.claude/rules/python-first-scripts.md](.claude/rules/python-first-scripts.md).
 - Single-runner invariant: Run only one `/implement` per repository at a time. The dirty-tree guards in `python/cli.py agent launch-review --tool cursor` and `python/cli.py agent launch-review --tool codex` detect mid-run pollution but do not serialize concurrent runners.
 - Single-`/design` invariant: One `/design` per repo at a time for workflow/`gh` hygiene. PID-keyed symlinks isolate per Claude PID, not per repo.
 - Session rehydration refreshes `~/.cache/larch/sessions/current-design-env-$PPID.sh` via `python/cli.py session write-design-env --claude-pid "$PPID"` in Step 0 so distinct Claude processes do not share one global `current-design-env.sh` name.

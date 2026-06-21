@@ -10,7 +10,7 @@ Detects whether the installed larch plugin cache is behind the working-tree vers
 
 A larch dev clone is identified by the presence of `skills/implement/SKILL.md` in the working-tree root. This marker is unique to the larch source tree and is not present in user repos that merely have larch installed as a plugin.
 
-Implementation source: `scripts/check-stale-plugin.sh` sources `scripts/lib-larch-dev-clone.sh` and calls `is_larch_dev_clone "$WORKING_TREE_ROOT"` so stall-recovery reporting and stale-plugin checks share the marker predicate.
+Implementation source: `scripts/check-stale-plugin.sh` keeps the dev-clone marker predicate inline: the working tree must contain `skills/implement/SKILL.md`.
 
 ## Output keys
 

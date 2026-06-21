@@ -11,7 +11,6 @@ make_fake_step3_plugin() {
   local dir="$1" run_body="$2"
   mkdir -p "$dir/scripts" "$dir/skills/design/scripts" "$dir/python"
   ln -sf "$ROOT/scripts/read-result-env.sh" "$dir/scripts/read-result-env.sh"
-  ln -sf "$ROOT/scripts/lib-quiet.sh" "$dir/scripts/lib-quiet.sh"
   cat >"$dir/skills/design/scripts/plan-review-loop-stub.sh" <<EOFSTUB
 #!/usr/bin/env bash
 set -euo pipefail

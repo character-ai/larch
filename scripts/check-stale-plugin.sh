@@ -28,9 +28,12 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-# shellcheck source=scripts/lib-larch-dev-clone.sh
-source "$SCRIPT_DIR/lib-larch-dev-clone.sh"
+is_larch_dev_clone() {
+    local root=${1:-}
+    [ -n "$root" ] || root=$(git rev-parse --show-toplevel 2>/dev/null || true)
+    [ -n "$root" ] || return 1
+    [ -f "$root/skills/implement/SKILL.md" ]
+}
 
 INSTALLED_PLUGIN_JSON=""
 WORKING_TREE_ROOT=""

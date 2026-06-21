@@ -38,11 +38,9 @@ After the branch/SHA probe succeeds, the wrapper merge-appends missing keys to `
 
 Existing keys are preserved. Step 0 owns run flags in the same file.
 
-## Bootstrap and libraries
+## Bootstrap
 
-The wrapper requires `IMPLEMENT_TMPDIR` and exports it for shared helpers. Before sourcing libraries, `rehydrate_plugin_root` mirrors `step-2-entry.sh`.
-
-It sources shared libraries from `$CLAUDE_PLUGIN_ROOT/scripts/`: `lib-quiet.sh` and `lib-phantom-probe.sh`.
+The wrapper requires `IMPLEMENT_TMPDIR`, resolves `${CLAUDE_PLUGIN_ROOT}`, and delegates directly to `python/cli.py implement step-2-post-dispatch`.
 
 ## Orchestrator contract
 

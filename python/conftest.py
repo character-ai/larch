@@ -14,7 +14,7 @@ import pytest_sharding
 
 @pytest.fixture(autouse=True)
 def _quiet_test_isolation(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Disable lib-quiet routing and reset self-initialized state for every test.
+    """Disable quiet routing and reset self-initialized state for every test.
 
     Without this, tests that run inside python/cli.py checks run-relevant inherit
     LARCH_QUIET_ACTIVE=1 + LARCH_QUIET_PID=<bash-pid> from the parent script,

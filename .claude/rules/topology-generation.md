@@ -20,6 +20,8 @@ paths:
   - "python/review_pipeline.py"
   - "python/plan_review.py"
   - "python/plan_review_panel.py"
+  - "python/pr.py"
+  - "python/migrated-scripts.tsv"
 ---
 
 # Topology Generation

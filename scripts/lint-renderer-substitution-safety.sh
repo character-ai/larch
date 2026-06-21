@@ -85,16 +85,20 @@ scan_file() {
     done < "$file"
 }
 
-if [ -d "$ROOT/scripts" ]; then
-    while IFS= read -r file; do
-        scan_file "$file"
-    done < <(find "$ROOT/scripts" -maxdepth 1 -type f -name '*.sh' | sort)
-fi
-
-if [ -d "$ROOT/skills" ]; then
-    while IFS= read -r file; do
-        scan_file "$file"
-    done < <(find "$ROOT/skills" -path '*/scripts/*.sh' -type f | sort)
+if [ -f "$ROOT/scripts/residual-bash-paths.txt" ]; then
+    while IFS= read -r rel || [ -n "$rel" ]; do
+        case "$rel" in
+            ""|\#*|larch-logs/*|node_modules/*) continue ;;
+            *.sh) [ -f "$ROOT/$rel" ] && scan_file "$ROOT/$rel" ;;
+        esac
+    done < "$ROOT/scripts/residual-bash-paths.txt"
+else
+    if [ -d "$ROOT/scripts" ]; then
+        while IFS= read -r file; do scan_file "$file"; done < <(find "$ROOT/scripts" -maxdepth 1 -type f -name '*.sh' | sort)
+    fi
+    if [ -d "$ROOT/skills" ]; then
+        while IFS= read -r file; do scan_file "$file"; done < <(find "$ROOT/skills" -path '*/scripts/*.sh' -type f | sort)
+    fi
 fi
 
 exit "$finding"

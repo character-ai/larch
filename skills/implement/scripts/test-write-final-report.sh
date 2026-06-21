@@ -43,8 +43,6 @@ assert_schema_ordered() {
 finish(){ [ "$FAIL" -eq 0 ] || exit 1; printf 'PASS=%s\n' "$PASS"; }
 
 plugin="$TMP_ROOT/plugin"; mkdir -p "$plugin/scripts" "$plugin/python"
-cp "$REPO_ROOT/scripts/lib-quiet.sh" "$plugin/scripts/lib-quiet.sh"
-cp "$REPO_ROOT/scripts/run-log-terminal-outcomes.inc.bash" "$plugin/scripts/run-log-terminal-outcomes.inc.bash"
 cp "$REPO_ROOT/python/"*.py "$plugin/python/"
 mv "$plugin/python/cli.py" "$plugin/python/real-cli.py"
 cat > "$plugin/python/cli.py" <<'DISPATCHER'

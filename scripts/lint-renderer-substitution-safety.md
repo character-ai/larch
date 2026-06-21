@@ -28,3 +28,7 @@ Run `bash scripts/test-lint-renderer-substitution-safety.sh` or `make test-lint-
 ## Edit In Sync
 
 Update this file and the harness when the unsafe-substitution pattern, scan scope, waiver convention, or heredoc handling changes.
+
+## E3 residual scope
+
+This check reads the residual Bash manifest through `python3 python/cli.py residual-bash paths --root "$ROOT"` or the equivalent root-local manifest read. The manifest covers kept hooks, linters, thin wrappers, `scripts/sleep-seconds.sh`, the combine-issues helper, manifest-listed includes when present, and residual harnesses. Terminal shared libraries and retired non-thin helpers are out of scope.

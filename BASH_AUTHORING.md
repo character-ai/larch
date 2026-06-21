@@ -79,3 +79,11 @@ rendered="${before}${feature_description}${after}"
 This is the canonical `%%` / `##` split pattern for prompt renderers. If you truly need global replacement, pre-escape `&` only inside a Bash-version-scoped helper with a comment explaining the constraint. CI enforces this via `make lint-renderer-substitution-safety`.
 
 Run `make lint-bash32` after shell-script edits. If a regression harness intentionally contains a forbidden token as fixture text or static grep pattern, suppress only that line with an inline `# lint-bash32: ok <reason>` comment.
+
+## Residual Bash after E3
+
+New runtime logic belongs in `python/` behind `python3 python/cli.py`. Residual Bash is limited to kept hooks, bash-targeting linters, thin wrappers, `scripts/sleep-seconds.sh`, the combine-issues helper, manifest-listed includes when needed, and harnesses.
+
+Do not add shared Bash libraries. Contract-bearing hooks define local `hook_emit` functions and keep hook JSON on the contract stream. `sessionstart-health.sh` keeps a direct stdout fallback for stripped PATH environments.
+
+Use `scripts/residual-bash-paths.txt` through `python3 python/cli.py residual-bash paths [--root PATH]` when a linter or CI job needs the residual shell set.

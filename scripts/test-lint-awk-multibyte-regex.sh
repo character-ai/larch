@@ -310,6 +310,34 @@ clean_rc=0
 assert_negative "rule2 substr false positive absent" "$stderr_file" "$clean_rc" \
     "scripts/rule2-substr-eof.sh:1:"
 
+# 20. Manifest scopes shell arm; standalone .awk remains scanned.
+reset_tree
+mkdir -p "$TMPROOT/scripts"
+cat > "$TMPROOT/scripts/residual-bash-paths.txt" <<'EOF'
+scripts/in-scope-shell.sh
+EOF
+write_file "$TMPROOT/scripts/in-scope-shell.sh" \
+    "awk 'BEGIN { if (match(\$0, \"—\")) print \"hit\" }'" # lint-awk-multibyte-regex: ok harness fixture
+write_file "$TMPROOT/scripts/out-of-scope-shell.sh" \
+    "awk 'BEGIN { if (match(\$0, \"—\")) print \"hit\" }'" # lint-awk-multibyte-regex: ok harness fixture
+# shellcheck disable=SC2016
+write_file "$TMPROOT/scripts/standalone.awk" \
+    'BEGIN { if (match($0, "—")) print "hit" }'
+rc="$(run_lint "$stderr_file")"
+assert_case "manifest scopes shell arm only" 1 "$stderr_file" "$rc" \
+    "scripts/in-scope-shell.sh:1:" \
+    "awk-body-nonascii-regex"
+if grep -Fq "scripts/out-of-scope-shell.sh" "$stderr_file"; then
+    printf 'FAIL [manifest skips out-of-scope shell]: stderr mentioned out-of-scope shell\n' >&2
+    cat "$stderr_file" >&2
+    FAIL=$((FAIL + 1))
+else
+    printf 'PASS [manifest skips out-of-scope shell]\n'
+    PASS=$((PASS + 1))
+fi
+assert_case "standalone awk still scanned" 1 "$stderr_file" "$rc" \
+    "scripts/standalone.awk:1:"
+
 rm -f "$stderr_file"
 
 printf 'Summary: %s passed, %s failed\n' "$PASS" "$FAIL"

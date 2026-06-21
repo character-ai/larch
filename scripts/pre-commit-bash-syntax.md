@@ -24,3 +24,7 @@ developers. On Linux the system bash (5.x) catches generic syntax errors.
 
 - Keep the `xargs -P` / `-n 1` pattern in sync with `scripts/pre-commit-shellcheck.sh`.
 - The CI `bash32-check` job (macOS runner) is the authoritative bash 3.2 gate; this hook gives developers the same check at commit time.
+
+## E3 residual scope
+
+This check reads the residual Bash manifest through `python3 python/cli.py residual-bash paths --root "$ROOT"` or the equivalent root-local manifest read. The manifest covers kept hooks, linters, thin wrappers, `scripts/sleep-seconds.sh`, the combine-issues helper, manifest-listed includes when present, and residual harnesses. Terminal shared libraries and retired non-thin helpers are out of scope.

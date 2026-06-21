@@ -32,3 +32,7 @@
 - `time make shellcheck`
 
 All three should pass on a clean tree. `time make shellcheck` should be substantially faster than the prior upstream `shellcheck-py` run.
+
+## E3 residual scope
+
+This check reads the residual Bash manifest through `python3 python/cli.py residual-bash paths --root "$ROOT"` or the equivalent root-local manifest read. The manifest covers kept hooks, linters, thin wrappers, `scripts/sleep-seconds.sh`, the combine-issues helper, manifest-listed includes when present, and residual harnesses. Terminal shared libraries and retired non-thin helpers are out of scope.

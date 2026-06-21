@@ -61,7 +61,7 @@ def old_logical_commands(body):
     return commands
 
 def old_target_kind(cmd):
-    if 'scripts/extract-closes-issue-from-pr.sh' in cmd:
+    if 'python/cli.py' in cmd and 'pr closes-issue' in cmd:
         return 'structured-invocation'
     if 'python/cli.py' in cmd and 'implement preflight' in cmd:
         return 'preflight-helper'

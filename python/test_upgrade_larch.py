@@ -11,7 +11,7 @@ import config
 import upgrade_larch
 import proc
 
-# Intentional literal guard: keep in sync with scripts/lib-sparse-dirs.sh LARCH_SPARSE_DIRS.
+# Intentional literal guard: keep in sync with python/upgrade_larch.py LARCH_SPARSE_DIRS.
 EXPECTED_LARCH_SPARSE_DIRS = ".claude-plugin agents docs hooks python scripts skills"
 
 

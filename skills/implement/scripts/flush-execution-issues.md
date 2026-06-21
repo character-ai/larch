@@ -40,7 +40,7 @@ Invariants:
   existing batch `source_sha256` probe. When the sentinel is missing, the batch
   probe matches the normalized per-section hashes that `write_execution_issues_records`
   stores, with a whole-file SHA fallback for backward compatibility.
-- Records are composed by `scripts/lib-execution-issues.sh` with
+- Records are composed by `python/cli.py execution-issues flush` with
   `step="7a"` and `source="execution-issues.md pre-bump"` unless overridden by
   `--step-label` / `--source-label`.
 - On `FLUSH_STATUS=ok` or `FLUSH_STATUS=no-records`, the flushed
@@ -59,6 +59,6 @@ record composition, idempotent rerun, and `run-log` failure logging.
 
 Edit In Sync:
 
-- `scripts/lib-execution-issues.sh`
+- `python/execution_issues.py`
 - `python3 python/cli.py implement-finalize`
 - `skills/implement/SKILL.md`

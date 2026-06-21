@@ -16,7 +16,6 @@ assert_contains(){ case "$2" in *"$1"*) pass "$3" ;; *) fail "$3 (missing $1)" ;
 finish(){ [ "$FAIL" -eq 0 ] || exit 1; printf 'PASS=%s\n' "$PASS"; }
 
 plugin="$TMP_ROOT/plugin"; mkdir -p "$plugin/scripts" "$plugin/python/stubs/session"
-cp "$REPO_ROOT/scripts/lib-quiet.sh" "$plugin/scripts/lib-quiet.sh"
 cp "$REPO_ROOT/python/"*.py "$plugin/python/"
 mv "$plugin/python/cli.py" "$plugin/python/real-cli.py"
 cat >"$plugin/python/cli.py" <<'DISPATCHER'

@@ -63,3 +63,9 @@ where the snippet is trimmed to 120 bytes with non-printable characters replaced
 
 Edit in sync with `docs/linting.md`, `.pre-commit-config.yaml`, `Makefile`,
 `agent-lint.toml`, and `scripts/test-lint-awk-multibyte-regex.sh`.
+
+## E3 residual scope
+
+This check reads the residual Bash manifest through `python3 python/cli.py residual-bash paths --root "$ROOT"` or the equivalent root-local manifest read. The manifest covers kept hooks, linters, thin wrappers, `scripts/sleep-seconds.sh`, the combine-issues helper, manifest-listed includes when present, and residual harnesses. Terminal shared libraries and retired non-thin helpers are out of scope.
+
+Standalone tracked `*.awk` files remain in scope through a separate discovery arm. They do not need rows in `scripts/residual-bash-paths.txt`.
