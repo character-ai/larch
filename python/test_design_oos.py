@@ -11,6 +11,7 @@ import pytest  # noqa: TC002
 
 import design_lifecycle
 import design_oos
+import design_pause
 from test_design_cli_ports import test_design_port_registry_entries_are_machine_stdout  # noqa: F401  # pylint: disable=unused-import  # pyright: ignore[reportUnusedImport]
 
 
@@ -387,8 +388,6 @@ def test_step5b_annotate_failure_with_issue_stdout_marks_complete_for_step5b5(
 
 
 def test_step5b_annotate_partial_failure_routes_to_step5b5_and_step5c(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    import design_pause
-
     monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
     monkeypatch.setattr(design_lifecycle, "_append_failure", _fake_append_success)
     issue_stdout = tmp_path / "oos-issue.stdout.txt"
