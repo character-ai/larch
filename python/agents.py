@@ -3761,6 +3761,7 @@ def _review_parser() -> argparse.ArgumentParser:
     parser.add_argument("--token-budget-cap", default="")
     parser.add_argument("--risk", default="")
     parser.add_argument("--stderr-sink", default="")
+    parser.add_argument("--site", default="review Step 2")
     return parser
 
 
@@ -3792,6 +3793,12 @@ def _review_validate_args(args: argparse.Namespace) -> int:
         return 2
     if args.token_budget_cap and not _is_positive_int(args.token_budget_cap):
         _err("agent launch-review: --token-budget-cap requires a positive integer")
+        return 2
+    if not args.site.strip() or args.site.startswith("--"):
+        _err("agent launch-review: --site requires a non-empty, non-flag-like value")
+        return 2
+    if _CTRL_RE.search(args.site):
+        _err("agent launch-review: --site must not contain control characters")
         return 2
     return 0
 
@@ -4041,11 +4048,13 @@ def _review_append_outer_meta(
     risk: str,
     stderr_sink: str,
     timing_task_kind: str = "",
+    site: str = "review Step 2",
 ) -> None:
     lines = [
         "OUTER_LAUNCHER=agent launch-review",
         f"OUTER_LAUNCHER_PROMPT_FILE={prompt_sidecar}",
         f"OUTER_LAUNCHER_WORKDIR={Path.cwd()}",
+        f"OUTER_LAUNCHER_SITE={site}",
     ]
     if risk:
         lines.append(f"OUTER_LAUNCHER_RISK={_review_coerce_risk(risk)}")
@@ -4111,6 +4120,7 @@ def _review_append_launch_failure(
     stderr_sink: str = "",
     auth_attempt: int = 1,
     transient_attempt: int = 1,
+    site: str = "review Step 2",
 ) -> None:
     if exit_code == 0:
         return
@@ -4134,7 +4144,7 @@ def _review_append_launch_failure(
                 "--log",
                 str(log),
                 "--site",
-                "review Step 2",
+                site,
                 "--tool",
                 f"{tool}-review",
                 "--exit-code",
@@ -4153,7 +4163,7 @@ def _review_append_launch_failure(
             ],
             check=False,
         )
-    _append_vendor_failure_diagnostics(source, site=f"review Step 2 {tool}-review", exit_code=exit_code)
+    _append_vendor_failure_diagnostics(source, site=f"{site} {tool}-review", exit_code=exit_code)
 
 
 def _review_run_test_trap_after_inner_done_if_enabled() -> None:
@@ -4363,6 +4373,7 @@ def _review_write_preflight_bundle(
             risk=args.risk,
             stderr_sink=args.stderr_sink,
             timing_task_kind=args.timing_task_kind or f"{tool}-review",
+            site=getattr(args, "site", "review Step 2"),
         )
 
 
@@ -4379,6 +4390,7 @@ def _review_atomic_write_text(path: Path, text: str) -> None:
 def _review_launch_codex(args: argparse.Namespace, prompt: str) -> int:
     output = Path(args.output)
     timing_kind = args.timing_task_kind or "codex-review"
+    site = getattr(args, "site", "review Step 2")
     if "'''" in _CODEX_REVIEW_STRICT_PREAMBLE:
         _err("agent launch-review: hardening preamble contains TOML triple-single-quote delimiter")
         return 2
@@ -4462,7 +4474,7 @@ def _review_launch_codex(args: argparse.Namespace, prompt: str) -> int:
     sidecar = output.with_suffix(output.suffix + ".sidecar")
     if result.exit_code != 0:
         _mirror_codex_quota_from_events(events, sidecar)
-        _review_append_launch_failure(output=output, tool="codex", exit_code=result.exit_code, stderr_sink=args.stderr_sink, auth_attempt=auth_attempt, transient_attempt=transient_attempt)
+        _review_append_launch_failure(output=output, tool="codex", exit_code=result.exit_code, stderr_sink=args.stderr_sink, auth_attempt=auth_attempt, transient_attempt=transient_attempt, site=site)
     elif sidecar.is_file():
         _append(sidecar, "codex-status: ok (no stderr emitted during agent run)\n")
     _review_append_outer_meta(
@@ -4471,6 +4483,7 @@ def _review_launch_codex(args: argparse.Namespace, prompt: str) -> int:
         risk=args.risk,
         stderr_sink=args.stderr_sink,
         timing_task_kind=timing_kind,
+        site=site,
     )
     _review_record_timing("codex", timing_kind, start, output, result.exit_code)
     model = ""
@@ -4520,22 +4533,56 @@ def _review_cursor_jitter() -> None:
     time.sleep(random.randint(0, max_ms) / 1000.0)
 
 
+def _review_cursor_line_no_issues(line: str) -> bool:
+    stripped = line.strip()
+    if not stripped.startswith("{"):
+        return False
+    try:
+        obj = json.loads(stripped)
+    except json.JSONDecodeError:
+        return False
+    return isinstance(obj, dict) and obj.get("no_issues_found") is True
+
+
+def _review_cursor_has_structured_findings(text: str) -> bool:
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("{"):
+            continue
+        try:
+            obj = json.loads(stripped)
+        except json.JSONDecodeError:
+            continue
+        # A valid structured finding record always carries schema_version, so a
+        # schema_version key (even on an invalid/partial finding) blocks collapse.
+        if isinstance(obj, dict) and "schema_version" in obj:
+            return True
+    return False
+
+
 def _review_cursor_normalize_no_issues(text: str) -> str:
+    if not text.strip():
+        return text
+    if _review_cursor_has_structured_findings(text):
+        return text
     first = ""
     for line in text.splitlines():
         if line.strip():
             first = line.strip()
             break
-    if not first or first.startswith("{") or re.search(r"^\s*schema_version", text, re.MULTILINE):
+    if re.search(r"^\s*schema_version", text, re.MULTILINE):
         return text
-    match = re.search(r'\{[^{}]*"no_issues_found"[^{}]*\}', first)
-    if not match:
-        return text
-    try:
-        obj = json.loads(match.group(0))
-    except json.JSONDecodeError:
-        return text
-    if isinstance(obj, dict) and obj.get("no_issues_found") is True:
+    if first and not first.startswith("{"):
+        match = re.search(r'\{[^{}]*"no_issues_found"[^{}]*\}', first)
+        if match:
+            try:
+                obj = json.loads(match.group(0))
+            except json.JSONDecodeError:
+                obj = None
+            if isinstance(obj, dict) and obj.get("no_issues_found") is True:
+                return '{"no_issues_found": true}\n'
+    sentinel_count = sum(1 for line in text.splitlines() if line.strip() == "NO_ISSUES_FOUND" or _review_cursor_line_no_issues(line))
+    if sentinel_count == 1:
         return '{"no_issues_found": true}\n'
     return text
 
@@ -4601,6 +4648,7 @@ def _review_cursor_postprocess(output: Path, transient_attempt: int) -> None:
 def _review_launch_cursor(args: argparse.Namespace, original_prompt: str) -> int:
     output = Path(args.output)
     timing_kind = args.timing_task_kind or "cursor-review"
+    site = getattr(args, "site", "review Step 2")
     start = time.time()
     prompt_sidecar = _review_write_cursor_prompt_sidecar(output, original_prompt)
     try:
@@ -4673,7 +4721,7 @@ def _review_launch_cursor(args: argparse.Namespace, original_prompt: str) -> int
         if _review_brainstorm_failure_uses_sink(timing_kind, args.stderr_sink):
             _review_write_failure_sink(output, args.stderr_sink, result.exit_code)
         else:
-            _review_append_launch_failure(output=output, tool="cursor", exit_code=result.exit_code, stderr_sink=args.stderr_sink, auth_attempt=auth_attempt, transient_attempt=transient_attempt)
+            _review_append_launch_failure(output=output, tool="cursor", exit_code=result.exit_code, stderr_sink=args.stderr_sink, auth_attempt=auth_attempt, transient_attempt=transient_attempt, site=site)
     else:
         _append(sidecar_path, "cursor-status: ok (no stderr emitted during agent run)\n")
     _review_append_outer_meta(
@@ -4682,6 +4730,7 @@ def _review_launch_cursor(args: argparse.Namespace, original_prompt: str) -> int
         risk=args.risk,
         stderr_sink=args.stderr_sink,
         timing_task_kind=timing_kind,
+        site=site,
     )
     _review_run_test_trap_after_inner_done_if_enabled()
     if result.exit_code == 0:

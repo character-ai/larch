@@ -129,6 +129,7 @@ class RetryMeta:
     outer_launcher: str = ""
     outer_launcher_prompt_file: str = ""
     outer_launcher_workdir: str = ""
+    outer_launcher_site: str = ""
     outer_launcher_risk: str = ""
     outer_launcher_kind: str = ""
     outer_launcher_sandbox: str = ""
@@ -199,6 +200,7 @@ def _parse_meta(meta_path: str | Path) -> RetryMeta:
         outer_launcher=data.get("OUTER_LAUNCHER", ""),
         outer_launcher_prompt_file=data.get("OUTER_LAUNCHER_PROMPT_FILE", ""),
         outer_launcher_workdir=data.get("OUTER_LAUNCHER_WORKDIR", ""),
+        outer_launcher_site=data.get("OUTER_LAUNCHER_SITE", ""),
         outer_launcher_risk=data.get("OUTER_LAUNCHER_RISK", ""),
         outer_launcher_kind=data.get("OUTER_LAUNCHER_KIND", ""),
         outer_launcher_sandbox=data.get("OUTER_LAUNCHER_SANDBOX", ""),
@@ -588,6 +590,8 @@ def _launch_outer_retry(
             "--prompt-file",
             prompt_for_launch,
         ]
+        if meta.outer_launcher_site:
+            args.extend(["--site", meta.outer_launcher_site])
         if meta.stderr_sink:
             args.extend(["--stderr-sink", meta.stderr_sink])
     else:
@@ -747,6 +751,11 @@ def _validate_structured(records: list[CollectorRecord]) -> None:
         if result.returncode == 0:
             record.structured_sidecar = sidecar
             records[idx] = record
+            if "NO_ISSUES_SENTINEL_RECOVERED_AFTER_PREAMBLE" in (result.stdout + result.stderr):
+                _diagnostic(
+                    "collect-results: structured reviewer output recovered a no-issues sentinel after preamble "
+                    f"basename={Path(record.reviewer_file).name} tool={record.tool or 'unknown'}"
+                )
         else:
             diag = _sanitize_failure_reason(result.stdout + result.stderr, limit=_VALIDATION_REASON_LIMIT)
             records[idx] = CollectorRecord(

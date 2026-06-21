@@ -893,7 +893,7 @@ def _recount_manifest(manifest: Path) -> tuple[int, int, int, int]:
 
 def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int:
     logging_util.quiet_init(argv0="review-dispatch-panel")
-    usage = "Usage: review dispatch-panel --mode diff|description --review-tmpdir DIR --codex-available true|false --cursor-available true|false [--panel simple|hard] [--dynamic-archetypes 0-3] [--pre-scouted-manifest FILE] [--prune-ledger FILE] [context flags]"
+    usage = "Usage: review dispatch-panel --mode diff|description --review-tmpdir DIR --codex-available true|false --cursor-available true|false [--panel simple|hard] [--dynamic-archetypes 0-3] [--pre-scouted-manifest FILE] [--prune-ledger FILE] [--site SITE] [context flags]"
     options = {
         "--mode",
         "--diff-file",
@@ -915,6 +915,7 @@ def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int
         "--pre-scouted-manifest",
         "--round-num",
         "--prune-ledger",
+        "--site",
     }
     parsed = _parse_args(argv, usage, options)
     if parsed is None:
@@ -929,6 +930,7 @@ def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int
     dynamic_raw = _get(parsed, "--dynamic-archetypes", os.environ.get("LARCH_DYNAMIC_ARCHETYPES_MAX") or "0")
     round_raw = _get(parsed, "--round-num", "1")
     plan_file = _get(parsed, "--plan-file")
+    site = _get(parsed, "--site", "implement Step 5" if os.environ.get("IMPLEMENT_TMPDIR") else "review Step 2")
     if mode not in {"diff", "description"}:
         _usage("review dispatch-panel: --mode must be diff or description")
         return 2
@@ -1155,6 +1157,8 @@ def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int
         "--timeout",
         "1800",
         "--straggler-cutoff",
+        "--site",
+        site,
     ]
     if mode == "diff" and diff_file:
         waterfall_args.extend(["--diff-file", diff_file, "--commit-count", _get(parsed, "--commit-count", "0")])
@@ -1885,7 +1889,7 @@ def _zero_findings_branch(
 
 def review_core(argv: list[str], *, runner: proc.Runner | None = None) -> int:
     logging_util.quiet_init(argv0="review-core")
-    usage = "Usage: review core --mode diff|description --output-dir DIR --codex-available true|false --cursor-available true|false [--dynamic-archetypes 0-3] [--pre-scouted-manifest FILE] [context flags]"
+    usage = "Usage: review core --mode diff|description --output-dir DIR --codex-available true|false --cursor-available true|false [--dynamic-archetypes 0-3] [--pre-scouted-manifest FILE] [--site SITE] [context flags]"
     options = {
         "--mode",
         "--output-dir",
@@ -1904,6 +1908,7 @@ def review_core(argv: list[str], *, runner: proc.Runner | None = None) -> int:
         "--run-id",
         "--round-num",
         "--prune-ledger",
+        "--site",
     }
     parsed = _parse_args(argv, usage, options)
     if parsed is None:
@@ -1924,6 +1929,7 @@ def review_core(argv: list[str], *, runner: proc.Runner | None = None) -> int:
     session_env_path = _get(parsed, "--session-env-path", os.environ.get("SESSION_ENV_PATH", ""))
     run_id = _get(parsed, "--run-id")
     prune_ledger = _get(parsed, "--prune-ledger")
+    site = _get(parsed, "--site", "implement Step 5" if os.environ.get("IMPLEMENT_TMPDIR") else "review Step 2")
     review_tmpdir.mkdir(parents=True, exist_ok=True)
     commands = _review_commands()
 
@@ -1969,6 +1975,8 @@ def review_core(argv: list[str], *, runner: proc.Runner | None = None) -> int:
         dynamic,
         "--round-num",
         str(round_num),
+        "--site",
+        site,
     ]
     for value, flag in ((diff_file, "--diff-file"), (scope_files, "--scope-files"), (_get(parsed, "--plan-file"), "--plan-file"), (_get(parsed, "--feature-file"), "--feature-file"), (_get(parsed, "--description-text"), "--description-text"), (session_env_path, "--session-env-path"), (prune_ledger, "--prune-ledger"), (_get(parsed, "--pre-scouted-manifest"), "--pre-scouted-manifest")):
         if value:
@@ -2154,7 +2162,7 @@ def review_core(argv: list[str], *, runner: proc.Runner | None = None) -> int:
         _emit_core_common("panel-failed", round_num, review_tmpdir, panel_mode, panel_shape, threshold_reason="proposer-map-failed")
         return 2
 
-    voter_args = ["--ballot-file", str(review_tmpdir / "findings.md"), "--review-tmpdir", str(review_tmpdir), "--codex-available", codex_available, "--cursor-available", cursor_available, "--round-num", str(round_num)]
+    voter_args = ["--ballot-file", str(review_tmpdir / "findings.md"), "--review-tmpdir", str(review_tmpdir), "--codex-available", codex_available, "--cursor-available", cursor_available, "--round-num", str(round_num), "--site", site]
     if session_env_path:
         voter_args.extend(["--session-env-path", session_env_path])
     if diff_file:

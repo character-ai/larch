@@ -2306,6 +2306,7 @@ def _core_args_for_round(args: argparse.Namespace, round_dir: Path, dynamic_arch
         "--round-num", str(args.round_num),
         "--dynamic-archetypes", dynamic_archetypes,
         "--prune-ledger", str(prune_ledger),
+        "--site", "implement Step 5",
     ]
     for opt, attr in (
         ("--diff-file", "diff_file"),

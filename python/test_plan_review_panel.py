@@ -215,6 +215,104 @@ def test_panel_dispatch_static_slot_matrix(tmp_path: Path) -> None:
     assert "verify the current plan does not already include the proposed fix" in static_prompt
 
 
+def test_panel_dispatch_threads_design_step3_site(tmp_path: Path) -> None:
+    design = tmp_path / "design-panel-site"
+    design.mkdir()
+    _ = (design / "plan.txt").write_text("Plan body.\n", encoding="utf-8")
+    _ = (design / "feature-description.txt").write_text("feat\n", encoding="utf-8")
+    _ = (design / "scout-plan-manifest.json").write_text(json.dumps({"archetypes": []}), encoding="utf-8")
+    log = design / "wf.log"
+    _ = log.write_text("", encoding="utf-8")
+    stub = _write_waterfall_stub(tmp_path)
+    proc = run_cli(
+        "plan-review",
+        "panel-dispatch",
+        "--design-tmpdir",
+        str(design),
+        "--codex-present",
+        "true",
+        "--cursor-present",
+        "true",
+        "--plan-file",
+        str(design / "plan.txt"),
+        "--feature-file",
+        str(design / "feature-description.txt"),
+        "--timeout",
+        "60",
+        env={
+            "LARCH_QUIET_DISABLE": "1",
+            "DISPATCH_PLAN_REVIEW_WATERFALL_SH": str(stub),
+            "WATERFALL_STUB_LOG": str(log),
+            "WATERFALL_STUB_PATHS_OUT": str(design / "paths.out"),
+        },
+    )
+    assert proc.returncode == 0, proc.stderr + proc.stdout
+    assert "--site design Step 3" in log.read_text(encoding="utf-8")
+
+
+def test_voter_dispatch_threads_design_step3_site_into_inline_waterfall(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    design = tmp_path / "voter-site"
+    design.mkdir()
+    ballot = design / "ballot.txt"
+    _ = ballot.write_text("### FINDING_1: test\n", encoding="utf-8")
+    records: list[list[str]] = []
+    cp = plan_review_panel.subprocess.CompletedProcess
+
+    def _fake_run(argv: object, **_kwargs: object) -> object:
+        a = [str(x) for x in argv]  # type: ignore[union-attr]
+        records.append(a)
+        verb = tuple(a[2:4]) if len(a) >= 4 else ()
+        if verb == ("render", "voter"):
+            return cp(a, 0, stdout="prompt\nRead the ballot from this path: /x\n", stderr="")
+        if verb == ("agent", "dispatch-waterfall"):
+            outs: list[tuple[str, str]] = []
+            for i, tok in enumerate(a):
+                if tok == "--slots-file" and i + 1 < len(a) and Path(a[i + 1]).is_file():
+                    for line in Path(a[i + 1]).read_text(encoding="utf-8").splitlines():
+                        if not line.strip():
+                            continue
+                        row = json.loads(line)
+                        out = str(row["output"])
+                        _ = Path(out).write_text("vote\n", encoding="utf-8")
+                        outs.append((out, str(row.get("tool", "cursor"))))
+            stdout = "ALL_OUTPUT_FILES=" + " ".join(o for o, _ in outs) + "\nALL_OUTPUT_TOOLS=" + " ".join(t for _, t in outs) + "\nDISPATCH_OK=true\n"
+            return cp(a, 0, stdout=stdout, stderr="")
+        if verb == ("voting", "effective-judges"):
+            return cp(a, 0, stdout="3\n", stderr="")
+        return cp(a, 0, stdout="", stderr="")
+
+    class _FakePopen:
+        def __init__(self, argv: object, **_kwargs: object) -> None:
+            a = [str(x) for x in argv]  # type: ignore[union-attr]
+            out = ""
+            for i, tok in enumerate(a):
+                if tok == "--output" and i + 1 < len(a):
+                    out = a[i + 1]
+            if out:
+                _ = Path(out).write_text("vote\n", encoding="utf-8")
+                _ = Path(out + ".done").write_text("0\n", encoding="utf-8")
+            self.returncode = 0
+
+        def wait(self) -> int:
+            return 0
+
+    def _stub_parse_rate(*_a: object, **_k: object) -> str:
+        return "OK"
+
+    monkeypatch.setattr(plan_review_panel.subprocess, "run", _fake_run)
+    monkeypatch.setattr(plan_review_panel.subprocess, "Popen", _FakePopen)
+    monkeypatch.setattr(plan_review_panel, "_parse_rate_retry", _stub_parse_rate)
+    rc = plan_review_panel.dispatch_voters([
+        "--ballot-file", str(ballot),
+        "--design-tmpdir", str(design),
+        "--codex-available", "true",
+        "--cursor-available", "true",
+    ])
+    assert rc == 0
+    waterfall = next(a for a in records if tuple(a[2:4]) == ("agent", "dispatch-waterfall"))
+    assert waterfall[waterfall.index("--site") + 1] == "design Step 3"
+
+
 def test_panel_dispatch_dynamic_scout_rows(tmp_path: Path) -> None:
     design = tmp_path / "design-dynamic"
     design.mkdir()
