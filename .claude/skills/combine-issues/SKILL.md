@@ -162,7 +162,7 @@ For each issue, parse its body and extract the individual items. Then for each i
 
 Track fully stale source issues while checking actuality. A source is fully stale only when every item in that source is stale and no combined host owns actionable content from it. Keep blocked or still-actionable items open. Build a stale-only closure list with the source issue number, a redacted stale discard summary, proposed close reason `not planned`, and whether a comment file will be used.
 
-Do not call raw `gh issue close` from prompt prose. Do not invoke `combine-issues close-stale` during oos-2 before approval.
+Do not call raw `gh issue close` from prompt prose. Always call `python/cli.py combine-issues close-sources` for source closures so each close comment keeps the human-readable `Combined into #<target>` line and writes the durable `larch:combined-away` marker used by `/analyze-issues`. Do not invoke `combine-issues close-stale` during oos-2 before approval.
 
 If no actual items remain after actuality checks, proceed to an approval prompt that shows only stale-only closures. After approval, close approved fully stale sources. Prefer per-issue `close-stale` calls when comments differ by issue:
 

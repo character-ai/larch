@@ -244,11 +244,11 @@ Fix an open `agent-sh/agnix` issue end-to-end via fork-CI dry-run from this larc
 
 ### `/analyze-issues`
 
-**Arguments**: `[--limit N] [--span-days N] [--top-K N] [--categories=auto|default] [--lenient]`
+**Arguments**: `[--limit N] [--span-days N] [--top-K N] [--categories=auto|default] [--log-root PATH] [--repo OWNER/REPO] [--filed-issue-details-json PATH] [--lenient]`
 
 **Source**: [`.claude/skills/analyze-issues/SKILL.md`](../.claude/skills/analyze-issues/SKILL.md)
 
-Generate a backlog-and-process insight report from the current repository's GitHub issues: coverage stats, category breakdown, cumulative-growth chart, wasteful-work signatures, and reviewer/persona effectiveness. Delegates to `python/cli.py analyze-issues run`. `--limit N` caps issues fetched (default 2000), `--span-days N` overrides the analysis span (default auto), `--top-K N` sets how many ranked items to show (default 10), `--categories=auto|default` picks the category mode, and `--lenient` suppresses the corrupt-dump abort so a partial report still renders. The raw `gh` JSON dump is saved user-private for follow-up reanalysis.
+Generate a backlog-and-process insight report from the current repository's GitHub issues: coverage stats, category breakdown, cumulative-growth chart, wasteful-work signatures, reviewer/persona effectiveness, and diagnostic fate-adjusted OOS scoring. Delegates to `python/cli.py analyze-issues run`. `--limit N` caps issues fetched (default 2000), `--span-days N` overrides the analysis span (default auto), `--top-K N` sets how many ranked items to show (default 10), `--categories=auto|default` picks the category mode, `--log-root PATH` selects the run-log root, `--repo OWNER/REPO` overrides repo detection, `--filed-issue-details-json PATH` explicitly enriches offline reanalysis, and `--lenient` suppresses the corrupt-dump abort so a partial report still renders. The raw `gh` JSON dump is saved user-private for follow-up reanalysis.
 
 ### `/audit-runs`
 

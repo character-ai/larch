@@ -102,9 +102,13 @@ def _stable_source_key(path: Path) -> str:
     return path.stem
 
 
-def _bare_oos_suffix(stable_id: str) -> str | None:
-    match = re.fullmatch(r"(?:[^:]+:)?(OOS_\d+)", stable_id)
+def _bare_oos_item_suffix(stable_id: str) -> str | None:
+    match = re.fullmatch(r"(?:[^:]+:)?((?:OOS|FINDING)_\d+)", stable_id)
     return match.group(1) if match else None
+
+
+def _bare_oos_suffix(stable_id: str) -> str | None:
+    return _bare_oos_item_suffix(stable_id)
 
 
 def _stable_identifier(title: str, body: str, *, source_key: str = "") -> str:

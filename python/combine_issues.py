@@ -724,10 +724,18 @@ def _parse_issue_number(text: str) -> str:
     return nums[-1] if nums else ""
 
 
+def _combined_away_close_comment(issue: str, combined: str) -> str:
+    return (
+        f"Combined into #{combined}\n\n"
+        f"<!-- larch:combined-away source=#{issue} target=#{combined} -->"
+    )
+
+
 def _close_issue_with_retry(issue: str, repo: str, combined: str, *, attempts: int = 3) -> proc.CommandResult:
     result: proc.CommandResult | None = None
+    comment = _combined_away_close_comment(issue, combined)
     for attempt in range(attempts):
-        result = proc.run(["gh", "issue", "close", issue, "--repo", repo, "--comment", f"Combined into #{combined}"])
+        result = proc.run(["gh", "issue", "close", issue, "--repo", repo, "--comment", comment])
         if result.returncode == 0:
             return result
         if attempt + 1 < attempts:
