@@ -769,16 +769,18 @@ def _stable_ids_cover(issue_stable_id: str, block_keys: set[Any], *, allow_main_
         if block_suffix != issue_suffix:
             continue
         block_source = block_key.rsplit(":", 1)[0] if ":" in block_key else ""
+        if not issue_source:
+            continue
         if issue_source and block_source:
             if issue_source == block_source:
                 return True
             if allow_main_agent_bridge and issue_source in {block_source, "oos-accepted-main-agent"}:
                 return True
             continue
-        if not issue_source or not block_source:
-            return True
-        if allow_main_agent_bridge and issue_source == "oos-accepted-main-agent":
-            return True
+        if not block_source:
+            if allow_main_agent_bridge and issue_source == "oos-accepted-main-agent":
+                return True
+            continue
     return False
 
 
@@ -869,8 +871,9 @@ def _extract_legacy_stable_ids_from_ndjson_body(body: str) -> list[str]:
     values: list[str] = []
     filed_section = body or ""
     filed_markers = [m.start() for m in re.finditer(r"Filed(?:\s+URL|\s+as|\s+OOS\s+issue)", filed_section, re.I)]
-    if filed_markers:
-        filed_section = filed_section[max(0, min(filed_markers) - 1200):]
+    if not filed_markers:
+        return []
+    filed_section = filed_section[max(0, min(filed_markers) - 1200):]
     for match in _OOS_TOKEN_RE.finditer(filed_section):
         value = match.group(0)
         if value not in seen:
@@ -980,6 +983,65 @@ def _row_from_block(run_id: str, block: Mapping[str, Any], record: Mapping[str, 
     }
 
 
+_ROLLUP_EXCERPT_BULLET_RE = re.compile(r"^\s*-\s*\*\*(.+?)\*\*:\s*", re.M)
+
+
+def _rollup_excerpt_titles_from_text(text: str) -> list[str]:
+    titles: list[str] = []
+    seen: set[str] = set()
+    for match in _ROLLUP_EXCERPT_BULLET_RE.finditer(text or ""):
+        title = _normalize_oos_title(match.group(1))
+        if title and title not in seen:
+            seen.add(title)
+            titles.append(title)
+    return titles
+
+
+def _rollup_excerpt_source_texts(run_dir: Path, ndjson_record: Mapping[str, Any]) -> list[str]:
+    texts = [str(ndjson_record.get("body") or "")]
+    for path in sorted(run_dir.glob("**/oos-accepted-*.md")):
+        if not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        matches = list(_OOS_HEADING_RE.finditer(text))
+        for idx, match in enumerate(matches):
+            heading = f"{match.group(1)}: {match.group(2)}"
+            if not re.search(r"Aggregated rollup", heading, re.I):
+                continue
+            start = match.start()
+            end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
+            texts.append(text[start:end])
+    return texts
+
+
+def _blocks_from_rollup_excerpt_titles(
+    titles: Sequence[str],
+    blocks: Sequence[Mapping[str, Any]],
+    seen_identities: set[tuple[Any, ...]],
+) -> list[dict[str, Any]]:
+    if not titles:
+        return []
+    by_title: dict[str, list[dict[str, Any]]] = collections.defaultdict(list)
+    for block in blocks:
+        by_title[_normalize_oos_title(str(block.get("title") or ""))].append(dict(block))
+    matched: list[dict[str, Any]] = []
+    for title in titles:
+        candidates = by_title.get(title, [])
+        if len(candidates) != 1:
+            continue
+        block = candidates[0]
+        identity = (str(block.get("artifact_relpath") or ""), str(block.get("heading_id") or ""))
+        if identity in seen_identities:
+            continue
+        seen_identities.add(identity)
+        matched.append(block)
+    return matched
+
+
+def _ambiguous_rollup_expansion_row(run_id: str, issue_number: int | None, issue_url: str) -> dict[str, Any]:
+    return {"bucket": "ambiguous rollup expansion", "run_id": run_id, "issue_number": issue_number, "issue_url": issue_url, "reviewer": "unknown"}
+
+
 def _issue_evidence_for_record(record: Mapping[str, Any]) -> tuple[int | None, str]:
     urls = _record_issue_urls(record)
     numbers = _record_issue_numbers(record)
@@ -1010,6 +1072,12 @@ def _expand_cap_rollup_records(run_dir: Path, ndjson_record: dict[str, Any], blo
     expected_match = re.search(r"Aggregated rollup of\s+(\d+)\s+capped OOS items", f"{ndjson_record.get('title') or ''}\n{body}", re.I)
     expected = int(expected_match.group(1)) if expected_match else 0
     if expected and len(out) < expected:
+        excerpt_titles: list[str] = []
+        for text in _rollup_excerpt_source_texts(run_dir, ndjson_record):
+            excerpt_titles.extend(_rollup_excerpt_titles_from_text(text))
+        for block in _blocks_from_rollup_excerpt_titles(excerpt_titles, blocks, seen_identities):
+            out.append(_row_from_block(run_dir.name, block, ndjson_record, issue_number, issue_url))
+    if expected and len(out) < expected:
         source_key = ""
         for stable_id in stable_ids:
             if ":" in stable_id:
@@ -1017,11 +1085,21 @@ def _expand_cap_rollup_records(run_dir: Path, ndjson_record: dict[str, Any], blo
                 break
         candidates = [dict(block) for block in blocks if not block.get("filed_url")]
         if source_key == "oos-accepted-main-agent":
-            candidates = [
-                block
-                for block in candidates
-                if any(_stable_ids_cover(stable_id, set(block.get("lookup_keys", set())), allow_main_agent_bridge=True) for stable_id in stable_ids)
-            ]
+            review_candidates = sorted(
+                [dict(block) for block in blocks if not block.get("filed_url") and (
+                    "review" in str(block.get("artifact_relpath") or "").lower()
+                    or str(block.get("source_key") or "").endswith("-review")
+                )],
+                key=lambda item: (str(item.get("artifact_relpath") or ""), str(item.get("heading_id") or "")),
+            )
+            if len(review_candidates) == expected:
+                candidates = review_candidates
+            else:
+                candidates = [
+                    block
+                    for block in candidates
+                    if any(_stable_ids_cover(stable_id, set(block.get("lookup_keys", set())), allow_main_agent_bridge=True) for stable_id in stable_ids)
+                ]
         elif source_key:
             candidates = [block for block in candidates if block.get("source_key") == source_key]
         if len(candidates) == expected:
@@ -1031,10 +1109,16 @@ def _expand_cap_rollup_records(run_dir: Path, ndjson_record: dict[str, Any], blo
                     continue
                 seen_identities.add(identity)
                 out.append(_row_from_block(run_dir.name, block, ndjson_record, issue_number, issue_url))
+        elif not out:
+            return [_ambiguous_rollup_expansion_row(run_dir.name, issue_number, issue_url)]
         else:
-            return [{"bucket": "ambiguous rollup expansion", "run_id": run_dir.name, "issue_number": issue_number, "issue_url": issue_url, "reviewer": "unknown"}]
+            out.append(_ambiguous_rollup_expansion_row(run_dir.name, issue_number, issue_url))
+            return out
     if expected and len(out) < expected:
-        return [{"bucket": "ambiguous rollup expansion", "run_id": run_dir.name, "issue_number": issue_number, "issue_url": issue_url, "reviewer": "unknown"}]
+        if not out:
+            return [_ambiguous_rollup_expansion_row(run_dir.name, issue_number, issue_url)]
+        out.append(_ambiguous_rollup_expansion_row(run_dir.name, issue_number, issue_url))
+        return out
     if ambiguous and not out:
         return [{"bucket": "ambiguous stable id", "run_id": run_dir.name, "issue_number": issue_number, "issue_url": issue_url, "reviewer": "unknown"}]
     return out
@@ -1081,8 +1165,21 @@ def _parse_oos_issues_created(path: Path, *, accepted_design_path: Path | None) 
             "title": block.get("title") or heading,
         })
     if not records:
-        for url in _GITHUB_ISSUE_URL_RE.finditer(text):
-            records.append({"run_id": run_dir.name, "identity": (run_dir.name, "created", url.group(0)), "issue_number": int(url.group(1)), "issue_url": url.group(0), "reviewer": "unknown", "title": "Recovered OOS disposition"})
+        for line in text.splitlines():
+            token = line.strip()
+            if not token.startswith("http"):
+                continue
+            url_match = _GITHUB_ISSUE_URL_RE.search(token)
+            if url_match is None:
+                continue
+            records.append({
+                "run_id": run_dir.name,
+                "identity": (run_dir.name, "created", url_match.group(0)),
+                "issue_number": int(url_match.group(1)),
+                "issue_url": url_match.group(0),
+                "reviewer": "unknown",
+                "title": "Recovered OOS disposition",
+            })
     return records
 
 
@@ -1171,6 +1268,32 @@ def _load_filed_issue_details_json(path: Path | None) -> dict[int, dict[str, Any
     return out
 
 
+def _append_design_accepted_block_records(
+    records: list[dict[str, Any]],
+    run_dir: Path,
+    *,
+    seen_identities: set[tuple[Any, ...]],
+) -> None:
+    for path in sorted(run_dir.glob("**/oos-accepted-*.md")):
+        for block in _parse_oos_accepted_blocks(path, run_dir=run_dir):
+            url = str(block.get("filed_url") or "")
+            if not url:
+                continue
+            identity = (run_dir.name, block.get("artifact_relpath"), block.get("heading_id"))
+            if identity in seen_identities:
+                continue
+            seen_identities.add(identity)
+            records.append({
+                "run_id": run_dir.name,
+                "identity": identity,
+                "stable_id": block.get("canonical_stable_id"),
+                "issue_number": extract_issue_number_from_url(url),
+                "issue_url": url,
+                "reviewer": block.get("reviewer") or "unknown",
+                "title": block.get("title") or "",
+            })
+
+
 def iter_filed_oos_records(log_root: Path) -> list[dict[str, Any]]:
     if not log_root.exists():
         return []
@@ -1182,13 +1305,13 @@ def iter_filed_oos_records(log_root: Path) -> list[dict[str, Any]]:
         if not run_dir.is_dir():
             continue
         accepted = run_dir / "oos-accepted-design.md"
-        records.extend(_parse_oos_issues_created(run_dir / "oos-issues-created.md", accepted_design_path=accepted if accepted.is_file() else None))
-        if not (run_dir / "oos-issues-created.md").is_file():
-            for path in sorted(run_dir.glob("**/oos-accepted-*.md")):
-                for block in _parse_oos_accepted_blocks(path, run_dir=run_dir):
-                    url = str(block.get("filed_url") or "")
-                    if url:
-                        records.append({"run_id": run_dir.name, "identity": (run_dir.name, block.get("artifact_relpath"), block.get("heading_id")), "stable_id": block.get("canonical_stable_id"), "issue_number": extract_issue_number_from_url(url), "issue_url": url, "reviewer": block.get("reviewer") or "unknown", "title": block.get("title") or ""})
+        created_records = _parse_oos_issues_created(
+            run_dir / "oos-issues-created.md",
+            accepted_design_path=accepted if accepted.is_file() else None,
+        )
+        records.extend(created_records)
+        seen_identities = {tuple(record.get("identity") or ()) for record in created_records}
+        _append_design_accepted_block_records(records, run_dir, seen_identities=seen_identities)
     return records
 
 
@@ -1199,6 +1322,10 @@ def _merged_issue_index(issues: Sequence[Mapping[str, Any]], filed_issue_details
         merged = {**current, **dict(detail)}
         if detail.get("__fetch_failed__") and current:
             merged["__fetch_failed__"] = True
+        if detail.get("__targeted_fetch_ok__"):
+            degraded = merged.get("_larch_degraded_fields") or []
+            if isinstance(degraded, list) and detail.get("stateReason") and "stateReason" in degraded:
+                merged["_larch_degraded_fields"] = [field for field in degraded if field != "stateReason"]
         index[int(number)] = merged
     return index
 
@@ -1254,14 +1381,14 @@ def fate_adjusted_oos_scoring(
             if issue and issue.get("__fetch_failed__"):
                 buckets["degraded comment fetch"] += 1
             buckets[str(fate["bucket"])] += 1
-        if not issue:
+        if not issue or str(fate.get("bucket") or "") == "skipped missing issue":
             continue
         for reviewer in _reviewers_from_label(str(record.get("reviewer") or "unknown")):
             key = (identity, reviewer)
             if key in seen:
                 continue
             seen.add(key)
-            provisional = int(fate.get("provisional") or 1)
+            provisional = int(fate["provisional"]) if "provisional" in fate else 1
             adjusted = int(fate.get("adjusted") or 0)
             docked = 1 if fate.get("docked") else 0
             reviewer_totals[reviewer]["provisional"] += provisional
@@ -1518,8 +1645,11 @@ def run_main(argv: Sequence[str] | None = None) -> int:
                 os.umask(old_umask)
             if rc != 0:
                 print("WARN bulk gh issue list failed; continuing with log-only fate scoring", file=sys.stderr)
+                repo_valid = False
             else:
                 issues = load_issues(str(dump), lenient=args.lenient)
+    if not repo_valid:
+        repo = ""
     log_root = Path(args.log_root)
     candidate_numbers: set[int] = set()
     for record in iter_filed_oos_records(log_root):

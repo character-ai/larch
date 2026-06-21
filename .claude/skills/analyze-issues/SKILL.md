@@ -38,7 +38,7 @@ Offline reanalysis with an explicit issue dump and optional filed-issue sidecar:
 python3 "$PWD/python/cli.py" analyze-issues analyze --json /path/to/issues.json [--log-root PATH] [--repo OWNER/REPO] [--filed-issue-details-json PATH] [--lenient]
 ```
 
-`--filed-issue-details-json PATH` is only accepted on the offline `analyze` subcommand. It loads a JSON object `{ "<issue_number>": { ...view fields... } }` to enrich fate scoring without live `gh` calls.
+`--filed-issue-details-json PATH` is only accepted on the offline `analyze` subcommand. It loads a JSON object `{ "<issue_number>": { ...view fields... } }` to enrich fate scoring without live `gh` calls. By default, offline `analyze --json` performs no `gh issue view` calls; enrichment requires `--filed-issue-details-json` or a live `run` path.
 
 The raw `gh` JSON dump is saved to `${TMPDIR:-/tmp}/<sanitized-repo>-issues.json` for follow-up reanalysis. The slug converts `/` to `-` and keeps only alnum, `-`, and `_`; dumps are intentionally user-private via `umask 077` and an atomic temp+mv write. The live coordinator contract is covered by `python/analyze_issues.py` and `python/test_analyze_issues.py`.
 

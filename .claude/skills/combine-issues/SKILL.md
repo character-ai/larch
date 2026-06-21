@@ -162,7 +162,7 @@ For each issue, parse its body and extract the individual items. Then for each i
 
 Track fully stale source issues while checking actuality. A source is fully stale only when every item in that source is stale and no combined host owns actionable content from it. Keep blocked or still-actionable items open. Build a stale-only closure list with the source issue number, a redacted stale discard summary, proposed close reason `not planned`, and whether a comment file will be used.
 
-Do not call raw `gh issue close` from prompt prose. Always call `python/cli.py combine-issues close-sources` for source closures so each close comment keeps the human-readable `Combined into #<target>` line and writes the durable `larch:combined-away` marker used by `/analyze-issues`. Do not invoke `combine-issues close-stale` during oos-2 before approval.
+Do not call raw `gh issue close` from prompt prose. Reserve `python/cli.py combine-issues close-sources` for **post-combination** source closures in oos-7 only: each close comment must keep the human-readable `Combined into #<target>` line and write the durable `larch:combined-away` marker used by `/analyze-issues`. Stale-only closures in oos-2 and oos-4 use `combine-issues close-stale` only and must **not** carry the combined-away marker. Do not invoke `combine-issues close-stale` during oos-2 before approval.
 
 If no actual items remain after actuality checks, proceed to an approval prompt that shows only stale-only closures. After approval, close approved fully stale sources. Prefer per-issue `close-stale` calls when comments differ by issue:
 
@@ -333,6 +333,8 @@ python3 "$PWD/python/cli.py" combine-issues close-sources \
   --combined-issue "<combined issue>" \
   --source-issues "<comma-separated eligible source issues>"
 ```
+
+Each `close-sources` invocation writes a two-line close comment: human-readable `Combined into #<target>`, blank line, then the exact HTML envelope `<!-- larch:combined-away source=#<source> target=#<target> -->` (for example `<!-- larch:combined-away source=#12 target=#99 -->`). `/analyze-issues` matches that HTML comment shape when docking combined-away filed OOS issues.
 
 Run every partitioned `close-sources` invocation. Parse `CLOSED_ISSUES` and `PARTIAL` from stdout, and parse `WARNING=` lines from stderr. Treat partial closure as a warning path, not a hard stop. Reserve non-zero exit or `ERROR=` for argument and repository failures. Aggregate `CLOSED_ISSUES` from all invocations for the final source-closed tally. Keep ineligible, skipped, and failed-close source issues open. Summarize every source left open with the reason from `close-eligible` or the `WARNING=` text. Always continue to `oos-8`.
 
