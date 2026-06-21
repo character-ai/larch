@@ -196,7 +196,7 @@ def test_fetch_main_retries_without_optional_fields(monkeypatch, tmp_path: Path)
 
     def fake_run(argv, stdout, **_kwargs):
         calls.append(list(argv))
-        if len(calls) == 1:
+        if "stateReason" in argv[-1]:
             return subprocess.CompletedProcess(argv, 1)
         stdout.write(json.dumps([{"number": 1, "title": "t"}]))
         return subprocess.CompletedProcess(argv, 0)
@@ -206,5 +206,135 @@ def test_fetch_main_retries_without_optional_fields(monkeypatch, tmp_path: Path)
     assert analyze_issues.fetch_main(["--repo", "o/r", "--limit", "10", "--output", str(output)]) == 0
     assert len(calls) == 2
     assert "stateReason" in calls[0][-1]
-    assert "stateReason" in calls[1][-1]
-    assert "_larch_degraded_fields" not in output.read_text(encoding="utf-8")
+    assert "stateReason" not in calls[1][-1]
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload[0]["_larch_degraded_fields"] == ["stateReason", "url"]
+
+
+def test_legacy_stable_id_extraction_ignores_pre_filed_tokens() -> None:
+    body = (
+        "Finding mentions OOS_5 and #4683 in prose.\n"
+        "- **Filed URL**: https://github.com/o/r/issues/42\n"
+    )
+    assert analyze_issues._extract_legacy_stable_ids_from_ndjson_body(body) == []
+
+
+def test_main_agent_stable_id_joins_review_block(tmp_path: Path) -> None:
+    run = tmp_path / "implement" / "run-1"
+    (run / "round-1").mkdir(parents=True)
+    (run / "round-1" / "oos-accepted-review.md").write_text(
+        "### OOS_1: item\n- **Reviewer**: codex\n",
+        encoding="utf-8",
+    )
+    (run / "oos-issues.ndjson").write_text(
+        json.dumps({"body": "- **Stable ID**: oos-accepted-main-agent:OOS_1\n- **Filed URL**: https://github.com/o/r/issues/10"}) + "\n",
+        encoding="utf-8",
+    )
+    rows = analyze_issues._join_implement_run_records(run)
+    assert rows[0]["reviewer"] == "codex"
+
+
+def test_cap_rollup_ambiguous_expansion_scores_no_partial_members(tmp_path: Path) -> None:
+    run = tmp_path / "implement" / "run-1"
+    (run / "round-1").mkdir(parents=True)
+    review_md = run / "round-1" / "oos-accepted-review.md"
+    review_md.write_text(
+        "### OOS_1: one\n- **Reviewer**: codex\n\n"
+        + "".join(f"### OOS_{idx}: extra {idx}\n- **Reviewer**: r{idx}\n\n" for idx in range(2, 9)),
+        encoding="utf-8",
+    )
+    (run / "oos-issues.ndjson").write_text(
+        json.dumps({
+            "title": "Aggregated rollup of 3 capped OOS items",
+            "body": (
+                "- **Stable ID**: oos-accepted-review:OOS_1\n"
+                "- **Filed URL**: https://github.com/o/r/issues/10\n"
+            ),
+        }) + "\n",
+        encoding="utf-8",
+    )
+    rows = analyze_issues._join_implement_run_records(run)
+    assert len(rows) == 1
+    assert rows[0]["bucket"] == "ambiguous rollup expansion"
+    issues = [{"number": 10, "title": "one", "state": "OPEN", "body": "", "labels": []}]
+    _text, stats = analyze_issues.fate_adjusted_oos_scoring(issues, tmp_path, filed_issue_details={})
+    assert stats["totals"] == {"provisional": 0, "adjusted": 0, "docked": 0}
+    assert stats["buckets"]["ambiguous rollup expansion"] == 1
+
+
+def test_stable_id_collision_marks_ambiguous(tmp_path: Path) -> None:
+    run = tmp_path / "implement" / "run-1"
+    (run / "round-1").mkdir(parents=True)
+    (run / "round-1" / "oos-accepted-review.md").write_text(
+        "### OOS_1: first\n- **Reviewer**: codex\n",
+        encoding="utf-8",
+    )
+    (run / "round-2").mkdir(parents=True)
+    (run / "round-2" / "oos-accepted-review.md").write_text(
+        "### OOS_1: second\n- **Reviewer**: cursor\n",
+        encoding="utf-8",
+    )
+    (run / "oos-issues.ndjson").write_text(
+        json.dumps({"body": "- **Stable ID**: oos-accepted-review:OOS_1\n- **Filed URL**: https://github.com/o/r/issues/10"}) + "\n",
+        encoding="utf-8",
+    )
+    rows = analyze_issues._join_implement_run_records(run)
+    assert len(rows) == 1
+    assert rows[0]["bucket"] == "ambiguous stable id"
+
+
+def test_merged_issue_index_clears_degraded_state_reason_from_sidecar() -> None:
+    issues = [{"number": 1, "title": "t", "state": "CLOSED", "_larch_degraded_fields": ["stateReason"]}]
+    details = {1: {"stateReason": "NOT_PLANNED"}}
+    index = analyze_issues._merged_issue_index(issues, details)
+    assert "stateReason" not in (index[1].get("_larch_degraded_fields") or [])
+    fate = analyze_issues.classify_oos_issue_fate(index[1])
+    assert fate["bucket"] == "docked closed-unfixed"
+
+
+def test_design_oos_bare_url_recovery_requires_filed_shapes(tmp_path: Path) -> None:
+    run = tmp_path / "design" / "run-1"
+    run.mkdir(parents=True)
+    (run / "oos-issues-created.md").write_text(
+        "See https://github.com/o/r/issues/99 for notes\n"
+        "- **Filed URL**: https://github.com/o/r/issues/42\n",
+        encoding="utf-8",
+    )
+    rows = analyze_issues._parse_oos_issues_created(run / "oos-issues-created.md", accepted_design_path=None)
+    assert len(rows) == 1
+    assert rows[0]["issue_number"] == 42
+
+
+def test_run_main_fetches_targeted_details_after_bulk_failure(monkeypatch, tmp_path: Path, capsys) -> None:
+    log_root = tmp_path / "logs"
+    run = log_root / "implement" / "run-1"
+    (run / "round-1").mkdir(parents=True)
+    (run / "round-1" / "oos-accepted-review.md").write_text("### OOS_1: item\n- **Reviewer**: codex\n", encoding="utf-8")
+    (run / "oos-issues.ndjson").write_text(json.dumps({"body": "- **Stable ID**: oos-accepted-review:OOS_1\n- **Filed URL**: https://github.com/o/r/issues/9"}) + "\n", encoding="utf-8")
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+
+    def fake_fetch(_argv):
+        return 1
+
+    seen: dict[str, object] = {}
+    monkeypatch.setattr(analyze_issues, "fetch_main", fake_fetch)
+
+    def fake_details(repo, numbers):
+        seen["fetch"] = (repo, numbers)
+        return {9: {"number": 9, "state": "CLOSED", "closedByPullRequestsReferences": [{"number": 1}]}}
+
+    monkeypatch.setattr(analyze_issues, "_fetch_filed_oos_issue_details", fake_details)
+    assert analyze_issues.run_main(["--repo", "o/r", "--log-root", str(log_root)]) == 0
+    assert seen["fetch"] == ("o/r", {9})
+    assert "kept by PR: 1" in capsys.readouterr().out
+
+
+def test_run_main_offline_without_repo(monkeypatch, tmp_path: Path, capsys) -> None:
+    log_root = tmp_path / "logs"
+    run = log_root / "implement" / "run-1"
+    (run / "round-1").mkdir(parents=True)
+    (run / "round-1" / "oos-accepted-review.md").write_text("### OOS_1: item\n- **Reviewer**: codex\n", encoding="utf-8")
+    (run / "oos-issues.ndjson").write_text(json.dumps({"body": "- **Stable ID**: oos-accepted-review:OOS_1\n- **Filed URL**: https://github.com/o/r/issues/9"}) + "\n", encoding="utf-8")
+    monkeypatch.setattr(analyze_issues, "_detect_repo", lambda: "")
+    assert analyze_issues.run_main(["--log-root", str(log_root)]) == 0
+    assert "Fate-adjusted OOS Scoring" in capsys.readouterr().out

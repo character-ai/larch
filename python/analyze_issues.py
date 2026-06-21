@@ -873,7 +873,7 @@ def _extract_legacy_stable_ids_from_ndjson_body(body: str) -> list[str]:
     filed_markers = [m.start() for m in re.finditer(r"Filed(?:\s+URL|\s+as|\s+OOS\s+issue)", filed_section, re.I)]
     if not filed_markers:
         return []
-    filed_section = filed_section[max(0, min(filed_markers) - 1200):]
+    filed_section = filed_section[min(filed_markers):]
     for match in _OOS_TOKEN_RE.finditer(filed_section):
         value = match.group(0)
         if value not in seen:
@@ -900,7 +900,13 @@ def _resolve_blocks_for_stable_id(stable_id: str, blocks: Sequence[Mapping[str, 
         if stable_id == block.get("hash_stable_id") or stable_id == block.get("canonical_stable_id") or stable_id in block.get("lookup_keys", set()):
             direct.append(dict(block))
     if not direct:
-        direct = [dict(block) for block in blocks if _stable_ids_cover(stable_id, set(block.get("lookup_keys", set())))]
+        issue_source = stable_id.rsplit(":", 1)[0] if ":" in stable_id else ""
+        allow_bridge = issue_source == "oos-accepted-main-agent"
+        direct = [
+            dict(block)
+            for block in blocks
+            if _stable_ids_cover(stable_id, set(block.get("lookup_keys", set())), allow_main_agent_bridge=allow_bridge)
+        ]
     if len(direct) <= 1:
         return direct, False
     cited = [block for block in direct if str(block.get("artifact_relpath") or "") in body]
@@ -1109,16 +1115,10 @@ def _expand_cap_rollup_records(run_dir: Path, ndjson_record: dict[str, Any], blo
                     continue
                 seen_identities.add(identity)
                 out.append(_row_from_block(run_dir.name, block, ndjson_record, issue_number, issue_url))
-        elif not out:
-            return [_ambiguous_rollup_expansion_row(run_dir.name, issue_number, issue_url)]
         else:
-            out.append(_ambiguous_rollup_expansion_row(run_dir.name, issue_number, issue_url))
-            return out
-    if expected and len(out) < expected:
-        if not out:
             return [_ambiguous_rollup_expansion_row(run_dir.name, issue_number, issue_url)]
-        out.append(_ambiguous_rollup_expansion_row(run_dir.name, issue_number, issue_url))
-        return out
+    if expected and len(out) < expected:
+        return [_ambiguous_rollup_expansion_row(run_dir.name, issue_number, issue_url)]
     if ambiguous and not out:
         return [{"bucket": "ambiguous stable id", "run_id": run_dir.name, "issue_number": issue_number, "issue_url": issue_url, "reviewer": "unknown"}]
     return out
@@ -1165,18 +1165,34 @@ def _parse_oos_issues_created(path: Path, *, accepted_design_path: Path | None) 
             "title": block.get("title") or heading,
         })
     if not records:
-        for line in text.splitlines():
-            token = line.strip()
-            if not token.startswith("http"):
-                continue
-            url_match = _GITHUB_ISSUE_URL_RE.search(token)
-            if url_match is None:
-                continue
+        for number in _extract_filed_issue_numbers_from_text(text):
+            issue_url = ""
+            for match in _FILED_URL_LINE_RE.finditer(text):
+                url = match.group(1)
+                if extract_issue_number_from_url(url) == number:
+                    issue_url = url
+                    break
+            if not issue_url:
+                for match in _FILED_OOS_URL_RE.finditer(text):
+                    url = match.group(1)
+                    if extract_issue_number_from_url(url) == number:
+                        issue_url = url
+                        break
+            if not issue_url:
+                for line in text.splitlines():
+                    if not line.lstrip().startswith("|"):
+                        continue
+                    for url_match in _GITHUB_ISSUE_URL_RE.finditer(line):
+                        if int(url_match.group(1)) == number:
+                            issue_url = url_match.group(0)
+                            break
+                    if issue_url:
+                        break
             records.append({
                 "run_id": run_dir.name,
-                "identity": (run_dir.name, "created", url_match.group(0)),
-                "issue_number": int(url_match.group(1)),
-                "issue_url": url_match.group(0),
+                "identity": (run_dir.name, "created", issue_url or number),
+                "issue_number": number,
+                "issue_url": issue_url,
                 "reviewer": "unknown",
                 "title": "Recovered OOS disposition",
             })
@@ -1322,10 +1338,9 @@ def _merged_issue_index(issues: Sequence[Mapping[str, Any]], filed_issue_details
         merged = {**current, **dict(detail)}
         if detail.get("__fetch_failed__") and current:
             merged["__fetch_failed__"] = True
-        if detail.get("__targeted_fetch_ok__"):
-            degraded = merged.get("_larch_degraded_fields") or []
-            if isinstance(degraded, list) and detail.get("stateReason") and "stateReason" in degraded:
-                merged["_larch_degraded_fields"] = [field for field in degraded if field != "stateReason"]
+        degraded = merged.get("_larch_degraded_fields") or []
+        if isinstance(degraded, list) and detail.get("stateReason") and "stateReason" in degraded:
+            merged["_larch_degraded_fields"] = [field for field in degraded if field != "stateReason"]
         index[int(number)] = merged
     return index
 
@@ -1578,10 +1593,6 @@ def fetch_main(argv: Sequence[str] | None = None) -> int:
                 "--json", expanded_fields,
             ]
             result = subprocess.run(expanded_cmd, stdout=handle, text=True, check=False)
-            if result.returncode != 0:
-                handle.seek(0)
-                handle.truncate(0)
-                result = subprocess.run(expanded_cmd, stdout=handle, text=True, check=False)
         degraded: tuple[str, ...] = ()
         if result.returncode != 0:
             with tmp.open("w", encoding="utf-8") as handle:
@@ -1630,12 +1641,14 @@ def run_main(argv: Sequence[str] | None = None) -> int:
     if not repo_valid:
         print("WARN targeted comment fetch unavailable: unable to detect GitHub repo owner/name", file=sys.stderr)
         repo = ""
+    repo_resolved = repo_valid
     issues: list[dict[str, Any]] = []
-    if repo_valid:
+    if repo_resolved:
         sanitized = re.sub(r"[^A-Za-z0-9_-]", "", repo.replace("/", "-"))
         if not sanitized:
             print(f"WARN bulk issue fetch skipped: sanitized repo name is empty (REPO='{repo}')", file=sys.stderr)
-            repo_valid = False
+            repo_resolved = False
+            repo = ""
         else:
             dump = Path(os.environ.get("TMPDIR", "/tmp")) / f"{sanitized}-issues.json"
             old_umask = os.umask(0o077)
@@ -1645,10 +1658,9 @@ def run_main(argv: Sequence[str] | None = None) -> int:
                 os.umask(old_umask)
             if rc != 0:
                 print("WARN bulk gh issue list failed; continuing with log-only fate scoring", file=sys.stderr)
-                repo_valid = False
             else:
                 issues = load_issues(str(dump), lenient=args.lenient)
-    if not repo_valid:
+    if not repo_resolved:
         repo = ""
     log_root = Path(args.log_root)
     candidate_numbers: set[int] = set()
