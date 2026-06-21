@@ -29,6 +29,25 @@ _ALLOWED_FOCUS = {"code-quality", "risk-integration", "correctness", "architectu
 _STRUCTURED_HEADER = "schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix"
 
 
+_FOCUS_SYNONYMS = {"completeness": "code-quality"}
+
+
+def _canonical_focus(value: str) -> str:
+    """Map a known focus_area synonym onto the allowed enum, else return as-is."""
+    return _FOCUS_SYNONYMS.get(value, value)
+
+
+def _canonical_schema_version(value: str) -> str | None:
+    """Normalize a TSV column-1 value to the schema_version constant "1".
+
+    Cursor reviewers sometimes fill column 1 with a per-row index (1, 2, 3, ...)
+    instead of the literal schema_version constant. Treat any pure integer as
+    schema v1 and normalize it to "1"; reject a non-integer column 1 (e.g. prose
+    left by a row split on an embedded newline).
+    """
+    return "1" if value.isdigit() else None
+
+
 def _emit(text: str) -> None:
     logging_util.emit(text)
 
@@ -117,7 +136,10 @@ def _normalize_json_record(obj: object) -> dict[str, object] | None:
     severity = obj.get("severity")
     if isinstance(severity, str):
         severity = severity.lower()
-    record = {**obj, "severity": severity}
+    focus = obj.get("focus_area")
+    if isinstance(focus, str):
+        focus = _canonical_focus(focus)
+    record = {**obj, "severity": severity, "focus_area": focus}
     if record.get("schema_version") != 1:
         return None
     if record.get("scope") not in {"in_scope", "out_of_scope"}:
@@ -152,28 +174,75 @@ def _clean_tsv(value: str) -> str:
     return re.sub(r"\s+", " ", value.replace("\r", " ").replace("\n", " ")).strip()
 
 
-def _validate_structured_tsv(text: str) -> str:
-    out: list[str] = []
+_TSV_ROW_START_RE = re.compile(r"^\d+\t")
+
+
+def _iter_tsv_logical_rows(text: str):
+    """Yield assembled TSV data rows after the header, joining physical continuations."""
     seen_header = False
+    buffer = ""
     for line in text.splitlines():
         if line.strip().startswith("```"):
             continue
         if not seen_header:
             if line == _STRUCTURED_HEADER:
-                out.append(_STRUCTURED_HEADER)
                 seen_header = True
             continue
         if not line.strip():
             continue
-        fields = line.split("\t")
-        if len(fields) < 8:
+        if _TSV_ROW_START_RE.match(line):
+            if buffer:
+                yield buffer
+            buffer = line
+        elif buffer:
+            buffer = f"{buffer} {line.strip()}"
+        else:
+            _diag("REJECT structured TSV row: continuation without row prefix")
+            continue
+    if buffer:
+        yield buffer
+
+
+def _location_field_valid(location: str) -> bool:
+    return bool(_clean_tsv(location))
+
+
+def _split_structured_tsv_row(line: str) -> list[str] | None:
+    """Split one logical TSV row into eight fields or reject with _diag."""
+    line = re.sub(r"[\r\n]+", " ", line)
+    fields = line.split("\t", 7)
+    if len(fields) < 8:
+        _diag(f"REJECT structured TSV row: expected 8 tab columns, got {len(fields)}")
+        return None
+    return fields
+
+
+def _validate_structured_tsv(text: str) -> str:
+    out: list[str] = []
+    seen_header = False
+    for line in text.splitlines():
+        if line == _STRUCTURED_HEADER:
+            seen_header = True
+            out.append(_STRUCTURED_HEADER)
+            break
+    if not seen_header:
+        return ""
+    for line in _iter_tsv_logical_rows(text):
+        fields = _split_structured_tsv_row(line)
+        if fields is None:
             continue
         schema, scope, severity, focus, location, what, scenario = [_clean_tsv(field) for field in fields[:7]]
-        fix = _clean_tsv(" ".join(fields[7:]))
+        fix = _clean_tsv(fields[7])
         severity = severity.lower()
-        if schema != "1" or scope not in {"in_scope", "out_of_scope"} or severity not in _ALLOWED_SEVERITIES or focus not in _ALLOWED_FOCUS:
+        canonical_schema = _canonical_schema_version(schema)
+        focus = _canonical_focus(focus)
+        if canonical_schema is None or scope not in {"in_scope", "out_of_scope"} or severity not in _ALLOWED_SEVERITIES or focus not in _ALLOWED_FOCUS:
+            _diag(f"REJECT structured TSV row: schema={schema!r} scope={scope!r} severity={severity!r} focus={focus!r}")
             continue
-        out.append("\t".join([schema, scope, severity, focus, location, what, scenario, fix]))
+        if not _location_field_valid(location):
+            _diag(f"REJECT structured TSV row: invalid location={location!r}")
+            continue
+        out.append("\t".join([canonical_schema, scope, severity, focus, location, what, scenario, fix]))
     if len(out) <= 1:
         return ""
     return "\n".join(out) + "\n"

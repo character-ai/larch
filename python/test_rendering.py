@@ -355,6 +355,45 @@ def test_render_plan_review_inlines_strunk_and_white_readability(
     assert "<READABILITY_STYLE>" in out
 
 
+def test_render_plan_review_tsv_contract_hardening(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # #4994: hardened TSV contract prose must stay in the rendered prompt so CI
+    # catches accidental removal of schema_version=1 or focus_area allowlist text.
+    _reset_quiet(monkeypatch)
+    design_tmpdir = tmp_path / "design"
+    design_tmpdir.mkdir()
+    plan = design_tmpdir / "plan.txt"
+    _ = plan.write_text("## Plan\n\nDo the thing.\n", encoding="utf-8")
+    _ = (design_tmpdir / "run-params.json").write_text(
+        '{"schema_version":3,"partition_requested":false,"brainstorm_requested":false}\n',
+        encoding="utf-8",
+    )
+    rc = rendering.render_plan_review_main(
+        [
+            "--archetype",
+            "arch",
+            "--vendor",
+            "codex",
+            "--plan-file",
+            str(plan),
+            "--design-tmpdir",
+            str(design_tmpdir),
+        ],
+    )
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "literal constant 1 (the schema_version) on EVERY row" in out
+    assert "NOT a per-row counter" in out
+    assert (
+        "focus_area exactly one of code-quality, risk-integration, correctness, architecture, security"
+        in out
+    )
+    assert "no other value such as completeness" in out
+
+
 def test_render_plan_review_body_file_substitutes_role_line(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
