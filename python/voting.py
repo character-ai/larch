@@ -399,6 +399,31 @@ def tokenize_finding_reviewers(cell: str, labels: Iterable[str]) -> list[str]:
     return tokens
 
 
+def _finding_reviewers_segment_fully_tokenized(segment: str, labels: Iterable[str]) -> bool:
+    label_set = {label for label in labels if label}
+    if not label_set:
+        return False
+    sorted_labels = sorted(label_set, key=lambda label: (-len(label), label))
+    pos = 0
+    while pos < len(segment):
+        if segment[pos].isspace():
+            pos += 1
+            continue
+        matched = ""
+        for label in sorted_labels:
+            if not segment.startswith(label, pos):
+                continue
+            end = pos + len(label)
+            if end < len(segment) and not segment[end].isspace():
+                continue
+            matched = label
+            break
+        if not matched:
+            return False
+        pos += len(matched)
+    return True
+
+
 def grow_attribution_labels(
     labels: list[str],
     seen: set[str],
@@ -456,8 +481,15 @@ def raw_sole_finder_attribution(
     comma_parts = [part.strip() for part in cell.split(",") if part.strip()]
     if len(comma_parts) > 1:
         return []
-    tokens = tokenize_finding_reviewers(cell, corpus_labels)
-    return tokens or comma_parts
+    if not comma_parts:
+        return []
+    segment = comma_parts[0]
+    tokens = tokenize_finding_reviewers(segment, corpus_labels)
+    if tokens:
+        if _finding_reviewers_segment_fully_tokenized(segment, corpus_labels):
+            return tokens
+        return []
+    return comma_parts
 
 
 def accepted_finding_points_from_severities(

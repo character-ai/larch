@@ -957,6 +957,11 @@ def test_weighted_finding_points_and_attribution_helpers() -> None:
         corpus_labels=labels,
     ) == labels
     assert voting.raw_sole_finder_attribution(
+        "Cursor-Pragmatic Codex-Arch",
+        column="finding_reviewers",
+        corpus_labels=["Cursor-Pragmatic"],
+    ) == []
+    assert voting.raw_sole_finder_attribution(
         "Structure, Unknown",
         column="finding_reviewers",
         corpus_labels=["Structure"],

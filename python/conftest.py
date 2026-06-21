@@ -65,6 +65,12 @@ def _session_routing_isolation() -> Iterator[None]:
 
 
 @pytest.fixture(autouse=True)
+def _unique_finder_bonus_isolation(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Clear LARCH_UNIQUE_FINDER_BONUS so no-env tests stay hermetic."""
+    monkeypatch.delenv("LARCH_UNIQUE_FINDER_BONUS", raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _no_real_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
     """Replace time.sleep with a no-op so retry/backoff tests don't wait.
 
