@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# test-lint-literal-counts.sh - Regression harness for scripts/lint-literal-counts.py.
+# test-lint-literal-counts.sh - Regression harness for python3 python/cli.py lint literal-counts.
 
 set -euo pipefail
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-LINT="$REPO_ROOT/scripts/lint-literal-counts.py"
-
-if [[ ! -f "$LINT" ]]; then
-    echo "ERROR: lint script not found: $LINT" >&2
-    exit 1
-fi
+CLI="$REPO_ROOT/python/cli.py"
 
 if ! command -v python3 >/dev/null 2>&1; then
     echo "FAIL: python3 not on PATH" >&2
+    exit 1
+fi
+
+if [[ ! -f "$CLI" ]]; then
+    echo "ERROR: cli.py not found: $CLI" >&2
     exit 1
 fi
 
@@ -60,7 +60,7 @@ reset_tree() {
 run_lint() {
     local stderr_file="$1"
     set +e
-    python3 "$LINT" --root "$TMPROOT" 2>"$stderr_file"
+    python3 "$CLI" lint literal-counts --root "$TMPROOT" 2>"$stderr_file"
     local rc=$?
     set -e
     echo "$rc"
@@ -342,7 +342,7 @@ rm -f "$stderr_file"
 reset_tree
 stderr_file=$(mktemp)
 set +e
-python3 "$LINT" --root "$TMPROOT" extra-positional.md 2>"$stderr_file"
+python3 "$CLI" lint literal-counts --root "$TMPROOT" extra-positional.md 2>"$stderr_file"
 rc=$?
 set -e
 if [[ "$rc" -eq 0 ]]; then

@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# test-lint-no-raw-stderr-after-quiet-init.sh - Regression harness for S041.
+# test-lint-no-raw-stderr-after-quiet-init.sh - Regression harness for python3 python/cli.py lint no-raw-stderr-after-quiet-init.
 
 set -euo pipefail
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-LINT="$REPO_ROOT/scripts/lint-no-raw-stderr-after-quiet-init.py"
-
-if [[ ! -f "$LINT" ]]; then
-    echo "ERROR: lint script not found: $LINT" >&2
-    exit 1
-fi
+CLI="$REPO_ROOT/python/cli.py"
 
 if ! command -v python3 >/dev/null 2>&1; then
     echo "FAIL: python3 not on PATH" >&2
+    exit 1
+fi
+
+if [[ ! -f "$CLI" ]]; then
+    echo "ERROR: cli.py not found: $CLI" >&2
     exit 1
 fi
 
@@ -60,7 +60,7 @@ reset_tree() {
 run_lint() {
     local stderr_file="$1"
     set +e
-    python3 "$LINT" --root "$TMPROOT" 2>"$stderr_file"
+    python3 "$CLI" lint no-raw-stderr-after-quiet-init --root "$TMPROOT" 2>"$stderr_file"
     local rc=$?
     set -e
     echo "$rc"

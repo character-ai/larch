@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+# ruff: noqa: TC006,FURB167,PLW2901,PERF401
 """render-session-transcript.py — render a Claude Code session JSONL as a filtered chat-view JSONL.
 
 Output schema (v3, policy: prose-errors-only):
@@ -54,6 +54,8 @@ import json
 import re
 import sys
 from pathlib import Path
+from collections.abc import Iterator
+from typing import cast
 
 SCHEMA_VERSION = 3
 
@@ -74,19 +76,29 @@ ERROR_PREFIX_RE = re.compile(r"(?m)^Error:")
 WARN_RE = re.compile(r"warning:", re.I)
 
 
-def tool_result_text(blk: dict) -> str:
+Record = dict[str, object]
+Block = dict[str, object]
+
+
+def tool_result_text(blk: Block) -> str:
     c = blk.get("content")
     if isinstance(c, str):
         return c
     if isinstance(c, list):
-        return "".join(
-            x.get("text", "") for x in c
-            if isinstance(x, dict) and x.get("type") == "text"
-        )
+        parts: list[str] = []
+        content_items = cast(list[object], c)
+        for item in content_items:
+            if not isinstance(item, dict):
+                continue
+            block = cast(Block, item)
+            if block.get("type") == "text":
+                text = block.get("text", "")
+                parts.append(text if isinstance(text, str) else "")
+        return "".join(parts)
     return ""
 
 
-def classify_tool_result(blk: dict, tool_name: str) -> tuple[bool, bool, int | None]:
+def classify_tool_result(blk: Block, tool_name: str) -> tuple[bool, bool, int | None]:
     """Returns (kept_error, kept_warning, exit_code_or_None).
 
     kept_error is True when the harness flagged is_error OR the Bash output
@@ -108,7 +120,7 @@ def classify_tool_result(blk: dict, tool_name: str) -> tuple[bool, bool, int | N
     return (error, warning, exit_code)
 
 
-def parse_jsonl(path: Path):
+def parse_jsonl(path: Path) -> Iterator[Record]:
     """Yield record dicts from a JSONL file, skipping unparseable lines."""
     with path.open("r", encoding="utf-8", errors="replace") as fh:
         for line in fh:
@@ -116,12 +128,22 @@ def parse_jsonl(path: Path):
             if not line:
                 continue
             try:
-                yield json.loads(line)
+                parsed: object = json.loads(line)
             except json.JSONDecodeError:
                 continue
+            if isinstance(parsed, dict):
+                yield cast(Record, parsed)
 
 
-def first_pass(records):
+def _message_content(rec: Record) -> object:
+    message = rec.get("message")
+    if not isinstance(message, dict):
+        return None
+    message_record = cast(Record, message)
+    return message_record.get("content")
+
+
+def first_pass(records: list[Record]) -> tuple[dict[str, str], dict[str, bool]]:
     """Build tool_use_id → name and tool_use_id → error_or_warning status maps."""
     id_to_name: dict[str, str] = {}
     id_to_kept: dict[str, bool] = {}
@@ -130,29 +152,32 @@ def first_pass(records):
             continue
         if rec.get("type") in HOUSEKEEPING_TYPES:
             continue
-        content = rec.get("message", {}).get("content")
+        content = _message_content(rec)
         if not isinstance(content, list):
             continue
-        for blk in content:
+        content_blocks = cast(list[object], content)
+        for blk in content_blocks:
             if not isinstance(blk, dict):
                 continue
-            bt = blk.get("type")
+            block = cast(Block, blk)
+            bt = block.get("type")
             if bt == "tool_use":
-                bid = blk.get("id", "")
-                if bid:
-                    id_to_name[bid] = blk.get("name", "?")
+                bid = block.get("id")
+                if isinstance(bid, str) and bid:
+                    name = block.get("name")
+                    id_to_name[bid] = name if isinstance(name, str) else "?"
             elif bt == "tool_result":
-                tid = blk.get("tool_use_id", "")
-                if not tid:
+                tid = block.get("tool_use_id")
+                if not isinstance(tid, str) or not tid:
                     continue
                 tname = id_to_name.get(tid, "?")
-                error, warning, _ = classify_tool_result(blk, tname)
+                error, warning, _ = classify_tool_result(block, tname)
                 id_to_kept[tid] = (error or warning)
     return id_to_name, id_to_kept
 
 
-def render_user_blocks(content, id_to_name) -> list[dict]:
-    blocks: list[dict] = []
+def render_user_blocks(content: object, id_to_name: dict[str, str]) -> list[Block]:
+    blocks: list[Block] = []
     if isinstance(content, str):
         s = SYSREM_RE.sub("", content).strip()
         if "<command-name>" in s:
@@ -161,25 +186,28 @@ def render_user_blocks(content, id_to_name) -> list[dict]:
             name = (m.group(1).strip() if m else "")
             args = (a.group(1).strip() if a else "")
             if name:
-                blk: dict = {"type": "command", "name": name}
+                command_block: Block = {"type": "command", "name": name}
                 if args:
-                    blk["args"] = args
-                blocks.append(blk)
+                    command_block["args"] = args
+                blocks.append(command_block)
         elif s:
             blocks.append({"type": "text", "value": s})
         return blocks
     if not isinstance(content, list):
         return blocks
-    for blk in content:
+    content_blocks = cast(list[object], content)
+    for blk in content_blocks:
         if not isinstance(blk, dict):
             continue
-        if blk.get("type") != "tool_result":
+        block = cast(Block, blk)
+        if block.get("type") != "tool_result":
             continue
-        tid = blk.get("tool_use_id", "")
+        tid_obj = block.get("tool_use_id", "")
+        tid = tid_obj if isinstance(tid_obj, str) else ""
         tname = id_to_name.get(tid, "?")
-        txt = tool_result_text(blk)
-        error, warning, exit_code = classify_tool_result(blk, tname)
-        out: dict = {"type": "tool_result", "tool_use_id": tid, "name": tname}
+        txt = tool_result_text(block)
+        error, warning, exit_code = classify_tool_result(block, tname)
+        out: Block = {"type": "tool_result", "tool_use_id": tid, "name": tname}
         if error or warning:
             out["text"] = txt
             if error:
@@ -193,30 +221,38 @@ def render_user_blocks(content, id_to_name) -> list[dict]:
     return blocks
 
 
-def render_assistant_blocks(content, id_to_kept) -> list[dict]:
-    blocks: list[dict] = []
+def render_assistant_blocks(content: object, id_to_kept: dict[str, bool]) -> list[Block]:
+    blocks: list[Block] = []
     if not isinstance(content, list):
         return blocks
     # Does any tool_use in this assistant turn map to a kept (errored or warned) tool_result?
     turn_has_kept = False
-    for blk in content:
-        if isinstance(blk, dict) and blk.get("type") == "tool_use":
-            if id_to_kept.get(blk.get("id", ""), False):
-                turn_has_kept = True
-                break
-    for blk in content:
+    content_blocks = cast(list[object], content)
+    for blk in content_blocks:
         if not isinstance(blk, dict):
             continue
-        bt = blk.get("type")
+        block = cast(Block, blk)
+        if block.get("type") == "tool_use":
+            bid = block.get("id")
+            if isinstance(bid, str) and id_to_kept.get(bid, False):
+                turn_has_kept = True
+                break
+    for blk in content_blocks:
+        if not isinstance(blk, dict):
+            continue
+        block = cast(Block, blk)
+        bt = block.get("type")
         if bt == "text":
-            txt = SYSREM_RE.sub("", blk.get("text", "")).rstrip()
+            text = block.get("text", "")
+            txt = SYSREM_RE.sub("", text if isinstance(text, str) else "").rstrip()
             if not txt or txt.startswith("Base directory for this skill"):
                 continue
             blocks.append({"type": "text", "value": txt})
         elif bt == "thinking":
             if not turn_has_kept:
                 continue
-            think = blk.get("thinking", "").strip()
+            thinking = block.get("thinking", "")
+            think = (thinking if isinstance(thinking, str) else "").strip()
             if think:
                 blocks.append({"type": "thinking", "value": think})
         # v3 policy: tool_use (tool_call) blocks are dropped entirely
@@ -230,14 +266,17 @@ def render(input_path: Path) -> str:
     if not records:
         raise ValueError(f"no parseable records in {input_path}")
     id_to_name, id_to_kept = first_pass(records)
-    turns: list[dict] = []
+    turns: list[Block] = []
     turn_no = 0
     for rec in records:
         if rec.get("isMeta"):
             continue
         if rec.get("type") in HOUSEKEEPING_TYPES:
             continue
-        msg = rec.get("message", {})
+        msg_obj = rec.get("message")
+        if not isinstance(msg_obj, dict):
+            continue
+        msg = cast(Record, msg_obj)
         role = msg.get("role")
         if role not in ("user", "assistant"):
             continue
@@ -262,11 +301,11 @@ def render(input_path: Path) -> str:
     return "\n".join(out_lines) + "\n"
 
 
-def main() -> int:
-    p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    p.add_argument("--input", required=True, help="Path to raw Claude Code session JSONL")
-    p.add_argument("--output", help="Path to write filtered JSONL (default: stdout)")
-    args = p.parse_args()
+def main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
+    _ = p.add_argument("--input", required=True, help="Path to raw Claude Code session JSONL")
+    _ = p.add_argument("--output", help="Path to write filtered JSONL (default: stdout)")
+    args = p.parse_args(argv if argv is not None else sys.argv[1:])
     inp = Path(args.input)
     try:
         out = render(inp)
@@ -277,9 +316,9 @@ def main() -> int:
         print(f"render-session-transcript: {e}", file=sys.stderr)
         return 3
     if args.output:
-        Path(args.output).write_text(out, encoding="utf-8")
+        _ = Path(args.output).write_text(out, encoding="utf-8")
     else:
-        sys.stdout.write(out)
+        _ = sys.stdout.write(out)
     return 0
 
 

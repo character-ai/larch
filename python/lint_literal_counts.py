@@ -1,11 +1,11 @@
-#!/usr/bin/env python3
+# ruff: noqa: D301,S607,UP022
 """Lint markdown for drift-prone literal item counts.
 
 Flags lines matching ``^\\s*\\d+\\s+(assertions|rules|bullets|rows|reviewers|
 agents|specialists|cases|fields|sections)\\b`` unless the same line carries
 ``<!-- lint-literal-counts: allow <reason> -->``. Lines inside length-aware
 fenced code blocks are exempt. Exit codes: 0 clean, 1 violations, 2 internal
-errors. Canonical contract: scripts/lint-literal-counts.md.
+errors. Canonical contract: python/lint_literal_counts.md.
 """
 
 from __future__ import annotations
@@ -150,15 +150,15 @@ def lint_file(path: Path, root: Path) -> list[str]:
     return violations
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument(
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
+    _ = parser.add_argument(
         "--root",
         type=Path,
         default=Path(__file__).resolve().parents[1],
         help="Repository root to scan (default: this script's parent directory).",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv if argv is not None else sys.argv[1:])
 
     root: Path = args.root.resolve()
     if not root.is_dir():

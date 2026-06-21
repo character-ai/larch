@@ -1,17 +1,26 @@
 #!/usr/bin/env bash
-# Regression test for scripts/check-topology-rule-paths.py.
+# Regression test for python3 python/cli.py lint topology-rule-paths.
 
 set -euo pipefail
 export LC_ALL=C
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SUBJECT="$REPO_ROOT/scripts/check-topology-rule-paths.py"
+CLI="$REPO_ROOT/python/cli.py"
 
 PASS=0
 FAIL=0
 FAIL_DETAILS=()
 TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/larch-check-topology-rule-paths.XXXXXX")"
 trap 'rm -rf "$TMP_ROOT"' EXIT
+
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "FAIL: python3 not on PATH" >&2
+  exit 1
+fi
+if [[ ! -f "$CLI" ]]; then
+  echo "ERROR: cli.py not found: $CLI" >&2
+  exit 1
+fi
 
 fail_case() {
   FAIL=$((FAIL + 1))
@@ -38,7 +47,7 @@ assert_success() {
   local dir="$2"
   if (
     cd "$dir"
-    python3 scripts/check-topology-rule-paths.py
+    python3 "$CLI" lint topology-rule-paths --root "$dir"
   ) >"$dir/stdout.txt" 2>"$dir/stderr.txt"; then
     pass_case
   else
@@ -52,7 +61,7 @@ assert_failure_contains() {
   local needle="$3"
   if (
     cd "$dir"
-    python3 scripts/check-topology-rule-paths.py
+    python3 "$CLI" lint topology-rule-paths --root "$dir"
   ) >"$dir/stdout.txt" 2>"$dir/stderr.txt"; then
     fail_case "$label: expected failure"
     return
@@ -65,7 +74,7 @@ assert_abs_success() {
   local cwd="$2"
   if (
     cd "$cwd"
-    python3 "$SUBJECT"
+    python3 "$CLI" lint topology-rule-paths
   ) >"$cwd/stdout.txt" 2>"$cwd/stderr.txt"; then
     pass_case
   else
@@ -76,8 +85,7 @@ assert_abs_success() {
 new_fixture() {
   local name="$1"
   local dir="$TMP_ROOT/$name"
-  mkdir -p "$dir/scripts" "$dir/skills/shared" "$dir/.claude/rules"
-  cp "$SUBJECT" "$dir/scripts/check-topology-rule-paths.py"
+  mkdir -p "$dir/skills/shared" "$dir/.claude/rules"
   printf '%s\n' "$dir"
 }
 
@@ -148,7 +156,7 @@ write_tsv "$dir" 'z\tvalue\tcomposition\tskills/z.md\na\tvalue\tcomposition\tski
 write_rule_flow "$dir" "skills/covered.md"
 if (
   cd "$dir"
-  python3 scripts/check-topology-rule-paths.py
+  python3 "$CLI" lint topology-rule-paths --root "$dir"
 ) >"$dir/stdout.txt" 2>"$dir/stderr.txt"; then
   fail_case "multiple missing: expected failure"
 else
