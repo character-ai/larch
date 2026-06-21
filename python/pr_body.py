@@ -796,6 +796,8 @@ def generate_code_flow_diagram(implement_tmpdir: Path, *, model: str = "claude-s
                 )
                 if bounded != failure_log:
                     failure_log.write_text(bounded.read_text(encoding="utf-8"), encoding="utf-8")
+                with contextlib.suppress(OSError):
+                    raw_capture.unlink()
             else:
                 failure_log.write_text(diagnostic, encoding="utf-8")
         except OSError:
@@ -809,6 +811,7 @@ def generate_code_flow_diagram(implement_tmpdir: Path, *, model: str = "claude-s
         candidate.replace(diagram)
         with contextlib.suppress(OSError):
             failure_log.unlink()
+            _ = (implement_tmpdir / "code-flow-diagram.raw-failure.log").unlink(missing_ok=True)
         return 0, "ok", str(diagram), ""
     candidate.unlink(missing_ok=True)
     return 0, "skipped", "", result.reason_tokens[0] if result.reason_tokens else "sanitizer-rejected"
