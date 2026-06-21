@@ -43,6 +43,30 @@ def _write_design_mark(tmpdir: Path, label: str, ts: int = 100) -> None:
     )
 
 
+def _write_design_pointer(home: Path, pid: str, tmpdir: Path, cwd: Path) -> Path:
+    tmpdir.mkdir(parents=True, exist_ok=True)
+    (tmpdir / ".larch-keepalive").write_text(f"CLONE_PATH={cwd}\n", encoding="utf-8")
+    env_file = tmpdir.parent / f"current-design-target-{pid}.sh"
+    env_file.write_text(f"export DESIGN_TMPDIR={tmpdir}\n", encoding="utf-8")
+    pointer = _sessions_root(home) / f"current-design-env-{pid}.sh"
+    pointer.symlink_to(env_file)
+    return pointer
+
+
+def _write_design_legacy_round_timing(
+    ledger: Path,
+    *,
+    round_num: int,
+    start_s: int,
+    end_s: int,
+) -> None:
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+    with ledger.open("a", encoding="utf-8") as handle:
+        handle.write(
+            f"{start_s}\t{end_s}\tdesign\tround\tdesign Step 3 — plan review\tround-{round_num}\n"
+        )
+
+
 def _set_mtime(path: Path, ts: int) -> None:
     os.utime(path, (ts, ts))
 
@@ -191,6 +215,67 @@ def test_design_pointer_match(tmp_path: Path, monkeypatch) -> None:  # type: ign
 
     assert report.startswith("design: Step 2 — plan review")
     assert "last artifact:" in report
+
+
+def test_latest_timing_ledger_activity_ts_recognizes_design_legacy_round_row(tmp_path: Path) -> None:
+    ledger = tmp_path / "timing-ledger.tsv"
+    _write_design_legacy_round_timing(ledger, round_num=1, start_s=100, end_s=200)
+
+    assert progress_report._latest_timing_ledger_activity_ts(ledger) == 200
+
+
+def test_active_design_step3_wins_when_stale_run_has_newer_pointer(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    cwd = tmp_path / "repo"
+    cwd.mkdir()
+    active_design = tmp_path / "active-design"
+    stale_design = tmp_path / "stale-design"
+    active_pointer = _write_design_pointer(home, "100", active_design, cwd)
+    stale_pointer = _write_design_pointer(home, "200", stale_design, cwd)
+    _write_design_mark(active_design, "Step 3 — plan review", ts=10)
+    _write_design_legacy_round_timing(
+        active_design / "timing-ledger.tsv",
+        round_num=1,
+        start_s=300,
+        end_s=600,
+    )
+    os.utime(active_pointer, (100, 100))
+    os.utime(stale_pointer, (500, 500))
+
+    report = progress_report._report(str(cwd))
+
+    assert report.startswith("design: Step 3 — plan review")
+    assert "unknown step" not in report
+
+
+def test_design_ranking_falls_back_to_pointer_mtime_without_ledger_activity(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    cwd = tmp_path / "repo"
+    cwd.mkdir()
+    old_design = tmp_path / "old-design"
+    new_design = tmp_path / "new-design"
+    old_pointer = _write_design_pointer(home, "100", old_design, cwd)
+    new_pointer = _write_design_pointer(home, "200", new_design, cwd)
+    (old_design / "timing-ledger.tsv").write_text("not-a-valid-row\n", encoding="utf-8")
+    (new_design / "timing-ledger.tsv").write_text("also-not-a-valid-row\n", encoding="utf-8")
+    (old_design / "old-artifact.txt").write_text("old\n", encoding="utf-8")
+    (new_design / "new-artifact.txt").write_text("new\n", encoding="utf-8")
+    os.utime(old_pointer, (100, 100))
+    os.utime(new_pointer, (200, 200))
+
+    report = progress_report._report(str(cwd))
+
+    assert report.startswith("design: unknown step")
+    assert "new-artifact.txt" in report
+    assert "old-artifact.txt" not in report
 
 
 def test_implement_pointer_match_ship_pr(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
