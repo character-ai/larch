@@ -860,6 +860,88 @@ def _write_tally_ballot(path: Path) -> None:
     )
 
 
+def test_tally_plan_review_unique_finder_bonus_with_neutralized_attribution(tmp_path: Path) -> None:
+    attributed_text = """### FINDING_1: Sole in-scope
+- **Reviewer**: Cursor-Arch
+- focus-area = correctness
+- Concern: parser misses bad input.
+
+### FINDING_2: Shared in-scope
+- **Reviewer(s)**: Codex-Arch, Cursor-Testing
+- focus-area = correctness
+- Concern: shared issue.
+
+### OOS_1: Future docs
+- **Reviewer**: Codex-OOS
+- focus-area = documentation
+- Concern: docs follow-up.
+"""
+    attributed = tmp_path / "attributed.md"
+    _ = attributed.write_text(attributed_text, encoding="utf-8")
+    ballot = tmp_path / "ballot.md"
+    _ = ballot.write_text(attributed_text, encoding="utf-8")
+    proposer_map = tmp_path / "proposer-map.tsv"
+    voting.write_proposer_map(ballot, proposer_map)
+    _ = ballot.write_text(voting.neutralize_reviewer_attribution(attributed_text), encoding="utf-8")
+
+    v1 = tmp_path / "v1.txt"
+    v2 = tmp_path / "v2.txt"
+    v3 = tmp_path / "v3.txt"
+    votes = "FINDING_1: YES SEVERITY=minor\nFINDING_2: YES SEVERITY=minor\nOOS_1: YES SEVERITY=major\n"
+    for voter in (v1, v2, v3):
+        _ = voter.write_text(votes, encoding="utf-8")
+
+    design_default = tmp_path / "design-default"
+    design_default.mkdir()
+    default_proc = run_cli(
+        "plan-review",
+        "tally",
+        "--ballot-file",
+        str(ballot),
+        "--voter-files",
+        str(v1),
+        str(v2),
+        str(v3),
+        "--design-tmpdir",
+        str(design_default),
+        "--proposer-map-file",
+        str(proposer_map),
+        env={"LARCH_QUIET_DISABLE": "1", "LARCH_UNIQUE_FINDER_BONUS": ""},
+    )
+    assert default_proc.returncode == 0, default_proc.stderr
+    default_tally = (design_default / "voting-tally.md").read_text(encoding="utf-8")
+    assert "| Cursor-Arch | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |" in default_tally
+    assert "Unique finder bonus active" not in default_tally
+
+    design_active = tmp_path / "design-active"
+    design_active.mkdir()
+    active_proc = run_cli(
+        "plan-review",
+        "tally",
+        "--ballot-file",
+        str(ballot),
+        "--voter-files",
+        str(v1),
+        str(v2),
+        str(v3),
+        "--design-tmpdir",
+        str(design_active),
+        "--proposer-map-file",
+        str(proposer_map),
+        env={"LARCH_QUIET_DISABLE": "1", "LARCH_UNIQUE_FINDER_BONUS": "0.25"},
+    )
+    assert active_proc.returncode == 0, active_proc.stderr
+    tally = (design_active / "voting-tally.md").read_text(encoding="utf-8")
+    assert "| Cursor-Arch | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 1.25 |" in tally
+    assert "| Codex-Arch | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |" in tally
+    assert "| Cursor-Testing | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |" in tally
+    assert "| Codex-OOS | 0 | 0 | 0 | 0 | 1 | 1 | 0 | 0 | 1 |" in tally
+    assert "**Unique finder bonus active:** 1 accepted in-scope sole-finder finding(s) received +0.25 each." in tally
+    accepted = (design_active / "accepted-plan-findings.md").read_text(encoding="utf-8")
+    assert "- **Reviewer**: Cursor-Arch" in accepted
+    assert "anonymous" not in accepted
+
+
 def test_tally_plan_review_mixed_votes_and_artifacts(tmp_path: Path) -> None:
     ballot = tmp_path / "ballot.md"
     _write_tally_ballot(ballot)

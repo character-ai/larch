@@ -509,6 +509,7 @@ class _Tally:
         for artifact in (accepted_plan, rejected_plan, oos_file, oos_accepted_local):
             _ = artifact.write_text("", encoding="utf-8")
 
+        active_bonus = voting.unique_finder_bonus_from_env()
         if self.eligible == 0:
             _ = Path(self.tally_file).write_text(
                 "# Plan Review Voting Tally\n\n"
@@ -523,7 +524,7 @@ class _Tally:
             logging_util.emit_kv("VOTING_TALLY_FILE", self.tally_file)
             return 0
 
-        self._render(sorted_ids, accepted_plan, rejected_plan, oos_file, oos_accepted_local)
+        self._render(sorted_ids, accepted_plan, rejected_plan, oos_file, oos_accepted_local, active_bonus)
         self._write_findings_classification(sorted_ids)
         self.status_emitted = True
         logging_util.emit_kv("TALLY_PLAN_REVIEW_STATUS", "ok")
@@ -571,6 +572,7 @@ class _Tally:
         rejected_plan: Path,
         oos_file: Path,
         oos_accepted_local: Path,
+        active_bonus: float,
     ) -> None:
         buf = "# Plan Review Voting Tally\n\n"
         if self.main_agent_voter:
@@ -586,7 +588,8 @@ class _Tally:
         rejected_chunks: list[str] = []
         oos_chunks: list[str] = []
         oos_accepted_chunks: list[str] = []
-        score_rows: list[tuple[str, str, str, int]] = []
+        score_rows: list[tuple[str, str, str, int, float]] = []
+        sole_finder_reward_count = 0
         attribution_labels = self._attribution_labels()
         agreement_rows: list[dict[str, object]] = []
 
@@ -624,7 +627,14 @@ class _Tally:
             )
             if not split_reviewers:
                 split_reviewers = [part.strip() for part in reviewer.split(",") if part.strip()]
-            score_rows.extend((reviewer_slot, kind, result, accepted_weight) for reviewer_slot in split_reviewers)
+            bonus_float = (
+                active_bonus
+                if kind == "finding" and result == "accepted" and len(split_reviewers) == 1 and active_bonus > 0
+                else 0.0
+            )
+            if bonus_float > 0:
+                sole_finder_reward_count += 1
+            score_rows.extend((reviewer_slot, kind, result, accepted_weight, bonus_float) for reviewer_slot in split_reviewers)
             security = self._is_security(block)
             block_text = Path(block).read_text(encoding="utf-8", errors="replace")
             artifact_text = self._artifact_text_for_item(item_id, block)
@@ -659,6 +669,8 @@ class _Tally:
         )
         buf += "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n"
         buf += self._scoreboard(score_rows)
+        if active_bonus > 0 and sole_finder_reward_count:
+            buf += "\n" + voting.unique_finder_bonus_note(active_bonus, sole_finder_reward_count) + "\n"
         buf += "\n" + voting.render_voter_scoreboard(voting.compute_voter_agreement(agreement_rows))
 
         _ = Path(self.tally_file).write_text(buf, encoding="utf-8")
@@ -668,20 +680,21 @@ class _Tally:
         _append(oos_accepted_local, oos_accepted_chunks)
 
     @staticmethod
-    def _scoreboard(score_rows: list[tuple[str, str, str, int]]) -> str:
-        agg: dict[str, dict[str, int]] = {}
-        for reviewer, kind, result, accepted_weight in score_rows:
+    def _scoreboard(score_rows: list[tuple[str, str, str, int, float]]) -> str:
+        agg: dict[str, dict[str, float]] = {}
+        for reviewer, kind, result, accepted_weight, bonus_float in score_rows:
             row = agg.setdefault(
                 reviewer,
-                {"proposed": 0, "accepted": 0, "neutral": 0, "rejected": 0,
-                 "oos_proposed": 0, "oos_accepted": 0, "oos_neutral": 0, "oos_rejected": 0,
-                 "accepted_weight": 0},
+                {"proposed": 0.0, "accepted": 0.0, "neutral": 0.0, "rejected": 0.0,
+                 "oos_proposed": 0.0, "oos_accepted": 0.0, "oos_neutral": 0.0, "oos_rejected": 0.0,
+                 "accepted_weight": 0.0, "unique_bonus": 0.0},
             )
             if kind == "finding":
                 row["proposed"] += 1
                 if result == "accepted":
                     row["accepted"] += 1
                     row["accepted_weight"] += accepted_weight
+                    row["unique_bonus"] += bonus_float
                 elif result == "neutral":
                     row["neutral"] += 1
                 else:
@@ -702,11 +715,12 @@ class _Tally:
                 + row["oos_accepted"]
                 - row["rejected"]
                 - row["oos_rejected"]
+                + row["unique_bonus"]
             )
             lines.append(
-                f"| {reviewer} | {row['proposed']} | {row['accepted']} | {row['neutral']} | "
-                f"{row['rejected']} | {row['oos_proposed']} | {row['oos_accepted']} | "
-                f"{row['oos_neutral']} | {row['oos_rejected']} | {voting.format_score(score)} |\n"
+                f"| {reviewer} | {int(row['proposed'])} | {int(row['accepted'])} | {int(row['neutral'])} | "
+                f"{int(row['rejected'])} | {int(row['oos_proposed'])} | {int(row['oos_accepted'])} | "
+                f"{int(row['oos_neutral'])} | {int(row['oos_rejected'])} | {voting.format_score(score)} |\n"
             )
         lines.sort()
         return "".join(lines)

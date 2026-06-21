@@ -508,6 +508,7 @@ def tally_code_votes(argv: list[str]) -> int:
         )
     except voting.TallyError as exc:
         return _error(f"tally-code-votes: {exc}")
+    active_bonus = voting.unique_finder_bonus_from_env()
     review_tmpdir.mkdir(parents=True, exist_ok=True)
     three_slot = bool(args.voter_tools)
     if three_slot and (len(args.voter_files) != _THREE_SLOT_COUNT or len(args.voter_tools) != _THREE_SLOT_COUNT):
@@ -606,6 +607,8 @@ def tally_code_votes(argv: list[str]) -> int:
             logging_util.emit_kv(key, value)
         return 0
     score_rows: list[tuple[str, str, str, int]] = []
+    bonus_by_reviewer: defaultdict[str, float] = defaultdict(float)
+    sole_finder_reward_count = 0
     agreement_rows: list[dict[str, object]] = []
     tally_lines = ["# Code Review Voting Tally\n\n"]
     expected = 3 if three_slot and args.cursor_available == "true" else (1 if three_slot else 1 + (1 if args.codex_available == "true" else 0) + (1 if args.cursor_available == "true" else 0))
@@ -703,7 +706,11 @@ def tally_code_votes(argv: list[str]) -> int:
             if kind == "finding" and result == "accepted"
             else 0
         )
-        score_rows.extend((reviewer_slot, kind, result, accepted_weight) for reviewer_slot in [part.strip() for part in reviewer.split(",") if part.strip()])
+        reviewer_slots = [part.strip() for part in reviewer.split(",") if part.strip()]
+        score_rows.extend((reviewer_slot, kind, result, accepted_weight) for reviewer_slot in reviewer_slots)
+        if kind == "finding" and result == "accepted" and len(reviewer_slots) == 1 and active_bonus > 0:
+            bonus_by_reviewer[reviewer_slots[0]] += active_bonus
+            sole_finder_reward_count += 1
         try:
             security = _security_block(block)
         except RuntimeError:
@@ -768,6 +775,7 @@ def tally_code_votes(argv: list[str]) -> int:
             + row["oos_accepted"]
             - row["rejected"]
             - row["oos_rejected"]
+            + bonus_by_reviewer.get(reviewer, 0.0)
         )
         tally_lines.append(f"| {label} | {row['proposed']} | {row['accepted']} | {row['neutral']} | {row['rejected']} | {row['oos_proposed']} | {row['oos_accepted']} | {row['oos_neutral']} | {row['oos_rejected']} | {voting.format_score(score)} | STATUS=OK |\n")
     if args.manifest_file:
@@ -777,6 +785,10 @@ def tally_code_votes(argv: list[str]) -> int:
             collector_file=args.collector_results_file,
             score_rows=score_rows,
         )
+    if active_bonus > 0 and sole_finder_reward_count:
+        tally_lines.append("\n")
+        tally_lines.append(voting.unique_finder_bonus_note(active_bonus, sole_finder_reward_count))
+        tally_lines.append("\n")
     tally_lines.append("\n")
     tally_lines.append(voting.render_voter_scoreboard(voting.compute_voter_agreement(agreement_rows)))
     _write(voting_tally_file, "".join(tally_lines))

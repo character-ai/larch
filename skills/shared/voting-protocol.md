@@ -195,6 +195,8 @@ After tallying votes, compute a score for each **original reviewer** (not voters
 
 Severity for competition points comes from panel `vN_severity` cells attached to YES votes only. `body_severity` never affects points. If a deduplicated finding was proposed by multiple reviewers, **all** contributing reviewers receive the same weighted points for that finding. Reviewer pruning remains unweighted accepted-minus-rejected count math and does not apply the neutral penalty.
 
+`LARCH_UNIQUE_FINDER_BONUS` is an experimental additive bonus and is off by default. A positive float enables the bonus and sets its size; the suggested experimental value is `0.25`. It applies only when an accepted in-scope finding has exactly one restored proposer. Deduplicated multi-reviewer findings keep shared base credit and receive no uniqueness bonus. OOS scoring remains flat and unaffected. Reviewer pruning remains unweighted accepted-minus-rejected math and does not use this bonus.
+
 ## Scoreboard
 
 After voting, print the scoreboard. Branch on `SESSION_ENV_PATH`:
@@ -215,6 +217,8 @@ Full scoreboard format (used in standalone mode):
 ```
 
 The **Neutral** column counts all non-accepted in-scope findings that cost **-0.25** points to the proposer (≥1 YES but below acceptance threshold). The **Rejected** column counts non-accepted findings that cost **−1** point (0 YES). A single finding is counted in **at most one** of these two columns.
+
+When `LARCH_UNIQUE_FINDER_BONUS` is active and rewards at least one accepted in-scope finding, print one note below the reviewer scoreboard with the bonus value and rewarded sole-finder finding count. Do not add a scoreboard column.
 
 Attribution labels are skill-specific (e.g., `/design` uses `Code`/`Codex`/`Cursor`; `/review` hard panel uses `Correctness`/`Testing`/`Edge-cases`/`Codex-Correctness`/`Codex-Testing`/`Codex-Edge-cases`). One row per independent reviewer. Future token allocation should use precision-value, not cumulative reviewer `Score`: measure in-scope `net-score-per-finding` as `(accepted_weight - Rejected) ÷ Proposed` on scoreboard columns, where `Proposed` is the in-scope `Findings` count and OOS is excluded from both numerator and denominator.
 
