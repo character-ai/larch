@@ -40,7 +40,6 @@ def test_manifest_excludes_non_residual_orchestration() -> None:
         "skills/design/scripts/lib-plan-optional-trailers.sh",
         "skills/implement/scripts/cleanup.sh",
         "skills/implement/scripts/lib-implement-clone-tag.sh",
-        "skills/implement/scripts/oos-file-conflict-deps.sh",
         "skills/implement/scripts/step-2-entry.sh",
         "skills/implement/scripts/step-8-ship.sh",
     }

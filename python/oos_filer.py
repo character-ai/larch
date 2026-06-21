@@ -786,12 +786,24 @@ def _file(args: argparse.Namespace) -> tuple[int, dict[str, object]]:
         _append_tool_failure(tmpdir, "step-9a1-oos-file", "oos issue-cap", 1, str(exc))
         return 1, {"status": "issue_cap_failed", "accepted_count": accepted_count, "filed_count": 0, "deduplicated_count": 0, "urls": [], "run_statistics_written": False, "step9a1_stamped": False}
     deps = tmpdir / "oos-intra-batch-deps.tsv"
-    try:
-        deps.write_text("".join(f"{left}\t{right}\n" for left, right in file_oos.file_conflict_deps(combined)), encoding="utf-8")
-    except OSError as exc:
-        _append_warning(tmpdir, f"file-conflict pre-pass failed; continuing without intra-batch dependencies: {exc}")
+    deps_result = _run_cli(["oos", "file-conflict-deps", "--input-file", str(combined), "--output", str(deps)])
+    deps_path: Path | None = None
+    if deps_result.returncode == 0:
+        if deps.is_file() and deps.stat().st_size > 0:
+            deps_path = deps
+    else:
+        warning = (
+            f"**⚠ /implement: oos-file-conflict pre-pass failed (exit {deps_result.returncode}) — "
+            "proceeding without caller-supplied serialization edges; review accepted-OOS Descriptions "
+            "before greenlighting parallel workers**"
+        )
+        _append_warning(tmpdir, warning)
+        detail = deps_result.stderr or deps_result.stdout or warning
+        _append_tool_failure(tmpdir, "step-9a1-oos-file", "oos file-conflict-deps", deps_result.returncode or 1, detail)
+        if deps_result.returncode == 1:
+            deps.unlink(missing_ok=True)
     stable_ids_by_item = _stable_ids_by_combined_item(blocks, combined_text)
-    batch = _run_issue_batch(tmpdir, combined, repo=repo, issue_number=issue_number, deps_path=deps, stable_ids_by_item=stable_ids_by_item)
+    batch = _run_issue_batch(tmpdir, combined, repo=repo, issue_number=issue_number, deps_path=deps_path, stable_ids_by_item=stable_ids_by_item)
     if batch.failures:
         _append_tool_failure(tmpdir, "step-9a1-oos-file", "issue create-one", 1, f"ISSUES_FAILED={batch.failures}")
         return 1, {"status": "issue_batch_failed", "accepted_count": accepted_count, "filed_count": len(batch.filed), "deduplicated_count": len([issue for issue in batch.filed if issue.duplicate]), "urls": [issue.url for issue in batch.filed], "run_statistics_written": False, "step9a1_stamped": False}

@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -241,15 +244,405 @@ def test_issue_cap_rejects_malformed_batch(tmp_path: Path) -> None:
         file_oos.issue_cap(bad)
 
 
-def test_file_conflict_deps_emits_numeric_rows(tmp_path: Path) -> None:
-    src = tmp_path / "oos.md"
+def append_oos(path: Path, n: int, title: str, description: str) -> None:
+    with path.open("a", encoding="utf-8") as handle:
+        _ = handle.write(f"### OOS_{n}: {title}\n")
+        _ = handle.write(f"- **Description**: {description}\n")
+        _ = handle.write("- **Reviewer**: Test\n")
+        _ = handle.write("- **Vote tally**: YES=2 NO=0\n")
+        _ = handle.write("- **Phase**: implement\n\n")
+
+
+def run_file_conflict_deps(
+    input_file: Path,
+    output: Path,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    repo = Path(__file__).resolve().parents[1]
+    merged_env = os.environ.copy()
+    _ = merged_env.pop("OOS_FILE_CONFLICT_CLUSTER_CAP", None)
+    _ = merged_env.pop("OOS_FILE_CONFLICT_GLOBAL_CAP", None)
+    if env:
+        merged_env.update(env)
+    return subprocess.run(
+        [
+            sys.executable,
+            str(repo / "python" / "cli.py"),
+            "oos",
+            "file-conflict-deps",
+            "--input-file",
+            str(input_file),
+            "--output",
+            str(output),
+        ],
+        cwd=repo,
+        env=merged_env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+
+def assert_file_conflict_deps_tsv(output: Path, expected: str) -> None:
+    assert output.is_file()
+    assert output.read_text(encoding="utf-8") == expected
+
+
+def make_file_conflict_deps_input(tmp_path: Path, name: str) -> Path:
+    path = tmp_path / name / "input.md"
+    path.parent.mkdir(parents=True)
+    _ = path.write_text("", encoding="utf-8")
+    return path
+
+
+def test_file_conflict_deps_same_file_serialization(tmp_path: Path) -> None:
+    src = make_file_conflict_deps_input(tmp_path, "case-a")
+    append_oos(src, 1, "First", "Touches skills/foo/bar.sh")
+    append_oos(src, 2, "Second", "Also touches skills/foo/bar.sh")
+    out = tmp_path / "case-a" / "out.tsv"
+
+    result = run_file_conflict_deps(src, out)
+
+    assert result.returncode == 0
+    assert_file_conflict_deps_tsv(out, "1\t2\n")
+
+
+def test_file_conflict_deps_disjoint_ranges_parallel(tmp_path: Path) -> None:
+    src = make_file_conflict_deps_input(tmp_path, "case-b")
+    append_oos(src, 1, "First", "Touches skills/foo/bar.sh:1-50")
+    append_oos(src, 2, "Second", "Touches skills/foo/bar.sh:200-300")
+    out = tmp_path / "case-b" / "out.tsv"
+
+    result = run_file_conflict_deps(src, out)
+
+    assert result.returncode == 0
+    assert_file_conflict_deps_tsv(out, "")
+
+
+def test_file_conflict_deps_overlapping_ranges_conflict(tmp_path: Path) -> None:
+    src = make_file_conflict_deps_input(tmp_path, "case-c")
+    append_oos(src, 1, "First", "Touches skills/foo/bar.sh:1-100")
+    append_oos(src, 2, "Second", "Touches skills/foo/bar.sh:50-150")
+    out = tmp_path / "case-c" / "out.tsv"
+
+    result = run_file_conflict_deps(src, out)
+
+    assert result.returncode == 0
+    assert_file_conflict_deps_tsv(out, "1\t2\n")
+
+
+def test_file_conflict_deps_whole_file_fallback_conflicts(tmp_path: Path) -> None:
+    src = make_file_conflict_deps_input(tmp_path, "case-d")
+    append_oos(src, 1, "First", "Touches skills/foo/bar.sh:1-50")
+    append_oos(src, 2, "Second", "Touches skills/foo/bar.sh")
+    out = tmp_path / "case-d" / "out.tsv"
+
+    result = run_file_conflict_deps(src, out)
+
+    assert result.returncode == 0
+    assert_file_conflict_deps_tsv(out, "1\t2\n")
+
+
+def test_file_conflict_deps_all_pairs_cluster_under_cap(tmp_path: Path) -> None:
+    src = make_file_conflict_deps_input(tmp_path, "case-e")
+    append_oos(src, 1, "First", "Touches skills/foo/bar.sh")
+    append_oos(src, 2, "Second", "Touches skills/foo/bar.sh")
+    append_oos(src, 3, "Third", "Touches skills/foo/bar.sh")
+    out = tmp_path / "case-e" / "out.tsv"
+
+    result = run_file_conflict_deps(src, out)
+
+    assert result.returncode == 0
+    assert_file_conflict_deps_tsv(out, "1\t2\n1\t3\n2\t3\n")
+
+
+def test_file_conflict_deps_different_files_parallel(tmp_path: Path) -> None:
+    src = make_file_conflict_deps_input(tmp_path, "case-f")
+    append_oos(src, 1, "First", "Touches skills/foo/a.sh")
+    append_oos(src, 2, "Second", "Touches skills/foo/b.sh")
+    out = tmp_path / "case-f" / "out.tsv"
+
+    result = run_file_conflict_deps(src, out)
+
+    assert result.returncode == 0
+    assert_file_conflict_deps_tsv(out, "")
+
+
+def test_file_conflict_deps_rejects_absolute_paths(tmp_path: Path) -> None:
+    src = make_file_conflict_deps_input(tmp_path, "case-g")
+    append_oos(src, 1, "First", "Mentions /skills/foo/bar.sh")
+    append_oos(src, 2, "Second", "Also mentions /skills/foo/bar.sh")
+    out = tmp_path / "case-g" / "out.tsv"
+
+    result = run_file_conflict_deps(src, out)
+
+    assert result.returncode == 0
+    assert_file_conflict_deps_tsv(out, "")
+
+
+def test_file_conflict_deps_rejects_traversal_paths(tmp_path: Path) -> None:
+    src = make_file_conflict_deps_input(tmp_path, "case-h")
+    append_oos(src, 1, "First", "Mentions ../../etc/passwd")
+    append_oos(src, 2, "Second", "Touches skills/foo/bar.sh")
+    out = tmp_path / "case-h" / "out.tsv"
+
+    result = run_file_conflict_deps(src, out)
+
+    assert result.returncode == 0
+    assert_file_conflict_deps_tsv(out, "")
+
+
+def test_file_conflict_deps_malformed_item_preserves_index(tmp_path: Path) -> None:
+    src = make_file_conflict_deps_input(tmp_path, "case-i")
+    append_oos(src, 1, "First", "Touches skills/foo/bar.sh")
+    with src.open("a", encoding="utf-8") as handle:
+        _ = handle.write("### OOS_2: Malformed\n")
+        _ = handle.write("- **Reviewer**: Test\n")
+        _ = handle.write("- **Vote tally**: YES=2 NO=0\n")
+        _ = handle.write("- **Phase**: implement\n\n")
+    append_oos(src, 3, "Third", "Touches skills/foo/bar.sh")
+    out = tmp_path / "case-i" / "out.tsv"
+
+    result = run_file_conflict_deps(src, out)
+
+    assert result.returncode == 0
+    assert_file_conflict_deps_tsv(out, "1\t3\n")
+
+
+def test_file_conflict_deps_cluster_chain_degradation(tmp_path: Path) -> None:
+    src = make_file_conflict_deps_input(tmp_path, "case-j")
+    for n in range(1, 23):
+        append_oos(src, n, f"Item {n}", "Touches skills/foo/bar.sh")
+    out = tmp_path / "case-j" / "out.tsv"
+    expected = "".join(f"{n}\t{n + 1}\n" for n in range(1, 22))
+
+    result = run_file_conflict_deps(src, out)
+
+    assert result.returncode == 0
+    assert "N=22" in result.stderr
+    assert_file_conflict_deps_tsv(out, expected)
+
+
+def test_file_conflict_deps_global_cap_failure(tmp_path: Path) -> None:
+    src = make_file_conflict_deps_input(tmp_path, "case-k")
+    item = 1
+    for cluster in range(1, 5):
+        for _ in range(4):
+            append_oos(src, item, f"Item {item}", f"Touches skills/foo/file-{cluster}.sh")
+            item += 1
+    out = tmp_path / "case-k" / "out.tsv"
+
+    result = run_file_conflict_deps(src, out, {"OOS_FILE_CONFLICT_CLUSTER_CAP": "3", "OOS_FILE_CONFLICT_GLOBAL_CAP": "10"})
+
+    assert result.returncode == 1
+    assert "exceeding the 10-row" in result.stderr
+    assert not out.exists()
+
+
+@pytest.mark.parametrize(
+    ("name", "path_text"),
+    [
+        ("makefile", "Makefile"),
+        ("dotfile", ".pre-commit-config.yaml"),
+        ("root_long_extension", "agent-lint.toml"),
+    ],
+)
+def test_file_conflict_deps_root_level_path_forms(tmp_path: Path, name: str, path_text: str) -> None:
+    src = make_file_conflict_deps_input(tmp_path, name)
+    append_oos(src, 1, "First", f"Touches {path_text}")
+    append_oos(src, 2, "Second", f"Touches {path_text}")
+    out = tmp_path / name / "out.tsv"
+
+    result = run_file_conflict_deps(src, out)
+
+    assert result.returncode == 0
+    assert_file_conflict_deps_tsv(out, "1\t2\n")
+
+
+@pytest.mark.parametrize(
+    ("name", "left", "right", "expected"),
+    [
+        ("reversed_range", "skills/foo/bar.sh:50-1", "skills/foo/bar.sh:60-70", "1\t2\n"),
+        ("zero_range", "skills/foo/bar.sh:0-10", "skills/foo/bar.sh:60-70", "1\t2\n"),
+        ("adjacent_non_overlap", "skills/foo/bar.sh:1-49", "skills/foo/bar.sh:50-100", ""),
+        ("boundary_overlap", "skills/foo/bar.sh:1-50", "skills/foo/bar.sh:50-100", "1\t2\n"),
+    ],
+)
+def test_file_conflict_deps_range_edge_cases(tmp_path: Path, name: str, left: str, right: str, expected: str) -> None:
+    src = make_file_conflict_deps_input(tmp_path, name)
+    append_oos(src, 1, "First", f"Touches {left}")
+    append_oos(src, 2, "Second", f"Touches {right}")
+    out = tmp_path / name / "out.tsv"
+
+    result = run_file_conflict_deps(src, out)
+
+    assert result.returncode == 0
+    assert_file_conflict_deps_tsv(out, expected)
+
+
+def test_file_conflict_deps_atomic_tier2_failure(tmp_path: Path) -> None:
+    src = make_file_conflict_deps_input(tmp_path, "case-s")
+    item = 1
+    for cluster in range(1, 5):
+        for _ in range(4):
+            append_oos(src, item, f"Item {item}", f"Touches skills/foo/atomic-{cluster}.sh")
+            item += 1
+    out = tmp_path / "case-s" / "out.tsv"
+
+    result = run_file_conflict_deps(src, out, {"OOS_FILE_CONFLICT_CLUSTER_CAP": "3", "OOS_FILE_CONFLICT_GLOBAL_CAP": "10"})
+
+    assert result.returncode == 1
+    assert "exceeding the 10-row" in result.stderr
+    assert not out.exists()
+
+
+def test_file_conflict_deps_pending_heading_malformed_parse_case(tmp_path: Path) -> None:
+    src = make_file_conflict_deps_input(tmp_path, "case-t")
+    append_oos(src, 1, "First", "Touches skills/foo/bar.sh")
+    with src.open("a", encoding="utf-8") as handle:
+        _ = handle.write("### OOS_2: Incomplete\n")
+        _ = handle.write("- **Description**: Touches skills/foo/bar.sh\n")
+        _ = handle.write("### Pending generic\n")
+        _ = handle.write("Generic body touches skills/foo/other.sh\n")
+    append_oos(src, 3, "Third", "Touches skills/foo/bar.sh")
+    out = tmp_path / "case-t" / "out.tsv"
+
+    result = run_file_conflict_deps(src, out)
+
+    assert result.returncode == 0
+    assert_file_conflict_deps_tsv(out, "1\t4\n")
+
+
+def test_file_conflict_deps_generic_fallback_body_file_case(tmp_path: Path) -> None:
+    src = make_file_conflict_deps_input(tmp_path, "case-u")
     _ = src.write_text(
-        "### OOS_1: First\n- touches `src/a.py:1-5`\n\n"
-        "### OOS_2: Second\n- touches `src/a.py:2-6`\n",
+        "### Generic first\n"
+        "Body touches skills/foo/bar.sh\n"
+        "### Generic second\n"
+        "Body also touches skills/foo/bar.sh\n\n",
         encoding="utf-8",
     )
-    deps = file_oos.file_conflict_deps(src)
-    assert deps == [(1, 2)]
+    out = tmp_path / "case-u" / "out.tsv"
+
+    result = run_file_conflict_deps(src, out)
+
+    assert result.returncode == 0
+    assert_file_conflict_deps_tsv(out, "1\t2\n")
+
+
+@pytest.mark.parametrize(
+    ("name", "separator"),
+    [("comma_separated_paths", ","), ("semicolon_separated_paths", ";")],
+)
+def test_file_conflict_deps_adjacent_separated_paths(tmp_path: Path, name: str, separator: str) -> None:
+    src = make_file_conflict_deps_input(tmp_path, name)
+    append_oos(src, 1, "First", f"Touches skills/foo/a.sh{separator}skills/foo/b.sh")
+    append_oos(src, 2, "Second", "Touches skills/foo/b.sh")
+    out = tmp_path / name / "out.tsv"
+
+    result = run_file_conflict_deps(src, out)
+
+    assert result.returncode == 0
+    assert_file_conflict_deps_tsv(out, "1\t2\n")
+
+
+def test_file_conflict_deps_cap_failure_deletes_stale_output(tmp_path: Path) -> None:
+    src = make_file_conflict_deps_input(tmp_path, "case-x")
+    item = 1
+    for cluster in range(1, 5):
+        for _ in range(4):
+            append_oos(src, item, f"Item {item}", f"Touches skills/foo/stale-{cluster}.sh")
+            item += 1
+    out = tmp_path / "case-x" / "out.tsv"
+    _ = out.write_text("STALE\tROW\n", encoding="utf-8")
+
+    result = run_file_conflict_deps(src, out, {"OOS_FILE_CONFLICT_CLUSTER_CAP": "3", "OOS_FILE_CONFLICT_GLOBAL_CAP": "10"})
+
+    assert result.returncode == 1
+    assert "exceeding the 10-row" in result.stderr
+    assert not out.exists()
+
+
+def test_file_conflict_deps_input_failure_clears_stale_output(tmp_path: Path) -> None:
+    out = tmp_path / "case-pf" / "out.tsv"
+    out.parent.mkdir()
+    _ = out.write_text("STALE\tROW\n", encoding="utf-8")
+
+    result = run_file_conflict_deps(tmp_path / "case-pf" / "does-not-exist.md", out)
+
+    assert result.returncode == 1
+    assert not out.exists()
+
+
+@pytest.mark.parametrize(
+    ("name", "env", "stderr_substring"),
+    [
+        (
+            "invalid_cluster_cap",
+            {"OOS_FILE_CONFLICT_CLUSTER_CAP": "abc"},
+            "OOS_FILE_CONFLICT_CLUSTER_CAP must be a positive integer",
+        ),
+        (
+            "invalid_global_cap",
+            {"OOS_FILE_CONFLICT_GLOBAL_CAP": "0"},
+            "OOS_FILE_CONFLICT_GLOBAL_CAP must be a positive integer",
+        ),
+    ],
+)
+def test_file_conflict_deps_invalid_cap_exits_2_without_deleting_stale_output(
+    tmp_path: Path,
+    name: str,
+    env: dict[str, str],
+    stderr_substring: str,
+) -> None:
+    src = make_file_conflict_deps_input(tmp_path, name)
+    append_oos(src, 1, "First", "Touches skills/foo/a.sh")
+    append_oos(src, 2, "Second", "Touches skills/foo/a.sh")
+    out = tmp_path / name / "out.tsv"
+    _ = out.write_text("STALE\tROW\n", encoding="utf-8")
+
+    result = run_file_conflict_deps(src, out, env)
+
+    assert result.returncode == 2
+    assert stderr_substring in result.stderr
+    assert out.read_text(encoding="utf-8") == "STALE\tROW\n"
+
+
+def test_file_conflict_deps_one_edge_per_pair(tmp_path: Path) -> None:
+    src = make_file_conflict_deps_input(tmp_path, "one-edge")
+    append_oos(src, 1, "First", "Touches skills/foo/a.sh and skills/foo/b.sh")
+    append_oos(src, 2, "Second", "Touches skills/foo/a.sh and skills/foo/b.sh")
+    out = tmp_path / "one-edge" / "out.tsv"
+
+    result = run_file_conflict_deps(src, out, {"OOS_FILE_CONFLICT_CLUSTER_CAP": "1"})
+
+    assert result.returncode == 0
+    assert "would emit" not in result.stderr
+    assert_file_conflict_deps_tsv(out, "1\t2\n")
+
+
+def test_file_conflict_deps_defaults_output_to_implement_tmpdir(tmp_path: Path) -> None:
+    src = make_file_conflict_deps_input(tmp_path, "default-output")
+    append_oos(src, 1, "First", "Touches skills/foo/a.sh")
+    append_oos(src, 2, "Second", "Touches skills/foo/a.sh")
+    repo = Path(__file__).resolve().parents[1]
+    env = os.environ.copy()
+    _ = env.pop("OOS_FILE_CONFLICT_CLUSTER_CAP", None)
+    _ = env.pop("OOS_FILE_CONFLICT_GLOBAL_CAP", None)
+    env["IMPLEMENT_TMPDIR"] = str(tmp_path / "impl")
+    Path(env["IMPLEMENT_TMPDIR"]).mkdir()
+
+    result = subprocess.run(
+        [sys.executable, str(repo / "python" / "cli.py"), "oos", "file-conflict-deps", "--input-file", str(src)],
+        cwd=repo,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert (Path(env["IMPLEMENT_TMPDIR"]) / "oos-intra-batch-deps.tsv").read_text(encoding="utf-8") == "1\t2\n"
 
 
 def test_disposition_gate_fails_without_disposition(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

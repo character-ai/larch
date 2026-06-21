@@ -336,12 +336,6 @@ exclude = [
   # (test-audit-runs target) and its sibling contract; not from SKILL.md
   # runtime prose. Same Makefile-only pattern as test-analyze above.
   "python/test_audit_runs.py",
-  # skills/implement/scripts/test-oos-file-conflict-deps.sh is the fixture
-  # harness for oos-file-conflict-deps.sh. Referenced from Makefile
-  # (test-oos-file-conflict-deps), docs/linting.md, and the helper's sibling
-  # contract; not from SKILL.md's runtime prose.
-  "skills/implement/scripts/test-oos-file-conflict-deps.sh",
-  "skills/implement/scripts/test-oos-file-conflict-deps.md",
   # skills/implement/scripts/test-oos-issue-cap.sh is the fixture harness
   # for oos-issue-cap.sh. Referenced from Makefile (test-oos-issue-cap),
   # docs/linting.md, and the helper's sibling contract; not from SKILL.md's

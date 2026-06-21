@@ -21,15 +21,17 @@ import json
 import os
 import re
 import subprocess
+from itertools import pairwise
 import sys
 from collections.abc import Iterable
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import NamedTuple, cast
 
 import config
 import run_logs
-from issue_create import parse_issue_input
+import voting
+from issue_create import ParsedItem, parse_issue_input
 from redact import redact
 
 
@@ -742,60 +744,288 @@ def issue_cap_main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def _item_file_records(item: OosItem) -> list[tuple[str, int, int, bool]]:
-    records: list[tuple[str, int, int, bool]] = []
-    for match in _FILE_REF_RE.finditer(item.body):
-        path = match.group("path")
-        if path.startswith(("http/", "https/")):
-            continue
-        start_s = match.group("start")
-        end_s = match.group("end")
-        if start_s:
-            start = int(start_s)
-            end = int(end_s or start_s)
-            whole = False
+@dataclass(frozen=True)
+class FileConflictRecord:
+    path: str
+    start: int
+    end: int
+    whole: bool
+
+
+@dataclass(frozen=True)
+class FileConflictEdge:
+    left: int
+    right: int
+    basename: str
+
+
+class FileConflictGlobalCapExceeded(ValueError):
+    """Raised when planned file-conflict TSV rows exceed the global cap."""
+
+
+class FileConflictInvalidCap(ValueError):
+    """Raised when OOS_FILE_CONFLICT_* env values are invalid."""
+
+
+_FILE_CONFLICT_DEFAULT_CLUSTER_CAP = 200
+_FILE_CONFLICT_DEFAULT_GLOBAL_CAP = 500
+_FILE_CONFLICT_MIN_COMPONENT_NODES = 2
+_FILE_CONFLICT_RANGE_RE = re.compile(r"^(.+):([0-9]+)(-([0-9]+))?$")
+_FILE_CONFLICT_SAFE_PATH_RE = re.compile(r"^[A-Za-z0-9_./-]+$")
+_FILE_CONFLICT_ANY_RE = re.compile(
+    f"(?:{voting.FILE_LINE_REGEXES['any-re']})|(?:{voting.FILE_LINE_REGEXES['extensionless-re']})",
+)
+
+
+def _file_conflict_cap(name: str, default: int) -> int:
+    raw = os.environ.get(name, str(default))
+    if not raw.isdigit() or int(raw) <= 0:
+        raise FileConflictInvalidCap(f"ERROR: {name} must be a positive integer (got: '{raw}')")
+    return int(raw)
+
+
+def _file_conflict_caps() -> tuple[int, int]:
+    return (
+        _file_conflict_cap("OOS_FILE_CONFLICT_CLUSTER_CAP", _FILE_CONFLICT_DEFAULT_CLUSTER_CAP),
+        _file_conflict_cap("OOS_FILE_CONFLICT_GLOBAL_CAP", _FILE_CONFLICT_DEFAULT_GLOBAL_CAP),
+    )
+
+
+def _file_conflict_usage() -> None:
+    print("Usage: cli.py oos file-conflict-deps --input-file FILE [--output FILE]", file=sys.stderr)
+    print("  When --output is omitted and IMPLEMENT_TMPDIR is set, the output", file=sys.stderr)
+    print("  defaults to $IMPLEMENT_TMPDIR/oos-intra-batch-deps.tsv.", file=sys.stderr)
+
+
+def _parse_file_conflict_args(argv: list[str]) -> tuple[Path | None, Path | None, bool]:
+    input_file = ""
+    output_file = ""
+    index = 0
+    while index < len(argv):
+        arg = argv[index]
+        if arg == "--input-file" and index + 1 < len(argv):
+            input_file = argv[index + 1]
+            index += 2
+        elif arg == "--output" and index + 1 < len(argv):
+            output_file = argv[index + 1]
+            index += 2
         else:
-            start = 1
-            end = 10**9
-            whole = True
-        records.append((path, start, end, whole))
-    return records
+            if arg in {"--input-file", "--output"}:
+                print(f"ERROR: {arg} requires a value", file=sys.stderr)
+            else:
+                print(f"Unknown option: {arg}", file=sys.stderr)
+            _file_conflict_usage()
+            return None, None, False
+    if input_file and not output_file and os.environ.get("IMPLEMENT_TMPDIR"):
+        output_file = str(Path(os.environ["IMPLEMENT_TMPDIR"]) / "oos-intra-batch-deps.tsv")
+    if not input_file or not output_file:
+        _file_conflict_usage()
+        return None, None, False
+    return Path(input_file), Path(output_file), True
 
 
-def _ranges_conflict(left: tuple[str, int, int, bool], right: tuple[str, int, int, bool]) -> bool:
-    if left[0] != right[0]:
+
+
+def _raw_file_conflict_match_is_unsafe(raw: str) -> bool:
+    leading = re.sub(r"^[^A-Za-z./-]+", "", raw)
+    return leading.startswith(("/", "-"))
+
+def _clean_file_conflict_match(raw: str) -> str:
+    cleaned = re.sub(r"^[^A-Za-z.]+", "", raw)
+    cleaned = re.sub(r"[^A-Za-z0-9_./:-]+$", "", cleaned)
+    return cleaned.removeprefix("./")
+
+
+def _normalize_file_conflict_body(body: str) -> str:
+    normalized = re.sub(r"(^|[^A-Za-z0-9])\./", r"\1", body)
+    return re.sub(r"[,;]", "\n", normalized)
+
+
+def _file_conflict_path_is_safe(path: str) -> bool:
+    if not path:
         return False
-    if left[3] or right[3]:
+    if path.startswith(("/", "-")):
+        return False
+    if ".." in path or ":" in path:
+        return False
+    return bool(_FILE_CONFLICT_SAFE_PATH_RE.fullmatch(path))
+
+
+def _file_conflict_record(candidate: str) -> FileConflictRecord | None:
+    path = candidate
+    start = 0
+    end = 0
+    whole = True
+    if match := _FILE_CONFLICT_RANGE_RE.match(candidate):
+        path = match.group(1)
+        parsed_start = int(match.group(2))
+        parsed_end = int(match.group(4) or match.group(2))
+        if 0 < parsed_start <= parsed_end:
+            start = parsed_start
+            end = parsed_end
+            whole = False
+    path = path.removeprefix("./")
+    if not _file_conflict_path_is_safe(path):
+        return None
+    return FileConflictRecord(path, start, end, whole)
+
+
+def _item_file_records(item: ParsedItem) -> list[FileConflictRecord]:
+    records: set[FileConflictRecord] = set()
+    normalized = _normalize_file_conflict_body(item.body)
+    for line in normalized.splitlines():
+        for match in _FILE_CONFLICT_ANY_RE.finditer(line):
+            if _raw_file_conflict_match_is_unsafe(match.group(0)):
+                continue
+            candidate = _clean_file_conflict_match(match.group(0))
+            if not candidate:
+                continue
+            record = _file_conflict_record(candidate)
+            if record is not None:
+                records.add(record)
+    return sorted(records, key=lambda r: (r.path, r.start, r.end, int(r.whole)))
+
+
+def _ranges_conflict(left: FileConflictRecord, right: FileConflictRecord) -> bool:
+    if left.path != right.path:
+        return False
+    if left.whole or right.whole:
         return True
-    return not (left[1] > right[2] or right[1] > left[2])
+    return not (left.start > right.end or right.start > left.end)
 
 
-def file_conflict_deps(input_file: Path) -> list[tuple[int, int]]:
-    items = _parse_oos_blocks(input_file.read_text(encoding="utf-8") if input_file.exists() else "")
-    records = {item.number: _item_file_records(item) for item in items}
-    deps: set[tuple[int, int]] = set()
-    for i, left in enumerate(items):
-        for right in items[i + 1:]:
-            if any(_ranges_conflict(a, b) for a in records[left.number] for b in records[right.number]):
-                deps.add((left.number, right.number))
-    return sorted(deps)
+def _path_conflicts(left_records: list[FileConflictRecord], right_records: list[FileConflictRecord], path: str) -> bool:
+    left_for_path = [record for record in left_records if record.path == path]
+    right_for_path = [record for record in right_records if record.path == path]
+    if any(record.whole for record in left_for_path) or any(record.whole for record in right_for_path):
+        return True
+    return any(_ranges_conflict(left, right) for left in left_for_path for right in right_for_path)
+
+
+def _find_parent(parent: list[int], node: int) -> int:
+    root = node
+    while parent[root] != root:
+        root = parent[root]
+    while parent[node] != node:
+        next_node = parent[node]
+        parent[node] = root
+        node = next_node
+    return root
+
+
+def _union_nodes(parent: list[int], left: int, right: int) -> None:
+    left_root = _find_parent(parent, left)
+    right_root = _find_parent(parent, right)
+    if left_root == right_root:
+        return
+    keep = min(left_root, right_root)
+    drop = max(left_root, right_root)
+    for node in range(1, len(parent)):
+        if _find_parent(parent, node) == drop:
+            parent[node] = keep
+
+
+def _candidate_file_conflict_edges(items: list[ParsedItem]) -> tuple[list[FileConflictEdge], list[int]]:
+    records: dict[int, list[FileConflictRecord]] = {}
+    for index, item in enumerate(items, start=1):
+        records[index] = [] if item.malformed else _item_file_records(item)
+    parent = list(range(len(items) + 1))
+    candidates: list[FileConflictEdge] = []
+    for left in range(1, len(items) + 1):
+        for right in range(left + 1, len(items) + 1):
+            shared_paths = sorted({record.path for record in records[left]} & {record.path for record in records[right]})
+            for path in shared_paths:
+                if _path_conflicts(records[left], records[right], path):
+                    candidates.append(FileConflictEdge(left, right, PurePosixPath(path).name))
+                    _union_nodes(parent, left, right)
+                    break
+    roots = [_find_parent(parent, index) for index in range(len(parent))]
+    return candidates, roots
+
+
+def _planned_file_conflict_deps(
+    items: list[ParsedItem],
+    *,
+    cluster_cap: int,
+    global_cap: int,
+) -> list[tuple[int, int]]:
+    candidates, roots = _candidate_file_conflict_edges(items)
+    nodes_by_root: dict[int, list[int]] = {}
+    for index in range(1, len(items) + 1):
+        nodes_by_root.setdefault(roots[index], []).append(index)
+
+    planned: list[tuple[int, int]] = []
+    for root in sorted(nodes_by_root):
+        nodes = sorted(nodes_by_root[root])
+        if len(nodes) < _FILE_CONFLICT_MIN_COMPONENT_NODES:
+            continue
+        node_set = set(nodes)
+        cluster_edges = [edge for edge in candidates if edge.left in node_set and edge.right in node_set]
+        if len(cluster_edges) > cluster_cap:
+            basename_hint = cluster_edges[0].basename if cluster_edges else "unknown"
+            print(
+                f"**⚠ /implement: oos-file-conflict-deps cluster on {basename_hint} would emit "
+                f"{len(cluster_edges)} dependency rows (cap {cluster_cap}, N={len(nodes)}); emitting chain "
+                "instead of all-pairs (lower robustness under SCC pruning).**",
+                file=sys.stderr,
+            )
+            planned.extend(pairwise(nodes))
+        else:
+            planned.extend((edge.left, edge.right) for edge in cluster_edges)
+    planned = sorted(set(planned))
+    if len(planned) > global_cap:
+        raise FileConflictGlobalCapExceeded(
+            f"ERROR: oos-file-conflict-deps would emit {len(planned)} rows, exceeding the "
+            f"{global_cap}-row --intra-batch-deps-file cap; split the OOS batch",
+        )
+    return planned
+
+
+def file_conflict_deps(input_file: Path, *, cluster_cap: int | None = None, global_cap: int | None = None) -> list[tuple[int, int]]:
+    if not input_file.is_file():
+        raise FileNotFoundError(f"input file not found: {input_file}")
+    if cluster_cap is None or global_cap is None:
+        env_cluster_cap, env_global_cap = _file_conflict_caps()
+        cluster_cap = env_cluster_cap if cluster_cap is None else cluster_cap
+        global_cap = env_global_cap if global_cap is None else global_cap
+    text = input_file.read_text(encoding="utf-8")
+    items, _mode = parse_issue_input(text)
+    return _planned_file_conflict_deps(items, cluster_cap=cluster_cap, global_cap=global_cap)
+
+
+def _write_file_conflict_deps(input_file: Path, output_file: Path, *, cluster_cap: int, global_cap: int) -> None:
+    if not input_file.is_file():
+        raise FileNotFoundError(f"ERROR: input file not found: {input_file}")
+    deps = file_conflict_deps(input_file, cluster_cap=cluster_cap, global_cap=global_cap)
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    tmp = Path(str(output_file) + ".tmp")
+    tmp.write_text("".join(f"{left}\t{right}\n" for left, right in deps), encoding="utf-8")
+    tmp.replace(output_file)
 
 
 def file_conflict_deps_main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py oos file-conflict-deps")
-    parser.add_argument("--input-file", required=True)
-    parser.add_argument("--output")
     try:
-        args = parser.parse_args(argv)
-        deps = file_conflict_deps(Path(args.input_file))
-        text = "".join(f"{a}\t{b}\n" for a, b in deps)
-        if args.output:
-            Path(args.output).write_text(text, encoding="utf-8")
-        else:
-            sys.stdout.write(text)
-    except OSError as exc:
-        print(f"oos-file-conflict-deps: {exc}", file=sys.stderr)
+        cluster_cap, global_cap = _file_conflict_caps()
+    except FileConflictInvalidCap as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    input_file, output_file, ok = _parse_file_conflict_args(list(argv or []))
+    if not ok or input_file is None or output_file is None:
         return 1
+
+    tmp = Path(str(output_file) + ".tmp")
+    try:
+        _write_file_conflict_deps(input_file, output_file, cluster_cap=cluster_cap, global_cap=global_cap)
+    except (FileConflictGlobalCapExceeded, OSError, ValueError) as exc:
+        print(str(exc), file=sys.stderr)
+        with contextlib.suppress(OSError):
+            tmp.unlink()
+        with contextlib.suppress(OSError):
+            output_file.unlink()
+        return 1
+    with contextlib.suppress(OSError):
+        tmp.unlink()
     return 0
 
 # ---------------------------------------------------------------------------

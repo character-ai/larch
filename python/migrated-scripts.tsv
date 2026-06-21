@@ -1296,3 +1296,7 @@ skills/implement/scripts/slack-issue-announce.sh	#4972
 skills/implement/scripts/slack-issue-announce.md	#4972
 skills/implement/scripts/test-slack-issue-announce.sh	#4972
 skills/implement/scripts/test-slack-issue-announce.md	#4972
+skills/implement/scripts/oos-file-conflict-deps.sh	#4967
+skills/implement/scripts/oos-file-conflict-deps.md	#4967
+skills/implement/scripts/test-oos-file-conflict-deps.sh	#4967
+skills/implement/scripts/test-oos-file-conflict-deps.md	#4967
