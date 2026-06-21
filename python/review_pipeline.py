@@ -805,6 +805,7 @@ def _append_producer_scout_warning_once(status: str, fail_reason: str) -> None:
     )
     if result.returncode != 0:
         _diag("**⚠ review dispatch-panel: failed to persist producer-scout warning; continuing.**")
+        return
     _write_text(sentinel, "logged\n")
 
 
@@ -1038,8 +1039,15 @@ def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int
                 _write_scout_status(review_tmpdir, round_num, scout_status, scout_manifest, scout_fail_reason)
             elif _normalize_scout_manifest(Path(pre_scouted), scout_manifest, dynamic_max):
                 archetypes = _scout_archetypes(scout_manifest)
-                scout_status = "pre-scouted-empty" if not archetypes else "pre-scouted"
-                _write_scout_status(review_tmpdir, round_num, scout_status, scout_manifest)
+                raw_count = len(_scout_archetypes(Path(pre_scouted)))
+                if site == "implement Step 5" and raw_count > 0 and not archetypes:
+                    _write_empty_scout_manifest(scout_manifest)
+                    scout_status = "producer-invalid"
+                    scout_fail_reason = "pre_scouted_filtered_to_zero"
+                    _write_scout_status(review_tmpdir, round_num, scout_status, scout_manifest, scout_fail_reason)
+                else:
+                    scout_status = "pre-scouted-empty" if not archetypes else "pre-scouted"
+                    _write_scout_status(review_tmpdir, round_num, scout_status, scout_manifest)
                 if archetypes:
                     context = {
                         "diff_file": diff_file,
@@ -1058,7 +1066,7 @@ def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int
                 _write_scout_status(review_tmpdir, round_num, scout_status, scout_manifest, scout_fail_reason)
         elif scout_status == "na":
             status_file = review_tmpdir / f"scout-round{round_num}-status.env"
-            if scout_manifest.exists() and scout_manifest.stat().st_size:
+            if site != "implement Step 5" and scout_manifest.exists() and scout_manifest.stat().st_size:
                 if status_file.is_file():
                     status_kv = _kv_parse(status_file.read_text(encoding="utf-8", errors="replace"))
                     scout_status = status_kv.get("SCOUT_STATUS", "na") or "na"

@@ -1216,6 +1216,42 @@ def test_dispatch_panel_pre_scouted_empty_ok_static_only(tmp_path: Path) -> None
     assert "DYNAMIC_SLOTS=0" in result.stdout
 
 
+def test_dispatch_panel_pre_scouted_filtered_to_zero_is_producer_invalid(tmp_path: Path) -> None:
+    case_dir = tmp_path / "pre-scouted-filtered-zero"
+    case_dir.mkdir()
+    (case_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
+    (case_dir / "review.diff").write_text("diff --git a/foo b/foo\n", encoding="utf-8")
+    impl = tmp_path / "impl"
+    impl.mkdir()
+    manifest = impl / "scout-coder-manifest.json"
+    manifest.write_text(
+        '{"archetypes":[{"name":"dyn-api","focus_area":"correctness","weight":1.0,"rationale":"API changed.","prompt_body":"Check API."}]}\n',
+        encoding="utf-8",
+    )
+    (impl / "step2-scout-coder-status.env").write_text("SCOUT_CODER_STATUS=ok\n", encoding="utf-8")
+    (impl / "step2-external-scout-eligible.txt").write_text("eligible\n", encoding="utf-8")
+    waterfall = tmp_path / "waterfall.sh"
+    _write_waterfall_noop(waterfall)
+    result = run_review(
+        "dispatch-panel",
+        "--mode", "diff",
+        "--diff-file", str(case_dir / "review.diff"),
+        "--review-tmpdir", str(case_dir),
+        "--codex-available", "false",
+        "--cursor-available", "false",
+        "--panel", "hard",
+        "--plan-file", str(case_dir / "plan.md"),
+        "--dynamic-archetypes", "3",
+        "--pre-scouted-manifest", str(manifest),
+        "--site", "implement Step 5",
+        env={"CLAUDE_PLUGIN_ROOT": str(ROOT), "LARCH_QUIET_DISABLE": "1", "IMPLEMENT_TMPDIR": str(impl), "DISPATCH_WATERFALL": str(waterfall)},
+    )
+    assert result.returncode == 0, result.stderr
+    assert "SCOUT_STATUS=producer-invalid" in result.stdout
+    assert "SCOUT_FAIL_REASON=pre_scouted_filtered_to_zero" in result.stdout
+    assert "DYNAMIC_SLOTS=0" in result.stdout
+
+
 def test_dispatch_panel_implement_missing_producer_does_not_launch_scout(tmp_path: Path) -> None:
     case_dir = tmp_path / "implement-missing-producer"
     case_dir.mkdir()

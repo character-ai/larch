@@ -65,26 +65,48 @@ def _first_round_scout_status(implement_tmpdir: Path) -> str:
     return ""
 
 
+def _first_round_scout_manifest(implement_tmpdir: Path) -> Path | None:
+    for manifest in sorted(implement_tmpdir.glob("round-*/scout-round*-manifest.json")):
+        if manifest.is_file():
+            return manifest
+    return None
+
+
 def _dynamic_archetypes_line(implement_tmpdir: Path) -> str:
-    status_file = implement_tmpdir / "step2-scout-coder-status.env"
-    if not status_file.is_file():
-        return "unknown"
-    coder_status = _read_kv(status_file, "SCOUT_CODER_STATUS")
     round_status = _first_round_scout_status(implement_tmpdir)
     if round_status.startswith("skipped-"):
         return round_status
     if round_status in {"producer-missing", "producer-invalid"}:
         return "static-only, producer missing-or-invalid"
+    if round_status == "pre-scouted-empty":
+        return "static-only, pre-scouted-empty"
+    status_file = implement_tmpdir / "step2-scout-coder-status.env"
+    coder_status = _read_kv(status_file, "SCOUT_CODER_STATUS") if status_file.is_file() else ""
+    if not status_file.is_file():
+        if not round_status:
+            return "unknown"
+        if round_status == "pre-scouted":
+            round_manifest = _first_round_scout_manifest(implement_tmpdir)
+            count = _json_archetype_count(round_manifest) if round_manifest is not None else None
+            if count is not None:
+                return f"ok ({count})"
+        return "unknown"
     if not coder_status:
         return "unknown"
     if coder_status != "ok":
         return "static-only, producer missing-or-invalid"
     manifest = implement_tmpdir / "scout-coder-manifest.json"
     marker = implement_tmpdir / "step2-external-scout-eligible.txt"
+    if round_status == "pre-scouted":
+        round_manifest = _first_round_scout_manifest(implement_tmpdir)
+        if round_manifest is not None:
+            count = _json_archetype_count(round_manifest)
+            if count is not None:
+                return f"ok ({count})"
     count = _json_archetype_count(manifest)
     if count is None or not marker.is_file():
         return "static-only, producer missing-or-invalid"
-    if round_status == "pre-scouted-empty" or count == 0:
+    if count == 0:
         return "static-only, pre-scouted-empty"
     return f"ok ({count})"
 

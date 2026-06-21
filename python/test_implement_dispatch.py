@@ -208,6 +208,40 @@ def test_step2_dispatch_claude_fallback(tmp_path: Path, capsys: pytest.CaptureFi
     assert "ORCHESTRATOR_EDIT_AUTHORITY=allowed" in out
 
 
+def test_step2_dispatch_claude_fallback_clears_scout_sidecars(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    tmp = _session(tmp_path)
+    (tmp / "scout-coder-manifest.json").write_text('{"archetypes":[]}\n', encoding="utf-8")
+    (tmp / "step2-external-scout-eligible.txt").write_text("eligible\n", encoding="utf-8")
+    (tmp / "step2-scout-coder-status.env").write_text("SCOUT_CODER_STATUS=ok\n", encoding="utf-8")
+    (tmp / "scout-coder-manifest.raw.json").write_text('{"archetypes":[]}\n', encoding="utf-8")
+    (tmp / ".producer-scout-warning-logged").write_text("logged\n", encoding="utf-8")
+    codex_out = tmp / "codex-step2-out"
+    codex_out.mkdir()
+    (codex_out / "scout-coder-manifest.json").write_text('{"archetypes":[]}\n', encoding="utf-8")
+    cursor_out = tmp / "cursor-step2-out"
+    cursor_out.mkdir()
+    (cursor_out / "scout-coder-manifest.json").write_text('{"archetypes":[]}\n', encoding="utf-8")
+    rc = implement_dispatch.step2_dispatch_main([
+        "--tmpdir", str(tmp),
+        "--plan-file", str(tmp / "plan.txt"),
+        "--feature-file", str(tmp / "feature-description.txt"),
+        "--coder", "claude",
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "STATUS=claude_fallback" in out
+    for path in (
+        tmp / "scout-coder-manifest.json",
+        tmp / "step2-external-scout-eligible.txt",
+        tmp / "step2-scout-coder-status.env",
+        tmp / "scout-coder-manifest.raw.json",
+        tmp / ".producer-scout-warning-logged",
+        codex_out / "scout-coder-manifest.json",
+        cursor_out / "scout-coder-manifest.json",
+    ):
+        assert not path.exists(), f"expected {path} removed after claude_fallback"
+
+
 def test_step2_entry_marks_claude_without_shell(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     tmp = _session(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))

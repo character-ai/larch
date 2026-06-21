@@ -939,6 +939,7 @@ def _clear_external_scout_state(tmpdir: Path) -> None:
         tmpdir / "step2-external-scout-eligible.txt",
         tmpdir / "step2-scout-coder-status.env",
         tmpdir / "scout-coder-manifest.raw.json",
+        tmpdir / ".producer-scout-warning-logged",
         tmpdir / "codex-step2-out" / "scout-coder-manifest.json",
         tmpdir / "cursor-step2-out" / "scout-coder-manifest.json",
     ):
