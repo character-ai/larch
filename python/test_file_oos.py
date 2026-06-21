@@ -246,11 +246,11 @@ def test_issue_cap_rejects_malformed_batch(tmp_path: Path) -> None:
 
 def append_oos(path: Path, n: int, title: str, description: str) -> None:
     with path.open("a", encoding="utf-8") as handle:
-        handle.write(f"### OOS_{n}: {title}\n")
-        handle.write(f"- **Description**: {description}\n")
-        handle.write("- **Reviewer**: Test\n")
-        handle.write("- **Vote tally**: YES=2 NO=0\n")
-        handle.write("- **Phase**: implement\n\n")
+        _ = handle.write(f"### OOS_{n}: {title}\n")
+        _ = handle.write(f"- **Description**: {description}\n")
+        _ = handle.write("- **Reviewer**: Test\n")
+        _ = handle.write("- **Vote tally**: YES=2 NO=0\n")
+        _ = handle.write("- **Phase**: implement\n\n")
 
 
 def run_file_conflict_deps(
@@ -260,8 +260,8 @@ def run_file_conflict_deps(
 ) -> subprocess.CompletedProcess[str]:
     repo = Path(__file__).resolve().parents[1]
     merged_env = os.environ.copy()
-    merged_env.pop("OOS_FILE_CONFLICT_CLUSTER_CAP", None)
-    merged_env.pop("OOS_FILE_CONFLICT_GLOBAL_CAP", None)
+    _ = merged_env.pop("OOS_FILE_CONFLICT_CLUSTER_CAP", None)
+    _ = merged_env.pop("OOS_FILE_CONFLICT_GLOBAL_CAP", None)
     if env:
         merged_env.update(env)
     return subprocess.run(
@@ -291,7 +291,7 @@ def assert_file_conflict_deps_tsv(output: Path, expected: str) -> None:
 def make_file_conflict_deps_input(tmp_path: Path, name: str) -> Path:
     path = tmp_path / name / "input.md"
     path.parent.mkdir(parents=True)
-    path.write_text("", encoding="utf-8")
+    _ = path.write_text("", encoding="utf-8")
     return path
 
 
@@ -396,10 +396,10 @@ def test_file_conflict_deps_malformed_item_preserves_index(tmp_path: Path) -> No
     src = make_file_conflict_deps_input(tmp_path, "case-i")
     append_oos(src, 1, "First", "Touches skills/foo/bar.sh")
     with src.open("a", encoding="utf-8") as handle:
-        handle.write("### OOS_2: Malformed\n")
-        handle.write("- **Reviewer**: Test\n")
-        handle.write("- **Vote tally**: YES=2 NO=0\n")
-        handle.write("- **Phase**: implement\n\n")
+        _ = handle.write("### OOS_2: Malformed\n")
+        _ = handle.write("- **Reviewer**: Test\n")
+        _ = handle.write("- **Vote tally**: YES=2 NO=0\n")
+        _ = handle.write("- **Phase**: implement\n\n")
     append_oos(src, 3, "Third", "Touches skills/foo/bar.sh")
     out = tmp_path / "case-i" / "out.tsv"
 
@@ -500,10 +500,10 @@ def test_file_conflict_deps_pending_heading_malformed_parse_case(tmp_path: Path)
     src = make_file_conflict_deps_input(tmp_path, "case-t")
     append_oos(src, 1, "First", "Touches skills/foo/bar.sh")
     with src.open("a", encoding="utf-8") as handle:
-        handle.write("### OOS_2: Incomplete\n")
-        handle.write("- **Description**: Touches skills/foo/bar.sh\n")
-        handle.write("### Pending generic\n")
-        handle.write("Generic body touches skills/foo/other.sh\n")
+        _ = handle.write("### OOS_2: Incomplete\n")
+        _ = handle.write("- **Description**: Touches skills/foo/bar.sh\n")
+        _ = handle.write("### Pending generic\n")
+        _ = handle.write("Generic body touches skills/foo/other.sh\n")
     append_oos(src, 3, "Third", "Touches skills/foo/bar.sh")
     out = tmp_path / "case-t" / "out.tsv"
 
@@ -515,7 +515,7 @@ def test_file_conflict_deps_pending_heading_malformed_parse_case(tmp_path: Path)
 
 def test_file_conflict_deps_generic_fallback_body_file_case(tmp_path: Path) -> None:
     src = make_file_conflict_deps_input(tmp_path, "case-u")
-    src.write_text(
+    _ = src.write_text(
         "### Generic first\n"
         "Body touches skills/foo/bar.sh\n"
         "### Generic second\n"
@@ -554,7 +554,7 @@ def test_file_conflict_deps_cap_failure_deletes_stale_output(tmp_path: Path) -> 
             append_oos(src, item, f"Item {item}", f"Touches skills/foo/stale-{cluster}.sh")
             item += 1
     out = tmp_path / "case-x" / "out.tsv"
-    out.write_text("STALE\tROW\n", encoding="utf-8")
+    _ = out.write_text("STALE\tROW\n", encoding="utf-8")
 
     result = run_file_conflict_deps(src, out, {"OOS_FILE_CONFLICT_CLUSTER_CAP": "3", "OOS_FILE_CONFLICT_GLOBAL_CAP": "10"})
 
@@ -566,7 +566,7 @@ def test_file_conflict_deps_cap_failure_deletes_stale_output(tmp_path: Path) -> 
 def test_file_conflict_deps_input_failure_clears_stale_output(tmp_path: Path) -> None:
     out = tmp_path / "case-pf" / "out.tsv"
     out.parent.mkdir()
-    out.write_text("STALE\tROW\n", encoding="utf-8")
+    _ = out.write_text("STALE\tROW\n", encoding="utf-8")
 
     result = run_file_conflict_deps(tmp_path / "case-pf" / "does-not-exist.md", out)
 
@@ -599,7 +599,7 @@ def test_file_conflict_deps_invalid_cap_exits_2_without_deleting_stale_output(
     append_oos(src, 1, "First", "Touches skills/foo/a.sh")
     append_oos(src, 2, "Second", "Touches skills/foo/a.sh")
     out = tmp_path / name / "out.tsv"
-    out.write_text("STALE\tROW\n", encoding="utf-8")
+    _ = out.write_text("STALE\tROW\n", encoding="utf-8")
 
     result = run_file_conflict_deps(src, out, env)
 
@@ -627,8 +627,8 @@ def test_file_conflict_deps_defaults_output_to_implement_tmpdir(tmp_path: Path) 
     append_oos(src, 2, "Second", "Touches skills/foo/a.sh")
     repo = Path(__file__).resolve().parents[1]
     env = os.environ.copy()
-    env.pop("OOS_FILE_CONFLICT_CLUSTER_CAP", None)
-    env.pop("OOS_FILE_CONFLICT_GLOBAL_CAP", None)
+    _ = env.pop("OOS_FILE_CONFLICT_CLUSTER_CAP", None)
+    _ = env.pop("OOS_FILE_CONFLICT_GLOBAL_CAP", None)
     env["IMPLEMENT_TMPDIR"] = str(tmp_path / "impl")
     Path(env["IMPLEMENT_TMPDIR"]).mkdir()
 
