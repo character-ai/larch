@@ -30,7 +30,7 @@ def test_legacy_assets_removed_from_plan_review_module() -> None:
 
 def _run_step3_normalizer(tmp_path: Path, stdout_text: str = "", loop_rc: int = 0) -> subprocess.CompletedProcess[str]:
     stdout_file = tmp_path / "plan-review.stdout"
-    stdout_file.write_text(stdout_text, encoding="utf-8")
+    _ = stdout_file.write_text(stdout_text, encoding="utf-8")
     return run_cli(
         "plan-review",
         "normalize-status",
@@ -45,7 +45,7 @@ def _run_step3_normalizer(tmp_path: Path, stdout_text: str = "", loop_rc: int = 
 
 def test_step3_normalize_read_result_env_present_missing_and_symlink(tmp_path: Path) -> None:
     result_env = tmp_path / ".step3-review-result.env"
-    result_env.write_text(
+    _ = result_env.write_text(
         "STEP3_REVIEW_LOOP_STATUS=tally-error\n"
         "LOOP_STATUS=tally-error\n"
         "ROUNDS_COMPLETED=1\n"
@@ -83,7 +83,7 @@ def test_step3_normalize_read_result_env_present_missing_and_symlink(tmp_path: P
     ]
 
     target = tmp_path / "target.env"
-    target.write_text("STEP3_REVIEW_LOOP_STATUS=complete\n", encoding="utf-8")
+    _ = target.write_text("STEP3_REVIEW_LOOP_STATUS=complete\n", encoding="utf-8")
     result_env.symlink_to(target)
     proc = run_cli("plan-review", "normalize-status", "--design-tmpdir", str(tmp_path), "--read-result-env")
     assert proc.returncode == 0, proc.stderr
@@ -93,7 +93,7 @@ def test_step3_normalize_read_result_env_present_missing_and_symlink(tmp_path: P
 
 def test_step3_read_result_env_quiet_suppresses_internal_replay(tmp_path: Path) -> None:
     result_env = tmp_path / ".step3-review-result.env"
-    result_env.write_text("WARN=selected-warning\nLOOP_STATUS=complete\n", encoding="utf-8")
+    _ = result_env.write_text("WARN=selected-warning\nLOOP_STATUS=complete\n", encoding="utf-8")
     output = tmp_path / "quoted.env"
     out = io.StringIO()
     argv = [
@@ -113,7 +113,7 @@ def test_step3_read_result_env_quiet_suppresses_internal_replay(tmp_path: Path) 
 
 
 def test_step3_normalizer_warn_replay_and_overlay_contract(tmp_path: Path) -> None:
-    (tmp_path / ".step3-review-result.env").write_text("WARN=selected-warning\nLOOP_STATUS=complete\n", encoding="utf-8")
+    _ = (tmp_path / ".step3-review-result.env").write_text("WARN=selected-warning\nLOOP_STATUS=complete\n", encoding="utf-8")
     proc = _run_step3_normalizer(tmp_path, "WARN=overlay-warning\n")
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout.splitlines()[:2] == ["WARN=selected-warning", "WARN=overlay-warning"]
@@ -127,7 +127,7 @@ def test_step3_normalizer_warn_replay_and_overlay_contract(tmp_path: Path) -> No
 
 
 def test_step3_normalizer_loads_quoted_env_and_overlays_spaced_values(tmp_path: Path) -> None:
-    (tmp_path / ".step3-review-result.env").write_text(
+    _ = (tmp_path / ".step3-review-result.env").write_text(
         "LOOP_STATUS=complete\nDEGRADED_PANEL_WARNING=primary warning with spaces\n",
         encoding="utf-8",
     )
@@ -139,7 +139,7 @@ def test_step3_normalizer_loads_quoted_env_and_overlays_spaced_values(tmp_path: 
 
 def test_step3_normalizer_status_mapping_and_panel_init_identity(tmp_path: Path) -> None:
     (tmp_path / "plan-review" / "round-1").mkdir(parents=True)
-    (tmp_path / "plan-review" / "round-1" / "reviewer-output.txt").write_text("x\n", encoding="utf-8")
+    _ = (tmp_path / "plan-review" / "round-1" / "reviewer-output.txt").write_text("x\n", encoding="utf-8")
     proc = _run_step3_normalizer(tmp_path, "LOOP_STATUS=panel-failed\nROUNDS_COMPLETED=1\nREVIEW_ROUND_COUNT=1\n")
     assert "STEP3_REVIEW_LOOP_STATUS=panel-failed" in proc.stdout
     assert "LOOP_STATUS=panel-failed" in proc.stdout
@@ -154,7 +154,7 @@ def test_step3_normalizer_status_mapping_and_panel_init_identity(tmp_path: Path)
 
     persisted = tmp_path / "persisted"
     persisted.mkdir()
-    (persisted / ".step3-review-result.env").write_text(
+    _ = (persisted / ".step3-review-result.env").write_text(
         "STEP3_REVIEW_LOOP_STATUS=panel-init-failed\nLOOP_STATUS=complete\nROUNDS_COMPLETED=1\n",
         encoding="utf-8",
     )
@@ -176,7 +176,7 @@ def test_step3_normalizer_zero_round_and_synthesis_paths(tmp_path: Path) -> None
 
     launched = tmp_path / "launched"
     (launched / "plan-review" / "round-1").mkdir(parents=True)
-    (launched / "plan-review" / "round-1" / "reviewer-output.txt").write_text("x\n", encoding="utf-8")
+    _ = (launched / "plan-review" / "round-1" / "reviewer-output.txt").write_text("x\n", encoding="utf-8")
     proc = _run_step3_normalizer(launched, "LOOP_STATUS=tally-error\nROUNDS_COMPLETED=1\nREVIEW_ROUND_COUNT=1\n")
     assert proc.returncode == 0
     result_text = (launched / ".step3-review-result.env").read_text(encoding="utf-8")

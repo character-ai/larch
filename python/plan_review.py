@@ -23,8 +23,8 @@ from design_lifecycle import (
     capture_contract_stream_to_paths,
     json_get_bool,
     json_get_bool_main as design_json_get_bool_main,
-    _classify_input,
-    _replay_warn_error,
+    _classify_input,  # pyright: ignore[reportPrivateUsage]
+    _replay_warn_error,  # pyright: ignore[reportPrivateUsage]
     load_bash_quoted_env,
     phase_driver_read_result_env,
     phase_driver_write_result_env,
@@ -315,10 +315,10 @@ def _step3_normalize_warn_stderr(message: str) -> None:
 
 def _step3_read_result_env_quiet(argv: Sequence[str]) -> tuple[int, Path | None, bool]:
     parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument("--input", dest="input_path")
-    parser.add_argument("--fallback-input", dest="fallback_input", default="")
-    parser.add_argument("--allow", dest="allow", action="append", default=[])
-    parser.add_argument("--output", dest="output_path")
+    parser.add_argument("--input", dest="input_path")  # pyright: ignore[reportUnusedCallResult]
+    parser.add_argument("--fallback-input", dest="fallback_input", default="")  # pyright: ignore[reportUnusedCallResult]
+    parser.add_argument("--allow", dest="allow", action="append", default=[])  # pyright: ignore[reportUnusedCallResult]
+    parser.add_argument("--output", dest="output_path")  # pyright: ignore[reportUnusedCallResult]
     try:
         ns, _extra = parser.parse_known_args(list(argv))
     except SystemExit:
@@ -536,10 +536,10 @@ def _step3_record_report_evidence_quiet(status: str, tmpdir: Path) -> int:
 
 def normalize_step3_status_main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cli.py plan-review normalize-status")
-    parser.add_argument("--design-tmpdir", required=True)
-    parser.add_argument("--stdout-file", default="")
-    parser.add_argument("--loop-rc", default="0")
-    parser.add_argument("--read-result-env", action="store_true")
+    parser.add_argument("--design-tmpdir", required=True)  # pyright: ignore[reportUnusedCallResult]
+    parser.add_argument("--stdout-file", default="")  # pyright: ignore[reportUnusedCallResult]
+    parser.add_argument("--loop-rc", default="0")  # pyright: ignore[reportUnusedCallResult]
+    parser.add_argument("--read-result-env", action="store_true")  # pyright: ignore[reportUnusedCallResult]
     ns = parser.parse_args(list(argv or []))
     tmpdir = _require_tmpdir(parser, ns.design_tmpdir)
     if ns.read_result_env:
