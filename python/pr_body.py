@@ -686,26 +686,28 @@ def slack_issue_announce(implement_tmpdir: Path, *, best_effort: bool = False) -
     if _read_kv(ship, "PR_TITLE"):
         text += f" — {_read_kv(ship, 'PR_TITLE')}"
     payload = json.dumps({"text": text}).encode()
-    fake_curl = os.environ.get("__LARCH_FAKE_CURL")
     try:
-        if fake_curl:
-            completed = subprocess.run([fake_curl, "-sS", "-X", "POST", "-H", "Content-Type: application/json", "--data", payload.decode(), webhook], text=True, capture_output=True, check=False)
-            if completed.returncode != 0:
-                return (0 if best_effort else 1), "failed", " ".join(completed.stderr.split())[:500]
-        else:
-            req = urllib.request.Request(webhook, data=payload, headers={"Content-Type": "application/json"}, method="POST")  # noqa: S310
-            with urllib.request.urlopen(req, timeout=10):  # noqa: S310
-                pass
+        req = urllib.request.Request(webhook, data=payload, headers={"Content-Type": "application/json"}, method="POST")  # noqa: S310
+        with urllib.request.urlopen(req, timeout=10):  # noqa: S310
+            pass
     except Exception as exc:
-        return (0 if best_effort else 1), "failed", str(exc)[:500]
+        return (0 if best_effort else 1), "failed", " ".join(str(exc).split())[:500]
     return 0, "posted", ""
 
 
 def slack_issue_announce_main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cli.py slack issue-announce")
-    parser.add_argument("--implement-tmpdir", required=True)
+    parser.add_argument("--implement-tmpdir", default=None)
     parser.add_argument("--best-effort", action="store_true")
     args = parser.parse_args(argv)
+    if not args.implement_tmpdir:
+        _emit_kv("STATUS", "failed")
+        _emit_kv("ERROR", "--implement-tmpdir is required")
+        return 2
+    if not Path(args.implement_tmpdir).is_dir():
+        _emit_kv("STATUS", "failed")
+        _emit_kv("ERROR", "--implement-tmpdir not found")
+        return 2
     rc, status, reason = slack_issue_announce(Path(args.implement_tmpdir), best_effort=args.best_effort)
     _emit_kv("STATUS", status)
     if reason:

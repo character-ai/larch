@@ -722,7 +722,7 @@ test-review-and-fix-write-rejected:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_review_and_fix.py -q -k write_rejected
 
 test-slack-issue-announce:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-slack-issue-announce.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_pr_body.py -q -k slack_issue_announce
 
 test-step-16-17:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_closeout.py -q

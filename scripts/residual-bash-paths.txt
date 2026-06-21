@@ -123,7 +123,6 @@ skills/implement/scripts/test-oos-disposition-gate.sh
 skills/implement/scripts/test-oos-file-conflict-deps.sh
 skills/implement/scripts/test-oos-issue-cap.sh
 skills/implement/scripts/test-refresh-execution-issues.sh
-skills/implement/scripts/test-slack-issue-announce.sh
 skills/implement/scripts/test-step-18.sh
 skills/implement/scripts/test-step-7a.sh
 skills/implement/scripts/test-step-8-ship.sh

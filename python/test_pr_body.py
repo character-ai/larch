@@ -8,6 +8,7 @@ import json
 import re
 import subprocess
 from pathlib import Path
+from typing import Self
 
 import pytest
 
@@ -613,6 +614,259 @@ def test_render_run_summary_main_cost_unavailable(capsys: pytest.CaptureFixture[
     captured = capsys.readouterr()
     assert "STATUS=ok" in captured.err
     assert "run-2" in captured.out
+
+
+class _SlackFakeResponse:
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
+        _ = (exc_type, exc, traceback)
+
+
+def _write_slack_issue_state(tmp_path: Path, issue_number: str = "9") -> None:
+    _ = (tmp_path / "parent-issue.md").write_text(
+        f"ISSUE_NUMBER={issue_number}\nRUN_ID=run-4\n",
+        encoding="utf-8",
+    )
+    _ = (tmp_path / "ship-pr-state.sh").write_text(
+        "PR_URL=https://example.test/pr/1\nPR_TITLE=A PR\n",
+        encoding="utf-8",
+    )
+
+
+def test_slack_issue_announce_webhook_unset_skips(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_slack_issue_state(tmp_path)
+    monkeypatch.delenv("LARCH_SLACK_WEBHOOK_URL", raising=False)
+
+    assert pr_body.slack_issue_announce(tmp_path) == (0, "skipped", "webhook-not-set")
+
+
+@pytest.mark.parametrize("issue_number", ["", "0"])
+def test_slack_issue_announce_issue_unset_skips(tmp_path: Path, issue_number: str) -> None:
+    if issue_number:
+        _write_slack_issue_state(tmp_path, issue_number=issue_number)
+
+    assert pr_body.slack_issue_announce(tmp_path) == (0, "skipped", "issue-not-set")
+
+
+def test_slack_issue_announce_nonnumeric_issue_fails(tmp_path: Path) -> None:
+    _write_slack_issue_state(tmp_path, issue_number="abc")
+
+    rc, status, reason = pr_body.slack_issue_announce(tmp_path)
+
+    assert rc != 0
+    assert status == "failed"
+    assert reason == "ISSUE_NUMBER must be numeric"
+
+
+def test_slack_issue_announce_nonnumeric_issue_best_effort_exits_zero(tmp_path: Path) -> None:
+    _write_slack_issue_state(tmp_path, issue_number="abc")
+
+    rc, status, reason = pr_body.slack_issue_announce(tmp_path, best_effort=True)
+
+    assert rc == 0
+    assert status == "failed"
+    assert reason == "ISSUE_NUMBER must be numeric"
+
+
+def test_slack_issue_announce_posts_json(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_slack_issue_state(tmp_path)
+    monkeypatch.setenv("LARCH_SLACK_WEBHOOK_URL", "https://hooks.example.test")
+    requests: list[pr_body.urllib.request.Request] = []
+
+    def fake_urlopen(request: object, timeout: int = 0) -> _SlackFakeResponse:
+        assert isinstance(request, pr_body.urllib.request.Request)
+        assert timeout == 10
+        requests.append(request)
+        return _SlackFakeResponse()
+
+    monkeypatch.setattr(pr_body.urllib.request, "urlopen", fake_urlopen)
+
+    assert pr_body.slack_issue_announce(tmp_path) == (0, "posted", "")
+
+    assert len(requests) == 1
+    request = requests[0]
+    assert request.get_method() == "POST"
+    assert request.full_url == "https://hooks.example.test"
+    assert request.get_header("Content-type") == "application/json"
+    assert isinstance(request.data, bytes)
+    body = json.loads(request.data.decode())
+    assert "run-4" in body["text"]
+    assert "https://example.test/pr/1" in body["text"]
+    assert "#9" in body["text"]
+    assert "A PR" in body["text"]
+
+
+def test_slack_issue_announce_urlopen_failure_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_slack_issue_state(tmp_path)
+    monkeypatch.setenv("LARCH_SLACK_WEBHOOK_URL", "https://hooks.example.test")
+
+    def fake_urlopen(_request: object, timeout: int = 0) -> _SlackFakeResponse:
+        _ = timeout
+        raise OSError("network down")
+
+    monkeypatch.setattr(pr_body.urllib.request, "urlopen", fake_urlopen)
+
+    rc, status, reason = pr_body.slack_issue_announce(tmp_path)
+
+    assert rc != 0
+    assert status == "failed"
+    assert reason == "network down"
+
+
+def test_slack_issue_announce_urlopen_failure_best_effort_exits_zero(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_slack_issue_state(tmp_path)
+    monkeypatch.setenv("LARCH_SLACK_WEBHOOK_URL", "https://hooks.example.test")
+
+    def fake_urlopen(_request: object, timeout: int = 0) -> _SlackFakeResponse:
+        _ = timeout
+        raise OSError("network down")
+
+    monkeypatch.setattr(pr_body.urllib.request, "urlopen", fake_urlopen)
+
+    rc, status, reason = pr_body.slack_issue_announce(tmp_path, best_effort=True)
+
+    assert rc == 0
+    assert status == "failed"
+    assert reason == "network down"
+
+
+def test_slack_issue_announce_invalid_webhook_scheme_does_not_call_urlopen(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_slack_issue_state(tmp_path)
+    monkeypatch.setenv("LARCH_SLACK_WEBHOOK_URL", "ftp://hooks.example.test")
+
+    def fake_urlopen(_request: object, timeout: int = 0) -> _SlackFakeResponse:
+        _ = timeout
+        pytest.fail("urlopen should not be called")
+
+    monkeypatch.setattr(pr_body.urllib.request, "urlopen", fake_urlopen)
+
+    rc, status, reason = pr_body.slack_issue_announce(tmp_path)
+
+    assert rc != 0
+    assert status == "failed"
+    assert reason == "webhook scheme must be http or https"
+
+
+def test_slack_issue_announce_main_posted_envelope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _write_slack_issue_state(tmp_path)
+    monkeypatch.setenv("LARCH_SLACK_WEBHOOK_URL", "https://hooks.example.test")
+
+    def fake_urlopen(_request: object, timeout: int = 0) -> _SlackFakeResponse:
+        _ = timeout
+        return _SlackFakeResponse()
+
+    monkeypatch.setattr(pr_body.urllib.request, "urlopen", fake_urlopen)
+
+    rc = pr_body.slack_issue_announce_main(["--implement-tmpdir", str(tmp_path)])
+    captured = capsys.readouterr()
+
+    assert rc == 0
+    assert captured.out.splitlines() == ["STATUS=posted"]
+
+
+def test_slack_issue_announce_main_skipped_envelope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _write_slack_issue_state(tmp_path)
+    monkeypatch.delenv("LARCH_SLACK_WEBHOOK_URL", raising=False)
+
+    rc = pr_body.slack_issue_announce_main(["--implement-tmpdir", str(tmp_path)])
+    captured = capsys.readouterr()
+
+    assert rc == 0
+    assert captured.out.splitlines() == ["STATUS=skipped", "REASON=webhook-not-set"]
+
+
+def test_slack_issue_announce_main_failed_envelope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _write_slack_issue_state(tmp_path)
+    monkeypatch.setenv("LARCH_SLACK_WEBHOOK_URL", "ftp://hooks.example.test")
+
+    rc = pr_body.slack_issue_announce_main(["--implement-tmpdir", str(tmp_path)])
+    captured = capsys.readouterr()
+
+    assert rc == 1
+    assert captured.out.splitlines() == [
+        "STATUS=failed",
+        "ERROR=webhook scheme must be http or https",
+    ]
+
+
+def test_slack_issue_announce_main_normalizes_multiline_transport_errors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _write_slack_issue_state(tmp_path)
+    monkeypatch.setenv("LARCH_SLACK_WEBHOOK_URL", "https://hooks.example.test")
+
+    def fake_urlopen(_request: object, timeout: int = 0) -> _SlackFakeResponse:
+        _ = timeout
+        raise OSError("first\nsecond\rthird")
+
+    monkeypatch.setattr(pr_body.urllib.request, "urlopen", fake_urlopen)
+
+    rc = pr_body.slack_issue_announce_main(["--implement-tmpdir", str(tmp_path)])
+    captured = capsys.readouterr()
+
+    assert rc == 1
+    assert captured.out.splitlines() == ["STATUS=failed", "ERROR=first second third"]
+
+
+def test_slack_issue_announce_main_missing_tmpdir_arg_emits_envelope(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    rc = pr_body.slack_issue_announce_main([])
+    captured = capsys.readouterr()
+
+    assert rc == 2
+    assert captured.out.splitlines() == [
+        "STATUS=failed",
+        "ERROR=--implement-tmpdir is required",
+    ]
+    assert "usage:" not in captured.out
+
+
+def test_slack_issue_announce_main_nonexistent_tmpdir_emits_envelope(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    rc = pr_body.slack_issue_announce_main(["--implement-tmpdir", str(tmp_path / "missing")])
+    captured = capsys.readouterr()
+
+    assert rc == 2
+    assert captured.out.splitlines() == [
+        "STATUS=failed",
+        "ERROR=--implement-tmpdir not found",
+    ]
+    assert "STATUS=skipped" not in captured.out
+    assert "REASON=issue-not-set" not in captured.out
 
 
 def test_post_tracking_issue_writes_metadata(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
