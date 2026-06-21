@@ -378,6 +378,52 @@ def test_step5_active_pointer_wins_when_failed_tmpdir_root_newer(
     assert rendered == [active_impl]
 
 
+def test_active_step5_wins_when_stale_run_has_newer_pointer(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    """#4954: live Step 5 session ranks above a stale Step 0 run with a newer pointer.
+
+    The implement pointer is written once at Step 0 and never refreshed, so a long-running
+    review session has a frozen pointer mtime. A later run that stalls at Step 0 owns a newer
+    pointer and can also own a fresher Step 0 mark timestamp. Ranking by mark alone would pick
+    the stale run even while Step 5 vendor ledger rows keep advancing on the live session.
+    """
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    cwd = tmp_path / "repo"
+    cwd.mkdir()
+    stale_impl = tmp_path / "stale"
+    active_impl = tmp_path / "active"
+    stale_impl.mkdir()
+    active_impl.mkdir()
+    stale_pointer = _write_implement_pointer(home, "100", stale_impl, cwd)
+    active_pointer = _write_implement_pointer(home, "200", active_impl, cwd)
+    _write_mark(stale_impl, "Step 0 — preflight", ts=20)
+    _write_mark(active_impl, "Step 5 — code review", ts=10)
+    round_dir = active_impl / "round-1"
+    round_dir.mkdir()
+    (round_dir / "panel-manifest.ndjson").write_text("{}\n{}\n{}\n", encoding="utf-8")
+    _write_vendor_timing(
+        active_impl / "timing-ledger.tsv",
+        "cursor-specialist-correctness-output.txt",
+        15,
+        25,
+    )
+    # Live session: older pointer (frozen at Step 0), older Step 5 mark (ts=10), and older
+    # tmpdir-root mtime; ongoing review vendor rows (end ts=25) keep it live. Stale run:
+    # newer pointer and fresher Step 0 mark (ts=20) but no Step 5 activity.
+    os.utime(active_pointer, (100, 100))
+    os.utime(stale_pointer, (300, 300))
+    _set_mtime(active_impl, 100)
+    _set_mtime(stale_impl, 300)
+
+    report = progress_report._report(str(cwd))
+
+    assert "Step 5 code review" in report
+    assert "Step 0" not in report
+
+
 def test_canonical_cwd_match(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     home = tmp_path / "home"
     monkeypatch.setenv("HOME", str(home))

@@ -25,6 +25,7 @@ import report_tokens_cost
 import voting
 
 TIMING_MARK_MIN_COLS = 5
+TIMING_V1_MIN_COLS = 3
 TIMING_ROUND_MIN_COLS = 8
 TIMING_ROUND_SKILL_COL = 3
 TIMING_ROUND_ROUND_NUM_COL = 5
@@ -123,6 +124,55 @@ def _path_mtime(path: Path) -> float:
         return 0.0
 
 
+def _latest_timing_ledger_activity_ts(ledger: Path) -> int | None:
+    """Latest epoch across mark, vendor, and round rows in a timing ledger."""
+    latest_ts: int | None = None
+    try:
+        lines = ledger.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return latest_ts
+    for line in lines:
+        cols = line.split("\t")
+        if len(cols) < TIMING_V1_MIN_COLS or cols[0] != "v1":
+            continue
+        row_kind = cols[1]
+        candidates: list[str]
+        if row_kind == "mark":
+            candidates = [cols[2]]
+        elif row_kind == "vendor" and len(cols) > TIMING_VENDOR_END_COL:
+            candidates = [cols[2], cols[TIMING_VENDOR_END_COL]]
+        elif row_kind == "round" and len(cols) > TIMING_ROUND_END_COL:
+            candidates = [cols[2], cols[TIMING_ROUND_END_COL]]
+        else:
+            continue
+        for raw in candidates:
+            try:
+                ts = int(raw)
+            except ValueError:
+                continue
+            if latest_ts is None or ts > latest_ts:
+                latest_ts = ts
+    return latest_ts
+
+
+def _run_activity_mtime(timing_ledger: Path, pointer: Path) -> float:
+    """Liveness signal for ranking concurrent runs in the same repo.
+
+    The implement pointer file is written once at Step 0 and never refreshed, so a
+    long-running session (e.g. mid Step 5 review) keeps a Step-0-frozen pointer mtime and
+    loses discovery to a stale run whose pointer was created later (issue #4954). The
+    tmpdir-root mtime has the opposite failure: a spurious write to the root dir of a stale
+    run hides the active session (issue #4661, which switched root mtime to pointer mtime).
+    Step 5 emits one mark at entry while vendor and round ledger rows advance during
+    multi-round review, so ranking uses the latest timestamp across all three row kinds.
+    Fall back to the pointer mtime only before the first ledger row is written.
+    """
+    latest_ts = _latest_timing_ledger_activity_ts(timing_ledger)
+    if latest_ts is not None:
+        return float(latest_ts)
+    return _path_mtime(pointer)
+
+
 def _design_candidate(pointer: Path) -> LiveRun | None:
     if not pointer.is_symlink():
         return None
@@ -154,7 +204,9 @@ def _implement_candidate(pointer: Path) -> LiveRun | None:
     tmpdir = Path(tmpdir_s)
     if not tmpdir.is_dir():
         return None
-    return LiveRun("implement", tmpdir, cwd, pointer, _path_mtime(pointer))
+    return LiveRun(
+        "implement", tmpdir, cwd, pointer, _run_activity_mtime(tmpdir / "timing-ledger.tsv", pointer)
+    )
 
 
 def _discover_live_run(cwd: str) -> LiveRun | None:

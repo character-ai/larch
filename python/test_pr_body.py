@@ -676,6 +676,7 @@ def test_generate_code_flow_diagram_uses_launcher_not_stub(tmp_path: Path, monke
     assert "mermaid" not in log_text.lower()
     assert "A-->B" not in log_text
     assert raw_secret not in log_text
+    assert not (tmp_path / "code-flow-diagram.raw-failure.log").exists()
     assert (tmp_path / "code-flow-prompt.md").is_file()
 
 
