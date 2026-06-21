@@ -378,6 +378,46 @@ def test_step5_active_pointer_wins_when_failed_tmpdir_root_newer(
     assert rendered == [active_impl]
 
 
+def test_active_step5_wins_when_stale_run_has_newer_pointer(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    """#4954: live Step 5 session ranks above a stale Step 0 run with a newer pointer.
+
+    The implement pointer is written once at Step 0 and never refreshed, so a long-running
+    review session has a frozen pointer mtime. A later run that stalls at Step 0 owns a newer
+    pointer, so the #4661 pointer-mtime ranking picks the stale run. The #4661 regressions
+    missed this because there the active run also had the newer pointer. Ranking by latest
+    timing-mark timestamp tracks real progress and selects the live session.
+    """
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    cwd = tmp_path / "repo"
+    cwd.mkdir()
+    stale_impl = tmp_path / "stale"
+    active_impl = tmp_path / "active"
+    stale_impl.mkdir()
+    active_impl.mkdir()
+    stale_pointer = _write_implement_pointer(home, "100", stale_impl, cwd)
+    active_pointer = _write_implement_pointer(home, "200", active_impl, cwd)
+    _write_mark(stale_impl, "Step 0 — preflight", ts=10)
+    _write_mark(active_impl, "Step 5 — code review", ts=20)
+    round_dir = active_impl / "round-1"
+    round_dir.mkdir()
+    (round_dir / "panel-manifest.ndjson").write_text("{}\n{}\n{}\n", encoding="utf-8")
+    # Live session: older pointer (frozen at Step 0) and older tmpdir-root mtime; only its
+    # timing mark (Step 5, ts=20) is newer. Stale run: newer pointer but Step 0 mark (ts=10).
+    os.utime(active_pointer, (100, 100))
+    os.utime(stale_pointer, (300, 300))
+    _set_mtime(active_impl, 100)
+    _set_mtime(stale_impl, 300)
+
+    report = progress_report._report(str(cwd))
+
+    assert "Step 5 code review" in report
+    assert "Step 0" not in report
+
+
 def test_canonical_cwd_match(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     home = tmp_path / "home"
     monkeypatch.setenv("HOME", str(home))

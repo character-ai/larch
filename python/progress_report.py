@@ -123,6 +123,24 @@ def _path_mtime(path: Path) -> float:
         return 0.0
 
 
+def _run_activity_mtime(timing_ledger: Path, pointer: Path) -> float:
+    """Liveness signal for ranking concurrent runs in the same repo.
+
+    The implement pointer file is written once at Step 0 and never refreshed, so a
+    long-running session (e.g. mid Step 5 review) keeps a Step-0-frozen pointer mtime and
+    loses discovery to a stale run whose pointer was created later (issue #4954). The
+    tmpdir-root mtime has the opposite failure: a spurious write to the root dir of a stale
+    run hides the active session (issue #4661, which switched root mtime to pointer mtime).
+    The latest timing-mark timestamp advances on every step/round the run actually reaches,
+    so it tracks real progress and is immune to both. Fall back to the pointer mtime only
+    before the first mark is written (pre-Step-0 bootstrap).
+    """
+    _, latest_ts = _latest_timing_mark(timing_ledger)
+    if latest_ts is not None:
+        return float(latest_ts)
+    return _path_mtime(pointer)
+
+
 def _design_candidate(pointer: Path) -> LiveRun | None:
     if not pointer.is_symlink():
         return None
@@ -154,7 +172,9 @@ def _implement_candidate(pointer: Path) -> LiveRun | None:
     tmpdir = Path(tmpdir_s)
     if not tmpdir.is_dir():
         return None
-    return LiveRun("implement", tmpdir, cwd, pointer, _path_mtime(pointer))
+    return LiveRun(
+        "implement", tmpdir, cwd, pointer, _run_activity_mtime(tmpdir / "timing-ledger.tsv", pointer)
+    )
 
 
 def _discover_live_run(cwd: str) -> LiveRun | None:
