@@ -221,6 +221,36 @@ def test_wait_output_file_writes_done_sentinel(monkeypatch, tmp_path):
     assert out_file.read_text(encoding="utf-8").splitlines()[0] == "ACTION=merge"
 
 
+def test_wait_default_empty_checks_grace_is_bounded(monkeypatch):
+    captured: dict[str, object] = {}
+
+    def fake_poll(*_args: object, **kwargs: object) -> tuple[object, object]:
+        captured["grace"] = kwargs["empty_checks_grace"]
+        return (
+            ci_monitor.CiStatus(status="pass", behind_count=0, failed_run_id=None, conflicted=False),
+            ci_monitor.Decision(action="merge", bail_reason=""),
+        )
+
+    monkeypatch.setattr(ci.ci_monitor, "poll_ci", fake_poll)
+    # No --empty-checks-grace: the bounded config default must flow through, so a
+    # manual `ci wait` on a runless head does not poll the full timeout (issue #4924).
+    assert ci.wait_main(["--pr", "1", "--repo", "o/r"]) == 0
+    assert captured["grace"] == config.CI_WAIT_EMPTY_CHECKS_GRACE_SEC
+    assert captured["grace"] == 120
+
+
+def test_status_default_empty_checks_grace_is_bounded(monkeypatch):
+    captured: dict[str, object] = {}
+
+    def fake_gather(*_args: object, **kwargs: object) -> object:
+        captured["grace"] = kwargs["empty_checks_grace"]
+        return ci_monitor.CiStatus(status="pass", behind_count=0, failed_run_id=None, conflicted=False)
+
+    monkeypatch.setattr(ci.ci_monitor, "gather_status", fake_gather)
+    assert ci.status_main(["--pr", "1", "--repo", "o/r"]) == 0
+    assert captured["grace"] == 120
+
+
 def test_agentic_fix_usage_exits_nonzero(capsys) -> None:
     with pytest.raises(SystemExit) as exc:
         ci.agentic_fix_main([])

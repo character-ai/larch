@@ -1780,7 +1780,7 @@ def run_ship(
                     if (
                         pre_rebase.skipped
                         and pre_rebase.reason != run_logs.REFRESH_SKIP_RECOVERY_FAILED
-                        and pre_rebase.reason not in config.REFRESH_SKIP_MERGE_OK
+                        and pre_rebase.reason not in config.REFRESH_SKIP_POST_ENSURE_PR_OK
                     ):
                         _write_terminal_state(
                             working,
@@ -1882,7 +1882,7 @@ def run_ship(
                 if (
                     pre_rebase.skipped
                     and pre_rebase.reason != run_logs.REFRESH_SKIP_RECOVERY_FAILED
-                    and pre_rebase.reason not in config.REFRESH_SKIP_MERGE_OK
+                    and pre_rebase.reason not in config.REFRESH_SKIP_POST_ENSURE_PR_OK
                 ):
                     _write_terminal_state(
                         working,

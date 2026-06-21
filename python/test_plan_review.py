@@ -1829,6 +1829,61 @@ def test_emit_rejected_ledger_without_recognizable_blocks_emits_empty(tmp_path: 
     assert "WARN=emit-rejected: applied-finding ledger present" in proc.stderr
 
 
+def test_emit_rejected_drops_already_addressed_tagged_block(tmp_path: Path) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    tagged = _make_rejected_block(
+        "FINDING_1", "alpha.py:10", "[ALREADY_ADDRESSED] plan already covers this", "Already covered"
+    )
+    fresh = _make_rejected_block("FINDING_2", "beta.py:5", "Missing nil guard", "Nil guard")
+    _ = (design / "rejected-findings.md").write_text(tagged + fresh, encoding="utf-8")
+
+    # No ledger present: the [ALREADY_ADDRESSED] tag alone suppresses the block.
+    proc = _emit_rejected(design)
+    assert proc.returncode == 0, proc.stderr
+    assert "FINDING_1" not in proc.stdout
+    assert "ALREADY_ADDRESSED" not in proc.stdout
+    assert proc.stdout == fresh
+
+
+def test_emit_rejected_drops_already_addressed_from_ledger(tmp_path: Path) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    # A later round re-raises the same concern WITHOUT the tag; the cross-round
+    # ledger (written when an earlier round flagged it) still suppresses it.
+    reraised = _make_rejected_block("FINDING_3", "gamma.py:7", "Concern re-raised untagged", "Reraised")
+    fresh = _make_rejected_block("FINDING_4", "delta.py:2", "Genuinely new concern", "New")
+    _ = (design / "rejected-findings.md").write_text(reraised + fresh, encoding="utf-8")
+    key = plan_review._finding_dedup_key(reraised)  # pyright: ignore[reportPrivateUsage]
+    _ = (design / ".step3-already-addressed-finding-keys.tsv").write_text(f"{key}\n", encoding="utf-8")
+
+    proc = _emit_rejected(design)
+    assert proc.returncode == 0, proc.stderr
+    assert "FINDING_3" not in proc.stdout
+    assert proc.stdout == fresh
+
+
+def test_emit_rejected_already_addressed_ledger_extracts_records_and_dedups(tmp_path: Path) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    tagged = _make_rejected_block(
+        "FINDING_1", "alpha.py:10", "[ALREADY_ADDRESSED] plan covers it", "Covered"
+    )
+    untagged = _make_rejected_block("FINDING_2", "beta.py:5", "Real concern", "Real")
+    _ = (design / "rejected-findings.md").write_text(tagged + untagged, encoding="utf-8")
+
+    tagged_key = plan_review._finding_dedup_key(tagged)  # pyright: ignore[reportPrivateUsage]
+    keys = plan_review._already_addressed_keys_in_rejected(design)  # pyright: ignore[reportPrivateUsage]
+    assert keys == [tagged_key]
+
+    # Recording is idempotent and the on-disk ledger holds only the tagged key.
+    plan_review._record_already_addressed_finding_keys(design, keys)  # pyright: ignore[reportPrivateUsage]
+    plan_review._record_already_addressed_finding_keys(design, keys)  # pyright: ignore[reportPrivateUsage]
+    ledger = (design / ".step3-already-addressed-finding-keys.tsv").read_text(encoding="utf-8")
+    assert ledger == f"{tagged_key}\n"
+    assert plan_review._read_already_addressed_finding_keys(design) == {tagged_key}  # pyright: ignore[reportPrivateUsage]
+
+
 def test_step3_loop_postplan_validator_runs_from_consumer_cwd(tmp_path: Path) -> None:
     # #4847: the Step 3 plan-review loop must invoke `design postplan-emit` from
     # the consumer-repo cwd (not the plugin cache that `_run_command` otherwise

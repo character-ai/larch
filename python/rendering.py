@@ -1184,6 +1184,7 @@ Before raising a finding, verify the current plan does not already include the p
 Walk five focus areas: code-quality / risk-integration / correctness / architecture / security.
 Return numbered findings with focus-area tag, repo-relative file:line when applicable, concern, and suggested revision.
 Prefix out-of-scope but worth-tracking items with [OUT_OF_SCOPE]; include affected repo-relative file paths and line ranges so downstream issue filing can detect same-file conflicts.
+When you are not fully certain whether the current plan already covers a concern but surface it anyway, prefix the finding's `what` field with [ALREADY_ADDRESSED]; findings carrying that tag are suppressed from the operator's not-adopted report and remembered across review rounds so an already-satisfied concern does not recur.
 When you have findings, include a TSV structured-record block with this exact header (literal tab characters between fields; no markdown fences around the TSV):
 schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix
 For each finding, add one record:

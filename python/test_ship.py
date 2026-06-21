@@ -3447,6 +3447,68 @@ def test_postbump_stall_writes_terminal_finalize(monkeypatch: pytest.MonkeyPatch
     assert "STALL_TRACKING=true\n" in state
 
 
+def test_pre_rebase_flush_commit_failed_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    # A pre-rebase log flush that skips with reason "commit-failed" must fail
+    # closed (STALLED) instead of rebasing + merging on a stale snapshot
+    # (issue #4930). Mirrors the post-ensure gate, which already excludes
+    # commit-failed via REFRESH_SKIP_POST_ENSURE_PR_OK.
+    state_file = tmp_path / "ship-pr-state.sh"
+    seen = {"monitored": False}
+
+    def fake_flush(*_a: object, **_k: object) -> run_logs.RefreshSkip:
+        # Clean until the merge loop hands control to the rebase branch; the
+        # pre-rebase flush is the only one that must surface commit-failed here.
+        if seen["monitored"]:
+            return run_logs.RefreshSkip(skipped=True, reason="commit-failed")
+        return run_logs.RefreshSkip(skipped=False, reason="")
+
+    def fake_monitor(*_a: object, **_k: object) -> object:
+        seen["monitored"] = True
+        return type(
+            "M",
+            (),
+            {
+                "result": StepResult(Outcome.OK),
+                "action": "wait",
+                "goto_rebase": True,
+                "did_fixing": False,
+                "failed_run_id": None,
+                "transient_rerun_attempted": False,
+            },
+        )()
+
+    def fail_rebase(*_a: object, **_k: object) -> object:
+        pytest.fail("rebase_and_push reached despite commit-failed pre-rebase flush")
+
+    monkeypatch.setattr(ship.finalize, "postbump_preflight", lambda *_a, **_k: ship.finalize.PostbumpPreflight(ok=True))
+    monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush)
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: type("P", (), {"number": 12, "url": "https://example.test/pr/12", "status": "created"})(),
+    )
+    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
+    monkeypatch.setattr(ship.ci_monitor, "monitor", fake_monitor)
+    monkeypatch.setattr(ship.rebase, "rebase_and_push", fail_rebase)
+    monkeypatch.setattr(ship, "_publish_post_pr_terminal_snapshot", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
+
+    result = ship.run_ship(
+        _ctx(tmp_path, state_file=str(state_file)),
+        runner=RecordingRunner(),
+        cwd=str(tmp_path),
+    )
+
+    assert result.outcome is Outcome.STALLED
+    assert result.detail == "pre-rebase flush skipped: commit-failed"
+
+
 
 def test_outer_stalled_exception_writes_terminal_state(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     state_file = tmp_path / "ship-pr-state.sh"
