@@ -33,7 +33,7 @@ for arg in args:
     if rel.startswith(prefix):
         rel = rel[len(prefix):]
     if rel in allowed:
-        print(arg)
+        print(arg, end="\0")
 PY
 }
 
@@ -48,7 +48,10 @@ if [ "$#" -eq 0 ]; then
     exit 0
   fi
 else
-  mapfile -d '' -t filtered < <(filter_manifest_args "$@")
+  filtered=()
+  while IFS= read -r -d '' item; do
+    filtered+=("$item")
+  done < <(filter_manifest_args "$@")
   if [ "${#filtered[@]}" -eq 0 ]; then
     exit 0
   fi
