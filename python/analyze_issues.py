@@ -708,8 +708,13 @@ def issue_comments(issue: Mapping[str, Any]) -> list[str]:
 
 
 def has_combined_away_marker(issue: Mapping[str, Any]) -> bool:
-    texts = [str(issue.get("body") or ""), *issue_comments(issue)]
-    return any(_COMBINED_AWAY_MARKER_RE.search(text) or _LEGACY_COMBINED_RE.search(text) for text in texts)
+    body = str(issue.get("body") or "")
+    if _COMBINED_AWAY_MARKER_RE.search(body):
+        return True
+    for comment in issue_comments(issue):
+        if _COMBINED_AWAY_MARKER_RE.search(comment) or _LEGACY_COMBINED_RE.search(comment):
+            return True
+    return False
 
 
 def _has_not_planned_signal(issue: Mapping[str, Any]) -> bool:
@@ -876,16 +881,19 @@ def _stable_ids_from_record(record: Mapping[str, Any]) -> list[str]:
 def _extract_legacy_stable_ids_from_ndjson_body(body: str) -> list[str]:
     seen: set[str] = set()
     values: list[str] = []
-    filed_section = body or ""
-    filed_markers = [m.start() for m in re.finditer(r"Filed(?:\s+URL|\s+as|\s+OOS\s+issue)", filed_section, re.I)]
-    if not filed_markers:
+    filed_line_re = re.compile(
+        r"^.*\bFiled(?:\s+URL|\s+as|\s+OOS\s+issue).*$",
+        re.I | re.M,
+    )
+    segments = [match.group(0) for match in filed_line_re.finditer(body or "")]
+    if not segments:
         return []
-    filed_section = filed_section[min(filed_markers):]
-    for match in _OOS_TOKEN_RE.finditer(filed_section):
-        value = match.group(0)
-        if value not in seen:
-            seen.add(value)
-            values.append(value)
+    for segment in segments:
+        for match in _OOS_TOKEN_RE.finditer(segment):
+            value = match.group(0)
+            if value not in seen:
+                seen.add(value)
+                values.append(value)
     return values
 
 
@@ -893,12 +901,7 @@ def _is_cap_rollup_record(record: dict[str, Any]) -> bool:
     text = f"{record.get('title') or ''}\n{record.get('body') or ''}"
     if _CAP_ROLLUP_TITLE_RE.search(text):
         return True
-    stable_ids = _stable_ids_from_record(record)
-    if len(stable_ids) <= 1:
-        return False
-    body = str(record.get("body") or "")
-    cited = sum(1 for stable_id in stable_ids if re.search(rf"(?:\*\*)?Stable ID(?:\*\*)?:\s*{re.escape(stable_id)}\b", body, re.I))
-    return cited >= 2
+    return bool(re.search(r"Aggregated rollup", text, re.I))
 
 
 def _resolve_blocks_for_stable_id(stable_id: str, blocks: Sequence[Mapping[str, Any]], body: str = "") -> tuple[list[dict[str, Any]], bool]:
@@ -1125,6 +1128,8 @@ def _expand_cap_rollup_records(run_dir: Path, ndjson_record: dict[str, Any], blo
         for block in _blocks_from_rollup_excerpt_titles(excerpt_titles, blocks, seen_identities):
             out.append(_row_from_block(run_id, block, ndjson_record, issue_number, issue_url))
     scored_rows = [row for row in out if not row.get("bucket")]
+    if expected and len(scored_rows) < expected and ambiguous:
+        return _rollup_expansion_shortfall_result(run_id, issue_number, issue_url, out)
     if expected and len(scored_rows) < expected:
         source_key = ""
         for stable_id in stable_ids:
@@ -1175,7 +1180,6 @@ def _parse_oos_issues_created(path: Path, *, accepted_design_path: Path | None) 
     run_dir = path.parent
     text = path.read_text(encoding="utf-8", errors="replace")
     accepted_blocks = _parse_oos_accepted_blocks(accepted_design_path, run_dir=run_dir) if accepted_design_path else []
-    by_heading = {str(block.get("heading_id") or ""): block for block in accepted_blocks}
     records: list[dict[str, Any]] = []
     for line in text.splitlines():
         parts = line.split("\t")
@@ -1183,7 +1187,19 @@ def _parse_oos_issues_created(path: Path, *, accepted_design_path: Path | None) 
             heading = f"OOS_{parts[1]}"
             url = parts[2].strip()
             number = extract_issue_number_from_url(url)
-            block = by_heading.get(heading, {})
+            blocks_for_heading = [block for block in accepted_blocks if str(block.get("heading_id") or "") == heading]
+            if len(blocks_for_heading) > 1:
+                records.append({
+                    "bucket": "ambiguous stable id",
+                    "run_id": run_dir.name,
+                    "identity": (run_dir.name, "design-map", heading, number or url),
+                    "issue_number": number,
+                    "issue_url": url,
+                    "reviewer": "unknown",
+                    "title": heading,
+                })
+                continue
+            block = blocks_for_heading[0] if blocks_for_heading else {}
             records.append({
                 "run_id": run_dir.name,
                 "identity": (run_dir.name, str(block.get("artifact_relpath") or accepted_design_path.name if accepted_design_path else "oos-accepted-design.md"), heading),
@@ -1398,9 +1414,15 @@ def fate_adjusted_oos_scoring(
     *,
     filed_issue_details: dict[int, dict[str, Any]],
     repo: str | None = None,
+    enrichment_degraded: str | None = None,
 ) -> tuple[str, dict[str, Any]]:
     records = iter_filed_oos_records(log_root)
     lines = ["## Fate-adjusted OOS Scoring"]
+    if enrichment_degraded:
+        lines.append(
+            f"- Note: GitHub issue enrichment unavailable ({enrichment_degraded}); "
+            "filed OOS fate uses partial or offline data."
+        )
     if not records:
         lines.append("No filed OOS run-log evidence found.")
         return "\n".join(lines), {"records": 0}
@@ -1437,13 +1459,24 @@ def fate_adjusted_oos_scoring(
                 buckets["skipped missing issue"] += 1
             continue
         issue = index.get(parsed_number)
-        fate = classify_oos_issue_fate(issue)
+        if issue is None and enrichment_degraded and parsed_number is not None:
+            fate = {
+                "bucket": "enrichment unavailable",
+                "adjusted": 1,
+                "provisional": 1,
+                "docked": False,
+                "unknown": True,
+            }
+        else:
+            fate = classify_oos_issue_fate(issue)
         if identity not in seen_items:
             seen_items.add(identity)
             if issue and issue.get("__fetch_failed__"):
                 buckets["degraded comment fetch"] += 1
             buckets[str(fate["bucket"])] += 1
-        if not issue or str(fate.get("bucket") or "") == "skipped missing issue":
+        if str(fate.get("bucket") or "") == "skipped missing issue":
+            continue
+        if not issue and not enrichment_degraded:
             continue
         for reviewer in _reviewers_from_label(str(record.get("reviewer") or "unknown")):
             key = (identity, reviewer)
@@ -1479,6 +1512,7 @@ def fate_adjusted_oos_scoring(
         "ambiguous stable id",
         "ambiguous rollup expansion",
         "degraded comment fetch",
+        "enrichment unavailable",
     ]
     for bucket in bucket_order:
         lines.append(f"- {bucket}: {buckets.get(bucket, 0)}")
@@ -1491,6 +1525,7 @@ def _build_analyze_report(
     log_root: Path,
     filed_issue_details: dict[int, dict[str, Any]],
     repo: str | None = None,
+    enrichment_degraded: str | None = None,
     top_k: int = 10,
     categories_mode: str = "default",
     span_days: int = 0,
@@ -1514,7 +1549,13 @@ def _build_analyze_report(
         reviewer_text,
     ]
     try:
-        fate_text, _fate_stats = fate_adjusted_oos_scoring(issues, log_root, filed_issue_details=filed_issue_details, repo=repo)
+        fate_text, _fate_stats = fate_adjusted_oos_scoring(
+            issues,
+            log_root,
+            filed_issue_details=filed_issue_details,
+            repo=repo,
+            enrichment_degraded=enrichment_degraded,
+        )
         sections.append(fate_text)
     except Exception as exc:  # pragma: no cover - defensive live-report guard
         print(f"WARN fate-adjusted OOS scoring unavailable: {exc}", file=sys.stderr)
@@ -1689,6 +1730,7 @@ def run_main(argv: Sequence[str] | None = None) -> int:
         print("WARN targeted comment fetch unavailable: unable to detect GitHub repo owner/name", file=sys.stderr)
         repo = ""
     repo_resolved = repo_valid
+    enrichment_degraded: str | None = "repo_unavailable" if not repo_resolved else None
     issues: list[dict[str, Any]] = []
     if repo_resolved:
         sanitized = re.sub(r"[^A-Za-z0-9_-]", "", repo.replace("/", "-"))
@@ -1705,8 +1747,14 @@ def run_main(argv: Sequence[str] | None = None) -> int:
                 os.umask(old_umask)
             if rc != 0:
                 print("WARN bulk gh issue list failed; continuing with log-only fate scoring", file=sys.stderr)
+                enrichment_degraded = enrichment_degraded or "bulk_fetch_failed"
             else:
-                issues = load_issues(str(dump), lenient=args.lenient)
+                try:
+                    issues = load_issues(str(dump), lenient=args.lenient)
+                except SystemExit:
+                    print("WARN corrupt issue dump; continuing with log-only fate scoring", file=sys.stderr)
+                    issues = []
+                    enrichment_degraded = enrichment_degraded or "bulk_fetch_failed"
     if not repo_resolved:
         repo = ""
     log_root = Path(args.log_root)
@@ -1729,6 +1777,7 @@ def run_main(argv: Sequence[str] | None = None) -> int:
         log_root=log_root,
         filed_issue_details=details,
         repo=repo,
+        enrichment_degraded=enrichment_degraded,
         top_k=max(int(args.top_k), 1) if str(args.top_k).isdigit() else 10,
         categories_mode=args.categories,
         span_days=max(int(args.span_days), 0) if str(args.span_days).isdigit() else 0,

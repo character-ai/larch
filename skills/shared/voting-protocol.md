@@ -248,7 +248,7 @@ If an OOS item receives 2+ YES votes, it is **accepted** and will be filed as a 
 
 ### OOS Scoring
 
-Out-of-scope items stay flat in the live voting classifier: accepted OOS earns a provisional +1, non-accepted OOS with a split-panel or exonerated vote pattern scores 0, and dismissed OOS costs −1. `python/voting.py::classify_result` is the live classifier and does not inspect GitHub issue fate.
+Out-of-scope items stay flat in the live voting classifier: accepted OOS earns a provisional +1, non-accepted OOS with a split-panel or OOS neutral (≥1 YES, not accepted) vote pattern scores 0, and dismissed OOS costs −1. `python/voting.py::classify_result` is the live classifier and does not inspect GitHub issue fate.
 
 | OOS vote pattern | Points | Description |
 |---|---|---|
@@ -263,7 +263,7 @@ Out-of-scope items stay flat in the live voting classifier: accepted OOS earns a
 The scoreboard includes additional columns for OOS items:
 
 ```
-| Reviewer | ... | OOS Proposed | OOS Accepted | OOS-Exonerated | OOS-Rejected | ...
+| Reviewer | ... | OOS Proposed | OOS Accepted | OOS-Neutral | OOS-Rejected | ...
 ```
 
 ### OOS Security Tag

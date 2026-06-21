@@ -474,6 +474,17 @@ def _render_diff(tmp_path: Path, line: str) -> Path:
     return diff
 
 
+def test_render_specialist_competition_notice_provisional_oos(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _reset_quiet(monkeypatch)
+    text = rendering._render_specialist_text(  # pyright: ignore[reportPrivateUsage]
+        rendering._parse_specialist(  # pyright: ignore[reportPrivateUsage]
+            ["--agent-file", str(_specialist_agent(tmp_path)), "--mode", "diff", "--competition-notice", "--diff-file", str(_render_diff(tmp_path, "diff --git a/a b/a\n"))]
+        )
+    )
+    assert "provisional +1 at vote time" in text
+    assert "fate-adjusted diagnostic report without changing live vote tallies" in text
+
+
 def test_render_specialist_uses_inprocess_docs_diff_classifier(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _reset_quiet(monkeypatch)
     def fail_run(*_args: object, **_kwargs: object) -> object:
