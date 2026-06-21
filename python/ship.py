@@ -59,6 +59,7 @@ import merge
 import pr
 import pr_body
 import proc
+import push
 import redact
 import rebase
 import run_logs
@@ -451,6 +452,26 @@ def _write_terminal_state(
         bail_failure_detail_log=bail_failure_detail_log,
         last_monitored_head=last_monitored_head,
     )
+
+
+def _publish_post_pr_terminal_snapshot(
+    runner: Runner,
+    ctx: RunContext,
+    *,
+    cwd: str,
+) -> None:
+    if ctx.pr_number is None:
+        return
+    with suppress(Exception):
+        refresh = run_logs.flush_logs_pre(
+            runner,
+            ctx.with_(state_file=None),
+            cwd=cwd,
+            strict_final_report=True,
+        )
+        if not refresh.skipped:
+            with suppress(ShipError):
+                _ = push.push_branch(runner, ctx, cwd=cwd)
 
 
 def _state_bool(*, value: bool) -> str:
@@ -1461,6 +1482,66 @@ def run_ship(
                 detail=ensured.status,
             )
 
+        _breadcrumb("post-ensure-pr", "Flush+Push")
+        post_ensure_refresh = run_logs.flush_logs_pre(
+            runner,
+            working.with_(state_file=None),
+            cwd=repo_root,
+            strict_final_report=True,
+        )
+        if post_ensure_refresh.skipped:
+            if post_ensure_refresh.reason not in config.REFRESH_SKIP_POST_ENSURE_PR_OK:
+                _write_terminal_state(
+                    working,
+                    Outcome.STALLED,
+                    "post-ensure-pr",
+                    iteration=resume.iteration,
+                    rebase_count=resume.rebase_count,
+                    fix_attempts=resume.fix_attempts,
+                    transient_retries=resume.transient_retries,
+                )
+                return ShipResult(
+                    Outcome.STALLED,
+                    pr_number=working.pr_number,
+                    pr_url=working.pr_url,
+                    detail=f"post-ensure-pr flush skipped: {post_ensure_refresh.reason}",
+                )
+            _breadcrumb("warning", f"post-ensure-pr refresh skipped: {post_ensure_refresh.reason}")
+        try:
+            post_ensure_push = push.push_branch(runner, working, cwd=repo_root)
+        except ShipError as exc:
+            _write_terminal_state(
+                working,
+                Outcome.STALLED,
+                "post-ensure-pr-push",
+                iteration=resume.iteration,
+                rebase_count=resume.rebase_count,
+                fix_attempts=resume.fix_attempts,
+                transient_retries=resume.transient_retries,
+            )
+            return ShipResult(
+                Outcome.STALLED,
+                pr_number=working.pr_number,
+                pr_url=working.pr_url,
+                detail=f"post-ensure-pr push failed: {str(exc).strip()}",
+            )
+        if post_ensure_push.status != "pushed":
+            _write_terminal_state(
+                working,
+                Outcome.STALLED,
+                "post-ensure-pr-push",
+                iteration=resume.iteration,
+                rebase_count=resume.rebase_count,
+                fix_attempts=resume.fix_attempts,
+                transient_retries=resume.transient_retries,
+            )
+            return ShipResult(
+                Outcome.STALLED,
+                pr_number=working.pr_number,
+                pr_url=working.pr_url,
+                detail=f"post-ensure-pr push failed: {post_ensure_push.status}",
+            )
+
         base_remote = "upstream" if working.forked or working.forked_target else "origin"
         preserve_counters = _merge_loop_uses_resume_counters(resume)
         iteration = resume.iteration if preserve_counters else 0
@@ -1492,6 +1573,7 @@ def run_ship(
                     fix_attempts=fix_attempts,
                     transient_retries=transient_retries,
                 )
+                _publish_post_pr_terminal_snapshot(runner, working, cwd=repo_root)
                 return ShipResult(
                     Outcome.STALLED,
                     pr_number=working.pr_number,
@@ -1618,6 +1700,7 @@ def run_ship(
                         transient_retries=persisted[3],
                         failed_run_id=monitor.failed_run_id or "",
                     )
+                    _publish_post_pr_terminal_snapshot(runner, working, cwd=repo_root)
                     return ShipResult(
                         Outcome.STALLED,
                         failed_run_id=monitor.failed_run_id or "",
@@ -1656,6 +1739,7 @@ def run_ship(
                     bail_failure_detail_log=_bail_detail_log,
                     last_monitored_head=terminal_last_head,
                 )
+                _publish_post_pr_terminal_snapshot(runner, _bail_ctx, cwd=repo_root)
                 return _step_result_to_ship(
                     monitor.result,
                     failed_run_id=monitor.failed_run_id or "",
@@ -1675,6 +1759,7 @@ def run_ship(
                         fix_attempts=fix_attempts,
                         transient_retries=transient_retries,
                     )
+                    _publish_post_pr_terminal_snapshot(runner, working, cwd=repo_root)
                     return ShipResult(
                         Outcome.STALLED,
                         pr_number=working.pr_number,
@@ -1706,6 +1791,7 @@ def run_ship(
                             fix_attempts=fix_attempts,
                             transient_retries=transient_retries,
                         )
+                        _publish_post_pr_terminal_snapshot(runner, working, cwd=repo_root)
                         return ShipResult(
                             Outcome.STALLED,
                             detail=f"pre-rebase flush skipped: {pre_rebase.reason}",
@@ -1807,6 +1893,7 @@ def run_ship(
                         fix_attempts=fix_attempts,
                         transient_retries=transient_retries,
                     )
+                    _publish_post_pr_terminal_snapshot(runner, working, cwd=repo_root)
                     return ShipResult(
                         Outcome.STALLED,
                         detail=f"pre-rebase flush skipped: {pre_rebase.reason}",
@@ -1861,6 +1948,15 @@ def run_ship(
                     fix_attempts=fix_attempts,
                     transient_retries=transient_retries,
                 )
+                _publish_post_pr_terminal_snapshot(
+                    runner,
+                    working.with_(
+                        stall_tracking=True,
+                        stall_step="merge",
+                        final_bail_reason=config.NEEDS_USER_REVIEW_REQUIRED,
+                    ),
+                    cwd=repo_root,
+                )
                 return ShipResult(
                     Outcome.NEEDS_USER_INPUT,
                     needs_user_reason=config.NEEDS_USER_REVIEW_REQUIRED,
@@ -1891,6 +1987,7 @@ def run_ship(
                     fix_attempts=fix_attempts,
                     transient_retries=transient_retries,
                 )
+                _publish_post_pr_terminal_snapshot(runner, working, cwd=repo_root)
                 return ShipResult(
                     Outcome.STALLED,
                     pr_number=working.pr_number,
@@ -1908,6 +2005,7 @@ def run_ship(
                     fix_attempts=fix_attempts,
                     transient_retries=transient_retries,
                 )
+                _publish_post_pr_terminal_snapshot(runner, working, cwd=repo_root)
                 return ShipResult(
                     Outcome.STALLED,
                     pr_number=working.pr_number,

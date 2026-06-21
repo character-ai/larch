@@ -777,6 +777,22 @@ def test_scan_required_bail_and_step9a1_gating(tmp_path: Path, capsys):
     assert row["result"] == "pass"
 
 
+def test_scan_required_bailed_heading_with_pr_evidence_reports_missing(tmp_path: Path, capsys):
+    run = tmp_path / "run"
+    run.mkdir()
+    (run / "manifest.json").write_text('{"steps_ran":{},"pr_number":7}\n', encoding="utf-8")
+    (run / "final-summary.md").write_text("## /implement run run — bailed\n", encoding="utf-8")
+    required = tmp_path / "required.tsv"
+    required.write_text("relative_path\tcondition\nrun-statistics.md\tstep9a1\n", encoding="utf-8")
+    scans = tmp_path / "scans.tsv"
+    scans.write_text("name\ttype\nrequired-file-presence\tfile\n", encoding="utf-8")
+
+    assert audit_runs.scan_run_main(["--skill","implement","--run-dir",str(run),"--pr","7","--scans-tsv",str(scans),"--required-files-tsv",str(required)]) == 0
+    row = json.loads(capsys.readouterr().out.splitlines()[0])
+    assert row["result"] == "fail"
+    assert row["missing"] == ["run-statistics.md"]
+
+
 def test_scan_required_corrupt_manifest_does_not_bail_skip(tmp_path: Path, capsys):
     run = tmp_path / "run"
     run.mkdir()

@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import oos_disposition
 import proc
+from run_log_tolerance import stale_bail_heading_with_pr_evidence
 from self_review_tally import self_review_tally_items
 
 _CANONICAL = {"code-quality", "risk-integration", "correctness", "architecture", "security"}
@@ -509,6 +510,8 @@ def _scan_required(run_dir: Path, pr: int, required: Path | None) -> dict[str, o
     def empty_steps() -> bool:
         return isinstance(manifest, dict) and (sr_raw is None or (isinstance(sr_raw, dict) and not sr_raw))
     def bail_signal() -> bool:
+        if stale_bail_heading_with_pr_evidence(run_dir, manifest, pr):
+            return False
         fs = run_dir / "final-summary.md"
         if not fs.is_file():
             return False

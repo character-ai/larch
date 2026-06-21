@@ -425,7 +425,7 @@ assert_contains 'Tokens: ' "$cost_line" 'per-agent stdout cost has token count'
 
 # Step 18 shell-wrapper body-emission coverage moved to test-step-18.sh.
 
-# Bail + manifest.json: larch-log manifest stamps steps_ran.* and hard-fails on manifest error
+# Bail + manifest.json: reconcile keys step8 off on-disk final-summary.md and hard-fails on manifest error
 impl_mfb="$TMP_ROOT/impl-mfb"; mkdir -p "$impl_mfb/larch-logs/implement/run-mfb"
 printf 'ISSUE_NUMBER=11\nRUN_ID=run-mfb\nADOPTED=true\n' > "$impl_mfb/parent-issue.md"
 printf 'REPO=owner/repo\n' > "$impl_mfb/session-env.sh"
@@ -447,7 +447,7 @@ out=$(CLAUDE_PLUGIN_ROOT="$plugin" LARCH_LOG_MANIFEST_LOG="$mf_log" TRACKING_CON
       "$HELPER" --implement-tmpdir "$impl_mfb")
 assert_contains 'STATUS=ok' "$out" 'bail manifest stamp path status ok'
 assert_contains 'steps_ran.step9a1=false' "$(cat "$mf_log")" 'manifest stamp includes step9a1 false'
-assert_contains 'steps_ran.step8=false' "$(cat "$mf_log")" 'manifest stamp includes step8 false'
+assert_contains 'steps_ran.step8=true' "$(cat "$mf_log")" 'manifest stamp includes step8 true'
 assert_contains 'steps_ran.step7a=false' "$(cat "$mf_log")" 'manifest stamp includes step7a false'
 assert_contains '--log-root' "$(cat "$mf_log")" 'manifest forwards --log-root'
 assert_contains '--skill implement' "$(cat "$mf_log")" 'manifest forwards --skill'
@@ -461,7 +461,7 @@ rc_mf=$?
 set -e
 if [ "$rc_mf" -eq 1 ]; then pass 'manifest update failure exits non-zero'; else fail 'manifest update failure exits non-zero'; fi
 assert_contains 'STATUS=failed' "$out_mf_fail" 'manifest failure status failed'
-assert_contains 'run-log manifest steps_ran update failed' "$out_mf_fail" 'manifest failure error text'
+assert_contains 'run-log manifest reconcile failed' "$out_mf_fail" 'manifest failure error text'
 
 impl_badjson="$TMP_ROOT/impl-badjson"; mkdir -p "$impl_badjson/larch-logs/implement/run-badjson"
 printf 'ISSUE_NUMBER=21\nRUN_ID=run-badjson\nADOPTED=true\n' > "$impl_badjson/parent-issue.md"
