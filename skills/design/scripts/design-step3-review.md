@@ -14,7 +14,7 @@ Wrapper for a `/design` Bash block that keeps `skills/design/SKILL.md` free of i
 - Accepts `--session-env-path` from the prompt-side Bash call.
 - Accepts `--claude-pid` when the wrapped logic must refresh session state.
 - Accepts `--starting-round N` for mid-loop resumes and forwards it to `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review run --mode loop`.
-- Accepts `--read-result-env` for a hook-safe recovery read: emits `READ_RESULT_ENV_STATUS=ok|missing` plus `STEP3_REVIEW_LOOP_STATUS`, `LOOP_STATUS`, `ROUNDS_COMPLETED`, `FINAL_ROUND_NUM`, `ACCEPTED_COUNT`, and `DEGRADED_PANEL_WARNING` from `$DESIGN_TMPDIR/.step3-review-result.env`, then exits 0 without writing the `.bg-wait-active` marker or dispatching the review. Recovers `STEP3_REVIEW_LOOP_STATUS` through the wrapper-routed path the immediate-background poll guard allows when a `<task-notification>` arrives in the same turn as the launch ack and blocks a direct read (#4431).
+- Accepts `--read-result-env` for a hook-safe recovery read, delegated to `python/cli.py plan-review normalize-status --read-result-env`. The read mode directly stats `$DESIGN_TMPDIR/.step3-review-result.env`, uses a simple line scan for `READ_RESULT_ENV_STATUS=ok|missing` plus the seven follow-up KVs, and never calls `read_result_env_main`. It exits 0 without writing the `.bg-wait-active` marker or dispatching the review.
 - Validates resume-state flags and starting-round bounds before writing state.
 - Calls without `--phase`, `--findings-file`, or `--postplan-operator-continue` preserve the existing first-entry pause ordering before review launch.
 - Calls with resume-state flags write validated phase, findings env, or postplan continue state before pause-save.
@@ -28,10 +28,13 @@ Wrapper for a `/design` Bash block that keeps `skills/design/SKILL.md` free of i
 - Sites that previously wrote phase state and then launched review separately must collapse to one wrapper invocation at the resume boundary.
 - `awaiting-vote` remains an internal loop state and is not accepted as a wrapper resume phase.
 - Does not derive the root Claude PID from `$PPID` internally.
-- Step 3 loop contract lives in `python/plan_review.py`; this wrapper captures stdout, reads `.step3-review-result.env` through `scripts/read-result-env.sh`, overlays the full allowlisted KV envelope from captured stdout when needed, preserves `DEGRADED_PANEL_WARNING`, normalizes `STEP3_REVIEW_LOOP_STATUS` / `LOOP_STATUS`, and records escalation evidence only for terminal degradation statuses.
+- Step 3 loop contract lives in `python/plan_review.py`. This wrapper captures stdout and delegates post-loop status normalization to `python/cli.py plan-review normalize-status`, which reads the quoted temp env via `load_bash_quoted_env` after a quiet in-process `read_result_env_main` call.
+- The normalizer owns the WARN/ERROR replay contract: quiet `read_result_env_main` leaks no replay lines, Stage 1 replays `WARN=` / `ERROR=` from the selected source once, and Stage 2 replays stdout-overlay `WARN=` lines only when the primary result env is regular.
+- The normalizer guards status mapping: it back-maps `LOOP_STATUS` to `STEP3_REVIEW_LOOP_STATUS` only when the latter is unset, then forward-maps canonical `LOOP_STATUS` from a persisted `STEP3_REVIEW_LOOP_STATUS`.
+- Post-loop `**⚠ Step 3:` markdown warnings are emitted on stderr by the normalizer. Machine stdout remains the canonical KV envelope. Loop-end `SUMMARY_OUTCOME` KVs are emitted by the normalizer, not by this Bash wrapper.
 - Refuses to launch when `$DESIGN_TMPDIR/plan-review-scope-anchor.txt` is absent, empty, or invalid. That prelaunch path emits `panel-init-failed`, stages `failed-judge-panel`, and exits non-zero so Gate C and Step 5 cannot run with zero reviewer coverage.
 - Normalizes `panel-failed` with zero completed rounds or no `plan-review/round-1/` directory to `panel-init-failed`.
-- Synthesizes a terminal `.step3-review-result.env` (and, via `_step3_review_write_result_env`, the `.step3-terminal-persisted-this-run` marker) when a terminal failure status (`panel-failed` / `panel-init-failed` / `tally-error` / `degraded-empty-collector` / `postplan-failed`) is resolved but the plan-review loop never persisted a result env (e.g. the loop launched reviewers then died before its round-persist step). Without it the guarantee trap cannot mint `.completed/step-3` and the orchestrator's Step 3 foreground recovery probe never resolves (no terminal sentinel ever appears). Apply-pending / vote / operator statuses are excluded so the synthesized sentinel never skips Gate B (#4724).
+- The Python normalizer synthesizes a terminal `.step3-review-result.env` and the `.step3-terminal-persisted-this-run` marker when a terminal failure status (`panel-failed` / `panel-init-failed` / `tally-error` / `degraded-empty-collector` / `postplan-failed`) is resolved but the plan-review loop never persisted a result env. Without it the guarantee trap cannot mint `.completed/step-3` and the orchestrator's Step 3 foreground recovery probe never resolves. Apply-pending / vote / operator statuses are excluded so the synthesized sentinel never skips Gate B (#4724).
 
 ## Harness
 
@@ -39,4 +42,4 @@ Covered by `scripts/test-design-structure.sh`, `skills/design/scripts/test-desig
 
 ## KV-only postplan failure
 
-When `STEP3_REVIEW_LOOP_STATUS=postplan-failed`, this wrapper emits `SUMMARY_OUTCOME=failed-postplan` and exits non-zero. It does not print final-summary prose; prompt-side orchestration runs the Final summary block.
+When `STEP3_REVIEW_LOOP_STATUS=postplan-failed`, the Python normalizer emits `SUMMARY_OUTCOME=failed-postplan` and exits non-zero. The wrapper propagates that exit code. It does not print final-summary prose; prompt-side orchestration runs the Final summary block.
