@@ -12,8 +12,6 @@ SUMMARY_OUTCOME="${SUMMARY_OUTCOME:-}"
 SKIP_VALIDATE=""
 PUBLIC_ARGV_WORDS=()
 
-# Prompt-side values may be supplied only as environment variables by Claude Code.
-# Default them before sourced session env overrides to preserve the old inline-fence no-set-u behavior.
 DESIGN_TMPDIR="${DESIGN_TMPDIR:-}"
 SESSION_TMPDIR="${SESSION_TMPDIR:-}"
 SESSION_ID="${SESSION_ID:-}"
@@ -178,26 +176,41 @@ print('true' if required else 'false')
 PY
 }
 
+design_source_env_optional
+design_require_plugin_root
+
 case "${MODE:-}" in
-  entry)
-    design_source_env_optional
+  entry|finalize)
     mkdir -p "$DESIGN_TMPDIR/.completed"
     : > "$DESIGN_TMPDIR/.completed/step-3.5"
     design_pause_check
+    LARCH_TIMING_SKILL=design python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" timing mark "design Step 3b — finalize" || true
+    run_step3b_finalize
+    ;;
+  diagram)
+    mkdir -p "$DESIGN_TMPDIR/.completed"
+    design_pause_check
     SECONDS=0
-    LARCH_TIMING_SKILL=design python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" timing mark "design Step 3b — arch diagram" || true
+    LARCH_TIMING_SKILL=design python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" timing mark "design Step 5b.5 — arch diagram" || true
     _diagram_required="$(classify_diagram_required)"
     case "$_diagram_required" in
       true)
-        rm -f "$DESIGN_TMPDIR/architecture-diagram.md" "$DESIGN_TMPDIR/architecture-diagram.candidate.md" "$DESIGN_TMPDIR/architecture-diagram.skipped"
+        rm -f "$DESIGN_TMPDIR/architecture-diagram.md" \
+          "$DESIGN_TMPDIR/architecture-diagram.candidate.md" \
+          "$DESIGN_TMPDIR/architecture-diagram.skipped" \
+          "$DESIGN_TMPDIR/architecture-diagram-generation.failure.log" \
+          "$DESIGN_TMPDIR/architecture-diagram-sanitizer.failure.log"
         printf '%s\n' 'DIAGRAM_REQUIRED=true'
         ;;
       false)
-        rm -f "$DESIGN_TMPDIR/architecture-diagram.md" "$DESIGN_TMPDIR/architecture-diagram.candidate.md"
+        rm -f "$DESIGN_TMPDIR/architecture-diagram.md" \
+          "$DESIGN_TMPDIR/architecture-diagram.candidate.md" \
+          "$DESIGN_TMPDIR/architecture-diagram-generation.failure.log" \
+          "$DESIGN_TMPDIR/architecture-diagram-sanitizer.failure.log"
         : > "$DESIGN_TMPDIR/architecture-diagram.skipped"
+        : > "$DESIGN_TMPDIR/.completed/step-5b.5"
         printf '%s\n' 'DIAGRAM_REQUIRED=false'
-        printf '⏩ 3b: arch diagram status=skip reason=no-architectural-change elapsed=%ss\n' "$SECONDS"
-        run_step3b_finalize
+        printf '⏩ 5b.5: arch diagram status=skip reason=no-architectural-change elapsed=%ss\n' "$SECONDS"
         ;;
       *)
         printf '%s\n' "design-step3b-entry.sh: classifier returned invalid value: $_diagram_required" >&2
@@ -205,5 +218,5 @@ case "${MODE:-}" in
         ;;
     esac
     ;;
-  *) printf '%s\n' "$0: --mode entry required" >&2; exit 2 ;;
+  *) printf '%s\n' "$0: --mode finalize|diagram required" >&2; exit 2 ;;
 esac

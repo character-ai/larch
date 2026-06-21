@@ -166,6 +166,7 @@ def _run_publish_with_fake_cli(
     design = tmp_path / "design"
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
     _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
     cli_py = Path(__file__).with_name("cli.py")
     env = os.environ.copy()
@@ -194,11 +195,49 @@ def _run_publish_with_fake_cli(
     return result, design
 
 
+
+def test_publish_main_requires_step5b5_sentinel(tmp_path: Path) -> None:
+    plugin_root = tmp_path / "plugin"
+    _write_fake_cli(plugin_root / "python" / "cli.py")
+    design = tmp_path / "design"
+    (design / ".completed").mkdir(parents=True)
+    _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
+    cli_py = Path(__file__).with_name("cli.py")
+    env = os.environ.copy()
+    env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(cli_py),
+            "design",
+            "publish",
+            "--design-tmpdir",
+            str(design),
+            "--issue",
+            "9",
+            "--session-id",
+            "RUN1",
+            "--claude-pid",
+            "11",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+
+    assert result.returncode == 5
+    assert not (design / "composed-plan.redacted.md").exists()
+
+
 def test_publish_requires_composed_plan(tmp_path: Path) -> None:
     cli_py = Path(__file__).with_name("cli.py")
     design = tmp_path / "design"
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
     result = subprocess.run(
         [
             sys.executable,
@@ -239,6 +278,7 @@ def test_publish_passes_consumer_repo_root_and_preserves_plugin_root(tmp_path: P
     design = consumer / "design"
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
     _ = (design / "composed-plan.md").write_text(
         "## Plan\n\n```bash\nbash scripts/consumer-only.sh\n```\n\ndiff_lines: 1\n",
         encoding="utf-8",
@@ -287,6 +327,7 @@ def test_publish_reports_missing_script_count_from_validate_log(tmp_path: Path) 
     design = tmp_path / "design"
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
     _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
     log = tmp_path / "validate-plan-commands.log"
     cli_py = Path(__file__).with_name("cli.py")
@@ -326,6 +367,7 @@ def test_publish_success_writes_result_env(tmp_path: Path) -> None:
     design = tmp_path / "design"
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
     _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
     cli_py = Path(__file__).with_name("cli.py")
     env = os.environ.copy()
@@ -367,6 +409,7 @@ def test_publish_suppresses_named_block_stdout_noise(tmp_path: Path) -> None:
     design = tmp_path / "design"
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
     _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
     cli_py = Path(__file__).with_name("cli.py")
     env = os.environ.copy()
@@ -406,6 +449,7 @@ def test_publish_present_empty_session_id_skips_log_publish(tmp_path: Path) -> N
     design = tmp_path / "design"
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
     _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
     call_log = tmp_path / "fake-cli-calls.ndjson"
     cli_py = Path(__file__).with_name("cli.py")
@@ -447,6 +491,7 @@ def test_publish_omitted_session_id_fails_closed_before_plan_write(tmp_path: Pat
     design = tmp_path / "design"
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
     _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
     call_log = tmp_path / "fake-cli-calls.ndjson"
     cli_py = Path(__file__).with_name("cli.py")
@@ -483,6 +528,7 @@ def test_publish_refuses_cap_hit_without_step3_sentinel(tmp_path: Path) -> None:
     design = tmp_path / "design"
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
     _ = (design / "composed-plan.md").write_text("# plan\n\ndiff_lines: 1\n", encoding="utf-8")
     _ = (design / ".step3-review-result.env").write_text(
         "STEP3_REVIEW_LOOP_STATUS=cap-hit\nLOOP_STATUS=cap-reached\nROUNDS_COMPLETED=5\n",
@@ -516,6 +562,7 @@ def test_publish_refuses_complete_without_step3_sentinel(tmp_path: Path) -> None
     design = tmp_path / "design"
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
     _ = (design / "composed-plan.md").write_text("# plan\n\ndiff_lines: 1\n", encoding="utf-8")
     _ = (design / ".step3-review-result.env").write_text(
         "STEP3_REVIEW_LOOP_STATUS=complete\nLOOP_STATUS=complete\nROUNDS_COMPLETED=3\n",
@@ -551,6 +598,7 @@ def test_publish_splices_provenance_above_diff_lines(tmp_path: Path) -> None:
     design = tmp_path / "design"
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
     _ = (design / ".completed" / "step-3").write_text("", encoding="utf-8")
     _ = (design / "composed-plan.md").write_text(
         "## Plan\nbody\n\ndiff_lines: 3\n",
@@ -598,6 +646,7 @@ def test_publish_upserts_architecture_diagram_when_present(tmp_path: Path) -> No
     design = tmp_path / "design"
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
     _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
     _ = (design / "architecture-diagram.md").write_text(
         "## Architecture Diagram\n```mermaid\ngraph TD; A-->B;\n```\n", encoding="utf-8"
@@ -651,6 +700,7 @@ def test_publish_clears_architecture_when_skipped(tmp_path: Path) -> None:
     design = tmp_path / "design"
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
     _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
     # DIAGRAM_REQUIRED=false leaves an empty architecture-diagram.skipped marker
     # and no architecture-diagram.md; the publish tail must clear the section.
@@ -694,6 +744,7 @@ def test_publish_skips_upsert_when_no_diagram(tmp_path: Path) -> None:
     design = tmp_path / "design"
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
     _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
     upsert_log = tmp_path / "upsert-invocation.json"
     cli_py = Path(__file__).with_name("cli.py")
@@ -723,6 +774,9 @@ def test_publish_skips_upsert_when_no_diagram(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     assert not upsert_log.exists()
     assert "UPSERT_STATUS=" not in result.stdout
+    issues = (design / "execution-issues.md").read_text(encoding="utf-8")
+    assert "diagram-artifact-missing-after-step5b5" in issues
+    assert "clear-architecture" not in issues
 
 
 def test_publish_nonfatal_when_architecture_upsert_fails(tmp_path: Path) -> None:
@@ -731,6 +785,7 @@ def test_publish_nonfatal_when_architecture_upsert_fails(tmp_path: Path) -> None
     design = tmp_path / "design"
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
     _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
     _ = (design / "architecture-diagram.md").write_text(
         "## Architecture Diagram\n```mermaid\ngraph TD; A-->B;\n```\n", encoding="utf-8"
@@ -775,6 +830,7 @@ def test_publish_warns_rotate_on_secret_scrub_violations(tmp_path: Path) -> None
     design = tmp_path / "design"
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
     _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
     cli_py = Path(__file__).with_name("cli.py")
     env = os.environ.copy()
@@ -813,6 +869,7 @@ def test_publish_no_rotate_warning_when_zero_violations(tmp_path: Path) -> None:
     design = tmp_path / "design"
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
     _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
     cli_py = Path(__file__).with_name("cli.py")
     env = os.environ.copy()
@@ -939,6 +996,7 @@ def test_publish_result_env_write_failure_returns_3_with_stdout_rows(tmp_path: P
     design = tmp_path / "design"
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
     _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
     (design / ".design-publish-result.env").mkdir()
     old_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
@@ -977,6 +1035,7 @@ def test_publish_validator_defects_keep_rc4_when_result_env_write_fails(tmp_path
     design = tmp_path / "design"
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
     (design / ".design-publish-result.env").mkdir()
     rc = design_publish.publish_core(
         [

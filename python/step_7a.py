@@ -8,7 +8,6 @@ import argparse
 import contextlib
 import os
 import re
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -91,19 +90,6 @@ def _append_diagram_warning(implement_tmpdir: Path, message: str) -> None:
         f"- **Step 7a — code flow diagram**: {message}",
     )
 
-
-def _copy_diagram_failure_log(implement_tmpdir: Path, *, run_id: str) -> None:
-    if not run_id:
-        return
-    source = implement_tmpdir / "code-flow-diagram.failure.log"
-    if not source.is_file():
-        return
-    destination = implement_tmpdir / "larch-logs" / "implement" / run_id / "code-flow-diagram.failure.log"
-    try:
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(source, destination)
-    except OSError:
-        _append_diagram_warning(implement_tmpdir, "failure-log-copy-failed")
 
 
 def _run_log_flush(
@@ -275,7 +261,6 @@ def run_step7a(
             diagram_reason = reason or "generation failed"
             diagram_path = ""
             _append_diagram_warning(implement_tmpdir, diagram_reason)
-            _copy_diagram_failure_log(implement_tmpdir, run_id=run_id)
 
     if issue_number and (implement_tmpdir / "code-flow-section.md").is_file() and (implement_tmpdir / "code-flow-section.md").stat().st_size > 0:
         upsert_args = ["diagrams", "upsert", "--issue", issue_number, "--code-flow-file", str(implement_tmpdir / "code-flow-section.md")]

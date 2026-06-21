@@ -11,6 +11,7 @@ SESSION_ENV="$ROOT/python/session_env.py"
 MIGRATED="$ROOT/python/migrated-scripts.tsv"
 MAKEFILE="$ROOT/Makefile"
 STEP3B_ENTRY="$ROOT/skills/design/scripts/design-step3b-entry.sh"
+STEP3B_SANITIZE="$ROOT/skills/design/scripts/design-step3b-sanitize.sh"
 
 fail() { printf '%s\n' "$1" >&2; exit 1; }
 contains() {
@@ -156,6 +157,15 @@ contains "$DESIGN_POSTPLAN" 'BASELINE_PLAN_LINES' 'design_postplan must parse dr
 assert_step3b_classifier false $'## Files to modify/create\n### MAY_UPDATE: docs/issue-anchored-plan.md' 'MAY_UPDATE docs path must not require diagram'
 assert_step3b_classifier false $'## Files to modify/create\n### MAY_UPDATE: `docs/issue-anchored-plan.md`' 'MAY_UPDATE backtick docs path must not require diagram'
 assert_step3b_classifier true $'## Files to modify/create\n### MAY_UPDATE: skills/design/scripts/foo.sh' 'MAY_UPDATE script path must require diagram'
+
+contains "$SKILL_MD" '1c→1d→1d.5→1d.7→2a→2b→2b.5→3→3.5→3b→4→4b→5→5b→5b.5→5c.1→5c.5→5c.7→5c.8→6' 'anti-halt chain must include Step 5b.5 before Step 5c'
+contains "$SKILL_MD" 'design-step3b-entry.sh --mode finalize' 'Step 3b must use finalize mode'
+contains "$SKILL_MD" 'design-step3b-entry.sh --mode diagram' 'Step 5b.5 must use diagram mode'
+contains "$SKILL_MD" 'Append only a bounded warning to `execution-issues.md` via `design_diagram_log.write_bounded_diagram_failure_log`' 'Step 5b.5 generation failure must use bounded warning logging'
+contains "$STEP3B_SANITIZE" 'architecture-diagram.skipped' 'sanitizer fail-closed paths must touch skipped marker'
+contains "$STEP3B_SANITIZE" 'design Step 5b.5' 'sanitizer warning site must name Step 5b.5'
+not_contains "$STEP3B_SANITIZE" 'LARCH-DIAGRAM' 'sanitizer must not emit chat diagram markers'
+not_contains "$SKILL_MD" 're-emit that exact body verbatim in chat' 'SKILL must not instruct diagram body re-emission'
 
 contains "$SETTLE_SH" 'python/cli.py" design step2b-postplan' 'settle must default to python/cli.py design step2b-postplan'
 contains "$SETTLE_SH" '--site "$POSTPLAN_SITE"' 'settle must pass mapped postplan site'

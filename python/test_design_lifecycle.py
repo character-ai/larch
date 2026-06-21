@@ -1999,6 +1999,7 @@ def _setup_step5c_design(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, **extr
     design = tmp_path / "design"
     (design / ".completed").mkdir(parents=True)
     (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
     env_path = _write_session_env(
         tmp_path,
         design,
@@ -2042,6 +2043,19 @@ def test_step5c_core_requires_step5b_sentinel(tmp_path: Path, monkeypatch: pytes
     design.mkdir()
     env_path = _write_session_env(tmp_path, design, monkeypatch, ISSUE_NUMBER="42")
     rc, _ = design_lifecycle.step5c_core(["--session-env-path", str(env_path), "--claude-pid", "123"])
+    assert rc == 1
+    assert (design / ".completed" / "step-5c-terminal").is_file()
+
+
+
+def test_step5c_core_requires_step5b5_sentinel(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    design = tmp_path / "design"
+    (design / ".completed").mkdir(parents=True)
+    (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    env_path = _write_session_env(tmp_path, design, monkeypatch, ISSUE_NUMBER="42")
+
+    rc, _ = design_lifecycle.step5c_core(["--session-env-path", str(env_path), "--claude-pid", "123"])
+
     assert rc == 1
     assert (design / ".completed" / "step-5c-terminal").is_file()
 

@@ -646,7 +646,7 @@ def test_generate_code_flow_diagram_uses_launcher_not_stub(tmp_path: Path, monke
     raw_stderr = f"timeout after 600s token={raw_secret}"
 
     def fake_run(*_args: object, **_kwargs: object) -> object:
-        return type("R", (), {"returncode": 1, "stdout": "stdout diagnostic", "stderr": raw_stderr})()
+        return type("R", (), {"returncode": 1, "stdout": "stdout diagnostic\n## Code Flow Diagram\n```mermaid\ngraph TD\nA-->B\n```", "stderr": raw_stderr})()
 
     monkeypatch.setattr(pr_body.subprocess, "run", fake_run)
     rc, status, _diagram, reason = pr_body.generate_code_flow_diagram(tmp_path)
@@ -660,9 +660,12 @@ def test_generate_code_flow_diagram_uses_launcher_not_stub(tmp_path: Path, monke
     failure_log = tmp_path / "code-flow-diagram.failure.log"
     assert failure_log.is_file()
     log_text = failure_log.read_text(encoding="utf-8")
-    assert "returncode: 1" in log_text
+    assert "exit-code=1" in log_text
     assert "timeout after 600s" in log_text
     assert "stdout diagnostic" in log_text
+    assert "```" not in log_text
+    assert "mermaid" not in log_text.lower()
+    assert "A-->B" not in log_text
     assert raw_secret not in log_text
     assert (tmp_path / "code-flow-prompt.md").is_file()
 

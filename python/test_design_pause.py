@@ -285,3 +285,39 @@ def test_pause_load_tolerates_manifest_without_issue_number(tmp_path: Path, monk
     out = capsys.readouterr().out  # type: ignore[attr-defined]
     assert rc == 0
     assert "LOAD_OK=true" in out
+
+
+def test_determine_step_after_step3b_finalize_resumes_step4(tmp_path: Path) -> None:
+    design = tmp_path / "design"
+    completed = design / ".completed"
+    completed.mkdir(parents=True)
+    for step in ("step-3", "step-3.5", "step-3b"):
+        _ = (completed / step).write_text("", encoding="utf-8")
+
+    assert design_pause._determine_step(design, Path.cwd()) == "4"  # pyright: ignore[reportPrivateUsage]
+
+
+def test_determine_step_routes_step5b_to_step5b5_then_step5c(tmp_path: Path) -> None:
+    design = tmp_path / "design"
+    completed = design / ".completed"
+    completed.mkdir(parents=True)
+    _ = (completed / "step-5b").write_text("", encoding="utf-8")
+
+    assert design_pause._determine_step(design, Path.cwd()) == "5b.5"  # pyright: ignore[reportPrivateUsage]
+
+    _ = (completed / "step-5b.5").write_text("", encoding="utf-8")
+    assert design_pause._determine_step(design, Path.cwd()) == "5c"  # pyright: ignore[reportPrivateUsage]
+
+
+def test_pause_load_accepts_step5b5_marker(tmp_path: Path, monkeypatch: object, capsys: object) -> None:
+    body = _pause_marker_body(run_id="RUN1", issue="9", step="5b.5", repo="owner/repo")
+    files, blobs = _restore_blobs("RUN1", issue_number="9", manifest_run="RUN1")
+    fake = _FakeGit(files=files, blobs=blobs)
+    _patch_load(monkeypatch, body, fake)
+
+    rc = design_pause.pause_load_main(["--design-tmpdir", str(tmp_path / "d"), "--issue", "9", "--repo", "owner/repo"])
+
+    out = capsys.readouterr().out  # type: ignore[attr-defined]
+    assert rc == 0
+    assert "LOAD_OK=true" in out
+    assert "STEP=5b.5" in out

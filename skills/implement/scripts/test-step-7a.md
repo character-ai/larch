@@ -17,7 +17,7 @@ Offline regression harness for `skills/implement/scripts/step-7a.sh`.
 11. `diagram-rejected-br-in-participant-alias`: sanitizer rejection with the `br-in-participant-alias` token still skips summary upsert.
 12. `diagram-rejected-dollar-in-participant-alias`: sanitizer rejection with the `dollar-in-participant-alias` token still skips summary upsert.
 13. `diagram-rejected-unclosed-frontmatter`: sanitizer rejection with the `unclosed-frontmatter` token still skips summary upsert.
-14. `diagram-generation-failure`: non-sanitizer generation failure clears stale local diagram files, omits `code-flow-section.md`, skips the upsert, and logs a warning.
+14. `diagram-generation-failure`: non-sanitizer generation failure clears stale local diagram files, omits `code-flow-section.md`, skips the upsert, logs a warning, and does not copy `code-flow-diagram.failure.log` into committed run logs.
 15. `diagram-failure-sanitizer`: a failed generator that still emits a sanitizer rejection token suppresses the summary upsert.
 16. `summary-upsert-failure`: failed `python/cli.py diagrams upsert` appends a Tool Failures entry and later phases still run.
 17. `flush-failure`: failed first `flush-execution-issues.sh` degrades `LOG_FLUSH_STATUS`, appends a Tool Failures entry, and still runs post-transcript flush plus commit.
@@ -26,8 +26,8 @@ Offline regression harness for `skills/implement/scripts/step-7a.sh`.
 20. `forked-target rebase argv`: `--forked-target true` passes `--base-remote upstream --base-ref main` to the rebase probe.
 21. `ISSUE_NUMBER empty gate`: empty issue number suppresses the summary upsert while the rest of the pipeline runs.
 22. `generator-crash`: a crashing diagram helper is treated like generation failure, skips the upsert, and logs a warning.
-23. `rebase-conflict`: `REBASE_OUTCOME=conflict` exits `1`, relays the probe KVs, invokes the pre-bump flush, and reports the real `LOG_FLUSH_STATUS`.
-24. `rebase-failed`: `REBASE_OUTCOME=failed` exits `3`, relays the probe KVs, invokes the pre-bump flush, and reports the real `LOG_FLUSH_STATUS`.
-25. `rebase-unexpected-rc`: preserves probe rc `5`, relays `REBASE_OUTCOME=failed` / `ROUTE=bail`, invokes the flush, and emits the actual flush status.
+23. `rebase-conflict`: `REBASE_OUTCOME=conflict` exits `1`, relays the probe KVs, runs the pre-bump flush, and defers the git-backed log commit.
+24. `rebase-failed`: `REBASE_OUTCOME=failed` exits `3`, relays the probe KVs, runs the pre-bump flush, and defers the git-backed log commit.
+25. `rebase-unexpected-rc`: preserves probe rc `5`, relays `REBASE_OUTCOME=failed` / `ROUTE=bail`, runs the flush, and defers the git-backed log commit.
 26. `quiet-rebase-contract`: with quiet mode enabled, the helper still relays `REBASE_OUTCOME` on the caller-visible contract stream.
 27. `argv error`: missing `--implement-tmpdir` exits `2` and emits `STEP_7A_BAIL_REASON=argv`.

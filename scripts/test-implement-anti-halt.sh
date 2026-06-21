@@ -66,6 +66,8 @@ echo "--- /implement step-boundary anti-halt coverage ---"
 check_contains "Step 2 to Step 3 reminder (impl completion)" "skills/implement/SKILL.md" "Implementation is not the end of the run — checks"
 check_contains "Step 4 to Step 5 reminder" "skills/implement/SKILL.md" "Continue to Step 5 IMMEDIATELY"
 check_contains "Step 7a to Step 8 reminder" "skills/implement/SKILL.md" "Continue to Step 8 IMMEDIATELY"
+check_contains "Step 7a forbids code-flow body chat" "skills/implement/SKILL.md" "NEVER print code-flow diagram bodies to chat"
+check_contains "Step 7a forbids failure-log run-log copy" "skills/implement/SKILL.md" "NEVER copy diagram failure captures into committed implement run logs"
 # Step 12d→14: pin the bail-path boundary specifically
 # ("Continue to Step 14 IMMEDIATELY" also appears at the 12b merged! and
 # 12a already_merged paths — use the unique reason clause to pin the bail site).
@@ -88,6 +90,7 @@ echo "--- /design step-boundary anti-halt coverage ---"
 check_contains "/design Step 2b to Step 3 reminder" "skills/design/SKILL.md" "implementation plan is an intermediate design artifact"
 check_contains "/design Step 3b to Step 4 reminder" "skills/design/SKILL.md" "Continue to Step 4 IMMEDIATELY"
 check_contains "/design Step 4 to Step 5 reminder" "skills/design/SKILL.md" "Continue to Step 5 IMMEDIATELY"
+check_contains "/design Step 5b.5 to Step 5c reminder" "skills/design/SKILL.md" "Continue to Step 5c IMMEDIATELY"
 
 echo ""
 echo "--- /review step-boundary anti-halt coverage ---"

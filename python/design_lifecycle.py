@@ -3697,6 +3697,9 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
         if not (design_tmpdir / ".completed" / "step-5b").is_file():
             _core_diagnostic("**⚠ Step 5c: missing .completed/step-5b — OOS filing incomplete; repair Step 5b before publish**")
             return 1, []
+        if not (design_tmpdir / ".completed" / "step-5b.5").is_file():
+            _core_diagnostic("**⚠ Step 5c: missing .completed/step-5b.5 — post-approval diagram step incomplete; repair Step 5b.5 before publish**")
+            return 1, []
         if (design_tmpdir / ".pause-requested").is_file():
             write_terminal_sentinel = False
             pause_rc = design_pause.pause_save_main(_pause_args(env, design_tmpdir))
