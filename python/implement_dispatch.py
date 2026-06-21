@@ -189,7 +189,7 @@ _CLONE_TAG_ALLOWED_BYTES = frozenset(b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmno
 
 
 def _pwd_basename(pwd: str) -> str:
-    """Match bash ``basename \"$PWD\"`` byte behavior on the logical PWD string."""
+    r"""Match bash ``basename \"$PWD\"`` byte behavior on the logical PWD string."""
     path_bytes = os.fsencode(pwd)
     if path_bytes in (b"", b"/"):
         return "/"
