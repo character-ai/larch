@@ -120,7 +120,6 @@ skills/implement/scripts/test-implement-relevant-checks-anti-halt.sh
 skills/implement/scripts/test-implement-review-token-propagation.sh
 skills/implement/scripts/test-materialize-manifest-oos.sh
 skills/implement/scripts/test-oos-disposition-gate.sh
-skills/implement/scripts/test-oos-file-conflict-deps.sh
 skills/implement/scripts/test-oos-issue-cap.sh
 skills/implement/scripts/test-refresh-execution-issues.sh
 skills/implement/scripts/test-step-18.sh

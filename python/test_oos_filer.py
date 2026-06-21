@@ -34,6 +34,9 @@ class FakeCli:
         self.fail_blocked_by = False
         self.blocker_probe_rc = 0
         self.checkpoint_rc = 0
+        self.file_conflict_deps_rc = 0
+        self.file_conflict_deps_text: str | None = None
+        self.file_conflict_deps_write_output = True
 
     def __call__(self, args: list[str], *, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
         self.calls.append(args)
@@ -41,6 +44,21 @@ class FakeCli:
             return _cp(args)
         if args[:2] == ["oos", "disposition-checkpoint"]:
             return _cp(args, stderr="checkpoint failed" if self.checkpoint_rc else "", rc=self.checkpoint_rc)
+        if args[:2] == ["oos", "file-conflict-deps"]:
+            output = Path(args[args.index("--output") + 1])
+            if self.file_conflict_deps_rc == 0:
+                if self.file_conflict_deps_write_output:
+                    if self.file_conflict_deps_text is None:
+                        source = Path(args[args.index("--input-file") + 1])
+                        deps = file_oos.file_conflict_deps(source)
+                        text = "".join(f"{left}\t{right}\n" for left, right in deps)
+                    else:
+                        text = self.file_conflict_deps_text
+                    output.write_text(text, encoding="utf-8")
+                return _cp(args)
+            if self.file_conflict_deps_rc == 1:
+                output.unlink(missing_ok=True)
+            return _cp(args, stderr="file-conflict failed", rc=self.file_conflict_deps_rc)
         if args[:2] == ["agent", "launch-codex-exec"]:
             if self.codex_rc != 0:
                 return _cp(args, stderr="codex failed", rc=self.codex_rc)
@@ -293,7 +311,7 @@ def test_file_conflict_deps_orders_blocker_before_blocked(tmp_path: Path, monkey
     _setup(tmp_path)
     _write_oos(
         tmp_path,
-        "### OOS_1: First\n- touches `src/a.py:1-5`\n\n### OOS_2: Second\n- touches `src/a.py:2-6`\n",
+        "### OOS_1: First\n- **Description**: touches `src/a.py:1-5`\n\n### OOS_2: Second\n- **Description**: touches `src/a.py:2-6`\n",
     )
     fake = FakeCli(tmp_path)
     rc, _payload = _run(tmp_path, fake, monkeypatch)
@@ -308,6 +326,73 @@ def test_file_conflict_deps_orders_blocker_before_blocked(tmp_path: Path, monkey
         call[:2] == ["issue", "add-blocked-by"] and call[call.index("--client-issue") + 1] == "102" and call[call.index("--blocker-issue") + 1] == "101"
         for call in fake.calls
     )
+
+
+
+def test_file_conflict_deps_empty_tsv_degrades_silently(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OOS_ISSUES_PER_RUN_CAP", "99")
+    _setup(tmp_path)
+    _write_oos(
+        tmp_path,
+        "### OOS_1: First\n- **Description**: A.\n\n### OOS_2: Second\n- **Description**: B.\n",
+    )
+    fake = FakeCli(tmp_path)
+    fake.file_conflict_deps_text = ""
+
+    rc, _payload = _run(tmp_path, fake, monkeypatch)
+
+    assert rc == 0
+    assert any(call[:2] == ["oos", "file-conflict-deps"] for call in fake.calls)
+    assert not any(call[:2] == ["issue", "add-blocked-by"] for call in fake.calls)
+    execution_issues = tmp_path / "execution-issues.md"
+    assert not execution_issues.exists() or "Tool Failures" not in execution_issues.read_text(encoding="utf-8")
+    assert not execution_issues.exists() or "oos-file-conflict pre-pass failed" not in execution_issues.read_text(encoding="utf-8")
+
+
+def test_file_conflict_deps_exit_1_warns_and_unlinks_stale_output(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OOS_ISSUES_PER_RUN_CAP", "99")
+    _setup(tmp_path)
+    _write_oos(
+        tmp_path,
+        "### OOS_1: First\n- **Description**: A.\n\n### OOS_2: Second\n- **Description**: B.\n",
+    )
+    deps = tmp_path / "oos-intra-batch-deps.tsv"
+    deps.write_text("1\t2\n", encoding="utf-8")
+    fake = FakeCli(tmp_path)
+    fake.file_conflict_deps_rc = 1
+
+    rc, _payload = _run(tmp_path, fake, monkeypatch)
+
+    assert rc == 0
+    assert not deps.exists()
+    assert not any(call[:2] == ["issue", "add-blocked-by"] for call in fake.calls)
+    execution_issues = (tmp_path / "execution-issues.md").read_text(encoding="utf-8")
+    assert "oos-file-conflict pre-pass failed (exit 1)" in execution_issues
+    assert "Tool Failures" in execution_issues
+    assert "oos file-conflict-deps exited 1" in execution_issues
+
+
+def test_file_conflict_deps_exit_2_preserves_preexisting_tsv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OOS_ISSUES_PER_RUN_CAP", "99")
+    _setup(tmp_path)
+    _write_oos(
+        tmp_path,
+        "### OOS_1: First\n- **Description**: A.\n\n### OOS_2: Second\n- **Description**: B.\n",
+    )
+    deps = tmp_path / "oos-intra-batch-deps.tsv"
+    deps.write_text("1\t2\n", encoding="utf-8")
+    fake = FakeCli(tmp_path)
+    fake.file_conflict_deps_rc = 2
+
+    rc, _payload = _run(tmp_path, fake, monkeypatch)
+
+    assert rc == 0
+    assert deps.read_text(encoding="utf-8") == "1\t2\n"
+    assert not any(call[:2] == ["issue", "add-blocked-by"] for call in fake.calls)
+    execution_issues = (tmp_path / "execution-issues.md").read_text(encoding="utf-8")
+    assert "oos-file-conflict pre-pass failed (exit 2)" in execution_issues
+    assert "Tool Failures" in execution_issues
+    assert "oos file-conflict-deps exited 2" in execution_issues
 
 
 def test_sentinel_with_remaining_blocks_files_new_items(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

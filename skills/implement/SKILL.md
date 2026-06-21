@@ -341,8 +341,6 @@ Reference `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/phantom-probe.md` w
 - `${CLAUDE_PLUGIN_ROOT}/python/test_file_oos.py`
 - `${CLAUDE_PLUGIN_ROOT}/python/test_oos_filer.py`
 - `${CLAUDE_PLUGIN_ROOT}/python/cli.py oos file-conflict-deps`
-- `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-file-conflict-deps.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-file-conflict-deps.md`
 - `${CLAUDE_PLUGIN_ROOT}/python/cli.py oos issue-cap`
 - `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-issue-cap.sh`
 - `${CLAUDE_PLUGIN_ROOT}/python/test_file_oos.py`

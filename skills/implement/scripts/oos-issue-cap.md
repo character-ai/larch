@@ -60,7 +60,7 @@ the file-conflict pre-pass that consumes that same path.
   proceed to file the OOS batch. `/implement` skips step 3.5 and step 4 for the
   OOS batch and surfaces:
   `**⚠ /implement: oos-issue-cap helper failed (exit <N>) — OOS batch NOT filed; review accepted-OOS Descriptions and re-run with corrected env, or have the items filed manually**`.
-  This differs intentionally from `oos-file-conflict-deps.sh`, whose TSV edges
+  This differs intentionally from `python/cli.py oos file-conflict-deps`, whose TSV edges
   are best-effort hints; the issue cap is a hard policy guard against issue
   spam.
 - **Aggregate size**. At the defaults, aggregate bodies stay small. Operators
