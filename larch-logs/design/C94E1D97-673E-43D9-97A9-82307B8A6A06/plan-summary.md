@@ -1,0 +1,1 @@
+Finish the already-started Slack announce migration. Keep the existing `slack issue-announce` CLI verb, remove the fake-curl branch, add pytest coverage, delete the orphaned shell/docs, and update retirement bookkeeping.
