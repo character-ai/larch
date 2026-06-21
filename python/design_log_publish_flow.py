@@ -99,6 +99,7 @@ _PUBLISH_EXCLUDE_GLOBS = (
     "*-prompt.md",
     "step2b-codex-raw.*",
     "*-collector.failure.log",
+    "*-diagram-failure.bounded.log",
     "*.raw.cursor",
     "*.raw.claude",
 )
@@ -121,8 +122,9 @@ _PUBLISH_EXCLUDE_DIRS = frozenset({
 })
 
 # GitHub-redundant snapshots: top-level duplicates of content already on GitHub.
-# issue-body.txt / issue.json snapshot the issue body; architecture-diagram.md is
-# upserted into the shared larch:diagrams comment by the publish tail; a top-level
+# issue-body.txt / issue.json snapshot the issue body; architecture-diagram*.md,
+# architecture-diagram.skipped, and diagram failure captures are consumed by the
+# issue-scoped larch:diagrams tail or local repair flow; a top-level
 # panel-manifest.ndjson duplicates the per-round panel manifests. Unlike the sets
 # above (matched by basename at every tree depth), these are dropped at the TOP
 # LEVEL ONLY: panel-manifest.ndjson is a curated file under plan-review/round-N/,
@@ -132,6 +134,10 @@ _PUBLISH_EXCLUDE_TOPLEVEL_NAMES = frozenset({
     "issue-body.txt",
     "issue.json",
     "architecture-diagram.md",
+    "architecture-diagram.candidate.md",
+    "architecture-diagram.skipped",
+    "architecture-diagram-generation.failure.log",
+    "architecture-diagram-sanitizer.failure.log",
     "panel-manifest.ndjson",
 })
 

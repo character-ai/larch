@@ -9,6 +9,8 @@ import sys
 from pathlib import Path
 from collections.abc import Sequence
 
+import design_diagram_log
+import run_logs
 from repo_roots import consumer_repo_root
 
 
@@ -210,6 +212,13 @@ def publish_core(argv: Sequence[str]) -> int:
     ]
     if not (design_tmpdir / ".completed" / "step-5b").is_file():
         return 5
+    if not (design_tmpdir / ".completed" / "step-5b.5").is_file():
+        print(
+            "**⚠ Step 5c: missing .completed/step-5b.5 — post-approval diagram step incomplete; "
+            "repair Step 5b.5 before publish**",
+            flush=True,
+        )
+        return 5
     composed_plan = design_tmpdir / "composed-plan.md"
     if not composed_plan.is_file() or composed_plan.stat().st_size == 0:
         kvs[1] = ("VALIDATE_STATUS", "defects-found")
@@ -344,11 +353,10 @@ def publish_core(argv: Sequence[str]) -> int:
     kvs[0] = ("PLAN_WRITE_OK", "true")
 
     # Upsert the architecture diagram into the shared larch:diagrams comment.
-    # Mirrors the retired design-publish.sh tail: publish the generated
-    # architecture-diagram.md, or clear the section when /design Step 3b
-    # intentionally skipped the diagram (DIAGRAM_REQUIRED=false leaves the
-    # architecture-diagram.skipped marker). Runs after the plan block is
-    # written and before the [DESIGNED] rename.
+    # Step 5c consumes post-approval artifacts written by Step 5b.5. It clears
+    # Architecture content only when Step 5b.5 wrote an explicit skip marker; a
+    # missing tmpdir file after the sentinel is warning-only and must not wipe a
+    # valid issue diagram.
     arch_file = design_tmpdir / "architecture-diagram.md"
     arch_skipped = design_tmpdir / "architecture-diagram.skipped"
     upsert_args: list[str] = ["--issue", parsed["--issue"]]
@@ -361,6 +369,15 @@ def publish_core(argv: Sequence[str]) -> int:
     elif arch_skipped.is_file():
         run_upsert = True
         upsert_args += ["--clear-architecture"]
+    else:
+        run_logs.append_execution_issue(
+            design_tmpdir / "execution-issues.md",
+            "Warnings",
+            design_diagram_log.bounded_diagram_warning_body(
+                "diagram-artifact-missing-after-step5b5",
+                0,
+            ),
+        )
     if run_upsert:
         upsert = subprocess.run(
             [

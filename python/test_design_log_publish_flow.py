@@ -249,6 +249,11 @@ def test_publish_excluded_predicate() -> None:
     ]
     for name in excluded:
         assert design_log_publish_flow._publish_excluded(name, is_dir=False), name
+    assert design_log_publish_flow._publish_excluded(
+        "design-step-5b.5-diagram-failure.bounded.log",
+        is_dir=False,
+        top_level=True,
+    )
     kept = [
         "plan.txt",
         "composed-plan.diff",
@@ -514,7 +519,7 @@ def test_publish_excluded_github_redundant_top_level_only() -> None:
     # GitHub-redundant snapshots duplicate the issue body / larch:diagrams comment
     # and are dropped at the top level only, so a curated subtree copy (e.g.
     # plan-review/round-N/panel-manifest.ndjson) is never collaterally dropped (#4782).
-    redundant = ["issue-body.txt", "issue.json", "architecture-diagram.md", "panel-manifest.ndjson"]
+    redundant = ["issue-body.txt", "issue.json", "architecture-diagram.md", "architecture-diagram.candidate.md", "architecture-diagram.skipped", "architecture-diagram-generation.failure.log", "architecture-diagram-sanitizer.failure.log", "panel-manifest.ndjson"]
     for name in redundant:
         assert design_log_publish_flow._publish_excluded(name, is_dir=False, top_level=True), name
         assert not design_log_publish_flow._publish_excluded(name, is_dir=False), name
@@ -533,12 +538,13 @@ def test_log_publish_drops_github_redundant_top_level_keeps_subtree(tmp_path: Pa
     design = tmp_path / "design"
     design.mkdir()
     _ = (design / "plan.txt").write_text("PLAN", encoding="utf-8")
-    for name in ("issue-body.txt", "issue.json", "architecture-diagram.md", "panel-manifest.ndjson"):
+    for name in ("issue-body.txt", "issue.json", "architecture-diagram.md", "architecture-diagram.candidate.md", "architecture-diagram.skipped", "architecture-diagram-generation.failure.log", "architecture-diagram-sanitizer.failure.log", "panel-manifest.ndjson"):
         _ = (design / name).write_text("REDUNDANT", encoding="utf-8")
     pr_round = design / "plan-review" / "round-1"
     pr_round.mkdir(parents=True)
     _ = (pr_round / "panel-manifest.ndjson").write_text('{"tool":"codex"}', encoding="utf-8")
     _ = (pr_round / "architecture-diagram.md").write_text("CURATED", encoding="utf-8")
+    _ = (pr_round / "architecture-diagram.candidate.md").write_text("CURATED CANDIDATE", encoding="utf-8")
 
     bin_dir = tmp_path / "bin"
     _write_gh_stub(bin_dir / "gh", pr_create_rc=0)
@@ -553,11 +559,42 @@ def test_log_publish_drops_github_redundant_top_level_keeps_subtree(tmp_path: Pa
     )
     tree = ls.stdout
     base = f"larch-logs/design/{RUN_ID}"
-    for name in ("issue-body.txt", "issue.json", "architecture-diagram.md", "panel-manifest.ndjson"):
+    for name in ("issue-body.txt", "issue.json", "architecture-diagram.md", "architecture-diagram.candidate.md", "architecture-diagram.skipped", "architecture-diagram-generation.failure.log", "architecture-diagram-sanitizer.failure.log", "panel-manifest.ndjson"):
         assert f"{base}/{name}" not in tree, f"expected top-level drop: {name}\n{tree}"
     assert f"{base}/plan-review/round-1/panel-manifest.ndjson" in tree, tree
     assert f"{base}/plan-review/round-1/architecture-diagram.md" in tree, tree
+    assert f"{base}/plan-review/round-1/architecture-diagram.candidate.md" in tree, tree
     assert f"{base}/plan.txt" in tree, tree
+
+
+def test_log_publish_excludes_bounded_diagram_failure_sidecars(tmp_path: Path) -> None:
+    repo = _operator_repo_with_remote(tmp_path)
+    design = tmp_path / "design"
+    design.mkdir()
+    _ = (design / "plan.txt").write_text("PLAN", encoding="utf-8")
+    _ = (design / "design-step-5b.5-diagram-failure.bounded.log").write_text(
+        "site=design Step 5b.5\nreason=generation-failed\nexit-code=1\n",
+        encoding="utf-8",
+    )
+
+    bin_dir = tmp_path / "bin"
+    _write_gh_stub(bin_dir / "gh", pr_create_rc=0)
+    result = _run_publish(repo, design, bin_dir)
+    assert result.returncode == 0, result.stderr
+    assert "PUBLISH_OK=true" in result.stdout, result.stderr
+
+    origin = tmp_path / "origin.git"
+    ls = subprocess.run(
+        ["git", "ls-tree", "-r", "--name-only", LOG_BRANCH],
+        cwd=origin,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    tree = ls.stdout
+    base = f"larch-logs/design/{RUN_ID}"
+    assert f"{base}/plan.txt" in tree, tree
+    assert f"{base}/design-step-5b.5-diagram-failure.bounded.log" not in tree, tree
 
 
 def test_spawn_detached_admin_merge_swallows_launch_failure(monkeypatch: pytest.MonkeyPatch) -> None:

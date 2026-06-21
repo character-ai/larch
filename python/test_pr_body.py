@@ -637,6 +637,15 @@ def test_post_tracking_issue_writes_metadata(tmp_path: Path, monkeypatch: pytest
     assert err == ""
 
 
+def test_diagram_failure_capture_redacts_prefixed_mermaid_on_stderr_line() -> None:
+    diagnostic, tail = pr_body._diagram_failure_capture(1, "ERROR graph TD A-->B")
+    assert "graph TD" not in tail
+    assert "A-->B" not in tail
+    assert "diagram-content-redacted" in tail
+    assert "graph TD" not in diagnostic
+    assert "A-->B" not in diagnostic
+
+
 def test_generate_code_flow_diagram_uses_launcher_not_stub(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     launcher = tmp_path / "fake-launcher.sh"
     _ = launcher.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
@@ -646,7 +655,7 @@ def test_generate_code_flow_diagram_uses_launcher_not_stub(tmp_path: Path, monke
     raw_stderr = f"timeout after 600s token={raw_secret}"
 
     def fake_run(*_args: object, **_kwargs: object) -> object:
-        return type("R", (), {"returncode": 1, "stdout": "stdout diagnostic", "stderr": raw_stderr})()
+        return type("R", (), {"returncode": 1, "stdout": "stdout diagnostic\n## Code Flow Diagram\n```mermaid\ngraph TD\nA-->B\n```", "stderr": raw_stderr})()
 
     monkeypatch.setattr(pr_body.subprocess, "run", fake_run)
     rc, status, _diagram, reason = pr_body.generate_code_flow_diagram(tmp_path)
@@ -660,9 +669,12 @@ def test_generate_code_flow_diagram_uses_launcher_not_stub(tmp_path: Path, monke
     failure_log = tmp_path / "code-flow-diagram.failure.log"
     assert failure_log.is_file()
     log_text = failure_log.read_text(encoding="utf-8")
-    assert "returncode: 1" in log_text
+    assert "exit-code=1" in log_text
     assert "timeout after 600s" in log_text
     assert "stdout diagnostic" in log_text
+    assert "```" not in log_text
+    assert "mermaid" not in log_text.lower()
+    assert "A-->B" not in log_text
     assert raw_secret not in log_text
     assert (tmp_path / "code-flow-prompt.md").is_file()
 

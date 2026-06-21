@@ -532,6 +532,7 @@ assert_contains "SESSION_TRANSCRIPT_STATUS=ok" "$out" "green relays transcript s
 assert_contains "STEP_7A_BAIL_REASON=" "$out" "green emits empty bail reason"
 assert_contains "REBASE_OUTCOME=ok" "$out" "green emits rebase outcome"
 assert_contains "ROUTE=continue" "$out" "green emits route continue"
+assert_not_contains "## Code Flow Diagram" "$out" "green does not print code flow diagram body"
 assert_contains "python/cli.py agent launch-claude-subprocess" "$(cat "$CASE_DIR/calls.log")" "green invokes generator"
 assert_contains "--output-file $CASE_DIR/tmp/code-flow-diagram.raw.md" "$(cat "$CASE_DIR/calls.log")" "green passes raw output path to generator"
 assert_call_order "$CASE_DIR/calls.log" "python3 python/cli.py token mark Step 7a — code flow diagram" "python/cli.py agent launch-claude-subprocess" "green marks token ledger before generator"
@@ -731,6 +732,7 @@ assert_file_contains "Existing --> Preserved" "$CASE_DIR/body.md" "diagram-gener
 if [ ! -e "$CASE_DIR/tmp/code-flow-section.md" ]; then pass "diagram-generation-failure omits code flow section"; else fail "diagram-generation-failure omits code flow section"; fi
 if [ ! -e "$CASE_DIR/tmp/code-flow-diagram.md" ]; then pass "diagram-generation-failure clears stale code flow diagram"; else fail "diagram-generation-failure clears stale code flow diagram"; fi
 assert_file_contains "### Warnings" "$CASE_DIR/tmp/execution-issues.md" "diagram-generation-failure appends warning"
+if [ ! -e "$CASE_DIR/tmp/larch-logs/implement/run-001/code-flow-diagram.failure.log" ]; then pass "diagram-generation-failure does not copy failure log to committed run logs"; else fail "diagram-generation-failure does not copy failure log to committed run logs"; fi
 
 new_case diagram-failure-sanitizer
 set +e
@@ -821,8 +823,8 @@ set -e
 assert_equals 1 "$rc" "rebase-conflict exits 1"
 assert_contains "REBASE_OUTCOME=conflict" "$out" "rebase-conflict emits conflict outcome"
 assert_contains "ROUTE=conflict" "$out" "rebase-conflict emits route conflict"
-assert_contains "LOG_FLUSH_STATUS=degraded" "$out" "rebase-conflict emits real flush status"
-assert_contains "run-log commit" "$(cat "$CASE_DIR/calls.log")" "rebase-conflict invokes flush"
+assert_contains "LOG_FLUSH_STATUS=skipped-no-logs-commit" "$out" "rebase-conflict defers git commit flush"
+assert_not_contains "run-log commit" "$(cat "$CASE_DIR/calls.log")" "rebase-conflict defers run-log commit"
 
 new_case rebase-failed
 set +e
@@ -832,8 +834,8 @@ set -e
 assert_equals 3 "$rc" "rebase-failed exits 3"
 assert_contains "REBASE_OUTCOME=failed" "$out" "rebase-failed emits failed outcome"
 assert_contains "ROUTE=bail" "$out" "rebase-failed emits route bail"
-assert_contains "LOG_FLUSH_STATUS=degraded" "$out" "rebase-failed emits real flush status"
-assert_contains "run-log commit" "$(cat "$CASE_DIR/calls.log")" "rebase-failed invokes flush"
+assert_contains "LOG_FLUSH_STATUS=skipped-no-logs-commit" "$out" "rebase-failed defers git commit flush"
+assert_not_contains "run-log commit" "$(cat "$CASE_DIR/calls.log")" "rebase-failed defers run-log commit"
 
 new_case rebase-unexpected-rc
 set +e
@@ -844,8 +846,8 @@ assert_equals 5 "$rc" "rebase-unexpected-rc exits 5"
 assert_contains "REBASE_OUTCOME=failed" "$out" "rebase-unexpected-rc emits failed outcome"
 assert_contains "REBASE_ERROR=unexpected-rc-5" "$out" "rebase-unexpected-rc emits unexpected rc error"
 assert_contains "ROUTE=bail" "$out" "rebase-unexpected-rc emits route bail"
-assert_contains "LOG_FLUSH_STATUS=degraded" "$out" "rebase-unexpected-rc emits real flush status"
-assert_contains "run-log commit" "$(cat "$CASE_DIR/calls.log")" "rebase-unexpected-rc invokes flush"
+assert_contains "LOG_FLUSH_STATUS=skipped-no-logs-commit" "$out" "rebase-unexpected-rc defers git commit flush"
+assert_not_contains "run-log commit" "$(cat "$CASE_DIR/calls.log")" "rebase-unexpected-rc defers run-log commit"
 
 new_case quiet-rebase-contract
 set +e

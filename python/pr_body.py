@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import config
+import design_diagram_log
 import gh
 import git
 import proc
@@ -712,15 +713,17 @@ def slack_issue_announce_main(argv: list[str] | None = None) -> int:
     return rc
 
 
-def _diagram_failure_capture(returncode: int, stderr: str, stdout: str) -> tuple[str, str]:
+def _diagram_failure_capture(returncode: int, stderr: str) -> tuple[str, str]:
+    tail_source = f"stderr:\n{stderr or ''}\n"
     try:
-        capture = redact.redact(f"stderr:\n{stderr or ''}\nstdout:\n{stdout or ''}\n")
+        capture = redact.redact(design_diagram_log.strip_diagram_sections(tail_source))
     except Exception:
         return f"returncode: {returncode}\nredaction-failed\n", "redaction-failed"
-    collapsed = re.sub(r"\s+", " ", capture).strip() or "no-output"
+    sanitized = design_diagram_log.sanitize_diagram_capture(capture)
+    collapsed = re.sub(r"\s+", " ", sanitized).strip() or "no-output"
     if len(collapsed) > _DIAGRAM_FAILURE_TAIL_LIMIT:
         collapsed = "..." + collapsed[-(_DIAGRAM_FAILURE_TAIL_LIMIT - 3):]
-    return f"returncode: {returncode}\n{capture}", collapsed
+    return f"returncode: {returncode}\n{sanitized}", collapsed
 
 
 def generate_code_flow_diagram(implement_tmpdir: Path, *, model: str = "claude-sonnet-4-6", base_remote: str = "origin", base_ref: str = "main") -> tuple[int, str, str, str]:
@@ -772,10 +775,29 @@ def generate_code_flow_diagram(implement_tmpdir: Path, *, model: str = "claude-s
         check=False,
     )
     if completed.returncode != 0:
-        diagnostic, tail = _diagram_failure_capture(completed.returncode, completed.stderr, completed.stdout)
+        raw_capture: Path | None = implement_tmpdir / "code-flow-diagram.raw-failure.log"
+        try:
+            raw_capture.write_text(
+                f"stderr:\n{completed.stderr or ''}\nstdout:\n{completed.stdout or ''}\n",
+                encoding="utf-8",
+            )
+        except OSError:
+            raw_capture = None
+        diagnostic, tail = _diagram_failure_capture(completed.returncode, completed.stderr)
         reason = f"generation-failed rc={completed.returncode} tail={tail}"
         try:
-            failure_log.write_text(diagnostic, encoding="utf-8")
+            if raw_capture is not None:
+                bounded = design_diagram_log.write_bounded_diagram_failure_log(
+                    implement_tmpdir,
+                    site="implement Step 7a",
+                    reason=reason,
+                    exit_code=completed.returncode,
+                    raw_capture_path=raw_capture,
+                )
+                if bounded != failure_log:
+                    failure_log.write_text(bounded.read_text(encoding="utf-8"), encoding="utf-8")
+            else:
+                failure_log.write_text(diagnostic, encoding="utf-8")
         except OSError:
             reason = f"{reason} log-write-failed"
         return 1, "failed", "", reason

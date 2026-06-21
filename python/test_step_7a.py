@@ -131,8 +131,7 @@ def test_step7a_diagram_failure_exits_zero_and_clears_stale_artifacts(tmp_path: 
     assert "### Warnings" in issue_text
     assert reason in issue_text
     copied_log = tmp_path / "larch-logs" / "implement" / "run-1" / "code-flow-diagram.failure.log"
-    assert copied_log.is_file()
-    assert "timeout after 600s" in copied_log.read_text(encoding="utf-8")
+    assert not copied_log.exists()
 
 
 def test_step7a_diagram_failure_emits_diagram_reason_on_rebase_failure(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

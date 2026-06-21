@@ -64,6 +64,10 @@ Each rule states WHY; per-site reminders reference by anchor name.
 
 18. **NEVER spawn Agent-tool subagents for code-writing work during Step 18a stall recovery.** **Why**: recovery is a single-runner continuation of the current `/implement` orchestration; handing code edits to another Agent-tool subagent would bypass the durable stall classifier, retry cap, and atomic `STALL_TRACKING` clear ordering. **How to apply**: when `skills/implement/references/stall-recovery.md` dispatches `step2-impl`, main Claude reads `$IMPLEMENT_TMPDIR/plan.txt`, edits inline, runs checks, commits, and continues through review and shipping in the current run. Review and ship wrappers may still use their existing script-owned external lanes exactly as documented there.
 
+19. **NEVER print code-flow diagram bodies to chat.** **Why**: diagram content belongs only in the issue-scoped `larch:diagrams` comment and PR body, and printing it bloats context. **How to apply**: do not print `$IMPLEMENT_TMPDIR/code-flow-diagram.md`, `$IMPLEMENT_TMPDIR/code-flow-section.md`, or any `## Code Flow Diagram` section body. Step 7a emits breadcrumbs and KVs only.
+
+20. **NEVER copy diagram failure captures into committed implement run logs.** **Why**: generator or sanitizer captures may contain partial Mermaid. **How to apply**: do not copy or flush `code-flow-diagram.failure.log`, code-flow diagram body files, or generator/sanitizer stdout containing Mermaid into `larch-logs/implement/<RUN_ID>/`; durable diagnostics are bounded `execution-issues.md` warnings only.
+
 **Single-runner assumption**: `/implement` assumes one runner per repository at a time. Concurrent `/implement` sessions on the same clone can interleave working-tree mutations and produce false-positive dirty-tree probes, or attribute one runner's mutations to another. For reliable operation, run one instance of `/implement` at a time per repository. The dirty-tree guards reduce blast radius but do not serialize repository writes. Between Step 0 and any documented checkpoint probe, `/implement` and child skills must write only to session tmpdirs (`$IMPLEMENT_TMPDIR`, `$DESIGN_TMPDIR`, `$REVIEW_TMPDIR`) until the implementation step intentionally edits the repo.
 
 **Mode matrix**:
@@ -136,7 +140,7 @@ Sourcing the full `session-env.sh` remains forbidden because it would pull in th
 
 Use empty `description` on Bash calls; terse 3-5-word `description` on Agent calls; no explanatory prose between tool outputs beyond the preserved categories below.
 
-**Preserved:** step breadcrumb lines (start `🔶`, skip `⏩`/`⏭️`); warning / error lines (`**⚠ ...`); structured summaries (voting tallies, scoreboards, round summaries, final reports); diagrams; implementation plans; design decision records; accepted / rejected findings; out-of-scope observations; PR body sections.
+**Preserved:** step breadcrumb lines (start `🔶`, skip `⏩`/`⏭️`); warning / error lines (`**⚠ ...`); structured summaries (voting tallies, scoreboards, round summaries, final reports); implementation plans; design decision records; accepted / rejected findings; out-of-scope observations; PR body sections.
 
 **Suppressed:** explanatory prose, script paths, inter-call rationale, per-reviewer individual completion messages (replaced by status table in child skills). Rebase-skip cases at Steps 1.r, 4.r, 7.r, and 7a.r silently continue (no `⏩` line) because the rebase had no effect. Non-rebase `⏩` skip messages inside the active Step 8+ driver CI/rebase paths (Steps 10/12) are NOT suppressed — they carry CI-debugging semantics.
 
@@ -725,9 +729,9 @@ Print: `> **🔶 /implement 7a: diagrams**`
 
 Runs unconditionally after Step 7 (regardless of Steps 6-7 skip).
 
-Step 7a composes no prompt-side public summary; the helper owns the `larch:diagrams` upsert through `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" diagrams upsert`.
+Step 7a composes no prompt-side public summary and never emits diagram fence content. The helper owns the silent `larch:diagrams` upsert through `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" diagrams upsert`; the orchestrator emits breadcrumbs and KVs only.
 
-`python/cli.py implement step-7a` consolidates the small/non-runtime classifier, `python/cli.py diagram code-flow`, Code Flow section composition, shared `larch:diagrams` upsert, 7a.r rebase checkpoint, and pre-ship log flush into one Bash call. Do NOT write a `diagrams` larch-log batch.
+`python/cli.py implement step-7a` consolidates the small/non-runtime classifier, `python/cli.py diagram code-flow`, Code Flow section composition, shared `larch:diagrams` upsert, 7a.r rebase checkpoint, and pre-ship log flush into one Bash call. Do NOT write a `diagrams` larch-log batch. Do NOT copy `code-flow-diagram.failure.log` or code-flow body artifacts into `larch-logs/implement/<RUN_ID>/`; bounded `execution-issues.md` warnings are the durable failure surface.
 The helper upserts the stable issue-scoped `<!-- larch:diagrams v1 -->` comment only when `$IMPLEMENT_TMPDIR/code-flow-section.md` exists after successful generation. Regression harness: `skills/implement/scripts/test-step-7a.sh` (sibling contract: `skills/implement/scripts/test-step-7a.md`).
 
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 1800000`.**

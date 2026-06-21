@@ -11,11 +11,12 @@ step	name
 2b.5	plan size
 3	plan review
 3.5	gate B
-3b	arch diagram
+3b	finalize
 4	rejected findings
 4b	gate C
 5	finalize
 5b	oos
+5b.5	arch diagram
 5c	plan write
 5d	l3 velocity
 6	cleanup

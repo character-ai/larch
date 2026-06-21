@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import config
+import design_diagram_log
 import final_report
 import git
 import logging_util
@@ -2903,6 +2904,8 @@ def append_failure_main(argv: list[str]) -> int:
         body = f"no diagnostics captured (exit {args.exit_code})\n"
     if args.redact:
         body = redact.redact_secrets_only(redact.redact_tmpdir_paths(body))
+    if args.category == "Warnings" and "diagram" in f"{args.site} {args.output_file}".lower():
+        body = design_diagram_log.sanitize_diagram_capture(body)
     suffix = ""
     if args.verdict:
         suffix += f" — {args.verdict}"

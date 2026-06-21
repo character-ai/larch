@@ -12,8 +12,6 @@ SUMMARY_OUTCOME="${SUMMARY_OUTCOME:-}"
 SKIP_VALIDATE=""
 PUBLIC_ARGV_WORDS=()
 
-# Prompt-side values may be supplied only as environment variables by Claude Code.
-# Default them before sourced session env overrides to preserve the old inline-fence no-set-u behavior.
 DESIGN_TMPDIR="${DESIGN_TMPDIR:-}"
 SESSION_TMPDIR="${SESSION_TMPDIR:-}"
 SESSION_ID="${SESSION_ID:-}"
@@ -87,44 +85,57 @@ design_pause_check() {
   fi
 }
 
-run_step3b_finalize() {
-  set +e
-  printf '%s\n' 'ACTION=FINALIZE' \
-    | python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design driver --design-tmpdir "$DESIGN_TMPDIR"
-  _finalize_rc=$?
-  set -e
-  if [ "$_finalize_rc" -ne 0 ]; then
-    printf '%s\n' '**⚠ FINALIZE failed; repair the missing artifact before Step 5.**'
-    exit "$_finalize_rc"
-  fi
-  mkdir -p "$DESIGN_TMPDIR/.completed"
-  : > "$DESIGN_TMPDIR/.completed/step-3b"
+write_bounded_failure() {
+  _reason="$1"
+  _exit_code="$2"
+  _raw_capture="${3:-}"
+  python3 - "$CLAUDE_PLUGIN_ROOT" "$DESIGN_TMPDIR" "$_reason" "$_exit_code" "$_raw_capture" <<'PY'
+from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(sys.argv[1]) / "python"))
+import design_diagram_log
+raw = sys.argv[5] or None
+path = design_diagram_log.write_bounded_diagram_failure_log(
+    sys.argv[2],
+    site="design Step 5b.5",
+    reason=sys.argv[3],
+    exit_code=sys.argv[4],
+    raw_capture_path=raw,
+)
+print(path)
+PY
 }
 
 append_sanitizer_failure() {
-  _exit_code="$1"
+  _reason="$1"
+  _exit_code="$2"
+  _raw_capture="${3:-}"
+  _bounded_file="$(write_bounded_failure "$_reason" "$_exit_code" "$_raw_capture")"
   python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" run-log append-failure \
     --log "$DESIGN_TMPDIR/execution-issues.md" \
-    --site "design Step 3b" \
+    --site "design Step 5b.5" \
     --tool "python/cli.py mermaid sanitize architecture" \
     --exit-code "$_exit_code" \
     --category Warnings \
-    --output-file "$DESIGN_TMPDIR/architecture-diagram-sanitizer.failure.log" \
+    --output-file "$_bounded_file" \
     --redact >/dev/null 2>&1 || true
 }
 
 design_source_env_optional
+design_require_plugin_root
 design_pause_check
+mkdir -p "$DESIGN_TMPDIR/.completed"
 
 _candidate="$DESIGN_TMPDIR/architecture-diagram.candidate.md"
 _failure_log="$DESIGN_TMPDIR/architecture-diagram-sanitizer.failure.log"
 
 if [ ! -r "$_candidate" ]; then
   rm -f "$DESIGN_TMPDIR/architecture-diagram.md" "$_candidate"
+  : > "$DESIGN_TMPDIR/architecture-diagram.skipped"
   printf '%s\n' 'architecture diagram candidate is missing or unreadable' >"$_failure_log"
-  printf '%s\n' '**⚠ 3b: architecture diagram — candidate missing; proceeding without diagram.**'
-  append_sanitizer_failure 2
-  run_step3b_finalize
+  printf '%s\n' '**⚠ 5b.5: architecture diagram — candidate missing; proceeding without diagram.**'
+  append_sanitizer_failure "candidate-missing" 2 "$_failure_log"
+  : > "$DESIGN_TMPDIR/.completed/step-5b.5"
   exit 0
 fi
 
@@ -133,20 +144,17 @@ set +e
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" mermaid sanitize \
   --input "$_candidate" \
   --from-md \
-  --warnings-step "3b" \
+  --warnings-step "5b.5" \
   >"$_sanitizer_output_file" 2>&1
 _sanitizer_rc=$?
 set -e
 _sanitizer_output=$(cat "$_sanitizer_output_file")
-rm -f "$_sanitizer_output_file"
 
 if [ "$_sanitizer_rc" -eq 0 ] && ! printf '%s\n' "$_sanitizer_output" | grep -qE '^STATUS=rejected$'; then
-  rm -f "$_failure_log"
+  rm -f "$_failure_log" "$DESIGN_TMPDIR/architecture-diagram.skipped" "$DESIGN_TMPDIR/architecture-diagram-generation.failure.log"
   mv "$_candidate" "$DESIGN_TMPDIR/architecture-diagram.md"
-  printf '%s\n' '---LARCH-DIAGRAM-BEGIN---'
-  cat "$DESIGN_TMPDIR/architecture-diagram.md"
-  printf '%s\n' '---LARCH-DIAGRAM-END---'
-  run_step3b_finalize
+  : > "$DESIGN_TMPDIR/.completed/step-5b.5"
+  rm -f "$_sanitizer_output_file"
   exit 0
 fi
 
@@ -155,7 +163,9 @@ if [ -z "${_reason_token:-}" ]; then
   _reason_token="unknown"
 fi
 rm -f "$DESIGN_TMPDIR/architecture-diagram.md" "$_candidate"
-printf '%s' "$_sanitizer_output" >"$_failure_log"
-printf '%s\n' "**⚠ 3b: architecture diagram — rejected by mermaid sanitizer (REASON_TOKEN=${_reason_token}); proceeding without diagram.**"
-append_sanitizer_failure "$_sanitizer_rc"
-run_step3b_finalize
+: > "$DESIGN_TMPDIR/architecture-diagram.skipped"
+printf 'reason=sanitizer-rejected:%s\nexit-code=%s\nsite=design Step 5b.5\n' "$_reason_token" "$_sanitizer_rc" >"$_failure_log"
+printf '%s\n' "**⚠ 5b.5: architecture diagram — rejected by mermaid sanitizer (REASON_TOKEN=${_reason_token}); proceeding without diagram.**"
+append_sanitizer_failure "sanitizer-rejected:${_reason_token}" "$_sanitizer_rc" "$_sanitizer_output_file"
+: > "$DESIGN_TMPDIR/.completed/step-5b.5"
+rm -f "$_sanitizer_output_file"

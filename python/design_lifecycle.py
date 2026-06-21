@@ -3697,6 +3697,9 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
         if not (design_tmpdir / ".completed" / "step-5b").is_file():
             _core_diagnostic("**⚠ Step 5c: missing .completed/step-5b — OOS filing incomplete; repair Step 5b before publish**")
             return 1, []
+        if not (design_tmpdir / ".completed" / "step-5b.5").is_file():
+            _core_diagnostic("**⚠ Step 5c: missing .completed/step-5b.5 — post-approval diagram step incomplete; repair Step 5b.5 before publish**")
+            return 1, []
         if (design_tmpdir / ".pause-requested").is_file():
             write_terminal_sentinel = False
             pause_rc = design_pause.pause_save_main(_pause_args(env, design_tmpdir))
@@ -4051,6 +4054,15 @@ def _step5b_issues_failed(path: Path) -> bool:
     return any(re.match(r"^ISSUES_FAILED=[1-9][0-9]*$", line) for line in text.splitlines())
 
 
+def _step5b_annotate_sequencing_error(oos_issue_stdout: Path) -> bool:
+    try:
+        if not oos_issue_stdout.is_file():
+            return True
+        return not oos_issue_stdout.read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return True
+
+
 def step5b_prepare_main(argv: Sequence[str]) -> int:
     try:
         parsed = _parse_common_wrapper_args(argv)
@@ -4084,7 +4096,7 @@ def step5b_prepare_main(argv: Sequence[str]) -> int:
             exit_code=prep_rc,
             stderr_path=stderr_path,
         )
-        print("**⚠ /design: OOS filing prepare failed — skipping /larch:issue; continuing to Step 5c**")
+        print("**⚠ /design: OOS filing prepare failed — skipping /larch:issue; continuing to Step 5b.5**")
         print(f"STEP5B_STATUS=prepare-failed-continue\nOOS_PREP_RC={prep_rc}\nOOS_ISSUE_STDOUT_PATH={oos_issue_stdout}")
         _step5b_mark_complete(design_tmpdir)
         return 0
@@ -4155,6 +4167,8 @@ def step5b_annotate_main(argv: Sequence[str]) -> int:
         if _step5b_issues_failed(oos_issue_stdout):
             print("**⚠ /design: OOS filing completed with ISSUES_FAILED>0 — see execution-issues and oos-issue.stdout.txt**")
         print("STEP5B_STATUS=annotate-failed")
+        if not _step5b_annotate_sequencing_error(oos_issue_stdout):
+            _step5b_mark_complete(design_tmpdir)
         return ann_rc
 
     if status == "annotate-skipped-empty-stdout" and warn:
