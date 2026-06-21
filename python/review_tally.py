@@ -21,6 +21,9 @@ import voting
 
 _PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 _THREE_SLOT_COUNT = 3
+# Issue #4880: smallest effective panel for which a per-item valid-vote count below quorum is a
+# meaningful degradation signal (a 1-voter panel can never drop "below quorum").
+_MIN_DEGRADABLE_PANEL = 2
 _CLASSIFICATION_HEADER = (
     "finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tscope"
 )
@@ -446,6 +449,43 @@ def _security_block(block: Path) -> bool:
         raise RuntimeError("security classifier failed") from exc
 
 
+def _execution_issues_log(session_env_path: str) -> Path | None:
+    if os.environ.get("LARCH_EXECUTION_ISSUES_LOG"):
+        return Path(os.environ["LARCH_EXECUTION_ISSUES_LOG"])
+    if session_env_path:
+        return Path(session_env_path).parent / "execution-issues.md"
+    if os.environ.get("IMPLEMENT_TMPDIR"):
+        return Path(os.environ["IMPLEMENT_TMPDIR"]) / "execution-issues.md"
+    return None
+
+
+def _surface_warning(session_env_path: str, entry: str) -> None:
+    """Issue #4880: surface a degraded-panel warning to the operator-visible run-summary.
+
+    The run-summary "Warnings" count is harvested from ``execution-issues.md`` (category
+    ``Warnings``). Degraded-panel signals previously landed only in the per-round
+    ``voting-tally.md`` artifact, so they never reached the operator's run-summary. Best-effort:
+    a no-op when no execution-issues log can be resolved (e.g. a standalone tally invocation).
+    """
+    log = _execution_issues_log(session_env_path)
+    if log is None:
+        return
+    cmd = [
+        sys.executable,
+        str(_PLUGIN_ROOT / "python" / "cli.py"),
+        "run-log",
+        "append-entry",
+        "--log",
+        str(log),
+        "--category",
+        "Warnings",
+        "--entry",
+        entry,
+    ]
+    with suppress(OSError):
+        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+
+
 def tally_code_votes(argv: list[str]) -> int:
     logging_util.quiet_init(argv0="tally-code-votes")
     try:
@@ -576,6 +616,11 @@ def tally_code_votes(argv: list[str]) -> int:
     if not_substantive_count > 0:
         tally_lines.append(f"{_not_substantive_warning(not_substantive_count)}\n\n")
     tally_lines.append("## Per-finding vote breakdown\n\n| Item | YES | NO | JERR | Result |\n|---|---:|---:|---:|---|\n")
+    # Issue #4880: a finding whose per-item valid votes (yes+no) fall below the panel's majority
+    # quorum was effectively decided by fewer voters than the panel size — flag it even when each
+    # voter's JUDGE_ERROR rate stays under the slot-removal threshold (the silent 67%-per-voter case).
+    quorum = effective // 2 + 1
+    under_quorum_items: list[str] = []
     oos_seq = _seed_oos_seq(args.session_env_path)
     for block in blocks:
         item_id = block.stem
@@ -613,6 +658,8 @@ def tally_code_votes(argv: list[str]) -> int:
                 else:
                     judge_error += 1
         result = voting.classify_result(yes, no, 0, effective)
+        if effective >= _MIN_DEGRADABLE_PANEL and (yes + no) < quorum:
+            under_quorum_items.append(item_id)
         tally_lines.append(f"| {item_id} | {yes} | {no} | {judge_error} | {result} |\n")
         if three_slot:
             voter_votes = [
@@ -691,6 +738,14 @@ def tally_code_votes(argv: list[str]) -> int:
             else:
                 oos_rejected += 1
                 _record_tally(tally_env, item_id, accepted=False, outcome=result)
+    if under_quorum_items:
+        tally_lines.insert(
+            1,
+            f"**⚠ Degraded code-review panel: {len(under_quorum_items)} finding(s) decided below the "
+            f"{quorum}-of-{effective} panel quorum because per-item JUDGE_ERROR dropped valid votes "
+            f"below quorum ({', '.join(under_quorum_items)}). These items were resolved by the "
+            "remaining voter(s) and may warrant manual review.**\n\n",
+        )
     tally_lines.append("\n## Reviewer Competition Scoreboard\n\n")
     tally_lines.append("| Reviewer | Proposed | Accepted | Neutral | Rejected | OOS-Proposed | OOS-Accepted | OOS-Neutral | OOS-Rejected | Score | Status |\n")
     tally_lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|\n")
@@ -725,6 +780,20 @@ def tally_code_votes(argv: list[str]) -> int:
     tally_lines.append("\n")
     tally_lines.append(voting.render_voter_scoreboard(voting.compute_voter_agreement(agreement_rows)))
     _write(voting_tally_file, "".join(tally_lines))
+    if parse_failed:
+        _surface_warning(
+            args.session_env_path,
+            f"- **code-review panel (round {args.round_num})**: {parse_failed} voter slot(s) emitted "
+            "narrative-only output (per-voter JUDGE_ERROR above the parse-rate threshold) and were "
+            "removed from the effective quorum.",
+        )
+    if under_quorum_items:
+        _surface_warning(
+            args.session_env_path,
+            f"- **code-review panel (round {args.round_num})**: {len(under_quorum_items)} finding(s) "
+            f"decided below the {quorum}-of-{effective} panel quorum due to per-item JUDGE_ERROR "
+            f"({', '.join(under_quorum_items)}); resolved by the remaining voter(s).",
+        )
     if args.manifest_file:
         archetype_map = _write_archetype_map(Path(args.manifest_file))
         for orphan in _write_yield_tsv(yield_tsv, archetype_map, score_rows):
@@ -748,6 +817,7 @@ def tally_code_votes(argv: list[str]) -> int:
         "TALLY_OK": "true",
         "ELIGIBLE_VOTER_COUNT": str(eligible),
         "VOTER_COUNT": str(effective),
+        "UNDER_QUORUM_COUNT": str(len(under_quorum_items)),
         "FINDINGS_CLASSIFICATION_TSV_FILE": str(class_tsv),
     }.items():
         logging_util.emit_kv(key, value)

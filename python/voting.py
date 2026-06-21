@@ -1147,6 +1147,25 @@ def _issues_log(base_tmp: str) -> str:
     return str(Path(base_tmp) / "execution-issues.md")
 
 
+# Issue #4880: per-voter JUDGE_ERROR rate at or above this fraction removes the voter slot from the
+# effective quorum. Parameterized (default unchanged) so operators can tune how aggressively a
+# partially-truncated voter is dropped without a code change.
+_DEFAULT_JUDGE_ERROR_PARSE_THRESHOLD = 0.8
+
+
+def _judge_error_parse_threshold() -> float:
+    raw = os.environ.get("LARCH_VOTER_JUDGE_ERROR_PARSE_THRESHOLD", "")
+    if not raw:
+        return _DEFAULT_JUDGE_ERROR_PARSE_THRESHOLD
+    try:
+        value = float(raw)
+    except ValueError:
+        return _DEFAULT_JUDGE_ERROR_PARSE_THRESHOLD
+    if value <= 0 or value > 1:
+        return _DEFAULT_JUDGE_ERROR_PARSE_THRESHOLD
+    return value
+
+
 def check_voter_parse_rate(
     *,
     voter_file: str,
@@ -1175,7 +1194,7 @@ def check_voter_parse_rate(
         one = parsed_vote or "JUDGE_ERROR"
         if one == "JUDGE_ERROR":
             judge_error_count += 1
-    if judge_error_count / len(ids) >= 0.8:  # noqa: PLR2004
+    if judge_error_count / len(ids) >= _judge_error_parse_threshold():
         first_bytes = _bounded_prefix_text(voter_path, 200)
         voter_file_aliases = sorted(_darwin_path_aliases(voter_file), key=lambda alias: (alias.startswith("/private/var/"), alias))
         lines: list[str] = []

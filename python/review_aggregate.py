@@ -24,6 +24,11 @@ _NIT_SEVERITY_RE = re.compile(r"(?m)^-\s*\*\*Severity\*\*:\s*nit\s*$", re.IGNORE
 _MIN_AGGREGATE_INPUTS = 2
 _MOVE_FAILED_RC = 3
 _VALIDATION_FAILED_RC = 4
+# Issue #4881: the OOS-attribution failure class (#4868) is the only semantically retryable
+# validation failure. `_validate_aggregate_output` returns this distinct code so that
+# `_apply_aggregate_candidate` re-dispatches with validator feedback only for it; every other
+# semantic failure degrades single-shot (pre-#4868 behavior) instead of burning the retry budget.
+_OOS_ATTRIBUTION_RC = 5
 _AGGREGATE_VALIDATION_RETRIES = 2
 
 
@@ -524,7 +529,7 @@ def _validate_aggregate_output(input_path: Path, output_path: Path, input_mode: 
             if norm not in input_slot_set:
                 return 2, f"unknown reviewer slot in merge output: {slot!r}\n"
             if not is_oos and norm in oos_only:
-                return 2, f"merged output lacks [OUT_OF_SCOPE] while listing reviewer {slot!r} that appears only on OOS-tagged input findings\n"
+                return _OOS_ATTRIBUTION_RC, f"merged output lacks [OUT_OF_SCOPE] while listing reviewer {slot!r} that appears only on OOS-tagged input findings\n"
             all_out_slots.add(norm)
     missing = sorted(input_slot_set - all_out_slots)
     if missing:
@@ -570,8 +575,13 @@ def _apply_aggregate_candidate(candidate: Path, source_file: Path, findings_file
     _write_text(validate_log, validate_err)
     if validate_rc == 1:
         return 1, str(validate_log)
-    if validate_rc != 0:
+    if validate_rc == _OOS_ATTRIBUTION_RC:
+        # Issue #4881: only the OOS-attribution rejection re-dispatches with validator feedback.
         return _VALIDATION_FAILED_RC, str(validate_log)
+    if validate_rc != 0:
+        # Issue #4881: all other semantic validation failures degrade single-shot rather than
+        # re-dispatching with OOS-specific repair guidance that does not match the real error.
+        return 2, str(validate_log)
     merged_text = _strip_attestation(candidate)
     if _count_finding_blocks(candidate) == 0:
         merged_text = "\n"
@@ -620,15 +630,30 @@ def _validation_retry_budget() -> int:
 
 def _validation_retry_prompt(base_prompt: str, validator_error: str, attempt: int, max_attempts: int) -> str:
     error_text = validator_error.strip() or "(validator produced no detail)"
-    return (
+    header = (
         f"{base_prompt}"
         f"\n\n## Previous aggregation attempt rejected by validation (attempt {attempt} of {max_attempts})\n\n"
         "Your previous merged output failed mechanical validation with this error:\n\n"
         f"{error_text}\n\n"
-        "Regenerate the structured finding list so it satisfies the validator. In particular, a merged "
-        "`### FINDING_N:` block that lists a reviewer whose input findings are all tagged `[OUT_OF_SCOPE]` "
-        "must keep `[OUT_OF_SCOPE]` on its heading: do not promote an exclusively-out-of-scope reviewer into "
-        "an in-scope block (either tag the block `[OUT_OF_SCOPE]` or omit that reviewer slot). Re-read the raw "
+    )
+    # Issue #4881: tailor the repair guidance to the failure class. Only the OOS-attribution
+    # rejection (#4868) gets OOS-specific instructions; any other semantic error gets generic
+    # guidance so the fed-back advice always matches the real validator error.
+    is_oos_attribution = "appears only on OOS-tagged input findings" in validator_error
+    if is_oos_attribution:
+        return (
+            header
+            + "Regenerate the structured finding list so it satisfies the validator. A merged "
+            "`### FINDING_N:` block that lists a reviewer whose input findings are all tagged "
+            "`[OUT_OF_SCOPE]` must keep `[OUT_OF_SCOPE]` on its heading. Either tag that block "
+            "`[OUT_OF_SCOPE]`, or move that reviewer into a separate `[OUT_OF_SCOPE]`-tagged block. "
+            "Do not drop the reviewer slot — every input reviewer must still appear somewhere in the "
+            "merged output. Re-read the raw reviewer findings above and emit a corrected merge.\n"
+        )
+    return (
+        header
+        + "Regenerate the structured finding list so it satisfies the validator. Fix exactly the error "
+        "reported above while preserving every input reviewer slot in the merged output. Re-read the raw "
         "reviewer findings above and emit a corrected merge.\n"
     )
 

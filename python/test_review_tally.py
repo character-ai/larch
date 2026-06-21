@@ -197,6 +197,64 @@ def test_tally_three_voter_mixed_outcomes(tmp_path: Path) -> None:
     assert "FINDING_2" in (case / "rejected-findings.md").read_text(encoding="utf-8")
 
 
+def test_tally_flags_under_quorum_findings(tmp_path: Path) -> None:
+    # Issue #4880: two of three voters JUDGE_ERROR (by omitting their votes) on a trailing finding
+    # while staying under the per-voter parse-rate removal threshold, so the panel silently collapses
+    # to a single voter for that finding. The tally must flag it and surface a run-summary warning.
+    case = tmp_path / "under-quorum"
+    case.mkdir()
+    ballot = "".join(
+        f"### FINDING_{n}: In-scope finding {n}\n"
+        "- **Reviewer**: Cursor-Correctness\n"
+        f"- **Concern**: bug {n}.\n"
+        f"- **Suggested revision**: fix {n}.\n\n"
+        for n in range(1, 6)
+    )
+    _ = (case / "ballot.md").write_text(ballot, encoding="utf-8")
+    full = "".join(
+        f"FINDING_{n}: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false\n"
+        for n in range(1, 6)
+    )
+    # codex and claude omit FINDING_5 only (1/5 = 20% JUDGE_ERROR, below the 80% removal threshold),
+    # so both remain in the effective quorum even though FINDING_5 loses two of three votes.
+    partial = "".join(
+        f"FINDING_{n}: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false\n"
+        for n in range(1, 5)
+    )
+    _ = (case / "cursor-vote-output.txt").write_text(full, encoding="utf-8")
+    _ = (case / "codex-vote-output.txt").write_text(partial, encoding="utf-8")
+    _ = (case / "claude-vote-output.txt").write_text(partial, encoding="utf-8")
+    exec_log = tmp_path / "execution-issues.md"
+
+    result = run_review(
+        "tally-code-votes",
+        "--ballot-file",
+        str(case / "ballot.md"),
+        "--voter-files",
+        str(case / "cursor-vote-output.txt"),
+        str(case / "codex-vote-output.txt"),
+        str(case / "claude-vote-output.txt"),
+        "--review-tmpdir",
+        str(case),
+        env={"LARCH_EXECUTION_ISSUES_LOG": str(exec_log)},
+    )
+
+    assert result.returncode == 0, result.stderr
+    # Neither partial voter is removed from quorum (20% < 80%), so the panel size stays 3.
+    assert rts.kv_get(result.stdout, "VOTER_COUNT") == "3"
+    # Only FINDING_5 dropped below the 2-of-3 majority quorum.
+    assert rts.kv_get(result.stdout, "UNDER_QUORUM_COUNT") == "1"
+    tally = (case / "voting-tally.md").read_text(encoding="utf-8")
+    assert "| FINDING_5 | 0 | 1 | 2 |" in tally
+    assert "decided below the 2-of-3 panel quorum" in tally
+    # Issue #4880: the degraded-panel signal reaches the operator-visible run-summary warnings.
+    assert exec_log.is_file()
+    warnings = exec_log.read_text(encoding="utf-8")
+    assert "### Warnings" in warnings
+    assert "below the 2-of-3 panel quorum" in warnings
+    assert "FINDING_5" in warnings
+
+
 def test_tally_weighted_scoreboard_major_oos_and_coproposers(tmp_path: Path) -> None:
     case = tmp_path / "weighted-scoreboard"
     case.mkdir()

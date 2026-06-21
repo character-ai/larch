@@ -1907,6 +1907,41 @@ def test_render_phase_detail_table_top_failures_and_gantt(tmp_path: Path) -> Non
     assert "**Reviewer slot failures**: 1" in rendered
     assert "- codex/slot-1: 1" in rendered
     assert "### Round 1 reviewer timing" in rendered
+    # Issue #4882: round-meta without a canonical block emits no decomposition footnote (backward compat).
+    assert "Finding decomposition (canonical, scope-aware)" not in rendered
+
+
+def test_render_phase_detail_shows_canonical_decomposition_footnote(tmp_path: Path) -> None:
+    # Issue #4882: when round-meta carries the canonical decomposition, the table footnote reconciles
+    # the raw "Suggestions" count with the in-scope headline (e.g. 18 raw -> 3 in-scope + 13 OOS).
+    root = tmp_path / "review"
+    r1 = root / "round-1"
+    r1.mkdir(parents=True)
+    (r1 / "round-meta.json").write_text(
+        json.dumps({
+            "tally": {
+                "ACCEPTED_COUNT": "0", "REJECTED_COUNT": "18", "EXONERATED_COUNT": "0",
+                "NEUTRAL_COUNT": "0", "OOS_ACCEPTED_COUNT": "0", "OOS_REJECTED_COUNT": "0",
+            },
+            "tally_canonical": {
+                "ACCEPTED_COUNT": "0", "REJECTED_COUNT": "3", "EXONERATED_COUNT": "0",
+                "NEUTRAL_COUNT": "0", "OOS_ACCEPTED_COUNT": "0", "OOS_REJECTED_COUNT": "13",
+            },
+            "nit_pruned_count": "8",
+            "summary": {"panel": {"total_slot_count": 3}},
+            "collector": "",
+        }) + "\n",
+        encoding="utf-8",
+    )
+    rendered = progress_report.render_phase_detail(root, "implement")
+    # The Suggestions column still shows the raw round-sum (18) so no data is hidden.
+    assert "| 1 | 18 | 0 |" in rendered
+    # The decomposition footnote reconciles raw 18 with the in-scope 3 + 13 OOS (8 nit-pruned).
+    assert "Finding decomposition (canonical, scope-aware)" in rendered
+    assert "round 1: 16 finding(s) = 3 in-scope" in rendered
+    assert "13 out-of-scope" in rendered
+    assert "8 nit-pruned" in rendered
+    assert "tally_canonical" in rendered
 
 
 def test_render_phase_detail_dual_timing_windows(tmp_path: Path) -> None:
@@ -1934,6 +1969,47 @@ def test_write_round_meta_helpers(tmp_path: Path) -> None:
     assert '"ACCEPTED_COUNT": "1"' in meta
     assert '"OOS_ACCEPTED_COUNT": "1"' in meta
     assert '"total_slot_count": 1' in meta
+    # Issue #4882: no classification TSV present, so only the raw tally is recorded (backward compat).
+    assert "tally_canonical" not in meta
+
+
+def test_write_implement_round_meta_records_canonical_decomposition(tmp_path: Path) -> None:
+    # Issue #4882: a finding reclassified out-of-scope after voting keeps its FINDING_ id, so the raw
+    # id-prefix tally over-counts it as in-scope rejected. write_implement_round_meta must also record
+    # the canonical scope-aware split (from the classification TSV) plus the nit-pruned count.
+    round_dir = tmp_path / "round-1"
+    round_dir.mkdir()
+    (round_dir / "voting-tally.md").write_text(
+        "## Findings\n\n| Item | Result |\n|--|--|\n"
+        "| FINDING_1 | accepted |\n| FINDING_2 | rejected |\n| FINDING_3 | rejected |\n",
+        encoding="utf-8",
+    )
+    header = progress_report.voting.findings_classification_header().split("\t")
+
+    def row(finding_id: str, result: str, scope: str) -> str:
+        cols = dict.fromkeys(header, "")
+        cols.update({"finding_id": finding_id, "voting_result": result, "scope": scope})
+        return "\t".join(cols[name] for name in header)
+
+    # FINDING_3 voted rejected but is scope=oos: the raw tally counts it in-scope, canonical counts OOS.
+    (round_dir / "findings-classification.tsv").write_text(
+        "\t".join(header) + "\n"
+        + row("FINDING_1", "accepted", "in_scope") + "\n"
+        + row("FINDING_2", "rejected", "in_scope") + "\n"
+        + row("FINDING_3", "rejected", "oos") + "\n",
+        encoding="utf-8",
+    )
+    (round_dir / "prune-nit.env").write_text("PRUNED_COUNT=1\nINSCOPE_REMAINING=2\n", encoding="utf-8")
+
+    assert progress_report.write_implement_round_meta(round_dir) == 0
+    meta = json.loads((round_dir / "round-meta.json").read_text(encoding="utf-8"))
+    # Raw tally counts FINDING_3 by id-prefix as an in-scope rejection (the #4882 over-count).
+    assert meta["tally"]["REJECTED_COUNT"] == "2"
+    # Canonical (scope-aware) splits it out: 1 in-scope rejected, 1 OOS rejected.
+    assert meta["tally_canonical"]["ACCEPTED_COUNT"] == "1"
+    assert meta["tally_canonical"]["REJECTED_COUNT"] == "1"
+    assert meta["tally_canonical"]["OOS_REJECTED_COUNT"] == "1"
+    assert meta["nit_pruned_count"] == "1"
 
 
 def test_write_design_round_meta_security_oos_and_panel(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
