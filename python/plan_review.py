@@ -309,6 +309,10 @@ _STEP3_SUMMARY_FAILED_POSTPLAN = "SUMMARY_OUTCOME=failed-postplan"
 _STEP3_SUMMARY_FAILED_JUDGE_PANEL = "SUMMARY_OUTCOME=failed-judge-panel"
 
 
+class _Step3NormalizeAbort(Exception):
+    pass
+
+
 def _step3_normalize_warn_stderr(message: str) -> None:
     print(message, file=sys.stderr)
 
@@ -330,12 +334,6 @@ def _step3_read_result_env_quiet(argv: Sequence[str]) -> tuple[int, Path | None,
     selected: Path | None = None
     if primary_regular:
         selected = primary
-        if fallback is not None and fallback.is_file() and not fallback.is_symlink():
-            try:
-                if not phase_driver_read_result_env(primary, ns.allow):
-                    selected = fallback
-            except OSError:
-                pass
     elif fallback is not None and fallback.is_file() and not fallback.is_symlink():
         selected = fallback
     with contextlib.redirect_stdout(io.StringIO()):
@@ -357,10 +355,17 @@ def _step3_replay_warn_error_safe(path: Path | None) -> None:
         return
 
 
-def _step3_overlay_stdout_env(values: dict[str, str], stdout_file: Path, *, primary_regular: bool) -> None:
+def _step3_overlay_stdout_env(
+    values: dict[str, str],
+    stdout_file: Path,
+    *,
+    primary_regular: bool,
+    selected_source: Path | None = None,
+) -> None:
     if stdout_file.is_symlink() or not stdout_file.is_file():
         return
     allow = set(STEP3_NORMALIZE_ALLOW_KEYS)
+    overlay_warn = primary_regular and selected_source != stdout_file
     try:
         lines = stdout_file.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
@@ -371,7 +376,7 @@ def _step3_overlay_stdout_env(values: dict[str, str], stdout_file: Path, *, prim
         key, value = line.split("=", 1)
         if key in allow and value:
             values[key] = value
-        elif key == "WARN" and primary_regular:
+        elif key == "WARN" and overlay_warn:
             print(line)
 
 
@@ -385,6 +390,12 @@ def _step3_normalize_load_env(design_tmpdir: Path, stdout_file: Path) -> dict[st
         fd, safe_name = tempfile.mkstemp(prefix="larch-step3-review-env.", dir=os.environ.get("TMPDIR") or None)
         os.close(fd)
         safe_path = Path(safe_name)
+    except OSError:
+        _step3_normalize_warn_stderr(
+            "**⚠ Step 3: could not allocate safe step3 review result env; aborting plan review**"
+        )
+        raise _Step3NormalizeAbort from None
+    try:
         argv = ["--input", str(result_env), "--fallback-input", str(stdout_file)]
         for key in STEP3_NORMALIZE_ALLOW_KEYS:
             argv.extend(["--allow", key])
@@ -405,11 +416,18 @@ def _step3_normalize_load_env(design_tmpdir: Path, stdout_file: Path) -> dict[st
         selected_source = stdout_file if stdout_file.is_file() and not stdout_file.is_symlink() else None
         primary_regular = _classify_input(result_env) == "regular"
     finally:
-        if safe_path is not None:
-            with contextlib.suppress(FileNotFoundError):
-                safe_path.unlink()
-    _step3_replay_warn_error_safe(selected_source)
-    _step3_overlay_stdout_env(values, stdout_file, primary_regular=primary_regular)
+        with contextlib.suppress(FileNotFoundError):
+            safe_path.unlink()
+    if primary_regular:
+        _step3_replay_warn_error_safe(result_env)
+    if selected_source is not None and (not primary_regular or selected_source != result_env):
+        _step3_replay_warn_error_safe(selected_source)
+    _step3_overlay_stdout_env(
+        values,
+        stdout_file,
+        primary_regular=primary_regular,
+        selected_source=selected_source,
+    )
     return values
 
 
@@ -545,7 +563,10 @@ def normalize_step3_status_main(argv: list[str] | None = None) -> int:
     if ns.read_result_env:
         return _step3_normalize_read_result_env(tmpdir)
     stdout_file = Path(ns.stdout_file)
-    values = _step3_normalize_load_env(tmpdir, stdout_file)
+    try:
+        values = _step3_normalize_load_env(tmpdir, stdout_file)
+    except _Step3NormalizeAbort:
+        return 1
     if ns.loop_rc == "2":
         _step3_normalize_warn_stderr("**⚠ Step 3: plan-review run configuration error (exit 2); aborting plan review**")
         return 1

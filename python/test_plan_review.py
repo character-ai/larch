@@ -7,8 +7,10 @@ import os
 import stat
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
+import logging_util
 import plan_review
 import plan_review_round
 import pytest
@@ -110,6 +112,72 @@ def test_step3_read_result_env_quiet_suppresses_internal_replay(tmp_path: Path) 
     assert selected == result_env
     assert primary_regular is True
     assert out.getvalue() == ""
+
+
+def test_step3_normalizer_primary_warn_only_replays_primary_before_overlay(tmp_path: Path) -> None:
+    _ = (tmp_path / ".step3-review-result.env").write_text("WARN=primary-only-warning\n", encoding="utf-8")
+    proc = _run_step3_normalizer(tmp_path, "WARN=overlay-warning\nLOOP_STATUS=complete\n")
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.splitlines()[:2] == ["WARN=primary-only-warning", "WARN=overlay-warning"]
+
+
+def test_step3_normalizer_warn_replay_skips_duplicate_stdout_overlay_on_recovery(tmp_path: Path) -> None:
+    result_env = tmp_path / ".step3-review-result.env"
+    result_env.symlink_to("/nonexistent/step3-review-result.env")
+    proc = _run_step3_normalizer(tmp_path, "WARN=fallback-warning\nLOOP_STATUS=complete\n")
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.count("WARN=fallback-warning") == 1
+
+
+def test_step3_normalizer_escalation_evidence_failure_contract(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "plan-review" / "round-1").mkdir(parents=True)
+    _ = (tmp_path / "plan-review" / "round-1" / "reviewer-output.txt").write_text("x\n", encoding="utf-8")
+    _ = (tmp_path / ".step3-review-result.env").write_text(
+        "STEP3_REVIEW_LOOP_STATUS=tally-error\nLOOP_STATUS=tally-error\nROUNDS_COMPLETED=1\nREVIEW_ROUND_COUNT=1\n",
+        encoding="utf-8",
+    )
+    stdout_file = tmp_path / "plan-review.stdout"
+    _ = stdout_file.write_text("", encoding="utf-8")
+
+    def fake_record_report_evidence(*_args: object, **_kwargs: object) -> int:
+        logging_util.emit_kv("WARN", "Step 3: failed to record design escalation evidence for tally-error")
+        return 1
+
+    monkeypatch.setattr(plan_review, "step3_record_report_evidence", fake_record_report_evidence)
+    out = io.StringIO()
+    stderr = io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(stderr):
+        rc = plan_review.normalize_step3_status_main(  # pyright: ignore[reportPrivateUsage]
+            ["--design-tmpdir", str(tmp_path), "--stdout-file", str(stdout_file), "--loop-rc", "0"]
+        )
+    stdout_text = out.getvalue()
+    stderr_text = stderr.getvalue()
+    assert rc == 0
+    assert "WARN=" not in stdout_text
+    assert "STEP3_REVIEW_LOOP_STATUS=tally-error" in stdout_text
+    assert "**⚠ Step 3: failed to record escalation evidence for tally-error**" in stderr_text
+
+
+def test_step3_normalize_mkstemp_allocation_failure_aborts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    stdout_file = tmp_path / "plan-review.stdout"
+    _ = stdout_file.write_text("LOOP_STATUS=complete\n", encoding="utf-8")
+    real_mkstemp = tempfile.mkstemp
+
+    def failing_mkstemp(*args: object, **kwargs: object) -> tuple[int, str]:
+        if kwargs.get("prefix") == "larch-step3-review-env.":
+            raise OSError("no space left on device")
+        return real_mkstemp(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(plan_review.tempfile, "mkstemp", failing_mkstemp)
+    stderr = io.StringIO()
+    with contextlib.redirect_stderr(stderr):
+        rc = plan_review.normalize_step3_status_main(  # pyright: ignore[reportPrivateUsage]
+            ["--design-tmpdir", str(tmp_path), "--stdout-file", str(stdout_file), "--loop-rc", "0"]
+        )
+    assert rc == 1
+    assert "could not allocate safe step3 review result env" in stderr.getvalue()
 
 
 def test_step3_normalizer_warn_replay_and_overlay_contract(tmp_path: Path) -> None:
