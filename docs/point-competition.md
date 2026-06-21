@@ -23,15 +23,17 @@ Voter calibration is measured separately from reviewer points. The voter agreeme
 
 ## Out-of-Scope Scoring
 
-Out-of-scope (OOS) observations use flat scoring regardless of panel severity: accepted OOS earns +1, neutral OOS (≥1 YES, not accepted) earns 0, and rejected OOS (0 YES) costs -1. Accepted OOS follows the active voting tier (3 judges: 2+ YES; 2 judges: unanimous YES; 1 judge: single YES; 0 judges: main-agent adjudication), so degraded panels never auto-accept observations.
+Out-of-scope (OOS) observations use flat live scoring regardless of panel severity: accepted OOS earns a provisional +1, neutral OOS (≥1 YES, not accepted) earns 0, and rejected OOS (0 YES) costs -1. Accepted OOS follows the active voting tier (3 judges: 2+ YES; 2 judges: unanimous YES; 1 judge: single YES; 0 judges: main-agent adjudication), so degraded panels never auto-accept observations.
 
 | OOS Vote Result | Points | Description |
 |---|---|---|
-| **OOS Accepted** (meets YES threshold for the tier) | +1 | Reviewer surfaced an issue worth tracking as a GitHub issue |
+| **OOS Accepted** (meets YES threshold for the tier) | +1 provisional | Reviewer surfaced an issue worth tracking as a GitHub issue |
 | **OOS Neutral** (≥1 YES, not accepted) | 0 | Insufficient support, but not dismissed |
 | **OOS Rejected** (0 YES) | -1 | Observation was unanimously dismissed by the panel |
 
 Rows with `scope=oos` are scored as OOS even when `finding_id` is `FINDING_N` (for example scope-drift reroutes).
+
+`/analyze-issues` can additionally report fate-adjusted OOS points by reconciling filed OOS issues against their current GitHub issue fate. Open filed OOS issues stay provisional, PR-closed filed OOS issues keep +1, and closed-unfixed or combined-away filed OOS issues become 0 in that retroactive report. No retroactive -1 penalty is added. This report is diagnostic only and does not change live voting results.
 
 ## OOS Issue Filing
 
@@ -45,7 +47,7 @@ Out-of-scope items go on the same voting ballot as in-scope findings, with neutr
 
 Voters decide whether each OOS item deserves a GitHub issue:
 
-- **2+ YES** -> Accepted: filed as a GitHub issue by `/implement` for future attention, reviewer earns +1
+- **2+ YES** -> Accepted: filed as a GitHub issue by `/implement` for future attention, reviewer earns provisional +1
 - **≥1 YES below acceptance threshold** -> Neutral: remains an observation reported in the PR body, reviewer earns 0
 - **0 YES** -> Rejected: remains an observation reported in the PR body, reviewer loses 1 point
 
@@ -67,7 +69,7 @@ Accepted, rejected, and OOS artifacts restore reviewer attribution after voting 
 | Codex-Edge-cases | 2 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
 | Claude-Generic | 2 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
 
-The example assumes one accepted major/blocker finding (+2), one accepted minor finding (+1), and one in-scope neutral finding (-0.25) for Correctness. The Testing row combines one accepted in-scope finding (+1), one in-scope neutral finding (-0.25), and one accepted OOS observation (+1). OOS accepted rows stay flat +1 regardless of voter severity.
+The example assumes one accepted major/blocker finding (+2), one accepted minor finding (+1), and one in-scope neutral finding (-0.25) for Correctness. The Testing row combines one accepted in-scope finding (+1), one in-scope neutral finding (-0.25), and one accepted OOS observation (+1). OOS accepted rows stay flat provisional +1 regardless of voter severity.
 
 ## Future Plans
 

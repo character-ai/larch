@@ -801,7 +801,9 @@ def test_close_sources_reuses_close_comment_and_counts(monkeypatch, capsys):
     assert "CLOSED_ISSUES=2" in out
     assert "PARTIAL=false" in out
     close_calls = [call for call in runner.calls if call[:3] == ["gh", "issue", "close"]]
-    assert close_calls[0] == ["gh", "issue", "close", "1", "--repo", "o/r", "--comment", "Combined into #99"]
+    assert close_calls[0][:7] == ["gh", "issue", "close", "1", "--repo", "o/r", "--comment"]
+    assert "Combined into #99" in close_calls[0][7]
+    assert "larch:combined-away source=#1 target=#99" in close_calls[0][7]
     assert len(close_calls) == 3
 
 
@@ -828,7 +830,10 @@ def test_close_sources_skips_sources_that_became_busy(monkeypatch, capsys):
     assert "PARTIAL=true" in captured.out
     assert "Skipped #1: source issue has busy title prefix" in captured.err
     close_calls = [call for call in runner.calls if call[:3] == ["gh", "issue", "close"]]
-    assert close_calls == [["gh", "issue", "close", "2", "--repo", "o/r", "--comment", "Combined into #99"]]
+    assert len(close_calls) == 1
+    assert close_calls[0][:7] == ["gh", "issue", "close", "2", "--repo", "o/r", "--comment"]
+    assert "Combined into #99" in close_calls[0][7]
+    assert "larch:combined-away source=#2 target=#99" in close_calls[0][7]
 
 
 def test_close_sources_warning_redacts_failed_close_stderr(monkeypatch, capsys):

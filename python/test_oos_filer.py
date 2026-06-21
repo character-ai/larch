@@ -1,6 +1,6 @@
 """Tests for oos_filer.py."""
 
-# pyright: reportUnusedCallResult=false
+# pyright: reportUnusedCallResult=false, reportPrivateUsage=false
 
 from __future__ import annotations
 
@@ -557,3 +557,12 @@ def test_sentinel_recovery_materializes_strict_evidence_for_real_checkpoint(
     accepted = tmp_path / "oos-accepted-main-agent.md"
     assert accepted.is_file()
     assert "- **Filed URL**: https://github.com/owner/repo/issues/3" in accepted.read_text(encoding="utf-8")
+def test_bare_oos_item_suffix_accepts_finding_ids() -> None:
+    assert oos_filer._bare_oos_item_suffix("oos-accepted-review:FINDING_3") == "FINDING_3"
+    assert oos_filer._bare_oos_item_suffix("FINDING_3") == "FINDING_3"
+    assert oos_filer._bare_oos_item_suffix("oos-accepted-review:OOS_2") == "OOS_2"
+
+
+def test_issue_covers_finding_stable_id_suffix() -> None:
+    issue = oos_filer.FiledIssue("title", "https://github.com/o/r/issues/1", stable_id="oos-accepted-review:FINDING_3")
+    assert oos_filer._issue_covers_stable_id(issue, "oos-accepted-review:FINDING_3")

@@ -69,7 +69,7 @@ is a Nit → Out-of-Scope, never In-Scope.
 You are scored against this same rubric. Putting a finding In-Scope that the panel does not accept
 forfeits the point: it costs -0.25 if at least one judge found it credible but below the
 acceptance threshold, and -1 if none did. The safe
-home for a real-but-non-essential finding is Out-of-Scope, where panel acceptance still earns +1.
+home for a real-but-non-essential finding is Out-of-Scope, where panel acceptance earns a provisional +1 at vote time. `/analyze-issues` may retroactively dock filed OOS to 0 in its fate-adjusted diagnostic report without changing live vote tallies.
 Win points by putting necessary findings In-Scope and real-but-not-necessary findings
 Out-of-Scope — not by maximizing In-Scope volume.
 

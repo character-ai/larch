@@ -248,20 +248,22 @@ If an OOS item receives 2+ YES votes, it is **accepted** and will be filed as a 
 
 ### OOS Scoring
 
-Out-of-scope items stay flat: accepted OOS earns +1, non-accepted OOS with a split-panel or exonerated vote pattern scores 0, and dismissed OOS costs −1:
+Out-of-scope items stay flat in the live voting classifier: accepted OOS earns a provisional +1, non-accepted OOS with a split-panel or OOS neutral (≥1 YES, not accepted) vote pattern scores 0, and dismissed OOS costs −1. `python/voting.py::classify_result` is the live classifier and does not inspect GitHub issue fate.
 
 | OOS vote pattern | Points | Description |
 |---|---|---|
-| OOS accepted (meets YES threshold for the tier) | +1 | Reviewer surfaced an issue worth tracking |
+| OOS accepted (meets YES threshold for the tier) | +1 provisional | Reviewer surfaced an issue worth tracking |
 | OOS neutral (≥1 YES, not accepted) | 0 | Insufficient support, but not dismissed |
 | OOS rejected (0 YES) | −1 | Observation was unanimously dismissed by the panel |
+
+`/analyze-issues` can render a separate fate-adjusted OOS report after the fact. In that diagnostic report, open filed OOS issues remain provisional, PR-closed filed OOS issues keep +1, and filed OOS issues closed unfixed or combined away score 0. The fate-adjusted report adds no retroactive −1 penalty and does not change live voting outputs.
 
 ### OOS Scoreboard
 
 The scoreboard includes additional columns for OOS items:
 
 ```
-| Reviewer | ... | OOS Proposed | OOS Accepted | OOS-Exonerated | OOS-Rejected | ...
+| Reviewer | ... | OOS Proposed | OOS Accepted | OOS-Neutral | OOS-Rejected | ...
 ```
 
 ### OOS Security Tag
