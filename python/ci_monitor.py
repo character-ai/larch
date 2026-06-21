@@ -53,6 +53,16 @@ class CiStatus:
     failed_run_id: str | None
     conflicted: bool = False
     pr_view_ok: bool = True
+    checks_empty: bool = False
+    checks_observed: bool = False
+
+
+@dataclass(frozen=True)
+class ChecksObservation:
+    status: str
+    failed_run_id: str | None
+    rollup_empty: bool = False
+    observed: bool = True
 
 
 @dataclass(frozen=True)
@@ -404,6 +414,29 @@ def _resolve_checks_status(
     required: bool = False,
 ) -> tuple[str, str | None]:
     """Classify PR checks with JSON-first and text fallback (ci status parity)."""
+    observation = _resolve_checks_observation(
+        runner,
+        pr=pr,
+        repo=repo,
+        empty_checks_grace=empty_checks_grace,
+        sleep_fn=sleep_fn,
+        cwd=cwd,
+        required=required,
+    )
+    return observation.status, observation.failed_run_id
+
+
+def _resolve_checks_observation(
+    runner: Runner,
+    *,
+    pr: int,
+    repo: str,
+    empty_checks_grace: int,
+    sleep_fn: SleepFn,
+    cwd: str | None,
+    required: bool = False,
+) -> ChecksObservation:
+    """Classify PR checks and derive rollup emptiness from the same read."""
     checks = _gh_pr_checks(runner, pr=pr, repo=repo, cwd=cwd, required=required)
     checks_json = _checks_json_from_result(checks)
 
@@ -418,22 +451,36 @@ def _resolve_checks_status(
         if bucket_status == "empty":
             text = _read_pr_checks_text(runner, pr=pr, repo=repo, cwd=cwd, required=required)
             if text.strip():
-                return _classify_checks_text(text, required=required)
-            return ("NO_CHECKS", None) if empty_checks_grace > 0 else ("pending", None)
-        return bucket_status, run_id
+                text_status, text_run_id = _classify_checks_text(text, required=required)
+                return ChecksObservation(
+                    status=text_status,
+                    failed_run_id=text_run_id,
+                    rollup_empty=False,
+                )
+            return ChecksObservation(
+                status="NO_CHECKS" if empty_checks_grace > 0 else "pending",
+                failed_run_id=None,
+                rollup_empty=True,
+            )
+        return ChecksObservation(status=bucket_status, failed_run_id=run_id, rollup_empty=False)
 
     text = _read_pr_checks_text(runner, pr=pr, repo=repo, cwd=cwd, required=required)
     if not text.strip() and empty_checks_grace > 0:
         sleep_fn(float(empty_checks_grace))
         text = _read_pr_checks_text(runner, pr=pr, repo=repo, cwd=cwd, required=required)
     if text.strip():
-        return _classify_checks_text(text, required=required)
+        text_status, text_run_id = _classify_checks_text(text, required=required)
+        return ChecksObservation(
+            status=text_status,
+            failed_run_id=text_run_id,
+            rollup_empty=False,
+        )
     if empty_checks_grace > 0:
-        return "NO_CHECKS", None
-    return "pending", None
+        return ChecksObservation(status="NO_CHECKS", failed_run_id=None, rollup_empty=True)
+    return ChecksObservation(status="pending", failed_run_id=None, rollup_empty=True)
 
 
-def _checks_rollup_empty(
+def _checks_rollup_empty(  # pyright: ignore[reportUnusedFunction]
     runner: Runner,
     *,
     pr: int,
@@ -500,9 +547,16 @@ def gather_status(
 
     fetch = git.fetch(runner, base_remote, base_ref, cwd=cwd)
     if fetch.returncode != 0:
-        return CiStatus(status="pending", behind_count=0, failed_run_id=None, conflicted=conflicted)
+        return CiStatus(
+            status="pending",
+            behind_count=0,
+            failed_run_id=None,
+            conflicted=conflicted,
+            checks_empty=False,
+            checks_observed=False,
+        )
 
-    status, failed_run_id = checks_status(
+    observation = _resolve_checks_observation(
         runner,
         pr=pr,
         repo=repo,
@@ -520,11 +574,13 @@ def gather_status(
     )
     if behind_raw is None:
         return CiStatus(
-            status=status,
+            status=observation.status,
             behind_count=0,
-            failed_run_id=failed_run_id,
+            failed_run_id=observation.failed_run_id,
             conflicted=conflicted,
             pr_view_ok=pr_view_ok,
+            checks_empty=observation.rollup_empty,
+            checks_observed=observation.observed,
         )
     behind = behind_raw
     if behind > 0 and _squash_merge_race(
@@ -534,13 +590,22 @@ def gather_status(
         base_ref=base_ref,
         cwd=cwd,
     ):
-        return CiStatus(status="merged", behind_count=0, failed_run_id=None, conflicted=False)
+        return CiStatus(
+            status="merged",
+            behind_count=0,
+            failed_run_id=None,
+            conflicted=False,
+            checks_empty=observation.rollup_empty,
+            checks_observed=observation.observed,
+        )
     return CiStatus(
-        status=status,
+        status=observation.status,
         behind_count=behind,
-        failed_run_id=failed_run_id,
+        failed_run_id=observation.failed_run_id,
         conflicted=conflicted,
         pr_view_ok=pr_view_ok,
+        checks_empty=observation.rollup_empty,
+        checks_observed=observation.observed,
     )
 
 
@@ -610,6 +675,8 @@ def poll_ci(
                 failed_run_id=status.failed_run_id,
                 conflicted=status.conflicted,
                 pr_view_ok=status.pr_view_ok,
+                checks_empty=status.checks_empty,
+                checks_observed=status.checks_observed,
             )
         else:
             ci_failures = 0
@@ -635,7 +702,7 @@ def poll_ci(
             return status, decision
 
         if startup_deadline_active:
-            if _checks_rollup_empty(runner, pr=pr, repo=repo, cwd=cwd, required=required):
+            if status.checks_observed and status.checks_empty:
                 now = clock()
                 if startup_empty_since is None:
                     startup_empty_since = now
@@ -647,13 +714,15 @@ def poll_ci(
                             failed_run_id=status.failed_run_id,
                             conflicted=status.conflicted,
                             pr_view_ok=status.pr_view_ok,
+                            checks_empty=True,
+                            checks_observed=status.checks_observed,
                         ),
                         Decision(
                             action="bail",
                             bail_reason=config.CI_WAIT_BAIL_NO_CHECKS_OBSERVED,
                         ),
                     )
-            else:
+            elif status.checks_observed:
                 startup_deadline_active = False
                 startup_empty_since = None
 

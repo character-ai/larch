@@ -6,7 +6,6 @@ from __future__ import annotations
 from collections.abc import Sequence
 from pathlib import Path
 from types import MethodType
-from typing import Self
 
 import pytest
 from astroid import nodes
@@ -561,26 +560,20 @@ def test_worker_failure_exits_2(
     _write_rc(tmp_path, min_lines=4)
     _write_modules(tmp_path, ["a.py", "b.py", "c.py"], _module(5))
 
-    class NoSpawnProcessPoolExecutor:
-        def __init__(self, *_args: object, **_kwargs: object) -> None:
-            pass
+    class FailedFuture:
+        def result(self) -> list[object]:
+            raise RuntimeError("simulated")
 
-        def __enter__(self) -> Self:
-            return self
+    def fail_from_future(
+        _symilar: object,
+        _linesets: Sequence[object],
+        _chunks: Sequence[list[tuple[int, int]]],
+        _jobs: int,
+    ) -> list[object]:
+        return duplicate_code._collect_worker_results([FailedFuture()])
 
-        def __exit__(self, *_args: object) -> None:
-            pass
-
-        def submit(self, *_args: object, **_kwargs: object) -> object:
-            return object()
-
-    def fail_collect(_futures: object) -> list[object]:
-        raise duplicate_code.DuplicateCodeError("duplicate-code worker failed: simulated")
-
-    # Avoid sandbox spawn denial taking the PermissionError fallback before
-    # _collect_worker_results reaches the patched worker-failure path.
-    monkeypatch.setattr(duplicate_code, "ProcessPoolExecutor", NoSpawnProcessPoolExecutor)
-    monkeypatch.setattr(duplicate_code, "_collect_worker_results", fail_collect)
+    monkeypatch.setattr(duplicate_code, "_find_commonalities_fork", fail_from_future)
+    monkeypatch.setattr(duplicate_code, "_find_commonalities_spawn", fail_from_future)
 
     rc = duplicate_code.duplicate_code_main(
         [
@@ -596,6 +589,36 @@ def test_worker_failure_exits_2(
     captured = capsys.readouterr()
     assert rc == 2
     assert "worker failed" in captured.err
+
+
+@pytest.mark.parametrize("start_methods", [["fork"], ["spawn"]])
+def test_pool_setup_oserror_fallback_matches_serial(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    start_methods: list[str],
+) -> None:
+    _write_rc(tmp_path, min_lines=4)
+    _write_modules(tmp_path, ["a.py", "b.py", "c.py"], _module(5))
+    serial = _run(tmp_path, jobs=1)
+    pool_attempts: list[tuple[object, ...]] = []
+
+    class PoolSetupFailure:
+        def __init__(self, *args: object, **_kwargs: object) -> None:
+            pool_attempts.append(args)
+            raise OSError("pool setup unavailable")
+
+    def fake_start_methods() -> list[str]:
+        return start_methods
+
+    monkeypatch.setattr(duplicate_code.multiprocessing, "get_all_start_methods", fake_start_methods)
+    monkeypatch.setattr(duplicate_code, "ProcessPoolExecutor", PoolSetupFailure)
+
+    parallel = _run(tmp_path, jobs=2)
+
+    assert pool_attempts
+    assert parallel.exit_code == serial.exit_code == duplicate_code.REFACTOR_MSG_STATUS
+    assert parallel.digest == serial.digest
+    assert parallel.pair_count == serial.pair_count == 3
 
 
 def test_import_failure_exits_2(

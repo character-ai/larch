@@ -386,7 +386,7 @@ def _find_commonalities_fork(
             with ProcessPoolExecutor(max_workers=jobs, mp_context=context) as executor:
                 futures = [executor.submit(_worker_find_common_chunk, chunk) for chunk in chunks]
                 return _collect_worker_results(futures)
-        except PermissionError:
+        except OSError:
             return _find_common_chunk_with(symilar, linesets, _flatten_pair_chunks(chunks))
     finally:
         _worker_symilar = None
@@ -401,7 +401,7 @@ def _find_commonalities_spawn(
         with ProcessPoolExecutor(max_workers=jobs) as executor:
             futures = [executor.submit(_spawn_worker_find_common_chunk, payload) for payload in payloads]
             return _collect_worker_results(futures)
-    except PermissionError:
+    except OSError:
         return _find_common_chunk_with(symilar, linesets, _flatten_pair_chunks(chunks))
 
 
