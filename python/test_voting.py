@@ -954,6 +954,15 @@ def test_weighted_finding_points_and_attribution_helpers() -> None:
     assert voting.split_classification_attribution("cursor-a|codex-b", column="reviewer_slots") == ["cursor-a", "codex-b"]
 
 
+def test_unique_finder_bonus_from_env() -> None:
+    assert voting.unique_finder_bonus_from_env({}) == 0.0
+    assert voting.unique_finder_bonus_from_env({"LARCH_UNIQUE_FINDER_BONUS": ""}) == 0.0
+    assert voting.unique_finder_bonus_from_env({"LARCH_UNIQUE_FINDER_BONUS": "0"}) == 0.0
+    assert voting.unique_finder_bonus_from_env({"LARCH_UNIQUE_FINDER_BONUS": "-0.25"}) == 0.0
+    assert voting.unique_finder_bonus_from_env({"LARCH_UNIQUE_FINDER_BONUS": "not-a-number"}) == 0.0
+    assert voting.unique_finder_bonus_from_env({"LARCH_UNIQUE_FINDER_BONUS": "0.25"}) == 0.25
+
+
 def test_grow_attribution_labels_skips_whitespace_combined_cells() -> None:
     labels = ["Cursor-Pragmatic", "Codex-Arch"]
     seen = set(labels)

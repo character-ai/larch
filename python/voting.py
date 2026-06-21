@@ -8,11 +8,12 @@ import argparse
 import csv
 import hashlib
 import json
+import math
 import os
 import re
 import sys
 import tempfile
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from contextlib import suppress
 from pathlib import Path
 from typing import NamedTuple, NoReturn, cast
@@ -76,6 +77,7 @@ SEVERITY_MAJOR = "major"
 _SEVERITY_VALUES = {SEVERITY_BLOCKER, SEVERITY_MAJOR, "minor", "nit", "uncertain"}
 HIGH_SEVERITIES = frozenset({SEVERITY_BLOCKER, SEVERITY_MAJOR})
 NEUTRAL_FINDING_COST = 0.25
+UNIQUE_FINDER_BONUS_ENV = "LARCH_UNIQUE_FINDER_BONUS"
 _QUALITY_VALUES = {"excellent", "good", "adequate", "weak", "no-fix", "uncertain"}
 _UNCERTAIN_VALUES = {"true", "false"}
 
@@ -452,6 +454,27 @@ def accepted_finding_points_from_severities(
         if valid in HIGH_SEVERITIES:
             return 2
     return 1
+
+
+def unique_finder_bonus_from_env(env: Mapping[str, str] | None = None) -> float:
+    values = os.environ if env is None else env
+    raw = (values.get(UNIQUE_FINDER_BONUS_ENV) or "").strip()
+    if not raw:
+        return 0.0
+    try:
+        value = float(raw)
+    except ValueError:
+        return 0.0
+    if value <= 0 or not math.isfinite(value):
+        return 0.0
+    return value
+
+
+def unique_finder_bonus_note(bonus: float, rewarded_count: int) -> str:
+    return (
+        f"**Unique finder bonus active:** {rewarded_count} accepted in-scope "
+        f"sole-finder finding(s) received +{format_score(bonus)} each."
+    )
 
 
 def accepted_points_from_classification_row(

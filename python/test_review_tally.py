@@ -331,12 +331,64 @@ def test_tally_weighted_scoreboard_major_oos_and_coproposers(tmp_path: Path) -> 
     assert "| Codex-Edge | 0 | 0 | 0 | 0 | 1 | 1 | 0 | 0 | 1 |" in tally
     assert "| Codex-Neutral | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | -0.25 |" in tally
     assert "| Codex-OOS-Neutral | 0 | 0 | 0 | 0 | 1 | 0 | 1 | 0 | 0 |" in tally
+    assert "Unique finder bonus active" not in tally
 
     class_file = Path(rts.kv_get(result.stdout, "FINDINGS_CLASSIFICATION_TSV_FILE") or "")
     tsv_rows = _tsv_rows(class_file)
     assert tsv_rows["OOS_1"]["scope"] == "oos"
     assert tsv_rows["OOS_2"]["scope"] == "oos"
     assert tsv_rows["FINDING_1"]["scope"] == "in_scope"
+
+
+def test_tally_unique_finder_bonus_rewards_only_sole_in_scope_findings(tmp_path: Path) -> None:
+    case = tmp_path / "unique-finder-bonus"
+    case.mkdir()
+    _ = (case / "ballot.md").write_text(
+        """### FINDING_1: Sole minor in-scope
+- **Reviewer**: Cursor-Solo
+- **Concern**: Real issue.
+- **Suggested revision**: Fix.
+
+### FINDING_2: Shared minor in-scope
+- **Reviewer(s)**: Codex-Arch, Cursor-Testing
+- **Concern**: Shared issue.
+- **Suggested revision**: Fix.
+
+### OOS_1: Future work
+- **Reviewer**: Codex-OOS
+- **Concern**: Future issue.
+- **Suggested revision**: File it.
+""",
+        encoding="utf-8",
+    )
+    votes = (
+        "FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false\n"
+        "FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false\n"
+        "OOS_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n"
+    )
+    for name in ("cursor-vote-output.txt", "codex-vote-output.txt", "claude-vote-output.txt"):
+        _ = (case / name).write_text(votes, encoding="utf-8")
+
+    result = run_review(
+        "tally-code-votes",
+        "--ballot-file",
+        str(case / "ballot.md"),
+        "--voter-files",
+        str(case / "cursor-vote-output.txt"),
+        str(case / "codex-vote-output.txt"),
+        str(case / "claude-vote-output.txt"),
+        "--review-tmpdir",
+        str(case),
+        env={"LARCH_UNIQUE_FINDER_BONUS": "0.25"},
+    )
+
+    assert result.returncode == 0, result.stderr
+    tally = (case / "voting-tally.md").read_text(encoding="utf-8")
+    assert "| Cursor-Solo | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 1.25 |" in tally
+    assert "| Codex-Arch | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |" in tally
+    assert "| Cursor-Testing | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |" in tally
+    assert "| Codex-OOS | 0 | 0 | 0 | 0 | 1 | 1 | 0 | 0 | 1 |" in tally
+    assert "**Unique finder bonus active:** 1 accepted in-scope sole-finder finding(s) received +0.25 each." in tally
 
 
 def test_tally_scope_drift_oos_scoring_stays_flat(tmp_path: Path) -> None:
@@ -367,6 +419,7 @@ def test_tally_scope_drift_oos_scoring_stays_flat(tmp_path: Path) -> None:
         str(case / "scope-files.txt"),
         "--review-tmpdir",
         str(case),
+        env={"LARCH_UNIQUE_FINDER_BONUS": "0.25"},
     )
 
     assert result.returncode == 0, result.stderr
@@ -375,6 +428,7 @@ def test_tally_scope_drift_oos_scoring_stays_flat(tmp_path: Path) -> None:
     assert tsv_rows["FINDING_1"]["scope"] == "oos"
     tally = (case / "voting-tally.md").read_text(encoding="utf-8")
     assert "| Cursor-Correctness | 0 | 0 | 0 | 0 | 1 | 1 | 0 | 0 | 1 |" in tally
+    assert "Unique finder bonus active" not in tally
 
 
 def test_tally_excludes_narrative_only_voter_parse_rate_check(tmp_path: Path) -> None:

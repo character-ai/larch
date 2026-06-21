@@ -17,6 +17,8 @@ Panel severity comes from YES voters on the ballot. The finding body's `body_sev
 
 If a deduplicated finding was proposed by multiple reviewers (merged during deduplication), all contributing reviewers receive the same weighted points for that finding.
 
+`LARCH_UNIQUE_FINDER_BONUS` is an experimental additive bonus and is off by default. Set it to a positive float to reward the sole finder of an accepted in-scope finding; the suggested experimental value is `0.25`. Deduplicated multi-reviewer findings keep shared base credit and receive no uniqueness bonus. OOS scoring remains flat and unaffected. Reviewer pruning remains unweighted accepted-minus-rejected math and does not use this bonus.
+
 Voters do not see proposer labels. Ballots show stable reviewer lines with `anonymous`; scoring uses out-of-band proposer attribution from `proposer-map.tsv`. Legacy classification TSVs without a `scope` column score accepted rows flat +1 (no severity weighting), with `OOS_*` ids excluded from in-scope Top reviewers via prefix fallback, matching `voting-protocol.md` and the helper.
 
 Voter calibration is measured separately from reviewer points. The voter agreement scoreboard and `/voter-calibration` report do not change reviewer scoring, token allocation, or spawning.
@@ -70,6 +72,8 @@ Accepted, rejected, and OOS artifacts restore reviewer attribution after voting 
 | Claude-Generic | 2 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
 
 The example assumes one accepted major/blocker finding (+2), one accepted minor finding (+1), and one in-scope neutral finding (-0.25) for Correctness. The Testing row combines one accepted in-scope finding (+1), one in-scope neutral finding (-0.25), and one accepted OOS observation (+1). OOS accepted rows stay flat provisional +1 regardless of voter severity.
+
+When `LARCH_UNIQUE_FINDER_BONUS` is active and rewards at least one accepted in-scope finding, the tally prints one note below the reviewer scoreboard with the bonus value and rewarded sole-finder finding count. The scoreboard table columns do not change.
 
 ## Future Plans
 
