@@ -204,6 +204,7 @@ def test_fetch_main_retries_without_optional_fields(monkeypatch, tmp_path: Path)
     monkeypatch.setattr(subprocess, "run", fake_run)
     output = tmp_path / "issues.json"
     assert analyze_issues.fetch_main(["--repo", "o/r", "--limit", "10", "--output", str(output)]) == 0
+    assert len(calls) == 2
     assert "stateReason" in calls[0][-1]
-    assert "stateReason" not in calls[1][-1]
-    assert json.loads(output.read_text(encoding="utf-8"))[0]["_larch_degraded_fields"] == ["stateReason", "url"]
+    assert "stateReason" in calls[1][-1]
+    assert "_larch_degraded_fields" not in output.read_text(encoding="utf-8")

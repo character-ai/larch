@@ -10,7 +10,7 @@ Generate a backlog-and-process insight report from the current repository's GitH
 
 ## Usage
 
-`/analyze-issues [--limit N] [--span-days N] [--top-K N] [--categories=auto|default] [--log-root PATH] [--repo OWNER/REPO] [--filed-issue-details-json PATH] [--lenient]`
+`/analyze-issues [--limit N] [--span-days N] [--top-K N] [--categories=auto|default] [--log-root PATH] [--repo OWNER/REPO] [--lenient]`
 
 ## Run the Analysis
 
@@ -30,8 +30,15 @@ Flags:
 - `--categories=auto|default`: category mode. Default: `default`.
 - `--log-root PATH`: run-log root to scan for filed OOS evidence. Default: `larch-logs`.
 - `--repo OWNER/REPO`: explicit GitHub repository. Default: auto-detect for live runs.
-- `--filed-issue-details-json PATH`: optional offline enrichment sidecar for filed OOS issue details. Offline JSON reanalysis remains dump-only unless this is supplied.
 - `--lenient`: forwarded to `analyze.py`. Suppresses the >5% non-dict or malformed-number abort in `load_issues` so a corrupted dump still produces a partial report. Per-element stderr `WARN load_issues: ...` lines are still emitted; this flag only disables the threshold check.
+
+Offline reanalysis with an explicit issue dump and optional filed-issue sidecar:
+
+```bash
+python3 "$PWD/python/cli.py" analyze-issues analyze --json /path/to/issues.json [--log-root PATH] [--repo OWNER/REPO] [--filed-issue-details-json PATH] [--lenient]
+```
+
+`--filed-issue-details-json PATH` is only accepted on the offline `analyze` subcommand. It loads a JSON object `{ "<issue_number>": { ...view fields... } }` to enrich fate scoring without live `gh` calls.
 
 The raw `gh` JSON dump is saved to `${TMPDIR:-/tmp}/<sanitized-repo>-issues.json` for follow-up reanalysis. The slug converts `/` to `-` and keeps only alnum, `-`, and `_`; dumps are intentionally user-private via `umask 077` and an atomic temp+mv write. The live coordinator contract is covered by `python/analyze_issues.py` and `python/test_analyze_issues.py`.
 

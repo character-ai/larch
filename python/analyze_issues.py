@@ -640,6 +640,11 @@ def extract_issue_number_from_url(url: str) -> int | None:
     return int(match.group(1)) if match else None
 
 
+def extract_repo_from_url(url: str) -> str | None:
+    match = re.search(r"github\.com/([^/\s|)]+/[^/\s|)]+)/issues/", url or "", re.I)
+    return match.group(1) if match else None
+
+
 def _extract_filed_issue_numbers_from_text(text: str) -> list[int]:
     numbers: list[int] = []
     seen: set[int] = set()
@@ -701,8 +706,10 @@ def has_combined_away_marker(issue: Mapping[str, Any]) -> bool:
 
 
 def _has_not_planned_signal(issue: Mapping[str, Any]) -> bool:
+    degraded = issue.get("_larch_degraded_fields") or []
+    state_reason_degraded = isinstance(degraded, list) and "stateReason" in degraded
     state_reason = str(issue.get("stateReason") or "").strip().upper()
-    if state_reason == "NOT_PLANNED":
+    if state_reason == "NOT_PLANNED" and not state_reason_degraded:
         return True
     labels = issue_labels(issue)
     if labels & {"wontfix", "won't fix", "not planned", "not-planned", "invalid"}:
@@ -714,6 +721,11 @@ def _has_not_planned_signal(issue: Mapping[str, Any]) -> bool:
 def classify_oos_issue_fate(issue: Mapping[str, Any] | None) -> dict[str, Any]:
     if not issue:
         return {"bucket": "skipped missing issue", "adjusted": 0, "provisional": 0, "docked": False, "unknown": False}
+    if issue.get("__fetch_failed__"):
+        state = str(issue.get("state") or "").strip()
+        refs = issue.get("closedByPullRequestsReferences") or []
+        if not state and not (isinstance(refs, list) and refs):
+            return {"bucket": "skipped missing issue", "adjusted": 0, "provisional": 0, "docked": False, "unknown": False}
     state = str(issue.get("state") or "").upper()
     if state == "OPEN":
         return {"bucket": "provisional open", "adjusted": 1, "provisional": 1, "docked": False, "unknown": False}
@@ -741,7 +753,7 @@ def _hash_stable_id(title: str, body: str, source_key: str) -> str:
     return oos_filer._stable_identifier(title, body, source_key=source_key)  # pyright: ignore[reportPrivateUsage]
 
 
-def _stable_ids_cover(issue_stable_id: str, block_keys: set[Any]) -> bool:
+def _stable_ids_cover(issue_stable_id: str, block_keys: set[Any], *, allow_main_agent_bridge: bool = False) -> bool:
     if not issue_stable_id:
         return False
     if issue_stable_id in block_keys:
@@ -758,10 +770,14 @@ def _stable_ids_cover(issue_stable_id: str, block_keys: set[Any]) -> bool:
             continue
         block_source = block_key.rsplit(":", 1)[0] if ":" in block_key else ""
         if issue_source and block_source:
-            if issue_source in {block_source, "oos-accepted-main-agent"}:
+            if issue_source == block_source:
+                return True
+            if allow_main_agent_bridge and issue_source in {block_source, "oos-accepted-main-agent"}:
                 return True
             continue
-        if not issue_source or not block_source or issue_source == "oos-accepted-main-agent":
+        if not issue_source or not block_source:
+            return True
+        if allow_main_agent_bridge and issue_source == "oos-accepted-main-agent":
             return True
     return False
 
@@ -868,7 +884,11 @@ def _is_cap_rollup_record(record: dict[str, Any]) -> bool:
     if re.search(r"Aggregated rollup", text, re.I):
         return True
     stable_ids = _stable_ids_from_record(record)
-    return len(stable_ids) > 1 and bool(re.search(r"\b(?:capped|rollup|rolled up|aggregate)", text, re.I))
+    if len(stable_ids) <= 1:
+        return False
+    body = str(record.get("body") or "")
+    cited = sum(1 for stable_id in stable_ids if re.search(rf"(?:\*\*)?Stable ID(?:\*\*)?:\s*{re.escape(stable_id)}\b", body, re.I))
+    return cited >= 2
 
 
 def _resolve_blocks_for_stable_id(stable_id: str, blocks: Sequence[Mapping[str, Any]], body: str = "") -> tuple[list[dict[str, Any]], bool]:
@@ -996,12 +1016,25 @@ def _expand_cap_rollup_records(run_dir: Path, ndjson_record: dict[str, Any], blo
                 source_key = stable_id.rsplit(":", 1)[0]
                 break
         candidates = [dict(block) for block in blocks if not block.get("filed_url")]
-        if source_key:
-            candidates = [block for block in candidates if block.get("source_key") == source_key or source_key == "oos-accepted-main-agent"]
+        if source_key == "oos-accepted-main-agent":
+            candidates = [
+                block
+                for block in candidates
+                if any(_stable_ids_cover(stable_id, set(block.get("lookup_keys", set())), allow_main_agent_bridge=True) for stable_id in stable_ids)
+            ]
+        elif source_key:
+            candidates = [block for block in candidates if block.get("source_key") == source_key]
         if len(candidates) == expected:
-            out = [_row_from_block(run_dir.name, block, ndjson_record, issue_number, issue_url) for block in sorted(candidates, key=lambda item: (str(item.get("artifact_relpath") or ""), str(item.get("heading_id") or "")))]
-        elif not out:
+            for block in sorted(candidates, key=lambda item: (str(item.get("artifact_relpath") or ""), str(item.get("heading_id") or ""))):
+                identity = (str(block.get("artifact_relpath") or ""), str(block.get("heading_id") or ""))
+                if identity in seen_identities:
+                    continue
+                seen_identities.add(identity)
+                out.append(_row_from_block(run_dir.name, block, ndjson_record, issue_number, issue_url))
+        else:
             return [{"bucket": "ambiguous rollup expansion", "run_id": run_dir.name, "issue_number": issue_number, "issue_url": issue_url, "reviewer": "unknown"}]
+    if expected and len(out) < expected:
+        return [{"bucket": "ambiguous rollup expansion", "run_id": run_dir.name, "issue_number": issue_number, "issue_url": issue_url, "reviewer": "unknown"}]
     if ambiguous and not out:
         return [{"bucket": "ambiguous stable id", "run_id": run_dir.name, "issue_number": issue_number, "issue_url": issue_url, "reviewer": "unknown"}]
     return out
@@ -1170,7 +1203,13 @@ def _merged_issue_index(issues: Sequence[Mapping[str, Any]], filed_issue_details
     return index
 
 
-def fate_adjusted_oos_scoring(issues: Sequence[Mapping[str, Any]], log_root: Path, *, filed_issue_details: dict[int, dict[str, Any]]) -> tuple[str, dict[str, Any]]:
+def fate_adjusted_oos_scoring(
+    issues: Sequence[Mapping[str, Any]],
+    log_root: Path,
+    *,
+    filed_issue_details: dict[int, dict[str, Any]],
+    repo: str | None = None,
+) -> tuple[str, dict[str, Any]]:
     records = iter_filed_oos_records(log_root)
     lines = ["## Fate-adjusted OOS Scoring"]
     if not records:
@@ -1192,9 +1231,17 @@ def fate_adjusted_oos_scoring(issues: Sequence[Mapping[str, Any]], log_root: Pat
             continue
         number = record.get("issue_number")
         parsed_number, _reason = _parse_issue_number(number)
-        if parsed_number is None and record.get("issue_url"):
-            parsed_number = extract_issue_number_from_url(str(record.get("issue_url") or ""))
-        identity = record.get("identity") or (record.get("run_id"), record.get("stable_id") or parsed_number or record.get("issue_url"))
+        issue_url = str(record.get("issue_url") or "")
+        if parsed_number is None and issue_url:
+            parsed_number = extract_issue_number_from_url(issue_url)
+        identity = record.get("identity") or (record.get("run_id"), record.get("stable_id") or parsed_number or issue_url)
+        if repo and issue_url:
+            url_repo = extract_repo_from_url(issue_url)
+            if url_repo and url_repo.lower() != repo.lower():
+                if identity not in seen_items:
+                    seen_items.add(identity)
+                    buckets["skipped missing issue"] += 1
+                continue
         if parsed_number is None:
             if identity not in seen_items:
                 seen_items.add(identity)
@@ -1259,7 +1306,6 @@ def _build_analyze_report(
     categories_mode: str = "default",
     span_days: int = 0,
 ) -> str:
-    del repo
     top_k = max(top_k, 1)
     stats = coverage_stats(issues)
     categories = categorize(issues, categories_mode, top_k)
@@ -1279,7 +1325,7 @@ def _build_analyze_report(
         reviewer_text,
     ]
     try:
-        fate_text, _fate_stats = fate_adjusted_oos_scoring(issues, log_root, filed_issue_details=filed_issue_details)
+        fate_text, _fate_stats = fate_adjusted_oos_scoring(issues, log_root, filed_issue_details=filed_issue_details, repo=repo)
         sections.append(fate_text)
     except Exception as exc:  # pragma: no cover - defensive live-report guard
         print(f"WARN fate-adjusted OOS scoring unavailable: {exc}", file=sys.stderr)
@@ -1400,10 +1446,15 @@ def fetch_main(argv: Sequence[str] | None = None) -> int:
     try:
         with tmp.open("w", encoding="utf-8") as handle:
             tmp.chmod(0o600)
-            result = subprocess.run([
+            expanded_cmd = [
                 "gh", "issue", "list", "--repo", args.repo, "--state", "all", "--limit", args.limit,
                 "--json", expanded_fields,
-            ], stdout=handle, text=True, check=False)
+            ]
+            result = subprocess.run(expanded_cmd, stdout=handle, text=True, check=False)
+            if result.returncode != 0:
+                handle.seek(0)
+                handle.truncate(0)
+                result = subprocess.run(expanded_cmd, stdout=handle, text=True, check=False)
         degraded: tuple[str, ...] = ()
         if result.returncode != 0:
             with tmp.open("w", encoding="utf-8") as handle:
@@ -1412,7 +1463,8 @@ def fetch_main(argv: Sequence[str] | None = None) -> int:
                     "gh", "issue", "list", "--repo", args.repo, "--state", "all", "--limit", args.limit,
                     "--json", fallback_fields,
                 ], stdout=handle, text=True, check=False)
-            degraded = ("stateReason", "url")
+            if result.returncode == 0:
+                degraded = ("stateReason", "url")
         if result.returncode != 0:
             print(f"ERROR=gh issue list failed for repo {args.repo}", file=sys.stderr)
             tmp.unlink(missing_ok=True)
@@ -1447,28 +1499,39 @@ def run_main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--repo", default="")
     args = parser.parse_args(list(argv) if argv is not None else None)
     repo = args.repo or _detect_repo()
-    if not re.fullmatch(r"[^/]+/[^/]+", repo or ""):
-        print("ERROR=Unable to detect GitHub repo owner/name", file=sys.stderr)
-        return 1
-    sanitized = re.sub(r"[^A-Za-z0-9_-]", "", repo.replace("/", "-"))
-    if not sanitized:
-        print(f"ERROR=Sanitized repo name is empty (REPO='{repo}')", file=sys.stderr)
-        return 1
-    dump = Path(os.environ.get("TMPDIR", "/tmp")) / f"{sanitized}-issues.json"
-    old_umask = os.umask(0o077)
-    try:
-        rc = fetch_main(["--repo", repo, "--limit", args.limit, "--output", str(dump)])
-    finally:
-        os.umask(old_umask)
-    if rc != 0:
-        return rc
-    issues = load_issues(str(dump), lenient=args.lenient)
+    repo_valid = bool(re.fullmatch(r"[^/]+/[^/]+", repo or ""))
+    if not repo_valid:
+        print("WARN targeted comment fetch unavailable: unable to detect GitHub repo owner/name", file=sys.stderr)
+        repo = ""
+    issues: list[dict[str, Any]] = []
+    if repo_valid:
+        sanitized = re.sub(r"[^A-Za-z0-9_-]", "", repo.replace("/", "-"))
+        if not sanitized:
+            print(f"WARN bulk issue fetch skipped: sanitized repo name is empty (REPO='{repo}')", file=sys.stderr)
+            repo_valid = False
+        else:
+            dump = Path(os.environ.get("TMPDIR", "/tmp")) / f"{sanitized}-issues.json"
+            old_umask = os.umask(0o077)
+            try:
+                rc = fetch_main(["--repo", repo, "--limit", args.limit, "--output", str(dump)])
+            finally:
+                os.umask(old_umask)
+            if rc != 0:
+                print("WARN bulk gh issue list failed; continuing with log-only fate scoring", file=sys.stderr)
+            else:
+                issues = load_issues(str(dump), lenient=args.lenient)
     log_root = Path(args.log_root)
-    candidate_numbers = {
-        int(record["issue_number"])
-        for record in iter_filed_oos_records(log_root)
-        if _parse_issue_number(record.get("issue_number"))[0] is not None
-    }
+    candidate_numbers: set[int] = set()
+    for record in iter_filed_oos_records(log_root):
+        parsed_number, _reason = _parse_issue_number(record.get("issue_number"))
+        if parsed_number is None:
+            continue
+        issue_url = str(record.get("issue_url") or "")
+        if repo and issue_url:
+            url_repo = extract_repo_from_url(issue_url)
+            if url_repo and url_repo.lower() != repo.lower():
+                continue
+        candidate_numbers.add(int(parsed_number))
     details: dict[int, dict[str, Any]] = {}
     if candidate_numbers and repo:
         details = _fetch_filed_oos_issue_details(repo, candidate_numbers)
