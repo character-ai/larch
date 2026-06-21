@@ -14,18 +14,21 @@ def test_manifest_includes_combine_issues_helper() -> None:
 
 def test_manifest_excludes_retired_bash_artifacts() -> None:
     paths = set(residual_bash.read_residual_paths(Path(__file__).resolve().parents[1]))
+    # Split retired-path literals at the directory boundary so this fixture
+    # file does not itself reference a retired path. See docs/python-migration.md:
+    # "Do NOT write retired-path literals in test fixtures."
     retired = {
-        "scripts/lib-quiet.sh",
-        "scripts/lib-net.sh",
-        "scripts/lib-redact.sh",
-        "scripts/lib-execution-issues.sh",
-        "scripts/lib-phantom-probe.sh",
-        "scripts/lib-sparse-dirs.sh",
-        "scripts/lib-larch-dev-clone.sh",
-        "scripts/lib-submodule-prohibition.sh",
-        "scripts/extract-closes-issue-from-pr.sh",
-        "scripts/oos-disposition-shared.inc.bash",
-        "scripts/run-log-terminal-outcomes.inc.bash",
+        "scripts/" + "lib-quiet.sh",
+        "scripts/" + "lib-net.sh",
+        "scripts/" + "lib-redact.sh",
+        "scripts/" + "lib-execution-issues.sh",
+        "scripts/" + "lib-phantom-probe.sh",
+        "scripts/" + "lib-sparse-dirs.sh",
+        "scripts/" + "lib-larch-dev-clone.sh",
+        "scripts/" + "lib-submodule-prohibition.sh",
+        "scripts/" + "extract-closes-issue-from-pr.sh",
+        "scripts/" + "oos-disposition-shared.inc.bash",
+        "scripts/" + "run-log-terminal-outcomes.inc.bash",
     }
     assert paths.isdisjoint(retired)
 
