@@ -2794,6 +2794,20 @@ def test_preflight_skips_manifest_when_scout_ineligible(tmp_path):
 
 
 @MARK_DISPATCH
+def test_preflight_skips_manifest_when_scout_status_non_ok(tmp_path):
+    impl = _tmp_impl(tmp_path)
+    (impl / "step2-external-scout-eligible.txt").write_text("eligible\n", encoding="utf-8")
+    (impl / "step2-scout-coder-status.env").write_text("SCOUT_CODER_STATUS=missing-or-invalid\n", encoding="utf-8")
+    (impl / "scout-coder-manifest.json").write_text('{"archetypes":[]}\n', encoding="utf-8")
+    args = review_and_fix._build_step5_parser().parse_args([
+        "--implement-tmpdir", str(impl),
+        "--mode", "loop",
+    ])
+    _, _ = review_and_fix._preflight_step5(args)
+    assert args.pre_scouted_manifest == ""
+
+
+@MARK_DISPATCH
 def test_preflight_mav_apply_clears_pre_scouted_manifest(tmp_path):
     impl = _tmp_impl(tmp_path)
     findings = impl / "accepted.md"

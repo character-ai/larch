@@ -772,6 +772,42 @@ def _write_scout_status(review_tmpdir: Path, round_num: int, status: str, manife
     _write_text(review_tmpdir / f"scout-round{round_num}-status.env", text)
 
 
+def _implement_scout_status() -> tuple[Path | None, str]:
+    raw = os.environ.get("IMPLEMENT_TMPDIR", "")
+    if not raw:
+        return None, ""
+    tmpdir = Path(raw)
+    status = _kv_get_file(tmpdir / "step2-scout-coder-status.env", "SCOUT_CODER_STATUS", "")
+    return tmpdir, status
+
+
+def _append_producer_scout_warning_once(status: str, fail_reason: str) -> None:
+    if status not in {"producer-missing", "producer-invalid"}:
+        return
+    implement_tmpdir, _producer_status = _implement_scout_status()
+    if implement_tmpdir is None:
+        return
+    sentinel = implement_tmpdir / ".producer-scout-warning-logged"
+    if sentinel.exists():
+        return
+    reason = f" ({fail_reason})" if fail_reason else ""
+    result = _run_python_cli(
+        [
+            "run-log",
+            "append-entry",
+            "--log",
+            str(implement_tmpdir / "execution-issues.md"),
+            "--category",
+            "Warnings",
+            "--entry",
+            f"Step 5 — coder-produced dynamic-archetype manifest {status.removeprefix('producer-')}{reason}; static reviewers only.",
+        ],
+    )
+    if result.returncode != 0:
+        _diag("**⚠ review dispatch-panel: failed to persist producer-scout warning; continuing.**")
+    _write_text(sentinel, "logged\n")
+
+
 def _dynamic_agent_body(name: str, focus_area: str, rationale: str, prompt_body: str) -> str:
     return f"""---
 name: reviewer-dyn-{name}
@@ -931,7 +967,7 @@ def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int
     dynamic_raw = _get(parsed, "--dynamic-archetypes", os.environ.get("LARCH_DYNAMIC_ARCHETYPES_MAX") or "0")
     round_raw = _get(parsed, "--round-num", "1")
     plan_file = _get(parsed, "--plan-file")
-    site = _get(parsed, "--site", "implement Step 5" if os.environ.get("IMPLEMENT_TMPDIR") else "review Step 2")
+    site = _get(parsed, "--site", "review Step 2")
     if mode not in {"diff", "description"}:
         _usage("review dispatch-panel: --mode must be diff or description")
         return 2
@@ -993,22 +1029,31 @@ def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int
             _write_scout_status(review_tmpdir, round_num, scout_status, scout_manifest)
         pre_scouted = _get(parsed, "--pre-scouted-manifest")
         if scout_status == "na" and pre_scouted:
-            if _normalize_scout_manifest(Path(pre_scouted), scout_manifest, dynamic_max) and _scout_archetypes(scout_manifest):
-                scout_status = "pre-scouted"
+            _implement_tmpdir, producer_status = _implement_scout_status()
+            producer_invalid = site == "implement Step 5" and producer_status and producer_status != "ok"
+            if producer_invalid:
+                _write_empty_scout_manifest(scout_manifest)
+                scout_status = "producer-invalid"
+                scout_fail_reason = "producer_status_" + producer_status
+                _write_scout_status(review_tmpdir, round_num, scout_status, scout_manifest, scout_fail_reason)
+            elif _normalize_scout_manifest(Path(pre_scouted), scout_manifest, dynamic_max):
+                archetypes = _scout_archetypes(scout_manifest)
+                scout_status = "pre-scouted-empty" if not archetypes else "pre-scouted"
                 _write_scout_status(review_tmpdir, round_num, scout_status, scout_manifest)
-                context = {
-                    "diff_file": diff_file,
-                    "commit_count": _get(parsed, "--commit-count", "0"),
-                    "diff_mode": diff_mode,
-                    "description_text": _get(parsed, "--description-text"),
-                    "scope_files": _get(parsed, "--scope-files"),
-                    "plan_file": plan_file,
-                    "feature_file": _get(parsed, "--feature-file"),
-                }
-                _synthesize_dynamic_slots(scout_manifest, review_tmpdir, manifest, mode, context, codex_slots_enabled, runner=runner)
+                if archetypes:
+                    context = {
+                        "diff_file": diff_file,
+                        "commit_count": _get(parsed, "--commit-count", "0"),
+                        "diff_mode": diff_mode,
+                        "description_text": _get(parsed, "--description-text"),
+                        "scope_files": _get(parsed, "--scope-files"),
+                        "plan_file": plan_file,
+                        "feature_file": _get(parsed, "--feature-file"),
+                    }
+                    _synthesize_dynamic_slots(scout_manifest, review_tmpdir, manifest, mode, context, codex_slots_enabled, runner=runner)
             else:
                 _write_empty_scout_manifest(scout_manifest)
-                scout_status = "parse-failed"
+                scout_status = "producer-invalid" if site == "implement Step 5" else "parse-failed"
                 scout_fail_reason = "pre_scouted_manifest_validation"
                 _write_scout_status(review_tmpdir, round_num, scout_status, scout_manifest, scout_fail_reason)
         elif scout_status == "na":
@@ -1040,6 +1085,20 @@ def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int
                     scout_fail_reason = "missing_status_sidecar"
                     _write_empty_scout_manifest(scout_manifest)
                     _write_scout_status(review_tmpdir, round_num, scout_status, scout_manifest, scout_fail_reason)
+            elif site == "implement Step 5":
+                implement_tmpdir, producer_status = _implement_scout_status()
+                _write_empty_scout_manifest(scout_manifest)
+                if implement_tmpdir is not None and (
+                    producer_status
+                    or (implement_tmpdir / "scout-coder-manifest.json").exists()
+                    or (implement_tmpdir / "step2-external-scout-eligible.txt").exists()
+                ):
+                    scout_status = "producer-invalid"
+                    scout_fail_reason = producer_status or "producer_sidecar_ineligible"
+                else:
+                    scout_status = "producer-missing"
+                    scout_fail_reason = "producer_sidecar_absent"
+                _write_scout_status(review_tmpdir, round_num, scout_status, scout_manifest, scout_fail_reason)
             else:
                 scout_args = [
                     "scout",
@@ -1084,6 +1143,8 @@ def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int
                     }
                     _synthesize_dynamic_slots(scout_manifest, review_tmpdir, manifest, mode, context, codex_slots_enabled, runner=runner)
                 _write_scout_status(review_tmpdir, round_num, scout_status, scout_manifest, scout_fail_reason)
+
+    _append_producer_scout_warning_once(scout_status, scout_fail_reason)
 
     static_slot_count, static_cursor, static_codex, dynamic_slots = _recount_manifest(manifest)
     panel_full = static_slot_count + dynamic_slots
@@ -1938,7 +1999,7 @@ def review_core(argv: list[str], *, runner: proc.Runner | None = None) -> int:
     session_env_path = _get(parsed, "--session-env-path", os.environ.get("SESSION_ENV_PATH", ""))
     run_id = _get(parsed, "--run-id")
     prune_ledger = _get(parsed, "--prune-ledger")
-    site = _get(parsed, "--site", "implement Step 5" if os.environ.get("IMPLEMENT_TMPDIR") else "review Step 2")
+    site = _get(parsed, "--site", "review Step 2")
     review_tmpdir.mkdir(parents=True, exist_ok=True)
     commands = _review_commands()
 

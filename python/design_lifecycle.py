@@ -3166,7 +3166,7 @@ def _compose_drafter_prompt(design_tmpdir: Path, plugin_root: Path) -> None:
         "- Use a Files to modify/create section with per-file headings exactly one path each: ### NEW:, ### UPDATED:, ### REWRITTEN:, or ### MAY_UPDATE: (at least one ASCII space after ### before the keyword). Use ### MAY_UPDATE: for conditional work such as prose saying only change if a condition is met. ### NEW:, ### UPDATED:, and ### REWRITTEN: are firm coverage commitments.",
         "- Include Approach, Edge cases, Failure modes when non-trivial, Testing strategy, optional diff_added/diff_deleted/mechanical_churn trailers, and final diff_lines: <N>. mechanical_churn accepts only true or false; never write a number there.",
         "- The final plan body must end with a whole-line diff_lines: <N> trailer.",
-        "- Optionally include up to three dynamic plan-review archetypes in a scout block after the plan. The launcher validates, filters, caps, and materializes this block; invalid post-plan scout output is ignored.",
+        '- Write a best-effort dynamic plan-review archetype scout block after the plan. Use {"archetypes":[]} when static reviewers suffice. The launcher validates, filters, caps, and materializes this block; invalid post-plan scout output is ignored.',
         "- Scout sentinels inside the summary or plan are fatal format errors. Never put LARCH_SCOUT_* markers in the plan body.",
         "",
         "Readability style (trusted):",
@@ -3356,6 +3356,7 @@ def step2b_drafter_main(argv: Sequence[str]) -> int:
     plan_path = design_tmpdir / "plan.txt"
     plan_lines = len(plan_path.read_text(encoding="utf-8", errors="replace").splitlines()) if plan_path.is_file() else 0
     structural_ok = False
+    status_text = ""
     if drafter_rc == 0 and plan_path.is_file() and plan_path.stat().st_size > 0:
         lines = plan_path.read_text(encoding="utf-8", errors="replace").splitlines()
         status_text = (design_tmpdir / "step2b-drafter-status.txt").read_text(encoding="utf-8", errors="replace") if (design_tmpdir / "step2b-drafter-status.txt").is_file() else ""
@@ -3376,6 +3377,31 @@ def step2b_drafter_main(argv: Sequence[str]) -> int:
     if structural_ok and not dirty_block:
         _write_text(design_tmpdir / ".step2b-plan-source", "drafter\n")
         diff_lines = plan_path.read_text(encoding="utf-8", errors="replace").splitlines()[-1].removeprefix("diff_lines: ")
+        scout_written = "SCOUT_WRITTEN=true" in status_text
+        if not scout_written:
+            scout_reason = "absent"
+            for line in status_text.splitlines():
+                if line.startswith("SCOUT_FAIL_REASON="):
+                    scout_reason = line.split("=", 1)[1] or "absent"
+                    break
+            print(f"**⚠ 2b: drafter dynamic-archetype manifest missing or invalid ({scout_reason}); plan review will use static reviewers only.**", file=sys.stderr)
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(plugin_root / "python" / "cli.py"),
+                    "run-log",
+                    "append-entry",
+                    "--log",
+                    str(design_tmpdir / "execution-issues.md"),
+                    "--category",
+                    "Warnings",
+                    "--entry",
+                    f"Step 2b — drafter dynamic-archetype manifest missing or invalid ({scout_reason}); static plan reviewers only.",
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
         env = os.environ.copy()
         env["LARCH_QUIET_DISABLE"] = "1"
         preview = subprocess.run(

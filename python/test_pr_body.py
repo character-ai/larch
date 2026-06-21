@@ -563,6 +563,32 @@ def test_render_run_summary_includes_merge_downgrade_warning() -> None:
     assert "panel-failed recovery shipped a PR without merging" in body
 
 
+def test_render_run_summary_includes_dynamic_archetypes_line() -> None:
+    body = pr_body.render_run_summary(
+        skill="implement",
+        outcome="pr-created",
+        run_id="run1",
+        dynamic_archetypes_line="static-only, pre-scouted-empty",
+        cost_unavailable=True,
+    )
+    assert "- **Dynamic archetypes**: static-only, pre-scouted-empty" in body
+
+
+def test_final_report_dynamic_archetypes_line_ok_count(tmp_path: Path) -> None:
+    _ = (tmp_path / "step2-scout-coder-status.env").write_text("SCOUT_CODER_STATUS=ok\n", encoding="utf-8")
+    _ = (tmp_path / "step2-external-scout-eligible.txt").write_text("eligible\n", encoding="utf-8")
+    _ = (tmp_path / "scout-coder-manifest.json").write_text(
+        '{"archetypes":[{"name":"dyn-api","focus_area":"correctness","weight":1,"rationale":"API changed.","prompt_body":"Check API."}]}\n',
+        encoding="utf-8",
+    )
+    assert final_report._dynamic_archetypes_line(tmp_path) == "ok (1)"  # pyright: ignore[reportPrivateUsage]
+
+
+def test_final_report_dynamic_archetypes_line_stale_ok_is_invalid(tmp_path: Path) -> None:
+    _ = (tmp_path / "step2-scout-coder-status.env").write_text("SCOUT_CODER_STATUS=ok\n", encoding="utf-8")
+    assert final_report._dynamic_archetypes_line(tmp_path) == "static-only, producer missing-or-invalid"  # pyright: ignore[reportPrivateUsage]
+
+
 @pytest.mark.parametrize(
     "argv",
     [

@@ -1175,6 +1175,117 @@ printf '{"type":"result","subtype":"success","is_error":false,"result":"claude r
     assert [a["name"] for a in normalized["archetypes"]] == ["arch", "api-contract"]
 
 
+def _write_waterfall_noop(path: Path) -> None:
+    _write_executable(
+        path,
+        """#!/usr/bin/env bash
+printf 'DISPATCH_OK=true\\nSTATIC_DISPATCH_OK=true\\nDYNAMIC_DISPATCH_OK=true\\nALL_OUTPUT_FILES=\\nALL_OUTPUT_TOOLS=\\n'
+""",
+    )
+
+
+def test_dispatch_panel_pre_scouted_empty_ok_static_only(tmp_path: Path) -> None:
+    case_dir = tmp_path / "pre-scouted-empty"
+    case_dir.mkdir()
+    (case_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
+    (case_dir / "review.diff").write_text("diff --git a/foo b/foo\n", encoding="utf-8")
+    impl = tmp_path / "impl"
+    impl.mkdir()
+    manifest = impl / "scout-coder-manifest.json"
+    manifest.write_text('{"archetypes":[]}\n', encoding="utf-8")
+    (impl / "step2-scout-coder-status.env").write_text("SCOUT_CODER_STATUS=ok\n", encoding="utf-8")
+    (impl / "step2-external-scout-eligible.txt").write_text("eligible\n", encoding="utf-8")
+    waterfall = tmp_path / "waterfall.sh"
+    _write_waterfall_noop(waterfall)
+    result = run_review(
+        "dispatch-panel",
+        "--mode", "diff",
+        "--diff-file", str(case_dir / "review.diff"),
+        "--review-tmpdir", str(case_dir),
+        "--codex-available", "false",
+        "--cursor-available", "false",
+        "--panel", "hard",
+        "--plan-file", str(case_dir / "plan.md"),
+        "--dynamic-archetypes", "3",
+        "--pre-scouted-manifest", str(manifest),
+        "--site", "implement Step 5",
+        env={"CLAUDE_PLUGIN_ROOT": str(ROOT), "LARCH_QUIET_DISABLE": "1", "IMPLEMENT_TMPDIR": str(impl), "DISPATCH_WATERFALL": str(waterfall)},
+    )
+    assert result.returncode == 0, result.stderr
+    assert "SCOUT_STATUS=pre-scouted-empty" in result.stdout
+    assert "DYNAMIC_SLOTS=0" in result.stdout
+
+
+def test_dispatch_panel_implement_missing_producer_does_not_launch_scout(tmp_path: Path) -> None:
+    case_dir = tmp_path / "implement-missing-producer"
+    case_dir.mkdir()
+    (case_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
+    (case_dir / "review.diff").write_text("diff --git a/foo b/foo\n", encoding="utf-8")
+    impl = tmp_path / "impl"
+    impl.mkdir()
+    scout = tmp_path / "scout-must-not-run.sh"
+    _write_executable(scout, '#!/usr/bin/env bash\necho scout-called > "$1.called"\nexit 99\n')
+    waterfall = tmp_path / "waterfall.sh"
+    _write_waterfall_noop(waterfall)
+    result = run_review(
+        "dispatch-panel",
+        "--mode", "diff",
+        "--diff-file", str(case_dir / "review.diff"),
+        "--review-tmpdir", str(case_dir),
+        "--codex-available", "false",
+        "--cursor-available", "false",
+        "--panel", "hard",
+        "--plan-file", str(case_dir / "plan.md"),
+        "--dynamic-archetypes", "3",
+        "--site", "implement Step 5",
+        env={"CLAUDE_PLUGIN_ROOT": str(ROOT), "LARCH_QUIET_DISABLE": "1", "IMPLEMENT_TMPDIR": str(impl), "SCOUT_DYNAMIC_ARCHETYPES_SH": str(scout), "DISPATCH_WATERFALL": str(waterfall)},
+    )
+    assert result.returncode == 0, result.stderr
+    assert "SCOUT_STATUS=producer-missing" in result.stdout
+    assert not list(tmp_path.glob("*.called"))
+    assert (impl / ".producer-scout-warning-logged").is_file()
+
+
+def test_dispatch_panel_review_default_ignores_ambient_implement_tmpdir(tmp_path: Path) -> None:
+    case_dir = tmp_path / "review-default-site"
+    case_dir.mkdir()
+    (case_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
+    (case_dir / "review.diff").write_text("diff --git a/foo b/foo\n", encoding="utf-8")
+    impl = tmp_path / "impl"
+    impl.mkdir()
+    scout = tmp_path / "scout.sh"
+    called = tmp_path / "scout.called"
+    _write_executable(
+        scout,
+        f"""#!/usr/bin/env bash
+out=""
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "--output" ]]; then out="$2"; shift 2; else shift; fi
+done
+printf 'called\\n' > "{called}"
+printf '{{"archetypes":[{{"name":"api-contract","focus_area":"correctness","weight":1,"rationale":"API changed.","prompt_body":"Check API compatibility."}}]}}\\n' > "$out"
+printf 'SCOUT_STATUS=ok\\nSCOUT_MANIFEST=%s\\nSCOUT_ARCHETYPE_COUNT=1\\n' "$out"
+""",
+    )
+    waterfall = tmp_path / "waterfall.sh"
+    _write_waterfall_noop(waterfall)
+    result = run_review(
+        "dispatch-panel",
+        "--mode", "diff",
+        "--diff-file", str(case_dir / "review.diff"),
+        "--review-tmpdir", str(case_dir),
+        "--codex-available", "false",
+        "--cursor-available", "false",
+        "--panel", "hard",
+        "--plan-file", str(case_dir / "plan.md"),
+        "--dynamic-archetypes", "1",
+        env={"CLAUDE_PLUGIN_ROOT": str(ROOT), "LARCH_QUIET_DISABLE": "1", "IMPLEMENT_TMPDIR": str(impl), "SCOUT_DYNAMIC_ARCHETYPES_SH": str(scout), "DISPATCH_WATERFALL": str(waterfall)},
+    )
+    assert result.returncode == 0, result.stderr
+    assert called.is_file()
+    assert "SCOUT_STATUS=ok" in result.stdout
+
+
 def _write_dispatch_vendor_stubs(stub_bin: Path) -> None:
     _write_executable(
         stub_bin / "codex",

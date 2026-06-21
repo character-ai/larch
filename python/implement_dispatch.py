@@ -937,7 +937,10 @@ def _clear_external_scout_state(tmpdir: Path) -> None:
     for path in (
         tmpdir / "scout-coder-manifest.json",
         tmpdir / "step2-external-scout-eligible.txt",
+        tmpdir / "step2-scout-coder-status.env",
+        tmpdir / "scout-coder-manifest.raw.json",
         tmpdir / "codex-step2-out" / "scout-coder-manifest.json",
+        tmpdir / "cursor-step2-out" / "scout-coder-manifest.json",
     ):
         with contextlib.suppress(OSError):
             path.unlink()
@@ -1012,6 +1015,97 @@ def _json_load(path: Path) -> object | None:
         return None
 
 
+def _coder_scout_archetype_count(path: Path) -> int | None:
+    obj = _json_load(path)
+    if not isinstance(obj, dict) or not isinstance(obj.get("archetypes"), list):
+        return None
+    return len(obj["archetypes"])
+
+
+def _write_coder_scout_status(tmpdir: Path, status: str, manifest: Path, producer: str) -> None:
+    _write_text_atomic(
+        tmpdir / "step2-scout-coder-status.env",
+        f"SCOUT_CODER_STATUS={status}\n"
+        f"SCOUT_CODER_MANIFEST={manifest}\n"
+        f"SCOUT_CODER_PRODUCER={producer}\n",
+    )
+
+
+def _warn_invalid_coder_scout(producer: str) -> None:
+    producer_label = "main agent" if producer == "main-agent" else "external coder"
+    print(
+        f"**⚠ implement Step 2: {producer_label} dynamic-archetype manifest missing or invalid; Step 5 will use static reviewers only.**",
+        file=sys.stderr,
+    )
+
+
+def normalize_coder_scout(
+    *,
+    tmpdir: Path,
+    input_path: Path,
+    producer: str = "external",
+) -> str:
+    """Normalize a coder-produced scout manifest for /implement Step 5."""
+    scout_manifest = tmpdir / "scout-coder-manifest.json"
+    marker = tmpdir / "step2-external-scout-eligible.txt"
+    filtered_tmp = tmpdir / f"scout-coder-manifest.filtered.{os.getpid()}.json"
+    raw_count = _coder_scout_archetype_count(input_path)
+    status = "missing-or-invalid"
+    try:
+        if raw_count is not None:
+            result = _invoke_cli(
+                [
+                    "scout",
+                    "filter-manifest",
+                    str(input_path),
+                    str(filtered_tmp),
+                    "--max-archetypes",
+                    "3",
+                    "--mode",
+                    "review",
+                ]
+            )
+            kv = _parse_kv(result.stdout)
+            filtered_count = _coder_scout_archetype_count(filtered_tmp)
+            filter_status = kv.get("SCOUT_STATUS", "")
+            filter_ok = result.returncode == 0 and filter_status in {"ok", "empty"} and filtered_count is not None
+            if filter_ok and (raw_count == 0 or (filtered_count or 0) > 0):
+                status = "ok"
+                filtered_tmp.replace(scout_manifest)
+            else:
+                _write_text_atomic(scout_manifest, '{"archetypes":[]}\n')
+        else:
+            _write_text_atomic(scout_manifest, '{"archetypes":[]}\n')
+    finally:
+        with contextlib.suppress(OSError):
+            filtered_tmp.unlink()
+    if status == "ok":
+        _write_text_atomic(marker, "eligible\n")
+    else:
+        with contextlib.suppress(OSError):
+            marker.unlink()
+        _warn_invalid_coder_scout(producer)
+    _write_coder_scout_status(tmpdir, status, scout_manifest, producer)
+    return status
+
+
+def normalize_coder_scout_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py implement normalize-coder-scout")
+    parser.add_argument("--tmpdir", required=True)
+    parser.add_argument("--input", required=True)
+    parser.add_argument("--producer", choices=("external", "main-agent"), default="external")
+    args = parser.parse_args(argv)
+    tmpdir = Path(args.tmpdir)
+    if not tmpdir.is_dir():
+        print(f"implement normalize-coder-scout: --tmpdir not a directory: {tmpdir}", file=sys.stderr)
+        return 2
+    _rehydrate_plugin_root(tmpdir)
+    status = normalize_coder_scout(tmpdir=tmpdir, input_path=Path(args.input), producer=args.producer)
+    _emit_kv("SCOUT_CODER_STATUS", status)
+    _emit_kv("SCOUT_CODER_MANIFEST", str(tmpdir / "scout-coder-manifest.json"))
+    return 0
+
+
 def _emit_manifest_invalid_or_recover(st: DispatchState, status: str, raw_obj: object | None) -> int:
     if not isinstance(raw_obj, dict):
         return st.emit_bailed("manifest-schema-invalid")
@@ -1083,16 +1177,11 @@ def _manifest_complete_salvageable(path: Path) -> bool:
 
 
 def _normalize_scout(st: DispatchState) -> None:
-    st.scout_status = "ok"
-    result = _invoke_cli(["scout", "filter-manifest", str(st.launch_scout_manifest), str(st.scout_coder_manifest), "--max-archetypes", "3"])
-    kv = _parse_kv(result.stdout)
-    ok = result.returncode == 0 and kv.get("SCOUT_STATUS") in {"ok", "empty"}
-    obj = _json_load(st.scout_coder_manifest) if st.scout_coder_manifest.exists() else None
-    if not ok or not isinstance(obj, dict) or not isinstance(obj.get("archetypes"), list):
-        _write_text_atomic(st.scout_coder_manifest, '{"archetypes":[]}\n')
-        st.scout_status = "missing-or-invalid"
-    _write_text_atomic(st.external_scout_marker, "eligible\n")
-    _write_text_atomic(st.tmpdir / "step2-scout-coder-status.env", f"SCOUT_CODER_STATUS={st.scout_status}\nSCOUT_CODER_MANIFEST={st.scout_coder_manifest}\n")
+    st.scout_status = normalize_coder_scout(
+        tmpdir=st.tmpdir,
+        input_path=st.launch_scout_manifest,
+        producer="external",
+    )
 
 
 def _validate_manifest_paths(st: DispatchState, obj: dict[str, Any]) -> str:

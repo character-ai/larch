@@ -464,6 +464,22 @@ If `coder=cursor` and Step 2 returned `STATUS=claude_fallback`, that is **not** 
 
 Implement per the materialized plan from Step 0 using Edit/Write tools. Follow CLAUDE.md: read existing code before modifying; match style and patterns; avoid duplication; don't over-engineer (each abstraction justified by a concrete current need). Prefer TDD when the project has test infrastructure (failing test first, then implement to pass). For pure configuration / documentation / prompt-text edits, skip TDD but state one concrete post-change verification (the relevant-checks helper, grep, dry-run, or minimal manual repro). Address root causes; do not suppress errors. Use the same captured-check helper described in Step 3 promptly after each non-trivial logical sub-step when you need validation before Step 3 — Step 3 is the final check, not the only one.
 
+Main-agent implementation is not complete until the coder-produced scout manifest is normalized; skipping this fence reintroduces the separate Step 5 scout.
+
+**Main-agent scout manifest contract**: after implementation edits and before Step 3, write raw JSON to `$IMPLEMENT_TMPDIR/scout-coder-manifest.raw.json`. Use `{"archetypes":[]}` when no dynamic specialists are useful. For non-empty manifests, follow `agents/_implementer-base.md` scout selection rules, not just the JSON schema: use short lowercase slugs, prefer `dyn-<topic>` names, do not duplicate static reviewers or reserved slugs (`correctness`, `edge-cases`, `testing`, `generic`, `structure`, `plan-fidelity`, `security`, and other names in `REVIEW_RESERVED` / `python/plan_scout.py`), keep `rationale` single-line, and keep `prompt_body` 2–6 sentences focused on changed code to investigate. Use this compact schema:
+
+```json
+{"archetypes":[{"name":"slug","focus_area":"code-quality|risk-integration|correctness|architecture|security","weight":1,"rationale":"single-line reason","prompt_body":"2-6 sentence focus directive"}]}
+```
+
+**Pinned normalization fence (required, nonblocking)**: immediately after main-agent implementation and before Step 3, run exactly this one-line launcher fence:
+
+```bash
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement normalize-coder-scout --tmpdir "$IMPLEMENT_TMPDIR" --input "$IMPLEMENT_TMPDIR/scout-coder-manifest.raw.json" --producer main-agent
+```
+
+If `scout-coder-manifest.raw.json` is absent, run the same helper with `--input` pointing at the expected raw path anyway so it writes `missing-or-invalid` status and an empty manifest. Failure to produce a valid manifest is nonblocking but loud. This fence is mandatory on every main-agent path, including `--emergency`, explicit `--coder claude`, and both-tools-unavailable fallback. The external implementer `STATUS=complete` path is unchanged because the dispatcher normalizes after a complete manifest.
+
 After the implementation commit (Step 4), the orchestrator constructs an in-memory manifest equivalent (computed from `git diff --name-only $BASELINE..HEAD` and the commit message) for Steps 9a / 9a.1 to consume. `$MANIFEST_PATH` is left empty on this branch.
 
 ### 2.5 — Q/A logging + larch-log append
@@ -491,7 +507,7 @@ If `RUN_ID` is unavailable for a degraded local-only path, keep the `$IMPLEMENT_
 
 Material answers that change scope or approach also log here (same `Q/A` category).
 
-> **Continue to Step 3 IMMEDIATELY.** Implementation is not the end of the run — checks, commit, review, PR, CI, and merge still must run.
+> **Continue to Step 3 IMMEDIATELY after the raw-manifest write and normalize-coder-scout fence complete.** Implementation is not the end of the run — checks, commit, review, PR, CI, and merge still must run.
 
 <!-- step:3 — Relevant Checks (first pass) -->
 
@@ -599,7 +615,7 @@ Replace `<ACCEPTED_COUNT>` and `<REJECTED_COUNT>` with the reconciled integer li
 
 ### Scripted review loop
 
-**IMPORTANT: Code review must ALWAYS run.** Never skip regardless of the nature of changes — code, skills, documentation, data files, configuration — all changes require review. Step 5 invokes **one** `skills/implement/scripts/step-5-review.sh` Bash tool call with `run_in_background: true` (immediate-background mode) that marks Step 5 telemetry, resolves `dynamic_archetypes_cap` from `LARCH_DYNAMIC_ARCHETYPES_MAX` in `$IMPLEMENT_TMPDIR/session-env.sh`, then from process `LARCH_DYNAMIC_ARCHETYPES_MAX`, then the implement-mode default `3`, prints the Step 5 banner (3-judge panel on every round: three Cursor archetype voters with single-Claude fallback when Cursor is unavailable, specialists per vendor, mechanically pruned in rounds 3-4 when prior yield is zero), and execs `review-and-fix step5 --mode loop --starting-round 1`. The absorbed loop internalizes the entire round loop, post-round captured relevant checks, lint-fix repair, and the substantiality / bulk-skip gates — rely on `<task-notification>` for one-shot completion; never use a polling or Monitor launch. The launcher reads `$IMPLEMENT_TMPDIR/plan.txt`, passes a fixed `--round-cap` of **5** (hard ceiling; degraded rounds consume the budget), and does **not** forward `--panel`. The unified **hard** panel is applied only inside `review-and-fix CLI` → `review core` with specialists per vendor plus optional dynamic archetypes; rounds 3-4 may launch a mechanically reduced reviewer panel, and all-pruned rounds consume a round slot and advance toward the round-5 full re-probe.
+**IMPORTANT: Code review must ALWAYS run.** Never skip regardless of the nature of changes — code, skills, documentation, data files, configuration — all changes require review. Step 5 invokes **one** `skills/implement/scripts/step-5-review.sh` Bash tool call with `run_in_background: true` (immediate-background mode) that marks Step 5 telemetry, resolves `dynamic_archetypes_cap` from `LARCH_DYNAMIC_ARCHETYPES_MAX` in `$IMPLEMENT_TMPDIR/session-env.sh`, then from process `LARCH_DYNAMIC_ARCHETYPES_MAX`, then the implement-mode default `3`, prints the Step 5 banner (3-judge panel on every round: three Cursor archetype voters with single-Claude fallback when Cursor is unavailable, specialists per vendor, mechanically pruned in rounds 3-4 when prior yield is zero), and execs `review-and-fix step5 --mode loop --starting-round 1`. `/implement` Step 5 does not launch a separate dynamic scout. It consumes the coder-produced manifest when eligible, and otherwise runs static reviewers only. The absorbed loop internalizes the entire round loop, post-round captured relevant checks, lint-fix repair, and the substantiality / bulk-skip gates — rely on `<task-notification>` for one-shot completion; never use a polling or Monitor launch. The launcher reads `$IMPLEMENT_TMPDIR/plan.txt`, passes a fixed `--round-cap` of **5** (hard ceiling; degraded rounds consume the budget), and does **not** forward `--panel`. The unified **hard** panel is applied only inside `review-and-fix CLI` → `review core` with specialists per vendor plus optional dynamic archetypes; rounds 3-4 may launch a mechanically reduced reviewer panel, and all-pruned rounds consume a round slot and advance toward the round-5 full re-probe.
 
 Nested review token-context propagation through `review-and-fix CLI` is pinned by `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-implement-review-token-propagation.sh` and `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-implement-review-token-propagation.md`.
 
