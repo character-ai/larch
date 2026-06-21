@@ -525,6 +525,37 @@ def _classify_round_loop_status(
     return "complete"
 
 
+# Issue #4996: the findings aggregator writes its forensics to stable top-level paths under the
+# design tmpdir, and the Step 3 loop calls it once per round, so a later round's success overwrites
+# the stderr/output a failed early round left behind. Mirror the diagnostic files into
+# plan-review/round-N/ -- where reviewer forensics already live and the committed-log publish keeps
+# them -- so an early-round aggregator failure stays diagnosable after a later round succeeds. The
+# snapshot runs only on aggregator failure, so a clean run adds no committed bytes.
+_AGGREGATOR_FORENSIC_FILES = (
+    "aggregator-validate.stderr",
+    "aggregator-dispatch.stderr",
+    "aggregator-dispatch.env",
+    "aggregator-output.txt",
+)
+
+
+def _snapshot_aggregator_forensics(design: Path, round_num: int) -> None:
+    round_dir = design / "plan-review" / f"round-{round_num}"
+    try:
+        round_dir.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return
+    for name in _AGGREGATOR_FORENSIC_FILES:
+        src = design / name
+        if not src.is_file() or src.is_symlink():
+            continue
+        dst = round_dir / name
+        if dst.is_symlink():
+            continue
+        with contextlib.suppress(OSError):
+            _ = shutil.copyfile(src, dst)
+
+
 def execute_round(
     design: Path,
     *,
@@ -680,12 +711,19 @@ def execute_round(
             str(plan_file),
             "--scope-anchor-file",
             str(design / "plan-review-scope-anchor.txt"),
+            "--round-dir",
+            str(design / "plan-review" / f"round-{round_num}"),
         ],
         env={"LARCH_QUIET_DISABLE": "1"},
     )
     agg_kv = _parse_kv(agg.stdout)
     agg_status = _aggregator_status_from_kv(agg_kv, returncode=agg.returncode)
     values["AGGREGATOR_STATUS"] = agg_status
+    # Retain this round's aggregator forensics before the next round overwrites the stable paths
+    # (issue #4996). Only failures leave a committed pointer worth resolving, so skip the snapshot
+    # for clean aggregations to avoid adding committed bytes on healthy runs.
+    if agg_status not in {"ok", "insufficient-input", "disabled"}:
+        _snapshot_aggregator_forensics(design, round_num)
     ballot = design / "ballot.txt"
     proposer_map = design / "proposer-map.tsv"
     if not _aggregation_ok_for_voting(agg_kv, returncode=agg.returncode):

@@ -1,3 +1,5 @@
+# pyright: reportPrivateUsage=false
+
 from __future__ import annotations
 
 import subprocess
@@ -644,6 +646,74 @@ def test_aggregate_session_env_failure_log_pointer(tmp_path: Path) -> None:
     assert "validation exhausted (narrow-trigger nonconforming pseudo-heading combined with attestation)" in issues.read_text(
         encoding="utf-8"
     )
+
+
+def test_committed_ref_round_dir_stamps_design_path(tmp_path: Path) -> None:
+    """A --round-dir under --review-tmpdir round-stamps the committed failure pointer so a /design
+    early-round aggregator failure stays diagnosable after a later round overwrites the stable
+    top-level stderr (issue #4996).
+    """
+    review_tmp = tmp_path / "design"
+    round_dir = review_tmp / "plan-review" / "round-1"
+    round_dir.mkdir(parents=True)
+    validate_log = review_tmp / "aggregator-validate.stderr"
+
+    ref = review_aggregate._committed_ref(validate_log, review_tmp, "", round_dir)
+    assert ref == "plan-review/round-1/aggregator-validate.stderr"
+    phrase = review_aggregate._failure_see_phrase(validate_log, review_tmp, "", round_dir)
+    assert phrase == "See plan-review/round-1/aggregator-validate.stderr in the committed run log."
+
+    # No round_dir and a non-round-prefixed tmpdir keep the legacy bare-path pointer.
+    assert review_aggregate._committed_ref(validate_log, review_tmp, "") == str(validate_log)
+    # A round_dir outside --review-tmpdir fails open to the bare path.
+    outside = tmp_path / "other" / "round-1"
+    assert review_aggregate._committed_ref(validate_log, review_tmp, "", outside) == str(validate_log)
+
+
+def test_aggregate_round_dir_stamps_failure_pointer(tmp_path: Path) -> None:
+    """End-to-end: --round-dir makes the /design validation-failure pointer round-aware so it
+    resolves to the retained per-round snapshot rather than the clobbered top-level path (#4996).
+    """
+    review_tmp = tmp_path / "design"
+    round_dir = review_tmp / "plan-review" / "round-1"
+    round_dir.mkdir(parents=True)
+    findings = review_tmp / "findings.md"
+    original = """### FINDING_1: Dup A
+- **Reviewer**: cursor-a-output.txt
+- **Concern**: same bug
+- **Suggested revision**: fix
+
+### FINDING_2: Dup B
+- **Reviewer**: cursor-b-output.txt
+- **Concern**: same bug other words
+- **Suggested revision**: fix
+
+"""
+    _ = findings.write_text(original, encoding="utf-8")
+    dispatch = tmp_path / "stub-dispatch.sh"
+    rts.write_aggregate_dispatch_stub(dispatch, merge_kind="validation_exhausted", mode="ok")
+
+    result = run_review(
+        "aggregate-findings",
+        "--findings-file",
+        str(findings),
+        "--review-tmpdir",
+        str(review_tmp),
+        "--codex-present",
+        "true",
+        "--cursor-present",
+        "true",
+        "--mode",
+        "diff",
+        "--round-dir",
+        str(round_dir),
+        env=_aggregate_env(tmp_path, AGGREGATE_DISPATCH_SH=str(dispatch)),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "REASON=validation-exhausted" in result.stdout
+    issues_text = (tmp_path / "execution-issues.md").read_text(encoding="utf-8")
+    assert "See plan-review/round-1/aggregator-validate.stderr in the committed run log." in issues_text
 
 
 def test_aggregate_code_mode_accepts_blocking_severity(tmp_path: Path) -> None:

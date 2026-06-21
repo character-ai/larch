@@ -396,6 +396,7 @@ def _install_execute_round_fake(
     empty_collector: bool = False,
     collect_failed: bool = False,
     empty_paths: bool = False,
+    aggregator_fail: bool = False,
 ) -> None:
     def fake_run_cli(argv: list[str], *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
         del env
@@ -457,6 +458,15 @@ def _install_execute_round_fake(
                 "",
             )
         if argv[:2] == ["review", "aggregate-findings"]:
+            if aggregator_fail:
+                _ = (design / "aggregator-validate.stderr").write_text(
+                    "input reviewers missing from merge output: ['Cursor-Arch']\n",
+                    encoding="utf-8",
+                )
+                _ = (design / "aggregator-output.txt").write_text(
+                    "### FINDING_1: bad merge\n", encoding="utf-8"
+                )
+                return subprocess.CompletedProcess(argv, 0, "REASON=validation-failed\nAGGREGATED=false\n", "")
             return subprocess.CompletedProcess(argv, 0, "REASON=ok\nAGGREGATED=true\n", "")
         if argv[:2] == ["plan-review", "voter-dispatch"]:
             return subprocess.CompletedProcess(
@@ -514,6 +524,41 @@ def test_execute_round_records_plan_review_prune_ledger(tmp_path: Path, monkeypa
     ledger_lines = (design / "reviewer-prune-ledger.tsv").read_text(encoding="utf-8").splitlines()
     assert ledger_lines[0] == "round\ttool\tslot\tlabel\taccepted_count\trejected_count\ttotal_count"
     assert ledger_lines[1] == "1\tcursor\tcursor-plan-arch\tCursor-Arch\t1\t0\t1"
+
+
+def test_execute_round_snapshots_aggregator_forensics_on_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An aggregator validation failure mirrors its forensics into plan-review/round-N/ so a later
+    round's success cannot clobber the early-round evidence at the stable top-level path (#4996).
+    """
+    design = tmp_path
+    plan_file = design / "plan.txt"
+    feature_file = design / "feature.txt"
+    _ = plan_file.write_text("plan\n", encoding="utf-8")
+    _ = feature_file.write_text("feature\n", encoding="utf-8")
+    _install_execute_round_fake(monkeypatch, design, aggregator_fail=True)
+
+    rc, values = plan_review_round.execute_round(
+        design,
+        round_num=1,
+        prune_round_num=1,
+        codex_present="false",
+        cursor_present="true",
+        plan_file=plan_file,
+        feature_file=feature_file,
+    )
+
+    assert rc == 0
+    assert values["AGGREGATOR_STATUS"] == "validation-failed"
+    snapshot = design / "plan-review" / "round-1" / "aggregator-validate.stderr"
+    assert snapshot.is_file()
+    assert "input reviewers missing from merge output" in snapshot.read_text(encoding="utf-8")
+    assert (design / "plan-review" / "round-1" / "aggregator-output.txt").is_file()
+
+    # Emulate a later round overwriting the stable top-level path; the round-1 snapshot survives.
+    _ = (design / "aggregator-validate.stderr").write_text("", encoding="utf-8")
+    assert snapshot.read_text(encoding="utf-8") != ""
 
 
 def test_execute_round_panel_dispatch_failed_syncs_latest_reviewer_status(
