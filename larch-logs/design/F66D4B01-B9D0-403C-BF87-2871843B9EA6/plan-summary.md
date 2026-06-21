@@ -1,0 +1,1 @@
+Plan updates the terminal sh-to-py sweep as a conservative cleanup: verify zero-consumer bash before deletion, document the residual bash surface, narrow bash-targeting lint scopes, regenerate topology, and defer CI shard rebalancing to `/rebalance-tests`.
