@@ -63,6 +63,20 @@ def test_plan_review_line_missing_env_is_na(tmp_path: Path) -> None:
     assert design_summary._plan_review_line(tmp_path) == "N/A"  # pyright: ignore[reportPrivateUsage]
 
 
+def test_dynamic_archetypes_line_counts_drafter_manifest(tmp_path: Path) -> None:
+    _ = (tmp_path / "step2b-drafter-status.txt").write_text("SCOUT_WRITTEN=true\n", encoding="utf-8")
+    _ = (tmp_path / "scout-plan-manifest.json").write_text(
+        '{"archetypes":[{"name":"dyn-plan","focus_area":"architecture","weight":1,"rationale":"Plan changed.","prompt_body":"Check plan structure."}]}\n',
+        encoding="utf-8",
+    )
+    assert design_summary._dynamic_archetypes_line(tmp_path) == "ok (1)"  # pyright: ignore[reportPrivateUsage]
+
+
+def test_dynamic_archetypes_line_reports_drafter_absent(tmp_path: Path) -> None:
+    _ = (tmp_path / "step2b-drafter-status.txt").write_text("SCOUT_WRITTEN=false\nSCOUT_FAIL_REASON=absent\n", encoding="utf-8")
+    assert design_summary._dynamic_archetypes_line(tmp_path) == "static-only, drafter absent"  # pyright: ignore[reportPrivateUsage]
+
+
 def _install_final_summary_env(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

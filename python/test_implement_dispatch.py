@@ -60,6 +60,7 @@ def test_cli_registry_has_implement_and_launcher_verbs() -> None:
     assert _REGISTRY[("implement", "recovery-paths")] == ("implement_dispatch", "recovery_paths_main")
     assert _REGISTRY[("implement", "commit")] == ("implement_dispatch", "commit_main")
     assert _REGISTRY[("implement", "clone-tag")] == ("implement_dispatch", "clone_tag_main")
+    assert _REGISTRY[("implement", "normalize-coder-scout")] == ("implement_dispatch", "normalize_coder_scout_main")
     assert _REGISTRY[("implement", "step-2-entry")] == ("implement_dispatch", "step2_entry_main")
     assert _REGISTRY[("implement", "step-5-review")] == ("implement_dispatch", "step5_review_main")
     assert _REGISTRY[("implement", "step-8-ship")] == ("implement_dispatch", "step8_ship_main")
@@ -205,6 +206,40 @@ def test_step2_dispatch_claude_fallback(tmp_path: Path, capsys: pytest.CaptureFi
     out = capsys.readouterr().out
     assert "STATUS=claude_fallback" in out
     assert "ORCHESTRATOR_EDIT_AUTHORITY=allowed" in out
+
+
+def test_step2_dispatch_claude_fallback_clears_scout_sidecars(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    tmp = _session(tmp_path)
+    (tmp / "scout-coder-manifest.json").write_text('{"archetypes":[]}\n', encoding="utf-8")
+    (tmp / "step2-external-scout-eligible.txt").write_text("eligible\n", encoding="utf-8")
+    (tmp / "step2-scout-coder-status.env").write_text("SCOUT_CODER_STATUS=ok\n", encoding="utf-8")
+    (tmp / "scout-coder-manifest.raw.json").write_text('{"archetypes":[]}\n', encoding="utf-8")
+    (tmp / ".producer-scout-warning-logged").write_text("logged\n", encoding="utf-8")
+    codex_out = tmp / "codex-step2-out"
+    codex_out.mkdir()
+    (codex_out / "scout-coder-manifest.json").write_text('{"archetypes":[]}\n', encoding="utf-8")
+    cursor_out = tmp / "cursor-step2-out"
+    cursor_out.mkdir()
+    (cursor_out / "scout-coder-manifest.json").write_text('{"archetypes":[]}\n', encoding="utf-8")
+    rc = implement_dispatch.step2_dispatch_main([
+        "--tmpdir", str(tmp),
+        "--plan-file", str(tmp / "plan.txt"),
+        "--feature-file", str(tmp / "feature-description.txt"),
+        "--coder", "claude",
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "STATUS=claude_fallback" in out
+    for path in (
+        tmp / "scout-coder-manifest.json",
+        tmp / "step2-external-scout-eligible.txt",
+        tmp / "step2-scout-coder-status.env",
+        tmp / "scout-coder-manifest.raw.json",
+        tmp / ".producer-scout-warning-logged",
+        codex_out / "scout-coder-manifest.json",
+        cursor_out / "scout-coder-manifest.json",
+    ):
+        assert not path.exists(), f"expected {path} removed after claude_fallback"
 
 
 def test_step2_entry_marks_claude_without_shell(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1302,6 +1337,47 @@ def test_step2_dispatch_complete_emits_scout_kv(repo: Path, tmp_path: Path, monk
     assert "STATUS=complete" in out
     assert f"SCOUT_CODER_MANIFEST={tmp / 'scout-coder-manifest.json'}" in out
     assert "SCOUT_CODER_STATUS=ok" in out
+
+
+def _dynamic_archetype(name: str) -> dict[str, object]:
+    return {
+        "name": name,
+        "focus_area": "architecture",
+        "weight": 1,
+        "rationale": "Architecture changed.",
+        "prompt_body": "Check architecture risks in the changed code.",
+    }
+
+
+def test_normalize_coder_scout_intentional_empty_is_ok(tmp_path: Path) -> None:
+    raw = tmp_path / "raw.json"
+    raw.write_text('{"archetypes":[]}\n', encoding="utf-8")
+    status = implement_dispatch.normalize_coder_scout(tmpdir=tmp_path, input_path=raw, producer="main-agent")
+    assert status == "ok"
+    assert (tmp_path / "step2-external-scout-eligible.txt").is_file()
+    assert "SCOUT_CODER_STATUS=ok" in (tmp_path / "step2-scout-coder-status.env").read_text(encoding="utf-8")
+    assert json.loads((tmp_path / "scout-coder-manifest.json").read_text(encoding="utf-8")) == {"archetypes": []}
+
+
+def test_normalize_coder_scout_filtered_to_zero_is_invalid(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    raw = tmp_path / "raw.json"
+    raw.write_text(json.dumps({"archetypes": [_dynamic_archetype("correctness"), _dynamic_archetype("testing")]}) + "\n", encoding="utf-8")
+    status = implement_dispatch.normalize_coder_scout(tmpdir=tmp_path, input_path=raw, producer="main-agent")
+    captured = capsys.readouterr()
+    assert status == "missing-or-invalid"
+    assert "dynamic-archetype manifest missing or invalid" in captured.err
+    assert not (tmp_path / "step2-external-scout-eligible.txt").exists()
+    assert "SCOUT_CODER_STATUS=missing-or-invalid" in (tmp_path / "step2-scout-coder-status.env").read_text(encoding="utf-8")
+    assert json.loads((tmp_path / "scout-coder-manifest.json").read_text(encoding="utf-8")) == {"archetypes": []}
+
+
+def test_normalize_coder_scout_uses_review_mode_so_arch_survives(tmp_path: Path) -> None:
+    raw = tmp_path / "raw.json"
+    raw.write_text(json.dumps({"archetypes": [_dynamic_archetype("arch")]}) + "\n", encoding="utf-8")
+    status = implement_dispatch.normalize_coder_scout(tmpdir=tmp_path, input_path=raw, producer="external")
+    assert status == "ok"
+    manifest = json.loads((tmp_path / "scout-coder-manifest.json").read_text(encoding="utf-8"))
+    assert [item["name"] for item in manifest["archetypes"]] == ["arch"]
 
 
 def test_step2_dispatch_complete_allows_plugin_json_edit(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:

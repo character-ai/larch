@@ -2751,8 +2751,9 @@ OUTPUT CONTRACT — these requirements override any conflicting Codex user confi
 - Emit exactly one whole-line LARCH_PLAN_BEGIN and one whole-line LARCH_PLAN_END with a non-empty plan body between them.
 - Optionally emit zero or one balanced LARCH_SUMMARY_BEGIN/LARCH_SUMMARY_END pair before the plan envelope.
 - The plan body must end with a whole-line diff_lines: <N> trailer.
-- Optionally emit zero or one balanced LARCH_SCOUT_BEGIN/LARCH_SCOUT_END pair after LARCH_PLAN_END.
-- If emitted, the scout block must contain only compact JSON with this shape: {"archetypes":[{"name":"slug","focus_area":"code-quality|risk-integration|correctness|architecture|security","weight":1,"rationale":"...","prompt_body":"..."}]}.
+- Emit zero or one balanced LARCH_SCOUT_BEGIN/LARCH_SCOUT_END pair after LARCH_PLAN_END on a best-effort basis.
+- Use {"archetypes":[]} when no dynamic plan-review specialists are useful.
+- The scout block must contain only compact JSON with this shape: {"archetypes":[{"name":"slug","focus_area":"code-quality|risk-integration|correctness|architecture|security","weight":1,"rationale":"...","prompt_body":"..."}]}.
 - Malformed scout output after the plan is ignored by the launcher and must not affect a valid plan.
 - Scout sentinels before or inside the summary or plan are fatal format errors.
 - Return only the sentinel-delimited response format; do not omit required sentinels.

@@ -9,6 +9,7 @@ import subprocess
 import sys
 from collections.abc import Sequence
 from pathlib import Path
+from typing import cast
 
 import review_phase_detail
 from design_publish import review_provenance
@@ -164,6 +165,27 @@ def _plan_review_line(design_tmpdir: Path) -> str:
     return status
 
 
+def _dynamic_archetypes_line(design_tmpdir: Path) -> str:
+    status_file = design_tmpdir / "step2b-drafter-status.txt"
+    if not status_file.is_file():
+        return "static-only, drafter absent"
+    text = status_file.read_text(encoding="utf-8", errors="replace")
+    values: dict[str, str] = {}
+    for line in text.splitlines():
+        if "=" in line:
+            key, value = line.split("=", 1)
+            values[key] = value
+    if values.get("SCOUT_WRITTEN") != "true":
+        return f"static-only, drafter {values.get('SCOUT_FAIL_REASON') or 'absent'}"
+    try:
+        data: object = json.loads((design_tmpdir / "scout-plan-manifest.json").read_text(encoding="utf-8"))
+        archetypes = cast("dict[str, object]", data).get("archetypes") if isinstance(data, dict) else None
+        count = len(cast("list[object]", archetypes)) if isinstance(archetypes, list) else 0
+    except (OSError, json.JSONDecodeError):
+        return "static-only, drafter filter_failed"
+    return f"ok ({count})" if count else "static-only, drafter empty"
+
+
 # Calls `python/cli.py render run-summary` with --claude-input-tokens for per-bucket cost detail.
 def invoke_render(
     design_tmpdir: Path,
@@ -178,6 +200,7 @@ def invoke_render(
     exec_issues: int,
     warnings: int,
     plan_review_line: str,
+    dynamic_archetypes_line: str,
     run_logs_path: str,
     cost_args: list[str],
 ) -> int:
@@ -194,6 +217,7 @@ def invoke_render(
         "--pr-number", "0",
         "--pr-url", "N/A",
         "--plan-review-line", plan_review_line,
+        "--dynamic-archetypes-line", dynamic_archetypes_line,
         "--code-review-line", "N/A",
         "--oos-count", str(oos_count),
         "--oos-urls", oos_urls,
@@ -332,10 +356,11 @@ def render_final_summary_main(argv: Sequence[str]) -> int:
     _run_design_failure_report_gate(design_tmpdir, phase, outcome, repo, issue, run_id)
     exec_issues, warnings = _issue_counts(design_tmpdir)
     plan_review_line = _plan_review_line(design_tmpdir)
+    dynamic_archetypes_line = _dynamic_archetypes_line(design_tmpdir)
 
     rc = invoke_render(
         design_tmpdir, outcome, mode_str, run_id, duration, issue, issue_url,
-        oos_count, oos_urls, exec_issues, warnings, plan_review_line, run_logs_path, cost_args,
+        oos_count, oos_urls, exec_issues, warnings, plan_review_line, dynamic_archetypes_line, run_logs_path, cost_args,
     )
 
     if rc != 0 or not out_file.is_file() or out_file.stat().st_size == 0:

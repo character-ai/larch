@@ -46,6 +46,72 @@ def _object_map(value: object) -> Mapping[str, object]:
     return cast("Mapping[str, object]", value) if isinstance(value, dict) else {}
 
 
+def _json_archetype_count(path: Path) -> int | None:
+    try:
+        data: object = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    archetypes = cast("Mapping[str, object]", data).get("archetypes")
+    return len(cast("list[object]", archetypes)) if isinstance(archetypes, list) else None
+
+
+def _first_round_scout_status(implement_tmpdir: Path) -> str:
+    for status_file in sorted(implement_tmpdir.glob("round-*/scout-round*-status.env")):
+        status = _read_kv(status_file, "SCOUT_STATUS")
+        if status:
+            return status
+    return ""
+
+
+def _first_round_scout_manifest(implement_tmpdir: Path) -> Path | None:
+    for manifest in sorted(implement_tmpdir.glob("round-*/scout-round*-manifest.json")):
+        if manifest.is_file():
+            return manifest
+    return None
+
+
+def _self_review_requested(implement_tmpdir: Path) -> bool:
+    return _read_kv(implement_tmpdir / "run-flags.sh", "SELF_REVIEW_REQUESTED") == "true"
+
+
+def _dynamic_archetypes_line(implement_tmpdir: Path) -> str:
+    round_status = _first_round_scout_status(implement_tmpdir)
+    if round_status.startswith("skipped-"):
+        return round_status
+    if round_status in {"producer-missing", "producer-invalid"}:
+        return "static-only, producer missing-or-invalid"
+    if round_status == "pre-scouted-empty":
+        return "static-only, pre-scouted-empty"
+    if round_status == "pre-scouted":
+        round_manifest = _first_round_scout_manifest(implement_tmpdir)
+        count = _json_archetype_count(round_manifest) if round_manifest is not None else None
+        if count is not None:
+            return f"ok ({count})"
+        return "unknown"
+    if not round_status:
+        if _self_review_requested(implement_tmpdir):
+            return "N/A"
+        status_file = implement_tmpdir / "step2-scout-coder-status.env"
+        if not status_file.is_file():
+            return "unknown"
+        coder_status = _read_kv(status_file, "SCOUT_CODER_STATUS")
+        if not coder_status:
+            return "unknown"
+        if coder_status != "ok":
+            return "static-only, producer missing-or-invalid"
+        manifest = implement_tmpdir / "scout-coder-manifest.json"
+        marker = implement_tmpdir / "step2-external-scout-eligible.txt"
+        count = _json_archetype_count(manifest)
+        if count is None or not marker.is_file():
+            return "static-only, producer missing-or-invalid"
+        if count == 0:
+            return "static-only, producer empty"
+        return f"ok ({count})"
+    return "unknown"
+
+
 def _token_argv_from_report(data: Mapping[str, object]) -> list[str]:
     argv: list[str] = []
     vendor_buckets = (
@@ -492,6 +558,7 @@ def write_final_report(
         pr_number=pr_number,
         pr_url=pr_url,
         plan_review_line=derived["plan_review_line"],
+        dynamic_archetypes_line=_dynamic_archetypes_line(implement_tmpdir),
         code_review_line=derived["code_review_line"],
         code_added=derived["code_added"],
         code_deleted=derived["code_deleted"],
