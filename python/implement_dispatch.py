@@ -9,11 +9,12 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
 import time
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -184,11 +185,44 @@ def _first_nonempty(*values: str) -> str:
     return next((value for value in values if value), "")
 
 
+_CLONE_TAG_ALLOWED_BYTES = frozenset(b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-")
+
+
+def _pwd_basename(pwd: str) -> str:
+    r"""Match bash ``basename \"$PWD\"`` byte behavior on the logical PWD string."""
+    path_bytes = os.fsencode(pwd)
+    if path_bytes in (b"", b"/"):
+        return "/"
+    trimmed = path_bytes.rstrip(b"/")
+    if not trimmed:
+        return "/"
+    return os.fsdecode(trimmed.rsplit(b"/", 1)[-1])
+
+
+def _derive_clone_tag_full(env: Mapping[str, str] | None = None) -> str:
+    source_env = os.environ if env is None else env
+    clone_tag = source_env.get("CLONE_TAG", "")
+    if clone_tag:
+        return clone_tag
+    basename = _pwd_basename(source_env["PWD"])
+    translated = bytes(byte if byte in _CLONE_TAG_ALLOWED_BYTES else ord("_") for byte in os.fsencode(basename))[:32]
+    if not translated:
+        return "_"
+    return translated.decode("ascii")
+
+
 def _clone_expected_tmpdir_prefix() -> str:
-    clone_tag = os.environ.get("CLONE_TAG", "")
-    if not clone_tag:
-        clone_tag = re.sub(r"[^A-Za-z0-9_-]", "_", Path.cwd().name)[:32] or "_"
-    return f"claude-implement-{clone_tag}-"
+    return f"claude-implement-{_derive_clone_tag_full()}-"
+
+
+def clone_tag_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py implement clone-tag")
+    parser.parse_args(argv)
+    clone_tag_full = _derive_clone_tag_full()
+    expected_prefix = f"claude-implement-{clone_tag_full}-"
+    print(f"CLONE_TAG_FULL={shlex.quote(clone_tag_full)}")
+    print(f"EXPECTED_TMPDIR_BASENAME_PREFIX={shlex.quote(expected_prefix)}")
+    return 0
 
 
 def _run_cli_forward(args: Sequence[str], *, cwd: Path | None = None, env: dict[str, str] | None = None) -> int:

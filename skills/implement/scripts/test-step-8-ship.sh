@@ -7,7 +7,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 HELPER="$SCRIPT_DIR/step-8-ship.sh"
 GUARD="$SCRIPT_DIR/step-8-python-guard.sh"
 SEEDER="$SCRIPT_DIR/step-8-seed-initial.sh"
-CLONE_LIB="$SCRIPT_DIR/lib-implement-clone-tag.sh"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
 PASS=0
 FAIL=0
@@ -21,8 +20,19 @@ assert_not_contains() { local n=$1 h=$2 l=$3; if printf '%s' "$h" | grep -Fq -- 
 assert_rc() { local a=$1 e=$2 l=$3; if [ "$a" -eq "$e" ]; then pass "$l"; else fail "$l (expected rc=$e got rc=$a)"; fi; }
 
 helper_text=$(cat "$HELPER")
-assert_contains 'lib-implement-clone-tag.sh' "$helper_text" 'static: clone-tag helper sourced'
+assert_contains 'python/cli.py" implement clone-tag' "$helper_text" 'static: clone-tag CLI invoked'
+# shellcheck disable=SC2016
+assert_contains 'clone_tag_env=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement clone-tag) || exit $?' "$helper_text" 'static: clone-tag capture fails closed'
+# shellcheck disable=SC2016
+assert_contains 'eval "$clone_tag_env"' "$helper_text" 'static: clone-tag env evaluated after successful capture'
 assert_contains 'step-8-python-guard.sh' "$helper_text" 'static: shared python guard invoked'
+guard_line=$(grep -n 'step-8-python-guard.sh' "$HELPER" | head -n 1 | cut -d: -f1)
+clone_line=$(grep -n 'implement clone-tag' "$HELPER" | head -n 1 | cut -d: -f1)
+if [ -n "$guard_line" ] && [ -n "$clone_line" ] && [ "$guard_line" -lt "$clone_line" ]; then
+  pass 'static: python guard runs before clone-tag CLI'
+else
+  fail 'static: python guard runs before clone-tag CLI'
+fi
 # shellcheck disable=SC2016
 assert_contains 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git phantom-probe --step 8-pre-ship >&2' "$helper_text" 'static: bundled phantom probe redirects stdout'
 assert_not_contains 'sys.version_info >= (3, 11)' "$helper_text" 'static: inline python version guard absent from ship wrapper'
@@ -40,7 +50,11 @@ assert_contains 'ship seed-initial-state' "$seeder_text" 'static: seeder wrapper
 # shellcheck disable=SC2016
 assert_contains 'session read-key --file "$file"' "$seeder_text" 'static: seeder reads session keys through python cli'
 assert_not_contains 'read-session-env-key.sh' "$seeder_text" 'static: retired session reader absent'
-assert_contains 'lib-implement-clone-tag.sh' "$seeder_text" 'static: seeder sources clone helper'
+assert_contains 'python/cli.py" implement clone-tag' "$seeder_text" 'static: seeder invokes clone-tag CLI'
+# shellcheck disable=SC2016
+assert_contains 'clone_tag_env=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement clone-tag) || exit $?' "$seeder_text" 'static: seeder clone-tag capture fails closed'
+# shellcheck disable=SC2016
+assert_contains ': "${EXPECTED_TMPDIR_BASENAME_PREFIX:?}"' "$seeder_text" 'static: seeder requires shared prefix'
 
 IMPL_TMP="$TMP_ROOT/implement"
 mkdir -p "$IMPL_TMP"
@@ -62,6 +76,11 @@ STUB_BIN="$TMP_ROOT/bin"
 mkdir -p "$STUB_BIN"
 cat >"$STUB_BIN/python3" <<EOF_STUB
 #!/usr/bin/env bash
+if [ "\$1" = "$REPO_ROOT/python/cli.py" ] && [ "\$2" = "implement" ] && [ "\$3" = "clone-tag" ]; then
+  printf '%s\n' 'CLONE_TAG_FULL=stub'
+  printf '%s\n' 'EXPECTED_TMPDIR_BASENAME_PREFIX=claude-implement-stub-'
+  exit 0
+fi
 if [ "\$1" = "$REPO_ROOT/python/cli.py" ] && [ "\$2" = "git" ] && [ "\$3" = "phantom-probe" ]; then
   printf '%s\n' phantom >> "$TMP_ROOT/order.txt"
   printf '%s\n' 'PHANTOM_STATUS=clean'
@@ -89,6 +108,7 @@ assert_contains '"outcome":"OK"' "$OUT" 'dynamic: forwards stdout JSON only'
 assert_contains '--branch' "$(cat "$TMP_ROOT/ship-argv.txt")" 'dynamic: forwards branch flag'
 assert_contains 'test-branch' "$(cat "$TMP_ROOT/ship-argv.txt")" 'dynamic: forwards branch value'
 assert_contains '--expected-tmpdir-basename-prefix' "$(cat "$TMP_ROOT/ship-argv.txt")" 'dynamic: forwards shared prefix flag'
+assert_contains 'claude-implement-stub-' "$(cat "$TMP_ROOT/ship-argv.txt")" 'dynamic: forwards clone-tag CLI prefix value'
 
 cat >"$STUB_BIN/python3" <<EOF_OLD
 #!/usr/bin/env bash
@@ -103,6 +123,24 @@ set -e
 assert_rc "$GUARD_RC" 4 'guard: stale python exits 4'
 assert_contains 'ERROR: Python ship driver requires Python 3.11 or newer' "$(cat "$TMP_ROOT/guard-stderr.txt")" 'guard: stale python emits stderr'
 assert_contains '"outcome":"STALLED"' "$GUARD_OUT" 'guard: stale python emits STALLED JSON'
+
+cat >"$IMPL_TMP/larch-run.sh" <<EOF_STALE_RUN
+#!/usr/bin/env bash
+set -euo pipefail
+case "\$1" in
+  skills/implement/scripts/step-8-python-guard.sh) exec bash "$GUARD" ;;
+  *) exec bash "$REPO_ROOT/\$1" "\${@:2}" ;;
+esac
+EOF_STALE_RUN
+chmod +x "$IMPL_TMP/larch-run.sh"
+: >"$TMP_ROOT/order.txt"
+set +e
+STALE_OUT=$(PATH="$STUB_BIN:$PATH" IMPLEMENT_TMPDIR="$IMPL_TMP" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash "$HELPER" 2>"$TMP_ROOT/stale-wrapper-stderr.txt")
+STALE_RC=$?
+set -e
+assert_rc "$STALE_RC" 4 'wrapper: stale python exits 4 before clone-tag'
+assert_contains '"outcome":"STALLED"' "$STALE_OUT" 'wrapper: stale python emits STALLED JSON'
+assert_not_contains 'driver' "$(cat "$TMP_ROOT/order.txt" 2>/dev/null || true)" 'wrapper: stale python skips ship driver'
 
 cat >"$STUB_BIN/python3" <<EOF_NEW
 #!/usr/bin/env bash
@@ -121,8 +159,8 @@ else
   fail 'guard: new python stdout empty'
 fi
 
-CLONE_OUT=$(mkdir -p "$TMP_ROOT/repo with spaces" && cd "$TMP_ROOT/repo with spaces" && CLONE_TAG='' bash -c '. "'"$CLONE_LIB"'"; printf "%s\n" "$EXPECTED_TMPDIR_BASENAME_PREFIX"')
-assert_contains 'claude-implement-repo_with_spaces-' "$CLONE_OUT" 'clone helper: derives sanitized prefix from PWD'
+CLONE_OUT=$(mkdir -p "$TMP_ROOT/repo with spaces" && cd "$TMP_ROOT/repo with spaces" && CLONE_TAG='' "$REAL_PYTHON" "$REPO_ROOT/python/cli.py" implement clone-tag)
+assert_contains 'EXPECTED_TMPDIR_BASENAME_PREFIX=claude-implement-repo_with_spaces-' "$CLONE_OUT" 'clone CLI: derives sanitized prefix from PWD'
 
 SEED_TMP="$TMP_ROOT/seed"
 mkdir -p "$SEED_TMP/codex-step2-out"
@@ -134,6 +172,11 @@ printf '{"summary_bullets":["x"]}\n' >"$SEED_TMP/codex-step2-out/manifest.json"
 printf 'seed-session\n' >"$SEED_TMP/session-id"
 cat >"$STUB_BIN/python3" <<EOF_SEED
 #!/usr/bin/env bash
+if [ "\$1" = "$REPO_ROOT/python/cli.py" ] && [ "\$2" = "implement" ] && [ "\$3" = "clone-tag" ]; then
+  printf '%s\n' 'CLONE_TAG_FULL=seedstub'
+  printf '%s\n' 'EXPECTED_TMPDIR_BASENAME_PREFIX=claude-implement-seedstub-'
+  exit 0
+fi
 if [ "\$1" = "$REPO_ROOT/python/cli.py" ] && [ "\$2" = "session" ] && [ "\$3" = "read-key" ]; then
   file=""; key=""; default=""
   while [ "\$#" -gt 0 ]; do
@@ -161,6 +204,7 @@ assert_contains $'--no-logs-commit\ntrue' "$seed_argv" 'seeder: no-logs from shi
 assert_contains $'--merge\nfalse' "$seed_argv" 'seeder: stall/argv merge override precedence'
 assert_contains $'--draft\nfalse' "$seed_argv" 'seeder: stall/argv draft override precedence'
 assert_contains '--expected-tmpdir-basename-prefix' "$seed_argv" 'seeder: shared prefix forwarded'
+assert_contains 'claude-implement-seedstub-' "$seed_argv" 'seeder: clone-tag CLI prefix forwarded'
 
 if [ "$FAIL" -eq 0 ]; then
   printf 'PASS: test-step-8-ship.sh (%d assertions)\n' "$PASS"

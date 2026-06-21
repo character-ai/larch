@@ -16,7 +16,7 @@ Then ensure Step 18 has durable state for `restore-finalize-state.sh`: if `$IMPL
 bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-8-seed-initial.sh --stall-tracking "$STALL_TRACKING" --stall-step 5 --bail-reason "<durable-lint-fix-bail-or-empty>" --bail-failure-detail-log "" --merge false --draft false
 ```
 
-The wrapper reads the remaining session-established inputs through `bootstrap-routing.env`, `ship-seed-input.env`, `session-env.sh`, and `lib-implement-clone-tag.sh`. Do not pass a prose-derived `claude-implement-${CLONE_TAG:-_}-` prefix. Keep the existing behavior for an already-present non-empty `ship-pr-state.sh`: key-based updates may still set stall fields, but do not call the seeder wrapper. The canonical initial key set, `OOS_PENDING=false`, and stall `MERGE=false` / `DRAFT=false` profile are owned by `python/cli.py ship seed-initial-state` and `python/test_ship.py`; do not re-list them here. Skip to Step 16.
+The wrapper reads the remaining session-established inputs through `bootstrap-routing.env`, `ship-seed-input.env`, and `session-env.sh`, then derives the prefix through `python/cli.py implement clone-tag`. Do not pass a prose-derived `claude-implement-${CLONE_TAG:-_}-` prefix. Keep the existing behavior for an already-present non-empty `ship-pr-state.sh`: key-based updates may still set stall fields, but do not call the seeder wrapper. The canonical initial key set, `OOS_PENDING=false`, and stall `MERGE=false` / `DRAFT=false` profile are owned by `python/cli.py ship seed-initial-state` and `python/test_ship.py`; do not re-list them here. Skip to Step 16.
 
 ## `main-agent-vote-required`
 
