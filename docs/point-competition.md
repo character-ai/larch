@@ -71,7 +71,29 @@ The example assumes one accepted major/blocker finding (+2) and one accepted min
 
 ## Future Plans
 
-In future iterations, token allocation will be weighted proportionally to reviewer scores — higher-scoring reviewers will receive more tokens, allowing them to conduct deeper analysis.
+Future reviewer token budget should be allocated by precision-value, not cumulative `Score`. The precision-value signal is `net-score-per-finding`.
+
+### Definition
+
+`net-score-per-finding` is pinned to the scoreboard columns above and to `skills/shared/voting-protocol.md` `## Scoreboard`.
+
+- **Numerator (in-scope competition net):** weighted in-scope accepted points minus in-scope rejected points only, i.e. `accepted_weight - Rejected`. Use the same +2/+1/-1 rules from `## Scoring Rules`, including +2 for accepted in-scope major or blocker findings. Exclude OOS accepted and OOS rejected.
+- **Denominator:** the in-scope proposed count, the `Findings` / `Proposed` scoreboard column for in-scope rows only. Exclude OOS proposed.
+- **Formula:** `net-score-per-finding = (accepted_weight - Rejected) ÷ Proposed`. Division by zero is undefined until a separate policy is stated.
+- **Why not raw `Score`:** live tally `Score` also includes `OOS Accepted - OOS Rejected` while `Proposed` / `Findings` is in-scope only (`python/plan_review_tally.py`, `python/review_tally.py`). Dividing full `Score` by in-scope `Proposed` would let OOS-heavy reviewers inflate the signal without raising the denominator.
+
+### Rationale
+
+Illustrative example, assuming every accepted in-scope finding is an ordinary +1 finding with no major or blocker +2 weighting, and rejects are -1:
+
+- **Reviewer A:** 100 proposed, 48 accepted, 24 rejected. In-scope net +24, precision 48%, `net-score-per-finding` +0.24.
+- **Reviewer B:** 20 proposed, 15 accepted, 1 rejected. In-scope net +14, precision 75%, `net-score-per-finding` +0.70.
+
+Cumulative `Score`, or raw in-scope net alone, rewards Reviewer A's volume despite Reviewer B's better precision-value.
+
+### Dependencies
+
+Do not ship token allocation until value-weighted points define `value` and voter calibration validates the signal.
 
 ## Where Scoring Applies
 

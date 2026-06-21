@@ -216,7 +216,7 @@ Full scoreboard format (used in standalone mode):
 
 The **Neutral** column counts all non-accepted findings that award **0** points to the proposer (≥1 YES but below acceptance threshold). The **Rejected** column counts non-accepted findings that cost **−1** point (0 YES). A single finding is counted in **at most one** of these two columns.
 
-Attribution labels are skill-specific (e.g., `/design` uses `Code`/`Codex`/`Cursor`; `/review` hard panel uses `Correctness`/`Testing`/`Edge-cases`/`Codex-Correctness`/`Codex-Testing`/`Codex-Edge-cases`). One row per independent reviewer. In future iterations, token allocation will be weighted proportionally to reviewer scores.
+Attribution labels are skill-specific (e.g., `/design` uses `Code`/`Codex`/`Cursor`; `/review` hard panel uses `Correctness`/`Testing`/`Edge-cases`/`Codex-Correctness`/`Codex-Testing`/`Codex-Edge-cases`). One row per independent reviewer. Future token allocation should use precision-value, not cumulative reviewer `Score`: measure in-scope `net-score-per-finding` as `(accepted_weight - Rejected) ÷ Proposed` on scoreboard columns, where `Proposed` is the in-scope `Findings` count and OOS is excluded from both numerator and denominator.
 
 ## Out-of-Scope Observations
 
