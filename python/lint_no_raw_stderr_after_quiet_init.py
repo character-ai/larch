@@ -1,11 +1,11 @@
-#!/usr/bin/env python3
+# ruff: noqa: S607,UP022,PLR2004,SIM103
 """Lint shell scripts for raw stderr writes after larch_quiet_init.
 
 S041/no-raw-stderr-after-quiet-init flags post-init echo/printf/cat writes to
 FD 2. After quiet init, user-visible diagnostics must use larch_err or
 larch_errf so they reach the caller's original stderr instead of the quiet log.
 Exit codes: 0 clean, 1 violations, 2 internal errors. Canonical contract:
-scripts/lint-no-raw-stderr-after-quiet-init.md.
+python/lint_no_raw_stderr_after_quiet_init.md.
 """
 
 from __future__ import annotations
@@ -198,15 +198,15 @@ def lint_file(path: Path, root: Path) -> list[str]:
     return violations
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument(
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
+    _ = parser.add_argument(
         "--root",
         type=Path,
         default=Path(__file__).resolve().parents[1],
         help="Repository root to scan (default: this script's parent directory).",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv if argv is not None else sys.argv[1:])
 
     root = args.root.resolve()
     if not root.is_dir():

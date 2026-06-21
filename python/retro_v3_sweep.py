@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-"""retro-v3-sweep.py — transform committed session-transcript.jsonl files to v3 format.
+# ruff: noqa: TC006,SIM102,PLR2004,PLW2901,PLC0415
+"""retro_v3_sweep.py — transform committed session-transcript.jsonl files to v3 format.
 
 Walks larch-logs/implement/*/session-transcript.jsonl and applies the v3
 prose-errors-only filter in-place. Safe to re-run: files already at v3 are
@@ -17,20 +17,22 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from typing import cast
 
 
-def _filter_blocks(blocks: list) -> list:
-    out = []
+def _filter_blocks(blocks: list[object]) -> list[dict[str, object]]:
+    out: list[dict[str, object]] = []
     for blk in blocks:
         if not isinstance(blk, dict):
             continue
-        t = blk.get("type")
+        block = cast(dict[str, object], blk)
+        t = block.get("type")
         if t == "tool_call":
             continue
         if t == "tool_result":
-            if not (blk.get("error") or blk.get("warning")):
+            if not (block.get("error") or block.get("warning")):
                 continue
-        out.append(blk)
+        out.append(block)
     return out
 
 
@@ -40,9 +42,12 @@ def transform_file(path: Path, *, dry_run: bool = False) -> str:
     if not lines:
         return "empty"
     try:
-        header = json.loads(lines[0])
+        parsed_header: object = json.loads(lines[0])
     except json.JSONDecodeError:
         return "empty"
+    if not isinstance(parsed_header, dict):
+        return "empty"
+    header = cast(dict[str, object], parsed_header)
     if header.get("v") == 3:
         return "skipped"
 
@@ -55,14 +60,17 @@ def transform_file(path: Path, *, dry_run: bool = False) -> str:
         if not line:
             continue
         try:
-            rec = json.loads(line)
+            parsed_rec: object = json.loads(line)
         except json.JSONDecodeError:
             continue
+        if not isinstance(parsed_rec, dict):
+            continue
+        rec = cast(dict[str, object], parsed_rec)
         blocks = rec.get("blocks")
         if not isinstance(blocks, list):
             new_turns.append(json.dumps(rec, ensure_ascii=False, separators=(",", ":")))
             continue
-        filtered = _filter_blocks(blocks)
+        filtered = _filter_blocks(cast(list[object], blocks))
         if not filtered:
             continue
         rec["blocks"] = filtered
@@ -73,16 +81,16 @@ def transform_file(path: Path, *, dry_run: bool = False) -> str:
     out_lines.extend(new_turns)
     content = "\n".join(out_lines) + "\n"
     if not dry_run:
-        path.write_text(content, encoding="utf-8")
+        _ = path.write_text(content, encoding="utf-8")
     return "transformed"
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     import argparse
-    p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    p.add_argument("--root", default=".", help="Repo root (default: cwd)")
-    p.add_argument("--dry-run", action="store_true", help="Report without writing")
-    args = p.parse_args()
+    p = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
+    _ = p.add_argument("--root", default=".", help="Repo root (default: cwd)")
+    _ = p.add_argument("--dry-run", action="store_true", help="Report without writing")
+    args = p.parse_args(argv if argv is not None else sys.argv[1:])
 
     root = Path(args.root)
     pattern = "larch-logs/implement/*/session-transcript.jsonl"

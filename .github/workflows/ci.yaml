@@ -230,7 +230,7 @@ jobs:
   # Regression harness shards (the `test-*` bash scripts in Makefile). Runs
   # as a parallel matrix in parallel with the `lint` and `shellcheck` jobs so
   # a harness failure can be diagnosed and re-run without waiting on
-  # pre-commit, and vice versa. Installs PyYAML and pytest via
+  # pre-commit, and vice versa. Installs pytest via
   # requirements-test-harnesses.txt (the lint job uses requirements-lint.txt,
   # which also pulls pre-commit).
   test-harnesses:
@@ -437,7 +437,7 @@ jobs:
           PIP_DEFAULT_TIMEOUT: "30"
         run: pip install -r .github/workflows/requirements-lint.txt
       - name: Check topology-rule paths coverage
-        run: python3 scripts/check-topology-rule-paths.py
+        run: python3 python/cli.py lint topology-rule-paths
       - name: Assert focus-area enum includes 'security' in canonical surfaces
         run: |
           set -euo pipefail

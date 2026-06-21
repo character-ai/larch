@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-"""cleanup-implement-logs.py — retroactive log cleanup for larch-logs/implement/.
+# ruff: noqa: PLR2004,FBT001,SIM114,SIM103,TC006
+"""cleanup_implement_logs.py — retroactive log cleanup for larch-logs/implement/.
 
 Applies the Phase 1 publish-time rules retroactively to committed run dirs:
 
@@ -18,13 +18,13 @@ Applies the Phase 1 publish-time rules retroactively to committed run dirs:
 
 Usage:
   # dry-run (default): print what would be done
-  python3 scripts/cleanup-implement-logs.py
+  python3 python/cli.py run-log cleanup-implement-logs
 
   # execute for real
-  python3 scripts/cleanup-implement-logs.py --execute
+  python3 python/cli.py run-log cleanup-implement-logs --execute
 
   # restrict to a single run dir (for spot-checking)
-  python3 scripts/cleanup-implement-logs.py --run-dir larch-logs/implement/<UUID> --execute
+  python3 python/cli.py run-log cleanup-implement-logs --run-dir larch-logs/implement/<UUID> --execute
 
 Exit codes:
   0  success
@@ -39,6 +39,7 @@ import json
 import shutil
 import sys
 from pathlib import Path
+from typing import cast
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -214,12 +215,16 @@ def _upgrade_transcript(path: Path, execute: bool, stats: Stats) -> None:
         return
 
     try:
-        header = json.loads(lines[0])
+        parsed_header: object = json.loads(lines[0])
     except json.JSONDecodeError:
         stats.errors.append(f"header parse failed: {path}")
         return
+    if not isinstance(parsed_header, dict):
+        stats.errors.append(f"header parse failed: {path}")
+        return
+    header = cast(dict[str, object], parsed_header)
 
-    if header.get("v", 1) >= 2:
+    if cast(int, header.get("v", 1)) >= 2:
         return  # Already v2 — skip
 
     out_lines: list[str] = []
@@ -228,44 +233,62 @@ def _upgrade_transcript(path: Path, execute: bool, stats: Stats) -> None:
 
     for line in lines[1:]:
         try:
-            rec = json.loads(line)
+            parsed_rec: object = json.loads(line)
         except json.JSONDecodeError:
             out_lines.append(line)
             continue
+        if not isinstance(parsed_rec, dict):
+            out_lines.append(line)
+            continue
+        rec = cast(dict[str, object], parsed_rec)
 
         if rec.get("role") == "assistant":
-            new_blocks = []
-            for blk in rec.get("blocks", []):
-                if blk.get("type") != "tool_call":
+            new_blocks: list[object] = []
+            blocks = rec.get("blocks", [])
+            if not isinstance(blocks, list):
+                out_lines.append(json.dumps(rec, ensure_ascii=False, separators=(",", ":")))
+                continue
+            block_items = cast(list[object], blocks)
+            for blk in block_items:
+                if not isinstance(blk, dict):
                     new_blocks.append(blk)
                     continue
-                name = blk.get("name", "")
-                inp = blk.get("input")
+                block = cast(dict[str, object], blk)
+                if block.get("type") != "tool_call":
+                    new_blocks.append(block)
+                    continue
+                name = block.get("name", "")
+                inp = block.get("input")
 
-                if inp and "elided_input_bytes" not in blk and "input_bytes" not in inp:
+                if (
+                    isinstance(inp, dict)
+                    and inp
+                    and "elided_input_bytes" not in block
+                    and "input_bytes" not in inp
+                ):
+                    input_map = cast(dict[str, object], inp)
                     if name in STUB_INPUT_TOOLS:
                         # Stub Edit/Write/NotebookEdit: preserve file_path, record byte count
                         file_path = (
-                            inp.get("file_path")
-                            or inp.get("notebook_path")
-                            or inp.get("path")
+                            input_map.get("file_path")
+                            or input_map.get("notebook_path")
+                            or input_map.get("path")
                             or ""
                         )
-                        input_bytes = len(json.dumps(inp, ensure_ascii=False))
-                        new_blk = dict(blk)
+                        input_bytes = len(json.dumps(input_map, ensure_ascii=False))
+                        new_blk = dict(block)
                         new_blk["input"] = {"file_path": file_path, "input_bytes": input_bytes}
                         new_blocks.append(new_blk)
                         continue
-                    else:
-                        # Elide large inputs for other tools
-                        serialized = json.dumps(inp, ensure_ascii=False)
-                        if len(serialized) > INPUT_CAP_BYTES:
-                            new_blk = {k: v for k, v in blk.items() if k != "input"}
-                            new_blk["elided_input_bytes"] = len(serialized)
-                            new_blocks.append(new_blk)
-                            continue
+                    # Elide large inputs for other tools
+                    serialized = json.dumps(input_map, ensure_ascii=False)
+                    if len(serialized) > INPUT_CAP_BYTES:
+                        new_blk = {k: v for k, v in block.items() if k != "input"}
+                        new_blk["elided_input_bytes"] = len(serialized)
+                        new_blocks.append(new_blk)
+                        continue
 
-                new_blocks.append(blk)
+                new_blocks.append(block)
 
             new_rec = dict(rec)
             new_rec["blocks"] = new_blocks
@@ -275,7 +298,7 @@ def _upgrade_transcript(path: Path, execute: bool, stats: Stats) -> None:
 
     if execute:
         try:
-            path.write_text("\n".join(out_lines) + "\n", encoding="utf-8")
+            _ = path.write_text("\n".join(out_lines) + "\n", encoding="utf-8")
         except OSError as exc:
             stats.errors.append(f"write {path}: {exc}")
             return
@@ -315,7 +338,7 @@ def consolidate_breadcrumbs(run_dir: Path, execute: bool, stats: Stats) -> None:
             except OSError:
                 parts.append("")
         try:
-            quiet_log.write_text("".join(parts), encoding="utf-8")
+            _ = quiet_log.write_text("".join(parts), encoding="utf-8")
         except OSError as exc:
             stats.errors.append(f"write {quiet_log}: {exc}")
             return
@@ -338,16 +361,18 @@ def strip_tally_body(run_dir: Path, execute: bool, stats: Stats) -> None:
     for p in run_dir.glob("code-review-tally.json"):
         try:
             raw = p.read_text(encoding="utf-8")
-            data = json.loads(raw)
+            data: object = json.loads(raw)
         except (OSError, json.JSONDecodeError) as exc:
             stats.errors.append(f"read/parse {p}: {exc}")
             continue
 
         modified = False
         if isinstance(data, list):
-            for rec in data:
+            records = cast(list[object], data)
+            for rec in records:
                 if isinstance(rec, dict) and "body" in rec:
-                    del rec["body"]
+                    record = cast(dict[str, object], rec)
+                    del record["body"]
                     modified = True
         elif isinstance(data, dict) and "body" in data:
             del data["body"]
@@ -356,7 +381,7 @@ def strip_tally_body(run_dir: Path, execute: bool, stats: Stats) -> None:
         if modified:
             if execute:
                 try:
-                    p.write_text(
+                    _ = p.write_text(
                         json.dumps(data, ensure_ascii=False, indent=2) + "\n",
                         encoding="utf-8",
                     )
@@ -399,19 +424,19 @@ def process_run_dir(run_dir: Path, execute: bool, stats: Stats) -> None:
     strip_tally_body(run_dir, execute, stats)
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
-    p.add_argument(
+    _ = p.add_argument(
         "--execute",
         action="store_true",
         help="Actually perform the cleanup. Without this flag, runs in dry-run mode.",
     )
-    p.add_argument(
+    _ = p.add_argument(
         "--run-dir",
         metavar="PATH",
         help="Restrict to a single run directory (for spot-checking).",
     )
-    args = p.parse_args()
+    args = p.parse_args(argv if argv is not None else sys.argv[1:])
 
     execute = args.execute
     if not execute:

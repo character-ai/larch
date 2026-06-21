@@ -992,7 +992,7 @@ lint-mermaid:
 
 agent-sync:
 	python3 python/cli.py generate check
-	python3 scripts/check-topology-rule-paths.py
+	python3 python/cli.py lint topology-rule-paths
 	python3 python/cli.py lint focus-area-enum
 
 # Opt-in /research evaluation harness (closes #419 under umbrella #413). NOT a

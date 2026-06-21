@@ -36,7 +36,6 @@ from proc import CommandResult, Runner
 from run_context import RunContext
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
-_RENDER_TRANSCRIPT = _REPO_ROOT / "scripts" / "render-session-transcript.py"
 _REQUIRED_FILES_TSV = _REPO_ROOT / "docs" / "run-logs-required-files.tsv"
 _MANIFEST_SCHEMA_VERSION = 2
 _VOTE_OUTPUT_TRUNCATE_BYTES = 2048
@@ -2424,17 +2423,12 @@ def capture_transcript_main(argv: list[str]) -> int:
     rendered = Path(tempfile.mkstemp(prefix="session-transcript.", suffix=".jsonl")[1])
     render_err = Path(tempfile.mkstemp(prefix="render-stderr.", suffix=".log")[1])
     try:
-        if not _RENDER_TRANSCRIPT.is_file():
-            return _capture_transcript_emit(
-                issues_log,
-                args.warning_step_label,
-                "render-failed",
-                "render-session-transcript.py is unavailable; transcript was not committed.",
-            )
         result = subprocess.run(
             [
                 sys.executable,
-                str(_RENDER_TRANSCRIPT),
+                str(_REPO_ROOT / "python/cli.py"),
+                "run-log",
+                "render-session-transcript",
                 "--input",
                 str(transcript_path),
                 "--output",
@@ -2447,7 +2441,7 @@ def capture_transcript_main(argv: list[str]) -> int:
         if result.returncode != 0:
             if result.stderr:
                 render_err.write_text(result.stderr, encoding="utf-8")
-            msg = _capture_transcript_redact_stderr(render_err) or "render-session-transcript.py exited non-zero with no stderr"
+            msg = _capture_transcript_redact_stderr(render_err) or "session-transcript renderer exited non-zero with no stderr"
             return _capture_transcript_emit(
                 issues_log,
                 args.warning_step_label,

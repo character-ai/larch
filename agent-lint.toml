@@ -76,21 +76,21 @@ suppress = [
 # same Makefile-only pattern as the test-sessionstart-health.sh entry above.
 #
 # scripts/test-lint-literal-counts.sh is the regression harness for
-# scripts/lint-literal-counts.py (the drift-prone literal item-count markdown
-# lint). The lint script itself IS structurally referenced from
+# python3 python/cli.py lint literal-counts (the drift-prone literal item-count markdown
+# lint). The lint module is structurally referenced from
 # .pre-commit-config.yaml (local hook `lint-literal-counts`) and is therefore
 # not excluded; the test harness is referenced only from Makefile
-# (test-lint-literal-counts target) and scripts/lint-literal-counts.md
-# (sibling contract), matching the same Makefile-only pattern as the other
+# (test-lint-literal-counts target) and python/lint_literal_counts.md
+# (primary contract), matching the same Makefile-only pattern as the other
 # test-* harnesses above.
 #
 # scripts/test-lint-no-raw-stderr-after-quiet-init.sh is the regression harness
-# for scripts/lint-no-raw-stderr-after-quiet-init.py (S041/no-raw-stderr-after-
-# quiet-init). The lint script itself is structurally referenced from
+# for python3 python/cli.py lint no-raw-stderr-after-quiet-init (S041/no-raw-stderr-after-
+# quiet-init). The lint module is structurally referenced from
 # .pre-commit-config.yaml (local hook
 # `lint-no-raw-stderr-after-quiet-init`) and is therefore not excluded; the test
 # harness is referenced only from Makefile
-# (test-lint-no-raw-stderr-after-quiet-init target) and its sibling contract.
+# (test-lint-no-raw-stderr-after-quiet-init target) and python/lint_no_raw_stderr_after_quiet_init.md.
 #
 # scripts/lint-bash32.sh is the Bash 3.2 portability linter wired directly into
 # Makefile (`lint-bash32` and local `lint`). scripts/test-lint-bash32.sh is its
@@ -506,8 +506,8 @@ exclude = [
   # (sibling contract).
   "scripts/test-python/cli.py generate check",
   # scripts/test-check-topology-rule-paths.sh is the regression harness for
-  # scripts/check-topology-rule-paths.py (the TSV-vs-rule-paths coverage
-  # guard). The check script itself IS structurally referenced from
+  # python3 python/cli.py lint topology-rule-paths (the TSV-vs-rule-paths coverage
+  # guard). The check module is structurally referenced from
   # .pre-commit-config.yaml (local hook `check-topology-rule-paths`) and
   # .github/workflows/ci.yaml (agent-sync job step), so it is not excluded;
   # the test harness is referenced only from Makefile
@@ -608,7 +608,7 @@ exclude = [
   "python/test_agents.py",
   "python/test_agents.py",
   "scripts/test-lint-literal-counts.sh",
-  "scripts/lint-no-raw-stderr-after-quiet-init.md",
+  "python/lint_no_raw_stderr_after_quiet_init.md",
   "scripts/test-lint-no-raw-stderr-after-quiet-init.sh",
   "scripts/test-lint-no-raw-stderr-after-quiet-init.md",
   "scripts/lint-bash32.sh",

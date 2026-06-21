@@ -1311,3 +1311,15 @@ skills/design/scripts/test-trailer-dedup.sh	#4971
 skills/design/scripts/test-trailer-has-any.sh	#4971
 skills/design/scripts/test-trailer-helpers.sh	#4971
 skills/design/scripts/test-trailer-validate.sh	#4971
+scripts/check-topology-rule-paths.py	#4974
+scripts/check-topology-rule-paths.md	#4974
+scripts/cleanup-implement-logs.py	#4974
+scripts/cleanup-implement-logs.md	#4974
+scripts/lint-literal-counts.py	#4974
+scripts/lint-literal-counts.md	#4974
+scripts/lint-no-raw-stderr-after-quiet-init.py	#4974
+scripts/lint-no-raw-stderr-after-quiet-init.md	#4974
+scripts/render-session-transcript.py	#4974
+scripts/render-session-transcript.md	#4974
+scripts/retro-v3-sweep.py	#4974
+scripts/retro-v3-sweep.md	#4974
