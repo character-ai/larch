@@ -1,14 +1,14 @@
-## /implement run AF27D365-D1D1-4628-9DC1-875A78468886 — bailed
+## /implement run AF27D365-D1D1-4628-9DC1-875A78468886 — pr-created
 
-- **Outcome**: bailed
 - **Mode**: N/A
 - Emergency: true
 - **Duration**: 01:40:27
-- **Cost**: 💰 TOTAL ~$38.89 — Claude $9.12, Codex $25.39, Cursor $2.96, Claude (subprocess) $1.42  |  Tokens: 61217k
+- **Cost**: 💰 TOTAL ~$39.77 — Claude $10.00, Codex $25.39, Cursor $2.96, Claude (subprocess) $1.42  |  Tokens: 62538k
 - **Issue**: #5004 — https://github.com/character-ai/larch/issues/5004
+- **PR**: #5016 — https://github.com/character-ai/larch/pull/5016
 - **Plan review**: N/A
 - **Code review**: 0/2 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +67/-5, larch-logs +464/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 2
