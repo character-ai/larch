@@ -670,6 +670,36 @@ def test_committed_ref_round_dir_stamps_design_path(tmp_path: Path) -> None:
     assert review_aggregate._committed_ref(validate_log, review_tmp, "", outside) == str(validate_log)
 
 
+def test_round_stamped_forensics_match_real_failure_logs() -> None:
+    """ROUND_STAMPED_FORENSICS must list exactly the failure-log basenames that _apply_aggregate_candidate
+    and the dispatch loop hand to _failure_see_phrase with a round_dir, so every committed pointer
+    round-stamps to a snapshotted per-round copy (#5004). aggregator-strip.stderr was a phantom with no
+    producer; the strip stage's real failure log is aggregator-empty-merge.stderr.
+    """
+    expected = {
+        "aggregator-dispatch.stderr",
+        "aggregator-validate.stderr",
+        "aggregator-empty-merge.stderr",
+        "aggregator-scope-parity.stderr",
+        "aggregator-mv.stderr",
+    }
+    assert set(review_aggregate.ROUND_STAMPED_FORENSICS) == expected
+    assert "aggregator-strip.stderr" not in review_aggregate.ROUND_STAMPED_FORENSICS
+
+
+def test_committed_ref_round_stamps_empty_merge_parity_and_mv(tmp_path: Path) -> None:
+    """The empty-merge, scope-parity, and mv failure pointers now round-stamp like validate/dispatch so a
+    /design early-round aggregator failure stays diagnosable after a later round overwrites the stable
+    top-level stderr (#5004 completing #4996).
+    """
+    review_tmp = tmp_path / "design"
+    round_dir = review_tmp / "plan-review" / "round-2"
+    round_dir.mkdir(parents=True)
+    for name in ("aggregator-empty-merge.stderr", "aggregator-scope-parity.stderr", "aggregator-mv.stderr"):
+        log = review_tmp / name
+        assert review_aggregate._committed_ref(log, review_tmp, "", round_dir) == f"plan-review/round-2/{name}"
+
+
 def test_aggregate_round_dir_stamps_failure_pointer(tmp_path: Path) -> None:
     """End-to-end: --round-dir makes the /design validation-failure pointer round-aware so it
     resolves to the retained per-round snapshot rather than the clobbered top-level path (#4996).

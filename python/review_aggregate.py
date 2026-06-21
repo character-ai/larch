@@ -110,7 +110,22 @@ def _append_warning(review_tmpdir: Path, session_env_path: str, entry: str) -> N
         subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
 
 
-_ROUND_STAMPED_FORENSICS = frozenset({"aggregator-dispatch.stderr", "aggregator-validate.stderr", "aggregator-strip.stderr"})
+# Issue #5004: _failure_see_phrase emits a committed "See ..." pointer for any failure log that
+# _apply_aggregate_candidate or the dispatch loop hands it with a round_dir. Every such basename must be
+# round-stamped here so the pointer targets the per-round copy that plan_review_round snapshots (it
+# sources its snapshot list from this set). "aggregator-strip.stderr" was a phantom -- no producer ever
+# writes it; the strip stage's real failure log is aggregator-empty-merge.stderr -- and the empty-merge,
+# scope-parity, and mv failure logs were absent, so their early-round pointers dangled once a later round
+# overwrote the stable top-level path (the exact #4996 failure mode, never fixed for these classes).
+ROUND_STAMPED_FORENSICS = frozenset(
+    {
+        "aggregator-dispatch.stderr",
+        "aggregator-validate.stderr",
+        "aggregator-empty-merge.stderr",
+        "aggregator-scope-parity.stderr",
+        "aggregator-mv.stderr",
+    }
+)
 
 
 def _committed_ref(failure_log: Path, review_tmpdir: Path, session_env_path: str, round_dir: Path | None = None) -> str:
@@ -120,7 +135,7 @@ def _committed_ref(failure_log: Path, review_tmpdir: Path, session_env_path: str
     # stable stderr that a failed early round points at, leaving the committed pointer resolving to an
     # empty file. An explicit --round-dir under --review-tmpdir lets the pointer round-stamp to the
     # per-round snapshot retained in plan-review/round-N/.
-    if round_dir is not None and flbase in _ROUND_STAMPED_FORENSICS:
+    if round_dir is not None and flbase in ROUND_STAMPED_FORENSICS:
         try:
             rel = round_dir.relative_to(review_tmpdir)
         except ValueError:
@@ -128,7 +143,7 @@ def _committed_ref(failure_log: Path, review_tmpdir: Path, session_env_path: str
         return f"{rel.as_posix()}/{flbase}"
     if session_env_path:
         round_name = review_tmpdir.name
-        if round_name.startswith("round-") and flbase in _ROUND_STAMPED_FORENSICS:
+        if round_name.startswith("round-") and flbase in ROUND_STAMPED_FORENSICS:
             return f"{round_name}/{flbase}"
     return str(failure_log)
 

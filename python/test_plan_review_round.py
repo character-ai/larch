@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 
 import collect_results
 import plan_review_round
+import review_aggregate
 
 if TYPE_CHECKING:
     import pytest
@@ -559,6 +560,17 @@ def test_execute_round_snapshots_aggregator_forensics_on_failure(
     # Emulate a later round overwriting the stable top-level path; the round-1 snapshot survives.
     _ = (design / "aggregator-validate.stderr").write_text("", encoding="utf-8")
     assert snapshot.read_text(encoding="utf-8") != ""
+
+
+def test_aggregator_forensic_snapshot_covers_round_stamped_pointers() -> None:
+    """Every basename review_aggregate round-stamps into a committed "See plan-review/round-N/..." pointer
+    must be snapshotted into that directory, or the pointer dangles after a later round clobbers the stable
+    top-level path (#4996/#5004). The snapshot list is sourced from the round-stamped set, so this guards
+    against the two cross-module lists drifting apart again.
+    """
+    round_stamped = set(review_aggregate.ROUND_STAMPED_FORENSICS)
+    snapshotted = set(plan_review_round._AGGREGATOR_FORENSIC_FILES)
+    assert round_stamped <= snapshotted
 
 
 def test_execute_round_panel_dispatch_failed_syncs_latest_reviewer_status(
