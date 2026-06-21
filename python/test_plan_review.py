@@ -1872,16 +1872,19 @@ def test_emit_rejected_already_addressed_ledger_extracts_records_and_dedups(tmp_
     untagged = _make_rejected_block("FINDING_2", "beta.py:5", "Real concern", "Real")
     _ = (design / "rejected-findings.md").write_text(tagged + untagged, encoding="utf-8")
 
-    tagged_key = plan_review._finding_dedup_key(tagged)  # pyright: ignore[reportPrivateUsage]
+    # The extracted key is the canonical (tag-stripped) concern key, so it matches
+    # an untagged re-raise of the same concern in a later round.
+    untagged_same = _make_rejected_block("FINDING_9", "alpha.py:10", "plan covers it", "Covered")
+    canonical_key = plan_review._finding_dedup_key(untagged_same)  # pyright: ignore[reportPrivateUsage]
     keys = plan_review._already_addressed_keys_in_rejected(design)  # pyright: ignore[reportPrivateUsage]
-    assert keys == [tagged_key]
+    assert keys == [canonical_key]
 
-    # Recording is idempotent and the on-disk ledger holds only the tagged key.
+    # Recording is idempotent and the on-disk ledger holds only the canonical key.
     plan_review._record_already_addressed_finding_keys(design, keys)  # pyright: ignore[reportPrivateUsage]
     plan_review._record_already_addressed_finding_keys(design, keys)  # pyright: ignore[reportPrivateUsage]
     ledger = (design / ".step3-already-addressed-finding-keys.tsv").read_text(encoding="utf-8")
-    assert ledger == f"{tagged_key}\n"
-    assert plan_review._read_already_addressed_finding_keys(design) == {tagged_key}  # pyright: ignore[reportPrivateUsage]
+    assert ledger == f"{canonical_key}\n"
+    assert plan_review._read_already_addressed_finding_keys(design) == {canonical_key}  # pyright: ignore[reportPrivateUsage]
 
 
 def test_step3_loop_postplan_validator_runs_from_consumer_cwd(tmp_path: Path) -> None:

@@ -1209,7 +1209,9 @@ def _already_addressed_keys_in_rejected(tmpdir: Path) -> list[str]:
             end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
             block = text[match.start():end]
             if _ALREADY_ADDRESSED_RE.search(block):
-                key = _finding_dedup_key(block)
+                # Key on the tag-stripped block so a later round that re-raises
+                # the same concern WITHOUT the tag matches this laddered key.
+                key = _finding_dedup_key(_ALREADY_ADDRESSED_RE.sub("", block))
                 if key:
                     keys.append(key)
         return keys
