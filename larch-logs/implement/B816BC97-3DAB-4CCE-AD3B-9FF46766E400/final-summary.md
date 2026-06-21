@@ -1,13 +1,13 @@
-## /implement run B816BC97-3DAB-4CCE-AD3B-9FF46766E400 — bailed
+## /implement run B816BC97-3DAB-4CCE-AD3B-9FF46766E400 — pr-created
 
-- **Outcome**: bailed
 - **Mode**: N/A
 - **Duration**: 00:44:26
-- **Cost**: 💰 TOTAL ~$6.07 — Claude $1.73, Codex $3.21, Cursor $0.84, Claude (subprocess) $0.29  |  Tokens: 8069k
+- **Cost**: 💰 TOTAL ~$6.72 — Claude $2.38, Codex $3.21, Cursor $0.84, Claude (subprocess) $0.29  |  Tokens: 8968k
 - **Issue**: #4771 — https://github.com/character-ai/larch/issues/4771
+- **PR**: #4949 — https://github.com/character-ai/larch/pull/4949
 - **Plan review**: N/A
 - **Code review**: 0/1 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +24/-2, larch-logs +467/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 1
