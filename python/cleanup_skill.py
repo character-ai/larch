@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import fnmatch
 import os
+import re
+import shlex
 import shutil
 import sys
 import time
@@ -35,6 +37,7 @@ TMP_PATTERNS = (
 )
 SECONDS_PER_DAY = 86400
 TMP_FALLBACK = "/tmp"  # noqa: S108 - parity with cleanup.sh preserved /tmp root
+ENV_KEY_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 
 
 def _emit(key: str, value: object) -> None:
@@ -95,6 +98,31 @@ def _remove_entry(path: Path) -> bool:
     return True
 
 
+def _read_design_tmpdir(env_path: Path) -> str:
+    values: dict[str, str] = {}
+    try:
+        lines = env_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return ""
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export ") :].strip()
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        if not ENV_KEY_RE.match(key):
+            continue
+        try:
+            parsed = shlex.split(value, posix=True)
+        except ValueError:
+            parsed = [value]
+        values[key] = parsed[0] if len(parsed) == 1 else value
+    return values.get("DESIGN_TMPDIR") or values.get("SESSION_TMPDIR") or ""
+
+
 def run_main(argv: list[str]) -> int:
     if argv:
         _warn(f"Warning: cleanup run ignores arguments: {' '.join(argv)}")
@@ -131,7 +159,16 @@ def run_main(argv: list[str]) -> int:
     symlinks_removed = 0
     if sessions_parent.is_dir():
         for link in sessions_parent.glob("current-design-env-*.sh"):
-            if link.is_symlink() and not link.exists() and _remove_entry(link):
+            if not link.is_symlink():
+                continue
+            try:
+                target = link.resolve(strict=True)
+            except OSError:
+                if _remove_entry(link):
+                    symlinks_removed += 1
+                continue
+            design_tmpdir = _read_design_tmpdir(target)
+            if (not design_tmpdir or not Path(design_tmpdir).is_dir()) and _remove_entry(link):
                 symlinks_removed += 1
     _emit("SYMLINKS_REMOVED", symlinks_removed)
     pointers_removed = 0

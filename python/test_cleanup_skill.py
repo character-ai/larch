@@ -16,6 +16,15 @@ def _result(argv: list[str], returncode: int = 0, stdout: str = "", stderr: str 
     return proc.CommandResult(tuple(argv), returncode, stdout, stderr, 0.0)
 
 
+def _write_design_symlink(sessions: Path, pid: str, env_text: str) -> tuple[Path, Path]:
+    sessions.mkdir(parents=True, exist_ok=True)
+    target = sessions / f"design-target-{pid}.sh"
+    target.write_text(env_text, encoding="utf-8")
+    link = sessions / f"current-design-env-{pid}.sh"
+    link.symlink_to(target)
+    return link, target
+
+
 def test_cleanup_removes_old_entries(monkeypatch: Any, tmp_path: Path, capsys: Any) -> None:
     cache = tmp_path / "cache"
     sessions = cache / "larch/sessions"
@@ -40,6 +49,79 @@ def test_cleanup_removes_old_entries(monkeypatch: Any, tmp_path: Path, capsys: A
     assert "TMP_REMOVED=1" in out
     assert "SYMLINKS_REMOVED=1" in out
     assert "IMPLEMENT_POINTERS_REMOVED=1" in out
+
+
+def test_cleanup_removes_resolved_design_symlink_when_design_tmpdir_missing(
+    monkeypatch: Any,
+    tmp_path: Path,
+    capsys: Any,
+) -> None:
+    cache = tmp_path / "cache"
+    sessions = cache / "larch/sessions"
+    missing = tmp_path / "missing-design"
+    link, target = _write_design_symlink(sessions, "1", f"export DESIGN_TMPDIR={missing}\n")
+    monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
+    monkeypatch.setattr(cleanup_skill.proc, "run", lambda argv, **_: _result(argv, stdout=""))
+
+    assert cleanup_skill.run_main([]) == 0
+
+    out = capsys.readouterr().out
+    assert not link.is_symlink()
+    assert target.is_file()
+    assert not missing.exists()
+    assert "SYMLINKS_REMOVED=1" in out
+
+
+def test_cleanup_keeps_resolved_design_symlink_when_design_tmpdir_exists(
+    monkeypatch: Any,
+    tmp_path: Path,
+    capsys: Any,
+) -> None:
+    cache = tmp_path / "cache"
+    sessions = cache / "larch/sessions"
+    design_tmpdir = tmp_path / "design"
+    design_tmpdir.mkdir()
+    link, target = _write_design_symlink(sessions, "1", f"export DESIGN_TMPDIR='{design_tmpdir}'\n")
+    monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
+    monkeypatch.setattr(cleanup_skill.proc, "run", lambda argv, **_: _result(argv, stdout=""))
+
+    assert cleanup_skill.run_main([]) == 0
+
+    out = capsys.readouterr().out
+    assert link.is_symlink()
+    assert target.is_file()
+    assert design_tmpdir.is_dir()
+    assert "SYMLINKS_REMOVED=0" in out
+
+
+def test_cleanup_design_symlink_honors_session_tmpdir_fallback(
+    monkeypatch: Any,
+    tmp_path: Path,
+    capsys: Any,
+) -> None:
+    cache = tmp_path / "cache"
+    sessions = cache / "larch/sessions"
+    missing = tmp_path / "missing-session"
+    existing = tmp_path / "existing-session"
+    existing.mkdir()
+    missing_link, missing_target = _write_design_symlink(sessions, "missing", f"export SESSION_TMPDIR={missing}\n")
+    existing_link, existing_target = _write_design_symlink(
+        sessions,
+        "existing",
+        f"export SESSION_TMPDIR={existing}\n",
+    )
+    monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
+    monkeypatch.setattr(cleanup_skill.proc, "run", lambda argv, **_: _result(argv, stdout=""))
+
+    assert cleanup_skill.run_main([]) == 0
+
+    out = capsys.readouterr().out
+    assert not missing_link.is_symlink()
+    assert missing_target.is_file()
+    assert existing_link.is_symlink()
+    assert existing_target.is_file()
+    assert existing.is_dir()
+    assert "SYMLINKS_REMOVED=1" in out
 
 
 def test_cleanup_invalid_retention_warns(monkeypatch: Any, tmp_path: Path, capsys: Any) -> None:

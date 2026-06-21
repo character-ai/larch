@@ -26,6 +26,11 @@ import voting
 
 TIMING_MARK_MIN_COLS = 5
 TIMING_V1_MIN_COLS = 3
+TIMING_LEGACY_DESIGN_ROUND_MIN_COLS = 4
+TIMING_LEGACY_DESIGN_ROUND_START_COL = 0
+TIMING_LEGACY_DESIGN_ROUND_END_COL = 1
+TIMING_LEGACY_DESIGN_ROUND_SKILL_COL = 2
+TIMING_LEGACY_DESIGN_ROUND_KIND_COL = 3
 TIMING_ROUND_MIN_COLS = 8
 TIMING_ROUND_SKILL_COL = 3
 TIMING_ROUND_ROUND_NUM_COL = 5
@@ -133,16 +138,26 @@ def _latest_timing_ledger_activity_ts(ledger: Path) -> int | None:
         return latest_ts
     for line in lines:
         cols = line.split("\t")
-        if len(cols) < TIMING_V1_MIN_COLS or cols[0] != "v1":
-            continue
-        row_kind = cols[1]
         candidates: list[str]
-        if row_kind == "mark":
-            candidates = [cols[2]]
-        elif row_kind == "vendor" and len(cols) > TIMING_VENDOR_END_COL:
-            candidates = [cols[2], cols[TIMING_VENDOR_END_COL]]
-        elif row_kind == "round" and len(cols) > TIMING_ROUND_END_COL:
-            candidates = [cols[2], cols[TIMING_ROUND_END_COL]]
+        if len(cols) >= TIMING_V1_MIN_COLS and cols[0] == "v1":
+            row_kind = cols[1]
+            if row_kind == "mark":
+                candidates = [cols[2]]
+            elif row_kind == "vendor" and len(cols) > TIMING_VENDOR_END_COL:
+                candidates = [cols[2], cols[TIMING_VENDOR_END_COL]]
+            elif row_kind == "round" and len(cols) > TIMING_ROUND_END_COL:
+                candidates = [cols[2], cols[TIMING_ROUND_END_COL]]
+            else:
+                continue
+        elif (
+            len(cols) >= TIMING_LEGACY_DESIGN_ROUND_MIN_COLS
+            and cols[TIMING_LEGACY_DESIGN_ROUND_SKILL_COL] == "design"
+            and cols[TIMING_LEGACY_DESIGN_ROUND_KIND_COL] == "round"
+        ):
+            candidates = [
+                cols[TIMING_LEGACY_DESIGN_ROUND_START_COL],
+                cols[TIMING_LEGACY_DESIGN_ROUND_END_COL],
+            ]
         else:
             continue
         for raw in candidates:
@@ -190,7 +205,7 @@ def _design_candidate(pointer: Path) -> LiveRun | None:
     cwd = _kv_value(tmpdir / ".larch-keepalive", "CLONE_PATH")
     if not cwd:
         return None
-    return LiveRun("design", tmpdir, cwd, pointer, _path_mtime(pointer))
+    return LiveRun("design", tmpdir, cwd, pointer, _run_activity_mtime(tmpdir / "timing-ledger.tsv", pointer))
 
 
 def _implement_candidate(pointer: Path) -> LiveRun | None:
