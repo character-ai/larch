@@ -341,6 +341,13 @@ def _step3_read_result_env_quiet(argv: Sequence[str]) -> tuple[int, Path | None,
             rc = int(read_result_env_main(list(argv)))
         except SystemExit as exc:
             rc = int(exc.code) if isinstance(exc.code, int) else 1
+    if rc == 0 and primary_regular and selected == primary and fallback is not None:
+        try:
+            primary_pairs = phase_driver_read_result_env(primary, ns.allow)
+        except OSError:
+            primary_pairs = []
+        if not primary_pairs and fallback.is_file() and not fallback.is_symlink():
+            selected = fallback
     if rc == 0:
         return 0, selected, primary_regular
     return rc, None, primary_regular
@@ -418,10 +425,7 @@ def _step3_normalize_load_env(design_tmpdir: Path, stdout_file: Path) -> dict[st
     finally:
         with contextlib.suppress(FileNotFoundError):
             safe_path.unlink()
-    if primary_regular:
-        _step3_replay_warn_error_safe(result_env)
-    if selected_source is not None and (not primary_regular or selected_source != result_env):
-        _step3_replay_warn_error_safe(selected_source)
+    _step3_replay_warn_error_safe(selected_source)
     _step3_overlay_stdout_env(
         values,
         stdout_file,

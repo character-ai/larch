@@ -115,7 +115,10 @@ def test_step3_read_result_env_quiet_suppresses_internal_replay(tmp_path: Path) 
 
 
 def test_step3_normalizer_primary_warn_only_replays_primary_before_overlay(tmp_path: Path) -> None:
-    _ = (tmp_path / ".step3-review-result.env").write_text("WARN=primary-only-warning\n", encoding="utf-8")
+    _ = (tmp_path / ".step3-review-result.env").write_text(
+        "WARN=primary-only-warning\nLOOP_STATUS=complete\n",
+        encoding="utf-8",
+    )
     proc = _run_step3_normalizer(tmp_path, "WARN=overlay-warning\nLOOP_STATUS=complete\n")
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout.splitlines()[:2] == ["WARN=primary-only-warning", "WARN=overlay-warning"]
@@ -251,6 +254,28 @@ def test_step3_normalizer_zero_round_and_synthesis_paths(tmp_path: Path) -> None
     assert "STEP3_REVIEW_LOOP_STATUS=tally-error" in result_text
     assert "STEP3_REVIEW_CAP_REACHED=false" in result_text
     assert (launched / ".step3-terminal-persisted-this-run").is_file()
+
+
+def test_step3_normalizer_empty_primary_replays_stdout_fallback_warn_error(tmp_path: Path) -> None:
+    _ = (tmp_path / ".step3-review-result.env").write_bytes(b"")
+    proc = _run_step3_normalizer(
+        tmp_path,
+        "WARN=fallback-warning\nERROR=fallback-error\nLOOP_STATUS=complete\n",
+    )
+    assert proc.returncode == 0, proc.stderr
+    lines = proc.stdout.splitlines()
+    assert lines[0] == "WARN=fallback-warning"
+    assert "ERROR=fallback-error" in lines[:3]
+    assert proc.stdout.count("WARN=fallback-warning") == 1
+
+
+def test_step3_normalizer_missing_result_kv_only_stderr(tmp_path: Path) -> None:
+    proc = _run_step3_normalizer(tmp_path, "")
+    assert proc.returncode == 1
+    assert "**⚠ Step 3:" not in proc.stdout
+    assert "**⚠ Step 3: result env missing or empty after loop exit; treating as panel-failed**" in proc.stderr
+    assert "STEP3_REVIEW_LOOP_STATUS=panel-init-failed" in proc.stdout
+    assert "SUMMARY_OUTCOME=failed-judge-panel" in proc.stdout
 
 
 def test_step3_normalizer_postplan_invalid_and_kv_only_stderr(tmp_path: Path) -> None:
