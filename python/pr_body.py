@@ -719,11 +719,11 @@ def _diagram_failure_capture(returncode: int, stderr: str) -> tuple[str, str]:
         capture = redact.redact(design_diagram_log.strip_diagram_sections(tail_source))
     except Exception:
         return f"returncode: {returncode}\nredaction-failed\n", "redaction-failed"
-    capture = capture.replace("```", "").replace("mermaid", "")
-    collapsed = re.sub(r"\s+", " ", capture).strip() or "no-output"
+    sanitized = design_diagram_log.sanitize_diagram_capture(capture)
+    collapsed = re.sub(r"\s+", " ", sanitized).strip() or "no-output"
     if len(collapsed) > _DIAGRAM_FAILURE_TAIL_LIMIT:
         collapsed = "..." + collapsed[-(_DIAGRAM_FAILURE_TAIL_LIMIT - 3):]
-    return f"returncode: {returncode}\n{capture}", collapsed
+    return f"returncode: {returncode}\n{sanitized}", collapsed
 
 
 def generate_code_flow_diagram(implement_tmpdir: Path, *, model: str = "claude-sonnet-4-6", base_remote: str = "origin", base_ref: str = "main") -> tuple[int, str, str, str]:

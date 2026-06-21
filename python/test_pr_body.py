@@ -637,6 +637,15 @@ def test_post_tracking_issue_writes_metadata(tmp_path: Path, monkeypatch: pytest
     assert err == ""
 
 
+def test_diagram_failure_capture_redacts_prefixed_mermaid_on_stderr_line() -> None:
+    diagnostic, tail = pr_body._diagram_failure_capture(1, "ERROR graph TD A-->B")
+    assert "graph TD" not in tail
+    assert "A-->B" not in tail
+    assert "diagram-content-redacted" in tail
+    assert "graph TD" not in diagnostic
+    assert "A-->B" not in diagnostic
+
+
 def test_generate_code_flow_diagram_uses_launcher_not_stub(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     launcher = tmp_path / "fake-launcher.sh"
     _ = launcher.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")

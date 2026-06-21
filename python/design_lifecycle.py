@@ -4054,6 +4054,15 @@ def _step5b_issues_failed(path: Path) -> bool:
     return any(re.match(r"^ISSUES_FAILED=[1-9][0-9]*$", line) for line in text.splitlines())
 
 
+def _step5b_annotate_sequencing_error(oos_issue_stdout: Path) -> bool:
+    try:
+        if not oos_issue_stdout.is_file():
+            return True
+        return not oos_issue_stdout.read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return True
+
+
 def step5b_prepare_main(argv: Sequence[str]) -> int:
     try:
         parsed = _parse_common_wrapper_args(argv)
@@ -4158,6 +4167,8 @@ def step5b_annotate_main(argv: Sequence[str]) -> int:
         if _step5b_issues_failed(oos_issue_stdout):
             print("**⚠ /design: OOS filing completed with ISSUES_FAILED>0 — see execution-issues and oos-issue.stdout.txt**")
         print("STEP5B_STATUS=annotate-failed")
+        if not _step5b_annotate_sequencing_error(oos_issue_stdout):
+            _step5b_mark_complete(design_tmpdir)
         return ann_rc
 
     if status == "annotate-skipped-empty-stdout" and warn:

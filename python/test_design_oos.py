@@ -359,6 +359,53 @@ def test_step5b_annotate_failure_with_partial_issue_stdout(
     assert rc == 4
     assert "OOS filing completed with ISSUES_FAILED>0" in out
     assert seen_stdout_file == str(issue_stdout)
+    assert (tmp_path / ".completed" / "step-5b").is_file()
+
+
+def test_step5b_annotate_failure_with_issue_stdout_marks_complete_for_step5b5(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
+    monkeypatch.setattr(design_lifecycle, "_append_failure", _fake_append_success)
+    issue_stdout = tmp_path / "oos-issue.stdout.txt"
+    _ = issue_stdout.write_text("ISSUES_FAILED=0\nISSUES_CREATED=1\n", encoding="utf-8")
+
+    def fake_annotate(_argv: Sequence[str]) -> int:
+        print("annotate failed", file=sys.stderr)
+        return 3
+
+    monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_annotate_main", fake_annotate)
+
+    rc = design_lifecycle.step5b_annotate_main(_step5b_argv())
+    out = capsys.readouterr().out
+
+    assert rc == 3
+    assert "STEP5B_STATUS=annotate-failed" in out
+    assert (tmp_path / ".completed" / "step-5b").is_file()
+
+
+def test_step5b_annotate_partial_failure_routes_to_step5b5_and_step5c(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import design_pause
+
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
+    monkeypatch.setattr(design_lifecycle, "_append_failure", _fake_append_success)
+    issue_stdout = tmp_path / "oos-issue.stdout.txt"
+    _ = issue_stdout.write_text("ISSUES_FAILED=1\n", encoding="utf-8")
+
+    def fake_annotate(_argv: Sequence[str]) -> int:
+        print("annotate failed", file=sys.stderr)
+        return 4
+
+    monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_annotate_main", fake_annotate)
+
+    _ = design_lifecycle.step5b_annotate_main(_step5b_argv())
+
+    assert (tmp_path / ".completed" / "step-5b").is_file()
+    assert design_pause._determine_step(tmp_path, Path.cwd()) == "5b.5"  # pyright: ignore[reportPrivateUsage]
+    _ = (tmp_path / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
+    assert design_pause._determine_step(tmp_path, Path.cwd()) == "5c"  # pyright: ignore[reportPrivateUsage]
 
 
 def test_step5b_annotate_pause_returns_pause_save_rc(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
