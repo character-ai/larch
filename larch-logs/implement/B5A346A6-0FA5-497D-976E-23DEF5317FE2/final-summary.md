@@ -8,10 +8,10 @@
 - **PR**: #5015 — https://github.com/character-ai/larch/pull/5015
 - **Plan review**: N/A
 - **Code review**: 2/2 accepted
-- **Lines (PR diff)**: code +704/-564, larch-logs +825/-0
+- **Lines (PR diff)**: code +704/-564, larch-logs +826/-0
 - **OOS filed**: 1 — https://github.com/character-ai/larch/issues/5014
-- **Exec issues**: 0
-- **Warnings**: 2
+- **Exec issues**: 3
+- **Warnings**: 0
 - **Run logs**: `larch-logs/implement/B5A346A6-0FA5-497D-976E-23DEF5317FE2/`
 
 <!-- larch:run-summary v=1 -->
