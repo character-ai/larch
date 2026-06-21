@@ -629,8 +629,11 @@ _OOS_HEADING_RE = re.compile(r"^###\s+((?:OOS|FINDING)_\d+):\s*(.*?)\s*$", re.MU
 _STABLE_ID_LINE_RE = re.compile(r"^[ \t]*(?:[-*][ \t]+)?(?:\*\*)?Stable ID(?:\*\*)?[ \t]*:[ \t]*(\S+)", re.I | re.M)
 _FILED_URL_LINE_RE = re.compile(r"^[ \t]*(?:[-*][ \t]+)?(?:\*\*)?Filed[ \t]*URL(?:\*\*)?[ \t]*:[ \t]*(https://[^\s|)]+/issues/\d+)", re.I | re.M)
 _FILED_AS_RE = re.compile(r"\bFiled\s+as\s+#(\d+)\b", re.I)
+_FILED_AS_URL_RE = re.compile(r"\bFiled\s+as\s+(https://[^\s|)]+/issues/\d+)", re.I)
+_FILED_COLON_URL_RE = re.compile(r"^[ \t]*(?:[-*][ \t]+)?(?:\*\*)?Filed(?:\*\*)?[ \t]*:[ \t]*(https://[^\s|)]+/issues/\d+)", re.I | re.M)
 _FILED_OOS_NUMBER_RE = re.compile(r"\bFiled\s+OOS\s+issue\s+#(\d+)\b", re.I)
 _FILED_OOS_URL_RE = re.compile(r"\bFiled\s+OOS\s+issue\s*:\s*(https://[^\s|)]+/issues/\d+)", re.I)
+_CAP_ROLLUP_TITLE_RE = re.compile(r"Aggregated rollup of\s+\d+\s+capped OOS items", re.I)
 _OOS_TOKEN_RE = re.compile(r"\b(?:[A-Za-z0-9_.-]+:)?(?:OOS|FINDING)_\d+\b")
 _FIELD_RE = re.compile(r"^[ \t]*(?:[-*][ \t]+)?(?:\*\*)?(Reviewer\(s\)|Reviewers?|Filed[ \t]*URL|Stable ID)(?:\*\*)?[ \t]*:[ \t]*(.*?)\s*$", re.I | re.M)
 
@@ -656,9 +659,13 @@ def _extract_filed_issue_numbers_from_text(text: str) -> list[int]:
 
     for match in _FILED_URL_LINE_RE.finditer(text or ""):
         add(extract_issue_number_from_url(match.group(1)))
+    for match in _FILED_COLON_URL_RE.finditer(text or ""):
+        add(extract_issue_number_from_url(match.group(1)))
     for pattern in (_FILED_AS_RE, _FILED_OOS_NUMBER_RE):
         for match in pattern.finditer(text or ""):
             add(int(match.group(1)))
+    for match in _FILED_AS_URL_RE.finditer(text or ""):
+        add(extract_issue_number_from_url(match.group(1)))
     for match in _FILED_OOS_URL_RE.finditer(text or ""):
         add(extract_issue_number_from_url(match.group(1)))
     for line in (text or "").splitlines():
@@ -712,7 +719,7 @@ def _has_not_planned_signal(issue: Mapping[str, Any]) -> bool:
     if state_reason == "NOT_PLANNED" and not state_reason_degraded:
         return True
     labels = issue_labels(issue)
-    if labels & {"wontfix", "won't fix", "not planned", "not-planned", "invalid"}:
+    if labels & {"wontfix", "won't fix", "not planned", "not-planned"}:
         return True
     body = str(issue.get("body") or "").lower()
     return bool(re.search(r"\b(?:wontfix|won't fix|not[- ]planned|no plan to fix)\b", body))
@@ -884,7 +891,7 @@ def _extract_legacy_stable_ids_from_ndjson_body(body: str) -> list[str]:
 
 def _is_cap_rollup_record(record: dict[str, Any]) -> bool:
     text = f"{record.get('title') or ''}\n{record.get('body') or ''}"
-    if re.search(r"Aggregated rollup", text, re.I):
+    if _CAP_ROLLUP_TITLE_RE.search(text):
         return True
     stable_ids = _stable_ids_from_record(record)
     if len(stable_ids) <= 1:
@@ -924,6 +931,16 @@ def _record_issue_urls(record: Mapping[str, Any]) -> list[str]:
             seen.add(raw)
             urls.append(raw)
     for match in _FILED_URL_LINE_RE.finditer(body):
+        url = match.group(1)
+        if url not in seen:
+            seen.add(url)
+            urls.append(url)
+    for match in _FILED_COLON_URL_RE.finditer(body):
+        url = match.group(1)
+        if url not in seen:
+            seen.add(url)
+            urls.append(url)
+    for match in _FILED_AS_URL_RE.finditer(body):
         url = match.group(1)
         if url not in seen:
             seen.add(url)
@@ -1048,6 +1065,23 @@ def _ambiguous_rollup_expansion_row(run_id: str, issue_number: int | None, issue
     return {"bucket": "ambiguous rollup expansion", "run_id": run_id, "issue_number": issue_number, "issue_url": issue_url, "reviewer": "unknown"}
 
 
+def _ambiguous_stable_id_row(run_id: str, stable_id: str, issue_number: int | None, issue_url: str) -> dict[str, Any]:
+    return {
+        "bucket": "ambiguous stable id",
+        "run_id": run_id,
+        "identity": (run_id, "rollup-ambiguous", stable_id, issue_number or issue_url),
+        "issue_number": issue_number,
+        "issue_url": issue_url,
+        "reviewer": "unknown",
+    }
+
+
+def _rollup_expansion_shortfall_result(run_id: str, issue_number: int | None, issue_url: str, out: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if not out:
+        return [_ambiguous_rollup_expansion_row(run_id, issue_number, issue_url)]
+    return [*out, _ambiguous_rollup_expansion_row(run_id, issue_number, issue_url)]
+
+
 def _issue_evidence_for_record(record: Mapping[str, Any]) -> tuple[int | None, str]:
     urls = _record_issue_urls(record)
     numbers = _record_issue_numbers(record)
@@ -1064,26 +1098,34 @@ def _expand_cap_rollup_records(run_dir: Path, ndjson_record: dict[str, Any], blo
     stable_ids = _stable_ids_from_record(ndjson_record) or _extract_legacy_stable_ids_from_ndjson_body(body)
     out: list[dict[str, Any]] = []
     issue_number, issue_url = _issue_evidence_for_record(ndjson_record)
+    run_id = run_dir.name
     seen_identities: set[tuple[Any, ...]] = set()
     ambiguous = False
     for stable_id in stable_ids:
         matched, is_ambiguous = _resolve_blocks_for_stable_id(stable_id, blocks, body)
-        ambiguous = ambiguous or is_ambiguous
+        if is_ambiguous:
+            ambiguous = True
+            out.append(_ambiguous_stable_id_row(run_id, stable_id, issue_number, issue_url))
+            continue
         for block in matched:
             identity = (str(block.get("artifact_relpath") or ""), str(block.get("heading_id") or ""))
             if identity in seen_identities:
                 continue
             seen_identities.add(identity)
-            out.append(_row_from_block(run_dir.name, block, ndjson_record, issue_number, issue_url))
+            out.append(_row_from_block(run_id, block, ndjson_record, issue_number, issue_url))
     expected_match = re.search(r"Aggregated rollup of\s+(\d+)\s+capped OOS items", f"{ndjson_record.get('title') or ''}\n{body}", re.I)
     expected = int(expected_match.group(1)) if expected_match else 0
-    if expected and len(out) < expected:
+    scored_rows = [row for row in out if not row.get("bucket")]
+    if expected and len(scored_rows) > expected:
+        return [_ambiguous_rollup_expansion_row(run_id, issue_number, issue_url)]
+    if expected and len(scored_rows) < expected:
         excerpt_titles: list[str] = []
         for text in _rollup_excerpt_source_texts(run_dir, ndjson_record):
             excerpt_titles.extend(_rollup_excerpt_titles_from_text(text))
         for block in _blocks_from_rollup_excerpt_titles(excerpt_titles, blocks, seen_identities):
-            out.append(_row_from_block(run_dir.name, block, ndjson_record, issue_number, issue_url))
-    if expected and len(out) < expected:
+            out.append(_row_from_block(run_id, block, ndjson_record, issue_number, issue_url))
+    scored_rows = [row for row in out if not row.get("bucket")]
+    if expected and len(scored_rows) < expected:
         source_key = ""
         for stable_id in stable_ids:
             if ":" in stable_id:
@@ -1114,13 +1156,16 @@ def _expand_cap_rollup_records(run_dir: Path, ndjson_record: dict[str, Any], blo
                 if identity in seen_identities:
                     continue
                 seen_identities.add(identity)
-                out.append(_row_from_block(run_dir.name, block, ndjson_record, issue_number, issue_url))
+                out.append(_row_from_block(run_id, block, ndjson_record, issue_number, issue_url))
         else:
-            return [_ambiguous_rollup_expansion_row(run_dir.name, issue_number, issue_url)]
-    if expected and len(out) < expected:
-        return [_ambiguous_rollup_expansion_row(run_dir.name, issue_number, issue_url)]
-    if ambiguous and not out:
-        return [{"bucket": "ambiguous stable id", "run_id": run_dir.name, "issue_number": issue_number, "issue_url": issue_url, "reviewer": "unknown"}]
+            return _rollup_expansion_shortfall_result(run_id, issue_number, issue_url, out)
+    scored_rows = [row for row in out if not row.get("bucket")]
+    if expected and len(scored_rows) < expected:
+        return _rollup_expansion_shortfall_result(run_id, issue_number, issue_url, out)
+    if ambiguous and not scored_rows:
+        if out:
+            return out
+        return [_ambiguous_stable_id_row(run_id, stable_ids[0] if stable_ids else "", issue_number, issue_url)]
     return out
 
 
@@ -1224,8 +1269,10 @@ def _join_implement_run_records(run_dir: Path) -> list[dict[str, Any]]:
     for record in _parse_oos_issues_ndjson(run_dir / "oos-issues.ndjson"):
         issue_number, issue_url = _issue_evidence_for_record(record)
         if _is_cap_rollup_record(record):
-            rows.extend(_expand_cap_rollup_records(run_dir, record, blocks, indexed))
-            continue
+            expanded = _expand_cap_rollup_records(run_dir, record, blocks, indexed)
+            if expanded:
+                rows.extend(expanded)
+                continue
         stable_ids = _stable_ids_from_record(record) or _extract_legacy_stable_ids_from_ndjson_body(str(record.get("body") or ""))
         matched_any = False
         ambiguous = False

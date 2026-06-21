@@ -234,7 +234,7 @@ def test_main_agent_stable_id_joins_review_block(tmp_path: Path) -> None:
     assert rows[0]["reviewer"] == "codex"
 
 
-def test_cap_rollup_ambiguous_expansion_scores_no_partial_members(tmp_path: Path) -> None:
+def test_cap_rollup_shortfall_keeps_resolved_members(tmp_path: Path) -> None:
     run = tmp_path / "implement" / "run-1"
     (run / "round-1").mkdir(parents=True)
     review_md = run / "round-1" / "oos-accepted-review.md"
@@ -254,12 +254,109 @@ def test_cap_rollup_ambiguous_expansion_scores_no_partial_members(tmp_path: Path
         encoding="utf-8",
     )
     rows = analyze_issues._join_implement_run_records(run)
-    assert len(rows) == 1
-    assert rows[0]["bucket"] == "ambiguous rollup expansion"
+    scored = [row for row in rows if not row.get("bucket")]
+    assert len(scored) == 1
+    assert scored[0]["reviewer"] == "codex"
+    assert any(row.get("bucket") == "ambiguous rollup expansion" for row in rows)
     issues = [{"number": 10, "title": "one", "state": "OPEN", "body": "", "labels": []}]
     _text, stats = analyze_issues.fate_adjusted_oos_scoring(issues, tmp_path, filed_issue_details={})
-    assert stats["totals"] == {"provisional": 0, "adjusted": 0, "docked": 0}
+    assert stats["totals"] == {"provisional": 1, "adjusted": 1, "docked": 0}
     assert stats["buckets"]["ambiguous rollup expansion"] == 1
+
+
+def test_cap_rollup_exceeds_expected_returns_ambiguous(tmp_path: Path) -> None:
+    run = tmp_path / "implement" / "run-1"
+    (run / "round-1").mkdir(parents=True)
+    (run / "round-1" / "oos-accepted-review.md").write_text(
+        "### OOS_1: one\n- **Reviewer**: codex\n\n"
+        "### OOS_2: two\n- **Reviewer**: cursor\n\n"
+        "### OOS_3: three\n- **Reviewer**: claude\n",
+        encoding="utf-8",
+    )
+    (run / "oos-issues.ndjson").write_text(
+        json.dumps({
+            "title": "Aggregated rollup of 2 capped OOS items",
+            "body": (
+                "- **Stable ID**: oos-accepted-review:OOS_1\n"
+                "- **Stable ID**: oos-accepted-review:OOS_2\n"
+                "- **Stable ID**: oos-accepted-review:OOS_3\n"
+                "- **Filed URL**: https://github.com/o/r/issues/10\n"
+            ),
+        }) + "\n",
+        encoding="utf-8",
+    )
+    rows = analyze_issues._join_implement_run_records(run)
+    assert len(rows) == 1
+    assert rows[0]["bucket"] == "ambiguous rollup expansion"
+
+
+def test_cap_rollup_ambiguous_stable_id_emits_bucket_without_scoring_siblings(tmp_path: Path) -> None:
+    run = tmp_path / "implement" / "run-1"
+    (run / "round-1").mkdir(parents=True)
+    (run / "round-1" / "oos-accepted-review.md").write_text(
+        "### OOS_1: first\n- **Reviewer**: codex\n",
+        encoding="utf-8",
+    )
+    (run / "round-2").mkdir(parents=True)
+    (run / "round-2" / "oos-accepted-review.md").write_text(
+        "### OOS_1: second\n- **Reviewer**: cursor\n",
+        encoding="utf-8",
+    )
+    (run / "oos-issues.ndjson").write_text(
+        json.dumps({
+            "title": "Aggregated rollup of 2 capped OOS items",
+            "body": (
+                "- **Stable ID**: oos-accepted-review:OOS_1\n"
+                "- **Stable ID**: oos-accepted-review:OOS_2\n"
+                "- **Filed URL**: https://github.com/o/r/issues/10\n"
+            ),
+        }) + "\n",
+        encoding="utf-8",
+    )
+    rows = analyze_issues._join_implement_run_records(run)
+    assert any(row.get("bucket") == "ambiguous stable id" for row in rows)
+    assert any(row.get("reviewer") == "cursor" for row in rows if not row.get("bucket"))
+
+
+def test_incidental_aggregated_rollup_prose_falls_back_to_normal_join(tmp_path: Path) -> None:
+    run = tmp_path / "implement" / "run-1"
+    (run / "round-1").mkdir(parents=True)
+    (run / "round-1" / "oos-accepted-review.md").write_text(
+        "### OOS_1: item\n- **Reviewer**: codex\n",
+        encoding="utf-8",
+    )
+    (run / "oos-issues.ndjson").write_text(
+        json.dumps({
+            "body": (
+                "Notes mention Aggregated rollup in prose.\n"
+                "- **Filed URL**: https://github.com/o/r/issues/10\n"
+            ),
+        }) + "\n",
+        encoding="utf-8",
+    )
+    rows = analyze_issues._join_implement_run_records(run)
+    assert len(rows) == 1
+    assert rows[0].get("bucket") is None
+    assert rows[0]["reviewer"] == "unknown"
+
+
+def test_invalid_label_does_not_dock_closed_issue() -> None:
+    issue = {"number": 1, "state": "CLOSED", "body": "", "labels": [{"name": "invalid"}]}
+    fate = analyze_issues.classify_oos_issue_fate(issue)
+    assert fate["bucket"] == "provisional unknown"
+    assert fate["adjusted"] == 1
+
+
+def test_extract_filed_issue_number_supports_legacy_url_shapes() -> None:
+    assert analyze_issues.extract_filed_issue_number_from_text(
+        "FINDING_1 ... Filed as https://github.com/character-ai/larch/issues/3025"
+    ) == 3025
+    assert analyze_issues.extract_filed_issue_number_from_text(
+        "**Filed**: https://github.com/o/r/issues/42"
+    ) == 42
+    assert analyze_issues._record_issue_urls({
+        "body": "FINDING_1 ... Filed as https://github.com/o/r/issues/99",
+    }) == ["https://github.com/o/r/issues/99"]
 
 
 def test_stable_id_collision_marks_ambiguous(tmp_path: Path) -> None:
