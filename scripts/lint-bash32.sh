@@ -49,7 +49,11 @@ trap 'rm -f "$TMP_FILES"' EXIT
 
 list_shell_files() {
     if command -v python3 >/dev/null 2>&1 && [ -f "$ROOT/scripts/residual-bash-paths.txt" ]; then
-        python3 "$REPO_ROOT/python/cli.py" residual-bash paths --root "$ROOT" --null-delimited
+        if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+            python3 "$REPO_ROOT/python/cli.py" residual-bash paths --root "$ROOT" --null-delimited --intersect-git
+        else
+            python3 "$REPO_ROOT/python/cli.py" residual-bash paths --root "$ROOT" --null-delimited
+        fi
         return
     fi
     if [ -f "$ROOT/scripts/residual-bash-paths.txt" ]; then

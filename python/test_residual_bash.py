@@ -33,6 +33,44 @@ def test_manifest_excludes_retired_bash_artifacts() -> None:
     assert paths.isdisjoint(retired)
 
 
+def test_manifest_excludes_non_residual_orchestration() -> None:
+    paths = set(residual_bash.read_residual_paths(Path(__file__).resolve().parents[1]))
+    orchestration = {
+        "skills/design/scripts/design-step3-review.sh",
+        "skills/design/scripts/lib-plan-optional-trailers.sh",
+        "skills/implement/scripts/cleanup.sh",
+        "skills/implement/scripts/lib-implement-clone-tag.sh",
+        "skills/implement/scripts/oos-file-conflict-deps.sh",
+        "skills/implement/scripts/step-2-entry.sh",
+        "skills/implement/scripts/step-8-ship.sh",
+    }
+    assert paths.isdisjoint(orchestration)
+
+
+def test_manifest_paths_exist_on_disk() -> None:
+    root = Path(__file__).resolve().parents[1]
+    assert residual_bash.paths_main(["--root", str(root), "--check-exists"]) == 0
+
+
+def test_intersect_git_limits_to_tracked_manifest_rows(tmp_path: Path) -> None:
+    repo = Path(__file__).resolve().parents[1]
+    root = tmp_path
+    manifest = root / "scripts" / "residual-bash-paths.txt"
+    manifest.parent.mkdir(parents=True)
+    tracked = root / "scripts" / "tracked.sh"
+    _ = tracked.write_text("#!/bin/sh\n", encoding="utf-8")
+    _ = manifest.write_text("scripts/tracked.sh\nscripts/listed-but-untracked.sh\n", encoding="utf-8")
+    _ = subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+    _ = subprocess.run(["git", "add", "scripts/tracked.sh", "scripts/residual-bash-paths.txt"], cwd=root, check=True)
+    proc = subprocess.run(
+        [sys.executable, str(repo / "python" / "cli.py"), "residual-bash", "paths", "--root", str(root), "--intersect-git"],
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    assert proc.stdout.splitlines() == ["scripts/tracked.sh"]
+
+
 def test_manifest_excludes_vendored_paths(tmp_path: Path) -> None:
     root = tmp_path
     manifest = root / "scripts" / "residual-bash-paths.txt"

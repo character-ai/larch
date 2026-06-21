@@ -44,11 +44,19 @@ trap 'rm -f "$TMP_FILES"' EXIT
 
 list_target_files() {
     if [ -f "$ROOT/scripts/residual-bash-paths.txt" ]; then
-        python3 "$REPO_ROOT/python/cli.py" residual-bash paths --root "$ROOT" --null-delimited             | while IFS= read -r -d '' rel; do
+        if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+            python3 "$REPO_ROOT/python/cli.py" residual-bash paths --root "$ROOT" --null-delimited --intersect-git             | while IFS= read -r -d '' rel; do
                 case "$rel" in
                     *.sh|*.inc.bash) printf '%s\0' "$rel" ;;
                 esac
             done
+        else
+            python3 "$REPO_ROOT/python/cli.py" residual-bash paths --root "$ROOT" --null-delimited             | while IFS= read -r -d '' rel; do
+                case "$rel" in
+                    *.sh|*.inc.bash) printf '%s\0' "$rel" ;;
+                esac
+            done
+        fi
     elif git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
         git -C "$ROOT" ls-files --cached --others --exclude-standard -z -- '*.sh' '*.inc.bash'
     else

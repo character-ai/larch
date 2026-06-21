@@ -1,6 +1,7 @@
 # Residual Bash inventory for bash-targeting linters and CI shellcheck.
 # Blank lines and comments are ignored. Paths are repo-relative.
-# Terminal shared libraries, retired non-thin utilities, and verified-zero-consumer includes are intentionally absent.
+# Terminal shared libraries, retired non-thin utilities, verified-zero-consumer includes,
+# live orchestration bodies, and sourced helper libraries are intentionally absent.
 
 .claude/skills/combine-issues/scripts/search-implementing-issue.sh
 scripts/audit-edit-write.sh
@@ -77,19 +78,6 @@ scripts/test-sessionstart-health.sh
 scripts/test-subskill-anchors.sh
 scripts/test-token-vendor-scrapers.sh
 skills/design/scripts/design-clarify.sh
-skills/design/scripts/design-step-prelude.sh
-skills/design/scripts/design-step3-continuation-entry.sh
-skills/design/scripts/design-step3-entry-preview.sh
-skills/design/scripts/design-step3-entry-state.sh
-skills/design/scripts/design-step3-entry.sh
-skills/design/scripts/design-step3-gate-b-bypass.sh
-skills/design/scripts/design-step3-mav.sh
-skills/design/scripts/design-step3-review.sh
-skills/design/scripts/design-step35-settle.sh
-skills/design/scripts/design-step35.sh
-skills/design/scripts/design-step3b-entry.sh
-skills/design/scripts/design-step3b-sanitize.sh
-skills/design/scripts/design-step3b-tail.sh
 skills/design/scripts/design-step5.sh
 skills/design/scripts/design-step5b-annotate.sh
 skills/design/scripts/design-step5b-prepare.sh
@@ -100,7 +88,6 @@ skills/design/scripts/fixtures/validate-plan-commands/demo-stdout-help.sh
 skills/design/scripts/fixtures/validate-plan-commands/demo-tier3-dry.sh
 skills/design/scripts/fixtures/validate-plan-commands/demo-tier3-fail.sh
 skills/design/scripts/fixtures/validate-plan-commands/demo-tier3-validate-only.sh
-skills/design/scripts/lib-plan-optional-trailers.sh
 skills/design/scripts/test-auto-fix-plan-commands.sh
 skills/design/scripts/test-brainstorm-prompts.sh
 skills/design/scripts/test-design-clarify.sh
@@ -119,33 +106,13 @@ skills/design/scripts/test-trailer-helpers.sh
 skills/design/scripts/test-trailer-validate.sh
 skills/fluff-analysis/scripts/test-fluff-analysis-corpus.sh
 skills/fluff-analysis/scripts/test-fluff-analysis.sh
-skills/implement/scripts/cleanup.sh
 skills/implement/scripts/flush-execution-issues.sh
-skills/implement/scripts/generate-code-flow-diagram.sh
 skills/implement/scripts/hook-stop-fail-close.sh
-skills/implement/scripts/lib-implement-clone-tag.sh
-skills/implement/scripts/materialize-manifest-oos.sh
 skills/implement/scripts/oos-disposition-checkpoint.sh
 skills/implement/scripts/oos-disposition-gate.sh
-skills/implement/scripts/oos-file-conflict-deps.sh
-skills/implement/scripts/oos-issue-cap.sh
-skills/implement/scripts/post-tracking-issue.sh
-skills/implement/scripts/refresh-execution-issues.sh
-skills/implement/scripts/run-step-checks.sh
-skills/implement/scripts/slack-issue-announce.sh
-skills/implement/scripts/step-0-bootstrap.sh
-skills/implement/scripts/step-0-degraded-gate.sh
-skills/implement/scripts/step-18.sh
-skills/implement/scripts/step-2-entry.sh
 skills/implement/scripts/step-2-post-dispatch.sh
-skills/implement/scripts/step-5-resume.sh
 skills/implement/scripts/step-5-review.sh
-skills/implement/scripts/step-6-entry.sh
 skills/implement/scripts/step-7a.sh
-skills/implement/scripts/step-8-oos-checkpoint.sh
-skills/implement/scripts/step-8-python-guard.sh
-skills/implement/scripts/step-8-seed-initial.sh
-skills/implement/scripts/step-8-ship.sh
 skills/implement/scripts/test-cleanup.sh
 skills/implement/scripts/test-flush-execution-issues.sh
 skills/implement/scripts/test-implement-relevant-checks-anti-halt.sh

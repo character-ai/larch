@@ -293,6 +293,9 @@ assert_case "positional skip absolute parent traversal outside-root" 0 "$stderr_
 
 if command -v git >/dev/null 2>&1; then
     reset_tree
+    cat > "$TMPROOT/scripts/residual-bash-paths.txt" <<'EOF'
+scripts/untracked-bad.sh
+EOF
     (
         cd "$TMPROOT"
         git init -q
@@ -303,12 +306,33 @@ set -euo pipefail
 EOF
     printf '%s\n' 'declare -A seen=()' >> "$TMPROOT/scripts/untracked-bad.sh" # lint-bash32: ok fixture
     rc="$(run_lint "$stderr_file")"
-    assert_case "git worktree scans untracked scripts" 1 "$stderr_file" "$rc" \
+    assert_case "git worktree scans untracked manifest scripts" 1 "$stderr_file" "$rc" \
         "scripts/untracked-bad.sh:3:" \
         "declare -A associative arrays"
 else
-    printf 'SKIP [git worktree scans untracked scripts]: git not on PATH\n'
+    printf 'SKIP [git worktree scans untracked manifest scripts]: git not on PATH\n'
 fi
+
+reset_tree
+mkdir -p "$TMPROOT/scripts"
+cat > "$TMPROOT/scripts/residual-bash-paths.txt" <<'EOF'
+scripts/in-scope.sh
+EOF
+write_sh "$TMPROOT/scripts/in-scope.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' ok
+EOF
+write_sh "$TMPROOT/scripts/out-of-scope.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+declare -A seen=() # lint-bash32: ok fixture
+EOF
+sed '/lint-bash32: ok fixture/s/[[:space:]]*# lint-bash32: ok fixture//' "$TMPROOT/scripts/out-of-scope.sh" > "$TMPROOT/scripts/out-of-scope-bad.sh"
+rm -f "$TMPROOT/scripts/out-of-scope.sh"
+rc="$(run_lint "$stderr_file")"
+assert_case "manifest scopes repo scan to in-scope paths" 0 "$stderr_file" "$rc"
+assert_not_in_stderr "manifest scopes repo scan to in-scope paths" "$stderr_file" "out-of-scope-bad.sh"
 
 rm -f "$stderr_file"
 

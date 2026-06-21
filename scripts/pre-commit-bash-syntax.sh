@@ -8,6 +8,35 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 
+filter_manifest_args() {
+    if [ "$#" -eq 0 ] || [ ! -f "$REPO_ROOT/scripts/residual-bash-paths.txt" ]; then
+        printf '%s\0' "$@"
+        return
+    fi
+    python3 - "$REPO_ROOT" "$@" <<'PY'
+import subprocess
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+args = sys.argv[2:]
+manifest = subprocess.run(
+    [sys.executable, str(root / "python/cli.py"), "residual-bash", "paths", "--root", str(root)],
+    check=True,
+    text=True,
+    capture_output=True,
+).stdout.splitlines()
+allowed = set(manifest)
+for arg in args:
+    rel = arg
+    prefix = str(root) + "/"
+    if rel.startswith(prefix):
+        rel = rel[len(prefix):]
+    if rel in allowed:
+        print(arg)
+PY
+}
+
 if [ "$#" -eq 0 ]; then
   if [ -f "$REPO_ROOT/scripts/residual-bash-paths.txt" ]; then
     manifest_paths=()
@@ -18,6 +47,12 @@ if [ "$#" -eq 0 ]; then
   else
     exit 0
   fi
+else
+  mapfile -d '' -t filtered < <(filter_manifest_args "$@")
+  if [ "${#filtered[@]}" -eq 0 ]; then
+    exit 0
+  fi
+  set -- "${filtered[@]}"
 fi
 
 max_parallel="$(nproc 2>/dev/null \
