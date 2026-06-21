@@ -146,9 +146,7 @@ def _bare_token_is_string(token: str) -> bool:
         return False
     if _INT_RE.fullmatch(stripped) is not None:
         return False
-    if _FLOAT_RE.fullmatch(stripped) is not None:
-        return False
-    return True
+    return _FLOAT_RE.fullmatch(stripped) is None
 
 
 def _parse_flow_paths(value: str) -> list[str]:
