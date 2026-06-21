@@ -110,17 +110,31 @@ def _append_warning(review_tmpdir: Path, session_env_path: str, entry: str) -> N
         subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
 
 
-def _committed_ref(failure_log: Path, review_tmpdir: Path, session_env_path: str) -> str:
+_ROUND_STAMPED_FORENSICS = frozenset({"aggregator-dispatch.stderr", "aggregator-validate.stderr", "aggregator-strip.stderr"})
+
+
+def _committed_ref(failure_log: Path, review_tmpdir: Path, session_env_path: str, round_dir: Path | None = None) -> str:
+    flbase = failure_log.name
+    # Issue #4996: the /design Step 3 aggregator runs with the top-level DESIGN_TMPDIR as
+    # --review-tmpdir, so the round_name branch below never fires; a later round then overwrites the
+    # stable stderr that a failed early round points at, leaving the committed pointer resolving to an
+    # empty file. An explicit --round-dir under --review-tmpdir lets the pointer round-stamp to the
+    # per-round snapshot retained in plan-review/round-N/.
+    if round_dir is not None and flbase in _ROUND_STAMPED_FORENSICS:
+        try:
+            rel = round_dir.relative_to(review_tmpdir)
+        except ValueError:
+            return str(failure_log)
+        return f"{rel.as_posix()}/{flbase}"
     if session_env_path:
         round_name = review_tmpdir.name
-        flbase = failure_log.name
-        if round_name.startswith("round-") and flbase in {"aggregator-dispatch.stderr", "aggregator-validate.stderr", "aggregator-strip.stderr"}:
+        if round_name.startswith("round-") and flbase in _ROUND_STAMPED_FORENSICS:
             return f"{round_name}/{flbase}"
     return str(failure_log)
 
 
-def _failure_see_phrase(failure_log: Path, review_tmpdir: Path, session_env_path: str) -> str:
-    cref = _committed_ref(failure_log, review_tmpdir, session_env_path)
+def _failure_see_phrase(failure_log: Path, review_tmpdir: Path, session_env_path: str, round_dir: Path | None = None) -> str:
+    cref = _committed_ref(failure_log, review_tmpdir, session_env_path, round_dir)
     if cref == str(failure_log):
         return f"See {cref}."
     return f"See {cref} in the committed run log."
@@ -671,6 +685,7 @@ def _parse_aggregate_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--input-mode", choices=("plan", "code"), default="code")
     parser.add_argument("--scope-anchor-file", default="")
     parser.add_argument("--allow-findings-outside-tmpdir", choices=("true", "false"), default="false")
+    parser.add_argument("--round-dir", default="")
     return parser.parse_args(argv)
 
 
@@ -690,6 +705,15 @@ def aggregate_findings(argv: list[str]) -> int:
     allow_outside = args.allow_findings_outside_tmpdir == "true"
     if not allow_outside and review_tmpdir not in (findings_canon, *findings_canon.parents):
         return _error(f"aggregate-findings: --findings-file must resolve under --review-tmpdir ({review_tmpdir}): {findings_file}")
+    # Issue #4996: when the caller (the /design Step 3 loop) provides a per-round directory under
+    # --review-tmpdir, round-stamp the committed failure pointer so it survives later-round overwrites
+    # of the stable forensics. Fail open to the bare top-level pointer if the path is not under
+    # --review-tmpdir.
+    round_dir: Path | None = None
+    if args.round_dir:
+        candidate_round_dir = Path(args.round_dir).resolve()
+        if review_tmpdir in (candidate_round_dir, *candidate_round_dir.parents):
+            round_dir = candidate_round_dir
     if os.environ.get("LARCH_AGGREGATOR_DISABLED") == "1":
         _emit_aggregate_result(aggregated=False, input_count=0, merged_count=0, reason="disabled")
         return 0
@@ -760,13 +784,13 @@ def aggregate_findings(argv: list[str]) -> int:
         _write_text(dispatch_out, proc.stdout)
         _write_text(dispatch_err, proc.stderr)
         if proc.returncode != 0:
-            _append_warning(review_tmpdir, args.session_env_path, f"- **findings aggregator**: agent dispatch-waterfall exited non-zero (rc={proc.returncode}); leaving {findings_file} unchanged. {_failure_see_phrase(dispatch_err, review_tmpdir, args.session_env_path)}")
+            _append_warning(review_tmpdir, args.session_env_path, f"- **findings aggregator**: agent dispatch-waterfall exited non-zero (rc={proc.returncode}); leaving {findings_file} unchanged. {_failure_see_phrase(dispatch_err, review_tmpdir, args.session_env_path, round_dir)}")
             _emit_aggregate_result(aggregated=False, input_count=input_count, merged_count=merged_count, reason="dispatch-failed", failure_log=str(dispatch_err))
             return 0
         dispatch = _kv_parse(proc.stdout)
         if dispatch.get("DISPATCH_OK") != "true":
             dispatch_ok = dispatch.get("DISPATCH_OK", "")
-            _append_warning(review_tmpdir, args.session_env_path, f"- **findings aggregator**: DISPATCH_OK={dispatch_ok}; leaving {findings_file} unchanged. {_failure_see_phrase(dispatch_err, review_tmpdir, args.session_env_path)}")
+            _append_warning(review_tmpdir, args.session_env_path, f"- **findings aggregator**: DISPATCH_OK={dispatch_ok}; leaving {findings_file} unchanged. {_failure_see_phrase(dispatch_err, review_tmpdir, args.session_env_path, round_dir)}")
             _emit_aggregate_result(aggregated=False, input_count=input_count, merged_count=merged_count, reason="dispatch-failed", failure_log=str(dispatch_err))
             return 0
         candidate = ""
@@ -804,13 +828,13 @@ def aggregate_findings(argv: list[str]) -> int:
             note = "validation exhausted (narrow-trigger nonconforming pseudo-heading combined with attestation)"
         else:
             note = "validation exhausted (narrow-trigger validator rejection after pattern-gated dispatch)"
-        _append_warning(review_tmpdir, args.session_env_path, f"- **findings aggregator**: {note}; leaving {findings_file} unchanged. {_failure_see_phrase(failure, review_tmpdir, args.session_env_path)}")
+        _append_warning(review_tmpdir, args.session_env_path, f"- **findings aggregator**: {note}; leaving {findings_file} unchanged. {_failure_see_phrase(failure, review_tmpdir, args.session_env_path, round_dir)}")
         _emit_aggregate_result(aggregated=False, input_count=input_count, merged_count=merged_count, reason="validation-exhausted", failure_log=failure_log)
     elif pipeline_rc == _MOVE_FAILED_RC:
         _emit_aggregate_result(aggregated=False, input_count=input_count, merged_count=merged_count, reason="dispatch-failed", failure_log=failure_log)
     else:
         failure = failure_log or str(review_tmpdir / "aggregator-validate.stderr")
-        _append_warning(review_tmpdir, args.session_env_path, f"- **findings aggregator**: merged output failed validation; leaving {findings_file} unchanged. {_failure_see_phrase(Path(failure), review_tmpdir, args.session_env_path)}")
+        _append_warning(review_tmpdir, args.session_env_path, f"- **findings aggregator**: merged output failed validation; leaving {findings_file} unchanged. {_failure_see_phrase(Path(failure), review_tmpdir, args.session_env_path, round_dir)}")
         _emit_aggregate_result(aggregated=False, input_count=input_count, merged_count=merged_count, reason="validation-failed", failure_log=failure)
     return 0
 
