@@ -2739,6 +2739,22 @@ def test_core_args_for_round_forwards_pre_scouted_manifest(tmp_path):
     assert core_args[idx + 1] == str(manifest)
 
 
+def test_core_args_for_round_threads_implement_step5_site(tmp_path):
+    impl = _tmp_impl(tmp_path)
+    args = review_and_fix._build_step5_parser().parse_args([
+        "--implement-tmpdir", str(impl),
+        "--round-num", "1",
+        "--session-env-path", str(impl / "session-env.sh"),
+        "--plan-file", str(impl / "plan.txt"),
+        "--feature-file", str(impl / "feature-description.txt"),
+        "--codex-available", "false",
+        "--cursor-available", "false",
+    ])
+    core_args = review_and_fix._core_args_for_round(args, impl / "round-1", "0", impl / "ledger.tsv")
+    idx = core_args.index("--site")
+    assert core_args[idx + 1] == "implement Step 5"
+
+
 @MARK_STEP5
 def test_step5_preflight_missing_session_env_emits_stall(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")

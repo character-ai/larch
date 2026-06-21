@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -39,6 +40,7 @@ class Options:
     diff_file: str = ""
     plan_file: str = ""
     round_num: int = 1
+    site: str = "review Step 2"
 
 
 @dataclass
@@ -206,6 +208,8 @@ def _dispatch_waterfall(opts: Options, manifest: str, ctx_args: Sequence[str]) -
             "--timeout",
             "1200",
             "--no-fallback",
+            "--site",
+            opts.site,
             *ctx_args,
         ]
     )
@@ -506,9 +510,15 @@ def _parse_args(argv: Sequence[str]) -> Options | int:
     parser.add_argument("--diff-file", default="")
     parser.add_argument("--plan-file", default="")
     parser.add_argument("--round-num", default="1")
+    parser.add_argument("--site", default="review Step 2")
     args = parser.parse_args(argv)
     if not str(args.round_num).isdigit() or int(str(args.round_num), 10) <= 0:
         raise ValidationError("agent dispatch-voters: --round-num must be a positive integer")
+    site = str(args.site)
+    if not site.strip() or site.startswith("--"):
+        raise ValidationError("agent dispatch-voters: --site requires a non-empty, non-flag-like value")
+    if re.search(r"[\x00-\x1f\x7f]", site):
+        raise ValidationError("agent dispatch-voters: --site must not contain control characters")
     return Options(
         ballot_file=str(args.ballot_file),
         review_tmpdir=str(args.review_tmpdir),
@@ -518,6 +528,7 @@ def _parse_args(argv: Sequence[str]) -> Options | int:
         diff_file=str(args.diff_file),
         plan_file=str(args.plan_file),
         round_num=int(str(args.round_num), 10),
+        site=site,
     )
 
 

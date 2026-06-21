@@ -2514,6 +2514,62 @@ def test_review_append_launch_failure_merges_sink_into_existing_failure_diag(
     assert "launcher stderr detail" in failure_diag.read_text(encoding="utf-8")
 
 
+def test_review_append_launch_failure_threads_custom_site(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    output = tmp_path / "codex-review.txt"
+    _ = output.with_suffix(output.suffix + ".diag").write_text("boom\n", encoding="utf-8")
+    log = tmp_path / "execution-issues.md"
+    _ = log.write_text("", encoding="utf-8")
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    monkeypatch.setattr(agents, "_resolve_execution_issues_log", lambda: log)
+    captured: dict[str, str] = {}
+
+    def fake_run(argv: Sequence[str], **_kwargs: object) -> CommandResult:
+        a = [str(x) for x in argv]
+        if "append-failure" in a:
+            captured["site"] = a[a.index("--site") + 1]
+        return CommandResult((), 0, "", "", 0.0)
+
+    monkeypatch.setattr(agents.proc, "run", fake_run)
+    agents._review_append_launch_failure(output=output, tool="codex", exit_code=1, site="design Step 3")  # pylint: disable=protected-access
+    assert captured["site"] == "design Step 3"
+    parts_dir = tmp_path / "vendor-failure-diagnostics.parts"
+    combined = "".join(p.read_text(encoding="utf-8") for p in sorted(parts_dir.glob("*"))) if parts_dir.is_dir() else ""
+    assert "design Step 3 codex-review" in combined
+
+
+def test_review_append_outer_meta_writes_site(tmp_path: Path) -> None:
+    prompt_sidecar = tmp_path / "out.txt.prompt"
+    _ = prompt_sidecar.write_text("p", encoding="utf-8")
+    meta = tmp_path / "out.txt.meta"
+    agents._review_append_outer_meta(meta, prompt_sidecar=prompt_sidecar, risk="high", stderr_sink="", site="design Step 3")  # pylint: disable=protected-access
+    assert "OUTER_LAUNCHER_SITE=design Step 3" in meta.read_text(encoding="utf-8")
+    meta_default = tmp_path / "out2.meta"
+    agents._review_append_outer_meta(meta_default, prompt_sidecar=prompt_sidecar, risk="high", stderr_sink="")  # pylint: disable=protected-access
+    assert "OUTER_LAUNCHER_SITE=review Step 2" in meta_default.read_text(encoding="utf-8")
+
+
+def test_review_cursor_has_structured_findings_blocks_normalization() -> None:
+    record = json.dumps(
+        {
+            "schema_version": 1,
+            "scope": "in_scope",
+            "severity": "important",
+            "focus_area": "correctness",
+            "location": "x",
+            "what": "y",
+            "scenario_or_breakage": "z",
+            "suggested_fix": "w",
+        }
+    )
+    text = "Some prose.\n" + record + '\n{"no_issues_found": true}\n'
+    assert agents._review_cursor_has_structured_findings(text) is True  # pylint: disable=protected-access
+    assert agents._review_cursor_normalize_no_issues(text) == text  # pylint: disable=protected-access
+    assert agents._review_cursor_has_structured_findings('{"schema_version": 1}\n') is True  # pylint: disable=protected-access
+    prose_then_sentinel = 'All good.\n{"no_issues_found": true}\n'
+    assert agents._review_cursor_has_structured_findings(prose_then_sentinel) is False  # pylint: disable=protected-access
+    assert agents._review_cursor_normalize_no_issues(prose_then_sentinel) == '{"no_issues_found": true}\n'  # pylint: disable=protected-access
+
+
 def test_append_implement_launch_failure_composes_sidecar_and_regenerates_tail(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

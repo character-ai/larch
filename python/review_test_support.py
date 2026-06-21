@@ -96,6 +96,7 @@ panel="hard"
 round_num="1"
 prune_ledger=""
 pre_scouted=""
+site=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --review-tmpdir) tmp="$2"; shift 2 ;;
@@ -103,6 +104,7 @@ while [[ $# -gt 0 ]]; do
     --round-num) round_num="$2"; shift 2 ;;
     --prune-ledger) prune_ledger="$2"; shift 2 ;;
     --pre-scouted-manifest) pre_scouted="$2"; shift 2 ;;
+    --site) site="$2"; shift 2 ;;
     *) shift 2 ;;
   esac
 done
@@ -168,7 +170,7 @@ else
 EOF
 fi
 if [[ -n "${TEST_DISPATCH_ARGV_LOG:-}" ]]; then
-  printf 'round=%s\\nprune_ledger=%s\\npre_scouted=%s\\n' "$round_num" "$prune_ledger" "$pre_scouted" >> "$TEST_DISPATCH_ARGV_LOG"
+  printf 'round=%s\\nprune_ledger=%s\\npre_scouted=%s\\nsite=%s\\n' "$round_num" "$prune_ledger" "$pre_scouted" "$site" >> "$TEST_DISPATCH_ARGV_LOG"
 fi
 """,
     )
@@ -378,14 +380,19 @@ printf 'DROPPED_STATIC_SLOTS=%s\\nTHRESHOLD_OK=%s\\nTHRESHOLD_REASON=\\nNOT_SUBS
         """#!/usr/bin/env bash
 set -euo pipefail
 review_tmpdir=""
+site=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --review-tmpdir) review_tmpdir="$2"; shift 2 ;;
     --voter-files) shift; while [[ $# -gt 0 && "$1" != --* ]]; do shift; done ;;
+    --site) site="$2"; shift 2 ;;
     *) shift 2 ;;
   esac
 done
 mkdir -p "$review_tmpdir"
+if [[ -n "${TEST_VOTERS_ARGV_LOG:-}" ]]; then
+  printf 'site=%s\\n' "$site" >> "$TEST_VOTERS_ARGV_LOG"
+fi
 printf 'FINDING_1: YES\\n' > "$review_tmpdir/claude-vote-output.txt"
 printf 'FINDING_1: YES\\n' > "$review_tmpdir/codex-vote-output.txt"
 printf 'FINDING_1: YES\\n' > "$review_tmpdir/cursor-vote-output.txt"

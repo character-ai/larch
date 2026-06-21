@@ -27,7 +27,7 @@ MIN_STRAGGLER_PHASE_SLOTS = 2
 
 _USAGE = (
     "Usage: dispatch-with-waterfall.sh --slots-file FILE --codex-present true|false "
-    "--cursor-present true|false --mode diff|description [--paths-file FILE] [--skip-invalid-slots] [context flags]. "
+    "--cursor-present true|false --mode diff|description [--paths-file FILE] [--skip-invalid-slots] [--site SITE] [context flags]. "
     "Default paths-file is SLOTS_FILE.output-files; its parent directory must already exist. "
     "--straggler-cutoff enables the adaptive reviewer straggler deadline for this dispatch. "
     "Stdout KVs include ALL_OUTPUT_FILES_PATH, ALL_OUTPUT_FILES, ALL_OUTPUT_TOOLS, DISPATCH_OK, WARN, …"
@@ -88,6 +88,7 @@ class Options:
     no_fallback: bool = False
     straggler_cutoff: bool = False
     skip_invalid_slots: bool = False
+    site: str = "review Step 2"
 
 
 @dataclass
@@ -167,6 +168,7 @@ def _parse_args(argv: Sequence[str]) -> Options | int:
         "no_fallback": False,
         "straggler_cutoff": False,
         "skip_invalid_slots": False,
+        "site": "review Step 2",
     }
     idx = 0
     while idx < len(argv):
@@ -186,6 +188,7 @@ def _parse_args(argv: Sequence[str]) -> Options | int:
             "--paths-file": "paths_file",
             "--require-result-pattern": "require_result_pattern",
             "--require-first-line-pattern": "require_first_line_pattern",
+            "--site": "site",
         }
         if arg in {"--codex-present", "--codex-available"}:
             if idx + 1 >= len(argv):
@@ -232,6 +235,11 @@ def _parse_args(argv: Sequence[str]) -> Options | int:
     timeout = str(values["timeout"])
     if not timeout.isdigit() or int(timeout, 10) == 0:
         raise ValidationError("dispatch-with-waterfall.sh: --timeout must be a positive integer")
+    site = str(values["site"])
+    if not site.strip() or site.startswith("--"):
+        raise ValidationError("dispatch-with-waterfall.sh: --site requires a non-empty, non-flag-like value")
+    if re.search(r"[\x00-\x1f\x7f]", site):
+        raise ValidationError("dispatch-with-waterfall.sh: --site must not contain control characters")
     return Options(
         slots_file=slots_file,
         codex_present=codex_present,
@@ -253,6 +261,7 @@ def _parse_args(argv: Sequence[str]) -> Options | int:
         no_fallback=bool(values["no_fallback"]),
         straggler_cutoff=bool(values["straggler_cutoff"]),
         skip_invalid_slots=bool(values["skip_invalid_slots"]),
+        site=site,
     )
 
 
@@ -398,6 +407,7 @@ def _launch_slot(idx: int, phase: str, tool: str, output: str, slots: Sequence[S
     argv.extend(["--mode", opts.mode, "--timeout", opts.timeout, "--timing-task-kind", _timing_kind(tool, phase, slot.name)])
     argv.extend(_common_args(opts))
     if tool != "claude":
+        argv.extend(["--site", opts.site])
         if opts.competition_notice:
             argv.append("--competition-notice")
         if opts.competition_notice_file:

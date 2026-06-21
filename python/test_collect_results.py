@@ -176,6 +176,63 @@ def test_substantive_structured_summary_and_cursor_response(capsys: pytest.Captu
     assert "FAILURE_REASON=" not in summary
 
 
+def test_structured_validation_recovers_no_issues_after_preamble(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _reset(monkeypatch)
+    preamble = tmp_path / "cursor-preamble.txt"
+    _ = preamble.write_text('Everything looks fine.\n{"no_issues_found": true}\n', encoding="utf-8")
+    _write_done(preamble)
+    assert collect_results.collect_results_main(["--timeout", "1", "--structured-reviewer-validation", str(preamble)]) == 0
+    captured = capsys.readouterr()
+    block = _parse_blocks(captured.out)[0]
+    assert block["STATUS"] == "OK"
+    assert block["STRUCTURED_SIDECAR"] == f"{preamble}.tsv"
+    assert (tmp_path / "cursor-preamble.txt.tsv").read_text(encoding="utf-8") == ""
+    assert block.get("FAILURE_REASON", "") == ""
+    assert "NOT_SUBSTANTIVE" not in captured.out
+    assert "recovered a no-issues sentinel after preamble" in (captured.out + captured.err)
+
+
+def test_launch_outer_retry_threads_meta_site(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _reset(monkeypatch)
+    orig = tmp_path / "codex-review.txt"
+    prompt = tmp_path / "codex-review.txt.prompt"
+    _ = prompt.write_text("prompt\n", encoding="utf-8")
+    captured: dict[str, list[str]] = {}
+
+    class _Proc:
+        def wait(self, timeout: float = 0) -> int:
+            _ = timeout
+            return 0
+
+    def fake_popen(args: list[str], **_kwargs: object) -> object:
+        captured["argv"] = [str(a) for a in args]
+        return _Proc()
+
+    monkeypatch.setattr(collect_results.subprocess, "Popen", fake_popen)
+    plan = collect_results.RetryPlan(index=0, orig_output=str(orig), retry_output=str(tmp_path / "codex-review-retry.txt"), timeout=2)
+    meta = collect_results.RetryMeta(
+        tool="codex",
+        outer_launcher="agent launch-review",
+        outer_launcher_prompt_file=str(prompt),
+        outer_launcher_workdir=str(tmp_path),
+        outer_launcher_site="design Step 3",
+    )
+    assert collect_results._launch_outer_retry(plan, meta, []) is True  # type: ignore[reportPrivateUsage]
+    argv = captured["argv"]
+    assert "launch-review" in argv
+    assert argv[argv.index("--site") + 1] == "design Step 3"
+
+
+def test_parse_meta_reads_outer_launcher_site(tmp_path: Path) -> None:
+    # Both preflight-written and success-path metas carry OUTER_LAUNCHER_SITE through this parser.
+    meta = tmp_path / "out.txt.meta"
+    _ = meta.write_text("TOOL=cursor\nOUTER_LAUNCHER=agent launch-review\nOUTER_LAUNCHER_SITE=design Step 3\n", encoding="utf-8")
+    assert collect_results._parse_meta(meta).outer_launcher_site == "design Step 3"  # type: ignore[reportPrivateUsage]
+    bare = tmp_path / "bare.meta"
+    _ = bare.write_text("TOOL=cursor\n", encoding="utf-8")
+    assert collect_results._parse_meta(bare).outer_launcher_site == ""  # type: ignore[reportPrivateUsage]
+
+
 def test_non_substantive_validation_warns_without_retry(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _reset(monkeypatch)
     output = tmp_path / "cursor-specialist-output.txt"

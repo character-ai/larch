@@ -1478,6 +1478,57 @@ def test_outer_meta_writes_timing_task_kind(tmp_path: Path) -> None:
     assert "OUTER_LAUNCHER_TIMING_KIND=codex-review-round-2-correctness" in meta
 
 
+def test_review_parser_rejects_invalid_site(tmp_path: Path) -> None:
+    out = tmp_path / "out.txt"
+    for bad in ("", "--flagish", "bad\x01site"):
+        proc = _run(["--tool", "codex", "--output", str(out), "--timeout", "5", "--prompt", "hi", f"--site={bad}"])
+        assert proc.returncode == 2, f"--site={bad!r} should be rejected"
+        assert not out.exists()
+
+
+def test_outer_meta_writes_site_for_codex_launch(tmp_path: Path) -> None:
+    bin_dir = _stub_bin(
+        tmp_path,
+        "codex",
+        "#!/usr/bin/env bash\nout=\"\"; last=\"\"; for a in \"$@\"; do if [[ \"$last\" == \"--output-last-message\" ]]; then out=\"$a\"; fi; last=\"$a\"; done; echo '{\"type\":\"message\",\"usage\":{\"input_tokens\":1,\"cached_input_tokens\":0,\"output_tokens\":2}}'; printf OK >\"$out\"\n",
+    )
+    out = tmp_path / "out.txt"
+    proc = _run(
+        [
+            "--tool",
+            "codex",
+            "--output",
+            str(out),
+            "--timeout",
+            STUB_AGENT_TIMEOUT,
+            "--prompt",
+            "hi",
+            "--site",
+            "design Step 3",
+        ],
+        {"PATH": f"{bin_dir}:{os.environ['PATH']}"},
+    )
+    assert proc.returncode == 0
+    meta = out.with_suffix(out.suffix + ".meta").read_text(encoding="utf-8")
+    assert "OUTER_LAUNCHER_SITE=design Step 3" in meta
+
+
+def test_outer_meta_defaults_site_when_unspecified(tmp_path: Path) -> None:
+    bin_dir = _stub_bin(
+        tmp_path,
+        "codex",
+        "#!/usr/bin/env bash\nout=\"\"; last=\"\"; for a in \"$@\"; do if [[ \"$last\" == \"--output-last-message\" ]]; then out=\"$a\"; fi; last=\"$a\"; done; echo '{\"type\":\"message\",\"usage\":{\"input_tokens\":1,\"cached_input_tokens\":0,\"output_tokens\":2}}'; printf OK >\"$out\"\n",
+    )
+    out = tmp_path / "out.txt"
+    proc = _run(
+        ["--tool", "codex", "--output", str(out), "--timeout", STUB_AGENT_TIMEOUT, "--prompt", "hi"],
+        {"PATH": f"{bin_dir}:{os.environ['PATH']}"},
+    )
+    assert proc.returncode == 0
+    meta = out.with_suffix(out.suffix + ".meta").read_text(encoding="utf-8")
+    assert "OUTER_LAUNCHER_SITE=review Step 2" in meta
+
+
 def test_codex_home_is_outside_output_tree(tmp_path: Path) -> None:
     session = tmp_path / "session"
     session.mkdir()

@@ -58,6 +58,50 @@ def _json_no_issues(text: str) -> bool:
     return isinstance(obj, dict) and obj.get("no_issues_found") is True
 
 
+def _line_json_no_issues(line: str) -> bool:
+    stripped = line.strip()
+    if not stripped.startswith("{"):
+        return False
+    try:
+        obj = json.loads(stripped)
+    except json.JSONDecodeError:
+        return False
+    return isinstance(obj, dict) and obj.get("no_issues_found") is True
+
+
+def _is_no_issues_sentinel_line(line: str) -> bool:
+    return line.strip() == "NO_ISSUES_FOUND" or _line_json_no_issues(line)
+
+
+def _no_issues_sentinel_indexes(lines: list[str]) -> list[int]:
+    return [idx for idx, line in enumerate(lines) if _is_no_issues_sentinel_line(line)]
+
+
+def _strict_whole_json_no_issues(text: str) -> bool:
+    stripped = text.strip()
+    if not stripped.startswith("{"):
+        return False
+    decoder = json.JSONDecoder()
+    try:
+        obj, end = decoder.raw_decode(stripped)
+    except json.JSONDecodeError:
+        return False
+    if end != len(stripped):
+        return False
+    return isinstance(obj, dict) and obj.get("no_issues_found") is True
+
+
+def _line_json_has_schema_version(line: str) -> bool:
+    stripped = line.strip()
+    if not stripped.startswith("{"):
+        return False
+    try:
+        obj = json.loads(stripped)
+    except json.JSONDecodeError:
+        return False
+    return isinstance(obj, dict) and "schema_version" in obj
+
+
 def _write_structured(path: Path | None, text: str = "") -> None:
     if path is None:
         return
@@ -137,13 +181,20 @@ def _validate_structured_tsv(text: str) -> str:
 
 def validate_structured_reviewer_output(text: str, *, write_structured: Path | None = None) -> int:
     lines = _trimmed_nonblank(text)
-    first = lines[0] if lines else ""
-    if first == "NO_ISSUES_FOUND" or _json_no_issues("\n".join(lines)):
-        _write_structured(write_structured, "")
-        return 0
     normalized = _validate_structured_jsonl(text) or _validate_structured_tsv(text)
     if normalized:
         _write_structured(write_structured, normalized)
+        return 0
+    sentinel_indexes = _no_issues_sentinel_indexes(lines)
+    # Tier 1: strict whole-body no-issues sentinel (covers multi-line pretty-printed output).
+    if len(sentinel_indexes) <= 1 and _strict_whole_json_no_issues("\n".join(lines)):
+        _write_structured(write_structured, "")
+        return 0
+    # Tier 2: per-line singleton no-issues sentinel; reject schema_version-polluted output.
+    if not any(_line_json_has_schema_version(line) for line in lines) and len(sentinel_indexes) == 1:
+        _write_structured(write_structured, "")
+        if sentinel_indexes[0] > 0:
+            _emit("WARNING=NO_ISSUES_SENTINEL_RECOVERED_AFTER_PREAMBLE")
         return 0
     _write_structured(write_structured, "")
     _emit("structured records not found after repair")

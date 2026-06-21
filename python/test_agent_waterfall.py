@@ -1293,3 +1293,50 @@ def test_grouped_reuse_guard() -> None:
             if token in text:
                 hits.append(str(path.relative_to(ROOT)))
     assert not hits
+
+
+def test_parse_args_accepts_and_validates_site(tmp_path: Path) -> None:
+    slots = _write(tmp_path / "slots.ndjson", json.dumps({"slot": "s1", "tool": "codex", "output": str(tmp_path / "o.txt"), "agent": "agents/code-reviewer.md"}) + "\n")
+    base = ["--slots-file", str(slots), "--codex-present", "true", "--cursor-present", "true", "--mode", "diff"]
+    default_opts = agent_waterfall._parse_args(base)  # pyright: ignore[reportPrivateUsage]
+    assert isinstance(default_opts, agent_waterfall.Options)
+    assert default_opts.site == "review Step 2"
+    explicit = agent_waterfall._parse_args([*base, "--site", "design Step 3"])  # pyright: ignore[reportPrivateUsage]
+    assert isinstance(explicit, agent_waterfall.Options)
+    assert explicit.site == "design Step 3"
+    for bad in ("", "--flagish"):
+        with pytest.raises(agent_waterfall.ValidationError):
+            agent_waterfall._parse_args([*base, "--site", bad])  # pyright: ignore[reportPrivateUsage]
+
+
+def test_launch_slot_threads_site_to_launch_review_not_claude(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: list[list[str]] = []
+
+    class _FakePopen:
+        def __init__(self, argv: Sequence[str], **_kwargs: object) -> None:
+            captured.append([str(a) for a in argv])
+            self.pid = 4321
+
+    monkeypatch.setattr(agent_waterfall.subprocess, "Popen", _FakePopen)
+    monkeypatch.setattr(agent_waterfall, "_ACTIVE_LAUNCHES", [])
+    monkeypatch.setattr(agent_waterfall, "_DISPATCH_LAUNCHES", [])
+    opts = agent_waterfall.Options(
+        slots_file=str(tmp_path / "slots.ndjson"),
+        codex_present=True,
+        cursor_present=True,
+        mode="diff",
+        site="design Step 3",
+    )
+    codex_slot = agent_waterfall.Slot(name="r1", tool="codex", output=str(tmp_path / "o1.txt"), agent="agents/code-reviewer.md", prompt_file="")
+    claude_slot = agent_waterfall.Slot(name="r2", tool="claude", output=str(tmp_path / "o2.txt"), agent="agents/code-reviewer.md", prompt_file="")
+    codex_launch = agent_waterfall._launch_slot(0, "phase1", "codex", str(tmp_path / "o1.txt"), [codex_slot], opts)  # pyright: ignore[reportPrivateUsage]
+    claude_launch = agent_waterfall._launch_slot(0, "phase1", "claude", str(tmp_path / "o2.txt"), [claude_slot], opts)  # pyright: ignore[reportPrivateUsage]
+    for launch in (codex_launch, claude_launch):
+        handle = launch.stderr_handle
+        if isinstance(handle, io.IOBase):
+            handle.close()
+    codex_argv, claude_argv = captured[0], captured[1]
+    assert "launch-review" in codex_argv
+    assert codex_argv[codex_argv.index("--site") + 1] == "design Step 3"
+    assert "launch-claude-review" in claude_argv
+    assert "--site" not in claude_argv

@@ -107,6 +107,73 @@ def test_structured_jsonl_tsv_and_sentinel(tmp_path: Path) -> None:
     assert "structured records not found after repair" in cp.stdout
 
 
+def test_structured_reviewer_no_issues_salvage_paths(tmp_path: Path) -> None:
+    out = tmp_path / "records.jsonl"
+
+    # Prose preamble + standalone JSON sentinel -> salvage, empty sidecar.
+    assert research_eval.validate_structured_reviewer_output('Looks good to me.\n{"no_issues_found": true}\n', write_structured=out) == 0
+    assert out.read_text(encoding="utf-8") == ""
+
+    # Prose preamble + bare NO_ISSUES_FOUND -> salvage, empty sidecar.
+    assert research_eval.validate_structured_reviewer_output("All clear.\nNO_ISSUES_FOUND\n", write_structured=out) == 0
+    assert out.read_text(encoding="utf-8") == ""
+
+    # Multi-line pretty-printed sentinel (joined-body strict tier 1) -> salvage, empty sidecar.
+    assert research_eval.validate_structured_reviewer_output('{\n  "no_issues_found": true\n}\n', write_structured=out) == 0
+    assert out.read_text(encoding="utf-8") == ""
+
+    # Two standalone sentinels -> no salvage (exit 5).
+    assert research_eval.validate_structured_reviewer_output('{"no_issues_found": true}\n{"no_issues_found": true}\n', write_structured=out) == 5
+
+    # Prose + schema_version-bearing JSON line + lone sentinel -> schema_version guard blocks salvage (exit 5).
+    assert (
+        research_eval.validate_structured_reviewer_output(
+            'Findings below.\n{"schema_version": 1, "scope": "in_scope"}\n{"no_issues_found": true}\n',
+            write_structured=out,
+        )
+        == 5
+    )
+
+    # Mixed multiple sentinel lines -> no salvage (exit 5).
+    assert research_eval.validate_structured_reviewer_output('NO_ISSUES_FOUND\n{"no_issues_found": true}\n', write_structured=out) == 5
+
+    # Inline JSON embedded in narration (no standalone sentinel) -> no salvage (exit 5).
+    assert research_eval.validate_structured_reviewer_output('The tool said {"no_issues_found": true} and stopped.\n', write_structured=out) == 5
+
+
+def test_structured_reviewer_valid_record_plus_sentinel_keeps_record(tmp_path: Path) -> None:
+    out = tmp_path / "records.jsonl"
+    record = {
+        "schema_version": 1,
+        "scope": "in_scope",
+        "severity": "important",
+        "focus_area": "correctness",
+        "location": "python/research_eval.py:1",
+        "what": "what",
+        "scenario_or_breakage": "breaks",
+        "suggested_fix": "fix",
+    }
+    text = json.dumps(record) + '\n{"no_issues_found": true}\n'
+    assert research_eval.validate_structured_reviewer_output(text, write_structured=out) == 0
+    normalized = out.read_text(encoding="utf-8")
+    assert '"no_issues_found"' not in normalized
+    assert '"schema_version":1' in normalized
+
+
+def test_structured_reviewer_preamble_warning_only_for_per_line_path(tmp_path: Path) -> None:
+    out = tmp_path / "records.jsonl"
+    # Per-line recovery after a preamble emits the warning on the contract stream (stdout).
+    preamble = write(tmp_path / "preamble.txt", 'Everything looks fine.\n{"no_issues_found": true}\n')
+    cp = run_cli("eval", "validate-research-output", "--structured-reviewer-mode", "--write-structured", str(out), str(preamble))
+    assert cp.returncode == 0
+    assert "WARNING=NO_ISSUES_SENTINEL_RECOVERED_AFTER_PREAMBLE" in cp.stdout
+    # Joined-body (no preamble) salvage must NOT emit the preamble warning.
+    joined = write(tmp_path / "joined.txt", '{\n  "no_issues_found": true\n}\n')
+    cp2 = run_cli("eval", "validate-research-output", "--structured-reviewer-mode", "--write-structured", str(out), str(joined))
+    assert cp2.returncode == 0
+    assert "NO_ISSUES_SENTINEL_RECOVERED_AFTER_PREAMBLE" not in cp2.stdout
+
+
 def test_eval_set_and_baseline_schema() -> None:
     assert research_eval.validate_eval_set(ROOT / "skills/research/references/eval-set.md")
     assert research_eval.validate_baseline_json(ROOT / "skills/research/references/eval-baseline.json")

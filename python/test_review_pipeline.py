@@ -1249,6 +1249,91 @@ printf 'DISPATCH_OK=true\\nALL_OUTPUT_FILES=\\nALL_OUTPUT_FILES_PATH=\\nALL_OUTP
     assert "--cursor-present true" in argv_text
 
 
+def test_dispatch_panel_core_threads_site_to_waterfall(tmp_path: Path) -> None:
+    case_dir = tmp_path / "site-dispatch"
+    case_dir.mkdir()
+    _ = (case_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
+    _ = (case_dir / "review.diff").write_text("diff --git a/foo b/foo\n", encoding="utf-8")
+    waterfall_stub = tmp_path / "waterfall-site-stub.sh"
+    argv_log = tmp_path / "waterfall-site.argv"
+    _write_executable(
+        waterfall_stub,
+        f"""#!/usr/bin/env bash
+printf '%s\\n' "$*" >> "{argv_log}"
+printf 'DISPATCH_OK=true\\nALL_OUTPUT_FILES=\\nALL_OUTPUT_FILES_PATH=\\nALL_OUTPUT_TOOLS=\\n'
+""",
+    )
+    stub_bin = tmp_path / "bin"
+    stub_bin.mkdir()
+    _write_dispatch_vendor_stubs(stub_bin)
+    result = run_review(
+        "dispatch-panel",
+        "--mode",
+        "diff",
+        "--diff-file",
+        str(case_dir / "review.diff"),
+        "--review-tmpdir",
+        str(case_dir),
+        "--codex-available",
+        "true",
+        "--cursor-available",
+        "true",
+        "--panel",
+        "simple",
+        "--plan-file",
+        str(case_dir / "plan.md"),
+        "--site",
+        "implement Step 5",
+        env={
+            "CLAUDE_PLUGIN_ROOT": str(ROOT),
+            "LARCH_QUIET_DISABLE": "1",
+            "DISPATCH_WATERFALL": str(waterfall_stub),
+            "PATH": f"{stub_bin}:{os.environ.get('PATH', '')}",
+            "RUN_EXTERNAL_AGENT_POLL_INTERVAL": "0.05",
+        },
+    )
+    assert result.returncode == 0, result.stderr
+    assert "--site implement Step 5" in argv_log.read_text(encoding="utf-8")
+
+
+def test_review_core_threads_site_to_dispatch_panel_and_voters(tmp_path: Path) -> None:
+    stubs = _write_review_core_stubs(tmp_path / "stubs")
+    outdir = tmp_path / "site-core"
+    outdir.mkdir(parents=True, exist_ok=True)
+    panel_log = tmp_path / "panel.argv"
+    voters_log = tmp_path / "voters.argv"
+    env = rts.build_review_core_env(
+        tmp_path / "stubs",
+        stubs,
+        TEST_FINDINGS="1",
+        TEST_ACCEPTED="1",
+        TEST_ROUND_NUM="1",
+        TEST_DISPATCH_ARGV_LOG=str(panel_log),
+        TEST_VOTERS_ARGV_LOG=str(voters_log),
+    )
+    result = run_review(
+        "core",
+        "--mode",
+        "diff",
+        "--output-dir",
+        str(outdir),
+        "--codex-available",
+        "true",
+        "--cursor-available",
+        "true",
+        "--panel",
+        "simple",
+        "--round-num",
+        "1",
+        "--site",
+        "implement Step 5",
+        env=env,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "site=implement Step 5" in panel_log.read_text(encoding="utf-8")
+    assert "site=implement Step 5" in voters_log.read_text(encoding="utf-8")
+
+
 def test_dispatch_panel_reuse_scout_parse_failed_missing_status(tmp_path: Path) -> None:
     case_dir = tmp_path / "reuse-parse-failed"
     case_dir.mkdir()

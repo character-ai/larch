@@ -1345,3 +1345,25 @@ def _kv(output: str, key: str) -> str:
         if line.startswith(prefix):
             return line[len(prefix) :]
     return ""
+
+
+def test_parse_args_site_default_and_explicit() -> None:
+    base = ["--ballot-file", "/x", "--review-tmpdir", "/y", "--codex-available", "true", "--cursor-available", "true"]
+    default_opts = agent_voters._parse_args(base)
+    assert isinstance(default_opts, agent_voters.Options)
+    assert default_opts.site == "review Step 2"
+    explicit_opts = agent_voters._parse_args([*base, "--site", "implement Step 5"])
+    assert isinstance(explicit_opts, agent_voters.Options)
+    assert explicit_opts.site == "implement Step 5"
+
+
+@pytest.mark.voter_happy
+def test_dispatch_voters_forwards_site_to_waterfall(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    review = tmp_path / "review"
+    ballot = tmp_path / "ballot.md"
+    ballot.write_text("### FINDING_1: one\n", encoding="utf-8")
+    harness, _ = _install_harness(monkeypatch, tmp_path, review)
+    opts = agent_voters.Options(str(ballot), str(review), "true", "true", site="implement Step 5")
+    assert agent_voters.dispatch_voters(opts) == 0
+    waterfall = next(call for call in harness.run_calls if _verb(call) == ("agent", "dispatch-waterfall"))
+    assert _value_after(waterfall, "--site") == "implement Step 5"
