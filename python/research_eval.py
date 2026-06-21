@@ -174,23 +174,72 @@ def _clean_tsv(value: str) -> str:
     return re.sub(r"\s+", " ", value.replace("\r", " ").replace("\n", " ")).strip()
 
 
-def _validate_structured_tsv(text: str) -> str:
-    out: list[str] = []
+_TSV_ROW_START_RE = re.compile(r"^\d+\t")
+_TSV_LOCATION_RE = re.compile(
+    f"(?:{voting.FILE_LINE_REGEXES['any-re']}|{voting.FILE_LINE_REGEXES['extensionless-re']})"
+)
+
+
+def _iter_tsv_logical_rows(text: str):
+    """Yield assembled TSV data rows after the header, joining physical continuations."""
     seen_header = False
+    buffer = ""
     for line in text.splitlines():
         if line.strip().startswith("```"):
             continue
         if not seen_header:
             if line == _STRUCTURED_HEADER:
-                out.append(_STRUCTURED_HEADER)
                 seen_header = True
             continue
         if not line.strip():
             continue
-        # Cap the split at 8 columns so embedded tabs inside the final field
-        # fold into suggested_fix instead of shifting the earlier columns.
-        fields = line.split("\t", 7)
-        if len(fields) < 8:
+        if _TSV_ROW_START_RE.match(line):
+            if buffer:
+                yield buffer
+            buffer = line
+        elif buffer:
+            buffer = f"{buffer} {line.strip()}"
+        else:
+            _diag("REJECT structured TSV row: continuation without row prefix")
+            continue
+        if buffer and len(buffer.split("\t")) >= 8:
+            yield buffer
+            buffer = ""
+    if buffer:
+        yield buffer
+
+
+def _location_field_valid(location: str) -> bool:
+    cleaned = _clean_tsv(location)
+    return bool(cleaned) and _TSV_LOCATION_RE.search(cleaned) is not None
+
+
+def _split_structured_tsv_row(line: str) -> list[str] | None:
+    """Split one logical TSV row into eight fields or reject with _diag."""
+    line = re.sub(r"[\r\n]+", " ", line)
+    unlimited = line.split("\t")
+    if len(unlimited) < 8:
+        _diag(f"REJECT structured TSV row: expected 8 tab columns, got {len(unlimited)}")
+        return None
+    if len(unlimited) > 8:
+        _diag(f"REJECT structured TSV row: embedded tab in early columns ({len(unlimited)} fields)")
+        return None
+    return unlimited
+
+
+def _validate_structured_tsv(text: str) -> str:
+    out: list[str] = []
+    seen_header = False
+    for line in text.splitlines():
+        if line == _STRUCTURED_HEADER:
+            seen_header = True
+            out.append(_STRUCTURED_HEADER)
+            break
+    if not seen_header:
+        return ""
+    for line in _iter_tsv_logical_rows(text):
+        fields = _split_structured_tsv_row(line)
+        if fields is None:
             continue
         schema, scope, severity, focus, location, what, scenario = [_clean_tsv(field) for field in fields[:7]]
         fix = _clean_tsv(fields[7])
@@ -199,6 +248,9 @@ def _validate_structured_tsv(text: str) -> str:
         focus = _canonical_focus(focus)
         if canonical_schema is None or scope not in {"in_scope", "out_of_scope"} or severity not in _ALLOWED_SEVERITIES or focus not in _ALLOWED_FOCUS:
             _diag(f"REJECT structured TSV row: schema={schema!r} scope={scope!r} severity={severity!r} focus={focus!r}")
+            continue
+        if not _location_field_valid(location):
+            _diag(f"REJECT structured TSV row: invalid location={location!r}")
             continue
         out.append("\t".join([canonical_schema, scope, severity, focus, location, what, scenario, fix]))
     if len(out) <= 1:
