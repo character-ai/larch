@@ -174,6 +174,79 @@ def test_structured_reviewer_preamble_warning_only_for_per_line_path(tmp_path: P
     assert "NO_ISSUES_SENTINEL_RECOVERED_AFTER_PREAMBLE" not in cp2.stdout
 
 
+def test_structured_tsv_cursor_format_tolerance(tmp_path: Path) -> None:
+    out = tmp_path / "records.tsv"
+    header = "schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix\n"
+
+    def normalize(text: str) -> str:
+        assert research_eval.validate_structured_reviewer_output(text, write_structured=out) == 0
+        return out.read_text(encoding="utf-8")
+
+    # Cursor row-index defect: column 1 carries 1, 2, 3, ... instead of the
+    # literal schema_version constant. Every row is kept and normalized to "1".
+    row_index = normalize(
+        header
+        + "1\tin_scope\timportant\tcorrectness\tfoo.py:1\twhat\tscenario\tfix\n"
+        + "2\tin_scope\timportant\tcorrectness\tbar.py:2\twhat\tscenario\tfix\n"
+        + "3\tin_scope\timportant\tcorrectness\tbaz.py:3\twhat\tscenario\tfix\n"
+    )
+    kept = [ln for ln in row_index.splitlines() if ln and not ln.startswith("schema_version")]
+    assert len(kept) == 3
+    assert all(ln.startswith("1\t") for ln in kept)
+
+    # Cursor focus_area defect: completeness maps to code-quality (the single-row
+    # C94E1D97 signature) without touching the _ALLOWED_FOCUS enum.
+    mapped = normalize(header + "1\tin_scope\timportant\tcompleteness\tfoo.py:1\twhat\tscenario\tfix\n")
+    kept_mapped = [ln for ln in mapped.splitlines() if ln and not ln.startswith("schema_version")]
+    assert len(kept_mapped) == 1
+    assert "\tcode-quality\t" in kept_mapped[0]
+    assert "completeness" not in kept_mapped[0]
+
+    # Issue #4994 repro end-to-end: a row-index column 1 AND a completeness row
+    # now validate instead of dropping the whole slot.
+    normalized = normalize(
+        header
+        + "1\tin_scope\timportant\tcompleteness\tfoo.py:1\twhat\tscenario\tfix\n"
+        + "2\tin_scope\timportant\tcorrectness\tbar.py:2\twhat\tscenario\tfix\n"
+    )
+    assert "\tcode-quality\t" in normalized
+    assert normalized.count("\n1\t") == 2
+
+    # A focus_area outside both the allowed set and the synonym map is rejected
+    # (exit 5), and a non-integer column 1 (prose from a split row) too.
+    assert (
+        research_eval.validate_structured_reviewer_output(
+            header + "1\tin_scope\timportant\tbogus\tfoo.py:1\twhat\tscenario\tfix\n", write_structured=out
+        )
+        == 5
+    )
+    assert (
+        research_eval.validate_structured_reviewer_output(
+            header + "prose\tin_scope\timportant\tcorrectness\tfoo.py:1\twhat\tscenario\tfix\n", write_structured=out
+        )
+        == 5
+    )
+
+
+def test_structured_jsonl_completeness_synonym(tmp_path: Path) -> None:
+    out = tmp_path / "records.jsonl"
+    record = {
+        "schema_version": 1,
+        "scope": "in_scope",
+        "severity": "important",
+        "focus_area": "completeness",
+        "location": "python/research_eval.py:1",
+        "what": "what",
+        "scenario_or_breakage": "breaks",
+        "suggested_fix": "fix",
+    }
+    path = write(tmp_path / "jsonl.txt", json.dumps(record) + "\n")
+    assert research_eval.validate_research_output(path, structured_reviewer_mode=True, write_structured=out) == 0
+    normalized = out.read_text(encoding="utf-8")
+    assert '"focus_area":"code-quality"' in normalized
+    assert "completeness" not in normalized
+
+
 def test_eval_set_and_baseline_schema() -> None:
     assert research_eval.validate_eval_set(ROOT / "skills/research/references/eval-set.md")
     assert research_eval.validate_baseline_json(ROOT / "skills/research/references/eval-baseline.json")
