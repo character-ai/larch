@@ -54,7 +54,7 @@ Valid vote tokens are `YES` and `NO`. Stray `EXONERATE` tokens from old voter ou
 
 Dispatchers emit degraded-panel warnings when effective voters drop below the expected panel size. For `/review` and `/implement` Step 5 code review the expected size is **three Cursor archetype voters** when Cursor is available, or **one Claude fallback voter** when Cursor is unavailable; Codex availability does not affect code-review voter composition. A single-Claude fallback (Cursor unavailable) is the designed state and raises **no** warning — only a genuine failure of an *expected* judge degrades the panel. (`/design` plan review still back-fills unavailable externals to keep the expected size at three.) `effective` means status is not `failed` and the voter output is substantive enough to contribute valid vote lines after any retry path settles. On the three-slot code-review path, `ELIGIBLE_VOTERS` and `EFFECTIVE_VOTERS` count only substantive non-empty voter files after parse-rate removal — empty placeholder slots keep their `vN_tool` attribution but do not inflate the quorum.
 
-After the acceptance threshold, each finding is classified into one of three operator-facing outcomes: `accepted`, `neutral` (≥1 YES but below acceptance threshold; 0 points to the proposing reviewer), or `rejected` (0 YES; −1 point). The classifier lives in `python/voting.py::classify_result`; tally scripts map the label to KV and JSON at the emission boundary.
+After the acceptance threshold, each finding is classified into one of three operator-facing outcomes: `accepted`, `neutral` (≥1 YES but below acceptance threshold; -0.25 points to the proposing reviewer), or `rejected` (0 YES; −1 point). The classifier lives in `python/voting.py::classify_result`; tally scripts map the label to KV and JSON at the emission boundary.
 
 ## Voter Panel Composition
 
@@ -190,10 +190,10 @@ After tallying votes, compute a score for each **original reviewer** (not voters
 |---|---|---|
 | Accepted in-scope finding with any YES-voter panel severity `blocker` or `major` | +2 | High-impact finding validated by the panel |
 | Other accepted in-scope finding | +1 | Finding was validated by the panel |
-| Neutral (≥1 YES, not accepted) | 0 | Insufficient support, but not unanimously dismissed |
+| Neutral (≥1 YES, not accepted) | -0.25 | Insufficient support, but not unanimously dismissed |
 | Rejected (0 YES) | −1 | Finding was unanimously dismissed by the panel |
 
-Severity for competition points comes from panel `vN_severity` cells attached to YES votes only. `body_severity` never affects points. If a deduplicated finding was proposed by multiple reviewers, **all** contributing reviewers receive the same weighted points for that finding. Reviewer pruning remains unweighted accepted-minus-rejected count math.
+Severity for competition points comes from panel `vN_severity` cells attached to YES votes only. `body_severity` never affects points. If a deduplicated finding was proposed by multiple reviewers, **all** contributing reviewers receive the same weighted points for that finding. Reviewer pruning remains unweighted accepted-minus-rejected count math and does not apply the neutral penalty.
 
 ## Scoreboard
 
@@ -209,12 +209,12 @@ Full scoreboard format (used in standalone mode):
 
 | Reviewer | Findings | Accepted | Neutral | Rejected | OOS Proposed | OOS Accepted | OOS-Neutral | OOS-Rejected | Score |
 |----------|----------|----------|---------|----------|--------------|--------------|-------------|--------------|-------|
-| _label1_ | 3        | 2        | 1       | 0        | 1            | 0            | 1           | 0            | +3    |
-| _label2_ | 2        | 1        | 1       | 0        | 0            | 0            | 0           | 0            | +1    |
+| _label1_ | 3        | 2        | 1       | 0        | 1            | 0            | 1           | 0            | +2.75 |
+| _label2_ | 2        | 1        | 1       | 0        | 0            | 0            | 0           | 0            | +0.75 |
 | _label3_ | 2        | 1        | 0       | 1        | 1            | 0            | 0           | 1            | 0     |
 ```
 
-The **Neutral** column counts all non-accepted findings that award **0** points to the proposer (≥1 YES but below acceptance threshold). The **Rejected** column counts non-accepted findings that cost **−1** point (0 YES). A single finding is counted in **at most one** of these two columns.
+The **Neutral** column counts all non-accepted in-scope findings that cost **-0.25** points to the proposer (≥1 YES but below acceptance threshold). The **Rejected** column counts non-accepted findings that cost **−1** point (0 YES). A single finding is counted in **at most one** of these two columns.
 
 Attribution labels are skill-specific (e.g., `/design` uses `Code`/`Codex`/`Cursor`; `/review` hard panel uses `Correctness`/`Testing`/`Edge-cases`/`Codex-Correctness`/`Codex-Testing`/`Codex-Edge-cases`). One row per independent reviewer. Future token allocation should use precision-value, not cumulative reviewer `Score`: measure in-scope `net-score-per-finding` as `(accepted_weight - Rejected) ÷ Proposed` on scoreboard columns, where `Proposed` is the in-scope `Findings` count and OOS is excluded from both numerator and denominator.
 

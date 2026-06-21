@@ -10,7 +10,7 @@ Each finding's vote outcome determines the points awarded to the reviewer(s) who
 |---|---|---|
 | **Accepted in-scope** with YES-voter panel severity `blocker` or `major` | +2 | High-severity finding validated by the voting panel |
 | **Accepted in-scope** (all other severities) | +1 | The finding was validated by the voting panel |
-| **Neutral** (≥1 YES, not accepted) | 0 | Insufficient support, but not dismissed |
+| **Neutral** (≥1 YES, not accepted) | -0.25 | Insufficient support, but not dismissed |
 | **Rejected** (0 YES) | -1 | Finding was unanimously dismissed by the panel |
 
 Panel severity comes from YES voters on the ballot. The finding body's `body_severity` field is forensic metadata only and does not change points.
@@ -59,15 +59,15 @@ Accepted, rejected, and OOS artifacts restore reviewer attribution after voting 
 
 | Reviewer | Findings | Accepted | Neutral (≥1 YES) | Rejected (0 YES) | OOS Proposed | OOS Accepted | OOS-Neutral | OOS-Rejected | Score |
 |----------|----------|----------|------------------|-----------------|--------------|--------------|-------------|--------------|-------|
-| Correctness | 3 | 2 | 1 | 0 | 0 | 0 | 0 | 0 | +3 |
-| Testing | 2 | 1 | 1 | 0 | 1 | 1 | 0 | 0 | +2 |
+| Correctness | 3 | 2 | 1 | 0 | 0 | 0 | 0 | 0 | +2.75 |
+| Testing | 2 | 1 | 1 | 0 | 1 | 1 | 0 | 0 | +1.75 |
 | Edge-cases | 3 | 2 | 0 | 1 | 0 | 0 | 0 | 0 | +1 |
 | Codex-Correctness | 2 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
 | Codex-Testing | 2 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
 | Codex-Edge-cases | 2 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
 | Claude-Generic | 2 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
 
-The example assumes one accepted major/blocker finding (+2) and one accepted minor finding (+1) for Correctness; OOS accepted rows stay flat +1 regardless of voter severity.
+The example assumes one accepted major/blocker finding (+2), one accepted minor finding (+1), and one in-scope neutral finding (-0.25) for Correctness. The Testing row combines one accepted in-scope finding (+1), one in-scope neutral finding (-0.25), and one accepted OOS observation (+1). OOS accepted rows stay flat +1 regardless of voter severity.
 
 ## Future Plans
 
@@ -106,4 +106,4 @@ Skills that use the negotiation protocol (`/research`) do not use competition sc
 
 ## Conditional spawning
 
-The same finding attribution that awards reviewer points also feeds per-run conditional spawning. In rounds 3-4, reviewer combos may be skipped when their last two launched rounds have net score ≤ 0 or an acceptance rate below 1/3. Net score is unweighted accepted-minus-rejected counts. Neutral findings count in the acceptance-rate denominator, but they do not change net score. Round 5 re-probes the full panel. Competition scoreboards and Top reviewers use weighted points separately. This pruning history is run-local, uses unweighted accepted/rejected counts for the rate gate, and does not affect the persistent scoreboard.
+The same finding attribution that awards reviewer points also feeds per-run conditional spawning. In rounds 3-4, reviewer combos may be skipped when their last two launched rounds have net score ≤ 0 or an acceptance rate below 1/3. Net score is unweighted accepted-minus-rejected counts. Neutral findings count in the acceptance-rate denominator, but the -0.25 neutral penalty does not change pruning net score. Round 5 re-probes the full panel. Competition scoreboards and Top reviewers use weighted points separately. This pruning history is run-local, uses unweighted accepted/rejected counts for the rate gate, and does not affect the persistent scoreboard.

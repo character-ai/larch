@@ -894,6 +894,7 @@ def test_tally_plan_review_mixed_votes_and_artifacts(tmp_path: Path) -> None:
     assert "OOS_1" in (design / "oos.md").read_text(encoding="utf-8")
     assert "OOS_2" not in (design / "oos.md").read_text(encoding="utf-8")
     assert "| Cursor-Arch | 1 | 1 | 0 | 0 | 1 | 1 | 0 | 0 | 3 |" in tally
+    assert "| Codex-Pragmatic | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | -0.25 |" in tally
     class_rows = _read_tsv(design / "plan-review" / "round-1" / "findings-classification.tsv") if (design / "plan-review" / "round-1" / "findings-classification.tsv").is_file() else _read_tsv(design / "findings-classification.tsv")
     assert class_rows["FINDING_1"]["scope"] == "in_scope"
     assert class_rows["OOS_1"]["scope"] == "oos"

@@ -216,21 +216,42 @@ def test_tally_weighted_scoreboard_major_oos_and_coproposers(tmp_path: Path) -> 
 - **Concern**: Shared blocker.
 - **Suggested revision**: Fix.
 
+### FINDING_4: Neutral in-scope
+- **Reviewer**: Codex-Neutral
+- **Concern**: Borderline issue.
+- **Suggested revision**: Fix.
+
 ### OOS_1: [OUT_OF_SCOPE] High severity OOS
 - **Reviewer**: Codex-Edge
 - **Concern**: Future work.
 - **Suggested revision**: File it.
+
+### OOS_2: [OUT_OF_SCOPE] Neutral OOS
+- **Reviewer**: Codex-OOS-Neutral
+- **Concern**: Borderline future work.
+- **Suggested revision**: File it.
 """,
         encoding="utf-8",
     )
-    votes = (
+    yes_votes = (
         "FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n"
         "FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false\n"
         "FINDING_3: YES CORRECTNESS=true SEVERITY=blocker QUALITY=good UNCERTAIN=false\n"
+        "FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false\n"
         "OOS_1: YES CORRECTNESS=true SEVERITY=blocker QUALITY=good UNCERTAIN=false\n"
+        "OOS_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false\n"
     )
-    for name in ("cursor-vote-output.txt", "codex-vote-output.txt", "claude-vote-output.txt"):
-        _ = (case / name).write_text(votes, encoding="utf-8")
+    no_votes = (
+        "FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n"
+        "FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false\n"
+        "FINDING_3: YES CORRECTNESS=true SEVERITY=blocker QUALITY=good UNCERTAIN=false\n"
+        "FINDING_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false\n"
+        "OOS_1: YES CORRECTNESS=true SEVERITY=blocker QUALITY=good UNCERTAIN=false\n"
+        "OOS_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false\n"
+    )
+    _ = (case / "cursor-vote-output.txt").write_text(yes_votes, encoding="utf-8")
+    for name in ("codex-vote-output.txt", "claude-vote-output.txt"):
+        _ = (case / name).write_text(no_votes, encoding="utf-8")
 
     result = run_review(
         "tally-code-votes",
@@ -250,10 +271,13 @@ def test_tally_weighted_scoreboard_major_oos_and_coproposers(tmp_path: Path) -> 
     assert "| Cursor-Testing | 2 | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 3 |" in tally
     assert "| Codex-Arch | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 2 |" in tally
     assert "| Codex-Edge | 0 | 0 | 0 | 0 | 1 | 1 | 0 | 0 | 1 |" in tally
+    assert "| Codex-Neutral | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | -0.25 |" in tally
+    assert "| Codex-OOS-Neutral | 0 | 0 | 0 | 0 | 1 | 0 | 1 | 0 | 0 |" in tally
 
     class_file = Path(rts.kv_get(result.stdout, "FINDINGS_CLASSIFICATION_TSV_FILE") or "")
     tsv_rows = _tsv_rows(class_file)
     assert tsv_rows["OOS_1"]["scope"] == "oos"
+    assert tsv_rows["OOS_2"]["scope"] == "oos"
     assert tsv_rows["FINDING_1"]["scope"] == "in_scope"
 
 
