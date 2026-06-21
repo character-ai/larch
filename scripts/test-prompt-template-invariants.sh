@@ -215,6 +215,14 @@ assert_contains "plan-reviewer anti-preamble directive" \
     'Your response MUST begin with either the TSV header line' "$plan_review_out"
 assert_contains "plan-reviewer no-issues sentinel instruction" \
     '{"no_issues_found": true}' "$plan_review_out"
+assert_contains "plan-reviewer schema_version literal constant" \
+    'literal constant 1 (the schema_version) on EVERY row' "$plan_review_out"
+assert_contains "plan-reviewer schema_version not a row counter" \
+    'NOT a per-row counter' "$plan_review_out"
+assert_contains "plan-reviewer focus_area allowlist" \
+    'focus_area exactly one of code-quality, risk-integration, correctness, architecture, security' "$plan_review_out"
+assert_contains "plan-reviewer focus_area rejects completeness" \
+    'no other value such as completeness' "$plan_review_out"
 
 # ── python/cli.py render specialist runtime render smoke ─────────────────────────
 
