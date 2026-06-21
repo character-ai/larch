@@ -46,6 +46,7 @@ scripts/test-harness-shards-coverage.sh
 scripts/test-hook-anti-read-poll.sh
 scripts/test-hook-bg-poll-guard.sh
 scripts/test-hook-progress-report.sh
+scripts/test-hook-stop-fail-close.sh
 scripts/test-implement-anti-halt.sh
 scripts/test-implement-anti-polling-rule.sh
 scripts/test-implement-cleanup-roundtrip.sh

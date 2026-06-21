@@ -82,7 +82,11 @@ if [[ -f "$IMPLEMENT_TMPDIR/review-round-summary.md" ]] && \
     if [[ -z "$HOOK_OUT" ]] && command -v python3 >/dev/null 2>&1; then
         HOOK_OUT=$(REASON="$REASON" python3 -c 'import json,os; print(json.dumps({"decision":"block","reason":os.environ["REASON"]}))' 2>/dev/null) || HOOK_OUT=""
     fi
-    [[ -n "$HOOK_OUT" ]] && hook_emit "$HOOK_OUT"
+    # jq/python3-absent static fallback. Fixed reason (no runtime interpolation).
+    if [[ -z "$HOOK_OUT" ]]; then
+        HOOK_OUT='{"decision":"block","reason":"You halted mid-Step-5 (post-/review boundary). Execute Cross-Skill Presence Propagation + Step 6 breadcrumb, then touch .review-boundary-passed inside the active /implement tmpdir."}'
+    fi
+    hook_emit "$HOOK_OUT"
     exit 0
 fi
 

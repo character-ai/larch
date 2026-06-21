@@ -121,7 +121,7 @@ test-harnesses-4: test-harness-shards-coverage test-review-and-fix-write-rejecte
 
 test-harnesses-5: test-launch-review test-revise-plan-with-waterfall test-design-step1d5 test-lib-scope-anchor-handoff test-review-and-fix-record-timing test-release-set-version test-implement-finalize test-post-tracking-issue test-clarify-comment test-implement-admission test-timing-ledger test-oos-disposition-gate test-lint-readability-preamble test-audit-edit-write test-implement-anti-polling-rule test-implement-positional-issue
 
-test-harnesses-6: test-design-stage-terminal-state test-design-step-final-summary test-dispatch-code-voters-regressions-r1-r2 test-validate-plan-commands test-cursor-implementer test-launch-claude-review test-reviewer-prune test-clarify-state test-refresh-run-logs test-render-final-summary-bash32 test-append-tool-failure test-redact test-deny-edit-write test-hook-progress-report test-research-angle-prompts
+test-harnesses-6: test-design-stage-terminal-state test-design-step-final-summary test-dispatch-code-voters-regressions-r1-r2 test-validate-plan-commands test-cursor-implementer test-launch-claude-review test-reviewer-prune test-clarify-state test-refresh-run-logs test-render-final-summary-bash32 test-append-tool-failure test-redact test-deny-edit-write test-hook-progress-report test-hook-stop-fail-close test-research-angle-prompts
 
 test-harnesses-7: test-design-step3-review test-check-plan-size test-sessionstart test-design-step0-init test-design-multi-round-integration test-block-submodule test-resolve-upstream-larch-repo test-implement-cleanup-script test-lint-bare-grep-probe test-capture-session-transcript test-check-clean-tree test-token-claude-source test-token-report test-scrub-log-secrets test-slack-issue-announce test-synthesis-subagent
 
@@ -351,6 +351,9 @@ test-hook-bg-poll-guard:
 
 test-hook-progress-report:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-hook-progress-report.sh
+
+test-hook-stop-fail-close:
+	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-hook-stop-fail-close.sh
 
 test-classify-bump:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_version_bump.py -q
