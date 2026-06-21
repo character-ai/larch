@@ -41,7 +41,8 @@ exist, restates existing coverage, broadens an unrelated harness, or is red-gree
 is a Nit → Out-of-Scope, never In-Scope.
 
 You are scored against this same rubric. Putting a finding In-Scope that the panel does not accept
-forfeits the point: you earn 0 if at least one judge found it credible and -1 if none did. The safe
+forfeits the point: it costs -0.25 if at least one judge found it credible but below the
+acceptance threshold, and -1 if none did. The safe
 home for a real-but-non-essential finding is Out-of-Scope, where panel acceptance still earns +1.
 Win points by putting necessary findings In-Scope and real-but-not-necessary findings
 Out-of-Scope — not by maximizing In-Scope volume.

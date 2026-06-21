@@ -707,8 +707,14 @@ def tally_code_votes(argv: list[str]) -> int:
     for reviewer in sorted(stats):
         row = stats[reviewer]
         label = re.sub(r"(?:-output)?\.txt$", "", reviewer)
-        score = row["accepted_weight"] + row["oos_accepted"] - row["rejected"] - row["oos_rejected"]
-        tally_lines.append(f"| {label} | {row['proposed']} | {row['accepted']} | {row['neutral']} | {row['rejected']} | {row['oos_proposed']} | {row['oos_accepted']} | {row['oos_neutral']} | {row['oos_rejected']} | {score} | STATUS=OK |\n")
+        score = (
+            row["accepted_weight"]
+            - (row["neutral"] * voting.NEUTRAL_FINDING_COST)
+            + row["oos_accepted"]
+            - row["rejected"]
+            - row["oos_rejected"]
+        )
+        tally_lines.append(f"| {label} | {row['proposed']} | {row['accepted']} | {row['neutral']} | {row['rejected']} | {row['oos_proposed']} | {row['oos_accepted']} | {row['oos_neutral']} | {row['oos_rejected']} | {voting.format_score(score)} | STATUS=OK |\n")
     if args.manifest_file:
         _append_manifest_dead_rows(
             tally_lines,

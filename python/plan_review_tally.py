@@ -696,11 +696,17 @@ class _Tally:
                     row["oos_rejected"] += 1
         lines: list[str] = []
         for reviewer, row in agg.items():
-            score = row["accepted_weight"] + row["oos_accepted"] - row["rejected"] - row["oos_rejected"]
+            score = (
+                row["accepted_weight"]
+                - (row["neutral"] * voting.NEUTRAL_FINDING_COST)
+                + row["oos_accepted"]
+                - row["rejected"]
+                - row["oos_rejected"]
+            )
             lines.append(
                 f"| {reviewer} | {row['proposed']} | {row['accepted']} | {row['neutral']} | "
                 f"{row['rejected']} | {row['oos_proposed']} | {row['oos_accepted']} | "
-                f"{row['oos_neutral']} | {row['oos_rejected']} | {score} |\n"
+                f"{row['oos_neutral']} | {row['oos_rejected']} | {voting.format_score(score)} |\n"
             )
         lines.sort()
         return "".join(lines)

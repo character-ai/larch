@@ -26,7 +26,7 @@ Eligible voters are counted at the panel level from non-failed voter outputs. Mi
 
 ## Non-accepted Outcomes
 
-When a finding is not accepted, it is classified as either **`neutral`** (at least one YES vote but below the acceptance threshold; 0 points) or **`rejected`** (zero YES votes; −1 point). The `neutral` outcome covers what was previously split-panel behavior.
+When a finding is not accepted, it is classified as either **`neutral`** (at least one YES vote but below the acceptance threshold; -0.25 points for in-scope findings) or **`rejected`** (zero YES votes; −1 point). The `neutral` outcome covers what was previously split-panel behavior.
 
 ## Degraded-Panel Warnings
 
@@ -121,7 +121,7 @@ Reviewers may surface **out-of-scope (OOS) observations** — pre-existing issue
 - If an OOS item receives 2+ YES votes, it is **accepted** and filed as a GitHub issue by `/implement`
 - Non-accepted OOS items are collected and reported in the PR body for future attention
 - **OOS items are never implemented in the current PR** — accepted items result in issue creation only
-- OOS scoring stays flat: accepted OOS earns +1, neutral OOS (≥1 YES, not accepted) scores 0, and rejected OOS (0 YES) costs -1. In-scope accepted findings earn +2 only when a YES voter assigns panel severity `blocker` or `major`; `body_severity` does not affect points.
+- OOS scoring stays flat: accepted OOS earns +1, neutral OOS (≥1 YES, not accepted) scores 0, and rejected OOS (0 YES) costs -1. In-scope accepted findings earn +2 only when a YES voter assigns panel severity `blocker` or `major`; in-scope neutral costs -0.25. `body_severity` does not affect points.
 
 Claude subagent reviewers always produce OOS observations (via their dual-list output format). External reviewers (Codex, Cursor) **in diff mode** use a slot-kind–dependent output shape: specialist slots (`cursor-specialist-*` and `codex-specialist-*`) produce dual-list output matching the Claude subagent contract (contributing OOS observations via voting). **In `/review` description mode**, all external reviewers produce dual-list output matching the Claude subagent contract and contribute OOS observations via voting (see [skills/review/SKILL.md](../skills/review/SKILL.md) Step 3a).
 

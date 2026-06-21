@@ -75,6 +75,7 @@ SEVERITY_MAJOR = "major"
 
 _SEVERITY_VALUES = {SEVERITY_BLOCKER, SEVERITY_MAJOR, "minor", "nit", "uncertain"}
 HIGH_SEVERITIES = frozenset({SEVERITY_BLOCKER, SEVERITY_MAJOR})
+NEUTRAL_FINDING_COST = 0.25
 _QUALITY_VALUES = {"excellent", "good", "adequate", "weak", "no-fix", "uncertain"}
 _UNCERTAIN_VALUES = {"true", "false"}
 
@@ -1657,11 +1658,24 @@ def bash_printf_q(value: str) -> str:
     return "".join(ch if ch in safe else "\\" + ch for ch in value)
 
 
+def format_score(score: float) -> str:
+    value = float(score)
+    if value.is_integer():
+        return str(int(value))
+    return f"{value:g}"
+
+
+def _classification_row_is_oos(row: dict[str, str], header: list[str]) -> bool:
+    if "scope" in header:
+        return (row.get("scope") or "").strip().lower() == "oos"
+    return (row.get("finding_id") or "").strip().startswith("OOS_")
+
+
 def _scoreboard_points_from_classification(
     classification_file: Path,
     reviewer_labels: list[str],
-) -> dict[str, int]:
-    scores = dict.fromkeys(reviewer_labels, 0)
+) -> dict[str, float]:
+    scores = dict.fromkeys(reviewer_labels, 0.0)
     if not classification_file.is_file():
         return scores
     with classification_file.open(encoding="utf-8", errors="replace", newline="") as handle:
@@ -1682,8 +1696,10 @@ def _scoreboard_points_from_classification(
                 delta = accepted_points_from_classification_row(row, header)
             elif result == "rejected":
                 delta = -1
-            else:
+            elif _classification_row_is_oos(row, header):
                 delta = 0
+            else:
+                delta = -NEUTRAL_FINDING_COST
             for reviewer in reviewers:
                 if reviewer in scores:
                     scores[reviewer] += delta
@@ -1709,14 +1725,14 @@ def scoreboard_main(argv: list[str]) -> int:
     tally_text = Path(args.tally_file).read_text(encoding="utf-8", errors="replace") if args.tally_file and Path(args.tally_file).is_file() else ""
     rows = ["| Reviewer | Score |", "|---|---:|"]
     for label in reviewer_labels:
-        score = 0
+        score = 0.0
         if classification_scores is not None:
-            score = classification_scores.get(label, 0)
+            score = classification_scores.get(label, 0.0)
         else:
             for line in tally_text.splitlines():
                 if f"REVIEWER={label} " in line and "ACCEPTED=true" in line:
                     score += 1
-        rows.append(f"| {label} | {score} |")
+        rows.append(f"| {label} | {format_score(score)} |")
     output_file.write_text("\n".join(rows) + "\n", encoding="utf-8")
     print(f"SCOREBOARD_FILE={bash_printf_q(str(output_file))}")
     return 0

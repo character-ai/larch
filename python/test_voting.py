@@ -972,7 +972,9 @@ def test_scoreboard_main_weights_classification_tsv(tmp_path: Path) -> None:
         + row("FINDING_1", "Structure", "accepted", "YES", "major", "", "in_scope") + "\n"
         + row("FINDING_2", "Testing", "accepted", "YES", "minor", "important", "in_scope") + "\n"
         + row("FINDING_3", "Testing", "rejected", "NO", "major", "", "in_scope") + "\n"
-        + row("OOS_1", "Structure", "accepted", "YES", "blocker", "", "oos") + "\n",
+        + row("FINDING_4", "Neutralist", "neutral", "YES", "minor", "", "in_scope") + "\n"
+        + row("OOS_1", "Structure", "accepted", "YES", "blocker", "", "oos") + "\n"
+        + row("OOS_2", "OosNeutral", "neutral", "YES", "blocker", "", "oos") + "\n",
         encoding="utf-8",
     )
     score_file = tmp_path / "score.md"
@@ -982,7 +984,7 @@ def test_scoreboard_main_weights_classification_tsv(tmp_path: Path) -> None:
         "--findings-classification-file",
         str(tsv),
         "--reviewer-labels",
-        "Structure, Testing",
+        "Structure, Testing, Neutralist, OosNeutral",
         "--output-file",
         str(score_file),
     )
@@ -990,12 +992,16 @@ def test_scoreboard_main_weights_classification_tsv(tmp_path: Path) -> None:
     text = score_file.read_text(encoding="utf-8")
     assert "| Structure | 3 |" in text
     assert "| Testing | 0 |" in text
+    assert "| Neutralist | -0.25 |" in text
+    assert "| OosNeutral | 0 |" in text
 
     legacy_header = [name for name in header if name != "scope"]
     legacy = tmp_path / "legacy.tsv"
     legacy.write_text(
         "\t".join(legacy_header) + "\n"
         + "\t".join({**dict.fromkeys(legacy_header, ""), "finding_id": "FINDING_1", "finding_reviewers": "Structure", "voting_result": "accepted", "v1_vote": "YES", "v1_severity": "major"}[name] for name in legacy_header)
+        + "\n"
+        + "\t".join({**dict.fromkeys(legacy_header, ""), "finding_id": "OOS_1", "finding_reviewers": "Structure", "voting_result": "neutral", "v1_vote": "YES", "v1_severity": "major"}[name] for name in legacy_header)
         + "\n",
         encoding="utf-8",
     )
