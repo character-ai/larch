@@ -243,22 +243,23 @@ def test_structured_tsv_multiline_row_joining(tmp_path: Path) -> None:
     assert "fix it" in normalized
 
 
-def test_structured_tsv_rejects_embedded_tabs_in_early_columns(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_structured_tsv_folds_overflow_tabs_into_suggested_fix(tmp_path: Path) -> None:
     out = tmp_path / "records.tsv"
     header = "schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix\n"
     text = header + "1\tin_scope\timportant\tcorrectness\tpython/foo.py:1\twhat\twith\ttab\tfix\n"
-    assert research_eval.validate_structured_reviewer_output(text, write_structured=out) == 5
-    diag = capsys.readouterr().err
-    assert "embedded tab in early columns" in diag
+    assert research_eval.validate_structured_reviewer_output(text, write_structured=out) == 0
+    normalized = out.read_text(encoding="utf-8")
+    assert "tab fix" in normalized
 
 
-def test_structured_tsv_rejects_invalid_location_after_tab_shift(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_structured_tsv_accepts_non_file_location(tmp_path: Path) -> None:
     out = tmp_path / "records.tsv"
     header = "schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix\n"
-    text = header + "1\tin_scope\timportant\tcorrectness\tpython\tfoo.py:1\twhat\tscenario\tfix\n"
-    assert research_eval.validate_structured_reviewer_output(text, write_structured=out) == 5
-    diag = capsys.readouterr().err
-    assert "embedded tab in early columns" in diag or "invalid location" in diag
+    for location in ("Testing strategy", "plan.txt"):
+        text = header + f"1\tin_scope\timportant\tcorrectness\t{location}\twhat\tscenario\tfix\n"
+        assert research_eval.validate_structured_reviewer_output(text, write_structured=out) == 0
+        normalized = out.read_text(encoding="utf-8")
+        assert f"\t{location}\t" in normalized
 
 
 def test_structured_jsonl_completeness_synonym(tmp_path: Path) -> None:
