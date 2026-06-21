@@ -40,9 +40,7 @@ def _line_is_mermaid_syntax(line: str) -> bool:
         return True
     if _SEQUENCE_ARROW_RE.match(line):
         return True
-    if _EDGE_LINE_RE.match(line):
-        return True
-    return False
+    return bool(_EDGE_LINE_RE.match(line))
 
 
 def strip_diagram_sections(text: str) -> str:
