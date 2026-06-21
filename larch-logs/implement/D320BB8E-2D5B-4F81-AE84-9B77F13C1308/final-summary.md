@@ -1,13 +1,13 @@
-## /implement run D320BB8E-2D5B-4F81-AE84-9B77F13C1308 — bailed
+## /implement run D320BB8E-2D5B-4F81-AE84-9B77F13C1308 — pr-created
 
-- **Outcome**: bailed
 - **Mode**: N/A
 - **Duration**: 01:18:52
-- **Cost**: 💰 TOTAL ~$28.52 — Claude $2.26, Codex $22.62, Cursor $3.04, Claude (subprocess) $0.60  |  Tokens: 49087k
+- **Cost**: 💰 TOTAL ~$29.31 — Claude $3.05, Codex $22.62, Cursor $3.04, Claude (subprocess) $0.60  |  Tokens: 50171k
 - **Issue**: #4774 — https://github.com/character-ai/larch/issues/4774
+- **PR**: #4950 — https://github.com/character-ai/larch/pull/4950
 - **Plan review**: N/A
 - **Code review**: 0/1 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +125/-51, larch-logs +604/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 2
