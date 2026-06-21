@@ -1352,7 +1352,7 @@ def test_dispatch_panel_producer_scout_warning_sentinel_prevents_duplicate(tmp_p
     )
     assert result.returncode == 0, result.stderr
     assert "SCOUT_STATUS=producer-missing" in result.stdout
-    assert append_calls == []
+    assert not append_calls
 
 
 def test_dispatch_panel_review_default_ignores_ambient_implement_tmpdir(tmp_path: Path) -> None:
