@@ -90,4 +90,4 @@ Merged mode treats rc 2/3 nonfatally in the driver; `python/plan_review.py` uses
 
 ## Edit in sync
 
-Update [`python/test_plan_quality.py`](../../../python/test_plan_quality.py), [`test-check-plan-size.md`](test-check-plan-size.md), [`lib-plan-optional-trailers.md`](lib-plan-optional-trailers.md), `Makefile` (`test-check-plan-size`), `design-postplan-emit.sh`, `design-postplan-emit.md`, `python/plan_review.py`, `skills/design/references/flags.md`, and `skills/design/SKILL.md` Step 2b / 2b.5 when changing thresholds or contracts.
+Update [`python/plan_quality.py`](../../../python/plan_quality.py), [`python/test_plan_quality.py`](../../../python/test_plan_quality.py), [`test-check-plan-size.md`](test-check-plan-size.md), `Makefile` (`test-check-plan-size` and `test-trailer-helpers`), `design-postplan-emit.sh`, `design-postplan-emit.md`, `python/plan_review.py`, `skills/design/references/flags.md`, and `skills/design/SKILL.md` Step 2b / 2b.5 when changing thresholds or optional-trailer contracts.

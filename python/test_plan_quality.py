@@ -118,6 +118,23 @@ def test_optional_trailer_snapshot_and_validate_values(tmp_path: Path) -> None:
     assert run_cli("plan", "optional-trailers", "validate-values", "--plan-file", str(plan), "--values-file", str(keys) + ".values").returncode == 0
 
 
+def test_optional_trailer_validate_rejects_lost_keys(tmp_path: Path) -> None:
+    plan = tmp_path / "plan.txt"
+    plan.write_text("body\ndiff_added: 1\ndiff_lines: 2\n", encoding="utf-8")
+    keys = tmp_path / "keys"
+    assert run_cli("plan", "optional-trailers", "snapshot-keys", "--plan-file", str(plan), "--output", str(keys)).returncode == 0
+
+    plan.write_text("body\ndiff_lines: 2\n", encoding="utf-8")
+
+    assert not plan_quality.validate_optional_trailers_preserved(plan, keys)
+    assert run_cli("plan", "optional-trailers", "validate-values", "--plan-file", str(plan), "--values-file", str(keys)).returncode == 1
+
+
+def test_optional_trailer_has_any_equivalent() -> None:
+    assert bool(plan_quality.parse_optional_metadata("body\ndiff_added: 1\ndiff_lines: 2\n").keys)
+    assert not plan_quality.parse_optional_metadata("body\ndiff_lines: 2\n").keys
+
+
 _TRAILER_AWK_PARSE_CASES = [
     ("all-three-present", "body\ndiff_added: 100\ndiff_deleted: 50\nmechanical_churn: true\ndiff_lines: 200\n", 3, "100", "50", "true"),
     ("none-present", "body\ndiff_lines: 1\n", 0, None, None, "false"),

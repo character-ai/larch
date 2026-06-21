@@ -58,8 +58,9 @@ require_value REPO "$REPO_RESOLVED"
 [ -n "$NO_ADMIN_FALLBACK_RESOLVED" ] || NO_ADMIN_FALLBACK_RESOLVED=false
 [ -n "$NO_LOGS_COMMIT_RESOLVED" ] || NO_LOGS_COMMIT_RESOLVED=false
 
-# shellcheck source=skills/implement/scripts/lib-implement-clone-tag.sh
-. "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/lib-implement-clone-tag.sh"
+clone_tag_env=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement clone-tag) || exit $?
+eval "$clone_tag_env"
+: "${EXPECTED_TMPDIR_BASENAME_PREFIX:?}"
 bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-8-python-guard.sh
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git phantom-probe --step 8-pre-ship >&2
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" ship pr \

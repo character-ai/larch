@@ -12,8 +12,9 @@ if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" 
 fi
 [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] || CLAUDE_PLUGIN_ROOT=$PLUGIN_ROOT
 export CLAUDE_PLUGIN_ROOT
-# shellcheck source=skills/implement/scripts/lib-implement-clone-tag.sh
-. "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/lib-implement-clone-tag.sh"
+clone_tag_env=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement clone-tag) || exit $?
+eval "$clone_tag_env"
+: "${EXPECTED_TMPDIR_BASENAME_PREFIX:?}"
 
 ARG_MERGE=""
 ARG_DRAFT=""

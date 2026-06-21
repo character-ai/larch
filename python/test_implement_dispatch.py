@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 import subprocess
 import sys
 from collections.abc import Callable
@@ -58,6 +59,7 @@ def test_cli_registry_has_implement_and_launcher_verbs() -> None:
     assert _REGISTRY[("implement", "run-dispatch")] == ("implement_dispatch", "run_dispatch_main")
     assert _REGISTRY[("implement", "recovery-paths")] == ("implement_dispatch", "recovery_paths_main")
     assert _REGISTRY[("implement", "commit")] == ("implement_dispatch", "commit_main")
+    assert _REGISTRY[("implement", "clone-tag")] == ("implement_dispatch", "clone_tag_main")
     assert _REGISTRY[("implement", "step-2-entry")] == ("implement_dispatch", "step2_entry_main")
     assert _REGISTRY[("implement", "step-5-review")] == ("implement_dispatch", "step5_review_main")
     assert _REGISTRY[("implement", "step-8-ship")] == ("implement_dispatch", "step8_ship_main")
@@ -65,6 +67,90 @@ def test_cli_registry_has_implement_and_launcher_verbs() -> None:
     assert _REGISTRY[("execution-issues", "flush-safety-net")] == ("execution_issues", "flush_execution_issues_safety_net_main")
     assert _REGISTRY[("agent", "launch-codex-implement")] == ("agents", "launch_codex_implement_main")
     assert _REGISTRY[("agent", "launch-cursor-implement")] == ("agents", "launch_cursor_implement_main")
+
+
+def _parse_clone_tag_env(out: str) -> dict[str, str]:
+    lines = out.splitlines()
+    assert [line.split("=", 1)[0] for line in lines] == [
+        "CLONE_TAG_FULL",
+        "EXPECTED_TMPDIR_BASENAME_PREFIX",
+    ]
+    parsed: dict[str, str] = {}
+    for line in lines:
+        fields = shlex.split(line)
+        assert len(fields) == 1
+        key, value = fields[0].split("=", 1)
+        parsed[key] = value
+    return parsed
+
+
+def test_clone_tag_cli_passes_clone_tag_through_with_shell_quoting(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    value = "tag with spaces; $(echo nope) 'quoted'"
+    monkeypatch.setenv("CLONE_TAG", value)
+
+    assert implement_dispatch.clone_tag_main([]) == 0
+
+    parsed = _parse_clone_tag_env(capsys.readouterr().out)
+    assert parsed == {
+        "CLONE_TAG_FULL": value,
+        "EXPECTED_TMPDIR_BASENAME_PREFIX": f"claude-implement-{value}-",
+    }
+
+
+def test_clone_tag_cli_derives_from_logical_pwd(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.delenv("CLONE_TAG", raising=False)
+    monkeypatch.setenv("PWD", "/logical/repo with spaces!")
+
+    assert implement_dispatch.clone_tag_main([]) == 0
+
+    parsed = _parse_clone_tag_env(capsys.readouterr().out)
+    assert parsed["CLONE_TAG_FULL"] == "repo_with_spaces_"
+    assert parsed["EXPECTED_TMPDIR_BASENAME_PREFIX"] == "claude-implement-repo_with_spaces_-"
+
+
+def test_clone_tag_derivation_truncates_sanitized_bytes(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("CLONE_TAG", raising=False)
+    monkeypatch.setenv("PWD", "/" + ("é" * 20))
+
+    assert implement_dispatch._derive_clone_tag_full() == "_" * 32
+
+
+def test_clone_tag_derivation_keeps_one_underscore_per_invalid_byte(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("CLONE_TAG", raising=False)
+    monkeypatch.setenv("PWD", "/!!!")
+
+    assert implement_dispatch._derive_clone_tag_full() == "___"
+
+
+def test_clone_tag_derivation_empty_basename_falls_back(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("CLONE_TAG", raising=False)
+    monkeypatch.setenv("PWD", "/")
+
+    assert implement_dispatch._derive_clone_tag_full() == "_"
+
+
+def test_clone_tag_derivation_uses_pwd_not_physical_cwd(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    physical = tmp_path / "physical"
+    physical.mkdir()
+    monkeypatch.chdir(physical)
+    monkeypatch.delenv("CLONE_TAG", raising=False)
+    monkeypatch.setenv("PWD", "/logical/logical clone")
+
+    assert physical.name != "logical clone"
+    assert implement_dispatch._derive_clone_tag_full() == "logical_clone"
+
+
+def test_clone_expected_tmpdir_prefix_reuses_clone_tag_helper(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("CLONE_TAG", raising=False)
+    monkeypatch.setenv("PWD", "/logical/repo.name")
+
+    assert implement_dispatch._clone_expected_tmpdir_prefix() == f"claude-implement-{implement_dispatch._derive_clone_tag_full()}-"
 
 
 def test_recovery_paths_filters_tmpdir_and_detects_changed_predirty(repo: Path) -> None:

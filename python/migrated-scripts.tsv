@@ -1300,3 +1300,14 @@ skills/implement/scripts/oos-file-conflict-deps.sh	#4967
 skills/implement/scripts/oos-file-conflict-deps.md	#4967
 skills/implement/scripts/test-oos-file-conflict-deps.sh	#4967
 skills/implement/scripts/test-oos-file-conflict-deps.md	#4967
+skills/implement/scripts/lib-implement-clone-tag.sh	#4971
+skills/implement/scripts/lib-implement-clone-tag.md	#4971
+skills/design/scripts/lib-plan-optional-trailers.sh	#4971
+skills/design/scripts/lib-plan-optional-trailers.md	#4971
+skills/design/scripts/lib-plan-optional-trailers.awk	#4971
+skills/design/scripts/test-trailer-awk.sh	#4971
+skills/design/scripts/test-trailer-awk.md	#4971
+skills/design/scripts/test-trailer-dedup.sh	#4971
+skills/design/scripts/test-trailer-has-any.sh	#4971
+skills/design/scripts/test-trailer-helpers.sh	#4971
+skills/design/scripts/test-trailer-validate.sh	#4971

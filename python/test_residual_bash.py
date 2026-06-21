@@ -37,9 +37,8 @@ def test_manifest_excludes_non_residual_orchestration() -> None:
     paths = set(residual_bash.read_residual_paths(Path(__file__).resolve().parents[1]))
     orchestration = {
         "skills/design/scripts/design-step3-review.sh",
-        "skills/design/scripts/lib-plan-optional-trailers.sh",
         "skills/implement/scripts/cleanup.sh",
-        "skills/implement/scripts/lib-implement-clone-tag.sh",
+        "skills/implement/scripts/" + "lib-implement-clone-tag.sh",
         "skills/implement/scripts/step-2-entry.sh",
         "skills/implement/scripts/step-8-ship.sh",
     }

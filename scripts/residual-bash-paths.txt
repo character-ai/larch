@@ -100,11 +100,6 @@ skills/design/scripts/test-findings-classification.sh
 skills/design/scripts/test-gate-b-apply-mode.sh
 skills/design/scripts/test-step3-orchestrator-fence.sh
 skills/design/scripts/test-step3-review-cap.sh
-skills/design/scripts/test-trailer-awk.sh
-skills/design/scripts/test-trailer-dedup.sh
-skills/design/scripts/test-trailer-has-any.sh
-skills/design/scripts/test-trailer-helpers.sh
-skills/design/scripts/test-trailer-validate.sh
 skills/fluff-analysis/scripts/test-fluff-analysis-corpus.sh
 skills/fluff-analysis/scripts/test-fluff-analysis.sh
 skills/implement/scripts/flush-execution-issues.sh
