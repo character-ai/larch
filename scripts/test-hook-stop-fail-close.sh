@@ -65,6 +65,7 @@ invoke_hook() {
     local path_prefix="${2:-}"
     local payload
     payload=$(jq -cn --arg cwd "$cwd" '{stop_hook_active:false,cwd:$cwd,session_id:"sid-test"}')
+    # shellcheck disable=SC2030 # subshell-local env scoping is intentional
     (
         export XDG_CACHE_HOME="$cache_root"
         export LARCH_IMPLEMENT_TMPDIR_TTL_SECONDS=0
@@ -161,6 +162,7 @@ assert_exact "T4 static fallback when jq and python3 JSON encoding fail" "$out" 
 
 # T5 — stop_hook_active=true is silent.
 payload=$(jq -cn --arg cwd "$cwd" '{stop_hook_active:true,cwd:$cwd}')
+# shellcheck disable=SC2031 # subshell-local env scoping is intentional
 out=$(
     export XDG_CACHE_HOME="$cache_root"
     export LARCH_IMPLEMENT_TMPDIR_TTL_SECONDS=0
@@ -170,7 +172,7 @@ out=$(
 assert_empty "T5 stop_hook_active=true is silent" "$out"
 
 # T6 — .review-boundary-passed releases the guard.
-touch "$cache_root/larch/sessions"/claude-implement-test-"$$"/.review-boundary-passed
+touch "$cache_root/larch/sessions/claude-implement-test-$$/.review-boundary-passed"
 out=$(invoke_hook "$cwd")
 assert_empty "T6 review-boundary-passed releases guard" "$out"
 
