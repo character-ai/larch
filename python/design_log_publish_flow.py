@@ -99,6 +99,7 @@ _PUBLISH_EXCLUDE_GLOBS = (
     "*-prompt.md",
     "step2b-codex-raw.*",
     "*-collector.failure.log",
+    "*-diagram-failure.bounded.log",
     "*.raw.cursor",
     "*.raw.claude",
 )

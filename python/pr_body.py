@@ -715,8 +715,9 @@ def slack_issue_announce_main(argv: list[str] | None = None) -> int:
 
 def _diagram_failure_capture(returncode: int, stderr: str, stdout: str) -> tuple[str, str]:
     raw_capture = f"stderr:\n{stderr or ''}\nstdout:\n{stdout or ''}\n"
+    tail_source = f"stderr:\n{stderr or ''}\n"
     try:
-        capture = redact.redact(design_diagram_log.strip_diagram_sections(raw_capture))
+        capture = redact.redact(design_diagram_log.strip_diagram_sections(tail_source))
     except Exception:
         return f"returncode: {returncode}\nredaction-failed\n", "redaction-failed"
     capture = capture.replace("```", "").replace("mermaid", "")

@@ -189,6 +189,14 @@ case "${MODE:-}" in
     ;;
   diagram)
     mkdir -p "$DESIGN_TMPDIR/.completed"
+    if [ ! -f "$DESIGN_TMPDIR/.completed/step-4" ]; then
+      printf '%s\n' "**⚠ 5b.5: missing .completed/step-4 — Gate C approval incomplete; repair Step 4 before diagram" >&2
+      exit 1
+    fi
+    if [ ! -f "$DESIGN_TMPDIR/.completed/step-5b" ]; then
+      printf '%s\n' "**⚠ 5b.5: missing .completed/step-5b — OOS filing incomplete; repair Step 5b before diagram" >&2
+      exit 1
+    fi
     design_pause_check
     SECONDS=0
     LARCH_TIMING_SKILL=design python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" timing mark "design Step 5b.5 — arch diagram" || true

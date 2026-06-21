@@ -75,9 +75,15 @@ def _determine_step(design_tmpdir: Path, plugin_root: Path) -> str:
         return "4"
     if (completed / "step-3").is_file() and not (completed / "step-3.5").is_file():
         return "3.5"
+    if (completed / "step-5b.5").is_file() and not (completed / "step-5b").is_file():
+        return "5b"
     if (completed / "step-5b").is_file() and not (completed / "step-5b.5").is_file():
         return "5b.5"
-    if (completed / "step-5b.5").is_file() and not (completed / "step-5c").is_file():
+    if (
+        (completed / "step-5b").is_file()
+        and (completed / "step-5b.5").is_file()
+        and not (completed / "step-5c").is_file()
+    ):
         return "5c"
     registry = plugin_root / "skills" / "design" / "scripts" / "step-name-registry.tsv"
     if not registry.is_file():
@@ -405,7 +411,7 @@ def pause_load_main(argv: Sequence[str]) -> int:
         manifest_run = str(manifest.get("run_id") or "")
         if (manifest_issue and manifest_issue != issue) or (manifest_run and manifest_run != run_id):
             return _load_fail_clear(issue, repo, "manifest-mismatch")
-        if step not in {"1", "1d", "2", "2b", "3", "3.5", "3b", "4", "5", "5b.5", "5c", "6"}:
+        if step not in {"1", "1d", "2", "2b", "3", "3.5", "3b", "4", "5", "5b", "5b.5", "5c", "6"}:
             return _load_fail_clear(issue, repo, "invalid-step")
         _ = (restore_tmp / ".resume-loaded").write_text("", encoding="utf-8")
         for child in restore_tmp.iterdir():
@@ -416,6 +422,13 @@ def pause_load_main(argv: Sequence[str]) -> int:
                 _ = shutil.copy2(child, target)
         (design_tmpdir / ".pause-save-complete").unlink(missing_ok=True)
         (design_tmpdir / ".pause-requested").unlink(missing_ok=True)
+        completed = design_tmpdir / ".completed"
+        if (
+            step == "5c"
+            and (completed / "step-5b").is_file()
+            and not (completed / "step-5b.5").is_file()
+        ):
+            step = "5b.5"
     finally:
         shutil.rmtree(restore_tmp, ignore_errors=True)
 

@@ -309,6 +309,57 @@ def test_determine_step_routes_step5b_to_step5b5_then_step5c(tmp_path: Path) -> 
     assert design_pause._determine_step(design, Path.cwd()) == "5c"  # pyright: ignore[reportPrivateUsage]
 
 
+def test_determine_step_returns_5b_when_step5b5_without_step5b(tmp_path: Path) -> None:
+    design = tmp_path / "design"
+    completed = design / ".completed"
+    completed.mkdir(parents=True)
+    _ = (completed / "step-5b.5").write_text("", encoding="utf-8")
+
+    assert design_pause._determine_step(design, Path.cwd()) == "5b"  # pyright: ignore[reportPrivateUsage]
+
+
+def test_pause_load_accepts_step5b_marker(tmp_path: Path, monkeypatch: object, capsys: object) -> None:
+    body = _pause_marker_body(run_id="RUN1", issue="9", step="5b", repo="owner/repo")
+    files, blobs = _restore_blobs("RUN1", issue_number="9", manifest_run="RUN1")
+    fake = _FakeGit(files=files, blobs=blobs)
+    _patch_load(monkeypatch, body, fake)
+
+    rc = design_pause.pause_load_main(["--design-tmpdir", str(tmp_path / "d"), "--issue", "9", "--repo", "owner/repo"])
+
+    out = capsys.readouterr().out  # type: ignore[attr-defined]
+    assert rc == 0
+    assert "LOAD_OK=true" in out
+    assert "STEP=5b" in out
+
+
+def test_pause_load_downgrades_legacy_step5c_to_step5b5(tmp_path: Path, monkeypatch: object, capsys: object) -> None:
+    body = _pause_marker_body(run_id="RUN1", issue="9", step="5c", repo="owner/repo")
+    base = "larch-logs/design/RUN1/"
+    files = [
+        base + "manifest.json",
+        base + "run-params.json",
+        base + "pause-state.txt",
+        base + ".completed/step-5b",
+    ]
+    blobs = {
+        base + "manifest.json": json.dumps({"issue_number": 9, "run_id": "RUN1"}),
+        base + "run-params.json": "{}",
+        base + "pause-state.txt": "STEP=5c\n",
+        base + ".completed/step-5b": "",
+    }
+    fake = _FakeGit(files=files, blobs=blobs)
+    _patch_load(monkeypatch, body, fake)
+
+    dest = tmp_path / "d"
+    rc = design_pause.pause_load_main(["--design-tmpdir", str(dest), "--issue", "9", "--repo", "owner/repo"])
+
+    out = capsys.readouterr().out  # type: ignore[attr-defined]
+    assert rc == 0
+    assert "LOAD_OK=true" in out
+    assert "STEP=5b.5" in out
+    assert (dest / ".completed" / "step-5b").is_file()
+
+
 def test_pause_load_accepts_step5b5_marker(tmp_path: Path, monkeypatch: object, capsys: object) -> None:
     body = _pause_marker_body(run_id="RUN1", issue="9", step="5b.5", repo="owner/repo")
     files, blobs = _restore_blobs("RUN1", issue_number="9", manifest_run="RUN1")

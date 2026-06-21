@@ -10,22 +10,27 @@ import redact
 _DETAIL_LIMIT = 240
 _SECTION_RE = re.compile(r"^##[ \t]+(Architecture Diagram|Code Flow Diagram)[ \t]*$", re.IGNORECASE)
 _HEADING_RE = re.compile(r"^#{1,2}(\s|$)")
-_FENCE_OPEN_RE = re.compile(r"^ {0,3}`{3,}\s*mermaid\s*$", re.IGNORECASE)
+_FENCE_OPEN_RE = re.compile(r"^ {0,3}`{3,}\s*\S*")
 _FENCE_CLOSE_RE = re.compile(r"^ {0,3}`{3,}\s*$")
+_MERMAID_LINE_RE = re.compile(
+    r"^\s*(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|pie|journey)\b",
+    re.IGNORECASE,
+)
+_EDGE_LINE_RE = re.compile(r"^\s*[\w\[\]()\"'-]+\s*(-->|---|\-\.-|==>|\.+)\s*[\w\[\]()\"'-]+")
 _SAFE_TOKEN_RE = re.compile(r"[^A-Za-z0-9._-]+")
 
 
 def strip_diagram_sections(text: str) -> str:
-    """Remove diagram sections and Mermaid fences from captured text."""
+    """Remove diagram sections, fenced blocks, and unfenced graph syntax from captured text."""
     kept: list[str] = []
     in_diagram_section = False
-    in_mermaid_fence = False
+    in_fence = False
     fence_len = 3
     for line in text.splitlines():
-        if in_mermaid_fence:
+        if in_fence:
             close = _FENCE_CLOSE_RE.match(line)
             if close and len(close.group(0).lstrip()) >= fence_len:
-                in_mermaid_fence = False
+                in_fence = False
             continue
         if in_diagram_section:
             if _SECTION_RE.match(line):
@@ -37,15 +42,31 @@ def strip_diagram_sections(text: str) -> str:
         if _SECTION_RE.match(line):
             in_diagram_section = True
             continue
+        if _MERMAID_LINE_RE.match(line) or _EDGE_LINE_RE.match(line):
+            continue
         open_match = _FENCE_OPEN_RE.match(line)
         if open_match:
             stripped_open = open_match.group(0).lstrip()
             fence_len = len(stripped_open) - len(stripped_open.lstrip("`"))
-            in_mermaid_fence = True
+            in_fence = True
             continue
         kept.append(line)
     out = "\n".join(kept).strip()
     return out + ("\n" if out else "")
+
+
+def _sanitize_bounded_text(raw: str) -> str:
+    stripped = strip_diagram_sections(raw)
+    stripped = re.sub(r"```+", "", stripped)
+    stripped = re.sub(r"(?i)mermaid", "", stripped)
+    try:
+        stripped = redact.redact(stripped)
+    except Exception:
+        stripped = "redaction-failed"
+    detail = re.sub(r"\s+", " ", stripped).strip() or "unknown"
+    if len(detail) > _DETAIL_LIMIT:
+        detail = "..." + detail[-(_DETAIL_LIMIT - 3):]
+    return detail
 
 
 def _bounded_detail(raw_capture_path: Path | None) -> str:
@@ -55,17 +76,7 @@ def _bounded_detail(raw_capture_path: Path | None) -> str:
         text = raw_capture_path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return ""
-    stripped = strip_diagram_sections(text)
-    stripped = re.sub(r"```+", "", stripped)
-    stripped = re.sub(r"(?i)mermaid", "", stripped)
-    try:
-        stripped = redact.redact(stripped)
-    except Exception:
-        stripped = "redaction-failed"
-    detail = re.sub(r"\s+", " ", stripped).strip()
-    if len(detail) > _DETAIL_LIMIT:
-        detail = "..." + detail[-(_DETAIL_LIMIT - 3):]
-    return detail
+    return _sanitize_bounded_text(text)
 
 
 def bounded_diagram_warning_body(reason: str, exit_code: int | str) -> str:
@@ -89,7 +100,7 @@ def write_bounded_diagram_failure_log(
     raw_path = Path(raw_capture_path) if raw_capture_path else None
     slug = _SAFE_TOKEN_RE.sub("-", site.strip().lower()).strip("-") or "diagram"
     path = tmp / f"{slug}-diagram-failure.bounded.log"
-    safe_reason = re.sub(r"\s+", " ", str(reason)).strip() or "unknown"
+    safe_reason = _sanitize_bounded_text(str(reason))
     lines = [
         f"site={site}",
         f"reason={safe_reason}",

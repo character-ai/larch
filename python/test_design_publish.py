@@ -229,6 +229,7 @@ def test_publish_main_requires_step5b5_sentinel(tmp_path: Path) -> None:
     )
 
     assert result.returncode == 5
+    assert "missing .completed/step-5b.5" in result.stdout
     assert not (design / "composed-plan.redacted.md").exists()
 
 

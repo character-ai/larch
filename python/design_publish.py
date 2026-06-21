@@ -213,6 +213,11 @@ def publish_core(argv: Sequence[str]) -> int:
     if not (design_tmpdir / ".completed" / "step-5b").is_file():
         return 5
     if not (design_tmpdir / ".completed" / "step-5b.5").is_file():
+        print(
+            "**⚠ Step 5c: missing .completed/step-5b.5 — post-approval diagram step incomplete; "
+            "repair Step 5b.5 before publish**",
+            flush=True,
+        )
         return 5
     composed_plan = design_tmpdir / "composed-plan.md"
     if not composed_plan.is_file() or composed_plan.stat().st_size == 0:
