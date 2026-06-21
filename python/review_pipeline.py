@@ -21,6 +21,7 @@ from pathlib import Path
 
 import logging_util
 import proc
+import research_eval
 import voting
 from plan_scout import REVIEW_RESERVED as RESERVED_DYNAMIC_NAMES
 
@@ -1228,9 +1229,17 @@ def _file_has_no_findings_sentinel(path: Path) -> bool:
         try:
             data = json.loads(stripped)
         except json.JSONDecodeError:
-            return False
-        return isinstance(data, dict) and data.get("no_issues_found") is True
-    return False
+            data = None
+        if isinstance(data, dict) and data.get("no_issues_found") is True:
+            return True
+    # Issue #4911: also accept a standalone {"no_issues_found": true} line when
+    # narration precedes it. Reuse the #4891 helper, which matches only when a
+    # line's entire stripped content is the JSON object, so JSON embedded inline
+    # in a prose line is not accepted.
+    return any(
+        research_eval._line_json_no_issues(line)  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+        for line in text.splitlines()
+    )
 
 
 def _parse_output(path: Path, label: str, mode: str) -> list[tuple[str, str, str]]:

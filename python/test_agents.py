@@ -2642,6 +2642,44 @@ def test_append_implement_launch_failure_uses_retry_failure_diag_and_auth_verdic
     assert "not logged in" in tail.read_text(encoding="utf-8")
 
 
+def test_append_implement_launch_failure_uses_descriptive_site_label(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Issue #4911 item 1: /implement Step 2 implement-launch failures must carry a
+    # descriptive, caller-consistent site label ("implement Step 2") at both the
+    # run-log append-failure call and the vendor-failure-diagnostics part — parity
+    # with the reviewer-launch logger's "review Step 2". The logger is
+    # tool-parameterized, so Codex and Cursor share the label.
+    output = tmp_path / "codex-impl.txt"
+    sidecar = tmp_path / "codex-impl.log"
+    _ = sidecar.write_text("launcher stderr detail\n", encoding="utf-8")
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    captured: dict[str, str] = {}
+
+    def fake_run(argv: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        a = [str(x) for x in argv]
+        if "append-failure" in a:
+            captured["site"] = a[a.index("--site") + 1]
+        return subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(agents.subprocess, "run", fake_run)
+    parts_dir = tmp_path / "vendor-failure-diagnostics.parts"
+
+    agents._append_implement_launch_failure("codex", output, sidecar, 1)  # pylint: disable=protected-access
+    assert captured["site"] == "implement Step 2"
+    combined = "".join(p.read_text(encoding="utf-8") for p in sorted(parts_dir.glob("*")))
+    assert "implement Step 2 codex-implement" in combined
+
+    cursor_out = tmp_path / "cursor-impl.txt"
+    cursor_sidecar = tmp_path / "cursor-impl.log"
+    _ = cursor_sidecar.write_text("launcher stderr detail\n", encoding="utf-8")
+    agents._append_implement_launch_failure("cursor", cursor_out, cursor_sidecar, 1)  # pylint: disable=protected-access
+    assert captured["site"] == "implement Step 2"
+    combined = "".join(p.read_text(encoding="utf-8") for p in sorted(parts_dir.glob("*")))
+    assert "implement Step 2 cursor-implement" in combined
+
+
 def test_launch_codex_exec_preflight_model_args_writes_bundle(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

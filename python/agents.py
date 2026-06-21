@@ -4979,14 +4979,14 @@ def _append_implement_launch_failure(tool: str, output: Path, sidecar: Path, lau
     verdict = external_auth_verdict(tool, *_implement_failure_auth_paths(tool, output, sidecar, source))
     if verdict == "auth":
         verdict = "auth-retries-exhausted"
-    args = [sys.executable, str(_PY_CLI), "run-log", "append-failure", "--log", str(Path(os.environ.get("IMPLEMENT_TMPDIR", ".")) / "execution-issues.md"), "--site", "2", "--tool", f"{tool}-implement", "--exit-code", str(launcher_exit), "--category", "Tool Failures", "--output-file", str(source), "--redact"]
+    args = [sys.executable, str(_PY_CLI), "run-log", "append-failure", "--log", str(Path(os.environ.get("IMPLEMENT_TMPDIR", ".")) / "execution-issues.md"), "--site", "implement Step 2", "--tool", f"{tool}-implement", "--exit-code", str(launcher_exit), "--category", "Tool Failures", "--output-file", str(source), "--redact"]
     if verdict:
         args.extend(["--verdict", verdict])
     if retry_count:
         args.extend(["--retry-count", str(retry_count)])
     if os.environ.get("IMPLEMENT_TMPDIR"):
         subprocess.run(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
-        _append_vendor_failure_diagnostics(source, site=f"2 {tool}-implement", exit_code=launcher_exit)
+        _append_vendor_failure_diagnostics(source, site=f"implement Step 2 {tool}-implement", exit_code=launcher_exit)
     tail = output.with_suffix(output.suffix + ".stderr-tail")
     rendered = render_failed_agent_stderr_tail(source) if source.is_file() and source.stat().st_size > 0 else ""
     if rendered:
