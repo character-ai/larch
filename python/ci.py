@@ -61,7 +61,7 @@ def status_main(argv: list[str]) -> int:
     parser.add_argument("--repo", required=True)
     parser.add_argument("--base-remote", default="origin")
     parser.add_argument("--base-ref", default="main")
-    parser.add_argument("--empty-checks-grace", default=0, type=int)
+    parser.add_argument("--empty-checks-grace", default=config.CI_WAIT_EMPTY_CHECKS_GRACE_SEC, type=int)
     args = _parse(parser, argv, 1)
     if isinstance(args, int):
         _status_error_kv()
@@ -176,7 +176,7 @@ def wait_main(argv: list[str]) -> int:
     parser.add_argument("--repo", required=True)
     parser.add_argument("--base-remote", default="origin")
     parser.add_argument("--base-ref", default="main")
-    parser.add_argument("--empty-checks-grace", default=0, type=int)
+    parser.add_argument("--empty-checks-grace", default=config.CI_WAIT_EMPTY_CHECKS_GRACE_SEC, type=int)
     parser.add_argument("--iteration", default=0, type=int)
     parser.add_argument("--rebase-count", default=0, type=int)
     parser.add_argument("--fix-attempts", default=0, type=int)

@@ -1161,11 +1161,70 @@ def _record_applied_finding_keys(tmpdir: Path, round_num: int, keys: Sequence[st
     _write_atomic(path, "".join(f"{row}\n" for row in rows))
 
 
-def _filter_rejected_findings_body(text: str, applied: set[str], marker_re: str) -> tuple[str, bool]:
-    """Filter ``text`` blocks starting with ``marker_re``, dropping applied keys.
+# A finding tagged ``[ALREADY_ADDRESSED]`` by a reviewer is one the current plan
+# already satisfies (issue #4920). Such findings are suppressed from the Step 4
+# not-adopted report, and their concern key is laddered across rounds so the same
+# already-satisfied concern does not recur once any round flags it.
+_ALREADY_ADDRESSED_RE = re.compile(r"\[ALREADY_ADDRESSED\]", re.IGNORECASE)
+_ALREADY_ADDRESSED_LEDGER = ".step3-already-addressed-finding-keys.tsv"
 
-    Returns ``(filtered_body, had_blocks)`` where ``had_blocks`` is true when at
-    least one block header matched ``marker_re``.
+
+def _read_already_addressed_finding_keys(tmpdir: Path) -> set[str]:
+    """Cumulative concern keys flagged ``[ALREADY_ADDRESSED]`` in any round."""
+    path = tmpdir / _ALREADY_ADDRESSED_LEDGER
+    if not path.is_file() or path.is_symlink():
+        return set()
+    keys: set[str] = set()
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        key = line.strip()
+        if key:
+            keys.add(key)
+    return keys
+
+
+def _record_already_addressed_finding_keys(tmpdir: Path, keys: Sequence[str]) -> None:
+    """Merge ``keys`` into the already-addressed ledger, idempotently and sorted."""
+    existing = _read_already_addressed_finding_keys(tmpdir)
+    merged = existing | {key for key in keys if key}
+    if merged == existing:
+        return
+    _write_atomic(
+        tmpdir / _ALREADY_ADDRESSED_LEDGER,
+        "".join(f"{key}\n" for key in sorted(merged)),
+    )
+
+
+def _already_addressed_keys_in_rejected(tmpdir: Path) -> list[str]:
+    """Concern keys of rejected blocks tagged ``[ALREADY_ADDRESSED]`` this round."""
+    path = tmpdir / "rejected-findings.md"
+    if not path.is_file() or path.is_symlink():
+        return []
+    text = path.read_text(encoding="utf-8", errors="replace")
+    for marker_re in (r"(?m)^### \[Plan Review\] ", r"(?m)^### FINDING_[0-9]+:"):
+        matches = list(re.finditer(marker_re, text))
+        if not matches:
+            continue
+        keys: list[str] = []
+        for idx, match in enumerate(matches):
+            end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
+            block = text[match.start():end]
+            if _ALREADY_ADDRESSED_RE.search(block):
+                # Key on the tag-stripped block so a later round that re-raises
+                # the same concern WITHOUT the tag matches this laddered key.
+                key = _finding_dedup_key(_ALREADY_ADDRESSED_RE.sub("", block))
+                if key:
+                    keys.append(key)
+        return keys
+    return []
+
+
+def _filter_rejected_findings_body(text: str, applied: set[str], marker_re: str) -> tuple[str, bool]:
+    """Filter ``text`` blocks starting with ``marker_re``, dropping suppressed keys.
+
+    A block is dropped when its finding key is in ``applied`` (applied in a prior
+    round, or flagged already-addressed) or when the block itself carries the
+    ``[ALREADY_ADDRESSED]`` tag. Returns ``(filtered_body, had_blocks)`` where
+    ``had_blocks`` is true when at least one block header matched ``marker_re``.
     """
     matches = list(re.finditer(marker_re, text))
     if not matches:
@@ -1178,7 +1237,7 @@ def _filter_rejected_findings_body(text: str, applied: set[str], marker_re: str)
         end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
         block = text[match.start():end]
         key = _finding_dedup_key(block)
-        if key and key in applied:
+        if (key and key in applied) or _ALREADY_ADDRESSED_RE.search(block):
             continue
         kept.append(block)
     return "".join(kept), True
@@ -1228,8 +1287,8 @@ def emit_rejected_findings(argv: Sequence[str]) -> int:
     text = path.read_text(encoding="utf-8", errors="replace")
     if not text.strip():
         return 0
-    applied = _read_all_applied_finding_keys(tmpdir)
-    if not applied:
+    applied = _read_all_applied_finding_keys(tmpdir) | _read_already_addressed_finding_keys(tmpdir)
+    if not applied and not _ALREADY_ADDRESSED_RE.search(text):
         print(_format_rejected_findings_report(text, report_framing=ns.report_framing), end="")
         return 0
     filtered, had_blocks = _filter_rejected_findings_body(
@@ -1336,6 +1395,7 @@ def plan_review_continuation(argv: Sequence[str]) -> int:
     if not cont and reason == "small-clean" and duplicate_accepted > 0 and no_new_material_findings and has_material_findings:
         reason = "converged-no-new-findings"
     _record_applied_finding_keys(tmpdir, review_count, block_keys)
+    _record_already_addressed_finding_keys(tmpdir, _already_addressed_keys_in_rejected(tmpdir))
     for key, value in (
         ("PLAN_REVIEW_CONTINUE", "true" if cont else "false"),
         ("PLAN_REVIEW_CONTINUE_REASON", reason),

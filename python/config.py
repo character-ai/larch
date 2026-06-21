@@ -68,7 +68,10 @@ STALL_RECOVERY_NEEDS_USER_BAIL_REASON_TOKENS: Final[tuple[str, ...]] = (
 SUBPROCESS_DEFAULT_TIMEOUT_SEC: Final = 1800
 CI_WAIT_TIMEOUT_SEC: Final = 1800
 CI_WAIT_POLL_INTERVAL_SEC: Final = 10
-CI_WAIT_EMPTY_CHECKS_GRACE_SEC: Final = 0
+# Default empty-checks grace for the manual `ci status` / `ci wait` CLIs: a
+# runless PR head (zero attached checks) classifies as NO_CHECKS within this
+# window instead of polling the full CI_WAIT_TIMEOUT_SEC budget (issue #4924).
+CI_WAIT_EMPTY_CHECKS_GRACE_SEC: Final = 120
 # Bounded "did a fresh CI run start?" window for the ship merge loop after a
 # head-changing push (CI-fix or rebase). When the push triggers no fresh run
 # (observed: GitHub drops the `synchronize` event, issue #4867), zero checks on
