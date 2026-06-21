@@ -951,6 +951,26 @@ def test_weighted_finding_points_and_attribution_helpers() -> None:
     labels = ["Cursor-Pragmatic", "Codex-Arch"]
     assert voting.tokenize_finding_reviewers("Cursor-Pragmatic Codex-Arch", labels) == labels
     assert voting.split_classification_attribution("Cursor-Pragmatic, Codex-Arch", column="finding_reviewers", labels=labels) == labels
+    assert voting.raw_sole_finder_attribution(
+        "Cursor-Pragmatic Codex-Arch",
+        column="finding_reviewers",
+        corpus_labels=labels,
+    ) == labels
+    assert voting.raw_sole_finder_attribution(
+        "Cursor-Pragmatic Codex-Arch",
+        column="finding_reviewers",
+        corpus_labels=["Cursor-Pragmatic"],
+    ) == []
+    assert voting.raw_sole_finder_attribution(
+        "Structure, Unknown",
+        column="finding_reviewers",
+        corpus_labels=["Structure"],
+    ) == []
+    assert voting.raw_sole_finder_attribution(
+        "Unknown-Label",
+        column="finding_reviewers",
+        corpus_labels=[],
+    ) == ["Unknown-Label"]
     assert voting.split_classification_attribution("cursor-a|codex-b", column="reviewer_slots") == ["cursor-a", "codex-b"]
 
 
@@ -1038,6 +1058,40 @@ def test_scoreboard_main_weights_classification_tsv(tmp_path: Path) -> None:
     )
     assert result.returncode == 0
     assert "| Structure | 1 |" in score_file.read_text(encoding="utf-8")
+
+    bonus_tsv = tmp_path / "bonus-classification.tsv"
+    bonus_tsv.write_text(
+        "\t".join(header) + "\n"
+        + row("FINDING_SOLE", "Solo", "accepted", "YES", "minor", "", "in_scope") + "\n"
+        + row("OOS_1", "OosOnly", "accepted", "YES", "blocker", "", "oos") + "\n"
+        + row("FINDING_REJECTED", "Rejected", "rejected", "NO", "major", "", "in_scope") + "\n"
+        + row("FINDING_NEUTRAL", "Neutralist", "neutral", "YES", "minor", "", "in_scope") + "\n"
+        + row("FINDING_COMMA", "Structure, Testing", "accepted", "YES", "minor", "", "in_scope") + "\n"
+        + row("FINDING_FILTERED_COMMA", "Structure, Unknown", "accepted", "YES", "minor", "", "in_scope") + "\n"
+        + row("FINDING_WHITESPACE", "Cursor-Pragmatic Codex-Arch", "accepted", "YES", "minor", "", "in_scope") + "\n",
+        encoding="utf-8",
+    )
+    result = run_cli(
+        "voting",
+        "scoreboard",
+        "--findings-classification-file",
+        str(bonus_tsv),
+        "--reviewer-labels",
+        "Solo, OosOnly, Rejected, Neutralist, Structure, Testing, Cursor-Pragmatic, Codex-Arch",
+        "--output-file",
+        str(score_file),
+        env={**os.environ, "LARCH_UNIQUE_FINDER_BONUS": "0.25"},
+    )
+    assert result.returncode == 0
+    text = score_file.read_text(encoding="utf-8")
+    assert "| Solo | 1.25 |" in text
+    assert "| OosOnly | 1 |" in text
+    assert "| Rejected | -1 |" in text
+    assert "| Neutralist | -0.25 |" in text
+    assert "| Structure | 2 |" in text
+    assert "| Testing | 1 |" in text
+    assert "| Cursor-Pragmatic | 1 |" in text
+    assert "| Codex-Arch | 1 |" in text
 
 
 _ATTRIBUTED_BALLOT = """### FINDING_1: Codex path issue

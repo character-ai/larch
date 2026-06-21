@@ -810,7 +810,8 @@ def _accepted_reviewers_from_classification(
     *,
     round_dirs: list[Path],
     label_map: dict[str, str] | None = None,
-) -> list[tuple[str, int]]:
+    active_bonus: float = 0.0,
+) -> list[tuple[str, float]]:
     """Weighted in-scope accepted-finding reviewer attribution from classification TSV."""
     lines = _read_lines_best_effort(classification)
     if not lines:
@@ -820,14 +821,18 @@ def _accepted_reviewers_from_classification(
     if not reviewer_column or "voting_result" not in header:
         return []
     labels = _human_attribution_labels(round_dirs, reviewer_column=reviewer_column)
-    rows: list[tuple[str, int]] = []
+    rows: list[tuple[str, float]] = []
     for line in lines[1:]:
         raw_cols = line.split("\t")
         cols = {name: raw_cols[idx].strip() if idx < len(raw_cols) else "" for idx, name in enumerate(header)}
         if cols.get("voting_result") != "accepted" or not _classification_row_in_scope(cols, header):
             continue
-        points = voting.accepted_points_from_classification_row(cols, header)
         reviewer_cell = cols.get(reviewer_column, "")
+        raw_reviewers = voting.raw_sole_finder_attribution(
+            reviewer_cell,
+            column=reviewer_column,
+            corpus_labels=labels,
+        )
         reviewers = voting.split_classification_attribution(
             reviewer_cell,
             column=reviewer_column,
@@ -837,6 +842,9 @@ def _accepted_reviewers_from_classification(
             cell = reviewer_cell.strip()
             if cell:
                 reviewers = [part.strip() for part in cell.split(",") if part.strip()]
+        points = float(voting.accepted_points_from_classification_row(cols, header))
+        if active_bonus > 0 and len(raw_reviewers) == 1:
+            points += active_bonus
         for reviewer in reviewers:
             label = reviewer
             if reviewer_column == "reviewer_slots":
@@ -851,14 +859,16 @@ def _top_reviewers_from_classification(
     *,
     top_n: int,
     label_map: dict[str, str] | None = None,
-) -> list[tuple[str, int]]:
+) -> list[tuple[str, float]]:
     """Whole-run Top-reviewers aggregated from per-round findings-classification.tsv."""
-    counts: dict[str, int] = {}
+    counts: dict[str, float] = {}
+    active_bonus = voting.unique_finder_bonus_from_env()
     for round_dir in round_dirs:
         for reviewer, points in _accepted_reviewers_from_classification(
             round_dir / "findings-classification.tsv",
             round_dirs=round_dirs,
             label_map=label_map,
+            active_bonus=active_bonus,
         ):
             counts[reviewer] = counts.get(reviewer, 0) + points
     return list(sorted(counts.items(), key=lambda item: (-item[1], item[0]))[:top_n])
@@ -1046,7 +1056,7 @@ def render_phase_detail(
     lines.append("**Top reviewers** (by per-round accepted-point score, whole run):")
     if top_reviewers:
         for index, (label, count) in enumerate(top_reviewers, start=1):
-            lines.append(f"{index}. {label} — {count}")
+            lines.append(f"{index}. {label} — {voting.format_score(count)}")
     else:
         lines.append("- (no accepted-point score attributed to a reviewer slot)")
     lines.append("")

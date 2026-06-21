@@ -399,6 +399,31 @@ def tokenize_finding_reviewers(cell: str, labels: Iterable[str]) -> list[str]:
     return tokens
 
 
+def _finding_reviewers_segment_fully_tokenized(segment: str, labels: Iterable[str]) -> bool:
+    label_set = {label for label in labels if label}
+    if not label_set:
+        return False
+    sorted_labels = sorted(label_set, key=lambda label: (-len(label), label))
+    pos = 0
+    while pos < len(segment):
+        if segment[pos].isspace():
+            pos += 1
+            continue
+        matched = ""
+        for label in sorted_labels:
+            if not segment.startswith(label, pos):
+                continue
+            end = pos + len(label)
+            if end < len(segment) and not segment[end].isspace():
+                continue
+            matched = label
+            break
+        if not matched:
+            return False
+        pos += len(matched)
+    return True
+
+
 def grow_attribution_labels(
     labels: list[str],
     seen: set[str],
@@ -439,6 +464,32 @@ def split_classification_attribution(
     if column == "reviewer_slots":
         return [part.strip() for part in cell.split("|") if part.strip()]
     return [cell]
+
+
+def raw_sole_finder_attribution(
+    reviewer_cell: str,
+    *,
+    column: str,
+    corpus_labels: Iterable[str],
+) -> list[str]:
+    """Return raw attribution tokens for sole-finder bonus eligibility."""
+    cell = reviewer_cell.strip()
+    if not cell:
+        return []
+    if column != "finding_reviewers":
+        return split_classification_attribution(cell, column=column)
+    comma_parts = [part.strip() for part in cell.split(",") if part.strip()]
+    if len(comma_parts) > 1:
+        return []
+    if not comma_parts:
+        return []
+    segment = comma_parts[0]
+    tokens = tokenize_finding_reviewers(segment, corpus_labels)
+    if tokens:
+        if _finding_reviewers_segment_fully_tokenized(segment, corpus_labels):
+            return tokens
+        return []
+    return comma_parts
 
 
 def accepted_finding_points_from_severities(
@@ -1723,12 +1774,24 @@ def _scoreboard_points_from_classification(
     with classification_file.open(encoding="utf-8", errors="replace", newline="") as handle:
         reader = csv.DictReader(handle, delimiter="\t")
         header = list(reader.fieldnames or [])
+        rows = list(reader)
         reviewer_column = "finding_reviewers" if "finding_reviewers" in header else "reviewer_slots"
         label_set = reviewer_labels if reviewer_column == "finding_reviewers" else None
-        for row in reader:
+        corpus_labels = list(reviewer_labels)
+        corpus_seen = set(corpus_labels)
+        if reviewer_column == "finding_reviewers":
+            for row in rows:
+                grow_attribution_labels(corpus_labels, corpus_seen, row.get(reviewer_column, ""))
+        active_bonus = unique_finder_bonus_from_env()
+        for row in rows:
             result = (row.get("voting_result") or "").strip()
             if result not in {"accepted", "rejected", "neutral"}:
                 continue
+            raw_reviewers = raw_sole_finder_attribution(
+                row.get(reviewer_column, ""),
+                column=reviewer_column,
+                corpus_labels=corpus_labels,
+            )
             reviewers = split_classification_attribution(
                 row.get(reviewer_column, ""),
                 column=reviewer_column,
@@ -1736,6 +1799,8 @@ def _scoreboard_points_from_classification(
             )
             if result == "accepted":
                 delta = accepted_points_from_classification_row(row, header)
+                if active_bonus > 0 and not _classification_row_is_oos(row, header) and len(raw_reviewers) == 1:
+                    delta += active_bonus
             elif result == "rejected":
                 delta = -1
             elif _classification_row_is_oos(row, header):
