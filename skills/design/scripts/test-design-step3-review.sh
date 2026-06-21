@@ -10,7 +10,6 @@ pass() { printf 'PASS: %s\n' "$*"; }
 make_fake_step3_plugin() {
   local dir="$1" run_body="$2"
   mkdir -p "$dir/scripts" "$dir/skills/design/scripts" "$dir/python"
-  ln -sf "$ROOT/scripts/read-result-env.sh" "$dir/scripts/read-result-env.sh"
   cat >"$dir/skills/design/scripts/plan-review-loop-stub.sh" <<EOFSTUB
 #!/usr/bin/env bash
 set -euo pipefail
@@ -19,15 +18,26 @@ EOFSTUB
   chmod +x "$dir/skills/design/scripts/plan-review-loop-stub.sh"
   cat >"$dir/python/cli.py" <<'CLIPY'
 #!/usr/bin/env python3
-import subprocess, sys, os
-if len(sys.argv) >= 3 and sys.argv[1] == "plan-review" and sys.argv[2] == "run":
+import os
+import subprocess
+import sys
+
+BAKED_REAL_ROOT = "__LARCH_TEST_REAL_ROOT__"
+if len(sys.argv) >= 3 and sys.argv[1] == "plan-review" and sys.argv[2] == "run" and "--record-report-evidence" not in sys.argv[3:]:
     run_sh = os.path.join(os.environ.get("CLAUDE_PLUGIN_ROOT", ""), "skills", "design", "scripts", "plan-review-loop-stub.sh")
     sys.exit(subprocess.call(["/bin/bash", run_sh]))
-real_cli = os.path.join(os.environ.get("LARCH_TEST_REAL_REPO_ROOT", ""), "python", "cli.py")
+real_root = os.environ.get("LARCH_TEST_REAL_REPO_ROOT") or BAKED_REAL_ROOT
+real_cli = os.path.join(real_root, "python", "cli.py")
 if real_cli and os.path.isfile(real_cli):
     sys.exit(subprocess.call([sys.executable, real_cli, *sys.argv[1:]]))
 sys.exit(0)
 CLIPY
+  python3 - "$dir/python/cli.py" "$ROOT" <<'PY'
+from pathlib import Path
+import sys
+path = Path(sys.argv[1])
+path.write_text(path.read_text(encoding="utf-8").replace("__LARCH_TEST_REAL_ROOT__", sys.argv[2]), encoding="utf-8")
+PY
   chmod +x "$dir/python/cli.py"
 }
 
@@ -76,8 +86,12 @@ fi
 if grep -Fq '**⚠ Step 3: postplan failed' "$WRAPPER"; then
   fail 'postplan-failed stdout must remain KV-only'
 fi
-grep -Fq 'SUMMARY_OUTCOME=failed-postplan' "$WRAPPER" || fail 'postplan-failed summary KV missing'
-grep -Fq 'SUMMARY_OUTCOME=failed-judge-panel' "$WRAPPER" || fail 'panel-init-failed summary KV missing'
+grep -Fq 'plan-review normalize-status' "$WRAPPER" || fail 'normalizer delegation missing'
+grep -Fq 'SUMMARY_OUTCOME=failed-postplan' "$MODULE" || fail 'postplan-failed summary KV missing from normalizer'
+grep -Fq 'SUMMARY_OUTCOME=failed-judge-panel' "$MODULE" || fail 'panel-init-failed summary KV missing from normalizer'
+grep -Fq 'file=sys.stderr' "$MODULE" || fail 'normalizer markdown warnings must route to stderr'
+grep -Fq 'load_bash_quoted_env' "$MODULE" || fail 'normalizer must load quoted env values'
+grep -Fq '_step3_read_result_env_quiet' "$MODULE" || fail 'quiet read-result-env helper missing'
 
 D_STEP3=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-stage.XXXXXX")
 trap 'rm -rf "$D_STEP3"' EXIT
@@ -335,9 +349,10 @@ import sys
 if len(sys.argv) >= 3 and sys.argv[1] == "plan-review" and sys.argv[2] == "run":
     run_sh = os.path.join(os.environ.get("CLAUDE_PLUGIN_ROOT", ""), "skills", "design", "scripts", "plan-review-loop-stub.sh")
     sys.exit(subprocess.call(["/bin/bash", run_sh]))
-# design read-result-env must delegate to the real CLI so result-env reads work
-if len(sys.argv) >= 3 and sys.argv[1] == "design" and sys.argv[2] == "read-result-env":
-    real_cli = os.path.join(os.environ.get("LARCH_TEST_REAL_REPO_ROOT", ""), "python", "cli.py")
+# Normalization and every non-loop plan-review verb must delegate to the real CLI.
+if len(sys.argv) >= 3 and sys.argv[1] == "plan-review" and sys.argv[2] != "run":
+    real_root = os.environ.get("LARCH_TEST_REAL_REPO_ROOT") or "__LARCH_TEST_REAL_ROOT__"
+    real_cli = os.path.join(real_root, "python", "cli.py")
     if real_cli and os.path.isfile(real_cli):
         sys.exit(subprocess.call([sys.executable, real_cli, *sys.argv[1:]]))
     sys.exit(0)
@@ -349,6 +364,12 @@ with open(os.environ["ORDER_LOG"], "a", encoding="utf-8") as handle:
     handle.write("helper " + " ".join(sys.argv[1:]) + "\n")
 raise SystemExit(int(os.environ.get("HELPER_RC", "0")))
 PYEOF
+python3 - "$FAKE_KILL/python/cli.py" "$ROOT" <<'PY'
+from pathlib import Path
+import sys
+path = Path(sys.argv[1])
+path.write_text(path.read_text(encoding="utf-8").replace("__LARCH_TEST_REAL_ROOT__", sys.argv[2]), encoding="utf-8")
+PY
 order_log="$D_KILL/order.log"
 set +e
 kill_out=$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$FAKE_KILL" DESIGN_TMPDIR="$D_KILL" ISSUE_NUMBER=9 \
@@ -501,7 +522,20 @@ set -e
 [[ "$rre_missing_rc" -eq 0 ]] || fail "--read-result-env (missing) rc=$rre_missing_rc out=$rre_missing_out"
 grep -Fxq 'READ_RESULT_ENV_STATUS=missing' <<<"$rre_missing_out" || fail '--read-result-env must report missing when result env absent'
 grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=' <<<"$rre_missing_out" || fail '--read-result-env must emit empty STEP3_REVIEW_LOOP_STATUS when result env absent'
-rm -rf "$RRE_PLUGIN" "$D_RRE" "$D_RRE_MISSING"
+
+D_RRE_SYMLINK=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-rre-symlink.XXXXXX")
+printf '%s\n' 'STEP3_REVIEW_LOOP_STATUS=complete' >"$D_RRE_SYMLINK/target.env"
+ln -s "$D_RRE_SYMLINK/target.env" "$D_RRE_SYMLINK/.step3-review-result.env"
+set +e
+rre_symlink_out=$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$RRE_PLUGIN" DESIGN_TMPDIR="$D_RRE_SYMLINK" ISSUE_NUMBER=9 \
+  "$WRAPPER" --read-result-env)
+rre_symlink_rc=$?
+set -e
+[[ "$rre_symlink_rc" -eq 0 ]] || fail "--read-result-env (symlink) rc=$rre_symlink_rc out=$rre_symlink_out"
+grep -Fxq 'READ_RESULT_ENV_STATUS=missing' <<<"$rre_symlink_out" || fail '--read-result-env must report missing when result env is symlinked'
+grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=' <<<"$rre_symlink_out" || fail '--read-result-env symlink must emit empty STEP3_REVIEW_LOOP_STATUS'
+! grep -Fq 'WARN=' <<<"$rre_symlink_out" || fail '--read-result-env symlink must not emit machine WARN'
+rm -rf "$RRE_PLUGIN" "$D_RRE" "$D_RRE_MISSING" "$D_RRE_SYMLINK"
 pass 'Step 3 --read-result-env recovers loop status (hook-safe fallback)'
 
 # Invalid-slot degradation uses INVALID_SLOT_PANEL_WARNING in production; the wrapper

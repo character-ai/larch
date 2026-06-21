@@ -37,7 +37,7 @@ fail() {
 }
 
 # Mirrors skills/design/SKILL.md Step 3 thin-fence (run-step3-review.sh --mode loop handoff).
-# Display pass; shared read-result-env safe load; narrow stdout overlay for loop envelope keys.
+# Display pass; Python normalizer owns safe result-env load and stdout overlay.
 apply_step3_display_pass() {
     local plan_review_out="$1"
     while IFS= read -r _line || [[ -n "$_line" ]]; do
@@ -64,128 +64,41 @@ apply_step3_handoff() {
 
     apply_step3_display_pass "${plan_review_out:-}"
 
-    local _stdout_file _safe_env _primary_regular=false wrapper_out=""
+    local _stdout_file _normalizer_out _normalizer_rc _line _key _value _had_errexit=0
+    case $- in *e*) _had_errexit=1 ;; esac
     _stdout_file="$(mktemp "${TMPDIR:-/tmp}/larch-step3-handoff-stdout.XXXXXX")"
     printf '%s\n' "${plan_review_out:-}" >"$_stdout_file"
-    if [[ -f "$design_tmpdir/.step3-review-result.env" && ! -L "$design_tmpdir/.step3-review-result.env" ]]; then
-        _primary_regular=true
-    fi
-    _safe_env="$(mktemp "${TMPDIR:-/tmp}/larch-step3-handoff-env.XXXXXX")"
     set +e
-    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$REPO_ROOT/scripts/read-result-env.sh" \
-      --input "$design_tmpdir/.step3-review-result.env" \
-      --fallback-input "$_stdout_file" \
-      --allow LOOP_STATUS \
-      --allow STEP3_REVIEW_LOOP_STATUS \
-      --allow POSTPLAN_RC \
-      --allow DEDUP_RC \
-      --allow PLAN_REVIEW_CONTINUE_REASON \
-      --allow FINAL_ROUND_NUM \
-      --allow ACCEPTED_COUNT \
-      --allow IMPORTANT_ACCEPTED_COUNT \
-      --allow DEGRADED_PANEL \
-      --allow ROUNDS_COMPLETED \
-      --allow TALLY_PLAN_REVIEW_STATUS \
-      --allow AGGREGATOR_STATUS \
-      --allow VOTING_TALLY_FILE \
-      --allow SCOPE_ANCHOR_FILE \
-      --allow STEP3_REVIEW_CAP_REACHED \
-      --allow STEP3_REVIEW_ROUND_NUM \
-      --allow ROUND_NUM \
-      --allow REVIEW_ROUND_COUNT \
-      --output "$_safe_env"
-    _rre_rc=$?
-    set -e
-    if [[ "${_rre_rc:-0}" -ne 0 ]]; then
-        STEP3_REVIEW_LOOP_STATUS=panel-failed
-        LOOP_STATUS=panel-failed
+    _normalizer_out=$(CLAUDE_PLUGIN_ROOT="$REPO_ROOT" python3 "$REPO_ROOT/python/cli.py" plan-review normalize-status \
+      --design-tmpdir "$design_tmpdir" \
+      --stdout-file "$_stdout_file" \
+      --loop-rc "$plan_review_rc")
+    _normalizer_rc=$?
+    if [[ "$_had_errexit" -eq 1 ]]; then
+        set -e
     else
-        # shellcheck source=/dev/null
-        . "$_safe_env"
+        set +e
     fi
+    rm -f "$_stdout_file"
+    printf '%s\n' "$_normalizer_out"
     while IFS= read -r _line || [[ -n "$_line" ]]; do
         _key="${_line%%=*}"
         _value="${_line#*=}"
         case "$_key" in
-            STEP3_REVIEW_LOOP_STATUS|POSTPLAN_RC|DEDUP_RC|FINAL_ROUND_NUM)
-                [[ -n "$_value" ]] && printf -v "$_key" '%s' "$_value"
-                ;;
-            WARN)
-                if [[ "$_primary_regular" == true ]]; then
-                    wrapper_out+="${_line}"$'\n'
-                fi
-                ;;
-        esac
-    done <"$_stdout_file"
-    rm -f "$_stdout_file" "$_safe_env"
-    if [[ "${plan_review_rc:-0}" -eq 2 ]]; then
-        return 2
-    fi
-    if [[ -n "${STEP3_REVIEW_LOOP_STATUS:-}" ]]; then
-        if [[ ! "${STEP3_REVIEW_LOOP_STATUS}" =~ ^(complete|cap-hit|main-agent-vote-required|main-agent-apply-required|per-round-approval-required|postplan-operator-required|postplan-failed|panel-failed|tally-error|degraded-empty-collector)$ ]]; then
-            STEP3_REVIEW_LOOP_STATUS=panel-failed
-        fi
-        case "${STEP3_REVIEW_LOOP_STATUS}" in
-            cap-hit) LOOP_STATUS=cap-reached ;;
-            complete|panel-failed|tally-error|degraded-empty-collector|main-agent-vote-required|postplan-failed) LOOP_STATUS="${STEP3_REVIEW_LOOP_STATUS}" ;;
-            main-agent-apply-required|per-round-approval-required|postplan-operator-required) LOOP_STATUS=complete ;;
-        esac
-    elif [[ -z "${LOOP_STATUS:-}" || ! "${LOOP_STATUS}" =~ ^(complete|cap-reached|zero-findings-degraded-panel|tally-error|degraded-empty-collector|panel-failed|main-agent-vote-required|main-agent-apply-required|per-round-approval-required|postplan-operator-required|postplan-failed)$ ]]; then
-        LOOP_STATUS=panel-failed
-    fi
-    local _handoff_line _handoff_kv_file
-    _handoff_kv_file="$(mktemp "${TMPDIR:-/tmp}/larch-step3-handoff-kv.XXXXXX")"
-    {
-        [[ -n "${wrapper_out:-}" ]] && printf '%s' "$wrapper_out"
-        [[ -n "${STEP3_REVIEW_LOOP_STATUS:-}" ]] && printf 'STEP3_REVIEW_LOOP_STATUS=%s\n' "$STEP3_REVIEW_LOOP_STATUS"
-        [[ -n "${LOOP_STATUS:-}" ]] && printf 'LOOP_STATUS=%s\n' "$LOOP_STATUS"
-        [[ -n "${POSTPLAN_RC:-}" ]] && printf 'POSTPLAN_RC=%s\n' "$POSTPLAN_RC"
-        [[ -n "${DEDUP_RC:-}" ]] && printf 'DEDUP_RC=%s\n' "$DEDUP_RC"
-        [[ -n "${FINAL_ROUND_NUM:-}" ]] && printf 'FINAL_ROUND_NUM=%s\n' "$FINAL_ROUND_NUM"
-        [[ -n "${TALLY_PLAN_REVIEW_STATUS:-}" ]] && printf 'TALLY_PLAN_REVIEW_STATUS=%s\n' "$TALLY_PLAN_REVIEW_STATUS"
-        [[ -n "${SCOPE_ANCHOR_FILE:-}" ]] && printf 'SCOPE_ANCHOR_FILE=%s\n' "$SCOPE_ANCHOR_FILE"
-        [[ -n "${STEP3_REVIEW_ROUND_NUM:-}" ]] && printf 'STEP3_REVIEW_ROUND_NUM=%s\n' "$STEP3_REVIEW_ROUND_NUM"
-        [[ -n "${ROUND_NUM:-}" ]] && printf 'ROUND_NUM=%s\n' "$ROUND_NUM"
-        [[ -n "${REVIEW_ROUND_COUNT:-}" ]] && printf 'REVIEW_ROUND_COUNT=%s\n' "$REVIEW_ROUND_COUNT"
-        [[ -n "${ROUNDS_COMPLETED:-}" ]] && printf 'ROUNDS_COMPLETED=%s\n' "$ROUNDS_COMPLETED"
-        [[ -n "${ACCEPTED_COUNT:-}" ]] && printf 'ACCEPTED_COUNT=%s\n' "$ACCEPTED_COUNT"
-        [[ -n "${IMPORTANT_ACCEPTED_COUNT:-}" ]] && printf 'IMPORTANT_ACCEPTED_COUNT=%s\n' "$IMPORTANT_ACCEPTED_COUNT"
-        [[ -n "${STEP3_REVIEW_CAP_REACHED:-}" ]] && printf 'STEP3_REVIEW_CAP_REACHED=%s\n' "$STEP3_REVIEW_CAP_REACHED"
-        [[ -n "${AGGREGATOR_STATUS:-}" ]] && printf 'AGGREGATOR_STATUS=%s\n' "$AGGREGATOR_STATUS"
-        [[ -n "${VOTING_TALLY_FILE:-}" ]] && printf 'VOTING_TALLY_FILE=%s\n' "$VOTING_TALLY_FILE"
-        [[ -n "${DEGRADED_PANEL:-}" ]] && printf 'DEGRADED_PANEL=%s\n' "$DEGRADED_PANEL"
-        [[ -n "${PLAN_REVIEW_CONTINUE_REASON:-}" ]] && printf 'PLAN_REVIEW_CONTINUE_REASON=%s\n' "$PLAN_REVIEW_CONTINUE_REASON"
-    } >"$_handoff_kv_file"
-    while IFS= read -r _line || [[ -n "$_line" ]]; do
-        _key="${_line%%=*}"
-        _value="${_line#*=}"
-        case "$_key" in
-            LOOP_STATUS|STEP3_REVIEW_LOOP_STATUS|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED| \
-            TALLY_PLAN_REVIEW_STATUS|AGGREGATOR_STATUS|VOTING_TALLY_FILE|STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM| \
+            LOOP_STATUS|STEP3_REVIEW_LOOP_STATUS|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|\
+            TALLY_PLAN_REVIEW_STATUS|AGGREGATOR_STATUS|VOTING_TALLY_FILE|STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|\
             ROUND_NUM|REVIEW_ROUND_COUNT|SCOPE_ANCHOR_FILE|POSTPLAN_RC|DEDUP_RC|PLAN_REVIEW_CONTINUE_REASON|FINAL_ROUND_NUM)
                 [[ -n "$_value" ]] && printf -v "$_key" '%s' "$_value"
                 ;;
-            WARN)
-                printf '%s\n' "$_line"
-                ;;
         esac
-    done <"$_handoff_kv_file"
-    rm -f "$_handoff_kv_file"
-    if [[ "${STEP3_REVIEW_LOOP_STATUS:-}" == postplan-failed ]]; then
-        set +e
-        return 1
-    fi
-    return 0
+    done <<<"$_normalizer_out"
+    return "$_normalizer_rc"
 }
 
 echo "=== design-step3-review.sh contract pins ==="
 STEP3_REVIEW_SH="$REPO_ROOT/skills/design/scripts/design-step3-review.sh"
-grep -Fq 'STEP3_REVIEW_LOOP_STATUS=' "$STEP3_REVIEW_SH" \
-  || fail 'design-step3-review.sh missing STEP3_REVIEW_LOOP_STATUS emit'
-grep -Fq 'LOOP_STATUS=' "$STEP3_REVIEW_SH" \
-  || fail 'design-step3-review.sh missing LOOP_STATUS emit'
-grep -Fq 'read-result-env.sh' "$STEP3_REVIEW_SH" \
-  || fail 'design-step3-review.sh missing read-result-env handoff'
+grep -Fq 'plan-review normalize-status' "$STEP3_REVIEW_SH" \
+  || fail 'design-step3-review.sh missing normalizer handoff'
 grep -Fq -- "--starting-round \"\$STARTING_ROUND\"" "$STEP3_REVIEW_SH" \
   || fail 'design-step3-review.sh missing starting-round forwarding'
 pass 'design-step3-review.sh handoff contract present'
@@ -293,7 +206,8 @@ fi
 
 echo "=== rc=1 still sources non-symlink result env ==="
 D2="$TMP/rc1-file"
-mkdir -p "$D2"
+mkdir -p "$D2/plan-review/round-1"
+printf 'reviewer\n' >"$D2/plan-review/round-1/reviewer-output.txt"
 cat >"$D2/.step3-review-result.env" <<'EOF'
 LOOP_STATUS=panel-failed
 TALLY_PLAN_REVIEW_STATUS=panel-failed
@@ -303,13 +217,13 @@ ROUND_NUM=1
 ACCEPTED_COUNT=
 IMPORTANT_ACCEPTED_COUNT=
 DEGRADED_PANEL=
-ROUNDS_COMPLETED=
+ROUNDS_COMPLETED=1
 AGGREGATOR_STATUS=
 VOTING_TALLY_FILE=
-REVIEW_ROUND_COUNT=0
+REVIEW_ROUND_COUNT=1
 EOF
 apply_step3_handoff "$D2" '' 1
-if [[ "${LOOP_STATUS:-}" == panel-failed && "${REVIEW_ROUND_COUNT:-}" == 0 ]]; then
+if [[ "${LOOP_STATUS:-}" == panel-failed && "${REVIEW_ROUND_COUNT:-}" == 1 ]]; then
     pass 'rc=1 file handoff'
 else
     fail 'rc=1 should load panel-failed from result env'
@@ -317,7 +231,8 @@ fi
 
 echo "=== symlinked result env falls back to stdout ==="
 D3="$TMP/symlink"
-mkdir -p "$D3"
+mkdir -p "$D3/plan-review/round-1"
+printf 'reviewer\n' >"$D3/plan-review/round-1/reviewer-output.txt"
 ln -sf "$D3/target.env" "$D3/.step3-review-result.env"
 apply_step3_handoff "$D3" $'LOOP_STATUS=revision-failed\nREVIEW_ROUND_COUNT=2\n' 0
 if [[ "${LOOP_STATUS:-}" == panel-failed && "${REVIEW_ROUND_COUNT:-}" == 2 ]]; then
@@ -326,36 +241,41 @@ else
     fail 'symlink should normalize removed stdout LOOP_STATUS'
 fi
 
-echo "=== missing file and stdout uses panel-failed default ==="
+echo "=== missing file and stdout uses panel-init-failed default ==="
 D4="$TMP/missing"
 mkdir -p "$D4"
+set +e
 apply_step3_handoff "$D4" '' 0
-if [[ "${LOOP_STATUS:-}" == panel-failed ]]; then
-    pass 'missing LOOP_STATUS defaults panel-failed'
+_missing_rc=$?
+set -e
+if [[ "$_missing_rc" -eq 1 && "${LOOP_STATUS:-}" == panel-init-failed ]]; then
+    pass 'missing LOOP_STATUS defaults panel-init-failed'
 else
-    fail "missing file expected panel-failed got ${LOOP_STATUS:-}"
+    fail "missing file expected panel-init-failed rc=1 got rc=$_missing_rc loop=${LOOP_STATUS:-}"
 fi
 
-echo "=== stdout overlay is narrow after file ==="
+echo "=== stdout overlay allowlist applies after file ==="
 D5="$TMP/merge"
-mkdir -p "$D5"
+mkdir -p "$D5/plan-review/round-1"
+printf 'reviewer\n' >"$D5/plan-review/round-1/reviewer-output.txt"
 printf 'LOOP_STATUS=complete\nREVIEW_ROUND_COUNT=1\n' >"$D5/.step3-review-result.env"
 apply_step3_handoff "$D5" 'LOOP_STATUS=panel-failed
 REVIEW_ROUND_COUNT=9
 ROUND_NUM=2
 ' 0
-if [[ "${LOOP_STATUS:-}" == complete && "${REVIEW_ROUND_COUNT:-}" == 1 && -z "${ROUND_NUM:-}" ]]; then
-    pass 'stdout overlay ignores non-envelope keys when file is primary'
+if [[ "${LOOP_STATUS:-}" == panel-failed && "${REVIEW_ROUND_COUNT:-}" == 9 && "${ROUND_NUM:-}" == 2 ]]; then
+    pass 'stdout overlay applies allowlisted KVs when file is primary'
 else
-    fail "narrow overlay expected complete/1/<empty> got ${LOOP_STATUS:-}/${REVIEW_ROUND_COUNT:-}/${ROUND_NUM:-}"
+    fail "overlay expected panel-failed/9/2 got ${LOOP_STATUS:-}/${REVIEW_ROUND_COUNT:-}/${ROUND_NUM:-}"
 fi
 
 echo "=== no-safe-env rc!=0 stdout overrides (symlink file) ==="
 D6="$TMP/rc1-nosafe-override"
-mkdir -p "$D6"
+mkdir -p "$D6/plan-review/round-1"
+printf 'reviewer\n' >"$D6/plan-review/round-1/reviewer-output.txt"
 ln -sf "$D6/target.env" "$D6/.step3-review-result.env"
 apply_step3_handoff "$D6" 'LOOP_STATUS=panel-failed
-REVIEW_ROUND_COUNT=0
+REVIEW_ROUND_COUNT=1
 ' 1
 if [[ "${LOOP_STATUS:-}" == panel-failed ]]; then
     pass 'no-safe-env rc!=0 stdout LOOP_STATUS wins (symlink)'
@@ -363,17 +283,18 @@ else
     fail "no-safe-env rc!=0 expected panel-failed got ${LOOP_STATUS:-}"
 fi
 
-echo "=== safe-env rc!=0 file wins over stdout LOOP_STATUS ==="
+echo "=== safe-env rc!=0 stdout overlay wins for allowlisted KVs ==="
 D6B="$TMP/safe-env-rc1-file-wins"
-mkdir -p "$D6B"
+mkdir -p "$D6B/plan-review/round-1"
+printf 'reviewer\n' >"$D6B/plan-review/round-1/reviewer-output.txt"
 printf 'LOOP_STATUS=complete\nREVIEW_ROUND_COUNT=3\n' >"$D6B/.step3-review-result.env"
 apply_step3_handoff "$D6B" 'LOOP_STATUS=panel-failed
-REVIEW_ROUND_COUNT=0
+REVIEW_ROUND_COUNT=1
 ' 1
-if [[ "${LOOP_STATUS:-}" == complete && "${REVIEW_ROUND_COUNT:-}" == 3 ]]; then
-    pass 'safe-env rc!=0 file LOOP_STATUS wins over stdout'
+if [[ "${LOOP_STATUS:-}" == panel-failed && "${REVIEW_ROUND_COUNT:-}" == 1 ]]; then
+    pass 'safe-env rc!=0 stdout overlay wins for allowlisted KVs'
 else
-    fail "safe-env rc!=0 expected complete/3 got ${LOOP_STATUS:-}/${REVIEW_ROUND_COUNT:-}"
+    fail "safe-env rc!=0 expected panel-failed/1 got ${LOOP_STATUS:-}/${REVIEW_ROUND_COUNT:-}"
 fi
 
 echo "=== env-read failure recovers STEP3_REVIEW_LOOP_STATUS from stdout ==="
@@ -390,7 +311,7 @@ else
     fail "env-read failure expected main-agent-vote-required got STEP3=${STEP3_REVIEW_LOOP_STATUS:-} LOOP=${LOOP_STATUS:-}"
 fi
 
-echo "=== safe-env rc=2 returns 2 after shared reader ==="
+echo "=== safe-env rc=2 returns 1 after shared reader ==="
 D6C="$TMP/safe-env-rc2"
 mkdir -p "$D6C"
 printf 'LOOP_STATUS=complete\n' >"$D6C/.step3-review-result.env"
@@ -398,16 +319,17 @@ set +e
 _apply_rc=0
 apply_step3_handoff "$D6C" 'LOOP_STATUS=complete' 2 || _apply_rc=$?
 set -e
-if [[ "$_apply_rc" -eq 2 ]]; then
-    pass 'safe-env rc=2 returns 2'
+if [[ "$_apply_rc" -eq 1 ]]; then
+    pass 'safe-env rc=2 returns 1'
 else
-    fail "safe-env rc=2 expected exit 2 got $_apply_rc"
+    fail "safe-env rc=2 expected exit 1 got $_apply_rc"
 fi
 
 echo "=== invalid LOOP_STATUS normalizes to panel-failed ==="
 D7="$TMP/invalid-loop"
-mkdir -p "$D7"
-printf 'LOOP_STATUS=cap_reached\n' >"$D7/.step3-review-result.env"
+mkdir -p "$D7/plan-review/round-1"
+printf 'reviewer\n' >"$D7/plan-review/round-1/reviewer-output.txt"
+printf 'LOOP_STATUS=cap_reached\nREVIEW_ROUND_COUNT=1\n' >"$D7/.step3-review-result.env"
 apply_step3_handoff "$D7" '' 0
 if [[ "${LOOP_STATUS:-}" == panel-failed ]]; then
     pass 'invalid LOOP_STATUS normalized'
@@ -423,10 +345,10 @@ set +e
 _apply_rc=0
 apply_step3_handoff "$D8" 'LOOP_STATUS=complete' 2 || _apply_rc=$?
 set -e
-if [[ "$_apply_rc" -eq 2 ]]; then
-    pass 'rc=2 returns 2'
+if [[ "$_apply_rc" -eq 1 ]]; then
+    pass 'rc=2 returns 1'
 else
-    fail "rc=2 expected exit 2 got $_apply_rc"
+    fail "rc=2 expected exit 1 got $_apply_rc"
 fi
 
 echo "=== WARN= suppressed in display pass, replayed once in parse ==="
@@ -466,16 +388,16 @@ else
     fail 'non-KV breadcrumb should appear in display pass'
 fi
 
-echo "=== SCOPE_ANCHOR_FILE survives file-first handoff ==="
+echo "=== SCOPE_ANCHOR_FILE stdout overlay wins after file handoff ==="
 D_SCOPE="$TMP/scope-anchor-handoff"
 mkdir -p "$D_SCOPE"
 printf 'anchor body\n' >"$D_SCOPE/plan-review-scope-anchor.txt"
 printf 'LOOP_STATUS=complete\nSCOPE_ANCHOR_FILE=%s/plan-review-scope-anchor.txt\n' "$D_SCOPE" >"$D_SCOPE/.step3-review-result.env"
 apply_step3_handoff "$D_SCOPE" 'SCOPE_ANCHOR_FILE=/tmp/should-not-win.txt' 0
-if [[ "${SCOPE_ANCHOR_FILE:-}" == "$D_SCOPE/plan-review-scope-anchor.txt" ]]; then
-    pass 'SCOPE_ANCHOR_FILE file-first handoff'
+if [[ "${SCOPE_ANCHOR_FILE:-}" == "/tmp/should-not-win.txt" ]]; then
+    pass 'SCOPE_ANCHOR_FILE stdout overlay handoff'
 else
-    fail "SCOPE_ANCHOR_FILE expected $D_SCOPE/plan-review-scope-anchor.txt got ${SCOPE_ANCHOR_FILE:-}"
+    fail "SCOPE_ANCHOR_FILE expected /tmp/should-not-win.txt got ${SCOPE_ANCHOR_FILE:-}"
 fi
 
 echo "=== MainAgent MAV wrapper prose pins ==="
@@ -558,8 +480,10 @@ fi
 
 echo "=== invalid STEP3_REVIEW_LOOP_STATUS normalizes to panel-failed ==="
 D_LOOP_BAD="$TMP/loop-invalid"
-mkdir -p "$D_LOOP_BAD"
-apply_step3_handoff "$D_LOOP_BAD" 'STEP3_REVIEW_LOOP_STATUS=not-a-status' 0
+mkdir -p "$D_LOOP_BAD/plan-review/round-1"
+printf 'reviewer\n' >"$D_LOOP_BAD/plan-review/round-1/reviewer-output.txt"
+apply_step3_handoff "$D_LOOP_BAD" 'STEP3_REVIEW_LOOP_STATUS=not-a-status
+REVIEW_ROUND_COUNT=1' 0
 if [[ "${STEP3_REVIEW_LOOP_STATUS:-}" == panel-failed ]]; then
     pass 'invalid loop status normalized'
 else

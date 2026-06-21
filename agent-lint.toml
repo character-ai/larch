@@ -257,10 +257,18 @@ suppress = [
 # mirroring the runtime harness's opt-in shape) and
 # python/test_research_eval.py (sibling contract).
 exclude = [
-  # read-result-env.sh is structurally invoked from skills/design/SKILL.md;
-  # its regression harness is Makefile-only (test-read-result-env target) and
+  # read-result-env.sh is genuinely invoked at runtime from
+  # skills/design/scripts/design-step3-mav.sh (read_one_result_env), but that
+  # call site uses the unbraced "$CLAUDE_PLUGIN_ROOT/scripts/read-result-env.sh"
+  # form, which agent-lint's G004/dead-script reachability does not count as a
+  # structured invocation (it recognizes only the braced "${CLAUDE_PLUGIN_ROOT}/..."
+  # form). The prior braced reference in design-step3-review.sh was removed when
+  # Step 3 status normalization moved to python/plan_review.py, leaving mav.sh as
+  # the sole live caller, so exclude the helper explicitly as a false positive.
+  # Its regression harness is Makefile-only (test-read-result-env target) and
   # follows the same G004/dead-script false-positive pattern as the other
   # root scripts/test-* harnesses below.
+  "scripts/read-result-env.sh",
   "scripts/test-read-result-env.sh",
   "scripts/test-read-result-env.md",
   # Makefile-only harnesses for upstream-repo resolution and cross-repo failure

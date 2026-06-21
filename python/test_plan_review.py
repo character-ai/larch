@@ -7,8 +7,10 @@ import os
 import stat
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
+import logging_util
 import plan_review
 import plan_review_round
 import pytest
@@ -25,6 +27,279 @@ def test_legacy_assets_removed_from_plan_review_module() -> None:
     assert not hasattr(plan_review, "_LEGACY_ASSETS")
     assert not hasattr(plan_review, "run_legacy_script")
 
+
+
+
+def _run_step3_normalizer(tmp_path: Path, stdout_text: str = "", loop_rc: int = 0) -> subprocess.CompletedProcess[str]:
+    stdout_file = tmp_path / "plan-review.stdout"
+    _ = stdout_file.write_text(stdout_text, encoding="utf-8")
+    return run_cli(
+        "plan-review",
+        "normalize-status",
+        "--design-tmpdir",
+        str(tmp_path),
+        "--stdout-file",
+        str(stdout_file),
+        "--loop-rc",
+        str(loop_rc),
+    )
+
+
+def test_step3_normalize_read_result_env_present_missing_and_symlink(tmp_path: Path) -> None:
+    result_env = tmp_path / ".step3-review-result.env"
+    _ = result_env.write_text(
+        "STEP3_REVIEW_LOOP_STATUS=tally-error\n"
+        "LOOP_STATUS=tally-error\n"
+        "ROUNDS_COMPLETED=1\n"
+        "FINAL_ROUND_NUM=2\n"
+        "ACCEPTED_COUNT=3\n"
+        "DEGRADED_PANEL_WARNING=panel degraded\n"
+        "INVALID_SLOT_PANEL_WARNING=invalid slot dropped\n",
+        encoding="utf-8",
+    )
+    proc = run_cli("plan-review", "normalize-status", "--design-tmpdir", str(tmp_path), "--read-result-env")
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.splitlines() == [
+        "READ_RESULT_ENV_STATUS=ok",
+        "STEP3_REVIEW_LOOP_STATUS=tally-error",
+        "LOOP_STATUS=tally-error",
+        "ROUNDS_COMPLETED=1",
+        "FINAL_ROUND_NUM=2",
+        "ACCEPTED_COUNT=3",
+        "DEGRADED_PANEL_WARNING=panel degraded",
+        "INVALID_SLOT_PANEL_WARNING=invalid slot dropped",
+    ]
+
+    result_env.unlink()
+    proc = run_cli("plan-review", "normalize-status", "--design-tmpdir", str(tmp_path), "--read-result-env")
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.splitlines() == [
+        "READ_RESULT_ENV_STATUS=missing",
+        "STEP3_REVIEW_LOOP_STATUS=",
+        "LOOP_STATUS=",
+        "ROUNDS_COMPLETED=",
+        "FINAL_ROUND_NUM=",
+        "ACCEPTED_COUNT=",
+        "DEGRADED_PANEL_WARNING=",
+        "INVALID_SLOT_PANEL_WARNING=",
+    ]
+
+    target = tmp_path / "target.env"
+    _ = target.write_text("STEP3_REVIEW_LOOP_STATUS=complete\n", encoding="utf-8")
+    result_env.symlink_to(target)
+    proc = run_cli("plan-review", "normalize-status", "--design-tmpdir", str(tmp_path), "--read-result-env")
+    assert proc.returncode == 0, proc.stderr
+    assert "READ_RESULT_ENV_STATUS=missing" in proc.stdout
+    assert "WARN=" not in proc.stdout
+
+
+def test_step3_read_result_env_quiet_suppresses_internal_replay(tmp_path: Path) -> None:
+    result_env = tmp_path / ".step3-review-result.env"
+    _ = result_env.write_text("WARN=selected-warning\nLOOP_STATUS=complete\n", encoding="utf-8")
+    output = tmp_path / "quoted.env"
+    out = io.StringIO()
+    argv = [
+        "--input",
+        str(result_env),
+        "--allow",
+        "LOOP_STATUS",
+        "--output",
+        str(output),
+    ]
+    with contextlib.redirect_stdout(out):
+        rc, selected, primary_regular = plan_review._step3_read_result_env_quiet(argv)  # pyright: ignore[reportPrivateUsage]
+    assert rc == 0
+    assert selected == result_env
+    assert primary_regular is True
+    assert out.getvalue() == ""
+
+
+def test_step3_normalizer_primary_warn_only_replays_primary_before_overlay(tmp_path: Path) -> None:
+    _ = (tmp_path / ".step3-review-result.env").write_text(
+        "WARN=primary-only-warning\nLOOP_STATUS=complete\n",
+        encoding="utf-8",
+    )
+    proc = _run_step3_normalizer(tmp_path, "WARN=overlay-warning\nLOOP_STATUS=complete\n")
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.splitlines()[:2] == ["WARN=primary-only-warning", "WARN=overlay-warning"]
+
+
+def test_step3_normalizer_warn_replay_skips_duplicate_stdout_overlay_on_recovery(tmp_path: Path) -> None:
+    result_env = tmp_path / ".step3-review-result.env"
+    result_env.symlink_to("/nonexistent/step3-review-result.env")
+    proc = _run_step3_normalizer(tmp_path, "WARN=fallback-warning\nLOOP_STATUS=complete\n")
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.count("WARN=fallback-warning") == 1
+
+
+def test_step3_normalizer_escalation_evidence_failure_contract(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "plan-review" / "round-1").mkdir(parents=True)
+    _ = (tmp_path / "plan-review" / "round-1" / "reviewer-output.txt").write_text("x\n", encoding="utf-8")
+    _ = (tmp_path / ".step3-review-result.env").write_text(
+        "STEP3_REVIEW_LOOP_STATUS=tally-error\nLOOP_STATUS=tally-error\nROUNDS_COMPLETED=1\nREVIEW_ROUND_COUNT=1\n",
+        encoding="utf-8",
+    )
+    stdout_file = tmp_path / "plan-review.stdout"
+    _ = stdout_file.write_text("", encoding="utf-8")
+
+    def fake_record_report_evidence(*_args: object, **_kwargs: object) -> int:
+        logging_util.emit_kv("WARN", "Step 3: failed to record design escalation evidence for tally-error")
+        return 1
+
+    monkeypatch.setattr(plan_review, "step3_record_report_evidence", fake_record_report_evidence)
+    out = io.StringIO()
+    stderr = io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(stderr):
+        rc = plan_review.normalize_step3_status_main(  # pyright: ignore[reportPrivateUsage]
+            ["--design-tmpdir", str(tmp_path), "--stdout-file", str(stdout_file), "--loop-rc", "0"]
+        )
+    stdout_text = out.getvalue()
+    stderr_text = stderr.getvalue()
+    assert rc == 0
+    assert "WARN=" not in stdout_text
+    assert "STEP3_REVIEW_LOOP_STATUS=tally-error" in stdout_text
+    assert "**⚠ Step 3: failed to record escalation evidence for tally-error**" in stderr_text
+
+
+def test_step3_normalize_mkstemp_allocation_failure_aborts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    stdout_file = tmp_path / "plan-review.stdout"
+    _ = stdout_file.write_text("LOOP_STATUS=complete\n", encoding="utf-8")
+    real_mkstemp = tempfile.mkstemp
+
+    def failing_mkstemp(*args: object, **kwargs: object) -> tuple[int, str]:
+        if kwargs.get("prefix") == "larch-step3-review-env.":
+            raise OSError("no space left on device")
+        return real_mkstemp(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(plan_review.tempfile, "mkstemp", failing_mkstemp)
+    stderr = io.StringIO()
+    with contextlib.redirect_stderr(stderr):
+        rc = plan_review.normalize_step3_status_main(  # pyright: ignore[reportPrivateUsage]
+            ["--design-tmpdir", str(tmp_path), "--stdout-file", str(stdout_file), "--loop-rc", "0"]
+        )
+    assert rc == 1
+    assert "could not allocate safe step3 review result env" in stderr.getvalue()
+
+
+def test_step3_normalizer_warn_replay_and_overlay_contract(tmp_path: Path) -> None:
+    _ = (tmp_path / ".step3-review-result.env").write_text("WARN=selected-warning\nLOOP_STATUS=complete\n", encoding="utf-8")
+    proc = _run_step3_normalizer(tmp_path, "WARN=overlay-warning\n")
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.splitlines()[:2] == ["WARN=selected-warning", "WARN=overlay-warning"]
+    assert proc.stdout.count("WARN=selected-warning") == 1
+
+    other = tmp_path / "missing-primary"
+    other.mkdir()
+    proc = _run_step3_normalizer(other, "WARN=fallback-warning\nLOOP_STATUS=complete\n")
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.count("WARN=fallback-warning") == 1
+
+
+def test_step3_normalizer_loads_quoted_env_and_overlays_spaced_values(tmp_path: Path) -> None:
+    _ = (tmp_path / ".step3-review-result.env").write_text(
+        "LOOP_STATUS=complete\nDEGRADED_PANEL_WARNING=primary warning with spaces\n",
+        encoding="utf-8",
+    )
+    proc = _run_step3_normalizer(tmp_path, "INVALID_SLOT_PANEL_WARNING=overlay warning with spaces\n")
+    assert proc.returncode == 0, proc.stderr
+    assert "DEGRADED_PANEL_WARNING=primary warning with spaces" in proc.stdout
+    assert "INVALID_SLOT_PANEL_WARNING=overlay warning with spaces" in proc.stdout
+
+
+def test_step3_normalizer_status_mapping_and_panel_init_identity(tmp_path: Path) -> None:
+    (tmp_path / "plan-review" / "round-1").mkdir(parents=True)
+    _ = (tmp_path / "plan-review" / "round-1" / "reviewer-output.txt").write_text("x\n", encoding="utf-8")
+    proc = _run_step3_normalizer(tmp_path, "LOOP_STATUS=panel-failed\nROUNDS_COMPLETED=1\nREVIEW_ROUND_COUNT=1\n")
+    assert "STEP3_REVIEW_LOOP_STATUS=panel-failed" in proc.stdout
+    assert "LOOP_STATUS=panel-failed" in proc.stdout
+
+    zfdp = tmp_path / "zfdp"
+    zfdp.mkdir()
+    proc = _run_step3_normalizer(zfdp, "LOOP_STATUS=zero-findings-degraded-panel\n")
+    assert proc.returncode == 0, proc.stderr
+    assert "LOOP_STATUS=zero-findings-degraded-panel" in proc.stdout
+    assert "STEP3_REVIEW_LOOP_STATUS=" not in proc.stdout
+    assert "result env missing" not in proc.stderr
+
+    persisted = tmp_path / "persisted"
+    persisted.mkdir()
+    _ = (persisted / ".step3-review-result.env").write_text(
+        "STEP3_REVIEW_LOOP_STATUS=panel-init-failed\nLOOP_STATUS=complete\nROUNDS_COMPLETED=1\n",
+        encoding="utf-8",
+    )
+    proc = _run_step3_normalizer(persisted)
+    assert proc.returncode == 1
+    assert "STEP3_REVIEW_LOOP_STATUS=panel-init-failed" in proc.stdout
+    assert "LOOP_STATUS=panel-init-failed" in proc.stdout
+    assert "SUMMARY_OUTCOME=failed-judge-panel" in proc.stdout
+
+
+def test_step3_normalizer_zero_round_and_synthesis_paths(tmp_path: Path) -> None:
+    proc = _run_step3_normalizer(tmp_path, "LOOP_STATUS=panel-failed\nROUNDS_COMPLETED=0\nREVIEW_ROUND_COUNT=0\n")
+    assert proc.returncode == 1
+    assert "STEP3_REVIEW_LOOP_STATUS=panel-init-failed" in proc.stdout
+    assert "SUMMARY_OUTCOME=failed-judge-panel" in proc.stdout
+    result_text = (tmp_path / ".step3-review-result.env").read_text(encoding="utf-8")
+    assert "STEP3_REVIEW_CAP_REACHED=false" in result_text
+    assert "ROUNDS_COMPLETED=0" in result_text
+
+    launched = tmp_path / "launched"
+    (launched / "plan-review" / "round-1").mkdir(parents=True)
+    _ = (launched / "plan-review" / "round-1" / "reviewer-output.txt").write_text("x\n", encoding="utf-8")
+    proc = _run_step3_normalizer(launched, "LOOP_STATUS=tally-error\nROUNDS_COMPLETED=1\nREVIEW_ROUND_COUNT=1\n")
+    assert proc.returncode == 0
+    result_text = (launched / ".step3-review-result.env").read_text(encoding="utf-8")
+    assert "STEP3_REVIEW_LOOP_STATUS=tally-error" in result_text
+    assert "STEP3_REVIEW_CAP_REACHED=false" in result_text
+    assert (launched / ".step3-terminal-persisted-this-run").is_file()
+
+
+def test_step3_normalizer_empty_primary_replays_stdout_fallback_warn_error(tmp_path: Path) -> None:
+    _ = (tmp_path / ".step3-review-result.env").write_bytes(b"")
+    proc = _run_step3_normalizer(
+        tmp_path,
+        "WARN=fallback-warning\nERROR=fallback-error\nLOOP_STATUS=complete\n",
+    )
+    assert proc.returncode == 0, proc.stderr
+    lines = proc.stdout.splitlines()
+    assert lines[0] == "WARN=fallback-warning"
+    assert "ERROR=fallback-error" in lines[:3]
+    assert proc.stdout.count("WARN=fallback-warning") == 1
+
+
+def test_step3_normalizer_missing_result_kv_only_stderr(tmp_path: Path) -> None:
+    proc = _run_step3_normalizer(tmp_path, "")
+    assert proc.returncode == 1
+    assert "**⚠ Step 3:" not in proc.stdout
+    assert "**⚠ Step 3: result env missing or empty after loop exit; treating as panel-failed**" in proc.stderr
+    assert "STEP3_REVIEW_LOOP_STATUS=panel-init-failed" in proc.stdout
+    assert "SUMMARY_OUTCOME=failed-judge-panel" in proc.stdout
+
+
+def test_step3_normalizer_postplan_invalid_and_kv_only_stderr(tmp_path: Path) -> None:
+    postplan = tmp_path / "postplan"
+    postplan.mkdir()
+    proc = _run_step3_normalizer(postplan, "STEP3_REVIEW_LOOP_STATUS=postplan-failed\nPOSTPLAN_RC=1\nLOOP_STATUS=postplan-failed\n")
+    assert proc.returncode == 1
+    assert "SUMMARY_OUTCOME=failed-postplan" in proc.stdout
+
+    invalid = tmp_path / "invalid"
+    invalid.mkdir()
+    proc = _run_step3_normalizer(invalid, "STEP3_REVIEW_LOOP_STATUS=not-a-status\n")
+    assert proc.returncode == 1
+    assert "**⚠ Step 3:" not in proc.stdout
+    assert "**⚠ Step 3: missing or invalid STEP3_REVIEW_LOOP_STATUS" in proc.stderr
+
+
+def test_step3_normalizer_static_contract_pins() -> None:
+    body = (ROOT / "python" / "plan_review.py").read_text(encoding="utf-8")
+    assert "SUMMARY_OUTCOME=failed-postplan" in body
+    assert "SUMMARY_OUTCOME=failed-judge-panel" in body
+    assert "load_bash_quoted_env" in body
+    assert "_step3_read_result_env_quiet" in body
+    assert "file=sys.stderr" in body
 
 def test_step3_loop_persist_envelope_merges_and_strips_reason(tmp_path: Path) -> None:
     _ = (tmp_path / ".step3-review-result.env").write_text(
