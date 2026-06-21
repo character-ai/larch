@@ -382,12 +382,20 @@ def _find_commonalities_fork(
     _worker_linesets = linesets
     context = multiprocessing.get_context("fork")
     try:
+        # ``collected`` distinguishes a pool-startup OSError (fall back to serial)
+        # from an OSError raised by pool teardown after results were already
+        # collected: a teardown failure must not discard the results or recompute.
+        commonalities: list[Any] = []
+        collected = False
         try:
             with ProcessPoolExecutor(max_workers=jobs, mp_context=context) as executor:
                 futures = [executor.submit(_worker_find_common_chunk, chunk) for chunk in chunks]
-                return _collect_worker_results(futures)
+                commonalities = _collect_worker_results(futures)
+                collected = True
         except OSError:
-            return _find_common_chunk_with(symilar, linesets, _flatten_pair_chunks(chunks))
+            if not collected:
+                return _find_common_chunk_with(symilar, linesets, _flatten_pair_chunks(chunks))
+        return commonalities
     finally:
         _worker_symilar = None
         _worker_linesets = None
@@ -397,12 +405,20 @@ def _find_commonalities_spawn(
     symilar: Any, linesets: Sequence[Any], chunks: Sequence[list[tuple[int, int]]], jobs: int
 ) -> list[Any]:
     payloads = [(symilar, linesets, chunk) for chunk in chunks]
+    # ``collected`` distinguishes a pool-startup OSError (fall back to serial)
+    # from an OSError raised by pool teardown after results were already
+    # collected: a teardown failure must not discard the results or recompute.
+    commonalities: list[Any] = []
+    collected = False
     try:
         with ProcessPoolExecutor(max_workers=jobs) as executor:
             futures = [executor.submit(_spawn_worker_find_common_chunk, payload) for payload in payloads]
-            return _collect_worker_results(futures)
+            commonalities = _collect_worker_results(futures)
+            collected = True
     except OSError:
-        return _find_common_chunk_with(symilar, linesets, _flatten_pair_chunks(chunks))
+        if not collected:
+            return _find_common_chunk_with(symilar, linesets, _flatten_pair_chunks(chunks))
+    return commonalities
 
 
 def _flatten_pair_chunks(chunks: Sequence[Sequence[tuple[int, int]]]) -> list[tuple[int, int]]:

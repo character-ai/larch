@@ -6,6 +6,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from pathlib import Path
 from types import MethodType
+from typing import Self
 
 import pytest
 from astroid import nodes
@@ -619,6 +620,57 @@ def test_pool_setup_oserror_fallback_matches_serial(
     assert parallel.exit_code == serial.exit_code == duplicate_code.REFACTOR_MSG_STATUS
     assert parallel.digest == serial.digest
     assert parallel.pair_count == serial.pair_count == 3
+
+
+class _ImmediateFuture:
+    def __init__(self, value: list[object]) -> None:
+        self._value = value
+
+    def result(self) -> list[object]:
+        return self._value
+
+
+class _TeardownFailingExecutor:
+    """Pool whose submitted work succeeds but whose teardown raises OSError."""
+
+    def __init__(self, *_args: object, **_kwargs: object) -> None:
+        self._submitted = 0
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, *_exc_info: object) -> bool:
+        raise OSError("pool teardown failed")
+
+    def submit(self, _fn: object, _arg: object) -> _ImmediateFuture:
+        self._submitted += 1
+        return _ImmediateFuture([f"pool-{self._submitted}"])
+
+
+@pytest.mark.parametrize("func_name", ["_find_commonalities_fork", "_find_commonalities_spawn"])
+def test_pool_teardown_oserror_returns_collected_results_without_serial_recompute(
+    monkeypatch: pytest.MonkeyPatch, func_name: str
+) -> None:
+    serial_calls: list[object] = []
+
+    def spy_serial(symilar: object, linesets: Sequence[object], pairs: object) -> list[object]:
+        serial_calls.append((symilar, linesets, pairs))
+        return ["serial-fallback"]
+
+    monkeypatch.setattr(duplicate_code, "_find_common_chunk_with", spy_serial)
+    monkeypatch.setattr(duplicate_code, "ProcessPoolExecutor", _TeardownFailingExecutor)
+
+    func = getattr(duplicate_code, func_name)
+    chunks = [[(0, 1)], [(0, 2)]]
+    result = func(object(), [object(), object(), object()], chunks, 2)
+
+    # A teardown OSError after a successful parallel collection must return the
+    # already-collected results, not discard them and recompute serially.
+    assert result == ["pool-1", "pool-2"]
+    assert not serial_calls
+    if func_name == "_find_commonalities_fork":
+        assert duplicate_code._worker_symilar is None
+        assert duplicate_code._worker_linesets is None
 
 
 def test_import_failure_exits_2(
