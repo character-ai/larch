@@ -11,6 +11,8 @@ from typing import NoReturn
 
 RULE_PATH = ".claude/rules/topology-generation.md"
 _INT_RE = re.compile(r"[-+]?(0|[1-9][0-9]*)")
+_FLOAT_RE = re.compile(r"[-+]?(\d+\.\d*|\.\d+)([eE][-+]?\
+d+)?$")
 EXPECTED_TSV_COLUMNS = 4
 
 
@@ -134,10 +136,19 @@ def _decode_quoted_path(token: str, index: int) -> str:
 
 
 def _bare_token_is_string(token: str) -> bool:
-    lowered = token.lower()
+    stripped = token.strip()
+    if not stripped:
+        return False
+    if stripped[0] in "{&*[":
+        return False
+    lowered = stripped.lower()
     if lowered in {"null", "true", "false", "~"}:
         return False
-    return _INT_RE.fullmatch(token) is None
+    if _INT_RE.fullmatch(stripped) is not None:
+        return False
+    if _FLOAT_RE.fullmatch(stripped) is not None:
+        return False
+    return True
 
 
 def _parse_flow_paths(value: str) -> list[str]:
@@ -193,9 +204,11 @@ def parse_frontmatter_paths(frontmatter: str) -> list[str]:
             break
         entry = line.lstrip(" ")
         if not entry.startswith("-"):
-            continue
+            fail(f"{RULE_PATH} frontmatter paths must be a list")
         token = entry[1:].strip()
         paths.append(_parse_block_path(token, len(paths)))
+    if not paths:
+        fail(f"{RULE_PATH} frontmatter paths must be a list")
     return paths
 
 
