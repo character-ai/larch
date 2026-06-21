@@ -1,13 +1,13 @@
-## /implement run 66A96EAD-3088-4750-AE3A-64A0E11EABBD — bailed
+## /implement run 66A96EAD-3088-4750-AE3A-64A0E11EABBD — pr-created
 
-- **Outcome**: bailed
 - **Mode**: N/A
-- **Duration**: 04:20:21
-- **Cost**: 💰 TOTAL ~$58.84 — Claude $20.46, Codex $28.64, Cursor $6.62, Claude (subprocess) $3.12  |  Tokens: 90616k
+- **Duration**: 04:35:31
+- **Cost**: 💰 TOTAL ~$66.29 — Claude $27.91, Codex $28.64, Cursor $6.62, Claude (subprocess) $3.12  |  Tokens: 100863k
 - **Issue**: #4962 — https://github.com/character-ai/larch/issues/4962
+- **PR**: #5009 — https://github.com/character-ai/larch/pull/5009
 - **Plan review**: N/A
 - **Code review**: 14/21 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +776/-59, larch-logs +1314/-0
 - **OOS filed**: 0
 - **Exec issues**: 1
 - **Warnings**: 4
