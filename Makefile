@@ -770,7 +770,7 @@ test-dispatch-panel-core:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_pipeline.py -k dispatch_panel_core
 
 test-dispatch-panel-core-dynamic:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_pipeline.py -k 'dispatch_panel_dynamic or pre_scouted_valid_dynamic or pre_scouted_empty_ok_static_only or pre_scouted_filtered_to_zero or implement_missing_producer or review_default_ignores_ambient_implement_tmpdir'
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_pipeline.py -k 'dispatch_panel_dynamic or pre_scouted_valid_dynamic or pre_scouted_empty_ok_static_only or pre_scouted_filtered_to_zero or implement_missing_producer or review_default_ignores_ambient_implement_tmpdir or producer_scout_warning'
 
 test-dispatch-panel-reuse:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_pipeline.py -k dispatch_panel_reuse
