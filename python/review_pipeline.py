@@ -1059,7 +1059,7 @@ def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int
                 filter_ok = filter_status in {"ok", "empty"} and raw_count is not None
                 if filter_ok:
                     archetypes = _scout_archetypes(scout_manifest)
-                    if site == "implement Step 5" and raw_count > 0 and filtered_count == 0:
+                    if site == "implement Step 5" and raw_count is not None and raw_count > 0 and filtered_count == 0:
                         _write_empty_scout_manifest(scout_manifest)
                         scout_status = "producer-invalid"
                         scout_fail_reason = "pre_scouted_filtered_to_zero"

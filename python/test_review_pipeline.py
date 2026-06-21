@@ -5,11 +5,17 @@ import json
 import os
 import shutil
 import subprocess
+from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import TYPE_CHECKING
 
+import proc
 import review_pipeline
 import review_test_support as rts
 import voting
+
+if TYPE_CHECKING:
+    import pytest
 
 ROOT = rts.ROOT
 CLI = rts.CLI
@@ -1318,7 +1324,7 @@ def test_dispatch_panel_docs_only_skips_producer_scout_warning(tmp_path: Path) -
     assert not (impl / "execution-issues.md").exists()
 
 
-def test_dispatch_panel_producer_scout_warning_sentinel_prevents_duplicate(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_dispatch_panel_producer_scout_warning_sentinel_prevents_duplicate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     case_dir = tmp_path / "warning-sentinel"
     case_dir.mkdir()
     (case_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
@@ -1329,12 +1335,17 @@ def test_dispatch_panel_producer_scout_warning_sentinel_prevents_duplicate(tmp_p
     waterfall = tmp_path / "waterfall.sh"
     _write_waterfall_noop(waterfall)
     append_calls: list[list[str]] = []
-    original_run = review_pipeline._run_python_cli
+    original_run = review_pipeline._run_python_cli  # pyright: ignore[reportPrivateUsage]
 
-    def tracking_run(args, **kwargs):  # type: ignore[no-untyped-def]
-        if args[:3] == ["run-log", "append-entry"]:
+    def tracking_run(
+        args: Sequence[str],
+        *,
+        runner: proc.Runner | None = None,
+        env: Mapping[str, str] | None = None,
+    ) -> proc.CommandResult:
+        if list(args[:3]) == ["run-log", "append-entry"]:
             append_calls.append(list(args))
-        return original_run(args, **kwargs)
+        return original_run(args, runner=runner, env=env)
 
     monkeypatch.setattr(review_pipeline, "_run_python_cli", tracking_run)
     result = run_review(
