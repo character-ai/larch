@@ -16,8 +16,33 @@ _MERMAID_LINE_RE = re.compile(
     r"^\s*(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|pie|journey)\b",
     re.IGNORECASE,
 )
+_MERMAID_KEYWORD_LINE_RE = re.compile(
+    r"^\s*(participant|actor|subgraph|classDef|style)\b",
+    re.IGNORECASE,
+)
+_SEQUENCE_ARROW_RE = re.compile(r"^\s*\S+\s*->>\s*\S+")
 _EDGE_LINE_RE = re.compile(r"^\s*[\w\[\]()\"'-]+\s*(-->|---|\-\.-|==>|\.+)\s*[\w\[\]()\"'-]+")
+_MERMAID_REMAINS_RE = re.compile(
+    r"(```|"
+    r"\b(?:graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|pie|journey)\b|"
+    r"\b(?:participant|actor|subgraph|classDef|style)\b|"
+    r"->>|-->|\-\.-|==>)",
+    re.IGNORECASE,
+)
+_REDACTED_TOKEN = "diagram-content-redacted"
 _SAFE_TOKEN_RE = re.compile(r"[^A-Za-z0-9._-]+")
+
+
+def _line_is_mermaid_syntax(line: str) -> bool:
+    if _MERMAID_LINE_RE.match(line):
+        return True
+    if _MERMAID_KEYWORD_LINE_RE.match(line):
+        return True
+    if _SEQUENCE_ARROW_RE.match(line):
+        return True
+    if _EDGE_LINE_RE.match(line):
+        return True
+    return False
 
 
 def strip_diagram_sections(text: str) -> str:
@@ -42,7 +67,7 @@ def strip_diagram_sections(text: str) -> str:
         if _SECTION_RE.match(line):
             in_diagram_section = True
             continue
-        if _MERMAID_LINE_RE.match(line) or _EDGE_LINE_RE.match(line):
+        if _line_is_mermaid_syntax(line):
             continue
         open_match = _FENCE_OPEN_RE.match(line)
         if open_match:
@@ -55,6 +80,16 @@ def strip_diagram_sections(text: str) -> str:
     return out + ("\n" if out else "")
 
 
+def sanitize_diagram_capture(text: str) -> str:
+    """Strip diagram/Mermaid content from an untrusted capture; fail closed on remainder."""
+    stripped = strip_diagram_sections(text)
+    stripped = re.sub(r"```+", "", stripped)
+    stripped = re.sub(r"(?i)mermaid", "", stripped).strip()
+    if not stripped or _MERMAID_REMAINS_RE.search(stripped):
+        return _REDACTED_TOKEN
+    return stripped + ("\n" if stripped.endswith("\n") else "")
+
+
 def _sanitize_bounded_text(raw: str) -> str:
     stripped = strip_diagram_sections(raw)
     stripped = re.sub(r"```+", "", stripped)
@@ -64,6 +99,8 @@ def _sanitize_bounded_text(raw: str) -> str:
     except Exception:
         stripped = "redaction-failed"
     detail = re.sub(r"\s+", " ", stripped).strip() or "unknown"
+    if _MERMAID_REMAINS_RE.search(detail):
+        detail = _REDACTED_TOKEN
     if len(detail) > _DETAIL_LIMIT:
         detail = "..." + detail[-(_DETAIL_LIMIT - 3):]
     return detail

@@ -297,6 +297,34 @@ def test_determine_step_after_step3b_finalize_resumes_step4(tmp_path: Path) -> N
     assert design_pause._determine_step(design, Path.cwd()) == "4"  # pyright: ignore[reportPrivateUsage]
 
 
+def test_determine_step_after_step4_resumes_gate_c_not_diagram(tmp_path: Path) -> None:
+    design = tmp_path / "design"
+    completed = design / ".completed"
+    completed.mkdir(parents=True)
+    plugin_root = Path(__file__).resolve().parents[1]
+    for step in (
+        "0",
+        "0c",
+        "1c",
+        "1d",
+        "1d.5",
+        "1d.7",
+        "1e",
+        "2a",
+        "2b",
+        "2b.5",
+        "3",
+        "3.5",
+        "3b",
+        "4",
+    ):
+        _ = (completed / f"step-{step}").write_text("", encoding="utf-8")
+
+    step = design_pause._determine_step(design, plugin_root)  # pyright: ignore[reportPrivateUsage]
+    assert step == "4b"
+    assert step != "5b.5"
+
+
 def test_determine_step_routes_step5b_to_step5b5_then_step5c(tmp_path: Path) -> None:
     design = tmp_path / "design"
     completed = design / ".completed"
@@ -316,6 +344,20 @@ def test_determine_step_returns_5b_when_step5b5_without_step5b(tmp_path: Path) -
     _ = (completed / "step-5b.5").write_text("", encoding="utf-8")
 
     assert design_pause._determine_step(design, Path.cwd()) == "5b"  # pyright: ignore[reportPrivateUsage]
+
+
+def test_pause_load_accepts_step4b_marker(tmp_path: Path, monkeypatch: object, capsys: object) -> None:
+    body = _pause_marker_body(run_id="RUN1", issue="9", step="4b", repo="owner/repo")
+    files, blobs = _restore_blobs("RUN1", issue_number="9", manifest_run="RUN1")
+    fake = _FakeGit(files=files, blobs=blobs)
+    _patch_load(monkeypatch, body, fake)
+
+    rc = design_pause.pause_load_main(["--design-tmpdir", str(tmp_path / "d"), "--issue", "9", "--repo", "owner/repo"])
+
+    out = capsys.readouterr().out  # type: ignore[attr-defined]
+    assert rc == 0
+    assert "LOAD_OK=true" in out
+    assert "STEP=4b" in out
 
 
 def test_pause_load_accepts_step5b_marker(tmp_path: Path, monkeypatch: object, capsys: object) -> None:

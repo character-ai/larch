@@ -1892,3 +1892,36 @@ def test_publish_breadcrumbs_allows_source_under_session_tmpdir(
     )
     assert rc == 0
     assert (dest / "breadcrumbs").is_dir()
+
+
+def test_append_failure_sanitizes_diagram_warning_captures(tmp_path: Path) -> None:
+    output_file = tmp_path / "architecture-diagram-sanitizer.failure.log"
+    _ = output_file.write_text(
+        "stderr\nparticipant A as Alice\nA->>B: hi\nsubgraph group\n",
+        encoding="utf-8",
+    )
+    log_path = tmp_path / "execution-issues.md"
+
+    rc = run_logs.append_failure_main(
+        [
+            "--log",
+            str(log_path),
+            "--site",
+            "design Step 5b.5",
+            "--tool",
+            "mermaid sanitize",
+            "--exit-code",
+            "1",
+            "--category",
+            "Warnings",
+            "--output-file",
+            str(output_file),
+        ]
+    )
+
+    assert rc == 0
+    text = log_path.read_text(encoding="utf-8")
+    assert "participant" not in text
+    assert "->>" not in text
+    assert "subgraph" not in text
+    assert "stderr" in text

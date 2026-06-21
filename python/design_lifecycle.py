@@ -4087,7 +4087,7 @@ def step5b_prepare_main(argv: Sequence[str]) -> int:
             exit_code=prep_rc,
             stderr_path=stderr_path,
         )
-        print("**⚠ /design: OOS filing prepare failed — skipping /larch:issue; continuing to Step 5c**")
+        print("**⚠ /design: OOS filing prepare failed — skipping /larch:issue; continuing to Step 5b.5**")
         print(f"STEP5B_STATUS=prepare-failed-continue\nOOS_PREP_RC={prep_rc}\nOOS_ISSUE_STDOUT_PATH={oos_issue_stdout}")
         _step5b_mark_complete(design_tmpdir)
         return 0

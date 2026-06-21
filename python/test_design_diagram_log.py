@@ -77,6 +77,38 @@ def test_strip_diagram_sections_removes_unfenced_graph_syntax() -> None:
     assert "A-->B" not in stripped
 
 
+def test_strip_diagram_sections_removes_participant_subgraph_and_sequence_arrows() -> None:
+    text = (
+        "before\n"
+        "participant A as Alice\n"
+        "A->>B: hi\n"
+        "subgraph group\n"
+        "classDef foo fill:#fff\n"
+        "style A fill:#000\n"
+        "after\n"
+    )
+    stripped = design_diagram_log.strip_diagram_sections(text)
+    assert "before" in stripped
+    assert "after" in stripped
+    assert "participant" not in stripped
+    assert "->>" not in stripped
+    assert "subgraph" not in stripped
+    assert "classDef" not in stripped
+    assert "style A" not in stripped
+
+
+def test_strip_diagram_sections_preserves_edge_like_operator_text_outside_diagram() -> None:
+    text = "module A --> module B failed\nkeep this\n"
+    stripped = design_diagram_log.strip_diagram_sections(text)
+    assert "module A --> module B failed" in stripped
+    assert "keep this" in stripped
+
+
+def test_sanitize_diagram_capture_fails_closed_on_mermaid_remainder() -> None:
+    assert design_diagram_log.sanitize_diagram_capture("```mermaid\ngraph TD\n```") == "diagram-content-redacted"
+    assert design_diagram_log.sanitize_diagram_capture("participant A\nA->>B: hi") == "diagram-content-redacted"
+
+
 def test_strip_diagram_sections_removes_generic_fenced_blocks() -> None:
     text = "keep\n```python\nprint('x')\n```\ntail\n"
     stripped = design_diagram_log.strip_diagram_sections(text)

@@ -411,7 +411,7 @@ def pause_load_main(argv: Sequence[str]) -> int:
         manifest_run = str(manifest.get("run_id") or "")
         if (manifest_issue and manifest_issue != issue) or (manifest_run and manifest_run != run_id):
             return _load_fail_clear(issue, repo, "manifest-mismatch")
-        if step not in {"1", "1d", "2", "2b", "3", "3.5", "3b", "4", "5", "5b", "5b.5", "5c", "6"}:
+        if step not in {"1", "1d", "2", "2b", "3", "3.5", "3b", "4", "4b", "5", "5b", "5b.5", "5c", "6"}:
             return _load_fail_clear(issue, repo, "invalid-step")
         _ = (restore_tmp / ".resume-loaded").write_text("", encoding="utf-8")
         for child in restore_tmp.iterdir():

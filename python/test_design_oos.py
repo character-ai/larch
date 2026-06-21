@@ -222,6 +222,8 @@ def test_step5b_prepare_failure_continues_and_marks_complete(tmp_path: Path, mon
 
     assert rc == 0
     assert "OOS filing prepare failed" in out
+    assert "continuing to Step 5b.5" in out
+    assert "Step 5c" not in out
     assert "STEP5B_STATUS=prepare-failed-continue" in out
     assert "OOS_PREP_RC=2" in out
     assert appended == [("file-design-oos.sh prepare", 2, tmp_path / "oos-filing-prepare.stderr.log")]
