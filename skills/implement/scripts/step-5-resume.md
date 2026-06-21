@@ -20,7 +20,7 @@ For `--ready-to-commit`, relay the `COMMITTED=`, `ERROR=`, and `SHA=` lines from
 - The round-timing duplicate probe uses awk success-on-match semantics: `found` must exit `0`, and missing rows must exit `1`.
 - `--ready-to-commit` exits non-zero before `review-and-fix step5` when porcelain remains non-empty after the handoff commit, including when `COMMITTED=true` left unstaged dirty paths. Empty porcelain continues to `step5` even when `COMMITTED=false`.
 - Commit-phase failure exits before `review-and-fix step5`, so wrapper exit-code semantics stay separable from normal Step 5 loop stalls such as `STEP5_REVIEW_STATUS=stall`.
-- `skills/implement/SKILL.md` treats commit-phase failure as a terminal Step 5 stall and skips to Step 16. When `STEP5_REVIEW_STATUS=` is present, the orchestrator branches on that envelope instead of treating non-zero exit alone as `resume-handoff-commit-failed`.
+- `skills/implement/SKILL.md` treats commit-phase failure as a terminal Step 5 stall and skips to Step 18 (the Step 18a stall-recovery gate runs before the final report). When `STEP5_REVIEW_STATUS=` is present, the orchestrator branches on that envelope instead of treating non-zero exit alone as `resume-handoff-commit-failed`.
 
 ## Edit-in-sync
 
