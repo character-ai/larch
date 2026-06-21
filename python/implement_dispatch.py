@@ -188,12 +188,23 @@ def _first_nonempty(*values: str) -> str:
 _CLONE_TAG_ALLOWED_BYTES = frozenset(b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-")
 
 
+def _pwd_basename(pwd: str) -> str:
+    """Match bash ``basename \"$PWD\"`` byte behavior on the logical PWD string."""
+    path_bytes = os.fsencode(pwd)
+    if path_bytes in (b"", b"/"):
+        return "/"
+    trimmed = path_bytes.rstrip(b"/")
+    if not trimmed:
+        return "/"
+    return os.fsdecode(trimmed.rsplit(b"/", 1)[-1])
+
+
 def _derive_clone_tag_full(env: Mapping[str, str] | None = None) -> str:
     source_env = os.environ if env is None else env
     clone_tag = source_env.get("CLONE_TAG", "")
     if clone_tag:
         return clone_tag
-    basename = os.path.basename(source_env["PWD"])  # noqa: PTH119 - match `basename "$PWD"` byte behavior.
+    basename = _pwd_basename(source_env["PWD"])
     translated = bytes(byte if byte in _CLONE_TAG_ALLOWED_BYTES else ord("_") for byte in os.fsencode(basename))[:32]
     if not translated:
         return "_"

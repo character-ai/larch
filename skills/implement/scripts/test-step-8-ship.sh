@@ -26,6 +26,13 @@ assert_contains 'clone_tag_env=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" i
 # shellcheck disable=SC2016
 assert_contains 'eval "$clone_tag_env"' "$helper_text" 'static: clone-tag env evaluated after successful capture'
 assert_contains 'step-8-python-guard.sh' "$helper_text" 'static: shared python guard invoked'
+guard_line=$(grep -n 'step-8-python-guard.sh' "$HELPER" | head -n 1 | cut -d: -f1)
+clone_line=$(grep -n 'implement clone-tag' "$HELPER" | head -n 1 | cut -d: -f1)
+if [ -n "$guard_line" ] && [ -n "$clone_line" ] && [ "$guard_line" -lt "$clone_line" ]; then
+  pass 'static: python guard runs before clone-tag CLI'
+else
+  fail 'static: python guard runs before clone-tag CLI'
+fi
 # shellcheck disable=SC2016
 assert_contains 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git phantom-probe --step 8-pre-ship >&2' "$helper_text" 'static: bundled phantom probe redirects stdout'
 assert_not_contains 'sys.version_info >= (3, 11)' "$helper_text" 'static: inline python version guard absent from ship wrapper'
@@ -116,6 +123,24 @@ set -e
 assert_rc "$GUARD_RC" 4 'guard: stale python exits 4'
 assert_contains 'ERROR: Python ship driver requires Python 3.11 or newer' "$(cat "$TMP_ROOT/guard-stderr.txt")" 'guard: stale python emits stderr'
 assert_contains '"outcome":"STALLED"' "$GUARD_OUT" 'guard: stale python emits STALLED JSON'
+
+cat >"$IMPL_TMP/larch-run.sh" <<EOF_STALE_RUN
+#!/usr/bin/env bash
+set -euo pipefail
+case "\$1" in
+  skills/implement/scripts/step-8-python-guard.sh) exec bash "$GUARD" ;;
+  *) exec bash "$REPO_ROOT/\$1" "\${@:2}" ;;
+esac
+EOF_STALE_RUN
+chmod +x "$IMPL_TMP/larch-run.sh"
+: >"$TMP_ROOT/order.txt"
+set +e
+STALE_OUT=$(PATH="$STUB_BIN:$PATH" IMPLEMENT_TMPDIR="$IMPL_TMP" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash "$HELPER" 2>"$TMP_ROOT/stale-wrapper-stderr.txt")
+STALE_RC=$?
+set -e
+assert_rc "$STALE_RC" 4 'wrapper: stale python exits 4 before clone-tag'
+assert_contains '"outcome":"STALLED"' "$STALE_OUT" 'wrapper: stale python emits STALLED JSON'
+assert_not_contains 'driver' "$(cat "$TMP_ROOT/order.txt" 2>/dev/null || true)" 'wrapper: stale python skips ship driver'
 
 cat >"$STUB_BIN/python3" <<EOF_NEW
 #!/usr/bin/env bash

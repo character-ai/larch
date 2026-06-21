@@ -132,6 +132,13 @@ def test_clone_tag_derivation_empty_basename_falls_back(monkeypatch: pytest.Monk
     assert implement_dispatch._derive_clone_tag_full() == "_"
 
 
+def test_clone_tag_derivation_strips_trailing_slash_from_pwd(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("CLONE_TAG", raising=False)
+    monkeypatch.setenv("PWD", "/logical/larch4/")
+
+    assert implement_dispatch._derive_clone_tag_full() == "larch4"
+
+
 def test_clone_tag_derivation_uses_pwd_not_physical_cwd(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
