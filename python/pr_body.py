@@ -713,8 +713,7 @@ def slack_issue_announce_main(argv: list[str] | None = None) -> int:
     return rc
 
 
-def _diagram_failure_capture(returncode: int, stderr: str, stdout: str) -> tuple[str, str]:
-    raw_capture = f"stderr:\n{stderr or ''}\nstdout:\n{stdout or ''}\n"
+def _diagram_failure_capture(returncode: int, stderr: str) -> tuple[str, str]:
     tail_source = f"stderr:\n{stderr or ''}\n"
     try:
         capture = redact.redact(design_diagram_log.strip_diagram_sections(tail_source))
@@ -784,7 +783,7 @@ def generate_code_flow_diagram(implement_tmpdir: Path, *, model: str = "claude-s
             )
         except OSError:
             raw_capture = None
-        diagnostic, tail = _diagram_failure_capture(completed.returncode, completed.stderr, completed.stdout)
+        diagnostic, tail = _diagram_failure_capture(completed.returncode, completed.stderr)
         reason = f"generation-failed rc={completed.returncode} tail={tail}"
         try:
             if raw_capture is not None:
