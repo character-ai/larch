@@ -18,6 +18,9 @@ import agents
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CLI = REPO_ROOT / "python" / "cli.py"
+# Subprocess stub tests can cold-start slowly under suite load, so keep the
+# inner stub-agent timeout generous.
+STUB_AGENT_TIMEOUT = "20"
 
 
 def _run(args: list[str], env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
@@ -45,7 +48,7 @@ def _run(args: list[str], env: dict[str, str] | None = None) -> subprocess.Compl
         # Generous outer cap: each call spawns a full cli.py + agents.py import whose
         # cold-start wall time spikes under serial-suite load (observed ~10s in
         # isolation), so a 10s cap raced TimeoutExpired. The inner agent run is bounded
-        # separately by the --timeout arg (typically 2s).
+        # separately by the --timeout arg passed by each test.
         timeout=60,
         check=False,
     )
@@ -181,7 +184,7 @@ def test_codex_launch_uses_python_wrapper_and_read_only_argv(tmp_path: Path) -> 
         "#!/usr/bin/env bash\nout=\"\"; last=\"\"; for a in \"$@\"; do if [[ \"$last\" == \"--output-last-message\" ]]; then out=\"$a\"; fi; last=\"$a\"; done; echo '{\"type\":\"message\",\"usage\":{\"input_tokens\":1,\"cached_input_tokens\":0,\"output_tokens\":2}}'; printf OK >\"$out\"\n",
     )
     out = tmp_path / "out.txt"
-    proc = _run(["--tool", "codex", "--output", str(out), "--timeout", "2", "--prompt", "hi"], {"PATH": f"{bin_dir}:{os.environ['PATH']}"})
+    proc = _run(["--tool", "codex", "--output", str(out), "--timeout", STUB_AGENT_TIMEOUT, "--prompt", "hi"], {"PATH": f"{bin_dir}:{os.environ['PATH']}"})
     assert proc.returncode == 0
     meta = out.with_suffix(out.suffix + ".meta").read_text(encoding="utf-8")
     assert "CMD_JSON=[" in meta
@@ -199,7 +202,7 @@ def test_cursor_launch_extracts_result_and_writes_original_prompt_sidecar(tmp_pa
         "#!/usr/bin/env bash\ncat <<'JSON'\n{\"result\":\"Reviewing... {\\\"no_issues_found\\\": true}\",\"usage\":{\"inputTokens\":1,\"outputTokens\":2,\"cacheReadTokens\":0,\"cacheWriteTokens\":0}}\nJSON\n",
     )
     out = tmp_path / "out.txt"
-    proc = _run(["--tool", "cursor", "--output", str(out), "--timeout", "2", "--prompt", "hi"], {"PATH": f"{bin_dir}:{os.environ['PATH']}", "CURSOR_API_KEY": "test-key"})
+    proc = _run(["--tool", "cursor", "--output", str(out), "--timeout", STUB_AGENT_TIMEOUT, "--prompt", "hi"], {"PATH": f"{bin_dir}:{os.environ['PATH']}", "CURSOR_API_KEY": "test-key"})
     assert proc.returncode == 0
     assert out.read_text(encoding="utf-8") == '{"no_issues_found": true}\n'
     assert out.with_suffix(out.suffix + ".prompt").read_text(encoding="utf-8") == "hi"
@@ -212,7 +215,7 @@ def test_cursor_launch_extracts_result_and_writes_original_prompt_sidecar(tmp_pa
 
 def test_codex_add_dir_rejects_missing_output_parent(tmp_path: Path) -> None:
     out = tmp_path / "missing" / "out.txt"
-    proc = _run(["--tool", "codex", "--output", str(out), "--timeout", "2", "--prompt", "hi"])
+    proc = _run(["--tool", "codex", "--output", str(out), "--timeout", STUB_AGENT_TIMEOUT, "--prompt", "hi"])
     assert proc.returncode == 2
     assert not out.exists()
 
@@ -246,7 +249,7 @@ def test_cursor_launch_writes_sidecar_ok_status(tmp_path: Path) -> None:
         "#!/usr/bin/env bash\ncat <<'JSON'\n{\"result\":\"ok\",\"usage\":{\"inputTokens\":1,\"outputTokens\":2,\"cacheReadTokens\":0,\"cacheWriteTokens\":0}}\nJSON\n",
     )
     out = tmp_path / "out.txt"
-    proc = _run(["--tool", "cursor", "--output", str(out), "--timeout", "2", "--prompt", "hi"], {"PATH": f"{bin_dir}:{os.environ['PATH']}", "CURSOR_API_KEY": "test-key"})
+    proc = _run(["--tool", "cursor", "--output", str(out), "--timeout", STUB_AGENT_TIMEOUT, "--prompt", "hi"], {"PATH": f"{bin_dir}:{os.environ['PATH']}", "CURSOR_API_KEY": "test-key"})
     assert proc.returncode == 0
     sidecar = out.with_suffix(out.suffix + ".sidecar")
     assert sidecar.is_file()
@@ -639,7 +642,7 @@ printf OK >"$out"
 """,
     )
     out = tmp_path / "out.txt"
-    proc = _run(["--tool", "codex", "--output", str(out), "--timeout", "2", "--prompt", "hi"], {"PATH": f"{bin_dir}:{os.environ['PATH']}"})
+    proc = _run(["--tool", "codex", "--output", str(out), "--timeout", STUB_AGENT_TIMEOUT, "--prompt", "hi"], {"PATH": f"{bin_dir}:{os.environ['PATH']}"})
     assert proc.returncode == 0
     assert state.read_text(encoding="utf-8").strip() == "2"
     assert out.read_text(encoding="utf-8") == "OK"
@@ -690,7 +693,7 @@ def test_cursor_degraded_response_written_when_validation_fails(tmp_path: Path, 
 
     monkeypatch.setattr(agents.proc, "run", selective_run)
     proc = _run(
-        ["--tool", "cursor", "--output", str(out), "--timeout", "2", "--prompt", "hi"],
+        ["--tool", "cursor", "--output", str(out), "--timeout", STUB_AGENT_TIMEOUT, "--prompt", "hi"],
         {"PATH": f"{bin_dir}:{os.environ['PATH']}", "CURSOR_API_KEY": "test-key"},
     )
     assert proc.returncode == 0
@@ -1109,7 +1112,7 @@ def test_invalid_token_budget_cap_zero_still_runs_vendor(tmp_path: Path) -> None
     )
     out = tmp_path / "out.txt"
     proc = _run(
-        ["--tool", "cursor", "--output", str(out), "--timeout", "2", "--prompt", "hi"],
+        ["--tool", "cursor", "--output", str(out), "--timeout", STUB_AGENT_TIMEOUT, "--prompt", "hi"],
         {"PATH": f"{bin_dir}:{os.environ['PATH']}", "CURSOR_API_KEY": "test-key", "LARCH_TOKEN_BUDGET_CAP_REVIEW": "0"},
     )
     assert proc.returncode == 0
@@ -1124,7 +1127,7 @@ def test_invalid_token_budget_cap_abc_still_runs_vendor(tmp_path: Path) -> None:
     )
     out = tmp_path / "out.txt"
     proc = _run(
-        ["--tool", "cursor", "--output", str(out), "--timeout", "2", "--prompt", "hi"],
+        ["--tool", "cursor", "--output", str(out), "--timeout", STUB_AGENT_TIMEOUT, "--prompt", "hi"],
         {"PATH": f"{bin_dir}:{os.environ['PATH']}", "CURSOR_API_KEY": "test-key", "LARCH_TOKEN_BUDGET_CAP_REVIEW": "abc"},
     )
     assert proc.returncode == 0
@@ -1331,7 +1334,7 @@ fi
     )
     out = tmp_path / "out.txt"
     proc = _run(
-        ["--tool", "cursor", "--output", str(out), "--timeout", "2", "--prompt", "hi"],
+        ["--tool", "cursor", "--output", str(out), "--timeout", STUB_AGENT_TIMEOUT, "--prompt", "hi"],
         {"PATH": f"{bin_dir}:{os.environ['PATH']}", "CURSOR_API_KEY": "test-key", "LARCH_CURSOR_RETRY_EMPTY_RESULT": "1"},
     )
     assert proc.returncode == 0
@@ -1462,7 +1465,7 @@ def test_outer_meta_writes_timing_task_kind(tmp_path: Path) -> None:
             "--output",
             str(out),
             "--timeout",
-            "2",
+            STUB_AGENT_TIMEOUT,
             "--prompt",
             "hi",
             "--timing-task-kind",
@@ -1497,7 +1500,7 @@ echo '{{"type":"message","usage":{{"input_tokens":1,"cached_input_tokens":0,"out
     )
     out = session / "out.txt"
     proc = _run(
-        ["--tool", "codex", "--output", str(out), "--timeout", "2", "--prompt", "hi"],
+        ["--tool", "codex", "--output", str(out), "--timeout", STUB_AGENT_TIMEOUT, "--prompt", "hi"],
         {"PATH": f"{bin_dir}:{os.environ['PATH']}", "TMPDIR": str(external_tmp)},
     )
     assert proc.returncode == 0
@@ -1505,7 +1508,7 @@ echo '{{"type":"message","usage":{{"input_tokens":1,"cached_input_tokens":0,"out
     assert session.resolve() not in codex_home.parents
 
     fail_proc = _run(
-        ["--tool", "codex", "--output", str(session / "out2.txt"), "--timeout", "2", "--prompt", "hi"],
+        ["--tool", "codex", "--output", str(session / "out2.txt"), "--timeout", STUB_AGENT_TIMEOUT, "--prompt", "hi"],
         {"PATH": f"{bin_dir}:{os.environ['PATH']}", "TMPDIR": str(session)},
     )
     assert fail_proc.returncode == 2
@@ -1534,7 +1537,7 @@ echo '{{"type":"message","usage":{{"input_tokens":1,"cached_input_tokens":0,"out
 """,
     )
     proc = _run(
-        ["--tool", "codex", "--output", str(out), "--timeout", "2", "--prompt", "hi"],
+        ["--tool", "codex", "--output", str(out), "--timeout", STUB_AGENT_TIMEOUT, "--prompt", "hi"],
         {"PATH": f"{bin_dir}:{os.environ['PATH']}"},
     )
     assert proc.returncode == 0
@@ -1560,7 +1563,7 @@ echo '{{"type":"message","usage":{{"input_tokens":1,"cached_input_tokens":0,"out
     )
     out = tmp_path / "out.txt"
     proc = _run(
-        ["--tool", "codex", "--output", str(out), "--timeout", "2", "--prompt", "hi"],
+        ["--tool", "codex", "--output", str(out), "--timeout", STUB_AGENT_TIMEOUT, "--prompt", "hi"],
         {"PATH": f"{bin_dir}:{os.environ['PATH']}", "OPENAI_API_KEY": secret},
     )
     assert proc.returncode == 0
@@ -1585,8 +1588,8 @@ JSON
     env = {"PATH": f"{bin_dir}:{os.environ['PATH']}", "CURSOR_API_KEY": "test-key"}
     out1 = tmp_path / "out1.txt"
     out2 = tmp_path / "out2.txt"
-    proc1 = _run(["--tool", "cursor", "--output", str(out1), "--timeout", "2", "--prompt", "one"], env)
-    proc2 = _run(["--tool", "cursor", "--output", str(out2), "--timeout", "2", "--prompt", "two"], env)
+    proc1 = _run(["--tool", "cursor", "--output", str(out1), "--timeout", STUB_AGENT_TIMEOUT, "--prompt", "one"], env)
+    proc2 = _run(["--tool", "cursor", "--output", str(out2), "--timeout", STUB_AGENT_TIMEOUT, "--prompt", "two"], env)
     assert proc1.returncode == 0
     assert proc2.returncode == 0
     dirs = [line.strip() for line in cfg_log.read_text(encoding="utf-8").splitlines() if line.strip()]
@@ -1612,7 +1615,7 @@ exit 1
     )
     out = tmp_path / "out.txt"
     proc = _run(
-        ["--tool", "codex", "--output", str(out), "--timeout", "2", "--prompt", "quota"],
+        ["--tool", "codex", "--output", str(out), "--timeout", STUB_AGENT_TIMEOUT, "--prompt", "quota"],
         {
             "PATH": f"{bin_dir}:{os.environ['PATH']}",
             "DESIGN_TMPDIR": str(design),
@@ -1641,7 +1644,7 @@ exit 7
     )
     out = tmp_path / "out.txt"
     proc = _run(
-        ["--tool", "codex", "--output", str(out), "--timeout", "2", "--prompt", "transient"],
+        ["--tool", "codex", "--output", str(out), "--timeout", STUB_AGENT_TIMEOUT, "--prompt", "transient"],
         {"PATH": f"{bin_dir}:{os.environ['PATH']}", "IMPLEMENT_TMPDIR": str(impl)},
     )
     assert proc.returncode == 7
@@ -1660,7 +1663,7 @@ def test_codex_failure_stages_vendor_diagnostics_in_implement_tmpdir(tmp_path: P
     )
     out = tmp_path / "out.txt"
     proc = _run(
-        ["--tool", "codex", "--output", str(out), "--timeout", "2", "--prompt", "fail"],
+        ["--tool", "codex", "--output", str(out), "--timeout", STUB_AGENT_TIMEOUT, "--prompt", "fail"],
         {"PATH": f"{bin_dir}:{os.environ['PATH']}", "IMPLEMENT_TMPDIR": str(impl)},
     )
     assert proc.returncode == 1
@@ -1815,7 +1818,7 @@ def _launch_review_argv_reject_case(
     env: dict[str, str] | None,
 ) -> subprocess.CompletedProcess[str]:
     out = tmp_path / "out.txt"
-    return _run(["--tool", tool, "--output", str(out), "--timeout", "2", "--prompt", "hi", *extra_args], env)
+    return _run(["--tool", tool, "--output", str(out), "--timeout", STUB_AGENT_TIMEOUT, "--prompt", "hi", *extra_args], env)
 
 
 @pytest.mark.parametrize(
@@ -1841,7 +1844,7 @@ def test_launch_review_argv_reject_paths(
 ) -> None:
     out = tmp_path / "out.txt"
     if extra_args and extra_args[0] == "--output":
-        proc = _run(["--tool", tool, *extra_args, "--timeout", "2", "--prompt", "hi"], env)
+        proc = _run(["--tool", tool, *extra_args, "--timeout", STUB_AGENT_TIMEOUT, "--prompt", "hi"], env)
     else:
         proc = _launch_review_argv_reject_case(tmp_path, tool, extra_args, env)
     assert proc.returncode == expected_rc
