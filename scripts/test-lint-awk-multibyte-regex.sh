@@ -320,6 +320,7 @@ write_file "$TMPROOT/scripts/in-scope-shell.sh" \
     "awk 'BEGIN { if (match(\$0, \"—\")) print \"hit\" }'" # lint-awk-multibyte-regex: ok harness fixture
 write_file "$TMPROOT/scripts/out-of-scope-shell.sh" \
     "awk 'BEGIN { if (match(\$0, \"—\")) print \"hit\" }'" # lint-awk-multibyte-regex: ok harness fixture
+# shellcheck disable=SC2016
 write_file "$TMPROOT/scripts/standalone.awk" \
     'BEGIN { if (match($0, "—")) print "hit" }'
 rc="$(run_lint "$stderr_file")"
