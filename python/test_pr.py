@@ -530,6 +530,23 @@ def test_closes_issue_from_body_file(tmp_path: Path, capsys: pytest.CaptureFixtu
     assert capsys.readouterr().out.strip() == "3670"
 
 
+def test_closes_issue_default_repo_failure_empty_stdout(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    runner = RecordingRunner(responses=[CommandResult(("gh", "repo", "view"), 1, "", "no repo", 0.01)])
+    monkeypatch.setattr(pr_module, "proc", runner)
+    assert pr_module.closes_issue_main([]) == 0
+    assert capsys.readouterr().out == "\n"
+
+
+def test_closes_issue_default_current_pr_success(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    runner = RecordingRunner(responses=[
+        CommandResult(("gh", "repo", "view"), 0, "owner/repo\n", "", 0.01),
+        CommandResult(("gh", "pr", "view"), 0, "Body\n\nCloses #1234\nCloses #5678\n", "", 0.01),
+    ])
+    monkeypatch.setattr(pr_module, "proc", runner)
+    assert pr_module.closes_issue_main([]) == 0
+    assert capsys.readouterr().out.strip() == "1234"
+
+
 def test_body_update_missing_file(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     monkeypatch.setattr(pr_module, "proc", RecordingRunner())
     assert pr_module.body_update_main(["--pr", "1", "--body-file", "/no/such/file"]) == 2

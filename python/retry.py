@@ -1,4 +1,4 @@
-"""Transient network retry helpers (parity with scripts/lib-net.sh)."""
+"""Transient network retry helpers."""
 
 from __future__ import annotations
 

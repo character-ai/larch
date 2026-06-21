@@ -5,7 +5,20 @@
 # for developers on Mac; on Linux it uses whatever bash is on PATH.
 set -euo pipefail
 
-if [ "$#" -eq 0 ]; then exit 0; fi
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
+
+if [ "$#" -eq 0 ]; then
+  if [ -f "$REPO_ROOT/scripts/residual-bash-paths.txt" ]; then
+    manifest_paths=()
+    while IFS= read -r rel; do
+      manifest_paths+=("$REPO_ROOT/$rel")
+    done < <(python3 "$REPO_ROOT/python/cli.py" residual-bash paths --root "$REPO_ROOT")
+    set -- "${manifest_paths[@]}"
+  else
+    exit 0
+  fi
+fi
 
 max_parallel="$(nproc 2>/dev/null \
               || sysctl -n hw.ncpu 2>/dev/null \

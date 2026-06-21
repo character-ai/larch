@@ -9,7 +9,7 @@ the quiet log after init. User-visible diagnostics must use `larch_err` or
 `larch_errf`.
 
 Pre-init diagnostics remain allowed for source/bootstrap failures before
-`scripts/lib-quiet.sh` is available. Function definitions, quoted text, comments,
+legacy quiet initialization is present. Function definitions, quoted text, comments,
 and heredoc bodies do not activate the rule.
 
 The hook is registered in `.pre-commit-config.yaml` as

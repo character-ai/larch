@@ -80,8 +80,15 @@ if [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
     . "$SESSION_ENV_PATH"
 fi
 
-# shellcheck source=scripts/lib-quiet.sh
-source "$CLAUDE_PLUGIN_ROOT/scripts/lib-quiet.sh"
+emit() { printf '%s\n' "$*"; }
+emit_kv() {
+    local key=$1 value=${2-}
+    case "$value" in *$'\n'*|*$'\r'*) larch_err "emit_kv: value for key ${key} must not contain newline or carriage return"; return 2 ;; esac
+    printf '%s=%s\n' "$key" "$value"
+}
+larch_err() { printf '%s\n' "$*" >&2; }
+sanitize_diagnostic_line() { LC_ALL=C tr -d '[:cntrl:]'; }
+larch_quiet_init() { :; }
 
 if [ -z "${DESIGN_TMPDIR:-}" ] || [ ! -d "$DESIGN_TMPDIR" ]; then
     larch_err '/design Step 3 MAV: DESIGN_TMPDIR required'

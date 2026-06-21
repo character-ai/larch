@@ -9,3 +9,7 @@ The script also accepts positional `*.sh` and `*.inc.bash` paths. Positional pat
 Primary callers are the `lint-bash32` pre-commit hook, `make lint-bash32`, and the local `make lint` dependency chain. The pre-commit hook passes staged filenames positionally; `make lint-bash32` and local `make lint` keep the whole-repo untracked-aware scan. `scripts/test-lint-bash32.sh` is the black-box regression harness, wired through Makefile target `test-lint-bash32` and one `test-harnesses-N` shard. Because agent-lint does not follow Makefile-only script references, `agent-lint.toml` excludes both this linter and its harness.
 
 Edit in sync with `BASH_AUTHORING.md` section "Bash 3.2 Portability", `.pre-commit-config.yaml`, `docs/linting.md`, `Makefile`, `scripts/test-lint-bash32.sh`, and any intentional fixture suppressions in existing portability guards.
+
+## E3 residual scope
+
+This check reads the residual Bash manifest through `python3 python/cli.py residual-bash paths --root "$ROOT"` or the equivalent root-local manifest read. The manifest covers kept hooks, linters, thin wrappers, `scripts/sleep-seconds.sh`, the combine-issues helper, manifest-listed includes when present, and residual harnesses. Terminal shared libraries and retired non-thin helpers are out of scope.

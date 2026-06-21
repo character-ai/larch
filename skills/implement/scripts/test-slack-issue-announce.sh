@@ -5,7 +5,6 @@ set -euo pipefail
 export LARCH_QUIET_DISABLE=1
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
 HELPER="$SCRIPT_DIR/slack-issue-announce.sh"
 TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/test-slack-issue-announce.XXXXXX")"
 trap 'rm -rf "$TMP_ROOT"' EXIT
@@ -16,7 +15,6 @@ assert_contains(){ case "$2" in *"$1"*) pass "$3" ;; *) fail "$3 (missing $1)"; 
 finish(){ [ "$FAIL" -eq 0 ] || exit 1; printf 'PASS=%s\n' "$PASS"; }
 
 plugin="$TMP_ROOT/plugin"; mkdir -p "$plugin/scripts"
-cp "$REPO_ROOT/scripts/lib-quiet.sh" "$plugin/scripts/lib-quiet.sh"
 
 # Build IMPLEMENT_TMPDIR with parent-issue.md and ship-pr-state.sh
 impl_dir="$TMP_ROOT/impl"; mkdir -p "$impl_dir"

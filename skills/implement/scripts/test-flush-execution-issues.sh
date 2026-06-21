@@ -55,8 +55,6 @@ kv_value() {
 setup_plugin() {
     local root=$1
     mkdir -p "$root/scripts" "$root/python"
-    cp "$REPO_ROOT/scripts/lib-quiet.sh" "$root/scripts/lib-quiet.sh"
-    cp "$REPO_ROOT/scripts/lib-execution-issues.sh" "$root/scripts/lib-execution-issues.sh"
     cat > "$root/python/cli.py" <<'STUB'
 import os
 import sys
@@ -78,6 +76,10 @@ def _parse(args):
     return d
 
 def main():
+    if sys.argv[1:3] == ["execution-issues", "flush"]:
+        sys.path.insert(0, os.environ["LARCH_TEST_REPO_ROOT"] + "/python")
+        from execution_issues import flush_execution_issues_main
+        raise SystemExit(flush_execution_issues_main(sys.argv[3:]))
     if len(sys.argv) < 3 or sys.argv[1] != "run-log":
         print(f"unsupported command: {sys.argv[1:]}", file=sys.stderr)
         raise SystemExit(2)
@@ -115,7 +117,7 @@ STUB
 run_helper() {
     local plugin=$1 tmpdir=$2 log_root=$3 run_id=$4 issue_log=$5
     set +e
-    CLAUDE_PLUGIN_ROOT="$plugin" IMPLEMENT_TMPDIR="$tmpdir" \
+    CLAUDE_PLUGIN_ROOT="$plugin" IMPLEMENT_TMPDIR="$tmpdir" LARCH_TEST_REPO_ROOT="$REPO_ROOT" \
         "$HELPER" --log-root "$log_root" --run-id "$run_id" --issue-log "$issue_log"
     local rc=$?
     set -e

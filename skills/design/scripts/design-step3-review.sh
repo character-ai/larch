@@ -247,10 +247,6 @@ step3_review_write_resume_state() {
     mv "$_continue_tmp" "$_continue_file"
   fi
 }
-if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -f "${CLAUDE_PLUGIN_ROOT}/scripts/lib-quiet.sh" ]; then
-  # shellcheck source=scripts/lib-quiet.sh
-  source "${CLAUDE_PLUGIN_ROOT}/scripts/lib-quiet.sh" || true
-fi
 if [ -z "${DESIGN_TMPDIR:-}" ] || [ ! -d "$DESIGN_TMPDIR" ]; then
   printf '%s\n' "/design wrapper: DESIGN_TMPDIR required" >&2
   exit 1

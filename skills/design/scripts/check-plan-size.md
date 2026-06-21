@@ -38,7 +38,7 @@ Parsing rules (implemented in `plan_quality.parse_optional_metadata`; CLI surfac
 
 ## Output contract (`emit_kv` on FD 3)
 
-After `larch_quiet_init` from [`scripts/lib-quiet.sh`](../../../scripts/lib-quiet.md), machine-readable lines use `emit_kv` on **FD 3** (quiet session) or **stdout** when `LARCH_QUIET_DISABLE=1` — same capture pattern as `python/cli.py plan-review emit` / `python/test_plan_review.py`.
+Machine-readable lines use the Python CLI contract stream, matching `python/cli.py plan-review emit` and `python/test_plan_review.py`.
 
 Emitted keys (exit **0** only):
 

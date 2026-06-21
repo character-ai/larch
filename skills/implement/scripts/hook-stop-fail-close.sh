@@ -8,9 +8,9 @@ set -uo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
-# shellcheck source=scripts/lib-quiet.sh
-source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
-larch_quiet_init
+exec 3>&1
+hook_emit() { printf '%s
+' "$1" >&3; }
 
 implement_session_dir_exists() {
     [[ -n "$HOOK_CWD" ]] || return 1
@@ -79,9 +79,9 @@ if [[ -f "$IMPLEMENT_TMPDIR/review-round-summary.md" ]] && \
     if command -v jq >/dev/null 2>&1; then
         HOOK_OUT=$(jq -cn --arg r "$REASON" '{decision:"block",reason:$r}' 2>/dev/null) \
             || HOOK_OUT='{"decision":"block","reason":"You halted mid-Step-5 (post-/review boundary). Execute Cross-Skill Presence Propagation + Step 6 breadcrumb, then touch .review-boundary-passed inside the active /implement tmpdir."}'
-        emit "$HOOK_OUT"
+        hook_emit "$HOOK_OUT"
     else
-        emit '{"decision":"block","reason":"You halted mid-Step-5 (post-/review boundary). Execute Cross-Skill Presence Propagation + Step 6 breadcrumb, then touch .review-boundary-passed inside the active /implement tmpdir."}'
+        hook_emit '{"decision":"block","reason":"You halted mid-Step-5 (post-/review boundary). Execute Cross-Skill Presence Propagation + Step 6 breadcrumb, then touch .review-boundary-passed inside the active /implement tmpdir."}'
     fi
     exit 0
 fi

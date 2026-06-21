@@ -67,3 +67,7 @@ or static-pattern lines only; use it narrowly and include a reviewable reason.
 Edit in sync with `BASH_AUTHORING.md` §1, `docs/linting.md`,
 `.pre-commit-config.yaml`, `Makefile`, and
 `scripts/test-lint-bare-grep-probe.sh`.
+
+## E3 residual scope
+
+This check reads the residual Bash manifest through `python3 python/cli.py residual-bash paths --root "$ROOT"` or the equivalent root-local manifest read. The manifest covers kept hooks, linters, thin wrappers, `scripts/sleep-seconds.sh`, the combine-issues helper, manifest-listed includes when present, and residual harnesses. Terminal shared libraries and retired non-thin helpers are out of scope.

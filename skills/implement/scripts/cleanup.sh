@@ -5,10 +5,14 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
-# shellcheck source=scripts/lib-quiet.sh
-# shellcheck disable=SC1091
-source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
-larch_quiet_init
+larch_err() { printf '%s\n' "$*" >&2; }
+emit() { printf '%s\n' "$*"; }
+emit_kv() {
+    local key=$1 value=${2-}
+    case "$value" in *$'\n'*|*$'\r'*) larch_err "emit_kv: value for key ${key} must not contain newline or carriage return"; return 2 ;; esac
+    printf '%s=%s\n' "$key" "$value"
+}
+larch_quiet_init() { :; }
 
 usage() { larch_err "Usage: cleanup.sh --implement-tmpdir PATH"; }
 

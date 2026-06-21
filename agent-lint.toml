@@ -361,11 +361,8 @@ exclude = [
   # python/plan_review.py through $DEDUP_PLAN_LINES_PY;
   # agent-lint's G004/dead-script rule does not follow shell variable indirection.
   "skills/design/scripts/dedup-plan-lines.py",
-  # scripts/lib-redact.sh is a sourced-only trimmer library. Its former
   # structured invoker was ported to Python (python/design_log_publish_flow.py);
   # the library is still copied by test-step-7a.sh fixtures.
-  "scripts/lib-redact.sh",
-  "scripts/lib-redact.md",
   # scripts/pre-commit-shellcheck.sh is the parallel shellcheck wrapper invoked
   # by the local `shellcheck` pre-commit hook in `.pre-commit-config.yaml`
   # (`entry: scripts/pre-commit-shellcheck.sh`). It replaced the upstream
@@ -451,28 +448,16 @@ exclude = [
   "scripts/test-hook-anti-read-poll.sh",
   "scripts/test-hook-bg-poll-guard.sh",
   "scripts/test-hook-progress-report.sh",
-  # scripts/lib-sparse-dirs.sh is a sourced-only shell library (no shebang,
   # not invokable directly) carrying the canonical plugin sparse install
   # allowlist for upgrade-larch run and SessionStart probes. Referenced via
   # source directives only, which agent-lint does not follow.
-  "scripts/lib-sparse-dirs.sh",
-  # scripts/lib-sparse-dirs.md — sibling contract for lib-sparse-dirs.sh
   # (script-md-siblings / G004).
-  "scripts/lib-sparse-dirs.md",
-  # scripts/lib-phantom-probe.sh is a sourced-only shell library (no shebang);
   # agent-lint does not follow source directives.
-  "scripts/lib-phantom-probe.sh",
-  # scripts/lib-phantom-probe.md — sibling contract for lib-phantom-probe.sh
   # (script-md-siblings / G004).
-  "scripts/lib-phantom-probe.md",
-  # scripts/lib-net.sh is a sourced-only shell library (no shebang,
   # not invokable directly). It provides is_transient_net_signature() to
   # shell callsites via source directives only, which agent-lint does not follow.
   # Python retry callers use python/retry.py instead.
-  "scripts/lib-net.sh",
-  # scripts/lib-execution-issues.sh is a sourced-only shell library shared by
   # python3 python/cli.py implement-finalize and skills/implement/scripts/flush-execution-issues.sh.
-  "scripts/lib-execution-issues.sh",
   # python/cli.py agent cursor-auth-preflight is a small executable that prints the
   # conditional --api-key argv elements for runtime skill markdown blocks.
   # Referenced from skills/shared/voting-protocol.md,
@@ -555,10 +540,6 @@ exclude = [
   # from Makefile (test-agent-model-args target) and
   # python/test_agents.py (sibling contract).
   "python/test_agents.py",
-  # scripts/test-lib-quiet.sh is the regression harness for scripts/lib-quiet.sh
-  # (issue #2109). Referenced only from Makefile (test-lib-quiet target) and
-  # scripts/test-lib-quiet.md (sibling contract).
-  "scripts/test-lib-quiet.sh",
   # Referenced only from Makefile (test-lib-cursor-auth target) and
   # python/test_agents.py is the regression harness for
   # python/cli.py agent run-external-agent. Referenced only from Makefile
@@ -858,10 +839,6 @@ exclude = [
   # issue #3039: Makefile-only harness wired via
   # test-render-final-summary-bash32 (now pytest python/test_design_summary.py).
   "python/test_design_summary.py",
-  # scripts/test-lib-net.sh is the offline regression harness for
-  # scripts/lib-net.sh with_transient_retry / transient_envelope_predicate_none.
-  # Referenced only from Makefile (test-lib-net target) and scripts/test-lib-net.md.
-  "scripts/test-lib-net.sh",
   # scripts/test-flush-vendor-failure-diagnostics.sh is the offline regression
   # harness for scripts/flush-vendor-failure-diagnostics.sh (#3713 vendor-failure
   # batch flush). Referenced only from Makefile (test-flush-vendor-failure-diagnostics
@@ -917,14 +894,10 @@ exclude = [
   "scripts/hook-bg-poll-guard.md",
   "scripts/test-hook-progress-report.md",
   "scripts/hook-progress-report.md",
-  "scripts/test-lib-quiet.md",
-  "scripts/lib-quiet.md",
   "python/agents.py",
   "python/test_agents.py",
   "python/test_agents.py",
-  "scripts/test-lib-net.md",
   "scripts/test-flush-vendor-failure-diagnostics.md",
-  "scripts/lib-net.md",
   "python/session_env.py (session restore-finalize-state)",
   # python/test_alias_skill.py and scripts/test-alias-structure.md
   # are the sibling contracts for the two alias-rework regression harnesses
@@ -1075,15 +1048,9 @@ exclude = [
   "python/test_pr_body.py",
   "skills/implement/scripts/test-cleanup.sh",
   "skills/implement/scripts/test-cleanup.md",
-  # scripts/lib-submodule-prohibition.sh is a sourced-only shell library (no
   # shebang, not invokable directly). It is referenced from review-and-fix CLI
   # and python/cli.py checks lint-fix via `source` directives only, which agent-lint does
-  # not follow. scripts/test-lib-submodule-prohibition.sh is its Makefile-only
   # regression harness.
-  "scripts/lib-submodule-prohibition.sh",
-  "scripts/lib-submodule-prohibition.md",
-  "scripts/test-lib-submodule-prohibition.sh",
-  "scripts/test-lib-submodule-prohibition.md",
   # scripts/test-prompt-template-invariants.sh is the cross-cutting
   # structural invariants harness for subagent prompt templates (issue #2421).
   # Referenced only from Makefile (test-prompt-template-invariants target),

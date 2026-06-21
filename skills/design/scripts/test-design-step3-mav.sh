@@ -86,12 +86,6 @@ mkdir -p "$D_PAUSE"
 : >"$D_PAUSE/.pause-requested"
 FAKE_PLUGIN="$TMPROOT/fake-plugin"
 mkdir -p "$FAKE_PLUGIN/scripts"
-cat >"$FAKE_PLUGIN/scripts/lib-quiet.sh" <<'FAKE'
-larch_quiet_init() { :; }
-larch_err() { printf '%s\n' "$*" >&2; }
-emit() { printf '%s\n' "$*"; }
-emit_kv() { printf '%s=%s\n' "$1" "$2"; }
-FAKE
 mkdir -p "$FAKE_PLUGIN/python"
 cat >"$FAKE_PLUGIN/python/cli.py" <<'FAKE'
 #!/usr/bin/env python3

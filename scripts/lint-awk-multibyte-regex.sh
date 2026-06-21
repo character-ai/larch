@@ -43,9 +43,22 @@ TMP_FILES="$(mktemp "${TMPDIR:-/tmp}/lint-awk-multibyte-regex-files.XXXXXX")"
 trap 'rm -f "$TMP_FILES"' EXIT
 
 list_target_files() {
+    if [ -f "$ROOT/scripts/residual-bash-paths.txt" ]; then
+        python3 "$REPO_ROOT/python/cli.py" residual-bash paths --root "$ROOT" --null-delimited             | while IFS= read -r -d '' rel; do
+                case "$rel" in
+                    *.sh|*.inc.bash) printf '%s\0' "$rel" ;;
+                esac
+            done
+    elif git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        git -C "$ROOT" ls-files --cached --others --exclude-standard -z -- '*.sh' '*.inc.bash'
+    else
+        (
+            cd "$ROOT"
+            find . \( -path './.git' -o -path './node_modules' -o -path './larch-logs' \) -prune -o                 -type f \( -name '*.sh' -o -name '*.inc.bash' \) -print 2>/dev/null                 | sed 's#^\./##'                 | LC_ALL=C sort                 | while IFS= read -r path; do printf '%s\0' "$path"; done
+        )
+    fi
     if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-        git -C "$ROOT" ls-files --cached --others --exclude-standard -z -- '*.sh' '*.awk' \
-            | while IFS= read -r -d '' rel; do
+        git -C "$ROOT" ls-files --cached --others --exclude-standard -z -- '*.awk'             | while IFS= read -r -d '' rel; do
                 case "$rel" in
                     node_modules/*|larch-logs/*|.git/*) continue ;;
                 esac
@@ -54,11 +67,7 @@ list_target_files() {
     else
         (
             cd "$ROOT"
-            find . \( -path './.git' -o -path './node_modules' -o -path './larch-logs' \) -prune -o \
-                -type f \( -name '*.sh' -o -name '*.awk' \) -print 2>/dev/null \
-                | sed 's#^\./##' \
-                | LC_ALL=C sort \
-                | while IFS= read -r path; do
+            find . \( -path './.git' -o -path './node_modules' -o -path './larch-logs' \) -prune -o                 -type f -name '*.awk' -print 2>/dev/null                 | sed 's#^\./##'                 | LC_ALL=C sort                 | while IFS= read -r path; do
                     printf '%s\0' "$path"
                 done
         )

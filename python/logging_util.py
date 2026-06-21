@@ -53,7 +53,7 @@ def _clear_quiet_env() -> None:
 
 
 def quiet_init(*, argv0: str | None = None) -> None:
-    """Initialize lib-quiet-style stdout/stderr routing for this process."""
+    """Initialize quiet-style stdout/stderr routing for this process."""
     global _self_initialized_quiet  # noqa: PLW0603
     if _quiet_disabled():
         return
@@ -68,7 +68,7 @@ def quiet_init(*, argv0: str | None = None) -> None:
     if not tmpdir or not Path(tmpdir).is_dir():
         tmpdir = os.environ.get("TMPDIR", "")
     if not tmpdir or not Path(tmpdir).is_dir():
-        tmpdir = "/tmp"  # noqa: S108 - lib-quiet parity fallback
+        tmpdir = "/tmp"  # noqa: S108 - quiet routing parity fallback
     script = Path(argv0 or (sys.argv[0] if sys.argv else "ship.py")).name or "ship.py"
     log_file = os.environ.get(config.ENV_LARCH_QUIET_LOG_FILE, "") or config.PATH_QUIET_LOG_TEMPLATE.format(
         tmpdir=tmpdir,
@@ -119,7 +119,7 @@ def emit(text: str) -> None:
 
 
 def sanitize_diagnostic_line(text: str) -> str:
-    """Strip C0 control bytes and DEL from one diagnostic line (lib-quiet.sh parity)."""
+    """Strip C0 control bytes and DEL from one diagnostic line (quiet routing parity)."""
     return "".join(ch for ch in text if ch >= " " and ch != "\x7f")
 
 
@@ -156,7 +156,7 @@ def diagnostic(message: str) -> None:
 
 @dataclass
 class BreadcrumbWriter:
-    """Progress breadcrumbs; honor lib-quiet routing when LARCH_QUIET_ACTIVE is set."""
+    """Progress breadcrumbs; honor quiet routing when LARCH_QUIET_ACTIVE is set."""
 
     stream: TextIO | None = None
 

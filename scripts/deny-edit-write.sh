@@ -37,10 +37,9 @@
 # and emit a deny envelope rather than aborting with no hook decision.
 set -uo pipefail
 
-SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" && pwd -P)"
-# shellcheck source=scripts/lib-quiet.sh
-source "$SCRIPT_DIR/lib-quiet.sh"
-larch_quiet_init
+exec 3>&1
+hook_emit() { printf '%s
+' "$1" >&3; }
 
 # Fixed deny JSON — single reason string, no runtime interpolation.
 # The jq -cn expression below and the static-literal fallback must produce
@@ -56,14 +55,14 @@ block() {
     }
   }' 2>/dev/null) \
     || json='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"/research is a read-only-repo skill -- Edit/Write/NotebookEdit outside /tmp is not permitted."}}'
-  emit "$json"
+  hook_emit "$json"
   exit 0
 }
 
 # jq-absent static fallback. Byte-identical to the `jq -cn` output
 # above (same single reason literal).
 if ! command -v jq >/dev/null 2>&1; then
-  emit '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"/research is a read-only-repo skill -- Edit/Write/NotebookEdit outside /tmp is not permitted."}}'
+  hook_emit '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"/research is a read-only-repo skill -- Edit/Write/NotebookEdit outside /tmp is not permitted."}}'
   exit 0
 fi
 

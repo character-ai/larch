@@ -8,16 +8,21 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=scripts/lib-quiet.sh
-source "$SCRIPT_DIR/lib-quiet.sh"
-# No larch_quiet_init: shellcheck diagnostics must remain visible to the
-# developer in the pre-commit hook environment.
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 
 # Zero-args fast path: pre-commit may invoke us with no matching files
 # after type/file filtering. BSD xargs lacks --no-run-if-empty, so
 # return early to avoid spurious zero-arg shellcheck invocation.
 if [ "$#" -eq 0 ]; then
-  exit 0
+  if [ -f "$REPO_ROOT/scripts/residual-bash-paths.txt" ]; then
+    manifest_paths=()
+    while IFS= read -r rel; do
+      manifest_paths+=("$REPO_ROOT/$rel")
+    done < <(python3 "$REPO_ROOT/python/cli.py" residual-bash paths --root "$REPO_ROOT")
+    set -- "${manifest_paths[@]}"
+  else
+    exit 0
+  fi
 fi
 
 if ! command -v shellcheck >/dev/null 2>&1; then

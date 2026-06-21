@@ -45,7 +45,7 @@ write-final-report.sh --implement-tmpdir PATH [--comment-only] [--print-stdout]
 
 ### `--print-stdout`
 
-When set, the script exports `PRINT_STDOUT=true` and prints the rendered markdown body to FD **3** when `lib-quiet.sh` owns the session (`LARCH_QUIET_PID=$$`), else to **stdout**. Status KV lines go to FD **4** (quiet session) or **stderr** (non-quiet), via `emit_kv_out`. This is the renderer's print mechanism; top-chat visibility is achieved by the orchestrator emitting the persisted `$IMPLEMENT_TMPDIR/summary-final.md` body verbatim after the Bash call (per `skills/implement/SKILL.md` Step 17 / Step 18 prose). The FD-3-vs-stdout choice remains relevant for lib-quiet-aware callers, but it is not the primary top-chat visibility channel. The canonical tmpdir basename is `summary-final.md`, distinct from the committed `larch-logs/implement/<RUN_ID>/final-summary.md` run-log artifact.
+When set, the script exports `PRINT_STDOUT=true` and prints the rendered markdown body to FD **3** when FD 3 is available, else to **stdout**. Status KV lines go to FD **4** (quiet session) or **stderr** (non-quiet), via `emit_kv_out`. This is the renderer's print mechanism; top-chat visibility is achieved by the orchestrator emitting the persisted `$IMPLEMENT_TMPDIR/summary-final.md` body verbatim after the Bash call (per `skills/implement/SKILL.md` Step 17 / Step 18 prose). The FD-3-vs-stdout choice is not the primary top-chat visibility channel. The canonical tmpdir basename is `summary-final.md`, distinct from the committed `larch-logs/implement/<RUN_ID>/final-summary.md` run-log artifact.
 
 ### Key-value contract (`emit` / `emit_kv_out`)
 

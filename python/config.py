@@ -128,7 +128,7 @@ STALL_RECOVERY_BAIL_REASON_TOKENS: Final[tuple[str, ...]] = tuple(dict.fromkeys(
     "all-vendors-failed",
 )))
 
-# Transient retry (parity with scripts/lib-net.sh)
+# Transient retry defaults shared with python/retry.py.
 TRANSIENT_RETRY_MAX_ATTEMPTS: Final = 3
 TRANSIENT_RETRY_BACKOFF_SEC: Final = (2, 4)
 
