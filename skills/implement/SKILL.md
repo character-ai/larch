@@ -94,7 +94,7 @@ Prompt-side orchestration steps delegate to these script contracts:
 `post-tracking-issue.md` (`skills/implement/scripts/post-tracking-issue.sh`); `skills/implement/references/step2-dispatch.md`;
 `generate-code-flow-diagram.md` (`skills/implement/scripts/generate-code-flow-diagram.sh`);
 `refresh-execution-issues.md` (`skills/implement/scripts/refresh-execution-issues.sh`);
-`slack-issue-announce.md` (`skills/implement/scripts/slack-issue-announce.sh`); `write-final-report.md` (`skills/implement/scripts/write-final-report.sh`); `skills/implement/scripts/cleanup.md` (`skills/implement/scripts/cleanup.sh`);
+`write-final-report.md` (`skills/implement/scripts/write-final-report.sh`); `skills/implement/scripts/cleanup.md` (`skills/implement/scripts/cleanup.sh`);
 `step-0-bootstrap.md`; `step-0-degraded-gate.md` (legacy — `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-degraded-gate.sh` remains shipped for offline harnesses but is not called on the active Step 0 path); `step-2-entry.md`; `step-2-post-dispatch.md` (`skills/implement/scripts/step-2-post-dispatch.sh`);
 `run-step-checks.md`; `step-5-review.md`; `step-5-resume.md` (`python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review-and-fix commit-fixes`, via `step-5-resume.sh`);
 `step-6-entry.md` (`python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review-and-fix check-changes`, via `step-6-entry.sh`); `lib-implement-clone-tag.md`; `step-8-python-guard.md`; `step-8-seed-initial.md`; `step-8-ship.md`;

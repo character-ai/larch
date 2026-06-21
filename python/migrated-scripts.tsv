@@ -1292,3 +1292,7 @@ scripts/extract-closes-issue-from-pr.sh	#3692
 scripts/extract-closes-issue-from-pr.md	#3692
 scripts/oos-disposition-shared.inc.bash	#3692
 scripts/run-log-terminal-outcomes.inc.bash	#3692
+skills/implement/scripts/slack-issue-announce.sh	#4972
+skills/implement/scripts/slack-issue-announce.md	#4972
+skills/implement/scripts/test-slack-issue-announce.sh	#4972
+skills/implement/scripts/test-slack-issue-announce.md	#4972
