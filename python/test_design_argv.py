@@ -66,6 +66,9 @@ def test_design_parse_argv_cli_writes_sourceable_output(tmp_path: Path) -> None:
         (("--skip-approve", "--skip-approve"), "--skip-approve"),
         (("-s", "-s"), "--skip-approve"),
         (("--run-id", "bad\nid", "3249"), "newline-in-value"),
+        (("123", "--run-id", "--bogus"), "--bogus"),
+        (("123", "--run-id", "--hard"), "--hard"),
+        (("123", "--run-id", "--brainstorm"), "--brainstorm"),
         (("foo\n=true",), "newline-in-value"),
     ],
 )

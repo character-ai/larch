@@ -94,7 +94,13 @@ class Stats:
 # File helpers
 # ---------------------------------------------------------------------------
 
-def _delete(path: Path, execute: bool, stats_attr: str, stats: Stats) -> None:
+def _delete(
+    path: Path,
+    execute: bool,
+    stats_attr: str,
+    stats: Stats,
+    run_dir_resolved: Path,
+) -> None:
     """Delete path and its sidecar files (.meta, .json) when they exist."""
     targets = [path]
     for ext in _SIDECAR_EXTS:
@@ -102,6 +108,8 @@ def _delete(path: Path, execute: bool, stats_attr: str, stats: Stats) -> None:
         if sidecar.exists() and sidecar != path:
             targets.append(sidecar)
     for t in targets:
+        if not _within_run_dir(t, run_dir_resolved):
+            continue
         if execute:
             try:
                 t.unlink()
@@ -127,7 +135,7 @@ def _within_run_dir(path: Path, run_dir_resolved: Path) -> bool:
     """
     try:
         return path.resolve().is_relative_to(run_dir_resolved)
-    except OSError:
+    except (OSError, RuntimeError):
         return False
 
 
@@ -142,8 +150,9 @@ def _contained(run_dir: Path, paths: Iterable[Path]) -> Iterator[Path]:
 # ---------------------------------------------------------------------------
 
 def delete_dyn_prompts(run_dir: Path, execute: bool, stats: Stats) -> None:
+    run_dir_resolved = run_dir.resolve()
     for p in _contained(run_dir, run_dir.rglob("dyn-*-prompt.md")):
-        _delete(p, execute, "dyn_prompt_deleted", stats)
+        _delete(p, execute, "dyn_prompt_deleted", stats, run_dir_resolved)
 
 
 # ---------------------------------------------------------------------------
@@ -160,7 +169,7 @@ def delete_identical_aggregator(run_dir: Path, execute: bool, stats: Stats) -> N
         if not _within_run_dir(findings, run_dir_resolved):
             continue
         if filecmp.cmp(str(agg), str(findings), shallow=False):
-            _delete(agg, execute, "aggregator_deleted", stats)
+            _delete(agg, execute, "aggregator_deleted", stats, run_dir_resolved)
     # Clean up orphaned aggregator sidecars (e.g. .meta committed when the Phase 1
     # deny skipped the .txt but the sidecar slipped through).
     for ext in _SIDECAR_EXTS:
@@ -181,8 +190,9 @@ def delete_identical_aggregator(run_dir: Path, execute: bool, stats: Stats) -> N
 # ---------------------------------------------------------------------------
 
 def delete_raw_manifests(run_dir: Path, execute: bool, stats: Stats) -> None:
+    run_dir_resolved = run_dir.resolve()
     for p in _contained(run_dir, run_dir.rglob("scout-round*-manifest.json.raw")):
-        _delete(p, execute, "raw_manifest_deleted", stats)
+        _delete(p, execute, "raw_manifest_deleted", stats, run_dir_resolved)
 
 
 # ---------------------------------------------------------------------------
@@ -195,12 +205,13 @@ _REFRESH_NAMES = {
 }
 
 def delete_refresh_sidecars(run_dir: Path, execute: bool, stats: Stats) -> None:
+    run_dir_resolved = run_dir.resolve()
     for p in _contained(run_dir, run_dir.rglob("*")):
         name = p.name
         if name in _REFRESH_NAMES:
-            _delete(p, execute, "refresh_deleted", stats)
+            _delete(p, execute, "refresh_deleted", stats, run_dir_resolved)
         elif p.is_file() and name.startswith("session-transcript-refresh."):
-            _delete(p, execute, "refresh_deleted", stats)
+            _delete(p, execute, "refresh_deleted", stats, run_dir_resolved)
 
 
 # ---------------------------------------------------------------------------
@@ -224,9 +235,10 @@ def _is_cursor_phase_retry(name: str) -> bool:
 
 
 def delete_cursor_phase_retry(run_dir: Path, execute: bool, stats: Stats) -> None:
+    run_dir_resolved = run_dir.resolve()
     for p in _contained(run_dir, run_dir.rglob("cursor-specialist-*-output-*.txt")):
         if _is_cursor_phase_retry(p.name):
-            _delete(p, execute, "cursor_phase_retry_deleted", stats)
+            _delete(p, execute, "cursor_phase_retry_deleted", stats, run_dir_resolved)
 
 
 # ---------------------------------------------------------------------------

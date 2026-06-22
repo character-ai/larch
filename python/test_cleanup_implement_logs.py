@@ -132,6 +132,41 @@ def test_within_run_dir_accepts_inside_and_rejects_escape(tmp_path: Path) -> Non
     assert not cil._within_run_dir(link, run_dir.resolve())  # pyright: ignore[reportPrivateUsage]
 
 
+def test_within_run_dir_rejects_symlink_loop(tmp_path: Path) -> None:
+    run_dir, _ = _run_and_external(tmp_path)
+    loop = run_dir / "dyn-loop-prompt.md"
+    loop.symlink_to(loop)
+    assert not cil._within_run_dir(loop, run_dir.resolve())  # pyright: ignore[reportPrivateUsage]
+
+
+def test_delete_dyn_prompts_skips_symlink_loop(tmp_path: Path) -> None:
+    run_dir, _ = _run_and_external(tmp_path)
+    loop = run_dir / "dyn-loop-prompt.md"
+    loop.symlink_to(loop)
+
+    stats = cil.Stats()
+    cil.delete_dyn_prompts(run_dir, execute=True, stats=stats)
+
+    assert loop.is_symlink(), "symlink loop entry must not be unlinked"
+    assert stats.dyn_prompt_deleted == 0
+
+
+def test_delete_dyn_prompts_skips_escaping_sidecar(tmp_path: Path) -> None:
+    run_dir, external = _run_and_external(tmp_path)
+    prompt = run_dir / "dyn-evil-prompt.md"
+    prompt.write_text("ok\n", encoding="utf-8")
+    victim = external / "dyn-evil-prompt.md.meta"
+    victim.write_text("secret\n", encoding="utf-8")
+    (run_dir / "dyn-evil-prompt.md.meta").symlink_to(victim)
+
+    stats = cil.Stats()
+    cil.delete_dyn_prompts(run_dir, execute=True, stats=stats)
+
+    assert victim.exists(), "escaping sidecar target must survive"
+    assert not prompt.exists(), "contained primary file should be deleted"
+    assert stats.dyn_prompt_deleted == 1
+
+
 def test_delete_dyn_prompts_skips_symlink_escape(tmp_path: Path) -> None:
     # A dyn-*-prompt.md symlink inside the run dir that points outside it must be
     # left untouched, not followed and unlinked.

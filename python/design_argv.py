@@ -81,6 +81,15 @@ _ONCE_FLAG_TOKENS = {
     "-s": ("skip_approve_requested", "--skip-approve"),
 }
 
+_KNOWN_PUBLIC_FLAG_TOKENS = frozenset(
+    {
+        *_SIMPLE_FLAG_ATTRS.keys(),
+        *_ONCE_FLAG_TOKENS.keys(),
+        "--run-id",
+        "--hard",
+    }
+)
+
 
 def _strip_leading_output(argv: list[str]) -> tuple[str, list[str]]:
     output_path = ""
@@ -139,8 +148,12 @@ def _parse_flag_token(
         if index + 1 >= len(argv):
             error_rc = _emit_validation_error("--run-id", output_path)
         else:
-            state.run_id = argv[index + 1]
-            next_index = index + 2
+            value = argv[index + 1]
+            if value.startswith("-") or value in _KNOWN_PUBLIC_FLAG_TOKENS:
+                error_rc = _emit_validation_error(value, output_path)
+            else:
+                state.run_id = value
+                next_index = index + 2
     elif token == "--hard":
         error_rc = _emit_validation_error("--hard", output_path)
     elif token.startswith("-"):
