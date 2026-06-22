@@ -33,6 +33,8 @@ SELF_LIKE = frozenset({"self", "cls"})
 MIN_POSITIONAL_PARAMS = 2
 STANDALONE_PRAGMA_RE = re.compile(r"^\s*#\s*lint-keyword-only: ok\s+(\S.*)$")
 TRAILING_PRAGMA_RE = re.compile(r"\s#\s*lint-keyword-only: ok\s+(\S.*)$")
+BARE_STAR_IN_ARGS_RE = re.compile(r"(?:[(,]\s*)\*(?!\w|\*)")
+_DEF_HEAD_RE = re.compile(r"(?:async\s+)?def\s+\w+\s*\(")
 
 
 class Record(TypedDict):
@@ -60,18 +62,54 @@ def _is_dunder(func_name: str) -> bool:
     return func_name.startswith("__") and func_name.endswith("__")
 
 
-def _has_bare_star_separator(args: ast.arguments) -> bool:
+def _def_args_paren_text(
+    source: str, func: ast.FunctionDef | ast.AsyncFunctionDef
+) -> str | None:
+    """Return the parenthesized parameter list text for one function definition."""
+    lines = source.splitlines()
+    start = func.lineno - 1
+    end = (func.end_lineno or func.lineno) - 1
+    if start < 0 or end >= len(lines):
+        return None
+    chunk = "\n".join(lines[start : end + 1])
+    match = _DEF_HEAD_RE.search(chunk)
+    if match is None:
+        return None
+    open_paren = match.end() - 1
+    depth = 0
+    for index in range(open_paren, len(chunk)):
+        char = chunk[index]
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+            if depth == 0:
+                return chunk[open_paren : index + 1]
+    return None
+
+
+def _has_bare_star_separator(
+    args: ast.arguments,
+    source: str | None = None,
+    func: ast.FunctionDef | ast.AsyncFunctionDef | None = None,
+) -> bool:
     """Return True when the signature uses a bare * (not a named *args)."""
-    return bool(args.kwonlyargs) and args.vararg is None
+    if args.vararg is not None:
+        return False
+    if source is not None:
+        segment: str | None = ast.get_source_segment(source, args)
+        if segment is None and func is not None:
+            segment = _def_args_paren_text(source, func)
+        if segment is not None and BARE_STAR_IN_ARGS_RE.search(segment):
+            return True
+    return bool(args.kwonlyargs)
 
 
 def _has_violation(args: ast.arguments) -> bool:
-    """Return True when the function needs a bare * but lacks one."""
+    """Return True when 2+ non-self/cls params remain positional-or-keyword."""
     positional: list[ast.arg] = list(args.posonlyargs) + list(args.args)
     non_self_cls: list[ast.arg] = [a for a in positional if a.arg not in SELF_LIKE]
-    if len(non_self_cls) < MIN_POSITIONAL_PARAMS:
-        return False
-    return not _has_bare_star_separator(args)
+    return len(non_self_cls) >= MIN_POSITIONAL_PARAMS
 
 
 def _base_name(base: ast.expr) -> str | None:

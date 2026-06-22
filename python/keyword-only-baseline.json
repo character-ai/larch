@@ -149,11 +149,27 @@
   },
   {
     "file": "agents.py",
+    "qualified_symbol": "_append_implement_launch_failure"
+  },
+  {
+    "file": "agents.py",
     "qualified_symbol": "_ci_prompt"
   },
   {
     "file": "agents.py",
+    "qualified_symbol": "_emit_ci_launcher_result"
+  },
+  {
+    "file": "agents.py",
+    "qualified_symbol": "_emit_implement_launcher_envelope"
+  },
+  {
+    "file": "agents.py",
     "qualified_symbol": "_emit_kv"
+  },
+  {
+    "file": "agents.py",
+    "qualified_symbol": "_env_int"
   },
   {
     "file": "agents.py",
@@ -162,6 +178,10 @@
   {
     "file": "agents.py",
     "qualified_symbol": "_implement_failure_auth_paths"
+  },
+  {
+    "file": "agents.py",
+    "qualified_symbol": "_implement_prompt"
   },
   {
     "file": "agents.py",
@@ -265,6 +285,14 @@
   },
   {
     "file": "agents.py",
+    "qualified_symbol": "_review_emit_launcher_result"
+  },
+  {
+    "file": "agents.py",
+    "qualified_symbol": "_review_failure_auth_paths"
+  },
+  {
+    "file": "agents.py",
     "qualified_symbol": "_review_launch_codex"
   },
   {
@@ -297,6 +325,10 @@
   },
   {
     "file": "agents.py",
+    "qualified_symbol": "_review_write_preflight_bundle"
+  },
+  {
+    "file": "agents.py",
     "qualified_symbol": "_review_write_preflight_done"
   },
   {
@@ -309,6 +341,10 @@
   },
   {
     "file": "agents.py",
+    "qualified_symbol": "_run_claude_with_stdin"
+  },
+  {
+    "file": "agents.py",
     "qualified_symbol": "_run_codex_probes"
   },
   {
@@ -318,6 +354,10 @@
   {
     "file": "agents.py",
     "qualified_symbol": "_stall_channel_progress"
+  },
+  {
+    "file": "agents.py",
+    "qualified_symbol": "_stderr_tail_from_less_specific_carrier"
   },
   {
     "file": "agents.py",
@@ -357,11 +397,23 @@
   },
   {
     "file": "agents.py",
+    "qualified_symbol": "_write_drafter_status_file"
+  },
+  {
+    "file": "agents.py",
+    "qualified_symbol": "_write_preflight_bundle"
+  },
+  {
+    "file": "agents.py",
     "qualified_symbol": "_write_probe_stamp"
   },
   {
     "file": "agents.py",
     "qualified_symbol": "_write_stderr_tail"
+  },
+  {
+    "file": "agents.py",
+    "qualified_symbol": "classify_launch_failure"
   },
   {
     "file": "agents.py",
@@ -382,6 +434,10 @@
   {
     "file": "agents.py",
     "qualified_symbol": "is_transient_infra_failure"
+  },
+  {
+    "file": "agents.py",
+    "qualified_symbol": "launch_tier"
   },
   {
     "file": "agents.py",
@@ -420,12 +476,24 @@
     "qualified_symbol": "run_negotiation_round"
   },
   {
+    "file": "agents.py",
+    "qualified_symbol": "run_waterfall"
+  },
+  {
+    "file": "agents.py",
+    "qualified_symbol": "write_failed_agent_stderr_tail"
+  },
+  {
     "file": "analyze_issues.py",
     "qualified_symbol": "_ambiguous_rollup_expansion_row"
   },
   {
     "file": "analyze_issues.py",
     "qualified_symbol": "_ambiguous_stable_id_row"
+  },
+  {
+    "file": "analyze_issues.py",
+    "qualified_symbol": "_append_design_accepted_block_records"
   },
   {
     "file": "analyze_issues.py",
@@ -473,6 +541,14 @@
   },
   {
     "file": "analyze_issues.py",
+    "qualified_symbol": "_stable_ids_cover"
+  },
+  {
+    "file": "analyze_issues.py",
+    "qualified_symbol": "_write_issue_dump"
+  },
+  {
+    "file": "analyze_issues.py",
     "qualified_symbol": "categorize"
   },
   {
@@ -482,6 +558,10 @@
   {
     "file": "analyze_issues.py",
     "qualified_symbol": "executive_summary"
+  },
+  {
+    "file": "analyze_issues.py",
+    "qualified_symbol": "fate_adjusted_oos_scoring"
   },
   {
     "file": "analyze_issues.py",
@@ -513,6 +593,10 @@
   },
   {
     "file": "architectural_guidelines.py",
+    "qualified_symbol": "_staged_fingerprint_valid"
+  },
+  {
+    "file": "architectural_guidelines.py",
     "qualified_symbol": "_validate_guidelines_file"
   },
   {
@@ -522,6 +606,14 @@
   {
     "file": "architectural_guidelines.py",
     "qualified_symbol": "note_consumable"
+  },
+  {
+    "file": "architectural_guidelines.py",
+    "qualified_symbol": "write_implement_note"
+  },
+  {
+    "file": "architectural_guidelines.py",
+    "qualified_symbol": "write_staged_assessment"
   },
   {
     "file": "audit_runs.py",
@@ -568,6 +660,18 @@
     "qualified_symbol": "resolve_prs_main.list_after"
   },
   {
+    "file": "blocker.py",
+    "qualified_symbol": "all_open_blockers"
+  },
+  {
+    "file": "blocker.py",
+    "qualified_symbol": "native_open_blockers"
+  },
+  {
+    "file": "blocker.py",
+    "qualified_symbol": "prose_open_blockers"
+  },
+  {
     "file": "bootstrap.py",
     "qualified_symbol": "BootstrapState.read_session"
   },
@@ -590,6 +694,10 @@
   {
     "file": "bootstrap.py",
     "qualified_symbol": "_invoke_error"
+  },
+  {
+    "file": "bootstrap.py",
+    "qualified_symbol": "_merge_write_ship_seed_input"
   },
   {
     "file": "bootstrap.py",
@@ -657,6 +765,18 @@
   },
   {
     "file": "checks.py",
+    "qualified_symbol": "_append_partition_guard_target"
+  },
+  {
+    "file": "checks.py",
+    "qualified_symbol": "_append_py_lint_target"
+  },
+  {
+    "file": "checks.py",
+    "qualified_symbol": "_append_py_test_target"
+  },
+  {
+    "file": "checks.py",
     "qualified_symbol": "_assertion_in_scope"
   },
   {
@@ -669,7 +789,15 @@
   },
   {
     "file": "checks.py",
+    "qualified_symbol": "_command_available"
+  },
+  {
+    "file": "checks.py",
     "qualified_symbol": "_delta_paths_after_dispatch"
+  },
+  {
+    "file": "checks.py",
+    "qualified_symbol": "_direct_targets"
   },
   {
     "file": "checks.py",
@@ -677,7 +805,15 @@
   },
   {
     "file": "checks.py",
+    "qualified_symbol": "_filter_defined_make_targets"
+  },
+  {
+    "file": "checks.py",
     "qualified_symbol": "_forbidden_paths_match_count"
+  },
+  {
+    "file": "checks.py",
+    "qualified_symbol": "_git_lines"
   },
   {
     "file": "checks.py",
@@ -721,6 +857,18 @@
   },
   {
     "file": "checks.py",
+    "qualified_symbol": "_run_contains_pin_phase"
+  },
+  {
+    "file": "checks.py",
+    "qualified_symbol": "_run_logged"
+  },
+  {
+    "file": "checks.py",
+    "qualified_symbol": "_run_token_command"
+  },
+  {
+    "file": "checks.py",
     "qualified_symbol": "_session_get"
   },
   {
@@ -758,6 +906,10 @@
   {
     "file": "ci.py",
     "qualified_symbol": "_publish_wait_output"
+  },
+  {
+    "file": "ci.py",
+    "qualified_symbol": "_wait_output_lines"
   },
   {
     "file": "ci.py",
@@ -809,6 +961,10 @@
   },
   {
     "file": "ci_monitor.py",
+    "qualified_symbol": "_is_submodule_gitlink"
+  },
+  {
+    "file": "ci_monitor.py",
     "qualified_symbol": "_job_token"
   },
   {
@@ -822,6 +978,22 @@
   {
     "file": "ci_monitor.py",
     "qualified_symbol": "poll_ci._emit_exit"
+  },
+  {
+    "file": "ci_monitor.py",
+    "qualified_symbol": "prepare_python_toolchain"
+  },
+  {
+    "file": "ci_monitor.py",
+    "qualified_symbol": "verify_job_locally"
+  },
+  {
+    "file": "clarify.py",
+    "qualified_symbol": "_append_clarify_failure"
+  },
+  {
+    "file": "clarify.py",
+    "qualified_symbol": "_fetch_failure"
   },
   {
     "file": "clarify.py",
@@ -845,7 +1017,15 @@
   },
   {
     "file": "clarify.py",
+    "qualified_symbol": "_resolve_repo_for_clarify"
+  },
+  {
+    "file": "clarify.py",
     "qualified_symbol": "_run_cli"
+  },
+  {
+    "file": "clarify.py",
+    "qualified_symbol": "_stage_failed_clarify"
   },
   {
     "file": "clarify.py",
@@ -862,6 +1042,22 @@
   {
     "file": "clarify.py",
     "qualified_symbol": "_write_text_file"
+  },
+  {
+    "file": "clarify.py",
+    "qualified_symbol": "clarify_comment_fetch"
+  },
+  {
+    "file": "clarify.py",
+    "qualified_symbol": "clarify_comment_post"
+  },
+  {
+    "file": "clarify.py",
+    "qualified_symbol": "clarify_label"
+  },
+  {
+    "file": "clarify.py",
+    "qualified_symbol": "clarify_state"
   },
   {
     "file": "cleanup_implement_logs.py",
@@ -1041,6 +1237,10 @@
   },
   {
     "file": "combine_issues.py",
+    "qualified_symbol": "_close_issue_with_retry"
+  },
+  {
+    "file": "combine_issues.py",
     "qualified_symbol": "_close_stale_issue"
   },
   {
@@ -1058,6 +1258,10 @@
   {
     "file": "combine_issues.py",
     "qualified_symbol": "_dep_entry"
+  },
+  {
+    "file": "combine_issues.py",
+    "qualified_symbol": "_edge_record"
   },
   {
     "file": "combine_issues.py",
@@ -1285,6 +1489,10 @@
   },
   {
     "file": "design_lifecycle.py",
+    "qualified_symbol": "_bg_wait_marker_context"
+  },
+  {
+    "file": "design_lifecycle.py",
     "qualified_symbol": "_brainstorm_dirty_checkpoint"
   },
   {
@@ -1298,6 +1506,10 @@
   {
     "file": "design_lifecycle.py",
     "qualified_symbol": "_capture_stdout"
+  },
+  {
+    "file": "design_lifecycle.py",
+    "qualified_symbol": "_capture_stdout_stderr"
   },
   {
     "file": "design_lifecycle.py",
@@ -1321,7 +1533,15 @@
   },
   {
     "file": "design_lifecycle.py",
+    "qualified_symbol": "_load_source_env"
+  },
+  {
+    "file": "design_lifecycle.py",
     "qualified_symbol": "_maybe_timing_mark"
+  },
+  {
+    "file": "design_lifecycle.py",
+    "qualified_symbol": "_merge_router_flags"
   },
   {
     "file": "design_lifecycle.py",
@@ -1361,7 +1581,19 @@
   },
   {
     "file": "design_lifecycle.py",
+    "qualified_symbol": "_run_stall_main"
+  },
+  {
+    "file": "design_lifecycle.py",
     "qualified_symbol": "_safe_failure_detail_log"
+  },
+  {
+    "file": "design_lifecycle.py",
+    "qualified_symbol": "_step5b_append_failure_if_stderr"
+  },
+  {
+    "file": "design_lifecycle.py",
+    "qualified_symbol": "_step5c_render_final_summary"
   },
   {
     "file": "design_lifecycle.py",
@@ -1370,6 +1602,10 @@
   {
     "file": "design_lifecycle.py",
     "qualified_symbol": "_step5c_stage_failed_publish_tail"
+  },
+  {
+    "file": "design_lifecycle.py",
+    "qualified_symbol": "_step5c_write_status"
   },
   {
     "file": "design_lifecycle.py",
@@ -1406,6 +1642,10 @@
   {
     "file": "design_lifecycle.py",
     "qualified_symbol": "failure_report_core.populate_sensitive"
+  },
+  {
+    "file": "design_lifecycle.py",
+    "qualified_symbol": "json_get_bool"
   },
   {
     "file": "design_lifecycle.py",
@@ -1609,6 +1849,10 @@
   },
   {
     "file": "exec_issue_detail.py",
+    "qualified_symbol": "_render_category"
+  },
+  {
+    "file": "exec_issue_detail.py",
     "qualified_symbol": "_truncate"
   },
   {
@@ -1634,6 +1878,10 @@
   {
     "file": "execution_issues.py",
     "qualified_symbol": "write_execution_issues_records"
+  },
+  {
+    "file": "file_oos.py",
+    "qualified_symbol": "_aggregate_block"
   },
   {
     "file": "file_oos.py",
@@ -1680,6 +1928,18 @@
     "qualified_symbol": "_unlink_issue_cap_output_on_failure"
   },
   {
+    "file": "file_oos.py",
+    "qualified_symbol": "_write_file_conflict_deps"
+  },
+  {
+    "file": "file_oos.py",
+    "qualified_symbol": "issue_cap"
+  },
+  {
+    "file": "file_oos.py",
+    "qualified_symbol": "materialize_manifest_oos"
+  },
+  {
     "file": "final_report.py",
     "qualified_symbol": "_append_issue_detail"
   },
@@ -1717,7 +1977,23 @@
   },
   {
     "file": "finalize.py",
+    "qualified_symbol": "_cleanup_target_ok"
+  },
+  {
+    "file": "finalize.py",
     "qualified_symbol": "_collect_ancestor_pids"
+  },
+  {
+    "file": "finalize.py",
+    "qualified_symbol": "_local_cleanup"
+  },
+  {
+    "file": "finalize.py",
+    "qualified_symbol": "_remote_head_oid"
+  },
+  {
+    "file": "finalize.py",
+    "qualified_symbol": "_rename_issue"
   },
   {
     "file": "finalize.py",
@@ -1729,7 +2005,27 @@
   },
   {
     "file": "finalize.py",
+    "qualified_symbol": "_retry_fetch"
+  },
+  {
+    "file": "finalize.py",
+    "qualified_symbol": "_teardown_log_flush"
+  },
+  {
+    "file": "finalize.py",
+    "qualified_symbol": "_title_matches"
+  },
+  {
+    "file": "finalize.py",
     "qualified_symbol": "_write_finalize_text_safely"
+  },
+  {
+    "file": "finalize.py",
+    "qualified_symbol": "_write_stalled_sentinel"
+  },
+  {
+    "file": "finalize.py",
+    "qualified_symbol": "auto_stash_stalled_changes"
   },
   {
     "file": "finalize.py",
@@ -1738,6 +2034,22 @@
   {
     "file": "finalize.py",
     "qualified_symbol": "kill_session_background_processes"
+  },
+  {
+    "file": "finalize.py",
+    "qualified_symbol": "postbump"
+  },
+  {
+    "file": "finalize.py",
+    "qualified_symbol": "postbump_preflight"
+  },
+  {
+    "file": "finalize.py",
+    "qualified_symbol": "postmerge"
+  },
+  {
+    "file": "finalize.py",
+    "qualified_symbol": "teardown"
   },
   {
     "file": "finalize.py",
@@ -1788,6 +2100,14 @@
     "qualified_symbol": "_bar"
   },
   {
+    "file": "gantt.py",
+    "qualified_symbol": "render_gantt"
+  },
+  {
+    "file": "gc_run_logs.py",
+    "qualified_symbol": "_apply"
+  },
+  {
     "file": "gc_run_logs.py",
     "qualified_symbol": "_emit_kv"
   },
@@ -1809,6 +2129,10 @@
   },
   {
     "file": "gc_run_logs.py",
+    "qualified_symbol": "_plan"
+  },
+  {
+    "file": "gc_run_logs.py",
     "qualified_symbol": "_resolve_run_date"
   },
   {
@@ -1817,11 +2141,211 @@
   },
   {
     "file": "gh.py",
+    "qualified_symbol": "_gh"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "_issue_view_read"
+  },
+  {
+    "file": "gh.py",
     "qualified_symbol": "_job_wall_clock_seconds"
   },
   {
     "file": "gh.py",
+    "qualified_symbol": "_recover_pr_from_conflict_text"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "_recover_pr_from_create_output"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "_recover_pr_from_urls"
+  },
+  {
+    "file": "gh.py",
     "qualified_symbol": "_repo_matches_pr_url"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "_require_json_keys"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "_retry_read"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "_validate_recovered_pr"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "failed_jobs"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "failed_jobs_read"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "find_issue_comment_id_by_marker"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "issue_blocked_by_read"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "issue_blocking_read"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "issue_comment"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "issue_comment_delete"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "issue_comment_patch"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "issue_comment_with_retry"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "issue_comments_list_read"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "issue_edit"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "issue_edit_body_with_retry"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "issue_label_add"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "issue_label_remove"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "issue_labels_list"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "issue_view_body"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "issue_view_field_read"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "issue_view_state_url_read"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "issue_view_title_body_read"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "job_durations"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "label_create"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "pr_checks_all_pass"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "pr_checks_read"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "pr_checks_text_read"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "pr_edit_body"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "pr_edit_body_file"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "pr_for_branch"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "pr_for_branch_read"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "pr_merge"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "pr_merge_state"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "pr_merge_state_read"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "pr_review_decision"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "pr_view"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "pr_view_body"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "pr_view_read"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "remote_repo"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "run_log_read"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "run_logs_failed"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "run_rerun"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "run_view"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "run_view_read"
+  },
+  {
+    "file": "gh.py",
+    "qualified_symbol": "workflow_dispatch"
   },
   {
     "file": "git.py",
@@ -1834,6 +2358,14 @@
   {
     "file": "git.py",
     "qualified_symbol": "_git_index_lock_path"
+  },
+  {
+    "file": "git.py",
+    "qualified_symbol": "_index_lock_is_held"
+  },
+  {
+    "file": "git.py",
+    "qualified_symbol": "_lock_held_by_lsof"
   },
   {
     "file": "git.py",
@@ -1853,6 +2385,170 @@
   },
   {
     "file": "git.py",
+    "qualified_symbol": "_repo_scoped_git_process_detected"
+  },
+  {
+    "file": "git.py",
+    "qualified_symbol": "_run"
+  },
+  {
+    "file": "git.py",
+    "qualified_symbol": "_run_with_stale_index_lock_retry"
+  },
+  {
+    "file": "git.py",
+    "qualified_symbol": "add_pathspec_file"
+  },
+  {
+    "file": "git.py",
+    "qualified_symbol": "amend_add"
+  },
+  {
+    "file": "git.py",
+    "qualified_symbol": "branch"
+  },
+  {
+    "file": "git.py",
+    "qualified_symbol": "branch_force"
+  },
+  {
+    "file": "git.py",
+    "qualified_symbol": "checkout_paths"
+  },
+  {
+    "file": "git.py",
+    "qualified_symbol": "commit"
+  },
+  {
+    "file": "git.py",
+    "qualified_symbol": "commit_with_trailer"
+  },
+  {
+    "file": "git.py",
+    "qualified_symbol": "diff_name_only"
+  },
+  {
+    "file": "git.py",
+    "qualified_symbol": "diff_name_status"
+  },
+  {
+    "file": "git.py",
+    "qualified_symbol": "diff_quiet"
+  },
+  {
+    "file": "git.py",
+    "qualified_symbol": "diff_tree_name_only"
+  },
+  {
+    "file": "git.py",
+    "qualified_symbol": "fetch"
+  },
+  {
+    "file": "git.py",
+    "qualified_symbol": "force_push_with_lease"
+  },
+  {
+    "file": "git.py",
+    "qualified_symbol": "force_push_with_lease_expecting"
+  },
+  {
+    "file": "git.py",
+    "qualified_symbol": "is_ancestor"
+  },
+  {
+    "file": "git.py",
+    "qualified_symbol": "local_branch_exists"
+  },
+  {
+    "file": "git.py",
+    "qualified_symbol": "log_subject"
+  },
+  {
+    "file": "git.py",
+    "qualified_symbol": "log_subjects"
+  },
+  {
+    "file": "git.py",
+    "qualified_symbol": "merge_base"
+  },
+  {
+    "file": "git.py",
+    "qualified_symbol": "paths_delta_revert"
+  },
+  {
+    "file": "git.py",
+    "qualified_symbol": "push"
+  },
+  {
+    "file": "git.py",
+    "qualified_symbol": "push_set_upstream"
+  },
+  {
+    "file": "git.py",
+    "qualified_symbol": "rebase"
+  },
+  {
+    "file": "git.py",
+    "qualified_symbol": "rebase_onto"
+  },
+  {
+    "file": "git.py",
+    "qualified_symbol": "remote_branch_state"
+  },
+  {
+    "file": "git.py",
+    "qualified_symbol": "reset"
+  },
+  {
+    "file": "git.py",
+    "qualified_symbol": "resolve_branch_push_remote"
+  },
+  {
+    "file": "git.py",
+    "qualified_symbol": "restore_staged"
+  },
+  {
+    "file": "git.py",
+    "qualified_symbol": "rev_count"
+  },
+  {
+    "file": "git.py",
+    "qualified_symbol": "rev_list_count"
+  },
+  {
+    "file": "git.py",
+    "qualified_symbol": "rev_parse"
+  },
+  {
+    "file": "git.py",
+    "qualified_symbol": "show_file"
+  },
+  {
+    "file": "git.py",
+    "qualified_symbol": "snapshot_untracked"
+  },
+  {
+    "file": "git.py",
+    "qualified_symbol": "status_porcelain_paths"
+  },
+  {
+    "file": "git.py",
+    "qualified_symbol": "try_log_subjects"
+  },
+  {
+    "file": "git.py",
+    "qualified_symbol": "try_merge_base"
+  },
+  {
+    "file": "git.py",
+    "qualified_symbol": "try_rev_parse"
+  },
+  {
+    "file": "git.py",
+    "qualified_symbol": "unstage"
+  },
+  {
+    "file": "git.py",
     "qualified_symbol": "validate_base_remote_ref"
   },
   {
@@ -1866,6 +2562,10 @@
   {
     "file": "harness_makefile.py",
     "qualified_symbol": "write_shards"
+  },
+  {
+    "file": "harness_shard_packer.py",
+    "qualified_symbol": "pack"
   },
   {
     "file": "implement_dispatch.py",
@@ -1961,11 +2661,35 @@
   },
   {
     "file": "issue_create.py",
+    "qualified_symbol": "_rollback_orphan"
+  },
+  {
+    "file": "issue_create.py",
+    "qualified_symbol": "_valid_labels"
+  },
+  {
+    "file": "issue_create.py",
     "qualified_symbol": "add_blocked_by_main"
   },
   {
     "file": "issue_create.py",
     "qualified_symbol": "allocate_candidates"
+  },
+  {
+    "file": "issue_create.py",
+    "qualified_symbol": "emit_kv"
+  },
+  {
+    "file": "issue_query.py",
+    "qualified_symbol": "issue_context"
+  },
+  {
+    "file": "issue_query.py",
+    "qualified_symbol": "issue_info"
+  },
+  {
+    "file": "issue_query.py",
+    "qualified_symbol": "issue_state"
   },
   {
     "file": "issue_wire.py",
@@ -2005,6 +2729,14 @@
   },
   {
     "file": "issue_wire.py",
+    "qualified_symbol": "lint_p3119_fence_absence"
+  },
+  {
+    "file": "issue_wire.py",
+    "qualified_symbol": "named_block_write"
+  },
+  {
+    "file": "issue_wire.py",
     "qualified_symbol": "parse_named_block"
   },
   {
@@ -2018,6 +2750,30 @@
   {
     "file": "larch_io.py",
     "qualified_symbol": "_temp_path"
+  },
+  {
+    "file": "larch_io.py",
+    "qualified_symbol": "append_text"
+  },
+  {
+    "file": "larch_io.py",
+    "qualified_symbol": "atomic_write"
+  },
+  {
+    "file": "larch_io.py",
+    "qualified_symbol": "kv_value"
+  },
+  {
+    "file": "larch_io.py",
+    "qualified_symbol": "read_kv"
+  },
+  {
+    "file": "larch_io.py",
+    "qualified_symbol": "write_kvs"
+  },
+  {
+    "file": "larch_io.py",
+    "qualified_symbol": "write_text"
   },
   {
     "file": "lint_codex_exec_auth.py",
@@ -2034,6 +2790,10 @@
   {
     "file": "lint_codex_exec_auth.py",
     "qualified_symbol": "scan_shell_file"
+  },
+  {
+    "file": "lint_common.py",
+    "qualified_symbol": "git_ls_files_z"
   },
   {
     "file": "lint_complexity_baseline.py",
@@ -2113,11 +2873,31 @@
   },
   {
     "file": "lint_keyword_only.py",
+    "qualified_symbol": "_collect_function_violations"
+  },
+  {
+    "file": "lint_keyword_only.py",
+    "qualified_symbol": "_collect_violations"
+  },
+  {
+    "file": "lint_keyword_only.py",
+    "qualified_symbol": "_def_args_paren_text"
+  },
+  {
+    "file": "lint_keyword_only.py",
+    "qualified_symbol": "_has_bare_star_separator"
+  },
+  {
+    "file": "lint_keyword_only.py",
     "qualified_symbol": "_is_external_api_override"
   },
   {
     "file": "lint_keyword_only.py",
     "qualified_symbol": "_is_node_visitor_callback"
+  },
+  {
+    "file": "lint_keyword_only.py",
+    "qualified_symbol": "_should_report_violation"
   },
   {
     "file": "lint_literal_counts.py",
@@ -2197,7 +2977,27 @@
   },
   {
     "file": "merge.py",
+    "qualified_symbol": "_attempt_merge"
+  },
+  {
+    "file": "merge.py",
     "qualified_symbol": "_emit_kv"
+  },
+  {
+    "file": "merge.py",
+    "qualified_symbol": "_ensure_head_matches_pr"
+  },
+  {
+    "file": "merge.py",
+    "qualified_symbol": "_flush_recoverable"
+  },
+  {
+    "file": "merge.py",
+    "qualified_symbol": "_maybe_review_required"
+  },
+  {
+    "file": "merge.py",
+    "qualified_symbol": "_merge_noop_if_pr_closed"
   },
   {
     "file": "merge.py",
@@ -2206,6 +3006,18 @@
   {
     "file": "merge.py",
     "qualified_symbol": "_post_flush"
+  },
+  {
+    "file": "merge.py",
+    "qualified_symbol": "_refresh_pr_info"
+  },
+  {
+    "file": "merge.py",
+    "qualified_symbol": "_retry_unknown"
+  },
+  {
+    "file": "merge.py",
+    "qualified_symbol": "merge_pr"
   },
   {
     "file": "migration_lint.py",
@@ -2229,6 +3041,10 @@
   },
   {
     "file": "oos_filer.py",
+    "qualified_symbol": "_after_checkpoint"
+  },
+  {
+    "file": "oos_filer.py",
     "qualified_symbol": "_append_tool_failure"
   },
   {
@@ -2245,11 +3061,23 @@
   },
   {
     "file": "oos_filer.py",
+    "qualified_symbol": "_cleanup_created_issues"
+  },
+  {
+    "file": "oos_filer.py",
     "qualified_symbol": "_issue_covers_stable_id"
   },
   {
     "file": "oos_filer.py",
+    "qualified_symbol": "_issue_matches_block"
+  },
+  {
+    "file": "oos_filer.py",
     "qualified_symbol": "_materialize_sentinel_recovery_evidence"
+  },
+  {
+    "file": "oos_filer.py",
+    "qualified_symbol": "_maybe_combine_with_codex"
   },
   {
     "file": "oos_filer.py",
@@ -2269,11 +3097,23 @@
   },
   {
     "file": "oos_filer.py",
+    "qualified_symbol": "_run_issue_batch"
+  },
+  {
+    "file": "oos_filer.py",
     "qualified_symbol": "_split_persisted_matches"
   },
   {
     "file": "oos_filer.py",
+    "qualified_symbol": "_stable_identifier"
+  },
+  {
+    "file": "oos_filer.py",
     "qualified_symbol": "_stable_ids_by_combined_item"
+  },
+  {
+    "file": "oos_filer.py",
+    "qualified_symbol": "_stamp_manifest"
   },
   {
     "file": "oos_filer.py",
@@ -2285,11 +3125,19 @@
   },
   {
     "file": "oos_filer.py",
+    "qualified_symbol": "_write_oos_ndjson"
+  },
+  {
+    "file": "oos_filer.py",
     "qualified_symbol": "_write_run_statistics"
   },
   {
     "file": "oos_filer.py",
     "qualified_symbol": "_write_sentinel"
+  },
+  {
+    "file": "phantom.py",
+    "qualified_symbol": "_baseline_dirty_probe"
   },
   {
     "file": "plan_quality.py",
@@ -2465,6 +3313,10 @@
   },
   {
     "file": "plan_review.py",
+    "qualified_symbol": "_read_bool_param"
+  },
+  {
+    "file": "plan_review.py",
     "qualified_symbol": "_read_phase"
   },
   {
@@ -2521,6 +3373,10 @@
   },
   {
     "file": "plan_review.py",
+    "qualified_symbol": "_step3_overlay_stdout_env"
+  },
+  {
+    "file": "plan_review.py",
     "qualified_symbol": "_step3_record_report_evidence_quiet"
   },
   {
@@ -2565,7 +3421,15 @@
   },
   {
     "file": "plan_review.py",
+    "qualified_symbol": "step3_loop_persist_envelope"
+  },
+  {
+    "file": "plan_review.py",
     "qualified_symbol": "step3_loop_status_to_loop_status"
+  },
+  {
+    "file": "plan_review.py",
+    "qualified_symbol": "step3_record_report_evidence"
   },
   {
     "file": "plan_review.py",
@@ -2574,6 +3438,10 @@
   {
     "file": "plan_review_panel.py",
     "qualified_symbol": "_append_dynamic_render_warning"
+  },
+  {
+    "file": "plan_review_panel.py",
+    "qualified_symbol": "_dynamic_slot_rows"
   },
   {
     "file": "plan_review_panel.py",
@@ -2597,6 +3465,14 @@
   },
   {
     "file": "plan_review_panel.py",
+    "qualified_symbol": "_static_slot_rows"
+  },
+  {
+    "file": "plan_review_panel.py",
+    "qualified_symbol": "_validate_tmpdir"
+  },
+  {
+    "file": "plan_review_panel.py",
     "qualified_symbol": "_write_manifest"
   },
   {
@@ -2610,6 +3486,10 @@
   {
     "file": "plan_review_round.py",
     "qualified_symbol": "_emit"
+  },
+  {
+    "file": "plan_review_round.py",
+    "qualified_symbol": "_log_reviewer_status_failure"
   },
   {
     "file": "plan_review_round.py",
@@ -2629,7 +3509,19 @@
   },
   {
     "file": "plan_review_round.py",
+    "qualified_symbol": "_write_round_summary"
+  },
+  {
+    "file": "plan_review_round.py",
     "qualified_symbol": "sync_latest_reviewer_status"
+  },
+  {
+    "file": "plan_review_round.py",
+    "qualified_symbol": "try_write_reviewer_status_tsv"
+  },
+  {
+    "file": "plan_review_round.py",
+    "qualified_symbol": "write_reviewer_status_tsv"
   },
   {
     "file": "plan_review_tally.py",
@@ -2638,6 +3530,10 @@
   {
     "file": "plan_review_tally.py",
     "qualified_symbol": "_Tally._assign_voter"
+  },
+  {
+    "file": "plan_review_tally.py",
+    "qualified_symbol": "_Tally._error_exit"
   },
   {
     "file": "plan_review_tally.py",
@@ -2681,6 +3577,10 @@
   },
   {
     "file": "plan_scout.py",
+    "qualified_symbol": "_emit_scout_result"
+  },
+  {
+    "file": "plan_scout.py",
     "qualified_symbol": "_emit_staged_size_warning"
   },
   {
@@ -2713,6 +3613,14 @@
   },
   {
     "file": "plan_scout.py",
+    "qualified_symbol": "filter_manifest"
+  },
+  {
+    "file": "plan_scout.py",
+    "qualified_symbol": "filter_plan_manifest"
+  },
+  {
+    "file": "plan_scout.py",
     "qualified_symbol": "reserved_for_mode"
   },
   {
@@ -2730,6 +3638,14 @@
   {
     "file": "pr.py",
     "qualified_symbol": "_parse"
+  },
+  {
+    "file": "pr.py",
+    "qualified_symbol": "_push_existing_pr"
+  },
+  {
+    "file": "pr.py",
+    "qualified_symbol": "ensure_pr"
   },
   {
     "file": "pr_body.py",
@@ -2760,6 +3676,10 @@
     "qualified_symbol": "_validate_fence_body"
   },
   {
+    "file": "pr_body.py",
+    "qualified_symbol": "update_pr_body"
+  },
+  {
     "file": "preflight.py",
     "qualified_symbol": "_append_bypass"
   },
@@ -2774,6 +3694,10 @@
   {
     "file": "preflight.py",
     "qualified_symbol": "_refuse_unreviewed_plan"
+  },
+  {
+    "file": "preflight.py",
+    "qualified_symbol": "_run_capture"
   },
   {
     "file": "preflight.py",
@@ -2873,6 +3797,10 @@
   },
   {
     "file": "progress_report.py",
+    "qualified_symbol": "_progress_vendor_rows"
+  },
+  {
+    "file": "progress_report.py",
     "qualified_symbol": "_render_design_plan_review"
   },
   {
@@ -2901,11 +3829,19 @@
   },
   {
     "file": "progress_report.py",
+    "qualified_symbol": "_round_meta_object"
+  },
+  {
+    "file": "progress_report.py",
     "qualified_symbol": "_round_vendor_cost"
   },
   {
     "file": "progress_report.py",
     "qualified_symbol": "_run_activity_mtime"
+  },
+  {
+    "file": "progress_report.py",
+    "qualified_symbol": "render_phase_detail"
   },
   {
     "file": "push.py",
@@ -2914,6 +3850,14 @@
   {
     "file": "push.py",
     "qualified_symbol": "_parse"
+  },
+  {
+    "file": "push.py",
+    "qualified_symbol": "push_branch"
+  },
+  {
+    "file": "push.py",
+    "qualified_symbol": "select_push_remote"
   },
   {
     "file": "pytest_ci_timing.py",
@@ -2937,11 +3881,27 @@
   },
   {
     "file": "rebase.py",
+    "qualified_symbol": "_reset_conflict_paths"
+  },
+  {
+    "file": "rebase.py",
+    "qualified_symbol": "_resolve_conflicts"
+  },
+  {
+    "file": "rebase.py",
     "qualified_symbol": "_resolve_conflicts._handoff_or_stall"
   },
   {
     "file": "rebase.py",
+    "qualified_symbol": "_stage_resolved_conflict_files"
+  },
+  {
+    "file": "rebase.py",
     "qualified_symbol": "make_conflict_launch_fn.launch"
+  },
+  {
+    "file": "rebase.py",
+    "qualified_symbol": "rebase_and_push"
   },
   {
     "file": "redact.py",
@@ -2993,11 +3953,27 @@
   },
   {
     "file": "rendering.py",
+    "qualified_symbol": "_assert_tmp_scoped"
+  },
+  {
+    "file": "rendering.py",
+    "qualified_symbol": "_code_ledger_section"
+  },
+  {
+    "file": "rendering.py",
+    "qualified_symbol": "_diff_or_write"
+  },
+  {
+    "file": "rendering.py",
     "qualified_symbol": "_emit_upsert_failure"
   },
   {
     "file": "rendering.py",
     "qualified_symbol": "_path_has_segment"
+  },
+  {
+    "file": "rendering.py",
+    "qualified_symbol": "_plan_ledger_section"
   },
   {
     "file": "rendering.py",
@@ -3069,6 +4045,14 @@
   },
   {
     "file": "rendering.py",
+    "qualified_symbol": "finding_title_from_body"
+  },
+  {
+    "file": "rendering.py",
+    "qualified_symbol": "flatten_metadata"
+  },
+  {
+    "file": "rendering.py",
     "qualified_symbol": "render_findings_view"
   },
   {
@@ -3112,6 +4096,10 @@
     "qualified_symbol": "aggregate_vendor_tokens"
   },
   {
+    "file": "report_tokens_cost.py",
+    "qualified_symbol": "env_rate"
+  },
+  {
     "file": "report_tokens_issue.py",
     "qualified_symbol": "_section_label"
   },
@@ -3152,6 +4140,10 @@
     "qualified_symbol": "_write_cache"
   },
   {
+    "file": "report_tokens_render.py",
+    "qualified_symbol": "render"
+  },
+  {
     "file": "report_tokens_scan.py",
     "qualified_symbol": "_repo_slug"
   },
@@ -3181,7 +4173,15 @@
   },
   {
     "file": "research.py",
+    "qualified_symbol": "render_findings_batch"
+  },
+  {
+    "file": "research.py",
     "qualified_symbol": "run_research_planner"
+  },
+  {
+    "file": "research.py",
+    "qualified_symbol": "validate_citations"
   },
   {
     "file": "research.py",
@@ -3222,6 +4222,10 @@
   {
     "file": "review_aggregate.py",
     "qualified_symbol": "_append_warning"
+  },
+  {
+    "file": "review_aggregate.py",
+    "qualified_symbol": "_apply_aggregate_candidate"
   },
   {
     "file": "review_aggregate.py",
@@ -3421,6 +4425,10 @@
   },
   {
     "file": "review_and_fix.py",
+    "qualified_symbol": "_restore_path_from_patches"
+  },
+  {
+    "file": "review_and_fix.py",
     "qualified_symbol": "_restore_path_to_ref"
   },
   {
@@ -3430,6 +4438,10 @@
   {
     "file": "review_and_fix.py",
     "qualified_symbol": "_round_attempt_tracked_delta_paths"
+  },
+  {
+    "file": "review_and_fix.py",
+    "qualified_symbol": "_round_coder_delta_paths"
   },
   {
     "file": "review_and_fix.py",
@@ -3482,6 +4494,10 @@
   {
     "file": "review_and_fix.py",
     "qualified_symbol": "_tmpdir_local_file"
+  },
+  {
+    "file": "review_and_fix.py",
+    "qualified_symbol": "_write_attempt_pre_tracked_paths"
   },
   {
     "file": "review_and_fix.py",
@@ -3569,6 +4585,14 @@
   },
   {
     "file": "review_pipeline.py",
+    "qualified_symbol": "_call_maybe_override"
+  },
+  {
+    "file": "review_pipeline.py",
+    "qualified_symbol": "_call_review_command"
+  },
+  {
+    "file": "review_pipeline.py",
     "qualified_symbol": "_collector_ok"
   },
   {
@@ -3586,6 +4610,10 @@
   {
     "file": "review_pipeline.py",
     "qualified_symbol": "_emit_kv"
+  },
+  {
+    "file": "review_pipeline.py",
+    "qualified_symbol": "_emit_tally"
   },
   {
     "file": "review_pipeline.py",
@@ -3629,7 +4657,15 @@
   },
   {
     "file": "review_pipeline.py",
+    "qualified_symbol": "_parse_output_tsv"
+  },
+  {
+    "file": "review_pipeline.py",
     "qualified_symbol": "_parse_pos_int"
+  },
+  {
+    "file": "review_pipeline.py",
+    "qualified_symbol": "_read_classification_counts"
   },
   {
     "file": "review_pipeline.py",
@@ -3653,11 +4689,23 @@
   },
   {
     "file": "review_pipeline.py",
+    "qualified_symbol": "_run_command_string"
+  },
+  {
+    "file": "review_pipeline.py",
     "qualified_symbol": "_scout_manifest_valid"
   },
   {
     "file": "review_pipeline.py",
     "qualified_symbol": "_snapshot_oos"
+  },
+  {
+    "file": "review_pipeline.py",
+    "qualified_symbol": "_static_coverage_reason"
+  },
+  {
+    "file": "review_pipeline.py",
+    "qualified_symbol": "_synthesize_dynamic_slots"
   },
   {
     "file": "review_pipeline.py",
@@ -3674,6 +4722,10 @@
   {
     "file": "review_pipeline.py",
     "qualified_symbol": "_write_text"
+  },
+  {
+    "file": "review_pipeline.py",
+    "qualified_symbol": "_zero_findings_branch"
   },
   {
     "file": "review_pipeline.py",
@@ -3709,6 +4761,10 @@
   },
   {
     "file": "review_tally.py",
+    "qualified_symbol": "_classification_row"
+  },
+  {
+    "file": "review_tally.py",
     "qualified_symbol": "_count_from_tally"
   },
   {
@@ -3737,7 +4793,15 @@
   },
   {
     "file": "review_tally.py",
+    "qualified_symbol": "_proposer_for_item"
+  },
+  {
+    "file": "review_tally.py",
     "qualified_symbol": "_record_classification_and_ledger"
+  },
+  {
+    "file": "review_tally.py",
+    "qualified_symbol": "_record_tally"
   },
   {
     "file": "review_tally.py",
@@ -3766,6 +4830,10 @@
   {
     "file": "review_types.py",
     "qualified_symbol": "_next_boundary"
+  },
+  {
+    "file": "run_context.py",
+    "qualified_symbol": "_env_bool"
   },
   {
     "file": "run_context.py",
@@ -3825,6 +4893,14 @@
   },
   {
     "file": "run_logs.py",
+    "qualified_symbol": "_cleanup_volatile_run_tree"
+  },
+  {
+    "file": "run_logs.py",
+    "qualified_symbol": "_commit_run"
+  },
+  {
+    "file": "run_logs.py",
     "qualified_symbol": "_copy_tree_to_repo"
   },
   {
@@ -3834,6 +4910,10 @@
   {
     "file": "run_logs.py",
     "qualified_symbol": "_final_summary_bail_signal_without_pr_evidence"
+  },
+  {
+    "file": "run_logs.py",
+    "qualified_symbol": "_larch_log_commit"
   },
   {
     "file": "run_logs.py",
@@ -3854,6 +4934,10 @@
   {
     "file": "run_logs.py",
     "qualified_symbol": "_publish_breadcrumbs_with_warning"
+  },
+  {
+    "file": "run_logs.py",
+    "qualified_symbol": "_publish_run_tree_to_repo"
   },
   {
     "file": "run_logs.py",
@@ -3882,6 +4966,10 @@
   {
     "file": "run_logs.py",
     "qualified_symbol": "_refresh_context"
+  },
+  {
+    "file": "run_logs.py",
+    "qualified_symbol": "_render_execution_issues_batch"
   },
   {
     "file": "run_logs.py",
@@ -3921,11 +5009,19 @@
   },
   {
     "file": "run_logs.py",
+    "qualified_symbol": "_run_git_cleanup"
+  },
+  {
+    "file": "run_logs.py",
     "qualified_symbol": "_safe_copy_run_tree"
   },
   {
     "file": "run_logs.py",
     "qualified_symbol": "_should_flush_execution_issues"
+  },
+  {
+    "file": "run_logs.py",
+    "qualified_symbol": "_stage_pre_commit"
   },
   {
     "file": "run_logs.py",
@@ -3942,6 +5038,10 @@
   {
     "file": "run_logs.py",
     "qualified_symbol": "_validate_slug"
+  },
+  {
+    "file": "run_logs.py",
+    "qualified_symbol": "_verify_condition_reached"
   },
   {
     "file": "run_logs.py",
@@ -3965,6 +5065,10 @@
   },
   {
     "file": "run_logs.py",
+    "qualified_symbol": "_write_final_report"
+  },
+  {
+    "file": "run_logs.py",
     "qualified_symbol": "_write_manifest"
   },
   {
@@ -3978,6 +5082,18 @@
   {
     "file": "run_logs.py",
     "qualified_symbol": "append_execution_issue"
+  },
+  {
+    "file": "run_logs.py",
+    "qualified_symbol": "capture_session_transcript"
+  },
+  {
+    "file": "run_logs.py",
+    "qualified_symbol": "commit_larch_logs"
+  },
+  {
+    "file": "run_logs.py",
+    "qualified_symbol": "flush_logs_pre"
   },
   {
     "file": "run_logs.py",
@@ -3997,7 +5113,15 @@
   },
   {
     "file": "run_logs.py",
+    "qualified_symbol": "render_execution_issues_batch"
+  },
+  {
+    "file": "run_logs.py",
     "qualified_symbol": "write_final_report_comment"
+  },
+  {
+    "file": "session_env.py",
+    "qualified_symbol": "_atomic_write"
   },
   {
     "file": "session_env.py",
@@ -4065,6 +5189,10 @@
   },
   {
     "file": "session_env.py",
+    "qualified_symbol": "parse_allowlisted_env_line"
+  },
+  {
+    "file": "session_env.py",
     "qualified_symbol": "resolve_trusted_design_session_env_source"
   },
   {
@@ -4089,6 +5217,10 @@
   },
   {
     "file": "ship.py",
+    "qualified_symbol": "_invalid_state_plan"
+  },
+  {
+    "file": "ship.py",
     "qualified_symbol": "_log_guidelines_ship_warning"
   },
   {
@@ -4101,6 +5233,34 @@
   },
   {
     "file": "ship.py",
+    "qualified_symbol": "_pin_and_load_guidelines_note"
+  },
+  {
+    "file": "ship.py",
+    "qualified_symbol": "_pr_title"
+  },
+  {
+    "file": "ship.py",
+    "qualified_symbol": "_publish_post_pr_terminal_snapshot"
+  },
+  {
+    "file": "ship.py",
+    "qualified_symbol": "_resume_from_state"
+  },
+  {
+    "file": "ship.py",
+    "qualified_symbol": "_resume_plan"
+  },
+  {
+    "file": "ship.py",
+    "qualified_symbol": "_seed_last_monitored_head"
+  },
+  {
+    "file": "ship.py",
+    "qualified_symbol": "_terminal_overlay_fields"
+  },
+  {
+    "file": "ship.py",
     "qualified_symbol": "_validate_ship_state_value"
   },
   {
@@ -4109,7 +5269,19 @@
   },
   {
     "file": "ship.py",
+    "qualified_symbol": "_write_terminal_finalize_if_terminal"
+  },
+  {
+    "file": "ship.py",
+    "qualified_symbol": "_write_terminal_state"
+  },
+  {
+    "file": "ship.py",
     "qualified_symbol": "emit_result"
+  },
+  {
+    "file": "ship.py",
+    "qualified_symbol": "run_postmerge_phase"
   },
   {
     "file": "stall_recovery.py",
@@ -4145,6 +5317,10 @@
   },
   {
     "file": "stall_recovery.py",
+    "qualified_symbol": "_classify_text"
+  },
+  {
+    "file": "stall_recovery.py",
     "qualified_symbol": "_compose_path"
   },
   {
@@ -4158,6 +5334,10 @@
   {
     "file": "stall_recovery.py",
     "qualified_symbol": "_emit_chat_print_filing_status"
+  },
+  {
+    "file": "stall_recovery.py",
+    "qualified_symbol": "_finalize_phase_is_stale_stall_overlay"
   },
   {
     "file": "stall_recovery.py",
@@ -4181,6 +5361,10 @@
   },
   {
     "file": "stall_recovery.py",
+    "qualified_symbol": "_phase_counts_as_stalled"
+  },
+  {
+    "file": "stall_recovery.py",
     "qualified_symbol": "_read_run_id"
   },
   {
@@ -4190,6 +5374,10 @@
   {
     "file": "stall_recovery.py",
     "qualified_symbol": "_read_validated_failure_detail_log"
+  },
+  {
+    "file": "stall_recovery.py",
+    "qualified_symbol": "_report_dedup_signature"
   },
   {
     "file": "stall_recovery.py",
@@ -4205,11 +5393,19 @@
   },
   {
     "file": "stall_recovery.py",
+    "qualified_symbol": "_safe_token"
+  },
+  {
+    "file": "stall_recovery.py",
     "qualified_symbol": "_sensitive_token_rejects_file"
   },
   {
     "file": "stall_recovery.py",
     "qualified_symbol": "_state_value"
+  },
+  {
+    "file": "stall_recovery.py",
+    "qualified_symbol": "_terminal_state_value_valid"
   },
   {
     "file": "stall_recovery.py",
@@ -4233,6 +5429,10 @@
   },
   {
     "file": "stall_recovery.py",
+    "qualified_symbol": "_validated_terminal_state_values"
+  },
+  {
+    "file": "stall_recovery.py",
     "qualified_symbol": "_write_tier_a_comment_payloads"
   },
   {
@@ -4246,6 +5446,10 @@
   {
     "file": "stall_recovery.py",
     "qualified_symbol": "read_kv"
+  },
+  {
+    "file": "stall_recovery.py",
+    "qualified_symbol": "validate_failure_detail_log"
   },
   {
     "file": "stall_recovery.py",
@@ -4290,6 +5494,10 @@
   {
     "file": "timing.py",
     "qualified_symbol": "_under_allowed_root"
+  },
+  {
+    "file": "timing.py",
+    "qualified_symbol": "_vendor_counts_since"
   },
   {
     "file": "tokens.py",
@@ -4337,6 +5545,10 @@
   },
   {
     "file": "tokens.py",
+    "qualified_symbol": "_replace_block"
+  },
+  {
+    "file": "tokens.py",
     "qualified_symbol": "_report_data"
   },
   {
@@ -4353,6 +5565,10 @@
   },
   {
     "file": "tokens.py",
+    "qualified_symbol": "_transcript_sources"
+  },
+  {
+    "file": "tokens.py",
     "qualified_symbol": "_vendor_names"
   },
   {
@@ -4365,11 +5581,23 @@
   },
   {
     "file": "tracking_issue.py",
+    "qualified_symbol": "_fetch_issue_title"
+  },
+  {
+    "file": "tracking_issue.py",
+    "qualified_symbol": "_find_summary_comment_ids"
+  },
+  {
+    "file": "tracking_issue.py",
     "qualified_symbol": "_parse_nonnegative"
   },
   {
     "file": "tracking_issue.py",
     "qualified_symbol": "_parse_with"
+  },
+  {
+    "file": "tracking_issue.py",
+    "qualified_symbol": "_resolve_repo_or_fail"
   },
   {
     "file": "tracking_issue.py",
@@ -4381,7 +5609,39 @@
   },
   {
     "file": "tracking_issue.py",
+    "qualified_symbol": "_upsert_marker_comment"
+  },
+  {
+    "file": "tracking_issue.py",
+    "qualified_symbol": "append_comment"
+  },
+  {
+    "file": "tracking_issue.py",
     "qualified_symbol": "link_pr_closes"
+  },
+  {
+    "file": "tracking_issue.py",
+    "qualified_symbol": "mark_false_positive"
+  },
+  {
+    "file": "tracking_issue.py",
+    "qualified_symbol": "rename"
+  },
+  {
+    "file": "tracking_issue.py",
+    "qualified_symbol": "rename_with_details"
+  },
+  {
+    "file": "tracking_issue.py",
+    "qualified_symbol": "upsert_marker_comment"
+  },
+  {
+    "file": "tracking_issue.py",
+    "qualified_symbol": "upsert_summary"
+  },
+  {
+    "file": "tracking_issue.py",
+    "qualified_symbol": "upsert_token_report"
   },
   {
     "file": "upgrade_larch.py",
@@ -4410,6 +5670,22 @@
   {
     "file": "version_bump.py",
     "qualified_symbol": "_frontmatter_field"
+  },
+  {
+    "file": "version_bump.py",
+    "qualified_symbol": "_idempotency_transparent"
+  },
+  {
+    "file": "version_bump.py",
+    "qualified_symbol": "_read_plugin_version_at_ref"
+  },
+  {
+    "file": "version_bump.py",
+    "qualified_symbol": "apply_bump"
+  },
+  {
+    "file": "version_bump.py",
+    "qualified_symbol": "bump_branch_guard"
   },
   {
     "file": "voting.py",
@@ -4441,7 +5717,15 @@
   },
   {
     "file": "voting.py",
+    "qualified_symbol": "_voter_label"
+  },
+  {
+    "file": "voting.py",
     "qualified_symbol": "accept_finding"
+  },
+  {
+    "file": "voting.py",
+    "qualified_symbol": "accepted_points_from_classification_row"
   },
   {
     "file": "voting.py",
@@ -4458,6 +5742,10 @@
   {
     "file": "voting.py",
     "qualified_symbol": "parse_judge_vote"
+  },
+  {
+    "file": "voting.py",
+    "qualified_symbol": "proposer_for_item"
   },
   {
     "file": "voting.py",
