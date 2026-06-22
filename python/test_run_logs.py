@@ -65,6 +65,18 @@ def test_validate_run_id_slug() -> None:
     assert not run_logs.validate_run_id_slug("../evil")
 
 
+def test_atomic_write_uses_nofollow(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    calls: dict[str, Any] = {}
+
+    def fake_atomic_write(_path: Path, _content: str, **kwargs: Any) -> None:
+        calls.update(kwargs)
+
+    monkeypatch.setattr(run_logs.larch_io, "atomic_write", fake_atomic_write)
+    run_logs._atomic_write(tmp_path / "manifest.json", "{}")  # pyright: ignore[reportPrivateUsage]
+    assert calls["prefix"] == ".manifest-"
+    assert calls["nofollow"] is True
+
+
 def test_flush_logs_pre_state_file_less_requires_repo_cwd(tmp_path: Path) -> None:
     runner = RecordingRunner()
     skip = run_logs.flush_logs_pre(runner, _ctx(tmp_path), cwd=None)
@@ -1037,6 +1049,181 @@ def test_commit_run_reports_pre_scrub_count_without_double_counting_same_tree(
     assert "SECRET_SCRUB_VIOLATIONS=3" in result.stdout
 
 
+def test_replace_tree_with_backup_refuses_symlink_and_non_directory(tmp_path: Path) -> None:
+    staged_for_symlink = tmp_path / "staged-symlink"
+    staged_for_symlink.mkdir()
+    link_target = tmp_path / "link-target"
+    link_target.mkdir()
+    symlink_dest = tmp_path / "symlink-dest"
+    symlink_dest.symlink_to(link_target, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="symlink destination"):
+        run_logs._replace_tree_with_backup(staged_for_symlink, symlink_dest)  # pyright: ignore[reportPrivateUsage]
+
+    staged_for_file = tmp_path / "staged-file"
+    staged_for_file.mkdir()
+    file_dest = tmp_path / "file-dest"
+    _ = file_dest.write_text("not a tree\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="non-directory destination"):
+        run_logs._replace_tree_with_backup(staged_for_file, file_dest)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_copy_tree_to_repo_replaces_live_tree_without_rmtree(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    log_root = tmp_path / "larch-logs"
+    src = log_root / "implement" / "run-abc"
+    src.mkdir(parents=True)
+    _ = (src / "artifact.txt").write_text("new\n", encoding="utf-8")
+    repo = tmp_path / "repo"
+    dest = repo / "larch-logs" / "implement" / "run-abc"
+    dest.mkdir(parents=True)
+    _ = (dest / "artifact.txt").write_text("old\n", encoding="utf-8")
+    original_rmtree = run_logs.shutil.rmtree
+
+    def guarded_rmtree(path: Path | str, *args: Any, **kwargs: Any) -> None:
+        assert Path(path) != dest
+        original_rmtree(path, *args, **kwargs)
+
+    monkeypatch.setattr(run_logs.shutil, "rmtree", guarded_rmtree)
+
+    rels, copied_dest, violations, scrub_error = run_logs._copy_tree_to_repo(  # pyright: ignore[reportPrivateUsage]
+        log_root,
+        repo,
+        "implement",
+        "run-abc",
+    )
+
+    assert rels == ["larch-logs/implement/run-abc"]
+    assert copied_dest == dest
+    assert violations == 0
+    assert scrub_error is None
+    assert (dest / "artifact.txt").read_text(encoding="utf-8") == "new\n"
+
+
+def test_copy_tree_to_repo_recovers_interrupted_backup(tmp_path: Path) -> None:
+    log_root = tmp_path / "larch-logs"
+    src = log_root / "implement" / "run-abc"
+    src.mkdir(parents=True)
+    _ = (src / "artifact.txt").write_text("new\n", encoding="utf-8")
+    repo = tmp_path / "repo"
+    backup = repo / "larch-logs" / "implement" / ".run-abc.removing"
+    backup.mkdir(parents=True)
+    _ = (backup / "artifact.txt").write_text("old\n", encoding="utf-8")
+    dest = repo / "larch-logs" / "implement" / "run-abc"
+
+    rels, copied_dest, violations, scrub_error = run_logs._copy_tree_to_repo(  # pyright: ignore[reportPrivateUsage]
+        log_root,
+        repo,
+        "implement",
+        "run-abc",
+    )
+
+    assert rels == ["larch-logs/implement/run-abc"]
+    assert copied_dest == dest
+    assert violations == 0
+    assert scrub_error is None
+    assert not backup.exists()
+    assert (dest / "artifact.txt").read_text(encoding="utf-8") == "new\n"
+
+
+def test_commit_run_warns_when_manifest_update_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_git_repo_on_feature(repo)
+    log_root = tmp_path / "larch-logs"
+    manifest = log_root / "implement" / "run-abc" / "manifest.json"
+    manifest.parent.mkdir(parents=True)
+    _ = manifest.write_text("{}", encoding="utf-8")
+
+    def fail_update(_path: Path, _updates: dict[str, Any]) -> dict[str, Any]:
+        raise OSError("manifest unavailable")
+
+    def no_rels(
+        _log_root: Path,
+        _repo_root: Path,
+        _skill: str,
+        _run_id: str,
+    ) -> tuple[list[str], Path, int, str | None]:
+        return [], repo / "larch-logs" / "implement" / "run-abc", 0, None
+
+    monkeypatch.setattr(run_logs, "_update_manifest_v2", fail_update)
+    monkeypatch.setattr(run_logs, "_copy_tree_to_repo", no_rels)
+
+    result = run_logs._commit_run(  # pyright: ignore[reportPrivateUsage]
+        log_root,
+        "implement",
+        "run-abc",
+        cwd=str(repo),
+    )
+
+    assert result.returncode == 0
+    assert "WARN: larch-log commit manifest update failed: manifest unavailable" in capsys.readouterr().err
+
+
+def test_commit_run_warns_when_breadcrumb_publish_returns_nonzero(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_git_repo_on_feature(repo)
+    log_root = tmp_path / "larch-logs"
+    (log_root.parent / "breadcrumbs").mkdir()
+    dest = repo / "larch-logs" / "implement" / "run-abc"
+
+    def copied_rels(
+        _log_root: Path,
+        _repo_root: Path,
+        _skill: str,
+        _run_id: str,
+    ) -> tuple[list[str], Path, int, str | None]:
+        return ["larch-logs/implement/run-abc"], dest, 0, None
+
+    def fail_breadcrumbs(_argv: list[str]) -> int:
+        return 1
+
+    monkeypatch.setattr(run_logs, "_copy_tree_to_repo", copied_rels)
+    monkeypatch.setattr(run_logs, "publish_breadcrumbs_main", fail_breadcrumbs)
+
+    result = run_logs._commit_run(  # pyright: ignore[reportPrivateUsage]
+        log_root,
+        "implement",
+        "run-abc",
+        cwd=str(repo),
+    )
+
+    assert result.returncode == 0
+    assert "WARN: larch-log commit breadcrumb publish failed: rc=1" in capsys.readouterr().err
+
+
+def test_larch_log_flush_warns_when_stage_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    monkeypatch.delenv("LARCH_NO_LOGS_COMMIT", raising=False)
+    _ = (tmp_path / "session-id").write_text("run-abc\n", encoding="utf-8")
+
+    def fail_stage(*_args: object, **_kwargs: object) -> None:
+        raise OSError("stage unavailable")
+
+    monkeypatch.setattr(run_logs, "_stage_pre_commit", fail_stage)
+
+    rc = run_logs.larch_log_flush_main([])
+
+    assert rc == 0
+    assert "WARN: larch-log flush failed: stage unavailable" in capsys.readouterr().err
+
+
 def test_larch_log_commit_rejects_bad_pre_scrub_violations(tmp_path: Path) -> None:
     rc = run_logs.larch_log_commit_main(
         [
@@ -1891,6 +2078,35 @@ def test_publish_breadcrumbs_allows_source_under_session_tmpdir(
     )
     assert rc == 0
     assert (dest / "breadcrumbs").is_dir()
+
+
+def test_publish_breadcrumbs_replaces_live_tree_without_rmtree(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = tmp_path / "session"
+    (session / "breadcrumbs").mkdir(parents=True)
+    _ = (session / "larch-quiet-implement-1.log").write_text("hello\n", encoding="utf-8")
+    for key in ("DESIGN_TMPDIR", "REVIEW_TMPDIR", "RESEARCH_TMPDIR"):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(session))
+    dest = tmp_path / "dest" / "breadcrumbs"
+    dest.mkdir(parents=True)
+    _ = (dest / "quiet.log").write_text("old\n", encoding="utf-8")
+    original_rmtree = run_logs.shutil.rmtree
+
+    def guarded_rmtree(path: Path | str, *args: Any, **kwargs: Any) -> None:
+        assert Path(path) != dest
+        original_rmtree(path, *args, **kwargs)
+
+    monkeypatch.setattr(run_logs.shutil, "rmtree", guarded_rmtree)
+
+    rc = run_logs.publish_breadcrumbs_main(
+        ["--source-dir", str(session / "breadcrumbs"), "--dest-dir", str(dest)]
+    )
+
+    assert rc == 0
+    assert "hello" in (dest / "quiet.log").read_text(encoding="utf-8")
 
 
 def test_append_failure_sanitizes_diagram_warning_captures(tmp_path: Path) -> None:

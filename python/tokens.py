@@ -1397,7 +1397,7 @@ def measure_realized_cost() -> Path:
 
 
 def _atomic_text(path: Path, text: str) -> None:
-    larch_io.atomic_write(path, text, prefix=f".{path.name}.", newline="\n")
+    larch_io.atomic_write(path, text, prefix=f".{path.name}.", nofollow=True, newline="\n")
 
 
 def _pop_ledger(argv: list[str]) -> tuple[list[str], str | None]:

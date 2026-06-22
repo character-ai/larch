@@ -13,6 +13,19 @@ import pytest
 import tokens
 
 
+def test_atomic_text_uses_nofollow(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    calls: dict[str, object] = {}
+
+    def fake_atomic_write(_path: Path, _text: str, **kwargs: object) -> None:
+        calls.update(kwargs)
+
+    monkeypatch.setattr(tokens.larch_io, "atomic_write", fake_atomic_write)
+    tokens._atomic_text(tmp_path / "tokens.tsv", "body\n")  # pyright: ignore[reportPrivateUsage]
+    assert calls["prefix"] == ".tokens.tsv."
+    assert calls["nofollow"] is True
+    assert calls["newline"] == "\n"
+
+
 def test_normalize_sidecar_codex() -> None:
     record = tokens.normalize_sidecar(
         {
