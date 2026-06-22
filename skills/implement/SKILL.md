@@ -355,10 +355,6 @@ Reference `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/phantom-probe.md` w
 **Machine reachability** — legacy wrappers and harnesses retained during C4c cutover; listed here to satisfy `agent-lint` S030:
 - `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/flush-execution-issues.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-flush-execution-issues.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/materialize-manifest-oos.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/materialize-manifest-oos.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-materialize-manifest-oos.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-materialize-manifest-oos.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-disposition-checkpoint.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-disposition-gate.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-oos-disposition-gate.sh`

@@ -214,6 +214,7 @@ def detect(
 _INTERNAL_URL_RE = re.compile(
     r"https?://(?:localhost|127\.0\.0\.1|10\.[0-9.]+|192\.168\.[0-9.]+|"
     r"172\.(?:1[6-9]|2[0-9]|3[0-1])\.[0-9.]+|169\.254\.[0-9.]+|"
+    r"\[?(?:fc[0-9a-f]{2}:|fd[0-9a-f]{2}:|fe80:)|"
     r"[^\s/]+\.(?:internal|local|corp|lan|intranet|test|example|invalid))[^\s]*"
     r"|\b(?:localhost|127\.0\.0\.1|10\.[0-9.]+|192\.168\.[0-9.]+|"
     r"172\.(?:1[6-9]|2[0-9]|3[0-1])\.[0-9.]+|169\.254\.[0-9.]+|"
@@ -239,8 +240,7 @@ def _strip_md_emphasis(text: str) -> str:
 
 
 def _sanitize_public_text(text: str) -> str:
-    with contextlib.suppress(Exception):
-        text = redact(text)
+    text = redact(text)
     text = _INTERNAL_URL_RE.sub("<INTERNAL-URL>", text)
     text = _EMAIL_RE.sub("<REDACTED-PII>", text)
     text = _SSN_RE.sub("<REDACTED-PII>", text)
@@ -272,7 +272,7 @@ def _security_signal(description: object, focus_area: object = "") -> bool:
     return bool(_FOCUS_AREA_LINE_RE.search(_strip_md_emphasis(str(description or ""))))
 
 
-def _load_manifest_observations(path: Path) -> list[dict[str, object]]:
+def _load_manifest_observations(path: Path, *, count_only: bool = False) -> list[dict[str, object]]:
     try:
         raw_data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -286,7 +286,14 @@ def _load_manifest_observations(path: Path) -> list[dict[str, object]]:
     if not isinstance(observations, list):
         raise TypeError("oos_observations must be an array")
     observations = cast("list[object]", observations)
-    return [cast("dict[str, object]", item) if isinstance(item, dict) else {} for item in observations]
+    if count_only:
+        return cast("list[dict[str, object]]", observations)
+    out: list[dict[str, object]] = []
+    for index, item in enumerate(observations, start=1):
+        if not isinstance(item, dict):
+            raise TypeError(f"oos_observations[{index}] must be a JSON object")
+        out.append(cast("dict[str, object]", item))
+    return out
 
 
 def _existing_oos_titles(path: Path) -> set[str]:
@@ -324,11 +331,14 @@ def _append_run_log_warning(tmpdir: Path, entry: str) -> None:
 
 
 def _security_audit_has_title(path: Path, title: str) -> bool:
-    return path.is_file() and f"### Security OOS: {title}" in path.read_text(encoding="utf-8")
+    if not path.is_file():
+        return False
+    wanted = f"### Security OOS: {title}"
+    return any(line == wanted for line in path.read_text(encoding="utf-8").splitlines())
 
 
 def materialize_manifest_oos(manifest_path: Path, implement_tmpdir: Path, *, count_only: bool = False) -> int:
-    observations = _load_manifest_observations(manifest_path)
+    observations = _load_manifest_observations(manifest_path, count_only=count_only)
     if count_only:
         return len(observations)
     if not observations:
@@ -364,7 +374,7 @@ def materialize_manifest_oos(manifest_path: Path, implement_tmpdir: Path, *, cou
                     lines.append(f"- **focus-area**: {focus_area_s}")
                 lines.append("- **Disposition**: security-routed; not materialized for public OOS filing")
                 audit.write_text((audit.read_text(encoding="utf-8") if audit.exists() else "") + "\n".join(lines) + "\n", encoding="utf-8")
-                _append_run_log_warning(implement_tmpdir, "- **materialize-manifest-oos.sh**: security-routed manifest OOS retained in security-oos-observations.md")
+                _append_run_log_warning(implement_tmpdir, "- **cli.py oos materialize-manifest**: security-routed manifest OOS retained in security-oos-observations.md")
             continue
         key = title.lower()
         if key in titles:
@@ -394,7 +404,7 @@ def materialize_manifest_main(argv: list[str] | None = None) -> int:
     try:
         args = parser.parse_args(argv)
         count = materialize_manifest_oos(Path(args.manifest_path), Path(args.implement_tmpdir), count_only=args.count_only)
-    except (ValueError, RuntimeError, OSError) as exc:
+    except (TypeError, ValueError, RuntimeError, OSError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
     if args.count_only:

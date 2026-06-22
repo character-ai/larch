@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import file_oos
 import issue_wire
 import logging_util
 import phantom
@@ -1247,7 +1248,7 @@ def _append_materialize_oos_failure(st: DispatchState, log: Path, exit_code: int
         "--site",
         "step2-materialize-manifest-oos",
         "--tool",
-        "materialize-manifest-oos.sh",
+        "cli.py oos materialize-manifest",
         "--exit-code",
         str(exit_code),
         "--category",
@@ -1261,34 +1262,42 @@ def _append_materialize_oos_failure(st: DispatchState, log: Path, exit_code: int
 def _oos_materialize_should_bail(*, count_rc: int, count_str: str, oos_nonempty: bool, materialize_failed: bool) -> bool:
     if count_rc != 0:
         return True
-    if count_str.isdigit() and int(count_str) > 0:
+    if materialize_failed and count_str.isdigit() and int(count_str) > 0:
         return True
     return materialize_failed and oos_nonempty
 
 
 def _materialize_oos(st: DispatchState, *, oos_observations_nonempty: bool = False) -> str:
     log = st.tmpdir / "materialize-manifest-oos.log"
-    count = _invoke_cli([
-        "oos", "materialize-manifest", "--count-only",
-        "--manifest-path", str(st.manifest_path),
-        "--implement-tmpdir", str(st.tmpdir),
-    ], cwd=st.repo_root)
-    count_str = count.stdout.strip()
-    result = _invoke_cli([
-        "oos", "materialize-manifest",
-        "--manifest-path", str(st.manifest_path),
-        "--implement-tmpdir", str(st.tmpdir),
-    ], cwd=st.repo_root)
-    log.write_text(result.stdout + result.stderr, encoding="utf-8")
-    if result.returncode != 0:
-        _append_materialize_oos_failure(st, log, result.returncode)
-        if _oos_materialize_should_bail(
-            count_rc=count.returncode,
-            count_str=count_str,
-            oos_nonempty=oos_observations_nonempty,
-            materialize_failed=True,
-        ):
-            return "manifest-oos-materialization-failed"
+    log.write_text("", encoding="utf-8")
+    count_rc = 0
+    count_str = ""
+    materialize_failed = False
+
+    try:
+        count_result = file_oos.materialize_manifest_oos(st.manifest_path, st.tmpdir, count_only=True)
+        count_str = str(count_result)
+        count_rc = 0
+    except (TypeError, ValueError, RuntimeError, OSError) as exc:
+        log.write_text(str(exc) + "\n", encoding="utf-8")
+        count_rc = 1
+
+    try:
+        _ = file_oos.materialize_manifest_oos(st.manifest_path, st.tmpdir, count_only=False)
+    except (TypeError, ValueError, RuntimeError, OSError) as exc:
+        with log.open("a", encoding="utf-8") as handle:
+            handle.write(str(exc) + "\n")
+        materialize_failed = True
+
+    if materialize_failed:
+        _append_materialize_oos_failure(st, log, 1)
+    if _oos_materialize_should_bail(
+        count_rc=count_rc,
+        count_str=count_str,
+        oos_nonempty=oos_observations_nonempty,
+        materialize_failed=materialize_failed,
+    ):
+        return "manifest-oos-materialization-failed"
     return ""
 
 

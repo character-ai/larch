@@ -751,7 +751,7 @@ def _file(args: argparse.Namespace) -> tuple[int, dict[str, object]]:
     if manifest_path.is_file():
         try:
             _ = file_oos.materialize_manifest_oos(manifest_path, tmpdir)
-        except (OSError, RuntimeError, ValueError) as exc:
+        except (TypeError, OSError, RuntimeError, ValueError) as exc:
             _append_warning(tmpdir, f"manifest OOS materialization failed: {exc}")
 
     blocks, already = _working_batch(tmpdir)
