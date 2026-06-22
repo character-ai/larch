@@ -170,6 +170,85 @@ def step_16_main(argv: list[str] | None = None) -> int:
     return step_16(argv)
 
 
+def _step_16a_slack(*, tmpdir: Path, plugin_root: Path, env: dict[str, str], cli: str) -> None:
+    slack_log = tmpdir / "step16a-slack-issue-announce.log"
+    with suppress(OSError):
+        slack_log.write_text("", encoding="utf-8")
+    slack_rc = 0
+    try:
+        with slack_log.open("w", encoding="utf-8") as handle:
+            completed = _run(
+                [sys.executable, cli, "slack", "issue-announce", "--implement-tmpdir", str(tmpdir), "--best-effort"],
+                env=env,
+                stdout=handle,
+                stderr=subprocess.STDOUT,
+            )
+    except OSError:
+        completed = _run(
+            [sys.executable, cli, "slack", "issue-announce", "--implement-tmpdir", str(tmpdir), "--best-effort"],
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    slack_rc = completed.returncode
+    try:
+        slack_text = slack_log.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        slack_text = ""
+    if "STATUS=failed" in slack_text:
+        _append_failure(
+            tmpdir=tmpdir,
+            plugin_root=plugin_root,
+            env=env,
+            site="Step 16a — notify",
+            tool="python/cli.py slack issue-announce",
+            exit_code=slack_rc,
+            category="Warnings",
+            output_file=slack_log,
+        )
+
+
+def step_16_16a(argv: list[str] | None = None) -> int:
+    """Rejected findings replay and Slack notify without final-report write."""
+    parser = argparse.ArgumentParser(prog="cli.py implement step-16-16a")
+    parser.add_argument("--implement-tmpdir", default="")
+    args = parser.parse_args(argv)
+    try:
+        tmpdir = _resolve_tmpdir(args.implement_tmpdir)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    plugin_root = _plugin_root()
+    if (rc := _validate_plugin_root(plugin_root)) is not None:
+        return rc
+    env = _env_for(tmpdir, plugin_root)
+    cli = str(plugin_root / "python" / "cli.py")
+    step16_log = tmpdir / "step16-write-rejected.failure.log"
+    try:
+        step_16(["--implement-tmpdir", str(tmpdir)])
+    except Exception:
+        with suppress(OSError):
+            step16_log.write_text("", encoding="utf-8")
+        _append_failure(
+            tmpdir=tmpdir,
+            plugin_root=plugin_root,
+            env=env,
+            site="Step 16 — rejected findings",
+            tool="python/closeout.py step_16",
+            exit_code=1,
+            category="Tool Failures",
+            output_file=step16_log,
+        )
+    _step_16a_slack(tmpdir=tmpdir, plugin_root=plugin_root, env=env, cli=cli)
+    with suppress(OSError):
+        (tmpdir / ".step16-16a-done").touch()
+    return 0
+
+
+def step_16_16a_main(argv: list[str] | None = None) -> int:
+    return step_16_16a(argv)
+
+
 def step_17(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cli.py implement step-17")
     parser.add_argument("--implement-tmpdir", default="")
@@ -292,41 +371,9 @@ def step_16_17(argv: list[str] | None = None) -> int:
             category="Tool Failures",
             output_file=step16_log,
         )
-    slack_log = tmpdir / "step16a-slack-issue-announce.log"
+    _step_16a_slack(tmpdir=tmpdir, plugin_root=plugin_root, env=env, cli=cli)
     with suppress(OSError):
-        slack_log.write_text("", encoding="utf-8")
-    slack_rc = 0
-    try:
-        with slack_log.open("w", encoding="utf-8") as handle:
-            completed = _run(
-                [sys.executable, cli, "slack", "issue-announce", "--implement-tmpdir", str(tmpdir), "--best-effort"],
-                env=env,
-                stdout=handle,
-                stderr=subprocess.STDOUT,
-            )
-    except OSError:
-        completed = _run(
-            [sys.executable, cli, "slack", "issue-announce", "--implement-tmpdir", str(tmpdir), "--best-effort"],
-            env=env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-    slack_rc = completed.returncode
-    try:
-        slack_text = slack_log.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        slack_text = ""
-    if "STATUS=failed" in slack_text:
-        _append_failure(
-            tmpdir=tmpdir,
-            plugin_root=plugin_root,
-            env=env,
-            site="Step 16a — notify",
-            tool="python/cli.py slack issue-announce",
-            exit_code=slack_rc,
-            category="Warnings",
-            output_file=slack_log,
-        )
+        (tmpdir / ".step16-16a-done").touch()
     step17_log = tmpdir / "step17-write-final-report.failure.log"
     step17_rc = 1
     try:
