@@ -288,7 +288,7 @@ class DurableFlags:
 
 
 def _atomic_write(path: Path, content: str) -> None:
-    larch_io.atomic_write(path, content, prefix=".manifest-")
+    larch_io.atomic_write(path, content, prefix=".manifest-", nofollow=True)
 
 
 def _resolve_log_root(log_root: str | None = None) -> Path:
@@ -1783,6 +1783,102 @@ def _larch_log_commit(
     return git.commit(runner, subject, cwd=git_root)
 
 
+def _tree_backup_path(dest: Path) -> Path:
+    return dest.parent / f".{dest.name}.removing"
+
+
+def _remove_backup_path(path: Path) -> None:
+    if path.is_dir() and not path.is_symlink():
+        shutil.rmtree(path)
+    else:
+        path.unlink()
+
+
+def _validate_tree_destination(dest: Path) -> None:
+    if dest.is_symlink():
+        raise ValueError(f"refusing to replace symlink destination: {dest}")
+    if dest.exists() and not dest.is_dir():
+        raise ValueError(f"refusing to replace non-directory destination: {dest}")
+
+
+def _restore_publish_backup(backup: Path, dest: Path) -> None:
+    if not (backup.exists() or backup.is_symlink()):
+        return
+    if backup.is_symlink() or not backup.is_dir():
+        raise ValueError(f"refusing to restore non-directory backup: {backup}")
+    backup.rename(dest)
+    _validate_tree_destination(dest)
+
+
+def _restore_publish_backup_after_failure(backup: Path, dest: Path) -> None:
+    if backup.exists() and not dest.exists():
+        with suppress(OSError):
+            backup.rename(dest)
+
+
+def _replace_tree_with_backup(staged: Path, dest: Path) -> None:
+    _validate_tree_destination(dest)
+    backup = _tree_backup_path(dest)
+    backup_exists = backup.exists() or backup.is_symlink()
+    if backup_exists and dest.exists():
+        _remove_backup_path(backup)
+    elif backup_exists:
+        _restore_publish_backup(backup, dest)
+
+    moved_to_backup = False
+    if dest.exists():
+        dest.rename(backup)
+        moved_to_backup = True
+    try:
+        staged.rename(dest)
+    except Exception:
+        if moved_to_backup:
+            _restore_publish_backup_after_failure(backup, dest)
+        raise
+    if backup.exists() or backup.is_symlink():
+        _remove_backup_path(backup)
+
+
+def _replace_staged_tree_or_error(staged: Path, dest: Path) -> str | None:
+    backup = _tree_backup_path(dest)
+    try:
+        _validate_tree_destination(dest)
+    except ValueError as exc:
+        return str(exc)
+    try:
+        if dest.exists() or backup.exists() or backup.is_symlink():
+            _replace_tree_with_backup(staged, dest)
+        else:
+            staged.replace(dest)
+    except ValueError as exc:
+        return str(exc)
+    return None
+
+
+def _update_commit_manifest_with_warning(manifest: Path) -> None:
+    if not manifest.is_file():
+        return
+    try:
+        _update_manifest_v2(manifest, {})
+    except (OSError, json.JSONDecodeError, TypeError, ValueError, UnicodeError) as exc:
+        print(f"WARN: larch-log commit manifest update failed: {exc}", file=sys.stderr)
+
+
+def _publish_breadcrumbs_with_warning(log_root: Path, dest: Path) -> None:
+    bread_src = log_root.parent / "breadcrumbs"
+    if not (bread_src.is_dir() and log_root.name == "larch-logs"):
+        return
+    try:
+        breadcrumb_rc = publish_breadcrumbs_main(
+            ["--source-dir", str(bread_src), "--dest-dir", str(dest / "breadcrumbs")],
+        )
+    except (OSError, ValueError, ShipError, UnicodeError) as exc:
+        print(f"WARN: larch-log commit breadcrumb publish failed: {exc}", file=sys.stderr)
+        return
+    if breadcrumb_rc != 0:
+        print(f"WARN: larch-log commit breadcrumb publish failed: rc={breadcrumb_rc}", file=sys.stderr)
+
+
 def _copy_tree_to_repo(
     log_root: Path,
     repo_root: Path,
@@ -1804,9 +1900,9 @@ def _copy_tree_to_repo(
                 except ShipError as exc:
                     return [], dest, scrub_violations, str(exc)
                 scrub_violations += count
-                if dest.exists():
-                    shutil.rmtree(dest)
-                tmp_dest.replace(dest)
+                replace_error = _replace_staged_tree_or_error(tmp_dest, dest)
+                if replace_error:
+                    return [], dest, scrub_violations, replace_error
         rels.append(f"larch-logs/{skill}/{run_id}")
     shared_src = log_root / "shared"
     shared_dest = repo_root / "larch-logs" / "shared"
@@ -1870,21 +1966,14 @@ def _commit_run(log_root: Path, skill: str, run_id: str, *, cwd: str | None, pre
         _warn_placeholder_run_id(run_id)
         return CommandResult(("true",), 0, "", "", 0.0)
     manifest = _manifest_cli_path(log_root, skill, run_id)
-    if manifest.is_file():
-        with suppress(Exception):
-            _update_manifest_v2(manifest, {})
+    _update_commit_manifest_with_warning(manifest)
     rels, dest, copy_tree_violations, scrub_error = _copy_tree_to_repo(log_root, repo_root, skill, run_id)
     violations = pre_scrub_violations + copy_tree_violations
     if scrub_error:
         return CommandResult(("run-log", "commit"), 1, "", f"{scrub_error}\n", 0.0)
     if not rels:
         return CommandResult(("true",), 0, f"SECRET_SCRUB_VIOLATIONS={violations}\n", "", 0.0)
-    bread_src = log_root.parent / "breadcrumbs"
-    if bread_src.is_dir() and log_root.name == "larch-logs":
-        with suppress(Exception):
-            _ = publish_breadcrumbs_main(
-                ["--source-dir", str(bread_src), "--dest-dir", str(dest / "breadcrumbs")],
-            )
+    _publish_breadcrumbs_with_warning(log_root, dest)
     status = _git_stdout(["git", "status", "--porcelain", "--", *rels], cwd=repo_root)
     if status.returncode != 0:
         return CommandResult(tuple(status.args), status.returncode, status.stdout, status.stderr, 0.0)
@@ -2142,7 +2231,8 @@ def publish_breadcrumbs_main(argv: list[str]) -> int:
     )
     if not quiet_logs:
         return 0
-    with tempfile.TemporaryDirectory(dir=dest.parent if dest.parent.exists() else None, prefix=".breadcrumbs.") as tmp:
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=dest.parent, prefix=".breadcrumbs.") as tmp:
         staged = Path(tmp) / dest.name
         quiet_log = staged / "quiet.log"
         redacted_parts: list[str] = []
@@ -2169,11 +2259,12 @@ def publish_breadcrumbs_main(argv: list[str]) -> int:
             return 0
         quiet_log.parent.mkdir(parents=True, exist_ok=True)
         quiet_log.write_text("".join(redacted_parts), encoding="utf-8")
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        if dest.exists():
-            shutil.rmtree(dest)
-        staged.replace(dest)
-    return 0
+        replace_error = _replace_staged_tree_or_error(staged, dest)
+        rc = 0
+        if replace_error:
+            print(f"publish-breadcrumbs: {replace_error}", file=sys.stderr)
+            rc = 1
+    return rc
 
 
 def larch_log_flush_main(argv: list[str]) -> int:
@@ -2204,15 +2295,26 @@ def larch_log_flush_main(argv: list[str]) -> int:
         no_admin_fallback=False,
         repo_unavailable=False,
     )
-    with suppress(Exception):
+    try:
         _stage_pre_commit(proc, ctx, log_root, mode="flush")
         result = _commit_run(log_root, "implement", run_id, cwd=str(Path.cwd()))
+        if result.returncode != 0:
+            detail = result.stderr.strip()
+            if detail:
+                print(
+                    f"WARN: larch-log flush failed: rc={result.returncode}: {detail}",
+                    file=sys.stderr,
+                )
+            else:
+                print(f"WARN: larch-log flush failed: rc={result.returncode}", file=sys.stderr)
         for line in result.stdout.splitlines():
             if line.startswith("SECRET_SCRUB_VIOLATIONS=") and not line.endswith("=0"):
                 print(
                     "WARN: larch-log flush scrubbed secret-shaped values before commit",
                     file=sys.stderr,
                 )
+    except Exception as exc:
+        print(f"WARN: larch-log flush failed: {exc}", file=sys.stderr)
     return 0
 
 
