@@ -815,7 +815,7 @@ test-prune-nit-findings:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_aggregate.py -k 'prune_nit'
 
 test-tally-code-votes:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_tally.py -k '(tally_ or attributed_ballot or neutralized_ballot) and not emit'
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_tally.py -k '(tally_ or attributed_ballot or neutralized_ballot or ledger_reason) and not emit'
 
 .PHONY: test-check-reviewer-failure-threshold
 test-check-reviewer-failure-threshold:
