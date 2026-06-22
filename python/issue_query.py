@@ -38,7 +38,7 @@ def _emit_failed(message: str) -> None:
     logging_util.emit_kv("ERROR", message)
 
 
-def _bool_text(value: bool) -> str:  # noqa: FBT001
+def _bool_text(value: bool) -> str:  # noqa: FBT001 - bool value is the data being formatted, not a behavior flag.
     return "true" if value else "false"
 
 

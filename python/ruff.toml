@@ -11,7 +11,13 @@ exclude = [
 select = ["ALL"]
 ignore = [
     "A005",
-    "ANN",
+    "ANN002",
+    "ANN003",
+    "ANN202",
+    "ANN204",
+    "ANN205",
+    "ANN206",
+    "ANN401",
     "ARG003",
     "ASYNC109",
     "BLE001",
@@ -36,7 +42,6 @@ ignore = [
     "EM101",
     "EM102",
     "ERA001",
-    "FBT002",
     "FA102",
     "FIX002",
     "G004",
@@ -107,6 +112,9 @@ ignore = [
     "S108",
     "ARG002",
     "FBT001",
+    "FBT002",
+    "ANN001",
+    "ANN201",
     "PERF401",
 ]
 "test_support.py" = [

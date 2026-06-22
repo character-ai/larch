@@ -284,10 +284,9 @@ def _parse_check_rows(parsed: object) -> list[dict[str, object]]:
     if not isinstance(parsed, list):
         return []
     raw_list = cast("list[object]", parsed)
-    out: list[dict[str, object]] = []
-    for item in raw_list:
-        if isinstance(item, dict):
-            out.append(cast("dict[str, object]", item))  # noqa: PERF401
+    out: list[dict[str, object]] = [
+        cast("dict[str, object]", item) for item in raw_list if isinstance(item, dict)
+    ]
     return out
 
 

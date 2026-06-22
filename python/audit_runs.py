@@ -1,5 +1,5 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnusedCallResult=false, reportOptionalSubscript=false, reportOptionalMemberAccess=false, reportPossiblyUnboundVariable=false, reportUnnecessaryComparison=false, reportUnknownLambdaType=false, reportArgumentType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnusedImport=false, reportUnusedFunction=false, reportPrivateUsage=false, reportUnusedVariable=false
-# ruff: noqa: ARG001, E701, E702, E703, F401, FBT001, FURB162, FURB167, PERF401, PIE810, PLR2004, PLR5501, RUF059, SIM105, SIM115
+# ruff: noqa: ARG001, E701, E702, E703, F401, FURB162, FURB167, PERF401, PIE810, PLR2004, PLR5501, RUF059, SIM105, SIM115
 # pylint: skip-file
 """Audit run-log helper CLI verbs."""
 
@@ -521,7 +521,7 @@ def _scan_required(run_dir: Path, pr: int, required: Path | None) -> dict[str, o
         return False
     def nonempty_without_step9a1() -> bool:
         return bool(sr) and "step9a1" not in sr
-    def cond(c: str, chain: bool = False) -> bool:
+    def cond(c: str, *, chain: bool = False) -> bool:
         if c == "always": return True
         if c == "step5":
             return not steps_false("step5") and (has("code-review-tally.json") or has("review-findings-full.jsonl") or cond("step7a"))
