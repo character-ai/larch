@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 import collect_results
 import plan_review_round
 import review_aggregate
+from test_support import make_zero_findings_plan_review_fake_cli
 
 if TYPE_CHECKING:
     import pytest
@@ -1241,35 +1242,7 @@ def test_execute_round_zero_findings_clears_stale_tally_artifacts(
         encoding="utf-8",
     )
 
-    def fake_run_cli(argv: list[str], *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
-        del env
-        if argv[:2] == ["plan-review", "panel-dispatch"]:
-            paths_file = design / "plan-review-panel-paths.txt"
-            _ = (design / "plan-review-slots.ndjson").write_text(
-                '{"slot":"cursor-plan-arch","tool":"cursor","output":"'
-                + str(reviewer_file)
-                + '","prompt_file":"'
-                + str(design / "cursor-plan-arch.prompt")
-                + '"}\n',
-                encoding="utf-8",
-            )
-            _ = paths_file.write_text(str(reviewer_file) + "\n", encoding="utf-8")
-            return subprocess.CompletedProcess(argv, 0, f"PANEL_PRUNED_EMPTY=false\nPANEL_PATHS_FILE={paths_file}\n", "")
-        if argv[:2] == ["agent", "collect-results"]:
-            record = collect_results.CollectorRecord(
-                reviewer_file=str(reviewer_file),
-                tool="cursor",
-                status="OK",
-                exit_code="0",
-            )
-            return subprocess.CompletedProcess(argv, 0, _collector_text([record]), "")
-        if argv[:2] == ["review", "aggregate-findings"]:
-            return subprocess.CompletedProcess(argv, 0, "REASON=insufficient-input\nAGGREGATED=false\n", "")
-        if argv[:2] == ["plan-review", "voter-dispatch"]:
-            return subprocess.CompletedProcess(argv, 0, "DISPATCH_OK=false\nDEGRADED_PANEL=1\n", "")
-        if argv[:2] == ["plan-review", "tally"]:
-            return subprocess.CompletedProcess(argv, 0, "TALLY_PLAN_REVIEW_STATUS=ok\n", "")
-        return subprocess.CompletedProcess(argv, 0, "", "")
+    fake_run_cli = make_zero_findings_plan_review_fake_cli(design, reviewer_file)
 
     monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
 
