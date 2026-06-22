@@ -227,7 +227,7 @@ def extract_valid_fenced_json_text(text: str) -> str:
 
 def _load_json_salvage(raw: Path, parse_error: Path) -> object | None:
     text = raw.read_text(encoding="utf-8", errors="replace") if raw.is_file() else ""
-    candidates = [text, extract_valid_fenced_json_text(text)]
+    candidates: list[str] = [text, extract_valid_fenced_json_text(text)]
     for candidate in candidates:
         try:
             return json.loads(candidate)
@@ -245,7 +245,7 @@ def _write_manifest(path: Path, manifest: dict[str, object]) -> None:
 
 def filter_manifest(input_path: Path, output_path: Path, *, max_archetypes: int, mode: str = "plan-review") -> tuple[str, int]:
     try:
-        data = json.loads(input_path.read_text(encoding="utf-8"))
+        data: object = json.loads(input_path.read_text(encoding="utf-8"))
         result = validate_dynamic_manifest(data, max_archetypes=max_archetypes, mode=mode)
     except (OSError, TypeError, ValueError, json.JSONDecodeError):
         _write_empty_manifest(output_path)
@@ -266,7 +266,7 @@ def filter_plan_manifest(input_path: Path, output_path: Path, *, max_archetypes:
 
 
 def _allowed_context_roots(plugin_root: Path, session_root: Path, session_env_path: str, implement_tmpdir: str) -> list[Path]:
-    roots = [plugin_root, session_root]
+    roots: list[Path] = [plugin_root, session_root]
     if session_env_path:
         env_file = _canonical_existing_file(session_env_path)
         if env_file is not None:
@@ -351,7 +351,7 @@ def _raw_is_scout_json(path: Path) -> bool:
     if not path.is_file() or path.stat().st_size == 0 or path.with_suffix(path.suffix + ".cap-hit").is_file():
         return False
     parse_error = path.with_suffix(path.suffix + ".probe-error")
-    data = _load_json_salvage(path, parse_error)
+    data: object | None = _load_json_salvage(path, parse_error)
     return isinstance(data, dict) and isinstance(data.get("archetypes"), list)
 
 
@@ -463,18 +463,18 @@ def scout_dynamic_archetypes(
         raw.unlink(missing_ok=True)
         cap_hit.unlink(missing_ok=True)
         launch_env = Path(str(output) + ".cursor.launch.env")
-        launch_review = [sys.executable, str(PLUGIN_ROOT / "python" / "cli.py"), "agent", "launch-review", "--tool", "cursor"]
+        launch_review: list[str] = [sys.executable, str(PLUGIN_ROOT / "python" / "cli.py"), "agent", "launch-review", "--tool", "cursor"]
         if os.environ.get("SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH"):
             launch_review = [os.environ["SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH"], "--tool", "cursor"]
         with launch_env.open("w", encoding="utf-8") as handle:
-            result = subprocess.run(
+            launch_result: subprocess.CompletedProcess[bytes] = subprocess.run(
                 [*launch_review, "--output", str(raw), "--prompt-file", str(prompt_file), "--mode", mode, "--timeout", str(timeout), "--timing-task-kind", "scout-dynamic-archetypes"],
                 check=False,
                 stdout=handle,
             )
-        last_rc = result.returncode
+        last_rc = launch_result.returncode
         latency_ms = _launch_latency_ms(launch_env)
-        if result.returncode != 0:
+        if launch_result.returncode != 0:
             status = _parse_launch_status(launch_env)
             last_status = "timeout" if status in {"TIMEOUT", "cap_hit"} else "cursor-failed"
         elif _raw_is_scout_json(raw):
@@ -487,16 +487,16 @@ def scout_dynamic_archetypes(
         launch_env = Path(str(output) + ".claude.launch.env")
         launch_env.parent.mkdir(parents=True, exist_ok=True)
         launch_cmd_env = os.environ.get("SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH", "").strip()
-        launch_cmd = [launch_cmd_env] if launch_cmd_env else ["python3", os.environ.get("SCOUT_DYNAMIC_ARCHETYPES_PY_CLI", str(PLUGIN_ROOT / "python" / "cli.py")), "agent", "launch-claude-subprocess"]
+        launch_cmd: list[str] = [launch_cmd_env] if launch_cmd_env else ["python3", os.environ.get("SCOUT_DYNAMIC_ARCHETYPES_PY_CLI", str(PLUGIN_ROOT / "python" / "cli.py")), "agent", "launch-claude-subprocess"]
         with launch_env.open("w", encoding="utf-8") as handle:
-            result = subprocess.run(
+            launch_result: subprocess.CompletedProcess[bytes] = subprocess.run(
                 [*launch_cmd, "--model", "claude-sonnet-4-6", "--prompt-file", str(prompt_file), "--output-file", str(raw), "--timeout", str(timeout), "--timing-task-kind", "scout-dynamic-archetypes", "--read-tools", "--read-tools-add-dir", str(staged_dir)],
                 check=False,
                 stdout=handle,
             )
-        last_rc = result.returncode
+        last_rc = launch_result.returncode
         latency_ms = _launch_latency_ms(launch_env)
-        if result.returncode != 0:
+        if launch_result.returncode != 0:
             status = _parse_launch_status(launch_env)
             last_status = "timeout" if status == "TIMEOUT" else "claude-failed"
         elif _raw_is_scout_json(raw):
@@ -519,7 +519,7 @@ def scout_dynamic_archetypes(
                 _emit_scout_result("empty", output, 0, latency_ms)
         return
     parse_error = Path(str(output) + ".parse-error")
-    data = _load_json_salvage(winner, parse_error)
+    data: object | None = _load_json_salvage(winner, parse_error)
     if data is None:
         _write_empty_manifest(output)
         _emit_scout_result("parse-failed", output, 0, latency_ms, fail_reason="json_parse")
@@ -563,15 +563,15 @@ def scout_plan_archetypes(
     design_tmpdir = plan_canon.parent
     scope_list = design_tmpdir / "scout-plan-scope-files.txt"
     with scope_list.with_suffix(scope_list.suffix + ".tmp").open("w", encoding="utf-8") as handle:
-        result = subprocess.run(["python3", str(PLUGIN_ROOT / "python" / "cli.py"), "plan", "scope-paths", "--plan-file", str(plan_canon)], check=False, stdout=handle)  # noqa: S607
-    if result.returncode != 0:
+        scope_result: subprocess.CompletedProcess[bytes] = subprocess.run(["python3", str(PLUGIN_ROOT / "python" / "cli.py"), "plan", "scope-paths", "--plan-file", str(plan_canon)], check=False, stdout=handle)  # noqa: S607
+    if scope_result.returncode != 0:
         raise UsageError("scope-files derivation failed")
     scope_list.with_suffix(scope_list.suffix + ".tmp").replace(scope_list)
     scout_cmd_env = os.environ.get("SCOUT_PLAN_ARCHETYPES_SCOUT_SH", "").strip()
-    scout_cmd = [scout_cmd_env] if scout_cmd_env else ["python3", str(PLUGIN_ROOT / "python" / "cli.py"), "scout", "dynamic-archetypes"]
-    args = ["--mode", "description", "--description-file", str(desc_canon), "--plan-file", str(plan_canon), "--scope-files", str(scope_list), "--max-archetypes", str(max_archetypes), "--output", str(output), "--session-env-path", session_env_path, "--codex-present", str(codex_present).lower(), "--cursor-present", str(cursor_present).lower()]
+    scout_cmd: list[str] = [scout_cmd_env] if scout_cmd_env else ["python3", str(PLUGIN_ROOT / "python" / "cli.py"), "scout", "dynamic-archetypes"]
+    args: list[str] = ["--mode", "description", "--description-file", str(desc_canon), "--plan-file", str(plan_canon), "--scope-files", str(scope_list), "--max-archetypes", str(max_archetypes), "--output", str(output), "--session-env-path", session_env_path, "--codex-present", str(codex_present).lower(), "--cursor-present", str(cursor_present).lower()]
     prompt_template = PLUGIN_ROOT / "skills" / "design" / "scripts" / "scout-plan-archetypes-prompt.txt"
-    prompt_flag = ["--prompt-override-file", str(prompt_template)] if prompt_template.is_file() and not prompt_template.is_symlink() else []
+    prompt_flag: list[str] = ["--prompt-override-file", str(prompt_template)] if prompt_template.is_file() and not prompt_template.is_symlink() else []
     tmp = output.with_name(output.name + ".wrapper.env")
     with tmp.open("w", encoding="utf-8") as handle:
         rc = subprocess.run([*scout_cmd, *args, *prompt_flag], check=False, stdout=handle).returncode

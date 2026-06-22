@@ -1406,6 +1406,12 @@
   {
     "file": "ci_monitor.py",
     "code": "C901",
+    "qualified_symbol": "poll_ci",
+    "metric": 13
+  },
+  {
+    "file": "ci_monitor.py",
+    "code": "C901",
     "qualified_symbol": "stage_and_push",
     "metric": 22
   },
@@ -1468,6 +1474,12 @@
     "code": "PLR0912",
     "qualified_symbol": "monitor",
     "metric": 18
+  },
+  {
+    "file": "ci_monitor.py",
+    "code": "PLR0912",
+    "qualified_symbol": "poll_ci",
+    "metric": 13
   },
   {
     "file": "ci_monitor.py",
@@ -2733,7 +2745,7 @@
     "file": "design_step_log.py",
     "code": "PLR0915",
     "qualified_symbol": "step1_log_main",
-    "metric": 81
+    "metric": 79
   },
   {
     "file": "design_summary.py",
@@ -5787,7 +5799,7 @@
     "file": "run_logs.py",
     "code": "C901",
     "qualified_symbol": "_commit_run",
-    "metric": 12
+    "metric": 14
   },
   {
     "file": "run_logs.py",
@@ -5920,6 +5932,12 @@
     "code": "PLR0911",
     "qualified_symbol": "verify_completeness_main",
     "metric": 11
+  },
+  {
+    "file": "run_logs.py",
+    "code": "PLR0912",
+    "qualified_symbol": "_commit_run",
+    "metric": 13
   },
   {
     "file": "run_logs.py",

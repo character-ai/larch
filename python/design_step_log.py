@@ -142,18 +142,16 @@ def step1_log_main(argv: Sequence[str]) -> int:
     os.environ["IMPLEMENT_TMPDIR"] = str(implement_tmpdir)
 
     compose_override = os.environ.get("RUN_STEP1_COMPOSE_CMD", "").strip()
-    compose_cmd: list[str]
     if compose_override:
-        compose_cmd = shlex.split(compose_override)
+        compose_cmd: list[str] = shlex.split(compose_override)
     else:
         compose_cmd = [sys.executable, str(plugin_root / "python" / "cli.py"), "plan", "compose-goals-test"]
 
     larch_log_override = os.environ.get("RUN_STEP1_LARCH_LOG_SH", "").strip()
-    larch_log_cmd: list[str]
     if larch_log_override:
         if not os.access(larch_log_override, os.X_OK):
             return _fail(f"run-log override not executable: {larch_log_override}")
-        larch_log_cmd = [larch_log_override]
+        larch_log_cmd: list[str] = [larch_log_override]
     else:
         if shutil.which("python3") is None:
             return _fail("python3 not found")
