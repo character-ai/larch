@@ -1,14 +1,14 @@
-## /implement run EFDE1AEE-3BC4-4FBE-B211-DEBDD03DAF77 — bailed
+## /implement run EFDE1AEE-3BC4-4FBE-B211-DEBDD03DAF77 — pr-created
 
-- **Outcome**: bailed
 - **Mode**: N/A
 - **Duration**: 01:31:05
-- **Cost**: 💰 TOTAL ~$40.85 — Claude $3.36, Codex $34.29, Cursor $2.43, Claude (subprocess) $0.77  |  Tokens: 63576k
+- **Cost**: 💰 TOTAL ~$41.30 — Claude $3.81, Codex $34.29, Cursor $2.43, Claude (subprocess) $0.77  |  Tokens: 64396k
 - **Issue**: #4981 — https://github.com/character-ai/larch/issues/4981
+- **PR**: #5069 — https://github.com/character-ai/larch/pull/5069
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (2)
 - **Code review**: 0/9 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +905/-259, larch-logs +770/-0
 - **OOS filed**: 0
 - **Exec issues**: 1
 - **Warnings**: 1
