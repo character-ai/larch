@@ -1,14 +1,14 @@
-## /implement run DC6F0A8F-4A87-4E50-954F-7F554D08628D — bailed
+## /implement run DC6F0A8F-4A87-4E50-954F-7F554D08628D — pr-created
 
-- **Outcome**: bailed
 - **Mode**: N/A
 - **Duration**: 03:46:45
-- **Cost**: 💰 TOTAL ~$46.68 — Claude $8.82, Codex $24.05, Cursor $8.21, Claude (subprocess) $5.60  |  Tokens: 80898k
+- **Cost**: 💰 TOTAL ~$49.71 — Claude $11.85, Codex $24.05, Cursor $8.21, Claude (subprocess) $5.60  |  Tokens: 84985k
 - **Issue**: #4984 — https://github.com/character-ai/larch/issues/4984
+- **PR**: #5098 — https://github.com/character-ai/larch/pull/5098
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (2)
 - **Code review**: 10/18 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +1202/-92, larch-logs +1056/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 1
@@ -84,3 +84,14 @@ cursor/apply                    │                                             
 **Reviewer slot failures**: 0
 
 _Cost is the per-round vendor cost (Codex + Cursor + Claude subprocess), attributed by token-ledger timestamp window; it excludes main-agent Claude, so it is less than the run Cost line above. Rendered as an em dash when per-round timing or the token ledger is unavailable._
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md against the cross-round findings-ledger implementation diff. Overall adherence is strong: all new logic lives in Python behind module functions (G-Skill-2); ledger writes are atomic and fail-closed, with a loud `ValueError` on an invalid role and an outcome-defaults-to-`rejected` suppression on bad input (G-Py-4); file I/O sits behind thin, unit-tested seams (G-Py-5); locals are annotated except where the right-hand side is obvious (G-Py-2).
+
+Minor aspirational deviations (warnings only, non-blocking):
+
+- **G-Py-1 (frozen dataclasses)**: `findings_ledger.write_round` / `prompt_section` accept findings as `list[dict[str, object]]` rather than a frozen dataclass. The entries are short-lived projections assembled by callers from existing tally/ballot data and consumed immediately by `_row_for_entry`; this deliberately mirrors the existing `reviewer-prune-ledger.tsv` row pattern. The guideline marks frozen dataclasses "aspirational today."
+- **G-Py-3 (domain types over primitives)**: `outcome` and `role` are validated strings (against `_VALID_OUTCOMES` / `{"reviewer","judge"}`) rather than enums. `outcome` is a TSV serialization value and `role` is a small internal selector; both fall within the guideline's stated deviation allowances.
+
+Neither deviation blocks PR creation; both are consistent with current codebase conventions.
