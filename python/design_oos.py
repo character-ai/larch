@@ -11,6 +11,8 @@ import sys
 from pathlib import Path
 from collections.abc import Sequence
 
+import file_oos
+
 OOS_ISSUE_STDOUT_FILE = "oos-issue.stdout.txt"
 _GH_ISSUE_URL_RE = re.compile(r"https://github\.com/[^/\s]+/[^/\s]+/issues/\d+")
 _FILED_URL_LINE_RE = re.compile(r"(?m)^\s*-\s*\*\*Filed[ \t]*URL\*\*[ \t]*:")
@@ -81,12 +83,7 @@ def _extract_unfiled_blocks(text: str) -> str:
 def _count_non_security_blocks(text: str) -> int:
     if not text.strip():
         return 0
-    script = _plugin_root() / "skills" / "implement" / "scripts" / "oos-non-security-block-count.awk"
-    result = subprocess.run(["awk", "-f", str(script)], input=text, text=True, capture_output=True, check=False)  # noqa: S607
-    if result.returncode != 0:
-        return 0
-    out = result.stdout.strip()
-    return int(out) if out.isdigit() else 0
+    return file_oos._count_non_security_markdown(text)  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
 
 
 def _issue_number_from(args_issue_number: str | None) -> str:

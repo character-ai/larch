@@ -1333,3 +1333,6 @@ skills/implement/scripts/materialize-manifest-oos.sh	#4969
 skills/implement/scripts/materialize-manifest-oos.md	#4969
 skills/implement/scripts/test-materialize-manifest-oos.sh	#4969
 skills/implement/scripts/test-materialize-manifest-oos.md	#4969
+skills/implement/scripts/oos-non-security-block-count.awk	#4970
+skills/implement/scripts/oos-accumulated-seq-seed.awk	#4970
+skills/implement/scripts/oos-has-legacy-finding-block-opener.awk	#4970

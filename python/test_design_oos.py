@@ -25,6 +25,20 @@ def _kv(stdout: str) -> dict[str, str]:
     return out
 
 
+def test_count_non_security_blocks_delegates_to_file_oos(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[str] = []
+
+    def fake_count(text: str) -> int:
+        seen.append(text)
+        return 7
+
+    monkeypatch.setattr(design_oos.file_oos, "_count_non_security_markdown", fake_count)
+
+    text = "### OOS_1: public\n- **Description**: body\n"
+    assert design_oos._count_non_security_blocks(text) == 7  # pyright: ignore[reportPrivateUsage]
+    assert seen == [text]
+
+
 def test_prepare_ready_emits_expected_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     accepted = tmp_path / "oos-accepted-design.md"
     _ = accepted.write_text(
@@ -67,6 +81,33 @@ def test_prepare_ready_emits_expected_contract(tmp_path: Path, monkeypatch: pyte
     assert "--input-file" in cap_call
     assert "--output" in cap_call
     assert "--design-tmpdir" not in cap_call
+
+
+def test_prepare_all_security_skips_without_filing_artifacts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    accepted = tmp_path / "oos-accepted-design.md"
+    _ = accepted.write_text(
+        "### OOS_4: hardening\n"
+        "- **focus-area**: security-hardening\n"
+        "- **Phase**: design\n",
+        encoding="utf-8",
+    )
+
+    def unexpected_run_cli(*_args: str, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        raise AssertionError("_run_cli should not run for all-security design OOS")
+
+    monkeypatch.setattr(design_oos, "_run_cli", unexpected_run_cli)
+
+    rc = design_oos.file_oos_prepare_main(["--design-tmpdir", str(tmp_path)])
+    assert rc == 0
+    kv = _kv(capsys.readouterr().out)
+    assert kv["FILE_DESIGN_OOS_STATUS"] == "skip-all-security"
+    assert not (tmp_path / "oos-combined.md").exists()
+    assert not (tmp_path / "oos-intra-batch-deps.tsv").exists()
+    assert not (tmp_path / "oos-design-filing-order.txt").exists()
 
 
 def test_prepare_uses_cross_session_cache_and_recovers_accepted(
