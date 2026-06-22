@@ -49,6 +49,8 @@ The wrapper calls the live Step 18b path only:
 python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" final-report step18b --implement-tmpdir "$IMPLEMENT_TMPDIR"
 ```
 
+When `.step17-emitted` is absent (terminal stall recover-then-report path), Step 18b runs rejected-findings replay and best-effort Slack notify through `python/cli.py implement step-16-16a` before `final-report write`.
+
 That call runs under `set +e` with explicit rc capture.
 The wrapper relays `EMIT_BODY`, `WFR_RC`, `STEP17_EMITTED_PRESENT`, and `SNAPSHOT_OK` on stdout.
 A non-zero Step 18b rc is appended to `execution-issues.md` best-effort, but it does not prevent closing token/timing marks or teardown.

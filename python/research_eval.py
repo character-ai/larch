@@ -191,9 +191,13 @@ def _iter_tsv_logical_rows(text: str):
         if not line.strip():
             continue
         if _TSV_ROW_START_RE.match(line):
-            if buffer:
+            if buffer and buffer.count("\t") >= 7:
                 yield buffer
-            buffer = line
+                buffer = line
+            elif buffer:
+                buffer = f"{buffer}\t{line}" if "\t" in line else f"{buffer} {line.strip()}"
+            else:
+                buffer = line
         elif buffer:
             buffer = f"{buffer} {line.strip()}"
         else:
