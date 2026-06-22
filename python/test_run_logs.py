@@ -1242,7 +1242,7 @@ def test_larch_log_flush_warns_when_commit_run_fails(
             0.0,
         )
 
-    monkeypatch.setattr(run_logs, "_stage_pre_commit", lambda *_a, **_k: None)
+    monkeypatch.setattr(run_logs, "_stage_pre_commit", lambda *_a, **_k: None)  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     monkeypatch.setattr(run_logs, "_commit_run", fail_commit)
 
     rc = run_logs.larch_log_flush_main([])
