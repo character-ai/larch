@@ -1,0 +1,57 @@
+## /implement run 8D965164-2A04-472D-973C-8CEFB96BBF9B — bailed
+
+- **Outcome**: bailed
+- **Mode**: N/A
+- Emergency: true
+- **Duration**: N/A
+- **Cost**: 💰 TOTAL ~$10.80 — Claude $0.58, Codex $6.00, Cursor $1.56, Claude (subprocess) $2.66  |  Tokens: 15020k
+- **Issue**: #5090 — https://github.com/character-ai/larch/issues/5090
+- **Plan review**: N/A
+- **Dynamic archetypes**: static-only, pre-scouted-empty
+- **Code review**: 2/2 accepted
+- **Lines (PR diff)**: N/A
+- **OOS filed**: 0
+- **Exec issues**: 0
+- **Warnings**: 2
+- **Run logs**: `larch-logs/implement/8D965164-2A04-472D-973C-8CEFB96BBF9B/`
+
+<!-- larch:run-summary v=1 -->
+
+## Review Phase Detail
+
+| Round | Suggestions | Accepted | OOS proposed | OOS accepted | Time | Cost | Reviewers |
+|--:|--:|--:|--:|--:|:--|--:|--:|
+| 1 | 5 | 2 | 8 | 0 | 12m 41s | $7.56 | 6 |
+| **Total (round-sum)** | **5** | **2** | **8** | **0** | **12m 41s** | **$7.56** | **6** |
+
+_The Total (round-sum) row adds up the per-round Suggestions and Accepted: when the review loop re-raises the same finding across rounds, that finding is counted once per round, so the round-sum can exceed the number of distinct findings. Top reviewers counts per-round accepted-point scores the same way._
+
+_Finding decomposition (canonical, scope-aware): round 1: 13 finding(s) = 5 in-scope (voted; matches the headline X/Y accepted) + 8 out-of-scope (incl. 6 nit-pruned). The Suggestions and OOS columns above count findings by finding id (raw per-finding) and can disagree with this scope-aware split when findings are reclassified out-of-scope after voting; round-meta.json records both raw (`tally`) and canonical (`tally_canonical`) counts so downstream joins do not contradict._
+
+### Round 1 reviewer timing
+
+```
+Round 1 reviewer timing  ·  window 0:00-12:41 (761s)
+                           0:00                                               12:41
+                          ┌────────────────────────────────────────────────────────┐
+codex/edge-cases          │███████████                                             │ 150s
+codex/correctness         │████████████████                                        │ 220s
+cursor/testing            │█████████████████                                       │ 224s
+cursor/correctness        │██████████████████████                                  │ 292s
+codex/testing             │█████████████████████████                               │ 339s
+cursor/edge-cases         │█████████████████████████████                           │ 396s
+aggregator                │                             ████                       │  46s
+cursor/plan-fidelity-vote │                                 ████████               │ 108s
+cursor/pragmatism-vote    │                                 █████████              │ 121s
+cursor/validity-vote      │                                 █████████████          │ 174s
+cursor/apply              │                                              ██████████│ 132s
+                          └────────────────────────────────────────────────────────┘
+```
+
+**Top reviewers** (by per-round accepted-point score, whole run):
+1. cursor/correctness — 2
+2. cursor/testing — 2
+
+**Reviewer slot failures**: 0
+
+_Cost is the per-round vendor cost (Codex + Cursor + Claude subprocess), attributed by token-ledger timestamp window; it excludes main-agent Claude, so it is less than the run Cost line above. Rendered as an em dash when per-round timing or the token ledger is unavailable._
