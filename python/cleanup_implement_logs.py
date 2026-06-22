@@ -346,6 +346,36 @@ def upgrade_transcripts(run_dir: Path, execute: bool, stats: Stats) -> None:
 # Action 7: Consolidate breadcrumbs/larch-quiet-*.log → breadcrumbs/quiet.log
 # ---------------------------------------------------------------------------
 
+def _write_consolidated_quiet_log(
+    quiet_log: Path, individual: list[Path], stats: Stats
+) -> bool:
+    """Concatenate *individual* logs into *quiet_log*, then unlink the sources.
+
+    Returns ``False`` (recording an error) when the consolidated write fails, so
+    the caller skips the success counters. Per-file read and unlink failures are
+    recorded but do not abort the consolidation.
+    """
+    parts: list[str] = []
+    for f in individual:
+        parts.append(f"=== {f.name} ===\n")
+        try:
+            parts.append(f.read_text(encoding="utf-8", errors="replace"))
+        except OSError:
+            parts.append("")
+    try:
+        _ = quiet_log.write_text("".join(parts), encoding="utf-8")
+    except OSError as exc:
+        stats.errors.append(f"write {quiet_log}: {exc}")
+        return False
+
+    for f in individual:
+        try:
+            f.unlink()
+        except OSError as exc:
+            stats.errors.append(f"unlink {f}: {exc}")
+    return True
+
+
 def consolidate_breadcrumbs(run_dir: Path, execute: bool, stats: Stats) -> None:
     run_dir_resolved = run_dir.resolve()
     bc_dir = run_dir / "breadcrumbs"
@@ -375,25 +405,8 @@ def consolidate_breadcrumbs(run_dir: Path, execute: bool, stats: Stats) -> None:
     if not individual:
         return
 
-    if execute:
-        parts: list[str] = []
-        for f in individual:
-            parts.append(f"=== {f.name} ===\n")
-            try:
-                parts.append(f.read_text(encoding="utf-8", errors="replace"))
-            except OSError:
-                parts.append("")
-        try:
-            _ = quiet_log.write_text("".join(parts), encoding="utf-8")
-        except OSError as exc:
-            stats.errors.append(f"write {quiet_log}: {exc}")
-            return
-
-        for f in individual:
-            try:
-                f.unlink()
-            except OSError as exc:
-                stats.errors.append(f"unlink {f}: {exc}")
+    if execute and not _write_consolidated_quiet_log(quiet_log, individual, stats):
+        return
 
     stats.breadcrumbs_consolidated += 1
     stats.breadcrumb_files_removed += len(individual)
