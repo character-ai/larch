@@ -1323,3 +1323,9 @@ scripts/render-session-transcript.py	#4974
 scripts/render-session-transcript.md	#4974
 scripts/retro-v3-sweep.py	#4974
 scripts/retro-v3-sweep.md	#4974
+skills/implement/scripts/oos-issue-cap.sh	#4968
+skills/implement/scripts/oos-issue-cap.md	#4968
+skills/implement/scripts/oos-issue-cap-excerpt.py	#4968
+skills/implement/scripts/oos-issue-cap-excerpt.md	#4968
+skills/implement/scripts/test-oos-issue-cap.sh	#4968
+skills/implement/scripts/test-oos-issue-cap.md	#4968

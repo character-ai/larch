@@ -344,21 +344,10 @@ exclude = [
   # (test-audit-runs target) and its sibling contract; not from SKILL.md
   # runtime prose. Same Makefile-only pattern as test-analyze above.
   "python/test_audit_runs.py",
-  # skills/implement/scripts/test-oos-issue-cap.sh is the fixture harness
-  # for oos-issue-cap.sh. Referenced from Makefile (test-oos-issue-cap),
-  # docs/linting.md, and the helper's sibling contract; not from SKILL.md's
-  # runtime prose.
-  "skills/implement/scripts/test-oos-issue-cap.sh",
-  "skills/implement/scripts/test-oos-issue-cap.md",
   # Stop-hook helpers are runtime-registered in hooks/hooks.json, not invoked
   # from skills/implement/SKILL.md.
   "skills/implement/scripts/hook-stop-fail-close.sh",
   "skills/implement/scripts/hook-stop-fail-close.md",
-  # skills/implement/scripts/oos-issue-cap-excerpt.py is invoked by
-  # oos-issue-cap.sh for UTF-8 character-safe truncation; referenced only
-  # from oos-issue-cap.sh and its sibling contract stub.
-  "skills/implement/scripts/oos-issue-cap-excerpt.py",
-  "skills/implement/scripts/oos-issue-cap-excerpt.md",
   # skills/design/scripts/dedup-plan-lines.py is invoked from
   # python/plan_review.py through $DEDUP_PLAN_LINES_PY;
   # agent-lint's G004/dead-script rule does not follow shell variable indirection.

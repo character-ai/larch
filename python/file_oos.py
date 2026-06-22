@@ -42,6 +42,10 @@ INLINE_TRIAGE_MARKER: str = config.INLINE_TRIAGE_MARKER
 OOS_FILED_URL_FIELD: str = config.OOS_FILED_URL_FIELD
 _DEFAULT_EXCERPT_MAX = 200
 
+
+class IssueCapInvalidEnv(ValueError):
+    """Raised when issue-cap environment knobs are invalid."""
+
 # ---------------------------------------------------------------------------
 # Regexes (ported from oos.py)
 # ---------------------------------------------------------------------------
@@ -626,7 +630,7 @@ def _excerpt_max_chars() -> int:
     raw = os.environ.get("OOS_ISSUE_CAP_EXCERPT_MAX", str(_DEFAULT_EXCERPT_MAX))
     if not raw.isdigit() or int(raw) <= 0:
         msg = "OOS_ISSUE_CAP_EXCERPT_MAX must be a positive integer"
-        raise ValueError(msg)
+        raise IssueCapInvalidEnv(msg)
     return int(raw)
 
 
@@ -673,15 +677,16 @@ def _aggregate_block(seq: int, items: list[OosItem], *, cap: int, excerpt_max: i
     surplus = len(items)
     lines = [
         f"### OOS_{seq}: Aggregated rollup of {surplus} capped OOS items",
-        f"- **Description**: Cap {cap} (OOS_ISSUES_PER_RUN_CAP) exceeded; the following {surplus} items were rolled up by skills/implement/scripts/oos-issue-cap.sh:",
+        f"- **Description**: Cap {cap} (OOS_ISSUES_PER_RUN_CAP) exceeded; the following {surplus} items were rolled up by the per-run OOS issue cap:",
     ]
     for item in items:
-        excerpt = _excerpt_from_body(item.body, max_chars=excerpt_max)
+        title = _normalize_rollup_text(item.title) or "(no title)"
+        excerpt = _excerpt_from_body(item.body, max_chars=excerpt_max) if item.body else "(malformed item — body unavailable)"
         file_refs = _file_refs_from_body(item.body)
         if file_refs:
-            lines.append(f"  - **{item.title}**: {excerpt} [Files: {file_refs}]")
+            lines.append(f"  - **{title}**: {excerpt} [Files: {file_refs}]")
         else:
-            lines.append(f"  - **{item.title}**: {excerpt}")
+            lines.append(f"  - **{title}**: {excerpt}")
     lines.extend(
         [
             "- **Reviewer**: Combined: capped per-run rollup",
@@ -693,42 +698,72 @@ def _aggregate_block(seq: int, items: list[OosItem], *, cap: int, excerpt_max: i
     return "\n".join(lines)
 
 
-def _validate_issue_cap_input(text: str) -> None:
+def _validate_issue_cap_input(text: str) -> list[ParsedItem]:
     if not text.strip():
-        return
+        return []
     items, _mode = parse_issue_input(text)
     if items and not re.search(r"^### OOS_\d+:", text, re.MULTILINE):
         msg = "input is not OOS-shaped (no '### OOS_<N>:' headings)"
         raise ValueError(msg)
     heading_count = len(re.findall(r"^### OOS_\d+:", text, re.MULTILINE))
-    if items and len(items) != heading_count:
-        msg = f"parsed item count ({len(items)}) != raw '### OOS_<N>:' heading count ({heading_count})"
+    if heading_count and len(items) != heading_count:
+        msg = f"ITEMS_TOTAL ({len(items)}) != raw '### OOS_<N>:' heading count ({heading_count})"
         raise ValueError(msg)
+    return items
 
 
 def issue_cap(input_file: Path, output: Path | None = None, *, cap: int | None = None) -> None:
+    if not input_file.is_file():
+        raise FileNotFoundError(f"input file not found: {input_file}")
+    if output is not None and input_file.resolve(strict=False) == output.resolve(strict=False):
+        raise ValueError("--input-file and --output resolve to the same path")
     excerpt_max = _excerpt_max_chars()
     if cap is None:
         raw = os.environ.get("OOS_ISSUES_PER_RUN_CAP", "1")
         if not raw.isdigit() or int(raw) <= 0:
-            raise ValueError("OOS_ISSUES_PER_RUN_CAP must be a positive integer")
+            raise IssueCapInvalidEnv("OOS_ISSUES_PER_RUN_CAP must be a positive integer")
         cap = int(raw)
-    text = input_file.read_text(encoding="utf-8") if input_file.exists() else ""
-    _validate_issue_cap_input(text)
-    items = _parse_oos_blocks(text)
+    text = input_file.read_text(encoding="utf-8")
+    parsed_items = _validate_issue_cap_input(text)
+    raw_items = _parse_oos_blocks(text)
     target = output or input_file
-    if not items or len(items) <= cap:
+    if not raw_items or len(raw_items) <= cap:
         if output:
-            target.write_text(text, encoding="utf-8")
+            tmp = target.with_suffix(target.suffix + ".tmp")
+            try:
+                tmp.write_text(text, encoding="utf-8")
+                tmp.replace(target)
+            finally:
+                with contextlib.suppress(FileNotFoundError):
+                    tmp.unlink()
         return
-    keep = items[: max(cap - 1, 0)]
-    roll = items[max(cap - 1, 0) :]
+    keep_count = max(cap - 1, 0)
+    keep = raw_items[:keep_count]
+    parsed_roll = parsed_items[keep_count:]
+    raw_roll = raw_items[keep_count:]
+    roll: list[OosItem] = []
+    for index, raw in enumerate(raw_roll):
+        parsed = parsed_roll[index] if index < len(parsed_roll) else None
+        roll.append(OosItem(raw.number, parsed.title if parsed else raw.title, parsed.body if parsed else raw.body))
     blocks = [item.body for item in keep]
     blocks.append(_aggregate_block(len(blocks) + 1, roll, cap=cap, excerpt_max=excerpt_max))
     rendered = _renumber_oos_headings("\n\n".join(blocks).rstrip() + "\n")
     tmp = target.with_suffix(target.suffix + ".tmp")
-    tmp.write_text(rendered, encoding="utf-8")
-    tmp.replace(target)
+    try:
+        tmp.write_text(rendered, encoding="utf-8")
+        tmp.replace(target)
+    finally:
+        with contextlib.suppress(FileNotFoundError):
+            tmp.unlink()
+
+
+def _unlink_issue_cap_output_on_failure(parser: argparse.ArgumentParser, argv: list[str] | None) -> None:
+    if argv is None:
+        return
+    with contextlib.suppress(SystemExit, FileNotFoundError):
+        parsed = parser.parse_args(argv)
+        if parsed.output and Path(parsed.input_file).resolve(strict=False) != Path(parsed.output).resolve(strict=False):
+            Path(parsed.output).unlink(missing_ok=True)
 
 
 def issue_cap_main(argv: list[str] | None = None) -> int:
@@ -738,7 +773,12 @@ def issue_cap_main(argv: list[str] | None = None) -> int:
     try:
         args = parser.parse_args(argv)
         issue_cap(Path(args.input_file), Path(args.output) if args.output else None)
+    except IssueCapInvalidEnv as exc:
+        _unlink_issue_cap_output_on_failure(parser, argv)
+        print(f"oos-issue-cap: {exc}", file=sys.stderr)
+        return 2
     except (ValueError, OSError) as exc:
+        _unlink_issue_cap_output_on_failure(parser, argv)
         print(f"oos-issue-cap: {exc}", file=sys.stderr)
         return 1
     return 0
