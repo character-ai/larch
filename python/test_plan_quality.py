@@ -324,7 +324,7 @@ def test_validator_autofix_cycle_cap(tmp_path: Path, monkeypatch: pytest.MonkeyP
         print(f"ORIGINAL_VALIDATE_LOG_FILE={log}")
         return 0
 
-    def fake_record(_status: str, _rc: int, _log_file: str) -> None:
+    def fake_record(_status: str, _rc: int, _log_file: str, _ctx: object | None = None) -> None:
         return None
 
     monkeypatch.setattr(plan_quality, "auto_fix_plan_commands_main", fake_auto_fix)
@@ -355,7 +355,7 @@ def test_validator_autofix_pause_short_circuits(tmp_path: Path, monkeypatch: pyt
     (tmp_path / ".pause-requested").write_text("", encoding="utf-8")
     called = False
 
-    def fake_pause() -> int:
+    def fake_pause(_ctx: object | None = None) -> int:
         nonlocal called
         called = True
         return 11

@@ -24,6 +24,8 @@ import larch_io
 from collections.abc import Callable, Iterable
 
 import agents
+import config
+from ctx import Ctx
 import design_pause
 from issue_wire import emit_untrusted_file_block
 from logging_util import diagnostic, emit, emit_kv, quiet_init, reset_quiet_state
@@ -143,10 +145,10 @@ def _validator_require_plugin_root() -> int:
     return session_env.require_plugin_root()
 
 
-def _validator_pause_save() -> int:
-    design_tmpdir = Path(os.environ.get("DESIGN_TMPDIR", ""))
-    args = ["--design-tmpdir", str(design_tmpdir), "--issue", os.environ.get("ISSUE_NUMBER", "")]
-    repo = os.environ.get("REPO", "")
+def _validator_pause_save(ctx: Ctx | None = None) -> int:
+    design_tmpdir = Path(ctx.design_tmpdir if ctx is not None else os.environ.get("DESIGN_TMPDIR", ""))
+    args = ["--design-tmpdir", str(design_tmpdir), "--issue", ctx.issue_number if ctx is not None else os.environ.get("ISSUE_NUMBER", "")]
+    repo = ctx.repo if ctx is not None else os.environ.get("REPO", "")
     if repo:
         args.extend(["--repo", repo])
     return design_pause.pause_save_main(args)
@@ -1010,17 +1012,21 @@ def validate_plan_main(argv: list[str]) -> int:
     emit_kv("VALIDATE_DEFECT_COUNT", str(summary.defect_count))
     emit_kv("VALIDATE_SKIPPED_COUNT", str(summary.skipped_count))
     emit_kv("VALIDATE_UNSAFE_TOKEN_COUNT", str(summary.unsafe_token_count))
-    design_tmpdir_raw = args.design_tmpdir or os.environ.get("DESIGN_TMPDIR", "")
+    design_tmpdir_raw = args.design_tmpdir or os.environ.get(config.ENV_DESIGN_TMPDIR, "")
+    argv_overrides: dict[str, str] = {}
     design_tmpdir = Path(design_tmpdir_raw).resolve() if design_tmpdir_raw else None
     if design_tmpdir_raw:
         ok, _message = validate_design_tmpdir(design_tmpdir_raw)
     else:
         ok = False
+    if ok and design_tmpdir is not None:
+        argv_overrides[config.ENV_DESIGN_TMPDIR] = str(design_tmpdir)
+    ctx = Ctx.from_mapping({**os.environ, **argv_overrides})
     if ok and design_tmpdir and design_tmpdir.is_dir():
         log_path = design_tmpdir / "validate-plan-commands.log"
         _atomic_write(log_path, summary.log_text)
     else:
-        fd, name = tempfile.mkstemp(prefix="larch-validate-plan-commands.log.", dir=os.environ.get("TMPDIR", "/tmp"))
+        fd, name = tempfile.mkstemp(prefix="larch-validate-plan-commands.log.", dir=ctx.tmpdir or "/tmp")
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             handle.write(summary.log_text)
         log_path = Path(name)
@@ -1247,6 +1253,7 @@ def check_plan_size_main(argv: list[str]) -> int:
     if not design_tmpdir.is_dir():
         diagnostic("check-size: --design-tmpdir must be a directory")
         return 3
+    ctx = Ctx.from_mapping({**os.environ, config.ENV_DESIGN_TMPDIR: str(design_tmpdir)})
     plan = Path(args.plan_file).resolve() if args.plan_file else design_tmpdir / "plan.txt"
     if not plan.is_file():
         emit_kv("PLAN_SIZE_STATUS", "missing-plan")
@@ -1263,7 +1270,7 @@ def check_plan_size_main(argv: list[str]) -> int:
         emit_kv("PLAN_SIZE_STATUS", "invalid-mechanical-churn")
         return 2
     plan_lines = max(0, trailer_nr - 1 - meta.metadata_trailer_lines)
-    multiple_text = os.environ.get("LARCH_DESIGN_DRIFT_MULTIPLE", "2")
+    multiple_text = ctx.str_value(config.ENV_LARCH_DESIGN_DRIFT_MULTIPLE, "2")
     multiple = int(multiple_text) if multiple_text.isdigit() and int(multiple_text) > 0 else 2
     baseline_path = _drift_baseline_path(design_tmpdir)
     marker = _unreadable_marker(design_tmpdir)
@@ -2156,13 +2163,13 @@ def _parse_kv_stdout(text: str) -> dict[str, str]:
     return larch_io.parse_kv(text)
 
 
-def _validator_operator_cancel_audit(*, forced: bool = False) -> None:
-    outcome = os.environ.get("SUMMARY_OUTCOME", "")
+def _validator_operator_cancel_audit(*, forced: bool = False, ctx: Ctx | None = None) -> None:
+    outcome = ctx.summary_outcome if ctx is not None else os.environ.get("SUMMARY_OUTCOME", "")
     if not forced and not outcome.startswith("cancelled-"):
         return
     if _validator_require_plugin_root() != 0:
         return
-    design_tmpdir = Path(os.environ.get("DESIGN_TMPDIR", ""))
+    design_tmpdir = Path(ctx.design_tmpdir if ctx is not None else os.environ.get("DESIGN_TMPDIR", ""))
     if not design_tmpdir.is_dir():
         return
     sentinel = design_tmpdir / "design-failure-operator-action.env"
@@ -2178,10 +2185,11 @@ def _validator_operator_cancel_audit(*, forced: bool = False) -> None:
         encoding="utf-8",
     )
     detail.write_text(f"design validator autofix operator cancel: {actual}\n", encoding="utf-8")
+    plugin_root = ctx.claude_plugin_root if ctx is not None and ctx.claude_plugin_root else os.environ["CLAUDE_PLUGIN_ROOT"]
     subprocess.run(
         [
             sys.executable,
-            str(Path(os.environ["CLAUDE_PLUGIN_ROOT"]) / "python" / "cli.py"),
+            str(Path(plugin_root) / "python" / "cli.py"),
             "run-log",
             "append-failure",
             "--log",
@@ -2216,17 +2224,18 @@ def _autofix_site_token(site: str) -> str:
     return "validator"
 
 
-def _record_validator_escalation(status: str, rc: int, log_file: str) -> None:
+def _record_validator_escalation(status: str, rc: int, log_file: str, ctx: Ctx | None = None) -> None:
     if status not in {"exhausted", "failed", "unavailable", "skipped-cycle-cap"}:
         return
     if _validator_require_plugin_root() != 0:
         return
-    design_tmpdir = Path(os.environ.get("DESIGN_TMPDIR", ""))
+    design_tmpdir = Path(ctx.design_tmpdir if ctx is not None else os.environ.get("DESIGN_TMPDIR", ""))
     if not design_tmpdir.is_dir():
         return
+    plugin_root = ctx.claude_plugin_root if ctx is not None and ctx.claude_plugin_root else os.environ["CLAUDE_PLUGIN_ROOT"]
     args = [
         sys.executable,
-        str(Path(os.environ["CLAUDE_PLUGIN_ROOT"]) / "python" / "cli.py"),
+        str(Path(plugin_root) / "python" / "cli.py"),
         "stall-recovery",
         "record-escalation",
         "--profile",
@@ -2236,7 +2245,7 @@ def _record_validator_escalation(status: str, rc: int, log_file: str) -> None:
         "--implement-tmpdir",
         str(design_tmpdir),
         "--site",
-        _autofix_site_token(os.environ.get("SITE", "")),
+        _autofix_site_token(ctx.str_value(config.ENV_SITE, "") if ctx is not None else os.environ.get("SITE", "")),
         "--trigger",
         status,
         "--step",
@@ -2264,8 +2273,8 @@ def validator_autofix_main(argv: list[str]) -> int:
     parsed, parse_rc = _parse_validator_wrapper_args(argv)
     if parse_rc != 0:
         return parse_rc
-    _rehydrate_validator_env(parsed)
-    raw_tmpdir = os.environ.get("DESIGN_TMPDIR", "")
+    env = _rehydrate_validator_env(parsed)
+    raw_tmpdir = env.get(config.ENV_DESIGN_TMPDIR, "")
     if not raw_tmpdir:
         print("design-step-validator-autofix.sh: DESIGN_TMPDIR required", file=sys.stderr)
         return 1
@@ -2275,19 +2284,26 @@ def validator_autofix_main(argv: list[str]) -> int:
         return 2
     design_tmpdir = Path(raw_tmpdir).resolve()
     os.environ["DESIGN_TMPDIR"] = str(design_tmpdir)
+    normalized_overrides = {config.ENV_DESIGN_TMPDIR: str(design_tmpdir)}
+    quiet_init(argv0="plan validator-autofix")
+    ctx = Ctx.from_mapping({**os.environ, **env, **normalized_overrides})
     if (design_tmpdir / ".pause-requested").is_file():
-        return _validator_pause_save()
+        return _validator_pause_save(ctx)
     if parsed.get("operator_cancel") is True:
-        _validator_operator_cancel_audit(forced=True)
+        _validator_operator_cancel_audit(forced=True, ctx=ctx)
         return 0
-    site = os.environ.get("SITE", "")
-    target = os.environ.get("_validator_target_file", "")  # noqa: SIM112
+    site = ctx.str_value(config.ENV_SITE, "")
+    target = ctx.str_value(config.ENV_VALIDATOR_TARGET_FILE, "")
     if not target:
         target = str(design_tmpdir / ("composed-plan.md" if site == "design Step 5c" or site.startswith("design Step 5c ") else "plan.txt"))
     site_key = re.sub(r"[^A-Za-z0-9._-]+", "_", site).strip("_") or "site"
     target_key = re.sub(r"[^A-Za-z0-9._-]+", "_", Path(target).name).strip("_") or "target"
-    evidence_key = f"{os.environ.get('VALIDATE_DEFECT_COUNT','unknown')}-{os.environ.get('VALIDATE_UNSAFE_TOKEN_COUNT','unknown')}-{os.environ.get('VALIDATE_SKIPPED_COUNT','unknown')}"
-    validate_log = os.environ.get("VALIDATE_LOG_FILE", "")
+    evidence_key = (
+        f"{ctx.str_value(config.ENV_VALIDATE_DEFECT_COUNT, 'unknown')}-"
+        f"{ctx.str_value(config.ENV_VALIDATE_UNSAFE_TOKEN_COUNT, 'unknown')}-"
+        f"{ctx.str_value(config.ENV_VALIDATE_SKIPPED_COUNT, 'unknown')}"
+    )
+    validate_log = ctx.str_value(config.ENV_VALIDATE_LOG_FILE, "")
     validate_log_path = Path(validate_log) if validate_log else None
     if validate_log_path is not None and validate_log_path.is_file() and not validate_log_path.is_symlink():
         evidence_key = f"{evidence_key}-{_sha256_file(validate_log_path)}"
@@ -2300,7 +2316,7 @@ def validator_autofix_main(argv: list[str]) -> int:
         attempted.parent.mkdir(parents=True, exist_ok=True)
         attempted.touch()
         repo_path = consumer_repo_root()
-        repo = str(repo_path) if repo_path is not None else os.environ.get("CLAUDE_PLUGIN_ROOT", "")
+        repo = str(repo_path) if repo_path is not None else ctx.claude_plugin_root
         autofix_rc, autofix_out = _capture_main(
             auto_fix_plan_commands_main,
             [
@@ -2311,9 +2327,9 @@ def validator_autofix_main(argv: list[str]) -> int:
                 "--repo-root",
                 repo,
                 "--codex-binary-found",
-                os.environ.get("CODEX_BINARY_FOUND", ""),
+                ctx.codex_binary_found,
                 "--cursor-binary-found",
-                os.environ.get("CURSOR_BINARY_FOUND", ""),
+                ctx.cursor_binary_found,
                 "--site",
                 site,
             ],
@@ -2331,7 +2347,7 @@ def validator_autofix_main(argv: list[str]) -> int:
         append = subprocess.run(
             [
                 sys.executable,
-                str(Path(os.environ["CLAUDE_PLUGIN_ROOT"]) / "python" / "cli.py"),
+                str(Path(ctx.claude_plugin_root or os.environ["CLAUDE_PLUGIN_ROOT"]) / "python" / "cli.py"),
                 "run-log",
                 "append-failure",
                 "--log",
@@ -2356,8 +2372,8 @@ def validator_autofix_main(argv: list[str]) -> int:
     print(f"AUTOFIX_STATUS={status}")
     print(f"FIXED_BY={fixed_by}")
     print(f"ORIGINAL_VALIDATE_LOG_FILE={log_file}")
-    _record_validator_escalation(status, autofix_rc, log_file)
-    _validator_operator_cancel_audit()
+    _record_validator_escalation(status, autofix_rc, log_file, ctx)
+    _validator_operator_cancel_audit(ctx=ctx)
     return 0
 
 

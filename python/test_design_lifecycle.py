@@ -1387,7 +1387,7 @@ def test_step2b_drafter_pause_before_fallback_seed(tmp_path: Path, monkeypatch: 
     monkeypatch.setenv("DESIGN_TMPDIR", str(design))
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(CLI.parent.parent))
     monkeypatch.setenv("ISSUE_NUMBER", "42")
-    monkeypatch.setattr(design_lifecycle, "_call_pause_save", lambda _d: 11)  # type: ignore[arg-type]
+    monkeypatch.setattr(design_lifecycle, "_call_pause_save", lambda _d, _ctx=None: 11)  # type: ignore[arg-type]
     rc = design_lifecycle.step2b_drafter_main([])
     out = capsys.readouterr().out
     assert rc == 11
@@ -1435,7 +1435,13 @@ def test_step2b_drafter_launcher_uses_python_cli_argv(
             (design / "step2b-drafter-status.txt").write_text("STATUS=ok\nPLAN_WRITTEN=true\n", encoding="utf-8")
         return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
 
-    def fake_postplan(_args: design_lifecycle.WrapperArgs) -> design_lifecycle.PostplanResult:
+    def fake_postplan(
+        _args: design_lifecycle.WrapperArgs,
+        *,
+        design_tmpdir: Path,
+        ctx: object | None = None,
+    ) -> design_lifecycle.PostplanResult:
+        del design_tmpdir, ctx
         return design_lifecycle.PostplanResult(0, "", "ok")
 
     monkeypatch.setattr(design_lifecycle.subprocess, "run", fake_run)
@@ -1477,7 +1483,7 @@ def test_step2b5_pause_short_circuit_skips_check_size(tmp_path: Path, monkeypatc
         return 0
 
     monkeypatch.setattr(design_lifecycle.plan_quality, "check_plan_size_main", fake_check)
-    monkeypatch.setattr(design_lifecycle, "_call_pause_save", lambda _d: 11)  # type: ignore[arg-type]
+    monkeypatch.setattr(design_lifecycle, "_call_pause_save", lambda _d, _ctx=None: 11)  # type: ignore[arg-type]
     rc = design_lifecycle.step2b5_main([])
     assert rc == 11
     assert called is False
@@ -1489,9 +1495,9 @@ def test_step2b_postplan_rc_11_raises_system_exit(tmp_path: Path, monkeypatch: p
     (design / ".pause-requested").write_text("", encoding="utf-8")
     monkeypatch.setenv("DESIGN_TMPDIR", str(design))
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(CLI.parent.parent))
-    monkeypatch.setattr(design_lifecycle, "_call_pause_save", lambda _d: 11)  # type: ignore[arg-type]
+    monkeypatch.setattr(design_lifecycle, "_call_pause_save", lambda _d, _ctx=None: 11)  # type: ignore[arg-type]
     with pytest.raises(SystemExit) as exc:
-        design_lifecycle._shared_step2b_postplan_body(design_lifecycle.WrapperArgs(site="step2b"))  # pyright: ignore[reportPrivateUsage]
+        design_lifecycle._shared_step2b_postplan_body(design_lifecycle.WrapperArgs(site="step2b"), design_tmpdir=design)  # pyright: ignore[reportPrivateUsage]
     assert exc.value.code == 11
 
 
@@ -2167,6 +2173,7 @@ def test_step5c_core_rc1_uses_stdout_over_stale_primary_and_binds_final_summary_
     stale.write_text("PLAN_WRITE_OK=true\nFINAL_SUMMARY_PATH=/stale/final-summary.md\nPUBLISH_OK=true\n", encoding="utf-8")
     current_summary = design / "current-summary.md"
     seen_env: list[str] = []
+    seen_argv: list[list[str]] = []
 
     def fake_publish(_argv: list[str]) -> int:
         print(_step5c_rows(design, plan_write_ok="false", publish_ok="", final_summary=current_summary), end="")
@@ -2174,6 +2181,7 @@ def test_step5c_core_rc1_uses_stdout_over_stale_primary_and_binds_final_summary_
         return 1
 
     def fake_render(_argv: list[str]) -> int:
+        seen_argv.append(list(_argv))
         seen_env.append(os.environ.get("FINAL_SUMMARY_PATH", ""))
         return 0
 
@@ -2184,7 +2192,22 @@ def test_step5c_core_rc1_uses_stdout_over_stale_primary_and_binds_final_summary_
     rc, _ = design_lifecycle.step5c_core(["--session-env-path", str(env_path), "--claude-pid", "123"])
     out = capsys.readouterr().out
     assert rc == 0
-    assert seen_env == [str(current_summary)]
+    assert seen_env == [""]
+    assert seen_argv == [
+        [
+            "--outcome",
+            "failed-plan-write",
+            "--mode",
+            "N/A",
+            "--design-tmpdir",
+            str(design),
+            "--issue-number",
+            "42",
+            "--session-id",
+            "run-1",
+            "--post-publish-only",
+        ]
+    ]
     status = (design / ".design-step5c-status.env").read_text(encoding="utf-8")
     assert "PLAN_WRITE_OK=false" in status
     assert "PUBLISH_STDOUT_FALLBACK=true" in status

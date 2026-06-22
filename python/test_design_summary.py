@@ -196,6 +196,62 @@ def test_render_final_summary_missing_timing_keeps_table_without_gantt(
     assert "### Round 1 reviewer timing" not in body
 
 
+def test_render_final_summary_explicit_identity_args_win_over_stale_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stale = tmp_path / "stale"
+    explicit = tmp_path / "explicit"
+    stale.mkdir()
+    explicit.mkdir()
+    monkeypatch.setenv("DESIGN_TMPDIR", str(stale))
+    monkeypatch.setenv("SESSION_ID", "stale-run")
+    monkeypatch.setenv("ISSUE_NUMBER", "1")
+    gate_calls: list[tuple[Path, str, str]] = []
+    run_summary_args: list[tuple[str, ...]] = []
+
+    def fake_run_cli(*args: str) -> subprocess.CompletedProcess[str]:
+        run_summary_args.append(args)
+        if args[:2] == ("render", "run-summary"):
+            out_file = Path(args[args.index("--output-file") + 1])
+            _ = out_file.write_text("summary\n<!-- larch:run-summary v=1 -->\n", encoding="utf-8")
+        return subprocess.CompletedProcess(["cli.py", *args], 0, stdout="", stderr="")
+
+    def fake_gate(
+        design_tmpdir: Path,
+        _phase: str,
+        _outcome: str,
+        _repo: str,
+        issue: str,
+        run_id: str,
+    ) -> None:
+        gate_calls.append((design_tmpdir, issue, run_id))
+
+    monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)
+    monkeypatch.setattr(design_summary, "_run_design_failure_report_gate", fake_gate)
+
+    rc = design_summary.render_final_summary_main([
+        "--outcome",
+        "approved",
+        "--repo",
+        "o/r",
+        "--design-tmpdir",
+        str(explicit),
+        "--issue-number",
+        "99",
+        "--session-id",
+        "explicit-run",
+    ])
+
+    assert rc == 0
+    assert (explicit / "final-summary.md").is_file()
+    assert not (stale / "final-summary.md").exists()
+    assert gate_calls == [(explicit, "99", "explicit-run")]
+    render_args = next(args for args in run_summary_args if args[:2] == ("render", "run-summary"))
+    assert render_args[render_args.index("--issue-number") + 1] == "99"
+    assert render_args[render_args.index("--run-id") + 1] == "explicit-run"
+
+
 def test_render_final_summary_redacts_spliced_detail(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

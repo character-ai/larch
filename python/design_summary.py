@@ -296,6 +296,9 @@ def render_final_summary_main(argv: Sequence[str]) -> int:
     outcome = ""
     mode_str = "N/A"
     repo = ""
+    design_tmpdir_arg = ""
+    issue_number_arg = ""
+    session_id_arg = ""
     phase = "post"
     i = 0
     while i < len(argv):
@@ -309,6 +312,15 @@ def render_final_summary_main(argv: Sequence[str]) -> int:
         elif a == "--repo" and i + 1 < len(argv):
             repo = argv[i + 1]
             i += 2
+        elif a == "--design-tmpdir" and i + 1 < len(argv):
+            design_tmpdir_arg = argv[i + 1]
+            i += 2
+        elif a == "--issue-number" and i + 1 < len(argv):
+            issue_number_arg = argv[i + 1]
+            i += 2
+        elif a == "--session-id" and i + 1 < len(argv):
+            session_id_arg = argv[i + 1]
+            i += 2
         elif a == "--pre-publish-only":
             phase = "pre"
             i += 1
@@ -318,7 +330,7 @@ def render_final_summary_main(argv: Sequence[str]) -> int:
         else:
             i += 1
 
-    design_tmpdir_str = os.environ.get("DESIGN_TMPDIR", "")
+    design_tmpdir_str = design_tmpdir_arg or os.environ.get("DESIGN_TMPDIR", "")
     if not design_tmpdir_str:
         print("design render-final-summary: DESIGN_TMPDIR unset", file=sys.stderr)
         return 2
@@ -333,8 +345,8 @@ def render_final_summary_main(argv: Sequence[str]) -> int:
         print(f"design render-final-summary: outcome not in enumeration: {outcome}", file=sys.stderr)
         return 2
 
-    run_id = os.environ.get("SESSION_ID", "") or "unknown"
-    issue = os.environ.get("ISSUE_NUMBER", "") or ""
+    run_id = session_id_arg or os.environ.get("SESSION_ID", "") or "unknown"
+    issue = issue_number_arg or os.environ.get("ISSUE_NUMBER", "") or ""
 
     issue_url = "N/A"
     if issue and issue != "0" and repo and "/" in repo:
