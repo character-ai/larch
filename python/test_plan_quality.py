@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+import design_pause
 import logging_util
 import plan_quality
 import config
@@ -390,6 +391,100 @@ def test_validator_autofix_pause_save_uses_resolved_design_tmpdir_on_symlink(
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(REPO_ROOT))
     assert plan_quality.validator_autofix_main([]) == 11
     assert Path(seen[0]).resolve() == real.resolve()
+
+
+def test_validator_pause_save_uses_rehydrated_ctx_not_stale_ambient_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / ".pause-requested").write_text("", encoding="utf-8")
+    env_path = tmp_path / "source-env.sh"
+    env_path.write_text(
+        "\n".join(
+            [
+                f"export DESIGN_TMPDIR={design.resolve()}",
+                "export ISSUE_NUMBER=42",
+                "export REPO=owner/repo",
+                f"export CLAUDE_PLUGIN_ROOT={REPO_ROOT}",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("DESIGN_TMPDIR", str(design))
+    monkeypatch.setenv("ISSUE_NUMBER", "999")
+    monkeypatch.setenv("REPO", "stale/repo")
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(REPO_ROOT))
+    seen: list[list[str]] = []
+
+    def fake_pause_save(argv: list[str]) -> int:
+        seen.append(list(argv))
+        return 0
+
+    monkeypatch.setattr(design_pause, "pause_save_main", fake_pause_save)
+    rc = plan_quality.validator_autofix_main(
+        [
+            "--session-env-path",
+            str(env_path),
+            "--claude-pid",
+            "123",
+            "--plugin-root",
+            str(REPO_ROOT),
+        ]
+    )
+    assert rc == 0
+    assert seen
+    argv = seen[0]
+    assert argv[argv.index("--issue") + 1] == "42"
+    assert argv[argv.index("--repo") + 1] == "owner/repo"
+
+
+def test_validator_operator_cancel_audit_uses_rehydrated_summary_outcome_not_stale_ambient(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    env_path = tmp_path / "source-env.sh"
+    env_path.write_text(
+        "\n".join(
+            [
+                f"export DESIGN_TMPDIR={design.resolve()}",
+                "export SUMMARY_OUTCOME=cancelled-operator",
+                f"export CLAUDE_PLUGIN_ROOT={REPO_ROOT}",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("DESIGN_TMPDIR", str(design))
+    monkeypatch.setenv("SUMMARY_OUTCOME", "approved")
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(REPO_ROOT))
+
+    def fake_run(cmd: list[str] | str, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        cmd_list = list(cmd) if isinstance(cmd, list) else [str(cmd)]
+        return subprocess.CompletedProcess(cmd_list, 0)
+
+    monkeypatch.setattr(plan_quality.subprocess, "run", fake_run)
+    rc = plan_quality.validator_autofix_main(
+        [
+            "--session-env-path",
+            str(env_path),
+            "--claude-pid",
+            "123",
+            "--plugin-root",
+            str(REPO_ROOT),
+            "--operator-cancel",
+        ]
+    )
+    assert rc == 0
+    sentinel = design / "design-failure-operator-action.env"
+    assert sentinel.is_file()
+    text = sentinel.read_text(encoding="utf-8")
+    assert "OUTCOME=cancelled-operator" in text
+    assert "OUTCOME=approved" not in text
 
 
 def test_validator_autofix_rejects_missing_design_tmpdir(capsys: pytest.CaptureFixture[str]) -> None:

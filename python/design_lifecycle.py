@@ -1312,10 +1312,10 @@ def step_final_summary_core(argv: Sequence[str]) -> tuple[int, list[str]]:
                 str(design_tmpdir),
                 "--issue-number",
                 ctx.issue_number,
-                "--session-id",
-                ctx.session_id,
-                "--post-publish-only",
             ]
+            if ctx.session_id:
+                render_args.extend(["--session-id", ctx.session_id])
+            render_args.append("--post-publish-only")
             if ctx.repo:
                 render_args.extend(["--repo", ctx.repo])
             render_stdout = design_tmpdir / "render-final-summary.stdout.log"
@@ -3632,10 +3632,10 @@ def _step5c_render_final_summary(
         str(design_tmpdir),
         "--issue-number",
         ctx.issue_number,
-        "--session-id",
-        ctx.session_id,
-        "--post-publish-only",
     ]
+    if ctx.session_id:
+        args.extend(["--session-id", ctx.session_id])
+    args.append("--post-publish-only")
     if ctx.repo:
         args.extend(["--repo", ctx.repo])
     out_path = design_tmpdir / f"render-final-summary.{outcome}.stdout.log"

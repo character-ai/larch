@@ -349,7 +349,7 @@ def render_final_summary_main(argv: Sequence[str]) -> int:
         print(f"design render-final-summary: outcome not in enumeration: {outcome}", file=sys.stderr)
         return 2
 
-    run_id = session_id_arg if session_id_set else (os.environ.get("SESSION_ID", "") or "unknown")
+    run_id = (session_id_arg if session_id_set else os.environ.get("SESSION_ID", "")) or "unknown"
     issue = issue_number_arg if issue_number_set else (os.environ.get("ISSUE_NUMBER", "") or "")
 
     issue_url = "N/A"
@@ -367,7 +367,7 @@ def render_final_summary_main(argv: Sequence[str]) -> int:
     duration = _duration(design_tmpdir)
     oos_count, oos_urls = _oos_info(design_tmpdir)
     exec_issues, warnings = _issue_counts(design_tmpdir)
-    run_logs_path = f"larch-logs/design/{run_id}/" if run_id != "unknown" else "N/A"
+    run_logs_path = f"larch-logs/design/{run_id}/" if run_id and run_id != "unknown" else "N/A"
     out_file = design_tmpdir / "final-summary.md"
     _run_design_failure_report_gate(design_tmpdir, phase, outcome, repo, issue, run_id)
     exec_issues, warnings = _issue_counts(design_tmpdir)

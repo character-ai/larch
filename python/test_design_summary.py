@@ -292,9 +292,10 @@ def test_render_final_summary_empty_identity_argv_does_not_fallback_to_ambient_e
     ])
 
     assert rc == 0
-    assert gate_calls == [("", "")]
+    assert gate_calls == [("", "unknown")]
     render_args = next(args for args in run_summary_args if args[:2] == ("render", "run-summary"))
-    assert render_args[render_args.index("--run-id") + 1] == ""
+    assert render_args[render_args.index("--run-id") + 1] == "unknown"
+    assert render_args[render_args.index("--run-logs-path") + 1] == "N/A"
 
 
 def test_render_final_summary_redacts_spliced_detail(

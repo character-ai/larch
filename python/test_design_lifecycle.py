@@ -2471,13 +2471,15 @@ def test_step5c_core_empty_session_id_publish_success_is_cleanup_eligible(
         STANDALONE_HEAVY_FAILED="false",
     )
     seen: list[list[str]] = []
+    render_argv: list[list[str]] = []
 
     def fake_publish(argv: list[str]) -> int:
         seen.append(argv)
         print(_step5c_rows(design, publish_ok=""), end="")
         return 0
 
-    def fake_render(_argv: list[str]) -> int:
+    def fake_render(argv: list[str]) -> int:
+        render_argv.append(list(argv))
         (design / "final-summary.md").write_text("summary\n", encoding="utf-8")
         return 0
 
@@ -2488,6 +2490,8 @@ def test_step5c_core_empty_session_id_publish_success_is_cleanup_eligible(
     rc, _ = design_lifecycle.step5c_core(["--session-env-path", str(env_path), "--claude-pid", "123"])
     assert rc == 0
     assert seen[0][seen[0].index("--session-id") : seen[0].index("--session-id") + 2] == ["--session-id", ""]
+    assert render_argv
+    assert "--session-id" not in render_argv[0]
     assert "CLEANUP_ELIGIBLE=true" in (design / ".design-step5c-status.env").read_text(encoding="utf-8")
 
 
@@ -3283,3 +3287,29 @@ def test_compose_drafter_prompt_omits_invalid_guidelines(
 
     prompt = (design / "step2b-drafter-prompt.txt").read_text(encoding="utf-8")
     assert "Untrusted architectural guidelines" not in prompt
+
+
+def test_core_style_ctx_subprocess_env_preserves_path_and_home(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ctx import Ctx  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+
+    home = tmp_path / "home"
+    home.mkdir()
+    design = tmp_path / "design"
+    design.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("PATH", "/custom/bin:/usr/bin")
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(CLI.parent.parent))
+    rehydrated = {
+        "DESIGN_TMPDIR": str(design),
+        "CLAUDE_PLUGIN_ROOT": str(CLI.parent.parent),
+        "HOME": str(home),
+        "PATH": "/custom/bin:/usr/bin",
+    }
+    ctx = Ctx.from_mapping({**os.environ, **rehydrated, "DESIGN_TMPDIR": str(design)})
+    env = ctx.subprocess_env({"LARCH_TIMING_SKILL": "design"})
+    assert env.get("PATH") == "/custom/bin:/usr/bin"
+    assert env.get("HOME") == str(home)
+    assert env.get("LARCH_TIMING_SKILL") == "design"
