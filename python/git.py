@@ -57,10 +57,11 @@ def _run(
     *,
     cwd: str | None = None,
     env: Mapping[str, str] | None = None,
+    timeout: float | None = None,
 ) -> CommandResult:
     if env is None:
         env = _git_subprocess_env()
-    return runner.run(list(argv), cwd=cwd, env=env)
+    return runner.run(list(argv), cwd=cwd, env=env, timeout=timeout)
 
 
 def _ensure_success(result: CommandResult) -> CommandResult:
@@ -231,8 +232,14 @@ def fetch(
     ref: str,
     *,
     cwd: str | None = None,
+    timeout: float | None = None,
 ) -> CommandResult:
-    return _run(runner, ["git", "fetch", remote, ref, "--quiet"], cwd=cwd)
+    return _run(
+        runner,
+        ["git", "fetch", remote, ref, "--quiet"],
+        cwd=cwd,
+        timeout=timeout,
+    )
 
 
 def show_file(

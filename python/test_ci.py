@@ -23,6 +23,13 @@ def test_behind_count_fail_open(monkeypatch, capsys):
     assert "BEHIND_COUNT=0" in capsys.readouterr().out
 
 
+def test_behind_count_fail_open_on_rev_list_timeout(monkeypatch, capsys):
+    runner = RecordingRunner(responses=[_res(config.EXIT_TIMEOUT)])
+    monkeypatch.setattr(ci, "proc", runner)
+    assert ci.behind_count_main(["--no-fetch"]) == 0
+    assert "BEHIND_COUNT=0" in capsys.readouterr().out
+
+
 def test_decide_usage_exit_one():
     assert ci.decide_main([]) == 1
 

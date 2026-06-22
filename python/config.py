@@ -68,6 +68,13 @@ STALL_RECOVERY_NEEDS_USER_BAIL_REASON_TOKENS: Final[tuple[str, ...]] = (
 SUBPROCESS_DEFAULT_TIMEOUT_SEC: Final = 1800
 CI_WAIT_TIMEOUT_SEC: Final = 1800
 CI_WAIT_POLL_INTERVAL_SEC: Final = 10
+# Per-call subprocess timeout for the poll-time CI status queries (gh pr view /
+# gh pr checks). Dedicated and far shorter than SUBPROCESS_DEFAULT_TIMEOUT_SEC so
+# a single hung gh read cannot block gather_status for the whole poll budget
+# (issue #5066). A hung query hits this timeout, returns exit EXIT_TIMEOUT, and a
+# pr-view timeout counts toward CI_MONITOR_STATUS_FAILURE_BAIL (bail with
+# CI_WAIT_BAIL_STATUS_STALE after the threshold).
+CI_STATUS_QUERY_TIMEOUT_SEC: Final = 120
 # Default empty-checks grace for the manual `ci status` / `ci wait` CLIs: a
 # runless PR head (zero attached checks) classifies as NO_CHECKS within this
 # window instead of polling the full CI_WAIT_TIMEOUT_SEC budget (issue #4924).

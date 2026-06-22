@@ -49,6 +49,15 @@ def test_default_empty_checks_grace_is_bounded() -> None:
     assert 0 < config.CI_WAIT_EMPTY_CHECKS_GRACE_SEC < config.CI_WAIT_TIMEOUT_SEC
 
 
+def test_ci_status_query_timeout_is_bounded() -> None:
+    # The poll-time gh status query timeout must be > 0 so a hung read is bounded
+    # (issue #5066), and dedicated/shorter than the full subprocess + wait budgets
+    # so one hung query cannot consume the whole poll budget.
+    assert config.CI_STATUS_QUERY_TIMEOUT_SEC == 120
+    assert 0 < config.CI_STATUS_QUERY_TIMEOUT_SEC < config.SUBPROCESS_DEFAULT_TIMEOUT_SEC
+    assert config.CI_STATUS_QUERY_TIMEOUT_SEC < config.CI_WAIT_TIMEOUT_SEC
+
+
 def test_pre_rebase_flush_commit_failed_fails_closed() -> None:
     # commit-failed is tolerated as a generic pre-merge flush skip, but the
     # pre-rebase / post-ensure merge gates must fail closed on it so a squash-merge
