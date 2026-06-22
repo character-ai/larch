@@ -46,6 +46,12 @@ py-lint-main:
 	$(PYTHON) python/cli.py lint complexity-baseline
 	cd python && pylint -j $(PYLINT_JOBS) .
 
+.PHONY: regen-complexity-baseline
+regen-complexity-baseline:
+	# Mechanically regenerate python/complexity-baseline.json from live ruff
+	# output so the ratchet baseline is generated, not hand-edited (issue #5041).
+	$(PYTHON) python/cli.py lint complexity-baseline --write
+
 py-typecheck:
 	@$(PYTHON) -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' \
 		|| (printf '%s\n' "ERROR: make py-typecheck requires Python 3.11 or newer (PYTHON=$(PYTHON))" >&2; exit 1)

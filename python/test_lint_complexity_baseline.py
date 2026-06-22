@@ -324,3 +324,73 @@ def test_ruff_tool_failures_return_two(
     patch_ruff(monkeypatch, [], returncode=returncode, stdout=stdout)
     assert lcb.main(["--root", str(tmp_path)]) == 2
     assert "lint-complexity-baseline" in capsys.readouterr().err
+
+
+def test_write_mode_regenerates_baseline_from_live(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_project(tmp_path, baseline=[])
+    patch_ruff(
+        monkeypatch,
+        [
+            ruff_item("proc.py", "PLR0915", "Too many statements (52 > 50)", 8),
+            ruff_item("./proc.py", "PLR0911", "Too many return statements (18 > 6)", 2),
+        ],
+    )
+    assert lcb.main(["--root", str(tmp_path), "--write"]) == 0, capsys.readouterr().err
+    baseline_file = tmp_path / "python" / "complexity-baseline.json"
+    written = json.loads(baseline_file.read_text(encoding="utf-8"))
+    assert written == [
+        {"file": "proc.py", "code": "PLR0911", "qualified_symbol": "run", "metric": 18},
+        {
+            "file": "proc.py",
+            "code": "PLR0915",
+            "qualified_symbol": "ProcRunner.run",
+            "metric": 52,
+        },
+    ]
+    text = baseline_file.read_text(encoding="utf-8")
+    assert text.startswith('[\n  {\n    "file": "proc.py",')
+    assert text.endswith("\n")
+
+
+def test_write_then_check_passes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_project(tmp_path, baseline=[])
+    patch_ruff(
+        monkeypatch,
+        [ruff_item("proc.py", "PLR0911", "Too many return statements (18 > 6)", 2)],
+    )
+    assert lcb.main(["--root", str(tmp_path), "--write"]) == 0, capsys.readouterr().err
+    # The regenerated baseline must check clean against the same live findings.
+    assert lcb.main(["--root", str(tmp_path)]) == 0, capsys.readouterr().err
+
+
+def test_write_mode_fails_closed_on_duplicate_live_without_writing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    sentinel = [
+        {"file": "proc.py", "code": "C901", "qualified_symbol": "run", "metric": 11}
+    ]
+    write_project(tmp_path, baseline=sentinel)
+    item = ruff_item("proc.py", "PLR0911", "Too many return statements (18 > 6)", 2)
+    patch_ruff(monkeypatch, [item, item])
+    assert lcb.main(["--root", str(tmp_path), "--write"]) == 2
+    assert "duplicate live complexity identities" in capsys.readouterr().err
+    preserved = json.loads(
+        (tmp_path / "python" / "complexity-baseline.json").read_text(encoding="utf-8")
+    )
+    assert preserved == sentinel
+
+
+def test_write_mode_fails_closed_on_unparseable_violation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_project(tmp_path, baseline=[])
+    patch_ruff(
+        monkeypatch,
+        [ruff_item("proc.py", "PLR0911", "Too many return statements", 2)],
+    )
+    assert lcb.main(["--root", str(tmp_path), "--write"]) == 2
+    assert "cannot parse violation" in capsys.readouterr().err
