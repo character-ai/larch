@@ -103,6 +103,42 @@ echo two
     assert rc == 0, err
 
 
+def test_example_word_in_preceding_prose_does_not_suppress(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The documented scope is explicit WRONG/CORRECT examples only. Ordinary
+    # prose that happens to contain "example"/"correct"/"wrong" before two
+    # adjacent bash fences must not silently exclude them from linting.
+    write(tmp_path / "skills/foo/SKILL.md", skill_doc("""
+For example, run the following and confirm the output is correct.
+```bash
+echo one
+```
+```bash
+echo two
+```
+"""))
+    rc, err = run(tmp_path, capsys)
+    assert rc == 1
+    assert "consecutive bash tool-call fences" in err
+
+
+def test_unclosed_opener_does_not_swallow_following_fences(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # An unclosed opener must not be treated as one fence extending to EOF;
+    # doing so swallows later fences and hides real consecutive-bash violations.
+    # Here the unindented opener never matches the indented closers, so under the
+    # old "closed at EOF" behavior the two indented fences were hidden.
+    write(
+        tmp_path / "skills/foo/SKILL.md",
+        "```bash\necho unterminated\n  ```bash\n  echo one\n  ```\n  ```bash\n  echo two\n  ```\n",
+    )
+    rc, err = run(tmp_path, capsys)
+    assert rc == 1
+    assert "consecutive bash tool-call fences" in err
+
+
 def test_pause_resume_launcher_boundary_passes(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     write(tmp_path / "skills/design/SKILL.md", skill_doc("""
 ```bash
