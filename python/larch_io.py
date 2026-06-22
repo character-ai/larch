@@ -37,7 +37,7 @@ def _strip_cr(value: str, mode: str) -> str:
 
 
 def _line_iter(text: str) -> list[str]:
-    return text.split("\n")
+    return [line.removesuffix("\r") for line in text.split("\n")]
 
 
 def _read_utf8(path: Path, *, errors: str) -> str:
@@ -311,7 +311,7 @@ def atomic_write(
         if fd is not None:
             with contextlib.suppress(OSError):
                 os.close(fd)
-        if tmp_path is not None:
+        if tmp_path is not None and not tmp_path.is_symlink():
             with contextlib.suppress(OSError):
                 tmp_path.unlink()
         raise

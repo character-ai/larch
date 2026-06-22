@@ -414,6 +414,8 @@ def write_finalize_state_merged(path: str | Path, data: dict[str, str]) -> None:
 
 
 def _read_kv_raw(path: Path) -> dict[str, str]:
+    if not path.is_file():
+        return {}
     return larch_io.parse_kv(_read_kv_file_text(path), skip_comments=True)
 
 

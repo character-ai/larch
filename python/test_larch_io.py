@@ -27,7 +27,7 @@ def test_parse_kv_comments_and_strip_value() -> None:
 
 def test_parse_kv_cr_strip_modes() -> None:
     text = "A=\rvalue\r\n"
-    assert larch_io.parse_kv(text, cr_strip="none")["A"] == "\rvalue\r"
+    assert larch_io.parse_kv(text, cr_strip="none")["A"] == "\rvalue"
     assert larch_io.parse_kv(text, cr_strip="suffix")["A"] == "\rvalue"
     assert larch_io.parse_kv(text, cr_strip="rstrip")["A"] == "\rvalue"
     assert larch_io.parse_kv(text, cr_strip="strip")["A"] == "value"
@@ -101,6 +101,18 @@ def test_atomic_write_exclusive_nofollow_rejects_symlink_temp(tmp_path: Path) ->
     temp.symlink_to(target)
     with pytest.raises(OSError, match="refusing symlink temp"):
         larch_io.atomic_write(path, "x", exclusive=True, nofollow=True, temp_name="out.tmp")
+    assert temp.is_symlink()
+    assert target.read_text(encoding="utf-8") == "target"
+
+
+def test_parse_kv_crlf_parity(tmp_path: Path) -> None:
+    text = "TOOL=codex\r\nCODEX_BINARY_FOUND=true\r\n"
+    assert larch_io.parse_kv(text) == {"TOOL": "codex", "CODEX_BINARY_FOUND": "true"}
+    assert larch_io.kv_value(text, "TOOL") == "codex"
+    path = tmp_path / "env"
+    _ = path.write_bytes(text.encode("utf-8"))
+    assert larch_io.read_kv(path, "TOOL") == "codex"
+    assert larch_io.read_kvs(path) == {"TOOL": "codex", "CODEX_BINARY_FOUND": "true"}
 
 
 def test_atomic_write_exclusive_fixed_temp_unlinks_stale(tmp_path: Path) -> None:

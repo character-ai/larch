@@ -238,7 +238,7 @@ def _plugin_root(repo_root: Path) -> Path:
 
 
 def _atomic_write(path: Path, text: str) -> None:
-    larch_io.atomic_write(path, text)
+    larch_io.atomic_write(path, text, prefix=f".{path.name}.")
 
 
 def _tsv_escape(text: str) -> str:

@@ -637,6 +637,13 @@ def test_restore_finalize_state_raw_rhs_and_20_keys(tmp_path: Path) -> None:
     assert (tmp_path / "final-bail-reason.txt").read_text(encoding="utf-8") == "needs=user"
 
 
+def test_restore_finalize_state_missing_finalize_file(tmp_path: Path) -> None:
+    (tmp_path / "ship-pr-state.sh").write_text("BRANCH_NAME=feature\nBAIL_REASON=\nRUN_ID=\n", encoding="utf-8")
+    result = run_cli("restore-finalize-state", "--implement-tmpdir", str(tmp_path))
+    assert result.returncode == 0
+    assert (tmp_path / "finalize-state.sh").is_file()
+
+
 def test_write_design_env_legacy_symlink_warning(tmp_path: Path) -> None:
     home = tmp_path / "shim-home"
     home.mkdir()
