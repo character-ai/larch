@@ -661,7 +661,7 @@ def write_final_report_main(argv: list[str] | None = None) -> int:
 
 def step18b_final_report(implement_tmpdir: Path) -> tuple[bool, int, bool, str]:
     step17_present = (implement_tmpdir / ".step17-emitted").exists()
-    if not step17_present:
+    if not (implement_tmpdir / ".step16-16a-done").exists():
         closeout.step_16_16a(["--implement-tmpdir", str(implement_tmpdir)])
     emit_body = not step17_present
     snapshot_ok = "absent"

@@ -240,6 +240,8 @@ def step_16_16a(argv: list[str] | None = None) -> int:
             output_file=step16_log,
         )
     _step_16a_slack(tmpdir=tmpdir, plugin_root=plugin_root, env=env, cli=cli)
+    with suppress(OSError):
+        (tmpdir / ".step16-16a-done").touch()
     return 0
 
 
@@ -370,6 +372,8 @@ def step_16_17(argv: list[str] | None = None) -> int:
             output_file=step16_log,
         )
     _step_16a_slack(tmpdir=tmpdir, plugin_root=plugin_root, env=env, cli=cli)
+    with suppress(OSError):
+        (tmpdir / ".step16-16a-done").touch()
     step17_log = tmpdir / "step17-write-final-report.failure.log"
     step17_rc = 1
     try:
