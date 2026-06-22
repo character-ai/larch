@@ -4923,3 +4923,30 @@ def test_status_check_version_and_probe_fallback(monkeypatch: pytest.MonkeyPatch
     assert "CODEX_STATE=binary-missing" in out
     assert "CURSOR_STATE=binary-missing" in out
     assert "DEGRADED=true" in out
+
+
+def test_review_specialist_render_args_nested_implement_ledger(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    impl = tmp_path / "impl"
+    round_dir = impl / "round-2"
+    round_dir.mkdir(parents=True)
+    session_env = impl / "session-env.sh"
+    session_env.write_text("IMPLEMENT_TMPDIR=" + str(impl) + "\n", encoding="utf-8")
+    monkeypatch.delenv("IMPLEMENT_TMPDIR", raising=False)
+    args = argparse.Namespace(
+        agent_file=str(tmp_path / "agent.md"),
+        mode="diff",
+        description_text="",
+        scope_files="",
+        competition_notice_file="",
+        diff_file="",
+        commit_count="",
+        plan_file="",
+        feature_file="",
+        competition_notice=False,
+        output=str(round_dir / "codex-specialist-correctness-output.txt"),
+        session_env_path=str(session_env),
+    )
+    render_args = agents._review_specialist_render_args(args)
+    ledger_idx = render_args.index("--findings-ledger-file")
+    assert render_args[ledger_idx + 1] == str(impl / "findings-ledger.tsv")
+    assert render_args[render_args.index("--session-env-path") + 1] == str(session_env)

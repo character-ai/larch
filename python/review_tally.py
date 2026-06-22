@@ -500,10 +500,6 @@ def _ledger_reason(block_text: str) -> str:
         normalized = line.replace("*", "").strip()
         if re.match(r"^[- ]*(Concern|Scenario|Reason|Suggested (revision|fix)):", normalized, re.IGNORECASE):
             return re.sub(r"^[- ]*[^:]+:\s*", "", normalized).strip()
-    for line in block_text.splitlines()[1:]:
-        cleaned = line.strip()
-        if cleaned:
-            return cleaned
     return ""
 
 
@@ -513,7 +509,7 @@ def _ledger_entry(item_id: str, block_text: str, outcome: str, vote_tally: str) 
         "finding_id": item_id,
         "title": _ledger_title(block_text, item_id),
         "file_line": _ledger_file_line(block_text),
-        "outcome": "oos" if latent_rerouted else outcome,
+        "outcome": "oos" if latent_rerouted and outcome != "accepted" else outcome,
         "vote_tally": vote_tally,
         "reason": _ledger_reason(block_text),
     }

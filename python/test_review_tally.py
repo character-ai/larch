@@ -989,6 +989,132 @@ def test_findings_classification_zero_voters_tsv_rejected_rows(tmp_path: Path) -
     assert not (case / "findings-ledger.tsv").exists()
 
 
+def test_tally_code_review_mav_retally_ledger_lifecycle(tmp_path: Path) -> None:
+    case = tmp_path / "mav-ledger"
+    case.mkdir()
+    _write_classification_ballot(case / "ballot.md")
+    v1 = case / "v1.txt"
+    v2 = case / "v2.txt"
+    for voter in (v1, v2):
+        _ = voter.write_text(
+            "FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n"
+            "OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false\n",
+            encoding="utf-8",
+        )
+
+    mav = run_review(
+        "tally-code-votes",
+        "--ballot-file",
+        str(case / "ballot.md"),
+        "--review-tmpdir",
+        str(case),
+        env={"IMPLEMENT_TMPDIR": ""},
+    )
+    assert mav.returncode == 0, mav.stderr
+    assert rts.kv_get(mav.stdout, "TALLY_STATUS") == "main-agent-vote-required"
+    assert not (case / "findings-ledger.tsv").exists()
+
+    final = run_review(
+        "tally-code-votes",
+        "--ballot-file",
+        str(case / "ballot.md"),
+        "--review-tmpdir",
+        str(case),
+        "--voter-files",
+        str(v1),
+        str(v2),
+        env={"IMPLEMENT_TMPDIR": ""},
+    )
+    assert final.returncode == 0, final.stderr
+    ledger = case / "findings-ledger.tsv"
+    assert ledger.is_file()
+    rows = _tsv_row_list(ledger)
+    assert len(rows) == 2
+    assert rows[0]["outcome"] == "accepted"
+
+    _ = v1.write_text(
+        "FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false\n"
+        "OOS_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false\n",
+        encoding="utf-8",
+    )
+    _ = v2.write_text(
+        "FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false\n"
+        "OOS_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false\n",
+        encoding="utf-8",
+    )
+    retally = run_review(
+        "tally-code-votes",
+        "--ballot-file",
+        str(case / "ballot.md"),
+        "--review-tmpdir",
+        str(case),
+        "--round-num",
+        "1",
+        "--voter-files",
+        str(v1),
+        str(v2),
+        env={"IMPLEMENT_TMPDIR": ""},
+    )
+    assert retally.returncode == 0, retally.stderr
+    rows = _tsv_row_list(ledger)
+    assert len(rows) == 2
+    assert all(row["round"] == "1" for row in rows)
+    assert rows[0]["outcome"] == "rejected"
+
+
+def test_tally_accepted_latent_finding_ledger_outcome_is_accepted(tmp_path: Path) -> None:
+    case = tmp_path / "latent-accepted"
+    case.mkdir()
+    _ = (case / "ballot.md").write_text(
+        """### FINDING_1: Latent accepted item
+- **Reviewer**: Codex-Correctness
+- **Severity**: latent
+- **Concern**: Real but latent concern.
+- **Suggested revision**: Fix later.
+""",
+        encoding="utf-8",
+    )
+    _ = (case / "v1.txt").write_text(
+        "FINDING_1: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false\n",
+        encoding="utf-8",
+    )
+    _ = (case / "v2.txt").write_text(
+        "FINDING_1: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false\n",
+        encoding="utf-8",
+    )
+    result = run_review(
+        "tally-code-votes",
+        "--ballot-file",
+        str(case / "ballot.md"),
+        "--review-tmpdir",
+        str(case),
+        "--voter-files",
+        str(case / "v1.txt"),
+        str(case / "v2.txt"),
+        env={"IMPLEMENT_TMPDIR": ""},
+    )
+    assert result.returncode == 0, result.stderr
+    ledger_rows = _tsv_rows(case / "findings-ledger.tsv")
+    assert ledger_rows["FINDING_1"]["outcome"] == "accepted"
+
+
+def test_ledger_reason_ignores_unlabeled_ballot_bullets() -> None:
+    block = """### FINDING_1: Example
+- **Reviewer**: Codex-Structure
+- **Concern**: Real issue.
+- **Suggested fix:** Do the thing.
+### In-Scope Findings
+"""
+    assert review_tally._ledger_reason(block) == "Real issue."  # pyright: ignore[reportPrivateUsage]
+    assert "**Suggested fix:**" not in review_tally._ledger_reason(block)  # pyright: ignore[reportPrivateUsage]
+    assert "### In-Scope Findings" not in review_tally._ledger_reason(block)  # pyright: ignore[reportPrivateUsage]
+    bare = """### FINDING_2: Bare
+- **Reviewer**: Codex-Structure
+- bullet without label
+"""
+    assert review_tally._ledger_reason(bare) == ""  # pyright: ignore[reportPrivateUsage]
+
+
 def test_findings_classification_empty_ballot_header_only(tmp_path: Path) -> None:
     case = tmp_path / "d"
     case.mkdir()

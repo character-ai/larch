@@ -3873,6 +3873,7 @@ def _review_parser() -> argparse.ArgumentParser:
     parser.add_argument("--commit-count", default="")
     parser.add_argument("--plan-file", default="")
     parser.add_argument("--feature-file", default="")
+    parser.add_argument("--session-env-path", default="")
     parser.add_argument("--timing-task-kind", default=os.environ.get("LARCH_TIMING_TASK_KIND", ""))
     parser.add_argument("--token-budget-cap", default="")
     parser.add_argument("--risk", default="")
@@ -3919,6 +3920,10 @@ def _review_validate_args(args: argparse.Namespace) -> int:
     return 0
 
 
+def _review_session_env_path(args: argparse.Namespace) -> str:
+    return getattr(args, "session_env_path", "") or os.environ.get("SESSION_ENV_PATH", "")
+
+
 def _review_specialist_render_args(args: argparse.Namespace, *, sentinel: dict[str, str] | None = None) -> list[str]:
     if sentinel is not None:
         render_args = ["--agent-file", sentinel.get("AGENT_FILE", ""), "--mode", sentinel.get("MODE", "")]
@@ -3930,6 +3935,7 @@ def _review_specialist_render_args(args: argparse.Namespace, *, sentinel: dict[s
             ("PLAN_FILE", "--plan-file"),
             ("FEATURE_FILE", "--feature-file"),
             ("FINDINGS_LEDGER_FILE", "--findings-ledger-file"),
+            ("SESSION_ENV_PATH", "--session-env-path"),
         )
         for key, flag in mapping:
             if sentinel.get(key):
@@ -3952,11 +3958,14 @@ def _review_specialist_render_args(args: argparse.Namespace, *, sentinel: dict[s
             render_args.extend([flag, value])
         if args.competition_notice:
             render_args.append("--competition-notice")
+    session_env_path = _review_session_env_path(args)
     if getattr(args, "output", ""):
         ledger_file = findings_ledger.ledger_path(
-            findings_ledger.ledger_root(Path(args.output).parent)
+            findings_ledger.ledger_root(Path(args.output).parent, session_env_path=session_env_path)
         )
         render_args.extend(["--findings-ledger-file", str(ledger_file)])
+    if session_env_path:
+        render_args.extend(["--session-env-path", session_env_path])
     return render_args
 
 
@@ -4067,11 +4076,14 @@ def _review_write_codex_prompt_sidecar(output: Path, prompt: str, args: argparse
             lines.append(f"PLAN_FILE={args.plan_file}")
         if args.feature_file and "\n" not in args.feature_file:
             lines.append(f"FEATURE_FILE={args.feature_file}")
+        session_env_path = _review_session_env_path(args)
         ledger_file = findings_ledger.ledger_path(
-            findings_ledger.ledger_root(output.parent)
+            findings_ledger.ledger_root(output.parent, session_env_path=session_env_path)
         )
         if "\n" not in str(ledger_file):
             lines.append(f"FINDINGS_LEDGER_FILE={ledger_file}")
+        if session_env_path and "\n" not in session_env_path:
+            lines.append(f"SESSION_ENV_PATH={session_env_path}")
         _write(sidecar, "\n".join(lines) + "\n")
     else:
         _write(sidecar, prompt)

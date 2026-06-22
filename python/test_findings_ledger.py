@@ -93,3 +93,35 @@ def test_prompt_section_roles_neutral_knob_and_truncation(tmp_path: Path, monkey
         [{"finding_id": f"FINDING_{idx}", "title": "x" * 60, "outcome": "rejected"} for idx in range(2, 8)],
     )
     assert "Ledger truncated to the most recent rows" in findings_ledger.prompt_section(tmp_path, role="judge")
+
+
+def test_sanitize_cell_strips_triple_backticks(tmp_path: Path) -> None:
+    findings_ledger.write_round(
+        tmp_path,
+        1,
+        [{"finding_id": "FINDING_1", "title": "Fence breakout", "outcome": "rejected", "reason": "```"}],
+    )
+    section = findings_ledger.prompt_section(tmp_path, role="reviewer")
+    assert section.count("```tsv") == 1
+    assert section.count("```") == 2
+    assert "1\tFINDING_1\tFence breakout" in section
+
+
+def test_row_for_entry_redacts_secrets(tmp_path: Path) -> None:
+    findings_ledger.write_round(
+        tmp_path,
+        1,
+        [
+            {
+                "finding_id": "FINDING_1",
+                "title": "Token leak",
+                "file_line": "python/foo.py:1",
+                "outcome": "accepted",
+                "vote_tally": "YES=2/3",
+                "reason": "Concern: key sk-abcdefghijklmnopqrstuvwxyz123456",
+            }
+        ],
+    )
+    section = findings_ledger.prompt_section(tmp_path, role="reviewer")
+    assert "sk-abcdefghijklmnopqrstuvwxyz123456" not in section
+    assert "<REDACTED-TOKEN>" in section

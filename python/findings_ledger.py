@@ -7,6 +7,8 @@ import os
 import re
 from pathlib import Path
 
+import redact
+
 LEDGER_BASENAME = "findings-ledger.tsv"
 LEDGER_COLUMNS = ("round", "finding_id", "title", "file_line", "outcome", "vote_tally", "reason")
 LEDGER_HEADER = "\t".join(LEDGER_COLUMNS)
@@ -48,6 +50,7 @@ def _path_matches_parent(raw: str, parent: Path) -> bool:
 
 def _sanitize_cell(value: object) -> str:
     cleaned = re.sub(r"[\t\r\n]", " ", str(value or ""))
+    cleaned = re.sub(r"`{3,}", " ", cleaned)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     if len(cleaned) > _CELL_MAX_CHARS:
         cleaned = cleaned[: _CELL_MAX_CHARS - 1].rstrip() + "…"
@@ -61,15 +64,19 @@ def _sanitize_outcome(value: object) -> str:
     return outcome if outcome in _VALID_OUTCOMES else "rejected"
 
 
+def _redact_cell(value: object) -> str:
+    return redact.redact_secrets_only(str(value or "")).rstrip("\n")
+
+
 def _row_for_entry(round_num: int, entry: dict[str, object]) -> list[str]:
     return [
         str(round_num),
         _sanitize_cell(entry.get("finding_id", "")),
-        _sanitize_cell(entry.get("title", "")),
-        _sanitize_cell(entry.get("file_line", "")),
+        _sanitize_cell(_redact_cell(entry.get("title", ""))),
+        _sanitize_cell(_redact_cell(entry.get("file_line", ""))),
         _sanitize_outcome(entry.get("outcome", "")),
         _sanitize_cell(entry.get("vote_tally", "")),
-        _sanitize_cell(entry.get("reason", "")),
+        _sanitize_cell(_redact_cell(entry.get("reason", ""))),
     ]
 
 
