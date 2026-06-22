@@ -61,16 +61,30 @@ def parse_argv_main(argv: Sequence[str]) -> int:
     skip_approve_requested = False
     no_dedup_requested = False
     run_id = ""
-    after_terminator = False
     positional_args: list[str] = []
+    positional_kind = "none"
+    positional_value = ""
+    issue_captured = False
 
+    # Flags may appear on either side of a numeric issue positional
+    # (non-contiguous argv): after capturing the issue id the loop keeps
+    # parsing, so trailing flags are honored and unknown trailing flags
+    # still error, rather than being silently dropped. A non-digit first
+    # positional starts verbal feature text: flag parsing stops and the
+    # remainder is taken literally.
     i = 0
     while i < len(argv):
         a = argv[i]
         if a == "--":
-            after_terminator = True
             i += 1
-            positional_args = argv[i:]
+            rest = argv[i:]
+            if not issue_captured:
+                if rest and rest[0].isdigit():
+                    positional_kind = "issue"
+                    positional_value = rest[0]
+                    issue_captured = True
+                else:
+                    positional_args = rest
             break
         if a in ("-p", "--partition"):
             partition_requested = True
@@ -100,35 +114,36 @@ def parse_argv_main(argv: Sequence[str]) -> int:
             return _emit_validation_error("--hard", output_path)
         elif a.startswith("-"):
             return _emit_validation_error(a, output_path)
+        elif not issue_captured and a.isdigit():
+            # First positional is a numeric issue id: capture it and keep
+            # parsing so flags after it are honored, not dropped.
+            positional_kind = "issue"
+            positional_value = a
+            issue_captured = True
+            i += 1
+        elif issue_captured:
+            # Extra non-flag token after the issue id: ignored.
+            i += 1
         else:
+            # First positional is non-numeric: verbal feature text tail.
             positional_args = argv[i:]
             break
         continue
 
-    first_positional = positional_args[0] if positional_args else ""
-
-    # Validate run_id/positional values for newline-smuggling.
+    # Validate run_id/positional values for newline-smuggling. The issue id
+    # is all-digits (newline-free by construction); verbal tokens are checked
+    # here before they are joined into POSITIONAL_VALUE.
     if "\n" in run_id or "\r" in run_id:
         return _emit_validation_error("newline-in-value", output_path)
     for token in positional_args:
         if "\n" in token or "\r" in token:
             return _emit_validation_error("newline-in-value", output_path)
 
-    # Determine positional kind and value
-    positional_kind = "none"
-    positional_value = ""
-    if first_positional:
-        if first_positional.isdigit():
-            positional_kind = "issue"
-            positional_value = first_positional
-            # After numeric positional, only --hard is forbidden (skip other args)
-            if not after_terminator:
-                for extra in positional_args[1:]:
-                    if extra == "--hard":
-                        return _emit_validation_error("--hard", output_path)
-        else:
-            positional_kind = "verbal"
-            positional_value = " ".join(positional_args)
+    # A non-empty positional_args list is verbal feature text; the issue path
+    # sets kind/value inline above and leaves positional_args empty.
+    if not issue_captured and positional_args:
+        positional_kind = "verbal"
+        positional_value = " ".join(positional_args)
 
     output_fields = {
         "partition_requested": str(partition_requested).lower(),
