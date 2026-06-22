@@ -3,8 +3,8 @@
 - **Outcome**: bailed
 - **Mode**: N/A
 - Emergency: true
-- **Duration**: N/A
-- **Cost**: 💰 TOTAL ~$12.72 — Claude $1.14, Codex $7.98, Cursor $2.46, Claude (subprocess) $1.14  |  Tokens: 17161k
+- **Duration**: 01:52:29
+- **Cost**: 💰 TOTAL ~$27.72 — Claude $16.14, Codex $7.98, Cursor $2.46, Claude (subprocess) $1.14  |  Tokens: 30441k
 - **Issue**: #5078 — https://github.com/character-ai/larch/issues/5078
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (1)
@@ -12,7 +12,7 @@
 - **Lines (PR diff)**: N/A
 - **OOS filed**: 0
 - **Exec issues**: 0
-- **Warnings**: 3
+- **Warnings**: 1
 - **Run logs**: `larch-logs/implement/9F2F9905-6D7B-45EF-86AA-32CDF976E444/`
 
 <!-- larch:run-summary v=1 -->
