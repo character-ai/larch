@@ -135,7 +135,7 @@ def voter_agreement_row_from_panel(
     result = (voting_result or "").strip().lower()
     if result not in {"accepted", "rejected"}:
         return None
-    parseable = [(label, vote) for label, vote in voter_votes if _normalize_vote_cell(vote)]
+    parseable: list[tuple[str, str]] = [(label, vote) for label, vote in voter_votes if _normalize_vote_cell(vote)]
     if len(parseable) < 2:  # noqa: PLR2004
         return None
     voters: list[dict[str, object]] = []
@@ -249,7 +249,7 @@ def voter_agreement_rows_from_tsv(text: str, *, panel_kind: str) -> VoterAgreeme
         if agreement_row is not None:
             out.append(agreement_row)
             continue
-        parseable = [(label, vote) for label, vote in voter_votes if _normalize_vote_cell(vote)]
+        parseable: list[tuple[str, str]] = [(label, vote) for label, vote in voter_votes if _normalize_vote_cell(vote)]
         if result == "neutral" or (
             result in {"accepted", "rejected"} and len(parseable) < 2  # noqa: PLR2004
         ):
@@ -279,7 +279,7 @@ def compute_voter_agreement(
             voter = str(voter_row.get("voter") or "").strip()
             if not voter:
                 continue
-            key = (panel, voter)
+            key: tuple[str, str] = (panel, voter)
             record = aggregate.setdefault(
                 key,
                 {
@@ -1324,7 +1324,7 @@ def check_voter_parse_rate(
             judge_error_count += 1
     if judge_error_count / len(ids) >= _judge_error_parse_threshold():
         first_bytes = _bounded_prefix_text(voter_path, 200)
-        voter_file_aliases = sorted(_darwin_path_aliases(voter_file), key=lambda alias: (alias.startswith("/private/var/"), alias))
+        voter_file_aliases: list[str] = sorted(_darwin_path_aliases(voter_file), key=lambda alias: (alias.startswith("/private/var/"), alias))
         lines: list[str] = []
         if slot:
             lines.append(f"slot={slot}")
@@ -1822,7 +1822,7 @@ def _scoreboard_points_from_classification(
     classification_file: Path,
     reviewer_labels: list[str],
 ) -> dict[str, float]:
-    scores = dict.fromkeys(reviewer_labels, 0.0)
+    scores: dict[str, float] = dict.fromkeys(reviewer_labels, 0.0)
     if not classification_file.is_file():
         return scores
     with classification_file.open(encoding="utf-8", errors="replace", newline="") as handle:

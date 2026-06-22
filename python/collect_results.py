@@ -389,7 +389,7 @@ def _safe_meta_path_value(value: str) -> bool:
 
 def _parse_json_string_array(raw: str) -> tuple[list[str] | None, str]:
     try:
-        obj = json.loads(raw)
+        obj: object = json.loads(raw)
     except json.JSONDecodeError:
         return None, "malformed CMD_JSON"
     if not isinstance(obj, list) or not obj:
@@ -481,7 +481,7 @@ def _build_codex_exec_retry_args(plan: RetryPlan, meta: RetryMeta, records: list
         _mark_retry_metadata_invalid(records, plan.index, plan.orig_output, "Retry metadata invalid: missing OUTER_LAUNCHER_TIMING_KIND")
         return None
     try:
-        add_dirs_obj = json.loads(meta.outer_launcher_add_dirs_json or "[]")
+        add_dirs_obj: object = json.loads(meta.outer_launcher_add_dirs_json or "[]")
     except json.JSONDecodeError:
         _mark_retry_metadata_invalid(records, plan.index, plan.orig_output, "Retry metadata invalid: OUTER_LAUNCHER_ADD_DIRS_JSON malformed")
         return None
@@ -716,7 +716,7 @@ def _run_validator(args: Sequence[str]) -> CommandResult:
 
 
 def _validate_substantive(records: list[CollectorRecord], *, validation_mode: bool) -> None:
-    val_args = ["--validation-mode"] if validation_mode else []
+    val_args: list[str] = ["--validation-mode"] if validation_mode else []
     for idx, record in enumerate(list(records)):
         if record.status != "OK":
             continue
@@ -910,7 +910,7 @@ def _parse_wait_timeouts(lines: Sequence[str]) -> set[int]:
 
 
 def _initial_wait(timeout: int, output_files: Sequence[str]) -> tuple[int, set[int]]:
-    sentinels = [f"{path}.done" for path in output_files]
+    sentinels: list[str] = [f"{path}.done" for path in output_files]
     emitted: list[str] = []
     diagnostics: list[str] = []
     rc = review_dispatch.wait_reviewers(

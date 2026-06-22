@@ -272,9 +272,9 @@ def _parse_args(argv: Sequence[str]) -> Options | int:
 def _invalid_drop_for_row(line_no: int, row: str, message: str) -> InvalidSlotDrop:
     slot = ""
     with contextlib.suppress(json.JSONDecodeError):
-        parsed = json.loads(row)
+        parsed: object = json.loads(row)
         if isinstance(parsed, dict):
-            slot_value = parsed.get("slot")
+            slot_value: object | None = parsed.get("slot")
             if isinstance(slot_value, str) and slot_value:
                 slot = slot_value
     snippet = _flatten_field(row)[:200]
@@ -283,14 +283,14 @@ def _invalid_drop_for_row(line_no: int, row: str, message: str) -> InvalidSlotDr
 
 def _parse_slot_row(row: str) -> Slot:
     try:
-        data = json.loads(row)
+        data: object = json.loads(row)
     except json.JSONDecodeError as exc:
         raise ValidationError(f"dispatch-with-waterfall.sh: invalid slot row: {row}") from exc
     if not isinstance(data, dict):
         raise ValidationError(f"dispatch-with-waterfall.sh: invalid slot row: {row}")
-    slot = data.get("slot")
-    tool = data.get("tool")
-    output = data.get("output")
+    slot: object | None = data.get("slot")
+    tool: object | None = data.get("tool")
+    output: object | None = data.get("output")
     agent = data.get("agent", "")
     prompt_file = data.get("prompt_file", "")
     if not isinstance(slot, str) or not slot:
@@ -818,9 +818,9 @@ def dispatch_waterfall(opts: Options) -> int:
     invalid_slots_file = ""
     if invalid_drops:
         invalid_slots_file = _write_invalid_slot_drops(resolved_paths_file, invalid_drops)
-    final_outputs = [""] * len(slots)
-    final_tools = [""] * len(slots)
-    drops = [DropState() for _ in slots]
+    final_outputs: list[str] = [""] * len(slots)
+    final_tools: list[str] = [""] * len(slots)
+    drops: list[DropState] = [DropState() for _ in slots]
 
     phase1_outputs: list[str] = []
     phase2_outputs: list[str] = []
@@ -893,7 +893,7 @@ def dispatch_waterfall(opts: Options) -> int:
             static_dispatch_ok = False
 
     if phase3_failed:
-        env = dict(os.environ)
+        env: dict[str, str] = dict(os.environ)
         env["LARCH_QUIET_DISABLE"] = "1"
         _ = proc.run(
             [

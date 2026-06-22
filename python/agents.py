@@ -930,7 +930,7 @@ def _run_one_codex_probe(timeout: int) -> int:
             "--",
             "Respond with OK",
         ]
-        env = dict(os.environ)
+        env: dict[str, str] = dict(os.environ)
         env["CODEX_HOME"] = str(codex_home)
         state = external_startup_lock_acquire("codex")
         external_startup_lock_release_after(state)
@@ -2684,7 +2684,7 @@ def run_negotiation_round(tool: str, prompt_file: str | Path, output: str | Path
                 "--",
                 "-",
             ]
-            env = dict(os.environ)
+            env: dict[str, str] = dict(os.environ)
             env["CODEX_HOME"] = str(codex_home)
             state = external_startup_lock_acquire("codex")
             external_startup_lock_release_after(state)
@@ -2838,7 +2838,7 @@ def launch_codex_exec_main(argv: list[str] | None = None) -> int:
             "--",
             prompt,
         ]
-        env = dict(os.environ)
+        env: dict[str, str] = dict(os.environ)
         env["CODEX_HOME"] = home
         start = time.time()
         events = output.with_suffix(output.suffix + ".events.jsonl")
@@ -6090,7 +6090,7 @@ def token_sidecar_ingest_env(
     tmpdir_env_key: str = "IMPLEMENT_TMPDIR",
 ) -> dict[str, str]:
     """Return an env for active-ledger sidecar ingestion without stale ledger vars."""
-    env = dict(os.environ)
+    env: dict[str, str] = dict(os.environ)
     for key in _TOKEN_SIDECAR_ENV_UNSET:
         _ = env.pop(key, None)
     if implement_tmpdir:

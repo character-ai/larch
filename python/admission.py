@@ -252,7 +252,7 @@ def preflight_main(argv: list[str]) -> int:
         return 3
     if not args.skip_branch_check:
         sync = _run([sys.executable, str(_PY_CLI), "git", "check-main-sync"])
-        fields = dict(line.split("=", 1) for line in sync.stdout.splitlines() if "=" in line)
+        fields: dict[str, str] = dict(line.split("=", 1) for line in sync.stdout.splitlines() if "=" in line)
         sync_status = fields.get("SYNC_STATUS", "")
         sync_error = fields.get("ERROR", "")
         if sync_status == "blocked" or sync.returncode == 1:
