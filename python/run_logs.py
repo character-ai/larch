@@ -2313,8 +2313,6 @@ def larch_log_flush_main(argv: list[str]) -> int:
                     "WARN: larch-log flush scrubbed secret-shaped values before commit",
                     file=sys.stderr,
                 )
-    except (OSError, ValueError, ShipError, UnicodeError) as exc:
-        print(f"WARN: larch-log flush failed: {exc}", file=sys.stderr)
     except Exception as exc:
         print(f"WARN: larch-log flush failed: {exc}", file=sys.stderr)
     return 0
