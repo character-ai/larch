@@ -1224,6 +1224,35 @@ def test_larch_log_flush_warns_when_stage_fails(
     assert "WARN: larch-log flush failed: stage unavailable" in capsys.readouterr().err
 
 
+def test_larch_log_flush_warns_when_commit_run_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    monkeypatch.delenv("LARCH_NO_LOGS_COMMIT", raising=False)
+    _ = (tmp_path / "session-id").write_text("run-abc\n", encoding="utf-8")
+
+    def fail_commit(*_args: object, **_kwargs: object) -> CommandResult:
+        return CommandResult(
+            ("run-log", "commit"),
+            1,
+            "",
+            "refusing to replace symlink destination: /some/path\n",
+            0.0,
+        )
+
+    monkeypatch.setattr(run_logs, "_stage_pre_commit", lambda *_a, **_k: None)
+    monkeypatch.setattr(run_logs, "_commit_run", fail_commit)
+
+    rc = run_logs.larch_log_flush_main([])
+
+    assert rc == 0
+    err = capsys.readouterr().err
+    assert "WARN: larch-log flush failed: rc=1" in err
+    assert "refusing to replace symlink destination: /some/path" in err
+
+
 def test_larch_log_commit_rejects_bad_pre_scrub_violations(tmp_path: Path) -> None:
     rc = run_logs.larch_log_commit_main(
         [

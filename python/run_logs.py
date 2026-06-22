@@ -2299,7 +2299,14 @@ def larch_log_flush_main(argv: list[str]) -> int:
         _stage_pre_commit(proc, ctx, log_root, mode="flush")
         result = _commit_run(log_root, "implement", run_id, cwd=str(Path.cwd()))
         if result.returncode != 0:
-            print(f"WARN: larch-log flush failed: rc={result.returncode}", file=sys.stderr)
+            detail = result.stderr.strip()
+            if detail:
+                print(
+                    f"WARN: larch-log flush failed: rc={result.returncode}: {detail}",
+                    file=sys.stderr,
+                )
+            else:
+                print(f"WARN: larch-log flush failed: rc={result.returncode}", file=sys.stderr)
         for line in result.stdout.splitlines():
             if line.startswith("SECRET_SCRUB_VIOLATIONS=") and not line.endswith("=0"):
                 print(
