@@ -24,6 +24,8 @@ _CLI = Path(__file__).resolve().parent / "cli.py"
 _GITHUB_URL_RE = re.compile(r"https://[^\s|)]+/issues/\d+")
 _FILED_URL_LINE_RE = re.compile(r"^[ \t]*-[ \t]+\*\*Filed[ \t]URL\*\*[ \t]*:[ \t]+(https://[^\s]+/issues/\d+)", re.MULTILINE)
 _INTRA_BATCH_DEP_FIELD_COUNT = 2
+_GITHUB_BODY_LIMIT = 65535
+_BODY_TRUNCATION_NOTE = "\n\n*[Content truncated: source body exceeds the GitHub issue body limit.]*"
 
 
 @dataclass(frozen=True)
@@ -559,6 +561,13 @@ def _cleanup_created_issues(_tmpdir: Path, filed: list[FiledIssue], *, repo: str
         _ = _run_cli(["issue", "cleanup-failed", "--issue-number", number, *([] if not repo else ["--repo", repo])])
 
 
+def _fit_to_github_limit(body: str) -> str:
+    if len(body) <= _GITHUB_BODY_LIMIT:
+        return body
+    available = _GITHUB_BODY_LIMIT - len(_BODY_TRUNCATION_NOTE)
+    return body[:max(0, available)] + _BODY_TRUNCATION_NOTE
+
+
 def _body_file_for_item(tmpdir: Path, item_index: int, fields: dict[str, str]) -> Path:
     raw_path = Path(fields.get(f"ITEM_{item_index}_BODY_FILE", ""))
     body = raw_path.read_text(encoding="utf-8", errors="replace") if raw_path.is_file() else ""
@@ -568,6 +577,7 @@ def _body_file_for_item(tmpdir: Path, item_index: int, fields: dict[str, str]) -
     vote = file_oos._sanitize_public_text(fields.get(f"ITEM_{item_index}_VOTE_TALLY", "N/A"))  # pyright: ignore[reportPrivateUsage]
     if reviewer or phase or vote:
         body = _wrap_oos_body(body, reviewer=reviewer, phase=phase, vote=vote)
+    body = _fit_to_github_limit(body)
     out = tmpdir / "oos-issue-bodies" / f"oos-body-{item_index}.txt"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(body, encoding="utf-8")

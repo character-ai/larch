@@ -759,6 +759,59 @@ def test_capped_partial_rollup_retains_tail_stable_ids(tmp_path: Path, monkeypat
     assert not [call for call in retry.calls if call[:2] == ["issue", "create-one"]]
 
 
+def test_fit_to_github_limit_short_body_unchanged() -> None:
+    body = "Short body."
+    assert oos_filer._fit_to_github_limit(body) == body
+
+
+def test_fit_to_github_limit_exactly_at_limit_unchanged() -> None:
+    body = "x" * oos_filer._GITHUB_BODY_LIMIT
+    result = oos_filer._fit_to_github_limit(body)
+    assert result == body
+    assert len(result) == oos_filer._GITHUB_BODY_LIMIT
+
+
+def test_fit_to_github_limit_over_limit_truncates_with_note() -> None:
+    body = "x" * (oos_filer._GITHUB_BODY_LIMIT + 1000)
+    result = oos_filer._fit_to_github_limit(body)
+    assert len(result) == oos_filer._GITHUB_BODY_LIMIT
+    assert result.endswith(oos_filer._BODY_TRUNCATION_NOTE)
+    assert result[: oos_filer._GITHUB_BODY_LIMIT - len(oos_filer._BODY_TRUNCATION_NOTE)] == "x" * (
+        oos_filer._GITHUB_BODY_LIMIT - len(oos_filer._BODY_TRUNCATION_NOTE)
+    )
+
+
+def test_body_file_for_item_oversized_body_is_truncated(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OOS_ISSUES_PER_RUN_CAP", "99")
+    _setup(tmp_path)
+    large_body = "A" * (oos_filer._GITHUB_BODY_LIMIT + 5000)
+    _write_oos(tmp_path, f"### OOS_1: Big finding\n- **Description**: {large_body}\n- **Phase**: implement\n")
+    fake = FakeCli(tmp_path)
+    rc, _payload = _run(tmp_path, fake, monkeypatch)
+    assert rc == 0
+    create_calls = [call for call in fake.calls if call[:2] == ["issue", "create-one"]]
+    assert create_calls
+    assert len(fake.created_bodies) == 1
+    filed_body = fake.created_bodies[0]
+    assert len(filed_body) <= oos_filer._GITHUB_BODY_LIMIT
+    assert oos_filer._BODY_TRUNCATION_NOTE in filed_body
+    assert "A" in filed_body
+
+
+def test_body_file_for_item_fits_body_preserved_verbatim(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OOS_ISSUES_PER_RUN_CAP", "99")
+    _setup(tmp_path)
+    body = "Normal sized body that fits fine."
+    _write_oos(tmp_path, f"### OOS_1: Normal\n- **Description**: {body}\n- **Phase**: implement\n")
+    fake = FakeCli(tmp_path)
+    rc, _payload = _run(tmp_path, fake, monkeypatch)
+    assert rc == 0
+    assert len(fake.created_bodies) == 1
+    filed_body = fake.created_bodies[0]
+    assert body in filed_body
+    assert oos_filer._BODY_TRUNCATION_NOTE not in filed_body
+
+
 def test_stable_ids_by_combined_item_covers_every_source_on_count_reducing_combine() -> None:
     # Directly pins the dedup-safety invariant of the combine-to-stable-id mapper
     # for the Codex-combine path the OOS finding flagged: when combine yields
