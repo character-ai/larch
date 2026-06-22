@@ -168,6 +168,36 @@ def _append_issue_detail(body: str, load_result: exec_issue_detail.LoadResult) -
     return body.rstrip("\n") + "\n\n" + detail_block.strip("\n") + "\n"
 
 
+def _write_enriched_post_publish_summary(
+    design_tmpdir: Path,
+    out_file: Path,
+    load_result: exec_issue_detail.LoadResult,
+) -> int:
+    try:
+        body = out_file.read_text(encoding="utf-8")
+        body = _append_issue_detail(body, load_result)
+        try:
+            detail = review_phase_detail.render_design_review_detail(design_tmpdir)
+        except Exception:
+            detail = ""
+        body = review_phase_detail.append_review_phase_detail(body, detail)
+        _ = out_file.write_text(body, encoding="utf-8")
+        sys.stdout.write(body)  # pyright: ignore[reportUnusedCallResult]
+        if not body.endswith("\n"):
+            sys.stdout.write("\n")  # pyright: ignore[reportUnusedCallResult]
+        return 0
+    except OSError as exc:
+        msg = f"design render-final-summary: failed to write enriched summary: {exc}"
+        print(msg, file=sys.stderr)
+        ex_log = design_tmpdir / "execution-issues.md"
+        try:
+            with ex_log.open("a", encoding="utf-8") as fh:
+                _ = fh.write(f"\n### Warnings\n- **design-summary**: {msg}\n")
+        except OSError:
+            pass
+        return 1
+
+
 # Calls `python/cli.py render run-summary` with --claude-input-tokens for per-bucket cost detail.
 def invoke_render(
     design_tmpdir: Path,
@@ -376,26 +406,16 @@ def render_final_summary_main(argv: Sequence[str]) -> int:
             fh.write(f"- **Outcome**: {outcome}\n")  # pyright: ignore[reportUnusedCallResult]
             fh.write(f"- **Duration**: {duration}\n")  # pyright: ignore[reportUnusedCallResult]
             fh.write("- **Cost**: N/A\n")  # pyright: ignore[reportUnusedCallResult]
+            fh.write(f"- **Exec issues**: {exec_issues}\n")  # pyright: ignore[reportUnusedCallResult]
+            fh.write(f"- **Warnings**: {warnings}\n")  # pyright: ignore[reportUnusedCallResult]
 
     if phase == "pre":
         return 0
 
-    try:
-        body = out_file.read_text(encoding="utf-8")
-        body = _append_issue_detail(body, load_result)
-        try:
-            detail = review_phase_detail.render_design_review_detail(design_tmpdir)
-        except Exception:
-            detail = ""
-        body = review_phase_detail.append_review_phase_detail(body, detail)
-        _ = out_file.write_text(body, encoding="utf-8")
-        sys.stdout.write(body)  # pyright: ignore[reportUnusedCallResult]
-        if not body.endswith("\n"):
-            sys.stdout.write("\n")  # pyright: ignore[reportUnusedCallResult]
-    except OSError:
-        pass
+    exit_rc = _write_enriched_post_publish_summary(design_tmpdir, out_file, load_result)
+    write_ok = exit_rc == 0
 
-    if issue and issue != "0" and out_file.is_file() and out_file.stat().st_size > 0:
+    if issue and issue != "0" and write_ok and out_file.is_file() and out_file.stat().st_size > 0:
         marker = f"<!-- larch:final-summary v1 runid={run_id} -->"
         ups_args = [
             "tracking-issue", "upsert-summary",
@@ -408,4 +428,4 @@ def render_final_summary_main(argv: Sequence[str]) -> int:
         _run_cli(*ups_args)  # pyright: ignore[reportUnusedCallResult]
     _emit_report_gate_sidecars_file(design_tmpdir)
 
-    return 0
+    return exit_rc

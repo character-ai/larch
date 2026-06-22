@@ -438,3 +438,71 @@ def test_render_final_summary_swallows_renderer_failure(
     body = (tmp_path / "final-summary.md").read_text(encoding="utf-8")
     assert "<!-- larch:run-summary v=1 -->" in body
     assert "## Review Phase Detail" not in body
+
+
+def test_render_final_summary_degraded_fallback_includes_issue_count_bullets(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
+    monkeypatch.setenv("SESSION_ID", "design-run-1")
+    monkeypatch.setenv("ISSUE_NUMBER", "0")
+    _ = (tmp_path / "execution-issues.md").write_text(
+        "### Tool Failures\n- exec1\n\n### Warnings\n- warn1\n- warn2\n",
+        encoding="utf-8",
+    )
+
+    def fake_run_cli(*args: str) -> subprocess.CompletedProcess[str]:
+        if args[:2] == ("render", "run-summary"):
+            return subprocess.CompletedProcess(["cli.py", *args], 1, stdout="", stderr="renderer failed")
+        return subprocess.CompletedProcess(["cli.py", *args], 0, stdout="", stderr="")
+
+    def fake_gate(*_args: object) -> None:
+        return
+
+    def no_assess(_category: str, _details: tuple[design_summary.exec_issue_detail.IssueDetail, ...]) -> dict[str, str]:
+        return {}
+
+    monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)
+    monkeypatch.setattr(design_summary, "_run_design_failure_report_gate", fake_gate)
+    monkeypatch.setattr(design_summary.exec_issue_detail, "assess_issue_details", no_assess)
+
+    rc = design_summary.render_final_summary_main(["--outcome", "approved"])
+
+    assert rc == 0
+    body = (tmp_path / "final-summary.md").read_text(encoding="utf-8")
+    assert "- **Exec issues**: 1" in body
+    assert "- **Warnings**: 2" in body
+    assert "## Exec Issues and Warnings" in body
+    assert "Exec Issues (1):" in body
+    assert "Warnings (2):" in body
+
+
+def test_render_final_summary_write_failure_skips_upsert(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    upsert_calls: list[tuple[str, ...]] = []
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
+    monkeypatch.setenv("SESSION_ID", "design-run-1")
+    monkeypatch.setenv("ISSUE_NUMBER", "42")
+
+    def fake_run_cli(*args: str) -> subprocess.CompletedProcess[str]:
+        if args[:2] == ("render", "run-summary"):
+            out_file = Path(args[args.index("--output-file") + 1])
+            _ = out_file.write_text("## summary\n", encoding="utf-8")
+            out_file.chmod(0o444)
+        elif args[:2] == ("tracking-issue", "upsert-summary"):
+            upsert_calls.append(args)
+        return subprocess.CompletedProcess(["cli.py", *args], 0, stdout="", stderr="")
+
+    def fake_gate(*_args: object) -> None:
+        return
+
+    monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)
+    monkeypatch.setattr(design_summary, "_run_design_failure_report_gate", fake_gate)
+
+    rc = design_summary.render_final_summary_main(["--outcome", "approved", "--repo", "o/r"])
+
+    assert rc == 1
+    assert not upsert_calls

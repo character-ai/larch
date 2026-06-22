@@ -17,6 +17,7 @@ import redact
 EXEC_CATEGORIES = frozenset({"Tool Failures", "External Reviewer Issues"})
 WARN_CATEGORY = "Warnings"
 MAX_DISPLAY_LEN = 200
+MAX_DEDUPE_KEY_LEN = 500
 ASSESSMENT_TIMEOUT_SECONDS = 12
 DEFAULT_ASSESSMENT_MODEL = config.EXEC_ISSUE_ASSESSMENT_MODEL_DEFAULT
 
@@ -72,8 +73,19 @@ def _truncate(text: str, limit: int = MAX_DISPLAY_LEN) -> str:
     return normalized[: max(0, limit - 3)].rstrip() + "..."
 
 
+def _display_from_raw(raw: str) -> str:
+    return _truncate(redact.redact_outbound(raw))
+
+
 def _normalize_key(text: str) -> str:
     return " ".join(text.strip().split())
+
+
+def _dedupe_key_from_body(body: str) -> str:
+    normalized = _normalize_key(body.strip())
+    if len(normalized) <= MAX_DEDUPE_KEY_LEN:
+        return normalized
+    return normalized[: max(0, MAX_DEDUPE_KEY_LEN - 3)].rstrip() + "..."
 
 
 def _split_issue_section_lines(text: str) -> tuple[list[str], list[str]]:
@@ -133,12 +145,17 @@ def _parse_bullet_line(line: str) -> IssueEvent | None:
         if not label and not description:
             return None
         raw_display = f"{label}: {description}" if label and description else label or description
-        display_text = _truncate(raw_display)
-        return IssueEvent(label=label, description=_truncate(description), display_text=display_text, dedupe_key=_normalize_key(display_text))
+        display_text = _display_from_raw(raw_display)
+        return IssueEvent(
+            label=label,
+            description=_display_from_raw(description) if description else "",
+            display_text=display_text,
+            dedupe_key=_normalize_key(display_text),
+        )
     body = line[2:].strip()
     if not body:
         return None
-    display_text = _truncate(body)
+    display_text = _display_from_raw(body)
     return IssueEvent(label="", description=display_text, display_text=display_text, dedupe_key=_normalize_key(display_text))
 
 
@@ -192,8 +209,14 @@ def _first_nonempty_line(text: str) -> str:
 
 
 def _fallback_event(body: str, category: str) -> IssueEvent:
-    display_text = _truncate(_first_nonempty_line(body) or category)
-    return IssueEvent(label="", description=display_text, display_text=display_text, dedupe_key=_normalize_key(display_text))
+    raw_display = _first_nonempty_line(body) or category
+    display_text = _display_from_raw(raw_display)
+    return IssueEvent(
+        label="",
+        description=display_text,
+        display_text=display_text,
+        dedupe_key=_dedupe_key_from_body(body),
+    )
 
 
 def _events_from_structured_body(body: str, category: str) -> list[IssueEvent]:
@@ -234,9 +257,10 @@ def _parse_ndjson_legacy(path: Path) -> LoadResult:
             parsed.append(json.loads(raw))
         except json.JSONDecodeError:
             parsed.append(None)
-    if parsed and all(isinstance(row, dict) for row in parsed):
-        rows = [cast("dict[str, object]", row) for row in parsed]
-        return LoadResult(_parse_ndjson_structured_rows(rows), listing_degraded=False)
+    dict_rows = [cast("dict[str, object]", row) for row in parsed if isinstance(row, dict)]
+    structured_rows = [row for row in dict_rows if isinstance(row.get("category"), str)]
+    if structured_rows:
+        return LoadResult(_parse_ndjson_structured_rows(structured_rows), listing_degraded=False)
 
     body_parts = [
         str(cast("dict[str, object]", row).get("body", ""))

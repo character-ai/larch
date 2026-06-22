@@ -214,3 +214,69 @@ def test_render_redacts_outbound_secret() -> None:
 
     assert raw_secret not in block
     assert "<REDACTED-TOKEN>" in block
+
+
+def test_display_text_redacts_before_truncation() -> None:
+    prefix = "x" * (exec_issue_detail.MAX_DISPLAY_LEN - 8)
+    raw_secret = "sk-" + "a" * 32
+    raw = prefix + raw_secret
+    groups = exec_issue_detail.parse_markdown_execution_issues(f"### Warnings\n- {raw}\n")
+
+    display = groups.warnings[0].display_text
+    assert len(display) <= exec_issue_detail.MAX_DISPLAY_LEN
+    assert "sk-" not in display
+    assert raw_secret not in display
+
+
+def test_mixed_valid_and_malformed_ndjson_rows(tmp_path: Path) -> None:
+    run_dir = tmp_path / "larch-logs" / "implement" / "run1"
+    run_dir.mkdir(parents=True)
+    ndjson = (
+        '{"category":"Warnings","body":"- warn one"}\n'
+        "not-json\n"
+        '{"category":"Tool Failures","body":"- exec one"}\n'
+    )
+    _ = (run_dir / "execution-issues.ndjson").write_text(ndjson, encoding="utf-8")
+
+    result = exec_issue_detail.load_issue_detail_groups(tmp_path, run_dir=run_dir)
+
+    assert not result.listing_degraded
+    assert exec_issue_detail.count_load_result(result) == (1, 1)
+    block = exec_issue_detail.render_issue_detail_block(result, assess=False)
+    assert "Warnings (1):" in block
+    assert "1. warn one" in block
+    assert "1. exec one" in block
+
+
+def test_fallback_dedupe_uses_full_body_not_first_line_only() -> None:
+    body = "shared first line\nunique tail alpha\n"
+    event_a = exec_issue_detail._fallback_event(body, "Warnings")  # pyright: ignore[reportPrivateUsage]
+    event_b = exec_issue_detail._fallback_event("shared first line\nunique tail beta\n", "Warnings")  # pyright: ignore[reportPrivateUsage]
+    assert event_a.display_text == event_b.display_text
+    assert event_a.dedupe_key != event_b.dedupe_key
+
+
+def test_assessment_subprocess_timeout_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_run(argv: list[str], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        raise subprocess.TimeoutExpired(cmd=argv, timeout=exec_issue_detail.ASSESSMENT_TIMEOUT_SECONDS)
+
+    monkeypatch.setattr(exec_issue_detail.subprocess, "run", fake_run)
+    detail = exec_issue_detail.IssueDetail("lint", "drift", "lint: drift", 1)
+    assert not exec_issue_detail.assess_issue_details("Warnings", (detail,))
+    result = exec_issue_detail.LoadResult(exec_issue_detail.IssueDetailGroups((), (detail,)), listing_degraded=False)
+    block = exec_issue_detail.render_issue_detail_block(result, assess=True)
+    assert "1. lint: drift" in block
+    assert "Assessment" not in block
+
+
+def test_assessment_subprocess_nonzero_exit_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_run(argv: list[str], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(argv, 1, stdout="", stderr="failed")
+
+    monkeypatch.setattr(exec_issue_detail.subprocess, "run", fake_run)
+    detail = exec_issue_detail.IssueDetail("lint", "drift", "lint: drift", 1)
+    assert not exec_issue_detail.assess_issue_details("Warnings", (detail,))
+    result = exec_issue_detail.LoadResult(exec_issue_detail.IssueDetailGroups((), (detail,)), listing_degraded=False)
+    block = exec_issue_detail.render_issue_detail_block(result, assess=True)
+    assert "1. lint: drift" in block
+    assert "Assessment" not in block
