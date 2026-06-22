@@ -182,6 +182,29 @@ def test_delete_dyn_prompts_skips_symlink_escape(tmp_path: Path) -> None:
     assert stats.dyn_prompt_deleted == 0
 
 
+def test_delete_identical_aggregator_skips_escaping_findings_symlink(tmp_path: Path) -> None:
+    # aggregator-output.txt is a real in-tree file, but its sibling findings.md is
+    # an escaping symlink. Comparing through it would read external content and
+    # could delete the in-tree aggregator as a false "identical" hit. The guard
+    # must skip the pair: the external target stays untouched and the aggregator
+    # survives. Completes the symlink-escape coverage (dyn-prompts, transcripts,
+    # tally, breadcrumbs) for the aggregator/findings pair.
+    run_dir, external = _run_and_external(tmp_path)
+    body = "identical body\n"
+    agg = run_dir / "aggregator-output.txt"
+    agg.write_text(body, encoding="utf-8")
+    victim = external / "findings.md"
+    victim.write_text(body, encoding="utf-8")  # byte-identical: would match but for the guard
+    (run_dir / "findings.md").symlink_to(victim)
+
+    stats = cil.Stats()
+    cil.delete_identical_aggregator(run_dir, execute=True, stats=stats)
+
+    assert victim.exists(), "escaping findings.md target must survive"
+    assert agg.exists(), "aggregator must not be deleted when findings.md escapes the run dir"
+    assert stats.aggregator_deleted == 0
+
+
 def test_upgrade_transcripts_skips_symlink_escape(tmp_path: Path) -> None:
     # session-transcript.jsonl as an escaping symlink would be read and rewritten
     # in place, corrupting the external file. The guard must skip it.

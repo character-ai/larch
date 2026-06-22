@@ -2136,30 +2136,6 @@
     "metric": 70
   },
   {
-    "file": "design_argv.py",
-    "code": "C901",
-    "qualified_symbol": "parse_argv_main",
-    "metric": 26
-  },
-  {
-    "file": "design_argv.py",
-    "code": "PLR0911",
-    "qualified_symbol": "parse_argv_main",
-    "metric": 11
-  },
-  {
-    "file": "design_argv.py",
-    "code": "PLR0912",
-    "qualified_symbol": "parse_argv_main",
-    "metric": 27
-  },
-  {
-    "file": "design_argv.py",
-    "code": "PLR0915",
-    "qualified_symbol": "parse_argv_main",
-    "metric": 68
-  },
-  {
     "file": "design_lifecycle.py",
     "code": "C901",
     "qualified_symbol": "_decode_ansi_c_quoted",
