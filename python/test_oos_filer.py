@@ -727,3 +727,25 @@ def test_capped_partial_rollup_retains_tail_stable_ids(tmp_path: Path, monkeypat
     rc_retry, _retry_payload = _run(tmp_path, retry, monkeypatch)
     assert rc_retry == 0
     assert not [call for call in retry.calls if call[:2] == ["issue", "create-one"]]
+
+
+def test_stable_ids_by_combined_item_covers_every_source_on_count_reducing_combine() -> None:
+    # Directly pins the dedup-safety invariant of the combine-to-stable-id mapper
+    # for the Codex-combine path the OOS finding flagged: when combine yields
+    # fewer output blocks than sources, every source stable id must still appear
+    # across the mapping's values, or a retry's _split_persisted_matches would
+    # miss a block and re-file the rolled-up remainder. Per-output attribution is
+    # best-effort — the post-cap text the mapper sees carries no combine
+    # source-metadata to map a non-contiguous merge by — so coverage, not exact
+    # attribution, is the guaranteed property.
+    blocks = [
+        oos_filer.AcceptedBlock("alpha", "body a", "src:OOS_1"),
+        oos_filer.AcceptedBlock("beta", "body b", "src:OOS_2"),
+        oos_filer.AcceptedBlock("gamma", "body c", "src:OOS_3"),
+    ]
+    combined_text = "### OOS_1: merged alpha\nbody\n\n### OOS_2: tail\nbody\n"
+    assert len(file_oos._parse_oos_blocks(combined_text)) == 2  # ambiguous middle branch
+    mapping = oos_filer._stable_ids_by_combined_item(blocks, combined_text)
+
+    covered = {sid for ids in mapping.values() for sid in ids}
+    assert covered == {"src:OOS_1", "src:OOS_2", "src:OOS_3"}
