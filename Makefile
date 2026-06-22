@@ -141,7 +141,7 @@ test-harnesses-13: test-review-and-fix-step5 test-aggregate-findings test-dispat
 
 test-harnesses-14: test-dispatch-code-voters-happy test-dispatch-code-voters-retry-cursor test-dispatch-plan-voters test-codex-implementer test-review-and-fix-convergence test-cache-root-validation test-finalize-plan test-decompose-aggregator test-review-and-fix-check-changes test-verify-run-log-completeness test-design-pause-resume test-harness-timer test-check-stale-plugin test-implement-relevant-checks-anti-halt
 
-test-harnesses-15: test-gate-b-apply-mode test-review-and-fix-dispatch test-gate-b-dedup-plan test-invoke-plan-validator test-run-step2-dispatch test-issue-query test-check-main-sync test-fluff-analysis test-voter-calibration test-plan-review-panel test-launch-codex-exec test-render-final-summary test-token-tally test-lint-no-raw-stderr-after-quiet-init test-implement-fence-shape test-alias-structure test-anti-improvised-wakeup
+test-harnesses-15: test-gate-b-apply-mode test-review-and-fix-dispatch test-gate-b-dedup-plan test-invoke-plan-validator test-run-step2-dispatch test-issue-query test-check-main-sync test-fluff-analysis test-voter-calibration test-plan-review-panel test-launch-codex-exec test-render-final-summary test-token-tally test-lint-no-raw-stderr-after-quiet-init test-implement-fence-shape test-architectural-guidelines-step test-alias-structure test-anti-improvised-wakeup
 
 test-harnesses-16: test-implement-bootstrap-invoke test-hook-bg-poll-guard test-dispatch-code-voters-retry-codex-success test-dispatch-code-voters-parse-rate-claude test-parse-bootstrap-routing-envelope test-run-step3-review test-launch-cursor-ci test-review-and-fix-commit-fixes test-decompose-file-issues test-design-postplan-emit test-log-phase test-gather-branch-context test-implement-preflight test-timing-report test-pause-skill test-git-commit-only
 
@@ -419,7 +419,7 @@ test-decompose-file-issues:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_decompose.py -q -k 'prepare or annotate or close_original'
 
 test-design-step2b-drafter:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_design_lifecycle.py -k 'step2a or step2b'
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_design_lifecycle.py -k 'step2a or step2b or guideline'
 
 test-design-driver:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_design_lifecycle.py -k 'phase_driver or design_read_result_env or design_driver'
