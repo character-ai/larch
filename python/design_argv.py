@@ -62,7 +62,7 @@ class _ArgvParseState:
     skip_approve_requested: bool = False
     no_dedup_requested: bool = False
     run_id: str = ""
-    positional_args: list[str] = field(default_factory=list)
+    positional_args: list[str] = field(default_factory=list[str])
     positional_kind: str = "none"
     positional_value: str = ""
     issue_captured: bool = False
