@@ -1904,7 +1904,7 @@ def test_step_final_summary_marker_failure_still_emits_sentinel(tmp_path: Path, 
     assert "bg-wait marker setup failed" in (tmp_path / "execution-issues.md").read_text(encoding="utf-8")
 
 
-def test_step_final_summary_render_exception_skips_sentinel_and_marked_emit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_step_final_summary_render_exception_skips_sentinel_and_marked_emit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     env_path = _write_session_env(tmp_path, tmp_path, monkeypatch, ISSUE_NUMBER="0", SUMMARY_OUTCOME="approved")
     (tmp_path / "final-summary.md").write_text("summary\n", encoding="utf-8")
 
@@ -1914,10 +1914,15 @@ def test_step_final_summary_render_exception_skips_sentinel_and_marked_emit(tmp_
         raise RuntimeError("render broke")
 
     monkeypatch.setattr(design_summary, "render_final_summary_main", boom)
-    rc, _ = design_lifecycle.step_final_summary_core(["--session-env-path", str(env_path), "--claude-pid", "123", "--outcome", "approved"])
+    rc, contract, _ = _capture_core_contract(
+        design_lifecycle.step_final_summary_core,
+        ["--session-env-path", str(env_path), "--claude-pid", "123", "--outcome", "approved"],
+        tmp_path,
+        monkeypatch,
+    )
     assert rc == 1
     assert not (tmp_path / ".completed" / "step-final-summary").is_file()
-    assert "LARCH_FINAL_SUMMARY_BEGIN" not in capsys.readouterr().out
+    assert "LARCH_FINAL_SUMMARY_BEGIN" not in contract
 
 
 def test_step_final_summary_main_returns_failure_without_sentinel_after_render_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1956,7 +1961,7 @@ def test_step_final_summary_bg_marker_records_claude_pid(tmp_path: Path, monkeyp
     assert seen == ["789"]
 
 
-def test_step_final_summary_emits_report_gate_sidecars(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_step_final_summary_emits_report_gate_sidecars(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     env_path = _write_session_env(tmp_path, tmp_path, monkeypatch, ISSUE_NUMBER="0", SUMMARY_OUTCOME="approved")
     (tmp_path / "final-summary.md").write_text("summary\n", encoding="utf-8")
     (tmp_path / "design-failure-chat-print.md").write_text("chat sidecar\n", encoding="utf-8")
@@ -1967,12 +1972,16 @@ def test_step_final_summary_emits_report_gate_sidecars(tmp_path: Path, monkeypat
         return 0
 
     monkeypatch.setattr(design_summary, "render_final_summary_main", render_ok_sidecar)
-    design_lifecycle.step_final_summary_core(["--session-env-path", str(env_path), "--claude-pid", "123", "--outcome", "approved"])
-    out = capsys.readouterr().out
+    _, contract, _ = _capture_core_contract(
+        design_lifecycle.step_final_summary_core,
+        ["--session-env-path", str(env_path), "--claude-pid", "123", "--outcome", "approved"],
+        tmp_path,
+        monkeypatch,
+    )
     handoff = tmp_path / "design-report-gate-sidecars.md"
     assert handoff.is_file()
-    assert "REPORT_GATE_SIDECARS_FILE=" in out
-    assert str(handoff) in out
+    assert "REPORT_GATE_SIDECARS_FILE=" in contract
+    assert str(handoff) in contract
 
 
 def test_step_final_summary_cli_subprocess_emits_markers_on_stdout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2101,12 +2110,12 @@ def test_step5c_core_render_uses_ctx_snapshot_when_ambient_env_overrides_session
             "--design-tmpdir",
             str(design),
             "--issue-number",
-            "999",
+            "42",
             "--session-id",
-            "ambient-session",
+            "run-1",
             "--post-publish-only",
             "--repo",
-            "ambient/repo",
+            "owner/repo",
         ]
     ]
 
@@ -2168,7 +2177,6 @@ def test_step5c_core_pause_requested_skips_publish_and_marker(
 def test_step5c_core_pause_requested_emits_step5c_status(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
 ) -> None:
     design, env_path = _setup_step5c_design(tmp_path, monkeypatch, ISSUE_NUMBER="42", REPO="owner/repo")
     (design / ".pause-requested").write_text("", encoding="utf-8")
@@ -2178,11 +2186,15 @@ def test_step5c_core_pause_requested_emits_step5c_status(
         return 0
 
     monkeypatch.setattr(design_pause, "pause_save_main", fake_pause)
-    rc, _ = design_lifecycle.step5c_core(["--session-env-path", str(env_path), "--claude-pid", "123"])
-    out = capsys.readouterr().out
+    rc, contract, _ = _capture_core_contract(
+        design_lifecycle.step5c_core,
+        ["--session-env-path", str(env_path), "--claude-pid", "123"],
+        tmp_path,
+        monkeypatch,
+    )
     assert rc == 0
-    assert "STEP5C_STATUS=pause-save" in out
-    assert "PAUSE_OK=true" in out
+    assert "STEP5C_STATUS=pause-save" in contract
+    assert "PAUSE_OK=true" in contract
     assert not (design / ".completed" / "step-5c-terminal").exists()
 
 
@@ -2244,7 +2256,6 @@ def test_step5c_core_assembles_publish_argv_and_cleans_bg_marker(
 def test_step5c_core_rc1_uses_stdout_over_stale_primary_and_binds_final_summary_path(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
 ) -> None:
     design, env_path = _setup_step5c_design(tmp_path, monkeypatch, ISSUE_NUMBER="42")
     stale = design / ".design-publish-result.env"
@@ -2267,8 +2278,12 @@ def test_step5c_core_rc1_uses_stdout_over_stale_primary_and_binds_final_summary_
 
     monkeypatch.setattr(design_publish, "publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
-    rc, _ = design_lifecycle.step5c_core(["--session-env-path", str(env_path), "--claude-pid", "123"])
-    out = capsys.readouterr().out
+    rc, contract, _ = _capture_core_contract(
+        design_lifecycle.step5c_core,
+        ["--session-env-path", str(env_path), "--claude-pid", "123"],
+        tmp_path,
+        monkeypatch,
+    )
     assert rc == 0
     assert seen_env == [""]
     assert seen_argv == [
@@ -2291,7 +2306,7 @@ def test_step5c_core_rc1_uses_stdout_over_stale_primary_and_binds_final_summary_
     assert "PUBLISH_STDOUT_FALLBACK=true" in status
     assert "CLEANUP_ELIGIBLE=false" in status
     assert not (design / ".completed" / "step-5c").exists()
-    assert "current failed summary" in out
+    assert "current failed summary" in contract
 
 
 def test_step5c_core_rc3_stdout_fallback_keeps_success_path(
@@ -2321,7 +2336,6 @@ def test_step5c_core_rc3_stdout_fallback_keeps_success_path(
 def test_step5c_core_rc4_emits_validator_status_sidecars_and_no_markers(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
 ) -> None:
     design, env_path = _setup_step5c_design(tmp_path, monkeypatch, ISSUE_NUMBER="42")
     (design / ".design-publish-result.env").write_text("PLAN_WRITE_OK=true\nVALIDATE_STATUS=ok\n", encoding="utf-8")
@@ -2352,19 +2366,22 @@ def test_step5c_core_rc4_emits_validator_status_sidecars_and_no_markers(
 
     monkeypatch.setattr(design_publish, "publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fail_render)
-    rc, _ = design_lifecycle.step5c_core(["--session-env-path", str(env_path), "--claude-pid", "123"])
-    out = capsys.readouterr().out
+    rc, contract, _ = _capture_core_contract(
+        design_lifecycle.step5c_core,
+        ["--session-env-path", str(env_path), "--claude-pid", "123"],
+        tmp_path,
+        monkeypatch,
+    )
     assert rc == 0
-    assert "STEP5C_STATUS=validator-defects" in out
-    assert "REPORT_GATE_SIDECARS_FILE=" in out
-    assert "LARCH_FINAL_SUMMARY_BEGIN" not in out
+    assert "STEP5C_STATUS=validator-defects" in contract
+    assert "REPORT_GATE_SIDECARS_FILE=" in contract
+    assert "LARCH_FINAL_SUMMARY_BEGIN" not in contract
     assert "PLAN_WRITE_OK=false" in (design / ".design-step5c-status.env").read_text(encoding="utf-8")
 
 
 def test_step5c_core_publish_tail_abort_stages_renders_and_writes_terminal(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
 ) -> None:
     design, env_path = _setup_step5c_design(tmp_path, monkeypatch, ISSUE_NUMBER="42")
     (design / "design-failure-operator-action-chat.md").write_text("operator sidecar\n", encoding="utf-8")
@@ -2380,8 +2397,12 @@ def test_step5c_core_publish_tail_abort_stages_renders_and_writes_terminal(
 
     monkeypatch.setattr(design_publish, "publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
-    rc, _ = design_lifecycle.step5c_core(["--session-env-path", str(env_path), "--claude-pid", "123"])
-    out = capsys.readouterr().out
+    rc, contract, _ = _capture_core_contract(
+        design_lifecycle.step5c_core,
+        ["--session-env-path", str(env_path), "--claude-pid", "123"],
+        tmp_path,
+        monkeypatch,
+    )
     assert rc == 1
     assert (design / "design-failure-terminal-state.env").is_file()
     assert "FAILURE_OUTCOME=failed-publish-tail" in (design / "design-failure-terminal-state.env").read_text(encoding="utf-8")
@@ -2391,8 +2412,8 @@ def test_step5c_core_publish_tail_abort_stages_renders_and_writes_terminal(
     assert stderr_log.is_file()
     assert stdout_log.stat().st_size > 0
     assert (design / ".completed" / "step-5c-terminal").is_file()
-    assert "LARCH_FINAL_SUMMARY_BEGIN\nabort summary\nLARCH_FINAL_SUMMARY_END" in out
-    assert "REPORT_GATE_SIDECARS_FILE=" in out
+    assert "LARCH_FINAL_SUMMARY_BEGIN\nabort summary\nLARCH_FINAL_SUMMARY_END" in contract
+    assert "REPORT_GATE_SIDECARS_FILE=" in contract
 
 
 @pytest.mark.parametrize(
@@ -2473,7 +2494,6 @@ def test_step5c_core_empty_session_id_publish_success_is_cleanup_eligible(
 def test_step5c_core_publish_tail_abort_rc5_stages_and_writes_terminal(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
 ) -> None:
     design, env_path = _setup_step5c_design(tmp_path, monkeypatch, ISSUE_NUMBER="42")
 
@@ -2488,8 +2508,12 @@ def test_step5c_core_publish_tail_abort_rc5_stages_and_writes_terminal(
 
     monkeypatch.setattr(design_publish, "publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
-    rc, _ = design_lifecycle.step5c_core(["--session-env-path", str(env_path), "--claude-pid", "123"])
-    out = capsys.readouterr().out
+    rc, contract, _ = _capture_core_contract(
+        design_lifecycle.step5c_core,
+        ["--session-env-path", str(env_path), "--claude-pid", "123"],
+        tmp_path,
+        monkeypatch,
+    )
     assert rc == 1
     assert (design / "design-failure-terminal-state.env").is_file()
     stdout_log = design / "design-stage-terminal-state.stdout.log"
@@ -2498,13 +2522,12 @@ def test_step5c_core_publish_tail_abort_rc5_stages_and_writes_terminal(
     assert stderr_log.is_file()
     assert stdout_log.stat().st_size > 0
     assert (design / ".completed" / "step-5c-terminal").is_file()
-    assert "LARCH_FINAL_SUMMARY_BEGIN\nabort summary\nLARCH_FINAL_SUMMARY_END" in out
+    assert "LARCH_FINAL_SUMMARY_BEGIN\nabort summary\nLARCH_FINAL_SUMMARY_END" in contract
 
 
 def test_step5c_core_success_without_final_summary_skips_markers(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
 ) -> None:
     design, env_path = _setup_step5c_design(tmp_path, monkeypatch, ISSUE_NUMBER="42")
     stale = design / "final-summary.md"
@@ -2522,16 +2545,19 @@ def test_step5c_core_success_without_final_summary_skips_markers(
 
     monkeypatch.setattr(design_publish, "publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
-    rc, _ = design_lifecycle.step5c_core(["--session-env-path", str(env_path), "--claude-pid", "123"])
-    out = capsys.readouterr().out
+    rc, contract, _ = _capture_core_contract(
+        design_lifecycle.step5c_core,
+        ["--session-env-path", str(env_path), "--claude-pid", "123"],
+        tmp_path,
+        monkeypatch,
+    )
     assert rc == 0
-    assert "LARCH_FINAL_SUMMARY_BEGIN" not in out
+    assert "LARCH_FINAL_SUMMARY_BEGIN" not in contract
 
 
 def test_step5c_core_success_clears_bound_stale_summary_before_render(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
 ) -> None:
     design, env_path = _setup_step5c_design(tmp_path, monkeypatch, ISSUE_NUMBER="42")
     summary = design / "summaries" / "current-summary.md"
@@ -2550,18 +2576,21 @@ def test_step5c_core_success_clears_bound_stale_summary_before_render(
 
     monkeypatch.setattr(design_publish, "publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
-    rc, _ = design_lifecycle.step5c_core(["--session-env-path", str(env_path), "--claude-pid", "123"])
-    out = capsys.readouterr().out
+    rc, contract, _ = _capture_core_contract(
+        design_lifecycle.step5c_core,
+        ["--session-env-path", str(env_path), "--claude-pid", "123"],
+        tmp_path,
+        monkeypatch,
+    )
     assert rc == 0
     assert not summary.exists()
-    assert "stale success summary" not in out
-    assert "LARCH_FINAL_SUMMARY_BEGIN" not in out
+    assert "stale success summary" not in contract
+    assert "LARCH_FINAL_SUMMARY_BEGIN" not in contract
 
 
 def test_step5c_core_render_failure_skips_stale_summary_markers(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
 ) -> None:
     design, env_path = _setup_step5c_design(tmp_path, monkeypatch, ISSUE_NUMBER="42")
     (design / "final-summary.md").write_text("stale summary\n", encoding="utf-8")
@@ -2577,16 +2606,19 @@ def test_step5c_core_render_failure_skips_stale_summary_markers(
 
     monkeypatch.setattr(design_publish, "publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
-    rc, _ = design_lifecycle.step5c_core(["--session-env-path", str(env_path), "--claude-pid", "123"])
-    out = capsys.readouterr().out
+    rc, contract, _ = _capture_core_contract(
+        design_lifecycle.step5c_core,
+        ["--session-env-path", str(env_path), "--claude-pid", "123"],
+        tmp_path,
+        monkeypatch,
+    )
     assert rc == 0
-    assert "LARCH_FINAL_SUMMARY_BEGIN" not in out
+    assert "LARCH_FINAL_SUMMARY_BEGIN" not in contract
 
 
 def test_step5c_core_captures_subprocess_stdout_from_publish_tail(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
 ) -> None:
     design, env_path = _setup_step5c_design(tmp_path, monkeypatch, ISSUE_NUMBER="42")
 
@@ -2603,12 +2635,130 @@ def test_step5c_core_captures_subprocess_stdout_from_publish_tail(
 
     monkeypatch.setattr(design_publish, "publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
-    rc, _ = design_lifecycle.step5c_core(["--session-env-path", str(env_path), "--claude-pid", "123"])
-    out = capsys.readouterr().out
+    rc, contract, _ = _capture_core_contract(
+        design_lifecycle.step5c_core,
+        ["--session-env-path", str(env_path), "--claude-pid", "123"],
+        tmp_path,
+        monkeypatch,
+    )
     assert rc == 0
-    assert "PUBLISH_RC=0" in out
-    assert "WRITTEN=true" not in out
-    assert "MODE=write" not in out
+    assert "PUBLISH_RC=0" in contract
+    assert "WRITTEN=true" not in contract
+    assert "MODE=write" not in contract
+
+
+def test_step5c_core_restores_env_ipc_keys_after_return(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    design, env_path = _setup_step5c_design(tmp_path, monkeypatch, ISSUE_NUMBER="42")
+    before = {
+        "FINAL_SUMMARY_PATH": os.environ.get("FINAL_SUMMARY_PATH"),
+        "SUMMARY_OUTCOME": os.environ.get("SUMMARY_OUTCOME"),
+    }
+
+    def fake_publish(_argv: list[str]) -> int:
+        print(_step5c_rows(design), end="")
+        return 0
+
+    def fake_render(_argv: list[str]) -> int:
+        (design / "final-summary.md").write_text("summary\n", encoding="utf-8")
+        return 0
+
+    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+
+    monkeypatch.setattr(design_publish, "publish_core", fake_publish)
+    monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
+    design_lifecycle.step5c_core(["--session-env-path", str(env_path), "--claude-pid", "123"])
+    after = {
+        "FINAL_SUMMARY_PATH": os.environ.get("FINAL_SUMMARY_PATH"),
+        "SUMMARY_OUTCOME": os.environ.get("SUMMARY_OUTCOME"),
+    }
+    assert after == before
+
+
+def test_step_final_summary_core_restores_env_ipc_keys_after_return(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    env_path = _write_session_env(tmp_path, tmp_path, monkeypatch, ISSUE_NUMBER="0", SUMMARY_OUTCOME="approved")
+    (tmp_path / "final-summary.md").write_text("summary\n", encoding="utf-8")
+    before = {
+        "FINAL_SUMMARY_PATH": os.environ.get("FINAL_SUMMARY_PATH"),
+        "SUMMARY_OUTCOME": os.environ.get("SUMMARY_OUTCOME"),
+    }
+
+    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+
+    def render_ok(_argv: list[str]) -> int:
+        return 0
+
+    monkeypatch.setattr(design_summary, "render_final_summary_main", render_ok)
+    design_lifecycle.step_final_summary_core(["--session-env-path", str(env_path), "--claude-pid", "123", "--outcome", "approved"])
+    after = {
+        "FINAL_SUMMARY_PATH": os.environ.get("FINAL_SUMMARY_PATH"),
+        "SUMMARY_OUTCOME": os.environ.get("SUMMARY_OUTCOME"),
+    }
+    assert after == before
+
+
+def test_step5c_core_publish_design_tmpdir_matches_ctx_on_symlinked_session_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    real_design = tmp_path / "real-design"
+    (real_design / ".completed").mkdir(parents=True)
+    (real_design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    (real_design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
+    link_parent = tmp_path / "link-parent"
+    link_parent.mkdir()
+    symlink_design = link_parent / "design-link"
+    symlink_design.symlink_to(real_design)
+    env_path = tmp_path / "source-env.sh"
+    env_path.write_text(
+        "\n".join(
+            [
+                f"export DESIGN_TMPDIR={symlink_design}",
+                "export SESSION_ID=run-1",
+                f"export CLAUDE_PLUGIN_ROOT={CLI.parent.parent}",
+                "export ISSUE_NUMBER=42",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("DESIGN_TMPDIR", str(symlink_design))
+    seen: list[list[str]] = []
+
+    def fake_publish(argv: list[str]) -> int:
+        seen.append(argv)
+        print(_step5c_rows(real_design), end="")
+        return 0
+
+    def fake_render(_argv: list[str]) -> int:
+        (real_design / "final-summary.md").write_text("summary\n", encoding="utf-8")
+        return 0
+
+    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+
+    monkeypatch.setattr(design_publish, "publish_core", fake_publish)
+    monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
+    rc, _ = design_lifecycle.step5c_core(["--session-env-path", str(env_path), "--claude-pid", "123"])
+    assert rc == 0
+    assert seen
+    publish_tmpdir = seen[0][seen[0].index("--design-tmpdir") + 1]
+    assert Path(publish_tmpdir).resolve() == real_design.resolve()
+
+
+def test_step_final_summary_main_does_not_call_quiet_init(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    env_path = _write_session_env(tmp_path, tmp_path, monkeypatch, ISSUE_NUMBER="0", SUMMARY_OUTCOME="approved")
+    quiet_argv0s: list[str | None] = []
+
+    def track_quiet_init(*, argv0: str | None = None) -> None:
+        quiet_argv0s.append(argv0)
+
+    def fake_core(_argv: list[str]) -> tuple[int, list[str]]:
+        return 0, []
+
+    monkeypatch.setattr(logging_util, "quiet_init", track_quiet_init)
+    monkeypatch.setattr(design_lifecycle, "step_final_summary_core", fake_core)
+    rc = design_lifecycle.step_final_summary_main(["--session-env-path", str(env_path), "--claude-pid", "123", "--outcome", "approved"])
+    assert rc == 0
+    assert not quiet_argv0s
 
 
 def test_step5c_main_machine_rows_visible_under_inherited_quiet(

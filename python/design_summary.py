@@ -299,6 +299,8 @@ def render_final_summary_main(argv: Sequence[str]) -> int:
     design_tmpdir_arg = ""
     issue_number_arg = ""
     session_id_arg = ""
+    issue_number_set = False
+    session_id_set = False
     phase = "post"
     i = 0
     while i < len(argv):
@@ -317,9 +319,11 @@ def render_final_summary_main(argv: Sequence[str]) -> int:
             i += 2
         elif a == "--issue-number" and i + 1 < len(argv):
             issue_number_arg = argv[i + 1]
+            issue_number_set = True
             i += 2
         elif a == "--session-id" and i + 1 < len(argv):
             session_id_arg = argv[i + 1]
+            session_id_set = True
             i += 2
         elif a == "--pre-publish-only":
             phase = "pre"
@@ -345,8 +349,8 @@ def render_final_summary_main(argv: Sequence[str]) -> int:
         print(f"design render-final-summary: outcome not in enumeration: {outcome}", file=sys.stderr)
         return 2
 
-    run_id = session_id_arg or os.environ.get("SESSION_ID", "") or "unknown"
-    issue = issue_number_arg or os.environ.get("ISSUE_NUMBER", "") or ""
+    run_id = session_id_arg if session_id_set else (os.environ.get("SESSION_ID", "") or "unknown")
+    issue = issue_number_arg if issue_number_set else (os.environ.get("ISSUE_NUMBER", "") or "")
 
     issue_url = "N/A"
     if issue and issue != "0" and repo and "/" in repo:

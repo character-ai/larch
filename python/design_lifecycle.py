@@ -1296,7 +1296,7 @@ def step_final_summary_core(argv: Sequence[str]) -> tuple[int, list[str]]:
         os.environ["DESIGN_TMPDIR"] = str(design_tmpdir)
         normalized_overrides = {config.ENV_DESIGN_TMPDIR: str(design_tmpdir)}
         logging_util.quiet_init(argv0="design-step-final-summary.sh")
-        ctx = Ctx.from_mapping({**env, **os.environ, **normalized_overrides})
+        ctx = Ctx.from_mapping({**os.environ, **env, **normalized_overrides})
         final_summary_path = ctx.final_summary_path or str(design_tmpdir / "final-summary.md")
         if (design_tmpdir / ".pause-requested").is_file():
             return _call_pause_save(design_tmpdir, ctx), []
@@ -3717,7 +3717,7 @@ def _step5c_stage_failed_publish_tail(design_tmpdir: Path, plugin_root: Path, pu
 
 def _step5c_write_status(
     design_tmpdir: Path,
-    env: Mapping[str, str],
+    ctx: Ctx,
     *,
     publish_rc: int | str,
     publish_stdout_fallback: bool,
@@ -3729,8 +3729,8 @@ def _step5c_write_status(
         [
             f"PLAN_WRITE_OK={plan_write_ok}",
             f"PUBLISH_OK={publish_ok}",
-            f"STANDALONE_HEAVY_FAILED={env.get('STANDALONE_HEAVY_FAILED', '')}",
-            f"SESSION_ID={env.get('SESSION_ID', '')}",
+            f"STANDALONE_HEAVY_FAILED={ctx.str_value('STANDALONE_HEAVY_FAILED', '')}",
+            f"SESSION_ID={ctx.session_id}",
             f"PUBLISH_RC={publish_rc}",
             f"PUBLISH_STDOUT_FALLBACK={'true' if publish_stdout_fallback else 'false'}",
             f"CLEANUP_ELIGIBLE={'true' if cleanup_eligible else 'false'}",
@@ -3782,7 +3782,7 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
         if req != 0:
             return req, []
         plugin_root = Path(os.environ["CLAUDE_PLUGIN_ROOT"])
-        ctx = Ctx.from_mapping({**env, **os.environ, **normalized_overrides})
+        ctx = Ctx.from_mapping({**os.environ, **env, **normalized_overrides})
         write_terminal_sentinel = True
         if not (design_tmpdir / ".completed" / "step-5b").is_file():
             _core_diagnostic("**⚠ Step 5c: missing .completed/step-5b — OOS filing incomplete; repair Step 5b before publish**")
@@ -3833,7 +3833,7 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
                 if publish_rc == 2 or publish_rc not in {0, 1, 3, 4}:
                     _step5c_write_status(
                         design_tmpdir,
-                        env,
+                        ctx,
                         publish_rc=publish_rc,
                         publish_stdout_fallback=False,
                         plan_write_ok="",
@@ -3865,12 +3865,12 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
                     _touch(design_tmpdir / ".completed" / "step-5c")
                 cleanup_eligible = (
                     plan_write_ok == "true"
-                    and env.get("STANDALONE_HEAVY_FAILED", "false") != "true"
-                    and (not env.get("SESSION_ID", "") or publish_ok == "true")
+                    and ctx.str_value("STANDALONE_HEAVY_FAILED", "false") != "true"
+                    and (not ctx.session_id or publish_ok == "true")
                 )
                 _step5c_write_status(
                     design_tmpdir,
-                    env,
+                    ctx,
                     publish_rc=publish_rc,
                     publish_stdout_fallback=stdout_fallback,
                     plan_write_ok=plan_write_ok,

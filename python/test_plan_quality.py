@@ -367,6 +367,31 @@ def test_validator_autofix_pause_short_circuits(tmp_path: Path, monkeypatch: pyt
     assert called
 
 
+def test_validator_autofix_pause_save_uses_resolved_design_tmpdir_on_symlink(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    real = tmp_path / "real-design"
+    real.mkdir()
+    (real / ".pause-requested").write_text("", encoding="utf-8")
+    link = tmp_path / "link-design"
+    link.symlink_to(real)
+    seen: list[str] = []
+
+    def fake_pause(ctx: object | None = None) -> int:
+        from ctx import Ctx  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+
+        assert isinstance(ctx, Ctx)
+        seen.append(ctx.design_tmpdir)
+        return 11
+
+    monkeypatch.setattr(plan_quality, "_validator_pause_save", fake_pause)
+    monkeypatch.setenv("DESIGN_TMPDIR", str(link))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(REPO_ROOT))
+    assert plan_quality.validator_autofix_main([]) == 11
+    assert Path(seen[0]).resolve() == real.resolve()
+
+
 def test_validator_autofix_rejects_missing_design_tmpdir(capsys: pytest.CaptureFixture[str]) -> None:
     rc = plan_quality.validator_autofix_main([])
     err = capsys.readouterr().err

@@ -303,6 +303,9 @@ def _staged_fingerprint_valid(
     stored_fp = metadata.get("DIFF_FINGERPRINT", "")
     if not stored_fp:
         return False
+    resolved_base = (base_ref or metadata.get("BASE_REF", "")).strip()
+    if repo_root is not None and resolved_base:
+        return _live_fingerprint_matches(repo_root, resolved_base, stored_fp)
     diff_path = _diff_path(implement_tmpdir)
     if diff_path.is_file() and not diff_path.is_symlink():
         try:
@@ -310,8 +313,7 @@ def _staged_fingerprint_valid(
         except OSError:
             return False
         return diff_fingerprint(snapshot_text) == stored_fp
-    resolved_base = (base_ref or metadata.get("BASE_REF", "")).strip()
-    return _live_fingerprint_matches(repo_root, resolved_base, stored_fp)
+    return False
 
 
 def pin_note_from_staged(
@@ -397,26 +399,17 @@ def note_fingerprint_stale(
     stored_fp = meta.get("DIFF_FINGERPRINT", "")
     if not stored_fp or not base_ref:
         return False
+    root = Path(repo_root).resolve() if repo_root is not None else None
+    if root is not None:
+        return not _live_fingerprint_matches(root, base_ref, stored_fp)
     diff_path = _diff_path(implement_tmpdir)
     if diff_path.is_file() and not diff_path.is_symlink():
         try:
             snapshot_text = diff_path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             return True
-        if diff_fingerprint(snapshot_text) == stored_fp:
-            return False
-    root = Path(repo_root).resolve() if repo_root is not None else None
-    if root is None:
-        return True
-    remote, ref = base_ref.split("/", 1) if "/" in base_ref else ("origin", base_ref)
-    try:
-        current_fp = diff_fingerprint(
-            materialize_implementation_diff(root, base_remote=remote, base_ref=ref),
-        )
-    except RuntimeError as exc:
-        print(f"ARCHITECTURAL_GUIDELINES_WARNING={str(exc).replace(chr(10), ' ')}", file=sys.stderr)
-        return True
-    return current_fp != stored_fp
+        return diff_fingerprint(snapshot_text) != stored_fp
+    return True
 
 
 def _bool_arg(value: str) -> bool:
