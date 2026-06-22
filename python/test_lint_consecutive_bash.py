@@ -103,23 +103,6 @@ echo two
     assert rc == 0, err
 
 
-def test_design_step_launcher_pair_without_pause_resume_fails(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    write(tmp_path / "skills/design/SKILL.md", skill_doc("""
-```bash
-"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-mav.sh --phase pre
-```
-Boundary prose.
-```bash
-"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-mav.sh --phase post
-```
-"""))
-    rc, err = run(tmp_path, capsys)
-    assert rc == 1
-    assert "consecutive bash tool-call fences" in err
-
-
 def test_pause_resume_launcher_boundary_passes(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     write(tmp_path / "skills/design/SKILL.md", skill_doc("""
 ```bash

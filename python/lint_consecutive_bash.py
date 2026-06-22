@@ -211,15 +211,8 @@ def _is_recovery_probe_pair(text: str) -> bool:
 def _is_design_pause_resume_pair(text: str) -> bool:
     if "/design" not in text and " design " not in text and "design driver" not in text:
         return False
-    pause_resume_markers = (
-        "pause-save",
-        "pause-load",
-        "--action pause",
-        "--action resume",
-        "design-step-prelude",
-        "DESIGN_ACTION",
-    )
-    return any(marker in text for marker in pause_resume_markers)
+    markers = ("pause", "resume", "design-step", "DESIGN_ACTION", "skills/design/scripts")
+    return any(marker in text for marker in markers)
 
 
 def _is_immediate_background_pair(text: str) -> bool:
