@@ -103,3 +103,153 @@ def test_main_rejects_run_dir_outside_impl_root(
     assert rc == 1
     assert victim.exists(), "guard must block deletion outside larch-logs/implement/"
     assert "--run-dir must resolve to a path inside" in capsys.readouterr().err
+
+
+# ---------------------------------------------------------------------------
+# Inner-symlink containment (escaping symlinks *inside* a run dir)
+# ---------------------------------------------------------------------------
+
+def _run_and_external(tmp_path: Path) -> tuple[Path, Path]:
+    """Return (run_dir, external_dir) for inner-symlink containment tests."""
+    run_dir = tmp_path / "larch-logs" / "implement" / "0199-RUN"
+    run_dir.mkdir(parents=True)
+    external = tmp_path / "external"
+    external.mkdir()
+    return run_dir, external
+
+
+def test_within_run_dir_accepts_inside_and_rejects_escape(tmp_path: Path) -> None:
+    run_dir, external = _run_and_external(tmp_path)
+    inside = run_dir / "a" / "b.txt"
+    inside.parent.mkdir()
+    inside.write_text("x\n", encoding="utf-8")
+    assert cil._within_run_dir(inside, run_dir.resolve())  # pyright: ignore[reportPrivateUsage]
+
+    target = external / "f"
+    target.write_text("y\n", encoding="utf-8")
+    link = run_dir / "link"
+    link.symlink_to(target)
+    assert not cil._within_run_dir(link, run_dir.resolve())  # pyright: ignore[reportPrivateUsage]
+
+
+def test_delete_dyn_prompts_skips_symlink_escape(tmp_path: Path) -> None:
+    # A dyn-*-prompt.md symlink inside the run dir that points outside it must be
+    # left untouched, not followed and unlinked.
+    run_dir, external = _run_and_external(tmp_path)
+    victim = external / "dyn-evil-prompt.md"
+    victim.write_text("do not delete\n", encoding="utf-8")
+    (run_dir / "dyn-evil-prompt.md").symlink_to(victim)
+
+    stats = cil.Stats()
+    cil.delete_dyn_prompts(run_dir, execute=True, stats=stats)
+
+    assert victim.exists(), "escaping symlink target must survive"
+    assert stats.dyn_prompt_deleted == 0
+
+
+def test_upgrade_transcripts_skips_symlink_escape(tmp_path: Path) -> None:
+    # session-transcript.jsonl as an escaping symlink would be read and rewritten
+    # in place, corrupting the external file. The guard must skip it.
+    run_dir, external = _run_and_external(tmp_path)
+    external_target = external / "session-transcript.jsonl"
+    original = '{"v":1}\n{"role":"user","blocks":[]}\n'
+    external_target.write_text(original, encoding="utf-8")
+    (run_dir / "session-transcript.jsonl").symlink_to(external_target)
+
+    stats = cil.Stats()
+    cil.upgrade_transcripts(run_dir, execute=True, stats=stats)
+
+    assert external_target.read_text(encoding="utf-8") == original, (
+        "must not write through an escaping symlink"
+    )
+    assert stats.transcript_upgraded == 0
+
+
+def test_strip_tally_body_skips_symlink_escape(tmp_path: Path) -> None:
+    run_dir, external = _run_and_external(tmp_path)
+    external_target = external / "code-review-tally.json"
+    original = '[{"body":"keep","x":1}]'
+    external_target.write_text(original, encoding="utf-8")
+    (run_dir / "code-review-tally.json").symlink_to(external_target)
+
+    stats = cil.Stats()
+    cil.strip_tally_body(run_dir, execute=True, stats=stats)
+
+    assert external_target.read_text(encoding="utf-8") == original, (
+        "must not write through an escaping symlink"
+    )
+    assert stats.tally_body_stripped == 0
+
+
+def test_consolidate_breadcrumbs_skips_symlinked_dir(tmp_path: Path) -> None:
+    # breadcrumbs/ itself as a symlink to an external dir would make the
+    # consolidation read/write/unlink inside that external dir.
+    run_dir, external = _run_and_external(tmp_path)
+    ext_log = external / "larch-quiet-1.log"
+    ext_log.write_text("external\n", encoding="utf-8")
+    (run_dir / "breadcrumbs").symlink_to(external, target_is_directory=True)
+
+    stats = cil.Stats()
+    cil.consolidate_breadcrumbs(run_dir, execute=True, stats=stats)
+
+    assert ext_log.exists(), "external breadcrumb file must survive"
+    assert not (external / "quiet.log").exists(), "must not write quiet.log into external dir"
+    assert stats.breadcrumbs_consolidated == 0
+
+
+def test_consolidate_breadcrumbs_skips_symlinked_log_entry(tmp_path: Path) -> None:
+    # An escaping larch-quiet-*.log symlink must not be read into quiet.log, but
+    # real sibling breadcrumb files are still consolidated.
+    run_dir, external = _run_and_external(tmp_path)
+    bc = run_dir / "breadcrumbs"
+    bc.mkdir()
+    secret = external / "secret.log"
+    secret.write_text("SECRET\n", encoding="utf-8")
+    (bc / "larch-quiet-escape.log").symlink_to(secret)
+    (bc / "larch-quiet-1.log").write_text("real breadcrumb\n", encoding="utf-8")
+
+    stats = cil.Stats()
+    cil.consolidate_breadcrumbs(run_dir, execute=True, stats=stats)
+
+    quiet = bc / "quiet.log"
+    assert secret.exists(), "external symlink target must survive"
+    body = quiet.read_text(encoding="utf-8")
+    assert "SECRET" not in body, "must not read external content through an escaping symlink"
+    assert "real breadcrumb" in body, "real sibling breadcrumb must still be consolidated"
+
+
+def test_consolidate_breadcrumbs_skips_symlinked_quiet_log(tmp_path: Path) -> None:
+    # quiet.log planted as a symlink to a (non-existent) external path would make
+    # write_text() create/overwrite that external file. The guard must refuse.
+    run_dir, external = _run_and_external(tmp_path)
+    bc = run_dir / "breadcrumbs"
+    bc.mkdir()
+    (bc / "larch-quiet-1.log").write_text("real\n", encoding="utf-8")
+    external_quiet = external / "quiet-target.log"
+    (bc / "quiet.log").symlink_to(external_quiet)
+
+    stats = cil.Stats()
+    cil.consolidate_breadcrumbs(run_dir, execute=True, stats=stats)
+
+    assert not external_quiet.exists(), (
+        "must not create/write an external file through a symlinked quiet.log"
+    )
+    assert stats.breadcrumbs_consolidated == 0
+
+
+def test_process_run_dir_leaves_external_tree_intact(tmp_path: Path) -> None:
+    # End-to-end: a run dir seeded with several escaping symlinks must leave the
+    # entire external tree untouched after a full process_run_dir pass.
+    run_dir, external = _run_and_external(tmp_path)
+    ext_prompt = external / "dyn-x-prompt.md"
+    ext_prompt.write_text("ext prompt\n", encoding="utf-8")
+    ext_tally = external / "code-review-tally.json"
+    ext_tally.write_text('[{"body":"keep"}]', encoding="utf-8")
+    (run_dir / "dyn-x-prompt.md").symlink_to(ext_prompt)
+    (run_dir / "code-review-tally.json").symlink_to(ext_tally)
+
+    stats = cil.Stats()
+    cil.process_run_dir(run_dir, execute=True, stats=stats)
+
+    assert ext_prompt.read_text(encoding="utf-8") == "ext prompt\n"
+    assert ext_tally.read_text(encoding="utf-8") == '[{"body":"keep"}]'
