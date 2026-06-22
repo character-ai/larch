@@ -452,6 +452,51 @@ def test_cursor_model_args_uses_plugin_option(monkeypatch: pytest.MonkeyPatch) -
     assert agents.resolve_model_args("cursor", with_effort=True).argv == ("--model", "cursor-test-model")
 
 
+def test_resolve_model_args_ctx_absent_primary_uses_plugin_fallback() -> None:
+    from ctx import Ctx  # noqa: PLC0415
+
+    ctx = Ctx.from_mapping({config.ENV_CLAUDE_PLUGIN_OPTION_CODEX_MODEL: "plugin-model"})
+    assert agents.resolve_model_args("codex", ctx=ctx).argv == ("-m", "plugin-model")
+
+
+def test_resolve_model_args_ctx_empty_primary_rejects_blank() -> None:
+    from ctx import Ctx  # noqa: PLC0415
+
+    ctx = Ctx.from_mapping({config.ENV_LARCH_CODEX_MODEL: "   "})
+    with pytest.raises(ValueError, match="blank"):
+        agents.resolve_model_args("codex", ctx=ctx)
+
+
+def test_resolve_model_args_ctx_primary_wins_over_plugin() -> None:
+    from ctx import Ctx  # noqa: PLC0415
+
+    ctx = Ctx.from_mapping(
+        {
+            config.ENV_LARCH_CODEX_MODEL: "primary-model",
+            config.ENV_CLAUDE_PLUGIN_OPTION_CODEX_MODEL: "plugin-model",
+        }
+    )
+    assert agents.resolve_model_args("codex", ctx=ctx).argv == ("-m", "primary-model")
+
+
+def test_run_external_agent_inner_sentinel_suffix_ctx_override(tmp_path: Path) -> None:
+    from ctx import Ctx  # noqa: PLC0415
+
+    output = tmp_path / "agent.out"
+    ctx = Ctx.from_mapping({config.ENV_RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX: ".ctx.done"})
+    result = agents.run_external_agent(
+        tool="claude",
+        output=str(output),
+        timeout_seconds=5,
+        cmd=[sys.executable, "-c", "print('ok')"],
+        capture_stdout_only=True,
+        ctx=ctx,
+    )
+    assert result.exit_code == 0
+    assert output.with_suffix(output.suffix + ".ctx.done").is_file()
+    assert not output.with_suffix(output.suffix + ".done").exists()
+
+
 def test_cursor_wrap_prompt_exact_stdout(capsys: pytest.CaptureFixture[str]) -> None:
     rc = agents.cursor_wrap_prompt_main(["hello"])
     assert rc == 0

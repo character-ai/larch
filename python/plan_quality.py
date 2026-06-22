@@ -2369,9 +2369,9 @@ def validator_autofix_main(argv: list[str]) -> int:
         if append.returncode != 0:
             status = "failed"
             attempted.unlink(missing_ok=True)
-    print(f"AUTOFIX_STATUS={status}")
-    print(f"FIXED_BY={fixed_by}")
-    print(f"ORIGINAL_VALIDATE_LOG_FILE={log_file}")
+    emit_kv("AUTOFIX_STATUS", status)
+    emit_kv("FIXED_BY", fixed_by)
+    emit_kv("ORIGINAL_VALIDATE_LOG_FILE", log_file)
     _record_validator_escalation(status, autofix_rc, log_file, ctx)
     _validator_operator_cancel_audit(ctx=ctx)
     return 0

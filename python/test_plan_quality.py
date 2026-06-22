@@ -11,6 +11,7 @@ import pytest
 
 import logging_util
 import plan_quality
+import config
 
 CLI = Path(__file__).with_name("cli.py")
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -1760,6 +1761,96 @@ def test_check_plan_size_hard_trigger_fires(tmp_path: Path) -> None:
     out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
     assert out["SIZE_TRIGGER_FIRED"] == "true"
     assert "plan-body-lines" in out["TRIGGER_REASONS"]
+
+
+@pytest.mark.parametrize("env_value", ["0", "-1", "bad", ""])
+def test_check_plan_size_invalid_drift_multiple_falls_back_to_two(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    env_value: str,
+) -> None:
+    (tmp_path / "plan.txt").write_text("line\n" * 4 + "diff_lines: 4\n", encoding="utf-8")
+    monkeypatch.setenv(config.ENV_LARCH_DESIGN_DRIFT_MULTIPLE, env_value)
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    assert plan_quality.check_plan_size_main(["--design-tmpdir", str(tmp_path)]) == 0
+    out = capsys.readouterr().out
+    assert "DRIFT_MULTIPLE=2" in out
+
+
+def test_validate_plan_argv_design_tmpdir_wins_over_stale_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    good = tmp_path / "good"
+    good.mkdir()
+    stale = tmp_path / "stale"
+    stale.mkdir()
+    plan = good / "plan.txt"
+    plan.write_text("diff_lines: 1\n", encoding="utf-8")
+    monkeypatch.setenv("DESIGN_TMPDIR", str(stale))
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    assert plan_quality.validate_plan_main(["--plan-file", str(plan), "--design-tmpdir", str(good)]) == 0
+    out = capsys.readouterr().out
+    assert str(good / "validate-plan-commands.log") in out
+    assert not (stale / "validate-plan-commands.log").exists()
+
+
+def test_check_plan_size_argv_design_tmpdir_wins_over_stale_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    good = tmp_path / "good"
+    good.mkdir()
+    stale = tmp_path / "stale"
+    stale.mkdir()
+    (good / "plan.txt").write_text("line\n" * 4 + "diff_lines: 4\n", encoding="utf-8")
+    monkeypatch.setenv("DESIGN_TMPDIR", str(stale))
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    assert plan_quality.check_plan_size_main(["--design-tmpdir", str(good)]) == 0
+    out = capsys.readouterr().out
+    assert "PLAN_LINES=4" in out
+    assert (good / "drift-baseline.env").is_file()
+    assert not (stale / "drift-baseline.env").exists()
+
+
+def test_validate_plan_main_does_not_rehydrate_validator_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    called = False
+
+    def fake_rehydrate(_parsed: object) -> dict[str, str]:
+        nonlocal called
+        called = True
+        return {}
+
+    monkeypatch.setattr(plan_quality, "_rehydrate_validator_env", fake_rehydrate)
+    plan = tmp_path / "plan.txt"
+    plan.write_text("diff_lines: 1\n", encoding="utf-8")
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    assert plan_quality.validate_plan_main(["--plan-file", str(plan), "--repo-root", str(REPO_ROOT)]) == 0
+    assert not called
+
+
+def test_check_plan_size_main_does_not_rehydrate_validator_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    called = False
+
+    def fake_rehydrate(_parsed: object) -> dict[str, str]:
+        nonlocal called
+        called = True
+        return {}
+
+    monkeypatch.setattr(plan_quality, "_rehydrate_validator_env", fake_rehydrate)
+    (tmp_path / "plan.txt").write_text("line\n" * 4 + "diff_lines: 4\n", encoding="utf-8")
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    assert plan_quality.check_plan_size_main(["--design-tmpdir", str(tmp_path)]) == 0
+    assert not called
 
 
 def test_validate_plan_missing_plan_file_returns_rc2(tmp_path: Path) -> None:

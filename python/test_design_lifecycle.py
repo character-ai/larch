@@ -608,7 +608,7 @@ def test_failure_report_core_sentinel_and_cancellation_paths(tmp_path: Path) -> 
     assert (tmp_path / "design-failure-operator-action-chat.md").is_file()
 
 
-def test_step_final_summary_core_emits_markers_and_cleans_bg_marker(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_step_final_summary_core_emits_markers_and_cleans_bg_marker(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     env_path = _write_session_env(tmp_path, tmp_path, monkeypatch, ISSUE_NUMBER="0", SUMMARY_OUTCOME="approved")
     (tmp_path / "final-summary.md").write_text("summary without newline", encoding="utf-8")
 
@@ -619,11 +619,15 @@ def test_step_final_summary_core_emits_markers_and_cleans_bg_marker(tmp_path: Pa
     import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
-    rc, _ = design_lifecycle.step_final_summary_core(["--session-env-path", str(env_path), "--claude-pid", "123", "--outcome", "approved"])
-    out = capsys.readouterr().out
+    rc, contract, _ = _capture_core_contract(
+        design_lifecycle.step_final_summary_core,
+        ["--session-env-path", str(env_path), "--claude-pid", "123", "--outcome", "approved"],
+        tmp_path,
+        monkeypatch,
+    )
     assert rc == 0
-    assert "LARCH_FINAL_SUMMARY_BEGIN" in out
-    assert "summary without newline\nLARCH_FINAL_SUMMARY_END" in out
+    assert "LARCH_FINAL_SUMMARY_BEGIN" in contract
+    assert "summary without newline\nLARCH_FINAL_SUMMARY_END" in contract
     assert not (tmp_path / ".bg-wait-active").exists()
     assert (tmp_path / ".completed" / "step-final-summary").is_file()
 
@@ -2001,6 +2005,21 @@ def test_step_final_summary_cli_subprocess_emits_markers_on_stdout(tmp_path: Pat
     assert "LARCH_FINAL_SUMMARY_END" in result.stdout
 
 
+def _capture_core_contract(
+    core_fn: Callable[..., tuple[int, list[str]]],
+    argv: list[str],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[int, str, str]:
+    monkeypatch.delenv(config.ENV_LARCH_QUIET_DISABLE, raising=False)
+    logging_util.reset_quiet_state()
+    out = tmp_path / "contract.stdout.log"
+    err = tmp_path / "contract.stderr.log"
+    rc = design_lifecycle.capture_contract_stream_to_paths(core_fn, out, err, argv)
+    logging_util.reset_quiet_state()
+    return rc, out.read_text(encoding="utf-8"), err.read_text(encoding="utf-8")
+
+
 def _setup_step5c_design(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, **extra: str) -> tuple[Path, Path]:
     design = tmp_path / "design"
     (design / ".completed").mkdir(parents=True)
@@ -2034,6 +2053,62 @@ def _step5c_rows(design: Path, *, plan_write_ok: str = "true", publish_ok: str =
             "",
         ]
     )
+
+
+def test_step5c_core_render_uses_ctx_snapshot_when_ambient_env_overrides_session(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    design, env_path = _setup_step5c_design(tmp_path, monkeypatch, ISSUE_NUMBER="42", SESSION_ID="run-1", REPO="owner/repo")
+    real_rehydrate = design_lifecycle._rehydrate_wrapper_env  # pyright: ignore[reportPrivateUsage]
+
+    def rehydrate_then_ambient_override(parsed: object) -> dict[str, str]:
+        env = real_rehydrate(parsed)  # type: ignore[arg-type]
+        os.environ["ISSUE_NUMBER"] = "999"
+        os.environ["SESSION_ID"] = "ambient-session"
+        os.environ["REPO"] = "ambient/repo"
+        return env
+
+    monkeypatch.setattr(design_lifecycle, "_rehydrate_wrapper_env", rehydrate_then_ambient_override)
+    seen_argv: list[list[str]] = []
+
+    def fake_publish(_argv: list[str]) -> int:
+        print(_step5c_rows(design), end="")
+        return 0
+
+    def fake_render(argv: list[str]) -> int:
+        seen_argv.append(list(argv))
+        (design / "final-summary.md").write_text("summary\n", encoding="utf-8")
+        return 0
+
+    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+
+    monkeypatch.setattr(design_publish, "publish_core", fake_publish)
+    monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
+    rc, _, _ = _capture_core_contract(
+        design_lifecycle.step5c_core,
+        ["--session-env-path", str(env_path), "--claude-pid", "123"],
+        tmp_path,
+        monkeypatch,
+    )
+    assert rc == 0
+    assert seen_argv == [
+        [
+            "--outcome",
+            "approved",
+            "--mode",
+            "N/A",
+            "--design-tmpdir",
+            str(design),
+            "--issue-number",
+            "999",
+            "--session-id",
+            "ambient-session",
+            "--post-publish-only",
+            "--repo",
+            "ambient/repo",
+        ]
+    ]
 
 
 def test_step5c_core_requires_design_tmpdir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2114,7 +2189,6 @@ def test_step5c_core_pause_requested_emits_step5c_status(
 def test_step5c_core_assembles_publish_argv_and_cleans_bg_marker(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
 ) -> None:
     design, env_path = _setup_step5c_design(tmp_path, monkeypatch, ISSUE_NUMBER="42", SESSION_ID="run-abc", REPO="owner/repo")
     seen: list[list[str]] = []
@@ -2136,8 +2210,12 @@ def test_step5c_core_assembles_publish_argv_and_cleans_bg_marker(
 
     monkeypatch.setattr(design_publish, "publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
-    rc, _ = design_lifecycle.step5c_core(["--session-env-path", str(env_path), "--claude-pid", "777", "--skip-validate"])
-    out = capsys.readouterr().out
+    rc, contract, _ = _capture_core_contract(
+        design_lifecycle.step5c_core,
+        ["--session-env-path", str(env_path), "--claude-pid", "777", "--skip-validate"],
+        tmp_path,
+        monkeypatch,
+    )
     assert rc == 0
     assert seen == [
         [
@@ -2157,9 +2235,9 @@ def test_step5c_core_assembles_publish_argv_and_cleans_bg_marker(
     assert not (design / ".bg-wait-active").exists()
     assert (design / ".completed" / "step-5c").is_file()
     assert (design / ".completed" / "step-5c-terminal").is_file()
-    assert "PUBLISH_RC=0" in out
-    assert "LARCH_FINAL_SUMMARY_BEGIN\nsummary body\nLARCH_FINAL_SUMMARY_END" in out
-    assert "unmarked render stdout" not in out
+    assert "PUBLISH_RC=0" in contract
+    assert "LARCH_FINAL_SUMMARY_BEGIN\nsummary body\nLARCH_FINAL_SUMMARY_END" in contract
+    assert "unmarked render stdout" not in contract
     assert "unmarked render stdout" in (design / "render-final-summary.approved.stdout.log").read_text(encoding="utf-8")
 
 
@@ -2569,6 +2647,43 @@ def test_step5c_main_machine_rows_visible_under_inherited_quiet(
         logging_util.reset_quiet_state()
     assert rc == 0
     assert "PUBLISH_RC=0" in contract
+
+
+def test_step_final_summary_main_machine_rows_visible_under_inherited_quiet(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    env_path = _write_session_env(tmp_path, tmp_path, monkeypatch, ISSUE_NUMBER="0", SUMMARY_OUTCOME="approved")
+    (tmp_path / "final-summary.md").write_text("summary body\n", encoding="utf-8")
+
+    def fake_render(argv: list[str]) -> int:
+        assert "--post-publish-only" in argv
+        return 0
+
+    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+
+    monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
+    monkeypatch.delenv(config.ENV_LARCH_QUIET_DISABLE, raising=False)
+    monkeypatch.setenv(config.ENV_LARCH_QUIET_ACTIVE, "1")
+    monkeypatch.setenv(config.ENV_LARCH_QUIET_PID, "999999")
+    logging_util.reset_quiet_state()
+    read_fd, write_fd = os.pipe()
+    saved_stdout = os.dup(1)
+    try:
+        os.dup2(write_fd, 1)
+        os.close(write_fd)
+        rc = design_lifecycle.step_final_summary_main(
+            ["--session-env-path", str(env_path), "--claude-pid", "123", "--outcome", "approved"],
+        )
+        os.dup2(saved_stdout, 1)
+        contract = os.read(read_fd, 65536).decode("utf-8")
+    finally:
+        os.close(read_fd)
+        os.close(saved_stdout)
+        logging_util.reset_quiet_state()
+    assert rc == 0
+    assert "LARCH_FINAL_SUMMARY_BEGIN" in contract
+    assert "LARCH_FINAL_SUMMARY_END" in contract
 
 
 def _write_step5c_status(
