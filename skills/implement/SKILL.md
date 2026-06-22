@@ -895,6 +895,8 @@ Before Step 16–17, when `architectural-guideline-staged-assessment.md` exists 
 bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-architectural-guidelines-pin-from-staged.sh
 ```
 
+Sibling contract: `skills/implement/scripts/step-architectural-guidelines-pin-from-staged.md`.
+
 Report unimplemented code review suggestions without reprinting the full findings inline.
 
 **Recover-then-report contract (issue #5011).** Steps 16, 16a, and 17 render the final report and run on the green terminal path and after a stall recovery has completed and re-entered the normal sequence. Stall paths and Step 12d bails set `STALL_TRACKING=true` and **skip to Step 18** so the Step 18a stall-recovery gate runs *first*. The final report then renders exactly once: at Step 18b for a terminal (unrecoverable) stall (where `.step17-emitted` is absent, so `final-report step18b` emits the body), or via this natural terminal pass when recovery succeeds and re-enters the pipeline. This prevents the premature `— stalled` report and the duplicate render that occur when the report is rendered before recovery.
