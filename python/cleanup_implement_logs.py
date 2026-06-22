@@ -439,6 +439,26 @@ def _resolve_single_run_dir(run_dir_arg: str, impl_root: Path) -> Path | None:
     return run_dir
 
 
+def _list_bulk_run_dirs(impl_root: Path) -> list[Path]:
+    """List run directories directly under impl_root for bulk cleanup.
+
+    Returns only real directories that stay inside ``impl_root``. An entry
+    that is a symlink resolving outside ``impl_root`` is skipped, so a planted
+    symlink cannot lure the destructive cleanup actions into following it and
+    deleting files outside the ``larch-logs/implement/`` tree. This applies the
+    same containment guard the ``--run-dir`` path uses via
+    :func:`_resolve_single_run_dir` (``d.is_dir()`` alone follows symlinks).
+    """
+    run_dirs: list[Path] = []
+    for entry in sorted(impl_root.iterdir()):
+        if not entry.is_dir():
+            continue
+        if _resolve_single_run_dir(str(entry), impl_root) is None:
+            continue
+        run_dirs.append(entry)
+    return run_dirs
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     _ = p.add_argument(
@@ -475,7 +495,7 @@ def main(argv: list[str] | None = None) -> int:
         if not impl_root.is_dir():
             print(f"ERROR: {impl_root} not found", file=sys.stderr)
             return 1
-        run_dirs = sorted(d for d in impl_root.iterdir() if d.is_dir())
+        run_dirs = _list_bulk_run_dirs(impl_root)
 
     total = len(run_dirs)
     for i, run_dir in enumerate(run_dirs, 1):

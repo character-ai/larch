@@ -55,6 +55,40 @@ def test_resolve_single_run_dir_rejects_symlink_escape(tmp_path: Path) -> None:
     assert cil._resolve_single_run_dir(str(link), impl_root) is None  # pyright: ignore[reportPrivateUsage]
 
 
+def test_list_bulk_run_dirs_includes_real_dirs(tmp_path: Path) -> None:
+    impl_root = _make_impl_root(tmp_path)
+    a = impl_root / "0199-RUN-A"
+    b = impl_root / "0199-RUN-B"
+    a.mkdir()
+    b.mkdir()
+    (impl_root / "stray-file.txt").write_text("not a dir\n", encoding="utf-8")
+
+    result = cil._list_bulk_run_dirs(impl_root)  # pyright: ignore[reportPrivateUsage]
+
+    assert result == [a, b]
+
+
+def test_list_bulk_run_dirs_skips_symlink_escape(tmp_path: Path) -> None:
+    # Bulk mode (no --run-dir) iterates impl_root.iterdir(). A symlink planted
+    # inside impl_root that resolves outside it must be excluded, or the
+    # destructive cleanup actions would follow it and delete files outside the
+    # larch-logs/implement/ tree. Mirrors the --run-dir containment guard.
+    impl_root = _make_impl_root(tmp_path)
+    real_run = impl_root / "0199-REAL-RUN"
+    real_run.mkdir()
+
+    outside = tmp_path / "outside-target"
+    outside.mkdir()
+    link = impl_root / "escape-link"
+    link.symlink_to(outside, target_is_directory=True)
+
+    result = cil._list_bulk_run_dirs(impl_root)  # pyright: ignore[reportPrivateUsage]
+
+    assert real_run in result
+    assert link not in result
+    assert all(d.resolve().is_relative_to(impl_root.resolve()) for d in result)
+
+
 def test_main_rejects_run_dir_outside_impl_root(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
