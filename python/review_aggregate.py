@@ -224,8 +224,23 @@ def _heading_line(block: str) -> str:
     return ""
 
 
+# Issue #5022: reviewer attribution can carry the "-output" artifact suffix (the reviewer output
+# file basename, e.g. cursor-specialist-correctness-output[.txt]) while the aggregator's merged
+# output names the bare slot (cursor-specialist-correctness). Canonicalize that artifact-suffix
+# family the same way python/progress_report.py:_progress_core_from_output does, so both spellings
+# reconcile to one slot key on both the input_slot_set and merge-output sides of validation. No
+# reviewer slot legitimately ends in these suffixes (specialists are <vendor>-specialist-<focus>;
+# voters use -vote), so stripping them cannot collapse two distinct slots.
+_SLOT_ARTIFACT_SUFFIXES = ("-output-ns-retry", "-output", "-ns-retry")
+
+
 def _normalize_slot(slot: str) -> str:
-    return re.sub(r"\s*\([^)]*\)\s*$", "", slot).strip()
+    base = re.sub(r"\s*\([^)]*\)\s*$", "", slot).strip()
+    base = base.removesuffix(".txt")
+    for suffix in _SLOT_ARTIFACT_SUFFIXES:
+        if base.endswith(suffix):
+            return base[: -len(suffix)]
+    return base
 
 
 def _finding_id_from_block(block: str) -> str | None:

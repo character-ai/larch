@@ -375,6 +375,125 @@ def test_validation_retry_prompt_is_failure_class_aware() -> None:
     assert "appears only on OOS-tagged input findings" not in generic_prompt
 
 
+def test_normalize_slot_reconciles_output_artifact_suffix() -> None:
+    # Issue #5022: reviewer attribution can carry the "-output" artifact suffix (the reviewer output
+    # file basename) while the aggregator's merged output names the bare slot. _normalize_slot must
+    # canonicalize the suffix family (mirroring progress_report._progress_core_from_output) so both
+    # spellings reconcile to one slot key. No real reviewer slot ends in these suffixes, so this
+    # cannot collapse two distinct slots.
+    assert review_aggregate._normalize_slot("cursor-specialist-correctness-output") == "cursor-specialist-correctness"
+    assert review_aggregate._normalize_slot("cursor-specialist-correctness") == "cursor-specialist-correctness"
+    assert review_aggregate._normalize_slot("cursor-specialist-correctness-output.txt") == "cursor-specialist-correctness"
+    assert review_aggregate._normalize_slot("codex-specialist-correctness-output-ns-retry") == "codex-specialist-correctness"
+    # The existing trailing-parenthetical strip still applies; a non-artifact slot is unchanged.
+    assert review_aggregate._normalize_slot("merge-a (cursor)") == "merge-a"
+    assert review_aggregate._normalize_slot("plan-fidelity") == "plan-fidelity"
+
+
+def test_validate_aggregate_output_accepts_output_suffix_variant(tmp_path: Path) -> None:
+    # Issue #5022 focused unit reproduction: input attribution carries the -output suffix; the merged
+    # output names the bare slot. Before the fix, _normalize_slot left them distinct and the validator
+    # returned rc=2 ("unknown reviewer slot in merge output"), discarding the round's dedup/merge.
+    input_path = tmp_path / "input.md"
+    output_path = tmp_path / "merged.md"
+    _ = input_path.write_text(
+        """### FINDING_1: Dup A
+- **Reviewer(s)**: cursor-specialist-correctness-output
+- **Severity**: important
+- **Concern**: same bug
+- **Suggested revision**: fix
+
+### FINDING_2: Dup B
+- **Reviewer(s)**: codex-specialist-correctness-output
+- **Severity**: important
+- **Concern**: same bug other words
+- **Suggested revision**: fix
+""",
+        encoding="utf-8",
+    )
+    _ = output_path.write_text(
+        """### FINDING_1: Merged correctness bug
+- **Reviewer(s)**: cursor-specialist-correctness, codex-specialist-correctness
+- **Severity**: important
+- **Concern**: same bug
+- **Suggested revision**: fix
+""",
+        encoding="utf-8",
+    )
+
+    rc, err = review_aggregate._validate_aggregate_output(input_path, output_path, "code")
+
+    assert rc == 0, err
+
+
+def test_aggregate_reconciles_output_suffix_slot_mismatch(tmp_path: Path) -> None:
+    # Issue #5022 end-to-end: a real /implement run logged input attribution
+    # "cursor-specialist-correctness-output" while the aggregator's merged output named the bare slot
+    # "cursor-specialist-correctness". The merge must be applied (dedup preserved) instead of the
+    # validator returning rc=2 and the round degrading to un-deduped findings.
+    findings = tmp_path / "in-suffix.md"
+    _ = findings.write_text(
+        """### FINDING_1: Dup A
+- **Reviewer(s)**: cursor-specialist-correctness-output
+- **Severity**: important
+- **Concern**: same bug
+- **Suggested revision**: fix
+
+### FINDING_2: Dup B
+- **Reviewer(s)**: codex-specialist-correctness-output
+- **Severity**: important
+- **Concern**: same bug other words
+- **Suggested revision**: fix
+""",
+        encoding="utf-8",
+    )
+    dispatch = tmp_path / "stub-dispatch.sh"
+    rts.write_executable(
+        dispatch,
+        """#!/usr/bin/env bash
+set -euo pipefail
+slots=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --slots-file) slots="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+out=$(jq -r '.output' "$slots")
+cat >"$out" <<'OUT'
+### FINDING_1: Merged correctness bug
+- **Reviewer(s)**: cursor-specialist-correctness, codex-specialist-correctness
+- **Severity**: important
+- **Concern**: same bug
+- **Suggested revision**: fix
+OUT
+printf '%s\\n' "$out" > "${slots}.output-files"
+printf 'DISPATCH_OK=true\\nALL_OUTPUT_FILES=%s\\nALL_OUTPUT_FILES_PATH=%s\\nALL_OUTPUT_TOOLS=cursor\\n' "$out" "${slots}.output-files"
+""",
+    )
+
+    result = run_review(
+        "aggregate-findings",
+        "--findings-file",
+        str(findings),
+        "--review-tmpdir",
+        str(tmp_path),
+        "--codex-present",
+        "true",
+        "--cursor-present",
+        "true",
+        "--mode",
+        "diff",
+        env=_aggregate_env(tmp_path, AGGREGATE_DISPATCH_SH=str(dispatch)),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "AGGREGATED=true" in result.stdout
+    assert "REASON=ok" in result.stdout
+    assert "MERGED_COUNT=1" in result.stdout
+    assert findings.read_text(encoding="utf-8").count("### FINDING_") == 1
+
+
 def test_aggregate_dispatch_failure_preserves_ballot(tmp_path: Path) -> None:
     findings = tmp_path / "in3-disp.md"
     original = """### FINDING_1: Dup A
