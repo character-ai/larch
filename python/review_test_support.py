@@ -91,6 +91,9 @@ printf 'MODE=%s\\n' "$mode"
         paths["dispatch"],
         """#!/usr/bin/env bash
 set -euo pipefail
+if [[ "${TEST_DISPATCH_FAIL:-false}" == "true" ]]; then
+  exit 3
+fi
 tmp=""
 panel="hard"
 round_num="1"
@@ -141,6 +144,7 @@ if [[ "${TEST_PANEL_PRUNED_EMPTY:-false}" == "true" ]]; then
   : > "$tmp/panel-manifest.ndjson"
   printf 'EXTERNAL_OUTPUT_FILES=\\nCLAUDE_OUTPUT_FILES=\\nPANEL_MODE=normal\\nPANEL_SHAPE=%s\\n' "$panel"
   printf 'PANEL_PRUNED_EMPTY=true\\nPRUNE_STATUS=pruned-empty\\nSTATIC_SLOT_COUNT=0\\nSLOT_COUNT=0\\nDYNAMIC_SLOTS=0\\n'
+  [[ -n "${TEST_PRUNED_COMBOS:-}" ]] && printf 'PRUNED_COMBOS=%s\\n' "$TEST_PRUNED_COMBOS"
   printf 'PANEL_MANIFEST=%s/panel-manifest.ndjson\\nDISPATCH_OK=true\\n' "$tmp"
   exit 0
 fi
@@ -153,6 +157,7 @@ printf 'SCOUT_STATUS=%s\\n' "${TEST_SCOUT_STATUS:-na}"
 printf 'DYNAMIC_SLOTS=%s\\n' "${TEST_DYNAMIC_SLOTS:-0}"
 printf 'STATIC_SLOT_COUNT=%s\\n' "${TEST_STATIC_SLOT_COUNT:-1}"
 printf 'SLOT_COUNT=%s\\n' "$(( ${TEST_STATIC_SLOT_COUNT:-1} + ${TEST_DYNAMIC_SLOTS:-0} ))"
+[[ -n "${TEST_PRUNED_COMBOS:-}" ]] && printf 'PRUNED_COMBOS=%s\\n' "$TEST_PRUNED_COMBOS"
 printf 'PANEL_MANIFEST=%s/panel-manifest.ndjson\\nDISPATCH_OK=true\\n' "$tmp"
 if [[ "${TEST_FULL_STATIC_MANIFEST:-false}" == "true" ]]; then
   : > "$tmp/panel-manifest.ndjson"
@@ -279,6 +284,9 @@ while [[ $# -gt 0 ]]; do
     *) shift 2 ;;
   esac
 done
+if [[ "${TEST_TALLY_FAIL:-false}" == "true" ]]; then
+  exit 1
+fi
 accepted="${TEST_ACCEPTED:-0}"
 rejected="${TEST_REJECTED:-0}"
 status="${TEST_TALLY_STATUS:-ok}"

@@ -7,15 +7,12 @@ import shutil
 import subprocess
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import proc
+import pytest
 import review_pipeline
 import review_test_support as rts
 import voting
-
-if TYPE_CHECKING:
-    import pytest
 
 ROOT = rts.ROOT
 CLI = rts.CLI
@@ -79,6 +76,9 @@ def _run_review_core_body_direct(
     *,
     findings: int,
     accepted: int = 0,
+    round_num: int = 1,
+    mode: str = "diff",
+    panel: str = "simple",
     outdir_name: str = "body",
     extra_env: dict[str, str] | None = None,
 ) -> review_pipeline.ReviewCoreResult:
@@ -88,7 +88,7 @@ def _run_review_core_body_direct(
         stubs,
         TEST_FINDINGS=str(findings),
         TEST_ACCEPTED=str(accepted),
-        TEST_ROUND_NUM="1",
+        TEST_ROUND_NUM=str(round_num),
     )
     if extra_env:
         env.update(extra_env)
@@ -96,22 +96,22 @@ def _run_review_core_body_direct(
         monkeypatch.setenv(key, value)
     outdir = tmp_path / outdir_name
     parsed: dict[str, str] = {
-        "--mode": "diff",
+        "--mode": mode,
         "--output-dir": str(outdir),
         "--codex-available": "true",
         "--cursor-available": "true",
-        "--panel": "simple",
-        "--round-num": "1",
+        "--panel": panel,
+        "--round-num": str(round_num),
     }
     return review_pipeline._review_core_body(  # pyright: ignore[reportPrivateUsage]
         parsed,
-        mode="diff",
+        mode=mode,
         review_tmpdir=outdir,
         codex_available="true",
         cursor_available="true",
-        panel="simple",
+        panel=panel,
         dynamic="0",
-        round_num=1,
+        round_num=round_num,
         session_env_path="",
         run_id="",
         prune_ledger="",
@@ -120,9 +120,23 @@ def _run_review_core_body_direct(
     )
 
 
+def _review_core_row_keys(result: review_pipeline.ReviewCoreResult) -> list[str]:
+    return [key for key, _value in result.rows]
+
+
+def _assert_emit_stdout_matches_rows(
+    result: review_pipeline.ReviewCoreResult,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    rc = review_pipeline._emit_review_core_result(result)  # pyright: ignore[reportPrivateUsage]
+    out = capsys.readouterr().out
+    assert rc == result.rc
+    assert out.splitlines() == [f"{key}={value}" for key, value in result.rows]
+
+
 def test_review_core_body_zero_findings_returns_ordered_rows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     result = _run_review_core_body_direct(tmp_path, monkeypatch, findings=0, accepted=0, outdir_name="body-zero")
-    keys = [key for key, _value in result.rows]
+    keys = _review_core_row_keys(result)
 
     assert result.rc == 0
     assert result.status == review_pipeline.ReviewCoreStatus.zero_findings
@@ -133,13 +147,301 @@ def test_review_core_body_zero_findings_returns_ordered_rows(tmp_path: Path, mon
 
 def test_review_core_body_fix_required_returns_duplicate_classification(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     result = _run_review_core_body_direct(tmp_path, monkeypatch, findings=1, accepted=1, outdir_name="body-fix")
-    keys = [key for key, _value in result.rows]
+    keys = _review_core_row_keys(result)
 
     assert result.rc == 0
     assert result.status == review_pipeline.ReviewCoreStatus.fix_required
     assert keys[:3] == ["SCOUT_STATUS", "DYNAMIC_SLOTS", "PANEL_PRUNED_EMPTY"]
     assert keys.count("FINDINGS_CLASSIFICATION_TSV_FILE") == 2
     assert keys.index("VOTER_1_TOOL") < keys.index("FINDINGS_CLASSIFICATION_TSV_FILE") < keys.index("REVIEW_CORE_STATUS")
+
+
+def test_review_core_body_description_empty_returns_scout_and_common_rows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    result = _run_review_core_body_direct(
+        tmp_path,
+        monkeypatch,
+        findings=0,
+        mode="description",
+        outdir_name="body-desc-empty",
+        extra_env={"TEST_SCOPE_COUNT": "0"},
+    )
+    keys = _review_core_row_keys(result)
+
+    assert result.rc == 0
+    assert result.status == review_pipeline.ReviewCoreStatus.zero_findings
+    assert keys[:4] == ["SCOUT_STATUS", "DYNAMIC_SLOTS", "SCOUT_MANIFEST", "REVIEW_CORE_STATUS"]
+    assert "PANEL_PRUNED_EMPTY" not in keys
+    assert ("PANEL_MODE", "normal") in result.rows
+    assert ("PANEL_SHAPE", "simple") in result.rows
+
+
+def test_review_core_body_dispatch_failure_omits_scout_rows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    result = _run_review_core_body_direct(
+        tmp_path,
+        monkeypatch,
+        findings=1,
+        outdir_name="body-dispatch-fail",
+        extra_env={"TEST_DISPATCH_FAIL": "true"},
+    )
+    keys = _review_core_row_keys(result)
+
+    assert result.rc == 2
+    assert result.status == review_pipeline.ReviewCoreStatus.panel_failed
+    assert "SCOUT_STATUS" not in keys
+    assert keys[0] == "REVIEW_CORE_STATUS"
+    assert any(key == "THRESHOLD_REASON" for key in keys)
+
+
+def test_review_core_body_prune_skipped_includes_pruned_combos(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    result = _run_review_core_body_direct(
+        tmp_path,
+        monkeypatch,
+        findings=0,
+        outdir_name="body-prune-skipped",
+        extra_env={"TEST_PANEL_PRUNED_EMPTY": "true", "TEST_PRUNED_COMBOS": "cursor:correctness"},
+    )
+    keys = _review_core_row_keys(result)
+
+    assert result.rc == 0
+    assert result.status == review_pipeline.ReviewCoreStatus.prune_skipped
+    assert keys[:4] == ["SCOUT_STATUS", "DYNAMIC_SLOTS", "PRUNED_COMBOS", "PANEL_PRUNED_EMPTY"]
+    assert keys.index("REVIEW_CORE_STATUS") > keys.index("PANEL_PRUNED_EMPTY")
+
+
+def test_review_core_body_threshold_failure_includes_dispatch_scout_rows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    result = _run_review_core_body_direct(
+        tmp_path,
+        monkeypatch,
+        findings=1,
+        outdir_name="body-threshold-fail",
+        extra_env={"TEST_THRESHOLD_OK": "false"},
+    )
+    keys = _review_core_row_keys(result)
+
+    assert result.rc == 2
+    assert result.status == review_pipeline.ReviewCoreStatus.panel_failed
+    assert keys[:3] == ["SCOUT_STATUS", "DYNAMIC_SLOTS", "PANEL_PRUNED_EMPTY"]
+    assert keys.index("REVIEW_CORE_STATUS") > keys.index("PANEL_PRUNED_EMPTY")
+
+
+def test_review_core_body_proposer_map_failed_has_no_classification(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_proposer(*_args: object, **_kwargs: object) -> None:
+        raise ValueError("proposer map failed")
+
+    monkeypatch.setattr(review_pipeline, "_write_proposer_sidecar_and_neutralize", fail_proposer)
+    result = _run_review_core_body_direct(tmp_path, monkeypatch, findings=1, outdir_name="body-proposer-fail")
+    keys = _review_core_row_keys(result)
+
+    assert result.rc == 2
+    assert result.status == review_pipeline.ReviewCoreStatus.panel_failed
+    assert "FINDINGS_CLASSIFICATION_TSV_FILE" not in keys
+    assert "VOTER_1_TOOL" not in keys
+    threshold_idx = keys.index("THRESHOLD_REASON")
+    assert result.rows[threshold_idx] == ("THRESHOLD_REASON", "proposer-map-failed")
+
+
+def test_review_core_body_validation_exhausted_tally_fail_has_no_voter_rows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stubs = _write_review_core_stubs(tmp_path / "body-agg-tally-fail-stubs")
+    result = _run_review_core_body_direct(
+        tmp_path,
+        monkeypatch,
+        findings=1,
+        outdir_name="body-agg-tally-fail",
+        extra_env={
+            "LARCH_AGGREGATOR_DISABLED": "",
+            "REVIEW_CORE_AGGREGATE_FINDINGS_SH": str(stubs["aggregate_exhausted"]),
+            "TEST_TALLY_FAIL": "true",
+        },
+    )
+    keys = _review_core_row_keys(result)
+
+    assert result.rc == 2
+    assert result.status == review_pipeline.ReviewCoreStatus.panel_failed
+    assert keys[:3] == ["SCOUT_STATUS", "DYNAMIC_SLOTS", "PANEL_PRUNED_EMPTY"]
+    assert "VOTER_1_TOOL" not in keys
+    assert "FINDINGS_CLASSIFICATION_TSV_FILE" not in keys
+
+
+def test_review_core_body_aggregator_validation_exhausted_duplicate_classification(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stubs = _write_review_core_stubs(tmp_path / "body-agg-exhaust-stubs")
+    result = _run_review_core_body_direct(
+        tmp_path,
+        monkeypatch,
+        findings=1,
+        outdir_name="body-agg-exhaust",
+        extra_env={
+            "LARCH_AGGREGATOR_DISABLED": "",
+            "REVIEW_CORE_AGGREGATE_FINDINGS_SH": str(stubs["aggregate_exhausted"]),
+        },
+    )
+    keys = _review_core_row_keys(result)
+
+    assert result.rc == 2
+    assert result.status == review_pipeline.ReviewCoreStatus.aggregator_validation_exhausted
+    assert keys.count("FINDINGS_CLASSIFICATION_TSV_FILE") == 2
+    assert keys.index("FINDINGS_CLASSIFICATION_TSV_FILE") < keys.index("REVIEW_CORE_STATUS")
+
+
+def test_review_core_body_aggregate_zero_second_path_merges_dispatch_rows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stubs = _write_review_core_stubs(tmp_path / "body-agg-zero-stubs")
+    result = _run_review_core_body_direct(
+        tmp_path,
+        monkeypatch,
+        findings=1,
+        outdir_name="body-agg-zero",
+        extra_env={
+            "LARCH_AGGREGATOR_DISABLED": "",
+            "REVIEW_CORE_AGGREGATE_FINDINGS_SH": str(stubs["aggregate_zero"]),
+        },
+    )
+    keys = _review_core_row_keys(result)
+
+    assert result.rc == 0
+    assert result.status == review_pipeline.ReviewCoreStatus.zero_findings
+    assert keys[:3] == ["SCOUT_STATUS", "DYNAMIC_SLOTS", "PANEL_PRUNED_EMPTY"]
+    assert keys.index("FINDINGS_CLASSIFICATION_TSV_FILE") < keys.index("REVIEW_CORE_STATUS")
+
+
+def test_review_core_body_cap_reached_round_five(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    result = _run_review_core_body_direct(
+        tmp_path,
+        monkeypatch,
+        findings=1,
+        accepted=1,
+        round_num=5,
+        outdir_name="body-cap-reached",
+    )
+
+    assert result.rc == 0
+    assert result.status == review_pipeline.ReviewCoreStatus.cap_reached
+    assert any(key == "REVIEW_CORE_STATUS" and value == "cap-reached" for key, value in result.rows)
+
+
+def test_review_core_body_main_agent_vote_required_duplicate_classification(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result = _run_review_core_body_direct(
+        tmp_path,
+        monkeypatch,
+        findings=1,
+        accepted=0,
+        outdir_name="body-mav",
+        extra_env={"TEST_TALLY_STATUS": "main-agent-vote-required"},
+    )
+    keys = _review_core_row_keys(result)
+
+    assert result.rc == 0
+    assert result.status == review_pipeline.ReviewCoreStatus.main_agent_vote_required
+    assert keys.count("FINDINGS_CLASSIFICATION_TSV_FILE") == 2
+    assert keys.index("VOTER_1_TOOL") < keys.index("FINDINGS_CLASSIFICATION_TSV_FILE")
+
+
+def test_review_core_body_post_voter_tally_fail_retains_voter_rows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result = _run_review_core_body_direct(
+        tmp_path,
+        monkeypatch,
+        findings=1,
+        outdir_name="body-post-voter-tally-fail",
+        extra_env={"TEST_TALLY_FAIL": "true"},
+    )
+    keys = _review_core_row_keys(result)
+
+    assert result.rc == 2
+    assert result.status == review_pipeline.ReviewCoreStatus.panel_failed
+    assert "VOTER_1_TOOL" in keys
+    assert keys.index("VOTER_1_TOOL") < keys.index("REVIEW_CORE_STATUS")
+    assert "FINDINGS_CLASSIFICATION_TSV_FILE" not in keys
+
+
+@pytest.mark.parametrize(
+    ("outdir_name", "findings", "accepted", "round_num", "extra_env"),
+    [
+        ("emit-fix-required", 1, 1, 1, None),
+        ("emit-zero-findings", 0, 0, 1, None),
+        (
+            "emit-main-agent",
+            1,
+            0,
+            1,
+            {"TEST_TALLY_STATUS": "main-agent-vote-required"},
+        ),
+        (
+            "emit-agg-exhaust",
+            1,
+            0,
+            1,
+            {"LARCH_AGGREGATOR_DISABLED": "", "REVIEW_CORE_AGGREGATE_FINDINGS_SH": "__AGG_EXHAUSTED__"},
+        ),
+        (
+            "emit-agg-tally-fail",
+            1,
+            0,
+            1,
+            {
+                "LARCH_AGGREGATOR_DISABLED": "",
+                "REVIEW_CORE_AGGREGATE_FINDINGS_SH": "__AGG_EXHAUSTED__",
+                "TEST_TALLY_FAIL": "true",
+            },
+        ),
+        ("emit-desc-empty", 0, 0, 1, {"TEST_SCOPE_COUNT": "0"}),
+        ("emit-proposer-fail", 1, 0, 1, None),
+        ("emit-post-voter-tally-fail", 1, 0, 1, {"TEST_TALLY_FAIL": "true"}),
+        (
+            "emit-prune-skipped",
+            0,
+            0,
+            1,
+            {"TEST_PANEL_PRUNED_EMPTY": "true", "TEST_PRUNED_COMBOS": "cursor:correctness"},
+        ),
+    ],
+)
+def test_emit_review_core_result_stdout_order_matches_rows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    outdir_name: str,
+    findings: int,
+    accepted: int,
+    round_num: int,
+    extra_env: dict[str, str] | None,
+) -> None:
+    env = dict(extra_env or {})
+    mode = "description" if outdir_name == "emit-desc-empty" else "diff"
+    if env.get("REVIEW_CORE_AGGREGATE_FINDINGS_SH") == "__AGG_EXHAUSTED__":
+        stubs = _write_review_core_stubs(tmp_path / f"{outdir_name}-stubs")
+        env["REVIEW_CORE_AGGREGATE_FINDINGS_SH"] = str(stubs["aggregate_exhausted"])
+    if outdir_name == "emit-proposer-fail":
+        def fail_proposer(*_args: object, **_kwargs: object) -> None:
+            raise ValueError("proposer map failed")
+
+        monkeypatch.setattr(review_pipeline, "_write_proposer_sidecar_and_neutralize", fail_proposer)
+    result = _run_review_core_body_direct(
+        tmp_path,
+        monkeypatch,
+        findings=findings,
+        accepted=accepted,
+        round_num=round_num,
+        mode=mode,
+        outdir_name=outdir_name,
+        extra_env=env or None,
+    )
+    _assert_emit_stdout_matches_rows(result, capsys)
 
 
 def test_review_core_default_dispatches_voters_through_python_cli() -> None:
