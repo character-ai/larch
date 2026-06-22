@@ -215,6 +215,35 @@ def _warn_stderr(message: str) -> None:
     logging_util.BreadcrumbWriter().emit(message)
 
 
+def _raise_on_status_query_timeout(result: CommandResult, *, label: str) -> None:
+    if result.returncode == config.EXIT_TIMEOUT:
+        msg = (
+            f"{label} timed out after {config.CI_STATUS_QUERY_TIMEOUT_SEC:.0f}s "
+            f"({' '.join(result.argv)})"
+        )
+        raise gh.GhReadTimeout(msg)
+
+
+def _ci_status_for_query_timeout(
+    *,
+    conflicted: bool,
+    pr_view_ok: bool,
+    label: str,
+) -> CiStatus:
+    _warn_stderr(
+        f"gather_status: {label} timed out after "
+        f"{config.CI_STATUS_QUERY_TIMEOUT_SEC:.0f}s; treating as CI status failure",
+    )
+    return CiStatus(
+        status="error",
+        behind_count=0,
+        failed_run_id=None,
+        conflicted=conflicted,
+        pr_view_ok=pr_view_ok,
+        checks_observed=False,
+    )
+
+
 def _behind_count(
     runner: Runner,
     *,
@@ -226,7 +255,10 @@ def _behind_count(
     result = runner.run(
         ["git", "rev-list", "--count", f"HEAD..{base}"],
         cwd=cwd,
+        timeout=config.CI_STATUS_QUERY_TIMEOUT_SEC,
     )
+    if result.returncode == config.EXIT_TIMEOUT:
+        _raise_on_status_query_timeout(result, label="git rev-list --count")
     if result.returncode != 0:
         _warn_stderr(
             "gather_status: git rev-list --count failed; treating branch as pending",
@@ -405,6 +437,7 @@ def _read_pr_checks_text(
             cwd=cwd,
             timeout=config.CI_STATUS_QUERY_TIMEOUT_SEC,
         )
+    _raise_on_status_query_timeout(result, label="gh pr checks")
     if result.returncode == 0:
         return result.stdout
     return ""
@@ -445,6 +478,7 @@ def _resolve_checks_observation(
 ) -> ChecksObservation:
     """Classify PR checks and derive rollup emptiness from the same read."""
     checks = _gh_pr_checks(runner, pr=pr, repo=repo, cwd=cwd, required=required)
+    _raise_on_status_query_timeout(checks, label="gh pr checks")
     checks_json = _checks_json_from_result(checks)
 
     if _checks_json_is_array(checks_json):
@@ -452,6 +486,7 @@ def _resolve_checks_observation(
         if bucket_status == "empty" and empty_checks_grace > 0:
             sleep_fn(float(empty_checks_grace))
             checks = _gh_pr_checks(runner, pr=pr, repo=repo, cwd=cwd, required=required)
+            _raise_on_status_query_timeout(checks, label="gh pr checks")
             checks_json = _checks_json_from_result(checks)
             if _checks_json_is_array(checks_json):
                 bucket_status, run_id = _classify_checks_json(checks_json, required=required)
@@ -527,6 +562,67 @@ def checks_status(
     )
 
 
+@dataclass(frozen=True)
+class _AfterPrViewQuery:
+    pr: int
+    repo: str
+    base_remote: str
+    base_ref: str
+    empty_checks_grace: int
+    sleep_fn: SleepFn
+    cwd: str | None
+    required: bool
+    conflicted: bool
+    pr_view_ok: bool
+
+
+def _gather_git_checks_and_behind(
+    runner: Runner,
+    query: _AfterPrViewQuery,
+) -> CiStatus | tuple[ChecksObservation, int | None]:
+    try:
+        fetch = git.fetch(
+            runner,
+            query.base_remote,
+            query.base_ref,
+            cwd=query.cwd,
+            timeout=config.CI_STATUS_QUERY_TIMEOUT_SEC,
+        )
+        _raise_on_status_query_timeout(fetch, label="git fetch")
+        if fetch.returncode != 0:
+            return CiStatus(
+                status="pending",
+                behind_count=0,
+                failed_run_id=None,
+                conflicted=query.conflicted,
+                checks_empty=False,
+                checks_observed=False,
+            )
+        observation = _resolve_checks_observation(
+            runner,
+            pr=query.pr,
+            repo=query.repo,
+            empty_checks_grace=query.empty_checks_grace,
+            sleep_fn=query.sleep_fn,
+            cwd=query.cwd,
+            required=query.required,
+        )
+        behind_raw = _behind_count(
+            runner,
+            base_remote=query.base_remote,
+            base_ref=query.base_ref,
+            cwd=query.cwd,
+        )
+    except gh.GhReadTimeout as exc:
+        label = str(exc).split(" timed out after ", maxsplit=1)[0]
+        return _ci_status_for_query_timeout(
+            conflicted=query.conflicted,
+            pr_view_ok=query.pr_view_ok,
+            label=label,
+        )
+    return observation, behind_raw
+
+
 def gather_status(
     runner: Runner,
     *,
@@ -551,19 +647,10 @@ def gather_status(
             timeout=config.CI_STATUS_QUERY_TIMEOUT_SEC,
         )
     except gh.GhReadTimeout:
-        # A hung gh pr view (no subprocess timeout) was the suspected freeze site
-        # in issue #5066; surface it as a status failure so poll_ci counts it
-        # toward CI_MONITOR_STATUS_FAILURE_BAIL instead of blocking forever.
-        _warn_stderr(
-            "gather_status: gh pr view timed out after "
-            f"{config.CI_STATUS_QUERY_TIMEOUT_SEC:.0f}s; treating as CI status failure",
-        )
-        return CiStatus(
-            status="error",
-            behind_count=0,
-            failed_run_id=None,
+        return _ci_status_for_query_timeout(
             conflicted=True,
             pr_view_ok=False,
+            label="gh pr view",
         )
     except Exception:  # pylint: disable=broad-except
         pr_info = None
@@ -573,33 +660,24 @@ def gather_status(
             return CiStatus(status="merged", behind_count=0, failed_run_id=None, conflicted=False)
         conflicted = _conflicted_from_merge_state(pr_info.merge_state_status)
 
-    fetch = git.fetch(runner, base_remote, base_ref, cwd=cwd)
-    if fetch.returncode != 0:
-        return CiStatus(
-            status="pending",
-            behind_count=0,
-            failed_run_id=None,
+    gathered = _gather_git_checks_and_behind(
+        runner,
+        _AfterPrViewQuery(
+            pr=pr,
+            repo=repo,
+            base_remote=base_remote,
+            base_ref=base_ref,
+            empty_checks_grace=empty_checks_grace,
+            sleep_fn=sleep_fn,
+            cwd=cwd,
+            required=required,
             conflicted=conflicted,
-            checks_empty=False,
-            checks_observed=False,
-        )
-
-    observation = _resolve_checks_observation(
-        runner,
-        pr=pr,
-        repo=repo,
-        empty_checks_grace=empty_checks_grace,
-        sleep_fn=sleep_fn,
-        cwd=cwd,
-        required=required,
+            pr_view_ok=pr_view_ok,
+        ),
     )
-
-    behind_raw = _behind_count(
-        runner,
-        base_remote=base_remote,
-        base_ref=base_ref,
-        cwd=cwd,
-    )
+    if isinstance(gathered, CiStatus):
+        return gathered
+    observation, behind_raw = gathered
     if behind_raw is None:
         return CiStatus(
             status=observation.status,

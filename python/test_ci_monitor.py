@@ -3502,6 +3502,16 @@ _PR_VIEW_KEY = (
     "--json",
     "number,url,state,headRefName,mergedAt,mergeStateStatus",
 )
+_PR_CHECKS_JSON_KEY = (
+    "gh",
+    "pr",
+    "checks",
+    "1",
+    "--repo",
+    "o/r",
+    "--json",
+    "name,state,bucket,link",
+)
 
 
 def test_gather_status_pr_view_timeout_returns_error() -> None:
@@ -3535,6 +3545,61 @@ def test_poll_ci_pr_view_timeout_bails_status_stale() -> None:
     )
     assert decision.action == "bail"
     assert decision.bail_reason == config.CI_WAIT_BAIL_STATUS_STALE
+
+
+def test_gather_status_pr_checks_timeout_returns_error() -> None:
+    responses = _status(status="pass")
+    responses[_PR_CHECKS_JSON_KEY] = _cr(("gh", "pr", "checks"), rc=config.EXIT_TIMEOUT)
+    runner = RecordingRunner(responses)
+    status = ci_monitor.gather_status(runner, pr=1, repo="o/r")
+    assert status.status == "error"
+    assert status.checks_observed is False
+
+
+def test_poll_ci_pr_checks_timeout_bails_status_stale() -> None:
+    responses = _status(status="pass")
+    responses[_PR_CHECKS_JSON_KEY] = _cr(("gh", "pr", "checks"), rc=config.EXIT_TIMEOUT)
+    runner = RecordingRunner(responses)
+    _, decision = ci_monitor.poll_ci(
+        runner,
+        pr=1,
+        repo="o/r",
+        base_remote="origin",
+        base_ref="main",
+        empty_checks_grace=0,
+        iteration=0,
+        rebase_count=0,
+        fix_attempts=0,
+        timeout=60.0,
+        sleep_fn=lambda _s: None,
+        clock=lambda: 0.0,
+    )
+    assert decision.action == "bail"
+    assert decision.bail_reason == config.CI_WAIT_BAIL_STATUS_STALE
+
+
+def test_gather_status_fetch_timeout_returns_error() -> None:
+    responses = _status(status="pass")
+    responses[("git", "fetch", "origin", "main", "--quiet")] = _cr(
+        ("git", "fetch"),
+        rc=config.EXIT_TIMEOUT,
+    )
+    runner = RecordingRunner(responses)
+    status = ci_monitor.gather_status(runner, pr=1, repo="o/r")
+    assert status.status == "error"
+    assert status.checks_observed is False
+
+
+def test_gather_status_behind_count_timeout_returns_error() -> None:
+    responses = _status(status="pass")
+    responses[("git", "rev-list", "--count", "HEAD..origin/main")] = _cr(
+        ("git", "rev-list", "--count"),
+        rc=config.EXIT_TIMEOUT,
+    )
+    runner = RecordingRunner(responses)
+    status = ci_monitor.gather_status(runner, pr=1, repo="o/r")
+    assert status.status == "error"
+    assert status.checks_observed is False
 
 
 def test_poll_ci_emits_query_heartbeat_and_transition_breadcrumbs(
