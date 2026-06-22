@@ -339,6 +339,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("lint", "skill-md-flag-signature"): ("lint_skill_md_flag_signature", "main"),
     ("lint", "readability-preamble"): ("lint_readability_preamble", "main"),
     ("lint", "gh-body-inline"): ("lint_gh_body_inline", "main"),
+    ("lint", "complexity-baseline"): ("lint_complexity_baseline", "main"),
     ("lint", "codex-exec-auth"): ("lint_codex_exec_auth", "main"),
     ("lint", "skill-invocations"): ("lint_skill_invocations", "main"),
     ("lint", "run-log-run-id"): ("lint_run_log_run_id", "main"),
