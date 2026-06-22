@@ -45,6 +45,7 @@ import re
 import traceback
 from contextlib import suppress
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from typing import Any, TextIO, cast
 
@@ -211,6 +212,17 @@ class ShipResult:
             "ledger_exit_code": self.ledger_exit_code,
             "ledger_failure_detail_log": self.ledger_failure_detail_log,
         }
+
+
+class ShipRebaseVariant(StrEnum):
+    GOTO_REBASE = "goto_rebase"
+    MAIN_ADVANCED = "main_advanced"
+
+
+@dataclass(frozen=True)
+class ShipRebasePhaseResult:
+    rebase_count: int
+    terminal: ShipResult | None = None
 
 
 @dataclass(frozen=True)
@@ -1361,6 +1373,171 @@ def run_postmerge_phase(
     )
 
 
+def _ship_postmerge_phase(
+    runner: Runner,
+    working: RunContext,
+    *,
+    cwd: str,
+    iteration: int,
+    rebase_count: int,
+    fix_attempts: int,
+    transient_retries: int,
+) -> ShipResult:
+    _breadcrumb("post-merge")
+    post = run_postmerge_phase(runner, working, cwd=cwd)
+    if post.outcome is Outcome.OK:
+        _write_ship_state(
+            working,
+            phase="done",
+            iteration=iteration,
+            rebase_count=rebase_count,
+            fix_attempts=fix_attempts,
+            transient_retries=transient_retries,
+        )
+    return ShipResult(
+        post.outcome,
+        pr_number=working.pr_number,
+        pr_url=working.pr_url,
+        merge_result=working.merge_result,
+        detail=post.detail,
+    )
+
+
+def _ship_rebase_phase(
+    runner: Runner,
+    working: RunContext,
+    *,
+    cwd: str,
+    base_remote: str,
+    base_ref: str,
+    iteration: int,
+    rebase_count: int,
+    fix_attempts: int,
+    transient_retries: int,
+    variant: ShipRebaseVariant,
+) -> ShipRebasePhaseResult:
+    _ = variant
+    _write_ship_state(
+        working,
+        phase="rebase",
+        iteration=iteration,
+        rebase_count=rebase_count,
+        fix_attempts=fix_attempts,
+        transient_retries=transient_retries,
+    )
+    _breadcrumb("rebase", "Flush+Push")
+    pre_rebase = run_logs.flush_logs_pre(runner, working.with_(state_file=None), cwd=cwd)
+    if (
+        pre_rebase.skipped
+        and pre_rebase.reason != run_logs.REFRESH_SKIP_RECOVERY_FAILED
+        and pre_rebase.reason not in config.REFRESH_SKIP_POST_ENSURE_PR_OK
+    ):
+        _write_terminal_state(
+            working,
+            Outcome.STALLED,
+            "pre-rebase",
+            iteration=iteration,
+            rebase_count=rebase_count,
+            fix_attempts=fix_attempts,
+            transient_retries=transient_retries,
+        )
+        _publish_post_pr_terminal_snapshot(runner, working, cwd=cwd)
+        return ShipRebasePhaseResult(
+            rebase_count,
+            ShipResult(
+                Outcome.STALLED,
+                detail=f"pre-rebase flush skipped: {pre_rebase.reason}",
+            ),
+        )
+    try:
+        _ = rebase.rebase_and_push(
+            runner,
+            repo=working.repo,
+            run_id=working.run_id,
+            cwd=cwd,
+            tmpdir=working.tmpdir,
+            base_remote=base_remote,
+            base_ref=base_ref,
+            allow_conflict_fix=True,
+            enable_pre_push_handoff=True,
+        )
+    except PrePushConflictHandoff as exc:
+        _write_ship_state(
+            working,
+            phase="rebase",
+            iteration=iteration,
+            rebase_count=rebase_count,
+            fix_attempts=fix_attempts,
+            transient_retries=transient_retries,
+            resume_phase=exc.resume_phase,
+            caller_kind=exc.caller_kind,
+            extra_fields={"CONFLICT_FILES": exc.conflict_csv},
+        )
+        raise
+    rebase_count += 1
+    _invalidate_guidelines_note(working.tmpdir)
+    return ShipRebasePhaseResult(rebase_count)
+
+
+def _ship_phase14_rebase(
+    runner: Runner,
+    working: RunContext,
+    *,
+    cwd: str,
+    base_remote: str,
+    base_ref: str,
+    phase14_flag: Path,
+    iteration: int,
+    rebase_count: int,
+    fix_attempts: int,
+    transient_retries: int,
+    last_monitored_head: str | None,
+) -> int:
+    try:
+        _ = rebase.rebase_and_push(
+            runner,
+            repo=working.repo,
+            run_id=working.run_id,
+            cwd=cwd,
+            tmpdir=working.tmpdir,
+            base_remote=base_remote,
+            base_ref=base_ref,
+            allow_conflict_fix=True,
+            enable_pre_push_handoff=True,
+        )
+        phase14_flag.unlink(missing_ok=True)
+        rebase_count += 1
+        _invalidate_guidelines_note(working.tmpdir)
+        _write_ship_state(
+            working,
+            phase="ci-initial",
+            iteration=iteration,
+            rebase_count=rebase_count,
+            fix_attempts=fix_attempts,
+            transient_retries=transient_retries,
+            resume_phase="",
+            caller_kind="",
+            last_monitored_head=last_monitored_head or "",
+        )
+        return rebase_count
+    except PrePushConflictHandoff as exc:
+        _write_ship_state(
+            working,
+            phase="rebase",
+            iteration=iteration,
+            rebase_count=rebase_count,
+            fix_attempts=fix_attempts,
+            transient_retries=transient_retries,
+            resume_phase=exc.resume_phase,
+            caller_kind=exc.caller_kind,
+            extra_fields={"CONFLICT_FILES": exc.conflict_csv},
+        )
+        raise
+    except Exception:
+        phase14_flag.unlink(missing_ok=True)
+        raise
+
+
 def run_ship(
     ctx: RunContext,
     *,
@@ -1411,23 +1588,14 @@ def run_ship(
                 fix_attempts=resume.fix_attempts,
                 transient_retries=resume.transient_retries,
             )
-            _breadcrumb("post-merge")
-            post = run_postmerge_phase(runner, working, cwd=repo_root)
-            if post.outcome is Outcome.OK:
-                _write_ship_state(
-                    working,
-                    phase="done",
-                    iteration=resume.iteration,
-                    rebase_count=resume.rebase_count,
-                    fix_attempts=resume.fix_attempts,
-                    transient_retries=resume.transient_retries,
-                )
-            return ShipResult(
-                post.outcome,
-                pr_number=working.pr_number,
-                pr_url=working.pr_url,
-                merge_result=working.merge_result,
-                detail=post.detail,
+            return _ship_postmerge_phase(
+                runner,
+                working,
+                cwd=repo_root,
+                iteration=resume.iteration,
+                rebase_count=resume.rebase_count,
+                fix_attempts=resume.fix_attempts,
+                transient_retries=resume.transient_retries,
             )
 
         if resume.start == "fresh":
@@ -1671,49 +1839,20 @@ def run_ship(
             )
             phase14_flag = Path(working.tmpdir) / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME
             if phase14_flag.is_file():
-                try:
-                    _ = rebase.rebase_and_push(
-                        runner,
-                        repo=working.repo,
-                        run_id=working.run_id,
-                        cwd=repo_root,
-                        tmpdir=working.tmpdir,
-                        base_remote=base_remote,
-                        base_ref=base_ref,
-                        allow_conflict_fix=True,
-                        enable_pre_push_handoff=True,
-                    )
-                    phase14_flag.unlink(missing_ok=True)
-                    rebase_count += 1
-                    _invalidate_guidelines_note(working.tmpdir)
-                    _write_ship_state(
-                        working,
-                        phase="ci-initial",
-                        iteration=iteration,
-                        rebase_count=rebase_count,
-                        fix_attempts=fix_attempts,
-                        transient_retries=transient_retries,
-                        resume_phase="",
-                        caller_kind="",
-                        last_monitored_head=last_monitored_head or "",
-                    )
-                    continue
-                except PrePushConflictHandoff as exc:
-                    _write_ship_state(
-                        working,
-                        phase="rebase",
-                        iteration=iteration,
-                        rebase_count=rebase_count,
-                        fix_attempts=fix_attempts,
-                        transient_retries=transient_retries,
-                        resume_phase=exc.resume_phase,
-                        caller_kind=exc.caller_kind,
-                        extra_fields={"CONFLICT_FILES": exc.conflict_csv},
-                    )
-                    raise
-                except Exception:
-                    phase14_flag.unlink(missing_ok=True)
-                    raise
+                rebase_count = _ship_phase14_rebase(
+                    runner,
+                    working,
+                    cwd=repo_root,
+                    base_remote=base_remote,
+                    base_ref=base_ref,
+                    phase14_flag=phase14_flag,
+                    iteration=iteration,
+                    rebase_count=rebase_count,
+                    fix_attempts=fix_attempts,
+                    transient_retries=transient_retries,
+                    last_monitored_head=last_monitored_head,
+                )
+                continue
             pre_monitor_head = last_monitored_head
             current_head = git.try_rev_parse(runner, "HEAD", cwd=repo_root)
             empty_checks_grace, empty_checks_startup_deadline_sec = (
@@ -1845,62 +1984,21 @@ def run_ship(
                         detail="merge loop iteration cap reached",
                     )
                 if monitor.goto_rebase:
-                    _write_ship_state(
+                    rebase_phase = _ship_rebase_phase(
+                        runner,
                         working,
-                        phase="rebase",
+                        cwd=repo_root,
+                        base_remote=base_remote,
+                        base_ref=base_ref,
                         iteration=iteration,
                         rebase_count=rebase_count,
                         fix_attempts=fix_attempts,
                         transient_retries=transient_retries,
+                        variant=ShipRebaseVariant.GOTO_REBASE,
                     )
-                    _breadcrumb("rebase", "Flush+Push")
-                    pre_rebase = run_logs.flush_logs_pre(runner, working.with_(state_file=None), cwd=repo_root)
-                    if (
-                        pre_rebase.skipped
-                        and pre_rebase.reason != run_logs.REFRESH_SKIP_RECOVERY_FAILED
-                        and pre_rebase.reason not in config.REFRESH_SKIP_POST_ENSURE_PR_OK
-                    ):
-                        _write_terminal_state(
-                            working,
-                            Outcome.STALLED,
-                            "pre-rebase",
-                            iteration=iteration,
-                            rebase_count=rebase_count,
-                            fix_attempts=fix_attempts,
-                            transient_retries=transient_retries,
-                        )
-                        _publish_post_pr_terminal_snapshot(runner, working, cwd=repo_root)
-                        return ShipResult(
-                            Outcome.STALLED,
-                            detail=f"pre-rebase flush skipped: {pre_rebase.reason}",
-                        )
-                    try:
-                        _ = rebase.rebase_and_push(
-                            runner,
-                            repo=working.repo,
-                            run_id=working.run_id,
-                            cwd=repo_root,
-                            tmpdir=working.tmpdir,
-                            base_remote=base_remote,
-                            base_ref=base_ref,
-                            allow_conflict_fix=True,
-                            enable_pre_push_handoff=True,
-                        )
-                    except PrePushConflictHandoff as exc:
-                        _write_ship_state(
-                            working,
-                            phase="rebase",
-                            iteration=iteration,
-                            rebase_count=rebase_count,
-                            fix_attempts=fix_attempts,
-                            transient_retries=transient_retries,
-                            resume_phase=exc.resume_phase,
-                            caller_kind=exc.caller_kind,
-                            extra_fields={"CONFLICT_FILES": exc.conflict_csv},
-                        )
-                        raise
-                    rebase_count += 1
-                    _invalidate_guidelines_note(working.tmpdir)
+                    rebase_count = rebase_phase.rebase_count
+                    if rebase_phase.terminal is not None:
+                        return rebase_phase.terminal
                 if monitor.transient_rerun_attempted:
                     transient_retries += 1
                 if monitor.did_fixing:
@@ -1949,62 +2047,21 @@ def run_ship(
                     )
                     continue
             if merged.result == config.MERGE_RESULT_MAIN_ADVANCED:
-                _write_ship_state(
+                rebase_phase = _ship_rebase_phase(
+                    runner,
                     working,
-                    phase="rebase",
+                    cwd=repo_root,
+                    base_remote=base_remote,
+                    base_ref=base_ref,
                     iteration=iteration,
                     rebase_count=rebase_count,
                     fix_attempts=fix_attempts,
                     transient_retries=transient_retries,
+                    variant=ShipRebaseVariant.MAIN_ADVANCED,
                 )
-                _breadcrumb("rebase", "Flush+Push")
-                pre_rebase = run_logs.flush_logs_pre(runner, working.with_(state_file=None), cwd=repo_root)
-                if (
-                    pre_rebase.skipped
-                    and pre_rebase.reason != run_logs.REFRESH_SKIP_RECOVERY_FAILED
-                    and pre_rebase.reason not in config.REFRESH_SKIP_POST_ENSURE_PR_OK
-                ):
-                    _write_terminal_state(
-                        working,
-                        Outcome.STALLED,
-                        "pre-rebase",
-                        iteration=iteration,
-                        rebase_count=rebase_count,
-                        fix_attempts=fix_attempts,
-                        transient_retries=transient_retries,
-                    )
-                    _publish_post_pr_terminal_snapshot(runner, working, cwd=repo_root)
-                    return ShipResult(
-                        Outcome.STALLED,
-                        detail=f"pre-rebase flush skipped: {pre_rebase.reason}",
-                    )
-                try:
-                    _ = rebase.rebase_and_push(
-                        runner,
-                        repo=working.repo,
-                        run_id=working.run_id,
-                        cwd=repo_root,
-                        tmpdir=working.tmpdir,
-                        base_remote=base_remote,
-                        base_ref=base_ref,
-                        allow_conflict_fix=True,
-                        enable_pre_push_handoff=True,
-                    )
-                except PrePushConflictHandoff as exc:
-                    _write_ship_state(
-                        working,
-                        phase="rebase",
-                        iteration=iteration,
-                        rebase_count=rebase_count,
-                        fix_attempts=fix_attempts,
-                        transient_retries=transient_retries,
-                        resume_phase=exc.resume_phase,
-                        caller_kind=exc.caller_kind,
-                        extra_fields={"CONFLICT_FILES": exc.conflict_csv},
-                    )
-                    raise
-                rebase_count += 1
-                _invalidate_guidelines_note(working.tmpdir)
+                rebase_count = rebase_phase.rebase_count
+                if rebase_phase.terminal is not None:
+                    return rebase_phase.terminal
                 iteration += 1
                 _write_ship_state(
                     working,
@@ -2094,23 +2151,14 @@ def run_ship(
                     merge_result=merged.result,
                     detail=merged.error or f"merge did not complete: {merged.result}",
                 )
-            _breadcrumb("post-merge")
-            post = run_postmerge_phase(runner, working, cwd=repo_root)
-            if post.outcome is Outcome.OK:
-                _write_ship_state(
-                    working,
-                    phase="done",
-                    iteration=iteration,
-                    rebase_count=rebase_count,
-                    fix_attempts=fix_attempts,
-                    transient_retries=transient_retries,
-                )
-            return ShipResult(
-                post.outcome,
-                pr_number=working.pr_number,
-                pr_url=working.pr_url,
-                merge_result=working.merge_result,
-                detail=post.detail,
+            return _ship_postmerge_phase(
+                runner,
+                working,
+                cwd=repo_root,
+                iteration=iteration,
+                rebase_count=rebase_count,
+                fix_attempts=fix_attempts,
+                transient_retries=transient_retries,
             )
     except (NeedsUserInput, ShipError, Stalled, TransientNetworkError) as exc:
         result = _error_to_result(exc)

@@ -75,6 +75,257 @@ def _read_state(path: Path) -> dict[str, str]:
     return data
 
 
+def test_ship_rebase_phase_stall_returns_terminal_result(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    state = tmp_path / "ship-pr-state.sh"
+    ctx = _ctx(tmp_path, state_file=str(state), pr_number=7, pr_url="https://example.com/pr/7", merge=True)
+
+    def fake_flush_logs_pre(
+        _runner: RecordingRunner,
+        _ctx: RunContext,
+        *,
+        cwd: str | None = None,
+        strict_final_report: bool = False,
+    ) -> run_logs.RefreshSkip:
+        del cwd, strict_final_report
+        return run_logs.RefreshSkip(skipped=True, reason="blocked")
+
+    def fake_publish(_runner: RecordingRunner, _ctx: RunContext, *, cwd: str | None = None) -> None:
+        del cwd
+
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush_logs_pre)
+    monkeypatch.setattr(ship, "_publish_post_pr_terminal_snapshot", fake_publish)
+
+    result = ship._ship_rebase_phase(
+        RecordingRunner(),
+        ctx,
+        cwd=str(tmp_path),
+        base_remote="origin",
+        base_ref="main",
+        iteration=3,
+        rebase_count=2,
+        fix_attempts=1,
+        transient_retries=0,
+        variant=ship.ShipRebaseVariant.GOTO_REBASE,
+    )
+
+    assert result.rebase_count == 2
+    assert result.terminal is not None
+    assert result.terminal.outcome is Outcome.STALLED
+    data = _read_state(state)
+    assert data["PHASE"] == "stalled"
+    assert data["STALL_STEP"] == "pre-rebase"
+    assert data["ITERATION"] == "3"
+    assert data["REBASE_COUNT"] == "2"
+
+
+def test_ship_rebase_phase_success_increments_rebase_count(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    state = tmp_path / "ship-pr-state.sh"
+    ctx = _ctx(tmp_path, state_file=str(state), pr_number=7, pr_url="https://example.com/pr/7", merge=True)
+
+    def fake_flush_logs_pre(
+        _runner: RecordingRunner,
+        _ctx: RunContext,
+        *,
+        cwd: str | None = None,
+        strict_final_report: bool = False,
+    ) -> run_logs.RefreshSkip:
+        del cwd, strict_final_report
+        return run_logs.RefreshSkip(skipped=False, reason="")
+
+    def fake_rebase_and_push(
+        _runner: RecordingRunner,
+        *,
+        repo: str,
+        run_id: str,
+        cwd: str,
+        tmpdir: str,
+        base_remote: str,
+        base_ref: str,
+        allow_conflict_fix: bool,
+        enable_pre_push_handoff: bool,
+    ) -> object:
+        del repo, run_id, cwd, tmpdir, base_remote, base_ref, allow_conflict_fix, enable_pre_push_handoff
+        return object()
+
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush_logs_pre)
+    monkeypatch.setattr(ship.rebase, "rebase_and_push", fake_rebase_and_push)
+
+    result = ship._ship_rebase_phase(
+        RecordingRunner(),
+        ctx,
+        cwd=str(tmp_path),
+        base_remote="origin",
+        base_ref="main",
+        iteration=0,
+        rebase_count=4,
+        fix_attempts=0,
+        transient_retries=0,
+        variant=ship.ShipRebaseVariant.MAIN_ADVANCED,
+    )
+
+    assert result.terminal is None
+    assert result.rebase_count == 5
+    assert _read_state(state)["PHASE"] == "rebase"
+
+
+def test_ship_phase14_rebase_success_writes_ci_initial_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    state = tmp_path / "ship-pr-state.sh"
+    flag = tmp_path / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME
+    _ = flag.write_text("", encoding="utf-8")
+    _ = state.write_text(
+        "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\nREPO=o/r\n"
+        "RESUME_PHASE=ship-pr-rrr-phase14\nCALLER_KIND=ship_pr_pre_push\n"
+        "LAST_MONITORED_HEAD=abc123\n",
+        encoding="utf-8",
+    )
+    ctx = _ctx(tmp_path, state_file=str(state), pr_number=7, pr_url="https://example.com/pr/7", merge=True)
+
+    def fake_rebase_and_push(
+        _runner: RecordingRunner,
+        *,
+        repo: str,
+        run_id: str,
+        cwd: str,
+        tmpdir: str,
+        base_remote: str,
+        base_ref: str,
+        allow_conflict_fix: bool,
+        enable_pre_push_handoff: bool,
+    ) -> object:
+        del repo, run_id, cwd, tmpdir, base_remote, base_ref, allow_conflict_fix, enable_pre_push_handoff
+        return object()
+
+    monkeypatch.setattr(ship.rebase, "rebase_and_push", fake_rebase_and_push)
+
+    new_count = ship._ship_phase14_rebase(  # pyright: ignore[reportPrivateUsage]
+        RecordingRunner(),
+        ctx,
+        cwd=str(tmp_path),
+        base_remote="origin",
+        base_ref="main",
+        phase14_flag=flag,
+        iteration=2,
+        rebase_count=1,
+        fix_attempts=0,
+        transient_retries=0,
+        last_monitored_head="abc123",
+    )
+
+    data = _read_state(state)
+    assert new_count == 2
+    assert not flag.is_file()
+    assert data["PHASE"] == "ci-initial"
+    assert data["REBASE_COUNT"] == "2"
+    assert data.get("RESUME_PHASE", "") == ""
+    assert data.get("CALLER_KIND", "") == ""
+    assert data["LAST_MONITORED_HEAD"] == "abc123"
+
+
+def test_ship_postmerge_phase_writes_done_only_on_ok(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    state = tmp_path / "ship-pr-state.sh"
+    _ = state.write_text("PHASE=postmerge\nBRANCH_NAME=feat\nPR_NUMBER=7\n", encoding="utf-8")
+    ctx = _ctx(tmp_path, state_file=str(state), pr_number=7, pr_url="https://example.com/pr/7", merge=True)
+
+    monkeypatch.setattr(
+        ship,
+        "run_postmerge_phase",
+        lambda *_a, **_k: ship.ShipResult(Outcome.STALLED, detail="blocked"),
+    )
+    stalled = ship._ship_postmerge_phase(  # pyright: ignore[reportPrivateUsage]
+        RecordingRunner(),
+        ctx,
+        cwd=str(tmp_path),
+        iteration=1,
+        rebase_count=0,
+        fix_attempts=0,
+        transient_retries=0,
+    )
+
+    assert stalled.outcome is Outcome.STALLED
+    assert _read_state(state)["PHASE"] == "postmerge"
+
+    monkeypatch.setattr(
+        ship,
+        "run_postmerge_phase",
+        lambda *_a, **_k: ship.ShipResult(Outcome.OK, detail="ok"),
+    )
+    ok = ship._ship_postmerge_phase(  # pyright: ignore[reportPrivateUsage]
+        RecordingRunner(),
+        ctx,
+        cwd=str(tmp_path),
+        iteration=1,
+        rebase_count=0,
+        fix_attempts=0,
+        transient_retries=0,
+    )
+
+    assert ok.outcome is Outcome.OK
+    assert _read_state(state)["PHASE"] == "done"
+
+
+def test_main_advanced_ci_initial_write_omits_monitor_head_fields(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\nREPO=o/r\nMERGE=true\nDRAFT=false\n"
+        "LAST_MONITORED_HEAD=tracked-head\nCI_FIX_REBASE_PENDING_HEAD=pending-head\n",
+        encoding="utf-8",
+    )
+    _open_pr_merge_loop_stubs(monkeypatch)
+    merge_results = [
+        config.MERGE_RESULT_MAIN_ADVANCED,
+        config.MERGE_RESULT_DRIVER_ALREADY_MERGED,
+    ]
+    ci_initial_writes: list[dict[str, str]] = []
+    original_write = ship._write_ship_state  # pyright: ignore[reportPrivateUsage]
+
+    def observe_write(ctx: RunContext, **kwargs: object) -> None:
+        if kwargs.get("phase") == "ci-initial":
+            ci_initial_writes.append({str(key): str(value) for key, value in kwargs.items()})
+        original_write(ctx, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(ship, "_write_ship_state", observe_write)
+    monkeypatch.setattr(
+        ship.ci_monitor,
+        "monitor",
+        lambda *_a, **_k: type(
+            "M",
+            (),
+            {
+                "result": StepResult(Outcome.OK),
+                "action": "merge",
+                "goto_rebase": False,
+                "did_fixing": False,
+                "transient_rerun_attempted": False,
+                "failed_run_id": None,
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        ship.merge,
+        "merge_pr",
+        lambda *_a, **_k: type("MR", (), {"result": merge_results.pop(0), "error": ""})(),
+    )
+    monkeypatch.setattr(ship.rebase, "rebase_and_push", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship, "run_postmerge_phase", lambda *_a, **_k: ship.ShipResult(Outcome.OK))
+
+    result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.OK
+    assert ci_initial_writes
+    main_advanced_follow_up = next(
+        write
+        for write in ci_initial_writes
+        if write.get("phase") == "ci-initial"
+        and write.get("iteration") == "1"
+        and "last_monitored_head" not in write
+        and write.get("ci_fix_rebase_pending_head", "") == ""
+    )
+    assert main_advanced_follow_up["rebase_count"] == "1"
+
+
 def test_seed_initial_state_writes_exact_ordered_key_set(tmp_path: Path) -> None:
     manifest = tmp_path / "manifest.json"
     _ = manifest.write_text('{"summary_bullets":["Ship"]}\n', encoding="utf-8")
@@ -872,6 +1123,45 @@ def test_merged_pr_resume_ignores_head_ref_mismatch(
 
     assert result.outcome is Outcome.OK
     assert result.detail == "postmerge"
+
+
+def test_merged_resume_writes_postmerge_phase_before_postmerge_helper(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\nPR_URL=https://example.test/pr/7\n"
+        "MERGE=true\nDRAFT=false\nITERATION=4\n",
+        encoding="utf-8",
+    )
+    events: list[str] = []
+    original_write = ship._write_ship_state  # pyright: ignore[reportPrivateUsage]
+    original_postmerge = ship._ship_postmerge_phase  # pyright: ignore[reportPrivateUsage]
+
+    def observe_write(ctx: RunContext, **kwargs: object) -> None:
+        if kwargs.get("phase") == "postmerge":
+            events.append("postmerge_write")
+        original_write(ctx, **kwargs)  # type: ignore[arg-type]
+
+    def observe_postmerge(*args: object, **kwargs: object) -> ship.ShipResult:
+        events.append("postmerge_invoke")
+        return original_postmerge(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
+    monkeypatch.setattr(
+        ship.gh,
+        "pr_view",
+        lambda *_a, **_k: type("PR", (), {"number": 7, "url": "https://example.test/pr/7", "state": "MERGED", "head_ref": "stale-head"})(),
+    )
+    monkeypatch.setattr(ship, "_write_ship_state", observe_write)
+    monkeypatch.setattr(ship, "_ship_postmerge_phase", observe_postmerge)
+    monkeypatch.setattr(ship, "run_postmerge_phase", lambda *_a, **_k: ship.ShipResult(Outcome.OK, detail="postmerge"))
+
+    result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.OK
+    assert events.index("postmerge_write") < events.index("postmerge_invoke")
 
 
 def test_resume_branch_mismatch_safe_refuses_without_fresh_work(

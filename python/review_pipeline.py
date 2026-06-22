@@ -26,6 +26,7 @@ import logging_util
 import proc
 import research_eval
 import voting
+from review_types import ReviewCoreStatus
 from plan_scout import REVIEW_RESERVED as RESERVED_DYNAMIC_NAMES
 from plan_scout import filter_manifest as filter_scout_manifest
 
@@ -53,6 +54,15 @@ class PruneFilterResult:
     panel_pruned_empty: str
     prune_fail_open: str = "false"
     warn: str = ""
+
+
+
+
+@dataclass(frozen=True)
+class ReviewCoreResult:
+    rc: int
+    status: ReviewCoreStatus | str
+    rows: tuple[tuple[str, object], ...]
 
 
 @dataclass(frozen=True)
@@ -1806,9 +1816,9 @@ def _static_coverage_reason(
     return f"no successful static reviewer for archetype(s): {','.join(missing)}" if missing else ""
 
 
-def _record_classification(review_tmpdir: Path, round_num: int, classification_file: str) -> None:
+def _record_classification(review_tmpdir: Path, round_num: int, classification_file: str) -> tuple[tuple[str, object], ...]:
     if not classification_file:
-        return
+        return ()
     map_file = review_tmpdir / "findings-classification-round-map.env"
     existing: list[str] = []
     round_key = f"FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_{round_num}"
@@ -1816,21 +1826,21 @@ def _record_classification(review_tmpdir: Path, round_num: int, classification_f
         existing = [line for line in map_file.read_text(encoding="utf-8", errors="replace").splitlines() if not line.startswith("FINDINGS_CLASSIFICATION_TSV_FILE=") and not line.startswith(round_key + "=")]
     existing.extend([f"FINDINGS_CLASSIFICATION_TSV_FILE={classification_file}", f"{round_key}={classification_file}"])
     _write_text(map_file, "\n".join(existing) + "\n")
-    _emit_kv("FINDINGS_CLASSIFICATION_TSV_FILE", classification_file)
-    _emit_kv(round_key, classification_file)
+    return (("FINDINGS_CLASSIFICATION_TSV_FILE", classification_file), (round_key, classification_file))
 
 
-def _record_prune_round(prune_ledger: str, round_num: int, panel_manifest: str, classification_file: str, label_map: Path | None = None) -> None:
+def _record_prune_round(prune_ledger: str, round_num: int, panel_manifest: str, classification_file: str, label_map: Path | None = None) -> tuple[tuple[str, object], ...]:
     if not prune_ledger or not panel_manifest or not classification_file:
-        return
+        return ()
     manifest = Path(panel_manifest)
     classification = Path(classification_file)
     if not manifest.is_file() or not classification.is_file():
-        return
+        return ()
     try:
         reviewer_prune_record(Path(prune_ledger), round_num, manifest, classification, label_map)
     except Exception as exc:
-        _emit_kv("WARN", f"reviewer-prune record failed for round {round_num}: {exc}")
+        return (("WARN", f"reviewer-prune record failed for round {round_num}: {exc}"),)
+    return ()
 
 
 def _ensure_prune_sidecars(review_tmpdir: Path, round_num: int) -> None:
@@ -1850,21 +1860,35 @@ def _flush_round_log(review_tmpdir: Path, run_id: str, round_num: int) -> None:
     )
 
 
-def _emit_core_common(status: str, round_num: int, review_tmpdir: Path, panel_mode: str, panel_shape: str, accepted: str = "0", rejected: str = "0", exonerated: str = "0", neutral: str = "0", oos_drift: str = "0", accepted_file: Path | None = None, threshold_reason: str = "") -> None:
-    _emit_kv("REVIEW_CORE_STATUS", status)
-    _emit_kv("ROUND_NUM", round_num)
-    _emit_kv("ACCEPTED_COUNT", accepted)
-    _emit_kv("REJECTED_COUNT", rejected)
-    _emit_kv("EXONERATED_COUNT", exonerated)
-    _emit_kv("NEUTRAL_COUNT", neutral)
-    _emit_kv("OUT_OF_SCOPE_DRIFT_COUNT", oos_drift)
-    _emit_kv("FINDINGS_FILE", review_tmpdir / "findings.md")
-    _emit_kv("ACCEPTED_FINDINGS_FILE", accepted_file or review_tmpdir / "accepted-findings.md")
-    _emit_kv("REJECTED_FINDINGS_FILE", review_tmpdir / "rejected-findings.md")
-    _emit_kv("PANEL_MODE", panel_mode)
-    _emit_kv("PANEL_SHAPE", panel_shape)
+def _core_common_rows(status: str, round_num: int, review_tmpdir: Path, panel_mode: str, panel_shape: str, accepted: str = "0", rejected: str = "0", exonerated: str = "0", neutral: str = "0", oos_drift: str = "0", accepted_file: Path | None = None, threshold_reason: str = "") -> tuple[tuple[str, object], ...]:
+    rows: list[tuple[str, object]] = [
+        ("REVIEW_CORE_STATUS", status),
+        ("ROUND_NUM", round_num),
+        ("ACCEPTED_COUNT", accepted),
+        ("REJECTED_COUNT", rejected),
+        ("EXONERATED_COUNT", exonerated),
+        ("NEUTRAL_COUNT", neutral),
+        ("OUT_OF_SCOPE_DRIFT_COUNT", oos_drift),
+        ("FINDINGS_FILE", review_tmpdir / "findings.md"),
+        ("ACCEPTED_FINDINGS_FILE", accepted_file or review_tmpdir / "accepted-findings.md"),
+        ("REJECTED_FINDINGS_FILE", review_tmpdir / "rejected-findings.md"),
+        ("PANEL_MODE", panel_mode),
+        ("PANEL_SHAPE", panel_shape),
+    ]
     if threshold_reason:
-        _emit_kv("THRESHOLD_REASON", threshold_reason)
+        rows.append(("THRESHOLD_REASON", threshold_reason))
+    return tuple(rows)
+
+
+def _emit_core_common(status: str, round_num: int, review_tmpdir: Path, panel_mode: str, panel_shape: str, accepted: str = "0", rejected: str = "0", exonerated: str = "0", neutral: str = "0", oos_drift: str = "0", accepted_file: Path | None = None, threshold_reason: str = "") -> None:
+    for key, value in _core_common_rows(status, round_num, review_tmpdir, panel_mode, panel_shape, accepted, rejected, exonerated, neutral, oos_drift, accepted_file, threshold_reason):
+        _emit_kv(key, value)
+
+
+def _emit_review_core_result(result: ReviewCoreResult) -> int:
+    for key, value in result.rows:
+        _emit_kv(key, value)
+    return result.rc
 
 
 def _emit_tally(commands: ReviewCommands, args: Sequence[str], out_file: Path, *, runner: proc.Runner | None = None) -> dict[str, str]:
@@ -1899,7 +1923,8 @@ def _zero_findings_branch(
     prune_ledger: str,
     *,
     runner: proc.Runner | None = None,
-) -> None:
+) -> ReviewCoreResult:
+    rows: list[tuple[str, object]] = []
     voter = review_tmpdir / "zero-findings-voter.txt"
     _write_text(voter, "")
     tally_args = [
@@ -1930,9 +1955,9 @@ def _zero_findings_branch(
     _write_text(tally_out, tally_result.stdout)
     tally = _kv_parse(tally_result.stdout)
     classification = tally.get("FINDINGS_CLASSIFICATION_TSV_FILE", "")
-    _record_classification(review_tmpdir, round_num, classification)
+    rows.extend(_record_classification(review_tmpdir, round_num, classification))
     if classification and Path(classification).is_file():
-        _record_prune_round(prune_ledger, round_num, panel_manifest, classification)
+        rows.extend(_record_prune_round(prune_ledger, round_num, panel_manifest, classification))
     _write_text(review_tmpdir / "accepted-findings.md", "")
     _write_text(review_tmpdir / "rejected-findings.md", "")
     _write_text(review_tmpdir / "oos-accepted-review.md", "")
@@ -1964,57 +1989,32 @@ def _zero_findings_branch(
     _copy_to_parent(review_tmpdir / "rejected-findings.md", "rejected-findings.md", session_env_path)
     _restore_oos(review_tmpdir, "zero-findings", session_env_path)
     _flush_round_log(review_tmpdir, run_id, round_num)
-    _emit_core_common("zero-findings", round_num, review_tmpdir, panel_mode, panel_shape)
+    rows.extend(_core_common_rows("zero-findings", round_num, review_tmpdir, panel_mode, panel_shape))
     voting_tally = tally.get("VOTING_TALLY_FILE", "")
     if voting_tally:
-        _emit_kv("VOTING_TALLY_FILE", voting_tally)
+        rows.append(("VOTING_TALLY_FILE", voting_tally))
+    return ReviewCoreResult(0, ReviewCoreStatus.zero_findings, tuple(rows))
 
 
-def review_core(argv: list[str], *, runner: proc.Runner | None = None) -> int:
-    logging_util.quiet_init(argv0="review-core")
-    usage = "Usage: review core --mode diff|description --output-dir DIR --codex-available true|false --cursor-available true|false [--dynamic-archetypes 0-3] [--pre-scouted-manifest FILE] [--site SITE] [context flags]"
-    options = {
-        "--mode",
-        "--output-dir",
-        "--session-env-path",
-        "--codex-available",
-        "--cursor-available",
-        "--diff-file",
-        "--commit-count",
-        "--scope-files",
-        "--plan-file",
-        "--feature-file",
-        "--description-text",
-        "--panel",
-        "--dynamic-archetypes",
-        "--pre-scouted-manifest",
-        "--run-id",
-        "--round-num",
-        "--prune-ledger",
-        "--site",
-    }
-    parsed = _parse_args(argv, usage, options)
-    if parsed is None:
-        return 0
-    if not parsed:
-        return 2
-    mode = _get(parsed, "--mode")
-    review_tmpdir = Path(_get(parsed, "--output-dir"))
-    codex_available = _get(parsed, "--codex-available")
-    cursor_available = _get(parsed, "--cursor-available")
-    panel = _get(parsed, "--panel", "hard")
-    dynamic = _get(parsed, "--dynamic-archetypes", os.environ.get("LARCH_DYNAMIC_ARCHETYPES_MAX") or "0")
-    round_raw = _get(parsed, "--round-num", "1")
-    if mode not in {"diff", "description"} or not str(review_tmpdir) or codex_available not in {"true", "false"} or cursor_available not in {"true", "false"} or panel not in {"simple", "hard"} or dynamic not in {"0", "1", "2", "3"} or not round_raw.isdigit() or int(round_raw) <= 0:
-        _usage(usage)
-        return 2
-    round_num = int(round_raw)
-    session_env_path = _get(parsed, "--session-env-path", os.environ.get("SESSION_ENV_PATH", ""))
-    run_id = _get(parsed, "--run-id")
-    prune_ledger = _get(parsed, "--prune-ledger")
-    site = _get(parsed, "--site", "review Step 2")
+def _review_core_body(
+    parsed: Mapping[str, str | list[str]],
+    *,
+    mode: str,
+    review_tmpdir: Path,
+    codex_available: str,
+    cursor_available: str,
+    panel: str,
+    dynamic: str,
+    round_num: int,
+    session_env_path: str,
+    run_id: str,
+    prune_ledger: str,
+    site: str,
+    runner: proc.Runner | None = None,
+    commands: ReviewCommands | None = None,
+) -> ReviewCoreResult:
+    commands = commands or _review_commands()
     review_tmpdir.mkdir(parents=True, exist_ok=True)
-    commands = _review_commands()
 
     gather_args = ["--mode", mode, "--output-dir", str(review_tmpdir)]
     if _get(parsed, "--description-text"):
@@ -2033,11 +2033,13 @@ def review_core(argv: list[str], *, runner: proc.Runner | None = None) -> int:
         for name in ("findings.md", "accepted-findings.md", "rejected-findings.md", "oos-accepted-review.md"):
             _write_text(review_tmpdir / name, "")
         _flush_round_log(review_tmpdir, run_id, round_num)
-        _emit_kv("SCOUT_STATUS", "na")
-        _emit_kv("DYNAMIC_SLOTS", "0")
-        _emit_kv("SCOUT_MANIFEST", "")
-        _emit_core_common("zero-findings", round_num, review_tmpdir, "normal", panel)
-        return 0
+        rows = [
+            ("SCOUT_STATUS", "na"),
+            ("DYNAMIC_SLOTS", "0"),
+            ("SCOUT_MANIFEST", ""),
+            *_core_common_rows("zero-findings", round_num, review_tmpdir, "normal", panel),
+        ]
+        return ReviewCoreResult(0, ReviewCoreStatus.zero_findings, tuple(rows))
 
     dispatch_args = [
         "--mode",
@@ -2073,8 +2075,8 @@ def review_core(argv: list[str], *, runner: proc.Runner | None = None) -> int:
     if dispatch_result.returncode != 0:
         _ensure_prune_sidecars(review_tmpdir, round_num)
         _flush_round_log(review_tmpdir, run_id, round_num)
-        _emit_core_common("panel-failed", round_num, review_tmpdir, "normal", panel, threshold_reason=f"dispatch-panel exited rc={dispatch_result.returncode}")
-        return 2
+        dispatch_failure_rows = _core_common_rows("panel-failed", round_num, review_tmpdir, "normal", panel, threshold_reason=f"dispatch-panel exited rc={dispatch_result.returncode}")
+        return ReviewCoreResult(2, ReviewCoreStatus.panel_failed, dispatch_failure_rows)
     dispatch = _kv_parse(dispatch_result.stdout)
     external_outputs = dispatch.get("EXTERNAL_OUTPUT_FILES", "")
     claude_outputs = dispatch.get("CLAUDE_OUTPUT_FILES", "")
@@ -2092,15 +2094,14 @@ def review_core(argv: list[str], *, runner: proc.Runner | None = None) -> int:
         review_tmpdir / f"scout-round{round_num}-status.env",
         f"SCOUT_STATUS={scout_status}\n" + (f"SCOUT_FAIL_REASON={scout_fail_reason}\n" if scout_fail_reason else "") + f"DYNAMIC_SLOTS={dynamic_slots}\nSCOUT_MANIFEST={scout_manifest}\n",
     )
-    _emit_kv("SCOUT_STATUS", scout_status)
-    if scout_fail_reason:
-        _emit_kv("SCOUT_FAIL_REASON", scout_fail_reason)
-    _emit_kv("DYNAMIC_SLOTS", dynamic_slots)
-    if scout_manifest:
-        _emit_kv("SCOUT_MANIFEST", scout_manifest)
-    if dispatch.get("PRUNED_COMBOS"):
-        _emit_kv("PRUNED_COMBOS", dispatch["PRUNED_COMBOS"])
-    _emit_kv("PANEL_PRUNED_EMPTY", panel_pruned_empty)
+    dispatch_scout_rows: tuple[tuple[str, object], ...] = (
+        (("SCOUT_STATUS", scout_status),)
+        + ((("SCOUT_FAIL_REASON", scout_fail_reason),) if scout_fail_reason else ())
+        + (("DYNAMIC_SLOTS", dynamic_slots),)
+        + ((("SCOUT_MANIFEST", scout_manifest),) if scout_manifest else ())
+        + ((("PRUNED_COMBOS", dispatch["PRUNED_COMBOS"]),) if dispatch.get("PRUNED_COMBOS") else ())
+        + (("PANEL_PRUNED_EMPTY", panel_pruned_empty),)
+    )
     if panel_pruned_empty == "true" and prune_status == "pruned-empty":
         _snapshot_oos(review_tmpdir, "prune-skipped", session_env_path)
         for name in ("findings.md", "accepted-findings.md", "rejected-findings.md", "oos.md", "oos-accepted-review.md"):
@@ -2110,9 +2111,10 @@ def review_core(argv: list[str], *, runner: proc.Runner | None = None) -> int:
         _ensure_prune_sidecars(review_tmpdir, round_num)
         _flush_round_log(review_tmpdir, run_id, round_num)
         _diag(f"→ review: round {round_num} skipped — all reviewer combos pruned")
-        _emit_core_common("prune-skipped", round_num, review_tmpdir, panel_mode, panel_shape)
-        return 0
+        prune_skipped_rows = dispatch_scout_rows + _core_common_rows("prune-skipped", round_num, review_tmpdir, panel_mode, panel_shape)
+        return ReviewCoreResult(0, ReviewCoreStatus.prune_skipped, prune_skipped_rows)
 
+    rows: list[tuple[str, object]] = list(dispatch_scout_rows)
     external_array = external_outputs.split() if external_outputs else []
     claude_array = claude_outputs.split() if claude_outputs else []
     collect_args = ["--mode", mode, "--timeout", "1860", "--findings-file", str(review_tmpdir / "findings.md"), "--oos-file", str(review_tmpdir / "oos.md")]
@@ -2177,13 +2179,13 @@ def review_core(argv: list[str], *, runner: proc.Runner | None = None) -> int:
         _copy_to_parent(review_tmpdir / "rejected-findings.md", "rejected-findings.md", session_env_path)
         _copy_to_parent(review_tmpdir / "oos-accepted-review.md", "oos-accepted-review.md", session_env_path)
         _flush_round_log(review_tmpdir, run_id, round_num)
-        _emit_core_common("panel-failed", round_num, review_tmpdir, panel_mode, panel_shape, threshold_reason=threshold_reason)
-        return 2
+        rows.extend(_core_common_rows("panel-failed", round_num, review_tmpdir, panel_mode, panel_shape, threshold_reason=threshold_reason))
+        return ReviewCoreResult(2, ReviewCoreStatus.panel_failed, tuple(rows))
 
     findings_count = collect.get("FINDINGS_COUNT", "0")
     if findings_count == "0":
-        _zero_findings_branch(commands, review_tmpdir, round_num, mode, cursor_available, codex_available, session_env_path, panel_manifest, collector_results, not_substantive, panel_mode, panel_shape, scout_status, dynamic_slots, static_slot_count, run_id, prune_ledger, runner=runner)
-        return 0
+        zero = _zero_findings_branch(commands, review_tmpdir, round_num, mode, cursor_available, codex_available, session_env_path, panel_manifest, collector_results, not_substantive, panel_mode, panel_shape, scout_status, dynamic_slots, static_slot_count, run_id, prune_ledger, runner=runner)
+        return ReviewCoreResult(0, zero.status, dispatch_scout_rows + zero.rows)
 
     aggregate_args = ["--findings-file", str(review_tmpdir / "findings.md"), "--review-tmpdir", str(review_tmpdir), "--codex-present", codex_available, "--cursor-present", cursor_available, "--mode", mode]
     if session_env_path:
@@ -2202,8 +2204,8 @@ def review_core(argv: list[str], *, runner: proc.Runner | None = None) -> int:
             _write_proposer_sidecar_and_neutralize(review_tmpdir / "findings.md", proposer_map)
         except (OSError, ValueError) as exc:
             _diag(f"→ review: proposer map preparation failed: {exc}")
-            _emit_core_common("panel-failed", round_num, review_tmpdir, panel_mode, panel_shape, threshold_reason="proposer-map-failed")
-            return 2
+            rows.extend(_core_common_rows("panel-failed", round_num, review_tmpdir, panel_mode, panel_shape, threshold_reason="proposer-map-failed"))
+            return ReviewCoreResult(2, ReviewCoreStatus.panel_failed, tuple(rows))
         tally_args = ["--ballot-file", str(review_tmpdir / "findings.md"), "--review-tmpdir", str(review_tmpdir), "--cursor-available", cursor_available, "--codex-available", codex_available, "--round-num", str(round_num)]
         tally_args.extend(["--proposer-map-file", str(proposer_map)])
         if session_env_path:
@@ -2216,20 +2218,20 @@ def review_core(argv: list[str], *, runner: proc.Runner | None = None) -> int:
         tally = _kv_parse(tally_result.stdout)
         _write_text(review_tmpdir / "review-core-aggregator-exhaust-tally.env", tally_result.stdout)
         if tally_result.returncode != 0 and not tally.get("TALLY_STATUS"):
-            _emit_core_common("panel-failed", round_num, review_tmpdir, panel_mode, panel_shape, threshold_reason="tally-code-votes failed")
-            return 2
+            rows.extend(_core_common_rows("panel-failed", round_num, review_tmpdir, panel_mode, panel_shape, threshold_reason="tally-code-votes failed"))
+            return ReviewCoreResult(2, ReviewCoreStatus.panel_failed, tuple(rows))
         classification = tally.get("FINDINGS_CLASSIFICATION_TSV_FILE", "")
-        _record_classification(review_tmpdir, round_num, classification)
+        rows.extend(_record_classification(review_tmpdir, round_num, classification))
         emit_args = ["--tally-file", str(review_tmpdir / "review-core-aggregator-exhaust-tally.env"), "--accepted-findings-file", str(review_tmpdir / "accepted-findings.md"), "--oos-file", str(review_tmpdir / "oos.md"), "--review-tmpdir", str(review_tmpdir), "--round", str(round_num), "--mode", mode, "--scout-status", scout_status, "--dynamic-slots", dynamic_slots, "--static-slot-count", static_slot_count]
         _emit_tally(commands, emit_args, review_tmpdir / "review-core-aggregator-exhaust-emit.env", runner=runner)
         _flush_round_log(review_tmpdir, run_id, round_num)
-        _emit_core_common("aggregator-validation-exhausted", round_num, review_tmpdir, panel_mode, panel_shape, threshold_reason="aggregation-validation-exhausted")
+        rows.extend(_core_common_rows("aggregator-validation-exhausted", round_num, review_tmpdir, panel_mode, panel_shape, threshold_reason="aggregation-validation-exhausted"))
         if classification:
-            _emit_kv("FINDINGS_CLASSIFICATION_TSV_FILE", classification)
-        return 2
+            rows.append(("FINDINGS_CLASSIFICATION_TSV_FILE", classification))
+        return ReviewCoreResult(2, ReviewCoreStatus.aggregator_validation_exhausted, tuple(rows))
     if aggregate.get("REASON") == "ok" and aggregate.get("MERGED_COUNT") == "0":
-        _zero_findings_branch(commands, review_tmpdir, round_num, mode, cursor_available, codex_available, session_env_path, panel_manifest, collector_results, not_substantive, panel_mode, panel_shape, scout_status, dynamic_slots, static_slot_count, run_id, prune_ledger, runner=runner)
-        return 0
+        zero = _zero_findings_branch(commands, review_tmpdir, round_num, mode, cursor_available, codex_available, session_env_path, panel_manifest, collector_results, not_substantive, panel_mode, panel_shape, scout_status, dynamic_slots, static_slot_count, run_id, prune_ledger, runner=runner)
+        return ReviewCoreResult(0, zero.status, dispatch_scout_rows + zero.rows)
 
     prune_result = _call_maybe_override(commands.prune_nits, "prune-nit-findings", ["--findings-file", str(review_tmpdir / "findings.md"), "--input-mode", "code"], runner=runner)
     _write_text(review_tmpdir / "review-core-prune-nit.env", prune_result.stdout)
@@ -2242,8 +2244,8 @@ def review_core(argv: list[str], *, runner: proc.Runner | None = None) -> int:
         _write_proposer_sidecar_and_neutralize(review_tmpdir / "findings.md", proposer_map)
     except (OSError, ValueError) as exc:
         _diag(f"→ review: proposer map preparation failed: {exc}")
-        _emit_core_common("panel-failed", round_num, review_tmpdir, panel_mode, panel_shape, threshold_reason="proposer-map-failed")
-        return 2
+        rows.extend(_core_common_rows("panel-failed", round_num, review_tmpdir, panel_mode, panel_shape, threshold_reason="proposer-map-failed"))
+        return ReviewCoreResult(2, ReviewCoreStatus.panel_failed, tuple(rows))
 
     voter_args = ["--ballot-file", str(review_tmpdir / "findings.md"), "--review-tmpdir", str(review_tmpdir), "--codex-available", codex_available, "--cursor-available", cursor_available, "--round-num", str(round_num), "--site", site]
     if session_env_path:
@@ -2264,9 +2266,9 @@ def review_core(argv: list[str], *, runner: proc.Runner | None = None) -> int:
         voter_tools.append(tool)
         voter_files.append(path if status not in {"failed", "skipped"} and path and Path(path).is_file() and Path(path).stat().st_size else "")
         if voters.get(f"VOTER_{idx}_TOOL"):
-            _emit_kv(f"VOTER_{idx}_TOOL", voters[f"VOTER_{idx}_TOOL"])
+            rows.append((f"VOTER_{idx}_TOOL", voters[f"VOTER_{idx}_TOOL"]))
         if status:
-            _emit_kv(f"VOTER_{idx}_STATUS", status)
+            rows.append((f"VOTER_{idx}_STATUS", status))
     tally_args = ["--ballot-file", str(review_tmpdir / "findings.md"), "--review-tmpdir", str(review_tmpdir), "--cursor-available", cursor_available, "--codex-available", codex_available, "--round-num", str(round_num), "--proposer-map-file", str(proposer_map)]
     if session_env_path:
         tally_args.extend(["--session-env-path", session_env_path])
@@ -2285,23 +2287,23 @@ def review_core(argv: list[str], *, runner: proc.Runner | None = None) -> int:
     tally = _kv_parse(tally_result.stdout)
     _write_text(review_tmpdir / "review-core-tally.env", tally_result.stdout)
     if tally_result.returncode != 0 and not tally.get("TALLY_STATUS"):
-        _emit_core_common("panel-failed", round_num, review_tmpdir, panel_mode, panel_shape, threshold_reason="tally-code-votes failed")
-        return 2
+        rows.extend(_core_common_rows("panel-failed", round_num, review_tmpdir, panel_mode, panel_shape, threshold_reason="tally-code-votes failed"))
+        return ReviewCoreResult(2, ReviewCoreStatus.panel_failed, tuple(rows))
     for key in ("VOTING_SKIPPED_WARNING", "YIELD_TSV_FILE", "VOTING_TALLY_FILE"):
         if tally.get(key):
-            _emit_kv(key, tally[key])
+            rows.append((key, tally[key]))
     classification = tally.get("FINDINGS_CLASSIFICATION_TSV_FILE", "")
-    _record_classification(review_tmpdir, round_num, classification)
+    rows.extend(_record_classification(review_tmpdir, round_num, classification))
     if tally.get("TALLY_STATUS") == "main-agent-vote-required":
         _write_text(review_tmpdir / "rejected-findings.md", "")
         emit_args = ["--tally-file", tally.get("TALLY_FILE", str(review_tmpdir / "review-tally.env")), "--accepted-findings-file", tally.get("ACCEPTED_FINDINGS_FILE", str(review_tmpdir / "accepted-findings.md")), "--oos-file", str(review_tmpdir / "oos.md"), "--review-tmpdir", str(review_tmpdir), "--round", str(round_num), "--mode", mode, "--scout-status", scout_status, "--dynamic-slots", dynamic_slots, "--static-slot-count", static_slot_count]
         _emit_tally(commands, emit_args, review_tmpdir / "review-core-main-agent-emit.env", runner=runner)
         _flush_round_log(review_tmpdir, run_id, round_num)
-        _emit_core_common("main-agent-vote-required", round_num, review_tmpdir, panel_mode, panel_shape, oos_drift=tally.get("OUT_OF_SCOPE_DRIFT_COUNT", "0"))
+        rows.extend(_core_common_rows("main-agent-vote-required", round_num, review_tmpdir, panel_mode, panel_shape, oos_drift=tally.get("OUT_OF_SCOPE_DRIFT_COUNT", "0")))
         if classification:
-            _emit_kv("FINDINGS_CLASSIFICATION_TSV_FILE", classification)
-        return 0
-    _record_prune_round(prune_ledger, round_num, panel_manifest, classification)
+            rows.append(("FINDINGS_CLASSIFICATION_TSV_FILE", classification))
+        return ReviewCoreResult(0, ReviewCoreStatus.main_agent_vote_required, tuple(rows))
+    rows.extend(_record_prune_round(prune_ledger, round_num, panel_manifest, classification))
     accepted = tally.get("ACCEPTED_COUNT", "0") or "0"
     rejected = tally.get("REJECTED_COUNT", "0") or "0"
     exonerated = tally.get("EXONERATED_COUNT", "0") or "0"
@@ -2316,10 +2318,72 @@ def review_core(argv: list[str], *, runner: proc.Runner | None = None) -> int:
     status = "ok"
     if mode == "diff" and accepted.isdigit() and int(accepted) > 0:
         status = "cap-reached" if round_num >= 5 else "fix-required"
-    _emit_core_common(status, round_num, review_tmpdir, panel_mode, panel_shape, accepted=accepted, rejected=rejected, exonerated=exonerated, neutral=neutral, oos_drift=tally.get("OUT_OF_SCOPE_DRIFT_COUNT", "0"), accepted_file=accepted_file)
+    rows.extend(_core_common_rows(status, round_num, review_tmpdir, panel_mode, panel_shape, accepted=accepted, rejected=rejected, exonerated=exonerated, neutral=neutral, oos_drift=tally.get("OUT_OF_SCOPE_DRIFT_COUNT", "0"), accepted_file=accepted_file))
     if classification:
-        _emit_kv("FINDINGS_CLASSIFICATION_TSV_FILE", classification)
-    return 0
+        rows.append(("FINDINGS_CLASSIFICATION_TSV_FILE", classification))
+    return ReviewCoreResult(0, ReviewCoreStatus.from_wire(status), tuple(rows))
+
+
+def review_core(argv: list[str], *, runner: proc.Runner | None = None) -> int:
+    logging_util.quiet_init(argv0="review-core")
+    usage = "Usage: review core --mode diff|description --output-dir DIR --codex-available true|false --cursor-available true|false [--dynamic-archetypes 0-3] [--pre-scouted-manifest FILE] [--site SITE] [context flags]"
+    options = {
+        "--mode",
+        "--output-dir",
+        "--session-env-path",
+        "--codex-available",
+        "--cursor-available",
+        "--diff-file",
+        "--commit-count",
+        "--scope-files",
+        "--plan-file",
+        "--feature-file",
+        "--description-text",
+        "--panel",
+        "--dynamic-archetypes",
+        "--pre-scouted-manifest",
+        "--run-id",
+        "--round-num",
+        "--prune-ledger",
+        "--site",
+    }
+    parsed = _parse_args(argv, usage, options)
+    if parsed is None:
+        return 0
+    if not parsed:
+        return 2
+    mode = _get(parsed, "--mode")
+    review_tmpdir = Path(_get(parsed, "--output-dir"))
+    codex_available = _get(parsed, "--codex-available")
+    cursor_available = _get(parsed, "--cursor-available")
+    panel = _get(parsed, "--panel", "hard")
+    dynamic = _get(parsed, "--dynamic-archetypes", os.environ.get("LARCH_DYNAMIC_ARCHETYPES_MAX") or "0")
+    round_raw = _get(parsed, "--round-num", "1")
+    if mode not in {"diff", "description"} or not str(review_tmpdir) or codex_available not in {"true", "false"} or cursor_available not in {"true", "false"} or panel not in {"simple", "hard"} or dynamic not in {"0", "1", "2", "3"} or not round_raw.isdigit() or int(round_raw) <= 0:
+        _usage(usage)
+        return 2
+    round_num = int(round_raw)
+    session_env_path = _get(parsed, "--session-env-path", os.environ.get("SESSION_ENV_PATH", ""))
+    run_id = _get(parsed, "--run-id")
+    prune_ledger = _get(parsed, "--prune-ledger")
+    site = _get(parsed, "--site", "review Step 2")
+    result = _review_core_body(
+        parsed,
+        mode=mode,
+        review_tmpdir=review_tmpdir,
+        codex_available=codex_available,
+        cursor_available=cursor_available,
+        panel=panel,
+        dynamic=dynamic,
+        round_num=round_num,
+        session_env_path=session_env_path,
+        run_id=run_id,
+        prune_ledger=prune_ledger,
+        site=site,
+        runner=runner,
+        commands=_review_commands(),
+    )
+    return _emit_review_core_result(result)
 
 
 # CLI main wrappers -------------------------------------------------------

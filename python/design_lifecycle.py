@@ -375,6 +375,50 @@ class PostplanResult:
     status: str
 
 
+@dataclass(frozen=True)
+class PostplanPaths:
+    design_tmpdir: Path
+    completed_dir: Path
+    step2b5_done: Path
+    step2b_done: Path
+    inline_retry_done: Path
+    inline_retry_pending: Path
+    fallback_used: Path
+    plan_source: Path
+    plan_summary: Path
+
+    @classmethod
+    def from_design_tmpdir(cls, design_tmpdir: Path) -> PostplanPaths:
+        root = design_tmpdir.resolve()
+        completed = root / ".completed"
+        return cls(
+            design_tmpdir=root,
+            completed_dir=completed,
+            step2b5_done=completed / "step-2b.5",
+            step2b_done=completed / "step-2b",
+            inline_retry_done=root / ".step2b-postplan-inline-retry-done",
+            inline_retry_pending=root / ".step2b-postplan-inline-retry-pending",
+            fallback_used=root / ".step2b-postplan-fallback-used",
+            plan_source=root / ".step2b-plan-source",
+            plan_summary=root / "plan-summary.md",
+        )
+
+
+@dataclass(frozen=True)
+class PostplanDecision:
+    postplan_rc: int
+    status: str
+    rows: tuple[str, ...]
+    touches: tuple[Path, ...]
+    writes: tuple[tuple[Path, str], ...]
+    unlinks: tuple[Path, ...]
+    clear_scout_manifests: bool = False
+    pause_save: bool = False
+    fatal_stderr: str = ""
+    print_captured_before_return: bool = False
+    print_stdout_before_system_exit: bool = False
+
+
 def _valid_var_name(value: str) -> bool:
     if not value or value[0].isdigit():
         return False
@@ -3031,6 +3075,115 @@ def _clear_scout_manifests(design_tmpdir: Path) -> None:
                 match.unlink()
 
 
+def _postplan_decide(
+    paths: PostplanPaths,
+    *,
+    site: str,
+    rc: int,
+    captured_stdout: str,
+    validate: Mapping[str, str],
+    plan_source: str,
+    fallback_used: str,
+    dirty_recovery: bool,
+    plan_summary_exists: bool,
+) -> PostplanDecision:
+    _ = captured_stdout
+    if rc == 0:
+        touches = [paths.step2b5_done]
+        if site in {"", "step2b"}:
+            touches.append(paths.step2b_done)
+        return PostplanDecision(
+            postplan_rc=0,
+            status="ok",
+            rows=("POSTPLAN_RC=0\n", "POSTPLAN_STATUS=ok\n"),
+            touches=tuple(touches),
+            writes=(),
+            unlinks=(),
+        )
+    if rc == 10:
+        rows = ["POSTPLAN_RC=10\n", "POSTPLAN_STATUS=validate-failed\n"]
+        touches: list[Path] = []
+        writes: list[tuple[Path, str]] = []
+        unlinks: list[Path] = []
+        inline_retry = plan_source == "drafter" and fallback_used != "true" and not dirty_recovery
+        if inline_retry:
+            touches.extend([paths.inline_retry_done, paths.inline_retry_pending])
+            writes.extend([(paths.fallback_used, "true\n"), (paths.plan_source, "inline\n")])
+            if plan_summary_exists:
+                unlinks.append(paths.plan_summary)
+            rows.append("SCOUT_STALE_CLEARED=true\n")
+            rows.append("**⚠ 2b: drafter plan failed postplan validation — re-entering inline drafting once**\n")
+        rows.extend(
+            f"{key}={validate[key]}\n"
+            for key in ("VALIDATE_STATUS", "VALIDATE_DEFECT_COUNT", "VALIDATE_SKIPPED_COUNT", "VALIDATE_UNSAFE_TOKEN_COUNT", "VALIDATE_LOG_FILE")
+            if validate.get(key)
+        )
+        return PostplanDecision(
+            postplan_rc=10,
+            status="validate-failed",
+            rows=tuple(rows),
+            touches=tuple(touches),
+            writes=tuple(writes),
+            unlinks=tuple(unlinks),
+            clear_scout_manifests=inline_retry,
+        )
+    if rc == 11:
+        return PostplanDecision(
+            postplan_rc=11,
+            status="pause-save",
+            rows=("POSTPLAN_RC=11\n", "POSTPLAN_STATUS=pause-save\n"),
+            touches=(),
+            writes=(),
+            unlinks=(),
+            pause_save=True,
+            print_stdout_before_system_exit=True,
+        )
+    if rc == 12:
+        return PostplanDecision(
+            postplan_rc=12,
+            status="plan-size-trigger",
+            rows=("POSTPLAN_RC=12\n", "POSTPLAN_STATUS=plan-size-trigger\n"),
+            touches=(paths.step2b_done,),
+            writes=(),
+            unlinks=(),
+        )
+    if rc == 13:
+        return PostplanDecision(
+            postplan_rc=13,
+            status="partition-requested",
+            rows=("POSTPLAN_RC=13\n", "POSTPLAN_STATUS=partition-requested\n"),
+            touches=(paths.step2b_done,),
+            writes=(),
+            unlinks=(),
+        )
+    if rc == 2:
+        fatal = "**⚠ Step 2b: design-postplan-emit.sh configuration error (exit 2); aborting /design.**"
+    elif rc == 1:
+        fatal = "**⚠ Step 2b: design-postplan-emit.sh failed (exit 1); aborting /design.**"
+    else:
+        fatal = f"**⚠ Step 2b: design-postplan-emit.sh unexpected exit ({rc}); aborting /design.**"
+    return PostplanDecision(
+        postplan_rc=rc,
+        status="fatal",
+        rows=(),
+        touches=(),
+        writes=(),
+        unlinks=(),
+        fatal_stderr=fatal,
+        print_captured_before_return=True,
+    )
+
+
+def _apply_postplan_decision(decision: PostplanDecision) -> None:
+    for path in decision.touches:
+        _touch(path)
+    for path, text in decision.writes:
+        _write_text(path, text)
+    for path in decision.unlinks:
+        with contextlib.suppress(FileNotFoundError):
+            path.unlink()
+
+
 def _shared_step2b_postplan_body(
     parsed: WrapperArgs,
     *,
@@ -3042,79 +3195,48 @@ def _shared_step2b_postplan_body(
         print("POSTPLAN_RC=11")
         print("POSTPLAN_STATUS=pause-save")
         raise SystemExit(_call_pause_save(design_tmpdir, ctx))
-    if site != "step2b":
+    if site not in {"", "step2b"}:
         _clear_scout_manifests(design_tmpdir)
     postplan_args = ["--design-tmpdir", str(design_tmpdir), "--with-plan-size"]
     if site in {"", "step2b"}:
         postplan_args.append("--snapshot-original")
     rc, captured = _capture_stdout(design_postplan.postplan_emit_main, postplan_args)
-    out = io.StringIO()
-    out.write(captured)
-    if rc == 0:
-        out.write(f"POSTPLAN_RC={rc}\n")
-        out.write("POSTPLAN_STATUS=ok\n")
-        completed = design_tmpdir / ".completed"
-        completed.mkdir(parents=True, exist_ok=True)
-        _touch(completed / "step-2b.5")
-        if site in {"", "step2b"}:
-            _touch(completed / "step-2b")
-        return PostplanResult(rc, out.getvalue(), "ok")
-    if rc == 10:
-        out.write("POSTPLAN_RC=10\n")
-        out.write("POSTPLAN_STATUS=validate-failed\n")
-        validate = _read_simple_env(
-            design_tmpdir / ".design-postplan-emit-result.env",
-            {"VALIDATE_STATUS", "VALIDATE_DEFECT_COUNT", "VALIDATE_SKIPPED_COUNT", "VALIDATE_UNSAFE_TOKEN_COUNT", "VALIDATE_LOG_FILE"},
-        )
-        plan_source = ""
-        source_path = design_tmpdir / ".step2b-plan-source"
-        if source_path.is_file():
-            plan_source = source_path.read_text(encoding="utf-8", errors="replace").strip()
-        fallback_used = "false"
-        fallback_path = design_tmpdir / ".step2b-postplan-fallback-used"
-        if fallback_path.is_file():
-            fallback_used = fallback_path.read_text(encoding="utf-8", errors="replace").strip() or "false"
-        if plan_source == "drafter" and fallback_used != "true" and not _postplan_dirty_recovery(design_tmpdir):
-            _touch(design_tmpdir / ".step2b-postplan-inline-retry-done")
-            _write_text(fallback_path, "true\n")
-            _write_text(source_path, "inline\n")
-            with contextlib.suppress(FileNotFoundError):
-                (design_tmpdir / "plan-summary.md").unlink()
-            _clear_scout_manifests(design_tmpdir)
-            out.write("SCOUT_STALE_CLEARED=true\n")
-            _touch(design_tmpdir / ".step2b-postplan-inline-retry-pending")
-            out.write("**⚠ 2b: drafter plan failed postplan validation — re-entering inline drafting once**\n")
-        for key in ("VALIDATE_STATUS", "VALIDATE_DEFECT_COUNT", "VALIDATE_SKIPPED_COUNT", "VALIDATE_UNSAFE_TOKEN_COUNT", "VALIDATE_LOG_FILE"):
-            if validate.get(key):
-                out.write(f"{key}={validate[key]}\n")
-        return PostplanResult(rc, out.getvalue(), "validate-failed")
-    if rc == 11:
-        out.write("POSTPLAN_RC=11\n")
-        out.write("POSTPLAN_STATUS=pause-save\n")
-        _print_text(out.getvalue())
+    validate = _read_simple_env(
+        design_tmpdir / ".design-postplan-emit-result.env",
+        {"VALIDATE_STATUS", "VALIDATE_DEFECT_COUNT", "VALIDATE_SKIPPED_COUNT", "VALIDATE_UNSAFE_TOKEN_COUNT", "VALIDATE_LOG_FILE"},
+    )
+    plan_source = ""
+    source_path = design_tmpdir / ".step2b-plan-source"
+    if source_path.is_file():
+        plan_source = source_path.read_text(encoding="utf-8", errors="replace").strip()
+    fallback_used = "false"
+    fallback_path = design_tmpdir / ".step2b-postplan-fallback-used"
+    if fallback_path.is_file():
+        fallback_used = fallback_path.read_text(encoding="utf-8", errors="replace").strip() or "false"
+    paths = PostplanPaths.from_design_tmpdir(design_tmpdir)
+    decision = _postplan_decide(
+        paths,
+        site=site,
+        rc=rc,
+        captured_stdout=captured,
+        validate=validate,
+        plan_source=plan_source,
+        fallback_used=fallback_used,
+        dirty_recovery=_postplan_dirty_recovery(design_tmpdir),
+        plan_summary_exists=paths.plan_summary.is_file(),
+    )
+    _apply_postplan_decision(decision)
+    if decision.clear_scout_manifests:
+        _clear_scout_manifests(design_tmpdir)
+    stdout_lines = captured + "".join(decision.rows)
+    if decision.print_stdout_before_system_exit:
+        _print_text(stdout_lines)
         raise SystemExit(_call_pause_save(design_tmpdir, ctx))
-    if rc == 12:
-        out.write("POSTPLAN_RC=12\n")
-        out.write("POSTPLAN_STATUS=plan-size-trigger\n")
-        completed = design_tmpdir / ".completed"
-        completed.mkdir(parents=True, exist_ok=True)
-        _touch(completed / "step-2b")
-        return PostplanResult(rc, out.getvalue(), "plan-size-trigger")
-    if rc == 13:
-        out.write("POSTPLAN_RC=13\n")
-        out.write("POSTPLAN_STATUS=partition-requested\n")
-        completed = design_tmpdir / ".completed"
-        completed.mkdir(parents=True, exist_ok=True)
-        _touch(completed / "step-2b")
-        return PostplanResult(rc, out.getvalue(), "partition-requested")
-    _print_text(captured)
-    if rc == 2:
-        print("**⚠ Step 2b: design-postplan-emit.sh configuration error (exit 2); aborting /design.**", file=sys.stderr)
-    elif rc == 1:
-        print("**⚠ Step 2b: design-postplan-emit.sh failed (exit 1); aborting /design.**", file=sys.stderr)
-    else:
-        print(f"**⚠ Step 2b: design-postplan-emit.sh unexpected exit ({rc}); aborting /design.**", file=sys.stderr)
-    return PostplanResult(rc, captured, "fatal")
+    if decision.print_captured_before_return:
+        _print_text(captured)
+        if decision.fatal_stderr:
+            print(decision.fatal_stderr, file=sys.stderr)
+    return PostplanResult(rc, stdout_lines, decision.status)
 
 
 def step2b_postplan_main(argv: Sequence[str]) -> int:

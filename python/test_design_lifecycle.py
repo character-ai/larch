@@ -1276,6 +1276,268 @@ def test_wrapper_session_env_parser_exports_quoted_paths(tmp_path: Path) -> None
     assert os.environ["ISSUE_NUMBER"] == "42"
 
 
+def test_postplan_decide_ok_returns_rows_and_touches(tmp_path: Path) -> None:
+    paths = design_lifecycle.PostplanPaths.from_design_tmpdir(tmp_path)
+    decision = design_lifecycle._postplan_decide(  # pyright: ignore[reportPrivateUsage]
+        paths,
+        site="step2b",
+        rc=0,
+        captured_stdout="POSTPLAN_EMIT_STATUS=ok\n",
+        validate={},
+        plan_source="",
+        fallback_used="false",
+        dirty_recovery=False,
+        plan_summary_exists=False,
+    )
+
+    assert decision.rows == ("POSTPLAN_RC=0\n", "POSTPLAN_STATUS=ok\n")
+    assert decision.touches == (paths.step2b5_done, paths.step2b_done)
+    assert not decision.writes
+    assert not decision.unlinks
+
+
+def test_postplan_decide_inline_retry_returns_apply_metadata(tmp_path: Path) -> None:
+    paths = design_lifecycle.PostplanPaths.from_design_tmpdir(tmp_path)
+    decision = design_lifecycle._postplan_decide(  # pyright: ignore[reportPrivateUsage]
+        paths,
+        site="step2b",
+        rc=10,
+        captured_stdout="POSTPLAN_EMIT_STATUS=ok\n",
+        validate={"VALIDATE_STATUS": "defects-found", "VALIDATE_DEFECT_COUNT": "1"},
+        plan_source="drafter",
+        fallback_used="false",
+        dirty_recovery=False,
+        plan_summary_exists=True,
+    )
+
+    assert decision.clear_scout_manifests is True
+    assert "SCOUT_STALE_CLEARED=true\n" in decision.rows
+    assert decision.touches == (paths.inline_retry_done, paths.inline_retry_pending)
+    assert decision.writes == ((paths.fallback_used, "true\n"), (paths.plan_source, "inline\n"))
+    assert decision.unlinks == (paths.plan_summary,)
+
+
+def test_postplan_decide_fallback_used_skips_inline_retry(tmp_path: Path) -> None:
+    paths = design_lifecycle.PostplanPaths.from_design_tmpdir(tmp_path)
+    decision = design_lifecycle._postplan_decide(  # pyright: ignore[reportPrivateUsage]
+        paths,
+        site="step2b",
+        rc=10,
+        captured_stdout="",
+        validate={},
+        plan_source="drafter",
+        fallback_used="true",
+        dirty_recovery=False,
+        plan_summary_exists=True,
+    )
+
+    assert decision.clear_scout_manifests is False
+    assert all("SCOUT_STALE_CLEARED" not in row for row in decision.rows)
+    assert not decision.touches
+    assert not decision.writes
+    assert not decision.unlinks
+
+
+def test_postplan_decide_rc_11_sets_post_emit_pause_metadata(tmp_path: Path) -> None:
+    paths = design_lifecycle.PostplanPaths.from_design_tmpdir(tmp_path)
+    decision = design_lifecycle._postplan_decide(  # pyright: ignore[reportPrivateUsage]
+        paths,
+        site="step2b",
+        rc=11,
+        captured_stdout="POSTPLAN_EMIT_STATUS=ok\n",
+        validate={},
+        plan_source="",
+        fallback_used="false",
+        dirty_recovery=False,
+        plan_summary_exists=False,
+    )
+
+    assert decision.rows == ("POSTPLAN_RC=11\n", "POSTPLAN_STATUS=pause-save\n")
+    assert decision.pause_save is True
+    assert decision.print_stdout_before_system_exit is True
+    assert not decision.touches
+
+
+def test_postplan_decide_rc_12_returns_rows_and_touches(tmp_path: Path) -> None:
+    paths = design_lifecycle.PostplanPaths.from_design_tmpdir(tmp_path)
+    decision = design_lifecycle._postplan_decide(  # pyright: ignore[reportPrivateUsage]
+        paths,
+        site="step2b",
+        rc=12,
+        captured_stdout="POSTPLAN_EMIT_STATUS=ok\n",
+        validate={},
+        plan_source="",
+        fallback_used="false",
+        dirty_recovery=False,
+        plan_summary_exists=False,
+    )
+
+    assert decision.rows == ("POSTPLAN_RC=12\n", "POSTPLAN_STATUS=plan-size-trigger\n")
+    assert decision.touches == (paths.step2b_done,)
+
+
+def test_postplan_decide_rc_13_returns_rows_and_touches(tmp_path: Path) -> None:
+    paths = design_lifecycle.PostplanPaths.from_design_tmpdir(tmp_path)
+    decision = design_lifecycle._postplan_decide(  # pyright: ignore[reportPrivateUsage]
+        paths,
+        site="step2b",
+        rc=13,
+        captured_stdout="POSTPLAN_EMIT_STATUS=ok\n",
+        validate={},
+        plan_source="",
+        fallback_used="false",
+        dirty_recovery=False,
+        plan_summary_exists=False,
+    )
+
+    assert decision.rows == ("POSTPLAN_RC=13\n", "POSTPLAN_STATUS=partition-requested\n")
+    assert decision.touches == (paths.step2b_done,)
+
+
+def test_postplan_decide_fatal_rc_sets_print_captured_metadata(tmp_path: Path) -> None:
+    paths = design_lifecycle.PostplanPaths.from_design_tmpdir(tmp_path)
+    decision = design_lifecycle._postplan_decide(  # pyright: ignore[reportPrivateUsage]
+        paths,
+        site="step2b",
+        rc=2,
+        captured_stdout="POSTPLAN_EMIT_STATUS=ok\n",
+        validate={},
+        plan_source="",
+        fallback_used="false",
+        dirty_recovery=False,
+        plan_summary_exists=False,
+    )
+
+    assert decision.print_captured_before_return is True
+    assert "configuration error" in decision.fatal_stderr
+    assert not decision.rows
+
+
+def test_postplan_executor_pre_emit_pause_skips_emit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    (tmp_path / ".pause-requested").write_text("", encoding="utf-8")
+    called = False
+
+    def fake_emit(_argv: list[str]) -> int:
+        nonlocal called
+        called = True
+        return 0
+
+    monkeypatch.setattr(design_lifecycle.design_postplan, "postplan_emit_main", fake_emit)
+    monkeypatch.setattr(design_lifecycle, "_call_pause_save", lambda _d, _ctx=None: 11)  # type: ignore[arg-type]
+    with pytest.raises(SystemExit) as exc:
+        design_lifecycle._shared_step2b_postplan_body(  # pyright: ignore[reportPrivateUsage]
+            design_lifecycle.WrapperArgs(site="step2b"),
+            design_tmpdir=tmp_path,
+        )
+    assert exc.value.code == 11
+    assert called is False
+
+
+def test_postplan_executor_gate_b_clears_scout_before_emit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    scout = tmp_path / "scout-plan-manifest.json"
+    scout.write_text("{}\n", encoding="utf-8")
+    seen: list[str] = []
+
+    def fake_emit(argv: list[str]) -> int:
+        seen.extend(argv)
+        assert not scout.is_file()
+        print("POSTPLAN_EMIT_STATUS=ok")
+        return 0
+
+    monkeypatch.setattr(design_lifecycle.design_postplan, "postplan_emit_main", fake_emit)
+    result = design_lifecycle._shared_step2b_postplan_body(  # pyright: ignore[reportPrivateUsage]
+        design_lifecycle.WrapperArgs(site="gate-b"),
+        design_tmpdir=tmp_path,
+    )
+
+    assert result.stdout_lines == "POSTPLAN_EMIT_STATUS=ok\nPOSTPLAN_RC=0\nPOSTPLAN_STATUS=ok\n"
+    assert "--snapshot-original" not in seen
+
+
+@pytest.mark.parametrize(
+    ("emit_rc", "expected_stdout", "expected_touch"),
+    [
+        (0, "POSTPLAN_EMIT_STATUS=ok\nPOSTPLAN_RC=0\nPOSTPLAN_STATUS=ok\n", "step-2b.5"),
+        (12, "POSTPLAN_EMIT_STATUS=ok\nPOSTPLAN_RC=12\nPOSTPLAN_STATUS=plan-size-trigger\n", "step-2b"),
+        (13, "POSTPLAN_EMIT_STATUS=ok\nPOSTPLAN_RC=13\nPOSTPLAN_STATUS=partition-requested\n", "step-2b"),
+    ],
+)
+def test_postplan_executor_stdout_lines_golden_parity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    emit_rc: int,
+    expected_stdout: str,
+    expected_touch: str,
+) -> None:
+    def fake_emit(_argv: list[str]) -> int:
+        print("POSTPLAN_EMIT_STATUS=ok")
+        return emit_rc
+
+    monkeypatch.setattr(design_lifecycle.design_postplan, "postplan_emit_main", fake_emit)
+    result = design_lifecycle._shared_step2b_postplan_body(  # pyright: ignore[reportPrivateUsage]
+        design_lifecycle.WrapperArgs(site="step2b"),
+        design_tmpdir=tmp_path,
+    )
+
+    assert result.stdout_lines == expected_stdout
+    assert (tmp_path / ".completed" / expected_touch).is_file()
+
+
+def test_postplan_executor_rc_10_inline_retry_stdout_lines_golden(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / ".step2b-plan-source").write_text("drafter\n", encoding="utf-8")
+
+    def fake_emit(_argv: list[str]) -> int:
+        (tmp_path / ".design-postplan-emit-result.env").write_text(
+            "VALIDATE_STATUS=defects-found\nVALIDATE_DEFECT_COUNT=1\n",
+            encoding="utf-8",
+        )
+        print("POSTPLAN_EMIT_STATUS=ok")
+        return 10
+
+    monkeypatch.setattr(design_lifecycle.design_postplan, "postplan_emit_main", fake_emit)
+    result = design_lifecycle._shared_step2b_postplan_body(  # pyright: ignore[reportPrivateUsage]
+        design_lifecycle.WrapperArgs(site="step2b"),
+        design_tmpdir=tmp_path,
+    )
+
+    assert result.stdout_lines == (
+        "POSTPLAN_EMIT_STATUS=ok\n"
+        "POSTPLAN_RC=10\n"
+        "POSTPLAN_STATUS=validate-failed\n"
+        "SCOUT_STALE_CLEARED=true\n"
+        "**⚠ 2b: drafter plan failed postplan validation — re-entering inline drafting once**\n"
+        "VALIDATE_STATUS=defects-found\n"
+        "VALIDATE_DEFECT_COUNT=1\n"
+    )
+
+
+def test_postplan_executor_rc_11_prints_full_buffer_before_pause(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def fake_emit(_argv: list[str]) -> int:
+        print("POSTPLAN_EMIT_STATUS=ok")
+        return 11
+
+    monkeypatch.setattr(design_lifecycle.design_postplan, "postplan_emit_main", fake_emit)
+    monkeypatch.setattr(design_lifecycle, "_call_pause_save", lambda _d, _ctx=None: 11)  # type: ignore[arg-type]
+    with pytest.raises(SystemExit):
+        design_lifecycle._shared_step2b_postplan_body(  # pyright: ignore[reportPrivateUsage]
+            design_lifecycle.WrapperArgs(site="step2b"),
+            design_tmpdir=tmp_path,
+        )
+    out = capsys.readouterr().out
+    assert out == (
+        "POSTPLAN_EMIT_STATUS=ok\n"
+        "POSTPLAN_RC=11\n"
+        "POSTPLAN_STATUS=pause-save\n"
+    )
+
+
 def test_step2b_postplan_nonfatal_rc_10_exits_zero_and_emits_rows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     (tmp_path / "plan.txt").write_text("bad\n", encoding="utf-8")
     (tmp_path / ".step2b-plan-source").write_text("drafter\n", encoding="utf-8")
