@@ -546,6 +546,10 @@ def emit_untrusted_file_block(tag: str, path: Path) -> str:
     return f'<{tag} encoding="literal-redacted">\n{redact_untrusted_stream(path.read_text(encoding="utf-8", errors="replace"))}\n</{tag}>\n\n'
 
 
+def emit_untrusted_content_block(tag: str, text: str) -> str:
+    return f'<{tag} encoding="literal-redacted">\n{redact_untrusted_stream(text)}\n</{tag}>\n\n'
+
+
 def untrusted_xml_escape_attr_main(argv: list[str]) -> int:
     if argv:
         print(f"untrusted xml-escape-attr: unknown option: {argv[0]}", file=sys.stderr)
@@ -568,6 +572,16 @@ def untrusted_file_block_main(argv: list[str]) -> int:
         print("untrusted file-block: usage: untrusted file-block TAG PATH", file=sys.stderr)
         return 2
     sys.stdout.write(emit_untrusted_file_block(argv[0], Path(argv[1])))
+    return 0
+
+
+def untrusted_content_block_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="untrusted content-block", add_help=True)
+    parser.add_argument("tag")
+    parser.add_argument("--text")
+    args = parser.parse_args(argv)
+    text = args.text if args.text is not None else sys.stdin.read()
+    sys.stdout.write(emit_untrusted_content_block(args.tag, text))
     return 0
 
 

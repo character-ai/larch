@@ -1057,3 +1057,26 @@ def test_derive_review_line_non_code_review_phase_zero_stays_na(tmp_path: Path) 
 def test_derive_review_line_positive_counts(tmp_path: Path) -> None:
     _write_tally(tmp_path, "code-review-tally.json", {"phase": "code-review", "mode": "hard", "accepted_count": 2, "rejected_count": 3})
     assert final_report._derive_review_line(tmp_path, "code-review-tally.json") == "2/5 accepted"
+
+
+def test_compose_pr_body_no_guideline_note_matches_existing_output() -> None:
+    base = pr_body.compose_pr_body(summary="- x")
+    with_empty = pr_body.compose_pr_body(summary="- x", architectural_guidelines_note="")
+    assert with_empty == base
+
+
+def test_compose_pr_body_includes_guideline_note_before_mermaid() -> None:
+    body = pr_body.compose_pr_body(
+        summary="- x",
+        mermaid="flowchart LR\n  A --> B\n",
+        architectural_guidelines_note="Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.",
+    )
+    assert "## Architectural guidelines" in body
+    assert body.index("## Architectural guidelines") < body.index("## Code Flow Diagram")
+
+
+def test_compose_pr_body_redacts_guideline_note() -> None:
+    token = "sk-" + "A" * 24
+    body = pr_body.compose_pr_body(summary="- x", architectural_guidelines_note=f"token {token}")
+    assert token not in body
+    assert "<REDACTED-TOKEN>" in body

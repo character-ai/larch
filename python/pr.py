@@ -70,7 +70,11 @@ def ensure_pr(
     if existing is not None and existing.state == "OPEN":
         _push_existing_pr(runner, ctx, cwd=cwd)
         linked = tracking_issue.link_pr_closes(body, issue_num)
-        if linked != body:
+        remote_body = gh.pr_view_body(runner, existing.number, repo=ctx.repo, cwd=cwd)
+        guidelines_changed = remote_body is not None and pr_body.architectural_guidelines_section(
+            remote_body
+        ) != pr_body.architectural_guidelines_section(linked)
+        if linked != body or guidelines_changed:
             pr_body.update_pr_body(
                 runner,
                 existing.number,

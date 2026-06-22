@@ -289,12 +289,25 @@ def redact_pr_body(body: str) -> str:
     return _fail_closed_body(redact.redact(body))
 
 
+def architectural_guidelines_section(body: str) -> str:
+    """Return normalized architectural-guidelines section body, or empty when absent."""
+    heading = "## Architectural guidelines"
+    idx = body.find(heading)
+    if idx < 0:
+        return ""
+    rest = body[idx + len(heading) :].lstrip("\n")
+    next_heading = rest.find("\n## ")
+    section = rest[:next_heading] if next_heading >= 0 else rest
+    return section.strip()
+
+
 def compose_pr_body(
     *,
     summary: str,
     mermaid: str = "",
     test_plan: str = "- [ ] `make py-lint`\n- [ ] `make py-test`\n",
     issue_number: int | None = None,
+    architectural_guidelines_note: str = "",
 ) -> str:
     if mermaid.strip():
         mermaid_result = sanitize_fragment(mermaid)
@@ -302,6 +315,8 @@ def compose_pr_body(
             msg = f"mermaid fragment rejected: {','.join(mermaid_result.reason_tokens)}"
             raise ShipError(msg)
     parts = [summary.rstrip(), ""]
+    if architectural_guidelines_note.strip():
+        parts.extend(["## Architectural guidelines", "", architectural_guidelines_note.strip(), ""])
     if mermaid.strip():
         parts.extend(["## Code Flow Diagram", "", "```mermaid", mermaid.strip(), "```", ""])
     parts.extend(["## Test plan", "", test_plan.rstrip(), ""])

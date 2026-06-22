@@ -48,6 +48,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO, cast
 
+import architectural_guidelines
 import ci_monitor
 import config
 import file_oos
@@ -472,6 +473,73 @@ def _publish_post_pr_terminal_snapshot(
         if not refresh.skipped:
             with suppress(ShipError):
                 _ = push.push_branch(runner, ctx, cwd=cwd)
+
+
+def _log_guidelines_ship_warning(implement_tmpdir: Path, message: str) -> None:
+    issue_log = implement_tmpdir / "execution-issues.md"
+    with suppress(Exception):
+        run_logs.append_execution_issue(issue_log, "Warnings", message)
+
+
+def _invalidate_guidelines_note(implement_tmpdir: str) -> None:
+    if not implement_tmpdir:
+        return
+    tmpdir = Path(implement_tmpdir)
+    try:
+        architectural_guidelines.invalidate_implement_note(tmpdir)
+    except OSError as exc:
+        _log_guidelines_ship_warning(tmpdir, f"architectural-guidelines invalidate failed: {exc}")
+
+
+def _pin_and_load_guidelines_note(
+    implement_tmpdir: str,
+    head_sha: str,
+    base_ref: str,
+    *,
+    repo_root: str | None = None,
+) -> str:
+    if not implement_tmpdir or not head_sha:
+        return ""
+    tmpdir = Path(implement_tmpdir)
+    if architectural_guidelines.staged_assessment_path(tmpdir).is_file():
+        pinned_now = architectural_guidelines.pin_note_from_staged(
+            tmpdir,
+            head_sha=head_sha,
+            base_ref=base_ref,
+            repo_root=repo_root,
+        )
+        if not pinned_now:
+            _log_guidelines_ship_warning(
+                tmpdir,
+                "architectural-guidelines pin-note-from-staged skipped or failed fingerprint validation",
+            )
+    if not architectural_guidelines.note_consumable(tmpdir, head_sha):
+        return ""
+    meta = architectural_guidelines.durable_note_metadata(tmpdir)
+    note_base_ref = base_ref or meta.get("BASE_REF", "")
+    if architectural_guidelines.note_fingerprint_stale(
+        tmpdir,
+        base_ref=note_base_ref,
+        repo_root=repo_root,
+    ):
+        try:
+            architectural_guidelines.invalidate_implement_note(tmpdir)
+        except OSError as exc:
+            _log_guidelines_ship_warning(tmpdir, f"architectural-guidelines invalidate failed: {exc}")
+        return ""
+    try:
+        note = architectural_guidelines.durable_note_path(tmpdir).read_text(
+            encoding="utf-8",
+            errors="replace",
+        )
+    except OSError as exc:
+        _log_guidelines_ship_warning(tmpdir, f"architectural-guidelines note read failed: {exc}")
+        return ""
+    try:
+        return pr_body.redact_pr_body(note).strip()
+    except ShipError as exc:
+        _log_guidelines_ship_warning(tmpdir, f"architectural-guidelines note redaction failed: {exc}")
+        return ""
 
 
 def _state_bool(*, value: bool) -> str:
@@ -1437,11 +1505,20 @@ def run_ship(
             transient_retries=resume.transient_retries,
         )
         _breadcrumb("pr-create", "PR")
+        compose_head_sha = git.try_rev_parse(runner, "HEAD", cwd=repo_root) or ""
+        compose_base_ref = f"{'upstream' if pr_context.forked or pr_context.forked_target else 'origin'}/{base_ref}"
+        architectural_guidelines_note = _pin_and_load_guidelines_note(
+            pr_context.tmpdir,
+            compose_head_sha,
+            compose_base_ref,
+            repo_root=repo_root,
+        )
         body = pr_body.compose_pr_body(
             summary=_summary_from_manifest(pr_context),
             mermaid=pr_context.mermaid,
             test_plan=pr_context.test_plan or "- [ ] `make py-lint`\n- [ ] `make py-test`\n",
             issue_number=int(pr_context.issue_number or pr_context.issue) if (pr_context.issue_number or pr_context.issue).isdigit() else None,
+            architectural_guidelines_note=architectural_guidelines_note,
         )
         title = _pr_title(pr_context, runner, cwd=repo_root)
         ensured = pr.ensure_pr(runner, pr_context, body, title=title, cwd=repo_root, base=base_ref)
@@ -1608,6 +1685,7 @@ def run_ship(
                     )
                     phase14_flag.unlink(missing_ok=True)
                     rebase_count += 1
+                    _invalidate_guidelines_note(working.tmpdir)
                     _write_ship_state(
                         working,
                         phase="ci-initial",
@@ -1822,9 +1900,11 @@ def run_ship(
                         )
                         raise
                     rebase_count += 1
+                    _invalidate_guidelines_note(working.tmpdir)
                 if monitor.transient_rerun_attempted:
                     transient_retries += 1
                 if monitor.did_fixing:
+                    _invalidate_guidelines_note(working.tmpdir)
                     fix_attempts += 1
                 if monitor.action == "wait" or monitor.goto_rebase:
                     iteration += 1
@@ -1924,6 +2004,7 @@ def run_ship(
                     )
                     raise
                 rebase_count += 1
+                _invalidate_guidelines_note(working.tmpdir)
                 iteration += 1
                 _write_ship_state(
                     working,

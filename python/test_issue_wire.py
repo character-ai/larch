@@ -21,6 +21,21 @@ from errors import ShipError
 from proc import CommandResult
 
 
+def test_emit_untrusted_content_block_matches_file_block_redaction(tmp_path: Path) -> None:
+    raw = "<tag> sk-" + "A" * 24 + " & text"
+    file_path = tmp_path / "raw.txt"
+    _ = file_path.write_text(raw, encoding="utf-8")
+    assert issue_wire.emit_untrusted_content_block("sample", raw) == issue_wire.emit_untrusted_file_block("sample", file_path)
+    out = issue_wire.emit_untrusted_content_block("sample", raw)
+    assert "&lt;tag&gt;" in out
+    assert "&lt;REDACTED-TOKEN&gt;" in out
+
+
+def test_untrusted_content_block_cli_reads_text(capsys: pytest.CaptureFixture[str]) -> None:
+    assert issue_wire.untrusted_content_block_main(["sample", "--text", "hello <world>"]) == 0
+    assert "hello &lt;world&gt;" in capsys.readouterr().out
+
+
 def test_parse_named_block_marker_isolated_and_whitespace_tolerant() -> None:
     body = """before
   <!--   larch:design-pause:start   -->  

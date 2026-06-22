@@ -15,9 +15,11 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import cast
 
+import architectural_guidelines
 import closeout
 import config
 import pr_body
+import repo_roots
 import report_tokens_cost
 import review_phase_detail
 import stall_recovery
@@ -111,6 +113,77 @@ def _dynamic_archetypes_line(implement_tmpdir: Path) -> str:
             return "static-only, producer empty"
         return f"ok ({count})"
     return "unknown"
+
+
+def _current_head_sha() -> str:
+    completed = subprocess.run(
+        ["git", "rev-parse", "HEAD"],  # noqa: S607
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    return completed.stdout.strip() if completed.returncode == 0 else ""
+
+
+def _session_env_value(session: Path, key: str) -> str:
+    if not session.is_file() or session.is_symlink():
+        return ""
+    for line in session.read_text(encoding="utf-8", errors="replace").splitlines():
+        field, sep, value = line.partition("=")
+        if sep and field == key:
+            return value.strip().strip("'\"")
+    return ""
+
+
+def _keepalive_clone_path(implement_tmpdir: Path) -> str:
+    keepalive = implement_tmpdir / ".larch-keepalive"
+    return _session_env_value(keepalive, "CLONE_PATH")
+
+
+def _implement_repo_root(implement_tmpdir: Path) -> Path | None:
+    session = implement_tmpdir / "session-env.sh"
+    for key in ("CLAUDE_PROJECT_DIR", "REPO_CWD"):
+        cleaned = _session_env_value(session, key)
+        if cleaned:
+            root = repo_roots.consumer_repo_root(Path(cleaned))
+            if root is not None:
+                return root
+            try:
+                return Path(cleaned).resolve()
+            except OSError:
+                pass
+    clone = _keepalive_clone_path(implement_tmpdir)
+    if clone:
+        root = repo_roots.consumer_repo_root(Path(clone))
+        if root is not None:
+            return root
+    return repo_roots.consumer_repo_root()
+
+
+def _architectural_guidelines_section(implement_tmpdir: Path) -> str:
+    head_sha = _current_head_sha()
+    if not head_sha or not architectural_guidelines.note_consumable(implement_tmpdir, head_sha):
+        return ""
+    meta = architectural_guidelines.durable_note_metadata(implement_tmpdir)
+    note_base_ref = meta.get("BASE_REF", "")
+    if architectural_guidelines.note_fingerprint_stale(
+        implement_tmpdir,
+        base_ref=note_base_ref,
+        repo_root=_implement_repo_root(implement_tmpdir),
+    ):
+        architectural_guidelines.invalidate_implement_note(implement_tmpdir)
+        return ""
+    try:
+        note = architectural_guidelines.durable_note_path(implement_tmpdir).read_text(
+            encoding="utf-8",
+            errors="replace",
+        )
+    except OSError:
+        return ""
+    redacted = pr_body.redact_pr_body(note)
+    if not redacted.strip():
+        return ""
+    return "## Architectural guidelines\n\n" + redacted.strip() + "\n"
 
 
 def _token_argv_from_report(data: Mapping[str, object]) -> list[str]:
@@ -579,6 +652,14 @@ def write_final_report(
     except Exception:
         detail = ""
     body = review_phase_detail.append_review_phase_detail(body, detail)
+    try:
+        guidelines_section = _architectural_guidelines_section(implement_tmpdir)
+    except Exception as exc:
+        if print_stdout:
+            sys.stdout.write(body)
+        return 1, "", f"architectural-guidelines section failed: {exc}"
+    if guidelines_section:
+        body = body.rstrip("\n") + "\n\n" + guidelines_section
     summary = implement_tmpdir / "summary-final.md"
     try:
         summary.write_text(body, encoding="utf-8")

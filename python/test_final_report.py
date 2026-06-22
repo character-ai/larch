@@ -8,9 +8,13 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import config
 import final_report
+
+if TYPE_CHECKING:
+    import pytest
 
 
 def _write_minimal_state(tmp_path: Path) -> None:
@@ -135,3 +139,69 @@ def test_write_final_report_skip_tracking_upsert_does_not_call_upsert(
 
     assert (rc, url, err) == (0, "", "")
     assert not any("tracking-issue" in call for call in calls)
+
+
+def test_architectural_guidelines_section_absent_preserves_empty(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(final_report, "_current_head_sha", lambda: "head")
+    assert final_report._architectural_guidelines_section(tmp_path) == ""
+
+
+def test_architectural_guidelines_section_consumable_redacted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    token = "sk-" + "A" * 24
+    diff_text = "implementation diff"
+    final_report.architectural_guidelines.write_staged_assessment(
+        tmp_path,
+        f"note {token}\n",
+        assessed_head_sha="old",
+        diff_fingerprint_value=final_report.architectural_guidelines.diff_fingerprint(diff_text),
+        base_ref="origin/main",
+        diff_text=diff_text,
+    )
+    assert final_report.architectural_guidelines.pin_note_from_staged(
+        tmp_path,
+        head_sha="head",
+        base_ref="origin/main",
+    )
+    monkeypatch.setattr(final_report, "_current_head_sha", lambda: "head")
+    section = final_report._architectural_guidelines_section(tmp_path)
+    assert "## Architectural guidelines" in section
+    assert token not in section
+    assert "<REDACTED-TOKEN>" in section
+
+
+def test_architectural_guidelines_section_stale_or_symlink_skipped(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    diff_text = "implementation diff"
+    final_report.architectural_guidelines.write_staged_assessment(
+        tmp_path,
+        "note\n",
+        assessed_head_sha="old",
+        diff_fingerprint_value=final_report.architectural_guidelines.diff_fingerprint(diff_text),
+        base_ref="origin/main",
+        diff_text=diff_text,
+    )
+    assert final_report.architectural_guidelines.pin_note_from_staged(
+        tmp_path,
+        head_sha="other",
+        base_ref="origin/main",
+    )
+    monkeypatch.setattr(final_report, "_current_head_sha", lambda: "head")
+    assert final_report._architectural_guidelines_section(tmp_path) == ""
+
+    final_report.architectural_guidelines.invalidate_implement_note(tmp_path)
+    target = tmp_path / "target.md"
+    target.write_text("note\n", encoding="utf-8")
+    (tmp_path / final_report.architectural_guidelines.DURABLE_NOTE).symlink_to(target)
+    (tmp_path / final_report.architectural_guidelines.DURABLE_NOTE_ENV).write_text(
+        "STATUS=present\nHEAD_SHA=head\n",
+        encoding="utf-8",
+    )
+    assert final_report._architectural_guidelines_section(tmp_path) == ""

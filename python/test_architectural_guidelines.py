@@ -1,0 +1,268 @@
+"""Tests for ARCHITECTURAL_GUIDELINES.md helper surfaces."""
+# pyright: reportUnusedCallResult=false
+
+from __future__ import annotations
+
+import subprocess
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import pytest
+
+import architectural_guidelines as ag
+
+
+def _git(cwd: Path, *args: str) -> None:
+    completed = subprocess.run(["git", *args], cwd=cwd, text=True, capture_output=True, check=False)
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+
+
+def _repo(tmp_path: Path) -> Path:
+    repo = tmp_path / "repo"
+    repo.mkdir(parents=True)
+    _git(repo, "init")
+    _git(repo, "config", "user.name", "Larch Test")
+    _git(repo, "config", "user.email", "larch@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    _git(repo, "branch", "-M", "main")
+    _git(repo, "remote", "add", "origin", str(repo))
+    _git(repo, "remote", "add", "upstream", str(repo))
+    _git(repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+    _git(repo, "update-ref", "refs/remotes/upstream/main", "HEAD")
+    return repo
+
+
+def test_absent_file_returns_absent(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    result = ag.read_guidelines(repo_root=repo)
+    assert result.status == "absent"
+    assert result.content == ""
+
+
+def test_present_file_emits_only_normalized_entries(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    (repo / ag.GUIDELINES_FILENAME).write_text(
+        """Preamble ignored.
+
+### G-python-1: Prefer direct Python helpers
+- Why: They are easier to test & review.
+- Run: rm -rf ignored
+- Deviate when: A hook must target Bash.
+
+### Not emitted
+- Why: no.
+
+### G-skill-2: Keep context small
+- Why: Smaller prompts reduce anchoring.
+- Deviate when: The contract requires a full file read.
+""",
+        encoding="utf-8",
+    )
+    result = ag.read_guidelines(repo_root=repo)
+    assert result.status == "present"
+    assert "Preamble" not in result.content
+    assert "Run:" not in result.content
+    assert "### Not emitted" not in result.content
+    assert "### G-python-1: Prefer direct Python helpers" in result.content
+    assert "- Why: They are easier to test & review." in result.content
+
+
+def test_parse_guideline_entries_omits_bullets_after_non_entry_heading() -> None:
+    parsed = ag.parse_guideline_entries(
+        """### G-python-1: First entry
+- Why: first why.
+- Deviate when: first carve-out.
+
+### Not a guideline entry
+- Why: leaked why.
+- Deviate when: leaked carve-out.
+
+### G-skill-2: Second entry
+- Why: second why.
+- Deviate when: second carve-out.
+"""
+    )
+    assert "leaked why" not in parsed
+    assert "leaked carve-out" not in parsed
+    assert "### G-python-1: First entry" in parsed
+    assert "### G-skill-2: Second entry" in parsed
+    assert "- Why: second why." in parsed
+
+
+def test_pin_note_from_staged_rejects_fingerprint_mismatch(tmp_path: Path) -> None:
+    tmpdir = tmp_path / "implement"
+    ag.write_staged_assessment(
+        tmpdir,
+        "note\n",
+        assessed_head_sha="head-a",
+        diff_fingerprint_value="mismatch",
+        base_ref="origin/main",
+        diff_text="implementation diff",
+    )
+    assert not ag.pin_note_from_staged(tmpdir, head_sha="head-b", base_ref="origin/main")
+    assert not ag.note_consumable(tmpdir, "head-b")
+
+
+def test_note_fingerprint_stale_returns_true_when_git_diff_unavailable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmpdir = tmp_path / "implement"
+    ag.write_staged_assessment(
+        tmpdir,
+        "note\n",
+        assessed_head_sha="head-a",
+        diff_fingerprint_value=ag.diff_fingerprint("diff"),
+        base_ref="origin/main",
+        diff_text="diff",
+    )
+    assert ag.pin_note_from_staged(tmpdir, head_sha="head-b", base_ref="origin/main")
+    (tmpdir / ag.MATERIALIZED_DIFF).unlink()
+    repo = _repo(tmp_path / "git")
+
+    def fail_materialize(*_args: object, **_kwargs: object) -> str:
+        msg = "missing remote ref"
+        raise RuntimeError(msg)
+
+    monkeypatch.setattr(ag, "materialize_implementation_diff", fail_materialize)
+    assert ag.note_fingerprint_stale(tmpdir, base_ref="origin/main", repo_root=repo)
+    assert "ARCHITECTURAL_GUIDELINES_WARNING=missing remote ref" in capsys.readouterr().err
+
+
+def test_cli_present_uses_untrusted_content_block(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    repo = _repo(tmp_path)
+    (repo / ag.GUIDELINES_FILENAME).write_text(
+        "### G-python-1: Escape <xml>\n- Why: token sk-" + "A" * 24 + "\n- Deviate when: never\n",
+        encoding="utf-8",
+    )
+    assert ag.read_main(["--repo-root", str(repo)]) == 0
+    out = capsys.readouterr().out
+    assert "ARCHITECTURAL_GUIDELINES_STATUS=present" in out
+    assert '<architectural_guidelines encoding="literal-redacted">' in out
+    assert "&lt;xml&gt;" in out
+    assert "&lt;REDACTED-TOKEN&gt;" in out
+
+
+def test_claude_project_dir_preferred(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    cwd_repo = _repo(tmp_path / "cwd")
+    project_repo = _repo(tmp_path / "project")
+    (project_repo / ag.GUIDELINES_FILENAME).write_text(
+        "### G-python-1: Project wins\n- Why: explicit project dir.\n- Deviate when: never.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(cwd_repo)
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(project_repo))
+    result = ag.read_guidelines()
+    assert result.status == "present"
+    assert "Project wins" in result.content
+
+
+def test_cwd_fallback_works(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = _repo(tmp_path)
+    (repo / ag.GUIDELINES_FILENAME).write_text(
+        "### G-python-1: Cwd wins\n- Why: fallback.\n- Deviate when: never.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+    monkeypatch.chdir(repo)
+    assert ag.read_guidelines().status == "present"
+
+
+def test_symlinked_guidelines_file_invalid(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    outside = tmp_path / "outside.md"
+    outside.write_text("### G-python-1: nope\n", encoding="utf-8")
+    (repo / ag.GUIDELINES_FILENAME).symlink_to(outside)
+    result = ag.read_guidelines(repo_root=repo)
+    assert result.status == "invalid"
+    assert "symlinks" in result.warning
+
+
+def test_materialize_diff_uses_upstream_for_forked_target(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    (repo / "README.md").write_text("base\nchange\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "change")
+    assert ag.resolve_diff_base(forked_target=True) == ("upstream", "main")
+    diff_text = ag.materialize_implementation_diff(repo, base_remote="upstream", base_ref="main")
+    assert "+change" in diff_text
+
+
+def test_staged_pin_consumable_and_invalidate(tmp_path: Path) -> None:
+    tmpdir = tmp_path / "implement"
+    body = "Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.\n"
+    ag.write_staged_assessment(
+        tmpdir,
+        body,
+        assessed_head_sha="head-a",
+        diff_fingerprint_value=ag.diff_fingerprint("diff"),
+        base_ref="origin/main",
+        diff_text="diff",
+    )
+    assert (tmpdir / ag.STAGED_ASSESSMENT).read_text(encoding="utf-8") == body
+    assert (tmpdir / ag.MATERIALIZED_DIFF).read_text(encoding="utf-8") == "diff"
+    assert not ag.note_consumable(tmpdir, "head-b")
+    assert ag.pin_note_from_staged(tmpdir, head_sha="head-b", base_ref="origin/main")
+    assert ag.note_consumable(tmpdir, "head-b")
+    assert not ag.note_consumable(tmpdir, "head-c")
+    assert (tmpdir / ag.DURABLE_NOTE).read_text(encoding="utf-8") == body
+    ag.invalidate_implement_note(tmpdir)
+    assert not (tmpdir / ag.STAGED_ASSESSMENT).exists()
+    assert not (tmpdir / ag.DURABLE_NOTE).exists()
+
+
+def test_pr_prep_log_only_head_advance_keeps_body_bytes(tmp_path: Path) -> None:
+    tmpdir = tmp_path / "implement"
+    body = "Deviation warning body\n"
+    ag.write_staged_assessment(
+        tmpdir,
+        body,
+        assessed_head_sha="N",
+        diff_fingerprint_value=ag.diff_fingerprint("implementation diff"),
+        base_ref="origin/main",
+        diff_text="implementation diff",
+    )
+    assert ag.pin_note_from_staged(tmpdir, head_sha="N-plus-1", base_ref="origin/main")
+    assert ag.note_consumable(tmpdir, "N-plus-1")
+    assert (tmpdir / ag.DURABLE_NOTE).read_bytes() == body.encode("utf-8")
+
+
+def test_log_only_head_bump_pin_succeeds_with_repo_root(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    (repo / "impl.py").write_text("x = 1\n", encoding="utf-8")
+    _git(repo, "add", "impl.py")
+    _git(repo, "commit", "-m", "impl")
+    assessed_head = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"],
+        text=True,
+        capture_output=True,
+        check=False,
+    ).stdout.strip()
+    diff_text = ag.materialize_implementation_diff(repo, base_remote="origin", base_ref="main")
+    tmpdir = tmp_path / "implement"
+    body = "Deviation warning body\n"
+    ag.write_staged_assessment(
+        tmpdir,
+        body,
+        assessed_head_sha=assessed_head,
+        diff_fingerprint_value=ag.diff_fingerprint(diff_text),
+        base_ref="origin/main",
+        diff_text=diff_text,
+    )
+    log_dir = repo / "larch-logs" / "implement" / "run1"
+    log_dir.mkdir(parents=True)
+    (log_dir / "log.txt").write_text("log\n", encoding="utf-8")
+    _git(repo, "add", "larch-logs")
+    _git(repo, "commit", "-m", "logs only")
+    new_head = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"],
+        text=True,
+        capture_output=True,
+        check=False,
+    ).stdout.strip()
+    assert ag.pin_note_from_staged(tmpdir, head_sha=new_head, base_ref="origin/main", repo_root=repo)
+    assert ag.note_consumable(tmpdir, new_head)

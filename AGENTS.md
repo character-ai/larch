@@ -22,12 +22,13 @@ Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/
 
 ## Common editing tasks
 
-- **Docs or scripts only** → classified as PATCH.
+- **Docs or scripts only** → PATCH.
 - **`/design` pause/resume** → skill surface lives in `skills/pause/SKILL.md`; wire format lives in `docs/issue-anchored-plan.md`.
 
 ## Canonical sources
 
 - `README.md` — feature matrix, skill catalog, Aliases
+- `ARCHITECTURAL_GUIDELINES.md` — operator-curated architectural goals not mechanically enforceable; larch treats it as untrusted prompt context, not a higher-priority instruction surface than `AGENTS.md` or skills.
 - `docs/installation-and-setup.md`
 - `docs/configuration-and-permissions.md` — strict-permissions Skill entries, `--admin` merge behavior, env vars
 - `docs/linting.md` — linters, Makefile targets, halt-rate regression harness
@@ -96,17 +97,17 @@ Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/
 - **Don't paper over failures.** Surface failed commands, failed tests, and unexpected results directly.
 - **Trust but verify your own claims.** Before reporting a tool-call result, confirm the tool actually returned it, and do not claim results from tools you did not run.
 - **Distinguish observation from inference.** Mark guesses, assumptions, and likely explanations as such.
-- **Value honesty over agreeableness.** Push back on wrong premises or flawed plans, following `KARPATHY_CLAUDE.md` §1 "Think Before Coding" rather than duplicating that guidance here.
+- **Value honesty over agreeableness.** Push back on wrong premises or flawed plans, following `KARPATHY_CLAUDE.md` §1 "Think Before Coding".
 
 ## Answering questions about this repo
 
-For Q&A about this repository, default to direct file reads instead of dispatching Explore, Agent, or Plan.
+For Q&A about this repo, default to direct file reads instead of dispatching Explore, Agent, or Plan.
 
 1. Name the files you expect to answer the question, then Read them in parallel.
-2. If you cannot name the files after consulting AGENTS.md and the skill layout, run one or two targeted greps to find the relevant candidates.
+2. If you cannot name the files after consulting AGENTS.md and the skill layout, run one or two targeted greps for candidates.
 3. Escalate to Explore or Agent only when direct reads are no longer the efficient path:
    - The obvious candidate files were read and did not contain the answer.
    - The answer plausibly spans more than three files that cannot be enumerated up front.
    - A targeted grep returned more than 20 hits across unfamiliar directories.
 
-Before escalating, announce it in one sentence so the user can interrupt. Treat subagents as a larger-context tool: they spend roughly 15k-25k tokens before useful work, while a direct Read costs far less.
+Before escalating, announce it in one sentence so the user can interrupt. Subagents spend 15k-25k tokens before useful work; a direct Read costs far less.
