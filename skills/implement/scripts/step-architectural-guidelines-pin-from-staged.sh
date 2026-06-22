@@ -21,8 +21,16 @@ read_state_key() {
 }
 
 BASE_REF="$(read_state_key BASE_REF "")"
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+
+PIN_ARGS=(
+  --implement-tmpdir "$IMPLEMENT_TMPDIR"
+  --head-sha "$(git rev-parse HEAD)"
+  --base-ref "${BASE_REF:-}"
+)
+if [ -n "$REPO_ROOT" ]; then
+  PIN_ARGS+=(--repo-root "$REPO_ROOT")
+fi
 
 exec python3 "$PLUGIN_ROOT/python/cli.py" architectural-guidelines pin-note-from-staged \
-  --implement-tmpdir "$IMPLEMENT_TMPDIR" \
-  --head-sha "$(git rev-parse HEAD)" \
-  --base-ref "${BASE_REF:-}"
+  "${PIN_ARGS[@]}"

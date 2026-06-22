@@ -106,7 +106,7 @@ def test_pin_note_from_staged_rejects_fingerprint_mismatch(tmp_path: Path) -> No
     assert not ag.note_consumable(tmpdir, "head-b")
 
 
-def test_note_fingerprint_stale_returns_false_when_git_diff_unavailable(
+def test_note_fingerprint_stale_returns_true_when_git_diff_unavailable(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -121,6 +121,7 @@ def test_note_fingerprint_stale_returns_false_when_git_diff_unavailable(
         diff_text="diff",
     )
     assert ag.pin_note_from_staged(tmpdir, head_sha="head-b", base_ref="origin/main")
+    (tmpdir / ag.MATERIALIZED_DIFF).unlink()
     repo = _repo(tmp_path / "git")
 
     def fail_materialize(*_args: object, **_kwargs: object) -> str:
@@ -128,7 +129,7 @@ def test_note_fingerprint_stale_returns_false_when_git_diff_unavailable(
         raise RuntimeError(msg)
 
     monkeypatch.setattr(ag, "materialize_implementation_diff", fail_materialize)
-    assert not ag.note_fingerprint_stale(tmpdir, base_ref="origin/main", repo_root=repo)
+    assert ag.note_fingerprint_stale(tmpdir, base_ref="origin/main", repo_root=repo)
     assert "ARCHITECTURAL_GUIDELINES_WARNING=missing remote ref" in capsys.readouterr().err
 
 
@@ -228,3 +229,40 @@ def test_pr_prep_log_only_head_advance_keeps_body_bytes(tmp_path: Path) -> None:
     assert ag.pin_note_from_staged(tmpdir, head_sha="N-plus-1", base_ref="origin/main")
     assert ag.note_consumable(tmpdir, "N-plus-1")
     assert (tmpdir / ag.DURABLE_NOTE).read_bytes() == body.encode("utf-8")
+
+
+def test_log_only_head_bump_pin_succeeds_with_repo_root(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    (repo / "impl.py").write_text("x = 1\n", encoding="utf-8")
+    _git(repo, "add", "impl.py")
+    _git(repo, "commit", "-m", "impl")
+    assessed_head = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"],
+        text=True,
+        capture_output=True,
+        check=False,
+    ).stdout.strip()
+    diff_text = ag.materialize_implementation_diff(repo, base_remote="origin", base_ref="main")
+    tmpdir = tmp_path / "implement"
+    body = "Deviation warning body\n"
+    ag.write_staged_assessment(
+        tmpdir,
+        body,
+        assessed_head_sha=assessed_head,
+        diff_fingerprint_value=ag.diff_fingerprint(diff_text),
+        base_ref="origin/main",
+        diff_text=diff_text,
+    )
+    log_dir = repo / "larch-logs" / "implement" / "run1"
+    log_dir.mkdir(parents=True)
+    (log_dir / "log.txt").write_text("log\n", encoding="utf-8")
+    _git(repo, "add", "larch-logs")
+    _git(repo, "commit", "-m", "logs only")
+    new_head = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"],
+        text=True,
+        capture_output=True,
+        check=False,
+    ).stdout.strip()
+    assert ag.pin_note_from_staged(tmpdir, head_sha=new_head, base_ref="origin/main", repo_root=repo)
+    assert ag.note_consumable(tmpdir, new_head)

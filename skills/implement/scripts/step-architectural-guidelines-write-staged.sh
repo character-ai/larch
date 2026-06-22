@@ -17,10 +17,15 @@ if [ -f "$MATERIALIZE_ENV" ]; then
   . "$MATERIALIZE_ENV"
 fi
 
+DIFF_ARGS=()
+if [ -f "$DIFF_FILE" ]; then
+  DIFF_ARGS=(--diff-file "$DIFF_FILE")
+fi
+
 exec python3 "$PLUGIN_ROOT/python/cli.py" architectural-guidelines write-staged-assessment \
   --implement-tmpdir "$IMPLEMENT_TMPDIR" \
   --assessment-file "$ASSESSMENT_FILE" \
   --assessed-head-sha "$(git rev-parse HEAD)" \
   --diff-fingerprint "${DIFF_FINGERPRINT:-}" \
   --base-ref "${BASE_REF:-}" \
-  --diff-file "$DIFF_FILE"
+  "${DIFF_ARGS[@]}"

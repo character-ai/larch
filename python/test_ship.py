@@ -3873,7 +3873,8 @@ def test_fresh_ship_passes_guidelines_note_to_compose_pr_body(
     assert compose_calls[0].get("architectural_guidelines_note") == "Guideline deviation note"
 
 
-def test_open_pr_resume_uses_same_pin_helper_before_compose(
+def test_open_pr_resume_pins_guidelines_note_before_compose(
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     diff_text = "implementation diff"
@@ -3885,13 +3886,55 @@ def test_open_pr_resume_uses_same_pin_helper_before_compose(
         base_ref="origin/main",
         diff_text=diff_text,
     )
-    note = ship._pin_and_load_guidelines_note(
-        str(tmp_path),
-        "head",
-        "origin/main",
-        repo_root=str(tmp_path),
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\nPR_URL=https://example.test/pr/7\nREPO=o/r\nMERGE=false\nDRAFT=false\n",
+        encoding="utf-8",
     )
-    assert note == "Resume note"
+    monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
+    monkeypatch.setattr(
+        ship.gh,
+        "pr_view",
+        lambda *_a, **_k: type("PR", (), {"number": 7, "url": "https://example.test/pr/7", "state": "OPEN", "head_ref": "feat"})(),
+    )
+    monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
+    monkeypatch.setattr(ship.git, "try_rev_parse", lambda *_a, **_k: "head")
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: type("P", (), {"number": 7, "url": "https://example.test/pr/7", "status": "existing"})(),
+    )
+    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
+    order: list[str] = []
+    compose_calls: list[dict[str, object]] = []
+    real_pin = ship._pin_and_load_guidelines_note
+
+    def spy_pin(
+        implement_tmpdir: str,
+        head_sha: str,
+        base_ref: str,
+        *,
+        repo_root: str | None = None,
+    ) -> str:
+        order.append("pin")
+        return real_pin(implement_tmpdir, head_sha, base_ref, repo_root=repo_root)
+
+    def fake_compose(**kwargs: object) -> str:
+        order.append("compose")
+        compose_calls.append(dict(kwargs))
+        return "body"
+
+    monkeypatch.setattr(ship, "_pin_and_load_guidelines_note", spy_pin)
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", fake_compose)
+    result = ship.run_ship(
+        _ctx(tmp_path, state_file=str(state_file), branch="feat", branch_name="feat"),
+        runner=RecordingRunner(),
+        cwd=str(tmp_path),
+    )
+    assert result.outcome is Outcome.OK
+    assert order.index("pin") < order.index("compose")
+    assert compose_calls[0].get("architectural_guidelines_note") == "Resume note"
 
 
 def test_monitor_did_fixing_invalidates_guidelines_note_via_ship(

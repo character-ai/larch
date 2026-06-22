@@ -19,6 +19,7 @@ import architectural_guidelines
 import closeout
 import config
 import pr_body
+import repo_roots
 import report_tokens_cost
 import review_phase_detail
 import stall_recovery
@@ -124,20 +125,39 @@ def _current_head_sha() -> str:
     return completed.stdout.strip() if completed.returncode == 0 else ""
 
 
+def _session_env_value(session: Path, key: str) -> str:
+    if not session.is_file() or session.is_symlink():
+        return ""
+    for line in session.read_text(encoding="utf-8", errors="replace").splitlines():
+        field, sep, value = line.partition("=")
+        if sep and field == key:
+            return value.strip().strip("'\"")
+    return ""
+
+
+def _keepalive_clone_path(implement_tmpdir: Path) -> str:
+    keepalive = implement_tmpdir / ".larch-keepalive"
+    return _session_env_value(keepalive, "CLONE_PATH")
+
+
 def _implement_repo_root(implement_tmpdir: Path) -> Path | None:
     session = implement_tmpdir / "session-env.sh"
-    if not session.is_file() or session.is_symlink():
-        return None
-    for line in session.read_text(encoding="utf-8", errors="replace").splitlines():
-        key, sep, value = line.partition("=")
-        if sep and key == "CLAUDE_PROJECT_DIR":
-            cleaned = value.strip().strip("'\"")
-            if cleaned:
-                try:
-                    return Path(cleaned).resolve()
-                except OSError:
-                    return None
-    return None
+    for key in ("CLAUDE_PROJECT_DIR", "REPO_CWD"):
+        cleaned = _session_env_value(session, key)
+        if cleaned:
+            root = repo_roots.consumer_repo_root(Path(cleaned))
+            if root is not None:
+                return root
+            try:
+                return Path(cleaned).resolve()
+            except OSError:
+                pass
+    clone = _keepalive_clone_path(implement_tmpdir)
+    if clone:
+        root = repo_roots.consumer_repo_root(Path(clone))
+        if root is not None:
+            return root
+    return repo_roots.consumer_repo_root()
 
 
 def _architectural_guidelines_section(implement_tmpdir: Path) -> str:
@@ -158,9 +178,9 @@ def _architectural_guidelines_section(implement_tmpdir: Path) -> str:
             encoding="utf-8",
             errors="replace",
         )
-        redacted = pr_body.redact_pr_body(note)
-    except Exception:
+    except OSError:
         return ""
+    redacted = pr_body.redact_pr_body(note)
     if not redacted.strip():
         return ""
     return "## Architectural guidelines\n\n" + redacted.strip() + "\n"
@@ -632,7 +652,12 @@ def write_final_report(
     except Exception:
         detail = ""
     body = review_phase_detail.append_review_phase_detail(body, detail)
-    guidelines_section = _architectural_guidelines_section(implement_tmpdir)
+    try:
+        guidelines_section = _architectural_guidelines_section(implement_tmpdir)
+    except Exception as exc:
+        if print_stdout:
+            sys.stdout.write(body)
+        return 1, "", f"architectural-guidelines section failed: {exc}"
     if guidelines_section:
         body = body.rstrip("\n") + "\n\n" + guidelines_section
     summary = implement_tmpdir / "summary-final.md"

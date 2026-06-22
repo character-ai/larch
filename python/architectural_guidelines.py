@@ -138,7 +138,7 @@ def read_guidelines(*, repo_root: str | Path | None = None) -> ArchitecturalGuid
         return _invalid(root, path, f"{GUIDELINES_FILENAME} is invalid: expected a regular file")
     try:
         raw_text = path.read_text(encoding="utf-8")
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
         return _invalid(root, path, f"{GUIDELINES_FILENAME} is invalid: unreadable file ({exc})")
     return ArchitecturalGuidelinesResult("present", root, resolved, parse_guideline_entries(raw_text), "")
 
@@ -213,8 +213,12 @@ def _write_text_atomic(path: Path, text: str) -> None:
 def _read_env(path: Path) -> dict[str, str]:
     if not path.is_file() or path.is_symlink():
         return {}
+    try:
+        raw_text = path.read_text(encoding="utf-8", errors="replace")
+    except (OSError, UnicodeDecodeError):
+        return {}
     values: dict[str, str] = {}
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+    for line in raw_text.splitlines():
         key, sep, value = line.partition("=")
         if sep:
             values[key] = value
@@ -276,6 +280,7 @@ def _staged_fingerprint_valid(
     stored_fp = metadata.get("DIFF_FINGERPRINT", "")
     if not stored_fp:
         return False
+    snapshot_valid = False
     diff_path = _diff_path(implement_tmpdir)
     if diff_path.is_file() and not diff_path.is_symlink():
         try:
@@ -284,18 +289,21 @@ def _staged_fingerprint_valid(
             return False
         if diff_fingerprint(snapshot_text) != stored_fp:
             return False
+        snapshot_valid = True
+    if snapshot_valid:
+        return True
     resolved_base = (base_ref or metadata.get("BASE_REF", "")).strip()
-    if repo_root is not None and resolved_base:
-        remote, ref = resolved_base.split("/", 1) if "/" in resolved_base else ("origin", resolved_base)
-        try:
-            live_fp = diff_fingerprint(
-                materialize_implementation_diff(repo_root, base_remote=remote, base_ref=ref),
-            )
-        except RuntimeError as exc:
-            print(f"ARCHITECTURAL_GUIDELINES_WARNING={str(exc).replace(chr(10), ' ')}", file=sys.stderr)
-            return True
-        return live_fp == stored_fp
-    return True
+    if repo_root is None or not resolved_base:
+        return False
+    remote, ref = resolved_base.split("/", 1) if "/" in resolved_base else ("origin", resolved_base)
+    try:
+        live_fp = diff_fingerprint(
+            materialize_implementation_diff(repo_root, base_remote=remote, base_ref=ref),
+        )
+    except RuntimeError as exc:
+        print(f"ARCHITECTURAL_GUIDELINES_WARNING={str(exc).replace(chr(10), ' ')}", file=sys.stderr)
+        return False
+    return live_fp == stored_fp
 
 
 def pin_note_from_staged(
@@ -324,7 +332,10 @@ def pin_note_from_staged(
         note_text = staged.read_text(encoding="utf-8")
     except OSError:
         return False
-    write_implement_note(implement_tmpdir, note_text, head_sha=head_sha, metadata=metadata, base_ref=base_ref)
+    try:
+        write_implement_note(implement_tmpdir, note_text, head_sha=head_sha, metadata=metadata, base_ref=base_ref)
+    except OSError:
+        return False
     return True
 
 
@@ -378,9 +389,17 @@ def note_fingerprint_stale(
     stored_fp = meta.get("DIFF_FINGERPRINT", "")
     if not stored_fp or not base_ref:
         return False
+    diff_path = _diff_path(implement_tmpdir)
+    if diff_path.is_file() and not diff_path.is_symlink():
+        try:
+            snapshot_text = diff_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return True
+        if diff_fingerprint(snapshot_text) == stored_fp:
+            return False
     root = Path(repo_root).resolve() if repo_root is not None else None
     if root is None:
-        return False
+        return True
     remote, ref = base_ref.split("/", 1) if "/" in base_ref else ("origin", base_ref)
     try:
         current_fp = diff_fingerprint(
@@ -388,7 +407,7 @@ def note_fingerprint_stale(
         )
     except RuntimeError as exc:
         print(f"ARCHITECTURAL_GUIDELINES_WARNING={str(exc).replace(chr(10), ' ')}", file=sys.stderr)
-        return False
+        return True
     return current_fp != stored_fp
 
 
@@ -486,7 +505,17 @@ def write_staged_assessment_main(argv: list[str]) -> int:
         assessment_text = args.assessment_text
     diff_text = ""
     if args.diff_file:
-        diff_text = Path(args.diff_file).read_text(encoding="utf-8", errors="replace")
+        diff_path = Path(args.diff_file)
+        if not diff_path.is_file() or diff_path.is_symlink():
+            print("ARCHITECTURAL_GUIDELINES_WRITE_STATUS=failed")
+            print("ARCHITECTURAL_GUIDELINES_WARNING=missing diff file")
+            return 1
+        try:
+            diff_text = diff_path.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            print("ARCHITECTURAL_GUIDELINES_WRITE_STATUS=failed")
+            print(f"ARCHITECTURAL_GUIDELINES_WARNING=unreadable diff file ({exc})")
+            return 1
     fingerprint = args.diff_fingerprint or diff_fingerprint(diff_text)
     head_sha = args.assessed_head_sha or _current_head()
     write_staged_assessment(
@@ -506,13 +535,19 @@ def pin_note_from_staged_main(argv: list[str]) -> int:
     parser.add_argument("--implement-tmpdir", default=os.environ.get("IMPLEMENT_TMPDIR", ""))
     parser.add_argument("--head-sha", default="")
     parser.add_argument("--base-ref", default="")
+    parser.add_argument("--repo-root")
     args = parser.parse_args(argv)
     if not args.implement_tmpdir:
         print("ARCHITECTURAL_GUIDELINES_PIN_STATUS=failed")
         print("ARCHITECTURAL_GUIDELINES_WARNING=missing implement tmpdir")
         return 2
     head_sha = args.head_sha or _current_head()
-    pinned = pin_note_from_staged(Path(args.implement_tmpdir), head_sha=head_sha, base_ref=args.base_ref)
+    pinned = pin_note_from_staged(
+        Path(args.implement_tmpdir),
+        head_sha=head_sha,
+        base_ref=args.base_ref,
+        repo_root=args.repo_root,
+    )
     print(f"ARCHITECTURAL_GUIDELINES_PIN_STATUS={'ok' if pinned else 'skipped'}")
     return 0
 
