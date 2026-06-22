@@ -65,7 +65,7 @@ def _require_design_tmpdir(argv: Sequence[str], *, prog: str) -> Path | None:
 
 
 def _extract_unfiled_blocks(text: str) -> str:
-    indices = [match.start() for match in _OOS_HEADER_RE.finditer(text)]
+    indices: list[int] = [match.start() for match in _OOS_HEADER_RE.finditer(text)]
     if not indices:
         return ""
     blocks: list[str] = []

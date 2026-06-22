@@ -301,7 +301,7 @@ def main(argv: list[str] | None = None) -> int:
     except SystemExit as exc:
         return exc.code if isinstance(exc.code, int) else 2
 
-    runner = proc
+    runner: Runner = proc
     repo_arg = args.repo
     if repo_arg:
         if not gh.validate_repo_slug(repo_arg):

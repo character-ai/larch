@@ -202,7 +202,7 @@ def pause_save_main(argv: Sequence[str]) -> int:
     stripped = _strip_pause_markers(body)
     body_hash = hashlib.sha256(stripped.encode("utf-8")).hexdigest()
     brainstorm_done = "true" if (design_tmpdir / ".brainstorm-done").is_file() else "false"
-    state_lines = [
+    state_lines: list[str] = [
         f"STEP={step}",
         f"ISSUE_NUMBER={issue}",
         f"SESSION_ID={run_id}",
@@ -216,7 +216,7 @@ def pause_save_main(argv: Sequence[str]) -> int:
         redact.redact_secrets_only("\n".join(state_lines) + "\n"), encoding="utf-8"
     )
 
-    publish = subprocess.run(
+    publish: subprocess.CompletedProcess[str] = subprocess.run(
         [
             sys.executable,
             str(plugin_root / "python" / "cli.py"),
@@ -363,7 +363,7 @@ def pause_load_main(argv: Sequence[str]) -> int:
         if ls.returncode != 0:
             _emit([("LOAD_OK", "false"), ("ERROR", "snapshot-extract-failed")])
             return 0
-        files = [entry for entry in ls.stdout.split("\x00") if entry]
+        files: list[str] = [entry for entry in ls.stdout.split("\x00") if entry]
         if not files:
             _emit([("LOAD_OK", "false"), ("ERROR", "snapshot-not-found")])
             return 0

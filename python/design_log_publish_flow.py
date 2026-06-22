@@ -361,7 +361,7 @@ def _publish_design_logs(
             print(f"design log-publish: gh pr create failed; pushed branch {branch} kept for recovery: {pr.stderr.strip()}", file=sys.stderr)
             return (False, "", "", branch, scrub_violations)
         pr_url = pr.stdout.strip().splitlines()[-1] if pr.stdout.strip() else ""
-        match = _PR_URL_RE.search(pr_url)
+        match: re.Match[str] | None = _PR_URL_RE.search(pr_url)
         pr_number = match.group(1) if match else ""
         # Launch the wait-then-admin-merge waiter detached so the log PR squashes
         # in once required CI checks pass, without stalling the /design orchestrator

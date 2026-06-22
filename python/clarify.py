@@ -672,7 +672,7 @@ def _validate_positive_int(label: str, value: str) -> str:
 
 
 def _parse_design_clarify_args(argv: list[str]) -> DesignClarifyArgs:
-    data = {"--session-env-path": "", "--claude-pid": "", "--phase": "", "--issue": ""}
+    data: dict[str, str] = {"--session-env-path": "", "--claude-pid": "", "--phase": "", "--issue": ""}
     idx = 0
     while idx < len(argv):
         token = argv[idx]
@@ -715,7 +715,7 @@ def _cli_cmd(plugin_root: Path, *args: str) -> list[str]:
 
 
 def _build_driver_env(args: DesignClarifyArgs) -> tuple[dict[str, str], Path, Path]:
-    env = {key: os.environ[key] for key in CLARIFY_ENV_ALLOW if key in os.environ}
+    env: dict[str, str] = {key: os.environ[key] for key in CLARIFY_ENV_ALLOW if key in os.environ}
     env.update(
         design_lifecycle._load_source_env(  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
             args.session_env_path,

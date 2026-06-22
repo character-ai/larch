@@ -67,8 +67,8 @@ class _BlockSpan:
 
 
 def _classify_named_block_lines(lines: Sequence[str], marker: str) -> _BlockSpan:
-    start_indexes = [idx for idx, line in enumerate(lines) if _line_is_marker(line, marker, "start")]
-    end_indexes = [idx for idx, line in enumerate(lines) if _line_is_marker(line, marker, "end")]
+    start_indexes: list[int] = [idx for idx, line in enumerate(lines) if _line_is_marker(line, marker, "start")]
+    end_indexes: list[int] = [idx for idx, line in enumerate(lines) if _line_is_marker(line, marker, "end")]
     if not start_indexes and not end_indexes:
         return _BlockSpan(None, None, "")
     if len(start_indexes) > 1:
@@ -261,7 +261,7 @@ def _run_named_block_cli(argv: list[str], *, prog: str, marker_default: str | No
     if args.repo and not gh.validate_repo_slug(args.repo):
         _emit_failed("invalid-repo")
         return 1
-    runner = proc
+    runner: Runner = proc
     repo, repo_error = _resolve_issue_wire_repo(runner, args.repo)
     if repo_error or repo is None:
         _emit_failed(repo_error or "could not determine repo")
@@ -307,7 +307,7 @@ def plan_block_read_main(argv: list[str]) -> int:
     if not _validate_positive_issue("plan-block-read.sh", args.issue):
         return 1
     out_path = Path(args.output)
-    runner = proc
+    runner: Runner = proc
     repo, repo_error = _resolve_issue_wire_repo(runner, args.repo)
     if repo_error or repo is None:
         out_path.write_text("", encoding="utf-8")

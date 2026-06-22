@@ -2733,7 +2733,7 @@
     "file": "design_step_log.py",
     "code": "PLR0915",
     "qualified_symbol": "step1_log_main",
-    "metric": 79
+    "metric": 81
   },
   {
     "file": "design_summary.py",

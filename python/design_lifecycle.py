@@ -495,7 +495,7 @@ def _load_session_env(path: str) -> dict[str, str]:
 
 
 def _rehydrate_wrapper_env(parsed: WrapperArgs) -> dict[str, str]:
-    merged = {key: os.environ.get(key, default) for key, default in _WRAPPER_ENV_DEFAULTS.items()}
+    merged: dict[str, str] = {key: os.environ.get(key, default) for key, default in _WRAPPER_ENV_DEFAULTS.items()}
     if os.environ.get("CLAUDE_PLUGIN_ROOT"):
         merged["CLAUDE_PLUGIN_ROOT"] = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
     merged.update(_load_source_env(parsed.session_env_path, allow_keys=_SESSION_ENV_ALLOWLIST, claude_pid=parsed.claude_pid))
@@ -1324,7 +1324,7 @@ def _emit_report_gate_sidecars_from_disk(design_tmpdir: Path) -> None:
 
 
 def step_final_summary_core(argv: Sequence[str]) -> tuple[int, list[str]]:
-    old_environ = os.environ.copy()
+    old_environ: dict[str, str] = os.environ.copy()
     try:
         parsed = _parse_common_wrapper_args(argv)
         env = _rehydrate_wrapper_env(parsed)
@@ -1432,7 +1432,7 @@ def step_final_summary_main(argv: Sequence[str]) -> int:
     except ValueError as exc:
         print(f"design-step-final-summary.sh: {exc}", file=sys.stderr)
         return 2
-    old_environ = os.environ.copy()
+    old_environ: dict[str, str] = os.environ.copy()
     try:
         env = _rehydrate_wrapper_env(parsed)
         try:
@@ -1535,7 +1535,7 @@ def _usage() -> None:
 
 def route_main(argv: Sequence[str]) -> int:
     args = list(argv)
-    required = {
+    required: dict[str, str] = {
         "--design-tmpdir": "",
         "--issue": "",
         "--issue-title": "",
@@ -1544,7 +1544,7 @@ def route_main(argv: Sequence[str]) -> int:
         "--claude-pid": "",
         "--session-id": "",
     }
-    optional = {
+    optional: dict[str, str] = {
         "--repo": "",
         "--partition-requested": "false",
         "--brainstorm-requested": "false",
@@ -2346,7 +2346,7 @@ def step0_session_main(argv: Sequence[str]) -> int:
         return 1
     design_path = Path(design_tmpdir)
     (design_path / ".design-step0-parsed.env").write_bytes(cache.read_bytes())
-    env = {**os.environ, "DESIGN_TMPDIR": design_tmpdir, "IMPLEMENT_TMPDIR": os.environ.get("IMPLEMENT_TMPDIR", "")}
+    env: dict[str, str] = {**os.environ, "DESIGN_TMPDIR": design_tmpdir, "IMPLEMENT_TMPDIR": os.environ.get("IMPLEMENT_TMPDIR", "")}
     _run_best_effort(_cli_cmd(plugin_root, "token", "mark", "design Step 0 — session setup"), env=env)
     codex_binary = kv.get("CODEX_BINARY_FOUND", [""])[-1]
     cursor_binary = kv.get("CURSOR_BINARY_FOUND", [""])[-1]
@@ -2425,6 +2425,7 @@ def _read_json_issue(issue_number: str, repo: str) -> tuple[str, str, str]:
 
 
 def _read_result_pairs(primary: Path, fallback: Path | None, allow: Iterable[str]) -> dict[str, str]:
+    pairs: list[tuple[str, str]]
     try:
         pairs = phase_driver_read_result_env(primary, allow)
     except OSError:
@@ -2944,7 +2945,7 @@ def driver_main(argv: Sequence[str]) -> int:
         elif action == "FINALIZE":
             command = [sys.executable, str(root / "python" / "cli.py"), "plan-review", "finalize", "--design-tmpdir", str(design_tmpdir), *action_args]
         else:
-            env = os.environ.copy()
+            env: dict[str, str] = os.environ.copy()
             env["DESIGN_TMPDIR"] = str(design_tmpdir)
             command = [sys.executable, str(root / "python" / "cli.py"), "plan", "validate", "--design-tmpdir", str(design_tmpdir), "--repo-root", str(consumer_root), *action_args]
             proc_out = subprocess.run(command, capture_output=True, text=True, check=False, env=env)
@@ -3384,7 +3385,7 @@ def _append_codex_token_sidecars(design_tmpdir: Path, plugin_root: Path) -> None
     )
     if append.returncode != 0:
         print("**⚠ 2b: codex drafter token-report append failed; continuing.**", file=sys.stderr)
-    env = os.environ.copy()
+    env: dict[str, str] = os.environ.copy()
     for key in ("LARCH_TOKEN_LEDGER", "LARCH_TOKEN_SESSION_ID", "IMPLEMENT_TMPDIR", "RESEARCH_TMPDIR", "SESSION_ENV_PATH"):
         env.pop(key, None)
     env["DESIGN_TMPDIR"] = str(design_tmpdir)
@@ -3573,7 +3574,7 @@ def step2b_drafter_main(argv: Sequence[str]) -> int:
                 stderr=subprocess.DEVNULL,
                 check=False,
             )
-        env = os.environ.copy()
+        env: dict[str, str] = os.environ.copy()
         env["LARCH_QUIET_DISABLE"] = "1"
         preview = subprocess.run(
             [sys.executable, str(plugin_root / "python" / "cli.py"), "plan-review", "preview", "--design-tmpdir", str(design_tmpdir), "--variant", "step2b"],

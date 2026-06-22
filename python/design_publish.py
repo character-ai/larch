@@ -272,7 +272,7 @@ def publish_core(argv: Sequence[str]) -> int:
     if skip_validate:
         kvs[1] = ("VALIDATE_STATUS", "skipped")
     else:
-        validate_env = {
+        validate_env: dict[str, str] = {
             **os.environ,
             "DESIGN_TMPDIR": str(design_tmpdir),
             "LARCH_QUIET_DISABLE": "1",
@@ -423,7 +423,7 @@ def publish_core(argv: Sequence[str]) -> int:
                 check=False,
             )
 
-    rename = subprocess.run(
+    rename: subprocess.CompletedProcess[str] = subprocess.run(
         [
             sys.executable,
             str(plugin_root / "python" / "cli.py"),
@@ -450,7 +450,7 @@ def publish_core(argv: Sequence[str]) -> int:
         kvs[-1] = ("DESIGNED_ADMISSION_READY", "true")
 
     if parsed["--session-id"]:
-        publish = subprocess.run(
+        publish: subprocess.CompletedProcess[str] = subprocess.run(
             [
                 sys.executable,
                 str(plugin_root / "python" / "cli.py"),
