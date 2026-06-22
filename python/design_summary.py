@@ -1,16 +1,17 @@
 """Python CLI entrypoint for /design final summary rendering."""
+# pyright: reportUnusedFunction=false
 
 from __future__ import annotations
 
 import json
 import os
-import re
 import subprocess
 import sys
 from collections.abc import Sequence
 from pathlib import Path
 from typing import cast
 
+import exec_issue_detail
 import review_phase_detail
 from design_publish import review_provenance
 
@@ -123,35 +124,9 @@ def _oos_info(design_tmpdir: Path) -> tuple[int, str]:
     return len(urls), "\n".join(urls)
 
 
-# execution-issues.md uses h3 (`### `) category headers (### Tool Failures,
-# ### Warnings, ...). Match the same exec/warning split python/pr_body.py uses so
-# /design and /implement report consistent counts. Exec issues are bullets under
-# Tool Failures / External Reviewer Issues; warnings are bullets under Warnings.
-_EXEC_ISSUE_CATEGORIES = frozenset({"Tool Failures", "External Reviewer Issues"})
-_ISSUE_BULLET_RE = re.compile(r"^- \*\*[^*].*\*\*:?([ \t].*)?$")
-
-
 def _issue_counts(design_tmpdir: Path) -> tuple[int, int]:
-    ei = design_tmpdir / "execution-issues.md"
-    if not ei.is_file():
-        return 0, 0
-    exec_count = warn_count = 0
-    bucket = ""
-    for line in ei.read_text(encoding="utf-8", errors="replace").splitlines():
-        if line.startswith("### "):
-            heading = line[4:].strip()
-            if heading in _EXEC_ISSUE_CATEGORIES:
-                bucket = "exec"
-            elif heading == "Warnings":
-                bucket = "warn"
-            else:
-                bucket = ""
-        elif bucket and _ISSUE_BULLET_RE.match(line):
-            if bucket == "exec":
-                exec_count += 1
-            else:
-                warn_count += 1
-    return exec_count, warn_count
+    result = exec_issue_detail.load_issue_detail_groups(design_tmpdir, run_dir=None)
+    return exec_issue_detail.count_load_result(result)
 
 
 def _plan_review_line(design_tmpdir: Path) -> str:
@@ -184,6 +159,13 @@ def _dynamic_archetypes_line(design_tmpdir: Path) -> str:
     except (OSError, json.JSONDecodeError):
         return "static-only, drafter filter_failed"
     return f"ok ({count})" if count else "static-only, drafter empty"
+
+
+def _append_issue_detail(body: str, load_result: exec_issue_detail.LoadResult) -> str:
+    detail_block = exec_issue_detail.build_issue_detail_section(load_result)
+    if not detail_block:
+        return body
+    return body.rstrip("\n") + "\n\n" + detail_block.strip("\n") + "\n"
 
 
 # Calls `python/cli.py render run-summary` with --claude-input-tokens for per-bucket cost detail.
@@ -297,6 +279,13 @@ def _emit_report_gate_sidecars_file(design_tmpdir: Path) -> None:
     print(f"REPORT_GATE_SIDECARS_FILE={handoff}")
 
 
+def _refresh_final_reports(design_tmpdir: Path) -> None:
+    _run_cli("token", "report", "--full", "--format", "json",  # pyright: ignore[reportUnusedCallResult]
+             "--output", str(design_tmpdir / "token-report-final.json"))
+    _run_cli("timing", "report", "--full", "--format", "json",  # pyright: ignore[reportUnusedCallResult]
+             "--output", str(design_tmpdir / "timing-report-final.json"))
+
+
 def render_final_summary_main(argv: Sequence[str]) -> int:
     argv = list(argv)
     outcome = ""
@@ -362,21 +351,16 @@ def render_final_summary_main(argv: Sequence[str]) -> int:
     if issue and issue != "0" and repo and "/" in repo:
         issue_url = f"https://github.com/{repo}/issues/{issue}"
 
-    # Refresh token/timing reports
-    _run_cli("token", "report", "--full", "--format", "json",  # pyright: ignore[reportUnusedCallResult]
-             "--output", str(design_tmpdir / "token-report-final.json"))
-    _run_cli("timing", "report", "--full", "--format", "json",  # pyright: ignore[reportUnusedCallResult]
-             "--output", str(design_tmpdir / "timing-report-final.json"))
-
+    _refresh_final_reports(design_tmpdir)
     buckets = _read_token_report(design_tmpdir)
     cost_args = _build_cost_args(buckets)
     duration = _duration(design_tmpdir)
     oos_count, oos_urls = _oos_info(design_tmpdir)
-    exec_issues, warnings = _issue_counts(design_tmpdir)
     run_logs_path = f"larch-logs/design/{run_id}/" if run_id and run_id != "unknown" else "N/A"
     out_file = design_tmpdir / "final-summary.md"
     _run_design_failure_report_gate(design_tmpdir, phase, outcome, repo, issue, run_id)
-    exec_issues, warnings = _issue_counts(design_tmpdir)
+    load_result = exec_issue_detail.load_issue_detail_groups(design_tmpdir, run_dir=None)
+    exec_issues, warnings = exec_issue_detail.count_load_result(load_result)
     plan_review_line = _plan_review_line(design_tmpdir)
     dynamic_archetypes_line = _dynamic_archetypes_line(design_tmpdir)
 
@@ -398,6 +382,7 @@ def render_final_summary_main(argv: Sequence[str]) -> int:
 
     try:
         body = out_file.read_text(encoding="utf-8")
+        body = _append_issue_detail(body, load_result)
         try:
             detail = review_phase_detail.render_design_review_detail(design_tmpdir)
         except Exception:

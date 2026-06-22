@@ -38,6 +38,21 @@ def test_issue_counts_missing_file(tmp_path: Path) -> None:
     assert design_summary._issue_counts(tmp_path) == (0, 0)  # pyright: ignore[reportPrivateUsage]
 
 
+def test_issue_counts_fence_plain_and_boundary_parity(tmp_path: Path) -> None:
+    issue_log = tmp_path / "execution-issues.md"
+    _ = issue_log.write_text(
+        "### Tool Failures\n- exec1\n```\n- fenced ignored\n### Warnings\n- warn1\n",
+        encoding="utf-8",
+    )
+    assert design_summary._issue_counts(tmp_path) == (1, 1)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_issue_counts_plain_warning_bullet(tmp_path: Path) -> None:
+    issue_log = tmp_path / "execution-issues.md"
+    _ = issue_log.write_text("### Warnings\n- plain warning\n", encoding="utf-8")
+    assert design_summary._issue_counts(tmp_path) == (0, 1)  # pyright: ignore[reportPrivateUsage]
+
+
 def test_plan_review_line_multiple_rounds(tmp_path: Path) -> None:
     _ = (tmp_path / ".step3-review-result.env").write_text(
         "STEP3_REVIEW_LOOP_STATUS=complete\nROUNDS_COMPLETED=5\n", encoding="utf-8",
@@ -112,8 +127,12 @@ def _install_final_summary_env(
     ) -> None:
         _ = (design_tmpdir, phase, outcome, repo, issue, run_id)
 
+    def no_assess(_category: str, _details: tuple[design_summary.exec_issue_detail.IssueDetail, ...]) -> dict[str, str]:
+        return {}
+
     monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)
     monkeypatch.setattr(design_summary, "_run_design_failure_report_gate", fake_run_design_failure_report_gate)
+    monkeypatch.setattr(design_summary.exec_issue_detail, "assess_issue_details", no_assess)
     return upsert_bodies
 
 
@@ -178,6 +197,88 @@ def test_render_final_summary_appends_review_detail_to_stdout_and_upsert(
     assert "## Review Phase Detail" in stdout
     assert upsert_bodies
     assert "## Review Phase Detail" in upsert_bodies[0]
+
+
+def test_render_final_summary_pre_phase_counts_without_detail(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
+    monkeypatch.setenv("SESSION_ID", "design-run-1")
+    monkeypatch.setenv("ISSUE_NUMBER", "0")
+    _ = (tmp_path / "execution-issues.md").write_text(
+        "### Tool Failures\n- exec1\n\n### Warnings\n- warn1\n",
+        encoding="utf-8",
+    )
+    render_args: list[tuple[str, ...]] = []
+
+    def fake_run_cli(*args: str) -> subprocess.CompletedProcess[str]:
+        render_args.append(args)
+        if args[:2] == ("render", "run-summary"):
+            out_file = Path(args[args.index("--output-file") + 1])
+            _ = out_file.write_text(
+                "## /design run design-run-1 — approved\n\n"
+                f"- **Exec issues**: {args[args.index('--exec-issues') + 1]}\n"
+                f"- **Warnings**: {args[args.index('--warnings') + 1]}\n",
+                encoding="utf-8",
+            )
+        return subprocess.CompletedProcess(["cli.py", *args], 0, stdout="", stderr="")
+
+    def fake_gate(*_args: object) -> None:
+        return
+
+    monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)
+    monkeypatch.setattr(design_summary, "_run_design_failure_report_gate", fake_gate)
+
+    rc = design_summary.render_final_summary_main(["--outcome", "approved", "--pre-publish-only"])
+
+    assert rc == 0
+    args = next(item for item in render_args if item[:2] == ("render", "run-summary"))
+    assert args[args.index("--exec-issues") + 1] == "1"
+    assert args[args.index("--warnings") + 1] == "1"
+    body = (tmp_path / "final-summary.md").read_text(encoding="utf-8")
+    assert "## Exec Issues and Warnings" not in body
+
+
+def test_render_final_summary_appends_exec_warning_detail(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    upsert_bodies = _install_final_summary_env(tmp_path, monkeypatch)
+    raw_secret = "sk-" + "c" * 32
+    _ = (tmp_path / "execution-issues.md").write_text(
+        "### Tool Failures\n"
+        "- **step**: failed\n"
+        "```text\n- fenced diagnostic hidden\n```\n"
+        "### Warnings\n"
+        "- **warn**: duplicate\n"
+        "- **warn**: duplicate\n"
+        f"- **secret**: {raw_secret}\n",
+        encoding="utf-8",
+    )
+
+    def fake_assess(_category: str, details: tuple[design_summary.exec_issue_detail.IssueDetail, ...]) -> dict[str, str]:
+        return {str(index): "Assessment text." for index, _detail in enumerate(details)}
+
+    monkeypatch.setattr(design_summary.exec_issue_detail, "assess_issue_details", fake_assess)
+
+    rc = design_summary.render_final_summary_main(["--outcome", "approved", "--repo", "o/r"])
+
+    assert rc == 0
+    body = (tmp_path / "final-summary.md").read_text(encoding="utf-8")
+    stdout = capsys.readouterr().out
+    assert "## Exec Issues and Warnings" in body
+    assert "Exec Issues (1):" in body
+    assert "Warnings (3):" in body
+    assert "warn: duplicate \u00d72" in body
+    assert "Assessment text." in body
+    assert "fenced diagnostic hidden" not in body
+    assert raw_secret not in body
+    assert "<REDACTED-TOKEN>" in body
+    assert "## Exec Issues and Warnings" in stdout
+    assert upsert_bodies
+    assert "Warnings (3):" in upsert_bodies[0]
 
 
 def test_render_final_summary_missing_timing_keeps_table_without_gantt(

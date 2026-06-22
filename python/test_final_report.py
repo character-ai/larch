@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import config
 import final_report
@@ -23,6 +23,20 @@ def _write_minimal_state(tmp_path: Path) -> None:
     (tmp_path / "ship-pr-state.sh").write_text("PR_NUMBER=1\nPR_URL=https://github.com/o/r/pull/1\n", encoding="utf-8")
     (tmp_path / "finalize-state.sh").write_text("", encoding="utf-8")
     (tmp_path / "run-flags.sh").write_text("EMERGENCY_REQUESTED=false\n", encoding="utf-8")
+
+
+def _stub_cost_and_assessment(monkeypatch: Any) -> None:
+    def fake_token_fields(_implement_tmpdir: Path, _run_id: str) -> dict[str, object]:
+        return {"cost_unavailable": True}
+
+    def no_assess(
+        _category: str,
+        _details: tuple[final_report.exec_issue_detail.IssueDetail, ...],
+    ) -> dict[str, str]:
+        return {}
+
+    monkeypatch.setattr(final_report, "_final_report_token_fields", fake_token_fields)
+    monkeypatch.setattr(final_report.exec_issue_detail, "assess_issue_details", no_assess)
 
 
 def test_write_final_report_summary_final_write_failure_returns_error(
@@ -47,12 +61,7 @@ def test_write_final_report_summary_final_write_failure_returns_error(
 
 def test_write_final_report_module_renders_summary(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     _write_minimal_state(tmp_path)
-
-    def fake_token_fields(implement_tmpdir: Path, run_id: str) -> dict[str, object]:
-        _ = (implement_tmpdir, run_id)
-        return {"cost_unavailable": True}
-
-    monkeypatch.setattr(final_report, "_final_report_token_fields", fake_token_fields)
+    _stub_cost_and_assessment(monkeypatch)
     rc, url, err = final_report.write_final_report(tmp_path, comment_only=True)
     assert (rc, url, err) == (0, "", "")
     assert "## /implement run run1" in (tmp_path / "summary-final.md").read_text(encoding="utf-8")
@@ -87,7 +96,7 @@ def test_write_final_report_reconciles_step8_and_in_progress_for_pr_created(
         encoding="utf-8",
     )
 
-    monkeypatch.setattr(final_report, "_final_report_token_fields", lambda *_a: {"cost_unavailable": True})
+    _stub_cost_and_assessment(monkeypatch)
     rc, url, err = final_report.write_final_report(tmp_path)
 
     assert (rc, url, err) == (0, "", "")
@@ -110,7 +119,7 @@ def test_write_final_report_bailed_does_not_set_in_progress(
         encoding="utf-8",
     )
 
-    monkeypatch.setattr(final_report, "_final_report_token_fields", lambda *_a: {"cost_unavailable": True})
+    _stub_cost_and_assessment(monkeypatch)
     rc, _url, err = final_report.write_final_report(tmp_path)
 
     assert rc == 0
@@ -132,13 +141,106 @@ def test_write_final_report_skip_tracking_upsert_does_not_call_upsert(
         calls.append(argv)
         return subprocess.CompletedProcess(argv, 1, stdout="", stderr="upsert failed")
 
-    monkeypatch.setattr(final_report, "_final_report_token_fields", lambda *_a: {"cost_unavailable": True})
+    _stub_cost_and_assessment(monkeypatch)
     monkeypatch.setattr(final_report.subprocess, "run", fake_run)
 
     rc, url, err = final_report.write_final_report(tmp_path, skip_tracking_upsert=True)
 
     assert (rc, url, err) == (0, "", "")
     assert not any("tracking-issue" in call for call in calls)
+
+
+def test_write_final_report_appends_exec_warning_detail_to_summary_and_run_log(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_minimal_state(tmp_path)
+    _stub_cost_and_assessment(monkeypatch)
+    (tmp_path / "execution-issues.md").write_text(
+        "### Tool Failures\n- **step**: failed with suffix\n\n### Warnings\n- plain warning\n",
+        encoding="utf-8",
+    )
+
+    rc, url, err = final_report.write_final_report(tmp_path, comment_only=False, skip_tracking_upsert=True)
+
+    assert (rc, url, err) == (0, "", "")
+    summary = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
+    run_summary = (tmp_path / "larch-logs" / "implement" / "run1" / "final-summary.md").read_text(encoding="utf-8")
+    for body in (summary, run_summary):
+        assert "## Exec Issues and Warnings" in body
+        assert "Exec Issues (1):" in body
+        assert "step: failed with suffix" in body
+        assert "Warnings (1):" in body
+        assert "plain warning" in body
+
+
+def test_write_final_report_ndjson_fallbacks_render_detail(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_minimal_state(tmp_path)
+    _stub_cost_and_assessment(monkeypatch)
+    run_dir = tmp_path / "larch-logs" / "implement" / "run1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "execution-issues.ndjson").write_text(
+        json.dumps({"category": "Warnings", "body": "- **warn**: one\n- plain two\n"}) + "\n",
+        encoding="utf-8",
+    )
+
+    rc, _url, err = final_report.write_final_report(tmp_path, comment_only=True)
+
+    assert (rc, err) == (0, "")
+    body = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
+    assert "**Warnings**: 2" in body
+    assert "Warnings (2):" in body
+    assert "warn: one" in body
+    assert "plain two" in body
+
+
+def test_write_final_report_legacy_string_count_header_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_minimal_state(tmp_path)
+    _stub_cost_and_assessment(monkeypatch)
+    run_dir = tmp_path / "larch-logs" / "implement" / "run1"
+    run_dir.mkdir(parents=True)
+    legacy = '{"category":"Tool Failures"}\n{"category":"External Reviewer Issues"}\n{"category":"Warnings"}'
+    rows: list[object] = ["legacy", {"body": legacy}]
+    (run_dir / "execution-issues.ndjson").write_text(
+        "\n".join(json.dumps(row) for row in rows) + "\n",
+        encoding="utf-8",
+    )
+
+    rc, _url, err = final_report.write_final_report(tmp_path, comment_only=True)
+
+    assert (rc, err) == (0, "")
+    body = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
+    assert "**Exec issues**: 2" in body
+    assert "**Warnings**: 1" in body
+    assert "Exec Issues (2):" in body
+    assert "Warnings (1):" in body
+    assert "  1." not in body
+
+
+def test_write_final_report_exec_warning_detail_redacts_suffix(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_minimal_state(tmp_path)
+    _stub_cost_and_assessment(monkeypatch)
+    raw_secret = "sk-" + "d" * 32
+    (tmp_path / "execution-issues.md").write_text(
+        f"### Warnings\n- **secret**: {raw_secret}\n",
+        encoding="utf-8",
+    )
+
+    rc, _url, err = final_report.write_final_report(tmp_path, comment_only=True)
+
+    assert (rc, err) == (0, "")
+    body = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
+    assert raw_secret not in body
+    assert "<REDACTED-TOKEN>" in body
 
 
 def test_architectural_guidelines_section_absent_preserves_empty(

@@ -73,6 +73,8 @@ def test_documented_constants_exist() -> None:
         "SUBPROCESS_DEFAULT_TIMEOUT_SEC",
         "TRANSIENT_RETRY_MAX_ATTEMPTS",
         "PATH_MANIFEST_TEMPLATE",
+        "ENV_LARCH_EXEC_ISSUE_ASSESSMENT_MODEL",
+        "EXEC_ISSUE_ASSESSMENT_MODEL_DEFAULT",
     )
     for name in names:
         assert hasattr(config, name)

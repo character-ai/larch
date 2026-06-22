@@ -22,6 +22,13 @@ from errors import ShipError
 from proc import CommandResult
 
 
+def _no_issue_assess(
+    _category: str,
+    _details: tuple[final_report.exec_issue_detail.IssueDetail, ...],
+) -> dict[str, str]:
+    return {}
+
+
 class _NoopRunner:
     def run(self, *args: object, **kwargs: object) -> CommandResult:  # pylint: disable=unused-argument
         return CommandResult((), 0, "", "", 0.0)
@@ -270,6 +277,7 @@ def test_write_final_report_counts_warnings_and_exec(tmp_path: Path, monkeypatch
         return {"cost_unavailable": True}
 
     monkeypatch.setattr(final_report, "_final_report_token_fields", fake_final_report_token_fields)
+    monkeypatch.setattr(final_report.exec_issue_detail, "assess_issue_details", _no_issue_assess)
     rc, _url, _err = final_report.write_final_report(tmp_path, comment_only=True)
     assert rc == 0
     body = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
@@ -323,6 +331,7 @@ def _stub_final_report_cost(monkeypatch: pytest.MonkeyPatch) -> None:
         return {"cost_unavailable": True}
 
     monkeypatch.setattr(final_report, "_final_report_token_fields", fake_final_report_token_fields)
+    monkeypatch.setattr(final_report.exec_issue_detail, "assess_issue_details", _no_issue_assess)
 
 
 def test_write_final_report_appends_review_detail_in_comment_only(
@@ -486,6 +495,50 @@ def test_refresh_issue_counts_body_text_fallback_counts_plain_bullets(tmp_path: 
     )
 
     assert final_report._refresh_issue_counts(tmp_path, "run1") == (2, 1)
+
+
+def test_issue_detail_body_text_fallback_lists_rows(tmp_path: Path) -> None:
+    run_dir = tmp_path / "larch-logs" / "implement" / "run1"
+    run_dir.mkdir(parents=True)
+    rows: list[object] = [
+        "legacy row",
+        {"body": "### Tool Failures\n- a\n- b\n"},
+        {"body": "### Warnings\n- c\n"},
+    ]
+    _ = (run_dir / "execution-issues.ndjson").write_text(
+        "\n".join(json.dumps(row) for row in rows) + "\n",
+        encoding="utf-8",
+    )
+
+    result = final_report.exec_issue_detail.load_issue_detail_groups(tmp_path, run_dir=run_dir)
+    block = final_report.exec_issue_detail.render_issue_detail_block(result, assess=False)
+
+    assert final_report.exec_issue_detail.count_load_result(result) == (2, 1)
+    assert "Exec Issues (2):" in block
+    assert "1. a" in block
+    assert "2. b" in block
+    assert "Warnings (1):" in block
+    assert "1. c" in block
+
+
+def test_issue_detail_degraded_string_count_header_only(tmp_path: Path) -> None:
+    run_dir = tmp_path / "larch-logs" / "implement" / "run1"
+    run_dir.mkdir(parents=True)
+    legacy = '{"category":"Tool Failures"}\n{"category":"External Reviewer Issues"}\n{"category":"Warnings"}'
+    rows: list[object] = ["legacy row", {"body": legacy}]
+    _ = (run_dir / "execution-issues.ndjson").write_text(
+        "\n".join(json.dumps(row) for row in rows) + "\n",
+        encoding="utf-8",
+    )
+
+    result = final_report.exec_issue_detail.load_issue_detail_groups(tmp_path, run_dir=run_dir)
+    block = final_report.exec_issue_detail.render_issue_detail_block(result, assess=False)
+
+    assert result.listing_degraded
+    assert final_report.exec_issue_detail.count_load_result(result) == (2, 1)
+    assert "Exec Issues (2):" in block
+    assert "Warnings (1):" in block
+    assert "  1." not in block
 
 
 def test_refresh_issue_counts_section_heading_inside_fence_is_boundary(tmp_path: Path) -> None:

@@ -1,6 +1,6 @@
 """Final report rendering and Step 18b helpers for /implement."""
 
-# pyright: reportUnusedCallResult=false
+# pyright: reportUnusedCallResult=false, reportUnusedFunction=false
 
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ from typing import cast
 import architectural_guidelines
 import closeout
 import config
+import exec_issue_detail
 import larch_io
 import pr_body
 import repo_roots
@@ -26,10 +27,6 @@ import review_phase_detail
 import stall_recovery
 import tokens
 
-_ISSUE_SECTION_NONE = 0
-_ISSUE_SECTION_EXEC = 1
-_ISSUE_SECTION_WARN = 2
-_EXEC_ISSUE_HEADINGS = frozenset({"### Tool Failures", "### External Reviewer Issues"})
 _OOS_FILED_URL_LINE_RE = re.compile(r"^[ \t]*-[ \t]+\*\*Filed[ \t]URL\*\*[ \t]*:[ \t]+(https://[^\s]+/issues/\d+)", re.MULTILINE)
 
 
@@ -312,89 +309,20 @@ def _final_report_duration(run_dir: Path, ship: Path) -> str:
     return _read_kv(ship, "DURATION", "N/A")
 
 
-def _count_markdown_bullets_outside_fences(text: str) -> int:
-    in_fence = False
-    count = 0
-    for line in text.splitlines():
-        if line.lstrip().startswith("```"):
-            in_fence = not in_fence
-            continue
-        if not in_fence and line.startswith("- "):
-            count += 1
-    return count
-
-
-def _count_issue_sections(text: str) -> tuple[int, int]:
-    exec_lines: list[str] = []
-    warn_lines: list[str] = []
-    section = _ISSUE_SECTION_NONE
-    in_fence = False
-    for line in text.splitlines():
-        if line.lstrip().startswith("```"):
-            if section == _ISSUE_SECTION_EXEC:
-                exec_lines.append(line)
-            elif section == _ISSUE_SECTION_WARN:
-                warn_lines.append(line)
-            in_fence = not in_fence
-        elif line in _EXEC_ISSUE_HEADINGS:
-            section = _ISSUE_SECTION_EXEC
-            in_fence = False
-        elif line == "### Warnings":
-            section = _ISSUE_SECTION_WARN
-            in_fence = False
-        elif line.startswith("### "):
-            section = _ISSUE_SECTION_NONE
-            in_fence = False
-        elif section == _ISSUE_SECTION_EXEC:
-            exec_lines.append(line)
-        elif section == _ISSUE_SECTION_WARN:
-            warn_lines.append(line)
-    return (
-        _count_markdown_bullets_outside_fences("\n".join(exec_lines)),
-        _count_markdown_bullets_outside_fences("\n".join(warn_lines)),
-    )
-
-
 def _refresh_issue_counts(implement_tmpdir: Path, run_id: str) -> tuple[int, int]:
-    """Port write-final-report.sh refresh_issue_counts category split and ndjson fallback."""
-    issue_log = implement_tmpdir / "execution-issues.md"
-    exec_n = 0
-    warn_n = 0
-    if issue_log.is_file() and issue_log.stat().st_size > 0:
-        return _count_issue_sections(issue_log.read_text(encoding="utf-8", errors="replace"))
     run_dir = implement_tmpdir / "larch-logs" / "implement" / run_id
-    ndjson = run_dir / "execution-issues.ndjson"
-    if not ndjson.is_file():
-        return exec_n, warn_n
-    try:
-        rows = [json.loads(raw) for raw in ndjson.read_text(encoding="utf-8", errors="replace").splitlines() if raw.strip()]
-    except json.JSONDecodeError:
-        rows = []
-    if rows and all(isinstance(row, dict) for row in rows):
-        for row in rows:
-            item = cast("dict[str, object]", row)
-            category = str(item.get("category", ""))
-            if category in {"Tool Failures", "External Reviewer Issues"}:
-                exec_n += max(1, _count_markdown_bullets_outside_fences(str(item.get("body", ""))))
-            elif category == "Warnings":
-                warn_n += max(1, _count_markdown_bullets_outside_fences(str(item.get("body", ""))))
-        return exec_n, warn_n
-    body_text = ""
-    for raw in ndjson.read_text(encoding="utf-8", errors="replace").splitlines():
-        if not raw.strip():
-            continue
-        try:
-            item = json.loads(raw)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(item, dict):
-            body_text += str(cast("dict[str, object]", item).get("body", "")) + "\n"
-    if re.search(r"^### (Tool Failures|External Reviewer Issues|Warnings)$", body_text, re.MULTILINE):
-        exec_n, warn_n = _count_issue_sections(body_text)
-    else:
-        exec_n = body_text.count('"category":"Tool Failures"') + body_text.count('"category":"External Reviewer Issues"')
-        warn_n = body_text.count('"category":"Warnings"')
-    return exec_n, warn_n
+    result = exec_issue_detail.load_issue_detail_groups(implement_tmpdir, run_dir=run_dir)
+    return exec_issue_detail.count_load_result(result)
+
+
+def _issue_load_result_for_run(
+    implement_tmpdir: Path,
+    run_id: str,
+) -> tuple[Path, exec_issue_detail.LoadResult, int, int]:
+    run_dir = implement_tmpdir / "larch-logs" / "implement" / run_id
+    load_result = exec_issue_detail.load_issue_detail_groups(implement_tmpdir, run_dir=run_dir)
+    exec_count, warn_count = exec_issue_detail.count_load_result(load_result)
+    return run_dir, load_result, exec_count, warn_count
 
 
 def _merge_line_count_state(ship: Path, pr_number: str, lines: Mapping[str, object]) -> None:
@@ -520,6 +448,13 @@ def _derive_final_report_fields(
     }
 
 
+def _append_issue_detail(body: str, load_result: exec_issue_detail.LoadResult) -> str:
+    detail_block = exec_issue_detail.build_issue_detail_section(load_result)
+    if not detail_block:
+        return body
+    return body.rstrip("\n") + "\n\n" + detail_block.strip("\n") + "\n"
+
+
 def _reconcile_manifest_for_terminal_report(
     implement_tmpdir: Path,
     *,
@@ -600,8 +535,7 @@ def write_final_report(
     pr_number = _read_kv(ship, "PR_NUMBER") or _read_kv(final, "PR_NUMBER")
     pr_url = _read_kv(ship, "PR_URL", "N/A") or _read_kv(final, "PR_URL", "N/A")
     issue_url = f"https://github.com/{repo}/issues/{issue}" if repo and issue and issue != "0" else ""
-    exec_count, warn_count = _refresh_issue_counts(implement_tmpdir, run_id)
-    run_dir = implement_tmpdir / "larch-logs" / "implement" / run_id
+    run_dir, load_result, exec_count, warn_count = _issue_load_result_for_run(implement_tmpdir, run_id)
     derived = _derive_final_report_fields(
         implement_tmpdir,
         run_id=run_id or "unknown",
@@ -643,6 +577,7 @@ def write_final_report(
         manifest_path=str(run_dir / "manifest.json"),
         **cost_fields,
     )
+    body = _append_issue_detail(body, load_result)
     try:
         detail = review_phase_detail.render_implement_review_detail(implement_tmpdir, run_id or "unknown")
     except Exception:
