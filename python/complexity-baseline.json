@@ -573,7 +573,7 @@
     "file": "agents.py",
     "code": "PLR0915",
     "qualified_symbol": "launch_claude_drafter",
-    "metric": 123
+    "metric": 124
   },
   {
     "file": "agents.py",
@@ -597,7 +597,7 @@
     "file": "agents.py",
     "code": "PLR0915",
     "qualified_symbol": "launch_codex_drafter",
-    "metric": 101
+    "metric": 102
   },
   {
     "file": "agents.py",

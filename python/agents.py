@@ -3240,7 +3240,8 @@ def launch_codex_drafter(
         if baseline is None or not _under(baseline, design):
             _err(f"{prog}: --baseline-porcelain outside design tmpdir or invalid")
             return 2
-    for stale in (output.with_suffix(output.suffix + ".stderr-tail"), output.with_suffix(output.suffix + ".failure-diag"), output.with_suffix(output.suffix + ".token-record")):
+    paths = LauncherPaths.from_output(output)
+    for stale in (paths.stderr_tail, paths.failure_diag, paths.token_record):
         with contextlib.suppress(FileNotFoundError):
             stale.unlink()
     _write_drafter_status_file(output, "ERROR", plan_written=False, plan_lines=0, diff_lines=0, summary_written=False, launched=False, reason="prelaunch")
@@ -3273,36 +3274,36 @@ def launch_codex_drafter(
             "--trusted-instructions-file", str(trusted),
             "--prompt-file", str(prompt),
         ]
-        wrapper_rc = _launch_codex_exec_inprocess(exec_args, launcher_stdout, output.with_suffix(output.suffix + ".stderr"))
+        wrapper_rc = _launch_codex_exec_inprocess(exec_args, launcher_stdout, paths.stderr)
         launcher_text = launcher_stdout.read_text(encoding="utf-8", errors="replace") if launcher_stdout.is_file() else ""
         launcher_exit = resolve_launcher_exit(launcher_text, raw, process_rc=wrapper_rc)
         token_src = raw.with_suffix(raw.suffix + ".token-record")
         if token_src.is_file() and token_src.stat().st_size > 0:
-            shutil.copyfile(token_src, output.with_suffix(output.suffix + ".token-record"))
+            shutil.copyfile(token_src, paths.token_record)
         if launcher_exit != 0 or wrapper_rc != 0:
-            _write(output.with_suffix(output.suffix + ".failure-diag"), "CODEX_EXEC_FAILED\n")
+            _write(paths.failure_diag, "CODEX_EXEC_FAILED\n")
             _write_drafter_status_file(output, "ERROR", plan_written=False, plan_lines=0, diff_lines=0, summary_written=False, launched=True, reason="CODEX_EXEC_FAILED")
-            source = raw.with_suffix(raw.suffix + ".sidecar") if raw.with_suffix(raw.suffix + ".sidecar").is_file() and raw.with_suffix(raw.suffix + ".sidecar").stat().st_size > 0 else output.with_suffix(output.suffix + ".stderr")
+            source = raw.with_suffix(raw.suffix + ".sidecar") if raw.with_suffix(raw.suffix + ".sidecar").is_file() and raw.with_suffix(raw.suffix + ".sidecar").stat().st_size > 0 else paths.stderr
             if source.is_file() and source.stat().st_size > 0:
                 write_failed_agent_stderr_tail(source, output)
-            _write(output.with_suffix(output.suffix + ".done"), f"{launcher_exit}\n")
+            _write(paths.done, f"{launcher_exit}\n")
             _emit_kv("STATUS", "ERROR")
             _emit_kv("OUTPUT_FILE", str(output))
-            _emit_kv("TOKEN_RECORD", str(output.with_suffix(output.suffix + ".token-record")) if output.with_suffix(output.suffix + ".token-record").is_file() else "")
+            _emit_kv("TOKEN_RECORD", str(paths.token_record) if paths.token_record.is_file() else "")
             return launcher_exit
         if not raw.is_file() or raw.stat().st_size == 0:
-            _write(output.with_suffix(output.suffix + ".failure-diag"), "CODEX_EMPTY_OUTPUT\n")
+            _write(paths.failure_diag, "CODEX_EMPTY_OUTPUT\n")
             _write_drafter_status_file(output, "ERROR", plan_written=False, plan_lines=0, diff_lines=0, summary_written=False, launched=True, reason="CODEX_EMPTY_OUTPUT")
-            _write(output.with_suffix(output.suffix + ".done"), "1\n")
+            _write(paths.done, "1\n")
             _emit_kv("STATUS", "ERROR")
             _emit_kv("OUTPUT_FILE", str(output))
             return 1
         try:
             parsed = parse_drafter_output(raw, plan_tmp, summary_tmp, scout_candidate)
         except ValueError as exc:
-            _write(output.with_suffix(output.suffix + ".failure-diag"), f"DELIMITER_EXTRACTION_INVALID\n{exc}\n")
+            _write(paths.failure_diag, f"DELIMITER_EXTRACTION_INVALID\n{exc}\n")
             _write_drafter_status_file(output, "ERROR", plan_written=False, plan_lines=0, diff_lines=0, summary_written=False, launched=True, reason="DELIMITER_EXTRACTION_INVALID")
-            _write(output.with_suffix(output.suffix + ".done"), "99\n")
+            _write(paths.done, "99\n")
             _emit_kv("STATUS", "ERROR")
             _emit_kv("OUTPUT_FILE", str(output))
             return 99
@@ -3316,15 +3317,15 @@ def launch_codex_drafter(
         else:
             with contextlib.suppress(FileNotFoundError):
                 summary_tmp.unlink()
-        for stale in (output.with_suffix(output.suffix + ".stderr"), output.with_suffix(output.suffix + ".stderr-tail"), output.with_suffix(output.suffix + ".failure-diag")):
+        for stale in (paths.stderr, paths.stderr_tail, paths.failure_diag):
             with contextlib.suppress(FileNotFoundError):
                 stale.unlink()
         _write_drafter_status_file(output, "OK", plan_written=True, plan_lines=parsed.plan_lines, diff_lines=parsed.diff_lines, summary_written=parsed.summary_written, scout_written=scout_written, scout_fail_reason=scout_reason if not scout_written else "", launched=True)
-        _write(output.with_suffix(output.suffix + ".done"), "0\n")
+        _write(paths.done, "0\n")
         _emit_kv("STATUS", "OK")
         _emit_kv("OUTPUT_FILE", str(output))
-        if output.with_suffix(output.suffix + ".token-record").is_file():
-            _emit_kv("TOKEN_RECORD", str(output.with_suffix(output.suffix + ".token-record")))
+        if paths.token_record.is_file():
+            _emit_kv("TOKEN_RECORD", str(paths.token_record))
         else:
             _emit_kv("TOKEN_RECORD_MISSING", "true")
         _emit_kv("SCOUT_WRITTEN", str(scout_written).lower())
@@ -3402,7 +3403,8 @@ def launch_claude_drafter(
         if baseline is None or not _under(baseline, design):
             _err(f"{prog}: invalid --baseline-porcelain")
             return 2
-    for stale in (output.with_suffix(output.suffix + ".stderr-tail"), output.with_suffix(output.suffix + ".failure-diag"), output.with_suffix(output.suffix + ".json"), output.with_suffix(output.suffix + ".result")):
+    paths = LauncherPaths.from_output(output)
+    for stale in (paths.stderr_tail, paths.failure_diag, output.with_suffix(output.suffix + ".json"), output.with_suffix(output.suffix + ".result")):
         with contextlib.suppress(FileNotFoundError):
             stale.unlink()
     _write_drafter_status_file(output, "ERROR", plan_written=False, plan_lines=0, diff_lines=0, summary_written=False, launched=False, reason="prelaunch")
@@ -3423,12 +3425,12 @@ def launch_claude_drafter(
         scout_candidate = design / f"scout-plan-manifest.json.candidate.{pid}"
         scout_filtered = design / f"scout-plan-manifest.json.filtered.{pid}"
         cmd = ["claude", "--model", model, "--print", "--output-format", "json", "--add-dir", str(repo), "--allowedTools", "Read,Glob,Grep,LS", "--permission-mode", "plan"]
-        _write(output.with_suffix(output.suffix + ".meta"), "OUTER_LAUNCHER=claude-drafter\nTIMEOUT=" + timeout + "\nTOOL=claude\nCMD_JSON=" + _json_array(cmd) + "\n")
+        _write(paths.meta, "OUTER_LAUNCHER=claude-drafter\nTIMEOUT=" + timeout + "\nTOOL=claude\nCMD_JSON=" + _json_array(cmd) + "\n")
         launched = True
         prompt_text = prompt.read_text(encoding="utf-8", errors="replace")
         timeout_bin = shutil.which("timeout")
         run_cmd = [timeout_bin, timeout, *cmd] if timeout_bin else cmd
-        with json_tmp.open("w", encoding="utf-8") as out, output.with_suffix(output.suffix + ".stderr").open("w", encoding="utf-8") as err:
+        with json_tmp.open("w", encoding="utf-8") as out, paths.stderr.open("w", encoding="utf-8") as err:
             try:
                 completed = subprocess.run(run_cmd, input=prompt_text, text=True, stdout=out, stderr=err, check=False)
                 exit_code = completed.returncode
@@ -3450,8 +3452,8 @@ def launch_claude_drafter(
                 _write(result_tmp, value)
                 _record_claude_sub_usage(obj, _drafter_token_raw(timing_task_kind))
             except (json.JSONDecodeError, ValueError) as exc:
-                _write(output.with_suffix(output.suffix + ".failure-diag"), "CLAUDE_JSON_RESULT_INVALID\n")
-                _append(output.with_suffix(output.suffix + ".stderr"), f"{exc}\n")
+                _write(paths.failure_diag, "CLAUDE_JSON_RESULT_INVALID\n")
+                _append(paths.stderr, f"{exc}\n")
                 _write_drafter_status_file(output, "ERROR", plan_written=False, plan_lines=0, diff_lines=0, summary_written=False, launched=True, reason="CLAUDE_JSON_RESULT_INVALID")
                 exit_code = 99
                 status = "ERROR"
@@ -3459,7 +3461,7 @@ def launch_claude_drafter(
             try:
                 parsed = parse_drafter_output(result_tmp, plan_tmp, summary_tmp, scout_candidate)
             except ValueError as exc:
-                _write(output.with_suffix(output.suffix + ".failure-diag"), f"DELIMITER_EXTRACTION_INVALID\n{exc}\n")
+                _write(paths.failure_diag, f"DELIMITER_EXTRACTION_INVALID\n{exc}\n")
                 _write_drafter_status_file(output, "ERROR", plan_written=False, plan_lines=0, diff_lines=0, summary_written=False, launched=True, reason="DELIMITER_EXTRACTION_INVALID")
                 exit_code = 99
                 status = "ERROR"
@@ -3477,16 +3479,16 @@ def launch_claude_drafter(
                 _write_drafter_status_file(output, "OK", plan_written=True, plan_lines=parsed.plan_lines, diff_lines=parsed.diff_lines, summary_written=parsed.summary_written, scout_written=scout_written, scout_fail_reason=scout_reason if not scout_written else "", launched=True)
                 status = "OK"
         if exit_code != 0:
-            stderr_file = output.with_suffix(output.suffix + ".stderr")
+            stderr_file = paths.stderr
             if stderr_file.is_file() and stderr_file.stat().st_size > 0:
                 write_failed_agent_stderr_tail(stderr_file, output)
-            if not output.with_suffix(output.suffix + ".failure-diag").is_file() or output.with_suffix(output.suffix + ".failure-diag").stat().st_size == 0:
+            if not paths.failure_diag.is_file() or paths.failure_diag.stat().st_size == 0:
                 _compose_failure_diag(output, sink=str(stderr_file))
         else:
-            for stale in (output.with_suffix(output.suffix + ".stderr-tail"), output.with_suffix(output.suffix + ".failure-diag")):
+            for stale in (paths.stderr_tail, paths.failure_diag):
                 with contextlib.suppress(FileNotFoundError):
                     stale.unlink()
-        _write(output.with_suffix(output.suffix + ".done"), f"{exit_code}\n")
+        _write(paths.done, f"{exit_code}\n")
         return exit_code
     finally:
         end = time.time()
