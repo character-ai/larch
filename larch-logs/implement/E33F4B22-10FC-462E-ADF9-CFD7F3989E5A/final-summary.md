@@ -1,14 +1,14 @@
-## /implement run E33F4B22-10FC-462E-ADF9-CFD7F3989E5A — bailed
+## /implement run E33F4B22-10FC-462E-ADF9-CFD7F3989E5A — pr-created
 
-- **Outcome**: bailed
 - **Mode**: N/A
 - **Duration**: 02:22:34
-- **Cost**: 💰 TOTAL ~$27.71 — Claude $3.23, Codex $16.93, Cursor $6.24, Claude (subprocess) $1.31  |  Tokens: 46804k
+- **Cost**: 💰 TOTAL ~$28.34 — Claude $3.86, Codex $16.93, Cursor $6.24, Claude (subprocess) $1.31  |  Tokens: 47888k
 - **Issue**: #5072 — https://github.com/character-ai/larch/issues/5072
+- **PR**: #5130 — https://github.com/character-ai/larch/pull/5130
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (3)
 - **Code review**: 13/22 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +1212/-170, larch-logs +1263/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 1
@@ -87,3 +87,7 @@ cursor/apply                      │                                        █
 **Reviewer slot failures**: 0
 
 _Cost is the per-round vendor cost (Codex + Cursor + Claude subprocess), attributed by token-ledger timestamp window; it excludes main-agent Claude, so it is less than the run Cost line above. Rendered as an em dash when per-round timing or the token ledger is unavailable._
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified. The new `exec_issue_detail.py` module uses frozen dataclasses (G-Py-1), typed annotations (G-Py-2), domain types over stringly-typed primitives (G-Py-3), and documented fail-closed degraded paths for assessment subprocess failures (G-Py-4).
