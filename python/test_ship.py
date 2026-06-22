@@ -75,6 +75,99 @@ def _read_state(path: Path) -> dict[str, str]:
     return data
 
 
+def test_ship_rebase_phase_stall_returns_terminal_result(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    state = tmp_path / "ship-pr-state.sh"
+    ctx = _ctx(tmp_path, state_file=str(state), pr_number=7, pr_url="https://example.com/pr/7", merge=True)
+
+    def fake_flush_logs_pre(
+        _runner: RecordingRunner,
+        _ctx: RunContext,
+        *,
+        cwd: str | None = None,
+        strict_final_report: bool = False,
+    ) -> run_logs.RefreshSkip:
+        del cwd, strict_final_report
+        return run_logs.RefreshSkip(skipped=True, reason="blocked")
+
+    def fake_publish(_runner: RecordingRunner, _ctx: RunContext, *, cwd: str | None = None) -> None:
+        del cwd
+
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush_logs_pre)
+    monkeypatch.setattr(ship, "_publish_post_pr_terminal_snapshot", fake_publish)
+
+    result = ship._ship_rebase_phase(
+        RecordingRunner(),
+        ctx,
+        cwd=str(tmp_path),
+        base_remote="origin",
+        base_ref="main",
+        iteration=3,
+        rebase_count=2,
+        fix_attempts=1,
+        transient_retries=0,
+        variant=ship.ShipRebaseVariant.GOTO_REBASE,
+    )
+
+    assert result.rebase_count == 2
+    assert result.terminal is not None
+    assert result.terminal.outcome is Outcome.STALLED
+    data = _read_state(state)
+    assert data["PHASE"] == "stalled"
+    assert data["STALL_STEP"] == "pre-rebase"
+    assert data["ITERATION"] == "3"
+    assert data["REBASE_COUNT"] == "2"
+
+
+def test_ship_rebase_phase_success_increments_rebase_count(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    state = tmp_path / "ship-pr-state.sh"
+    ctx = _ctx(tmp_path, state_file=str(state), pr_number=7, pr_url="https://example.com/pr/7", merge=True)
+
+    def fake_flush_logs_pre(
+        _runner: RecordingRunner,
+        _ctx: RunContext,
+        *,
+        cwd: str | None = None,
+        strict_final_report: bool = False,
+    ) -> run_logs.RefreshSkip:
+        del cwd, strict_final_report
+        return run_logs.RefreshSkip(skipped=False, reason="")
+
+    def fake_rebase_and_push(
+        _runner: RecordingRunner,
+        *,
+        repo: str,
+        run_id: str,
+        cwd: str,
+        tmpdir: str,
+        base_remote: str,
+        base_ref: str,
+        allow_conflict_fix: bool,
+        enable_pre_push_handoff: bool,
+    ) -> object:
+        del repo, run_id, cwd, tmpdir, base_remote, base_ref, allow_conflict_fix, enable_pre_push_handoff
+        return object()
+
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush_logs_pre)
+    monkeypatch.setattr(ship.rebase, "rebase_and_push", fake_rebase_and_push)
+
+    result = ship._ship_rebase_phase(
+        RecordingRunner(),
+        ctx,
+        cwd=str(tmp_path),
+        base_remote="origin",
+        base_ref="main",
+        iteration=0,
+        rebase_count=4,
+        fix_attempts=0,
+        transient_retries=0,
+        variant=ship.ShipRebaseVariant.MAIN_ADVANCED,
+    )
+
+    assert result.terminal is None
+    assert result.rebase_count == 5
+    assert _read_state(state)["PHASE"] == "rebase"
+
+
 def test_seed_initial_state_writes_exact_ordered_key_set(tmp_path: Path) -> None:
     manifest = tmp_path / "manifest.json"
     _ = manifest.write_text('{"summary_bullets":["Ship"]}\n', encoding="utf-8")

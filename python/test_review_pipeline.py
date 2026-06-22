@@ -73,6 +73,75 @@ def _run_review_core(
     )
 
 
+def _run_review_core_body_direct(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    findings: int,
+    accepted: int = 0,
+    outdir_name: str = "body",
+    extra_env: dict[str, str] | None = None,
+) -> review_pipeline.ReviewCoreResult:
+    stubs = _write_review_core_stubs(tmp_path / f"{outdir_name}-stubs")
+    env = rts.build_review_core_env(
+        tmp_path / f"{outdir_name}-stubs",
+        stubs,
+        TEST_FINDINGS=str(findings),
+        TEST_ACCEPTED=str(accepted),
+        TEST_ROUND_NUM="1",
+    )
+    if extra_env:
+        env.update(extra_env)
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+    outdir = tmp_path / outdir_name
+    parsed: dict[str, str] = {
+        "--mode": "diff",
+        "--output-dir": str(outdir),
+        "--codex-available": "true",
+        "--cursor-available": "true",
+        "--panel": "simple",
+        "--round-num": "1",
+    }
+    return review_pipeline._review_core_body(  # pyright: ignore[reportPrivateUsage]
+        parsed,
+        mode="diff",
+        review_tmpdir=outdir,
+        codex_available="true",
+        cursor_available="true",
+        panel="simple",
+        dynamic="0",
+        round_num=1,
+        session_env_path="",
+        run_id="",
+        prune_ledger="",
+        site="review Step 2",
+        commands=review_pipeline._review_commands(),  # pyright: ignore[reportPrivateUsage]
+    )
+
+
+def test_review_core_body_zero_findings_returns_ordered_rows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    result = _run_review_core_body_direct(tmp_path, monkeypatch, findings=0, accepted=0, outdir_name="body-zero")
+    keys = [key for key, _value in result.rows]
+
+    assert result.rc == 0
+    assert result.status == review_pipeline.ReviewCoreStatus.zero_findings
+    assert keys[:3] == ["SCOUT_STATUS", "DYNAMIC_SLOTS", "PANEL_PRUNED_EMPTY"]
+    assert keys.index("FINDINGS_CLASSIFICATION_TSV_FILE") < keys.index("REVIEW_CORE_STATUS")
+    assert keys.index("VOTING_TALLY_FILE") > keys.index("PANEL_SHAPE")
+
+
+def test_review_core_body_fix_required_returns_duplicate_classification(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    result = _run_review_core_body_direct(tmp_path, monkeypatch, findings=1, accepted=1, outdir_name="body-fix")
+    keys = [key for key, _value in result.rows]
+
+    assert result.rc == 0
+    assert result.status == review_pipeline.ReviewCoreStatus.fix_required
+    assert keys[:3] == ["SCOUT_STATUS", "DYNAMIC_SLOTS", "PANEL_PRUNED_EMPTY"]
+    assert keys.count("FINDINGS_CLASSIFICATION_TSV_FILE") == 2
+    assert keys.index("VOTER_1_TOOL") < keys.index("FINDINGS_CLASSIFICATION_TSV_FILE") < keys.index("REVIEW_CORE_STATUS")
+
+
 def test_review_core_default_dispatches_voters_through_python_cli() -> None:
     assert rts.review_core_uses_agent_dispatch_voters_by_default()
 

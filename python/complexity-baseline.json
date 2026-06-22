@@ -2120,14 +2120,14 @@
   {
     "file": "design_lifecycle.py",
     "code": "C901",
-    "qualified_symbol": "_rehydrate_wrapper_env",
-    "metric": 14
+    "qualified_symbol": "_postplan_decide",
+    "metric": 11
   },
   {
     "file": "design_lifecycle.py",
     "code": "C901",
-    "qualified_symbol": "_shared_step2b_postplan_body",
-    "metric": 17
+    "qualified_symbol": "_rehydrate_wrapper_env",
+    "metric": 14
   },
   {
     "file": "design_lifecycle.py",
@@ -2300,12 +2300,6 @@
   {
     "file": "design_lifecycle.py",
     "code": "PLR0912",
-    "qualified_symbol": "_shared_step2b_postplan_body",
-    "metric": 17
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "PLR0912",
     "qualified_symbol": "driver_main",
     "metric": 26
   },
@@ -2396,6 +2390,12 @@
   {
     "file": "design_lifecycle.py",
     "code": "PLR0913",
+    "qualified_symbol": "_postplan_decide",
+    "metric": 9
+  },
+  {
+    "file": "design_lifecycle.py",
+    "code": "PLR0913",
     "qualified_symbol": "_step5c_write_status",
     "metric": 7
   },
@@ -2416,12 +2416,6 @@
     "code": "PLR0915",
     "qualified_symbol": "_decode_ansi_c_quoted",
     "metric": 51
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "PLR0915",
-    "qualified_symbol": "_shared_step2b_postplan_body",
-    "metric": 69
   },
   {
     "file": "design_lifecycle.py",
@@ -5540,6 +5534,12 @@
   {
     "file": "review_pipeline.py",
     "code": "C901",
+    "qualified_symbol": "_review_core_body",
+    "metric": 57
+  },
+  {
+    "file": "review_pipeline.py",
+    "code": "C901",
     "qualified_symbol": "_synthesize_dynamic_slots",
     "metric": 12
   },
@@ -5576,14 +5576,14 @@
   {
     "file": "review_pipeline.py",
     "code": "C901",
-    "qualified_symbol": "review_core",
-    "metric": 63
+    "qualified_symbol": "reviewer_prune",
+    "metric": 12
   },
   {
     "file": "review_pipeline.py",
-    "code": "C901",
-    "qualified_symbol": "reviewer_prune",
-    "metric": 12
+    "code": "PLR0911",
+    "qualified_symbol": "_review_core_body",
+    "metric": 13
   },
   {
     "file": "review_pipeline.py",
@@ -5612,14 +5612,14 @@
   {
     "file": "review_pipeline.py",
     "code": "PLR0911",
-    "qualified_symbol": "review_core",
-    "metric": 16
+    "qualified_symbol": "reviewer_prune",
+    "metric": 10
   },
   {
     "file": "review_pipeline.py",
-    "code": "PLR0911",
-    "qualified_symbol": "reviewer_prune",
-    "metric": 10
+    "code": "PLR0912",
+    "qualified_symbol": "_review_core_body",
+    "metric": 56
   },
   {
     "file": "review_pipeline.py",
@@ -5653,15 +5653,21 @@
   },
   {
     "file": "review_pipeline.py",
-    "code": "PLR0912",
-    "qualified_symbol": "review_core",
-    "metric": 62
+    "code": "PLR0913",
+    "qualified_symbol": "_core_common_rows",
+    "metric": 12
   },
   {
     "file": "review_pipeline.py",
     "code": "PLR0913",
     "qualified_symbol": "_emit_core_common",
     "metric": 12
+  },
+  {
+    "file": "review_pipeline.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_review_core_body",
+    "metric": 14
   },
   {
     "file": "review_pipeline.py",
@@ -5690,6 +5696,12 @@
   {
     "file": "review_pipeline.py",
     "code": "PLR0915",
+    "qualified_symbol": "_review_core_body",
+    "metric": 244
+  },
+  {
+    "file": "review_pipeline.py",
+    "code": "PLR0915",
     "qualified_symbol": "check_reviewer_failure_threshold",
     "metric": 81
   },
@@ -5704,12 +5716,6 @@
     "code": "PLR0915",
     "qualified_symbol": "dispatch_panel",
     "metric": 254
-  },
-  {
-    "file": "review_pipeline.py",
-    "code": "PLR0915",
-    "qualified_symbol": "review_core",
-    "metric": 274
   },
   {
     "file": "review_tally.py",
@@ -6153,7 +6159,7 @@
     "file": "ship.py",
     "code": "C901",
     "qualified_symbol": "run_ship",
-    "metric": 53
+    "metric": 47
   },
   {
     "file": "ship.py",
@@ -6183,13 +6189,31 @@
     "file": "ship.py",
     "code": "PLR0912",
     "qualified_symbol": "run_ship",
-    "metric": 55
+    "metric": 49
   },
   {
     "file": "ship.py",
     "code": "PLR0913",
     "qualified_symbol": "_resume_from_state",
     "metric": 9
+  },
+  {
+    "file": "ship.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_ship_phase14_rebase",
+    "metric": 11
+  },
+  {
+    "file": "ship.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_ship_postmerge_phase",
+    "metric": 7
+  },
+  {
+    "file": "ship.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_ship_rebase_phase",
+    "metric": 10
   },
   {
     "file": "ship.py",
@@ -6225,7 +6249,7 @@
     "file": "ship.py",
     "code": "PLR0915",
     "qualified_symbol": "run_ship",
-    "metric": 212
+    "metric": 172
   },
   {
     "file": "stall_recovery.py",

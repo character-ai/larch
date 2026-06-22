@@ -1276,6 +1276,68 @@ def test_wrapper_session_env_parser_exports_quoted_paths(tmp_path: Path) -> None
     assert os.environ["ISSUE_NUMBER"] == "42"
 
 
+def test_postplan_decide_ok_returns_rows_and_touches(tmp_path: Path) -> None:
+    paths = design_lifecycle.PostplanPaths.from_design_tmpdir(tmp_path)
+    decision = design_lifecycle._postplan_decide(  # pyright: ignore[reportPrivateUsage]
+        paths,
+        site="step2b",
+        rc=0,
+        captured_stdout="POSTPLAN_EMIT_STATUS=ok\n",
+        validate={},
+        plan_source="",
+        fallback_used="false",
+        dirty_recovery=False,
+        plan_summary_exists=False,
+    )
+
+    assert decision.rows == ("POSTPLAN_RC=0\n", "POSTPLAN_STATUS=ok\n")
+    assert decision.touches == (paths.step2b5_done, paths.step2b_done)
+    assert not decision.writes
+    assert not decision.unlinks
+
+
+def test_postplan_decide_inline_retry_returns_apply_metadata(tmp_path: Path) -> None:
+    paths = design_lifecycle.PostplanPaths.from_design_tmpdir(tmp_path)
+    decision = design_lifecycle._postplan_decide(  # pyright: ignore[reportPrivateUsage]
+        paths,
+        site="step2b",
+        rc=10,
+        captured_stdout="POSTPLAN_EMIT_STATUS=ok\n",
+        validate={"VALIDATE_STATUS": "defects-found", "VALIDATE_DEFECT_COUNT": "1"},
+        plan_source="drafter",
+        fallback_used="false",
+        dirty_recovery=False,
+        plan_summary_exists=True,
+    )
+
+    assert decision.clear_scout_manifests is True
+    assert "SCOUT_STALE_CLEARED=true\n" in decision.rows
+    assert decision.touches == (paths.inline_retry_done, paths.inline_retry_pending)
+    assert decision.writes == ((paths.fallback_used, "true\n"), (paths.plan_source, "inline\n"))
+    assert decision.unlinks == (paths.plan_summary,)
+
+
+def test_postplan_decide_fallback_used_skips_inline_retry(tmp_path: Path) -> None:
+    paths = design_lifecycle.PostplanPaths.from_design_tmpdir(tmp_path)
+    decision = design_lifecycle._postplan_decide(  # pyright: ignore[reportPrivateUsage]
+        paths,
+        site="step2b",
+        rc=10,
+        captured_stdout="",
+        validate={},
+        plan_source="drafter",
+        fallback_used="true",
+        dirty_recovery=False,
+        plan_summary_exists=True,
+    )
+
+    assert decision.clear_scout_manifests is False
+    assert all("SCOUT_STALE_CLEARED" not in row for row in decision.rows)
+    assert not decision.touches
+    assert not decision.writes
+    assert not decision.unlinks
+
+
 def test_step2b_postplan_nonfatal_rc_10_exits_zero_and_emits_rows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     (tmp_path / "plan.txt").write_text("bad\n", encoding="utf-8")
     (tmp_path / ".step2b-plan-source").write_text("drafter\n", encoding="utf-8")
