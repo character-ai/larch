@@ -595,6 +595,14 @@ repos:
         pass_filenames: false
         always_run: true
 
+      - id: lint-consecutive-bash
+        name: lint consecutive bash tool-call fences
+        entry: python3 python/cli.py lint consecutive-bash
+        language: system
+        pass_filenames: false
+        always_run: true
+        files: ^(skills/[^/]+/SKILL\.md|skills/[^/]+/references/[^/]+\.md|\.claude/skills/[^/]+/SKILL\.md)$
+
       - id: lint-awk-multibyte-regex
         name: lint multi-byte UTF-8 in dynamic awk regex
         entry: bash scripts/lint-awk-multibyte-regex.sh

@@ -375,7 +375,7 @@ Execute the Step 1d body in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/disc
 When Step 1d.5 finishes or is skipped by its entry guard, run:
 
 ```bash
-"$HOME/.cache/larch/sessions/design-run-$PPID.sh" step1d5 --mode complete
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" step1d5 --mode complete # lint-consecutive-bash: ok completion marker precedes separate outline gate
 ```
 
 before continuing to Step 1e.

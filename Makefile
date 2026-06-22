@@ -25,13 +25,13 @@ PYLINT_JOBS ?= $(shell $(PYTHON) -c 'import os; print(0 if os.sysconf("SC_SEM_NS
 .PHONY: test-read-result-env test-parse-design-argv
 .PHONY: lint-readability-preamble test-lint-readability-preamble
 .PHONY: lint-renderer-substitution-safety lint-skill-md-flag-signature test-lint-renderer-substitution-safety test-lint-skill-md-flag-signature
-.PHONY: lint-bare-grep-probe test-lint-bare-grep-probe lint-codex-exec-auth test-lint-codex-exec-auth test-launch-codex-exec lint-awk-multibyte-regex test-lint-awk-multibyte-regex
+.PHONY: lint-bare-grep-probe test-lint-bare-grep-probe lint-codex-exec-auth test-lint-codex-exec-auth lint-consecutive-bash test-lint-consecutive-bash test-launch-codex-exec lint-awk-multibyte-regex test-lint-awk-multibyte-regex
 .PHONY: test-design-multi-round-integration test-lib-design-round-artifacts test-step3-orchestrator-fence test-design-step3-state test-design-step3-mav
 .PHONY: test-no-grouped-reuse-guard test-review-and-fix-record-timing test-review-and-fix-step5-loop-timing test-record-plan-review-round-timing test-reviewer-prune test-lib-prune-decision test-fluff-analysis-corpus test-voter-calibration
 # CI splits `lint` into `lint-only` (pre-commit) and `test-harnesses`
 # (regression harnesses). `lint` remains the local-dev convenience target
 # that runs both, defined in terms of the two split targets to prevent drift.
-lint: test-harnesses lint-bash32 lint-readability-preamble lint-renderer-substitution-safety lint-skill-md-flag-signature lint-bare-grep-probe lint-codex-exec-auth lint-awk-multibyte-regex lint-retired-scripts lint-only
+lint: test-harnesses lint-bash32 lint-readability-preamble lint-renderer-substitution-safety lint-skill-md-flag-signature lint-bare-grep-probe lint-codex-exec-auth lint-consecutive-bash lint-awk-multibyte-regex lint-retired-scripts lint-only
 
 py-lint: py-lint-main py-typecheck
 
@@ -95,6 +95,12 @@ lint-bare-grep-probe:
 lint-codex-exec-auth:
 	python3 python/cli.py lint codex-exec-auth
 
+lint-consecutive-bash:
+	python3 python/cli.py lint consecutive-bash
+
+test-lint-consecutive-bash:
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_lint_consecutive_bash.py -q
+
 lint-awk-multibyte-regex:
 	bash scripts/lint-awk-multibyte-regex.sh
 
@@ -125,7 +131,7 @@ test-harnesses-2: test-fluff-analysis-corpus
 
 test-harnesses-3: test-dispatch-with-waterfall
 
-test-harnesses-4: test-harness-shards-coverage test-review-and-fix-write-rejected test-lint-codex-exec-auth test-compute-pr-line-counts test-token-ledger test-design-step6 test-brainstorm-prompts test-bug-structure
+test-harnesses-4: test-harness-shards-coverage test-review-and-fix-write-rejected test-lint-codex-exec-auth test-lint-consecutive-bash test-compute-pr-line-counts test-token-ledger test-design-step6 test-brainstorm-prompts test-bug-structure
 
 test-harnesses-5: test-launch-review test-revise-plan-with-waterfall test-design-step1d5 test-lib-scope-anchor-handoff test-review-and-fix-record-timing test-release-set-version test-implement-finalize test-post-tracking-issue test-clarify-comment test-implement-admission test-timing-ledger test-oos-disposition-gate test-lint-readability-preamble test-audit-edit-write test-implement-anti-polling-rule test-implement-positional-issue
 

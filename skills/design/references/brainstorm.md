@@ -73,7 +73,7 @@ The launcher `.meta` file's `STDERR_SINK=` value must point at the matching fail
 **Cursor framing** (when `CURSOR_BINARY_FOUND=true` or a fresh executable check succeeds):
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent launch-review --tool cursor --output "$DESIGN_TMPDIR/cursor-brainstorm-output.txt" --stderr-sink "$DESIGN_TMPDIR/cursor-brainstorm-launch.failure.log" --timeout 1200 --timing-task-kind cursor-brainstorm --prompt "<CURSOR_BRAINSTORM_ASSEMBLED_PROMPT>"
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent launch-review --tool cursor --output "$DESIGN_TMPDIR/cursor-brainstorm-output.txt" --stderr-sink "$DESIGN_TMPDIR/cursor-brainstorm-launch.failure.log" --timeout 1200 --timing-task-kind cursor-brainstorm --prompt "<CURSOR_BRAINSTORM_ASSEMBLED_PROMPT>" # lint-consecutive-bash: ok cursor and codex launches use distinct tools and outputs
 ```
 
 **Codex scope** (when `CODEX_BINARY_FOUND=true` or a fresh executable check succeeds):

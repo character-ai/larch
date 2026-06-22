@@ -83,6 +83,7 @@ Operates only on open issues whose title starts with the `[OOS]` prefix followed
 Resolve the target repository once before OOS commands that require `--repo`:
 
 ```bash
+# lint-consecutive-bash: ok repo resolution and tempdir setup are separate documented setup steps
 REPO=$(python3 "$PWD/python/cli.py" gh resolve-repo 2>/dev/null || true)
 if [ -z "$REPO" ]; then
   REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || true)

@@ -135,6 +135,7 @@ On **`--dry-run`**: print the preview and **exit** (no writes, no `/upgrade-larc
 ## Step 5 — Land the bump (PR → CI → merge)
 
 ```bash
+# lint-consecutive-bash: ok PR creation must finish before CI wait and merge
 NOTES_DIR="$(dirname "$PR_LIST_FILE")"
 REDACTED_NOTES_FILE="$NOTES_DIR/notes.redacted.md"
 git checkout -b "release/v${NEW_VERSION}"
@@ -270,6 +271,7 @@ GitHub auto-deletes the remote head branch on merge (`delete_branch_on_merge=tru
 
 ```bash
 set +e
+# lint-consecutive-bash: ok parse-only fence documents cleanup stdout contract separately
 cleanup_out=$(python3 python/cli.py session local-cleanup --branch "release/v${NEW_VERSION}")
 cleanup_rc=$?
 set -e
