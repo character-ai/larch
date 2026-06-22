@@ -2252,7 +2252,7 @@ def run_main(argv: list[str] | None = None) -> int:
         except IndexError:
             print("plan-review run: --record-report-evidence requires a value", file=sys.stderr)
             return 2
-        design_tmpdir = None
+        design_tmpdir: str | None = None
         if "--design-tmpdir" in args:
             didx = args.index("--design-tmpdir")
             if didx + 1 < len(args):
