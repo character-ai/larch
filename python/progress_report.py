@@ -1043,12 +1043,6 @@ def render_phase_detail(
     lines.append(f"**Reviewer slot failures**: {fail_total}")
     for label, count in failures:
         lines.append(f"- {label}: {count}")
-    lines.append("")
-    lines.append(
-        "_Cost is the per-round vendor cost (Codex + Cursor + Claude subprocess), attributed by "
-        "token-ledger timestamp window; it excludes main-agent Claude, so it is less than the run "
-        "Cost line above. Rendered as an em dash when per-round timing or the token ledger is unavailable._"
-    )
     return "\n".join(lines) + "\n"
 
 

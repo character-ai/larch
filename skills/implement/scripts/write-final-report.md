@@ -108,9 +108,7 @@ Reviewer timing charts are included when timing data is available. The
 plain text.
 
 The Cost column is the per-round **vendor** cost (Codex + Cursor + Claude subprocess),
-attributed by token-ledger timestamp window and priced via `python/report_tokens_cost.py`; it
-excludes main-agent Claude, so it is a distinct datum from (and less than) the
-single-source dollar-primary `- **Cost**:` line that `python/cli.py render run-summary` owns.
+attributed by token-ledger timestamp window and priced via `python/report_tokens_cost.py`.
 
 The helper is best-effort. For a valid selected rounds root with zero completed
 rounds (for example `--self-review` runs, where Step 5 does no panel review), it
