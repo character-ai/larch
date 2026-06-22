@@ -38,6 +38,7 @@ import fnmatch
 import json
 import shutil
 import sys
+from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import cast
 
@@ -111,11 +112,37 @@ def _delete(path: Path, execute: bool, stats_attr: str, stats: Stats) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Containment helpers — keep destructive actions inside the run dir
+# ---------------------------------------------------------------------------
+
+def _within_run_dir(path: Path, run_dir_resolved: Path) -> bool:
+    """Return True when *path* resolves to a location inside *run_dir_resolved*.
+
+    The path is fully resolved (collapsing symlinks and ``..``) before the
+    containment check, so a symlink that escapes the run dir — whether the final
+    component or an intermediate directory component — is reported as outside.
+    Read/write/unlink callers skip escaping paths so a planted symlink inside a
+    run dir cannot lure the destructive cleanup actions out of the tree. Mirrors
+    the top-level guard in :func:`_resolve_single_run_dir`.
+    """
+    try:
+        return path.resolve().is_relative_to(run_dir_resolved)
+    except OSError:
+        return False
+
+
+def _contained(run_dir: Path, paths: Iterable[Path]) -> Iterator[Path]:
+    """Yield only the *paths* that resolve inside *run_dir*, skipping escapes."""
+    run_dir_resolved = run_dir.resolve()
+    return (p for p in paths if _within_run_dir(p, run_dir_resolved))
+
+
+# ---------------------------------------------------------------------------
 # Action 1: Delete dyn-*-prompt.md
 # ---------------------------------------------------------------------------
 
 def delete_dyn_prompts(run_dir: Path, execute: bool, stats: Stats) -> None:
-    for p in run_dir.rglob("dyn-*-prompt.md"):
+    for p in _contained(run_dir, run_dir.rglob("dyn-*-prompt.md")):
         _delete(p, execute, "dyn_prompt_deleted", stats)
 
 
@@ -124,16 +151,20 @@ def delete_dyn_prompts(run_dir: Path, execute: bool, stats: Stats) -> None:
 # ---------------------------------------------------------------------------
 
 def delete_identical_aggregator(run_dir: Path, execute: bool, stats: Stats) -> None:
-    for agg in run_dir.rglob("aggregator-output.txt"):
+    run_dir_resolved = run_dir.resolve()
+    for agg in _contained(run_dir, run_dir.rglob("aggregator-output.txt")):
         findings = agg.parent / "findings.md"
         if not findings.is_file():
+            continue
+        # Don't read through a findings.md that escapes the run dir via symlink.
+        if not _within_run_dir(findings, run_dir_resolved):
             continue
         if filecmp.cmp(str(agg), str(findings), shallow=False):
             _delete(agg, execute, "aggregator_deleted", stats)
     # Clean up orphaned aggregator sidecars (e.g. .meta committed when the Phase 1
     # deny skipped the .txt but the sidecar slipped through).
     for ext in _SIDECAR_EXTS:
-        for sidecar in run_dir.rglob(f"aggregator-output.txt{ext}"):
+        for sidecar in _contained(run_dir, run_dir.rglob(f"aggregator-output.txt{ext}")):
             parent = sidecar.parent / "aggregator-output.txt"
             if not parent.exists():
                 if execute:
@@ -150,7 +181,7 @@ def delete_identical_aggregator(run_dir: Path, execute: bool, stats: Stats) -> N
 # ---------------------------------------------------------------------------
 
 def delete_raw_manifests(run_dir: Path, execute: bool, stats: Stats) -> None:
-    for p in run_dir.rglob("scout-round*-manifest.json.raw"):
+    for p in _contained(run_dir, run_dir.rglob("scout-round*-manifest.json.raw")):
         _delete(p, execute, "raw_manifest_deleted", stats)
 
 
@@ -164,7 +195,7 @@ _REFRESH_NAMES = {
 }
 
 def delete_refresh_sidecars(run_dir: Path, execute: bool, stats: Stats) -> None:
-    for p in run_dir.rglob("*"):
+    for p in _contained(run_dir, run_dir.rglob("*")):
         name = p.name
         if name in _REFRESH_NAMES:
             _delete(p, execute, "refresh_deleted", stats)
@@ -193,7 +224,7 @@ def _is_cursor_phase_retry(name: str) -> bool:
 
 
 def delete_cursor_phase_retry(run_dir: Path, execute: bool, stats: Stats) -> None:
-    for p in run_dir.rglob("cursor-specialist-*-output-*.txt"):
+    for p in _contained(run_dir, run_dir.rglob("cursor-specialist-*-output-*.txt")):
         if _is_cursor_phase_retry(p.name):
             _delete(p, execute, "cursor_phase_retry_deleted", stats)
 
@@ -307,7 +338,7 @@ def _upgrade_transcript(path: Path, execute: bool, stats: Stats) -> None:
 
 
 def upgrade_transcripts(run_dir: Path, execute: bool, stats: Stats) -> None:
-    for p in run_dir.rglob("session-transcript.jsonl"):
+    for p in _contained(run_dir, run_dir.rglob("session-transcript.jsonl")):
         _upgrade_transcript(p, execute, stats)
 
 
@@ -316,16 +347,31 @@ def upgrade_transcripts(run_dir: Path, execute: bool, stats: Stats) -> None:
 # ---------------------------------------------------------------------------
 
 def consolidate_breadcrumbs(run_dir: Path, execute: bool, stats: Stats) -> None:
+    run_dir_resolved = run_dir.resolve()
     bc_dir = run_dir / "breadcrumbs"
     if not bc_dir.is_dir():
+        return
+    # Refuse when breadcrumbs/ is a symlink that escapes the run dir, so the
+    # read/write/unlink below cannot operate on an external directory.
+    if not _within_run_dir(bc_dir, run_dir_resolved):
         return
 
     quiet_log = bc_dir / "quiet.log"
     # Skip if quiet.log already exists (Phase 1 already ran for this run dir)
     if quiet_log.exists():
         return
+    # A planted quiet.log symlink that resolves outside the run dir would make
+    # write_text() overwrite an external file; refuse to consolidate then.
+    if not _within_run_dir(quiet_log, run_dir_resolved):
+        return
 
-    individual = sorted(bc_dir.glob("larch-quiet-*.log"))
+    # Skip individual logs that escape the run dir via symlink — reading them
+    # would copy external content into quiet.log.
+    individual = [
+        f
+        for f in sorted(bc_dir.glob("larch-quiet-*.log"))
+        if _within_run_dir(f, run_dir_resolved)
+    ]
     if not individual:
         return
 
@@ -358,7 +404,7 @@ def consolidate_breadcrumbs(run_dir: Path, execute: bool, stats: Stats) -> None:
 # ---------------------------------------------------------------------------
 
 def strip_tally_body(run_dir: Path, execute: bool, stats: Stats) -> None:
-    for p in run_dir.glob("code-review-tally.json"):
+    for p in _contained(run_dir, run_dir.glob("code-review-tally.json")):
         try:
             raw = p.read_text(encoding="utf-8")
             data: object = json.loads(raw)
