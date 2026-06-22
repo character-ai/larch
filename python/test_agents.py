@@ -81,29 +81,32 @@ def test_read_launcher_exit_reads_file(tmp_path: Path) -> None:
 def test_launcher_paths_maps_stable_sidecars(tmp_path: Path) -> None:
     output = tmp_path / "agent.out"
     suffix = output.suffix
-    expected = agents.LauncherPaths(
-        output=output,
-        done=output.with_suffix(suffix + ".done"),
-        inner_done=output.with_suffix(suffix + ".inner.done"),
-        meta=output.with_suffix(suffix + ".meta"),
-        sidecar=output.with_suffix(suffix + ".sidecar"),
-        diag=output.with_suffix(suffix + ".diag"),
-        events=output.with_suffix(suffix + ".events.jsonl"),
-        token_record=output.with_suffix(suffix + ".token-record"),
-        failure_diag=output.with_suffix(suffix + ".failure-diag"),
-        prompt=output.with_suffix(suffix + ".prompt"),
-        stderr_tail=output.with_suffix(suffix + ".stderr-tail"),
-        stall_json=output.with_suffix(suffix + ".stall.json"),
-        stderr=output.with_suffix(suffix + ".stderr"),
-        launch_stderr=output.with_suffix(suffix + ".launch-stderr"),
-        launcher_stderr=output.with_suffix(suffix + ".launcher-stderr"),
-        sidecar_history=output.with_suffix(suffix + ".sidecar.history"),
-        events_history=output.with_suffix(suffix + ".events.history"),
-    )
+    # Independent (non-mirrored) pin of the stable sidecar suffix mapping: a
+    # data table rather than a hand-built LauncherPaths, so this still catches an
+    # accidental change to from_output without duplicating its constructor body
+    # (pylint duplicate-code R0801). See issue #5076.
+    expected_suffixes = {
+        "done": ".done",
+        "inner_done": ".inner.done",
+        "meta": ".meta",
+        "sidecar": ".sidecar",
+        "diag": ".diag",
+        "events": ".events.jsonl",
+        "token_record": ".token-record",
+        "failure_diag": ".failure-diag",
+        "prompt": ".prompt",
+        "stderr_tail": ".stderr-tail",
+        "stall_json": ".stall.json",
+        "stderr": ".stderr",
+        "launch_stderr": ".launch-stderr",
+        "launcher_stderr": ".launcher-stderr",
+        "sidecar_history": ".sidecar.history",
+        "events_history": ".events.history",
+    }
     paths = agents.LauncherPaths.from_output(output)
-    assert paths == expected
-    assert paths.done == output.with_suffix(suffix + ".done")
-    assert paths.inner_done == output.with_suffix(suffix + ".inner.done")
+    assert paths.output == output
+    for attr, suf in expected_suffixes.items():
+        assert getattr(paths, attr) == output.with_suffix(suffix + suf), attr
     assert paths.sentinel_done(".inner.done") == paths.inner_done
     with pytest.raises(FrozenInstanceError):
         paths.done = output  # type: ignore[misc]
