@@ -9,8 +9,10 @@ from pathlib import Path
 
 import pytest
 
+import design_pause
 import logging_util
 import plan_quality
+import config
 
 CLI = Path(__file__).with_name("cli.py")
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -324,7 +326,7 @@ def test_validator_autofix_cycle_cap(tmp_path: Path, monkeypatch: pytest.MonkeyP
         print(f"ORIGINAL_VALIDATE_LOG_FILE={log}")
         return 0
 
-    def fake_record(_status: str, _rc: int, _log_file: str) -> None:
+    def fake_record(_status: str, _rc: int, _log_file: str, _ctx: object | None = None) -> None:
         return None
 
     monkeypatch.setattr(plan_quality, "auto_fix_plan_commands_main", fake_auto_fix)
@@ -355,7 +357,7 @@ def test_validator_autofix_pause_short_circuits(tmp_path: Path, monkeypatch: pyt
     (tmp_path / ".pause-requested").write_text("", encoding="utf-8")
     called = False
 
-    def fake_pause() -> int:
+    def fake_pause(_ctx: object | None = None) -> int:
         nonlocal called
         called = True
         return 11
@@ -364,6 +366,125 @@ def test_validator_autofix_pause_short_circuits(tmp_path: Path, monkeypatch: pyt
     monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
     assert plan_quality.validator_autofix_main([]) == 11
     assert called
+
+
+def test_validator_autofix_pause_save_uses_resolved_design_tmpdir_on_symlink(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    real = tmp_path / "real-design"
+    real.mkdir()
+    (real / ".pause-requested").write_text("", encoding="utf-8")
+    link = tmp_path / "link-design"
+    link.symlink_to(real)
+    seen: list[str] = []
+
+    def fake_pause(ctx: object | None = None) -> int:
+        from ctx import Ctx  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+
+        assert isinstance(ctx, Ctx)
+        seen.append(ctx.design_tmpdir)
+        return 11
+
+    monkeypatch.setattr(plan_quality, "_validator_pause_save", fake_pause)
+    monkeypatch.setenv("DESIGN_TMPDIR", str(link))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(REPO_ROOT))
+    assert plan_quality.validator_autofix_main([]) == 11
+    assert Path(seen[0]).resolve() == real.resolve()
+
+
+def test_validator_pause_save_uses_rehydrated_ctx_not_stale_ambient_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / ".pause-requested").write_text("", encoding="utf-8")
+    env_path = tmp_path / "source-env.sh"
+    env_path.write_text(
+        "\n".join(
+            [
+                f"export DESIGN_TMPDIR={design.resolve()}",
+                "export ISSUE_NUMBER=42",
+                "export REPO=owner/repo",
+                f"export CLAUDE_PLUGIN_ROOT={REPO_ROOT}",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("DESIGN_TMPDIR", str(design))
+    monkeypatch.setenv("ISSUE_NUMBER", "999")
+    monkeypatch.setenv("REPO", "stale/repo")
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(REPO_ROOT))
+    seen: list[list[str]] = []
+
+    def fake_pause_save(argv: list[str]) -> int:
+        seen.append(list(argv))
+        return 0
+
+    monkeypatch.setattr(design_pause, "pause_save_main", fake_pause_save)
+    rc = plan_quality.validator_autofix_main(
+        [
+            "--session-env-path",
+            str(env_path),
+            "--claude-pid",
+            "123",
+            "--plugin-root",
+            str(REPO_ROOT),
+        ]
+    )
+    assert rc == 0
+    assert seen
+    argv = seen[0]
+    assert argv[argv.index("--issue") + 1] == "42"
+    assert argv[argv.index("--repo") + 1] == "owner/repo"
+
+
+def test_validator_operator_cancel_audit_uses_rehydrated_summary_outcome_not_stale_ambient(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    env_path = tmp_path / "source-env.sh"
+    env_path.write_text(
+        "\n".join(
+            [
+                f"export DESIGN_TMPDIR={design.resolve()}",
+                "export SUMMARY_OUTCOME=cancelled-operator",
+                f"export CLAUDE_PLUGIN_ROOT={REPO_ROOT}",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("DESIGN_TMPDIR", str(design))
+    monkeypatch.setenv("SUMMARY_OUTCOME", "approved")
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(REPO_ROOT))
+
+    def fake_run(cmd: list[str] | str, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        cmd_list = list(cmd) if isinstance(cmd, list) else [str(cmd)]
+        return subprocess.CompletedProcess(cmd_list, 0)
+
+    monkeypatch.setattr(plan_quality.subprocess, "run", fake_run)
+    rc = plan_quality.validator_autofix_main(
+        [
+            "--session-env-path",
+            str(env_path),
+            "--claude-pid",
+            "123",
+            "--plugin-root",
+            str(REPO_ROOT),
+            "--operator-cancel",
+        ]
+    )
+    assert rc == 0
+    sentinel = design / "design-failure-operator-action.env"
+    assert sentinel.is_file()
+    text = sentinel.read_text(encoding="utf-8")
+    assert "OUTCOME=cancelled-operator" in text
+    assert "OUTCOME=approved" not in text
 
 
 def test_validator_autofix_rejects_missing_design_tmpdir(capsys: pytest.CaptureFixture[str]) -> None:
@@ -1760,6 +1881,96 @@ def test_check_plan_size_hard_trigger_fires(tmp_path: Path) -> None:
     out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
     assert out["SIZE_TRIGGER_FIRED"] == "true"
     assert "plan-body-lines" in out["TRIGGER_REASONS"]
+
+
+@pytest.mark.parametrize("env_value", ["0", "-1", "bad", ""])
+def test_check_plan_size_invalid_drift_multiple_falls_back_to_two(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    env_value: str,
+) -> None:
+    (tmp_path / "plan.txt").write_text("line\n" * 4 + "diff_lines: 4\n", encoding="utf-8")
+    monkeypatch.setenv(config.ENV_LARCH_DESIGN_DRIFT_MULTIPLE, env_value)
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    assert plan_quality.check_plan_size_main(["--design-tmpdir", str(tmp_path)]) == 0
+    out = capsys.readouterr().out
+    assert "DRIFT_MULTIPLE=2" in out
+
+
+def test_validate_plan_argv_design_tmpdir_wins_over_stale_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    good = tmp_path / "good"
+    good.mkdir()
+    stale = tmp_path / "stale"
+    stale.mkdir()
+    plan = good / "plan.txt"
+    plan.write_text("diff_lines: 1\n", encoding="utf-8")
+    monkeypatch.setenv("DESIGN_TMPDIR", str(stale))
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    assert plan_quality.validate_plan_main(["--plan-file", str(plan), "--design-tmpdir", str(good)]) == 0
+    out = capsys.readouterr().out
+    assert str(good / "validate-plan-commands.log") in out
+    assert not (stale / "validate-plan-commands.log").exists()
+
+
+def test_check_plan_size_argv_design_tmpdir_wins_over_stale_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    good = tmp_path / "good"
+    good.mkdir()
+    stale = tmp_path / "stale"
+    stale.mkdir()
+    (good / "plan.txt").write_text("line\n" * 4 + "diff_lines: 4\n", encoding="utf-8")
+    monkeypatch.setenv("DESIGN_TMPDIR", str(stale))
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    assert plan_quality.check_plan_size_main(["--design-tmpdir", str(good)]) == 0
+    out = capsys.readouterr().out
+    assert "PLAN_LINES=4" in out
+    assert (good / "drift-baseline.env").is_file()
+    assert not (stale / "drift-baseline.env").exists()
+
+
+def test_validate_plan_main_does_not_rehydrate_validator_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    called = False
+
+    def fake_rehydrate(_parsed: object) -> dict[str, str]:
+        nonlocal called
+        called = True
+        return {}
+
+    monkeypatch.setattr(plan_quality, "_rehydrate_validator_env", fake_rehydrate)
+    plan = tmp_path / "plan.txt"
+    plan.write_text("diff_lines: 1\n", encoding="utf-8")
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    assert plan_quality.validate_plan_main(["--plan-file", str(plan), "--repo-root", str(REPO_ROOT)]) == 0
+    assert not called
+
+
+def test_check_plan_size_main_does_not_rehydrate_validator_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    called = False
+
+    def fake_rehydrate(_parsed: object) -> dict[str, str]:
+        nonlocal called
+        called = True
+        return {}
+
+    monkeypatch.setattr(plan_quality, "_rehydrate_validator_env", fake_rehydrate)
+    (tmp_path / "plan.txt").write_text("line\n" * 4 + "diff_lines: 4\n", encoding="utf-8")
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    assert plan_quality.check_plan_size_main(["--design-tmpdir", str(tmp_path)]) == 0
+    assert not called
 
 
 def test_validate_plan_missing_plan_file_returns_rc2(tmp_path: Path) -> None:

@@ -106,6 +106,30 @@ def test_pin_note_from_staged_rejects_fingerprint_mismatch(tmp_path: Path) -> No
     assert not ag.note_consumable(tmpdir, "head-b")
 
 
+def test_staged_fingerprint_valid_uses_live_diff_when_repo_available(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tmpdir = tmp_path / "implement"
+    staged_diff = "stale staged diff"
+    live_diff = "current live diff"
+    ag.write_staged_assessment(
+        tmpdir,
+        "note\n",
+        assessed_head_sha="head-a",
+        diff_fingerprint_value=ag.diff_fingerprint(staged_diff),
+        base_ref="origin/main",
+        diff_text=staged_diff,
+    )
+    repo = _repo(tmp_path / "git")
+
+    def fake_materialize(*_args: object, **_kwargs: object) -> str:
+        return live_diff
+
+    monkeypatch.setattr(ag, "materialize_implementation_diff", fake_materialize)
+    assert not ag.pin_note_from_staged(tmpdir, head_sha="head-b", base_ref="origin/main", repo_root=repo)
+
+
 def test_note_fingerprint_stale_returns_true_when_git_diff_unavailable(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

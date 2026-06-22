@@ -255,13 +255,13 @@
     "file": "agents.py",
     "code": "C901",
     "qualified_symbol": "resolve_model_args",
-    "metric": 12
+    "metric": 16
   },
   {
     "file": "agents.py",
     "code": "C901",
     "qualified_symbol": "run_external_agent",
-    "metric": 29
+    "metric": 31
   },
   {
     "file": "agents.py",
@@ -441,7 +441,7 @@
     "file": "agents.py",
     "code": "PLR0912",
     "qualified_symbol": "run_external_agent",
-    "metric": 32
+    "metric": 34
   },
   {
     "file": "agents.py",
@@ -549,7 +549,7 @@
     "file": "agents.py",
     "code": "PLR0913",
     "qualified_symbol": "run_external_agent",
-    "metric": 13
+    "metric": 16
   },
   {
     "file": "agents.py",
@@ -633,13 +633,13 @@
     "file": "agents.py",
     "code": "PLR0915",
     "qualified_symbol": "run_external_agent",
-    "metric": 136
+    "metric": 141
   },
   {
     "file": "agents.py",
     "code": "PLR0915",
     "qualified_symbol": "run_external_agent_main",
-    "metric": 57
+    "metric": 59
   },
   {
     "file": "agents.py",
@@ -2259,7 +2259,7 @@
     "file": "design_lifecycle.py",
     "code": "C901",
     "qualified_symbol": "step2b_drafter_main",
-    "metric": 27
+    "metric": 29
   },
   {
     "file": "design_lifecycle.py",
@@ -2277,7 +2277,7 @@
     "file": "design_lifecycle.py",
     "code": "C901",
     "qualified_symbol": "step5c_core",
-    "metric": 21
+    "metric": 19
   },
   {
     "file": "design_lifecycle.py",
@@ -2319,7 +2319,7 @@
     "file": "design_lifecycle.py",
     "code": "PLR0911",
     "qualified_symbol": "step2b_drafter_main",
-    "metric": 9
+    "metric": 11
   },
   {
     "file": "design_lifecycle.py",
@@ -2427,13 +2427,13 @@
     "file": "design_lifecycle.py",
     "code": "PLR0912",
     "qualified_symbol": "step2b_drafter_main",
-    "metric": 29
+    "metric": 31
   },
   {
     "file": "design_lifecycle.py",
     "code": "PLR0912",
     "qualified_symbol": "step5c_core",
-    "metric": 23
+    "metric": 21
   },
   {
     "file": "design_lifecycle.py",
@@ -2475,7 +2475,7 @@
     "file": "design_lifecycle.py",
     "code": "PLR0915",
     "qualified_symbol": "_shared_step2b_postplan_body",
-    "metric": 70
+    "metric": 69
   },
   {
     "file": "design_lifecycle.py",
@@ -2523,13 +2523,13 @@
     "file": "design_lifecycle.py",
     "code": "PLR0915",
     "qualified_symbol": "step2b_drafter_main",
-    "metric": 113
+    "metric": 121
   },
   {
     "file": "design_lifecycle.py",
     "code": "PLR0915",
     "qualified_symbol": "step5c_core",
-    "metric": 94
+    "metric": 95
   },
   {
     "file": "design_log_publish_flow.py",
@@ -2799,13 +2799,13 @@
     "file": "design_summary.py",
     "code": "C901",
     "qualified_symbol": "render_final_summary_main",
-    "metric": 19
+    "metric": 22
   },
   {
     "file": "design_summary.py",
     "code": "PLR0912",
     "qualified_symbol": "render_final_summary_main",
-    "metric": 19
+    "metric": 22
   },
   {
     "file": "design_summary.py",
@@ -2823,7 +2823,7 @@
     "file": "design_summary.py",
     "code": "PLR0915",
     "qualified_symbol": "render_final_summary_main",
-    "metric": 82
+    "metric": 98
   },
   {
     "file": "dirty_tree.py",
@@ -4071,7 +4071,7 @@
     "file": "plan_quality.py",
     "code": "PLR0915",
     "qualified_symbol": "check_plan_size_main",
-    "metric": 122
+    "metric": 123
   },
   {
     "file": "plan_quality.py",
@@ -4095,7 +4095,7 @@
     "file": "plan_quality.py",
     "code": "PLR0915",
     "qualified_symbol": "validator_autofix_main",
-    "metric": 55
+    "metric": 58
   },
   {
     "file": "plan_review.py",

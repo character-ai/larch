@@ -10,11 +10,26 @@ ASSESSMENT_FILE="${1:?assessment file path required}"
 MATERIALIZE_ENV="$IMPLEMENT_TMPDIR/architectural-guideline-materialize.env"
 DIFF_FILE="$IMPLEMENT_TMPDIR/architectural-guideline-materialized-diff.txt"
 
+read_materialize_key() {
+  local key=$1 line
+  line=$(grep "^${key}=" "$MATERIALIZE_ENV" 2>/dev/null | tail -n 1 || true)
+  if [ -n "$line" ]; then
+    printf '%s\n' "${line#*=}"
+  fi
+}
+
 BASE_REF=""
 DIFF_FINGERPRINT=""
 if [ -f "$MATERIALIZE_ENV" ]; then
-  # shellcheck source=/dev/null
-  . "$MATERIALIZE_ENV"
+  BASE_REF="$(read_materialize_key BASE_REF)"
+  DIFF_FINGERPRINT="$(read_materialize_key DIFF_FINGERPRINT)"
+fi
+
+if [ -n "$DIFF_FINGERPRINT" ] && ! [[ "$DIFF_FINGERPRINT" =~ ^[0-9a-fA-F]{64}$ ]]; then
+  DIFF_FINGERPRINT=""
+fi
+if [ -n "$BASE_REF" ] && ! [[ "$BASE_REF" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+  BASE_REF=""
 fi
 
 DIFF_ARGS=()

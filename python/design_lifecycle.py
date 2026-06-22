@@ -27,6 +27,7 @@ import architectural_guidelines
 import design_oos
 import design_pause
 import design_postplan
+from ctx import Ctx
 import gh
 import issue_wire
 import larch_io
@@ -39,6 +40,8 @@ import session_env
 import stall_recovery
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from session_env import validate_design_tmpdir
+
+import config
 
 _SUBPROCESS_RUN = subprocess.run
 
@@ -487,8 +490,8 @@ def _design_require_plugin_root() -> int:
     return 0
 
 
-def _design_tmpdir() -> Path:
-    return Path(os.environ.get("DESIGN_TMPDIR", ""))
+def _design_tmpdir(ctx: Ctx | None = None) -> Path:
+    return Path(ctx.design_tmpdir if ctx is not None else os.environ.get("DESIGN_TMPDIR", ""))
 
 
 def _touch(path: Path) -> None:
@@ -507,19 +510,19 @@ def _exact_line_file(path: Path, expected: str) -> bool:
         return False
 
 
-def _call_pause_save(design_tmpdir: Path) -> int:
-    args = ["--design-tmpdir", str(design_tmpdir), "--issue", os.environ.get("ISSUE_NUMBER", "")]
-    repo = os.environ.get("REPO", "")
+def _call_pause_save(design_tmpdir: Path, ctx: Ctx | None = None) -> int:
+    args = ["--design-tmpdir", str(design_tmpdir), "--issue", ctx.issue_number if ctx is not None else os.environ.get("ISSUE_NUMBER", "")]
+    repo = ctx.repo if ctx is not None else os.environ.get("REPO", "")
     if repo:
         args.extend(["--repo", repo])
     return design_pause.pause_save_main(args)
 
 
-def _maybe_timing_mark(label: str) -> None:
-    plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
+def _maybe_timing_mark(label: str, ctx: Ctx | None = None) -> None:
+    plugin_root = ctx.claude_plugin_root if ctx is not None else os.environ.get("CLAUDE_PLUGIN_ROOT", "")
     if not plugin_root or plugin_root == "${CLAUDE_PLUGIN_ROOT}":
         return
-    env = os.environ.copy()
+    env = ctx.subprocess_env({"LARCH_TIMING_SKILL": "design"}) if ctx is not None else os.environ.copy()
     env["LARCH_TIMING_SKILL"] = "design"
     with contextlib.suppress(OSError):
         subprocess.run(
@@ -1252,8 +1255,9 @@ def _final_summary_stream():
     return logging_util.contract_stream()
 
 
-def _emit_final_summary_marked_from_disk(design_tmpdir: Path) -> None:
-    summary_path = Path(os.environ.get("FINAL_SUMMARY_PATH", "")) if os.environ.get("FINAL_SUMMARY_PATH") else design_tmpdir / "final-summary.md"
+def _emit_final_summary_marked_from_disk(design_tmpdir: Path, final_summary_path: str) -> None:
+    del design_tmpdir
+    summary_path = Path(final_summary_path)
     if not summary_path.is_file() or summary_path.stat().st_size == 0:
         return
     stream = _final_summary_stream()
@@ -1280,25 +1284,40 @@ def step_final_summary_core(argv: Sequence[str]) -> tuple[int, list[str]]:
     try:
         parsed = _parse_common_wrapper_args(argv)
         env = _rehydrate_wrapper_env(parsed)
+        raw_tmpdir = env.get("DESIGN_TMPDIR", "")
+        if not raw_tmpdir:
+            _core_diagnostic("design-step-final-summary.sh: DESIGN_TMPDIR required")
+            return 1, []
         try:
-            design_tmpdir = _validate_design_tmpdir_arg(env.get("DESIGN_TMPDIR", ""))
+            design_tmpdir = _validate_design_tmpdir_arg(raw_tmpdir)
         except _CoreUsageError as exc:
             _core_diagnostic(f"design-step-final-summary.sh: {exc}")
             return 1, []
         os.environ["DESIGN_TMPDIR"] = str(design_tmpdir)
+        normalized_overrides = {config.ENV_DESIGN_TMPDIR: str(design_tmpdir)}
+        logging_util.quiet_init(argv0="design-step-final-summary.sh")
+        ctx = Ctx.from_mapping({**os.environ, **env, **normalized_overrides})
+        final_summary_path = ctx.final_summary_path or str(design_tmpdir / "final-summary.md")
         if (design_tmpdir / ".pause-requested").is_file():
-            args = ["--design-tmpdir", str(design_tmpdir), "--issue", env.get("ISSUE_NUMBER", "")]
-            if env.get("REPO"):
-                args.extend(["--repo", env["REPO"]])
-            return design_pause.pause_save_main(args), []
+            return _call_pause_save(design_tmpdir, ctx), []
         with _bg_wait_marker_context(design_tmpdir, "design-step-final-summary", claude_pid=parsed.claude_pid):
             # Local import is deliberate to avoid a design_summary <-> design_lifecycle
             # top-level import cycle while preserving the in-process port.
             from design_summary import render_final_summary_main  # noqa: PLC0415
 
-            render_args = ["--outcome", env.get("SUMMARY_OUTCOME", ""), "--post-publish-only"]
-            if env.get("REPO"):
-                render_args.extend(["--repo", env["REPO"]])
+            render_args = [
+                "--outcome",
+                ctx.summary_outcome,
+                "--design-tmpdir",
+                str(design_tmpdir),
+                "--issue-number",
+                ctx.issue_number,
+            ]
+            if ctx.session_id:
+                render_args.extend(["--session-id", ctx.session_id])
+            render_args.append("--post-publish-only")
+            if ctx.repo:
+                render_args.extend(["--repo", ctx.repo])
             render_stdout = design_tmpdir / "render-final-summary.stdout.log"
             render_rc = 0
             try:
@@ -1309,7 +1328,7 @@ def step_final_summary_core(argv: Sequence[str]) -> tuple[int, list[str]]:
                 _core_print_exc()
                 _append_execution_issue(design_tmpdir, f"Warning: render_final_summary_main failed: {exc}")
             if render_rc == 0:
-                _emit_final_summary_marked_from_disk(design_tmpdir)
+                _emit_final_summary_marked_from_disk(design_tmpdir, final_summary_path)
                 _emit_report_gate_sidecars_from_disk(design_tmpdir)
             sys.stdout.flush()
             with contextlib.suppress(OSError):
@@ -1369,14 +1388,17 @@ def step_final_summary_main(argv: Sequence[str]) -> int:
     except ValueError as exc:
         print(f"design-step-final-summary.sh: {exc}", file=sys.stderr)
         return 2
-    env = _rehydrate_wrapper_env(parsed)
+    old_environ = os.environ.copy()
     try:
-        design_tmpdir = _validate_design_tmpdir_arg(env.get("DESIGN_TMPDIR", ""))
-    except _CoreUsageError as exc:
-        print(f"design-step-final-summary.sh: {exc}", file=sys.stderr)
-        return 1
-    os.environ["DESIGN_TMPDIR"] = str(design_tmpdir)
-    logging_util.quiet_init(argv0="design-step-final-summary.sh")
+        env = _rehydrate_wrapper_env(parsed)
+        try:
+            design_tmpdir = _validate_design_tmpdir_arg(env.get("DESIGN_TMPDIR", ""))
+        except _CoreUsageError as exc:
+            print(f"design-step-final-summary.sh: {exc}", file=sys.stderr)
+            return 1
+    finally:
+        os.environ.clear()
+        os.environ.update(old_environ)
     rc, _ = step_final_summary_core(argv)
     if rc in {2, 3}:
         return rc
@@ -2154,10 +2176,24 @@ def _run_best_effort(command: Sequence[str], *, env: Mapping[str, str] | None = 
         subprocess.run(list(command), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=dict(env) if env is not None else None, check=False)
 
 
-def _pause_args(env: Mapping[str, str], design_tmpdir: str | Path) -> list[str]:
-    args = ["--design-tmpdir", str(design_tmpdir), "--issue", env.get("ISSUE_NUMBER", "")]
-    if env.get("REPO"):
-        args.extend(["--repo", env["REPO"]])
+def _pause_args(
+    design_tmpdir: str | Path,
+    *,
+    env: Mapping[str, str] | None = None,
+    ctx: Ctx | None = None,
+) -> list[str]:
+    if ctx is not None:
+        issue = ctx.issue_number
+        repo = ctx.repo
+    elif env is not None:
+        issue = env.get("ISSUE_NUMBER", "")
+        repo = env.get("REPO", "")
+    else:
+        issue = os.environ.get("ISSUE_NUMBER", "")
+        repo = os.environ.get("REPO", "")
+    args = ["--design-tmpdir", str(design_tmpdir), "--issue", issue]
+    if repo:
+        args.extend(["--repo", repo])
     return args
 
 
@@ -2190,7 +2226,7 @@ def check_pause_and_exit(env: Mapping[str, str], design_tmpdir: str | Path | Non
         return
     tmpdir = _require_design_tmpdir(env, design_tmpdir)
     if (tmpdir / ".pause-requested").is_file():
-        rc = design_pause.pause_save_main(_pause_args(env, tmpdir))
+        rc = design_pause.pause_save_main(_pause_args(tmpdir, env=env))
         raise SystemExit(rc)
 
 
@@ -2612,7 +2648,6 @@ def step0_clarify_hard_halt_main(argv: Sequence[str]) -> int:
         _append_failure(plugin_root, design_tmpdir, "design Step 0b clarify hard halt", "design-stage-terminal-state.sh", 0, "Warnings", stdout_log)
     elif stage_rc != 0:
         _append_failure(plugin_root, design_tmpdir, "design Step 0b clarify hard halt", "design-stage-terminal-state.sh", stage_rc, "Warnings", stderr_log)
-    os.environ["SUMMARY_OUTCOME"] = "failed-clarify"
     return 0
 
 
@@ -2996,13 +3031,17 @@ def _clear_scout_manifests(design_tmpdir: Path) -> None:
                 match.unlink()
 
 
-def _shared_step2b_postplan_body(parsed: WrapperArgs) -> PostplanResult:
-    design_tmpdir = _design_tmpdir()
+def _shared_step2b_postplan_body(
+    parsed: WrapperArgs,
+    *,
+    design_tmpdir: Path,
+    ctx: Ctx | None = None,
+) -> PostplanResult:
     site = parsed.site or "step2b"
     if (design_tmpdir / ".pause-requested").is_file():
         print("POSTPLAN_RC=11")
         print("POSTPLAN_STATUS=pause-save")
-        raise SystemExit(_call_pause_save(design_tmpdir))
+        raise SystemExit(_call_pause_save(design_tmpdir, ctx))
     if site != "step2b":
         _clear_scout_manifests(design_tmpdir)
     postplan_args = ["--design-tmpdir", str(design_tmpdir), "--with-plan-size"]
@@ -3053,7 +3092,7 @@ def _shared_step2b_postplan_body(parsed: WrapperArgs) -> PostplanResult:
         out.write("POSTPLAN_RC=11\n")
         out.write("POSTPLAN_STATUS=pause-save\n")
         _print_text(out.getvalue())
-        raise SystemExit(_call_pause_save(design_tmpdir))
+        raise SystemExit(_call_pause_save(design_tmpdir, ctx))
     if rc == 12:
         out.write("POSTPLAN_RC=12\n")
         out.write("POSTPLAN_STATUS=plan-size-trigger\n")
@@ -3084,19 +3123,21 @@ def step2b_postplan_main(argv: Sequence[str]) -> int:
     except ValueError as exc:
         print(f"design-step2b-postplan.sh: {exc}", file=sys.stderr)
         return 2
-    _rehydrate_wrapper_env(parsed)
+    env = _rehydrate_wrapper_env(parsed)
     req = _design_require_plugin_root()
     if req != 0:
         return req
-    if not os.environ.get("DESIGN_TMPDIR"):
+    if not env.get("DESIGN_TMPDIR"):
         print("/design Step 2b postplan: DESIGN_TMPDIR required", file=sys.stderr)
         return 1
-    ok, err = validate_design_tmpdir(os.environ["DESIGN_TMPDIR"])
+    ok, err = validate_design_tmpdir(env["DESIGN_TMPDIR"])
     if not ok:
         print(f"ERROR={err}", file=sys.stderr)
         return 2
-    design_tmpdir = Path(os.environ["DESIGN_TMPDIR"]).resolve()
+    design_tmpdir = Path(env["DESIGN_TMPDIR"]).resolve()
     os.environ["DESIGN_TMPDIR"] = str(design_tmpdir)
+    normalized_overrides = {config.ENV_DESIGN_TMPDIR: str(design_tmpdir)}
+    ctx = Ctx.from_mapping({**env, **os.environ, **normalized_overrides})
     if parsed.write_completion_only and parsed.write_step2b_completion_only:
         print("design-step2b-postplan.sh: completion-only modes are mutually exclusive", file=sys.stderr)
         return 2
@@ -3108,7 +3149,7 @@ def step2b_postplan_main(argv: Sequence[str]) -> int:
         if (design_tmpdir / ".pause-requested").is_file():
             print("POSTPLAN_RC=11")
             print("POSTPLAN_STATUS=pause-save")
-            return _call_pause_save(design_tmpdir)
+            return _call_pause_save(design_tmpdir, ctx)
         return 0
     if parsed.write_completion_only:
         _touch(design_tmpdir / ".completed" / "step-2b.5")
@@ -3117,9 +3158,9 @@ def step2b_postplan_main(argv: Sequence[str]) -> int:
         if (design_tmpdir / ".pause-requested").is_file():
             print("POSTPLAN_RC=11")
             print("POSTPLAN_STATUS=pause-save")
-            return _call_pause_save(design_tmpdir)
+            return _call_pause_save(design_tmpdir, ctx)
         return 0
-    result = _shared_step2b_postplan_body(parsed)
+    result = _shared_step2b_postplan_body(parsed, design_tmpdir=design_tmpdir, ctx=ctx)
     _print_text(result.stdout_lines)
     return 0 if result.postplan_rc in {0, 10, 12, 13} else 1
 
@@ -3242,8 +3283,16 @@ def step2b_drafter_main(argv: Sequence[str]) -> int:
     except ValueError as exc:
         print(f"design-step2b-drafter.sh: {exc}", file=sys.stderr)
         return 2
-    _rehydrate_wrapper_env(parsed)
-    design_tmpdir = _design_tmpdir()
+    env = _rehydrate_wrapper_env(parsed)
+    if not env.get("DESIGN_TMPDIR"):
+        print("/design Step 2b drafter: DESIGN_TMPDIR required", file=sys.stderr)
+        return 1
+    ok, err = validate_design_tmpdir(env["DESIGN_TMPDIR"])
+    if not ok:
+        print(f"ERROR={err}", file=sys.stderr)
+        return 2
+    design_tmpdir = Path(env["DESIGN_TMPDIR"]).resolve()
+    os.environ["DESIGN_TMPDIR"] = str(design_tmpdir)
     if not _valid_step2b_sentinels(design_tmpdir):
         print("**⚠ Step 2b: Step 2a sentinel artifacts are missing or invalid. Re-run Step 2a before drafting.**", file=sys.stderr)
         return 1
@@ -3251,15 +3300,17 @@ def step2b_drafter_main(argv: Sequence[str]) -> int:
     req = _design_require_plugin_root()
     if req != 0:
         return req
+    normalized_overrides = {config.ENV_DESIGN_TMPDIR: str(design_tmpdir)}
+    ctx = Ctx.from_mapping({**env, **os.environ, **normalized_overrides})
     if (design_tmpdir / ".pause-requested").is_file():
         print("POSTPLAN_RC=11")
         print("POSTPLAN_STATUS=pause-save")
-        return _call_pause_save(design_tmpdir)
+        return _call_pause_save(design_tmpdir, ctx)
     if (design_tmpdir / ".step2b-postplan-inline-retry-done").is_file():
         _write_text(design_tmpdir / ".step2b-postplan-fallback-used", "true\n")
     else:
         _write_text(design_tmpdir / ".step2b-postplan-fallback-used", "false\n")
-    _maybe_timing_mark("design Step 2b — plan")
+    _maybe_timing_mark("design Step 2b — plan", ctx)
 
     plugin_root = Path(os.environ["CLAUDE_PLUGIN_ROOT"])
     vendor = os.environ.get("LARCH_DESIGN_DRAFTER", "")
@@ -3419,7 +3470,9 @@ def step2b_drafter_main(argv: Sequence[str]) -> int:
                 plugin_root=parsed.plugin_root,
                 site="step2b",
                 snapshot_original=True,
-            )
+            ),
+            design_tmpdir=design_tmpdir,
+            ctx=ctx,
         )
         if postplan.postplan_rc in {0, 10, 12, 13}:
             print("STEP2B_DRAFTER_WRAPPER_ROWS_BEGIN=1")
@@ -3562,24 +3615,33 @@ def _step5c_safe_publish_env(
 
 def _step5c_render_final_summary(
     design_tmpdir: Path,
-    env: Mapping[str, str],
+    ctx: Ctx,
     outcome: str,
     *,
+    final_summary_path: str,
     plan_write_ok: str = "",
 ) -> bool:
     from design_summary import render_final_summary_main  # noqa: PLC0415
 
-    args = ["--outcome", outcome, "--mode", env.get("MODE", "") or "N/A", "--post-publish-only"]
-    if env.get("REPO"):
-        args.extend(["--repo", env["REPO"]])
+    args = [
+        "--outcome",
+        outcome,
+        "--mode",
+        ctx.str_value(config.ENV_MODE, "N/A") or "N/A",
+        "--design-tmpdir",
+        str(design_tmpdir),
+        "--issue-number",
+        ctx.issue_number,
+    ]
+    if ctx.session_id:
+        args.extend(["--session-id", ctx.session_id])
+    args.append("--post-publish-only")
+    if ctx.repo:
+        args.extend(["--repo", ctx.repo])
     out_path = design_tmpdir / f"render-final-summary.{outcome}.stdout.log"
     render_rc = 0
     if outcome == "approved" or plan_write_ok == "true":
-        summary_path = (
-            Path(os.environ["FINAL_SUMMARY_PATH"])
-            if os.environ.get("FINAL_SUMMARY_PATH")
-            else design_tmpdir / "final-summary.md"
-        )
+        summary_path = Path(final_summary_path)
         with contextlib.suppress(OSError):
             summary_resolved = summary_path.resolve()
             tmpdir_resolved = design_tmpdir.resolve()
@@ -3655,7 +3717,7 @@ def _step5c_stage_failed_publish_tail(design_tmpdir: Path, plugin_root: Path, pu
 
 def _step5c_write_status(
     design_tmpdir: Path,
-    env: Mapping[str, str],
+    ctx: Ctx,
     *,
     publish_rc: int | str,
     publish_stdout_fallback: bool,
@@ -3667,8 +3729,8 @@ def _step5c_write_status(
         [
             f"PLAN_WRITE_OK={plan_write_ok}",
             f"PUBLISH_OK={publish_ok}",
-            f"STANDALONE_HEAVY_FAILED={env.get('STANDALONE_HEAVY_FAILED', '')}",
-            f"SESSION_ID={env.get('SESSION_ID', '')}",
+            f"STANDALONE_HEAVY_FAILED={ctx.str_value('STANDALONE_HEAVY_FAILED', '')}",
+            f"SESSION_ID={ctx.session_id}",
             f"PUBLISH_RC={publish_rc}",
             f"PUBLISH_STDOUT_FALLBACK={'true' if publish_stdout_fallback else 'false'}",
             f"CLEANUP_ELIGIBLE={'true' if cleanup_eligible else 'false'}",
@@ -3701,12 +3763,6 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
             _core_diagnostic(f"design-step5c.sh: {exc}")
             return 2, []
         env = _rehydrate_wrapper_env(parsed)
-        if parsed.claude_pid:
-            os.environ["CLAUDE_PID"] = parsed.claude_pid
-        req = _design_require_plugin_root()
-        if req != 0:
-            return req, []
-        plugin_root = Path(os.environ["CLAUDE_PLUGIN_ROOT"])
         raw_tmpdir = env.get("DESIGN_TMPDIR", "")
         if not raw_tmpdir:
             _core_diagnostic("/design Step 5c: DESIGN_TMPDIR required")
@@ -3717,6 +3773,16 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
             _core_diagnostic(f"design-step5c.sh: {exc}")
             return 1, []
         os.environ["DESIGN_TMPDIR"] = str(design_tmpdir)
+        normalized_overrides = {
+            config.ENV_DESIGN_TMPDIR: str(design_tmpdir),
+            config.ENV_CLAUDE_PID: parsed.claude_pid or os.environ.get(config.ENV_CLAUDE_PID, ""),
+        }
+        logging_util.quiet_init(argv0="design-step5c.sh")
+        req = _design_require_plugin_root()
+        if req != 0:
+            return req, []
+        plugin_root = Path(os.environ["CLAUDE_PLUGIN_ROOT"])
+        ctx = Ctx.from_mapping({**os.environ, **env, **normalized_overrides})
         write_terminal_sentinel = True
         if not (design_tmpdir / ".completed" / "step-5b").is_file():
             _core_diagnostic("**⚠ Step 5c: missing .completed/step-5b — OOS filing incomplete; repair Step 5b before publish**")
@@ -3726,7 +3792,7 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
             return 1, []
         if (design_tmpdir / ".pause-requested").is_file():
             write_terminal_sentinel = False
-            pause_rc = design_pause.pause_save_main(_pause_args(env, design_tmpdir))
+            pause_rc = _call_pause_save(design_tmpdir, ctx)
             logging_util.emit_kv("STEP5C_STATUS", "pause-save")
             return pause_rc, []
 
@@ -3738,14 +3804,14 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
                 "--design-tmpdir",
                 str(design_tmpdir),
                 "--issue",
-                env.get("ISSUE_NUMBER", ""),
+                ctx.issue_number,
                 "--session-id",
-                env.get("SESSION_ID", ""),
+                ctx.session_id,
                 "--claude-pid",
-                parsed.claude_pid or os.environ.get("CLAUDE_PID", ""),
+                ctx.claude_pid,
             ]
-            if env.get("REPO"):
-                publish_args.extend(["--repo", env["REPO"]])
+            if ctx.repo:
+                publish_args.extend(["--repo", ctx.repo])
             if parsed.skip_validate:
                 publish_args.append("--skip-validate")
 
@@ -3767,7 +3833,7 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
                 if publish_rc == 2 or publish_rc not in {0, 1, 3, 4}:
                     _step5c_write_status(
                         design_tmpdir,
-                        env,
+                        ctx,
                         publish_rc=publish_rc,
                         publish_stdout_fallback=False,
                         plan_write_ok="",
@@ -3775,8 +3841,9 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
                         cleanup_eligible=False,
                     )
                     _step5c_stage_failed_publish_tail(design_tmpdir, plugin_root, publish_rc)
-                    if _step5c_render_final_summary(design_tmpdir, env, "failed-publish-tail"):
-                        _emit_final_summary_marked_from_disk(design_tmpdir)
+                    failed_tail_summary_path = str(design_tmpdir / "final-summary.md")
+                    if _step5c_render_final_summary(design_tmpdir, ctx, "failed-publish-tail", final_summary_path=failed_tail_summary_path):
+                        _emit_final_summary_marked_from_disk(design_tmpdir, failed_tail_summary_path)
                     _emit_report_gate_sidecars_from_disk(design_tmpdir)
                     if publish_rc == 2:
                         _core_diagnostic("**⚠ Step 5c: design-publish.sh configuration error (exit 2); aborting /design**")
@@ -3791,20 +3858,19 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
                     _core_diagnostic("**⚠ Step 5c: design-publish result env missing or unreadable; aborting /design**")
                     return 1, []
                 final_summary_path = result_env.get("FINAL_SUMMARY_PATH", "")
-                if final_summary_path:
-                    os.environ["FINAL_SUMMARY_PATH"] = final_summary_path
+                summary_emit_path = final_summary_path or str(design_tmpdir / "final-summary.md")
                 plan_write_ok = result_env.get("PLAN_WRITE_OK", "")
                 publish_ok = result_env.get("PUBLISH_OK", "")
                 if plan_write_ok == "true":
                     _touch(design_tmpdir / ".completed" / "step-5c")
                 cleanup_eligible = (
                     plan_write_ok == "true"
-                    and env.get("STANDALONE_HEAVY_FAILED", "false") != "true"
-                    and (not env.get("SESSION_ID", "") or publish_ok == "true")
+                    and ctx.str_value("STANDALONE_HEAVY_FAILED", "false") != "true"
+                    and (not ctx.session_id or publish_ok == "true")
                 )
                 _step5c_write_status(
                     design_tmpdir,
-                    env,
+                    ctx,
                     publish_rc=publish_rc,
                     publish_stdout_fallback=stdout_fallback,
                     plan_write_ok=plan_write_ok,
@@ -3832,8 +3898,8 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
                     _emit_report_gate_sidecars_from_disk(design_tmpdir)
                     return 0, []
                 outcome = "approved" if plan_write_ok == "true" else "failed-plan-write"
-                if _step5c_render_final_summary(design_tmpdir, env, outcome, plan_write_ok=plan_write_ok):
-                    _emit_final_summary_marked_from_disk(design_tmpdir)
+                if _step5c_render_final_summary(design_tmpdir, ctx, outcome, final_summary_path=summary_emit_path, plan_write_ok=plan_write_ok):
+                    _emit_final_summary_marked_from_disk(design_tmpdir, summary_emit_path)
                 _emit_report_gate_sidecars_from_disk(design_tmpdir)
                 return 0, []
             finally:
@@ -3851,16 +3917,10 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
 
 def step5c_main(argv: Sequence[str]) -> int:
     try:
-        parsed = _parse_common_wrapper_args(argv)
+        _parse_common_wrapper_args(argv)
     except ValueError as exc:
         print(f"design-step5c.sh: {exc}", file=sys.stderr)
         return 2
-    env = _rehydrate_wrapper_env(parsed)
-    raw_tmpdir = env.get("DESIGN_TMPDIR", "")
-    if raw_tmpdir:
-        with contextlib.suppress(_CoreUsageError):
-            os.environ["DESIGN_TMPDIR"] = str(_validate_design_tmpdir_arg(raw_tmpdir))
-    logging_util.quiet_init(argv0="design-step5c.sh")
     rc, _ = step5c_core(argv)
     return rc
 

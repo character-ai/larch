@@ -25,6 +25,7 @@ from pathlib import Path
 from threading import Timer
 
 import config
+from ctx import Ctx
 import dirty_tree
 import git
 import logging_util
@@ -478,7 +479,13 @@ def classify_launch_failure(
     return LaunchFailure(failure_class="other", reason="unknown")
 
 
-def resolve_model_args(tool: str, *, with_effort: bool = False, default_model: str = "") -> ModelArgResult:
+def resolve_model_args(
+    tool: str,
+    *,
+    with_effort: bool = False,
+    default_model: str = "",
+    ctx: Ctx | None = None,
+) -> ModelArgResult:
     if tool not in {"cursor", "codex"}:
         raise ValueError(f"--tool must be 'cursor' or 'codex' (got: {tool})")
 
@@ -493,6 +500,12 @@ def resolve_model_args(tool: str, *, with_effort: bool = False, default_model: s
         return value
 
     def resolve(env_name: str, plugin_name: str, default_value: str) -> str:
+        if ctx is not None:
+            if ctx.contains(env_name):
+                return reject_blank(ctx.str_value(env_name), env_name)
+            if ctx.contains(plugin_name):
+                return reject_blank(ctx.str_value(plugin_name), plugin_name)
+            return reject_blank(default_value, "default model")
         if env_name in os.environ:
             return reject_blank(os.environ[env_name], env_name)
         if plugin_name in os.environ:
@@ -500,14 +513,21 @@ def resolve_model_args(tool: str, *, with_effort: bool = False, default_model: s
         return reject_blank(default_value, "default model")
 
     if tool == "cursor":
-        model = resolve("LARCH_CURSOR_MODEL", "CLAUDE_PLUGIN_OPTION_CURSOR_MODEL", "composer-2.5")
+        model = resolve(config.ENV_LARCH_CURSOR_MODEL, config.ENV_CLAUDE_PLUGIN_OPTION_CURSOR_MODEL, "composer-2.5")
         return ModelArgResult(("--model", model))
 
-    model = resolve("LARCH_CODEX_MODEL", "CLAUDE_PLUGIN_OPTION_CODEX_MODEL", default_model or "gpt-5.5")
+    model = resolve(config.ENV_LARCH_CODEX_MODEL, config.ENV_CLAUDE_PLUGIN_OPTION_CODEX_MODEL, default_model or "gpt-5.5")
     argv = ["-m", model]
     warning = ""
     if with_effort:
-        effort = os.environ.get("LARCH_CODEX_EFFORT", os.environ.get("CLAUDE_PLUGIN_OPTION_CODEX_EFFORT", "high"))
+        if ctx is not None:
+            effort = (
+                ctx.str_value(config.ENV_LARCH_CODEX_EFFORT)
+                if ctx.contains(config.ENV_LARCH_CODEX_EFFORT)
+                else ctx.str_value(config.ENV_CLAUDE_PLUGIN_OPTION_CODEX_EFFORT, "high")
+            )
+        else:
+            effort = os.environ.get(config.ENV_LARCH_CODEX_EFFORT, os.environ.get(config.ENV_CLAUDE_PLUGIN_OPTION_CODEX_EFFORT, "high"))
         if effort not in {"minimal", "low", "medium", "high"}:
             warning = f"WARN invalid codex effort '{effort}' (must be minimal|low|medium|high); falling back to 'high'"
             effort = "high"
@@ -522,8 +542,9 @@ def model_args_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--with-effort", action="store_true")
     parser.add_argument("--default-model", default="")
     args = parser.parse_args(argv)
+    ctx = Ctx.from_mapping(os.environ)
     try:
-        result = resolve_model_args(args.tool, with_effort=args.with_effort, default_model=args.default_model)
+        result = resolve_model_args(args.tool, with_effort=args.with_effort, default_model=args.default_model, ctx=ctx)
     except ValueError as exc:
         _err(f"agent model-args: {exc}")
         return 1
@@ -1177,22 +1198,30 @@ def degraded_tools_result(
 def degraded_tools_gate_main(argv: list[str] | None = None) -> int:
     logging_util.quiet_init(argv0="cli.py")
     parser = argparse.ArgumentParser(prog="cli.py agent degraded-tools-gate")
-    parser.add_argument("--codex-binary-found", default=os.environ.get("CODEX_BINARY_FOUND", "unknown"))
-    parser.add_argument("--codex-present", default=os.environ.get("CODEX_PRESENT", ""))
-    parser.add_argument("--cursor-binary-found", default=os.environ.get("CURSOR_BINARY_FOUND", "unknown"))
-    parser.add_argument("--cursor-present", default=os.environ.get("CURSOR_PRESENT", ""))
+    parser.add_argument("--codex-binary-found", default=os.environ.get(config.ENV_CODEX_BINARY_FOUND, "unknown"))
+    parser.add_argument("--codex-present", default=os.environ.get(config.ENV_CODEX_PRESENT, ""))
+    parser.add_argument("--cursor-binary-found", default=os.environ.get(config.ENV_CURSOR_BINARY_FOUND, "unknown"))
+    parser.add_argument("--cursor-present", default=os.environ.get(config.ENV_CURSOR_PRESENT, ""))
     parser.add_argument("--skill", default="this")
     args = parser.parse_args(argv)
-    if not args.codex_present:
+    ctx = Ctx.from_mapping({
+        **os.environ,
+        config.ENV_CODEX_BINARY_FOUND: args.codex_binary_found,
+        config.ENV_CODEX_PRESENT: args.codex_present,
+        config.ENV_CURSOR_BINARY_FOUND: args.cursor_binary_found,
+        config.ENV_CURSOR_PRESENT: args.cursor_present,
+        "skill": args.skill,
+    })
+    if not ctx.codex_present:
         _err("agent degraded-tools-gate: ERROR: --codex-present resolved empty (caller rehydration bug — read presence keys from the durable session-env file, not ambient shell state); treating as down (fail-safe)")
-    if not args.cursor_present:
+    if not ctx.cursor_present:
         _err("agent degraded-tools-gate: ERROR: --cursor-present resolved empty (caller rehydration bug — read presence keys from the durable session-env file, not ambient shell state); treating as down (fail-safe)")
     result = degraded_tools_result(
-        codex_binary_found=args.codex_binary_found,
-        codex_present=args.codex_present,
-        cursor_binary_found=args.cursor_binary_found,
-        cursor_present=args.cursor_present,
-        skill=args.skill,
+        codex_binary_found=ctx.codex_binary_found,
+        codex_present=ctx.codex_present,
+        cursor_binary_found=ctx.cursor_binary_found,
+        cursor_present=ctx.cursor_present,
+        skill=ctx.str_value("skill", "this"),
     )
     _emit_kv("DEGRADED", str(result.degraded).lower())
     _emit_kv("CODEX_STATE", result.codex_state)
@@ -1781,11 +1810,17 @@ def run_external_agent(
     stderr_path: str | Path | None = None,
     stall_channel: str = "",
     stall_threshold_seconds: int = 0,
+    ctx: Ctx | None = None,
+    inner_sentinel_suffix: str | None = None,
+    poll_interval: float | None = None,
 ) -> RunExternalAgentResult:
     output_path = Path(output)
     paths = LauncherPaths.from_output(output_path)
     diag = paths.diag
-    done = paths.sentinel_done(os.environ.get("RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX", ".done"))
+    suffix = inner_sentinel_suffix
+    if suffix is None:
+        suffix = ctx.str_value(config.ENV_RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX, ".done") if ctx is not None else os.environ.get(config.ENV_RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX, ".done")
+    done = paths.sentinel_done(suffix)
     meta = paths.meta
     stale_paths = {
         paths.output,
@@ -1876,7 +1911,9 @@ def run_external_agent(
             raise SystemExit(128 + signum)
 
         _old_sigterm = signal.signal(signal.SIGTERM, _on_sigterm)
-        poll_interval = float(os.environ.get("RUN_EXTERNAL_AGENT_POLL_INTERVAL", "10") or "10")
+        if poll_interval is None:
+            poll_raw = ctx.str_value(config.ENV_RUN_EXTERNAL_AGENT_POLL_INTERVAL, "10") if ctx is not None else os.environ.get(config.ENV_RUN_EXTERNAL_AGENT_POLL_INTERVAL, "10")
+            poll_interval = float(poll_raw or "10")
         start = time.monotonic()
         last_progress_time = start
         _, stall_marker = _stall_channel_progress(stall_channel, output_path, -1.0) if stall_channel else (False, 0.0)
@@ -2011,13 +2048,15 @@ def run_external_agent_main(argv: list[str] | None = None) -> int:
     if not _is_positive_int(timeout_raw):
         _err(f"ERROR: --timeout must be a positive integer, got '{timeout_raw}'")
         return 1
-    suffix = os.environ.get("RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX", "")
+    ctx = Ctx.from_env()
+    suffix = ctx.str_value(config.ENV_RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX, "")
     if suffix and suffix != ".inner.done":
         _err(f"ERROR: invalid RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX value '{suffix}'; expected '.inner.done'")
         return 1
-    poll = os.environ.get("RUN_EXTERNAL_AGENT_POLL_INTERVAL", "10")
+    poll = ctx.str_value(config.ENV_RUN_EXTERNAL_AGENT_POLL_INTERVAL, "10") or "10"
     try:
-        if float(poll) <= 0:
+        poll_interval = float(poll)
+        if poll_interval <= 0:
             raise ValueError
     except ValueError:
         _err(f"ERROR: RUN_EXTERNAL_AGENT_POLL_INTERVAL must be a positive number, got '{poll}'")
@@ -2033,18 +2072,29 @@ def run_external_agent_main(argv: list[str] | None = None) -> int:
         capture_stdout=capture_stdout,
         capture_stdout_only=capture_stdout_only,
         stderr_sink=stderr_sink,
+        env=ctx.subprocess_env(),
+        ctx=ctx,
+        inner_sentinel_suffix=suffix or ".done",
+        poll_interval=poll_interval,
     )
     return result.exit_code
 
 
-def external_startup_lock_acquire(tool: str) -> StartupLockState:
-    forced = os.environ.get("LARCH_EXTERNAL_STARTUP_LOCK_FORCE_UNAME")
+def _positive_int_ctx(ctx: Ctx | None, name: str, default: int) -> int:
+    if ctx is None:
+        return _positive_int_env(name, default)
+    parsed = _parse_positive_or_zero_int(ctx.str_value(name, str(default)))
+    return parsed if parsed is not None and parsed > 0 else default
+
+
+def external_startup_lock_acquire(tool: str, ctx: Ctx | None = None) -> StartupLockState:
+    forced = ctx.str_value(config.ENV_LARCH_EXTERNAL_STARTUP_LOCK_FORCE_UNAME) if ctx is not None else os.environ.get(config.ENV_LARCH_EXTERNAL_STARTUP_LOCK_FORCE_UNAME)
     if (forced or platform.system()) != "Darwin" or tool not in {"codex", "cursor"}:
         return StartupLockState(None)
-    user = os.environ.get("USER") or "larch"
+    user = (ctx.user if ctx is not None else os.environ.get(config.ENV_USER)) or "larch"
     lock_path = Path(f"/tmp/larch-external-startup-{user}.lock")  # noqa: S108 - Bash Darwin startup-lock path parity
-    ttl = _positive_int_env("LARCH_EXTERNAL_STARTUP_LOCK_TTL", 30)
-    tries = _positive_int_env("LARCH_EXTERNAL_STARTUP_LOCK_TRIES", 300)
+    ttl = _positive_int_ctx(ctx, config.ENV_LARCH_EXTERNAL_STARTUP_LOCK_TTL, 30)
+    tries = _positive_int_ctx(ctx, config.ENV_LARCH_EXTERNAL_STARTUP_LOCK_TRIES, 300)
     for _ in range(max(tries, 1)):
         try:
             lock_path.mkdir()
