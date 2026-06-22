@@ -42,7 +42,9 @@ py-lint-main:
 	# semaphore query. Some restricted local sandboxes deny that query, so they
 	# fall back to a single worker. duplicate-code is disabled here (.pylintrc)
 	# and runs in the dedicated py-lint-duplicate-code target.
-	cd python && ruff check . && pylint -j $(PYLINT_JOBS) .
+	cd python && ruff check .
+	$(PYTHON) python/cli.py lint complexity-baseline
+	cd python && pylint -j $(PYLINT_JOBS) .
 
 py-typecheck:
 	@$(PYTHON) -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' \

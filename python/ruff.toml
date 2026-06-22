@@ -15,7 +15,6 @@ ignore = [
     "ARG003",
     "ASYNC109",
     "BLE001",
-    "C901",
     "COM812",
     "D100",
     "D101",
@@ -50,10 +49,6 @@ ignore = [
     "N812",
     "N999",
     "PERF203",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
     "PT001",
     "PT009",
     "PT019",
@@ -83,7 +78,26 @@ ignore = [
 ]
 
 [lint.per-file-ignores]
+"conftest.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"review_test_support.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
 "test_*.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
     "PLR2004",
     "S101",
     "SLF001",
@@ -94,4 +108,582 @@ ignore = [
     "ARG002",
     "FBT001",
     "PERF401",
+]
+"test_support.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"admission.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0915",
+]
+"agent_voters.py" = [
+    "C901",
+    "PLR0912",
+    "PLR0915",
+]
+"agent_waterfall.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"agents.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"analyze_issues.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"audit_runs.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0915",
+]
+"blocker.py" = [
+    "C901",
+]
+"bootstrap.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"check_topology_rule_paths.py" = [
+    "C901",
+]
+"checks.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"ci.py" = [
+    "C901",
+    "PLR0912",
+    "PLR0915",
+]
+"ci_agentic_fix.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"ci_monitor.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"ci_timing_fetch.py" = [
+    "PLR0913",
+]
+"clarify.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"cleanup_implement_logs.py" = [
+    "C901",
+    "PLR0912",
+    "PLR0915",
+]
+"cleanup_skill.py" = [
+    "C901",
+    "PLR0912",
+    "PLR0915",
+]
+"cli.py" = [
+    "C901",
+    "PLR0911",
+]
+"closeout.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"collect_results.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0915",
+]
+"combine_issues.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0915",
+]
+"compose_review.py" = [
+    "C901",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"decompose.py" = [
+    "C901",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"deps_audit.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0915",
+]
+"design_argv.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0915",
+]
+"design_lifecycle.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"design_log_publish_flow.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0915",
+]
+"design_log_ship.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"design_oos.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0915",
+]
+"design_pause.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0915",
+]
+"design_postplan.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0915",
+]
+"design_publish.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0915",
+]
+"design_step_log.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0915",
+]
+"design_summary.py" = [
+    "C901",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"dirty_tree.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+]
+"execution_issues.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0913",
+]
+"file_oos.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"final_report.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"finalize.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+]
+"forked_repo.py" = [
+    "C901",
+    "PLR0912",
+    "PLR0915",
+]
+"gc_run_logs.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+]
+"gh.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+]
+"git.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+]
+"implement_dispatch.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"issue_block.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0915",
+]
+"issue_create.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0915",
+]
+"issue_query.py" = [
+    "PLR0911",
+]
+"issue_wire.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+]
+"lint_mermaid_fences.py" = [
+    "C901",
+]
+"lint_no_raw_stderr_after_quiet_init.py" = [
+    "C901",
+]
+"lint_readability_preamble.py" = [
+    "C901",
+    "PLR0912",
+]
+"lint_skill_invocations.py" = [
+    "C901",
+    "PLR0911",
+]
+"merge.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+]
+"migration_lint.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"oos_disposition.py" = [
+    "C901",
+]
+"oos_filer.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"phantom.py" = [
+    "PLR0911",
+]
+"plan_quality.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"plan_review.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"plan_review_panel.py" = [
+    "C901",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"plan_review_round.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"plan_review_tally.py" = [
+    "C901",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"plan_scout.py" = [
+    "C901",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"pr.py" = [
+    "PLR0911",
+    "PLR0913",
+]
+"pr_body.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"preflight.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"proc.py" = [
+    "PLR0913",
+]
+"progress_report.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"promote_release.py" = [
+    "C901",
+    "PLR0911",
+]
+"push.py" = [
+    "C901",
+    "PLR0911",
+]
+"rebase.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"release_finish.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0915",
+]
+"release_prepare.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0915",
+]
+"render_session_transcript.py" = [
+    "C901",
+    "PLR0912",
+]
+"rendering.py" = [
+    "C901",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"report_tokens_cost.py" = [
+    "PLR0913",
+]
+"report_tokens_plot.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0913",
+]
+"report_tokens_render.py" = [
+    "PLR0913",
+]
+"report_tokens_scan.py" = [
+    "C901",
+    "PLR0911",
+]
+"research.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"research_eval.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"retro_v3_sweep.py" = [
+    "C901",
+]
+"retry.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+]
+"review_aggregate.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"review_and_fix.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"review_dispatch.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0913",
+    "PLR0915",
+]
+"review_pipeline.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"review_tally.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"run_logs.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"session_env.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0915",
+]
+"ship.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"stall_recovery.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"step_7a.py" = [
+    "C901",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"timing.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"tokens.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"tracking_issue.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0913",
+]
+"upgrade_larch.py" = [
+    "C901",
+    "PLR0912",
+    "PLR0915",
+]
+"verify_skill.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+]
+"version_bump.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"voting.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0913",
 ]
