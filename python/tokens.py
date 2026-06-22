@@ -851,6 +851,54 @@ def token_claude_source(
     return {"TRANSCRIPT_PATH": str(latest), "SESSION_DIR": str(project_dir / uuid), "SESSION_UUID": uuid}
 
 
+def _assistant_model_from_line(raw: str) -> str:
+    if '"assistant"' not in raw:
+        return ""
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return ""
+    if not isinstance(parsed, dict):
+        return ""
+    obj = cast("dict[str, Any]", parsed)
+    if obj.get("type") != "assistant":
+        return ""
+    message = obj.get("message")
+    if not isinstance(message, dict):
+        return ""
+    model = cast("dict[str, Any]", message).get("model", "")
+    return model if isinstance(model, str) else ""
+
+
+def read_main_model(
+    *,
+    claude_source_file: Path | None = None,
+    env: Mapping[str, str] | None = None,
+) -> str:
+    """Best-effort main-agent model id from the active Claude session transcript.
+
+    Locates the transcript via token_claude_source and returns the first assistant
+    turn's message.model. Returns "" when the transcript or model is unavailable.
+    Resolved at run-log init, before any subagents spawn, so the newest transcript
+    is the orchestrator session rather than a spawned reviewer/voter.
+    """
+    source = token_claude_source(claude_source_file=claude_source_file, env=env)
+    transcript = source.get("TRANSCRIPT_PATH", "")
+    if not transcript:
+        return ""
+    path = Path(transcript)
+    if not path.is_file():
+        return ""
+    try:
+        for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            model = _assistant_model_from_line(raw)
+            if model:
+                return model
+    except OSError:
+        return ""
+    return ""
+
+
 def _path_is_under(child: Path, parent: Path) -> bool:
     try:
         _ = child.resolve().relative_to(parent.resolve())
