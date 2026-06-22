@@ -30,6 +30,10 @@ _VALIDATION_FAILED_RC = 4
 # `_apply_aggregate_candidate` re-dispatches with validator feedback only for it; every other
 # semantic failure degrades single-shot (pre-#4868 behavior) instead of burning the retry budget.
 _OOS_ATTRIBUTION_RC = 5
+# Issue #5077: the missing-reviewer failure is also a recoverable LLM slip (#4881 grouped it with the
+# single-shot degrades). `_validate_aggregate_output` returns this distinct code so that
+# `_apply_aggregate_candidate` re-dispatches it through the generic-feedback retry loop, like #4868.
+_MISSING_REVIEWER_RC = 6
 _AGGREGATE_VALIDATION_RETRIES = 2
 
 
@@ -560,7 +564,7 @@ def _validate_aggregate_output(input_path: Path, output_path: Path, input_mode: 
             all_out_slots.add(norm)
     missing = sorted(input_slot_set - all_out_slots)
     if missing:
-        return 2, f"input reviewers missing from merge output: {missing!r}\n"
+        return _MISSING_REVIEWER_RC, f"input reviewers missing from merge output: {missing!r}\n"
     rev_warnings = _check_revision_traceability(intext, blocks)
     warning_lines = "".join(f"warning: {warning}\n" for warning in rev_warnings)
     if os.environ.get("LARCH_AGGREGATE_REVISION_TRACE_STRICT") == "1" and rev_warnings:
@@ -602,8 +606,9 @@ def _apply_aggregate_candidate(candidate: Path, source_file: Path, findings_file
     _write_text(validate_log, validate_err)
     if validate_rc == 1:
         return 1, str(validate_log)
-    if validate_rc == _OOS_ATTRIBUTION_RC:
-        # Issue #4881: only the OOS-attribution rejection re-dispatches with validator feedback.
+    if validate_rc in (_OOS_ATTRIBUTION_RC, _MISSING_REVIEWER_RC):
+        # Issue #4881 (OOS-attribution) and #5077 (missing-reviewer) are both recoverable LLM slips:
+        # re-dispatch with validator feedback. `_validation_retry_prompt` tailors guidance by class.
         return _VALIDATION_FAILED_RC, str(validate_log)
     if validate_rc != 0:
         # Issue #4881: all other semantic validation failures degrade single-shot rather than

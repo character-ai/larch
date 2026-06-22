@@ -85,6 +85,20 @@ _NON_OOS_FAIL = """### FINDING_1: Merged in-scope
 - **Concern**: merged concern
 - **Suggested revision**: fix"""
 
+# Issue #5077: drops cursor-b from every reviewer line -> "input reviewers missing from merge output".
+_MISSING_REVIEWER_FAIL = """### FINDING_1: Merged in-scope
+- **Reviewer(s)**: cursor-a-output.txt
+- **Severity**: important
+- **Concern**: merged concern
+- **Suggested revision**: fix"""
+
+# Keeps both in-scope reviewers in the merged block -> validation passes.
+_MISSING_REVIEWER_SUCCESS = """### FINDING_1: Merged in-scope
+- **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt
+- **Severity**: important
+- **Concern**: merged concern
+- **Suggested revision**: fix"""
+
 
 def test_aggregate_disabled_fast_path_preserves_findings(tmp_path: Path) -> None:
     findings = tmp_path / "findings.md"
@@ -354,6 +368,54 @@ def test_aggregate_non_oos_validation_failure_is_single_shot(tmp_path: Path) -> 
     validate_stderr = (tmp_path / "aggregator-validate.stderr").read_text(encoding="utf-8")
     assert "Severity" in validate_stderr
     assert "appears only on OOS-tagged input findings" not in validate_stderr
+
+
+def test_aggregate_missing_reviewer_failure_retries_then_succeeds(tmp_path: Path) -> None:
+    # Issue #5077: an "input reviewers missing from merge output" slip is a recoverable LLM error and
+    # must re-dispatch with validator feedback (like the OOS-attribution class), not degrade single-shot.
+    findings = tmp_path / "in-missing-retry.md"
+    _ = findings.write_text(_NON_OOS_INPUT, encoding="utf-8")
+    counter = tmp_path / "dispatch-count.txt"
+    dispatch = tmp_path / "counting-dispatch.sh"
+    rts.write_aggregate_counting_dispatch_stub(
+        dispatch,
+        counter_file=counter,
+        fail_attempts=1,
+        fail_body=_MISSING_REVIEWER_FAIL,
+        success_body=_MISSING_REVIEWER_SUCCESS,
+    )
+
+    result = run_review(
+        "aggregate-findings",
+        "--findings-file",
+        str(findings),
+        "--review-tmpdir",
+        str(tmp_path),
+        "--codex-present",
+        "true",
+        "--cursor-present",
+        "true",
+        "--mode",
+        "diff",
+        env=_aggregate_env(tmp_path, AGGREGATE_DISPATCH_SH=str(dispatch), LARCH_AGGREGATE_VALIDATION_RETRIES="2"),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "AGGREGATED=true" in result.stdout
+    assert "REASON=ok" in result.stdout
+    # First dispatch failed the missing-reviewer check; the bounded retry re-dispatched and recovered.
+    assert counter.read_text(encoding="utf-8") == "2"
+    merged = findings.read_text(encoding="utf-8")
+    assert "cursor-a-output.txt" in merged
+    assert "cursor-b-output.txt" in merged
+    # The retry prompt fed the missing-reviewer validator error back with generic (non-OOS) guidance.
+    prompt = (tmp_path / "aggregator-prompt.md").read_text(encoding="utf-8")
+    assert "Previous aggregation attempt rejected by validation" in prompt
+    assert "input reviewers missing from merge output" in prompt
+    retry_section = prompt.split("## Previous aggregation attempt rejected by validation", 1)[1]
+    assert "Fix exactly the error reported above" in retry_section
+    assert "preserving every input reviewer slot" in retry_section
+    assert "appears only on OOS-tagged input findings" not in retry_section
 
 
 def test_validation_retry_prompt_is_failure_class_aware() -> None:
