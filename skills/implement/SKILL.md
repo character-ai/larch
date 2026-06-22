@@ -785,12 +785,12 @@ Branch on the helper output:
 bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-architectural-guidelines-materialize.sh
 ```
 
-If materialization fails, log a warning and continue without staged or durable artifacts. If it succeeds, write the assessment body to a temp file and persist it with the current post-7a `HEAD`, the materialized diff fingerprint, and base ref.
+If materialization fails, log a warning and continue without staged or durable artifacts. If it succeeds, write the assessment body to `$IMPLEMENT_TMPDIR/architectural-guideline-assessment-draft.md` and persist it with the current post-7a `HEAD`, the materialized diff fingerprint, and base ref via the write-staged wrapper.
 
 **⚠ Foreground required — do NOT set `run_in_background: true`.**
 
 ```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-architectural-guidelines-write-staged.sh
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-architectural-guidelines-write-staged.sh "$IMPLEMENT_TMPDIR/architectural-guideline-assessment-draft.md"
 ```
 
 At Phase A completion when guidelines are present, print the clean or deviation note to chat and append the same note under `Warnings` in `$IMPLEMENT_TMPDIR/execution-issues.md`. Do not call `architectural-guidelines pin-note-from-staged` in Phase A. Continue to Step 8 only after Phase A completes or is skipped because the file is absent or invalid.

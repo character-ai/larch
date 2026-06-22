@@ -475,18 +475,30 @@ def _publish_post_pr_terminal_snapshot(
                 _ = push.push_branch(runner, ctx, cwd=cwd)
 
 
+def _invalidate_guidelines_note(implement_tmpdir: str) -> None:
+    with suppress(Exception):
+        architectural_guidelines.invalidate_implement_note(Path(implement_tmpdir))
+
+
 def _pin_and_load_guidelines_note(implement_tmpdir: str, head_sha: str, base_ref: str) -> str:
     if not implement_tmpdir or not head_sha:
         return ""
     tmpdir = Path(implement_tmpdir)
     with suppress(Exception):
+        pinned_now = False
         if architectural_guidelines.staged_assessment_path(tmpdir).is_file():
-            _ = architectural_guidelines.pin_note_from_staged(
+            pinned_now = architectural_guidelines.pin_note_from_staged(
                 tmpdir,
                 head_sha=head_sha,
                 base_ref=base_ref,
             )
         if architectural_guidelines.note_consumable(tmpdir, head_sha):
+            if not pinned_now:
+                meta = architectural_guidelines.durable_note_metadata(tmpdir)
+                note_base_ref = base_ref or meta.get("BASE_REF", "")
+                if architectural_guidelines.note_fingerprint_stale(tmpdir, base_ref=note_base_ref):
+                    architectural_guidelines.invalidate_implement_note(tmpdir)
+                    return ""
             note = architectural_guidelines.durable_note_path(tmpdir).read_text(
                 encoding="utf-8",
                 errors="replace",
@@ -1639,6 +1651,7 @@ def run_ship(
                     )
                     phase14_flag.unlink(missing_ok=True)
                     rebase_count += 1
+                    _invalidate_guidelines_note(working.tmpdir)
                     _write_ship_state(
                         working,
                         phase="ci-initial",
@@ -1853,11 +1866,11 @@ def run_ship(
                         )
                         raise
                     rebase_count += 1
+                    _invalidate_guidelines_note(working.tmpdir)
                 if monitor.transient_rerun_attempted:
                     transient_retries += 1
                 if monitor.did_fixing:
-                    with suppress(Exception):
-                        architectural_guidelines.invalidate_implement_note(Path(working.tmpdir))
+                    _invalidate_guidelines_note(working.tmpdir)
                     fix_attempts += 1
                 if monitor.action == "wait" or monitor.goto_rebase:
                     iteration += 1
@@ -1957,6 +1970,7 @@ def run_ship(
                     )
                     raise
                 rebase_count += 1
+                _invalidate_guidelines_note(working.tmpdir)
                 iteration += 1
                 _write_ship_state(
                     working,

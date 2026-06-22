@@ -289,6 +289,18 @@ def redact_pr_body(body: str) -> str:
     return _fail_closed_body(redact.redact(body))
 
 
+def architectural_guidelines_section(body: str) -> str:
+    """Return normalized architectural-guidelines section body, or empty when absent."""
+    heading = "## Architectural guidelines"
+    idx = body.find(heading)
+    if idx < 0:
+        return ""
+    rest = body[idx + len(heading) :].lstrip("\n")
+    next_heading = rest.find("\n## ")
+    section = rest[:next_heading] if next_heading >= 0 else rest
+    return section.strip()
+
+
 def compose_pr_body(
     *,
     summary: str,

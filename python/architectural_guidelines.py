@@ -24,6 +24,7 @@ DURABLE_NOTE = "architectural-guideline-note.md"
 DURABLE_NOTE_ENV = "architectural-guideline-note.meta.env"
 LEGACY_WARNING = "architectural-guideline-warnings.md"
 LEGACY_WARNING_ENV = "architectural-guideline-warnings.meta.env"
+MATERIALIZE_ENV = "architectural-guideline-materialize.env"
 _STATUS_VALUES = {"present", "absent", "invalid"}
 _HEADING_RE = re.compile(r"^###\s+(G-[A-Za-z0-9-]+-\d+):\s*(.+?)\s*$")
 _WHY_RE = re.compile(r"^\s*-\s*Why:\s*(.+?)\s*$")
@@ -284,6 +285,7 @@ def invalidate_implement_note(implement_tmpdir: Path) -> None:
         STAGED_ASSESSMENT,
         STAGED_ASSESSMENT_ENV,
         MATERIALIZED_DIFF,
+        MATERIALIZE_ENV,
         DURABLE_NOTE,
         DURABLE_NOTE_ENV,
     ):
@@ -299,6 +301,11 @@ def invalidate_implement_note(implement_tmpdir: Path) -> None:
             pass
 
 
+def durable_note_metadata(implement_tmpdir: Path) -> dict[str, str]:
+    """Return durable-note sidecar metadata when present."""
+    return _read_env(_durable_meta_path(implement_tmpdir))
+
+
 def note_consumable(implement_tmpdir: Path, head_sha: str) -> bool:
     """Return true when the durable note is safe to surface for head_sha."""
     note = durable_note_path(implement_tmpdir)
@@ -307,6 +314,25 @@ def note_consumable(implement_tmpdir: Path, head_sha: str) -> bool:
         return False
     metadata = _read_env(meta)
     return metadata.get("STATUS") == "present" and metadata.get("HEAD_SHA") == head_sha
+
+
+def note_fingerprint_stale(implement_tmpdir: Path, *, base_ref: str) -> bool:
+    """Return true when the durable note fingerprint no longer matches the live implementation diff."""
+    meta = _read_env(_durable_meta_path(implement_tmpdir))
+    stored_fp = meta.get("DIFF_FINGERPRINT", "")
+    if not stored_fp or not base_ref:
+        return False
+    root = _resolve_repo_root()
+    if root is None:
+        return False
+    remote, ref = base_ref.split("/", 1) if "/" in base_ref else ("origin", base_ref)
+    try:
+        current_fp = diff_fingerprint(
+            materialize_implementation_diff(root, base_remote=remote, base_ref=ref),
+        )
+    except RuntimeError:
+        return True
+    return current_fp != stored_fp
 
 
 def _bool_arg(value: str) -> bool:
@@ -343,6 +369,7 @@ def materialize_diff_main(argv: list[str]) -> int:
     parser.add_argument("--repo-root")
     parser.add_argument("--forked-target", default="false")
     parser.add_argument("--output")
+    parser.add_argument("--implement-tmpdir", default=os.environ.get("IMPLEMENT_TMPDIR", ""))
     args = parser.parse_args(argv)
     repo_root = _resolve_repo_root(args.repo_root)
     if repo_root is None:
@@ -357,8 +384,23 @@ def materialize_diff_main(argv: list[str]) -> int:
         print(f"ARCHITECTURAL_GUIDELINES_WARNING={str(exc).replace(chr(10), ' ')}")
         return 1
     fingerprint = diff_fingerprint(diff_text)
-    if args.output:
-        _write_text_atomic(Path(args.output), diff_text)
+    output_path = Path(args.output) if args.output else None
+    if args.implement_tmpdir:
+        tmpdir = Path(args.implement_tmpdir)
+        output_path = output_path or _diff_path(tmpdir)
+        meta_path = tmpdir / MATERIALIZE_ENV
+        _write_text_atomic(
+            meta_path,
+            "\n".join(
+                [
+                    f"BASE_REF={_env_escape(base_label)}",
+                    f"DIFF_FINGERPRINT={_env_escape(fingerprint)}",
+                    "",
+                ]
+            ),
+        )
+    if output_path is not None:
+        _write_text_atomic(output_path, diff_text)
     print("ARCHITECTURAL_GUIDELINES_DIFF_STATUS=ok")
     print(f"ARCHITECTURAL_GUIDELINES_BASE_REF={base_label}")
     print(f"ARCHITECTURAL_GUIDELINES_DIFF_FINGERPRINT={fingerprint}")

@@ -260,6 +260,30 @@ def pr_view(
     return _pull_request_from_json(data, context="pr view")
 
 
+def pr_view_body(
+    runner: Runner,
+    number: int,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> str | None:
+    """Return the PR body text, or None when gh cannot read it."""
+    result = runner.run(
+        ["gh", "pr", "view", str(number), "--repo", repo, "--json", "body"],
+        cwd=cwd,
+    )
+    if result.returncode != 0:
+        return None
+    try:
+        data = _as_json_object(_loads_json(result.stdout, context="pr view body"), context="pr view body")
+    except ShipError:
+        return None
+    body = data.get("body")
+    if body is None:
+        return ""
+    return str(body)
+
+
 def _pull_request_from_json(data: Mapping[str, object], *, context: str) -> PullRequest:
     _require_json_keys(
         data,
