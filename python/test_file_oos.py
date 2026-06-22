@@ -431,6 +431,29 @@ def test_file_conflict_deps_rejects_traversal_paths(tmp_path: Path) -> None:
     assert_file_conflict_deps_tsv(out, "")
 
 
+@pytest.mark.parametrize(
+    ("name", "path_text"),
+    [
+        ("case-h2", "../skills/foo.py"),
+        ("case-h3", "/../skills/foo/bar.sh"),
+    ],
+)
+def test_file_conflict_deps_rejects_normalized_traversal_paths(
+    tmp_path: Path, name: str, path_text: str
+) -> None:
+    # Regex sub-matches can drop a leading .. prefix before clean_match; two items
+    # citing the same traversal-looking path must not serialize as 1\t2.
+    src = make_file_conflict_deps_input(tmp_path, name)
+    append_oos(src, 1, "First", f"Mentions {path_text}")
+    append_oos(src, 2, "Second", f"Also mentions {path_text}")
+    out = tmp_path / name / "out.tsv"
+
+    result = run_file_conflict_deps(src, out)
+
+    assert result.returncode == 0
+    assert_file_conflict_deps_tsv(out, "")
+
+
 def test_file_conflict_deps_malformed_item_preserves_index(tmp_path: Path) -> None:
     src = make_file_conflict_deps_input(tmp_path, "case-i")
     append_oos(src, 1, "First", "Touches skills/foo/bar.sh")
