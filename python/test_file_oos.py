@@ -370,8 +370,8 @@ def test_file_conflict_deps_different_files_parallel(tmp_path: Path) -> None:
 
 def test_file_conflict_deps_rejects_absolute_paths(tmp_path: Path) -> None:
     src = make_file_conflict_deps_input(tmp_path, "case-g")
-    append_oos(src, 1, "First", "Mentions /skills/foo/bar.sh")
-    append_oos(src, 2, "Second", "Also mentions /skills/foo/bar.sh")
+    append_oos(src, 1, "First", "Mentions /etc/passwd")
+    append_oos(src, 2, "Second", "Touches skills/foo/bar.sh")
     out = tmp_path / "case-g" / "out.tsv"
 
     result = run_file_conflict_deps(src, out)
@@ -380,11 +380,73 @@ def test_file_conflict_deps_rejects_absolute_paths(tmp_path: Path) -> None:
     assert_file_conflict_deps_tsv(out, "")
 
 
+def test_file_conflict_deps_same_leading_slash_path_serializes(tmp_path: Path) -> None:
+    # Bash parity: clean_match strips a leading slash, so two items citing the
+    # same leading-slash path normalize to the same repo-relative path and must
+    # serialize (1\t2) rather than running in parallel.
+    src = make_file_conflict_deps_input(tmp_path, "case-g2")
+    append_oos(src, 1, "First", "Mentions /skills/foo/bar.sh")
+    append_oos(src, 2, "Second", "Also mentions /skills/foo/bar.sh")
+    out = tmp_path / "case-g2" / "out.tsv"
+
+    result = run_file_conflict_deps(src, out)
+
+    assert result.returncode == 0
+    assert_file_conflict_deps_tsv(out, "1\t2\n")
+
+
+@pytest.mark.parametrize(
+    ("name", "path_text"),
+    [
+        ("dockerfile_subdir", "tools/Dockerfile"),
+        ("makefile_subdir", "src/Makefile"),
+    ],
+)
+def test_file_conflict_deps_extensionless_subdir_path_serializes(
+    tmp_path: Path, name: str, path_text: str
+) -> None:
+    # Bash parity: an extensionless match in a subdirectory carries a leading
+    # slash from the boundary (e.g. "/Dockerfile"); clean_match strips it, so
+    # two items citing the same extensionless path must serialize.
+    src = make_file_conflict_deps_input(tmp_path, name)
+    append_oos(src, 1, "First", f"Touches {path_text}")
+    append_oos(src, 2, "Second", f"Also touches {path_text}")
+    out = tmp_path / name / "out.tsv"
+
+    result = run_file_conflict_deps(src, out)
+
+    assert result.returncode == 0
+    assert_file_conflict_deps_tsv(out, "1\t2\n")
+
+
 def test_file_conflict_deps_rejects_traversal_paths(tmp_path: Path) -> None:
     src = make_file_conflict_deps_input(tmp_path, "case-h")
     append_oos(src, 1, "First", "Mentions ../../etc/passwd")
     append_oos(src, 2, "Second", "Touches skills/foo/bar.sh")
     out = tmp_path / "case-h" / "out.tsv"
+
+    result = run_file_conflict_deps(src, out)
+
+    assert result.returncode == 0
+    assert_file_conflict_deps_tsv(out, "")
+
+
+@pytest.mark.parametrize(
+    ("name", "path_text"),
+    [
+        ("case-h2", "../skills/foo.py"),
+        ("case-h3", "/../skills/foo/bar.sh"),
+    ],
+)
+def test_file_conflict_deps_rejects_normalized_traversal_paths(
+    tmp_path: Path, name: str, path_text: str
+) -> None:
+    # Regex sub-matches can drop a leading .. prefix before clean_match; two items
+    # citing the same traversal-looking path must not serialize as 1\t2.
+    src = make_file_conflict_deps_input(tmp_path, name)
+    append_oos(src, 1, "First", f"Mentions {path_text}")
+    append_oos(src, 2, "Second", f"Also mentions {path_text}")
+    out = tmp_path / name / "out.tsv"
 
     result = run_file_conflict_deps(src, out)
 

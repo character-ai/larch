@@ -824,21 +824,27 @@ def _parse_file_conflict_args(argv: list[str]) -> tuple[Path | None, Path | None
     return Path(input_file), Path(output_file), True
 
 
-
-
-def _raw_file_conflict_match_is_unsafe(raw: str) -> bool:
-    leading = re.sub(r"^[^A-Za-z./-]+", "", raw)
-    return leading.startswith(("/", "-"))
-
 def _clean_file_conflict_match(raw: str) -> str:
     cleaned = re.sub(r"^[^A-Za-z.]+", "", raw)
     cleaned = re.sub(r"[^A-Za-z0-9_./:-]+$", "", cleaned)
     return cleaned.removeprefix("./")
 
 
+def _raw_file_conflict_match_is_unsafe(line: str, match: re.Match[str]) -> bool:
+    """Reject traversal syntax the file-line regex can drop via sub-matches."""
+    if line[: match.start()].endswith(".."):
+        return True
+    return ".." in match.group(0)
+
+
+_TRAVERSAL_DOTDOT_PLACEHOLDER = "\x1e"
+
+
 def _normalize_file_conflict_body(body: str) -> str:
-    normalized = re.sub(r"(^|[^A-Za-z0-9])\./", r"\1", body)
-    return re.sub(r"[,;]", "\n", normalized)
+    protected = body.replace("..", _TRAVERSAL_DOTDOT_PLACEHOLDER)
+    normalized = re.sub(r"(^|[^A-Za-z0-9])\./", r"\1", protected)
+    normalized = re.sub(r"[,;]", "\n", normalized)
+    return normalized.replace(_TRAVERSAL_DOTDOT_PLACEHOLDER, "..")
 
 
 def _file_conflict_path_is_safe(path: str) -> bool:
@@ -875,7 +881,7 @@ def _item_file_records(item: ParsedItem) -> list[FileConflictRecord]:
     normalized = _normalize_file_conflict_body(item.body)
     for line in normalized.splitlines():
         for match in _FILE_CONFLICT_ANY_RE.finditer(line):
-            if _raw_file_conflict_match_is_unsafe(match.group(0)):
+            if _raw_file_conflict_match_is_unsafe(line, match):
                 continue
             candidate = _clean_file_conflict_match(match.group(0))
             if not candidate:
