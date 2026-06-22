@@ -824,12 +824,6 @@ def _parse_file_conflict_args(argv: list[str]) -> tuple[Path | None, Path | None
     return Path(input_file), Path(output_file), True
 
 
-
-
-def _raw_file_conflict_match_is_unsafe(raw: str) -> bool:
-    leading = re.sub(r"^[^A-Za-z./-]+", "", raw)
-    return leading.startswith(("/", "-"))
-
 def _clean_file_conflict_match(raw: str) -> str:
     cleaned = re.sub(r"^[^A-Za-z.]+", "", raw)
     cleaned = re.sub(r"[^A-Za-z0-9_./:-]+$", "", cleaned)
@@ -875,8 +869,6 @@ def _item_file_records(item: ParsedItem) -> list[FileConflictRecord]:
     normalized = _normalize_file_conflict_body(item.body)
     for line in normalized.splitlines():
         for match in _FILE_CONFLICT_ANY_RE.finditer(line):
-            if _raw_file_conflict_match_is_unsafe(match.group(0)):
-                continue
             candidate = _clean_file_conflict_match(match.group(0))
             if not candidate:
                 continue
