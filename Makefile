@@ -44,13 +44,18 @@ py-lint-main:
 	# and runs in the dedicated py-lint-duplicate-code target.
 	cd python && ruff check .
 	$(PYTHON) python/cli.py lint complexity-baseline
+	$(PYTHON) python/cli.py lint keyword-only
 	cd python && pylint -j $(PYLINT_JOBS) .
 
-.PHONY: regen-complexity-baseline
+.PHONY: regen-complexity-baseline regen-keyword-only-baseline
 regen-complexity-baseline:
 	# Mechanically regenerate python/complexity-baseline.json from live ruff
 	# output so the ratchet baseline is generated, not hand-edited (issue #5041).
 	$(PYTHON) python/cli.py lint complexity-baseline --write
+
+regen-keyword-only-baseline:
+	# Regenerate python/keyword-only-baseline.json from live AST scan.
+	$(PYTHON) python/cli.py lint keyword-only --write
 
 py-typecheck:
 	@$(PYTHON) -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' \

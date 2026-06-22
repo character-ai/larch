@@ -270,6 +270,14 @@ repos:
         pass_filenames: false
         files: ^larch-logs/
 
+      - id: lint-keyword-only
+        name: Lint keyword-only arg enforcement in python/
+        entry: python3 python/cli.py lint keyword-only
+        language: system
+        pass_filenames: false
+        always_run: true
+        files: ^python/[^/]+\.py$
+
       - id: lint-bash32
         name: Lint Bash 3.2 portability of shell scripts
         entry: bash scripts/lint-bash32.sh
