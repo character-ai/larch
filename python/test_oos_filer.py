@@ -676,3 +676,54 @@ def test_bare_oos_item_suffix_accepts_finding_ids() -> None:
 def test_issue_covers_finding_stable_id_suffix() -> None:
     issue = oos_filer.FiledIssue("title", "https://github.com/o/r/issues/1", stable_id="oos-accepted-review:FINDING_3")
     assert oos_filer._issue_covers_stable_id(issue, "oos-accepted-review:FINDING_3")
+
+
+_THREE_OOS_BLOCKS = (
+    "### OOS_1: First\n- **Description**: Alpha.\n- **Reviewer**: A\n- **Vote tally**: 2-0\n- **Phase**: implement\n\n"
+    "### OOS_2: Second\n- **Description**: Beta.\n- **Reviewer**: B\n- **Vote tally**: 2-0\n- **Phase**: implement\n\n"
+    "### OOS_3: Third\n- **Description**: Gamma.\n- **Reviewer**: C\n- **Vote tally**: 2-0\n- **Phase**: implement\n"
+)
+
+
+def test_capped_full_rollup_retains_all_source_stable_ids(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OOS_ISSUES_PER_RUN_CAP", "1")
+    monkeypatch.setattr(oos_filer, "_codex_available", lambda: False)
+    _setup(tmp_path)
+    _write_oos(tmp_path, _THREE_OOS_BLOCKS)
+    fake = FakeCli(tmp_path)
+    rc, _payload = _run(tmp_path, fake, monkeypatch)
+    assert rc == 0
+    # cap=1 rolls all three accepted blocks into a single aggregate issue.
+    assert len([call for call in fake.calls if call[:2] == ["issue", "create-one"]]) == 1
+    sentinel = (tmp_path / "oos-issues-created.md").read_text(encoding="utf-8")
+    # The aggregate issue must retain every source stable ID, not just the first.
+    assert "oos-accepted-main-agent:OOS_1" in sentinel
+    assert "oos-accepted-main-agent:OOS_2" in sentinel
+    assert "oos-accepted-main-agent:OOS_3" in sentinel
+    # A retry must recognize every rolled-up block as already filed (no re-filing of the remainder).
+    retry = FakeCli(tmp_path)
+    rc_retry, _retry_payload = _run(tmp_path, retry, monkeypatch)
+    assert rc_retry == 0
+    assert not [call for call in retry.calls if call[:2] == ["issue", "create-one"]]
+
+
+def test_capped_partial_rollup_retains_tail_stable_ids(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OOS_ISSUES_PER_RUN_CAP", "2")
+    monkeypatch.setattr(oos_filer, "_codex_available", lambda: False)
+    _setup(tmp_path)
+    _write_oos(tmp_path, _THREE_OOS_BLOCKS)
+    fake = FakeCli(tmp_path)
+    rc, _payload = _run(tmp_path, fake, monkeypatch)
+    assert rc == 0
+    # cap=2 keeps the first block and rolls the remaining two into one aggregate issue.
+    assert len([call for call in fake.calls if call[:2] == ["issue", "create-one"]]) == 2
+    sentinel = (tmp_path / "oos-issues-created.md").read_text(encoding="utf-8")
+    # The aggregate (last) issue must retain the tail stable IDs, not drop everything past the first.
+    assert "oos-accepted-main-agent:OOS_1" in sentinel
+    assert "oos-accepted-main-agent:OOS_2" in sentinel
+    assert "oos-accepted-main-agent:OOS_3" in sentinel
+    # A retry must recognize every rolled-up block as already filed.
+    retry = FakeCli(tmp_path)
+    rc_retry, _retry_payload = _run(tmp_path, retry, monkeypatch)
+    assert rc_retry == 0
+    assert not [call for call in retry.calls if call[:2] == ["issue", "create-one"]]
