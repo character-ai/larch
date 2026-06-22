@@ -1213,7 +1213,7 @@ If no issues were identified, your entire response content MUST be exactly the s
 _FENCE_RE = re.compile(r"^[ \t]{0,3}(`{3,})([^`]*)$")
 
 
-@dataclass
+@dataclass(frozen=True)
 class MermaidFence:
     lines: list[str]
     heading: str

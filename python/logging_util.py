@@ -154,7 +154,7 @@ def diagnostic(message: str) -> None:
     _ = sys.stderr.flush()
 
 
-@dataclass
+@dataclass(frozen=True)
 class BreadcrumbWriter:
     """Progress breadcrumbs; honor quiet routing when LARCH_QUIET_ACTIVE is set."""
 
@@ -200,7 +200,7 @@ def iter_jsonl_dicts(lines: Iterable[str]) -> Iterator[dict[str, object]]:
         yield cast("dict[str, object]", parsed)
 
 
-@dataclass
+@dataclass(frozen=True)
 class JsonlJournal:
     """Append-only JSONL journal keyed by run_id."""
 

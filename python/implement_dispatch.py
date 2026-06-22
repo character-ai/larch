@@ -636,7 +636,7 @@ def step8_oos_checkpoint_main(argv: list[str] | None = None) -> int:
     return result.returncode
 
 
-@dataclass
+@dataclass(frozen=True)
 class RecoveryParse:
     tuples: set[tuple[str, str]]
     paths: set[str]
@@ -881,6 +881,7 @@ def run_dispatch_main(argv: list[str] | None = None) -> int:
     return result.returncode
 
 
+# Mutable state: scout_status / baseline_sha / spawn_branch are filled in as dispatch proceeds.
 @dataclass
 class DispatchState:
     repo_root: Path

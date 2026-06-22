@@ -45,6 +45,7 @@ class CollectorOptions:
     paths_file: str = ""
 
 
+# Mutable: exit_code and failure_reason are refined in place after construction.
 @dataclass
 class CollectorRecord:
     reviewer_file: str
@@ -140,6 +141,7 @@ class RetryMeta:
     stderr_sink: str = ""
 
 
+# Mutable builder: process / sentinel / launched are set when the retry is launched.
 @dataclass
 class RetryPlan:
     index: int

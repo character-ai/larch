@@ -44,6 +44,7 @@ class TimingRecord:
     duration_ms: int
 
 
+# Mutable accumulator: add() sums token counts into the fields in place.
 @dataclass
 class TokenLedgerTally:
     input: int = 0
@@ -77,7 +78,7 @@ class TokenLedgerTally:
         }
 
 
-@dataclass
+@dataclass(frozen=True)
 class TokenLedger:
     path: Path
     session_id: str | None = None
@@ -988,7 +989,7 @@ def record_vendor_from_sidecar(*, input_path: Path | None, ledger: str | None = 
     )
 
 
-@dataclass
+@dataclass(frozen=True)
 class ResearchLaneTally:
     root: Path
 

@@ -25,7 +25,7 @@ SUSPEND_REFUND_SECONDS = 60
 GENERATORS_TSV_COLUMNS = 2
 
 
-@dataclass
+@dataclass(frozen=True)
 class WaitClock:
     """Injectable clock seam for wait-reviewers tests."""
 

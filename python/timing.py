@@ -45,7 +45,7 @@ TIMING_VENDORS_ALLOWED: frozenset[str] = frozenset({"codex", "cursor", "claude"}
 _TASK_KIND_RE = re.compile(r"^[a-z][a-z0-9-]{0,63}$")
 
 
-@dataclass
+@dataclass(frozen=True)
 class TimingLedger:
     path: Path
     skill: str = "implement"
@@ -146,7 +146,7 @@ class TimingLedger:
             pass
 
 
-@dataclass
+@dataclass(frozen=True)
 class TimingReport:
     ledger_path: Path
 

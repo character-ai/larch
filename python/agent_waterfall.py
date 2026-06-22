@@ -91,13 +91,13 @@ class Options:
     site: str = "review Step 2"
 
 
-@dataclass
+@dataclass(frozen=True)
 class DropState:
     reason: str = ""
     detail: str = ""
 
 
-@dataclass
+@dataclass(frozen=True)
 class PhaseLaunch:
     idx: int
     output: str
