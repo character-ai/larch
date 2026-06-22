@@ -12,7 +12,7 @@ import subprocess
 import sys
 import time
 from collections.abc import Mapping, Sequence
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, fields
 from pathlib import Path
 
 import pytest
@@ -107,6 +107,11 @@ def test_launcher_paths_maps_stable_sidecars(tmp_path: Path) -> None:
     assert paths.output == output
     for attr, suf in expected_suffixes.items():
         assert getattr(paths, attr) == output.with_suffix(suffix + suf), attr
+    # Completeness: every LauncherPaths field must be pinned above (output is
+    # checked separately), so a newly added field cannot silently bypass this
+    # stability check the way it would when this test mirrored the from_output
+    # constructor directly.
+    assert {f.name for f in fields(agents.LauncherPaths)} == expected_suffixes.keys() | {"output"}
     assert paths.sentinel_done(".inner.done") == paths.inner_done
     with pytest.raises(FrozenInstanceError):
         paths.done = output  # type: ignore[misc]
