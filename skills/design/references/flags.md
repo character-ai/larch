@@ -25,7 +25,7 @@ Step 0-pre validation and positional classification are implemented by `skills/d
 
 `python/cli.py session write-run-params` writes schema v3 `run-params.json` with `partition_requested`, `brainstorm_requested`, `approve_requested`, and `skip_approve_requested` booleans. `skip_approve_requested` defaults to `false` and is read at Step 1d.7 and Step 4b Gate C.
 
-**Positional tail**: after flags, either `^[0-9]+$` (existing issue) or verbal feature text (create issue via `/larch:issue` first). When the first positional token is all digits, only that token becomes `POSITIONAL_VALUE`; any later tokens are ignored (see `python/design_argv.py`).
+**Positional tail**: after flags, either `^[0-9]+$` (existing issue) or verbal feature text (create issue via `/larch:issue` first). When the first positional token is all digits, that token becomes `POSITIONAL_VALUE` and parsing continues, so flags may appear on either side of the issue id (non-contiguous argv): valid flags after the issue id are honored and unknown/forbidden flags after it still error, rather than being silently dropped. Any later non-flag tokens are ignored. A non-digit first positional instead starts verbal feature text — flag parsing stops and the remainder is taken literally (see `python/design_argv.py`).
 
 ## Plan-size thresholds (Step 2b.5)
 

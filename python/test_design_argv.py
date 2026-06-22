@@ -57,11 +57,18 @@ def test_design_parse_argv_cli_writes_sourceable_output(tmp_path: Path) -> None:
     [
         (("--hard",), "--hard"),
         (("--bogus",), "--bogus"),
+        # Forbidden/unknown flags after a numeric issue positional still error
+        # (non-contiguous argv is parsed, not silently dropped).
+        (("123", "--hard"), "--hard"),
+        (("123", "--bogus"), "--bogus"),
         (("--run-id",), "--run-id"),
         (("--per-round-approval", "--per-round-approval"), "--per-round-approval"),
         (("--skip-approve", "--skip-approve"), "--skip-approve"),
         (("-s", "-s"), "--skip-approve"),
         (("--run-id", "bad\nid", "3249"), "newline-in-value"),
+        (("123", "--run-id", "--bogus"), "--bogus"),
+        (("123", "--run-id", "--hard"), "--hard"),
+        (("123", "--run-id", "--brainstorm"), "--brainstorm"),
         (("foo\n=true",), "newline-in-value"),
     ],
 )
@@ -103,3 +110,47 @@ def test_design_parse_argv_cli_metacharacters_preserved_with_output(tmp_path: Pa
     assert kvs["POSITIONAL_VALUE"] == "Strunk & White $x"
     text = output.read_text(encoding="utf-8")
     assert "POSITIONAL_VALUE='Strunk & White $x'" in text
+
+
+@pytest.mark.parametrize(
+    ("args", "expected"),
+    [
+        (("123", "--no-dedup"), {"NO_DEDUP_REQUESTED": "true"}),
+        (("123", "--skip-approve"), {"SKIP_APPROVE_REQUESTED": "true"}),
+        (("123", "-p"), {"PARTITION_REQUESTED": "true"}),
+        (("123", "--run-id", "abc"), {"RUN_ID": "abc"}),
+        # Flags on both sides of the issue id (non-contiguous argv).
+        (
+            ("--brainstorm", "123", "--no-dedup"),
+            {"BRAINSTORM_REQUESTED": "true", "NO_DEDUP_REQUESTED": "true"},
+        ),
+    ],
+)
+def test_design_parse_argv_cli_honors_flags_after_issue(
+    args: tuple[str, ...],
+    expected: dict[str, str],
+) -> None:
+    result = _run_parse(*args)
+    assert result.returncode == 0
+    kvs = _stdout_kvs(result.stdout)
+    assert kvs["POSITIONAL_KIND"] == "issue"
+    assert kvs["POSITIONAL_VALUE"] == "123"
+    for key, val in expected.items():
+        assert kvs[key] == val
+
+
+def test_design_parse_argv_cli_ignores_extra_nonflag_token_after_issue() -> None:
+    result = _run_parse("123", "456")
+    assert result.returncode == 0
+    kvs = _stdout_kvs(result.stdout)
+    assert kvs["POSITIONAL_KIND"] == "issue"
+    assert kvs["POSITIONAL_VALUE"] == "123"
+
+
+def test_design_parse_argv_cli_verbal_tail_keeps_flag_like_tokens_literal() -> None:
+    result = _run_parse("feature", "--no-dedup")
+    assert result.returncode == 0
+    kvs = _stdout_kvs(result.stdout)
+    assert kvs["POSITIONAL_KIND"] == "verbal"
+    assert kvs["POSITIONAL_VALUE"] == "feature --no-dedup"
+    assert kvs["NO_DEDUP_REQUESTED"] == "false"
