@@ -231,7 +231,7 @@
     "file": "agents.py",
     "code": "C901",
     "qualified_symbol": "launch_claude_review_main",
-    "metric": 14
+    "metric": 15
   },
   {
     "file": "agents.py",
@@ -411,7 +411,7 @@
     "file": "agents.py",
     "code": "PLR0912",
     "qualified_symbol": "launch_claude_review_main",
-    "metric": 16
+    "metric": 17
   },
   {
     "file": "agents.py",
@@ -579,7 +579,7 @@
     "file": "agents.py",
     "code": "PLR0915",
     "qualified_symbol": "launch_claude_review_main",
-    "metric": 71
+    "metric": 77
   },
   {
     "file": "agents.py",
