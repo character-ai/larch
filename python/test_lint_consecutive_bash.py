@@ -88,6 +88,21 @@ echo two
     assert rc == 0, err
 
 
+def test_wrong_correct_labels_only_in_gap_passes(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    write(tmp_path / "skills/foo/SKILL.md", skill_doc("""
+```bash
+echo one
+```
+WRONG:
+CORRECT:
+```bash
+echo two
+```
+"""))
+    rc, err = run(tmp_path, capsys)
+    assert rc == 0, err
+
+
 def test_pause_resume_launcher_boundary_passes(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     write(tmp_path / "skills/design/SKILL.md", skill_doc("""
 ```bash

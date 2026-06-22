@@ -183,8 +183,18 @@ def _has_valid_suppression(fence: Fence) -> bool:
     return False
 
 
-def _is_wrong_correct_pair(first: Fence, second: Fence) -> bool:
-    text = "\n".join([*first.preceding_context, first.info, first.body, *second.preceding_context, second.info, second.body])
+def _is_wrong_correct_pair(first: Fence, second: Fence, gap_lines: list[str]) -> bool:
+    text = "\n".join(
+        [
+            *first.preceding_context,
+            first.info,
+            first.body,
+            *gap_lines,
+            *second.preceding_context,
+            second.info,
+            second.body,
+        ]
+    )
     return bool(re.search(r"\bWRONG\b", text, re.IGNORECASE) and re.search(r"\bCORRECT\b", text, re.IGNORECASE))
 
 
@@ -210,7 +220,7 @@ def _is_immediate_background_pair(text: str) -> bool:
 
 
 def _is_carved_out_pair(first: Fence, second: Fence, gap_lines: list[str]) -> bool:
-    if _is_wrong_correct_pair(first, second):
+    if _is_wrong_correct_pair(first, second, gap_lines):
         return True
     text = _combined_pair_text(first, second, gap_lines)
     return _is_recovery_probe_pair(text) or _is_design_pause_resume_pair(text) or _is_immediate_background_pair(text)
