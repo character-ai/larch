@@ -5905,6 +5905,7 @@ def launch_claude_review_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--commit-count", default="")
     parser.add_argument("--plan-file", default="")
     parser.add_argument("--feature-file", default="")
+    parser.add_argument("--session-env-path", default="")
     parser.add_argument("--timeout", default="1800")
     parser.add_argument("--timing-task-kind", default="claude-review")
     args = parser.parse_args(argv)
@@ -5943,6 +5944,13 @@ def launch_claude_review_main(argv: list[str] | None = None) -> int:
             render_args.extend(["--plan-file", args.plan_file])
         if args.feature_file:
             render_args.extend(["--feature-file", args.feature_file])
+        session_env_path = _review_session_env_path(args)
+        ledger_file = findings_ledger.ledger_path(
+            findings_ledger.ledger_root(Path(args.output).parent, session_env_path=session_env_path)
+        )
+        render_args.extend(["--findings-ledger-file", str(ledger_file)])
+        if session_env_path:
+            render_args.extend(["--session-env-path", session_env_path])
         rendered = proc.run(render_args)
         if rendered.returncode != 0:
             _err(rendered.stderr or rendered.stdout or "agent launch-claude-review: render specialist failed")

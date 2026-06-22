@@ -376,6 +376,8 @@ class _Tally:
             block_text = block.read_text(encoding="utf-8", errors="replace")
             yes, _no, _judge_error, result = self._tally_votes_for_id(item_id)
             outcome = "oos" if item_id.startswith("OOS_") else result
+            if _LATENT_BODY_SEVERITY.search(block_text) and outcome != "accepted":
+                outcome = "oos"
             entries.append(
                 {
                     "finding_id": item_id,

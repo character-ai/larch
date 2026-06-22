@@ -1303,6 +1303,46 @@ def test_tally_plan_review_zero_voters_requires_main_agent(tmp_path: Path) -> No
     assert not (design / "findings-ledger.tsv").exists()
 
 
+def test_tally_plan_review_rejected_latent_ledger_outcome_is_oos(tmp_path: Path) -> None:
+    ballot = tmp_path / "ballot.md"
+    _ = ballot.write_text(
+        """### FINDING_1: Latent deferred item
+- **Reviewer**: Cursor-Arch
+- **Severity**: latent
+- Concern: Real but latent concern.
+""",
+        encoding="utf-8",
+    )
+    v1 = tmp_path / "v1.txt"
+    v2 = tmp_path / "v2.txt"
+    v3 = tmp_path / "v3.txt"
+    for voter in (v1, v2, v3):
+        _ = voter.write_text("FINDING_1: NO\n", encoding="utf-8")
+    design = tmp_path / "design-latent"
+    design.mkdir()
+    proc = run_cli(
+        "plan-review",
+        "tally",
+        "--ballot-file",
+        str(ballot),
+        "--voter-files",
+        str(v1),
+        str(v2),
+        str(v3),
+        "--design-tmpdir",
+        str(design),
+        env={"LARCH_QUIET_DISABLE": "1"},
+    )
+    assert proc.returncode == 0, proc.stderr
+    ledger_rows = _read_tsv(design / "findings-ledger.tsv")
+    assert ledger_rows["FINDING_1"]["outcome"] == "oos"
+    oos = (design / "oos.md").read_text(encoding="utf-8")
+    rejected = (design / "rejected-findings.md").read_text(encoding="utf-8")
+    assert "FINDING_1" in oos
+    assert "latent-rerouted" in oos
+    assert "FINDING_1" not in rejected
+
+
 def test_tally_plan_review_ledger_appends_and_replaces_round(tmp_path: Path) -> None:
     ballot = tmp_path / "ballot.md"
     _write_tally_ballot(ballot)
