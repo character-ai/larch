@@ -5,22 +5,34 @@ positional parameters that lacks a bare *.  Ships warning-only behind a baseline
 file (keyword-only-baseline.json) listing every currently-failing def, mirroring
 the lint_complexity_baseline.py ratchet pattern.  New violations fail (exit 1);
 baselined ones only warn (exit 0).  Use --write to regenerate the baseline.
+
+Waiver paths for externally dictated or callback-shaped signatures:
+- Override methods on ``argparse.ArgumentParser`` subclasses (auto-detected).
+- ``ast.NodeVisitor.visit_*`` callbacks (auto-detected).
+- Trailing or standalone ``# lint-keyword-only: ok <reason>`` on the ``def`` line.
+- Optional ``keyword-only-exemptions.json`` rows with ``file`` and
+  ``qualified_symbol``.
 """
 
 from __future__ import annotations
 
-import argparse
+import argparse as argparse_module
 import ast
 import json
+import re
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TypedDict, cast
 
 TOOL_FAILURE_EXIT = 2
 BASELINE_KEYS = frozenset({"file", "qualified_symbol"})
+EXEMPTION_KEYS = frozenset({"file", "qualified_symbol", "reason"})
 EXEMPT_FILENAMES = frozenset({"conftest.py", "test_support.py", "review_test_support.py"})
 SELF_LIKE = frozenset({"self", "cls"})
 MIN_POSITIONAL_PARAMS = 2
+STANDALONE_PRAGMA_RE = re.compile(r"^\s*#\s*lint-keyword-only: ok\s+(\S.*)$")
+TRAILING_PRAGMA_RE = re.compile(r"\s#\s*lint-keyword-only: ok\s+(\S.*)$")
 
 
 class Record(TypedDict):
@@ -32,6 +44,13 @@ class BaselineError(ValueError):
     """Raised when the committed baseline cannot be trusted."""
 
 
+@dataclass(frozen=True)
+class ScanContext:
+    normalized_file: str
+    source_lines: tuple[str, ...]
+    exemption_keys: frozenset[tuple[str, str]]
+
+
 def is_exempt_path(name: str) -> bool:
     """Return True when the filename is pytest-facing and not production source."""
     return (name.startswith("test_") and name.endswith(".py")) or name in EXEMPT_FILENAMES
@@ -41,46 +60,171 @@ def _is_dunder(func_name: str) -> bool:
     return func_name.startswith("__") and func_name.endswith("__")
 
 
+def _has_bare_star_separator(args: ast.arguments) -> bool:
+    """Return True when the signature uses a bare * (not a named *args)."""
+    return bool(args.kwonlyargs) and args.vararg is None
+
+
 def _has_violation(args: ast.arguments) -> bool:
     """Return True when the function needs a bare * but lacks one."""
-    if args.vararg is not None or args.kwonlyargs:
-        return False
     positional: list[ast.arg] = list(args.posonlyargs) + list(args.args)
     non_self_cls: list[ast.arg] = [a for a in positional if a.arg not in SELF_LIKE]
-    return len(non_self_cls) >= MIN_POSITIONAL_PARAMS
+    if len(non_self_cls) < MIN_POSITIONAL_PARAMS:
+        return False
+    return not _has_bare_star_separator(args)
+
+
+def _base_name(base: ast.expr) -> str | None:
+    if isinstance(base, ast.Name):
+        return base.id
+    if isinstance(base, ast.Attribute):
+        return base.attr
+    return None
+
+
+def _is_argument_parser_subclass(class_node: ast.ClassDef) -> bool:
+    return any(_base_name(base) == "ArgumentParser" for base in class_node.bases)
+
+
+def _is_node_visitor_subclass(class_node: ast.ClassDef) -> bool:
+    return any(_base_name(base) == "NodeVisitor" for base in class_node.bases)
+
+
+def _is_external_api_override(class_node: ast.ClassDef, method_name: str) -> bool:
+    if not _is_argument_parser_subclass(class_node):
+        return False
+    return hasattr(argparse_module.ArgumentParser, method_name)
+
+
+def _is_node_visitor_callback(class_node: ast.ClassDef, method_name: str) -> bool:
+    return _is_node_visitor_subclass(class_node) and method_name.startswith("visit_")
+
+
+def _line_has_pragma(line: str) -> bool:
+    return bool(
+        STANDALONE_PRAGMA_RE.match(line) or TRAILING_PRAGMA_RE.search(line)
+    )
+
+
+def _should_report_violation(
+    func: ast.FunctionDef | ast.AsyncFunctionDef,
+    prefix: tuple[str, ...],
+    *,
+    ctx: ScanContext,
+    containing_class: ast.ClassDef | None,
+) -> bool:
+    if _is_dunder(func.name):
+        return False
+    qualified: str = ".".join((*prefix, func.name))
+    if (ctx.normalized_file, qualified) in ctx.exemption_keys:
+        return False
+    if 0 < func.lineno <= len(ctx.source_lines) and _line_has_pragma(
+        ctx.source_lines[func.lineno - 1]
+    ):
+        return False
+    if containing_class is not None:
+        if _is_external_api_override(containing_class, func.name):
+            return False
+        if _is_node_visitor_callback(containing_class, func.name):
+            return False
+    return _has_violation(func.args)
+
+
+def _collect_function_violations(
+    func: ast.FunctionDef | ast.AsyncFunctionDef,
+    prefix: tuple[str, ...],
+    *,
+    ctx: ScanContext,
+    containing_class: ast.ClassDef | None,
+) -> list[Record]:
+    violations: list[Record] = []
+    if _should_report_violation(
+        func, prefix, ctx=ctx, containing_class=containing_class
+    ):
+        qualified: str = ".".join((*prefix, func.name))
+        violations.append({"file": ctx.normalized_file, "qualified_symbol": qualified})
+    violations.extend(
+        _collect_violations(
+            func, (*prefix, func.name), ctx=ctx, containing_class=None
+        )
+    )
+    return violations
 
 
 def _collect_violations(
     node: ast.AST,
     prefix: tuple[str, ...],
     *,
-    normalized_file: str,
+    ctx: ScanContext,
+    containing_class: ast.ClassDef | None = None,
 ) -> list[Record]:
     violations: list[Record] = []
     for child in ast.iter_child_nodes(node):
         if isinstance(child, ast.ClassDef):
             violations.extend(
                 _collect_violations(
-                    child, (*prefix, child.name), normalized_file=normalized_file
+                    child,
+                    (*prefix, child.name),
+                    ctx=ctx,
+                    containing_class=child,
                 )
             )
         elif isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            qualified: str = ".".join((*prefix, child.name))
-            if not _is_dunder(child.name) and _has_violation(child.args):
-                violations.append({"file": normalized_file, "qualified_symbol": qualified})
             violations.extend(
-                _collect_violations(
-                    child, (*prefix, child.name), normalized_file=normalized_file
+                _collect_function_violations(
+                    child, prefix, ctx=ctx, containing_class=containing_class
                 )
             )
         else:
             violations.extend(
-                _collect_violations(child, prefix, normalized_file=normalized_file)
+                _collect_violations(child, prefix, ctx=ctx, containing_class=containing_class)
             )
     return violations
 
 
-def scan_file(path: Path, *, python_dir: Path) -> list[Record]:
+def _validate_exemption_record(item: object, *, index: int, source: Path) -> tuple[str, str]:
+    if not isinstance(item, dict):
+        raise BaselineError(f"{source}: exemption {index} must be an object")
+    record: dict[str, object] = cast("dict[str, object]", item)
+    if set(record) - EXEMPTION_KEYS:
+        raise BaselineError(
+            f"{source}: exemption {index} must have keys {sorted(EXEMPTION_KEYS)}"
+        )
+    file_val: object = record.get("file")
+    sym_val: object = record.get("qualified_symbol")
+    if not isinstance(file_val, str) or not file_val:
+        raise BaselineError(f"{source}: exemption {index} has invalid file")
+    if not isinstance(sym_val, str) or not sym_val:
+        raise BaselineError(f"{source}: exemption {index} has invalid qualified_symbol")
+    reason: object = record.get("reason")
+    if reason is not None and not isinstance(reason, str):
+        raise BaselineError(f"{source}: exemption {index} has invalid reason")
+    return (file_val, sym_val)
+
+
+def load_exemptions(path: Path) -> frozenset[tuple[str, str]]:
+    """Load optional exemption rows; missing file yields an empty set."""
+    if not path.is_file():
+        return frozenset()
+    try:
+        data: object = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise BaselineError(f"{path}: cannot load exemptions: {exc}") from exc
+    if not isinstance(data, list):
+        raise BaselineError(f"{path}: exemptions must be a top-level JSON array")
+    items: list[object] = cast("list[object]", data)
+    return frozenset(
+        _validate_exemption_record(item, index=index, source=path)
+        for index, item in enumerate(items)
+    )
+
+
+def scan_file(
+    path: Path,
+    *,
+    python_dir: Path,
+    exemption_keys: frozenset[tuple[str, str]],
+) -> list[Record]:
     """Return keyword-only violations for one source file."""
     try:
         source: str = path.read_text(encoding="utf-8")
@@ -91,7 +235,12 @@ def scan_file(path: Path, *, python_dir: Path) -> list[Record]:
     except SyntaxError:
         return []
     normalized: str = path.relative_to(python_dir).as_posix()
-    return _collect_violations(tree, (), normalized_file=normalized)
+    ctx = ScanContext(
+        normalized_file=normalized,
+        source_lines=tuple(source.splitlines()),
+        exemption_keys=exemption_keys,
+    )
+    return _collect_violations(tree, (), ctx=ctx)
 
 
 def iter_source_files(python_dir: Path) -> list[Path]:
@@ -147,15 +296,24 @@ def serialize_baseline(records: list[Record]) -> str:
     return json.dumps(ordered, indent=2) + "\n"
 
 
-def _collect_all(python_dir: Path) -> list[Record]:
+def _collect_all(
+    python_dir: Path, *, exemption_keys: frozenset[tuple[str, str]]
+) -> list[Record]:
     records: list[Record] = []
     for path in iter_source_files(python_dir):
-        records.extend(scan_file(path, python_dir=python_dir))
+        records.extend(
+            scan_file(path, python_dir=python_dir, exemption_keys=exemption_keys)
+        )
     return records
 
 
-def _run_write(python_dir: Path, *, baseline_path: Path) -> int:
-    records: list[Record] = _collect_all(python_dir)
+def _run_write(
+    python_dir: Path,
+    *,
+    baseline_path: Path,
+    exemption_keys: frozenset[tuple[str, str]],
+) -> int:
+    records: list[Record] = _collect_all(python_dir, exemption_keys=exemption_keys)
     _ = baseline_path.write_text(serialize_baseline(records), encoding="utf-8")
     print(
         f"lint-keyword-only: wrote {len(records)} records to {baseline_path}",
@@ -164,7 +322,12 @@ def _run_write(python_dir: Path, *, baseline_path: Path) -> int:
     return 0
 
 
-def _run_check(python_dir: Path, *, baseline_path: Path) -> int:
+def _run_check(
+    python_dir: Path,
+    *,
+    baseline_path: Path,
+    exemption_keys: frozenset[tuple[str, str]],
+) -> int:
     try:
         baseline_records: list[Record] = load_baseline(baseline_path)
     except BaselineError as exc:
@@ -173,7 +336,7 @@ def _run_check(python_dir: Path, *, baseline_path: Path) -> int:
     baseline_set: frozenset[tuple[str, str]] = frozenset(
         _record_key(r) for r in baseline_records
     )
-    live_records: list[Record] = _collect_all(python_dir)
+    live_records: list[Record] = _collect_all(python_dir, exemption_keys=exemption_keys)
     new_violations: list[Record] = []
     warned: list[Record] = []
     for rec in live_records:
@@ -196,8 +359,8 @@ def _run_check(python_dir: Path, *, baseline_path: Path) -> int:
     return 1 if new_violations else 0
 
 
-def _parse_args(argv: list[str]) -> argparse.Namespace | None:
-    parser = argparse.ArgumentParser(
+def _parse_args(argv: list[str]) -> argparse_module.Namespace | None:
+    parser = argparse_module.ArgumentParser(
         prog="cli.py lint keyword-only", description=__doc__
     )
     _ = parser.add_argument(
@@ -217,7 +380,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace | None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parsed: argparse.Namespace | None = _parse_args(
+    parsed: argparse_module.Namespace | None = _parse_args(
         argv if argv is not None else sys.argv[1:]
     )
     if parsed is None:
@@ -231,9 +394,19 @@ def main(argv: list[str] | None = None) -> int:
         )
         return TOOL_FAILURE_EXIT
     baseline_path: Path = python_dir / "keyword-only-baseline.json"
+    exemptions_path: Path = python_dir / "keyword-only-exemptions.json"
+    try:
+        exemption_keys: frozenset[tuple[str, str]] = load_exemptions(exemptions_path)
+    except BaselineError as exc:
+        print(f"lint-keyword-only: {exc}", file=sys.stderr)
+        return TOOL_FAILURE_EXIT
     if parsed.write:
-        return _run_write(python_dir, baseline_path=baseline_path)
-    return _run_check(python_dir, baseline_path=baseline_path)
+        return _run_write(
+            python_dir, baseline_path=baseline_path, exemption_keys=exemption_keys
+        )
+    return _run_check(
+        python_dir, baseline_path=baseline_path, exemption_keys=exemption_keys
+    )
 
 
 if __name__ == "__main__":

@@ -825,10 +825,6 @@
   },
   {
     "file": "clarify.py",
-    "qualified_symbol": "_ClarifyParser.exit"
-  },
-  {
-    "file": "clarify.py",
     "qualified_symbol": "_handle_design_clarify_fetch"
   },
   {
@@ -846,6 +842,10 @@
   {
     "file": "clarify.py",
     "qualified_symbol": "_read_result_env"
+  },
+  {
+    "file": "clarify.py",
+    "qualified_symbol": "_run_cli"
   },
   {
     "file": "clarify.py",
@@ -1290,6 +1290,10 @@
   {
     "file": "design_lifecycle.py",
     "qualified_symbol": "_call_pause_save"
+  },
+  {
+    "file": "design_lifecycle.py",
+    "qualified_symbol": "_capture_contract_stream_to_paths"
   },
   {
     "file": "design_lifecycle.py",
@@ -1965,10 +1969,6 @@
   },
   {
     "file": "issue_wire.py",
-    "qualified_symbol": "_DiagnosticArgumentParser._print_message"
-  },
-  {
-    "file": "issue_wire.py",
     "qualified_symbol": "_classify_named_block_lines"
   },
   {
@@ -2110,6 +2110,14 @@
   {
     "file": "lint_gh_body_inline.py",
     "qualified_symbol": "scan_file"
+  },
+  {
+    "file": "lint_keyword_only.py",
+    "qualified_symbol": "_is_external_api_override"
+  },
+  {
+    "file": "lint_keyword_only.py",
+    "qualified_symbol": "_is_node_visitor_callback"
   },
   {
     "file": "lint_literal_counts.py",
@@ -4069,6 +4077,10 @@
   },
   {
     "file": "ship.py",
+    "qualified_symbol": "_fill_if_empty"
+  },
+  {
+    "file": "ship.py",
     "qualified_symbol": "_hydrate_fresh_context"
   },
   {
@@ -4349,10 +4361,6 @@
   },
   {
     "file": "tracking_issue.py",
-    "qualified_symbol": "_Parser._print_message"
-  },
-  {
-    "file": "tracking_issue.py",
     "qualified_symbol": "_emit_kv"
   },
   {
@@ -4438,6 +4446,10 @@
   {
     "file": "voting.py",
     "qualified_symbol": "classify_result"
+  },
+  {
+    "file": "voting.py",
+    "qualified_symbol": "grow_attribution_labels"
   },
   {
     "file": "voting.py",
