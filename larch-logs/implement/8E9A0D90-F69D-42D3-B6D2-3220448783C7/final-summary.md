@@ -1,14 +1,14 @@
-## /implement run 8E9A0D90-F69D-42D3-B6D2-3220448783C7 — bailed
+## /implement run 8E9A0D90-F69D-42D3-B6D2-3220448783C7 — pr-created
 
-- **Outcome**: bailed
 - **Mode**: N/A
 - **Duration**: 01:43:37
-- **Cost**: 💰 TOTAL ~$16.13 — Claude $2.99, Codex $7.70, Cursor $1.41, Claude (subprocess) $4.03  |  Tokens: 17286k
+- **Cost**: 💰 TOTAL ~$16.78 — Claude $3.64, Codex $7.70, Cursor $1.41, Claude (subprocess) $4.03  |  Tokens: 18354k
 - **Issue**: #4976 — https://github.com/character-ai/larch/issues/4976
+- **PR**: #5094 — https://github.com/character-ai/larch/pull/5094
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (2)
 - **Code review**: 1/2 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +381/-21, larch-logs +596/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 1
@@ -57,3 +57,7 @@ cursor/apply                          │                                       
 **Reviewer slot failures**: 0
 
 _Cost is the per-round vendor cost (Codex + Cursor + Claude subprocess), attributed by token-ledger timestamp window; it excludes main-agent Claude, so it is less than the run Cost line above. Rendered as an em dash when per-round timing or the token ledger is unavailable._
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified. Change directly implements G-Py-4 (fail loudly, fail closed) by replacing broad suppress(Exception) with narrow exception handlers and stderr warnings; helpers are isolated (G-Py-5), type-annotated (G-Py-2), and use appropriate domain types (G-Py-3).
