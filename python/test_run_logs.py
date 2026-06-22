@@ -8,7 +8,7 @@ import subprocess
 from collections.abc import Mapping, Sequence
 from io import StringIO
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import pytest
 
@@ -179,14 +179,13 @@ def test_load_or_recover_manifest_absent_run_dir_tags_partial(tmp_path: Path) ->
     recovered = run_logs.load_or_recover_manifest_checked(ctx)
     assert recovered.recovery_ok
     assert recovered.manifest.status == config.MANIFEST_STATUS_PARTIAL
-    assert recovered.manifest.extra == {
-        "recovery_reason": "manifest_lost_mid_run",
-        "issue_number": 123,
-    }
+    assert recovered.manifest.extra == {"recovery_reason": "manifest_lost_mid_run"}
+    assert recovered.manifest.reserved["issue_number"] == 123
     manifest_path = tmp_path / "larch-logs" / "implement" / "lost-run" / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert manifest["schema_version"] == 2
     assert manifest["run_id"] == "lost-run"
+    assert manifest["issue_number"] == 123
     assert manifest["steps_ran"] == {}
     assert manifest["issue_number"] == 123
 
@@ -1925,3 +1924,82 @@ def test_append_failure_sanitizes_diagram_warning_captures(tmp_path: Path) -> No
     assert "->>" not in text
     assert "subgraph" not in text
     assert "stderr" in text
+
+
+def test_manifest_v2_round_trip_preserves_reserved_and_extension_bytes() -> None:
+    original = {
+        "schema_version": 2,
+        "skill": "implement",
+        "run_id": "run-1",
+        "operator_cwd": "<OPERATOR_CWD>",
+        "operator_repo_root": "<REPO_ROOT>",
+        "parent_skill": None,
+        "issue_number": 42,
+        "larch_version": "1.2.3",
+        "model_roster": {"main": "model"},
+        "effort": "unknown",
+        "started_at": "2026-01-01T00:00:00Z",
+        "updated_at": "2026-01-01T00:00:00Z",
+        "attempt": 1,
+        "superseded_by": None,
+        "stalled_at_step": "5",
+        "steps_ran": {"step5": True},
+        "flags": {"merge": True},
+        "status": "partial",
+        "pr_number": 9,
+        "extension_key": "kept",
+    }
+
+    manifest = run_logs.Manifest.from_json(original)
+    rendered = manifest.to_json(existing=original)
+
+    assert rendered == original
+    text = json.dumps(rendered, indent=2, sort_keys=True) + "\n"
+    assert '"created_at"' not in text
+    assert '"version"' not in text
+    assert manifest.reserved["stalled_at_step"] == "5"
+    assert manifest.extra == {"extension_key": "kept"}
+
+
+def test_update_manifest_routes_reserved_keys_to_top_level(tmp_path: Path) -> None:
+    ctx = _ctx(tmp_path)
+    _ = run_logs.init_run(ctx, run_id="run-abc")
+
+    updated = run_logs.update_manifest(ctx, stalled_at_step="7", pr_number=123, custom_extension="yes")
+
+    manifest_path = tmp_path / "larch-logs" / "implement" / "run-abc" / "manifest.json"
+    data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert data["stalled_at_step"] == "7"
+    assert data["pr_number"] == 123
+    assert data["custom_extension"] == "yes"
+    assert updated.reserved["stalled_at_step"] == "7"
+    assert updated.reserved["pr_number"] == 123
+    assert updated.extra == {"custom_extension": "yes"}
+
+
+def test_manifest_v2_registry_keeps_parse_and_emit_filters_distinct() -> None:
+    original: dict[str, Any] = {
+        "schema_version": 2,
+        "status": "partial",
+        "skill": "implement",
+        "run_id": "run-1",
+        "steps_ran": {},
+        "started_at": "2026-01-01T00:00:00Z",
+        "updated_at": "2026-01-01T00:00:00Z",
+        "stalled_at_step": "old",
+    }
+
+    manifest = run_logs.Manifest.from_json(original)
+    assert manifest.extra is None
+    promoted = run_logs.Manifest(
+        status=manifest.status,
+        version=manifest.version,
+        run_id=manifest.run_id,
+        steps_ran=manifest.steps_ran,
+        created_at=manifest.created_at,
+        updated_at=manifest.updated_at,
+        extra={"stalled_at_step": "new"},
+        reserved={},
+    ).to_json(existing=original)
+
+    assert promoted["stalled_at_step"] == "new"

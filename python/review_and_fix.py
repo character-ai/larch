@@ -30,6 +30,7 @@ import redact
 import review_pipeline
 import run_logs
 import voting
+from review_types import ReviewCoreStatus, parse_findings, parse_findings_text, read_finding_text
 
 _PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 _PY_CLI = _PLUGIN_ROOT / "python" / "cli.py"
@@ -43,7 +44,12 @@ _HIGH_RE = re.compile(
     r"|^- \*\*Concern\*\*:\s*\[[Ii]mportant\](?:[\s,:;.\)]|$))"
 )
 _OOS_HEADING_RE = re.compile(r"^### FINDING_[0-9]+:.*\[(?:OUT_OF_SCOPE|OOS)\]")
-_SETTLING_CORE_STATUSES = frozenset({"ok", "fix-required", "cap-reached", "zero-findings"})
+_SETTLING_CORE_STATUSES = frozenset({
+    ReviewCoreStatus.ok,
+    ReviewCoreStatus.fix_required,
+    ReviewCoreStatus.cap_reached,
+    ReviewCoreStatus.zero_findings,
+})
 
 
 @dataclass(frozen=True)
@@ -112,7 +118,7 @@ def _run(argv: list[str], *, cwd: Path | None = None, env: dict[str, str] | None
 
 
 def _read_text(path: Path) -> str:
-    return larch_io.read_text(path, default="")
+    return read_finding_text(path)
 
 
 def _write_text(path: Path, text: str) -> None:
@@ -191,9 +197,7 @@ def _non_negative_int(value: str, label: str) -> int:
 
 
 def _count_findings(path: Path) -> int:
-    if not path.is_file():
-        return 0
-    return sum(1 for line in _read_text(path).splitlines() if _FINDING_RE.match(line))
+    return len(parse_findings(path, boundary="finding_heading"))
 
 
 def _count_rejected_lines(path: Path) -> int:
@@ -1222,8 +1226,12 @@ def _lint_fix_max_attempts() -> int:
     return 3
 
 
+def _core_status_is(core_status: str, *statuses: ReviewCoreStatus) -> bool:
+    return ReviewCoreStatus.from_wire(core_status) in statuses
+
+
 def _reviewer_prune_status_records(core_status: str) -> bool:
-    return core_status in _SETTLING_CORE_STATUSES
+    return ReviewCoreStatus.from_wire(core_status) in _SETTLING_CORE_STATUSES
 
 
 def _clear_reviewer_prune_round(ledger: Path, round_num: int, work_dir: Path) -> None:
@@ -1265,19 +1273,11 @@ def _oos_write_seq(oos_markdown: Path) -> int:
 
 
 def _extract_finding_block(text: str, finding_id: str) -> str:
-    lines: list[str] = []
-    in_block = False
-    for line in text.splitlines():
-        if _FINDING_RE.match(line):
-            in_block = line.startswith(f"### {finding_id}:")
-            if in_block:
-                lines = [line]
-            continue
-        if in_block:
-            if line.startswith("### "):
-                break
-            lines.append(line)
-    return "\n".join(lines).rstrip() + ("\n" if lines else "")
+    for finding in parse_findings_text(text, boundary="any_heading"):
+        if finding.finding_id == finding_id:
+            block = finding.block.rstrip()
+            return block + ("\n" if block else "")
+    return ""
 
 
 def _process_skipped_findings(
@@ -2183,23 +2183,11 @@ def _coder_env(result: CoderResult) -> dict[str, str | int]:
 
 def _filter_in_scope(accepted_file: Path, output: Path) -> None:
     text = _read_text(accepted_file)
-    blocks: list[list[str]] = []
-    current: list[str] = []
-    for line in text.splitlines():
-        if _FINDING_RE.match(line) and current:
-            blocks.append(current)
-            current = []
-        current.append(line)
-    if current:
-        blocks.append(current)
-    kept: list[str] = []
-    for block in blocks:
-        heading = block[0] if block else ""
-        if "[OUT_OF_SCOPE]" in heading or "[OOS]" in heading:
-            continue
-        kept.extend(block)
-        kept.append("")
-    _write_text(output, "\n".join(kept).rstrip() + ("\n" if kept else ""))
+    first = re.search(r"^### FINDING_[0-9]+:", text, flags=re.MULTILINE)
+    preamble = text[: first.start()] if first else text
+    kept = [finding.block.rstrip() for finding in parse_findings(accepted_file, boundary="finding_heading") if not _OOS_HEADING_RE.match(finding.block.splitlines()[0] if finding.block else "")]
+    findings_text = "\n\n".join(kept) + ("\n" if kept else "")
+    _write_text(output, preamble + findings_text)
 
 
 def _high_severity_count(path: Path) -> int:
@@ -2401,12 +2389,12 @@ def _run_round(args: argparse.Namespace, *, suppress_emit: bool, review_core_imp
                 )
     status = "complete"
     exit_code = 0
-    if core_status in {"panel-failed", "aggregator-validation-exhausted"}:
-        status = core_status
+    if _core_status_is(core_status, ReviewCoreStatus.panel_failed, ReviewCoreStatus.aggregator_validation_exhausted):
+        status = str(core_status)
         exit_code = 2
-    elif core_status == "main-agent-vote-required":
+    elif _core_status_is(core_status, ReviewCoreStatus.main_agent_vote_required):
         status = "main-agent-vote-required"
-    elif core_status in {"fix-required", "cap-reached"}:
+    elif _core_status_is(core_status, ReviewCoreStatus.fix_required, ReviewCoreStatus.cap_reached):
         if coder.rc == 4 or coder.status == "main-agent-required":
             status = "coder-main-agent-required"
         elif coder.rc in {2, 3} or coder.status == "submodule-violation":
@@ -2418,9 +2406,9 @@ def _run_round(args: argparse.Namespace, *, suppress_emit: bool, review_core_imp
             status = "no-changes"
         else:
             status = "in-scope-filtered-out"
-    elif core_status == "prune-skipped":
+    elif _core_status_is(core_status, ReviewCoreStatus.prune_skipped):
         status = "prune-skipped"
-    elif core_status in {"zero-findings", "ok"}:
+    elif _core_status_is(core_status, ReviewCoreStatus.zero_findings, ReviewCoreStatus.ok):
         status = "complete"
     else:
         status = core_status

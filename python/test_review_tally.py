@@ -7,6 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import review_tally
 import review_test_support as rts
 import voting
 
@@ -1768,3 +1769,16 @@ def test_neutralized_ballot_rejects_stale_sidecar(tmp_path: Path) -> None:
     )
     assert result.returncode != 0
     assert "stale for current ballot" in result.stderr
+
+
+def test_tally_seed_oos_seq_counts_mixed_oos_and_finding_headings(tmp_path: Path) -> None:
+    session_env = tmp_path / "session-env.sh"
+    _ = session_env.write_text("RUN_ID=x\n", encoding="utf-8")
+    _ = (tmp_path / "accumulated-oos.md").write_text(
+        "### OOS_1: old\nbody\n"
+        "### FINDING_2: legacy finding-shaped OOS\nbody\n"
+        "### OOS_3: old\nbody\n",
+        encoding="utf-8",
+    )
+
+    assert review_tally._seed_oos_seq(str(session_env)) == 3  # pyright: ignore[reportPrivateUsage]

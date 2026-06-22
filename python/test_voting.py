@@ -13,6 +13,7 @@ from typing import cast
 import pytest
 
 import voting
+from review_types import JudgeSeverity, ReviewVote
 
 CLI = Path(__file__).with_name("cli.py")
 
@@ -1291,3 +1292,24 @@ def test_voter_launcher_tool_normalizes_cursor_archetypes() -> None:
     assert voting.voter_launcher_tool("claude") == "claude"
     assert voting.voter_launcher_tool("codex") == "codex"
     assert voting.voter_launcher_tool("cursor") == "cursor"
+
+
+def test_judge_severity_enum_is_shared_and_public_boundaries_return_strings() -> None:
+    assert voting.JudgeSeverity is JudgeSeverity
+    assert voting.SEVERITY_BLOCKER == "blocker"
+    assert voting.SEVERITY_MAJOR == "major"
+    assert voting.valid_panel_severity("nit") == "nit"
+    assert voting.valid_panel_severity("uncertain") == "uncertain"
+    assert voting.valid_panel_severity("critical") is None
+
+
+def test_parse_judge_vote_keeps_string_return_types_for_enum_values(tmp_path: Path) -> None:
+    voter = tmp_path / "voter.txt"
+    voter.write_text("FINDING_1: YES CORRECTNESS=true SEVERITY=uncertain QUALITY=good UNCERTAIN=false\n", encoding="utf-8")
+
+    vote, _correctness, severity, _quality, _uncertain = voting.parse_judge_vote(voter, "FINDING_1")
+
+    assert vote == "YES"
+    assert not isinstance(vote, ReviewVote)
+    assert severity == "uncertain"
+    assert not isinstance(severity, JudgeSeverity)

@@ -19,6 +19,7 @@ from typing import NoReturn
 import larch_io
 import logging_util
 import voting
+from review_types import JudgeSeverity, ReviewVote
 
 _PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 _THREE_SLOT_COUNT = 3
@@ -131,7 +132,7 @@ def _reviewer_slots_for_tsv(reviewer: str) -> str:
 
 
 def _sanitize_vote(vote: str) -> str:
-    return vote if vote in {"YES", "NO", "JUDGE_ERROR"} else ""
+    return vote if vote in {item.value for item in ReviewVote} else ""
 
 
 def _sanitize_correctness(value: str) -> str:
@@ -139,7 +140,7 @@ def _sanitize_correctness(value: str) -> str:
 
 
 def _sanitize_severity(value: str) -> str:
-    return value if value in {"blocker", "major", "minor", "nit", "uncertain"} else ""
+    return value if value in {item.value for item in JudgeSeverity} else ""
 
 
 def _sanitize_quality(value: str) -> str:

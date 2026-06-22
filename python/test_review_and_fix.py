@@ -3029,3 +3029,52 @@ def test_clear_reviewer_prune_round_uses_python_helper(tmp_path: Path, monkeypat
     assert calls == [(ledger, 3, work_dir / "reviewer-prune-clear-empty.ndjson", work_dir / "reviewer-prune-clear-classification.tsv")]
     assert (work_dir / "reviewer-prune-clear-empty.ndjson").read_text(encoding="utf-8") == ""
     assert "reviewer_slots" in (work_dir / "reviewer-prune-clear-classification.tsv").read_text(encoding="utf-8")
+
+
+def test_shared_finding_parser_preserves_filter_preamble_and_inner_headings(tmp_path: Path) -> None:
+    accepted = tmp_path / "accepted.md"
+    out = tmp_path / "in-scope.md"
+    accepted.write_text(
+        "Coder preamble\n\n"
+        "### FINDING_1: keep\n"
+        "body\n"
+        "### Details\n"
+        "nested detail\n"
+        "### FINDING_2: drop [OUT_OF_SCOPE]\n"
+        "oos body\n",
+        encoding="utf-8",
+    )
+
+    review_and_fix._filter_in_scope(accepted, out)
+
+    assert out.read_text(encoding="utf-8") == (
+        "Coder preamble\n\n"
+        "### FINDING_1: keep\n"
+        "body\n"
+        "### Details\n"
+        "nested detail\n"
+    )
+
+
+def test_parser_backed_extraction_and_counts_tolerate_malformed_utf8(tmp_path: Path) -> None:
+    findings = tmp_path / "findings.md"
+    findings.write_bytes(b"### FINDING_1: title\nbody\xff\n### Details\nignored by extraction\n")
+    text = findings.read_text(encoding="utf-8", errors="replace")
+
+    assert review_and_fix._count_findings(findings) == 1
+    assert review_and_fix._extract_finding_block(text, "FINDING_1") == "### FINDING_1: title\nbody�\n"
+
+
+def test_nit_count_keeps_interior_heading_segment_semantics(tmp_path: Path) -> None:
+    findings = tmp_path / "accepted.md"
+    findings.write_text(
+        "### FINDING_1: nit\n"
+        "- **Severity**: nit\n"
+        "### Details\n"
+        "- **Severity**: nit\n"
+        "### FINDING_2: not nit\n"
+        "body\n",
+        encoding="utf-8",
+    )
+
+    assert review_and_fix._nit_count(findings) == 1

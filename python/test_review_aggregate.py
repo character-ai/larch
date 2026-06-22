@@ -1243,3 +1243,16 @@ printf '%s\\n' "$out" > "${slots}.output-files"
     assert result.returncode == 0, result.stderr
     assert "AGGREGATED=false" in result.stdout
     assert findings.read_text(encoding="utf-8") == original
+
+
+def test_finding_blocks_keep_heading_and_caller_local_strip() -> None:
+    blocks = review_aggregate._finding_blocks("\n### FINDING_7: title\nbody\n\n")
+
+    assert blocks == ["### FINDING_7: title\nbody"]
+    assert review_aggregate._finding_id_from_block(blocks[0]) == "FINDING_7"
+
+
+def test_renumber_findings_uses_heading_inclusive_blocks() -> None:
+    assert review_aggregate._renumber_findings(
+        "### FINDING_9: old\nbody\n\n### FINDING_10: old\nbody\n",
+    ) == "### FINDING_1: old\nbody\n\n### FINDING_2: old\nbody\n"
