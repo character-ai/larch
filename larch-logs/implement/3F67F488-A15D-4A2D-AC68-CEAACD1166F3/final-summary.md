@@ -1,14 +1,14 @@
-## /implement run 3F67F488-A15D-4A2D-AC68-CEAACD1166F3 — bailed
+## /implement run 3F67F488-A15D-4A2D-AC68-CEAACD1166F3 — pr-created
 
-- **Outcome**: bailed
 - **Mode**: N/A
 - **Duration**: 01:54:58
-- **Cost**: 💰 TOTAL ~$19.10 — Claude $3.13, Codex $10.92, Cursor $4.73, Claude (subprocess) $0.32  |  Tokens: 32758k
+- **Cost**: 💰 TOTAL ~$21.46 — Claude $5.49, Codex $10.92, Cursor $4.73, Claude (subprocess) $0.32  |  Tokens: 35400k
 - **Issue**: #4997 — https://github.com/character-ai/larch/issues/4997
+- **PR**: #5087 — https://github.com/character-ai/larch/pull/5087
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (3)
 - **Code review**: 2/13 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +605/-7, larch-logs +1146/-0
 - **OOS filed**: 1 — https://github.com/character-ai/larch/issues/5086
 - **Exec issues**: 0
 - **Warnings**: 1
@@ -82,3 +82,9 @@ cursor/validity-vote            │                                           �
 **Reviewer slot failures**: 0
 
 _Cost is the per-round vendor cost (Codex + Cursor + Claude subprocess), attributed by token-ledger timestamp window; it excludes main-agent Claude, so it is less than the run Cost line above. Rendered as an em dash when per-round timing or the token ledger is unavailable._
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
+
+The new linter (`python/lint_consecutive_bash.py`) aligns with the Python guidelines: composite data is passed as `@dataclass(frozen=True)` records (`Fence`, `BodyLine`) per G-Py-1; functions and locals are annotated per G-Py-2; domain types (`Fence`, `Path`, `re.Pattern`) are preferred over stringly-typed primitives per G-Py-3; unreadable, non-UTF-8, and git-enumeration failures raise `LintError` (fail-loud, fail-closed) per G-Py-4; pure parsing and predicate logic is separated from git/glob I/O behind `iter_markdown_files`, keeping it offline-testable per G-Py-5. The change is itself an instance of G-Enf-1 and G-Skill-2: it mechanizes the previously-manual "no consecutive prompt-side Bash blocks" orchestrator-thinness rule as a lint behind `cli.py`, with skill `.md` edits limited to thin justified suppressions.
