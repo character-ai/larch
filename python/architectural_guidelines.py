@@ -171,7 +171,7 @@ def materialize_implementation_diff(repo_root: Path, *, base_remote: str, base_r
         raise RuntimeError(msg)
     base_sha = merge_base.stdout.strip()
     diff = subprocess.run(
-        ["git", "diff", f"{base_sha}..HEAD"],  # noqa: S607
+        ["git", "diff", f"{base_sha}..HEAD", "--", ".", ":(exclude)larch-logs/**"],  # noqa: S607
         cwd=repo_root,
         text=True,
         capture_output=True,
@@ -278,19 +278,18 @@ def write_implement_note(implement_tmpdir: Path, note_text: str, *, head_sha: st
     _write_text_atomic(_durable_meta_path(implement_tmpdir), meta)
 
 
-def _live_fingerprint_matches(repo_root: Path | None, resolved_base: str, stored_fp: str) -> bool:
-    """Materialize the live implementation diff and compare its fingerprint, failing closed on error."""
+def _live_fingerprint(repo_root: Path | None, resolved_base: str) -> str | None:
+    """Materialize the live implementation diff and return its fingerprint, or None when it cannot be computed."""
     if repo_root is None or not resolved_base:
-        return False
+        return None
     remote, ref = resolved_base.split("/", 1) if "/" in resolved_base else ("origin", resolved_base)
     try:
-        live_fp = diff_fingerprint(
+        return diff_fingerprint(
             materialize_implementation_diff(repo_root, base_remote=remote, base_ref=ref),
         )
     except RuntimeError as exc:
         print(f"ARCHITECTURAL_GUIDELINES_WARNING={str(exc).replace(chr(10), ' ')}", file=sys.stderr)
-        return False
-    return live_fp == stored_fp
+        return None
 
 
 def _staged_fingerprint_valid(
@@ -305,7 +304,9 @@ def _staged_fingerprint_valid(
         return False
     resolved_base = (base_ref or metadata.get("BASE_REF", "")).strip()
     if repo_root is not None and resolved_base:
-        return _live_fingerprint_matches(repo_root, resolved_base, stored_fp)
+        live_fp = _live_fingerprint(repo_root, resolved_base)
+        if live_fp is not None:
+            return live_fp == stored_fp
     diff_path = _diff_path(implement_tmpdir)
     if diff_path.is_file() and not diff_path.is_symlink():
         try:
@@ -394,22 +395,24 @@ def note_fingerprint_stale(
     base_ref: str,
     repo_root: str | Path | None = None,
 ) -> bool:
-    """Return true when the durable note fingerprint no longer matches the live implementation diff."""
+    """Return true when the durable note fingerprint no longer matches the implementation diff."""
     meta = _read_env(_durable_meta_path(implement_tmpdir))
     stored_fp = meta.get("DIFF_FINGERPRINT", "")
     if not stored_fp or not base_ref:
         return False
-    root = Path(repo_root).resolve() if repo_root is not None else None
-    if root is not None:
-        return not _live_fingerprint_matches(root, base_ref, stored_fp)
     diff_path = _diff_path(implement_tmpdir)
     if diff_path.is_file() and not diff_path.is_symlink():
         try:
             snapshot_text = diff_path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             return True
-        return diff_fingerprint(snapshot_text) != stored_fp
-    return True
+        if diff_fingerprint(snapshot_text) == stored_fp:
+            return False
+    root = Path(repo_root).resolve() if repo_root is not None else None
+    live_fp = _live_fingerprint(root, base_ref)
+    if live_fp is None:
+        return True
+    return live_fp != stored_fp
 
 
 def _bool_arg(value: str) -> bool:
