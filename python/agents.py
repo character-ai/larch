@@ -27,6 +27,7 @@ from threading import Timer
 import config
 from ctx import Ctx
 import dirty_tree
+import findings_ledger
 import git
 import logging_util
 import plan_scout
@@ -3928,6 +3929,7 @@ def _review_specialist_render_args(args: argparse.Namespace, *, sentinel: dict[s
             ("COMMIT_COUNT", "--commit-count"),
             ("PLAN_FILE", "--plan-file"),
             ("FEATURE_FILE", "--feature-file"),
+            ("FINDINGS_LEDGER_FILE", "--findings-ledger-file"),
         )
         for key, flag in mapping:
             if sentinel.get(key):
@@ -3948,8 +3950,13 @@ def _review_specialist_render_args(args: argparse.Namespace, *, sentinel: dict[s
         value = getattr(args, attr)
         if value:
             render_args.extend([flag, value])
-    if args.competition_notice:
-        render_args.append("--competition-notice")
+        if args.competition_notice:
+            render_args.append("--competition-notice")
+    if getattr(args, "output", ""):
+        ledger_file = findings_ledger.ledger_path(
+            findings_ledger.ledger_root(Path(args.output).parent)
+        )
+        render_args.extend(["--findings-ledger-file", str(ledger_file)])
     return render_args
 
 
@@ -4060,6 +4067,11 @@ def _review_write_codex_prompt_sidecar(output: Path, prompt: str, args: argparse
             lines.append(f"PLAN_FILE={args.plan_file}")
         if args.feature_file and "\n" not in args.feature_file:
             lines.append(f"FEATURE_FILE={args.feature_file}")
+        ledger_file = findings_ledger.ledger_path(
+            findings_ledger.ledger_root(Path(args.output).parent)
+        )
+        if "\n" not in str(ledger_file):
+            lines.append(f"FINDINGS_LEDGER_FILE={ledger_file}")
         _write(sidecar, "\n".join(lines) + "\n")
     else:
         _write(sidecar, prompt)

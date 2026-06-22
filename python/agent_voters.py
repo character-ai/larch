@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Sequence
 
+import findings_ledger
 import logging_util
 import proc
 
@@ -145,6 +146,8 @@ def _make_voter_prompt_file(opts: Options, review_tmpdir: Path, label: str, arch
         "finding-oos",
         "--verification-context",
         "code",
+        "--findings-ledger-file",
+        str(findings_ledger.ledger_path(findings_ledger.ledger_root(review_tmpdir, session_env_path=opts.session_env_path))),
     ]
     if archetype:
         argv.extend(["--archetype", archetype])

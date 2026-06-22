@@ -49,6 +49,11 @@ def _tsv_rows(path: Path) -> dict[str, dict[str, str]]:
         return {row["finding_id"]: row for row in csv.DictReader(fh, delimiter="\t")}
 
 
+def _tsv_row_list(path: Path) -> list[dict[str, str]]:
+    with path.open(newline="", encoding="utf-8") as fh:
+        return list(csv.DictReader(fh, delimiter="\t"))
+
+
 def _run_cli(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     merged = os.environ.copy()
     merged["LARCH_QUIET_DISABLE"] = "1"
@@ -196,6 +201,12 @@ def test_tally_three_voter_mixed_outcomes(tmp_path: Path) -> None:
     assert rts.kv_get(result.stdout, "OOS_ACCEPTED_COUNT") == "1"
     assert "FINDING_1: First in-scope finding" in (case / "accepted-findings.md").read_text(encoding="utf-8")
     assert "FINDING_2" in (case / "rejected-findings.md").read_text(encoding="utf-8")
+    ledger_rows = _tsv_rows(case / "findings-ledger.tsv")
+    assert set(ledger_rows) == {"FINDING_1", "FINDING_2", "FINDING_3"}
+    assert ledger_rows["FINDING_1"]["outcome"] == "accepted"
+    assert ledger_rows["FINDING_2"]["outcome"] == "neutral"
+    assert ledger_rows["FINDING_3"]["outcome"] == "oos"
+    assert "proposer" not in (case / "findings-ledger.tsv").read_text(encoding="utf-8").splitlines()[0]
 
 
 def test_tally_flags_under_quorum_findings(tmp_path: Path) -> None:
@@ -742,6 +753,34 @@ def test_findings_classification_nested_impl_path_and_write_round(tmp_path: Path
     assert finding["scope"] == "in_scope"
     assert rows["OOS_1"]["voting_result"] == "neutral"
     assert rows["OOS_1"]["scope"] == "oos"
+    ledger = impl_parent / "findings-ledger.tsv"
+    ledger_rows = _tsv_rows(ledger)
+    assert ledger_rows["FINDING_1"]["round"] == "1"
+    assert ledger_rows["FINDING_1"]["outcome"] == "accepted"
+    assert ledger_rows["OOS_1"]["outcome"] == "oos"
+
+    round2 = impl_parent / "round-2"
+    round2.mkdir()
+    _write_classification_ballot(round2 / "ballot.md")
+    for name in ("v1.txt", "v2.txt"):
+        _ = (round2 / name).write_text((round_dir / name).read_text(encoding="utf-8"), encoding="utf-8")
+    result2 = run_review(
+        "tally-code-votes",
+        "--ballot-file",
+        str(round2 / "ballot.md"),
+        "--review-tmpdir",
+        str(round2),
+        "--session-env-path",
+        str(impl_parent / "session-env.sh"),
+        "--round-num",
+        "2",
+        "--voter-files",
+        str(round2 / "v1.txt"),
+        str(round2 / "v2.txt"),
+        env={"IMPLEMENT_TMPDIR": str(impl_parent)},
+    )
+    assert result2.returncode == 0, result2.stderr
+    assert [row["round"] for row in _tsv_row_list(ledger)] == ["1", "1", "2", "2"]
     log_root = tmp_path / "logs"
     write_round = _run_cli(
         "run-log",
@@ -947,6 +986,7 @@ def test_findings_classification_zero_voters_tsv_rejected_rows(tmp_path: Path) -
                 assert value == ""
     assert rows_by_id["FINDING_1"]["scope"] == "in_scope"
     assert rows_by_id["OOS_1"]["scope"] == "oos"
+    assert not (case / "findings-ledger.tsv").exists()
 
 
 def test_findings_classification_empty_ballot_header_only(tmp_path: Path) -> None:

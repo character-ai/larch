@@ -23,6 +23,11 @@ def _read_tsv(path: Path) -> dict[str, dict[str, str]]:
         return {row["finding_id"]: row for row in csv.DictReader(fh, delimiter="\t")}
 
 
+def _read_tsv_list(path: Path) -> list[dict[str, str]]:
+    with path.open(newline="", encoding="utf-8") as fh:
+        return list(csv.DictReader(fh, delimiter="\t"))
+
+
 def test_legacy_assets_removed_from_plan_review_module() -> None:
     assert not hasattr(plan_review, "_LEGACY_ASSETS")
     assert not hasattr(plan_review, "run_legacy_script")
@@ -1255,6 +1260,11 @@ def test_tally_plan_review_mixed_votes_and_artifacts(tmp_path: Path) -> None:
     class_rows = _read_tsv(design / "plan-review" / "round-1" / "findings-classification.tsv") if (design / "plan-review" / "round-1" / "findings-classification.tsv").is_file() else _read_tsv(design / "findings-classification.tsv")
     assert class_rows["FINDING_1"]["scope"] == "in_scope"
     assert class_rows["OOS_1"]["scope"] == "oos"
+    ledger_rows = _read_tsv(design / "findings-ledger.tsv")
+    assert ledger_rows["FINDING_1"]["outcome"] == "accepted"
+    assert ledger_rows["FINDING_2"]["outcome"] == "neutral"
+    assert ledger_rows["OOS_1"]["outcome"] == "oos"
+    assert "proposer" not in (design / "findings-ledger.tsv").read_text(encoding="utf-8").splitlines()[0]
     class_tsv = design / "plan-review" / "round-1" / "findings-classification.tsv"
     tsv_records = voting.compute_voter_agreement(
         voting.voter_agreement_rows_from_tsv(class_tsv.read_text(encoding="utf-8"), panel_kind="design").rows
@@ -1290,6 +1300,62 @@ def test_tally_plan_review_zero_voters_requires_main_agent(tmp_path: Path) -> No
     assert "fake agreement" not in tally
     assert "## Voter Agreement Scoreboard" in tally
     assert "| undefined | n/a | 0 | 0 | 0 | 0 | n/a | false |" in tally
+    assert not (design / "findings-ledger.tsv").exists()
+
+
+def test_tally_plan_review_ledger_appends_and_replaces_round(tmp_path: Path) -> None:
+    ballot = tmp_path / "ballot.md"
+    _write_tally_ballot(ballot)
+    v1 = tmp_path / "v1.txt"
+    v2 = tmp_path / "v2.txt"
+    v3 = tmp_path / "v3.txt"
+    for voter in (v1, v2, v3):
+        _ = voter.write_text("FINDING_1: YES\nFINDING_2: NO\nOOS_1: YES\nOOS_2: NO\n", encoding="utf-8")
+    design = tmp_path / "design-ledger"
+    design.mkdir()
+
+    for round_num in (1, 2):
+        out = design / "plan-review" / f"round-{round_num}" / "findings-classification.tsv"
+        proc = run_cli(
+            "plan-review",
+            "tally",
+            "--ballot-file",
+            str(ballot),
+            "--voter-files",
+            str(v1),
+            str(v2),
+            str(v3),
+            "--design-tmpdir",
+            str(design),
+            "--findings-classification-out",
+            str(out),
+            env={"LARCH_QUIET_DISABLE": "1"},
+        )
+        assert proc.returncode == 0, proc.stderr
+
+    rows = _read_tsv_list(design / "findings-ledger.tsv")
+    assert [row["round"] for row in rows] == ["1", "1", "1", "1", "2", "2", "2", "2"]
+
+    _ = v1.write_text("FINDING_1: NO\nFINDING_2: NO\nOOS_1: NO\nOOS_2: NO\n", encoding="utf-8")
+    out = design / "plan-review" / "round-2" / "findings-classification.tsv"
+    proc = run_cli(
+        "plan-review",
+        "tally",
+        "--ballot-file",
+        str(ballot),
+        "--voter-files",
+        str(v1),
+        str(v2),
+        str(v3),
+        "--design-tmpdir",
+        str(design),
+        "--findings-classification-out",
+        str(out),
+        env={"LARCH_QUIET_DISABLE": "1"},
+    )
+    assert proc.returncode == 0, proc.stderr
+    rows = _read_tsv_list(design / "findings-ledger.tsv")
+    assert [row["round"] for row in rows] == ["1", "1", "1", "1", "2", "2", "2", "2"]
 
 
 def test_tally_plan_review_degraded_two_judge_voter_agreement_parity(tmp_path: Path) -> None:

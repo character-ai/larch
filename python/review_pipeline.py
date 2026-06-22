@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import larch_io
+import findings_ledger
 import logging_util
 import proc
 import research_eval
@@ -849,7 +850,16 @@ def _synthesize_dynamic_slots(
         agent_file = dyn_dir / f"reviewer-dyn-{name}.md"
         rendered_prompt = dyn_dir / f"dyn-{name}-prompt.md"
         _write_text(agent_file, _dynamic_agent_body(name, focus_area, rationale, prompt_body))
-        render_args = ["render", "specialist", "--agent-file", str(agent_file), "--mode", mode]
+        render_args = [
+            "render",
+            "specialist",
+            "--agent-file",
+            str(agent_file),
+            "--mode",
+            mode,
+            "--findings-ledger-file",
+            str(findings_ledger.ledger_path(findings_ledger.ledger_root(review_tmpdir))),
+        ]
         if mode == "diff":
             if context.get("diff_file"):
                 render_args.extend(["--diff-file", context["diff_file"]])

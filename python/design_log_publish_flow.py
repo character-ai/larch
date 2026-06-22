@@ -112,6 +112,7 @@ _PUBLISH_EXCLUDE_NAMES = frozenset({
     "plan-review-collector.stderr",
     "plan-review-slots.ndjson.output-files.dropped-slots",
     "composed-plan.redacted.md",
+    "findings-ledger.tsv",
 })
 
 # Whole subtrees of raw transcripts (plan-autofix drafts) or internal step

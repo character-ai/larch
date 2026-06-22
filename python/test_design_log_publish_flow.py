@@ -246,6 +246,7 @@ def test_publish_excluded_predicate() -> None:
         "plan-review-collector.stderr",  # exact name
         "plan-review-slots.ndjson.output-files.dropped-slots",  # exact name
         "composed-plan.redacted.md",  # redacted duplicate
+        "findings-ledger.tsv",  # ephemeral duplicate-suppression ledger
     ]
     for name in excluded:
         assert design_log_publish_flow._publish_excluded(name, is_dir=False), name
@@ -306,6 +307,7 @@ def test_log_publish_excludes_sidecar_crud(tmp_path: Path) -> None:
         "claude-plan-voter-prompt.txt": "VP",
         "step2b-codex-raw.40818.txt": "RAW2",
         "cursor-plan-arch-output.txt.json": "{}",  # *.txt.json
+        "findings-ledger.tsv": "round\tfinding_id\n",
     }
     for name, body in {**keep, **drop}.items():
         _ = (design / name).write_text(body, encoding="utf-8")
@@ -315,6 +317,7 @@ def test_log_publish_excludes_sidecar_crud(tmp_path: Path) -> None:
     _ = (pr_round / "findings.md").write_text("NF", encoding="utf-8")
     _ = (pr_round / "codex-vote-output.txt").write_text("VOTE", encoding="utf-8")
     _ = (pr_round / "codex-vote-output.txt.events.jsonl").write_text("{}", encoding="utf-8")
+    _ = (pr_round / "findings-ledger.tsv").write_text("round\tfinding_id\n", encoding="utf-8")
     # Whole-subtree drops.
     autofix = design / "plan-autofix"
     autofix.mkdir()
@@ -344,6 +347,7 @@ def test_log_publish_excludes_sidecar_crud(tmp_path: Path) -> None:
     for name in drop:
         assert f"{base}/{name}" not in tree, f"expected dropped: {name}\n{tree}"
     assert "codex-vote-output.txt.events.jsonl" not in tree, tree
+    assert "findings-ledger.tsv" not in tree, tree
     assert "plan-autofix" not in tree, tree
     assert "/.completed/" not in tree, tree
     assert "step2b-codex-raw" not in tree, tree

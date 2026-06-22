@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import NoReturn
 
 import larch_io
+import findings_ledger
 import logging_util
 import voting
 from review_types import JudgeSeverity, ReviewVote
@@ -480,6 +481,69 @@ def _surface_warning(session_env_path: str, entry: str) -> None:
         subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
 
 
+def _ledger_title(block_text: str, item_id: str) -> str:
+    first = block_text.splitlines()[0] if block_text.splitlines() else ""
+    title = re.sub(rf"^###\s+{re.escape(item_id)}:\s*", "", first).strip()
+    return title or item_id
+
+
+def _ledger_file_line(block_text: str) -> str:
+    for regex in voting.FILE_LINE_REGEXES.values():
+        match = re.search(regex, block_text)
+        if match:
+            return match.group(0).strip(" \t\n\r`*()[],:;")
+    return ""
+
+
+def _ledger_reason(block_text: str) -> str:
+    for line in block_text.splitlines()[1:]:
+        normalized = line.replace("*", "").strip()
+        if re.match(r"^[- ]*(Concern|Scenario|Reason|Suggested (revision|fix)):", normalized, re.IGNORECASE):
+            return re.sub(r"^[- ]*[^:]+:\s*", "", normalized).strip()
+    for line in block_text.splitlines()[1:]:
+        cleaned = line.strip()
+        if cleaned:
+            return cleaned
+    return ""
+
+
+def _ledger_entry(item_id: str, block_text: str, outcome: str, vote_tally: str) -> dict[str, object]:
+    latent_rerouted = bool(re.search(r"(?mi)^-\s*\*\*Severity\*\*:\s*latent\s*$", block_text))
+    return {
+        "finding_id": item_id,
+        "title": _ledger_title(block_text, item_id),
+        "file_line": _ledger_file_line(block_text),
+        "outcome": "oos" if latent_rerouted else outcome,
+        "vote_tally": vote_tally,
+        "reason": _ledger_reason(block_text),
+    }
+
+
+def _record_classification_and_ledger(
+    class_tsv: Path,
+    classification_row: str,
+    ledger_entries: list[dict[str, object]],
+    ledger_entry: dict[str, object],
+) -> None:
+    _append(class_tsv, classification_row + "\n")
+    ledger_entries.append(ledger_entry)
+
+
+def _write_final_tally_outputs(
+    tally_env: Path,
+    counts_text: str,
+    review_tmpdir: Path,
+    args: argparse.Namespace,
+    ledger_entries: list[dict[str, object]],
+) -> None:
+    findings_ledger.write_round(
+        findings_ledger.ledger_root(review_tmpdir, session_env_path=args.session_env_path),
+        int(args.round_num),
+        ledger_entries,
+    )
+    _append(tally_env, counts_text)
+
+
 def tally_code_votes(argv: list[str]) -> int:
     logging_util.quiet_init(argv0="tally-code-votes")
     try:
@@ -603,7 +667,7 @@ def tally_code_votes(argv: list[str]) -> int:
     score_rows: list[tuple[str, str, str, int]] = []
     bonus_by_reviewer: defaultdict[str, float] = defaultdict(float)
     sole_finder_reward_count = 0
-    agreement_rows: list[dict[str, object]] = []
+    agreement_rows, ledger_entries = [], []
     tally_lines = ["# Code Review Voting Tally\n\n"]
     expected = 3 if three_slot and args.cursor_available == "true" else (1 if three_slot else 1 + (1 if args.codex_available == "true" else 0) + (1 if args.cursor_available == "true" else 0))
     if effective < expected:
@@ -690,7 +754,17 @@ def tally_code_votes(argv: list[str]) -> int:
         if not is_oos and _scope_drift(block, args.scope_files, args.plan_file):
             is_oos = True
             drift += 1
-        _append(class_tsv, _classification_row(item_id, reviewer, result, cells, three_slot=three_slot, is_oos=is_oos) + "\n")
+        _record_classification_and_ledger(
+            class_tsv,
+            _classification_row(item_id, reviewer, result, cells, three_slot=three_slot, is_oos=is_oos),
+            ledger_entries,
+            _ledger_entry(
+                item_id,
+                text,
+                "oos" if is_oos else result,
+                f"YES={yes}/{effective}",
+            ),
+        )
         kind = "oos" if is_oos else "finding"
         accepted_weight = (
             voting.accepted_finding_points_from_severities(
@@ -804,7 +878,13 @@ def tally_code_votes(argv: list[str]) -> int:
         archetype_map = _write_archetype_map(Path(args.manifest_file))
         for orphan in _write_yield_tsv(yield_tsv, archetype_map, score_rows):
             logging_util.emit_kv("WARN", f"yield TSV missing manifest entry for reviewer basename: {orphan}")
-    _append(tally_env, f"ACCEPTED_COUNT={accepted}\nREJECTED_COUNT={rejected}\nEXONERATED_COUNT={exonerated}\nNEUTRAL_COUNT={neutral}\nOOS_ACCEPTED_COUNT={oos_accepted}\nOOS_REJECTED_COUNT={oos_rejected}\n")
+    _write_final_tally_outputs(
+        tally_env,
+        f"ACCEPTED_COUNT={accepted}\nREJECTED_COUNT={rejected}\nEXONERATED_COUNT={exonerated}\nNEUTRAL_COUNT={neutral}\nOOS_ACCEPTED_COUNT={oos_accepted}\nOOS_REJECTED_COUNT={oos_rejected}\n",
+        review_tmpdir,
+        args,
+        ledger_entries,
+    )
     for key, value in {
         "TALLY_STATUS": "ok",
         "ACCEPTED_COUNT": str(accepted),
