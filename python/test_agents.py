@@ -12,6 +12,7 @@ import subprocess
 import sys
 import time
 from collections.abc import Mapping, Sequence
+from dataclasses import FrozenInstanceError
 from pathlib import Path
 
 import pytest
@@ -75,6 +76,71 @@ def test_read_launcher_exit_reads_file(tmp_path: Path) -> None:
     path = tmp_path / "capture.out"
     _ = path.write_text("LAUNCHER_EXIT=3\n", encoding="utf-8")
     assert agents.read_launcher_exit(path) == 3
+
+
+def test_launcher_paths_maps_stable_sidecars(tmp_path: Path) -> None:
+    output = tmp_path / "agent.out"
+    suffix = output.suffix
+    expected = agents.LauncherPaths(
+        output=output,
+        done=output.with_suffix(suffix + ".done"),
+        inner_done=output.with_suffix(suffix + ".inner.done"),
+        meta=output.with_suffix(suffix + ".meta"),
+        sidecar=output.with_suffix(suffix + ".sidecar"),
+        diag=output.with_suffix(suffix + ".diag"),
+        events=output.with_suffix(suffix + ".events.jsonl"),
+        token_record=output.with_suffix(suffix + ".token-record"),
+        failure_diag=output.with_suffix(suffix + ".failure-diag"),
+        prompt=output.with_suffix(suffix + ".prompt"),
+        stderr_tail=output.with_suffix(suffix + ".stderr-tail"),
+        stall_json=output.with_suffix(suffix + ".stall.json"),
+        stderr=output.with_suffix(suffix + ".stderr"),
+        launch_stderr=output.with_suffix(suffix + ".launch-stderr"),
+        launcher_stderr=output.with_suffix(suffix + ".launcher-stderr"),
+        sidecar_history=output.with_suffix(suffix + ".sidecar.history"),
+        events_history=output.with_suffix(suffix + ".events.history"),
+    )
+    paths = agents.LauncherPaths.from_output(output)
+    assert paths == expected
+    assert paths.done == output.with_suffix(suffix + ".done")
+    assert paths.inner_done == output.with_suffix(suffix + ".inner.done")
+    assert paths.sentinel_done(".inner.done") == paths.inner_done
+    with pytest.raises(FrozenInstanceError):
+        paths.done = output  # type: ignore[misc]
+
+
+def test_failure_diag_helpers_use_launcher_paths(tmp_path: Path) -> None:
+    output = tmp_path / "agent.out"
+    paths = agents.LauncherPaths.from_output(output)
+
+    candidates = agents._failure_diagnostic_source_candidates(output)  # pylint: disable=protected-access
+
+    assert paths.failure_diag in candidates
+    assert paths.sidecar_history in candidates
+    assert paths.sidecar in candidates
+    assert paths.diag in candidates
+    assert paths.events in candidates
+    assert paths.stderr in candidates
+    assert paths.launch_stderr in candidates
+    assert paths.launcher_stderr in candidates
+
+    for source in (
+        paths.sidecar_history,
+        paths.events_history,
+        paths.sidecar,
+        paths.diag,
+        paths.events,
+        paths.stderr,
+        paths.launch_stderr,
+        paths.launcher_stderr,
+    ):
+        _ = source.write_text(f"error from {source.name}\n", encoding="utf-8")
+
+    agents._compose_failure_diag(output)  # pylint: disable=protected-access
+    diag = paths.failure_diag.read_text(encoding="utf-8")
+    assert "===== sidecar.history =====" in diag
+    assert "===== events.history (filtered) =====" in diag
+    assert "===== stderr =====" in diag
 
 
 def test_resolve_launcher_exit_prefers_done_then_captured_then_file(
@@ -678,16 +744,17 @@ def test_run_external_agent_inner_sentinel_mode(tmp_path: Path, monkeypatch: pyt
 
 def test_run_external_agent_cleans_stale_sidecars_and_supplied_streams(tmp_path: Path) -> None:
     output = tmp_path / "agent.out"
+    paths = agents.LauncherPaths.from_output(output)
     stdout_path = tmp_path / "stdout.log"
     stderr_path = tmp_path / "stderr.log"
     for stale in (
-        output,
-        output.with_suffix(output.suffix + ".done"),
-        output.with_suffix(output.suffix + ".inner.done"),
-        output.with_suffix(output.suffix + ".meta"),
-        output.with_suffix(output.suffix + ".diag"),
-        output.with_suffix(output.suffix + ".stderr-tail"),
-        output.with_suffix(output.suffix + ".failure-diag"),
+        paths.output,
+        paths.done,
+        paths.inner_done,
+        paths.meta,
+        paths.diag,
+        paths.stderr_tail,
+        paths.failure_diag,
         stdout_path,
         stderr_path,
     ):
@@ -703,9 +770,64 @@ def test_run_external_agent_cleans_stale_sidecars_and_supplied_streams(tmp_path:
     assert result.exit_code == 0
     assert stdout_path.read_text(encoding="utf-8") == "new-out\n"
     assert stderr_path.read_text(encoding="utf-8") == "new-err\n"
-    assert not output.with_suffix(output.suffix + ".inner.done").exists()
-    assert not output.with_suffix(output.suffix + ".stderr-tail").exists()
-    assert not output.with_suffix(output.suffix + ".failure-diag").exists()
+    assert not paths.inner_done.exists()
+    assert not paths.stderr_tail.exists()
+    assert not paths.failure_diag.exists()
+
+
+def test_record_timing_wrappers_delegate_to_launch_timing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, str, float, Path, int]] = []
+
+    def fake_record(tool: str, task_kind: str, start_s: float, output: Path, exit_code: int) -> None:
+        calls.append((tool, task_kind, start_s, output, exit_code))
+
+    monkeypatch.setattr(agents, "_record_launch_timing", fake_record)
+
+    output = tmp_path / "agent.out"
+    agents._review_record_timing("codex", "codex-review", 12.0, output, 7)  # pylint: disable=protected-access
+    agents._record_implement_timing("cursor", "cursor-implement", 13.0, output, 8)  # pylint: disable=protected-access
+
+    assert calls == [
+        ("codex", "codex-review", 12.0, output, 7),
+        ("cursor", "cursor-implement", 13.0, output, 8),
+    ]
+
+
+def test_finalize_launch_runs_only_supplied_hooks_in_order(tmp_path: Path) -> None:
+    output = tmp_path / "agent.out"
+    paths = agents.LauncherPaths.from_output(output)
+    order: list[str] = []
+
+    def first() -> None:
+        order.append("first")
+
+    def promote() -> None:
+        order.append("promote")
+        agents._promote_inner_done(output)  # pylint: disable=protected-access
+
+    def last() -> None:
+        order.append("last")
+
+    _ = paths.inner_done.write_text("0\n", encoding="utf-8")
+    agents._finalize_launch(hooks=(first, promote, last))  # pylint: disable=protected-access
+
+    assert order == ["first", "promote", "last"]
+    assert paths.done.read_text(encoding="utf-8") == "0\n"
+    assert not paths.inner_done.exists()
+
+
+def test_finalize_launch_does_not_promote_without_hook(tmp_path: Path) -> None:
+    output = tmp_path / "agent.out"
+    paths = agents.LauncherPaths.from_output(output)
+    _ = paths.inner_done.write_text("0\n", encoding="utf-8")
+
+    agents._finalize_launch(hooks=())  # pylint: disable=protected-access
+
+    assert paths.inner_done.read_text(encoding="utf-8") == "0\n"
+    assert not paths.done.exists()
 
 
 def test_run_external_agent_codex_stdin_is_devnull(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2908,6 +3030,145 @@ def test_launch_codex_ci_resolves_consumer_workdir(
     assert f"OUTER_LAUNCHER_WORKDIR={consumer_repo}" in meta
 
 
+def test_launch_codex_ci_finalize_order_and_token_stdout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    output = tmp_path / "codex-ci.out"
+    paths = agents.LauncherPaths.from_output(output)
+    order: list[str] = []
+    original_write = agents._write  # pylint: disable=protected-access
+    original_append = agents._append  # pylint: disable=protected-access
+    original_promote = agents._promote_inner_done  # pylint: disable=protected-access
+
+    def fake_run_external_agent_with_auth_retries(**kwargs: object) -> agents.RunExternalAgentResult:
+        output_path = kwargs["output"]
+        assert isinstance(output_path, Path)
+        _ = output_path.write_text("partial\n", encoding="utf-8")
+        _ = agents.LauncherPaths.from_output(output_path).inner_done.write_text(f"{config.EXIT_TIMEOUT}\n", encoding="utf-8")
+        return agents.RunExternalAgentResult(config.EXIT_TIMEOUT, output_path)
+
+    def fake_write(path: str | Path, text: str) -> None:
+        path_obj = Path(path)
+        if path_obj == paths.stall_json:
+            order.append("stall")
+        original_write(path_obj, text)
+
+    def fake_append(path: str | Path, text: str) -> None:
+        path_obj = Path(path)
+        if path_obj == paths.meta:
+            order.append("meta")
+        original_append(path_obj, text)
+
+    def fake_mirror(_events: Path, _sidecar: Path) -> None:
+        order.append("events")
+
+    def fake_record_timing(_tool: str, _task_kind: str, _start_s: float, _out: Path, _exit_code: int) -> None:
+        order.append("timing")
+
+    def fake_record_usage(_events: Path, _sidecar: Path, _label: str, token_record_path: Path | None = None, *, model: str = "") -> None:
+        _ = model
+        order.append("usage")
+        assert token_record_path == paths.token_record
+        _ = paths.token_record.write_text("TOKEN=1\n", encoding="utf-8")
+
+    def fake_emit_kv(key: str, value: str | int) -> None:
+        if key == "TOKEN_RECORD":
+            order.append("token")
+        logging_util.emit_kv(key, str(value))
+
+    def fake_promote(path: Path) -> None:
+        order.append("promote")
+        original_promote(path)
+
+    def fake_append_failure(*_args: object, **_kwargs: object) -> None:
+        order.append("failure")
+
+    def fake_emit_result(_out: Path, _exit_code: int, *, tool: str) -> None:
+        assert tool == "codex"
+        order.append("emit")
+        logging_util.emit_kv("LAUNCHER_EXIT", str(config.EXIT_TIMEOUT))
+        logging_util.emit_kv("OUTPUT", str(output))
+
+    monkeypatch.setattr(agents.shutil, "which", lambda name: "/usr/bin/true" if name == "codex" else None)
+    monkeypatch.setattr(agents, "_prepare_codex_home", lambda _home, **_kwargs: (0, ""))
+    monkeypatch.setattr(agents, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(()))
+    monkeypatch.setattr(agents, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
+    monkeypatch.setattr(agents, "_write", fake_write)
+    monkeypatch.setattr(agents, "_append", fake_append)
+    monkeypatch.setattr(agents, "_mirror_codex_quota_from_events", fake_mirror)
+    monkeypatch.setattr(agents, "_record_launch_timing", fake_record_timing)
+    monkeypatch.setattr(agents, "_record_usage_from_events", fake_record_usage)
+    monkeypatch.setattr(agents, "_emit_kv", fake_emit_kv)
+    monkeypatch.setattr(agents, "_promote_inner_done", fake_promote)
+    monkeypatch.setattr(agents, "_append_ci_failure", fake_append_failure)
+    monkeypatch.setattr(agents, "_emit_ci_launcher_result", fake_emit_result)
+
+    rc = agents.launch_codex_ci_main(
+        [
+            "--role",
+            "fix",
+            "--output",
+            str(output),
+            "--run-id",
+            "run",
+            "--repo",
+            "o/r",
+            "--timeout",
+            "5",
+        ],
+    )
+
+    assert rc == 0
+    assert order == ["events", "timing", "usage", "token", "meta", "stall", "promote", "failure", "emit"]
+    stdout = capsys.readouterr().out
+    assert stdout.index("TOKEN_RECORD=") < stdout.index("LAUNCHER_EXIT=")
+
+
+@pytest.mark.parametrize("old_home", [None, "", "preset-codex-home"])
+def test_launch_codex_ci_restores_codex_home_after_launcher_exception(
+    old_home: str | None,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = tmp_path / "codex-ci.out"
+    if old_home is None:
+        monkeypatch.delenv("CODEX_HOME", raising=False)
+    else:
+        monkeypatch.setenv("CODEX_HOME", old_home)
+
+    def fake_run_external_agent_with_auth_retries(**_kwargs: object) -> agents.RunExternalAgentResult:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(agents.shutil, "which", lambda name: "/usr/bin/true" if name == "codex" else None)
+    monkeypatch.setattr(agents, "_prepare_codex_home", lambda _home, **_kwargs: (0, ""))
+    monkeypatch.setattr(agents, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(()))
+    monkeypatch.setattr(agents, "_resolve_review_codex_workdir", lambda _cwd: str(tmp_path))
+    monkeypatch.setattr(agents, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        agents.launch_codex_ci_main(
+            [
+                "--role",
+                "fix",
+                "--output",
+                str(output),
+                "--run-id",
+                "run",
+                "--repo",
+                "o/r",
+                "--timeout",
+                "5",
+            ],
+        )
+
+    if old_home is None:
+        assert "CODEX_HOME" not in agents.os.environ
+    else:
+        assert agents.os.environ.get("CODEX_HOME") == old_home
+
+
 def test_launch_claude_ci_uses_stdin_not_prompt_argv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -3169,6 +3430,381 @@ def test_launch_cursor_ci_resolves_consumer_workdir_and_preserves_fix_stall_chan
     assert captured["stall_channel"] == expected_stall.format(workdir=consumer_repo)
     meta = output.with_suffix(output.suffix + ".meta").read_text(encoding="utf-8")
     assert f"OUTER_LAUNCHER_WORKDIR={consumer_repo}" in meta
+
+
+def test_launch_cursor_ci_finalize_order_and_stall_guard(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    raw_cwd = tmp_path / "plugin-cache"
+    consumer_repo = tmp_path / "consumer"
+    raw_cwd.mkdir()
+    consumer_repo.mkdir()
+    output = tmp_path / "cursor-ci.out"
+    paths = agents.LauncherPaths.from_output(output)
+    order: list[str] = []
+    original_write = agents._write  # pylint: disable=protected-access
+    original_append = agents._append  # pylint: disable=protected-access
+    original_promote = agents._promote_inner_done  # pylint: disable=protected-access
+
+    def fake_run_external_agent_with_auth_retries(**kwargs: object) -> agents.RunExternalAgentResult:
+        output_path = kwargs["output"]
+        assert isinstance(output_path, Path)
+        _ = output_path.write_text('{"result":"fixed"}\n', encoding="utf-8")
+        _ = agents.LauncherPaths.from_output(output_path).inner_done.write_text(f"{config.EXIT_TIMEOUT}\n", encoding="utf-8")
+        return agents.RunExternalAgentResult(config.EXIT_TIMEOUT, output_path)
+
+    def fake_write(path: str | Path, text: str) -> None:
+        path_obj = Path(path)
+        if path_obj == paths.stall_json:
+            order.append("stall")
+        original_write(path_obj, text)
+
+    def fake_append(path: str | Path, text: str) -> None:
+        path_obj = Path(path)
+        if path_obj == paths.meta:
+            order.append("meta")
+        original_append(path_obj, text)
+
+    def fake_record_timing(_tool: str, _task_kind: str, _start_s: float, _out: Path, _exit_code: int) -> None:
+        order.append("timing")
+
+    def fake_record_usage(_out: Path, _label: str) -> None:
+        order.append("usage")
+        _ = paths.token_record.write_text("TOKEN=1\n", encoding="utf-8")
+
+    def fake_emit_kv(key: str, value: str | int) -> None:
+        if key == "TOKEN_RECORD":
+            order.append("token")
+        logging_util.emit_kv(key, str(value))
+
+    def fake_promote(path: Path) -> None:
+        order.append("promote")
+        original_promote(path)
+
+    def fake_append_failure(*_args: object, **_kwargs: object) -> None:
+        order.append("failure")
+
+    def fake_emit_result(_out: Path, _exit_code: int, *, tool: str) -> None:
+        assert tool == "cursor"
+        order.append("emit")
+
+    monkeypatch.chdir(raw_cwd)
+    monkeypatch.setattr(agents, "_resolve_review_codex_workdir", lambda _cwd: str(consumer_repo))
+    monkeypatch.setattr(agents.shutil, "which", lambda name: "/usr/bin/true" if name == "cursor" else None)
+    monkeypatch.setattr(agents, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(ok=True, rc=0, message=""))
+    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: None)
+    monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
+    monkeypatch.setattr(agents, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(()))
+    monkeypatch.setattr(agents, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
+    monkeypatch.setattr(agents, "_write", fake_write)
+    monkeypatch.setattr(agents, "_append", fake_append)
+    monkeypatch.setattr(agents, "_record_launch_timing", fake_record_timing)
+    monkeypatch.setattr(agents, "_record_cursor_usage_from_output", fake_record_usage)
+    monkeypatch.setattr(agents, "_emit_kv", fake_emit_kv)
+    monkeypatch.setattr(agents, "_promote_inner_done", fake_promote)
+    monkeypatch.setattr(agents, "_append_ci_failure", fake_append_failure)
+    monkeypatch.setattr(agents, "_emit_ci_launcher_result", fake_emit_result)
+
+    rc = agents.launch_cursor_ci_main(
+        [
+            "--role",
+            "fix",
+            "--output",
+            str(output),
+            "--run-id",
+            "run",
+            "--repo",
+            "o/r",
+            "--timeout",
+            "5",
+        ],
+    )
+
+    assert rc == 0
+    assert order == ["meta", "timing", "usage", "token", "stall", "promote", "failure", "emit"]
+
+    order.clear()
+    _ = paths.inner_done.write_text(f"{config.EXIT_TIMEOUT}\n", encoding="utf-8")
+    _ = paths.stall_json.write_text("already here\n", encoding="utf-8")
+    rc = agents.launch_cursor_ci_main(
+        [
+            "--role",
+            "fix",
+            "--output",
+            str(output),
+            "--run-id",
+            "run",
+            "--repo",
+            "o/r",
+            "--timeout",
+            "5",
+        ],
+    )
+    assert rc == 0
+    assert "stall" not in order
+    assert paths.stall_json.read_text(encoding="utf-8") == "already here\n"
+
+
+@pytest.mark.parametrize("old_cfg", [None, "", "preset-cursor-cfg"])
+def test_launch_cursor_ci_restores_config_dir_after_launcher_exception(
+    old_cfg: str | None,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    raw_cwd = tmp_path / "plugin-cache"
+    consumer_repo = tmp_path / "consumer"
+    raw_cwd.mkdir()
+    consumer_repo.mkdir()
+    output = tmp_path / "cursor-ci.out"
+    if old_cfg is None:
+        monkeypatch.delenv("CURSOR_CONFIG_DIR", raising=False)
+    else:
+        monkeypatch.setenv("CURSOR_CONFIG_DIR", old_cfg)
+
+    captured_cfg: Path | None = None
+
+    def fake_run_external_agent_with_auth_retries(**_kwargs: object) -> agents.RunExternalAgentResult:
+        nonlocal captured_cfg
+        raw = agents.os.environ.get("CURSOR_CONFIG_DIR")
+        assert raw is not None
+        captured_cfg = Path(raw)
+        assert captured_cfg.is_dir()
+        raise RuntimeError("boom")
+
+    monkeypatch.chdir(raw_cwd)
+    monkeypatch.setattr(agents, "_resolve_review_codex_workdir", lambda _cwd: str(consumer_repo))
+    monkeypatch.setattr(agents.shutil, "which", lambda name: "/usr/bin/true" if name == "cursor" else None)
+    monkeypatch.setattr(agents, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(ok=True, rc=0, message=""))
+    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: None)
+    monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
+    monkeypatch.setattr(agents, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(()))
+    monkeypatch.setattr(agents, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        agents.launch_cursor_ci_main(
+            [
+                "--role",
+                "fix",
+                "--output",
+                str(output),
+                "--run-id",
+                "run",
+                "--repo",
+                "o/r",
+                "--timeout",
+                "5",
+            ],
+        )
+
+    assert captured_cfg is not None
+    assert not captured_cfg.exists()
+    if old_cfg is None:
+        assert "CURSOR_CONFIG_DIR" not in agents.os.environ
+    else:
+        assert agents.os.environ.get("CURSOR_CONFIG_DIR") == old_cfg
+
+
+def test_launch_codex_implement_finalize_order_uses_explicit_sidecar(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = tmp_path / "session"
+    session.mkdir()
+    plan = tmp_path / "plan.md"
+    feature = tmp_path / "feature.md"
+    agent_prompt = tmp_path / "agent.md"
+    _ = plan.write_text("plan\n", encoding="utf-8")
+    _ = feature.write_text("feature\n", encoding="utf-8")
+    _ = agent_prompt.write_text("---\nname: test\n---\nbody\n", encoding="utf-8")
+    output = session / "codex-impl.out"
+    sidecar = tmp_path / "codex-impl.log"
+    paths = agents.LauncherPaths.from_output(output)
+    home = tmp_path / "codex-home"
+    order: list[str] = []
+    original_append = agents._append  # pylint: disable=protected-access
+    original_promote = agents._promote_inner_done  # pylint: disable=protected-access
+
+    def fake_run_external_agent_with_auth_retries(**kwargs: object) -> agents.RunExternalAgentResult:
+        assert kwargs["stderr_path"] == sidecar
+        output_path = kwargs["output"]
+        assert isinstance(output_path, Path)
+        _ = output_path.write_text("transcript\n", encoding="utf-8")
+        _ = agents.LauncherPaths.from_output(output_path).inner_done.write_text("4\n", encoding="utf-8")
+        return agents.RunExternalAgentResult(4, output_path)
+
+    def fake_append(path: str | Path, text: str) -> None:
+        path_obj = Path(path)
+        if path_obj == paths.meta:
+            order.append("meta")
+        original_append(path_obj, text)
+
+    def fake_mirror(_events: Path, _sidecar: Path) -> None:
+        order.append("events")
+
+    def fake_record_timing(_tool: str, _task_kind: str, _start_s: float, _out: Path, _exit_code: int) -> None:
+        order.append("timing")
+
+    def fake_record_usage(_events: Path, usage_sidecar: Path, _label: str, token_record_path: Path | None = None, *, model: str = "") -> None:
+        _ = token_record_path
+        _ = model
+        assert usage_sidecar == sidecar
+        order.append("usage")
+
+    def fake_append_failure(_tool: str, _output: Path, failure_sidecar: Path, _exit_code: int, retry_count: int = 0) -> None:
+        _ = retry_count
+        assert failure_sidecar == sidecar
+        assert failure_sidecar != paths.sidecar
+        order.append("failure")
+
+    def fake_promote(path: Path) -> None:
+        order.append("promote")
+        original_promote(path)
+
+    def fake_emit(_args: argparse.Namespace, _launcher_exit: int, *, status: str = "") -> None:
+        _ = status
+        order.append("emit")
+
+    def fake_safe_home() -> Path:
+        home.mkdir()
+        return home
+
+    monkeypatch.delenv("IMPLEMENT_TMPDIR", raising=False)
+    monkeypatch.setattr(agents.shutil, "which", lambda name: "/usr/bin/true" if name == "codex" else None)
+    monkeypatch.setattr(agents, "_safe_codex_home_dir", fake_safe_home)
+    monkeypatch.setattr(agents, "_prepare_codex_home", lambda _home, **_kwargs: (0, ""))
+    monkeypatch.setattr(agents, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(()))
+    monkeypatch.setattr(agents, "_resolve_review_codex_workdir", lambda _cwd: str(tmp_path))
+    monkeypatch.setattr(agents, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
+    monkeypatch.setattr(agents, "_append", fake_append)
+    monkeypatch.setattr(agents, "_mirror_codex_quota_from_events", fake_mirror)
+    monkeypatch.setattr(agents, "_record_implement_timing", fake_record_timing)
+    monkeypatch.setattr(agents, "_record_usage_from_events", fake_record_usage)
+    monkeypatch.setattr(agents, "_append_implement_launch_failure", fake_append_failure)
+    monkeypatch.setattr(agents, "_promote_inner_done", fake_promote)
+    monkeypatch.setattr(agents, "_emit_implement_launcher_envelope", fake_emit)
+    monkeypatch.setattr(agents.proc, "run", lambda argv, **_kwargs: CommandResult(tuple(str(arg) for arg in argv), 0, "", "", 0.0))
+
+    rc = agents.launch_codex_implement_main(
+        [
+            "--transcript-path",
+            str(output),
+            "--sidecar-log",
+            str(sidecar),
+            "--manifest-path",
+            str(session / "manifest.json"),
+            "--qa-pending-path",
+            str(session / "qa-pending.json"),
+            "--scout-manifest-path",
+            str(session / "scout.json"),
+            "--plan-file",
+            str(plan),
+            "--feature-file",
+            str(feature),
+            "--agent-prompt",
+            str(agent_prompt),
+            "--timeout",
+            "5",
+        ],
+    )
+
+    assert rc == 0
+    assert order == ["events", "timing", "usage", "meta", "failure", "promote", "emit"]
+
+
+def test_launch_cursor_implement_finalize_order_uses_explicit_sidecar(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = tmp_path / "session"
+    session.mkdir()
+    plan = tmp_path / "plan.md"
+    feature = tmp_path / "feature.md"
+    agent_prompt = tmp_path / "agent.md"
+    _ = plan.write_text("plan\n", encoding="utf-8")
+    _ = feature.write_text("feature\n", encoding="utf-8")
+    _ = agent_prompt.write_text("body\n", encoding="utf-8")
+    output = session / "cursor-impl.out"
+    sidecar = tmp_path / "cursor-impl.log"
+    paths = agents.LauncherPaths.from_output(output)
+    order: list[str] = []
+    original_append = agents._append  # pylint: disable=protected-access
+    original_promote = agents._promote_inner_done  # pylint: disable=protected-access
+
+    def fake_run_external_agent_with_auth_retries(**kwargs: object) -> agents.RunExternalAgentResult:
+        output_path = kwargs["output"]
+        assert isinstance(output_path, Path)
+        _ = output_path.write_text('{"usage":{}}\n', encoding="utf-8")
+        _ = agents.LauncherPaths.from_output(output_path).inner_done.write_text("5\n", encoding="utf-8")
+        return agents.RunExternalAgentResult(5, output_path)
+
+    def fake_append(path: str | Path, text: str) -> None:
+        path_obj = Path(path)
+        if path_obj == paths.meta:
+            order.append("meta")
+        original_append(path_obj, text)
+
+    def fake_record_timing(_tool: str, _task_kind: str, _start_s: float, _out: Path, _exit_code: int) -> None:
+        order.append("timing")
+
+    def fake_record_usage(_out: Path) -> None:
+        order.append("usage")
+
+    def fake_append_failure(_tool: str, _output: Path, failure_sidecar: Path, _exit_code: int, retry_count: int = 0) -> None:
+        _ = retry_count
+        assert failure_sidecar == sidecar
+        assert failure_sidecar != paths.sidecar
+        order.append("failure")
+
+    def fake_promote(path: Path) -> None:
+        order.append("promote")
+        original_promote(path)
+
+    def fake_emit(_args: argparse.Namespace, _launcher_exit: int, *, status: str = "") -> None:
+        _ = status
+        order.append("emit")
+
+    monkeypatch.delenv("IMPLEMENT_TMPDIR", raising=False)
+    monkeypatch.setattr(agents.shutil, "which", lambda name: "/usr/bin/true" if name == "cursor" else None)
+    monkeypatch.setattr(agents, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(ok=True, rc=0, message=""))
+    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: None)
+    monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
+    monkeypatch.setattr(agents, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(()))
+    monkeypatch.setattr(agents, "_resolve_review_codex_workdir", lambda _cwd: str(tmp_path))
+    monkeypatch.setattr(agents, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
+    monkeypatch.setattr(agents, "_append", fake_append)
+    monkeypatch.setattr(agents, "_record_implement_timing", fake_record_timing)
+    monkeypatch.setattr(agents, "_record_cursor_implement_usage", fake_record_usage)
+    monkeypatch.setattr(agents, "_append_implement_launch_failure", fake_append_failure)
+    monkeypatch.setattr(agents, "_promote_inner_done", fake_promote)
+    monkeypatch.setattr(agents, "_emit_implement_launcher_envelope", fake_emit)
+    monkeypatch.setattr(agents.proc, "run", lambda argv, **_kwargs: CommandResult(tuple(str(arg) for arg in argv), 0, "", "", 0.0))
+
+    rc = agents.launch_cursor_implement_main(
+        [
+            "--transcript-path",
+            str(output),
+            "--sidecar-log",
+            str(sidecar),
+            "--manifest-path",
+            str(session / "manifest.json"),
+            "--qa-pending-path",
+            str(session / "qa-pending.json"),
+            "--scout-manifest-path",
+            str(session / "scout.json"),
+            "--plan-file",
+            str(plan),
+            "--feature-file",
+            str(feature),
+            "--agent-prompt",
+            str(agent_prompt),
+            "--timeout",
+            "5",
+        ],
+    )
+
+    assert rc == 0
+    assert order == ["meta", "timing", "usage", "failure", "promote", "emit"]
 
 
 def test_launch_claude_subprocess_rejects_prompt_file_outside_safe_roots(tmp_path: Path) -> None:
