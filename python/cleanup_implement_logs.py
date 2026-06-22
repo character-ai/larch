@@ -424,6 +424,21 @@ def process_run_dir(run_dir: Path, execute: bool, stats: Stats) -> None:
     strip_tally_body(run_dir, execute, stats)
 
 
+def _resolve_single_run_dir(run_dir_arg: str, impl_root: Path) -> Path | None:
+    """Resolve a ``--run-dir`` argument and confirm it stays inside impl_root.
+
+    Both paths are resolved (collapsing symlinks and ``..``) before the
+    containment check, so a symlinked or parent-traversing argument cannot
+    escape the ``larch-logs/implement/`` tree. Returns the resolved run dir,
+    or ``None`` when it would escape ``impl_root`` — the caller must then
+    refuse to run, since the cleanup actions delete files destructively.
+    """
+    run_dir = Path(run_dir_arg).resolve()
+    if not run_dir.is_relative_to(impl_root.resolve()):
+        return None
+    return run_dir
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     _ = p.add_argument(
@@ -443,12 +458,20 @@ def main(argv: list[str] | None = None) -> int:
         print("DRY-RUN mode — pass --execute to apply changes")
 
     repo_root = Path(__file__).resolve().parent.parent
+    impl_root = (repo_root / "larch-logs" / "implement").resolve()
     stats = Stats()
 
     if args.run_dir:
-        run_dirs = [Path(args.run_dir).resolve()]
+        run_dir = _resolve_single_run_dir(args.run_dir, impl_root)
+        if run_dir is None:
+            print(
+                f"ERROR: --run-dir must resolve to a path inside {impl_root} "
+                f"(got {Path(args.run_dir).resolve()})",
+                file=sys.stderr,
+            )
+            return 1
+        run_dirs = [run_dir]
     else:
-        impl_root = repo_root / "larch-logs" / "implement"
         if not impl_root.is_dir():
             print(f"ERROR: {impl_root} not found", file=sys.stderr)
             return 1

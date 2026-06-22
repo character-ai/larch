@@ -25,6 +25,7 @@ python3 python/cli.py run-log cleanup-implement-logs --run-dir larch-logs/implem
 ## Invariants
 
 - No file changes occur without `--execute`.
+- `--run-dir` must resolve to a path inside `larch-logs/implement/`; an argument that escapes that tree (via `..` or a symlink) is rejected with exit code 1 and no files are touched.
 - The summary counters and exit codes stay stable.
 - Transcript upgrade, breadcrumb consolidation, tally body stripping, refresh-sidecar cleanup, and obsolete prompt/output deletion remain file-based operations.
 
