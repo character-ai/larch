@@ -697,17 +697,7 @@ def gather_status(
             checks_empty=observation.rollup_empty,
             checks_observed=observation.observed,
         )
-    if behind_probe.count is None:
-        return CiStatus(
-            status=observation.status,
-            behind_count=0,
-            failed_run_id=observation.failed_run_id,
-            conflicted=conflicted,
-            pr_view_ok=pr_view_ok,
-            checks_empty=observation.rollup_empty,
-            checks_observed=observation.observed,
-        )
-    behind = behind_probe.count
+    behind = behind_probe.count if behind_probe.count is not None else 0
     if behind > 0 and _squash_merge_race(
         runner,
         pr=pr,
