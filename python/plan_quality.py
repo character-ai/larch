@@ -21,7 +21,7 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 import larch_io
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 
 import agents
 import design_pause
@@ -152,7 +152,7 @@ def _validator_pause_save() -> int:
     return design_pause.pause_save_main(args)
 
 
-def _capture_main(callable_obj, argv: list[str]) -> tuple[int, str]:
+def _capture_main(callable_obj: Callable[..., int], argv: list[str]) -> tuple[int, str]:
     old_quiet = os.environ.get("LARCH_QUIET_DISABLE")
     os.environ["LARCH_QUIET_DISABLE"] = "1"
     reset_quiet_state()

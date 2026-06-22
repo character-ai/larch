@@ -1,5 +1,5 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnusedCallResult=false, reportOptionalSubscript=false, reportOptionalMemberAccess=false, reportPossiblyUnboundVariable=false, reportUnnecessaryComparison=false, reportUnknownLambdaType=false, reportArgumentType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnusedImport=false, reportUnusedFunction=false, reportPrivateUsage=false, reportUnusedVariable=false
-# ruff: noqa: B905, FBT001, FURB167, PERF401, PLC0415, PLR2004, PTH123, RET504, RUF005, RUF007, S108, S607, SLF001, UP006, UP015, UP017, UP035, UP037
+# ruff: noqa: B905, FURB167, PERF401, PLC0415, PLR2004, PTH123, RET504, RUF005, RUF007, S108, S607, SLF001, UP006, UP015, UP017, UP035, UP037
 # pylint: skip-file
 """Analyze GitHub issue JSON for backlog and process insight."""
 
@@ -156,7 +156,7 @@ def _parse_issue_number(value: Any) -> tuple[int | None, str | None]:
     return None, "non-numeric"
 
 
-def load_issues(path: str, lenient: bool = False) -> List[Dict[str, Any]]:
+def load_issues(path: str, *, lenient: bool = False) -> List[Dict[str, Any]]:
     try:
         with open(path, "r", encoding="utf-8") as handle:
             raw = json.load(handle)

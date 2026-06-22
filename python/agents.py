@@ -945,8 +945,9 @@ def _run_cursor_probes(max_auth_retries: int, max_transient_retries: int, max_ti
 
 
 def check_reviewers(
-    skip_codex_probe: bool = False,  # noqa: FBT001 - CLI-style API mirrors skip flags.
-    skip_cursor_probe: bool = False,  # noqa: FBT001 - CLI-style API mirrors skip flags.
+    *,
+    skip_codex_probe: bool = False,
+    skip_cursor_probe: bool = False,
     probe_timeout_seconds: int | None = None,
     env: dict[str, str] | None = None,
 ) -> CheckReviewersResult:

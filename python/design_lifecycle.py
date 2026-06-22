@@ -531,14 +531,14 @@ def _maybe_timing_mark(label: str) -> None:
         )
 
 
-def _capture_stdout(callable_obj, argv: Sequence[str]) -> tuple[int, str]:
+def _capture_stdout(callable_obj: Callable[..., int], argv: Sequence[str]) -> tuple[int, str]:
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         rc = callable_obj(list(argv))
     return int(rc), buf.getvalue()
 
 
-def _capture_stdout_stderr(callable_obj, argv: Sequence[str], *, stderr_path: Path) -> tuple[int, str]:
+def _capture_stdout_stderr(callable_obj: Callable[..., int], argv: Sequence[str], *, stderr_path: Path) -> tuple[int, str]:
     buf = io.StringIO()
     try:
         with stderr_path.open("w", encoding="utf-8") as err, contextlib.redirect_stdout(buf), contextlib.redirect_stderr(err):
@@ -684,7 +684,7 @@ def _stall_args(design_tmpdir: Path) -> list[str]:
     return ["--profile", "generic", "--artifact-prefix", "design-failure", "--implement-tmpdir", str(design_tmpdir)]
 
 
-def _run_stall_main(callable_obj, argv: Sequence[str], *, stdout_path: Path | None = None, stderr_path: Path | None = None) -> int:
+def _run_stall_main(callable_obj: Callable[..., int], argv: Sequence[str], *, stdout_path: Path | None = None, stderr_path: Path | None = None) -> int:
     try:
         with contextlib.ExitStack() as stack:
             if stdout_path is not None:

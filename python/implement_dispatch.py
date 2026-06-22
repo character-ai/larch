@@ -495,7 +495,7 @@ def run_step_checks_main(argv: list[str] | None = None) -> int:
 
 def step8_python_guard_main(argv: list[str] | None = None) -> int:
     argparse.ArgumentParser(prog="cli.py implement step-8-python-guard").parse_args(argv)
-    if sys.version_info >= (3, 11):  # noqa: UP036
+    if sys.version_info >= (3, 11):  # noqa: UP036 - intentional runtime guard; this module may execute under pre-3.11 interpreters.
         return 0
     print("ERROR: Python ship driver requires Python 3.11 or newer", file=sys.stderr)
     print('{"detail":"Python ship driver requires Python 3.11 or newer","failed_run_id":"","ledger_dispatcher":"","ledger_exit_code":null,"ledger_failure_detail_log":"","ledger_phase":"","ledger_ready":false,"ledger_site":"","ledger_step":"","ledger_trigger":"","merge_result":"","needs_user_reason":"","outcome":"STALLED","pr_number":null,"pr_url":""}')
