@@ -1406,12 +1406,6 @@
   {
     "file": "ci_monitor.py",
     "code": "C901",
-    "qualified_symbol": "poll_ci",
-    "metric": 13
-  },
-  {
-    "file": "ci_monitor.py",
-    "code": "C901",
     "qualified_symbol": "stage_and_push",
     "metric": 22
   },
@@ -1474,12 +1468,6 @@
     "code": "PLR0912",
     "qualified_symbol": "monitor",
     "metric": 18
-  },
-  {
-    "file": "ci_monitor.py",
-    "code": "PLR0912",
-    "qualified_symbol": "poll_ci",
-    "metric": 13
   },
   {
     "file": "ci_monitor.py",
@@ -2757,13 +2745,13 @@
     "file": "design_summary.py",
     "code": "C901",
     "qualified_symbol": "render_final_summary_main",
-    "metric": 22
+    "metric": 19
   },
   {
     "file": "design_summary.py",
     "code": "PLR0912",
     "qualified_symbol": "render_final_summary_main",
-    "metric": 22
+    "metric": 19
   },
   {
     "file": "design_summary.py",
@@ -2781,7 +2769,7 @@
     "file": "design_summary.py",
     "code": "PLR0915",
     "qualified_symbol": "render_final_summary_main",
-    "metric": 98
+    "metric": 88
   },
   {
     "file": "dirty_tree.py",
@@ -2906,12 +2894,6 @@
   {
     "file": "final_report.py",
     "code": "C901",
-    "qualified_symbol": "_refresh_issue_counts",
-    "metric": 13
-  },
-  {
-    "file": "final_report.py",
-    "code": "C901",
     "qualified_symbol": "write_final_report",
     "metric": 21
   },
@@ -2938,12 +2920,6 @@
     "code": "PLR0911",
     "qualified_symbol": "write_final_report",
     "metric": 8
-  },
-  {
-    "file": "final_report.py",
-    "code": "PLR0912",
-    "qualified_symbol": "_refresh_issue_counts",
-    "metric": 13
   },
   {
     "file": "final_report.py",
@@ -5793,7 +5769,7 @@
     "file": "review_tally.py",
     "code": "PLR0915",
     "qualified_symbol": "tally_code_votes",
-    "metric": 220
+    "metric": 221
   },
   {
     "file": "run_logs.py",
@@ -5805,7 +5781,7 @@
     "file": "run_logs.py",
     "code": "C901",
     "qualified_symbol": "_commit_run",
-    "metric": 14
+    "metric": 12
   },
   {
     "file": "run_logs.py",
@@ -5938,12 +5914,6 @@
     "code": "PLR0911",
     "qualified_symbol": "verify_completeness_main",
     "metric": 11
-  },
-  {
-    "file": "run_logs.py",
-    "code": "PLR0912",
-    "qualified_symbol": "_commit_run",
-    "metric": 13
   },
   {
     "file": "run_logs.py",

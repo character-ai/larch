@@ -332,8 +332,8 @@ def _tokenize_plan_finding_reviewers(cell: str, labels: Iterable[str]) -> set[st
 
 def _read_classification_counts(path: Path, labels: Iterable[str], *, plan_mode: bool) -> dict[str, PruneRoundCounts]:
     label_list = list(labels)
-    mutable_counts = {label: {"accepted": 0, "rejected": 0, "total": 0} for label in label_list}
-    label_keys = {label: label if plan_mode else _normalize_code_label(label) for label in label_list}
+    mutable_counts: dict[str, dict[str, int]] = {label: {"accepted": 0, "rejected": 0, "total": 0} for label in label_list}
+    label_keys: dict[str, str] = {label: label if plan_mode else _normalize_code_label(label) for label in label_list}
     with path.open(encoding="utf-8", errors="replace", newline="") as handle:
         reader = csv.DictReader(handle, delimiter="\t")
         if not reader.fieldnames:
@@ -418,7 +418,7 @@ def reviewer_prune_record(ledger: Path, round_num: int, manifest: Path, classifi
     plan_mode = bool(label_mp)
     slot_labels = [(row, label_mp.get(str(row.get("slot") or ""), _output_label(row))) for row in rows]
     counts = _read_classification_counts(classification, [label for _, label in slot_labels], plan_mode=plan_mode)
-    ledger_rows = []
+    ledger_rows: list[list[str]] = []
     for row, label in slot_labels:
         count = counts.get(label, PruneRoundCounts())
         ledger_rows.append(
@@ -1810,7 +1810,7 @@ def _record_classification(review_tmpdir: Path, round_num: int, classification_f
     if not classification_file:
         return
     map_file = review_tmpdir / "findings-classification-round-map.env"
-    existing = []
+    existing: list[str] = []
     round_key = f"FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_{round_num}"
     if map_file.is_file():
         existing = [line for line in map_file.read_text(encoding="utf-8", errors="replace").splitlines() if not line.startswith("FINDINGS_CLASSIFICATION_TSV_FILE=") and not line.startswith(round_key + "=")]
@@ -2255,8 +2255,8 @@ def review_core(argv: list[str], *, runner: proc.Runner | None = None) -> int:
     voters_result = _run_command_string(commands.dispatch_voters, voter_args, runner=runner) if commands.dispatch_voters else _run_python_cli(["agent", "dispatch-voters", *voter_args], runner=runner)
     voters = _kv_parse(voters_result.stdout)
     _write_text(review_tmpdir / "review-core-voters.env", voters_result.stdout)
-    voter_files = []
-    voter_tools = []
+    voter_files: list[str] = []
+    voter_tools: list[str] = []
     for idx, default_tool in enumerate(("cursor-validity", "cursor-plan-fidelity", "cursor-pragmatism"), start=1):
         path = voters.get(f"VOTER_{idx}_PATH", "")
         status = voters.get(f"VOTER_{idx}_STATUS", "")
