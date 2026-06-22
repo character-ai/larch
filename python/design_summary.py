@@ -195,6 +195,21 @@ def _write_enriched_post_publish_summary(
                 _ = fh.write(f"\n### Warnings\n- **design-summary**: {msg}\n")
         except OSError:
             pass
+        try:
+            reloaded = exec_issue_detail.load_issue_detail_groups(design_tmpdir, run_dir=None)
+            if out_file.is_file():
+                degraded_body = out_file.read_text(encoding="utf-8")
+                detail_block = exec_issue_detail.build_issue_detail_section(reloaded)
+                if detail_block:
+                    degraded_body = _append_issue_detail(degraded_body, reloaded)
+                else:
+                    degraded_body = (
+                        degraded_body.rstrip("\n")
+                        + "\n\n**⚠ Enrich degraded — exec issue detail unavailable.**\n"
+                    )
+                _ = out_file.write_text(degraded_body, encoding="utf-8")
+        except OSError:
+            pass
         return 1
 
 

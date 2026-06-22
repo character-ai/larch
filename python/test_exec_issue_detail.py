@@ -269,6 +269,49 @@ def test_assessment_subprocess_timeout_fails_closed(monkeypatch: pytest.MonkeyPa
     assert "Assessment" not in block
 
 
+def test_empty_markdown_falls_back_to_ndjson(tmp_path: Path) -> None:
+    _ = (tmp_path / "execution-issues.md").touch()
+    run_dir = tmp_path / "larch-logs" / "implement" / "run1"
+    run_dir.mkdir(parents=True)
+    rows = [
+        {"category": "Tool Failures", "body": "- exec one"},
+        {"category": "Warnings", "body": "- warn one"},
+    ]
+    _ = (run_dir / "execution-issues.ndjson").write_text(
+        "\n".join(json.dumps(row) for row in rows) + "\n",
+        encoding="utf-8",
+    )
+
+    result = exec_issue_detail.load_issue_detail_groups(tmp_path, run_dir=run_dir)
+
+    assert not result.listing_degraded
+    assert exec_issue_detail.count_load_result(result) == (1, 1)
+    block = exec_issue_detail.render_issue_detail_block(result, assess=False)
+    assert "1. exec one" in block
+    assert "1. warn one" in block
+
+
+def test_all_dict_ndjson_without_category_keys_uses_body_concat(tmp_path: Path) -> None:
+    run_dir = tmp_path / "larch-logs" / "implement" / "run1"
+    run_dir.mkdir(parents=True)
+    rows = [
+        {"body": "### Tool Failures\n- a"},
+        {"body": "### Warnings\n- b"},
+    ]
+    _ = (run_dir / "execution-issues.ndjson").write_text(
+        "\n".join(json.dumps(row) for row in rows) + "\n",
+        encoding="utf-8",
+    )
+
+    result = exec_issue_detail.load_issue_detail_groups(tmp_path, run_dir=run_dir)
+
+    assert not result.listing_degraded
+    assert exec_issue_detail.count_load_result(result) == (1, 1)
+    block = exec_issue_detail.render_issue_detail_block(result, assess=False)
+    assert "1. a" in block
+    assert "1. b" in block
+
+
 def test_assessment_subprocess_nonzero_exit_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_run(argv: list[str], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(argv, 1, stdout="", stderr="failed")

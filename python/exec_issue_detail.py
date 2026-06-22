@@ -88,6 +88,10 @@ def _dedupe_key_from_body(body: str) -> str:
     return normalized[: max(0, MAX_DEDUPE_KEY_LEN - 3)].rstrip() + "..."
 
 
+def _dedupe_key_from_raw(raw: str) -> str:
+    return _dedupe_key_from_body(redact.redact_outbound(raw))
+
+
 def _split_issue_section_lines(text: str) -> tuple[list[str], list[str]]:
     exec_lines: list[str] = []
     warn_lines: list[str] = []
@@ -150,13 +154,13 @@ def _parse_bullet_line(line: str) -> IssueEvent | None:
             label=label,
             description=_display_from_raw(description) if description else "",
             display_text=display_text,
-            dedupe_key=_normalize_key(display_text),
+            dedupe_key=_dedupe_key_from_raw(raw_display),
         )
     body = line[2:].strip()
     if not body:
         return None
     display_text = _display_from_raw(body)
-    return IssueEvent(label="", description=display_text, display_text=display_text, dedupe_key=_normalize_key(display_text))
+    return IssueEvent(label="", description=display_text, display_text=display_text, dedupe_key=_dedupe_key_from_raw(body))
 
 
 def _parse_section_events(section_text: str) -> list[IssueEvent]:
@@ -258,9 +262,11 @@ def _parse_ndjson_legacy(path: Path) -> LoadResult:
         except json.JSONDecodeError:
             parsed.append(None)
     dict_rows = [cast("dict[str, object]", row) for row in parsed if isinstance(row, dict)]
+    all_dicts = bool(parsed) and len(dict_rows) == len(parsed)
+    all_categorized = bool(dict_rows) and all(isinstance(row.get("category"), str) for row in dict_rows)
     structured_rows = [row for row in dict_rows if isinstance(row.get("category"), str)]
-    if structured_rows:
-        return LoadResult(_parse_ndjson_structured_rows(structured_rows), listing_degraded=False)
+    if all_dicts and all_categorized:
+        return LoadResult(_parse_ndjson_structured_rows(dict_rows), listing_degraded=False)
 
     body_parts = [
         str(cast("dict[str, object]", row).get("body", ""))
@@ -270,6 +276,8 @@ def _parse_ndjson_legacy(path: Path) -> LoadResult:
     body_text = "\n".join(body_parts)
     if _SECTION_HEADING_RE.search(body_text):
         return LoadResult(parse_markdown_execution_issues(body_text), listing_degraded=False)
+    if structured_rows:
+        return LoadResult(_parse_ndjson_structured_rows(structured_rows), listing_degraded=False)
     return LoadResult(EMPTY_GROUPS, listing_degraded=True, degraded_totals=legacy_category_string_totals(body_text))
 
 
