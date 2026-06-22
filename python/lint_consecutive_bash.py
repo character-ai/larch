@@ -63,6 +63,8 @@ def _git_files(root: Path, patterns: list[str]) -> list[Path]:
     except subprocess.CalledProcessError as exc:
         detail = exc.stderr.decode("utf-8", errors="replace").strip()
         raise LintError(f"lint-consecutive-bash: cannot enumerate markdown files: {detail}") from exc
+    except OSError as exc:
+        raise LintError(f"lint-consecutive-bash: cannot enumerate markdown files: {exc}") from exc
     rels = {rel.decode("utf-8") for rel in proc.stdout.split(b"\0") if rel}
     return [root / rel for rel in sorted(rels)]
 
