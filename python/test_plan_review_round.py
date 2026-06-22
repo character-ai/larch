@@ -1140,6 +1140,85 @@ def test_execute_round_zero_findings_short_circuits_before_voting(
     assert voter_called["hit"] is False
 
 
+def test_execute_round_zero_findings_short_circuit_requires_zero_fail_count(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Partial collector failure (ok_count>0, fail_count>0, empty ballot) must not benign-short-circuit."""
+    design = tmp_path
+    plan_file = design / "plan.txt"
+    feature_file = design / "feature.txt"
+    _ = plan_file.write_text("plan\n", encoding="utf-8")
+    _ = feature_file.write_text("feature\n", encoding="utf-8")
+    ok_reviewer = design / "cursor-plan-arch-output.txt"
+    fail_reviewer = design / "codex-plan-arch-output.txt"
+    voter_called = {"hit": False}
+
+    def fake_run_cli(argv: list[str], *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+        del env
+        if argv[:2] == ["plan-review", "panel-dispatch"]:
+            _ = (design / "plan-review-slots.ndjson").write_text(
+                "\n".join(
+                    [
+                        '{"slot":"cursor-plan-arch","tool":"cursor","output":"'
+                        + str(ok_reviewer)
+                        + '","prompt_file":"'
+                        + str(design / "cursor-plan-arch.prompt")
+                        + '"}',
+                        '{"slot":"codex-plan-arch","tool":"codex","output":"'
+                        + str(fail_reviewer)
+                        + '","prompt_file":"'
+                        + str(design / "codex-plan-arch.prompt")
+                        + '"}',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            paths_file = design / "plan-review-panel-paths.txt"
+            _ = paths_file.write_text(f"{ok_reviewer}\n{fail_reviewer}\n", encoding="utf-8")
+            return subprocess.CompletedProcess(argv, 0, f"PANEL_PRUNED_EMPTY=false\nPANEL_PATHS_FILE={paths_file}\n", "")
+        if argv[:2] == ["agent", "collect-results"]:
+            records = [
+                collect_results.CollectorRecord(
+                    reviewer_file=str(ok_reviewer),
+                    tool="cursor",
+                    status="OK",
+                    exit_code="0",
+                ),
+                collect_results.CollectorRecord(
+                    reviewer_file=str(fail_reviewer),
+                    tool="codex",
+                    status="TIMEOUT",
+                    exit_code="124",
+                    failure_reason="timed out",
+                ),
+            ]
+            return subprocess.CompletedProcess(argv, 0, _collector_text(records), "")
+        if argv[:2] == ["review", "aggregate-findings"]:
+            return subprocess.CompletedProcess(argv, 0, "REASON=insufficient-input\nAGGREGATED=false\n", "")
+        if argv[:2] == ["plan-review", "voter-dispatch"]:
+            voter_called["hit"] = True
+            return subprocess.CompletedProcess(argv, 0, "DISPATCH_OK=false\nDEGRADED_PANEL=1\n", "")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
+
+    rc, values = plan_review_round.execute_round(
+        design,
+        round_num=6,
+        prune_round_num=6,
+        codex_present="true",
+        cursor_present="true",
+        plan_file=plan_file,
+        feature_file=feature_file,
+    )
+
+    assert rc == 1
+    assert values["LOOP_STATUS"] == "panel-failed"
+    assert values["DEGRADED_PANEL"] == "1"
+    assert voter_called["hit"] is True
+
+
 def test_execute_round_zero_findings_clears_stale_tally_artifacts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

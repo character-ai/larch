@@ -791,7 +791,7 @@ def execute_round(
     # _classify_round_loop_status could run. The ok_count == 0 empty-collection case is left
     # to the existing voter-dispatch / classifier path so its loud degraded-empty-collector
     # outcome (issue #4790) is preserved.
-    if ok_count > 0 and not re.search(r"(?m)^### (?:FINDING|OOS)_[0-9]+", ballot_text):
+    if ok_count > 0 and fail_count == 0 and not re.search(r"(?m)^### (?:FINDING|OOS)_[0-9]+", ballot_text):
         values.update(
             {
                 "LOOP_STATUS": "zero-findings-degraded-panel",
