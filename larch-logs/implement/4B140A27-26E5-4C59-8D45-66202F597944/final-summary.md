@@ -1,14 +1,14 @@
-## /implement run 4B140A27-26E5-4C59-8D45-66202F597944 — bailed
+## /implement run 4B140A27-26E5-4C59-8D45-66202F597944 — pr-created
 
-- **Outcome**: bailed
 - **Mode**: N/A
 - Emergency: true
 - **Duration**: 01:38:04
-- **Cost**: 💰 TOTAL ~$10.29 — Claude $5.79, Codex $3.02, Cursor $1.04, Claude (subprocess) $0.44  |  Tokens: 13434k
+- **Cost**: 💰 TOTAL ~$10.97 — Claude $6.47, Codex $3.02, Cursor $1.04, Claude (subprocess) $0.44  |  Tokens: 14569k
 - **Issue**: #5006 — https://github.com/character-ai/larch/issues/5006
+- **PR**: #5033 — https://github.com/character-ai/larch/pull/5033
 - **Plan review**: N/A
 - **Code review**: 1/2 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +79/-11, larch-logs +401/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 2
