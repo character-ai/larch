@@ -623,12 +623,48 @@ def _parse_kv(output: str, key: str) -> str:
     return larch_io.kv_value(output, key, default="")
 
 
+_MD_TABLE_VOTE_ID_RE = re.compile(r"^(?:FINDING|OOS)_[0-9]+$")
+_MD_TABLE_VOTE_RE = re.compile(r"^(YES|NO|EXONERATE)\b", re.IGNORECASE)
+
+
+def _strip_md_markers(cell: str) -> str:
+    return cell.replace("*", "").replace("`", "").strip()
+
+
+def _normalize_markdown_table_votes(text: str) -> str:
+    """Rewrite markdown-table vote rows into anchored ``FINDING_N: VOTE`` lines.
+
+    Some voters emit votes as a markdown table (``| FINDING_1 | **YES** | reason |``)
+    instead of the required anchored grammar. The anchored parsers below only
+    match lines that start with ``<id>:``; a table row would otherwise count as
+    JUDGE_ERROR and drop the voter from quorum (issue #5078). Recognizable table
+    vote rows are converted in place; every other line passes through unchanged.
+    """
+    if "|" not in text:
+        return text
+    out: list[str] = []
+    for line in text.splitlines():
+        rewritten = line
+        stripped = line.strip()
+        if stripped.startswith("|"):
+            cells = [cell.strip() for cell in stripped.strip("|").split("|")]
+            if len(cells) >= 2:  # noqa: PLR2004
+                ballot_id = _strip_md_markers(cells[0]).upper()
+                vote_match = _MD_TABLE_VOTE_RE.match(_strip_md_markers(cells[1]))
+                if _MD_TABLE_VOTE_ID_RE.match(ballot_id) and vote_match:
+                    rest = " ".join(cell for cell in (_strip_md_markers(c) for c in cells[2:]) if cell)
+                    rewritten = f"{ballot_id}: {vote_match.group(1).upper()}" + (f" -- {rest}" if rest else "")
+        out.append(rewritten)
+    return "\n".join(out)
+
+
 def vote_for_id(ballot_id: str, voter_file: str | Path) -> str:
     result = "JUDGE_ERROR"
     try:
-        lines = Path(voter_file).read_text(encoding="utf-8", errors="replace").splitlines()
+        raw = Path(voter_file).read_text(encoding="utf-8", errors="replace")
     except OSError:
         return result
+    lines = _normalize_markdown_table_votes(raw).splitlines()
     pattern = re.compile(rf"^{re.escape(ballot_id)}:\s*(YES|NO|EXONERATE)(?:[\s-]|$)", re.IGNORECASE)
     for line in lines:
         match = pattern.search(line)
@@ -1052,9 +1088,10 @@ def parse_judge_vote(voter_file: str | Path, ballot_id: str) -> tuple[str, str, 
     vote = correctness = severity = quality = uncertain_token = ""
     pattern = re.compile(rf"^{re.escape(ballot_id)}:\s*", re.IGNORECASE)
     try:
-        lines = Path(voter_file).read_text(encoding="utf-8", errors="replace").splitlines()
+        raw_text = Path(voter_file).read_text(encoding="utf-8", errors="replace")
     except OSError as exc:
         raise FileNotFoundError(str(exc)) from exc
+    lines = _normalize_markdown_table_votes(raw_text).splitlines()
     for raw in lines:
         if not pattern.search(raw):
             continue

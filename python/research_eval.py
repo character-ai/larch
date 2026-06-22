@@ -207,14 +207,54 @@ def _location_field_valid(location: str) -> bool:
     return bool(_clean_tsv(location))
 
 
+def _leading_typed_fields_valid(fields: list[str]) -> bool:
+    """Return True when the five leading typed TSV columns individually validate.
+
+    Used by the column-count salvage path: a row missing a tab delimiter is only
+    recovered when schema_version/scope/severity/focus_area/location parse, so a
+    genuinely malformed row is still rejected.
+    """
+    if len(fields) < 6:  # five typed columns plus at least one free-text column
+        return False
+    schema, scope, severity, focus, location = (_clean_tsv(field) for field in fields[:5])
+    return (
+        _canonical_schema_version(schema) is not None
+        and scope in {"in_scope", "out_of_scope"}
+        and severity.lower() in _ALLOWED_SEVERITIES
+        and _canonical_focus(focus) in _ALLOWED_FOCUS
+        and _location_field_valid(location)
+    )
+
+
+def _salvage_structured_tsv_row(line: str, fields: list[str]) -> list[str] | None:
+    """Recover an off-by-one-delimiter TSV row instead of dropping the whole slot.
+
+    Two recoverable shapes (issue #5078), both content-valid but one tab short:
+    a single trailing delimiter omitted (seven fields), or a tab replaced by a
+    run of spaces. Recovery is gated on the leading typed columns validating so a
+    truly malformed row still rejects. The clean trailing-pad is preferred over
+    re-splitting on spaces, which can over-split free text.
+    """
+    if len(fields) == 7 and _leading_typed_fields_valid(fields):
+        return [*fields, ""]
+    if len(fields) < 8:
+        candidate = re.sub(r" {2,}", "\t", line).split("\t", 7)
+        if len(candidate) == 8 and _leading_typed_fields_valid(candidate):
+            return candidate
+    return None
+
+
 def _split_structured_tsv_row(line: str) -> list[str] | None:
     """Split one logical TSV row into eight fields or reject with _diag."""
     line = re.sub(r"[\r\n]+", " ", line)
     fields = line.split("\t", 7)
-    if len(fields) < 8:
-        _diag(f"REJECT structured TSV row: expected 8 tab columns, got {len(fields)}")
-        return None
-    return fields
+    if len(fields) >= 8:
+        return fields
+    salvaged = _salvage_structured_tsv_row(line, fields)
+    if salvaged is not None:
+        return salvaged
+    _diag(f"REJECT structured TSV row: expected 8 tab columns, got {len(fields)}")
+    return None
 
 
 def _validate_structured_tsv(text: str) -> str:
@@ -227,7 +267,9 @@ def _validate_structured_tsv(text: str) -> str:
             break
     if not seen_header:
         return ""
+    rows_seen = 0
     for line in _iter_tsv_logical_rows(text):
+        rows_seen += 1
         fields = _split_structured_tsv_row(line)
         if fields is None:
             continue
@@ -244,6 +286,8 @@ def _validate_structured_tsv(text: str) -> str:
             continue
         out.append("\t".join([canonical_schema, scope, severity, focus, location, what, scenario, fix]))
     if len(out) <= 1:
+        if rows_seen:
+            _diag(f"REJECT structured TSV: {rows_seen} data row(s) seen but none validated after salvage")
         return ""
     return "\n".join(out) + "\n"
 

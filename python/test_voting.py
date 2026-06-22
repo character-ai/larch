@@ -114,6 +114,48 @@ def test_parse_judge_vote_missing_args_and_unreadable(tmp_path: Path) -> None:
     assert result.returncode == 2
 
 
+def test_markdown_table_votes_are_recovered(tmp_path: Path) -> None:
+    # Issue #5078: a voter that emits a markdown table instead of anchored
+    # FINDING_N: lines must still have its votes parsed and counted, not dropped
+    # from quorum as JUDGE_ERROR.
+    voter = tmp_path / "voter.txt"
+    voter.write_text(
+        "| Item | Vote | Key reason |\n"
+        "|------|------|------------|\n"
+        "| FINDING_1 | **YES** | clear win |\n"
+        "| FINDING_2 | NO | not convinced |\n"
+        "| OOS_1 | EXONERATE | out of scope |\n",
+        encoding="utf-8",
+    )
+    assert voting.vote_for_id("FINDING_1", voter) == "YES"
+    assert voting.vote_for_id("FINDING_2", voter) == "NO"
+    assert voting.vote_for_id("OOS_1", voter) == "NO"  # EXONERATE maps to NO
+    assert voting.parse_judge_vote(voter, "FINDING_1")[0] == "YES"
+
+    ballot = tmp_path / "ballot.md"
+    ballot.write_text("### FINDING_1: a\n### FINDING_2: b\n", encoding="utf-8")
+    # The parse-rate gate must see the recovered votes and keep the voter (OK, not NOT_SUBSTANTIVE).
+    assert (
+        voting.check_voter_parse_rate(
+            voter_file=str(voter),
+            voter_tool="claude",
+            ballot_file=str(ballot),
+            id_grammar="finding-oos",
+            review_tmpdir=str(tmp_path),
+            log_mode="quiet",
+        )
+        == "OK"
+    )
+
+
+def test_anchored_votes_unaffected_by_markdown_normalization(tmp_path: Path) -> None:
+    # Plain anchored votes (no pipe characters) pass through unchanged.
+    voter = tmp_path / "voter.txt"
+    voter.write_text("FINDING_1: YES\nFINDING_2: NO -- reason\n", encoding="utf-8")
+    assert voting.vote_for_id("FINDING_1", voter) == "YES"
+    assert voting.vote_for_id("FINDING_2", voter) == "NO"
+
+
 def test_file_line_regex_and_false_positive() -> None:
     result = run_cli("voting", "file-line-regex", "--name", "extensionless-re")
     assert result.returncode == 0
