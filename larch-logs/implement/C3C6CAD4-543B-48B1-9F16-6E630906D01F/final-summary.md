@@ -1,15 +1,15 @@
-## /implement run C3C6CAD4-543B-48B1-9F16-6E630906D01F — bailed
+## /implement run C3C6CAD4-543B-48B1-9F16-6E630906D01F — pr-created
 
-- **Outcome**: bailed
 - **Mode**: N/A
 - Emergency: true
-- **Duration**: 01:54:06
-- **Cost**: 💰 TOTAL ~$21.11 — Claude $14.30, Codex $4.27, Cursor $1.52, Claude (subprocess) $1.02  |  Tokens: 24492k
+- **Duration**: 02:00:42
+- **Cost**: 💰 TOTAL ~$26.41 — Claude $19.60, Codex $4.27, Cursor $1.52, Claude (subprocess) $1.02  |  Tokens: 31703k
 - **Issue**: #5062 — https://github.com/character-ai/larch/issues/5062
+- **PR**: #5096 — https://github.com/character-ai/larch/pull/5096
 - **Plan review**: N/A
 - **Dynamic archetypes**: static-only, pre-scouted-empty
 - **Code review**: 1/4 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +29/-27, larch-logs +432/-0
 - **OOS filed**: 1 — https://github.com/character-ai/larch/issues/5095
 - **Exec issues**: 0
 - **Warnings**: 3
@@ -54,3 +54,9 @@ cursor/apply              │                    ██████████�
 **Reviewer slot failures**: 0
 
 _Cost is the per-round vendor cost (Codex + Cursor + Claude subprocess), attributed by token-ledger timestamp window; it excludes main-agent Claude, so it is less than the run Cost line above. Rendered as an em dash when per-round timing or the token ledger is unavailable._
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
+
+The drafter-launcher migration advances G-Py-1 (output-rooted sidecar paths are now passed through the frozen `LauncherPaths` dataclass instead of inline construction) and G-Py-3 (domain-typed `paths.*` accessors replace stringly-typed `output.with_suffix(suffix + ".x")` primitives). The single added `paths` binding needs no local annotation (G-Py-2 deviate-when: type obvious from the right-hand side), and all existing fail-loud paths (failure-diag, done sentinels, status writes) are preserved (G-Py-4).
