@@ -43,6 +43,7 @@ class Options:
     site: str = "review Step 2"
 
 
+# Mutable: per-voter status / parse-rate fields are updated in place as voters resolve.
 @dataclass
 class DispatchState:
     voter_1_path: str

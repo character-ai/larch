@@ -347,6 +347,7 @@ _SESSION_ENV_ALLOWLIST = frozenset(_WRAPPER_ENV_DEFAULTS) | {
 }
 
 
+# Mutable builder: the argv parser sets fields on the instance as it scans.
 @dataclass
 class WrapperArgs:
     session_env_path: str = ""

@@ -53,7 +53,7 @@ def _redact_checked(text: str) -> tuple[str | None, int]:
         return None, 3
 
 
-@dataclass
+@dataclass(frozen=True)
 class ParsedItem:
     title: str
     body: str
@@ -63,6 +63,7 @@ class ParsedItem:
     malformed: bool = False
 
 
+# Mutable parser state: methods update current_* / pending_* / items in place while scanning.
 @dataclass
 class ParseState:
     current_title: str = ""

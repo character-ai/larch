@@ -196,7 +196,7 @@ def _single_line(value: str) -> str:
     return re.sub(r"\s+", " ", value.replace("\r", " ").replace("\n", " ")).strip()
 
 
-@dataclass
+@dataclass(frozen=True)
 class BootstrapOptions:
     up_to_phase: str
     caller_env: str = ""
@@ -218,6 +218,7 @@ class BootstrapOptions:
     non_interactive: str = ""
 
 
+# Mutable state: fields (coder / branch_name / repo / run_id / deferred / ...) are set as bootstrap phases run.
 @dataclass
 class BootstrapState:
     opts: BootstrapOptions
@@ -1360,7 +1361,7 @@ def _continue_predicate(data: dict[str, str]) -> bool:
     return bool(data.get("coder"))
 
 
-@dataclass
+@dataclass(frozen=True)
 class ContinueTailResult:
     routing: dict[str, str] = field(default_factory=dict)
     advisory_lines: list[str] = field(default_factory=list)

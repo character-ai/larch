@@ -48,7 +48,7 @@ class UsageError(ValueError):
     """CLI usage error."""
 
 
-@dataclass
+@dataclass(frozen=True)
 class ManifestResult:
     manifest: dict[str, list[dict[str, object]]]
     warnings: list[str]

@@ -32,6 +32,7 @@ class PlannedDir:
     run_date: str
 
 
+# Mutable accumulator: counters are incremented in place during the scan.
 @dataclass
 class Counters:
     scanned: int = 0

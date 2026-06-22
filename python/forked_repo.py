@@ -26,11 +26,12 @@ class SetupError(RuntimeError):
     """Raised for setup failures after a user-visible diagnostic."""
 
 
-@dataclass
+@dataclass(frozen=True)
 class RemoteSnapshot:
     entries: list[tuple[str, str]] = field(default_factory=list)
 
 
+# Mutable builder: the argv parser fills fields and toggles remote_phase_active during setup.
 @dataclass
 class SetupContext:
     upstream: str = ""

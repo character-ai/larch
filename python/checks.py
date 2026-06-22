@@ -115,6 +115,7 @@ class FixOutcome:
     stderr_tail_path: str = ""
 
 
+# Mutable: delta_paths and ledger_* fields are filled in across fix-loop iterations.
 @dataclass
 class LoopResult:
     status: str
