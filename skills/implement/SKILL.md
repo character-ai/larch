@@ -703,7 +703,7 @@ Else (`FILES_CHANGED=true`):
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 10800000`.**
 
 ```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/run-step-checks.sh --site step6
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/run-step-checks.sh --site step6 # lint-consecutive-bash: ok immediate-background checks boundary precedes separate review commit
 ```
 
 <!-- step:7 — Second Commit (review fixes) -->

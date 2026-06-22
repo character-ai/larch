@@ -347,6 +347,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("lint", "gh-body-inline"): ("lint_gh_body_inline", "main"),
     ("lint", "complexity-baseline"): ("lint_complexity_baseline", "main"),
     ("lint", "codex-exec-auth"): ("lint_codex_exec_auth", "main"),
+    ("lint", "consecutive-bash"): ("lint_consecutive_bash", "main"),
     ("lint", "skill-invocations"): ("lint_skill_invocations", "main"),
     ("lint", "run-log-run-id"): ("lint_run_log_run_id", "main"),
     ("voting", "findings-classification-header"): ("voting", "findings_classification_header_main"),

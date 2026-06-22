@@ -83,6 +83,7 @@ Implement currently uses the full table below. Design currently uses only `cache
 ## Scanning
 
 ```bash
+# lint-consecutive-bash: ok map output feeds per-run scan loop
 # Map each PR to its run-log directory
 RUN_MAP_TSV=$(python3 "$PWD/python/cli.py" audit-runs map-runs \
   --skill "$SKILL" --pr-list "$PR_LIST" --repo "<owner/name>")
