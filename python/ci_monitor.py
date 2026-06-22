@@ -258,7 +258,10 @@ def _behind_count(
         timeout=config.CI_STATUS_QUERY_TIMEOUT_SEC,
     )
     if result.returncode == config.EXIT_TIMEOUT:
-        _raise_on_status_query_timeout(result, label="git rev-list --count")
+        _warn_stderr(
+            "gather_status: git rev-list --count timed out; treating branch as pending",
+        )
+        return None
     if result.returncode != 0:
         _warn_stderr(
             "gather_status: git rev-list --count failed; treating branch as pending",

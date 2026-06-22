@@ -3590,7 +3590,7 @@ def test_gather_status_fetch_timeout_returns_error() -> None:
     assert status.checks_observed is False
 
 
-def test_gather_status_behind_count_timeout_returns_error() -> None:
+def test_gather_status_behind_count_timeout_preserves_checks_observation() -> None:
     responses = _status(status="pass")
     responses[("git", "rev-list", "--count", "HEAD..origin/main")] = _cr(
         ("git", "rev-list", "--count"),
@@ -3598,8 +3598,9 @@ def test_gather_status_behind_count_timeout_returns_error() -> None:
     )
     runner = RecordingRunner(responses)
     status = ci_monitor.gather_status(runner, pr=1, repo="o/r")
-    assert status.status == "error"
-    assert status.checks_observed is False
+    assert status.status == "pass"
+    assert status.checks_observed is True
+    assert status.behind_count == 0
 
 
 def test_poll_ci_emits_query_heartbeat_and_transition_breadcrumbs(
