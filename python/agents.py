@@ -4068,7 +4068,7 @@ def _review_write_codex_prompt_sidecar(output: Path, prompt: str, args: argparse
         if args.feature_file and "\n" not in args.feature_file:
             lines.append(f"FEATURE_FILE={args.feature_file}")
         ledger_file = findings_ledger.ledger_path(
-            findings_ledger.ledger_root(Path(args.output).parent)
+            findings_ledger.ledger_root(output.parent)
         )
         if "\n" not in str(ledger_file):
             lines.append(f"FINDINGS_LEDGER_FILE={ledger_file}")
