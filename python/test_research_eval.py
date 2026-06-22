@@ -275,6 +275,25 @@ def test_structured_tsv_salvages_seven_column_rows(tmp_path: Path) -> None:
     bogus = header + "1\tin_scope\timportant\tbogus_focus\tpython/baz.py:3\twhat\tscenario\n"
     assert research_eval.validate_structured_reviewer_output(bogus, write_structured=out) == 5
 
+    # Free-text double-space gap between what and scenario_or_breakage (not trailing pad).
+    free_text_gap = (
+        header + "1\tin_scope\timportant\tcorrectness\tpython/foo.py:1\twhat text  scenario text\tfix text\n"
+    )
+    assert research_eval.validate_structured_reviewer_output(free_text_gap, write_structured=out) == 0
+    gap_kept = [ln for ln in out.read_text(encoding="utf-8").splitlines() if ln and not ln.startswith("schema_version")]
+    assert len(gap_kept) == 1
+    gap_fields = gap_kept[0].split("\t")
+    assert gap_fields[5] == "what text"
+    assert gap_fields[6] == "scenario text"
+    assert gap_fields[7] == "fix text"
+
+    # Multi-space prose inside a single free-text field on an under-delimited row is rejected.
+    prose_fabrication = (
+        header
+        + "1\tin_scope\timportant\tcorrectness\tpython/foo.py:1\tconcern A  concern B  concern C  concern D\n"
+    )
+    assert research_eval.validate_structured_reviewer_output(prose_fabrication, write_structured=out) == 5
+
 
 def test_structured_tsv_accepts_non_file_location(tmp_path: Path) -> None:
     out = tmp_path / "records.tsv"

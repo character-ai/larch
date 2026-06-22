@@ -226,21 +226,58 @@ def _leading_typed_fields_valid(fields: list[str]) -> bool:
     )
 
 
+def _multispace_run_count(field: str) -> int:
+    return len(re.findall(r" {2,}", field))
+
+
+def _seven_field_pad_confident(fields: list[str]) -> bool:
+    """Gate trailing empty suggested_fix padding on high-confidence layout."""
+    if any(_multispace_run_count(field) for field in fields[5:7]):
+        return False
+    return _clean_tsv(fields[5]) or not _clean_tsv(fields[6])
+
+
+def _space_resplit_confident(original: list[str], candidate: list[str]) -> bool:
+    """Reject space-to-tab repair that fabricates columns from in-field prose."""
+    if len(candidate) != 8 or len(original) >= 8 or len(original) < 6:
+        return False
+
+    deficit = 8 - len(original)
+    if any(_multispace_run_count(field) for field in original[: min(5, len(original))]):
+        return True
+
+    if len(original) == 6:
+        return _multispace_run_count(original[5]) == deficit
+
+    for i in range(5, len(original) - 1):
+        runs = _multispace_run_count(original[i])
+        if runs:
+            return runs == deficit == 1
+    tail_runs = _multispace_run_count(original[6])
+    return bool(tail_runs and tail_runs == deficit == 1)
+
+
 def _salvage_structured_tsv_row(line: str, fields: list[str]) -> list[str] | None:
     """Recover an off-by-one-delimiter TSV row instead of dropping the whole slot.
 
     Two recoverable shapes (issue #5078), both content-valid but one tab short:
     a single trailing delimiter omitted (seven fields), or a tab replaced by a
     run of spaces. Recovery is gated on the leading typed columns validating so a
-    truly malformed row still rejects. The clean trailing-pad is preferred over
-    re-splitting on spaces, which can over-split free text.
+    truly malformed row still rejects. Space-to-tab re-split is tried before
+    trailing-pad so merged free-text columns are not mis-attributed.
     """
-    if len(fields) == 7 and _leading_typed_fields_valid(fields):
-        return [*fields, ""]
     if len(fields) < 8:
         candidate = re.sub(r" {2,}", "\t", line).split("\t", 7)
-        if len(candidate) == 8 and _leading_typed_fields_valid(candidate):
+        if (
+            len(candidate) == 8
+            and _leading_typed_fields_valid(candidate)
+            and _space_resplit_confident(fields, candidate)
+        ):
             return candidate
+    if len(fields) == 7 and _leading_typed_fields_valid(fields):
+        if _seven_field_pad_confident(fields):
+            return [*fields, ""]
+        _diag("REJECT structured TSV row: ambiguous seven-field salvage layout")
     return None
 
 
