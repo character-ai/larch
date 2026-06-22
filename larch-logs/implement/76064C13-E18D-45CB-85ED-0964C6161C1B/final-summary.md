@@ -1,15 +1,15 @@
-## /implement run 76064C13-E18D-45CB-85ED-0964C6161C1B — bailed
+## /implement run 76064C13-E18D-45CB-85ED-0964C6161C1B — pr-created
 
-- **Outcome**: bailed
 - **Mode**: N/A
 - Emergency: true
 - **Duration**: 00:39:00
-- **Cost**: 💰 TOTAL ~$9.05 — Claude $6.13, Codex $1.72, Cursor $0.81, Claude (subprocess) $0.39  |  Tokens: 11127k
+- **Cost**: 💰 TOTAL ~$10.86 — Claude $7.94, Codex $1.72, Cursor $0.81, Claude (subprocess) $0.39  |  Tokens: 13755k
 - **Issue**: #5077 — https://github.com/character-ai/larch/issues/5077
+- **PR**: #5079 — https://github.com/character-ai/larch/pull/5079
 - **Plan review**: N/A
 - **Dynamic archetypes**: static-only, pre-scouted-empty
 - **Code review**: 0 findings
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +70/-3, larch-logs +416/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 2
@@ -53,3 +53,7 @@ cursor/validity-vote      │                                       ████
 **Reviewer slot failures**: 0
 
 _Cost is the per-round vendor cost (Codex + Cursor + Claude subprocess), attributed by token-ledger timestamp window; it excludes main-agent Claude, so it is less than the run Cost line above. Rendered as an em dash when per-round timing or the token ledger is unavailable._
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified. The change adds one module-level int RC sentinel (`_MISSING_REVIEWER_RC`) mirroring the existing `_OOS_ATTRIBUTION_RC` pattern (G-Enf-1), preserves fail-closed degrade-after-retry-exhaustion (G-Py-4), and introduces no composite data (G-Py-1 n/a), new side effects (G-Py-5 n/a), or stringly-typed primitives (G-Py-3). Lint is clean (G-Py-6).
