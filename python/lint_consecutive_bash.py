@@ -22,7 +22,6 @@ HTML_COMMENT_START_RE = re.compile(r"^\s*<!--")
 HTML_COMMENT_END_RE = re.compile(r"-->\s*$")
 STANDALONE_PRAGMA_RE = re.compile(r"^\s*# lint-consecutive-bash: ok\s+(\S.*)$")
 TRAILING_PRAGMA_RE = re.compile(r"\s# lint-consecutive-bash: ok\s+(\S.*)$")
-EXAMPLE_RE = re.compile(r"\b(?:wrong|correct|example)\b", re.IGNORECASE)
 BREADCRUMB_MAX_CHARS = 160
 BREADCRUMB_MAX_LINE_CHARS = 100
 BREADCRUMB_MAX_LINES = 2
@@ -114,23 +113,6 @@ def _parse_fences(lines: list[str]) -> list[Fence]:
 
 def _is_bash_candidate(fence: Fence) -> bool:
     return fence.info.lower().lstrip().startswith("bash")
-
-
-def _first_body_comment(fence: Fence) -> str:
-    for line in fence.body_lines:
-        stripped = line.text.strip()
-        if not stripped:
-            continue
-        return stripped if stripped.startswith("#") else ""
-    return ""
-
-
-def _is_example_fence(fence: Fence) -> bool:
-    if EXAMPLE_RE.search(fence.info):
-        return True
-    if any(EXAMPLE_RE.search(line) for line in fence.preceding_context):
-        return True
-    return bool(EXAMPLE_RE.search(_first_body_comment(fence)))
 
 
 def _strip_html_comments(lines: list[str]) -> list[str]:
@@ -239,7 +221,7 @@ def lint_file(path: Path, root: Path) -> list[str]:
     except (OSError, UnicodeDecodeError) as exc:
         raise LintError(f"lint-consecutive-bash: {_rel(path, root)}: cannot read file: {exc}") from exc
     lines = text.lstrip("\ufeff").replace("\r\n", "\n").replace("\r", "\n").split("\n")
-    fences = [fence for fence in _parse_fences(lines) if _is_bash_candidate(fence) and not _is_example_fence(fence)]
+    fences = [fence for fence in _parse_fences(lines) if _is_bash_candidate(fence)]
     violations: list[str] = []
     for first, second in pairwise(fences):
         gap_lines = lines[first.end_line : second.start_line - 1]

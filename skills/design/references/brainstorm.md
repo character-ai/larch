@@ -93,6 +93,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent launch-review --tool codex -
 **Example — one external** (e.g. Cursor framing ran; Codex scope was parent-written in-session):
 
 ```bash
+# lint-consecutive-bash: ok one-external and two-external collect examples are intentionally distinct
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" step1d5 --mode collect -- \
   "$DESIGN_TMPDIR/cursor-brainstorm-output.txt"
 ```

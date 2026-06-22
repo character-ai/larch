@@ -631,6 +631,20 @@ def _strip_md_markers(cell: str) -> str:
     return cell.replace("*", "").replace("`", "").strip()
 
 
+def _split_table_axis_and_reason(cells: list[str]) -> tuple[list[str], list[str]]:
+    axis_parts: list[str] = []
+    reason_parts: list[str] = []
+    for cell in (_strip_md_markers(c) for c in cells):
+        if not cell:
+            continue
+        for part in re.split(r"[\s]+", cell.strip()):
+            if part.startswith(("CORRECTNESS=", "SEVERITY=", "QUALITY=", "UNCERTAIN=")):
+                axis_parts.append(part)
+            elif part:
+                reason_parts.append(part)
+    return axis_parts, reason_parts
+
+
 def _normalize_markdown_table_votes(text: str) -> str:
     """Rewrite markdown-table vote rows into anchored ``FINDING_N: VOTE`` lines.
 
@@ -652,8 +666,13 @@ def _normalize_markdown_table_votes(text: str) -> str:
                 ballot_id = _strip_md_markers(cells[0]).upper()
                 vote_match = _MD_TABLE_VOTE_RE.match(_strip_md_markers(cells[1]))
                 if _MD_TABLE_VOTE_ID_RE.match(ballot_id) and vote_match:
-                    rest = " ".join(cell for cell in (_strip_md_markers(c) for c in cells[2:]) if cell)
-                    rewritten = f"{ballot_id}: {vote_match.group(1).upper()}" + (f" -- {rest}" if rest else "")
+                    axis_parts, reason_parts = _split_table_axis_and_reason(cells[2:])
+                    vote_line = f"{ballot_id}: {vote_match.group(1).upper()}"
+                    if axis_parts:
+                        vote_line += " " + " ".join(axis_parts)
+                    if reason_parts:
+                        vote_line += " -- " + " ".join(reason_parts)
+                    rewritten = vote_line
         out.append(rewritten)
     return "\n".join(out)
 

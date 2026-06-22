@@ -148,6 +148,20 @@ def test_markdown_table_votes_are_recovered(tmp_path: Path) -> None:
     )
 
 
+def test_markdown_table_votes_preserve_axis_tokens(tmp_path: Path) -> None:
+    voter = tmp_path / "voter.txt"
+    voter.write_text(
+        "| FINDING_1 | YES | CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false | clear win |\n",
+        encoding="utf-8",
+    )
+    vote, correctness, severity, quality, uncertain = voting.parse_judge_vote(voter, "FINDING_1")
+    assert vote == "YES"
+    assert correctness == "true"
+    assert severity == "major"
+    assert quality == "good"
+    assert uncertain == "false"
+
+
 def test_anchored_votes_unaffected_by_markdown_normalization(tmp_path: Path) -> None:
     # Plain anchored votes (no pipe characters) pass through unchanged.
     voter = tmp_path / "voter.txt"
