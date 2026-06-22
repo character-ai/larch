@@ -168,10 +168,17 @@ def _stable_ids_by_combined_item(blocks: list[AcceptedBlock], combined_text: str
         return {index: (blocks[index - 1].stable_id,) for index in range(1, combined_count + 1) if blocks[index - 1].stable_id}
     if combined_count == 1 and source_ids:
         return {1: source_ids}
+    # Combine/cap reduced the batch into fewer blocks, with the final block
+    # aggregating every remaining source block. That last block must carry all
+    # the tail stable IDs, or a retry matches only the first and re-files the
+    # rolled-up remainder.
     mapped: dict[int, tuple[str, ...]] = {}
-    for index in range(1, combined_count + 1):
+    for index in range(1, combined_count):
         if index <= len(blocks) and blocks[index - 1].stable_id:
             mapped[index] = (blocks[index - 1].stable_id,)
+    tail = tuple(block.stable_id for block in blocks[combined_count - 1 :] if block.stable_id)
+    if tail:
+        mapped[combined_count] = tail
     return mapped
 
 
@@ -802,7 +809,12 @@ def _file(args: argparse.Namespace) -> tuple[int, dict[str, object]]:
         _append_tool_failure(tmpdir, "step-9a1-oos-file", "oos file-conflict-deps", deps_result.returncode or 1, detail)
         if deps_result.returncode == 1:
             deps.unlink(missing_ok=True)
-    stable_ids_by_item = _stable_ids_by_combined_item(blocks, combined_text)
+    # issue_cap may have rewritten `combined` in place (rolling surplus blocks
+    # into one aggregate). Map stable IDs from the post-cap file the batch
+    # actually files, not the pre-cap `combined_text`, so the aggregate issue
+    # records every rolled-up source stable ID.
+    post_cap_text = combined.read_text(encoding="utf-8", errors="replace")
+    stable_ids_by_item = _stable_ids_by_combined_item(blocks, post_cap_text)
     batch = _run_issue_batch(tmpdir, combined, repo=repo, issue_number=issue_number, deps_path=deps_path, stable_ids_by_item=stable_ids_by_item)
     if batch.failures:
         _append_tool_failure(tmpdir, "step-9a1-oos-file", "issue create-one", 1, f"ISSUES_FAILED={batch.failures}")
