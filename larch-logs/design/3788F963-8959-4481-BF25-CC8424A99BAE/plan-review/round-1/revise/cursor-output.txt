@@ -1,0 +1,279 @@
+Reviewing launcher code to align the revised plan with current per-family ordering and contracts.
+## Plan
+
+Treat this as a behavior-preserving refactor. Preserve every `KEY=value` stdout line, every public sidecar path string, and collector IPC ordering. Keep the inner sentinel override in `run_external_agent`, startup locks, magic exit-code handling, argv grammar, and `USER or "larch"` behavior untouched.
+
+## Approach
+
+- Introduce `LauncherPaths` as the single owner of stable output-rooted sidecar paths.
+- Extract shared **primitives** (`_record_launch_timing`, existing `_promote_inner_done`) and a thin `_finalize_launch` **coordinator** that runs caller-supplied hooks in caller-owned order. Do **not** bake one global timing → meta → promote → failure → emit sequence into the helper.
+- Document and test **per-family epilogue order** against current `python/agents.py` tails before migrating each launcher.
+- Roll out `_finalize_launch` first to **CI** and **implement** families where tails are structurally similar. Leave **review** launchers on duplicated tails plus `LauncherPaths` until pre-promote hooks are spelled out; do not fold review-only steps into a CI-shaped epilogue in this PR.
+- Keep implement stderr/failure IPC on explicit `sidecar_log` (`tmpdir/{tool}-impl.log`), never on `LauncherPaths.sidecar`.
+- Replace open-coded `CODEX_HOME` / `CURSOR_CONFIG_DIR` save-restore with `_temporary_env` where the diff stays small.
+- Keep `_review_record_timing` and `_record_implement_timing` as thin delegates to `_record_launch_timing`; do not remove those names in this PR.
+
+### Per-family epilogue order (normative; callers must preserve)
+
+**Codex CI** (`launch_codex_ci_main`, current ~3562–3594):
+
+1. Post-run events/quota work (empty-events guard, `_mirror_codex_quota_from_events`).
+2. `record-vendor-task` (timing).
+3. Token record from events; emit `TOKEN_RECORD` before launcher-result KVs when file exists.
+4. Append `.meta`.
+5. On timeout: write `.stall.json` (always overwrite on timeout).
+6. `_promote_inner_done`.
+7. `_append_ci_failure`.
+8. `_emit_ci_launcher_result`.
+
+**Cursor CI** (`launch_cursor_ci_main`, current ~3683–3715):
+
+1. Append `.meta` **before** timing.
+2. `record-vendor-task`.
+3. `_record_cursor_usage_from_output` (includes `record-vendor-sidecar`).
+4. Emit `TOKEN_RECORD` when file exists.
+5. On timeout: write `.stall.json` **only if** `not paths.stall_json.is_file()` (idempotent guard must stay Cursor-specific).
+6. `_promote_inner_done`.
+7. `_append_ci_failure`.
+8. `_emit_ci_launcher_result`.
+
+**Codex implement** (`launch_codex_implement_main`, current ~5114–5121):
+
+1. Post-run events/quota work.
+2. `_record_implement_timing`.
+3. `_record_usage_from_events` (uses `sidecar_log`, not `paths.sidecar`).
+4. Append `.meta`.
+5. On nonzero exit: `_append_implement_launch_failure(..., sidecar_log, ...)` **before** promote.
+6. `_promote_inner_done`.
+7. `_emit_implement_launcher_envelope`.
+
+**Cursor implement** (`launch_cursor_implement_main`, current ~5222–5228):
+
+1. Append `.meta` **before** timing.
+2. `_record_implement_timing`.
+3. `_record_cursor_implement_usage`.
+4. On nonzero exit: `_append_implement_launch_failure(..., sidecar_log, ...)` **before** promote.
+5. `_promote_inner_done`.
+6. `_emit_implement_launcher_envelope`.
+
+**Review Codex / Cursor** (`_review_launch_codex`, `_review_launch_cursor`): **out of `_finalize_launch` scope for this PR.** Migrate path construction to `LauncherPaths` only. Keep existing relative order, including all pre-promote steps:
+
+- Review Codex: failure append / sidecar ok line → outer meta → timing → token + `record-vendor-sidecar` → dirty-tree → promote → emit.
+- Review Cursor: failure sink or append failure → outer meta → test-trap → postprocess (exit 0) → dirty-tree from baseline → timing → promote → emit. Failure sink for brainstorm must remain **before** `_promote_inner_done`.
+
+`_finalize_launch` must not reorder review meta, dirty-tree, postprocess, token sidecar, or failure-sink writes relative to `.done`.
+
+## Files to modify/create
+
+### UPDATED: `python/agents.py`
+
+Add a frozen `LauncherPaths` dataclass near the existing launcher dataclasses.
+
+Fields:
+
+- `output`
+- `done`
+- `inner_done`
+- `meta`
+- `sidecar`
+- `diag`
+- `events`
+- `token_record`
+- `failure_diag`
+- `prompt`
+- `stderr_tail`
+- `stall_json`
+- `stderr`
+- `launch_stderr`
+- `launcher_stderr`
+- `sidecar_history`
+- `events_history`
+
+Map each field with the current exact `output.with_suffix(output.suffix + "...")` expression.
+
+Add a small method only if needed:
+
+- `sentinel_done(suffix: str) -> Path` — use in `run_external_agent` so `RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX` keeps working.
+
+Migrate stable output-rooted sidecar sites to `LauncherPaths`.
+
+**Do migrate:**
+
+- `.done`, `.inner.done`, `.meta`, `.sidecar`, `.diag`, `.events.jsonl`, `.token-record`, `.failure-diag`, `.prompt`, `.stderr-tail`, `.stall.json`
+- stderr-family stable sidecars when rooted at the canonical launcher `output`
+
+**Do not migrate:**
+
+- PID-keyed temps (`.json.{pid}`, `.extract.{pid}`)
+- atomic temp paths
+- retry paths built from alternate stems
+- `raw` output paths in drafter extraction
+- sidecars rooted at a caller-supplied path that is not the canonical launcher `output`
+- implement dispatch `sidecar_log` (`tmpdir/codex-impl.log`, `tmpdir/cursor-impl.log`) — keep as a separate `Path` argument; never route through `paths.sidecar`
+- dirty-tree paths unless already part of a helper being touched for path-family consistency
+
+Add shared timing helper:
+
+```python
+def _record_launch_timing(tool: str, task_kind: str, start_s: float, output: Path, exit_code: int) -> None:
+    ...
+```
+
+Keep `_review_record_timing` and `_record_implement_timing` as thin one-line delegates to `_record_launch_timing`. Do not remove those names unless dependent tests are updated in the same PR (they are not in scope to rewrite).
+
+Add `_finalize_launch` as a **thin coordinator**, not a fixed pipeline:
+
+```python
+def _finalize_launch(
+    *,
+    paths: LauncherPaths,
+    promote: Callable[[], None] | None = None,
+    hooks: Sequence[Callable[[], None]] = (),
+) -> None:
+    """Run hooks in caller order; optional promote hook defaults to _promote_inner_done(paths.output)."""
+    ...
+```
+
+Design rules:
+
+- Callers pass an ordered `hooks` list (or inline equivalent) that encodes the per-family table above.
+- Do **not** hardcode timing/meta/promote/failure/emit order inside `_finalize_launch`.
+- CI adopters pass hooks for timing, token stdout, meta, stall (family-specific callback), promote, failure append, emit.
+- Implement adopters pass hooks with failure append **before** promote; failure callbacks close over `sidecar_log: Path`, not `paths.sidecar`.
+- Cursor CI stall hook must preserve `not paths.stall_json.is_file()` guard; Codex CI stall hook keeps unconditional timeout write.
+- Token stdout: callers responsible for emitting `TOKEN_RECORD` before launcher-result KVs; coordinator does not reorder stdout.
+
+**`_finalize_launch` adoption scope (this PR):**
+
+- `launch_codex_ci_main` — CI codex hook list per table above.
+- `launch_cursor_ci_main` — CI cursor hook list per table above.
+- `launch_codex_implement_main` — implement codex hook list; explicit `sidecar_log` in failure hook.
+- `launch_cursor_implement_main` — implement cursor hook list; explicit `sidecar_log` in failure hook.
+
+**Not in `_finalize_launch` scope (this PR):**
+
+- `_review_launch_codex`, `_review_launch_cursor` — `LauncherPaths` only; keep duplicated tails and all review-only steps in current relative order.
+- `launch_claude_ci_main` — `LauncherPaths` only unless a CI hook list matches without subprocess-specific parsing changes.
+
+Replace open-coded env save/restore with `_temporary_env`:
+
+- `CODEX_HOME` in `launch_codex_ci_main`, `_review_launch_codex`, `launch_codex_implement_main`
+- `CURSOR_CONFIG_DIR` in `launch_cursor_ci_main`, `_review_launch_cursor`, `launch_cursor_implement_main`
+
+For Cursor temp config dirs, keep `shutil.rmtree(..., ignore_errors=True)` in `finally`.
+
+For `_review_setup_cursor_config_dir` / `_review_cleanup_cursor_config_dir`:
+
+- Keep **names and signatures** unchanged as thin wrappers (tests in `python/test_launch_review.py` monkeypatch them).
+- Optionally implement internals with `_temporary_env` plus rmtree if that is the smaller diff; do not remove or rename the helpers.
+
+### UPDATED: `python/test_agents.py`
+
+Add focused unit tests.
+
+**`LauncherPaths` mapping:**
+
+- Build paths from `tmp_path / "agent.out"`.
+- Assert each field equals the current exact `with_suffix` path.
+- Assert `paths.done` is public `.done` and `paths.inner_done` is `.inner.done`.
+- Assert the dataclass is frozen.
+
+**`run_external_agent` inner sentinel:**
+
+- Keep or extend existing `RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX` test.
+- Assert `.inner.done` is written and public `.done` is not when the env override is set.
+
+**`_record_launch_timing` delegates:**
+
+- Assert `_review_record_timing` and `_record_implement_timing` still exist and delegate to `_record_launch_timing` (monkeypatch inner helper once).
+
+**`_finalize_launch` primitives:**
+
+- Test hook invocation order matches the **caller-supplied** sequence (not a baked-in global order).
+- Pre-create `.inner.done`; assert promote hook renames to public `.done`.
+- Do **not** assert one canonical timing → meta → promote → failure → emit order.
+
+**Per-family epilogue order (parameterized or separate fixtures):**
+
+- **Codex CI fixture:** pin order including token/stall before promote, failure after promote.
+- **Cursor CI fixture:** pin meta-before-timing and stall idempotent guard (`write stall only when missing`).
+- **Codex implement fixture:** pin failure append before promote; failure hook receives `sidecar_log`, not `paths.sidecar`.
+- **Cursor implement fixture:** pin meta-before-timing and failure-before-promote.
+
+**Stdout `TOKEN_RECORD` ordering (Codex CI fixture at minimum):**
+
+- Pre-create token record sidecar; capture emitted KVs from emit hook.
+- Assert `TOKEN_RECORD` appears before `LAUNCHER_EXIT` / `OUTPUT` (or equivalent CI launcher-result keys).
+
+**Regression coverage (existing tests must stay green):**
+
+- Codex/Cursor CI tests still assert `OUTER_LAUNCHER_WORKDIR`.
+- Cursor config cleanup assertions still pass.
+- Env restore after launcher exceptions (`CODEX_HOME`, `CURSOR_CONFIG_DIR` unset, empty string, and preset values).
+
+Do **not** add a single generic `_finalize_launch` order test that contradicts per-family tables.
+
+### MAY_UPDATE: `python/test_launch_review.py`
+
+Only if `_review_setup_cursor_config_dir` / `_review_cleanup_cursor_config_dir` internals change in a way that breaks monkeypatch contracts. Preferred path: keep helper names/signatures; no test changes expected.
+
+## Edge cases
+
+- `run_external_agent` must not hardcode public `.done` while `RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX` is set.
+- `_promote_inner_done` must still rename `.inner.done` to `.done`.
+- Review Cursor failure sink (`--stderr-sink`) must be written before `_promote_inner_done`.
+- Review Cursor postprocess and dirty-tree writes must complete before `_promote_inner_done`.
+- Cursor config dirs must be deleted even if launch or model parsing fails.
+- Env vars must restore when the old value was unset and when set to empty string.
+- Implement failure diagnostics must read `args.sidecar_log`, not `LauncherPaths(output).sidecar`.
+- Token records must keep existing stdout position relative to launcher result lines per family.
+- Cursor CI stall sidecar must not appear when file already exists on timeout; Codex CI behavior unchanged.
+
+## Failure modes
+
+- A wrong suffix silently breaks IPC.
+- A changed stdout or sidecar write order breaks parsers and `collect_results` wait-on-`.done` contracts.
+- Promoting `.done` before failure-diag, stderr-tail, postprocess, or failure-sink completion exposes incomplete artifacts.
+- Routing implement failure through `paths.sidecar` drops real stderr from `{tool}-impl.log`.
+- A shared stall step without Cursor's idempotent guard changes stall presence across tools.
+- Removing `_review_record_timing` / `_record_implement_timing` breaks monkeypatched tests.
+- Over-generalizing `_finalize_launch` hides launcher-specific failure handling.
+
+## Testing strategy
+
+Run focused tests first:
+
+```bash
+python3 -m pytest python/test_agents.py -k 'LauncherPaths or finalize_launch or record_launch_timing or inner_sentinel or cursor_private_config_cleanup or launch_cursor_ci or launch_codex'
+```
+
+Then full agent and review coverage:
+
+```bash
+python3 -m pytest python/test_agents.py python/test_launch_review.py python/test_implement_dispatch.py
+```
+
+Then repository checks:
+
+```bash
+make py-lint
+make py-test
+make lint
+```
+
+## Acceptance checks
+
+- `LauncherPaths` owns stable sidecar paths for migrated launcher sites.
+- Public sidecar path strings remain byte-identical.
+- `RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX` still works.
+- CI and implement launchers use `_finalize_launch` with documented per-family hook order.
+- Review launchers use `LauncherPaths` but preserve existing epilogue order without CI-shaped finalizer.
+- Implement failure callbacks use explicit `sidecar_log`, not `paths.sidecar`.
+- `_review_record_timing` and `_record_implement_timing` remain as thin delegates.
+- `_review_setup_cursor_config_dir` / `_review_cleanup_cursor_config_dir` names and signatures unchanged.
+- Codex/Cursor parity remains intentional; per-family ordering differences are preserved and tested.
+
+diff_added: 300
+diff_deleted: 185
+mechanical_churn: true
+diff_lines: 485

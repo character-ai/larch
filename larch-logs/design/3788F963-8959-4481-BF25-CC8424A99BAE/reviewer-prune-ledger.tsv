@@ -1,0 +1,31 @@
+round	tool	slot	label	accepted_count	rejected_count	total_count
+1	cursor	cursor-plan-arch	Cursor-Arch	2	2	4
+1	codex	codex-plan-arch	Codex-Arch	2	0	2
+1	cursor	cursor-plan-innovation	Cursor-Innovation	4	1	6
+1	codex	codex-plan-innovation	Codex-Innovation	1	0	1
+1	cursor	cursor-plan-pragmatic	Cursor-Pragmatic	4	1	5
+1	codex	codex-plan-pragmatic	Codex-Pragmatic	1	0	1
+1	cursor	cursor-plan-requirements	Cursor-Requirements	3	0	3
+1	codex	codex-plan-requirements	Codex-Requirements	2	0	2
+1	cursor	dyn-cursor-plan-launcher-contract-correctness	Cursor-dyn-Launcher Contract Correctness	5	0	6
+1	codex	dyn-codex-plan-launcher-contract-correctness	Codex-dyn-Launcher Contract Correctness	1	0	1
+2	cursor	cursor-plan-arch	Cursor-Arch	3	1	5
+2	cursor	cursor-plan-innovation	Cursor-Innovation	6	0	6
+2	cursor	cursor-plan-pragmatic	Cursor-Pragmatic	3	0	3
+2	cursor	cursor-plan-requirements	Cursor-Requirements	4	0	5
+2	codex	codex-plan-generic	Codex-Generic	2	0	2
+3	cursor	cursor-plan-arch	Cursor-Arch	3	0	4
+3	cursor	cursor-plan-innovation	Cursor-Innovation	3	2	5
+3	cursor	cursor-plan-pragmatic	Cursor-Pragmatic	4	0	5
+3	cursor	cursor-plan-requirements	Cursor-Requirements	3	0	3
+3	codex	codex-plan-generic	Codex-Generic	4	0	4
+4	cursor	cursor-plan-arch	Cursor-Arch	2	0	2
+4	cursor	cursor-plan-innovation	Cursor-Innovation	3	0	4
+4	cursor	cursor-plan-pragmatic	Cursor-Pragmatic	2	0	5
+4	cursor	cursor-plan-requirements	Cursor-Requirements	3	0	3
+4	codex	codex-plan-generic	Codex-Generic	0	0	0
+5	cursor	cursor-plan-arch	Cursor-Arch	4	0	4
+5	cursor	cursor-plan-innovation	Cursor-Innovation	4	2	7
+5	cursor	cursor-plan-pragmatic	Cursor-Pragmatic	3	0	4
+5	cursor	cursor-plan-requirements	Cursor-Requirements	4	0	4
+5	codex	codex-plan-generic	Codex-Generic	0	0	0

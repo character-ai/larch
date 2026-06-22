@@ -1,0 +1,11 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- promote still uses correct suffix literals today; migrating the helper is consistency not execution-path necessity
+FINDING_5: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
+FINDING_6: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- stronger test wiring is valuable but not required for the refactor to ship with preserved tails once normative tables are complete
+FINDING_7: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- latent scope-reduction preference; hooks-only coordinator matches approved CI/implement rollout and does not break IPC
+OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- per-family order fixtures directly guard the incomplete-table risk; not worth a separate tracked issue
+OOS_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+OOS_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false

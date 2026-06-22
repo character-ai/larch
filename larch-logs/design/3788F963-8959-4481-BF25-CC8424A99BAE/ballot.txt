@@ -1,0 +1,95 @@
+### FINDING_1: Cursor CI normative table omits promote, failure append, and emit
+- **Reviewer(s)**: anonymous
+- **Severity**: blocking
+- **Concern**: The Cursor CI normative epilogue table stops after the stall guard (steps 1–5) and omits `_promote_inner_done`, `_append_ci_failure`, and `_emit_ci_launcher_result`, even though `launch_cursor_ci_main` runs them after stall (~3713–3715) and the Codex CI table documents the full eight-step tail. A hook list built only from the truncated table can skip promote/failure/emit, breaking `.done` IPC and CI launcher-result stdout.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add steps 6-8 to the Cursor CI table: `_promote_inner_done` → `_append_ci_failure` → `_emit_ci_launcher_result`, matching current `launch_cursor_ci_main` (~3713-3715) and the Codex CI table format
+  - From Cursor-Innovation: Extend the Cursor CI table with explicit steps 6-8: `_promote_inner_done`, `_append_ci_failure`, `_emit_ci_launcher_result`, matching Codex CI steps 6-8 and current code order.
+  - From Cursor-Requirements: Add steps 6-8 to the Cursor CI normative table: `_promote_inner_done`, `_append_ci_failure`, `_emit_ci_launcher_result`, matching the Codex CI tail pattern
+
+### FINDING_2: Codex implement normative table omits `_promote_inner_done`
+- **Reviewer(s)**: anonymous
+- **Severity**: blocking
+- **Concern**: The Codex implement normative epilogue table jumps from step 5 (failure append) to step 7 (emit) without an explicit `_promote_inner_done` step, while `launch_codex_implement_main` promotes between failure and emit (~5120–5121). Hook lists derived from the incomplete table can skip promote, leaving `.inner.done` unpromoted and breaking `collect_results` wait-on-`.done` IPC.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Insert step 6 `_promote_inner_done(output)` between failure append and `_emit_implement_launcher_envelope`; keep the adoption-scope 7-step list aligned with the numbered table
+  - From Cursor-Innovation: Add step 6 `_promote_inner_done` explicitly; keep failure-before-promote and promote-before-emit ordering already stated at lines 151 and 285.
+  - From Cursor-Pragmatic: Add step 6 _promote_inner_done between failure append and _emit_implement_launcher_envelope in the Codex implement normative table and mirror it in the launch_codex_implement_main hook list
+  - From Cursor-Requirements: Add step 6 `_promote_inner_done` to the Codex implement normative table between conditional failure append and emit
+
+### FINDING_3: Cursor implement normative table omits `_record_implement_timing`
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The Cursor implement normative epilogue table omits `_record_implement_timing` and skips step numbering (meta as step 1, usage as step 3), while `launch_cursor_implement_main` records timing at ~5222–5224 between meta append and usage. A hook list built from this table can drop vendor timing entirely and desync vendor-task records.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add step 2 `_record_implement_timing("cursor", task_kind, start, output, result.exit_code)` and renumber the remaining steps to match `python/agents.py:5222-5228` and the test fixture at plan.txt:210
+  - From Cursor-Innovation: Insert `_record_implement_timing` as step 2 between meta append and `_record_cursor_implement_usage`, matching ~5222-5224 and the acceptance bullet at line 285.
+  - From Cursor-Pragmatic: Insert step 2 _record_implement_timing between Append .meta and _record_cursor_implement_usage in the Cursor implement normative table and hook list
+  - From Cursor-Requirements: Add step 2 `_record_implement_timing` to the Cursor implement normative table; keep the documented order meta → timing → usage → failure → promote → emit
+
+### FINDING_4: `_promote_inner_done` not migrated to `LauncherPaths`
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: `_promote_inner_done` keeps inline `.inner.done`/`.done` suffix literals while `LauncherPaths` becomes the declared single owner of the sidecar file-family. The plan routes every promote hook through `_promote_inner_done(paths.output)` but does not migrate that helper to `LauncherPaths` fields. A future suffix tweak in the dataclass can desync promotion from every other migrated sidecar path.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Rewrite `_promote_inner_done` to use `LauncherPaths.from_output(output).inner_done` and `.done` (or accept `LauncherPaths` directly); treat this as part of the migration, not call-site-only.
+
+### FINDING_5: `run_external_agent` stale cleanup contract drops optional stdout/stderr paths
+- **Reviewer(s)**: anonymous
+- **Severity**: blocking
+- **Concern**: The plan migrates stale cleanup to `LauncherPaths` fields plus `output` only, but current `run_external_agent` also unlinks caller-supplied `stdout_path` and `stderr_path` (events.jsonl and sidecar for Codex CI) on retry. Omitting them leaves stale partial artifacts across auth retries.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: State explicitly that stale cleanup still adds Path(stdout_path) and Path(stderr_path) when those kwargs are set in addition to LauncherPaths fields; extend the run_external_agent migration test to cover both kwargs
+
+### FINDING_6: Per-family epilogue order tests lack real launch-path verification
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: Parameterized hook-list tests can pass while `launch_*_main` wires a different order; the refactor goal is preserving launcher tails, not just `_finalize_launch` iteration. Order fixtures should verify callee order inside real `launch_*_main` paths rather than maintaining parallel hook lists that can drift from production wiring.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Require order fixtures to spy on _promote_inner_done _append_ci_failure _emit_ci_launcher_result _record_implement_timing etc during launch_codex_ci_main launch_cursor_ci_main and implement mains rather than maintaining parallel hook lists only in tests **1. [correctness / blocking]** Codex implement normative table (`plan.txt` lines 39–46) omits `_promote_inner_done`. Current code promotes at ```5118:5121:python/agents.py``` between failure append and emit. Revise the table and hook list to include promote as step 6. **2. [correctness / important]** Cursor implement normative table (`plan.txt` lines 48–54) omits `_record_implement_timing`. Current code records timing at ```5222:5224:python/agents.py``` between meta append and usage. Revise the table to insert timing as step 2. **3. [risk-integration / blocking]** `run_external_agent` stale cleanup at ```1747:1750:python/agents.py``` also removes optional `stdout_path` and `stderr_path`. The plan’s migration test scope (lines 188–192) covers only `LauncherPaths` fields plus `output`. Document and test preservation of conditional `stdout_path`/`stderr_path` cleanup. **4. [risk-integration / important]** Per-family order fixtures (lines 205–210) should verify callee order inside real `launch_*_main` paths (existing CI tests already monkeypatch launchers at ```2843:2908:python/test_agents.py```), not duplicate hook sequences that can drift from production wiring.
+
+### FINDING_7:
+- **Reviewer(s)**: anonymous
+- **Severity**: latent
+- **Focus area**: architecture
+- **Location**: plan.txt:128-145
+- **Concern**: [SCOPE-REDUCTION] Hooks-only `_finalize_launch` is a no-op coordinator that adds lambdas without deduplicating launcher tails. Scenario: The proposed helper only iterates caller hooks. Each CI/implement launcher still hand-builds 7-8 closures, so line count and ordering risk stay high while `LauncherPaths` plus `_record_launch_timing` already fix the typo-desync class the issue cites.
+- **Proposed resolution**: Prefer minimum-change rollout: land `LauncherPaths`, migrate `run_external_agent` and failure-diag helpers, unify timing via `_record_launch_timing`, and keep sequential epilogue calls. Defer `_finalize_launch` unless a later PR extracts real shared steps beyond `for hook in hooks`.
+
+### OOS_1: Issue evidence cites drafter launchers (`launch_codex_drafter` ~3036, `launch_claude_drafter` ~3190) but the plan never states they are deferred
+- **Description**: Issue evidence cites drafter launchers (`launch_codex_drafter` ~3036, `launch_claude_drafter` ~3190) but the plan never states they are deferred. Scenario: ~20+ canonical `output.with_suffix(...)` sites in drafters remain inline after this PR; typo-desync risk persists outside migrated CI/implement/review tails
+- **Reviewer**: anonymous
+- **Severity**: latent
+- **Focus area**: architecture
+- **Location**: plan.txt:63-117
+- **Phase**: design
+
+
+
+### OOS_2: Per-family hook-order fixtures duplicate coverage already carried by existing `launch_*_ci` and `launch_*_implement` integration tests in `python/test_agents.py`
+- **Description**: Per-family hook-order fixtures duplicate coverage already carried by existing `launch_*_ci` and `launch_*_implement` integration tests in `python/test_agents.py`. Scenario: Four new parameterized order suites add ~100+ lines of mechanical churn for a refactor that must preserve byte-identical paths and ordering. Existing launcher tests already exercise stdout KVs, config cleanup, and sidecar presence.
+- **Reviewer**: anonymous
+- **Severity**: latent
+- **Focus area**: code-quality
+- **Location**: plan.txt:205-216
+- **Phase**: design
+
+
+
+### OOS_3: Drafter launchers still construct canonical `output`-rooted sidecars via inline `with_suffix` but are absent from the migration list
+- **Description**: Drafter launchers still construct canonical `output`-rooted sidecars via inline `with_suffix` but are absent from the migration list. Scenario: The issue cites drafter duplication as evidence (~3077, 3110, 3117-3122), yet the firm file list never migrates `launch_codex_drafter` / `launch_cursor_drafter`. Desync risk remains on design Step 2b paths.
+- **Reviewer**: anonymous
+- **Severity**: latent
+- **Focus area**: architecture
+- **Location**: python/agents.py:3036-3124
+- **Phase**: design
+
+
+
+### OOS_4: [OUT_OF_SCOPE] Drafter stale-cleanup paths not in LauncherPaths migration scope
+- **Description**: [OUT_OF_SCOPE] Drafter stale-cleanup paths not in LauncherPaths migration scope. Scenario: Issue evidence cites drafter launcher duplication (`:3035`, `:3189`), but the plan never names `launch_codex_drafter` / `launch_cursor_drafter`; prelaunch stale unlink still uses inline `output.with_suffix(...)` for `.stderr-tail`, `.failure-diag`, and `.token-record`, leaving a residual desync class the issue aimed to eliminate
+- **Reviewer**: anonymous
+- **Severity**: latent
+- **Focus area**: risk-integration
+- **Location**: python/agents.py:3077-3079
+- **Phase**: design

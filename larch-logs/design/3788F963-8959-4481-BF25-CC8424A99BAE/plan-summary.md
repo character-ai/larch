@@ -1,0 +1,1 @@
+Refactor `python/agents.py` only internally: add `LauncherPaths`, centralize stable sidecar paths, extract a shared launch finalizer, and replace env save/restore blocks with `_temporary_env`. Add focused tests in `python/test_agents.py` for path mapping, finalizer order, and contract stability.

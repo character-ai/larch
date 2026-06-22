@@ -1,0 +1,45 @@
+**Problem.** `python/agents.py` duplicates a full launcher skeleton across the Codex/Cursor/Claude families x CI/review/implement/drafter, and constructs ~169 ad-hoc sidecar paths with no single owner of the file-family relationship.
+
+**Evidence.**
+- Copy-paste skeletons: `launch_codex_ci_main` `python/agents.py:3493`, `launch_cursor_ci_main` `:3625`, `launch_claude_ci_main` `:5230`; review family `_review_launch_codex` `:4390` vs `_review_launch_cursor` `:4648`; implement family `:5021` vs `:5155`; drafters `:3035` vs `:3189`.
+- ~169 `output.with_suffix(suffix + ".done"/".meta"/".sidecar"/...)` constructions (e.g. `:1734`, `:3118`, `:3124`). One typo silently desyncs a sidecar.
+- `run_external_agent` (`:1717`, ~191 lines) is the largest function.
+
+**Proposed change.** Add a frozen `LauncherPaths` computed once from `output` exposing `.done/.meta/.sidecar/.diag/.events/.token_record/.failure_diag/.prompt`; replace the ~169 sites. Extract one `_finalize_launch(tool, paths, result, ...)` epilogue for the shared record-vendor-task -> meta-append -> promote-done -> append-failure -> emit tail. Replace open-coded `CODEX_HOME`/`CURSOR_CONFIG_DIR` save-restore with a context manager (reuse the existing `_temporary_env` at `:2379`).
+
+**Out of scope / don't-touch.** Keep the `KEY=value` stdout + `.done`/`.meta` sidecar IPC contract and the bash-parity bits (startup lock, magic exit-code sets, `USER or "larch"` fallback). Respect `.claude/rules/external-tool-launcher-parity.md`.
+
+**Acceptance.** Sidecar paths flow through `LauncherPaths`; the shared epilogue replaces the duplicated tails; launcher parity tests green.
+
+**Effort / risk.** Medium / medium. Removes the worst copy-paste and a desync bug class.
+
+**Dependencies.** Root (no blockers). Independent.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Add a frozen `LauncherPaths` that owns the sidecar file-family, derived once from `output`.
+- Extract one shared `_finalize_launch` epilogue for the duplicated record-task -> meta-append -> promote-done -> append-failure -> emit tail.
+- Replace open-coded `CODEX_HOME`/`CURSOR_CONFIG_DIR` save/restore with the existing `_temporary_env` context manager.
+
+### Non-goals
+- No change to the `KEY=value` stdout or `.done`/`.meta` sidecar IPC contract; sidecar path strings stay byte-identical.
+- Do not touch the startup lock, magic exit-code sets, or `USER or "larch"` fallback.
+- No argv-grammar or vendor-behavior change; Codex/Cursor parity preserved.
+
+### Approach sketch
+- Add `LauncherPaths` (frozen) in `python/agents.py`, mapping each field to its exact existing suffix.
+- Migrate only the stable sidecar-family `.with_suffix` sites rooted at each launcher's canonical `output`; leave PID-keyed temps and non-`output`-rooted constructions alone.
+- Extract `_finalize_launch(tool, paths, result, ...)`; parametrize per-family tail differences instead of forcing one shape.
+- Swap `CODEX_HOME`/`CURSOR_CONFIG_DIR` save/restore to `with _temporary_env(...)`.
+- Add focused unit tests; keep launcher-parity / `test_agents.py` green.
+
+### Surfaces in scope
+- `python/agents.py` (the refactor).
+- `python/test_agents.py` (new unit tests + existing parity coverage).
+
+### Open questions
+- Whether `run_external_agent` itself adopts `LauncherPaths`, given its env-overridable `.done` suffix. Resolve in Step 2b.
+- Exact `_finalize_launch` parameter set spanning the CI / review / implement / drafter tails. Resolve in Step 2b.

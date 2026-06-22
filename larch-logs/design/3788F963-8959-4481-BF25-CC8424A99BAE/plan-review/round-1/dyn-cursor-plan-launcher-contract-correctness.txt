@@ -1,0 +1,24 @@
+Reviewing the plan and tracing launcher IPC contracts in the codebase.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	blocking	correctness	python/agents.py:5118-5120	python/agents.py:5225-5227	Plan `_finalize_launch` step order promotes `.inner.done` before failure append (plan.txt lines 107-108), but implement launchers append failure diagnostics before `_promote_inner_done`	Shared finalizer applied to `launch_*_implement_main` would compose `.failure-diag` / stderr-tail only after public `.done` exists; collectors or Step 2 dispatch may treat the run complete before failure IPC is finalized	Keep promote-vs-failure ordering launcher-specific: implement callbacks must run failure append before promote; do not use the CI tail order for implement
+1	in_scope	important	correctness	plan.txt:161-169	Planned `_finalize_launch` unit test asserts call order timing → meta → promote → failure → emit	Matches neither CI (failure after promote, python/agents.py:3592-3594) nor implement (failure before promote, python/agents.py:5118-5120); a passing test could encode a regression	Assert per-family order in separate tests, or drive order only through explicit callback hooks documented per launcher family
+1	in_scope	important	risk-integration	python/implement_dispatch.py:1332-1333	python/agents.py:5119	Implement stderr IPC uses `Path(args.sidecar_log)` (e.g. `codex-impl.log`), not `output.with_suffix(...+".sidecar")`; `_append_implement_launch_failure` already passes that explicit path	`LauncherPaths` built from transcript `output` would point `.sidecar` at `codex-impl-transcript.txt.sidecar`; wiring implement failure through `paths.sidecar` would mis-route append-failure and `_compose_failure_diag` sink	Plan implement `_finalize_launch` wiring explicitly: failure callback must take `sidecar_log`, not `paths.sidecar`; keep `sidecar_log` on the do-not-migrate list
+1	in_scope	important	architecture	python/agents.py:4476-4504	python/agents.py:4728-4742	Plan applies `_finalize_launch` first to review launchers (plan.txt lines 117-118), but review tails include steps absent from the proposed finalizer API (failure-before-meta on Codex failure, `record-vendor-sidecar` without stdout `TOKEN_RECORD`, Cursor postprocess, dirty-tree sidecars, `_review_run_test_trap_after_inner_done_if_enabled`)	Collapsing review into the CI-shaped epilogue would reorder meta/failure/dirty-tree/done relative to today and can break `collect_results` / retry metadata and launcher stdout contracts	Limit first `_finalize_launch` rollout to CI (+ implement only with corrected ordering); leave review on duplicated tails until the helper exposes optional pre-promote hooks for dirty-tree, postprocess, and test-trap
+1	in_scope	important	correctness	python/agents.py:3590-3591	python/agents.py:3711-3712	Cursor CI writes `.stall.json` only when missing; Codex CI always writes on timeout	A shared stall step without Cursor's `not paths.stall_json.is_file()` guard changes stall sidecar presence across tools	Document stall callback per tool; preserve Cursor's idempotent guard in the Cursor CI callback
+1	in_scope	important	risk-integration	plan.txt:117-120	[SCOPE-REDUCTION] First-wave `_finalize_launch` includes review launchers though issue acceptance is path dedup plus CI/implement tail dedup	Review epilogues are not byte-parallel to CI/implement; folding them increases IPC regression surface beyond the stated copy-paste target	Restrict shared finalizer v1 to `launch_*_ci_main` and `launch_*_implement_main`; migrate review only after hooks exist for review-only steps
+
+**1. [correctness]** `_finalize_launch` promote-before-failure vs implement (plan.txt lines 107-108; `python/agents.py:5118-5120`, `5225-5227`)
+
+**2. [correctness]** Planned finalizer test order (plan.txt:161-169) vs CI/implement tails (`python/agents.py:3592-3594`, `5118-5120`)
+
+**3. [risk-integration]** Implement `sidecar_log` is not `LauncherPaths.sidecar` (`python/implement_dispatch.py:1332-1333`; `python/agents.py:5119`)
+
+**4. [architecture]** Review launchers need steps outside the proposed finalizer (`python/agents.py:4476-4504`, `4728-4742`; plan.txt:117-118)
+
+**5. [correctness]** Codex vs Cursor `.stall.json` timeout guard (`python/agents.py:3590-3591` vs `3711-3712`)
+
+**6. [risk-integration]** [SCOPE-REDUCTION] Defer review from first `_finalize_launch` wave (plan.txt:117-120)
+
+**[OUT_OF_SCOPE]** Merging `_review_record_timing` / `_record_implement_timing` into `_record_launch_timing` (plan.txt:69-78; `python/agents.py:4019-4042`, `4999-5019`): behavior-preserving dedup, not required for path IPC correctness.
+
+**[OUT_OF_SCOPE]** `LauncherPaths.sidecar_history` / `events_history` fields (plan.txt:32-33) without listed migration sites: extra surface beyond the stable sidecar set in plan lines 47-57.

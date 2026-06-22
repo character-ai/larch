@@ -1,0 +1,11 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- plan routes _promote_inner_done through paths.output at call sites; migrating its internals is beyond the plan's acceptance criteria
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=true -- plan does not drop stdout_path/stderr_path cleanup; test scope at line 192 is minimum specification, not an exhaustive replacement
+FINDING_6: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- existing integration tests already exercise real launch-path order; per-family fixtures are supplemental documentation-as-tests
+FINDING_7: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- latent architectural opinion on an accepted design pattern; hooks-only coordinator is an explicit plan choice, not a defect
+OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- impact floor not met; overlap between new fixtures and existing integration tests is marginal and not worth a tracking issue
+OOS_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+OOS_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
