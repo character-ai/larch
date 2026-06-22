@@ -11,12 +11,11 @@ import tempfile
 from pathlib import Path
 
 import logging_util
-import collect_results
 import plan_review
 import plan_review_round
 import pytest
 import voting
-from test_support import ROOT, run_cli
+from test_support import ROOT, make_zero_findings_plan_review_fake_cli, run_cli
 
 
 def _read_tsv(path: Path) -> dict[str, dict[str, str]]:
@@ -2262,36 +2261,7 @@ def test_step3_loop_zero_findings_clears_stale_accepted_and_awaits_continuation(
     )
     reviewer_file = design / "cursor-plan-arch-output.txt"
 
-    def fake_run_cli(argv: list[str], *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
-        del env
-        if argv[:2] == ["plan-review", "panel-dispatch"]:
-            paths_file = design / "plan-review-panel-paths.txt"
-            _ = (design / "plan-review-slots.ndjson").write_text(
-                '{"slot":"cursor-plan-arch","tool":"cursor","output":"'
-                + str(reviewer_file)
-                + '","prompt_file":"'
-                + str(design / "cursor-plan-arch.prompt")
-                + '"}\n',
-                encoding="utf-8",
-            )
-            _ = paths_file.write_text(str(reviewer_file) + "\n", encoding="utf-8")
-            return subprocess.CompletedProcess(argv, 0, f"PANEL_PRUNED_EMPTY=false\nPANEL_PATHS_FILE={paths_file}\n", "")
-        if argv[:2] == ["agent", "collect-results"]:
-            record = collect_results.CollectorRecord(
-                reviewer_file=str(reviewer_file),
-                tool="cursor",
-                status="OK",
-                exit_code="0",
-            )
-            blocks = ["\n".join(record.fields())]
-            return subprocess.CompletedProcess(argv, 0, "\n\n".join(blocks) + "\n", "")
-        if argv[:2] == ["review", "aggregate-findings"]:
-            return subprocess.CompletedProcess(argv, 0, "REASON=insufficient-input\nAGGREGATED=false\n", "")
-        if argv[:2] == ["plan-review", "voter-dispatch"]:
-            return subprocess.CompletedProcess(argv, 0, "DISPATCH_OK=false\nDEGRADED_PANEL=1\n", "")
-        if argv[:2] == ["plan-review", "tally"]:
-            return subprocess.CompletedProcess(argv, 0, "TALLY_PLAN_REVIEW_STATUS=ok\n", "")
-        return subprocess.CompletedProcess(argv, 0, "", "")
+    fake_run_cli = make_zero_findings_plan_review_fake_cli(design, reviewer_file)
 
     def fake_run_command(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(argv, 0, "", "")
