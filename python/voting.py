@@ -22,6 +22,7 @@ import larch_io
 import logging_util
 import proc
 import redact
+from review_types import JudgeSeverity, ReviewVote
 
 LONG_EXTS = "cc|cfg|cjs|cpp|css|csv|cs|dart|gradle|groovy|go|html|htm|hpp|java|json|jsx|js|kt|lua|mjs|mk|mm|md|php|pl|proto|py|rb|rs|sass|scala|scss|sh|sql|swift|toml|tsx|tsv|ts|vue|xml|yaml|yml"
 SHORT_EXTS = "lock|env|txt|c|h|m|r"
@@ -72,11 +73,11 @@ _ALLOWED_CODE_REVIEW_HEADERS = {
 }
 
 _CORRECTNESS_VALUES = {"true", "partially-true", "false-positive", "uncertain"}
-SEVERITY_BLOCKER = "blocker"
-SEVERITY_MAJOR = "major"
+SEVERITY_BLOCKER = JudgeSeverity.blocker.value
+SEVERITY_MAJOR = JudgeSeverity.major.value
 
-_SEVERITY_VALUES = {SEVERITY_BLOCKER, SEVERITY_MAJOR, "minor", "nit", "uncertain"}
-HIGH_SEVERITIES = frozenset({SEVERITY_BLOCKER, SEVERITY_MAJOR})
+_SEVERITY_VALUES = {severity.value for severity in JudgeSeverity}
+HIGH_SEVERITIES = frozenset({JudgeSeverity.blocker.value, JudgeSeverity.major.value})
 NEUTRAL_FINDING_COST = 0.25
 UNIQUE_FINDER_BONUS_ENV = "LARCH_UNIQUE_FINDER_BONUS"
 _QUALITY_VALUES = {"excellent", "good", "adequate", "weak", "no-fix", "uncertain"}
@@ -106,7 +107,7 @@ _CODE_REVIEW_VOTER_FALLBACKS = {
     2: "cursor-plan-fidelity",
     3: "cursor-pragmatism",
 }
-_YES_NO = {"YES", "NO"}
+_YES_NO = {ReviewVote.yes.value, ReviewVote.no.value}
 
 
 def _normalize_panel_kind(panel_kind: str) -> str:

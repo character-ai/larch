@@ -15,10 +15,10 @@ from contextlib import suppress
 from pathlib import Path
 import larch_io
 import logging_util
+from review_types import parse_findings_text, parse_findings
 
 _PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 _EMPTY_MERGE_ATTESTATION = "LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED"
-_FINDING_BLOCK_RE = re.compile(r"(?ms)^### FINDING_[0-9]+:.*?(?=^### |\Z)")
 _OOS_BLOCK_RE = re.compile(r"(?ms)^### OOS_[0-9]+:.*?(?=^### |\Z)")
 _SEVERITY_RE = re.compile(r"(?m)^-\s*\*\*Severity\*\*:\s*(blocking|important|latent|nit)\s*$", re.IGNORECASE)
 _NIT_SEVERITY_RE = re.compile(r"(?m)^-\s*\*\*Severity\*\*:\s*nit\s*$", re.IGNORECASE)
@@ -52,7 +52,7 @@ def _atomic_write(path: Path, text: str) -> None:
 
 
 def _finding_blocks(text: str) -> list[str]:
-    return [match.group(0).strip() for match in _FINDING_BLOCK_RE.finditer(text)]
+    return [finding.block.strip() for finding in parse_findings_text(text, boundary="any_heading")]
 
 
 def _oos_blocks(text: str) -> list[str]:
@@ -60,9 +60,7 @@ def _oos_blocks(text: str) -> list[str]:
 
 
 def _count_finding_blocks(path: Path) -> int:
-    if not path.is_file():
-        return 0
-    return len(_FINDING_BLOCK_RE.findall(_read_text(path)))
+    return len(parse_findings(path, boundary="any_heading"))
 
 
 def _emit_aggregate_result(*, aggregated: bool, input_count: int, merged_count: int, reason: str, failure_log: str = "") -> None:
@@ -229,8 +227,8 @@ def _normalize_slot(slot: str) -> str:
 
 
 def _finding_id_from_block(block: str) -> str | None:
-    match = re.search(r"^### (FINDING_[0-9]+):", block, flags=re.MULTILINE)
-    return match.group(1) if match else None
+    findings = parse_findings_text(block, boundary="any_heading")
+    return findings[0].finding_id if findings else None
 
 
 def _input_blocks(text: str) -> list[str]:

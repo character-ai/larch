@@ -15,8 +15,9 @@ import sys
 import tempfile
 import time
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from pathlib import Path
+from collections.abc import Mapping
 from typing import Any, cast
 
 import config
@@ -116,6 +117,31 @@ def _batch_list() -> tuple[str, ...]:
     return tuple(sorted(_LARCH_LOG_BATCHES))
 
 
+_V2_CORE_KEYS = frozenset({"status", "schema_version", "run_id", "steps_ran", "started_at", "updated_at"})
+_V2_RESERVED_KEYS = frozenset({
+    "skill",
+    "operator_cwd",
+    "operator_repo_root",
+    "parent_skill",
+    "issue_number",
+    "larch_version",
+    "model_roster",
+    "effort",
+    "attempt",
+    "superseded_by",
+    "stalled_at_step",
+    "flags",
+    "pr_number",
+})
+_V2_EXTRA_PROMOTABLE_RESERVED_KEYS = frozenset({"stalled_at_step", "pr_number", "issue_number"})
+_V2_PARSE_EXCLUDED_KEYS = _V2_CORE_KEYS | _V2_RESERVED_KEYS
+_V2_EMIT_EXTRA_EXCLUDED_KEYS = _V2_CORE_KEYS | (_V2_RESERVED_KEYS - _V2_EXTRA_PROMOTABLE_RESERVED_KEYS)
+
+
+def _empty_manifest_reserved() -> dict[str, Any]:
+    return {}
+
+
 @dataclass(frozen=True)
 class Manifest:
     status: str
@@ -125,6 +151,106 @@ class Manifest:
     created_at: str = ""
     updated_at: str = ""
     extra: dict[str, Any] | None = None
+    # Reserved v2 metadata is kept separate from extension keys. Immutable fields
+    # are guarded by _MANIFEST_IMMUTABLE; mutable fields such as stalled_at_step,
+    # issue_number, and pr_number may be updated by manifest writers.
+    reserved: dict[str, Any] = field(default_factory=_empty_manifest_reserved)
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> Manifest:
+        steps_raw = data.get("steps_ran", {})
+        steps = dict(cast("dict[str, Any]", steps_raw)) if isinstance(steps_raw, dict) else {}
+        if data.get("schema_version") == _MANIFEST_SCHEMA_VERSION:
+            reserved: dict[str, Any] = {key: data[key] for key in _V2_RESERVED_KEYS if key in data}
+            extra = {key: value for key, value in data.items() if key not in _V2_PARSE_EXCLUDED_KEYS}
+            return cls(
+                status=str(data.get("status", config.MANIFEST_STATUS_PARTIAL)),
+                version="2",
+                run_id=str(data.get("run_id", "")),
+                steps_ran=steps,
+                created_at=str(data.get("started_at", "")),
+                updated_at=str(data.get("updated_at", "")),
+                extra=extra or None,
+                reserved=dict(reserved),
+            )
+        extra = {
+            key: value
+            for key, value in data.items()
+            if key not in {"status", "version", "run_id", "steps_ran", "created_at", "updated_at"}
+        }
+        return cls(
+            status=str(data.get("status", config.MANIFEST_STATUS_PARTIAL)),
+            version=str(data.get("version", "1")),
+            run_id=str(data.get("run_id", "")),
+            steps_ran=steps,
+            created_at=str(data.get("created_at", "")),
+            updated_at=str(data.get("updated_at", "")),
+            extra=extra or None,
+        )
+
+    @classmethod
+    def synthesize_v2(
+        cls,
+        *,
+        skill: str,
+        run_id: str,
+        steps_ran: dict[str, Any] | None = None,
+        extra: dict[str, Any] | None = None,
+    ) -> Manifest:
+        ts = _now_utc()
+        data: dict[str, Any] = {
+            "schema_version": 2,
+            "skill": skill,
+            "run_id": run_id,
+            "operator_cwd": "<OPERATOR_CWD>",
+            "operator_repo_root": "<REPO_ROOT>",
+            "parent_skill": None,
+            "issue_number": None,
+            "larch_version": _plugin_version(),
+            "model_roster": {
+                "main": os.environ.get("CLAUDE_CODE_MODEL") or os.environ.get("CLAUDE_MODEL", "unknown"),
+            },
+            "effort": os.environ.get("CLAUDE_CODE_EFFORT_LEVEL") or os.environ.get("CLAUDE_EFFORT", "unknown"),
+            "started_at": ts,
+            "updated_at": ts,
+            "attempt": 1,
+            "superseded_by": None,
+            "stalled_at_step": None,
+            "steps_ran": steps_ran or {},
+            "flags": {},
+        }
+        if extra:
+            data.update(extra)
+        return cls.from_json(data)
+
+    def to_json(self, existing: Mapping[str, Any] | None = None) -> dict[str, Any]:
+        if str(self.version) == "2":
+            data = dict(existing or {})
+            data.pop("version", None)
+            data.pop("created_at", None)
+            data["schema_version"] = 2
+            data["status"] = self.status
+            data["run_id"] = self.run_id
+            data["steps_ran"] = dict(self.steps_ran)
+            data["started_at"] = self.created_at
+            data["updated_at"] = self.updated_at
+            data.update(dict(self.reserved))
+            if self.extra:
+                for key, value in self.extra.items():
+                    if key in _V2_EMIT_EXTRA_EXCLUDED_KEYS:
+                        continue
+                    data[key] = value
+            return data
+        data = dict(self.extra or {})
+        data.update({
+            "status": self.status,
+            "version": self.version,
+            "run_id": self.run_id,
+            "steps_ran": dict(self.steps_ran),
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+        })
+        return data
 
 
 @dataclass(frozen=True)
@@ -392,21 +518,35 @@ def _parse_manifest_scalar(raw: str) -> Any:
 
 def _update_manifest_v2(path: Path, updates: dict[str, Any]) -> dict[str, Any]:
     data = _read_manifest_v2(path)
+    manifest = Manifest.from_json(data)
+    steps = dict(manifest.steps_ran)
+    reserved = dict(manifest.reserved)
+    extra = dict(manifest.extra or {})
+    status = manifest.status
     for key, value in updates.items():
         if key in _MANIFEST_IMMUTABLE:
             raise ValueError(f"immutable-field:{key}")
         if key.startswith("steps_ran."):
-            step = key.split(".", 1)[1]
-            steps = data.setdefault("steps_ran", {})
-            if not isinstance(steps, dict):
-                steps = {}
-                data["steps_ran"] = steps
-            steps[step] = value
+            steps[key.split(".", 1)[1]] = value
+        elif key == "steps_ran" and isinstance(value, dict):
+            steps.update(cast("dict[str, Any]", value))
+        elif key == "status":
+            status = str(value)
+        elif key in _V2_RESERVED_KEYS:
+            reserved[key] = value
         else:
-            data[key] = value
-    data["updated_at"] = _now_utc()
-    _write_manifest_v2(path, data)
-    return data
+            extra[key] = value
+    updated = replace(
+        manifest,
+        status=status,
+        steps_ran=steps,
+        updated_at=_now_utc(),
+        extra=extra or None,
+        reserved=reserved,
+    )
+    out = updated.to_json(existing=data)
+    _write_manifest_v2(path, out)
+    return out
 
 
 def _plugin_version() -> str:
@@ -539,14 +679,9 @@ def manifest_status(ctx: RunContext) -> str:
     if not path.is_file():
         return ""
     try:
-        loaded = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+        return Manifest.from_json(_read_manifest_v2(path)).status
+    except (OSError, json.JSONDecodeError, TypeError):
         return ""
-    if not isinstance(loaded, dict):
-        return ""
-    data = cast("dict[str, object]", loaded)
-    status = data.get("status")
-    return str(status) if status is not None else ""
 
 
 def _read_kv_file(path: Path, key: str) -> str:
@@ -640,40 +775,6 @@ def _issue_number_from_context(ctx: RunContext) -> int | None:
     return int(raw) if raw.isdigit() else None
 
 
-def _synthesize_manifest_v2(
-    *,
-    skill: str,
-    run_id: str,
-    steps_ran: dict[str, Any] | None = None,
-    extra: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    ts = _now_utc()
-    data: dict[str, Any] = {
-        "schema_version": 2,
-        "skill": skill,
-        "run_id": run_id,
-        "operator_cwd": "<OPERATOR_CWD>",
-        "operator_repo_root": "<REPO_ROOT>",
-        "parent_skill": None,
-        "issue_number": None,
-        "larch_version": _plugin_version(),
-        "model_roster": {
-            "main": os.environ.get("CLAUDE_CODE_MODEL") or os.environ.get("CLAUDE_MODEL", "unknown"),
-        },
-        "effort": os.environ.get("CLAUDE_CODE_EFFORT_LEVEL") or os.environ.get("CLAUDE_EFFORT", "unknown"),
-        "started_at": ts,
-        "updated_at": ts,
-        "attempt": 1,
-        "superseded_by": None,
-        "stalled_at_step": None,
-        "steps_ran": steps_ran or {},
-        "flags": {},
-    }
-    if extra:
-        data.update(extra)
-    return data
-
-
 def init_run(
     ctx: RunContext,
     *,
@@ -687,78 +788,9 @@ def init_run(
         issue_number = _issue_number_from_context(ctx)
         if issue_number is not None:
             extra["issue_number"] = issue_number
-    data = _synthesize_manifest_v2(skill="implement", run_id=rid, extra=extra)
-    _write_manifest_v2(_manifest_path(ctx), data)
-    return _dict_to_manifest(data)
-
-
-def _manifest_to_dict(manifest: Manifest) -> dict[str, Any]:
-    data = dict(manifest.extra or {})
-    data.update({
-        "status": manifest.status,
-        "version": manifest.version,
-        "run_id": manifest.run_id,
-        "steps_ran": manifest.steps_ran,
-        "created_at": manifest.created_at,
-        "updated_at": manifest.updated_at,
-    })
-    return data
-
-
-def _dict_to_manifest(data: dict[str, Any]) -> Manifest:
-    steps_raw = data.get("steps_ran", {})
-    steps = cast("dict[str, Any]", steps_raw) if isinstance(steps_raw, dict) else {}
-    if data.get("schema_version") == _MANIFEST_SCHEMA_VERSION:
-        v2_exclude = {
-            "status",
-            "schema_version",
-            "skill",
-            "run_id",
-            "steps_ran",
-            "started_at",
-            "updated_at",
-            "operator_cwd",
-            "operator_repo_root",
-            "parent_skill",
-            "larch_version",
-            "model_roster",
-            "effort",
-            "attempt",
-            "superseded_by",
-            "stalled_at_step",
-            "flags",
-        }
-        extra = {key: value for key, value in data.items() if key not in v2_exclude}
-        return Manifest(
-            status=str(data.get("status", config.MANIFEST_STATUS_PARTIAL)),
-            version="2",
-            run_id=str(data.get("run_id", "")),
-            steps_ran=steps,
-            created_at=str(data.get("started_at", "")),
-            updated_at=str(data.get("updated_at", "")),
-            extra=extra or None,
-        )
-    return Manifest(
-        status=str(data.get("status", config.MANIFEST_STATUS_PARTIAL)),
-        version=str(data.get("version", "1")),
-        run_id=str(data.get("run_id", "")),
-        steps_ran=steps,
-        created_at=str(data.get("created_at", "")),
-        updated_at=str(data.get("updated_at", "")),
-        extra={
-            key: value
-            for key, value in data.items()
-            if key
-            not in {
-                "status",
-                "version",
-                "run_id",
-                "steps_ran",
-                "created_at",
-                "updated_at",
-            }
-        },
-    )
+    manifest = Manifest.synthesize_v2(skill="implement", run_id=rid, extra=extra)
+    _write_manifest_v2(_manifest_path(ctx), manifest.to_json(existing=None))
+    return manifest
 
 
 def update_manifest(ctx: RunContext, **changes: object) -> Manifest:
@@ -774,6 +806,7 @@ def update_manifest(ctx: RunContext, **changes: object) -> Manifest:
     created_at = current.created_at
     updated_at = current.updated_at
     extra = dict(current.extra or {})
+    reserved = dict(current.reserved)
     for key, value in changes.items():
         if key == "steps_ran" and isinstance(value, dict):
             steps.update(cast("dict[str, Any]", value))
@@ -787,6 +820,8 @@ def update_manifest(ctx: RunContext, **changes: object) -> Manifest:
             created_at = str(value)
         elif key == "updated_at":
             updated_at = str(value)
+        elif key in _V2_RESERVED_KEYS:
+            reserved[key] = value
         else:
             extra[key] = value
     updated = Manifest(
@@ -797,6 +832,7 @@ def update_manifest(ctx: RunContext, **changes: object) -> Manifest:
         created_at=created_at,
         updated_at=updated_at,
         extra=extra or None,
+        reserved=reserved,
     )
     _write_manifest(ctx, updated)
     return updated
@@ -810,17 +846,16 @@ def _recover_manifest_from_run_dir(ctx: RunContext, run_id: str, run_dir: Path) 
         steps["execution_issues"] = True
     if (run_dir / f"{config.RUN_LOG_BATCH_TOKEN_REPORT}.ndjson").is_file():
         steps["token_report"] = True
-    extra: dict[str, Any] = {"recovery_reason": RECOVERY_REASON_MANIFEST_LOST}
+    extra: dict[str, Any] = {"recovery_reason": RECOVERY_REASON_MANIFEST_LOST, "status": config.MANIFEST_STATUS_PARTIAL}
     issue_number = _issue_number_from_context(ctx)
     if issue_number is not None:
         extra["issue_number"] = issue_number
-    data = _synthesize_manifest_v2(
+    return Manifest.synthesize_v2(
         skill="implement",
         run_id=run_id,
         steps_ran=steps,
-        extra={**extra, "status": config.MANIFEST_STATUS_PARTIAL},
+        extra=extra,
     )
-    return _dict_to_manifest(data)
 
 
 def load_or_recover_manifest_checked(ctx: RunContext) -> ManifestRecovery:
@@ -830,20 +865,13 @@ def load_or_recover_manifest_checked(ctx: RunContext) -> ManifestRecovery:
         run_dir = primary.parent
         if primary.is_file():
             try:
-                data = json.loads(primary.read_text(encoding="utf-8"))
-                if isinstance(data, dict):
-                    return ManifestRecovery(_dict_to_manifest(cast("dict[str, Any]", data)), recovery_ok=True)
+                data = _read_manifest_v2(primary)
+                return ManifestRecovery(Manifest.from_json(data), recovery_ok=True)
             except json.JSONDecodeError:
                 recovered = _recover_manifest_from_run_dir(ctx, rid, run_dir)
                 if recovered is not None:
                     try:
-                        data = _synthesize_manifest_v2(
-                            skill="implement",
-                            run_id=rid,
-                            steps_ran=recovered.steps_ran,
-                            extra={**(recovered.extra or {}), "status": recovered.status},
-                        )
-                        _write_manifest_v2(primary, data)
+                        _write_manifest_v2(primary, recovered.to_json(existing=None))
                     except OSError:
                         return ManifestRecovery(recovered, recovery_ok=False)
                     return ManifestRecovery(recovered, recovery_ok=True)
@@ -851,13 +879,7 @@ def load_or_recover_manifest_checked(ctx: RunContext) -> ManifestRecovery:
             recovered = _recover_manifest_from_run_dir(ctx, rid, run_dir)
             if recovered is not None:
                 try:
-                    data = _synthesize_manifest_v2(
-                        skill="implement",
-                        run_id=rid,
-                        steps_ran=recovered.steps_ran,
-                        extra={**(recovered.extra or {}), "status": recovered.status},
-                    )
-                    _write_manifest_v2(primary, data)
+                    _write_manifest_v2(primary, recovered.to_json(existing=None))
                 except OSError:
                     return ManifestRecovery(recovered, recovery_ok=False)
                 return ManifestRecovery(recovered, recovery_ok=True)
@@ -895,47 +917,21 @@ def load_or_recover_manifest(ctx: RunContext) -> Manifest:
     return recovery.manifest
 
 
-def _manifest_v2_merge(data: dict[str, Any], manifest: Manifest) -> dict[str, Any]:
-    merged = dict(data)
-    merged["status"] = manifest.status
-    merged["steps_ran"] = dict(manifest.steps_ran)
-    merged["updated_at"] = _now_utc()
-    v2_exclude = {
-        "status",
-        "schema_version",
-        "skill",
-        "run_id",
-        "steps_ran",
-        "started_at",
-        "updated_at",
-        "operator_cwd",
-        "operator_repo_root",
-        "parent_skill",
-        "larch_version",
-        "model_roster",
-        "effort",
-        "attempt",
-        "superseded_by",
-        "flags",
-    }
-    if manifest.extra:
-        merged.update({key: value for key, value in manifest.extra.items() if key not in v2_exclude})
-    return merged
-
-
 def _write_manifest(ctx: RunContext, manifest: Manifest) -> None:
     path = _manifest_path(ctx)
     if path.is_file():
         try:
             data = _read_manifest_v2(path)
             if data.get("schema_version") == _MANIFEST_SCHEMA_VERSION:
-                _write_manifest_v2(path, _manifest_v2_merge(data, manifest))
+                updated = replace(manifest, updated_at=_now_utc())
+                _write_manifest_v2(path, updated.to_json(existing=data))
                 return
         except (OSError, json.JSONDecodeError, TypeError, ValueError):
             pass
+    updated = replace(manifest, updated_at=manifest.updated_at or _now_utc())
     _atomic_write(
         path,
-        json.dumps(_manifest_to_dict(manifest), indent=2, sort_keys=True) + "\n",
+        json.dumps(updated.to_json(existing=None), indent=2, sort_keys=True) + "\n",
     )
 
 
@@ -1305,7 +1301,10 @@ def flush_logs_post(
     if not pr_number and ctx.pr_number is not None:
         pr_number = str(ctx.pr_number)
     status = config.MANIFEST_STATUS_DONE if finalize else manifest.status
-    extra = {**(manifest.extra or {}), **({"pr_number": int(pr_number)} if str(pr_number).isdigit() else {})}
+    extra = dict(manifest.extra or {})
+    reserved = dict(manifest.reserved)
+    if str(pr_number).isdigit():
+        reserved["pr_number"] = int(pr_number)
     try:
         if runner is not None:
             _write_final_report(runner, ctx)
@@ -1327,7 +1326,8 @@ def flush_logs_post(
         steps_ran=dict(manifest.steps_ran),
         created_at=manifest.created_at,
         updated_at=manifest.updated_at,
-        extra=extra,
+        extra=extra or None,
+        reserved=reserved,
     )
     try:
         _write_manifest(ctx, updated)
@@ -1470,8 +1470,8 @@ def _step9a1_heuristic(ctx: RunContext) -> bool | None:
     manifest_path = run_dir / "manifest.json"
     stats = run_dir / "run-statistics.md"
     if manifest_path.is_file():
-        with suppress(OSError, json.JSONDecodeError):
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        with suppress(OSError, json.JSONDecodeError, TypeError):
+            manifest = Manifest.from_json(_read_manifest_v2(manifest_path))
             if _manifest_step9a1_explicitly_skipped(manifest):
                 return False
             if _manifest_step9a1_explicitly_ran(manifest):
@@ -1955,27 +1955,12 @@ def larch_log_init_main(argv: list[str]) -> int:
     if path.is_file():
         _emit_larch_log_envelope(path=path, written=False, unchanged=True)
         return 0
-    ts = _now_utc()
-    data: dict[str, Any] = {
-        "schema_version": 2,
-        "skill": args.skill,
-        "run_id": args.run_id,
-        "operator_cwd": "<OPERATOR_CWD>",
-        "operator_repo_root": "<REPO_ROOT>",
+    extra: dict[str, Any] = {
         "parent_skill": args.parent_skill or None,
         "issue_number": int(args.issue) if args.issue else None,
-        "larch_version": _plugin_version(),
-        "model_roster": {"main": os.environ.get("CLAUDE_CODE_MODEL") or os.environ.get("CLAUDE_MODEL", "unknown")},
-        "effort": os.environ.get("CLAUDE_CODE_EFFORT_LEVEL") or os.environ.get("CLAUDE_EFFORT", "unknown"),
-        "started_at": ts,
-        "updated_at": ts,
-        "attempt": 1,
-        "superseded_by": None,
-        "stalled_at_step": None,
-        "steps_ran": {},
-        "flags": {},
     }
-    _write_manifest_v2(path, data)
+    manifest = Manifest.synthesize_v2(skill=args.skill, run_id=args.run_id, extra=extra)
+    _write_manifest_v2(path, manifest.to_json(existing=None))
     _emit_larch_log_envelope(path=path, written=True, unchanged=False)
     return 0
 
@@ -2038,10 +2023,10 @@ def larch_log_manifest_main(argv: list[str]) -> int:
     if not path.is_file():
         return _larch_log_fail(1, f"manifest not found: {path}")
     updates: dict[str, Any] = {}
-    for field in args.field:
-        if "=" not in field:
-            return _larch_log_fail(1, f"invalid field assignment: {field}")
-        key, _, raw = field.partition("=")
+    for assignment in args.field:
+        if "=" not in assignment:
+            return _larch_log_fail(1, f"invalid field assignment: {assignment}")
+        key, _, raw = assignment.partition("=")
         updates[key] = _parse_manifest_scalar(raw)
     try:
         _update_manifest_v2(path, updates)
@@ -2484,8 +2469,10 @@ def _resolve_required_files_manifest(raw: str) -> Path:
     return candidate
 
 
-def _manifest_field(data: dict[str, Any], key: str) -> str:
-    value = data.get(key)
+def _manifest_field(manifest: Manifest, key: str) -> str:
+    value = manifest.reserved.get(key) if key in _V2_RESERVED_KEYS else None
+    if value is None and manifest.extra:
+        value = manifest.extra.get(key)
     if key == "pr_number":
         if isinstance(value, bool):
             return ""
@@ -2494,37 +2481,25 @@ def _manifest_field(data: dict[str, Any], key: str) -> str:
         if isinstance(value, str) and value.strip():
             return value.strip()
         return ""
-    if key == "status" and isinstance(value, str):
-        return value
+    if key == "status":
+        return manifest.status
     return ""
 
 
-def _manifest_step9a1_explicitly_skipped(data: dict[str, Any]) -> bool:
-    steps_raw = data.get("steps_ran")
-    steps = cast("dict[str, Any]", steps_raw) if isinstance(steps_raw, dict) else {}
-    return steps.get("step9a1") is False
+def _manifest_step9a1_explicitly_skipped(manifest: Manifest) -> bool:
+    return manifest.steps_ran.get("step9a1") is False
 
 
-def _manifest_step9a1_explicitly_ran(data: dict[str, Any]) -> bool:
-    steps_raw = data.get("steps_ran")
-    steps = cast("dict[str, Any]", steps_raw) if isinstance(steps_raw, dict) else {}
-    return steps.get("step9a1") is True
+def _manifest_step9a1_explicitly_ran(manifest: Manifest) -> bool:
+    return manifest.steps_ran.get("step9a1") is True
 
 
-def _manifest_steps_ran_empty(data: dict[str, Any]) -> bool:
-    steps = data.get("steps_ran")
-    if steps is None:
-        return True
-    if not isinstance(steps, dict):
-        return False
-    return len(cast("dict[str, Any]", steps)) == 0
+def _manifest_steps_ran_empty(manifest: Manifest) -> bool:
+    return len(manifest.steps_ran) == 0
 
 
-def _manifest_steps_ran_nonempty_without_step9a1(data: dict[str, Any]) -> bool:
-    steps = data.get("steps_ran")
-    if not isinstance(steps, dict) or not steps:
-        return False
-    return "step9a1" not in steps
+def _manifest_steps_ran_nonempty_without_step9a1(manifest: Manifest) -> bool:
+    return bool(manifest.steps_ran) and "step9a1" not in manifest.steps_ran
 
 
 def _final_summary_heading_bail_signal(run_dir: Path) -> bool:
@@ -2540,13 +2515,13 @@ def _final_summary_heading_bail_signal(run_dir: Path) -> bool:
 def _final_summary_bail_signal_without_pr_evidence(
     run_dir: Path,
     manifest_pr_number: str,
-    manifest_data: dict[str, Any] | None = None,
+    manifest_data: Manifest | None = None,
 ) -> bool:
-    manifest: object | None = manifest_data
-    if manifest is None and manifest_pr_number.strip().isdigit():
-        manifest = {"pr_number": int(manifest_pr_number)}
+    manifest_obj: object | None = manifest_data.to_json(existing=None) if manifest_data is not None else None
+    if manifest_obj is None and manifest_pr_number.strip().isdigit():
+        manifest_obj = {"pr_number": int(manifest_pr_number)}
     pr = int(manifest_pr_number) if manifest_pr_number.strip().isdigit() else 0
-    return terminal_bail_skip_signal(run_dir, manifest, pr)
+    return terminal_bail_skip_signal(run_dir, manifest_obj, pr)
 
 
 def _verify_has_file(run_dir: Path, relative_path: str) -> bool:
@@ -2556,7 +2531,7 @@ def _verify_has_file(run_dir: Path, relative_path: str) -> bool:
 def _verify_condition_reached(
     condition: str,
     run_dir: Path,
-    manifest_data: dict[str, Any],
+    manifest_data: Manifest,
     *,
     manifest_status: str,
     manifest_pr_number: str,
@@ -2703,11 +2678,12 @@ def verify_completeness_main(argv: list[str]) -> int:
         return 1
     try:
         manifest_data = _read_manifest_v2(manifest_path)
+        manifest = Manifest.from_json(manifest_data)
     except (OSError, json.JSONDecodeError, TypeError):
         print("MISSING=manifest")
         return 1
-    manifest_status = _manifest_field(manifest_data, "status")
-    manifest_pr_number = _manifest_field(manifest_data, "pr_number")
+    manifest_status = _manifest_field(manifest, "status")
+    manifest_pr_number = _manifest_field(manifest, "pr_number")
     missing: list[str] = []
     for line in manifest_tsv.read_text(encoding="utf-8").splitlines():
         if not line.strip() or line.startswith("#"):
@@ -2725,7 +2701,7 @@ def verify_completeness_main(argv: list[str]) -> int:
         if not _verify_condition_reached(
             condition,
             run_dir,
-            manifest_data,
+            manifest,
             manifest_status=manifest_status,
             manifest_pr_number=manifest_pr_number,
         ):
